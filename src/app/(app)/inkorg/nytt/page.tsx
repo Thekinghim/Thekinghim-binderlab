@@ -21,7 +21,9 @@ export default async function NewIncidentPage({
   const sp = await searchParams;
   const data = await loadIncident(ctx, null);
   const machineParam = typeof sp.automat === "string" ? sp.automat : "";
-  const machineId = data.machines.some((m) => m.id === machineParam) ? machineParam : (data.machines[0]?.id ?? "");
+  const machineId = data.machines.some((m) => m.id === machineParam)
+    ? machineParam
+    : (data.machines[0]?.id ?? "");
   return (
     <div className="mx-auto flex w-full max-w-[960px] flex-col gap-10 px-4 pt-8 pb-16 md:px-8 md:pt-12">
       <SectionHeader

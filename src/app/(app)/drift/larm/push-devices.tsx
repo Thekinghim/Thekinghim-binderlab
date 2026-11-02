@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState, useSyncExternalStore, useTransition } from "react";
 
 import { readyRegistration } from "@/components/pwa/service-worker";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,21 @@ function base64UrlToBytes(value: string): Uint8Array<ArrayBuffer> {
 
 type Support = "unknown" | "supported" | "unsupported" | "denied";
 
+function noopSubscribe(): () => void {
+  return () => {};
+}
+
+function detectSupport(): Support {
+  if (
+    !("serviceWorker" in navigator) ||
+    !("PushManager" in window) ||
+    !("Notification" in window)
+  ) {
+    return "unsupported";
+  }
+  return Notification.permission === "denied" ? "denied" : "supported";
+}
+
 /** Push-enheter: slå på push i den här webbläsaren, stäng av enheter, skicka ett provlarm. */
 export function PushDevices({
   publicKey,
@@ -41,30 +56,30 @@ export function PushDevices({
 }) {
   const router = useRouter();
   const toast = useToast();
-  const [support, setSupport] = useState<Support>("unknown");
+  const detected = useSyncExternalStore(noopSubscribe, detectSupport, () => "unknown" as Support);
+  const [override, setOverride] = useState<Support | null>(null);
+  const support = override ?? detected;
   const [currentEndpoint, setCurrentEndpoint] = useState<string | null>(null);
   const [busy, start] = useTransition();
   const [testing, startTest] = useTransition();
-  const [results, setResults] = useState<{ channel: string; status: string; detail: string }[] | null>(null);
+  const [results, setResults] = useState<
+    { channel: string; status: string; detail: string }[] | null
+  >(null);
 
   useEffect(() => {
-    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
-      setSupport("unsupported");
-      return;
-    }
-    setSupport(Notification.permission === "denied" ? "denied" : "supported");
+    if (detected !== "supported" && detected !== "denied") return;
     void readyRegistration().then(async (reg) => {
       const sub = await reg?.pushManager.getSubscription();
       setCurrentEndpoint(sub?.endpoint ?? null);
     });
-  }, []);
+  }, [detected]);
 
   const enable = () =>
     start(async () => {
       if (!publicKey) return;
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
-        setSupport(permission === "denied" ? "denied" : "supported");
+        setOverride(permission === "denied" ? "denied" : "supported");
         toast({ title: "Push tillåts inte i den här webbläsaren", tone: "neutral" });
         return;
       }
@@ -115,10 +130,14 @@ export function PushDevices({
     startTest(async () => {
       const r = await sendTestAlert();
       setResults(r.results);
-      toast({ title: r.ok ? "Provlarm skickat" : "Provlarmet nådde ingen kanal", tone: r.ok ? "ok" : "critical" });
+      toast({
+        title: r.ok ? "Provlarm skickat" : "Provlarmet nådde ingen kanal",
+        tone: r.ok ? "ok" : "critical",
+      });
     });
 
-  const thisDeviceSaved = currentEndpoint !== null && devices.some((d) => d.endpoint === currentEndpoint);
+  const thisDeviceSaved =
+    currentEndpoint !== null && devices.some((d) => d.endpoint === currentEndpoint);
 
   return (
     <div className="flex flex-col gap-5">
@@ -128,7 +147,9 @@ export function PushDevices({
           compact
           message="Push är inte konfigurerad i den här miljön."
           detail="Larm går med e-post tills push är påslaget."
-          diagnostics={[{ label: "Saknas", value: "VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT" }]}
+          diagnostics={[
+            { label: "Saknas", value: "VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT" },
+          ]}
         />
       ) : support === "unsupported" ? (
         <StateMessage
@@ -186,7 +207,11 @@ export function PushDevices({
           <ul className="flex flex-col gap-1 text-sm" aria-live="polite">
             {results.map((r) => (
               <li key={r.channel} className="flex flex-wrap items-baseline gap-2">
-                <StatusTag status={r.status === "sent" ? "ok" : r.status === "failed" ? "warning" : "neutral"}>
+                <StatusTag
+                  status={
+                    r.status === "sent" ? "ok" : r.status === "failed" ? "warning" : "neutral"
+                  }
+                >
                   {r.channel === "push" ? "Push" : r.channel === "email" ? "E-post" : "Sms"}
                 </StatusTag>
                 <span className="text-muted">{r.detail}</span>

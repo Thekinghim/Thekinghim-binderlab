@@ -72,7 +72,10 @@ function providerOf(env: Env): "webpush" | "outbox" | null {
 }
 
 function devKeyFile(env: Env): string {
-  return path.resolve(env.PUSH_OUTBOX_DIR?.trim() || path.join(process.cwd(), ".data"), "vapid-dev.json");
+  return path.resolve(
+    env.PUSH_OUTBOX_DIR?.trim() || path.join(process.cwd(), ".data"),
+    "vapid-dev.json",
+  );
 }
 
 let devKeys: { publicKey: string; privateKey: string } | null = null;
@@ -82,7 +85,10 @@ async function developmentKeys(env: Env): Promise<{ publicKey: string; privateKe
   if (devKeys) return devKeys;
   const file = devKeyFile(env);
   try {
-    const parsed = JSON.parse(await readFile(file, "utf8")) as { publicKey: string; privateKey: string };
+    const parsed = JSON.parse(await readFile(file, "utf8")) as {
+      publicKey: string;
+      privateKey: string;
+    };
     if (parsed.publicKey && parsed.privateKey) {
       devKeys = parsed;
       return parsed;
@@ -165,9 +171,7 @@ export class OutboxPushSender implements PushSender {
 /** Riktig Web Push med VAPID (web-push). */
 export class WebPushSender implements PushSender {
   readonly kind = "webpush" as const;
-  constructor(
-    private readonly vapid: { subject: string; publicKey: string; privateKey: string },
-  ) {}
+  constructor(private readonly vapid: { subject: string; publicKey: string; privateKey: string }) {}
 
   async send(target: PushTarget, payload: PushPayload): Promise<PushOutcome> {
     try {

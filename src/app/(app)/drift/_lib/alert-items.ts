@@ -9,7 +9,11 @@ import type { AlertItem } from "../_components/alert-list";
 import { figureText, formatWhen } from "./display";
 import type { AlertView } from "./load";
 
-export function toAlertItems(alerts: readonly AlertView[], timeZone: string, now: Date): AlertItem[] {
+export function toAlertItems(
+  alerts: readonly AlertView[],
+  timeZone: string,
+  now: Date,
+): AlertItem[] {
   return alerts.map((a) => ({
     id: a.id,
     severity: a.severity,

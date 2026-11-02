@@ -127,7 +127,11 @@ export default async function MachineTimelinePage({
           id="handelser"
           index={alertItems.length > 0 ? 2 : 1}
           eyebrow="Händelser"
-          title={data.entries.length === 0 ? "Inga händelser i perioden." : `${plural(data.entries.length, "händelse", "händelser")}.`}
+          title={
+            data.entries.length === 0
+              ? "Inga händelser i perioden."
+              : `${plural(data.entries.length, "händelse", "händelser")}.`
+          }
           aside={days > 7 ? "Försäljningen visas per dag." : "Försäljningen visas per timme."}
           size="md"
         />
@@ -135,7 +139,11 @@ export default async function MachineTimelinePage({
           <StateMessage
             kind="empty"
             message={`Ingen försäljning, påfyllning eller ärende i ${data.machine.code} de senaste ${plural(days, "dagen", "dagarna")}.`}
-            action={days < 30 ? { label: "Visa 30 dagar →", href: `/drift/automat/${data.machine.id}?dagar=30` } : undefined}
+            action={
+              days < 30
+                ? { label: "Visa 30 dagar", href: `/drift/automat/${data.machine.id}?dagar=30` }
+                : undefined
+            }
           />
         ) : (
           <ol className="flex flex-col gap-8">
@@ -144,7 +152,10 @@ export default async function MachineTimelinePage({
                 <h3 className="label text-muted">{weekdayDay(date as IsoDate)}</h3>
                 <ol className="flex flex-col divide-y divide-line border-y border-line">
                   {entries.map((e) => (
-                    <li key={e.key} className="grid grid-cols-[3.5rem_1fr] gap-x-3 py-3 sm:grid-cols-[3.5rem_8rem_1fr]">
+                    <li
+                      key={e.key}
+                      className="grid grid-cols-[3.5rem_1fr] gap-x-3 py-3 sm:grid-cols-[3.5rem_8rem_1fr]"
+                    >
                       <span className="meta tnum pt-0.5 text-subtle">{e.time}</span>
                       <span className="label hidden items-center gap-1.5 pt-1 text-subtle sm:flex">
                         <StatusGlyph status={glyphOf(e)} size={8} />
@@ -152,7 +163,9 @@ export default async function MachineTimelinePage({
                       </span>
                       <div className="flex min-w-0 flex-col gap-0.5">
                         <span className="text-sm text-fg">
-                          {e.severity === "critical" ? <span className="sr-only">Kräver åtgärd: </span> : null}
+                          {e.severity === "critical" ? (
+                            <span className="sr-only">Kräver åtgärd: </span>
+                          ) : null}
                           {e.title}
                         </span>
                         {e.detail ? <span className="text-sm text-muted">{e.detail}</span> : null}

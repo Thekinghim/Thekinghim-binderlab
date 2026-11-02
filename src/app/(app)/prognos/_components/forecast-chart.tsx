@@ -179,6 +179,17 @@ export function ForecastChart({
       lines: [geo.actualPts, geo.midPts, ...(geo.btPts.length ? [geo.btPts] : [])],
       bounds: { x: 0, y: -M.top + 4, w: geo.innerW, h: geo.innerH + M.top - 6 },
     };
+    // Lodlinjen för i dag och dess etikett.
+    const ff = data.findIndex((d) => d.kind === "forecast");
+    if (ff > 0) {
+      const tx = ((geo.xs[ff - 1] ?? 0) + (geo.xs[ff] ?? 0)) / 2;
+      obs.boxes.push({ x: tx - 2, y: -M.top + 16, w: 44, h: 16 });
+      (obs.lines as Pt[][]).push([
+        [tx, -M.top + 20],
+        [tx, geo.innerH],
+      ]);
+    }
+    const narrow = geo.innerW < 480;
     const total = weeks.reduce(
       (s, w) => ({
         mid: s.mid + (metric === "revenue" ? w.revenueOre : w.unitsMilli),
@@ -190,14 +201,15 @@ export function ForecastChart({
     if (last && hi) {
       const lines: LabelLine[] = [
         [{ text: `${weeks.length} veckor · ${fmt(total.mid)}`, kind: "title" }],
-        [
+      ];
+      if (!narrow)
+        lines.push([
           { text: `${coverage} `, kind: "caps" },
           {
             text: `${fmt(metric === "revenue" ? last.revenueLowOre : last.unitsLowMilli).replace(/\s(kr|pack)$/, "")}–${fmt(metric === "revenue" ? last.revenueHighOre : last.unitsHighMilli)} sista veckan`,
             kind: "value",
           },
-        ],
-      ];
+        ]);
       const s = measureLines(lines);
       const x = Math.max(0, geo.innerW - s.w);
       const box = place(
@@ -208,7 +220,7 @@ export function ForecastChart({
         ],
         obs,
         true,
-        { hard: [geo.midPts] },
+        { hard: [geo.midPts, geo.actualPts] },
       );
       if (box) {
         out.push({ key: "total", box, lines, align: "end" });
@@ -256,7 +268,7 @@ export function ForecastChart({
     return out;
     // fmt beror bara på metric.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [geo, weeks, metric, coverage]);
+  }, [geo, data, weeks, metric, coverage]);
 
   const onMove = (e: PointerEvent<SVGRectElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();

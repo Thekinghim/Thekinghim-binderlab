@@ -594,7 +594,13 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       { ...org, name: "Andra automat", stage: "meeting", storeId: store!.id },
     ]);
     await tx.insert(s.effectMeasurements).values([
-      { ...org, scope: "organization", metric: "admin_hours_month", month: "2025-03-01", value: 300 },
+      {
+        ...org,
+        scope: "organization",
+        metric: "admin_hours_month",
+        month: "2025-03-01",
+        value: 300,
+      },
       {
         ...org,
         scope: "store",
@@ -733,6 +739,76 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       status: "answered",
       provider: "local",
       model: "lokal-testmodell",
+    });
+    // Marknad (20261102122500_marknad_market_intelligence.sql): ett släpp med fastställd
+    // fördelning, ett leverantörspris, fackfördelning, en genomförd sortimentsändring och
+    // ett pristest.
+    const [release] = await tx
+      .insert(s.releases)
+      .values({
+        ...org,
+        name: "Surging Sparks",
+        series: "Scarlet & Violet",
+        releaseDate: "2025-03-20",
+        titleId: secondTitle!.id,
+        supplierId: supplier!.id,
+        planLockedAt: new Date("2025-03-15T10:00:00Z"),
+        planPurchaseUnits: 36,
+        planCurveBp: [5000, 10_000],
+        planSnapshot: { text: "Förslag" },
+      })
+      .returning();
+    await tx
+      .insert(s.releaseAllocations)
+      .values({
+        ...org,
+        releaseId: release!.id,
+        machineId: machine!.id,
+        units: 24,
+        suggestedUnits: 24,
+      });
+    await tx.insert(s.supplierPriceQuotes).values({
+      ...org,
+      supplierId: supplier!.id,
+      titleId: title!.id,
+      quotedOn: "2025-02-15",
+      unitCostOre: 4400,
+      quantity: 36,
+    });
+    await tx.insert(s.machineSlots).values({
+      ...org,
+      machineId: machine!.id,
+      titleId: title!.id,
+      slots: 3,
+      validFrom: "2025-01-01",
+    });
+    await tx.insert(s.assortmentChanges).values({
+      ...org,
+      machineId: machine!.id,
+      implementedOn: "2025-03-01",
+      recommendationKey: `assortment:${machine!.id}`,
+      fingerprint: `${title!.id}:3`,
+      expectedEffectPerWeekOre: 2500,
+      changedTitleIds: [title!.id],
+    });
+    const [experiment] = await tx
+      .insert(s.priceExperiments)
+      .values({
+        ...org,
+        titleId: title!.id,
+        proposalKey: `price-test:${title!.id}:up:2025-03-01`,
+        direction: "up",
+        fromOre: 7900,
+        toOre: 8400,
+        startedOn: "2025-03-01",
+        testDays: 28,
+      })
+      .returning();
+    await tx.insert(s.priceExperimentMachines).values({
+      ...org,
+      experimentId: experiment!.id,
+      machineId: machine!.id,
+      arm: "test",
     });
 
     const invitation = await one<{ token: string }>(

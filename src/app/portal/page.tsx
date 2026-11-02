@@ -125,7 +125,9 @@ export default async function PortalOverviewPage({ searchParams }: { searchParam
             <EvidenceDetails evidence={compensation.evidence} summary="Så räknas ersättningen" />
           </div>
         </div>
-        <p className="max-w-3xl text-md text-muted">{report.conclusion.text}</p>
+        {partial ? null : (
+          <p className="max-w-3xl text-md text-muted">{report.conclusion.text}</p>
+        )}
       </section>
 
       <TrendSection trend={trend} month={month} />
@@ -144,7 +146,7 @@ export default async function PortalOverviewPage({ searchParams }: { searchParam
                 data={report.topTitles.map((t) => ({
                   label: t.name,
                   name: t.name,
-                  value: t.revenueOre,
+                  value: t.revenueOre / 100,
                   note: `${formatInt(t.orders)} st · ${pct(t.shareBp)}`,
                 }))}
                 labelHeading="Titel"
@@ -291,7 +293,7 @@ function TrendSection({ trend, month }: { trend: readonly PortalTrendMonth[]; mo
           data={trend.map((t) => ({
             label: monthShortText(t.month),
             name: `${monthText(t.month)}${t.partial ? " (pågår)" : ""}`,
-            value: t.revenueOre,
+            value: t.revenueOre / 100,
           }))}
           selectedIndex={selectedIndex}
           summary={`Försäljning per månad, ${monthText(trend[0]!.month)} till ${monthText(
@@ -313,7 +315,7 @@ function TrendSection({ trend, month }: { trend: readonly PortalTrendMonth[]; mo
 function TrendTable({ trend }: { trend: readonly PortalTrendMonth[] }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[480px] text-base">
+      <table className="w-full text-base">
         <caption className="sr-only">Försäljning och ersättning per månad</caption>
         <thead>
           <tr className="border-b border-line-strong">

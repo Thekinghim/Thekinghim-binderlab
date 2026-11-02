@@ -7,7 +7,11 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 
-import type { FieldErrors, SubscriptionInput, SubscriptionRow } from "@/server/alerts/subscriptions";
+import type {
+  FieldErrors,
+  SubscriptionInput,
+  SubscriptionRow,
+} from "@/server/alerts/subscriptions";
 
 import { saveAlertSubscription } from "../actions";
 
@@ -61,7 +65,15 @@ function Check({
   );
 }
 
-function Group({ legend, error, children }: { legend: string; error?: string; children: ReactNode }) {
+function Group({
+  legend,
+  error,
+  children,
+}: {
+  legend: string;
+  error?: string;
+  children: ReactNode;
+}) {
   return (
     <fieldset className="flex min-w-0 flex-col gap-3 border-t border-line pt-4">
       <legend className="label float-left mb-3 w-full text-muted">{legend}</legend>
@@ -128,14 +140,27 @@ export function SettingsForm({
   };
 
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-8" aria-label="Larminställningar">
-      <Check checked={v.active} onChange={(x) => set("active", x)} hint="Avstängd: inga larm alls, men inställningarna sparas.">
+    <form
+      onSubmit={submit}
+      noValidate
+      className="flex flex-col gap-8"
+      aria-label="Larminställningar"
+    >
+      <Check
+        checked={v.active}
+        onChange={(x) => set("active", x)}
+        hint="Avstängd: inga larm alls, men inställningarna sparas."
+      >
         Ta emot larm
       </Check>
 
       <div className="flex flex-col gap-8">
         <Group legend="Larm" error={errors.kinds}>
-          <Check checked={v.allKinds} onChange={(x) => set("allKinds", x)} hint="Även typer som läggs till senare.">
+          <Check
+            checked={v.allKinds}
+            onChange={(x) => set("allKinds", x)}
+            hint="Även typer som läggs till senare."
+          >
             Alla typer jag får se
           </Check>
           {!v.allKinds ? (
@@ -167,7 +192,11 @@ export function SettingsForm({
         </Group>
 
         <Group legend="Automater" error={errors.machineIds}>
-          <Check checked={v.allMachines} onChange={(x) => set("allMachines", x)} hint="Även automater som läggs till senare.">
+          <Check
+            checked={v.allMachines}
+            onChange={(x) => set("allMachines", x)}
+            hint="Även automater som läggs till senare."
+          >
             Alla automater
           </Check>
           {!v.allMachines ? (
@@ -183,7 +212,9 @@ export function SettingsForm({
               ))}
             </div>
           ) : null}
-          <p className="text-xs text-subtle">Larm som inte gäller en automat (import, hela organisationen) kommer oavsett.</p>
+          <p className="text-xs text-subtle">
+            Larm som inte gäller en automat (import, hela organisationen) kommer oavsett.
+          </p>
         </Group>
 
         <Group legend="Kanaler" error={errors.channels}>
@@ -213,13 +244,27 @@ export function SettingsForm({
         </Group>
 
         <Group legend="Tider" error={errors.windowDays ?? errors.windowStart ?? errors.quietStart}>
-          <Check checked={v.quiet} onChange={(x) => set("quiet", x)} hint="Larm under de tysta timmarna skickas när de är slut.">
+          <Check
+            checked={v.quiet}
+            onChange={(x) => set("quiet", x)}
+            hint="Larm under de tysta timmarna skickas när de är slut."
+          >
             Tysta timmar
           </Check>
           {v.quiet ? (
             <div className="grid max-w-sm grid-cols-2 gap-3">
-              <Input label="Från" type="time" value={v.quietStart} onChange={(e) => set("quietStart", e.target.value)} />
-              <Input label="Till" type="time" value={v.quietEnd} onChange={(e) => set("quietEnd", e.target.value)} />
+              <Input
+                label="Från"
+                type="time"
+                value={v.quietStart}
+                onChange={(e) => set("quietStart", e.target.value)}
+              />
+              <Input
+                label="Till"
+                type="time"
+                value={v.quietEnd}
+                onChange={(e) => set("quietEnd", e.target.value)}
+              />
             </div>
           ) : null}
           <Check
@@ -243,8 +288,18 @@ export function SettingsForm({
                 ))}
               </div>
               <div className="grid max-w-sm grid-cols-2 gap-3">
-                <Input label="Från" type="time" value={v.windowStart} onChange={(e) => set("windowStart", e.target.value)} />
-                <Input label="Till" type="time" value={v.windowEnd} onChange={(e) => set("windowEnd", e.target.value)} />
+                <Input
+                  label="Från"
+                  type="time"
+                  value={v.windowStart}
+                  onChange={(e) => set("windowStart", e.target.value)}
+                />
+                <Input
+                  label="Till"
+                  type="time"
+                  value={v.windowEnd}
+                  onChange={(e) => set("windowEnd", e.target.value)}
+                />
               </div>
             </div>
           ) : null}
@@ -258,7 +313,11 @@ export function SettingsForm({
         </Group>
 
         <Group legend="Uppföljning">
-          <Check checked={v.reminders} onChange={(x) => set("reminders", x)} hint="Kritiska efter 4 timmar, varningar efter 24 timmar, tills någon kvitterar.">
+          <Check
+            checked={v.reminders}
+            onChange={(x) => set("reminders", x)}
+            hint="Kritiska efter 4 timmar, varningar efter 24 timmar, tills någon kvitterar."
+          >
             Påminnelser om olösta larm
           </Check>
           <Check checked={v.notifyResolved} onChange={(x) => set("notifyResolved", x)}>

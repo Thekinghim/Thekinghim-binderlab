@@ -1,13 +1,23 @@
 /**
  * Drizzle-schema för Marknad (fas 11). Källan till sanningen är migreringen
- * supabase/migrations/20261102122500_marknad_market_intelligence.sql; filen
+ * supabase/migrations/20261102122500_marknad_market_intelligence.sql och
+ * 20261102132000_marknad_experiment_arms.sql; filen
  * re-exporteras från src/db/schema.ts så att katalogtestet jämför den med databasen.
  *
  * Samma konventioner som i src/db/schema.ts: belopp i öre (`ore`), andelar i bp,
  * affärsdatum som sträng 'ÅÅÅÅ-MM-DD', tider som `Date`.
  */
 
-import { customType, date, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  customType,
+  date,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 import { ore } from "../types";
 
@@ -107,7 +117,7 @@ export const assortmentChanges = pgTable("assortment_changes", {
   ...stamps(),
 });
 
-/** Ett startat pristest (experiment) med test- och kontrollautomater. */
+/** Ett startat pristest (experiment). Automaterna står i price_experiment_machines. */
 export const priceExperiments = pgTable("price_experiments", {
   id: id(),
   organizationId: orgId(),
@@ -119,9 +129,17 @@ export const priceExperiments = pgTable("price_experiments", {
   startedOn: day("started_on").notNull(),
   testDays: integer("test_days").notNull(),
   stoppedOn: day("stopped_on"),
-  testMachineIds: uuid("test_machine_ids").array().notNull(),
-  controlMachineIds: uuid("control_machine_ids").array().notNull(),
   snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull().default({}),
   note: text("note"),
+  ...stamps(),
+});
+
+/** En automat i ett pristest: testgrupp (nytt pris) eller kontroll (oförändrat pris). */
+export const priceExperimentMachines = pgTable("price_experiment_machines", {
+  id: id(),
+  organizationId: orgId(),
+  experimentId: uuid("experiment_id").notNull(),
+  machineId: uuid("machine_id").notNull(),
+  arm: text("arm").$type<"test" | "control">().notNull(),
   ...stamps(),
 });

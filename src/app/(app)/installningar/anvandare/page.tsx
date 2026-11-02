@@ -84,7 +84,10 @@ export default async function UsersPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1280px] px-4 pt-8 pb-16 md:px-8 md:pt-12">
-      <nav aria-label="Brödsmulor" className="label mb-6 flex items-center gap-2 text-subtle">
+      <nav
+        aria-label="Plats i Inställningar"
+        className="label mb-6 flex items-center gap-2 text-subtle"
+      >
         <Link
           href="/installningar"
           className="rounded-xs underline decoration-line-strong underline-offset-4 hover:text-fg hover:decoration-fg"

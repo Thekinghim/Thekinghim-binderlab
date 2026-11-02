@@ -18,11 +18,18 @@ const BASE: IncidentInput = {
   refunded: "",
   refundedOn: "2026-11-02",
 };
-const CTX = { timeZone: "Europe/Stockholm", now: new Date("2026-11-02T10:00:00Z"), machineIds: [M], memberIds: [U] };
+const CTX = {
+  timeZone: "Europe/Stockholm",
+  now: new Date("2026-11-02T10:00:00Z"),
+  machineIds: [M],
+  memberIds: [U],
+};
 
 describe("kundärende: tid och belopp", () => {
   it("svensk tid i formuläret blir UTC och tillbaka", () => {
-    expect(localToUtc("2026-11-01T17:17", "Europe/Stockholm")?.toISOString()).toBe("2026-11-01T16:17:00.000Z");
+    expect(localToUtc("2026-11-01T17:17", "Europe/Stockholm")?.toISOString()).toBe(
+      "2026-11-01T16:17:00.000Z",
+    );
     expect(utcToLocalInput("2026-11-01T16:17:00Z", "Europe/Stockholm")).toBe("2026-11-01T17:17");
     expect(localToUtc("2026-11-01 17:17", "Europe/Stockholm")).toBeNull();
   });
@@ -46,7 +53,9 @@ describe("kundärende: tid och belopp", () => {
 
   it("löst kräver åtgärd; framtida tid, okänd automat och okänd ansvarig avvisas", () => {
     expect(validateIncident({ ...BASE, status: "resolved" }, CTX).ok).toBe(false);
-    expect(validateIncident({ ...BASE, status: "resolved", actionTaken: "Swishade 49 kr." }, CTX).ok).toBe(true);
+    expect(
+      validateIncident({ ...BASE, status: "resolved", actionTaken: "Swishade 49 kr." }, CTX).ok,
+    ).toBe(true);
     expect(validateIncident({ ...BASE, occurredAt: "2026-11-03T10:00" }, CTX).ok).toBe(false);
     expect(validateIncident({ ...BASE, machineId: U }, CTX).ok).toBe(false);
     expect(validateIncident({ ...BASE, assigneeId: M }, CTX).ok).toBe(false);

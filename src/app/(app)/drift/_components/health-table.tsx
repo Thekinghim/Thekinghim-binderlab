@@ -44,7 +44,9 @@ const columns: Column<HealthRow>[] = [
     key: "status",
     header: "Status",
     sortValue: (r) => r.rank,
-    render: (r) => <StatusTag status={HEALTH_TAG[r.status].status}>{HEALTH_TAG[r.status].label}</StatusTag>,
+    render: (r) => (
+      <StatusTag status={HEALTH_TAG[r.status].status}>{HEALTH_TAG[r.status].label}</StatusTag>
+    ),
     csv: (r) => HEALTH_TAG[r.status].label,
   },
   {

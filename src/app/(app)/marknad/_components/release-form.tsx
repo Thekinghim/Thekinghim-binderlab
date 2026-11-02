@@ -102,7 +102,11 @@ export function ReleaseFormButton({
       }
       setOpen(false);
       if (!editing) setValues(EMPTY);
-      toast({ title: editing ? "Släppet sparat" : "Släppet inlagt", meta: values.name, tone: "ok" });
+      toast({
+        title: editing ? "Släppet sparat" : "Släppet inlagt",
+        meta: values.name,
+        tone: "ok",
+      });
       router.refresh();
     });
   }

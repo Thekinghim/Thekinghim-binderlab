@@ -15,15 +15,20 @@ import { SettingsForm, type KindOption } from "./settings-form";
 export const metadata: Metadata = { title: "Larminställningar" };
 
 const KIND_HINT: Record<string, string> = {
-  machine_offline: "Ingen försäljning på mycket längre tid än normalt, eller automaten rapporterar ur drift.",
+  machine_offline:
+    "Ingen försäljning på mycket längre tid än normalt, eller automaten rapporterar ur drift.",
   machine_fault: "Automaten rapporterar ett fel (kräver leverantörens maskindata).",
-  machine_suspected_fault: "Tystnaden i försäljningen är osannolik jämfört med samma veckodag och timme.",
+  machine_suspected_fault:
+    "Tystnaden i försäljningen är osannolik jämfört med samma veckodag och timme.",
   low_stock: "En titel räcker högst 2 dagar vid takten de senaste 14 dagarna, eller är slut.",
   import_failed: "Importen misslyckades, hängde sig eller hade rader med fel.",
   day_anomaly: "Gårdagens försäljning avviker minst 30 % från samma veckodag tidigare veckor.",
 };
 
-const DELIVERY_STATUS: Record<string, { status: "ok" | "warning" | "neutral" | "offline"; label: string }> = {
+const DELIVERY_STATUS: Record<
+  string,
+  { status: "ok" | "warning" | "neutral" | "offline"; label: string }
+> = {
   pending: { status: "neutral", label: "Väntar" },
   sent: { status: "ok", label: "Skickat" },
   partial: { status: "warning", label: "Delvis" },
@@ -33,8 +38,26 @@ const DELIVERY_STATUS: Record<string, { status: "ok" | "warning" | "neutral" | "
 
 function shortAgent(ua: string | null): string {
   if (!ua) return "Okänd webbläsare";
-  const browser = /Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Webbläsare";
-  const os = /iPhone|iPad/.test(ua) ? "iOS" : /Android/.test(ua) ? "Android" : /Mac OS X/.test(ua) ? "macOS" : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : "";
+  const browser = /Edg\//.test(ua)
+    ? "Edge"
+    : /Firefox\//.test(ua)
+      ? "Firefox"
+      : /Chrome\//.test(ua)
+        ? "Chrome"
+        : /Safari\//.test(ua)
+          ? "Safari"
+          : "Webbläsare";
+  const os = /iPhone|iPad/.test(ua)
+    ? "iOS"
+    : /Android/.test(ua)
+      ? "Android"
+      : /Mac OS X/.test(ua)
+        ? "macOS"
+        : /Windows/.test(ua)
+          ? "Windows"
+          : /Linux/.test(ua)
+            ? "Linux"
+            : "";
   return os ? `${browser} på ${os}` : browser;
 }
 
@@ -48,7 +71,11 @@ export default async function AlertSettingsPage() {
   const now = new Date(ctx.now);
   const sub = settings.subscription;
   const allowed = ctx.role === "refiller" ? FIELD_KINDS : ALERT_KINDS;
-  const kinds: KindOption[] = allowed.map((k) => ({ value: k, label: KIND_LABEL[k], hint: KIND_HINT[k] ?? "" }));
+  const kinds: KindOption[] = allowed.map((k) => ({
+    value: k,
+    label: KIND_LABEL[k],
+    hint: KIND_HINT[k] ?? "",
+  }));
   const ch = settings.channels;
   const channelOptions = [
     {
@@ -72,7 +99,9 @@ export default async function AlertSettingsPage() {
     {
       value: "sms" as const,
       label: "Sms",
-      hint: ch.sms.configured ? "Lokalt läge: skrivs till disk, skickas inte." : "Ingen sms-leverantör vald.",
+      hint: ch.sms.configured
+        ? "Lokalt läge: skrivs till disk, skickas inte."
+        : "Ingen sms-leverantör vald.",
     },
   ];
   const activeKinds = sub.kinds === null ? allowed.length : sub.kinds.length;
@@ -110,7 +139,14 @@ export default async function AlertSettingsPage() {
 
       <div className="grid gap-12 lg:grid-cols-12 lg:gap-8">
         <section aria-labelledby="installningar" className="flex flex-col gap-6 lg:col-span-7">
-          <SectionHeader id="installningar" index={1} eyebrow="Vad och när" title="Dina larm." size="md" aside="Gäller bara dig." />
+          <SectionHeader
+            id="installningar"
+            index={1}
+            eyebrow="Vad och när"
+            title="Dina larm."
+            size="md"
+            aside="Gäller bara dig."
+          />
           <SettingsForm
             initial={sub}
             kinds={kinds}
@@ -141,7 +177,11 @@ export default async function AlertSettingsPage() {
               id="utskick"
               index={3}
               eyebrow="Utskick"
-              title={settings.deliveries.length === 0 ? "Inga larm skickade till dig." : `${plural(settings.deliveries.length, "utskick", "utskick")} senast.`}
+              title={
+                settings.deliveries.length === 0
+                  ? "Inga larm skickade till dig."
+                  : `${plural(settings.deliveries.length, "utskick", "utskick")} senast.`
+              }
               aside="Flera larm samtidigt blir ett utskick."
               size="md"
             />
@@ -162,7 +202,12 @@ export default async function AlertSettingsPage() {
                         </span>
                         {d.results.length > 0 ? (
                           <span className="text-xs text-muted">
-                            {d.results.map((r) => `${r.channel === "push" ? "Push" : r.channel === "email" ? "E-post" : r.channel === "sms" ? "Sms" : r.channel}: ${r.detail}`).join(" · ")}
+                            {d.results
+                              .map(
+                                (r) =>
+                                  `${r.channel === "push" ? "Push" : r.channel === "email" ? "E-post" : r.channel === "sms" ? "Sms" : r.channel}: ${r.detail}`,
+                              )
+                              .join(" · ")}
                           </span>
                         ) : null}
                       </li>

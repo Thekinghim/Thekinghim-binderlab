@@ -100,7 +100,7 @@ export function CompensationSection({
         index={4}
         eyebrow="Er ersättning"
         title={`${krExact(c.totalOre)} till ${report.store.name}.`}
-        aside={hasAgreement ? `${c.modelText}.` : "Inget avtal är registrerat för månaden."}
+        aside={hasAgreement ? withPeriod(c.modelText) : "Inget avtal är registrerat för månaden."}
         meta={[
           { label: "Provision", value: krExact(c.commissionOre) },
           { label: "Hyra", value: krExact(c.rentOre) },
@@ -156,4 +156,9 @@ export function CompensationSection({
       ) : null}
     </section>
   );
+}
+
+/** Meningen med exakt en avslutande punkt. */
+function withPeriod(text: string): string {
+  return /[.!?]$/.test(text.trim()) ? text.trim() : `${text.trim()}.`;
 }

@@ -62,8 +62,7 @@ export const MIN_ASSORTMENT_DAYS = 14;
 
 /** Resultat av en beräkning som kan stoppas av ogiltig indata. */
 export type Computed<T> =
-  | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly message: string };
+  { readonly ok: true; readonly value: T } | { readonly ok: false; readonly message: string };
 
 function compute<T>(fn: () => T): Computed<T> {
   try {
@@ -318,30 +317,26 @@ export interface PricesView {
 /** Offerter och inköpsorderrader som inköp (PurchaseRecord) för prisanalysen. */
 export function purchaseSources(data: MarketData): PurchaseSource[] {
   return [
-    ...data.quotes.map(
-      (q): PurchaseSource => ({
-        id: q.id,
-        origin: "quote",
-        kind: q.kind,
-        titleId: q.titleId,
-        supplierId: q.supplierId,
-        date: q.quotedOn,
-        unitCostOre: q.unitCostOre,
-        quantity: q.quantity,
-      }),
-    ),
-    ...data.purchaseLines.map(
-      (l): PurchaseSource => ({
-        id: l.id,
-        origin: "purchase-order",
-        kind: "order-line",
-        titleId: l.titleId,
-        supplierId: l.supplierId,
-        date: l.date,
-        unitCostOre: l.unitCostOre,
-        quantity: l.quantity,
-      }),
-    ),
+    ...data.quotes.map((q): PurchaseSource => ({
+      id: q.id,
+      origin: "quote",
+      kind: q.kind,
+      titleId: q.titleId,
+      supplierId: q.supplierId,
+      date: q.quotedOn,
+      unitCostOre: q.unitCostOre,
+      quantity: q.quantity,
+    })),
+    ...data.purchaseLines.map((l): PurchaseSource => ({
+      id: l.id,
+      origin: "purchase-order",
+      kind: "order-line",
+      titleId: l.titleId,
+      supplierId: l.supplierId,
+      date: l.date,
+      unitCostOre: l.unitCostOre,
+      quantity: l.quantity,
+    })),
   ];
 }
 
@@ -359,9 +354,7 @@ export function pricesView(data: MarketData, period: Period): PricesView {
   return {
     purchases,
     trends: compute(() => purchasePriceTrends(input)),
-    anomalies: compute(() =>
-      flagPurchaseAnomalies(input, { from: period.start, to: period.end }),
-    ),
+    anomalies: compute(() => flagPurchaseAnomalies(input, { from: period.start, to: period.end })),
     quoteCount: data.quotes.length,
     orderLineCount: data.purchaseLines.length,
   };
@@ -426,9 +419,7 @@ export function slotLinesOn(
   return data.slots
     .filter(
       (s) =>
-        s.machineId === machineId &&
-        s.validFrom <= day &&
-        (s.validTo === null || s.validTo >= day),
+        s.machineId === machineId && s.validFrom <= day && (s.validTo === null || s.validTo >= day),
     )
     .map((s) => ({ titleId: s.titleId, slots: s.slots }))
     .sort((a, b) => b.slots - a.slots || a.titleId.localeCompare(b.titleId));
@@ -496,8 +487,7 @@ export function assortmentView(data: MarketData, period: Period): AssortmentView
             : ([...data.assortmentChanges]
                 .reverse()
                 .find(
-                  (c) =>
-                    c.machineId === machineId && c.fingerprint === recommendation.fingerprint,
+                  (c) => c.machineId === machineId && c.fingerprint === recommendation.fingerprint,
                 ) ?? null);
         const slots = current.get(machineId) ?? 0;
         return {

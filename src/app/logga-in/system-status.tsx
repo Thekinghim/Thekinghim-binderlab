@@ -19,9 +19,10 @@ const ENV_LABEL = {
 
 /** Hur länge ett pingresultat återanvänds, så att anonyma sidvisningar inte belastar databasen. */
 const CACHE_MS = 10_000;
+const FAIL_CACHE_MS = 2_000;
 
 const globalForPing = globalThis as typeof globalThis & {
-  __binderlabLoginPing?: { at: number; result: Promise<number | null> };
+  __binderlabLoginPing?: { at: number; ms: number | null };
 };
 
 /**
@@ -47,13 +48,16 @@ async function pingOnce(): Promise<number | null> {
   }
 }
 
-function ping(): Promise<number | null> {
+/** Ett lyckat svar återanvänds i CACHE_MS, ett uteblivet bara i FAIL_CACHE_MS. */
+async function ping(): Promise<number | null> {
   const cached = globalForPing.__binderlabLoginPing;
   const now = Date.now();
-  if (cached && now - cached.at < CACHE_MS) return cached.result;
-  const result = pingOnce();
-  globalForPing.__binderlabLoginPing = { at: now, result };
-  return result;
+  if (cached && now - cached.at < (cached.ms === null ? FAIL_CACHE_MS : CACHE_MS)) {
+    return cached.ms;
+  }
+  const ms = await pingOnce();
+  globalForPing.__binderlabLoginPing = { at: Date.now(), ms };
+  return ms;
 }
 
 /**

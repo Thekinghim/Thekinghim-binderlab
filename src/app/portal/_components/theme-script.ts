@@ -1,10 +1,16 @@
 /**
  * Portalens tema. Portalen är ljus som standard (butiken visar den gärna för
- * andra), men den som valt mörkt får mörkt. Valet sparas separat från appens
- * (binderlab-portal-theme) och sätts på <html>, så att dialoger och notiser
- * följer med. När portalen lämnas återställs appens val (PortalThemeScope).
+ * andra), men den som valt mörkt får mörkt. Valet sparas i en cookie (skild från
+ * appens val i localStorage), så att servern renderar rätt tema direkt utan blink
+ * och utan inline-skript.
  */
-export const PORTAL_THEME_KEY = "binderlab-portal-theme";
+export const PORTAL_THEME_COOKIE = "bl_portal_theme";
 
-/** Sätts inline i portalens layout så att första målningen får rätt tema. */
-export const portalThemeScript = `(function(){try{var t=localStorage.getItem("${PORTAL_THEME_KEY}");document.documentElement.dataset.theme=(t==="dark"?"dark":"light")}catch(e){document.documentElement.dataset.theme="light"}})();`;
+export type PortalTheme = "light" | "dark";
+
+export function portalTheme(value: string | undefined): PortalTheme {
+  return value === "dark" ? "dark" : "light";
+}
+
+/** Portalens rotelement (bär data-theme). */
+export const PORTAL_ROOT_ID = "portal-root";

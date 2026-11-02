@@ -39,7 +39,11 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
       const keys = await caches.keys();
-      await Promise.all(keys.filter((k) => k.startsWith("binderlab-") && k !== VERSION).map((k) => caches.delete(k)));
+      await Promise.all(
+        keys
+          .filter((k) => k.startsWith("binderlab-") && k !== VERSION)
+          .map((k) => caches.delete(k)),
+      );
       await self.clients.claim();
     })(),
   );
@@ -54,7 +58,10 @@ function offlinePage() {
 <style>body{margin:0;background:#0a0a0b;color:#edeae4;font:14px/20px system-ui,sans-serif;padding:32px 16px}main{max-width:480px;margin:0 auto}p{color:#a6a39d}.l{font:11px/16px ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f8c86}a{color:#edeae4}</style></head>
 <body><main><p class="l">Ur drift · ingen uppkoppling</p><h1 style="font-size:24px;line-height:32px;font-weight:500">Sidan finns inte sparad i telefonen.</h1>
 <p>Öppna Påfyllning en gång med uppkoppling, så fungerar den sedan utan nät.</p><p><a href="/drift/pafyllning">Försök igen →</a></p></main></body></html>`;
-  return new Response(html, { status: 503, headers: { "content-type": "text/html; charset=utf-8" } });
+  return new Response(html, {
+    status: 503,
+    headers: { "content-type": "text/html; charset=utf-8" },
+  });
 }
 
 async function networkFirst(request, url) {
@@ -62,7 +69,9 @@ async function networkFirst(request, url) {
   try {
     const res = await Promise.race([
       fetch(request),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), NETWORK_TIMEOUT_MS)),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), NETWORK_TIMEOUT_MS),
+      ),
     ]);
     if (res.ok && !res.redirected) await cache.put(url.pathname, res.clone());
     return res;

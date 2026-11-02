@@ -20,11 +20,16 @@ export default async function RefillPage() {
   if (ctx.role === "viewer") {
     return (
       <div className="flex flex-col gap-8">
-        <SectionHeader as="h1" size="xl" eyebrow="Påfyllning" title="Påfyllning registreras av ägare, admin och påfyllare." />
+        <SectionHeader
+          as="h1"
+          size="xl"
+          eyebrow="Påfyllning"
+          title="Påfyllning registreras av ägare, admin och påfyllare."
+        />
         <StateMessage
           kind="denied"
           message="Läsare kan se lagret men inte registrera påfyllningar."
-          action={{ label: "Öppna Lager →", href: "/lager" }}
+          action={{ label: "Öppna Lager", href: "/lager" }}
         />
       </div>
     );

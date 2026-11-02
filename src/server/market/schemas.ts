@@ -43,7 +43,10 @@ const int = (label: string, min: number, max: number) =>
  * minus. `null` om texten inte är ett belopp.
  */
 export function parseKronorToOre(text: string): number | null {
-  const clean = text.replace(/[\s  ]/g, "").replace(/kr$/i, "").replace(",", ".");
+  const clean = text
+    .replace(/[\s  ]/g, "")
+    .replace(/kr$/i, "")
+    .replace(",", ".");
   const m = /^(\d{1,7})(?:\.(\d{1,2}))?$/.exec(clean);
   if (!m) return null;
   const whole = Number(m[1]);
@@ -61,30 +64,26 @@ export function parsePercentToBp(text: string): number | null {
   return Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0"));
 }
 
-const kronor = z
-  .union([z.string(), z.number()])
-  .transform((v, ctx) => {
-    const ore = parseKronorToOre(String(v));
-    if (ore === null) {
-      ctx.addIssue({ code: "custom", message: "Priset ska vara ett belopp i kronor, t.ex. 54,90." });
-      return z.NEVER;
-    }
-    return ore;
-  });
+const kronor = z.union([z.string(), z.number()]).transform((v, ctx) => {
+  const ore = parseKronorToOre(String(v));
+  if (ore === null) {
+    ctx.addIssue({ code: "custom", message: "Priset ska vara ett belopp i kronor, t.ex. 54,90." });
+    return z.NEVER;
+  }
+  return ore;
+});
 
-const percentBp = z
-  .union([z.string(), z.number()])
-  .transform((v, ctx) => {
-    const bp = parsePercentToBp(String(v));
-    if (bp === null || bp > 100_000) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Storleken ska vara en procentsats mellan 0 och 1 000, t.ex. 120.",
-      });
-      return z.NEVER;
-    }
-    return bp;
-  });
+const percentBp = z.union([z.string(), z.number()]).transform((v, ctx) => {
+  const bp = parsePercentToBp(String(v));
+  if (bp === null || bp > 100_000) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Storleken ska vara en procentsats mellan 0 och 1 000, t.ex. 120.",
+    });
+    return z.NEVER;
+  }
+  return bp;
+});
 
 const releaseFields = {
   name: z
@@ -131,7 +130,11 @@ export const createQuoteSchema = z
   })
   .superRefine((v, ctx) => {
     if (!v.supplierId && !v.newSupplierName) {
-      ctx.addIssue({ code: "custom", path: ["supplierId"], message: "Välj eller ange leverantör." });
+      ctx.addIssue({
+        code: "custom",
+        path: ["supplierId"],
+        message: "Välj eller ange leverantör.",
+      });
     }
     if (v.validUntil && v.validUntil < v.quotedOn) {
       ctx.addIssue({

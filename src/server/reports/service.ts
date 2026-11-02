@@ -37,11 +37,12 @@ import {
   type SessionUser,
 } from "@/server/access";
 import { businessToday } from "@/server/data/core/loaders";
-import { renderReportEmailLazy } from "@/server/mail/render-report-email";
 import type { Mailer, MailAttachment } from "@/server/mail/report-mailer";
 
+import { buildSubject, renderReportText } from "@/emails/report-content";
+
 import { reportEmailProps } from "./email";
-import { CONTENT_TYPE, excelOf, fileKindsOf, reportFileName, sieOf } from "./files";
+import { CONTENT_TYPE, excelOf, reportFileName, sieOf } from "./files";
 import {
   DB_KIND,
   RECIPIENT_KIND,
@@ -532,6 +533,16 @@ export interface SendDeps {
   readonly mailer: Mailer;
   readonly store: FileStore;
   readonly render: (reportId: string) => Promise<Uint8Array>;
+  /**
+   * Renderar mejlen med mallen i src/emails för mottagarna (id → HTML). Mallen använder
+   * react-dom/server, som inte får laddas i Server Components; i appen körs den därför i
+   * headless Chromium (/rapport/[id]/epost), i tester direkt.
+   */
+  readonly renderEmails: (
+    reportId: string,
+    recipientIds: readonly string[],
+    followText: string | null,
+  ) => Promise<Record<string, { html: string }>>;
   /** Länk till rapporten i appen. */
   readonly reportUrl: (reportId: string) => string;
   readonly sender?: { name: string; address: string; email: string };
@@ -596,54 +607,38 @@ export async function sendReportFor(
   if (targets.length === 0) return { sent: 0, failed: [], skipped };
 
   const pdf = await ensurePdfFor(viewer, report.id, { store: deps.store, render: deps.render });
-  const attachments: MailAttachment[] = [
-    { filename: pdf.fileName, contentType: CONTENT_TYPE.pdf, content: pdf.bytes },
-  ];
-  for (const kind of fileKindsOf(report.snapshot)) {
-    if (kind === "xlsx") {
-      attachments.push({
-        filename: reportFileName(report.snapshot, "xlsx"),
-        contentType: CONTENT_TYPE.xlsx,
-        content: await excelOf(report.snapshot),
-      });
-    }
-    if (kind === "sie" && report.snapshot.type === "bokforing") {
-      if (report.snapshot.missingAccounts.length === 0) {
-        attachments.push({
-          filename: reportFileName(report.snapshot, "sie"),
-          contentType: "application/octet-stream",
-          content: sieOf(report.snapshot),
-        });
-      }
-    }
-  }
+  const attachments = await mailAttachments(report.snapshot, pdf.bytes);
+  const followText = req.followText?.trim() || null;
+  const rendered = await deps.renderEmails(
+    report.id,
+    targets.map((r) => r.id),
+    followText,
+  );
 
   let sent = 0;
   const failed: { email: string; error: string }[] = [];
   for (const r of targets) {
-    const props = reportEmailProps(report.snapshot, {
-      recipientName: r.name.split(/\s+/)[0] ?? r.name,
+    const props = emailPropsFor(report, r, {
+      followText,
       reportUrl: deps.reportUrl(report.id),
-      followText: req.followText ?? null,
-      reportId: shortId(report.id),
-      attachments: attachments.map((a) => ({
-        name: a.filename,
-        size: a.content.byteLength,
-        description: describe(a.filename),
-      })),
+      attachments,
       sender: deps.sender,
       contact: deps.contact ?? null,
     });
-    const email = await renderReportEmailLazy(props);
+    // Ämne och text räknas här ur samma props; HTML:en kommer från mallen (renderEmails).
+    const html = rendered[r.id]?.html;
+    const subject = buildSubject(props);
+    const text = renderReportText(props);
     let status: DeliveryStatus = "sent";
     let providerMessageId: string | null = null;
     let error: string | null = null;
     try {
+      if (!html) throw new ReportError("Mejlet kunde inte renderas.");
       const result = await deps.mailer.send({
         to: r.email,
-        subject: email.subject,
-        html: email.html,
-        text: email.text,
+        subject,
+        html,
+        text,
         attachments,
         tags: { report_id: report.id, recipient_id: r.id },
       });
@@ -668,6 +663,58 @@ export async function sendReportFor(
     });
   }
   return { sent, failed, skipped };
+}
+
+/** Bilagorna till mejlet: PDF, och för bokföringsunderlaget Excel och SIE 4. */
+export async function mailAttachments(
+  snapshot: ReportSnapshot,
+  pdfBytes: Uint8Array,
+): Promise<MailAttachment[]> {
+  const out: MailAttachment[] = [
+    { filename: reportFileName(snapshot, "pdf"), contentType: CONTENT_TYPE.pdf, content: pdfBytes },
+  ];
+  if (snapshot.type === "bokforing") {
+    out.push({
+      filename: reportFileName(snapshot, "xlsx"),
+      contentType: CONTENT_TYPE.xlsx,
+      content: await excelOf(snapshot),
+    });
+    if (snapshot.missingAccounts.length === 0) {
+      out.push({
+        filename: reportFileName(snapshot, "sie"),
+        contentType: "application/octet-stream",
+        content: sieOf(snapshot),
+      });
+    }
+  }
+  return out;
+}
+
+/** Props till e-postmallen för en mottagare. Samma i utskicket och förhandsvisningen. */
+export function emailPropsFor(
+  report: Pick<ReportDetail, "id" | "snapshot">,
+  recipient: Pick<RecipientRow, "name">,
+  opts: {
+    followText: string | null;
+    reportUrl: string;
+    attachments: readonly { filename: string; content: { byteLength: number } }[];
+    sender?: { name: string; address: string; email: string };
+    contact?: { name: string; phone: string | null } | null;
+  },
+) {
+  return reportEmailProps(report.snapshot, {
+    recipientName: recipient.name.trim().split(/\s+/)[0] ?? recipient.name,
+    reportUrl: opts.reportUrl,
+    followText: opts.followText,
+    reportId: shortId(report.id),
+    attachments: opts.attachments.map((a) => ({
+      name: a.filename,
+      size: a.content.byteLength,
+      description: describe(a.filename),
+    })),
+    sender: opts.sender,
+    contact: opts.contact ?? null,
+  });
 }
 
 function describe(fileName: string): string {

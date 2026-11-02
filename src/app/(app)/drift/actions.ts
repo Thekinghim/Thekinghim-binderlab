@@ -32,7 +32,11 @@ import { withUserDb } from "@/server/session";
 const uuid = z.string().uuid();
 
 function pgMessage(error: unknown): string | null {
-  const e = error as { code?: string; message?: string; cause?: { code?: string; message?: string } };
+  const e = error as {
+    code?: string;
+    message?: string;
+    cause?: { code?: string; message?: string };
+  };
   const code = e?.code ?? e?.cause?.code;
   const message = e?.cause?.message ?? e?.message;
   if (code === "22023" || code === "BL004" || code === "BL020") return message ?? null;
@@ -60,7 +64,9 @@ export async function acknowledgeAlert(alertId: string): Promise<{ ok: boolean; 
       .returning({ id: s.alerts.id }),
   );
   revalidatePath("/drift", "layout");
-  return updated.length > 0 ? { ok: true } : { ok: false, error: "Larmet är redan kvitterat eller finns inte." };
+  return updated.length > 0
+    ? { ok: true }
+    : { ok: false, error: "Larmet är redan kvitterat eller finns inte." };
 }
 
 // ---------------------------------------------------------------------------
@@ -72,14 +78,18 @@ export interface SaveSubscriptionResult {
   readonly errors?: FieldErrors;
 }
 
-export async function saveAlertSubscription(input: SubscriptionInput): Promise<SaveSubscriptionResult> {
+export async function saveAlertSubscription(
+  input: SubscriptionInput,
+): Promise<SaveSubscriptionResult> {
   const ctx = await requireContextRole(ALL_ROLES);
   const machineIds = await withUserDb(async (tx) =>
     (
       await tx
         .select({ id: s.machines.id })
         .from(s.machines)
-        .where(and(eq(s.machines.organizationId, ctx.organization.id), isNull(s.machines.archivedAt)))
+        .where(
+          and(eq(s.machines.organizationId, ctx.organization.id), isNull(s.machines.archivedAt)),
+        )
     ).map((m) => m.id),
   );
   const result = validateSubscription(input, { userId: ctx.user.id, role: ctx.role, machineIds });
@@ -110,7 +120,10 @@ export async function saveAlertSubscription(input: SubscriptionInput): Promise<S
         }),
     );
   } catch (error) {
-    return { ok: false, errors: { form: pgMessage(error) ?? "Inställningarna kunde inte sparas." } };
+    return {
+      ok: false,
+      errors: { form: pgMessage(error) ?? "Inställningarna kunde inte sparas." },
+    };
   }
   revalidatePath("/drift/larm");
   return { ok: true };
@@ -129,7 +142,8 @@ const pushInput = z.object({
 export async function savePushDevice(input: unknown): Promise<{ ok: boolean; error?: string }> {
   const ctx = await requireContextRole(ALL_ROLES);
   const parsed = pushInput.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Webbläsaren gav en ogiltig push-prenumeration." };
+  if (!parsed.success)
+    return { ok: false, error: "Webbläsaren gav en ogiltig push-prenumeration." };
   const p = parsed.data;
   try {
     await withUserDb((tx) =>
@@ -154,7 +168,10 @@ export async function savePushDevice(input: unknown): Promise<{ ok: boolean; err
         }),
     );
   } catch {
-    return { ok: false, error: "Enheten är redan kopplad till en annan användare. Logga ut den först." };
+    return {
+      ok: false,
+      error: "Enheten är redan kopplad till en annan användare. Logga ut den först.",
+    };
   }
   revalidatePath("/drift/larm");
   return { ok: true };
@@ -206,7 +223,11 @@ export async function sendTestAlert(): Promise<{ ok: boolean; results: ChannelRe
           isNull(s.pushSubscriptions.disabledAt),
         ),
       );
-    return { channels: (sub?.channels ?? ["push", "email"]) as Channel[], phone: sub?.phone ?? null, devices };
+    return {
+      channels: (sub?.channels ?? ["push", "email"]) as Channel[],
+      phone: sub?.phone ?? null,
+      devices,
+    };
   });
   const at = new Date().toISOString();
   const delivery: AlertDelivery = {
@@ -280,7 +301,9 @@ export interface RefillSyncResult {
  * inskick (t.ex. för lite i centrallagret) kommer tillbaka med ett svenskt felmeddelande och
  * stannar i kön tills användaren tar bort det.
  */
-export async function syncRefills(items: unknown): Promise<{ ok: boolean; results: RefillSyncResult[] }> {
+export async function syncRefills(
+  items: unknown,
+): Promise<{ ok: boolean; results: RefillSyncResult[] }> {
   const ctx = await requireContextRole(["owner", "admin", "refiller"]);
   const list = z.array(z.unknown()).max(200).safeParse(items);
   if (!list.success) return { ok: false, results: [] };
@@ -288,7 +311,9 @@ export async function syncRefills(items: unknown): Promise<{ ok: boolean; result
   for (const raw of list.data) {
     const parsed = refillItem.safeParse(raw);
     const clientId =
-      typeof raw === "object" && raw !== null && "clientId" in raw ? String((raw as { clientId: unknown }).clientId) : "";
+      typeof raw === "object" && raw !== null && "clientId" in raw
+        ? String((raw as { clientId: unknown }).clientId)
+        : "";
     if (!parsed.success) {
       results.push({ clientId, status: "rejected", error: "Påfyllningen saknar uppgifter." });
       continue;

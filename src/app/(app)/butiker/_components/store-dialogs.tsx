@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
@@ -13,6 +13,7 @@ import { FormDialog, text } from "./form-dialog";
 
 /** Fälten för en butik (nytt eller befintligt värde). */
 function StoreFields({ store }: { store?: StoreDetail }) {
+  const idBase = useId();
   return (
     <>
       <Input
@@ -65,20 +66,24 @@ function StoreFields({ store }: { store?: StoreDetail }) {
           maxLength={50}
         />
       </div>
-      <label className="flex items-start gap-3 text-base text-fg">
+      <div className="flex items-start gap-3">
         <input
+          id={`${idBase}-example`}
           type="checkbox"
           name="isExample"
           defaultChecked={store?.isExample ?? false}
+          aria-describedby={`${idBase}-example-hint`}
           className="mt-0.5 size-4 shrink-0 accent-current"
         />
-        <span className="flex flex-col gap-0.5">
-          <span>Exempelbutik</span>
-          <span className="text-sm text-muted">
-            Markeras med &quot;Exempel&quot; i listor, rapporter och på butikens sida.
-          </span>
-        </span>
-      </label>
+        <div className="flex flex-col gap-0.5">
+          <label htmlFor={`${idBase}-example`} className="text-base text-fg">
+            Exempelbutik
+          </label>
+          <p id={`${idBase}-example-hint`} className="text-sm text-muted">
+            Visas med etiketten Exempel i listor och rapporter.
+          </p>
+        </div>
+      </div>
     </>
   );
 }

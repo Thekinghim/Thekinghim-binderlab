@@ -15,12 +15,21 @@ import * as s from "@/db/schema";
 import { OPERATOR_ROLES, requireContextRole } from "@/server/data/core";
 import { withUserDb } from "@/server/session";
 
-import { localToUtc, validateIncident, type IncidentErrors, type IncidentInput } from "./_lib/model";
+import {
+  localToUtc,
+  validateIncident,
+  type IncidentErrors,
+  type IncidentInput,
+} from "./_lib/model";
 
 const uuid = z.string().uuid();
 
 function dbMessage(error: unknown): string | null {
-  const e = error as { code?: string; message?: string; cause?: { code?: string; message?: string } };
+  const e = error as {
+    code?: string;
+    message?: string;
+    cause?: { code?: string; message?: string };
+  };
   const code = e?.cause?.code ?? e?.code;
   const message = e?.cause?.message ?? e?.message;
   if (code === "BL004" || code === "BL020" || code === "22023") return message ?? null;
@@ -37,14 +46,21 @@ export interface SaveIncidentResult {
 export async function saveIncident(input: IncidentInput): Promise<SaveIncidentResult> {
   const ctx = await requireContextRole(OPERATOR_ROLES);
   const orgId = ctx.organization.id;
-  if (input.id && !uuid.safeParse(input.id).success) return { ok: false, errors: { form: "Okänt ärende." } };
+  if (input.id && !uuid.safeParse(input.id).success)
+    return { ok: false, errors: { form: "Okänt ärende." } };
   const { machineIds, memberIds } = await withUserDb(async (tx) => {
-    const m = await tx.select({ id: s.machines.id }).from(s.machines).where(eq(s.machines.organizationId, orgId));
+    const m = await tx
+      .select({ id: s.machines.id })
+      .from(s.machines)
+      .where(eq(s.machines.organizationId, orgId));
     const u = await tx
       .select({ id: s.memberships.userId })
       .from(s.memberships)
       .where(eq(s.memberships.organizationId, orgId));
-    return { machineIds: m.map((x) => x.id), memberIds: u.map((x) => x.id).filter((x): x is string => !!x) };
+    return {
+      machineIds: m.map((x) => x.id),
+      memberIds: u.map((x) => x.id).filter((x): x is string => !!x),
+    };
   });
   const result = validateIncident(input, {
     timeZone: ctx.timeZone,
@@ -99,7 +115,10 @@ export async function saveIncident(input: IncidentInput): Promise<SaveIncidentRe
     revalidatePath("/drift", "layout");
     return { ok: true, id };
   } catch (error) {
-    return { ok: false, errors: { form: dbMessage(error) ?? "Ärendet kunde inte sparas. Försök igen." } };
+    return {
+      ok: false,
+      errors: { form: dbMessage(error) ?? "Ärendet kunde inte sparas. Försök igen." },
+    };
   }
 }
 
@@ -131,7 +150,13 @@ export async function findOrders(machineId: string, occurredAt: string): Promise
         titleName: s.titles.name,
       })
       .from(s.orders)
-      .leftJoin(s.titles, and(eq(s.titles.organizationId, s.orders.organizationId), eq(s.titles.id, s.orders.titleId)))
+      .leftJoin(
+        s.titles,
+        and(
+          eq(s.titles.organizationId, s.orders.organizationId),
+          eq(s.titles.id, s.orders.titleId),
+        ),
+      )
       .where(
         and(
           eq(s.orders.organizationId, ctx.organization.id),
@@ -146,5 +171,9 @@ export async function findOrders(machineId: string, occurredAt: string): Promise
   );
   return rows
     .map((r) => ({ ...r, orderedAt: r.orderedAt.toISOString() }))
-    .sort((a, b) => Math.abs(Date.parse(a.orderedAt) - at.getTime()) - Math.abs(Date.parse(b.orderedAt) - at.getTime()));
+    .sort(
+      (a, b) =>
+        Math.abs(Date.parse(a.orderedAt) - at.getTime()) -
+        Math.abs(Date.parse(b.orderedAt) - at.getTime()),
+    );
 }

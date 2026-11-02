@@ -183,7 +183,7 @@ export function ForecastView({ model }: { model: ForecastModel }) {
             </p>
           ) : null}
         </div>
-        <ol className="grid grid-cols-7 gap-2">
+        <ol className="grid grid-cols-4 gap-x-2 gap-y-4 sm:grid-cols-7">
           {model.weekdays.map((d) => {
             const v = metric === "revenue" ? d.revenueOre : d.unitsMilli;
             return (

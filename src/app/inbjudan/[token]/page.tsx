@@ -23,7 +23,7 @@ const INVALID: Record<"missing" | "expired" | "accepted", { aside: string; body:
   // Okänd token: återkallad, ersatt av en ny länk ("Skicka igen") eller avklippt.
   // Sidan kan inte skilja dem åt utan att avslöja mer, så texten är neutral.
   missing: {
-    aside: "Länken gäller inte längre.",
+    aside: "Länken känns inte igen.",
     body: "Den kan ha återkallats eller ersatts av en nyare länk. Be den som bjöd in dig om en ny, eller kontrollera att hela länken kom med från mejlet.",
   },
   expired: {

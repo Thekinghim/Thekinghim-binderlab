@@ -188,6 +188,14 @@ export function dailySeries(result: ProfitabilityResult): DailyPoint[] {
 // Listan
 // ---------------------------------------------------------------------------
 
+/** Adress och ort, utan att upprepa orten om den redan står i adressen. */
+export function placeText(address: string | null, city: string | null): string | null {
+  const a = address?.trim() || null;
+  const c = city?.trim() || null;
+  if (a && c && a.toLocaleLowerCase("sv-SE").includes(c.toLocaleLowerCase("sv-SE"))) return a;
+  return [a, c].filter(Boolean).join(", ") || null;
+}
+
 export interface StoreBase {
   readonly id: string;
   readonly name: string;
@@ -251,7 +259,7 @@ export function buildStoreRows(args: {
       return {
         id: s.id,
         name: s.name,
-        place: [s.address, s.city].filter(Boolean).join(", ") || null,
+        place: placeText(s.address, s.city),
         isExample: s.isExample,
         archived: s.archived,
         machineCodes,

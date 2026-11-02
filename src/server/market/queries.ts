@@ -187,11 +187,24 @@ export async function queryAssortmentChanges(
 }
 
 export async function queryExperiments(tx: Tx, orgId: string): Promise<PriceExperimentRow[]> {
-  const rows = await tx
-    .select()
-    .from(s.priceExperiments)
-    .where(eq(s.priceExperiments.organizationId, orgId))
-    .orderBy(asc(s.priceExperiments.startedOn), asc(s.priceExperiments.id));
+  const [rows, arms] = await Promise.all([
+    tx
+      .select()
+      .from(s.priceExperiments)
+      .where(eq(s.priceExperiments.organizationId, orgId))
+      .orderBy(asc(s.priceExperiments.startedOn), asc(s.priceExperiments.id)),
+    tx
+      .select({
+        experimentId: s.priceExperimentMachines.experimentId,
+        machineId: s.priceExperimentMachines.machineId,
+        arm: s.priceExperimentMachines.arm,
+      })
+      .from(s.priceExperimentMachines)
+      .where(eq(s.priceExperimentMachines.organizationId, orgId))
+      .orderBy(asc(s.priceExperimentMachines.machineId)),
+  ]);
+  const armOf = (id: string, arm: "test" | "control") =>
+    arms.filter((a) => a.experimentId === id && a.arm === arm).map((a) => a.machineId);
   return rows.map((r) => ({
     id: r.id,
     titleId: r.titleId,
@@ -202,8 +215,8 @@ export async function queryExperiments(tx: Tx, orgId: string): Promise<PriceExpe
     startedOn: r.startedOn,
     testDays: r.testDays,
     stoppedOn: r.stoppedOn,
-    testMachineIds: r.testMachineIds,
-    controlMachineIds: r.controlMachineIds,
+    testMachineIds: armOf(r.id, "test"),
+    controlMachineIds: armOf(r.id, "control"),
     text: textOf(r.snapshot),
   }));
 }

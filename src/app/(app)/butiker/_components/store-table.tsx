@@ -113,7 +113,6 @@ function columns(monthLabel: string): Column<StoreRow>[] {
       header: "Vinst",
       numeric: true,
       hideOnMobile: true,
-      defaultHidden: true,
       sortValue: (r) => r.profitOre,
       csv: (r) => r.profitOre / 100,
       render: (r) => sek(r.profitOre),

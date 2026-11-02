@@ -182,15 +182,13 @@ export function Evidence({
               <>
                 <p className="max-w-3xl text-sm break-words text-fg">{r.summary}</p>
                 {r.figures.length > 0 ? (
-                  <dl className="grid max-w-3xl grid-cols-1 gap-x-8 gap-y-1 sm:grid-cols-2">
+                  <dl className="flex max-w-3xl flex-col">
                     {r.figures.map((f, j) => (
                       <div
                         key={j}
                         className="flex min-w-0 items-baseline justify-between gap-3 border-b border-line py-1"
                       >
-                        <dt className="min-w-0 truncate text-sm text-muted" title={f.label}>
-                          {f.label}
-                        </dt>
+                        <dt className="min-w-0 text-sm break-words text-muted">{f.label}</dt>
                         <dd className="tnum shrink-0 text-right text-sm text-fg">{f.value}</dd>
                       </div>
                     ))}

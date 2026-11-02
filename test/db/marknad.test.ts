@@ -91,7 +91,10 @@ async function buildOrg(): Promise<MarketOrg> {
   const org = { organizationId: orgId };
 
   return asPostgres(async (tx) => {
-    const [store] = await tx.insert(s.stores).values({ ...org, name: "Butik 1" }).returning();
+    const [store] = await tx
+      .insert(s.stores)
+      .values({ ...org, name: "Butik 1" })
+      .returning();
     await tx
       .insert(s.storeAgreements)
       .values({ ...org, storeId: store!.id, validFrom: "2025-01-01", commissionBp: 1000 });
@@ -106,9 +109,16 @@ async function buildOrg(): Promise<MarketOrg> {
         })),
       )
       .returning();
-    await tx.insert(s.machinePlacements).values(
-      machines.map((m) => ({ ...org, machineId: m.id, storeId: store!.id, validFrom: "2025-01-01" })),
-    );
+    await tx
+      .insert(s.machinePlacements)
+      .values(
+        machines.map((m) => ({
+          ...org,
+          machineId: m.id,
+          storeId: store!.id,
+          validFrom: "2025-01-01",
+        })),
+      );
     const titleRows = await tx
       .insert(s.titles)
       .values([
@@ -222,6 +232,7 @@ describe("behörighet och RLS", () => {
       "machine_slots",
       "assortment_changes",
       "price_experiments",
+      "price_experiment_machines",
     ]) {
       const visible = await asUser(M.refiller, (tx) =>
         rows<{ n: number }>(tx, sql`select count(*)::int as n from ${sql.identifier(table)}`),
@@ -268,14 +279,27 @@ describe("behörighet och RLS", () => {
     const [title] = await asPostgres((tx) =>
       tx.insert(s.titles).values({ organizationId: otherOrg, name: "Egen" }).returning(),
     );
+    const [experiment] = await asPostgres((tx) =>
+      tx
+        .insert(s.priceExperiments)
+        .values({
+          organizationId: otherOrg,
+          titleId: title!.id,
+          proposalKey: "price-test:x",
+          direction: "up",
+          fromOre: 100,
+          toOre: 200,
+          startedOn: "2026-11-03",
+          testDays: 28,
+        })
+        .returning(),
+    );
     const machineFk = await asUser(other, (tx) =>
       attempt(tx, (sp) =>
         sp.execute(
-          sql`insert into public.price_experiments (organization_id, title_id, proposal_key,
-                direction, from_ore, to_ore, started_on, test_days, test_machine_ids,
-                control_machine_ids)
-              values (${otherOrg}, ${title!.id}, 'price-test:x', 'up', 100, 200, '2026-11-03', 28,
-                array[${M.machines[0]}]::uuid[], array[${randomUUID()}]::uuid[])`,
+          sql`insert into public.price_experiment_machines (organization_id, experiment_id,
+                machine_id, arm)
+              values (${otherOrg}, ${experiment!.id}, ${M.machines[0]}, 'test')`,
         ),
       ),
     );
@@ -344,7 +368,9 @@ describe("releaser", () => {
     expect(row.planLockedBy).toBe(M.owner.id);
     expect(row.planText).toBe(s.text);
     const allocations = after.allocations.filter((a) => a.releaseId === releaseId);
-    expect(allocations.map((a) => a.units).sort()).toEqual(s.allocations.map((a) => a.units).sort());
+    expect(allocations.map((a) => a.units).sort()).toEqual(
+      s.allocations.map((a) => a.units).sort(),
+    );
     expect(releaseViews(after).find((r) => r.row.id === releaseId)!.needsAction).toBe(false);
   });
 
@@ -418,7 +444,9 @@ describe("leverantörspriser", () => {
     );
     const data = await loadMarketDataFor(ownerV, NOW);
     // Samma leverantör återanvänds (namnet jämförs utan skiftläge).
-    expect(data.suppliers.filter((x) => x.name.toLowerCase() === supplierName.toLowerCase())).toHaveLength(1);
+    expect(
+      data.suppliers.filter((x) => x.name.toLowerCase() === supplierName.toLowerCase()),
+    ).toHaveLength(1);
     const view = pricesView(data, { start: "2026-10-04", end: TODAY });
     expect(view.trends.ok).toBe(true);
     if (!view.trends.ok || !view.anomalies.ok) return;
@@ -442,7 +470,12 @@ describe("leverantörspriser", () => {
     });
     expect(parsed.unitCost).toBe(125_490);
     expect(() =>
-      createQuoteSchema.parse({ supplierId: randomUUID(), titleId: randomUUID(), quotedOn: TODAY, unitCost: "-5" }),
+      createQuoteSchema.parse({
+        supplierId: randomUUID(),
+        titleId: randomUUID(),
+        quotedOn: TODAY,
+        unitCost: "-5",
+      }),
     ).toThrow();
   });
 });
@@ -477,9 +510,19 @@ describe("sortiment", () => {
     );
     const data = await loadMarketDataFor(ownerV, NOW);
     const rowsM1 = data.slots.filter((x) => x.machineId === m1);
-    expect(rowsM1.map((x) => `${x.titleId === M.titles.a ? "a" : x.titleId === M.titles.base ? "base" : "steady"}:${x.validFrom}:${x.validTo}`).sort()).toEqual(
-      ["a:2026-09-01:2026-09-30", "base:2026-09-01:2026-09-30", "base:2026-10-01:null", "steady:2026-10-01:null"],
-    );
+    expect(
+      rowsM1
+        .map(
+          (x) =>
+            `${x.titleId === M.titles.a ? "a" : x.titleId === M.titles.base ? "base" : "steady"}:${x.validFrom}:${x.validTo}`,
+        )
+        .sort(),
+    ).toEqual([
+      "a:2026-09-01:2026-09-30",
+      "base:2026-09-01:2026-09-30",
+      "base:2026-10-01:null",
+      "steady:2026-10-01:null",
+    ]);
     expect(() =>
       saveSlotsSchema.parse({
         machineId: m1,
@@ -532,7 +575,8 @@ describe("sortiment", () => {
 
     const after = await loadMarketDataFor(ownerV, NOW);
     const today = after.slots.filter(
-      (x) => x.machineId === m1 && x.validFrom <= TODAY && (x.validTo === null || x.validTo >= TODAY),
+      (x) =>
+        x.machineId === m1 && x.validFrom <= TODAY && (x.validTo === null || x.validTo >= TODAY),
     );
     const expected = rec.lines.filter((l) => l.recommendedSlots > 0);
     expect(today.map((x) => `${x.titleId}:${x.slots}`).sort()).toEqual(

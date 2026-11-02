@@ -52,7 +52,10 @@ let dataSourceId: string;
 
 /** Samlar utskick i stället för att skicka (stub för dispatchDelivery). */
 const sent: { delivery: AlertDelivery; recipient: Recipient }[] = [];
-async function stubDispatch(delivery: AlertDelivery, recipient: Recipient): Promise<DispatchResult> {
+async function stubDispatch(
+  delivery: AlertDelivery,
+  recipient: Recipient,
+): Promise<DispatchResult> {
   sent.push({ delivery, recipient });
   return {
     results: [{ channel: "email", status: "sent", detail: "test" }],
@@ -79,7 +82,10 @@ beforeAll(async () => {
       .returning({ id: s.machines.id });
     m1 = machines[0]!.id;
     m2 = machines[1]!.id;
-    const [title] = await tx.insert(s.titles).values({ ...org, name: "Testtitel" }).returning();
+    const [title] = await tx
+      .insert(s.titles)
+      .values({ ...org, name: "Testtitel" })
+      .returning();
     titleId = title!.id;
     const [source] = await tx
       .insert(s.dataSources)
@@ -111,7 +117,9 @@ beforeAll(async () => {
 
   // Prenumerationer: ägaren (alla larm, e-post) och påfyllaren (automater och lager, push).
   await asUser(owner, (tx) =>
-    tx.insert(s.alertSubscriptions).values({ organizationId: orgId, userId: owner.id, channels: ["email"] }),
+    tx
+      .insert(s.alertSubscriptions)
+      .values({ organizationId: orgId, userId: owner.id, channels: ["email"] }),
   );
   await asUser(refiller, (tx) =>
     tx.insert(s.alertSubscriptions).values({
@@ -124,7 +132,13 @@ beforeAll(async () => {
 });
 
 async function alertRows() {
-  return rows<{ incident_key: string; kind: string; status: string; occurrences: number; notify_count: number }>(
+  return rows<{
+    incident_key: string;
+    kind: string;
+    status: string;
+    occurrences: number;
+    notify_count: number;
+  }>(
     db(),
     sql`select incident_key, kind, status, occurrences, notify_count from public.alerts
         where organization_id = ${orgId}::uuid order by triggered_at, incident_key`,
@@ -143,7 +157,10 @@ describe("härledning av misstänkt fel", () => {
   it("automaten som slutat sälja är misstänkt fel, den andra i drift", async () => {
     const health = await asUser(owner, async (tx) => {
       const data = await loadHealthData(tx, orgId, "2026-10-20");
-      return machineHealth({ orders: data.orders, machines: data.machines, stock: data.stock }, NOW);
+      return machineHealth(
+        { orders: data.orders, machines: data.machines, stock: data.stock },
+        NOW,
+      );
     });
     const byId = new Map(health.map((h) => [h.machineId, h]));
     expect(byId.get(m1)?.status).toBe("ok");
@@ -160,7 +177,10 @@ describe("härledning av misstänkt fel", () => {
     const health = await asUser(refiller, async (tx) => {
       const data = await loadHealthData(tx, orgId, "2026-10-20");
       expect(data.orders.every((o) => o.amountOre === 0)).toBe(true);
-      return machineHealth({ orders: data.orders, machines: data.machines, stock: data.stock }, NOW);
+      return machineHealth(
+        { orders: data.orders, machines: data.machines, stock: data.stock },
+        NOW,
+      );
     });
     expect(health.find((h) => h.machineId === m2)?.status).toBe("suspected_fault");
   });
@@ -185,7 +205,11 @@ describe("larmjobbet dubblerar inte larm", () => {
 
   it("samma problem i fem körningar till är fortfarande en rad och inga nya utskick", async () => {
     for (let i = 1; i <= 5; i++) {
-      const summary = await evaluateOrganization(db(), orgId, new Date(NOW.getTime() + i * 10 * MIN));
+      const summary = await evaluateOrganization(
+        db(),
+        orgId,
+        new Date(NOW.getTime() + i * 10 * MIN),
+      );
       expect(summary.status).toBe("ok");
       expect(summary.notifications).toBe(0);
     }
@@ -207,17 +231,31 @@ describe("larmjobbet dubblerar inte larm", () => {
   });
 
   it("utskicken skickas en gång, till rätt kanal", async () => {
-    const first = await deliverDue(db(), { now: new Date(NOW.getTime() + 61 * MIN), baseUrl: "http://test", dispatch: stubDispatch });
+    const first = await deliverDue(db(), {
+      now: new Date(NOW.getTime() + 61 * MIN),
+      baseUrl: "http://test",
+      dispatch: stubDispatch,
+    });
     expect(first.processed).toBeGreaterThanOrEqual(2);
     const mine = sent.filter((x) => [owner.id, refiller.id].includes(x.recipient.userId));
     expect(mine).toHaveLength(2);
-    expect(mine.find((x) => x.recipient.userId === owner.id)?.recipient.channels).toEqual(["email"]);
+    expect(mine.find((x) => x.recipient.userId === owner.id)?.recipient.channels).toEqual([
+      "email",
+    ]);
     expect(mine.find((x) => x.recipient.userId === owner.id)?.recipient.email).toBe(owner.email);
-    expect(mine.find((x) => x.recipient.userId === refiller.id)?.recipient.channels).toEqual(["push"]);
+    expect(mine.find((x) => x.recipient.userId === refiller.id)?.recipient.channels).toEqual([
+      "push",
+    ]);
     expect(mine[0]!.delivery.items[0]!.key).toBe(`machine:${m2}`);
 
-    const again = await deliverDue(db(), { now: new Date(NOW.getTime() + 62 * MIN), baseUrl: "http://test", dispatch: stubDispatch });
-    expect(sent.filter((x) => [owner.id, refiller.id].includes(x.recipient.userId))).toHaveLength(2);
+    const again = await deliverDue(db(), {
+      now: new Date(NOW.getTime() + 62 * MIN),
+      baseUrl: "http://test",
+      dispatch: stubDispatch,
+    });
+    expect(sent.filter((x) => [owner.id, refiller.id].includes(x.recipient.userId))).toHaveLength(
+      2,
+    );
     expect(again.sent).toBe(0);
   });
 
@@ -256,7 +294,14 @@ describe("behörighet", () => {
     // Importen har skapats nu (created_at), så körningen görs nu.
     await evaluateOrganization(db(), orgId, new Date(Date.now() + MIN));
     const groups = async (u: TestUser) =>
-      (await asUser(u, (tx) => rows<{ g: string }>(tx, sql`select alert_group as g from public.alerts where organization_id = ${orgId}::uuid`)))
+      (
+        await asUser(u, (tx) =>
+          rows<{ g: string }>(
+            tx,
+            sql`select alert_group as g from public.alerts where organization_id = ${orgId}::uuid`,
+          ),
+        )
+      )
         .map((r) => r.g)
         .filter((g, i, all) => all.indexOf(g) === i)
         .sort();
@@ -268,11 +313,19 @@ describe("behörighet", () => {
   it("påfyllaren kan inte prenumerera på alla larm eller kvittera", async () => {
     const other = await createMember(orgId, "refiller");
     const all = await asUser(other, (tx) =>
-      attempt(tx, (sp) => sp.insert(s.alertSubscriptions).values({ organizationId: orgId, userId: other.id, channels: ["push"] })),
+      attempt(tx, (sp) =>
+        sp
+          .insert(s.alertSubscriptions)
+          .values({ organizationId: orgId, userId: other.id, channels: ["push"] }),
+      ),
     );
     expect(all.ok).toBe(false);
     const ack = await asUser(refiller, (tx) =>
-      tx.update(s.alerts).set({ acknowledgedAt: new Date() }).where(sql`organization_id = ${orgId}::uuid`).returning({ id: s.alerts.id }),
+      tx
+        .update(s.alerts)
+        .set({ acknowledgedAt: new Date() })
+        .where(sql`organization_id = ${orgId}::uuid`)
+        .returning({ id: s.alerts.id }),
     );
     expect(ack).toHaveLength(0);
   });
@@ -334,7 +387,9 @@ describe("påfyllning från fältet", () => {
   it("läsaren kan inte registrera påfyllning", async () => {
     const r = await settle(
       asUser(viewer, (tx) =>
-        tx.execute(sql`select * from public.register_refill_once(${orgId}::uuid, ${randomUUID()}::uuid, ${m1}::uuid, ${titleId}::uuid, 1)`),
+        tx.execute(
+          sql`select * from public.register_refill_once(${orgId}::uuid, ${randomUUID()}::uuid, ${m1}::uuid, ${titleId}::uuid, 1)`,
+        ),
       ),
     );
     expect(r.ok).toBe(false);
@@ -349,7 +404,15 @@ describe("kundärenden", () => {
     );
     const wrong = await asUser(owner, (tx) =>
       attempt(tx, (sp) =>
-        sp.insert(s.incidents).values({ organizationId: orgId, machineId: m2, kind: "not_delivered", startedAt: NOW, orderId: order!.id }),
+        sp
+          .insert(s.incidents)
+          .values({
+            organizationId: orgId,
+            machineId: m2,
+            kind: "not_delivered",
+            startedAt: NOW,
+            orderId: order!.id,
+          }),
       ),
     );
     expect(wrong.ok).toBe(false);
@@ -382,7 +445,9 @@ describe("kundärenden", () => {
   });
 
   it("en återbetalning i en stängd månad stoppas (BL004)", async () => {
-    await asUser(owner, (tx) => tx.execute(sql`select public.close_period(${orgId}::uuid, '2026-09-01'::date)`));
+    await asUser(owner, (tx) =>
+      tx.execute(sql`select public.close_period(${orgId}::uuid, '2026-09-01'::date)`),
+    );
     const r = await asUser(owner, (tx) =>
       attempt(tx, (sp) =>
         sp.insert(s.incidents).values({

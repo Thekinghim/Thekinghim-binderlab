@@ -247,7 +247,7 @@ export function AssistantChat({
           kind="not-configured"
           message={notConfigured.message}
           detail={notConfigured.detail}
-          action={{ label: "Visa inställningen →", href: "#installning" }}
+          action={{ label: "Visa inställningen", href: "#installning" }}
         />
       ) : null}
 
@@ -258,7 +258,7 @@ export function AssistantChat({
               <div className="flex flex-col gap-2">
                 <span className="label text-muted">
                   <span className="tnum text-fg">{String(i + 1).padStart(2, "0")}</span>
-                  <span className="text-faint"> / </span>Fråga
+                  <span className="text-faint"> / </span>Din fråga
                 </span>
                 <p className="max-w-3xl text-lg break-words text-fg">{t.question}</p>
               </div>
@@ -303,7 +303,7 @@ export function AssistantChat({
                     message={t.error}
                     action={
                       ready
-                        ? { label: "Fråga igen →", onClick: () => void ask(t.question) }
+                        ? { label: "Fråga igen", onClick: () => void ask(t.question) }
                         : undefined
                     }
                   />

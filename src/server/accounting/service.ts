@@ -747,12 +747,21 @@ export interface CashflowView {
   readonly payouts: number;
 }
 
-/** Kassaflödet per månad: fem månader bakåt, innevarande och tre framåt. */
-export async function loadCashflowFor(viewer: Viewer, today: IsoDate): Promise<CashflowView> {
+/**
+ * Kassaflödet per månad: fem månader bakåt (dock inte före första ordern), innevarande och
+ * tre framåt.
+ */
+export async function loadCashflowFor(
+  viewer: Viewer,
+  today: IsoDate,
+  dataStart: IsoDate | null = null,
+): Promise<CashflowView> {
   const orgId = viewer.organization.id;
   const thisMonth = today.slice(0, 7);
+  const back = `${addMonths(thisMonth, -CASHFLOW_MONTHS_BACK)}-01`;
+  const first = dataStart ? `${dataStart.slice(0, 7)}-01` : back;
   const range: Period = {
-    start: `${addMonths(thisMonth, -CASHFLOW_MONTHS_BACK)}-01`,
+    start: first > back && first <= today ? first : back,
     end: monthEnd(addMonths(thisMonth, CASHFLOW_MONTHS_AHEAD)),
   };
   return asRole(viewer, ECONOMY_ROLES, async (tx) => {

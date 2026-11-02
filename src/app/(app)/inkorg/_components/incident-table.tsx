@@ -37,7 +37,9 @@ const columns: Column<IncidentListRow>[] = [
     header: "Status",
     sortValue: (r) => (r.status === "open" ? 0 : r.status === "in_progress" ? 1 : 2),
     render: (r) => (
-      <StatusTag status={r.status === "resolved" ? "ok" : r.status === "open" ? "warning" : "neutral"}>
+      <StatusTag
+        status={r.status === "resolved" ? "ok" : r.status === "open" ? "warning" : "neutral"}
+      >
         {r.statusLabel}
       </StatusTag>
     ),
@@ -55,9 +57,26 @@ const columns: Column<IncidentListRow>[] = [
     ),
     csv: (r) => `${r.kind}${r.summary ? `: ${r.summary}` : ""}`,
   },
-  { key: "machine", header: "Automat", sortValue: (r) => r.machine, render: (r) => <span className="meta">{r.machine}</span> },
-  { key: "title", header: "Titel", sortValue: (r) => r.title, render: (r) => r.title || MISSING, hideOnMobile: true },
-  { key: "assignee", header: "Ansvarig", sortValue: (r) => r.assignee, render: (r) => r.assignee || MISSING, hideOnMobile: true },
+  {
+    key: "machine",
+    header: "Automat",
+    sortValue: (r) => r.machine,
+    render: (r) => <span className="meta">{r.machine}</span>,
+  },
+  {
+    key: "title",
+    header: "Titel",
+    sortValue: (r) => r.title,
+    render: (r) => r.title || MISSING,
+    hideOnMobile: true,
+  },
+  {
+    key: "assignee",
+    header: "Ansvarig",
+    sortValue: (r) => r.assignee,
+    render: (r) => r.assignee || MISSING,
+    hideOnMobile: true,
+  },
   {
     key: "refunded",
     header: "Återbetalt",

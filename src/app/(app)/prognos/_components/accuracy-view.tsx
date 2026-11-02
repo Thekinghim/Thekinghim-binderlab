@@ -65,7 +65,7 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
       <StateMessage
         kind="empty"
         message="Det finns ännu ingen vecka att jämföra: backtesten behöver minst två veckor historik före en testvecka."
-        detail={model.heading.aside}
+        detail={model.text}
       />
     );
   }
@@ -118,11 +118,7 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
           dense
         />
         <div className="flex justify-end">
-          <EvidenceButton
-            evidence={model.evidence}
-            title="Träffsäkerhet"
-            text={model.heading.aside}
-          />
+          <EvidenceButton evidence={model.evidence} title="Träffsäkerhet" text={model.text} />
         </div>
       </div>
     </div>

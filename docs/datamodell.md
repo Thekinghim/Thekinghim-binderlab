@@ -276,3 +276,29 @@ Migreringarna följer v2. Följande preciserades eller ändrades när SQL:en skr
 - **effect_measurements**: mätvärden per månad mot utgångsläget: `stockout_days_month` (dagar), `refill_hours_month` och `admin_hours_month` (minuter), för organisationen, en butik eller en automat. Vinst per automat lagras inte (räknas ur orderna). Unik per (mått, omfattning, månad).
 - **effect_settings**: en rad per organisation med `hourly_cost_ore` (tid i kronor) och `stockout_day_value_ore` (värde per undviken slutsåld dag; null = månadens vinst per automat och dag).
 - Läsrätt ägare, admin och läsare; skrivrätt ägare och admin. Påfyllaren ser inget. Ändringslogg (`audit_log`) för de nya tabellerna och nu också för `goals`, `baselines` och `machine_investments`.
+
+## Fas 8: drift, larm och kundärenden (2 nov. 2026)
+
+Migreringen `20261102122143_drift_larm_arenden.sql`. Drizzle: `alerts` och `incidents` i
+`src/db/schema.ts`, övriga i `src/db/schema/drift.ts`.
+
+- **alerts** har fått incidentens tillstånd (`incident_key`, `alert_group`, `status`, `title`,
+  `evidence`, `link`, `last_seen_at`, `closed_at`, `last_notified_at`, `notified_severity`,
+  `notify_count`, `occurrences`, `reopen_count`, `one_shot`, `resolved_notified_at`,
+  `suppressed_by`). Unikt index: högst en öppen rad per (organisation, `incident_key`). Raderna
+  skrivs av larmjobbet; klienter får bara kvittera (`acknowledged_at`; vem och när sätts av
+  databasen). Påfyllaren ser larm i familjerna `machine` och `stock`.
+- **incidents** är kundärenden: `status` (`open`, `in_progress`, `resolved`, där `resolved` ⇔
+  `ended_at`), `assignee_id` (medlem), `order_id` (sammansatt FK; ordern måste komma från
+  ärendets automat), `title_id`, `refunded_ore` (≥ 0), `refunded_on` (krävs när beloppet > 0),
+  `customer_contact`. Ändringar loggas i `audit_log`, och en återbetalning i en stängd månad
+  stoppas (BL004). Påfyllaren ser inga ärenden.
+- **alert_subscriptions**: en per användare och organisation (`kinds` och `machine_ids`, null =
+  alla; `min_severity`, `channels`, `phone`, tysta timmar `quiet_start`/`quiet_end` som
+  'TT:MM', `delivery_windows`, `critical_during_quiet`, `notify_resolved`, `reminders`,
+  `active`). Var och en ser och ändrar bara sin egen; påfyllaren bara för automater och lager.
+- **push_subscriptions**: Web Push per enhet (`endpoint`, `p256dh`, `auth_secret`), egna rader.
+- **alert_deliveries**: utskick per användare och sändtid (kö och logg), skrivs av larmjobbet.
+- **alert_runs**: en rad per körning av larmjobbet.
+- **field_submissions** och RPC:n **register_refill_once**: påfyllning från fältet med ett id
+  som webbläsaren skapat; samma id igen ger samma lagerhändelse.

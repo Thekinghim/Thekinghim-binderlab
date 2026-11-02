@@ -91,7 +91,9 @@ interface RawIncident {
 function toRow(r: RawIncident): IncidentRow {
   return {
     ...r,
-    status: (["open", "in_progress", "resolved"].includes(r.status) ? r.status : "open") as IncidentRow["status"],
+    status: (["open", "in_progress", "resolved"].includes(r.status)
+      ? r.status
+      : "open") as IncidentRow["status"],
     startedAt: r.startedAt.toISOString(),
     endedAt: r.endedAt ? r.endedAt.toISOString() : null,
     createdAt: r.createdAt.toISOString(),
@@ -112,13 +114,19 @@ export function refundsOf(incidents: readonly IncidentRow[]): Refund[] {
     }));
 }
 
-async function members(tx: Parameters<Parameters<typeof withUserDb>[0]>[0], orgId: string): Promise<Member[]> {
+async function members(
+  tx: Parameters<Parameters<typeof withUserDb>[0]>[0],
+  orgId: string,
+): Promise<Member[]> {
   const rows = await tx
     .select({ userId: s.memberships.userId, name: s.profiles.displayName })
     .from(s.memberships)
     .leftJoin(
       s.profiles,
-      and(eq(s.profiles.organizationId, s.memberships.organizationId), eq(s.profiles.userId, s.memberships.userId)),
+      and(
+        eq(s.profiles.organizationId, s.memberships.organizationId),
+        eq(s.profiles.userId, s.memberships.userId),
+      ),
     )
     .where(eq(s.memberships.organizationId, orgId));
   return rows
@@ -184,7 +192,14 @@ export async function loadInbox(ctx: AppContext, period: Period): Promise<InboxD
       titles,
       members: await members(tx, orgId),
       orders: new Map(
-        orderRows.map((o) => [o.id, { externalId: o.externalId, amountOre: o.amountOre, orderedAt: o.orderedAt.toISOString() }]),
+        orderRows.map((o) => [
+          o.id,
+          {
+            externalId: o.externalId,
+            amountOre: o.amountOre,
+            orderedAt: o.orderedAt.toISOString(),
+          },
+        ]),
       ),
       refunds: {
         byMachine: summarizeRefunds(refunds, period, "machine"),
@@ -200,7 +215,13 @@ export interface IncidentDetail {
   readonly machines: { id: string; code: string; name: string }[];
   readonly titles: { id: string; name: string }[];
   readonly members: Member[];
-  readonly order: { id: string; externalId: string; amountOre: number; orderedAt: string; titleId: string | null } | null;
+  readonly order: {
+    id: string;
+    externalId: string;
+    amountOre: number;
+    orderedAt: string;
+    titleId: string | null;
+  } | null;
   readonly history: { at: string; action: string; actor: string | null }[];
 }
 
@@ -242,7 +263,11 @@ export async function loadIncident(ctx: AppContext, id: string | null): Promise<
     const memberList = await members(tx, orgId);
     const history = incident
       ? await tx
-          .select({ at: s.auditLog.occurredAt, action: s.auditLog.action, actor: s.auditLog.actorId })
+          .select({
+            at: s.auditLog.occurredAt,
+            action: s.auditLog.action,
+            actor: s.auditLog.actorId,
+          })
           .from(s.auditLog)
           .where(
             and(

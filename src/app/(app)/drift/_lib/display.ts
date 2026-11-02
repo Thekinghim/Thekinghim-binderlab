@@ -20,7 +20,12 @@ export const HEALTH_TAG: Record<HealthStatus, { status: Status; label: string }>
 };
 
 /** Statusar som räknas som problem i rubriken. */
-const PROBLEM: ReadonlySet<HealthStatus> = new Set(["offline", "fault", "suspected_fault", "empty"]);
+const PROBLEM: ReadonlySet<HealthStatus> = new Set([
+  "offline",
+  "fault",
+  "suspected_fault",
+  "empty",
+]);
 
 export function plural(n: number, one: string, many: string): string {
   return `${formatInt(n)}${NBSP}${n === 1 ? one : many}`;
@@ -108,4 +113,10 @@ const RANK: Record<HealthStatus, number> = {
 /** Sorteringsvärde: allvarligast först. */
 export function healthRank(status: HealthStatus): number {
   return RANK[status];
+}
+
+/** Avslutar en mening med punkt om den inte redan slutar med ett skiljetecken. */
+export function sentenceEnd(text: string): string {
+  const t = text.trim();
+  return /[.!?]$/.test(t) ? t : `${t}.`;
 }

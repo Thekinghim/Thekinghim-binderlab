@@ -25,7 +25,10 @@ export interface MarketSourceView {
   readonly candidates: readonly string[];
   /** Senaste externa pris per titel (bara när en källa är vald). */
   readonly latest: Readonly<
-    Record<string, { priceMinor: number; currency: string; observedOn: string; productName: string }>
+    Record<
+      string,
+      { priceMinor: number; currency: string; observedOn: string; productName: string }
+    >
   >;
   readonly error: string | null;
 }
@@ -48,8 +51,8 @@ function SourceStatus({ source }: { source: MarketSourceView }) {
     }
     return (
       <p className="meta text-subtle">
-        Marknadspris: {source.sourceName} · {formatInt(Object.keys(source.latest).length)} titlar med
-        pris. Testdata, inte riktiga marknadspriser.
+        Marknadspris: {source.sourceName} · {formatInt(Object.keys(source.latest).length)} titlar
+        med pris. Testdata, inte riktiga marknadspriser.
       </p>
     );
   }
@@ -81,9 +84,7 @@ function Trend({
     ? prices.anomalies.value.filter((a) => a.titleId === trend.titleId)
     : [];
   const expensive = anomalies.filter((a) => a.direction === "expensive").at(-1);
-  const markerIndex = expensive
-    ? trend.points.findIndex((p) => p.id === expensive.purchaseId)
-    : -1;
+  const markerIndex = expensive ? trend.points.findIndex((p) => p.id === expensive.purchaseId) : -1;
   return (
     <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
       <div className="min-w-0 lg:col-span-7">
@@ -186,7 +187,11 @@ export function PricesSection({
     .slice(0, 8);
 
   return (
-    <section aria-labelledby="priser-rubrik" className="flex scroll-mt-28 flex-col gap-8" id="priser">
+    <section
+      aria-labelledby="priser-rubrik"
+      className="flex scroll-mt-28 flex-col gap-8"
+      id="priser"
+    >
       <SectionHeader
         id="priser-rubrik"
         index={2}
@@ -206,9 +211,7 @@ export function PricesSection({
       />
       <SourceStatus source={source} />
 
-      {!prices.trends.ok ? (
-        <StateMessage kind="error" message={prices.trends.message} />
-      ) : null}
+      {!prices.trends.ok ? <StateMessage kind="error" message={prices.trends.message} /> : null}
 
       {anomalies.length > 0 ? (
         <ul className="flex flex-col gap-4" aria-label="Avvikande inköp">
@@ -218,7 +221,9 @@ export function PricesSection({
             .map((a) => (
               <li key={a.key} className="flex min-w-0 flex-col gap-2 border-b border-line pb-4">
                 <div className="flex flex-wrap items-center gap-3">
-                  <StatusTag status="warning">{a.direction === "expensive" ? "Dyrt" : "Billigt"}</StatusTag>
+                  <StatusTag status="warning">
+                    {a.direction === "expensive" ? "Dyrt" : "Billigt"}
+                  </StatusTag>
                   <span className="meta text-subtle">
                     {deltaOfBp(a.deviationBp)} mot medianen · {dayText(a.date, ctx.today)}
                   </span>
@@ -297,14 +302,18 @@ export function PricesSection({
           >
             {recentQuotes.map((q) => (
               <Row key={q.id}>
-                <Cell className="meta whitespace-nowrap text-muted">{dayText(q.date, ctx.today)}</Cell>
+                <Cell className="meta whitespace-nowrap text-muted">
+                  {dayText(q.date, ctx.today)}
+                </Cell>
                 <Cell header>{ctx.names.title[q.titleId] ?? q.titleId}</Cell>
                 <Cell hideOnMobile className="text-muted">
                   {ctx.names.supplier[q.supplierId] ?? q.supplierId}
                 </Cell>
                 <Cell numeric>
                   {kronor(q.unitCostOre)}
-                  {q.quantity > 1 ? <span className="meta ml-2 text-subtle">× {formatInt(q.quantity)}</span> : null}
+                  {q.quantity > 1 ? (
+                    <span className="meta ml-2 text-subtle">× {formatInt(q.quantity)}</span>
+                  ) : null}
                 </Cell>
                 {ctx.canEdit ? (
                   <Cell>

@@ -137,7 +137,9 @@ export default async function MarknadPage({
   );
 
   const upcoming = model.releases.filter((r) => r.status === "upcoming").length;
-  const machinesWithSlots = model.assortment.machines.ok ? model.assortment.machines.value.length : 0;
+  const machinesWithSlots = model.assortment.machines.ok
+    ? model.assortment.machines.value.length
+    : 0;
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
@@ -157,11 +159,7 @@ export default async function MarknadPage({
         />
         <nav aria-label="Sektioner på sidan" className="flex flex-wrap gap-x-6 gap-y-2">
           {SECTIONS.map((s, i) => (
-            <a
-              key={s.id}
-              href={`#${s.id}`}
-              className="label rounded-xs text-subtle hover:text-fg"
-            >
+            <a key={s.id} href={`#${s.id}`} className="label rounded-xs text-subtle hover:text-fg">
               <span className="tnum text-fg">{String(i + 1).padStart(2, "0")}</span>
               <span aria-hidden className="mx-1.5 text-faint">
                 /

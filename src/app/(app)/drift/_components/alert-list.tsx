@@ -47,7 +47,10 @@ function AckButton({ id }: { id: string }) {
           const r = await acknowledgeAlert(id);
           toast(
             r.ok
-              ? { title: "Larmet kvitterat", description: "Inga fler påminnelser om det här problemet." }
+              ? {
+                  title: "Larmet kvitterat",
+                  description: "Inga fler påminnelser om det här problemet.",
+                }
               : { title: r.error ?? "Larmet kunde inte kvitteras", tone: "critical" },
           );
         })
@@ -103,7 +106,10 @@ export function AlertList({ items, canAck }: { items: AlertItem[]; canAck: boole
                   <p className="meta text-subtle">
                     {`Sett ${a.occurrences} ${a.occurrences === 1 ? "gång" : "gånger"}, aviserat ${a.notifyCount} ${a.notifyCount === 1 ? "gång" : "gånger"}, senast sett ${a.lastSeen}.`}
                   </p>
-                  <Link href={a.link} className="w-fit rounded-xs text-fg underline-offset-2 hover:underline">
+                  <Link
+                    href={a.link}
+                    className="w-fit rounded-xs text-fg underline-offset-2 hover:underline"
+                  >
                     Öppna underlaget →
                   </Link>
                 </div>

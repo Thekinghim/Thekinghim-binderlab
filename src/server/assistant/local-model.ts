@@ -38,6 +38,11 @@ const MONTHS = [
   "december",
 ];
 
+/** Gemener utan diakritik (även å, ä, ö), för nyckelorden nedan. */
+function fold(text: string): string {
+  return normalize(text).replace(/[åä]/g, "a").replace(/ö/g, "o");
+}
+
 /** "I dag är det måndag 2026-11-02" i systemprompten. */
 function todayFrom(request: ModelTurnRequest): IsoDate {
   const text = request.system.map((b) => b.text).join("\n");
@@ -48,8 +53,8 @@ function todayFrom(request: ModelTurnRequest): IsoDate {
 
 /** Perioden i frågan: en månad, förra veckan, i år eller de senaste 30 dagarna. */
 export function periodIn(question: string, today: IsoDate): { fran: IsoDate; till: IsoDate } {
-  const q = normalize(question);
-  const month = MONTHS.findIndex((m) => q.includes(normalize(m)));
+  const q = fold(question);
+  const month = MONTHS.findIndex((m) => q.includes(fold(m)));
   if (month >= 0) {
     const [y, m] = today.split("-").map(Number) as [number, number];
     const year = month + 1 > m ? y - 1 : y;
@@ -73,7 +78,7 @@ export function chooseTool(
   today: IsoDate,
   available: ReadonlySet<string>,
 ): { name: string; input: Record<string, unknown> } | null {
-  const q = normalize(question);
+  const q = fold(question);
   const period = periodIn(question, today);
   const has = (re: RegExp) => re.test(q);
   const per = has(/butik/) ? "butik" : has(/titel|titlar|serie/) ? "titel" : "automat";

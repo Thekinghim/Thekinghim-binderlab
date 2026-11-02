@@ -86,7 +86,10 @@ async function asOperator<T>(viewer: Viewer, fn: (tx: Tx) => Promise<T>): Promis
  * avtal, placeringar, inställningar, centrallagret, leverantörer, inköpsorderrader och
  * marknadstabellerna. Bara ägare, admin och läsare (AuthorizationError annars).
  */
-export async function loadMarketDataFor(viewer: Viewer, now: Date = new Date()): Promise<MarketData> {
+export async function loadMarketDataFor(
+  viewer: Viewer,
+  now: Date = new Date(),
+): Promise<MarketData> {
   const role = await requireRoleFor(viewer.user, viewer.organization.id, ECONOMY_ROLES);
   const orgId = viewer.organization.id;
   const timeZone = viewer.organization.timezone;
@@ -119,7 +122,12 @@ export async function loadMarketDataFor(viewer: Viewer, now: Date = new Date()):
       queryPrices(tx, orgId),
       queryAgreements(tx, orgId),
       querySettings(tx, orgId),
-      queryOrders(tx, orgId, { start: historyStart, end: today }, { storeId: null, machineId: null }),
+      queryOrders(
+        tx,
+        orgId,
+        { start: historyStart, end: today },
+        { storeId: null, machineId: null },
+      ),
       queryFirstOrderDate(tx, orgId),
       queryStock(tx, orgId),
       querySuppliers(tx, orgId),
@@ -134,7 +142,8 @@ export async function loadMarketDataFor(viewer: Viewer, now: Date = new Date()):
     ]);
     const warehouseUnits = new Map<string, number>();
     for (const r of stock) {
-      if (r.isCentral) warehouseUnits.set(r.titleId, (warehouseUnits.get(r.titleId) ?? 0) + r.onHand);
+      if (r.isCentral)
+        warehouseUnits.set(r.titleId, (warehouseUnits.get(r.titleId) ?? 0) + r.onHand);
     }
     return {
       organizationId: orgId,
@@ -234,8 +243,12 @@ export async function deleteReleaseFor(viewer: Viewer, id: string): Promise<void
     await releaseRow(tx, orgId, id);
     await tx
       .delete(s.releaseAllocations)
-      .where(and(eq(s.releaseAllocations.organizationId, orgId), eq(s.releaseAllocations.releaseId, id)));
-    await tx.delete(s.releases).where(and(eq(s.releases.organizationId, orgId), eq(s.releases.id, id)));
+      .where(
+        and(eq(s.releaseAllocations.organizationId, orgId), eq(s.releaseAllocations.releaseId, id)),
+      );
+    await tx
+      .delete(s.releases)
+      .where(and(eq(s.releases.organizationId, orgId), eq(s.releases.id, id)));
   });
 }
 
@@ -256,7 +269,9 @@ export async function lockReleasePlanFor(
   if (row.planLockedAt) throw new MarketError("Förslaget är redan fastställt.");
   const suggestion = releaseSuggestionFor(data, row, suggestionDay(row, data.today));
   if (suggestion.status !== "ok") {
-    throw new MarketError("Det finns inget förslag att fastställa (inga tidigare släpp att räkna från).");
+    throw new MarketError(
+      "Det finns inget förslag att fastställa (inga tidigare släpp att räkna från).",
+    );
   }
   const snapshot = {
     text: suggestion.text,
@@ -402,7 +417,10 @@ async function replaceSlots(
   validFrom: IsoDate,
   lines: readonly { titleId: string; slots: number }[],
 ): Promise<void> {
-  const where = and(eq(s.machineSlots.organizationId, orgId), eq(s.machineSlots.machineId, machineId));
+  const where = and(
+    eq(s.machineSlots.organizationId, orgId),
+    eq(s.machineSlots.machineId, machineId),
+  );
   await tx.delete(s.machineSlots).where(and(where, gte(s.machineSlots.validFrom, validFrom)));
   await tx
     .update(s.machineSlots)
@@ -457,10 +475,14 @@ export async function implementAssortmentFor(
   const period: Period = { start: input.periodStart, end: input.periodEnd };
   const rec = assortmentRecommendations(data, period).find((r) => r.machineId === input.machineId);
   if (!rec || rec.fingerprint !== input.fingerprint) {
-    throw new MarketError("Rekommendationen har ändrats sedan sidan laddades. Ladda om och försök igen.");
+    throw new MarketError(
+      "Rekommendationen har ändrats sedan sidan laddades. Ladda om och försök igen.",
+    );
   }
   if (rec.action !== "change") {
-    throw new MarketError("Rekommendationen är att behålla sortimentet; det finns inget att genomföra.");
+    throw new MarketError(
+      "Rekommendationen är att behålla sortimentet; det finns inget att genomföra.",
+    );
   }
   const snapshot = {
     text: rec.text,
@@ -517,7 +539,9 @@ export async function startExperimentFor(
   const data = await loadMarketDataFor(viewer, now);
   const proposal = priceTestProposals(data).find((p) => p.key === input.proposalKey);
   if (!proposal) {
-    throw new MarketError("Förslaget gäller inte längre. Ladda om sidan och välj ett aktuellt förslag.");
+    throw new MarketError(
+      "Förslaget gäller inte längre. Ladda om sidan och välj ett aktuellt förslag.",
+    );
   }
   const id = await withUserDbFor(viewer.user, async (tx) => {
     const [row] = await tx
@@ -531,8 +555,6 @@ export async function startExperimentFor(
         toOre: proposal.toOre,
         startedOn: proposal.period.start,
         testDays: proposal.evaluation.windowDays,
-        testMachineIds: [...proposal.testMachineIds],
-        controlMachineIds: [...proposal.controlMachineIds],
         snapshot: {
           text: proposal.text,
           breakEvenVolumeChangeBp: proposal.breakEvenVolumeChangeBp,
@@ -542,6 +564,20 @@ export async function startExperimentFor(
         },
       })
       .returning({ id: s.priceExperiments.id });
+    await tx.insert(s.priceExperimentMachines).values([
+      ...proposal.testMachineIds.map((machineId) => ({
+        organizationId: viewer.organization.id,
+        experimentId: row!.id,
+        machineId,
+        arm: "test" as const,
+      })),
+      ...proposal.controlMachineIds.map((machineId) => ({
+        organizationId: viewer.organization.id,
+        experimentId: row!.id,
+        machineId,
+        arm: "control" as const,
+      })),
+    ]);
     return row!.id;
   });
   return { id, startedOn: proposal.period.start };
@@ -566,6 +602,14 @@ export async function stopExperimentFor(
     if (!row) throw new MarketError("Pristestet finns inte.");
     if (row.stoppedOn) throw new MarketError("Pristestet är redan stoppat.");
     if (row.startedOn > today) {
+      await tx
+        .delete(s.priceExperimentMachines)
+        .where(
+          and(
+            eq(s.priceExperimentMachines.organizationId, orgId),
+            eq(s.priceExperimentMachines.experimentId, id),
+          ),
+        );
       await tx
         .delete(s.priceExperiments)
         .where(and(eq(s.priceExperiments.organizationId, orgId), eq(s.priceExperiments.id, id)));

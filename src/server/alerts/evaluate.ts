@@ -64,7 +64,11 @@ export async function loadIncidents(tx: Tx, orgId: string, now: Date): Promise<A
       and(
         eq(s.alerts.organizationId, orgId),
         sql`${s.alerts.incidentKey} is not null`,
-        or(eq(s.alerts.status, "open"), gte(s.alerts.triggeredAt, since), gte(s.alerts.closedAt, since)),
+        or(
+          eq(s.alerts.status, "open"),
+          gte(s.alerts.triggeredAt, since),
+          gte(s.alerts.closedAt, since),
+        ),
       ),
     )) as AlertRow[];
   return rows.map(rowToIncident).filter((i): i is AlertIncident => i !== null);
@@ -97,7 +101,9 @@ export async function loadSubscriptions(tx: Tx, orgId: string): Promise<Subscrip
         eq(s.memberships.userId, s.alertSubscriptions.userId),
       ),
     )
-    .where(and(eq(s.alertSubscriptions.organizationId, orgId), eq(s.alertSubscriptions.active, true)));
+    .where(
+      and(eq(s.alertSubscriptions.organizationId, orgId), eq(s.alertSubscriptions.active, true)),
+    );
   return rows;
 }
 
@@ -136,8 +142,14 @@ export async function collectCandidates(
       },
       now,
     ),
-    ...importAlerts({ sources: imports.sources, imports: imports.imports, options: { timeZone } }, now),
-    ...dayAnomalyAlerts({ orders: data.orders, machines: data.machines, options: { timeZone } }, now),
+    ...importAlerts(
+      { sources: imports.sources, imports: imports.imports, options: { timeZone } },
+      now,
+    ),
+    ...dayAnomalyAlerts(
+      { orders: data.orders, machines: data.machines, options: { timeZone } },
+      now,
+    ),
   ];
   return { candidates, machines: data.machines.length };
 }
@@ -308,5 +320,3 @@ export async function activeOrganizations(db: Db): Promise<string[]> {
     .where(isNull(s.organizations.archivedAt));
   return rows.map((r) => r.id);
 }
-
-

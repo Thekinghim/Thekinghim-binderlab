@@ -46,7 +46,9 @@ function EffectFigures({ effect }: { effect: PriceChangeEffect }) {
       </div>
       <div className="flex flex-col gap-1">
         <dt className="label text-subtle">Effekt på volym</dt>
-        <dd className="tnum text-lg">{effect.effectBp === null ? "–" : deltaOfBp(effect.effectBp)}</dd>
+        <dd className="tnum text-lg">
+          {effect.effectBp === null ? "–" : deltaOfBp(effect.effectBp)}
+        </dd>
       </div>
       <div className="flex flex-col gap-1">
         <dt className="label text-subtle">Bidrag/vecka</dt>
@@ -65,17 +67,12 @@ function EffectBlock({ effect, ctx }: { effect: PriceChangeEffect; ctx: SectionC
     <div className="flex min-w-0 flex-col gap-3">
       <EffectFigures effect={effect} />
       <p className="max-w-3xl text-muted">{effect.text}</p>
-      {effect.reasons.length > 0 ? (
-        <ul className="meta flex list-none flex-col gap-1 text-subtle">
-          {effect.reasons.map((r) => (
-            <li key={r}>{r}</li>
-          ))}
-        </ul>
-      ) : null}
       {effect.elasticityHundredths !== null ? (
         <p className="meta text-subtle">
           Elasticitet {formatNumber(effect.elasticityHundredths / 100, 2)}
-          {effect.noiseBp !== null ? ` · vanlig variation upp till ${percentOfBp(effect.noiseBp, 0)}` : ""}
+          {effect.noiseBp !== null
+            ? ` · vanlig variation upp till ${percentOfBp(effect.noiseBp, 0)}`
+            : ""}
         </p>
       ) : null}
       <Evidence evidence={effect.evidence} names={ctx.names} />
@@ -128,7 +125,13 @@ export function PricingSection({
       className="flex scroll-mt-28 flex-col gap-8"
       id="prissattning"
     >
-      <SectionHeader id="prissattning-rubrik" index={4} eyebrow="Prissättning" title={title} aside={aside} />
+      <SectionHeader
+        id="prissattning-rubrik"
+        index={4}
+        eyebrow="Prissättning"
+        title={title}
+        aside={aside}
+      />
 
       {!pricing.changes.ok ? <StateMessage kind="error" message={pricing.changes.message} /> : null}
 
@@ -156,7 +159,11 @@ export function PricingSection({
                 ) : (
                   <StateMessage kind="error" compact message={effect.message} />
                 )}
-                <Evidence label="Hur ändringen hittades" evidence={change.evidence} names={ctx.names} />
+                <Evidence
+                  label="Hur ändringen hittades"
+                  evidence={change.evidence}
+                  names={ctx.names}
+                />
               </article>
             </Panel>
           ))}
@@ -268,7 +275,9 @@ export function PricingSection({
                       action={stopExperiment}
                       payload={{ id: e.row.id }}
                       variant="ghost"
-                      success={e.status === "planned" ? "Pristestet borttaget" : "Pristestet stoppat"}
+                      success={
+                        e.status === "planned" ? "Pristestet borttaget" : "Pristestet stoppat"
+                      }
                       confirm={{
                         eyebrow: "Experiment",
                         title: e.status === "planned" ? "Ta bort pristestet" : "Stoppa pristestet",

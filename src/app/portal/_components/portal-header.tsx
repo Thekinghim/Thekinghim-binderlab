@@ -11,6 +11,7 @@ import { logout } from "@/server/actions/auth";
 import { selectPortalStore } from "@/server/portal/actions";
 
 import { PortalThemeToggle } from "./portal-theme";
+import type { PortalTheme } from "./theme-script";
 
 export type PortalNavItem = { href: string; label: string };
 
@@ -34,7 +35,9 @@ export function PortalHeader({
   store,
   stores,
   email,
+  theme,
 }: {
+  theme: PortalTheme;
   store: { id: string; name: string; operator: string } | null;
   stores: ReadonlyArray<{ id: string; name: string }>;
   email: string;
@@ -63,7 +66,7 @@ export function PortalHeader({
           <span className="meta mr-2 hidden max-w-[220px] truncate text-subtle md:inline">
             {email}
           </span>
-          <PortalThemeToggle />
+          <PortalThemeToggle initial={theme} />
           <IconButton
             icon="logout"
             label="Logga ut"

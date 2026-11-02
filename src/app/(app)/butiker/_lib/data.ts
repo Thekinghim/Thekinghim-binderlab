@@ -6,6 +6,8 @@
 
 import "server-only";
 
+import { cache } from "react";
+
 import {
   describePeriod,
   toURLSearchParams,
@@ -92,6 +94,16 @@ function comparable(previous: ProfitabilityInput | null): ProfitabilityInput | n
   return previous && previous.orders.length > 0 ? previous : null;
 }
 
+/** Butiksregistret, en gång per förfrågan (sidan och metadata delar det). */
+const loadStores = cache(async () => loadStoresFor(await currentViewer()));
+
+/** Butikens namn för sidans titel, eller null. */
+export async function storeNameOf(storeId: string): Promise<string | null> {
+  if (!isUuid(storeId)) return null;
+  await requireRoute("butiker");
+  return (await loadStores()).find((s) => s.id === storeId)?.name ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // Listan
 // ---------------------------------------------------------------------------
@@ -118,7 +130,7 @@ export async function loadStoreList(searchParams: SearchParamsInput): Promise<St
     loadDomainInput({ period: p.period, compare: p.compare }),
     loadDomainInput({ period: month }),
     loadMasterData(),
-    loadStoresFor(viewer),
+    loadStores(),
     loadAgreementsFor(viewer),
   ]);
   const previousInput = comparable(input.previous);
@@ -184,7 +196,7 @@ export async function loadStoreDetail(
   const ctx = await requireRoute("butiker");
   if (!isUuid(storeId)) return null;
   const viewer = await currentViewer();
-  const stores = await loadStoresFor(viewer);
+  const stores = await loadStores();
   const store = stores.find((s) => s.id === storeId);
   if (!store) return null;
 

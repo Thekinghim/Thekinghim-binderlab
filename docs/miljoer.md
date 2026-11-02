@@ -273,15 +273,15 @@ försäljning, sparar incidenterna i `alerts` (samma problem är en rad, se
 loggas i `alert_runs`. Jobbet kör som systemroll (`getServiceDb`) eftersom ingen användare är
 inloggad; proxyn släpper igenom `/api/cron/*` och routen kräver `CRON_SECRET`.
 
-| Variabel            | Värde                                                             | Lokalt                                       |
-| ------------------- | ----------------------------------------------------------------- | -------------------------------------------- |
-| `CRON_SECRET`       | Minst 16 tecken. Vercel Cron skickar `Authorization: Bearer …`.   | Valfritt; utan den svarar routen 503.        |
-| `PUSH_PROVIDER`     | `webpush` (VAPID) eller `outbox`                                  | `outbox`: `.data/outbox/push/*.json`         |
-| `VAPID_PUBLIC_KEY`  | Publik nyckel (base64url), skickas till webbläsaren               | Skapas i `.data/vapid-dev.json` om den saknas |
-| `VAPID_PRIVATE_KEY` | Hemlig nyckel                                                     | Som ovan                                     |
-| `VAPID_SUBJECT`     | `mailto:`-adress eller https-adress till den som driver tjänsten  | Behövs inte                                  |
-| `SMS_PROVIDER`      | `outbox` eller `off` (ingen leverantör vald)                      | `outbox`: `.data/outbox/sms/*.json`          |
-| `MAIL_PROVIDER` …   | Samma som rapporterna (Resend eller outbox)                       | `outbox`: `.data/outbox/<id>/`               |
+| Variabel            | Värde                                                            | Lokalt                                        |
+| ------------------- | ---------------------------------------------------------------- | --------------------------------------------- |
+| `CRON_SECRET`       | Minst 16 tecken. Vercel Cron skickar `Authorization: Bearer …`.  | Valfritt; utan den svarar routen 503.         |
+| `PUSH_PROVIDER`     | `webpush` (VAPID) eller `outbox`                                 | `outbox`: `.data/outbox/push/*.json`          |
+| `VAPID_PUBLIC_KEY`  | Publik nyckel (base64url), skickas till webbläsaren              | Skapas i `.data/vapid-dev.json` om den saknas |
+| `VAPID_PRIVATE_KEY` | Hemlig nyckel                                                    | Som ovan                                      |
+| `VAPID_SUBJECT`     | `mailto:`-adress eller https-adress till den som driver tjänsten | Behövs inte                                   |
+| `SMS_PROVIDER`      | `outbox` eller `off` (ingen leverantör vald)                     | `outbox`: `.data/outbox/sms/*.json`           |
+| `MAIL_PROVIDER` …   | Samma som rapporterna (Resend eller outbox)                      | `outbox`: `.data/outbox/<id>/`                |
 
 Kör jobbet lokalt:
 

@@ -46,6 +46,29 @@ export async function renderReportPdf(reportId: string): Promise<Uint8Array> {
   });
 }
 
+/**
+ * Renderar rapportmejlen i headless Chromium (/rapport/[id]/epost), där mallen i
+ * src/emails kan köras. Returnerar HTML per mottagare.
+ */
+export async function renderReportEmails(
+  reportId: string,
+  recipientIds: readonly string[],
+  followText: string | null,
+): Promise<Record<string, { html: string }>> {
+  const renderer = getPdfRenderer();
+  const jar = await nextCookieJar();
+  const base = (process.env.REPORT_RENDER_URL?.trim() || (await appBaseUrl())).replace(/\/+$/, "");
+  const q = new URLSearchParams({ till: recipientIds.join(",") });
+  if (followText) q.set("text", followText);
+  return renderer.extract<Record<string, { html: string }>>(
+    {
+      url: `${base}/rapport/${encodeURIComponent(reportId)}/epost?${q.toString()}`,
+      cookies: jar.getAll(),
+    },
+    "__BL_EMAILS__",
+  );
+}
+
 /** Allt utskicket behöver i den här förfrågan. */
 export async function sendDeps(): Promise<SendDeps> {
   const base = await appBaseUrl();
@@ -53,6 +76,7 @@ export async function sendDeps(): Promise<SendDeps> {
     mailer: getMailer(),
     store: await userReportStore(),
     render: renderReportPdf,
+    renderEmails: renderReportEmails,
     reportUrl: (id) => `${base}/rapport/${id}`,
   };
 }

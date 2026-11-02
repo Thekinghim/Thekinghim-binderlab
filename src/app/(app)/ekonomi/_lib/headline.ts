@@ -6,7 +6,7 @@ import type { CashflowResult } from "@/analytics/cashflow";
 import type { ReconciliationResult } from "@/analytics/reconciliation";
 import { formatDate } from "@/lib/format";
 
-import { isoToDate, periodShort, plural, sek, signedKr, type IsoPeriod } from "./view";
+import { isoToDate, periodShort, plural, sek, sentence, signedKr, type IsoPeriod } from "./view";
 
 export interface Headline {
   readonly title: string;
@@ -33,7 +33,7 @@ export function economyHeadline(
   if (!result || result.payouts.length === 0) {
     const next = nextExpectedPayout(cash);
     return {
-      title: `Ingen utbetalning för ${when}.`,
+      title: sentence(`Ingen utbetalning för ${when}`),
       aside: next
         ? `Nästa väntade utbetalning ${sek(next.amountOre)}, ${formatDate(isoToDate(next.date), {
             year: "auto",

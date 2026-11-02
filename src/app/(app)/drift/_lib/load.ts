@@ -55,7 +55,10 @@ export interface DriftOverview {
 }
 
 /** Extra besök ur maskinhälsan: misstänkt fel, fel och ur drift ska besökas i dag. */
-export function extraVisitsFromHealth(health: readonly MachineHealth[], today: IsoDate): ExtraVisit[] {
+export function extraVisitsFromHealth(
+  health: readonly MachineHealth[],
+  today: IsoDate,
+): ExtraVisit[] {
   const reason: Partial<Record<MachineHealth["status"], string>> = {
     offline: "Ur drift",
     fault: "Fel rapporterat",
@@ -98,11 +101,9 @@ async function loadAlerts(
     .orderBy(desc(s.alerts.triggeredAt))
     .limit(200)) as AlertRow[];
   const incidents = rows.map(rowToIncident).filter((i): i is AlertIncident => i !== null);
-  const who = await names(
-    tx,
-    orgId,
-    [...new Set(incidents.map((i) => i.acknowledgedBy).filter((x): x is string => !!x))],
-  );
+  const who = await names(tx, orgId, [
+    ...new Set(incidents.map((i) => i.acknowledgedBy).filter((x): x is string => !!x)),
+  ]);
   const view = (i: AlertIncident): AlertView => ({
     ...i,
     acknowledgedByName: i.acknowledgedBy ? (who.get(i.acknowledgedBy) ?? "Okänd användare") : null,
@@ -133,7 +134,12 @@ async function loadLastRun(tx: Tx, orgId: string): Promise<AlertRunInfo | null> 
   return row ? { ...row, ranAt: row.ranAt.toISOString() } : null;
 }
 
-function buildPlan(data: HealthData, health: readonly MachineHealth[], warehouse: { titleId: string; onHand: number }[] | null, ctx: AppContext): VisitPlan {
+function buildPlan(
+  data: HealthData,
+  health: readonly MachineHealth[],
+  warehouse: { titleId: string; onHand: number }[] | null,
+  ctx: AppContext,
+): VisitPlan {
   return planVisits(
     {
       orders: data.orders,
@@ -155,30 +161,48 @@ export async function loadDriftOverview(ctx: AppContext): Promise<DriftOverview>
     const orgId = ctx.organization.id;
     const data = await loadHealthData(tx, orgId, ctx.today);
     const health = machineHealth(
-      { orders: data.orders, machines: data.machines, signals: data.signals, stock: data.stock, options: { timeZone: ctx.timeZone } },
+      {
+        orders: data.orders,
+        machines: data.machines,
+        signals: data.signals,
+        stock: data.stock,
+        options: { timeZone: ctx.timeZone },
+      },
       now,
     );
     const alerts = await loadAlerts(tx, orgId, now);
     const lastRun = ctx.canSeeEconomy ? await loadLastRun(tx, orgId) : null;
     const stockRows = await queryStock(tx, orgId);
-    const warehouse = stockRows.filter((r) => r.isCentral).map((r) => ({ titleId: r.titleId, onHand: r.onHand }));
+    const warehouse = stockRows
+      .filter((r) => r.isCentral)
+      .map((r) => ({ titleId: r.titleId, onHand: r.onHand }));
     const plan = buildPlan(data, health, warehouse.length > 0 ? warehouse : null, ctx);
     return { data, health, openAlerts: alerts.open, recentAlerts: alerts.recent, lastRun, plan };
   });
 }
 
 /** Besöksplanen (/drift/besok) med hälsan som skäl till extra besök. */
-export async function loadVisitPlan(ctx: AppContext): Promise<{ data: HealthData; health: MachineHealth[]; plan: VisitPlan; hasWarehouse: boolean }> {
+export async function loadVisitPlan(
+  ctx: AppContext,
+): Promise<{ data: HealthData; health: MachineHealth[]; plan: VisitPlan; hasWarehouse: boolean }> {
   const now = new Date(ctx.now);
   return withUserDb(async (tx) => {
     const orgId = ctx.organization.id;
     const data = await loadHealthData(tx, orgId, ctx.today);
     const health = machineHealth(
-      { orders: data.orders, machines: data.machines, signals: data.signals, stock: data.stock, options: { timeZone: ctx.timeZone } },
+      {
+        orders: data.orders,
+        machines: data.machines,
+        signals: data.signals,
+        stock: data.stock,
+        options: { timeZone: ctx.timeZone },
+      },
       now,
     );
     const stockRows = await queryStock(tx, orgId);
-    const warehouse = stockRows.filter((r) => r.isCentral).map((r) => ({ titleId: r.titleId, onHand: r.onHand }));
+    const warehouse = stockRows
+      .filter((r) => r.isCentral)
+      .map((r) => ({ titleId: r.titleId, onHand: r.onHand }));
     const plan = buildPlan(data, health, warehouse.length > 0 ? warehouse : null, ctx);
     return { data, health, plan, hasWarehouse: warehouse.length > 0 };
   });
@@ -208,7 +232,13 @@ export async function loadMachineTimeline(
     if (!machine) return null;
     const health =
       machineHealth(
-        { orders: data.orders, machines: data.machines, signals: data.signals, stock: data.stock, options: { timeZone: ctx.timeZone } },
+        {
+          orders: data.orders,
+          machines: data.machines,
+          signals: data.signals,
+          stock: data.stock,
+          options: { timeZone: ctx.timeZone },
+        },
         now,
       ).find((h) => h.machineId === machineId) ?? null;
     const from = new Date(now.getTime() - days * 86_400_000);
@@ -267,7 +297,11 @@ export async function loadMachineTimeline(
         and(
           eq(s.incidents.organizationId, orgId),
           eq(s.incidents.machineId, machineId),
-          or(gte(s.incidents.startedAt, from), gte(s.incidents.endedAt, from), isNull(s.incidents.endedAt)),
+          or(
+            gte(s.incidents.startedAt, from),
+            gte(s.incidents.endedAt, from),
+            isNull(s.incidents.endedAt),
+          ),
         ),
       );
     const incidents: MachineIncident[] = incidentRows.map((r) => ({
@@ -374,7 +408,12 @@ export async function loadAlertSettings(ctx: AppContext): Promise<AlertSettings>
         active: s.alertSubscriptions.active,
       })
       .from(s.alertSubscriptions)
-      .where(and(eq(s.alertSubscriptions.organizationId, orgId), eq(s.alertSubscriptions.userId, userId)));
+      .where(
+        and(
+          eq(s.alertSubscriptions.organizationId, orgId),
+          eq(s.alertSubscriptions.userId, userId),
+        ),
+      );
     const devices = await tx
       .select({
         id: s.pushSubscriptions.id,
@@ -385,7 +424,9 @@ export async function loadAlertSettings(ctx: AppContext): Promise<AlertSettings>
         disabledAt: s.pushSubscriptions.disabledAt,
       })
       .from(s.pushSubscriptions)
-      .where(and(eq(s.pushSubscriptions.organizationId, orgId), eq(s.pushSubscriptions.userId, userId)))
+      .where(
+        and(eq(s.pushSubscriptions.organizationId, orgId), eq(s.pushSubscriptions.userId, userId)),
+      )
       .orderBy(desc(s.pushSubscriptions.createdAt));
     const deliveries = await tx
       .select({
@@ -458,12 +499,16 @@ export async function loadRefillData(ctx: AppContext) {
       .orderBy(desc(s.fieldSubmissions.occurredAt))
       .limit(20);
     return {
-      machines: data.machines.filter((m) => !m.archived).map((m) => ({ id: m.id, code: m.code, name: m.name })),
+      machines: data.machines
+        .filter((m) => !m.archived)
+        .map((m) => ({ id: m.id, code: m.code, name: m.name })),
       titles: data.titles.filter((t) => !t.archived).map((t) => ({ id: t.id, name: t.name })),
       stock: stockRows
         .filter((r) => r.locationKind === "machine" && r.machineId !== null)
         .map((r) => ({ machineId: r.machineId as string, titleId: r.titleId, onHand: r.onHand })),
-      warehouse: stockRows.filter((r) => r.isCentral).map((r) => ({ titleId: r.titleId, onHand: r.onHand })),
+      warehouse: stockRows
+        .filter((r) => r.isCentral)
+        .map((r) => ({ titleId: r.titleId, onHand: r.onHand })),
       recent: recent.map((r) => ({
         ...r,
         occurredAt: r.occurredAt.toISOString(),

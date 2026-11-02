@@ -75,7 +75,7 @@ function Suggestion({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) {
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
-        <p className="text-2xl font-medium tnum">Köp {packs(s.purchaseUnits)}</p>
+        <p className="tnum text-2xl font-medium">Köp {packs(s.purchaseUnits)}</p>
         <p className="meta text-subtle">
           {s.boxSize > 1 ? `${formatInt(s.boxes)} lådor à ${formatInt(s.boxSize)} · ` : ""}
           {formatInt(s.machineUnits)} till automaterna
@@ -136,7 +136,7 @@ function Plan({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) {
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
-        <p className="text-2xl font-medium tnum">Köp {packs(r.planPurchaseUnits ?? 0)}</p>
+        <p className="tnum text-2xl font-medium">Köp {packs(r.planPurchaseUnits ?? 0)}</p>
         <p className="meta text-subtle">
           Fastställt {r.planLockedAt ? dayText(r.planLockedAt.slice(0, 10), ctx.today) : ""} ·{" "}
           {formatInt(plan.reduce((sum, a) => sum + a.units, 0))} till automaterna
@@ -174,15 +174,15 @@ function Outcome({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) {
       <dl className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
         <div className="flex flex-col gap-1">
           <dt className="label text-subtle">Sålt</dt>
-          <dd className="text-xl font-medium tnum">{packs(o.actual)}</dd>
+          <dd className="tnum text-xl font-medium">{packs(o.actual)}</dd>
         </div>
         <div className="flex flex-col gap-1">
           <dt className="label text-subtle">Väntat hittills</dt>
-          <dd className="text-xl font-medium tnum">{tenthsNumber(o.expectedByNowTenths)}</dd>
+          <dd className="tnum text-xl font-medium">{tenthsNumber(o.expectedByNowTenths)}</dd>
         </div>
         <div className="flex flex-col gap-1">
           <dt className="label text-subtle">Lika mot lika</dt>
-          <dd className="text-xl font-medium tnum">
+          <dd className="tnum text-xl font-medium">
             {o.plannedDiffBp === null ? "–" : deltaOfBp(o.plannedDiffBp)}
           </dd>
         </div>
@@ -279,7 +279,9 @@ function ReleaseCard({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) 
                 <Plan view={view} ctx={ctx} />
               </PanelSection>
             ) : null}
-            <PanelSection label={`Utfall · ${daysText(Math.min(-view.daysUntil + 1, r.horizonDays))}`}>
+            <PanelSection
+              label={`Utfall · ${daysText(Math.min(-view.daysUntil + 1, r.horizonDays))}`}
+            >
               <Outcome view={view} ctx={ctx} />
             </PanelSection>
           </>
@@ -385,7 +387,11 @@ export function ReleasesSection({
   }
   const visible = [...upcoming, ...running, ...done];
   return (
-    <section aria-labelledby="releaser-rubrik" className="flex scroll-mt-28 flex-col gap-8" id="releaser">
+    <section
+      aria-labelledby="releaser-rubrik"
+      className="flex scroll-mt-28 flex-col gap-8"
+      id="releaser"
+    >
       <SectionHeader
         id="releaser-rubrik"
         index={1}

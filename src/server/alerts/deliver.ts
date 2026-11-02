@@ -37,7 +37,9 @@ type Dispatcher = (
 
 /** Användarens e-post (auth.users). Larmjobbet kör som systemroll och får läsa den. */
 async function userEmail(db: Db, userId: string): Promise<string | null> {
-  const rows = await db.execute(sql`select email::text as email from auth.users where id = ${userId}::uuid`);
+  const rows = await db.execute(
+    sql`select email::text as email from auth.users where id = ${userId}::uuid`,
+  );
   const row = Array.from(rows)[0] as { email?: string | null } | undefined;
   return row?.email ?? null;
 }
@@ -73,7 +75,13 @@ export async function deliverDue(
       if (!row.userId) {
         await tx
           .update(s.alertDeliveries)
-          .set({ status: "skipped", results: [{ channel: "all", status: "skipped", detail: "Användaren finns inte längre" }], sentAt: now })
+          .set({
+            status: "skipped",
+            results: [
+              { channel: "all", status: "skipped", detail: "Användaren finns inte längre" },
+            ],
+            sentAt: now,
+          })
           .where(eq(s.alertDeliveries.id, id));
         return "skipped" as const;
       }

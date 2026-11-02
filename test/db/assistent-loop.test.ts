@@ -18,7 +18,7 @@ import {
 } from "@/server/assistant/scripted";
 import { getLogFor } from "@/server/assistant/log";
 import { askAssistant } from "@/server/assistant/service";
-import { createLocalModelClient } from "@/server/assistant/local-model";
+import { chooseTool, createLocalModelClient } from "@/server/assistant/local-model";
 import type { Viewer } from "@/server/data/core/loaders";
 
 import { seedAssistantFixture, viewerFor, type AssistantFixture } from "./assistent-fixture";
@@ -341,5 +341,27 @@ describe("askAssistant med mockad klient", () => {
     const done = events.at(-1) as Extract<AssistantEvent, { type: "done" }>;
     expect(done.status).toBe("answered");
     expect(done.answer).toContain("Automat 1 (BL-001)");
+  });
+
+  it("den lokala testmodellen väljer verktyg med nyckelord, bland rollens verktyg", () => {
+    const all = new Set([
+      "nyckeltal",
+      "lonsamhet",
+      "inkopsforslag",
+      "rackvidd",
+      "salda_pack",
+      "lager",
+    ]);
+    const stock = new Set(["rackvidd", "salda_pack", "lager", "att_gora", "hitta"]);
+    expect(chooseTool("Vad ska jag beställa inför nästa vecka?", "2025-03-12", all)?.name).toBe(
+      "inkopsforslag",
+    );
+    expect(chooseTool("Vad ska jag beställa inför nästa vecka?", "2025-03-12", stock)?.name).toBe(
+      "rackvidd",
+    );
+    expect(chooseTool("Hur gick oktober?", "2025-03-12", all)).toEqual({
+      name: "nyckeltal",
+      input: { fran: "2024-10-01", till: "2024-10-31" },
+    });
   });
 });

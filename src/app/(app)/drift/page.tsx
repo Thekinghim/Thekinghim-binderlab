@@ -10,7 +10,7 @@ import { requireRoute } from "@/server/data/core";
 import { AlertList } from "./_components/alert-list";
 import { HealthTable, type HealthRow } from "./_components/health-table";
 import { toAlertItems } from "./_lib/alert-items";
-import { driftHeadline, formatWhen, healthRank, plural } from "./_lib/display";
+import { driftHeadline, formatWhen, healthRank, plural, sentenceEnd } from "./_lib/display";
 import { loadDriftOverview } from "./_lib/load";
 
 export const metadata: Metadata = { title: "Drift" };
@@ -53,7 +53,9 @@ export default async function DriftPage() {
       expected: h.silence
         ? `${tenthsText(milliToTenths(h.silence.expectedMilli))}${NBSP}pack under tystnaden (${plural(h.silence.historyOrders, "order", "order")} i historiken)`
         : "",
-      probability: h.silence ? `${probabilityText(h.silence.zeroProbabilityBp)} för noll försäljning` : "",
+      probability: h.silence
+        ? `${probabilityText(h.silence.zeroProbabilityBp)} för noll försäljning`
+        : "",
       rank: healthRank(h.status),
     };
   });
@@ -72,9 +74,15 @@ export default async function DriftPage() {
         title={headline.title}
         aside={headline.aside}
         meta={[
-          { label: "Automater", value: formatInt(health.filter((h) => h.status !== "inactive").length) },
+          {
+            label: "Automater",
+            value: formatInt(health.filter((h) => h.status !== "inactive").length),
+          },
           { label: "Öppna larm", value: formatInt(overview.openAlerts.length) },
-          { label: "Besök i veckan", value: formatInt(plan.days.reduce((n, d) => n + d.stops.length, 0)) },
+          {
+            label: "Besök i veckan",
+            value: formatInt(plan.days.reduce((n, d) => n + d.stops.length, 0)),
+          },
         ]}
       />
 
@@ -103,14 +111,18 @@ export default async function DriftPage() {
           <StateMessage
             kind="empty"
             message="Inga automater i organisationen."
-            action={{ label: "Lägg till en automat →", href: "/automater" }}
+            action={{ label: "Lägg till en automat", href: "/automater" }}
           />
         ) : (
           <HealthTable rows={rows} />
         )}
       </section>
 
-      <section aria-labelledby="larm" className="flex scroll-mt-28 flex-col gap-6" id="larm-sektion">
+      <section
+        aria-labelledby="larm"
+        className="flex scroll-mt-28 flex-col gap-6"
+        id="larm-sektion"
+      >
         <SectionHeader
           id="larm"
           index={2}
@@ -171,10 +183,10 @@ export default async function DriftPage() {
           id="besok"
           index={3}
           eyebrow="Besök"
-          title={plan.days.length === 0 ? "Inga besök behövs i veckan." : `${plan.summary}.`}
+          title={plan.days.length === 0 ? "Inga besök behövs i veckan." : sentenceEnd(plan.summary)}
           aside={
             firstDay
-              ? `Första: ${firstDay.title}.`
+              ? `Först ut: ${sentenceEnd(firstDay.title)}`
               : "Lagret räcker i alla automater de närmaste 7 dagarna."
           }
           actions={

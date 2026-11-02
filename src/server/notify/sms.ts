@@ -43,7 +43,11 @@ export function smsStatus(env: Env = process.env): SmsStatus {
   const dev = (env.APP_ENV ?? "development") === "development" && env.NODE_ENV !== "production";
   if (v === "outbox" || (v === "" && dev)) return { kind: "outbox", configured: true, missing: [] };
   if (v === "" || v === "off") {
-    return { kind: "off", configured: false, missing: ["Ingen sms-leverantör vald (SMS_PROVIDER)"] };
+    return {
+      kind: "off",
+      configured: false,
+      missing: ["Ingen sms-leverantör vald (SMS_PROVIDER)"],
+    };
   }
   return { kind: "off", configured: false, missing: [`SMS_PROVIDER har ett okänt värde: ${v}`] };
 }
@@ -59,7 +63,11 @@ export class OutboxSmsSender implements SmsSender {
     await mkdir(this.dir, { recursive: true });
     await writeFile(
       path.join(this.dir, `${id}.json`),
-      JSON.stringify({ sentAt: now.toISOString(), to, text: text.slice(0, SMS_MAX_LENGTH) }, null, 2),
+      JSON.stringify(
+        { sentAt: now.toISOString(), to, text: text.slice(0, SMS_MAX_LENGTH) },
+        null,
+        2,
+      ),
       { flag: "wx" },
     );
     return { ok: true, detail: `outbox:${id}` };

@@ -139,7 +139,8 @@ export async function dispatchDelivery(
         results.push({
           channel: "email",
           status: "sent",
-          detail: mailer.kind === "outbox" ? `Lokalt: ${sent.providerMessageId}` : sent.providerMessageId,
+          detail:
+            mailer.kind === "outbox" ? `Lokalt: ${sent.providerMessageId}` : sent.providerMessageId,
         });
       } catch (error) {
         const status = mailerStatus();

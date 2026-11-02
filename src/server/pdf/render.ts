@@ -33,7 +33,14 @@ export interface PdfRequest {
 
 export interface PdfRenderer {
   readonly kind: PdfRendererKind;
+  /** Skriver ut sidan som A4-PDF. */
   render(request: PdfRequest): Promise<Uint8Array>;
+  /**
+   * Öppnar sidan och läser ett JSON-värde som sidan lägger i `window[globalName]`
+   * (används för att rendera e-post med mallen i src/emails, som bara kan köras utanför
+   * Server Components).
+   */
+  extract<T>(request: PdfRequest, globalName: string): Promise<T>;
 }
 
 export class PdfError extends Error {
@@ -116,10 +123,13 @@ export function pdfStatus(env: Env = process.env): PdfStatus {
       };
 }
 
-async function renderWith(
-  launch: () => Promise<import("puppeteer-core").Browser>,
+type Launch = () => Promise<import("puppeteer-core").Browser>;
+
+async function withPage<T>(
+  launch: Launch,
   request: PdfRequest,
-): Promise<Uint8Array> {
+  fn: (page: import("puppeteer-core").Page, timeout: number) => Promise<T>,
+): Promise<T> {
   const url = new URL(request.url);
   const timeout = request.timeoutMs ?? 45_000;
   const browser = await launch();
@@ -148,6 +158,14 @@ async function renderWith(
     if (new URL(page.url()).pathname !== url.pathname) {
       throw new PdfError("Rapportsidan skickade vidare (inloggningen följde inte med).");
     }
+    return await fn(page, timeout);
+  } finally {
+    await browser.close();
+  }
+}
+
+async function printPdf(launch: Launch, request: PdfRequest): Promise<Uint8Array> {
+  return withPage(launch, request, async (page, timeout) => {
     await page.waitForSelector(".bl-report", { timeout });
     await page.evaluate(() => document.fonts.ready);
     await page.emulateMediaType("print");
@@ -158,9 +176,23 @@ async function renderWith(
       margin: { top: "0", right: "0", bottom: "0", left: "0" },
     });
     return new Uint8Array(pdf);
-  } finally {
-    await browser.close();
-  }
+  });
+}
+
+async function extractJson<T>(launch: Launch, request: PdfRequest, globalName: string): Promise<T> {
+  if (!/^[A-Za-z_$][\w$]*$/.test(globalName)) throw new PdfError("Ogiltigt namn.");
+  return withPage(launch, request, async (page, timeout) => {
+    await page.waitForFunction(
+      (name: string) => (window as unknown as Record<string, unknown>)[name] !== undefined,
+      { timeout },
+      globalName,
+    );
+    const json = await page.evaluate(
+      (name: string) => JSON.stringify((window as unknown as Record<string, unknown>)[name]),
+      globalName,
+    );
+    return JSON.parse(json) as T;
+  });
 }
 
 /** Lokal Chromium (utveckling och tester). */
@@ -168,15 +200,26 @@ export class LocalPdfRenderer implements PdfRenderer {
   readonly kind = "local" as const;
   constructor(private readonly executablePath: string) {}
 
+  private readonly launch: Launch = async () => {
+    const puppeteer = (await import("puppeteer-core")).default;
+    return puppeteer.launch({
+      executablePath: this.executablePath,
+      headless: true,
+      args: [
+        "--no-proxy-server",
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--font-render-hinting=none",
+      ],
+    });
+  };
+
   render(request: PdfRequest): Promise<Uint8Array> {
-    return renderWith(async () => {
-      const puppeteer = (await import("puppeteer-core")).default;
-      return puppeteer.launch({
-        executablePath: this.executablePath,
-        headless: true,
-        args: ["--no-proxy-server", "--no-sandbox", "--disable-dev-shm-usage", "--font-render-hinting=none"],
-      });
-    }, request);
+    return printPdf(this.launch, request);
+  }
+
+  extract<T>(request: PdfRequest, globalName: string): Promise<T> {
+    return extractJson<T>(this.launch, request, globalName);
   }
 }
 
@@ -184,18 +227,24 @@ export class LocalPdfRenderer implements PdfRenderer {
 export class SparticuzPdfRenderer implements PdfRenderer {
   readonly kind = "sparticuz" as const;
 
+  private readonly launch: Launch = async () => {
+    const [{ default: puppeteer }, { default: chromium }] = await Promise.all([
+      import("puppeteer-core"),
+      import("@sparticuz/chromium"),
+    ]);
+    return puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: true,
+    });
+  };
+
   render(request: PdfRequest): Promise<Uint8Array> {
-    return renderWith(async () => {
-      const [{ default: puppeteer }, { default: chromium }] = await Promise.all([
-        import("puppeteer-core"),
-        import("@sparticuz/chromium"),
-      ]);
-      return puppeteer.launch({
-        args: chromium.args,
-        executablePath: await chromium.executablePath(),
-        headless: true,
-      });
-    }, request);
+    return printPdf(this.launch, request);
+  }
+
+  extract<T>(request: PdfRequest, globalName: string): Promise<T> {
+    return extractJson<T>(this.launch, request, globalName);
   }
 }
 

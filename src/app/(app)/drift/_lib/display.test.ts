@@ -15,7 +15,17 @@ function h(status: MachineHealth["status"], title = "Automat"): MachineHealth {
     detail: "",
     silence: null,
     signal: null,
-    evidence: { rule: "", period: null, orderIds: [], dates: [], titleIds: [], machineIds: [], storeIds: [], recipientIds: [], figures: [] },
+    evidence: {
+      rule: "",
+      period: null,
+      orderIds: [],
+      dates: [],
+      titleIds: [],
+      machineIds: [],
+      storeIds: [],
+      recipientIds: [],
+      figures: [],
+    },
     link: "/",
   };
 }
@@ -26,7 +36,12 @@ describe("rubriken på Drift", () => {
   });
 
   it("räknar bara automater i drift och nämner första problemet", () => {
-    const r = driftHeadline([h("suspected_fault", "Automat 2 har inte sålt på 6 timmar"), h("ok"), h("inactive"), h("offline", "Automat 3")]);
+    const r = driftHeadline([
+      h("suspected_fault", "Automat 2 har inte sålt på 6 timmar"),
+      h("ok"),
+      h("inactive"),
+      h("offline", "Automat 3"),
+    ]);
     expect(r.title).toBe("1 av 3\u00a0automater i drift.");
     expect(r.aside).toBe("Automat 2 har inte sålt på 6 timmar. Och 1\u00a0automat till.");
   });

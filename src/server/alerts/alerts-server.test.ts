@@ -5,7 +5,14 @@ import { alertEmail, absoluteLink, pushPayload, smsText } from "@/server/notify/
 import { normalizePhone as normalize } from "./subscriptions";
 
 import { cronAuthorized } from "./cron-auth";
-import { incidentChanged, incidentToColumns, isRowId, parseEvidence, rowToIncident, type AlertRow } from "./store";
+import {
+  incidentChanged,
+  incidentToColumns,
+  isRowId,
+  parseEvidence,
+  rowToIncident,
+  type AlertRow,
+} from "./store";
 import {
   defaultSubscription,
   FIELD_KINDS,
@@ -115,7 +122,10 @@ describe("prenumerationer", () => {
   });
 
   it("sms kräver ett giltigt nummer och nummer skrivs om till E.164", () => {
-    const missing = validateSubscription({ ...INPUT, channels: ["sms"] }, { userId: "u", role: "owner", machineIds: [] });
+    const missing = validateSubscription(
+      { ...INPUT, channels: ["sms"] },
+      { userId: "u", role: "owner", machineIds: [] },
+    );
     expect(missing.ok).toBe(false);
     const ok = validateSubscription(
       { ...INPUT, channels: ["sms"], phone: "070-123 45 67" },
@@ -127,15 +137,26 @@ describe("prenumerationer", () => {
 
   it("okända automater, tomma kanaler och ogiltiga tider avvisas", () => {
     const ctx = { userId: "u", role: "owner", machineIds: ["m1"] };
-    expect(validateSubscription({ ...INPUT, allMachines: false, machineIds: ["m9"] }, ctx).ok).toBe(false);
+    expect(validateSubscription({ ...INPUT, allMachines: false, machineIds: ["m9"] }, ctx).ok).toBe(
+      false,
+    );
     expect(validateSubscription({ ...INPUT, channels: [] }, ctx).ok).toBe(false);
     expect(validateSubscription({ ...INPUT, quietStart: "25:00" }, ctx).ok).toBe(false);
     expect(validateSubscription({ ...INPUT, window: true, windowDays: [] }, ctx).ok).toBe(false);
   });
 
   it("raden blir en prenumeration för @/analytics/alerts", () => {
-    const sub = rowToSubscription({ ...defaultSubscription("u", "owner"), quietStart: "22:00", quietEnd: "07:00" });
-    expect(sub).toMatchObject({ userId: "u", kinds: "all", machineIds: "all", quietHours: { start: "22:00", end: "07:00" } });
+    const sub = rowToSubscription({
+      ...defaultSubscription("u", "owner"),
+      quietStart: "22:00",
+      quietEnd: "07:00",
+    });
+    expect(sub).toMatchObject({
+      userId: "u",
+      kinds: "all",
+      machineIds: "all",
+      quietHours: { start: "22:00", end: "07:00" },
+    });
     expect(rowToSubscription(defaultSubscription("p", "refiller")).kinds).toEqual([...FIELD_KINDS]);
   });
 });
@@ -188,11 +209,20 @@ const DELIVERY: AlertDelivery = {
 describe("innehållet i ett larm", () => {
   it("push: titel, text, länk till underlaget och samma tagg som incidenten", () => {
     const p = pushPayload(DELIVERY);
-    expect(p).toMatchObject({ title: "Automat 2 är ur drift", url: "/drift/automat/m2", tag: "machine:m2", severity: "critical" });
+    expect(p).toMatchObject({
+      title: "Automat 2 är ur drift",
+      url: "/drift/automat/m2",
+      tag: "machine:m2",
+      severity: "critical",
+    });
   });
 
   it("e-post: ljus, utan klasser, bilder eller svg, med escapad text och länk", () => {
-    const m = alertEmail(DELIVERY, { baseUrl: "https://app.binderlab.se/", timeZone: "Europe/Stockholm", organizationName: "Test" });
+    const m = alertEmail(DELIVERY, {
+      baseUrl: "https://app.binderlab.se/",
+      timeZone: "Europe/Stockholm",
+      organizationName: "Test",
+    });
     expect(m.subject).toBe("Larm: Automat 2 är ur drift");
     expect(m.html).not.toMatch(/class=|<svg|<img|<link/);
     expect(m.html).not.toContain("<script>");
@@ -204,7 +234,10 @@ describe("innehållet i ett larm", () => {
   });
 
   it("sms: högst tre delar och absolut länk", () => {
-    const t = smsText({ ...DELIVERY, items: [{ ...DELIVERY.items[0]!, detail: "x".repeat(1000) }] }, "https://a.se");
+    const t = smsText(
+      { ...DELIVERY, items: [{ ...DELIVERY.items[0]!, detail: "x".repeat(1000) }] },
+      "https://a.se",
+    );
     expect(t.length).toBeLessThanOrEqual(459);
     expect(smsText(DELIVERY, "https://a.se")).toContain("https://a.se/drift/automat/m2");
     expect(absoluteLink("https://a.se/", "//evil")).toBe("https://a.se/drift");

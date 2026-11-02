@@ -1,7 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type FormEvent,
+} from "react";
 
 import {
   listQueue,
@@ -36,6 +44,19 @@ export interface RefillAppProps {
 
 type Net = "online" | "offline";
 
+function noopSubscribe(): () => void {
+  return () => {};
+}
+
+function subscribeOnline(onChange: () => void): () => void {
+  window.addEventListener("online", onChange);
+  window.addEventListener("offline", onChange);
+  return () => {
+    window.removeEventListener("online", onChange);
+    window.removeEventListener("offline", onChange);
+  };
+}
+
 /**
  * Påfyllning i fältet. Varje påfyllning sparas först i webbläsarens kö (IndexedDB) med ett
  * eget id och skickas sedan; utan nät ligger den kvar och skickas när nätet kommer tillbaka.
@@ -44,7 +65,13 @@ type Net = "online" | "offline";
 export function RefillApp({ scope, machines, titles, stock, warehouse }: RefillAppProps) {
   const router = useRouter();
   const toast = useToast();
-  const [net, setNet] = useState<Net>("online");
+  const online = useSyncExternalStore(
+    subscribeOnline,
+    () => navigator.onLine,
+    () => true,
+  );
+  const [lostConnection, setLostConnection] = useState(false);
+  const net: Net = online && !lostConnection ? "online" : "offline";
   const [queue, setQueue] = useState<QueuedRefill[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [machineId, setMachineId] = useState(machines[0]?.id ?? "");
@@ -52,9 +79,12 @@ export function RefillApp({ scope, machines, titles, stock, warehouse }: RefillA
   const [quantity, setQuantity] = useState("");
   const [fromWarehouse, setFromWarehouse] = useState(true);
   const [note, setNote] = useState("");
-  const [errors, setErrors] = useState<{ quantity?: string; titleId?: string; machineId?: string }>({});
+  const [errors, setErrors] = useState<{ quantity?: string; titleId?: string; machineId?: string }>(
+    {},
+  );
   const syncingRef = useRef(false);
-  const persistent = queueAvailable();
+  // Servern antar att kön finns (samma HTML före och efter hydrering); webbläsaren svarar.
+  const persistent = useSyncExternalStore(noopSubscribe, queueAvailable, () => true);
 
   const onHand = useMemo(() => {
     const m = new Map<string, number>();
@@ -62,7 +92,10 @@ export function RefillApp({ scope, machines, titles, stock, warehouse }: RefillA
     return m;
   }, [stock, machineId]);
   const central = useMemo(() => new Map(warehouse.map((w) => [w.titleId, w.onHand])), [warehouse]);
-  const machineName = useMemo(() => new Map(machines.map((m) => [m.id, `${m.code ?? ""} ${m.name}`.trim()])), [machines]);
+  const machineName = useMemo(
+    () => new Map(machines.map((m) => [m.id, `${m.code ?? ""} ${m.name}`.trim()])),
+    [machines],
+  );
   const titleName = useMemo(() => new Map(titles.map((t) => [t.id, t.name])), [titles]);
 
   const reload = useCallback(async () => {
@@ -119,18 +152,26 @@ export function RefillApp({ scope, machines, titles, stock, warehouse }: RefillA
       const saved = await apply(res.results);
       if (saved > 0) {
         toast({
-          title: saved === 1 ? "Påfyllning registrerad" : `${formatInt(saved)} påfyllningar registrerade`,
+          title:
+            saved === 1
+              ? "Påfyllning registrerad"
+              : `${formatInt(saved)} påfyllningar registrerade`,
           tone: "ok",
         });
         router.refresh();
       }
       const rejected = res.results.filter((r) => r.status === "rejected").length;
       if (rejected > 0) {
-        toast({ title: `${formatInt(rejected)} påfyllning avvisades`, description: "Se kön nedan.", tone: "critical" });
+        toast({
+          title: `${formatInt(rejected)} påfyllning avvisades`,
+          description: "Se kön nedan.",
+          tone: "critical",
+        });
       }
+      setLostConnection(false);
     } catch {
       // Nätet försvann under anropet: allt ligger kvar i kön och skickas igen.
-      setNet("offline");
+      setLostConnection(true);
     } finally {
       syncingRef.current = false;
       setSyncing(false);
@@ -139,19 +180,16 @@ export function RefillApp({ scope, machines, titles, stock, warehouse }: RefillA
   }, [apply, persistent, reload, router, scope, toast]);
 
   useEffect(() => {
-    const update = () => setNet(navigator.onLine ? "online" : "offline");
-    update();
-    void reload().then(() => sync());
-    const online = () => {
-      update();
+    const first = window.setTimeout(() => void reload().then(() => sync()), 0);
+    const back = () => {
+      setLostConnection(false);
       void sync();
     };
-    window.addEventListener("online", online);
-    window.addEventListener("offline", update);
+    window.addEventListener("online", back);
     const timer = window.setInterval(() => void sync(), 30_000);
     return () => {
-      window.removeEventListener("online", online);
-      window.removeEventListener("offline", update);
+      window.clearTimeout(first);
+      window.removeEventListener("online", back);
       window.clearInterval(timer);
     };
   }, [reload, sync]);
@@ -183,7 +221,12 @@ export function RefillApp({ scope, machines, titles, stock, warehouse }: RefillA
       setQuantity("");
       setNote("");
       if (navigator.onLine) await sync();
-      else toast({ title: "Sparad i kön", description: "Skickas när nätet kommer tillbaka.", tone: "neutral" });
+      else
+        toast({
+          title: "Sparad i kön",
+          description: "Skickas när nätet kommer tillbaka.",
+          tone: "neutral",
+        });
     } else {
       // Utan IndexedDB (t.ex. privat läge i vissa webbläsare): skicka direkt.
       try {
@@ -197,7 +240,9 @@ export function RefillApp({ scope, machines, titles, stock, warehouse }: RefillA
           router.refresh();
         }
       } catch {
-        setErrors({ quantity: "Ingen uppkoppling och webbläsaren kan inte spara kön. Försök igen med nät." });
+        setErrors({
+          quantity: "Ingen uppkoppling och webbläsaren kan inte spara kön. Försök igen med nät.",
+        });
       }
     }
   };
@@ -207,7 +252,12 @@ export function RefillApp({ scope, machines, titles, stock, warehouse }: RefillA
 
   return (
     <div className="grid gap-10 lg:grid-cols-12 lg:gap-8">
-      <form onSubmit={submit} noValidate className="flex flex-col gap-5 lg:col-span-6" aria-label="Registrera påfyllning">
+      <form
+        onSubmit={submit}
+        noValidate
+        className="flex flex-col gap-5 lg:col-span-6"
+        aria-label="Registrera påfyllning"
+      >
         <div className="flex flex-wrap items-center gap-2" role="status" aria-live="polite">
           <StatusTag status={net === "online" ? "ok" : "offline"}>
             {net === "online" ? "Uppkopplad" : "Ingen uppkoppling"}
@@ -230,7 +280,10 @@ export function RefillApp({ scope, machines, titles, stock, warehouse }: RefillA
           value={machineId}
           onChange={(e) => setMachineId(e.target.value)}
           error={errors.machineId}
-          options={machines.map((m) => ({ value: m.id, label: `${m.code ?? ""} ${m.name}`.trim() }))}
+          options={machines.map((m) => ({
+            value: m.id,
+            label: `${m.code ?? ""} ${m.name}`.trim(),
+          }))}
         />
         <Select
           label="Titel"
@@ -271,7 +324,12 @@ export function RefillApp({ scope, machines, titles, stock, warehouse }: RefillA
           />
           Från centrallagret
         </label>
-        <Input label="Notering" value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} />
+        <Input
+          label="Notering"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={500}
+        />
         <div className="flex gap-2">
           <Button type="submit" variant="primary">
             Registrera påfyllning

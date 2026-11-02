@@ -101,7 +101,7 @@ export default async function AssistentPage() {
         <SectionHeader
           id="fraga"
           index={1}
-          eyebrow="Fråga"
+          eyebrow="Samtal"
           title={
             ctx.canSeeEconomy ? "Försäljning, lönsamhet, lager och inköp." : "Lager och påfyllning."
           }

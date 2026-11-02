@@ -101,7 +101,9 @@ export function parseEvidence(value: unknown): AlertEvidence {
 export function rowToIncident(row: AlertRow): AlertIncident | null {
   if (!row.incidentKey) return null;
   const kind = KINDS.includes(row.kind as AlertKind) ? (row.kind as AlertKind) : null;
-  const group = GROUPS.includes(row.alertGroup as AlertGroup) ? (row.alertGroup as AlertGroup) : null;
+  const group = GROUPS.includes(row.alertGroup as AlertGroup)
+    ? (row.alertGroup as AlertGroup)
+    : null;
   if (!kind || !group) return null;
   const openedAt = row.triggeredAt.toISOString();
   return {

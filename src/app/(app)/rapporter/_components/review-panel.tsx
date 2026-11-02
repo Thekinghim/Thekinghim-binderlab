@@ -150,6 +150,12 @@ export function ReviewPanel({
           >
             Öppna
           </a>
+          <a
+            href={`/rapport/${report.id}/epost`}
+            className="inline-flex h-7 items-center rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover"
+          >
+            Mejlet
+          </a>
           {FILES[report.type].map((f) => (
             <a
               key={f.kind}

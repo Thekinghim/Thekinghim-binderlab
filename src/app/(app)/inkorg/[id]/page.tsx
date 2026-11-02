@@ -15,7 +15,11 @@ import { KIND_LABEL, STATUS_LABEL, utcToLocalInput } from "../_lib/model";
 export const metadata: Metadata = { title: "Ärende" };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const ACTION: Record<string, string> = { insert: "Registrerat", update: "Ändrat", delete: "Borttaget" };
+const ACTION: Record<string, string> = {
+  insert: "Registrerat",
+  update: "Ändrat",
+  delete: "Borttaget",
+};
 
 /** Ett kundärende: uppgifter, order, hantering och ändringshistorik (audit_log). */
 export default async function IncidentPage({ params }: { params: Promise<{ id: string }> }) {
@@ -28,7 +32,8 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
   if (!i) notFound();
   const now = new Date(ctx.now);
   const machine = data.machines.find((m) => m.id === i.machineId);
-  const titleName = data.titles.find((t) => t.id === (data.order?.titleId ?? i.titleId))?.name ?? null;
+  const titleName =
+    data.titles.find((t) => t.id === (data.order?.titleId ?? i.titleId))?.name ?? null;
 
   return (
     <div className="mx-auto flex w-full max-w-[960px] flex-col gap-10 px-4 pt-8 pb-16 md:px-8 md:pt-12">
@@ -51,10 +56,15 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
         ]}
       />
       <div className="flex flex-wrap items-center gap-3">
-        <StatusTag status={i.status === "resolved" ? "ok" : i.status === "open" ? "warning" : "neutral"}>
+        <StatusTag
+          status={i.status === "resolved" ? "ok" : i.status === "open" ? "warning" : "neutral"}
+        >
           {STATUS_LABEL[i.status]}
         </StatusTag>
-        <Link href={`/drift/automat/${i.machineId}`} className="rounded-xs text-sm text-muted hover:text-fg">
+        <Link
+          href={`/drift/automat/${i.machineId}`}
+          className="rounded-xs text-sm text-muted hover:text-fg"
+        >
           Automatens tidslinje →
         </Link>
         <Link href="/inkorg" className="rounded-xs text-sm text-muted hover:text-fg">
@@ -97,7 +107,13 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
       />
       {data.history.length > 0 ? (
         <section aria-labelledby="historik" className="flex flex-col gap-4">
-          <SectionHeader id="historik" eyebrow="Historik" title="Ändringar." size="sm" aside="Ur ändringsloggen." />
+          <SectionHeader
+            id="historik"
+            eyebrow="Historik"
+            title="Ändringar."
+            size="sm"
+            aside="Ur ändringsloggen."
+          />
           <ul className="flex flex-col divide-y divide-line border-y border-line text-sm">
             {data.history.map((h, n) => (
               <li key={`${h.at}-${n}`} className="flex flex-wrap justify-between gap-3 py-2">

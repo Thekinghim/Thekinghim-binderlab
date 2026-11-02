@@ -32,6 +32,7 @@ import {
   planDecommission,
   planMove,
   reactivateSchema,
+  sentences,
   updateMachineSchema,
   type PlacementSpan,
 } from "./validation";
@@ -320,13 +321,19 @@ export async function updateMachineFor(viewer: Viewer, raw: unknown): Promise<Ac
       if (!m) throw new UserError("Automaten finns inte.");
       if (m.activeTo !== null && input.activeFrom > m.activeTo) {
         throw new UserError(
-          `${m.code} avvecklades ${day(m.activeTo)}. Driftstarten kan inte ligga efter.`,
+          sentences(
+            `${m.code} avvecklades ${day(m.activeTo)}`,
+            "Driftstarten kan inte ligga efter.",
+          ),
         );
       }
       const span = await orderSpan(tx, orgId, m.id);
       if (span.first !== null && input.activeFrom > span.first) {
         throw new UserError(
-          `${m.code} har order från ${day(span.first)}. Driftstarten kan inte ligga senare.`,
+          sentences(
+            `${m.code} har order från ${day(span.first)}`,
+            "Driftstarten kan inte ligga senare.",
+          ),
         );
       }
       await tx

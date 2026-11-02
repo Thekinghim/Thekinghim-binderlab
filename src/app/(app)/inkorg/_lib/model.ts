@@ -85,7 +85,13 @@ const clean = (s: string, max: number): string | null => {
 export function localToUtc(value: string, timeZone: string): Date | null {
   const m = LOCAL.exec(value);
   if (!m) return null;
-  const [year, month, day, hour, minute] = m.slice(1).map(Number) as [number, number, number, number, number];
+  const [year, month, day, hour, minute] = m.slice(1).map(Number) as [
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
   if (month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || minute > 59) return null;
   const r = zonedToUtc({ year, month, day, hour, minute, second: 0 }, timeZone);
   return Number.isFinite(r.utc.getTime()) ? r.utc : null;
@@ -105,14 +111,18 @@ export function validateIncident(
 ): { ok: true; values: IncidentValues } | { ok: false; errors: IncidentErrors } {
   const errors: IncidentErrors = {};
   if (!ctx.machineIds.includes(input.machineId)) errors.machineId = "Välj automat.";
-  if (!(INCIDENT_KINDS as readonly string[]).includes(input.kind)) errors.kind = "Välj typ av ärende.";
+  if (!(INCIDENT_KINDS as readonly string[]).includes(input.kind))
+    errors.kind = "Välj typ av ärende.";
   const startedAt = localToUtc(input.occurredAt, ctx.timeZone);
   if (!startedAt) errors.occurredAt = "Ange datum och tid.";
-  else if (startedAt.getTime() > ctx.now.getTime() + 5 * 60_000) errors.occurredAt = "Tiden ligger i framtiden.";
+  else if (startedAt.getTime() > ctx.now.getTime() + 5 * 60_000)
+    errors.occurredAt = "Tiden ligger i framtiden.";
   if (input.orderId && !UUID.test(input.orderId)) errors.orderId = "Okänd order.";
   if (input.titleId && !UUID.test(input.titleId)) errors.titleId = "Okänd titel.";
-  if (!(INCIDENT_STATUSES as readonly string[]).includes(input.status)) errors.status = "Välj status.";
-  if (input.assigneeId && !ctx.memberIds.includes(input.assigneeId)) errors.assigneeId = "Välj en medlem.";
+  if (!(INCIDENT_STATUSES as readonly string[]).includes(input.status))
+    errors.status = "Välj status.";
+  if (input.assigneeId && !ctx.memberIds.includes(input.assigneeId))
+    errors.assigneeId = "Välj en medlem.";
   if (input.description.length > 2000) errors.description = "Högst 2 000 tecken.";
   if (input.actionTaken.length > 2000) errors.actionTaken = "Högst 2 000 tecken.";
   if (input.customerContact.length > 200) errors.customerContact = "Högst 200 tecken.";

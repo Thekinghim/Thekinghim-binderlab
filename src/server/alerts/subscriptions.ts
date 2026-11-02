@@ -3,7 +3,12 @@
  * och validering av formuläret på /drift/larm. Rent, utan databas.
  */
 
-import type { AlertKind, AlertSeverity, AlertSubscription, DeliveryWindow } from "@/analytics/alerts";
+import type {
+  AlertKind,
+  AlertSeverity,
+  AlertSubscription,
+  DeliveryWindow,
+} from "@/analytics/alerts";
 
 export const ALERT_KINDS: readonly AlertKind[] = [
   "machine_offline",
@@ -59,7 +64,9 @@ export interface SubscriptionRow {
 }
 
 export function rowToSubscription(r: SubscriptionRow): AlertSubscription {
-  const kinds = r.kinds ? (r.kinds.filter((k) => ALERT_KINDS.includes(k as AlertKind)) as AlertKind[]) : null;
+  const kinds = r.kinds
+    ? (r.kinds.filter((k) => ALERT_KINDS.includes(k as AlertKind)) as AlertKind[])
+    : null;
   return {
     userId: r.userId,
     kinds: kinds ?? "all",
@@ -160,7 +167,8 @@ export function validateSubscription(
   if (channels.length === 0) errors.channels = "Välj minst en kanal.";
 
   const phone = normalizePhone(input.phone);
-  if (phone !== null && !PHONE.test(phone)) errors.phone = "Ange numret som 070-123 45 67 eller +46701234567.";
+  if (phone !== null && !PHONE.test(phone))
+    errors.phone = "Ange numret som 070-123 45 67 eller +46701234567.";
   if (channels.includes("sms") && phone === null) errors.phone = "Ange ett nummer för sms.";
 
   if (input.quiet && (!TIME.test(input.quietStart) || !TIME.test(input.quietEnd))) {
@@ -171,12 +179,16 @@ export function validateSubscription(
   }
   let windows: DeliveryWindow[] | null = null;
   if (input.window) {
-    const days = [...new Set(input.windowDays)].filter((d) => Number.isInteger(d) && d >= 1 && d <= 7);
+    const days = [...new Set(input.windowDays)].filter(
+      (d) => Number.isInteger(d) && d >= 1 && d <= 7,
+    );
     if (days.length === 0) errors.windowDays = "Välj minst en dag.";
     if (!TIME.test(input.windowStart) || !TIME.test(input.windowEnd)) {
       errors.windowStart = "Ange tider som TT:MM.";
     }
-    windows = [{ days: days.sort((a, b) => a - b), start: input.windowStart, end: input.windowEnd }];
+    windows = [
+      { days: days.sort((a, b) => a - b), start: input.windowStart, end: input.windowEnd },
+    ];
   }
   if (Object.keys(errors).length > 0) return { ok: false, errors };
   return {

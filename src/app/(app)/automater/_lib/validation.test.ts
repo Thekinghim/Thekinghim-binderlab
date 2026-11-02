@@ -153,3 +153,15 @@ describe("planDecommission", () => {
     expect(planDecommission({ ...args, placements: ended })).toEqual({ ok: true, close: [] });
   });
 });
+
+describe("sentences", () => {
+  it("ingen dubbel punkt efter förkortat datum", async () => {
+    const { sentences } = await import("./validation");
+    expect(sentences("BL-001 har order till 1 nov.", "Välj senare.")).toBe(
+      "BL-001 har order till 1 nov. Välj senare.",
+    );
+    expect(sentences("BL-001 startar 1 maj", "Välj senare.")).toBe(
+      "BL-001 startar 1 maj. Välj senare.",
+    );
+  });
+});

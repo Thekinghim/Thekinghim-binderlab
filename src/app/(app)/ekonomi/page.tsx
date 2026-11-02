@@ -23,7 +23,7 @@ import { PayoutUpload } from "./_components/payout-upload";
 import { ReconciliationList } from "./_components/reconciliation";
 import { AccountTable, CashflowTable, VerificationTable } from "./_components/tables";
 import { economyHeadline } from "./_lib/headline";
-import { kr, monthText, periodShort, plural, sek, signedKr } from "./_lib/view";
+import { kr, monthText, periodShort, plural, sek, sentence, signedKr } from "./_lib/view";
 
 export const metadata: Metadata = { title: "Ekonomi" };
 
@@ -64,7 +64,7 @@ export default async function EkonomiPage({
   const [rec, books, cash, fixed] = await Promise.all([
     loadReconciliationFor(viewer, p.period),
     loadBookkeepingFor(viewer, month),
-    loadCashflowFor(viewer, ctx.today),
+    loadCashflowFor(viewer, ctx.today, p.dataStart),
     loadFixedCostsFor(viewer, p.period, ctx.today),
   ]);
 
@@ -184,7 +184,7 @@ export default async function EkonomiPage({
           aside={
             result
               ? result.summary
-              : `Ingen utbetalning med period i ${when}. Väntad utbetalning = försäljning − avgifter − återbetalningar.`
+              : `${sentence(`Ingen utbetalning med period i ${when}`)} Väntad utbetalning = försäljning − avgifter − återbetalningar.`
           }
         />
         <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
@@ -194,7 +194,7 @@ export default async function EkonomiPage({
             ) : (
               <StateMessage
                 kind="empty"
-                message={`Ingen utbetalning från Awish med period i ${when}.`}
+                message={sentence(`Ingen utbetalning från Awish med period i ${when}`)}
                 detail={
                   rec.imports[0]
                     ? `Senaste uppladdningen: ${rec.imports[0].fileName}, ${formatDateTime(
@@ -366,9 +366,9 @@ export default async function EkonomiPage({
           eyebrow="Kassaflöde · per månad"
           title={
             cash.result
-              ? `Netto ${signedKr(cash.result.totals.actual.netOre)} hittills, ${signedKr(
-                  cash.result.totals.forecast.netOre,
-                )} i prognos.`
+              ? sentence(
+                  `Netto ${signedKr(cash.result.totals.total.netOre)} för ${periodShort(cash.result.range, ctx.today)}`,
+                )
               : "Kassaflöde per månad."
           }
           aside={cash.result ? cash.result.summary : (cash.error ?? undefined)}
@@ -405,11 +405,18 @@ export default async function EkonomiPage({
           title={
             at && at.fixedCostOre > 0
               ? `Vinst ${sek(at.profitAfterFixedOre)} efter fasta kostnader på ${sek(at.fixedCostOre)}.`
-              : "Inga fasta kostnader i perioden."
+              : at
+                ? `Vinst ${sek(at.profitOre)}, inga fasta kostnader i perioden.`
+                : "Fasta kostnader."
           }
-          aside={fixed.allocation ? fixed.allocation.summary : (fixed.error ?? undefined)}
+          aside={
+            at && at.fixedCostOre > 0
+              ? fixed.allocation!.summary
+              : (fixed.error ??
+                "Försäkring, programvara och transport dras från vinsten de dagar de gäller.")
+          }
         />
-        {at ? (
+        {at && at.fixedCostOre > 0 ? (
           <EconomyKpis
             label={`Lönsamhet · ${when}`}
             items={[

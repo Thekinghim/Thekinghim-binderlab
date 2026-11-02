@@ -11,7 +11,13 @@
 import type { IsoDate } from "@/domain";
 
 /** Källor som adaptern kan väljas för. Bara 'local' har en implementation i dag. */
-export const MARKET_SOURCE_IDS = ["none", "local", "tcgplayer", "cardmarket", "pricecharting"] as const;
+export const MARKET_SOURCE_IDS = [
+  "none",
+  "local",
+  "tcgplayer",
+  "cardmarket",
+  "pricecharting",
+] as const;
 export type MarketSourceId = (typeof MARKET_SOURCE_IDS)[number];
 
 /** Produkttyp för förseglade produkter. */

@@ -10,11 +10,7 @@ import { cache } from "react";
 import { AuthorizationError, getActiveOrganization, requireUser } from "@/server/session";
 
 import { loadMarketDataFor, type Viewer } from "./service";
-import {
-  marketSourceStatus,
-  type MarketPricePoint,
-  type MarketSourceStatus,
-} from "./sources";
+import { marketSourceStatus, type MarketPricePoint, type MarketSourceStatus } from "./sources";
 import type { MarketData } from "./types";
 
 export type { MarketData } from "./types";
@@ -30,8 +26,8 @@ export const currentMarketViewer = cache(async (): Promise<Viewer> => {
 });
 
 /** Allt /marknad räknar på (ägare, admin och läsare). */
-export const loadMarket = cache(
-  async (): Promise<MarketData> => loadMarketDataFor(await currentMarketViewer()),
+export const loadMarket = cache(async (): Promise<MarketData> =>
+  loadMarketDataFor(await currentMarketViewer()),
 );
 
 /** Externa marknadspriser per titel, om en källa är vald. */

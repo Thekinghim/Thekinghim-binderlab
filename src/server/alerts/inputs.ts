@@ -48,7 +48,10 @@ export async function loadHealthData(tx: Tx, orgId: string, today: IsoDate): Pro
   const [machines, titles, orders, stockRows] = await Promise.all([
     queryMachines(tx, orgId, placements, today),
     queryTitles(tx, orgId),
-    querySaleEventsAsOrders(tx, orgId, { start: addDays(today, -HEALTH_LOOKBACK_DAYS), end: today }),
+    querySaleEventsAsOrders(tx, orgId, {
+      start: addDays(today, -HEALTH_LOOKBACK_DAYS),
+      end: today,
+    }),
     queryStock(tx, orgId),
   ]);
   const stock = stockRows
@@ -171,4 +174,3 @@ export const alertColumns = {
   resolvedNotifiedAt: s.alerts.resolvedNotifiedAt,
   suppressedBy: s.alerts.suppressedBy,
 };
-

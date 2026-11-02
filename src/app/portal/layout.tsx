@@ -1,11 +1,12 @@
 import type { Metadata, Viewport } from "next";
+import { cookies } from "next/headers";
 import type { ReactNode } from "react";
 
 import { getPortalContext } from "@/server/portal/session";
 
 import { PortalHeader } from "./_components/portal-header";
 import { PortalThemeScope } from "./_components/portal-theme";
-import { portalThemeScript } from "./_components/theme-script";
+import { PORTAL_ROOT_ID, PORTAL_THEME_COOKIE, portalTheme } from "./_components/theme-script";
 
 export const metadata: Metadata = {
   title: { default: "Butiksportal", template: "%s · Butiksportal · Binderlab" },
@@ -26,10 +27,10 @@ export const viewport: Viewport = {
  */
 export default async function PortalLayout({ children }: { children: ReactNode }) {
   const ctx = await getPortalContext();
+  const theme = portalTheme((await cookies()).get(PORTAL_THEME_COOKIE)?.value);
   return (
-    <div className="flex min-h-dvh flex-col bg-bg text-fg">
-      <script dangerouslySetInnerHTML={{ __html: portalThemeScript }} />
-      <PortalThemeScope />
+    <div id={PORTAL_ROOT_ID} data-theme={theme} className="flex min-h-dvh flex-col bg-bg text-fg">
+      <PortalThemeScope theme={theme} />
       <a
         href="#main"
         className="sr-only rounded-xs bg-raised px-3 py-2 text-fg focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50"
@@ -37,6 +38,7 @@ export default async function PortalLayout({ children }: { children: ReactNode }
         Till innehållet
       </a>
       <PortalHeader
+        theme={theme}
         email={ctx?.user.email ?? ""}
         store={
           ctx

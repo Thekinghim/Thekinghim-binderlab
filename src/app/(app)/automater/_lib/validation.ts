@@ -81,6 +81,15 @@ export type DecommissionInput = z.infer<typeof decommissionSchema>;
 
 export const reactivateSchema = z.object({ machineId: uuid });
 
+/**
+ * Två meningar där den första kan sluta på ett förkortat datum ("1 nov."): ingen
+ * dubbel punkt.
+ */
+export function sentences(first: string, second: string): string {
+  const a = first.trim();
+  return `${/[.!?]$/.test(a) ? a : `${a}.`} ${second}`;
+}
+
 /** Första felmeddelandet ur en zod-validering. */
 export function firstIssue(error: z.ZodError): string {
   return error.issues[0]?.message ?? "Kontrollera uppgifterna.";
@@ -133,13 +142,19 @@ export function planMove(args: {
   if (activeTo !== null && from > activeTo) {
     return {
       ok: false,
-      error: `${code} är avvecklad från ${day(addDays(activeTo, 1))}. Återaktivera den först.`,
+      error: sentences(
+        `${code} är avvecklad från ${day(addDays(activeTo, 1))}`,
+        "Återaktivera den först.",
+      ),
     };
   }
   if (activeFrom !== null && from < activeFrom) {
     return {
       ok: false,
-      error: `${code} startar ${day(activeFrom)}. Flytten kan inte ligga före driftstarten.`,
+      error: sentences(
+        `${code} startar ${day(activeFrom)}`,
+        "Flytten kan inte ligga före driftstarten.",
+      ),
     };
   }
   const later = placements
@@ -151,7 +166,10 @@ export function planMove(args: {
       error:
         later.from === from
           ? `${code} har redan en placering från ${day(from)} (${storeName(later.storeId)}).`
-          : `${code} har en placering från ${day(later.from)}. Välj ett datum efter den.`,
+          : sentences(
+              `${code} har en placering från ${day(later.from)}`,
+              "Välj ett datum efter den.",
+            ),
     };
   }
   const covering = placements.find((p) => p.from < from && (p.to === null || p.to >= from));
@@ -197,20 +215,26 @@ export function planDecommission(args: {
   if (activeFrom !== null && activeTo < activeFrom) {
     return {
       ok: false,
-      error: `${code} startade ${day(activeFrom)}. Sista dagen kan inte ligga före.`,
+      error: sentences(`${code} startade ${day(activeFrom)}`, "Sista dagen kan inte ligga före."),
     };
   }
   if (lastOrderDate !== null && activeTo < lastOrderDate) {
     return {
       ok: false,
-      error: `${code} har order till ${day(lastOrderDate)}. Sista dagen kan inte ligga före den.`,
+      error: sentences(
+        `${code} har order till ${day(lastOrderDate)}`,
+        "Sista dagen kan inte ligga före den.",
+      ),
     };
   }
   const after = placements.find((p) => p.from > activeTo);
   if (after) {
     return {
       ok: false,
-      error: `${code} har en placering från ${day(after.from)}. Välj en sista dag efter den.`,
+      error: sentences(
+        `${code} har en placering från ${day(after.from)}`,
+        "Välj en sista dag efter den.",
+      ),
     };
   }
   return {

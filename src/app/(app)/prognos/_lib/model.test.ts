@@ -316,7 +316,7 @@ describe("buildPageModel", () => {
     // Sista historikveckan slutar i går och är backtestens sista vecka.
     expect(m.forecast.history.at(-1)?.end).toBe(AS_OF);
     expect(m.accuracy.origins.at(-1)?.period.end).toBe(AS_OF);
-    expect(m.accuracy.heading.title).toMatch(/missade i snitt/);
+    expect(m.accuracy.heading.title).toMatch(/^Prognosen missade i snitt .* per dag\.$/);
   });
 
   it("föreslår inköp i hela boxar och visar leverantören", () => {

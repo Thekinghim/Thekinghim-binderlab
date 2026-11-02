@@ -9,7 +9,7 @@ import { StateMessage } from "@/components/ui/state-message";
 import { formatInt, NBSP } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
 
-import { plural } from "../_lib/display";
+import { plural, sentenceEnd } from "../_lib/display";
 import { loadVisitPlan } from "../_lib/load";
 
 export const metadata: Metadata = { title: "Besöksplan" };
@@ -32,7 +32,7 @@ export default async function VisitPlanPage() {
         as="h1"
         size="xl"
         eyebrow="Besöksplan"
-        title={stops === 0 ? "Inga besök behövs i veckan." : `${plan.summary}.`}
+        title={stops === 0 ? "Inga besök behövs i veckan." : sentenceEnd(plan.summary)}
         aside={
           stops === 0
             ? "Lagret räcker i alla automater de närmaste 7 dagarna vid nuvarande takt."
@@ -52,7 +52,7 @@ export default async function VisitPlanPage() {
           kind="not-configured"
           compact
           message="Centrallagret har inget saldo, så packlistan räknar med att allt finns."
-          action={{ label: "Öppna Lager →", href: "/lager" }}
+          action={{ label: "Öppna Lager", href: "/lager" }}
         />
       ) : null}
 
@@ -73,12 +73,16 @@ export default async function VisitPlanPage() {
       ) : (
         <div className="flex flex-col gap-12">
           {plan.days.map((day, i) => (
-            <section key={day.date} aria-labelledby={`dag-${day.date}`} className="flex flex-col gap-6">
+            <section
+              key={day.date}
+              aria-labelledby={`dag-${day.date}`}
+              className="flex flex-col gap-6"
+            >
               <SectionHeader
                 id={`dag-${day.date}`}
                 index={i + 1}
                 eyebrow={`Besöksdag · ${day.routeMethod === "distance" ? "ordnad efter avstånd" : "ordnad efter brådska"}`}
-                title={`${day.title}.`}
+                title={sentenceEnd(day.title)}
                 aside={
                   day.totalMeters !== null
                     ? `${kmText(day.totalMeters)} med återresa.`
@@ -93,7 +97,9 @@ export default async function VisitPlanPage() {
                       <Panel>
                         <div className="flex flex-wrap items-baseline justify-between gap-3">
                           <div className="flex items-baseline gap-3">
-                            <span className="meta tnum text-subtle">{String(stop.sequence).padStart(2, "0")}</span>
+                            <span className="meta tnum text-subtle">
+                              {String(stop.sequence).padStart(2, "0")}
+                            </span>
                             <Link
                               href={`/drift/automat/${stop.machineId}`}
                               className="rounded-xs text-base text-fg hover:underline"
@@ -107,20 +113,52 @@ export default async function VisitPlanPage() {
                           </span>
                         </div>
                         <ul className="mt-2 flex flex-col gap-1 text-sm text-muted">
-                          {stop.reasons.map((r) => (
+                          {stop.reasons.slice(0, 3).map((r) => (
                             <li key={r}>{r}</li>
                           ))}
+                          {stop.reasons.length > 3 ? (
+                            <li>
+                              <details>
+                                <summary className="w-fit cursor-pointer rounded-xs hover:text-fg">
+                                  {`Och ${formatInt(stop.reasons.length - 3)} titlar till`}
+                                </summary>
+                                <ul className="mt-1 flex flex-col gap-1">
+                                  {stop.reasons.slice(3).map((r) => (
+                                    <li key={r}>{r}</li>
+                                  ))}
+                                </ul>
+                              </details>
+                            </li>
+                          ) : null}
                         </ul>
                         {stop.packs.length > 0 ? (
-                          <PanelSection label="Packlista" meta={`${formatInt(stop.totalPacks)} st`} className="mt-4">
+                          <PanelSection
+                            label="Packlista"
+                            meta={`${formatInt(stop.totalPacks)} st`}
+                            className="mt-4"
+                          >
                             <table className="w-full text-sm">
                               <caption className="sr-only">{`Packlista för ${stop.machineName}`}</caption>
                               <thead>
                                 <tr className="label text-subtle">
-                                  <th scope="col" className="py-1 text-left font-normal">Titel</th>
-                                  <th scope="col" className="py-1 text-right font-normal">Ta med</th>
-                                  <th scope="col" className="hidden py-1 text-right font-normal sm:table-cell">Kvar vid besök</th>
-                                  <th scope="col" className="hidden py-1 text-right font-normal sm:table-cell">Mål</th>
+                                  <th scope="col" className="py-1 text-left font-normal">
+                                    Titel
+                                  </th>
+                                  <th scope="col" className="py-1 text-right font-normal">
+                                    Ta med
+                                  </th>
+                                  <th
+                                    scope="col"
+                                    className="hidden py-1 text-right font-normal sm:table-cell"
+                                  >
+                                    Kvar vid besök
+                                  </th>
+                                  <th
+                                    scope="col"
+                                    className="hidden py-1 text-right font-normal sm:table-cell"
+                                  >
+                                    Mål
+                                  </th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-line">
@@ -132,9 +170,15 @@ export default async function VisitPlanPage() {
                                         <span className="block text-xs text-muted">{`${formatInt(p.shortBy)} pack saknas i centrallagret`}</span>
                                       ) : null}
                                     </td>
-                                    <td className="tnum py-2 text-right text-fg">{formatInt(p.quantity)}</td>
-                                    <td className="tnum hidden py-2 text-right text-muted sm:table-cell">{formatInt(p.projectedAtVisit)}</td>
-                                    <td className="tnum hidden py-2 text-right text-muted sm:table-cell">{formatInt(p.target)}</td>
+                                    <td className="tnum py-2 text-right text-fg">
+                                      {formatInt(p.quantity)}
+                                    </td>
+                                    <td className="tnum hidden py-2 text-right text-muted sm:table-cell">
+                                      {formatInt(p.projectedAtVisit)}
+                                    </td>
+                                    <td className="tnum hidden py-2 text-right text-muted sm:table-cell">
+                                      {formatInt(p.target)}
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -142,7 +186,9 @@ export default async function VisitPlanPage() {
                           </PanelSection>
                         ) : null}
                         <details className="mt-4">
-                          <summary className="w-fit cursor-pointer rounded-xs text-sm text-muted hover:text-fg">Underlag</summary>
+                          <summary className="w-fit cursor-pointer rounded-xs text-sm text-muted hover:text-fg">
+                            Underlag
+                          </summary>
                           <p className="mt-2 text-sm text-muted">{stop.evidence.rule}</p>
                         </details>
                       </Panel>
@@ -153,8 +199,11 @@ export default async function VisitPlanPage() {
                   <Panel>
                     <PanelSection label="Att lasta" meta={`${formatInt(day.totalPacks)} st`}>
                       <ul className="flex flex-col divide-y divide-line text-sm">
-                        {day.load.map((l) => (
-                          <li key={l.titleId} className="flex items-baseline justify-between gap-3 py-2">
+                        {day.load.filter((l) => l.quantity > 0).map((l) => (
+                          <li
+                            key={l.titleId}
+                            className="flex items-baseline justify-between gap-3 py-2"
+                          >
                             <span className="text-fg">{l.titleName}</span>
                             <span className="tnum text-fg">{formatInt(l.quantity)}</span>
                           </li>
@@ -182,7 +231,9 @@ export default async function VisitPlanPage() {
             {plan.notNeeded.map((n) => (
               <li key={n.machineId} className="flex items-baseline justify-between gap-3 py-2">
                 <span className="meta text-fg">{machineCode.get(n.machineId) ?? n.machineId}</span>
-                <span className="meta text-subtle">{n.needBy ? `Senast ${weekdayDay(n.needBy)}` : "Ingen försäljning att räkna på"}</span>
+                <span className="meta text-subtle">
+                  {n.needBy ? `Senast ${weekdayDay(n.needBy)}` : "Ingen försäljning att räkna på"}
+                </span>
               </li>
             ))}
           </ul>

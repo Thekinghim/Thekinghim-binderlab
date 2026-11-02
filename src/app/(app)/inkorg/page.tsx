@@ -32,10 +32,18 @@ function StatTable({ caption, rows, first }: { caption: string; rows: StatRow[];
         <caption className="sr-only">{caption}</caption>
         <thead>
           <tr className="label border-b border-line-strong text-subtle">
-            <th scope="col" className="h-9 text-left font-normal">{first}</th>
-            <th scope="col" className="h-9 text-right font-normal">Ärenden</th>
-            <th scope="col" className="h-9 text-right font-normal">Öppna</th>
-            <th scope="col" className="h-9 text-right font-normal">Återbetalt</th>
+            <th scope="col" className="h-9 text-left font-normal">
+              {first}
+            </th>
+            <th scope="col" className="h-9 text-right font-normal">
+              Ärenden
+            </th>
+            <th scope="col" className="h-9 text-right font-normal">
+              Öppna
+            </th>
+            <th scope="col" className="h-9 text-right font-normal">
+              Återbetalt
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-line">
@@ -75,12 +83,17 @@ export default async function InboxPage({
   if (!ctx.canSeeEconomy) {
     return (
       <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-8 px-4 pt-8 pb-16 md:px-8 md:pt-12">
-        <SectionHeader as="h1" size="xl" eyebrow="Inkorg" title="Kundärenden hanteras av ägare och admin." />
+        <SectionHeader
+          as="h1"
+          size="xl"
+          eyebrow="Inkorg"
+          title="Kundärenden hanteras av ägare och admin."
+        />
         <StateMessage
           kind="denied"
           message="Ärenden innehåller återbetalningar och visas inte för påfyllare."
           detail="Ser du ett fel på en automat? Registrera påfyllning eller säg till ägaren."
-          action={{ label: "Öppna Drift →", href: "/drift" }}
+          action={{ label: "Öppna Drift", href: "/drift" }}
         />
       </div>
     );
@@ -97,30 +110,65 @@ export default async function InboxPage({
   const member = new Map(data.members.map((m) => [m.userId, m.name]));
 
   const open = data.incidents.filter((i) => i.status !== "resolved");
-  const createdIn = data.incidents.filter((i) => inPeriod(i.startedAt, p.period.start, p.period.end, ctx.timeZone));
+  const createdIn = data.incidents.filter((i) =>
+    inPeriod(i.startedAt, p.period.start, p.period.end, ctx.timeZone),
+  );
   const resolvedIn = data.incidents.filter(
-    (i) => i.status === "resolved" && inPeriod(i.endedAt, p.period.start, p.period.end, ctx.timeZone),
+    (i) =>
+      i.status === "resolved" && inPeriod(i.endedAt, p.period.start, p.period.end, ctx.timeZone),
   );
   const relevant = data.incidents.filter(
-    (i) => i.status !== "resolved" || createdIn.includes(i) || resolvedIn.includes(i) || (i.refundedOn !== null && i.refundedOn >= p.period.start && i.refundedOn <= p.period.end),
+    (i) =>
+      i.status !== "resolved" ||
+      createdIn.includes(i) ||
+      resolvedIn.includes(i) ||
+      (i.refundedOn !== null && i.refundedOn >= p.period.start && i.refundedOn <= p.period.end),
   );
 
-  const statsBy = (keyOf: (i: IncidentRow) => string | null, labelOf: (k: string) => string, summary: typeof data.refunds.byMachine): StatRow[] => {
+  const statsBy = (
+    keyOf: (i: IncidentRow) => string | null,
+    labelOf: (k: string) => string,
+    summary: typeof data.refunds.byMachine,
+  ): StatRow[] => {
     const rows = new Map<string, StatRow>();
     for (const i of createdIn) {
       const k = keyOf(i) ?? REFUND_NONE_KEY;
-      const prev = rows.get(k) ?? { key: k, label: labelOf(k), count: 0, open: 0, refundedOre: 0, refundCount: 0 };
-      rows.set(k, { ...prev, count: prev.count + 1, open: prev.open + (i.status !== "resolved" ? 1 : 0) });
+      const prev = rows.get(k) ?? {
+        key: k,
+        label: labelOf(k),
+        count: 0,
+        open: 0,
+        refundedOre: 0,
+        refundCount: 0,
+      };
+      rows.set(k, {
+        ...prev,
+        count: prev.count + 1,
+        open: prev.open + (i.status !== "resolved" ? 1 : 0),
+      });
     }
     for (const r of summary.rows) {
-      const prev = rows.get(r.key) ?? { key: r.key, label: labelOf(r.key), count: 0, open: 0, refundedOre: 0, refundCount: 0 };
+      const prev = rows.get(r.key) ?? {
+        key: r.key,
+        label: labelOf(r.key),
+        count: 0,
+        open: 0,
+        refundedOre: 0,
+        refundCount: 0,
+      };
       rows.set(r.key, { ...prev, refundedOre: r.amountOre, refundCount: r.count });
     }
-    return [...rows.values()].sort((a, b) => b.count - a.count || b.refundedOre - a.refundedOre || a.label.localeCompare(b.label, "sv"));
+    return [...rows.values()].sort(
+      (a, b) =>
+        b.count - a.count || b.refundedOre - a.refundedOre || a.label.localeCompare(b.label, "sv"),
+    );
   };
   const byMachine = statsBy(
     (i) => i.machineId,
-    (k) => (k === REFUND_NONE_KEY ? "Utan automat" : `${machine.get(k)?.code ?? ""} ${machine.get(k)?.name ?? "Okänd automat"}`.trim()),
+    (k) =>
+      k === REFUND_NONE_KEY
+        ? "Utan automat"
+        : `${machine.get(k)?.code ?? ""} ${machine.get(k)?.name ?? "Okänd automat"}`.trim(),
     data.refunds.byMachine,
   );
   const byTitle = statsBy(
@@ -153,7 +201,11 @@ export default async function InboxPage({
         as="h1"
         size="xl"
         eyebrow="Inkorg"
-        title={open.length === 0 ? "Inga öppna ärenden." : `${plural(open.length, "öppet ärende", "öppna ärenden")}.`}
+        title={
+          open.length === 0
+            ? "Inga öppna ärenden."
+            : `${plural(open.length, "öppet ärende", "öppna ärenden")}.`
+        }
         aside={
           total.amountOre > 0
             ? `${formatKronor(total.amountOre)} återbetalt ${periodLabel}, ${plural(total.count, "ärende", "ärenden")}.`
@@ -187,14 +239,17 @@ export default async function InboxPage({
           id="arenden"
           index={1}
           eyebrow="Ärenden"
-          title={rows.length === 0 ? "Inga ärenden i perioden." : `${plural(rows.length, "ärende", "ärenden")}.`}
+          title={
+            rows.length === 0
+              ? "Inga ärenden i perioden."
+              : `${plural(rows.length, "ärende", "ärenden")}.`
+          }
           aside="Öppna ärenden visas alltid, lösta när de rör perioden."
         />
         {rows.length === 0 ? (
           <StateMessage
             kind="empty"
             message={`Inga kundärenden ${periodLabel} och inga öppna.`}
-            action={ctx.canEdit ? { label: "Registrera ärende →", href: "/inkorg/nytt" } : undefined}
           />
         ) : (
           <IncidentTable rows={rows} />
@@ -207,7 +262,11 @@ export default async function InboxPage({
           index={2}
           eyebrow={`Per automat och titel · ${periodLabel}`}
           title={top ? `Flest ärenden i ${top.label}.` : "Inga ärenden att räkna på."}
-          aside={top ? `${plural(top.count, "ärende", "ärenden")}${top.refundedOre > 0 ? `, ${formatKronor(top.refundedOre)} återbetalt` : ""}.` : "Statistiken räknas på ärenden som startade i perioden."}
+          aside={
+            top
+              ? `${plural(top.count, "ärende", "ärenden")}${top.refundedOre > 0 ? `, ${formatKronor(top.refundedOre)} återbetalt` : ""}.`
+              : "Statistiken räknas på ärenden som startade i perioden."
+          }
         />
         {byMachine.length > 0 ? (
           <div className="grid gap-10 lg:grid-cols-12 lg:gap-8">
@@ -220,8 +279,8 @@ export default async function InboxPage({
           </div>
         ) : null}
         <p className="text-sm text-muted">
-          Återbetalningar dras från vinsten på återbetalningsdagen, som en egen rad. Intäkt, inköp och
-          butiksersättning ändras inte.
+          Återbetalningar dras från vinsten på återbetalningsdagen, som en egen rad. Intäkt, inköp
+          och butiksersättning ändras inte.
         </p>
       </section>
     </div>

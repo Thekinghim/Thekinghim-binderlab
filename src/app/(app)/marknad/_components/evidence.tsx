@@ -51,7 +51,9 @@ function orderHref(e: EvidenceLike): string | null {
 
 function names(ids: readonly string[], lookup: Readonly<Record<string, string>>): string {
   const list = ids.map((id) => lookup[id] ?? id);
-  return list.length > 6 ? `${list.slice(0, 6).join(", ")} och ${list.length - 6} till` : list.join(", ");
+  return list.length > 6
+    ? `${list.slice(0, 6).join(", ")} och ${list.length - 6} till`
+    : list.join(", ");
 }
 
 /**
@@ -78,7 +80,10 @@ export function Evidence({
   return (
     <details className="group min-w-0 text-sm">
       <summary className="label inline-flex cursor-pointer list-none items-center gap-2 rounded-xs text-subtle hover:text-fg [&::-webkit-details-marker]:hidden">
-        <span aria-hidden className="text-faint transition-transform duration-fast group-open:rotate-90">
+        <span
+          aria-hidden
+          className="text-faint transition-transform duration-fast group-open:rotate-90"
+        >
           ›
         </span>
         {label}

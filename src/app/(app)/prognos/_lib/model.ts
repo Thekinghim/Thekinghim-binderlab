@@ -150,6 +150,8 @@ export interface AccuracyOrigin {
 
 export interface AccuracyModel {
   readonly heading: Heading;
+  /** Hela meningen från @/analytics (till underlaget). */
+  readonly text: string;
   readonly total: AccuracyMetrics;
   readonly series: AccuracyMetrics;
   readonly origins: readonly AccuracyOrigin[];
@@ -598,15 +600,32 @@ function forecastModel(
         title:
           acc.total.wapeBp === null
             ? "Träffsäkerheten går inte att mäta än."
-            : `Summan per dag missade i snitt ${formatPercent(acc.total.wapeBp / 10_000, 0)}.`,
-        aside: tidy(acc.text),
+            : `Prognosen missade i snitt ${formatPercent(acc.total.wapeBp / 10_000, 0)} per dag.`,
+        aside: accuracyAside(acc.total, origins.length, tidy(acc.text)),
       },
+      text: tidy(acc.text),
       total: acc.total,
       series: acc.series,
       origins,
       evidence: evidenceView(acc.evidence, names),
     },
   };
+}
+
+/** Andra delen av rubriken för träffsäkerheten: antal veckor, bias och den enkla jämförelsen. */
+function accuracyAside(m: AccuracyMetrics, weeks: number, fallback: string): string {
+  if (m.wapeBp === null) return fallback;
+  const parts: string[] = [`Mätt på ${plural(weeks, "vecka", "veckor")} som modellen inte sett.`];
+  const bias = m.biasBp ?? 0;
+  parts.push(
+    Math.abs(bias) < 50
+      ? "Ingen systematisk avvikelse."
+      : `Den låg ${formatPercent(Math.abs(bias) / 10_000, 0)} för ${bias > 0 ? "högt" : "lågt"}.`,
+  );
+  if (m.naiveWapeBp !== null) {
+    parts.push(`Förra veckans snitt hade missat ${formatPercent(m.naiveWapeBp / 10_000, 0)}.`);
+  }
+  return parts.join(" ");
 }
 
 function planModel(data: PrognosData, names: ReturnType<typeof lookup>): PlanModel {
@@ -685,7 +704,13 @@ function planModel(data: PrognosData, names: ReturnType<typeof lookup>): PlanMod
   if (counts.order > 0 && counts["no-supplier"] > 0) {
     asideParts.push(`${plural(counts["no-supplier"], "titel", "titlar")} till saknar leverantör.`);
   }
-  if (asideParts.length === 0) asideParts.push(tidy(p.text));
+  if (asideParts.length === 0) {
+    if (counts.order === 0 && counts["no-supplier"] > 0) {
+      asideParts.push(
+        `Lägg upp leverantör och artikel för dem; ${plural(counts.ok, "titel räcker", "titlar räcker")} till nästa beställningstillfälle.`,
+      );
+    } else asideParts.push(tidy(p.text));
+  }
 
   return {
     heading: { title, aside: asideParts.join(" ") },

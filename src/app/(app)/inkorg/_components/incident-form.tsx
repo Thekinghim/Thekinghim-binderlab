@@ -46,14 +46,19 @@ export function IncidentForm({
   const [errors, setErrors] = useState<IncidentErrors>({});
   const [pending, start] = useTransition();
   const [searching, startSearch] = useTransition();
-  const [candidates, setCandidates] = useState<OrderCandidate[] | null>(currentOrder ? [currentOrder] : null);
+  const [candidates, setCandidates] = useState<OrderCandidate[] | null>(
+    currentOrder ? [currentOrder] : null,
+  );
   const set = <K extends keyof IncidentInput>(k: K, value: IncidentInput[K]) =>
     setV((prev) => ({ ...prev, [k]: value }));
 
   const search = () =>
     startSearch(async () => {
       const found = await findOrders(v.machineId, v.occurredAt);
-      const merged = currentOrder && !found.some((o) => o.id === currentOrder.id) ? [currentOrder, ...found] : found;
+      const merged =
+        currentOrder && !found.some((o) => o.id === currentOrder.id)
+          ? [currentOrder, ...found]
+          : found;
       setCandidates(merged);
     });
 
@@ -64,7 +69,9 @@ export function IncidentForm({
       orderId: id,
       titleId: o?.titleId ?? prev.titleId,
       refunded:
-        prev.refunded === "" && o && (prev.kind === "not_delivered" || prev.kind === "refund_request")
+        prev.refunded === "" &&
+        o &&
+        (prev.kind === "not_delivered" || prev.kind === "refund_request")
           ? formatCsvNumber(o.amountOre / 100)
           : prev.refunded,
     }));
@@ -97,7 +104,10 @@ export function IncidentForm({
           value={v.machineId}
           onChange={(e) => set("machineId", e.target.value)}
           error={errors.machineId}
-          options={[{ value: "", label: "Välj automat" }, ...machines.map((m) => ({ value: m.id, label: m.label }))]}
+          options={[
+            { value: "", label: "Välj automat" },
+            ...machines.map((m) => ({ value: m.id, label: m.label })),
+          ]}
         />
         <Input
           label="Tidpunkt"
@@ -130,28 +140,43 @@ export function IncidentForm({
             maxLength={2000}
             className="min-h-20 w-full rounded-sm border border-line-control bg-bg px-3 py-2 text-base text-fg placeholder:text-subtle"
           />
-          {errors.description ? <span className="text-xs text-signal-fg">{errors.description}</span> : null}
+          {errors.description ? (
+            <span className="text-xs text-signal-fg">{errors.description}</span>
+          ) : null}
         </label>
       </fieldset>
 
-      <fieldset disabled={readOnly} className="flex min-w-0 flex-col gap-4 border-t border-line pt-4">
+      <fieldset
+        disabled={readOnly}
+        className="flex min-w-0 flex-col gap-4 border-t border-line pt-4"
+      >
         <legend className="label float-left mb-4 w-full text-muted">Order och titel</legend>
         <div className="flex flex-wrap items-end gap-3">
-          <Button type="button" onClick={search} loading={searching} disabled={!v.machineId || !v.occurredAt}>
+          <Button
+            type="button"
+            onClick={search}
+            loading={searching}
+            disabled={!v.machineId || !v.occurredAt}
+          >
             Sök order runt tidpunkten
           </Button>
           <span className="text-xs text-subtle">Två timmar före och efter, i samma automat.</span>
         </div>
         {candidates ? (
           candidates.length === 0 ? (
-            <p className="text-sm text-muted">Ingen order i automaten två timmar före eller efter tidpunkten.</p>
+            <p className="text-sm text-muted">
+              Ingen order i automaten två timmar före eller efter tidpunkten.
+            </p>
           ) : (
             <Select
               label="Order"
               value={v.orderId}
               onChange={(e) => pickOrder(e.target.value)}
               error={errors.orderId}
-              options={[{ value: "", label: "Ingen order kopplad" }, ...candidates.map((o) => ({ value: o.id, label: orderLabel(o) }))]}
+              options={[
+                { value: "", label: "Ingen order kopplad" },
+                ...candidates.map((o) => ({ value: o.id, label: orderLabel(o) })),
+              ]}
             />
           )
         ) : null}
@@ -161,11 +186,17 @@ export function IncidentForm({
           onChange={(e) => set("titleId", e.target.value)}
           error={errors.titleId}
           wrapperClassName="max-w-md"
-          options={[{ value: "", label: "Ingen titel" }, ...titles.map((t) => ({ value: t.id, label: t.name }))]}
+          options={[
+            { value: "", label: "Ingen titel" },
+            ...titles.map((t) => ({ value: t.id, label: t.name })),
+          ]}
         />
       </fieldset>
 
-      <fieldset disabled={readOnly} className="grid min-w-0 gap-5 border-t border-line pt-4 sm:grid-cols-2">
+      <fieldset
+        disabled={readOnly}
+        className="grid min-w-0 gap-5 border-t border-line pt-4 sm:grid-cols-2"
+      >
         <legend className="label float-left mb-4 w-full text-muted">Hantering</legend>
         <Select
           label="Status"
@@ -179,7 +210,10 @@ export function IncidentForm({
           value={v.assigneeId}
           onChange={(e) => set("assigneeId", e.target.value)}
           error={errors.assigneeId}
-          options={[{ value: "", label: "Ingen" }, ...members.map((m) => ({ value: m.userId, label: m.name }))]}
+          options={[
+            { value: "", label: "Ingen" },
+            ...members.map((m) => ({ value: m.userId, label: m.name })),
+          ]}
         />
         <Input
           label="Återbetalt"
@@ -211,7 +245,9 @@ export function IncidentForm({
                 : "min-h-20 w-full rounded-sm border border-line-control bg-bg px-3 py-2 text-base text-fg"
             }
           />
-          {errors.actionTaken ? <span className="text-xs text-signal-fg">{errors.actionTaken}</span> : null}
+          {errors.actionTaken ? (
+            <span className="text-xs text-signal-fg">{errors.actionTaken}</span>
+          ) : null}
         </label>
       </fieldset>
 

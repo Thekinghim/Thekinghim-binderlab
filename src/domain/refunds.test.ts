@@ -30,8 +30,7 @@ describe("refundsInPeriod", () => {
   });
 
   it("avvisar negativa belopp, flyttal och ogiltiga datum", () => {
-    const bad = (r: Partial<Refund>) => () =>
-      refundsInPeriod([{ ...refunds[0]!, ...r }], NOV);
+    const bad = (r: Partial<Refund>) => () => refundsInPeriod([{ ...refunds[0]!, ...r }], NOV);
     expect(bad({ amountOre: -1 })).toThrow(DomainError);
     expect(bad({ amountOre: 49.5 })).toThrow(DomainError);
     expect(bad({ refundedOn: "2026-11-31" })).toThrow(DomainError);

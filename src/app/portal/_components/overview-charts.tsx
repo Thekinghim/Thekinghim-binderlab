@@ -2,7 +2,7 @@
 
 import { BarChart, type BarDatum } from "@/components/charts/bar-chart";
 import { KpiStrip, type KpiItem } from "@/components/ui/kpi-strip";
-import { formatInt } from "@/lib/format";
+import { formatInt, formatSek } from "@/lib/format";
 
 import { kr } from "./text";
 
@@ -42,7 +42,7 @@ export function PortalKpis({ kpis, comparison }: { kpis: PortalKpi[]; comparison
   return <KpiStrip items={items} comparison={comparison} label="Månaden" />;
 }
 
-/** Försäljning per månad (staplar). Toppen annoteras, aldrig signal. */
+/** Försäljning per månad (staplar, värden i kronor). Vald månad annoteras, aldrig signal. */
 export function TrendChart({
   data,
   summary,
@@ -56,7 +56,7 @@ export function TrendChart({
     <BarChart
       data={data}
       orientation="vertical"
-      format={(v) => kr(v)}
+      format={(v) => formatSek(v)}
       unit="kr"
       height={240}
       peakIndex={selectedIndex}
@@ -66,7 +66,7 @@ export function TrendChart({
   );
 }
 
-/** Titlar eller veckor som liggande staplar med värde till höger. */
+/** Titlar som liggande staplar med värde till höger (värden i kronor). */
 export function RankChart({
   data,
   summary,
@@ -81,7 +81,7 @@ export function RankChart({
   return (
     <BarChart
       data={data}
-      format={(v) => kr(v)}
+      format={(v) => formatSek(v)}
       unit="kr"
       labelHeading={labelHeading}
       valueHeading={valueHeading}

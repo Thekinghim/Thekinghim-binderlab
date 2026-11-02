@@ -25,7 +25,10 @@ function json(body: unknown, status = 200): Response {
 export async function GET(request: Request): Promise<Response> {
   const secret = process.env.CRON_SECRET?.trim();
   if (!secret || secret.length < 16) {
-    return json({ error: "CRON_SECRET är inte satt (minst 16 tecken). Larmjobbet körs inte." }, 503);
+    return json(
+      { error: "CRON_SECRET är inte satt (minst 16 tecken). Larmjobbet körs inte." },
+      503,
+    );
   }
   if (!cronAuthorized(request.headers.get("authorization"), secret)) {
     return json({ error: "Obehörig." }, 401);

@@ -92,7 +92,10 @@ function MachineCard({
             {rec.changes.length > 0 ? (
               <ul className="flex flex-col gap-1" aria-label={`Ändringar i ${view.code}`}>
                 {rec.changes.map((c) => (
-                  <li key={c.titleId} className="flex flex-wrap items-baseline justify-between gap-x-4">
+                  <li
+                    key={c.titleId}
+                    className="flex flex-wrap items-baseline justify-between gap-x-4"
+                  >
                     <span>
                       <span className="label mr-2 text-subtle">{changeWord(c)}</span>
                       {ctx.names.title[c.titleId] ?? c.titleId}{" "}
@@ -174,7 +177,10 @@ function MachineCard({
                 periodEnd={period.end}
                 today={ctx.today}
                 summary={rec.changes
-                  .map((c) => `${changeWord(c)} ${ctx.names.title[c.titleId] ?? c.titleId} (${c.fromSlots} → ${c.toSlots}).`)
+                  .map(
+                    (c) =>
+                      `${changeWord(c)} ${ctx.names.title[c.titleId] ?? c.titleId} (${c.fromSlots} → ${c.toSlots}).`,
+                  )
                   .join(" ")}
                 effectText={`${signedKronorWhole(rec.effectPerWeekOre)}/vecka`}
               />
@@ -326,7 +332,9 @@ export function AssortmentSection({
             {followUps.map(({ change, followUp }) => (
               <li key={change.id} className="flex min-w-0 flex-col gap-3 border-b border-line pb-4">
                 <div className="flex flex-wrap items-center gap-3">
-                  <span className="meta text-fg">{ctx.names.machine[change.machineId] ?? change.machineId}</span>
+                  <span className="meta text-fg">
+                    {ctx.names.machine[change.machineId] ?? change.machineId}
+                  </span>
                   <span className="meta text-subtle">
                     Genomförd {dayText(change.implementedOn, ctx.today)} · väntat{" "}
                     {signedKronorWhole(change.expectedEffectPerWeekOre)}/vecka

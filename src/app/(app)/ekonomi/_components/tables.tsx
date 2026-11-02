@@ -160,9 +160,8 @@ const CASH_COLUMNS: ReadonlyArray<Column<CashRow>> = [
     header: "Månad",
     sortValue: (r) => r.key,
     render: (r) => (
-      <span className="flex flex-col gap-0.5">
-        <span className="text-fg">{monthText(r.key)}</span>
-        <span className="meta text-subtle">{r.summary}</span>
+      <span className="whitespace-nowrap text-fg" title={r.summary}>
+        {monthText(r.key)}
       </span>
     ),
     csv: (r) => r.key,
