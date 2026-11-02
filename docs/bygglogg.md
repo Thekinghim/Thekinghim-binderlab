@@ -51,3 +51,10 @@ Tas bort när alla faser är klara.
 - Omkörning av logik: prognos/förlorad försäljning/inköp, avstämning/kassaflöde/avtal, expansion-fix (logic-ahead-rerun).
 - Menyposter och platshållare för fas 6–11 lades in i src/components/shell/nav.ts av huvudagenten.
 - Efter allt: fas 7 (kvalitet, onboarding, demoläge, e2e, dokumentation) och integration (Hem/Att göra kopplas till förlorad försäljning, avtal, rapporter).
+
+## 12:40 – fas 1b klar och på main
+
+- Bygget typkontrollerar bara appens kod (tsconfig.build.json); tester och skript kontrolleras av `npm run typecheck` i CI.
+- Saknad miljö stoppar inte servern: /design och /datamodell fungerar utan nycklar, inloggade sidor visar ConfigMissing
+  (src/server/config-status.ts). Dev-inloggningens spärr gäller som tidigare.
+- Verifierat: `next build` och `next start` utan miljövariabler i en separat worktree (/home/user/wt-build).
