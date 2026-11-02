@@ -74,7 +74,8 @@ export function oracleTotals(input: ProfitabilityInput): OracleTotals {
   };
   const agreementOf = (storeId: string, date: string) => {
     const hits = input.agreements.filter(
-      (a) => a.storeId === storeId && a.validFrom <= date && (a.validTo === null || date <= a.validTo),
+      (a) =>
+        a.storeId === storeId && a.validFrom <= date && (a.validTo === null || date <= a.validTo),
     );
     if (hits.length > 1) throw new Error("oracle: överlappande avtal");
     return hits[0] ?? null;
@@ -154,7 +155,9 @@ export function oracleTotals(input: ProfitabilityInput): OracleTotals {
     }
     const parts = weights.map((w, i) => ({ i, base: (rent * w) / wsum, rest: (rent * w) % wsum }));
     let left = rent - parts.reduce((a, p) => a + p.base, 0n);
-    const order = [...parts].sort((a, b) => (a.rest !== b.rest ? (a.rest > b.rest ? -1 : 1) : a.i - b.i));
+    const order = [...parts].sort((a, b) =>
+      a.rest !== b.rest ? (a.rest > b.rest ? -1 : 1) : a.i - b.i,
+    );
     for (const p of order) {
       if (left === 0n) break;
       p.base += 1n;
@@ -166,7 +169,9 @@ export function oracleTotals(input: ProfitabilityInput): OracleTotals {
   }
 
   const sum = (f: (r: Row) => bigint, priced: boolean | null) =>
-    Number(rows.filter((r) => priced === null || r.priced === priced).reduce((a, r) => a + f(r), 0n));
+    Number(
+      rows.filter((r) => priced === null || r.priced === priced).reduce((a, r) => a + f(r), 0n),
+    );
   const revenue = sum((r) => r.net, true);
   const cost = sum((r) => r.cost, true);
   const fees = sum((r) => r.fee, true);

@@ -288,7 +288,10 @@ function sortRows(rows: ProfitabilityRow[], groupBy: GroupBy): void {
 }
 
 function summarizeUnpriced(ledger: Ledger, totalNetOre: number): UnpricedSummary {
-  const byTitle = new Map<string, { orders: number; revenueOre: number; first: IsoDate; last: IsoDate }>();
+  const byTitle = new Map<
+    string,
+    { orders: number; revenueOre: number; first: IsoDate; last: IsoDate }
+  >();
   let orders = 0;
   let revenue = 0;
   for (const e of ledger.entries) {
@@ -325,16 +328,24 @@ function summarizeUnpriced(ledger: Ledger, totalNetOre: number): UnpricedSummary
   };
 }
 
-function buildWaterfall(totals: ProfitabilityRow, unpriced: UnpricedSummary): ProfitabilityWaterfall {
+/** Avdrag som negativt tal, utan −0. */
+function deduction(valueOre: number): number {
+  return valueOre === 0 ? 0 : -valueOre;
+}
+
+function buildWaterfall(
+  totals: ProfitabilityRow,
+  unpriced: UnpricedSummary,
+): ProfitabilityWaterfall {
   return {
     steps: [
       { key: "revenue", label: "Intäkt", valueOre: totals.revenueOre, total: false },
-      { key: "cost", label: "Inköp", valueOre: -totals.costOre, total: false },
-      { key: "fees", label: "Avgifter", valueOre: -totals.feesOre, total: false },
+      { key: "cost", label: "Inköp", valueOre: deduction(totals.costOre), total: false },
+      { key: "fees", label: "Avgifter", valueOre: deduction(totals.feesOre), total: false },
       {
         key: "compensation",
         label: "Butiksersättning",
-        valueOre: -totals.compensationOre,
+        valueOre: deduction(totals.compensationOre),
         total: false,
       },
       { key: "profit", label: "Vinst", valueOre: totals.profitOre, total: true },

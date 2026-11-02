@@ -152,7 +152,7 @@ export function floorDiv(numerator: number, denominator: number): number {
   const big = BigInt(numerator);
   const d = BigInt(denominator);
   let q = big / d;
-  if (big % d !== 0n && (big < 0n) !== (d < 0n)) q -= 1n;
+  if (big % d !== 0n && big < 0n !== d < 0n) q -= 1n;
   return toSafeNumber(q, "Kvoten");
 }
 

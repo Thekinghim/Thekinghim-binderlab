@@ -69,7 +69,10 @@ export function assertOrder(order: OrderLine): void {
     throw new DomainError("invalid_input", `Order ${order.externalId ?? order.id} saknar titel.`);
   }
   if (order.machineId !== null && (typeof order.machineId !== "string" || order.machineId === "")) {
-    throw new DomainError("invalid_input", `Order ${order.externalId ?? order.id} har ogiltig automat.`);
+    throw new DomainError(
+      "invalid_input",
+      `Order ${order.externalId ?? order.id} har ogiltig automat.`,
+    );
   }
   assertIsoDate(order.businessDate, `Affärsdatum för order ${order.externalId ?? order.id}`);
   assertNonNegativeInteger(order.amountOre, `Beloppet för order ${order.externalId ?? order.id}`);
@@ -107,7 +110,8 @@ export function computeOrderEconomics(order: OrderLine, ctx: EconomicsContext): 
   const price = ctx.prices.priceOn(order.titleId, order.businessDate);
   const storeId =
     order.machineId === null ? null : ctx.placements.storeOn(order.machineId, order.businessDate);
-  const agreement = storeId === null ? null : ctx.agreements.agreementOn(storeId, order.businessDate);
+  const agreement =
+    storeId === null ? null : ctx.agreements.agreementOn(storeId, order.businessDate);
   const commissionBp = agreement?.commissionBp ?? 0;
   const commission = commissionBp === 0 ? 0 : applyBp(net, commissionBp);
   return {

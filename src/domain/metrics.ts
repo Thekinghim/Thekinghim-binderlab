@@ -8,7 +8,7 @@
 import { assertOrder, assertSettings, vatOfGross } from "./economics";
 import { buildLedger } from "./ledger";
 import { applyBp, checkSafe, mulDivRound, ratioBp, roundHalfUp, BP_SCALE } from "./money";
-import { summarizeLedger } from "./profitability";
+import { summarizeLedger, type ProfitabilityResult } from "./profitability";
 import type { OrderLine, ProfitabilityInput, Settings } from "./types";
 
 /** Betalt belopp inkl. moms, i öre. */
@@ -160,7 +160,12 @@ export function storeCompensation(input: ProfitabilityInput): {
     .map((row) => {
       const commission = row.commissionOre + row.unpricedCommissionOre;
       const rent = row.rentOre + row.unpricedRentOre;
-      return { storeId: row.key, commissionOre: commission, rentOre: rent, totalOre: commission + rent };
+      return {
+        storeId: row.key,
+        commissionOre: commission,
+        rentOre: rent,
+        totalOre: commission + rent,
+      };
     })
     .sort((a, b) => (a.storeId < b.storeId ? -1 : a.storeId > b.storeId ? 1 : 0));
   const commission = r.totals.commissionOre + r.totals.unpricedCommissionOre;
@@ -172,4 +177,36 @@ export function storeCompensation(input: ProfitabilityInput): {
 export function profit(input: ProfitabilityInput): { profitOre: number; marginBp: number | null } {
   const t = summarizeLedger(buildLedger(input), "title").totals;
   return { profitOre: t.profitOre, marginBp: t.marginBp };
+}
+
+/** Den rad som bidrar mest till vinsten, för rubriken på Lönsamhet. */
+export interface TopContributor {
+  readonly key: string;
+  readonly profitOre: number;
+  /**
+   * Radens andel av totala vinsten i bp. `null` när totala vinsten är ≤ 0 (andelen
+   * saknar då mening). Kan överstiga 10 000 om andra rader går med förlust.
+   */
+  readonly shareOfProfitBp: number | null;
+}
+
+/**
+ * Raden med störst vinst bland vanliga rader (titel, automat, butik eller tid; inte
+ * 'unallocated', 'no-machine' eller 'no-store'). `null` om det inte finns någon.
+ *
+ * Används för rubriker som "Ni behöll 31,4 % av intäkten (totals.marginBp).
+ * Automat 1 står för nästan hälften av vinsten (shareOfProfitBp ≈ 4 900)."
+ */
+export function topContributor(result: ProfitabilityResult): TopContributor | null {
+  let best: TopContributor | null = null;
+  for (const row of result.rows) {
+    if (row.kind !== "item" && row.kind !== "time") continue;
+    if (row.pricedOrders === 0) continue;
+    if (best === null || row.profitOre > best.profitOre) {
+      best = { key: row.key, profitOre: row.profitOre, shareOfProfitBp: null };
+    }
+  }
+  if (best === null) return null;
+  const total = result.totals.profitOre;
+  return { ...best, shareOfProfitBp: total > 0 ? ratioBp(best.profitOre, total) : null };
 }

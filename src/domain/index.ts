@@ -45,12 +45,14 @@ export {
   minDate,
   monthEnd,
   monthOf,
+  monthPeriod,
   monthsElapsed,
   monthStart,
   overlapDays,
   parseIsoDate,
   parseIsoMonth,
   periodDays,
+  previousPeriod,
   toDayNumber,
   weekOf,
   weekStart,
@@ -133,10 +135,12 @@ export {
   profit,
   revenue,
   storeCompensation,
+  topContributor,
   vat,
   type CostOfGoods,
   type KeyMetrics,
   type StoreCompensation,
+  type TopContributor,
 } from "./metrics";
 
 export { titleEconomics, type TitleEconomics, type TitleEconomicsInput } from "./titles";

@@ -23,7 +23,11 @@ export function EmailSection({ index }: { index: number }) {
   const notes = recipientNotes[kind];
 
   return (
-    <section id="e-post" aria-labelledby="e-post-title" className="border-t border-line py-16 md:py-20">
+    <section
+      id="e-post"
+      aria-labelledby="e-post-title"
+      className="border-t border-line py-16 md:py-20"
+    >
       <SectionHeader
         index={index}
         id="e-post-title"
@@ -52,7 +56,11 @@ export function EmailSection({ index }: { index: number }) {
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,602px)_minmax(0,1fr)] lg:gap-8">
-          <InboxRow props={sampleReportEmails[kind]} subject={email.subject} preheader={email.preheader} />
+          <InboxRow
+            props={sampleReportEmails[kind]}
+            subject={email.subject}
+            preheader={email.preheader}
+          />
           <dl className="grid content-start gap-x-6 gap-y-3 text-sm sm:grid-cols-[112px_minmax(0,1fr)] lg:pt-6">
             <dt className="label pt-0.5 text-subtle">Mottagare</dt>
             <dd className="text-fg">{notes.who}</dd>
@@ -83,4 +91,3 @@ export function EmailSection({ index }: { index: number }) {
     </section>
   );
 }
-

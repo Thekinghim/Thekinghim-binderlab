@@ -73,11 +73,19 @@ export function depreciation(
   assertIsoDate(asOf);
   const months = investment.depreciationMonths ?? 0;
   if (!Number.isSafeInteger(months) || months < 0) {
-    throw new DomainError("invalid_input", `Avskrivningstiden måste vara hela månader, fick ${months}.`);
+    throw new DomainError(
+      "invalid_input",
+      `Avskrivningstiden måste vara hela månader, fick ${months}.`,
+    );
   }
   const elapsed = Math.max(0, monthsElapsed(investment.date, asOf));
   if (months === 0) {
-    return { monthlyOre: 0, accumulatedOre: 0, bookValueOre: investment.amountOre, monthsElapsed: elapsed };
+    return {
+      monthlyOre: 0,
+      accumulatedOre: 0,
+      bookValueOre: investment.amountOre,
+      monthsElapsed: elapsed,
+    };
   }
   const used = Math.min(elapsed, months);
   const accumulated = roundHalfUp(BigInt(investment.amountOre) * BigInt(used), BigInt(months));
@@ -101,7 +109,10 @@ export function unitEconomics(input: UnitEconomicsInput): MachineUnitEconomics[]
   for (const inv of input.investments) ids.add(inv.machineId);
   for (const e of ledger.entries) if (e.order.machineId !== null) ids.add(e.order.machineId);
 
-  const stats = new Map<string, { orders: number; unpriced: number; revenue: number; profit: number }>();
+  const stats = new Map<
+    string,
+    { orders: number; unpriced: number; revenue: number; profit: number }
+  >();
   for (const e of ledger.entries) {
     const id = e.order.machineId;
     if (id === null) continue;

@@ -33,7 +33,17 @@ end
 $$;
 
 -- Supabase låter anslutningsrollen byta till dessa roller (set role).
-grant anon, authenticated, service_role to postgres;
+do $$
+declare
+  r text;
+begin
+  foreach r in array array['anon', 'authenticated', 'service_role'] loop
+    if not pg_catalog.pg_has_role('postgres', r, 'member') then
+      execute format('grant %I to postgres', r);
+    end if;
+  end loop;
+end
+$$;
 
 -- Schema extensions ---------------------------------------------------------
 create schema if not exists extensions;

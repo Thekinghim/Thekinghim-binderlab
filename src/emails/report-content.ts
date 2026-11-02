@@ -379,7 +379,8 @@ export function fileCount(n: number): string {
 export function incidentsSummary(incidents: ReadonlyArray<Incident>): string {
   if (incidents.length === 0) return "Inga";
   const total = incidents.reduce((acc, i) => acc + i.durationMs, 0);
-  const count = incidents.length === 1 ? "1 tillfälle" : `${formatInt(incidents.length)} tillfällen`;
+  const count =
+    incidents.length === 1 ? "1 tillfälle" : `${formatInt(incidents.length)} tillfällen`;
   return `${count}, totalt ${keepTogether(formatDuration(total))}`;
 }
 
@@ -487,7 +488,9 @@ export function renderReportText(props: ReportEmailProps): string {
   props.rows.forEach((r, i) => {
     const values = cols.map((c) => `${c.label.toLocaleLowerCase("sv-SE")} ${c.value(r)}`);
     const rank = props.recipientKind === "delagare" ? `${i + 1}. ` : "";
-    out.push(`${rank}${r.id} ${r.name}${r.location ? `, ${r.location}` : ""}: ${values.join(", ")}`);
+    out.push(
+      `${rank}${r.id} ${r.name}${r.location ? `, ${r.location}` : ""}: ${values.join(", ")}`,
+    );
   });
 
   switch (props.recipientKind) {

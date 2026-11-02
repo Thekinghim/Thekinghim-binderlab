@@ -44,7 +44,13 @@ const butik: ReportEmailProps = {
     { label: "Försäljning", value: 18_420, unit: "kr", change: { value: 0.062 } },
     { label: "Sålda pack", value: 256, unit: "count", change: { value: 0.08 } },
     { label: "I drift", value: 0.992, unit: "share", change: { value: 0.004, kind: "points" } },
-    { label: "Avbrott", value: 2, unit: "count", note: `Totalt ${formatDuration(164 * 60_000).replace(/ /g, NBSP)}`, lowerIsBetter: true },
+    {
+      label: "Avbrott",
+      value: 2,
+      unit: "count",
+      note: `Totalt ${formatDuration(164 * 60_000).replace(/ /g, NBSP)}`,
+      lowerIsBetter: true,
+    },
   ],
   rows: [
     {
@@ -101,9 +107,24 @@ const bokforing: ReportEmailProps = {
   period: OCTOBER,
   summary: `Försäljningen var ${formatKronor(131_400)} inklusive moms.`,
   kpis: [
-    { label: "Försäljning", value: 131_400, unit: "kr", note: `Inkl. moms · exkl. ${formatSek(105_120)}` },
-    { label: "Utgående moms", value: 26_280, unit: "kr", note: `${formatPercent(0.25, 0)} på all försäljning` },
-    { label: "Avgifter", value: 12_689.63, unit: "kr", note: `Kort ${formatSek(2_889.63)} · platshyra ${formatSek(9_800)}` },
+    {
+      label: "Försäljning",
+      value: 131_400,
+      unit: "kr",
+      note: `Inkl. moms · exkl. ${formatSek(105_120)}`,
+    },
+    {
+      label: "Utgående moms",
+      value: 26_280,
+      unit: "kr",
+      note: `${formatPercent(0.25, 0)} på all försäljning`,
+    },
+    {
+      label: "Avgifter",
+      value: 12_689.63,
+      unit: "kr",
+      note: `Kort ${formatSek(2_889.63)} · platshyra ${formatSek(9_800)}`,
+    },
     { label: "Försäljningar", value: 1_812, unit: "count", note: "Varav 3 återbetalda" },
   ],
   rows: [

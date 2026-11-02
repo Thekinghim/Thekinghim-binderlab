@@ -61,7 +61,10 @@ export function EmailFrame({
   const frameHeight = typeof height === "number" ? height : contentHeight;
 
   return (
-    <figure className={cn("m-0 flex min-w-0 flex-col gap-2", className)} style={{ maxWidth: width + 2 }}>
+    <figure
+      className={cn("m-0 flex min-w-0 flex-col gap-2", className)}
+      style={{ maxWidth: width + 2 }}
+    >
       {label ? (
         <figcaption className="label tnum flex items-center justify-between gap-3 text-subtle">
           <span>{label}</span>

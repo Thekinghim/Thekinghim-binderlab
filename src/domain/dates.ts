@@ -137,7 +137,11 @@ export function toDayNumber(date: IsoDate): number {
 
 /** Affärsdatum för ett dagnummer. 0 → '1970-01-01'. */
 export function fromDayNumber(dayNumber: number): IsoDate {
-  if (!Number.isSafeInteger(dayNumber) || dayNumber < MIN_DAY_NUMBER || dayNumber > MAX_DAY_NUMBER) {
+  if (
+    !Number.isSafeInteger(dayNumber) ||
+    dayNumber < MIN_DAY_NUMBER ||
+    dayNumber > MAX_DAY_NUMBER
+  ) {
     throw new DomainError("invalid_date", `Dagnumret ${dayNumber} ligger utanför år 1–9999.`);
   }
   const p = civilFromDays(dayNumber);
@@ -351,4 +355,25 @@ export function intersectPeriods(a: Period, b: Period): Period | null {
 export function overlapDays(a: Period, b: Period): number {
   const p = intersectPeriods(a, b);
   return p ? periodDays(p) : 0;
+}
+
+/** Hela kalendermånaden som period. monthPeriod('2026-02') → 1–28 feb. */
+export function monthPeriod(month: IsoMonth): Period {
+  return { start: monthStart(month), end: monthEnd(month) };
+}
+
+/**
+ * Lika lång period som slutar dagen före `period` börjar (för "mot föregående period").
+ * 1–30 nov → 2–31 okt. En hel kalendermånad ger i stället hela föregående månad
+ * (1–31 okt → 1–30 sep), så att månad jämförs med månad.
+ */
+export function previousPeriod(period: Period): Period {
+  assertPeriod(period);
+  const month = period.start.slice(0, 7);
+  if (period.start === monthStart(month) && period.end === monthEnd(month)) {
+    return monthPeriod(addMonths(month, -1));
+  }
+  const days = periodDays(period);
+  const end = addDays(period.start, -1);
+  return { start: addDays(end, -(days - 1)), end };
 }

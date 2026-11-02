@@ -109,7 +109,8 @@ export function titleEconomics(input: TitleEconomicsInput): TitleEconomics[] {
     const unitCost = price ? price.unitCostOre : null;
     const n = BigInt(a.orders);
     const has = a.orders > 0;
-    const leftNumerator = unitCost === null ? null : a.net - a.fee - a.commission - n * BigInt(unitCost);
+    const leftNumerator =
+      unitCost === null ? null : a.net - a.fee - a.commission - n * BigInt(unitCost);
     const left = has && leftNumerator !== null ? roundHalfUp(leftNumerator, n) : null;
     const leftAfterRent =
       has && leftNumerator !== null ? roundHalfUp(leftNumerator - a.rent, n) : null;

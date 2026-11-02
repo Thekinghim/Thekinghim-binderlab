@@ -14,7 +14,15 @@
  * Hyran gäller enligt avtalet, oavsett om någon automat stod i butiken eller sålde.
  */
 
-import { assertPeriod, daysInMonth, eachMonth, maxDate, minDate, monthEnd, monthStart } from "./dates";
+import {
+  assertPeriod,
+  daysInMonth,
+  eachMonth,
+  maxDate,
+  minDate,
+  monthEnd,
+  monthStart,
+} from "./dates";
 import { DomainError } from "./errors";
 import { roundHalfUp } from "./money";
 import { AgreementIndex } from "./placements";
@@ -90,7 +98,10 @@ export function rentByStoreMonth(
     const dim = daysInMonth(row.month);
     if (row.days > dim) {
       // Kan bara hända om avtalen överlappar, vilket AgreementIndex redan stoppar.
-      throw new DomainError("overlapping_agreement", `Butik ${row.storeId} har överlappande avtal.`);
+      throw new DomainError(
+        "overlapping_agreement",
+        `Butik ${row.storeId} har överlappande avtal.`,
+      );
     }
     row.segments.sort((x, y) => (x.start < y.start ? -1 : 1));
     out.push({

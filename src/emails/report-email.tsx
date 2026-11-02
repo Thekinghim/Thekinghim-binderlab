@@ -152,7 +152,15 @@ function Glyph({ children }: { children: string }) {
 }
 
 /** En innehållsrad i kortet med mejlets sidomarginal. */
-function Row({ children, top = 40, bottom = 0 }: { children: ReactNode; top?: number; bottom?: number }) {
+function Row({
+  children,
+  top = 40,
+  bottom = 0,
+}: {
+  children: ReactNode;
+  top?: number;
+  bottom?: number;
+}) {
   return (
     <tr>
       <td {...mobile("gutter")} style={{ padding: `${top}px ${GUTTER} ${bottom}px` }}>
@@ -363,12 +371,7 @@ function MachineTable({ props }: { props: ReportEmailProps }) {
     >
       <thead>
         <tr>
-          <th
-            scope="col"
-            align="left"
-            colSpan={ranked ? 2 : 1}
-            style={{ ...th, paddingLeft: 0 }}
-          >
+          <th scope="col" align="left" colSpan={ranked ? 2 : 1} style={{ ...th, paddingLeft: 0 }}>
             Automat
           </th>
           {cols.map((c) => (
@@ -410,7 +413,12 @@ function MachineTable({ props }: { props: ReportEmailProps }) {
               <Text color={C.fg} size={14} style={{ lineHeight: "20px" }}>
                 {r.name}
               </Text>
-              <Text mono size={11} color={C.subtle} style={{ marginTop: "2px", lineHeight: "16px" }}>
+              <Text
+                mono
+                size={11}
+                color={C.subtle}
+                style={{ marginTop: "2px", lineHeight: "16px" }}
+              >
                 {r.id}
                 {r.location ? ` · ${r.location}` : ""}
               </Text>
@@ -459,7 +467,12 @@ function StoreBlock({ d }: { d: StoreDetails }) {
           {incidentsSummary(d.incidents)}
         </Text>
         {d.incidents.map((i) => (
-          <Text key={i.start.toISOString()} size={12} color={C.subtle} style={{ ...tnum, marginTop: "2px" }}>
+          <Text
+            key={i.start.toISOString()}
+            size={12}
+            color={C.subtle}
+            style={{ ...tnum, marginTop: "2px" }}
+          >
             {incidentLine(i)}
           </Text>
         ))}
@@ -469,7 +482,8 @@ function StoreBlock({ d }: { d: StoreDetails }) {
       </Fact>
       <Fact label="Påfyllningar">
         <Text color={C.fg} style={tnum}>
-          {formatInt(d.refills.count)}, senast {formatLongDay(d.refills.last).toLocaleLowerCase("sv-SE")}
+          {formatInt(d.refills.count)}, senast{" "}
+          {formatLongDay(d.refills.last).toLocaleLowerCase("sv-SE")}
         </Text>
       </Fact>
       <Fact label="Nästa besök">
@@ -522,14 +536,17 @@ function LedgerBlock({ d }: { d: LedgerDetails }) {
           <tr key={`${e.account}-${e.verification}`}>
             <td
               valign="top"
-              style={{ ...numCell, fontFamily: F.mono, fontSize: "12px", paddingLeft: 0, color: C.fg }}
+              style={{
+                ...numCell,
+                fontFamily: F.mono,
+                fontSize: "12px",
+                paddingLeft: 0,
+                color: C.fg,
+              }}
             >
               {e.account}
             </td>
-            <td
-              valign="top"
-              style={{ ...numCell, whiteSpace: "normal", color: C.fg }}
-            >
+            <td valign="top" style={{ ...numCell, whiteSpace: "normal", color: C.fg }}>
               {e.text}
             </td>
             <td
@@ -569,7 +586,10 @@ function Statement({
         return (
           <tr key={l.label}>
             <td style={cell}>{l.label}</td>
-            <td align="right" style={{ ...cell, ...tnum, whiteSpace: "nowrap", paddingLeft: "12px" }}>
+            <td
+              align="right"
+              style={{ ...cell, ...tnum, whiteSpace: "nowrap", paddingLeft: "12px" }}
+            >
               {l.value}
             </td>
           </tr>
@@ -637,7 +657,13 @@ function Attachments({ items }: { items: EmailAttachment[] }) {
           <td
             align="right"
             valign="top"
-            style={{ ...numCell, fontFamily: F.mono, fontSize: "12px", color: C.subtle, paddingTop: "12px" }}
+            style={{
+              ...numCell,
+              fontFamily: F.mono,
+              fontSize: "12px",
+              color: C.subtle,
+              paddingTop: "12px",
+            }}
           >
             {formatBytes(a.size)}
           </td>
@@ -659,8 +685,8 @@ export function ReportEmail(props: ReportEmailProps) {
   const meta = rowsMeta(props);
 
   // Sektionerna numreras i den ordning de visas, som på /design.
-  let n = 0;
-  const next = () => (n += 1);
+  const counter = { n: 0 };
+  const next = () => ++counter.n;
 
   const sections: ReactNode[] = [];
   sections.push(
@@ -682,7 +708,10 @@ export function ReportEmail(props: ReportEmailProps) {
   if (props.recipientKind === "bokforing") {
     sections.push(
       <Row key="ledger">
-        <SectionLabel index={next()} meta={props.details.entries.length ? `${props.details.entries.length} rader` : undefined}>
+        <SectionLabel
+          index={next()}
+          meta={props.details.entries.length ? `${props.details.entries.length} rader` : undefined}
+        >
           Sammanställning
         </SectionLabel>
         <LedgerBlock d={props.details} />
@@ -716,7 +745,11 @@ export function ReportEmail(props: ReportEmailProps) {
         </SectionLabel>
         <Statement
           lines={[
-            ...d.result.map((r) => ({ label: r.label, value: formatSek(r.amount), total: r.total })),
+            ...d.result.map((r) => ({
+              label: r.label,
+              value: formatSek(r.amount),
+              total: r.total,
+            })),
             { label: "Marginal", value: formatPercent(d.margin), quiet: true },
           ]}
         />
@@ -861,8 +894,20 @@ export function ReportEmail(props: ReportEmailProps) {
 
                           <Row top={40} bottom={36}>
                             <Button href={props.reportUrl}>{ctaLabel(props.recipientKind)}</Button>
-                            <Text mono size={12} color={C.subtle} style={{ marginTop: "14px", wordBreak: "break-word", overflowWrap: "anywhere" }}>
-                              <a href={props.reportUrl} style={{ color: C.subtle, textDecoration: "underline" }}>
+                            <Text
+                              mono
+                              size={12}
+                              color={C.subtle}
+                              style={{
+                                marginTop: "14px",
+                                wordBreak: "break-word",
+                                overflowWrap: "anywhere",
+                              }}
+                            >
+                              <a
+                                href={props.reportUrl}
+                                style={{ color: C.subtle, textDecoration: "underline" }}
+                              >
                                 {displayUrl(props.reportUrl)}
                               </a>
                             </Text>
@@ -874,13 +919,13 @@ export function ReportEmail(props: ReportEmailProps) {
 
                   {/* Sidfot */}
                   <tr>
-                    <td
-                      {...mobile("gutter")}
-                      style={{ ...bodyStyle, padding: `24px ${GUTTER} 0` }}
-                    >
+                    <td {...mobile("gutter")} style={{ ...bodyStyle, padding: `24px ${GUTTER} 0` }}>
                       <Text size={12} color={C.subtle}>
                         {sender.name} · {sender.address} ·{" "}
-                        <a href={`mailto:${sender.email}`} style={{ color: C.subtle, textDecoration: "underline" }}>
+                        <a
+                          href={`mailto:${sender.email}`}
+                          style={{ color: C.subtle, textDecoration: "underline" }}
+                        >
                           {sender.email}
                         </a>
                       </Text>
@@ -891,7 +936,12 @@ export function ReportEmail(props: ReportEmailProps) {
                         </a>
                       </Text>
                       {footerMeta.length ? (
-                        <Text mono size={11} color={C.subtle} style={{ ...tnum, marginTop: "12px" }}>
+                        <Text
+                          mono
+                          size={11}
+                          color={C.subtle}
+                          style={{ ...tnum, marginTop: "12px" }}
+                        >
                           {footerMeta.join(" · ")}
                         </Text>
                       ) : null}

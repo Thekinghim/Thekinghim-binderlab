@@ -144,7 +144,7 @@ $$;
 -- Är uppdateringen bara att aktörskolumner nollas för användare som inte
 -- längre finns? (FK on delete set null mot auth.users.)
 create function private.is_actor_anonymization(p_old jsonb, p_new jsonb) returns boolean
-language plpgsql stable
+language plpgsql stable security definer
 set search_path = ''
 as $$
 declare
@@ -303,3 +303,15 @@ end
 $$;
 
 revoke all on all functions in schema private from public;
+
+-- Hjälpfunktioner som anropas från triggers som kör med anroparens rättigheter
+-- (för att kunna läsa current_user) eller från check-villkor och policyer.
+-- Ingen av dem läser data som anroparen inte redan har tillgång till.
+grant execute on function
+  private.is_valid_timezone(text),
+  private.try_uuid(text),
+  private.purge_allowed(),
+  private.changed_keys(jsonb, jsonb),
+  private.actor_columns(),
+  private.is_actor_anonymization(jsonb, jsonb)
+  to authenticated, service_role;

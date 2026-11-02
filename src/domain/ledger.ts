@@ -106,7 +106,10 @@ export function buildLedger(input: ProfitabilityInput): Ledger {
   for (const order of input.orders) {
     assertOrder(order);
     if (seen.has(order.id)) {
-      throw new DomainError("duplicate_order", `Order ${order.externalId} (${order.id}) finns två gånger.`);
+      throw new DomainError(
+        "duplicate_order",
+        `Order ${order.externalId} (${order.id}) finns två gånger.`,
+      );
     }
     seen.add(order.id);
     const date = order.businessDate;
