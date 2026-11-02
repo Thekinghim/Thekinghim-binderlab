@@ -210,9 +210,9 @@ export function formatChange(c: KpiChange): string {
 
 /** ▲, ▼ eller ingenting vid oförändrat. */
 export function changeGlyph(c: KpiChange): string {
-  const d = c.kind === "points" ? 1 : 3;
-  const rounded = Number(c.value.toFixed(d));
-  return rounded > 0 ? ARROW_UP : rounded < 0 ? ARROW_DOWN : "";
+  // Samma avrundning som formatChange, så att ±0 inte får en pil.
+  const shown = Number((c.value * 100).toFixed(1));
+  return shown > 0 ? ARROW_UP : shown < 0 ? ARROW_DOWN : "";
 }
 
 /** Om förändringen är en förbättring (styr bara ordval, aldrig ensam färg). */
@@ -363,13 +363,24 @@ export function dailyRange(daily: ReadonlyArray<DailyPoint>): string {
 }
 
 export function incidentLine(i: Incident): string {
-  return `${formatDate(i.start, { year: "never" })} ${formatTime(i.start)} · ${formatDuration(i.durationMs)} · ${i.cause}`;
+  return `${formatDate(i.start, { year: "never" })} ${formatTime(i.start)} · ${keepTogether(formatDuration(i.durationMs))} · ${i.cause}`;
+}
+
+/** Hårda mellanslag, så att "2 h 44 min" inte bryts mitt i. */
+function keepTogether(s: string): string {
+  return s.replace(/ /g, NBSP);
+}
+
+/** "1 fil" · "3 filer" */
+export function fileCount(n: number): string {
+  return n === 1 ? "1 fil" : `${formatInt(n)} filer`;
 }
 
 export function incidentsSummary(incidents: ReadonlyArray<Incident>): string {
   if (incidents.length === 0) return "Inga";
   const total = incidents.reduce((acc, i) => acc + i.durationMs, 0);
-  return `${formatInt(incidents.length)} tillfällen, totalt ${formatDuration(total)}`;
+  const count = incidents.length === 1 ? "1 tillfälle" : `${formatInt(incidents.length)} tillfällen`;
+  return `${count}, totalt ${keepTogether(formatDuration(total))}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -406,7 +417,7 @@ export function rowColumns(kind: RecipientKind): RowColumn[] {
       return [
         { label: "Intäkt", value: (r) => formatSek(r.revenue) },
         {
-          label: "Förändring",
+          label: "Ändring",
           value: (r) => (r.change === undefined ? EN_DASH : formatDelta(r.change, 1)),
           glyph: (r) => (r.change === undefined ? "" : changeGlyph({ value: r.change })),
         },
@@ -460,8 +471,9 @@ export function renderReportText(props: ReportEmailProps): string {
   for (const k of props.kpis) {
     const parts = [`${k.label}: ${formatKpiValue(k)}`];
     if (k.change) parts.push(`(${formatChange(k.change)} ${cmp})`);
-    if (k.note) parts.push(`(${k.note})`);
-    out.push(parts.join(" "));
+    let line = parts.join(" ");
+    if (k.note) line += ` · ${k.note}`;
+    out.push(line);
     if (k.alert) out.push(`  Obs: ${k.alert}`);
   }
 
