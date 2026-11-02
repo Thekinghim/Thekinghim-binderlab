@@ -90,3 +90,11 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
   - docs/driftsattning.md. Kräver SUPABASE_ACCESS_TOKEN, VERCEL_TOKEN och nätverk till api.supabase.com, *.supabase.co, api.vercel.com
     i en ny session. Ägarens e-post bekräftas av beställaren innan inbjudan skickas.
 - Arbetsflöde: wf_19bddf0c-b50.
+
+## 2 nov. kväll – klart
+
+- Fas 1–11 klara och på main (3761024). Awish-synk via Chrome-tillägg och driftsättningsskript klara och på main.
+- Verifierat: eslint och tsc rena, 2 613 enhetstester, 2 490 databastester, 62 driftsättningstester, next build utan miljö.
+- Timkontrollen (schemalagd uppgift) borttagen.
+- Väntar på beställaren: nätverksåtkomst till api.supabase.com, *.supabase.co och api.vercel.com för driftsättning;
+  ägare bjuds in som wille1452@live.se. De två API-nycklarna som klistrades in i chatten ska bytas efter driftsättningen.
