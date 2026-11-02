@@ -67,3 +67,10 @@ Tas bort när alla faser är klara.
 - Avbockade punkter i Att göra: filtrera bort sådana vars orsak är löst (kräver att loadTodosFor returnerar punkter före avbockning).
 - toast.tsx: timern startar om vid omrendering.
 - Hem/Att göra: koppla förlorad försäljning (lostSalesSummary), avtalspåminnelser och rapportutkast.
+
+## 13:10 – alla sidor i fas 2–5 klara
+
+- Byggda, granskade och rättade: inloggning, inbjudan, användare, Datakällor, Hem, Att göra, Lönsamhet, Inköpspriser, Inställningar, Order, Lager, Automater, Butiker.
+- Fas 9–10 (Ekonomi, Avtal, Butiksportal) och fas 6b (Assistent, Expansion, Enhetsekonomi, Effekt) klara.
+- Pågår: slutkontroll fas 2–5 (wf_2c6fb7c8-67a), fas 6 Rapporter+Prognos, fas 8+11 Drift+Marknad, fas 7 del 1 (demo, onboarding, sökning).
+- Öppet till integrationen: /lager och /drift planerar besök från olika dagar (gårdagens resp. dagens takt).
