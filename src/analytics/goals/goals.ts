@@ -14,15 +14,20 @@
  *   - Färre dagar, eller månaden har inte börjat: utfall + snitt per dag de senaste
  *     `trailingDays` (standard 28) dagarna till och med `asOf` × återstående dagar ('trailing').
  * - Automater i drift = antal automater som är placerade i en butik (i butiken, för en
- *   butik) en viss dag. Utfall = antalet `asOf` (månadens sista dag om den är slut). Prognos =
+ *   butik) en viss dag. Utfall = antalet `asOf` (månadens sista dag om den är slut); har
+ *   månaden inte börjat är utfallet 0, eftersom inget har hänt i den månaden än. Prognos =
  *   antalet månadens sista dag enligt kända placeringar ('placements').
  * - Status: prognos ≥ mål → 'on-track' (i fas), annars 'behind' (efter). När månaden är slut:
  *   'met' (nått) eller 'missed' (missat).
  * - Behov per dag = (mål − utfall) / återstående dagar, avrundat uppåt till helt öre.
+ * - Underlaget för intäkt och vinst pekar ut orderna och försäljningsdagarna utfallet (och
+ *   en prognos på de senaste dagarna) bygger på: alla order för intäkt, prissatta order för
+ *   vinst, i målets butik eller automat.
  */
 
 import {
   addDays,
+  buildLedger,
   ceilDiv,
   daysBetween,
   DomainError,
@@ -43,7 +48,14 @@ import {
 } from "@/domain";
 import { nameLookup } from "../todos/common";
 import { day, kr, monthName, plural, sentence } from "../todos/text";
-import { fig, scenarioEvidence, signedPct, type ScenarioEvidence } from "../expansion/common";
+import {
+  fig,
+  orderTrail,
+  scenarioEvidence,
+  signedPct,
+  type OrderTrail,
+  type ScenarioEvidence,
+} from "../expansion/common";
 
 /** Måttet för ett mål (goals.metric). */
 export type GoalMetric = "revenue" | "profit" | "active_machines";
@@ -197,6 +209,20 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
     }
     return v;
   };
+  const ledgers = new Map<string, ReturnType<typeof buildLedger>>();
+  const trail = (goal: Goal, period: Period): OrderTrail => {
+    const key = `${period.start}/${period.end}`;
+    let l = ledgers.get(key);
+    if (!l) {
+      l = buildLedger({ ...input, period });
+      ledgers.set(key, l);
+    }
+    return orderTrail(l.entries, {
+      storeId: goal.scope === "store" ? goal.storeId : null,
+      machineId: goal.scope === "machine" ? goal.machineId : null,
+      pricedOnly: goal.metric === "profit",
+    });
+  };
   const moneyValue = (
     goal: Goal,
     period: Period,
@@ -246,13 +272,17 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
     let requiredPerDay: number | null = null;
     let unpriced = 0;
     let evidenceMachineIds: string[] = scopeIds.machineIds;
+    const evidenceOrderIds: string[] = [];
+    const evidenceDates: IsoDate[] = [];
     const figures = [
       fig("target", "Mål", goal.target, goal.metric === "active_machines" ? "count" : "ore"),
     ];
 
     if (goal.metric === "active_machines") {
       const filter = { storeId: goal.storeId, machineId: goal.machineId };
-      const nowIds = activeMachinesOn(input.placements, finished ? end : asOf, filter);
+      const nowIds = started
+        ? activeMachinesOn(input.placements, finished ? end : asOf, filter)
+        : [];
       const endIds = activeMachinesOn(input.placements, end, filter);
       actual = nowIds.length;
       forecast = finished ? actual : endIds.length;
@@ -264,6 +294,11 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
       );
     } else {
       const measured = through === null ? null : moneyValue(goal, { start, end: through });
+      if (through !== null) {
+        const t = trail(goal, { start, end: through });
+        evidenceOrderIds.push(...t.orderIds);
+        evidenceDates.push(...t.dates);
+      }
       actual = measured?.value ?? 0;
       unpriced = goal.metric === "profit" ? (measured?.unpriced ?? 0) : 0;
       if (elapsed > 0) averagePerDay = roundHalfUp(actual, elapsed);
@@ -276,6 +311,9 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
       } else {
         const window = { start: addDays(asOf, -(opts.trailingDays - 1)), end: asOf };
         const trailing = moneyValue(goal, window).value;
+        const t = trail(goal, window);
+        evidenceOrderIds.push(...t.orderIds);
+        evidenceDates.push(...t.dates);
         forecast = actual + mulDivRound(trailing, remaining, opts.trailingDays);
         method = "trailing";
         figures.push(
@@ -320,7 +358,10 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
         : sentence(`Antal placerade automater ${day(end)}`);
     } else if (!isMoney) {
       const state = status === "on-track" ? "i fas" : `efter med ${val(goal.target - forecast)}`;
-      text = `${label}: ${val(actual)} av ${val(goal.target)}. Prognos ${val(forecast)} vid månadens slut, ${state}.`;
+      const progress = started
+        ? `${val(actual)} av ${val(goal.target)}`
+        : `månaden har inte börjat, mål ${val(goal.target)}`;
+      text = `${label}: ${progress}. Prognos ${val(forecast)} vid månadens slut, ${state}.`;
       detail = "Prognosen bygger på kända placeringar till och med månadens sista dag.";
     } else {
       const state = status === "on-track" ? "i fas" : `efter med ${val(goal.target - forecast)}`;
@@ -372,6 +413,8 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
         period: through === null ? null : { start, end: through },
         storeIds: scopeIds.storeIds,
         machineIds: evidenceMachineIds,
+        orderIds: evidenceOrderIds,
+        dates: evidenceDates,
         figures,
       }),
     });

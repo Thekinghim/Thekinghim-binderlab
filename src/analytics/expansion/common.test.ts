@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { DomainError } from "@/domain";
+import { DomainError, MONTH_LCM, type LedgerEntry } from "@/domain";
 import {
   assertNonNegative,
   assertRateBp,
   hundredths,
-  perMonth,
+  monthUnits,
+  orderTrail,
+  perMachineMonth,
   Ratio,
   scenarioEvidence,
   signedKr,
@@ -36,7 +38,7 @@ describe("Ratio", () => {
   });
 });
 
-describe("weightedMean och perMonth", () => {
+describe("weightedMean, automatmånader och orderspår", () => {
   it("viktat snitt", () => {
     const m = weightedMean([
       { value: new Ratio(100), weight: 3 },
@@ -47,8 +49,37 @@ describe("weightedMean och perMonth", () => {
   it("kastar när vikterna summerar till 0", () => {
     expect(() => weightedMean([{ value: new Ratio(1), weight: 0 }])).toThrow(DomainError);
   });
-  it("per månad = per dag × 365 / 12", () => {
-    expect(perMonth(new Ratio(1200)).round()).toBe(36_500);
+  it("automatmånader följer domänens regel: dagar / dagar i kalendermånaden", () => {
+    expect(monthUnits({ start: "2026-10-01", end: "2026-10-31" })).toBe(MONTH_LCM);
+    expect(monthUnits({ start: "2026-02-01", end: "2026-02-28" })).toBe(MONTH_LCM);
+    expect(monthUnits({ start: "2026-11-16", end: "2026-11-30" })).toBe(MONTH_LCM / 2);
+    // 20 okt.–10 nov.: 12/31 + 10/30
+    expect(monthUnits({ start: "2026-10-20", end: "2026-11-10" })).toBe(
+      (12 * MONTH_LCM) / 31 + (10 * MONTH_LCM) / 30,
+    );
+  });
+  it("per automatmånad: en hel månad ger beloppet, en halv dubbla", () => {
+    expect(perMachineMonth(74_710, MONTH_LCM).round()).toBe(74_710);
+    expect(perMachineMonth(1_000, MONTH_LCM / 2).round()).toBe(2_000);
+    expect(() => perMachineMonth(1, 0)).toThrow(DomainError);
+  });
+  it("orderspåret filtrerar på butik, automat och prissatta order", () => {
+    const entry = (id: string, storeId: string, machineId: string, d: string, priced = true) =>
+      ({ order: { id, machineId, businessDate: d }, storeId, priced }) as unknown as LedgerEntry;
+    const entries = [
+      entry("o-2", "s-1", "m-1", "2026-10-02"),
+      entry("o-1", "s-1", "m-1", "2026-10-01", false),
+      entry("o-3", "s-2", "m-2", "2026-10-01"),
+    ];
+    expect(orderTrail(entries)).toEqual({
+      orderIds: ["o-1", "o-2", "o-3"],
+      dates: ["2026-10-01", "2026-10-02"],
+    });
+    expect(orderTrail(entries, { storeId: "s-1", pricedOnly: true })).toEqual({
+      orderIds: ["o-2"],
+      dates: ["2026-10-02"],
+    });
+    expect(orderTrail(entries, { machineId: "m-2" }).orderIds).toEqual(["o-3"]);
   });
 });
 

@@ -16,19 +16,40 @@
  * = Σ dagar varje automat var placerad i en butik. Hela månaden med en automat ger alltså
  * exakt månadens vinst.
  *
+ * Utgångsläget för mätvärdena (slutsålda dagar, tid) gäller en hel månad. En pågående
+ * månad mäts bara till och med `asOf`, så utgångsläget räknas om till samma antal dagar:
+ * utgångsläge för perioden = utgångsläge × dagar hittills / dagar i månaden. 1 slutsåld
+ * dag 1–10 nov. jämförs alltså med 10 × 10/30 = 3,33 dagar, inte med 10. Vinst per
+ * automatmånad är redan en takt och behöver ingen omräkning.
+ *
  * Förbättring (positiv = bättre):
- * - högre är bättre: värde − utgångsläge; lägre är bättre: utgångsläge − värde.
- * - i procent: round(förbättring × 10 000 / |utgångsläge|) bp, `null` när utgångsläget är 0.
+ * - högre är bättre: värde − utgångsläge; lägre är bättre: utgångsläge för perioden − värde.
+ * - i procent: round(förbättring × 10 000 / |utgångsläge för perioden|) bp, `null` när
+ *   utgångsläget är 0.
  * - i kronor:
  *   - vinst: förbättring per automatmånad × automatmånader i månaden,
  *   - tid: minuter × timkostnad / 60 (bara om `hourlyCostOre` anges),
  *   - slutsålda dagar: dagar × värde per dag; anges inget värde används månadens vinst per
  *     automat och dag (uppskattning, minst 0).
+ *   Förbättringen räknas exakt och avrundas en gång (`(utgångsläge × dagar − värde ×
+ *   dagar i månaden) / dagar i månaden`).
+ *
+ * Snitt över månaderna:
+ * - vinst per automat: snittet av månadernas värden,
+ * - mätvärden: Σ värde / Σ månader där en pågående månad räknas som dagar hittills / dagar
+ *   i månaden (domänens aktiva månader), alltså värde per hel månad. Förbättringen i snitt
+ *   jämför det med utgångsläget, så en pågående månad varken lyfter eller sänker snittet
+ *   bara för att den är kort.
+ *
+ * Underlaget för vinst per automat pekar ut månadens prissatta order och försäljningsdagar
+ * i omfattningen (de order vinsten bygger på).
  */
 
 import {
+  buildLedger,
   changeBp,
   DomainError,
+  MONTH_LCM,
   intersectPeriods,
   minDate,
   monthEnd,
@@ -47,8 +68,17 @@ import {
 } from "@/domain";
 import { MINUS, NBSP } from "@/lib/format";
 import { nameLookup } from "../todos/common";
-import { kr, monthName } from "../todos/text";
-import { fig, scenarioEvidence, signedKr, type ScenarioEvidence } from "../expansion/common";
+import { kr, monthName, tenths } from "../todos/text";
+import {
+  fig,
+  monthUnits,
+  orderTrail,
+  Ratio,
+  scenarioEvidence,
+  signedKr,
+  type OrderTrail,
+  type ScenarioEvidence,
+} from "../expansion/common";
 
 /** Mått i utgångsläget (baselines.metric). */
 export type BaselineMetric =
@@ -126,6 +156,14 @@ export interface EffectPoint {
   readonly improvementOre: number | null;
   /** Automatdagar i månaden (för vinst och slutsålda dagar). */
   readonly machineDays: number;
+  /** Dagar som mätts i månaden (hela månaden, eller till och med `asOf`). */
+  readonly measuredDays: number;
+  /**
+   * Utgångsläget för samma antal dagar, i tiondelar av måttets enhet (mätvärden), eller
+   * utgångsläget × 10 (vinst per automat, som redan är en takt). 10 slutsålda dagar per
+   * månad och 10 av 30 dagar → 33 (3,3 dagar).
+   */
+  readonly baselineForPeriodTenths: number;
   readonly evidence: ScenarioEvidence;
 }
 
@@ -185,6 +223,13 @@ function valueText(metric: BaselineMetric, value: number): string {
     default:
       return String(value);
   }
+}
+
+/** Utgångsläget för en del av månaden: dagar med en decimal ("3,3"), minuter som tid. */
+function baselineTenthsText(metric: BaselineMetric, valueTenths: number): string {
+  if (EXPECTED_UNIT[metric] === "minutes") return minutesText(roundHalfUp(valueTenths, 10));
+  if (EXPECTED_UNIT[metric] === "days") return tenths(valueTenths);
+  return valueText(metric, roundHalfUp(valueTenths, 10));
 }
 
 /** "+23 %", "67 % färre", "33 % mindre". */
@@ -267,6 +312,19 @@ export function binderlabEffect(input: EffectInput): EffectSeries[] {
     }
     return v;
   };
+  const ledgers = new Map<IsoMonth, ReturnType<typeof buildLedger>>();
+  const trailIn = (m: IsoMonth, scope: EffectScope, id: string | null): OrderTrail => {
+    let l = ledgers.get(m);
+    if (!l) {
+      l = buildLedger({ ...input, period: monthPeriods.get(m)!.period });
+      ledgers.set(m, l);
+    }
+    return orderTrail(l.entries, {
+      storeId: scope === "store" ? id : null,
+      machineId: scope === "machine" ? id : null,
+      pricedOnly: true,
+    });
+  };
   const profitIn = (m: IsoMonth, scope: EffectScope, id: string | null): number => {
     const v = views(m);
     if (scope === "organization") return v.store.totals.profitOre;
@@ -322,12 +380,18 @@ export function binderlabEffect(input: EffectInput): EffectSeries[] {
       const mp = monthPeriods.get(m);
       if (!mp) continue;
       const dim = periodDays({ start: monthStart(m), end: monthEnd(m) });
+      const days = periodDays(mp.period);
       const md = machineDaysIn(input.placements, mp.period, b.scope, id);
       let value: number | null = null;
+      let improvement: number | null = null;
+      let improvementBp: number | null = null;
       let improvementOre: number | null = null;
       const figures = [fig("baseline", "Utgångsläge", b.value, b.unit)];
       let dates: readonly IsoDate[] = [];
+      let orderIds: readonly string[] = [];
       let machineIds: readonly string[] = md.machineIds;
+      // Utgångsläget för de mätta dagarna i tiondelar (vinst: oförändrat, det är en takt).
+      const baselineForPeriodTenths = higher ? b.value * 10 : mulDivRound(b.value * days, 10, dim);
 
       if (b.metric === "profit_per_machine_month") {
         const profit = profitIn(m, b.scope, id);
@@ -337,8 +401,13 @@ export function binderlabEffect(input: EffectInput): EffectSeries[] {
         );
         if (md.days > 0) {
           value = mulDivRound(profit, dim, md.days);
+          improvement = value - b.value;
+          improvementBp = b.value === 0 ? null : changeBp(value, b.value);
           // Förbättring per automatmånad × automatmånader (= automatdagar / dagar i månaden).
-          improvementOre = mulDivRound(value - b.value, md.days, dim);
+          improvementOre = mulDivRound(improvement, md.days, dim);
+          const trail = trailIn(m, b.scope, id);
+          orderIds = trail.orderIds;
+          dates = trail.dates;
         }
       } else {
         const o = obs.get(
@@ -348,7 +417,21 @@ export function binderlabEffect(input: EffectInput): EffectSeries[] {
           value = o.value;
           dates = o.dates ?? [];
           if (o.machineIds) machineIds = o.machineIds;
-          const improvement = b.value - o.value;
+          // Utgångsläget för de mätta dagarna − värdet, exakt: num / dagar i månaden.
+          const num = b.value * days - o.value * dim;
+          improvement = mulDivRound(num, 1, dim);
+          improvementBp = b.value === 0 ? null : mulDivRound(num, 10_000, Math.abs(b.value) * days);
+          if (mp.partial) {
+            figures.push(
+              fig("measuredDays", "Dagar hittills", days, "days"),
+              fig(
+                "baselineForPeriodTenths",
+                "Utgångsläge för samma antal dagar (tiondelar)",
+                baselineForPeriodTenths,
+                "tenths",
+              ),
+            );
+          }
           if (b.metric === "stockout_days_month") {
             let perDay = stockoutValue;
             if (perDay === null && md.days > 0) {
@@ -362,21 +445,14 @@ export function binderlabEffect(input: EffectInput): EffectSeries[] {
                 ),
               );
             }
-            improvementOre = perDay === null ? null : improvement * perDay;
+            improvementOre = perDay === null ? null : mulDivRound(num, perDay, dim);
           } else if (hourly !== null) {
-            improvementOre = mulDivRound(improvement, hourly, 60);
+            improvementOre = mulDivRound(num, hourly, 60 * dim);
             figures.push(fig("hourlyCostOre", "Timkostnad", hourly, "ore"));
           }
         }
       }
 
-      const improvement = value === null ? null : higher ? value - b.value : b.value - value;
-      const improvementBp =
-        value === null || b.value === 0
-          ? null
-          : higher
-            ? changeBp(value, b.value)
-            : mulDivRound(b.value - value, 10_000, Math.abs(b.value));
       if (value !== null) figures.push(fig("value", "Värde i månaden", value, b.unit));
       if (improvementOre !== null)
         figures.push(fig("improvementOre", "Förbättring i kronor", improvementOre, "ore"));
@@ -389,12 +465,15 @@ export function binderlabEffect(input: EffectInput): EffectSeries[] {
         improvementBp,
         improvementOre,
         machineDays: md.days,
+        measuredDays: days,
+        baselineForPeriodTenths,
         evidence: scenarioEvidence({
           rule:
             b.metric === "profit_per_machine_month"
               ? "Vinst per automat och månad = vinst × dagar i månaden / automatdagar, jämfört med utgångsläget."
-              : `${METRIC_NAME[b.metric]} enligt mätvärdet för månaden, jämfört med utgångsläget.`,
+              : `${METRIC_NAME[b.metric]} enligt mätvärdet för månaden, jämfört med utgångsläget för samma antal dagar (utgångsläge × dagar / dagar i månaden).`,
           period: mp.period,
+          orderIds,
           dates,
           storeIds: b.scope === "store" ? [id!] : [],
           machineIds,
@@ -405,19 +484,29 @@ export function binderlabEffect(input: EffectInput): EffectSeries[] {
 
     const withValue = points.filter((p) => p.value !== null);
     const latest = withValue[withValue.length - 1] ?? null;
-    const averageValue =
-      withValue.length === 0
-        ? null
-        : roundHalfUp(
-            withValue.reduce((s, p) => s + p.value!, 0),
-            withValue.length,
-          );
-    const averageImprovementBp =
-      averageValue === null || b.value === 0
-        ? null
-        : higher
-          ? changeBp(averageValue, b.value)
-          : mulDivRound(b.value - averageValue, 10_000, Math.abs(b.value));
+    let averageValue: number | null = null;
+    let averageImprovementBp: number | null = null;
+    if (withValue.length > 0 && higher) {
+      averageValue = roundHalfUp(
+        withValue.reduce((s, p) => s + p.value!, 0),
+        withValue.length,
+      );
+      averageImprovementBp = b.value === 0 ? null : changeBp(averageValue, b.value);
+    } else if (withValue.length > 0) {
+      // Värde per hel månad: Σ värde / Σ månader (pågående månad = dagar / dagar i månaden).
+      let units = 0;
+      let sum = 0;
+      for (const p of withValue) {
+        units += monthUnits(monthPeriods.get(p.month)!.period);
+        sum += p.value!;
+      }
+      const rate = new Ratio(sum).mul(MONTH_LCM).div(units);
+      averageValue = rate.round();
+      averageImprovementBp =
+        b.value === 0
+          ? null
+          : new Ratio(b.value).sub(rate).mul(10_000).div(Math.abs(b.value)).round();
+    }
     const oreParts = withValue.filter((p) => p.improvementOre !== null);
     const totalImprovementOre =
       oreParts.length === 0 ? null : oreParts.reduce((s, p) => s + p.improvementOre!, 0);
@@ -441,12 +530,21 @@ export function binderlabEffect(input: EffectInput): EffectSeries[] {
             ? `värt ${signedKr(latest.improvementOre)}`
             : "";
       const paren = [pctPart, krPart].filter((s) => s !== "").join(", ");
-      text = `${name}: ${valueText(b.metric, latest.value!)}${unitSuffix} i ${monthName(latest.month)}${
-        latest.partial ? " (hittills)" : ""
-      } mot ${valueText(b.metric, b.value)} före Binderlab${paren ? ` (${paren})` : ""}.`;
+      const prorated = latest.partial && !higher;
+      const baselineText = prorated
+        ? `${baselineTenthsText(b.metric, latest.baselineForPeriodTenths)} på lika många dagar`
+        : valueText(b.metric, b.value);
+      const sofar = latest.partial
+        ? prorated
+          ? ` (hittills, ${latest.measuredDays} av ${periodDays({ start: monthStart(latest.month), end: monthEnd(latest.month) })} dagar)`
+          : " (hittills)"
+        : "";
+      text = `${name}: ${valueText(b.metric, latest.value!)}${unitSuffix} i ${monthName(latest.month)}${sofar} mot ${baselineText} före Binderlab${paren ? ` (${paren})` : ""}.`;
       const parts: string[] = [];
       if (withValue.length > 1) {
-        parts.push(`Snitt ${valueText(b.metric, averageValue!)} över ${withValue.length} månader`);
+        parts.push(
+          `Snitt ${valueText(b.metric, averageValue!)}${higher ? "" : " per hel månad"} över ${withValue.length} månader`,
+        );
       }
       if (totalImprovementOre !== null) {
         parts.push(

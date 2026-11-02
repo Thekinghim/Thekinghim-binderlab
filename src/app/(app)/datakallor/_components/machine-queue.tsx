@@ -30,13 +30,10 @@ export function MachineQueue({
 }) {
   if (queue.length === 0) {
     return (
-      <StateMessage
-        kind="empty"
-        code="0 i kön"
-        message="Inga okända automater."
-        detail="Om Awish skickar ett automatnamn som inte är kopplat hamnar det här. Orderna sparas ändå."
-        compact
-      />
+      <p className="max-w-xl text-sm text-muted">
+        Om Awish skickar ett automatnamn som inte är kopplat hamnar det här. Orderna sparas ändå
+        och får automaten när namnet kopplas.
+      </p>
     );
   }
   if (machines.length === 0) {
@@ -107,7 +104,7 @@ function QueueRow({
     });
 
   return (
-    <Panel className="grid min-w-0 gap-4 md:grid-cols-12 md:items-end" aria-labelledby={headingId}>
+    <Panel role="group" className="grid min-w-0 gap-4 md:grid-cols-12 md:items-end" aria-labelledby={headingId}>
       <div className="flex min-w-0 flex-col gap-1 md:col-span-5">
         <p className="label text-subtle">Namn i Awish · {entry.dataSourceName}</p>
         <p id={headingId} className="truncate text-md font-medium text-fg">
@@ -122,28 +119,32 @@ function QueueRow({
         </p>
       </div>
       <form
-        className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end md:col-span-7"
+        className="flex min-w-0 flex-col gap-2 md:col-span-7"
         onSubmit={(e) => {
           e.preventDefault();
           connect();
         }}
       >
-        <Select
-          label="Koppla till"
-          value={machineId}
-          options={options}
-          onChange={(e) => setMachineId(e.target.value)}
-          error={error ?? undefined}
-          hint={
-            entry.suggestedMachineId && machineId === entry.suggestedMachineId
-              ? "Förslag: koden står i namnet."
-              : undefined
-          }
-          wrapperClassName="min-w-0 flex-1"
-        />
-        <Button type="submit" variant="primary" loading={pending} className="sm:mb-[22px]">
-          Koppla
-        </Button>
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-end">
+          <Select
+            label="Koppla till"
+            value={machineId}
+            options={options}
+            onChange={(e) => setMachineId(e.target.value)}
+            aria-invalid={error ? true : undefined}
+            wrapperClassName="min-w-0 flex-1"
+          />
+          <Button type="submit" variant="primary" loading={pending}>
+            Koppla
+          </Button>
+        </div>
+        {error ? (
+          <p role="alert" className="text-xs text-signal-fg">
+            {error}
+          </p>
+        ) : entry.suggestedMachineId && machineId === entry.suggestedMachineId ? (
+          <p className="text-xs text-subtle">Förslag: automatens kod står i namnet.</p>
+        ) : null}
       </form>
     </Panel>
   );

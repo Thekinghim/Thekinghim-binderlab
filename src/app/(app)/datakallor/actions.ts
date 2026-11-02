@@ -33,12 +33,13 @@ import {
   createDataSourceFor,
   discardUploadFor,
   mapSourceMachineFor,
+  previewUploadFor,
   runUploadFor,
   startUploadFor,
   updateDataSourceFor,
 } from "./_lib/service";
 import { currentViewer, uploadStaging } from "./_lib/session";
-import type { ActionResult, PreviewResult } from "./_lib/types";
+import type { ActionResult, PreviewOutcome, PreviewResult } from "./_lib/types";
 
 function failure(error: unknown): { ok: false; error: string } {
   // redirect() (utloggad) och andra Next-signaler ska inte bli felmeddelanden.
@@ -129,11 +130,11 @@ export async function uploadChunk(
 }
 
 /** Förhandsvisning: skriver ingenting. */
-export async function previewUpload(raw: unknown): Promise<ActionResult<PreviewResult>> {
+export async function previewUpload(raw: unknown): Promise<ActionResult<PreviewOutcome>> {
   try {
     const viewer = await operator();
     const input = previewSchema.parse(raw);
-    return { ok: true, data: await runUploadFor(viewer, await deps(), { ...input, dryRun: true }) };
+    return { ok: true, data: await previewUploadFor(viewer, await deps(), input) };
   } catch (error) {
     return failure(error);
   }

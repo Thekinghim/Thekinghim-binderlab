@@ -232,6 +232,28 @@ describe("recommendAssortment", () => {
     );
   });
 
+  it("behåll: raderna, fingerprint och lediga fack visar nuvarande fördelning", () => {
+    const [m1] = recommendAssortment({
+      ...base,
+      orders: orders(),
+      options: { minEffectPerWeekOre: 50_000 },
+    });
+    expect(m1!.action).toBe("keep");
+    expect(
+      m1!.lines.map((l) => [l.titleId, l.currentSlots, l.recommendedSlots, l.potentialSlots]),
+    ).toEqual([
+      ["t-b", 2, 2, 0],
+      ["t-a", 1, 1, 2],
+      ["t-c", 1, 1, 0],
+      ["t-d", 0, 0, 2],
+    ]);
+    for (const l of m1!.lines) {
+      expect(l.recommendedContributionPerWeekOre).toBe(l.currentContributionPerWeekOre);
+    }
+    expect(m1!.fingerprint).toBe("t-a:1,t-b:2,t-c:1");
+    expect(m1!.freeSlots).toBe(0);
+  });
+
   it("titlar utan pris eller med för lite data är låsta och behåller sina fack", () => {
     const [m1] = recommendAssortment({
       ...base,
@@ -356,6 +378,28 @@ describe("assortmentFollowUp", () => {
     const r = assortmentFollowUp({ ...fb, orders: followOrders(2), controlMachineIds: ["m-3"] });
     expect(r.controlChangeBp).toBeNull();
     expect(r.adjustedChangePerWeekOre).toBe(16_870);
+  });
+
+  it("underlaget visar jämförelseautomaterna och deras order", () => {
+    const r = assortmentFollowUp({ ...fb, orders: followOrders(2) });
+    expect(r.evidence.machineIds).toEqual(["m-1", "m-2"]);
+    // Egna order: 56 före + 85 efter.
+    expect(r.evidence.orderIds).toHaveLength(141);
+    expect(r.control).toEqual({
+      machineIds: ["m-2"],
+      unitsBefore: 28,
+      unitsAfter: 56,
+      contributionPerWeekBeforeOre: 16_870,
+      contributionPerWeekAfterOre: 33_740,
+    });
+    expect(r.controlEvidence.machineIds).toEqual(["m-2"]);
+    expect(r.controlEvidence.orderIds).toHaveLength(84);
+    expect(r.controlEvidence.period).toEqual({ start: "2026-10-04", end: "2026-11-28" });
+    expect(r.evidence.figures.map((f) => f.key)).toContain("controlContributionPerWeekBeforeOre");
+    // Valda kontrollautomater utan order: tom jämförelse.
+    const none = assortmentFollowUp({ ...fb, orders: followOrders(2), controlMachineIds: ["m-3"] });
+    expect(none.control.machineIds).toEqual([]);
+    expect(none.evidence.machineIds).toEqual(["m-1"]);
   });
 
   it("status efter hur många dagar som gått", () => {

@@ -14,7 +14,13 @@ import { describe, expect, it } from "vitest";
 import { parseAwishCsv } from "@/import/adapters/awish-csv";
 import { sha256Hex } from "@/import/hash";
 
-import { AWISH_HEADER, formatAwishAmount, SEED_CSV_FILE_NAME, toAwishCsv, toAwishCsvBytes } from "./awish-csv";
+import {
+  AWISH_HEADER,
+  formatAwishAmount,
+  SEED_CSV_FILE_NAME,
+  toAwishCsv,
+  toAwishCsvBytes,
+} from "./awish-csv";
 import { EXPECTED_TOTAL_ORE, SEED_MACHINES, SOURCE_TIMEZONE } from "./catalog";
 import { generateSeedOrders } from "./orders";
 

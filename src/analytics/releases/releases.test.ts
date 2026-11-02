@@ -233,9 +233,9 @@ describe("releaseOutcome", () => {
     // 56 × 51,43 % = 28,8
     expect(r.expectedByNowTenths).toBe(288);
     expect(r.diffBp).toBe(-625);
-    // Lika mot lika: 25 pack i automaterna med förslag mot 28,8 → −13,19 %.
+    // Lika mot lika: 25 pack i automaterna med förslag mot 56 × 51,43 % = 28,8008 → −13,20 %.
     expect(r.plannedActual).toBe(25);
-    expect(r.plannedDiffBp).toBe(-1_319);
+    expect(r.plannedDiffBp).toBe(-1_320);
     expect(r.pace).toBe("on-track");
     const m1 = r.machines.find((m) => m.machineId === "m-1")!;
     expect(m1).toMatchObject({

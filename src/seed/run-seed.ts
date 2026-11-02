@@ -235,11 +235,7 @@ interface MasterData {
 }
 
 /** Inställningar, konton, butiker, automater, avtal, titlar, priser och datakälla. */
-async function ensureMasterData(
-  tx: Tx,
-  orgId: string,
-  sections: Sections,
-): Promise<MasterData> {
+async function ensureMasterData(tx: Tx, orgId: string, sections: Sections): Promise<MasterData> {
   const org = sql`${orgId}::uuid`;
 
   // Inställningar: ingen moms, ingen kortavgift (ändras bara om de avviker).

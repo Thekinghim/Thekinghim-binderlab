@@ -14,7 +14,10 @@ const orders = generateSeedOrders();
 const plan = planStock(orders);
 
 /** Saldo per plats och titel över tid, med försäljningen från orderna. */
-function simulate(events: readonly PlannedStockEvent[]): { min: number; final: Map<string, number> } {
+function simulate(events: readonly PlannedStockEvent[]): {
+  min: number;
+  final: Map<string, number>;
+} {
   type Step = { ms: number; key: string; kind: string; quantity: number };
   const steps: Step[] = [
     ...events.map((e) => ({
@@ -23,7 +26,12 @@ function simulate(events: readonly PlannedStockEvent[]): { min: number; final: M
       kind: e.kind,
       quantity: e.quantity,
     })),
-    ...orders.map((o) => ({ ms: o.paidAtMs, key: `${o.machineCode}|${o.title}`, kind: "sale", quantity: -1 })),
+    ...orders.map((o) => ({
+      ms: o.paidAtMs,
+      key: `${o.machineCode}|${o.title}`,
+      kind: "sale",
+      quantity: -1,
+    })),
   ].sort((a, b) => a.ms - b.ms);
   const level = new Map<string, number>();
   let min = Infinity;
@@ -54,7 +62,9 @@ describe("planStock", () => {
   it("varje automat har inventering av alla titlar 12 okt", () => {
     const counts = plan.events.filter((e) => e.kind === "count" && e.location.kind === "machine");
     expect(counts).toHaveLength(SEED_MACHINES.length * SEED_TITLES.length);
-    expect(counts.every((e) => new Date(e.occurredAtMs).toISOString().startsWith("2026-10-12"))).toBe(true);
+    expect(
+      counts.every((e) => new Date(e.occurredAtMs).toISOString().startsWith("2026-10-12")),
+    ).toBe(true);
   });
 
   it("ett par tar slut med sin sista order, några är låga", () => {
@@ -93,7 +103,8 @@ describe("planStock", () => {
       expect(r.quantity).toBeGreaterThan(0);
       expect(
         withdrawals.some(
-          (w) => w.occurredAtMs === r.occurredAtMs && w.title === r.title && w.quantity === -r.quantity,
+          (w) =>
+            w.occurredAtMs === r.occurredAtMs && w.title === r.title && w.quantity === -r.quantity,
         ),
       ).toBe(true);
     }

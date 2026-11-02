@@ -167,6 +167,54 @@ describe("priceChangeEffect", () => {
     expect(r.control).toBe("none");
   });
 
+  it("underlag för jämförelsen: jämförelsegruppens order, titlar och placeboperioder", () => {
+    const r = priceChangeEffect({ ...base, orders: scenario() });
+    expect(r.controlTitleIds).toEqual(["t-b"]);
+    expect(r.excludedTitleIds).toEqual([]);
+    // 112 före + 140 efter
+    expect(r.controlEvidence.orderIds).toHaveLength(252);
+    expect(r.controlEvidence.titleIds).toEqual(["t-b"]);
+    expect(r.controlEvidence.machineIds).toEqual(["m-1", "m-2"]);
+    expect(r.controlEvidence.dates).toEqual([
+      "2026-07-09",
+      "2026-08-06",
+      "2026-09-03",
+      "2026-10-01",
+    ]);
+    expect(r.placeboWindows).toHaveLength(3);
+    expect(r.placeboWindows[0]).toEqual({
+      changeDate: "2026-09-03",
+      before: { start: "2026-08-06", end: "2026-09-02" },
+      after: { start: "2026-09-03", end: "2026-09-30" },
+      unitsBefore: 56,
+      unitsAfter: 56,
+      controlUnitsBefore: 112,
+      controlUnitsAfter: 112,
+      effectBp: 0,
+    });
+    expect(r.placeboWindows.map((p) => p.effectBp)).toEqual(r.placebos.map((p) => p.effectBp));
+  });
+
+  it("övrig titel som själv bytte pris utesluts automatiskt ur jämförelsegruppen", () => {
+    // t-c säljer 1/dag i m-1 och höjs 15 okt. (49 → 69 kr) med dubbel försäljning efter:
+    // ingår den blir jämförelsegruppen 112 → 140 + 14 + 28 och effekten en annan.
+    const orders = [
+      ...scenario(),
+      ...daily("c1", "t-c", "m-1", "2026-06-01", 136, 1),
+      ...daily("c2", "t-c", "m-1", "2026-10-15", 14, 2, 6_900),
+    ];
+    const r = priceChangeEffect({ ...base, orders });
+    expect(r.excludedTitleIds).toEqual(["t-c"]);
+    expect(r.controlTitleIds).toEqual(["t-b"]);
+    expect([r.controlUnitsBefore, r.controlUnitsAfter]).toEqual([112, 140]);
+    expect(r.effectBp).toBe(-4_000);
+    expect(plain(r.text)).toContain("Utanför jämförelsen: t-c.");
+    const manual = priceChangeEffect({ ...base, orders, autoExcludePriceChanges: false });
+    expect(manual.excludedTitleIds).toEqual([]);
+    expect(manual.controlTitleIds).toEqual(["t-b", "t-c"]);
+    expect(manual.controlUnitsAfter).toBe(140 + 14 + 28);
+  });
+
   it("ändringen har inte börjat: too-early", () => {
     const r = priceChangeEffect({ ...base, orders: scenario(), asOf: "2026-09-30" });
     expect(r.verdict).toBe("too-early");

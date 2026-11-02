@@ -252,3 +252,53 @@ describe("goalProgress: indata och ordning", () => {
     expect(p).toMatchObject({ actual: 19_000, forecast: 57_000 });
   });
 });
+
+describe("goalProgress: revisionens fynd", () => {
+  it("antal automater för en månad som inte har börjat: utfall 0, prognos från placeringarna", () => {
+    const [p] = goalProgress(
+      input([goal({ metric: "active_machines", target: 3, month: "2026-12" })]),
+    );
+    expect(p).toMatchObject({
+      actual: 0,
+      measuredThrough: null,
+      forecast: 2,
+      forecastMethod: "placements",
+      status: "behind",
+    });
+    expect(p!.text).toBe(
+      "Automater i drift december: månaden har inte börjat, mål 3. Prognos 2 vid månadens slut, efter med 1.",
+    );
+  });
+
+  it("underlaget pekar ut orderna och dagarna utfallet bygger på", () => {
+    const res = goalProgress(
+      input(
+        [
+          goal({ id: "g-r", metric: "revenue", target: 1 }),
+          goal({ id: "g-p", metric: "profit", target: 1 }),
+        ],
+        "2026-11-10",
+        {
+          orders: [
+            ...dailyOrders("m-1", "2026-10-01", 41),
+            // En order utan inköpspris 5 nov.: med i intäkten, inte i vinsten.
+            ...dailyOrders("m-1", "2026-11-05", 1, 1, 4900, "t-utan"),
+          ],
+        },
+      ),
+    );
+    const by = Object.fromEntries(res.map((g) => [g.goalId, g]));
+    expect(by["g-r"]!.evidence.orderIds).toHaveLength(11);
+    expect(by["g-p"]!.evidence.orderIds).toHaveLength(10);
+    expect(by["g-p"]!.evidence.dates).toHaveLength(10);
+    expect(by["g-p"]!.evidence.dates[0]).toBe("2026-11-01");
+    expect(by["g-p"]!.evidence.orderIds.some((id) => id.includes("t-utan"))).toBe(false);
+  });
+
+  it("prognos på de senaste 28 dagarna: underlaget omfattar fönstrets order", () => {
+    const [p] = goalProgress(input([goal({ metric: "revenue", target: 1 })], "2026-11-03"));
+    // 7 okt.–3 nov. = 28 dagar med order
+    expect(p!.evidence.dates).toHaveLength(28);
+    expect(p!.evidence.dates[0]).toBe("2026-10-07");
+  });
+});

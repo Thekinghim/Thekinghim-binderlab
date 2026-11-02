@@ -50,7 +50,7 @@ function PasswordForm({
   const [state, action, pending] = useActionState<LoginState, FormData>(signIn, {});
   const error = state.error ?? (state.email === undefined ? notice : undefined);
   return (
-    <form action={action} className="flex flex-col gap-5" aria-describedby="login-error">
+    <form action={action} className="flex flex-col gap-5">
       <input type="hidden" name="next" value={next} />
       <Input
         label="E-postadress"
@@ -70,9 +70,7 @@ function PasswordForm({
         autoComplete="current-password"
         required
       />
-      <div id="login-error">
-        <FormError message={error} />
-      </div>
+      <FormError message={error} />
       <Button type="submit" variant="primary" loading={pending} className="w-full">
         Logga in
       </Button>

@@ -112,9 +112,12 @@ describe("hjälpfunktioner", () => {
   });
 
   it("annualReturnBp: vinst per år / investering", () => {
-    // 100 kr per dag × 365 / 36 500 kr = 100 %
-    expect(annualReturnBp(3_650_000, new Ratio(10_000))).toBe(10_000);
+    // 100 kr per månad × 12 / 1 200 kr = 100 %
+    expect(annualReturnBp(120_000, new Ratio(10_000))).toBe(10_000);
+    // 747,10 kr × 12 / 21 000 kr = 42,69 % (samma som enhetsekonomins jämförelse)
+    expect(annualReturnBp(2_100_000, new Ratio(74_710))).toBe(4_269);
     expect(annualReturnBp(0, new Ratio(10_000))).toBeNull();
+    expect(() => annualReturnBp(-1, new Ratio(1))).toThrow(DomainError);
   });
 
   it("estimateConfidence", () => {
@@ -163,25 +166,29 @@ describe("estimateSite", () => {
     const e = estimate();
     // Vinst per dag: 48,20 (s-1) och 24,10 (s-3); viktat (10 000 × 4 820 + 9 527 × 2 410) / 19 527.
     expect(e.profitPerDayOre).toEqual({ low: 2_410, expected: 3_644, high: 4_820 });
-    // × 365 / 12
-    expect(e.profitPerMonthOre).toEqual({ low: 73_304, expected: 110_844, high: 146_608 });
-    expect(e.revenuePerMonthOre).toEqual({ low: 149_042, expected: 225_368, high: 298_083 });
+    // Per automatmånad (hela oktober = 1 månad): 4 820 × 31 = 149 420 och 2 410 × 31 = 74 710;
+    // viktat (10 000 × 149 420 + 9 527 × 74 710) / 19 527 = 112 970,3.
+    expect(e.profitPerMonthOre).toEqual({ low: 74_710, expected: 112_970, high: 149_420 });
+    expect(e.revenuePerMonthOre).toEqual({ low: 151_900, expected: 229_690, high: 303_800 });
     expect(e.investmentOre).toBe(2_100_000);
-    expect(e.paybackTenths).toEqual({ low: 143, expected: 189, high: 286 });
-    expect(e.annualReturnBp).toEqual({ low: 4_189, expected: 6_334, high: 8_378 });
+    // 21 000 000 / 149 420 = 140,5 → 141; / 112 970,3 = 185,9 → 186; / 74 710 = 281,1 → 281.
+    expect(e.paybackTenths).toEqual({ low: 141, expected: 186, high: 281 });
+    // vinst per månad × 12 × 10 000 / 2 100 000.
+    expect(e.annualReturnBp).toEqual({ low: 4_269, expected: 6_455, high: 8_538 });
     expect(e.confidence).toBe("medium");
     expect(e.basis[0]).toMatchObject({
       machineDays: 31,
+      machineMonthsHundredths: 100,
       profitPerDayOre: 4_820,
-      profitPerMonthOre: 146_608,
-      paybackTenths: 143,
+      profitPerMonthOre: 149_420,
+      paybackTenths: 141,
     });
   });
 
   it("texten är märkt som uppskattning och nämner platserna", () => {
     const e = estimate();
     expect(e.text).toBe(
-      "Uppskattning för en butik som liknar Ica Nära Söder: 1 108 kr (733 kr till 1 466 kr) vinst per månad, återbetald på 18,9 månader (14,3–28,6). Bygger på Ica Nära Söder (100 % lik) och Coop Väster (95 %).",
+      "Uppskattning för en butik som liknar Ica Nära Söder: 1 130 kr (747 kr till 1 494 kr) vinst per månad, återbetald på 18,6 månader (14,1–28,1). Bygger på Ica Nära Söder (100 % lik) och Coop Väster (95 %).",
     );
     expect(e.detail).toContain("62 automatdagar");
     expect(e.detail).toContain("butiksersättning enligt platsernas egna avtal");
@@ -195,14 +202,19 @@ describe("estimateSite", () => {
     expect(e.evidence.period).toEqual(OCTOBER);
     const keys = e.evidence.figures.map((f) => f.key);
     expect(keys).toContain("site:s-3:profitPerMonthOre");
-    expect(e.evidence.figures.find((f) => f.key === "paybackTenths")!.value).toBe(189);
+    expect(e.evidence.figures.find((f) => f.key === "paybackTenths")!.value).toBe(186);
+    // Order och försäljningsdagar från de två platserna (31 + 31 dagar, 2 + 1 pack per dag).
+    expect(e.evidence.orderIds).toHaveLength(93);
+    expect(e.evidence.dates[0]).toBe("2026-10-01");
+    expect(e.evidence.dates).toHaveLength(31);
   });
 
   it("villkor för den nya platsen ersätter platsernas provision och hyra", () => {
     const e = estimate({ terms: { commissionBp: 1_500, monthlyRentOre: 30_000 } });
     expect(e.usesTerms).toBe(true);
-    // s-1: (58,00 − 15 % × 98,00) × 365/12 − 300 = 1 017,04 kr
-    expect(e.profitPerMonthOre).toEqual({ low: 35_852, expected: 69_576, high: 101_704 });
+    // s-1: (58,00 − 15 % × 98,00) × 31 − 300 = 1 042,30 kr per automatmånad
+    // s-3: (29,00 − 15 % × 49,00) × 31 − 300 = 371,15 kr
+    expect(e.profitPerMonthOre).toEqual({ low: 37_115, expected: 71_485, high: 104_230 });
     expect(e.detail).toContain("provision 15 %, hyra 300 kr per månad");
   });
 
@@ -211,8 +223,8 @@ describe("estimateSite", () => {
     expect(e.basis.map((b) => b.storeId)).toEqual(["s-1"]);
     expect(e.excluded.find((x) => x.storeId === "s-3")!.reason).toBe("beyond-max");
     // En plats: intervallet är en punkt.
-    expect(e.profitPerMonthOre).toEqual({ low: 146_608, expected: 146_608, high: 146_608 });
-    expect(e.text).toContain("1 466 kr vinst per månad, återbetald på 14,3 månader.");
+    expect(e.profitPerMonthOre).toEqual({ low: 149_420, expected: 149_420, high: 149_420 });
+    expect(e.text).toContain("1 494 kr vinst per månad, återbetald på 14,1 månader.");
     expect(e.confidence).toBe("low");
   });
 
@@ -256,8 +268,8 @@ describe("estimateSite", () => {
 
   it("förlust på sämsta platsen: återbetalas inte i sämsta fallet", () => {
     const e = estimate({ terms: { commissionBp: 0, monthlyRentOre: 100_000 } });
-    // s-3: 29,00 × 365/12 − 1 000 kr < 0
-    expect(e.profitPerMonthOre!.low).toBeLessThan(0);
+    // s-3: 29,00 × 31 − 1 000 kr = −101 kr
+    expect(e.profitPerMonthOre!.low).toBe(-10_100);
     expect(e.paybackTenths!.high).toBeNull();
     expect(e.text).toContain("inte alls i sämsta fallet");
   });
@@ -344,7 +356,7 @@ describe("expansionPipeline", () => {
       ["l-3", 4, "insufficient-data"],
     ]);
     // l-2 liknar s-1 mest (100 %) och får samma uppskattning som scenariot.
-    expect(res[0]!.estimate.paybackTenths!.expected).toBe(189);
+    expect(res[0]!.estimate.paybackTenths!.expected).toBe(186);
     expect(res[0]!.stage).toBe("contacted");
   });
 

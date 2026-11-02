@@ -158,6 +158,8 @@ export interface ImportDetailRow {
   readonly machine: string | null;
   readonly amount: string | null;
   readonly paidAt: string | null;
+  /** Orderns tid (ISO, UTC) för rader som hör till en order (ny eller konflikt). */
+  readonly orderedAt: string | null;
   /** Hela källraden (rubrik → värde). */
   readonly raw: Record<string, string>;
 }
@@ -173,3 +175,16 @@ export interface ImportDetail {
   /** Fler rader än som visas för valt filter. */
   readonly truncated: boolean;
 }
+
+/** Filen saknar kolumner för obligatoriska fält: användaren väljer dem själv. */
+export interface MappingNeeded {
+  readonly uploadId: string;
+  readonly fileName: string;
+  readonly message: string;
+  readonly missing: readonly ImportField[];
+  readonly mapping: PreviewMapping;
+}
+
+export type PreviewOutcome =
+  | { readonly kind: "preview"; readonly result: PreviewResult }
+  | { readonly kind: "mapping"; readonly needed: MappingNeeded };

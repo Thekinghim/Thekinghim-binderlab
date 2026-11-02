@@ -14,10 +14,17 @@ import "server-only";
 import { sql } from "drizzle-orm";
 
 import { getServiceDb, type Db, type Tx } from "@/db/client";
-import { ImportValidationError } from "@/import/errors";
+import { parseCsvTable } from "@/import/csv-table";
+import { ImportValidationError, MappingError } from "@/import/errors";
 import type { FileStore } from "@/import/file-store";
 import { sha256Hex } from "@/import/hash";
-import type { MappingOverride } from "@/import/mapping";
+import {
+  autoMap,
+  countKnownHeaders,
+  IMPORT_FIELDS,
+  type ImportField,
+  type MappingOverride,
+} from "@/import/mapping";
 import { notPaidOf, runImport } from "@/import/run-import";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
 import { loadMasterDataFor, type Viewer } from "@/server/data/core/loaders";
@@ -35,6 +42,8 @@ import type {
   ImportStatus,
   ImportTrigger,
   MachineOption,
+  MappingNeeded,
+  PreviewOutcome,
   PreviewResult,
   ProviderKey,
   QueueEntry,
@@ -252,6 +261,7 @@ function detailRow(r: Row, columns: Partial<Record<string, string | null>> | nul
     machine: pick("machine", ["Order Machine"]),
     amount: pick("amount", ["Order Amount"]),
     paidAt: pick("paidAt", ["Payment Time"]),
+    orderedAt: iso(r.ordered_at),
     raw,
   };
 }
@@ -294,11 +304,13 @@ export async function loadImportDetailFor(
       ),
       query(
         tx,
-        sql`select row_number, status::text as status, message, order_id, raw
-            from public.import_rows
-            where organization_id = ${orgId}::uuid and import_id = ${importId}::uuid
-              and status::text in (select jsonb_array_elements_text(${JSON.stringify(statuses)}::jsonb))
-            order by row_number
+        sql`select r.row_number, r.status::text as status, r.message, r.order_id, r.raw,
+                   o.ordered_at
+            from public.import_rows r
+            left join public.orders o on o.organization_id = r.organization_id and o.id = r.order_id
+            where r.organization_id = ${orgId}::uuid and r.import_id = ${importId}::uuid
+              and r.status::text in (select jsonb_array_elements_text(${JSON.stringify(statuses)}::jsonb))
+            order by r.row_number
             limit ${IMPORT_ROWS_LIMIT + 1}`,
       ),
     ]);
@@ -452,6 +464,75 @@ export async function discardUploadFor(
 ): Promise<void> {
   await requireRoleFor(viewer.user, viewer.organization.id, OPERATOR_ROLES);
   await deps.staging.discard(owner(viewer), uploadId);
+}
+
+/**
+ * Rubrikerna i filen och den automatiska mappningen, för att användaren ska kunna
+ * välja kolumnerna själv när filen saknar något obligatoriskt fält.
+ */
+export function mappingNeededOf(
+  uploadId: string,
+  fileName: string,
+  content: Uint8Array,
+  error: MappingError,
+  override?: MappingOverride,
+): MappingNeeded {
+  const table = parseCsvTable(content, { delimiter: override?.delimiter });
+  const candidates = table.records.slice(0, 10);
+  const header =
+    candidates.find((r) => countKnownHeaders(r.cells.map((c) => c.trim())) >= 2) ?? candidates[0];
+  const seen = new Map<string, number>();
+  const headers = (header?.cells ?? []).map((cell, index) => {
+    const base = cell.trim() === "" ? `Kolumn ${index + 1}` : cell.trim();
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    return n === 1 ? base : `${base} (${n})`;
+  });
+  const columns = autoMap(headers);
+  const source = Object.fromEntries(
+    IMPORT_FIELDS.map((f) => [f, columns[f] === null ? "none" : "auto"]),
+  ) as Record<ImportField, "auto" | "saved" | "override" | "none">;
+  for (const field of IMPORT_FIELDS) {
+    const wanted = override?.columns?.[field];
+    if (wanted === undefined) continue;
+    if (wanted === null || headers.includes(wanted)) {
+      columns[field] = wanted;
+      source[field] = wanted === null ? "none" : "override";
+    }
+  }
+  return {
+    uploadId,
+    fileName,
+    message: error.message,
+    missing: error.missing.filter((m): m is ImportField =>
+      (IMPORT_FIELDS as readonly string[]).includes(m),
+    ),
+    mapping: {
+      headers,
+      columns,
+      source,
+      delimiter: table.delimiter,
+      encoding: table.encoding,
+    },
+  };
+}
+
+/** Förhandsvisning. Saknas obligatoriska kolumner får användaren välja dem. */
+export async function previewUploadFor(
+  viewer: Viewer,
+  deps: UploadDeps,
+  input: { uploadId: string; dataSourceId: string; mapping?: MappingOverride },
+): Promise<PreviewOutcome> {
+  try {
+    return { kind: "preview", result: await runUploadFor(viewer, deps, { ...input, dryRun: true }) };
+  } catch (error) {
+    if (!(error instanceof MappingError)) throw error;
+    const { meta, content } = await deps.staging.read(owner(viewer), input.uploadId);
+    return {
+      kind: "mapping",
+      needed: mappingNeededOf(input.uploadId, meta.fileName, content, error, input.mapping),
+    };
+  }
 }
 
 /**

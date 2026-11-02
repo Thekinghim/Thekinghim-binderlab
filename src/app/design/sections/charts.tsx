@@ -202,7 +202,7 @@ export function ChartsSection({ index, model }: { index: number; model: Model })
         label={`Köp per veckodag och timme · ${formatInt(model.days)} d`}
         meta={`öppet ${heatHours[0]}–20`}
         title={`${heatDays[hr]} ${hourRange(hc)} toppar med ${formatInt(heatMax)}${NBSP}köp.`}
-        className="lg:col-span-8"
+        className="lg:col-span-7"
       >
         <Heatmap
           values={model.heat}
@@ -224,7 +224,7 @@ export function ChartsSection({ index, model }: { index: number; model: Model })
             ? `${leader.title.name} står för ${formatPercent(leader.revenue / (t.revenue || 1), 0)}.`
             : undefined
         }
-        className="lg:col-span-4"
+        className="lg:col-span-5"
       >
         <ShareBar
           segments={shares}

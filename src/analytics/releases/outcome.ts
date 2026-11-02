@@ -276,7 +276,9 @@ export function releaseOutcome(input: ReleaseOutcomeInput): ReleaseOutcome {
         ...(plannedDiffBp === null
           ? []
           : [fig("plannedDiffBp", "Avvikelse lika mot lika", plannedDiffBp, "bp")]),
-        ...(diffBp === null ? [] : [fig("diffBp", "Avvikelse inklusive automater utan förslag", diffBp, "bp")]),
+        ...(diffBp === null
+          ? []
+          : [fig("diffBp", "Avvikelse inklusive automater utan förslag", diffBp, "bp")]),
       ],
     }),
   };

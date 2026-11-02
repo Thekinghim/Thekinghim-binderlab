@@ -181,12 +181,23 @@ describe("binderlabEffect: mätvärden", () => {
       s.points.map((p) => [p.value, p.improvement, p.improvementBp, p.improvementOre]),
     ).toEqual([
       [200, 100, 3_333, 60_000],
-      [150, 150, 5_000, 90_000],
+      // 1–10 nov.: utgångsläget 300 min × 10/30 = 100 min; 150 min är 50 min (50 %) mer.
+      [150, -50, -5_000, -30_000],
     ]);
+    expect(s.points[1]).toMatchObject({
+      partial: true,
+      measuredDays: 10,
+      baselineForPeriodTenths: 1_000,
+    });
+    // Snitt per hel månad: (200 + 150) / (1 + 10/30) = 262,5 → 263 min; mot 300 = 12,5 % mindre.
+    expect(s.averageValue).toBe(263);
+    expect(s.averageImprovementBp).toBe(1_250);
     expect(s.text).toBe(
-      "Tid för påfyllning: 2 h 30 min i november (hittills) mot 5 h före Binderlab (50 % mindre, värt +900 kr).",
+      "Tid för påfyllning: 2 h 30 min i november (hittills, 10 av 30 dagar) mot 1 h 40 min på lika många dagar före Binderlab (50 % mer, värt −300 kr).",
     );
-    expect(s.detail).toBe("Snitt 2 h 55 min över 2 månader, sammanlagt +1 500 kr sedan oktober.");
+    expect(s.detail).toBe(
+      "Snitt 4 h 23 min per hel månad över 2 månader, sammanlagt +300 kr sedan oktober.",
+    );
     expect(s.points[0]!.evidence.figures.find((f) => f.key === "value")!.unit).toBe("minutes");
   });
 
@@ -195,7 +206,7 @@ describe("binderlabEffect: mätvärden", () => {
     expect(s.points[0]!.improvementOre).toBeNull();
     expect(s.totalImprovementOre).toBeNull();
     expect(s.text).toBe(
-      "Tid för påfyllning: 2 h 30 min i november (hittills) mot 5 h före Binderlab (50 % mindre).",
+      "Tid för påfyllning: 2 h 30 min i november (hittills, 10 av 30 dagar) mot 1 h 40 min på lika många dagar före Binderlab (50 % mer).",
     );
     expect(s.detail).toContain("ange timkostnad för att räkna tiden i kronor");
   });
@@ -288,5 +299,71 @@ describe("minutesText", () => {
     expect(minutesText(45)).toBe("45 min");
     expect(minutesText(0)).toBe("0 min");
     expect(minutesText(-90)).toBe("−1 h 30 min");
+  });
+});
+
+describe("binderlabEffect: pågående månad och underlag", () => {
+  it("slutsålda dagar hittills jämförs mot utgångsläget för samma antal dagar", () => {
+    // Utgångsläge 6 per månad; 1–10 nov. motsvarar 6 × 10/30 = 2 dagar. 1 dag → 1 färre, 50 %.
+    const res = binderlabEffect(
+      input({
+        observations: [
+          { metric: "stockout_days_month", month: "2026-11", value: 1, scope: "organization" },
+        ],
+        options: { stockoutDayValueOre: 5_000 },
+      }),
+    );
+    const s = series(res, "b-stock");
+    const nov = s.points.find((p) => p.month === "2026-11")!;
+    expect(nov).toMatchObject({
+      partial: true,
+      measuredDays: 10,
+      baselineForPeriodTenths: 20,
+      improvement: 1,
+      improvementBp: 5_000,
+      improvementOre: 5_000,
+    });
+    expect(s.text).toBe(
+      "Slutsålda dagar: 1 i november (hittills, 10 av 30 dagar) mot 2,0 på lika många dagar före Binderlab (50 % färre, värt +50 kr).",
+    );
+    // Snitt per hel månad: 1 / (10/30) = 3 dagar mot 6 → 50 %.
+    expect(s.averageValue).toBe(3);
+    expect(s.averageImprovementBp).toBe(5_000);
+  });
+
+  it("samma takt som utgångsläget ger 0 % även när månaden pågår", () => {
+    const res = binderlabEffect(
+      input({
+        observations: [
+          { metric: "refill_hours_month", month: "2026-11", value: 100, scope: "organization" },
+        ],
+      }),
+    );
+    const nov = series(res, "b-refill").points.find((p) => p.month === "2026-11")!;
+    expect([nov.improvement, nov.improvementBp, nov.improvementOre]).toEqual([0, 0, 0]);
+  });
+
+  it("hel månad: utgångsläget används oförändrat", () => {
+    const oct = series(binderlabEffect(input()), "b-stock").points[0]!;
+    expect(oct).toMatchObject({ partial: false, measuredDays: 31, baselineForPeriodTenths: 60 });
+  });
+
+  it("vinst per automat: underlaget pekar ut månadens prissatta order och dagar", () => {
+    const res = binderlabEffect(
+      input({
+        orders: [
+          ...dailyOrders("m-1", "2026-10-01", 41),
+          ...dailyOrders("m-2", "2026-10-17", 15),
+          ...dailyOrders("m-1", "2026-10-03", 1, 1, 4900, "t-utan"),
+        ],
+      }),
+    );
+    const oct = series(res, "b-profit").points[0]!;
+    // 31 + 15 prissatta order; ordern utan inköpspris ingår inte i vinsten.
+    expect(oct.evidence.orderIds).toHaveLength(46);
+    expect(oct.evidence.dates).toHaveLength(31);
+    expect(oct.evidence.orderIds.some((id) => id.includes("t-utan"))).toBe(false);
+    const nov = series(res, "b-profit").points[1]!;
+    expect(nov.evidence.dates.at(-1)).toBe("2026-11-10");
   });
 });

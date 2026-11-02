@@ -26,20 +26,21 @@ export function AuthFrame({
   children: ReactNode;
 }) {
   return (
-    <div className="relative min-h-dvh overflow-x-clip bg-bg">
-      <div
-        aria-hidden
-        className="grid-field pointer-events-none absolute inset-0 [mask-image:linear-gradient(to_right,black,black_55%,transparent)]"
-      />
+    <div className="min-h-dvh overflow-x-clip bg-bg">
       <div className="relative mx-auto flex min-h-dvh w-full max-w-[1280px] flex-col px-4 md:px-8">
-        <header className="flex h-16 items-center justify-between">
+        {/* Nätet börjar i ramens vänsterkant, så att blocket står på dess linjer. */}
+        <div
+          aria-hidden
+          className="grid-field pointer-events-none absolute inset-0 [mask-image:linear-gradient(to_right,black,black_50%,transparent_90%)]"
+        />
+        <header className="relative flex h-16 items-center justify-between">
           <a href="/logga-in" className="rounded-xs">
             <Wordmark size="md" />
           </a>
           <ThemeToggle />
         </header>
 
-        <main id="main" className="flex flex-1 flex-col pt-[8vh] pb-16 md:pt-[14vh]">
+        <main id="main" className="relative flex flex-1 flex-col pt-16 pb-16 md:pt-32">
           <div className="relative w-full max-w-[384px] md:ml-[64px]">
             <Ticks />
             <p className="label flex items-center gap-2 text-subtle">{eyebrow}</p>
@@ -51,7 +52,7 @@ export function AuthFrame({
           </div>
         </main>
 
-        <footer className="border-t border-line py-3">
+        <footer className="relative border-t border-line bg-bg py-3">
           <SystemStatus />
         </footer>
       </div>

@@ -1,0 +1,151 @@
+"use client";
+
+import Link from "next/link";
+
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { StatusTag, type Status } from "@/components/ui/status-tag";
+import { formatInt, MISSING } from "@/lib/format";
+
+import { formatWhen } from "../_lib/display";
+import type { ImportLogEntry } from "../_lib/types";
+
+const STATUS: Record<ImportLogEntry["status"], { status: Status; text: string }> = {
+  succeeded: { status: "ok", text: "Klar" },
+  running: { status: "neutral", text: "Pågår" },
+  pending: { status: "neutral", text: "Väntar" },
+  failed: { status: "critical", text: "Misslyckades" },
+};
+
+const TRIGGER: Record<ImportLogEntry["trigger"], string> = {
+  upload: "Uppladdning",
+  schedule: "Schemalagd",
+  webhook: "Webhook",
+};
+
+function count(n: number, flag = false) {
+  if (n === 0) return <span className="text-subtle">0</span>;
+  return <span className={flag ? "font-medium text-fg" : undefined}>{formatInt(n)}</span>;
+}
+
+/** Loggen över alla importer, senaste först. Varje rad länkar till importens radlogg. */
+export function ImportLog({
+  imports,
+  timeZone,
+  now,
+}: {
+  imports: readonly ImportLogEntry[];
+  timeZone: string;
+  now: string;
+}) {
+  if (imports.length === 0) {
+    return (
+      <p className="max-w-xl text-sm text-muted">
+        Varje uppladdning hamnar här med antal nya order, dubbletter, konflikter och fel.
+      </p>
+    );
+  }
+  const nowDate = new Date(now);
+  const when = (e: ImportLogEntry) => e.finishedAt ?? e.startedAt ?? e.createdAt;
+
+  const columns: Column<ImportLogEntry>[] = [
+    {
+      key: "when",
+      header: "Tid",
+      sortValue: (e) => when(e),
+      render: (e) => (
+        <Link
+          href={`/datakallor/importer/${e.id}`}
+          className="tnum whitespace-nowrap text-fg underline-offset-4 hover:underline"
+        >
+          {formatWhen(when(e), timeZone, nowDate)}
+        </Link>
+      ),
+      csv: (e) => when(e),
+      width: 150,
+    },
+    {
+      key: "file",
+      header: "Fil",
+      sortValue: (e) => e.fileName ?? "",
+      render: (e) => (
+        <span className="block max-w-[16ch] truncate sm:max-w-[28ch]" title={e.fileName ?? undefined}>
+          {e.fileName ?? TRIGGER[e.trigger]}
+        </span>
+      ),
+    },
+    {
+      key: "source",
+      header: "Källa",
+      sortValue: (e) => e.dataSourceName,
+      render: (e) => e.dataSourceName,
+      hideOnMobile: true,
+      defaultHidden: true,
+    },
+    {
+      key: "by",
+      header: "Av",
+      sortValue: (e) => e.createdBy ?? "",
+      render: (e) => e.createdBy ?? MISSING,
+      hideOnMobile: true,
+    },
+    {
+      key: "new",
+      header: "Nya",
+      numeric: true,
+      sortValue: (e) => e.rowsNew,
+      render: (e) => count(e.rowsNew),
+    },
+    {
+      key: "dup",
+      header: "Dubbletter",
+      numeric: true,
+      sortValue: (e) => e.rowsDuplicate,
+      render: (e) => count(e.rowsDuplicate),
+      hideOnMobile: true,
+    },
+    {
+      key: "conflict",
+      header: "Konflikter",
+      numeric: true,
+      sortValue: (e) => e.rowsConflict,
+      render: (e) => count(e.rowsConflict, true),
+    },
+    {
+      key: "error",
+      header: "Fel",
+      numeric: true,
+      sortValue: (e) => e.rowsError,
+      render: (e) => count(e.rowsError, true),
+    },
+    {
+      key: "notPaid",
+      header: "Ej betalda",
+      numeric: true,
+      sortValue: (e) => e.rowsNotPaid,
+      render: (e) => count(e.rowsNotPaid),
+      hideOnMobile: true,
+    },
+    {
+      key: "status",
+      header: "Status",
+      sortValue: (e) => e.status,
+      render: (e) => <StatusTag status={STATUS[e.status].status}>{STATUS[e.status].text}</StatusTag>,
+      csv: (e) => STATUS[e.status].text,
+      hideOnMobile: true,
+    },
+  ];
+
+  return (
+    <DataTable
+      columns={columns}
+      rows={imports}
+      rowKey={(e) => e.id}
+      caption="Importer, senaste först"
+      defaultSort={{ key: "when", dir: "desc" }}
+      isFlagged={(e) => e.status === "failed" || e.rowsConflict > 0 || e.rowsError > 0}
+      toolbar
+      columnPicker
+      exportFileName="importlogg"
+    />
+  );
+}

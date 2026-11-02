@@ -320,12 +320,7 @@ export function assortmentFollowUp(input: AssortmentFollowUpInput): AssortmentFo
       figures: [
         fig("unitsBefore", "Pack före", cb.units, "packs"),
         fig("unitsAfter", "Pack efter", ca.units, "packs"),
-        fig(
-          "contributionPerWeekBeforeOre",
-          "Bidrag per vecka före",
-          controlWeekBefore,
-          "ore",
-        ),
+        fig("contributionPerWeekBeforeOre", "Bidrag per vecka före", controlWeekBefore, "ore"),
         fig("contributionPerWeekAfterOre", "Bidrag per vecka efter", controlWeekAfter, "ore"),
         ...(controlChangeBp === null
           ? []

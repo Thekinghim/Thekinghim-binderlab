@@ -92,8 +92,8 @@ export function Sub({
 }) {
   return (
     <div className={cn("flex min-w-0 flex-col", className)}>
-      <div className="flex min-w-0 items-baseline justify-between gap-4 border-t border-line pt-3">
-        <p className="label min-w-0 truncate text-subtle">
+      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-line pt-3">
+        <p className="label min-w-0 text-subtle">
           {index ? (
             <>
               <span className="tnum text-fg">{index}</span>
@@ -104,7 +104,7 @@ export function Sub({
           ) : null}
           {label}
         </p>
-        {meta ? <p className="meta tnum shrink-0 text-subtle">{meta}</p> : null}
+        {meta ? <p className="meta tnum text-subtle">{meta}</p> : null}
       </div>
       {title ? (
         <h3 id={id} className="mt-2 text-md font-medium text-balance text-fg">

@@ -18,7 +18,11 @@
  *
  * Jämförelsegrupp: övriga titlar i de automater som sålde titeln både före och efter
  * (standard), eller samma titel i kontrollautomater (pristest, se `experiments.ts`). Så räknas
- * säsong, lönevecka och allmän efterfrågan bort.
+ * säsong, lönevecka och allmän efterfrågan bort. Övriga titlar som själva bytte pris (enligt
+ * `detectPriceChanges` i samma automater) någon gång från första placeboperioden till och
+ * med efterfönstret utesluts automatiskt (`autoExcludePriceChanges`, standard på), eftersom
+ * deras försäljning då inte visar den allmänna efterfrågan. Uteslutna titlar redovisas i
+ * `excludedTitleIds`.
  *
  * Bidragseffekt per vecka = (pack efter × bidrag per pack efter − väntat × bidrag per pack före)
  * × 7 / L, där bidrag = nettointäkt − inköp − kortavgift − provision (prissatta order).
@@ -26,6 +30,10 @@
  * Vanlig variation (placebo): samma beräkning görs för upp till `placeboCount` lika långa
  * perioder före ändringen, där inget pris ändrades. Effekten räknas som tydlig bara om den är
  * större än den största placeboeffekten och båda fönstren har minst `minUnits` pack.
+ *
+ * Underlag: `evidence` har titelns egna order. Jämförelsegruppens order, titlar och automater
+ * finns i `controlEvidence`, och placeboperiodernas fönster och antal i `placeboWindows`
+ * (samt deras datum i `controlEvidence.dates`), så att UI kan visa vad jämförelsen bygger på.
  */
 
 import {
@@ -46,6 +54,7 @@ import {
   bpOf,
   byDateThenId,
   compareStrings,
+  listText,
   marketEvidence,
   modalAmount,
   orderContributions,
@@ -178,8 +187,13 @@ export interface PriceChangeEffectInput extends EconomicsSources {
   /** Pristest: automater med nytt pris. Anges de jämförs med `controlMachineIds` i stället för övriga titlar. */
   readonly testMachineIds?: readonly string[];
   readonly controlMachineIds?: readonly string[];
-  /** Titlar som inte får ingå i jämförelsegruppen (t.ex. titlar som själva bytte pris). */
+  /** Titlar som inte får ingå i jämförelsegruppen (t.ex. en kampanj som inte är en prisändring). */
   readonly excludeTitleIds?: readonly string[];
+  /**
+   * Uteslut övriga titlar som själva bytte pris under mätningen (se modulens beskrivning).
+   * Standard `true`. Gäller bara jämförelse mot övriga titlar.
+   */
+  readonly autoExcludePriceChanges?: boolean;
   /** Antal placeboperioder. Standard 3. */
   readonly placeboCount?: number;
   /** Minsta antal pack i varje fönster för en tydlig slutsats. Standard 30. */
@@ -195,6 +209,18 @@ export type PriceEffectVerdict = "clear" | "uncertain" | "too-early" | "no-data"
 export interface PlaceboResult {
   readonly changeDate: IsoDate;
   /** Effekt i bp, `null` om titeln inte sålde före. */
+  readonly effectBp: number | null;
+}
+
+/** En placeboperiods fönster och antal, som underlag till `PlaceboResult`. */
+export interface PlaceboWindow {
+  readonly changeDate: IsoDate;
+  readonly before: Period;
+  readonly after: Period;
+  readonly unitsBefore: number;
+  readonly unitsAfter: number;
+  readonly controlUnitsBefore: number;
+  readonly controlUnitsAfter: number;
   readonly effectBp: number | null;
 }
 
@@ -228,10 +254,19 @@ export interface PriceChangeEffect {
   /** Bidragseffekt per vecka i öre. */
   readonly contributionEffectPerWeekOre: number | null;
   readonly placebos: readonly PlaceboResult[];
+  /** Placeboperiodernas fönster och antal, i samma ordning som `placebos`. */
+  readonly placeboWindows: readonly PlaceboWindow[];
   /** Största |placeboeffekt| i bp. `null` utan placeboperioder. */
   readonly noiseBp: number | null;
+  /** Titlar i jämförelsegruppen (sålda före eller efter), sorterade. */
+  readonly controlTitleIds: readonly string[];
+  /** Titlar som uteslöts ur jämförelsegruppen: angivna och automatiskt (eget prisbyte). */
+  readonly excludedTitleIds: readonly string[];
   readonly text: string;
+  /** Titelns egna order före och efter. */
   readonly evidence: MarketEvidence;
+  /** Jämförelsegruppens order, titlar och automater, samt placeboperiodernas datum. */
+  readonly controlEvidence: MarketEvidence;
 }
 
 interface Arms {
@@ -319,11 +354,18 @@ export function priceChangeEffect(input: PriceChangeEffectInput): PriceChangeEff
     contributionPerPackAfterOre: null,
     contributionEffectPerWeekOre: null,
     placebos: [],
+    placeboWindows: [],
     noiseBp: null,
+    controlTitleIds: [],
+    excludedTitleIds: [...excluded].sort(compareStrings),
     text,
     evidence: marketEvidence({
       rule: "Difference-in-differences: titelns försäljning före och efter mot en jämförelsegrupp.",
       titleIds: [input.titleId],
+      dates: [input.changeDate],
+    }),
+    controlEvidence: marketEvidence({
+      rule: "Jämförelsegrupp: ingen mätning gjordes.",
       dates: [input.changeDate],
     }),
   });
@@ -360,6 +402,21 @@ export function priceChangeEffect(input: PriceChangeEffectInput): PriceChangeEff
     machines = [...a].filter((m) => b.has(m)).sort(compareStrings);
   }
   const machineSet = new Set(machines);
+
+  // Övriga titlar som själva bytte pris under hela mätningen (placebo + före + efter).
+  if (!machineMode && (input.autoExcludePriceChanges ?? true)) {
+    const spanStart = addDays(input.changeDate, -(placeboCount + 1) * L);
+    const others = input.orders.filter(
+      (o) =>
+        o.titleId !== input.titleId &&
+        o.machineId !== null &&
+        machineSet.has(o.machineId) &&
+        o.businessDate >= spanStart &&
+        o.businessDate <= after.end,
+    );
+    for (const c of detectPriceChanges(others)) excluded.add(c.titleId);
+  }
+  const excludedTitleIds = [...excluded].sort(compareStrings);
 
   const arms = (p: Period): Arms => {
     const treated: OrderLine[] = [];
@@ -443,6 +500,7 @@ export function priceChangeEffect(input: PriceChangeEffectInput): PriceChangeEff
     null,
   );
   const placebos: PlaceboResult[] = [];
+  const placeboWindows: PlaceboWindow[] = [];
   for (let k = 1; k <= placeboCount; k++) {
     const d = addDays(input.changeDate, -k * L);
     const pb: Period = { start: addDays(d, -L), end: addDays(d, -1) };
@@ -458,6 +516,16 @@ export function priceChangeEffect(input: PriceChangeEffectInput): PriceChangeEff
       useControl,
     );
     placebos.push({ changeDate: d, effectBp: r ? r.effectBp : null });
+    placeboWindows.push({
+      changeDate: d,
+      before: pb,
+      after: pa,
+      unitsBefore: a.treated.length,
+      unitsAfter: b.treated.length,
+      controlUnitsBefore: a.control.length,
+      controlUnitsAfter: b.control.length,
+      effectBp: r ? r.effectBp : null,
+    });
   }
   const placeboValues = placebos.map((p) => p.effectBp).filter((v): v is number => v !== null);
   const noiseBp = placeboValues.length > 0 ? Math.max(...placeboValues.map(Math.abs)) : null;
@@ -480,6 +548,12 @@ export function priceChangeEffect(input: PriceChangeEffectInput): PriceChangeEff
   }
   const verdict: PriceEffectVerdict = reasons.length === 0 ? "clear" : "uncertain";
 
+  const controlOrders = [...pre.control, ...post.control];
+  const controlTitleIds = [...new Set(controlOrders.map((o) => o.titleId))].sort(compareStrings);
+  const controlMachineIds = machineMode
+    ? [...controlSet].sort(compareStrings)
+    : [...new Set(controlOrders.map((o) => o.machineId!))].sort(compareStrings);
+
   const effectUnits = new Ratio(post.treated.length).sub(did.expected);
   const tenths = (r: Ratio) => r.mul(10).round();
   const expectedText = tenthsText(tenths(did.expected));
@@ -497,6 +571,10 @@ export function priceChangeEffect(input: PriceChangeEffectInput): PriceChangeEff
   ];
   if (contributionEffectPerWeekOre !== null) {
     parts.push(`Bidrag: ${signedKr(contributionEffectPerWeekOre)}/vecka.`);
+  }
+  if (!machineMode && excludedTitleIds.length > 0) {
+    const excludedName = nameLookup(input.titles ?? []);
+    parts.push(`Utanför jämförelsen: ${listText(excludedTitleIds.map(excludedName))}.`);
   }
   if (noiseBp !== null) {
     parts.push(
@@ -530,7 +608,10 @@ export function priceChangeEffect(input: PriceChangeEffectInput): PriceChangeEff
     contributionPerPackAfterOre: cAfter ? cAfter.round() : null,
     contributionEffectPerWeekOre,
     placebos,
+    placeboWindows,
     noiseBp,
+    controlTitleIds,
+    excludedTitleIds,
     text: parts.join(" "),
     evidence: marketEvidence({
       rule: "Difference-in-differences: väntat = pack före × jämförelsegruppens pack efter / före; effekt = (pack efter − väntat) / väntat. Placeboperioder före ändringen visar den vanliga variationen.",
@@ -563,6 +644,23 @@ export function priceChangeEffect(input: PriceChangeEffectInput): PriceChangeEff
               ),
             ]),
         ...(noiseBp === null ? [] : [fig("noiseBp", "Vanlig variation", noiseBp, "bp")]),
+      ],
+    }),
+    controlEvidence: marketEvidence({
+      rule:
+        control === "machines"
+          ? "Jämförelsegrupp: samma titel i kontrollautomaterna, samma dagar före och efter. Datumen är ändringsdagen och placeboperiodernas tänkta ändringsdagar."
+          : "Jämförelsegrupp: övriga titlar i samma automater, samma dagar före och efter, utom titlar som själva bytte pris. Datumen är ändringsdagen och placeboperiodernas tänkta ändringsdagar.",
+      period: { start: before.start, end: after.end },
+      orderIds: controlOrders.map((o) => o.id),
+      dates: [input.changeDate, ...placeboWindows.map((p) => p.changeDate)],
+      titleIds: controlTitleIds,
+      machineIds: controlMachineIds,
+      figures: [
+        fig("controlUnitsBefore", "Jämförelsegrupp före", pre.control.length, "packs"),
+        fig("controlUnitsAfter", "Jämförelsegrupp efter", post.control.length, "packs"),
+        fig("placeboCount", "Placeboperioder", placeboWindows.length, "count"),
+        fig("excludedTitles", "Uteslutna titlar", excludedTitleIds.length, "count"),
       ],
     }),
   };

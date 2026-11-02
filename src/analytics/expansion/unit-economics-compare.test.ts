@@ -146,3 +146,14 @@ describe("compareUnitEconomics", () => {
     expect(r.rows[0]!.name).toBe("m-2");
   });
 });
+
+describe("compareUnitEconomics: underlag", () => {
+  it("varje automat pekar ut sina order och försäljningsdagar", () => {
+    const res = compareUnitEconomics(input, machines);
+    const m2 = res.rows.find((r) => r.machineId === "m-2")!;
+    expect(m2.evidence.orderIds).toHaveLength(15);
+    expect(m2.evidence.dates[0]).toBe("2026-11-16");
+    expect(res.rows.find((r) => r.machineId === "m-9")!.evidence.orderIds).toEqual([]);
+    expect(res.evidence.orderIds).toHaveLength(106);
+  });
+});

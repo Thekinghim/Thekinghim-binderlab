@@ -32,6 +32,7 @@ const RPCS = [
   "close_period",
   "create_invitation",
   "create_organization",
+  "list_members",
   "merge_titles",
   "reopen_period",
 ];
@@ -410,6 +411,7 @@ describe("anon", () => {
       close_period: sql`gen_random_uuid(), '2025-01-01'::date`,
       create_invitation: sql`gen_random_uuid(), 'a@b.se', 'viewer'`,
       create_organization: sql`'x', 'x'`,
+      list_members: sql`gen_random_uuid()`,
       merge_titles: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid()`,
       reopen_period: sql`gen_random_uuid(), '2025-01-01'::date`,
     };

@@ -233,11 +233,21 @@ export function generateSeedOrders(seed = SEED_RANDOM_SEED): SeedOrder[] {
       throw new Error("För få order sista dagen.");
     }
     for (const second of timesForDay(date, randomCount, rng, isLast ? firstFixed : null)) {
-      slots.push({ date, secondOfDay: second, ms: stockholmToUtcMs(date, clock(second)), fixed: null });
+      slots.push({
+        date,
+        secondOfDay: second,
+        ms: stockholmToUtcMs(date, clock(second)),
+        fixed: null,
+      });
     }
     if (isLast) {
       fixedSeconds.forEach((second, i) => {
-        slots.push({ date, secondOfDay: second, ms: stockholmToUtcMs(date, clock(second)), fixed: i });
+        slots.push({
+          date,
+          secondOfDay: second,
+          ms: stockholmToUtcMs(date, clock(second)),
+          fixed: i,
+        });
       });
     }
   }

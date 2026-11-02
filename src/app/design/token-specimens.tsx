@@ -98,13 +98,15 @@ function ThemeCell({
   const min = reqMin[row.req];
   const fails = c !== null && min !== undefined && c < min;
   return (
-    <div className="flex min-w-0 items-center gap-3">
+    <div className="flex min-w-0 items-center gap-2 sm:gap-3">
       <span
         aria-hidden
         className="size-6 shrink-0 rounded-xs border border-line-strong"
         style={{ background: value }}
       />
-      <span className="meta min-w-0 truncate text-muted">{displayValue(value)}</span>
+      <span className="meta hidden min-w-0 truncate text-muted sm:inline">
+        {displayValue(value)}
+      </span>
       <span
         className={cn(
           "meta tnum ml-auto shrink-0 text-right",
@@ -121,17 +123,10 @@ function ThemeCell({
 /** Tokentabell: mörkt och ljust sida vid sida med kontrast mot bakgrunden, beräknad ur tokens.css. */
 export function ColorTable({ tokens }: { tokens: ThemeTokens }) {
   return (
-    <table className="w-full table-fixed border-collapse text-left">
+    <table className="w-full border-collapse text-left">
       <caption className="sr-only">
         Färgtokens med roll, värde och kontrast mot bakgrunden i mörkt och ljust läge
       </caption>
-      <colgroup>
-        <col className="w-[38%] sm:w-[22%] lg:w-[18%]" />
-        <col className="hidden lg:table-column lg:w-[22%]" />
-        <col />
-        <col />
-        <col className="hidden w-[10%] sm:table-column" />
-      </colgroup>
       <thead>
         <tr className="border-b border-line-strong">
           <th scope="col" className="label pb-2 font-normal text-subtle">
@@ -140,10 +135,10 @@ export function ColorTable({ tokens }: { tokens: ThemeTokens }) {
           <th scope="col" className="label hidden pb-2 font-normal text-subtle lg:table-cell">
             Roll
           </th>
-          <th scope="col" className="label pb-2 pl-4 font-normal text-subtle">
+          <th scope="col" className="label pb-2 pl-2 font-normal text-subtle sm:pl-4">
             Mörkt <span className="hidden text-faint sm:inline">· mot bg</span>
           </th>
-          <th scope="col" className="label pb-2 pl-4 font-normal text-subtle">
+          <th scope="col" className="label pb-2 pl-2 font-normal text-subtle sm:pl-4">
             Ljust <span className="hidden text-faint sm:inline">· mot bg</span>
           </th>
           <th
@@ -168,19 +163,24 @@ export function ColorTable({ tokens }: { tokens: ThemeTokens }) {
           </tr>
           {g.rows.map((r) => (
             <tr key={r.token} className="border-t border-line">
-              <th scope="row" className="py-2 pr-2 align-middle font-normal">
-                <code className="meta block truncate text-fg">{r.token.replace("--bl-", "")}</code>
-                <span className="mt-0.5 block truncate text-xs text-subtle lg:hidden">
+              <th
+                scope="row"
+                className="w-[34%] py-2 pr-2 align-middle font-normal sm:w-[20%] lg:w-[16%]"
+              >
+                <code className="meta block max-w-[112px] truncate text-fg sm:max-w-none">
+                  {r.token.replace("--bl-", "")}
+                </code>
+                <span className="mt-0.5 block max-w-[112px] truncate text-xs text-subtle sm:max-w-none lg:hidden">
                   {r.role}
                 </span>
               </th>
               <td className="hidden py-2 pr-4 align-middle text-sm text-muted lg:table-cell">
                 {r.role}
               </td>
-              <td className="py-2 pl-4 align-middle">
+              <td className="py-2 pl-2 align-middle sm:pl-4">
                 <ThemeCell tokens={tokens.dark} row={r} bgToken="--bl-bg" />
               </td>
-              <td className="py-2 pl-4 align-middle">
+              <td className="py-2 pl-2 align-middle sm:pl-4">
                 <ThemeCell tokens={tokens.light} row={r} bgToken="--bl-bg" />
               </td>
               <td className="meta hidden py-2 pl-4 text-right align-middle text-subtle sm:table-cell">

@@ -26,7 +26,14 @@ import {
 } from "@/domain";
 import { nameLookup } from "../todos/common";
 import { kr, tenths } from "../todos/text";
-import { fig, orderTrail, Ratio, scenarioEvidence, signedPct, type ScenarioEvidence } from "./common";
+import {
+  fig,
+  orderTrail,
+  Ratio,
+  scenarioEvidence,
+  signedPct,
+  type ScenarioEvidence,
+} from "./common";
 import { annualReturnBp } from "./estimate";
 
 /** En automat i jämförelsen. */

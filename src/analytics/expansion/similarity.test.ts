@@ -17,6 +17,12 @@ describe("normalizeAttribute", () => {
     expect(normalizeAttribute("  Livs   Butik ")).toBe("livs butik");
     expect(normalizeAttribute("MALMÖ")).toBe("malmö");
   });
+  it("samma ort med olika Unicode-form (NFC och NFD) räknas som samma", () => {
+    const nfd = "Malmo\u0308"; // o + kombinerande trema
+    expect(nfd).not.toBe("Malmö");
+    expect(normalizeAttribute(nfd)).toBe(normalizeAttribute("Malmö"));
+    expect(storeSimilarity(target, { ...target, id: "x", city: nfd }).scoreBp).toBe(10_000);
+  });
   it("tom text och null blir null", () => {
     expect(normalizeAttribute("   ")).toBeNull();
     expect(normalizeAttribute(null)).toBeNull();

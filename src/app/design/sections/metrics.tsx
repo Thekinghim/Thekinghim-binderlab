@@ -126,6 +126,8 @@ function machineColumns(rows: ReadonlyArray<MachineRow>, t: Totals): Column<Mach
       key: "fill",
       header: "Fyllnad",
       numeric: true,
+      // Under sm bär statusetiketten fyllnaden ("Fyllnad 17 %").
+      hideOnMobile: true,
       sortValue: (r) => r.status?.fill ?? 0,
       render: (r) => <FillMeter value={r.status?.fill ?? 0} />,
       footer: <span className="text-muted">Snitt {formatPercent(fillAvg, 0)}</span>,
