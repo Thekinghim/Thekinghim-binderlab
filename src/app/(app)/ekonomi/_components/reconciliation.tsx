@@ -10,6 +10,7 @@ import { formatDate } from "@/lib/format";
 
 import { isoToDate, kr, periodText, signedKr } from "../_lib/view";
 import { DeviationReview } from "./deviation-review";
+import { PayoutArchive } from "./payout-archive";
 import { EvidenceDetails } from "./evidence";
 
 const STATUS: Record<PayoutStatus, { status: Status; label: string }> = {
@@ -76,10 +77,12 @@ function PayoutBlock({
   p,
   canEdit,
   viewPeriod,
+  payoutId,
 }: {
   p: PayoutReconciliation;
   canEdit: boolean;
   viewPeriod: { start: string; end: string };
+  payoutId: string | undefined;
 }) {
   const s = STATUS[p.status];
   return (
@@ -115,8 +118,9 @@ function PayoutBlock({
             <dd className="tnum text-base text-fg">{signedKr(p.differenceOre)}</dd>
           </div>
         </dl>
-        <div className="md:col-span-2 md:justify-self-end">
+        <div className="flex flex-wrap items-center gap-2 md:col-span-2 md:flex-col md:items-end md:justify-self-end">
           <StatusTag status={s.status}>{s.label}</StatusTag>
+          {canEdit && payoutId ? <PayoutArchive id={payoutId} reference={p.reference} /> : null}
         </div>
       </header>
       <p className="text-sm text-muted">{p.summary}</p>
@@ -137,15 +141,24 @@ export function ReconciliationList({
   result,
   canEdit,
   period,
+  payoutIds,
 }: {
   result: ReconciliationResult;
   canEdit: boolean;
   period: { start: string; end: string };
+  /** Utbetalningens id per referens (för arkiveringen). */
+  payoutIds: Readonly<Record<string, string>>;
 }) {
   return (
     <div className="flex flex-col">
       {result.payouts.map((p) => (
-        <PayoutBlock key={p.key} p={p} canEdit={canEdit} viewPeriod={period} />
+        <PayoutBlock
+          key={p.key}
+          p={p}
+          canEdit={canEdit}
+          viewPeriod={period}
+          payoutId={p.key === p.reference ? payoutIds[p.reference] : undefined}
+        />
       ))}
       {result.uncovered.length > 0 ? (
         <section

@@ -24,6 +24,24 @@ declare global {
  */
 const noop = () => () => {};
 
+/**
+ * Ett ogiltigt datum (saknat värde, visas som "–") blir null på vägen från servern.
+ * Mallen vill ha Date, så det återställs här.
+ */
+function revive(props: ReportEmailProps): ReportEmailProps {
+  if (props.recipientKind !== "butik") return props;
+  const d = props.details;
+  const missing = (v: Date | null) => v ?? new Date(Number.NaN);
+  return {
+    ...props,
+    details: {
+      ...d,
+      nextVisit: missing(d.nextVisit as Date | null),
+      refills: { ...d.refills, last: missing(d.refills.last as Date | null) },
+    },
+  };
+}
+
 export function EmailRenderer({ jobs }: { jobs: readonly EmailJob[] }) {
   // Bara i webbläsaren: mallen renderas inte i serverns förrendering.
   const inBrowser = useSyncExternalStore(
@@ -32,7 +50,7 @@ export function EmailRenderer({ jobs }: { jobs: readonly EmailJob[] }) {
     () => false,
   );
   const rendered = useMemo(
-    () => (inBrowser ? jobs.map((job) => ({ job, ...renderReportEmail(job.props) })) : null),
+    () => (inBrowser ? jobs.map((job) => ({ job, ...renderReportEmail(revive(job.props)) })) : null),
     [inBrowser, jobs],
   );
 

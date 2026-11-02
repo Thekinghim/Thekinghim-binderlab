@@ -592,6 +592,7 @@ export interface PriceChangeView {
   readonly effect: Computed<PriceChangeEffect>;
 }
 
+/** planned = börjar i dag eller senare (ingen hel dag mätt ännu). */
 export type ExperimentStatus = "planned" | "running" | "done" | "stopped";
 
 /**
@@ -750,7 +751,7 @@ export function pricingView(data: MarketData, period: Period): PricingView {
       const status: ExperimentStatus =
         row.stoppedOn !== null
           ? "stopped"
-          : row.startedOn > data.today
+          : row.startedOn >= data.today
             ? "planned"
             : endsOn < data.today
               ? "done"

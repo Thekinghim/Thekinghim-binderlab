@@ -325,8 +325,8 @@ export function PricingSection({
                         title: e.status === "planned" ? "Ta bort pristestet" : "Stoppa pristestet",
                         description:
                           e.status === "planned"
-                            ? "Testet har inte börjat och tas bort."
-                            : "Testet mäts till och med i dag. Återställ priset i testautomaterna.",
+                            ? "Testet har inte mätts någon hel dag och tas bort. Har priset redan ändrats i automaterna, återställ det i Awish."
+                            : "Testet mäts till och med i går, sista hela dagen. Återställ priset i testautomaterna i Awish.",
                         confirmLabel: e.status === "planned" ? "Ta bort" : "Stoppa",
                         danger: true,
                       }}
