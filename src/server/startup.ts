@@ -1,10 +1,12 @@
 /**
  * Kontroller vid serverstart (anropas från src/instrumentation.ts).
  *
- * - Miljövariablerna valideras. I preview och production stoppas starten
- *   vid fel. Lokalt (APP_ENV=development) skrivs felet ut tydligt men
- *   servern startar, så att sidor som inte kräver inloggning fortfarande går
- *   att arbeta med; inloggningen kastar samma fel när den används.
+ * - Miljövariablerna valideras. Vid fel skrivs felet ut tydligt (och når
+ *   Sentry när det är konfigurerat) men servern startar, så att öppna sidor
+ *   som /design fungerar. Sidor som kräver inloggning visar då en sida om
+ *   saknad konfiguration (src/server/config-status.ts) i stället för data;
+ *   inloggning och dataåtkomst kastar samma fel om de ändå anropas. Systemet
+ *   faller alltså aldrig tillbaka till ett osäkert läge.
  * - Dev-inloggningens spärr gäller alltid: AUTH_PROVIDER=dev utanför
  *   development eller mot en fjärrdatabas stoppar starten.
  */
@@ -35,7 +37,7 @@ export function verifyServerStartup(
   try {
     load();
   } catch (error) {
-    if (error instanceof EnvError && rawAppEnv === "development") {
+    if (error instanceof EnvError) {
       console.error(`\n${error.message}\n`);
       return;
     }

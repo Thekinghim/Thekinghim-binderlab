@@ -1,3 +1,5 @@
+import { ConfigMissing } from "@/components/ui/config-missing";
+import { getConfigStatus } from "@/server/config-status";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
@@ -26,6 +28,8 @@ function first(value: string | string[] | undefined): string | undefined {
  * är inloggad skickas dit direkt.
  */
 export default async function LoginPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const config = getConfigStatus();
+  if (!config.ok) return <ConfigMissing issues={config.issues} />;
   const params = await searchParams;
   const next = safeRedirectPath(first(params.next));
   if (await getSessionUser()) {

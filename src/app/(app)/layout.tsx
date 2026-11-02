@@ -1,3 +1,5 @@
+import { ConfigMissing } from "@/components/ui/config-missing";
+import { getConfigStatus } from "@/server/config-status";
 import type { ReactNode } from "react";
 import type { ShellMachine, ShellStore } from "@/components/shell/period-bar";
 import { routeById } from "@/components/shell/nav";
@@ -30,6 +32,8 @@ import { NoOrganization } from "./no-organization";
 export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
+  const config = getConfigStatus();
+  if (!config.ok) return <ConfigMissing issues={config.issues} />;
   const user = await requireUser();
   const ctx = await loadOptionalContext();
   if (!ctx) return <NoOrganization email={user.email} />;

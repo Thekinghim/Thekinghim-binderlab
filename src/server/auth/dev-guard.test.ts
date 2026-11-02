@@ -111,13 +111,16 @@ describe("verifyServerStartup", () => {
     );
   });
 
-  it("stoppar starten vid fel miljö i production, men bara loggar i development", () => {
+  it("loggar fel miljö utan att stoppa starten (sidorna visar saknad konfiguration), men stoppar vid andra fel", () => {
     const fail = () => {
       throw new (class extends Error {})("annat fel");
     };
-    expect(() => verifyServerStartup({ APP_ENV: "production", AUTH_PROVIDER: "supabase" })).toThrow(
-      /Fel i miljövariablerna/,
-    );
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() =>
+      verifyServerStartup({ APP_ENV: "production", AUTH_PROVIDER: "supabase" }),
+    ).not.toThrow();
+    expect(logged).toHaveBeenCalledWith(expect.stringMatching(/Fel i miljövariablerna/));
+    logged.mockRestore();
     expect(() =>
       verifyServerStartup({ APP_ENV: "production", AUTH_PROVIDER: "supabase" }, fail),
     ).toThrow("annat fel");

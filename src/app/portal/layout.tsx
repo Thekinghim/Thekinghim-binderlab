@@ -1,3 +1,5 @@
+import { ConfigMissing } from "@/components/ui/config-missing";
+import { getConfigStatus } from "@/server/config-status";
 import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import type { ReactNode } from "react";
@@ -29,6 +31,8 @@ export const viewport: Viewport = {
 export const dynamic = "force-dynamic";
 
 export default async function PortalLayout({ children }: { children: ReactNode }) {
+  const config = getConfigStatus();
+  if (!config.ok) return <ConfigMissing issues={config.issues} />;
   const ctx = await getPortalContext();
   const theme = portalTheme((await cookies()).get(PORTAL_THEME_COOKIE)?.value);
   return (
