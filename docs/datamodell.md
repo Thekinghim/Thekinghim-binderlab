@@ -3,8 +3,10 @@
 Status: godkänd. Migreringarna finns i `supabase/migrations`; förfiningar som gjordes när de skrevs står sist i dokumentet.
 v2 bygger på beställarens svar (2 nov. 2026), uppgifter om Awish och en adversariell granskning. 33 av 50 föreslagna ändringar behölls.
 
-Läget efter fas 2–11: 63 tabeller och 3 vyer i schemat `public`, 26 RPC:er i `public` och 76 hjälpfunktioner i
-`private` (räknat i `binderlab_dev` efter migreringen `20261102193000`). Grundmodellen beskrivs i avsnitten nedan;
+Läget efter fas 2–11: 63 tabeller och 3 vyer i schemat `public`, 23 RPC:er i `public` och 76 hjälpfunktioner i
+`private` (räknat 2 nov. 2026 i en nyskapad databas efter `npm run db:reset` med alla 50 migreringar till och med
+`20261102201500`, och i `binderlab_dev` efter `npm run db:migrate`). Sex av RPC:erna kommer från grundmigreringen
+(tabellen nedan), sjutton från fas 2–11. Grundmodellen beskrivs i avsnitten nedan;
 allt som tillkommit efter grundmigreringarna står i [Tabeller och funktioner som tillkommit i fas 2–11](#tabeller-och-funktioner-som-tillkommit-i-fas-211),
 en tabell per område. Arkitekturen och säkerhetsmodellen i sin helhet står i `docs/architecture.md`.
 
@@ -175,6 +177,20 @@ som för grundmodellen: `organization_id` i varje rad med sammansatta FK:er, RLS
 **A** admin, **L** läsare, **P** påfyllare, **B** butiksrollen. "Läs Ä/A/L, skriv Ä/A" är standard och skrivs bara
 ut när det avviker.
 
+### RPC:er från grundmigreringen
+
+Alla i `20261102101000_rpc.sql`: security definer med `search_path = ''`, behörigheten (`private.has_role`) kontrolleras
+först, och bara `authenticated` får köra dem.
+
+| Funktion                                              | Innehåll och regler                                                                                                                                                                                              | Roller   |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `create_organization(name, slug)`                     | Skapar organisationen, ägarmedlemskapet, inställningarna, centrallagret och ägarens profil i en transaktion. Nekar butikskonton (`…181500`). Kom igång använder `create_first_organization`.                     | inloggad |
+| `create_invitation(org, email, role, valid_days = 7)` | Returnerar token i klartext en gång; bara sha256-hashen sparas. 1–30 dagar. Tidigare obesvarade inbjudningar till samma adress löper ut. Bara en ägare kan bjuda in en ägare. BL014 om personen redan är medlem. | Ä/A      |
+| `accept_invitation(token)`                            | Låser inbjudan och kontrollerar e-post mot JWT, giltighet och att den inte använts (BL010–BL014). Skapar medlemskap och profil. Ny version för butiksrollen i `…130100`.                                         | inloggad |
+| `close_period(org, month, snapshot)`                  | Månadsstängning: bara passerade månader (BL015 om redan stängd). Databasen sparar en egen sammanfattning (antal, intäkt, inköp, prisets täckning); appens beräkning sparas under `app`.                          | Ä/A      |
+| `reopen_period(org, month)`                           | Öppnar en stängd månad igen (BL016 om den inte är stängd). Loggas i `audit_log`.                                                                                                                                 | Ä        |
+| `merge_titles(org, from, into)`                       | Flyttar `orders.title_id` (varje ändring loggas), lagret med kompenserande `adjustment`; den gamla titeln får `merged_into_id` och arkiveras. Alias och `raw_title` skrivs inte om.                              | Ä/A      |
+
 ### Organisation, användare och onboarding
 
 | Tabell eller funktion                          | Migrering                                                                      | Innehåll och regler                                                                                                                                                                                                       | Roller                     |
@@ -206,6 +222,7 @@ ut när det avviker.
 | `field_submissions`               | `20261102122143_drift_larm_arenden.sql`                                               | Påfyllning från fältläget med ett id som webbläsaren skapat (`client_id`), kopplad till lagerhändelsen.                                                                                                              | läs Ä/A/L, P bara egna                                                                                                   |
 | `register_refill_once(...)` (RPC) | samma                                                                                 | Som `register_refill`, men samma `client_id` igen ger samma lagerhändelse (köade omförsök från PWA:n blir aldrig dubbla).                                                                                            | Ä/A/P                                                                                                                    |
 | `lager_performers(org)` (RPC)     | `20261102120412_lager_performers.sql`, `…141131_lager_performers_fallback.sql`        | Visningsnamn för dem som utfört lagerhändelser (profil → metadata i `auth.users` → rollnamn). Inga e-postadresser eller belopp.                                                                                      | Ä/A/L/P                                                                                                                  |
+| `lager_slot_periods(org)` (RPC)   | `20261102201500_lager_slot_periods.sql`                                               | Sortimentets perioder (automat, titel, från, till) ur `machine_slots`. Lager räknar en titel vars sista period passerat som utgången: ingen status, ingen påfyllning. Inga antal platser, anteckningar eller belopp. | Ä/A/L/P                                                                                                                  |
 
 ### Rapporter
 

@@ -9,7 +9,7 @@ import { HistoryList } from "./_components/history-list";
 import { LagerBoard } from "./_components/lager-board";
 import { loadLagerFor } from "./_lib/data";
 import { formatIsoDate, isoDateToDate, packs } from "./_lib/display";
-import { headlineOf } from "./_lib/headline";
+import { headlineOf, visitsTodayShort } from "./_lib/headline";
 import { currentViewer } from "./_lib/session";
 import { HISTORY_LIMIT } from "./_lib/types";
 
@@ -63,7 +63,10 @@ export default async function LagerPage({ searchParams }: { searchParams: Promis
         // Bara det rubriken inte säger (design.md §5.5): urvalet, takten och centrallagret.
         meta={[
           { label: "Platser", value: formatInt(placesTotal) },
-          { label: "Automater", value: formatInt(view.machines.length) },
+          // Dagens besök: rubriken har bara läget och den mest brådskande platsen.
+          ...(view.machines.length > 0
+            ? [{ label: "Besök i dag", value: visitsTodayShort(view) ?? "Inget" }]
+            : []),
           {
             label: "Takt",
             value: `${formatInt(view.window.days)} d t.o.m. ${formatIsoDate(view.window.end, view.today)}`,

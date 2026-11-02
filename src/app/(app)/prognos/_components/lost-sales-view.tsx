@@ -35,7 +35,8 @@ export function LostSalesView({ model }: { model: LostModel }) {
         header: "Titel",
         sortValue: (r) => r.title,
         render: (r) => (
-          <span className="flex min-w-0 flex-col">
+          // md:min-w-44: titel och automat på en rad var i stället för tre smala rader.
+          <span className="flex min-w-0 flex-col md:min-w-44">
             <span className="text-fg">{r.title}</span>
             <span className="text-xs text-subtle">{r.machine}</span>
             {/* Under md står perioden och läget här; kolumnerna är dolda (design.md §5.1). */}

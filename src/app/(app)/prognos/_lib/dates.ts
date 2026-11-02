@@ -7,7 +7,6 @@ import { parseIsoDate } from "@/components/shell/period-state";
 import type { IsoDate, Period } from "@/domain";
 import {
   formatDate,
-  formatDay,
   formatPeriod,
   formatPeriodShort,
   formatWeekdayDay,
@@ -24,9 +23,12 @@ export function dateText(d: IsoDate | null | undefined, now?: Date): string {
   return formatDate(toDate(d), { year: "auto", now });
 }
 
-/** 26 okt (axlar och täta etiketter). */
+/**
+ * "26 okt." på axeln och i tabellhuvuden: som i löptexten och som de delade diagrammen
+ * (design.md §4, Siffror). Året skrivs aldrig.
+ */
 export function dayText(d: IsoDate): string {
-  return formatDay(toDate(d));
+  return formatDate(toDate(d), { year: "never" });
 }
 
 /** tis 26 okt */

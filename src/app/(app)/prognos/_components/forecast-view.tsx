@@ -64,19 +64,35 @@ export function ForecastView({ model }: { model: ForecastModel }) {
     group === "title" ? model.byTitle : group === "machine" ? model.byMachine : model.bySeries;
 
   const columns = useMemo<Column<ForecastRow>[]>(() => {
-    const weekCols: Column<ForecastRow>[] = model.weeks.map((w, i) => ({
-      key: `w${i}`,
-      header: `Från ${dayText(w.start)}`,
+    const amount = (w: { revenueOre: number; unitsMilli: number } | undefined) =>
+      metric === "revenue" ? (w?.revenueOre ?? 0) : (w?.unitsMilli ?? 0);
+    // Samma värde varje vecka på alla rader (ingen trend eller släppkurva i perioden):
+    // en kolumn "Per vecka" i stället för fyra likadana.
+    const flat = rows.every((r) => r.weeks.every((w) => amount(w) === amount(r.weeks[0])));
+    const perWeek: Column<ForecastRow> = {
+      key: "w0",
+      header: "Per vecka",
       numeric: true,
       hideOnMobile: true,
-      sortValue: (r) =>
-        metric === "revenue" ? (r.weeks[i]?.revenueOre ?? 0) : (r.weeks[i]?.unitsMilli ?? 0),
-      render: (r) => (r.weeks[i] ? value(r.weeks[i]!, metric) : "–"),
-      csv: (r) =>
-        metric === "revenue"
-          ? (r.weeks[i]?.revenueOre ?? 0) / 100
-          : (r.weeks[i]?.unitsMilli ?? 0) / 1000,
-    }));
+      sortValue: (r) => amount(r.weeks[0]),
+      render: (r) => (r.weeks[0] ? value(r.weeks[0], metric) : "–"),
+      csv: (r) => amount(r.weeks[0]) / (metric === "revenue" ? 100 : 1000),
+    };
+    const weekCols: Column<ForecastRow>[] = flat
+      ? [perWeek]
+      : model.weeks.map((w, i) => ({
+          key: `w${i}`,
+          header: `Från ${dayText(w.start)}`,
+          numeric: true,
+          hideOnMobile: true,
+          sortValue: (r) =>
+            metric === "revenue" ? (r.weeks[i]?.revenueOre ?? 0) : (r.weeks[i]?.unitsMilli ?? 0),
+          render: (r) => (r.weeks[i] ? value(r.weeks[i]!, metric) : "–"),
+          csv: (r) =>
+            metric === "revenue"
+              ? (r.weeks[i]?.revenueOre ?? 0) / 100
+              : (r.weeks[i]?.unitsMilli ?? 0) / 1000,
+        }));
     return [
       {
         key: "name",
@@ -134,7 +150,7 @@ export function ForecastView({ model }: { model: ForecastModel }) {
         ),
       },
     ];
-  }, [model.weeks, model.coverage, metric, group]);
+  }, [model.weeks, model.coverage, metric, group, rows]);
 
   if (model.bySeries.length === 0) {
     return (

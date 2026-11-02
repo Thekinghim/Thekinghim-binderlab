@@ -11,9 +11,11 @@ Binderlab körs i tre miljöer. Koden är densamma; skillnaden är miljövariabl
 
 ## Lokal
 
-1. Starta Postgres (se `docs/bygglogg.md`) och kör `npm run db:reset -- dev`.
+1. Starta Postgres 16 på port 54322, till exempel i Docker enligt README ("Snabbstart lokalt").
 2. Kopiera `.env.example` till `.env.local` och sätt `DEV_AUTH_SECRET`
-   (`openssl rand -base64 48`).
+   (`openssl rand -base64 48`). `DATABASE_URL` och `DATABASE_URL_TEST` pekar redan på
+   `127.0.0.1:54322`. Kör sedan `npm run db:reset -- dev` (den läser `.env.local` och
+   avbryter med "DATABASE_URL saknas" om filen inte finns).
 3. Skapa en första användare: bjud in via en ägare, eller sätt ett lösenord direkt
    i `auth.users.encrypted_password` med `hashPassword()` från
    `src/server/auth/password.ts`.
@@ -581,10 +583,23 @@ VAPID-nycklarna (push) särskilt vid första driftsättningen.
 5. **Första migreringen.** Kör "Migrera databasen" mot `development` och sedan mot
    `production`.
 6. **Första ägaren.** Skapa ägarens användare i Supabase (Authentication → Users →
-   Invite). Logga sedan in och skapa organisationen. RPC:n `create_organization`
-   gör den inloggade till ägare.
+   Invite). Logga sedan in och skapa organisationen under Kom igång. RPC:n
+   `create_first_organization` gör den inloggade till ägare (och nekar ett konto som
+   redan är med i en organisation eller är ett butikskonto).
 7. **Larm (Drift).** Sätt `CRON_SECRET` i Vercel (Production). `/api/cron/larm` (var 10:e
    minut, kräver Vercel Pro) och `/api/cron/rapporter` står redan i `vercel.json`, se
    avsnittet Drift. Skapa VAPID-nycklar för push och sätt
    `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` och `VAPID_SUBJECT`. Välj en sms-leverantör om
    sms behövs (ingen är kopplad).
+8. **E-post för rapporter och larm (Resend).** Verifiera avsändardomänen i Resend och
+   sätt i Vercel (Preview och Production) `MAIL_PROVIDER=resend`, `RESEND_API_KEY` och
+   `MAIL_FROM` (till exempel `Binderlab <rapporter@binderlab.se>`), gärna också
+   `MAIL_REPLY_TO`. **Standardvärdet är `outbox` i alla miljöer, även production**
+   (`src/server/mail/report-mailer.ts`): utan steget skrivs rapport- och larmmejlen till
+   serverns disk och når aldrig butiker, bokhållare eller den som prenumererar på larm.
+   Inbjudningar och inloggningslänkar går via Supabase Auth och dess SMTP (steg 1).
+9. **Assistenten.** Skapa en nyckel i Claude Console → API Keys och sätt
+   `ANTHROPIC_API_KEY` i Vercel (hemlig, bara på servern), vid behov `ANTHROPIC_MODEL`.
+   Utan nyckel visar `/assistent` att den saknas och skickar ingenting. Frågorna och
+   verktygens resultat skickas till Anthropic, se `docs/operations.md`
+   (Personuppgifter och biträden) innan nyckeln sätts.

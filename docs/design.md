@@ -272,7 +272,7 @@ Signal står aldrig ensam. Varje signalmarkering har:
 - Tal i löptext, tabeller och KPI sätts i **Geist sans med `.tnum`**, högerställda i kolumner. `Column.numeric` ger detta automatiskt.
 - I diagram (axlar, direktetiketter, läsruta) och i id, tider och metadata används **Geist Mono**. De hör till mätapparaten. Alla rader i en direktetikett är mono; vikt och färg bär hierarkin (`title` 12 px halvfet fg, `body` 12 px muted, `value` 11 px). Text i SVG är minst 11 px.
 - Hela meningar står aldrig i mono, inte heller i tillståndsmeddelanden eller fotnoter. Mono är för etiketter, id, tider och mätvärden.
-- Datum i diagram skrivs som i löptexten: "24 okt." med punkt och gemener, även på axeln.
+- Datum i diagram skrivs som i löptexten: "24 okt." med punkt och gemener, även på axeln (`formatDate(d, { year: "never" })`, som `LineChart`). `formatDay` utan punkt är bara för täta listor där punkten inte ryms, aldrig på en axel.
 - Ett tal och dess enhet hålls ihop med hårt mellanslag. Använd `NBSP` från `format.ts` när du sätter ihop egna strängar ("1{NBSP}signalfärg").
 - Id bryts aldrig: `BL‑002` skrivs med hårt bindestreck (U+2011) där det kan bryta.
 
@@ -288,25 +288,25 @@ All formatering av tal, belopp, datum och perioder går via `src/lib/format.ts`.
 | Saknat värde    | `MISSING` = "–"    | NaN, ±Infinity och ogiltigt datum. Aldrig "NaN" eller tom cell.                       |
 | Decimalkomma    | ,                  | "4,5:1", "1,25 px". Aldrig decimalpunkt i UI-text.                                    |
 
-| Behov                   | Funktion                                            | Utdata                                                              |
-| ----------------------- | --------------------------------------------------- | ------------------------------------------------------------------- |
-| Belopp med ören         | `formatKronor(v)`                                   | 79 987,00 kr                                                        |
-| Belopp i hela kronor    | `formatSek(v)` / `formatKronor(v, { decimals: 0 })` | 12 480 kr                                                           |
-| Beloppsförändring       | `formatSignedKronor(v)`                             | +1 240,00 kr · −1 240,00 kr · ±0,00 kr                              |
-| Tkr                     | `formatTkr(v)`                                      | 31,1 tkr                                                            |
-| Heltal / decimal        | `formatInt`, `formatNumber(v, d)`, `formatDecimal`  | 12 480 · 12,4                                                       |
-| Andel som procent       | `formatPercent(share, digits = 1)`                  | 33,1 % · (v, 0) → 33 %                                              |
-| Förändring som andel    | `formatDelta(change, digits = 0)`                   | +42 % · −8 % · ±0 %                                                 |
-| Datum                   | `formatDate(d)`                                     | 1 nov. 2026 (`year: "auto"` utelämnar innevarande år)               |
-| Datum och tid           | `formatDateTime(d)`                                 | 1 nov. 17:17                                                        |
-| Tid                     | `formatTime(d)`                                     | 09:05                                                               |
-| Månad                   | `formatMonth(d)`                                    | november 2026                                                       |
-| Axel och täta etiketter | `formatDay(d)`, `formatWeekdayDay(d)`               | 26 okt · tis 26 okt (utan punkt)                                    |
-| Period, med år          | `formatPeriod(p)`                                   | 1–30 nov. 2026 · oktober–november 2026 · 28 dec. 2025 – 3 jan. 2026 |
-| Period, kort            | `formatPeriodShort(p)`                              | 3 okt. – 1 nov. · nov.                                              |
-| Relativ tid (logg)      | `formatRelative(d)`                                 | nyss · för 4 min sedan · tor 08:00                                  |
-| Varaktighet             | `formatDuration(ms)`                                | 45 s · 2 h 14 min                                                   |
-| CSV                     | `formatCsvNumber(v)`                                | 79987,00 (ingen avgränsare, ASCII-minus)                            |
+| Behov                | Funktion                                            | Utdata                                                              |
+| -------------------- | --------------------------------------------------- | ------------------------------------------------------------------- |
+| Belopp med ören      | `formatKronor(v)`                                   | 79 987,00 kr                                                        |
+| Belopp i hela kronor | `formatSek(v)` / `formatKronor(v, { decimals: 0 })` | 12 480 kr                                                           |
+| Beloppsförändring    | `formatSignedKronor(v)`                             | +1 240,00 kr · −1 240,00 kr · ±0,00 kr                              |
+| Tkr                  | `formatTkr(v)`                                      | 31,1 tkr                                                            |
+| Heltal / decimal     | `formatInt`, `formatNumber(v, d)`, `formatDecimal`  | 12 480 · 12,4                                                       |
+| Andel som procent    | `formatPercent(share, digits = 1)`                  | 33,1 % · (v, 0) → 33 %                                              |
+| Förändring som andel | `formatDelta(change, digits = 0)`                   | +42 % · −8 % · ±0 %                                                 |
+| Datum                | `formatDate(d)`                                     | 1 nov. 2026 (`year: "auto"` utelämnar innevarande år)               |
+| Datum och tid        | `formatDateTime(d)`                                 | 1 nov. 17:17                                                        |
+| Tid                  | `formatTime(d)`                                     | 09:05                                                               |
+| Månad                | `formatMonth(d)`                                    | november 2026                                                       |
+| Täta etiketter       | `formatDay(d)`, `formatWeekdayDay(d)`               | 26 okt · tis 26 okt (utan punkt; inte på axlar, se Siffror)         |
+| Period, med år       | `formatPeriod(p)`                                   | 1–30 nov. 2026 · oktober–november 2026 · 28 dec. 2025 – 3 jan. 2026 |
+| Period, kort         | `formatPeriodShort(p)`                              | 3 okt. – 1 nov. · nov.                                              |
+| Relativ tid (logg)   | `formatRelative(d)`                                 | nyss · för 4 min sedan · tor 08:00                                  |
+| Varaktighet          | `formatDuration(ms)`                                | 45 s · 2 h 14 min                                                   |
+| CSV                  | `formatCsvNumber(v)`                                | 79987,00 (ingen avgränsare, ASCII-minus)                            |
 
 - Månader förkortas enligt Språkrådet: punkt bara där ordet är förkortat ("okt.", "maj", "juni").
 - Deltan i KPI: relativ förändring med en decimal under 10 % (annars heltal) som standard. I en remsa där deltan står bredvid varandra ges alla samma antal decimaler (`KpiDeltaSpec.format`, `/design` använder en decimal). Räknare visas absolut med enhet ("+2 st"), procentenheter som "p.e.". Tecknet skrivs alltid ut.

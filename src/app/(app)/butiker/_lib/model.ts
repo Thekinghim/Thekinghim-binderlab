@@ -352,7 +352,7 @@ export function listHeadline(
   const split = `${sek(compensation)} (${formatPercent(compensation / revenue)}) till ${rows.length === 1 ? "butiken" : "butikerna"} och vinst ${sek(profit)}`;
   const topText =
     active.length > 1
-      ? `, mest från ${top.name} (${formatPercent(top.revenueOre / revenue, 0)})`
+      ? `, ${formatPercent(top.revenueOre / revenue, 0)} från ${top.name}`
       : "";
   return { title, aside: sentence(`${split}${topText}`) };
 }

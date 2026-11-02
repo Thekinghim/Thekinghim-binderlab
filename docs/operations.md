@@ -305,6 +305,50 @@ skriv en incidentanteckning (nedan).
 | Larm `report_drafts:<månad>`            | Saknade konton för SIE eller en butik utan avtal          | Skapa utkasten under Rapporter; felet står i larmet                                |
 | Inloggning misslyckas för alla          | Supabase Auth nere eller JWT-nyckel återkallad            | status.supabase.com; Supabase → JWT Keys                                           |
 
+## Personuppgifter och biträden
+
+Binderlab är i första hand ett verktyg för försäljning och ekonomi, men det lagrar personuppgifter om användare,
+butikskontakter och ibland kunder. Den som driver panelen är personuppgiftsansvarig; tjänsterna nedan är biträden.
+**Inga personuppgiftsbiträdesavtal (DPA) är tecknade än**, och ingen konsekvensbedömning är gjord.
+
+**Vad som lagras** (kolumnnamn ur databasen):
+
+| Vem                       | Uppgifter                                                                                 | Var                                                                 |
+| ------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Användare                 | E-post, lösenordshash (Supabase Auth), visningsnamn, roll, vem som gjort vad              | `auth.users`, `profiles`, `memberships`, `invitations`, `audit_log` |
+| Användare                 | Frågor till assistenten och svaren                                                        | `assistant_logs`                                                    |
+| Användare                 | Telefonnummer för sms-larm, push-endpoint och webbläsarens user agent                     | `alert_subscriptions.phone`, `push_subscriptions`                   |
+| Butikskontakter           | Namn, e-post, telefon, adress; mottagare av rapporter och vart varje rapport skickats     | `stores`, `report_recipients`, `report_deliveries`                  |
+| Leverantörer och platser  | Kontaktnamn, e-post och telefon; kontaktuppgifter för tänkbara platser                    | `suppliers`, `expansion_leads`                                      |
+| Delägare                  | Namn och andel                                                                            | `owner_shares.holder_name`                                          |
+| Kunder (bara kundärenden) | Kontaktuppgift (högst 200 tecken) och beskrivning som skrivs in för hand i ett kundärende | `incidents.customer_contact`, `incidents.description`               |
+| Avtal                     | Avtalsfilerna kan innehålla namn och underskrifter                                        | Storage-bucket `contracts`                                          |
+
+Orderna från Awish innehåller inga uppgifter om köparen (tid, belopp, betalsätt, titel och automat). Fritextfälten
+(anteckningar) kan innehålla vad som helst som någon skriver in.
+
+**Biträden och vad de får:**
+
+| Tjänst                                       | Får                                                                                                                                                                                                          | Region och att göra                                                                                                                                                                        |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Supabase (Postgres, Auth, Storage)           | Allt ovan                                                                                                                                                                                                    | Projekt i en EU-region (`docs/miljoer.md`). Teckna Supabases DPA.                                                                                                                          |
+| Vercel (webb och cron)                       | Allt som passerar en förfrågan, loggar                                                                                                                                                                       | `vercel.json` sätter ingen region och Vercels standard för funktioner är USA. Välj en EU-region (till exempel `arn1` eller `fra1`) under Project Settings → Functions. Teckna Vercels DPA. |
+| Anthropic (Claude API)                       | Assistentens frågor i fritext, organisationens namn, frågarens roll och verktygens resultat (titlar, automater, butiksnamn och belopp; inga e-postadresser eller telefonnummer)                              | Behandlas utanför EU. Teckna Anthropics DPA (ingår i de kommersiella villkoren), informera användarna, och sätt inte `ANTHROPIC_API_KEY` förrän det är klart.                              |
+| Resend (e-post)                              | Mottagarens adress och mejlets innehåll (rapporter, larm)                                                                                                                                                    | Välj EU-region för avsändardomänen. Teckna Resends DPA.                                                                                                                                    |
+| Sentry (fel)                                 | Felhändelser utan e-postadresser, cookies, Authorization-rubriker och inbjudningstoken (`sendDefaultPii = false` och `scrubEvent` i `src/server/observability/sentry-options.ts`); användarens id finns kvar | Använd EU-regionen (`ingest.de.sentry.io`, som i `.env.example`). Teckna Sentrys DPA.                                                                                                      |
+| Web Push (Google, Mozilla, Apple, Microsoft) | Krypterade aviseringar till användarens enhet                                                                                                                                                                | Innehållet är krypterat från servern till enheten.                                                                                                                                         |
+
+**Lagringstider.** Ekonomiska rader (order, lagerhändelser, utbetalningar, rapporter, godkännanden) raderas inte och
+ska sparas i 7 år enligt bokföringslagen. Rådata från importen (`import_rows`) ska gallras efter 24 månader. Databasen
+har spärren för gallring (`private.purge_allowed()`, bara databasägaren), men **inget jobb som gallrar är byggt**:
+inget raderas efter 7 år eller 24 månader, och `assistant_logs`, `audit_log`, `alert_deliveries` och
+`report_deliveries` har ingen lagringstid alls. Bestäm lagringstider för dem, och för användare och butikskontakter
+som slutat, innan panelen tas i drift för fler operatörer.
+
+**Den registrerades rättigheter.** Det finns ingen funktion för att lämna ut eller radera en persons uppgifter. En
+användare tas bort ur organisationen under Inställningar → Användare, men kontot i Supabase Auth, profilen, frågorna i
+`assistant_logs` och spåren i `audit_log` finns kvar och får hanteras för hand i Supabase.
+
 ## Inför en visning
 
 En visning för ledning, köpare eller investerare görs lokalt eller i Preview med demon, så att de riktiga siffrorna
@@ -315,8 +359,11 @@ inte syns.
    får godkännas, och utgångslägen på Effekt som inte kommer från beställaren).
 2. Logga in som `demo@binderlab.local` (Nordljus Automater AB (demo)) eller, för verksamhetens egen försäljning,
    `agare@binderlab.local`. Lösenord `binderlab-dev`.
-3. Kör larmjobbet en gång så att Drift har färska larm:
-   `curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3200/api/cron/larm`.
+3. Demon har redan larm: `db:seed-demo` kör larmjobbet en gång för demoorganisationen. För att köra jobbet igen
+   (till exempel för Binderlab-organisationen), sätt `CRON_SECRET` (minst 16 tecken, `openssl rand -hex 24`) i
+   `.env.local`, starta om dev-servern och kör
+   `curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3200/api/cron/larm`. Utan hemligheten svarar routen
+   503 och gör ingenting; med fel hemlighet 401.
 4. Visa i den här ordningen: Hem → Att göra → Lönsamhet → Prognos & inköp → Drift på mobilen → Rapporter (en
    butiksrapport som PDF) → Ekonomi. Siffrorna och hur de räknas står i `docs/product.md` och `docs/berakningar.md`.
 5. Byt demons telefonnummer mot PTS fiktionsnummer och butiksnamnet "Seriecentralen" mot ett påhittat innan demon

@@ -43,11 +43,19 @@ Hur varje siffra räknas står i `docs/berakningar.md`.
 
 ## Siffror ur panelen
 
-Källa: utvecklingsdatabasen `binderlab_dev` efter `npm run db:seed`, som importerar verksamhetens riktiga försäljning
-13 okt.–1 nov. 2026 genom samma import som Datakällor (`src/seed/catalog.ts`, tre exempelbutiker och tre automater).
-Siffrorna är hämtade 2 nov. 2026 från panelen inloggad som ägare (period "Allt") och kontrollerade mot SQL utan
-beräkningslagret (460 order och 79 987,00 kr). Vinsten 21 858 kr (2 185 845 öre) stämmer med en fristående
-SQL-uträkning dag för dag, och samma tal låses av `test/db/consistency-revision.test.ts`.
+Källa: en nyskapad databas efter `npm run db:reset -- dev && npm run db:seed && npm run db:seed-demo`, alltså exakt
+snabbstarten i README. `db:seed` importerar verksamhetens riktiga försäljning 13 okt.–1 nov. 2026 genom samma import
+som Datakällor (`src/seed/catalog.ts`, tre exempelbutiker och tre automater); demon ligger i en egen organisation och
+påverkar inte siffrorna nedan. Siffrorna är hämtade 2 nov. 2026 kl. 16.33 från panelen inloggad som
+`agare@binderlab.local` och kontrollerade mot SQL utan beräkningslagret (460 order och 79 987,00 kr). Vinsten 21 858 kr
+(2 185 845 öre) stämmer med en fristående SQL-uträkning dag för dag och låses av
+`test/db/consistency-revision.test.ts` (7 av 7 gröna 2 nov. 2026).
+
+Intäkt, vinst, butiksersättning, vinst per automat och återbetalningstid gäller perioden "Allt" (13 okt.–2 nov.).
+**Att göra, förlorad försäljning och prognosen räknas från dagens datum** (försäljningstakten de senaste 14 dagarna,
+prognos för de kommande fyra veckorna), så samma databas ger andra tal en annan dag. Hem och Lönsamhet visar som
+standard 30 dagar (4 okt.–2 nov.); då är vinsten 21 205 kr och marginalen 27,8 %, eftersom hyran räknas för alla
+dagar i perioden (2 182 kr i stället för 1 529 kr), även dagarna före första ordern.
 
 | Mått                                 | Värde                                                          | Var i panelen             |
 | ------------------------------------ | -------------------------------------------------------------- | ------------------------- |
@@ -57,8 +65,10 @@ SQL-uträkning dag för dag, och samma tal låses av `test/db/consistency-revisi
 | Intäkt utan inköpspris               | 3 825 kr (4,8 %, 25 order av två titlar), ingår inte i vinsten | Hem, Lönsamhet, Att göra  |
 | Vinst per automat och dag            | 348 kr i snitt; 419, 381 och 245 kr för de tre automaterna     | Automater → Enhetsekonomi |
 | Vinst per automat och månad, oktober | 10 701 kr (räknat från första ordern 13 okt.)                  | Effekt                    |
-| Återbetalningstid                    | 3,4, 3,4 och 4,6 månader                                       | Automater → Enhetsekonomi |
-| Intäkt i risk de närmaste 7 dagarna  | 7 518 kr i fyra påfyllningar (titlar som räcker 1,6–2,3 dagar) | Att göra                  |
+| Återbetalningstid                    | 3,3, 3,4 och 4,6 månader (investerat 117 200 kr)               | Automater → Enhetsekonomi |
+| Att göra 2 nov.                      | 8 punkter: 6 påfyllningar och 2 titlar utan inköpspris         | Att göra, Hem             |
+| Intäkt i risk de närmaste 7 dagarna  | 12 405 kr för de 6 påfyllningarna, 2 nov.                      | Att göra                  |
+| Varav i dag                          | 6 368 kr: två titlar räcker 0,3 och 0,5 dagar, en är slut      | Att göra                  |
 | Förlorad försäljning 4 okt.–1 nov.   | 0 kr: ingen titel var slutsåld enligt lagret och försäljningen | Prognos & inköp           |
 | Prognos 2–29 nov.                    | ca 115 700 kr (80 %-intervall 105 400–125 900 kr), ca 664 pack | Prognos & inköp           |
 | Prognosens träffsäkerhet             | 32 % fel per dag (WAPE i backtest)                             | Prognos & inköp           |
@@ -70,21 +80,34 @@ Förbehåll:
   om säsong eller trend.
 - Investeringarna (39 900, 39 900 och 34 900 kr plus 2 500 kr installation) kommer från seeden och är inte bekräftade
   av beställaren. Återbetalningstiden beror helt på dem.
-- Under bygget lades testposter in med ägarkontot i `binderlab_dev`: en återbetalning på 199 kr, en fast kostnad
-  (försäkring 1 200 kr per kvartal), en investering på 1 200 kr, ett rapportutkast för september (`calc_version`
-  "integrationstest") och de utgångslägen och mätvärden som beskrivs nedan. De påverkar Lönsamhet efter vinsten,
-  Enhetsekonomi, Att göra och Effekt, men inte intäkten, vinsten före fasta kostnader eller prognosen. Kör
-  `npm run db:reset -- dev && npm run db:seed && npm run db:seed-demo` före en visning.
+- Lagret i seeden (397 lagerhändelser) är planerat, inte inventerat: `src/seed/stock.ts` lägger en inventering 12 okt.,
+  påfyllningar och en leverans 27 okt. kring de riktiga orderna, så att några par (automat, titel) med avsikt har 1–2
+  pack kvar och ett är slut. Påfyllningarna i Att göra visar därför hur listan fungerar, inte vad som faktiskt står i
+  automaterna.
+- Utvecklingsdatabasen `binderlab_dev` på byggmaskinen ska inte användas för siffror eller skärmbilder. Under bygget
+  lades testposter in där med ägarkontot: lagerhändelser (påfyllningar, inventeringar, inleveranser och justeringar
+  utöver seedens), en återbetalning på 199 kr, en fast kostnad (försäkring 1 200 kr per kvartal), en investering på
+  1 200 kr på BL-001, ett rapportutkast för september (`calc_version` "integrationstest") och utgångslägen och
+  mätvärden på Effekt. De ändrar Att göra, intäkten i risk, Lönsamhet efter vinsten, Enhetsekonomi, Effekt och Hem
+  (punkten "Granska rapportutkastet för september"). Intäkten och vinsten före fasta kostnader påverkas inte. Kör
+  `npm run db:reset -- dev && npm run db:seed && npm run db:seed-demo` före en visning och ta siffrorna samma dag.
 
 ## Effekt: vad som mäts och hur
 
 **Utgångsläget är ännu inte registrerat av beställaren. Effekten av Binderlab kan därför inte bevisas än.**
 
-Sidan Effekt (`/effekt`) jämför varje månad med läget före Binderlab. I `binderlab_dev` står tre utgångslägen med
-källan "Egen uppskattning, sommaren 2026" (vinst per automat och månad 4 500 kr, 6 slutsålda dagar och 14 timmars
-påfyllning per månad), men de lades in med ägarkontot under bygget för att prova sidan, inte av beställaren. Sidan
-visar därför "+138 %" för vinst per automat i oktober; den siffran ska inte användas. Detsamma gäller mätvärdena för
-oktober och november (2 slutsålda dagar, 9 h 30 min och 1 h påfyllning).
+Sidan Effekt (`/effekt`) jämför varje månad med läget före Binderlab. Efter snabbstarten har organisationen Binderlab
+inget utgångsläge och inga mätvärden, och sidan säger "Utgångsläget före Binderlab är inte registrerat". Vinst per
+automat och månad räknas ändå ur orderna: 10 701 kr i oktober (från första ordern 13 okt.) och 6 557 kr i november
+hittills; talen syns på sidan när ett utgångsläge finns.
+
+Två ställen visar en effekt som inte ska användas:
+
+- `binderlab_dev` på byggmaskinen har tre utgångslägen med källan "Egen uppskattning, sommaren 2026" (vinst per
+  automat och månad 4 500 kr, 6 slutsålda dagar och 14 timmars påfyllning per månad) och mätvärden för oktober och
+  november. De lades in med ägarkontot under bygget för att prova sidan, inte av beställaren. Sidan visar därför
+  "+138 %" för vinst per automat i oktober.
+- Demoorganisationen (Nordljus Automater AB) har påhittade utgångslägen och mätvärden från `npm run db:seed-demo`.
 
 Det här mäts:
 

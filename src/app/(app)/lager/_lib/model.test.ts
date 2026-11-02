@@ -13,7 +13,14 @@ import {
   statusTone,
   tenthsText,
 } from "./display";
-import { headlineOf, machineList, packListAside, visitsText } from "./headline";
+import {
+  headlineOf,
+  machineList,
+  packListAside,
+  visitsText,
+  visitsToday,
+  visitsTodayShort,
+} from "./headline";
 import { buildLagerModel, planNow, retiredPairs, salesAsOrders, warehouseStatus } from "./model";
 import type { LagerView, PackList } from "./types";
 
@@ -357,9 +364,9 @@ describe("headlineOf", () => {
   it("svarar med antal kritiska och låga, det mest brådskande och dagens besök", () => {
     const h = headlineOf(viewOf(build()));
     expect(h.title).toBe("2 platser kritiska, 1 låg.");
-    expect(h.aside).toBe(
-      `Black Bolt i ${codeText("BL-001")} är slut. 10${NBSP}pack till ${codeText("BL-001")} i dag.`,
-    );
+    // Högst två meningar: dagens besök står i sidhuvudets fakta (visitsToday).
+    expect(h.aside).toBe(`Black Bolt i ${codeText("BL-001")} är slut.`);
+    expect(visitsToday(viewOf(build()))).toBe(`10${NBSP}pack till ${codeText("BL-001")}`);
   });
 
   it("räknar bara automater som ska besökas i dag, och nämner nästa besöksdag", () => {
@@ -378,16 +385,23 @@ describe("headlineOf", () => {
       ],
     };
     expect(visitsText(view)).toBe(
-      `16${NBSP}pack till ${codeText("BL-003")} i dag. ${codeText("BL-001")} och ${codeText("BL-002")} i morgon.`,
+      `16${NBSP}pack till ${codeText("BL-003")} i dag, ${codeText("BL-001")} och ${codeText("BL-002")} i morgon.`,
     );
     const none = {
       ...view,
       packLists: view.packLists.map((p) => ({ ...p, dueToday: false, plannedDay: "2026-11-05" })),
     };
     expect(visitsText(none)).toBe(
-      `Inget besök behövs i dag. ${codeText("BL-001")}, ${codeText("BL-002")} och ${codeText("BL-003")} den 5${NBSP}nov.`,
+      `Inget besök behövs i dag, nästa besök ${codeText("BL-001")}, ${codeText("BL-002")} och ${codeText("BL-003")} den 5${NBSP}nov.`,
     );
     expect(machineList(["A", "B", "C", "D"])).toBe("4 automater");
+    // Kort form i sidhuvudets fakta: antal automater när fler än en ska besökas.
+    const two = {
+      ...view,
+      packLists: view.packLists.map((p) => ({ ...p, dueToday: true })),
+    };
+    expect(visitsTodayShort(two)).toBe(`57${NBSP}pack till 3 automater`);
+    expect(visitsTodayShort(view)).toBe(`16${NBSP}pack till ${codeText("BL-003")}`);
   });
 });
 

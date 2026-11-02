@@ -49,35 +49,48 @@ export function machineList(codes: readonly string[]): string {
 }
 
 /**
- * Dagens besök och nästa: "16 pack till BL‑003 i dag. BL‑001 och BL‑002 i morgon."
- * Bara automater som ska besökas i dag (PackList.dueToday) räknas till dagens pack.
+ * Dagens besök och nästa, i en mening: "16 pack till BL‑003 i dag, BL‑001 och BL‑002 i
+ * morgon." Bara automater som ska besökas i dag (PackList.dueToday) räknas till dagens pack.
  */
 export function visitsText(view: Pick<LagerView, "packLists" | "machines" | "today">): string {
   const code = new Map(view.machines.map((m) => [m.id, codeText(m.code)]));
-  const due = view.packLists.filter((p) => p.dueToday);
-  const parts: string[] = [];
-  if (due.length > 0) {
-    const total = due.reduce((s, p) => s + p.totalPacks, 0);
-    parts.push(
-      `${packs(total)} till ${machineList(due.map((p) => code.get(p.machineId) ?? ""))} i dag.`,
-    );
-  } else {
-    parts.push("Inget besök behövs i dag.");
-  }
+  const today = visitsToday(view);
   const later = view.packLists
     .filter((p) => !p.dueToday && p.plannedDay !== null && p.plannedDay > view.today)
     .sort((a, b) => (a.plannedDay! < b.plannedDay! ? -1 : a.plannedDay! > b.plannedDay! ? 1 : 0));
   const next = later[0]?.plannedDay;
+  const first = today ? `${today} i dag` : "Inget besök behövs i dag";
   if (next) {
     const onNext = later.filter((p) => p.plannedDay === next);
     const day = relativeDay(next, view.today);
-    parts.push(
-      `${machineList(onNext.map((p) => code.get(p.machineId) ?? ""))} ${day === "i morgon" ? day : `den ${day}`}${day.endsWith(".") ? "" : "."}`,
-    );
-  } else if (due.length === 0) {
-    parts.push("Nästa vecka räcker utan besök.");
+    const who = machineList(onNext.map((p) => code.get(p.machineId) ?? ""));
+    const when = day === "i morgon" ? day : `den ${day}`;
+    return sentence(today ? `${first}, ${who} ${when}` : `${first}, nästa besök ${who} ${when}`);
   }
-  return parts.join(" ");
+  return today ? sentence(first) : "Inget besök behövs i dag, nästa vecka räcker utan besök.";
+}
+
+/**
+ * Dagens besök i kort form för sidhuvudets fakta: "16 pack till BL‑003" eller "58 pack till
+ * 3 automater", eller null om inget besök behövs i dag.
+ */
+export function visitsTodayShort(
+  view: Pick<LagerView, "packLists" | "machines">,
+): string | null {
+  const due = view.packLists.filter((p) => p.dueToday);
+  if (due.length === 0) return null;
+  if (due.length === 1) return visitsToday(view);
+  const total = due.reduce((s, p) => s + p.totalPacks, 0);
+  return `${packs(total)} till ${count(due.length, "automat", "automater")}`;
+}
+
+/** Dagens besök: "16 pack till BL‑003" eller null om inget besök behövs i dag. */
+export function visitsToday(view: Pick<LagerView, "packLists" | "machines">): string | null {
+  const code = new Map(view.machines.map((m) => [m.id, codeText(m.code)]));
+  const due = view.packLists.filter((p) => p.dueToday);
+  if (due.length === 0) return null;
+  const total = due.reduce((s, p) => s + p.totalPacks, 0);
+  return `${packs(total)} till ${machineList(due.map((p) => code.get(p.machineId) ?? ""))}`;
 }
 
 export function headlineOf(view: LagerView): Headline {
@@ -95,7 +108,7 @@ export function headlineOf(view: LagerView): Headline {
   if (total === 0) {
     return {
       title: "Inget lager registrerat.",
-      aside: `${count(view.machines.length, "automat", "automater")} utan saldo. Inventera för att börja.`,
+      aside: `${count(view.machines.length, "automat", "automater")} utan saldo, inventera för att börja.`,
     };
   }
 
@@ -108,23 +121,24 @@ export function headlineOf(view: LagerView): Headline {
       ? `${where} är slut.`
       : `${where} har ${packs(urgent.onHand)} kvar.`
     : "";
-  const visits = visitsText(view);
 
+  // Högst två meningar i rubriken (design.md §5.5): läget och den mest brådskande platsen.
+  // Dagens besök står i sidhuvudets fakta (visitsToday) och i påfyllningslistan.
   if (critical > 0) {
     return {
       title: `${count(critical, "plats kritisk", "platser kritiska")}${low > 0 ? `, ${formatInt(low)} ${low === 1 ? "låg" : "låga"}` : ""}.`,
-      aside: `${urgentText} ${visits}`,
+      aside: urgentText,
     };
   }
   if (low > 0) {
     return {
-      title: `Ingen plats är slut. ${count(low, "plats låg", "platser låga")}.`,
-      aside: `${urgentText} ${visits}`,
+      title: `Ingen plats är slut, ${count(low, "plats är låg", "platser är låga")}.`,
+      aside: urgentText,
     };
   }
   return {
     title: `Alla ${formatInt(total)}${NBSP}platser räcker minst ${tenthsText(view.lowThresholdTenths)}${NBSP}dagar.`,
-    aside: visits,
+    aside: visitsText(view),
   };
 }
 

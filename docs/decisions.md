@@ -339,8 +339,8 @@ installeras i CI-jobbet).
 
 ## ADR 26. Vercel och Supabase i EU för drift
 
-**Kontext.** En liten organisation utan egen driftpersonal. Personuppgifter (användare, butikskontakter) ska stanna i
-EU.
+**Kontext.** En liten organisation utan egen driftpersonal. Personuppgifter (användare, butikskontakter) ska i första
+hand lagras i EU.
 
 **Beslut.** Vercel för webb och cron (Production från `main`, Preview per gren), Supabase i en EU-region för
 Postgres, Auth och Storage, Sentry för fel och cron-övervakning, Resend för e-post. Två Supabase-projekt (utveckling
@@ -349,3 +349,15 @@ och produktion).
 **Konsekvenser.** Ingen server att underhålla. Larmjobbet var 10:e minut kräver Vercel Pro. Funktioner har gränser
 (4,5 MB per förfrågan, tid per anrop). Egna dumpar (`npm run db:backup`) behövs utöver Supabases backuper, se
 `docs/operations.md`.
+
+Allt stannar inte i EU. Databasen, filerna och inloggningen ligger i Supabases EU-region, men:
+
+- **Assistenten** skickar frågorna i fritext och verktygens resultat (titlar, automater, butiksnamn, belopp) till
+  Claude API hos Anthropic, som behandlar dem utanför EU. Inga e-postadresser eller telefonnummer ingår i verktygens
+  resultat, men en användare kan skriva vad som helst i en fråga. Assistenten är avstängd tills `ANTHROPIC_API_KEY`
+  sätts.
+- **Vercel** kör funktionerna i USA om ingen region väljs; `vercel.json` sätter ingen.
+- **Resend och Sentry** har EU-regioner som måste väljas.
+
+Inga personuppgiftsbiträdesavtal är tecknade. Biträdena, vad var och en får, lagringstider och vad som återstår står i
+`docs/operations.md` (Personuppgifter och biträden).

@@ -190,9 +190,9 @@ describe("listan", () => {
     const h = listHeadline(rows, `på 2${NB}dagar`);
     expect(h.title).toBe(`3${NB}butiker gav 220${NB}kr på 2${NB}dagar.`);
     expect(h.aside).toContain(`35${NB}kr (15,9${NB}%) till butikerna och vinst`);
-    expect(h.aside).toContain("mest från Kiosken (68");
+    expect(h.aside).toMatch(/, 68\u00a0% från Kiosken\.$/);
     // En mening i rubrikens andra del.
-    expect(h.aside.match(/\.(\s|$)/g)).toHaveLength(1);
+    expect(h.aside?.match(/\.(\s|$)/g)).toHaveLength(1);
     expect(listHeadline([rows[0]!], "i dag").aside).toContain("till butiken och vinst");
     expect(listHeadline([], "i dag").title).toBe("Inga butiker ännu.");
   });

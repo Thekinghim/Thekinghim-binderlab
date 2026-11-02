@@ -11,17 +11,19 @@ visar står i [docs/product.md](docs/product.md).
 
 ## Skärmbilder
 
-Utvecklingsdatabasen efter `npm run db:seed` (verksamhetens riktiga försäljning 13 okt.–1 nov. 2026 med
-exempelbutiker), inloggad som ägare.
+En nyskapad databas efter snabbstarten nedan (`db:reset`, `db:seed`, `db:seed-demo`: verksamhetens riktiga
+försäljning 13 okt.–1 nov. 2026 med exempelbutiker), inloggad som ägare och tagna 2 nov. 2026. Hem, Lönsamhet och
+Enhetsekonomi visar perioden "Allt"; Att göra och Prognos räknas från dagens datum och ser därför annorlunda ut en
+annan dag.
 
-|                                                                                              |                                                                                                     |
-| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| ![Hem i mörkt läge: intäkt 79 987 kr och vinst 21 858 kr på 21 dagar](docs/img/hem-mork.png) | ![Lönsamhet i ljust läge: vattenfall från intäkt till vinst](docs/img/lonsamhet-ljus.png)           |
-| **Hem:** intäkt, vinst, marginal, Att göra och mest sålda titlar                             | **Lönsamhet:** från intäkt till vinst, order utan inköpspris och butiksersättning                   |
-| ![Att göra i mörkt läge: fyra påfyllningar med kronor i risk](docs/img/att-gora-mork.png)    | ![Prognos och inköp i ljust läge: prognos för fyra veckor med intervall](docs/img/prognos-ljus.png) |
-| **Att göra:** påfyllningar med lager, räckvidd och intäkt i risk                             | **Prognos & inköp:** utfall och prognos per vecka med 80 %-intervall                                |
-| ![Enhetsekonomi i mörkt läge: vinst per automat och dag](docs/img/enhetsekonomi-mork.png)    | ![Drift på en mobil i ljust läge](docs/img/drift-mobil-ljus.png)                                    |
-| **Enhetsekonomi:** vinst per automat och dag, investering och återbetalning                  | **Drift på mobilen (375 px):** maskinhälsa, besöksplan och påfyllning                               |
+|                                                                                                           |                                                                                                     |
+| --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| ![Hem i mörkt läge, period Allt: intäkt 79 987 kr och vinst 21 858 kr på 21 dagar](docs/img/hem-mork.png) | ![Lönsamhet i ljust läge: vattenfall från intäkt till vinst](docs/img/lonsamhet-ljus.png)           |
+| **Hem (period Allt):** intäkt, vinst, marginal, Att göra och mest sålda titlar                            | **Lönsamhet:** från intäkt till vinst, order utan inköpspris och butiksersättning                   |
+| ![Att göra i mörkt läge: åtta punkter, tre i dag, 12 405 kr i risk](docs/img/att-gora-mork.png)           | ![Prognos och inköp i ljust läge: prognos för fyra veckor med intervall](docs/img/prognos-ljus.png) |
+| **Att göra:** påfyllningar med lager, räckvidd och intäkt i risk                                          | **Prognos & inköp:** utfall och prognos per vecka med 80 %-intervall                                |
+| ![Enhetsekonomi i mörkt läge: vinst per automat och dag](docs/img/enhetsekonomi-mork.png)                 | ![Drift på en mobil i ljust läge](docs/img/drift-mobil-ljus.png)                                    |
+| **Enhetsekonomi:** vinst per automat och dag, investering och återbetalning                               | **Drift på mobilen (375 px):** maskinhälsa, besöksplan och påfyllning                               |
 
 ## Snabbstart lokalt
 
@@ -56,9 +58,22 @@ Inloggning lokalt (lösenord `binderlab-dev`, ändras med `DEV_SEED_PASSWORD`):
 | `demo@binderlab.local`                                          | Ägare             | Nordljus Automater AB (demo)   |
 | `demo-lasare@binderlab.local`, `demo-pafyllare@binderlab.local` | Läsare, påfyllare | Demo                           |
 
-Inbjudningsmejl, rapportmejl, push och sms hamnar lokalt i `.data/outbox/`. Allt som behöver en extern tjänst har en
-lokal ersättare; vilka variabler som styr vad står i [docs/miljoer.md](docs/miljoer.md). Demon beskrivs i
-[docs/demo.md](docs/demo.md).
+Lokalt lämnar inget mejl servern. Inbjudningar skrivs som `.eml`-filer i `.data/mail/` (dev-inloggningen har bara
+lösenord, inga inloggningslänkar), rapport- och larmmejl i `.data/outbox/<id>/`, push i `.data/outbox/push/` och sms i
+`.data/outbox/sms/`. Allt som behöver en extern tjänst har en lokal ersättare; vilka variabler som styr vad står i
+[docs/miljoer.md](docs/miljoer.md). Demon beskrivs i [docs/demo.md](docs/demo.md).
+
+**Prova butiksportalen** (det finns inget seedat butikskonto):
+
+1. Logga in som `agare@binderlab.local`, öppna **Butiker** och en butik, och fyll i **E-post till butiken** under
+   butiksportalen (till exempel `butik@binderlab.local`) → **Bjud in till portalen**.
+2. Öppna den nyaste filen i `.data/mail/` och kopiera länken `http://localhost:3200/inbjudan/<token>`.
+3. Öppna länken i ett privat fönster, välj ett lösenord (minst 12 tecken) och gå med. Du hamnar på `/portal` och ser
+   bara den butikens försäljning, ersättning, godkända rapporter och felanmälan.
+
+**Larmjobbet lokalt:** `/api/cron/larm` och `/api/cron/rapporter` svarar 503 tills `CRON_SECRET` (minst 16 tecken,
+till exempel `openssl rand -hex 24`) är satt i `.env.local` och dev-servern startats om. `db:seed-demo` kör redan
+larmjobbet en gång för demoorganisationen.
 
 ## Tester
 
@@ -84,13 +99,20 @@ Vercel (webb och cron) och Supabase i EU (Postgres, Auth, Storage), med Sentry f
 1. **Supabase:** ett projekt för utveckling och ett för produktion. Kräv bekräftad e-post, stäng av egen
    registrering, använd asymmetriska JWT-nycklar (ES256) och sätt mallarna för inbjudan och inloggningslänk.
 2. **Vercel:** importera repot och sätt variablerna enligt `.env.example` för Preview och Production
-   (`APP_ENV`, `AUTH_PROVIDER=supabase`, `DATABASE_URL` mot poolern på port 6543, `DATABASE_POOL_MAX=3`, Supabase-,
-   Resend-, Sentry-, VAPID- och `CRON_SECRET`-värden). Cron-jobben står i `vercel.json`; larmjobbet var 10:e minut
+   (`APP_ENV`, `AUTH_PROVIDER=supabase`, `APP_URL`, `DATABASE_URL` mot poolern på port 6543, `DATABASE_POOL_MAX=3`,
+   Supabase-, Sentry-, VAPID- och `CRON_SECRET`-värden). Cron-jobben står i `vercel.json`; larmjobbet var 10:e minut
    kräver Vercel Pro.
-3. **Migreringar:** GitHub Actions → "Migrera databasen" → välj `development` eller `production` (kör
+3. **E-post (Resend):** sätt `MAIL_PROVIDER=resend`, `RESEND_API_KEY` och `MAIL_FROM` (en avsändare på en domän som
+   är verifierad i Resend). **Standardvärdet är `outbox` även i production**: utan `MAIL_PROVIDER=resend` skrivs
+   rapport- och larmmejlen till serverns disk och når aldrig mottagarna. Inbjudningar och inloggningslänkar skickas av
+   Supabase Auth (SMTP och mallar ställs in där).
+4. **Assistenten:** sätt `ANTHROPIC_API_KEY` (Claude Console → API Keys), och vid behov `ANTHROPIC_MODEL`. Utan nyckel
+   visar `/assistent` att nyckeln saknas och skickar ingenting. Frågorna och verktygens resultat skickas till
+   Anthropic; se avsnittet om personuppgifter i [docs/operations.md](docs/operations.md#personuppgifter-och-biträden).
+5. **Migreringar:** GitHub Actions → "Migrera databasen" → välj `development` eller `production` (kör
    `npm run db:migrate` med `DATABASE_URL` från GitHub Environment; produktion kräver godkännande och `main`). Nya
    ändringar i databasen görs alltid som en ny fil i `supabase/migrations` med en tidsstämpel efter alla befintliga.
-4. **Första ägaren:** bjud in i Supabase, logga in och skapa organisationen under Kom igång.
+6. **Första ägaren:** bjud in i Supabase, logga in och skapa organisationen under Kom igång.
 
 Steg för steg i [docs/miljoer.md](docs/miljoer.md) ("Det här måste beställaren göra"). Daglig drift, larm,
 säkerhetskopior, återställning, nyckelbyten och incidenter i [docs/operations.md](docs/operations.md).
@@ -153,7 +175,7 @@ tills det finns 2–3 pilotoperatörer.
   överlämningen enligt `docs/operations.md`.
 - **Säkerhet:** CSP:n tillåter `'unsafe-inline'` för skript (nonce-CSP kräver dynamisk rendering), HSTS saknar
   `includeSubDomains`, det finns ingen gräns för hur ofta inbjudningar och rapporter kan skickas, och gränserna för
-  inloggning, assistent, provlarm och felanmälan räknas per serverinstans.
+  inloggning, assistent, sökning, provlarm och felanmälan räknas per serverinstans (`docs/architecture.md`).
 - **Vercel:** avtalsfiler över cirka 4,4 MB stoppas av plattformen (gräns 4,5 MB per förfrågan); orderlistan laddas
   upp i bitar och påverkas inte.
 - **Inte valda eller inte byggda leverantörer:** sms (telefonnumret måste verifieras innan en leverantör kopplas),
@@ -168,8 +190,13 @@ tills det finns 2–3 pilotoperatörer.
   (`SLOTS_PER_MACHINE`), Lönsamhet med bara butiksfilter visar inga fasta kostnader, säkerhetskopian av databasen
   innehåller inte filerna i Storage, och demons telefonnummer och butiksnamnet "Seriecentralen" bör bytas mot
   fiktiva (PTS fiktionsnummer) före en extern visning.
-- **Utvecklingsdatabasen** innehåller testposter från bygget (bland annat ett rapportutkast för september som inte får
-  godkännas). Kör `npm run db:reset -- dev && npm run db:seed && npm run db:seed-demo` före en visning.
+- **Utvecklingsdatabasen** `binderlab_dev` på byggmaskinen innehåller testposter från bygget (lagerhändelser, ett
+  rapportutkast för september som inte får godkännas, utgångslägen på Effekt med mera). Siffrorna och skärmbilderna i
+  dokumentationen är tagna i en nyskapad databas. Kör `npm run db:reset -- dev && npm run db:seed && npm run db:seed-demo`
+  före en visning.
+- **Licens och personuppgifter:** repot har ingen licensfil än; ägande och licens beslutas vid överlåtelsen (se
+  [Licens och ägande](#licens-och-ägande)). Personuppgiftsbiträden och lagringstider står i
+  [docs/operations.md](docs/operations.md#personuppgifter-och-biträden); biträdesavtalen är inte tecknade.
 
 **Innan andra operatörer kan använda panelen.**
 
@@ -183,3 +210,31 @@ tills det finns 2–3 pilotoperatörer.
    operatör.
 6. Bestäm plan, automatgräns (`organizations.machine_limit`) och hur en ny operatör kommer in (i dag: inbjudan i
    Supabase och Kom igång). Plattformsfrågorna (fakturering, administration av flera operatörer) är fas 12.
+7. Teckna personuppgiftsbiträdesavtal med Supabase, Vercel, Resend, Sentry och Anthropic, välj EU-region för Vercels
+   funktioner, bestäm lagringstider och bygg gallringen (i dag gallras inget efter 7 år eller 24 månader). Se
+   [docs/operations.md](docs/operations.md#personuppgifter-och-biträden).
+
+## Licens och ägande
+
+Det finns ingen LICENSE-fil. `package.json` har `"private": true` och ingen `license`, så koden är inte öppen
+källkod och får inte spridas utan ägarens tillstånd. Vem som äger koden och vad en köpare får (överlåtelse eller
+licens) ska stå i köpeavtalet och sedan i en LICENSE-fil i roten.
+
+Beroendena har egna licenser. Sammanställning ur `package-lock.json` (2 nov. 2026): 436 paket som inte är
+utvecklingsberoenden, inklusive plattformsbinärer som bara installeras på sin plattform. 327 MIT, 34 Apache-2.0, 31 ISC,
+och resten BSD, 0BSD, BlueOak-1.0.0, Unlicense, MIT-0 och liknande tillåtande licenser. Det här behöver en köpare titta
+på:
+
+| Paket                                                 | Licens                      | Varifrån och vad det betyder                                                                                          |
+| ----------------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `@img/sharp-libvips-*`, `@img/sharp-win32-*` (0.35.5) | LGPL-3.0-or-later (libvips) | Bildbehandlingen `sharp` som Next.js använder. Dynamiskt länkat bibliotek; LGPL-villkoren gäller om det distribueras. |
+| `web-push` (3.6.7)                                    | MPL-2.0                     | Web Push. Ändringar i paketets egna filer ska delas; resten av koden påverkas inte.                                   |
+| `sentry` (0.45.0, Sentry CLI)                         | FSL-1.1-Apache-2.0          | Via `@sentry/nextjs` vid bygget (källkartor). Fri att använda men inte för en konkurrerande tjänst.                   |
+| `jszip` (3.10.2)                                      | MIT eller GPL-3.0-or-later  | Via `exceljs`. Välj MIT.                                                                                              |
+| `buffers` (0.1.1)                                     | anges inte i paketet        | Via `exceljs` → `unzipper` → `binary`. Licensen behöver klargöras eller paketet ersättas.                             |
+| `caniuse-lite`                                        | CC-BY-4.0                   | Webbläsardata vid bygget.                                                                                             |
+| `geist`                                               | SIL Open Font License       | Typsnitten; får bäddas in men inte säljas separat.                                                                    |
+
+Sammanställningen är räknad med ett skript över `package-lock.json` och paketens `package.json`, inte granskad av
+jurist. Ta om den efter varje uppdatering av beroendena, till exempel med `npx license-checker-rseidelsohn --production
+--summary` efter `npm ci`.

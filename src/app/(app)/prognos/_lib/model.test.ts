@@ -9,7 +9,14 @@ import { addDays, revenue, type IsoDate, type OrderLine } from "@/domain";
 import type { PrognosData, PurchaseOrderRecord } from "@/server/purchasing/types";
 
 import { evidenceView, figureText } from "./evidence";
-import { buildPageModel, codesUnbroken, krRangeText, purchaseOrderNumber, tidy } from "./model";
+import {
+  buildPageModel,
+  codesUnbroken,
+  krRangeText,
+  oneSentence,
+  purchaseOrderNumber,
+  tidy,
+} from "./model";
 import { oreToField, parseCount, parseKronor } from "./units";
 
 const SETTINGS = { vatRateBp: 0, cardFeeBp: 0 };
@@ -314,6 +321,14 @@ describe("units", () => {
     );
     expect(codesUnbroken("2026-11-02, 4-veckor")).toBe("2026-11-02, 4-veckor");
     expect(tidy("Slutsålt i NA-05 sedan 1 nov..")).toBe("Slutsålt i NA\u201105 sedan 1 nov.");
+  });
+  it("skriver rubrikens andra del som en mening", () => {
+    expect(
+      oneSentence(["Slutsålt kostade ca 4 100 kr 4 okt. – 1 nov.", "1 titel bör beställas."]),
+    ).toBe("Slutsålt kostade ca 4 100 kr 4 okt. – 1 nov., 1 titel bör beställas.");
+    expect(oneSentence(["Slutsålt kostade ca 4 100 kr.", "Titlar behöver en leverantör."])).toBe(
+      "Slutsålt kostade ca 4 100 kr, titlar behöver en leverantör.",
+    );
   });
   it("skriver intervall och ordernummer", () => {
     expect(krRangeText(1_690_000, 1_990_000)).toBe("16 900–19 900 kr");

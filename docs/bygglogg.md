@@ -105,3 +105,6 @@ Tas bort när alla faser är klara.
 - Genomgång A och C klara. Öppet till slutsteget: diagram 640 px breda före mätning (mobil bredare vid laddning),
   okända id ger HTTP 200, "0 bp" i avstämningen, öre i avstämningssammanfattningen, laddtider mät med next start,
   temaskriptet (kort fel tema före hydrering), jämförelsen räknar med dagen som pågår.
+- Dokumentation klar: README (snabbstart provad från noll), architecture, datamodell (alla tabeller och 23 RPC:er), berakningar,
+  decisions (ADR), product (siffror från ny databas), operations (backup, personuppgifter och biträden), licenssammanställning.
+  Öppet: licensen för paketet "buffers", demons telefonnummer/"Seriecentralen" ska bli fiktiva, Vercel-region (EU) i vercel.json.

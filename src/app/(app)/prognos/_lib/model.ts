@@ -344,9 +344,7 @@ export interface PageModel {
 
 function lookup(data: PrognosData): NameLookup & { supplier(id: string): string } {
   const titles = new Map(data.titles.map((t) => [t.id, t.name]));
-  const machines = new Map(
-    data.machines.map((m) => [m.id, `${codesUnbroken(m.code)} ${m.name}`]),
-  );
+  const machines = new Map(data.machines.map((m) => [m.id, `${codesUnbroken(m.code)} ${m.name}`]));
   const suppliers = new Map(data.suppliers.map((s) => [s.id, s.name]));
   return {
     asOf: data.asOf,
@@ -403,6 +401,21 @@ const WEEKDAYS_PLURAL = [
   "Lördagarna",
   "Söndagarna",
 ] as const;
+
+/**
+ * Delmeningar som en mening: "Slutsålt kostade ca 4 100 kr 4 okt. – 1 nov., 1 titel bör
+ * beställas för ca 1 100 kr." Punkten efter en förkortning står kvar.
+ */
+export function oneSentence(parts: readonly string[]): string {
+  return parts
+    .map((p, i) => {
+      const lead = i > 0 && /^[A-ZÅÄÖ][a-zåäö]/.test(p) ? p[0]!.toLowerCase() + p.slice(1) : p;
+      return i < parts.length - 1 && !/\s(jan|feb|apr|aug|sep|okt|nov|dec)\.$/.test(lead)
+        ? lead.replace(/\.$/, "")
+        : lead;
+    })
+    .join(", ");
+}
 
 function plural(n: number, one: string, many: string): string {
   return `${formatInt(n)}${NBSP}${n === 1 ? one : many}`;
@@ -1038,9 +1051,9 @@ export function buildPageModel(data: PrognosData, now: Date = new Date()): PageM
   const valuation = valuationModel(data, names);
   const suppliers = suppliersModel(data, names);
 
-  const answerParts: string[] = [
-    `${forecast.coverage}-intervall ${krRangeText(forecast.total.revenueLowOre, forecast.total.revenueHighOre)}.`,
-  ];
+  // Högst två meningar i rubriken (design.md §5.5): beloppet, och vad som kostar eller ska
+  // göras i en mening. Intervallet står i sidhuvudets fakta.
+  const answerParts: string[] = [];
   if (data.lostSales.total.lostRevenueOre > 0) {
     answerParts.push(
       `Slutsålt kostade ${approxKr(data.lostSales.total.lostRevenueOre)} ${periodShort(data.lostSales.period, now)}.`,
@@ -1067,10 +1080,18 @@ export function buildPageModel(data: PrognosData, now: Date = new Date()): PageM
           : `${approxKr(forecast.total.revenueOre).replace(/^ca/, "Ca")} kommande 4 veckor.`,
       // tidy: periodtexten kan sluta på en förkortning ("sep."), så att meningen annars får "..".
       aside:
-        data.forecast.series.length === 0 ? forecast.heading.aside : tidy(answerParts.join(" ")),
+        data.forecast.series.length === 0 ? forecast.heading.aside : tidy(oneSentence(answerParts)),
     },
     meta: [
       { label: "Prognos", value: periodShort(forecast.horizon, now) },
+      ...(data.forecast.series.length === 0
+        ? []
+        : [
+            {
+              label: `${forecast.coverage}-intervall`,
+              value: krRangeText(forecast.total.revenueLowOre, forecast.total.revenueHighOre),
+            },
+          ]),
       {
         // Felet, inte träffsäkerheten: etikett och värde ska peka åt samma håll.
         label: "Prognosfel",

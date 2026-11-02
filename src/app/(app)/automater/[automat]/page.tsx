@@ -103,7 +103,8 @@ export default async function MachinePage({
         <nav aria-label="Brödsmulor">
           <Link
             href={listHref}
-            className="meta inline-flex items-center gap-1.5 rounded-xs text-subtle hover:text-fg"
+            // min-h-7: klickytan minst 24 px hög (WCAG 2.5.8) även på mobilen.
+            className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-subtle hover:text-fg"
           >
             <span aria-hidden className="text-faint">
               ←
@@ -450,17 +451,31 @@ function UnitEconomicsSection({ data }: { data: MachineDetailData }) {
             : undefined
         }
         actions={
-          <Link href={href} className="meta rounded-xs text-muted hover:text-fg">
+          <Link
+            href={href}
+            className="meta inline-flex min-h-7 items-center rounded-xs text-muted hover:text-fg"
+          >
             Jämför med andra automater{NBSP}→
           </Link>
         }
       />
       {u ? (
-        <MachineKpis
-          items={unitEconomicsKpis(u)}
-          label="Enhetsekonomi · till periodens slut"
-          headingLevel={3}
-        />
+        <div className="flex flex-col gap-3">
+          <MachineKpis
+            items={unitEconomicsKpis(u)}
+            label="Enhetsekonomi · till periodens slut"
+            headingLevel={3}
+          />
+          {/* Två vinsttal på sidan: förklara sambandet (nyckeltalen överst gäller perioden). */}
+          <p className="max-w-[68ch] text-sm text-muted">
+            Vinst per månad räknas på de {formatInt(u.activeDays)}
+            {NBSP}dagar automaten stått i butik fram till periodens slut, omräknat till en hel
+            månad. Vinsten bland nyckeltalen överst gäller bara perioden (
+            {formatInt(data.period.span.days)}
+            {NBSP}dagar). Efter avskrivning dras {formatSek(u.monthlyDepreciationOre / 100)} per
+            månad av.
+          </p>
+        </div>
       ) : (
         <StateMessage
           kind="not-configured"
