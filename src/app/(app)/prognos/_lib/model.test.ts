@@ -478,7 +478,7 @@ describe("buildPageModel", () => {
     expect(m.plan.counts.order).toBe(0);
     expect(m.plan.counts["no-supplier"]).toBe(2);
     const meta = m.meta.find((x) => x.label === "Att beställa")!;
-    expect(meta.value).toBe("2 titlar utan leverantör");
+    expect(meta.value.replace(/\u00a0/g, " ")).toBe("2 titlar utan leverantör");
   });
 
   it("märker lagervärdet som ofullständigt när inköpspris saknas", () => {
@@ -514,13 +514,15 @@ describe("buildPageModel", () => {
       ...d,
       demandBasis: d.demandBasis.map((b) =>
         b.titleId === T1
-          ? { ...b, series: 2, lowDataSeries: 1, lowDataUnitsMilli: b.unitsMilli / 2 }
+          ? { ...b, series: 2, lowDataSeries: 1, lowDataUnitsMilli: Math.round(b.unitsMilli / 2) }
           : b,
       ),
     };
     const m = buildPageModel(withLow, now);
     const line = m.plan.lines.find((l) => l.titleId === T1)!;
-    expect(line.lowData).toEqual({ lowDataSeries: 1, series: 2, shareBp: 5_000 });
+    expect(line.lowData?.lowDataSeries).toBe(1);
+    expect(line.lowData?.series).toBe(2);
+    expect(Math.abs((line.lowData?.shareBp ?? 0) - 5_000)).toBeLessThanOrEqual(1);
     expect(m.plan.heading.aside).toMatch(/lite data/);
   });
 });

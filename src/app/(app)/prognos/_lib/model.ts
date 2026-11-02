@@ -431,6 +431,7 @@ export const STALE_DRAFT_DAYS = 7;
 const PURCHASE_ORDERS_HREF = "#inkopsorder";
 const STOCK_EVIDENCE: EvidenceOptions = {
   centralStock: true,
+  historyByTitle: true,
   purchaseOrdersHref: PURCHASE_ORDERS_HREF,
 };
 

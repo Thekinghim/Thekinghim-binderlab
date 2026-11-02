@@ -662,6 +662,23 @@ export function machineFigures(input: ProfitabilityInput, machineId: string): Ma
   };
 }
 
+/**
+ * Automatens order utan inköpspris, med butikshyran på dem (som dras från organisationens
+ * vinst som ej fördelad hyra, inte från automatens; lönsamheten per automat på hela indata).
+ */
+export function machineUnpriced(
+  input: ProfitabilityInput,
+  machineId: string,
+  master: MasterData,
+): UnpricedView | null {
+  const row = byKey(profitability(input, "machine").rows).get(machineId);
+  return unpricedOf(
+    profitability(machineInput(input, machineId), "title"),
+    master,
+    row?.unpricedRentOre ?? 0,
+  );
+}
+
 /** Intäkt per dag i kronor för diagrammet (hela perioden, tomma dagar som 0). */
 export function dailyRevenue(input: ProfitabilityInput, machineId: string): DailyPoint[] {
   return profitability(machineInput(input, machineId), "day")

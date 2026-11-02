@@ -67,6 +67,11 @@ export interface NameLookup {
 export interface EvidenceOptions {
   /** Länka till centrallagret på Lager. */
   readonly centralStock?: boolean;
+  /**
+   * Historiklänken filtreras bara på titel (inköpsplanen gäller titelns efterfrågan i alla
+   * automater, även om underlaget pekar ut automaterna där lagret finns).
+   */
+  readonly historyByTitle?: boolean;
   /** Länka till inköpsordern (avsnittet Inköpsorder) när underlaget pekar ut inköpsorder. */
   readonly purchaseOrdersHref?: string;
 }
@@ -114,7 +119,7 @@ export function evidenceView(
     // En prognos eller plan: perioden har inte hänt, så länka till historiken den bygger på.
     links.push({
       label: "Visa orderna som prognosen bygger på",
-      href: orderHref(names.historyPeriod, titleIds, machineIds),
+      href: orderHref(names.historyPeriod, titleIds, options.historyByTitle ? [] : machineIds),
     });
   }
   if (machineIds.length === 1) {

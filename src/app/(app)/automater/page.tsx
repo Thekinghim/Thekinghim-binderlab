@@ -7,6 +7,7 @@ import { formatInt, NBSP } from "@/lib/format";
 import { MachineKpis } from "./_components/kpis";
 import { AddMachineButton } from "./_components/machine-dialogs";
 import { MachineTable } from "./_components/machine-table";
+import { UnpricedNote } from "./_components/unpriced-note";
 import { loadOverview } from "./_lib/data";
 import { nextMachineCode, overviewKpis, spreadText } from "./_lib/model";
 
@@ -29,7 +30,7 @@ export default async function AutomaterPage({
   const decommissioned = rows.filter((r) => r.lifecycle === "decommissioned").length;
   const planned = rows.filter((r) => r.lifecycle === "planned").length;
   const comparison = period.comparisonLabel ? `Jämfört med ${period.comparisonLabel}` : undefined;
-  const daysLabel = `${formatInt(period.days)}${NBSP}d`;
+  const daysLabel = `${formatInt(period.span.days)}${NBSP}d`;
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
@@ -71,12 +72,23 @@ export default async function AutomaterPage({
         />
       ) : (
         <>
-          {active.length > 0 ? (
-            <MachineKpis
-              items={overviewKpis(totals)}
-              label={`Nyckeltal · ${daysLabel}`}
-              comparison={comparison}
+          {period.pendingToday ? (
+            <StateMessage
+              kind="empty"
+              message="Inga order har kommit in i dag ännu."
+              detail="Intäkt och vinst för i dag visas när dagens order har importerats. Välj I går eller 7 dagar i periodraden för en hel period."
             />
+          ) : active.length > 0 || totals.orders > 0 ? (
+            <div className="flex flex-col gap-4">
+              <MachineKpis
+                items={overviewKpis(totals)}
+                label={`Nyckeltal · ${daysLabel}`}
+                comparison={comparison}
+              />
+              {overview.unpriced ? (
+                <UnpricedNote unpriced={overview.unpriced} canEdit={ctx.canEdit} />
+              ) : null}
+            </div>
           ) : null}
 
           <section aria-labelledby="alla-automater" className="flex flex-col gap-6">
@@ -93,6 +105,9 @@ export default async function AutomaterPage({
             />
             <MachineTable
               rows={rows}
+              others={overview.others}
+              totals={rows.length > 1 || overview.others.length > 0 ? totals : null}
+              pending={period.pendingToday}
               timeZone={ctx.timeZone}
               now={ctx.now}
               caption={`Automater, intäkt och vinst ${period.rangeLabel}`}

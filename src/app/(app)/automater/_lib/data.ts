@@ -36,14 +36,12 @@ import {
   machineUnitEconomics,
   placementLines,
   recentWindow,
-  machineInput,
-  profitabilityByMachine,
+  machineUnpriced,
   salesHeatmap,
   spanOf,
   statusOf,
   stockLines,
   titleShares,
-  unpricedOf,
   type Span,
 } from "./model";
 import { loadLastOrderAtFor, loadMachineOrdersFor } from "./service";
@@ -374,12 +372,7 @@ export async function loadMachineDetail(
     daily,
     dailyCompare,
     titles: titleShares(input.current, machine.id, master),
-    unpriced: unpricedOf(
-      profitabilityByMachine(machineInput(input.current, machine.id), "title"),
-      master,
-      profitabilityByMachine(input.current, "machine").rows.find((r) => r.key === machine.id)
-        ?.unpricedRentOre ?? 0,
-    ),
+    unpriced: machineUnpriced(input.current, machine.id, master),
     heatmap: salesHeatmap(
       input.current.orders.filter((o) => o.machineId === machine.id),
       ctx.timeZone,

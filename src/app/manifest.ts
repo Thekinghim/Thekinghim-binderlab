@@ -3,7 +3,8 @@ import type { MetadataRoute } from "next";
 /**
  * Webbappsmanifest (/manifest.webmanifest): Binderlab kan installeras på hemskärmen och
  * öppnas utan webbläsarens ramar. Start i Drift, där fältsidorna (påfyllning, besöksplan)
- * fungerar utan uppkoppling (public/sw.js). Ikonen är src/app/icon.svg.
+ * fungerar utan uppkoppling (public/sw.js). Ikonen är src/app/icon.svg; PNG-ikonerna i
+ * public/icons är renderade ur den (192, 512 och en maskerbar 512).
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
@@ -23,6 +24,15 @@ export default function manifest(): MetadataRoute.Manifest {
     icons: [
       { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
       { src: "/apple-icon.png", sizes: "180x180", type: "image/png", purpose: "any" },
+      // Android kräver PNG i 192 och 512 px; den maskerbara har marginal för rundade masker.
+      { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      {
+        src: "/icons/icon-maskable-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "maskable",
+      },
     ],
     shortcuts: [
       { name: "Registrera påfyllning", short_name: "Påfyllning", url: "/drift/pafyllning" },

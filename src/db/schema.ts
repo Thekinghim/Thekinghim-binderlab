@@ -631,7 +631,7 @@ export const alerts = pgTable("alerts", {
   alertGroup: text("alert_group"),
   status: text("status").notNull().default("open"),
   title: text("title"),
-  evidence: jsonb("evidence").notNull().$type<Record<string, unknown>>(),
+  evidence: jsonb("evidence").notNull().default({}).$type<Record<string, unknown>>(),
   link: text("link"),
   lastSeenAt: ts("last_seen_at"),
   closedAt: ts("closed_at"),

@@ -57,6 +57,7 @@ const RPCS = [
   "portal_stores",
   "register_refill_once",
   "reopen_period",
+  "sales_data_until",
 ];
 
 function columnsOf(table: string) {
@@ -481,6 +482,7 @@ describe("anon", () => {
       portal_stores: sql``,
       register_refill_once: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
       reopen_period: sql`gen_random_uuid(), '2025-01-01'::date`,
+      sales_data_until: sql`gen_random_uuid()`,
     };
     const outcome = await asAnon((tx) =>
       attempt(tx, (sp) =>
