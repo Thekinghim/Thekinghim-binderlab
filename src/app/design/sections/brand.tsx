@@ -334,7 +334,7 @@ export function BrandSection({ index }: { index: number }) {
         <Panel padded={false} grid="fine" className="lg:col-span-12">
           <PanelHeader
             label="Ordmärke"
-            meta="Symbol / text · Geist Semibold · −0,03 em"
+            meta="Symbol / text · −0,03 em"
             className="border-b border-line bg-surface px-4 py-3 md:px-5"
           />
           <div className="flex justify-center overflow-hidden px-4 py-14 md:py-20">
@@ -442,9 +442,7 @@ export function BrandSection({ index }: { index: number }) {
           <div className="mx-auto max-w-[794px] border border-line bg-raised px-6 pt-8 pb-10 md:px-14 md:pt-12">
             <header className="flex flex-col gap-4 border-b border-fg pb-4 sm:flex-row sm:items-end sm:justify-between">
               <Wordmark size="lg" />
-              <p className="label tnum text-muted">
-                Månadsrapport · {formatPeriod(REPORT.period)}
-              </p>
+              <p className="label tnum text-muted">Månadsrapport · {formatPeriod(REPORT.period)}</p>
             </header>
             <div className="mt-3 flex flex-wrap justify-between gap-x-4 gap-y-1">
               <p className="label tnum text-subtle">

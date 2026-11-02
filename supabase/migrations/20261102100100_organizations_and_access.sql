@@ -598,8 +598,7 @@ create policy memberships_update on public.memberships
 create policy memberships_delete on public.memberships
   for delete to authenticated
   using (
-    user_id = (select auth.uid())
-    or organization_id = any (array(select private.orgs_with_role('owner')))
+    organization_id = any (array(select private.orgs_with_role('owner')))
     or (organization_id = any (array(select private.orgs_with_role('admin'))) and role <> 'owner')
   );
 

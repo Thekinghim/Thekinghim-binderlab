@@ -95,6 +95,41 @@ describe("matchFields och fuzzyRank", () => {
   });
 });
 
+describe("subsekvens med hopp till ordstart", () => {
+  it("hoppar inte förbi en position som resten av frågan behöver", () => {
+    const m = fuzzyMatch("tt", "Skapa rapport till bokhållare");
+    expect(m?.tier).toBe(TIER.subsequence);
+    expect(m?.indices).toEqual([12, 14]);
+    expect(fuzzyMatch("ac", "xabc a")?.indices).toEqual([1, 3]);
+    expect(fuzzyMatch("tti", "Byt till ljust läge")).not.toBeNull();
+  });
+  it("hittar varje subsekvens på tre tecken i exempeletiketterna", () => {
+    const labels = [
+      "Skapa rapport till bokhållare",
+      "Byt till ljust läge",
+      "Registrera påfyllning",
+      "Exportera CSV",
+      "Skapa rapport till butik",
+    ];
+    const isSubsequence = (q: string, t: string) => {
+      let i = 0;
+      for (const ch of t) if (ch === q[i]) i++;
+      return i === q.length;
+    };
+    for (const label of labels) {
+      const t = normalize(label).replace(/\s+/g, "");
+      const chars = [...new Set(t)];
+      for (const a of chars)
+        for (const b of chars)
+          for (const c of chars) {
+            const q = a + b + c;
+            if (!isSubsequence(q, normalize(label))) continue;
+            expect(fuzzyMatch(q, label), `${q} i ${label}`).not.toBeNull();
+          }
+    }
+  });
+});
+
 describe("highlightSegments", () => {
   it("delar upp i matchade och omatchade delar", () => {
     expect(highlightSegments("Försäljning", [0, 3, 10])).toEqual([

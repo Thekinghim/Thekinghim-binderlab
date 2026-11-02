@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { cn } from "@/lib/cn";
 import { StateMessage, type StateKind } from "./state-message";
 
 type EmptyStateProps = {
@@ -9,6 +10,11 @@ type EmptyStateProps = {
   action?: ReactNode;
   kind?: StateKind;
   compact?: boolean;
+  /**
+   * Egen yta (kant + bg-surface) i blockläge, så att läget står som en
+   * panel i ett rutnät. Sätt false när det ligger inuti en Panel.
+   */
+  framed?: boolean;
   className?: string;
 };
 
@@ -23,6 +29,7 @@ export function EmptyState({
   action,
   kind = "empty",
   compact,
+  framed = true,
   className,
 }: EmptyStateProps) {
   return (
@@ -33,7 +40,7 @@ export function EmptyState({
       detail={description}
       action={action}
       compact={compact}
-      className={className}
+      className={cn(framed && !compact && "rounded-md border border-line bg-surface", className)}
     />
   );
 }
