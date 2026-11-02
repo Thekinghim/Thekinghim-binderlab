@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "exclude": [
+    "node_modules",
+    "test",
+    "scripts",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/__revision__/**",
+    "**/testing/**",
+    "vitest*.config.ts",
+    "**/vitest*.config.ts"
+  ]
+}

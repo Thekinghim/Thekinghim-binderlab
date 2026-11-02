@@ -144,9 +144,7 @@ export function ImportLog({
       key: "status",
       header: "Status",
       sortValue: (e) => e.status,
-      render: (e) => (
-        <StatusTag status={statusOf(e)}>{STATUS[e.status].text}</StatusTag>
-      ),
+      render: (e) => <StatusTag status={statusOf(e)}>{STATUS[e.status].text}</StatusTag>,
       csv: (e) => STATUS[e.status].text,
       hideOnMobile: true,
     },

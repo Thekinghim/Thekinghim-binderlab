@@ -54,7 +54,7 @@ async function viewerFor(u: TestUser, orgId: string): Promise<Viewer> {
 
 function newDeps(): UploadDeps {
   return {
-    staging: new UploadStaging(mkdtempSync(path.join(tmpdir(), "binderlab-staging-"))),
+    staging: new UploadStaging(),
     fileStore: new LocalFileStore(mkdtempSync(path.join(tmpdir(), "binderlab-import-"))),
   };
 }
@@ -176,6 +176,59 @@ describe("uppladdning, förhandsvisning och import", () => {
     expect(data.imports[0]?.rowsDuplicate).toBe(460);
     expect(data.sources[0]?.orders).toBe(460);
     expect(data.sources[0]?.lastSyncedAt).not.toBeNull();
+    // Hur ny datan är: den senaste ordern (1 nov. 17:17 svensk tid), inte uppladdningen.
+    expect(data.sources[0]?.latestOrderAt).toBe("2026-11-01T16:17:00.000Z");
+  });
+
+  it("bitarna ligger i databasen (inte på disk) och tas bort efter importen", async () => {
+    const id = await upload(org.viewer, deps, SEED, "seed.csv", 64 * 1024);
+    const staged = await one<{ uploads: number; chunks: number; bytes: number }>(
+      db(),
+      sql`select (select count(*)::int from public.import_uploads where id = ${id}) as uploads,
+                 (select count(*)::int from public.import_upload_chunks where upload_id = ${id}) as chunks,
+                 (select coalesce(sum(octet_length(data)), 0)::int from public.import_upload_chunks
+                   where upload_id = ${id}) as bytes`,
+    );
+    expect(staged).toEqual({
+      uploads: 1,
+      chunks: Math.ceil(SEED.byteLength / (64 * 1024)),
+      bytes: SEED.byteLength,
+    });
+    await runUploadFor(org.viewer, deps, {
+      uploadId: id,
+      dataSourceId: org.sourceId,
+      dryRun: false,
+    });
+    const left = await one<{ n: number }>(
+      db(),
+      sql`select (select count(*)::int from public.import_uploads where id = ${id})
+               + (select count(*)::int from public.import_upload_chunks where upload_id = ${id}) as n`,
+    );
+    expect(left.n).toBe(0);
+  });
+
+  it("källans tidszon som förhandsvisades måste gälla vid importen och sparas med importen", async () => {
+    const id = await upload(org.viewer, deps, SEED);
+    await expect(
+      runUploadFor(org.viewer, deps, {
+        uploadId: id,
+        dataSourceId: org.sourceId,
+        dryRun: false,
+        expectedSourceTimezone: "UTC",
+      }),
+    ).rejects.toThrow(/tidszon har ändrats/);
+    const done = await runUploadFor(org.viewer, deps, {
+      uploadId: id,
+      dataSourceId: org.sourceId,
+      dryRun: false,
+      expectedSourceTimezone: "Asia/Shanghai",
+    });
+    // Tidszonen följer importen även när källans tidszon ändras senare.
+    await updateDataSourceFor(org.viewer, { id: org.sourceId, sourceTimezone: "UTC" });
+    const detail = await loadImportDetailFor(org.viewer, done.importId!, "nya");
+    expect(detail?.sourceTimezone).toBe("Asia/Shanghai");
+    expect(detail?.sourceTimezoneRecorded).toBe(true);
+    await updateDataSourceFor(org.viewer, { id: org.sourceId, sourceTimezone: "Asia/Shanghai" });
   });
 
   it("en annan fil än den förhandsvisade importeras inte", async () => {
@@ -244,6 +297,35 @@ describe("bitarna", () => {
     await expect(
       previewUploadFor(adminViewer, deps, { uploadId: id, dataSourceId: org.sourceId }),
     ).rejects.toThrow(/finns inte längre/);
+    // RLS: varken admin, läsare eller påfyllare ser någon annans bitar.
+    for (const role of ["admin", "viewer", "refiller"] as const) {
+      const member = role === "admin" ? admin : await createMember(org.orgId, role);
+      const seen = await asUser(member, (tx) =>
+        one<{ n: number }>(
+          tx,
+          sql`select (select count(*)::int from public.import_uploads)
+                   + (select count(*)::int from public.import_upload_chunks) as n`,
+        ),
+      );
+      expect(seen.n).toBe(0);
+    }
+  });
+
+  it("uppladdningar äldre än ett dygn tas bort vid nästa uppladdning", async () => {
+    const org = await newOrg();
+    const deps = newDeps();
+    const old = await upload(org.viewer, deps, SEED);
+    const later = new Date(Date.now() + 25 * 60 * 60 * 1000);
+    await deps.staging.start(
+      { organizationId: org.orgId, user: org.viewer.user },
+      { fileName: "ny.csv", size: 10 },
+      later,
+    );
+    const left = await one<{ n: number }>(
+      db(),
+      sql`select count(*)::int as n from public.import_upload_chunks where upload_id = ${old}`,
+    );
+    expect(left.n).toBe(0);
   });
 });
 
@@ -372,6 +454,24 @@ describe("okända automater, tidszon och radlogg", () => {
     ).rejects.toThrow(/redan kopplad/);
     const after = await loadDatakallorFor(org.viewer);
     expect(after.queue.some((q) => q.id === centrum!.id)).toBe(false);
+    expect(after.lastMapped).toMatchObject({ machineCode: "BL-001", name: "BL-001 Centrum" });
+  });
+
+  it("kön visar inte källautomater från arkiverade källor", async () => {
+    const other = await newOrg();
+    await runUploadFor(other.viewer, deps, {
+      uploadId: await upload(other.viewer, deps, fixture("orderlista-2026-11-02.csv")),
+      dataSourceId: other.sourceId,
+      dryRun: false,
+    });
+    expect((await loadDatakallorFor(other.viewer)).queue.length).toBeGreaterThan(0);
+    await asUser(other.owner, (tx) =>
+      tx.execute(
+        sql`update public.data_sources set archived_at = now()
+            where organization_id = ${other.orgId} and id = ${other.sourceId}`,
+      ),
+    );
+    expect((await loadDatakallorFor(other.viewer)).queue).toEqual([]);
   });
 
   it("radloggen filtrerar fel och konflikter och läser fälten ur källraden", async () => {

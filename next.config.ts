@@ -3,6 +3,10 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Bygget typkontrollerar bara appens kod. Tester och skript kontrolleras av
+  // npm run typecheck (tsconfig.json) i CI, så att ett halvfärdigt test aldrig
+  // stoppar en driftsättning men ändå stoppar en sammanslagning.
+  typescript: { tsconfigPath: "tsconfig.build.json" },
   // Miljön (development/preview/production) behövs i webbläsaren för Sentry.
   env: {
     NEXT_PUBLIC_APP_ENV: process.env.APP_ENV ?? "development",

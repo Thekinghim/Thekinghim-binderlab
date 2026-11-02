@@ -92,7 +92,9 @@ export function SourceList({
                   </Fact>
                   <Fact label="Data till" className="md:col-span-2">
                     <span className="tnum">
-                      {s.latestOrderAt ? formatWhen(s.latestOrderAt, timeZone, nowDate) : "Inga order"}
+                      {s.latestOrderAt
+                        ? formatWhen(s.latestOrderAt, timeZone, nowDate)
+                        : "Inga order"}
                     </span>
                   </Fact>
                   <Fact label="Order" className="md:col-span-1">

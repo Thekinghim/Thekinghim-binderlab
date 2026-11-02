@@ -4,14 +4,14 @@
  * 1. Fältsidorna fungerar utan uppkoppling: /drift/pafyllning och /drift/besok hämtas från
  *    nätet först och sparas; utan nät visas den sparade versionen. Påfyllningar köas i
  *    sidan (IndexedDB) och skickas när nätet kommer tillbaka. Next:s statiska filer
- *    (/_next/static, oföränderliga) sparas vid första hämtningen.
+ *    (/_next/static) hämtas också från nätet först och sparas för läget utan nät.
  * 2. Push: larm från /api/cron/larm visas som notiser. Ett klick öppnar sidan som förklarar
  *    larmet (eller fokuserar ett öppet fönster).
  *
  * Bara fältsidorna sparas (inga belopp). Andra sidor och alla anrop går alltid till nätet.
  */
 
-const VERSION = "binderlab-falt-v1";
+const VERSION = "binderlab-falt-v2";
 const PAGES = ["/drift/pafyllning", "/drift/besok"];
 const NETWORK_TIMEOUT_MS = 4000;
 
@@ -81,13 +81,19 @@ async function networkFirst(request, url) {
   }
 }
 
-async function cacheFirst(request) {
+// Statiska filer: nätet först (webbläsarens egen cache gör det snabbt), den sparade kopian
+// bara utan nät. Så kan en gammal kopia aldrig blandas med en ny sida.
+async function assetNetworkFirst(request) {
   const cache = await caches.open(VERSION);
-  const cached = await cache.match(request);
-  if (cached) return cached;
-  const res = await fetch(request);
-  if (res.ok) await cache.put(request, res.clone());
-  return res;
+  try {
+    const res = await fetch(request);
+    if (res.ok) await cache.put(request, res.clone());
+    return res;
+  } catch (error) {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    throw error;
+  }
 }
 
 self.addEventListener("fetch", (event) => {
@@ -103,7 +109,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (url.pathname.startsWith("/_next/static/")) {
-    event.respondWith(cacheFirst(request));
+    event.respondWith(assetNetworkFirst(request));
   }
 });
 

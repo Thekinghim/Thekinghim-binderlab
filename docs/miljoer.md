@@ -313,6 +313,27 @@ hemskärmen (iOS 16.4 eller senare). Enheter som push-tjänsten svarar 404/410 f
 skickas med ett id från webbläsaren (`register_refill_once`), så ett omförsök blir aldrig en
 dubbel lagerhändelse.
 
+## Marknad
+
+Sidan `/marknad` (releasekalender, leverantörspriser, sortiment, prissättning) räknar allt på
+servern ur databasen med `@/analytics/releases`, `pricing` och `assortment`; laddare och
+ändringar ligger i `src/server/market` (RLS, ändringar bara för ägare och admin, läsaren ser
+allt, påfyllaren ingenting). Tabeller: `releases`, `release_allocations`,
+`supplier_price_quotes`, `machine_slots`, `assortment_changes`, `price_experiments` och
+`price_experiment_machines` (migreringarna `…122500_marknad_market_intelligence.sql` och
+`…132000_marknad_experiment_arms.sql`).
+
+Externa marknadspriser är **inte inkopplade**: beställaren väljer källa först (underlag och
+förslag i `docs/marknadskallor.md`). Adaptern väljs med miljövariabler:
+
+| Variabel                  | Värde                                                                                       | Lokalt                                     |
+| ------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| `MARKET_PRICE_SOURCE`     | `none` (standard). `tcgplayer`, `cardmarket`, `pricecharting` ger läget "inte inkopplad".   | `local`: testpriser ur en fil              |
+| `MARKET_PRICE_LOCAL_FILE` | Fil för `local` (standard `.data/market-prices.json`). `local` vägrar i production.         | Formatet står i `docs/marknadskallor.md`   |
+
+Pristester ändrar inget pris i automaterna: panelen planerar testet och mäter effekten mot
+kontrollautomaterna, priset ställs om i Awish av operatören.
+
 ## Det här måste beställaren göra
 
 1. **Supabase, två projekt.** Behåll det befintliga

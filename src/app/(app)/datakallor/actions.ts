@@ -154,13 +154,13 @@ export async function commitUpload(raw: unknown): Promise<ActionResult<PreviewRe
       viewer,
       { ...deps(), fileStore: await importFileStore() },
       {
-      uploadId: input.uploadId,
-      dataSourceId: input.dataSourceId,
-      mapping: input.mapping,
-      dryRun: false,
-      expectedSha256: input.sha256,
-      expectedSourceTimezone: input.sourceTimezone,
-      saveMapping: input.saveMapping,
+        uploadId: input.uploadId,
+        dataSourceId: input.dataSourceId,
+        mapping: input.mapping,
+        dryRun: false,
+        expectedSha256: input.sha256,
+        expectedSourceTimezone: input.sourceTimezone,
+        saveMapping: input.saveMapping,
       },
     );
     revalidateAppData();

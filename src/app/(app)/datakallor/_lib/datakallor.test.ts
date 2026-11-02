@@ -10,9 +10,9 @@ import {
   MAX_UPLOAD_BYTES,
   REQUIRED_MAPPING_FIELDS,
 } from "./constants";
-import { formatBytes, formatWhen, formatWhenWithYear } from "./display";
+import { formatBytes, formatIsoDay, formatWhen, formatWhenWithYear, notNewParts } from "./display";
 import { headlineOf } from "./headline";
-import { previewMapping, selectPreviewRows } from "./preview";
+import { localizeWarnings, previewMapping, selectPreviewRows } from "./preview";
 import { parseRowFilter } from "./schemas";
 import { suggestMachine } from "./suggest";
 import type { DatakallorData, SourceView } from "./types";
@@ -147,6 +147,7 @@ describe("headlineOf", () => {
     sourceTimezone: "Asia/Shanghai",
     status: "active",
     lastSyncedAt: "2026-11-01T20:23:00Z",
+    latestOrderAt: "2026-11-01T16:17:00Z",
     archived: false,
     acceptsFiles: true,
     orders: 460,
@@ -161,15 +162,16 @@ describe("headlineOf", () => {
     imports: [],
     queue: [],
     machines: [],
+    lastMapped: null,
   };
 
   it("ingen källa", () => {
     expect(sp(headlineOf({ ...base, sources: [] }).title)).toBe("Ingen datakälla ännu.");
   });
 
-  it("synkad och allt i ordning", () => {
+  it("rubriken bygger på den senaste ordern, inte på senaste uppladdningen", () => {
     const h = headlineOf(base);
-    expect(sp(h.title)).toBe("Synkad 1 nov. 21:23.");
+    expect(sp(h.title)).toBe("Data till 1 nov. 17:17.");
     expect(sp(h.aside)).toBe("460 order importerade, alla automater kopplade.");
     expect(h.tone).toBe("ok");
   });
@@ -195,9 +197,68 @@ describe("headlineOf", () => {
     expect(h.tone).toBe("warning");
   });
 
-  it("inaktuell efter mer än ett dygn", () => {
-    const h = headlineOf({ ...base, now: "2026-11-03T08:00:00Z" });
+  it("inaktuell när den senaste ordern är mer än ett dygn gammal", () => {
+    const h = headlineOf({ ...base, now: "2026-11-02T19:00:00Z" });
     expect(h.tone).toBe("warning");
-    expect(sp(h.aside)).toMatch(/Mer än ett dygn/);
+    expect(sp(h.aside)).toBe(
+      "Senaste uppladdningen 1 nov. 21:23 hade inget nyare. Exportera en ny orderlista från Awish.",
+    );
+  });
+
+  it("en ny uppladdning utan nyare order gör inte datan färsk", () => {
+    const h = headlineOf({
+      ...base,
+      now: "2026-11-23T10:00:00Z",
+      sources: [{ ...source, lastSyncedAt: "2026-11-23T09:50:00Z" }],
+    });
+    expect(sp(h.title)).toBe("Data till 1 nov. 17:17.");
+    expect(h.tone).toBe("warning");
+  });
+});
+
+describe("förhandsvisningens texter", () => {
+  it("ISO-datum skrivs som svenskt datum", () => {
+    expect(sp(formatIsoDay("2026-11-01"))).toBe("1 nov. 2026");
+    expect(sp(formatIsoDay("nej"))).toBe("–");
+  });
+
+  it("det som inte är nytt, med rätt böjning", () => {
+    expect(notNewParts({ duplicate: 0, conflict: 1, error: 0, notPaid: 0 }).map(sp)).toEqual([
+      "1 konflikt",
+    ]);
+    expect(notNewParts({ duplicate: 460, conflict: 2, error: 2, notPaid: 1 }).map(sp)).toEqual([
+      "460 finns redan",
+      "2 konflikter",
+      "2 fel",
+      "1 ej betald",
+    ]);
+  });
+
+  it("varningarna får svensk tid och rätt böjning", () => {
+    const warnings = localizeWarnings(
+      [
+        { code: "duplicate_file", message: "Samma fil har redan importerats (2026-11-02). …" },
+        { code: "conflicts", message: "1 rader avviker …", rows: [3] },
+        { code: "new_titles", message: '1 nya titlar: "X". Kontrollera dem.' },
+        { code: "unknown_machines", message: '1 automater är inte kopplade: "Y". Orderna sparas.' },
+      ],
+      {
+        previousImports: [
+          { id: "i", fileName: "a.csv", finishedAt: "2026-11-02T09:50:00Z", rowsNew: 0 },
+        ],
+        summary: { conflict: 1, error: 0 } as never,
+        newTitles: [{ name: "X" }] as never,
+        unknownMachines: [{ externalId: "Y" }] as never,
+      },
+      "Europe/Stockholm",
+      new Date("2026-11-02T12:00:00Z"),
+    );
+    expect(warnings.map((w) => sp(w.message))).toEqual([
+      "Samma fil importerades 2 nov. 10:50 (0 nya order). Order som redan finns räknas som dubbletter och ändras inte.",
+      "1 rad avviker från order som redan finns. Orderna ändras inte; se importloggen.",
+      '1 ny titel: "X". Kontrollera dem.',
+      '1 automat är inte kopplad: "Y". Orderna sparas.',
+    ]);
+    expect(warnings[1]?.rows).toEqual([3]);
   });
 });
