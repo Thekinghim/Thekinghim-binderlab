@@ -6,11 +6,21 @@ import {
   SYMBOL_GRID,
   SYMBOL_PARTS,
   Symbol,
+  WORDMARK_SIZES,
   Wordmark,
 } from "@/components/brand/wordmark";
 import { CornerMarks, Panel, PanelHeader } from "@/components/ui/frame";
 import { SectionHeader } from "@/components/ui/section-header";
 import { cn } from "@/lib/cn";
+import {
+  formatDateTime,
+  formatInt,
+  formatMonth,
+  formatPercent,
+  formatPeriod,
+  formatSek,
+  NBSP,
+} from "@/lib/format";
 
 const U = 24; // px per rutnätsenhet i konstruktionsritningen
 const G = SYMBOL_GRID * U;
@@ -46,8 +56,9 @@ function Dim({
         x={h ? (x1 + x2) / 2 : side === "left" ? x1 - 10 : x1 + 10}
         y={h ? y1 - 9 : (y1 + y2) / 2 + 4}
         textAnchor={h ? "middle" : side === "left" ? "end" : "start"}
-        className="font-mono"
-        fontSize={11}
+        // Ritningen skalas till ca 0,62 vid 390 px; större enheter på mobil
+        // ger samma läsbara storlek (ca 11 px) som på bredare skärmar.
+        className="font-mono text-[17px] sm:text-[11px]"
         fill="var(--bl-fg-muted)"
       >
         {label}
@@ -59,10 +70,13 @@ function Dim({
 /** Symbolen på 16-rutnätet med mått och hjälplinjer. */
 function Construction() {
   const { spine, card, ring } = SYMBOL_PARTS;
+  // Hjälplinjerna stämmer med texten: Wordmark väljer textstorlek så att
+  // ryggraden når ascenderhöjden och kortet x-höjden (se WORDMARK_SIZES).
+  // below: etiketten under linjen i den smala (mobila) placeringen.
   const guides = [
-    { y: spine.y, label: "ASCENDER" },
-    { y: card.y, label: "X-HÖJD" },
-    { y: spine.y + spine.h, label: "BASLINJE" },
+    { y: spine.y, label: "ASCENDER", below: false },
+    { y: card.y, label: "X-HÖJD", below: false },
+    { y: spine.y + spine.h, label: "BASLINJE", below: true },
   ];
   const lines: string[] = [];
   for (let i = 0; i <= SYMBOL_GRID; i++) {
@@ -73,7 +87,7 @@ function Construction() {
       viewBox={`-48 -44 ${G + 136} ${G + 72}`}
       className="block h-auto w-full max-w-[560px]"
       role="img"
-      aria-label="Konstruktionsritning: ryggrad 3 × 14, ring 2 × 2 och kort 7 × 10 enheter på ett 16-rutnät"
+      aria-label={`Konstruktionsritning: ryggrad ${spine.w} × ${spine.h}, ring ${ring.w} × ${ring.h} och kort ${card.w} × ${card.h} enheter på ett 16-rutnät`}
     >
       <path d={lines.join("")} stroke="var(--bl-line)" strokeWidth={1} fill="none" />
       {guides.map((g) => (
@@ -83,11 +97,21 @@ function Construction() {
             stroke="var(--bl-line-strong)"
             strokeDasharray="3 3"
           />
+          {/* Bred: till höger om rutnätet. Smal: i rutnätet, högerställd. */}
           <text
             x={G + 18}
             y={g.y * U + 4}
-            className="font-mono"
-            fontSize={10}
+            className="hidden font-mono text-[10px] sm:inline"
+            letterSpacing="0.08em"
+            fill="var(--bl-fg-subtle)"
+          >
+            {g.label}
+          </text>
+          <text
+            x={G - 6}
+            y={g.below ? g.y * U + 18 : g.y * U - 6}
+            textAnchor="end"
+            className="font-mono text-[16px] sm:hidden"
             letterSpacing="0.08em"
             fill="var(--bl-fg-subtle)"
           >
@@ -118,16 +142,28 @@ function Construction() {
           fill="var(--bl-signal)"
         />
       </g>
-      <Dim x1={spine.x * U} y1={-16} x2={(spine.x + spine.w) * U} y2={-16} label="3" />
-      <Dim x1={ring.x * U} y1={-16} x2={(ring.x + ring.w) * U} y2={-16} label="2" />
-      <Dim x1={card.x * U} y1={-16} x2={(card.x + card.w) * U} y2={-16} label="7" />
-      <Dim x1={-16} y1={spine.y * U} x2={-16} y2={(spine.y + spine.h) * U} label="14" />
+      <Dim
+        x1={spine.x * U}
+        y1={-16}
+        x2={(spine.x + spine.w) * U}
+        y2={-16}
+        label={String(spine.w)}
+      />
+      <Dim x1={ring.x * U} y1={-16} x2={(ring.x + ring.w) * U} y2={-16} label={String(ring.w)} />
+      <Dim x1={card.x * U} y1={-16} x2={(card.x + card.w) * U} y2={-16} label={String(card.w)} />
+      <Dim
+        x1={-16}
+        y1={spine.y * U}
+        x2={-16}
+        y2={(spine.y + spine.h) * U}
+        label={String(spine.h)}
+      />
       <Dim
         x1={(card.x + card.w) * U + 12}
         y1={card.y * U}
         x2={(card.x + card.w) * U + 12}
         y2={(card.y + card.h) * U}
-        label="10"
+        label={String(card.h)}
         side="right"
       />
       {[
@@ -204,6 +240,19 @@ function VariantTile({
   );
 }
 
+/** Exempeldata för rapportrubriken. Alla strängar tas fram med @/lib/format. */
+const REPORT = {
+  period: { start: new Date(2026, 9, 1), end: new Date(2026, 9, 31) },
+  previousMonth: new Date(2026, 8, 1),
+  generated: new Date(2026, 10, 1, 17, 17),
+  machines: 14,
+  revenue: 412_860,
+  previousRevenue: 380_867,
+  packs: 5_214,
+  grossMargin: 0.331,
+  emptySlots: 3,
+};
+
 export function BrandSection({ index }: { index: number }) {
   // Friyta X i px: lg-symbolen (24 px) på mobil, xl-symbolen (64 px) från md
   const clearLg = (CLEARSPACE_UNITS * 24) / SYMBOL_GRID;
@@ -242,23 +291,25 @@ export function BrandSection({ index }: { index: number }) {
             {[
               {
                 k: "Ryggrad",
-                v: "3 × 14",
-                d: "Pärmens rygg. Når ascenderhöjd, som stammen i ett gement b.",
+                r: SYMBOL_PARTS.spine,
+                d: "Pärmens rygg och stammen i ett gement b. Når textens ascenderhöjd.",
               },
               {
                 k: "Kort",
-                v: "7 × 10",
-                d: "Ett samlarkort i fickan. Proportionen 0,7 är kortets egen, 63 × 88 mm.",
+                r: SYMBOL_PARTS.card,
+                d: "Ett samlarkort i fickan, b:ets båge. Proportionen 0,7 är kortets egen, 63 × 88 mm. Överkanten ligger på x-höjd.",
               },
               {
                 k: "Ring",
-                v: "2 × 2",
-                d: "Fäster kortet i ryggen. Enda elementet i signalfärg, och det som tas bort först i enfärg.",
+                r: SYMBOL_PARTS.ring,
+                d: "Fäster kortet i ryggen vid baslinjen och sluter b:et nedtill. Enda elementet i signalfärg; i enfärg får den samma färg som resten och formen är oförändrad.",
               },
             ].map((p) => (
               <div key={p.k} className="grid grid-cols-[88px_1fr] gap-x-4 gap-y-1 py-3">
                 <dt className="text-base font-medium">{p.k}</dt>
-                <dd className="label tnum text-right text-muted">{p.v}</dd>
+                <dd className="label tnum text-right text-muted">
+                  {p.r.w} × {p.r.h}
+                </dd>
                 <dd className="col-span-2 text-sm text-muted">{p.d}</dd>
               </div>
             ))}
@@ -283,7 +334,7 @@ export function BrandSection({ index }: { index: number }) {
         <Panel padded={false} grid="fine" className="lg:col-span-12">
           <PanelHeader
             label="Ordmärke"
-            meta="Geist Semibold · −0,03 em"
+            meta="Symbol / text · Geist Semibold · −0,03 em"
             className="border-b border-line bg-surface px-4 py-3 md:px-5"
           />
           <div className="flex justify-center overflow-hidden px-4 py-14 md:py-20">
@@ -319,14 +370,7 @@ export function BrandSection({ index }: { index: number }) {
             </div>
           </div>
           <div className="grid grid-cols-2 border-t border-line bg-surface md:grid-cols-4">
-            {(
-              [
-                ["sm", "16 / 15 px", "Sidomeny"],
-                ["md", "20 / 19 px", "Inloggning"],
-                ["lg", "24 / 23 px", "Rapportrubrik"],
-                ["xl", "64 / 62 px", "Omslag"],
-              ] as const
-            ).map(([k, v, use], i) => (
+            {(Object.keys(WORDMARK_SIZES) as (keyof typeof WORDMARK_SIZES)[]).map((k, i) => (
               <div
                 key={k}
                 className={cn(
@@ -338,7 +382,8 @@ export function BrandSection({ index }: { index: number }) {
               >
                 <span className="label text-muted">{k}</span>
                 <span className="tnum text-sm">
-                  {v} <span className="text-subtle">· {use}</span>
+                  {WORDMARK_SIZES[k].symbol} / {WORDMARK_SIZES[k].text}
+                  {NBSP}px <span className="text-subtle">· {WORDMARK_SIZES[k].use}</span>
                 </span>
               </div>
             ))}
@@ -397,21 +442,32 @@ export function BrandSection({ index }: { index: number }) {
           <div className="mx-auto max-w-[794px] border border-line bg-raised px-6 pt-8 pb-10 md:px-14 md:pt-12">
             <header className="flex flex-col gap-4 border-b border-fg pb-4 sm:flex-row sm:items-end sm:justify-between">
               <Wordmark size="lg" />
-              <p className="label tnum text-muted">Månadsrapport · Oktober 2026</p>
+              <p className="label tnum text-muted">
+                Månadsrapport · {formatPeriod(REPORT.period)}
+              </p>
             </header>
-            <div className="mt-3 flex flex-wrap justify-between gap-2">
-              <p className="label tnum text-subtle">1 okt.–31 okt. 2026 · 14 automater</p>
-              <p className="label tnum text-subtle">Genererad 1 nov. 17:17</p>
+            <div className="mt-3 flex flex-wrap justify-between gap-x-4 gap-y-1">
+              <p className="label tnum text-subtle">
+                {formatInt(REPORT.machines)}
+                {NBSP}automater
+              </p>
+              <p className="label tnum text-subtle">
+                Genererad {formatDateTime(REPORT.generated, { now: REPORT.generated })}
+              </p>
             </div>
             <h3 className="mt-10 text-xl font-medium text-balance">
-              Intäkt 412 860 kr. <span className="text-subtle">8,4 % över september.</span>
+              Intäkt {formatSek(REPORT.revenue)}.{" "}
+              <span className="text-subtle">
+                {formatPercent(REPORT.revenue / REPORT.previousRevenue - 1)} över{" "}
+                {formatMonth(REPORT.previousMonth, { year: "never" })}.
+              </span>
             </h3>
             <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-line pt-4 sm:grid-cols-4">
               {[
-                ["Intäkt", "412 860 kr"],
-                ["Sålda pack", "5 214 st"],
-                ["Bruttomarginal", "33,1 %"],
-                ["Tomma fack", "3 st"],
+                ["Intäkt", formatSek(REPORT.revenue)],
+                ["Sålda pack", `${formatInt(REPORT.packs)}${NBSP}st`],
+                ["Bruttomarginal", formatPercent(REPORT.grossMargin)],
+                ["Tomma fack", `${formatInt(REPORT.emptySlots)}${NBSP}st`],
               ].map(([k, v]) => (
                 <div key={k}>
                   <p className="label text-subtle">{k}</p>
