@@ -218,10 +218,7 @@ function CompactChecklist({
         </div>
 
         <div className="flex flex-col gap-2">
-          <h2
-            id="kom-igang-kort"
-            className="text-lg font-medium text-balance hyphens-none text-fg"
-          >
+          <h2 id="kom-igang-kort" className="text-lg font-medium text-balance hyphens-none text-fg">
             {next ? (
               <>
                 {`${next.number} ${next.title}`}

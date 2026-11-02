@@ -21,13 +21,7 @@ import { formatInt, formatPercent, NBSP } from "@/lib/format";
 export const PRICE_COVERAGE_TARGET_BP = 9_000;
 
 export type OnboardingStepId =
-  | "organisation"
-  | "butik"
-  | "avtal"
-  | "automat"
-  | "datakalla"
-  | "import"
-  | "inkopspriser";
+  "organisation" | "butik" | "avtal" | "automat" | "datakalla" | "import" | "inkopspriser";
 
 /** done: datan finns. todo: nästa att göra. waiting: väntar på ett tidigare steg. */
 export type OnboardingStepState = "done" | "todo" | "waiting";

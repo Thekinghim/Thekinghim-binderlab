@@ -57,7 +57,11 @@ export function NoOrganization({ email }: { email: string }) {
       </div>
       <h1 className="text-2xl font-medium text-balance hyphens-none text-fg">
         Inget medlemskap.
-        <span className="text-subtle"> {email} är inte med i någon organisation.</span>
+        <span className="text-subtle">
+          {" "}
+          <span className="wrap-anywhere">{unbreakable(email)}</span> är inte med i någon
+          organisation.
+        </span>
       </h1>
 
       <section aria-labelledby="ny-organisation" className="mt-10 flex flex-col gap-6">
@@ -122,7 +126,10 @@ export function NoOrganization({ email }: { email: string }) {
         </p>
         <h2 id="inbjudan" className="text-md font-medium text-balance hyphens-none text-fg">
           Gå med via en inbjudan.
-          <span className="text-subtle"> Ägaren skickar den till {email}.</span>
+          <span className="text-subtle">
+            {" "}
+            Ägaren skickar den till <span className="wrap-anywhere">{unbreakable(email)}</span>.
+          </span>
         </h2>
         <p className="text-sm text-muted">
           Inbjudan öppnas från länken i mejlet och gäller en gång. Har medlemskapet tagits bort
@@ -131,4 +138,9 @@ export function NoOrganization({ email }: { email: string }) {
       </section>
     </main>
   );
+}
+
+/** Adressen bryts aldrig vid bindestreck (hårt bindestreck, U+2011), bara där den måste. */
+function unbreakable(email: string): string {
+  return email.replaceAll("-", "\u2011");
 }

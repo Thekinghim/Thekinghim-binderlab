@@ -24,7 +24,8 @@ export const CREATE_ORGANIZATION_MESSAGES = {
   nameMissing: "Ange organisationens namn.",
   nameTooLong: "Namnet får vara högst 120 tecken.",
   alreadyMember: "Du är redan med i en organisation. Byt organisation i menyn.",
-  storeAccount: "Kontot är ett butikskonto. Logga in med ett annat konto för att skapa en organisation.",
+  storeAccount:
+    "Kontot är ett butikskonto. Logga in med ett annat konto för att skapa en organisation.",
   failed: "Organisationen kunde inte skapas. Försök igen.",
 } as const;
 

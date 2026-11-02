@@ -142,22 +142,18 @@ export async function queryOnboardingFacts(tx: Tx, orgId: string): Promise<Onboa
       firstAt: iso(imports?.first_at),
       orders: int(summary.orders),
     },
-    revenue: revenue.map(
-      (r): RevenueGroup => ({
-        titleId: typeof r.title_id === "string" ? r.title_id : null,
-        businessDate: day(r.business_date),
-        amountOre: int(r.amount_ore),
-        orders: int(r.n),
-      }),
-    ),
-    prices: prices.map(
-      (r): TimedPrice => ({
-        titleId: String(r.title_id),
-        unitCostOre: int(r.unit_cost_ore),
-        validFrom: day(r.valid_from),
-        createdAt: iso(r.created_at)!,
-      }),
-    ),
+    revenue: revenue.map((r): RevenueGroup => ({
+      titleId: typeof r.title_id === "string" ? r.title_id : null,
+      businessDate: day(r.business_date),
+      amountOre: int(r.amount_ore),
+      orders: int(r.n),
+    })),
+    prices: prices.map((r): TimedPrice => ({
+      titleId: String(r.title_id),
+      unitCostOre: int(r.unit_cost_ore),
+      validFrom: day(r.valid_from),
+      createdAt: iso(r.created_at)!,
+    })),
     vatRateBp: int(summary.vat_rate_bp),
   };
 }
