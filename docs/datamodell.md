@@ -1,6 +1,6 @@
 # Binderlab: datamodell v2
 
-Status: förslag för godkännande. Inga migreringar är skrivna.
+Status: godkänd. Migreringarna finns i `supabase/migrations`; förfiningar som gjordes när de skrevs står sist i dokumentet.
 v2 bygger på beställarens svar (2 nov. 2026), uppgifter om Awish och en adversariell granskning. 33 av 50 föreslagna ändringar behölls.
 
 ## Beslut från beställaren
@@ -174,3 +174,60 @@ Funktionerna:
 ## Öppna punkter som inte stoppar migreringarna
 1. **Awish:** gRPC-specifikation och token-beräkning. Tills dess körs CSV.
 2. **Källans tidszon:** Asia/Shanghai verifieras mot order 42780 vid första riktiga importen.
+
+## Förfiningar i migreringarna (2 nov. 2026)
+
+Migreringarna följer v2. Följande preciserades eller ändrades när SQL:en skrevs. Katalogtesterna i `test/db/` håller reglerna.
+
+**Åtkomst**
+- Policyerna använder `private.orgs_with_role(roller…)` i formen `organization_id = any (array(select …))`. Postgres räknar ut den en gång per fråga och kan använda index. `has_role` per rad var ungefär 60 gånger långsammare (1,1 s mot 17 ms på 200 000 order). `has_role` finns kvar för RPC:er och storage. Båda är `security definer` och läser `memberships` utan RLS, så ingen rekursion uppstår.
+- Läsaren och påfyllaren kan inte lämna organisationen själva. Bara ägare och admin tar bort medlemskap.
+- Kolumnrättigheter: klienter får bara uppdatera vissa kolumner. Exempel: `orders` bara `title_id` och `machine_id`, `titles` inte `merged_into_id` (bara via `merge_titles`), `reports` bara `storage_path`. `invitations` och `period_closes` skrivs bara via RPC.
+- Inga klientroller har `truncate`, `references` eller `trigger` på någon tabell. `audit_log` saknar skrivrättigheter även för `service_role`.
+- Storage: klienter kan ladda upp och läsa, men inte skriva över eller radera filer (de är underlag).
+
+**Datum och tid**
+- Datumintervall (`valid_from`, `valid_to`) är **inklusiva**: `valid_to` är sista giltiga dagen, null betyder tills vidare.
+- `business_date` räknas fram av databasen från `ordered_at`/`occurred_at` i organisationens tidszon. Om värdet anges kontrolleras det.
+- Vyn `purchase_price_periods` (ny) ger varje inköpspris med `valid_to` (dagen före nästa pris).
+
+**Order och lager**
+- En order ändras aldrig, med två undantag. `title_id` kan sättas eller flyttas men aldrig tas bort. `machine_id` kan bara sättas när den saknas. När en källautomat kopplas (`source_machines.machine_id`) får dess order automaten automatiskt.
+- `orders.late_in_closed_period` (ny) flaggar order som importerats till en redan stängd månad.
+- `stock_events.seq` (identity) ger en entydig ordning för händelser med samma tid.
+- Kontroller per typ av lagerhändelse:
+  - `sale` har alltid `quantity = −1` och `order_id`.
+  - `count` har ett antal ≥ 0.
+  - In-typer är positiva och ut-typer negativa.
+  - En flytt (`transfer_out` + `transfer_in` med samma `transfer_group_id`) måste gå jämnt ut, vilket kontrolleras vid commit.
+- `stock_locations.is_central` (ny) markerar centrallagret, exakt ett per organisation. Varje automat får en lagerplats automatiskt.
+- **Sammanslagning av titlar:**
+  - Försäljningshändelsens `title_id` följer orderns titel genom ett kontrollerat undantag i append-only-regeln. Det gäller bara inne i en trigger (aldrig direkt, inte ens för databasägaren), bara kolumnen `title_id` och bara till det värde ordern har. Ändringen loggas.
+  - Lager av den gamla titeln som inte kommer från försäljning flyttas med kompenserande `adjustment`-händelser, så att totalsaldot per lagerplats blir exakt oförändrat.
+  - Varför: invarianten "en försäljningshändelse per order, med orderns titel" gäller fortfarande, och saldon och försäljningsstatistik kräver ingen nettning.
+- `machine_investments.date` heter `invested_on`.
+- `goals` och `baselines` har `store_id` och `machine_id` med sammansatta FK:er i stället för ett polymorft `scope_id`, så att korsreferenser mellan organisationer stoppas av databasen. `baselines.value` är ett heltal i `unit` (`ore`, `days`, `minutes` eller `count`).
+
+**Perioder**
+- Påverkade dagar räknas exakt:
+  - Ett inköpspris gäller fram till nästa pris för titeln. Därför spärras också ett nytt pris i en öppen månad om det skulle gälla in i en stängd.
+  - För avtal och placeringar räknas bara de dagar som faktiskt ändras. Ett tillsvidareavtal kan alltså avslutas efter en stängd månad.
+- `machine_placements` spärras också, eftersom placeringen avgör butiksersättningen.
+- En rad per stängning. Öppning sätter `reopened_at`, och en ny stängning blir en ny rad, så historiken finns kvar.
+- Ägare och admin kan stänga, bara ägaren kan öppna. Innevarande månad kan inte stängas.
+- `snapshot.database` sparar antal order, intäkt, inköp och prisets täckning. Appens beräkning sparas under `snapshot.app`.
+
+**Övrigt**
+- Tabeller som är append-only saknar `updated_at`. `audit_log` har `occurred_at` och `actor_id` i stället för `created_*`.
+- Ändringsloggen hoppar över uppdateringar utan effekt och det som bara är anonymisering (GDPR).
+- `invitations.token_hash` loggas aldrig. En ny inbjudan till samma adress gör den äldre ogiltig. En inbjudan gäller 7 dagar (1–30).
+- `owner_shares.holder_name` är obligatoriskt, eftersom `member_user_id` nollas om användaren raderas. Summan 10 000 per `valid_from` kontrolleras vid commit.
+- `report_deliveries.email` sparar adressen vid utskicket.
+- `organizations.machine_limit` gäller vid nya automater.
+- Radering:
+  - Ekonomiska tabeller har dessutom en trigger som stoppar `delete` för alla roller.
+  - Följande kan raderas: medlemskap, obesvarade inbjudningar, alias, leverantörsartiklar, mål, utgångslägen, rapportmottagare och konton.
+  - Gallring körs som systemroll med `binderlab.allow_purge = 'on'` i transaktionen.
+- Felkoder från databasen (`BL001`–`BL019`) står i den första migreringen.
+
+**Känd begränsning:** `organization_settings` (moms och kortavgift) är inte tidsversionerad. En ändring slår igenom bakåt i tiden utom för stängda månader, som har sin ögonblicksbild.

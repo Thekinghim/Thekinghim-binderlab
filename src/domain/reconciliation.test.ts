@@ -101,8 +101,10 @@ describe("avstämning mellan vyer (200 seedade scenarier)", () => {
           );
         }
       }
-      expect(views.title.totals.rentOre + views.title.totals.unpricedRentOre).toBe(
-        oracle.totalRentOre,
+      // All hyra dras från vinsten, även den som fördelats på order utan pris.
+      expect(views.title.totals.rentOre).toBe(oracle.totalRentOre);
+      expect(views.title.totals.unpricedRentOre).toBeLessThanOrEqual(
+        views.title.totals.unallocatedRentOre,
       );
       expect(views.title.storeMonthRent.reduce((a, s) => a + s.rentOre, 0)).toBe(
         oracle.totalRentOre,

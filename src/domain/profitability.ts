@@ -1,22 +1,27 @@
 /**
  * Lönsamhet för en period, grupperad per titel, automat, butik, dag, vecka eller månad.
  *
- * Huvudregel: en order utan inköpspris räknas INTE in i vinsten. I varje rad avser
- * intäkt, inköp, avgifter, butiksersättning, vinst och marginal bara prissatta order.
- * Order utan pris redovisas separat i `unpriced*`-fälten (deras intäkt, moms, avgifter,
- * provision och andel av hyran), så att allt går ihop:
+ * Huvudregel: en order utan inköpspris räknas INTE in i vinsten. Dess intäkt, moms,
+ * kortavgift och provision redovisas separat i `unpriced*`-fälten. Hyran är däremot en
+ * fast kostnad som butiken ska ha oavsett vad som såldes, och den dras ALLTID i sin
+ * helhet från vinsten. Annars skulle en saknad inköpspris kunna göra vinsten bättre
+ * (en enda order utan pris tog tidigare med sig hela butikens månadshyra ur vinsten).
  *
- *   betalt (grossOre) = vatOre + revenueOre + unpricedVatOre + unpricedRevenueOre
- *   vinst             = revenueOre − costOre − feesOre − compensationOre
- *   compensationOre   = commissionOre + rentOre
- *   all hyra i perioden = Σ rentOre + Σ unpricedRentOre      (ej fördelad hyra ingår i rentOre)
+ * Ej fördelad hyra = hyra som inte bärs av någon prissatt order:
+ *   - butik-månader med hyra men utan order (på dagar med hyra), och
+ *   - den andel av hyran som fördelats på order utan pris.
+ * Den dras från vinsten och hamnar på raden med nyckeln 'unallocated' per titel, automat,
+ * dag och vecka; per butik på butikens rad; per månad på månadens rad.
+ *
+ *   betalt (grossOre)   = vatOre + revenueOre + unpricedVatOre + unpricedRevenueOre
+ *   vinst               = revenueOre − costOre − feesOre − compensationOre
+ *   compensationOre     = commissionOre + rentOre
+ *   all hyra i perioden = Σ rentOre      (ej fördelad hyra, även den på order utan pris, ingår)
+ *   unpricedRentOre     = informativt: hyra på radens order utan pris, som redan ingår i
+ *                         rentOre via ej fördelad hyra (på samma rad eller på 'unallocated')
  *
  * Identitet: i varje vy är summan av raderna lika med `totals` i varje fält (exakt i öre),
  * och `totals` är desamma oavsett gruppering.
- *
- * Ej fördelad hyra (butik-månad med hyra men utan order) är en kostnad för perioden och
- * dras från vinsten. Den hamnar på raden med nyckeln 'unallocated' per titel, automat,
- * dag och vecka; per butik på butikens rad; per månad på månadens rad.
  */
 
 import {
@@ -35,7 +40,7 @@ import type { StoreMonthRent } from "./rent";
 import type { GroupBy, IsoDate, Period, ProfitabilityInput } from "./types";
 
 /** Version av beräkningsreglerna. Sparas med rapporter (`reports.calc_version`). */
-export const CALC_VERSION = "1.0.0";
+export const CALC_VERSION = "1.1.0";
 
 /** Nyckel för ej fördelad hyra. */
 export const UNALLOCATED_KEY = "unallocated";
@@ -76,7 +81,7 @@ export interface ProfitabilityRow {
   readonly feesOre: number;
   /** Provision, prissatta order. */
   readonly commissionOre: number;
-  /** Hyra: fördelad på prissatta order + ej fördelad hyra. */
+  /** Hyra som dras från vinsten: fördelad på prissatta order + ej fördelad hyra. */
   readonly rentOre: number;
   /** Butiksersättning = provision + hyra. */
   readonly compensationOre: number;
@@ -84,16 +89,26 @@ export interface ProfitabilityRow {
   readonly profitOre: number;
   /** Marginal i bp = round(vinst × 10 000 / intäkt). `null` när intäkten är 0. */
   readonly marginBp: number | null;
-  /** Den del av `rentOre` som inte kunde fördelas på någon order. */
+  /**
+   * Den del av `rentOre` som inte bärs av någon prissatt order: butik-månader utan order
+   * och hyra på order utan pris.
+   */
   readonly unallocatedRentOre: number;
 
-  /** Order utan inköpspris: redovisas separat och ingår inte i vinsten. */
+  /**
+   * Order utan inköpspris: intäkt, moms, avgifter och provision redovisas separat och
+   * ingår inte i vinsten.
+   */
   readonly unpricedRevenueOre: number;
   readonly unpricedVatOre: number;
   readonly unpricedFeesOre: number;
   readonly unpricedCommissionOre: number;
+  /**
+   * Hyra som fördelats på radens order utan pris. Informativt: beloppet ingår redan i
+   * vinsten som ej fördelad hyra (`unallocatedRentOre`, på denna rad eller på 'unallocated').
+   */
   readonly unpricedRentOre: number;
-  /** Provision + hyra som hör till order utan pris. */
+  /** Provision + hyra som hör till order utan pris (provisionen ingår inte i vinsten, hyran gör det). */
   readonly unpricedCompensationOre: number;
 }
 
@@ -131,7 +146,10 @@ export interface WaterfallStep {
   readonly total: boolean;
 }
 
-/** Vattenfall Intäkt → Inköp → Avgifter → Butiksersättning → Vinst för prissatta order. */
+/**
+ * Vattenfall Intäkt → Inköp → Avgifter → Butiksersättning → Vinst för prissatta order.
+ * Butiksersättningen innehåller all hyra i perioden (även ej fördelad).
+ */
 export interface ProfitabilityWaterfall {
   readonly steps: readonly WaterfallStep[];
   /** Butiksersättningen uppdelad. */
@@ -402,21 +420,28 @@ export function summarizeLedger(
     }
   };
 
+  // Ej fördelad hyra: per butik på butikens rad, per månad på månadens rad, annars 'unallocated'.
+  const addUnallocated = (storeId: string, month: string, rentOre: number): void => {
+    let acc: RowAccumulator;
+    if (groupBy === "store") acc = getRow(storeId, "item");
+    else if (groupBy === "month") {
+      const b = timeBucket(maxDate(monthStart(month), period.start), "month", period);
+      acc = getRow(b.key, "time", b.range, b.partial);
+    } else acc = getRow(UNALLOCATED_KEY, "unallocated");
+    acc.addUnallocatedRent(rentOre);
+    totals.addUnallocatedRent(rentOre);
+  };
+
   for (const e of ledger.entries) {
     rowForEntry(e).addEntry(e);
     totals.addEntry(e);
+    // Hyran på en order utan pris är ändå en kostnad: den dras från vinsten som ej fördelad.
+    if (!e.priced && e.rentOre !== 0 && e.storeId !== null) {
+      addUnallocated(e.storeId, e.month, e.rentOre);
+    }
   }
 
-  for (const u of ledger.unallocatedRent) {
-    let acc: RowAccumulator;
-    if (groupBy === "store") acc = getRow(u.storeId, "item");
-    else if (groupBy === "month") {
-      const b = timeBucket(maxDate(monthStart(u.month), period.start), "month", period);
-      acc = getRow(b.key, "time", b.range, b.partial);
-    } else acc = getRow(UNALLOCATED_KEY, "unallocated");
-    acc.addUnallocatedRent(u.rentOre);
-    totals.addUnallocatedRent(u.rentOre);
-  }
+  for (const u of ledger.unallocatedRent) addUnallocated(u.storeId, u.month, u.rentOre);
 
   if (isTime && options.fillTimeGaps !== false) {
     const g = groupBy as "day" | "week" | "month";

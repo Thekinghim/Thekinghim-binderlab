@@ -147,11 +147,18 @@ export function oracleTotals(input: ProfitabilityInput): OracleTotals {
       unallocated += rent;
       continue;
     }
-    let weights = list.map((r) => r.net);
+    // Vikt = netto × månadshyran den dagen; alla netto 0 → bara månadshyran;
+    // inga order på dagar med hyra → ej fördelad.
+    const rates = list.map((r) => BigInt(agreementOf(store, r.date)?.monthlyRentOre ?? 0));
+    let weights = list.map((r, i) => r.net * rates[i]!);
     let wsum = weights.reduce((a, b) => a + b, 0n);
     if (wsum === 0n) {
-      weights = list.map(() => 1n);
-      wsum = BigInt(list.length);
+      weights = rates;
+      wsum = weights.reduce((a, b) => a + b, 0n);
+    }
+    if (wsum === 0n) {
+      unallocated += rent;
+      continue;
     }
     const parts = weights.map((w, i) => ({ i, base: (rent * w) / wsum, rest: (rent * w) % wsum }));
     let left = rent - parts.reduce((a, p) => a + p.base, 0n);
@@ -176,7 +183,9 @@ export function oracleTotals(input: ProfitabilityInput): OracleTotals {
   const cost = sum((r) => r.cost, true);
   const fees = sum((r) => r.fee, true);
   const commission = sum((r) => r.commission, true);
-  const rent = sum((r) => r.rent, true) + Number(unallocated);
+  // Hyra på order utan pris dras också från vinsten (som ej fördelad hyra).
+  const unpricedRent = sum((r) => r.rent, false);
+  const rent = sum((r) => r.rent, true) + unpricedRent + Number(unallocated);
   return {
     orders: rows.length,
     pricedOrders: rows.filter((r) => r.priced).length,
@@ -188,13 +197,13 @@ export function oracleTotals(input: ProfitabilityInput): OracleTotals {
     feesOre: fees,
     commissionOre: commission,
     rentOre: rent,
-    unallocatedRentOre: Number(unallocated),
+    unallocatedRentOre: Number(unallocated) + unpricedRent,
     profitOre: revenue - cost - fees - commission - rent,
     unpricedRevenueOre: sum((r) => r.net, false),
     unpricedVatOre: sum((r) => r.vat, false),
     unpricedFeesOre: sum((r) => r.fee, false),
     unpricedCommissionOre: sum((r) => r.commission, false),
-    unpricedRentOre: sum((r) => r.rent, false),
+    unpricedRentOre: unpricedRent,
     totalRentOre: Number(totalRent),
   };
 }

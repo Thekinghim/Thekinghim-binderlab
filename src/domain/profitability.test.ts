@@ -196,11 +196,12 @@ describe("saknade inköpspriser", () => {
     period: { start: "2026-11-01", end: "2026-11-30" },
   };
 
-  it("order utan pris räknas inte in i vinsten men redovisas separat", () => {
+  it("order utan pris räknas inte in i vinsten men redovisas separat; hyran dras ändå", () => {
     const r = profitability(input, "title");
     // Hyran 10 000 fördelas på alla 8 order efter netto (50 200):
     //   t-a: 4 × 976 (rest 0,09) = 3 904, resten 6 096 på t-b och t-c
-    // Vinst (bara t-a) = 19 600 − 8 000 − 1 960 − 3 904 = 5 736
+    // Hyran på t-b och t-c (6 096) är ej fördelad hyra och dras ändå från vinsten.
+    // Vinst (bara t-a:s intäkt) = 19 600 − 8 000 − 1 960 − (3 904 + 6 096) = −360
     expect(r.totals).toMatchObject({
       orders: 8,
       pricedOrders: 4,
@@ -208,14 +209,35 @@ describe("saknade inköpspriser", () => {
       revenueOre: 19_600,
       costOre: 8_000,
       commissionOre: 1_960,
-      rentOre: 3_904,
-      profitOre: 5_736,
+      rentOre: 10_000,
+      unallocatedRentOre: 6_096,
+      profitOre: -360,
       unpricedRevenueOre: 30_600,
       unpricedCommissionOre: 3_060,
       unpricedRentOre: 6_096,
       unpricedCompensationOre: 9_156,
     });
-    expect(r.totals.rentOre + r.totals.unpricedRentOre).toBe(10_000);
+    // Titelraderna: t-a bär sin egen hyra, t-b och t-c visar vinst 0, hyran på 'unallocated'.
+    const rows = Object.fromEntries(r.rows.map((x) => [x.key, x]));
+    expect(rows["t-a"]).toMatchObject({ rentOre: 3_904, profitOre: 5_736 });
+    expect(rows["t-b"]!.profitOre).toBe(0);
+    expect(rows["t-c"]!.profitOre).toBe(0);
+    expect(rows[UNALLOCATED_KEY]).toMatchObject({ rentOre: 6_096, profitOre: -6_096 });
+  });
+
+  it("en saknad inköpspris gör aldrig vinsten bättre", () => {
+    // Utan order bär ingen order hyran: vinst −10 000. Med en order utan pris: fortfarande
+    // −10 000 (provisionen och intäkten på ordern ingår inte, hyran gör det).
+    const empty = profitability({ ...input, orders: [] }, "store").totals.profitOre;
+    const oneUnpriced = profitability(
+      {
+        ...input,
+        orders: [order({ titleId: "t-b", businessDate: "2026-11-07", amountOre: 5900 })],
+      },
+      "store",
+    ).totals.profitOre;
+    expect(empty).toBe(-10_000);
+    expect(oneUnpriced).toBe(-10_000);
   });
 
   it("andelen oprissatt intäkt och vilka titlar det gäller", () => {

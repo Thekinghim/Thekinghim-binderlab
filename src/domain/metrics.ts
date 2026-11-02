@@ -159,7 +159,8 @@ export function storeCompensation(input: ProfitabilityInput): {
     .filter((row) => row.kind === "item")
     .map((row) => {
       const commission = row.commissionOre + row.unpricedCommissionOre;
-      const rent = row.rentOre + row.unpricedRentOre;
+      // Butikens rad har all butikens hyra i rentOre (även den på order utan pris).
+      const rent = row.rentOre;
       return {
         storeId: row.key,
         commissionOre: commission,
@@ -169,7 +170,7 @@ export function storeCompensation(input: ProfitabilityInput): {
     })
     .sort((a, b) => (a.storeId < b.storeId ? -1 : a.storeId > b.storeId ? 1 : 0));
   const commission = r.totals.commissionOre + r.totals.unpricedCommissionOre;
-  const rent = r.totals.rentOre + r.totals.unpricedRentOre;
+  const rent = r.totals.rentOre;
   return { stores, commissionOre: commission, rentOre: rent, totalOre: commission + rent };
 }
 
