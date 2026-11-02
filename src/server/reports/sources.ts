@@ -191,7 +191,10 @@ export async function queryStockEventsUntil(
   }));
 }
 
-/** Påfyllningar i butikens automater under månaden (dagar då automaten stod i butiken). */
+/**
+ * Dagar med påfyllning i butikens automater under månaden (dagar då automaten stod i
+ * butiken). En rad per dag: lagerhändelserna har en rad per titel, inte per besök.
+ */
 async function queryStoreRefillDates(
   tx: Tx,
   orgId: string,
@@ -199,7 +202,7 @@ async function queryStoreRefillDates(
   period: Period,
 ): Promise<IsoDate[]> {
   const rows = await tx.execute(
-    sql`select se.business_date::text as d
+    sql`select distinct se.business_date::text as d
         from public.stock_events se
         join public.stock_locations sl
           on sl.id = se.location_id and sl.organization_id = se.organization_id

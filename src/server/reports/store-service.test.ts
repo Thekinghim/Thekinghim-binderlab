@@ -37,4 +37,11 @@ describe("refillSummary", () => {
     });
     expect(refillSummary([])).toEqual({ count: 0, last: null });
   });
+
+  it("räknar besök (dagar), inte en rad per titel", () => {
+    expect(refillSummary(["2026-10-10", "2026-10-10", "2026-10-20", "2026-10-20"])).toEqual({
+      count: 2,
+      last: "2026-10-20",
+    });
+  });
 });

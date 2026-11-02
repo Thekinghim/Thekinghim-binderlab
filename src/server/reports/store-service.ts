@@ -7,7 +7,10 @@
 import type { IsoDate } from "@/domain";
 
 export interface StoreService {
-  /** Påfyllningar i butikens automater under månaden. */
+  /**
+   * Påfyllningsbesök i butikens automater under månaden: antal dagar med minst en
+   * påfyllning (ett besök fyller flera titlar och ibland flera automater).
+   */
   readonly refills: { readonly count: number; readonly last: IsoDate | null };
   /** "Lördagar 12–15", eller null om underlaget är för litet (färre än `MIN_ORDERS`). */
   readonly busiest: string | null;
@@ -98,9 +101,13 @@ export function busiestWindow(
   };
 }
 
-/** Antal påfyllningar och senaste dagen, ur lagerhändelsernas affärsdatum. */
+/**
+ * Antal påfyllningsbesök och senaste dagen, ur lagerhändelsernas affärsdatum. Ett besök =
+ * en dag med påfyllning i butiken, hur många titlar och automater som än fylldes på.
+ */
 export function refillSummary(dates: readonly IsoDate[]): StoreService["refills"] {
+  const days = new Set(dates);
   let last: IsoDate | null = null;
-  for (const d of dates) if (last === null || d > last) last = d;
-  return { count: dates.length, last };
+  for (const d of days) if (last === null || d > last) last = d;
+  return { count: days.size, last };
 }

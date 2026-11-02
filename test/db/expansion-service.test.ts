@@ -28,6 +28,7 @@ import {
   saveLeadFor,
   saveMeasurementFor,
   saveStoreProfileFor,
+  setLeadArchivedFor,
   setLeadStageFor,
   type Viewer,
 } from "../../src/app/(app)/expansion/_lib/service";
@@ -327,6 +328,23 @@ describe("pipeline", () => {
 
     await deleteLeadFor(owner, id);
     expect(await loadLeadsFor(owner)).toEqual([]);
+  });
+
+  it("en avslutad plats arkiveras och tas tillbaka; bara ägare och admin", async () => {
+    const id = await saveLeadFor(owner, leadSchema.parse({ name: "Pressbyrån C", stage: "lost" }));
+    await setLeadArchivedFor(admin, { id, archived: true });
+    const [archived] = await loadLeadsFor(viewer);
+    expect(archived).toMatchObject({ id, archived: true, stage: "lost" });
+    await expect(setLeadArchivedFor(viewer, { id, archived: false })).rejects.toBeInstanceOf(
+      AuthorizationError,
+    );
+    await expect(setLeadArchivedFor(otherOwner, { id, archived: false })).rejects.toBeInstanceOf(
+      ExpansionError,
+    );
+    await setLeadArchivedFor(owner, { id, archived: false });
+    const [back] = await loadLeadsFor(owner);
+    expect(back).toMatchObject({ id, archived: false });
+    await deleteLeadFor(owner, id);
   });
 
   it("påfyllaren ser inga leads ens direkt i databasen", async () => {

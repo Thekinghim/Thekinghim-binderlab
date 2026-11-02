@@ -266,7 +266,7 @@ export function StoreReportDocument({
           as={SECTION_TAG[level]}
           index={5}
           eyebrow="Service"
-          title={`${formatInt(snapshot.service.refills.count)} ${snapshot.service.refills.count === 1 ? "påfyllning" : "påfyllningar"}.`}
+          title={`${formatInt(snapshot.service.refills.count)} påfyllningsbesök.`}
           aside={
             snapshot.service.refills.last
               ? sentence(`Senast ${dayLabel(snapshot.service.refills.last)}`)
@@ -274,7 +274,7 @@ export function StoreReportDocument({
           }
         >
           <div className="grid grid-cols-3 gap-[6mm] border-t border-line pt-[3mm]">
-            <ReportFact label="Påfyllningar">
+            <ReportFact label="Påfyllningsbesök">
               {formatInt(snapshot.service.refills.count)}
               {snapshot.service.refills.last
                 ? `, senast ${dayLabel(snapshot.service.refills.last)}`
