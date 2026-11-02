@@ -46,7 +46,11 @@ export interface AccountingConfig {
 export function accountingConfig(env: NodeJS.ProcessEnv = process.env): AccountingConfig {
   const rawProvider = env.ACCOUNTING_PROVIDER?.trim() ?? "";
   const provider = pick(rawProvider, ACCOUNTING_PROVIDERS, "none");
-  const devAuth = (env.AUTH_PROVIDER ?? (env.APP_ENV === "development" ? "dev" : "")) === "dev";
+  // Samma standardvärden som src/lib/env.ts: APP_ENV är development utanför next start,
+  // och då är inloggningen dev.
+  const appEnv = env.APP_ENV?.trim() || (env.NODE_ENV === "production" ? "" : "development");
+  const authProvider = env.AUTH_PROVIDER?.trim() || (appEnv === "development" ? "dev" : "supabase");
+  const devAuth = authProvider === "dev";
   return {
     provider,
     providerInvalid:
