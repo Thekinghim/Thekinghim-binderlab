@@ -9,18 +9,34 @@ import { binderlabEffect, minutesText, type Baseline, type EffectInput } from ".
  * automat och dag (vinst 29 kr). November till och med 10 nov.: bara m-1 säljer.
  */
 const BASELINES: Baseline[] = [
-  { id: "b-profit", metric: "profit_per_machine_month", value: 70_000, unit: "ore", scope: "organization", source: "Egen uppskattning, sommaren 2026" },
+  {
+    id: "b-profit",
+    metric: "profit_per_machine_month",
+    value: 70_000,
+    unit: "ore",
+    scope: "organization",
+    source: "Egen uppskattning, sommaren 2026",
+  },
   { id: "b-stock", metric: "stockout_days_month", value: 6, unit: "days", scope: "organization" },
-  { id: "b-refill", metric: "refill_hours_month", value: 300, unit: "minutes", scope: "organization" },
-  { id: "b-admin", metric: "admin_hours_month", value: 120, unit: "minutes", scope: "organization" },
+  {
+    id: "b-refill",
+    metric: "refill_hours_month",
+    value: 300,
+    unit: "minutes",
+    scope: "organization",
+  },
+  {
+    id: "b-admin",
+    metric: "admin_hours_month",
+    value: 120,
+    unit: "minutes",
+    scope: "organization",
+  },
 ];
 
 function input(extra: Partial<EffectInput> = {}): EffectInput {
   return {
-    orders: [
-      ...dailyOrders("m-1", "2026-10-01", 41),
-      ...dailyOrders("m-2", "2026-10-17", 15),
-    ],
+    orders: [...dailyOrders("m-1", "2026-10-01", 41), ...dailyOrders("m-2", "2026-10-17", 15)],
     prices: [price("t-a", 2000, "2026-01-01")],
     agreements: [agreement("s-1", "2026-01-01", null, { commissionBp: 0 })],
     placements: [
@@ -30,7 +46,14 @@ function input(extra: Partial<EffectInput> = {}): EffectInput {
     settings: NO_TAX,
     baselines: BASELINES,
     observations: [
-      { metric: "stockout_days_month", month: "2026-10", value: 2, scope: "organization", dates: ["2026-10-06", "2026-10-05"], machineIds: ["m-2"] },
+      {
+        metric: "stockout_days_month",
+        month: "2026-10",
+        value: 2,
+        scope: "organization",
+        dates: ["2026-10-06", "2026-10-05"],
+        machineIds: ["m-2"],
+      },
       { metric: "refill_hours_month", month: "2026-10", value: 200, scope: "organization" },
       { metric: "refill_hours_month", month: "2026-11", value: 150, scope: "organization" },
     ],
@@ -69,7 +92,14 @@ describe("binderlabEffect: vinst per automat", () => {
     expect(s.points.map((p) => p.month)).toEqual(["2026-10", "2026-11"]);
     const nov = s.points[1]!;
     // 10 pack × 29 kr på 20 automatdagar → 14,50 kr × 30 = 435 kr
-    expect(nov).toMatchObject({ value: 43_500, partial: true, machineDays: 20, improvement: -26_500, improvementBp: -3_786, improvementOre: -17_667 });
+    expect(nov).toMatchObject({
+      value: 43_500,
+      partial: true,
+      machineDays: 20,
+      improvement: -26_500,
+      improvementBp: -3_786,
+      improvementOre: -17_667,
+    });
     expect(s.latest).toBe(nov);
   });
 
@@ -87,7 +117,16 @@ describe("binderlabEffect: vinst per automat", () => {
   it("per automat", () => {
     const m2 = binderlabEffect(
       input({
-        baselines: [{ id: "m", metric: "profit_per_machine_month", value: 70_000, unit: "ore", scope: "machine", machineId: "m-2" }],
+        baselines: [
+          {
+            id: "m",
+            metric: "profit_per_machine_month",
+            value: 70_000,
+            unit: "ore",
+            scope: "machine",
+            machineId: "m-2",
+          },
+        ],
         months: ["2026-10"],
       }),
     )[0]!;
@@ -100,9 +139,7 @@ describe("binderlabEffect: vinst per automat", () => {
     const p = series(r, "b-profit");
     expect(p.points[0]!.value).toBeNull();
     expect(p.latest).toBeNull();
-    expect(p.text).toBe(
-      "Vinst per automat: inga värden ännu att jämföra med utgångsläget 700 kr.",
-    );
+    expect(p.text).toBe("Vinst per automat: inga värden ännu att jämföra med utgångsläget 700 kr.");
   });
 });
 
@@ -112,25 +149,37 @@ describe("binderlabEffect: mätvärden", () => {
   it("slutsålda dagar: färre är bättre, kronor uppskattade med vinst per automat och dag", () => {
     const s = series(res, "b-stock");
     expect(s.higherIsBetter).toBe(false);
-    expect(s.points[0]).toMatchObject({ value: 2, improvement: 4, improvementBp: 6_667, improvementOre: 4 * 2_900 });
+    expect(s.points[0]).toMatchObject({
+      value: 2,
+      improvement: 4,
+      improvementBp: 6_667,
+      improvementOre: 4 * 2_900,
+    });
     expect(s.points[1]).toMatchObject({ value: null, improvement: null, improvementOre: null });
     expect(s.points[0]!.evidence.dates).toEqual(["2026-10-05", "2026-10-06"]);
     expect(s.points[0]!.evidence.machineIds).toEqual(["m-2"]);
     expect(s.text).toBe(
       "Slutsålda dagar: 2 i oktober mot 6 före Binderlab (67 % färre, värt +116 kr).",
     );
-    expect(s.detail).toBe("Sammanlagt +116 kr sedan oktober, kronor uppskattade med vinst per automat och dag.");
+    expect(s.detail).toBe(
+      "Sammanlagt +116 kr sedan oktober, kronor uppskattade med vinst per automat och dag.",
+    );
   });
 
   it("slutsålda dagar med angivet värde per dag", () => {
-    const s = series(binderlabEffect(input({ options: { stockoutDayValueOre: 5_000 } })), "b-stock");
+    const s = series(
+      binderlabEffect(input({ options: { stockoutDayValueOre: 5_000 } })),
+      "b-stock",
+    );
     expect(s.points[0]!.improvementOre).toBe(20_000);
     expect(s.detail).toBe("Sammanlagt +200 kr sedan oktober.");
   });
 
   it("tid för påfyllning i kronor med timkostnad", () => {
     const s = series(res, "b-refill");
-    expect(s.points.map((p) => [p.value, p.improvement, p.improvementBp, p.improvementOre])).toEqual([
+    expect(
+      s.points.map((p) => [p.value, p.improvement, p.improvementBp, p.improvementOre]),
+    ).toEqual([
       [200, 100, 3_333, 60_000],
       [150, 150, 5_000, 90_000],
     ]);
@@ -154,18 +203,28 @@ describe("binderlabEffect: mätvärden", () => {
   it("sämre än utgångsläget ger negativ förbättring", () => {
     const s = series(
       binderlabEffect(
-        input({ observations: [{ metric: "refill_hours_month", month: "2026-10", value: 360, scope: "organization" }] }),
+        input({
+          observations: [
+            { metric: "refill_hours_month", month: "2026-10", value: 360, scope: "organization" },
+          ],
+        }),
       ),
       "b-refill",
     );
-    expect(s.points[0]).toMatchObject({ improvement: -60, improvementBp: -2_000, improvementOre: -36_000 });
+    expect(s.points[0]).toMatchObject({
+      improvement: -60,
+      improvementBp: -2_000,
+      improvementOre: -36_000,
+    });
     expect(s.text).toContain("(20 % mer, värt −360 kr)");
   });
 
   it("inga mätvärden", () => {
     const s = series(res, "b-admin");
     expect(s.latest).toBeNull();
-    expect(s.text).toBe("Tid för administration: inga värden ännu att jämföra med utgångsläget 2 h.");
+    expect(s.text).toBe(
+      "Tid för administration: inga värden ännu att jämföra med utgångsläget 2 h.",
+    );
     expect(s.detail).toBe("Lägg in mätvärden per månad.");
   });
 });
@@ -201,7 +260,16 @@ describe("binderlabEffect: indata", () => {
   it("mätvärden för en butik matchas bara mot butikens utgångsläge", () => {
     const s = binderlabEffect(
       input({
-        baselines: [{ id: "x", metric: "stockout_days_month", value: 6, unit: "days", scope: "store", storeId: "s-1" }],
+        baselines: [
+          {
+            id: "x",
+            metric: "stockout_days_month",
+            value: 6,
+            unit: "days",
+            scope: "store",
+            storeId: "s-1",
+          },
+        ],
       }),
     )[0]!;
     expect(s.latest).toBeNull();

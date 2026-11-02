@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Suspense, useId, useState, type ReactNode } from "react";
+import {
+  Suspense,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { cn } from "@/lib/cn";
 import { formatDateTime } from "@/lib/format";
 import { Icon } from "@/components/ui/icon";
@@ -10,6 +18,7 @@ import { StatusGlyph } from "@/components/ui/status-tag";
 import { Logo } from "./logo";
 import {
   activeRouteId,
+  homeHref,
   roleLabel,
   routesForRole,
   type Role,
@@ -98,6 +107,7 @@ export function NavRow({
   todoCount = 0,
   onNavigate,
   dense = false,
+  numbered = true,
 }: {
   route: ShellRoute;
   number: number;
@@ -106,6 +116,8 @@ export function NavRow({
   todoCount?: number;
   onNavigate?: () => void;
   dense?: boolean;
+  /** Visa löpnumret. Av i "Mer"-arket, där urvalet ger luckor i numreringen. */
+  numbered?: boolean;
 }) {
   return (
     <li className="relative">
@@ -120,12 +132,14 @@ export function NavRow({
           active ? "text-fg" : "text-muted hover:text-fg",
         )}
       >
-        <span
-          aria-hidden
-          className={cn("label tnum w-4 shrink-0", active ? "text-fg" : "text-faint")}
-        >
-          {String(number).padStart(2, "0")}
-        </span>
+        {numbered ? (
+          <span
+            aria-hidden
+            className={cn("label tnum w-4 shrink-0", active ? "text-fg" : "text-subtle")}
+          >
+            {String(number).padStart(2, "0")}
+          </span>
+        ) : null}
         <span className={cn("flex-1 truncate", active && "font-medium")}>{route.label}</span>
         {route.counter === "todo" ? <TodoCounter count={todoCount} /> : null}
       </Link>
@@ -141,6 +155,7 @@ export function NavList({
   todoCount,
   onNavigate,
   dense,
+  numbered,
 }: {
   routes: ShellRoute[];
   /** Löpnummer per rutt, så att numren är desamma i alla vyer. */
@@ -150,6 +165,7 @@ export function NavList({
   todoCount?: number;
   onNavigate?: () => void;
   dense?: boolean;
+  numbered?: boolean;
 }) {
   return (
     <ul className="flex flex-col">
@@ -163,6 +179,7 @@ export function NavList({
           todoCount={todoCount}
           onNavigate={onNavigate}
           dense={dense}
+          numbered={numbered}
         />
       ))}
     </ul>
@@ -173,6 +190,36 @@ export function numberRoutes(routes: ShellRoute[]): Map<RouteId, number> {
   return new Map(routes.map((r, i) => [r.id, i + 1]));
 }
 
+/**
+ * Stänger en utfälld meny med Esc (fokus tillbaka till knappen) och vid
+ * pekartryck utanför.
+ */
+function useDismiss(
+  open: boolean,
+  setOpen: (open: boolean) => void,
+  rootRef: RefObject<HTMLElement | null>,
+  buttonRef: RefObject<HTMLElement | null>,
+) {
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      setOpen(false);
+      buttonRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, setOpen, rootRef, buttonRef]);
+}
+
 /** Organisationsväxlare. Med en organisation: bara namnet, ingen meny. */
 export function OrgSwitcher({
   organizations = [],
@@ -181,6 +228,9 @@ export function OrgSwitcher({
 }: Pick<ShellNavProps, "organizations" | "activeOrganizationId" | "onOrganizationChange">) {
   const [open, setOpen] = useState(false);
   const listId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  useDismiss(open, setOpen, rootRef, buttonRef);
   const active = organizations.find((o) => o.id === activeOrganizationId) ?? organizations[0];
   if (!active) return null;
   const many = organizations.length > 1;
@@ -202,8 +252,9 @@ export function OrgSwitcher({
   if (!many) return <div className="flex items-end gap-3 px-4 py-3">{head}</div>;
 
   return (
-    <div>
+    <div ref={rootRef}>
       <button
+        ref={buttonRef}
         type="button"
         aria-expanded={open}
         aria-controls={listId}
@@ -259,13 +310,21 @@ function toDate(v: Date | string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/** Statusrad: "Synkad 1 nov. 21:23". Läget bärs av glyf + text, aldrig bara färg. */
+/**
+ * Statusrad: "Synkad 1 nov. 21:23". Normalläget är bara text. Inaktuell och
+ * misslyckad synk bär glyf + text (aldrig bara färg) och blir en länk till
+ * Datakällor när `href` ges, så att det som kräver åtgärd har en väg dit.
+ */
 export function SyncStatus({
   syncedAt,
   syncState = "ok",
   timeZone,
+  href,
   className,
-}: Pick<ShellNavProps, "syncedAt" | "syncState" | "timeZone"> & { className?: string }) {
+}: Pick<ShellNavProps, "syncedAt" | "syncState" | "timeZone"> & {
+  href?: string;
+  className?: string;
+}) {
   if (!syncedAt && syncState === "ok") return null;
   const d = syncedAt ? toDate(syncedAt) : null;
   const when = d
@@ -277,27 +336,44 @@ export function SyncStatus({
       : syncState === "stale"
         ? `Inaktuell · synkad ${when ?? "–"}`
         : `Synkad ${when ?? "–"}`;
-  return (
-    <p
-      className={cn(
-        "meta tnum flex items-center gap-2",
-        syncState === "failed"
-          ? "text-signal-fg"
-          : syncState === "stale"
-            ? "text-fg"
-            : "text-subtle",
-        className,
-      )}
-    >
-      <span className="inline-flex w-4 justify-center">
-        <StatusGlyph
-          status={syncState === "failed" ? "critical" : syncState === "stale" ? "warning" : "ok"}
-          size={6}
-        />
+  const problem = syncState !== "ok";
+  const body = (
+    <>
+      <span className="inline-flex w-4 shrink-0 justify-center">
+        {problem ? (
+          <StatusGlyph status={syncState === "failed" ? "critical" : "warning"} size={6} />
+        ) : null}
       </span>
-      {d ? <time dateTime={d.toISOString()}>{text}</time> : text}
-    </p>
+      <span className="min-w-0 flex-1">
+        {d ? <time dateTime={d.toISOString()}>{text}</time> : text}
+      </span>
+      {problem && href ? <Icon name="chevronRight" size={12} className="shrink-0" /> : null}
+    </>
   );
+  const tone =
+    syncState === "failed" ? "text-signal-fg" : syncState === "stale" ? "text-fg" : "text-subtle";
+  if (problem && href) {
+    return (
+      <Link
+        href={href}
+        className={cn(
+          "meta tnum flex items-center gap-2 transition-colors focus-visible:-outline-offset-2",
+          tone,
+          "hover:underline hover:underline-offset-4",
+          className,
+        )}
+      >
+        {body}
+        <span className="sr-only">, öppna Datakällor</span>
+      </Link>
+    );
+  }
+  return <p className={cn("meta tnum flex items-center gap-2", tone, className)}>{body}</p>;
+}
+
+/** Länken från synkraden, om rollen får se Datakällor. */
+export function syncHref(role: Role): string | undefined {
+  return routesForRole(role).find((r) => r.id === "datakallor")?.href;
 }
 
 /** Användarmeny: namn och roll, fäller ut e-post och Logga ut uppåt. */
@@ -309,11 +385,14 @@ export function UserMenu({
 }: Pick<ShellNavProps, "user" | "role" | "onSignOut" | "signOutHref">) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  useDismiss(open, setOpen, rootRef, buttonRef);
   if (!user) return null;
   const rowCls =
     "flex h-8 w-full items-center gap-3 px-4 text-left text-base text-muted transition-colors hover:text-fg focus-visible:-outline-offset-2";
   return (
-    <div>
+    <div ref={rootRef}>
       {open ? (
         <div id={panelId} className="border-b border-line py-2">
           {user.email ? (
@@ -333,6 +412,7 @@ export function UserMenu({
         </div>
       ) : null}
       <button
+        ref={buttonRef}
         type="button"
         aria-expanded={open}
         aria-controls={panelId}
@@ -381,7 +461,7 @@ export function Sidebar({ className, ...props }: SidebarProps) {
       )}
     >
       <div className="flex h-14 shrink-0 items-center border-b border-line px-4">
-        <Link href="/" className="rounded-xs" aria-label="Binderlab, till Hem">
+        <Link href={homeHref(role)} className="rounded-xs" aria-label="Binderlab, till startsidan">
           <Logo />
         </Link>
       </div>
@@ -429,6 +509,7 @@ export function Sidebar({ className, ...props }: SidebarProps) {
           syncedAt={props.syncedAt}
           syncState={props.syncState}
           timeZone={props.timeZone}
+          href={syncHref(role)}
           className="px-4 py-3"
         />
         {props.user ? (

@@ -428,9 +428,21 @@ export function LineChart({
                     y2={geo.innerH + 4}
                     style={{ stroke: "var(--bl-line-strong)" }}
                   />
-                  <AxisText x={geo.xs[i] ?? 0} y={geo.innerH + 18}>
-                    {formatDay(d.date)}
-                  </AxisText>
+                  {(() => {
+                    // Sista datumet högerställs vid kanten i stället för att klippas
+                    const t = formatDay(d.date);
+                    const tx = geo.xs[i] ?? 0;
+                    const atEdge = tx + (t.length * 6.8) / 2 > geo.innerW + M.right;
+                    return (
+                      <AxisText
+                        x={atEdge ? geo.innerW + M.right - 1 : tx}
+                        y={geo.innerH + 18}
+                        anchor={atEdge ? "end" : "middle"}
+                      >
+                        {t}
+                      </AxisText>
+                    );
+                  })()}
                 </g>
               );
             })}

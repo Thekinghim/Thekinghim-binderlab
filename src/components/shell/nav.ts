@@ -41,6 +41,12 @@ export type ShellRoute = {
   mobileRank?: number;
   /** Rutten bär en räknare för sådant som kräver åtgärd. */
   counter?: "todo";
+  /** false: sidan har inget periodval eller filter (kontextraden döljs). */
+  context?: false;
+  /** Fasen då sidan byggs (platshållarna visar den). */
+  phase: number;
+  /** Andra delen av rubriken på platshållaren. */
+  lead: string;
 };
 
 const ALL: ReadonlyArray<Role> = ["owner", "admin", "refiller", "viewer"];
@@ -56,6 +62,8 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     section: "main",
     roles: READERS,
     mobileRank: 1,
+    phase: 3,
+    lead: "Dagens läge i hela flottan.",
   },
   {
     id: "att-gora",
@@ -66,6 +74,8 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     roles: ["owner", "admin", "refiller"],
     mobileRank: 2,
     counter: "todo",
+    phase: 3,
+    lead: "Det som kräver åtgärd nu.",
   },
   {
     id: "lonsamhet",
@@ -75,6 +85,8 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     section: "main",
     roles: READERS,
     mobileRank: 3,
+    phase: 4,
+    lead: "Per automat, butik och period.",
   },
   {
     id: "order",
@@ -84,6 +96,8 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     section: "main",
     roles: READERS,
     mobileRank: 6,
+    phase: 5,
+    lead: "Inköp och leveranser.",
   },
   {
     id: "lager",
@@ -93,6 +107,8 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     section: "main",
     roles: ALL,
     mobileRank: 4,
+    phase: 5,
+    lead: "Per artikel och automat.",
   },
   {
     id: "automater",
@@ -102,6 +118,8 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     section: "main",
     roles: READERS,
     mobileRank: 5,
+    phase: 5,
+    lead: "Status, försäljning och påfyllning.",
   },
   {
     id: "butiker",
@@ -110,6 +128,8 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     icon: "columns",
     section: "main",
     roles: READERS,
+    phase: 5,
+    lead: "Placeringar, hyra och utfall.",
   },
   {
     id: "inkopspriser",
@@ -118,6 +138,8 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     icon: "filter",
     section: "main",
     roles: READERS,
+    phase: 4,
+    lead: "Pris per artikel över tid.",
   },
   {
     id: "rapporter",
@@ -127,6 +149,8 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     section: "main",
     roles: READERS,
     mobileRank: 7,
+    phase: 6,
+    lead: "Utskick och underlag.",
   },
   {
     id: "datakallor",
@@ -135,6 +159,9 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     icon: "download",
     section: "system",
     roles: OPERATORS,
+    phase: 2,
+    lead: "Import och synk.",
+    context: false,
   },
   {
     id: "installningar",
@@ -143,12 +170,27 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     icon: "settings",
     section: "system",
     roles: OPERATORS,
+    phase: 2,
+    lead: "Organisation, användare och roller.",
+    context: false,
   },
 ];
 
 /** Rutterna en roll ser, i menyordning. */
 export function routesForRole(role: Role): ShellRoute[] {
   return shellRoutes.filter((r) => r.roles.includes(role));
+}
+
+/** Rollens startsida: första rutten den får se (Hem, eller Att göra för påfyllare). */
+export function homeHref(role: Role): string {
+  return routesForRole(role)[0]?.href ?? "/";
+}
+
+/** Rutten med ett visst id. */
+export function routeById(id: RouteId): ShellRoute {
+  const r = shellRoutes.find((x) => x.id === id);
+  if (!r) throw new Error(`Okänd rutt: ${id}`);
+  return r;
 }
 
 /** Högst `max` rutter till mobilens bottenrad (resten nås via "Mer"). */

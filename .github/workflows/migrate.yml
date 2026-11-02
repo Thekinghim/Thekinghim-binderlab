@@ -1,0 +1,55 @@
+# Kör databasmigreringarna (supabase/migrations) mot en miljö.
+# Startas för hand: Actions → "Migrera databasen" → Run workflow → välj miljö.
+#
+# DATABASE_URL är en hemlighet i GitHub Environment med samma namn som miljön
+# (development/production). Production ska ha "Required reviewers" och bara
+# tillåta grenen main (Settings → Environments → production), så att varje
+# körning måste godkännas. Se docs/miljoer.md.
+name: Migrera databasen
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Miljö att migrera
+        type: choice
+        required: true
+        default: development
+        options:
+          - development
+          - production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migrate-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Migrera ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Production bara från main
+        if: inputs.environment == 'production' && github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Production migreras bara från grenen main (nu: ${GITHUB_REF})."
+          exit 1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Kör migreringar
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "::error::Hemligheten DATABASE_URL saknas i GitHub Environment '${{ inputs.environment }}'."
+            exit 1
+          fi
+          npm run db:migrate

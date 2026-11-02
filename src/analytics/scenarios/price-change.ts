@@ -150,7 +150,10 @@ function volumeText(bp: number): string {
 export function priceChangeScenario(input: PriceChangeScenarioInput): PriceChangeScenario {
   const { titleId, deltaOre, period } = input;
   if (!Number.isSafeInteger(deltaOre)) {
-    throw new DomainError("invalid_amount", `Prisändringen måste anges i hela öre, fick ${deltaOre}.`);
+    throw new DomainError(
+      "invalid_amount",
+      `Prisändringen måste anges i hela öre, fick ${deltaOre}.`,
+    );
   }
   const selectedE = input.elasticityHundredths ?? 0;
   assertElasticity(selectedE);
@@ -243,12 +246,17 @@ export function priceChangeScenario(input: PriceChangeScenarioInput): PriceChang
     const fStar = new Ratio(contribution, newContribution);
     const change = fStar.sub(new Ratio(1));
     breakEvenVolume = change.mul(BP_SCALE).round();
-    if (gross > 0) breakEvenE = change.mul(100 * gross).div(deltaOre * n).round();
+    if (gross > 0)
+      breakEvenE = change
+        .mul(100 * gross)
+        .div(deltaOre * n)
+        .round();
   }
 
   const avg = n === 0 ? null : roundHalfUp(gross, n);
   const newAvg = n === 0 ? null : roundHalfUp(newGross, n);
-  const priceChangeBp = avg === null || gross === 0 ? null : roundHalfUp(deltaOre * n * BP_SCALE, gross);
+  const priceChangeBp =
+    avg === null || gross === 0 ? null : roundHalfUp(deltaOre * n * BP_SCALE, gross);
   const perPack = n === 0 ? null : roundHalfUp(contribution, n);
   const newPerPack = n === 0 ? null : roundHalfUp(newContribution, n);
 
@@ -299,7 +307,9 @@ export function priceChangeScenario(input: PriceChangeScenarioInput): PriceChang
       : `om ${volumeText(selected.volumeChangeBp)} (elasticitet ${hundredths(selectedE)})`;
   const text =
     deltaOre === 0
-      ? sentence(`Oförändrat pris på ${titleName}: vinsten är ${kr(base.profitOre)} under ${periodText(period)}`)
+      ? sentence(
+          `Oförändrat pris på ${titleName}: vinsten är ${kr(base.profitOre)} under ${periodText(period)}`,
+        )
       : `${verb} du priset på ${titleName} med ${moneyText(deltaOre)} ${effectText(selected.profitChangeOre)} under ${periodText(period)} ${condition}.`;
 
   const parts: string[] = [];

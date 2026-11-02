@@ -52,10 +52,7 @@ import { fig, scenarioEvidence, signedKr, type ScenarioEvidence } from "../expan
 
 /** Mått i utgångsläget (baselines.metric). */
 export type BaselineMetric =
-  | "profit_per_machine_month"
-  | "stockout_days_month"
-  | "refill_hours_month"
-  | "admin_hours_month";
+  "profit_per_machine_month" | "stockout_days_month" | "refill_hours_month" | "admin_hours_month";
 
 /** Enhet (baselines.unit). */
 export type BaselineUnit = "ore" | "days" | "minutes" | "count";
@@ -282,7 +279,10 @@ export function binderlabEffect(input: EffectInput): EffectSeries[] {
   for (const o of input.observations ?? []) {
     parseIsoMonth(o.month);
     if (!Number.isSafeInteger(o.value)) {
-      throw new DomainError("invalid_amount", `Mätvärdet för ${o.metric} ${o.month} måste vara ett heltal.`);
+      throw new DomainError(
+        "invalid_amount",
+        `Mätvärdet för ${o.metric} ${o.month} måste vara ett heltal.`,
+      );
     }
     const key = `${o.metric}|${o.scope}|${scopeKey(o.scope, o.storeId, o.machineId)}|${o.month}`;
     if (obs.has(key)) {
@@ -341,7 +341,9 @@ export function binderlabEffect(input: EffectInput): EffectSeries[] {
           improvementOre = mulDivRound(value - b.value, md.days, dim);
         }
       } else {
-        const o = obs.get(`${b.metric}|${b.scope}|${scopeKey(b.scope, b.storeId, b.machineId)}|${m}`);
+        const o = obs.get(
+          `${b.metric}|${b.scope}|${scopeKey(b.scope, b.storeId, b.machineId)}|${m}`,
+        );
         if (o) {
           value = o.value;
           dates = o.dates ?? [];
@@ -351,7 +353,14 @@ export function binderlabEffect(input: EffectInput): EffectSeries[] {
             let perDay = stockoutValue;
             if (perDay === null && md.days > 0) {
               perDay = Math.max(0, roundHalfUp(profitIn(m, b.scope, id), md.days));
-              figures.push(fig("stockoutDayValueOre", "Vinst per automat och dag (värde per dag)", perDay, "ore"));
+              figures.push(
+                fig(
+                  "stockoutDayValueOre",
+                  "Vinst per automat och dag (värde per dag)",
+                  perDay,
+                  "ore",
+                ),
+              );
             }
             improvementOre = perDay === null ? null : improvement * perDay;
           } else if (hourly !== null) {
@@ -369,7 +378,8 @@ export function binderlabEffect(input: EffectInput): EffectSeries[] {
             ? changeBp(value, b.value)
             : mulDivRound(b.value - value, 10_000, Math.abs(b.value));
       if (value !== null) figures.push(fig("value", "Värde i månaden", value, b.unit));
-      if (improvementOre !== null) figures.push(fig("improvementOre", "Förbättring i kronor", improvementOre, "ore"));
+      if (improvementOre !== null)
+        figures.push(fig("improvementOre", "Förbättring i kronor", improvementOre, "ore"));
 
       points.push({
         month: m,
@@ -436,20 +446,25 @@ export function binderlabEffect(input: EffectInput): EffectSeries[] {
       } mot ${valueText(b.metric, b.value)} före Binderlab${paren ? ` (${paren})` : ""}.`;
       const parts: string[] = [];
       if (withValue.length > 1) {
-        parts.push(
-          `Snitt ${valueText(b.metric, averageValue!)} över ${withValue.length} månader`,
-        );
+        parts.push(`Snitt ${valueText(b.metric, averageValue!)} över ${withValue.length} månader`);
       }
       if (totalImprovementOre !== null) {
-        parts.push(`sammanlagt ${signedKr(totalImprovementOre)} sedan ${monthName(withValue[0]!.month)}`);
+        parts.push(
+          `sammanlagt ${signedKr(totalImprovementOre)} sedan ${monthName(withValue[0]!.month)}`,
+        );
       }
-      if (b.metric !== "profit_per_machine_month" && b.metric !== "stockout_days_month" && hourly === null) {
+      if (
+        b.metric !== "profit_per_machine_month" &&
+        b.metric !== "stockout_days_month" &&
+        hourly === null
+      ) {
         parts.push("ange timkostnad för att räkna tiden i kronor");
       }
       if (b.metric === "stockout_days_month" && stockoutValue === null) {
         parts.push("kronor uppskattade med vinst per automat och dag");
       }
-      detail = parts.length === 0 ? "" : `${parts.join(", ").replace(/^./, (c) => c.toUpperCase())}.`;
+      detail =
+        parts.length === 0 ? "" : `${parts.join(", ").replace(/^./, (c) => c.toUpperCase())}.`;
     }
 
     return {
@@ -474,12 +489,17 @@ export function binderlabEffect(input: EffectInput): EffectSeries[] {
         machineIds: b.scope === "machine" ? [id!] : [],
         figures: [
           fig("baseline", "Utgångsläge", b.value, b.unit),
-          ...(averageValue === null
-            ? []
-            : [fig("averageValue", "Snitt", averageValue, b.unit)]),
+          ...(averageValue === null ? [] : [fig("averageValue", "Snitt", averageValue, b.unit)]),
           ...(totalImprovementOre === null
             ? []
-            : [fig("totalImprovementOre", "Förbättring i kronor, sammanlagt", totalImprovementOre, "ore")]),
+            : [
+                fig(
+                  "totalImprovementOre",
+                  "Förbättring i kronor, sammanlagt",
+                  totalImprovementOre,
+                  "ore",
+                ),
+              ]),
         ],
       }),
     };

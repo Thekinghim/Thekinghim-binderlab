@@ -50,7 +50,7 @@ export const periodChoices: ReadonlyArray<{ key: PeriodKey; label: string; short
   { key: "idag", label: "I dag", short: "I dag" },
   { key: "7d", label: "7 dagar", short: "7 d" },
   { key: "30d", label: "30 dagar", short: "30 d" },
-  { key: "manad", label: "Denna månad", short: "Mån" },
+  { key: "manad", label: "Denna månad", short: "Månad" },
   { key: "allt", label: "Allt", short: "Allt" },
   { key: "eget", label: "Eget intervall", short: "Eget" },
 ];

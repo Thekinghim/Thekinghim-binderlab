@@ -85,6 +85,15 @@ function layoutXLabels(items: ReadonlyArray<{ label: string; short?: string }>, 
   return { xLines, stagger, evenDepth, depth };
 }
 
+/** Text under axeln som är bredare än sin kolumn hålls inom svg:n (g-koordinater). */
+function clampText(cx: number, t: string, innerW: number) {
+  const w = t.length * CH_UPPER;
+  const right = innerW + M.right - 1;
+  if (cx + w / 2 > right) return { x: right, anchor: "end" as const };
+  if (cx - w / 2 < -M.left + 1) return { x: -M.left + 1, anchor: "start" as const };
+  return { x: cx, anchor: "middle" as const };
+}
+
 type Bar = WaterfallStep & { start: number; end: number; kind: "start" | "up" | "down" | "total" };
 
 /**
@@ -138,15 +147,47 @@ export function WaterfallChart({
     const items = [...bars, ...(excluded ? [excluded] : [])];
     const labels = layoutXLabels(items, x.step());
     // Marginalen under axeln växer med etikettnivåer och larmnoteringar
-    const hasNote = bars.some((b) => b.flag) || !!excluded;
-    const bottom = 18 + labels.depth * 12 + (hasNote ? 12 : 0) + 4;
+    // Noteringar ("! Över mål", "Ingår inte") står på egna rader under alla
+    // axeletiketter. Krockar två på samma rad flyttas den senare en rad ned.
+    const noteTexts = [
+      ...bars.map((b, i) => (b.flag ? { i, t: `! ${b.note ?? "Kräver åtgärd"}` } : null)),
+      excluded ? { i: bars.length, t: excluded.note ?? "Ingår inte" } : null,
+    ].filter((v): v is { i: number; t: string } => v !== null);
+    const rowEnds: number[] = [];
+    const notes = new Map<
+      number,
+      { t: string; x: number; anchor: "start" | "middle" | "end"; row: number }
+    >();
+    for (const { i, t } of noteTexts) {
+      const cx = (x(i) ?? 0) + x.bandwidth() / 2;
+      const pos = clampText(cx, t, innerW);
+      const w = t.length * CH_UPPER;
+      const x0 = pos.anchor === "end" ? pos.x - w : pos.anchor === "start" ? pos.x : pos.x - w / 2;
+      let row = rowEnds.findIndex((end) => x0 >= end + 8);
+      if (row === -1) row = rowEnds.length;
+      rowEnds[row] = x0 + w;
+      notes.set(i, { t, ...pos, row });
+    }
+    const bottom = 18 + labels.depth * 12 + (labels.stagger ? 2 : 0) + rowEnds.length * 12 + 4;
     const innerH = Math.max(40, height - M.top - bottom);
     const vals = bars.flatMap((b) => [b.start, b.end]).concat(excluded ? [excluded.value] : []);
     const hi = Math.max(...vals, 1);
     const lo = Math.min(0, ...vals);
     const y = scaleLinear().domain([lo, hi]).range([innerH, 0]).nice(4);
     const ticks = y.ticks(4);
-    return { bars, innerW, innerH, x, y, ticks, axis: axisScale(ticks, unit), n, labels, bottom };
+    return {
+      bars,
+      innerW,
+      innerH,
+      x,
+      y,
+      ticks,
+      axis: axisScale(ticks, unit),
+      n,
+      labels,
+      bottom,
+      notes,
+    };
   }, [steps, excluded, width, height, unit]);
 
   const bw = g.x.bandwidth();
@@ -168,6 +209,14 @@ export function WaterfallChart({
     return [g.axis.value(b.value)];
   };
 
+  // Noteringsrader under alla axeletiketter
+  const noteY = (row: number) =>
+    g.innerH + 18 + g.labels.depth * 12 + (g.labels.stagger ? 2 : 0) + row * 12;
+  const noteAt = (i: number) => {
+    const n = g.notes.get(i);
+    return n ? { ...n, y: noteY(n.row) } : undefined;
+  };
+
   // Etikett som får plats: hela, kort form eller två rader på mellanslag.
   const { xLines, stagger, evenDepth } = g.labels;
   const xLabelY = (i: number) => g.innerH + 18 + (stagger && i % 2 === 1 ? evenDepth * 12 + 2 : 0);
@@ -179,7 +228,7 @@ export function WaterfallChart({
   const placedValues: Array<{ x: number; y: number; w: number; h: number }> = [];
   // Avskiljaren före "ingår inte": bryggans etiketter stannar till vänster om den.
   const divX = excluded ? (g.x(exIdx) ?? 0) - (step - bw) / 2 : g.innerW + M.right;
-  const valuePos = (cx: number, top: number, lines: string[], maxX = divX - 4) => {
+  const valuePos = (cx: number, top: number, lines: string[], maxX = divX - 6) => {
     const w = Math.max(...lines.map((t) => t.length * 7.2));
     const h = lines.length * LH;
     const x = Math.max(0, Math.min(cx - w / 2, maxX - w));
@@ -330,14 +379,17 @@ export function WaterfallChart({
                       {t}
                     </text>
                   ))}
-                  {b.flag ? (
-                    // Textbärare för larmet under axeletiketten: läsbar även i svartvitt
-                    <AxisText x={cx} y={xLabelY(i) + lines.length * 12}>
-                      <tspan style={{ fill: "var(--bl-signal-fg)" }}>
-                        ! {b.note ?? "Kräver åtgärd"}
-                      </tspan>
-                    </AxisText>
-                  ) : null}
+                  {b.flag
+                    ? // Textbärare för larmet under axeletiketterna: läsbar även i svartvitt
+                      (() => {
+                        const n = noteAt(i);
+                        return n ? (
+                          <AxisText x={n.x} y={n.y} anchor={n.anchor}>
+                            <tspan style={{ fill: "var(--bl-signal-fg)" }}>{n.t}</tspan>
+                          </AxisText>
+                        ) : null;
+                      })()
+                    : null}
                   {stagger && i % 2 === 1 ? (
                     <line
                       x1={cx}
@@ -378,8 +430,7 @@ export function WaterfallChart({
                       : { x: edge, anchor: "end" as const };
                   const exVp = valuePos(cx, top, [g.axis.value(excluded.value)], edge);
                   const exLines = xLabel(exIdx);
-                  const noteY = xLabelY(exIdx) + exLines.length * 12;
-                  const exNote = excluded.note ?? "Ingår inte";
+                  const exNote = noteAt(exIdx);
                   return (
                     <>
                       <rect x={x - 4} y={0} width={bw + 8} height={g.innerH} fill="transparent" />
@@ -428,9 +479,11 @@ export function WaterfallChart({
                           {t}
                         </AxisText>
                       ))}
-                      <AxisText {...fit(exNote)} y={noteY}>
-                        {exNote}
-                      </AxisText>
+                      {exNote ? (
+                        <AxisText x={exNote.x} y={exNote.y} anchor={exNote.anchor}>
+                          {exNote.t}
+                        </AxisText>
+                      ) : null}
                     </>
                   );
                 })()}

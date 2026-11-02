@@ -4,12 +4,7 @@
  */
 
 export type ImportErrorCode =
-  | "forbidden"
-  | "not_found"
-  | "validation"
-  | "mapping"
-  | "not_configured"
-  | "file_too_large";
+  "forbidden" | "not_found" | "validation" | "mapping" | "not_configured" | "file_too_large";
 
 export class ImportError extends Error {
   readonly code: ImportErrorCode;

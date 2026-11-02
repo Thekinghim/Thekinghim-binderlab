@@ -35,6 +35,8 @@ export const periodOptions = [
 
 export type TopbarProps = {
   crumbs: string[];
+  /** Logons länk: rollens startsida. Standard "/". */
+  homeHref?: string;
   /** Öppnar kommandopaletten. */
   onOpenCommand?: () => void;
   /** Visa periodval och filter (URL-styrt). Standard true. */
@@ -60,6 +62,7 @@ export type TopbarProps = {
  */
 export function Topbar({
   crumbs,
+  homeHref = "/",
   onOpenCommand,
   showContext = true,
   stores = [],
@@ -76,7 +79,11 @@ export function Topbar({
     <>
       <header className="sticky top-0 z-30 border-b border-line bg-bg">
         <div className="flex h-14 items-center gap-3 px-4 md:px-6">
-          <Link href="/" className="shrink-0 rounded-xs lg:hidden" aria-label="Binderlab, till Hem">
+          <Link
+            href={homeHref}
+            className="shrink-0 rounded-xs lg:hidden"
+            aria-label="Binderlab, till startsidan"
+          >
             <Logo withWordmark={false} />
           </Link>
           <Crumbs crumbs={crumbs} />
@@ -174,9 +181,18 @@ function UrlContext({
   const active = useActiveFilterCount();
   return (
     <div className="px-4 py-2 md:px-6">
+      {/* Rad 1: periodval och filter. Rad 2: läsraden i mono (och filterknappen på mobil). */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <PeriodControl earliest={earliest} className="max-w-full" />
-        <div className="flex min-w-64 flex-1 items-center justify-between gap-4">
+        {hasScope ? (
+          <ScopeFilter
+            stores={stores}
+            machines={machines}
+            compact
+            className="ml-auto hidden md:flex"
+          />
+        ) : null}
+        <div className="flex min-w-0 basis-full items-center justify-between gap-4">
           <PeriodReadout earliest={earliest} />
           {hasScope ? (
             <button
@@ -191,9 +207,6 @@ function UrlContext({
             </button>
           ) : null}
         </div>
-        {hasScope ? (
-          <ScopeFilter stores={stores} machines={machines} className="ml-auto hidden md:flex" />
-        ) : null}
       </div>
       {hasScope && filtersOpen ? (
         <div id={filterId} className="mt-2 border-t border-line pt-2 md:hidden">
@@ -212,6 +225,7 @@ function ContextFallback() {
   return (
     <div className="px-4 py-2 md:px-6">
       <PeriodControlFallback />
+      <div aria-hidden className="mt-2 h-4" />
     </div>
   );
 }

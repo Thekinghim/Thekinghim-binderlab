@@ -16,8 +16,7 @@ const AUDIENCE = "binderlab";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type TokenCheck =
-  | { ok: true; session: AuthSession }
-  | { ok: false; reason: "expired" | "invalid" };
+  { ok: true; session: AuthSession } | { ok: false; reason: "expired" | "invalid" };
 
 function keyFor(secret: string): Uint8Array {
   if (secret.length < 32) {

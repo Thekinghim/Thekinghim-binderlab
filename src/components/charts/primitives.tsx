@@ -285,7 +285,7 @@ export function ChartFigure({
   className?: string;
 }) {
   return (
-    <figure className={cn("relative m-0 w-full", className)}>
+    <figure className={cn("relative m-0 w-full [contain:inline-size]", className)}>
       {children}
       <figcaption className="sr-only">{summary}</figcaption>
     </figure>

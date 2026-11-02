@@ -150,12 +150,18 @@ describe("priceChangeScenario", () => {
     expect(res.detail).toContain(
       "Vinsten är oförändrad om försäljningen minskar med 27 % (elasticitet −1,33).",
     );
-    expect(res.detail).toContain("bidrag per pack efter inköp, avgifter och provision 24,10 kr → 33,10 kr");
+    expect(res.detail).toContain(
+      "bidrag per pack efter inköp, avgifter och provision 24,10 kr → 33,10 kr",
+    );
   });
 
   it("hyran är fast och ingår i titelns vinst", () => {
     const res = priceChangeScenario({
-      ...priceInput({ agreements: [agreement("s-1", "2026-01-01", null, { commissionBp: 1000, monthlyRentOre: 6_200 })] }),
+      ...priceInput({
+        agreements: [
+          agreement("s-1", "2026-01-01", null, { commissionBp: 1000, monthlyRentOre: 6_200 }),
+        ],
+      }),
       titleId: "t-a",
       deltaOre: 1000,
     });
@@ -224,7 +230,12 @@ describe("priceChangeScenario", () => {
   });
 
   it("titel utan prissatta order: no-data", () => {
-    const res = priceChangeScenario({ ...priceInput(), titleId: "t-x", titleName: "Okänd", deltaOre: 1000 });
+    const res = priceChangeScenario({
+      ...priceInput(),
+      titleId: "t-x",
+      titleName: "Okänd",
+      deltaOre: 1000,
+    });
     expect(res.status).toBe("no-data");
     expect(res.text).toBe("Okänd har inga sålda pack med inköpspris under 1–31 okt.");
     expect(res.breakEvenVolumeChangeBp).toBeNull();
@@ -238,14 +249,19 @@ describe("priceChangeScenario", () => {
   });
 
   it("negativt pris och ogiltig indata kastar", () => {
-    expect(() => priceChangeScenario({ ...priceInput(), titleId: "t-a", deltaOre: -5_000 })).toThrow(
-      DomainError,
-    );
+    expect(() =>
+      priceChangeScenario({ ...priceInput(), titleId: "t-a", deltaOre: -5_000 }),
+    ).toThrow(DomainError);
     expect(() => priceChangeScenario({ ...priceInput(), titleId: "t-a", deltaOre: 10.5 })).toThrow(
       DomainError,
     );
     expect(() =>
-      priceChangeScenario({ ...priceInput(), titleId: "t-a", deltaOre: 100, elasticityHundredths: -1.5 }),
+      priceChangeScenario({
+        ...priceInput(),
+        titleId: "t-a",
+        deltaOre: 100,
+        elasticityHundredths: -1.5,
+      }),
     ).toThrow(DomainError);
   });
 
@@ -254,6 +270,8 @@ describe("priceChangeScenario", () => {
     expect(res.evidence.titleIds).toEqual(["t-a"]);
     expect(res.evidence.orderIds).toHaveLength(10);
     expect(res.evidence.figures.find((f) => f.key === "profitChangeOre")!.value).toBe(9_000);
-    expect(res.evidence.figures.find((f) => f.key === "elasticityHundredths")!.unit).toBe("hundredths");
+    expect(res.evidence.figures.find((f) => f.key === "elasticityHundredths")!.unit).toBe(
+      "hundredths",
+    );
   });
 });

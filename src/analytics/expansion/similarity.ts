@@ -161,12 +161,7 @@ export function storeSimilarity(
   const parts: SimilarityPart[] = [
     textPart("storeType", weights.storeType, target.storeType, candidate.storeType),
     textPart("city", weights.city, target.city, candidate.city),
-    numberPart(
-      "openHours",
-      weights.openHours,
-      target.openHoursPerWeek,
-      candidate.openHoursPerWeek,
-    ),
+    numberPart("openHours", weights.openHours, target.openHoursPerWeek, candidate.openHoursPerWeek),
     numberPart("area", weights.area, target.areaSqm, candidate.areaSqm),
   ];
   let sum = 0;

@@ -96,7 +96,9 @@ export function looksLikeSecretSupabaseKey(key: string): boolean {
     try {
       // atob finns både i Node och i webbläsaren (Buffer bara i Node).
       const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
-      const payload = JSON.parse(atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "="))) as unknown;
+      const payload = JSON.parse(
+        atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, "=")),
+      ) as unknown;
       return (
         typeof payload === "object" &&
         payload !== null &&

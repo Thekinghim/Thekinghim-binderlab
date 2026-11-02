@@ -6,9 +6,9 @@ import type { Role } from "@/components/shell/nav";
 import type { SyncState } from "@/components/shell/sidebar";
 
 const stores = [
-  { id: "s1", name: "Helsingborg C" },
-  { id: "s2", name: "Malmö Triangeln" },
-  { id: "s3", name: "Lund Nova" },
+  { id: "s1", name: "Helsingborg C", city: "Helsingborg" },
+  { id: "s2", name: "Malmö Triangeln", city: "Malmö" },
+  { id: "s3", name: "Lund Nova", city: "Lund" },
 ];
 const machines = [
   { id: "m1", code: "BL-001", name: "Entré", storeId: "s1" },
@@ -20,16 +20,17 @@ const machines = [
 export function LabShell({
   role,
   syncState,
+  activeHref,
   children,
 }: {
   role: Role;
   syncState: SyncState;
+  activeHref: string;
   children: ReactNode;
 }) {
   return (
     <AppShell
-      crumbs={["Binderlab Sverige AB", "Lönsamhet"]}
-      activeHref="/lonsamhet"
+      activeHref={activeHref}
       role={role}
       user={{ name: "Wilhelm Lindqvist", email: "wilhelm@binderlab.se" }}
       organizations={[

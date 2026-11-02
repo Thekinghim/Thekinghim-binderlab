@@ -273,6 +273,34 @@ function HorizontalBars({
 /* ---------------------------------------------------------------------- */
 
 const MV = { top: 40, right: 8, bottom: 28, left: 36 };
+
+/** Larmnoteringar i stående läge: x-läge inom bredden och rad utan krock. */
+function noteLayout(data: ReadonlyArray<BarDatum>, alertIndex: number | undefined, innerW: number) {
+  const x = bandFor(data.length, innerW);
+  const bw = x.bandwidth();
+  const notes = new Map<number, { t: string; x: number; row: number }>();
+  const rowEnds: number[] = [];
+  data.forEach((d, i) => {
+    if (!(d.flag || i === alertIndex)) return;
+    const t = `! ${d.note ?? "Kräver åtgärd"}`;
+    const w = t.length * CH_MONO;
+    const cx = (x(i) ?? 0) + bw / 2;
+    const nx = Math.max(-MV.left, Math.min(cx - w / 2, innerW + MV.right - w));
+    let row = rowEnds.findIndex((end) => nx >= end + 8);
+    if (row === -1) row = rowEnds.length;
+    rowEnds[row] = nx + w;
+    notes.set(i, { t, x: nx, row });
+  });
+  return { notes, rows: rowEnds.length };
+}
+
+function bandFor(n: number, innerW: number) {
+  return scaleBand<number>()
+    .domain(Array.from({ length: n }, (_, i) => i))
+    .range([0, innerW])
+    .paddingInner(innerW / n < 24 ? 0.2 : 0.38)
+    .paddingOuter(0.1);
+}
 // Geist Mono 10 px versaler med 0,06 em spärrning
 const CH_MONO = 6.8;
 
@@ -295,15 +323,12 @@ function VerticalBars({
 
   const g = useMemo(() => {
     const innerW = Math.max(10, width - MV.left - MV.right);
-    // Larmnoteringen står på en egen rad under x-etiketten
-    const hasNote = data.some((d, i) => d.flag || i === alertIndex);
-    const bottom = MV.bottom + (hasNote ? 14 : 0);
+    // Larmnoteringar står på egna rader under x-etiketterna; krockar två
+    // flyttas den senare en rad ned. Raderna räknas fram nedan.
+    const noteRows = noteLayout(data, alertIndex, innerW);
+    const bottom = MV.bottom + noteRows.rows * 14;
     const innerH = height - MV.top - bottom;
-    const x = scaleBand<number>()
-      .domain(data.map((_, i) => i))
-      .range([0, innerW])
-      .paddingInner(innerW / data.length < 24 ? 0.2 : 0.38)
-      .paddingOuter(0.1);
+    const x = bandFor(data.length, innerW);
     const y = scaleLinear()
       .domain([0, d3max(data, (d) => d.value) ?? 1])
       .range([innerH, 0])
@@ -322,6 +347,7 @@ function VerticalBars({
       avg: mean(data, (d) => d.value) ?? 0,
       labelEvery,
       xLabels,
+      notes: noteRows.notes,
     };
   }, [data, width, height, unit, alertIndex]);
 
@@ -422,22 +448,15 @@ function VerticalBars({
                       {g.xLabels[i]}
                     </AxisText>
                   ) : null}
-                  {isAlert
-                    ? (() => {
-                        // Textbärare för larmet: "! note", hålls inom diagrammets bredd
-                        const t = `! ${d.note ?? "Kräver åtgärd"}`;
-                        const w = t.length * CH_MONO;
-                        const nx = Math.max(
-                          -MV.left,
-                          Math.min(x + bw / 2 - w / 2, g.innerW + MV.right - w),
-                        );
-                        return (
-                          <AxisText x={nx} y={g.innerH + 32} anchor="start">
-                            <tspan style={{ fill: "var(--bl-signal-fg)" }}>{t}</tspan>
-                          </AxisText>
-                        );
-                      })()
-                    : null}
+                  {(() => {
+                    // Textbärare för larmet: "! note", hålls inom diagrammets bredd
+                    const n = g.notes.get(i);
+                    return n ? (
+                      <AxisText x={n.x} y={g.innerH + 32 + n.row * 14} anchor="start">
+                        <tspan style={{ fill: "var(--bl-signal-fg)" }}>{n.t}</tspan>
+                      </AxisText>
+                    ) : null;
+                  })()}
                 </g>
               );
             })}

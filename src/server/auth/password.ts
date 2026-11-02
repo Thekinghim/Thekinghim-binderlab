@@ -61,7 +61,12 @@ export async function hashPassword(password: string): Promise<string> {
   }
   const { N, r, p, keyLength, saltLength } = SCRYPT_PARAMS;
   const salt = randomBytes(saltLength);
-  const hash = await scryptAsync(password, salt, keyLength, { N, r, p, maxmem: memoryFor(N, r, p) });
+  const hash = await scryptAsync(password, salt, keyLength, {
+    N,
+    r,
+    p,
+    maxmem: memoryFor(N, r, p),
+  });
   return ["scrypt", N, r, p, salt.toString("base64"), hash.toString("base64")].join("$");
 }
 

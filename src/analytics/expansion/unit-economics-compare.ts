@@ -106,11 +106,7 @@ export function compareUnitEconomics(
     .filter((u) => u.activeDays > 0)
     .map((u) => ({ id: u.machineId, profitPerDay: perDay(u.profitOre, u.activeDays)! }))
     .sort((a, b) =>
-      a.profitPerDay !== b.profitPerDay
-        ? b.profitPerDay - a.profitPerDay
-        : a.id < b.id
-          ? -1
-          : 1,
+      a.profitPerDay !== b.profitPerDay ? b.profitPerDay - a.profitPerDay : a.id < b.id ? -1 : 1,
     );
   const rankOf = new Map(ranked.map((r, i) => [r.id, i + 1]));
 
@@ -216,4 +212,3 @@ export function compareUnitEconomics(
     }),
   };
 }
-

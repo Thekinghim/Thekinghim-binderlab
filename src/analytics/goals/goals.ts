@@ -246,7 +246,9 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
     let requiredPerDay: number | null = null;
     let unpriced = 0;
     let evidenceMachineIds: string[] = scopeIds.machineIds;
-    const figures = [fig("target", "Mål", goal.target, goal.metric === "active_machines" ? "count" : "ore")];
+    const figures = [
+      fig("target", "Mål", goal.target, goal.metric === "active_machines" ? "count" : "ore"),
+    ];
 
     if (goal.metric === "active_machines") {
       const filter = { storeId: goal.storeId, machineId: goal.machineId };
@@ -276,7 +278,9 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
         const trailing = moneyValue(goal, window).value;
         forecast = actual + mulDivRound(trailing, remaining, opts.trailingDays);
         method = "trailing";
-        figures.push(fig("trailingValue", `Utfall senaste ${opts.trailingDays} dagarna`, trailing, "ore"));
+        figures.push(
+          fig("trailingValue", `Utfall senaste ${opts.trailingDays} dagarna`, trailing, "ore"),
+        );
       }
       if (remaining > 0) requiredPerDay = Math.max(0, ceilDiv(goal.target - actual, remaining));
       figures.push(
@@ -285,7 +289,8 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
         fig("elapsedDays", "Dagar som gått", elapsed, "days"),
         fig("remainingDays", "Dagar kvar", remaining, "days"),
       );
-      if (unpriced > 0) figures.push(fig("unpricedOrders", "Order utan inköpspris", unpriced, "count"));
+      if (unpriced > 0)
+        figures.push(fig("unpricedOrders", "Order utan inköpspris", unpriced, "count"));
     }
 
     const gap = forecast - goal.target;
@@ -303,7 +308,8 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
     let text: string;
     let detail: string;
     if (finished) {
-      const diff = status === "met" ? "målet nått" : `målet missat med ${val(goal.target - actual)}`;
+      const diff =
+        status === "met" ? "målet nått" : `målet missat med ${val(goal.target - actual)}`;
       const pctPart =
         isMoney && goal.target !== 0
           ? ` (${signedPct(mulDivRound(actual - goal.target, 10_000, Math.abs(goal.target)))})`
@@ -317,8 +323,7 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
       text = `${label}: ${val(actual)} av ${val(goal.target)}. Prognos ${val(forecast)} vid månadens slut, ${state}.`;
       detail = "Prognosen bygger på kända placeringar till och med månadens sista dag.";
     } else {
-      const state =
-        status === "on-track" ? "i fas" : `efter med ${val(goal.target - forecast)}`;
+      const state = status === "on-track" ? "i fas" : `efter med ${val(goal.target - forecast)}`;
       const progress = started
         ? `${val(actual)} av ${val(goal.target)} efter ${elapsed} av ${dim} dagar`
         : `månaden har inte börjat, mål ${val(goal.target)}`;

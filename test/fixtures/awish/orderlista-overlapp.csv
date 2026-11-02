@@ -1,0 +1,4 @@
+ID;Date;Name;Order No.;Order Machine;Payment Method;Order Amount;Is Paid;Payment Time;Actions
+9002;2026-11-02 01:05:10;Pokémon TCG: Prismatic Evolutions Booster;42781;BL-001 ICA Lund;Swish;Amount: 189,00;Paid Success;2026-11-02 01:05:30;Details
+9007;2026-11-02 06:00:00;Pokémon TCG: Prismatic Evolutions Booster;42786;BL-001 ICA Lund;Swish;Amount: 189,00;Paid Success;2026-11-02 06:00:05;Details
+9008;2026-11-02 07:00:00;"Pokémon TCG: Stellar Crown; Booster";42787;BL-003 Hemköp Ystad;Card;Amount: 159,00;Paid Success;2026-11-02 07:00:05;Details

@@ -24,8 +24,20 @@ const input: UnitEconomicsInput = {
   settings: NO_TAX,
   period: { start: "2026-09-01", end: "2026-11-30" },
   investments: [
-    { machineId: "m-1", kind: "purchase", amountOre: 2_000_000, date: "2026-09-01", depreciationMonths: 36 },
-    { machineId: "m-1", kind: "installation", amountOre: 100_000, date: "2026-09-01", depreciationMonths: null },
+    {
+      machineId: "m-1",
+      kind: "purchase",
+      amountOre: 2_000_000,
+      date: "2026-09-01",
+      depreciationMonths: 36,
+    },
+    {
+      machineId: "m-1",
+      kind: "installation",
+      amountOre: 100_000,
+      date: "2026-09-01",
+      depreciationMonths: null,
+    },
   ],
   machineIds: ["m-9"],
 };
@@ -56,7 +68,11 @@ describe("compareUnitEconomics", () => {
       profitPerMonthOre: 87_967,
       investmentOre: 2_100_000,
     });
-    expect(row("m-2")).toMatchObject({ activeDays: 15, revenuePerDayOre: 5_900, profitPerDayOre: 3_900 });
+    expect(row("m-2")).toMatchObject({
+      activeDays: 15,
+      revenuePerDayOre: 5_900,
+      profitPerDayOre: 3_900,
+    });
   });
 
   it("återbetalning och avkastning bygger på domänens enhetsekonomi", () => {
@@ -83,9 +99,7 @@ describe("compareUnitEconomics", () => {
 
   it("sammanfattning med siffror och underlag", () => {
     expect(res.bestMachineId).toBe("m-2");
-    expect(res.text).toBe(
-      "Automat 2 ger mest vinst per dag: 39 kr mot snittet 30 kr (+28 %).",
-    );
+    expect(res.text).toBe("Automat 2 ger mest vinst per dag: 39 kr mot snittet 30 kr (+28 %).");
     expect(res.evidence.machineIds).toEqual(["m-1", "m-2", "m-9"]);
     expect(res.evidence.figures.find((f) => f.key === "machineDays")!.value).toBe(106);
     expect(row("m-1").evidence.figures.find((f) => f.key === "paybackTenths")!.value).toBe(239);
@@ -102,12 +116,26 @@ describe("compareUnitEconomics", () => {
   });
 
   it("en automat: ingen jämförelse mot snitt i texten", () => {
-    const one = compareUnitEconomics({ ...input, orders: input.orders.filter((o) => o.machineId === "m-1"), placements: input.placements.slice(0, 1), machineIds: [] }, machines);
+    const one = compareUnitEconomics(
+      {
+        ...input,
+        orders: input.orders.filter((o) => o.machineId === "m-1"),
+        placements: input.placements.slice(0, 1),
+        machineIds: [],
+      },
+      machines,
+    );
     expect(one.text).toBe("Automat 1 ger 29 kr vinst per dag.");
   });
 
   it("inga automater", () => {
-    const none = compareUnitEconomics({ ...input, orders: [], placements: [], investments: [], machineIds: [] });
+    const none = compareUnitEconomics({
+      ...input,
+      orders: [],
+      placements: [],
+      investments: [],
+      machineIds: [],
+    });
     expect(none.rows).toEqual([]);
     expect(none.text).toBe("Ingen automat var placerad under perioden.");
     expect(none.averageProfitPerDayOre).toBeNull();

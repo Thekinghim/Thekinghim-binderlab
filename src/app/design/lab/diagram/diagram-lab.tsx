@@ -170,7 +170,7 @@ export function DiagramLab({ theme, gray }: { theme: "dark" | "light" | "print";
           </Block>
           <Block id="stapel-staende" title="Stapel · stående">
             <BarChart
-              data={[...bars.slice(0, 6), ...bars.filter((b) => b.flag).slice(0, 1)]}
+              data={bars.filter((b, i) => i < 6 || b.flag).slice(0, 8)}
               format={formatSek}
               orientation="vertical"
               summary="Intäkt per automat."

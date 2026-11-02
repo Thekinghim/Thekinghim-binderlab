@@ -1,5 +1,5 @@
-import { ComingSoonPage } from "@/components/shell/coming-soon";
-import type { Role } from "@/components/shell/nav";
+import { shellRoutes, type Role, type RouteId } from "@/components/shell/nav";
+import { RoutePlaceholder } from "@/app/(app)/placeholder";
 import { parsePeriod, parseScope, toIsoDate } from "@/components/shell/period-state";
 import { LabShell } from "./lab-shell";
 
@@ -16,12 +16,15 @@ export default async function Page({
   const role = ROLES.includes(sp.roll as Role) ? (sp.roll as Role) : "owner";
   const p = parsePeriod(sp, { now: new Date("2026-11-02T09:30:00+01:00") });
   const scope = parseScope(sp);
+  const page =
+    shellRoutes.find((r) => r.id === sp.sida) ?? shellRoutes.find((r) => r.id === "lonsamhet")!;
   return (
     <LabShell
       role={role}
       syncState={sp.synk === "fel" ? "failed" : sp.synk === "gammal" ? "stale" : "ok"}
+      activeHref={page.href}
     >
-      <ComingSoonPage title="Lönsamhet" lead="Per automat, butik och period." phase={4} />
+      <RoutePlaceholder id={page.id as RouteId} />
       <div className="mx-auto max-w-[1280px] px-4 md:px-8">
         <p className="label text-subtle">Servern läste (parsePeriod)</p>
         <p className="meta tnum mt-2 text-muted">

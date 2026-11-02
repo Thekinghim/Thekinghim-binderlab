@@ -26,7 +26,10 @@ function sourceFiles(): string[] {
     readdirSync(join(ROOT, d))
       .filter(
         (f) =>
-          f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.includes(".config.") && f !== "test-fixtures.ts",
+          f.endsWith(".ts") &&
+          !f.endsWith(".test.ts") &&
+          !f.includes(".config.") &&
+          f !== "test-fixtures.ts",
       )
       .map((f) => `${d}/${f}`),
   );
@@ -62,9 +65,23 @@ describe("oberoende av processens tidszon", () => {
   function snapshot(): string {
     const src = octoberSources();
     return JSON.stringify([
-      newMachineScenario({ sources: src, stores: STORES, likeStoreId: "s-1", investment: INVESTMENT }),
+      newMachineScenario({
+        sources: src,
+        stores: STORES,
+        likeStoreId: "s-1",
+        investment: INVESTMENT,
+      }),
       expansionPipeline({
-        leads: [{ id: "l", name: "Lead", storeType: "livs", city: "Malmö", openHoursPerWeek: 90, areaSqm: 300 }],
+        leads: [
+          {
+            id: "l",
+            name: "Lead",
+            storeType: "livs",
+            city: "Malmö",
+            openHoursPerWeek: 90,
+            areaSqm: 300,
+          },
+        ],
         stores: STORES,
         sources: src,
         period: OCTOBER,
@@ -77,14 +94,26 @@ describe("oberoende av processens tidszon", () => {
         orders: [...src.orders, ...dailyOrders("m-1", "2026-11-01", 10)],
         goals: [
           { id: "g", month: "2026-11", metric: "revenue", target: 100_000, scope: "organization" },
-          { id: "h", month: "2026-11", metric: "active_machines", target: 4, scope: "organization" },
+          {
+            id: "h",
+            month: "2026-11",
+            metric: "active_machines",
+            target: 4,
+            scope: "organization",
+          },
         ],
         asOf: "2026-11-10",
       }),
       binderlabEffect({
         ...src,
         baselines: [
-          { id: "b", metric: "profit_per_machine_month", value: 50_000, unit: "ore", scope: "organization" },
+          {
+            id: "b",
+            metric: "profit_per_machine_month",
+            value: 50_000,
+            unit: "ore",
+            scope: "organization",
+          },
         ],
         months: ["2026-10", "2026-11"],
         asOf: "2026-11-10",

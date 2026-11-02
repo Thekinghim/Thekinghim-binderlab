@@ -1,7 +1,7 @@
 "use client";
 
 import { sum } from "d3-array";
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { formatPercent } from "@/lib/format";
 import { useMeasure } from "@/lib/hooks/use-measure";
@@ -57,19 +57,7 @@ export function ShareBar({
   const emph = highlightIndex ?? largest;
   const mode = variant ?? (showList ? "list" : "bar");
 
-  if (mode === "bar") {
-    return (
-      <CompactShare
-        segments={segments}
-        total={total}
-        emph={emph}
-        alertIndex={alertIndex}
-        summary={summary}
-      />
-    );
-  }
-
-  return (
+  const list = (
     <ChartFigure summary={summary}>
       <ul className="flex flex-col" aria-label={summary} onPointerLeave={() => setActive(null)}>
         {segments.map((s, i) => {
@@ -131,14 +119,93 @@ export function ShareBar({
       </ul>
     </ChartFigure>
   );
+
+  if (mode === "bar") {
+    return (
+      <CompactShare
+        segments={segments}
+        total={total}
+        emph={emph}
+        alertIndex={alertIndex}
+        summary={summary}
+        fallback={list}
+      />
+    );
+  }
+
+  return list;
+}
+
+type Placed = {
+  s: ShareSegment;
+  i: number;
+  main: string;
+  note: string;
+  isAlert: boolean;
+  tick: number;
+  left: boolean;
+  span: [number, number];
+  level: number;
+};
+
+/**
+ * Trappa av etiketter: varje etikett har en ledlinje från segmentets mitt.
+ * Täcker etikett A ledlinjen till B (eller krockar de) måste A ligga på en
+ * djupare nivå än B, annars korsar ledlinjen texten. Nivån blir längsta vägen
+ * i det beroendet. Cykel = ingen giltig trappa i den riktningen.
+ */
+function stairs(
+  items: ReadonlyArray<Omit<Placed, "left" | "span" | "level">>,
+  widths: ReadonlyArray<number>,
+  width: number,
+  dir: "right" | "left",
+): Placed[] | null {
+  const GAP = 8;
+  const placed = items.map((it, k) => {
+    const w = widths[k] ?? 0;
+    // Riktning: önskad, men aldrig utanför stapelns bredd
+    const left = dir === "left" ? it.tick - w >= 0 : it.tick + w > width && it.tick - w >= 0;
+    const span: [number, number] = left ? [it.tick - w, it.tick] : [it.tick, it.tick + w];
+    return { ...it, left, span, level: 0 };
+  });
+  const n = placed.length;
+  const deeper: number[][] = placed.map(() => []);
+  for (let a = 0; a < n; a++) {
+    for (let b = 0; b < n; b++) {
+      if (a === b) continue;
+      const A = placed[a];
+      const B = placed[b];
+      if (!A || !B) continue;
+      const covers = B.tick >= A.span[0] - GAP && B.tick <= A.span[1] + GAP;
+      const overlap = A.span[0] < B.span[1] + GAP && B.span[0] < A.span[1] + GAP;
+      // Krock utan täckning: senare etikett läggs djupare
+      if (covers || (overlap && a > b)) deeper[a]?.push(b);
+    }
+  }
+  const state = new Array<number>(n).fill(0); // 0 ny, 1 pågår, 2 klar
+  const depth = (k: number): number => {
+    if (state[k] === 1) return Infinity;
+    const p = placed[k];
+    if (!p) return 0;
+    if (state[k] === 2) return p.level;
+    state[k] = 1;
+    let lv = 0;
+    for (const j of deeper[k] ?? []) lv = Math.max(lv, depth(j) + 1);
+    state[k] = 2;
+    p.level = lv;
+    return lv;
+  };
+  for (let k = 0; k < n; k++) if (!Number.isFinite(depth(k))) return null;
+  return placed;
 }
 
 /**
  * Kompakt 100 %-stapel. Varje segment får en etikett under stapeln med en
- * 1 px ledlinje till segmentets början. Etiketter som inte ryms bredvid
- * varandra läggs på nästa nivå (högst tre), så att ingen etikett hamnar i en
- * separat förklaringsrad. Segment som kräver åtgärd skrafferas i signal med
- * 2 px ram och får alltid "! note" som text, så att larmet syns i svartvitt.
+ * 1 px ledlinje från segmentets mitt, ordnade som en trappa så att ingen
+ * ledlinje korsar en etikett och ingen etikett hamnar i en separat
+ * förklaringsrad. Ryms det inte inom fyra nivåer visas listan i stället.
+ * Segment som kräver åtgärd skrafferas i signal med 2 px ram och får alltid
+ * "! note" som text, så att larmet syns även i svartvitt.
  */
 function CompactShare({
   segments,
@@ -146,47 +213,61 @@ function CompactShare({
   emph,
   alertIndex,
   summary,
+  fallback,
 }: {
   segments: ReadonlyArray<ShareSegment>;
   total: number;
   emph: number;
   alertIndex?: number;
   summary: string;
+  fallback: ReactNode;
 }) {
   const [ref, width] = useMeasure<HTMLDivElement>();
   const hatchId = useId().replace(/:/g, "");
   const BAR = 10;
   const GAP = 2;
   const LEVEL = 18;
-  // Geist Mono 12 px ≈ 7,2 px per tecken
+  const MAX_LEVELS = 4;
+  // Geist Mono 12 px ≈ 7,2 px per tecken, plus 6 px avstånd till ledlinjen
   const CH12 = 7.2;
   const shares = segments.map((s) => s.value / total);
   const starts = shares.map((_, i) => sum(shares.slice(0, i)));
 
-  const levelEnds: number[] = [];
-  const segs = segments.map((s, i) => {
+  const items = segments.map((s, i) => {
     const share = shares[i] ?? 0;
     const start = starts[i] ?? 0;
     const isAlert = !!s.flag || i === alertIndex;
     const note = isAlert ? `! ${s.note ?? "Kräver åtgärd"}` : "";
     const main = `${s.label} ${pct(share)}`;
-    const w = (main.length + (note ? note.length + 1 : 0)) * CH12 + 8;
-    const tick = Math.min(width - 1, start * width);
-    // Högerkanten: etiketten slutar vid ledlinjen i stället för att klippas
-    const flip = tick + w > width;
-    const left = flip ? tick - w : tick;
-    let level = levelEnds.findIndex((end) => left >= end + 8);
-    if (level === -1) level = Math.min(levelEnds.length, 2);
-    levelEnds[level] = Math.max(levelEnds[level] ?? -Infinity, left + w);
-    return { s, i, share, start, main, note, isAlert, tick, flip, level };
+    const tick = Math.round((start + share / 2) * width) + 0.5;
+    return { s, i, main, note, isAlert, tick };
   });
-  const levels = Math.max(1, levelEnds.length);
+  const widths = items.map(
+    (it) => (it.main.length + (it.note ? it.note.length + 1 : 0)) * CH12 + 6,
+  );
+  const layout = width
+    ? [stairs(items, widths, width, "right"), stairs(items, widths, width, "left")]
+        .filter((l): l is Placed[] => l !== null)
+        .map((l) => ({ l, levels: 1 + Math.max(0, ...l.map((p) => p.level)) }))
+        .sort((a, b) => a.levels - b.levels)[0]
+    : undefined;
+
+  // Mätytan finns alltid kvar, så att stapeln kommer tillbaka när ytan blir bredare
+  if (width && (!layout || layout.levels > MAX_LEVELS))
+    return (
+      <div ref={ref} className="w-full">
+        {fallback}
+      </div>
+    );
+  const placed = layout?.l ?? [];
+  const levels = layout?.levels ?? 1;
 
   // Segmentens rektanglar med 2 px mellanrum
-  const rects = segs.map(({ start, share }) => {
+  const rects = segments.map((_, i) => {
+    const start = starts[i] ?? 0;
+    const share = shares[i] ?? 0;
     const x = start * width + (start > 0 ? GAP / 2 : 0);
-    const w = Math.max(2, share * width - GAP);
-    return { x, w };
+    return { x, w: Math.max(2, share * width - GAP) };
   });
 
   return (
@@ -196,8 +277,9 @@ function CompactShare({
           <defs>
             <HatchPattern id={hatchId} tone="signal" />
           </defs>
-          {segs.map(({ s, i, isAlert }) => {
+          {segments.map((s, i) => {
             const r = rects[i] ?? { x: 0, w: 0 };
+            const isAlert = !!s.flag || i === alertIndex;
             return isAlert ? (
               <rect
                 key={s.label}
@@ -216,29 +298,32 @@ function CompactShare({
                 width={r.w}
                 height={BAR}
                 style={{
-                  fill: i === emph ? "var(--bl-data-1)" : i % 2 ? "var(--bl-data-3)" : "var(--bl-data-4)",
+                  fill:
+                    i === emph
+                      ? "var(--bl-data-1)"
+                      : i % 2
+                        ? "var(--bl-data-3)"
+                        : "var(--bl-data-4)",
                 }}
               />
             );
           })}
         </svg>
-        {segs.map(({ s, i, main, note, isAlert, tick, flip, level }) => {
-          const top = BAR + 6 + level * LEVEL;
+        {placed.map(({ s, i, main, note, isAlert, tick, left, level }) => {
+          const top = BAR + 4 + level * LEVEL;
+          const strong = i === emph || isAlert;
           return (
             <div key={s.label} aria-hidden>
               <span
-                className={cn("absolute w-px", i === emph || isAlert ? "bg-fg" : "bg-line-strong")}
-                style={{ left: tick, top: BAR + 2, height: top - BAR - 2 + 14 }}
+                className={cn("absolute w-px", strong ? "bg-fg" : "bg-line-strong")}
+                style={{ left: tick - 0.5, top: BAR + 2, height: top - BAR - 2 + 15 }}
               />
               <span
                 className={cn(
                   "tnum meta absolute whitespace-nowrap",
-                  i === emph || isAlert ? "text-fg" : "text-subtle",
+                  strong ? "text-fg" : "text-subtle",
                 )}
-                style={{
-                  top,
-                  ...(flip ? { right: width - tick + 6 } : { left: tick + 6 }),
-                }}
+                style={{ top, ...(left ? { right: width - tick + 6 } : { left: tick + 6 }) }}
               >
                 {main}
                 {note ? <span className="ml-2 text-signal-fg">{note}</span> : null}

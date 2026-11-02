@@ -12,8 +12,7 @@ import type { AuthSession } from "./types";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type SupabaseTokenCheck =
-  | { ok: true; session: AuthSession }
-  | { ok: false; reason: "expired" | "invalid" };
+  { ok: true; session: AuthSession } | { ok: false; reason: "expired" | "invalid" };
 
 export function supabaseIssuer(supabaseUrl: string): string {
   return `${supabaseUrl.replace(/\/+$/, "")}/auth/v1`;

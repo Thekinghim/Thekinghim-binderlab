@@ -60,9 +60,10 @@ export const STORES: StoreProfile[] = [
   },
 ];
 
-let seq = 0;
-
-/** `perDay` order per dag från `from` i `days` dagar. */
+/**
+ * `perDay` order per dag från `from` i `days` dagar. Id:n bygger på automat, titel, dag och
+ * löpnummer, så att samma anrop alltid ger samma order.
+ */
 export function dailyOrders(
   machineId: string,
   from: string,
@@ -73,16 +74,10 @@ export function dailyOrders(
 ): OrderLine[] {
   const out: OrderLine[] = [];
   for (let i = 0; i < days; i++) {
+    const date = addDays(from, i);
     for (let k = 0; k < perDay; k++) {
-      seq++;
-      out.push({
-        id: `x-${String(seq).padStart(6, "0")}`,
-        externalId: String(seq),
-        titleId,
-        machineId,
-        businessDate: addDays(from, i),
-        amountOre,
-      });
+      const id = `${machineId}:${titleId}:${date}:${k}`;
+      out.push({ id, externalId: id, titleId, machineId, businessDate: date, amountOre });
     }
   }
   return out;

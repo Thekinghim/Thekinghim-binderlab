@@ -114,7 +114,10 @@ export function paybackTenths(investmentOre: number, profitPerMonth: Ratio): num
 /** Avkastning per år i bp: round(vinst per dag × 365 × 10 000 / investering). `null` utan investering. */
 export function annualReturnBp(investmentOre: number, profitPerDay: Ratio): number | null {
   if (investmentOre === 0) return null;
-  return profitPerDay.mul(DAYS_PER_YEAR * BP_SCALE).div(investmentOre).round();
+  return profitPerDay
+    .mul(DAYS_PER_YEAR * BP_SCALE)
+    .div(investmentOre)
+    .round();
 }
 
 /** Säkerhet: hög med ≥ 3 platser som alla är ≥ 80 % lika, medel med ≥ 2 och ≥ 70 %, annars låg. */
@@ -209,7 +212,13 @@ export function estimateSite(args: SiteEstimateArgs): SiteEstimate {
   const chosen: { sim: (typeof ranked)[number]; history: SiteHistory }[] = [];
   const excluded: ExcludedSite[] = [];
   const exclude = (storeId: string, scoreBp: number, reason: ExcludedSite["reason"], why: string) =>
-    excluded.push({ storeId, name: nameOf(storeId), scoreBp, reason, text: `${nameOf(storeId)}: ${why}` });
+    excluded.push({
+      storeId,
+      name: nameOf(storeId),
+      scoreBp,
+      reason,
+      text: `${nameOf(storeId)}: ${why}`,
+    });
 
   for (const sim of ranked) {
     const h = historyById.get(sim.storeId)!;
@@ -358,7 +367,9 @@ export function estimateSite(args: SiteEstimateArgs): SiteEstimate {
 
   const confidence = estimateConfidence(basis.map((b) => b.similarity.scoreBp));
   const basisNames = basis.map((b, i) =>
-    i === 0 ? `${b.name} (${pct(b.similarity.scoreBp)} lik)` : `${b.name} (${pct(b.similarity.scoreBp)})`,
+    i === 0
+      ? `${b.name} (${pct(b.similarity.scoreBp)} lik)`
+      : `${b.name} (${pct(b.similarity.scoreBp)})`,
   );
   const machineDays = basis.reduce((s, b) => s + b.machineDays, 0);
   const text = `Uppskattning för ${targetName}: ${rangeText(profitPerMonthOre)} vinst per månad, ${paybackText(payback)}. Bygger på ${listText(basisNames)}.`;
@@ -380,7 +391,12 @@ export function estimateSite(args: SiteEstimateArgs): SiteEstimate {
     figures.push(
       fig(`site:${b.storeId}:scoreBp`, `${b.name}: likhet`, b.similarity.scoreBp, "bp"),
       fig(`site:${b.storeId}:machineDays`, `${b.name}: automatdagar`, b.machineDays, "days"),
-      fig(`site:${b.storeId}:profitPerMonthOre`, `${b.name}: vinst per månad`, b.profitPerMonthOre, "ore"),
+      fig(
+        `site:${b.storeId}:profitPerMonthOre`,
+        `${b.name}: vinst per månad`,
+        b.profitPerMonthOre,
+        "ore",
+      ),
     );
   }
 

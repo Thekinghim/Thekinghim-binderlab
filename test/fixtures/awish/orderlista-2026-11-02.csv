@@ -1,0 +1,8 @@
+﻿ID,Date,Name,Order No.,Order Machine,Payment Method,Order Amount,Is Paid,Payment Time,Actions
+9001,2026-11-02 00:16:41,"Pokémon TCG: Surging Sparks Booster",42780,BL-001 ICA Lund,WeChat Pay,"Amount: 170.00",Paid Success,2026-11-02 00:17:00,Details
+9002,2026-11-02 01:05:10,"Pokémon TCG: Prismatic Evolutions Booster",42781,BL-001 ICA Lund,Swish,"Amount: 189.00",Paid Success,2026-11-02 01:05:30,Details
+9003,2026-11-02 02:00:00,"Pokémon TCG: Surging Sparks Booster",42782,BL-002 Coop Malmö,Card,"Amount: 170.00",Unpaid,,Details
+
+9004,2026-11-02 03:10:00,"Pokémon TCG:  Surging   Sparks Booster",42783,BL-002 Coop Malmö,Card,"Amount: 170.00",Paid Success,2026-11-02 03:10:20,Details
+9005,2026-11-02 04:00:00,"Pokémon TCG: Surging Sparks Booster",42784,BL-002 Coop Malmö,Card,"Amount: abc",Paid Success,2026-11-02 04:00:10,Details
+9006,2026-11-02 05:00:00,"Pokémon TCG: Prismatic Evolutions Booster",42785,BL-001 ICA Lund,Swish,"Amount: 189.00",Paid Success,2026-13-02 05:00:10,Details

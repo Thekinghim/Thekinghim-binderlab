@@ -114,11 +114,7 @@ export interface BasisSite {
 
 /** Varför en butik inte är med i underlaget. */
 export type ExclusionReason =
-  | "excluded"
-  | "short-history"
-  | "unpriced"
-  | "low-similarity"
-  | "beyond-max";
+  "excluded" | "short-history" | "unpriced" | "low-similarity" | "beyond-max";
 
 /** En butik som inte togs med. */
 export interface ExcludedSite {

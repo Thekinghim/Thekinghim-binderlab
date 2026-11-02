@@ -13,13 +13,7 @@ import {
 } from "./estimate";
 import { expansionPipeline, type ExpansionLead } from "./pipeline";
 import { siteHistories } from "./site-history";
-import {
-  dailyOrders,
-  INVESTMENT,
-  OCTOBER,
-  octoberSources,
-  STORES,
-} from "./test-fixtures";
+import { dailyOrders, INVESTMENT, OCTOBER, octoberSources, STORES } from "./test-fixtures";
 
 const histories = siteHistories(octoberSources());
 const target = STORES[0]!;
@@ -65,11 +59,20 @@ describe("siteHistories", () => {
     const res = siteHistories({
       ...src,
       placements: [...src.placements, placement("m-9", "s-9", "2026-10-25", "2026-11-30")],
-      agreements: [...src.agreements, agreement("s-9", "2026-10-25", null, { monthlyRentOre: 31_000 })],
+      agreements: [
+        ...src.agreements,
+        agreement("s-9", "2026-10-25", null, { monthlyRentOre: 31_000 }),
+      ],
     });
     const s9 = res.find((x) => x.storeId === "s-9")!;
     // 25–31 okt. = 7 dagar; hyra 310 kr × 7/31 = 70 kr, ej fördelad men en kostnad.
-    expect(s9).toMatchObject({ machineDays: 7, orders: 0, revenueOre: 0, rentOre: 7_000, profitOre: -7_000 });
+    expect(s9).toMatchObject({
+      machineDays: 7,
+      orders: 0,
+      revenueOre: 0,
+      rentOre: 7_000,
+      profitOre: -7_000,
+    });
     expect(s9.unpricedShareBp).toBeNull();
   });
 
@@ -239,7 +242,9 @@ describe("estimateSite", () => {
     expect(e.profitPerMonthOre).toBeNull();
     expect(e.paybackTenths).toBeNull();
     expect(e.confidence).toBeNull();
-    expect(e.text).toMatch(/^Uppskattning saknas för en butik som liknar Ica Nära Söder: ingen befintlig butik uppfyller kraven/);
+    expect(e.text).toMatch(
+      /^Uppskattning saknas för en butik som liknar Ica Nära Söder: ingen befintlig butik uppfyller kraven/,
+    );
     expect(e.detail).toMatch(/^Mest lik: /);
   });
 
@@ -279,11 +284,49 @@ describe("estimateSite", () => {
 
 describe("expansionPipeline", () => {
   const leads: ExpansionLead[] = [
-    { id: "l-3", name: "Kiosken", storeType: "kiosk", city: "Göteborg", openHoursPerWeek: 168, areaSqm: 20 },
-    { id: "l-1", name: "Willys Hyllie", storeType: "livs", city: "Malmö", openHoursPerWeek: 84, areaSqm: 350 },
-    { id: "l-2", name: "Ica Kvarnby", storeType: "livs", city: "Malmö", openHoursPerWeek: 98, areaSqm: 400, stage: "contacted" },
-    { id: "l-4", name: "Nej tack", storeType: "livs", city: "Malmö", openHoursPerWeek: 98, areaSqm: 400, stage: "rejected" },
-    { id: "l-5", name: "Ica Nära Söder, automat 2", storeType: "livs", city: "Malmö", openHoursPerWeek: 98, areaSqm: 400, storeId: "s-1" },
+    {
+      id: "l-3",
+      name: "Kiosken",
+      storeType: "kiosk",
+      city: "Göteborg",
+      openHoursPerWeek: 168,
+      areaSqm: 20,
+    },
+    {
+      id: "l-1",
+      name: "Willys Hyllie",
+      storeType: "livs",
+      city: "Malmö",
+      openHoursPerWeek: 84,
+      areaSqm: 350,
+    },
+    {
+      id: "l-2",
+      name: "Ica Kvarnby",
+      storeType: "livs",
+      city: "Malmö",
+      openHoursPerWeek: 98,
+      areaSqm: 400,
+      stage: "contacted",
+    },
+    {
+      id: "l-4",
+      name: "Nej tack",
+      storeType: "livs",
+      city: "Malmö",
+      openHoursPerWeek: 98,
+      areaSqm: 400,
+      stage: "rejected",
+    },
+    {
+      id: "l-5",
+      name: "Ica Nära Söder, automat 2",
+      storeType: "livs",
+      city: "Malmö",
+      openHoursPerWeek: 98,
+      areaSqm: 400,
+      storeId: "s-1",
+    },
   ];
 
   it("rangordnar efter återbetalningstid, leads utan underlag sist", () => {
@@ -320,7 +363,13 @@ describe("expansionPipeline", () => {
 
   it("leadens egen investering och villkor används", () => {
     const res = expansionPipeline({
-      leads: [{ ...leads[2]!, investment: { purchaseOre: 1_000_000, installationOre: 0 }, terms: { commissionBp: 0, monthlyRentOre: 0 } }],
+      leads: [
+        {
+          ...leads[2]!,
+          investment: { purchaseOre: 1_000_000, installationOre: 0 },
+          terms: { commissionBp: 0, monthlyRentOre: 0 },
+        },
+      ],
       stores: STORES,
       histories,
       period: OCTOBER,
@@ -352,7 +401,13 @@ describe("expansionPipeline", () => {
 
   it("tom lista ger tomt resultat", () => {
     expect(
-      expansionPipeline({ leads: [], stores: STORES, histories, period: OCTOBER, defaultInvestment: INVESTMENT }),
+      expansionPipeline({
+        leads: [],
+        stores: STORES,
+        histories,
+        period: OCTOBER,
+        defaultInvestment: INVESTMENT,
+      }),
     ).toEqual([]);
   });
 });
@@ -360,7 +415,10 @@ describe("expansionPipeline", () => {
 describe("prislista i underlaget påverkar inte urvalet", () => {
   it("ett senare inköpspris efter perioden ändrar inget", () => {
     const src = octoberSources();
-    const h2 = siteHistories({ ...src, prices: [...src.prices, price("t-a", 9_999, "2026-11-01")] });
+    const h2 = siteHistories({
+      ...src,
+      prices: [...src.prices, price("t-a", 9_999, "2026-11-01")],
+    });
     expect(h2).toEqual(histories);
   });
 });

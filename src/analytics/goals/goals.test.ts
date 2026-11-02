@@ -87,8 +87,17 @@ describe("goalProgress: intäkt och vinst", () => {
         goal({ id: "b", month: "2026-10", metric: "revenue", target: 160_000 }),
       ]),
     );
-    expect(res[0]).toMatchObject({ actual: 151_900, forecast: 151_900, forecastMethod: "final", status: "met", remainingDays: 0, requiredPerDay: null });
-    expect(res[0]!.text).toBe("Intäkt oktober: 1\u00a0519\u00a0kr av 1\u00a0500\u00a0kr, målet nått (+1\u00a0%).");
+    expect(res[0]).toMatchObject({
+      actual: 151_900,
+      forecast: 151_900,
+      forecastMethod: "final",
+      status: "met",
+      remainingDays: 0,
+      requiredPerDay: null,
+    });
+    expect(res[0]!.text).toBe(
+      "Intäkt oktober: 1\u00a0519\u00a0kr av 1\u00a0500\u00a0kr, målet nått (+1\u00a0%).",
+    );
     expect(res[1]!.status).toBe("missed");
     expect(res[1]!.text).toBe(
       "Intäkt oktober: 1\u00a0519\u00a0kr av 1\u00a0600\u00a0kr, målet missat med 81\u00a0kr (−5\u00a0%).",
@@ -96,9 +105,19 @@ describe("goalProgress: intäkt och vinst", () => {
   });
 
   it("månad som inte har börjat: prognos från de senaste 28 dagarna", () => {
-    const [p] = goalProgress(input([goal({ month: "2026-12", metric: "revenue", target: 100_000 })]));
+    const [p] = goalProgress(
+      input([goal({ month: "2026-12", metric: "revenue", target: 100_000 })]),
+    );
     // 28 order à 4 900 = 137 200 → × 31 / 28 = 151 900
-    expect(p).toMatchObject({ actual: 0, measuredThrough: null, elapsedDays: 0, forecast: 151_900, forecastMethod: "trailing", status: "on-track", averagePerDay: null });
+    expect(p).toMatchObject({
+      actual: 0,
+      measuredThrough: null,
+      elapsedDays: 0,
+      forecast: 151_900,
+      forecastMethod: "trailing",
+      status: "on-track",
+      averagePerDay: null,
+    });
     expect(p!.text).toBe(
       "Intäkt december: månaden har inte börjat, mål 1\u00a0000\u00a0kr. Prognos 1\u00a0519\u00a0kr, i fas.",
     );
@@ -124,9 +143,13 @@ describe("goalProgress: intäkt och vinst", () => {
 
   it("intäkt räknar även order utan inköpspris, vinsten inte", () => {
     const res = goalProgress(
-      input([goal({ metric: "revenue", target: 1 }), goal({ metric: "profit", target: 1 })], "2026-11-10", {
-        prices: [price("t-a", 2000, "2026-11-06")],
-      }),
+      input(
+        [goal({ metric: "revenue", target: 1 }), goal({ metric: "profit", target: 1 })],
+        "2026-11-10",
+        {
+          prices: [price("t-a", 2000, "2026-11-06")],
+        },
+      ),
     );
     expect(res[0]!.actual).toBe(49_000);
     expect(res[1]).toMatchObject({ actual: 5 * 2_900, unpricedOrders: 5 });
@@ -143,8 +166,16 @@ describe("goalProgress: automater i drift", () => {
       ]),
     );
     const org = res.find((r) => r.goalId === "org")!;
-    expect(org).toMatchObject({ actual: 1, forecast: 2, forecastMethod: "placements", status: "on-track", requiredPerDay: null });
-    expect(org.text).toBe("Automater i drift november: 1 av 2. Prognos 2 vid månadens slut, i fas.");
+    expect(org).toMatchObject({
+      actual: 1,
+      forecast: 2,
+      forecastMethod: "placements",
+      status: "on-track",
+      requiredPerDay: null,
+    });
+    expect(org.text).toBe(
+      "Automater i drift november: 1 av 2. Prognos 2 vid månadens slut, i fas.",
+    );
     expect(org.evidence.machineIds).toEqual(["m-1", "m-2"]);
     const s1 = res.find((r) => r.goalId === "s1")!;
     expect(s1).toMatchObject({ actual: 1, forecast: 1, status: "behind", gap: -1 });
@@ -152,7 +183,9 @@ describe("goalProgress: automater i drift", () => {
   });
 
   it("avslutad månad räknar månadens sista dag", () => {
-    const [p] = goalProgress(input([goal({ month: "2026-10", metric: "active_machines", target: 1 })]));
+    const [p] = goalProgress(
+      input([goal({ month: "2026-10", metric: "active_machines", target: 1 })]),
+    );
     expect(p).toMatchObject({ actual: 1, status: "met", forecastMethod: "final" });
     expect(p!.detail).toBe("Antal placerade automater 31\u00a0okt.");
   });
@@ -184,12 +217,22 @@ describe("goalProgress: indata och ordning", () => {
   });
 
   it("ogiltiga mål kastar", () => {
-    expect(() => goalProgress(input([goal({ metric: "revenue", target: -1 })]))).toThrow(DomainError);
-    expect(() => goalProgress(input([goal({ metric: "revenue", target: 1.5 })]))).toThrow(DomainError);
-    expect(() => goalProgress(input([goal({ metric: "revenue", target: 1, scope: "store" })]))).toThrow(DomainError);
-    expect(() => goalProgress(input([goal({ metric: "revenue", target: 1, month: "2026-13" })]))).toThrow(DomainError);
+    expect(() => goalProgress(input([goal({ metric: "revenue", target: -1 })]))).toThrow(
+      DomainError,
+    );
+    expect(() => goalProgress(input([goal({ metric: "revenue", target: 1.5 })]))).toThrow(
+      DomainError,
+    );
+    expect(() =>
+      goalProgress(input([goal({ metric: "revenue", target: 1, scope: "store" })])),
+    ).toThrow(DomainError);
+    expect(() =>
+      goalProgress(input([goal({ metric: "revenue", target: 1, month: "2026-13" })])),
+    ).toThrow(DomainError);
     expect(() => goalProgress(input([], "2026-11-31"))).toThrow(DomainError);
-    expect(() => goalProgress(input([], "2026-11-10", { options: { trailingDays: 0 } }))).toThrow(DomainError);
+    expect(() => goalProgress(input([], "2026-11-10", { options: { trailingDays: 0 } }))).toThrow(
+      DomainError,
+    );
   });
 
   it("negativt vinstmål är tillåtet", () => {
@@ -200,7 +243,9 @@ describe("goalProgress: indata och ordning", () => {
   it("prognosen räknar med dagshyra för delmånad", () => {
     const [p] = goalProgress(
       input([goal({ metric: "profit", target: 0 })], "2026-11-10", {
-        agreements: [agreement("s-1", "2026-01-01", null, { commissionBp: 0, monthlyRentOre: 30_000 })],
+        agreements: [
+          agreement("s-1", "2026-01-01", null, { commissionBp: 0, monthlyRentOre: 30_000 }),
+        ],
       }),
     );
     // Hyra 10/30 × 300 kr = 100 kr → vinst 290 − 100 = 190 kr; prognos × 3 = 570 kr = 870 − 300.

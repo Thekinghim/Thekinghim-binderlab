@@ -13,6 +13,7 @@ import {
   numberRoutes,
   OrgSwitcher,
   SyncStatus,
+  syncHref,
   TodoCounter,
   UserMenu,
   WithCarriedQuery,
@@ -36,7 +37,8 @@ export function MobileNav(props: ShellNavProps) {
   const primary = primaryMobileRoutes(role, 4);
   const rest = routes.filter((r) => !primary.includes(r));
   const activeId = activeRouteId(props.activeHref ?? pathname);
-  const moreActive = activeId !== null && !primary.some((r) => r.id === activeId);
+  // "Mer" är aktiv bara när den aktiva sidan faktiskt ligger i arket.
+  const moreActive = rest.some((r) => r.id === activeId);
 
   // Stäng arket vid sidbyte.
   const [lastPath, setLastPath] = useState(pathname);
@@ -135,6 +137,7 @@ export function MobileNav(props: ShellNavProps) {
                   query={query}
                   todoCount={props.todoCount}
                   onNavigate={() => setOpen(false)}
+                  numbered={false}
                 />
               )}
             </WithCarriedQuery>
@@ -144,6 +147,7 @@ export function MobileNav(props: ShellNavProps) {
           syncedAt={props.syncedAt}
           syncState={props.syncState}
           timeZone={props.timeZone}
+          href={syncHref(role)}
           className="border-b border-line px-4 py-3"
         />
         <UserMenu

@@ -8,7 +8,12 @@ import { DateRangePicker } from "./date-range-picker";
 import { periodChoices, type PeriodKey } from "./period-state";
 import { usePeriod, useScope } from "./use-period";
 
-export type ShellStore = { id: string; name: string };
+export type ShellStore = {
+  id: string;
+  name: string;
+  /** Ort, sökbar i kommandopaletten, t.ex. "Helsingborg". */
+  city?: string;
+};
 export type ShellMachine = {
   id: string;
   /** Visningsnamn, t.ex. "Helsingborg C". */
@@ -18,22 +23,61 @@ export type ShellMachine = {
   storeId?: string;
 };
 
-const longOptions = periodChoices.map((c) => ({ value: c.key, label: c.label }));
-const shortOptions = periodChoices.map((c) => ({ value: c.key, label: c.short }));
+const presets = periodChoices.filter(
+  (c): c is (typeof periodChoices)[number] & { key: PresetKey } => c.key !== "eget",
+);
+const longOptions = presets.map((c) => ({ value: c.key, label: c.label }));
+const shortOptions = presets.map((c) => ({ value: c.key, label: c.short }));
+const customChoice = periodChoices.find((c) => c.key === "eget");
+
+type PresetKey = Exclude<PeriodKey, "eget">;
+
+/** Väntetid innan ett pilval skrivs till URL:en (varje skrivning renderar sidan på servern). */
+const KEYBOARD_COMMIT_MS = 350;
+
+/** Den synliga av flera kandidater (de responsiva varianterna ligger i DOM:en samtidigt). */
+function firstVisible<T extends HTMLElement>(root: HTMLElement | null, selector: string): T | null {
+  if (!root) return null;
+  for (const el of root.querySelectorAll<T>(selector)) {
+    if (el.getClientRects().length > 0) return el;
+  }
+  return null;
+}
 
 /* ------------------------------------------------------------------ */
 /* Period                                                              */
 /* ------------------------------------------------------------------ */
 
 /**
- * Periodväljare kopplad till URL:en. "Eget intervall" öppnar en
- * datumväljare; förvalen skrivs direkt.
+ * Periodväljare kopplad till URL:en: en radiogrupp med förvalen och en
+ * separat knapp "Eget intervall" som öppnar datumväljaren.
+ *
+ * - Klick skriver till URL:en direkt. Pilval visas direkt men skrivs först
+ *   när man stannat (KEYBOARD_COMMIT_MS), så att varje tangenttryck inte
+ *   blir en serverrendering.
+ * - Datumväljaren öppnas bara av knappen (klick, Enter, mellanslag), aldrig
+ *   av pilnavigering. Esc, Avbryt och Använd lämnar fokus på knappen.
  */
 export function PeriodControl({ earliest, className }: { earliest?: Date; className?: string }) {
   const period = usePeriod({ earliest });
+  const { setPeriod } = period;
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
+
+  // Ett pilval som ännu inte skrivits. Gäller bara så länge URL:en står kvar
+  // på värdet det gjordes från; när URL:en ändras visas URL:ens värde.
+  const [pending, setPending] = useState<{ key: PresetKey; from: PeriodKey } | null>(null);
+  const shown = pending && pending.from === period.key ? pending.key : period.key;
+  const timer = useRef<number | undefined>(undefined);
+  const pointerAt = useRef(Number.NEGATIVE_INFINITY);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  const close = (focusTrigger: boolean) => {
+    setOpen(false);
+    if (focusTrigger) requestAnimationFrame(() => triggerRef.current?.focus());
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -42,55 +86,93 @@ export function PeriodControl({ earliest, className }: { earliest?: Date; classN
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        e.stopPropagation();
         setOpen(false);
-        wrapRef.current
-          ?.querySelector<HTMLButtonElement>('[role="radio"][aria-checked="true"]')
-          ?.focus();
+        triggerRef.current?.focus();
       }
     };
     document.addEventListener("pointerdown", onDown);
     document.addEventListener("keydown", onKey);
     // Fokus till den förvalda dagen i rutnätet.
-    requestAnimationFrame(() =>
-      wrapRef.current
-        ?.querySelector<HTMLButtonElement>('[role="grid"] button[tabindex="0"]')
-        ?.focus(),
+    const raf = requestAnimationFrame(() =>
+      firstVisible<HTMLButtonElement>(
+        wrapRef.current,
+        '[role="grid"] button[tabindex="0"]',
+      )?.focus(),
     );
     return () => {
+      cancelAnimationFrame(raf);
       document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
 
-  const choose = (key: PeriodKey) => {
-    if (key === "eget") {
-      setOpen(true);
+  const choose = (key: PresetKey) => {
+    setOpen(false);
+    window.clearTimeout(timer.current);
+    const byPointer = performance.now() - pointerAt.current < 1000;
+    if (byPointer) {
+      setPending(null);
+      if (key !== period.key) setPeriod({ key });
       return;
     }
-    setOpen(false);
-    period.setPeriod({ key });
+    setPending({ key, from: period.key });
+    timer.current = window.setTimeout(() => {
+      if (key !== period.key) setPeriod({ key });
+    }, KEYBOARD_COMMIT_MS);
   };
 
+  const custom = shown === "eget";
+
   return (
-    <div ref={wrapRef} className={cn("relative min-w-0", className)}>
-      <div className="hidden 2xl:block">
-        <Segmented
-          label="Period"
-          options={longOptions}
-          value={period.key}
-          onChange={choose}
-          size="sm"
-        />
+    <div ref={wrapRef} className={cn("relative flex min-w-0 items-center gap-2", className)}>
+      <div
+        className="min-w-0"
+        onPointerDown={() => {
+          pointerAt.current = performance.now();
+        }}
+      >
+        <div className="hidden xl:block">
+          <Segmented
+            label="Period"
+            options={longOptions}
+            value={shown as PresetKey}
+            onChange={choose}
+            size="sm"
+          />
+        </div>
+        <div className="xl:hidden">
+          <Segmented
+            label="Period"
+            options={shortOptions}
+            value={shown as PresetKey}
+            onChange={choose}
+            size="sm"
+          />
+        </div>
       </div>
-      <div className="2xl:hidden">
-        <Segmented
-          label="Period"
-          options={shortOptions}
-          value={period.key}
-          onChange={choose}
-          size="sm"
-        />
-      </div>
+
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        onClick={() => setOpen((o) => !o)}
+        className={cn(
+          "label relative flex h-7 shrink-0 items-center gap-1.5 rounded-sm border border-line-strong px-2.5 whitespace-nowrap transition-[background-color,color] duration-fast ease-instrument",
+          custom
+            ? "bg-hover font-medium text-fg after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-fg"
+            : open
+              ? "text-fg"
+              : "text-subtle hover:text-muted",
+        )}
+      >
+        <Icon name="calendar" size={12} />
+        <span className="hidden xl:inline">{customChoice?.label}</span>
+        <span className="xl:hidden">{customChoice?.short}</span>
+        {custom ? <span className="sr-only">, vald</span> : null}
+      </button>
 
       {open ? (
         <div
@@ -103,10 +185,11 @@ export function PeriodControl({ earliest, className }: { earliest?: Date; classN
             value={period.range}
             max={period.today}
             min={earliest}
-            onCancel={() => setOpen(false)}
+            onCancel={() => close(true)}
             onApply={(range) => {
-              setOpen(false);
-              period.setPeriod({ key: "eget", range });
+              close(true);
+              setPending(null);
+              setPeriod({ key: "eget", range });
             }}
           />
         </div>
@@ -142,8 +225,9 @@ export function PeriodReadout({ earliest, className }: { earliest?: Date; classN
 /** Platshållare med samma mått medan URL:en läses (Suspense). */
 export function PeriodControlFallback() {
   return (
-    <div className="flex items-center gap-4" aria-hidden>
-      <div className="h-7 w-[280px] max-w-full rounded-sm border border-line-strong 2xl:w-[480px]" />
+    <div className="flex items-center gap-2" aria-hidden>
+      <div className="h-7 w-[248px] max-w-[calc(100%-72px)] rounded-sm border border-line-strong xl:w-[336px]" />
+      <div className="h-7 w-16 rounded-sm border border-line-strong xl:w-[136px]" />
     </div>
   );
 }
@@ -158,6 +242,7 @@ function CompactSelect({
   onChange,
   options,
   allLabel,
+  compactLabel = false,
   className,
 }: {
   label: string;
@@ -165,12 +250,17 @@ function CompactSelect({
   onChange: (v: string | null) => void;
   options: Array<{ value: string; label: string }>;
   allLabel: string;
+  /** Etiketten bara för skärmläsare under xl (värdet "Alla butiker" bär betydelsen). */
+  compactLabel?: boolean;
   className?: string;
 }) {
   const id = useId();
   return (
     <div className={cn("flex min-w-0 items-center gap-2", className)}>
-      <label htmlFor={id} className="label shrink-0 text-subtle">
+      <label
+        htmlFor={id}
+        className={cn("label shrink-0 text-subtle", compactLabel && "sr-only xl:not-sr-only")}
+      >
         {label}
       </label>
       <div className="relative min-w-0 flex-1">
@@ -207,27 +297,42 @@ function CompactSelect({
 export function ScopeFilter({
   stores,
   machines,
+  compact = false,
   className,
 }: {
   stores: ShellStore[];
   machines: ShellMachine[];
+  /** Kontextraden på skrivbord: etiketterna visas först från xl, så att raden får plats. */
+  compact?: boolean;
   className?: string;
 }) {
   const scope = useScope();
-  const visibleMachines = scope.butik
-    ? machines.filter((m) => m.storeId === scope.butik)
-    : machines;
+  const { setScope } = scope;
+  // En djuplänk med bara ?automat= visar automatens butik som vald och
+  // skriver in den i URL:en, så att servern läser samma filter.
+  const impliedStore = scope.automat
+    ? (machines.find((m) => m.id === scope.automat)?.storeId ?? null)
+    : null;
+  const butik = scope.butik ?? impliedStore;
+  useEffect(() => {
+    if (!scope.butik && impliedStore && scope.automat) {
+      setScope({ butik: impliedStore, automat: scope.automat });
+    }
+  }, [scope.butik, scope.automat, impliedStore, setScope]);
+
+  const visibleMachines = butik ? machines.filter((m) => m.storeId === butik) : machines;
   return (
     <div className={cn("flex min-w-0 items-center gap-4", className)}>
       {stores.length > 0 ? (
         <CompactSelect
           label="Butik"
-          value={scope.butik}
+          value={butik}
           allLabel="Alla butiker"
+          compactLabel={compact}
           options={stores.map((s) => ({ value: s.id, label: s.name }))}
-          onChange={(butik) => {
-            const keep = butik && machines.find((m) => m.id === scope.automat)?.storeId === butik;
-            scope.setScope({ butik, automat: keep ? scope.automat : null });
+          onChange={(next) => {
+            const keep = next && machines.find((m) => m.id === scope.automat)?.storeId === next;
+            setScope({ butik: next, automat: keep ? scope.automat : null });
           }}
           className="sm:max-w-[200px]"
         />
@@ -237,13 +342,14 @@ export function ScopeFilter({
           label="Automat"
           value={scope.automat}
           allLabel="Alla automater"
+          compactLabel={compact}
           options={visibleMachines.map((m) => ({
             value: m.id,
             label: m.code ? `${m.code} ${m.name}` : m.name,
           }))}
           onChange={(automat) => {
             const storeId = machines.find((m) => m.id === automat)?.storeId;
-            scope.setScope(automat && storeId ? { automat, butik: storeId } : { automat });
+            setScope(automat && storeId ? { automat, butik: storeId } : { automat });
           }}
           className="sm:max-w-[220px]"
         />
