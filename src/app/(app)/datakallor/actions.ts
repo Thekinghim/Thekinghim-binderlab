@@ -10,6 +10,7 @@
  * källans tidszon) räknar om alla sidor (revalidateAppData) sist.
  */
 
+import { unstable_rethrow } from "next/navigation";
 import { ZodError } from "zod";
 
 import { ImportError } from "@/import/errors";
@@ -40,6 +41,8 @@ import { currentViewer, uploadStaging } from "./_lib/session";
 import type { ActionResult, PreviewResult } from "./_lib/types";
 
 function failure(error: unknown): { ok: false; error: string } {
+  // redirect() (utloggad) och andra Next-signaler ska inte bli felmeddelanden.
+  unstable_rethrow(error);
   if (error instanceof ZodError) {
     return { ok: false, error: error.issues[0]?.message ?? "Ogiltiga uppgifter." };
   }

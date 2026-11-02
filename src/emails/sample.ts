@@ -58,7 +58,9 @@ const perMachine = machines.map((m, i) => {
 /* Nordstan (BL-001): öppettid 10–20 alla dagar, två driftstopp i oktober. */
 const nordstan = perMachine[0]!;
 const OPEN_MIN = 31 * 10 * 60;
-const outages = outageEvents.filter((e) => e.machineId === nordstan.m.id && e.from >= OCTOBER.start);
+const outages = outageEvents.filter(
+  (e) => e.machineId === nordstan.m.id && e.from >= OCTOBER.start,
+);
 const outageMin = outages.reduce((n, e) => n + (e.to.getTime() - e.from.getTime()) / 60_000, 0);
 const availability = 1 - outageMin / OPEN_MIN;
 
