@@ -79,3 +79,11 @@ Tas bort när alla faser är klara.
 - 13:45 Fas 6 (Rapporter: butik, bokföring med SIE och Excel, delägare; PDF, utskick, arkiv, schemaläggning) och fas 6b Prognos & inköp klara.
   Öppet till integrationen: Att göra-punkt "rapportutkast väntar på granskning"; REPORT_SIE_SERIES/FIRST_NUMBER bestäms med bokhållaren.
   Alla sidor för fas 2–11 är nu byggda. Kvar: slutkontroll fas 2–5 (pågår), fas 7 del 1 (pågår), fas 7 integration/kvalitet/dokumentation.
+
+## 14:05 – fas 2–5 klara och på main (76cf22a)
+
+- Hela testsviten grön: 1 866 databastester, 2 165 enhetstester, eslint rent. Avstämning (test/db/consistency.test.ts) + revisorns
+  handräknade test. Revisorn hittade inga sifferavvikelser; noterade att consistency-testet delvis är cirkulärt (samma profitability).
+- Ny migrering 20261102160000_hardening_org_statistics.sql (statistikskydd på import_uploads*).
+- Planen: prompt 5 avbockad, lägestabell uppdaterad.
+- Kvar: seed.test.ts krockar med demo-isolering.test.ts (fas 7-agenten äger), fas 7.

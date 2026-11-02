@@ -15,10 +15,11 @@
 -- läser alla organisationens order). Med organization_id i samma GIN-index vinner
 -- indexet alltid kostnadsjämförelsen. btree_gin behövs för uuid i ett GIN-index.
 --
--- fastupdate = off: annars hamnar nya order i GIN-indexets väntelista (upp till 4 MB)
--- tills nästa vacuum, och planeraren räknar in hela listan i kostnaden och väljer bort
--- indexet direkt efter en stor import (uppmätt: 150 ms i stället för under 1 ms).
--- Importen blir något långsammare per rad, men varje order skrivs bara en gång.
+-- gin_pending_list_limit = 256 (kB): nya order samlas i GIN-indexets väntelista och
+-- skrivs in i omgångar. Med standardgränsen (4 MB) räknar planeraren in hela listan i
+-- kostnaden och väljer bort indexet efter en stor import tills nästa vacuum (uppmätt:
+-- 150 ms i stället för under 1 ms). Med 256 kB väljs indexet alltid, och importen går
+-- lika fort (20 000 order: 1,5 s; med fastupdate = off 3,4 s).
 --
 -- pg_trgm och btree_gin läggs i schemat extensions som övriga tillägg (citext,
 -- btree_gist, pgcrypto). Indexen ändrar inga rättigheter: RLS på orders gäller som
@@ -30,8 +31,8 @@ create extension if not exists btree_gin with schema extensions;
 
 create index if not exists orders_external_id_trgm_idx
   on public.orders using gin (organization_id, external_id extensions.gin_trgm_ops)
-  with (fastupdate = off);
+  with (gin_pending_list_limit = 256);
 
 create index if not exists orders_raw_title_trgm_idx
   on public.orders using gin (organization_id, raw_title extensions.gin_trgm_ops)
-  with (fastupdate = off);
+  with (gin_pending_list_limit = 256);
