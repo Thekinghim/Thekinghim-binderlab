@@ -80,3 +80,13 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
   körning; 18 e2e-tester; `next build` utan miljö och med CI:s värden. Krocken mellan `seed.test.ts` och
   demotesterna löst.
 - **Styrelsedemo-granskningen** (betyg 7/10) och rättningarna efter den: se `docs/review/fas-7/slutrapport.md`.
+
+## Beställarens krav 2 nov. kväll
+
+- Ingen manuell nedladdning från Awish. Byggs nu: Chrome-tillägg (MV3) som synkar var 10:e minut med användarens Awish-inloggning,
+  hela historiken första gången, via ett ingest-API med återkallbar synk-token; larm om synken tystnar. Ersätts av gRPC-adaptern när Awish
+  levererat app-ID/token. Frågat beställaren efter koden till det gamla ChatGPT-tillägget.
+- Beställaren vill att jag driftsätter allt. Byggs nu: scripts/deploy/* (Supabase Management API, Vercel API, inbjudan av ägaren)
+  + docs/driftsattning.md. Kräver SUPABASE_ACCESS_TOKEN, VERCEL_TOKEN och nätverk till api.supabase.com, *.supabase.co, api.vercel.com
+  i en ny session. Ägarens e-post bekräftas av beställaren innan inbjudan skickas.
+- Arbetsflöde: wf_19bddf0c-b50.
