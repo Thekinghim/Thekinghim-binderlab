@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { Icon } from "@/components/ui/icon";
 import { SectionHeader } from "@/components/ui/section-header";
 import { Segmented } from "@/components/ui/segmented";
 import { RECIPIENT_KINDS, type RecipientKind } from "@/emails/report-content";
@@ -32,9 +33,10 @@ export function EmailSection({ index }: { index: number }) {
         actions={
           <Link
             href={`/design/epost?typ=${kind}`}
-            className="label inline-flex h-7 items-center rounded-sm border border-line-strong px-2.5 text-muted transition-colors duration-[120ms] hover:border-line-control hover:text-fg"
+            className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-line-strong bg-surface px-2.5 text-sm font-medium text-fg transition-[background-color,border-color] duration-[120ms] ease-instrument hover:border-line-control hover:bg-hover"
           >
             Hela förhandsvisningen
+            <Icon name="chevronRight" className="-mr-0.5 text-subtle" />
           </Link>
         }
       />
@@ -49,7 +51,7 @@ export function EmailSection({ index }: { index: number }) {
           </p>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,600px)_minmax(0,1fr)] lg:gap-8">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,602px)_minmax(0,1fr)] lg:gap-8">
           <InboxRow props={sampleReportEmails[kind]} subject={email.subject} preheader={email.preheader} />
           <dl className="grid content-start gap-x-6 gap-y-3 text-sm sm:grid-cols-[112px_minmax(0,1fr)] lg:pt-6">
             <dt className="label pt-0.5 text-subtle">Mottagare</dt>
@@ -61,7 +63,7 @@ export function EmailSection({ index }: { index: number }) {
           </dl>
         </div>
 
-        <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,600px)_minmax(0,377px)]">
+        <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,602px)_minmax(0,377px)]">
           <EmailFrame
             html={email.html}
             width={600}

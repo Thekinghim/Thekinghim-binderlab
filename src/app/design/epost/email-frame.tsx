@@ -65,7 +65,7 @@ export function EmailFrame({
       {label ? (
         <figcaption className="label tnum flex items-center justify-between gap-3 text-subtle">
           <span>{label}</span>
-          {scale < 1 ? <span>Skala {formatPercent(scale, 0)}</span> : null}
+          {scale < 0.995 ? <span>Skala {formatPercent(scale, 0)}</span> : null}
         </figcaption>
       ) : null}
       <div ref={wrapRef} className="w-full">
