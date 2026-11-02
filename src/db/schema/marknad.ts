@@ -7,7 +7,7 @@
  * affärsdatum som sträng 'ÅÅÅÅ-MM-DD', tider som `Date`.
  */
 
-import { date, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { customType, date, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 import { ore } from "../types";
 
@@ -15,6 +15,12 @@ const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" 
 const day = (name: string) => date(name, { mode: "string" });
 const id = () => uuid("id").primaryKey().defaultRandom();
 const orgId = () => uuid("organization_id").notNull();
+/** int4[] (katalogen visar typen som "int4[]", inte "integer[]"). */
+const int4Array = customType<{ data: number[]; driverData: number[] }>({
+  dataType() {
+    return "int4[]";
+  },
+});
 const stamps = () => ({
   createdAt: ts("created_at").notNull().defaultNow(),
   createdBy: uuid("created_by"),
@@ -40,7 +46,7 @@ export const releases = pgTable("releases", {
   planLockedAt: ts("plan_locked_at"),
   planLockedBy: uuid("plan_locked_by"),
   planPurchaseUnits: integer("plan_purchase_units"),
-  planCurveBp: integer("plan_curve_bp").array(),
+  planCurveBp: int4Array("plan_curve_bp"),
   planSnapshot: jsonb("plan_snapshot").$type<Record<string, unknown>>(),
   archivedAt: ts("archived_at"),
   ...stamps(),

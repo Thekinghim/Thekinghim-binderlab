@@ -261,3 +261,34 @@ Beräkningarna kontrolleras automatiskt (`npm test`, `npm run test:domain:tz`):
 | 1.1.0   | Hyran på order utan inköpspris dras från vinsten som ej fördelad hyra (tidigare låg den utanför vinsten, så att en saknad inköpspris kunde göra vinsten bättre). Totalen ändras bara när det finns order utan pris i butiker med hyra.  |
 | 1.1.0   | Hyran fördelas efter netto × den månadshyra som gällde orderns dag. Order på dagar utan hyresavtal bär ingen hyra. Hyran per butik och månad och totalen ändras inte, bara fördelningen mellan raderna när avtalet byts mitt i månaden. |
 | 1.0.0   | Första versionen.                                                                                                                                                                                                                       |
+
+## 14. Återbetalningar från kundärenden (`src/domain/refunds.ts`)
+
+Ett kundärende (sidan Inkorg) kan ha ett återbetalt belopp i öre och en återbetalningsdag.
+Återbetalningen räknas som en **separat justering** av lönsamheten, inte som en del av
+`profitability()`:
+
+> vinst efter återbetalningar = vinst − återbetalt
+>
+> marginal efter återbetalningar = round(vinst efter återbetalningar × 10 000 / intäkt) bp
+
+- Återbetalningen räknas på **återbetalningsdagen** (affärsdatum), på ärendets automat och
+  titel. För butik gäller placeringen den dagen. Bara belopp större än 0 räknas.
+- Intäkt, inköp, avgifter och butiksersättning **ändras inte**: ordern är betald och
+  importerad, och provisionen räknas på det betalda beloppet enligt avtalet. Därför är
+  `profitability()`, `CALC_VERSION` (1.1.0) och alla befintliga totaler oförändrade, och
+  alla befintliga tester gäller.
+- `applyRefunds(rader, återbetalningar, period, gruppering)` lägger justeringen på
+  lönsamhetsrader med samma nycklar (automat, titel, butik eller total). En återbetalning vars
+  nyckel saknar rad (t.ex. en automat utan försäljning i perioden) får en egen rad med intäkt
+  och vinst 0, så att summan av justeringarna alltid är lika med alla återbetalningar i
+  perioden. Ärenden utan automat, titel eller placering hamnar på nyckeln `none`.
+- En återbetalning i en stängd månad kan inte läggas till, ändras eller flyttas (databasen,
+  BL004), precis som inköpspriser och lagerhändelser.
+
+**Exempel.** Avsnitt 3: intäkt 30 400 öre och vinst 7 660 öre i oktober. En kund fick inget
+pack och fick 49,00 kr tillbaka 20 okt.: vinst efter återbetalningar 7 660 − 4 900 = **2 760
+öre**, marginal 2 760 / 30 400 = 9,08 % (908 bp). Testerna finns i `src/domain/refunds.test.ts`.
+
+Sidan Lönsamhet visar inte justeringen ännu; den kan läggas till som en egen rad
+"Återbetalningar" under vinsten med `applyRefunds` på vyns rader.

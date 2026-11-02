@@ -353,3 +353,7 @@ dubbel lagerhändelse.
 6. **Första ägaren.** Skapa ägarens användare i Supabase (Authentication → Users →
    Invite). Logga sedan in och skapa organisationen. RPC:n `create_organization`
    gör den inloggade till ägare.
+7. **Larm (Drift).** Sätt `CRON_SECRET` och schemalägg `/api/cron/larm` var 10:e minut
+   (`vercel.json`, se avsnittet Drift). Skapa VAPID-nycklar för push och sätt
+   `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` och `VAPID_SUBJECT`. Välj en sms-leverantör om
+   sms behövs (ingen är kopplad).
