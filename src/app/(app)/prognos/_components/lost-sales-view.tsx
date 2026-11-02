@@ -205,7 +205,7 @@ export function LostSalesView({ model }: { model: LostModel }) {
         En titeldag är en titel slutsåld i en automat en dag; samma titel slutsåld i två automater
         samma dag är två titeldagar. Påfyllningsdagen räknas som en halv dag.
         {model.hiddenWithoutCost > 0
-          ? ` ${formatInt(model.hiddenWithoutCost)} ${model.hiddenWithoutCost === 1 ? "titel" : "titlar"} som togs ur sortimentet före perioden kostar inget och visas inte.`
+          ? ` ${formatInt(model.hiddenWithoutCost)} ${model.hiddenWithoutCost === 1 ? "period" : "perioder"} för titlar som togs ur sortimentet före ${model.periodText} kostar inget och visas inte.`
           : ""}
       </p>
 

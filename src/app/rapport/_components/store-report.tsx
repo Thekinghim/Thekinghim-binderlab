@@ -36,12 +36,63 @@ import {
   type HeadingLevel,
 } from "./shared";
 
-const titleColumns: ReportColumn<StoreTopTitle>[] = [
-  { key: "name", header: "Titel", width: "46%", render: (t) => t.name },
-  { key: "orders", header: "Sålda pack", numeric: true, render: (t) => formatInt(t.orders) },
-  { key: "revenue", header: "Försäljning", numeric: true, render: (t) => sek(t.revenueOre) },
-  { key: "share", header: "Andel", numeric: true, render: (t) => pct(t.shareBp) },
-];
+type TitleRow = Pick<StoreTopTitle, "titleId" | "name" | "orders" | "revenueOre" | "shareBp">;
+
+/** Titelns rad i tabellen; summeringen är butikens hela månad (topplistan + övriga). */
+function titleColumns(totals: { orders: number; revenueOre: number }): ReportColumn<TitleRow>[] {
+  return [
+    { key: "name", header: "Titel", width: "46%", render: (t) => t.name, total: "Totalt" },
+    {
+      key: "orders",
+      header: "Sålda pack",
+      numeric: true,
+      render: (t) => formatInt(t.orders),
+      total: formatInt(totals.orders),
+    },
+    {
+      key: "revenue",
+      header: "Försäljning",
+      numeric: true,
+      render: (t) => sek(t.revenueOre),
+      total: sek(totals.revenueOre),
+    },
+    {
+      key: "share",
+      header: "Andel",
+      numeric: true,
+      render: (t) => pct(t.shareBp),
+      total: pct(10_000),
+    },
+  ];
+}
+
+/**
+ * Topplistan plus en rad "Övriga titlar" för resten av månaden, så att tabellen summerar
+ * till butikens försäljning (topplistan ensam är bara en del av den).
+ */
+function withOthers(
+  top: readonly StoreTopTitle[],
+  sales: { orders: number; revenueOre: number },
+): TitleRow[] {
+  const orders = sales.orders - top.reduce((n, t) => n + t.orders, 0);
+  const revenueOre = sales.revenueOre - top.reduce((n, t) => n + t.revenueOre, 0);
+  if (orders <= 0 && revenueOre <= 0) return [...top];
+  const shareBp = 10_000 - top.reduce((n, t) => n + t.shareBp, 0);
+  return [...top, { titleId: "ovriga", name: "Övriga titlar", orders, revenueOre, shareBp }];
+}
+
+/**
+ * Raden under rubriken: titelns pack och andel, och vilken titel som sålde flest pack när
+ * det är en annan (ordningen är efter försäljning i kronor, inte antal).
+ */
+function titlesAside(top: readonly StoreTopTitle[]): string {
+  const first = top[0]!;
+  const text = `${formatInt(first.orders)} pack, ${pct(first.shareBp)} av försäljningen.`;
+  const most = [...top].sort((a, b) => b.orders - a.orders)[0]!;
+  return most.titleId !== first.titleId && most.orders > first.orders
+    ? `${text} Flest pack: ${most.name}, ${formatInt(most.orders)}.`
+    : text;
+}
 
 function machineColumns(daysInMonth: number, totals: { orders: number; revenueOre: number }) {
   const cols: ReportColumn<StoreMachine>[] = [
@@ -110,6 +161,7 @@ export function StoreReportDocument({
     <ReportDocument
       title={`Butiksrapport ${month}`}
       recipient={recipient ?? snapshot.store.name}
+      sender={snapshot.organization.name}
       period={datePeriod(snapshot.period)}
       generatedAt={new Date(snapshot.generatedAt)}
       timeZone={snapshot.organization.timeZone}
@@ -226,20 +278,16 @@ export function StoreReportDocument({
           eyebrow="Titlar"
           title={
             r.topTitles[0]
-              ? `${r.topTitles[0].name} sålde mest.`
+              ? `${r.topTitles[0].name} gav mest försäljning.`
               : "Inga titlar såldes under månaden."
           }
-          aside={
-            r.topTitles[0]
-              ? `${formatInt(r.topTitles[0].orders)} pack, ${pct(r.topTitles[0].shareBp)} av försäljningen.`
-              : undefined
-          }
+          aside={r.topTitles[0] ? titlesAside(r.topTitles) : undefined}
         >
           {r.topTitles.length > 0 ? (
             <ReportTable
-              caption="Mest sålda titlar under månaden."
-              columns={titleColumns}
-              rows={r.topTitles}
+              caption="Titlarna med mest försäljning under månaden, övriga titlar sammanslagna."
+              columns={titleColumns(r.sales)}
+              rows={withOthers(r.topTitles, r.sales)}
               rowKey={(t) => t.titleId}
             />
           ) : null}
@@ -281,7 +329,7 @@ export function StoreReportDocument({
                 ? `, senast ${dayLabel(snapshot.service.refills.last)}`
                 : ""}
             </ReportFact>
-            <ReportFact label="Mest köp">
+            <ReportFact label="Flest köp">
               {snapshot.service.busiest ??
                 `Underlaget är för litet (${formatInt(snapshot.service.busiestOrders)} köp)`}
             </ReportFact>

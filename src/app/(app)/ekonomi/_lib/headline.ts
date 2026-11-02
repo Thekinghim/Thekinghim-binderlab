@@ -6,7 +6,16 @@ import type { CashflowResult } from "@/analytics/cashflow";
 import type { ReconciliationResult } from "@/analytics/reconciliation";
 import { formatDate } from "@/lib/format";
 
-import { isoToDate, periodShort, plural, sek, sentence, signedSek, type IsoPeriod } from "./view";
+import {
+  isoToDate,
+  periodShort,
+  periodText,
+  plural,
+  sek,
+  sentence,
+  signedSek,
+  type IsoPeriod,
+} from "./view";
 
 export interface Headline {
   readonly title: string;
@@ -37,6 +46,17 @@ export function nextPayoutText(
     : `Nästa väntade utbetalning ${sek(next.amountOre)}, ${day}.`;
 }
 
+/** "i oktober 2026" för en hel kalendermånad, annars "4 okt. – 2 nov.". */
+function coveredText(p: IsoPeriod, today: string): string {
+  const [y, m] = p.start.split("-").map(Number) as [number, number];
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const fullMonth =
+    p.start.endsWith("-01") &&
+    p.end.slice(0, 7) === p.start.slice(0, 7) &&
+    Number(p.end.slice(8)) === lastDay;
+  return fullMonth ? `i ${periodText(p)}` : periodShort(p, today);
+}
+
 /** Från första utbetalningens första dag till sista utbetalningens sista dag. */
 export function payoutSpan(result: ReconciliationResult): IsoPeriod {
   let start = result.payouts[0]!.period.start;
@@ -59,9 +79,7 @@ export function economyHeadline(
     const next = nextExpectedPayout(cash);
     return {
       title: sentence(`Ingen utbetalning för ${when}`),
-      aside: next
-        ? nextPayoutText(next, today)
-        : "Utbetalningarna laddas upp som CSV från Awish.",
+      aside: next ? nextPayoutText(next, today) : "Utbetalningarna laddas upp som CSV från Awish.",
     };
   }
   const t = result.totals;
@@ -69,7 +87,7 @@ export function economyHeadline(
   // utbetalningen för oktober kan komma in 2 nov. och räknas då till "30 d" fast den gäller
   // en annan period än Hem visar för samma 30 dagar.
   const covered = payoutSpan(result);
-  const facts = `Utbetalt ${sek(t.actualOre)} mot väntade ${sek(t.expectedOre)} för försäljningen ${periodShort(
+  const facts = `Utbetalt ${sek(t.actualOre)} mot väntade ${sek(t.expectedOre)} för försäljningen ${coveredText(
     covered,
     today,
   )} (${plural(result.payouts.length, "utbetalning", "utbetalningar")}), skillnad ${signedSek(

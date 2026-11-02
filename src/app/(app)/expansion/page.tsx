@@ -12,12 +12,17 @@ import { PriceChangeView, SiteEstimateView } from "./_components/estimate-view";
 import { GoalsView } from "./_components/goals-view";
 import { PipelineView, StoreProfilesView } from "./_components/pipeline-view";
 import { NewMachineForm, PriceChangeForm } from "./_components/scenario-forms";
-import { loadExpansionPage, type Names } from "./_lib/data";
+import { LEAD_PREFIX, loadExpansionPage, type Names } from "./_lib/data";
 import { kr, monthLabel, oreToInput, paybackShort, pct } from "./_lib/display";
 import { evidenceLinks, LEAD_STAGE_LABEL, monthOfDate, OPEN_STAGES } from "./_lib/model";
 import { withOrderCounts } from "./_lib/slim";
 
 export const metadata: Metadata = { title: "Expansion" };
+
+/** Punkt sist, utan dubbel punkt efter en förkortning ("2 nov."). */
+function endSentence(text: string): string {
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
 
 function lookups(names: Names) {
   return {
@@ -75,9 +80,17 @@ export default async function ExpansionPage({
   const goalLinks = Object.fromEntries(
     data.goals.progress.map((g) => [g.goalId, evidenceLinks(g.evidence, names)]),
   );
-  const storeOptions = data.profiles
-    .filter((p) => !p.archived)
-    .map((p) => ({ value: p.id, label: p.name }));
+  // Den nya platsen: en plats i pipelinen (jämförs med liknande butiker) eller "en till
+  // som" en befintlig butik (jämförs med sig själv och butiker som liknar den).
+  const storeOptions = [
+    ...data.pipeline.map((p) => ({
+      value: `${LEAD_PREFIX}${p.leadId}`,
+      label: `${p.name} (pipelinen)`,
+    })),
+    ...data.profiles
+      .filter((p) => !p.archived)
+      .map((p) => ({ value: p.id, label: `En till som ${p.name}` })),
+  ];
   const titleOptions = data.names.titles
     .filter((t) => !t.archived)
     .map((t) => ({ value: t.id, label: t.name }))
@@ -98,7 +111,7 @@ export default async function ExpansionPage({
           meta={[
             { label: "Underlag", value: periodLabel },
             { label: "Öppna platser", value: formatInt(openLeads) },
-            { label: "Mål efter", value: formatInt(goalsBehind) },
+            { label: "Mål som ligger efter", value: formatInt(goalsBehind) },
           ]}
         />
         <DataStartNote clippedFrom={data.period.clippedFrom} requested={data.period.requested} />
@@ -113,9 +126,15 @@ export default async function ExpansionPage({
           id="ny-automat-h"
           index={1}
           eyebrow="Scenario · ny automat"
-          title="Vad ger en ny automat i en butik som liknar en vi har?"
-          aside={`Räknat på ${periodLabel}, hela flottan.`}
-          description={`Platserna jämförs på butikstyp, ort, öppettider och yta. Tomma investeringsfält = ${invText}.`}
+          title="Vad ger en ny automat på en ny plats?"
+          aside={
+            data.newMachine.lead
+              ? endSentence(
+                  `${data.newMachine.lead.name} i pipelinen, räknat på liknande butiker ${periodLabel}`,
+                )
+              : `Räknat på ${periodLabel}, hela flottan.`
+          }
+          description={`Platserna jämförs på butikstyp, ort, öppettider och yta. "En till som" en befintlig butik bygger på butiken själv och butiker som liknar den. Tomma investeringsfält = ${invText}.`}
         />
         <Suspense>
           <NewMachineForm

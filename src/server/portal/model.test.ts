@@ -122,12 +122,14 @@ describe("månader", () => {
   });
 
   it("vald månad begränsas till [första, innevarande] och ogiltigt blir innevarande", () => {
-    expect(resolvePortalMonth(undefined, "2026-08", "2026-11")).toBe("2026-11");
+    // Utan val: senaste hela månaden; bara den pågående när butiken är ny.
+    expect(resolvePortalMonth(undefined, "2026-08", "2026-11")).toBe("2026-10");
+    expect(resolvePortalMonth(undefined, "2026-11", "2026-11")).toBe("2026-11");
     expect(resolvePortalMonth("2026-09", "2026-08", "2026-11")).toBe("2026-09");
     expect(resolvePortalMonth("2027-01", "2026-08", "2026-11")).toBe("2026-11");
     expect(resolvePortalMonth("2020-01", "2026-08", "2026-11")).toBe("2026-08");
-    expect(resolvePortalMonth("2026-13", "2026-08", "2026-11")).toBe("2026-11");
-    expect(resolvePortalMonth("'; drop", "2026-08", "2026-11")).toBe("2026-11");
+    expect(resolvePortalMonth("2026-13", "2026-08", "2026-11")).toBe("2026-10");
+    expect(resolvePortalMonth("'; drop", "2026-08", "2026-11")).toBe("2026-10");
   });
 
   it("monthsBetween ger senaste först", () => {

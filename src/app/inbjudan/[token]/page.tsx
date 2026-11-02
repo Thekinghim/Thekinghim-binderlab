@@ -172,13 +172,19 @@ export default async function InvitationPage({
     <AuthFrame
       eyebrow={<Eyebrow />}
       title="Du är inbjuden."
-      aside={`${lookup.organizationName} som ${ROLE_LABEL[lookup.role].toLowerCase()}.`}
+      aside={
+        lookup.storeName
+          ? `${lookup.organizationName} har öppnat butiksportalen för ${lookup.storeName}.`
+          : `Gå med i ${lookup.organizationName} som ${ROLE_LABEL[lookup.role].toLowerCase()}.`
+      }
+      systemStatus={false}
     >
       <div className="flex flex-col gap-8">
         <div className="flex flex-col gap-3">
           <Facts
             rows={[
               { label: "Organisation", value: lookup.organizationName },
+              ...(lookup.storeName ? [{ label: "Butik", value: lookup.storeName }] : []),
               { label: "Roll", value: ROLE_LABEL[lookup.role] },
               { label: "E-post", value: lookup.email },
             ]}

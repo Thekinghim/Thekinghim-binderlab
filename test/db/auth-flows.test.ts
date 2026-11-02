@@ -201,6 +201,7 @@ describe("inbjudningar", () => {
       email: invitee,
       role: "viewer",
       organizationName: "Inbjudande AB",
+      storeName: null,
     });
 
     const cookies = new MemoryCookieJar();

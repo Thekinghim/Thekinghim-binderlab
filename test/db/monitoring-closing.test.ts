@@ -132,7 +132,13 @@ describe("rapportlarm och nya versioner", () => {
     expect(await statuses(orgId, `report:${v1}`)).toEqual(["open"]);
 
     failing = false;
-    const v2 = await createReportFor(viewer, { type: "butik", month: "2025-10", storeId }, NOW);
+    // En minut senare: med samma generatedAt avgör det slumpade id:t vilken version som är
+    // senast, och då var v2 "ersatt" i hälften av körningarna.
+    const v2 = await createReportFor(
+      viewer,
+      { type: "butik", month: "2025-10", storeId },
+      new Date(NOW.getTime() + 60_000),
+    );
     await approveReportFor(viewer, v2);
     const ok = await sendReportFor(viewer, { reportId: v2, recipientIds: [recipient] }, deps);
     expect(ok.sent).toBe(1);

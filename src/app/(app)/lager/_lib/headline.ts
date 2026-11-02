@@ -95,7 +95,8 @@ export function headlineOf(view: LagerView): Headline {
   const { critical, low, ok } = view.counts;
   const total = critical + low + ok;
   const titleName = new Map(view.titles.map((t) => [t.id, t.name]));
-  const machineCode = new Map(view.machines.map((m) => [m.id, codeText(m.code)]));
+  // Automatens namn i meningen, som Att göra och Prognos ("i Automat 09"); koden står i tabellen.
+  const machineCode = new Map(view.machines.map((m) => [m.id, m.name || codeText(m.code)]));
 
   if (view.machines.length === 0) {
     return {

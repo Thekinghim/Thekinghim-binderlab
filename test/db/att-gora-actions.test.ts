@@ -88,7 +88,15 @@ async function seedFixture(): Promise<Fixture> {
     ]);
     const [source] = await tx
       .insert(s.dataSources)
-      .values({ ...org, provider: "awish_csv", name: "Awish CSV" })
+      // En automatisk källa som hämtade nyss: tystnaden räknas fram till hämtningen, som på
+      // Drift (sales_data_until). Med en CSV-källa och en enda automat slutar täckningen vid
+      // automatens egen sista order, och då är det datalarmet som säger till, inte Att göra.
+      .values({
+        ...org,
+        provider: "awish_grpc",
+        name: "Awish",
+        lastSyncedAt: new Date(NOW.getTime() - 60 * 60 * 1000),
+      })
       .returning();
     const [imp] = await tx
       .insert(s.imports)

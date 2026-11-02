@@ -65,22 +65,26 @@ superuser. Det fungerar lokalt. Mot Supabase kan det kräva att rollen har den r
 
 Logga in som `demo@binderlab.local` på http://localhost:3200. Välj **30 dagar** eller **Allt** i periodväljaren.
 
-| Sida            | Vad som syns                                                                                                                                           |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Hem             | Cirka 405 000 kr de senaste 30 dagarna (+14 %), vinst efter alla kostnader och tre iakttagelser. Två titlar saknar inköpspris.                         |
-| Att göra        | Automat 07 har inte sålt sedan 30 okt., påfyllningar som behövs och titlar som är slut.                                                                |
-| Lönsamhet       | Marginalen per automat och titel, prisändringar mitt i perioden och de två titlarna utan inköpspris.                                                   |
-| Order           | Cirka 14 700 order från tio månadsfiler som importerats genom Awish-importen.                                                                          |
-| Lager           | Saldon per automat och i centrallagret. Några platser är slut.                                                                                         |
-| Automater       | Tio automater. NA-05 flyttade 15 juni från Arboga till Sala. NA-10 är ny sedan september.                                                              |
-| Butiker         | Sju butiker med provision, hyra eller båda. Arboga-avtalet är avslutat.                                                                                |
-| Prognos & inköp | Prognos, förlorad försäljning (Mega Evolution i september, Prismatic Evolution i juli), inköpsorder (mottagna, en på väg, ett utkast) och fyra släpp.  |
-| Expansion       | Sex platser i pipelinen, från lead till installerad och förlorad.                                                                                      |
-| Drift           | Automat 07 är troligen offline (kortläsaren). Det finns också larm om titlar som snart är slut.                                                        |
-| Inkorg          | Fem kundärenden: två återbetalda, ett pågående och ett öppet fel.                                                                                      |
-| Ekonomi         | Utbetalningarna stämmer för alla månader utom augusti. Där saknas två order i utbetalningen (−328 kr, ordernumren pekas ut). Välj aug. för att se det. |
-| Avtal           | Kvarnhagens hyresavtal löper ut 31 dec. 2026 (sista uppsägningsdag 30 nov.).                                                                           |
-| Effekt          | Utgångsläget i januari mot månaderna feb–okt: färre slutsålda dagar och mindre tid för påfyllning och administration.                                  |
+| Sida            | Vad som syns                                                                                                                                                                                                 |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Hem             | Cirka 405 000 kr de senaste 30 dagarna (+14 %), vinst före fasta kostnader, "Slutsålt kostade ca 7 400 kr" och två iakttagelser. Två titlar saknar inköpspris.                                               |
+| Att göra        | 18 punkter, först Automat 07 som inte har sålt på 62 timmar (9 684 kr av 15 915 kr i risk de närmaste 7 dagarna), påfyllningar och titlar som är slut.                                                       |
+| Lönsamhet       | Marginalen per automat och titel, prisändringar mitt i perioden och de två titlarna utan inköpspris.                                                                                                         |
+| Order           | Cirka 14 700 order från tio månadsfiler som importerats genom Awish-importen.                                                                                                                                |
+| Lager           | Saldon per automat och i centrallagret. Några platser är slut.                                                                                                                                               |
+| Automater       | Tio automater. NA-05 flyttade 15 juni från Arboga till Sala. NA-10 är ny sedan september.                                                                                                                    |
+| Butiker         | Sju butiker med provision, hyra eller båda. Arboga-avtalet är avslutat.                                                                                                                                      |
+| Prognos & inköp | Prognos, förlorad försäljning (ca 7 400 kr för 30 d, ca 64 500 kr för Allt; störst Mega Evolution i september och Prismatic Evolution i juli), inköpsorder (mottagna, en på väg, ett utkast) och fyra släpp. |
+| Expansion       | Sex platser i pipelinen, från intressent till installerad och förlorad. Spelhallen Nova har bäst potential (8 667 kr per månad) och är standard i scenariot.                                                 |
+| Drift           | Automat 07 är troligen ur drift (kortläsaren), tyst i 62 timmar fram till importens slut 2 nov. 11:56. 9 öppna larm, 2 kritiska.                                                                             |
+| Inkorg          | Fem kundärenden: två återbetalda, ett pågående och ett öppet fel.                                                                                                                                            |
+| Ekonomi         | Utbetalningarna stämmer för alla månader utom augusti. Där saknas två order i utbetalningen (−328 kr, ordernumren pekas ut). Välj aug. för att se det.                                                       |
+| Avtal           | Kvarnhagens hyresavtal löper ut 31 dec. 2026 (sista uppsägningsdag 30 nov.).                                                                                                                                 |
+| Effekt          | Vinst per automat och månad +119 % mot utgångsläget i oktober. Standard är periodens månader (okt.–nov.); "Visa alla månader" visar hela mätningen **Utgångsläget är påhittat**; säg det när sidan visas.    |
+
+Siffrorna ovan är avlästa i panelen 2 nov. 2026 efter `npm run db:seed-demo -- --aterstall`. Förlorad försäljning
+räknas sedan fas 7:s slutsteg med lagerhändelsernas riktiga tidpunkt inom dagen (`queryMachineStockEvents` skickar
+ISO-tid). Före rättningen var siffrorna ca 4 100 kr (30 d) och ca 44 700 kr (Allt).
 
 Logga in som `demo-pafyllare@` för att visa påfyllarens vy: Att göra, Lager och fältläget. Påfyllaren ser inga belopp.
 Logga in som `demo-lasare@` för att visa läsarens vy, där allt syns men inget kan ändras.
@@ -136,7 +140,7 @@ inköp dag för dag med en seedad slumpgenerator.
   - Utgångsläget är från januari, med effektmätningar för feb–okt.
 - **Drift.**
   - Fem kundärenden, varav två är kopplade till återbetalda order.
-  - Larmen är larmjobbets egna, utvärderade vid demons "nu" (2 nov. kl. 12). Det finns 8 öppna larm.
+  - Larmen är larmjobbets egna, utvärderade vid demons "nu" (2 nov. kl. 12). Det finns 9 öppna larm, varav 2 kritiska.
 - **Rapportmottagare och expansion.** Sju rapportmottagare (butiker, redovisningsbyrå och delägare) och sex
   expansionsplatser. E-postadresserna slutar på `.example` och når aldrig någon.
 

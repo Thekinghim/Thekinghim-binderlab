@@ -59,7 +59,7 @@ export function NewMachineForm({
       aria-label="Scenario: ny automat"
     >
       <Select
-        label="Butik som den nya platsen liknar"
+        label="Ny plats"
         wrapperClassName="sm:col-span-2"
         value={v.lik}
         onChange={set("lik")}

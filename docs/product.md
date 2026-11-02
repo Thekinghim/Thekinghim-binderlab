@@ -71,7 +71,7 @@ dagar i perioden (2 182 kr i stället för 1 529 kr), även dagarna före först
 | Varav i dag                          | 6 368 kr: två titlar räcker 0,3 och 0,5 dagar, en är slut      | Att göra                  |
 | Förlorad försäljning 4 okt.–1 nov.   | 0 kr: ingen titel var slutsåld enligt lagret och försäljningen | Prognos & inköp           |
 | Prognos 2–29 nov.                    | ca 115 700 kr (80 %-intervall 105 400–125 900 kr), ca 664 pack | Prognos & inköp           |
-| Prognosens träffsäkerhet             | 32 % fel per dag (WAPE i backtest)                             | Prognos & inköp           |
+| Prognosens träffsäkerhet             | 32 % fel per dag, prövat bakåt på veckor modellen inte sett    | Prognos & inköp           |
 | Maskinhälsa                          | alla 3 automater i drift                                       | Drift                     |
 
 Förbehåll:

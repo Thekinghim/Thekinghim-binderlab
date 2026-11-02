@@ -43,6 +43,7 @@ import {
   changeGlyph,
   compareLabel,
   ctaLabel,
+  ctaNote,
   dailyRange,
   displayUrl,
   eyebrow,
@@ -498,7 +499,7 @@ function StoreBlock({ d }: { d: StoreDetails }) {
           </Text>
         ))}
       </Fact>
-      <Fact label="Mest besökt">
+      <Fact label="Flest köp">
         <Text color={C.fg}>{d.busiest}</Text>
       </Fact>
       <Fact label="Påfyllningar">
@@ -933,6 +934,11 @@ export function ReportEmail(props: ReportEmailProps) {
                                 {displayUrl(props.reportUrl)}
                               </a>
                             </Text>
+                            {ctaNote(props.recipientKind, sender.name) ? (
+                              <Text size={13} color={C.subtle} style={{ marginTop: "10px" }}>
+                                {ctaNote(props.recipientKind, sender.name)}
+                              </Text>
+                            ) : null}
                           </Row>
                         </tbody>
                       </table>

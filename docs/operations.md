@@ -379,8 +379,12 @@ inte syns.
    503 och gör ingenting; med fel hemlighet 401.
 4. Visa i den här ordningen: Hem → Att göra → Lönsamhet → Prognos & inköp → Drift på mobilen → Rapporter (en
    butiksrapport som PDF) → Ekonomi. Siffrorna och hur de räknas står i `docs/product.md` och `docs/berakningar.md`.
-5. Byt demons telefonnummer mot PTS fiktionsnummer och butiksnamnet "Seriecentralen" mot ett påhittat innan demon
-   visas utanför bolaget (`src/seed/demo/catalog.ts`, sedan `npm run db:seed-demo -- --aterstall`).
+5. Kör `next dev` (inte `next start`: dev-inloggningen spärras i ett produktionsbygge). Next.js dev-indikator är
+   avstängd (`devIndicators: false` i `next.config.ts`), så inget ligger över sidomenyn eller mobilmenyn.
+6. Säg att demon är påhittad: alla namn, telefonnummer (PTS serier för fiktiva nummer) och siffror kommer från
+   `src/seed/demo/catalog.ts`, och utgångsläget på Effekt (+119 % i oktober) är också påhittat.
+7. Återställ demon efter visningen om någon har skapat rapporter, inbjudningar eller ändrat något:
+   `npm run db:seed-demo -- --aterstall`.
 
 ## Överlämning till en ny ägare
 

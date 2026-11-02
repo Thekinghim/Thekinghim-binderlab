@@ -365,7 +365,8 @@ describe("headlineOf", () => {
     const h = headlineOf(viewOf(build()));
     expect(h.title).toBe("2 platser kritiska, 1 låg.");
     // Högst två meningar: dagens besök står i sidhuvudets fakta (visitsToday).
-    expect(h.aside).toBe(`Black Bolt i ${codeText("BL-001")} är slut.`);
+    // Automatens namn i meningen (som Att göra och Prognos); koden står i tabellen.
+    expect(h.aside).toBe("Black Bolt i Automat 1 är slut.");
     expect(visitsToday(viewOf(build()))).toBe(`10${NBSP}pack till ${codeText("BL-001")}`);
   });
 

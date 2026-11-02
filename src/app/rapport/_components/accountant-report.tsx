@@ -241,6 +241,7 @@ export function AccountantReportDocument({
     <ReportDocument
       title={`Bokföringsunderlag ${month}`}
       recipient={recipient}
+      sender={snapshot.organization.name}
       period={datePeriod(snapshot.period)}
       generatedAt={new Date(snapshot.generatedAt)}
       timeZone={snapshot.organization.timeZone}

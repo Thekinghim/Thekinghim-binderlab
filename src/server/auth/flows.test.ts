@@ -54,7 +54,13 @@ function emailLinkProvider(session: AuthSession, cookies: MemoryCookieJar) {
 }
 
 const validLookup = async () =>
-  ({ status: "valid", email: "Anna@Example.se", role: "viewer", organizationName: "A" }) as const;
+  ({
+    status: "valid",
+    email: "Anna@Example.se",
+    role: "viewer",
+    organizationName: "A",
+    storeName: null,
+  }) as const;
 
 beforeEach(() => {
   fakeDb.queries = [];

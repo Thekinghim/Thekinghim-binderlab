@@ -349,7 +349,10 @@ export interface PageModel {
 
 function lookup(data: PrognosData): NameLookup & { supplier(id: string): string } {
   const titles = new Map(data.titles.map((t) => [t.id, t.name]));
-  const machines = new Map(data.machines.map((m) => [m.id, `${codesUnbroken(m.code)} ${m.name}`]));
+  // Automatens namn, som i Att göra och på Lager ("Automat 05"); koden bara när namnet saknas.
+  const machines = new Map(
+    data.machines.map((m) => [m.id, m.name.trim() || codesUnbroken(m.code)]),
+  );
   const suppliers = new Map(data.suppliers.map((s) => [s.id, s.name]));
   return {
     asOf: data.asOf,

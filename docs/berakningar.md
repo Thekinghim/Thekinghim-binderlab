@@ -332,7 +332,7 @@ Varje punkt har en stabil nyckel (samma orsak ger samma nyckel) och ett fingerpr
 | Punkt              | Regel                                                                                                                        | Nivå                                               |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
 | Påfyllning         | Lagret räcker under **2,5 dagar** vid snittförsäljningen de **14** senaste hela dagarna (t.o.m. i går)                       | nu under 1 dag, annars snart                       |
-| Tyst automat       | Ingen försäljning på **48 timmar**                                                                                           | nu                                                 |
+| Tyst automat       | Ingen försäljning på **48 timmar**, räknat fram till importens slut som på Drift (`salesDataUntil`)                          | nu                                                 |
 | Larm               | Öppet, okvitterat larm om automat (fel, misstänkt fel, ur drift) eller import; inte "titel nära slut" (= påfyllning)         | kritiskt: nu, varning: snart                       |
 | Rapportutkast      | Utkast (senaste versionen, inte godkänd, inte skickad), en punkt per rapportmånad                                            | som utskicket                                      |
 | Rapport att skicka | Förra månadens rapport till varje aktiv mottagare, senast månadens sista dag                                                 | försenad: nu, 0–3 dagar kvar: snart, annars senare |
@@ -458,6 +458,14 @@ Per titel × automat och dag:
   och dagarna därefter kostar inget.
 - **Per månad:** periodens kostnad fördelas på månaderna efter slutsålda dagar med största-restmetoden, så att
   månaderna summerar exakt till totalen.
+
+- **Ordning inom dagen:** händelserna ordnas på tidpunkt, sedan `seq`, som vyn `stock_levels`. Tidpunkten måste
+  vara ISO 8601: `queryMachineStockEvents` formaterar den i databasen (`to_char … 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'`),
+  som `queryOrders`. Med Postgres textformat ordnades händelserna bara på `seq` och förlorad försäljning blev för låg
+  (rättat i fas 7, `test/db/prestanda.test.ts`).
+- **Titeldagar:** summan av slutsålda dagar över alla titlar och automater. En titel slutsåld i två automater samma
+  dag är två titeldagar, så totalen kan bli fler än periodens dagar. Perioder som varken kostar dagar eller kronor i
+  analysperioden (titlar som togs ur sortimentet före den) räknas inte i texten och visas inte på Prognos.
 
 Standardvärdena står i `LOST_SALES_DEFAULTS` (`lost-sales.ts`). Testerna: `lost-sales.test.ts`.
 

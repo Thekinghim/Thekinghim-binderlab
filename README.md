@@ -79,7 +79,7 @@ larmjobbet en gång för demoorganisationen.
 
 | Kommando                                                    | Vad                                                                                                                                                        |
 | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm test`                                                  | Enhetstester (vitest, `src/**/*.test.ts`), cirka 2 450 tester på under en minut                                                                            |
+| `npm test`                                                  | Enhetstester (vitest, `src/**/*.test.ts`), cirka 2 550 tester på under en minut                                                                            |
 | `npm run test:db`                                           | Databastester mot riktig Postgres (`test/db`, cirka 2 400 tester: RLS, isolering, triggrar, tjänster, attacktester). Återställer `DATABASE_URL_TEST` först |
 | `npm run test:domain:tz`, `test:import:tz`, `test:seed:tz`  | Beräkningar, import och seed under UTC, Europe/Stockholm och Asia/Shanghai                                                                                 |
 | `npm run e2e:server` och sedan `npm run test:e2e`           | Sex flöden i webbläsaren (Playwright) mot en egen server på port 3210 och en egen databas                                                                  |
@@ -155,64 +155,90 @@ docs/               Dokumentationen (nedan)
 | [docs/awish.md](docs/awish.md), [docs/marknadskallor.md](docs/marknadskallor.md) | Vad som behövs från Awish; underlag för val av marknadspriskälla       |
 | [docs/bygglogg.md](docs/bygglogg.md)                                             | Byggets logg och läge per fas                                          |
 
-## Läge vid överlämningen
+## Läge och kvarstående
 
-**Klart.** Fas 1–11 i planen är byggda: designsystem; datamodell med RLS, inloggning och import; Hem, Att göra,
-Lönsamhet, Inköpspriser, Order, Lager, Automater, Butiker; Rapporter med PDF, Excel, SIE 4, godkännande och utskick;
-Prognos & inköp, Assistent, Expansion, Enhetsekonomi och Effekt; Drift med larm, push, besöksplan och fältläge
-(PWA); Ekonomi med avstämning, verifikationer och kassaflöde; Avtal; Butiksportal; Marknad. Fas 7 har gett demoläge,
-onboarding (Kom igång), global sökning, integration mellan sidorna, säkerhetsgranskning med attacktester,
-e2e-tester, säkerhetskopiering med återställningstest och felövervakning. Fas 12 (plattform) väntar enligt planen
-tills det finns 2–3 pilotoperatörer.
+Läget 2 nov. 2026, efter fas 7:s sista rättningar. Sammanfattning av fas 7 med testsiffror, säkerhet och prestanda:
+[docs/review/fas-7/slutrapport.md](docs/review/fas-7/slutrapport.md).
 
-**Kända brister.**
+### Klart
 
+- **Fas 1–11 i planen är byggda och granskade:** designsystem; datamodell med RLS, inloggning och import; Hem, Att
+  göra, Lönsamhet, Inköpspriser, Order, Lager, Automater, Butiker; Rapporter med PDF, Excel, SIE 4, godkännande och
+  utskick; Prognos & inköp, Assistent, Expansion, Enhetsekonomi och Effekt; Drift med larm, push, besöksplan och
+  fältläge (PWA); Ekonomi med avstämning, verifikationer och kassaflöde; Avtal; Butiksportal; Marknad.
+- **Fas 7 (kvalitet, drift, överlämning):** demoläge, onboarding (Kom igång), global sökning, integration mellan
+  sidorna, säkerhetsgranskning med attacktester, e2e-tester, säkerhetskopiering med återställningstest,
+  felövervakning, prestanda med 109 000 order, genomgång av alla sidor och dokumentationen.
+- **Styrelsedemo-granskningen** (oberoende, betyg 7/10) är åtgärdad för alla punkter med allvar hög och medel:
+  förlorad försäljning räknas med rätt ordning inom dagen, Ekonomi nämner utbetalningens egen period, tystnaden är
+  densamma på Hem, Att göra och Drift, Att göra skiljer den första punktens belopp från summan, gränssnittet är på
+  svenska, dev-indikatorn är borta, butiksrapporten visar avsändaren och en rad för övriga titlar, och mejl och PDF
+  säger samma sak. Detaljer i slutrapporten.
+- **Koden** ligger på `main` (produktion enligt `docs/operations.md`), sammanslagen från `claude/bygge` efter en grön
+  körning av hela testsviten.
+
+### Kända brister
+
+- **Inte provat mot riktiga tjänster** (byggmiljön hade inget nät): Supabase-lägena (PostgREST, storage-policyer,
+  JWKS, inbjudningsmejl), Resend, Sentry, Vercel Cron, Web Push, PDF-visning i en vanlig Chrome och CI-jobbet för e2e
+  på GitHub. Allt har lokala ersättare och tester, men ingen extern integration har körts en enda gång.
 - **Awish:** orderlistan laddas upp för hand (CSV). Den schemalagda hämtningen (`awish_grpc`), utbetalningarnas API
   och maskindata kräver dokumentation från Awish (`docs/awish.md`). Maskinhälsan härleds ur försäljningen, och en enda
   automat i en CSV-källa kan inte skiljas från en fil utan ny försäljning (datalarm efter 36 timmar).
-- **Inte provat mot riktiga tjänster** (byggmiljön hade inget nät): Supabase-lägena (PostgREST, storage-policyer,
-  JWKS), Resend, Sentry, Vercel Cron, PDF-visning i en vanlig Chrome och CI-jobbet för e2e på GitHub. Gör det vid
-  överlämningen enligt `docs/operations.md`.
 - **Säkerhet:** CSP:n tillåter `'unsafe-inline'` för skript (nonce-CSP kräver dynamisk rendering), HSTS saknar
   `includeSubDomains`, det finns ingen gräns för hur ofta inbjudningar och rapporter kan skickas, och gränserna för
   inloggning, assistent, sökning, provlarm och felanmälan räknas per serverinstans (`docs/architecture.md`).
+- **Mejl till mottagare utan konto:** butiksmejlet länkar till butiksportalen och säger att rapporten är bifogad;
+  bokföringsmejlets länk kräver inloggning (allt underlag är bifogat).
 - **Vercel:** avtalsfiler över cirka 4,4 MB stoppas av plattformen (gräns 4,5 MB per förfrågan); orderlistan laddas
   upp i bitar och påverkas inte.
+- **Prestanda:** Ekonomi 30 d ligger på målet (2,0 s i `next start` med 109 000 order). Demon visas i `next dev`
+  (dev-inloggningen spärras i `next start`), där första laddningen av en sida tar flera sekunder medan den
+  kompileras; granskningen mätte 3,9–4,4 s för Ekonomi och Assistent. Ladda sidorna en gång före visningen.
 - **Inte valda eller inte byggda leverantörer:** sms (telefonnumret måste verifieras innan en leverantör kopplas),
   bokföringsprogram (Fortnox, Visma, Bokio har gränssnittet men ingen implementation), marknadspriser (beställaren
   väljer källa) och status "öppnad" för mejl (kräver Resends webhook).
 - **Ekonomi:** kassaflödet tar inte emot kända återbetalningar som egen post, en uppladdad utbetalning kopplas till
   den äldsta aktiva datakällan, butiksersättningen antas betalas sista dagen månaden efter, och moms och kortavgift
   är inte tidsversionerade.
-- **Effekt:** utgångsläget är inte registrerat av beställaren, och slutsålda dagar och tid matas in för hand per
-  månad. Effekten kan därför inte visas än (`docs/product.md`).
+- **Effekt:** beställarens utgångsläge är inte registrerat, och slutsålda dagar och tid matas in för hand per månad.
+  Effekten för verksamheten kan därför inte visas än. Demons +119 % bygger på ett påhittat utgångsläge.
 - **Övrigt:** assistenten använder inte filtren för butik och automat, antalet fack per automat på Marknad är fast 6
   (`SLOTS_PER_MACHINE`), Lönsamhet med bara butiksfilter visar inga fasta kostnader, säkerhetskopian av databasen
-  innehåller inte filerna i Storage. Demons telefonnummer ligger i PTS serier för fiktiva nummer och alla namn är
-  påhittade (`src/seed/demo/catalog.ts`).
-- **Utvecklingsdatabasen** `binderlab_dev` på byggmaskinen innehåller testposter från bygget (lagerhändelser, ett
-  rapportutkast för september som inte får godkännas, utgångslägen på Effekt med mera). Siffrorna och skärmbilderna i
-  dokumentationen är tagna i en nyskapad databas. Kör `npm run db:reset -- dev && npm run db:seed && npm run db:seed-demo`
-  före en visning.
-- **Licens och personuppgifter:** repot har ingen licensfil än; ägande och licens beslutas vid överlåtelsen (se
-  [Licens och ägande](#licens-och-ägande)). Personuppgiftsbiträden och lagringstider står i
-  [docs/operations.md](docs/operations.md#personuppgifter-och-biträden); biträdesavtalen är inte tecknade.
+  innehåller inte filerna i Storage, och inget gallras automatiskt efter lagringstiden.
+- **Utvecklingsdatabasen** `binderlab_dev` på byggmaskinen innehåller testposter från bygget. Siffrorna och
+  skärmbilderna i dokumentationen är tagna i en nyskapad databas. Kör
+  `npm run db:reset -- dev && npm run db:seed && npm run db:seed-demo` före en visning (`docs/operations.md`,
+  "Inför en visning").
+- **Licens och avtal:** repot har ingen LICENSE-fil och inga personuppgiftsbiträdesavtal är tecknade (se
+  [Licens och ägande](#licens-och-ägande) och
+  [docs/operations.md](docs/operations.md#personuppgifter-och-biträden)).
 
-**Innan andra operatörer kan använda panelen.**
+### Innan andra operatörer kan börja använda panelen
 
-1. Driftsätt enligt `docs/miljoer.md` och prova de riktiga tjänsterna en gång (inloggning, import till Storage,
-   rapportutskick via Resend, Sentry, cron).
-2. Få specifikationen från Awish och bygg `awish_grpc`, så att importen sker automatiskt i stället för med fil.
-3. Lägg in gränser för utskick (inbjudningar, rapporter) och gör gränserna för inloggning och assistent gemensamma för
-   alla serverinstanser (till exempel i databasen).
-4. Välj och koppla bokföringsprogram och sms-leverantör, eller stäng av funktionerna för operatörer som inte har dem.
-5. Låt beställaren registrera utgångsläget och mäta tre hela månader, så att effekten går att visa för nästa
-   operatör.
-6. Bestäm plan, automatgräns (`organizations.machine_limit`) och hur en ny operatör kommer in (i dag: inbjudan i
-   Supabase och Kom igång). Plattformsfrågorna (fakturering, administration av flera operatörer) är fas 12.
-7. Teckna personuppgiftsbiträdesavtal med Supabase, Vercel, Resend, Sentry och Anthropic (Vercels funktioner körs
-   redan i Stockholm, `arn1` i `vercel.json`), bestäm lagringstider och bygg gallringen (i dag gallras inget efter 7 år eller 24 månader). Se
-   [docs/operations.md](docs/operations.md#personuppgifter-och-biträden).
+Panelen fungerar i dag för en operatör (en organisation) åt gången, driftsatt av beställaren. Innan fler operatörer
+släpps in behövs:
+
+1. **Driftsättning och nycklar.** Projekt i Supabase (EU, helst Stockholm `eu-north-1`), Vercel (funktionerna i
+   `arn1`, redan satt i `vercel.json`, Pro för larmjobbet var 10:e minut), Sentry (EU-region), Resend (verifierad
+   avsändardomän), VAPID-nycklar för push, `CRON_SECRET` och `ANTHROPIC_API_KEY`. Steg för steg i
+   [docs/miljoer.md](docs/miljoer.md) ("Det här måste beställaren göra").
+2. **Prova varje extern tjänst en gång:** inloggning och inbjudan via Supabase, import till Storage, rapportutskick
+   via Resend, ett fel i Sentry, en cron-körning och push till en telefon. Kör e2e-jobbet i GitHub Actions.
+3. **Avtal.** Personuppgiftsbiträdesavtal med Supabase, Vercel, Resend, Sentry och Anthropic; lagringstider och
+   gallring (i dag gallras inget efter 7 år eller 24 månader); ett standardavtal med operatörerna (personuppgifts-
+   ansvar, villkor); avtal med Awish om API-åtkomst; och vid en försäljning köpeavtal och LICENSE-fil.
+4. **Awish-integrationen** (`awish_grpc`), så att importen sker automatiskt i stället för med fil, och maskindata
+   när Awish kan leverera den.
+5. **Gränser för utskick** (inbjudningar, rapporter) och gemensamma gränser för inloggning och assistent för alla
+   serverinstanser (till exempel i databasen).
+6. **Leverantörer per operatör:** bokföringsprogram och sms-leverantör, eller stäng av funktionerna för operatörer
+   som inte har dem. Välj marknadspriskälla.
+7. **Plattformsfasen (fas 12)**, som enligt planen byggs när det finns 2–3 pilotoperatörer: hur en ny operatör kommer
+   in (i dag inbjudan i Supabase och Kom igång), plan och automatgräns (`organizations.machine_limit`), fakturering,
+   administration av flera operatörer och support.
+8. **Effekten:** låt beställaren registrera utgångsläget och mäta tre hela månader, så att effekten går att visa för
+   nästa operatör med riktiga siffror.
 
 ## Licens och ägande
 

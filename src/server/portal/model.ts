@@ -175,7 +175,11 @@ export function resolvePortalMonth(
   first: IsoMonth,
   current: IsoMonth,
 ): IsoMonth {
-  if (!requested || !MONTH_RE.test(requested)) return current;
+  // Utan val: den senaste hela månaden (som månadsrapporten), inte den som pågår, utom när
+  // butiken bara har den pågående månaden.
+  const lastFull = addMonths(current, -1);
+  const fallback = lastFull >= first ? lastFull : current;
+  if (!requested || !MONTH_RE.test(requested)) return fallback;
   const m = requested as IsoMonth;
   if (m > current) return current;
   if (m < first) return first;

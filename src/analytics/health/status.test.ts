@@ -167,7 +167,7 @@ describe("machineHealth: leverantörens maskindata", () => {
     expect(h?.source).toBe("vendor");
     expect(h?.since).toBe(localIso("2026-11-02", "15:00"));
     expect(txt(h?.detail)).toContain(
-      "Leverantören rapporterade offline mån 2 nov. 15:00 (för 3 timmar sedan)",
+      "Leverantören rapporterade att automaten tappade anslutningen mån 2 nov. 15:00 (för 3 timmar sedan)",
     );
   });
 

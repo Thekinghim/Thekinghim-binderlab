@@ -344,12 +344,12 @@ describe("buildPageModel", () => {
     expect(m.lost.rows).toHaveLength(1);
     const row = m.lost.rows[0]!;
     expect(row.title).toBe("Pokémon 151");
-    // Koden bryts aldrig (hårt bindestreck, som på Lager).
-    expect(row.machine).toBe("BL\u2011001 Automat 1");
+    // Automatens namn, som i Att göra och på Lager.
+    expect(row.machine).toBe("Automat 1");
     expect(row.lostRevenueOre).toBeGreaterThan(0);
     expect(m.lost.totalRevenueOre).toBe(row.lostRevenueOre);
     expect(m.lost.heading.title).toMatch(/^Slutsålt kostade ca/);
-    expect(m.lost.heading.aside).toContain("Störst: Pokémon 151 i BL\u2011001 Automat 1");
+    expect(m.lost.heading.aside).toContain("Störst: Pokémon 151 i Automat 1");
     // Pågående slutsålt räknas i titlar och böjs i ental.
     expect(m.lost.heading.aside).not.toMatch(/1\u00a0titel är slutsålda/);
     // Sidhuvudet: periodtexten kan sluta på en förkortning ("okt."), aldrig "..".
