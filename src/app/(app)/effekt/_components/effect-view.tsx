@@ -15,6 +15,7 @@ import { EvidenceDetails } from "../../expansion/_components/evidence";
 import { DeleteButton, FormModal, type FieldSpec } from "../../expansion/_components/form-kit";
 import type { Named } from "../../expansion/_lib/data";
 import {
+  BASELINE_METRIC_LABEL,
   kr,
   minutesText,
   minutesToHoursInput,
@@ -36,12 +37,7 @@ import {
   saveMeasurement,
 } from "../actions";
 
-export const METRIC_LABEL: Record<BaselineRecord["metric"], string> = {
-  profit_per_machine_month: "Vinst per automat och månad",
-  stockout_days_month: "Slutsålda dagar per månad",
-  refill_hours_month: "Tid för påfyllning per månad",
-  admin_hours_month: "Tid för administration per månad",
-};
+const METRIC_LABEL: Record<BaselineRecord["metric"], string> = BASELINE_METRIC_LABEL;
 
 const METRIC_OPTIONS = (Object.keys(METRIC_LABEL) as BaselineRecord["metric"][]).map((m) => ({
   value: m,
@@ -195,7 +191,7 @@ export function SeriesView({
           summary={`${METRIC_LABEL[series.metric]} per månad jämfört med utgångsläget.`}
         />
       ) : null}
-      <div className="min-w-0 overflow-x-auto">
+      <div className="relative min-w-0 overflow-x-auto">
         <table className="w-full min-w-[560px] border-collapse text-base">
           <caption className="sr-only">{METRIC_LABEL[series.metric]} per månad</caption>
           <thead>
@@ -435,7 +431,7 @@ export function MeasurementsSection({
           message="Inga mätvärden ännu. Slutsålda dagar och tid för påfyllning och administration läggs in per månad."
         />
       ) : (
-        <div className="min-w-0 overflow-x-auto">
+        <div className="relative min-w-0 overflow-x-auto">
           <table className="w-full min-w-[560px] border-collapse text-base">
             <caption className="sr-only">Mätvärden per månad</caption>
             <thead>

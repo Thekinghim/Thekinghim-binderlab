@@ -177,7 +177,9 @@ export function ReportBuilder({
             Öppna rapporten →
           </a>
         ) : (
-          <p className="text-sm text-muted">Ägaren eller en admin skapar och skickar rapporterna.</p>
+          <p className="text-sm text-muted">
+            Ägaren eller en admin skapar och skickar rapporterna.
+          </p>
         )}
         {error ? <StateMessage kind="error" compact message={error} className="px-0" /> : null}
       </div>

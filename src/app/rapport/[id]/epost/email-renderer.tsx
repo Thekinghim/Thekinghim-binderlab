@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { renderReportEmail, type ReportEmailProps } from "@/emails/report-email";
 
@@ -22,16 +22,26 @@ declare global {
  * köras i Server Components). Servern öppnar sidan i headless Chromium och läser
  * resultatet ur `window.__BL_EMAILS__`; en människa ser samma mejl som förhandsvisning.
  */
+const noop = () => () => {};
+
 export function EmailRenderer({ jobs }: { jobs: readonly EmailJob[] }) {
-  const [rendered, setRendered] = useState<
-    { job: EmailJob; subject: string; preheader: string; html: string }[] | null
-  >(null);
+  // Bara i webbläsaren: mallen renderas inte i serverns förrendering.
+  const inBrowser = useSyncExternalStore(
+    noop,
+    () => true,
+    () => false,
+  );
+  const rendered = useMemo(
+    () => (inBrowser ? jobs.map((job) => ({ job, ...renderReportEmail(job.props) })) : null),
+    [inBrowser, jobs],
+  );
 
   useEffect(() => {
-    const out = jobs.map((job) => ({ job, ...renderReportEmail(job.props) }));
-    window.__BL_EMAILS__ = Object.fromEntries(out.map((o) => [o.job.recipientId, { html: o.html }]));
-    setRendered(out);
-  }, [jobs]);
+    if (!rendered) return;
+    window.__BL_EMAILS__ = Object.fromEntries(
+      rendered.map((o) => [o.job.recipientId, { html: o.html }]),
+    );
+  }, [rendered]);
 
   if (!rendered) {
     return <p className="meta text-subtle">Mejlen renderas …</p>;
@@ -51,7 +61,7 @@ export function EmailRenderer({ jobs }: { jobs: readonly EmailJob[] }) {
             title={`Mejlet till ${r.job.name}`}
             srcDoc={r.html}
             sandbox=""
-            className="h-[1400px] w-full max-w-[680px] rounded-md border border-line bg-white"
+            className="bg-white h-[1400px] w-full max-w-[680px] rounded-md border border-line"
           />
         </article>
       ))}

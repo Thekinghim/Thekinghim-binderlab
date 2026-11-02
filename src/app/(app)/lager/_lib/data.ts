@@ -8,7 +8,7 @@
 
 import "server-only";
 
-import { and, desc, eq, gte, inArray, lte, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 
 import { addDays, type IsoDate, type Period } from "@/domain";
 import * as s from "@/db/schema";
@@ -44,7 +44,13 @@ async function queryHasCentral(tx: Tx, orgId: string): Promise<boolean> {
   const rows = await tx
     .select({ id: s.stockLocations.id })
     .from(s.stockLocations)
-    .where(and(eq(s.stockLocations.organizationId, orgId), eq(s.stockLocations.isCentral, true)))
+    .where(
+      and(
+        eq(s.stockLocations.organizationId, orgId),
+        eq(s.stockLocations.isCentral, true),
+        isNull(s.stockLocations.archivedAt),
+      ),
+    )
     .limit(1);
   return rows.length > 0;
 }
@@ -90,14 +96,20 @@ async function queryHistory(
       titleId: s.stockEvents.titleId,
       machineId: s.stockLocations.machineId,
       performedBy: s.stockEvents.performedBy,
-      note: s.stockEvents.note,
+      // register_refill (och seed-datan) drar uttaget ur centrallagret i samma transaktion:
+      // samma titel, tidpunkt och antal, med noteringen "Uttag till påfyllning av <kod>".
+      // Koden kopplar uttaget till just den här automaten.
       fromWarehouse: sql<boolean>`(${s.stockEvents.kind} = 'refill' and exists (
         select 1 from public.stock_events w
         where w.organization_id = ${s.stockEvents.organizationId}
           and w.kind = 'adjustment'
           and w.title_id = ${s.stockEvents.titleId}
           and w.occurred_at = ${s.stockEvents.occurredAt}
-          and w.note like 'Uttag till påfyllning%'))`,
+          and w.quantity = -${s.stockEvents.quantity}
+          and w.note = 'Uttag till påfyllning av ' || (
+            select m.code from public.machines m
+            where m.id = ${s.stockLocations.machineId}
+              and m.organization_id = ${s.stockEvents.organizationId})))`,
     })
     .from(s.stockEvents)
     .innerJoin(
@@ -136,7 +148,6 @@ async function queryHistory(
       machineCode: r.machineId ? names.machineCode(r.machineId) : null,
       performer: r.performedBy ? (performers.get(r.performedBy) ?? null) : null,
       isSelf: r.performedBy === selfId,
-      note: r.note,
       fromWarehouse: Boolean(r.fromWarehouse),
     })),
   };
@@ -155,7 +166,8 @@ export async function loadLagerFor(
   const orgId = viewer.organization.id;
   const timeZone = viewer.organization.timezone;
   const today = businessToday(now, timeZone);
-  // Fönstret slutar i går; i dag tas med för påfyllningslistan (besöksplanen räknar t.o.m. i dag).
+  // Fönstret slutar i går (matrisen, Att göra och besöksplanen via planNow). Dagens
+  // försäljning läses också men räknas inte i takten; saldot är alltid dagens.
   const salesFrom: IsoDate = addDays(today, -(WINDOW_DAYS + 1));
 
   const [master, stock, sales] = await Promise.all([
@@ -208,5 +220,6 @@ export async function loadLagerFor(
     historyTotal: history.total,
     counts: model.counts,
     canRegister: (REGISTER_ROLES as readonly string[]).includes(role),
+    packListFirst: role === "refiller" || args.scope.machineId !== null,
   };
 }

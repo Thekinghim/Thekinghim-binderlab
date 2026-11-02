@@ -110,7 +110,7 @@ export function SiteEstimateView({
         {estimate.detail}
         {investmentNote ? ` ${investmentNote}` : ""}
       </p>
-      <div className="min-w-0 overflow-x-auto">
+      <div className="relative min-w-0 overflow-x-auto">
         <table className="w-full min-w-[640px] border-collapse text-base">
           <caption className="sr-only">Platserna uppskattningen bygger på</caption>
           <thead>
@@ -225,7 +225,7 @@ export function PriceChangeView({
         ]}
       />
       <p className="max-w-3xl text-sm text-muted">{scenario.detail}</p>
-      <div className="min-w-0 overflow-x-auto">
+      <div className="relative min-w-0 overflow-x-auto">
         <table className="w-full min-w-[560px] border-collapse text-base">
           <caption className="sr-only">Utfall per antagen elasticitet</caption>
           <thead>

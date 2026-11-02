@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag, type Status } from "@/components/ui/status-tag";
-import { formatDateTime, formatInt } from "@/lib/format";
+import { formatInt } from "@/lib/format";
 import {
   FAULT_LABEL,
   FAULT_STATUS_LABEL,
@@ -14,6 +14,7 @@ import {
 import { loadPortalFaults } from "@/server/portal/load";
 import { requirePortalContext } from "@/server/portal/session";
 
+import { dateTimeText } from "../_components/text";
 import { FaultForm } from "./fault-form";
 
 export const metadata: Metadata = { title: "Felanmälan" };
@@ -49,7 +50,9 @@ export default async function PortalFaultPage({ searchParams }: { searchParams: 
           title={
             open.length === 0
               ? "Inga öppna felanmälningar."
-              : `${formatInt(open.length)} ${open.length === 1 ? "felanmälan är" : "felanmälningar är"} öppna.`
+              : open.length === 1
+                ? "1 felanmälan är öppen."
+                : `${formatInt(open.length)} felanmälningar är öppna.`
           }
           aside={`Anmälan går direkt till ${ctx.store.organizationName}, som ser den i sin inkorg.`}
         />
@@ -99,7 +102,7 @@ export default async function PortalFaultPage({ searchParams }: { searchParams: 
           }
           aside={
             faults.length > 0
-              ? `${formatInt(faults.length - open.length)} åtgärdade, ${formatInt(open.length)} öppna.`
+              ? `${formatInt(faults.length - open.length)} ${faults.length - open.length === 1 ? "åtgärdad" : "åtgärdade"}, ${formatInt(open.length)} ${open.length === 1 ? "öppen" : "öppna"}.`
               : undefined
           }
         />
@@ -126,8 +129,10 @@ export default async function PortalFaultPage({ searchParams }: { searchParams: 
                       <span className="text-sm break-words text-muted">{f.description}</span>
                     ) : null}
                     <span className="meta text-subtle">
-                      Anmäld {formatDateTime(new Date(f.reportedAt))}
-                      {f.resolvedAt ? ` · åtgärdad ${formatDateTime(new Date(f.resolvedAt))}` : ""}
+                      Anmäld {dateTimeText(f.reportedAt, ctx.store.timezone)}
+                      {f.resolvedAt
+                        ? ` · åtgärdad ${dateTimeText(f.resolvedAt, ctx.store.timezone)}`
+                        : ""}
                     </span>
                   </div>
                   <StatusTag status={STATUS_TAG[status]}>{FAULT_STATUS_LABEL[status]}</StatusTag>

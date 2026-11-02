@@ -6,14 +6,10 @@ import type { SearchParamsInput } from "@/components/shell/period-state";
 import { formatInt } from "@/lib/format";
 
 import { loadEffectPage, type Names } from "../expansion/_lib/data";
-import { monthLabel } from "../expansion/_lib/display";
+import { BASELINE_METRIC_LABEL, monthLabel } from "../expansion/_lib/display";
+import { signedPct } from "@/analytics/expansion";
 import { evidenceLinks, monthOfDate } from "../expansion/_lib/model";
-import {
-  BaselinesSection,
-  MeasurementsSection,
-  METRIC_LABEL,
-  SeriesView,
-} from "./_components/effect-view";
+import { BaselinesSection, MeasurementsSection, SeriesView } from "./_components/effect-view";
 
 export const metadata: Metadata = { title: "Effekt" };
 
@@ -54,13 +50,17 @@ export default async function EffektPage({
   const monthsText =
     first === last ? monthLabel(first) : `${monthLabel(first)} – ${monthLabel(last)}`;
 
+  const latestBp = lead?.latest?.improvementBp ?? null;
   const title = lead
-    ? lead.text
+    ? latestBp === null
+      ? `${BASELINE_METRIC_LABEL[lead.metric]}: ${monthLabel(lead.latest!.month)}.`
+      : `${BASELINE_METRIC_LABEL[lead.metric]} ${signedPct(latestBp)} mot före Binderlab.`
     : data.baselines.length === 0
       ? "Utgångsläget före Binderlab är inte registrerat."
       : "Inga värden att jämföra ännu.";
   const aside = lead
-    ? `${withValues.length} av ${data.series.length} mått har värden för ${monthsText}.`
+    ? lead.detail ||
+      `${withValues.length} av ${data.series.length} mått har värden för ${monthsText}.`
     : data.baselines.length === 0
       ? "Ange hur det var före: vinst per automat, slutsålda dagar och tid, så visas förbättringen per månad."
       : "Lägg in mätvärden per månad för slutsålda dagar och tid.";
@@ -126,7 +126,7 @@ export default async function EffektPage({
               ? "Inget registrerat."
               : `${formatInt(data.baselines.length)} ${data.baselines.length === 1 ? "mått" : "mått"} före Binderlab.`
           }
-          aside={`Mått: ${Object.values(METRIC_LABEL)
+          aside={`Mått: ${Object.values(BASELINE_METRIC_LABEL)
             .map((l) => l.toLowerCase())
             .join(", ")}.`}
         />

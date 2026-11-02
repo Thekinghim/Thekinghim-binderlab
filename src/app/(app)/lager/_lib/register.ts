@@ -1,6 +1,6 @@
 /**
  * Registrering av påfyllning och inventering, bundet till en given användare (testbart
- * utan Next, se test/db/lager-register.test.ts). Server actions i ../actions.ts är tunna
+ * utan Next, se test/db/lager-data.test.ts). Server actions i ../actions.ts är tunna
  * omslag kring de här.
  *
  * Rollen kontrolleras mot databasen (ägare, admin, påfyllare) och allt skrivs som

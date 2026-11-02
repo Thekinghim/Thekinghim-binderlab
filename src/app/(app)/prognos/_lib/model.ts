@@ -322,6 +322,7 @@ function lookup(data: PrognosData): NameLookup & { supplier(id: string): string 
   const machines = new Map(data.machines.map((m) => [m.id, `${m.code} ${m.name}`]));
   const suppliers = new Map(data.suppliers.map((s) => [s.id, s.name]));
   return {
+    asOf: data.asOf,
     title: (id) => titles.get(id) ?? "Okänd titel",
     machine: (id) => machines.get(id) ?? "Okänd automat",
     supplier: (id) => suppliers.get(id) ?? "Okänd leverantör",

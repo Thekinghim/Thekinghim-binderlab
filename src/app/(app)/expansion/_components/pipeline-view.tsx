@@ -356,7 +356,7 @@ export function StoreProfilesView({
   }
   return (
     <div className="min-w-0">
-      <div className="min-w-0 overflow-x-auto">
+      <div className="relative min-w-0 overflow-x-auto">
         <table className="w-full min-w-[560px] border-collapse text-base">
           <caption className="sr-only">Platsprofiler för befintliga butiker</caption>
           <thead>

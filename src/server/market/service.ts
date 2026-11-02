@@ -11,7 +11,7 @@
 
 import "server-only";
 
-import { and, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 
 import { withUserDbFor, requireRoleFor } from "@/server/access";
 import type { Tx } from "@/db/client";
@@ -32,7 +32,9 @@ import {
 } from "@/server/data/core/queries";
 import { ECONOMY_ROLES, OPERATOR_ROLES } from "@/server/data/core/types";
 
+import { dayText } from "./display";
 import {
+  analysisPeriod,
   assortmentRecommendations,
   priceTestProposals,
   releaseSuggestionFor,
@@ -72,9 +74,123 @@ export class MarketError extends Error {
   }
 }
 
+/** Registrerat pris får ligga högst så många dagar fram (en offert för kommande leverans). */
+export const QUOTE_MAX_DAYS_AHEAD = 90;
+/** ...och högst så många dagar bakåt. */
+export const QUOTE_MAX_DAYS_BACK = 3650;
+/** Fackfördelning får börja högst så många dagar fram. */
+export const SLOTS_MAX_DAYS_AHEAD = 90;
+/** Genomförandedag för en sortimentsändring: högst så många dagar bakåt och fram. */
+export const IMPLEMENT_MAX_DAYS_BACK = 7;
+export const IMPLEMENT_MAX_DAYS_AHEAD = 30;
+
+/**
+ * Databasens begränsningar som användaren kan råka ut för, med svenska meddelanden.
+ * Kontrollerna i tjänsten fångar de flesta före skrivningen; det här gäller samtidiga
+ * anrop och manipulerade id:n som ändå når databasen.
+ */
+const CONSTRAINT_MESSAGES: Record<string, string> = {
+  releases_title_unique: "Titeln har redan ett släpp i kalendern.",
+  releases_organization_id_title_id_fkey: "Titeln finns inte.",
+  releases_organization_id_supplier_id_fkey: "Leverantören finns inte.",
+  supplier_price_quotes_organization_id_title_id_fkey: "Titeln finns inte.",
+  supplier_price_quotes_organization_id_supplier_id_fkey: "Leverantören finns inte.",
+  machine_slots_organization_id_title_id_fkey: "Titeln finns inte.",
+  machine_slots_organization_id_machine_id_fkey: "Automaten finns inte.",
+  machine_slots_no_overlap: "Fackperioderna överlappar. Ladda om sidan och försök igen.",
+  price_experiments_proposal_unique: "Pristestet är redan startat.",
+  assortment_changes_fingerprint_unique: "Rekommendationen är redan markerad som genomförd.",
+};
+
+/** Namnet på begränsningen bakom ett fel från postgres.js, om det finns. */
+export function constraintOf(error: unknown): string | null {
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current; depth += 1) {
+    if (typeof current === "object" && current !== null && "constraint_name" in current) {
+      const name = (current as { constraint_name?: unknown }).constraint_name;
+      if (typeof name === "string") return name;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return null;
+}
+
+async function explained<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    const name = constraintOf(error);
+    const message = name ? CONSTRAINT_MESSAGES[name] : undefined;
+    if (message) throw new MarketError(message);
+    throw error;
+  }
+}
+
 async function asOperator<T>(viewer: Viewer, fn: (tx: Tx) => Promise<T>): Promise<T> {
   await requireRoleFor(viewer.user, viewer.organization.id, OPERATOR_ROLES);
-  return withUserDbFor(viewer.user, fn);
+  return explained(() => withUserDbFor(viewer.user, fn));
+}
+
+/** Titeln finns i organisationen och är inte sammanslagen (MarketError annars). */
+async function assertTitles(tx: Tx, orgId: string, ids: readonly string[]): Promise<void> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return;
+  const rows = await tx
+    .select({ id: s.titles.id })
+    .from(s.titles)
+    .where(
+      and(
+        eq(s.titles.organizationId, orgId),
+        inArray(s.titles.id, unique),
+        isNull(s.titles.mergedIntoId),
+      ),
+    );
+  if (rows.length !== unique.length) throw new MarketError("Titeln finns inte.");
+}
+
+async function assertSupplier(tx: Tx, orgId: string, id: string | null): Promise<void> {
+  if (!id) return;
+  const [row] = await tx
+    .select({ id: s.suppliers.id })
+    .from(s.suppliers)
+    .where(and(eq(s.suppliers.organizationId, orgId), eq(s.suppliers.id, id)));
+  if (!row) throw new MarketError("Leverantören finns inte.");
+}
+
+async function assertNoOtherRelease(
+  tx: Tx,
+  orgId: string,
+  titleId: string | null,
+  exceptId: string | null,
+): Promise<void> {
+  if (!titleId) return;
+  const rows = await tx
+    .select({ id: s.releases.id, name: s.releases.name })
+    .from(s.releases)
+    .where(and(eq(s.releases.organizationId, orgId), eq(s.releases.titleId, titleId)));
+  const other = rows.find((r) => r.id !== exceptId);
+  if (other) throw new MarketError(`Titeln har redan ett släpp i kalendern (${other.name}).`);
+}
+
+/** Transaktionslås för en nyckel (släpps när transaktionen slutar). */
+async function lockKey(tx: Tx, key: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${key}, 0))`);
+}
+
+/** Senaste genomförda sortimentsändringens dag för en automat, eller null. */
+async function lastImplementedOn(tx: Tx, orgId: string, machineId: string) {
+  const [row] = await tx
+    .select({ implementedOn: s.assortmentChanges.implementedOn })
+    .from(s.assortmentChanges)
+    .where(
+      and(
+        eq(s.assortmentChanges.organizationId, orgId),
+        eq(s.assortmentChanges.machineId, machineId),
+      ),
+    )
+    .orderBy(desc(s.assortmentChanges.implementedOn))
+    .limit(1);
+  return row?.implementedOn ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +311,10 @@ function releaseValues(input: CreateReleaseInput) {
 
 export async function createReleaseFor(viewer: Viewer, input: CreateReleaseInput): Promise<string> {
   return asOperator(viewer, async (tx) => {
+    const orgId = viewer.organization.id;
+    if (input.titleId) await assertTitles(tx, orgId, [input.titleId]);
+    await assertSupplier(tx, orgId, input.supplierId);
+    await assertNoOtherRelease(tx, orgId, input.titleId, null);
     const [row] = await tx
       .insert(s.releases)
       .values({ organizationId: viewer.organization.id, source: "manual", ...releaseValues(input) })
@@ -217,7 +337,19 @@ export async function updateReleaseFor(viewer: Viewer, input: UpdateReleaseInput
     const orgId = viewer.organization.id;
     const current = await releaseRow(tx, orgId, input.id);
     const next = releaseValues(input);
+    if (next.titleId && next.titleId !== current.titleId) {
+      await assertTitles(tx, orgId, [next.titleId]);
+      await assertNoOtherRelease(tx, orgId, next.titleId, current.id);
+    }
+    if (next.supplierId !== current.supplierId) await assertSupplier(tx, orgId, next.supplierId);
     if (current.planLockedAt) {
+      // En titel får kopplas till ett fastställt förslag (när den dyker upp i orderna),
+      // men inte bytas: utfallet mäts då mot en annan titel än planen.
+      if (current.titleId !== null && next.titleId !== current.titleId) {
+        throw new MarketError(
+          "Förslaget är fastställt för en annan titel. Lås upp det innan titeln byts.",
+        );
+      }
       const planChanged =
         current.releaseDate !== next.releaseDate ||
         current.scaleBp !== next.scaleBp ||
@@ -345,8 +477,22 @@ export async function unlockReleasePlanFor(viewer: Viewer, releaseId: string): P
 // ---------------------------------------------------------------------------
 
 export async function createQuoteFor(viewer: Viewer, input: CreateQuoteInput): Promise<string> {
+  const today = businessToday(new Date(), viewer.organization.timezone);
+  if (input.quotedOn > addDays(today, QUOTE_MAX_DAYS_AHEAD)) {
+    throw new MarketError(
+      `Datumet kan ligga högst ${QUOTE_MAX_DAYS_AHEAD} dagar fram (${dayText(addDays(today, QUOTE_MAX_DAYS_AHEAD), today)}).`,
+    );
+  }
+  if (input.quotedOn < addDays(today, -QUOTE_MAX_DAYS_BACK)) {
+    throw new MarketError("Datumet kan ligga högst tio år bakåt.");
+  }
+  if (input.unitCost === 0 && !input.note) {
+    throw new MarketError("Ett pris på 0 kr kräver en anteckning (t.ex. gratisexemplar).");
+  }
   return asOperator(viewer, async (tx) => {
     const orgId = viewer.organization.id;
+    await assertTitles(tx, orgId, [input.titleId]);
+    await assertSupplier(tx, orgId, input.supplierId);
     let supplierId = input.supplierId;
     if (!supplierId) {
       const name = input.newSupplierName!.trim();
@@ -445,7 +591,20 @@ async function replaceSlots(
   }
 }
 
-export async function saveSlotsFor(viewer: Viewer, input: SaveSlotsInput): Promise<void> {
+/**
+ * Sparar en ny fackfördelning från och med `validFrom`. Fackfördelningen från en
+ * genomförd sortimentsändring skrivs aldrig över (uppföljningen mäts mot den), så
+ * `validFrom` måste ligga efter den senaste genomförda ändringen i automaten.
+ */
+export async function saveSlotsFor(
+  viewer: Viewer,
+  input: SaveSlotsInput,
+  now: Date = new Date(),
+): Promise<void> {
+  const today = businessToday(now, viewer.organization.timezone);
+  if (input.validFrom > addDays(today, SLOTS_MAX_DAYS_AHEAD)) {
+    throw new MarketError(`Fackfördelningen kan börja högst ${SLOTS_MAX_DAYS_AHEAD} dagar fram.`);
+  }
   await asOperator(viewer, async (tx) => {
     const orgId = viewer.organization.id;
     const [machine] = await tx
@@ -453,6 +612,18 @@ export async function saveSlotsFor(viewer: Viewer, input: SaveSlotsInput): Promi
       .from(s.machines)
       .where(and(eq(s.machines.organizationId, orgId), eq(s.machines.id, input.machineId)));
     if (!machine) throw new MarketError("Automaten finns inte.");
+    await assertTitles(
+      tx,
+      orgId,
+      input.lines.map((l) => l.titleId),
+    );
+    await lockKey(tx, `marknad:slots:${orgId}:${input.machineId}`);
+    const locked = await lastImplementedOn(tx, orgId, input.machineId);
+    if (locked && input.validFrom <= locked) {
+      throw new MarketError(
+        `Fackfördelningen från den genomförda sortimentsändringen ${dayText(locked, today)} följs upp och kan inte skrivas över. Välj en dag efter ${dayText(locked, today)}.`,
+      );
+    }
     await replaceSlots(tx, orgId, input.machineId, input.validFrom, input.lines);
   });
 }
@@ -469,10 +640,23 @@ export async function implementAssortmentFor(
 ): Promise<{ id: string; effectPerWeekOre: number }> {
   await requireRoleFor(viewer.user, viewer.organization.id, OPERATOR_ROLES);
   const data = await loadMarketDataFor(viewer, now);
-  if (input.implementedOn > addDays(data.today, 30)) {
-    throw new MarketError("Genomförandedagen kan ligga högst 30 dagar fram.");
+  if (input.implementedOn > addDays(data.today, IMPLEMENT_MAX_DAYS_AHEAD)) {
+    throw new MarketError(
+      `Genomförandedagen kan ligga högst ${IMPLEMENT_MAX_DAYS_AHEAD} dagar fram.`,
+    );
   }
-  const period: Period = { start: input.periodStart, end: input.periodEnd };
+  if (input.implementedOn < addDays(data.today, -IMPLEMENT_MAX_DAYS_BACK)) {
+    throw new MarketError(
+      `Genomförandedagen kan ligga högst ${IMPLEMENT_MAX_DAYS_BACK} dagar bakåt. Registrera äldre ändringar som fackfördelning.`,
+    );
+  }
+  // Samma analysperiod som sidan (dagar med data, högst till och med i går).
+  const period: Period = analysisPeriod(data, { start: input.periodStart, end: input.periodEnd });
+  if (input.implementedOn <= period.end) {
+    throw new MarketError(
+      `Genomförandedagen måste ligga efter rekommendationens mätperiod (efter ${dayText(period.end, data.today)}).`,
+    );
+  }
   const rec = assortmentRecommendations(data, period).find((r) => r.machineId === input.machineId);
   if (!rec || rec.fingerprint !== input.fingerprint) {
     throw new MarketError(
@@ -496,8 +680,28 @@ export async function implementAssortmentFor(
     rule: rec.evidence.rule,
     figures: rec.evidence.figures,
   };
-  const id = await withUserDbFor(viewer.user, async (tx) => {
+  const id = await explained(() =>
+    withUserDbFor(viewer.user, async (tx) => {
     const orgId = viewer.organization.id;
+    // Ett anrop i taget per automat; kontrollerna nedan görs under låset.
+    await lockKey(tx, `marknad:slots:${orgId}:${input.machineId}`);
+    const [already] = await tx
+      .select({ id: s.assortmentChanges.id })
+      .from(s.assortmentChanges)
+      .where(
+        and(
+          eq(s.assortmentChanges.organizationId, orgId),
+          eq(s.assortmentChanges.machineId, input.machineId),
+          eq(s.assortmentChanges.fingerprint, rec.fingerprint),
+        ),
+      );
+    if (already) throw new MarketError("Rekommendationen är redan markerad som genomförd.");
+    const locked = await lastImplementedOn(tx, orgId, input.machineId);
+    if (locked && input.implementedOn <= locked) {
+      throw new MarketError(
+        `Automaten har en genomförd sortimentsändring ${dayText(locked, data.today)}. Välj en dag efter den.`,
+      );
+    }
     const [row] = await tx
       .insert(s.assortmentChanges)
       .values({
@@ -521,7 +725,8 @@ export async function implementAssortmentFor(
         .map((l) => ({ titleId: l.titleId, slots: l.recommendedSlots })),
     );
     return row!.id;
-  });
+    }),
+  );
   return { id, effectPerWeekOre: rec.effectPerWeekOre };
 }
 
@@ -543,7 +748,23 @@ export async function startExperimentFor(
       "Förslaget gäller inte längre. Ladda om sidan och välj ett aktuellt förslag.",
     );
   }
-  const id = await withUserDbFor(viewer.user, async (tx) => {
+  const id = await explained(() =>
+    withUserDbFor(viewer.user, async (tx) => {
+    const orgId = viewer.organization.id;
+    // Ett anrop i taget per titel; kontrollen görs under låset (dubbelklick, flera flikar).
+    await lockKey(tx, `marknad:experiment:${orgId}:${proposal.titleId}`);
+    const running = await tx
+      .select({ id: s.priceExperiments.id })
+      .from(s.priceExperiments)
+      .where(
+        and(
+          eq(s.priceExperiments.organizationId, orgId),
+          eq(s.priceExperiments.titleId, proposal.titleId),
+          isNull(s.priceExperiments.stoppedOn),
+          sql`${s.priceExperiments.startedOn} + ${s.priceExperiments.testDays} - 1 >= ${data.today}::date`,
+        ),
+      );
+    if (running.length > 0) throw new MarketError("Titeln har redan ett pristest som pågår.");
     const [row] = await tx
       .insert(s.priceExperiments)
       .values({
@@ -579,13 +800,15 @@ export async function startExperimentFor(
       })),
     ]);
     return row!.id;
-  });
+    }),
+  );
   return { id, startedOn: proposal.period.start };
 }
 
 /**
- * Stoppar ett pristest. Ett test som inte har börjat tas bort; ett pågående får sista dag
- * i dag (utvärderingen räknas till och med den).
+ * Stoppar ett pristest. Ett test som inte har mätts en hel dag (börjar i dag eller senare)
+ * tas bort; ett pågående får sista dag i dag (utvärderingen räknas till och med i går, sista
+ * hela dagen).
  */
 export async function stopExperimentFor(
   viewer: Viewer,
@@ -601,7 +824,8 @@ export async function stopExperimentFor(
       .where(and(eq(s.priceExperiments.organizationId, orgId), eq(s.priceExperiments.id, id)));
     if (!row) throw new MarketError("Pristestet finns inte.");
     if (row.stoppedOn) throw new MarketError("Pristestet är redan stoppat.");
-    if (row.startedOn > today) {
+    // Ett test som inte mätts en hel dag (börjar i dag eller senare) tas bort.
+    if (row.startedOn >= today) {
       await tx
         .delete(s.priceExperimentMachines)
         .where(

@@ -412,7 +412,9 @@ export async function previewReportFor(
   req: ReportRequest,
   now: Date = new Date(),
 ): Promise<ReportSnapshot> {
-  return as(viewer, READ_ROLES, (tx) => snapshotTx(tx, viewer.organization.id, viewer.organization.timezone, req, now));
+  return as(viewer, READ_ROLES, (tx) =>
+    snapshotTx(tx, viewer.organization.id, viewer.organization.timezone, req, now),
+  );
 }
 
 /** Sparar en ny rapport (utkast). Ägare och admin. Returnerar rapportens id. */
@@ -502,7 +504,11 @@ export async function ensurePdfFor(
   const fileName = reportFileName(report.snapshot, "pdf");
   if (report.storagePath && isValidStoragePath(report.storagePath)) {
     try {
-      return { bytes: await deps.store.get(report.storagePath), fileName, snapshot: report.snapshot };
+      return {
+        bytes: await deps.store.get(report.storagePath),
+        fileName,
+        snapshot: report.snapshot,
+      };
     } catch {
       // Filen saknas i lagringen (t.ex. lokal disk som rensats): skapa den igen nedan.
     }
@@ -573,9 +579,7 @@ export function eligibleRecipients(
   const kind = RECIPIENT_KIND[snapshot.type];
   return recipients.filter(
     (r) =>
-      r.active &&
-      r.kind === kind &&
-      (snapshot.type !== "butik" || r.storeId === snapshot.store.id),
+      r.active && r.kind === kind && (snapshot.type !== "butik" || r.storeId === snapshot.store.id),
   );
 }
 

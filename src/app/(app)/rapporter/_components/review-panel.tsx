@@ -221,7 +221,9 @@ export function ReviewPanel({
                         <span className="truncate text-base text-fg">{r.name}</span>
                         <span className="meta truncate text-subtle">{r.email}</span>
                       </label>
-                      {deliveredTo.has(r.id) ? <StatusTag status="ok">Har fått den</StatusTag> : null}
+                      {deliveredTo.has(r.id) ? (
+                        <StatusTag status="ok">Har fått den</StatusTag>
+                      ) : null}
                     </li>
                   );
                 })}
@@ -272,8 +274,12 @@ export function ReviewPanel({
                   >
                     <span className="min-w-0 truncate text-base text-fg">{d.email}</span>
                     <StatusTag status={s.tag}>{s.label}</StatusTag>
-                    <span className="meta text-subtle">{when(d.sentAt ?? d.createdAt, timeZone)}</span>
-                    {d.error ? <span className="col-span-2 text-sm text-muted">{d.error}</span> : null}
+                    <span className="meta text-subtle">
+                      {when(d.sentAt ?? d.createdAt, timeZone)}
+                    </span>
+                    {d.error ? (
+                      <span className="col-span-2 text-sm text-muted">{d.error}</span>
+                    ) : null}
                   </li>
                 );
               })}

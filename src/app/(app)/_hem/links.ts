@@ -38,9 +38,14 @@ function build(path: string, params: URLSearchParams): string {
 
 /**
  * Länken från en iakttagelse eller en punkt i Att göra, som en adress i panelen.
- * Okända eller externa adresser blir "/" (aldrig en länk ut ur appen).
+ * Okända eller externa adresser blir "/" (aldrig en länk ut ur appen). `extra` läggs till
+ * på länkar till Lönsamhet (t.ex. titel= för en iakttagelse om en viss titel).
  */
-export function appHref(link: string, scope: DataScope | null = null): string {
+export function appHref(
+  link: string,
+  scope: DataScope | null = null,
+  extra: Record<string, string> = {},
+): string {
   let url: URL;
   try {
     url = new URL(link, BASE);
@@ -76,20 +81,28 @@ export function appHref(link: string, scope: DataScope | null = null): string {
 
   if (path === "/lonsamhet" || path.startsWith("/automater/")) {
     renamePeriodParams(params);
-    if (path === "/lonsamhet") withScope(params, scope);
+    if (path === "/lonsamhet") {
+      for (const [k, v] of Object.entries(extra)) if (!params.has(k)) params.set(k, v);
+      withScope(params, scope);
+    }
     return build(path, params);
   }
 
   return build(path, params);
 }
 
-/** Skalets parametrar (period och filter) för länkar till andra sidor med samma urval. */
+/**
+ * Skalets parametrar (period och filter) för länkar till andra sidor med samma urval.
+ * `keepScope = false` tar bara med perioden (t.ex. "Visa hela organisationen").
+ */
 export function carriedParams(
   sp: Record<string, string | string[] | undefined>,
   extra: Record<string, string> = {},
+  keepScope = true,
 ): string {
   const out = new URLSearchParams();
-  for (const key of ["period", "from", "to", "butik", "automat"]) {
+  const keys = keepScope ? ["period", "from", "to", "butik", "automat"] : ["period", "from", "to"];
+  for (const key of keys) {
     const v = sp[key];
     const value = Array.isArray(v) ? v[0] : v;
     if (value) out.set(key, value);

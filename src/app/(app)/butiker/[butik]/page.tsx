@@ -7,6 +7,7 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusGlyph, StatusTag } from "@/components/ui/status-tag";
 import { formatInt, MISSING, NBSP } from "@/lib/format";
+import { StorePortalAccess } from "@/app/portal/_components/store-portal-access";
 
 import { AddRecipientButton } from "../_components/recipient-dialogs";
 import { NewAgreementButton } from "../_components/agreement-dialogs";
@@ -111,6 +112,16 @@ export default async function StorePage({
       <CompensationSection data={data} />
       <MachinesSection data={data} days={days} />
       <ContactSection data={data} />
+      {/* Butiksportalen (fas 10): vem i butiken som har tillgång. Bara ägare och admin. */}
+      {ctx.canEdit && !store.archived ? (
+        <StorePortalAccess
+          index={5}
+          storeId={store.id}
+          storeName={store.name}
+          defaultEmail={store.email}
+          timeZone={ctx.timeZone}
+        />
+      ) : null}
     </div>
   );
 }
@@ -175,7 +186,7 @@ function SalesSection({ data, days }: { data: StoreDetailData; days: string }) {
       ) : (
         <StateMessage
           kind="empty"
-          message={`Inga order i ${data.store.name} ${data.period.rangeLabel}.`}
+          message={sentence(`Inga order i ${data.store.name} ${data.period.rangeLabel}`)}
           detail={
             data.machines.length === 0
               ? "Ingen automat har stått i butiken. Placera en automat under Automater."
@@ -213,13 +224,7 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
         <Sub
           index="02.1"
           label={`Intjänat · ${formatInt(month.days)} av ${formatInt(month.daysInMonth)} d`}
-          title={
-            current
-              ? sentence(
-                  `${MODEL_LABEL[current.model]}: ${current.termsLabel.toLocaleLowerCase("sv-SE")}`,
-                )
-              : "Inget avtal gäller i dag."
-          }
+          title={current ? sentence(current.termsLabel) : "Inget avtal gäller i dag."}
           className="lg:col-span-5"
         >
           <dl className="flex flex-col">
@@ -232,7 +237,7 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
             <Line
               label="Hyra"
               value={kronor(month.rentOre)}
-              meta={`${formatInt(month.days)}${NBSP}d`}
+              meta={month.rentOre > 0 ? `${formatInt(month.days)}${NBSP}d` : undefined}
             />
             <Line label="Totalt till butiken" value={kronor(month.totalOre)} strong />
           </dl>
@@ -343,7 +348,7 @@ function MachinesSection({ data, days }: { data: StoreDetailData; days: string }
               ? "Automater placeras i butiker på automatens sida."
               : "Ägare och admin placerar automater."
           }
-          action={data.ctx.canEdit ? { label: "Öppna Automater →", href: "/automater" } : undefined}
+          action={data.ctx.canEdit ? { label: "Öppna Automater", href: "/automater" } : undefined}
         />
       )}
     </section>

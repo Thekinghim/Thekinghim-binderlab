@@ -15,6 +15,7 @@ import {
   type PriceHistoryEntry,
   type PurchasePrice,
   type TitleEconomics,
+  type UnpricedTitle,
 } from "@/domain";
 import { parseAmountOre } from "@/import/amount";
 import { formatDate, formatInt, formatKronor, formatMonth } from "@/lib/format";
@@ -55,7 +56,7 @@ export interface PriceAuditEvent {
   readonly after: PriceState | null;
 }
 
-export type TitleStatus = "missing" | "loss" | "loss-after-rent" | "idle" | "ok";
+export type TitleStatus = "missing" | "loss" | "partial" | "loss-after-rent" | "idle" | "ok";
 
 /** En rad i tabellen per titel (serialiserbar, skickas till klienten). */
 export interface TitleRow {
@@ -72,7 +73,12 @@ export interface TitleRow {
   readonly rentOre: number | null;
   readonly leftAfterRentOre: number | null;
   readonly orders: number;
+  /** Order i perioden som saknade inköpspris på sin dag (räknas inte in i vinsten). */
   readonly unpricedOrders: number;
+  /** Nettointäkt för order utan pris (ur profitability().unpriced.byTitle). */
+  readonly unpricedRevenueOre: number;
+  /** Första affärsdag med order utan pris i perioden. */
+  readonly unpricedFirstDate: IsoDate | null;
   readonly status: TitleStatus;
 }
 
@@ -86,6 +92,7 @@ export interface TitleInfo {
 export const STATUS_LABEL: Record<TitleStatus, string> = {
   missing: "Saknar pris",
   loss: "Förlust",
+  partial: "Delvis utan pris",
   "loss-after-rent": "Förlust efter hyra",
   idle: "Ingen försäljning",
   ok: "Lönsam",
@@ -95,9 +102,10 @@ export const STATUS_LABEL: Record<TitleStatus, string> = {
 export const STATUS_RANK: Record<TitleStatus, number> = {
   missing: 0,
   loss: 1,
-  "loss-after-rent": 2,
-  idle: 3,
-  ok: 4,
+  partial: 2,
+  "loss-after-rent": 3,
+  idle: 4,
+  ok: 5,
 };
 
 export const PRICE_MESSAGES = {
@@ -192,20 +200,28 @@ export function closedMonthsHit(
 function statusOf(e: TitleEconomics): TitleStatus {
   if (e.missingPrice) return "missing";
   if (e.lossWarning) return "loss";
+  // Priset finns i dag men tidigare order i perioden saknade pris.
+  if (e.unpricedOrders > 0) return "partial";
   if (e.lossAfterRentWarning) return "loss-after-rent";
   if (e.orders === 0) return "idle";
   return "ok";
 }
 
-/** En rad per titel i titleEconomics, med namn. Titlar utan namn (borttagna) hoppas över. */
+/**
+ * En rad per titel i titleEconomics, med namn och order utan pris (ur
+ * profitability().unpriced.byTitle). Titlar utan namn (borttagna) hoppas över.
+ */
 export function titleRows(
   economics: readonly TitleEconomics[],
   titles: readonly TitleInfo[],
+  unpricedByTitle: readonly UnpricedTitle[] = [],
 ): TitleRow[] {
   const byId = new Map(titles.map((t) => [t.id, t]));
+  const unpriced = new Map(unpricedByTitle.map((u) => [u.titleId, u]));
   return economics.flatMap((e): TitleRow[] => {
     const t = byId.get(e.titleId);
     if (!t) return [];
+    const u = unpriced.get(e.titleId);
     return [
       {
         id: e.titleId,
@@ -222,6 +238,8 @@ export function titleRows(
         leftAfterRentOre: e.leftPerOrderAfterRentOre,
         orders: e.orders,
         unpricedOrders: e.unpricedOrders,
+        unpricedRevenueOre: u?.revenueOre ?? 0,
+        unpricedFirstDate: u?.firstDate ?? null,
         status: statusOf(e),
       },
     ];
@@ -239,34 +257,50 @@ function nameList(names: readonly string[], max = 2): string {
   return `${names.slice(0, max).join(", ")} och ${formatInt(names.length - max)} till`;
 }
 
-/** Order utan inköpspris i perioden (ur profitability().unpriced). */
-export interface UnpricedFacts {
-  readonly orders: number;
-  readonly revenueOre: number;
+/** Datum för texterna: dagen vars inköpspris är "aktuellt" (periodens slut) och i dag. */
+export interface HeadlineDates {
+  readonly asOf: IsoDate;
+  readonly today: IsoDate;
+}
+
+function priceAsOf(d: HeadlineDates): string {
+  return `med inköpspriset som gäller ${formatDayShort(d.asOf, d.today)}`;
+}
+
+function sum(rows: readonly TitleRow[], f: (r: TitleRow) => number): number {
+  return rows.reduce((n, r) => n + f(r), 0);
 }
 
 /**
- * Sidans tvådelade rubrik. Det som kräver åtgärd först: titlar utan pris, sedan titlar
- * som går med förlust; annars den titel som lämnar minst per order.
+ * Sidans tvådelade rubrik. Det som kräver åtgärd först: titlar med order utan inköpspris
+ * (även de som har pris i dag men saknade det tidigare i perioden), sedan titlar som går
+ * med förlust; annars den titel som lämnar minst per order. Antal order och intäkt räknas
+ * per titel, så att rubrikens namn och siffror alltid gäller samma titlar.
  */
 export function pageHeadline(
   rows: readonly TitleRow[],
-  unpriced: UnpricedFacts,
+  dates: HeadlineDates,
 ): { title: string; aside: string } {
   const active = rows.filter((r) => !r.archived || r.orders > 0);
-  const missing = active.filter((r) => r.status === "missing");
-  const missingSold = missing.filter((r) => r.orders > 0);
-  if (missingSold.length > 0) {
-    const names = missingSold.map((r) => r.name);
+  const unpriced = active.filter((r) => r.unpricedOrders > 0);
+  if (unpriced.length > 0) {
+    const orders = sum(unpriced, (r) => r.unpricedOrders);
+    const revenue = formatKronor(kr(sum(unpriced, (r) => r.unpricedRevenueOre)), { decimals: 0 });
+    const only = unpriced.length === 1 ? unpriced[0]! : null;
+    if (only && only.status !== "missing") {
+      return {
+        title: `${only.name} har ${plural(orders, "order", "order")} utan inköpspris.`,
+        aside: `${revenue} i intäkt från ${formatDayShort(only.unpricedFirstDate ?? dates.asOf, dates.today)} räknas inte in i vinsten.`,
+      };
+    }
+    const allMissing = unpriced.every((r) => r.status === "missing");
     return {
-      title:
-        missingSold.length === 1
-          ? `${names[0]} saknar inköpspris.`
-          : `${plural(missingSold.length, "titel", "titlar")} saknar inköpspris.`,
-      aside:
-        unpriced.orders > 0
-          ? `${plural(unpriced.orders, "order", "order")} och ${formatKronor(kr(unpriced.revenueOre), { decimals: 0 })} i intäkt räknas inte in i vinsten.`
-          : `${nameList(names)} räknas inte in i vinsten förrän priset finns.`,
+      title: only
+        ? `${only.name} saknar inköpspris.`
+        : allMissing
+          ? `${plural(unpriced.length, "titel", "titlar")} saknar inköpspris.`
+          : `${plural(unpriced.length, "titel", "titlar")} har order utan inköpspris.`,
+      aside: `${plural(orders, "order", "order")} och ${revenue} i intäkt räknas inte in i vinsten.`,
     };
   }
   const losses = active
@@ -279,17 +313,19 @@ export function pageHeadline(
         losses.length === 1
           ? `${worst.name} går med förlust.`
           : `${plural(losses.length, "titel", "titlar")} går med förlust.`,
-      aside: `${losses.length === 1 ? "" : `Sämst är ${worst.name}: `}${formatKronor(kr(worst.leftOre ?? 0))} per order med dagens inköpspris.`,
+      aside: sentence(
+        `${losses.length === 1 ? "" : `Sämst är ${worst.name}: `}${formatKronor(kr(worst.leftOre ?? 0))} per order ${priceAsOf(dates)}`,
+      ),
     };
   }
+  const missing = active.filter((r) => r.status === "missing");
   if (missing.length > 0) {
     return {
       title: `${plural(missing.length, "titel", "titlar")} utan inköpspris.`,
       aside: `${nameList(missing.map((r) => r.name))} har inte sålt i perioden.`,
     };
   }
-  const sold = active.filter((r) => r.leftOre !== null && r.orders > 0);
-  const lowest = sold.slice().sort((a, b) => (a.leftOre ?? 0) - (b.leftOre ?? 0))[0];
+  const lowest = lowestLeft(active);
   return {
     title: `Alla ${plural(active.length, "titel", "titlar")} har inköpspris.`,
     aside: lowest
@@ -298,10 +334,32 @@ export function pageHeadline(
   };
 }
 
+function lowestLeft(rows: readonly TitleRow[]): TitleRow | undefined {
+  return rows
+    .filter((r) => r.leftOre !== null && r.orders > 0)
+    .sort((a, b) => (a.leftOre ?? 0) - (b.leftOre ?? 0) || a.name.localeCompare(b.name, "sv"))[0];
+}
+
+/** Grå delen av rubriken för avsnittet Per titel: den titel som lämnar minst. */
+export function perTitleAside(rows: readonly TitleRow[], dates: HeadlineDates): string {
+  const lowest = lowestLeft(rows.filter((r) => !r.archived || r.orders > 0));
+  if (!lowest) return "Ingen titel med inköpspris har sålt i perioden.";
+  return sentence(
+    `Minst kvar har ${lowest.name}, ${formatKronor(kr(lowest.leftOre ?? 0))} per order ${priceAsOf(dates)}`,
+  );
+}
+
+function leftText(ore: number): string {
+  if (ore < 0) return `förlust ${formatKronor(kr(-ore))} per order`;
+  if (ore === 0) return "går jämnt per order";
+  return `${formatKronor(kr(ore))} kvar per order`;
+}
+
 /** Rubriken för en vald titel. */
 export function titleHeadline(
   row: TitleRow | null,
   name: string,
+  today?: IsoDate,
 ): { title: string; aside: string } {
   const title = `${name}.`;
   if (!row || row.currentCostOre === null) {
@@ -313,14 +371,22 @@ export function titleHeadline(
           : "Saknar inköpspris.",
     };
   }
-  const cost = `Inköp ${formatKronor(kr(row.currentCostOre))}${row.currentFrom ? ` sedan ${formatDayShort(row.currentFrom)}` : ""}`;
+  const cost = `Inköp ${formatKronor(kr(row.currentCostOre))}${row.currentFrom ? ` sedan ${formatDayShort(row.currentFrom, today)}` : ""}`;
   if (row.leftOre === null)
     return { title, aside: `${sentence(cost)} Ingen försäljning i perioden.` };
-  const left =
-    row.leftOre <= 0
-      ? `Förlust ${formatKronor(kr(-row.leftOre))} per order`
-      : `${formatKronor(kr(row.leftOre))} kvar per order`;
-  return { title, aside: `${cost}, ${left}.` };
+  let left = leftText(row.leftOre);
+  const afterRent = row.leftAfterRentOre;
+  if (row.leftOre > 0 && afterRent !== null && afterRent <= 0) {
+    left +=
+      afterRent === 0
+        ? ", men går jämnt efter hyra"
+        : `, men förlust ${formatKronor(kr(-afterRent))} per order efter hyra`;
+  }
+  const unpriced =
+    row.unpricedOrders > 0
+      ? ` ${plural(row.unpricedOrders, "order", "order")} i perioden saknar inköpspris och räknas inte in i vinsten.`
+      : "";
+  return { title, aside: `${cost}, ${left}.${unpriced}` };
 }
 
 /** "27 okt." (året bara om det inte är samma år som `now`, standard: samma år som datumet). */
@@ -523,6 +589,40 @@ export interface PricePreview {
   readonly validTo: IsoDate | null;
   /** Stängda månader priset skulle gälla i (blockerar). */
   readonly closedMonths: string[];
+  /** Order (alla tider) som fortfarande saknar pris efter ändringen, med första och sista dag. */
+  readonly stillUnpriced: { orders: number; firstDate: IsoDate; lastDate: IsoDate } | null;
+}
+
+/** Orderdagar före titelns första inköpspris: de order som saknar pris. */
+function unpricedDays(
+  prices: ReadonlyArray<Pick<PriceRecord, "validFrom">>,
+  orderDays: ReadonlyArray<{ date: IsoDate; orders: number }>,
+): Array<{ date: IsoDate; orders: number }> {
+  const earliest = prices
+    .map((p) => p.validFrom)
+    .sort()
+    .at(0);
+  return orderDays
+    .filter((d) => d.orders > 0 && (earliest === undefined || d.date < earliest))
+    .slice()
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
+/**
+ * Förvalt "giltig från" för ett nytt pris: första dagen med order utan pris (så att de
+ * räknas in i vinsten), men inte i en stängd månad; annars i dag.
+ */
+export function suggestedValidFrom(
+  prices: ReadonlyArray<Pick<PriceRecord, "validFrom">>,
+  orderDays: ReadonlyArray<{ date: IsoDate; orders: number }>,
+  closedMonths: readonly string[],
+  today: IsoDate,
+): IsoDate {
+  for (const d of unpricedDays(prices, orderDays)) {
+    if (d.date > today) break;
+    if (closedMonthsHit(prices, d.date, closedMonths).length === 0) return d.date;
+  }
+  return today;
 }
 
 /**
@@ -581,6 +681,21 @@ export function previewPrice(args: {
     ordersGainingPrice: impact.ordersGainingPrice,
     validTo: next ? addDays(next, -1) : null,
     closedMonths: closedMonthsHit(args.prices, args.validFrom, args.closedMonths),
+    stillUnpriced: stillUnpriced(args.prices, args.orderDays, args.validFrom),
+  };
+}
+
+function stillUnpriced(
+  prices: ReadonlyArray<Pick<PriceRecord, "validFrom">>,
+  orderDays: ReadonlyArray<{ date: IsoDate; orders: number }>,
+  validFrom: IsoDate,
+): PricePreview["stillUnpriced"] {
+  const days = unpricedDays([...prices, { validFrom }], orderDays);
+  if (days.length === 0) return null;
+  return {
+    orders: days.reduce((n, d) => n + d.orders, 0),
+    firstDate: days[0]!.date,
+    lastDate: days[days.length - 1]!.date,
   };
 }
 

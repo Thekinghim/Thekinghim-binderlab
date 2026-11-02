@@ -8,11 +8,13 @@ import {
   closedMonthsHit,
   pageHeadline,
   parsePriceInput,
+  perTitleAside,
   previewPrice,
   priceLog,
   priceTimeline,
   sentence,
   signalTitleIds,
+  suggestedValidFrom,
   timelineShares,
   titleHeadline,
   titleRows,
@@ -21,6 +23,7 @@ import {
 } from "./model";
 
 const NBSP = " ";
+const DATES = { asOf: "2026-11-01", today: "2026-11-02" };
 
 function row(over: Partial<TitleRow>): TitleRow {
   return {
@@ -38,6 +41,8 @@ function row(over: Partial<TitleRow>): TitleRow {
     leftAfterRentOre: 4_700,
     orders: 10,
     unpricedOrders: 0,
+    unpricedRevenueOre: 0,
+    unpricedFirstDate: null,
     status: "ok",
     ...over,
   };
@@ -127,38 +132,139 @@ describe("titleRows", () => {
   });
 });
 
+describe("titleRows: delvis utan pris", () => {
+  it("en titel med pris i dag men order utan pris tidigare i perioden får egen status", () => {
+    const base = {
+      orders: [
+        {
+          id: "o1",
+          externalId: "1",
+          titleId: "a",
+          machineId: null,
+          businessDate: "2026-10-02",
+          amountOre: 4_900,
+        },
+        {
+          id: "o2",
+          externalId: "2",
+          titleId: "a",
+          machineId: null,
+          businessDate: "2026-10-20",
+          amountOre: 4_900,
+        },
+      ],
+      prices: [{ titleId: "a", unitCostOre: 2_000, validFrom: "2026-10-10" }],
+      agreements: [],
+      placements: [],
+      settings: { vatRateBp: 0, cardFeeBp: 0 },
+      period: { start: "2026-10-01", end: "2026-10-31" },
+    };
+    const rows = titleRows(
+      titleEconomics(base),
+      [{ id: "a", name: "A", series: null, archived: false }],
+      [
+        {
+          titleId: "a",
+          orders: 1,
+          revenueOre: 4_900,
+          firstDate: "2026-10-02",
+          lastDate: "2026-10-02",
+        },
+      ],
+    );
+    expect(rows[0]).toMatchObject({
+      status: "partial",
+      unpricedOrders: 1,
+      unpricedRevenueOre: 4_900,
+      unpricedFirstDate: "2026-10-02",
+    });
+  });
+});
+
 describe("pageHeadline", () => {
   it("titlar utan pris först, med order och intäkt som inte räknas", () => {
     const h = pageHeadline(
       [
-        row({ id: "a", name: "A", status: "missing", currentCostOre: null, orders: 3 }),
+        row({
+          id: "a",
+          name: "A",
+          status: "missing",
+          currentCostOre: null,
+          orders: 3,
+          unpricedOrders: 3,
+          unpricedRevenueOre: 45_000,
+        }),
         row({ id: "b" }),
       ],
-      { orders: 3, revenueOre: 45_000 },
+      DATES,
     );
     expect(h.title).toBe("A saknar inköpspris.");
     expect(h.aside).toBe(`3 order och 450${NBSP}kr i intäkt räknas inte in i vinsten.`);
   });
 
-  it("annars förlust, sämsta titeln först", () => {
+  it("en titel med pris i dag men order utan pris tidigare: rubriken säger det", () => {
+    const h = pageHeadline(
+      [
+        row({
+          id: "a",
+          name: "A",
+          status: "partial",
+          unpricedOrders: 3,
+          unpricedRevenueOre: 14_700,
+          unpricedFirstDate: "2026-10-14",
+        }),
+        row({ id: "b", name: "B" }),
+      ],
+      DATES,
+    );
+    expect(h.title).toBe("A har 3 order utan inköpspris.");
+    expect(h.aside).toBe(`147${NBSP}kr i intäkt från 14${NBSP}okt. räknas inte in i vinsten.`);
+  });
+
+  it("namn och siffror gäller samma titlar: alla titlar med order utan pris räknas", () => {
+    const h = pageHeadline(
+      [
+        row({
+          id: "a",
+          name: "A",
+          status: "missing",
+          currentCostOre: null,
+          orders: 2,
+          unpricedOrders: 2,
+          unpricedRevenueOre: 10_000,
+        }),
+        row({
+          id: "b",
+          name: "B",
+          status: "partial",
+          unpricedOrders: 3,
+          unpricedRevenueOre: 14_700,
+        }),
+      ],
+      DATES,
+    );
+    expect(h.title).toBe("2 titlar har order utan inköpspris.");
+    expect(h.aside).toBe(`5 order och 247${NBSP}kr i intäkt räknas inte in i vinsten.`);
+  });
+
+  it("annars förlust, sämsta titeln först, med priset som gäller periodens slut", () => {
     const h = pageHeadline(
       [
         row({ id: "a", name: "A", status: "loss", leftOre: -100 }),
         row({ id: "b", name: "B", status: "loss", leftOre: -513 }),
       ],
-      { orders: 0, revenueOre: 0 },
+      DATES,
     );
     expect(h.title).toBe("2 titlar går med förlust.");
-    expect(h.aside).toBe(`Sämst är B: −5,13${NBSP}kr per order med dagens inköpspris.`);
+    expect(h.aside).toBe(
+      `Sämst är B: −5,13${NBSP}kr per order med inköpspriset som gäller 1${NBSP}nov.`,
+    );
   });
 
   it("allt i ordning: minst kvar per order", () => {
     const h = pageHeadline(
       [row({ id: "a", name: "A", leftOre: 900 }), row({ id: "b", name: "B" })],
-      {
-        orders: 0,
-        revenueOre: 0,
-      },
+      DATES,
     );
     expect(h.title).toBe("Alla 2 titlar har inköpspris.");
     expect(h.aside).toBe(`Minst kvar per order: A, 9,00${NBSP}kr.`);
@@ -167,9 +273,23 @@ describe("pageHeadline", () => {
   it("titlar utan pris som inte sålt i perioden nämns utan intäkt", () => {
     const h = pageHeadline(
       [row({ id: "a", name: "A", status: "missing", currentCostOre: null, orders: 0 })],
-      { orders: 0, revenueOre: 0 },
+      DATES,
     );
     expect(h.title).toBe("1 titel utan inköpspris.");
+  });
+});
+
+describe("perTitleAside", () => {
+  it("den titel som lämnar minst, med datumet för priset", () => {
+    expect(
+      perTitleAside(
+        [row({ id: "a", name: "A", leftOre: 3_935 }), row({ id: "b", name: "B" })],
+        DATES,
+      ),
+    ).toBe(`Minst kvar har A, 39,35${NBSP}kr per order med inköpspriset som gäller 1${NBSP}nov.`);
+    expect(perTitleAside([row({ leftOre: null, orders: 0 })], DATES)).toBe(
+      "Ingen titel med inköpspris har sålt i perioden.",
+    );
   });
 });
 
@@ -182,9 +302,20 @@ describe("titleHeadline och sentence", () => {
     );
   });
 
-  it("förlust skrivs ut som förlust", () => {
-    expect(titleHeadline(row({ leftOre: -513 }), "B").aside).toContain(
-      `Förlust 5,13${NBSP}kr per order`,
+  it("förlust med liten bokstav, går jämnt vid 0 och förlust efter hyra", () => {
+    expect(titleHeadline(row({ leftOre: -513 }), "B").aside).toBe(
+      `Inköp 100,00${NBSP}kr sedan 1${NBSP}okt., förlust 5,13${NBSP}kr per order.`,
+    );
+    expect(titleHeadline(row({ leftOre: 0 }), "B").aside).toContain("går jämnt per order.");
+    expect(
+      titleHeadline(row({ leftOre: 500, leftAfterRentOre: -200, status: "loss-after-rent" }), "B")
+        .aside,
+    ).toContain(`5,00${NBSP}kr kvar per order, men förlust 2,00${NBSP}kr per order efter hyra.`);
+  });
+
+  it("order utan pris i perioden nämns", () => {
+    expect(titleHeadline(row({ unpricedOrders: 4, status: "partial" }), "B").aside).toContain(
+      "4 order i perioden saknar inköpspris och räknas inte in i vinsten.",
     );
   });
 });
@@ -358,5 +489,37 @@ describe("previewPrice", () => {
         closedMonths: [],
       }).replaces,
     ).toEqual({ unitCostOre: 10_000, validFrom: "2026-10-01" });
+  });
+
+  it("order som fortfarande saknar pris efter ändringen", () => {
+    const base = { titleId: "t", prices, orderDays, unitCostOre: 9_000, closedMonths: [] };
+    expect(previewPrice({ ...base, validFrom: "2026-11-02" }).stillUnpriced).toEqual({
+      orders: 1,
+      firstDate: "2026-09-30",
+      lastDate: "2026-09-30",
+    });
+    expect(previewPrice({ ...base, validFrom: "2026-09-30" }).stillUnpriced).toBeNull();
+  });
+});
+
+describe("suggestedValidFrom", () => {
+  const orderDays = [
+    { date: "2026-08-30", orders: 1 },
+    { date: "2026-09-02", orders: 2 },
+    { date: "2026-10-05", orders: 3 },
+  ];
+
+  it("första dagen med order utan pris, annars i dag", () => {
+    expect(suggestedValidFrom([], orderDays, [], "2026-11-02")).toBe("2026-08-30");
+    expect(suggestedValidFrom([{ validFrom: "2026-08-01" }], orderDays, [], "2026-11-02")).toBe(
+      "2026-11-02",
+    );
+  });
+
+  it("hoppar över dagar där priset skulle gälla i en stängd månad", () => {
+    expect(
+      suggestedValidFrom([{ validFrom: "2026-10-01" }], orderDays, ["2026-08"], "2026-11-02"),
+    ).toBe("2026-09-02");
+    expect(suggestedValidFrom([], orderDays, ["2026-10"], "2026-11-02")).toBe("2026-11-02");
   });
 });

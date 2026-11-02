@@ -11,7 +11,9 @@ import "server-only";
 
 import Anthropic from "@anthropic-ai/sdk";
 
+import { periodChoices } from "@/components/shell/period-state";
 import type { MemberRole } from "@/db/schema";
+import type { IsoDate } from "@/domain";
 import { AuthorizationError, requireRoleFor } from "@/server/access";
 import {
   businessToday,
@@ -19,6 +21,7 @@ import {
   loadMasterDataFor,
   type Viewer,
 } from "@/server/data/core/loaders";
+import { resolveAppPeriod } from "@/server/data/core/period";
 import { ALL_ROLES, type MasterData } from "@/server/data/core/types";
 
 import { getAssistantConfig, type AssistantConfig } from "./config";
@@ -41,6 +44,26 @@ export interface AskArgs {
   readonly config?: AssistantConfig;
   /** För tester: klient i stället för den som inställningarna anger. */
   readonly client?: ModelClient;
+  /**
+   * Skalets periodval ur sidans URL (period, from, to). Ger modellen perioden som är vald
+   * i panelen, som gäller när frågan inte anger någon. Utelämnad: ingen vald period.
+   */
+  readonly shellParams?: Readonly<Record<string, string>>;
+}
+
+/** Perioden som är vald i panelen, tolkad som på sidorna (i organisationens tidszon). */
+export function shellPeriodFor(
+  params: Readonly<Record<string, string>> | undefined,
+  options: { timeZone: string; dataStart: IsoDate | null; now: Date },
+): { label: string; start: IsoDate; end: IsoDate } | null {
+  if (!params) return null;
+  const p = resolveAppPeriod(params, {
+    timeZone: options.timeZone,
+    dataStart: options.dataStart,
+    now: options.now,
+  });
+  const label = periodChoices.find((c) => c.key === p.key)?.label ?? p.key;
+  return { label, start: p.period.start, end: p.period.end };
 }
 
 export interface AskResult {
@@ -130,7 +153,8 @@ export async function askAssistant(args: AskArgs): Promise<AskResult> {
   const tools = toolsForRole(role);
   const client = args.client ?? clientFor(config);
   const [history, dataStart] = await Promise.all([
-    loadConversationFor(viewer.user, viewer.organization.id, args.conversationId),
+    // Bara rader som rollen får se nu: en nedgraderad användare får ingen ekonomihistorik.
+    loadConversationFor(viewer.user, viewer.organization.id, args.conversationId, { role }),
     loadDataStartFor(viewer),
   ]);
 
@@ -157,6 +181,11 @@ export async function askAssistant(args: AskArgs): Promise<AskResult> {
         today,
         timeZone: viewer.organization.timezone,
         dataStart,
+        shellPeriod: shellPeriodFor(args.shellParams, {
+          timeZone: viewer.organization.timezone,
+          dataStart,
+          now,
+        }),
       }),
       history,
       question: args.question,
@@ -175,6 +204,7 @@ export async function askAssistant(args: AskArgs): Promise<AskResult> {
       toolCalls: executed,
       verification: { checked: 0, unverified: [] },
       usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, turns: 0 },
+      model: null,
     };
   }
 
@@ -189,7 +219,8 @@ export async function askAssistant(args: AskArgs): Promise<AskResult> {
       answer: result.answer,
       status: result.status,
       provider: client.provider,
-      model: client.model,
+      // Modellen som faktiskt svarade (reservmodell vid fallbacks), annars den konfigurerade.
+      model: result.model ?? client.model,
       toolCalls: result.toolCalls,
       verification: result.verification,
       usage: result.usage,

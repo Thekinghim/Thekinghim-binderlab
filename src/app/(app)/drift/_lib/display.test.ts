@@ -58,5 +58,8 @@ describe("underlagets tal", () => {
     expect(figureText({ value: 23, unit: "bp" })).toBe("0,23 %");
     expect(figureText({ value: 4900, unit: "ore" })).toBeNull();
     expect(firstSentence("Första. Andra.")).toBe("Första.");
+    expect(firstSentence("Senaste försäljning sön 1 nov. 17:09. Under tystnaden.")).toBe(
+      "Senaste försäljning sön 1 nov. 17:09.",
+    );
   });
 });

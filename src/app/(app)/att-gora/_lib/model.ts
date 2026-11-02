@@ -88,9 +88,23 @@ export interface GroupView {
 }
 
 export interface HeaderView {
+  /** Rubrikens första del: hur många punkter. */
   readonly title: string;
+  /** Rubrikens andra del: hur många som måste göras i dag. */
   readonly aside: string;
+  /** Raden under rubriken: det mest brådskande, intäkten i risk och filtret. */
+  readonly description: string;
   readonly meta: { label: string; value: string }[];
+}
+
+/** En avbockad punkt i listan "Avbockade". */
+export interface DismissedView {
+  readonly key: string;
+  /** Mono-etikett, t.ex. "Påfyllning". */
+  readonly eyebrow: string;
+  readonly title: string;
+  /** "Avbockad för 4 min sedan av dig." */
+  readonly meta: string;
 }
 
 export interface PageView {
@@ -100,6 +114,17 @@ export interface PageView {
   /** Punkter som döljs av filtret (butik/automat). */
   readonly hiddenByScope: number;
   readonly economy: boolean;
+  /** Avbockade punkter (inom filtret), nyast först. */
+  readonly dismissed: DismissedView[];
+}
+
+/** En sparad avbockning som sidan laddat (service.loadDismissedFor), med tiden formaterad. */
+export interface DismissedInput {
+  readonly key: string;
+  readonly title: string | null;
+  /** Relativ tid i organisationens tidszon, t.ex. "för 4 min sedan". */
+  readonly when: string;
+  readonly by: string | null;
 }
 
 /** Det sidan behöver veta om stamdata och lager. */
@@ -121,6 +146,8 @@ export interface ModelInput {
   readonly scope: { readonly storeId: string | null; readonly machineId: string | null };
   /** Klockslaget punkterna räknades, t.ex. "09:42". */
   readonly computedAt: string;
+  /** Avbockade punkter som inte står i listan just nu. */
+  readonly dismissed?: readonly DismissedInput[];
 }
 
 // ---------------------------------------------------------------------------
@@ -147,6 +174,13 @@ function capitalize(s: string): string {
 export function withPeriod(s: string): string {
   const t = s.trim();
   return /[.!?]$/.test(t) ? t : `${t}.`;
+}
+
+/** Hårt bindestreck (U+2011) i id som BL-002 så att de aldrig bryts (docs/design.md §4). */
+export const NBHYPHEN = "\u2011";
+
+export function unbreakable(code: string): string {
+  return code.replace(/-/g, NBHYPHEN);
 }
 
 const KIND_NOUN: Record<TodoKind, [string, string]> = {
@@ -420,7 +454,7 @@ export function toView(item: TodoItem, input: ModelInput, signal: boolean): Todo
     fingerprint: item.fingerprint,
     kind: item.kind,
     level: item.level,
-    eyebrow: code ? `${KIND_LABEL[item.kind]} · ${code}` : KIND_LABEL[item.kind],
+    eyebrow: code ? `${KIND_LABEL[item.kind]} · ${unbreakable(code)}` : KIND_LABEL[item.kind],
     status,
     statusText: LEVEL_TEXT[item.level],
     title: withPeriod(item.title),
@@ -433,44 +467,103 @@ export function toView(item: TodoItem, input: ModelInput, signal: boolean): Todo
   };
 }
 
+/** Minst en av automaterna matchar filtret (?automat, eller automatens butik för ?butik). */
+function machinesInScope(
+  ids: readonly string[],
+  input: Pick<ModelInput, "scope" | "machines">,
+): boolean {
+  const { storeId, machineId } = input.scope;
+  return ids.some((id) => {
+    if (machineId && id !== machineId) return false;
+    if (storeId) return input.machines.find((m) => m.id === id)?.storeId === storeId;
+    return true;
+  });
+}
+
 /**
  * Filtret i URL:en (?butik, ?automat): punkter som gäller automater visas bara om någon
  * av dem matchar. Punkter utan automat (inköpspris, dubbletter, rapporter till revisor)
  * gäller hela organisationen och visas alltid; rapporter till en butik följer butiken.
  */
 export function inScope(item: TodoItem, input: Pick<ModelInput, "scope" | "machines">): boolean {
-  const { storeId, machineId } = input.scope;
-  if (!storeId && !machineId) return true;
+  const { storeId } = input.scope;
+  if (!storeId && !input.scope.machineId) return true;
   const machines = item.evidence.machineIds;
-  if (machines.length > 0) {
-    return machines.some((id) => {
-      if (machineId && id !== machineId) return false;
-      if (storeId) return input.machines.find((m) => m.id === id)?.storeId === storeId;
-      return true;
-    });
-  }
+  if (machines.length > 0) return machinesInScope(machines, input);
   if (storeId && item.evidence.storeIds.length > 0) return item.evidence.storeIds.includes(storeId);
   return true;
 }
 
-function stakeOf(items: readonly TodoItem[]): number {
-  return sumOre(items.map((i) => Math.max(i.atStakeOre ?? 0, 0)));
+/**
+ * Sorterna där intäkt faktiskt står på spel: tomt eller snart tomt lager och automater
+ * som slutat sälja. En titel utan inköpspris säljer som vanligt (bara vinsten blir
+ * ofullständig) och en dubblett är datakvalitet, så deras belopp räknas inte hit.
+ */
+const RISK_KINDS: ReadonlySet<TodoKind> = new Set(["refill", "stale-machine"]);
+
+/** Intäkt i risk de närmaste 7 dagarna (öre), bara för RISK_KINDS. */
+export function stakeOf(items: readonly TodoItem[]): number {
+  return sumOre(
+    items.filter((i) => RISK_KINDS.has(i.kind)).map((i) => Math.max(i.atStakeOre ?? 0, 0)),
+  );
+}
+
+/** Intäkt utan inköpspris (öre), ur punkternas underlag. */
+export function unpricedOf(items: readonly TodoItem[]): number {
+  return sumOre(
+    items
+      .filter((i) => i.kind === "missing-price")
+      .map((i) => Math.max(figureValue(i, "unpricedRevenueOre") ?? 0, 0)),
+  );
 }
 
 function groupAside(items: readonly TodoItem[], economy: boolean): string {
   const parts = [capitalize(kindSummary(items))];
   const stake = economy ? stakeOf(items) : 0;
   if (stake > 0) parts.push(`${kr(stake)} i intäkt i risk de närmaste 7 dagarna`);
+  const unpriced = economy ? unpricedOf(items) : 0;
+  if (unpriced > 0) parts.push(`${kr(unpriced)} i intäkt saknar inköpspris`);
   return withPeriod(parts.join(", "));
 }
 
-function headerView(visible: readonly TodoItem[], hidden: number, input: ModelInput): HeaderView {
+function stripPeriod(s: string): string {
+  return s.trim().replace(/[.]$/, "");
+}
+
+/** Den mest brådskande punkten i en mening: "Först: Fyll på X i Y, räcker 0,5 d." */
+function leadText(item: TodoItem): string {
+  let fact = "";
+  if (item.kind === "refill") {
+    const onHand = figureValue(item, "onHand");
+    const tenths = figureValue(item, "daysLeftTenths");
+    if (onHand !== null && onHand <= 0) fact = "";
+    else if (tenths !== null) fact = `, räcker ${formatDecimal(tenths / 10)}${NBSP}d`;
+  } else if (item.kind === "stale-machine") {
+    const hours = figureValue(item, "silentHours");
+    if (hours !== null) fact = `, tyst i ${formatInt(hours)}${NBSP}h`;
+  }
+  return `Först: ${stripPeriod(item.title)}${fact}.`;
+}
+
+function hiddenText(hidden: number, scope: ModelInput["scope"]): string {
+  const where = scope.machineId ? "andra automater" : "andra butiker";
+  return `Filtret döljer ${plural(hidden, "punkt", "punkter")} för ${where}.`;
+}
+
+function headerView(
+  visible: readonly TodoItem[],
+  lead: TodoItem | null,
+  hidden: number,
+  input: ModelInput,
+): HeaderView {
   const count = (l: TodoLevel) => visible.filter((i) => i.level === l).length;
   const now = count("now");
   const stake = input.economy ? stakeOf(visible) : 0;
+  const unpriced = input.economy ? unpricedOf(visible) : 0;
 
   let title: string;
   let aside: string;
+  const parts: string[] = [];
   if (visible.length === 0) {
     title = "Inget att göra.";
     aside =
@@ -478,24 +571,61 @@ function headerView(visible: readonly TodoItem[], hidden: number, input: ModelIn
         ? "Lagret räcker minst 2,5 dagar i alla automater, och alla har sålt de senaste 48 timmarna."
         : "Lagret räcker, automaterna säljer, alla titlar har inköpspris och rapporterna är skickade.";
   } else {
-    title = `${plural(visible.length, "sak", "saker")} att göra.`;
-    const parts: string[] = [];
-    parts.push(now > 0 ? `${formatInt(now)} i dag` : "Inget som måste göras i dag");
-    if (stake > 0) parts.push(`${kr(stake)} i intäkt står på spel de närmaste 7 dagarna`);
-    aside = withPeriod(capitalize(parts.join(", ")));
+    const onlyRefills = visible.every((i) => i.kind === "refill");
+    title = onlyRefills
+      ? `${plural(visible.length, "påfyllning", "påfyllningar")} att göra.`
+      : `${plural(visible.length, "sak", "saker")} att göra.`;
+    aside = now > 0 ? `${formatInt(now)} måste göras i dag.` : "Inget måste göras i dag.";
+    if (lead) parts.push(leadText(lead));
+    if (stake > 0) parts.push(`${kr(stake)} i intäkt står på spel de närmaste 7 dagarna.`);
   }
-  if (hidden > 0) {
-    aside = `${aside} ${plural(hidden, "punkt", "punkter")} till gäller annat än filtret.`;
-  }
+  if (hidden > 0) parts.push(hiddenText(hidden, input.scope));
 
-  const meta: { label: string; value: string }[] = [
-    { label: "I dag", value: formatInt(now) },
-    { label: "Snart", value: formatInt(count("soon")) },
-    { label: "Senare", value: formatInt(count("later")) },
-  ];
-  if (input.economy) meta.push({ label: "I risk 7 d", value: kr(stake) });
+  const meta: { label: string; value: string }[] = [];
+  for (const level of LEVELS) {
+    const n = count(level);
+    if (n > 0) meta.push({ label: LEVEL_TEXT[level], value: formatInt(n) });
+  }
+  if (input.economy && stake > 0) meta.push({ label: "I risk 7 d", value: kr(stake) });
+  // Intäkt utan inköpspris är inte i risk (bara vinsten blir ofullständig): eget mått.
+  if (unpriced > 0) meta.push({ label: "Utan inköpspris", value: kr(unpriced) });
   meta.push({ label: "Beräknat", value: input.computedAt });
-  return { title, aside, meta };
+  return { title, aside, description: parts.join(" "), meta };
+}
+
+/** Nyckelns automat ('refill:<automat>:<titel>', 'stale-machine:<automat>'), annars null. */
+function machineOfKey(key: string): string | null {
+  const [kind, id] = key.split(":");
+  return (kind === "refill" || kind === "stale-machine") && id ? id : null;
+}
+
+const KIND_BY_PREFIX: Record<string, TodoKind> = {
+  refill: "refill",
+  "stale-machine": "stale-machine",
+  "report-due": "report-due",
+  "missing-price": "missing-price",
+  "duplicate-title": "duplicate-title",
+};
+
+/** Avbockade punkter inom filtret, med samma etikett som i listan. */
+export function dismissedViews(input: ModelInput): DismissedView[] {
+  return (input.dismissed ?? [])
+    .filter((d) => {
+      const machineId = machineOfKey(d.key);
+      return machineId === null || machinesInScope([machineId], input);
+    })
+    .map((d) => {
+      const kind = KIND_BY_PREFIX[d.key.slice(0, d.key.indexOf(":"))];
+      const machineId = machineOfKey(d.key);
+      const code = machineId ? input.machines.find((m) => m.id === machineId)?.code : undefined;
+      const label = kind ? KIND_LABEL[kind] : "Punkt";
+      return {
+        key: d.key,
+        eyebrow: code ? `${label} · ${unbreakable(code)}` : label,
+        title: d.title ? withPeriod(d.title) : "Punkt utan sparad rubrik.",
+        meta: `Avbockad ${d.when}${d.by ? ` av ${d.by}` : ""}.`,
+      };
+    });
 }
 
 /** Hela sidan. Punkterna är redan sorterade efter brådska (computeTodos). */
@@ -522,11 +652,14 @@ export function buildPage(input: ModelInput): PageView {
       }),
     });
   }
+  // Punkterna är sorterade efter brådska: den första är den mest brådskande.
+  const lead = visible[0] ?? null;
   return {
-    header: headerView(visible, hidden, input),
+    header: headerView(visible, lead, hidden, input),
     groups,
     total: visible.length,
     hiddenByScope: hidden,
     economy: input.economy,
+    dismissed: dismissedViews(input),
   };
 }

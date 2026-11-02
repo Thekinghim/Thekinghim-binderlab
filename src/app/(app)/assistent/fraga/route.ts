@@ -10,6 +10,7 @@
 
 import { randomUUID } from "node:crypto";
 
+import { FROM_PARAM, PERIOD_PARAM, TO_PARAM } from "@/components/shell/period-state";
 import { isUuid } from "@/server/access";
 import type { AssistantEvent } from "@/server/assistant/protocol";
 import { askAssistant, cleanQuestion } from "@/server/assistant/service";
@@ -22,6 +23,7 @@ export const maxDuration = 300;
 
 /** Frågor per användare och timme (skydd mot kostnader vid missbruk, räknas per instans). */
 const QUESTIONS_PER_HOUR = 60;
+const SHELL_PERIOD_KEYS = [PERIOD_PARAM, FROM_PARAM, TO_PARAM] as const;
 const limiter = createRateLimiter({ limit: QUESTIONS_PER_HOUR, windowMs: 3_600_000 });
 
 function json(status: number, event: AssistantEvent): Response {
@@ -42,6 +44,17 @@ function sameOrigin(request: Request): boolean {
   }
 }
 
+/** Skalets periodval ur webbläsaren (period, from, to): bara korta strängar. */
+function shellParamsFrom(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const key of SHELL_PERIOD_KEYS) {
+    const value = (raw as Record<string, unknown>)[key];
+    if (typeof value === "string" && value.length <= 20) out[key] = value;
+  }
+  return out;
+}
+
 export async function POST(request: Request): Promise<Response> {
   if (!sameOrigin(request)) {
     return json(403, { type: "error", code: "forbidden", message: "Fel ursprung." });
@@ -59,7 +72,7 @@ export async function POST(request: Request): Promise<Response> {
     });
   }
 
-  let body: { question?: unknown; conversationId?: unknown };
+  let body: { question?: unknown; conversationId?: unknown; shell?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -105,6 +118,7 @@ export async function POST(request: Request): Promise<Response> {
           conversationId,
           emit,
           signal: request.signal,
+          shellParams: shellParamsFrom(body.shell),
         });
       } catch (error) {
         console.error("[assistent] oväntat fel:", error);

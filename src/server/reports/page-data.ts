@@ -174,9 +174,7 @@ export async function loadReportsPage(
     month,
     months,
     stores,
-    allStores: base.stores
-      .filter((x) => !x.archived)
-      .map((x) => ({ id: x.id, name: x.name })),
+    allStores: base.stores.filter((x) => !x.archived).map((x) => ({ id: x.id, name: x.name })),
     storeId,
     preview,
     previewError,

@@ -259,6 +259,26 @@ describe("evidenceView", () => {
   });
 });
 
+describe("evidenceView för en prognos", () => {
+  it("länkar inte till order i en period som inte har hänt", () => {
+    const v = evidenceView(
+      {
+        rule: "Summa.",
+        period: { start: "2026-11-02", end: "2026-11-29" },
+        orderIds: [],
+        dates: [],
+        titleIds: [T1],
+        machineIds: [M1, T2],
+        storeIds: [],
+        recipientIds: [],
+        figures: [],
+      },
+      { title: (id) => id, machine: (id) => id, asOf: AS_OF },
+    );
+    expect(v.links).toEqual([]);
+  });
+});
+
 describe("units", () => {
   it("tolkar kronor och antal från fält", () => {
     expect(parseKronor("45,50")).toBe(4_550);

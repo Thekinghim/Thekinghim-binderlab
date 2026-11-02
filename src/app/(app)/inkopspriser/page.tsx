@@ -17,6 +17,7 @@ import { TitleTable } from "./_components/title-table";
 import { loadPricePageFor, loadTitleDetailFor } from "./_lib/data";
 import {
   pageHeadline,
+  perTitleAside,
   priceLog,
   priceTimeline,
   signalTitleIds,
@@ -56,10 +57,13 @@ export default async function PurchasePricesPage({
   const activeTitleIds = input.titles.filter((t) => !t.archived).map((t) => t.id);
   const economics = titleEconomics({ ...input.current, titleIds: activeTitleIds });
   const unpriced = profitability(input.current, "title").unpriced;
-  const allRows = titleRows(economics, input.titles);
+  const allRows = titleRows(economics, input.titles, unpriced.byTitle);
   const onlyMissing = one(sp.saknar) === "pris";
-  const rows = onlyMissing ? allRows.filter((r) => r.status === "missing") : allRows;
-  const headline = pageHeadline(allRows, unpriced);
+  const rows = onlyMissing
+    ? allRows.filter((r) => r.status === "missing" || r.unpricedOrders > 0)
+    : allRows;
+  const dates = { asOf: input.current.period.end, today: ctx.today };
+  const headline = pageHeadline(allRows, dates);
   const signalIds = signalTitleIds(rows);
 
   const requested = one(sp.titel);
@@ -80,7 +84,6 @@ export default async function PurchasePricesPage({
   const showAllHref = `/inkopspriser${allParams.size > 0 ? `?${allParams.toString()}` : ""}`;
 
   const pricedCount = allRows.filter((r) => r.currentCostOre !== null).length;
-  const lastChange = data.prices.slice().sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0];
 
   const detail = selectedTitle
     ? await loadTitleDetailFor(user, ctx.organization.id, selectedTitle.id)
@@ -103,7 +106,7 @@ export default async function PurchasePricesPage({
         )
       : [];
   const log = detail ? priceLog(detail.events, data.actorNames) : [];
-  const titleHead = selectedTitle ? titleHeadline(selectedRow, selectedTitle.name) : null;
+  const titleHead = selectedTitle ? titleHeadline(selectedRow, selectedTitle.name, today) : null;
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
@@ -120,9 +123,9 @@ export default async function PurchasePricesPage({
             value: `${formatInt(pricedCount)} av ${formatInt(allRows.length)}`,
           },
           {
-            label: "Senaste nya pris",
-            value: lastChange
-              ? formatDate(wallClockIn(new Date(lastChange.createdAt), ctx.timeZone), {
+            label: "Senaste prisändring",
+            value: data.lastChangeAt
+              ? formatDate(wallClockIn(new Date(data.lastChangeAt), ctx.timeZone), {
                   year: "auto",
                   now: wallClockIn(new Date(ctx.now), ctx.timeZone),
                 })
@@ -137,7 +140,7 @@ export default async function PurchasePricesPage({
           index={1}
           eyebrow={`Per titel · ${periodLabel}`}
           title="Vad varje pack lämnar."
-          aside="Kvar per order räknas med dagens inköpspris, efter provision och avgifter."
+          aside={perTitleAside(rows, dates)}
           actions={
             onlyMissing ? (
               <Link
@@ -179,9 +182,10 @@ export default async function PurchasePricesPage({
         <section
           id="titel"
           aria-labelledby="titel-rubrik"
-          className="flex scroll-mt-28 flex-col gap-10 border-t border-line pt-12"
+          tabIndex={-1}
+          className="flex scroll-mt-28 flex-col gap-10 border-t border-line pt-12 outline-none"
         >
-          <ScrollIntoView targetId="titel" active={requested !== null} />
+          <ScrollIntoView targetId="titel" titleId={selectedTitle.id} active={requested !== null} />
           <SectionHeader
             id="titel-rubrik"
             index={2}

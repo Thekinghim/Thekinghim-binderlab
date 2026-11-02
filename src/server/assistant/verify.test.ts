@@ -8,7 +8,7 @@ describe("extractNumbers", () => {
   it("läser svenska tal med hårt mellanslag, decimalkomma och minus", () => {
     expect(
       extractNumbers(`Vinst 12${NB}480${NB}kr, marginal 23,7${NB}%, förlust −1${NB}240 kr.`),
-    ).toEqual([`12${NB}480`, "23,7", `1${NB}240`]);
+    ).toEqual([`12${NB}480`, "23,7", `−1${NB}240`]);
   });
 
   it("hoppar över datum, årtal, klockslag, veckor och id", () => {
@@ -31,6 +31,39 @@ describe("parseSwedishNumber", () => {
   it("tolkar mellanslag och decimalkomma", () => {
     expect(parseSwedishNumber(`12${NB}480,5`)).toBe(12480.5);
     expect(parseSwedishNumber("abc")).toBeNull();
+  });
+
+  it("tolkar tecknet (minus U+2212, bindestreck och plus)", () => {
+    expect(parseSwedishNumber(`−1${NB}240`)).toBe(-1240);
+    expect(parseSwedishNumber("-12,5")).toBe(-12.5);
+    expect(parseSwedishNumber("+3")).toBe(3);
+  });
+});
+
+describe("extractNumbers: tecken, enheter och årtal", () => {
+  it("läser tecknet men inte bindestreck i koder och intervall", () => {
+    expect(extractNumbers("Förändring −12 %, +3 %, -9 999 kr i BL-002 och 2026-10.")).toEqual([
+      "−12",
+      "+3",
+      "-9 999",
+    ]);
+  });
+
+  it("läser tal direkt följda av en enhet men inte av andra bokstäver", () => {
+    expect(extractNumbers("12480kr, 15st, 23,7%, 3pack men inte 4x eller 2st0")).toEqual([
+      "12480",
+      "15",
+      "23,7",
+      "3",
+    ]);
+  });
+
+  it("räknar ett årtal följt av en enhet som ett tal, men inte ett årtal i datum", () => {
+    expect(extractNumbers("I oktober 2026 och år 2025: 2050 kr, 2030 pack och 2040kr.")).toEqual([
+      "2050",
+      "2030",
+      "2040",
+    ]);
   });
 });
 
@@ -73,6 +106,19 @@ describe("verifyNumbers", () => {
     const answer = `Ungefär 8 tkr, alltså cirka 11 000 kr totalt för 2 automater.`;
     const result = verifyNumbers(answer, sources);
     expect(result.unverified).toEqual(["11 000"]);
+  });
+
+  it("jämför med tecken: en förlust kan inte skrivas som vinst, en ökning inte som minskning", () => {
+    const loss = [{ vinst: `−1${NB}240${NB}kr`, vinstOre: -124_000, forandringBp: 1200 }];
+    expect(verifyNumbers(`Förlusten var −1${NB}240 kr.`, loss).unverified).toEqual([]);
+    expect(verifyNumbers(`Vinsten var 1${NB}240 kr.`, loss).unverified).toEqual([`1${NB}240`]);
+    expect(verifyNumbers("Intäkten ökade 12 %.", loss).unverified).toEqual([]);
+    expect(verifyNumbers("Intäkten ändrades −12 %.", loss).unverified).toEqual(["−12"]);
+  });
+
+  it("räknar om öre till tkr med en decimal", () => {
+    expect(verifyNumbers("Intäkten var 8,0 tkr eller 8 tkr.", sources).unverified).toEqual([]);
+    expect(verifyNumbers("Intäkten var 0,8 tkr.", sources).unverified).toEqual(["0,8"]);
   });
 
   it("godtar tal från frågan", () => {

@@ -239,6 +239,44 @@ describe("registerRefillFor", () => {
     });
     expect(r.onHand).toBe(r.previous + 2);
     expect(r.warehouseOnHand).toBeNull();
+    const view = await loadLagerFor(owner, { period: ALL_TIME, scope: NO_SCOPE }, NOW);
+    expect(view.history[0]).toMatchObject({
+      kind: "refill",
+      titleId: fx.secondTitleId,
+      quantity: 2,
+      fromWarehouse: false,
+    });
+  });
+
+  it("kopplar uttaget till rätt automat: samma titel och tid i en annan automat räknas inte", async () => {
+    // Ett uttag "till BL-999" vid samma tidpunkt som en påfyllning utan centrallagret i BL-001.
+    const at = new Date("2025-03-10T10:00:00Z");
+    await asUser(fx.owner, (tx) =>
+      tx.insert(s.stockEvents).values([
+        {
+          organizationId: fx.orgId,
+          locationId: fx.machineLocationId,
+          titleId: fx.secondTitleId,
+          kind: "refill",
+          quantity: 3,
+          occurredAt: at,
+        },
+        {
+          organizationId: fx.orgId,
+          locationId: fx.centralLocationId,
+          titleId: fx.secondTitleId,
+          kind: "adjustment",
+          quantity: -3,
+          occurredAt: at,
+          note: "Uttag till påfyllning av BL-999",
+        },
+      ]),
+    );
+    const view = await loadLagerFor(owner, { period: ALL_TIME, scope: NO_SCOPE }, NOW);
+    const row = view.history.find((h) => h.kind === "refill" && h.occurredAt === at.toISOString());
+    expect(row).toMatchObject({ quantity: 3, fromWarehouse: false });
+    // Fritexten skickas aldrig till klienten.
+    expect(Object.keys(row!)).not.toContain("note");
   });
 
   it("nekar läsaren och en annan organisations ägare", async () => {
@@ -320,5 +358,45 @@ describe("lager_performers", () => {
         tx.execute(sql`select * from public.lager_performers(${fx.orgId}::uuid)`),
       ),
     ).rejects.toThrow();
+  });
+
+  it("ger ett namn även utan profil: användarens namn, annars rollen", async () => {
+    const nameOf = async (userId: string) => {
+      const res = await asUser({ id: owner.user.userId, email: owner.user.email }, (tx) =>
+        tx.execute(
+          sql`select display_name from public.lager_performers(${fx.orgId}::uuid)
+              where user_id = ${userId}::uuid`,
+        ),
+      );
+      return (Array.from(res)[0] as { display_name: string | null } | undefined)?.display_name;
+    };
+    // En påfyllare som lagts till som medlem utan profil och utan namn i metadata.
+    const bare = await createUser(`lager-utan-profil-${crypto.randomUUID()}@test.binderlab.se`);
+    await db().execute(
+      sql`insert into public.memberships (organization_id, user_id, role)
+          values (${fx.orgId}::uuid, ${bare.id}::uuid, 'refiller')`,
+    );
+    const bareViewer = await viewerFor(bare, fx.orgId);
+    await registerCountFor(bareViewer, {
+      location: "machine",
+      machineId: fx.machineId,
+      titleId: fx.secondTitleId,
+      counted: 4,
+    });
+    expect(await nameOf(bare.id)).toBe("Påfyllare");
+    await db().execute(
+      sql`update auth.users set raw_user_meta_data = '{"full_name": "Kim Påfyllare"}'::jsonb
+          where id = ${bare.id}::uuid`,
+    );
+    expect(await nameOf(bare.id)).toBe("Kim Påfyllare");
+    const view = await loadLagerFor(bareViewer, { period: ALL_TIME, scope: NO_SCOPE }, NOW);
+    expect(view.history.find((h) => h.isSelf)?.performer).toBe("Kim Påfyllare");
+    // Med profil gäller profilens namn, inte metadata eller rollen.
+    const profile = await rows<{ display_name: string }>(
+      db(),
+      sql`select display_name from public.profiles
+          where organization_id = ${fx.orgId}::uuid and user_id = ${refiller.user.userId}::uuid`,
+    );
+    expect(await nameOf(refiller.user.userId)).toBe(profile[0]?.display_name);
   });
 });

@@ -16,6 +16,7 @@ import {
   type Viewer,
 } from "@/server/data/core/loaders";
 import { resolveAppPeriod } from "@/server/data/core/period";
+import { keyMetrics } from "@/domain";
 
 import * as s from "@/db/schema";
 
@@ -204,7 +205,34 @@ describe("loadHomeWith", () => {
     const machine = input.machines[0];
     expect(machine).toBeDefined();
     const data = await loadHomeWith(loadersFor(owner), { ...MARCH, automat: machine!.id });
-    expect(data.scope).toMatchObject({ kind: "machine", id: machine!.id, code: "BL-001" });
+    expect(data.scope).toMatchObject({
+      kind: "machine",
+      id: machine!.id,
+      code: "BL-001",
+      missing: false,
+    });
     expect(data.model.kpis.find((k) => k.id === "orders")?.value).toBe(2);
+  });
+
+  it("säger att automaten saknas när filtret pekar på en annan organisations automat", async () => {
+    const theirs = await loadDomainInputFor(
+      otherOwner,
+      { period: { start: "2025-03-01", end: "2025-03-12" } },
+      NOW,
+    );
+    const foreign = theirs.machines[0];
+    expect(foreign).toBeDefined();
+    const data = await loadHomeWith(loadersFor(owner), { ...MARCH, automat: foreign!.id });
+    expect(data.scope).toMatchObject({ kind: "machine", missing: true });
+    expect(data.model.kpis.find((k) => k.id === "orders")?.value).toBe(0);
+    expect(data.model.daily).toBeNull();
+  });
+
+  it("räknar vinsten på hela perioden, samma som beräkningslagret för perioden", async () => {
+    const { model } = await loadHomeWith(loadersFor(owner), MARCH);
+    const input = await loadDomainInputFor(owner, { period: model.period }, NOW);
+    const km = keyMetrics(input.current);
+    expect(model.kpis.find((k) => k.id === "profit")?.value).toBe(km.profitOre);
+    expect(model.kpis.find((k) => k.id === "margin")?.value).toBe(km.marginBp);
   });
 });

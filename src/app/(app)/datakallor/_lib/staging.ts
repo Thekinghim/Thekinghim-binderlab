@@ -192,6 +192,13 @@ export class UploadStaging {
   async discard(owner: StagingOwner, uploadId: string): Promise<void> {
     assertUuid(uploadId, "uppladdnings-id");
     await withUserDbFor(owner.user, async (tx) => {
+      // Låset först: en bit som är på väg in (Avbryt mitt i uppladdningen) hinner
+      // sparas innan bitarna tas bort, i stället för att stoppa borttagningen.
+      await tx.execute(
+        sql`select id from public.import_uploads
+            where organization_id = ${owner.organizationId}::uuid and id = ${uploadId}::uuid
+            for update`,
+      );
       await tx.execute(
         sql`delete from public.import_upload_chunks
             where organization_id = ${owner.organizationId}::uuid and upload_id = ${uploadId}::uuid`,

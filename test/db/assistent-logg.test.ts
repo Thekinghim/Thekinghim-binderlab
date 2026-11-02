@@ -1,7 +1,9 @@
 /**
  * Loggen över frågor och svar (assistant_logs): skrivs och läses som användaren med RLS.
  *
- * - Var och en skriver bara rader med sitt eget user_id och sin faktiska roll.
+ * - Ingen skriver direkt i tabellen: servern skriver via private.insert_assistant_log, med
+ *   användarens eget user_id och faktiska roll. Butiksrollen kan aldrig skriva.
+ * - Egna rader med ekonomi syns bara så länge rollen ser ekonomi (nedgradering).
  * - Var och en läser sina egna rader; ägare och admin läser alla i organisationen.
  * - Ingen annan organisation ser något. Raderna ändras och raderas aldrig.
  * - Historiken i ett samtal kommer bara från användarens egna rader.
@@ -9,20 +11,23 @@
 
 import { randomUUID } from "node:crypto";
 
-import { sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import * as s from "@/db/schema";
 import {
+  countFor,
   getLogFor,
   insertLogFor,
   listRecentFor,
   loadConversationFor,
+  visibleRowRoles,
   type NewLogEntry,
 } from "@/server/assistant/log";
 import type { Viewer } from "@/server/data/core/loaders";
 
 import { seedAssistantFixture, viewerFor, type AssistantFixture } from "./assistent-fixture";
-import { asUser, attempt, createMember, rows } from "./helpers";
+import { asPostgres, asUser, attempt, createMember, createUser, db, rows } from "./helpers";
 
 let fx: AssistantFixture;
 let owner: Viewer;
@@ -102,6 +107,103 @@ describe("skriva", () => {
     await expect(
       insertLogFor(owner.user, { ...entry(owner), organizationId: otherOwner.organization.id }),
     ).rejects.toThrow();
+  });
+});
+
+describe("bara servern skriver", () => {
+  it("ingen roll kan skriva direkt i tabellen (INSERT), inte ens med egna värden", async () => {
+    for (const v of [owner, admin, reader, refiller]) {
+      const outcome = await asUser({ id: v.user.userId, email: v.user.email }, (tx) =>
+        attempt(tx, (sp) =>
+          sp.execute(sql`insert into public.assistant_logs
+            (organization_id, conversation_id, user_id, role, question, status, provider, model)
+            values (${fx.orgId}, gen_random_uuid(), ${v.user.userId},
+                    ${v.organization.role}::public.member_role, 'x', 'answered', 'local', 'm')`),
+        ),
+      );
+      expect(outcome.code).toBe("42501");
+    }
+  });
+
+  it("butiksrollen kan inte logga, inte ens via funktionen", async () => {
+    const store = await createUser(`butik-assistent-${randomUUID().slice(0, 8)}@test.binderlab.se`);
+    await asPostgres((tx) =>
+      tx
+        .insert(s.memberships)
+        .values({ organizationId: fx.orgId, userId: store.id, role: "store", storeId: fx.storeId }),
+    );
+    const outcome = await asUser(store, (tx) =>
+      attempt(tx, (sp) =>
+        sp.execute(sql`select private.insert_assistant_log(
+          ${fx.orgId}::uuid, gen_random_uuid(), 'store'::public.member_role, 'x', '', 'error',
+          'local', 'm', '[]'::jsonb, '{}'::jsonb, '{}'::jsonb, null, 0)`),
+      ),
+    );
+    expect(outcome.code).toBe("42501");
+  });
+
+  it("funktionen sätter user_id själv och stämplar raden", async () => {
+    const id = await insertLogFor(reader.user, entry(reader));
+    const [row] = await rows<{ user_id: string; created_by: string }>(
+      db(),
+      sql`select user_id, created_by from public.assistant_logs where id = ${id}`,
+    );
+    expect(row).toEqual({ user_id: reader.user.userId, created_by: reader.user.userId });
+  });
+});
+
+describe("läsa efter nuvarande roll", () => {
+  it("visibleRowRoles: ekonomirader bara för roller som ser ekonomi", () => {
+    expect(visibleRowRoles("refiller")).toEqual(["refiller"]);
+    expect(visibleRowRoles("store")).toEqual([]);
+    expect(visibleRowRoles("viewer")).toContain("viewer");
+  });
+
+  it("en läsare som blir påfyllare ser inte längre sina ekonomirader, och tillbaka igen", async () => {
+    const u = await createMember(fx.orgId, "viewer");
+    const asReader = await viewerFor(u, fx.orgId);
+    const conversationId = randomUUID();
+    const economyId = await insertLogFor(
+      asReader.user,
+      entry(asReader, { conversationId, question: "Ekonomi" }),
+    );
+    const setRole = (role: "viewer" | "refiller") =>
+      asUser(fx.owner, (tx) =>
+        tx
+          .update(s.memberships)
+          .set({ role })
+          .where(and(eq(s.memberships.organizationId, fx.orgId), eq(s.memberships.userId, u.id))),
+      );
+
+    await setRole("refiller");
+    const asRefiller = await viewerFor(u, fx.orgId);
+    const stockId = await insertLogFor(
+      asRefiller.user,
+      entry(asRefiller, { conversationId, question: "Lager" }),
+    );
+    expect((await listRecentFor(asRefiller.user, fx.orgId)).map((r) => r.question)).toEqual([
+      "Lager",
+    ]);
+    expect(
+      (await loadConversationFor(asRefiller.user, fx.orgId, conversationId)).map((h) => h.question),
+    ).toEqual(["Lager"]);
+    expect(await countFor(asRefiller.user, fx.orgId)).toBe(1);
+    expect(await getLogFor(asRefiller.user, fx.orgId, economyId)).toBeNull();
+    // Ägaren ser fortfarande båda raderna.
+    expect((await getLogFor(owner.user, fx.orgId, economyId))?.question).toBe("Ekonomi");
+    expect((await getLogFor(owner.user, fx.orgId, stockId))?.question).toBe("Lager");
+    // Tillbaka som läsare: båda syns igen.
+    await setRole("viewer");
+    expect(await countFor(asReader.user, fx.orgId)).toBe(2);
+  });
+
+  it("filtret på roll i appen ger samma urval som RLS (ägare som läser som påfyllare)", async () => {
+    await insertLogFor(owner.user, entry(owner, { question: "Ägarens ekonomi" }));
+    const asOwner = await listRecentFor(owner.user, fx.orgId, 200);
+    const asRefillerView = await listRecentFor(owner.user, fx.orgId, 200, { role: "refiller" });
+    expect(asOwner.length).toBeGreaterThan(0);
+    expect(asRefillerView.every((r) => r.role === "refiller")).toBe(true);
+    expect(await countFor(owner.user, fx.orgId, { role: "store" })).toBe(0);
   });
 });
 

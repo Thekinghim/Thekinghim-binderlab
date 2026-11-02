@@ -95,10 +95,12 @@ export function FaultForm({
               <span
                 aria-hidden
                 className={cn(
-                  "inline-block size-3 shrink-0 border",
-                  kind === k ? "border-fg bg-fg" : "border-line-control",
+                  "inline-flex size-3.5 shrink-0 items-center justify-center rounded-full border",
+                  kind === k ? "border-fg" : "border-line-control",
                 )}
-              />
+              >
+                {kind === k ? <span className="size-1.5 rounded-full bg-fg" /> : null}
+              </span>
               {FAULT_LABEL[k]}
             </label>
           ))}

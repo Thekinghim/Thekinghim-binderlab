@@ -59,7 +59,7 @@ export function SettingsForm({
       toast({
         title: result.data?.changed ? "Inställningarna sparade" : "Inget att spara",
         description: result.data?.changed
-          ? `Kortavgift ${formatBp(f.bp)}, moms ${formatBp(v.bp)}. Hem, Lönsamhet och rapporterna räknas om.`
+          ? `Kortavgift ${formatBp(f.bp)}, moms ${formatBp(v.bp)} i alla öppna månader.`
           : "Värdena var redan inlagda.",
         tone: result.data?.changed ? "ok" : "neutral",
       });
@@ -105,7 +105,11 @@ export function SettingsForm({
             setError(undefined);
           }}
           error={vatError}
-          hint="0 gäller nu: bolaget är inte momsregistrerat, så hela det betalda beloppet är intäkt."
+          hint={
+            vatRateBp === 0
+              ? "0 gäller nu: bolaget är inte momsregistrerat, så hela det betalda beloppet är intäkt."
+              : `${formatBp(vatRateBp)} gäller nu: momsen räknas ur det betalda beloppet och intäkten är resten.`
+          }
         />
       </div>
       <Select

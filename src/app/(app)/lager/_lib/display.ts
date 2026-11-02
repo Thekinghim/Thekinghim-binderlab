@@ -15,12 +15,14 @@ export const STATUS_LABEL: Record<StockStatus, string> = {
   ok: "OK",
 };
 
-/** StatusTag/StatusGlyph-status för en lagerstatus. */
-export const STATUS_TONE: Record<StockStatus, "critical" | "warning" | "ok"> = {
-  critical: "critical",
-  low: "warning",
-  ok: "ok",
-};
+/**
+ * StatusTag/StatusGlyph-ton för en lagerstatus. Signalen (critical) är bara för en tom
+ * plats (design.md §3): Kritisk med pack kvar är en varning i grått, med texten Kritisk.
+ */
+export function statusTone(status: StockStatus, onHand: number): "critical" | "warning" | "ok" {
+  if (status === "ok") return "ok";
+  return status === "critical" && onHand <= 0 ? "critical" : "warning";
+}
 
 export const HISTORY_LABEL: Record<HistoryKind, string> = {
   refill: "Påfyllning",

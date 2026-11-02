@@ -106,9 +106,9 @@ export function ForecastView({ model }: { model: ForecastModel }) {
           r.lowData ? (
             <StatusTag status="neutral">Lite data</StatusTag>
           ) : (
-            <StatusTag status="ok">8 veckor</StatusTag>
+            <StatusTag status="ok">Tillräcklig</StatusTag>
           ),
-        csv: (r) => (r.lowData ? "Lite data" : "8 veckor"),
+        csv: (r) => (r.lowData ? "Lite data" : "Tillräcklig"),
       },
       {
         key: "evidence",

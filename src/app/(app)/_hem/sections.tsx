@@ -11,7 +11,7 @@ import { cn } from "@/lib/cn";
 import { NBSP, formatInt } from "@/lib/format";
 
 import type { HomeInsight, HomeTodo, HomeTopTitles, HomeUnpriced } from "./model";
-import { shareText } from "./model";
+import { shareText, unpricedShareText } from "./model";
 import { kr } from "./text";
 
 // ---------------------------------------------------------------------------
@@ -91,7 +91,12 @@ export function TodoList({ todos }: { todos: HomeTodo[] }) {
               >
                 →
               </span>
-              <span className="col-start-2 text-sm text-muted">{t.detail}</span>
+              <span className="col-start-2 text-sm text-muted">
+                {t.detail}
+                {t.orgWide ? (
+                  <span className="meta mt-1 block text-subtle">Gäller hela organisationen</span>
+                ) : null}
+              </span>
             </Link>
           </li>
         );
@@ -169,17 +174,14 @@ function sentenceOf(text: string): string {
  * övriga i mellangrå. Titlar utan inköpspris får en streckad markering ("ingår inte i
  * vinsten"), inte signal: signalen bärs av nyckeltalet Vinst.
  */
-export function TopTitles({
-  top,
-  totalRevenueOre,
-  caption,
-}: {
-  top: HomeTopTitles;
-  totalRevenueOre: number;
-  caption: string;
-}) {
+export function TopTitles({ top, caption }: { top: HomeTopTitles; caption: string }) {
   const rows = [
-    ...top.rows.map((r, i) => ({ ...r, rank: i + 1, rest: false })),
+    ...top.rows.map((r, i) => ({
+      ...r,
+      rank: i + 1,
+      rest: false,
+      note: r.unpriced ? "utan inköpspris, ingår inte i vinsten" : null,
+    })),
     ...(top.rest
       ? [
           {
@@ -187,13 +189,14 @@ export function TopTitles({
             name: `Övriga ${formatInt(top.rest.titles)} titlar`,
             orders: top.rest.orders,
             revenueOre: top.rest.revenueOre,
-            shareBp:
-              totalRevenueOre > 0
-                ? Math.round((top.rest.revenueOre * 10_000) / totalRevenueOre)
-                : 0,
-            unpriced: false,
+            shareBp: top.rest.shareBp,
+            unpriced: top.rest.unpricedTitles > 0,
             rank: null,
             rest: true,
+            note:
+              top.rest.unpricedTitles > 0
+                ? `varav ${formatInt(top.rest.unpricedTitles)} utan inköpspris, ingår inte i vinsten`
+                : null,
           },
         ]
       : []),
@@ -248,17 +251,15 @@ export function TopTitles({
                       className={cn(
                         "absolute inset-y-0 left-0",
                         emph ? "bg-data-1" : "bg-data-3",
-                        r.unpriced && "border border-dashed border-data-1 bg-transparent",
+                        r.unpriced &&
+                          !r.rest &&
+                          "border border-dashed border-data-1 bg-transparent",
                       )}
                       style={{ width: `${Math.max(0.5, r.shareBp / 100)}%` }}
                     />
                   </span>
                 </span>
-                {r.unpriced ? (
-                  <span className="meta mt-1.5 block text-subtle">
-                    utan inköpspris, ingår inte i vinsten
-                  </span>
-                ) : null}
+                {r.note ? <span className="meta mt-1.5 block text-subtle">{r.note}</span> : null}
                 <span className="meta mt-1 block text-subtle sm:hidden">
                   {formatInt(r.orders)}
                   {NBSP}order
@@ -309,8 +310,8 @@ export function UnpricedNote({ unpriced, canEdit }: { unpriced: HomeUnpriced; ca
       <span>
         Vinsten räknar inte med {formatInt(unpriced.orders)}
         {NBSP}
-        order ({shareText(unpriced.shareBp)} av intäkten, {kr(unpriced.revenueOre)}) som saknar
-        inköpspris: {titles}.
+        order ({unpricedShareText(unpriced.shareBp)} av intäkten, {kr(unpriced.revenueOre)}) som
+        saknar inköpspris: {titles}.
       </span>
       <ArrowLink href={unpriced.href}>
         {canEdit ? "Lägg in inköpspris" : "Visa inköpspriser"}

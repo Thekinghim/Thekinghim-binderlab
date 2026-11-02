@@ -50,6 +50,7 @@ function agreementColumns(
             {NBSP}–{NBSP}
             {a.validTo ? day(a.validTo, today) : "tills vidare"}
           </span>
+          <span className="text-sm text-muted md:hidden">{a.termsLabel}</span>
           {a.note ? <span className="text-sm text-muted">{a.note}</span> : null}
         </span>
       ),
@@ -65,6 +66,7 @@ function agreementColumns(
       key: "commission",
       header: "Provision",
       numeric: true,
+      hideOnMobile: true,
       sortValue: (a) => a.commissionBp ?? -1,
       render: (a) => (a.commissionBp === null ? MISSING : percentBp(a.commissionBp)),
     },
@@ -72,6 +74,7 @@ function agreementColumns(
       key: "rent",
       header: "Hyra/mån",
       numeric: true,
+      hideOnMobile: true,
       sortValue: (a) => a.monthlyRentOre ?? -1,
       render: (a) => (a.monthlyRentOre === null ? MISSING : sek(a.monthlyRentOre)),
     },

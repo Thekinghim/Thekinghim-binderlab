@@ -4,7 +4,7 @@ import type { SearchParamsInput } from "@/components/shell/period-state";
 import { wallClockIn } from "@/components/shell/period-state";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
-import { formatTime } from "@/lib/format";
+import { formatRelative, formatTime } from "@/lib/format";
 import {
   loadMasterData,
   loadStock,
@@ -12,9 +12,12 @@ import {
   requireRoute,
   scopeFromSearchParams,
 } from "@/server/data/core";
+import { getActiveOrganization, requireUser } from "@/server/session";
 
+import { HeaderMeta } from "./_components/header-meta";
 import { TodoBoard } from "./_components/todo-board";
 import { buildPage } from "./_lib/model";
+import { loadDismissedFor } from "./_lib/service";
 
 export const metadata: Metadata = { title: "Att göra" };
 
@@ -33,7 +36,19 @@ export default async function TodoPage({
 }) {
   const ctx = await requireRoute("att-gora");
   const sp = await searchParams;
-  const [todos, master, stock] = await Promise.all([loadTodos(), loadMasterData(), loadStock()]);
+  const [todos, master, stock, user, organization] = await Promise.all([
+    loadTodos(),
+    loadMasterData(),
+    loadStock(),
+    requireUser(),
+    getActiveOrganization(),
+  ]);
+  const now = new Date(ctx.now);
+  // Avbockade punkter som inte står i listan just nu (RLS: påfyllaren bara lagerpunkter).
+  const dismissed = organization
+    ? await loadDismissedFor({ user, organization }, new Set(todos.map((t) => t.key)), now)
+    : [];
+  const wall = (d: Date) => wallClockIn(d, ctx.timeZone);
 
   const central = stock.warehouse.filter((r) => r.isCentral);
   const warehouse =
@@ -50,7 +65,13 @@ export default async function TodoPage({
     machineStock: stock.machineStock,
     warehouse,
     scope: scopeFromSearchParams(sp),
-    computedAt: formatTime(wallClockIn(new Date(ctx.now), ctx.timeZone)),
+    computedAt: formatTime(wall(now)),
+    dismissed: dismissed.map((d) => ({
+      key: d.key,
+      title: d.title,
+      when: formatRelative(wall(new Date(d.dismissedAt)), wall(now)),
+      by: d.dismissedBy,
+    })),
   });
 
   return (
@@ -62,11 +83,12 @@ export default async function TodoPage({
         eyebrow="Att göra"
         title={view.header.title}
         aside={view.header.aside}
-        meta={view.header.meta}
+        description={view.header.description || undefined}
+        meta={<HeaderMeta items={view.header.meta} />}
         className="pb-12 md:pb-16"
       />
       {view.total === 0 ? (
-        <div className="border-t border-line pt-10">
+        <div className="border-t border-line pt-10 pb-12">
           <StateMessage
             kind="empty"
             message={
@@ -82,9 +104,8 @@ export default async function TodoPage({
             action={{ label: "Visa lagret →", href: "/lager" }}
           />
         </div>
-      ) : (
-        <TodoBoard groups={view.groups} canDismiss />
-      )}
+      ) : null}
+      <TodoBoard groups={view.groups} dismissed={view.dismissed} canDismiss />
     </div>
   );
 }

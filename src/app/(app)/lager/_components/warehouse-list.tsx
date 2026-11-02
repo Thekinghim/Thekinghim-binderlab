@@ -2,9 +2,9 @@
 
 import { StatusTag } from "@/components/ui/status-tag";
 import { cn } from "@/lib/cn";
-import { formatInt, MISSING, NBSP } from "@/lib/format";
+import { formatInt } from "@/lib/format";
 
-import { formatWhen, STATUS_LABEL, STATUS_TONE } from "../_lib/display";
+import { daysLeftText, formatWhen, STATUS_LABEL, statusTone } from "../_lib/display";
 import type { LagerTitle, WarehouseRow } from "../_lib/types";
 
 const GRID =
@@ -42,13 +42,13 @@ export function WarehouseList({
         {rows.map((r) => {
           const title = titles.get(r.titleId);
           if (!title) return null;
-          const days = r.daysLeft === null ? MISSING : `${formatInt(r.daysLeft)}${NBSP}d`;
+          const days = daysLeftText(r);
           const body = (
             <>
               <span className="flex min-w-0 flex-col">
                 <span className="truncate text-base text-fg">{title.name}</span>
                 <span className="meta text-subtle md:hidden">
-                  räcker {days} · behov {formatInt(r.weekNeed)}
+                  {r.onHand <= 0 ? "slut" : `räcker ${days}`} · behov {formatInt(r.weekNeed)}
                 </span>
                 <span className="meta hidden text-subtle md:block">
                   inventerat {formatWhen(r.lastCountedAt, timeZone, now)}
@@ -61,7 +61,9 @@ export function WarehouseList({
               </span>
               <span className="tnum text-right text-xl font-medium">{formatInt(r.onHand)}</span>
               <span>
-                <StatusTag status={STATUS_TONE[r.status]}>{STATUS_LABEL[r.status]}</StatusTag>
+                <StatusTag status={statusTone(r.status, r.onHand)}>
+                  {STATUS_LABEL[r.status]}
+                </StatusTag>
               </span>
             </>
           );
@@ -75,7 +77,7 @@ export function WarehouseList({
                     cls,
                     "transition-colors duration-fast ease-instrument hover:bg-hover focus-visible:-outline-offset-2",
                   )}
-                  aria-label={`${title.name} i centrallagret: ${formatInt(r.onHand)} pack, räcker ${days}, behov ${formatInt(r.weekNeed)} den närmaste veckan. Status ${STATUS_LABEL[r.status]}. Registrera inventering.`}
+                  aria-label={`${title.name} i centrallagret: ${formatInt(r.onHand)} pack, ${r.onHand <= 0 ? "slut" : `räcker ${days}`}, behov ${formatInt(r.weekNeed)} den närmaste veckan. Status ${STATUS_LABEL[r.status]}. Registrera inventering.`}
                   onClick={() => onSelect(title, r)}
                 >
                   {body}

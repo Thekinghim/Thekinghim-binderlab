@@ -66,11 +66,7 @@ async function queryOrganization(tx: Tx, orgId: string): Promise<SnapshotOrganiz
 }
 
 /** Ägarandelarna som gällde dagen `asOf` (senaste valid_from ≤ dagen). */
-export async function queryOwnersOn(
-  tx: Tx,
-  orgId: string,
-  asOf: IsoDate,
-): Promise<PartnerOwner[]> {
+export async function queryOwnersOn(tx: Tx, orgId: string, asOf: IsoDate): Promise<PartnerOwner[]> {
   const rows = await tx
     .select({
       id: s.ownerShares.id,

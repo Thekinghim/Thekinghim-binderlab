@@ -27,7 +27,11 @@ export interface LagerTitle {
 export interface StockCell {
   readonly machineId: string;
   readonly titleId: string;
-  /** false = titeln finns inte i automaten (ingen saldorad och ingen försäljning). */
+  /**
+   * false = titeln finns inte i automaten: ingen saldorad (aldrig påfylld, inventerad
+   * eller såld där) och ingen försäljning i fönstret. En saldorad med 0 pack räknas
+   * alltid som lagerförd, och ett tomt fack är alltid Kritisk.
+   */
   readonly stocked: boolean;
   /** Pack i automaten nu (aldrig under 0 i vyn). */
   readonly onHand: number;
@@ -60,7 +64,7 @@ export interface WarehouseRow {
   readonly lastCountedAt: string | null;
 }
 
-/** En rad i påfyllningslistan. */
+/** En rad i påfyllningslistan (alltid minst 1 pack att ta med). */
 export interface PackListLine {
   readonly titleId: string;
   readonly titleName: string;
@@ -73,17 +77,37 @@ export interface PackListLine {
   readonly shortBy: number;
 }
 
+/** En titel som behövs men saknas helt i centrallagret (inget att ta med). */
+export interface PackListMissing {
+  readonly titleId: string;
+  readonly titleName: string;
+  readonly onHand: number;
+  readonly target: number;
+  /** Pack som skulle behövts för att nå målet. */
+  readonly shortBy: number;
+}
+
 /** Påfyllningslistan för en automat, för ett besök i dag. */
 export interface PackList {
   readonly machineId: string;
+  /** Det som ska med, bara rader med minst 1 pack. */
   readonly lines: PackListLine[];
+  /** Titlar som behövs men inte finns i centrallagret. */
+  readonly missing: PackListMissing[];
   readonly totalPacks: number;
+  /** Pack som saknas i centrallagret, för raderna och de saknade titlarna tillsammans. */
   readonly shortBy: number;
   /** Senaste dag för nästa besök enligt veckoplanen, eller null om inget behövs. */
   readonly needBy: IsoDate | null;
   /** Planerad besöksdag i veckoplanen, eller null. */
   readonly plannedDay: IsoDate | null;
-  /** Orsakerna ur besöksplanen, t.ex. "Black bolt tar slut tor 5 nov. (3 kvar, 1,2 pack/dag)". */
+  /** Sant om automaten ska besökas i dag: planerad i dag eller senast i dag (eller passerat). */
+  readonly dueToday: boolean;
+  /**
+   * Orsakerna ur besöksplanen för besöket i dag, t.ex. "Black bolt tar slut tor 5 nov.
+   * (3 kvar, 1,2 pack/dag)". Samma takt och slutdatum som matrisen (fönstret t.o.m. i går).
+   * Underskottet i centrallagret står i `missing` och på raderna, inte här.
+   */
   readonly reasons: string[];
 }
 
@@ -107,7 +131,6 @@ export interface HistoryEntry {
   readonly performer: string | null;
   /** Sant om det var den inloggade användaren. */
   readonly isSelf: boolean;
-  readonly note: string | null;
   /** Påfyllning som drogs ur centrallagret. */
   readonly fromWarehouse: boolean;
 }
@@ -134,6 +157,14 @@ export interface LagerView {
   readonly counts: { readonly critical: number; readonly low: number; readonly ok: number };
   /** Rättigheter: påfyllning och inventering (ägare, admin, påfyllare). */
   readonly canRegister: boolean;
+  /**
+   * Visa påfyllningslistan först: för påfyllaren och när en automat är vald (?automat=).
+   * Vid automaten är listan det man behöver, matrisen kommer efter.
+   */
+  readonly packListFirst: boolean;
 }
 
 export const HISTORY_LIMIT = 30;
+
+/** Centrallagret är Låg när det räcker kortare än veckoplanen (7 dagar) vid alla automaters takt. */
+export const WAREHOUSE_LOW_DAYS = 7;

@@ -6,6 +6,7 @@
 import {
   NBSP,
   formatDate,
+  formatDateTime,
   formatDelta,
   formatInt,
   formatKronor,
@@ -13,6 +14,7 @@ import {
   formatPercent,
   formatSek,
 } from "@/lib/format";
+import { utcToZoned } from "@/import/zoned";
 
 /** 'ÅÅÅÅ-MM' → Date mitt i månaden (samma månad i alla tidszoner). */
 export function monthDate(month: string): Date {
@@ -64,6 +66,22 @@ export function deltaText(bp: number): string {
 
 export function packs(n: number): string {
   return `${formatInt(n)}${NBSP}${n === 1 ? "pack" : "pack"}`;
+}
+
+/** En tidpunkt (ISO, UTC) → väggklocka i en tidszon som en lokal Date. */
+function zonedWallClock(at: Date, timeZone: string): Date {
+  const p = utcToZoned(at, timeZone);
+  return new Date(p.year, p.month - 1, p.day, p.hour, p.minute);
+}
+
+/**
+ * "2 nov. 11:35" i organisationens tidszon (som Inkorgen), oavsett serverns zon.
+ * Året skrivs ut när det inte är innevarande år i samma zon.
+ */
+export function dateTimeText(iso: string, timeZone: string, now: Date = new Date()): string {
+  const at = new Date(iso);
+  if (!Number.isFinite(at.getTime())) return formatDateTime(at);
+  return formatDateTime(zonedWallClock(at, timeZone), { now: zonedWallClock(now, timeZone) });
 }
 
 export function dateText(date: string): string {

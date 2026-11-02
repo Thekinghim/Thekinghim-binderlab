@@ -5,32 +5,39 @@
  * RLS på memberships, BL005 (minst en ägare) och BL006 (admin rör inte ägare).
  */
 
-import type { MemberRole } from "@/db/schema";
+import type { MemberRole, MembershipRole } from "@/db/schema";
 import { formatInt } from "@/lib/format";
 
 export const ROLE_ORDER: readonly MemberRole[] = ["owner", "admin", "viewer", "refiller"];
 
-export const ROLE_LABEL: Record<MemberRole, string> = {
+// Texterna täcker även butiksportalens roll "store" (fas 10): inbjudningssidan
+// (/inbjudan/[token]) visar rollen för en butiksinbjudan från /butiker. Butiken
+// kan aldrig väljas här (ROLE_ORDER, assignableRoles).
+export const ROLE_LABEL: Record<MembershipRole, string> = {
   owner: "Ägare",
   admin: "Administratör",
   viewer: "Läsare",
   refiller: "Påfyllare",
+  store: "Butik",
 };
 
 /** Plural för räknare i rubriken och metadatablocket. */
-const ROLE_PLURAL: Record<MemberRole, string> = {
+const ROLE_PLURAL: Record<MembershipRole, string> = {
   owner: "Ägare",
   admin: "Administratörer",
   viewer: "Läsare",
   refiller: "Påfyllare",
+  store: "Butiker",
 };
 
 /** Vad rollen ser och får göra, en mening. */
-export const ROLE_SUMMARY: Record<MemberRole, string> = {
+export const ROLE_SUMMARY: Record<MembershipRole, string> = {
   owner: "Ser och ändrar allt, även ägarna och vem som har tillgång.",
   admin: "Ser och ändrar allt utom ägarna. Kan bjuda in.",
   viewer: "Ser siffror, lönsamhet och rapporter. Ändrar inget.",
   refiller: "Ser påfyllning och lager. Inga belopp.",
+  store:
+    "Ser butikens egen försäljning, ersättning och rapporter i butiksportalen. Inga inköpspriser.",
 };
 
 export function isMemberRole(value: unknown): value is MemberRole {

@@ -1,17 +1,18 @@
 /**
  * Hems rubrik: läget i en mening, räknat ur nyckeltalen.
  *
- *   "79 987 kr på 20 dagar." + "12 % bättre än perioden innan."
+ *   "79 987 kr på 30 dagar." + "12 % bättre än perioden innan."
  *   Ingress: "Vinst 18 950 kr efter alla kostnader, 23,7 % marginal."
+ *   Utan jämförelse: "79 987 kr sedan 13 okt." + "Vinst 21 205 kr efter alla kostnader, …"
  *
  * Ren funktion utan databas och utan React. Inga beräkningar av ekonomi: talen kommer från
  * keyMetrics/changeBp i @/domain; här väljs bara formuleringen.
  */
 
-import { periodDays, type IsoDate, type Period } from "@/domain";
-import { NBSP, formatInt, formatPercent } from "@/lib/format";
+import { addDays, maxDate, periodDays, type IsoDate, type Period } from "@/domain";
+import { NBSP, formatInt, formatPercent, formatPeriodShort } from "@/lib/format";
 
-import { dayText, kr, marginText, sentence } from "./text";
+import { dateOf, dayText, kr, marginText, sentence } from "./text";
 
 /** Rubriken i två delar (första i fg, andra i grått) och en ingress med fler fakta. */
 export interface HomeHeadline {
@@ -27,6 +28,8 @@ export interface HomeHeadlineInput {
   /** Nettointäkt i perioden, alla order (öre). */
   readonly revenueOre: number;
   readonly orders: number;
+  /** Order med inköpspris (de som ingår i vinsten). */
+  readonly pricedOrders: number;
   /** Vinst för order med inköpspris (öre). */
   readonly profitOre: number;
   readonly marginBp: number | null;
@@ -34,8 +37,7 @@ export interface HomeHeadlineInput {
   readonly unpricedShareBp: number;
   /** Intäktens förändring mot jämförelseperioden i bp, null utan jämförbar period. */
   readonly revenueChangeBp: number | null;
-  /** Dagarna i perioden som har data, eller null. */
-  readonly coverage: Period | null;
+  /** Perioden i skalet (vinsten gäller hela den). */
   readonly period: Period;
   readonly today: IsoDate;
   readonly dataStart: IsoDate | null;
@@ -47,27 +49,45 @@ function changeText(bp: number): string {
   return formatPercent(share, share < 0.1 ? 1 : 0);
 }
 
-/** "på 20 dagar", "i dag", "i går", "den 31 okt." */
-function spanText(coverage: Period, today: IsoDate): string {
-  const days = periodDays(coverage);
+/** Från den andel utan inköpspris rubriken säger det (20 %). */
+export const UNPRICED_HEADLINE_BP = 2_000;
+
+/**
+ * Hur länge intäkten gäller: "på 30 dagar", "i dag", "i går", "den 31 okt.", och när datan
+ * börjar inne i perioden "sedan 13 okt." (eller "13–19 okt." för en period som slutat).
+ */
+function spanText(period: Period, dataStart: IsoDate, today: IsoDate): string {
+  const start = maxDate(period.start, dataStart);
+  const yesterday = addDays(today, -1);
+  if (start > period.start && start < period.end) {
+    if (period.end >= yesterday) return `sedan ${dayText(start, today)}`;
+    return formatPeriodShort({ start: dateOf(start), end: dateOf(period.end) }, dateOf(today));
+  }
+  const days = periodDays({ start, end: period.end });
   if (days > 1) return `på ${formatInt(days)}${NBSP}dagar`;
-  if (coverage.start === today) return "i dag";
-  const [y, m, d] = today.split("-").map(Number) as [number, number, number];
-  const yesterday = new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
-  if (coverage.start === yesterday) return "i går";
-  return `den ${dayText(coverage.start, today)}`;
+  if (start === today) return "i dag";
+  if (start === yesterday) return "i går";
+  return `den ${dayText(start, today)}`;
 }
 
+/** Vinsten i en mening; säger när den inte går att räkna eller när en stor del saknar pris. */
 function profitSentence(input: HomeHeadlineInput): string {
-  const { profitOre, marginBp } = input;
+  const { profitOre, marginBp, pricedOrders, unpricedShareBp } = input;
+  if (pricedOrders === 0) {
+    return "Vinsten går inte att räkna förrän orderna har inköpspris.";
+  }
   const amount = profitOre < 0 ? `Förlust ${kr(-profitOre)}` : `Vinst ${kr(profitOre)}`;
   const margin = marginBp === null ? "" : `, ${marginText(marginBp)} marginal`;
-  return `${amount} efter alla kostnader${margin}.`;
+  const missing =
+    unpricedShareBp >= UNPRICED_HEADLINE_BP
+      ? `, men ${formatPercent(unpricedShareBp / 10_000, 1)} av intäkten saknar inköpspris och ingår inte`
+      : "";
+  return `${amount} efter alla kostnader${margin}${missing}.`;
 }
 
 /** Rubriken för Hem. */
 export function homeHeadline(input: HomeHeadlineInput): HomeHeadline {
-  const { coverage, today, dataStart, revenueChangeBp } = input;
+  const { today, dataStart, revenueChangeBp } = input;
 
   if (dataStart === null) {
     return {
@@ -78,7 +98,7 @@ export function homeHeadline(input: HomeHeadlineInput): HomeHeadline {
     };
   }
 
-  if (coverage === null || input.orders === 0) {
+  if (input.orders === 0) {
     const before = input.period.end < dataStart;
     const when =
       input.period.start === input.period.end && input.period.start === today
@@ -94,7 +114,7 @@ export function homeHeadline(input: HomeHeadlineInput): HomeHeadline {
     };
   }
 
-  const title = `${kr(input.revenueOre)} ${spanText(coverage, today)}.`;
+  const title = sentence(`${kr(input.revenueOre)} ${spanText(input.period, dataStart, today)}`);
 
   let aside: string;
   const lead: string[] = [];

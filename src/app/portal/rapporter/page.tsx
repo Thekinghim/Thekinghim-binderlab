@@ -3,11 +3,11 @@ import Link from "next/link";
 
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
-import { formatDateTime, formatInt } from "@/lib/format";
+import { formatInt } from "@/lib/format";
 import { loadPortalReports } from "@/server/portal/load";
 import { requirePortalContext } from "@/server/portal/session";
 
-import { monthText } from "../_components/text";
+import { dateTimeText, monthText } from "../_components/text";
 
 export const metadata: Metadata = { title: "Rapporter" };
 
@@ -34,7 +34,7 @@ export default async function PortalReportsPage() {
         }
         aside={
           latest
-            ? `Senaste gäller ${monthText(latest.periodStart.slice(0, 7))} och skapades ${formatDateTime(new Date(latest.generatedAt))}.`
+            ? `Senaste gäller ${monthText(latest.periodStart.slice(0, 7))} och skapades ${dateTimeText(latest.generatedAt, ctx.store.timezone)}.`
             : `Operatören skickar en rapport efter varje månad. Den visas här när den är klar.`
         }
       />
@@ -66,7 +66,7 @@ export default async function PortalReportsPage() {
                   </span>
                 )}
                 <span className="meta text-subtle">
-                  Skapad {formatDateTime(new Date(r.generatedAt))}
+                  Skapad {dateTimeText(r.generatedAt, ctx.store.timezone)}
                 </span>
               </div>
               <div className="flex items-baseline gap-4">

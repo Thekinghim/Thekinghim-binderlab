@@ -65,6 +65,11 @@ export interface RunResult {
   readonly toolCalls: ToolCallRecord[];
   readonly verification: Verification;
   readonly usage: AssistantUsage;
+  /**
+   * Modellen som svarade i sista varvet (message.model). Kan skilja sig från den
+   * konfigurerade när API:t använder en reservmodell. null om inget varv blev klart.
+   */
+  readonly model: string | null;
 }
 
 /** Ett fel i varvet som inte är ett API-fel: parametrarna gick inte att tolka. */
@@ -175,6 +180,7 @@ export async function runAssistant(args: RunArgs): Promise<RunResult> {
   let status: AssistantStatus | null = null;
   let answer = "";
   let jsonRetries = 0;
+  let model: string | null = null;
 
   for (let turn = 1; turn <= maxTurns && status === null; turn++) {
     if (turn > 1) args.emit({ type: "turn", turn });
@@ -188,12 +194,16 @@ export async function runAssistant(args: RunArgs): Promise<RunResult> {
     } catch (error) {
       if (isParseFailure(error) && jsonRetries < MAX_JSON_RETRIES && !args.signal?.aborted) {
         jsonRetries += 1;
-        turn -= 1; // samma varv igen
+        // Samma varv igen. Text som redan strömmats i det misslyckade försöket ska inte
+        // stå kvar: "turn" tömmer utkastet i webbläsaren innan försöket strömmar på nytt.
+        args.emit({ type: "turn", turn });
+        turn -= 1;
         continue;
       }
       throw error;
     }
     usage.turns += 1;
+    if (message.model) model = message.model;
     usage.inputTokens += message.usage.input_tokens;
     usage.outputTokens += message.usage.output_tokens;
     usage.cacheReadTokens += message.usage.cache_read_input_tokens ?? 0;
@@ -271,5 +281,5 @@ export async function runAssistant(args: RunArgs): Promise<RunResult> {
       : { checked: 0, unverified: [] };
   if (status === "answered" && verification.unverified.length > 0) status = "unverified";
 
-  return { status, answer, toolCalls, verification, usage };
+  return { status, answer, toolCalls, verification, usage, model };
 }

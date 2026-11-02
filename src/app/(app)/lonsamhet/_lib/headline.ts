@@ -27,6 +27,8 @@ export interface HeadlineInput {
   readonly periodLabel?: string;
   /** Senaste orderns datum i löptext ("1 nov."), för tomt läge. null utan order alls. */
   readonly lastOrderLabel?: string | null;
+  /** Filtret i löptext ("BL-001 Automat 1"), eller null utan filter. */
+  readonly scopeLabel?: string | null;
   readonly orders: number;
   readonly pricedOrders: number;
   readonly profitOre: number;
@@ -121,7 +123,9 @@ export function lonsamhetHeadline(input: HeadlineInput): Headline {
         : "Inga order i perioden.",
       aside: input.lastOrderLabel
         ? sentence(`Senaste ordern kom ${input.lastOrderLabel}`)
-        : "Inga order har importerats ännu.",
+        : input.scopeLabel
+          ? sentence(`Inga order för ${input.scopeLabel} ännu`)
+          : "Inga order har importerats ännu.",
     };
   }
 

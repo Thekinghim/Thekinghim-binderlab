@@ -256,8 +256,16 @@ export function ProfitTrendChart({ data, format, summary, height = 320 }: Props)
               const top = Math.min(yv, zero);
               const h = Math.abs(yv - zero);
               const loss = d.profit < 0;
+              // Bästa och aktiva perioden har alltid etikett; vanliga etiketter för nära
+              // dem utelämnas så att texterna inte krockar.
+              const crowded = (s: number | null | undefined) =>
+                s !== null && s !== undefined && s !== i && Math.abs(i - s) < g.labelEvery;
               const showLabel =
-                i % g.labelEvery === 0 || isPeak || isActive || (i === last && g.labelEvery === 1);
+                isPeak ||
+                isActive ||
+                ((i % g.labelEvery === 0 || (i === last && g.labelEvery === 1)) &&
+                  !crowded(g.peak) &&
+                  !crowded(active));
               return (
                 <g key={i}>
                   <rect

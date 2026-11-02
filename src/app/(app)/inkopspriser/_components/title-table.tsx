@@ -20,6 +20,7 @@ import {
 const TAG: Record<TitleStatus, Status> = {
   missing: "critical",
   loss: "critical",
+  partial: "warning",
   "loss-after-rent": "warning",
   idle: "neutral",
   ok: "ok",
@@ -67,7 +68,7 @@ export function TitleTable({
           return (
             <span className="flex min-w-0 flex-col">
               <Link
-                href={`/inkopspriser?${q.toString()}#titel`}
+                href={`/inkopspriser?${q.toString()}`}
                 scroll={false}
                 aria-current={selected ? "true" : undefined}
                 className={cn(
@@ -82,14 +83,32 @@ export function TitleTable({
                   {[r.series, r.archived ? "Arkiverad" : null].filter(Boolean).join(" · ")}
                 </span>
               ) : null}
+              {r.unpricedOrders > 0 && r.status !== "missing" ? (
+                <span className="text-xs text-muted">
+                  {formatInt(r.unpricedOrders)} order utan pris
+                </span>
+              ) : null}
             </span>
           );
+        },
+      },
+      {
+        key: "status",
+        header: "Status",
+        hideable: false,
+        sortValue: (r) => STATUS_RANK[r.status],
+        csv: (r) => STATUS_LABEL[r.status],
+        render: (r) => {
+          const status =
+            TAG[r.status] === "critical" && !critical.has(r.id) ? "warning" : TAG[r.status];
+          return <StatusTag status={status}>{STATUS_LABEL[r.status]}</StatusTag>;
         },
       },
       {
         key: "cost",
         header: "Inköpspris",
         numeric: true,
+        hideOnMobile: true,
         sortValue: (r) => r.currentCostOre ?? Number.NaN,
         csv: (r) => (r.currentCostOre === null ? "" : kr(r.currentCostOre)),
         render: (r) =>
@@ -116,6 +135,15 @@ export function TitleTable({
         render: (r) => money(r.averagePriceOre),
       },
       {
+        key: "avgCost",
+        header: "Snitt inköp",
+        numeric: true,
+        hideOnMobile: true,
+        sortValue: (r) => r.averageCostOre ?? Number.NaN,
+        csv: (r) => (r.averageCostOre === null ? "" : kr(r.averageCostOre)),
+        render: (r) => money(r.averageCostOre),
+      },
+      {
         key: "left",
         header: "Kvar per order",
         numeric: true,
@@ -137,7 +165,8 @@ export function TitleTable({
         header: "Hyra per order",
         numeric: true,
         hideOnMobile: true,
-        defaultHidden: false,
+        // Kvar efter hyra visas; hyran själv finns i kolumnvalet (så att status får plats).
+        defaultHidden: true,
         sortValue: (r) => r.rentOre ?? Number.NaN,
         csv: (r) => (r.rentOre === null ? "" : kr(r.rentOre)),
         render: (r) => money(r.rentOre),
@@ -159,18 +188,6 @@ export function TitleTable({
         sortValue: (r) => r.orders,
         csv: (r) => r.orders,
         render: (r) => formatInt(r.orders),
-      },
-      {
-        key: "status",
-        header: "Status",
-        hideable: false,
-        sortValue: (r) => STATUS_RANK[r.status],
-        csv: (r) => STATUS_LABEL[r.status],
-        render: (r) => {
-          const status =
-            TAG[r.status] === "critical" && !critical.has(r.id) ? "warning" : TAG[r.status];
-          return <StatusTag status={status}>{STATUS_LABEL[r.status]}</StatusTag>;
-        },
       },
     ],
     [baseQuery, selectedId, today, critical],

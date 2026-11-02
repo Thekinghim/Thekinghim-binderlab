@@ -8,6 +8,13 @@
  * - local: disk (.data/contracts), för utveckling och tester.
  * - supabase: bucket 'contracts' med användarens klient, så att storage-policyerna gäller
  *   (ägare och admin laddar upp, läsaren läser, påfyllaren ingenting).
+ *
+ * Filtypen kontrolleras mot innehållet både när filen laddas upp och när den läses, och bara
+ * typerna i CONTRACT_FILE_TYPES skickas till webbläsaren (se readContractFileFor och routen
+ * /avtal/{id}/fil).
+ *
+ * Här finns också lagringen för utbetalningsfilerna (payoutFileStore), som delar bucket och
+ * miljövariabel med orderimporten.
  */
 
 import "server-only";
@@ -80,19 +87,12 @@ export function contractFileStoreStatus(config: AccountingConfig = accountingCon
   };
 }
 
-/** FileStore för avtalsfiler enligt CONTRACT_FILE_STORE. */
-export async function contractFileStore(
-  config: AccountingConfig = accountingConfig(),
-): Promise<FileStore> {
-  if (config.contractFileStore === "local") {
-    return new LocalFileStore(config.contractFileDir);
-  }
+/** Lagringen i en bucket med den inloggade användarens session (storage-policyerna gäller). */
+async function userBucketStore(bucket: string, what: string): Promise<FileStore> {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_PUBLISHABLE_KEY;
   if (!url || !key) {
-    throw new Error(
-      "SUPABASE_URL och SUPABASE_PUBLISHABLE_KEY saknas: avtalsfiler kan inte sparas.",
-    );
+    throw new Error(`SUPABASE_URL och SUPABASE_PUBLISHABLE_KEY saknas: ${what} kan inte sparas.`);
   }
   const jar = await nextCookieJar();
   const flags = supabaseCookieOptions(process.env.APP_ENV !== "development");
@@ -104,5 +104,32 @@ export async function contractFileStore(
       setAll: () => {},
     },
   });
-  return new SupabaseFileStore(client, "contracts");
+  return new SupabaseFileStore(client, bucket);
+}
+
+/** FileStore för avtalsfiler enligt CONTRACT_FILE_STORE. */
+export async function contractFileStore(
+  config: AccountingConfig = accountingConfig(),
+): Promise<FileStore> {
+  if (config.contractFileStore === "local") {
+    return new LocalFileStore(config.contractFileDir);
+  }
+  return userBucketStore("contracts", "avtalsfiler");
+}
+
+/**
+ * FileStore för utbetalningsfiler (underlag), samma lagring som orderimporten: bucket
+ * 'imports' under "{org}/payouts/{sha256}.csv". Väljs med IMPORT_FILE_STORE (local|supabase),
+ * standard local i development och supabase annars, precis som orderimporten.
+ */
+export async function payoutFileStore(env: NodeJS.ProcessEnv = process.env): Promise<FileStore> {
+  const v = (env.IMPORT_FILE_STORE ?? "").trim().toLowerCase();
+  const kind =
+    v === "local" || v === "supabase"
+      ? v
+      : (env.APP_ENV ?? "development") === "development"
+        ? "local"
+        : "supabase";
+  if (kind === "local") return new LocalFileStore();
+  return userBucketStore("imports", "utbetalningsfilen");
 }

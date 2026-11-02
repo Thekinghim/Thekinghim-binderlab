@@ -14,7 +14,7 @@
 
 import "server-only";
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import {
   cashflow,
@@ -42,30 +42,36 @@ import type { MemberRole } from "@/db/schema";
 import {
   addDays,
   addMonths,
+  costOfGoods,
+  daysBetween,
   DomainError,
+  eachMonth,
   maxDate,
   minDate,
   monthEnd,
   monthPeriod,
+  mulDivRound,
   type EconomicsSources,
   type IsoDate,
+  type OrderLine,
   type Period,
 } from "@/domain";
 import { ImportError } from "@/import/errors";
-import { LocalFileStore, type FileStore } from "@/import/file-store";
+import { type FileStore } from "@/import/file-store";
 import { sha256Hex } from "@/import/hash";
 import {
   buildAccountantReport,
-  exportSie4,
-  sie4Verifications,
+  monthText as reportMonthText,
+  dateText,
   type AccountantTotals,
   type LedgerAccount,
   type Sie4Verification,
 } from "@/reports";
 import { AuthorizationError, requireRoleFor, withUserDbFor } from "@/server/access";
-import type { Viewer } from "@/server/data/core/loaders";
+import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import {
   queryAgreements,
+  queryFirstOrderDate,
   queryMachines,
   queryOrders,
   queryPlacements,
@@ -82,28 +88,47 @@ import {
   type StoreRecord,
 } from "@/server/data/core/types";
 
-import { bookkeepingAdapter, type BookkeepingStatus, type VoucherDelivery } from "./bookkeeping";
+import {
+  bookkeepingAdapter,
+  BookkeepingNotConfiguredError,
+  type BookkeepingStatus,
+  type VoucherDelivery,
+} from "./bookkeeping";
 import {
   CONTRACT_FILE_TYPES,
   MAX_CONTRACT_FILE_BYTES,
   contractFileStoreStatus,
   contractStoragePath,
+  payoutFileStore,
   sniffContractFile,
 } from "./contract-files";
 import { CsvPayoutSource, payoutSourceStatus } from "./payout-source";
+import {
+  buildSieFile,
+  monthVouchers,
+  type MonthVouchers,
+  type PayoutForBooking,
+} from "./vouchers";
 import {
   activeResolutions,
   queryAgreementRecords,
   queryContracts,
   queryFixedCosts,
   queryLedgerAccounts,
+  queryDataSources,
+  queryOrderIdsFromSources,
   queryPayoutImports,
   queryPayoutLines,
   queryPayouts,
+  queryPayoutsForBooking,
   queryProviderSource,
   queryPurchases,
+  queryRefunds,
   queryReviews,
+  queryVoucherDeliveries,
   toAnalyticsPayouts,
+  type RefundRecord,
+  type VoucherDeliveryRecord,
   type AgreementRecord,
   type ContractRecord,
   type FixedCostRecord,
@@ -164,6 +189,8 @@ const NO_SCOPE = { storeId: null, machineId: null } as const;
 
 export interface ReconciliationView {
   readonly period: Period;
+  /** Kända återbetalningar till kunder runt utbetalningarnas perioder (kundärenden). */
+  readonly refunds: RefundRecord[];
   /** null när det inte finns någon utbetalning i perioden. */
   readonly result: ReconciliationResult | null;
   readonly payouts: PayoutRecord[];
@@ -191,36 +218,64 @@ async function reconcileIn(
   providerTimeZone: string | null;
   settings: OrgSettings;
   withoutTitle: number;
+  refunds: RefundRecord[];
 }> {
-  const [payouts, reviews, provider, settings] = await Promise.all([
+  const [payouts, reviews, provider, settings, sources] = await Promise.all([
     queryPayouts(tx, orgId, period),
     queryReviews(tx, orgId),
     queryProviderSource(tx, orgId),
     querySettings(tx, orgId),
+    queryDataSources(tx, orgId),
   ]);
-  const providerTimeZone = provider?.timeZone ?? null;
+  // Leverantörens tidszon: utbetalningarnas datakälla när de har en gemensam, annars den
+  // första aktiva datakällan.
+  const payoutSources = [
+    ...new Set(payouts.flatMap((p) => (p.dataSourceId ? [p.dataSourceId] : []))),
+  ];
+  const own =
+    payoutSources.length === 1 ? sources.find((x) => x.id === payoutSources[0]) : undefined;
+  const providerTimeZone = own?.timeZone ?? provider?.timeZone ?? null;
   if (payouts.length === 0) {
-    return { result: null, payouts, reviews, providerTimeZone, settings, withoutTitle: 0 };
+    return {
+      result: null,
+      payouts,
+      reviews,
+      providerTimeZone,
+      settings,
+      withoutTitle: 0,
+      refunds: [],
+    };
   }
   const start = payouts.reduce((d, p) => minDate(d, p.periodStart), payouts[0]!.periodStart);
   const end = payouts.reduce((d, p) => maxDate(d, p.periodEnd), payouts[0]!.periodEnd);
-  const [lines, orders] = await Promise.all([
+  const range = { start: addDays(start, -ORDER_MARGIN_DAYS), end: addDays(end, ORDER_MARGIN_DAYS) };
+  // Med fler än en datakälla jämförs utbetalningarna bara med order från sin egen källa.
+  const filterSources = sources.length > 1 && payoutSources.length > 0;
+  const [lines, orders, refunds, sourceOrderIds] = await Promise.all([
     queryPayoutLines(
       tx,
       orgId,
       payouts.map((p) => p.id),
     ),
-    queryOrders(
-      tx,
-      orgId,
-      { start: addDays(start, -ORDER_MARGIN_DAYS), end: addDays(end, ORDER_MARGIN_DAYS) },
-      NO_SCOPE,
-    ),
+    queryOrders(tx, orgId, range, NO_SCOPE),
+    queryRefunds(tx, orgId, range),
+    filterSources ? queryOrderIdsFromSources(tx, orgId, payoutSources, range) : null,
   ]);
+  const ownOrders = sourceOrderIds
+    ? orders.orders.filter((o) => sourceOrderIds.has(o.id))
+    : orders.orders;
+  const ownRefunds = sourceOrderIds
+    ? refunds.filter((r) => r.orderId === null || sourceOrderIds.has(r.orderId))
+    : refunds;
   const result = reconcilePayouts({
-    orders: orders.orders,
+    orders: ownOrders,
     payouts: toAnalyticsPayouts(payouts, lines),
-    refunds: [],
+    refunds: ownRefunds.map((r) => ({
+      id: r.id,
+      date: r.date,
+      amountOre: r.amountOre,
+      orderId: r.orderId,
+    })),
     settings,
     resolutions: activeResolutions(reviews),
     options: { providerTimeZone, timeZone },
@@ -232,6 +287,7 @@ async function reconcileIn(
     providerTimeZone,
     settings,
     withoutTitle: orders.withoutTitle,
+    refunds: ownRefunds,
   };
 }
 
@@ -248,6 +304,7 @@ export async function loadReconciliationFor(
     ]);
     return {
       period,
+      refunds: rec.refunds,
       result: rec.result,
       payouts: rec.payouts,
       imports,
@@ -292,7 +349,7 @@ export async function importPayoutFileFor(
   const batch = await new CsvPayoutSource(file.bytes).fetch();
   const sha = sha256Hex(file.bytes);
   const storagePath = `${orgId}/payouts/${sha}.csv`;
-  const store = deps.fileStore ?? new LocalFileStore();
+  const store = deps.fileStore ?? (await payoutFileStore());
   await store.put(storagePath, file.bytes, "text/csv");
 
   return asRole(viewer, OPERATOR_ROLES, async (tx) => {
@@ -326,7 +383,11 @@ export async function importPayoutFileFor(
             })
             .from(s.payouts)
             .where(
-              and(eq(s.payouts.organizationId, orgId), inArray(s.payouts.reference, references)),
+              and(
+                eq(s.payouts.organizationId, orgId),
+                inArray(s.payouts.reference, references),
+                isNull(s.payouts.archivedAt),
+              ),
             );
     const byReference = new Map(existing.map((p) => [p.reference, p]));
 
@@ -473,6 +534,35 @@ export async function importPayoutFileFor(
   });
 }
 
+/**
+ * Arkiverar en felaktig utbetalning (med anteckning om varför). Den räknas inte längre i
+ * avstämningen, bokföringen eller kassaflödet, och samma referens kan importeras igen rättad.
+ * Raderas aldrig; ändringen loggas i audit_log.
+ */
+export async function archivePayoutFor(
+  viewer: Viewer,
+  input: { readonly id: string; readonly note: string },
+): Promise<{ reference: string }> {
+  const orgId = viewer.organization.id;
+  const note = input.note.trim();
+  if (!note) throw new AccountingError("Skriv varför utbetalningen arkiveras.");
+  return asRole(viewer, OPERATOR_ROLES, async (tx) => {
+    const rows = await tx
+      .update(s.payouts)
+      .set({ archivedAt: new Date(), note: note.slice(0, 2000) })
+      .where(
+        and(
+          eq(s.payouts.organizationId, orgId),
+          eq(s.payouts.id, input.id),
+          isNull(s.payouts.archivedAt),
+        ),
+      )
+      .returning({ reference: s.payouts.reference });
+    if (rows.length === 0) throw new AccountingError("Utbetalningen finns inte eller är redan arkiverad.");
+    return { reference: rows[0]!.reference };
+  });
+}
+
 function findDeviation(result: ReconciliationResult | null, key: string): Deviation | null {
   if (!result) return null;
   for (const p of result.payouts) {
@@ -541,10 +631,14 @@ export interface AccountTotal {
   readonly creditOre: number;
 }
 
+/** 'closed' = avslutad månad (kan laddas ned och skickas), 'open' = innevarande månad. */
+export type BookkeepingMonthState = "closed" | "open";
+
 export interface BookkeepingView {
   readonly month: string;
   readonly period: Period;
   readonly fiscalYear: Period;
+  readonly state: BookkeepingMonthState;
   readonly verifications: Sie4Verification[];
   /** Summa debet och kredit per konto över månadens verifikationer. */
   readonly accountTotals: AccountTotal[];
@@ -554,9 +648,21 @@ export interface BookkeepingView {
   readonly error: string | null;
   readonly status: BookkeepingStatus;
   readonly fileName: string;
+  /** Sant om kontoplanen saknar bankkonto och BAS 1930 användes för utbetalningarna. */
+  readonly bankFallback: boolean;
+  /** Utbetalningar som kom in i månaden (en verifikation var). */
+  readonly payoutsBooked: number;
+  /** Dagar där den uppskattade kortavgiften ersatts av leverantörens faktiska avgifter. */
+  readonly daysWithActualFees: number;
+  /** Leveransen av månaden till bokföringsprogrammet, om den är skickad. */
+  readonly delivery: VoucherDeliveryRecord | null;
+  /** Sant om månadens verifikationer har ändrats sedan de skickades. */
+  readonly changedSinceDelivery: boolean;
+  /** En senare månad i räkenskapsåret som redan är skickad (då kan den här inte skickas). */
+  readonly laterDelivery: VoucherDeliveryRecord | null;
 }
 
-/** Verifikationsserien i SIE-filen. */
+/** Verifikationsserien i SIE-filen. Numren löper över hela räkenskapsåret. */
 export const VERIFICATION_SERIES = "BL";
 
 /** Räkenskapsåret som innehåller månaden. */
@@ -567,6 +673,19 @@ export function fiscalYearOf(month: string, startMonth: number): Period {
   const startYear = m >= sm ? year : year - 1;
   const first = `${startYear}-${String(sm).padStart(2, "0")}`;
   return { start: `${first}-01`, end: monthEnd(addMonths(first, 11)) };
+}
+
+/** Avslutad eller pågående månad. Kastar AccountingError för en månad som inte har börjat. */
+export function bookkeepingMonthState(month: string, today: IsoDate): BookkeepingMonthState {
+  const thisMonth = today.slice(0, 7);
+  if (month > thisMonth) {
+    throw new AccountingError(`${sentenceCase(reportMonthText(month))} har inte börjat.`);
+  }
+  return month === thisMonth ? "open" : "closed";
+}
+
+function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /** Totalsumman per konto (debet/kredit) över verifikationerna. */
@@ -594,104 +713,277 @@ function accountTotalsOf(
     }));
 }
 
+/** Utbetalningar i bokföringens form: återbetalningar enligt leverantören, annars de kända. */
+function payoutsForBooking(
+  payouts: readonly PayoutRecord[],
+  refunds: readonly RefundRecord[],
+): PayoutForBooking[] {
+  return payouts.map((p) => {
+    const period = { start: p.periodStart, end: p.periodEnd };
+    const known = refunds
+      .filter((r) => r.date >= period.start && r.date <= period.end)
+      .reduce((sum, r) => sum + r.amountOre, 0);
+    return {
+      reference: p.reference,
+      period,
+      paidOn: p.paidOn ?? p.periodEnd,
+      amountOre: p.amountOre,
+      feesOre: p.feesOre,
+      refundsOre: p.refundsOre ?? known,
+    };
+  });
+}
+
+interface BuiltMonth {
+  readonly month: string;
+  readonly vouchers: MonthVouchers;
+  readonly totals: AccountantTotals;
+  readonly payoutsBooked: number;
+}
+
+/**
+ * Bygger verifikationerna för räkenskapsårets månader fram till och med `month`, så att
+ * numren löper fortlöpande över året: en skickad månad behåller sina nummer (från leveransen),
+ * nästa månad fortsätter efter dem.
+ */
 async function buildBookkeeping(
   tx: Tx,
   viewer: Viewer,
   month: string,
+  today: IsoDate,
 ): Promise<BookkeepingView & { sie: Uint8Array | null }> {
   const orgId = viewer.organization.id;
+  const state = bookkeepingMonthState(month, today);
   const period = monthPeriod(month);
-  const [sources, orders, accounts, stores, titles, placements] = await Promise.all([
+  const [sources, accounts, stores, titles, placements] = await Promise.all([
     economicsSources(tx, orgId),
-    queryOrders(tx, orgId, period, NO_SCOPE),
     queryLedgerAccounts(tx, orgId),
     queryStores(tx, orgId),
     queryTitles(tx, orgId),
     queryPlacements(tx, orgId),
   ]);
-  const machines = await queryMachines(tx, orgId, placements, period.end);
   const fiscalYear = fiscalYearOf(month, sources.settings.fiscalYearStartMonth);
+  const yearToDate = { start: fiscalYear.start, end: period.end };
+  const [machines, orders, payouts, deliveries] = await Promise.all([
+    queryMachines(tx, orgId, placements, period.end),
+    queryOrders(tx, orgId, yearToDate, NO_SCOPE),
+    queryPayoutsForBooking(tx, orgId, yearToDate),
+    queryVoucherDeliveries(tx, orgId, fiscalYear),
+  ]);
+  const refundStart = payouts.reduce((d, p) => minDate(d, p.periodStart), fiscalYear.start);
+  const refunds = await queryRefunds(tx, orgId, { start: refundStart, end: period.end });
+  const booking = payoutsForBooking(payouts, refunds);
+
   const fileName = `binderlab-${month}.se`;
-  const status = bookkeepingAdapter().status();
-  const base = { month, period, fiscalYear, accounts, status, fileName };
+  const adapter = bookkeepingAdapter();
+  const status = adapter.status();
+  const latestDelivery = (m: string) =>
+    deliveries.filter((d) => d.month === m).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0] ??
+    null;
+  const delivery = latestDelivery(month);
+  const laterDelivery =
+    deliveries.filter((d) => d.month > month).sort((a, b) => (a.month < b.month ? -1 : 1))[0] ??
+    null;
+  const base = {
+    month,
+    period,
+    fiscalYear,
+    state,
+    accounts,
+    status,
+    fileName,
+    delivery,
+    laterDelivery,
+  };
+  const empty = {
+    ...base,
+    verifications: [],
+    accountTotals: [],
+    totals: null,
+    bankFallback: false,
+    payoutsBooked: 0,
+    daysWithActualFees: 0,
+    changedSinceDelivery: false,
+    sie: null,
+  };
+
   try {
-    const report = buildAccountantReport(
-      {
-        ...sources,
-        orders: orders.orders,
-        stores: stores.map((x) => ({ id: x.id, name: x.name })),
-        machines: machines.map((x) => ({ id: x.id, name: x.name, code: x.code })),
-        titles: titles.map((x) => ({ id: x.id, name: x.name })),
-      },
-      period,
-    );
-    const options = {
+    let next = 1;
+    let built: BuiltMonth | null = null;
+    for (const m of eachMonth(fiscalYear.start, period.end)) {
+      const mp = monthPeriod(m);
+      const report = buildAccountantReport(
+        {
+          ...sources,
+          orders: orders.orders.filter((o) => o.businessDate >= mp.start && o.businessDate <= mp.end),
+          stores: stores.map((x) => ({ id: x.id, name: x.name })),
+          machines: machines.map((x) => ({ id: x.id, name: x.name, code: x.code })),
+          titles: titles.map((x) => ({ id: x.id, name: x.name })),
+        },
+        mp,
+      );
+      const monthPayouts = booking.filter(
+        (p) =>
+          (p.period.start <= mp.end && p.period.end >= mp.start) ||
+          (p.paidOn >= mp.start && p.paidOn <= mp.end),
+      );
+      const sent = latestDelivery(m);
+      const first = sent ? sent.firstNumber : next;
+      const vouchers = monthVouchers({
+        report,
+        payouts: monthPayouts,
+        accounts,
+        fiscalYear,
+        series: VERIFICATION_SERIES,
+        firstNumber: first,
+      });
+      next = sent ? sent.lastNumber + 1 : first + vouchers.verifications.length;
+      if (m === month) {
+        built = {
+          month: m,
+          vouchers,
+          totals: report.totals,
+          payoutsBooked: monthPayouts.filter((p) => p.paidOn >= mp.start && p.paidOn <= mp.end)
+            .length,
+        };
+      }
+    }
+    if (!built) throw new DomainError("invalid_period", "Månaden ligger utanför räkenskapsåret.");
+    const { vouchers } = built;
+    const sieArgs = {
       company: viewer.organization.name,
-      ledgerAccounts: accounts,
       fiscalYear,
-      verificationSeries: VERIFICATION_SERIES,
-      generatedOn: period.end,
+      accounts: vouchers.accounts,
+      verifications: vouchers.verifications,
     };
-    const verifications = sie4Verifications(report, options);
+    let changedSinceDelivery = false;
+    if (delivery) {
+      const sentOn = businessToday(new Date(delivery.createdAt), viewer.organization.timezone);
+      const again = sha256Hex(buildSieFile({ ...sieArgs, generatedOn: sentOn }));
+      changedSinceDelivery = again !== delivery.fileSha256;
+    }
     return {
       ...base,
-      verifications,
-      accountTotals: accountTotalsOf(verifications, accounts),
-      totals: report.totals,
+      verifications: vouchers.verifications,
+      accountTotals: accountTotalsOf(vouchers.verifications, vouchers.accounts),
+      accounts: [...accounts, ...vouchers.accounts.filter((a) => !accounts.some((x) => x.key === a.key))],
+      totals: built.totals,
       error: null,
-      sie: exportSie4(report, options),
+      bankFallback: vouchers.bankFallback,
+      payoutsBooked: built.payoutsBooked,
+      daysWithActualFees: vouchers.daysWithActualFees,
+      changedSinceDelivery,
+      sie:
+        state === "closed" && vouchers.verifications.length > 0
+          ? buildSieFile({ ...sieArgs, generatedOn: today })
+          : null,
     };
   } catch (error) {
-    if (error instanceof DomainError) {
-      return {
-        ...base,
-        verifications: [],
-        accountTotals: [],
-        totals: null,
-        error: error.message,
-        sie: null,
-      };
-    }
+    if (error instanceof DomainError) return { ...empty, error: error.message };
     throw error;
   }
 }
 
-/** Förslag på verifikationer för månaden ('ÅÅÅÅ-MM'). */
-export async function loadBookkeepingFor(viewer: Viewer, month: string): Promise<BookkeepingView> {
+/** Förslag på verifikationer för månaden ('ÅÅÅÅ-MM'). Kastar för en månad som inte har börjat. */
+export async function loadBookkeepingFor(
+  viewer: Viewer,
+  month: string,
+  today: IsoDate,
+): Promise<BookkeepingView> {
   return asRole(viewer, ECONOMY_ROLES, async (tx) => {
-    const { sie: _sie, ...view } = await buildBookkeeping(tx, viewer, month);
+    const { sie: _sie, ...view } = await buildBookkeeping(tx, viewer, month, today);
     void _sie;
     return view;
   });
 }
 
-/** SIE 4-filen för månaden. Kastar AccountingError om den inte kan tas fram. */
+/**
+ * SIE 4-filen för en avslutad månad (#GEN = i dag). Kastar AccountingError för en pågående
+ * eller framtida månad, eller om verifikationerna inte kan tas fram.
+ */
 export async function sieFileFor(
   viewer: Viewer,
   month: string,
+  today: IsoDate,
 ): Promise<{ fileName: string; bytes: Uint8Array }> {
   return asRole(viewer, ECONOMY_ROLES, async (tx) => {
-    const view = await buildBookkeeping(tx, viewer, month);
-    if (!view.sie) throw new AccountingError(view.error ?? "SIE-filen kunde inte tas fram.");
+    const view = await buildBookkeeping(tx, viewer, month, today);
+    if (view.state === "open") {
+      throw new AccountingError(
+        `${sentenceCase(reportMonthText(month))} pågår. SIE-filen kan tas fram när månaden är slut.`,
+      );
+    }
+    if (!view.sie) {
+      throw new AccountingError(view.error ?? "Månaden har inga verifikationer.");
+    }
     return { fileName: view.fileName, bytes: view.sie };
   });
 }
 
-/** Skickar månadens verifikationer till bokföringsprogrammet (ACCOUNTING_PROVIDER). */
-export async function deliverVouchersFor(viewer: Viewer, month: string): Promise<VoucherDelivery> {
+/**
+ * Skickar en avslutad månads verifikationer till bokföringsprogrammet (ACCOUNTING_PROVIDER).
+ * En månad skickas en gång, och i ordning: inte om en senare månad redan är skickad. Leveransen
+ * loggas i voucher_deliveries (append-only, audit) i samma transaktion; misslyckas leveransen
+ * sparas ingen logg.
+ */
+export async function deliverVouchersFor(
+  viewer: Viewer,
+  month: string,
+  today: IsoDate,
+): Promise<VoucherDelivery & { firstNumber: number; lastNumber: number }> {
+  const orgId = viewer.organization.id;
   return asRole(viewer, OPERATOR_ROLES, async (tx) => {
-    const view = await buildBookkeeping(tx, viewer, month);
-    if (!view.sie) throw new AccountingError(view.error ?? "Verifikationerna kunde inte tas fram.");
-    if (view.verifications.length === 0) {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`vouchers:${orgId}`}))`);
+    const view = await buildBookkeeping(tx, viewer, month, today);
+    const name = sentenceCase(reportMonthText(month));
+    if (view.state === "open") {
+      throw new AccountingError(`${name} pågår. Verifikationerna kan skickas när månaden är slut.`);
+    }
+    if (view.error) throw new AccountingError(view.error);
+    if (view.delivery) {
+      throw new AccountingError(
+        `${name} är redan skickad (${VERIFICATION_SERIES} ${view.delivery.firstNumber}–${view.delivery.lastNumber}, ${dateText(
+          view.delivery.createdAt.slice(0, 10),
+        )}).`,
+      );
+    }
+    if (view.laterDelivery) {
+      throw new AccountingError(
+        `${sentenceCase(reportMonthText(view.laterDelivery.month))} är redan skickad. Månaderna skickas i ordning, så ${reportMonthText(
+          month,
+        )} bokförs för hand eller med SIE-filen.`,
+      );
+    }
+    if (!view.sie || view.verifications.length === 0) {
       throw new AccountingError("Månaden har inga verifikationer att skicka.");
     }
-    return bookkeepingAdapter().deliver({
-      organizationId: viewer.organization.id,
+    const adapter = bookkeepingAdapter();
+    const adapterStatus = adapter.status();
+    if (adapter.kind === "none" || !adapterStatus.configured) {
+      throw new BookkeepingNotConfiguredError(adapterStatus.detail);
+    }
+    const firstNumber = view.verifications[0]!.number;
+    const lastNumber = view.verifications[view.verifications.length - 1]!.number;
+    await tx
+      .insert(s.voucherDeliveries)
+      .values({
+        organizationId: orgId,
+        month: `${month}-01`,
+        provider: adapter.kind as s.VoucherProvider,
+        series: VERIFICATION_SERIES,
+        firstNumber,
+        lastNumber,
+        verificationCount: view.verifications.length,
+        fileSha256: sha256Hex(view.sie),
+      });
+    const result = await adapter.deliver({
+      organizationId: orgId,
       month,
       verifications: view.verifications,
       sieFile: view.sie,
       fileName: view.fileName,
     });
+    return { ...result, firstNumber, lastNumber };
   });
 }
 
@@ -716,8 +1008,9 @@ function toFixedCost(r: FixedCostRecord): FixedCost {
 }
 
 /**
- * Inköpsorder som flöden: mottagna (helt eller delvis) räknas som betalda på mottagningsdagen,
- * beställda som planerade på förväntad dag (annars beställningsdagen).
+ * Inköpsorder som flöden: mottagna (och den mottagna delen av en delvis mottagen order)
+ * räknas som betalda på mottagningsdagen, beställda (och resten) som planerade på förväntad dag
+ * (annars beställningsdagen). Se queryPurchases.
  */
 function toPurchases(records: readonly PurchaseRecord[]): Purchase[] {
   return records.flatMap((r) =>
@@ -728,14 +1021,30 @@ function toPurchases(records: readonly PurchaseRecord[]): Purchase[] {
             id: r.id,
             date: r.date,
             amountOre: r.amountOre,
-            status:
-              r.status === "received" || r.status === "partially_received"
-                ? ("paid" as const)
-                : ("planned" as const),
+            status: r.status === "received" ? ("paid" as const) : ("planned" as const),
             ...(r.supplier ? { label: r.supplier } : {}),
           },
         ],
   );
+}
+
+/** Påfyllnad av lagret i prognosen (inköp som inte är beställda än). */
+export interface ReplenishmentForecast {
+  /** Fönstret som inköpsvärdet räknas på (samma som kassaflödets prognosfönster). */
+  readonly window: Period;
+  readonly windowDays: number;
+  /** Inköpsvärdet för sålda pack i fönstret (@/domain costOfGoods). */
+  readonly windowCostOre: number;
+  /** Andel order i fönstret med inköpspris, i bp. */
+  readonly coverageBp: number | null;
+  /** Per månad: prognos, redan planerade inköpsorder och det som läggs till. */
+  readonly months: {
+    readonly month: string;
+    readonly days: number;
+    readonly projectedOre: number;
+    readonly plannedOre: number;
+    readonly addedOre: number;
+  }[];
 }
 
 export interface CashflowView {
@@ -745,11 +1054,24 @@ export interface CashflowView {
   readonly purchases: number;
   readonly fixedCosts: number;
   readonly payouts: number;
+  /** null när det saknas försäljning att bygga prognosen på. */
+  readonly replenishment: ReplenishmentForecast | null;
+  /** Antagandet om utbetalningsrytmen, i klartext. */
+  readonly payoutCycleNote: string;
 }
+
+/** Minsta antal registrerade utbetalningar för att rytmen ska läsas ur dem. */
+const MIN_PAYOUTS_FOR_CYCLE = 2;
 
 /**
  * Kassaflödet per månad: fem månader bakåt (dock inte före första ordern), innevarande och
  * tre framåt.
+ *
+ * - Utbetalningsrytmen läses ur utbetalningarna först när det finns minst två; annars antas
+ *   en utbetalning i månaden (med samma fördröjning som den senaste utbetalningen).
+ * - Inköp framåt: utöver lagda inköpsorder prognostiseras påfyllnaden av lagret som
+ *   inköpsvärdet för sålda pack i prognosfönstret, per dag, för månadens återstående dagar,
+ *   minus de inköpsorder som redan är planerade samma månad (aldrig under 0).
  */
 export async function loadCashflowFor(
   viewer: Viewer,
@@ -774,29 +1096,106 @@ export async function loadCashflowFor(
       queryFixedCosts(tx, orgId),
     ]);
     const activeCosts = costs.filter((c) => !c.archived);
+    const fewPayouts = payouts.length < MIN_PAYOUTS_FOR_CYCLE;
+    const payoutCycleNote = fewPayouts
+      ? payouts.length === 0
+        ? "Ingen utbetalning är registrerad: en utbetalning i månaden antas."
+        : "Bara en utbetalning är registrerad, så rytmen går inte att läsa ut: en utbetalning i månaden antas."
+      : "Utbetalningsrytmen följer den senaste utbetalningens period.";
     const base = {
       range,
       purchases: purchases.length,
       fixedCosts: activeCosts.length,
       payouts: payouts.length,
+      payoutCycleNote,
+    };
+    const planned = toPurchases(purchases);
+    const input = {
+      ...sources,
+      orders: orders.orders,
+      payouts: toAnalyticsPayouts(payouts, new Map()),
+      purchases: planned,
+      fixedCosts: activeCosts.map(toFixedCost),
+      asOf: today,
+      range,
+      granularity: "month" as const,
+      ...(fewPayouts ? { options: { payoutCycle: "month" as const } } : {}),
     };
     try {
-      const result = cashflow({
-        ...sources,
-        orders: orders.orders,
-        payouts: toAnalyticsPayouts(payouts, new Map()),
-        purchases: toPurchases(purchases),
-        fixedCosts: activeCosts.map(toFixedCost),
-        asOf: today,
-        range,
-        granularity: "month",
-      });
-      return { ...base, result, error: null };
+      const firstPass = cashflow(input);
+      const replenishment = replenishmentForecast(
+        firstPass,
+        sources,
+        orders.orders,
+        planned,
+        today,
+      );
+      const result =
+        replenishment && replenishment.months.some((m) => m.addedOre > 0)
+          ? cashflow({
+              ...input,
+              purchases: [
+                ...planned,
+                ...replenishment.months
+                  .filter((m) => m.addedOre > 0)
+                  .map((m) => ({
+                    id: `pafyllnad-${m.month}`,
+                    date: monthEnd(m.month),
+                    amountOre: m.addedOre,
+                    status: "planned" as const,
+                    label: "Påfyllnad av lager (prognos)",
+                  })),
+              ],
+            })
+          : firstPass;
+      return { ...base, result, error: null, replenishment };
     } catch (error) {
-      if (error instanceof DomainError) return { ...base, result: null, error: error.message };
+      if (error instanceof DomainError) {
+        return { ...base, result: null, error: error.message, replenishment: null };
+      }
       throw error;
     }
   });
+}
+
+/** Påfyllnaden av lagret per framtida månad (se loadCashflowFor). */
+function replenishmentForecast(
+  result: CashflowResult,
+  sources: EconomicsSources,
+  orders: readonly OrderLine[],
+  planned: readonly Purchase[],
+  today: IsoDate,
+): ReplenishmentForecast | null {
+  const { window, windowDays } = result.basis;
+  if (!window || windowDays <= 0) return null;
+  const windowOrders = orders.filter(
+    (o) => o.businessDate >= window.start && o.businessDate <= window.end,
+  );
+  const cost = costOfGoods({ ...sources, orders: windowOrders, period: window });
+  const tomorrow = addDays(today, 1);
+  if (tomorrow > result.range.end) return null;
+  const months = eachMonth(tomorrow, result.range.end).map((m) => {
+    const span = { start: maxDate(`${m}-01`, tomorrow), end: minDate(monthEnd(m), result.range.end) };
+    const days = daysBetween(span.start, span.end) + 1;
+    const projectedOre = mulDivRound(cost.costOre, days, windowDays);
+    const plannedOre = planned
+      .filter((p) => p.status === "planned" && p.date >= span.start && p.date <= span.end)
+      .reduce((sum, p) => sum + p.amountOre, 0);
+    return {
+      month: m,
+      days,
+      projectedOre,
+      plannedOre,
+      addedOre: Math.max(0, projectedOre - plannedOre),
+    };
+  });
+  return {
+    window,
+    windowDays,
+    windowCostOre: cost.costOre,
+    coverageBp: cost.coverageBp,
+    months,
+  };
 }
 
 export interface FixedCostsView {
@@ -1132,22 +1531,22 @@ export async function attachContractFileFor(
       .replace(/[\\/\u0000-\u001f]/g, " ")
       .trim()
       .slice(0, 255) || "avtal";
+  // Filkolumnerna sätts bara via public.attach_contract_file (rollkontroll, tillåten typ och
+  // sökvägen {org}/{avtal}/{sha256}.{ändelse}); en klient kan inte skriva dem direkt.
   await asRole(viewer, OPERATOR_ROLES, async (tx) => {
-    await tx
-      .update(s.contracts)
-      .set({
-        storagePath,
-        fileName: name,
-        fileContentType: contentType,
-        fileSizeBytes: input.bytes.byteLength,
-        fileSha256: sha,
-      })
-      .where(and(eq(s.contracts.organizationId, orgId), eq(s.contracts.id, input.contractId)));
+    await tx.execute(
+      sql`select public.attach_contract_file(${orgId}::uuid, ${input.contractId}::uuid,
+            ${storagePath}, ${name}, ${contentType}, ${input.bytes.byteLength}::bigint, ${sha})`,
+    );
   });
   return { storagePath };
 }
 
-/** Avtalsfilen (för nedladdning). Ägare, admin och läsare. */
+/**
+ * Avtalsfilen (för nedladdning). Ägare, admin och läsare. Typen som skickas till webbläsaren
+ * är alltid en av de tillåtna (CONTRACT_FILE_TYPES) och kontrolleras mot innehållet igen när
+ * filen läses: stämmer den sparade typen inte med innehållet skickas filen inte alls.
+ */
 export async function readContractFileFor(
   viewer: Viewer,
   contractId: string,
@@ -1169,6 +1568,10 @@ export async function readContractFileFor(
     throw new AccountingError("Avtalet har ingen fil.");
   }
   if (!row.storagePath.startsWith(`${orgId}/`)) throw new AuthorizationError("forbidden");
+  if (!CONTRACT_FILE_TYPES[row.contentType]) {
+    console.error("[avtal] otillåten filtyp", contractId, row.contentType);
+    throw new AccountingError("Avtalsfilen har en filtyp som inte tas emot. Ladda upp den igen.");
+  }
   let bytes: Uint8Array;
   try {
     bytes = await deps.fileStore.get(row.storagePath);
@@ -1176,7 +1579,12 @@ export async function readContractFileFor(
     console.error("[avtal] filen kunde inte läsas", row.storagePath, error);
     throw new AccountingError("Avtalsfilen finns inte i lagringen. Ladda upp den igen.");
   }
-  return { fileName: row.fileName, contentType: row.contentType, bytes };
+  const sniffed = sniffContractFile(bytes);
+  if (sniffed !== row.contentType) {
+    console.error("[avtal] filens innehåll stämmer inte med typen", contractId, row.contentType, sniffed);
+    throw new AccountingError("Avtalsfilens innehåll stämmer inte med filtypen. Ladda upp den igen.");
+  }
+  return { fileName: row.fileName, contentType: sniffed, bytes };
 }
 
 export { ImportError };

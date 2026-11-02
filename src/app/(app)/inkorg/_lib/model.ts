@@ -16,6 +16,14 @@ export const INCIDENT_KINDS = [
   "refund_request",
   "machine_fault",
   "other",
+  // Felanmälan från butiksportalen (fas 10, portal_report_fault). Samma lista som
+  // FAULT_KINDS i src/server/portal/faults.ts.
+  "store_payment",
+  "store_stuck",
+  "store_empty",
+  "store_screen",
+  "store_damage",
+  "store_other",
 ] as const;
 export type IncidentKind = (typeof INCIDENT_KINDS)[number];
 
@@ -26,6 +34,12 @@ export const KIND_LABEL: Record<string, string> = {
   refund_request: "Vill ha pengarna tillbaka",
   machine_fault: "Fel på automaten",
   other: "Annat",
+  store_payment: "Butiken: betalningen fungerar inte",
+  store_stuck: "Butiken: ett pack fastnade",
+  store_empty: "Butiken: tomt eller nästan tomt",
+  store_screen: "Butiken: skärmen eller strömmen",
+  store_damage: "Butiken: skadad eller nedsmutsad",
+  store_other: "Butiken: annat",
 };
 
 export const INCIDENT_STATUSES = ["open", "in_progress", "resolved"] as const;

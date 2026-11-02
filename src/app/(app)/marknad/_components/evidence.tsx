@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import type { ScenarioFigure } from "@/analytics/expansion/common";
 import type { IsoDate, Period } from "@/domain";
 import { formatInt, NBSP } from "@/lib/format";
-import { dayText, figureText, kronor, periodLabel } from "@/server/market/display";
+import { dayText, figureText, kronor, orderLinks, periodLabel } from "@/server/market/display";
 
 /** Underlaget som analysen lämnar (MarketEvidence eller ScenarioEvidence). */
 export interface EvidenceLike {
@@ -38,17 +38,6 @@ export interface EvidenceNames {
   >;
 }
 
-function orderHref(e: EvidenceLike): string | null {
-  if (e.orderIds.length === 0) return null;
-  const sorted = [...e.dates].sort();
-  const start = e.period?.start ?? sorted[0];
-  const end = e.period?.end ?? sorted[sorted.length - 1];
-  if (!start || !end) return null;
-  const params = new URLSearchParams({ from: start, to: end });
-  if (e.machineIds.length === 1) params.set("automat", e.machineIds[0]!);
-  return `/order?${params.toString()}`;
-}
-
 function names(ids: readonly string[], lookup: Readonly<Record<string, string>>): string {
   const list = ids.map((id) => lookup[id] ?? id);
   return list.length > 6
@@ -72,7 +61,7 @@ export function Evidence({
   label?: string;
   extra?: ReactNode;
 }) {
-  const href = orderHref(evidence);
+  const links = orderLinks(evidence, (id) => n.title[id] ?? id);
   const purchases = (evidence.purchaseIds ?? []).flatMap((id) => {
     const p = n.purchases[id];
     return p ? [{ id, ...p }] : [];
@@ -139,14 +128,33 @@ export function Evidence({
           </ul>
         ) : null}
         {extra}
-        {href ? (
+        {links.length === 1 ? (
           <Link
-            href={href}
+            href={links[0]!.href}
             className="self-start rounded-xs text-muted underline decoration-line-strong underline-offset-4 hover:text-fg"
           >
-            {formatInt(evidence.orderIds.length)}
-            {NBSP}order i underlaget →
+            {links[0]!.label}
           </Link>
+        ) : links.length > 1 ? (
+          <div className="flex flex-col gap-1">
+            <p className="meta text-subtle">
+              {formatInt(evidence.orderIds.length)}
+              {NBSP}order i underlaget, per titel (orderlistan visar titelns alla order i
+              perioden):
+            </p>
+            <ul className="flex flex-wrap gap-x-4 gap-y-1">
+              {links.map((l) => (
+                <li key={l.href}>
+                  <Link
+                    href={l.href}
+                    className="rounded-xs text-muted underline decoration-line-strong underline-offset-4 hover:text-fg"
+                  >
+                    {l.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
         ) : null}
       </div>
     </details>

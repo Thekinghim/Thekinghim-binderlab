@@ -10,15 +10,31 @@ import {
   daysLeftText,
   packs,
   STATUS_LABEL,
-  STATUS_TONE,
+  statusTone,
 } from "../_lib/display";
 import type { LagerMachine, LagerTitle, StockCell } from "../_lib/types";
 
 /**
  * Matrisen titel × automat. Varje cell visar antal kvar, dagar kvar och status med
  * text (Kritisk, Låg, OK). För den som får registrera är cellen en knapp (minst 56 px
- * hög) som öppnar påfyllning eller inventering. Breda matriser scrollar i sin egen yta.
+ * hög) som öppnar påfyllning eller inventering.
+ *
+ * På mobilen följer kolumnhuvudet med när sidan scrollas (sticky under toppraden). Det
+ * kräver att matrisen inte ligger i en egen scrollyta, så ytan klipps i stället
+ * (overflow-x: clip) när matrisen får plats från 375 px, dvs. upp till 3 automater.
+ * Bredare matriser scrollar i sidled i sin egen yta, och då står huvudet still.
  */
+function overflowClass(machines: number): string {
+  return machines <= 3 ? "overflow-x-clip" : "overflow-x-auto";
+}
+
+/**
+ * Kolumnhuvudets cell: klistrig under toppraden (56 px) på mobilen, där påfyllaren
+ * scrollar genom matrisen. Från md är kontextraden också klistrig med varierande höjd,
+ * och där står huvudet still (top: auto); vänsterkolumnen är klistrig i sidled ändå.
+ */
+const STICKY_HEAD = "sticky top-14 bg-bg md:top-auto";
+
 export function StockMatrix({
   machines,
   titles,
@@ -35,7 +51,12 @@ export function StockMatrix({
   onSelect: (machine: LagerMachine, title: LagerTitle, cell: StockCell) => void;
 }) {
   return (
-    <div className="-mx-4 overflow-x-auto border-y border-line md:mx-0 md:rounded-md md:border">
+    <div
+      className={cn(
+        "-mx-4 border-y border-line md:mx-0 md:rounded-md md:border",
+        overflowClass(machines.length),
+      )}
+    >
       <table
         className="w-full table-fixed border-collapse text-base"
         style={{ minWidth: `${112 + machines.length * 76}px` }}
@@ -47,7 +68,10 @@ export function StockMatrix({
           <tr className="border-b border-line-strong">
             <th
               scope="col"
-              className="sticky left-0 z-10 w-28 bg-bg px-4 py-2 text-left align-bottom md:w-64"
+              className={cn(
+                STICKY_HEAD,
+                "left-0 z-30 w-28 px-4 py-2 text-left align-bottom shadow-[inset_0_-1px_0_var(--bl-line-strong)] md:w-64",
+              )}
             >
               <span className="label text-subtle">Titel</span>
             </th>
@@ -55,7 +79,10 @@ export function StockMatrix({
               <th
                 key={m.id}
                 scope="col"
-                className="border-l border-line px-2 py-2 text-right align-bottom font-normal"
+                className={cn(
+                  STICKY_HEAD,
+                  "z-20 border-l border-line px-2 py-2 text-right align-bottom font-normal shadow-[inset_0_-1px_0_var(--bl-line-strong)]",
+                )}
               >
                 <span className="label block text-fg">{codeText(m.code)}</span>
                 <span className="block truncate text-xs text-subtle" title={m.name}>
@@ -131,7 +158,10 @@ function Cell({
         <span
           className={cn("inline-flex w-2 justify-center", cell.status === "ok" && "text-subtle")}
         >
-          <StatusGlyph status={STATUS_TONE[cell.status]} size={cell.status === "ok" ? 6 : 8} />
+          <StatusGlyph
+            status={statusTone(cell.status, cell.onHand)}
+            size={cell.status === "ok" ? 6 : 8}
+          />
         </span>
         {STATUS_LABEL[cell.status]}
       </span>

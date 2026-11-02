@@ -6,9 +6,10 @@ import { useMemo, useState, useTransition, type FormEvent } from "react";
 import { FormError } from "@/app/logga-in/form-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
+import { StatusGlyph } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
 import { isIsoDate } from "@/domain";
-import { EN_DASH, NBSP, formatInt, formatKronor, formatSignedKronor } from "@/lib/format";
+import { formatInt, formatKronor, formatPeriodShort, formatSignedKronor } from "@/lib/format";
 
 import { addPurchasePrice } from "../actions";
 import {
@@ -16,8 +17,10 @@ import {
   formatDayShort,
   kr,
   parsePriceInput,
+  dayDate,
   previewPrice,
   sentence,
+  suggestedValidFrom,
   type PricePreview,
 } from "../_lib/model";
 
@@ -30,21 +33,21 @@ export interface PriceFormProps {
   today: string;
 }
 
+/** "20–26 okt." / "27 okt." (året bara om det inte är i år). */
+function span(first: string, last: string, today: string): string {
+  return formatPeriodShort({ start: dayDate(first), end: dayDate(last) }, dayDate(today));
+}
+
 function impactText(p: PricePreview, today: string): string {
   const until = p.validTo === null ? "tills vidare" : `t.o.m. ${formatDayShort(p.validTo, today)}`;
   if (p.affectedOrders === 0)
     return `${sentence(`Gäller ${until}`)} Inga befintliga order får nytt inköp.`;
-  const span =
-    p.firstDate && p.lastDate && p.firstDate !== p.lastDate
-      ? `${formatDayShort(p.firstDate, today)}${NBSP}${EN_DASH}${NBSP}${formatDayShort(p.lastDate, today)}`
-      : p.firstDate
-        ? formatDayShort(p.firstDate, today)
-        : "";
+  const days = p.firstDate ? span(p.firstDate, p.lastDate ?? p.firstDate, today) : "";
   const gaining =
     p.ordersGainingPrice > 0
       ? ` ${formatInt(p.ordersGainingPrice)} av dem saknade pris och räknas nu in i vinsten.`
       : "";
-  return `${sentence(`Gäller ${until}`)} ${formatInt(p.affectedOrders)} order (${span}) får nytt inköp, totalt ${formatSignedKronor(kr(p.costDeltaOre))}.${gaining}`;
+  return `${sentence(`Gäller ${until}`)} ${formatInt(p.affectedOrders)} order (${days}) får nytt inköp, totalt ${formatSignedKronor(kr(p.costDeltaOre))}.${gaining}`;
 }
 
 /** Formuläret för ett nytt inköpspris med förhandsvisning av vad det påverkar. */
@@ -59,7 +62,11 @@ export function PriceForm({
   const router = useRouter();
   const toast = useToast();
   const [amount, setAmount] = useState("");
-  const [validFrom, setValidFrom] = useState(today);
+  const suggested = useMemo(
+    () => suggestedValidFrom(prices, orderDays, closedMonths, today),
+    [prices, orderDays, closedMonths, today],
+  );
+  const [validFrom, setValidFrom] = useState(suggested);
   const [note, setNote] = useState("");
   const [amountError, setAmountError] = useState<string>();
   const [error, setError] = useState<string>();
@@ -109,7 +116,9 @@ export function PriceForm({
       }
       toast({
         title: result.data?.mode === "replaced" ? "Inköpspriset ändrat" : "Inköpspriset sparat",
-        description: `${titleName}: ${formatKronor(kr(p.ore))} från ${formatDayShort(validFrom, today)}. Hem, Att göra och Lönsamhet räknas om.`,
+        description: sentence(
+          `${titleName}: ${formatKronor(kr(p.ore))} från ${formatDayShort(validFrom, today)}`,
+        ),
         tone: "ok",
       });
       setAmount("");
@@ -177,8 +186,9 @@ export function PriceForm({
         <div aria-live="polite" className="flex flex-col gap-1 border-t border-line pt-4 text-sm">
           {preview.replaces ? (
             <p className="text-fg">
-              Ersätter {formatKronor(kr(preview.replaces.unitCostOre))} från{" "}
-              {formatDayShort(preview.replaces.validFrom, today)}.
+              {sentence(
+                `Ersätter ${formatKronor(kr(preview.replaces.unitCostOre))} från ${formatDayShort(preview.replaces.validFrom, today)}`,
+              )}
             </p>
           ) : null}
           <p className="text-muted">
@@ -188,6 +198,32 @@ export function PriceForm({
                   `Gäller ${preview.validTo === null ? "tills vidare" : `t.o.m. ${formatDayShort(preview.validTo, today)}`}`,
                 )}
           </p>
+          {preview.stillUnpriced ? (
+            <div className="mt-2 flex flex-col items-start gap-2 rounded-sm border border-line-control px-3 py-2.5">
+              <p className="flex items-baseline gap-2 text-fg">
+                <span className="translate-y-px">
+                  <StatusGlyph status="warning" />
+                </span>
+                <span>
+                  {formatInt(preview.stillUnpriced.orders)} order (
+                  {span(preview.stillUnpriced.firstDate, preview.stillUnpriced.lastDate, today)})
+                  saknar fortfarande inköpspris och räknas inte in i vinsten.
+                </span>
+              </p>
+              {suggested !== validFrom && suggested <= preview.stillUnpriced.lastDate ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => {
+                    setValidFrom(suggested);
+                    setError(undefined);
+                  }}
+                >
+                  Sätt giltig från {formatDayShort(suggested, today)}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
 

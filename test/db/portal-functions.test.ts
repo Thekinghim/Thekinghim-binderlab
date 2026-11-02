@@ -138,6 +138,7 @@ describe("vad funktionerna lämnar ut", () => {
             and o.business_date >= mp.valid_from
             and (mp.valid_to is null or o.business_date <= mp.valid_to)
           where o.organization_id = ${f.a.orgId}
+            and o.title_id is not null
             and o.business_date between '2025-03-01' and '2025-03-31'`,
     );
     expect(truth.n).toBeGreaterThan(0);
@@ -148,6 +149,21 @@ describe("vad funktionerna lämnar ut", () => {
     const a2 = await asUser(f.storeA2, (tx) => queryPortalSales(tx, f.a2.storeId, MARCH));
     expect(a2.reduce((s, r) => s + r.orderCount, 0)).toBe(3);
     expect(new Set(a2.map((r) => r.machineId))).toEqual(new Set([f.a2.machineId]));
+  });
+
+  it("order utan titelkoppling räknas inte (som appens beräkningar och butiksrapporten)", async () => {
+    await asPostgres((tx) =>
+      tx.execute(
+        sql`insert into public.orders (organization_id, data_source_id, external_id, raw_title,
+                                       ordered_at, amount_ore, machine_id, source_hash)
+            values (${f.a.orgId}, ${f.a.dataSourceId}, 'utan-titel-1', 'Okänd titel',
+                    '2025-04-02T10:00:00Z', 9900, ${f.a.machineId}, 'utan-titel-1')`,
+      ),
+    );
+    const april = await asUser(f.storeA1, (tx) =>
+      queryPortalSales(tx, f.a.storeId, { start: "2025-04-01", end: "2025-04-30" }),
+    );
+    expect(april).toEqual([]);
   });
 
   it("efter en flytt följer försäljningen placeringen, inte automaten", async () => {
@@ -309,6 +325,26 @@ describe("felanmälan", () => {
     );
     expect(internal.length).toBeGreaterThan(0);
     for (const i of internal) expect(own.map((x) => x.incidentId)).not.toContain(i.id);
+  });
+
+  it("anmälan finns kvar i butikens lista när operatören byter typ och status i Inkorgen", async () => {
+    const id = await asUser(f.storeA1, (tx) =>
+      one<{ id: string }>(
+        tx,
+        sql`select public.portal_report_fault(${f.a.storeId}::uuid, ${f.a.machineId}::uuid,
+                                              'store_stuck', 'Packet fastnade') as id`,
+      ),
+    );
+    await asUser(f.a.owner, (tx) =>
+      tx.execute(
+        sql`update public.incidents set kind = 'machine_fault', status = 'in_progress'
+            where id = ${id.id}`,
+      ),
+    );
+    const own = await asUser(f.storeA1, (tx) => queryPortalFaults(tx, f.a.storeId));
+    const row = own.find((x) => x.incidentId === id.id);
+    expect(row?.status).toBe("in_progress");
+    expect(row?.kind).toBe("machine_fault");
   });
 
   it("en annan butiks automat ger samma fel som en automat som inte finns", async () => {

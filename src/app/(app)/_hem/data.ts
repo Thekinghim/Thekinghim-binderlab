@@ -30,6 +30,8 @@ export interface HomeScopeLabel {
   readonly id: string;
   readonly name: string;
   readonly code: string | null;
+  /** Automaten eller butiken finns inte (eller syns inte för den inloggade). */
+  readonly missing: boolean;
 }
 
 export interface HomeData {
@@ -90,10 +92,17 @@ export async function loadHomeWith(
       id: p.scope.machineId,
       name: m?.name ?? "Okänd automat",
       code: m?.code ?? null,
+      missing: !m,
     };
   } else if (p.scope.storeId) {
     const s = input.stores.find((x) => x.id === p.scope.storeId);
-    scope = { kind: "store", id: p.scope.storeId, name: s?.name ?? "Okänd butik", code: null };
+    scope = {
+      kind: "store",
+      id: p.scope.storeId,
+      name: s?.name ?? "Okänd butik",
+      code: null,
+      missing: !s,
+    };
   }
 
   return { model, periodKey: p.key, today: ctx.today, scope, canEdit: ctx.canEdit };

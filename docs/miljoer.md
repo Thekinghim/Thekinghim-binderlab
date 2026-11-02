@@ -145,8 +145,15 @@ läser via serverladdarna som användaren (RLS) och räknar med `@/domain` och `
   verktygsresultat (eller i frågan). Saknas ett tal markeras det i svaret och frågan får
   status `unverified` i loggen.
 - **Logg**: varje fråga sparas i `assistant_logs` (append-only, RLS) med svar, verktyg,
-  parametrar, resultat, kontroll, modell och tokenåtgång. Var och en ser sina egna frågor;
-  ägare och admin ser alla i organisationen.
+  parametrar, resultat, kontroll, modell (den som faktiskt svarade, även en reservmodell) och
+  tokenåtgång. Bara servern skriver: raden läggs in via `private.insert_assistant_log`
+  (migreringen `20261102134800_assistent_assistant_logs_hardening.sql`), som inte nås via
+  API:t. Ingen medlem har INSERT på tabellen, och butiksrollen kan aldrig logga. Var och en
+  ser sina egna frågor, men frågor ställda med en roll som ser ekonomi bara så länge rollen
+  fortfarande gör det (en nedgraderad påfyllare ser inte sina gamla ekonomisvar). Ägare och
+  admin ser alla i organisationen. Kör båda assistentmigreringarna i varje miljö.
+- **Period**: perioden som är vald i panelen (`?period=`, `?from=&to=`) skickas med frågan och
+  gäller när frågan inte anger någon. Filtren för butik och automat används inte av assistenten.
 - **Tester**: verktygen, loggen, rollerna och hela loopen med en mockad klient körs mot
   testdatabasen (`test/db/assistent-*.test.ts`); ingen test anropar Claude API.
 
@@ -164,10 +171,17 @@ använder inloggningen (`AUTH_PROVIDER`), e-posten för inbjudningar och rapport
 - **Roll**: `store` i `memberships`, med `store_id` (check: bara för rollen store, och
   rollen kräver en butik). Migreringar: `20261102130000_portal_store_role.sql` (rollen)
   och `20261102130100_portal_store_access.sql` (kolumner, funktioner, policy).
-- **Inbjudan**: ägare eller admin bjuder in från butiken (`InviteStoreUser` i
-  `src/app/portal/_components/invite-store-user.tsx`, server action `inviteStoreUser`,
-  RPC `create_store_invitation`). Mottagaren tar emot på `/inbjudan/[token]` som vanligt;
-  `accept_invitation` skapar medlemskapet med inbjudans `store_id`.
+- **Inbjudan och tillgång**: ägare eller admin hanterar butikens portal i sektionen
+  Butiksportal på `/butiker/[butik]` (`StorePortalAccess` i
+  `src/app/portal/_components/store-portal-access.tsx`): butikens användare och
+  väntande inbjudningar, Bjud in (server action `inviteStoreUser`, RPC
+  `create_store_invitation`), Ta bort (`removeStoreUser`) och Återkalla
+  (`revokeStoreInvitation`). Mottagaren tar emot på `/inbjudan/[token]` som vanligt;
+  `accept_invitation` skapar medlemskapet med inbjudans `store_id`, och appens layout
+  skickar en butiksanvändare vidare till `/portal`. Butiksanvändare visas inte under
+  Inställningar → Användare. Ett medlemskap per användare och organisation: samma
+  inloggning kan vara butiksanvändare i en butik per operatör (byte av butik i portalen
+  gäller butiker hos olika operatörer).
 - **Dataåtkomst**: rollen store har inga rättigheter i appens tabeller, vyer, RPC:er
   eller filer (ingen policy nämner den). Allt i portalen går via `portal_*`-funktionerna
   (security definer, `search_path = ''`) som först kontrollerar att anroparen är
@@ -177,21 +191,27 @@ använder inloggningen (`AUTH_PROVIDER`), e-posten för inbjudningar och rapport
   (`@/reports`), samma beräkning som månadsrapporten.
 - **Rapporter**: innehållet visas bara om ögonblicksbilden är en butiksrapport för just
   den butiken utan förbjudna fält (kontrolleras i databasen och igen med
-  `assertStoreReportSafe`). PDF:en hämtas via `/portal/rapporter/[id]/pdf` med
+  `assertStoreReportSafe`). Butiken ser bara rapporter som en ägare eller admin har
+  godkänt (`report_approvals`); ett utkast ger samma svar som en rapport som inte
+  finns (`20261102135500_portal_review_fixes.sql`). PDF:en hämtas via `/portal/rapporter/[id]/pdf` med
   användarens session; storage-policyn `binderlab_reports_select_store` släpper bara
   igenom butikens egna butiksrapporter.
 - **Felanmälan**: blir ett ärende i `incidents` med `kind = store_*` och
-  `created_by` = butiksanvändaren (syns i Inkorgen). Högst 10 per användare och timme
+  `created_by` = butiksanvändaren (syns i Inkorgen som "Butiken: …", där operatören
+  sätter status). Portalen känner igen butikens anmälningar på `created_by`, så typen
+  får ändras i Inkorgen. Tider visas i organisationens tidszon. Högst 10 per användare och timme
   (per serverinstans) och 20 per dygn (databasen, `BL030`).
-- **Tema**: ljust som standard; valet sparas i `localStorage` (`binderlab-portal-theme`),
-  skilt från appens.
+- **Tema**: ljust som standard; valet sparas i cookien `bl_portal_theme`, skilt från
+  appens.
 - **Tester**: `test/db/portal-isolation.test.ts` (varje tabell och vy, RPC:er, filer,
   requireRole) och `test/db/portal-functions.test.ts` (funktionerna, felmeddelanden,
-  rapporter, felanmälan, samma ersättning som appens beräkning);
-  `src/server/portal/model.test.ts` för den rena logiken.
+  rapporter, felanmälan, samma ersättning som appens beräkning, bara order med titel),
+  `test/db/portal-access.test.ts` (tillgången på `/butiker`), `test/db/redteam-portal.test.ts`
+  (utkast); `src/server/portal/model.test.ts` och `src/app/portal/_components/text.test.ts`
+  för den rena logiken.
 
-Beställaren: inget extra utöver inloggning och e-post. Bjud in butiken från Butiker när
-inbjudningsrutan är inkopplad där.
+Beställaren: inget extra utöver inloggning och e-post. Bjud in butiken från Butiker →
+butiken → Butiksportal.
 
 ## Ekonomi
 
@@ -333,6 +353,49 @@ förslag i `docs/marknadskallor.md`). Adaptern väljs med miljövariabler:
 
 Pristester ändrar inget pris i automaterna: panelen planerar testet och mäter effekten mot
 kontrollautomaterna, priset ställs om i Awish av operatören.
+
+## Rapporter
+
+Sidan Rapporter (`/rapporter`) skapar butiksrapport, bokföringsunderlag och delägarrapport.
+Flödet: utkast (ögonblicksbild i `reports.data_snapshot` med `calc_version`) → godkännande
+(`report_approvals`, ägare eller admin) → utskick (`report_deliveries`, en rad per mottagare och
+försök). Inget skickas utan godkännande. Godkännanden och utskick hamnar i ändringsloggen.
+
+| Del            | Lokalt (standard)                                                                | Drift                                                                     |
+| -------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| E-post         | `MAIL_PROVIDER=outbox`: `.data/outbox/<id>/` (eml, html, txt, bilagor)           | `MAIL_PROVIDER=resend`, `RESEND_API_KEY`, `MAIL_FROM` (verifierad domän)  |
+| PDF            | `PDF_RENDERER=local`: puppeteer-core + Chromium i `/opt/pw-browsers`             | `sparticuz` (standard på Vercel): puppeteer-core + @sparticuz/chromium    |
+| Lagring av PDF | `REPORT_STORAGE=local`: `.data/reports/{org}/{ÅÅÅÅ-MM}/{id}.pdf`                 | `supabase`: bucket `reports`, med användarens session (policyerna gäller) |
+| Månadsutkast   | `curl -H "Authorization: Bearer $CRON_SECRET" localhost:3200/api/cron/rapporter` | Vercel cron enligt `vercel.json` (den 1:a kl. 05:17 UTC)                  |
+
+- **PDF** skrivs ut av servern: headless Chromium öppnar `/rapport/[id]` med den inloggades
+  cookies (samma sida som användaren ser, utskriftsläget i `src/components/report`). Når inte
+  servern sin publika adress inifrån, sätt `REPORT_RENDER_URL` (t.ex. `http://127.0.0.1:3000`).
+  PDF:en skapas vid godkännandet och sparas; nedladdning: `/rapport/[id]/fil/pdf|xlsx|sie`.
+- **E-post** använder mallen i `src/emails`. Next tillåter inte `react-dom/server` i Server
+  Components eller route handlers, så mejlen renderas i samma headless Chromium på
+  `/rapport/[id]/epost` (sidan är också förhandsvisningen av mejlet). Ämne och textversion
+  räknas på servern. Utan fungerande Chromium kan PDF och mejl inte skapas; sidan visar det.
+- **Excel och SIE 4** räknas ur ögonblicksbilden vid varje nedladdning och blir därför
+  identiska med det som godkändes. SIE kräver konton för `settlement` och `sales` (plus
+  `vat_out`/`card_fees` när moms och kortavgift inte är 0) i `ledger_accounts`.
+- **Månadsutkast**: `/api/cron/rapporter` (skyddad med `CRON_SECRET`, kör som systemet med
+  `getServiceDb`, ett dokumenterat systemjobb) skapar utkast för förra månaden: en butiksrapport
+  per butik med automat under månaden, bokföringsunderlag och delägarrapport. Finns rapporten
+  redan görs inget. Utkasten syns i Rapporter, och Att göra visar "Skicka … för oktober" tills
+  mottagaren fått sin rapport.
+- **Ej byggt än**: status "öppnad" kräver Resends webhook (`email.opened`) till en route som
+  skriver en ny utskicksrad; tabellen och statusen är förberedda. Länken i mejlet går till
+  rapporten i appen och kräver inloggning (butiker och bokhållare får PDF:en som bilaga).
+
+Beställaren behöver för riktiga utskick:
+
+1. Konto hos Resend, verifiera avsändardomänen (SPF/DKIM) och sätt `MAIL_PROVIDER=resend`,
+   `RESEND_API_KEY` och `MAIL_FROM` i Vercel.
+2. `CRON_SECRET` i Vercel (minst 16 tecken) så att månadsutkasten skapas.
+3. Ägarandelar (Inställningar) och kontoplanen (`ledger_accounts`) så att vinstfördelning och
+   SIE blir kompletta, samt mottagare under Rapporter → Mottagare.
+4. Testa ett riktigt utskick till egen adress i Outlook och Gmail före första utskicket.
 
 ## Det här måste beställaren göra
 

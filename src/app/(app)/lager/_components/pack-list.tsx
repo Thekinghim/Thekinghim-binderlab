@@ -22,9 +22,11 @@ export function PackList({
   machineId,
   onMachine,
   today,
+  index,
   canRegister,
   onSelect,
 }: {
+  index: number;
   machines: LagerMachine[];
   lists: PackListData[];
   machineId: string;
@@ -39,7 +41,9 @@ export function PackList({
 
   const title =
     list.totalPacks === 0
-      ? `Inget behöver med till ${codeText(machine.code)} i dag.`
+      ? list.missing.length > 0
+        ? `Inget att ta med till ${codeText(machine.code)}: centrallagret saknar det som behövs.`
+        : `Inget behöver med till ${codeText(machine.code)} i dag.`
       : `Ta med ${packs(list.totalPacks)} till ${codeText(machine.code)}.`;
   const aside =
     list.needBy === null
@@ -52,7 +56,7 @@ export function PackList({
     <div className="flex flex-col gap-6">
       <SectionHeader
         id="pafyllningslista"
-        index={2}
+        index={index}
         eyebrow="Påfyllningslista · besök i dag"
         title={title}
         aside={aside}
@@ -64,7 +68,7 @@ export function PackList({
             options={machines.map((m) => ({ value: m.id, label: m.code }))}
             value={machine.id}
             onChange={onMachine}
-            className="min-h-11 w-full sm:w-fit [&>button]:flex-1 sm:[&>button]:min-w-24"
+            className="w-full sm:w-fit [&>button]:min-h-11 [&>button]:flex-1 sm:[&>button]:min-w-24"
           />
         ) : (
           <Select
@@ -77,7 +81,7 @@ export function PackList({
         )
       ) : null}
 
-      {list.lines.length === 0 ? (
+      {list.lines.length === 0 && list.missing.length === 0 ? (
         <StateMessage
           kind="empty"
           compact
@@ -85,32 +89,46 @@ export function PackList({
         />
       ) : (
         <div className="flex flex-col">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-end gap-x-4 border-b border-line-strong pb-2">
-            <span className="label text-subtle">Titel</span>
-            <span className="label w-20 text-right text-subtle">Nu → mål</span>
-            <span className="label w-16 text-right text-subtle">Ta med</span>
-          </div>
-          <ul aria-label={`Påfyllningslista för ${machine.code}`}>
-            {list.lines.map((l) => (
-              <li key={l.titleId} className="border-b border-line">
-                <Line
-                  line={l}
-                  machineCode={machine.code}
-                  canRegister={canRegister}
-                  onSelect={() => onSelect(machine, l)}
-                />
-              </li>
-            ))}
-          </ul>
-          <p className="flex items-baseline justify-between gap-4 pt-3">
-            <span className="label text-subtle">Totalt</span>
-            <span className="tnum text-xl font-medium">{packs(list.totalPacks)}</span>
-          </p>
+          {list.lines.length > 0 ? (
+            <>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-end gap-x-4 border-b border-line-strong pb-2">
+                <span className="label text-subtle">Titel</span>
+                <span className="label w-20 text-right text-subtle">Nu → mål</span>
+                <span className="label w-16 text-right text-subtle">Ta med</span>
+              </div>
+              <ul aria-label={`Påfyllningslista för ${machine.code}`}>
+                {list.lines.map((l) => (
+                  <li key={l.titleId} className="border-b border-line">
+                    <Line
+                      line={l}
+                      machineCode={machine.code}
+                      canRegister={canRegister}
+                      onSelect={() => onSelect(machine, l)}
+                    />
+                  </li>
+                ))}
+              </ul>
+              <p className="flex items-baseline justify-between gap-4 pt-3">
+                <span className="label text-subtle">Totalt</span>
+                <span className="tnum text-xl font-medium">{packs(list.totalPacks)}</span>
+              </p>
+            </>
+          ) : null}
           {list.shortBy > 0 ? (
-            <p className="mt-2 flex items-center gap-2 text-sm text-fg">
-              <StatusGlyph status="warning" />
-              {`Centrallagret saknar ${packs(list.shortBy)} för att fylla till målet.`}
-            </p>
+            <div className="mt-4 flex items-start gap-2 text-sm text-fg">
+              <span className="mt-1.5 inline-flex">
+                <StatusGlyph status="warning" />
+              </span>
+              <p>
+                {`Centrallagret saknar ${packs(list.shortBy)} för att fylla till målet`}
+                {list.missing.length > 0
+                  ? `: ${list.missing.map((m) => `${formatInt(m.shortBy)}${NBSP}×${NBSP}${m.titleName} (${formatInt(m.onHand)} kvar, finns inte i centrallagret)`).join(", ")}`
+                  : ""}
+                {list.missing.length > 0 && list.lines.some((l) => l.shortBy > 0)
+                  ? ", resten på raderna ovan."
+                  : "."}
+              </p>
+            </div>
           ) : null}
           {list.reasons.length > 0 ? (
             <ul className="mt-6 flex flex-col gap-1 text-sm text-muted">

@@ -6,13 +6,15 @@
  *     över samma fönster som Att göra (14 hela dagar t.o.m. i går, TODO_DEFAULTS),
  *   - status Kritisk/Låg: påfyllningsregeln i @/analytics/todos (refillTodos), så att
  *     Lager och Att göra alltid säger samma sak. Ett tomt fack är alltid Kritisk,
- *   - påfyllningslista och centrallagrets veckobehov: besöksplanen i @/analytics/visits.
+ *   - påfyllningslista och centrallagrets veckobehov: besöksplanen i @/analytics/visits,
+ *     räknad från i går (planNow) så att takt, slutdatum och orsaker är desamma som i matrisen.
  *
  * Inga belopp: försäljningen kommer som antal (lagerhändelser av typen sale) och görs om
  * till order med beloppet 0, bara för att räkna takt.
  */
 
 import { createTodoContext } from "@/analytics/todos/context";
+import { businessDateAt } from "@/analytics/todos/time";
 import { isMachineActive } from "@/analytics/todos/common";
 import { refillTodos } from "@/analytics/todos/refill";
 import { TODO_DEFAULTS, type AnalyticsOrder, type StockLevelRef } from "@/analytics/todos";
@@ -39,10 +41,13 @@ import type {
   LagerMachine,
   LagerTitle,
   PackList,
+  PackListLine,
+  PackListMissing,
   StockCell,
   StockStatus,
   WarehouseRow,
 } from "./types";
+import { WAREHOUSE_LOW_DAYS } from "./types";
 
 export interface LagerModelInput {
   readonly now: Date;
@@ -107,6 +112,39 @@ function inScope(m: MachineRecord, scope: DataScope): boolean {
 
 function compareText(a: string, b: string): number {
   return a.localeCompare(b, "sv", { sensitivity: "base", numeric: true });
+}
+
+/** buildStop i besöksplanen lägger underskottet sist med den här inledningen. */
+const WAREHOUSE_SHORT_PREFIX = "Centrallagret räcker inte";
+
+/**
+ * Centrallagrets status:
+ *   Kritisk = slut, och titeln säljer eller behövs i veckan,
+ *   Låg     = räcker inte till veckans besök, eller räcker kortare än WAREHOUSE_LOW_DAYS,
+ *   OK      = annars.
+ */
+export function warehouseStatus(
+  onHand: number,
+  daysLeft: number | null,
+  need: { readonly need: number; readonly short: number },
+): StockStatus {
+  const selling = daysLeft !== null || need.need > 0;
+  if (onHand <= 0) return selling ? "critical" : "ok";
+  if (need.short > 0) return "low";
+  if (daysLeft !== null && daysLeft < WAREHOUSE_LOW_DAYS) return "low";
+  return "ok";
+}
+
+/**
+ * Tidpunkten besöksplanen räknar från: mitt på dagen `asOf` i tidszonen, så att planens
+ * "i dag" blir `asOf` (i går) och fönstret slutar där, precis som påfyllningsregeln.
+ */
+export function planNow(asOf: IsoDate, timeZone: string, now: Date): Date {
+  for (const hour of ["12", "00", "22"]) {
+    const at = new Date(`${asOf}T${hour}:00:00Z`);
+    if (businessDateAt(at, timeZone) === asOf) return at;
+  }
+  return new Date(now.getTime() - 24 * 3_600_000);
 }
 
 /** Bygger vymodellen. Ren funktion; `now` är den enda tidskällan. */
@@ -176,19 +214,26 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
     refillTodos(todoCtx).map((t) => [t.key, t.level === "now" ? "critical" : "low"] as const),
   );
 
-  // Påfyllningslista per automat: ett besök i dag, oberoende av de andra automaterna.
-  const packLists: PackList[] = [];
-  const suggestedByPair = new Map<string, number>();
+  // Besöksplanen räknar takt och slutdatum från planens "i dag". Med planNow (i går)
+  // använder den samma fönster som matrisen och Att göra (14 hela dagar t.o.m. i går)
+  // och samma slutdatum (domain.stockoutDate(i går, …)). Saldot är dagens.
+  const planAt = planNow(asOf, timeZone, now);
+  const planBase = {
+    orders,
+    titles: master.titles,
+    ...(hasWarehouse ? { warehouseStock } : {}),
+  };
+
+  // Veckoplanen (alla automater, besöksdagar mån–fre från i dag): planerad dag, senaste
+  // dag och centrallagrets veckobehov.
   const weekly: VisitPlan = planVisits(
     {
-      orders,
+      ...planBase,
       machines: activeMachines,
-      titles: master.titles,
       stock: machineStock,
-      ...(hasWarehouse ? { warehouseStock } : {}),
-      options: { timeZone },
+      options: { timeZone, start: today },
     },
-    now,
+    planAt,
   );
   const weeklyStop = new Map(
     weekly.days.flatMap((d) =>
@@ -196,48 +241,71 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
     ),
   );
   const weeklyNeedBy = new Map(weekly.notNeeded.map((n) => [n.machineId, n.needBy]));
+
+  // Påfyllningslista per automat: ett besök nu, oberoende av de andra automaterna.
+  // Besöksdagen är planens första dag (i går enligt planAt) så att inga dagars
+  // försäljning dras från dagens saldo: lager vid besöket = saldot nu.
+  const packLists: PackList[] = [];
+  const suggestedByPair = new Map<string, number>();
   for (const m of machines) {
     const plan = planVisits(
       {
-        orders,
+        ...planBase,
         machines: [m],
-        titles: master.titles,
         stock: machineStock.filter((s) => s.machineId === m.id),
-        ...(hasWarehouse ? { warehouseStock } : {}),
-        extraVisits: [{ machineId: m.id, reason: "", needBy: today }],
+        extraVisits: [{ machineId: m.id, reason: "", needBy: asOf }],
         options: {
           timeZone,
-          start: today,
+          start: asOf,
           visitWeekdays: [1, 2, 3, 4, 5, 6, 7],
           maxStopsPerDay: 1,
           minStopsPerTrip: 1,
         },
       },
-      now,
+      planAt,
     );
-    const stop = plan.days.find((d) => d.date === today)?.stops.find((s) => s.machineId === m.id);
-    const lines = (stop?.packs ?? []).map((p) => {
-      suggestedByPair.set(pairKey(m.id, p.titleId), p.quantity);
-      return {
-        titleId: p.titleId,
-        titleName: p.titleName,
-        quantity: p.quantity,
-        onHand: p.onHandNow,
-        target: p.target,
-        shortBy: p.shortBy,
-      };
-    });
+    const stop = plan.days.find((d) => d.date === asOf)?.stops.find((s) => s.machineId === m.id);
+    const lines: PackListLine[] = [];
+    const missing: PackListMissing[] = [];
+    for (const p of stop?.packs ?? []) {
+      if (p.quantity > 0) {
+        suggestedByPair.set(pairKey(m.id, p.titleId), p.quantity);
+        lines.push({
+          titleId: p.titleId,
+          titleName: p.titleName,
+          quantity: p.quantity,
+          onHand: p.onHandNow,
+          target: p.target,
+          shortBy: p.shortBy,
+        });
+      } else if (p.shortBy > 0) {
+        missing.push({
+          titleId: p.titleId,
+          titleName: p.titleName,
+          onHand: p.onHandNow,
+          target: p.target,
+          shortBy: p.shortBy,
+        });
+      }
+    }
     const planned = weeklyStop.get(m.id);
+    const needBy = planned ? planned.stop.needBy : (weeklyNeedBy.get(m.id) ?? null);
+    const plannedDay = planned ? planned.day : null;
     packLists.push({
       machineId: m.id,
       lines,
+      missing,
       totalPacks: lines.reduce((s, l) => s + l.quantity, 0),
-      shortBy: lines.reduce((s, l) => s + l.shortBy, 0),
-      needBy: planned ? planned.stop.needBy : (weeklyNeedBy.get(m.id) ?? null),
-      plannedDay: planned ? planned.day : null,
-      reasons: planned
-        ? planned.stop.reasons.filter((r) => r.trim() !== "")
-        : (stop?.reasons ?? []).filter((r) => r.trim() !== ""),
+      shortBy:
+        lines.reduce((s, l) => s + l.shortBy, 0) + missing.reduce((s, l) => s + l.shortBy, 0),
+      needBy,
+      plannedDay,
+      dueToday: lines.length > 0 && (plannedDay === today || (needBy !== null && needBy <= today)),
+      // Orsakerna för besöket nu (samma takt som matrisen). Underskottet i centrallagret
+      // visas från raderna och `missing`, så buildStops sammanfattning tas bort här.
+      reasons: (stop?.reasons ?? []).filter(
+        (r) => r.trim() !== "" && !r.startsWith(WAREHOUSE_SHORT_PREFIX),
+      ),
     });
   }
 
@@ -251,10 +319,10 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
       ...(m.activeFrom !== null ? { activeFrom: m.activeFrom } : {}),
     });
     const onHand = Math.max(0, row?.onHand ?? 0);
-    const recent =
-      row !== undefined &&
-      (row.onHand > 0 || (row.lastEventAt !== null && row.lastEventAt.slice(0, 10) >= windowStart));
-    const stocked = recent || v.units > 0;
+    // En saldorad finns bara om titeln fyllts på, inventerats eller sålts i automaten.
+    // Då är den lagerförd, även med 0 pack och utan försäljning i fönstret (ett fack
+    // som varit tomt länge säljer inget och ska ändå stå som Kritisk).
+    const stocked = row !== undefined || v.units > 0;
     const level = refillLevel.get(`refill:${m.id}:${titleId}`);
     const status: StockStatus = !stocked ? "ok" : onHand === 0 ? "critical" : (level ?? "ok");
     return {
@@ -310,15 +378,15 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
             days: WINDOW_DAYS,
           });
           const need = weekNeed.get(titleId) ?? { need: 0, short: 0 };
-          const status: StockStatus = need.short > 0 ? (onHand <= 0 ? "critical" : "low") : "ok";
+          const daysLeft = daysOfStockLeft(Math.max(0, onHand), v);
           return {
             titleId,
             onHand,
             perDayTenths: perDayTenths(v),
-            daysLeft: daysOfStockLeft(Math.max(0, onHand), v),
+            daysLeft,
             weekNeed: need.need,
             shortBy: need.short,
-            status,
+            status: warehouseStatus(onHand, daysLeft, need),
             lastCountedAt: row?.lastCountedAt ?? null,
           };
         })

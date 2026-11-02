@@ -1,7 +1,8 @@
 /**
  * Drizzle-schema för fas 9 Ekonomi (migreringen 20261102121731_ekonomi_payouts_costs_contracts.sql):
  * utbetalningar från automatleverantören, leverantörens specifikation per order, importloggen
- * för utbetalningsfiler, utredda avvikelser och fasta kostnader. Re-exporteras från
+ * för utbetalningsfiler, utredda avvikelser, fasta kostnader och leveranser av verifikationer
+ * (20261102142000_ekonomi_review_fixes.sql). Re-exporteras från
  * src/db/schema.ts. (Avtalens nya kolumner ligger på `contracts` i schema.ts.)
  *
  * Samma konventioner som schema.ts: belopp i öre som `ore()`, affärsdatum som sträng.
@@ -102,4 +103,24 @@ export const fixedCosts = pgTable("fixed_costs", {
   note: text("note"),
   archivedAt: ts("archived_at"),
   ...stamps(),
+});
+
+export type VoucherProvider = "local" | "fortnox" | "visma_enet" | "bokio";
+
+/**
+ * Verifikationer som skickats till bokföringsprogrammet (20261102142000_ekonomi_review_fixes.sql).
+ * Append-only; en månad skickas en gång per program, och numren ligger fast.
+ */
+export const voucherDeliveries = pgTable("voucher_deliveries", {
+  id: id(),
+  organizationId: orgId(),
+  month: day("month").notNull(),
+  provider: text("provider").$type<VoucherProvider>().notNull(),
+  series: text("series").notNull(),
+  firstNumber: integer("first_number").notNull(),
+  lastNumber: integer("last_number").notNull(),
+  verificationCount: integer("verification_count").notNull(),
+  fileSha256: text("file_sha256").notNull(),
+  externalReference: text("external_reference"),
+  ...created(),
 });

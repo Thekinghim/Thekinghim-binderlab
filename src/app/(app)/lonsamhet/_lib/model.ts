@@ -484,6 +484,7 @@ export function buildLonsamhetModel(
     lastOrderLabel: lastOrderDate
       ? periodText({ start: lastOrderDate, end: lastOrderDate }, today)
       : null,
+    scopeLabel: scopeLabel(input),
     orders: totalsRow.orders,
     pricedOrders: totalsRow.pricedOrders,
     profitOre: totalsRow.profitOre,

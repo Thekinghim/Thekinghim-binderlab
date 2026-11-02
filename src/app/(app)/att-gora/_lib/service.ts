@@ -25,8 +25,17 @@ export const TODO_MESSAGES = {
   forbidden: "Du har inte behörighet att ändra Att göra.",
   invalid: "Uppgifterna stämmer inte. Ladda om sidan och försök igen.",
   gone: "Punkten finns inte längre. Den kan redan vara åtgärdad. Ladda om sidan.",
-  quantity: "Ange antal pack, minst 1 och högst 10 000.",
+  quantity: "Ange antal pack mellan 1 och 10 000.",
+  notDismissed: "Punkten är inte avbockad längre. Ladda om sidan.",
 } as const;
+
+/** Hur länge avbockade punkter står kvar i listan "Avbockade". */
+export const DISMISSED_LIST_DAYS = 14;
+
+/** Nyckeltyperna som påfyllaren ser (samma som private.todo_key_is_stock i databasen). */
+export function isStockKey(key: string): boolean {
+  return key.startsWith("refill:") || key.startsWith("stale-machine:");
+}
 
 /** Rollerna som har en Att göra-lista och får bocka av. */
 const TODO_ROLES: readonly MemberRole[] = ["owner", "admin", "refiller"];
@@ -101,28 +110,102 @@ export async function dismissTodoFor(
     if (!item) return { ok: false, error: TODO_MESSAGES.gone };
     await withUserDbFor(viewer.user, (tx) =>
       tx.execute(sql`
-        insert into public.todo_dismissals (organization_id, todo_key, fingerprint, dismissed_by)
-        values (${viewer.organization.id}::uuid, ${key}, ${fingerprint}, (select auth.uid()))
+        insert into public.todo_dismissals
+          (organization_id, todo_key, fingerprint, dismissed_by, title)
+        values (${viewer.organization.id}::uuid, ${key}, ${fingerprint}, (select auth.uid()),
+          ${item.title.slice(0, 300)})
         on conflict (organization_id, todo_key) do update
-          set fingerprint = excluded.fingerprint, dismissed_by = excluded.dismissed_by`),
+          set fingerprint = excluded.fingerprint, dismissed_by = excluded.dismissed_by,
+              title = excluded.title`),
     );
     return { ok: true, data: { key, title: item.title } };
   });
 }
 
-/** Ångrar en avbockning (punkten syns igen om orsaken finns kvar). */
+/**
+ * Ångrar en avbockning (punkten syns igen om orsaken finns kvar). Svarar med fel om
+ * ingen rad togs bort: påfyllaren får inte röra andra nycklar än lagerpunkter (RLS),
+ * och en avbockning som redan ångrats finns inte.
+ */
 export async function undoDismissFor(viewer: Viewer, raw: unknown): Promise<ActionResult> {
   const parsed = undoInput.safeParse(raw);
   if (!parsed.success) return { ok: false, error: TODO_MESSAGES.invalid };
+  const { key } = parsed.data;
   return guard(async () => {
-    await requireRoleFor(viewer.user, viewer.organization.id, TODO_ROLES);
-    await withUserDbFor(viewer.user, (tx) =>
-      tx.execute(sql`
-        delete from public.todo_dismissals
-        where organization_id = ${viewer.organization.id}::uuid and todo_key = ${parsed.data.key}`),
+    const role = await requireRoleFor(viewer.user, viewer.organization.id, TODO_ROLES);
+    if (role === "refiller" && !isStockKey(key)) {
+      return { ok: false, error: TODO_MESSAGES.forbidden };
+    }
+    const deleted = await withUserDbFor(viewer.user, async (tx) =>
+      Array.from(
+        await tx.execute(sql`
+          delete from public.todo_dismissals
+          where organization_id = ${viewer.organization.id}::uuid and todo_key = ${key}
+          returning id`),
+      ),
     );
+    if (deleted.length === 0) return { ok: false, error: TODO_MESSAGES.notDismissed };
     return { ok: true };
   });
+}
+
+/** En avbockad punkt i listan "Avbockade". */
+export interface DismissedTodo {
+  readonly key: string;
+  readonly kind: string;
+  /** Rubriken när punkten bockades av, eller null för äldre rader. */
+  readonly title: string | null;
+  /** Tidpunkten (ISO). */
+  readonly dismissedAt: string;
+  /** Den som bockade av ("dig" för användaren själv), eller null om namnet inte syns. */
+  readonly dismissedBy: string | null;
+}
+
+/**
+ * Avbockningar de senaste DISMISSED_LIST_DAYS dagarna vars punkt inte står i listan
+ * just nu (`currentKeys`, efter avbockning). En punkt vars orsak ändrats visas i
+ * listan igen och tas därför inte med här. Nyast först. Påfyllaren får bara sina
+ * lagerpunkter (RLS); läsaren har ingen lista.
+ */
+export async function loadDismissedFor(
+  viewer: Viewer,
+  currentKeys: ReadonlySet<string>,
+  now: Date = new Date(),
+): Promise<DismissedTodo[]> {
+  const role = await requireRoleFor(viewer.user, viewer.organization.id, TODO_ROLES);
+  const since = new Date(now.getTime() - DISMISSED_LIST_DAYS * 86_400_000);
+  const rows = await withUserDbFor(
+    viewer.user,
+    async (tx) =>
+      Array.from(
+        await tx.execute(sql`
+        select d.todo_key as key, d.title, d.dismissed_at as "dismissedAt",
+               case when d.dismissed_by = (select auth.uid()) then 'dig'
+                    else nullif(trim(p.display_name), '') end as "dismissedBy"
+        from public.todo_dismissals d
+        left join public.profiles p
+          on p.organization_id = d.organization_id and p.user_id = d.dismissed_by
+        where d.organization_id = ${viewer.organization.id}::uuid
+          and d.dismissed_at >= ${since.toISOString()}::timestamptz
+        order by d.dismissed_at desc
+        limit 200`),
+      ) as Array<{
+        key: string;
+        title: string | null;
+        dismissedAt: Date | string;
+        dismissedBy: string | null;
+      }>,
+  );
+  return rows
+    .filter((r) => !currentKeys.has(r.key))
+    .filter((r) => role !== "refiller" || isStockKey(r.key))
+    .map((r) => ({
+      key: r.key,
+      kind: r.key.slice(0, r.key.indexOf(":")),
+      title: r.title,
+      dismissedAt: new Date(r.dismissedAt).toISOString(),
+      dismissedBy: r.dismissedBy,
+    }));
 }
 
 /**

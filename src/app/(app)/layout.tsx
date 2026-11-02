@@ -13,6 +13,7 @@ import {
   loadSyncInfo,
   loadTodos,
 } from "@/server/data/core";
+import { redirectStoreUserToPortal } from "@/server/portal/session";
 import { requireUser } from "@/server/session";
 import { AppFrame } from "./app-frame";
 import { NoOrganization } from "./no-organization";
@@ -36,7 +37,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   if (!config.ok) return <ConfigMissing issues={config.issues} />;
   const user = await requireUser();
   const ctx = await loadOptionalContext();
-  if (!ctx) return <NoOrganization email={user.email} />;
+  if (!ctx) {
+    // En butiksanvändare (rollen store, fas 10) har ingen approll: till /portal.
+    await redirectStoreUserToPortal();
+    return <NoOrganization email={user.email} />;
+  }
 
   const hasTodos = routeById("att-gora").roles.includes(ctx.role);
   const [master, sync, dataStart, machineCounts, todoCount] = await Promise.all([

@@ -3,11 +3,11 @@
 /**
  * Formulär i dialog för Expansion, Enhetsekonomi och Effekt: fälten beskrivs som data,
  * värdena är text (tolkas på servern), felen visas vid fältet och som notis. Efter en
- * lyckad ändring hämtas sidan om (router.refresh), så att siffrorna räknas om.
+ * lyckad ändring räknas sidan om: server actions anropar revalidateAppData, och svaret
+ * bär den nya sidan.
  */
 
-import { useRouter } from "next/navigation";
-import { useId, useState, useTransition, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/field";
@@ -35,12 +35,14 @@ export type FieldSpec = {
 
 export type Action<T> = (raw: unknown) => Promise<ActionResult<T>>;
 
-/** Kör en server action med notis och omladdning. */
+/**
+ * Kör en server action med notis. `pending` gäller bara själva anropet: sidans omräkning
+ * efter revalidateAppData sker i bakgrunden, så att nästa formulär kan skickas direkt.
+ */
 export function useActionRunner() {
-  const router = useRouter();
   const toast = useToast();
-  const [pending, start] = useTransition();
-  const run = <T,>(
+  const [pending, setPending] = useState(false);
+  const run = async <T,>(
     action: Action<T>,
     raw: unknown,
     opts: {
@@ -48,18 +50,27 @@ export function useActionRunner() {
       onOk?: (data: T) => void;
       onError?: (r: { error: string; fieldErrors?: Record<string, string> }) => void;
     },
-  ) =>
-    start(async () => {
+  ) => {
+    setPending(true);
+    try {
       const r = await action(raw);
       if (r.ok) {
         toast({ title: opts.success, tone: "ok" });
         opts.onOk?.(r.data);
-        router.refresh();
       } else {
         toast({ title: "Det gick inte att spara", description: r.error, tone: "critical" });
         opts.onError?.(r);
       }
-    });
+    } catch {
+      toast({
+        title: "Det gick inte att spara",
+        description: "Servern svarade inte. Försök igen.",
+        tone: "critical",
+      });
+    } finally {
+      setPending(false);
+    }
+  };
   return { pending, run };
 }
 

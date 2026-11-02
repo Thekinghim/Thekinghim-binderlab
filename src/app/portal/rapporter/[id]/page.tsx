@@ -5,13 +5,13 @@ import { notFound } from "next/navigation";
 import { PrintButton } from "@/components/report/print-button";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
-import { formatDateTime, formatInt } from "@/lib/format";
+import { formatInt } from "@/lib/format";
 import { assertStoreReportSafe, type StoreReport } from "@/reports";
 import { loadPortalReport } from "@/server/portal/load";
 import { requirePortalContext } from "@/server/portal/session";
 
 import { CompensationSection, TitlesHeader, WeeksBlock } from "../../_components/sections";
-import { kr, monthText, pct } from "../../_components/text";
+import { dateTimeText, kr, monthText, pct } from "../../_components/text";
 
 export const metadata: Metadata = { title: "Månadsrapport" };
 
@@ -65,7 +65,7 @@ export default async function PortalReportPage({ params }: { params: Promise<{ i
           <SectionHeader
             as="h1"
             title={`Månadsrapport ${monthText(month)}.`}
-            aside={`Skapad ${formatDateTime(new Date(detail.generatedAt))}.`}
+            aside={`Skapad ${dateTimeText(detail.generatedAt, ctx.store.timezone)}.`}
             size="xl"
           />
           <StateMessage
@@ -93,7 +93,7 @@ export default async function PortalReportPage({ params }: { params: Promise<{ i
                     report.sales.averageOrderOre === null ? "–" : kr(report.sales.averageOrderOre),
                 },
                 { label: "Ersättning", value: kr(report.compensation.totalOre) },
-                { label: "Skapad", value: formatDateTime(new Date(detail.generatedAt)) },
+                { label: "Skapad", value: dateTimeText(detail.generatedAt, ctx.store.timezone) },
               ]}
             />
             {report.greeting ? (

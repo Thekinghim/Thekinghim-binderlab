@@ -10,6 +10,10 @@
  * - inviteStoreUser: ägare/admin bjuder in en butiksanvändare från /butiker
  *   (create_store_invitation). Mejlet skickas i samma transaktion som inbjudan
  *   skapas, precis som för vanliga inbjudningar.
+ * - removeStoreUser / revokeStoreInvitation: ägare/admin tar bort en
+ *   butiksanvändare eller återkallar en väntande inbjudan (från /butiker).
+ *   requireRole här, RLS (memberships_delete, invitations_delete) i databasen,
+ *   och frågan rör bara role = store för just den butiken.
  *
  * Alla returnerar { ok, error? } med svenska meddelanden. Indata är okontrollerad.
  */
@@ -25,8 +29,9 @@ import { getAuthProvider } from "../auth";
 import { dbErrorMessage, pgErrorOf } from "../errors";
 import { createRateLimiter } from "../rate-limit";
 import { resolveAppBaseUrl } from "../request-info";
-import { getActiveOrganization, getSessionUser, requireRole } from "../session";
+import { getActiveOrganization, getSessionUser, requireRole, type SessionUser } from "../session";
 
+import { deleteStorePortalInvitation, deleteStorePortalUser } from "./access";
 import { FAULT_KINDS } from "./faults";
 import { insertPortalFault, insertStoreInvitation, queryPortalStores } from "./queries";
 import { PORTAL_STORE_COOKIE } from "./session";
@@ -182,6 +187,7 @@ export async function inviteStoreUser(input: {
       });
       await provider.sendInvite(parsed.data.email, `${baseUrl}/inbjudan/${token}`);
     });
+    revalidatePath("/butiker", "layout");
     return { ok: true };
   } catch (error) {
     const pg = pgErrorOf(error);
@@ -190,5 +196,73 @@ export async function inviteStoreUser(input: {
       ok: false,
       error: pg ? dbErrorMessage(error) : "Inbjudan kunde inte skickas. Försök igen.",
     };
+  }
+}
+
+const accessInput = z.object({ storeId: z.uuid(), id: z.uuid() });
+
+/** Ägare/admin i den aktiva organisationen, annars ett felmeddelande. */
+async function requireStoreManager(): Promise<
+  { ok: true; user: SessionUser; orgId: string } | { ok: false; error: string }
+> {
+  const user = await getSessionUser();
+  if (!user) return { ok: false, error: NOT_LOGGED_IN };
+  const org = await getActiveOrganization();
+  if (!org) return { ok: false, error: "Du är inte medlem i någon organisation." };
+  try {
+    await requireRole(org.id, ["owner", "admin"]);
+  } catch {
+    return { ok: false, error: "Bara ägare och administratörer hanterar butikens portal." };
+  }
+  return { ok: true, user, orgId: org.id };
+}
+
+/** Ta bort en butiksanvändares tillgång till portalen. */
+export async function removeStoreUser(input: {
+  storeId: string;
+  membershipId: string;
+}): Promise<PortalActionResult> {
+  const parsed = accessInput.safeParse({ storeId: input.storeId, id: input.membershipId });
+  if (!parsed.success) return { ok: false, error: "Användaren finns inte längre." };
+  const auth = await requireStoreManager();
+  if (!auth.ok) return auth;
+  try {
+    const n = await withUserDbFor(auth.user, (tx) =>
+      deleteStorePortalUser(tx, {
+        organizationId: auth.orgId,
+        storeId: parsed.data.storeId,
+        membershipId: parsed.data.id,
+      }),
+    );
+    if (n === 0) return { ok: false, error: "Användaren finns inte längre." };
+    revalidatePath("/butiker", "layout");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: dbErrorMessage(error) };
+  }
+}
+
+/** Återkalla en väntande inbjudan till butikens portal. */
+export async function revokeStoreInvitation(input: {
+  storeId: string;
+  invitationId: string;
+}): Promise<PortalActionResult> {
+  const parsed = accessInput.safeParse({ storeId: input.storeId, id: input.invitationId });
+  if (!parsed.success) return { ok: false, error: "Inbjudan finns inte längre." };
+  const auth = await requireStoreManager();
+  if (!auth.ok) return auth;
+  try {
+    const n = await withUserDbFor(auth.user, (tx) =>
+      deleteStorePortalInvitation(tx, {
+        organizationId: auth.orgId,
+        storeId: parsed.data.storeId,
+        invitationId: parsed.data.id,
+      }),
+    );
+    if (n === 0) return { ok: false, error: "Inbjudan finns inte längre." };
+    revalidatePath("/butiker", "layout");
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: dbErrorMessage(error) };
   }
 }

@@ -323,6 +323,81 @@ describe("askAssistant med mockad klient", () => {
     expect(log?.error).toContain("429");
   });
 
+  it("loggar modellen som faktiskt svarade när API:t använder en reservmodell", async () => {
+    const client = mockClient(() =>
+      scriptedMessage("claude-sonnet-5-5", [textBlock("Det finns inget tal här.")]),
+    );
+    const { events } = await collect({
+      viewer: owner,
+      question: "Hej",
+      conversationId: randomUUID(),
+      now: NOW,
+      config: READY,
+      client,
+    });
+    const done = events.at(-1) as Extract<AssistantEvent, { type: "done" }>;
+    const log = await getLogFor(owner.user, fx.orgId, done.logId!);
+    expect(client.model).toBe("claude-opus-5-5");
+    expect(log?.model).toBe("claude-sonnet-5-5");
+  });
+
+  it("ett varv som inte gick att tolka görs om, och utkastet töms innan det strömmas igen", async () => {
+    let calls = 0;
+    const client: ModelClient = {
+      provider: "anthropic",
+      model: "claude-opus-5-5",
+      async turn(_request, onText) {
+        calls += 1;
+        if (calls === 1) {
+          onText("Halvt svar ");
+          throw new SyntaxError("Ogiltig JSON i verktygsparametrarna");
+        }
+        onText("Klart.");
+        return scriptedMessage("claude-opus-5-5", [textBlock("Klart.")]);
+      },
+    };
+    const { events } = await collect({
+      viewer: owner,
+      question: "Hej",
+      conversationId: randomUUID(),
+      now: NOW,
+      config: READY,
+      client,
+    });
+    const types = events.map((e) => (e.type === "text" ? `text:${e.text}` : e.type));
+    expect(types).toEqual(["start", "text:Halvt svar ", "turn", "text:Klart.", "done"]);
+    const done = events.at(-1) as Extract<AssistantEvent, { type: "done" }>;
+    expect(done.answer).toBe("Klart.");
+  });
+
+  it("perioden som är vald i panelen följer med i systemprompten", async () => {
+    const client = mockClient(() => scriptedMessage("claude-opus-5-5", [textBlock("Ok.")]));
+    await collect({
+      viewer: owner,
+      question: "Hur gick det?",
+      conversationId: randomUUID(),
+      now: NOW,
+      config: READY,
+      client,
+      shellParams: { period: "7d" },
+    });
+    const system = client.requests[0]!.system.map((b) => b.text).join("\n");
+    expect(system).toMatch(/Vald period i panelen: 7 dagar, 2025-03-\d{2} till 2025-03-1\d\./);
+
+    const without = mockClient(() => scriptedMessage("claude-opus-5-5", [textBlock("Ok.")]));
+    await collect({
+      viewer: owner,
+      question: "Hur gick det?",
+      conversationId: randomUUID(),
+      now: NOW,
+      config: READY,
+      client: without,
+    });
+    expect(without.requests[0]!.system.map((b) => b.text).join("\n")).not.toContain(
+      "Vald period i panelen",
+    );
+  });
+
   it("den lokala testmodellen svarar med verktygets egen sammanfattning", async () => {
     const { events } = await collect({
       viewer: owner,

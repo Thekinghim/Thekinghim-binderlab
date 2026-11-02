@@ -25,7 +25,13 @@ function monthOf(m: string): string {
 }
 
 /** Alla rapporter med status, mottagare och filer. Nyast period först. */
-export function ArchiveTable({ rows, timeZone }: { rows: readonly ArchiveRow[]; timeZone: string }) {
+export function ArchiveTable({
+  rows,
+  timeZone,
+}: {
+  rows: readonly ArchiveRow[];
+  timeZone: string;
+}) {
   const columns = useMemo<Column<ArchiveRow>[]>(
     () => [
       {

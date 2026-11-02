@@ -105,6 +105,10 @@ export interface HomeTopTitles {
     readonly titles: number;
     readonly orders: number;
     readonly revenueOre: number;
+    /** Andel av periodens intäkt i bp. */
+    readonly shareBp: number;
+    /** Antal av de sammanslagna titlarna som har order utan inköpspris. */
+    readonly unpricedTitles: number;
   } | null;
   readonly totalTitles: number;
 }
@@ -123,17 +127,26 @@ export interface HomeTodo {
   readonly title: string;
   readonly detail: string;
   readonly href: string;
+  /** Punkten gäller hela organisationen fast sidan är filtrerad på butik eller automat. */
+  readonly orgWide: boolean;
 }
 
 export interface HomeModel {
   readonly headline: HomeHeadline;
+  /** Perioden i skalet. Nyckeltal, vinst och marginal gäller hela den (som på Lönsamhet). */
   readonly period: Period;
+  /** Skalets jämförelseperiod när den ligger helt inom datan, annars null. */
   readonly compare: Period | null;
-  /** Dagarna i perioden som har data (från första ordern, utan en tom dag i dag). null = ingen data. */
+  /**
+   * Dagarna som diagrammet och dagserierna visar: från första ordern och, när perioden
+   * slutar i dag utan order ännu, t.o.m. i går. null = inga sådana dagar.
+   */
   readonly coverage: Period | null;
   /** Jämförelseperioden ligger helt inom data, så att förändringar är meningsfulla. */
   readonly comparable: boolean;
   readonly dataStart: IsoDate | null;
+  /** I dag ingår i perioden men har inga order ännu (och visas därför inte i diagrammet). */
+  readonly todayPending: boolean;
   readonly kpis: HomeKpi[];
   readonly daily: HomeDaily | null;
   readonly unpriced: HomeUnpriced | null;
@@ -188,8 +201,9 @@ function rowRevenue(row: ProfitabilityRow): number {
 }
 
 /**
- * Dagarna i perioden som har data: från första ordern (organisationens) och, om perioden
+ * Dagarna som diagrammet visar: från första ordern (organisationens) och, om perioden
  * slutar i dag och ingen order kommit i dag, bara t.o.m. i går. null om inga dagar återstår.
+ * Bara visning: nyckeltalen gäller hela perioden.
  */
 export function coverageOf(
   period: Period,
@@ -261,13 +275,14 @@ function todosInScope(
 function buildKpis(args: {
   km: KeyMetrics;
   prev: KeyMetrics | null;
+  /** Det finns order med inköpspris, så att vinsten går att räkna. */
+  priced: boolean;
   days: ProfitabilityRow[];
   prevDays: ProfitabilityRow[];
-  coverageDays: number;
   compareDays: number;
   unpriced: HomeUnpriced | null;
 }): HomeKpi[] {
-  const { km, prev, days, prevDays, coverageDays, compareDays, unpriced } = args;
+  const { km, prev, priced, days, prevDays, compareDays, unpriced } = args;
   const revenueTrend = days.map(rowRevenue);
   const marginTrend = carryForward(days.map((r) => r.marginBp));
   const aovTrend = carryForward(
@@ -276,7 +291,10 @@ function buildKpis(args: {
   const prevMargin = prev?.marginBp ?? null;
   const marginDelta =
     km.marginBp !== null && prevMargin !== null ? (km.marginBp - prevMargin) / 100 : null;
-  const hasPrev = prev !== null && prevDays.length > 0;
+  const hasPrev = prev !== null && compareDays > 0;
+  // Dagsraderna saknar hyra som ingen order bär (raden "ej fördelad"); referensen räknas
+  // därför ur jämförelseperiodens dagsrader, så att linje och referens jämför samma sak.
+  const prevDailyProfit = prevDays.reduce((n, r) => n + r.profitOre, 0);
 
   return [
     {
@@ -294,13 +312,15 @@ function buildKpis(args: {
       id: "profit",
       label: "Vinst efter alla kostnader",
       unit: "ore",
-      value: km.profitOre,
-      delta: hasPrev ? relative(km.profitOre, prev.profitOre) : null,
+      value: priced ? km.profitOre : null,
+      delta: hasPrev && priced ? relative(km.profitOre, prev.profitOre) : null,
       deltaKind: "relative",
-      trend: days.map((r) => r.profitOre),
-      reference: hasPrev ? perDay(prev.profitOre, compareDays) : null,
+      trend: priced ? days.map((r) => r.profitOre) : [],
+      reference: hasPrev && priced ? perDay(prevDailyProfit, compareDays) : null,
       alertText:
-        unpriced && unpriced.orders > 0 ? `Utan ${shareText(unpriced.shareBp)} av intäkten` : null,
+        unpriced && unpriced.orders > 0
+          ? `${unpricedShareText(unpriced.shareBp)} av intäkten saknar inköpspris`
+          : null,
     },
     {
       id: "margin",
@@ -309,7 +329,7 @@ function buildKpis(args: {
       value: km.marginBp,
       delta: hasPrev ? marginDelta : null,
       deltaKind: "absolute",
-      trend: marginTrend,
+      trend: priced ? marginTrend : [],
       reference: hasPrev ? prevMargin : null,
       alertText: null,
     },
@@ -335,12 +355,17 @@ function buildKpis(args: {
       reference: hasPrev ? prev.averageOrderValueOre : null,
       alertText: null,
     },
-  ].map((k) => ({ ...k, trend: coverageDays > 1 ? k.trend : [] })) as HomeKpi[];
+  ].map((k) => ({ ...k, trend: days.length > 1 ? k.trend : [] })) as HomeKpi[];
 }
 
 /** Andel i bp som procent: hela procent, en decimal under 1 %. */
 export function shareText(bp: number): string {
   return formatPercent(bp / 10_000, bp < 100 ? 1 : 0);
+}
+
+/** Andelen utan inköpspris, med en decimal som på Lönsamhet ("4,8 %"). */
+export function unpricedShareText(bp: number): string {
+  return formatPercent(bp / 10_000, 1);
 }
 
 function buildTopTitles(
@@ -374,10 +399,22 @@ function buildTopTitles(
             titles: others.length,
             orders: others.reduce((n, r) => n + r.orders, 0),
             revenueOre: others.reduce((n, r) => n + r.revenueOre, 0),
+            shareBp: share(others.reduce((n, r) => n + r.revenueOre, 0)),
+            unpricedTitles: others.filter((r) => r.unpriced).length,
           }
         : null,
     totalTitles: items.length,
   };
+}
+
+/**
+ * Regler vars iakttagelse redan står på Hem: intäkten i rubriken, bästa dagen i diagrammet
+ * och mest sålda titel i topplistan. De visas inte i Värt att veta, så att samma uppgift
+ * inte står flera gånger på sidan.
+ */
+function shownElsewhere(kind: Insight["kind"], hasChart: boolean): boolean {
+  if (kind === "period-summary" || kind === "top-title") return true;
+  return kind === "best-day" && hasChart;
 }
 
 function buildInsights(
@@ -385,6 +422,7 @@ function buildInsights(
   scope: DataScope,
   period: Period,
   compare: Period | null,
+  hasChart: boolean,
 ): HomeInsight[] {
   const orders: AnalyticsOrder[] = [
     ...input.current.orders,
@@ -403,21 +441,24 @@ function buildInsights(
     {
       now: input.now,
       timeZone: input.timeZone,
-      // Hämta en extra: intäkten i perioden står redan i rubriken och tas bort nedan.
-      maxCount: HOME_INSIGHT_COUNT + 1,
-      minCount: HOME_INSIGHT_COUNT + 1,
+      // Hämta fler än som visas: de som redan står på sidan tas bort nedan.
+      maxCount: HOME_INSIGHT_COUNT + 3,
+      minCount: HOME_INSIGHT_COUNT + 3,
     },
   );
   return insights
-    .filter((i) => i.kind !== "period-summary")
+    .filter((i) => !shownElsewhere(i.kind, hasChart))
     .slice(0, HOME_INSIGHT_COUNT)
-    .map((i) => ({
-      key: i.key,
-      tone: i.tone,
-      text: i.text,
-      detail: i.detail,
-      href: appHref(i.link, scope),
-    }));
+    .map((i) => {
+      const titleId = i.kind === "concentration" ? i.evidence.titleIds[0] : undefined;
+      return {
+        key: i.key,
+        tone: i.tone,
+        text: i.text,
+        detail: i.detail,
+        href: appHref(i.link, scope, titleId ? { titel: titleId } : {}),
+      };
+    });
 }
 
 /** Ett fel i en regel för Värt att veta får inte stoppa Hem: då visas inga iakttagelser. */
@@ -425,9 +466,10 @@ function safeInsights(
   input: HomeModelInput,
   period: Period,
   compare: Period | null,
+  hasChart: boolean,
 ): HomeInsight[] {
   try {
-    return buildInsights(input, input.scope, period, compare);
+    return buildInsights(input, input.scope, period, compare, hasChart);
   } catch (error) {
     console.error("[hem] Värt att veta kunde inte räknas:", error);
     return [];
@@ -441,6 +483,7 @@ function buildTodos(
 ): { todos: HomeTodo[] | null; count: number; nowCount: number } {
   if (todos === null) return { todos: null, count: 0, nowCount: 0 };
   const relevant = todosInScope(todos, scope, machines);
+  const filtered = Boolean(scope.machineId || scope.storeId);
   // computeTodos sorterar redan efter brådska; nivån går ändå först om listan kommer osorterad.
   const top = relevant
     .map((t, i) => ({ t, i }))
@@ -452,6 +495,7 @@ function buildTodos(
       title: t.title,
       detail: t.detail,
       href: appHref(t.link),
+      orgWide: filtered && t.evidence.machineIds.length === 0,
     }));
   return {
     todos: top,
@@ -464,31 +508,6 @@ function buildTodos(
 // Modellen
 // ---------------------------------------------------------------------------
 
-type ScopedInput = ProfitabilityInput & { readonly orders: readonly AnalyticsOrder[] };
-
-/** Samma indata begränsad till en del av perioden (urval av order, ingen beräkning). */
-function restrict(input: ScopedInput, range: Period): ScopedInput {
-  return {
-    ...input,
-    period: range,
-    orders: input.orders.filter(
-      (o) => o.businessDate >= range.start && o.businessDate <= range.end,
-    ),
-  };
-}
-
-/**
- * Jämförelseperioden dag för dag mot täckningen: dag i i täckningen motsvarar dag i (räknat
- * från samma förskjutning) i jämförelseperioden. null om den inte ryms i jämförelseperioden.
- */
-export function alignedCompare(period: Period, compare: Period, coverage: Period): Period | null {
-  const offset = periodDays({ start: period.start, end: coverage.start }) - 1;
-  const start = addDays(compare.start, offset);
-  const end = addDays(start, periodDays(coverage) - 1);
-  if (start > compare.end) return null;
-  return { start, end: end > compare.end ? compare.end : end };
-}
-
 export function buildHomeModel(input: HomeModelInput): HomeModel {
   const { period, dataStart, today } = input;
   const titleName = (() => {
@@ -496,29 +515,29 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
     return (id: string) => map.get(id) ?? "Okänd titel";
   })();
 
-  const hasOrdersToday = input.current.orders.some((o) => o.businessDate === today);
-  const coverage = coverageOf(period, dataStart, today, hasOrdersToday);
-
-  // Hem räknar på dagarna som har data (täckningen): före första ordern finns ingen
-  // försäljning att jämföra med, och en påbörjad dag utan order ännu skulle dra ned
-  // snittet. Jämförelsen gäller lika många dagar i jämförelseperioden, och bara om de
-  // ligger helt inom datan.
-  const current = coverage ? restrict(input.current, coverage) : input.current;
-  const compare =
-    coverage && input.compare ? alignedCompare(period, input.compare, coverage) : null;
+  // Nyckeltal, vinst och marginal gäller hela perioden i skalet, som på Lönsamhet: hyran
+  // räknas för varje dag automaten står i butiken, oavsett om den sålde (berakningar.md §4).
+  // Jämförelsen gäller skalets jämförelseperiod, och bara när den ligger helt inom datan:
+  // dagar före första ordern har ingen försäljning att jämföra med.
+  const current = input.current;
   const comparable =
-    compare !== null &&
+    input.compare !== null &&
     input.previous !== null &&
     dataStart !== null &&
-    compare.start >= dataStart &&
-    periodDays(compare) === (coverage ? periodDays(coverage) : 0);
-  const previous =
-    comparable && input.previous && compare ? restrict(input.previous, compare) : null;
+    input.compare.start >= dataStart;
+  const compare = comparable ? input.compare : null;
+  const previous = comparable ? input.previous : null;
+
+  const hasOrdersToday = current.orders.some((o) => o.businessDate === today);
+  const coverage = coverageOf(period, dataStart, today, hasOrdersToday);
+  const todayPending =
+    period.start <= today && period.end >= today && !hasOrdersToday && periodDays(period) > 1;
 
   const km = keyMetrics(current);
   const prevKm = previous ? keyMetrics(previous) : null;
 
   const byTitle = profitability(current, "title");
+  const priced = byTitle.totals.pricedOrders > 0;
   const unpricedSummary = byTitle.unpriced;
   const unpriced: HomeUnpriced | null =
     unpricedSummary.orders > 0
@@ -537,23 +556,25 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
         }
       : null;
 
-  const days = coverage ? rowsIn(dayRows(current), coverage) : [];
-  const coverageDays = coverage ? periodDays(coverage) : 0;
-  const prevDays = previous ? dayRows(previous) : [];
-  const compareDays = compare && previous ? periodDays(compare) : 0;
+  // Dagserierna (diagram och sparklines) visar dagarna med data; jämförelsen dag för dag
+  // från jämförelseperiodens början (den ligger då helt inom datan, så täckningen börjar
+  // samma dag som perioden).
+  const days = coverage && km.orderCount > 0 ? rowsIn(dayRows(current), coverage) : [];
+  const prevDays = previous && compare ? rowsIn(dayRows(previous), compare) : [];
+  const compareDays = compare ? periodDays(compare) : 0;
 
   const kpis = buildKpis({
     km,
     prev: prevKm,
+    priced,
     days,
     prevDays,
-    coverageDays,
     compareDays,
     unpriced,
   });
 
   let daily: HomeDaily | null = null;
-  if (coverage && days.length > 0) {
+  if (days.length > 0) {
     const revenueOre = days.map(rowRevenue);
     const total = revenueOre.reduce((a, b) => a + b, 0);
     let peakIndex: number | null = null;
@@ -565,7 +586,7 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
     daily = {
       dates: days.map((r) => r.key),
       revenueOre,
-      compareOre: prevDays.length === days.length ? prevDays.map(rowRevenue) : null,
+      compareOre: prevDays.length > 0 ? prevDays.slice(0, days.length).map(rowRevenue) : null,
       peakIndex,
       peakRatioTenths:
         averageOre > 0 && peakIndex !== null ? roundHalfUp(peakValue * 10, averageOre) : null,
@@ -575,13 +596,15 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
 
   const topTitles = buildTopTitles(byTitle.rows, km.revenueOre, titleName);
   // Iakttagelserna räknas från första dagen med data, så att snitt per dag och antal
-  // veckodagar inte späds ut av dagar före datan; jämförelsen bara när den ligger i datan.
+  // veckodagar inte späds ut av dagar före datan.
   let insights: HomeInsight[] = [];
-  if (coverage) {
-    const insightPeriod: Period = { start: coverage.start, end: period.end };
-    const insightCompare =
-      comparable && input.compare ? alignedCompare(period, input.compare, insightPeriod) : null;
-    insights = safeInsights(input, insightPeriod, insightCompare);
+  if (coverage && km.orderCount > 0) {
+    insights = safeInsights(
+      input,
+      { start: coverage.start, end: period.end },
+      compare,
+      daily !== null,
+    );
   }
   const { todos, count, nowCount } = buildTodos(input.todos, input.scope, input.machines);
 
@@ -589,21 +612,22 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
     headline: homeHeadline({
       revenueOre: km.revenueOre,
       orders: km.orderCount,
+      pricedOrders: byTitle.totals.pricedOrders,
       profitOre: km.profitOre,
       marginBp: km.marginBp,
       unpricedShareBp: unpriced?.shareBp ?? 0,
       revenueChangeBp:
         prevKm && prevKm.revenueOre > 0 ? changeBp(km.revenueOre, prevKm.revenueOre) : null,
-      coverage,
       period,
       today,
       dataStart,
     }),
     period,
-    compare: comparable ? compare : null,
+    compare,
     coverage,
     comparable,
     dataStart,
+    todayPending,
     kpis,
     daily,
     unpriced,

@@ -5,13 +5,16 @@ import { NBSP } from "@/lib/format";
 
 import {
   buildPage,
+  dismissedViews,
   formatFigure,
   inScope,
   joinSv,
   kindSummary,
   primaryFigures,
+  stakeOf,
   suggestRefill,
   SIGNAL_BUDGET,
+  unpricedOf,
   type ModelInput,
 } from "./model";
 
@@ -146,19 +149,62 @@ describe("text", () => {
 });
 
 describe("buildPage", () => {
-  it("grupperar efter brådska och skriver rubriken med summan i risk", () => {
+  it("grupperar efter brådska och skriver rubriken med det mest brådskande först", () => {
     const page = buildPage(
       input([refill(M1, "now", 294_667), refill(M2, "soon", 100_000), missingPrice]),
     );
     expect(page.groups.map((g) => g.level)).toEqual(["now", "soon", "later"]);
     expect(page.groups.map((g) => g.index)).toEqual([1, 2, 3]);
     expect(page.header.title).toBe(`3${NBSP}saker att göra.`);
-    expect(page.header.aside).toBe(
-      `1 i dag, 4${NBSP}468${NBSP}kr i intäkt står på spel de närmaste 7 dagarna.`,
+    expect(page.header.aside).toBe("1 måste göras i dag.");
+    expect(page.header.description).toBe(
+      `Först: Fyll på Titel 1 i Automat, räcker 0,3${NBSP}d. ` +
+        `3${NBSP}947${NBSP}kr i intäkt står på spel de närmaste 7 dagarna.`,
     );
     expect(page.header.meta.find((m) => m.label === "I risk 7 d")?.value).toBe(
-      `4${NBSP}468${NBSP}kr`,
+      `3${NBSP}947${NBSP}kr`,
     );
+    // Intäkt utan inköpspris är inte i risk och står som eget mått.
+    expect(page.header.meta.find((m) => m.label === "Utan inköpspris")?.value).toBe(
+      `2${NBSP}235${NBSP}kr`,
+    );
+  });
+
+  it("räknar bara påfyllning och tysta automater som intäkt i risk", () => {
+    const stale = item({
+      key: `stale-machine:${M2}`,
+      kind: "stale-machine",
+      level: "soon",
+      atStakeOre: 50_000,
+    });
+    const dup = item({
+      key: `duplicate-title:${T1}:${T2}`,
+      kind: "duplicate-title",
+      level: "later",
+      atStakeOre: 70_000,
+    });
+    expect(stakeOf([refill(M1, "now", 100_000), stale, missingPrice, dup])).toBe(150_000);
+    expect(unpricedOf([missingPrice, refill(M1, "now", 1)])).toBe(223_500);
+    const later = buildPage(input([missingPrice])).groups[0]!;
+    expect(later.aside).toBe(
+      `1${NBSP}titel utan inköpspris, 2${NBSP}235${NBSP}kr i intäkt saknar inköpspris.`,
+    );
+    expect(later.aside).not.toContain("i risk");
+  });
+
+  it("skriver påfyllningar som påfyllningar och döljer nivåer utan punkter", () => {
+    const page = buildPage(
+      input([refill(M1, "soon", 1), refill(M2, "soon", 1)], { role: "refiller", economy: false }),
+    );
+    expect(page.header.title).toBe(`2${NBSP}påfyllningar att göra.`);
+    expect(page.header.aside).toBe("Inget måste göras i dag.");
+    expect(page.header.description.startsWith("Först: Fyll på")).toBe(true);
+    expect(page.header.meta.map((m) => m.label)).toEqual(["Snart", "Beräknat"]);
+  });
+
+  it("skriver automatkoden med hårt bindestreck", () => {
+    const row = buildPage(input([refill(M1, "now", 1)])).groups[0]!.items[0]!;
+    expect(row.eyebrow).toBe("Påfyllning · BL\u2011001");
   });
 
   it("visar inga belopp för påfyllaren", () => {
@@ -234,7 +280,7 @@ describe("filter", () => {
     const page = buildPage(scoped);
     expect(page.total).toBe(2);
     expect(page.hiddenByScope).toBe(1);
-    expect(page.header.aside).toContain(`1${NBSP}punkt till gäller annat än filtret.`);
+    expect(page.header.description).toContain(`Filtret döljer 1${NBSP}punkt för andra automater.`);
   });
 
   it("butiksfiltret följer automatens butik", () => {
@@ -242,6 +288,34 @@ describe("filter", () => {
       scope: { storeId: S1, machineId: null },
     });
     expect(buildPage(scoped).total).toBe(1);
+  });
+});
+
+describe("avbockade", () => {
+  it("visar avbockade inom filtret med etikett och vem som bockade av", () => {
+    const dismissed = [
+      { key: `refill:${M1}:${T1}`, title: "Fyll på Titel 1 i Automat 1", when: "nyss", by: "dig" },
+      { key: `refill:${M2}:${T1}`, title: null, when: "igår 17:17", by: null },
+      {
+        key: `missing-price:${T2}`,
+        title: "Lägg in inköpspris för Titel 2",
+        when: "nyss",
+        by: "Anna",
+      },
+    ];
+    const all = dismissedViews(input([], { dismissed }));
+    expect(all.map((d) => d.eyebrow)).toEqual([
+      "Påfyllning · BL\u2011001",
+      "Påfyllning · BL\u2011002",
+      "Inköpspris",
+    ]);
+    expect(all[0]!.meta).toBe("Avbockad nyss av dig.");
+    expect(all[1]!.title).toBe("Punkt utan sparad rubrik.");
+    expect(all[1]!.meta).toBe("Avbockad igår 17:17.");
+    const scoped = dismissedViews(
+      input([], { dismissed, scope: { storeId: null, machineId: M2 } }),
+    );
+    expect(scoped.map((d) => d.key)).toEqual([`refill:${M2}:${T1}`, `missing-price:${T2}`]);
   });
 });
 

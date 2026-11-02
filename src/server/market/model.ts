@@ -39,7 +39,7 @@ import {
 import type { MachineRef } from "@/analytics/todos";
 import { addDays, daysBetween, maxDate, minDate, type IsoDate, type Period } from "@/domain";
 
-import { dayText, packs, signedKronorWhole } from "./display";
+import { dayText, kronor, packs, signedKronorWhole } from "./display";
 import type {
   AllocationRow,
   AssortmentChangeRow,
@@ -63,6 +63,29 @@ export const MIN_ASSORTMENT_DAYS = 14;
 /** Resultat av en beräkning som kan stoppas av ogiltig indata. */
 export type Computed<T> =
   { readonly ok: true; readonly value: T } | { readonly ok: false; readonly message: string };
+
+/**
+ * Sista hela dagen med data: i går. Dagens affärsdag är inte slut, så den räknas aldrig
+ * in i en mätning (den skulle ge för låga volymer, t.ex. 0 order sent på dagen).
+ */
+export function lastFullDay(data: Pick<MarketData, "today">): IsoDate {
+  return addDays(data.today, -1);
+}
+
+/**
+ * Perioden som analysen räknar på: periodens dagar med data, högst till och med sista
+ * hela dagen och tidigast från första dagen med order. Dagar före första ordern skulle
+ * annars räknas som dagar utan försäljning (t.ex. 67 pack på 30 dagar i stället för 20).
+ * Både sidan och server actions (som räknar om rekommendationen) använder den.
+ */
+export function analysisPeriod(
+  data: Pick<MarketData, "today" | "dataStart">,
+  period: Period,
+): Period {
+  const end = minDate(period.end, lastFullDay(data));
+  const start = data.dataStart ? maxDate(period.start, data.dataStart) : period.start;
+  return { start: minDate(start, end), end };
+}
 
 function compute<T>(fn: () => T): Computed<T> {
   try {
@@ -195,9 +218,12 @@ export function releaseSuggestionFor(
   });
 }
 
-/** Förslaget räknas per i dag före släppet och per dagen före släppet efteråt. */
+/**
+ * Förslaget räknas per sista hela dagen (i går) före släppet och per dagen före släppet
+ * efteråt.
+ */
 export function suggestionDay(row: ReleaseRow, today: IsoDate): IsoDate {
-  return minDate(today, addDays(row.releaseDate, -1));
+  return minDate(addDays(today, -1), addDays(row.releaseDate, -1));
 }
 
 export function releaseViews(data: MarketData): ReleaseView[] {
@@ -236,7 +262,7 @@ export function releaseViews(data: MarketData): ReleaseView[] {
             orders: data.orders,
             titleId: row.titleId!,
             releaseDate: row.releaseDate,
-            asOf: data.today,
+            asOf: lastFullDay(data),
             horizonDays: row.horizonDays,
             allocations: plan.map((a) => ({ machineId: a.machineId, units: a.units })),
             curveCumulativeBp: curve && curve.length >= row.horizonDays ? curve : undefined,
@@ -252,7 +278,7 @@ export function releaseViews(data: MarketData): ReleaseView[] {
             orders: data.orders,
             titleId: row.titleId!,
             releaseDate: row.releaseDate,
-            asOf: data.today,
+            asOf: lastFullDay(data),
             horizonDays: row.horizonDays,
             allocations: s.allocations.map((a) => ({ machineId: a.machineId, units: a.units })),
             curveCumulativeBp: s.curve?.cumulativeBp,
@@ -304,20 +330,30 @@ export interface PurchaseSource {
   readonly date: IsoDate;
   readonly unitCostOre: number;
   readonly quantity: number;
+  /** Ett faktiskt inköp (registrerat inköp eller lagd inköpsorder), inte en offert. */
+  readonly isPurchase: boolean;
 }
 
 export interface PricesView {
   readonly purchases: readonly PurchaseSource[];
+  /** Prisutveckling: offerter och inköp. */
   readonly trends: Computed<TitlePriceTrend[]>;
+  /** Avvikande inköp: bara faktiska inköp jämförs och flaggas (offerter visas i trenden). */
   readonly anomalies: Computed<PurchaseAnomaly[]>;
   readonly quoteCount: number;
   readonly orderLineCount: number;
 }
 
-/** Offerter och inköpsorderrader som inköp (PurchaseRecord) för prisanalysen. */
+/**
+ * Leverantörspriser för prisanalysen: registrerade offerter och inköp samt
+ * inköpsorderrader. Utkast till inköpsorder (inte beställda) och externa marknadspriser
+ * (source 'market') är inte leverantörspriser och tas inte med.
+ */
 export function purchaseSources(data: MarketData): PurchaseSource[] {
   return [
-    ...data.quotes.map((q): PurchaseSource => ({
+    ...data.quotes
+      .filter((q) => q.source !== "market")
+      .map((q): PurchaseSource => ({
       id: q.id,
       origin: "quote",
       kind: q.kind,
@@ -326,8 +362,11 @@ export function purchaseSources(data: MarketData): PurchaseSource[] {
       date: q.quotedOn,
       unitCostOre: q.unitCostOre,
       quantity: q.quantity,
+      isPurchase: q.kind === "purchase",
     })),
-    ...data.purchaseLines.map((l): PurchaseSource => ({
+    ...data.purchaseLines
+      .filter((l) => l.status !== "draft")
+      .map((l): PurchaseSource => ({
       id: l.id,
       origin: "purchase-order",
       kind: "order-line",
@@ -336,27 +375,31 @@ export function purchaseSources(data: MarketData): PurchaseSource[] {
       date: l.date,
       unitCostOre: l.unitCostOre,
       quantity: l.quantity,
+      isPurchase: true,
     })),
   ];
 }
 
 export function pricesView(data: MarketData, period: Period): PricesView {
   const purchases = purchaseSources(data);
-  const records: PurchaseRecord[] = purchases.map((p) => ({
+  const record = (p: PurchaseSource): PurchaseRecord => ({
     id: p.id,
     titleId: p.titleId,
     supplierId: p.supplierId,
     date: p.date,
     unitCostOre: p.unitCostOre,
     quantity: p.quantity,
-  }));
-  const input = { purchases: records, titles: titleRefs(data), suppliers: supplierRefs(data) };
+  });
+  const refs = { titles: titleRefs(data), suppliers: supplierRefs(data) };
+  const bought = purchases.filter((p) => p.isPurchase).map(record);
   return {
     purchases,
-    trends: compute(() => purchasePriceTrends(input)),
-    anomalies: compute(() => flagPurchaseAnomalies(input, { from: period.start, to: period.end })),
-    quoteCount: data.quotes.length,
-    orderLineCount: data.purchaseLines.length,
+    trends: compute(() => purchasePriceTrends({ ...refs, purchases: purchases.map(record) })),
+    anomalies: compute(() =>
+      flagPurchaseAnomalies({ ...refs, purchases: bought }, { from: period.start, to: period.end }),
+    ),
+    quoteCount: purchases.filter((p) => p.origin === "quote").length,
+    orderLineCount: purchases.filter((p) => p.origin === "purchase-order").length,
   };
 }
 
@@ -381,6 +424,7 @@ export interface AssortmentFollowUpView {
 }
 
 export interface AssortmentView {
+  /** Analysperioden (se `analysisPeriod`). */
   readonly period: Period;
   /** Perioden är för kort för att efterfrågan ska räknas. */
   readonly tooShort: boolean;
@@ -448,11 +492,15 @@ export function slotPrefill(
     .map(([titleId]) => ({ titleId, slots: 1 }));
 }
 
-/** Rekommendationerna för perioden, för automater med fackfördelning periodens sista dag. */
+/**
+ * Rekommendationerna för perioden, för automater med fackfördelning periodens sista dag.
+ * Perioden kläms först till analysperioden (dagar med data, högst till och med i går).
+ */
 export function assortmentRecommendations(
   data: MarketData,
-  period: Period,
+  requested: Period,
 ): MachineAssortmentRecommendation[] {
+  const period = analysisPeriod(data, requested);
   const current = slotsOn(data, period.end);
   const machineIds = [...current.keys()].sort();
   if (machineIds.length === 0) return [];
@@ -470,9 +518,13 @@ export function assortmentRecommendations(
   });
 }
 
-export function assortmentView(data: MarketData, period: Period): AssortmentView {
+export function assortmentView(data: MarketData, requested: Period): AssortmentView {
+  const period = analysisPeriod(data, requested);
   const tooShort = daysBetween(period.start, period.end) + 1 < MIN_ASSORTMENT_DAYS;
-  const current = slotsOn(data, period.end);
+  const atEnd = slotsOn(data, period.end);
+  const today = slotsOn(data, data.today);
+  /** Automater med fack periodens sista dag eller i dag (nyss registrerade). */
+  const current = new Map([...atEnd, ...today]);
   const code = new Map(data.machines.map((m) => [m.id, m.code]));
   const machines = compute((): AssortmentMachineView[] => {
     const recs = tooShort ? [] : assortmentRecommendations(data, period);
@@ -520,7 +572,7 @@ export function assortmentView(data: MarketData, period: Period): AssortmentView
           orders: data.orders,
           machineId: change.machineId,
           implementedOn: change.implementedOn,
-          asOf: data.today,
+          asOf: lastFullDay(data),
           expectedEffectPerWeekOre: change.expectedEffectPerWeekOre,
           changedTitleIds: change.changedTitleIds,
           machines: machineRefs(data),
@@ -542,11 +594,92 @@ export interface PriceChangeView {
 
 export type ExperimentStatus = "planned" | "running" | "done" | "stopped";
 
+/**
+ * Kontroll av att testpriset faktiskt tagits i bruk: testautomaternas order för titeln
+ * från startdagen till och med sista mätdagen, fördelade på testpris och andra belopp.
+ * Priset ändras i automaterna (Awish), inte i panelen, så ett glömt prisbyte syns bara här.
+ */
+export interface ExperimentPriceCheck {
+  /** Testautomaternas order för titeln i mätperioden. */
+  readonly orders: number;
+  /** Varav sålda till testpriset. */
+  readonly atTestPrice: number;
+  /** Vanligaste beloppet bland övriga order, eller null. */
+  readonly otherModalOre: number | null;
+  /** 'ok' = testpriset syns; 'missing' = order finns men ingen till testpriset; 'no-orders'. */
+  readonly status: "ok" | "partial" | "missing" | "no-orders";
+  readonly text: string;
+  /** Order i kontrollen (testautomaterna, titeln, mätperioden). */
+  readonly orderIds: readonly string[];
+  readonly period: Period;
+}
+
 export interface ExperimentView {
   readonly row: PriceExperimentRow;
   readonly status: ExperimentStatus;
   readonly endsOn: IsoDate;
+  /** Sista dagen som mäts (sista hela dagen, slutdagen eller stoppdagen). */
+  readonly measuredTo: IsoDate;
+  /** null innan första hela dagen med testpriset. */
+  readonly priceCheck: ExperimentPriceCheck | null;
+  /**
+   * Utvärderingen mot kontrollautomaterna. null innan första hela dagen och när testpriset
+   * inte syns i orderna (en effekt av ett pris som aldrig infördes vore missvisande).
+   */
   readonly evaluation: Computed<PriceChangeEffect> | null;
+}
+
+/** Andel order till testpriset som krävs för att testet ska räknas som infört. */
+export const TEST_PRICE_MIN_SHARE_BP = 8_000;
+
+export function experimentPriceCheck(
+  data: MarketData,
+  row: PriceExperimentRow,
+  measuredTo: IsoDate,
+): ExperimentPriceCheck | null {
+  if (measuredTo < row.startedOn) return null;
+  const period: Period = { start: row.startedOn, end: measuredTo };
+  const test = new Set(row.testMachineIds);
+  const orders = data.orders.filter(
+    (o) =>
+      o.titleId === row.titleId &&
+      o.machineId !== null &&
+      test.has(o.machineId) &&
+      o.businessDate >= period.start &&
+      o.businessDate <= period.end,
+  );
+  const atTestPrice = orders.filter((o) => o.amountOre === row.toOre).length;
+  const other = new Map<number, number>();
+  for (const o of orders) {
+    if (o.amountOre !== row.toOre) other.set(o.amountOre, (other.get(o.amountOre) ?? 0) + 1);
+  }
+  const otherModalOre =
+    [...other.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0] ?? null;
+  const n = orders.length;
+  let status: ExperimentPriceCheck["status"];
+  let text: string;
+  if (n === 0) {
+    status = "no-orders";
+    text = `Testautomaterna har inte sålt titeln sedan ${dayText(row.startedOn, data.today)}, så testpriset kan inte kontrolleras ännu.`;
+  } else if (atTestPrice === 0) {
+    status = "missing";
+    text = `Testpriset ${kronor(row.toOre)} syns inte i orderna: ingen av ${n} order i testautomaterna sedan ${dayText(row.startedOn, data.today)} såldes till testpriset${otherModalOre !== null ? ` (vanligast ${kronor(otherModalOre)})` : ""}. Ändra priset i Awish; effekten visas när testpriset syns.`;
+  } else if (atTestPrice * 10_000 < n * TEST_PRICE_MIN_SHARE_BP) {
+    status = "partial";
+    text = `${atTestPrice} av ${n} order i testautomaterna såldes till testpriset ${kronor(row.toOre)}${otherModalOre !== null ? `; övriga främst till ${kronor(otherModalOre)}` : ""}. Effekten nedan blandar priserna och underskattar skillnaden.`;
+  } else {
+    status = "ok";
+    text = `${atTestPrice} av ${n} order i testautomaterna såldes till testpriset ${kronor(row.toOre)}.`;
+  }
+  return {
+    orders: n,
+    atTestPrice,
+    otherModalOre,
+    status,
+    text,
+    orderIds: orders.map((o) => o.id),
+    period,
+  };
 }
 
 export interface PricingView {
@@ -567,13 +700,17 @@ export function activeExperimentTitles(data: MarketData): Set<string> {
   return out;
 }
 
-/** Förslag på pristester per i dag, utan titlar som redan testas. */
+/**
+ * Förslag på pristester räknade på hela dagar (till och med i går), utan titlar som redan
+ * testas. Testet börjar dagen efter underlaget, alltså i dag.
+ */
 export function priceTestProposals(data: MarketData): PriceTestProposal[] {
   const active = activeExperimentTitles(data);
+  const asOf = lastFullDay(data);
   return proposePriceTests({
     ...data.sources,
-    orders: data.orders,
-    asOf: data.today,
+    orders: data.orders.filter((o) => o.businessDate <= asOf),
+    asOf,
     titles: titleRefs(data),
     machines: machineRefs(data),
   }).filter((p) => !active.has(p.titleId));
@@ -583,8 +720,10 @@ export function pricingView(data: MarketData, period: Period): PricingView {
   const titles = titleRefs(data);
   const machines = machineRefs(data);
   let moreChanges = 0;
+  const asOf = lastFullDay(data);
+  const fullDays = data.orders.filter((o) => o.businessDate <= asOf);
   const changes = compute((): PriceChangeView[] => {
-    const all = detectPriceChanges(data.orders, { titles }).filter(
+    const all = detectPriceChanges(fullDays, { titles }).filter(
       (c) => c.date >= period.start && c.date <= period.end,
     );
     const shown = all.slice(-PRICE_CHANGE_LIMIT).reverse();
@@ -597,7 +736,7 @@ export function pricingView(data: MarketData, period: Period): PricingView {
           orders: data.orders,
           titleId: change.titleId,
           changeDate: change.date,
-          asOf: data.today,
+          asOf,
           titles,
           machines,
         }),
@@ -616,9 +755,10 @@ export function pricingView(data: MarketData, period: Period): PricingView {
             : endsOn < data.today
               ? "done"
               : "running";
-      const last = minDate(data.today, row.stoppedOn ?? endsOn);
+      const measuredTo = minDate(asOf, row.stoppedOn ?? endsOn);
+      const priceCheck = experimentPriceCheck(data, row, measuredTo);
       const evaluation =
-        row.startedOn > data.today
+        priceCheck === null || priceCheck.status === "missing"
           ? null
           : compute(() =>
               priceChangeEffect({
@@ -626,7 +766,7 @@ export function pricingView(data: MarketData, period: Period): PricingView {
                 orders: data.orders,
                 titleId: row.titleId,
                 changeDate: row.startedOn,
-                asOf: last,
+                asOf: measuredTo,
                 windowDays: row.testDays,
                 testMachineIds: row.testMachineIds,
                 controlMachineIds: row.controlMachineIds,
@@ -634,7 +774,7 @@ export function pricingView(data: MarketData, period: Period): PricingView {
                 machines,
               }),
             );
-      return { row, status, endsOn, evaluation };
+      return { row, status, endsOn, measuredTo, priceCheck, evaluation };
     });
   return {
     changes,

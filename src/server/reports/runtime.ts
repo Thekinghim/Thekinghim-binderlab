@@ -22,7 +22,8 @@ import { reportStorageStatus, userReportStore } from "./storage";
 export async function currentReportViewer(): Promise<Viewer> {
   const user = await requireUser();
   const organization = await getActiveOrganization();
-  if (!organization) throw new AuthorizationError("forbidden", "Du är inte medlem i någon organisation.");
+  if (!organization)
+    throw new AuthorizationError("forbidden", "Du är inte medlem i någon organisation.");
   return { user, organization };
 }
 

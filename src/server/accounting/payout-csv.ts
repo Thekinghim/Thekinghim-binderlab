@@ -14,6 +14,14 @@
  * Belopp tolkas som text till öre (samma tolkning som orderimporten: "1 234,50", "1234.50",
  * "170 kr"), utan flyttal. Utbetalt belopp får vara negativt. Datum: ÅÅÅÅ-MM-DD, ÅÅÅÅ/MM/DD
  * eller ÅÅÅÅMMDD. Felrader stoppar inte filen men räknas och visas med radnummer.
+ *
+ * Avgifter och återbetalningar är belopp som leverantören DROG från utbetalningen. Leverantörer
+ * skriver dem ibland med minustecken ("−373,00") och ibland utan; båda betyder samma avdrag, så
+ * tecknet tas bort. En kreditering av avgifter (leverantören betalar tillbaka avgifter) kan
+ * därför inte anges i kolumnen Avgifter; den syns i stället som ett högre utbetalt belopp och
+ * förklaras i avstämningen.
+ *
+ * En period får vara högst 366 dagar (samma gräns som databasen); längre perioder blir felrader.
  */
 
 import { createHash } from "node:crypto";
@@ -166,6 +174,14 @@ function columnIndex(headers: readonly string[]): Partial<Record<Field, number>>
 
 const ISO = /^(\d{4})[-/]?(\d{2})[-/]?(\d{2})$/;
 
+/** Längsta period för en utbetalning (dagar mellan första och sista dag, som i databasen). */
+export const MAX_PERIOD_DAYS = 366;
+
+/** Dagnummer för ett giltigt ÅÅÅÅ-MM-DD (UTC, bara för skillnader). */
+function dayNumber(date: string): number {
+  return Math.round(Date.parse(`${date}T00:00:00Z`) / 86_400_000);
+}
+
 function daysIn(year: number, month: number): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
@@ -302,8 +318,12 @@ export function parsePayoutFile(content: string | Uint8Array): ParsedPayoutFile 
 
     if (format === "lines") {
       const externalId = (cell(cells, "orderNo") ?? "").normalize("NFKC").trim();
-      if (!externalId || externalId.length > 100) {
+      if (!externalId) {
         fail("Ordernummer saknas.");
+        continue;
+      }
+      if (externalId.length > 100) {
+        fail("Ordernumret är längre än 100 tecken.");
         continue;
       }
       if (/^\d+(?:[.,]\d+)?e\+?\d+$/i.test(externalId)) {
@@ -333,6 +353,10 @@ export function parsePayoutFile(content: string | Uint8Array): ParsedPayoutFile 
     }
     if (period.end < period.start) {
       fail("Perioden slutar före den börjar.");
+      continue;
+    }
+    if (dayNumber(period.end) - dayNumber(period.start) > MAX_PERIOD_DAYS) {
+      fail(`Perioden är längre än ${MAX_PERIOD_DAYS} dagar. Dela upp utbetalningen per månad.`);
       continue;
     }
     const paidRaw = cell(cells, "paidOn");

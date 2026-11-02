@@ -8,7 +8,7 @@ import { loadPeriod, requireRoute } from "@/server/data/core";
 import { HistoryList } from "./_components/history-list";
 import { LagerBoard } from "./_components/lager-board";
 import { loadLagerFor } from "./_lib/data";
-import { isoDateToDate, packs } from "./_lib/display";
+import { formatIsoDate, isoDateToDate, packs } from "./_lib/display";
 import { headlineOf } from "./_lib/headline";
 import { currentViewer } from "./_lib/session";
 import { HISTORY_LIMIT } from "./_lib/types";
@@ -49,7 +49,8 @@ export default async function LagerPage({ searchParams }: { searchParams: Promis
     start: isoDateToDate(p.period.start),
     end: isoDateToDate(p.period.end),
   });
-  const packsToday = view.packLists.reduce((s, l) => s + l.totalPacks, 0);
+  const placesTotal = view.counts.critical + view.counts.low + view.counts.ok;
+  const warehouseTotal = view.warehouse.reduce((s, w) => s + Math.max(0, w.onHand), 0);
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
@@ -59,11 +60,15 @@ export default async function LagerPage({ searchParams }: { searchParams: Promis
         eyebrow="Lager"
         title={headline.title}
         aside={headline.aside}
+        // Bara det rubriken inte säger (design.md §5.5): urvalet, takten och centrallagret.
         meta={[
-          { label: "Kritisk", value: formatInt(view.counts.critical) },
-          { label: "Låg", value: formatInt(view.counts.low) },
-          { label: "OK", value: formatInt(view.counts.ok) },
-          { label: "Ut i dag", value: packs(packsToday) },
+          { label: "Platser", value: formatInt(placesTotal) },
+          { label: "Automater", value: formatInt(view.machines.length) },
+          {
+            label: "Takt",
+            value: `${formatInt(view.window.days)} d t.o.m. ${formatIsoDate(view.window.end, view.today)}`,
+          },
+          ...(view.hasWarehouse ? [{ label: "Centrallager", value: packs(warehouseTotal) }] : []),
         ]}
       />
 

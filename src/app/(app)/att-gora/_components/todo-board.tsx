@@ -16,6 +16,7 @@ import { formatInt, NBSP } from "@/lib/format";
 
 import { dismissTodo, mergeTitles, registerRefill, undoDismissTodo } from "../actions";
 import type {
+  DismissedView,
   GroupView,
   LinkActionView,
   MergeActionView,
@@ -50,19 +51,41 @@ function rowId(key: string): string {
   return `punkt-${key.replace(/[^a-zA-Z0-9-]/g, "-")}`;
 }
 
+/** En avbockning gäller punkten med just det fingerprintet (samma regel som på servern). */
+function hideId(item: Pick<TodoView, "key" | "fingerprint">): string {
+  return `${item.key}\u0000${item.fingerprint}`;
+}
+
+/** Notisen med "Ångra" står kvar så här länge (och så länge den har fokus eller hovras). */
+const UNDO_TOAST_MS = 15_000;
+
 /**
  * Listan i Att göra: en sektion per brådskenivå, punkterna i den ordning reglerna
- * sorterat dem. Bocka av döljer punkten direkt (med "Ångra" i notisen); fokus flyttas
- * till nästa punkt så att tangentbordet inte tappar platsen.
+ * sorterat dem. Bocka av döljer punkten direkt (med "Ångra" i notisen och i listan
+ * "Avbockade"); fokus flyttas till nästa punkt så att tangentbordet inte tappar platsen.
  */
-export function TodoBoard({ groups, canDismiss }: { groups: GroupView[]; canDismiss: boolean }) {
+export function TodoBoard({
+  groups,
+  dismissed,
+  canDismiss,
+}: {
+  groups: GroupView[];
+  dismissed: DismissedView[];
+  canDismiss: boolean;
+}) {
   const toast = useToast();
+  /** Avbockade i den här vyn innan servern hunnit räkna om (nyckel + fingerprint). */
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+  /** Punkter avbockade här, för listan "Avbockade" tills servern skickat sin. */
+  const [local, setLocal] = useState<readonly TodoView[]>([]);
+  /** Nycklar som ångrats här, tills servern skickat en ny lista. */
+  const [undone, setUndone] = useState<ReadonlySet<string>>(new Set());
   const [, startTransition] = useTransition();
   const all = groups.flatMap((g) => g.items);
+  const isHidden = (t: TodoView) => hidden.has(hideId(t));
 
   const focusAfter = (key: string) => {
-    const visible = all.filter((t) => !hidden.has(t.key));
+    const visible = all.filter((t) => !isHidden(t));
     const i = visible.findIndex((t) => t.key === key);
     const next = visible[i + 1] ?? visible[i - 1];
     requestAnimationFrame(() => {
@@ -72,17 +95,41 @@ export function TodoBoard({ groups, canDismiss }: { groups: GroupView[]; canDism
     });
   };
 
+  const unhide = (key: string) => {
+    setHidden((prev) => new Set([...prev].filter((id) => !id.startsWith(`${key}\u0000`))));
+    setLocal((prev) => prev.filter((t) => t.key !== key));
+  };
+
+  const undo = (key: string, title: string) => {
+    startTransition(async () => {
+      const result = await undoDismissTodo({ key });
+      if (!result.ok) {
+        toast({ title: "Kunde inte ångra", description: result.error, tone: "critical" });
+        return;
+      }
+      unhide(key);
+      setUndone((prev) => new Set(prev).add(key));
+      toast({
+        title: "Ångrad",
+        description: `${title} Punkten visas igen om orsaken finns kvar.`,
+        tone: "ok",
+      });
+    });
+  };
+
   const dismiss = (item: TodoView) => {
     focusAfter(item.key);
-    setHidden((prev) => new Set(prev).add(item.key));
+    setHidden((prev) => new Set(prev).add(hideId(item)));
+    setLocal((prev) => [item, ...prev.filter((t) => t.key !== item.key)]);
+    setUndone((prev) => {
+      const next = new Set(prev);
+      next.delete(item.key);
+      return next;
+    });
     startTransition(async () => {
       const result = await dismissTodo({ key: item.key, fingerprint: item.fingerprint });
       if (!result.ok) {
-        setHidden((prev) => {
-          const next = new Set(prev);
-          next.delete(item.key);
-          return next;
-        });
+        unhide(item.key);
         toast({
           title: "Punkten kunde inte bockas av",
           description: result.error,
@@ -92,33 +139,32 @@ export function TodoBoard({ groups, canDismiss }: { groups: GroupView[]; canDism
       }
       toast({
         title: "Avbockad",
-        description: `${item.title} Den kommer tillbaka om läget ändras.`,
+        description: `${item.title} Den kommer tillbaka om läget ändras. Ångra här eller under Avbockade.`,
         tone: "ok",
-        action: {
-          label: "Ångra",
-          onClick: () => {
-            startTransition(async () => {
-              const undo = await undoDismissTodo({ key: item.key });
-              if (!undo.ok) {
-                toast({ title: "Kunde inte ångra", description: undo.error, tone: "critical" });
-                return;
-              }
-              setHidden((prev) => {
-                const next = new Set(prev);
-                next.delete(item.key);
-                return next;
-              });
-            });
-          },
-        },
+        duration: UNDO_TOAST_MS,
+        action: { label: "Ångra", onClick: () => undo(item.key, item.title) },
       });
     });
   };
 
+  // Avbockade: serverns lista plus det som bockats av här, utan det som ångrats här.
+  const serverKeys = new Set(dismissed.map((d) => d.key));
+  const dismissedList: DismissedView[] = [
+    ...local
+      .filter((t) => !serverKeys.has(t.key))
+      .map((t) => ({
+        key: t.key,
+        eyebrow: t.eyebrow,
+        title: t.title,
+        meta: "Avbockad nyss av dig.",
+      })),
+    ...dismissed,
+  ].filter((d) => !undone.has(d.key));
+
   return (
     <div className="flex flex-col">
       {groups.map((g) => {
-        const items = g.items.filter((t) => !hidden.has(t.key));
+        const items = g.items.filter((t) => !isHidden(t));
         if (items.length === 0) return null;
         return (
           <section
@@ -147,7 +193,73 @@ export function TodoBoard({ groups, canDismiss }: { groups: GroupView[]; canDism
           </section>
         );
       })}
+      {dismissedList.length > 0 ? (
+        <DismissedList items={dismissedList} onUndo={(d) => undo(d.key, d.title)} />
+      ) : null}
     </div>
+  );
+}
+
+/** "Visa avbockade (n)": punkter som bockats av de senaste två veckorna, med Ångra. */
+function DismissedList({
+  items,
+  onUndo,
+}: {
+  items: DismissedView[];
+  onUndo: (item: DismissedView) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const listId = useId();
+  return (
+    <section aria-labelledby={`${listId}-rubrik`} className="border-t border-line pt-6 pb-4">
+      <h2 id={`${listId}-rubrik`} className="sr-only">
+        Avbockade punkter
+      </h2>
+      <Button
+        size="sm"
+        variant="ghost"
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={() => setOpen((v) => !v)}
+        className="-ml-2.5"
+      >
+        <Icon
+          name="chevronRight"
+          size={12}
+          className={cn("shrink-0 transition-transform duration-fast", open && "rotate-90")}
+        />
+        {open ? "Dölj avbockade" : "Visa avbockade"} ({formatInt(items.length)})
+      </Button>
+      <div id={listId} hidden={!open} className="mt-4">
+        <p className="max-w-2xl text-sm text-muted">
+          Punkter som bockats av de senaste 14 dagarna. De visas i listan igen av sig själva om
+          läget ändras. Ångra visar punkten direkt om orsaken finns kvar.
+        </p>
+        <ul className="mt-4 flex flex-col">
+          {items.map((d) => (
+            <li
+              key={d.key}
+              className="flex flex-col gap-3 border-t border-line py-4 sm:flex-row sm:items-start sm:justify-between sm:gap-8"
+            >
+              <div className="flex min-w-0 flex-col gap-1">
+                <span className="label text-subtle">{d.eyebrow}</span>
+                <span className="text-base text-fg">{d.title}</span>
+                <span className="text-sm text-muted">{d.meta}</span>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => onUndo(d)}
+                aria-label={`Ångra avbockning: ${d.title}`}
+                className="self-start"
+              >
+                Ångra
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
   );
 }
 
@@ -178,7 +290,10 @@ function TodoRow({
         </h3>
         <p className="max-w-2xl text-sm text-muted">{item.detail}</p>
         <details className="group mt-1 max-w-2xl">
-          <summary className="meta inline-flex cursor-pointer list-none items-center gap-1 rounded-xs text-subtle hover:text-fg [&::-webkit-details-marker]:hidden">
+          <summary
+            aria-label={`Underlag: ${item.title}`}
+            className="meta inline-flex cursor-pointer list-none items-center gap-1 rounded-xs text-subtle hover:text-fg [&::-webkit-details-marker]:hidden"
+          >
             <Icon
               name="chevronRight"
               size={12}
@@ -273,11 +388,20 @@ function RefillDialog({ action }: { action: RefillActionView }) {
     setError(undefined);
   };
 
+  /** Varje öppning börjar från dagens förslag (det kan ha ändrats sedan sist). */
+  const openDialog = () => {
+    setQuantity(String(action.suggested));
+    setFromWarehouse(hasWarehouse && (action.warehouseOnHand ?? 0) > 0);
+    setQuantityError(undefined);
+    setError(undefined);
+    setOpen(true);
+  };
+
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const n = Number(quantity.trim());
     if (!Number.isInteger(n) || n < 1 || n > 10_000) {
-      setQuantityError("Ange antal pack som ett heltal, minst 1.");
+      setQuantityError("Ange antal pack som ett heltal mellan 1 och 10 000.");
       inputRef.current?.focus();
       return;
     }
@@ -316,7 +440,7 @@ function RefillDialog({ action }: { action: RefillActionView }) {
 
   return (
     <>
-      <Button size="sm" variant="secondary" iconLeft="plus" onClick={() => setOpen(true)}>
+      <Button size="sm" variant="secondary" iconLeft="plus" onClick={openDialog}>
         {action.label}
       </Button>
       <Modal

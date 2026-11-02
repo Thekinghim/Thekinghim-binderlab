@@ -2,13 +2,15 @@
  * GET /ekonomi/sie?manad=ÅÅÅÅ-MM → månadens verifikationer som SIE 4-fil (CP437).
  *
  * Ägare, admin och läsare (kontrolleras mot databasen i sieFileFor); allt läses som
- * användaren med RLS. Påfyllaren får 403.
+ * användaren med RLS. Påfyllaren får 403. Bara avslutade månader: en pågående eller framtida
+ * månad ger 422 med förklaring. #GEN i filen är dagens datum (organisationens tidszon).
  */
 
 import type { NextRequest } from "next/server";
 
 import { AccountingError, currentViewer, sieFileFor } from "@/server/accounting";
 import { AuthorizationError } from "@/server/access";
+import { businessToday } from "@/server/data/core/loaders";
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -24,7 +26,8 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (!MONTH.test(month)) return text(400, "Ange månaden som ?manad=ÅÅÅÅ-MM.");
   try {
     const viewer = await currentViewer();
-    const file = await sieFileFor(viewer, month);
+    const today = businessToday(new Date(), viewer.organization.timezone);
+    const file = await sieFileFor(viewer, month, today);
     return new Response(Buffer.from(file.bytes), {
       status: 200,
       headers: {

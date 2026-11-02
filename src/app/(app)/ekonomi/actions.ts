@@ -12,10 +12,10 @@ import { z, ZodError } from "zod";
 
 import { DomainError } from "@/domain";
 import { ImportError } from "@/import/errors";
-import { LocalFileStore } from "@/import/file-store";
 import {
   AccountingError,
   archiveFixedCostFor,
+  archivePayoutFor,
   BookkeepingNotConfiguredError,
   currentViewer,
   deliverVouchersFor,
@@ -27,6 +27,7 @@ import {
 } from "@/server/accounting";
 import { AuthorizationError } from "@/server/access";
 import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/data/core";
+import { businessToday } from "@/server/data/core/loaders";
 import { dbErrorMessage } from "@/server/errors";
 
 import { fixedCostSchema, isoDate, monthSchema } from "./_lib/schemas";
@@ -68,11 +69,8 @@ export async function uploadPayoutFile(form: FormData): Promise<ActionResult<Pay
       return { ok: false, error: "Filen är för stor (högst 10 MB)." };
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const data = await importPayoutFileFor(
-      viewer,
-      { name: file.name, bytes },
-      { fileStore: new LocalFileStore() },
-    );
+    // Underlaget sparas där orderimporten sparar sina filer (IMPORT_FILE_STORE).
+    const data = await importPayoutFileFor(viewer, { name: file.name, bytes });
     revalidateAppData();
     return { ok: true, data };
   } catch (error) {
@@ -112,13 +110,46 @@ export async function reviewDeviation(raw: unknown): Promise<ActionResult<{ id: 
   }
 }
 
-/** Skickar månadens verifikationer till bokföringsprogrammet. */
-export async function deliverVouchers(raw: unknown): Promise<ActionResult<{ count: number }>> {
+/** Skickar en avslutad månads verifikationer till bokföringsprogrammet (en gång, loggas). */
+export async function deliverVouchers(
+  raw: unknown,
+): Promise<ActionResult<{ count: number; firstNumber: number; lastNumber: number }>> {
   try {
     const viewer = await operator();
     const { month } = z.object({ month: monthSchema }).parse(raw);
-    const result = await deliverVouchersFor(viewer, month);
-    return { ok: true, data: { count: result.count } };
+    const today = businessToday(new Date(), viewer.organization.timezone);
+    const result = await deliverVouchersFor(viewer, month, today);
+    revalidateAppData();
+    return {
+      ok: true,
+      data: {
+        count: result.count,
+        firstNumber: result.firstNumber,
+        lastNumber: result.lastNumber,
+      },
+    };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** Arkiverar en felaktig utbetalning (med anteckning), så att en rättad kan importeras. */
+export async function archivePayout(raw: unknown): Promise<ActionResult<{ reference: string }>> {
+  try {
+    const viewer = await operator();
+    const input = z
+      .object({
+        id: z.uuid(),
+        note: z
+          .string()
+          .trim()
+          .min(1, "Skriv varför utbetalningen arkiveras.")
+          .max(2000, "Anteckningen får vara högst 2 000 tecken."),
+      })
+      .parse(raw);
+    const data = await archivePayoutFor(viewer, input);
+    revalidateAppData();
+    return { ok: true, data };
   } catch (error) {
     return failure(error);
   }

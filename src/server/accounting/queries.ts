@@ -66,6 +66,23 @@ export async function queryPayouts(
   }));
 }
 
+/**
+ * Utbetalningar (ej arkiverade) att bokföra för `range`: perioden överlappar intervallet eller
+ * pengarna kom in i det.
+ */
+export async function queryPayoutsForBooking(
+  tx: Tx,
+  orgId: string,
+  range: Period,
+): Promise<PayoutRecord[]> {
+  const all = await queryPayouts(tx, orgId, null);
+  return all.filter(
+    (p) =>
+      (p.periodStart <= range.end && p.periodEnd >= range.start) ||
+      (p.paidOn !== null && p.paidOn >= range.start && p.paidOn <= range.end),
+  );
+}
+
 /** Specifikationsraderna för utbetalningarna, per utbetalnings-id. */
 export async function queryPayoutLines(
   tx: Tx,
@@ -310,30 +327,170 @@ export interface PurchaseRecord {
 }
 
 /**
- * Inköpsorder som inte är makulerade eller utkast, med radernas summa (antal × pris). Datum:
- * mottagen, annars förväntad, annars beställd. Summan räknas av databasen (Σ antal × pris).
+ * Inköpsorder som inte är makulerade eller utkast, med radernas summa (antal × pris). En delvis
+ * mottagen order delas i två: det mottagna (Σ mottaget antal × pris) som betalt på
+ * mottagningsdagen (annars beställningsdagen) och resten som planerat på förväntad dag. Övriga:
+ * datum mottagen, annars förväntad, annars beställd. Summorna räknas av databasen.
  */
 export async function queryPurchases(tx: Tx, orgId: string): Promise<PurchaseRecord[]> {
   const result = await tx.execute(sql`
     select po.id, sp.name as supplier, po.status::text as status,
            coalesce(po.received_on, po.expected_on, po.ordered_on)::text as date,
-           coalesce(sum(l.quantity::bigint * l.unit_cost_ore), 0)::bigint as amount_ore
+           coalesce(po.received_on, po.ordered_on)::text as received_date,
+           coalesce(po.expected_on, po.ordered_on)::text as expected_date,
+           coalesce(sum(l.quantity::bigint * l.unit_cost_ore), 0)::bigint as amount_ore,
+           coalesce(sum(least(l.received_quantity, l.quantity)::bigint * l.unit_cost_ore), 0)::bigint
+             as received_ore
     from public.purchase_orders po
     left join public.suppliers sp on sp.organization_id = po.organization_id and sp.id = po.supplier_id
     left join public.purchase_order_lines l on l.organization_id = po.organization_id and l.purchase_order_id = po.id
     where po.organization_id = ${orgId}::uuid and po.status::text not in ('draft', 'cancelled')
     group by po.id, sp.name
     order by 4 nulls last, po.id`);
-  return Array.from(result).map((row) => {
+  return Array.from(result).flatMap((row): PurchaseRecord[] => {
     const r = row as Record<string, unknown>;
-    return {
-      id: String(r.id),
-      supplier: r.supplier === null ? null : String(r.supplier),
-      status: String(r.status),
-      date: r.date === null ? null : (String(r.date) as IsoDate),
-      amountOre: Number(r.amount_ore),
-    };
+    const id = String(r.id);
+    const supplier = r.supplier === null ? null : String(r.supplier);
+    const status = String(r.status);
+    const date = (v: unknown) => (v === null ? null : (String(v) as IsoDate));
+    const amountOre = Number(r.amount_ore);
+    if (status === "partially_received") {
+      const receivedOre = Number(r.received_ore);
+      return [
+        { id: `${id}:mottaget`, supplier, status: "received", date: date(r.received_date), amountOre: receivedOre },
+        {
+          id: `${id}:rest`,
+          supplier,
+          status: "ordered",
+          date: date(r.expected_date),
+          amountOre: amountOre - receivedOre,
+        },
+      ];
+    }
+    return [{ id, supplier, status, date: date(r.date), amountOre }];
   });
+}
+
+/** Återbetalningar till kunder (kundärenden med återbetalt belopp), för avstämning och bokföring. */
+export interface RefundRecord {
+  readonly id: string;
+  readonly date: IsoDate;
+  readonly amountOre: number;
+  readonly orderId: string | null;
+  readonly machineId: string | null;
+}
+
+export async function queryRefunds(tx: Tx, orgId: string, range: Period): Promise<RefundRecord[]> {
+  const rows = await tx
+    .select({
+      id: s.incidents.id,
+      date: s.incidents.refundedOn,
+      amountOre: s.incidents.refundedOre,
+      orderId: s.incidents.orderId,
+      machineId: s.incidents.machineId,
+    })
+    .from(s.incidents)
+    .where(
+      and(
+        eq(s.incidents.organizationId, orgId),
+        gte(s.incidents.refundedOn, range.start),
+        lte(s.incidents.refundedOn, range.end),
+        sql`${s.incidents.refundedOre} > 0`,
+      ),
+    )
+    .orderBy(asc(s.incidents.refundedOn), asc(s.incidents.id));
+  return rows.flatMap((r) => (r.date === null ? [] : [{ ...r, date: r.date }]));
+}
+
+/** Id för orderna från datakällorna i intervallet (för avstämning mot en viss leverantör). */
+export async function queryOrderIdsFromSources(
+  tx: Tx,
+  orgId: string,
+  sourceIds: readonly string[],
+  range: Period,
+): Promise<Set<string>> {
+  if (sourceIds.length === 0) return new Set();
+  const rows = await tx
+    .select({ id: s.orders.id })
+    .from(s.orders)
+    .where(
+      and(
+        eq(s.orders.organizationId, orgId),
+        inArray(s.orders.dataSourceId, [...sourceIds]),
+        gte(s.orders.businessDate, range.start),
+        lte(s.orders.businessDate, range.end),
+      ),
+    );
+  return new Set(rows.map((r) => r.id));
+}
+
+/** Antal aktiva datakällor (avstämningen filtrerar order på källa bara när de är fler än en). */
+export async function queryDataSources(
+  tx: Tx,
+  orgId: string,
+): Promise<{ id: string; timeZone: string; archived: boolean }[]> {
+  const rows = await tx
+    .select({
+      id: s.dataSources.id,
+      timeZone: s.dataSources.sourceTimezone,
+      archivedAt: s.dataSources.archivedAt,
+    })
+    .from(s.dataSources)
+    .where(eq(s.dataSources.organizationId, orgId))
+    .orderBy(asc(s.dataSources.createdAt));
+  return rows.map((r) => ({ id: r.id, timeZone: r.timeZone, archived: r.archivedAt !== null }));
+}
+
+/** En leverans av verifikationer till bokföringsprogrammet. */
+export interface VoucherDeliveryRecord {
+  readonly id: string;
+  /** 'ÅÅÅÅ-MM'. */
+  readonly month: string;
+  readonly provider: s.VoucherProvider;
+  readonly series: string;
+  readonly firstNumber: number;
+  readonly lastNumber: number;
+  readonly verificationCount: number;
+  readonly fileSha256: string;
+  readonly externalReference: string | null;
+  readonly createdAt: string;
+  readonly actor: string | null;
+}
+
+export async function queryVoucherDeliveries(
+  tx: Tx,
+  orgId: string,
+  range: Period,
+): Promise<VoucherDeliveryRecord[]> {
+  const rows = await tx
+    .select()
+    .from(s.voucherDeliveries)
+    .where(
+      and(
+        eq(s.voucherDeliveries.organizationId, orgId),
+        gte(s.voucherDeliveries.month, range.start),
+        lte(s.voucherDeliveries.month, range.end),
+      ),
+    )
+    .orderBy(asc(s.voucherDeliveries.month), asc(s.voucherDeliveries.createdAt));
+  const names = await queryActorNames(
+    tx,
+    orgId,
+    rows.flatMap((r) => (r.createdBy ? [r.createdBy] : [])),
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    month: r.month.slice(0, 7),
+    provider: r.provider,
+    series: r.series,
+    firstNumber: r.firstNumber,
+    lastNumber: r.lastNumber,
+    verificationCount: r.verificationCount,
+    fileSha256: r.fileSha256,
+    externalReference: r.externalReference,
+    createdAt: r.createdAt.toISOString(),
+    actor: r.createdBy ? (names.get(r.createdBy) ?? "Borttagen användare") : null,
+  }));
 }
 
 /** Ett avtal med butikens namn och kopplade villkor. */

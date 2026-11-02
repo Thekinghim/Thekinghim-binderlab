@@ -4,7 +4,7 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { StatusTag } from "@/components/ui/status-tag";
 import { formatInt, formatRelative } from "@/lib/format";
 import { getAssistantConfig } from "@/server/assistant/config";
-import { listRecentFor, type LogRecord } from "@/server/assistant/log";
+import { countFor, listRecentFor, type LogRecord } from "@/server/assistant/log";
 import { toolsForRole } from "@/server/assistant/tools";
 import { loadContext } from "@/server/data/core";
 import { requireUser } from "@/server/session";
@@ -57,7 +57,11 @@ export default async function AssistentPage() {
   const [ctx, user] = await Promise.all([loadContext(), requireUser()]);
   const config = getAssistantConfig();
   const tools = toolsForRole(ctx.role);
-  const recent = await listRecentFor(user, ctx.organization.id, 10);
+  // Bara rader som rollen får se nu (en nedgraderad användare ser inte gamla ekonomisvar).
+  const [recent, asked] = await Promise.all([
+    listRecentFor(user, ctx.organization.id, 10, { role: ctx.role }),
+    countFor(user, ctx.organization.id, { role: ctx.role }),
+  ]);
   const ready = config.status === "ready";
   const local = ready && config.provider === "local";
   const modelLabel = ready ? (local ? "lokal testmodell" : config.model) : "–";
@@ -93,7 +97,7 @@ export default async function AssistentPage() {
         meta={[
           { label: "Modell", value: modelLabel },
           { label: "Verktyg", value: formatInt(tools.length) },
-          { label: "Dina frågor", value: formatInt(recent.length) },
+          { label: "Dina frågor", value: formatInt(asked) },
         ]}
       />
 

@@ -304,6 +304,7 @@ export function PricesSection({
               <Row key={q.id}>
                 <Cell className="meta whitespace-nowrap text-muted">
                   {dayText(q.date, ctx.today)}
+                  <span className="block text-subtle">{q.isPurchase ? "Inköp" : "Offert"}</span>
                 </Cell>
                 <Cell header>{ctx.names.title[q.titleId] ?? q.titleId}</Cell>
                 <Cell hideOnMobile className="text-muted">

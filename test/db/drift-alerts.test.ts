@@ -404,15 +404,13 @@ describe("kundärenden", () => {
     );
     const wrong = await asUser(owner, (tx) =>
       attempt(tx, (sp) =>
-        sp
-          .insert(s.incidents)
-          .values({
-            organizationId: orgId,
-            machineId: m2,
-            kind: "not_delivered",
-            startedAt: NOW,
-            orderId: order!.id,
-          }),
+        sp.insert(s.incidents).values({
+          organizationId: orgId,
+          machineId: m2,
+          kind: "not_delivered",
+          startedAt: NOW,
+          orderId: order!.id,
+        }),
       ),
     );
     expect(wrong.ok).toBe(false);

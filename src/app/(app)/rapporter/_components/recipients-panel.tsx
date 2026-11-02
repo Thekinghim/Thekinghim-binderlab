@@ -175,7 +175,12 @@ export function RecipientsPanel({
             maxLength={320}
           />
           <div>
-            <Button type="submit" variant="secondary" loading={pending && busyId === null} iconLeft="plus">
+            <Button
+              type="submit"
+              variant="secondary"
+              loading={pending && busyId === null}
+              iconLeft="plus"
+            >
               Lägg till
             </Button>
           </div>

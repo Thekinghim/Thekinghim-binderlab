@@ -9,6 +9,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import {
   dismissTodoFor,
+  loadDismissedFor,
   mergeTitlesFor,
   registerRefillFor,
   undoDismissFor,
@@ -226,12 +227,22 @@ describe("dismissTodoFor / undoDismissFor", () => {
     // Samma rad gäller påfyllaren (lagerpunkt), så räknaren stämmer för alla.
     expect((await loadTodosFor(refiller, NOW)).some((t) => t.key === item.key)).toBe(false);
 
-    const [row] = await rows<{ dismissed_by: string; fingerprint: string }>(
+    const [row] = await rows<{ dismissed_by: string; fingerprint: string; title: string }>(
       db(),
-      sql`select dismissed_by, fingerprint from public.todo_dismissals
+      sql`select dismissed_by, fingerprint, title from public.todo_dismissals
           where organization_id = ${fx.orgId}::uuid and todo_key = ${item.key}`,
     );
-    expect(row).toEqual({ dismissed_by: fx.owner.id, fingerprint: item.fingerprint });
+    // Rubriken sparas från serverns punkt (för listan Avbockade).
+    expect(row).toEqual({
+      dismissed_by: fx.owner.id,
+      fingerprint: item.fingerprint,
+      title: item.title,
+    });
+    const current = new Set((await loadTodosFor(owner, NOW)).map((t) => t.key));
+    const dismissed = await loadDismissedFor(owner, current, NOW);
+    expect(dismissed).toEqual([
+      expect.objectContaining({ key: item.key, title: item.title, dismissedBy: "dig" }),
+    ]);
     const audit = await rows(
       db(),
       sql`select 1 from public.audit_log
@@ -241,6 +252,9 @@ describe("dismissTodoFor / undoDismissFor", () => {
 
     expect(await undoDismissFor(owner, { key: item.key })).toEqual({ ok: true });
     expect((await loadTodosFor(owner, NOW)).some((t) => t.key === item.key)).toBe(true);
+    // Andra gången finns ingen rad att ta bort: svaret säger det.
+    expect(await undoDismissFor(owner, { key: item.key })).toMatchObject({ ok: false });
+    expect(await loadDismissedFor(owner, new Set(), NOW)).toEqual([]);
   });
 
   it("vägrar en punkt som inte finns eller har ändrats", async () => {
@@ -278,7 +292,11 @@ describe("dismissTodoFor / undoDismissFor", () => {
       rows(tx, sql`select todo_key from public.todo_dismissals where todo_key = ${dup.key}`),
     );
     expect(seen).toEqual([]);
-    await undoDismissFor(owner, { key: dup.key });
+    // Ångra en sådan nyckel vägras (ingen tom "ok"), och listan Avbockade visar den inte.
+    expect(await undoDismissFor(refiller, { key: dup.key })).toMatchObject({ ok: false });
+    expect((await loadDismissedFor(refiller, new Set(), NOW)).map((d) => d.key)).toEqual([]);
+    expect((await loadDismissedFor(owner, new Set(), NOW)).map((d) => d.key)).toEqual([dup.key]);
+    expect(await undoDismissFor(owner, { key: dup.key })).toEqual({ ok: true });
   });
 
   it("läsaren och en annan organisation får inte bocka av", async () => {

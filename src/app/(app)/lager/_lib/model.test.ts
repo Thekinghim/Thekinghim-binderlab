@@ -2,16 +2,27 @@ import { describe, expect, it } from "vitest";
 
 import type { MasterData, SalesCountRow, StockRow } from "@/server/data/core/types";
 
-import { codeText, daysLeftText, historyQuantity, relativeDay, tenthsText } from "./display";
-import { headlineOf } from "./headline";
-import { buildLagerModel, salesAsOrders } from "./model";
-import type { LagerView } from "./types";
+import { businessDateAt } from "@/analytics/todos/time";
+import { NBSP } from "@/lib/format";
+
+import {
+  codeText,
+  daysLeftText,
+  historyQuantity,
+  relativeDay,
+  statusTone,
+  tenthsText,
+} from "./display";
+import { headlineOf, machineList, visitsText } from "./headline";
+import { buildLagerModel, planNow, salesAsOrders, warehouseStatus } from "./model";
+import type { LagerView, PackList } from "./types";
 
 const M1 = "00000000-0000-4000-8000-000000000001";
 const M2 = "00000000-0000-4000-8000-000000000002";
 const T1 = "00000000-0000-4000-8000-0000000000a1";
 const T2 = "00000000-0000-4000-8000-0000000000a2";
 const T3 = "00000000-0000-4000-8000-0000000000a3";
+const T4 = "00000000-0000-4000-8000-0000000000a4";
 const S1 = "00000000-0000-4000-8000-0000000000b1";
 const S2 = "00000000-0000-4000-8000-0000000000b2";
 
@@ -24,6 +35,7 @@ const master: MasterData = {
     { id: T1, name: "Black Bolt", series: null, mergedIntoId: null, archived: false },
     { id: T2, name: "Surging Sparks", series: null, mergedIntoId: null, archived: false },
     { id: T3, name: "Gammal titel", series: null, mergedIntoId: null, archived: false },
+    { id: T4, name: "Aldrig i lager", series: null, mergedIntoId: null, archived: false },
   ],
   machines: [
     {
@@ -111,7 +123,7 @@ const stock: StockRow[] = [
   row(M1, T1, 0), // slut, säljer 2/dag → Kritisk
   row(M1, T2, 4), // 4 kvar, 2/dag → räcker 2 dagar → Låg
   row(M2, T1, 30), // 30 kvar, 1/dag → OK
-  row(M2, T3, 0, { lastEventAt: "2026-08-01T08:00:00.000Z" }), // gammal rad, ingen försäljning
+  row(M2, T3, 0, { lastEventAt: "2026-08-01T08:00:00.000Z" }), // tom sedan augusti → Kritisk
   row(null, T1, 10),
   row(null, T2, 0),
 ];
@@ -152,7 +164,7 @@ describe("buildLagerModel", () => {
     expect(model.lowThresholdTenths).toBe(25);
   });
 
-  it("sätter Kritisk för tomt fack, Låg under 2,5 dagar och OK annars", () => {
+  it("sätter Kritisk för tom plats, Låg under 2,5 dagar och OK annars", () => {
     const model = build();
     expect(cellOf(model, M1, T1)).toMatchObject({
       stocked: true,
@@ -168,30 +180,62 @@ describe("buildLagerModel", () => {
       stockoutDate: "2026-11-03",
     });
     expect(cellOf(model, M2, T1)).toMatchObject({ onHand: 30, status: "ok", daysLeft: 30 });
-    expect(model.counts).toEqual({ critical: 1, low: 1, ok: 1 });
+    expect(model.counts).toEqual({ critical: 2, low: 1, ok: 1 });
+  });
+
+  it("räknar en plats som varit tom länge som lagerförd och Kritisk", () => {
+    // Saldoraden finns (0 pack), ingen försäljning i fönstret och senaste händelsen i augusti.
+    const cell = cellOf(build(), M2, T3);
+    expect(cell).toMatchObject({ stocked: true, onHand: 0, status: "critical", daysLeft: null });
+    expect(daysLeftText(cell!)).toBe("slut");
   });
 
   it("visar inte titlar som varken finns i automaterna eller säljer", () => {
     const model = build();
-    expect(model.titles.map((t) => t.id)).not.toContain(T3);
+    expect(model.titles.map((t) => t.id)).not.toContain(T4);
     expect(cellOf(model, M2, T2)).toMatchObject({ stocked: false });
-    // Värst först: Black Bolt (kritisk) före Surging Sparks (låg).
-    expect(model.titles.map((t) => t.name)).toEqual(["Black Bolt", "Surging Sparks"]);
+    // Värst först: de kritiska (Black Bolt, Gammal titel) före Surging Sparks (låg).
+    expect(model.titles.map((t) => t.name)).toEqual([
+      "Black Bolt",
+      "Gammal titel",
+      "Surging Sparks",
+    ]);
   });
 
   it("ger en påfyllningslista per automat ur besöksplanen, begränsad av centrallagret", () => {
     const model = build();
-    const list = model.packLists.find((p) => p.machineId === M1);
-    // Mål = 7 dagars försäljning, takten över 14 dagar t.o.m. i dag (26 pack → tak(26 × 7 / 14) = 13).
-    // Black Bolt: 0 i automaten, 10 i centrallagret → 10 med, 3 saknas.
-    const bolt = list?.lines.find((l) => l.titleId === T1);
-    expect(bolt).toMatchObject({ target: 13, quantity: 10, shortBy: 3 });
-    // Surging Sparks: centrallagret är tomt.
-    const sparks = list?.lines.find((l) => l.titleId === T2);
-    expect(sparks).toMatchObject({ quantity: 0, shortBy: sparks!.target - sparks!.onHand });
-    expect(list?.totalPacks).toBe(10);
-    expect(list?.needBy).not.toBeNull();
+    const list = model.packLists.find((p) => p.machineId === M1)!;
+    // Takten är densamma som i matrisen: 28 pack på 14 dagar t.o.m. i går → mål tak(28 × 7 / 14) = 14.
+    // Black Bolt: 0 i automaten, 10 i centrallagret → 10 med, 4 saknas.
+    expect(list.lines).toEqual([
+      expect.objectContaining({ titleId: T1, target: 14, quantity: 10, shortBy: 4 }),
+    ]);
+    // Surging Sparks finns inte i centrallagret: ingen rad med 0, i stället under missing.
+    expect(list.missing).toEqual([
+      expect.objectContaining({ titleId: T2, onHand: 4, target: 14, shortBy: 10 }),
+    ]);
+    expect(list.totalPacks).toBe(10);
+    expect(list.shortBy).toBe(14);
+    expect(list.needBy).not.toBeNull();
+    expect(list.dueToday).toBe(true);
     expect(cellOf(model, M1, T1)?.suggested).toBe(10);
+    expect(cellOf(model, M1, T2)?.suggested).toBe(0);
+  });
+
+  it("ger orsaker med samma takt och slutdatum som matrisen, utan centrallagrets summering", () => {
+    const list = build().packLists.find((p) => p.machineId === M1)!;
+    // Matrisen: Surging Sparks 4 kvar, 2,0 pack/dag, slut 3 nov.
+    expect(list.reasons).toContain(
+      `Surging Sparks tar slut tis 3${NBSP}nov. (4 kvar, 2,0 pack/dag)`,
+    );
+    expect(list.reasons).toContain("Black Bolt är slut (2,0 pack/dag)");
+    expect(list.reasons.some((r) => r.startsWith("Centrallagret"))).toBe(false);
+  });
+
+  it("räknar BL-002 som inte aktuell i dag när inget tar slut den närmaste veckan", () => {
+    const list = build().packLists.find((p) => p.machineId === M2)!;
+    expect(list.dueToday).toBe(false);
+    expect(list.plannedDay).toBeNull();
   });
 
   it("markerar centrallagret när veckans besök inte kan fyllas", () => {
@@ -200,7 +244,26 @@ describe("buildLagerModel", () => {
     expect(sparks).toMatchObject({ onHand: 0, status: "critical" });
     expect(sparks!.shortBy).toBeGreaterThan(0);
     const bolt = model.warehouse.find((w) => w.titleId === T1);
-    expect(bolt).toMatchObject({ onHand: 10, status: "low", perDayTenths: 30 });
+    expect(bolt).toMatchObject({ onHand: 10, status: "low", perDayTenths: 30, daysLeft: 3 });
+  });
+
+  it("sätter centrallagrets status efter slut, underskott och dagar kvar", () => {
+    expect(warehouseStatus(0, null, { need: 4, short: 4 })).toBe("critical");
+    expect(warehouseStatus(0, null, { need: 0, short: 0 })).toBe("ok");
+    expect(warehouseStatus(5, 20, { need: 8, short: 3 })).toBe("low");
+    // Räcker till veckans besök men bara 2 dagar vid alla automaters takt.
+    expect(warehouseStatus(12, 2, { need: 6, short: 0 })).toBe("low");
+    expect(warehouseStatus(40, 16, { need: 6, short: 0 })).toBe("ok");
+  });
+
+  it("räknar besöksplanen från i går i organisationens tidszon", () => {
+    for (const tz of ["Europe/Stockholm", "America/Los_Angeles", "Pacific/Auckland"]) {
+      expect(businessDateAt(planNow("2026-11-01", tz, NOW), tz)).toBe("2026-11-01");
+    }
+    // Sommartid → vintertid i Stockholm (25 okt.).
+    expect(businessDateAt(planNow("2026-10-25", "Europe/Stockholm", NOW), "Europe/Stockholm")).toBe(
+      "2026-10-25",
+    );
   });
 
   it("filtrerar automaterna på butik och automat", () => {
@@ -214,22 +277,69 @@ describe("buildLagerModel", () => {
   });
 });
 
+function viewOf(model: ReturnType<typeof build>): LagerView {
+  return {
+    ...model,
+    today: TODAY,
+    now: NOW.toISOString(),
+    timeZone: "Europe/Stockholm",
+    history: [],
+    historyTotal: 0,
+    canRegister: true,
+    packListFirst: false,
+  };
+}
+
+function packList(machineId: string, extra: Partial<PackList>): PackList {
+  return {
+    machineId,
+    lines: [],
+    missing: [],
+    totalPacks: 0,
+    shortBy: 0,
+    needBy: null,
+    plannedDay: null,
+    dueToday: false,
+    reasons: [],
+    ...extra,
+  };
+}
+
 describe("headlineOf", () => {
-  it("svarar med antal kritiska och låga och det mest brådskande", () => {
-    const model = build();
-    const view: LagerView = {
-      ...model,
+  it("svarar med antal kritiska och låga, det mest brådskande och dagens besök", () => {
+    const h = headlineOf(viewOf(build()));
+    expect(h.title).toBe("2 platser kritiska, 1 låg.");
+    expect(h.aside).toBe(
+      `Black Bolt i ${codeText("BL-001")} är slut. 10${NBSP}pack till ${codeText("BL-001")} i dag.`,
+    );
+  });
+
+  it("räknar bara automater som ska besökas i dag, och nämner nästa besöksdag", () => {
+    const M3 = "00000000-0000-4000-8000-000000000003";
+    const view = {
       today: TODAY,
-      now: NOW.toISOString(),
-      timeZone: "Europe/Stockholm",
-      history: [],
-      historyTotal: 0,
-      canRegister: true,
+      machines: [
+        { id: M1, code: "BL-001", name: "", storeName: null },
+        { id: M2, code: "BL-002", name: "", storeName: null },
+        { id: M3, code: "BL-003", name: "", storeName: null },
+      ],
+      packLists: [
+        packList(M1, { totalPacks: 20, plannedDay: "2026-11-03", needBy: "2026-11-03" }),
+        packList(M2, { totalPacks: 21, plannedDay: "2026-11-03", needBy: "2026-11-04" }),
+        packList(M3, { totalPacks: 16, plannedDay: TODAY, needBy: "2026-11-01", dueToday: true }),
+      ],
     };
-    const h = headlineOf(view);
-    expect(h.title).toBe("1 fack kritiskt, 1 lågt.");
-    expect(h.aside).toContain(`Black Bolt i ${codeText("BL-001")} är slut.`);
-    expect(h.aside).toContain("10 pack ut till 1 automat i dag.");
+    expect(visitsText(view)).toBe(
+      `16${NBSP}pack till ${codeText("BL-003")} i dag. ${codeText("BL-001")} och ${codeText("BL-002")} i morgon.`,
+    );
+    const none = {
+      ...view,
+      packLists: view.packLists.map((p) => ({ ...p, dueToday: false, plannedDay: "2026-11-05" })),
+    };
+    expect(visitsText(none)).toBe(
+      `Inget besök behövs i dag. ${codeText("BL-001")}, ${codeText("BL-002")} och ${codeText("BL-003")} den 5${NBSP}nov.`,
+    );
+    expect(machineList(["A", "B", "C", "D"])).toBe("4 automater");
   });
 });
 
@@ -246,5 +356,12 @@ describe("display", () => {
     expect(codeText("BL-002")).toBe("BL‑002");
     expect(relativeDay("2026-11-02", "2026-11-02")).toBe("i dag");
     expect(relativeDay("2026-11-03", "2026-11-02")).toBe("i morgon");
+  });
+
+  it("använder signalen bara för en tom plats", () => {
+    expect(statusTone("critical", 0)).toBe("critical");
+    expect(statusTone("critical", 1)).toBe("warning");
+    expect(statusTone("low", 3)).toBe("warning");
+    expect(statusTone("ok", 30)).toBe("ok");
   });
 });

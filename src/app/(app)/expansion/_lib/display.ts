@@ -88,3 +88,11 @@ export function minutesToHoursInput(min: number): string {
   const hundredths = Math.round((rest * 100) / 60);
   return `${h},${String(hundredths).padStart(2, "0").replace(/0$/, "")}`;
 }
+
+/** Måtten i utgångsläget (baselines.metric) i klartext. */
+export const BASELINE_METRIC_LABEL = {
+  profit_per_machine_month: "Vinst per automat och månad",
+  stockout_days_month: "Slutsålda dagar per månad",
+  refill_hours_month: "Tid för påfyllning per månad",
+  admin_hours_month: "Tid för administration per månad",
+} as const;

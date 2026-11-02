@@ -211,6 +211,22 @@ export async function seedPortalFixture(): Promise<PortalFixture> {
                   '{"kind":"store","profitOre":123}'::jsonb, 'calc@1')
           returning id`,
     );
+    // Butiken ser bara godkända rapporter (report_approvals). Fixturens
+    // rapporter godkänns här; utkast testas i redteam-portal.test.ts.
+    for (const [org, id] of [
+      [a.orgId, r1.id],
+      [a.orgId, a2.reportId],
+      [a.orgId, owner.id],
+      [b.orgId, null],
+    ] as const) {
+      await tx.execute(
+        id
+          ? sql`insert into public.report_approvals (organization_id, report_id) values (${org}, ${id})`
+          : sql`insert into public.report_approvals (organization_id, report_id)
+                select organization_id, id from public.reports
+                where organization_id = ${org} and kind = 'store_statement'`,
+      );
+    }
     return { reportA1: r1.id, ownerReportA: owner.id };
   });
 

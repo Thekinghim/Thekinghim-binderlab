@@ -200,7 +200,12 @@ export function ForecastChart({
     const hi = geo.bandPts[geo.bandPts.length - 1];
     if (last && hi) {
       const lines: LabelLine[] = [
-        [{ text: `${weeks.length} veckor · ${fmt(total.mid)}`, kind: "title" }],
+        [
+          {
+            text: `${weeks.length}${narrow ? " v" : " veckor"} · ${fmt(total.mid)}`,
+            kind: "title",
+          },
+        ],
       ];
       if (!narrow)
         lines.push([

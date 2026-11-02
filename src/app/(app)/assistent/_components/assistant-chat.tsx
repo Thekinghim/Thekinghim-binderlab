@@ -16,6 +16,7 @@ import {
   type KeyboardEvent,
 } from "react";
 
+import { FROM_PARAM, PERIOD_PARAM, TO_PARAM } from "@/components/shell/period-state";
 import { Button } from "@/components/ui/button";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
@@ -29,6 +30,20 @@ import {
 } from "@/server/assistant/protocol";
 
 import { AnswerText, Evidence, VerificationLine, type PendingCall } from "./evidence";
+
+/**
+ * Periodvalet i panelen (skalets URL: period, from, to), som skickas med frågan. Servern
+ * tolkar det som sidorna gör och ger modellen perioden när frågan inte anger någon.
+ */
+function shellParams(): Record<string, string> {
+  const out: Record<string, string> = {};
+  const sp = new URLSearchParams(window.location.search);
+  for (const key of [PERIOD_PARAM, FROM_PARAM, TO_PARAM]) {
+    const value = sp.get(key);
+    if (value) out[key] = value;
+  }
+  return out;
+}
 
 type Turn = {
   key: string;
@@ -170,7 +185,7 @@ export function AssistantChat({
         const response = await fetch("/assistent/fraga", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ question: q, conversationId }),
+          body: JSON.stringify({ question: q, conversationId, shell: shellParams() }),
           signal: controller.signal,
         });
         if (!response.body) throw new Error("Inget svar från servern.");

@@ -2,7 +2,8 @@
  * En liten egen fixtur för Inköpspriser och Inställningar: bara det de testerna behöver
  * (titlar, priser, order, en stängd månad), så att de inte beror på den stora fixturen.
  *
- * Priser från 1 jan. 2025, order i mars 2025, december 2024 stängd.
+ * Priser från 1 jan. 2025, order i mars 2025, december 2024 stängd. En tredje titel har
+ * ett pris från 1 nov. 2024 som gäller in i den stängda månaden.
  */
 
 import { sql } from "drizzle-orm";
@@ -17,6 +18,8 @@ export interface PriceFixture {
   titleId: string;
   secondTitleId: string;
   mergedTitleId: string;
+  /** Titel vars enda pris (1 nov. 2024, 60 kr) gäller i den stängda december 2024. */
+  closedTitleId: string;
 }
 
 export async function seedPriceFixture(): Promise<PriceFixture> {
@@ -24,18 +27,20 @@ export async function seedPriceFixture(): Promise<PriceFixture> {
   const orgId = await createOrg(owner, `Inköpspriser ${uniqueSuffix()}`);
   return asUser(owner, async (tx) => {
     const org = { organizationId: orgId };
-    const [title, secondTitle, duplicate] = await tx
+    const [title, secondTitle, duplicate, closedTitle] = await tx
       .insert(s.titles)
       .values([
         { ...org, name: "Pokémon 151 Booster" },
         { ...org, name: "Surging Sparks Booster" },
         { ...org, name: "Pokemon 151 booster pack" },
+        { ...org, name: "Paldean Fates Booster" },
       ])
       .returning();
     await tx.execute(sql`select public.merge_titles(${orgId}, ${duplicate!.id}, ${title!.id})`);
     await tx.insert(s.purchasePrices).values([
       { ...org, titleId: title!.id, unitCostOre: 4500, validFrom: "2025-01-01" },
       { ...org, titleId: secondTitle!.id, unitCostOre: 5200, validFrom: "2025-01-01" },
+      { ...org, titleId: closedTitle!.id, unitCostOre: 6000, validFrom: "2024-11-01" },
     ]);
     const [source] = await tx
       .insert(s.dataSources)
@@ -60,6 +65,7 @@ export async function seedPriceFixture(): Promise<PriceFixture> {
       titleId: title!.id,
       secondTitleId: secondTitle!.id,
       mergedTitleId: duplicate!.id,
+      closedTitleId: closedTitle!.id,
     };
   });
 }

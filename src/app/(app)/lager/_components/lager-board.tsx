@@ -6,12 +6,31 @@ import { useCallback, useMemo, useState } from "react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 
+import { formatInt } from "@/lib/format";
+
 import { formatIsoDate, packs, plural, tenthsText } from "../_lib/display";
-import type { LagerView } from "../_lib/types";
+import { WAREHOUSE_LOW_DAYS, type LagerView } from "../_lib/types";
 import { PackList } from "./pack-list";
 import { RegisterDialog, type RegisterTarget } from "./register-dialog";
 import { StockMatrix } from "./stock-matrix";
 import { WarehouseList } from "./warehouse-list";
+
+/**
+ * "1 titel räcker inte till veckans besök, 2 till räcker kortare än 7 dagar vid alla
+ * automaters takt." `lowOnly` är titlar som räcker till veckan men är Låg på dagar.
+ */
+function warehouseAside(short: number, lowOnly: number): string {
+  const days = `kortare än ${formatInt(WAREHOUSE_LOW_DAYS)} dagar vid alla automaters takt`;
+  if (short > 0 && lowOnly > 0) {
+    return `${plural(short, "titel", "titlar")} räcker inte till veckans besök, ${formatInt(lowOnly)} till räcker ${days}.`;
+  }
+  if (short > 0)
+    return `${plural(short, "titel räcker", "titlar räcker")} inte till veckans besök.`;
+  if (lowOnly > 0) {
+    return `Räcker till veckans besök. ${plural(lowOnly, "titel räcker", "titlar räcker")} ${days}.`;
+  }
+  return "Räcker till veckans besök.";
+}
 
 type Selection =
   { kind: "machine"; machineId: string; titleId: string } | { kind: "warehouse"; titleId: string };
@@ -91,19 +110,43 @@ export function LagerBoard({
   }, [pathname, searchParams]);
 
   const { counts, window: salesWindow } = view;
+  const packFirst = view.packListFirst && view.machines.length > 0;
+  const matrixIndex = packFirst ? 2 : 1;
+  const packIndex = packFirst ? 1 : 2;
   const cellsTotal = counts.critical + counts.low + counts.ok;
   const warehouseTotal = view.warehouse.reduce((s, w) => s + Math.max(0, w.onHand), 0);
-  const warehouseShort = view.warehouse.filter((w) => w.status !== "ok");
+  const warehouseShort = view.warehouse.filter((w) => w.shortBy > 0);
+  const warehouseLow = view.warehouse.filter((w) => w.status !== "ok");
+
+  const packSection =
+    view.machines.length > 0 ? (
+      <section aria-labelledby="pafyllningslista">
+        <PackList
+          machines={view.machines}
+          lists={view.packLists}
+          machineId={packMachine}
+          onMachine={setPackMachine}
+          today={view.today}
+          index={packIndex}
+          canRegister={view.canRegister}
+          onSelect={(m, line) =>
+            setSelection({ kind: "machine", machineId: m.id, titleId: line.titleId })
+          }
+        />
+      </section>
+    ) : null;
 
   return (
     <>
+      {packFirst ? packSection : null}
+
       <section aria-labelledby="matris" className="flex flex-col gap-6 md:gap-10">
         <SectionHeader
           id="matris"
-          index={1}
+          index={matrixIndex}
           eyebrow={`Lager per automat · ${salesWindow.days} d`}
-          title={`${plural(cellsTotal, "fack", "fack")} i ${plural(view.machines.length, "automat", "automater")}.`}
-          aside={`Dagar kvar vid takten ${formatIsoDate(salesWindow.start, view.today)} – ${formatIsoDate(salesWindow.end, view.today)}, låg under ${tenthsText(view.lowThresholdTenths)} dagar.`}
+          title={`${plural(cellsTotal, "plats", "platser")} i ${plural(view.machines.length, "automat", "automater")}.`}
+          aside={`En plats är en titel i en automat. Dagar kvar vid takten ${formatIsoDate(salesWindow.start, view.today)} – ${formatIsoDate(salesWindow.end, view.today)}, låg under ${tenthsText(view.lowThresholdTenths)} dagar.`}
         />
         {view.machines.length === 0 || view.titles.length === 0 ? (
           <StateMessage
@@ -126,21 +169,7 @@ export function LagerBoard({
         )}
       </section>
 
-      {view.machines.length > 0 ? (
-        <section aria-labelledby="pafyllningslista">
-          <PackList
-            machines={view.machines}
-            lists={view.packLists}
-            machineId={packMachine}
-            onMachine={setPackMachine}
-            today={view.today}
-            canRegister={view.canRegister}
-            onSelect={(m, line) =>
-              setSelection({ kind: "machine", machineId: m.id, titleId: line.titleId })
-            }
-          />
-        </section>
-      ) : null}
+      {packFirst ? null : packSection}
 
       {view.hasWarehouse ? (
         <section aria-labelledby="centrallager" className="flex flex-col gap-6 md:gap-10">
@@ -149,11 +178,10 @@ export function LagerBoard({
             index={3}
             eyebrow="Centrallager"
             title={`${packs(warehouseTotal)} i centrallagret.`}
-            aside={
-              warehouseShort.length === 0
-                ? "Räcker till veckans besök."
-                : `${plural(warehouseShort.length, "titel räcker", "titlar räcker")} inte till veckans besök.`
-            }
+            aside={warehouseAside(
+              warehouseShort.length,
+              warehouseLow.length - warehouseShort.length,
+            )}
           />
           {view.warehouse.length === 0 ? (
             <StateMessage kind="empty" message="Centrallagret är tomt och inget behövs i veckan." />

@@ -41,7 +41,8 @@ export function formatWhen(iso: string | null, timeZone: string, now: Date = new
 
 /** Första meningen i en text (för grå rubrikdelar). */
 export function firstSentence(text: string): string {
-  const m = /^(.+?[.!?])(\s|$)/.exec(text.trim());
+  // En punkt följd av gemen eller siffra är en förkortning ("1 nov. 17:09"), inte meningens slut.
+  const m = /^(.+?[.!?])(\s+(?=[A-ZÅÄÖ])|$)/.exec(text.trim());
   return m?.[1] ?? text.trim();
 }
 

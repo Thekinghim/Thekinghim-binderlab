@@ -5,16 +5,16 @@ import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
-import { Modal } from "@/components/ui/modal";
 import { Segmented } from "@/components/ui/segmented";
 import { StatusTag } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
 import { formatInt, MINUS, NBSP } from "@/lib/format";
 
 import { registerCount, registerRefill } from "../actions";
-import { daysLeftLong, packs, STATUS_LABEL, STATUS_TONE } from "../_lib/display";
+import { daysLeftLong, packs, STATUS_LABEL, statusTone } from "../_lib/display";
 import type { RegisterResult } from "../_lib/register";
 import type { LagerMachine, LagerTitle, StockCell, WarehouseRow } from "../_lib/types";
+import { Sheet } from "./sheet";
 
 export type RegisterTarget =
   | { kind: "machine"; machine: LagerMachine; title: LagerTitle; cell: StockCell }
@@ -107,7 +107,7 @@ export function RegisterDialog({
   }, [result]);
 
   if (!target) {
-    return <Modal open={false} onClose={onClose} title="Lager" />;
+    return <Sheet open={false} onClose={onClose} title="Lager" />;
   }
 
   const isMachine = target.kind === "machine";
@@ -116,8 +116,9 @@ export function RegisterDialog({
   const n = parseCount(value);
   const useWarehouse = isMachine && mode === "refill" && hasWarehouse && fromWarehouse;
 
+  // Förhandsvisningen bara för ett giltigt värde (aldrig bredvid ett fel).
   let preview: string | null = null;
-  if (n !== null) {
+  if (n !== null && validate() === undefined) {
     preview =
       mode === "refill"
         ? `Nytt saldo ${formatInt(onHand)} + ${formatInt(n)} = ${packs(onHand + n)}.`
@@ -181,10 +182,9 @@ export function RegisterDialog({
   const title = `${target.title.name} i ${place}`;
 
   return (
-    <Modal
+    <Sheet
       open
       onClose={onClose}
-      size="sm"
       eyebrow={isMachine ? `${target.machine.code} / ${target.machine.name}` : "Centrallager"}
       title={title}
       footer={
@@ -250,11 +250,11 @@ export function RegisterDialog({
             <dd className="tnum text-xl font-medium">{packs(onHand)}</dd>
             <dd className="flex items-center">
               {isMachine ? (
-                <StatusTag status={STATUS_TONE[target.cell.status]}>
+                <StatusTag status={statusTone(target.cell.status, target.cell.onHand)}>
                   {STATUS_LABEL[target.cell.status]}
                 </StatusTag>
               ) : target.row ? (
-                <StatusTag status={STATUS_TONE[target.row.status]}>
+                <StatusTag status={statusTone(target.row.status, target.row.onHand)}>
                   {STATUS_LABEL[target.row.status]}
                 </StatusTag>
               ) : (
@@ -283,7 +283,7 @@ export function RegisterDialog({
                   m === "refill" && target.cell.suggested > 0 ? String(target.cell.suggested) : "",
                 );
               }}
-              className="min-h-11 w-full [&>button]:flex-1"
+              className="w-full [&>button]:min-h-11 [&>button]:flex-1"
             />
           ) : null}
 
@@ -338,6 +338,6 @@ export function RegisterDialog({
           ) : null}
         </form>
       )}
-    </Modal>
+    </Sheet>
   );
 }

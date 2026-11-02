@@ -113,3 +113,35 @@ describe("hjälpfunktioner", () => {
     expect(parseSignedOre("abc").ok).toBe(false);
   });
 });
+
+describe("parsePayoutFile: gränser (granskningen)", () => {
+  it("en period över 366 dagar blir en felrad, inte ett fel för hela filen", () => {
+    const r = parsePayoutFile(
+      file([
+        "Referens;Period från;Period till;Utbetald;Belopp;Avgifter",
+        "U-1;2025-01-01;2026-03-01;2026-03-05;100,00;0",
+        "U-2;2026-01-01;2026-12-31;2027-01-05;100,00;0",
+      ]),
+    );
+    expect(r.errors).toEqual([
+      { lineNumber: 2, message: "Perioden är längre än 366 dagar. Dela upp utbetalningen per månad." },
+    ]);
+    expect(r.payouts.map((p) => p.reference)).toEqual(["U-2"]);
+  });
+
+  it("ett för långt ordernummer får ett eget meddelande", () => {
+    const r = parsePayoutFile(file(["Referens;Ordernummer;Belopp", `U-1;${"9".repeat(101)};170,00`]));
+    expect(r.errors[0]?.message).toBe("Ordernumret är längre än 100 tecken.");
+  });
+
+  it("avgifter med och utan minustecken är samma avdrag", () => {
+    const r = parsePayoutFile(
+      file([
+        "Referens;Period från;Period till;Belopp;Avgifter",
+        "A;2026-10-01;2026-10-31;100,00;-3,73",
+        "B;2026-11-01;2026-11-30;100,00;3,73",
+      ]),
+    );
+    expect(r.payouts.map((p) => p.feesOre)).toEqual([373, 373]);
+  });
+});

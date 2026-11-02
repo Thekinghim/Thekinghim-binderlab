@@ -62,6 +62,17 @@ describe("loadPricePageFor och loadTitleDetailFor", () => {
     await expect(loadPricePageFor(otherOwner, fx.orgId)).rejects.toBeInstanceOf(AuthorizationError);
   });
 
+  it("senaste prisändringen kommer från ändringsloggen", async () => {
+    const page = await loadPricePageFor(viewer, fx.orgId);
+    const last = await rows(
+      db(),
+      sql`select max(occurred_at) as at from public.audit_log
+          where organization_id = ${fx.orgId} and table_name = 'purchase_prices'`,
+    );
+    expect(page.lastChangeAt).not.toBeNull();
+    expect(new Date(page.lastChangeAt!).getTime()).toBe(new Date(String(last[0]?.at)).getTime());
+  });
+
   it("ett ogiltigt titel-id ger tomt underlag, inte ett fel", async () => {
     expect(await loadTitleDetailFor(owner, fx.orgId, "inte-ett-id")).toEqual({
       events: [],
@@ -156,6 +167,27 @@ describe("addPurchasePriceFor", () => {
           where organization_id = ${fx.orgId} and title_id = ${fx.secondTitleId}`,
     );
     expect(count[0]?.n).toBe(1);
+  });
+
+  it("en ren ändring av anteckningen på ett pris i en stängd månad släpps igenom", async () => {
+    const base = { organizationId: fx.orgId, titleId: fx.closedTitleId, validFrom: "2024-11-01" };
+    const changedAmount = await addPurchasePriceFor(owner, { ...base, unitCostOre: 6_100 });
+    expect(changedAmount).toEqual({
+      ok: false,
+      error: PRICE_MESSAGES.closedMonth(["2024-12"]),
+    });
+    const noteOnly = await addPurchasePriceFor(owner, {
+      ...base,
+      unitCostOre: 6_000,
+      note: "Faktura 1182",
+    });
+    expect(noteOnly).toMatchObject({ ok: true, data: { mode: "replaced" } });
+    const stored = await rows(
+      db(),
+      sql`select unit_cost_ore::int as unit_cost_ore, note from public.purchase_prices
+          where organization_id = ${fx.orgId} and title_id = ${fx.closedTitleId}`,
+    );
+    expect(stored).toEqual([{ unit_cost_ore: 6_000, note: "Faktura 1182" }]);
   });
 
   it("läsare, påfyllare och andra organisationers ägare får inte lägga till", async () => {

@@ -53,8 +53,9 @@ export default async function SalesDeckPage({
         @media print {
           body:has([data-sales-deck]) :is(header, aside, nav):not([data-sales-deck] *) { display: none !important; }
           body:has([data-sales-deck]) * { visibility: hidden !important; }
-          [data-sales-deck], [data-sales-deck] * { visibility: visible !important; }
-          [data-sales-deck] { position: absolute; left: 0; top: 0; }
+          body:has([data-sales-deck]) [data-sales-deck],
+          body:has([data-sales-deck]) [data-sales-deck] * { visibility: visible !important; }
+          body:has([data-sales-deck]) [data-sales-deck] { position: absolute; left: 0; top: 0; }
         }
       `}</style>
       <div data-print="hide" className="border-b border-line bg-bg">

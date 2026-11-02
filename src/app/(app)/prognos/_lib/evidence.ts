@@ -54,6 +54,8 @@ export interface EvidenceView {
 export interface NameLookup {
   title(id: string): string;
   machine(id: string): string;
+  /** Sista dagen med order. Ett underlag för en period efter den (en prognos) länkar inte till order. */
+  readonly asOf?: IsoDate;
 }
 
 const MAX_DATES = 14;
@@ -83,7 +85,7 @@ export function evidenceView(e: PlanEvidence, names: NameLookup): EvidenceView {
       label: "Visa ordern",
       href: `/order?order=${encodeURIComponent(e.orderIds[0]!)}`,
     });
-  } else if (e.orderIds.length > 0 || e.period) {
+  } else if (e.orderIds.length > 0 || (e.period && (!names.asOf || e.period.start <= names.asOf))) {
     links.push({
       label: e.orderIds.length > 0 ? `Visa ${formatInt(e.orderIds.length)} order` : "Visa orderna",
       href: orderHref(e.period, e.titleIds, e.machineIds),

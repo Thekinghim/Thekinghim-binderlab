@@ -87,6 +87,47 @@ function EffectBlock({ effect, ctx }: { effect: PriceChangeEffect; ctx: SectionC
   );
 }
 
+/** Syns testpriset i testautomaternas order? Visas före utvärderingen, med underlag. */
+function PriceCheck({ view, ctx }: { view: ExperimentView; ctx: SectionContext }) {
+  const check = view.priceCheck;
+  if (check === null) {
+    if (view.status === "stopped") return null;
+    return (
+      <StateMessage
+        kind="empty"
+        compact
+        code="Ej mätt"
+        message={`Mätningen börjar när första hela dagen med testpriset är slut (${dayText(view.row.startedOn, ctx.today)}).`}
+      />
+    );
+  }
+  const evidence = {
+    rule: `Testautomaternas order för titeln från startdagen till och med ${dayText(check.period.end, ctx.today)}; en order räknas till testpriset när beloppet är exakt ${kronor(view.row.toOre)}. Utvärderingen visas först när testpriset syns i orderna.`,
+    period: check.period,
+    orderIds: check.orderIds,
+    dates: [],
+    titleIds: [view.row.titleId],
+    machineIds: view.row.testMachineIds,
+    figures: [
+      { key: "orders", label: "Order i testautomaterna", value: check.orders, unit: "count" },
+      { key: "atTest", label: "Varav till testpriset", value: check.atTestPrice, unit: "count" },
+      { key: "toOre", label: "Testpris", value: view.row.toOre, unit: "ore" },
+    ] as const,
+  };
+  return (
+    <div className="flex min-w-0 flex-col gap-2">
+      {check.status === "missing" ? (
+        <StateMessage kind="not-configured" code="Testpriset syns inte" compact message={check.text} />
+      ) : (
+        <p className={check.status === "partial" ? "max-w-3xl text-fg" : "meta text-subtle"}>
+          {check.text}
+        </p>
+      )}
+      <Evidence label="Kontroll av testpriset" evidence={evidence} names={ctx.names} />
+    </div>
+  );
+}
+
 const EXPERIMENT_STATUS: Record<ExperimentView["status"], { label: string; status: Status }> = {
   planned: { label: "Startar", status: "neutral" },
   running: { label: "Pågår", status: "ok" },
@@ -264,6 +305,7 @@ export function PricingSection({
                   </span>
                 </div>
                 {e.row.text ? <p className="max-w-3xl text-muted">{e.row.text}</p> : null}
+                <PriceCheck view={e} ctx={ctx} />
                 {e.evaluation === null ? null : e.evaluation.ok ? (
                   <EffectBlock effect={e.evaluation.value} ctx={ctx} />
                 ) : (

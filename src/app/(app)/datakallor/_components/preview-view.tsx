@@ -256,7 +256,8 @@ function TimezoneCheck({
     });
 
   return (
-    <PanelSection label="Kontrollera tidszonen mot Awish">
+    // Panelens gap ger redan luften ovanför; sektionens egen marginal skulle dubbla den.
+    <PanelSection label="Kontrollera tidszonen mot Awish" className="mt-0! md:mt-0!">
       <div className="grid gap-6 md:grid-cols-12">
         <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3 md:col-span-7">
           <div className="flex flex-col gap-1">

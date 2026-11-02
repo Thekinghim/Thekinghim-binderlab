@@ -93,3 +93,46 @@ export function figureText(f: ScenarioFigure): string {
       return formatInt(f.value);
   }
 }
+
+/** Det i ett underlag som behövs för länkarna till orderlistan. */
+export interface OrderLinkEvidence {
+  readonly period: Period | null;
+  readonly orderIds: readonly string[];
+  readonly dates: readonly IsoDate[];
+  readonly titleIds: readonly string[];
+  readonly machineIds: readonly string[];
+}
+
+/** Så många titlar får egna länkar till orderlistan; fler visas som en länk utan titel. */
+const MAX_TITLE_LINKS = 6;
+
+/**
+ * Länkar till orderlistan, avgränsade så nära underlaget som orderlistan kan: perioden,
+ * automaten när underlaget gäller exakt en, och titeln (en länk per titel när underlaget
+ * gäller flera, högst MAX_TITLE_LINKS).
+ */
+export function orderLinks(
+  e: OrderLinkEvidence,
+  titleName: (id: string) => string,
+): { href: string; label: string }[] {
+  if (e.orderIds.length === 0) return [];
+  const sorted = [...e.dates].sort();
+  const start = e.period?.start ?? sorted[0];
+  const end = e.period?.end ?? sorted[sorted.length - 1];
+  if (!start || !end) return [];
+  const base = new URLSearchParams({ from: start, to: end });
+  if (e.machineIds.length === 1) base.set("automat", e.machineIds[0]!);
+  const count = `${formatInt(e.orderIds.length)}${NBSP}order i underlaget`;
+  if (e.titleIds.length === 0 || e.titleIds.length > MAX_TITLE_LINKS) {
+    return [{ href: `/order?${base.toString()}`, label: `${count} →` }];
+  }
+  if (e.titleIds.length === 1) {
+    base.set("titel", e.titleIds[0]!);
+    return [{ href: `/order?${base.toString()}`, label: `${count} →` }];
+  }
+  return e.titleIds.map((id) => {
+    const params = new URLSearchParams(base);
+    params.set("titel", id);
+    return { href: `/order?${params.toString()}`, label: `Order för ${titleName(id)} →` };
+  });
+}

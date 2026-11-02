@@ -28,33 +28,63 @@ type SearchParams = Record<string, string | string[] | undefined>;
 export default async function HemPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
   const { model, today, scope, canEdit } = await loadHome(sp);
-  const { headline, coverage } = model;
+  const { headline } = model;
 
   const periodText = (p: { start: string; end: string }) =>
     formatPeriodShort({ start: dateOf(p.start), end: dateOf(p.end) }, dateOf(today));
-  const shown = coverage ?? model.period;
+  const dayOnly = (d: string) => periodText({ start: d, end: d });
   const scopeText = scope
     ? scope.kind === "machine"
       ? `${scope.code ? `${scope.code.replace("-", "‑")} ` : ""}${scope.name}`
       : scope.name
     : null;
 
-  const meta: SectionMeta[] = [
-    { label: "Period", value: periodText(shown) },
+  // Filtret pekar på en automat eller butik som inte finns (eller inte syns för rollen).
+  if (scope?.missing) {
+    const noun = scope.kind === "machine" ? "Automaten" : "Butiken";
+    return (
+      <div className="mx-auto flex w-full max-w-[1280px] flex-col px-4 pt-8 pb-16 md:px-8 md:pt-12">
+        <SectionHeader
+          as="h1"
+          size="xl"
+          eyebrow="Hem"
+          title={`${noun} finns inte.`}
+          aside="Filtret i adressen pekar på något som inte finns i organisationen."
+        />
+        <StateMessage
+          className="mt-12"
+          kind="empty"
+          code="0 träffar"
+          message={`${noun} i filtret finns inte, eller så har du inte tillgång till den.`}
+          action={{ label: "Visa hela organisationen", href: `/${carriedParams(sp, {}, false)}` }}
+        />
+      </div>
+    );
+  }
+
+  // Perioden är skalets; nyckeltalen gäller hela den. Börjar datan inne i perioden står
+  // det som en egen rad, så att perioden och jämförelsen är desamma som i skalet.
+  const dataFrom =
+    model.dataStart && model.dataStart > model.period.start && model.dataStart <= model.period.end
+      ? model.dataStart
+      : null;
+  const meta: SectionMeta[] = [{ label: "Period", value: periodText(model.period) }];
+  if (dataFrom) meta.push({ label: "Första order", value: dayOnly(dataFrom) });
+  meta.push(
     {
       label: "Jämfört med",
       value: model.compare ? periodText(model.compare) : EN_DASH,
     },
     { label: "Order", value: formatInt(model.kpis.find((k) => k.id === "orders")?.value ?? 0) },
-  ];
+  );
   if (scopeText)
     meta.unshift({ label: scope?.kind === "machine" ? "Automat" : "Butik", value: scopeText });
 
   const comparison = model.compare
-    ? `${periodText(shown)} · jämfört med ${periodText(model.compare)}`
-    : model.dataStart && coverage
-      ? `${periodText(shown)} · ingen jämförelse, datan börjar ${periodText({ start: model.dataStart, end: model.dataStart })}`
-      : periodText(shown);
+    ? `${periodText(model.period)} · jämfört med ${periodText(model.compare)}`
+    : model.dataStart
+      ? `${periodText(model.period)} · ingen jämförelse, datan börjar ${dayOnly(model.dataStart)}`
+      : periodText(model.period);
 
   const revenue = model.kpis.find((k) => k.id === "revenue")?.value ?? 0;
 
@@ -76,11 +106,11 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
           kind="not-configured"
           message="Inga order har importerats ännu."
           detail="Nyckeltal, intäkt per dag och topplistan räknas fram ur orderna."
-          action={canEdit ? { label: "Lägg till datakälla →", href: "/datakallor" } : undefined}
+          action={canEdit ? { label: "Lägg till datakälla", href: "/datakallor" } : undefined}
         />
       ) : (
         <>
-          <div className="mt-10 flex flex-col gap-4 md:mt-12">
+          <div className="mt-8 flex flex-col gap-4 md:mt-10">
             <HomeKpis kpis={model.kpis} comparison={comparison} />
             {model.unpriced ? <UnpricedNote unpriced={model.unpriced} canEdit={canEdit} /> : null}
           </div>
@@ -90,21 +120,14 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
               className="mt-12"
               kind="empty"
               code="0 order"
-              message={`Inga betalda order ${periodText(model.period)}.`}
-              detail={
-                model.dataStart
-                  ? `Första ordern i datan är från ${periodText({ start: model.dataStart, end: model.dataStart })}.`
-                  : undefined
-              }
-              action={{ label: "Visa allt →", href: `/${carriedParams(sp, { period: "allt" })}` }}
+              message="Diagrammet och topplistan visas när perioden har order."
+              action={{ label: "Visa allt", href: `/${carriedParams(sp, { period: "allt" })}` }}
             />
           ) : null}
 
-          {model.daily ? (
-            <DailySection daily={model.daily} today={today} sp={sp} revenue={revenue} />
-          ) : null}
+          <DailyAndTodos model={model} today={today} sp={sp} revenue={revenue} />
 
-          <TodoAndInsights model={model} sp={sp} />
+          <Insights model={model} />
 
           {model.topTitles.rows.length > 0 ? (
             <section
@@ -113,7 +136,7 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
             >
               <SectionHeader
                 id="titlar"
-                index={model.todos ? 4 : 3}
+                index={sectionIndex(model, "titles")}
                 eyebrow={`Titlar · ${formatInt(model.topTitles.totalTitles)} st`}
                 title="Mest sålda titlar."
                 aside={topTitlesAside(model)}
@@ -127,8 +150,7 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
                 <div className="min-w-0 lg:col-span-8">
                   <TopTitles
                     top={model.topTitles}
-                    totalRevenueOre={revenue}
-                    caption={`Titlar efter intäkt ${periodText(shown)}, med andel av intäkten.`}
+                    caption={`Titlar efter intäkt ${periodText(model.period)}, med andel av intäkten.`}
                   />
                 </div>
                 <TitlesAside model={model} />
@@ -141,18 +163,74 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
   );
 }
 
+/** Sektionernas nummer: diagrammet, Att göra (bara för roller som har den), Värt att veta, titlar. */
+function sectionIndex(model: HomeModel, id: "daily" | "todos" | "insights" | "titles"): number {
+  const order = [
+    model.daily ? "daily" : null,
+    model.todos ? "todos" : null,
+    "insights",
+    "titles",
+  ].filter(Boolean);
+  return order.indexOf(id) + 1;
+}
+
 // ---------------------------------------------------------------------------
 
-function DailySection({
-  daily,
+function DailyAndTodos({
+  model,
   today,
   sp,
   revenue,
 }: {
-  daily: HomeDaily;
+  model: HomeModel;
   today: string;
   sp: SearchParams;
   revenue: number;
+}) {
+  if (!model.daily && !model.todos) return null;
+  // Diagrammet och Att göra står bredvid varandra på dator, så att "Vad behöver jag göra?"
+  // syns på första skärmen; på mobil kommer Att göra direkt under diagrammet.
+  return (
+    <div className="mt-10 grid grid-cols-1 gap-x-10 gap-y-16 border-t border-line pt-10 md:mt-12 md:pt-12 lg:grid-cols-12">
+      {model.daily ? (
+        <DailySection
+          daily={model.daily}
+          todayPending={model.todayPending}
+          today={today}
+          sp={sp}
+          revenue={revenue}
+          index={sectionIndex(model, "daily")}
+          className={model.todos ? "lg:col-span-8" : "lg:col-span-12"}
+        />
+      ) : null}
+      {model.todos ? (
+        <TodoSection
+          model={model}
+          sp={sp}
+          index={sectionIndex(model, "todos")}
+          className={model.daily ? "lg:col-span-4" : "lg:col-span-6"}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function DailySection({
+  daily,
+  todayPending,
+  today,
+  sp,
+  revenue,
+  index,
+  className,
+}: {
+  daily: HomeDaily;
+  todayPending: boolean;
+  today: string;
+  sp: SearchParams;
+  revenue: number;
+  index: number;
+  className?: string;
 }) {
   const peakDate = daily.peakIndex !== null ? daily.dates[daily.peakIndex] : undefined;
   const peakValue = daily.peakIndex !== null ? (daily.revenueOre[daily.peakIndex] ?? 0) : 0;
@@ -165,32 +243,37 @@ function DailySection({
     : null;
   const days = daily.dates.length;
   const compareName = `Föreg. ${formatInt(days)}${NBSP}d`;
+  const shownTotal = daily.revenueOre.reduce((a, b) => a + b, 0);
   const summary = [
-    `Intäkt per dag, ${formatInt(days)} dagar: totalt ${kr(revenue)}, snitt ${kr(daily.averageOre)} per dag`,
+    `Intäkt per dag, ${formatInt(days)} dagar: totalt ${kr(shownTotal || revenue)}, snitt ${kr(daily.averageOre)} per dag`,
     peakText ? `, ${peakText}` : "",
     daily.compareOre
-      ? `. Streckad linje: samma antal dagar i perioden innan, totalt ${kr(daily.compareOre.reduce((a, b) => a + b, 0))}.`
+      ? `. Streckad linje: perioden innan, dag för dag, totalt ${kr(daily.compareOre.reduce((a, b) => a + b, 0))}.`
       : ".",
   ].join("");
+  const aside = [
+    sentence(`Snitt ${kr(daily.averageOre)} per dag${peakText ? `, ${peakText}` : ""}`),
+    todayPending ? "I dag är inte med: inga order än." : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <section
-      aria-labelledby="intakt-per-dag"
-      className="mt-12 scroll-mt-28 border-t border-line pt-12 md:mt-16 md:pt-16"
-    >
+    <section aria-labelledby="intakt-per-dag" className={`min-w-0 scroll-mt-28 ${className ?? ""}`}>
       <SectionHeader
         id="intakt-per-dag"
-        index={1}
+        index={index}
         eyebrow={`Intäkt per dag · ${formatInt(days)} d`}
         title="Intäkt per dag."
-        aside={sentence(`Snitt ${kr(daily.averageOre)}${peakText ? `, ${peakText}` : ""}`)}
+        aside={aside}
+        size="md"
         actions={
           <ArrowLink href={`/lonsamhet${carriedParams(sp, { grupp: "dag" })}`}>
             Lönsamhet per dag
           </ArrowLink>
         }
       />
-      <Panel grid marks className="mt-10 md:mt-12">
+      <Panel grid marks className="mt-8">
         <DailyChart
           dates={daily.dates}
           revenueOre={daily.revenueOre}
@@ -207,77 +290,74 @@ function DailySection({
   );
 }
 
-function TodoAndInsights({ model, sp }: { model: HomeModel; sp: SearchParams }) {
-  const hasTodos = model.todos !== null;
-  if (!hasTodos && model.insights.length === 0) return null;
-  const insightIndex = hasTodos ? 3 : 2;
-
+function TodoSection({
+  model,
+  sp,
+  index,
+  className,
+}: {
+  model: HomeModel;
+  sp: SearchParams;
+  index: number;
+  className?: string;
+}) {
+  if (!model.todos) return null;
   return (
-    <div className="mt-12 grid grid-cols-1 gap-x-8 gap-y-16 border-t border-line pt-12 md:mt-16 md:pt-16 lg:grid-cols-12">
-      {model.todos ? (
-        <section aria-labelledby="att-gora" className="min-w-0 scroll-mt-28 lg:col-span-5">
-          <SectionHeader
-            id="att-gora"
-            index={2}
-            eyebrow={`Att göra · ${formatInt(model.todoCount)} st`}
-            title="Att göra."
-            aside={todoAside(model)}
-            size="md"
-          />
-          <div className="mt-8 flex flex-col gap-4">
-            {model.todos.length > 0 ? (
-              <TodoList todos={model.todos} />
-            ) : (
-              <StateMessage
-                compact
-                kind="empty"
-                code="0 punkter"
-                message="Inget att göra just nu."
-              />
-            )}
-            {model.todoCount > model.todos.length ? (
-              <ArrowLink href={`/att-gora${carriedParams(sp)}`}>
-                {`Visa alla ${formatInt(model.todoCount)} i Att göra`}
-              </ArrowLink>
-            ) : model.todoCount > 0 ? (
-              <ArrowLink href={`/att-gora${carriedParams(sp)}`}>Öppna Att göra</ArrowLink>
-            ) : null}
-          </div>
-        </section>
-      ) : null}
+    <section aria-labelledby="att-gora" className={`min-w-0 scroll-mt-28 ${className ?? ""}`}>
+      <SectionHeader
+        id="att-gora"
+        index={index}
+        eyebrow={`Att göra · ${formatInt(model.todoCount)} st`}
+        title="Att göra."
+        aside={todoAside(model)}
+        size="md"
+      />
+      <div className="mt-6 flex flex-col gap-4">
+        {model.todos.length > 0 ? (
+          <TodoList todos={model.todos} />
+        ) : (
+          <StateMessage compact kind="empty" code="0 punkter" message="Inget att göra just nu." />
+        )}
+        {model.todoCount > model.todos.length ? (
+          <ArrowLink href={`/att-gora${carriedParams(sp)}`}>
+            {`Visa alla ${formatInt(model.todoCount)} i Att göra`}
+          </ArrowLink>
+        ) : model.todoCount > 0 ? (
+          <ArrowLink href={`/att-gora${carriedParams(sp)}`}>Öppna Att göra</ArrowLink>
+        ) : null}
+      </div>
+    </section>
+  );
+}
 
-      <section
-        aria-labelledby="vart-att-veta"
-        className={
-          hasTodos ? "min-w-0 scroll-mt-28 lg:col-span-7" : "min-w-0 scroll-mt-28 lg:col-span-12"
+function Insights({ model }: { model: HomeModel }) {
+  if (model.headline.state !== "ok") return null;
+  const n = model.insights.length;
+  return (
+    <section
+      aria-labelledby="vart-att-veta"
+      className="mt-12 min-w-0 scroll-mt-28 border-t border-line pt-12 md:mt-16 md:pt-16"
+    >
+      <SectionHeader
+        id="vart-att-veta"
+        index={sectionIndex(model, "insights")}
+        eyebrow={`Värt att veta · ${formatInt(n)} st`}
+        title="Värt att veta."
+        aside={
+          n === 0
+            ? "Inget utöver det som står ovan sticker ut i perioden."
+            : n === 1
+              ? "En iakttagelse ur perioden, med underlaget."
+              : `${formatInt(n)} iakttagelser ur perioden, var och en med underlaget.`
         }
-      >
-        <SectionHeader
-          id="vart-att-veta"
-          index={insightIndex}
-          eyebrow={`Värt att veta · ${formatInt(model.insights.length)} st`}
-          title="Värt att veta."
-          aside={
-            model.insights.length > 0
-              ? `${formatInt(model.insights.length)} iakttagelser ur perioden, var och en med underlaget.`
-              : "Inga iakttagelser som håller för perioden."
-          }
-          size="md"
-        />
-        <div className={hasTodos ? "mt-8" : "mt-8 max-w-3xl"}>
-          {model.insights.length > 0 ? (
-            <InsightList insights={model.insights} />
-          ) : (
-            <StateMessage
-              compact
-              kind="empty"
-              code="0 iakttagelser"
-              message="Perioden har för lite försäljning för att något ska sticka ut."
-            />
-          )}
+        size="md"
+      />
+      {n > 0 ? (
+        <div className="mt-8">
+          <InsightList insights={model.insights} />
         </div>
-      </section>
-    </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -289,14 +369,13 @@ function todoAside(model: HomeModel): string {
   return `${total}, ${formatInt(now)} gäller nu.`;
 }
 
+/** Topplistans rubrik: hur spridd intäkten är (den största titeln står i listan och i Värt att veta). */
 function topTitlesAside(model: HomeModel): string {
-  const first = model.topTitles.rows[0];
-  if (!first) return "";
-  const top3 = model.topTitles.rows.slice(0, 3).reduce((n, r) => n + r.shareBp, 0);
-  const lead = `${first.name} står för ${shareText(first.shareBp)} av intäkten`;
-  return model.topTitles.rows.length >= 3 && model.topTitles.totalTitles > 3
-    ? `${lead}, de tre största för ${shareText(top3)}.`
-    : `${lead}.`;
+  const t = model.topTitles;
+  const sold = `${formatInt(t.totalTitles)} ${t.totalTitles === 1 ? "titel" : "titlar"} sålde`;
+  if (t.rows.length < 3 || t.totalTitles <= 3) return `${sold}.`;
+  const top3 = t.rows.slice(0, 3).reduce((n, r) => n + r.shareBp, 0);
+  return `${sold}, de tre största står för ${shareText(top3)} av intäkten.`;
 }
 
 function TitlesAside({ model }: { model: HomeModel }) {

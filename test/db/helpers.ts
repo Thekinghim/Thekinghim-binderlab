@@ -728,18 +728,14 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       kind: "jam",
       startedAt: new Date("2025-03-12T09:00:00Z"),
     });
-    // Assistent (20261102124000_assistent_assistant_logs.sql): ägarens fråga.
-    await tx.insert(s.assistantLogs).values({
-      ...org,
-      conversationId: randomUUID(),
-      userId: owner.id,
-      role: "owner",
-      question: "Vilken automat tjänade mest i mars?",
-      answer: "Automat 1 (BL-001).",
-      status: "answered",
-      provider: "local",
-      model: "lokal-testmodell",
-    });
+    // Assistent (20261102124000_assistent_assistant_logs.sql): ägarens fråga. Raden skrivs
+    // bara via private.insert_assistant_log (20261102134800_…_hardening.sql), inte med INSERT.
+    await tx.execute(sql`
+      select private.insert_assistant_log(
+        ${orgId}::uuid, ${randomUUID()}::uuid, 'owner'::public.member_role,
+        'Vilken automat tjänade mest i mars?', 'Automat 1 (BL-001).', 'answered',
+        'local', 'lokal-testmodell', '[]'::jsonb, '{}'::jsonb, '{}'::jsonb, null, 0
+      )`);
     // Marknad (20261102122500_marknad_market_intelligence.sql): ett släpp med fastställd
     // fördelning, ett leverantörspris, fackfördelning, en genomförd sortimentsändring och
     // ett pristest.
@@ -758,15 +754,13 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
         planSnapshot: { text: "Förslag" },
       })
       .returning();
-    await tx
-      .insert(s.releaseAllocations)
-      .values({
-        ...org,
-        releaseId: release!.id,
-        machineId: machine!.id,
-        units: 24,
-        suggestedUnits: 24,
-      });
+    await tx.insert(s.releaseAllocations).values({
+      ...org,
+      releaseId: release!.id,
+      machineId: machine!.id,
+      units: 24,
+      suggestedUnits: 24,
+    });
     await tx.insert(s.supplierPriceQuotes).values({
       ...org,
       supplierId: supplier!.id,

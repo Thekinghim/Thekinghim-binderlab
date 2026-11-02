@@ -46,6 +46,8 @@ export interface PricePageData {
   readonly closedMonths: string[];
   /** Visningsnamn per användar-id (profiler i organisationen). */
   readonly actorNames: Record<string, string>;
+  /** Senaste ändringen av något inköpspris (audit_log), ISO, eller null. */
+  readonly lastChangeAt: string | null;
 }
 
 /** Underlaget för en titel: prisloggen och antal order per affärsdag (all tid). */
@@ -112,19 +114,30 @@ async function queryActorNames(tx: Tx, orgId: string): Promise<Record<string, st
   return out;
 }
 
-/** Priser, stängda månader och namn. Ägare, admin och läsare. */
+async function queryLastChange(tx: Tx, orgId: string): Promise<string | null> {
+  const result = await tx.execute(
+    sql`select max(a.occurred_at) as at
+        from public.audit_log a
+        where a.organization_id = ${orgId}::uuid and a.table_name = 'purchase_prices'`,
+  );
+  const at = (Array.from(result) as Record<string, unknown>[])[0]?.at;
+  return at === null || at === undefined ? null : iso(at);
+}
+
+/** Priser, stängda månader, namn och senaste prisändring. Ägare, admin och läsare. */
 export async function loadPricePageFor(
   user: SessionUser,
   organizationId: string,
 ): Promise<PricePageData> {
   await requireRoleFor(user, organizationId, READ_ROLES);
   return withUserDbFor(user, async (tx) => {
-    const [prices, closedMonths, actorNames] = await Promise.all([
+    const [prices, closedMonths, actorNames, lastChangeAt] = await Promise.all([
       queryPriceRecords(tx, organizationId),
       queryClosedMonths(tx, organizationId),
       queryActorNames(tx, organizationId),
+      queryLastChange(tx, organizationId),
     ]);
-    return { prices, closedMonths, actorNames };
+    return { prices, closedMonths, actorNames, lastChangeAt };
   });
 }
 
@@ -280,12 +293,15 @@ export async function addPurchasePriceFor(
         queryClosedMonths(tx, input.organizationId),
       ]);
       const own = prices.filter((p) => p.titleId === input.titleId);
-      const hit = closedMonthsHit(own, input.validFrom, closed);
+      const existing = own.find((p) => p.validFrom === input.validFrom);
+      // En ren ändring av anteckningen påverkar inga siffror och släpps igenom (som i
+      // databasvakten, som bara bevakar belopp och datum).
+      const noteOnly = existing !== undefined && existing.unitCostOre === input.unitCostOre;
+      const hit = noteOnly ? [] : closedMonthsHit(own, input.validFrom, closed);
       if (hit.length > 0) {
         return { ok: false, error: PRICE_MESSAGES.closedMonth(hit) };
       }
 
-      const existing = own.find((p) => p.validFrom === input.validFrom);
       if (existing) {
         if (existing.unitCostOre === input.unitCostOre && existing.note === input.note) {
           return { ok: false, error: PRICE_MESSAGES.unchanged };

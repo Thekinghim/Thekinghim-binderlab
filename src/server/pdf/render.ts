@@ -15,6 +15,8 @@
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 
+import type { Browser, Page } from "puppeteer-core";
+
 export type PdfRendererKind = "local" | "sparticuz" | "off";
 
 export interface PdfCookie {
@@ -27,7 +29,7 @@ export interface PdfRequest {
   readonly url: string;
   /** Cookies som skickas med (den inloggades session, så att RLS gäller). */
   readonly cookies: readonly PdfCookie[];
-  /** Standard 45 s. */
+  /** Standard 120 s (första kompileringen i utveckling är långsam). */
   readonly timeoutMs?: number;
 }
 
@@ -123,15 +125,15 @@ export function pdfStatus(env: Env = process.env): PdfStatus {
       };
 }
 
-type Launch = () => Promise<import("puppeteer-core").Browser>;
+type Launch = () => Promise<Browser>;
 
 async function withPage<T>(
   launch: Launch,
   request: PdfRequest,
-  fn: (page: import("puppeteer-core").Page, timeout: number) => Promise<T>,
+  fn: (page: Page, timeout: number) => Promise<T>,
 ): Promise<T> {
   const url = new URL(request.url);
-  const timeout = request.timeoutMs ?? 45_000;
+  const timeout = request.timeoutMs ?? 120_000;
   const browser = await launch();
   try {
     const page = await browser.newPage();
