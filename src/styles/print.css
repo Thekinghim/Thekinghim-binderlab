@@ -1,0 +1,220 @@
+/*
+ * Binderlab utskrift och rapporter
+ * ---------------------------------------------------------------
+ * Två delar:
+ *
+ * 1. data-theme="print": ett ljust tema för papper. Samma tokennamn som
+ *    mörkt och ljust läge, så att alla komponenter fungerar oförändrade
+ *    inuti en rapport. Allt är gråskala. Signalen mappas till #111, alltså
+ *    den mörkaste tonen på arket i stället för en mellangrå som orange blir
+ *    på en svartvit laserskrivare.
+ *
+ *    Eftersom signalen inte längre skiljer sig från brödtexten bärs varje
+ *    markering av FORM, aldrig av färg:
+ *    - markerad datapunkt: fylld kvadrat + ring (Node "signal-ring")
+ *    - aktuell serie: heldragen 1,5 px + ihålig kvadrat; jämförelse: streckad 1 px
+ *    - markerad stapel: fylld svart mot ljusgrå staplar + värdeetikett
+ *    - avvikelse i tidslinje: fyllt block med numrerad ruta
+ *    - markerad tabellrad: kvadrat + ring i vänstermarginalen, halvfet text
+ *
+ *    data-tone="signal" på samma element behåller signalfärgen, för PDF
+ *    som läses på skärm. Kodningen ovan gäller fortfarande, så samma sida
+ *    går att skriva ut i svartvitt.
+ *
+ * 2. Sidsystemet (.bl-report, .bl-sheet, .bl-page): varje ReportPage är ett
+ *    A4-ark på 210 × 297 mm. Sidhuvud och sidfot ritas av komponenten, inte
+ *    av @page-marginalrutor (som Chrome inte stöder fullt ut). På skärmen
+ *    skalas arket ned till tillgänglig bredd med ren CSS:
+ *    tan(atan2(100cqw, 210mm)) ger kvoten bredd / 210 mm som ett enhetslöst tal.
+ *
+ * Reglerna här ligger utanför @layer och vinner därför över Tailwinds
+ * utilities, vilket utskriftsläget behöver.
+ */
+
+/* --- 1. Tema --------------------------------------------------------- */
+
+[data-theme="print"] {
+  color-scheme: light;
+
+  --bl-bg: #ffffff;
+  --bl-surface: #ffffff;
+  --bl-surface-raised: #ffffff;
+  --bl-surface-hover: #f2f2f2;
+
+  /* Linjer: mörka nog att överleva rastrering på laserskrivare */
+  --bl-line: #bdbdbd;
+  --bl-line-strong: #6e6e6e;
+  --bl-line-control: #6e6e6e;
+  /* Koordinatnät av på papper; korsmarkeringar knappt synliga */
+  --bl-grid: transparent;
+  --bl-grid-mark: rgb(17 17 17 / 0.16);
+
+  /* Text: nära svart och tre grå steg. subtle klarar 7:1 mot vitt. */
+  --bl-fg: #111111;
+  --bl-fg-muted: #3d3d3d;
+  --bl-fg-subtle: #595959;
+  --bl-fg-faint: #8c8c8c; /* endast dekor/axlar */
+
+  /* Signal = nästan svart. Markeringar bärs av form (se ovan). */
+  --bl-signal: #111111;
+  --bl-signal-fg: #111111;
+  --bl-signal-soft: rgb(17 17 17 / 0.07);
+  --bl-on-signal: #ffffff;
+
+  --bl-inverse-bg: #111111;
+  --bl-inverse-fg: #ffffff;
+  --bl-inverse-hover: #333333;
+
+  /* Dataramp: fem tydliga steg, ca 20 % ljushet emellan */
+  --bl-data-1: #111111;
+  --bl-data-2: #4d4d4d;
+  --bl-data-3: #808080;
+  --bl-data-4: #b0b0b0;
+  --bl-data-5: #d6d6d6;
+  --bl-data-0: #f2f2f2;
+
+  --bl-focus: #111111;
+  --bl-overlay: rgb(17 17 17 / 0.4);
+}
+
+/* Signalfärg kvar, för PDF som läses på skärm. Formkodningen gäller ändå. */
+[data-theme="print"][data-tone="signal"] {
+  --bl-signal: #f0521a;
+  --bl-signal-fg: #b53e0e;
+  --bl-signal-soft: rgb(240 82 26 / 0.1);
+  --bl-on-signal: #111111;
+}
+
+[data-theme="print"] .grid-field,
+[data-theme="print"].grid-field {
+  background-image: none;
+}
+
+/* Skrivbordet runt arken på skärmen följer appens läge. */
+:root,
+[data-theme="dark"] {
+  --bl-desk: #232326;
+  --bl-desk-edge: #3a3a3f;
+}
+
+[data-theme="light"] {
+  --bl-desk: #dddbd6;
+  --bl-desk-edge: #b9b6af;
+}
+
+/* --- 2. Sidsystem ---------------------------------------------------- */
+
+@page bl-report {
+  size: A4;
+  margin: 0;
+}
+
+.bl-desk {
+  background-color: var(--bl-desk);
+}
+
+.bl-report {
+  /* Temat sätter bakgrund på [data-theme]; skrivbordet ska synas mellan arken. */
+  background-color: transparent;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* Arket: tar tillgänglig bredd upp till 210 mm, höjden följer A4-proportionen. */
+.bl-sheet {
+  page: bl-report;
+  position: relative;
+  width: 100%;
+  max-width: 210mm;
+  aspect-ratio: 210 / 297;
+  overflow: hidden;
+  container-type: inline-size;
+  background-color: var(--bl-bg);
+  /* Kant utan att påverka måtten: outline i stället för border. */
+  outline: 1px solid var(--bl-desk-edge);
+}
+
+/* Sidan i full storlek, skalad till arkets bredd. */
+.bl-page {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  width: 210mm;
+  height: 297mm;
+  padding: 16mm 18mm;
+  transform-origin: 0 0;
+  transform: scale(tan(atan2(100cqw, 210mm)));
+  background-color: var(--bl-bg);
+  color: var(--bl-fg);
+  font-size: 12px;
+  line-height: 17px;
+}
+
+/* Brödytan mellan sidhuvud och sidfot. Det som inte får plats nedåt
+   klipps och flaggas på skärmen av ReportPage. I sidled klipps inget,
+   så att markeringar kan stå i vänstermarginalen. */
+.bl-page-body {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-x: visible;
+  overflow-y: clip;
+}
+
+.bl-report table {
+  break-inside: auto;
+}
+
+.bl-report thead {
+  display: table-header-group; /* upprepas om en tabell bryts över sidor */
+}
+
+.bl-report tr {
+  break-inside: avoid;
+}
+
+@media print {
+  html:has(.bl-report[data-layout="stack"]),
+  html:has(.bl-report[data-layout="stack"]) body {
+    background: #ffffff;
+  }
+
+  [data-print="hide"] {
+    display: none !important;
+  }
+
+  .bl-desk {
+    padding: 0 !important;
+    margin: 0 !important;
+    background: none !important;
+  }
+
+  .bl-report[data-layout="stack"] {
+    display: block !important;
+    gap: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .bl-report[data-layout="stack"] .bl-sheet {
+    width: 210mm;
+    max-width: none;
+    height: 297mm;
+    aspect-ratio: auto;
+    margin: 0;
+    outline: none;
+    break-inside: avoid;
+  }
+
+  .bl-report[data-layout="stack"] .bl-sheet:not(:last-child) {
+    break-after: page;
+  }
+
+  .bl-report[data-layout="stack"] .bl-page {
+    transform: none;
+  }
+}
