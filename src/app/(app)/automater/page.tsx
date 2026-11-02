@@ -76,7 +76,7 @@ export default async function AutomaterPage({
             <StateMessage
               kind="empty"
               message="Inga order har kommit in i dag ännu."
-              detail="Intäkt och vinst för i dag visas när dagens order har importerats. Välj I går eller 7 dagar i periodraden för en hel period."
+              detail="Intäkt och vinst för i dag visas när dagens order har importerats. Välj 7 dagar eller 30 dagar i periodraden för hela dagar."
             />
           ) : active.length > 0 || totals.orders > 0 ? (
             <div className="flex flex-col gap-4">
