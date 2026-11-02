@@ -32,6 +32,7 @@ const VERIFICATION_COLUMNS: ReadonlyArray<Column<VerificationRow>> = [
     sortValue: (r) => r.number,
     render: (r) => <span className="tnum">{r.number}</span>,
     width: 64,
+    hideOnMobile: true,
   },
   {
     key: "datum",
@@ -48,7 +49,7 @@ const VERIFICATION_COLUMNS: ReadonlyArray<Column<VerificationRow>> = [
     render: (r) => (
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="text-fg">{r.text}</span>
-        <span className="meta text-subtle">{r.rows}</span>
+        <span className="meta hidden text-subtle sm:block">{r.rows}</span>
       </span>
     ),
     csv: (r) => `${r.text} (${r.rows})`,

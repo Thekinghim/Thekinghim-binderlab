@@ -351,34 +351,37 @@ export function AssortmentSection({
                 </div>
                 {followUp.ok ? (
                   <>
-                    <dl className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
-                      <div className="flex flex-col gap-1">
-                        <dt className="label text-subtle">Bidrag/vecka före</dt>
-                        <dd className="tnum text-lg">
-                          {kronor(followUp.value.contributionPerWeekBeforeOre)}
-                        </dd>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <dt className="label text-subtle">Efter</dt>
-                        <dd className="tnum text-lg">
-                          {kronor(followUp.value.contributionPerWeekAfterOre)}
-                        </dd>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <dt className="label text-subtle">Justerad förändring</dt>
-                        <dd className="tnum text-lg">
-                          {signedKronorWhole(followUp.value.adjustedChangePerWeekOre)}
-                        </dd>
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <dt className="label text-subtle">Av väntad effekt</dt>
-                        <dd className="tnum text-lg">
-                          {followUp.value.achievedBp === null
-                            ? "–"
-                            : percentOfBp(followUp.value.achievedBp, 0)}
-                        </dd>
-                      </div>
-                    </dl>
+                    {followUp.value.status === "too-early" ||
+                    followUp.value.status === "not-started" ? null : (
+                      <dl className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
+                        <div className="flex flex-col gap-1">
+                          <dt className="label text-subtle">Bidrag/vecka före</dt>
+                          <dd className="tnum text-lg">
+                            {kronor(followUp.value.contributionPerWeekBeforeOre)}
+                          </dd>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <dt className="label text-subtle">Efter</dt>
+                          <dd className="tnum text-lg">
+                            {kronor(followUp.value.contributionPerWeekAfterOre)}
+                          </dd>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <dt className="label text-subtle">Justerad förändring</dt>
+                          <dd className="tnum text-lg">
+                            {signedKronorWhole(followUp.value.adjustedChangePerWeekOre)}
+                          </dd>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <dt className="label text-subtle">Av väntad effekt</dt>
+                          <dd className="tnum text-lg">
+                            {followUp.value.achievedBp === null
+                              ? "–"
+                              : percentOfBp(followUp.value.achievedBp, 0)}
+                          </dd>
+                        </div>
+                      </dl>
+                    )}
                     <p className="max-w-3xl text-muted">{followUp.value.text}</p>
                     <Evidence evidence={followUp.value.evidence} names={ctx.names} />
                     {followUp.value.control.machineIds.length > 0 ? (

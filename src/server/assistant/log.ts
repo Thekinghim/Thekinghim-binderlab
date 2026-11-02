@@ -1,16 +1,19 @@
 /**
  * Loggen över frågor och svar (tabellen assistant_logs, append-only, RLS).
  *
- * Allt skrivs och läses som användaren (withUserDbFor): RLS kräver att raden har
- * användarens eget user_id och hens faktiska roll i organisationen. Var och en läser sina
- * egna rader; ägare och admin läser alla i organisationen.
+ * Allt körs som användaren (withUserDbFor). Raden skrivs via
+ * private.insert_assistant_log (security definer, nås inte via API:t): ingen medlem kan
+ * skriva egna rader direkt, och funktionen kräver användarens eget user_id och hens
+ * faktiska roll i organisationen. Var och en läser sina egna rader, men rader skrivna med
+ * en roll som ser ekonomi bara så länge användaren fortfarande ser ekonomi (RLS, och samma
+ * filter här när rollen är känd). Ägare och admin läser alla i organisationen.
  */
 
 import "server-only";
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 
-import { assistantLogs, type MemberRole } from "@/db/schema";
+import { assistantLogs, type MemberRole, type MembershipRole } from "@/db/schema";
 import { isUuid, withUserDbFor, type SessionUser } from "@/server/access";
 
 import type { HistoryEntry } from "./loop";
@@ -47,29 +50,41 @@ function compactCall(call: ToolCallRecord): ToolCallRecord {
   };
 }
 
-/** Sparar frågan. Returnerar radens id. */
+/**
+ * Rollerna vars rader en användare med rollen `role` får läsa bland sina egna: rader
+ * skrivna med ekonomi (ägare, admin, läsare) bara om rollen fortfarande ser ekonomi.
+ * Samma regel som policyn assistant_logs_select.
+ */
+export function visibleRowRoles(role: MembershipRole): MemberRole[] {
+  if (role === "store") return [];
+  if (role === "refiller") return ["refiller"];
+  return ["owner", "admin", "viewer", "refiller"];
+}
+
+/** Sparar frågan (via private.insert_assistant_log). Returnerar radens id. */
 export async function insertLogFor(user: SessionUser, entry: NewLogEntry): Promise<string> {
+  const toolCalls = JSON.stringify(entry.toolCalls.map(compactCall));
+  const verification = JSON.stringify({ ...entry.verification });
+  const usage = JSON.stringify({ ...entry.usage });
   return withUserDbFor(user, async (tx) => {
-    const [row] = await tx
-      .insert(assistantLogs)
-      .values({
-        organizationId: entry.organizationId,
-        conversationId: entry.conversationId,
-        userId: user.userId,
-        role: entry.role,
-        question: entry.question,
-        answer: entry.answer.slice(0, 50_000),
-        status: entry.status,
-        provider: entry.provider,
-        model: entry.model,
-        toolCalls: entry.toolCalls.map(compactCall) as unknown[],
-        verification: { ...entry.verification },
-        usage: { ...entry.usage },
-        error: entry.error ? entry.error.slice(0, 2000) : null,
-        durationMs: Math.max(0, Math.round(entry.durationMs)),
-      })
-      .returning({ id: assistantLogs.id });
-    return row!.id;
+    const [row] = await tx.execute<{ id: string }>(sql`
+      select private.insert_assistant_log(
+        ${entry.organizationId}::uuid,
+        ${entry.conversationId}::uuid,
+        ${entry.role}::public.member_role,
+        ${entry.question},
+        ${entry.answer.slice(0, 50_000)},
+        ${entry.status},
+        ${entry.provider},
+        ${entry.model.slice(0, 100)},
+        ${toolCalls}::jsonb,
+        ${verification}::jsonb,
+        ${usage}::jsonb,
+        ${entry.error ? entry.error.slice(0, 2000) : null},
+        ${Math.max(0, Math.round(entry.durationMs))}::integer
+      ) as id`);
+    if (!row?.id) throw new Error("assistant_logs: raden sparades inte.");
+    return row.id;
   });
 }
 
@@ -78,7 +93,7 @@ export interface LogRecord {
   readonly id: string;
   readonly conversationId: string;
   readonly userId: string | null;
-  readonly role: MemberRole;
+  readonly role: MembershipRole;
   readonly question: string;
   readonly answer: string;
   readonly status: AssistantStatus;
@@ -114,14 +129,28 @@ function toRecord(row: typeof assistantLogs.$inferSelect): LogRecord {
   };
 }
 
+/** Filter på nuvarande roll (utöver RLS). */
+export interface RoleFilter {
+  /** Användarens roll nu: bara rader som rollen får se (visibleRowRoles). */
+  readonly role?: MembershipRole;
+}
+
+function roleCondition(options: RoleFilter) {
+  if (!options.role) return undefined;
+  const roles = visibleRowRoles(options.role);
+  return roles.length > 0 ? inArray(assistantLogs.role, roles) : sql`false`;
+}
+
 /**
  * Tidigare frågor i samtalet (användarens egna), äldst först, som historik till modellen.
- * Bara besvarade frågor; de senaste HISTORY_LIMIT.
+ * Bara besvarade frågor; de senaste HISTORY_LIMIT. Rader som användarens nuvarande roll
+ * inte får se (t.ex. ekonomisvar efter en nedgradering) skickas aldrig med.
  */
 export async function loadConversationFor(
   user: SessionUser,
   organizationId: string,
   conversationId: string,
+  options: RoleFilter = {},
 ): Promise<HistoryEntry[]> {
   if (!isUuid(conversationId)) return [];
   const rows = await withUserDbFor(user, (tx) =>
@@ -134,6 +163,7 @@ export async function loadConversationFor(
           eq(assistantLogs.conversationId, conversationId),
           eq(assistantLogs.userId, user.userId),
           inArray(assistantLogs.status, ["answered", "unverified"]),
+          roleCondition(options),
         ),
       )
       .orderBy(desc(assistantLogs.createdAt))
@@ -154,6 +184,7 @@ export async function listRecentFor(
   user: SessionUser,
   organizationId: string,
   limit = 20,
+  options: RoleFilter = {},
 ): Promise<LogRecord[]> {
   const rows = await withUserDbFor(user, (tx) =>
     tx
@@ -163,12 +194,34 @@ export async function listRecentFor(
         and(
           eq(assistantLogs.organizationId, organizationId),
           eq(assistantLogs.userId, user.userId),
+          roleCondition(options),
         ),
       )
       .orderBy(desc(assistantLogs.createdAt))
       .limit(limit),
   );
   return rows.map(toRecord);
+}
+
+/** Antal frågor användaren ställt i organisationen (som rollen får se). */
+export async function countFor(
+  user: SessionUser,
+  organizationId: string,
+  options: RoleFilter = {},
+): Promise<number> {
+  const [row] = await withUserDbFor(user, (tx) =>
+    tx
+      .select({ n: count() })
+      .from(assistantLogs)
+      .where(
+        and(
+          eq(assistantLogs.organizationId, organizationId),
+          eq(assistantLogs.userId, user.userId),
+          roleCondition(options),
+        ),
+      ),
+  );
+  return row?.n ?? 0;
 }
 
 /** En rad ur loggen (användarens egen, eller valfri i organisationen för ägare och admin). */

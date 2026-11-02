@@ -109,16 +109,14 @@ async function buildOrg(): Promise<MarketOrg> {
         })),
       )
       .returning();
-    await tx
-      .insert(s.machinePlacements)
-      .values(
-        machines.map((m) => ({
-          ...org,
-          machineId: m.id,
-          storeId: store!.id,
-          validFrom: "2025-01-01",
-        })),
-      );
+    await tx.insert(s.machinePlacements).values(
+      machines.map((m) => ({
+        ...org,
+        machineId: m.id,
+        storeId: store!.id,
+        validFrom: "2025-01-01",
+      })),
+    );
     const titleRows = await tx
       .insert(s.titles)
       .values([
@@ -484,7 +482,7 @@ describe("sortiment", () => {
   const PERIOD = { start: "2026-10-06", end: TODAY };
 
   it("fackfördelning sparas per period och ersätts från ett datum", async () => {
-    const [m1] = M.machines;
+    const m1 = M.machines[0]!;
     await saveSlotsFor(
       ownerV,
       saveSlotsSchema.parse({
@@ -536,7 +534,7 @@ describe("sortiment", () => {
   });
 
   it("rekommendationen genomförs: ny fackfördelning och uppföljning", async () => {
-    const [m1] = M.machines;
+    const m1 = M.machines[0]!;
     const data = await loadMarketDataFor(ownerV, NOW);
     const view = assortmentView(data, PERIOD);
     expect(view.machines.ok).toBe(true);

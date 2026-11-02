@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
 import { carriedQuery } from "@/components/shell/period-state";
 import { Panel } from "@/components/ui/frame";
@@ -11,13 +12,30 @@ import { CompensationBreakdown, UnpricedSummary } from "./_components/breakdown"
 import { LonsamhetBridge } from "./_components/bridge";
 import { LonsamhetKpis } from "./_components/kpis";
 import { TableSection, TrendSection } from "./_components/sections";
-import { buildLonsamhetModel, periodText, type TrendKey, type ViewKey } from "./_lib/model";
-import { sentence } from "./_lib/headline";
-import { parseTrendParam, parseViewParam } from "./_lib/params";
+import { buildLonsamhetModel, type TrendKey, type ViewKey } from "./_lib/model";
+import {
+  canonicalLonsamhetQuery,
+  parseTitleParam,
+  parseTrendParam,
+  parseViewParam,
+} from "./_lib/params";
 
 export const metadata: Metadata = { title: "Lönsamhet" };
 
 type SearchParams = Record<string, string | string[] | undefined>;
+
+/** "Visa hela historiken" med samma filter (?butik=, ?automat=) och vy. */
+function allHistoryHref(sp: SearchParams): string {
+  const q = new URLSearchParams(carriedQuery(sp).replace(/^\?/, ""));
+  q.delete("from");
+  q.delete("to");
+  q.set("period", "allt");
+  for (const k of ["vy", "per", "titel"] as const) {
+    const v = sp[k];
+    if (typeof v === "string" && v) q.set(k, v);
+  }
+  return `/lonsamhet?${q.toString()}`;
+}
 
 const SECTION = "flex scroll-mt-28 flex-col gap-10 border-t border-line py-12 md:gap-12 md:py-16";
 
@@ -35,8 +53,24 @@ export default async function LonsamhetPage({
 }) {
   const ctx = await requireRoute("lonsamhet");
   const sp = await searchParams;
+  // Länkar med äldre namn (?grupp=, ?fran=, ?till=) skrivs om till sidans och skalets.
+  const canonical = canonicalLonsamhetQuery(sp);
+  if (canonical !== null) redirect(`/lonsamhet${canonical}`);
+
   const p = await loadPeriod(sp);
   const input = await loadDomainInput({ period: p.period, compare: p.compare, ...p.scope });
+
+  // Tomt läge: senaste ordern i urvalet (samma filter), för att säga när det såldes senast.
+  let lastOrderDate: string | null = null;
+  if (input.current.orders.length === 0 && p.dataStart && p.dataStart <= ctx.today) {
+    const history = await loadDomainInput({
+      period: { start: p.dataStart, end: ctx.today },
+      ...p.scope,
+    });
+    for (const o of history.current.orders) {
+      if (lastOrderDate === null || o.businessDate > lastOrderDate) lastOrderDate = o.businessDate;
+    }
+  }
 
   const model = buildLonsamhetModel(
     {
@@ -47,10 +81,11 @@ export default async function LonsamhetPage({
       stores: input.stores,
       scope: input.scope,
     },
-    { today: ctx.today, carry: carriedQuery(sp).replace(/^\?/, "") },
+    { today: ctx.today, carry: carriedQuery(sp).replace(/^\?/, ""), lastOrderDate },
   );
 
-  const initialView: ViewKey = parseViewParam(sp.vy);
+  const selectedTitle = parseTitleParam(sp.titel);
+  const initialView: ViewKey = parseViewParam(sp.vy) ?? "title";
   const initialTrend: TrendKey = parseTrendParam(sp.per) ?? model.defaultTrend;
   const fileStem = `lonsamhet-${model.period.start}-${model.period.end}`;
   const b = model.bridge;
@@ -85,19 +120,15 @@ export default async function LonsamhetPage({
         <section className={SECTION} aria-label="Ingen försäljning">
           <StateMessage
             kind="empty"
-            message={sentence(
-              `Inga order under ${model.periodLabel}${model.scopeLabel ? ` för ${model.scopeLabel}` : ""}`,
-            )}
-            detail={
-              p.dataStart
-                ? sentence(
-                    `Första ordern är från ${periodText({ start: p.dataStart, end: p.dataStart }, ctx.today)}`,
-                  )
-                : "Inga order har importerats ännu."
+            message={
+              model.scopeLabel
+                ? `Ingen försäljning för ${model.scopeLabel} i perioden.`
+                : "Ingen försäljning i perioden."
             }
+            detail="Vinst, marginal och fördelning visas när perioden har order."
             action={
               p.dataStart
-                ? { label: "Visa hela historiken", href: "/lonsamhet?period=allt" }
+                ? { label: "Visa hela historiken", href: allHistoryHref(sp) }
                 : { label: "Gå till datakällor", href: "/datakallor" }
             }
           />
@@ -112,7 +143,7 @@ export default async function LonsamhetPage({
               title="Från intäkt till vinst."
               aside={
                 b.revenueOre > 0
-                  ? `${formatSek(b.revenueOre / 100)} blev ${formatSek(b.profitOre / 100)} efter inköp, avgifter och butiksersättning${
+                  ? `${b.unpricedRevenueOre > 0 ? "Intäkten med inköpspris, " : ""}${formatSek(b.revenueOre / 100)}${b.unpricedRevenueOre > 0 ? "," : ""} blev ${formatSek(b.profitOre / 100)} efter inköp, avgifter och butiksersättning${
                       b.marginBp === null ? "" : ` (${formatPercent(b.marginBp / 10_000)})`
                     }.`
                   : "Ingen order med inköpspris i perioden."
@@ -139,6 +170,7 @@ export default async function LonsamhetPage({
               periodLabel={model.periodLabel}
               days={model.days}
               fileStem={fileStem}
+              selectedTitle={selectedTitle}
             />
           </div>
 

@@ -4,13 +4,13 @@ import { notFound } from "next/navigation";
 
 import { SectionHeader } from "@/components/ui/section-header";
 import { StatusTag } from "@/components/ui/status-tag";
-import { formatCsvNumber, formatKronor } from "@/lib/format";
-import { requireRoute } from "@/server/data/core";
+import { formatCsvNumber, formatDate } from "@/lib/format";
+import { isoDateToShellDate, requireRoute } from "@/server/data/core";
 
 import { formatWhen } from "../../drift/_lib/display";
 import { IncidentForm } from "../_components/incident-form";
 import { loadIncident } from "../_lib/load";
-import { KIND_LABEL, STATUS_LABEL, utcToLocalInput } from "../_lib/model";
+import { KIND_LABEL, kronorOfOre, STATUS_LABEL, utcToLocalInput } from "../_lib/model";
 
 export const metadata: Metadata = { title: "Ärende" };
 
@@ -44,7 +44,7 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
         title={`${KIND_LABEL[i.kind] ?? i.kind}, ${formatWhen(i.startedAt, ctx.timeZone, now)}.`}
         aside={
           i.refundedOre > 0
-            ? `${formatKronor(i.refundedOre)} återbetalt ${i.refundedOn ?? ""}.`
+            ? `${kronorOfOre(i.refundedOre)} återbetalt${i.refundedOn ? ` ${formatDate(isoDateToShellDate(i.refundedOn))}` : ""}.`
             : i.status === "resolved"
               ? `Löst ${formatWhen(i.endedAt, ctx.timeZone, now)}.`
               : "Ingen återbetalning registrerad."

@@ -122,7 +122,7 @@ export function SiteEstimateView({
                     scope="col"
                     className={cn(
                       "label h-9 font-normal text-subtle",
-                      i === 0 ? "text-left" : "text-right",
+                      i === 0 ? "text-left" : "pl-4 text-right",
                     )}
                   >
                     {h}
@@ -138,13 +138,13 @@ export function SiteEstimateView({
                   <span className="block text-fg">{b.name}</span>
                   <span className="block text-sm text-muted">{b.similarity.text}</span>
                 </td>
-                <td className="tnum py-2.5 text-right">{pct(b.similarity.scoreBp)}</td>
-                <td className="tnum py-2.5 text-right">
+                <td className="tnum py-2.5 pl-4 text-right">{pct(b.similarity.scoreBp)}</td>
+                <td className="tnum py-2.5 pl-4 text-right">
                   {hundredthsText(b.machineMonthsHundredths)}
                 </td>
-                <td className="tnum py-2.5 text-right">{kr(b.revenuePerMonthOre)}</td>
-                <td className="tnum py-2.5 text-right">{kr(b.profitPerMonthOre)}</td>
-                <td className="tnum py-2.5 text-right">{paybackShort(b.paybackTenths)}</td>
+                <td className="tnum py-2.5 pl-4 text-right">{kr(b.revenuePerMonthOre)}</td>
+                <td className="tnum py-2.5 pl-4 text-right">{kr(b.profitPerMonthOre)}</td>
+                <td className="tnum py-2.5 pl-4 text-right">{paybackShort(b.paybackTenths)}</td>
               </tr>
             ))}
           </tbody>
@@ -236,7 +236,7 @@ export function PriceChangeView({
                   scope="col"
                   className={cn(
                     "label h-9 font-normal text-subtle",
-                    i === 0 ? "text-left" : "text-right",
+                    i === 0 ? "text-left" : "pl-4 text-right",
                   )}
                 >
                   {h}
@@ -257,11 +257,11 @@ export function PriceChangeView({
                     {hundredths(r.elasticityHundredths)}
                     {selected ? <span className="text-subtle"> · vald</span> : null}
                   </td>
-                  <td className="tnum py-2.5 text-right">{signedPct(r.volumeChangeBp)}</td>
-                  <td className="tnum py-2.5 text-right">{formatInt(r.units)}</td>
-                  <td className="tnum py-2.5 text-right">{kr(r.revenueOre)}</td>
-                  <td className="tnum py-2.5 text-right">{kr(r.profitOre)}</td>
-                  <td className="tnum py-2.5 text-right">{signedKr(r.profitChangeOre)}</td>
+                  <td className="tnum py-2.5 pl-4 text-right">{signedPct(r.volumeChangeBp)}</td>
+                  <td className="tnum py-2.5 pl-4 text-right">{formatInt(r.units)}</td>
+                  <td className="tnum py-2.5 pl-4 text-right">{kr(r.revenueOre)}</td>
+                  <td className="tnum py-2.5 pl-4 text-right">{kr(r.profitOre)}</td>
+                  <td className="tnum py-2.5 pl-4 text-right">{signedKr(r.profitChangeOre)}</td>
                 </tr>
               );
             })}

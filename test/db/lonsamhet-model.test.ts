@@ -150,7 +150,7 @@ describe("Lönsamhet från databasen", () => {
         titleId: unpricedTitleId,
         name: "Black Bolt Booster",
         revenueOre: 6900,
-        href: `/inkopspriser?titel=${unpricedTitleId}&period=allt`,
+        href: `/inkopspriser?titel=${unpricedTitleId}&period=allt#titel`,
       }),
     ]);
     const row = m.views.title.find((r) => r.key === unpricedTitleId);

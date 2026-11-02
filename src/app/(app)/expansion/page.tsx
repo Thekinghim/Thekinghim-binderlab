@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 
-import { periodText } from "@/analytics/todos/text";
+import { day, periodText } from "@/analytics/todos/text";
 import { SectionHeader } from "@/components/ui/section-header";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { formatInt } from "@/lib/format";
@@ -198,7 +198,7 @@ export default async function ExpansionPage({
           aside={
             data.goals.progress.length === 0
               ? "Utfall och prognos visas när ett mål finns."
-              : `Prognos till och med ${data.ctx.today}: snittet hittills, eller de senaste 28 dagarna tidigt i månaden.`
+              : `Prognos till och med ${day(data.ctx.today)}: snittet hittills, eller de senaste 28 dagarna tidigt i månaden.`
           }
         />
         <GoalsView

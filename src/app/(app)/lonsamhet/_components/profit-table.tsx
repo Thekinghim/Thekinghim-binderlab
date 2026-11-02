@@ -4,11 +4,17 @@ import Link from "next/link";
 import { useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
-import { DataTable, type Column } from "@/components/ui/data-table";
+import {
+  DataTable,
+  sortOrder,
+  type Column,
+  type SortKey,
+  type SortSpec,
+} from "@/components/ui/data-table";
 import { Segmented } from "@/components/ui/segmented";
 import { StatusTag } from "@/components/ui/status-tag";
 import { downloadCsv, toCsv, type CsvColumn } from "@/lib/csv";
-import { formatInt, formatPercent, formatSek, MISSING, NBSP } from "@/lib/format";
+import { formatCsvNumber, formatInt, formatPercent, formatSek, MISSING, NBSP } from "@/lib/format";
 
 import type { ProfitLine, ViewKey } from "../_lib/model";
 
@@ -32,7 +38,7 @@ function onlyUnpriced(r: ProfitLine): boolean {
   return r.kind === "item" && r.orders > 0 && r.orders === r.unpricedOrders;
 }
 
-function NameCell({ row }: { row: ProfitLine }) {
+function NameCell({ row, selected }: { row: ProfitLine; selected: boolean }) {
   if (row.kind !== "item") {
     return (
       <span className="flex min-w-0 flex-col py-1.5">
@@ -47,8 +53,11 @@ function NameCell({ row }: { row: ProfitLine }) {
     <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 py-1.5">
       <span className="flex min-w-0 items-baseline gap-2">
         {row.code ? <span className="meta shrink-0 text-subtle">{row.code}</span> : null}
-        <span className="min-w-0 text-fg">{row.name}</span>
+        <span className={selected ? "min-w-0 font-medium text-fg" : "min-w-0 text-fg"}>
+          {row.name}
+        </span>
       </span>
+      {selected ? <StatusTag status="neutral">Vald</StatusTag> : null}
       {row.priceHref ? (
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <StatusTag status="warning">
@@ -67,18 +76,56 @@ function NameCell({ row }: { row: ProfitLine }) {
   );
 }
 
-function columnsFor(
+const collator = new Intl.Collator("sv-SE", { numeric: true, sensitivity: "base" });
+
+function sortName(r: ProfitLine): string {
+  return r.code ? `${r.code} ${r.name}` : r.name;
+}
+
+/**
+ * Sorteringsvärden. De särskilda raderna (ej fördelad hyra, utan automat/butik) och
+ * saknade värden ger NaN, som DataTable alltid lägger sist oavsett riktning. Namnen
+ * sorteras som rang (svensk ordning) av samma skäl.
+ */
+function sortValues(rows: readonly ProfitLine[]) {
+  const names = Array.from(new Set(rows.filter((r) => r.kind === "item").map(sortName))).sort(
+    collator.compare,
+  );
+  const rank = new Map(names.map((n, i) => [n, i]));
+  const item = (get: (r: ProfitLine) => number) => (r: ProfitLine) =>
+    r.kind === "item" ? get(r) : Number.NaN;
+  const priced = (get: (r: ProfitLine) => number) =>
+    item((r) => (onlyUnpriced(r) ? Number.NaN : get(r)));
+  return {
+    name: item((r) => rank.get(sortName(r)) ?? Number.NaN),
+    orders: item((r) => r.orders),
+    revenue: priced((r) => r.revenueOre),
+    cost: priced((r) => r.costOre),
+    fees: priced((r) => r.feesOre),
+    compensation: priced((r) => r.compensationOre),
+    profit: priced((r) => r.profitOre),
+    margin: item((r) => (r.marginBp === null ? Number.NaN : r.marginBp)),
+    unpriced: item((r) => r.unpricedRevenueOre),
+  } satisfies Record<string, (r: ProfitLine) => number>;
+}
+
+export const DEFAULT_SORT: readonly SortKey[] = [{ key: "profit", dir: "desc" }];
+
+export function columnsFor(
   view: ViewKey,
+  rows: readonly ProfitLine[],
   totals: ProfitLine,
   showUnpriced: boolean,
+  selectedKey: string | null = null,
 ): Column<ProfitLine>[] {
   const nameHeader = VIEW_OPTIONS.find((o) => o.value === view)?.label ?? "Namn";
+  const sv = sortValues(rows);
   const cols: Column<ProfitLine>[] = [
     {
       key: "name",
       header: nameHeader,
-      sortValue: (r) => (r.code ? `${r.code} ${r.name}` : r.name),
-      render: (r) => <NameCell row={r} />,
+      sortValue: sv.name,
+      render: (r) => <NameCell row={r} selected={r.kind === "item" && r.key === selectedKey} />,
       footer: <span className="font-medium text-fg">Totalt</span>,
       hideable: false,
       className: "md:min-w-48",
@@ -87,16 +134,16 @@ function columnsFor(
       key: "orders",
       header: "Order",
       numeric: true,
-      sortValue: (r) => r.orders,
+      sortValue: sv.orders,
       render: (r) => formatInt(r.orders),
       footer: formatInt(totals.orders),
       hideOnMobile: true,
     },
     {
       key: "revenue",
-      header: "Intäkt",
+      header: "Intäkt med pris",
       numeric: true,
-      sortValue: (r) => r.revenueOre,
+      sortValue: sv.revenue,
       render: (r) => (onlyUnpriced(r) ? MISSING : kr(r.revenueOre)),
       footer: kr(totals.revenueOre),
       hideOnMobile: true,
@@ -105,7 +152,7 @@ function columnsFor(
       key: "cost",
       header: "Inköp",
       numeric: true,
-      sortValue: (r) => r.costOre,
+      sortValue: sv.cost,
       render: (r) => (onlyUnpriced(r) ? MISSING : kr(r.costOre)),
       footer: kr(totals.costOre),
       hideOnMobile: true,
@@ -114,7 +161,7 @@ function columnsFor(
       key: "fees",
       header: "Avgifter",
       numeric: true,
-      sortValue: (r) => r.feesOre,
+      sortValue: sv.fees,
       render: (r) => (onlyUnpriced(r) ? MISSING : kr(r.feesOre)),
       footer: kr(totals.feesOre),
       hideOnMobile: true,
@@ -123,7 +170,7 @@ function columnsFor(
       key: "compensation",
       header: "Butiksersättning",
       numeric: true,
-      sortValue: (r) => r.compensationOre,
+      sortValue: sv.compensation,
       render: (r) => (onlyUnpriced(r) ? MISSING : kr(r.compensationOre)),
       footer: kr(totals.compensationOre),
       hideOnMobile: true,
@@ -132,7 +179,7 @@ function columnsFor(
       key: "profit",
       header: "Vinst",
       numeric: true,
-      sortValue: (r) => r.profitOre,
+      sortValue: sv.profit,
       render: (r) => (onlyUnpriced(r) ? MISSING : kr(r.profitOre)),
       footer: <span className="font-medium text-fg">{kr(totals.profitOre)}</span>,
     },
@@ -140,7 +187,7 @@ function columnsFor(
       key: "margin",
       header: "Marginal",
       numeric: true,
-      sortValue: (r) => (r.marginBp === null ? Number.NaN : r.marginBp),
+      sortValue: sv.margin,
       render: (r) => pct(r.marginBp),
       footer: pct(totals.marginBp),
     },
@@ -150,7 +197,7 @@ function columnsFor(
       key: "unpriced",
       header: "Utan inköpspris",
       numeric: true,
-      sortValue: (r) => r.unpricedRevenueOre,
+      sortValue: sv.unpriced,
       render: (r) => (r.unpricedRevenueOre === 0 ? MISSING : kr(r.unpricedRevenueOre)),
       footer: kr(totals.unpricedRevenueOre),
       hideOnMobile: true,
@@ -159,53 +206,85 @@ function columnsFor(
   return cols;
 }
 
+/** Raderna i tabellens ordning (samma sortering som DataTable). */
+export function sortedLines(rows: readonly ProfitLine[], sort: readonly SortKey[]): ProfitLine[] {
+  const sv = sortValues(rows) as Record<string, (r: ProfitLine) => number>;
+  const specs: SortSpec<ProfitLine>[] = [];
+  for (const s of sort) {
+    const get = sv[s.key];
+    if (get) specs.push({ get, dir: s.dir });
+  }
+  const order = sortOrder(rows, specs);
+  return Array.from(order, (i) => rows[i] as ProfitLine);
+}
+
 // ---------------------------------------------------------------------------
 // Export
 // ---------------------------------------------------------------------------
 
-const csvKr = (ore: number) => ore / 100;
+/** Belopp i kronor med två decimaler ("79987,00", "-3,50"). */
+const csvKr = (ore: number) => formatCsvNumber(ore / 100, 2);
+const FORMULA_START = /^[=+\-@\t\r]/;
+/** Text som kalkylprogrammet inte får tolka som formel (talen är redan text). */
+const csvText = (s: string) => (FORMULA_START.test(s) ? `'${s}` : s);
 
-/** Kolumnerna i CSV-filen: belopp i kronor med ören, marginal i procent. */
+/** Kolumnerna i CSV-filen: belopp i kronor med ören, marginal i procent med två decimaler. */
 function csvColumns(view: ViewKey): CsvColumn<ProfitLine>[] {
   const nameHeader = VIEW_OPTIONS.find((o) => o.value === view)?.label ?? "Namn";
-  const cols: CsvColumn<ProfitLine>[] = [{ header: nameHeader, csv: (r) => r.name }];
-  if (view === "machine") cols.push({ header: "Kod", csv: (r) => r.code ?? "" });
+  const cols: CsvColumn<ProfitLine>[] = [{ header: nameHeader, csv: (r) => csvText(r.name) }];
+  if (view === "machine") cols.push({ header: "Kod", csv: (r) => csvText(r.code ?? "") });
   cols.push(
     { header: "Order", csv: (r) => r.orders },
+    { header: "Order med inköpspris", csv: (r) => r.orders - r.unpricedOrders },
     { header: "Order utan inköpspris", csv: (r) => r.unpricedOrders },
-    { header: "Intäkt (kr)", csv: (r) => csvKr(r.revenueOre) },
+    { header: "Intäkt med inköpspris (kr)", csv: (r) => csvKr(r.revenueOre) },
     { header: "Inköp (kr)", csv: (r) => csvKr(r.costOre) },
     { header: "Avgifter (kr)", csv: (r) => csvKr(r.feesOre) },
     { header: "Butiksersättning (kr)", csv: (r) => csvKr(r.compensationOre) },
     { header: "Vinst (kr)", csv: (r) => csvKr(r.profitOre) },
-    { header: "Marginal (%)", csv: (r) => (r.marginBp === null ? null : r.marginBp / 100) },
+    {
+      header: "Marginal (%)",
+      csv: (r) => (r.marginBp === null ? null : formatCsvNumber(r.marginBp / 100, 2)),
+    },
     { header: "Intäkt utan inköpspris (kr)", csv: (r) => csvKr(r.unpricedRevenueOre) },
   );
   return cols;
 }
 
-/** Hela vyn som CSV i svenskt Excel-format, störst vinst först och totalraden sist. */
-export function lonsamhetCsv(view: ViewKey, rows: readonly ProfitLine[], totals: ProfitLine) {
-  const sorted = [...rows].sort((a, b) => b.profitOre - a.profitOre);
-  return toCsv([...sorted, totals], csvColumns(view));
+/**
+ * Hela vyn som CSV i svenskt Excel-format, i tabellens ordning och med totalraden sist.
+ * Talen skrivs som färdig text med två decimaler; formelskyddet görs på namnen här, så
+ * att negativa belopp inte får en apostrof.
+ */
+export function lonsamhetCsv(
+  view: ViewKey,
+  rows: readonly ProfitLine[],
+  totals: ProfitLine,
+  sort: readonly SortKey[] = DEFAULT_SORT,
+) {
+  return toCsv([...sortedLines(rows, sort), totals], csvColumns(view), {
+    escapeFormulas: false,
+  });
 }
 
 export function ExportButton({
   view,
   rows,
   totals,
+  sort,
   fileName,
 }: {
   view: ViewKey;
   rows: readonly ProfitLine[];
   totals: ProfitLine;
+  sort: readonly SortKey[];
   fileName: string;
 }) {
   return (
     <Button
       size="sm"
       iconLeft="download"
-      onClick={() => downloadCsv(fileName, lonsamhetCsv(view, rows, totals))}
+      onClick={() => downloadCsv(fileName, lonsamhetCsv(view, rows, totals, sort))}
     >
       Exportera CSV
     </Button>
@@ -222,17 +301,23 @@ export function ProfitTable({
   rows,
   totals,
   caption,
+  sort,
+  onSortChange,
+  selectedKey,
 }: {
   view: ViewKey;
   onViewChange: (view: ViewKey) => void;
   rows: readonly ProfitLine[];
   totals: ProfitLine;
   caption: string;
+  sort: readonly SortKey[];
+  onSortChange: (sort: ReadonlyArray<SortKey>) => void;
+  selectedKey: string | null;
 }) {
   const showUnpriced = totals.unpricedRevenueOre > 0;
   const columns = useMemo(
-    () => columnsFor(view, totals, showUnpriced),
-    [view, totals, showUnpriced],
+    () => columnsFor(view, rows, totals, showUnpriced, selectedKey),
+    [view, rows, totals, showUnpriced, selectedKey],
   );
   return (
     <DataTable
@@ -241,7 +326,8 @@ export function ProfitTable({
       rows={rows}
       rowKey={(r) => r.key}
       caption={caption}
-      defaultSort={{ key: "profit", dir: "desc" }}
+      defaultSort={sort}
+      onSortChange={onSortChange}
       toolbar={
         <Segmented
           options={VIEW_OPTIONS}

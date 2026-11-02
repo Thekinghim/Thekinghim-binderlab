@@ -5,14 +5,14 @@ import { businessDateAt } from "@/analytics/todos/time";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { REFUND_NONE_KEY } from "@/domain/refunds";
-import { formatInt, formatKronor, formatPeriod } from "@/lib/format";
+import { formatInt, formatPeriod } from "@/lib/format";
 import { isoDateToShellDate, loadPeriod, requireRoute } from "@/server/data/core";
 
 import { formatWhen, plural } from "../drift/_lib/display";
 import { InboxKpis } from "./_components/inbox-kpis";
 import { IncidentTable, type IncidentListRow } from "./_components/incident-table";
 import { loadInbox, type IncidentRow } from "./_lib/load";
-import { KIND_LABEL, STATUS_LABEL } from "./_lib/model";
+import { KIND_LABEL, kronorOfOre, STATUS_LABEL } from "./_lib/model";
 
 export const metadata: Metadata = { title: "Inkorg" };
 
@@ -53,7 +53,7 @@ function StatTable({ caption, rows, first }: { caption: string; rows: StatRow[];
               <td className="tnum py-2.5 text-right text-fg">{formatInt(r.count)}</td>
               <td className="tnum py-2.5 text-right text-muted">{formatInt(r.open)}</td>
               <td className="tnum py-2.5 text-right text-fg">
-                {r.refundedOre > 0 ? formatKronor(r.refundedOre) : "–"}
+                {r.refundedOre > 0 ? kronorOfOre(r.refundedOre) : "–"}
               </td>
             </tr>
           ))}
@@ -208,7 +208,7 @@ export default async function InboxPage({
         }
         aside={
           total.amountOre > 0
-            ? `${formatKronor(total.amountOre)} återbetalt ${periodLabel}, ${plural(total.count, "ärende", "ärenden")}.`
+            ? `${kronorOfOre(total.amountOre)} återbetalt ${periodLabel}, ${plural(total.count, "ärende", "ärenden")}.`
             : oldestOpen
               ? `Äldsta öppna sedan ${formatWhen(oldestOpen.startedAt, ctx.timeZone, now)}.`
               : `Inga återbetalningar ${periodLabel}.`
@@ -247,10 +247,7 @@ export default async function InboxPage({
           aside="Öppna ärenden visas alltid, lösta när de rör perioden."
         />
         {rows.length === 0 ? (
-          <StateMessage
-            kind="empty"
-            message={`Inga kundärenden ${periodLabel} och inga öppna.`}
-          />
+          <StateMessage kind="empty" message={`Inga kundärenden ${periodLabel} och inga öppna.`} />
         ) : (
           <IncidentTable rows={rows} />
         )}
@@ -264,7 +261,7 @@ export default async function InboxPage({
           title={top ? `Flest ärenden i ${top.label}.` : "Inga ärenden att räkna på."}
           aside={
             top
-              ? `${plural(top.count, "ärende", "ärenden")}${top.refundedOre > 0 ? `, ${formatKronor(top.refundedOre)} återbetalt` : ""}.`
+              ? `${plural(top.count, "ärende", "ärenden")}${top.refundedOre > 0 ? `, ${kronorOfOre(top.refundedOre)} återbetalt` : ""}.`
               : "Statistiken räknas på ärenden som startade i perioden."
           }
         />

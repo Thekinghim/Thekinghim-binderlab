@@ -6,6 +6,7 @@
  */
 
 import { parseAmountOre } from "@/import/amount";
+import { formatKronor } from "@/lib/format";
 import { formatLocalDate, utcToZoned, zonedToUtc } from "@/import/zoned";
 
 export const INCIDENT_KINDS = [
@@ -160,4 +161,9 @@ export function validateIncident(
       refundedOn,
     },
   };
+}
+
+/** Belopp i öre som kronor med ören: 4 950 → "49,50 kr". */
+export function kronorOfOre(ore: number, decimals = 2): string {
+  return formatKronor(ore / 100, { decimals });
 }

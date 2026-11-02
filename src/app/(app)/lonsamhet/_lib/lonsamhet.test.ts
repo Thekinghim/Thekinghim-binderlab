@@ -5,7 +5,12 @@ import type { MachineRecord, StoreRecord, TitleRecord } from "@/server/data/core
 
 import { lonsamhetHeadline, sentence, shareOfProfitText, trendTitle, viewTitle } from "./headline";
 import { buildLonsamhetModel, priceHref, type LonsamhetInput } from "./model";
-import { parseTrendParam, parseViewParam } from "./params";
+import {
+  canonicalLonsamhetQuery,
+  parseTitleParam,
+  parseTrendParam,
+  parseViewParam,
+} from "./params";
 
 const NBSP = " ";
 
@@ -228,15 +233,25 @@ describe("viewTitle och trendTitle", () => {
     expect(t.aside).toBe(`7${NBSP}719${NBSP}kr, 29,2${NBSP}% marginal. 2 titlar gick med förlust.`);
   });
 
-  it("ger snitt och bästa vecka", () => {
+  it("ger bästa och senaste hela veckan, utan snitt", () => {
     const t = trendTitle({
       unit: "vecka",
       buckets: 3,
-      averageOre: 355_300,
       best: { name: "vecka 44", profitOre: 949_500 },
-      losses: 0,
+      latestFull: { profitOre: 710_000 },
+      losses: 1,
     });
-    expect(t.aside).toBe(`Snitt 3${NBSP}553${NBSP}kr, bäst vecka 44 med 9${NBSP}495${NBSP}kr.`);
+    expect(t.aside).toBe(
+      `Bäst var vecka 44 med 9${NBSP}495${NBSP}kr. Senaste hela veckan gav 7${NBSP}100${NBSP}kr. 1 vecka med förlust.`,
+    );
+    const m = trendTitle({
+      unit: "månad",
+      buckets: 2,
+      best: { name: "oktober", profitOre: 100_000 },
+      latestFull: null,
+      losses: 2,
+    });
+    expect(m.aside).toBe(`Bäst var oktober med 1${NBSP}000${NBSP}kr. 2 månader med förlust.`);
   });
 });
 
@@ -256,9 +271,9 @@ describe("buildLonsamhetModel", () => {
 
     // Titlar utan pris har länk till inköpspriset med periodens parametrar.
     expect(m.unpriced.titles.map((t) => t.name)).toEqual(["Titel B", "Titel C"]);
-    expect(m.unpriced.titles[0]?.href).toBe("/inkopspriser?titel=B&period=manad");
+    expect(m.unpriced.titles[0]?.href).toBe("/inkopspriser?titel=B&period=manad#titel");
     const rowB = m.views.title.find((r) => r.key === "B");
-    expect(rowB?.priceHref).toBe("/inkopspriser?titel=B&period=manad");
+    expect(rowB?.priceHref).toBe("/inkopspriser?titel=B&period=manad#titel");
     expect(m.views.title.find((r) => r.key === "A")?.priceHref).toBeNull();
 
     // Raderna summerar till totalen i varje vy, även med ej fördelad hyra.
@@ -275,7 +290,7 @@ describe("buildLonsamhetModel", () => {
     expect(m.headline).toEqual({
       kind: "profit",
       title: `Ni behöll 49,2${NBSP}% av intäkten.`,
-      aside: "Automat 2 står för drygt hälften av vinsten.",
+      aside: "BL-002 Automat 2 står för drygt hälften av vinsten.",
     });
     expect(m.viewTitles.machine.title).toBe("BL-002 Automat 2 gav mest vinst.");
     expect(m.comparisonLabel).toBe(`Jämfört med 23${NBSP}sep.${NBSP}–${NBSP}12${NBSP}okt.`);
@@ -299,6 +314,16 @@ describe("buildLonsamhetModel", () => {
     expect(months.reduce((s, b) => s + b.profitOre, 0)).toBe(m.totals.profitOre);
     expect(m.defaultTrend).toBe("week");
     expect(m.trend.week.heading.title).toBe("Vinst och marginal per vecka.");
+    // Ingen "Snitt": delvisa veckor skulle dra ned det.
+    expect(m.trend.week.heading.aside).not.toMatch(/Snitt/);
+    expect(m.trend.week.heading.aside).toMatch(/^Bäst var vecka \d+ med /);
+
+    // Per dag: en stapel per dag i perioden, och summan går ihop med ej fördelad hyra.
+    const days = m.trend.day.buckets;
+    expect(days).toHaveLength(20);
+    expect(days.every((d) => !d.partial)).toBe(true);
+    const daySum = days.reduce((s, d) => s + d.profitOre, 0) + m.trend.day.unallocatedProfitOre;
+    expect(daySum).toBe(m.totals.profitOre);
   });
 
   it("utan order", () => {
@@ -310,6 +335,21 @@ describe("buildLonsamhetModel", () => {
     expect(m.orders).toBe(0);
     expect(m.headline.kind).toBe("empty");
     expect(m.views.title).toEqual([]);
+
+    // Rubriken säger ett faktum: när den senaste ordern kom.
+    const one = buildLonsamhetModel(
+      {
+        ...input,
+        current: {
+          ...input.current,
+          period: { start: "2026-11-02", end: "2026-11-02" },
+          orders: [],
+        },
+      },
+      { today: "2026-11-02", lastOrderDate: "2026-11-01" },
+    );
+    expect(one.headline.title).toBe(`Inga order 2${NBSP}nov.`);
+    expect(one.headline.aside).toBe(`Senaste ordern kom 1${NBSP}nov.`);
   });
 });
 
@@ -317,15 +357,34 @@ describe("parametrar och länkar", () => {
   it("tolkar ?vy= och ?per=", () => {
     expect(parseViewParam("automat")).toBe("machine");
     expect(parseViewParam(["butik"])).toBe("store");
-    expect(parseViewParam("x")).toBe("title");
+    expect(parseViewParam("x")).toBeNull();
     expect(parseTrendParam("manad")).toBe("month");
+    expect(parseTrendParam("dag")).toBe("day");
     expect(parseTrendParam(undefined)).toBeNull();
+    expect(parseTitleParam("3F2A-b9")).toBe("3f2a-b9");
+    expect(parseTitleParam("a b")).toBeNull();
+  });
+
+  it("skriver om äldre länkar (?grupp=, ?fran=, ?till=) till ?vy=, ?per=, ?from=, ?to=", () => {
+    expect(canonicalLonsamhetQuery({ vy: "butik", period: "7d" })).toBeNull();
+    expect(
+      canonicalLonsamhetQuery({ grupp: "titel", fran: "2026-10-26", till: "2026-11-01" }),
+    ).toBe("?from=2026-10-26&to=2026-11-01&vy=titel");
+    expect(canonicalLonsamhetQuery({ grupp: "dag", from: "2026-10-26", to: "2026-10-26" })).toBe(
+      "?from=2026-10-26&to=2026-10-26&per=dag",
+    );
+    expect(canonicalLonsamhetQuery({ grupp: "veckodag" })).toBe("?per=dag");
+    expect(canonicalLonsamhetQuery({ butik: "s1", grupp: "automat" })).toBe("?butik=s1&vy=automat");
+    expect(canonicalLonsamhetQuery({ grupp: "titel", titel: "t1", vy: "automat" })).toBe(
+      "?titel=t1&vy=automat",
+    );
+    expect(canonicalLonsamhetQuery({ grupp: "okänd" })).toBe("");
   });
 
   it("bygger länken till inköpspriset utan att tappa filtret", () => {
     expect(priceHref("abc", "period=30d&butik=s1")).toBe(
-      "/inkopspriser?titel=abc&period=30d&butik=s1",
+      "/inkopspriser?titel=abc&period=30d&butik=s1#titel",
     );
-    expect(priceHref("a b")).toBe("/inkopspriser?titel=a%20b");
+    expect(priceHref("a b")).toBe("/inkopspriser?titel=a%20b#titel");
   });
 });

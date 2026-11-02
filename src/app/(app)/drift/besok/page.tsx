@@ -199,15 +199,17 @@ export default async function VisitPlanPage() {
                   <Panel>
                     <PanelSection label="Att lasta" meta={`${formatInt(day.totalPacks)} st`}>
                       <ul className="flex flex-col divide-y divide-line text-sm">
-                        {day.load.filter((l) => l.quantity > 0).map((l) => (
-                          <li
-                            key={l.titleId}
-                            className="flex items-baseline justify-between gap-3 py-2"
-                          >
-                            <span className="text-fg">{l.titleName}</span>
-                            <span className="tnum text-fg">{formatInt(l.quantity)}</span>
-                          </li>
-                        ))}
+                        {day.load
+                          .filter((l) => l.quantity > 0)
+                          .map((l) => (
+                            <li
+                              key={l.titleId}
+                              className="flex items-baseline justify-between gap-3 py-2"
+                            >
+                              <span className="text-fg">{l.titleName}</span>
+                              <span className="tnum text-fg">{formatInt(l.quantity)}</span>
+                            </li>
+                          ))}
                       </ul>
                     </PanelSection>
                   </Panel>

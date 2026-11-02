@@ -326,10 +326,10 @@ allt, påfyllaren ingenting). Tabeller: `releases`, `release_allocations`,
 Externa marknadspriser är **inte inkopplade**: beställaren väljer källa först (underlag och
 förslag i `docs/marknadskallor.md`). Adaptern väljs med miljövariabler:
 
-| Variabel                  | Värde                                                                                       | Lokalt                                     |
-| ------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `MARKET_PRICE_SOURCE`     | `none` (standard). `tcgplayer`, `cardmarket`, `pricecharting` ger läget "inte inkopplad".   | `local`: testpriser ur en fil              |
-| `MARKET_PRICE_LOCAL_FILE` | Fil för `local` (standard `.data/market-prices.json`). `local` vägrar i production.         | Formatet står i `docs/marknadskallor.md`   |
+| Variabel                  | Värde                                                                                     | Lokalt                                   |
+| ------------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------- |
+| `MARKET_PRICE_SOURCE`     | `none` (standard). `tcgplayer`, `cardmarket`, `pricecharting` ger läget "inte inkopplad". | `local`: testpriser ur en fil            |
+| `MARKET_PRICE_LOCAL_FILE` | Fil för `local` (standard `.data/market-prices.json`). `local` vägrar i production.       | Formatet står i `docs/marknadskallor.md` |
 
 Pristester ändrar inget pris i automaterna: panelen planerar testet och mäter effekten mot
 kontrollautomaterna, priset ställs om i Awish av operatören.

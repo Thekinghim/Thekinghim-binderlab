@@ -17,11 +17,13 @@ import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/
 import { dbErrorMessage } from "@/server/errors";
 import { MailError } from "@/server/mail/report-mailer";
 import { PdfError } from "@/server/pdf/render";
-import { currentReportViewer, sendDeps } from "@/server/reports/runtime";
+import { currentReportViewer, renderReportPdf, sendDeps } from "@/server/reports/runtime";
+import { userReportStore } from "@/server/reports/storage";
 import {
   approveReportFor,
   createRecipientFor,
   createReportFor,
+  ensurePdfFor,
   ReportError,
   sendReportFor,
   setRecipientActiveFor,
@@ -97,6 +99,17 @@ export async function approveReport(raw: unknown): Promise<ActionResult> {
     const viewer = await operator();
     const input = approveSchema.parse(raw);
     await approveReportFor(viewer, input.reportId, input.note ?? null);
+    // PDF:en skapas direkt vid godkännandet, så att den godkända versionen finns som fil
+    // (arkivet och butiksportalen läser den). Går det inte nu skapas den vid utskicket.
+    try {
+      await ensurePdfFor(viewer, input.reportId, {
+        store: await userReportStore(),
+        render: renderReportPdf,
+      });
+    } catch (error) {
+      unstable_rethrow(error);
+      console.error("[rapporter] PDF vid godkännande:", error);
+    }
     refresh();
     return { ok: true, data: undefined };
   } catch (error) {

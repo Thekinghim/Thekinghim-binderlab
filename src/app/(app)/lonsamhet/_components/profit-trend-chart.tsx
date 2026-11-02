@@ -28,6 +28,8 @@ export type TrendDatum = {
   /** Intäkt i kronor (alla order). */
   revenue: number;
   orders: number;
+  /** Bara en del av veckan/månaden ligger i perioden: stapeln ritas med streckad kant. */
+  partial?: boolean;
 };
 
 type Props = {
@@ -52,7 +54,8 @@ const CH_MONO = 6.8;
  * som en linje i en egen remsa under. Två axlar ovanpå varandra i stället för två
  * y-axlar i samma yta, så att ingen skala kan läsas mot fel serie.
  *
- * Formen bär betydelsen: vinst fylld (bästa i fg med belopp), förlust skrafferad, och
+ * Formen bär betydelsen: vinst fylld (bästa i fg med belopp), förlust skrafferad, delvis
+ * vecka/månad halvt fylld med streckad kant och "*" på axeln, och
  * den största förlusten i signal med 2 px ram och "! Förlust …" (högst en per diagram).
  * Tangentbord: ett tabbstopp, ← → flyttar läsrutan, Home/End till ändarna.
  */
@@ -283,9 +286,15 @@ export function ProfitTrendChart({ data, format, summary, height = 320 }: Props)
                             : isActive
                               ? "var(--bl-data-2)"
                               : "var(--bl-data-3)",
-                      stroke: isWorst ? "var(--bl-signal)" : loss ? "var(--bl-fg-muted)" : "none",
+                      fillOpacity: d.partial && !isWorst && !loss ? 0.45 : 1,
+                      stroke: isWorst
+                        ? "var(--bl-signal)"
+                        : loss || d.partial
+                          ? "var(--bl-fg-muted)"
+                          : "none",
                     }}
-                    strokeWidth={isWorst ? 2 : loss ? 1 : 0}
+                    strokeWidth={isWorst ? 2 : loss || d.partial ? 1 : 0}
+                    strokeDasharray={d.partial && !isWorst ? "2 2" : undefined}
                   />
                   {showLabel ? (
                     <AxisText x={cx(i)} y={g.stripTop + STRIP + 18} emphasis={isPeak || isActive}>

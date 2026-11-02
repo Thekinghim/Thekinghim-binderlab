@@ -14,6 +14,8 @@
 
 import "server-only";
 
+import { randomUUID } from "node:crypto";
+
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 
 import type { Tx } from "@/db/client";
@@ -433,10 +435,15 @@ export async function insertReportTx(
   snapshot: ReportSnapshot,
   generatedBy: string | null,
 ): Promise<string> {
+  // Sökvägen till PDF:en sätts direkt (databasen kräver en sökväg i organisationens
+  // namnrymd); själva filen skapas vid första nedladdningen eller utskicket.
+  const id = randomUUID();
   const [row] = await tx
     .insert(s.reports)
     .values({
+      id,
       organizationId: orgId,
+      storagePath: reportPdfPath(orgId, snapshot.month, id),
       kind: DB_KIND[snapshot.type],
       periodStart: snapshot.period.start,
       periodEnd: snapshot.period.end,
@@ -507,12 +514,14 @@ export async function ensurePdfFor(
   const bytes = await deps.render(id);
   const storagePath = reportPdfPath(orgId, report.month, id);
   await deps.store.put(storagePath, bytes, CONTENT_TYPE.pdf);
-  await as(viewer, EDIT_ROLES, async (tx) => {
-    await tx
-      .update(s.reports)
-      .set({ storagePath })
-      .where(and(eq(s.reports.organizationId, orgId), eq(s.reports.id, id)));
-  });
+  if (report.storagePath !== storagePath) {
+    await as(viewer, EDIT_ROLES, async (tx) => {
+      await tx
+        .update(s.reports)
+        .set({ storagePath })
+        .where(and(eq(s.reports.organizationId, orgId), eq(s.reports.id, id)));
+    });
+  }
   return { bytes, fileName, snapshot: report.snapshot };
 }
 

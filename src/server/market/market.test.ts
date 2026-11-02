@@ -10,7 +10,8 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { addDays, eachDay, type IsoDate } from "@/domain";
+import type { AnalyticsOrder } from "@/analytics/todos";
+import { addDays, eachDay } from "@/domain";
 
 import {
   activeExperimentTitles,
@@ -56,7 +57,7 @@ function release(over: Partial<ReleaseRow>): ReleaseRow {
 }
 
 function data(over: Partial<MarketData> = {}): MarketData {
-  const orders: MarketData["orders"] = [];
+  const orders: AnalyticsOrder[] = [];
   let n = 0;
   // Titel "old" säljer från första dagen med data; "new" har sitt första köp 1 mars.
   for (const date of eachDay("2026-01-05", TODAY)) {

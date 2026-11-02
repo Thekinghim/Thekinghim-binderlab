@@ -23,6 +23,10 @@ export interface Headline {
 export interface HeadlineInput {
   /** Antal dagar i perioden. */
   readonly days: number;
+  /** Perioden i löptext ("2 nov.", "13 okt. – 1 nov."), för tomt läge. */
+  readonly periodLabel?: string;
+  /** Senaste orderns datum i löptext ("1 nov."), för tomt läge. null utan order alls. */
+  readonly lastOrderLabel?: string | null;
   readonly orders: number;
   readonly pricedOrders: number;
   readonly profitOre: number;
@@ -112,8 +116,12 @@ export function lonsamhetHeadline(input: HeadlineInput): Headline {
   if (input.orders === 0) {
     return {
       kind: "empty",
-      title: "Inga order i perioden.",
-      aside: "Vinst och marginal räknas när perioden har försäljning.",
+      title: input.periodLabel
+        ? sentence(`Inga order ${input.days === 1 ? "" : "under "}${input.periodLabel}`)
+        : "Inga order i perioden.",
+      aside: input.lastOrderLabel
+        ? sentence(`Senaste ordern kom ${input.lastOrderLabel}`)
+        : "Inga order har importerats ännu.",
     };
   }
 
@@ -216,30 +224,53 @@ export function viewTitle(input: ViewTitleInput): SectionTitle {
 }
 
 export interface TrendTitleInput {
-  /** "vecka" eller "månad". */
-  readonly unit: string;
-  /** Antal veckor/månader. */
+  readonly unit: "dag" | "vecka" | "månad";
+  /** Antal dagar/veckor/månader med order. */
   readonly buckets: number;
-  /** Snittvinst per vecka/månad (öre). */
-  readonly averageOre: number;
-  /** Bästa veckan/månaden: namn ("vecka 43") och vinst. */
+  /** Bästa dagen/veckan/månaden: namn ("vecka 43") och vinst. */
   readonly best: { readonly name: string; readonly profitOre: number } | null;
-  /** Veckor/månader med förlust. */
+  /** Den senaste hela veckan/månaden med order, när den inte är den bästa. */
+  readonly latestFull: { readonly profitOre: number } | null;
+  /** Dagar/veckor/månader med förlust. */
   readonly losses: number;
 }
 
-/** "Vinst och marginal per vecka." + "Snitt 9 200 kr, bäst vecka 43 med 14 812 kr." */
+const DEFINITE: Record<TrendTitleInput["unit"], string> = {
+  dag: "dagen",
+  vecka: "veckan",
+  månad: "månaden",
+};
+const PLURAL: Record<TrendTitleInput["unit"], string> = {
+  dag: "dagar",
+  vecka: "veckor",
+  månad: "månader",
+};
+
+/**
+ * "Vinst och marginal per vecka." + "Bäst var vecka 43 med 9 495 kr. Senaste hela veckan
+ * gav 7 100 kr." Inget snitt: delvisa veckor och månader i periodens kanter gör det
+ * missvisande.
+ */
 export function trendTitle(input: TrendTitleInput): SectionTitle {
   const title = `Vinst och marginal per ${input.unit}.`;
   if (input.buckets === 0 || input.best === null) {
     return { title, aside: "Ingen försäljning i perioden." };
   }
-  const loss = input.losses > 0 ? ` ${input.losses} med förlust.` : "";
+  const loss =
+    input.losses > 0
+      ? ` ${formatInt(input.losses)} ${input.losses === 1 ? input.unit : PLURAL[input.unit]} med förlust.`
+      : "";
   if (input.buckets === 1) {
-    return { title, aside: `${sek(input.best.profitOre)} på en ${input.unit}.${loss}` };
+    return {
+      title,
+      aside: `${sek(input.best.profitOre)} på ${sentence(input.best.name)}${loss}`,
+    };
   }
+  const latest = input.latestFull
+    ? ` Senaste hela ${DEFINITE[input.unit]} gav ${sek(input.latestFull.profitOre)}.`
+    : "";
   return {
     title,
-    aside: `Snitt ${sek(input.averageOre)}, bäst ${input.best.name} med ${sek(input.best.profitOre)}.${loss}`,
+    aside: `Bäst var ${input.best.name} med ${sek(input.best.profitOre)}.${latest}${loss}`,
   };
 }

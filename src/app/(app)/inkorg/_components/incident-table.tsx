@@ -4,7 +4,9 @@ import Link from "next/link";
 
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { StatusTag } from "@/components/ui/status-tag";
-import { formatKronor, MISSING } from "@/lib/format";
+import { MISSING } from "@/lib/format";
+
+import { kronorOfOre } from "../_lib/model";
 
 export interface IncidentListRow {
   readonly id: string;
@@ -82,7 +84,7 @@ const columns: Column<IncidentListRow>[] = [
     header: "Återbetalt",
     numeric: true,
     sortValue: (r) => r.refundedOre,
-    render: (r) => (r.refundedOre > 0 ? formatKronor(r.refundedOre) : MISSING),
+    render: (r) => (r.refundedOre > 0 ? kronorOfOre(r.refundedOre) : MISSING),
     csv: (r) => r.refundedOre / 100,
   },
 ];

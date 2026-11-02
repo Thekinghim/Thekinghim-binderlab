@@ -708,7 +708,7 @@ export function marketHeadline(
         : "Inga avvikelser i inköpspriserna.",
     );
   }
-  return { title, aside: facts.slice(0, 3).join(" ") };
+  return { title, aside: facts.slice(0, 2).join(" ") };
 }
 
 // ---------------------------------------------------------------------------

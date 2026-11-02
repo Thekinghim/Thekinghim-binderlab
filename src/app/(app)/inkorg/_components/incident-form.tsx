@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { wallClockIn } from "@/components/shell/period-state";
-import { formatCsvNumber, formatKronor, formatTime } from "@/lib/format";
+import { formatCsvNumber, formatTime } from "@/lib/format";
 
 import { findOrders, saveIncident, type OrderCandidate } from "../actions";
 import {
   INCIDENT_KINDS,
   INCIDENT_STATUSES,
   KIND_LABEL,
+  kronorOfOre,
   STATUS_LABEL,
   type IncidentErrors,
   type IncidentInput,
@@ -93,7 +94,7 @@ export function IncidentForm({
   };
 
   const orderLabel = (o: OrderCandidate) =>
-    `${formatTime(wallClockIn(new Date(o.orderedAt), timeZone))} · ${o.titleName ?? "okänd titel"} · ${formatKronor(o.amountOre)} · order ${o.externalId}`;
+    `${formatTime(wallClockIn(new Date(o.orderedAt), timeZone))} · ${o.titleName ?? "okänd titel"} · ${kronorOfOre(o.amountOre)} · order ${o.externalId}`;
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-8" aria-label="Kundärende">

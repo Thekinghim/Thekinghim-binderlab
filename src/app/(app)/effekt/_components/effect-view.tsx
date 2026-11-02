@@ -206,7 +206,7 @@ export function SeriesView({
                   scope="col"
                   className={cn(
                     "label h-9 font-normal text-subtle",
-                    i === 0 ? "text-left" : "text-right",
+                    i === 0 ? "text-left" : "pl-4 text-right",
                   )}
                 >
                   {h}
@@ -221,18 +221,18 @@ export function SeriesView({
                   {monthLabel(p.month)}
                   {p.partial ? <span className="meta text-subtle"> · hittills</span> : null}
                 </td>
-                <td className="tnum text-right">{metricValue(series.metric, p.value)}</td>
-                <td className="tnum text-right text-muted">
+                <td className="tnum pl-4 text-right">{metricValue(series.metric, p.value)}</td>
+                <td className="tnum pl-4 text-right text-muted">
                   {series.metric === "profit_per_machine_month"
                     ? kr(series.baseline)
                     : series.metric === "stockout_days_month"
                       ? `${tenths(p.baselineForPeriodTenths)}${NBSP}dagar`
                       : minutesText(roundHalfUp(p.baselineForPeriodTenths, 10))}
                 </td>
-                <td className="tnum text-right">
+                <td className="tnum pl-4 text-right">
                   {p.improvementBp === null ? MISSING : signedPct(p.improvementBp)}
                 </td>
-                <td className="tnum text-right">
+                <td className="tnum pl-4 text-right">
                   {p.improvementOre === null ? MISSING : signedKr(p.improvementOre)}
                 </td>
               </tr>
@@ -446,7 +446,7 @@ export function MeasurementsSection({
                     scope="col"
                     className={cn(
                       "label h-9 font-normal text-subtle",
-                      i === 3 ? "text-right" : "text-left",
+                      i === 3 ? "pl-4 text-right" : "text-left",
                     )}
                   >
                     {h || <span className="sr-only">Åtgärd</span>}
@@ -460,7 +460,7 @@ export function MeasurementsSection({
                   <td className="pr-4">{monthLabel(r.month)}</td>
                   <td className="pr-4 text-muted">{METRIC_LABEL[r.metric]}</td>
                   <td className="pr-4 text-muted">{scopeLabel(r, stores, machines)}</td>
-                  <td className="tnum text-right">{metricValue(r.metric, r.value)}</td>
+                  <td className="tnum pl-4 text-right">{metricValue(r.metric, r.value)}</td>
                   <td className="text-right">
                     {canEdit ? (
                       <span className="inline-flex gap-1">

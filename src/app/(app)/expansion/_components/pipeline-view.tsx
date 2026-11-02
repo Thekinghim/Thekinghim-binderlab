@@ -367,7 +367,7 @@ export function StoreProfilesView({
                   scope="col"
                   className={cn(
                     "label h-9 font-normal text-subtle",
-                    i >= 3 ? "text-right" : "text-left",
+                    i >= 3 ? "pl-4 text-right" : "text-left",
                   )}
                 >
                   {h || <span className="sr-only">Åtgärd</span>}
@@ -381,10 +381,10 @@ export function StoreProfilesView({
                 <td className="pr-4 text-fg">{p.name}</td>
                 <td className="pr-4 text-muted">{p.storeType ?? MISSING}</td>
                 <td className="pr-4 text-muted">{p.city ?? MISSING}</td>
-                <td className="tnum text-right">
+                <td className="tnum pl-4 text-right">
                   {p.openHoursPerWeek === null ? MISSING : `${p.openHoursPerWeek} h`}
                 </td>
-                <td className="tnum text-right">
+                <td className="tnum pl-4 text-right">
                   {p.areaSqm === null ? MISSING : `${formatInt(p.areaSqm)} m²`}
                 </td>
                 <td className="text-right">

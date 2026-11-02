@@ -63,13 +63,14 @@ export function monthLabel(month: string): string {
   return formatMonth(new Date(y, m - 1, 1));
 }
 
-/** Öre → kronor som text för ett formulärfält ("12500" eller "12500,50"). */
+/** Öre → kronor som text för ett formulärfält ("12 500" eller "12 500,50"). */
 export function oreToInput(ore: number | null | undefined): string {
   if (ore === null || ore === undefined) return "";
   const sign = ore < 0 ? "-" : "";
   const a = Math.abs(ore);
   const cents = a % 100;
-  return `${sign}${Math.floor(a / 100)}${cents === 0 ? "" : `,${String(cents).padStart(2, "0")}`}`;
+  const whole = String(Math.floor(a / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return `${sign}${whole}${cents === 0 ? "" : `,${String(cents).padStart(2, "0")}`}`;
 }
 
 /** bp → procent som text för ett formulärfält ("12,5"). */

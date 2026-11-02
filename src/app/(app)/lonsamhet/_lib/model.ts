@@ -21,8 +21,6 @@ import {
   profitability,
   profitabilityViews,
   ratioBp,
-  roundHalfUp,
-  sumOre,
   topContributor,
   UNALLOCATED_KEY,
   weekOf,
@@ -32,7 +30,7 @@ import {
   type ProfitabilityResult,
   type ProfitabilityRow,
 } from "@/domain";
-import { formatMonth, formatPeriodShort } from "@/lib/format";
+import { formatDay, formatMonth, formatPeriodShort, formatWeekdayDay } from "@/lib/format";
 import type { DataScope, MachineRecord, StoreRecord, TitleRecord } from "@/server/data/core/types";
 import { isoDateToShellDate } from "@/server/data/core/period";
 
@@ -42,6 +40,7 @@ import {
   viewTitle,
   type Headline,
   type SectionTitle,
+  type TrendTitleInput,
 } from "./headline";
 
 // ---------------------------------------------------------------------------
@@ -49,10 +48,10 @@ import {
 // ---------------------------------------------------------------------------
 
 export type ViewKey = "title" | "machine" | "store";
-export type TrendKey = "week" | "month";
+export type TrendKey = "day" | "week" | "month";
 
 export const VIEW_KEYS: readonly ViewKey[] = ["title", "machine", "store"];
-export const TREND_KEYS: readonly TrendKey[] = ["week", "month"];
+export const TREND_KEYS: readonly TrendKey[] = ["day", "week", "month"];
 
 /** Vad en rad i tabellen är. */
 export type LineKind = "item" | "unallocated" | "no-machine" | "no-store";
@@ -81,14 +80,14 @@ export interface ProfitLine {
   readonly priceHref: string | null;
 }
 
-/** En vecka eller månad i utvecklingen. */
+/** En dag, vecka eller månad i utvecklingen. */
 export interface TrendBucket {
   readonly key: string;
-  /** Kort etikett för axeln: "V42", "okt.". */
+  /** Kort etikett för axeln: "26 okt", "V42", "okt.". */
   readonly axis: string;
   /** Rubrik i läsrutan: "Vecka 42 · 13–18 okt.", "okt. · 13–31 okt.". */
   readonly name: string;
-  /** I löptext: "vecka 42", "oktober". */
+  /** I löptext: "26 okt.", "vecka 42", "oktober". */
   readonly shortName: string;
   readonly start: IsoDate;
   readonly end: IsoDate;
@@ -107,8 +106,8 @@ export interface TrendSeries {
   /** Sektionsrubriken för upplösningen. */
   readonly heading: SectionTitle;
   /**
-   * Hyra som inte bärs av någon order och därför inte ligger på någon vecka (bara i
-   * veckovyn; i månadsvyn ligger den på månadens rad). Ingår i totalen.
+   * Hyra som inte bärs av någon order och därför inte ligger på någon dag eller vecka
+   * (i månadsvyn ligger den på månadens rad). Ingår i totalen.
    */
   readonly unallocatedProfitOre: number;
 }
@@ -184,7 +183,7 @@ export interface LonsamhetModel {
   readonly viewTitles: Record<ViewKey, SectionTitle>;
   readonly totals: ProfitLine;
   readonly trend: Record<TrendKey, TrendSeries>;
-  /** Förvald upplösning för utvecklingen: vecka upp till ~26 veckor, annars månad. */
+  /** Förvald upplösning: vecka upp till ~26 veckor, annars månad. Dag väljs av användaren. */
   readonly defaultTrend: TrendKey;
   readonly unpriced: UnpricedBlock;
   readonly calcVersion: string;
@@ -205,6 +204,8 @@ export interface LonsamhetOptions {
   readonly today: IsoDate;
   /** Skalets parametrar som bärs med i länkar (t.ex. "period=30d"), utan "?". */
   readonly carry?: string;
+  /** Senaste orderns affärsdatum i urvalet (för tomt läge), eller null utan order alls. */
+  readonly lastOrderDate?: IsoDate | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -224,12 +225,15 @@ function lineKind(row: ProfitabilityRow): LineKind {
   return "item";
 }
 
-/** Länk till inköpspriserna för en titel, med skalets period och filter. */
+/**
+ * Länk till inköpspriserna för en titel, med skalets period och filter. Ankaret #titel
+ * leder till formuläret, som sidans egna länkar.
+ */
 export function priceHref(titleId: string, carry?: string): string {
   const q = new URLSearchParams(carry ?? "");
   q.delete("titel");
   const rest = q.toString();
-  return `/inkopspriser?titel=${encodeURIComponent(titleId)}${rest ? `&${rest}` : ""}`;
+  return `/inkopspriser?titel=${encodeURIComponent(titleId)}${rest ? `&${rest}` : ""}#titel`;
 }
 
 interface Names {
@@ -307,7 +311,12 @@ function trendBucket(row: ProfitabilityRow, groupBy: TrendKey, today: IsoDate): 
   let axis: string;
   let name: string;
   let shortName: string;
-  if (groupBy === "week") {
+  if (groupBy === "day") {
+    const d = isoDateToShellDate(range.start);
+    axis = formatDay(d);
+    name = formatWeekdayDay(d);
+    shortName = periodText(range, today);
+  } else if (groupBy === "week") {
     const w = weekOf(range.start);
     axis = `V${w.week}`;
     name = `Vecka ${w.week} · ${rangeText}`;
@@ -345,21 +354,33 @@ function trendSeries(result: ProfitabilityResult, groupBy: TrendKey, today: IsoD
   }
   buckets.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
 
+  // Bara fakta ur raderna: bästa perioden och den senaste hela perioden med order.
+  // Inget snitt: delvisa veckor och månader skulle dra ned det.
   let best: TrendBucket | null = null;
+  let latestFull: TrendBucket | null = null;
   for (const b of buckets) {
     if (b.orders === 0) continue;
     if (best === null || b.profitOre > best.profitOre) best = b;
+    if (!b.partial) latestFull = b;
   }
-  const sum = sumOre(buckets.map((b) => b.profitOre));
   const heading = trendTitle({
-    unit: groupBy === "week" ? "vecka" : "månad",
-    buckets: buckets.length,
-    averageOre: buckets.length > 0 ? roundHalfUp(sum, buckets.length) : 0,
+    unit: TREND_UNIT[groupBy],
+    buckets: buckets.filter((b) => b.orders > 0).length,
     best: best ? { name: best.shortName, profitOre: best.profitOre } : null,
+    latestFull:
+      latestFull && latestFull !== best && groupBy !== "day"
+        ? { profitOre: latestFull.profitOre }
+        : null,
     losses: buckets.filter((b) => b.orders > b.unpricedOrders && b.profitOre < 0).length,
   });
   return { buckets, heading, unallocatedProfitOre: unallocated };
 }
+
+const TREND_UNIT: Record<TrendKey, TrendTitleInput["unit"]> = {
+  day: "dag",
+  week: "vecka",
+  month: "månad",
+};
 
 // ---------------------------------------------------------------------------
 // Modellen
@@ -424,6 +445,7 @@ export function buildLonsamhetModel(
     "title",
     "machine",
     "store",
+    "day",
     "week",
     "month",
   ] as const);
@@ -444,16 +466,24 @@ export function buildLonsamhetModel(
   // Rubriken: andel kvar och största bidragsgivaren, i den vy som har flest poster.
   const hv = headlineView(views);
   const top = topContributor(views[hv]);
+  const topMachine = top && hv === "machine" ? names.machine(top.key) : null;
   const topName = top
-    ? hv === "machine"
-      ? names.machine(top.key).name
+    ? topMachine
+      ? topMachine.code
+        ? `${topMachine.code} ${topMachine.name}`
+        : topMachine.name
       : hv === "store"
         ? names.store(top.key)
         : names.title(top.key)
     : null;
 
+  const lastOrderDate = options.lastOrderDate ?? null;
   const headline = lonsamhetHeadline({
     days: periodDays(period),
+    periodLabel: periodText(period, today),
+    lastOrderLabel: lastOrderDate
+      ? periodText({ start: lastOrderDate, end: lastOrderDate }, today)
+      : null,
     orders: totalsRow.orders,
     pricedOrders: totalsRow.pricedOrders,
     profitOre: totalsRow.profitOre,
@@ -565,6 +595,7 @@ export function buildLonsamhetModel(
     store: views.store.rows.map((r) => toLine(r, "store", names, carry)),
   };
 
+  const day = trendSeries(all.day, "day", today);
   const week = trendSeries(all.week, "week", today);
   const month = trendSeries(all.month, "month", today);
 
@@ -591,7 +622,7 @@ export function buildLonsamhetModel(
       store: viewHeading(views.store, lines.store, "store"),
     },
     totals: toLine(totalsRow, "total", names, carry),
-    trend: { week, month },
+    trend: { day, week, month },
     defaultTrend: week.buckets.length > 26 ? "month" : "week",
     unpriced: unpricedBlock,
     calcVersion: all.title.calcVersion,
