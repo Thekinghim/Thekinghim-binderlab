@@ -77,7 +77,10 @@ export function reportSubject(snapshot: ReportSnapshot): string {
  * Avregistrering utan inloggning: ett förifyllt svar till avsändaren. Mottagarna saknar
  * konto i appen, så en länk dit skulle inte fungera.
  */
-export function unsubscribeMailto(snapshot: ReportSnapshot, email: string | undefined): string | undefined {
+export function unsubscribeMailto(
+  snapshot: ReportSnapshot,
+  email: string | undefined,
+): string | undefined {
   const to = email?.trim();
   if (!to) return undefined;
   const subject = `Avregistrera: ${TYPE_LABEL[snapshot.type].toLocaleLowerCase("sv-SE")}`;

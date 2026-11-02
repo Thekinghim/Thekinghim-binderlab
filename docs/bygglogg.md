@@ -76,3 +76,6 @@ Tas bort när alla faser är klara.
 - Öppet till integrationen: /lager och /drift planerar besök från olika dagar (gårdagens resp. dagens takt).
 - 13:30 Fas 8 (Drift, Inkorg, larm, PWA, besöksplan) och fas 11 (Marknad) klara. Öppet till integrationen: Automater ska använda
   healthInputOf/loadHealthData (samma status som Drift), återbetalningar i Lönsamhet via applyRefunds, cron för /api/cron/larm i vercel.json.
+- 13:45 Fas 6 (Rapporter: butik, bokföring med SIE och Excel, delägare; PDF, utskick, arkiv, schemaläggning) och fas 6b Prognos & inköp klara.
+  Öppet till integrationen: Att göra-punkt "rapportutkast väntar på granskning"; REPORT_SIE_SERIES/FIRST_NUMBER bestäms med bokhållaren.
+  Alla sidor för fas 2–11 är nu byggda. Kvar: slutkontroll fas 2–5 (pågår), fas 7 del 1 (pågår), fas 7 integration/kvalitet/dokumentation.

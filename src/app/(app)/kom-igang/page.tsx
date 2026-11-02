@@ -1,0 +1,106 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+
+import { wallClockIn } from "@/components/shell/period-state";
+import { homeHref } from "@/components/shell/nav";
+import { SectionHeader, type SectionMeta } from "@/components/ui/section-header";
+import { formatDateTime, formatDuration, formatInt, MISSING } from "@/lib/format";
+import { loadContext } from "@/server/data/core";
+import { canSeeOnboarding, onboardingStatus } from "@/server/onboarding";
+import { coverageText } from "@/server/onboarding/model";
+
+import { OnboardingChecklist } from "./_components/onboarding-checklist";
+
+export const metadata: Metadata = { title: "Kom igång" };
+
+/**
+ * Kom igång: checklistan för en ny organisation. Varje steg är klart när datan finns
+ * (butik, automat, datakälla, import med order, inköpspris för minst 90 % av intäkten),
+ * och tiden från att organisationen skapades till varje steg står vid steget.
+ *
+ * Ägare, admin och läsare (läsaren ser läget men inga åtgärder). Påfyllaren skickas till
+ * sin startsida. Statusen räknas i src/server/onboarding.
+ */
+export default async function KomIgangPage() {
+  const ctx = await loadContext();
+  if (!canSeeOnboarding(ctx.role)) redirect(homeHref(ctx.role));
+  const status = await onboardingStatus(ctx.organization.id);
+  const now = new Date(status.now);
+  const at = (iso: string) =>
+    formatDateTime(wallClockIn(new Date(iso), ctx.timeZone), {
+      now: wallClockIn(now, ctx.timeZone),
+    });
+
+  const remaining = status.requiredTotal - status.requiredDone;
+  const title = status.complete
+    ? `Klart på ${formatDuration(status.elapsedMs)}.`
+    : `${formatInt(status.requiredDone)} av ${formatInt(status.requiredTotal)} steg klara.`;
+  const aside = status.complete
+    ? `Alla ${formatInt(status.requiredTotal)} nödvändiga steg är gjorda.`
+    : `${formatInt(remaining)} steg kvar, ${formatDuration(status.elapsedMs)} sedan start.`;
+  const description = status.complete
+    ? "Panelen har butiker, automater, order och inköpspriser, så nyckeltal och vinst räknas på riktiga siffror."
+    : status.next
+      ? `Nästa: ${status.next.title.replace(/\.$/, "")}. ${status.next.why}`
+      : undefined;
+
+  const meta: SectionMeta[] = [
+    { label: "Start", value: at(status.startedAt) },
+    status.completedAt
+      ? { label: "Klart", value: at(status.completedAt) }
+      : { label: "Pågått", value: formatDuration(status.elapsedMs) },
+    {
+      label: "Med inköpspris",
+      value:
+        status.coverage.pricedShareBp === null
+          ? MISSING
+          : coverageText(status.coverage.pricedShareBp),
+    },
+  ];
+
+  const stepsDone = status.steps.filter((s) => s.state === "done").length;
+
+  return (
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
+      <SectionHeader
+        as="h1"
+        size="xl"
+        eyebrow={`Kom igång · ${ctx.organization.name}`}
+        title={title}
+        aside={aside}
+        description={description}
+        meta={meta}
+      />
+
+      <section aria-labelledby="steg" className="flex flex-col gap-8">
+        <SectionHeader
+          id="steg"
+          index={1}
+          eyebrow={`Steg · ${formatInt(status.steps.length)} st`}
+          title="Det panelen behöver."
+          aside={`${formatInt(stepsDone)} av ${formatInt(status.steps.length)} klara, räknat ur datan.`}
+          description={
+            ctx.canEdit
+              ? undefined
+              : "Ägare och administratörer lägger till butiker, automater, datakällor och priser."
+          }
+          actions={
+            status.complete ? (
+              <Link
+                href="/"
+                className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-muted underline-offset-4 transition-colors hover:text-fg hover:underline"
+              >
+                <span>Till Hem</span>
+                <span aria-hidden className="text-subtle">
+                  →
+                </span>
+              </Link>
+            ) : undefined
+          }
+        />
+        <OnboardingChecklist status={status} canEdit={ctx.canEdit} timeZone={ctx.timeZone} />
+      </section>
+    </div>
+  );
+}

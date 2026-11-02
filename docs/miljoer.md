@@ -422,7 +422,9 @@ försök). Inget skickas utan godkännande. Godkännanden och utskick hamnar i �
 - **PDF** skrivs ut av servern: headless Chromium öppnar `/rapport/[id]` med den inloggades
   cookies (samma sida som användaren ser, utskriftsläget i `src/components/report`). Når inte
   servern sin publika adress inifrån, sätt `REPORT_RENDER_URL` (t.ex. `http://127.0.0.1:3000`).
-  PDF:en skapas vid godkännandet och sparas; nedladdning: `/rapport/[id]/fil/pdf|xlsx|sie`.
+  PDF:en skapas och sparas FÖRE godkännandet; går det inte godkänns rapporten inte. När filen
+  finns skrivs en rad i `report_files`, och det är den (inte `reports.storage_path`, som sätts
+  redan för utkastet) som visar att PDF:en finns. Nedladdning: `/rapport/[id]/fil/pdf|xlsx|sie`.
 - **E-post** använder mallen i `src/emails`. Next tillåter inte `react-dom/server` i Server
   Components eller route handlers, så mejlen renderas i samma headless Chromium på
   `/rapport/[id]/epost` (sidan är också förhandsvisningen av mejlet). Ämne och textversion
@@ -430,6 +432,20 @@ försök). Inget skickas utan godkännande. Godkännanden och utskick hamnar i �
 - **Excel och SIE 4** räknas ur ögonblicksbilden vid varje nedladdning och blir därför
   identiska med det som godkändes. SIE kräver konton för `settlement` och `sales` (plus
   `vat_out`/`card_fees` när moms och kortavgift inte är 0) i `ledger_accounts`.
+- **SIE-numrering**: serie `REPORT_SIE_SERIES` (standard `A`). Månadens första verifikation
+  får numret efter sista verifikationen i förra månadens godkända underlag i samma
+  räkenskapsår och serie; finns inget börjar den på `REPORT_SIE_FIRST_NUMBER` (standard 1).
+  Två månader kan alltså importeras till samma räkenskapsår utan att numren krockar. `#GEN`
+  är dagen då underlaget skapades. Godkänn månaderna i ordning.
+- **Order utan kopplad titel** ingår i försäljningen, bokföringen och butiksersättningen
+  (raden "Titel ej kopplad", utan inköpspris). Antalet står i avstämningen.
+- **Mejlen** har en kort ämnesrad ("Butiksrapport oktober 2026 · Spelbutiken"). Fält som
+  mallen har men som Binderlab saknar underlag för (andel i drift, avbrott, nästa besök,
+  postadress, kassaflöde) tas bort ur mejlet i stället för att visas som "–". Avregistrering
+  är ett förifyllt svar till avsändaren (mailto), eftersom mottagarna inte har konto i appen.
+- **Skydd i databasen** (`20261102145500_rapporter_review_fixes.sql`): ett utskick kan bara
+  loggas för en godkänd rapport, `storage_path` kan inte pekas om till en annan rapports fil,
+  och butiksportalen visar bara den senaste godkända versionen av en rapport.
 - **Månadsutkast**: `/api/cron/rapporter` (skyddad med `CRON_SECRET`, kör som systemet med
   `getServiceDb`, ett dokumenterat systemjobb) skapar utkast för förra månaden: en butiksrapport
   per butik med automat under månaden, bokföringsunderlag och delägarrapport. Finns rapporten
@@ -446,7 +462,9 @@ Beställaren behöver för riktiga utskick:
 2. `CRON_SECRET` i Vercel (minst 16 tecken) så att månadsutkasten skapas.
 3. Ägarandelar (Inställningar) och kontoplanen (`ledger_accounts`) så att vinstfördelning och
    SIE blir kompletta, samt mottagare under Rapporter → Mottagare.
-4. Testa ett riktigt utskick till egen adress i Outlook och Gmail före första utskicket.
+4. Bestäm SIE-serie och startnummer med bokhållaren (`REPORT_SIE_SERIES`,
+   `REPORT_SIE_FIRST_NUMBER`).
+5. Testa ett riktigt utskick till egen adress i Outlook och Gmail före första utskicket.
 
 ## Det här måste beställaren göra
 

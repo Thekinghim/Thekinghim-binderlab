@@ -46,6 +46,8 @@ const RPCS = [
   "create_invitation",
   "create_organization",
   "create_store_invitation",
+  // Lager (fas 5): visningsnamn för dem som registrerat lagerhändelser, alla roller.
+  "lager_performers",
   "list_members",
   "merge_titles",
   "portal_agreements",
@@ -56,10 +58,18 @@ const RPCS = [
   "portal_reports",
   "portal_sales",
   "portal_stores",
+  // Att göra (fas 3): påfyllning med uttag från centrallagret (ägare, admin, påfyllare).
+  "register_refill",
   "register_refill_once",
   "reopen_period",
   "sales_data_until",
 ];
+/**
+ * RPC:er som kör med anroparens rättigheter (security invoker) i stället för definer.
+ * De kontrollerar rollen själva och läser via en definer-funktion i private som har
+ * samma kontroll (20261102150500_drift_sales_last_order.sql).
+ */
+const INVOKER_RPCS = ["sales_data_until"];
 
 function columnsOf(table: string) {
   return columns.filter((c) => c.table === table);
@@ -131,6 +141,8 @@ describe("tabeller", () => {
         "suppliers",
         "title_aliases",
         "titles",
+        // Att göra: avbockade punkter (20261102113602_att_gora_todo_dismissals.sql).
+        "todo_dismissals",
         "voucher_deliveries",
       ].sort(),
     );
@@ -380,7 +392,14 @@ describe("funktioner", () => {
           order by p.proname`,
     );
     expect(fns.map((f) => f.name)).toEqual(RPCS);
-    expect(fns.every((f) => f.auth && !f.anon && f.definer)).toBe(true);
+    const problems = fns.flatMap((f) => [
+      ...(f.auth ? [] : [`${f.name}: authenticated kan inte köra`]),
+      ...(f.anon ? [`${f.name}: anon kan köra`] : []),
+      ...(f.definer === !INVOKER_RPCS.includes(f.name)
+        ? []
+        : [`${f.name}: ${f.definer ? "security definer" : "security invoker"} oväntat`]),
+    ]);
+    expect(problems).toEqual([]);
   });
 });
 
@@ -441,6 +460,8 @@ describe("policyer", () => {
       "stores",
       "title_aliases",
       "titles",
+      // Fas 3 Att göra: bara avbockningar av lagerpunkter (refill:, stale-machine:), utan belopp.
+      "todo_dismissals",
     ]);
   });
 });
@@ -472,6 +493,7 @@ describe("anon", () => {
       create_invitation: sql`gen_random_uuid(), 'a@b.se', 'viewer'`,
       create_organization: sql`'x', 'x'`,
       create_store_invitation: sql`gen_random_uuid(), gen_random_uuid(), 'a@b.se'`,
+      lager_performers: sql`gen_random_uuid()`,
       list_members: sql`gen_random_uuid()`,
       merge_titles: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid()`,
       portal_agreements: sql`gen_random_uuid()`,
@@ -482,6 +504,7 @@ describe("anon", () => {
       portal_reports: sql`gen_random_uuid()`,
       portal_sales: sql`gen_random_uuid(), '2025-01-01'::date, '2025-01-31'::date`,
       portal_stores: sql``,
+      register_refill: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
       register_refill_once: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
       reopen_period: sql`gen_random_uuid(), '2025-01-01'::date`,
       sales_data_until: sql`gen_random_uuid()`,

@@ -49,9 +49,25 @@ const REFILLER_ALLOWLIST = [
   "stock_events",
   "stock_levels",
   "warehouse_stock",
+  // Fas 3 Att göra: bara avbockningar av lagerpunkter (refill:, stale-machine:).
+  "todo_dismissals",
 ];
 /** Påfyllaren ser bara sin egen rad. */
 const OWN_ROW_ONLY = ["profiles", "memberships"];
+/**
+ * Tabeller där läsaren bara ser sina egna rader (fixturens rader är ägarens eller
+ * larmjobbets) eller inga alls: larminställningar, push-enheter och utskick per
+ * användare (fas 8), egna frågor till assistenten (fas 6b) och uppladdningar som bara
+ * den som laddade upp ser, och bara som ägare eller admin (Datakällor).
+ */
+const VIEWER_OWN_ROWS_ONLY = [
+  "alert_deliveries",
+  "alert_subscriptions",
+  "assistant_logs",
+  "import_upload_chunks",
+  "import_uploads",
+  "push_subscriptions",
+];
 
 let F: TenantFixture;
 let refiller: TestUser;
@@ -105,6 +121,22 @@ describe("påfyllaren (refiller) ser exakt tillåtlistan", () => {
         /_ore$|amount|cost|price|rent|commission/.test(c.column),
     );
     expect(amountColumns).toEqual([]);
+  });
+
+  it("ser bara avbockade lagerpunkter i Att göra, inte prispunkter", async () => {
+    const keys = await asUser(refiller, (tx) =>
+      rows<{ key: string }>(
+        tx,
+        sql`select todo_key as key from public.todo_dismissals where organization_id = ${F.orgId}`,
+      ),
+    );
+    expect(keys.length).toBeGreaterThan(0);
+    expect(keys.every((k) => /^(refill|stale-machine):/.test(k.key))).toBe(true);
+    const all = await rows<{ n: number }>(
+      db(),
+      sql`select count(*)::int as n from public.todo_dismissals where organization_id = ${F.orgId}`,
+    );
+    expect(all[0]!.n).toBeGreaterThan(keys.length);
   });
 
   it("kan inte läsa order, inköpspriser eller ändringsloggen", async () => {
@@ -228,6 +260,8 @@ describe("läsaren (viewer)", () => {
       expect(n).toBe(0);
     } else if (relation === "memberships") {
       expect(n).toBe(1);
+    } else if (VIEWER_OWN_ROWS_ONLY.includes(relation)) {
+      expect(n).toBe(0);
     } else if (tables.includes(relation)) {
       expect(n).toBeGreaterThan(0);
     }

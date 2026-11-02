@@ -211,7 +211,9 @@ export function ReviewPanel({
                 ? "Den skapas när du öppnar PDF:en eller skickar rapporten. Butiksportalen kan inte visa filen förrän dess."
                 : "En ägare eller admin skapar den."
             }
-            action={canEdit ? { label: "Skapa PDF →", href: `/rapport/${report.id}/fil/pdf` } : undefined}
+            action={
+              canEdit ? { label: "Skapa PDF →", href: `/rapport/${report.id}/fil/pdf` } : undefined
+            }
             className="px-0"
           />
         ) : null}

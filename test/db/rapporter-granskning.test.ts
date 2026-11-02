@@ -299,7 +299,11 @@ describe("SIE och mejl", () => {
       kind: "store",
       storeId,
     });
-    const result = await sendReportFor(ownerViewer, { reportId: id, recipientIds: [recipientId] }, deps);
+    const result = await sendReportFor(
+      ownerViewer,
+      { reportId: id, recipientIds: [recipientId] },
+      deps,
+    );
     expect(result.sent).toBe(1);
     const [folder] = await readdir(outbox);
     const text = await readFile(path.join(outbox, folder!, "message.txt"), "utf8");

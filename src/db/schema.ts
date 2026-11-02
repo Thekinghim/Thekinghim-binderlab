@@ -736,3 +736,6 @@ export * from "./schema/marknad";
 
 // Fas 2 Datakällor: mellanlagring av uppladdade orderlistor.
 export * from "./schema/datakallor";
+
+// Fas 3 Att göra: avbockade punkter.
+export * from "./schema/att-gora";

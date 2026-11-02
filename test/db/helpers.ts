@@ -336,6 +336,8 @@ export interface TenantFixture {
 export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixture> {
   const owner = ownerArg ?? (await createUser(`owner-${uniqueSuffix()}@test.binderlab.se`));
   const orgId = await createOrg(owner, `Fixtur ${uniqueSuffix()}`);
+  // Butiksanvändaren (fas 10) tar emot en butiksinbjudan i fixturen (memberships.store_id).
+  const storeUser = await createUser(`store-${uniqueSuffix()}@test.binderlab.se`);
 
   return asUser(owner, async (tx) => {
     const org = { organizationId: orgId };
@@ -706,7 +708,15 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
         calcVersion: "calc@1",
       })
       .returning();
-    // Ett utskick kräver ett godkännande (20261102145500_rapporter_review_fixes.sql).
+    // PDF:en är sparad (report_files) och rapporten godkänd; ett utskick kräver ett
+    // godkännande (20261102145500_rapporter_review_fixes.sql).
+    await tx.insert(s.reportFiles).values({
+      ...org,
+      reportId: report!.id,
+      kind: "pdf",
+      storagePath: `${orgId}/reports/2025-03.pdf`,
+      byteSize: 1024,
+    });
     await tx
       .insert(s.reportApprovals)
       .values({ ...org, reportId: report!.id, approvedBy: owner.id });
@@ -779,11 +789,14 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       submittedBy: owner.id,
     });
     await tx.execute(sql`set local role authenticated`);
+    // Ärendet gäller en order och titel från automaten (incidents.order_id/title_id).
     await tx.insert(s.incidents).values({
       ...org,
       machineId: machine!.id,
       kind: "jam",
       startedAt: new Date("2025-03-12T09:00:00Z"),
+      orderId: insertedOrders[0]!.id,
+      titleId: title!.id,
     });
     // Assistent (20261102124000_assistent_assistant_logs.sql): ägarens fråga. Raden skrivs
     // bara via private.insert_assistant_log (20261102134800_…_hardening.sql), inte med INSERT.
@@ -861,6 +874,45 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       machineId: machine!.id,
       arm: "test",
     });
+    // Att göra (20261102113602_att_gora_todo_dismissals.sql): en avbockad lagerpunkt (som
+    // påfyllaren får se) och en avbockad prispunkt (som påfyllaren inte får se).
+    await tx.insert(s.todoDismissals).values([
+      {
+        ...org,
+        todoKey: `refill:${machine!.id}:${title!.id}`,
+        fingerprint: "slut:0",
+        title: "Fyll på Pokémon 151 Booster i Automat 1",
+      },
+      {
+        ...org,
+        todoKey: `missing-price:${secondTitle!.id}`,
+        fingerprint: "orders:2",
+        title: "Lägg in inköpspris för Surging Sparks Booster",
+      },
+    ]);
+    // Datakällor (20261102133644_datakallor_import_uploads.sql): ägarens pågående uppladdning
+    // med en mottagen bit. Raderna syns bara för den som laddade upp.
+    const [upload] = await tx
+      .insert(s.importUploads)
+      .values({ ...org, fileName: "orders.csv", sizeBytes: 3, receivedBytes: 3, nextIndex: 1 })
+      .returning();
+    await tx.insert(s.importUploadChunks).values({
+      ...org,
+      uploadId: upload!.id,
+      chunkIndex: 0,
+      data: Buffer.from("abc"),
+    });
+    // Butiksportalen (20261102130100_portal_store_access.sql): butiksanvändaren tar emot en
+    // butiksinbjudan med samtycke (accept_invitation som butiksanvändaren i samma transaktion).
+    const storeInvitation = await one<{ token: string }>(
+      tx,
+      sql`select public.create_store_invitation(${orgId}::uuid, ${store!.id}::uuid, ${storeUser.email}) as token`,
+    );
+    const claimsFor = (user: TestUser) =>
+      JSON.stringify({ sub: user.id, email: user.email, role: "authenticated", aud: "authenticated" });
+    await tx.execute(sql`select set_config('request.jwt.claims', ${claimsFor(storeUser)}, true)`);
+    await tx.execute(sql`select public.accept_invitation(${storeInvitation.token})`);
+    await tx.execute(sql`select set_config('request.jwt.claims', ${claimsFor(owner)}, true)`);
 
     const invitation = await one<{ token: string }>(
       tx,

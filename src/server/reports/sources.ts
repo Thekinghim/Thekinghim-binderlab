@@ -80,7 +80,11 @@ export interface ReportOrder {
  * ALLA order med affärsdatum i fönstret, även de vars titel inte är kopplad (till skillnad
  * från panelens queryOrders, som bara tar med prissättningsbara order).
  */
-export async function queryReportOrders(tx: Tx, orgId: string, range: Period): Promise<ReportOrder[]> {
+export async function queryReportOrders(
+  tx: Tx,
+  orgId: string,
+  range: Period,
+): Promise<ReportOrder[]> {
   const rows = await tx
     .select({
       id: s.orders.id,
@@ -235,7 +239,10 @@ type Env = Readonly<Record<string, string | undefined>>;
  * REPORT_SIE_SERIES (standard "A") och REPORT_SIE_FIRST_NUMBER (standard 1, numret för
  * räkenskapsårets första underlag). Bestäms tillsammans med bokhållaren.
  */
-export function sieSettingsFromEnv(env: Env = process.env): { series: string; firstNumber: number } {
+export function sieSettingsFromEnv(env: Env = process.env): {
+  series: string;
+  firstNumber: number;
+} {
   const series = env.REPORT_SIE_SERIES?.trim() || "A";
   const n = Number(env.REPORT_SIE_FIRST_NUMBER?.trim() || "1");
   return {
@@ -310,7 +317,8 @@ export async function loadSnapshotInput(tx: Tx, args: LoadArgs): Promise<Snapsho
       queryAgreements(tx, orgId),
       queryReportOrders(tx, orgId, window),
     ]);
-  const inPeriod = (o: ReportOrder) => o.businessDate >= period.start && o.businessDate <= period.end;
+  const inPeriod = (o: ReportOrder) =>
+    o.businessDate >= period.start && o.businessDate <= period.end;
   const ordersWithoutTitle = orders.filter((o) => inPeriod(o) && o.unlinkedTitle).length;
   const machines = await queryMachines(tx, orgId, placements, today);
   const historyStart = await queryFirstOrderDate(tx, orgId);

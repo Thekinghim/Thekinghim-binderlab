@@ -85,7 +85,14 @@ describe("butiksmejlet", () => {
 
   it("tar bort rader och kolumner utan underlag i HTML och text", () => {
     for (const body of [html, text]) {
-      for (const word of ["I drift", "i drift", "Avbrott", "Nästa besök", "Kontakt", "Mest besökt"]) {
+      for (const word of [
+        "I drift",
+        "i drift",
+        "Avbrott",
+        "Nästa besök",
+        "Kontakt",
+        "Mest besökt",
+      ]) {
         expect(body, word).not.toContain(word);
       }
       expect(body).not.toMatch(/(^|[\s,(])–(?=$|[\s,.)])/m);

@@ -8,8 +8,9 @@
  *
  * Flödet: skapa (utkast med data_snapshot och calc_version) → godkänn (report_approvals)
  * → skicka (report_deliveries, en rad per mottagare och försök). Inget skickas utan
- * godkännande. PDF:en skapas vid behov (första nedladdningen eller utskicket) och sparas
- * i lagringen; reports.storage_path pekar dit.
+ * godkännande. PDF:en skapas före godkännandet (server action) eller vid första
+ * nedladdningen och sparas i lagringen på reports.storage_path; report_files visar att
+ * filen faktiskt finns.
  */
 
 import "server-only";

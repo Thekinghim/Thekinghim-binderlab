@@ -46,9 +46,16 @@ create table public.report_files (
 -- Filen ska ligga där rapporten säger att den ligger.
 create function private.report_files_check() returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 begin
+  -- En inloggad användare utan skrivrätt i organisationen nekas av RLS.
+  if (select auth.uid()) is not null
+     and not private.has_role(new.organization_id, 'owner', 'admin')
+  then
+    return new;
+  end if;
   if not exists (
     select 1 from public.reports r
     where r.organization_id = new.organization_id
@@ -61,7 +68,7 @@ begin
 end
 $$;
 
-revoke all on function private.report_files_check() from public;
+revoke all on function private.report_files_check() from public, anon;
 
 create trigger t00_forbid_org_change before update on public.report_files
   for each row execute function private.forbid_org_change();
