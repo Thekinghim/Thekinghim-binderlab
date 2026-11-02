@@ -161,6 +161,7 @@ export function ImportLog({
 
   return (
     <DataTable
+      surface="bg"
       columns={columns}
       rows={imports}
       rowKey={(e) => e.id}

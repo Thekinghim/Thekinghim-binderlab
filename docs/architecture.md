@@ -7,15 +7,15 @@ dataflödena och säkerhetsmodellen. Tabellerna står i `docs/datamodell.md`, re
 
 ## Översikt
 
-| Del           | Val                                                                                                      |
-| ------------- | -------------------------------------------------------------------------------------------------------- |
-| Webb          | Next.js 16 (App Router, React 19, serverkomponenter och server actions), TypeScript i strikt läge        |
-| Utseende      | Tailwind CSS v4 med egna tokens (`src/styles/tokens.css`), egna komponenter och diagram (`src/components`) |
-| Databas       | Postgres 16 (Supabase i drift, lokal Postgres med en auth-shim i utveckling), RLS på varje tabell         |
-| Databasklient | Drizzle ORM över postgres.js (`src/db`); migreringar som SQL-filer i `supabase/migrations`               |
-| Inloggning    | Supabase Auth (JWT mot JWKS) i drift, en egen dev-inloggning lokalt (`src/server/auth`)                  |
+| Del           | Val                                                                                                           |
+| ------------- | ------------------------------------------------------------------------------------------------------------- |
+| Webb          | Next.js 16 (App Router, React 19, serverkomponenter och server actions), TypeScript i strikt läge             |
+| Utseende      | Tailwind CSS v4 med egna tokens (`src/styles/tokens.css`), egna komponenter och diagram (`src/components`)    |
+| Databas       | Postgres 16 (Supabase i drift, lokal Postgres med en auth-shim i utveckling), RLS på varje tabell             |
+| Databasklient | Drizzle ORM över postgres.js (`src/db`); migreringar som SQL-filer i `supabase/migrations`                    |
+| Inloggning    | Supabase Auth (JWT mot JWKS) i drift, en egen dev-inloggning lokalt (`src/server/auth`)                       |
 | Drift         | Vercel (webb och cron), Supabase (databas, Auth, Storage), Sentry (fel och cron-övervakning), Resend (e-post) |
-| Tester        | vitest: enhetstester, databastester mot riktig Postgres, e2e med Playwright mot en körande server         |
+| Tester        | vitest: enhetstester, databastester mot riktig Postgres, e2e med Playwright mot en körande server             |
 
 ## Lager
 
@@ -34,7 +34,7 @@ flowchart TD
     DATA["Laddare och tjänster<br/>data/core, reports, accounting, alerts, purchasing, market, portal …"]
   end
   subgraph CALC["Beräkningslager (rena funktioner)"]
-    DOM["@/domain<br/>öre, bp, datum, lönsamhet, hyra, prognosgrund"]
+    DOM["@/domain<br/>öre, bp, datum, lönsamhet, hyra, försäljningstakt"]
     ANA["@/analytics<br/>Att göra, hälsa, larm, prognos, förlorad försäljning, inköp, avstämning, kassaflöde, expansion …"]
     REP["@/reports<br/>butiks-, bokförings-, delägarrapport, SIE 4, Excel"]
   end
@@ -112,32 +112,32 @@ e2e/                   Webbläsartester (Playwright-biblioteket och vitest)
 All kontakt med omvärlden går via ett gränssnitt med en lokal implementation, så att allt kan köras och testas utan
 nätverk och nycklar. Implementationen väljs med en miljövariabel (`src/lib/env.ts` validerar dem vid start).
 
-| Område             | Gränssnitt (fil)                                              | Implementationer                                                                   | Variabel                     |
-| ------------------ | ------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------- |
-| Orderkälla         | `SourceAdapter` (`src/import/adapter.ts`)                     | `awish_csv` (uppladdning, i bruk), `awish_grpc` (kastar `NotConfiguredError` tills Awish lämnat specifikationen) | per datakälla (`data_sources.provider`) |
-| Filer för import   | `FileStore` (`src/import/file-store.ts`)                      | lokal katalog `.data/imports`, Supabase Storage (bucket `imports`)                 | `IMPORT_FILE_STORE`          |
-| Inloggning         | `AuthProvider` (`src/server/auth/types.ts`)                   | `dev` (egen, bara lokalt), `supabase` (JWT mot JWKS)                               | `AUTH_PROVIDER`              |
-| E-post             | `Mailer` (`src/server/mail/report-mailer.ts`)                 | `outbox` (filer i `.data/outbox`), `resend`                                        | `MAIL_PROVIDER`              |
-| PDF                | `PdfRenderer` (`src/server/pdf/render.ts`)                    | `local` (puppeteer-core + Chromium), `sparticuz` (Vercel), `off`                   | `PDF_RENDERER`               |
-| Rapportlagring     | `src/server/reports/storage.ts`                               | `local` (`.data/reports`), `supabase` (bucket `reports`)                           | `REPORT_STORAGE`             |
-| Avtalsfiler        | FileStore (`src/server/accounting/contract-files.ts`)         | `local`, `supabase` (bucket `contracts`)                                           | `CONTRACT_FILE_STORE`        |
-| Push               | `PushSender` (`src/server/notify/push.ts`)                    | `webpush` (VAPID), `outbox`                                                        | `PUSH_PROVIDER`              |
-| Sms                | `SmsSender` (`src/server/notify/sms.ts`)                      | `outbox`, `off` (ingen leverantör vald)                                            | `SMS_PROVIDER`               |
-| Assistent          | `ModelClient` (`src/server/assistant/model-client.ts`)        | `anthropic` (Claude API), `local` (testmodell utan AI, bara lokalt)                | `ASSISTANT_PROVIDER`         |
-| Bokföring          | `BookkeepingAdapter` (`src/server/accounting/bookkeeping.ts`) | `none`, `local` (utkorg); Fortnox, Visma eEkonomi, Bokio förberedda men inte byggda | `ACCOUNTING_PROVIDER`        |
-| Utbetalningar      | `PayoutSource` (`src/server/accounting/payout-source.ts`)     | `csv` (uppladdning), `awish_api` (kastar tills Awish lämnat dokumentation)          | `PAYOUT_SOURCE`              |
-| Marknadspriser     | `MarketPriceSource` (`src/server/market/sources/types.ts`)    | `none`, `local` (testfil); externa källor ger läget "inte inkopplad"               | `MARKET_PRICE_SOURCE`        |
-| Fel och cron       | `src/server/monitoring`                                       | Sentry när `SENTRY_DSN` finns, annars bara larm i appen                            | `SENTRY_DSN`                 |
+| Område           | Gränssnitt (fil)                                              | Implementationer                                                                                                 | Variabel                                |
+| ---------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| Orderkälla       | `SourceAdapter` (`src/import/adapter.ts`)                     | `awish_csv` (uppladdning, i bruk), `awish_grpc` (kastar `NotConfiguredError` tills Awish lämnat specifikationen) | per datakälla (`data_sources.provider`) |
+| Filer för import | `FileStore` (`src/import/file-store.ts`)                      | lokal katalog `.data/imports`, Supabase Storage (bucket `imports`)                                               | `IMPORT_FILE_STORE`                     |
+| Inloggning       | `AuthProvider` (`src/server/auth/types.ts`)                   | `dev` (egen, bara lokalt), `supabase` (JWT mot JWKS)                                                             | `AUTH_PROVIDER`                         |
+| E-post           | `Mailer` (`src/server/mail/report-mailer.ts`)                 | `outbox` (filer i `.data/outbox`), `resend`                                                                      | `MAIL_PROVIDER`                         |
+| PDF              | `PdfRenderer` (`src/server/pdf/render.ts`)                    | `local` (puppeteer-core + Chromium), `sparticuz` (Vercel), `off`                                                 | `PDF_RENDERER`                          |
+| Rapportlagring   | `src/server/reports/storage.ts`                               | `local` (`.data/reports`), `supabase` (bucket `reports`)                                                         | `REPORT_STORAGE`                        |
+| Avtalsfiler      | FileStore (`src/server/accounting/contract-files.ts`)         | `local`, `supabase` (bucket `contracts`)                                                                         | `CONTRACT_FILE_STORE`                   |
+| Push             | `PushSender` (`src/server/notify/push.ts`)                    | `webpush` (VAPID), `outbox`                                                                                      | `PUSH_PROVIDER`                         |
+| Sms              | `SmsSender` (`src/server/notify/sms.ts`)                      | `outbox`, `off` (ingen leverantör vald)                                                                          | `SMS_PROVIDER`                          |
+| Assistent        | `ModelClient` (`src/server/assistant/model-client.ts`)        | `anthropic` (Claude API), `local` (testmodell utan AI, bara lokalt)                                              | `ASSISTANT_PROVIDER`                    |
+| Bokföring        | `BookkeepingAdapter` (`src/server/accounting/bookkeeping.ts`) | `none`, `local` (utkorg); Fortnox, Visma eEkonomi, Bokio förberedda men inte byggda                              | `ACCOUNTING_PROVIDER`                   |
+| Utbetalningar    | `PayoutSource` (`src/server/accounting/payout-source.ts`)     | `csv` (uppladdning), `awish_api` (kastar tills Awish lämnat dokumentation)                                       | `PAYOUT_SOURCE`                         |
+| Marknadspriser   | `MarketPriceSource` (`src/server/market/sources/types.ts`)    | `none`, `local` (testfil); externa källor ger läget "inte inkopplad"                                             | `MARKET_PRICE_SOURCE`                   |
+| Fel och cron     | `src/server/monitoring`                                       | Sentry när `SENTRY_DSN` finns, annars bara larm i appen                                                          | `SENTRY_DSN`                            |
 
 Saknas en nyckel stoppar det inte appen: sidan som behöver den säger vad som saknas (till exempel "Assistenten kräver
 ANTHROPIC_API_KEY", "Ej konfigurerad" för bokföringen, `ConfigMissing` för inloggade sidor utan databas).
 
 ## Schemalagda jobb
 
-| Route                 | Schema (UTC, `vercel.json`) | Gör                                                                                                    | Kör som                       |
-| --------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------ | ----------------------------- |
-| `/api/cron/larm`      | `*/10 * * * *`              | Maskinhälsa, titel nära slut, misslyckade importer, gårdagens försäljning; sparar larm; skickar utskick | systemroll (`getServiceDb`)   |
-| `/api/cron/rapporter` | `17 5 1 * *`                | Utkast för förra månadens butiks-, bokförings- och delägarrapporter (skickar ingenting)                 | systemroll                    |
+| Route                 | Schema (UTC, `vercel.json`) | Gör                                                                                                     | Kör som                     |
+| --------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------- |
+| `/api/cron/larm`      | `*/10 * * * *`              | Maskinhälsa, titel nära slut, misslyckade importer, gårdagens försäljning; sparar larm; skickar utskick | systemroll (`getServiceDb`) |
+| `/api/cron/rapporter` | `17 5 1 * *`                | Utkast för förra månadens butiks-, bokförings- och delägarrapporter (skickar ingenting)                 | systemroll                  |
 
 Båda kräver `Authorization: Bearer <CRON_SECRET>` (minst 16 tecken; utan den svarar de 503, fel hemlighet ger 401),
 checkar in hos Sentry Cron Monitors och skriver systemlarm (`job_failed`, `report_failed`) när något går fel för en
@@ -169,7 +169,7 @@ sequenceDiagram
   I->>F: spara filen (sha256)
   I->>DB: imports-rad, orders (on conflict do nothing), import_rows för konflikter och fel
   DB->>DB: triggrar: business_date, försäljningshändelse i stock_events, period- och auditkontroller
-  I-->>U: resultat; mellanlagringen tas bort
+  I-->>U: resultat, mellanlagringen tas bort
   Note over I,DB: Går något fel rullas allt tillbaka. Raden i imports med status failed ger larmet import_failed.
 ```
 
@@ -224,13 +224,13 @@ flowchart LR
 
 ### Roller
 
-| Roll        | Ser                                                                                   | Gör                                                                                       |
-| ----------- | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `owner`     | allt i organisationen                                                                 | allt, inklusive roller, ägarandelar och öppning av stängd månad                           |
-| `admin`     | allt                                                                                  | allt utom ägarroll, ägarandelar och öppning av stängd månad                               |
-| `viewer`    | allt utom inbjudningar och medlemshantering (delägaren)                               | inget                                                                                     |
-| `refiller`  | bara tillåtlistan: butiker (namn, adress), automater, placeringar, titlar, lager, larm om automater och lager, lagerpunkter i Att göra, egna prenumerationer och egna assistentfrågor | påfyllning, inventering, svinn och flytt (`performed_by` = sig själv), avbockning av lagerpunkter |
-| `store`     | ingenting i appens tabeller; bara sin egen butik via `portal_*`-funktionerna           | felanmälan från butiksportalen                                                             |
+| Roll       | Ser                                                                                                                                                                                   | Gör                                                                                               |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `owner`    | allt i organisationen                                                                                                                                                                 | allt, inklusive roller, ägarandelar och öppning av stängd månad                                   |
+| `admin`    | allt                                                                                                                                                                                  | allt utom ägarroll, ägarandelar och öppning av stängd månad                                       |
+| `viewer`   | allt utom inbjudningar och medlemshantering (delägaren)                                                                                                                               | inget                                                                                             |
+| `refiller` | bara tillåtlistan: butiker (namn, adress), automater, placeringar, titlar, lager, larm om automater och lager, lagerpunkter i Att göra, egna prenumerationer och egna assistentfrågor | påfyllning, inventering, svinn och flytt (`performed_by` = sig själv), avbockning av lagerpunkter |
+| `store`    | ingenting i appens tabeller; bara sin egen butik via `portal_*`-funktionerna                                                                                                          | felanmälan från butiksportalen                                                                    |
 
 ### Lager av skydd
 
@@ -279,14 +279,14 @@ flowchart LR
 
 ## Tider och pengar
 
-| Regel                | Hur                                                                                                                                                                    |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Belopp               | Hela öre som `bigint` (`*_ore`) i databasen och heltal i TypeScript. Flyttal används aldrig för pengar.                                                                |
-| Procent              | Baspunkter som `integer` (`*_bp`): 10 % = 1 000 bp.                                                                                                                    |
-| Avrundning           | På ett ställe (`roundHalfUp` i `src/domain/money.ts`): halva öre bort från noll, per order eller per butik och månad, aldrig på summor. Fördelningar med största-restmetoden. |
-| Tidpunkter           | `timestamptz` i UTC. Anslutningen sätter `TimeZone: UTC` (`src/db/client.ts`).                                                                                         |
-| Affärsdatum          | `date` i organisationens tidszon (`organizations.timezone`, standard Europe/Stockholm), räknat av databasen (`orders.business_date`, `stock_events.business_date`).    |
-| Källans tidszon      | Per datakälla (`data_sources.source_timezone`). Används bara för att tolka klockslagen i källfilen; förhandsvisningen visar tolkad svensk tid.                          |
-| Intervall            | Inklusiva: `valid_to` är sista giltiga dagen, null betyder tills vidare.                                                                                                |
-| Tidszonsoberoende    | Beräkningar, import och seed körs i CI under UTC, Europe/Stockholm och Asia/Shanghai och ska ge identiska resultat.                                                   |
-| Visning              | `src/lib/format.ts` (sv-SE, tabulära siffror).                                                                                                                         |
+| Regel             | Hur                                                                                                                                                                           |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Belopp            | Hela öre som `bigint` (`*_ore`) i databasen och heltal i TypeScript. Flyttal används aldrig för pengar.                                                                       |
+| Procent           | Baspunkter som `integer` (`*_bp`): 10 % = 1 000 bp.                                                                                                                           |
+| Avrundning        | På ett ställe (`roundHalfUp` i `src/domain/money.ts`): halva öre bort från noll, per order eller per butik och månad, aldrig på summor. Fördelningar med största-restmetoden. |
+| Tidpunkter        | `timestamptz` i UTC. Anslutningen sätter `TimeZone: UTC` (`src/db/client.ts`).                                                                                                |
+| Affärsdatum       | `date` i organisationens tidszon (`organizations.timezone`, standard Europe/Stockholm), räknat av databasen (`orders.business_date`, `stock_events.business_date`).           |
+| Källans tidszon   | Per datakälla (`data_sources.source_timezone`). Används bara för att tolka klockslagen i källfilen; förhandsvisningen visar tolkad svensk tid.                                |
+| Intervall         | Inklusiva: `valid_to` är sista giltiga dagen, null betyder tills vidare.                                                                                                      |
+| Tidszonsoberoende | Beräkningar, import och seed körs i CI under UTC, Europe/Stockholm och Asia/Shanghai och ska ge identiska resultat.                                                           |
+| Visning           | `src/lib/format.ts` (sv-SE, tabulära siffror).                                                                                                                                |

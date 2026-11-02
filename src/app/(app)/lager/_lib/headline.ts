@@ -9,7 +9,7 @@
 import { formatInt, NBSP } from "@/lib/format";
 
 import { codeText, packs, relativeDay, tenthsText } from "./display";
-import type { LagerView, StockCell } from "./types";
+import type { LagerView, PackList, StockCell } from "./types";
 
 export interface Headline {
   readonly title: string;
@@ -126,4 +126,22 @@ export function headlineOf(view: LagerView): Headline {
     title: `Alla ${formatInt(total)}${NBSP}platser räcker minst ${tenthsText(view.lowThresholdTenths)}${NBSP}dagar.`,
     aside: visits,
   };
+}
+
+/** Avslutar med punkt, men inte efter en förkortning som redan har en ("6 nov."). */
+export function sentence(text: string): string {
+  return text.endsWith(".") ? text : `${text}.`;
+}
+
+/** Påfyllningslistans andra rubrikdel: "Besök senast 6 nov., planerat i morgon." */
+export function packListAside(
+  list: Pick<PackList, "needBy" | "plannedDay">,
+  today: LagerView["today"],
+): string {
+  if (list.needBy === null) return "Ingen titel väntas ta slut den närmaste veckan.";
+  const planned =
+    list.plannedDay && list.plannedDay !== list.needBy
+      ? `, planerat ${relativeDay(list.plannedDay, today)}`
+      : "";
+  return sentence(`Besök senast ${relativeDay(list.needBy, today)}${planned}`);
 }

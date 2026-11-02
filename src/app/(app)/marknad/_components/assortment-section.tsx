@@ -106,9 +106,16 @@ function MachineCard({
         {rec ? (
           <>
             <p className="max-w-3xl text-muted">
-              {done
-                ? `${done.text ?? "Ändringen är genomförd."} Utfallet följs upp under Uppföljning.`
-                : rec.text}
+              {done && rec.changes.length === 0
+                ? "Ändringen är genomförd. Utfallet följs upp under Uppföljning."
+                : done
+                  ? `Genomfört: ${rec.changes
+                      .map(
+                        (c) =>
+                          `${ctx.names.title[c.titleId] ?? c.titleId} ${c.fromSlots} → ${c.toSlots} fack`,
+                      )
+                      .join(", ")}. Utfallet följs upp under Uppföljning.`
+                  : rec.text}
             </p>
             {rec.changes.length > 0 && !done ? (
               <ul className="flex flex-col gap-1" aria-label={`Ändringar i ${view.code}`}>

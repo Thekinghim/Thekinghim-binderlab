@@ -37,7 +37,8 @@ const SORT_LABEL: Record<OrderSortKey, string> = {
 };
 
 const MOBILE_COLUMNS = new Set(["nr", "titel", "belopp"]);
-const MOBILE_WIDTH: Record<string, number> = { nr: 68, belopp: 100 };
+// Belopp 88 px: "1 393 kr" ryms, och titelkolumnen får plats för "BL-001 · 1 nov. 17:17".
+const MOBILE_WIDTH: Record<string, number> = { nr: 68, belopp: 88 };
 
 const WIDE_QUERY = "(min-width: 768px)";
 

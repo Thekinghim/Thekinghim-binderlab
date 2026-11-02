@@ -430,14 +430,14 @@ som ordning och underlag ("Förlorat 14 d") i Att göra.
 
 Per titel × automat och dag:
 
-| Läge                                                           | Bedömning                                                                     |
-| -------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Saldo > 0 vid dagens början                                    | fanns                                                                         |
-| Saldo ≤ 0 vid dagens början, ingen påfyllning under dagen      | slutsåld hela dagen                                                           |
-| Saldo ≤ 0 vid dagens början, påfylld under dagen               | påfyllningsdag, räknas som en halv slutsåld dag (`refillDayShareBp` = 5 000)   |
-| Saldo ≤ 0 men order samma dag                                  | fanns (lagret saknar en registrering); dagen listas som avvikelse             |
-| Dagen då sista packet säljs                                    | räknas inte (försiktigt)                                                      |
-| Saldot okänt (före första inventering eller efter negativt saldo) | heuristik, se nedan                                                        |
+| Läge                                                              | Bedömning                                                                    |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Saldo > 0 vid dagens början                                       | fanns                                                                        |
+| Saldo ≤ 0 vid dagens början, ingen påfyllning under dagen         | slutsåld hela dagen                                                          |
+| Saldo ≤ 0 vid dagens början, påfylld under dagen                  | påfyllningsdag, räknas som en halv slutsåld dag (`refillDayShareBp` = 5 000) |
+| Saldo ≤ 0 men order samma dag                                     | fanns (lagret saknar en registrering); dagen listas som avvikelse            |
+| Dagen då sista packet säljs                                       | räknas inte (försiktigt)                                                     |
+| Saldot okänt (före första inventering eller efter negativt saldo) | heuristik, se nedan                                                          |
 
 - **Saldot** räknas ur lagerhändelserna som vyn `stock_levels`: senaste inventering plus alla händelser efter den
   (`stock.ts`, `replayStockDaily`).
@@ -552,14 +552,14 @@ Testerna: `cashflow.test.ts`, `fixed-costs.test.ts`.
 
 Bygger på domänens `unitEconomics` (avsnitt 9) och lägger till, per automat:
 
-| Post               | Formel                                                                                     |
-| ------------------ | ------------------------------------------------------------------------------------------ |
-| Intäkt per dag     | round(intäkt för prissatta order / aktiva dagar)                                           |
-| Vinst per dag      | round(vinst före avskrivning / aktiva dagar)                                               |
-| Flottans snitt     | Σ vinst / Σ aktiva dagar (viktat efter automatdagar)                                       |
-| Mot snitt          | round((automatens − snittet) × 10 000 / \|snittet\|) bp                                    |
-| Avkastning per år  | vinst per månad × 12 / investering, bp (`annualReturnBp`); visas inte utan investering     |
-| Rang               | efter vinst per dag, 1 = bäst; lika → lägst id; automater utan aktiva dagar får ingen rang |
+| Post              | Formel                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------ |
+| Intäkt per dag    | round(intäkt för prissatta order / aktiva dagar)                                           |
+| Vinst per dag     | round(vinst före avskrivning / aktiva dagar)                                               |
+| Flottans snitt    | Σ vinst / Σ aktiva dagar (viktat efter automatdagar)                                       |
+| Mot snitt         | round((automatens − snittet) × 10 000 / \|snittet\|) bp                                    |
+| Avkastning per år | vinst per månad × 12 / investering, bp (`annualReturnBp`); visas inte utan investering     |
+| Rang              | efter vinst per dag, 1 = bäst; lika → lägst id; automater utan aktiva dagar får ingen rang |
 
 Aktiva månader räknas exakt som bråk med gemensam nämnare 377 580 (`MONTH_LCM`, minsta gemensamma multipel av 28–31),
 så en hel kalendermånad är exakt 1. Sidan Enhetsekonomi och Expansion räknar från första ordern när skalets period
@@ -583,12 +583,12 @@ börjar tidigare.
 
 ## 25. Effekt mot utgångsläget (`src/analytics/effect`)
 
-| Mått                       | Enhet   | Bättre | Värde per månad                                    |
-| -------------------------- | ------- | ------ | -------------------------------------------------- |
+| Mått                       | Enhet   | Bättre | Värde per månad                                       |
+| -------------------------- | ------- | ------ | ----------------------------------------------------- |
 | `profit_per_machine_month` | öre     | högre  | räknas: round(vinst × dagar i månaden / automatdagar) |
-| `stockout_days_month`      | dagar   | lägre  | mätvärde (`effect_measurements`)                   |
-| `refill_hours_month`       | minuter | lägre  | mätvärde                                           |
-| `admin_hours_month`        | minuter | lägre  | mätvärde                                           |
+| `stockout_days_month`      | dagar   | lägre  | mätvärde (`effect_measurements`)                      |
+| `refill_hours_month`       | minuter | lägre  | mätvärde                                              |
+| `admin_hours_month`        | minuter | lägre  | mätvärde                                              |
 
 - **Utgångsläget** (`baselines`) gäller en hel månad. En pågående månad jämförs med utgångsläge × dagar hittills /
   dagar i månaden.

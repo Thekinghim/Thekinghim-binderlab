@@ -17,6 +17,10 @@ Binderlab körs i tre miljöer. Koden är densamma; skillnaden är miljövariabl
 3. Skapa en första användare: bjud in via en ägare, eller sätt ett lösenord direkt
    i `auth.users.encrypted_password` med `hashPassword()` från
    `src/server/auth/password.ts`.
+   Enklast är `npm run db:seed`: den skapar `agare@binderlab.local` (ägare) och
+   `delagare@binderlab.local` (läsare) med lösenordet i `DEV_SEED_PASSWORD` (standard
+   `binderlab-dev`) och importerar verksamhetens försäljning 13 okt.–1 nov. 2026.
+   `npm run db:seed-demo` lägger till demoorganisationen (`docs/demo.md`).
 
 Dev-inloggningen (`src/server/auth/dev-provider.ts`) har en hård spärr. Den
 kastar vid start om `APP_ENV` inte är `development`, om `NODE_ENV=production`
@@ -34,6 +38,7 @@ Tester:
 | `npm run test`           | Enhetstester                                                  |
 | `npm run test:db`        | Databastester; återställer `binderlab_test` vid varje körning |
 | `npm run test:domain:tz` | Beräkningarna under tre tidszoner                             |
+| `npm run test:e2e`       | Webbläsartester mot en egen server, se `docs/operations.md`   |
 
 ## Inloggning och behörighet i koden
 
@@ -510,6 +515,33 @@ Beställaren behöver för riktiga utskick:
 4. Bestäm SIE-serie och startnummer med bokhållaren (`REPORT_SIE_SERIES`,
    `REPORT_SIE_FIRST_NUMBER`).
 5. Testa ett riktigt utskick till egen adress i Outlook och Gmail före första utskicket.
+
+## Översikt: adaptrar och variabler
+
+Varje extern tjänst har en lokal ersättare. Tabellen samlar variablerna som väljer adapter (detaljerna står i
+avsnitten ovan och i `.env.example`; valideringen i `src/lib/env.ts` och i respektive adapter). Arkitekturen bakom
+står i `docs/architecture.md`.
+
+| Variabel              | Värden                                                      | Standard lokalt (`APP_ENV=development`) | Standard i preview och production              |
+| --------------------- | ----------------------------------------------------------- | --------------------------------------- | ---------------------------------------------- |
+| `AUTH_PROVIDER`       | `dev`, `supabase`                                           | `dev`                                   | `supabase` (`dev` vägras)                      |
+| `IMPORT_FILE_STORE`   | `local`, `supabase`                                         | `local` (`.data/imports`)               | `supabase` (bucket `imports`)                  |
+| `REPORT_STORAGE`      | `local`, `supabase`                                         | `local` (`.data/reports`)               | `supabase` (bucket `reports`)                  |
+| `CONTRACT_FILE_STORE` | `local`, `supabase`                                         | `local` med `AUTH_PROVIDER=dev`         | `supabase` (bucket `contracts`)                |
+| `MAIL_PROVIDER`       | `outbox`, `resend`                                          | `outbox` (`.data/outbox`)               | `outbox`: sätt `resend`                        |
+| `PDF_RENDERER`        | `local`, `sparticuz`, `off`                                 | `local`                                 | `sparticuz` på Vercel                          |
+| `PUSH_PROVIDER`       | `webpush`, `outbox`                                         | `outbox`                                | `webpush` när VAPID-nycklarna finns, annars av |
+| `SMS_PROVIDER`        | `outbox`, `off`                                             | `outbox`                                | `off` (ingen leverantör vald)                  |
+| `ASSISTANT_PROVIDER`  | `anthropic`, `local`                                        | `anthropic` (utan nyckel avstängd)      | `anthropic` (`local` vägras)                   |
+| `ACCOUNTING_PROVIDER` | `none`, `local`, `fortnox`, `visma_enet`, `bokio`           | `none`                                  | `none` (övriga inte byggda)                    |
+| `PAYOUT_SOURCE`       | `csv`, `awish_api`                                          | `csv`                                   | `csv` (`awish_api` kastar)                     |
+| `MARKET_PRICE_SOURCE` | `none`, `local`, `tcgplayer`, `cardmarket`, `pricecharting` | `none`                                  | `none` (`local` vägras i production)           |
+| `SENTRY_DSN`          | DSN                                                         | tomt (inget skickas)                    | sätt i Vercel                                  |
+| `CRON_SECRET`         | minst 16 tecken                                             | valfritt (cron svarar annars 503)       | krävs i Production                             |
+
+"Sätt" betyder att standardvärdet inte byts av sig självt: `MAIL_PROVIDER` är `outbox` även i production, så
+utan `MAIL_PROVIDER=resend` hamnar rapportmejlen i serverns utkorg i stället för hos mottagarna. Kontrollera den och
+VAPID-nycklarna (push) särskilt vid första driftsättningen.
 
 ## Det här måste beställaren göra
 

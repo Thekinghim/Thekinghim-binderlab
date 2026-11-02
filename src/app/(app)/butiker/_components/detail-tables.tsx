@@ -115,6 +115,7 @@ export function AgreementsTable({
   );
   return (
     <DataTable
+      surface="bg"
       columns={cols}
       rows={agreements}
       rowKey={(a) => a.id}
@@ -201,7 +202,13 @@ export function MachinesTable({
 }) {
   const cols = useMemo(() => machineColumns(today), [today]);
   return (
-    <DataTable columns={cols} rows={machines} rowKey={(m) => m.placementId} caption={caption} />
+    <DataTable
+      surface="bg"
+      columns={cols}
+      rows={machines}
+      rowKey={(m) => m.placementId}
+      caption={caption}
+    />
   );
 }
 
@@ -283,5 +290,13 @@ export function RecipientsTable({
     () => recipientColumns(timeZone, new Date(now), canEdit),
     [timeZone, now, canEdit],
   );
-  return <DataTable columns={cols} rows={recipients} rowKey={(r) => r.id} caption={caption} />;
+  return (
+    <DataTable
+      surface="bg"
+      columns={cols}
+      rows={recipients}
+      rowKey={(r) => r.id}
+      caption={caption}
+    />
+  );
 }

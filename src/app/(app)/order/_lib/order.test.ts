@@ -253,7 +253,19 @@ describe("orderHeadline", () => {
       dataStart: "2026-10-13",
       compareTotals: { count: 0, amountOre: 0 },
     });
-    expect(plain(h.aside)).toBe(`79 987 kr betalt. Första ordern kom 13 okt.`);
+    expect(plain(h.aside)).toBe(`79 987 kr betalt, första ordern kom 13 okt.`);
+    // Dagarna räknas från första ordern t.o.m. senaste dagen med order, som på Automater.
+    expect(plain(h.title)).toBe(`460 order på 20 dagar.`);
+    // Perioden slutar i dag och dagens order har kommit: i dag räknas med.
+    const today = orderHeadline({
+      ...base,
+      period: { start: "2026-10-03", end: "2026-11-02" },
+      days: 31,
+      dataStart: "2026-10-13",
+      latestOrderAt: "2026-11-02T08:00:00.000Z",
+      compareTotals: { count: 0, amountOre: 0 },
+    });
+    expect(plain(today.title)).toBe(`460 order på 21 dagar.`);
   });
 
   it("säger att jämförelseperioden saknade order när det fanns data före den", () => {
@@ -287,7 +299,7 @@ describe("orderHeadline", () => {
       dataStart: "2026-10-20",
       filtered: true,
     });
-    expect(plain(h.aside)).toBe(`79 987 kr betalt. Första ordern i urvalet kom 20 okt.`);
+    expect(plain(h.aside)).toBe(`79 987 kr betalt, första ordern i urvalet kom 20 okt.`);
   });
 
   it("skriver i dag i stället för antal dagar", () => {

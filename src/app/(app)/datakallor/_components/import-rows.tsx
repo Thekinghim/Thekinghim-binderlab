@@ -160,6 +160,7 @@ export function ImportRows({
           <StateMessage kind="empty" message={emptyText} compact />
         ) : (
           <DataTable
+            surface="bg"
             columns={columns}
             rows={detail.rows}
             rowKey={(r) => String(r.rowNumber)}

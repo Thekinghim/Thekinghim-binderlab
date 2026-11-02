@@ -105,7 +105,10 @@ export interface MachinesOverview {
     readonly ordersChange: number | null;
     /** Jämförelseperiodens marginal (för marginalens förändring), eller null. */
     readonly previousMarginBp: number | null;
+    /** I drift enligt livscykeln (driftstart passerad, inte avvecklad). */
     readonly activeMachines: number;
+    /** Av dem: ur drift enligt hälsan (kan inte sälja). Utelämnad = 0. */
+    readonly offlineMachines?: number;
   };
   readonly headline: { readonly title: string; readonly aside: string };
   /** Antal rader som kräver åtgärd. */

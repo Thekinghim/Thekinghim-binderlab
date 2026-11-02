@@ -126,7 +126,9 @@ async function networkFirst(request, url) {
       // Inte inloggad längre: inga sparade sidor kvar.
       await forgetUser();
     } else if (cache && res.ok && !res.redirected) {
-      await cache.put(url.pathname, res.clone());
+      // Inte await: cache.put väntar tills hela svaret har strömmats, och sidan (med
+      // sin loading.tsx) ska visas medan den strömmar.
+      cache.put(url.pathname, res.clone()).catch(() => {});
     }
     return res;
   } catch {

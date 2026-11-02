@@ -138,6 +138,7 @@ export function StockTable({
   }, [timeZone, now, firstNow]);
   return (
     <DataTable
+      surface="bg"
       columns={cols}
       rows={lines}
       rowKey={(l) => l.titleId}
@@ -202,6 +203,7 @@ export function RecentOrdersTable({
   }, [timeZone, now]);
   return (
     <DataTable
+      surface="bg"
       columns={cols}
       rows={orders}
       rowKey={(o) => o.id}
@@ -264,6 +266,7 @@ export function PlacementsTable({
   }, [now]);
   return (
     <DataTable
+      surface="bg"
       columns={cols}
       rows={placements}
       rowKey={(p) => p.id}

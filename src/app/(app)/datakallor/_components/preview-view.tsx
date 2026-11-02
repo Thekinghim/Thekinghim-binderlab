@@ -509,6 +509,7 @@ function RowsTable({ result, timeZone }: { result: PreviewResult; timeZone: stri
         />
       </div>
       <DataTable
+        surface="bg"
         columns={columns}
         rows={rows}
         rowKey={(r) => String(r.rowNumber)}

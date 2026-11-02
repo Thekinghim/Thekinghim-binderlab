@@ -308,6 +308,7 @@ export function SuppliersView({
           />
         ) : (
           <DataTable
+            surface="bg"
             columns={supplierColumns}
             rows={model.suppliers}
             rowKey={(r) => r.id}
@@ -343,6 +344,7 @@ export function SuppliersView({
             />
           ) : (
             <DataTable
+              surface="bg"
               columns={itemColumns}
               rows={items}
               rowKey={(r) => r.id}

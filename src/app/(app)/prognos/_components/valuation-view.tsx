@@ -158,6 +158,7 @@ export function ValuationView({ model }: { model: ValuationModel }) {
       ) : (
         <div className="flex flex-col gap-3">
           <DataTable
+            surface="bg"
             columns={columns}
             rows={model.rows}
             rowKey={(r) => r.titleId}

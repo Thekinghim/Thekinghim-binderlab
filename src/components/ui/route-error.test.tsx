@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { RouteError } from "./route-error";
 import { RouteLoading } from "./route-loading";
+import { RouteNotFound } from "./route-not-found";
 
 const APP = join(process.cwd(), "src/app");
 
@@ -75,9 +76,30 @@ describe("sidorna i genomgång C", () => {
     "(app)/inkorg/[id]",
     "(app)/drift/automat/[id]",
     "portal/rapporter/[id]",
-  ])("%s har en svensk sida för okänt id (not-found.tsx) med en h1", (segment) => {
+  ])("%s har en svensk sida för okänt id (not-found.tsx) som appens 404", (segment) => {
     const file = join(APP, segment, "not-found.tsx");
     expect(existsSync(file)).toBe(true);
-    expect(readFileSync(file, "utf8")).toContain("<h1");
+    const src = readFileSync(file, "utf8");
+    expect(src).toContain("<RouteNotFound");
+    expect(src).toMatch(/title="[^"]+ finns inte\."/);
+  });
+});
+
+describe("RouteNotFound", () => {
+  it("tvådelad rubrik som h1, svensk text och en väg tillbaka", () => {
+    const html = renderToStaticMarkup(
+      <RouteNotFound
+        eyebrow="Inkorg · 404"
+        title="Ärendet finns inte."
+        aside="Länken kan vara fel."
+        code="Inget ärende"
+        message="Inget ärende i inkorgen har det här id:t."
+        action={{ label: "Till Inkorg", href: "/inkorg" }}
+      />,
+    );
+    expect(html).toMatch(/<h1[^>]*>/);
+    expect(html).toContain("Ärendet finns inte.");
+    expect(html).toContain("Länken kan vara fel.");
+    expect(html).toContain('href="/inkorg"');
   });
 });

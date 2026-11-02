@@ -236,6 +236,7 @@ export function ForecastView({ model }: { model: ForecastModel }) {
           />
         </div>
         <DataTable
+          surface="bg"
           columns={columns}
           rows={rows}
           rowKey={(r) => r.key}

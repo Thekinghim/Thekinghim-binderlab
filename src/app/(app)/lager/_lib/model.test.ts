@@ -13,14 +13,8 @@ import {
   statusTone,
   tenthsText,
 } from "./display";
-import { headlineOf, machineList, visitsText } from "./headline";
-import {
-  buildLagerModel,
-  planNow,
-  retiredPairs,
-  salesAsOrders,
-  warehouseStatus,
-} from "./model";
+import { headlineOf, machineList, packListAside, visitsText } from "./headline";
+import { buildLagerModel, planNow, retiredPairs, salesAsOrders, warehouseStatus } from "./model";
 import type { LagerView, PackList } from "./types";
 
 const M1 = "00000000-0000-4000-8000-000000000001";
@@ -394,6 +388,19 @@ describe("headlineOf", () => {
       `Inget besök behövs i dag. ${codeText("BL-001")}, ${codeText("BL-002")} och ${codeText("BL-003")} den 5${NBSP}nov.`,
     );
     expect(machineList(["A", "B", "C", "D"])).toBe("4 automater");
+  });
+});
+
+describe("packListAside", () => {
+  it("ger aldrig dubbel punkt efter en förkortning", () => {
+    expect(packListAside({ needBy: "2026-11-06", plannedDay: null }, TODAY)).toBe(
+      `Besök senast 6${NBSP}nov.`,
+    );
+    expect(packListAside({ needBy: "2026-11-06", plannedDay: "2026-11-03" }, TODAY)).toBe(
+      `Besök senast 6${NBSP}nov., planerat i morgon.`,
+    );
+    expect(packListAside({ needBy: TODAY, plannedDay: TODAY }, TODAY)).toBe("Besök senast i dag.");
+    expect(packListAside({ needBy: null, plannedDay: null }, TODAY)).toMatch(/^Ingen titel/);
   });
 });
 

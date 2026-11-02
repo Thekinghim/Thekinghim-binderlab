@@ -50,6 +50,11 @@ export function WeeksBlock({ report, today }: { report: StoreReport; today?: str
     today !== undefined
       ? report.weeks.find((w) => w.range.start <= today && w.range.end >= today)
       : undefined;
+  // Har veckan som pågår inte sålt än, säger den senaste veckan med försäljning mer.
+  const latest =
+    current && current.orders === 0
+      ? report.weeks.filter((w) => w.range.end < current.range.start && w.orders > 0).at(-1)
+      : undefined;
   return (
     <>
       <SectionHeader
@@ -59,9 +64,11 @@ export function WeeksBlock({ report, today }: { report: StoreReport; today?: str
         aside={
           best
             ? `${kr(best.revenueOre)} på ${formatInt(best.orders)} pack.`
-            : current
-              ? `Vecka ${current.week} pågår: ${kr(current.revenueOre)} på ${formatInt(current.orders)} pack hittills.`
-              : undefined
+            : latest
+              ? `${nbsp(latest.label)}: ${kr(latest.revenueOre)} på ${formatInt(latest.orders)} pack.`
+              : current
+                ? `Vecka ${current.week} pågår: ${kr(current.revenueOre)} på ${formatInt(current.orders)} pack hittills.`
+                : undefined
         }
         size="md"
       />

@@ -344,7 +344,9 @@ export interface PageModel {
 
 function lookup(data: PrognosData): NameLookup & { supplier(id: string): string } {
   const titles = new Map(data.titles.map((t) => [t.id, t.name]));
-  const machines = new Map(data.machines.map((m) => [m.id, `${m.code} ${m.name}`]));
+  const machines = new Map(
+    data.machines.map((m) => [m.id, `${codesUnbroken(m.code)} ${m.name}`]),
+  );
   const suppliers = new Map(data.suppliers.map((s) => [s.id, s.name]));
   return {
     asOf: data.asOf,
@@ -380,7 +382,15 @@ export function krRangeText(lowOre: number, highOre: number): string {
  * ("… 1 nov.." → "… 1 nov."). Texterna kommer från @/analytics.
  */
 export function tidy(text: string): string {
-  return text.replace(/(?<!\.)\.\.(?!\.)/g, ".");
+  return codesUnbroken(text.replace(/(?<!\.)\.\.(?!\.)/g, "."));
+}
+
+/**
+ * Automatkoder bryts aldrig: "NA-05" → "NA‑05" med hårt bindestreck (U+2011), som på
+ * Lager. Gäller även koder i texterna från @/analytics.
+ */
+export function codesUnbroken(text: string): string {
+  return text.replace(/\b([A-ZÅÄÖ]{1,4})-(\d{1,4})\b/g, "$1\u2011$2");
 }
 
 const WEEKDAYS = ["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"] as const;
@@ -467,7 +477,11 @@ function lostModel(data: PrognosData, names: NameLookup, now: Date): LostModel {
     evidence: evidenceView(p.evidence, names),
   }));
   const top = [...rows].sort((a, b) => b.lostRevenueOre - a.lostRevenueOre)[0];
-  const ongoing = rows.filter((x) => x.ongoing).length;
+  // Slutsålt nu: pågående perioder, utom de som pågått längre än maxOpenDays (analysen
+  // räknar dem som tagna ur sortimentet). Räknat i titlar och automater, inte perioder.
+  const current = r.periods.filter((p) => p.ongoing && !p.capped);
+  const ongoingTitles = new Set(current.map((p) => p.titleId)).size;
+  const ongoingMachines = new Set(current.map((p) => p.machineId)).size;
   let aside: string;
   if (rows.length === 0) aside = "Alla titlar fanns i automaterna enligt lagret och försäljningen.";
   else {
@@ -475,7 +489,11 @@ function lostModel(data: PrognosData, names: NameLookup, now: Date): LostModel {
     if (top && top.lostRevenueOre > 0) {
       parts.push(`Störst: ${top.title} i ${top.machine}, ${approxKr(top.lostRevenueOre)}.`);
     }
-    if (ongoing > 0) parts.push(`${plural(ongoing, "titel är", "titlar är")} slutsålda nu.`);
+    if (ongoingTitles > 0) {
+      parts.push(
+        `${plural(ongoingTitles, "titel är slutsåld", "titlar är slutsålda")} nu${ongoingMachines > 1 ? ` i ${plural(ongoingMachines, "automat", "automater")}` : ""}.`,
+      );
+    }
     aside = parts.join(" ") || "Kostnaden kan inte räknas: takt eller pris saknas.";
   }
   return {
@@ -1054,11 +1072,12 @@ export function buildPageModel(data: PrognosData, now: Date = new Date()): PageM
     meta: [
       { label: "Prognos", value: periodShort(forecast.horizon, now) },
       {
-        label: "Träffsäkerhet",
+        // Felet, inte träffsäkerheten: etikett och värde ska peka åt samma håll.
+        label: "Prognosfel",
         value:
           accuracy.total.wapeBp === null
             ? "–"
-            : `${formatPercent(accuracy.total.wapeBp / 10_000, 0)} fel/dag`,
+            : `${formatPercent(accuracy.total.wapeBp / 10_000, 0)} per dag`,
       },
       {
         label: "Att beställa",

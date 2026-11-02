@@ -9,7 +9,7 @@ import { formatDelta, MISSING } from "@/lib/format";
 
 import { periodShort } from "../_lib/dates";
 import type { AccuracyModel, AccuracyOrigin } from "../_lib/model";
-import { packsMilli, percentBp } from "../_lib/units";
+import { packsWhole, percentBp } from "../_lib/units";
 import { EvidenceButton } from "./evidence-button";
 
 /** Träffsäkerheten: backtest med rullande ursprung, per vecka och sammanfattat. */
@@ -31,7 +31,8 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
         // Under md: vecka och avvikelse (sektionens mått); antalen står i underlaget.
         hideOnMobile: true,
         sortValue: (r) => r.actualMilli,
-        render: (r) => packsMilli(r.actualMilli),
+        // Utfallet är sålda pack (heltal); prognoserna avrundas till hela pack.
+        render: (r) => packsWhole(r.actualMilli),
         csv: (r) => r.actualMilli / 1000,
       },
       {
@@ -40,7 +41,7 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
         numeric: true,
         hideOnMobile: true,
         sortValue: (r) => r.forecastMilli,
-        render: (r) => <span className="text-fg">{packsMilli(r.forecastMilli)}</span>,
+        render: (r) => <span className="text-fg">{packsWhole(r.forecastMilli)}</span>,
         csv: (r) => r.forecastMilli / 1000,
       },
       {
@@ -57,7 +58,7 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
         numeric: true,
         hideOnMobile: true,
         sortValue: (r) => r.naiveMilli,
-        render: (r) => <span className="text-muted">{packsMilli(r.naiveMilli)}</span>,
+        render: (r) => <span className="text-muted">{packsWhole(r.naiveMilli)}</span>,
         csv: (r) => r.naiveMilli / 1000,
       },
     ],
@@ -103,7 +104,9 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
     },
     {
       id: "series",
-      label: "Per titel och automat",
+      // Felet per serie (titel × automat, se noten under tabellen). Kort nog för att inte
+      // kortas med ellips vid fem nyckeltal i bredd.
+      label: "Fel per serie",
       value: model.series.wapeBp ?? Number.NaN,
       format: (v) => percentBp(Number.isFinite(v) ? v : null, 0),
     },
@@ -114,6 +117,7 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
       <KpiStrip label={`Backtest · ${model.origins.length} veckor`} items={items} />
       <div className="flex flex-col gap-3">
         <DataTable
+          surface="bg"
           columns={columns}
           rows={model.origins}
           rowKey={(r) => r.origin}

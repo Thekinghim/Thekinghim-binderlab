@@ -32,6 +32,17 @@ function warehouseAside(short: number, lowOnly: number): string {
   return "Räcker till veckans besök.";
 }
 
+/** "Obsidian Flames och Paradox Rift har gått ur sortimentet och visas inte." */
+function retiredText(names: readonly string[]): string {
+  const list =
+    names.length > 3
+      ? plural(names.length, "titel", "titlar")
+      : names.length <= 1
+        ? (names[0] ?? "")
+        : `${names.slice(0, -1).join(", ")} och ${names[names.length - 1]}`;
+  return `${list} har gått ur sortimentet, finns inte kvar i någon automat och visas inte.`;
+}
+
 type Selection =
   { kind: "machine"; machineId: string; titleId: string } | { kind: "warehouse"; titleId: string };
 
@@ -183,6 +194,11 @@ export function LagerBoard({
             onSelect={(m, t) => setSelection({ kind: "machine", machineId: m.id, titleId: t.id })}
           />
         )}
+        {hasMachines && view.retiredTitles.length > 0 ? (
+          <p className="max-w-prose text-sm text-muted">
+            {retiredText(view.retiredTitles.map((t) => t.name))}
+          </p>
+        ) : null}
       </section>
 
       {packFirst ? null : packSection}

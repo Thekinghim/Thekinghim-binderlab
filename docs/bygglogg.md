@@ -102,3 +102,6 @@ Tas bort när alla faser är klara.
 - E2E, backup och övervakning klara: 17 e2e-tester i 6 flöden (inloggning, import, påfyllning, prisändring, rapportutskick,
   felövervakning) gröna 3 av 3 körningar; backup/återställning testad; larm vid misslyckad import/rapport/cron + Sentry Cron Monitors.
   E2E kör mot egen server på port 3210 och egen databas. Dev-servern på 3200 hade stannat och startades om.
+- Genomgång A och C klara. Öppet till slutsteget: diagram 640 px breda före mätning (mobil bredare vid laddning),
+  okända id ger HTTP 200, "0 bp" i avstämningen, öre i avstämningssammanfattningen, laddtider mät med next start,
+  temaskriptet (kort fel tema före hydrering), jämförelsen räknar med dagen som pågår.

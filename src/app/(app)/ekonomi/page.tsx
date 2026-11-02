@@ -176,9 +176,7 @@ export default async function EkonomiPage({
     ? `Inköp framåt: utöver lagda inköpsorder fylls lagret på i takt med försäljningen. Inköpsvärdet för sålda pack ${periodShort(
         rep.window,
         ctx.today,
-      )} var ${kr(rep.windowCostOre)} (${plural(rep.windowDays, "dag", "dagar")}); samma takt per dag ger ${kr(
-        added,
-      )} i påfyllnad till och med ${monthText(rep.months[rep.months.length - 1]?.month ?? thisMonth)}, utöver inköpsorder som redan är planerade samma månad.${
+      )} var ${sek(rep.windowCostOre)} (${plural(rep.windowDays, "dag", "dagar")}); samma takt per dag ger ${sek(added)} i påfyllnad till och med ${monthText(rep.months[rep.months.length - 1]?.month ?? thisMonth)}, utöver inköpsorder som redan är planerade samma månad.${
         rep.coverageBp !== null && rep.coverageBp < 10_000
           ? ` Order utan inköpspris saknar inköpsvärde (${Math.round(rep.coverageBp / 100)} % av orderna har pris).`
           : ""
@@ -674,5 +672,7 @@ function cashNote(
   );
   if (!later || later.paidOn === null) return null;
   const day = formatDate(isoToDate(later.paidOn), { year: "auto", now: isoToDate(today) });
-  return `Utbetalningen för månaden (${later.reference}) ${later.paidOn > today ? "kommer" : "kom"} ${day}.`;
+  return sentence(
+    `Utbetalningen för månaden (${later.reference}) ${later.paidOn > today ? "kommer" : "kom"} ${day}`,
+  );
 }

@@ -268,16 +268,17 @@ const HEALTH_VIEW: Record<
   ok: { status: "ok", label: "I drift", flagged: false },
   suspected_fault: { status: "warning", label: "Misstänkt fel", flagged: false },
   fault: { status: "critical", label: "Fel", flagged: true },
-  offline: { status: "offline", label: "Ur drift", flagged: false },
+  // Ur drift = automaten kan inte sälja (design.md §11): en åtgärd, som på Drift.
+  offline: { status: "critical", label: "Ur drift", flagged: true },
   empty: { status: "critical", label: "Tom", flagged: true },
   unknown: { status: "neutral", label: "Okänt", flagged: false },
   inactive: { status: "offline", label: "Inte i drift", flagged: false },
 };
 
 /**
- * Status att visa för en automat. Ordning: avvecklad/planerad, fel, tom, fyll på nu,
- * ur drift, misstänkt fel, fyll på snart, okänt, i drift. Bara fel, tom och "fyll på
- * nu" kräver åtgärd (signal); övrigt är grått och bärs av form och text.
+ * Status att visa för en automat. Ordning: avvecklad/planerad, fel, tom, ur drift, fyll
+ * på nu, misstänkt fel, fyll på snart, okänt, i drift. Fel, tom, ur drift och "fyll på
+ * nu" kräver åtgärd (signal, samma som Drift); övrigt är grått och bärs av form och text.
  */
 export function statusOf(args: {
   lifecycle: MachineLifecycle;
@@ -318,7 +319,7 @@ export function statusOf(args: {
       : sentence(first.title);
   };
 
-  if (h === "fault" || h === "empty") {
+  if (h === "fault" || h === "empty" || h === "offline") {
     return { ...HEALTH_VIEW[h], health: h, reason: healthReason };
   }
   if (now.length > 0) {
@@ -330,7 +331,7 @@ export function statusOf(args: {
       reason: refillReason(now),
     };
   }
-  if (h === "offline" || h === "suspected_fault") {
+  if (h === "suspected_fault") {
     return { ...HEALTH_VIEW[h], health: h, reason: healthReason };
   }
   if (soon.length > 0) {
@@ -536,6 +537,10 @@ export function buildOverview(args: OverviewArgs): MachinesOverview {
   }
 
   const activeMachines = rows.filter((r) => r.lifecycle === "active").length;
+  // Ur drift (hälsan offline): i drift enligt livscykeln men kan inte sälja.
+  const offlineMachines = rows.filter(
+    (r) => r.lifecycle === "active" && r.status.health === "offline",
+  ).length;
   const machineDays = coverage ? machineDaysIn(input.current, coverage, scoped) : 0;
   const totals = {
     revenueOre: totalRevenue,
@@ -549,6 +554,7 @@ export function buildOverview(args: OverviewArgs): MachinesOverview {
     ordersChange: pt && t ? changeShare(t.orders, pt.orders) : null,
     previousMarginBp: pt?.marginBp ?? null,
     activeMachines,
+    offlineMachines,
   };
 
   // Rader utanför automaterna (ej fördelad hyra, order utan automat), så att raderna
@@ -613,12 +619,17 @@ export function overviewHeadline(args: {
     };
   }
   const n = totals.activeMachines;
+  const offline = totals.offlineMachines ?? 0;
   const machinesText = plural(n, "automat", "automater");
   if (totals.orders === 0) {
-    const need = flagged > 0 ? ` ${plural(flagged, "automat", "automater")} kräver åtgärd.` : "";
+    const need = flagged > 0 ? `${plural(flagged, "automat", "automater")} kräver åtgärd.` : "";
+    const running =
+      offline > 0
+        ? `${formatInt(n - offline)} av ${machinesText} i drift, ${formatInt(offline)} ur drift.`
+        : `${machinesText} i drift.`;
     return {
       title: args.pendingToday ? "Inga order i dag ännu." : `Ingen försäljning ${span.text}.`,
-      aside: `${machinesText} i drift.${need}`,
+      aside: joinClauses(need ? [running, need] : [running]),
     };
   }
   const title = `${kr(totals.revenueOre)} ${span.text} från ${machinesText}.`;
@@ -636,7 +647,19 @@ export function overviewHeadline(args: {
   } else if (top && top.shareBp !== null && n > 1) {
     parts.push(`${top.code} står för ${formatPercent(top.shareBp / BP, 0)} av vinsten.`);
   }
-  return { title, aside: parts.join(" ") };
+  // En mening i andra delen: rubriken har högst två (design.md §5.5).
+  return { title, aside: joinClauses(parts) };
+}
+
+/** ["14 % bättre än perioden innan.", "3 automater kräver åtgärd."] → en mening med komma. */
+export function joinClauses(parts: readonly string[]): string {
+  return parts
+    .map((p, i) => {
+      // Ett vanligt ord efter kommat får liten bokstav ("Står i" → "står i"), en kod inte.
+      const lead = i > 0 && /^[A-ZÅÄÖ][a-zåäö]/.test(p) ? p[0]!.toLowerCase() + p.slice(1) : p;
+      return i < parts.length - 1 ? lead.replace(/\.$/, "") : lead;
+    })
+    .join(", ");
 }
 
 // ---------------------------------------------------------------------------
@@ -1007,7 +1030,7 @@ export function machineHeadline(args: {
   if (storeText) parts.push(storeText);
   return {
     title: `${code}: ${kr(figures.revenueOre)} ${span.text}.`,
-    aside: parts.join(" "),
+    aside: joinClauses(parts),
   };
 }
 

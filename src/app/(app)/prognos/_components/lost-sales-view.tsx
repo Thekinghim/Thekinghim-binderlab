@@ -9,11 +9,16 @@ import { StatusTag } from "@/components/ui/status-tag";
 import { formatInt } from "@/lib/format";
 
 import type { LostModel, LostRow } from "../_lib/model";
-import { daysBp, kr, packsMilli } from "../_lib/units";
+import { daysBp, kr, packsMilli, packsWhole } from "../_lib/units";
 import { EvidenceButton } from "./evidence-button";
 
 /** Slutsåld just nu (varning) eller påfylld igen (info). */
-function LostStatus({ ongoing }: { ongoing: boolean }) {
+/**
+ * Läget för en period. En period som pågått längre än analysens gräns (capped) räknas som
+ * tagen ur sortimentet: den kostar inget efter gränsen och är ingen åtgärd (grått).
+ */
+function LostStatus({ ongoing, capped }: { ongoing: boolean; capped: boolean }) {
+  if (ongoing && capped) return <StatusTag status="neutral">Ur sortimentet</StatusTag>;
   return ongoing ? (
     <StatusTag status="warning">Slutsåld nu</StatusTag>
   ) : (
@@ -36,11 +41,12 @@ export function LostSalesView({ model }: { model: LostModel }) {
             {/* Under md står perioden och läget här; kolumnerna är dolda (design.md §5.1). */}
             <span className="tnum text-xs text-subtle md:hidden">{r.periodText}</span>
             <span className="mt-1 md:hidden">
-              <LostStatus ongoing={r.ongoing} />
+              <LostStatus ongoing={r.ongoing} capped={r.capped} />
             </span>
           </span>
         ),
-        csv: (r) => `${r.title} – ${r.machine}`,
+        // CSV med vanligt bindestreck i koden (namnen har hårt bindestreck för visning).
+        csv: (r) => `${r.title} – ${r.machine.replace(/\u2011/g, "-")}`,
       },
       {
         key: "period",
@@ -55,7 +61,7 @@ export function LostSalesView({ model }: { model: LostModel }) {
         header: "Läge",
         hideable: false,
         hideOnMobile: true,
-        render: (r) => <LostStatus ongoing={r.ongoing} />,
+        render: (r) => <LostStatus ongoing={r.ongoing} capped={r.capped} />,
         csv: (r) => (r.ongoing ? "Slutsåld nu" : "Påfylld"),
       },
       {
@@ -163,9 +169,10 @@ export function LostSalesView({ model }: { model: LostModel }) {
           },
           {
             id: "units",
+            // Uppskattning: hela pack med "ca", inga tiondelar.
             label: "Förlorade pack",
             value: model.totalUnitsMilli,
-            format: packsMilli,
+            format: (v) => (v >= 1_000 ? `ca ${packsWhole(v)}` : packsMilli(v)),
           },
           {
             id: "days",
@@ -177,6 +184,7 @@ export function LostSalesView({ model }: { model: LostModel }) {
       />
 
       <DataTable
+        surface="bg"
         columns={columns}
         rows={model.rows}
         rowKey={(r) => r.key}

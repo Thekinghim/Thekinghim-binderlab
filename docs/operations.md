@@ -305,6 +305,40 @@ skriv en incidentanteckning (nedan).
 | Larm `report_drafts:<månad>`            | Saknade konton för SIE eller en butik utan avtal          | Skapa utkasten under Rapporter; felet står i larmet                                |
 | Inloggning misslyckas för alla          | Supabase Auth nere eller JWT-nyckel återkallad            | status.supabase.com; Supabase → JWT Keys                                           |
 
+## Inför en visning
+
+En visning för ledning, köpare eller investerare görs lokalt eller i Preview med demon, så att de riktiga siffrorna
+inte syns.
+
+1. Återställ utvecklingsdatabasen: `npm run db:reset -- dev && npm run db:seed && npm run db:seed-demo`. Den tar bort
+   testposter från bygget (bland annat ett rapportutkast för september med `calc_version` "integrationstest" som inte
+   får godkännas, och utgångslägen på Effekt som inte kommer från beställaren).
+2. Logga in som `demo@binderlab.local` (Nordljus Automater AB (demo)) eller, för verksamhetens egen försäljning,
+   `agare@binderlab.local`. Lösenord `binderlab-dev`.
+3. Kör larmjobbet en gång så att Drift har färska larm:
+   `curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3200/api/cron/larm`.
+4. Visa i den här ordningen: Hem → Att göra → Lönsamhet → Prognos & inköp → Drift på mobilen → Rapporter (en
+   butiksrapport som PDF) → Ekonomi. Siffrorna och hur de räknas står i `docs/product.md` och `docs/berakningar.md`.
+5. Byt demons telefonnummer mot PTS fiktionsnummer och butiksnamnet "Seriecentralen" mot ett påhittat innan demon
+   visas utanför bolaget (`src/seed/demo/catalog.ts`, sedan `npm run db:seed-demo -- --aterstall`).
+
+## Överlämning till en ny ägare
+
+Checklista när panelen lämnas över (till en köpare eller en ny driftansvarig):
+
+| Steg            | Vad                                                                                                                                                                  | Var                         |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------- |
+| Kod             | Repot, med `main` som produktion. Läs `README.md`, `docs/architecture.md` och `docs/decisions.md` först.                                                             | GitHub                      |
+| Konton          | Överför eller bjud in den nya ägaren i Vercel, Supabase (båda projekten), Sentry, Resend, GitHub och Anthropic Console. Ta bort tidigare personers åtkomst efteråt.  | Respektive tjänst           |
+| Hemligheter     | Byt alla hemligheter enligt "Byte av nycklar" ovan när de tidigare ägarna inte längre ska ha åtkomst.                                                                | Vercel, GitHub environments |
+| Ägare i appen   | Bjud in den nya ägaren som `owner` under Inställningar → Användare och ta bort eller nedgradera de tidigare. Databasen ser till att det alltid finns minst en ägare. | Appen                       |
+| Säkerhetskopior | Kontrollera PITR och dagliga backuper, och flytta de egna dumparna till den nya ägarens lagring.                                                                     | Supabase, extern lagring    |
+| Övervakning     | Larmregeln för Sentry Cron Monitors och prenumerationerna under Drift → Larminställningar ska gå till den nya driftansvarige.                                        | Sentry, appen               |
+| Leverantörer    | Avtal och kontaktpersoner hos Awish (orderlista, framtida API), automatleverantörens utbetalningar och bokföringsbyrån (SIE-serie och startnummer).                  | Utanför appen               |
+| Prova           | Kör kontrollerna under "Återställning steg för steg", D, och e2e-testerna mot en kopia.                                                                              | Lokalt eller Preview        |
+
+Kända brister och vad som återstår står sist i `README.md`.
+
 ## E2E-tester
 
 Fem flöden plus felövervakningen går genom webbläsaren med Playwright-biblioteket (inte

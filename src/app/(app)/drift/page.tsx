@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { milliToTenths, probabilityText } from "@/analytics/health";
+import { weekdayDay } from "@/analytics/todos/text";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatInt, MINUS, NBSP } from "@/lib/format";
@@ -117,9 +118,10 @@ export default async function DriftPage() {
           eyebrow="Maskinhälsa"
           title="Status per automat."
           aside={
-            data.vendorConfigured
+            commonDetail ??
+            (data.vendorConfigured
               ? "Från automaternas egna statusmeddelanden."
-              : "Härledd ur försäljningen: tystnad jämförs med samma veckodag och timme de senaste 8 veckorna."
+              : "Härledd ur försäljningen.")
           }
         />
         {!data.vendorConfigured ? (
@@ -139,7 +141,11 @@ export default async function DriftPage() {
           />
         ) : (
           <div className="flex flex-col gap-3">
-            {commonDetail ? <p className="max-w-3xl text-sm text-muted">{commonDetail}</p> : null}
+            <p className="max-w-3xl text-sm text-muted">
+              {data.vendorConfigured
+                ? "Status från automaternas egna statusmeddelanden."
+                : "Status härleds ur försäljningen: tystnad jämförs med samma veckodag och timme de senaste 8 veckorna."}
+            </p>
             <HealthTable rows={rows} />
           </div>
         )}
@@ -212,9 +218,11 @@ export default async function DriftPage() {
           eyebrow="Besök"
           title={plan.days.length === 0 ? "Inga besök behövs i veckan." : sentenceEnd(plan.summary)}
           aside={
-            firstDay
-              ? `Först ut: ${sentenceEnd(firstDay.title)}`
-              : "Lagret räcker i alla automater de närmaste 7 dagarna."
+            firstDay && plan.days.length === 1
+              ? `${capitalizeFirst(weekdayDay(firstDay.date))}: ${firstDay.stops.map((x) => x.machineName).join(", ")}.`
+              : firstDay
+                ? `Först ut: ${sentenceEnd(firstDay.title)}`
+                : "Lagret räcker i alla automater de närmaste 7 dagarna."
           }
           actions={
             <Link href="/drift/besok" className="rounded-xs text-sm text-muted hover:text-fg">
@@ -225,4 +233,8 @@ export default async function DriftPage() {
       </section>
     </div>
   );
+}
+
+function capitalizeFirst(text: string): string {
+  return text.charAt(0).toLocaleUpperCase("sv-SE") + text.slice(1);
 }

@@ -378,7 +378,8 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
   const allRows = candidateTitles
     .map((t) => ({ title: t, cells: machines.map((m) => cellFor(m, t.id)) }))
     .filter(
-      (r) => r.cells.some((c) => c.stocked) || (machines.length > 0 && centralOnHand(r.title.id) > 0),
+      (r) =>
+        r.cells.some((c) => c.stocked) || (machines.length > 0 && centralOnHand(r.title.id) > 0),
     );
   const retiredRows = allRows.filter((r) => goneEverywhere(r.title.id, r.cells));
   const hiddenTitles = new Set(retiredRows.map((r) => r.title.id));

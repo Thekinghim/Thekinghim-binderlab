@@ -30,6 +30,8 @@ export default async function AutomaterPage({
   const { ctx, overview, period } = data;
   const { totals, rows, headline } = overview;
   const active = rows.filter((r) => r.lifecycle === "active");
+  // Ur drift (hälsan offline) räknas inte som i drift, som på Drift.
+  const offline = totals.offlineMachines ?? 0;
   const decommissioned = rows.filter((r) => r.lifecycle === "decommissioned").length;
   const planned = rows.filter((r) => r.lifecycle === "planned").length;
   const comparison = period.comparisonLabel ? `Jämfört med ${period.comparisonLabel}` : undefined;
@@ -45,7 +47,13 @@ export default async function AutomaterPage({
         aside={headline.aside}
         meta={[
           { label: "Period", value: period.rangeLabel },
-          { label: "I drift", value: formatInt(totals.activeMachines) },
+          {
+            label: "I drift",
+            value: formatInt(totals.activeMachines - (totals.offlineMachines ?? 0)),
+          },
+          ...(totals.offlineMachines
+            ? [{ label: "Ur drift", value: formatInt(totals.offlineMachines) }]
+            : []),
           ...(planned > 0 ? [{ label: "Planerade", value: formatInt(planned) }] : []),
           ...(decommissioned > 0
             ? [{ label: "Avvecklade", value: formatInt(decommissioned) }]
@@ -102,7 +110,9 @@ export default async function AutomaterPage({
               title={
                 active.length === 0
                   ? "Ingen automat i drift."
-                  : `${formatInt(active.length)} ${active.length === 1 ? "automat" : "automater"} i drift.`
+                  : offline > 0
+                    ? `${formatInt(active.length - offline)} av ${formatInt(active.length)} automater i drift, ${formatInt(offline)} ur drift.`
+                    : `${formatInt(active.length)} ${active.length === 1 ? "automat" : "automater"} i drift.`
               }
               aside={period.pendingToday ? "Status, lager och senaste order." : spreadText(rows)}
               actions={

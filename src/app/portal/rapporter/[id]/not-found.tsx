@@ -1,18 +1,16 @@
-import { StateMessage } from "@/components/ui/state-message";
+import { RouteNotFound } from "@/components/ui/route-not-found";
 
-/** Okänd rapport (notFound() i sidan): fel länk, borttagen, eller hör till en annan organisation. */
+/** Okänd rapport (notFound() i sidan): fel länk, borttagen, eller gäller en annan butik. */
 export default function NotFound() {
   return (
-    <div className="flex flex-col gap-6 pt-8 md:pt-12">
-      <h1 className="sr-only">Rapporten finns inte.</h1>
-      <StateMessage
-        kind="empty"
-        code="Ingen rapport"
-        message="Rapporten finns inte."
-        detail="Länken kan vara fel, eller så gäller rapporten en annan butik."
-        action={{ label: "Alla rapporter", href: "/portal/rapporter" }}
-        className="rounded-md border border-line bg-surface"
-      />
-    </div>
+    <RouteNotFound
+      className="flex flex-col pt-10 md:pt-12"
+      eyebrow="Rapporter · 404"
+      title="Rapporten finns inte."
+      aside="Länken kan vara fel, eller så gäller rapporten en annan butik."
+      code="Ingen rapport"
+      message="Ingen rapport för butiken har det här id:t."
+      action={{ label: "Alla rapporter", href: "/portal/rapporter" }}
+    />
   );
 }

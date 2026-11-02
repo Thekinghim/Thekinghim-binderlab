@@ -225,6 +225,7 @@ export function ComparisonTable({
   );
   return (
     <DataTable
+      surface="bg"
       columns={columns}
       rows={rows}
       rowKey={(r) => r.machineId}
@@ -386,6 +387,7 @@ export function InvestmentsSection({
         />
       ) : (
         <DataTable
+          surface="bg"
           columns={columns}
           rows={investments}
           rowKey={(r) => r.id}

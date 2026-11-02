@@ -223,6 +223,7 @@ export function OrdersView({
         />
       ) : (
         <DataTable
+          surface="bg"
           columns={columns}
           rows={model.open}
           rowKey={(r) => r.id}
@@ -252,6 +253,7 @@ export function OrdersView({
           </div>
           {showClosed ? (
             <DataTable
+              surface="bg"
               columns={columns}
               rows={model.closed}
               rowKey={(r) => r.id}

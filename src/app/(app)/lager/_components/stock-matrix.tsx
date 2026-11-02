@@ -149,37 +149,48 @@ function Cell({
   canRegister: boolean;
   onSelect: (machine: LagerMachine, title: LagerTitle, cell: StockCell) => void;
 }) {
-  const label = cell.stocked
-    ? `${title.name} i ${machine.code}: ${packs(cell.onHand)}, ${daysLeftLong(cell, windowDays)}. Status ${STATUS_LABEL[cell.status]}.`
-    : `${title.name} finns inte i ${machine.code}.`;
-  const body = cell.stocked ? (
-    <>
-      <span className="flex w-full items-baseline justify-end gap-2">
-        <span className="meta text-subtle">{daysLeftText(cell)}</span>
-        <span className="tnum text-xl leading-none font-medium">{formatInt(cell.onHand)}</span>
-      </span>
-      <span
-        className={cn(
-          "label flex items-center gap-1.5",
-          cell.status === "ok" ? "text-muted" : "text-fg",
-        )}
-      >
-        <span
-          className={cn("inline-flex w-2 justify-center", cell.status === "ok" && "text-subtle")}
-        >
-          <StatusGlyph
-            status={statusTone(cell.status, cell.onHand)}
-            size={cell.status === "ok" ? 6 : 8}
-          />
+  const label = !cell.stocked
+    ? `${title.name} finns inte i ${machine.code}.`
+    : cell.retired
+      ? `${title.name} i ${machine.code}: ${packs(cell.onHand)}. Utgår ur sortimentet, fylls inte på.`
+      : `${title.name} i ${machine.code}: ${packs(cell.onHand)}, ${daysLeftLong(cell, windowDays)}. Status ${STATUS_LABEL[cell.status]}.`;
+  const body =
+    cell.stocked && cell.retired ? (
+      // Utgången titel: säljs ut, ingen status och ingen signal (design.md §3).
+      <>
+        <span className="tnum text-xl leading-none font-medium text-muted">
+          {formatInt(cell.onHand)}
         </span>
-        {STATUS_LABEL[cell.status]}
+        <span className="label text-subtle">Utgår</span>
+      </>
+    ) : cell.stocked ? (
+      <>
+        <span className="flex w-full items-baseline justify-end gap-2">
+          <span className="meta text-subtle">{daysLeftText(cell)}</span>
+          <span className="tnum text-xl leading-none font-medium">{formatInt(cell.onHand)}</span>
+        </span>
+        <span
+          className={cn(
+            "label flex items-center gap-1.5",
+            cell.status === "ok" ? "text-muted" : "text-fg",
+          )}
+        >
+          <span
+            className={cn("inline-flex w-2 justify-center", cell.status === "ok" && "text-subtle")}
+          >
+            <StatusGlyph
+              status={statusTone(cell.status, cell.onHand)}
+              size={cell.status === "ok" ? 6 : 8}
+            />
+          </span>
+          {STATUS_LABEL[cell.status]}
+        </span>
+      </>
+    ) : (
+      <span className="text-subtle" aria-hidden>
+        {MISSING}
       </span>
-    </>
-  ) : (
-    <span className="text-subtle" aria-hidden>
-      {MISSING}
-    </span>
-  );
+    );
   const cls = "flex min-h-14 w-full flex-col items-end justify-center gap-1.5 px-2 py-2 text-right";
   if (!canRegister) {
     return (

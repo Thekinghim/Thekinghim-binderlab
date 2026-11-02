@@ -307,6 +307,7 @@ export function PlanView({
               </div>
             </div>
             <DataTable
+              surface="bg"
               columns={proposalColumns}
               rows={p.lines}
               rowKey={(r) => r.titleId}
@@ -341,6 +342,7 @@ export function PlanView({
             ) : null}
           </div>
           <DataTable
+            surface="bg"
             columns={allColumns}
             rows={others}
             rowKey={(r) => r.titleId}

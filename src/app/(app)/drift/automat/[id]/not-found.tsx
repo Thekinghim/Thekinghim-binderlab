@@ -1,18 +1,16 @@
-import { StateMessage } from "@/components/ui/state-message";
+import { RouteNotFound } from "@/components/ui/route-not-found";
 
 /** Okänd automat (notFound() i sidan): fel länk, borttagen, eller hör till en annan organisation. */
 export default function NotFound() {
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="sr-only">Automaten finns inte.</h1>
-      <StateMessage
-        kind="empty"
-        code="Ingen automat"
-        message="Automaten finns inte."
-        detail="Länken kan vara fel, eller så hör automaten till en annan organisation."
-        action={{ label: "Till Drift", href: "/drift" }}
-        className="rounded-md border border-line bg-surface"
-      />
-    </div>
+    <RouteNotFound
+      className="flex flex-col"
+      eyebrow="Drift · 404"
+      title="Automaten finns inte."
+      aside="Länken kan vara fel, eller så hör automaten till en annan organisation."
+      code="Ingen automat"
+      message="Ingen automat i organisationen har det här id:t."
+      action={{ label: "Till Drift", href: "/drift" }}
+    />
   );
 }

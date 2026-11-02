@@ -6,7 +6,8 @@
  */
 
 import { wallClockIn } from "@/components/shell/period-state";
-import { changeBp, type IsoDate, type Period } from "@/domain";
+import { businessDateAt } from "@/analytics/todos/time";
+import { addDays, changeBp, periodDays, type IsoDate, type Period } from "@/domain";
 import {
   formatDate,
   formatDateTime,
@@ -74,9 +75,26 @@ function plural(n: number, one: string, many: string): string {
   return `${formatInt(n)}${NBSP}${n === 1 ? one : many}`;
 }
 
+/**
+ * Dagarna med data i perioden, som på Hem, Automater och Butiker: från första ordern
+ * (i urvalet) och, om perioden slutar i dag utan någon order i dag, bara t.o.m. i går.
+ * Samma period ger då samma antal dagar på alla sidor.
+ */
+export function daysWithData(input: HeadlineInput): number {
+  const today = businessDateAt(input.now, input.timeZone);
+  const start =
+    input.dataStart !== null && input.dataStart > input.period.start
+      ? input.dataStart
+      : input.period.start;
+  let end = input.period.end > today ? today : input.period.end;
+  const latest = input.latestOrderAt ? businessDateAt(input.latestOrderAt, input.timeZone) : null;
+  if (end === today && (latest === null || latest < today)) end = addDays(today, -1);
+  return start <= end ? periodDays({ start, end }) : input.days;
+}
+
 function periodPhrase(input: HeadlineInput): string {
   if (input.periodKey === "idag") return "i dag";
-  return `på ${plural(input.days, "dag", "dagar")}`;
+  return `på ${plural(daysWithData(input), "dag", "dagar")}`;
 }
 
 /**
@@ -136,11 +154,13 @@ export function orderHeadline(input: HeadlineInput): Headline {
     const first = formatDate(isoToLocalDate(input.dataStart), { year: "auto", now: input.now });
     return {
       title,
+      // En mening: rubriken har högst två (design.md §5.5).
       aside: sentence(
-        `${paid}. ${input.filtered ? "Första ordern i urvalet" : "Första ordern"} kom ${first}`,
+        `${paid}, ${input.filtered ? "första ordern i urvalet" : "första ordern"} kom ${first}`,
       ),
     };
   }
-  if (input.periodKey === "idag" || input.days <= 1) return { title, aside: `${paid}.` };
-  return { title, aside: sentence(`${paid}, ${perDayPhrase(input.totals.count, input.days)}`) };
+  const days = daysWithData(input);
+  if (input.periodKey === "idag" || days <= 1) return { title, aside: `${paid}.` };
+  return { title, aside: sentence(`${paid}, ${perDayPhrase(input.totals.count, days)}`) };
 }
