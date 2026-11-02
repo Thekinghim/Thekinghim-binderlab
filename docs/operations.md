@@ -384,7 +384,8 @@ inte syns.
 6. Säg att demon är påhittad: alla namn, telefonnummer (PTS serier för fiktiva nummer) och siffror kommer från
    `src/seed/demo/catalog.ts`, och utgångsläget på Effekt (+119 % i oktober) är också påhittat.
 7. Återställ demon efter visningen om någon har skapat rapporter, inbjudningar eller ändrat något:
-   `npm run db:seed-demo -- --aterstall`.
+   `npm run db:seed-demo -- --aterstall`. Har någon gått med via en inbjudan (till exempel ett butikskonto i
+   portalen) vägrar återställningen tills den medlemmen är borttagen ur demoorganisationen (`docs/demo.md`).
 
 ## Överlämning till en ny ägare
 
