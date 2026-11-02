@@ -285,16 +285,31 @@ describe("läsaren (viewer)", () => {
 });
 
 describe("admin", () => {
-  it("kan bjuda in och lägga till admin, påfyllare och läsare", async () => {
-    const user = await createUser();
+  it("kan bjuda in admin, påfyllare och läsare", async () => {
     await asUser(admin, async (tx) => {
-      await tx
-        .insert(s.memberships)
-        .values({ organizationId: F.orgId, userId: user.id, role: "admin" });
-      await tx.execute(
-        sql`select public.create_invitation(${F.orgId}, 'ny-lasare@test.binderlab.se', 'viewer')`,
-      );
+      for (const role of ["admin", "refiller", "viewer"] as const) {
+        await tx.execute(
+          sql`select public.create_invitation(${F.orgId}, ${`ny-${role}-${randomUUID().slice(0, 8)}@test.binderlab.se`}, ${role}::public.member_role)`,
+        );
+      }
     });
+  });
+
+  // Medlemskap skapas bara via create_organization och accept_invitation
+  // (samtycke). Direkt insert nekas för alla klientroller, även ägaren, och
+  // svaret är detsamma oavsett om user_id finns (ingen FK-orakel).
+  it("kan inte lägga till en medlem direkt (inte heller ägaren)", async () => {
+    const user = await createUser();
+    for (const by of [admin, F.owner]) {
+      for (const userId of [user.id, randomUUID()]) {
+        const outcome = await asUser(by, (tx) =>
+          attempt(tx, (sp) =>
+            sp.insert(s.memberships).values({ organizationId: F.orgId, userId, role: "viewer" }),
+          ),
+        );
+        expect(outcome.code).toBe("42501");
+      }
+    }
   });
 
   it("kan inte skapa en ägare", async () => {
@@ -358,14 +373,12 @@ describe("admin", () => {
   it("kan inte skapa eller ändra ägarandelar", async () => {
     const insert = await asUser(admin, (tx) =>
       attempt(tx, (sp) =>
-        sp
-          .insert(s.ownerShares)
-          .values({
-            organizationId: F.orgId,
-            holderName: "Admin",
-            shareBp: 10_000,
-            validFrom: "2026-01-01",
-          }),
+        sp.insert(s.ownerShares).values({
+          organizationId: F.orgId,
+          holderName: "Admin",
+          shareBp: 10_000,
+          validFrom: "2026-01-01",
+        }),
       ),
     );
     expect(insert.code).toBe("42501");
@@ -429,12 +442,7 @@ describe("ägare och rollhöjning", () => {
 
   it("med två ägare kan den ena degraderas", async () => {
     const fx = await seedTenantFixture();
-    const second = await createUser();
-    await asUser(fx.owner, (tx) =>
-      tx
-        .insert(s.memberships)
-        .values({ organizationId: fx.orgId, userId: second.id, role: "owner" }),
-    );
+    const second = await createMember(fx.orgId, "owner");
     await asUser(second, (tx) =>
       tx.execute(
         sql`update public.memberships set role = 'viewer' where organization_id = ${fx.orgId} and user_id = ${fx.owner.id}`,

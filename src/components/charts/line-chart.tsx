@@ -17,7 +17,15 @@ import {
   type Obstacles,
   type Pt,
 } from "./layout";
-import { AxisText, AxisUnitLabel, ChartFigure, LabelBlock, Node, Readout, nearestIndex } from "./primitives";
+import {
+  AxisText,
+  AxisUnitLabel,
+  ChartFigure,
+  LabelBlock,
+  Node,
+  Readout,
+  nearestIndex,
+} from "./primitives";
 
 export type LinePoint = { date: Date; value: number };
 
@@ -85,7 +93,14 @@ function argmin(data: ReadonlyArray<LinePoint>) {
   return b;
 }
 
-type Placed = { key: string; box: Box; lines: LabelLine[]; align: "start" | "end"; anchor?: Pt; tone?: "signal" };
+type Placed = {
+  key: string;
+  box: Box;
+  lines: LabelLine[];
+  align: "start" | "end";
+  anchor?: Pt;
+  tone?: "signal";
+};
 
 export function LineChart({
   data,
@@ -200,7 +215,7 @@ export function LineChart({
         "alert",
         alertIndex,
         [
-          [{ text: alertNote ?? "Kräver åtgärd", kind: "title" }],
+          [{ text: `! ${alertNote ?? "Kräver åtgärd"}`, kind: "title" }],
           [{ text: `${formatDay(d.date)} · ${format(d.value)}`, kind: "value" }],
         ],
         "below",
@@ -233,17 +248,21 @@ export function LineChart({
         ],
       ];
       const s = measureLines(lines);
+      // Vänster ände först, sedan steg åt höger, sedan längre från linjen.
+      // Etiketten får aldrig korsa huvudserien (då döljer gloria data).
+      const xs = Array.from({ length: 25 }, (_, i) =>
+        Math.min(4 + (i * geo.innerW) / 24, geo.innerW - s.w - 4),
+      );
       const box = place(
-        [
-          { x: 4, y: ry - 3 - s.h, ...s },
-          { x: 4, y: ry + 3, ...s },
-          { x: geo.innerW * 0.25, y: ry - 3 - s.h, ...s },
-          { x: geo.innerW * 0.25, y: ry + 3, ...s },
-          { x: geo.innerW - s.w - 4, y: ry - 3 - s.h, ...s },
-          { x: geo.innerW - s.w - 4, y: ry + 3, ...s },
-        ],
+        [3, 12, 24, 40].flatMap((d) =>
+          xs.flatMap((x) => [
+            { x, y: ry - d - s.h, ...s },
+            { x, y: ry + d, ...s },
+          ]),
+        ),
         obs,
         true,
+        { hard: [geo.pts] },
       );
       if (box) add({ key: "ref", box, lines, align: "start" });
     }
@@ -252,17 +271,32 @@ export function LineChart({
     if (cLast && compareName) {
       const lines: LabelLine[] = [[{ text: compareName, kind: "value" }]];
       const s = measureLines(lines);
-      const box = place(
-        [
-          { x: geo.innerW - s.w, y: cLast[1] + 8, ...s },
-          { x: geo.innerW - s.w, y: cLast[1] - 8 - s.h, ...s },
-          { x: geo.innerW - s.w - 16, y: cLast[1] + 14, ...s },
-          { x: geo.innerW - s.w - 16, y: cLast[1] - 14 - s.h, ...s },
-        ],
-        obs,
-        true,
-      );
-      if (box) add({ key: "cmp", box, lines, align: "end" });
+      // Nära sista punkten först, sedan längs serien åt vänster. Korsar
+      // etiketten huvudserien i alla lägen utelämnas den: läsrutan bär namnet.
+      const nearLast = [8, 16, 28, 40].flatMap((d) => [
+        { x: geo.innerW - s.w, y: cLast[1] + d, ...s },
+        { x: geo.innerW - s.w, y: cLast[1] - d - s.h, ...s },
+      ]);
+      const along = (geo.cmp ?? [])
+        .slice()
+        .reverse()
+        .flatMap(([px, py]) =>
+          [6, 14].flatMap((d) => [
+            { x: px - s.w / 2, y: py + d, ...s },
+            { x: px - s.w / 2, y: py - d - s.h, ...s },
+          ]),
+        )
+        .filter((b) => b.x >= 0 && b.x + b.w <= geo.innerW);
+      const box = place([...nearLast, ...along], obs, true, { hard: [geo.pts] });
+      // Ledlinje bara till sista punkten; längs serien står etiketten direkt vid linjen.
+      if (box)
+        add({
+          key: "cmp",
+          box,
+          lines,
+          align: "end",
+          anchor: nearLast.includes(box) ? cLast : undefined,
+        });
     }
     // 5. Valfria: senaste och lägsta värdet. Utelämnas hellre än att krocka.
     if (markExtremes && lastIndex >= 0 && lastIndex !== peakIndex && lastIndex !== alertIndex) {
@@ -353,7 +387,7 @@ export function LineChart({
         <svg
           width={width}
           height={height}
-          className="absolute top-0 left-0 block overflow-visible outline-none focus-visible:outline-2 focus-visible:outline-offset-4"
+          className="absolute top-0 left-0 block overflow-visible focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-solid"
           tabIndex={0}
           role="img"
           aria-label={`${summary} Använd piltangenterna för att läsa av värden.`}
@@ -394,9 +428,21 @@ export function LineChart({
                     y2={geo.innerH + 4}
                     style={{ stroke: "var(--bl-line-strong)" }}
                   />
-                  <AxisText x={geo.xs[i] ?? 0} y={geo.innerH + 18}>
-                    {formatDay(d.date)}
-                  </AxisText>
+                  {(() => {
+                    // Sista datumet högerställs vid kanten i stället för att klippas
+                    const t = formatDay(d.date);
+                    const tx = geo.xs[i] ?? 0;
+                    const atEdge = tx + (t.length * 6.8) / 2 > geo.innerW + M.right;
+                    return (
+                      <AxisText
+                        x={atEdge ? geo.innerW + M.right - 1 : tx}
+                        y={geo.innerH + 18}
+                        anchor={atEdge ? "end" : "middle"}
+                      >
+                        {t}
+                      </AxisText>
+                    );
+                  })()}
                 </g>
               );
             })}

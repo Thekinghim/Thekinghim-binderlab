@@ -36,6 +36,7 @@
   --color-signal-fg: var(--bl-signal-fg);
   --color-signal-soft: var(--bl-signal-soft);
   --color-signal-line: var(--bl-signal-line);
+  --color-signal-hover: var(--bl-signal-hover);
   --color-on-signal: var(--bl-on-signal);
   --color-inverse: var(--bl-inverse-bg);
   --color-on-inverse: var(--bl-inverse-fg);
@@ -102,10 +103,15 @@
   --default-transition-duration: var(--bl-dur-fast);
   --default-transition-timing-function: var(--bl-ease);
 
-  /* Animationer: animate-enter (paneler, notiser), animate-fade, animate-pulse-soft (laddning) */
+  /* Animationer: animate-enter (paneler, notiser), animate-fade, animate-pulse-soft och animate-trace (laddning) */
   --animate-enter: bl-enter var(--bl-dur-slow) var(--bl-ease);
   --animate-fade: bl-fade var(--bl-dur-slow) var(--bl-ease);
   --animate-pulse-soft: bl-shimmer var(--bl-dur-pulse) var(--bl-ease-in-out) infinite;
+  --animate-trace: bl-trace var(--bl-dur-pulse) linear infinite;
+  /* Knappens laddning: tre punkter. Fördröjningar sätts av .bl-ticks. */
+  --animate-tick: bl-tick var(--bl-dur-tick) steps(1, end) infinite;
+  /* Notisens tidsstapel: längden sätts med --toast-dur på elementet. */
+  --animate-toast-progress: bl-progress var(--toast-dur, 5000ms) linear forwards;
 
   --breakpoint-sm: 640px;
   --breakpoint-md: 768px;
@@ -225,6 +231,16 @@
     );
   }
 
+  .bl-ticks > :nth-child(1) {
+    animation-delay: calc(var(--bl-dur-tick) * -3);
+  }
+  .bl-ticks > :nth-child(2) {
+    animation-delay: calc(var(--bl-dur-tick) * -3 - var(--bl-dur-tick) * 2 / 3);
+  }
+  .bl-ticks > :nth-child(3) {
+    animation-delay: calc(var(--bl-dur-tick) * -3 - var(--bl-dur-tick) / 3);
+  }
+
   .sr-only-focusable:not(:focus):not(:focus-within) {
     position: absolute;
     width: 1px;
@@ -244,6 +260,13 @@
   }
   100% {
     opacity: 0.55;
+  }
+}
+
+/* Ett streck som löper runt en ram (pathLength 100). Knappens laddning. */
+@keyframes bl-trace {
+  to {
+    stroke-dashoffset: -100;
   }
 }
 
@@ -272,11 +295,26 @@ dialog::backdrop {
   animation: bl-fade var(--bl-dur-slow) var(--bl-ease);
 }
 
+/* Skala i stället för bredd: ingen layout per bildruta. */
 @keyframes bl-progress {
   from {
-    width: 100%;
+    transform: scaleX(1);
   }
   to {
-    width: 0%;
+    transform: scaleX(0);
+  }
+}
+
+/*
+ * En punkt i taget lyser. Negativa fördröjningar gör att alla tre är i
+ * gång från första bildrutan. Vid reducerad rörelse är animationen
+ * redan slut, och då gäller grundläget: alla tre punkter fasta (···).
+ */
+@keyframes bl-tick {
+  0% {
+    opacity: 1;
+  }
+  33.333% {
+    opacity: 0.3;
   }
 }

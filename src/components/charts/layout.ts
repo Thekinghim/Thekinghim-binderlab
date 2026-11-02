@@ -92,8 +92,18 @@ export type Obstacles = {
   bounds: Box;
 };
 
-function cost(b: Box, obs: Obstacles): number {
+/**
+ * Hårda hinder för ett enskilt anrop: en kandidat som korsar dessa linjer
+ * väljs aldrig, inte ens för obligatoriska etiketter. Används för att en
+ * etikett aldrig ska dölja huvudserien.
+ */
+export type PlaceOptions = { hard?: ReadonlyArray<ReadonlyArray<Pt>> };
+
+const HARD = 1000;
+
+function cost(b: Box, obs: Obstacles, opts?: PlaceOptions): number {
   let c = 0;
+  for (const l of opts?.hard ?? []) if (polylineHitsBox(l, b)) return HARD;
   const { bounds } = obs;
   if (
     b.x < bounds.x ||
@@ -104,27 +114,36 @@ function cost(b: Box, obs: Obstacles): number {
     c += 100;
   for (const o of obs.boxes) if (boxesOverlap(b, o)) c += 10;
   for (const l of obs.lines) if (polylineHitsBox(l, b)) c += 4;
-  for (const p of obs.points ?? []) if (inside(p, { x: b.x - 6, y: b.y - 6, w: b.w + 12, h: b.h + 12 })) c += 4;
+  for (const p of obs.points ?? [])
+    if (inside(p, { x: b.x - 6, y: b.y - 6, w: b.w + 12, h: b.h + 12 })) c += 4;
   return c;
 }
 
 /**
  * Väljer första kandidaten utan krock. `required` etiketter tar minst dåliga
  * läget om ingen är fri; valfria etiketter utelämnas (null) i stället för att
- * lägga sig över data.
+ * lägga sig över data. Med `opts.hard` returneras null hellre än ett läge som
+ * korsar de hårda linjerna.
  */
-export function place(candidates: ReadonlyArray<Box>, obs: Obstacles, required = false): Box | null {
+export function place(
+  candidates: ReadonlyArray<Box>,
+  obs: Obstacles,
+  required = false,
+  opts?: PlaceOptions,
+): Box | null {
   let best: Box | null = null;
   let bestCost = Infinity;
   for (const c of candidates) {
-    const k = cost(c, obs);
+    const k = cost(c, obs, opts);
     if (k === 0) return c;
     if (k < bestCost) {
       bestCost = k;
       best = c;
     }
   }
-  return required && bestCost < 100 ? best : required ? (candidates[0] ?? null) : null;
+  if (!required) return null;
+  if (bestCost < 100) return best;
+  return opts?.hard ? null : (candidates[0] ?? null);
 }
 
 /** Kandidatlägen runt en punkt, i fallande preferens. */
@@ -156,11 +175,17 @@ export function aroundPoint(
     { x: x + 8, y: y + gap * 3, w, h },
     { x: x - 8 - w, y: y + gap * 3, w, h },
   ];
-  return prefer === "above" ? [...above, ...side, ...below, ...far] : [...below, ...side, ...above, ...far];
+  return prefer === "above"
+    ? [...above, ...side, ...below, ...far]
+    : [...below, ...side, ...above, ...far];
 }
 
 /** Ledlinje från en punkt till närmaste kant på en etikettruta, kortad vid punkten. */
-export function leader(p: Pt, b: Box, start = 5): { x1: number; y1: number; x2: number; y2: number } | null {
+export function leader(
+  p: Pt,
+  b: Box,
+  start = 5,
+): { x1: number; y1: number; x2: number; y2: number } | null {
   const tx = Math.min(Math.max(p[0], b.x), b.x + b.w);
   const ty = Math.min(Math.max(p[1], b.y), b.y + b.h);
   const dx = tx - p[0];

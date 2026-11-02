@@ -1,12 +1,13 @@
 import { extent } from "d3-array";
 import { scaleLinear } from "d3-scale";
 import { area, curveLinear, line } from "d3-shape";
+import { cn } from "@/lib/cn";
 
 type SparklineProps = {
   data: ReadonlyArray<number>;
   width?: number;
   height?: number;
-  /** Markera sista punkten med signalfärg (t.ex. avvikelse) */
+  /** Sista punkten kräver åtgärd: signalfärg + ring, så att den syns även i svartvitt */
   alert?: boolean;
   /** Visa en referenslinje, t.ex. föregående periods snitt */
   reference?: number;
@@ -43,43 +44,47 @@ export function Sparkline({
   const last = pts[pts.length - 1] ?? [0, 0];
   const s = 4;
 
+  // Noden ritas i HTML ovanpå, så att den förblir kvadratisk när viewBox sträcks i bredd.
   return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      width="100%"
-      height={height}
-      preserveAspectRatio="none"
-      className={className}
-      role={label ? "img" : undefined}
-      aria-label={label}
-      aria-hidden={label ? undefined : true}
-    >
-      <path d={areaPath} style={{ fill: "var(--bl-fg)", opacity: 0.05 }} />
-      {reference !== undefined ? (
-        <line
-          x1={0}
-          x2={width}
-          y1={y(reference)}
-          y2={y(reference)}
-          style={{ stroke: "var(--bl-fg-faint)" }}
-          strokeDasharray="2 2"
+    <span className={cn("relative block w-full", className)} style={{ height }}>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        width="100%"
+        height={height}
+        preserveAspectRatio="none"
+        className="block"
+        role={label ? "img" : undefined}
+        aria-label={label}
+        aria-hidden={label ? undefined : true}
+      >
+        <path d={areaPath} style={{ fill: "var(--bl-fg)", opacity: 0.05 }} />
+        {reference !== undefined ? (
+          <line
+            x1={0}
+            x2={width}
+            y1={y(reference)}
+            y2={y(reference)}
+            style={{ stroke: "var(--bl-fg-faint)" }}
+            strokeDasharray="2 2"
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
+        <path
+          d={linePath}
+          fill="none"
+          style={{ stroke: "var(--bl-data-2)" }}
+          strokeWidth={1.25}
           vectorEffect="non-scaling-stroke"
         />
-      ) : null}
-      <path
-        d={linePath}
-        fill="none"
-        style={{ stroke: "var(--bl-data-2)" }}
-        strokeWidth={1.25}
-        vectorEffect="non-scaling-stroke"
+      </svg>
+      <span
+        aria-hidden
+        className={cn(
+          "absolute -translate-x-1/2 -translate-y-1/2",
+          alert ? "bg-signal outline outline-1 outline-offset-2 outline-signal" : "bg-fg",
+        )}
+        style={{ left: `${(last[0] / width) * 100}%`, top: last[1], width: s, height: s }}
       />
-      <rect
-        x={last[0] - s / 2}
-        y={last[1] - s / 2}
-        width={s}
-        height={s}
-        style={{ fill: alert ? "var(--bl-signal)" : "var(--bl-fg)" }}
-      />
-    </svg>
+    </span>
   );
 }

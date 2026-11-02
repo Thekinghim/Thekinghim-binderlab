@@ -393,7 +393,8 @@ export const stockLocations = pgTable("stock_locations", {
 export const stockEvents = pgTable("stock_events", {
   id: id(),
   organizationId: orgId(),
-  seq: bigint("seq", { mode: "number" }).notNull().generatedAlwaysAsIdentity(),
+  /** Ordningsnummer per organisation. Sätts alltid av databasen (triggern). */
+  seq: bigint("seq", { mode: "number" }).notNull().default(0),
   locationId: uuid("location_id").notNull(),
   titleId: uuid("title_id").notNull(),
   kind: stockEventKind("kind").notNull(),

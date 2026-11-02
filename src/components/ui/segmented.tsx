@@ -20,9 +20,9 @@ type SegmentedProps<T extends string> = {
  * bara det valda segmentet ligger i tabbordningen.
  *
  * En ram, 1px avdelare mellan lägena och ingen flytande platta: valt
- * läge markeras statiskt (upphöjd yta, förgrundstext och ett 2px
- * index under etiketten), så det syns redan i serverrenderad HTML och
- * bärs av form, inte bara av färg.
+ * läge markeras statiskt med ett 2px indexstreck, fylld yta, förgrundstext
+ * och fetare vikt, så det syns redan i serverrenderad HTML. Hover på ett
+ * ovalt läge går bara till muted, så det aldrig ser valt ut.
  */
 export function Segmented<T extends string>({
   options,
@@ -85,18 +85,14 @@ export function Segmented<T extends string>({
             className={cn(
               "label relative shrink-0 whitespace-nowrap transition-[background-color,color] duration-fast ease-instrument focus-visible:-outline-offset-2",
               size === "sm" ? "px-2.5" : "px-3",
+              // Valt läge bärs av form, inte bara färg: ett 2px indexstreck i
+              // förgrundsfärg längs underkanten, inuti ramen.
               selected
-                ? "bg-hover text-fg"
-                : "text-subtle hover:bg-hover/50 hover:text-fg",
+                ? "bg-hover font-medium text-fg after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-fg"
+                : "text-subtle hover:text-muted",
             )}
           >
             {o.label}
-            {selected ? (
-              <span
-                aria-hidden
-                className={cn("absolute bottom-1 h-0.5 bg-fg", size === "sm" ? "inset-x-2.5" : "inset-x-3")}
-              />
-            ) : null}
           </button>
         );
       })}

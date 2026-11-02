@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  type CSSProperties,
   useId,
   type InputHTMLAttributes,
   type ReactNode,
@@ -81,15 +82,21 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
             control,
             error ? "border-signal" : "border-line-control",
             icon && "pl-9",
-            suffix && "pr-10",
+            // Enhetens bredd plus 4px luft: värdet slutar tätt intill enheten.
+            suffix && "pr-[calc(var(--spacing)*3+var(--sfx-w)+4px)]",
             // Tal sätts i Geist med tabulära siffror, aldrig i mono.
             rest.type === "number" && "tnum text-right",
             className,
           )}
           {...rest}
+          style={
+            suffix
+              ? ({ ...rest.style, "--sfx-w": `${suffix.length}ch` } as CSSProperties)
+              : rest.style
+          }
         />
         {suffix ? (
-          <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm text-subtle">
+          <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-base text-subtle">
             {suffix}
           </span>
         ) : null}

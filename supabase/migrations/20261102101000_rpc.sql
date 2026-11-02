@@ -50,7 +50,7 @@ $$;
 -- -----------------------------------------------------------------------------
 -- create_invitation(org, email, role) → token i klartext (visas EN gång)
 -- Bara sha256-hashen sparas. Tidigare obesvarade inbjudningar till samma
--- adress löper ut.
+-- adress löper ut (en admin rör inte en ägarinbjudan).
 -- -----------------------------------------------------------------------------
 create function public.create_invitation(
   p_organization_id uuid,
@@ -88,12 +88,15 @@ begin
     raise exception using errcode = 'BL014', message = 'Personen är redan medlem.';
   end if;
 
+  -- Bara inbjudningar som anroparen själv hade fått skapa löper ut: en admin
+  -- kan inte slå ut en ägares ägarinbjudan genom att bjuda in adressen igen.
   update public.invitations i
   set expires_at = now()
   where i.organization_id = p_organization_id
     and i.email operator(extensions.=) v_email::extensions.citext
     and i.accepted_at is null
-    and i.expires_at > now();
+    and i.expires_at > now()
+    and (i.role <> 'owner' or private.has_role(p_organization_id, 'owner'));
 
   v_token := encode(extensions.gen_random_bytes(32), 'hex');
 

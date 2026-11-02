@@ -2,7 +2,7 @@
 
 import { max as d3max, mean } from "d3-array";
 import { scaleBand, scaleLinear } from "d3-scale";
-import { useMemo, useState, type KeyboardEvent } from "react";
+import { useId, useMemo, useState, type KeyboardEvent } from "react";
 import { cn } from "@/lib/cn";
 import { formatDelta } from "@/lib/format";
 import { useMeasure } from "@/lib/hooks/use-measure";
@@ -10,7 +10,11 @@ import { axisScale, type AxisUnit } from "./axis";
 import { AxisText, AxisUnitLabel, ChartFigure, HatchPattern, Readout } from "./primitives";
 
 export type BarDatum = {
-  /** Kort etikett (vertikal axel), t.ex. "006" */
+  /**
+   * Etikett. I stående läge visas id (`code` eller id ur början av `name`,
+   * t.ex. "BL-006") på x-axeln; `label` används bara om inget id finns och
+   * bör då vara fullt id, aldrig en förkortning som "006".
+   */
   label: string;
   value: number;
   /** Fullt namn, t.ex. "BL-006 Väla Centrum". I liggande läge visas id i mono och plats i klartext. */
@@ -45,6 +49,9 @@ type BarChartProps = {
   alertIndex?: number;
   /** Visa snittlinje */
   showMean?: boolean;
+  /** Kolumnrubriker i liggande läge */
+  labelHeading?: string;
+  valueHeading?: string;
   /** Höjd i vertikalt läge. Liggande läge växer med antalet rader. */
   height?: number;
   summary: string;
@@ -91,10 +98,13 @@ function HorizontalBars({
   highlightIndex,
   alertIndex,
   showMean = true,
+  labelHeading = "Automat",
+  valueHeading = "Intäkt",
   summary,
 }: BarChartProps) {
   const [active, setActive] = useState<number | null>(null);
   const peak = usePeak(data, peakProp, highlightIndex);
+  const hatchId = useId().replace(/:/g, "");
 
   const g = useMemo(() => {
     const x = scaleLinear()
@@ -115,7 +125,7 @@ function HorizontalBars({
         onPointerLeave={() => setActive(null)}
       >
         {/* Kolumnhuvud: snittets annotering ovanför sin linje */}
-        <span className="label self-end pb-2 text-subtle">Automat</span>
+        <span className="label self-end pb-2 text-subtle">{labelHeading}</span>
         <div className="relative h-8" aria-hidden>
           {showMean ? (
             <span
@@ -131,7 +141,7 @@ function HorizontalBars({
             </span>
           ) : null}
         </div>
-        <span className="label self-end pb-2 text-right text-subtle">Intäkt</span>
+        <span className="label self-end pb-2 text-right text-subtle">{valueHeading}</span>
 
         <ol className="col-span-3 grid grid-cols-subgrid" aria-label={summary}>
           {data.map((d, i) => {
@@ -148,12 +158,11 @@ function HorizontalBars({
                 key={`${code ?? ""}${d.label}${i}`}
                 onPointerEnter={() => setActive(i)}
                 className={cn(
-                  "col-span-3 grid grid-cols-subgrid items-center border-t border-line transition-colors duration-[120ms]",
-                  note ? "min-h-12 py-1.5" : "h-8",
+                  "col-span-3 grid grid-cols-subgrid border-t border-line transition-colors duration-[120ms]",
                   active === i && "bg-hover",
                 )}
               >
-                <span className="flex min-w-0 items-baseline gap-2">
+                <span className="flex h-8 min-w-0 items-center gap-2">
                   {code ? (
                     <span
                       className={cn(
@@ -168,8 +177,8 @@ function HorizontalBars({
                     {text}
                   </span>
                 </span>
-                <span className="relative flex h-full flex-col justify-center gap-1">
-                  {/* Hjälplinjer och snitt, ritade per rad så att de löper obrutet */}
+                <span className="relative flex h-8 items-center">
+                  {/* Hjälplinjer och snitt per rad; de bryts vid noteringsraden */}
                   <span aria-hidden className="pointer-events-none absolute inset-0">
                     {g.ticks.slice(1).map((t) => (
                       <span
@@ -185,12 +194,12 @@ function HorizontalBars({
                       />
                     ) : null}
                   </span>
-                  <span className="relative block h-2">
+                  <span className="relative block h-2 w-full">
                     <span
                       className={cn(
                         "absolute inset-y-0 left-0 transition-colors duration-[120ms]",
                         isAlert
-                          ? "bl-hatch-signal border border-signal bg-signal-soft"
+                          ? "border border-signal"
                           : isPeak
                             ? "bg-data-1"
                             : active === i
@@ -198,28 +207,38 @@ function HorizontalBars({
                               : "bg-data-3",
                       )}
                       style={{ width: `${pct(d.value)}%` }}
-                    />
-                  </span>
-                  {note ? (
-                    <span
-                      className={cn(
-                        "label relative truncate",
-                        isAlert ? "text-signal-fg" : "text-subtle",
-                      )}
                     >
-                      {isAlert ? "! " : ""}
-                      {note}
+                      {isAlert ? (
+                        // Skraffering bär larmet även i svartvitt
+                        <svg aria-hidden className="absolute inset-0 size-full">
+                          <defs>
+                            <HatchPattern id={`${hatchId}-${i}`} tone="signal" />
+                          </defs>
+                          <rect width="100%" height="100%" fill={`url(#${hatchId}-${i})`} />
+                        </svg>
+                      ) : null}
                     </span>
-                  ) : null}
+                  </span>
                 </span>
                 <span
                   className={cn(
-                    "tnum text-right font-mono text-sm",
+                    "tnum flex h-8 items-center justify-end font-mono text-sm",
                     isPeak || isAlert ? "font-medium text-fg" : "text-muted",
                   )}
                 >
                   {format(d.value)}
                 </span>
+                {note ? (
+                  <span
+                    className={cn(
+                      "label col-span-2 col-start-2 -mt-1 pb-2",
+                      isAlert ? "text-signal-fg" : "text-subtle",
+                    )}
+                  >
+                    {isAlert ? "! " : ""}
+                    {note}
+                  </span>
+                ) : null}
               </li>
             );
           })}
@@ -245,15 +264,6 @@ function HorizontalBars({
           {g.axis.label}
         </span>
       </div>
-      <style>{`
-        .bl-hatch-signal {
-          background-image: repeating-linear-gradient(
-            135deg,
-            var(--bl-signal) 0 1px,
-            transparent 1px 4px
-          );
-        }
-      `}</style>
     </ChartFigure>
   );
 }
@@ -263,6 +273,36 @@ function HorizontalBars({
 /* ---------------------------------------------------------------------- */
 
 const MV = { top: 40, right: 8, bottom: 28, left: 36 };
+
+/** Larmnoteringar i stående läge: x-läge inom bredden och rad utan krock. */
+function noteLayout(data: ReadonlyArray<BarDatum>, alertIndex: number | undefined, innerW: number) {
+  const x = bandFor(data.length, innerW);
+  const bw = x.bandwidth();
+  const notes = new Map<number, { t: string; x: number; row: number }>();
+  const rowEnds: number[] = [];
+  data.forEach((d, i) => {
+    if (!(d.flag || i === alertIndex)) return;
+    const t = `! ${d.note ?? "Kräver åtgärd"}`;
+    const w = t.length * CH_MONO;
+    const cx = (x(i) ?? 0) + bw / 2;
+    const nx = Math.max(-MV.left, Math.min(cx - w / 2, innerW + MV.right - w));
+    let row = rowEnds.findIndex((end) => nx >= end + 8);
+    if (row === -1) row = rowEnds.length;
+    rowEnds[row] = nx + w;
+    notes.set(i, { t, x: nx, row });
+  });
+  return { notes, rows: rowEnds.length };
+}
+
+function bandFor(n: number, innerW: number) {
+  return scaleBand<number>()
+    .domain(Array.from({ length: n }, (_, i) => i))
+    .range([0, innerW])
+    .paddingInner(innerW / n < 24 ? 0.2 : 0.38)
+    .paddingOuter(0.1);
+}
+// Geist Mono 10 px versaler med 0,06 em spärrning
+const CH_MONO = 6.8;
 
 function VerticalBars({
   data,
@@ -279,22 +319,24 @@ function VerticalBars({
   const [ref, width] = useMeasure<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
   const peak = usePeak(data, peakProp, highlightIndex);
-  const hatchId = `bar-hatch-${summary.length}`;
+  const hatchId = useId().replace(/:/g, "");
 
   const g = useMemo(() => {
     const innerW = Math.max(10, width - MV.left - MV.right);
-    const innerH = height - MV.top - MV.bottom;
-    const x = scaleBand<number>()
-      .domain(data.map((_, i) => i))
-      .range([0, innerW])
-      .paddingInner(innerW / data.length < 24 ? 0.2 : 0.38)
-      .paddingOuter(0.1);
+    // Larmnoteringar står på egna rader under x-etiketterna; krockar två
+    // flyttas den senare en rad ned. Raderna räknas fram nedan.
+    const noteRows = noteLayout(data, alertIndex, innerW);
+    const bottom = MV.bottom + noteRows.rows * 14;
+    const innerH = height - MV.top - bottom;
+    const x = bandFor(data.length, innerW);
     const y = scaleLinear()
       .domain([0, d3max(data, (d) => d.value) ?? 1])
       .range([innerH, 0])
       .nice(4);
     const ticks = y.ticks(4);
-    const labelEvery = Math.max(1, Math.ceil((data.length * 44) / innerW));
+    const xLabels = data.map((d) => split(d).code ?? d.label);
+    const widest = Math.max(0, ...xLabels.map((t) => t.length * CH_MONO)) + 8;
+    const labelEvery = Math.max(1, Math.ceil((data.length * widest) / innerW));
     return {
       innerW,
       innerH,
@@ -304,8 +346,10 @@ function VerticalBars({
       axis: axisScale(ticks, unit),
       avg: mean(data, (d) => d.value) ?? 0,
       labelEvery,
+      xLabels,
+      notes: noteRows.notes,
     };
-  }, [data, width, height, unit]);
+  }, [data, width, height, unit, alertIndex]);
 
   const onKey = (e: KeyboardEvent<SVGSVGElement>) => {
     const cur = active ?? peak ?? 0;
@@ -330,7 +374,7 @@ function VerticalBars({
         <svg
           width={width}
           height={height}
-          className="absolute top-0 left-0 block overflow-visible outline-none focus-visible:outline-2 focus-visible:outline-offset-4"
+          className="absolute top-0 left-0 block overflow-visible focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-solid"
           tabIndex={0}
           role="img"
           aria-label={`${summary} Använd piltangenterna för att läsa av staplar.`}
@@ -401,9 +445,18 @@ function VerticalBars({
                   />
                   {i % g.labelEvery === 0 || isPeak || isAlert ? (
                     <AxisText x={x + bw / 2} y={g.innerH + 18} emphasis={isPeak || isActive}>
-                      {d.label}
+                      {g.xLabels[i]}
                     </AxisText>
                   ) : null}
+                  {(() => {
+                    // Textbärare för larmet: "! note", hålls inom diagrammets bredd
+                    const n = g.notes.get(i);
+                    return n ? (
+                      <AxisText x={n.x} y={g.innerH + 32 + n.row * 14} anchor="start">
+                        <tspan style={{ fill: "var(--bl-signal-fg)" }}>{n.t}</tspan>
+                      </AxisText>
+                    ) : null;
+                  })()}
                 </g>
               );
             })}
@@ -457,7 +510,11 @@ function VerticalBars({
                 >
                   {format(hl.value)}
                 </text>
-                <AxisText x={hlx + (right ? -6 : 6)} y={-MV.top + 26} anchor={right ? "end" : "start"}>
+                <AxisText
+                  x={hlx + (right ? -6 : 6)}
+                  y={-MV.top + 26}
+                  anchor={right ? "end" : "start"}
+                >
                   {highlightNote ?? `Högst · ${formatDelta(hl.value / g.avg - 1)} mot snitt`}
                 </AxisText>
               </g>

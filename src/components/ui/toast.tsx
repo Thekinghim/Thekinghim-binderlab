@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { cn } from "@/lib/cn";
@@ -121,8 +122,8 @@ function ToastView({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
       {!paused ? (
         <span
           aria-hidden
-          className="absolute bottom-0 left-0 h-px bg-line-control"
-          style={{ animation: `bl-progress ${duration}ms linear forwards` }}
+          className="absolute inset-x-0 bottom-0 h-px origin-left animate-toast-progress bg-line-control"
+          style={{ "--toast-dur": `${duration}ms` } as CSSProperties}
         />
       ) : null}
     </div>

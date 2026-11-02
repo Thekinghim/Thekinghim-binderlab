@@ -6,7 +6,14 @@
  * (hårt mellanslag, äkta minustecken).
  */
 
-import { dayOfWeek, parseIsoDate, roundHalfUp, type IsoDate, type IsoMonth, type Period } from "@/domain";
+import {
+  dayOfWeek,
+  parseIsoDate,
+  roundHalfUp,
+  type IsoDate,
+  type IsoMonth,
+  type Period,
+} from "@/domain";
 import { EN_DASH, formatInt, MINUS, NBSP } from "@/lib/format";
 
 const MONTHS_SHORT = [
@@ -40,7 +47,15 @@ const MONTHS_LONG = [
 ] as const;
 
 const WEEKDAYS_SHORT = ["mån", "tis", "ons", "tor", "fre", "lör", "sön"] as const;
-const WEEKDAYS_LONG = ["måndag", "tisdag", "onsdag", "torsdag", "fredag", "lördag", "söndag"] as const;
+const WEEKDAYS_LONG = [
+  "måndag",
+  "tisdag",
+  "onsdag",
+  "torsdag",
+  "fredag",
+  "lördag",
+  "söndag",
+] as const;
 const WEEKDAYS_PLURAL = [
   "måndagar",
   "tisdagar",
@@ -128,4 +143,9 @@ export function periodText(period: Period): string {
 /** Versal första bokstav: "lördagar" → "Lördagar". */
 export function capitalize(text: string): string {
   return text.length === 0 ? text : text.charAt(0).toLocaleUpperCase("sv-SE") + text.slice(1);
+}
+
+/** Avslutar en mening med punkt, utan dubbel punkt efter förkortning: "slut 4 nov." → "slut 4 nov.". */
+export function sentence(text: string): string {
+  return text.endsWith(".") ? text : `${text}.`;
 }

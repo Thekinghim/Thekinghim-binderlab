@@ -7,7 +7,16 @@
  * minustecken (U+2212), som i resten av gränssnittet.
  */
 
-import { parseIsoDate, parseIsoMonth, roundHalfUp, weekOf, type IsoDate, type IsoMonth, type Period } from "@/domain";
+import {
+  daysInMonth,
+  parseIsoDate,
+  parseIsoMonth,
+  roundHalfUp,
+  weekOf,
+  type IsoDate,
+  type IsoMonth,
+  type Period,
+} from "@/domain";
 import { MINUS, NBSP, formatInt } from "@/lib/format";
 
 const MONTHS = [
@@ -132,12 +141,8 @@ export function periodText(period: Period): string {
   const s = parseIsoDate(period.start);
   const e = parseIsoDate(period.end);
   if (period.start === period.end) return `${shortDateText(period.start)} ${s.year}`;
-  const lastDay = parseIsoDate(period.end).day;
   const isFullMonth =
-    s.year === e.year &&
-    s.month === e.month &&
-    s.day === 1 &&
-    lastDay === daysOf(e.year, e.month);
+    s.year === e.year && s.month === e.month && s.day === 1 && e.day === daysInMonth(period.end);
   if (isFullMonth) return `${MONTHS[s.month - 1]} ${s.year}`;
   if (s.year === e.year && s.month === e.month) {
     return `${s.day}–${e.day} ${MONTHS_SHORT[s.month - 1]} ${s.year}`;
@@ -146,11 +151,6 @@ export function periodText(period: Period): string {
     return `${shortDateText(period.start)}–${shortDateText(period.end)} ${s.year}`;
   }
   return `${shortDateText(period.start)} ${s.year}–${shortDateText(period.end)} ${e.year}`;
-}
-
-function daysOf(year: number, month: number): number {
-  if (month === 2) return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0 ? 29 : 28;
-  return month === 4 || month === 6 || month === 9 || month === 11 ? 30 : 31;
 }
 
 /** ISO-vecka som text: '2026-11-04' → "v. 45". */

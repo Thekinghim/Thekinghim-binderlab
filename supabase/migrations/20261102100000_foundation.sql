@@ -15,6 +15,7 @@
 --   BL015  månaden är redan stängd, BL016 månaden är inte stängd
 --   BL017  lagerflytt går inte jämnt ut, BL018 ägarandelar summerar inte till 10 000
 --   BL019  automatgräns för organisationen nådd
+--   BL020  användaren är inte medlem i organisationen (aktör, profil)
 --   42501  behörighet saknas (standardkod)
 --   22023  ogiltigt argument (standardkod)
 -- =============================================================================
@@ -95,6 +96,43 @@ as $$
   end
 $$;
 
+-- Organisationens id om sökvägen till en fil är säker, annars null.
+-- Formen är "{organization_id}/segment/.../fil" där varje segment börjar med
+-- en bokstav, en siffra, '_' eller '-'. Det stoppar '.', '..', tomma segment,
+-- '\' och procentkodning, så att en sökväg som börjar i A aldrig kan
+-- normaliseras till B (t.ex. när en serverväg laddar ned via URL).
+create function private.storage_path_org(p_path text) returns uuid
+language sql immutable
+set search_path = ''
+as $$
+  select case
+    when p_path ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(/[A-Za-z0-9_-][A-Za-z0-9._-]{0,199})+$'
+      then substr(p_path, 1, 36)::uuid
+  end
+$$;
+
+-- Spärr före BEFORE-triggers som är security definer och läser eller kastar
+-- något om organisationen (tidszon, stängda månader ...). Postgres kontrollerar
+-- RLS:s WITH CHECK först efter alla BEFORE-triggers, så utan spärren kunde en
+-- utomstående läsa sådant ur felkoden. Spärren kör med anroparens rättigheter
+-- (current_user är den riktiga rollen), gäller bara klientroller och nekar
+-- med samma kod och text som RLS när den inloggade saknar någon av rollerna i
+-- triggerargumenten. Den ersätter inte policyn, som fortfarande avgör.
+create function private.rls_insert_gate() returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if current_user in ('anon', 'authenticated')
+     and not private.has_role(new.organization_id, variadic tg_argv::public.member_role[]) then
+    raise exception using
+      errcode = '42501',
+      message = format('new row violates row-level security policy for table "%s"', tg_table_name);
+  end if;
+  return new;
+end
+$$;
+
 -- Systemrensning (gallring efter 7 år, rådata efter 24 månader) är det enda
 -- tillfälle då rader i skyddade tabeller får raderas. Det kräver att jobbet
 -- kör som en systemroll (aldrig anon/authenticated) och sätter
@@ -143,14 +181,20 @@ $$;
 
 -- Är uppdateringen bara att aktörskolumner nollas för användare som inte
 -- längre finns? (FK on delete set null mot auth.users.)
+-- Svarar bara inuti en trigger: anropad direkt skulle den vara ett orakel för
+-- vilka användar-id som finns i auth.users. Klientroller har inte EXECUTE.
 create function private.is_actor_anonymization(p_old jsonb, p_new jsonb) returns boolean
 language plpgsql stable security definer
 set search_path = ''
 as $$
 declare
   v_key text;
-  v_changed text[] := private.changed_keys(p_old, p_new);
+  v_changed text[];
 begin
+  if pg_catalog.pg_trigger_depth() = 0 then
+    return false;
+  end if;
+  v_changed := private.changed_keys(p_old, p_new);
   if cardinality(v_changed) = 0 then
     return false;
   end if;
@@ -267,8 +311,12 @@ begin
   v_old := to_jsonb(old);
   v_new := to_jsonb(new);
 
-  if v_system and private.is_actor_anonymization(v_old, v_new) then
-    return new;
+  -- Nästlade if-satser: is_actor_anonymization får bara utvärderas i
+  -- systemkontext (klientroller har inte EXECUTE på den).
+  if v_system then
+    if private.is_actor_anonymization(v_old, v_new) then
+      return new;
+    end if;
   end if;
 
   if v_system
@@ -306,12 +354,13 @@ revoke all on all functions in schema private from public;
 
 -- Hjälpfunktioner som anropas från triggers som kör med anroparens rättigheter
 -- (för att kunna läsa current_user) eller från check-villkor och policyer.
--- Ingen av dem läser data som anroparen inte redan har tillgång till.
+-- Ingen av dem läser data. is_actor_anonymization (security definer, läser
+-- auth.users) är med flit INTE körbar för klientroller.
 grant execute on function
   private.is_valid_timezone(text),
   private.try_uuid(text),
+  private.storage_path_org(text),
   private.purge_allowed(),
   private.changed_keys(jsonb, jsonb),
-  private.actor_columns(),
-  private.is_actor_anonymization(jsonb, jsonb)
+  private.actor_columns()
   to authenticated, service_role;

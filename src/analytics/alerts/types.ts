@@ -1,0 +1,223 @@
+/**
+ * Typer för larm: regler som ger kandidater, incidenter som samlar samma problem över tid,
+ * aviseringar och prenumerationer per användare.
+ *
+ * Flödet:
+ *   regler (health/lager/import/dag) → AlertCandidate[]
+ *   reconcileAlerts(kandidater, tidigare incidenter, nu) → incidenter + AlertNotification[]
+ *   routeNotifications(aviseringar, prenumerationer, nu) → AlertDelivery[] (en per användare och sändtid)
+ *
+ * Typvärdena (`AlertKind`) följer databasens format för alerts.kind (gemener och _), och
+ * allvarlighetsgraderna är desamma som enum alert_severity.
+ */
+
+import type { IsoDate } from "@/domain";
+import type { Evidence } from "@/analytics/todos/types";
+
+export type { Evidence };
+
+/** Allvar, som enum alert_severity i databasen. */
+export type AlertSeverity = "info" | "warning" | "critical";
+
+/** Typ av larm. */
+export type AlertKind =
+  | "machine_suspected_fault"
+  | "machine_fault"
+  | "machine_offline"
+  | "low_stock"
+  | "import_failed"
+  | "day_anomaly";
+
+/**
+ * Familj av larm. Typerna i en familj delar incident (t.ex. misstänkt fel som blir offline är
+ * samma problem) och utvärderas tillsammans.
+ */
+export type AlertGroup = "machine" | "stock" | "import" | "sales";
+
+/** Underlag för larm: som Evidence, plus importer och datakällor. */
+export interface AlertEvidence extends Evidence {
+  readonly importIds?: string[];
+  readonly dataSourceIds?: string[];
+}
+
+/** En regel har hittat ett problem. Samma problem ger alltid samma `key`. */
+export interface AlertCandidate {
+  /** Incidentnyckel, t.ex. 'machine:<id>', 'low_stock:<automat>:<titel>', 'import:<källa>'. */
+  readonly key: string;
+  readonly kind: AlertKind;
+  readonly severity: AlertSeverity;
+  readonly machineId: string | null;
+  readonly titleId: string | null;
+  readonly title: string;
+  readonly detail: string;
+  readonly evidence: AlertEvidence;
+  readonly link: string;
+  /**
+   * Engångslarm (t.ex. avvikande dag): incidenten stängs direkt efter aviseringen och samma
+   * nyckel larmar aldrig igen.
+   */
+  readonly oneShot?: boolean;
+}
+
+/** Varför en avisering skickas. */
+export type NotificationReason = "new" | "reminder" | "escalated" | "reopened" | "resolved";
+
+/** Incident: ett problem över tid. Sparas av anroparen (t.ex. i tabellen alerts). */
+export interface AlertIncident {
+  /** `${key}@${openedAt}`. */
+  readonly id: string;
+  readonly key: string;
+  readonly group: AlertGroup;
+  readonly kind: AlertKind;
+  readonly severity: AlertSeverity;
+  readonly status: "open" | "closed";
+  readonly machineId: string | null;
+  readonly titleId: string | null;
+  readonly title: string;
+  readonly detail: string;
+  readonly evidence: AlertEvidence;
+  readonly link: string;
+  readonly openedAt: string;
+  /** Senaste gången en regel såg problemet. */
+  readonly lastSeenAt: string;
+  readonly closedAt: string | null;
+  readonly lastNotifiedAt: string | null;
+  readonly notifyCount: number;
+  /** Antal utvärderingar där problemet fanns. */
+  readonly occurrences: number;
+  /** Antal gånger incidenten öppnats igen inom fönstret för fladder. */
+  readonly reopenCount: number;
+  readonly oneShot: boolean;
+  /** Kvitterad: inga påminnelser, men skärpning aviseras fortfarande. */
+  readonly acknowledgedAt: string | null;
+  readonly acknowledgedBy: string | null;
+  /** Senaste gången 'resolved' aviserades. */
+  readonly resolvedNotifiedAt: string | null;
+}
+
+/** En avisering om en incident. */
+export interface AlertNotification {
+  readonly incidentId: string;
+  readonly key: string;
+  readonly kind: AlertKind;
+  readonly severity: AlertSeverity;
+  readonly reason: NotificationReason;
+  readonly machineId: string | null;
+  readonly titleId: string | null;
+  readonly title: string;
+  readonly detail: string;
+  readonly at: string;
+  readonly evidence: AlertEvidence;
+  readonly link: string;
+}
+
+/** Inställningar för incidenthanteringen. */
+export interface ReconcileOptions {
+  /**
+   * Påminnelse efter så många timmar utan avisering, per allvar. `null` = ingen påminnelse.
+   * Standard: critical 4, warning 24, info null.
+   */
+  readonly renotifyAfterHours?: Partial<Record<AlertSeverity, number | null>>;
+  /** En incident som inte setts på så här länge stängs. Standard 30 minuter. */
+  readonly resolveAfterMinutes?: number;
+  /** Kommer samma problem tillbaka inom så här lång tid öppnas den gamla incidenten igen. Standard 120 minuter. */
+  readonly reopenWithinMinutes?: number;
+  /**
+   * Familjer som utvärderades i den här körningen. Incidenter i andra familjer lämnas orörda.
+   * Standard: alla.
+   */
+  readonly evaluatedGroups?: readonly AlertGroup[];
+}
+
+/** Resultat av `reconcileAlerts`. */
+export interface ReconcileResult {
+  /** Alla incidenter efter körningen (öppna först). */
+  readonly incidents: AlertIncident[];
+  /** Aviseringar att skicka. */
+  readonly notifications: AlertNotification[];
+}
+
+// ---------------------------------------------------------------------------
+// Prenumerationer
+// ---------------------------------------------------------------------------
+
+/** Tysta timmar i lokal tid, 'TT:MM'. start > end betyder över midnatt (22:00–07:00). */
+export interface QuietHours {
+  readonly start: string;
+  readonly end: string;
+}
+
+/** En användares prenumeration på larm. */
+export interface AlertSubscription {
+  readonly userId: string;
+  readonly kinds: readonly AlertKind[] | "all";
+  /** Automater. Gäller larm som hör till en automat; larm utan automat påverkas inte. */
+  readonly machineIds: readonly string[] | "all";
+  /** Lägsta allvar. Standard 'warning'. */
+  readonly minSeverity?: AlertSeverity;
+  readonly quietHours?: QuietHours | null;
+  /** Tidszon för tysta timmar. Standard 'Europe/Stockholm'. */
+  readonly timeZone?: string;
+  /** Kritiska larm skickas även under tysta timmar. Standard true. */
+  readonly criticalDuringQuietHours?: boolean;
+  /** Avisering när problemet är löst. Standard false. */
+  readonly notifyResolved?: boolean;
+  /** Påminnelser om öppna incidenter. Standard true. */
+  readonly reminders?: boolean;
+  /** Avstängd prenumeration. Standard true (aktiv). */
+  readonly active?: boolean;
+}
+
+/** Ett utskick till en användare: alla aviseringar med samma sändtid samlade. */
+export interface AlertDelivery {
+  readonly userId: string;
+  /** När det ska skickas (ISO 8601 UTC). Lika med nu, eller slutet av de tysta timmarna. */
+  readonly sendAt: string;
+  /** Sant om utskicket skjutits upp av tysta timmar. */
+  readonly deferred: boolean;
+  /** Ämnesrad, t.ex. "3 larm: Automat 3 är offline med flera". */
+  readonly subject: string;
+  readonly items: AlertNotification[];
+}
+
+// ---------------------------------------------------------------------------
+// Indata till reglerna
+// ---------------------------------------------------------------------------
+
+/** Status för en import (enum import_status). */
+export type ImportStatus = "pending" | "running" | "succeeded" | "failed";
+
+/** En import (tabellen imports). */
+export interface ImportRunRef {
+  readonly id: string;
+  readonly dataSourceId: string;
+  readonly status: ImportStatus;
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+  readonly createdAt: string;
+  readonly rowsTotal: number;
+  readonly rowsError: number;
+  readonly rowsConflict: number;
+  readonly fileName?: string | null;
+  /** Felmeddelande, om importen sparar ett. */
+  readonly message?: string | null;
+}
+
+/** En datakälla (tabellen data_sources). */
+export interface DataSourceRef {
+  readonly id: string;
+  readonly name: string;
+  readonly provider: string;
+  readonly status: "active" | "paused" | "error";
+  readonly lastSyncedAt: string | null;
+  /** Hur ofta källan hämtas automatiskt, i minuter (gRPC: 10). `null` = manuell uppladdning. */
+  readonly expectedIntervalMinutes?: number | null;
+}
+
+/** Prognos för en dag: förväntat antal pack i tiondelar (125 = 12,5). */
+export interface DayForecast {
+  /** 'all' för hela organisationen eller en automat. */
+  readonly scope: string;
+  readonly date: IsoDate;
+  readonly expectedTenths: number;
+}

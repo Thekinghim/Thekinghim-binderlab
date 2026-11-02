@@ -1,0 +1,115 @@
+# Kontroller på varje push och pull request.
+# Inga hemligheter behövs: databastesterna kör mot en lokal Postgres i en
+# servicecontainer (med auth-shimmen), och bygget använder påhittade värden.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  quality:
+    name: Format, lint och typer
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Format (prettier)
+        run: npm run format:check
+      - name: Lint (eslint)
+        run: npm run lint
+      - name: Typer (tsc)
+        run: npm run typecheck
+
+  unit:
+    name: Enhetstester (TZ=${{ matrix.tz }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        tz: [UTC, Europe/Stockholm]
+    env:
+      TZ: ${{ matrix.tz }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Enhetstester
+        run: npm run test
+      - name: Beräkningslagret under UTC, Europe/Stockholm och Asia/Shanghai
+        if: matrix.tz == 'UTC'
+        run: npm run test:domain:tz
+
+  db:
+    name: Databastester (Postgres 16)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL_TEST: postgres://postgres@localhost:5432/binderlab_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Återställ testdatabasen (auth-shim och migreringar)
+        run: npm run db:reset -- test
+      - name: Databastester
+        run: npm run test:db
+
+  build:
+    name: Bygge (next build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Påhittade värden: bygget ska aldrig behöva riktiga hemligheter.
+      APP_ENV: preview
+      AUTH_PROVIDER: supabase
+      DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+      APP_URL: https://ci.binderlab.invalid
+      SUPABASE_URL: https://ci-dummy.supabase.co
+      SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_dummy
+      SUPABASE_SECRET_KEY: ci-dummy-not-a-secret
+      NEXT_PUBLIC_SUPABASE_URL: https://ci-dummy.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_dummy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: next build
+        run: npx next build
