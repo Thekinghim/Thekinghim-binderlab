@@ -208,6 +208,12 @@ export function findMachine(
   return machines.find((m) => m.code === code);
 }
 
+/** Automatens kod för en sökväg (id eller kod), eller null. Kräver rätt roll. */
+export async function resolveMachineCode(slug: string): Promise<string | null> {
+  await requireRoute("automater");
+  return findMachine((await loadMasterData()).machines, slug)?.code ?? null;
+}
+
 export async function loadMachineDetail(
   slug: string,
   searchParams: SearchParamsInput,

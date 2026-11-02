@@ -72,7 +72,12 @@ export default async function ImportDetailPage({
           { label: "Rader", value: formatInt(e.rowsTotal) },
           { label: "Dubbletter", value: formatInt(e.rowsDuplicate) },
           { label: "Ej betalda", value: formatInt(e.rowsNotPaid) },
-          { label: "Källans tid", value: detail.sourceTimezone },
+          {
+            label: "Källans tid",
+            value: detail.sourceTimezoneRecorded
+              ? detail.sourceTimezone
+              : `${detail.sourceTimezone} (nuvarande)`,
+          },
           { label: "Tolkare", value: detail.parserVersion || MISSING },
           {
             label: "Kontrollsumma",

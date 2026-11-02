@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { parseIsoDate, wallClockIn } from "@/components/shell/period-state";
+import { carriedQuery, parseIsoDate, wallClockIn } from "@/components/shell/period-state";
 import { Panel } from "@/components/ui/frame";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
@@ -23,7 +23,12 @@ import { PlacementsTable, RecentOrdersTable, StockTable } from "../_components/d
 import { MachineKpis } from "../_components/kpis";
 import { MachineActions } from "../_components/machine-dialogs";
 import { Sub } from "../_components/sub";
-import { isMachineId, loadMachineDetail, type MachineDetailData } from "../_lib/data";
+import {
+  isMachineId,
+  loadMachineDetail,
+  resolveMachineCode,
+  type MachineDetailData,
+} from "../_lib/data";
 import { dayText, hourRange, sentence, unitEconomicsKpis } from "../_lib/model";
 
 type Params = Promise<{ automat: string }>;
@@ -64,20 +69,27 @@ export default async function MachinePage({
 }) {
   const { automat } = await params;
   const sp = await searchParams;
+  // Länkar från Att göra m.fl.: /automater/<id>?fran=&till=. En enda omdirigering till
+  // kanonisk adress (koden) med skalets period.
+  const slug = decodeURIComponent(automat);
   const fran = first(sp.fran);
-  if (fran && !first(sp.from) && parseIsoDate(fran)) {
-    const q = new URLSearchParams({ period: "eget", from: fran });
-    const till = first(sp.till);
-    if (till && parseIsoDate(till)) q.set("to", till);
-    redirect(`/automater/${encodeURIComponent(automat)}?${q.toString()}`);
+  const legacyPeriod = Boolean(fran && !first(sp.from) && parseIsoDate(fran));
+  if (isMachineId(slug) || legacyPeriod) {
+    const code = await resolveMachineCode(slug);
+    if (!code) notFound();
+    const q = new URLSearchParams(carriedQuery(sp).replace(/^\?/, ""));
+    if (legacyPeriod && fran) {
+      q.set("period", "eget");
+      q.set("from", fran);
+      const till = first(sp.till);
+      if (till && parseIsoDate(till)) q.set("to", till);
+    }
+    const query = q.toString();
+    redirect(`/automater/${encodeURIComponent(code.toLowerCase())}${query ? `?${query}` : ""}`);
   }
 
   const data = await loadMachineDetail(automat, sp);
   if (!data) notFound();
-  if (isMachineId(decodeURIComponent(automat))) {
-    const q = data.query;
-    redirect(`/automater/${encodeURIComponent(data.machine.code.toLowerCase())}${q}`);
-  }
 
   const { ctx, machine, period, headline, status, store } = data;
   const days = `${formatInt(period.days)}${NBSP}d`;

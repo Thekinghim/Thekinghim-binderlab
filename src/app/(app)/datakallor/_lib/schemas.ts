@@ -56,6 +56,8 @@ export const previewSchema = z.object({
 export const commitSchema = previewSchema.extend({
   /** Kontrollsumman som förhandsvisningen visade; importen avbryts om filen inte är densamma. */
   sha256: z.string().regex(/^[0-9a-f]{64}$/, "Ogiltig kontrollsumma."),
+  /** Källans tidszon som förhandsvisningen tolkade tiderna i; importen avbryts om den ändrats. */
+  sourceTimezone: timeZoneSchema.optional(),
   saveMapping: z.boolean().optional(),
 });
 

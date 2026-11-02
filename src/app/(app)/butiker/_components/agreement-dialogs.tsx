@@ -16,7 +16,10 @@ import { FormDialog, text } from "./form-dialog";
 /** 1 250 bp → "12,5" (som fältet visar det). */
 function percentField(bp: number | null): string {
   if (bp === null) return "";
-  return formatNumber(bp / 100, bp % 100 === 0 ? 0 : bp % 10 === 0 ? 1 : 2).replace(/[\s\u00a0]/g, "");
+  return formatNumber(bp / 100, bp % 100 === 0 ? 0 : bp % 10 === 0 ? 1 : 2).replace(
+    /[\s\u00a0]/g,
+    "",
+  );
 }
 
 /** 75 000 öre → "750", 75 050 → "750,50". */

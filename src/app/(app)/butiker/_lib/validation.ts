@@ -121,7 +121,12 @@ const termsShape = {
 function withTerms<T extends { commission?: string | null; rent?: string | null }>(
   v: T,
   ctx: z.RefinementCtx,
-): (Omit<T, "commission" | "rent"> & { commissionBp: number | null; monthlyRentOre: number | null }) | never {
+):
+  | (Omit<T, "commission" | "rent"> & {
+      commissionBp: number | null;
+      monthlyRentOre: number | null;
+    })
+  | never {
   const c = parsePercentBp(v.commission);
   if (!c.ok) {
     ctx.addIssue({ code: "custom", message: c.message, path: ["commission"] });
@@ -201,6 +206,11 @@ export function firstIssue(error: z.ZodError): string {
 // ---------------------------------------------------------------------------
 
 /** Ett befintligt avtal (giltighet), för planeringen. */
+/** Avslutande punkt, utan att dubbla punkten efter en förkortning ("1 dec."). */
+function stop(text: string): string {
+  return text.endsWith(".") ? text : `${text}.`;
+}
+
 export interface AgreementSpan {
   readonly id: string;
   readonly validFrom: IsoDate;
@@ -256,7 +266,7 @@ export function planNewAgreement(
       conflictId: a.id,
       message:
         a.validFrom === validFrom
-          ? `Det finns redan ett avtal från ${formatDay(a.validFrom)}. Ändra det i stället.`
+          ? `Det finns redan ett avtal från ${stop(formatDay(a.validFrom))} Ändra det i stället.`
           : `Avtalet från ${formatDay(a.validFrom)} skulle överlappa. Ange en sista dag före ${formatDay(a.validFrom)} eller ändra det avtalet.`,
     };
   }
@@ -283,7 +293,7 @@ export function checkAgreementEnd(
     .filter((a) => a.id !== agreementId && a.validFrom > self.validFrom)
     .sort((a, b) => (a.validFrom < b.validFrom ? -1 : 1))[0];
   if (next && end >= next.validFrom) {
-    return `Nästa avtal börjar ${formatDay(next.validFrom)}. Sista dagen måste vara senast ${formatDay(addDays(next.validFrom, -1))}.`;
+    return `Nästa avtal börjar ${stop(formatDay(next.validFrom))} Sista dagen måste vara senast ${stop(formatDay(addDays(next.validFrom, -1)))}`;
   }
   return null;
 }

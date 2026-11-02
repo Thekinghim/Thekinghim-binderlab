@@ -153,7 +153,9 @@ export function StoreActions({ store }: { store: StoreDetail }) {
             const r = await setStoreArchived({ storeId: store.id, archived: !store.archived });
             if (r.ok) {
               toast({
-                title: store.archived ? `${store.name} är återställd` : `${store.name} är arkiverad`,
+                title: store.archived
+                  ? `${store.name} är återställd`
+                  : `${store.name} är arkiverad`,
                 tone: "ok",
               });
               router.refresh();

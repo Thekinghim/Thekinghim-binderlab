@@ -38,6 +38,7 @@ import {
   startUploadFor,
   updateDataSourceFor,
 } from "./_lib/service";
+import { importFileStore } from "./_lib/file-store";
 import { currentViewer, uploadStaging } from "./_lib/session";
 import type { ActionResult, PreviewOutcome, PreviewResult } from "./_lib/types";
 
@@ -59,7 +60,8 @@ async function operator() {
   return currentViewer();
 }
 
-async function deps() {
+/** Mellanlagret (databasen). Filstoret behövs bara vid import. */
+function deps() {
   return { staging: uploadStaging() };
 }
 
@@ -105,7 +107,7 @@ export async function startUpload(raw: unknown): Promise<ActionResult<{ uploadId
   try {
     const viewer = await operator();
     const input = startUploadSchema.parse(raw);
-    return { ok: true, data: await startUploadFor(viewer, await deps(), input) };
+    return { ok: true, data: await startUploadFor(viewer, deps(), input) };
   } catch (error) {
     return failure(error);
   }
@@ -126,7 +128,7 @@ export async function uploadChunk(
       return { ok: false, error: "En del av filen saknas. Ladda upp filen igen." };
     }
     const bytes = new Uint8Array(await chunk.arrayBuffer());
-    return { ok: true, data: await appendChunkFor(viewer, await deps(), { ...meta, bytes }) };
+    return { ok: true, data: await appendChunkFor(viewer, deps(), { ...meta, bytes }) };
   } catch (error) {
     return failure(error);
   }
@@ -137,7 +139,7 @@ export async function previewUpload(raw: unknown): Promise<ActionResult<PreviewO
   try {
     const viewer = await operator();
     const input = previewSchema.parse(raw);
-    return { ok: true, data: await previewUploadFor(viewer, await deps(), input) };
+    return { ok: true, data: await previewUploadFor(viewer, deps(), input) };
   } catch (error) {
     return failure(error);
   }
@@ -148,14 +150,19 @@ export async function commitUpload(raw: unknown): Promise<ActionResult<PreviewRe
   try {
     const viewer = await operator();
     const input = commitSchema.parse(raw);
-    const data = await runUploadFor(viewer, await deps(), {
+    const data = await runUploadFor(
+      viewer,
+      { ...deps(), fileStore: await importFileStore() },
+      {
       uploadId: input.uploadId,
       dataSourceId: input.dataSourceId,
       mapping: input.mapping,
       dryRun: false,
       expectedSha256: input.sha256,
+      expectedSourceTimezone: input.sourceTimezone,
       saveMapping: input.saveMapping,
-    });
+      },
+    );
     revalidateAppData();
     return { ok: true, data };
   } catch (error) {
@@ -167,7 +174,7 @@ export async function discardUpload(raw: unknown): Promise<ActionResult> {
   try {
     const viewer = await operator();
     const input = discardSchema.parse(raw);
-    await discardUploadFor(viewer, await deps(), input.uploadId);
+    await discardUploadFor(viewer, deps(), input.uploadId);
     return { ok: true, data: undefined };
   } catch (error) {
     return failure(error);

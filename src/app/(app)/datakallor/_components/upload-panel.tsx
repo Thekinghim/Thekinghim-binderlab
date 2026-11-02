@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useId, useRef, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type DragEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/field";
@@ -11,9 +11,16 @@ import { Icon } from "@/components/ui/icon";
 import { StateMessage } from "@/components/ui/state-message";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
-import { formatInt, formatPercent } from "@/lib/format";
+import { formatInt, formatPercent, NBSP } from "@/lib/format";
 
-import { commitUpload, discardUpload, previewUpload, startUpload, uploadChunk } from "../actions";
+import {
+  commitUpload,
+  discardUpload,
+  previewUpload,
+  startUpload,
+  updateDataSource,
+  uploadChunk,
+} from "../actions";
 import { CHUNK_BYTES, MAX_UPLOAD_BYTES } from "../_lib/constants";
 import { formatBytes } from "../_lib/display";
 import type { MappingNeeded, PreviewResult, SourceView } from "../_lib/types";
@@ -23,7 +30,7 @@ import { PreviewView } from "./preview-view";
 type Phase =
   | { kind: "idle" }
   | { kind: "uploading"; fileName: string; size: number; sent: number }
-  | { kind: "working"; label: string; detail?: string }
+  | { kind: "working"; label: string; detail?: string; startedAt: number }
   | { kind: "mapping"; needed: MappingNeeded }
   | { kind: "preview"; result: PreviewResult }
   | { kind: "done"; result: PreviewResult };
@@ -42,26 +49,43 @@ export function UploadPanel({
   const toast = useToast();
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
-  const cancelled = useRef(false);
+  /**
+   * Varje uppladdning (och varje Avbryt) får ett nytt nummer. Ett svar från servern
+   * som kommer tillbaka efter att användaren avbrutit hör till ett gammalt nummer och
+   * får inte ändra panelen.
+   */
+  const run = useRef(0);
+  const uploadIdRef = useRef<string | null>(null);
+  /** Källans tidszon före "Byt och förhandsvisa", för att återställa den vid Avbryt. */
+  const zoneBefore = useRef<{ sourceId: string; zone: string } | null>(null);
   const [sourceId, setSourceId] = useState(sources[0]?.id ?? "");
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
-  const [uploadId, setUploadId] = useState<string | null>(null);
+  const [uploadId, setUploadIdState] = useState<string | null>(null);
+  const setUploadId = (id: string | null) => {
+    uploadIdRef.current = id;
+    setUploadIdState(id);
+  };
   const [override, setOverride] = useState<MappingDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
   const preview = useCallback(
     async (id: string, mapping: MappingDraft | null, fileLabel?: string) => {
+      const mine = run.current;
       setPhase({
         kind: "working",
         label: "Tolkar filen",
-        detail: fileLabel ?? "Kontrollerar ordernummer mot det som redan är importerat.",
+        detail: fileLabel
+          ? `${fileLabel} · kontrollerar ordernummer mot det som redan är importerat`
+          : "Kontrollerar ordernummer mot det som redan är importerat",
+        startedAt: Date.now(),
       });
       const result = await previewUpload({
         uploadId: id,
         dataSourceId: sourceId,
         mapping: mapping ?? undefined,
       });
+      if (run.current !== mine) return;
       if (!result.ok) {
         setError(result.error);
         setPhase({ kind: "idle" });
@@ -76,18 +100,24 @@ export function UploadPanel({
     [sourceId],
   );
 
-  const reset = useCallback(
-    (discard: boolean) => {
-      if (discard && uploadId) void discardUpload({ uploadId });
-      cancelled.current = true;
-      setUploadId(null);
-      setOverride(null);
-      setError(null);
-      setPhase({ kind: "idle" });
-      if (inputRef.current) inputRef.current.value = "";
-    },
-    [uploadId],
-  );
+  const reset = (discard: boolean) => {
+    run.current += 1;
+    const id = uploadIdRef.current;
+    if (discard && id) void discardUpload({ uploadId: id });
+    const before = zoneBefore.current;
+    zoneBefore.current = null;
+    if (discard && before) {
+      // Tidszonen byttes bara för att förhandsvisa: återställ den när importen avbryts.
+      void updateDataSource({ id: before.sourceId, sourceTimezone: before.zone }).then((r) => {
+        if (r.ok) router.refresh();
+      });
+    }
+    setUploadId(null);
+    setOverride(null);
+    setError(null);
+    setPhase({ kind: "idle" });
+    if (inputRef.current) inputRef.current.value = "";
+  };
 
   const upload = async (file: File) => {
     setError(null);
@@ -100,9 +130,15 @@ export function UploadPanel({
       setError(`Filen är ${formatBytes(file.size)}. Högst 50 MB går att ladda upp.`);
       return;
     }
-    cancelled.current = false;
+    run.current += 1;
+    const mine = run.current;
+    const stale = () => run.current !== mine;
     setPhase({ kind: "uploading", fileName: file.name, size: file.size, sent: 0 });
     const started = await startUpload({ fileName: file.name, size: file.size });
+    if (stale()) {
+      if (started.ok) void discardUpload({ uploadId: started.data.uploadId });
+      return;
+    }
     if (!started.ok) {
       setError(started.error);
       setPhase({ kind: "idle" });
@@ -112,7 +148,7 @@ export function UploadPanel({
     setUploadId(id);
     let index = 0;
     for (let offset = 0; offset < file.size; offset += CHUNK_BYTES, index += 1) {
-      if (cancelled.current) return;
+      if (stale()) return;
       const form = new FormData();
       form.set("uploadId", id);
       form.set("index", String(index));
@@ -121,6 +157,7 @@ export function UploadPanel({
       for (;;) {
         try {
           const result = await uploadChunk(form);
+          if (stale()) return;
           if (!result.ok) {
             setError(result.error);
             setPhase({ kind: "idle" });
@@ -134,6 +171,7 @@ export function UploadPanel({
           });
           break;
         } catch {
+          if (stale()) return;
           attempt += 1;
           if (attempt > RETRIES) {
             setError("Uppladdningen avbröts (nätverksfel). Försök igen.");
@@ -143,30 +181,38 @@ export function UploadPanel({
         }
       }
     }
-    if (cancelled.current) return;
+    if (stale()) return;
     await preview(id, null, file.name);
   };
 
   const confirm = async (result: PreviewResult) => {
     if (!uploadId) return;
+    const mine = run.current;
     setPhase({
       kind: "working",
-      label: `Importerar ${formatInt(result.summary.new)} nya order`,
+      label:
+        result.summary.new > 0
+          ? `Importerar ${formatInt(result.summary.new)} nya order`
+          : "Sparar importen i loggen",
       detail: "Allt sparas i en transaktion. Avbryts något sparas ingenting.",
+      startedAt: Date.now(),
     });
     const committed = await commitUpload({
       uploadId,
       dataSourceId: result.dataSource.id,
       mapping: override ?? undefined,
       sha256: result.file.sha256,
+      sourceTimezone: result.dataSource.sourceTimezone,
       saveMapping: override !== null,
     });
+    if (run.current !== mine) return;
     if (!committed.ok) {
       setError(committed.error);
       setPhase({ kind: "preview", result });
       return;
     }
     setUploadId(null);
+    zoneBefore.current = null;
     setPhase({ kind: "done", result: committed.data });
     const added = committed.data.summary.new;
     toast({
@@ -207,7 +253,17 @@ export function UploadPanel({
         <StateMessage
           kind="error"
           message={error}
-          action={{ label: "Välj en annan fil", onClick: () => reset(true) }}
+          action={
+            phase.kind === "preview" && uploadId
+              ? {
+                  label: "Förhandsvisa igen",
+                  onClick: () => {
+                    setError(null);
+                    void preview(uploadId, override);
+                  },
+                }
+              : { label: "Välj en annan fil", onClick: () => reset(true) }
+          }
           className="rounded-md border border-line bg-surface"
         />
       ) : null}
@@ -277,7 +333,7 @@ export function UploadPanel({
 
       {phase.kind === "working" ? (
         <Panel className="flex flex-col gap-3" aria-busy>
-          <Progress label={phase.label} detail={phase.detail} />
+          <Progress label={phase.label} detail={phase.detail} startedAt={phase.startedAt} />
         </Panel>
       ) : null}
 
@@ -313,9 +369,12 @@ export function UploadPanel({
             setOverride(draft);
             if (uploadId) void preview(uploadId, draft);
           }}
-          onRepreview={() => {
+          onZoneChanged={(previous) => {
+            zoneBefore.current ??= { sourceId: phase.result.dataSource.id, zone: previous };
+            router.refresh();
             if (uploadId) void preview(uploadId, override);
           }}
+          originalZone={zoneBefore.current?.zone ?? null}
         />
       ) : null}
 
@@ -344,26 +403,54 @@ export function UploadPanel({
   );
 }
 
-/** Förlopp: bestämt (värde och max) eller pågående (utan värde). */
+/** Sekunder sedan `startedAt`, uppdaterat varje sekund (null utan starttid). */
+function useElapsed(startedAt: number | undefined): number | null {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (startedAt === undefined) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [startedAt]);
+  if (startedAt === undefined) return null;
+  return Math.max(0, Math.floor((now - startedAt) / 1000));
+}
+
+/** "12 s" · "1 min 5 s" */
+function formatElapsed(seconds: number): string {
+  if (seconds < 60) return `${formatInt(seconds)}${NBSP}s`;
+  return `${formatInt(Math.floor(seconds / 60))}${NBSP}min ${formatInt(seconds % 60)}${NBSP}s`;
+}
+
+/**
+ * Förlopp: bestämt (värde och max) eller pågående (utan värde, med förfluten tid).
+ * Stapeln skalas med transform (scaleX), aldrig med bredd.
+ */
 function Progress({
   label,
   value,
   max,
   detail,
+  startedAt,
 }: {
   label: string;
   value?: number;
   max?: number;
   detail?: string;
+  startedAt?: number;
 }) {
   const determinate = value !== undefined && max !== undefined && max > 0;
   const share = determinate ? Math.min(1, value / max) : 0;
+  const elapsed = useElapsed(determinate ? undefined : startedAt);
   return (
     <div className="flex flex-col gap-2" role="status" aria-live="polite">
       <div className="flex items-baseline justify-between gap-4">
         <span className="truncate text-base font-medium text-fg">{label}</span>
         {determinate ? (
           <span className="tnum shrink-0 text-sm text-muted">{formatPercent(share, 0)}</span>
+        ) : elapsed !== null ? (
+          <span className="tnum shrink-0 text-sm text-muted" aria-hidden>
+            {formatElapsed(elapsed)}
+          </span>
         ) : null}
       </div>
       <div
@@ -372,12 +459,15 @@ function Progress({
         aria-valuemin={determinate ? 0 : undefined}
         aria-valuemax={determinate ? 100 : undefined}
         aria-valuenow={determinate ? Math.round(share * 100) : undefined}
+        aria-valuetext={
+          determinate ? undefined : elapsed !== null ? `Pågår, ${formatElapsed(elapsed)}` : "Pågår"
+        }
         className="relative h-1 w-full overflow-hidden bg-line"
       >
         {determinate ? (
           <div
-            className="absolute inset-y-0 left-0 bg-fg transition-[width] duration-fast ease-instrument"
-            style={{ width: `${share * 100}%` }}
+            className="absolute inset-0 origin-left bg-fg transition-transform duration-fast ease-instrument"
+            style={{ transform: `scaleX(${share})` }}
           />
         ) : (
           <div className="absolute inset-0 animate-pulse-soft bg-muted" />

@@ -220,9 +220,7 @@ export function machinesIn(
   today: IsoDate,
 ): string[] {
   return placements
-    .filter(
-      (p) => p.storeId === storeId && p.from <= today && (p.to === null || p.to >= today),
-    )
+    .filter((p) => p.storeId === storeId && p.from <= today && (p.to === null || p.to >= today))
     .map((p) => codeOf.get(p.machineId) ?? "")
     .filter(Boolean)
     .sort();
@@ -266,15 +264,15 @@ export function buildStoreRows(args: {
         orders: row?.orders ?? 0,
         revenueOre: revenueOf(row),
         previousRevenueOre: args.previous ? revenueOf(prev.get(s.id)) : null,
-        revenueChange: args.previous ? changeShare(revenueOf(row), revenueOf(prev.get(s.id))) : null,
+        revenueChange: args.previous
+          ? changeShare(revenueOf(row), revenueOf(prev.get(s.id)))
+          : null,
         compensationOre: compensationOf(row),
         profitOre: row?.profitOre ?? 0,
         earnedMonthOre: args.earnedMonth.get(s.id) ?? 0,
         current,
         flag:
-          !s.archived && current === null && machineCodes.length > 0
-            ? "Inget avtal i dag"
-            : null,
+          !s.archived && current === null && machineCodes.length > 0 ? "Inget avtal i dag" : null,
         href: `/butiker/${s.id}${args.query}`,
       };
     })
@@ -326,9 +324,7 @@ export function listKpis(
   const earned = rows.reduce((n, r) => n + r.earnedMonthOre, 0);
   const prevRevenue = rows.reduce((n, r) => n + (r.previousRevenueOre ?? 0), 0);
   const prevCompensation = previous
-    ? previous.rows
-        .filter((r) => r.kind === "item")
-        .reduce((n, r) => n + compensationOf(r), 0)
+    ? previous.rows.filter((r) => r.kind === "item").reduce((n, r) => n + compensationOf(r), 0)
     : 0;
   const rel = (cur: number, prev: number) => {
     const bp = previous ? changeBp(cur, prev) : null;
@@ -406,7 +402,10 @@ export function compensationHeadline(
 ): { title: string; aside: string } {
   if (current === null) {
     return {
-      title: month.totalOre > 0 ? `${sek(month.totalOre)} intjänat hittills i ${month.monthLabel}.` : "Inget avtal gäller i dag.",
+      title:
+        month.totalOre > 0
+          ? `${sek(month.totalOre)} intjänat hittills i ${month.monthLabel}.`
+          : "Inget avtal gäller i dag.",
       aside:
         month.totalOre > 0
           ? "Inget avtal gäller i dag, så ingen ny ersättning räknas."

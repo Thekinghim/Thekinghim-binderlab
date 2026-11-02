@@ -15,16 +15,18 @@ import { formatInt } from "@/lib/format";
 import { createDataSource, updateDataSource } from "../actions";
 import { PROVIDER_LABELS, SOURCE_TIMEZONES } from "../_lib/constants";
 import { formatWhen } from "../_lib/display";
-import { STALE_HOURS } from "../_lib/headline";
+import { isStale } from "../_lib/headline";
 import type { SourceView } from "../_lib/types";
 
+/** Status efter hur ny datan är (den senaste ordern), inte när någon senast laddade upp. */
 function syncStatus(source: SourceView, now: Date): { status: Status; text: string } {
   if (source.archived) return { status: "offline", text: "Arkiverad" };
   if (source.status === "error") return { status: "critical", text: "Fel" };
   if (source.status === "paused") return { status: "offline", text: "Pausad" };
-  if (!source.lastSyncedAt) return { status: "neutral", text: "Ingen import" };
-  const age = now.getTime() - new Date(source.lastSyncedAt).getTime();
-  return age > STALE_HOURS * 3_600_000
+  if (!source.latestOrderAt) {
+    return { status: "neutral", text: source.lastSyncedAt ? "Inga order" : "Ingen import" };
+  }
+  return isStale(source.latestOrderAt, now)
     ? { status: "warning", text: "Inaktuell" }
     : { status: "ok", text: "I fas" };
 }
@@ -49,8 +51,15 @@ export function SourceList({
   timeZone: string;
   now: string;
 }) {
-  const [editing, setEditing] = useState<SourceView | null>(null);
-  const [creating, setCreating] = useState(false);
+  // Dialogen behåller sin nyckel när den stängs, så att <dialog> stängs på riktigt
+  // (och lämnar tillbaka fokus till knappen) i stället för att avmonteras.
+  const [dialog, setDialog] = useState<{
+    key: number;
+    open: boolean;
+    source: SourceView | null;
+  }>({ key: 0, open: false, source: null });
+  const openDialog = (source: SourceView | null) =>
+    setDialog((d) => ({ key: d.key + 1, open: true, source }));
   const nowDate = new Date(now);
 
   return (
@@ -61,7 +70,7 @@ export function SourceList({
           message="Ingen datakälla ännu."
           detail="Lägg till Awish-orderlistan. Därefter laddar du upp CSV-filen här på sidan."
           action={
-            <Button variant="primary" iconLeft="plus" onClick={() => setCreating(true)}>
+            <Button variant="primary" iconLeft="plus" onClick={() => openDialog(null)}>
               Lägg till datakälla
             </Button>
           }
@@ -81,9 +90,9 @@ export function SourceList({
                   <Fact label="Status" className="md:col-span-2">
                     <StatusTag status={sync.status}>{sync.text}</StatusTag>
                   </Fact>
-                  <Fact label="Synkad" className="md:col-span-2">
+                  <Fact label="Data till" className="md:col-span-2">
                     <span className="tnum">
-                      {s.lastSyncedAt ? formatWhen(s.lastSyncedAt, timeZone, nowDate) : "Aldrig"}
+                      {s.latestOrderAt ? formatWhen(s.latestOrderAt, timeZone, nowDate) : "Inga order"}
                     </span>
                   </Fact>
                   <Fact label="Order" className="md:col-span-1">
@@ -97,7 +106,7 @@ export function SourceList({
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => setEditing(s)}
+                        onClick={() => openDialog(s)}
                         aria-label={`Ändra ${s.name}`}
                       >
                         Ändra
@@ -152,20 +161,17 @@ export function SourceList({
       )}
       {sources.length > 0 ? (
         <div>
-          <Button size="sm" iconLeft="plus" onClick={() => setCreating(true)}>
+          <Button size="sm" iconLeft="plus" onClick={() => openDialog(null)}>
             Lägg till datakälla
           </Button>
         </div>
       ) : null}
 
       <SourceDialog
-        key={editing?.id ?? (creating ? "new" : "closed")}
-        open={creating || editing !== null}
-        source={editing}
-        onClose={() => {
-          setEditing(null);
-          setCreating(false);
-        }}
+        key={dialog.key}
+        open={dialog.open}
+        source={dialog.source}
+        onClose={() => setDialog((d) => ({ ...d, open: false }))}
       />
     </div>
   );

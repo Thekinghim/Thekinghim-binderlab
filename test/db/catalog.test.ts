@@ -83,6 +83,9 @@ describe("tabeller", () => {
         "fixed_costs",
         "goals",
         "import_rows",
+        // Datakällor: mellanlagring av uppladdningar (tillfälliga rader).
+        "import_upload_chunks",
+        "import_uploads",
         "imports",
         "incidents",
         "invitations",

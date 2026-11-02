@@ -138,13 +138,15 @@ export async function loadDatakallorFor(
   const orgId = viewer.organization.id;
   const master = await loadMasterDataFor(viewer, now);
   return asOperator(viewer, async (tx) => {
-    const [sources, imports, queue] = await Promise.all([
+    const [sources, imports, queue, lastMapped] = await Promise.all([
       query(
         tx,
         sql`select ds.id, ds.name, ds.provider::text as provider, ds.source_timezone,
                    ds.status::text as status, ds.last_synced_at, ds.archived_at, ds.config,
                    (select count(*) from public.orders o
                      where o.organization_id = ds.organization_id and o.data_source_id = ds.id)::int as orders,
+                   (select max(o.ordered_at) from public.orders o
+                     where o.organization_id = ds.organization_id and o.data_source_id = ds.id) as latest_order_at,
                    (select count(*) from public.source_machines sm
                      where sm.organization_id = ds.organization_id and sm.data_source_id = ds.id
                        and sm.machine_id is null)::int as unmapped
@@ -173,8 +175,18 @@ export async function loadDatakallorFor(
               on o.organization_id = sm.organization_id and o.source_machine_id = sm.id
              and o.machine_id is null
             where sm.organization_id = ${orgId}::uuid and sm.machine_id is null
+              and ds.archived_at is null
             group by sm.id, ds.name
             order by count(o.id) desc, sm.external_name`,
+      ),
+      query(
+        tx,
+        sql`select sm.external_name, sm.external_id, m.code, sm.updated_at
+            from public.source_machines sm
+            join public.machines m on m.organization_id = sm.organization_id and m.id = sm.machine_id
+            where sm.organization_id = ${orgId}::uuid and sm.machine_id is not null
+            order by sm.updated_at desc
+            limit 1`,
       ),
     ]);
 
@@ -205,6 +217,7 @@ export async function loadDatakallorFor(
         sourceTimezone: String(r.source_timezone),
         status: String(r.status) as SourceStatus,
         lastSyncedAt: iso(r.last_synced_at),
+        latestOrderAt: iso(r.latest_order_at),
         archived: r.archived_at !== null && r.archived_at !== undefined,
         acceptsFiles: r.provider === "awish_csv",
         orders: int(r.orders),
@@ -231,6 +244,13 @@ export async function loadDatakallorFor(
         ),
       })),
       machines,
+      lastMapped: lastMapped[0]
+        ? {
+            name: String(lastMapped[0].external_name ?? lastMapped[0].external_id),
+            machineCode: String(lastMapped[0].code),
+            at: iso(lastMapped[0].updated_at),
+          }
+        : null,
     };
   });
 }
@@ -318,9 +338,14 @@ export async function loadImportDetailFor(
       isRecord(head.mapping) && isRecord(head.mapping.columns)
         ? (head.mapping.columns as Partial<Record<string, string | null>>)
         : null;
+    const importZone =
+      isRecord(head.mapping) && typeof head.mapping.sourceTimezone === "string"
+        ? head.mapping.sourceTimezone
+        : null;
     return {
       entry: importEntry(head),
-      sourceTimezone: String(head.source_timezone),
+      sourceTimezone: importZone ?? String(head.source_timezone),
+      sourceTimezoneRecorded: importZone !== null,
       parserVersion: String(head.parser_version ?? ""),
       sha256: typeof head.file_sha256 === "string" ? head.file_sha256 : null,
       mapping: mapping as ImportDetail["mapping"],
@@ -427,14 +452,14 @@ export async function mapSourceMachineFor(
 
 export interface UploadDeps {
   readonly staging: UploadStaging;
-  /** Var den importerade filen sparas (standard i runImport: LocalFileStore). */
+  /** Var den importerade filen sparas (actions: importFileStore(); utan: LocalFileStore). */
   readonly fileStore?: FileStore;
   /** Anslutningen runImport använder; den kör ändå som användaren med RLS. */
   readonly db?: Db;
 }
 
 function owner(viewer: Viewer) {
-  return { organizationId: viewer.organization.id, userId: viewer.user.userId };
+  return { organizationId: viewer.organization.id, user: viewer.user };
 }
 
 export async function startUploadFor(
@@ -552,6 +577,8 @@ export async function runUploadFor(
     mapping?: MappingOverride;
     dryRun: boolean;
     expectedSha256?: string;
+    /** Källans tidszon som förhandsvisningen tolkade tiderna i. */
+    expectedSourceTimezone?: string;
     saveMapping?: boolean;
   },
 ): Promise<PreviewResult> {
@@ -561,6 +588,23 @@ export async function runUploadFor(
     // Uppladdningen ändras inte efter att den är klar, men importen ska aldrig
     // gälla en annan fil än den som förhandsvisades.
     throw new ImportValidationError("Filen har ändrats sedan förhandsvisningen. Välj filen igen.");
+  }
+  if (!input.dryRun && input.expectedSourceTimezone) {
+    // Tiderna ska tolkas i samma tidszon som förhandsvisningen visade.
+    const current = await withUserDbFor(viewer.user, async (tx) => {
+      const [row] = await query<{ source_timezone: string }>(
+        tx,
+        sql`select source_timezone from public.data_sources
+            where organization_id = ${viewer.organization.id}::uuid
+              and id = ${input.dataSourceId}::uuid`,
+      );
+      return row?.source_timezone ?? null;
+    });
+    if (current !== null && current !== input.expectedSourceTimezone) {
+      throw new ImportValidationError(
+        `Källans tidszon har ändrats till ${current} sedan förhandsvisningen. Förhandsvisa igen innan du importerar.`,
+      );
+    }
   }
   const result = await runImport(deps.db ?? getServiceDb(), {
     organizationId: viewer.organization.id,
@@ -576,6 +620,19 @@ export async function runUploadFor(
     rowLimit: Number.MAX_SAFE_INTEGER,
   });
   if (!input.dryRun) {
+    if (result.importId) {
+      // Tidszonen som tiderna tolkades i sparas med importen, så att importens
+      // detaljsida visar den även om källans tidszon ändras senare.
+      const importId = result.importId;
+      await withUserDbFor(viewer.user, (tx) =>
+        tx.execute(
+          sql`update public.imports
+              set mapping = coalesce(mapping, '{}'::jsonb)
+                || jsonb_build_object('sourceTimezone', ${result.dataSource.sourceTimezone}::text)
+              where organization_id = ${viewer.organization.id}::uuid and id = ${importId}::uuid`,
+        ),
+      );
+    }
     await deps.staging.discard(owner(viewer), input.uploadId);
   }
   return toPreviewResult(input.uploadId, result);

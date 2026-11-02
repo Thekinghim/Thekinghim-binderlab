@@ -148,7 +148,10 @@ function SalesSection({ data, days }: { data: StoreDetailData; days: string }) {
     null,
   );
   return (
-    <section aria-labelledby="forsaljning" className="flex flex-col gap-8 border-t border-line pt-8">
+    <section
+      aria-labelledby="forsaljning"
+      className="flex flex-col gap-8 border-t border-line pt-8"
+    >
       <SectionHeader
         id="forsaljning"
         index={1}
@@ -212,15 +215,25 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
           label={`Intjänat · ${formatInt(month.days)} av ${formatInt(month.daysInMonth)} d`}
           title={
             current
-              ? sentence(`${MODEL_LABEL[current.model]}: ${current.termsLabel.toLocaleLowerCase("sv-SE")}`)
+              ? sentence(
+                  `${MODEL_LABEL[current.model]}: ${current.termsLabel.toLocaleLowerCase("sv-SE")}`,
+                )
               : "Inget avtal gäller i dag."
           }
           className="lg:col-span-5"
         >
           <dl className="flex flex-col">
-            <Line label="Intäkt" value={kronor(month.revenueOre)} meta={plural(month.orders, "pack", "pack")} />
+            <Line
+              label="Intäkt"
+              value={kronor(month.revenueOre)}
+              meta={plural(month.orders, "pack", "pack")}
+            />
             <Line label="Provision" value={kronor(month.commissionOre)} />
-            <Line label="Hyra" value={kronor(month.rentOre)} meta={`${formatInt(month.days)}${NBSP}d`} />
+            <Line
+              label="Hyra"
+              value={kronor(month.rentOre)}
+              meta={`${formatInt(month.days)}${NBSP}d`}
+            />
             <Line label="Totalt till butiken" value={kronor(month.totalOre)} strong />
           </dl>
         </Sub>
@@ -342,8 +355,16 @@ function ContactSection({ data }: { data: StoreDetailData }) {
   const active = recipients.filter((r) => r.active);
   const contact: Array<{ label: string; value: string | null; href?: string }> = [
     { label: "Kontaktperson", value: store.contactName },
-    { label: "E-post", value: store.email, href: store.email ? `mailto:${store.email}` : undefined },
-    { label: "Telefon", value: store.phone, href: store.phone ? `tel:${store.phone.replace(/[^+0-9]/g, "")}` : undefined },
+    {
+      label: "E-post",
+      value: store.email,
+      href: store.email ? `mailto:${store.email}` : undefined,
+    },
+    {
+      label: "Telefon",
+      value: store.phone,
+      href: store.phone ? `tel:${store.phone.replace(/[^+0-9]/g, "")}` : undefined,
+    },
     { label: "Adress", value: placeText(store.address, store.city) },
   ];
   const suggested =
@@ -361,7 +382,9 @@ function ContactSection({ data }: { data: StoreDetailData }) {
             ? "Ingen tar emot månadsrapporten."
             : `${plural(active.length, "mottagare", "mottagare")} får månadsrapporten.`
         }
-        aside={store.contactName ? `Kontaktperson ${store.contactName}.` : "Ingen kontaktperson angiven."}
+        aside={
+          store.contactName ? `Kontaktperson ${store.contactName}.` : "Ingen kontaktperson angiven."
+        }
       />
       <div className="grid grid-cols-1 gap-x-8 gap-y-12 lg:grid-cols-12">
         <Sub index="04.1" label="Kontaktuppgifter" className="lg:col-span-5">
@@ -414,7 +437,11 @@ function ContactSection({ data }: { data: StoreDetailData }) {
             )}
             {ctx.canEdit && !store.archived ? (
               <div>
-                <AddRecipientButton storeId={store.id} storeName={store.name} defaults={suggested} />
+                <AddRecipientButton
+                  storeId={store.id}
+                  storeName={store.name}
+                  defaults={suggested}
+                />
               </div>
             ) : null}
           </div>

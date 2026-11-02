@@ -115,10 +115,7 @@ export async function loadAgreementsFor(viewer: Viewer): Promise<AgreementRecord
 }
 
 /** Butikens rapportmottagare (kind = store) med senaste lyckade utskick. */
-export async function loadRecipientsFor(
-  viewer: Viewer,
-  storeId: string,
-): Promise<RecipientView[]> {
+export async function loadRecipientsFor(viewer: Viewer, storeId: string): Promise<RecipientView[]> {
   const orgId = viewer.organization.id;
   await requireRoleFor(viewer.user, orgId, ECONOMY_ROLES);
   if (!isUuid(storeId)) return [];
@@ -453,7 +450,7 @@ export async function createStoreRecipientFor(
         tx,
         sql`select id from public.report_recipients
             where organization_id = ${orgId}::uuid and store_id = ${v.storeId}::uuid
-              and kind = 'store' and email = ${v.email}::citext`,
+              and kind = 'store' and lower(email::text) = lower(${v.email})`,
       );
       if (dup.length > 0) {
         return { ok: false, error: `${v.email} tar redan emot butikens rapport.` };
@@ -477,10 +474,7 @@ export async function createStoreRecipientFor(
 }
 
 /** Ändrar namn och adress, eller pausar och återaktiverar en butiksmottagare. */
-export async function updateStoreRecipientFor(
-  viewer: Viewer,
-  raw: unknown,
-): Promise<ActionResult> {
+export async function updateStoreRecipientFor(viewer: Viewer, raw: unknown): Promise<ActionResult> {
   const denied = await guard(viewer);
   if (denied) return denied;
   const parsed = updateRecipientSchema.safeParse(raw);
@@ -513,10 +507,7 @@ export async function updateStoreRecipientFor(
  * Tar bort en butiksmottagare. En mottagare som redan fått rapporter finns kvar i
  * utskickshistoriken och kan bara pausas.
  */
-export async function deleteStoreRecipientFor(
-  viewer: Viewer,
-  raw: unknown,
-): Promise<ActionResult> {
+export async function deleteStoreRecipientFor(viewer: Viewer, raw: unknown): Promise<ActionResult> {
   const denied = await guard(viewer);
   if (denied) return denied;
   const parsed = recipientIdSchema.safeParse(raw);

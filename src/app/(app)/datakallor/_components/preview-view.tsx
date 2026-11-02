@@ -13,21 +13,34 @@ import { formatInt, formatKronor, MISSING } from "@/lib/format";
 
 import { updateDataSource } from "../actions";
 import { SOURCE_TIMEZONES } from "../_lib/constants";
-import { formatBytes, formatWhenWithYear, plural, ROW_STATUS_LABELS } from "../_lib/display";
+import {
+  formatBytes,
+  formatIsoDay,
+  formatWhenWithYear,
+  notNewParts,
+  plural,
+  ROW_STATUS_LABELS,
+} from "../_lib/display";
 import type { ImportWarning, PreviewResult, PreviewRow, RowStatus } from "../_lib/types";
 import { MappingEditor, type MappingDraft } from "./mapping-editor";
 
+/*
+ * Signalbudget (design.md §3): förhandsvisningen har en enda signalmarkering,
+ * nyckeltalet Fel (rader som hoppas över och behöver rättas i Awish). Raderna i
+ * tabellen och varningslistan är grå: konflikter ändrar inget och har ingen
+ * åtgärd här, och en felrad bärs av sin grå statusetikett och meddelandet.
+ */
 const ROW_TONE: Record<RowStatus, Status> = {
   new: "ok",
   duplicate: "neutral",
-  conflict: "warning",
-  error: "critical",
+  conflict: "neutral",
+  error: "warning",
   not_paid: "offline",
 };
 
 const WARNING_TONE: Partial<Record<ImportWarning["code"], Status>> = {
-  errors: "critical",
-  conflicts: "warning",
+  errors: "warning",
+  conflicts: "neutral",
   duplicate_file: "warning",
   unknown_machines: "warning",
   late_in_closed_period: "warning",
@@ -46,7 +59,8 @@ export function PreviewView({
   onConfirm,
   onCancel,
   onRemap,
-  onRepreview,
+  onZoneChanged,
+  originalZone,
   footer,
 }: {
   result: PreviewResult;
@@ -54,28 +68,33 @@ export function PreviewView({
   onConfirm?: () => void;
   onCancel?: () => void;
   onRemap?: (draft: MappingDraft) => void;
-  onRepreview?: () => void;
+  /** Källans tidszon byttes (till result.dataSource …); argumentet är den tidigare. */
+  onZoneChanged?: (previousZone: string) => void;
+  /** Källans tidszon innan den byttes för förhandsvisningen (återställs vid Avbryt). */
+  originalZone?: string | null;
   footer?: ReactNode;
 }) {
   const s = result.summary;
   const committed = !result.dryRun;
+  // Huvudpersonen är det filen faktiskt innehåller: nya order, eller dubbletterna
+  // när inget är nytt.
+  const leadIsDuplicates = s.new === 0 && s.duplicate > 0;
   const items: KpiItem[] = [
     {
       id: "new",
       label: committed ? "Nya order" : "Nya",
       value: s.new,
       format: formatInt,
-      primary: true,
+      primary: !leadIsDuplicates,
     },
-    { id: "dup", label: "Dubbletter", value: s.duplicate, format: formatInt },
     {
-      id: "conflict",
-      label: "Konflikter",
-      value: s.conflict,
+      id: "dup",
+      label: "Dubbletter",
+      value: s.duplicate,
       format: formatInt,
-      alert: s.conflict > 0,
-      alertText: s.conflict > 0 ? "Avviker från sparad order" : undefined,
+      primary: leadIsDuplicates,
     },
+    { id: "conflict", label: "Konflikter", value: s.conflict, format: formatInt },
     {
       id: "error",
       label: "Fel",
@@ -86,6 +105,7 @@ export function PreviewView({
     },
     { id: "notPaid", label: "Ej betalda", value: s.notPaid, format: formatInt },
   ];
+  if (leadIsDuplicates) items.unshift(items.splice(1, 1)[0]!);
 
   return (
     <Panel className="flex flex-col gap-8" aria-label={committed ? "Importen" : "Förhandsvisning"}>
@@ -106,7 +126,12 @@ export function PreviewView({
       <KpiStrip items={items} label={`Rader i filen · ${formatInt(s.total)}`} motion="none" />
 
       {!committed && result.firstRow ? (
-        <TimezoneCheck result={result} timeZone={timeZone} onChanged={onRepreview} />
+        <TimezoneCheck
+          result={result}
+          timeZone={timeZone}
+          onChanged={onZoneChanged}
+          originalZone={originalZone ?? null}
+        />
       ) : null}
 
       {result.warnings.length > 0 ? <Warnings warnings={result.warnings} /> : null}
@@ -153,7 +178,9 @@ export function PreviewView({
           <p className="text-sm text-muted">
             {s.new > 0
               ? `${plural(s.new, "ny order", "nya order")} sparas. Dubbletter och konflikter ändrar inget.`
-              : `Inget nytt att importera: ${plural(s.duplicate, "order", "order")} finns redan. Importen kan ändå sparas i loggen.`}
+              : `Inget nytt att importera${
+                  notNewParts(s).length > 0 ? `: ${notNewParts(s).join(", ")}` : ""
+                }. Importen kan ändå sparas i loggen.`}
           </p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             {onCancel ? <Button onClick={onCancel}>Avbryt</Button> : null}
@@ -172,19 +199,20 @@ export function PreviewView({
 
 function headlineOf(r: PreviewResult): string {
   const s = r.summary;
-  if (!r.dryRun) return `${plural(s.new, "ny order", "nya order")} importerade.`;
-  if (s.new === 0 && s.duplicate > 0) return "Inget nytt i filen.";
+  if (!r.dryRun) {
+    return s.new === 0
+      ? "Inga nya order."
+      : `${plural(s.new, "ny order", "nya order")} ${s.new === 1 ? "importerad" : "importerade"}.`;
+  }
+  if (s.new === 0) return "Inget nytt i filen.";
   return `${plural(s.new, "ny order", "nya order")} att importera.`;
 }
 
 function asideOf(r: PreviewResult): string {
-  const s = r.summary;
-  const parts: string[] = [];
-  if (s.duplicate > 0) parts.push(`${formatInt(s.duplicate)} finns redan`);
-  if (s.conflict > 0) parts.push(plural(s.conflict, "konflikt", "konflikter"));
-  if (s.error > 0) parts.push(`${formatInt(s.error)} fel`);
-  if (s.notPaid > 0) parts.push(`${formatInt(s.notPaid)} ej betalda`);
-  return parts.length > 0 ? `${parts.join(", ")}.` : "Inga dubbletter eller fel.";
+  const parts = notNewParts(r.summary);
+  if (parts.length === 0) return "Inga dubbletter eller fel.";
+  const text = parts.join(", ");
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
 }
 
 /** Kontroll av källans tidszon: första betalda raden i källans tid och i svensk tid. */
@@ -192,10 +220,12 @@ function TimezoneCheck({
   result,
   timeZone,
   onChanged,
+  originalZone,
 }: {
   result: PreviewResult;
   timeZone: string;
-  onChanged?: () => void;
+  onChanged?: (previousZone: string) => void;
+  originalZone: string | null;
 }) {
   const first = result.firstRow;
   const [zone, setZone] = useState(result.dataSource.sourceTimezone);
@@ -222,7 +252,7 @@ function TimezoneCheck({
         setError(r.error);
         return;
       }
-      onChanged?.();
+      onChanged?.(result.dataSource.sourceTimezone);
     });
 
   return (
@@ -244,7 +274,7 @@ function TimezoneCheck({
           <div className="flex flex-col gap-1">
             <dt className="label text-subtle">Svensk tid</dt>
             <dd className="tnum text-base font-medium text-fg">{swedish}</dd>
-            <dd className="text-xs text-subtle">Affärsdag {first.businessDate}</dd>
+            <dd className="text-xs text-subtle">Affärsdag {formatIsoDay(first.businessDate)}</dd>
           </div>
         </dl>
         <div className="flex flex-col gap-3 md:col-span-5">
@@ -275,6 +305,11 @@ function TimezoneCheck({
               Byt och förhandsvisa
             </Button>
           </form>
+          {originalZone && originalZone !== result.dataSource.sourceTimezone ? (
+            <p className="text-xs text-subtle">
+              Källans tidszon är ändrad från {originalZone}. Avbryter du återställs den.
+            </p>
+          ) : null}
           {error ? (
             <p role="alert" className="text-xs text-signal-fg">
               {error}
@@ -444,10 +479,12 @@ function RowsTable({ result, timeZone }: { result: PreviewResult; timeZone: stri
     },
   ];
 
+  // Hela filens antal (samma som nyckeltalen), inte bara urvalets.
+  const s = result.summary;
   const counts = {
-    problems,
-    new: result.rows.filter((r) => r.status === "new").length,
-    duplicate: result.rows.filter((r) => r.status === "duplicate").length,
+    problems: s.error + s.conflict,
+    new: s.new,
+    duplicate: s.duplicate,
   };
 
   return (
@@ -476,7 +513,6 @@ function RowsTable({ result, timeZone }: { result: PreviewResult; timeZone: stri
         rowKey={(r) => String(r.rowNumber)}
         caption="Tolkade rader"
         defaultSort={{ key: "row", dir: "asc" }}
-        isFlagged={(r) => r.status === "error" || r.status === "conflict"}
         dense
         maxHeight={rows.length > 12 ? 480 : undefined}
       />

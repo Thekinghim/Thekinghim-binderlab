@@ -26,7 +26,7 @@ const globalForStaging = globalThis as typeof globalThis & {
   __binderlabUploadStaging?: UploadStaging;
 };
 
-/** Mellanlagret för uppladdningar (en instans per serverprocess). */
+/** Mellanlagret för uppladdningar (i databasen; instansen är tillståndslös). */
 export function uploadStaging(): UploadStaging {
   return (globalForStaging.__binderlabUploadStaging ??= new UploadStaging());
 }

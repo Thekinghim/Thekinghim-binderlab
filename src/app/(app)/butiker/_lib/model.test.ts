@@ -23,14 +23,47 @@ function input(): ProfitabilityInput {
   return {
     period: { start: "2026-11-01", end: "2026-11-02" },
     orders: [
-      { id: "o1", externalId: "1", titleId: "t", machineId: "m1", businessDate: "2026-11-01", amountOre: 10_000 },
-      { id: "o2", externalId: "2", titleId: "t", machineId: "m1", businessDate: "2026-11-02", amountOre: 5_000 },
-      { id: "o3", externalId: "3", titleId: "t", machineId: "m2", businessDate: "2026-11-02", amountOre: 7_000 },
+      {
+        id: "o1",
+        externalId: "1",
+        titleId: "t",
+        machineId: "m1",
+        businessDate: "2026-11-01",
+        amountOre: 10_000,
+      },
+      {
+        id: "o2",
+        externalId: "2",
+        titleId: "t",
+        machineId: "m1",
+        businessDate: "2026-11-02",
+        amountOre: 5_000,
+      },
+      {
+        id: "o3",
+        externalId: "3",
+        titleId: "t",
+        machineId: "m2",
+        businessDate: "2026-11-02",
+        amountOre: 7_000,
+      },
     ],
     prices: [{ titleId: "t", unitCostOre: 2_000, validFrom: "2026-01-01" }],
     agreements: [
-      { storeId: "s1", validFrom: "2026-10-01", validTo: null, commissionBp: 1_000, monthlyRentOre: null },
-      { storeId: "s2", validFrom: "2026-11-01", validTo: null, commissionBp: null, monthlyRentOre: 30_000 },
+      {
+        storeId: "s1",
+        validFrom: "2026-10-01",
+        validTo: null,
+        commissionBp: 1_000,
+        monthlyRentOre: null,
+      },
+      {
+        storeId: "s2",
+        validFrom: "2026-11-01",
+        validTo: null,
+        commissionBp: null,
+        monthlyRentOre: 30_000,
+      },
     ],
     placements: [
       { machineId: "m1", storeId: "s1", from: "2026-10-01", to: null },
@@ -41,8 +74,26 @@ function input(): ProfitabilityInput {
 }
 
 const agreements = [
-  { id: "a1", storeId: "s1", contractId: null, validFrom: "2026-10-01", validTo: null, commissionBp: 1_000, monthlyRentOre: null, note: null },
-  { id: "a2", storeId: "s2", contractId: null, validFrom: "2026-11-01", validTo: null, commissionBp: null, monthlyRentOre: 30_000, note: null },
+  {
+    id: "a1",
+    storeId: "s1",
+    contractId: null,
+    validFrom: "2026-10-01",
+    validTo: null,
+    commissionBp: 1_000,
+    monthlyRentOre: null,
+    note: null,
+  },
+  {
+    id: "a2",
+    storeId: "s2",
+    contractId: null,
+    validFrom: "2026-11-01",
+    validTo: null,
+    commissionBp: null,
+    monthlyRentOre: 30_000,
+    note: null,
+  },
 ].map((a) => toAgreementView(a, "2026-11-02"));
 
 describe("texter", () => {
@@ -67,9 +118,15 @@ describe("texter", () => {
 
 describe("avtalens läge", () => {
   it("gäller, kommande och avslutat", () => {
-    expect(agreementState({ validFrom: "2026-10-01", validTo: null }, "2026-11-02")).toBe("current");
-    expect(agreementState({ validFrom: "2026-12-01", validTo: null }, "2026-11-02")).toBe("upcoming");
-    expect(agreementState({ validFrom: "2026-01-01", validTo: "2026-11-01" }, "2026-11-02")).toBe("ended");
+    expect(agreementState({ validFrom: "2026-10-01", validTo: null }, "2026-11-02")).toBe(
+      "current",
+    );
+    expect(agreementState({ validFrom: "2026-12-01", validTo: null }, "2026-11-02")).toBe(
+      "upcoming",
+    );
+    expect(agreementState({ validFrom: "2026-01-01", validTo: "2026-11-01" }, "2026-11-02")).toBe(
+      "ended",
+    );
   });
 });
 
@@ -149,7 +206,9 @@ describe("en butik", () => {
     const h = compensationHeadline(m, agreements[1]!);
     expect(h.title).toBe(`20${NB}kr intjänat hittills i november.`);
     expect(h.aside).toBe(`Hyra 20${NB}kr för 2 av 30${NB}dagar.`);
-    expect(compensationHeadline({ ...m, totalOre: 0 }, null).title).toBe("Inget avtal gäller i dag.");
+    expect(compensationHeadline({ ...m, totalOre: 0 }, null).title).toBe(
+      "Inget avtal gäller i dag.",
+    );
   });
 
   it("att göra: inget avtal, slutar snart, kommande, ingen mottagare", () => {
@@ -164,10 +223,7 @@ describe("en butik", () => {
       ["no-agreement", "critical"],
       ["no-recipient", "neutral"],
     ]);
-    const ending = toAgreementView(
-      { ...agreements[0]!, validTo: "2026-11-20" },
-      "2026-11-02",
-    );
+    const ending = toAgreementView({ ...agreements[0]!, validTo: "2026-11-20" }, "2026-11-02");
     const soon = storeIssues({
       agreements: [ending],
       machineCodes: ["BL-001"],
@@ -191,7 +247,13 @@ describe("en butik", () => {
       }).map((i) => i.id),
     ).toEqual(["upcoming"]);
     expect(
-      storeIssues({ agreements: [], machineCodes: ["BL-1"], recipients: [], archived: true, today: "2026-11-02" }),
+      storeIssues({
+        agreements: [],
+        machineCodes: ["BL-1"],
+        recipients: [],
+        archived: true,
+        today: "2026-11-02",
+      }),
     ).toEqual([]);
   });
 });

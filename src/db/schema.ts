@@ -733,3 +733,6 @@ export * from "./schema/drift";
 
 // Fas 11 Marknad: releaser, leverantörspriser, fackfördelning, sortiment och pristester.
 export * from "./schema/marknad";
+
+// Fas 2 Datakällor: mellanlagring av uppladdade orderlistor.
+export * from "./schema/datakallor";

@@ -7,9 +7,8 @@ import { wallClockIn } from "@/components/shell/period-state";
 import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StateMessage } from "@/components/ui/state-message";
-import { formatDate, formatDateTime, formatInt, formatKronor, MISSING } from "@/lib/format";
+import { formatDateTime, formatInt, formatKronor, MISSING } from "@/lib/format";
 
-import { isoToLocalDate } from "../_lib/headline";
 import type { OrderDetail } from "../_lib/types";
 
 const PROVIDER: Record<string, string> = {
@@ -148,11 +147,6 @@ export function OrderDetailView({
         </Row>
         <Row label="Tid">
           <span className="tnum">{at(detail.orderedAt, timeZone)}</span>
-        </Row>
-        <Row label="Affärsdatum">
-          <span className="tnum">
-            {formatDate(isoToLocalDate(detail.businessDate), { year: "always" })}
-          </span>
         </Row>
         <Row label="Belopp">
           <span className="tnum">{formatKronor(detail.amountOre / 100)}</span>

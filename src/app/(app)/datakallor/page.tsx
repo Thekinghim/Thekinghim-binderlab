@@ -8,7 +8,7 @@ import { ImportLog } from "./_components/import-log";
 import { MachineQueue } from "./_components/machine-queue";
 import { SourceList } from "./_components/source-list";
 import { UploadPanel } from "./_components/upload-panel";
-import { formatWhen } from "./_lib/display";
+import { formatWhen, plural } from "./_lib/display";
 import { headlineOf } from "./_lib/headline";
 import { loadDatakallorFor } from "./_lib/service";
 import { currentViewer } from "./_lib/session";
@@ -27,6 +27,8 @@ export default async function DatakallorPage() {
   const fileSources = data.sources.filter((s) => s.acceptsFiles && !s.archived);
   const queuedOrders = data.queue.reduce((sum, q) => sum + q.pendingOrders, 0);
   const lastImport = data.imports[0];
+  const nowDate = new Date(data.now);
+  const lastFile = data.imports.find((i) => i.trigger === "upload" && i.status === "succeeded");
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
@@ -64,8 +66,12 @@ export default async function DatakallorPage() {
           index={2}
           eyebrow="Ladda upp"
           title="Importera orderlistan."
-          aside="Förhandsvisa först, inget sparas förrän du bekräftar."
-          description="Exportera orderlistan i Awish som CSV. Hela historiken går bra (upp till 50 MB): order som redan finns räknas som dubbletter och ändras aldrig."
+          aside={
+            lastFile
+              ? `Senaste fil ${formatWhen(lastFile.finishedAt ?? lastFile.createdAt, data.timeZone, nowDate)}: ${formatInt(lastFile.rowsNew)} nya av ${plural(lastFile.rowsTotal, "rad", "rader")}.`
+              : "Ingen fil uppladdad ännu."
+          }
+          description="Exportera orderlistan i Awish som CSV. Hela historiken går bra (upp till 50 MB): order som redan finns räknas som dubbletter och ändras aldrig. Inget sparas förrän du bekräftat förhandsvisningen."
         />
         <UploadPanel sources={fileSources} timeZone={data.timeZone} />
       </section>
@@ -82,9 +88,15 @@ export default async function DatakallorPage() {
           }
           aside={
             data.queue.length === 0
-              ? "Nya namn från Awish hamnar här."
+              ? data.lastMapped
+                ? `Senast kopplad ${data.lastMapped.machineCode}${
+                    data.lastMapped.at
+                      ? ` ${formatWhen(data.lastMapped.at, data.timeZone, nowDate)}`
+                      : ""
+                  }.`
+                : "Inga okända namn i orderna."
               : queuedOrders === 0
-                ? "Inga order väntar på dem ännu."
+                ? `Inga order väntar på ${data.queue.length === 1 ? "den" : "dem"} ännu.`
                 : `${formatInt(queuedOrders)} order räknas inte på någon automat förrän de kopplas.`
           }
         />
@@ -99,7 +111,7 @@ export default async function DatakallorPage() {
           title="Alla importer."
           aside={
             lastImport
-              ? `Senast ${formatWhen(lastImport.finishedAt ?? lastImport.createdAt, data.timeZone, new Date(data.now))}${lastImport.createdBy ? ` av ${lastImport.createdBy}` : ""}.`
+              ? `Senast ${formatWhen(lastImport.finishedAt ?? lastImport.createdAt, data.timeZone, nowDate)}${lastImport.createdBy ? ` av ${lastImport.createdBy}` : ""}.`
               : "Ingen import ännu."
           }
         />

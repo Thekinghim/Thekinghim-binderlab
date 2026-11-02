@@ -51,7 +51,12 @@ export function MachineQueue({
     <ul className="flex flex-col gap-3" aria-label="Okända automater">
       {queue.map((entry) => (
         <li key={entry.id}>
-          <QueueRow entry={entry} machines={machines} timeZone={timeZone} />
+          <QueueRow
+            entry={entry}
+            machines={machines}
+            timeZone={timeZone}
+            primary={queue.length === 1}
+          />
         </li>
       ))}
     </ul>
@@ -62,10 +67,13 @@ function QueueRow({
   entry,
   machines,
   timeZone,
+  primary,
 }: {
   entry: QueueEntry;
   machines: readonly MachineOption[];
   timeZone: string;
+  /** Huvudåtgärd bara när kön har en rad (högst en primärknapp per yta). */
+  primary: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -138,7 +146,7 @@ function QueueRow({
             aria-invalid={error ? true : undefined}
             wrapperClassName="min-w-0 flex-1"
           />
-          <Button type="submit" variant="primary" loading={pending}>
+          <Button type="submit" variant={primary ? "primary" : "secondary"} loading={pending}>
             Koppla
           </Button>
         </div>

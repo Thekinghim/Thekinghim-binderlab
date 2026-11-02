@@ -66,8 +66,7 @@ function agreementColumns(
       header: "Provision",
       numeric: true,
       sortValue: (a) => a.commissionBp ?? -1,
-      render: (a) =>
-        a.commissionBp === null ? MISSING : percentBp(a.commissionBp),
+      render: (a) => (a.commissionBp === null ? MISSING : percentBp(a.commissionBp)),
     },
     {
       key: "rent",
@@ -201,11 +200,7 @@ export function MachinesTable({
 // Rapportmottagare
 // ---------------------------------------------------------------------------
 
-function recipientColumns(
-  timeZone: string,
-  now: Date,
-  canEdit: boolean,
-): Column<RecipientView>[] {
+function recipientColumns(timeZone: string, now: Date, canEdit: boolean): Column<RecipientView>[] {
   const localNow = wallClockIn(now, timeZone);
   const cols: Column<RecipientView>[] = [
     {

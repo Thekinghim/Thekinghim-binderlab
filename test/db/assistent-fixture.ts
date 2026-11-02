@@ -70,16 +70,14 @@ export async function seedAssistantFixture(): Promise<AssistantFixture> {
         { ...org, code: "BL-002", name: "Automat 2", activeFrom: "2025-01-01" },
       ])
       .returning();
-    await tx
-      .insert(s.machinePlacements)
-      .values(
-        machines.map((m) => ({
-          ...org,
-          machineId: m.id,
-          storeId: store!.id,
-          validFrom: "2025-01-01",
-        })),
-      );
+    await tx.insert(s.machinePlacements).values(
+      machines.map((m) => ({
+        ...org,
+        machineId: m.id,
+        storeId: store!.id,
+        validFrom: "2025-01-01",
+      })),
+    );
     const titles = await tx
       .insert(s.titles)
       .values([

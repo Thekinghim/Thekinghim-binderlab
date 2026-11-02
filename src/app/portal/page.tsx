@@ -125,9 +125,7 @@ export default async function PortalOverviewPage({ searchParams }: { searchParam
             <EvidenceDetails evidence={compensation.evidence} summary="Så räknas ersättningen" />
           </div>
         </div>
-        {partial ? null : (
-          <p className="max-w-3xl text-md text-muted">{report.conclusion.text}</p>
-        )}
+        {partial ? null : <p className="max-w-3xl text-md text-muted">{report.conclusion.text}</p>}
       </section>
 
       <TrendSection trend={trend} month={month} />

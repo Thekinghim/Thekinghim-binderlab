@@ -116,7 +116,13 @@ export default async function AvtalPage() {
       ? "Ingen intäkt de senaste 12 månaderna."
       : `${formatPercent(o.expiringShareBp / 10_000)} av intäkten ligger på avtal som löper ut inom 12 månader.`
     : "Avtalen kunde inte vägas mot intäkten.";
-  const aside = o ? o.summary : (data.overviewError ?? undefined);
+  const aside = o
+    ? `${sek(o.expiringRevenueOre)} av ${sek(o.totalRevenueOre)} ${periodText(o.window)}${
+        o.noContractRevenueOre > 0
+          ? `; ${sek(o.noContractRevenueOre)} kommer från butiker utan gällande avtal`
+          : ""
+      }.`
+    : (data.overviewError ?? undefined);
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col px-4 pt-8 md:px-8 md:pt-12">
@@ -172,7 +178,11 @@ export default async function AvtalPage() {
               ? "Inget avtal behöver sägas upp eller förhandlas nu."
               : `${plural(due.length, "avtal", "avtal")} behöver beslut före sista uppsägningsdag.`
           }
-          aside={data.reminders.summary || undefined}
+          aside={
+            due[0]?.term.noticeDeadline
+              ? `Närmast: ${storeName.get(due[0].storeId) ?? "butiken"}, sista dag ${day(due[0].term.noticeDeadline, ctx.today)}.`
+              : `${plural(active.length, "avtal", "avtal")} bevakas, påminnelse 90 dagar före sista uppsägningsdag.`
+          }
         />
         {due.length > 0 ? (
           <ol className="flex flex-col">
@@ -348,13 +358,7 @@ export default async function AvtalPage() {
             index={3}
             eyebrow={`Intäkt per butik · ${periodText(o.window)}`}
             title={`${sek(o.totalRevenueOre)} i intäkt, ${sek(o.expiringRevenueOre)} på avtal som löper ut.`}
-            aside={
-              o.noContractRevenueOre > 0
-                ? `${sek(o.noContractRevenueOre)} kommer från butiker utan gällande avtal.`
-                : o.renewingRevenueOre > 0
-                  ? `${sek(o.renewingRevenueOre)} av det förlängs automatiskt om ingen säger upp.`
-                  : undefined
-            }
+            aside={o.summary}
           />
           <Panel>
             <PanelSection label="Butiker" meta={formatInt(o.stores.length)}>

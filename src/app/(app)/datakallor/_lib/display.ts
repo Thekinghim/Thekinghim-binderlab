@@ -4,7 +4,7 @@
  */
 
 import { wallClockIn } from "@/components/shell/period-state";
-import { formatDateTime, formatDecimal, formatInt, MISSING, NBSP } from "@/lib/format";
+import { formatDate, formatDateTime, formatDecimal, formatInt, MISSING, NBSP } from "@/lib/format";
 
 import type { RowStatus } from "./types";
 
@@ -43,4 +43,29 @@ export const ROW_STATUS_LABELS: Record<RowStatus, string> = {
 /** "1 rad" / "12 rader" */
 export function plural(n: number, one: string, many: string): string {
   return `${formatInt(n)}${NBSP}${n === 1 ? one : many}`;
+}
+
+/** Ett ISO-datum ("2026-11-01") som "1 nov. 2026". */
+export function formatIsoDay(isoDay: string | null): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDay ?? "");
+  if (!m) return MISSING;
+  return formatDate(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])), { year: "always" });
+}
+
+/**
+ * Det som inte är nytt i en fil, som delar av en mening: "460 finns redan",
+ * "1 konflikt", "2 fel", "1 ej betald".
+ */
+export function notNewParts(s: {
+  duplicate: number;
+  conflict: number;
+  error: number;
+  notPaid: number;
+}): string[] {
+  const parts: string[] = [];
+  if (s.duplicate > 0) parts.push(`${formatInt(s.duplicate)}${NBSP}finns redan`);
+  if (s.conflict > 0) parts.push(plural(s.conflict, "konflikt", "konflikter"));
+  if (s.error > 0) parts.push(`${formatInt(s.error)}${NBSP}fel`);
+  if (s.notPaid > 0) parts.push(plural(s.notPaid, "ej betald", "ej betalda"));
+  return parts;
 }

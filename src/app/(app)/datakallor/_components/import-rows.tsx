@@ -13,10 +13,11 @@ import type { ImportRowFilter } from "../_lib/constants";
 import { formatWhenWithYear } from "../_lib/display";
 import type { ImportDetail, ImportDetailRow } from "../_lib/types";
 
+// Historik: grå (design.md §3). Fel bärs av den grå varningsetiketten och meddelandet.
 const TONE: Record<ImportDetailRow["status"], Status> = {
   new: "ok",
-  conflict: "warning",
-  error: "critical",
+  conflict: "neutral",
+  error: "warning",
 };
 const LABEL: Record<ImportDetailRow["status"], string> = {
   new: "Ny",
@@ -164,7 +165,6 @@ export function ImportRows({
             rowKey={(r) => String(r.rowNumber)}
             caption="Radlogg för importen"
             defaultSort={{ key: "row", dir: "asc" }}
-            isFlagged={(r) => r.status !== "new"}
             dense
             toolbar
             columnPicker

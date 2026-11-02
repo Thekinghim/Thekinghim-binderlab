@@ -6,14 +6,15 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { StatusTag, type Status } from "@/components/ui/status-tag";
 import { formatInt, MISSING } from "@/lib/format";
 
-import { formatWhen } from "../_lib/display";
+import { formatWhen, formatWhenWithYear } from "../_lib/display";
 import type { ImportLogEntry } from "../_lib/types";
 
 const STATUS: Record<ImportLogEntry["status"], { status: Status; text: string }> = {
   succeeded: { status: "ok", text: "Klar" },
   running: { status: "neutral", text: "Pågår" },
   pending: { status: "neutral", text: "Väntar" },
-  failed: { status: "critical", text: "Misslyckades" },
+  // Grå i historiken; signal bara för källans senaste import (se statusOf).
+  failed: { status: "warning", text: "Misslyckades" },
 };
 
 const TRIGGER: Record<ImportLogEntry["trigger"], string> = {
@@ -46,6 +47,17 @@ export function ImportLog({
   }
   const nowDate = new Date(now);
   const when = (e: ImportLogEntry) => e.finishedAt ?? e.startedAt ?? e.createdAt;
+  // Signal (design.md §3) bara där någon behöver göra något: en källas senaste import
+  // som misslyckades. Gamla misslyckanden och konflikter är historik och grå.
+  const latestBySource = new Map<string, ImportLogEntry>();
+  for (const e of imports) {
+    const prev = latestBySource.get(e.dataSourceId);
+    if (!prev || prev.createdAt < e.createdAt) latestBySource.set(e.dataSourceId, e);
+  }
+  const statusOf = (e: ImportLogEntry): Status =>
+    e.status === "failed" && latestBySource.get(e.dataSourceId)?.id === e.id
+      ? "critical"
+      : STATUS[e.status].status;
 
   const columns: Column<ImportLogEntry>[] = [
     {
@@ -60,7 +72,7 @@ export function ImportLog({
           {formatWhen(when(e), timeZone, nowDate)}
         </Link>
       ),
-      csv: (e) => when(e),
+      csv: (e) => formatWhenWithYear(when(e), timeZone),
       width: 150,
     },
     {
@@ -111,7 +123,7 @@ export function ImportLog({
       header: "Konflikter",
       numeric: true,
       sortValue: (e) => e.rowsConflict,
-      render: (e) => count(e.rowsConflict, true),
+      render: (e) => count(e.rowsConflict),
     },
     {
       key: "error",
@@ -133,7 +145,7 @@ export function ImportLog({
       header: "Status",
       sortValue: (e) => e.status,
       render: (e) => (
-        <StatusTag status={STATUS[e.status].status}>{STATUS[e.status].text}</StatusTag>
+        <StatusTag status={statusOf(e)}>{STATUS[e.status].text}</StatusTag>
       ),
       csv: (e) => STATUS[e.status].text,
       hideOnMobile: true,
@@ -147,7 +159,6 @@ export function ImportLog({
       rowKey={(e) => e.id}
       caption="Importer, senaste först"
       defaultSort={{ key: "when", dir: "desc" }}
-      isFlagged={(e) => e.status === "failed" || e.rowsConflict > 0 || e.rowsError > 0}
       toolbar
       columnPicker
       exportFileName="importlogg"

@@ -78,7 +78,13 @@ export function AddRecipientButton({
         <RecipientFields
           recipient={
             defaults
-              ? { id: "", name: defaults.name, email: defaults.email, active: true, lastSentAt: null }
+              ? {
+                  id: "",
+                  name: defaults.name,
+                  email: defaults.email,
+                  active: true,
+                  lastSentAt: null,
+                }
               : undefined
           }
         />

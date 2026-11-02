@@ -136,7 +136,9 @@ export async function loadStoreList(searchParams: SearchParamsInput): Promise<St
   const previousInput = comparable(input.previous);
   const current = profitability(input.current, "store");
   const previous = previousInput ? profitability(previousInput, "store") : null;
-  const earned = new Map(storeCompensation(monthInput.current).stores.map((c) => [c.storeId, c.totalOre]));
+  const earned = new Map(
+    storeCompensation(monthInput.current).stores.map((c) => [c.storeId, c.totalOre]),
+  );
   const views = agreements.map((a) => toAgreementView(a, ctx.today));
   const filterId = p.scope.storeId;
   const shown = filterId ? stores.filter((s) => s.id === filterId) : stores;

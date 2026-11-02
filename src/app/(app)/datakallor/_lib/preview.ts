@@ -6,8 +6,9 @@
 
 import { IMPORT_FIELDS, type ImportField } from "@/import/mapping";
 import type { ImportRowResult } from "@/import/pipeline";
-import type { RunImportResult } from "@/import/run-import";
+import type { ImportWarning, RunImportResult } from "@/import/run-import";
 
+import { formatWhen, plural } from "./display";
 import type { FieldSource, PreviewMapping, PreviewResult, PreviewRow } from "./types";
 
 /** De första raderna i filen som alltid visas. */
@@ -89,6 +90,62 @@ export function previewMapping(mapping: unknown): PreviewMapping | null {
   };
 }
 
+/**
+ * Varningarna från importen med svensk tid och rätt böjning ("1 rad avviker",
+ * "1 ny titel", "Samma fil importerades 2 nov. 10:50"). Okända koder lämnas orörda.
+ */
+export function localizeWarnings(
+  warnings: readonly ImportWarning[],
+  result: Pick<RunImportResult, "previousImports" | "summary" | "newTitles" | "unknownMachines">,
+  timeZone: string,
+  now: Date = new Date(),
+): ImportWarning[] {
+  const rest = (message: string) => {
+    const i = message.indexOf(":");
+    return i === -1 ? "" : message.slice(i);
+  };
+  return warnings.map((w): ImportWarning => {
+    switch (w.code) {
+      case "duplicate_file": {
+        const first = result.previousImports[0];
+        const when = first?.finishedAt ? ` ${formatWhen(first.finishedAt, timeZone, now)}` : "";
+        const gave = first ? ` (${plural(first.rowsNew, "ny order", "nya order")})` : "";
+        return {
+          ...w,
+          message: `Samma fil importerades${when}${gave}. Order som redan finns räknas som dubbletter och ändras inte.`,
+        };
+      }
+      case "conflicts": {
+        const n = result.summary.conflict;
+        return {
+          ...w,
+          message: `${plural(n, "rad", "rader")} avviker från order som redan finns. Orderna ändras inte; se importloggen.`,
+        };
+      }
+      case "errors": {
+        const n = result.summary.error;
+        return {
+          ...w,
+          message: `${plural(n, "rad", "rader")} kunde inte tolkas och hoppas över.`,
+        };
+      }
+      case "new_titles": {
+        const n = result.newTitles.length;
+        return { ...w, message: `${plural(n, "ny titel", "nya titlar")}${rest(w.message)}` };
+      }
+      case "unknown_machines": {
+        const n = result.unknownMachines.length;
+        return {
+          ...w,
+          message: `${plural(n, "automat", "automater")} är inte ${n === 1 ? "kopplad" : "kopplade"}${rest(w.message)}`,
+        };
+      }
+      default:
+        return w;
+    }
+  });
+}
+
 /** runImport-resultatet → det klienten får (förhandsvisning eller genomförd import). */
 export function toPreviewResult(uploadId: string, result: RunImportResult): PreviewResult {
   const { rows, hidden } = selectPreviewRows(result.rows);
@@ -114,7 +171,7 @@ export function toPreviewResult(uploadId: string, result: RunImportResult): Prev
       queued: m.queued,
     })),
     firstRow: result.firstRow,
-    warnings: result.warnings,
+    warnings: localizeWarnings(result.warnings, result, result.organizationTimezone),
     mapping: previewMapping(result.mapping),
     previousImports: result.previousImports,
   };

@@ -49,7 +49,10 @@ export interface SourceView {
   readonly provider: ProviderKey;
   readonly sourceTimezone: string;
   readonly status: SourceStatus;
+  /** När någon senast laddade upp eller synkade (ISO, UTC). Säger inget om hur ny datan är. */
   readonly lastSyncedAt: string | null;
+  /** Den senaste orderns tid i källan (ISO, UTC): hur ny datan faktiskt är. */
+  readonly latestOrderAt: string | null;
   readonly archived: boolean;
   /** Tar emot uppladdade filer (CSV). */
   readonly acceptsFiles: boolean;
@@ -90,6 +93,8 @@ export interface DatakallorData {
   readonly imports: ImportLogEntry[];
   readonly queue: QueueEntry[];
   readonly machines: MachineOption[];
+  /** Den senast kopplade källautomaten, eller null. */
+  readonly lastMapped: { name: string; machineCode: string; at: string | null } | null;
 }
 
 /** En tolkad rad i förhandsvisningen eller efter import. */
@@ -165,7 +170,10 @@ export interface ImportDetailRow {
 
 export interface ImportDetail {
   readonly entry: ImportLogEntry;
+  /** Tidszonen som importens tider tolkades i (eller källans nuvarande, se nedan). */
   readonly sourceTimezone: string;
+  /** true om tidszonen sparades med importen; false för äldre importer (källans nuvarande). */
+  readonly sourceTimezoneRecorded: boolean;
   readonly parserVersion: string;
   readonly sha256: string | null;
   readonly mapping: Partial<Record<ImportField, string | null>> | null;
