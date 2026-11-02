@@ -7,10 +7,14 @@
  *
  * Fördelning av hyra: för varje butik och kalendermånad fördelas månadens hyra
  * (rent.ts) på butikens order i den månaden inom perioden, i proportion till
- * nettointäkten, med största-restmetoden så att summan stämmer på öret. Orderna
- * sorteras först på datum och id, så att resultatet inte beror på i vilken ordning
- * orderna kom in. Har butiken hyra men inga order den månaden blir hyran
- * "ej fördelad".
+ * nettointäkt × den månadshyra som gällde orderns dag, med största-restmetoden så att
+ * summan stämmer på öret. En order på en dag utan hyresavtal bär alltså ingen hyra.
+ * Orderna sorteras först på datum och id, så att resultatet inte beror på i vilken
+ * ordning orderna kom in. Har butiken hyra men inga order på dagar med hyra den
+ * månaden blir hyran "ej fördelad".
+ *
+ * Varje order får sin andel oavsett om den har inköpspris. Andelen på en order utan
+ * pris dras ändå från vinsten, som ej fördelad hyra (se profitability.ts).
  */
 
 import { assertPeriod } from "./dates";
@@ -21,9 +25,9 @@ import {
   createEconomicsContext,
   type EconomicsContext,
 } from "./economics";
-import { allocateLargestRemainder } from "./money";
+import { allocateLargestRemainderBig } from "./money";
 import { rentByStoreMonth, type StoreMonthRent } from "./rent";
-import type { IsoMonth, OrderLine, Period, ProfitabilityInput, Settings } from "./types";
+import type { IsoDate, IsoMonth, OrderLine, Period, ProfitabilityInput, Settings } from "./types";
 
 /** En order i liggaren. Alla belopp i öre. */
 export interface LedgerEntry {
@@ -39,11 +43,11 @@ export interface LedgerEntry {
   readonly costOre: number;
   readonly cardFeeOre: number;
   readonly commissionOre: number;
-  /** Orderns andel av butikens månadshyra. */
+  /** Orderns andel av butikens månadshyra (även för order utan pris). */
   readonly rentOre: number;
 }
 
-/** Hyra för en butik-månad som saknade order att fördelas på. */
+/** Hyra för en butik-månad som saknade order (på dagar med hyra) att fördelas på. */
 export interface UnallocatedRent {
   readonly storeId: string;
   readonly month: IsoMonth;
@@ -75,6 +79,12 @@ export interface Ledger {
   readonly diagnostics: LedgerDiagnostics;
   /** Uppslagen som användes (priser, placeringar, avtal). */
   readonly context: EconomicsContext;
+}
+
+/** Månadshyran som gällde en dag i butik-månaden (0 om inget hyresavtal gällde). */
+function rentRateOn(sm: StoreMonthRent, date: IsoDate): number {
+  for (const seg of sm.segments) if (seg.start <= date && date <= seg.end) return seg.monthlyRentOre;
+  return 0;
 }
 
 type MutableEntry = { -readonly [K in keyof LedgerEntry]: LedgerEntry[K] };
@@ -160,10 +170,17 @@ export function buildLedger(input: ProfitabilityInput): Ledger {
       continue;
     }
     list.sort(compareEntries);
-    const shares = allocateLargestRemainder(
-      sm.rentOre,
-      list.map((e) => e.netRevenueOre),
-    );
+    // Vikt = nettointäkt × den månadshyra som gällde orderns dag. Order på dagar utan
+    // hyresavtal (t.ex. före ett avtalsbyte från bara provision till hyra) bär ingen hyra.
+    const rates = list.map((e) => BigInt(rentRateOn(sm, e.order.businessDate)));
+    let weights = list.map((e, i) => BigInt(e.netRevenueOre) * rates[i]!);
+    if (weights.every((w) => w === 0n)) weights = rates; // alla netto 0 → lika per order och hyresdag
+    if (weights.every((w) => w === 0n)) {
+      // Inga order på dagar med hyra: hyran kan inte bäras av någon order.
+      unallocatedRent.push({ storeId: sm.storeId, month: sm.month, rentOre: sm.rentOre });
+      continue;
+    }
+    const shares = allocateLargestRemainderBig(sm.rentOre, weights);
     for (let i = 0; i < list.length; i++) list[i]!.rentOre = shares[i]!;
   }
 
