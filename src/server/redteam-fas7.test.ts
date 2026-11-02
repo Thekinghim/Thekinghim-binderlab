@@ -74,34 +74,28 @@ describe("säkerhetshuvuden", () => {
    * vilken sida som helst ramas in (clickjacking mot Inställningar → Användare,
    * Godkänn rapport, Skicka). Åtgärd: headers() i next.config.ts för "/(.*)".
    */
-  it(
-    "TÄPPT: alla sidor förbjuder inramning (CSP frame-ancestors 'none' eller X-Frame-Options DENY)",
-    async () => {
-      const h = await securityHeaders();
-      const csp = h.get("content-security-policy") ?? "";
-      const framed =
-        /frame-ancestors\s+('none'|'self')/.test(csp) ||
-        /^(DENY|SAMEORIGIN)$/i.test(h.get("x-frame-options") ?? "");
-      expect(framed).toBe(true);
-    },
-  );
+  it("TÄPPT: alla sidor förbjuder inramning (CSP frame-ancestors 'none' eller X-Frame-Options DENY)", async () => {
+    const h = await securityHeaders();
+    const csp = h.get("content-security-policy") ?? "";
+    const framed =
+      /frame-ancestors\s+('none'|'self')/.test(csp) ||
+      /^(DENY|SAMEORIGIN)$/i.test(h.get("x-frame-options") ?? "");
+    expect(framed).toBe(true);
+  });
 
   it("TÄPPT: X-Content-Type-Options: nosniff på alla svar", async () => {
     expect((await securityHeaders()).get("x-content-type-options")).toBe("nosniff");
   });
 
-  it(
-    "TÄPPT: Referrer-Policy läcker inte sökvägar (inbjudningstoken, rapport-id) till andra webbplatser",
-    async () => {
-      const policy = (await securityHeaders()).get("referrer-policy") ?? "";
-      expect([
-        "no-referrer",
-        "same-origin",
-        "strict-origin",
-        "strict-origin-when-cross-origin",
-      ]).toContain(policy);
-    },
-  );
+  it("TÄPPT: Referrer-Policy läcker inte sökvägar (inbjudningstoken, rapport-id) till andra webbplatser", async () => {
+    const policy = (await securityHeaders()).get("referrer-policy") ?? "";
+    expect([
+      "no-referrer",
+      "same-origin",
+      "strict-origin",
+      "strict-origin-when-cross-origin",
+    ]).toContain(policy);
+  });
 
   it("TÄPPT: en Content-Security-Policy med default-src och object-src 'none'", async () => {
     const csp = (await securityHeaders()).get("content-security-policy") ?? "";
@@ -210,13 +204,10 @@ describe("proxyn", () => {
    * Åtgärd: matcha statiska filer bara under /_next, /public-filerna och rotens ikoner.
    * TÄPPT: src/server/auth/paths.ts (STATIC_FILE gäller bara roten och /icons).
    */
-  it(
-    "TÄPPT (låg): en sökväg under appen räknas inte som öppen bara för att den slutar på .json",
-    () => {
-      expect(isPublicPath("/inkorg/x.json")).toBe(false);
-      expect(isPublicPath("/order/export.txt")).toBe(false);
-    },
-  );
+  it("TÄPPT (låg): en sökväg under appen räknas inte som öppen bara för att den slutar på .json", () => {
+    expect(isPublicPath("/inkorg/x.json")).toBe(false);
+    expect(isPublicPath("/order/export.txt")).toBe(false);
+  });
 
   /**
    * Låg: /datamodell (hela schemat med tabeller, roller och RLS-regler) och /design är

@@ -38,7 +38,9 @@ type Config = {
     serverActions?: { bodySizeLimit?: string | number };
     proxyClientMaxBodySize?: string | number;
   };
-  headers?: () => Promise<Array<{ source: string; headers: Array<{ key: string; value: string }> }>>;
+  headers?: () => Promise<
+    Array<{ source: string; headers: Array<{ key: string; value: string }> }>
+  >;
 };
 
 async function config(): Promise<Config> {
@@ -58,9 +60,7 @@ describe("säkerhetshuvuden: PDF-rutter och produktion", () => {
     const rules = (await (await config()).headers?.()) ?? [];
     for (const route of INLINE_FILE_ROUTES) {
       const index = rules.findIndex((r) => r.source === route);
-      expect(index, route).toBeGreaterThan(
-        rules.findIndex((r) => r.source === "/(.*)"),
-      );
+      expect(index, route).toBeGreaterThan(rules.findIndex((r) => r.source === "/(.*)"));
       const csp = rules[index]!.headers.find((h) => h.key === "Content-Security-Policy")?.value;
       expect(csp).toBe(FILE_CONTENT_SECURITY_POLICY);
       expect(csp).toMatch(/frame-ancestors 'none'/);
@@ -71,7 +71,10 @@ describe("säkerhetshuvuden: PDF-rutter och produktion", () => {
   });
 
   it("CSP utan eval och utan websocket utanför development; Sentry bara via https", () => {
-    const prod = contentSecurityPolicy({ dev: false, sentryDsn: "https://k@o1.ingest.sentry.io/2" });
+    const prod = contentSecurityPolicy({
+      dev: false,
+      sentryDsn: "https://k@o1.ingest.sentry.io/2",
+    });
     expect(prod).not.toMatch(/unsafe-eval/);
     expect(prod).not.toMatch(/\bws:/);
     expect(prod).toMatch(/connect-src 'self' https:\/\/o1\.ingest\.sentry\.io(;|$)/);
@@ -121,9 +124,7 @@ describe("/design och /datamodell kräver inloggning", () => {
     const Page = (await load()).default as (props: {
       searchParams: Promise<Record<string, string>>;
     }) => Promise<unknown>;
-    await expect(Page({ searchParams: Promise.resolve({}) })).rejects.toBeInstanceOf(
-      LoginRequired,
-    );
+    await expect(Page({ searchParams: Promise.resolve({}) })).rejects.toBeInstanceOf(LoginRequired);
     expect(requireUser).toHaveBeenCalledTimes(1);
   });
 });

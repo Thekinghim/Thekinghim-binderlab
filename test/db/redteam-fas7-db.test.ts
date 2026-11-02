@@ -121,37 +121,34 @@ describe("ändringsloggen och append-only kan inte kringgås", () => {
    * Åtgärd: ny migrering där purge_allowed kräver current_user = 'postgres' (eller en
    * dedikerad roll) och flaggan, och revoke delete från service_role på append-only-tabeller.
    */
-  it(
-    "TÄPPT: service_role med binderlab.allow_purge kan inte radera append-only- eller bokföringsdata",
-    async () => {
-      const results = await rollback(async (tx) => {
-        await tx.execute(
-          sql`select set_config('request.jwt.claims', '{"role":"service_role"}', true)`,
+  it("TÄPPT: service_role med binderlab.allow_purge kan inte radera append-only- eller bokföringsdata", async () => {
+    const results = await rollback(async (tx) => {
+      await tx.execute(
+        sql`select set_config('request.jwt.claims', '{"role":"service_role"}', true)`,
+      );
+      await tx.execute(sql`set local role service_role`);
+      await tx.execute(sql`select set_config('binderlab.allow_purge', 'on', true)`);
+      const out: Record<string, string> = {};
+      for (const table of [
+        "orders",
+        "stock_events",
+        "report_approvals",
+        "assistant_logs",
+        "deviation_reviews",
+      ]) {
+        const o = await attempt(tx, (sp) =>
+          sp.execute(
+            sql`delete from ${sql.identifier("public")}.${sql.identifier(table)} where organization_id = ${A.orgId}`,
+          ),
         );
-        await tx.execute(sql`set local role service_role`);
-        await tx.execute(sql`select set_config('binderlab.allow_purge', 'on', true)`);
-        const out: Record<string, string> = {};
-        for (const table of [
-          "orders",
-          "stock_events",
-          "report_approvals",
-          "assistant_logs",
-          "deviation_reviews",
-        ]) {
-          const o = await attempt(tx, (sp) =>
-            sp.execute(
-              sql`delete from ${sql.identifier("public")}.${sql.identifier(table)} where organization_id = ${A.orgId}`,
-            ),
-          );
-          out[table] = o.ok ? "raderade" : o.code;
-        }
-        return out;
-      });
-      for (const [table, result] of Object.entries(results)) {
-        expect(result, table).not.toBe("raderade");
+        out[table] = o.ok ? "raderade" : o.code;
       }
-    },
-  );
+      return out;
+    });
+    for (const [table, result] of Object.entries(results)) {
+      expect(result, table).not.toBe("raderade");
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
