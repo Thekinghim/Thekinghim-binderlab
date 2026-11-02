@@ -82,7 +82,8 @@ begin
     select 1
     from public.memberships m
     join auth.users u on u.id = m.user_id
-    where m.organization_id = p_organization_id and u.email = v_email::extensions.citext
+    where m.organization_id = p_organization_id
+      and u.email operator(extensions.=) v_email::extensions.citext
   ) then
     raise exception using errcode = 'BL014', message = 'Personen är redan medlem.';
   end if;
@@ -90,7 +91,7 @@ begin
   update public.invitations i
   set expires_at = now()
   where i.organization_id = p_organization_id
-    and i.email = v_email::extensions.citext
+    and i.email operator(extensions.=) v_email::extensions.citext
     and i.accepted_at is null
     and i.expires_at > now();
 
@@ -143,7 +144,9 @@ begin
   if v_invitation.expires_at <= now() then
     raise exception using errcode = 'BL012', message = 'Inbjudan har gått ut.';
   end if;
-  if coalesce(v_claims ->> 'email', '')::extensions.citext <> v_invitation.email then
+  -- citext-operatorn måste anges med schema (search_path är tom), annars
+  -- jämförs som text och skiftläget spelar roll.
+  if not (coalesce(v_claims ->> 'email', '')::extensions.citext operator(extensions.=) v_invitation.email) then
     raise exception using
       errcode = 'BL013',
       message = 'Inbjudan gäller en annan e-postadress.';

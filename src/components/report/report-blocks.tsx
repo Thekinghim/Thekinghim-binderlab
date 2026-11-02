@@ -46,17 +46,28 @@ type ReportTitleProps = {
   /** Fortsättningen i grått: "Bästa månaden sedan installationen." */
   aside?: string;
   children?: ReactNode;
+  /**
+   * Rubriknivå. h1 när rapporten är egen sida; lägre när den bäddas in
+   * under en annan rubrik, t.ex. h3 i en förhandsvisning på /design.
+   */
+  as?: "h1" | "h2" | "h3";
 };
 
 /** Rapportens rubrik, en gång på första sidan. */
-export function ReportTitle({ eyebrow, title, aside, children }: ReportTitleProps) {
+export function ReportTitle({
+  eyebrow,
+  title,
+  aside,
+  children,
+  as: Heading = "h1",
+}: ReportTitleProps) {
   return (
     <div className="flex flex-col gap-[3mm]">
       <p className="label text-[9.5px] leading-[12px] text-subtle">{eyebrow}</p>
-      <h1 className="max-w-[150mm] text-[30px] leading-[34px] font-medium tracking-[-0.025em] text-balance">
+      <Heading className="max-w-[150mm] text-[30px] leading-[34px] font-medium tracking-[-0.025em] text-balance">
         <span className="text-fg">{title}</span>
         {aside ? <span className="text-subtle"> {aside}</span> : null}
-      </h1>
+      </Heading>
       {children ? (
         <div className="max-w-[140mm] text-[12px] leading-[17px] text-muted">{children}</div>
       ) : null}
@@ -74,6 +85,8 @@ type ReportSectionProps = {
   aside?: string;
   children?: ReactNode;
   className?: string;
+  /** Rubriknivå, ett steg under ReportTitle. Standard h2. */
+  as?: "h2" | "h3" | "h4";
 };
 
 /** "01 / FÖRSÄLJNING" och en tvådelad rubrik i rapportstorlek. */
@@ -84,6 +97,7 @@ export function ReportSection({
   aside,
   children,
   className,
+  as: Heading = "h2",
 }: ReportSectionProps) {
   return (
     <section className={cn("flex flex-col gap-[4mm]", className)}>
@@ -97,10 +111,10 @@ export function ReportSection({
           </span>
           <span>{eyebrow}</span>
         </p>
-        <h2 className="max-w-[160mm] text-[15px] leading-[20px] font-medium tracking-[-0.01em] text-balance">
+        <Heading className="max-w-[160mm] text-[15px] leading-[20px] font-medium tracking-[-0.01em] text-balance">
           <span className="text-fg">{title}</span>
           {aside ? <span className="text-subtle"> {aside}</span> : null}
-        </h2>
+        </Heading>
       </header>
       {children}
     </section>

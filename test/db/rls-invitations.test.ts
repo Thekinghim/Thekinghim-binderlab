@@ -71,7 +71,8 @@ describe("inbjudningar", () => {
     expect(membership.role).toBe("refiller");
     const invitation = await one<{ accepted_by: string; accepted_at: Date | null }>(
       db(),
-      sql`select accepted_by, accepted_at from public.invitations where organization_id = ${F.orgId} and email = ${user.email}`,
+      sql`select accepted_by, accepted_at from public.invitations
+          where organization_id = ${F.orgId} and lower(email::text) = lower(${user.email})`,
     );
     expect(invitation.accepted_by).toBe(user.id);
     expect(invitation.accepted_at).not.toBeNull();

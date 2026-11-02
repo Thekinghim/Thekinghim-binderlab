@@ -19,7 +19,7 @@ const spec: Array<[string, string[]]> = [
   ["Brytning", ["En ReportPage per ark", "break-after: page"]],
 ];
 
-/** Liten provbit av varje kodning, ritad i rapportens tema. */
+/** Liten provbit av varje kodning. Ritas inuti PaperChip, alltså i rapportens tema. */
 function Sample({ kind }: { kind: Encoding["kind"] }) {
   const common = { width: 56, height: 20, viewBox: "0 0 56 20", "aria-hidden": true } as const;
   switch (kind) {
@@ -215,7 +215,7 @@ export function PrintSection({ index }: { index: number }) {
 
       <div className="mt-10 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <figure className="bl-desk m-0 rounded-md border border-line p-3 sm:p-5 md:p-6">
-          <ExampleReport layout="spread" visiblePages={[1, 2]} />
+          <ExampleReport headingLevel={3} layout="spread" visiblePages={[1, 2]} />
           <figcaption className="mt-3 hidden gap-4 sm:grid sm:grid-cols-2 md:gap-6">
             <span className="label text-subtle">
               <span className="text-fg">Sida 1</span> · Sammanfattning
@@ -291,12 +291,27 @@ export function PrintSection({ index }: { index: number }) {
   );
 }
 
+/**
+ * Ett litet pappersprov i data-theme="print" utan data-tone, så att
+ * signalen är #111 och data-5 ljusgrå oavsett appens läge.
+ */
+function PaperChip({ children }: { children: ReactNode }) {
+  return (
+    <span
+      data-theme="print"
+      className="flex shrink-0 items-center rounded-xs border border-line bg-bg px-2 py-1.5"
+    >
+      {children}
+    </span>
+  );
+}
+
 function EncodingRow({ encoding }: { encoding: Encoding }) {
   return (
     <li className="flex items-start gap-4 border-b border-line px-4 py-4 md:px-5">
-      <span className="mt-0.5 shrink-0">
+      <PaperChip>
         <Sample kind={encoding.kind} />
-      </span>
+      </PaperChip>
       <span className="flex min-w-0 flex-col gap-1">
         <span className="text-base text-fg">{encoding.name}</span>
         <span className="font-mono text-xs text-subtle">{encoding.form}</span>
