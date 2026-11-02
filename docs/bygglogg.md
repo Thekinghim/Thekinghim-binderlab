@@ -96,3 +96,6 @@ Tas bort när alla faser är klara.
 - 15:20 Integration klar (Hem/Att göra/Lönsamhet/Lager/Drift/Prognos/Rapporter kopplade, samma takt och besöksplan överallt,
   "Vinst före fasta kostnader" på Hem). Genomgång av hela appen startad i tre grupper (genomgang-a/b/c).
   Inför visning: `npm run db:reset -- dev && npm run db:seed && npm run db:seed-demo` (dev har ett testutkast som inte går att radera).
+- 15:50 Säkerhetsgranskning av hela appen klar: 505 attacktester gröna (server actions, rutter, RPC:er, storage, IDOR, export, cron).
+  Täppt: säkerhetshuvuden (CSP, X-Frame-Options, HSTS m.m.), smalare CSP för PDF, gallring bara som ägare, IP via Vercel-huvud,
+  /design och /datamodell kräver inloggning, smalare regel för statiska filer. Kvar: nonce-CSP, gräns för utskick, stora avtalsfiler på Vercel (4,5 MB).
