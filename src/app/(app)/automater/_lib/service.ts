@@ -29,6 +29,8 @@ import {
   decommissionSchema,
   firstIssue,
   moveMachineSchema,
+  placementBeforeStart,
+  placementToReopen,
   planDecommission,
   planMove,
   reactivateSchema,
@@ -336,6 +338,18 @@ export async function updateMachineFor(viewer: Viewer, raw: unknown): Promise<Ac
           ),
         );
       }
+      const placedFrom = placementBeforeStart(
+        await placementsOf(tx, orgId, m.id),
+        input.activeFrom,
+      );
+      if (placedFrom !== null) {
+        throw new UserError(
+          sentences(
+            `${m.code} står i en butik från ${day(placedFrom)}`,
+            "Driftstarten kan inte ligga senare.",
+          ),
+        );
+      }
       await tx
         .update(s.machines)
         .set({ name: input.name, serial: input.serial, activeFrom: input.activeFrom })
@@ -443,7 +457,11 @@ export async function decommissionMachineFor(viewer: Viewer, raw: unknown): Prom
   );
 }
 
-/** Ångrar en avveckling (active_to tas bort). Placeringen väljs med en flytt. */
+/**
+ * Ångrar en avveckling: active_to tas bort, och placeringen som avvecklingen avslutade
+ * öppnas igen (om butiken inte är arkiverad), så att hyra och provision räknas som förut.
+ * Annars väljs butiken med "Placera i butik".
+ */
 export async function reactivateMachineFor(viewer: Viewer, raw: unknown): Promise<ActionResult> {
   const denied = await guard(viewer);
   if (denied) return denied;
@@ -456,10 +474,22 @@ export async function reactivateMachineFor(viewer: Viewer, raw: unknown): Promis
       if (!m) throw new UserError("Automaten finns inte.");
       if (m.archived) throw new UserError(`${m.code} är arkiverad och kan inte återaktiveras här.`);
       if (m.activeTo === null) throw new UserError(`${m.code} är redan i drift.`);
+      const reopen = placementToReopen(await placementsOf(tx, orgId, m.id), m.activeTo);
       await tx
         .update(s.machines)
         .set({ activeTo: null })
         .where(and(eq(s.machines.organizationId, orgId), eq(s.machines.id, m.id)));
+      if (reopen && (await activeStoreName(tx, orgId, reopen.storeId))) {
+        await tx
+          .update(s.machinePlacements)
+          .set({ validTo: null })
+          .where(
+            and(
+              eq(s.machinePlacements.organizationId, orgId),
+              eq(s.machinePlacements.id, reopen.id),
+            ),
+          );
+      }
       return { ok: true as const };
     }),
   );

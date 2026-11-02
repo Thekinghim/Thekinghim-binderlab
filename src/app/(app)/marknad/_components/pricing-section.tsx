@@ -97,7 +97,7 @@ function PriceCheck({ view, ctx }: { view: ExperimentView; ctx: SectionContext }
         kind="empty"
         compact
         code="Ej mätt"
-        message={`Mätningen börjar när första hela dagen med testpriset är slut (${dayText(view.row.startedOn, ctx.today)}).`}
+        message={`Testet startar ${dayText(view.row.startedOn, ctx.today)}. Mätningen börjar när den dagen är slut; då kontrolleras också att testpriset syns i orderna.`}
       />
     );
   }

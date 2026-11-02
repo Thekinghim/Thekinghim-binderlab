@@ -182,7 +182,8 @@ export function ForecastChart({
     // Lodlinjen för i dag och dess etikett.
     const ff = data.findIndex((d) => d.kind === "forecast");
     if (ff > 0) {
-      const tx = ((geo.xs[ff - 1] ?? 0) + (geo.xs[ff] ?? 0)) / 2;
+      // Första prognosveckan börjar i dag: linjen står vid dess punkt.
+      const tx = geo.xs[ff] ?? 0;
       obs.boxes.push({ x: tx - 2, y: -M.top + 16, w: 44, h: 16 });
       (obs.lines as Pt[][]).push([
         [tx, -M.top + 20],
@@ -294,10 +295,8 @@ export function ForecastChart({
 
   const a = active !== null ? data[active] : undefined;
   const ax = active !== null ? (geo.xs[active] ?? 0) : 0;
-  const todayX =
-    firstForecast > 0
-      ? ((geo.xs[firstForecast - 1] ?? 0) + (geo.xs[firstForecast] ?? 0)) / 2
-      : null;
+  // Prognosens första vecka börjar i dag, och varje punkt står vid veckans första dag.
+  const todayX = firstForecast > 0 ? (geo.xs[firstForecast] ?? 0) : null;
   const lastActual = geo.actualPts[geo.actualPts.length - 1];
 
   return (

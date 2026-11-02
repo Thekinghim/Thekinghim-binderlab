@@ -60,15 +60,45 @@ export interface MachineListRow {
   readonly lastOrderAt: string | null;
 }
 
+/** En rad utanför automaterna i listans summa (ej fördelad hyra, order utan automat). */
+export interface OtherRow {
+  readonly key: string;
+  readonly label: string;
+  readonly revenueOre: number;
+  readonly profitOre: number;
+  readonly orders: number;
+}
+
+/** Order utan inköpspris: står utanför vinsten (berakningar.md avsnitt 5). */
+export interface UnpricedView {
+  readonly orders: number;
+  /** Nettointäkt för orderna utan pris. */
+  readonly revenueOre: number;
+  /** Andel av intäkten i bp. */
+  readonly shareBp: number;
+  /** Titlarna, störst intäkt först. */
+  readonly titles: string[];
+  /** Dit inköpspriset läggs in. */
+  readonly href: string;
+  /**
+   * Butikshyran på orderna (för en automat): dras från organisationens vinst som ej
+   * fördelad hyra, inte från automatens. 0 när den inte är aktuell.
+   */
+  readonly rentOre: number;
+}
+
 /** Rubrik och nyckeltal för listan. */
 export interface MachinesOverview {
   readonly rows: MachineListRow[];
+  /** Rader utanför automaterna; raderna + dessa = totals. */
+  readonly others: OtherRow[];
+  readonly unpriced: UnpricedView | null;
   readonly totals: {
     readonly revenueOre: number;
     readonly profitOre: number;
     readonly marginBp: number | null;
     readonly orders: number;
-    /** Intäkt per aktiv automat och dag, i öre. */
+    /** Intäkt per automatdag (dagar i butik med data), i öre. */
     readonly revenuePerMachineDayOre: number | null;
     readonly revenueChange: number | null;
     readonly profitChange: number | null;
@@ -113,6 +143,8 @@ export interface TitleShare {
 export interface HeatmapView {
   /** values[veckodag 0 = mån][kolumn] = antal köp. */
   readonly values: number[][];
+  /** Heltalsgränser för stegen (heatThresholds). */
+  readonly thresholds: number[];
   readonly rowLabels: string[];
   /** Klockslag "08", "09" … */
   readonly colLabels: string[];
@@ -188,4 +220,6 @@ export interface MachineEditable {
   readonly lastOrderDate: IsoDate | null;
   /** Senaste placeringens första dag (en flytt måste ligga efter den). */
   readonly lastPlacementFrom: IsoDate | null;
+  /** Första placeringens första dag (driftstarten får inte ligga efter den). */
+  readonly firstPlacementFrom: IsoDate | null;
 }

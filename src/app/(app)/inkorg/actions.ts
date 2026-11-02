@@ -3,17 +3,20 @@
 /**
  * Server actions för Inkorg (kundärenden). Ägare och admin skriver; rollen kontrolleras mot
  * databasen (requireContextRole) och allt skrivs som användaren med RLS (withUserDb).
- * Databasen kontrollerar dessutom att ordern hör till automaten, att den ansvariga är medlem
+ * Databasen kontrollerar dessutom att ordern hör till automaten, att den ansvariga är ägare/admin
  * och att en återbetalning inte ändras i en stängd månad (BL004).
  */
 
 import { revalidatePath } from "next/cache";
-import { and, asc, eq, gte, isNull, lte } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import { z } from "zod";
 
 import * as s from "@/db/schema";
 import { OPERATOR_ROLES, requireContextRole } from "@/server/data/core";
 import { withUserDb } from "@/server/session";
+
+import { ASSIGNEE_ROLES } from "./_lib/load";
 
 import {
   localToUtc,
@@ -48,18 +51,42 @@ export async function saveIncident(input: IncidentInput): Promise<SaveIncidentRe
   const orgId = ctx.organization.id;
   if (input.id && !uuid.safeParse(input.id).success)
     return { ok: false, errors: { form: "Okänt ärende." } };
-  const { machineIds, memberIds } = await withUserDb(async (tx) => {
+  const { machineIds, memberIds, orderAmountOre } = await withUserDb(async (tx) => {
     const m = await tx
       .select({ id: s.machines.id })
       .from(s.machines)
       .where(eq(s.machines.organizationId, orgId));
+    // Ansvarig: ägare eller admin (samma regel som i databasen). Nuvarande ansvarig får stå
+    // kvar även om hon bytt roll.
     const u = await tx
       .select({ id: s.memberships.userId })
       .from(s.memberships)
-      .where(eq(s.memberships.organizationId, orgId));
+      .where(
+        and(
+          eq(s.memberships.organizationId, orgId),
+          inArray(s.memberships.role, [...ASSIGNEE_ROLES]),
+        ),
+      );
+    const [prev] = input.id
+      ? await tx
+          .select({ assigneeId: s.incidents.assigneeId })
+          .from(s.incidents)
+          .where(and(eq(s.incidents.organizationId, orgId), eq(s.incidents.id, input.id)))
+      : [];
+    const [order] =
+      input.orderId && uuid.safeParse(input.orderId).success
+        ? await tx
+            .select({ amountOre: s.orders.amountOre })
+            .from(s.orders)
+            .where(and(eq(s.orders.organizationId, orgId), eq(s.orders.id, input.orderId)))
+        : [];
     return {
       machineIds: m.map((x) => x.id),
-      memberIds: u.map((x) => x.id).filter((x): x is string => !!x),
+      memberIds: [
+        ...u.map((x) => x.id).filter((x): x is string => !!x),
+        ...(prev?.assigneeId ? [prev.assigneeId] : []),
+      ],
+      orderAmountOre: order?.amountOre ?? null,
     };
   });
   const result = validateIncident(input, {
@@ -67,6 +94,7 @@ export async function saveIncident(input: IncidentInput): Promise<SaveIncidentRe
     now: new Date(ctx.now),
     machineIds,
     memberIds,
+    orderAmountOre,
   });
   if (!result.ok) return { ok: false, errors: result.errors };
   const v = result.values;
@@ -139,6 +167,9 @@ export async function findOrders(machineId: string, occurredAt: string): Promise
   if (!at) return [];
   const from = new Date(at.getTime() - 2 * 3_600_000);
   const to = new Date(at.getTime() + 2 * 3_600_000);
+  // En titel som slagits ihop med en annan visas som titeln den slogs ihop med (den som går
+  // att välja i formuläret); ordern kan fortfarande kopplas.
+  const canon = alias(s.titles, "canon");
   const rows = await withUserDb((tx) =>
     tx
       .select({
@@ -148,6 +179,8 @@ export async function findOrders(machineId: string, occurredAt: string): Promise
         amountOre: s.orders.amountOre,
         titleId: s.orders.titleId,
         titleName: s.titles.name,
+        mergedIntoId: s.titles.mergedIntoId,
+        canonName: canon.name,
       })
       .from(s.orders)
       .leftJoin(
@@ -157,23 +190,32 @@ export async function findOrders(machineId: string, occurredAt: string): Promise
           eq(s.titles.id, s.orders.titleId),
         ),
       )
+      .leftJoin(
+        canon,
+        and(eq(canon.organizationId, s.titles.organizationId), eq(canon.id, s.titles.mergedIntoId)),
+      )
       .where(
         and(
           eq(s.orders.organizationId, ctx.organization.id),
           eq(s.orders.machineId, machineId),
           gte(s.orders.orderedAt, from),
           lte(s.orders.orderedAt, to),
-          isNull(s.titles.mergedIntoId),
         ),
       )
       .orderBy(asc(s.orders.orderedAt))
-      .limit(50),
+      .limit(200),
   );
   return rows
-    .map((r) => ({ ...r, orderedAt: r.orderedAt.toISOString() }))
+    .map(({ mergedIntoId, canonName, ...r }) => ({
+      ...r,
+      titleId: mergedIntoId ?? r.titleId,
+      titleName: mergedIntoId ? (canonName ?? r.titleName) : r.titleName,
+      orderedAt: r.orderedAt.toISOString(),
+    }))
     .sort(
       (a, b) =>
         Math.abs(Date.parse(a.orderedAt) - at.getTime()) -
         Math.abs(Date.parse(b.orderedAt) - at.getTime()),
-    );
+    )
+    .slice(0, 50);
 }

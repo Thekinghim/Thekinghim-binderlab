@@ -69,16 +69,29 @@ export function CreateOrderDialog({
     const st = lines[it.titleId] ?? { qty: "", price: oreToField(it.unitCostOre) };
     const qty = st.qty.trim() === "" ? 0 : parseCount(st.qty);
     const price = parseKronor(st.price);
-    return { item: it, qty, price, st };
+    // Samma regler som servern: minst minsta order och hela boxar.
+    const qtyError =
+      qty === null
+        ? "Hela pack"
+        : qty > 0 && qty < it.minOrderQty
+          ? `Minst ${it.minOrderQty}`
+          : qty > 0 && qty % it.packSize !== 0
+            ? `Hela boxar (${it.packSize})`
+            : undefined;
+    return { item: it, qty, price, st, qtyError };
   });
   const chosen = parsed.filter((p) => p.qty !== null && p.qty > 0);
-  const invalid = parsed.some((p) => p.qty === null || p.price === null);
+  const invalid = parsed.some((p) => p.qtyError !== undefined || p.price === null);
   const totalOre = chosen.reduce((s, p) => s + (p.qty ?? 0) * (p.price ?? 0), 0);
   const totalPacks = chosen.reduce((s, p) => s + (p.qty ?? 0), 0);
 
   const submit = (status: "draft" | "ordered") => {
     if (!supplier) return setError("Välj en leverantör.");
-    if (invalid) return setError("Antal ska vara hela pack och pris i kronor, t.ex. 45,50.");
+    if (invalid) {
+      return setError(
+        "Rätta raderna: antal i hela boxar och minst minsta order, pris i kronor (t.ex. 45,50).",
+      );
+    }
     if (chosen.length === 0) return setError("Ange antal på minst en rad.");
     setError(null);
     start(async () => {
@@ -186,7 +199,7 @@ export function CreateOrderDialog({
                       inputMode="numeric"
                       value={p.st.qty}
                       placeholder="0"
-                      error={p.qty === null ? "Hela pack" : undefined}
+                      error={p.qtyError}
                       onChange={(e) =>
                         setLines((cur) => ({
                           ...cur,

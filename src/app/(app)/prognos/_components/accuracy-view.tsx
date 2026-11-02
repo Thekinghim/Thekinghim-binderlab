@@ -25,7 +25,7 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
       },
       {
         key: "actual",
-        header: "Utfall, pack",
+        header: "Utfall i testade serier, pack",
         numeric: true,
         sortValue: (r) => r.actualMilli,
         render: (r) => packsMilli(r.actualMilli),
@@ -113,11 +113,12 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
           columns={columns}
           rows={model.origins}
           rowKey={(r) => r.origin}
-          caption="Prognos mot utfall per testvecka, summan av alla titlar och automater"
+          caption="Prognos mot utfall per testvecka, summan av de testade titlarna och automaterna"
           defaultSort={{ key: "period", dir: "desc" }}
           dense
         />
-        <div className="flex justify-end">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <p className="max-w-[68ch] text-sm text-muted">{model.note}</p>
           <EvidenceButton evidence={model.evidence} title="Träffsäkerhet" text={model.text} />
         </div>
       </div>

@@ -57,9 +57,10 @@ export function ValuationView({ model }: { model: ValuationModel }) {
         key: "value",
         header: "Lagervärde",
         numeric: true,
-        sortValue: (r) => r.valueOre,
-        render: (r) => kr(r.valueOre),
-        csv: (r) => r.valueOre / 100,
+        sortValue: (r) => (r.unitCostOre === null ? -1 : r.valueOre),
+        // Utan inköpspris finns inget värde att visa (inte 0 kr).
+        render: (r) => (r.unitCostOre === null ? MISSING : kr(r.valueOre)),
+        csv: (r) => (r.unitCostOre === null ? null : r.valueOre / 100),
       },
       {
         key: "onOrder",
@@ -74,9 +75,14 @@ export function ValuationView({ model }: { model: ValuationModel }) {
         key: "capital",
         header: "Kapitalbindning",
         numeric: true,
-        sortValue: (r) => r.capitalTiedOre,
-        render: (r) => <span className="text-fg">{kr(r.capitalTiedOre)}</span>,
-        csv: (r) => r.capitalTiedOre / 100,
+        sortValue: (r) => (r.unitCostOre === null ? -1 : r.capitalTiedOre),
+        render: (r) =>
+          r.unitCostOre === null ? (
+            <span className="text-subtle">{MISSING}</span>
+          ) : (
+            <span className="text-fg">{kr(r.capitalTiedOre)}</span>
+          ),
+        csv: (r) => (r.unitCostOre === null ? null : r.capitalTiedOre / 100),
       },
       {
         key: "share",
@@ -123,7 +129,11 @@ export function ValuationView({ model }: { model: ValuationModel }) {
   return (
     <div className="flex flex-col gap-10">
       <KpiStrip
-        label="Lager och beställt i dag"
+        label={
+          model.incomplete
+            ? "Lager och beställt i dag · ofullständigt, titlar utan inköpspris saknas"
+            : "Lager och beställt i dag"
+        }
         items={[
           {
             id: "capital",

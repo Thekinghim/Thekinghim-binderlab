@@ -201,7 +201,11 @@ export function OrderBrowser(props: OrderBrowserProps) {
       : r?.machineId
         ? machineCode.get(r.machineId)
         : null;
-    const store = d ? (d.store?.name ?? null) : r?.storeId ? (storeName.get(r.storeId) ?? null) : null;
+    const store = d
+      ? (d.store?.name ?? null)
+      : r?.storeId
+        ? (storeName.get(r.storeId) ?? null)
+        : null;
     if (orderedAt) {
       modalDescription = `${formatAt(orderedAt, props.timeZone, now)}${
         machine ? ` i ${machine}${store ? `, ${store}` : ""}` : ""

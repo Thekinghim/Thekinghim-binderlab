@@ -30,7 +30,7 @@ export function InboxKpis({
           id: "refunded",
           label: `Återbetalt · ${formatInt(refundCount)} st`,
           value: refundedOre,
-          format: (v) => formatKronor(v / 100, { decimals: 0 }),
+          format: (v) => formatKronor(v / 100, { decimals: 2 }),
         },
       ]}
     />

@@ -163,6 +163,7 @@ export default async function PrognosPage({
         />
         <OrdersView
           model={m.orders}
+          suppliers={m.suppliers.suppliers}
           canEdit={m.canEdit}
           today={m.today}
           hasCentralWarehouse={m.hasCentralWarehouse}

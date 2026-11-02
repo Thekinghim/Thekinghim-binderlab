@@ -21,8 +21,11 @@ import {
   daysBetween,
   daysOfStockLeft,
   keyMetrics,
+  maxDate,
   minDate,
+  periodDays,
   profitability,
+  roundHalfUp,
   salesVelocity,
   stockoutDate,
   topContributor,
@@ -30,6 +33,7 @@ import {
   type IsoDate,
   type Period,
   type ProfitabilityInput,
+  type ProfitabilityResult,
   type ProfitabilityRow,
 } from "@/domain";
 import { parseIsoDate } from "@/components/shell/period-state";
@@ -44,6 +48,7 @@ import {
   weekdaysShort,
 } from "@/lib/format";
 import type {
+  DataScope,
   DomainInput,
   MachineRecord,
   MasterData,
@@ -59,10 +64,12 @@ import type {
   MachineListRow,
   MachinesOverview,
   MachineStatusView,
+  OtherRow,
   PlacementLine,
   StockLine,
   TitleShare,
   UnitEconomicsView,
+  UnpricedView,
 } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -110,8 +117,53 @@ export function sentence(text: string): string {
   return t === "" || /[.!?]$/.test(t) ? t : `${t}.`;
 }
 
-function daysText(days: number): string {
-  return days === 1 ? "en dag" : `${formatInt(days)}${NBSP}dagar`;
+// ---------------------------------------------------------------------------
+// Dagar med data
+// ---------------------------------------------------------------------------
+
+/**
+ * Dagarna med data i perioden: från första ordern (organisationens) och, om perioden
+ * slutar i dag och ingen order kommit i dag, bara t.o.m. i går (som Hem). null om inga
+ * dagar återstår. Rubriker, snitt per dag och dagsdiagrammet räknas på dessa dagar;
+ * beloppen gäller hela perioden (dagarna utanför har ingen försäljning).
+ */
+export function coverageOf(
+  period: Period,
+  dataStart: IsoDate | null,
+  today: IsoDate,
+  hasOrdersToday: boolean,
+): Period | null {
+  if (dataStart === null) return null;
+  const start = maxDate(period.start, dataStart);
+  let end = period.end;
+  if (end >= today && !hasOrdersToday) end = minDate(end, addDays(today, -1));
+  return start <= end ? { start, end } : null;
+}
+
+/** Den del av `range` som automaten var i drift (driftstart till sista dag), eller null. */
+export function machineSpan(
+  range: Period | null,
+  activeFrom: IsoDate | null,
+  activeTo: IsoDate | null,
+): Period | null {
+  if (range === null) return null;
+  const start = activeFrom !== null ? maxDate(range.start, activeFrom) : range.start;
+  const end = activeTo !== null ? minDate(range.end, activeTo) : range.end;
+  return start <= end ? { start, end } : null;
+}
+
+/** Hur länge, i rubriker: antal dagar och texten "på 20 dagar", "i dag", "i går", "den 31 okt.". */
+export interface Span {
+  readonly days: number;
+  readonly text: string;
+}
+
+export function spanOf(range: Period, today: IsoDate): Span {
+  const days = periodDays(range);
+  if (days > 1) return { days, text: `på ${formatInt(days)}${NBSP}dagar` };
+  if (range.start === today) return { days, text: "i dag" };
+  if (range.start === addDays(today, -1)) return { days, text: "i går" };
+  return { days, text: `den ${dayText(range.start, today)}` };
 }
 
 function plural(n: number, one: string, many: string): string {
@@ -297,11 +349,64 @@ export interface OverviewArgs {
   readonly signals: MachineSignals;
   readonly lastOrderAt: ReadonlyMap<string, string>;
   readonly today: IsoDate;
-  /** Periodens längd i dagar. */
-  readonly days: number;
+  /** Filtret i URL:en. Vid automatfilter är `input` hela organisationens (se loadOverview). */
+  readonly scope: DataScope;
+  /** Dagarna med data (coverageOf), eller null. */
+  readonly coverage: Period | null;
+  /** Perioden är bara i dag och dagens order har inte kommit än. */
+  readonly pendingToday: boolean;
   /** Query-strängen som följer med länkarna (period och filter). */
   readonly query: string;
 }
+
+/** Order utan inköpspris i en lönsamhet: antal, intäkt, andel och titlar, eller null. */
+export function unpricedOf(
+  result: ProfitabilityResult,
+  master: MasterData,
+  rentOre = 0,
+): UnpricedView | null {
+  const u = result.unpriced;
+  if (u.orders === 0) return null;
+  const name = new Map(master.titles.map((t) => [t.id, t.name]));
+  const only = u.titleIds.length === 1 ? u.titleIds[0] : undefined;
+  return {
+    orders: u.orders,
+    revenueOre: u.revenueOre,
+    shareBp: u.shareBp,
+    titles: u.byTitle.map((t) => name.get(t.titleId) ?? "Okänd titel"),
+    href: only ? `/inkopspriser?titel=${encodeURIComponent(only)}` : "/inkopspriser?saknar=pris",
+    rentOre,
+  };
+}
+
+/**
+ * Automatdagar i `range`: dagar då automaterna stod i en butik (unitEconomics.activeDays;
+ * en automat utan placeringar räknas alla dagar den var i drift).
+ */
+export function machineDaysIn(
+  input: ProfitabilityInput,
+  range: Period,
+  machines: readonly Pick<MachineRecord, "id" | "activeFrom" | "activeTo">[],
+): number {
+  const ids = machines
+    .filter((m) => machineSpan(range, m.activeFrom, m.activeTo) !== null)
+    .map((m) => m.id);
+  if (ids.length === 0) return 0;
+  const wanted = new Set(ids);
+  const result = unitEconomics({
+    ...input,
+    period: range,
+    orders: input.orders.filter((o) => o.businessDate >= range.start && o.businessDate <= range.end),
+    investments: [],
+    machineIds: ids,
+  });
+  return result.filter((u) => wanted.has(u.machineId)).reduce((n, u) => n + u.activeDays, 0);
+}
+
+const OTHER_LABEL: Partial<Record<ProfitabilityRow["kind"], string>> = {
+  unallocated: "Ej fördelad hyra",
+  "no-machine": "Order utan automat",
+};
 
 function currentPlacementSince(master: MasterData, machineId: string, today: IsoDate) {
   const p = master.placements.find(
@@ -312,7 +417,7 @@ function currentPlacementSince(master: MasterData, machineId: string, today: Iso
 
 /** Listan över automater med nyckeltal och rubrik för perioden. */
 export function buildOverview(args: OverviewArgs): MachinesOverview {
-  const { input, master, stock, signals, lastOrderAt, today, days, query } = args;
+  const { input, master, stock, signals, lastOrderAt, today, scope, coverage, query } = args;
   const current = profitability(input.current, "machine");
   const previous = input.previous ? profitability(input.previous, "machine") : null;
   const cur = byKey(current.rows);
@@ -334,7 +439,6 @@ export function buildOverview(args: OverviewArgs): MachinesOverview {
   }
 
   // Filter: vid butik- eller automatfilter visas bara de automater som ingår.
-  const scope = input.scope;
   const inScope = (m: MachineRecord) => {
     if (scope.machineId) return m.id === scope.machineId;
     if (scope.storeId) {
@@ -349,8 +453,15 @@ export function buildOverview(args: OverviewArgs): MachinesOverview {
     return true;
   };
 
-  const totalRevenue = rowRevenue(current.totals);
-  const rows: MachineListRow[] = master.machines.filter(inScope).map((m) => {
+  // Vid automatfilter är indata hela organisationens (butikens hyra delas mellan dess
+  // automater, som på automatens sida); summan är då automatens rad.
+  const focus = scope.machineId ? cur.get(scope.machineId) : undefined;
+  const focusPrev = scope.machineId ? prev?.get(scope.machineId) : undefined;
+  const t = scope.machineId ? (focus ?? null) : current.totals;
+  const pt = previous ? (scope.machineId ? (focusPrev ?? null) : previous.totals) : null;
+  const totalRevenue = rowRevenue(t ?? undefined);
+  const scoped = master.machines.filter(inScope);
+  const rows: MachineListRow[] = scoped.map((m) => {
     const lifecycle = lifecycleOf(m, today);
     const row = cur.get(m.id);
     const revenueOre = rowRevenue(row);
@@ -414,33 +525,58 @@ export function buildOverview(args: OverviewArgs): MachinesOverview {
   }
 
   const activeMachines = rows.filter((r) => r.lifecycle === "active").length;
-  const t = current.totals;
-  const pt = previous?.totals ?? null;
-  const machineDays = activeMachines * days;
+  const machineDays = coverage ? machineDaysIn(input.current, coverage, scoped) : 0;
   const totals = {
     revenueOre: totalRevenue,
-    profitOre: t.profitOre,
-    marginBp: t.marginBp,
-    orders: t.orders,
-    revenuePerMachineDayOre: machineDays > 0 ? Math.round(totalRevenue / machineDays) : null,
+    profitOre: t?.profitOre ?? 0,
+    marginBp: t?.marginBp ?? null,
+    orders: t?.orders ?? 0,
+    revenuePerMachineDayOre:
+      machineDays > 0 && totalRevenue > 0 ? roundHalfUp(totalRevenue, machineDays) : null,
     revenueChange: pt ? changeShare(totalRevenue, rowRevenue(pt)) : null,
-    profitChange: pt ? changeShare(t.profitOre, pt.profitOre) : null,
-    ordersChange: pt ? changeShare(t.orders, pt.orders) : null,
+    profitChange: pt && t ? changeShare(t.profitOre, pt.profitOre) : null,
+    ordersChange: pt && t ? changeShare(t.orders, pt.orders) : null,
     previousMarginBp: pt?.marginBp ?? null,
     activeMachines,
   };
 
+  // Rader utanför automaterna (ej fördelad hyra, order utan automat), så att raderna
+  // summerar till totalen. Vid automatfilter är summan automatens egen rad.
+  const others: OtherRow[] = scope.machineId
+    ? []
+    : current.rows
+        .filter((r) => r.kind !== "item" && r.kind !== "total")
+        .map((r) => ({
+          key: r.key,
+          label: OTHER_LABEL[r.kind] ?? "Övrigt",
+          revenueOre: rowRevenue(r),
+          profitOre: r.profitOre,
+          orders: r.orders,
+        }))
+        .filter((r) => r.revenueOre !== 0 || r.profitOre !== 0 || r.orders !== 0);
+
+  const unpriced = scope.machineId
+    ? unpricedOf(
+        profitability(machineInput(input.current, scope.machineId), "title"),
+        master,
+        focus?.unpricedRentOre ?? 0,
+      )
+    : unpricedOf(current, master);
+
   const flagged = rows.filter((r) => r.status.flagged).length;
-  const top = topContributor(current);
+  const top = scope.machineId ? null : topContributor(current);
   const topRow = top ? rows.find((r) => r.id === top.key) : undefined;
   return {
     rows,
+    others,
     totals,
+    unpriced,
     flagged,
     headline: overviewHeadline({
       rows,
       totals,
-      days,
+      span: coverage ? spanOf(coverage, today) : spanOf(input.period, today),
+      pendingToday: args.pendingToday,
       flagged,
       top: topRow && top ? { code: topRow.code, shareBp: top.shareOfProfitBp } : null,
     }),
@@ -451,11 +587,14 @@ export function buildOverview(args: OverviewArgs): MachinesOverview {
 export function overviewHeadline(args: {
   rows: readonly MachineListRow[];
   totals: MachinesOverview["totals"];
-  days: number;
+  /** Dagarna med data (eller perioden, om ingen order finns). */
+  span: Span;
+  /** Perioden är bara i dag och dagens order har inte kommit än. */
+  pendingToday?: boolean;
   flagged: number;
   top: { code: string; shareBp: number | null } | null;
 }): { title: string; aside: string } {
-  const { rows, totals, days, flagged, top } = args;
+  const { rows, totals, span, flagged, top } = args;
   if (rows.length === 0) {
     return {
       title: "Inga automater ännu.",
@@ -465,12 +604,13 @@ export function overviewHeadline(args: {
   const n = totals.activeMachines;
   const machinesText = plural(n, "automat", "automater");
   if (totals.orders === 0) {
+    const need = flagged > 0 ? ` ${plural(flagged, "automat", "automater")} kräver åtgärd.` : "";
     return {
-      title: `Ingen försäljning på ${daysText(days)}.`,
-      aside: `${machinesText} i drift.`,
+      title: args.pendingToday ? "Inga order i dag ännu." : `Ingen försäljning ${span.text}.`,
+      aside: `${machinesText} i drift.${need}`,
     };
   }
-  const title = `${kr(totals.revenueOre)} på ${daysText(days)} från ${machinesText}.`;
+  const title = `${kr(totals.revenueOre)} ${span.text} från ${machinesText}.`;
   const parts: string[] = [];
   if (totals.revenueChange !== null) {
     const c = totals.revenueChange;
@@ -641,8 +781,10 @@ export function salesHeatmap(orders: readonly AnalyticsOrder[], timeZone: string
       }
     }),
   );
+  const top = Math.max(0, ...values.flat());
   return {
     values,
+    thresholds: heatThresholds(top),
     rowLabels: [...weekdaysShort],
     colLabels: Array.from({ length: last - first + 1 }, (_, i) =>
       String(first + i).padStart(2, "0"),
@@ -651,6 +793,22 @@ export function salesHeatmap(orders: readonly AnalyticsOrder[], timeZone: string
     total,
     peak,
   };
+}
+
+/**
+ * Heltalsgränser för värmekartans steg (antal köp): högst fem fyllda steg, lika breda,
+ * t.ex. topp 6 → [3, 5] (1–2, 3–4, 5+), topp 4 → [2, 3, 4] (1, 2, 3, 4+).
+ */
+export function heatThresholds(top: number): number[] {
+  const max = Math.max(1, Math.floor(top));
+  const step = Math.ceil(max / 5);
+  const out: number[] = [];
+  for (let i = 1; i <= 4; i++) {
+    const t = 1 + i * step;
+    if (t > max) break;
+    out.push(t);
+  }
+  return out.length > 0 ? out : [2];
 }
 
 /** "13–14" för timmen 13. */
@@ -769,11 +927,14 @@ export function machineHeadline(args: {
   activeTo: IsoDate | null;
   figures: MachineFigures;
   previous: MachineFigures | null;
-  days: number;
+  /** Automatens dagar med data i perioden (eller perioden, om ingen order finns). */
+  span: Span;
+  /** Perioden är bara i dag och dagens order har inte kommit än. */
+  pendingToday?: boolean;
   store: { name: string; since: IsoDate } | null;
   today: IsoDate;
 }): { title: string; aside: string } {
-  const { code, lifecycle, figures, previous, days, store, today } = args;
+  const { code, lifecycle, figures, previous, span, store, today } = args;
   const storeText = store
     ? sentence(`Står i ${store.name} sedan ${dayText(store.since, today)}`)
     : lifecycle === "active"
@@ -784,7 +945,7 @@ export function machineHeadline(args: {
       title: sentence(`${code} avvecklades ${dayText(args.activeTo, today)}`),
       aside:
         figures.orders > 0
-          ? `${kr(figures.revenueOre)} i intäkt på ${daysText(days)}. Historiken finns kvar.`
+          ? `${kr(figures.revenueOre)} i intäkt ${span.text}. Historiken finns kvar.`
           : "Historiken finns kvar.",
     };
   }
@@ -795,7 +956,12 @@ export function machineHeadline(args: {
     };
   }
   if (figures.orders === 0) {
-    return { title: `${code} har inte sålt något på ${daysText(days)}.`, aside: storeText };
+    return {
+      title: args.pendingToday
+        ? `${code} har inga order i dag ännu.`
+        : `${code} har inte sålt något ${span.text}.`,
+      aside: storeText,
+    };
   }
   const parts: string[] = [];
   const c = previous ? changeShare(figures.revenueOre, previous.revenueOre) : null;
@@ -812,7 +978,7 @@ export function machineHeadline(args: {
   }
   if (storeText) parts.push(storeText);
   return {
-    title: `${code}: ${kr(figures.revenueOre)} på ${daysText(days)}.`,
+    title: `${code}: ${kr(figures.revenueOre)} ${span.text}.`,
     aside: parts.join(" "),
   };
 }
@@ -933,7 +1099,7 @@ export function unitEconomicsKpis(u: UnitEconomicsView): KpiView[] {
     { id: "book", label: "Bokfört värde", value: u.bookValueOre, kind: "sek", delta: null },
     {
       id: "monthly",
-      label: "Vinst per månad efter avskrivning",
+      label: "Efter avskrivning",
       value: u.profitPerMonthAfterDepreciationOre ?? Number.NaN,
       kind: "sek",
       delta: null,

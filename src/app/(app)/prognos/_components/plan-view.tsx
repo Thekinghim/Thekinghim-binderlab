@@ -19,12 +19,42 @@ function coverText(days: number | null): string {
   return `${formatInt(days)} ${days === 1 ? "dag" : "dagar"}`;
 }
 
+/** Under titeln: lite data och utkast som inte räknas som beställt. */
+function LineNotes({ r }: { r: PlanLineView }) {
+  const notes: string[] = [];
+  if (r.lowData) {
+    notes.push(
+      `Lite data i ${formatInt(r.lowData.lowDataSeries)} av ${formatInt(r.lowData.series)} automater`,
+    );
+  }
+  if (r.drafts.length > 0) {
+    notes.push(
+      `I utkast ${r.drafts.map((d) => `${d.number} (${formatInt(d.quantity)})`).join(", ")}`,
+    );
+  }
+  if (notes.length === 0) return null;
+  return <span className="text-xs text-subtle">{notes.join(" · ")}</span>;
+}
+
+function notesCsv(r: PlanLineView): string {
+  const parts: string[] = [r.title];
+  if (r.lowData) parts.push(`lite data ${r.lowData.lowDataSeries}/${r.lowData.series}`);
+  if (r.drafts.length > 0) parts.push(`utkast ${r.drafts.map((d) => d.number).join(" ")}`);
+  return parts.join(" · ");
+}
+
 const proposalColumns: Column<PlanLineView>[] = [
   {
     key: "title",
     header: "Titel",
     sortValue: (r) => r.title,
-    render: (r) => <span className="text-fg">{r.title}</span>,
+    render: (r) => (
+      <span className="flex min-w-0 flex-col">
+        <span className="text-fg">{r.title}</span>
+        <LineNotes r={r} />
+      </span>
+    ),
+    csv: notesCsv,
   },
   {
     key: "status",
@@ -110,9 +140,10 @@ const allColumns: Column<PlanLineView>[] = [
       <span className="flex min-w-0 flex-col">
         <span className="text-fg">{r.title}</span>
         <span className="text-xs text-subtle">{r.supplierName ?? "Ingen leverantör"}</span>
+        <LineNotes r={r} />
       </span>
     ),
-    csv: (r) => r.title,
+    csv: notesCsv,
   },
   {
     key: "status",
@@ -211,9 +242,7 @@ export function PlanView({
           action={
             model.counts["no-supplier"] > 0 && canEdit
               ? { label: "Lägg till leverantör", href: "#leverantorer" }
-              : canEdit && hasSupplier
-                ? { label: "Ny inköpsorder", onClick: () => openDraft(null) }
-                : undefined
+              : undefined
           }
         />
       ) : (
@@ -230,12 +259,23 @@ export function PlanView({
                   {formatInt(p.totalPacks)} pack för {kr(p.totalOre)}, leverans{" "}
                   {dateText(p.expectedArrival)} om beställt i dag.
                 </p>
+                {p.drafts.length > 0 ? (
+                  <p className="text-sm text-muted">
+                    Utkast till {p.supplierName} finns redan:{" "}
+                    {p.drafts.map((d) => `${d.number} (${formatInt(d.packs)} pack)`).join(", ")}.
+                    Utkast räknas inte som beställt.{" "}
+                    <a href="#inkopsorder" className="text-fg underline underline-offset-2">
+                      Beställ eller avbryt utkastet
+                    </a>{" "}
+                    i stället för att skapa en ny order.
+                  </p>
+                ) : null}
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <EvidenceButton evidence={p.evidence} title={p.supplierName} text={p.text} />
                 {canEdit ? (
                   <Button
-                    variant="primary"
+                    variant={p.drafts.length > 0 ? "secondary" : "primary"}
                     size="sm"
                     onClick={() =>
                       openDraft({
@@ -278,7 +318,7 @@ export function PlanView({
                 .
               </p>
             </div>
-            {canEdit && hasSupplier && model.proposals.length > 0 ? (
+            {canEdit && hasSupplier ? (
               <Button variant="secondary" size="sm" iconLeft="plus" onClick={() => openDraft(null)}>
                 Ny inköpsorder
               </Button>

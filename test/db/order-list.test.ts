@@ -4,7 +4,7 @@
  * order, varken via laddarna (rollkontroll) eller via frågorna (RLS).
  */
 
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import * as s from "@/db/schema";
@@ -20,8 +20,10 @@ import {
   loadOrderExportFor,
   loadOrderListFor,
   loadOrderPageFor,
+  streamOrderExportFor,
   type OrderListArgs,
 } from "@/app/(app)/order/_lib/service";
+import type { OrderRow } from "@/app/(app)/order/_lib/types";
 import {
   AuthorizationError,
   listOrganizationsFor,
@@ -283,10 +285,70 @@ describe("loadOrderListFor", () => {
     expect(list.totals.amountOre).toBe(7900 + 8900 + 100 + extraSum);
     expect(list.compareTotals).toEqual({ count: 1, amountOre: 7000 });
     expect(list.latestOrderAt).toBe("2025-03-30T11:00:00.000Z");
+    expect(list.firstOrderDate).toBe("2025-02-10");
+    expect(list.hasOrders).toBe(true);
     expect(list.nextOffset).toBeNull();
     // Nyaste först.
     expect(list.rows[0]?.externalId).toBe("43029");
     expect(list.refs.machines.map((m) => m.code)).toEqual(["BL-001", "BL-002"]);
+  });
+
+  it("ger första och senaste order för urvalet, inte för hela organisationen", async () => {
+    // BL-002 i Åhléns: i = 1, 3, …, 13, alltså 2–14 mars.
+    const inAhlens = await loadOrderListFor(
+      owner,
+      args({ scope: { storeId: store2, machineId: null } }),
+      NOW,
+    );
+    expect(inAhlens.latestOrderAt).toBe("2025-03-14T11:00:00.000Z");
+    expect(inAhlens.firstOrderDate).toBe("2025-03-02");
+    // Gäller även utanför perioden: februari har inga träffar, men urvalets senaste finns.
+    const feb = await loadOrderListFor(
+      owner,
+      args({ period: FEBRUARY, compare: null, params: { q: "surging" } }),
+      NOW,
+    );
+    expect(feb.totals.count).toBe(0);
+    expect(feb.latestOrderAt).toBe("2025-03-30T11:00:00.000Z");
+    const none = await loadOrderListFor(owner, args({ params: { q: "finnsinte" } }), NOW);
+    expect(none.latestOrderAt).toBeNull();
+    expect(none.firstOrderDate).toBeNull();
+    expect(none.hasOrders).toBe(true);
+  });
+
+  it("räknar snittordern netto i beräkningslagret, med organisationens moms", async () => {
+    const before = await loadOrderListFor(owner, args(), NOW);
+    const { count, amountOre } = before.totals;
+    expect(before.averageOrderValueOre).toBe(Math.round(amountOre / count));
+
+    const setVat = (vatRateBp: number) =>
+      asUser(fx.owner, async (tx) => {
+        const existing = await tx
+          .select({ id: s.organizationSettings.id })
+          .from(s.organizationSettings)
+          .where(eq(s.organizationSettings.organizationId, fx.orgId));
+        if (existing.length > 0) {
+          await tx
+            .update(s.organizationSettings)
+            .set({ vatRateBp })
+            .where(eq(s.organizationSettings.organizationId, fx.orgId));
+        } else {
+          await tx.insert(s.organizationSettings).values({ organizationId: fx.orgId, vatRateBp });
+        }
+      });
+    await setVat(2500);
+    try {
+      const after = await loadOrderListFor(owner, args(), NOW);
+      // Netto per order: Σ (belopp − round(belopp × 2500 / 12500)) / antal.
+      const rows = (await loadOrderExportFor(owner, args(), NOW)).rows;
+      const net = rows.reduce((sum, r) => sum + r.amountOre - Math.round(r.amountOre / 5), 0);
+      expect(after.averageOrderValueOre).toBe(Math.round(net / count));
+      expect(after.totals).toEqual(before.totals); // betalt belopp ändras inte
+    } finally {
+      await setVat(0);
+    }
+    const empty = await loadOrderListFor(owner, args({ params: { q: "finnsinte" } }), NOW);
+    expect(empty.averageOrderValueOre).toBeNull();
   });
 
   it("sätter butiken efter placeringen orderns dag", async () => {
@@ -350,16 +412,47 @@ describe("sortering och sidor", () => {
     const ids = first.rows.map((r) => r.id);
     let next = first.nextOffset;
     while (next !== null) {
-      const page = await loadOrderPageFor(owner, args({ params: { sort } }), next, NOW, pageSize);
+      const page = await loadOrderPageFor(
+        owner,
+        args({ params: { sort } }),
+        { offset: next, afterId: ids.at(-1) ?? null },
+        NOW,
+        pageSize,
+      );
       ids.push(...page.rows.map((r) => r.id));
       next = page.nextOffset;
     }
     return ids;
   }
 
+  it("börjar nästa sida efter markören i tidsordning, oavsett offset", async () => {
+    const first = await loadOrderListFor(owner, args(), NOW, 5);
+    const whole = (await loadOrderListFor(owner, args(), NOW, 1000)).rows.map((r) => r.id);
+    // Offset 0 men markör efter femte raden: sidan börjar på sjätte (som om nya order
+    // hade kommit in överst under tiden och förskjutit offset).
+    const page = await loadOrderPageFor(
+      owner,
+      args(),
+      { offset: 0, afterId: first.rows[4]!.id },
+      NOW,
+      5,
+    );
+    expect(page.rows.map((r) => r.id)).toEqual(whole.slice(5, 10));
+    // Utan markör (eller med en okänd) används offset.
+    const byOffset = await loadOrderPageFor(
+      owner,
+      args(),
+      { offset: 5, afterId: "00000000-0000-4000-8000-000000000000" },
+      NOW,
+      5,
+    );
+    expect(byOffset.rows.map((r) => r.id)).toEqual(whole.slice(5, 10));
+  });
+
   it("ger samma ordning sida för sida som i en enda hämtning, utan dubbletter", async () => {
     for (const sort of [
       DEFAULT_SORT,
+      { key: "tid", dir: "asc" },
       { key: "belopp", dir: "desc" },
       { key: "belopp", dir: "asc" },
       { key: "titel", dir: "asc" },
@@ -437,14 +530,63 @@ describe("loadOrderExportFor", () => {
   });
 });
 
+describe("streamOrderExportFor", () => {
+  it("strömmar samma rader i satser som exporten i ett stycke, och avbryter vid för många", async () => {
+    const a = args({ params: { sort: { key: "butik", dir: "asc" } } });
+    const whole = await loadOrderExportFor(owner, a, NOW);
+    const batches: OrderRow[][] = [];
+    let counted = -1;
+    await streamOrderExportFor(
+      owner,
+      a,
+      {
+        begin: ({ count }) => {
+          counted = count;
+          return true;
+        },
+        batch: async (rows) => {
+          batches.push(rows);
+        },
+      },
+      NOW,
+      7,
+    );
+    expect(counted).toBe(EXTRA + 3);
+    expect(batches.every((b) => b.length <= 7)).toBe(true);
+    expect(batches.flat()).toEqual(whole.rows);
+
+    let called = false;
+    await streamOrderExportFor(
+      owner,
+      a,
+      {
+        begin: () => false,
+        batch: async () => {
+          called = true;
+        },
+      },
+      NOW,
+    );
+    expect(called).toBe(false);
+  });
+});
+
 describe("behörighet", () => {
   it("nekar påfyllaren i varje laddare", async () => {
     await expect(loadOrderListFor(refiller, args(), NOW)).rejects.toBeInstanceOf(
       AuthorizationError,
     );
-    await expect(loadOrderPageFor(refiller, args(), 0, NOW)).rejects.toBeInstanceOf(
-      AuthorizationError,
-    );
+    await expect(
+      loadOrderPageFor(refiller, args(), { offset: 0, afterId: null }, NOW),
+    ).rejects.toBeInstanceOf(AuthorizationError);
+    await expect(
+      streamOrderExportFor(
+        refiller,
+        args(),
+        { begin: () => true, batch: async () => undefined },
+        NOW,
+      ),
+    ).rejects.toBeInstanceOf(AuthorizationError);
     await expect(loadOrderExportFor(refiller, args(), NOW)).rejects.toBeInstanceOf(
       AuthorizationError,
     );

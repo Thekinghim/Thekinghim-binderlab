@@ -66,9 +66,11 @@ export function capitalize(text: string): string {
 }
 
 /** Lägg till punkt om meningen saknar avslutning. */
+/** En mening: stor bokstav först och punkt sist (om den saknas). */
 export function sentence(text: string): string {
   const t = text.trim();
-  return /[.!?]$/.test(t) ? t : `${t}.`;
+  const capitalized = t.charAt(0).toLocaleUpperCase("sv-SE") + t.slice(1);
+  return /[.!?]$/.test(capitalized) ? capitalized : `${capitalized}.`;
 }
 
 export const FIXED_COST_CATEGORY_LABEL = {

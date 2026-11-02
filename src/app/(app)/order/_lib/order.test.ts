@@ -133,10 +133,10 @@ describe("listSignature", () => {
 
 describe("lockedListQuery", () => {
   it("låser en relativ period till datum och tar bort detaljvyn", () => {
-    const q = lockedListQuery(
-      `period=30d&butik=${S1}&q=mystery&order=${T1}`,
-      { start: "2026-10-03", end: "2026-11-01" },
-    );
+    const q = lockedListQuery(new URLSearchParams(`period=30d&butik=${S1}&q=mystery&order=${T1}`), {
+      start: "2026-10-03",
+      end: "2026-11-01",
+    });
     const sp = new URLSearchParams(q);
     expect(sp.get("period")).toBeNull();
     expect(sp.get("from")).toBe("2026-10-03");
@@ -244,8 +244,12 @@ describe("orderHeadline", () => {
   });
 
   it("nämner första ordern när jämförelseperioden ligger före den", () => {
+    // 30 dagar (3 okt.–1 nov.), första ordern 13 okt.: jämförelseperioden saknar data.
     const h = orderHeadline({
       ...base,
+      period: { start: "2026-10-03", end: "2026-11-01" },
+      compare: { start: "2026-09-03", end: "2026-10-02" },
+      days: 30,
       dataStart: "2026-10-13",
       compareTotals: { count: 0, amountOre: 0 },
     });

@@ -109,7 +109,10 @@ function fixture() {
   return { orders, events };
 }
 
-function data(purchaseOrders: PurchaseOrderRecord[] = []): PrognosData {
+function data(
+  purchaseOrders: PurchaseOrderRecord[] = [],
+  opts: { noItems?: boolean; t2Stock?: number } = {},
+): PrognosData {
   const { orders, events } = fixture();
   const range = { start: addDays(AS_OF, -97), end: AS_OF };
   const lostAll = lostSales({
@@ -141,28 +144,31 @@ function data(purchaseOrders: PurchaseOrderRecord[] = []): PrognosData {
     titles,
     machines,
   });
-  const supplierItems = [
-    {
-      id: "i1",
-      supplierId: SUP,
-      titleId: T1,
-      packSize: 12,
-      minOrderQty: 24,
-      leadTimeDays: 7,
-      unitCostOre: 4_500,
-    },
-  ];
+  const supplierItems = (opts.noItems ? [] : [0]).map(() => ({
+    id: "i1",
+    supplierId: SUP,
+    titleId: T1,
+    packSize: 12,
+    minOrderQty: 24,
+    leadTimeDays: 7,
+    unitCostOre: 4_500,
+  }));
   const input: PurchasingInput = {
     today: TODAY,
     titles,
     suppliers: [{ id: SUP, name: "Grossisten", defaultLeadTimeDays: 5 }],
     supplierItems,
     warehouseStock: [{ titleId: T1, onHand: 10 }],
-    machineStock: [{ machineId: M1, titleId: T1, onHand: 5 }],
-    openPurchaseOrders: [],
+    machineStock: [
+      { machineId: M1, titleId: T1, onHand: 5 },
+      ...(opts.t2Stock ? [{ machineId: M1, titleId: T2, onHand: opts.t2Stock }] : []),
+    ],
+    openPurchaseOrders: purchaseOrders
+      .filter((po) => po.status === "ordered" || po.status === "partially_received")
+      .map((po) => ({ ...po, lines: po.lines.map((l) => ({ ...l })) })),
     prices: [{ titleId: T1, unitCostOre: 4_500, validFrom: "2026-01-01" }],
     demand: demandFromForecast(forecast, TODAY),
-    options: { includeDraftOrders: true },
+    options: { includeDraftOrders: false },
   };
   const history = Array.from({ length: 8 }, (_, k) => {
     const j = 7 - k;
@@ -175,6 +181,18 @@ function data(purchaseOrders: PurchaseOrderRecord[] = []): PrognosData {
   return {
     today: TODAY,
     asOf: AS_OF,
+    forecastHistory: { start: addDays(AS_OF, -55), end: AS_OF },
+    demandBasis: [...new Set(forecast.series.map((x) => x.titleId))].map((titleId) => {
+      const list = forecast.series.filter((x) => x.titleId === titleId);
+      const low = list.filter((x) => x.status === "low-data");
+      return {
+        titleId,
+        series: list.length,
+        lowDataSeries: low.length,
+        lowDataUnitsMilli: low.reduce((sum, x) => sum + x.total.unitsMilli, 0),
+        unitsMilli: list.reduce((sum, x) => sum + x.total.unitsMilli, 0),
+      };
+    }),
     lostPeriod: lost.period,
     scope: { storeId: null, machineId: null },
     canEdit: true,
@@ -397,5 +415,112 @@ describe("buildPageModel", () => {
     expect(t1.onHand).toBe(15);
     expect(t1.valueOre).toBe(15 * 4_500);
     expect(m.valuation.heading.title).toMatch(/^Kapitalbindning/);
+  });
+
+  it("visar utkast på förslagets rader utan att räkna dem som beställda", () => {
+    const draft: PurchaseOrderRecord = {
+      id: "dddddd00-0000",
+      supplierId: SUP,
+      status: "draft",
+      orderedOn: null,
+      expectedOn: null,
+      receivedOn: null,
+      note: null,
+      createdAt: "2026-10-20T10:00:00.000Z",
+      lines: [{ id: "dl", titleId: T1, quantity: 24, unitCostOre: 4_500, receivedQuantity: 0 }],
+    };
+    const m = buildPageModel(data([draft]), now);
+    // Förslaget finns kvar (utkastet räknas inte), med utkastet utpekat.
+    expect(m.plan.counts.order).toBe(1);
+    const p = m.plan.proposals[0]!;
+    expect(p.drafts).toEqual([{ id: draft.id, number: "IO‑DDDDDD", packs: 24 }]);
+    expect(p.lines[0]!.drafts).toEqual([{ number: "IO‑DDDDDD", quantity: 24 }]);
+    expect(p.lines[0]!.evidence.figures.some((f) => f.key === "draftPacks")).toBe(true);
+    expect(m.plan.heading.aside).toMatch(/redan i ett utkast/);
+    // Utkastet är äldre än 7 dagar.
+    const o = m.orders.open.find((x) => x.id === draft.id)!;
+    expect(o.staleDraft).toBe(true);
+    expect(o.statusLabel).toBe("Gammalt utkast");
+  });
+
+  it("länkar planens underlag till centrallagret, historiken och inköpsordern", () => {
+    const po: PurchaseOrderRecord = {
+      id: "eeeeee00-0000",
+      supplierId: SUP,
+      status: "ordered",
+      orderedOn: "2026-11-01",
+      expectedOn: "2026-11-20",
+      receivedOn: null,
+      note: null,
+      createdAt: "2026-11-01T10:00:00.000Z",
+      lines: [{ id: "el", titleId: T1, quantity: 12, unitCostOre: 4_500, receivedQuantity: 0 }],
+    };
+    const m = buildPageModel(data([po]), now);
+    const line = m.plan.lines.find((l) => l.titleId === T1)!;
+    const hrefs = line.evidence.links.map((l) => l.href);
+    expect(hrefs).toContain("/lager#centrallager");
+    expect(hrefs).toContain("#inkopsorder");
+    expect(hrefs).toContain(`/order?from=2026-09-07&to=2026-11-01&titel=${T1}`);
+    // Prognos per titel och per automat länkar till historiken de bygger på.
+    const byTitle = m.forecast.byTitle.find((r) => r.key === T1)!;
+    expect(byTitle.evidence.links[0]).toEqual({
+      label: "Visa orderna som prognosen bygger på",
+      href: `/order?from=2026-09-07&to=2026-11-01&automat=${M1}&titel=${T1}`,
+    });
+    const byMachine = m.forecast.byMachine[0]!;
+    expect(byMachine.evidence.links[0]?.href).toBe(
+      `/order?from=2026-09-07&to=2026-11-01&automat=${M1}`,
+    );
+  });
+
+  it("säger hur många titlar som saknar leverantör i stället för 'Inget'", () => {
+    const m = buildPageModel(data([], { noItems: true }), now);
+    expect(m.plan.counts.order).toBe(0);
+    expect(m.plan.counts["no-supplier"]).toBe(2);
+    const meta = m.meta.find((x) => x.label === "Att beställa")!;
+    expect(meta.value).toBe("2 titlar utan leverantör");
+  });
+
+  it("märker lagervärdet som ofullständigt när inköpspris saknas", () => {
+    const m = buildPageModel(data([], { t2Stock: 7 }), now);
+    const t2 = m.valuation.rows.find((r) => r.titleId === T2)!;
+    expect(t2.unitCostOre).toBeNull();
+    expect(m.valuation.incomplete).toBe(true);
+    expect(m.valuation.heading.title).toMatch(/^Kapitalbindning minst/);
+    expect(m.meta.find((x) => x.label === "Kapitalbindning")?.value).toMatch(/^minst /);
+  });
+
+  it("visar en order som avslutats med restorder", () => {
+    const po: PurchaseOrderRecord = {
+      id: "ffffff00-0000",
+      supplierId: SUP,
+      status: "received",
+      orderedOn: "2026-10-20",
+      expectedOn: "2026-10-27",
+      receivedOn: "2026-11-01",
+      note: "Avslutad 2026-11-01 med restorder: 6 pack kom aldrig.",
+      createdAt: "2026-10-20T10:00:00.000Z",
+      lines: [{ id: "fl", titleId: T1, quantity: 24, unitCostOre: 4_500, receivedQuantity: 18 }],
+    };
+    const m = buildPageModel(data([po]), now);
+    const o = m.orders.closed.find((x) => x.id === po.id)!;
+    expect(o.closedShort).toBe(true);
+    expect(o.statusLabel).toBe("Avslutad med restorder");
+  });
+
+  it("flaggar förslag som bygger på automater med lite data", () => {
+    const d = data();
+    const withLow: PrognosData = {
+      ...d,
+      demandBasis: d.demandBasis.map((b) =>
+        b.titleId === T1
+          ? { ...b, series: 2, lowDataSeries: 1, lowDataUnitsMilli: b.unitsMilli / 2 }
+          : b,
+      ),
+    };
+    const m = buildPageModel(withLow, now);
+    const line = m.plan.lines.find((l) => l.titleId === T1)!;
+    expect(line.lowData).toEqual({ lowDataSeries: 1, series: 2, shareBp: 5_000 });
+    expect(m.plan.heading.aside).toMatch(/lite data/);
   });
 });

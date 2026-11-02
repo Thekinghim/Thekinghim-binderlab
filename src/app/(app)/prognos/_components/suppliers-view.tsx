@@ -22,6 +22,13 @@ import {
 import type { SupplierView, SuppliersModel } from "../_lib/model";
 import { krExact, oreToField, parseCount, parseKronor } from "../_lib/units";
 
+/** Felet för ett ogiltigt ledtidsfält: negativt eller inte hela dagar. */
+function leadError(raw: string): string {
+  return /^\s*[-−]/.test(raw)
+    ? "Ledtiden kan inte vara negativ."
+    : "Ledtiden anges i hela dagar, t.ex. 7.";
+}
+
 type Item = SupplierView["items"][number];
 type ItemRow = Item & { supplierName: string; archived: boolean };
 
@@ -394,7 +401,7 @@ function SupplierDialog({
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return setError("Ange leverantörens namn.");
-    if (lead.trim() !== "" && leadValue === null) return setError("Ledtiden anges i hela dagar.");
+    if (lead.trim() !== "" && leadValue === null) return setError(leadError(lead));
     setError(null);
     start(async () => {
       const input = {
@@ -513,7 +520,7 @@ function ItemDialog({
     if (priceOre === null) return setError("Ange priset i kronor, t.ex. 45,50.");
     if (!pack || pack < 1 || !min || min < 1)
       return setError("Box och minsta order är minst 1 pack.");
-    if (lead.trim() !== "" && leadValue === null) return setError("Ledtiden anges i hela dagar.");
+    if (lead.trim() !== "" && leadValue === null) return setError(leadError(lead));
     setError(null);
     start(async () => {
       const res = await saveSupplierItem({

@@ -12,32 +12,43 @@ import { StatusTag } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
 import { formatInt, MISSING } from "@/lib/format";
 
-import { cancelPurchaseOrder, markPurchaseOrderOrdered, receivePurchaseOrder } from "../actions";
+import {
+  cancelPurchaseOrder,
+  closePurchaseOrder,
+  markPurchaseOrderOrdered,
+  receivePurchaseOrder,
+} from "../actions";
 import { dateText } from "../_lib/dates";
-import type { PurchaseOrderView, PurchaseOrdersModel } from "../_lib/model";
+import type { PurchaseOrderView, PurchaseOrdersModel, SupplierView } from "../_lib/model";
 import { kr, krExact, parseCount } from "../_lib/units";
+import { CreateOrderDialog } from "./create-order-dialog";
 
 type Dialog =
   | { kind: "receive"; order: PurchaseOrderView }
   | { kind: "order"; order: PurchaseOrderView }
   | { kind: "cancel"; order: PurchaseOrderView }
   | { kind: "lines"; order: PurchaseOrderView }
+  | { kind: "close"; order: PurchaseOrderView }
+  | { kind: "new" }
   | null;
 
 /** Inköpsorder: öppna (med åtgärder) och avslutade. */
 export function OrdersView({
   model,
+  suppliers,
   canEdit,
   today,
   hasCentralWarehouse,
 }: {
   model: PurchaseOrdersModel;
+  suppliers: readonly SupplierView[];
   canEdit: boolean;
   today: string;
   hasCentralWarehouse: boolean;
 }) {
   const [dialog, setDialog] = useState<Dialog>(null);
   const [showClosed, setShowClosed] = useState(false);
+  const hasSupplier = suppliers.some((s) => !s.archived);
 
   const columns = useMemo<Column<PurchaseOrderView>[]>(
     () => [
@@ -130,6 +141,16 @@ export function OrdersView({
                 Ta emot
               </Button>
             ) : null}
+            {canEdit && r.status === "partially_received" ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDialog({ kind: "close", order: r })}
+                aria-label={`Avsluta ${r.number} med restorder`}
+              >
+                Avsluta
+              </Button>
+            ) : null}
             {canEdit && (r.status === "draft" || r.status === "ordered") ? (
               <Button
                 variant="ghost"
@@ -149,12 +170,26 @@ export function OrdersView({
 
   return (
     <div className="flex flex-col gap-6">
+      {canEdit && hasSupplier ? (
+        <div>
+          <Button
+            variant="secondary"
+            size="sm"
+            iconLeft="plus"
+            onClick={() => setDialog({ kind: "new" })}
+          >
+            Ny inköpsorder
+          </Button>
+        </div>
+      ) : null}
       {model.open.length === 0 ? (
         <StateMessage
           kind="empty"
           message={
             model.closed.length === 0
-              ? "Ingen inköpsorder är skapad. Skapa en från förslaget ovan."
+              ? hasSupplier
+                ? "Ingen inköpsorder är skapad. Skapa en från förslaget ovan eller med Ny inköpsorder."
+                : "Ingen inköpsorder är skapad. Lägg till en leverantör med artiklar först."
               : "Alla inköpsorder är mottagna eller avbrutna."
           }
           compact
@@ -213,6 +248,18 @@ export function OrdersView({
       ) : null}
       {dialog?.kind === "lines" ? (
         <LinesDialog order={dialog.order} onClose={() => setDialog(null)} />
+      ) : null}
+      {dialog?.kind === "close" ? (
+        <CloseDialog order={dialog.order} onClose={() => setDialog(null)} />
+      ) : null}
+      {canEdit && dialog?.kind === "new" ? (
+        <CreateOrderDialog
+          open
+          onClose={() => setDialog(null)}
+          suppliers={suppliers}
+          draft={null}
+          today={today}
+        />
       ) : null}
     </div>
   );
@@ -303,9 +350,10 @@ function ReceiveDialog({ order, onClose }: { order: PurchaseOrderView; onClose: 
     return { line: l, outstanding, n, err };
   });
   const total = parsed.reduce((s, p) => s + (p.n ?? 0), 0);
+  const hasError = parsed.some((p) => p.err);
 
   const submit = () => {
-    if (parsed.some((p) => p.err)) return setError("Rätta antalen först.");
+    if (hasError) return setError("Rätta antalen först.");
     if (total === 0) return setError("Ange hur många pack som kom.");
     setError(null);
     start(async () => {
@@ -339,7 +387,7 @@ function ReceiveDialog({ order, onClose }: { order: PurchaseOrderView; onClose: 
             Avbryt
           </Button>
           <Button variant="primary" onClick={submit} loading={pending}>
-            Ta emot {formatInt(total)} pack
+            {hasError || total === 0 ? "Ta emot" : `Ta emot ${formatInt(total)} pack`}
           </Button>
         </>
       }
@@ -462,6 +510,48 @@ function CancelDialog({ order, onClose }: { order: PurchaseOrderView; onClose: (
           </Button>
           <Button variant="danger-confirm" onClick={submit} loading={pending}>
             Avbryt ordern
+          </Button>
+        </>
+      }
+    >
+      <FormError message={error} />
+    </Modal>
+  );
+}
+
+function CloseDialog({ order, onClose }: { order: PurchaseOrderView; onClose: () => void }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const missing = order.totalPacks - order.receivedPacks;
+  const submit = () =>
+    start(async () => {
+      const res = await closePurchaseOrder({ id: order.id });
+      if (!res.ok) return setError(res.error);
+      toast({
+        title: "Inköpsorder avslutad",
+        description: `${formatInt(res.data.missing)} pack räknas inte längre som beställda.`,
+        meta: order.number,
+      });
+      onClose();
+      router.refresh();
+    });
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="sm"
+      eyebrow={`${order.number} · ${order.supplierName}`}
+      title={`Avsluta med ${formatInt(missing)} pack i restorder?`}
+      description={`${formatInt(order.receivedPacks)} av ${formatInt(order.totalPacks)} pack har kommit. Resten räknas inte längre som beställt, så inköpsförslaget tar med behovet igen. Det som kommit ligger kvar i lagret.`}
+      footer={
+        <>
+          <Button onClick={onClose} disabled={pending}>
+            Behåll öppen
+          </Button>
+          <Button variant="danger-confirm" onClick={submit} loading={pending}>
+            Avsluta ordern
           </Button>
         </>
       }

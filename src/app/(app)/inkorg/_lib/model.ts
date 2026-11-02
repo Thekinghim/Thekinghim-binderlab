@@ -122,7 +122,14 @@ export function utcToLocalInput(iso: string, timeZone: string): string {
 /** Validerar formuläret. Svenska felmeddelanden per fält. */
 export function validateIncident(
   input: IncidentInput,
-  ctx: { timeZone: string; now: Date; machineIds: readonly string[]; memberIds: readonly string[] },
+  ctx: {
+    timeZone: string;
+    now: Date;
+    machineIds: readonly string[];
+    memberIds: readonly string[];
+    /** Den valda orderns belopp i öre, när ordern är känd. */
+    orderAmountOre?: number | null;
+  },
 ): { ok: true; values: IncidentValues } | { ok: false; errors: IncidentErrors } {
   const errors: IncidentErrors = {};
   if (!ctx.machineIds.includes(input.machineId)) errors.machineId = "Välj automat.";
@@ -139,6 +146,8 @@ export function validateIncident(
   if (input.assigneeId && !ctx.memberIds.includes(input.assigneeId))
     errors.assigneeId = "Välj en medlem.";
   if (input.description.length > 2000) errors.description = "Högst 2 000 tecken.";
+  else if (!clean(input.description, 2000) && !input.orderId)
+    errors.description = "Beskriv vad som hände, eller koppla ärendet till en order.";
   if (input.actionTaken.length > 2000) errors.actionTaken = "Högst 2 000 tecken.";
   if (input.customerContact.length > 200) errors.customerContact = "Högst 200 tecken.";
 
@@ -148,6 +157,15 @@ export function validateIncident(
     if (!parsed.ok) errors.refunded = "Ange beloppet i kronor, t.ex. 49 eller 49,50.";
     else if (parsed.ore > 100_000_000) errors.refunded = "Beloppet är för stort.";
     else refundedOre = parsed.ore;
+  }
+  if (
+    refundedOre > 0 &&
+    input.orderId &&
+    ctx.orderAmountOre !== undefined &&
+    ctx.orderAmountOre !== null &&
+    refundedOre > ctx.orderAmountOre
+  ) {
+    errors.refunded = `Mer än orderns belopp (${kronorOfOre(ctx.orderAmountOre)}). Kontrollera beloppet.`;
   }
   let refundedOn: string | null = null;
   if (refundedOre > 0) {

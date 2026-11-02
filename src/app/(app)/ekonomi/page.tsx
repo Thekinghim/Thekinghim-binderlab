@@ -158,7 +158,7 @@ export default async function EkonomiPage({
         ctx.today,
       )} var ${kr(rep.windowCostOre)} (${plural(rep.windowDays, "dag", "dagar")}); samma takt per dag ger ${kr(
         added,
-      )} i påfyllnad till och med ${monthText(rep.months[rep.months.length - 1]?.month ?? thisMonth)}, minus inköpsorder som redan är planerade samma månad.${
+      )} i påfyllnad till och med ${monthText(rep.months[rep.months.length - 1]?.month ?? thisMonth)}, utöver inköpsorder som redan är planerade samma månad.${
         rep.coverageBp !== null && rep.coverageBp < 10_000
           ? ` Order utan inköpspris saknar inköpsvärde (${Math.round(rep.coverageBp / 100)} % av orderna har pris).`
           : ""

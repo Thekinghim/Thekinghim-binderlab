@@ -10,7 +10,7 @@ import {
   describePeriod,
   type SearchParamsInput,
 } from "@/components/shell/period-state";
-import { addDays, daysBetween, type IsoDate } from "@/domain";
+import { addDays, type IsoDate, type Period } from "@/domain";
 import {
   loadDomainInput,
   loadMasterData,
@@ -25,19 +25,26 @@ import { isUuid } from "@/server/access";
 
 import {
   buildOverview,
+  coverageOf,
   dailyRevenue,
   lifecycleOf,
   machineFigures,
   machineHeadline,
   machineKpis,
   machineSignals,
+  machineSpan,
   machineUnitEconomics,
   placementLines,
   recentWindow,
+  machineInput,
+  profitabilityByMachine,
   salesHeatmap,
+  spanOf,
   statusOf,
   stockLines,
   titleShares,
+  unpricedOf,
+  type Span,
 } from "./model";
 import { loadLastOrderAtFor, loadMachineOrdersFor } from "./service";
 import { currentViewer } from "./session";
@@ -54,28 +61,40 @@ import type {
   StoreOption,
   TitleShare,
   UnitEconomicsView,
+  UnpricedView,
 } from "./types";
 
 export interface PeriodInfo {
   /** Dagar i den valda perioden. */
   readonly days: number;
-  /** Dagar med data: från första ordern om perioden börjar före den. */
-  readonly dataDays: number;
+  /**
+   * Dagarna med data som rubriker, etiketter och snitt per dag räknas på: från första
+   * ordern (för en automat från driftstarten) t.o.m. i går om dagens order inte kommit.
+   * Utan data: perioden.
+   */
+  readonly span: Span;
+  /** Samma dagar som period, eller null utan data. */
+  readonly coverage: Period | null;
+  /** Perioden är bara i dag och dagens order har inte kommit än: inga tal att visa. */
+  readonly pendingToday: boolean;
   readonly rangeLabel: string;
   readonly comparisonLabel: string | null;
   readonly start: IsoDate;
   readonly end: IsoDate;
 }
 
-function periodInfo(p: AppPeriod, hasComparison: boolean): PeriodInfo {
+function periodInfo(
+  p: AppPeriod,
+  today: IsoDate,
+  coverage: Period | null,
+  hasComparison: boolean,
+): PeriodInfo {
   const d = describePeriod(p.resolved);
-  const dataDays =
-    p.dataStart && p.dataStart > p.period.start && p.dataStart <= p.period.end
-      ? daysBetween(p.dataStart, p.period.end) + 1
-      : p.days;
   return {
     days: p.days,
-    dataDays,
+    span: spanOf(coverage ?? p.period, today),
+    coverage,
+    pendingToday: p.period.start === today && p.period.end === today && coverage === null,
     rangeLabel: d.rangeLabel,
     comparisonLabel: p.compare && hasComparison ? d.comparisonLabel : null,
     start: p.period.start,
@@ -83,12 +102,28 @@ function periodInfo(p: AppPeriod, hasComparison: boolean): PeriodInfo {
   };
 }
 
-function withoutEmptyComparison<T extends { previous: { orders: readonly unknown[] } | null }>(
-  input: T,
-): T {
-  return input.previous && input.previous.orders.length === 0
-    ? { ...input, previous: null }
-    : input;
+/**
+ * Jämförelsen gäller bara när jämförelseperioden ligger helt inom datan (som på Hem):
+ * dagar före första ordern (eller automatens driftstart) har ingen försäljning att
+ * jämföra med, och en halv jämförelseperiod ger skenbara ökningar.
+ */
+function comparable(
+  p: AppPeriod,
+  previous: { orders: readonly unknown[] } | null,
+  activeFrom: IsoDate | null = null,
+): boolean {
+  return (
+    previous !== null &&
+    previous.orders.length > 0 &&
+    p.compare !== null &&
+    p.dataStart !== null &&
+    p.compare.start >= p.dataStart &&
+    (activeFrom === null || p.compare.start >= activeFrom)
+  );
+}
+
+function hasOrdersOn(orders: readonly { businessDate: IsoDate }[], day: IsoDate): boolean {
+  return orders.some((o) => o.businessDate === day);
 }
 
 async function signalsFor(ctx: AppContext) {
@@ -126,6 +161,8 @@ export interface OverviewData {
   readonly ctx: AppContext;
   readonly period: PeriodInfo;
   readonly overview: MachinesOverview;
+  /** Automatfiltret är satt (summan är automatens rad). */
+  readonly focused: boolean;
   readonly stores: StoreOption[];
   /** Butiksfiltrets namn, om filtret är satt. */
   readonly scopeLabel: string | null;
@@ -134,13 +171,22 @@ export interface OverviewData {
 export async function loadOverview(searchParams: SearchParamsInput): Promise<OverviewData> {
   const ctx = await requireRoute("automater");
   const p = await loadPeriod(searchParams);
+  // Vid automatfilter läses hela organisationen: butikens hyra delas då mellan butikens
+  // automater, som på automatens sida, i stället för att hela hyran hamnar på automaten.
+  const focused = p.scope.machineId !== null;
   const [loaded, base, lastOrderAt] = await Promise.all([
-    loadDomainInput({ period: p.period, compare: p.compare, ...p.scope }),
+    loadDomainInput({ period: p.period, compare: p.compare, ...(focused ? {} : p.scope) }),
     signalsFor(ctx),
     currentViewer().then(loadLastOrderAtFor),
   ]);
-  // En jämförelseperiod utan order (före första ordern) jämförs inte.
-  const input = withoutEmptyComparison(loaded);
+  const input = comparable(p, loaded.previous) ? loaded : { ...loaded, previous: null };
+  const coverage = coverageOf(
+    p.period,
+    p.dataStart,
+    ctx.today,
+    hasOrdersOn(input.current.orders, ctx.today),
+  );
+  const period = periodInfo(p, ctx.today, coverage, input.previous !== null);
   const overview = buildOverview({
     input,
     master: base.master,
@@ -148,7 +194,9 @@ export async function loadOverview(searchParams: SearchParamsInput): Promise<Ove
     signals: base.signals,
     lastOrderAt,
     today: ctx.today,
-    days: periodInfo(p, false).dataDays,
+    scope: p.scope,
+    coverage,
+    pendingToday: period.pendingToday,
     query: carriedQuery(searchParams),
   });
   const scopeLabel = p.scope.machineId
@@ -158,8 +206,9 @@ export async function loadOverview(searchParams: SearchParamsInput): Promise<Ove
       : null;
   return {
     ctx,
-    period: periodInfo(p, input.previous !== null),
+    period,
     overview,
+    focused,
     stores: storeOptions(base.master),
     scopeLabel,
   };
@@ -181,6 +230,8 @@ export interface MachineDetailData {
   readonly daily: DailyPoint[];
   readonly dailyCompare: number[] | null;
   readonly titles: TitleShare[];
+  /** Order utan inköpspris i automaten (utanför vinsten), eller null. */
+  readonly unpriced: UnpricedView | null;
   readonly heatmap: HeatmapView;
   readonly stock: StockLine[];
   readonly lastRestockedAt: string | null;
@@ -234,21 +285,31 @@ export async function loadMachineDetail(
   const today = ctx.today;
   const lifecycle = lifecycleOf(machine, today);
   const figures = machineFigures(input.current, machine.id);
-  // Ingen jämförelse om automaten inte sålde något i jämförelseperioden (t.ex. före start).
-  const prevFigures = input.previous ? machineFigures(input.previous, machine.id) : null;
+  // Jämförelse bara när jämförelseperioden ligger inom datan och automatens drift, och
+  // automaten sålde något då.
+  const prevFigures =
+    input.previous && comparable(p, input.previous, machine.activeFrom)
+      ? machineFigures(input.previous, machine.id)
+      : null;
   const previous = prevFigures && prevFigures.orders > 0 ? prevFigures : null;
-  // Dagarna före första ordern (eller driftstarten) ritas inte som nollor.
-  const firstDay = [p.dataStart, machine.activeFrom]
-    .filter((d): d is IsoDate => d !== null)
-    .reduce<IsoDate | null>((a, b) => (a === null || b > a ? b : a), null);
+  // Dagarna med data för automaten: organisationens första order, driftstarten, sista
+  // dagen i drift, och t.o.m. i går om dagens order inte kommit.
+  const coverage = machineSpan(
+    coverageOf(p.period, p.dataStart, today, hasOrdersOn(input.current.orders, today)),
+    machine.activeFrom,
+    machine.activeTo,
+  );
+  const period = periodInfo(p, today, coverage, previous !== null);
   const fullDaily = dailyRevenue(input.current, machine.id);
-  const skip = firstDay ? fullDaily.filter((d) => d.date < firstDay).length : 0;
-  const daily = skip < fullDaily.length ? fullDaily.slice(skip) : fullDaily;
+  const skip = coverage ? fullDaily.filter((d) => d.date < coverage.start).length : 0;
+  const daily = coverage
+    ? fullDaily.filter((d) => d.date >= coverage.start && d.date <= coverage.end)
+    : [];
   const dailyCompare =
-    previous && input.previous
+    previous && input.previous && daily.length > 0
       ? dailyRevenue(input.previous, machine.id)
           .map((d) => d.value)
-          .slice(daily === fullDaily ? 0 : skip)
+          .slice(skip, skip + daily.length)
       : null;
   const placements = placementLines(master, machine.id, today);
   const currentPlacement = placements.find((x) => x.current) ?? null;
@@ -272,7 +333,7 @@ export async function loadMachineDetail(
 
   return {
     ctx,
-    period: periodInfo(p, previous !== null),
+    period,
     machine,
     editable: {
       id: machine.id,
@@ -286,6 +347,7 @@ export async function loadMachineDetail(
       firstOrderDate: orders.firstOrderDate,
       lastOrderDate: orders.lastOrderDate,
       lastPlacementFrom: placements[0]?.from ?? null,
+      firstPlacementFrom: placements.at(-1)?.from ?? null,
     },
     headline: machineHeadline({
       code: machine.code,
@@ -294,7 +356,8 @@ export async function loadMachineDetail(
       activeTo: machine.activeTo,
       figures,
       previous,
-      days: periodInfo(p, false).dataDays,
+      span: period.span,
+      pendingToday: period.pendingToday,
       store: store ? { name: store.name, since: store.since } : null,
       today,
     }),
@@ -311,6 +374,12 @@ export async function loadMachineDetail(
     daily,
     dailyCompare,
     titles: titleShares(input.current, machine.id, master),
+    unpriced: unpricedOf(
+      profitabilityByMachine(machineInput(input.current, machine.id), "title"),
+      master,
+      profitabilityByMachine(input.current, "machine").rows.find((r) => r.key === machine.id)
+        ?.unpricedRentOre ?? 0,
+    ),
     heatmap: salesHeatmap(
       input.current.orders.filter((o) => o.machineId === machine.id),
       ctx.timeZone,

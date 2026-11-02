@@ -6,7 +6,7 @@
 
 import "server-only";
 
-import { and, asc, desc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 
 import * as s from "@/db/schema";
 import type { Period } from "@/domain";
@@ -46,7 +46,16 @@ export interface InboxData {
   readonly members: Member[];
   readonly orders: Map<string, { externalId: string; amountOre: number; orderedAt: string }>;
   readonly refunds: { byMachine: RefundSummary; byTitle: RefundSummary; total: RefundSummary };
+  /** Sant när fler ärenden än `limit` rör perioden: listan och antalen är då ofullständiga. */
+  readonly truncated: boolean;
+  readonly limit: number;
 }
+
+/** Högsta antal ärenden i listan. Återbetalningarna räknas alltid på alla. */
+export const INBOX_LIMIT = 5000;
+
+/** Roller som kan vara ansvariga för ett ärende (de enda som ser och hanterar ärenden). */
+export const ASSIGNEE_ROLES = ["owner", "admin"] as const;
 
 const incidentColumns = {
   id: s.incidents.id,
@@ -114,12 +123,21 @@ export function refundsOf(incidents: readonly IncidentRow[]): Refund[] {
     }));
 }
 
+/**
+ * Möjliga ansvariga: ägare och admin. `keep` (nuvarande ansvarig) tas med även om hon bytt
+ * roll, så att ett äldre ärende kan sparas utan att den ansvariga försvinner.
+ */
 async function members(
   tx: Parameters<Parameters<typeof withUserDb>[0]>[0],
   orgId: string,
+  keep: string | null = null,
 ): Promise<Member[]> {
   const rows = await tx
-    .select({ userId: s.memberships.userId, name: s.profiles.displayName })
+    .select({
+      userId: s.memberships.userId,
+      role: s.memberships.role,
+      name: s.profiles.displayName,
+    })
     .from(s.memberships)
     .leftJoin(
       s.profiles,
@@ -130,7 +148,11 @@ async function members(
     )
     .where(eq(s.memberships.organizationId, orgId));
   return rows
-    .filter((r) => r.userId)
+    .filter(
+      (r) =>
+        r.userId &&
+        ((ASSIGNEE_ROLES as readonly string[]).includes(r.role) || r.userId === keep),
+    )
     .map((r) => ({ userId: r.userId as string, name: r.name ?? "Medlem utan namn" }))
     .sort((a, b) => a.name.localeCompare(b.name, "sv"));
 }
@@ -161,8 +183,21 @@ export async function loadInbox(ctx: AppContext, period: Period): Promise<InboxD
         ),
       )
       .orderBy(desc(s.incidents.startedAt))
-      .limit(1000);
-    const incidents = raw.map(toRow);
+      .limit(INBOX_LIMIT + 1);
+    const truncated = raw.length > INBOX_LIMIT;
+    const incidents = raw.slice(0, INBOX_LIMIT).map(toRow);
+    // Återbetalningarna i perioden läses för sig, utan gräns, så att summorna alltid stämmer.
+    const refundRows = await tx
+      .select(incidentColumns)
+      .from(s.incidents)
+      .where(
+        and(
+          eq(s.incidents.organizationId, orgId),
+          sql`${s.incidents.refundedOre} > 0`,
+          gte(s.incidents.refundedOn, period.start),
+          lte(s.incidents.refundedOn, period.end),
+        ),
+      );
     const machines = await tx
       .select({ id: s.machines.id, code: s.machines.code, name: s.machines.name })
       .from(s.machines)
@@ -185,9 +220,11 @@ export async function loadInbox(ctx: AppContext, period: Period): Promise<InboxD
           .from(s.orders)
           .where(and(eq(s.orders.organizationId, orgId), inArray(s.orders.id, orderIds)))
       : [];
-    const refunds = refundsOf(incidents);
+    const refunds = refundsOf(refundRows.map(toRow));
     return {
       incidents,
+      truncated,
+      limit: INBOX_LIMIT,
       machines,
       titles,
       members: await members(tx, orgId),
@@ -260,7 +297,7 @@ export async function loadIncident(ctx: AppContext, id: string | null): Promise<
         .where(and(eq(s.orders.organizationId, orgId), eq(s.orders.id, incident.orderId)));
       if (o) order = { ...o, orderedAt: o.orderedAt.toISOString() };
     }
-    const memberList = await members(tx, orgId);
+    const memberList = await members(tx, orgId, incident?.assigneeId ?? null);
     const history = incident
       ? await tx
           .select({
@@ -279,7 +316,16 @@ export async function loadIncident(ctx: AppContext, id: string | null): Promise<
           .orderBy(desc(s.auditLog.occurredAt))
           .limit(20)
       : [];
-    const names = new Map(memberList.map((m) => [m.userId, m.name]));
+    // Namn på alla som ändrat ärendet (även butiken som felanmält och tidigare medlemmar).
+    const profiles = history.length
+      ? await tx
+          .select({ userId: s.profiles.userId, name: s.profiles.displayName })
+          .from(s.profiles)
+          .where(eq(s.profiles.organizationId, orgId))
+      : [];
+    const names = new Map<string, string>(
+      profiles.flatMap((p) => (p.userId ? [[p.userId, p.name] as const] : [])),
+    );
     return {
       incident,
       machines,

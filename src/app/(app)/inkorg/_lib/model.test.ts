@@ -61,3 +61,24 @@ describe("kundärende: tid och belopp", () => {
     expect(validateIncident({ ...BASE, assigneeId: M }, CTX).ok).toBe(false);
   });
 });
+
+describe("kundärende: innehåll", () => {
+  const O = "33333333-3333-4333-8333-333333333333";
+
+  it("ett ärende utan beskrivning och order sparas inte", () => {
+    const r = validateIncident({ ...BASE, description: "   " }, CTX);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.description).toMatch(/Beskriv/);
+    expect(validateIncident({ ...BASE, description: "", orderId: O }, CTX).ok).toBe(true);
+  });
+
+  it("återbetalning större än orderns belopp avvisas", () => {
+    const input = { ...BASE, orderId: O, refunded: "59", refundedOn: "2026-11-02" };
+    const over = validateIncident(input, { ...CTX, orderAmountOre: 4900 });
+    expect(over.ok).toBe(false);
+    if (!over.ok) expect(over.errors.refunded).toMatch(/orderns belopp/);
+    expect(validateIncident({ ...input, refunded: "49" }, { ...CTX, orderAmountOre: 4900 }).ok).toBe(
+      true,
+    );
+  });
+});

@@ -22,6 +22,9 @@ import type { MachineEditable, StoreOption } from "../_lib/types";
 
 type Result = { ok: true } | { ok: false; error: string };
 
+/** När anropet inte når servern (nätverket, omstart): visas i stället för att sidan kraschar. */
+const SEND_FAILED = "Ändringen kunde inte skickas. Kontrollera anslutningen och försök igen.";
+
 /** Formulär i en dialog: Enter skickar, fel visas i dialogen, kvitto som notis. */
 function FormDialog({
   open,
@@ -53,25 +56,32 @@ function FormDialog({
     const data = new FormData(e.currentTarget);
     setError(null);
     startTransition(async () => {
-      const result = await onSubmit(data);
-      if (!result.ok) setError(result.error);
+      try {
+        const result = await onSubmit(data);
+        if (!result.ok) setError(result.error);
+      } catch (err) {
+        console.error("[automater] Ändringen kunde inte skickas:", err);
+        setError(SEND_FAILED);
+      }
     });
+  };
+
+  const close = () => {
+    if (pending) return;
+    setError(null);
+    onClose();
   };
 
   return (
     <Modal
       open={open}
-      onClose={() => {
-        if (pending) return;
-        setError(null);
-        onClose();
-      }}
+      onClose={close}
       title={title}
       eyebrow={eyebrow}
       description={description}
       footer={
         <>
-          <Button type="button" variant="secondary" onClick={onClose} disabled={pending}>
+          <Button type="button" variant="secondary" onClick={close} aria-disabled={pending}>
             Avbryt
           </Button>
           <Button
@@ -239,6 +249,10 @@ export function MachineActions({
     .filter((d): d is IsoDate => d !== null)
     .reduce<IsoDate | undefined>((a, b) => (a === undefined ? b : maxDate(a, b)), undefined);
   const endDefault = endMin ? maxDate(endMin, today) : today;
+  // Driftstarten får inte ligga efter första ordern, första placeringen eller sista dagen.
+  const editMax = [machine.firstOrderDate, machine.firstPlacementFrom, machine.activeTo]
+    .filter((d): d is IsoDate => d !== null)
+    .reduce<IsoDate | null>((a, b) => (a === null || b < a ? b : a), null);
 
   return (
     <div className="flex flex-wrap gap-2" data-print="hide">
@@ -252,9 +266,14 @@ export function MachineActions({
           loading={reactivating}
           onClick={() =>
             startReactivate(async () => {
-              const r = await reactivateMachine({ machineId: machine.id });
-              if (r.ok) done(`${machine.code} är i drift igen`);
-              else toast({ title: r.error, tone: "critical", meta: machine.code });
+              try {
+                const r = await reactivateMachine({ machineId: machine.id });
+                if (r.ok) done(`${machine.code} är i drift igen`);
+                else toast({ title: r.error, tone: "critical", meta: machine.code });
+              } catch (err) {
+                console.error("[automater] Återaktiveringen kunde inte skickas:", err);
+                toast({ title: SEND_FAILED, tone: "critical", meta: machine.code });
+              }
             })
           }
         >
@@ -315,11 +334,13 @@ export function MachineActions({
                 label="Driftstart"
                 type="date"
                 defaultValue={machine.activeFrom ?? today}
-                max={machine.firstOrderDate ?? machine.activeTo ?? undefined}
+                max={editMax ?? undefined}
                 hint={
                   machine.firstOrderDate
                     ? `Första ordern ${dayLabel(machine.firstOrderDate, today)}`
-                    : undefined
+                    : machine.firstPlacementFrom
+                      ? `I butik från ${dayLabel(machine.firstPlacementFrom, today)}`
+                      : undefined
                 }
                 required
               />

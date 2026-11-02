@@ -644,13 +644,18 @@ function forecastModel(
       total: acc.total,
       series: acc.series,
       origins,
-      note:
-        "Utfallet i tabellen gäller de serier (titel × automat) som fanns när testveckan började och dagar då titeln gick att köpa. " +
-        "Nya serier och slutsålda dagar testas inte, så det kan vara lägre än veckans försäljning i diagrammet.",
-      evidence: evidenceView(acc.evidence, names),
+      note: ACCURACY_NOTE,
+      evidence: (() => {
+        const ev = evidenceView(acc.evidence, names);
+        return { ...ev, rule: `${ev.rule} ${ACCURACY_NOTE}` };
+      })(),
     },
   };
 }
+
+const ACCURACY_NOTE =
+  "Utfallet i testen gäller de serier (titel × automat) som fanns när testveckan började, på dagar då titeln gick att köpa. " +
+  "Nya serier och slutsålda dagar testas inte, så utfallet kan vara lägre än veckans försäljning i diagrammet.";
 
 /** Andra delen av rubriken för träffsäkerheten: antal veckor, bias och den enkla jämförelsen. */
 function accuracyAside(m: AccuracyMetrics, weeks: number, fallback: string): string {
@@ -689,7 +694,7 @@ function planModel(data: PrognosData, names: ReturnType<typeof lookup>): PlanMod
         ? {
             lowDataSeries: b.lowDataSeries,
             series: b.series,
-            shareBp: b.unitsMilli > 0 ? ratioBp(b.lowDataUnitsMilli, b.unitsMilli) : 0,
+            shareBp: ratioBp(b.lowDataUnitsMilli, b.unitsMilli) ?? 0,
           }
         : null;
     const ev = evidenceView(l.evidence, names, STOCK_EVIDENCE);
