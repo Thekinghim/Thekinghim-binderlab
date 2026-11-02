@@ -11,10 +11,10 @@ describe("createRandom", () => {
     expect(xs.every((x) => Number.isInteger(x) && x >= 0 && x < 2 ** 32)).toBe(true);
   });
 
-  it("känd följd (mulberry32), så att ändringar i generatorn märks", () => {
+  it("fast följd för frö 1 (regressionsvakt: ändras den ändras all seed-data)", () => {
     const r = createRandom(1);
     expect([r.nextUint32(), r.nextUint32(), r.nextUint32()]).toEqual([
-      2_694_747_833, 3_101_309_495, 1_208_581_669,
+      2_693_262_067, 11_749_833, 2_265_367_787,
     ]);
   });
 

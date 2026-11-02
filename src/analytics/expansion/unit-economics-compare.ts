@@ -7,16 +7,17 @@
  *
  * - intäkt per dag = intäkt (prissatta order) / aktiva dagar, avrundat
  * - vinst per dag  = vinst före avskrivning / aktiva dagar, avrundat
- * - avkastning per år = vinst per månad × 12 / investering, bp (`null` utan investering)
+ * - avkastning per år = vinst per månad × 12 / investering, bp (`null` utan investering),
+ *   med samma funktion (`annualReturnBp`) som uppskattningen för nya platser
+ * - underlaget för varje automat pekar ut periodens order och försäljningsdagar
  * - jämförelse mot flottans snitt: snittet är Σ vinst / Σ aktiva dagar (viktat efter
  *   automatdagar), och avvikelsen är round((automatens − snittet) × 10 000 / |snittet|) bp
  * - rang efter vinst per dag (1 = bäst; lika → lägst id). Automater utan aktiva dagar får ingen rang.
  */
 
 import {
-  BP_SCALE,
+  buildLedger,
   changeBp,
-  mulDivRound,
   roundHalfUp,
   unitEconomics,
   type MachineUnitEconomics,
@@ -25,7 +26,8 @@ import {
 } from "@/domain";
 import { nameLookup } from "../todos/common";
 import { kr, tenths } from "../todos/text";
-import { fig, scenarioEvidence, signedPct, type ScenarioEvidence } from "./common";
+import { fig, orderTrail, Ratio, scenarioEvidence, signedPct, type ScenarioEvidence } from "./common";
+import { annualReturnBp } from "./estimate";
 
 /** En automat i jämförelsen. */
 export interface UnitEconomicsComparisonRow {
@@ -89,6 +91,7 @@ export function compareUnitEconomics(
   machines: readonly { id: string; name: string }[] = [],
 ): UnitEconomicsComparison {
   const units = unitEconomics(input);
+  const entries = buildLedger(input).entries;
   const nameOf = nameLookup(machines);
 
   let totalDays = 0;
@@ -116,9 +119,9 @@ export function compareUnitEconomics(
     const profitPerDay = perDay(u.profitOre, u.activeDays);
     const payback = paybackTenthsOf(u);
     const annual =
-      u.investmentOre === 0 || u.profitPerMonthOre === null
+      u.profitPerMonthOre === null
         ? null
-        : mulDivRound(u.profitPerMonthOre, 12 * BP_SCALE, u.investmentOre);
+        : annualReturnBp(u.investmentOre, new Ratio(u.profitPerMonthOre));
     const vsAverage =
       profitPerDay === null || avgProfit === null ? null : changeBp(profitPerDay, avgProfit);
 
@@ -157,6 +160,7 @@ export function compareUnitEconomics(
         rule: "Vinst före avskrivning (prissatta order, efter inköp, avgifter, provision och hyra) delat med dagar då automaten var placerad. Återbetalningstid = investering / vinst per månad.",
         period: input.period,
         machineIds: [u.machineId],
+        ...orderTrail(entries, { machineId: u.machineId }),
         figures: [
           fig("revenueOre", "Intäkt i perioden", u.revenueOre, "ore"),
           fig("profitOre", "Vinst i perioden", u.profitOre, "ore"),
@@ -202,6 +206,7 @@ export function compareUnitEconomics(
       rule: "Flottans snitt = Σ vinst / Σ aktiva automatdagar. Rang efter vinst per dag.",
       period: input.period,
       machineIds: units.map((u) => u.machineId),
+      ...orderTrail(entries),
       figures: [
         fig("totalProfitOre", "Vinst, alla automater", totalProfit, "ore"),
         fig("machineDays", "Aktiva automatdagar", totalDays, "days"),
