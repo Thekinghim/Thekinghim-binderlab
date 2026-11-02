@@ -1047,7 +1047,9 @@ export function buildPageModel(data: PrognosData, now: Date = new Date()): PageM
         data.forecast.series.length === 0
           ? "Ingen prognos ännu."
           : `${approxKr(forecast.total.revenueOre).replace(/^ca/, "Ca")} kommande 4 veckor.`,
-      aside: data.forecast.series.length === 0 ? forecast.heading.aside : answerParts.join(" "),
+      // tidy: periodtexten kan sluta på en förkortning ("sep."), så att meningen annars får "..".
+      aside:
+        data.forecast.series.length === 0 ? forecast.heading.aside : tidy(answerParts.join(" ")),
     },
     meta: [
       { label: "Prognos", value: periodShort(forecast.horizon, now) },

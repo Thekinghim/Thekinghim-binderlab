@@ -448,9 +448,10 @@ describe("revision 3: avvikande dag", () => {
 // ---------------------------------------------------------------------------
 
 describe("revision 4: titel nära slut och misslyckad import", () => {
-  // 14 dagar t.o.m. mån 2 nov. (20 okt. – 2 nov.), 2 pack/dag = 28 pack ⇒ takt 28/14.
+  // 14 hela dagar t.o.m. i går, sön 1 nov. (19 okt. – 1 nov.), 2 pack/dag = 28 pack ⇒ takt
+  // 28/14. Takten slutar i går, som påfyllningspunkterna i Att göra; dagens 2 pack räknas inte.
   const orders: AnalyticsOrder[] = [];
-  for (let d = 0; d < 14; d++) orders.push(...onDate("m1", addDays("2026-10-20", d), 2));
+  for (let d = 0; d < 15; d++) orders.push(...onDate("m1", addDays("2026-10-19", d), 2));
   const titles = [{ id: "t1", name: "30th Celebration" }];
   const now = sthlm("2026-11-02", "12:00");
   const run = (onHand: number) =>
@@ -459,16 +460,16 @@ describe("revision 4: titel nära slut och misslyckad import", () => {
       now,
     );
 
-  it("5 kvar: golv(5 × 14 / 28) = 2 dagar ≤ 2 ⇒ warning; slut tak(2,5) = 3 dagar ⇒ tor 5 nov.", () => {
+  it("5 kvar: golv(5 × 14 / 28) = 2 dagar ≤ 2 ⇒ warning; slut i går + tak(2,5) = 3 dagar ⇒ ons 4 nov.", () => {
     const [a] = run(5);
     expect(a?.severity).toBe("warning");
     expect(a?.key).toBe("low_stock:m1:t1");
-    expect(nbsp(a?.title)).toBe("30th Celebration i Automat 1 tar slut tor 5 nov.");
+    expect(nbsp(a?.title)).toBe("30th Celebration i Automat 1 tar slut ons 4 nov.");
     expect(nbsp(a?.detail)).toBe(
-      "5 pack kvar, säljer 2,0 pack/dag (28 pack på 14 dagar). Beräknat slut tor 5 nov.",
+      "5 pack kvar, säljer 2,0 pack/dag (28 pack på 14 dagar). Beräknat slut ons 4 nov.",
     );
     expect(a?.evidence.orderIds).toHaveLength(28);
-    expect(a?.evidence.period).toEqual({ start: "2026-10-20", end: "2026-11-02" });
+    expect(a?.evidence.period).toEqual({ start: "2026-10-19", end: "2026-11-01" });
   });
 
   it("6 kvar: 3 dagar > 2 ⇒ inget larm; 0 kvar ⇒ critical 'slut'", () => {

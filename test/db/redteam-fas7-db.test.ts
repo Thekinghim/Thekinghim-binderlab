@@ -74,9 +74,9 @@ async function serviceCode(fn: (tx: Tx) => Promise<unknown>): Promise<string> {
 describe("ändringsloggen och append-only kan inte kringgås", () => {
   it("ingen klientroll kan sätta session_replication_role (som stänger av alla triggers)", async () => {
     expect(await codeOf(A.owner, sql`set local session_replication_role = replica`)).toBe("42501");
-    expect(await serviceCode((tx) => tx.execute(sql`set local session_replication_role = replica`))).toBe(
-      "42501",
-    );
+    expect(
+      await serviceCode((tx) => tx.execute(sql`set local session_replication_role = replica`)),
+    ).toBe("42501");
   });
 
   it("ingen klientroll kan stänga av triggers på audit_log eller ekonomiska tabeller", async () => {
@@ -113,7 +113,7 @@ describe("ändringsloggen och append-only kan inte kringgås", () => {
   });
 
   /**
-   * HÅL (låg): private.purge_allowed() godtar varje roll utom anon och authenticated,
+   * TÄPPT (var låg; 20261102193000_hardening_purge_owner_only.sql): private.purge_allowed() godtar varje roll utom anon och authenticated,
    * alltså även service_role (Supabase hemliga nyckel). Med flaggan satt kan
    * service_role radera bokföringsdata (order, lagerhändelser, godkännanden, assistentens
    * logg) trots att tabellerna är append-only/forbid_delete. Gallringen ska bara
@@ -121,15 +121,23 @@ describe("ändringsloggen och append-only kan inte kringgås", () => {
    * Åtgärd: ny migrering där purge_allowed kräver current_user = 'postgres' (eller en
    * dedikerad roll) och flaggan, och revoke delete från service_role på append-only-tabeller.
    */
-  it.fails(
-    "HÅL: service_role med binderlab.allow_purge kan inte radera append-only- eller bokföringsdata",
+  it(
+    "TÄPPT: service_role med binderlab.allow_purge kan inte radera append-only- eller bokföringsdata",
     async () => {
       const results = await rollback(async (tx) => {
-        await tx.execute(sql`select set_config('request.jwt.claims', '{"role":"service_role"}', true)`);
+        await tx.execute(
+          sql`select set_config('request.jwt.claims', '{"role":"service_role"}', true)`,
+        );
         await tx.execute(sql`set local role service_role`);
         await tx.execute(sql`select set_config('binderlab.allow_purge', 'on', true)`);
         const out: Record<string, string> = {};
-        for (const table of ["orders", "stock_events", "report_approvals", "assistant_logs", "deviation_reviews"]) {
+        for (const table of [
+          "orders",
+          "stock_events",
+          "report_approvals",
+          "assistant_logs",
+          "deviation_reviews",
+        ]) {
           const o = await attempt(tx, (sp) =>
             sp.execute(
               sql`delete from ${sql.identifier("public")}.${sql.identifier(table)} where organization_id = ${A.orgId}`,

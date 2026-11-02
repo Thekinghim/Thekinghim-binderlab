@@ -84,6 +84,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: pg_dump och pg_restore 16 (testet av säkerhetskopiering)
+        run: |
+          if ! pg_dump --version | grep -qE ' (1[6-9]|[2-9][0-9])\.'; then
+            sudo apt-get update && sudo apt-get install -y postgresql-client-16
+            echo "PG_BIN_DIR=/usr/lib/postgresql/16/bin" >> "$GITHUB_ENV"
+          fi
+          pg_dump --version
       - name: Återställ testdatabasen (auth-shim och migreringar)
         run: npm run db:reset -- test
       - name: Databastester
@@ -113,3 +120,82 @@ jobs:
       - run: npm ci
       - name: next build
         run: npx next build
+
+  e2e:
+    name: E2E (Playwright mot en körande server)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # Lokal inloggning (AUTH_PROVIDER=dev) mot en lokal databas. Dev-inloggningens spärr
+      # (src/server/auth/dev-guard.ts) stoppar den i ett produktionsbygge, så servern körs
+      # med `next dev`. Att produktionsbygget går igenom kontrolleras av jobbet build.
+      APP_ENV: development
+      AUTH_PROVIDER: dev
+      DATABASE_URL: postgres://postgres@127.0.0.1:5432/binderlab_e2e
+      DEV_AUTH_SECRET: ci-e2e-dev-auth-secret-not-a-real-secret-0123456789
+      DEV_SEED_PASSWORD: binderlab-dev
+      CRON_SECRET: ci-e2e-cron-secret-0123456789
+      MAIL_PROVIDER: outbox
+      PDF_RENDERER: local
+      # Chromium för testerna och för serverns PDF (src/server/pdf/render.ts letar här).
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.pw-browsers
+      E2E_DATABASE_URL: postgres://postgres@127.0.0.1:5432/binderlab_e2e
+      # Databasen återställs och seedas i egna steg nedan.
+      E2E_RESET: "0"
+      BASE_URL: http://localhost:3200
+      E2E_OUTBOX_DIR: ${{ github.workspace }}/.data/outbox
+      E2E_SCREENSHOT_DIR: ${{ github.workspace }}/.data/e2e
+      # Dev-servern kompilerar varje sida vid första besöket.
+      E2E_TIMEOUT_MS: "120000"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Playwright (biblioteket och Chromium, utan att ändra package.json)
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: Återställ och seeda databasen (auth-shim, migreringar, verksamhetens data)
+        run: npm run db:reset -- dev && npm run db:seed
+      - name: Starta servern
+        run: |
+          mkdir -p .data
+          nohup npx next dev -p 3200 > .data/server.log 2>&1 &
+          for i in $(seq 1 90); do
+            if curl -sf -o /dev/null http://localhost:3200/logga-in; then
+              echo "Servern svarar."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Servern startade inte:"
+          cat .data/server.log
+          exit 1
+      - name: E2E-tester
+        run: npm run test:e2e
+      - name: Skärmbilder, utkorg och serverlogg
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e
+          path: |
+            .data/e2e/
+            .data/outbox/
+            .data/server.log
+          if-no-files-found: ignore
+          retention-days: 7

@@ -53,7 +53,7 @@ import type {
 } from "./types";
 
 /** Standardvärden för besöksplanen. */
-export const VISIT_DEFAULTS: Required<Omit<VisitPlanOptions, "start">> = {
+export const VISIT_DEFAULTS: Required<Omit<VisitPlanOptions, "start" | "stockDate">> = {
   timeZone: DEFAULT_TIME_ZONE,
   visitWeekdays: [1, 2, 3, 4, 5],
   maxStopsPerDay: 8,
@@ -107,7 +107,10 @@ export function planVisits(input: VisitPlanInput, now: Date | string | number): 
   const o = {
     ...VISIT_DEFAULTS,
     ...Object.fromEntries(Object.entries(input.options ?? {}).filter(([, v]) => v !== undefined)),
-  } as Required<VisitPlanOptions> & { start?: IsoDate };
+  } as Required<Omit<VisitPlanOptions, "start" | "stockDate">> & {
+    start?: IsoDate;
+    stockDate?: IsoDate;
+  };
   assertInt(o.maxStopsPerDay, "Besök per dag", 1);
   assertInt(o.windowDays, "Fönstret", 1);
   assertInt(o.bufferDays, "Marginalen", 0);
@@ -117,6 +120,7 @@ export function planVisits(input: VisitPlanInput, now: Date | string | number): 
 
   const today = businessDateAt(now, o.timeZone);
   const start = input.options?.start ?? today;
+  const stockDate = input.options?.stockDate ?? today;
   if (start < today)
     throw new DomainError("invalid_input", `Planen kan inte börja före i dag (${today}).`);
   const end = addDays(start, PLAN_DAYS - 1);
@@ -191,7 +195,7 @@ export function planVisits(input: VisitPlanInput, now: Date | string | number): 
         (x.need.machine.id < y.need.machine.id ? -1 : 1),
     );
     if (list.length === 0) continue;
-    const draft = list.map((a) => buildStop(a, d, today, o, titleName, machineName, warehouse));
+    const draft = list.map((a) => buildStop(a, d, stockDate, o, titleName, machineName, warehouse));
     days.push(
       orderDay(
         d,
@@ -229,7 +233,7 @@ export function planVisits(input: VisitPlanInput, now: Date | string | number): 
 function machineNeeds(
   input: VisitPlanInput,
   today: IsoDate,
-  o: Required<Omit<VisitPlanOptions, "start">>,
+  o: Required<Omit<VisitPlanOptions, "start" | "stockDate">>,
   titleName: (id: string) => string,
 ): MachineNeed[] {
   const capacity = new Map(
@@ -302,13 +306,14 @@ function machineNeeds(
 function buildStop(
   a: Assignment,
   day: IsoDate,
-  today: IsoDate,
-  o: Required<Omit<VisitPlanOptions, "start">>,
+  stockDate: IsoDate,
+  o: Required<Omit<VisitPlanOptions, "start" | "stockDate">>,
   titleName: (id: string) => string,
   machineName: (id: string) => string,
   warehouse: Map<string, number> | null,
 ): Omit<VisitStop, "sequence" | "distanceFromPreviousMeters"> {
-  const daysUntil = daysBetween(today, day);
+  // Dagar med försäljning mellan saldots dag och besöket.
+  const daysUntil = Math.max(0, daysBetween(stockDate, day));
   const packs: PackLine[] = [];
   for (const t of a.need.titles) {
     const v = t.velocity;

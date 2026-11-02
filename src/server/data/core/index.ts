@@ -42,9 +42,10 @@ import {
   loadSalesCountsFor,
   loadStockFor,
   loadSyncInfoFor,
-  loadTodosFor,
+  loadTodoStateFor,
   type DomainInputArgs,
   type SalesCountsArgs,
+  type TodoState,
   type Viewer,
 } from "./loaders";
 import { resolveAppPeriod } from "./period";
@@ -223,8 +224,14 @@ export const loadSyncInfo = cache(async (): Promise<SyncInfo | null> =>
  * Punkterna i Att göra (@/analytics/todos), sorterade och utan avbockade. Påfyllare:
  * bara påfyllning och tysta automater, utan belopp. Läsare: tom lista.
  */
-export const loadTodos = cache(async (): Promise<TodoItem[]> =>
-  loadTodosFor(await requireViewer(), requestNow()),
+export const loadTodos = cache(async (): Promise<TodoItem[]> => (await loadTodoState()).items);
+
+/**
+ * Punkterna i Att göra med de avbockade vars orsak finns kvar, memoiserad per förfrågan:
+ * menyns räknare, Hem och Att göra räknar punkterna en gång per sidladdning.
+ */
+export const loadTodoState = cache(async (): Promise<TodoState> =>
+  loadTodoStateFor(await requireViewer(), requestNow()),
 );
 
 /** Antal automater per organisation (organisationsväxlarens detaljrad). */

@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import { lowStockAlerts } from "@/analytics/alerts";
 import { contractReminders } from "@/analytics/contracts";
 import {
   applyDismissals,
@@ -115,7 +116,9 @@ describe("rapportutkast att granska", () => {
     expect(r.detail).toContain("ICA Nära och Pressbyrån");
     expect(r.daysLeft).toBe(28); // sista dag 30 nov.
     expect(r.level).toBe("later");
-    expect(r.link).toBe("/rapporter?manad=2026-10#granska");
+    // Länken pekar ut det första utkastet (butiksrapporten för s1), annars visar Rapporter
+    // butiksrapporten för första butiken, som kanske inte har något utkast.
+    expect(r.link).toBe("/rapporter?typ=butik&manad=2026-10&butiken=s1#granska");
     expect(fig(r, "drafts")).toBe(3);
   });
 
@@ -123,6 +126,7 @@ describe("rapportutkast att granska", () => {
     const one = computeTodos(input({ reportDrafts: [draft("r1", "owner_statement", null)] }), NOW);
     const item = one.find((t) => t.kind === "report-review")!;
     expect(item.title).toBe("Granska rapportutkastet för oktober");
+    expect(item.link).toBe("/rapporter?typ=delagare&manad=2026-10#granska");
     const dismissed = [{ key: item.key, fingerprint: item.fingerprint }];
     expect(applyDismissals(one, dismissed).some((t) => t.kind === "report-review")).toBe(false);
     const two = computeTodos(
@@ -148,6 +152,8 @@ describe("rapportutkast att granska", () => {
     )!;
     expect(t.level).toBe("now");
     expect(t.daysLeft).toBe(-2); // sista dag 31 okt.
+    expect(t.detail).toContain("Skulle ha skickats senast 31\u00a0okt.");
+    expect(t.detail).not.toMatch(/\.\./);
   });
 });
 
@@ -291,5 +297,48 @@ describe("prioritering efter förlorad försäljning", () => {
     expect(prioritizeByLostSales(soon, [{ key: "refill:m1:t1", lostRevenueOre: -5 }])).toEqual(
       soon,
     );
+  });
+});
+
+describe("Drift-larmet 'Titel nära slut' och påfyllningspunkten i Att göra", () => {
+  it("räknar samma takt (14 hela dagar t.o.m. i går) och samma slutdatum", () => {
+    // 23 pack på 14 dagar plus 5 i dag: dagens försäljning ska inte räknas i någon av dem.
+    const orders = [
+      ...daily("t1", "m1", "2026-10-19", 9, 2),
+      ...daily("t1", "m1", "2026-10-28", 5, 1),
+      ...daily("t1", "m1", "2026-11-02", 1, 5),
+    ];
+    const stock = [{ machineId: "m1", titleId: "t1", onHand: 3 }];
+    const titles = [title("t1", "30th Celebration")];
+    const machines = [machine("m1", "Automat 3")];
+    const todo = computeTodos(input({ orders, stock, titles, machines }), NOW).find(
+      (t) => t.kind === "refill",
+    )!;
+    const [alert] = lowStockAlerts({ orders, stock, machines, titles }, NOW);
+    expect(alert).toBeDefined();
+    expect(alert!.evidence.period).toEqual(todo.evidence.period);
+    expect(alert!.evidence.period).toEqual({ start: "2026-10-19", end: "2026-11-01" });
+    expect(fig(todo, "unitsInWindow")).toBe(23);
+    expect(alert!.evidence.figures.find((f) => f.key === "unitsInWindow")?.value).toBe(23);
+    // Samma slutdatum i båda texterna.
+    const end = alert!.evidence.dates[0]!;
+    const [, mm, dd] = end.split("-");
+    const months = [
+      "jan.",
+      "feb.",
+      "mars",
+      "apr.",
+      "maj",
+      "juni",
+      "juli",
+      "aug.",
+      "sep.",
+      "okt.",
+      "nov.",
+      "dec.",
+    ];
+    const dayText = `${Number(dd)} ${months[Number(mm) - 1]}`;
+    expect(todo.detail.replace(/ /g, " ")).toContain(dayText);
+    expect(alert!.detail.replace(/ /g, " ")).toContain(dayText);
   });
 });

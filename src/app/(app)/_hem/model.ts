@@ -10,7 +10,7 @@
  */
 
 import { computeInsights, type Insight } from "@/analytics/insights";
-import type { AnalyticsOrder, TodoItem, TodoLevel } from "@/analytics/todos";
+import { todoInScope, type AnalyticsOrder, type TodoItem, type TodoLevel } from "@/analytics/todos";
 import type { LostSalesSummary } from "@/server/purchasing/types";
 import {
   addDays,
@@ -257,22 +257,9 @@ function todosInScope(
   scope: DataScope,
   machines: readonly MachineRecord[],
 ): TodoItem[] {
-  if (!scope.machineId && !scope.storeId) return [...todos];
-  const inScope = new Set(
-    machines
-      .filter((m) => (scope.machineId ? m.id === scope.machineId : m.storeId === scope.storeId))
-      .map((m) => m.id),
-  );
-  // Som Att göra: punkter med automat följer automaten, punkter om en butik (rapport,
-  // avtal) följer butiksfiltret, och resten gäller hela organisationen.
-  return todos.filter((t) => {
-    if (t.evidence.machineIds.length > 0)
-      return t.evidence.machineIds.some((id) => inScope.has(id));
-    if (scope.storeId && t.evidence.storeIds.length > 0) {
-      return t.evidence.storeIds.includes(scope.storeId);
-    }
-    return true;
-  });
+  // Samma regel som Att göra (todoInScope): automaten och butiken; punkter om en butik
+  // (rapport, avtal) följer butiken, med bara automatfilter automatens butik.
+  return todos.filter((t) => todoInScope(t, scope, machines));
 }
 
 // ---------------------------------------------------------------------------
@@ -317,7 +304,7 @@ function buildKpis(args: {
     },
     {
       id: "profit",
-      label: "Vinst efter alla kostnader",
+      label: "Vinst före fasta kostnader",
       unit: "ore",
       value: priced ? km.profitOre : null,
       delta: hasPrev && priced ? relative(km.profitOre, prev.profitOre) : null,
@@ -660,17 +647,45 @@ export interface HomeLostSales {
   readonly text: string;
   readonly href: string;
   readonly lostRevenueOre: number;
-  /** Titlar × automater som är slut just nu (perioden pågår). */
+  /**
+   * Titlar × automater som är slut just nu (som Att göra). 0 när perioden slutar före i går
+   * (då gäller inte "just nu" perioden).
+   */
   readonly ongoing: number;
 }
 
-/** Förlorad försäljning som Hem visar den, eller null när inget förlorats. */
-export function homeLostSales(summary: LostSalesSummary | null): HomeLostSales | null {
+/**
+ * Förlorad försäljning som Hem visar den, eller null när inget förlorats. `today` är
+ * dagens affärsdatum: "slut just nu" räknas bara när perioden går fram till i går eller i
+ * dag. `emptyNow` är antalet titlar som är slut i en automat enligt Att göra (påfyllnings-
+ * punkter med saldo 0, i filtret), så att Hem och Att göra säger samma sak; utan Att göra
+ * räknas de perioder som pågår och har kostat något.
+ */
+export function homeLostSales(
+  summary: LostSalesSummary | null,
+  today: IsoDate,
+  emptyNow: number | null = null,
+): HomeLostSales | null {
   if (!summary || summary.lostRevenueOre <= 0) return null;
+  const current = summary.period.end >= addDays(today, -1);
+  const ongoing =
+    emptyNow ?? summary.series.filter((x) => x.ongoing && x.lostRevenueOre > 0).length;
   return {
     text: summary.text,
     href: summary.href,
     lostRevenueOre: summary.lostRevenueOre,
-    ongoing: summary.series.filter((x) => x.ongoing).length,
+    ongoing: current ? ongoing : 0,
   };
+}
+
+/** Titlar som är slut i en automat enligt Att göra (påfyllning med saldo 0), i filtret. */
+export function emptyRefillsInScope(
+  todos: readonly TodoItem[],
+  scope: DataScope,
+  machines: readonly MachineRecord[],
+): number {
+  return todosInScope(todos, scope, machines).filter(
+    (t) =>
+      t.kind === "refill" && (t.evidence.figures.find((f) => f.key === "onHand")?.value ?? 1) <= 0,
+  ).length;
 }

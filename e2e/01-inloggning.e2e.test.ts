@@ -55,7 +55,7 @@ describe("inloggning", () => {
   });
 
   it("läsaren (delägaren) har läsroll och når inte Datakällor", async () => {
-    const { page, context } = await openPage(browser, e2e().baseUrl, { colorScheme: "dark" });
+    const { page, context } = await openPage(browser, e2e().baseUrl, { theme: "dark" });
     await login(page, e2e().users.partner);
     const menu = page.getByRole("button", { name: /kontomeny/ });
     expect(await menu.innerText()).toMatch(/Läsare|Delägare/);

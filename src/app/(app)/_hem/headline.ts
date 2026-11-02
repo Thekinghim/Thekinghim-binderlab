@@ -2,8 +2,8 @@
  * Hems rubrik: läget i en mening, räknat ur nyckeltalen.
  *
  *   "79 987 kr på 30 dagar." + "12 % bättre än perioden innan."
- *   Ingress: "Vinst 18 950 kr efter alla kostnader, 23,7 % marginal."
- *   Utan jämförelse: "79 987 kr sedan 13 okt." + "Vinst 21 205 kr efter alla kostnader, …"
+ *   Ingress: "Vinst 18 950 kr före återbetalningar och fasta kostnader, 23,7 % marginal."
+ *   Utan jämförelse: "79 987 kr sedan 13 okt." + "Vinst 21 205 kr före återbetalningar och fasta kostnader, …"
  *
  * Ren funktion utan databas och utan React. Inga beräkningar av ekonomi: talen kommer från
  * keyMetrics/changeBp i @/domain; här väljs bara formuleringen.
@@ -82,7 +82,7 @@ function profitSentence(input: HomeHeadlineInput): string {
     unpricedShareBp >= UNPRICED_HEADLINE_BP
       ? `, men ${formatPercent(unpricedShareBp / 10_000, 1)} av intäkten saknar inköpspris och ingår inte`
       : "";
-  return `${amount} efter alla kostnader${margin}${missing}.`;
+  return `${amount} före återbetalningar och fasta kostnader${margin}${missing}.`;
 }
 
 /** Rubriken för Hem. */

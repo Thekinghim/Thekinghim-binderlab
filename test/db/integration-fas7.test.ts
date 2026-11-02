@@ -85,6 +85,7 @@ import { loadContext } from "@/server/data/core";
 import { loadProfitAdjustmentsFor } from "@/server/data/adjustments";
 import { loadMachineHealthFor } from "@/server/data/health";
 import { loadRankedTodoStateFor } from "@/server/data/todos";
+import { loadReportsPage } from "@/server/reports/page-data";
 import { lostSalesSummaryFor } from "@/server/purchasing";
 import { runSeed } from "@/seed/run-seed";
 
@@ -178,13 +179,15 @@ describe("Att göra: avtal, rapportutkast och larm", () => {
       );
       return row.id;
     });
-    // Utkast för oktober (systemet skapar dem den 1:a).
+    // Utkast för oktober (systemet skapar dem den 1:a), för den sista butiken i namnordning:
+    // Rapporter väljer annars den första butiken, så länken måste peka ut butiken.
+    const draftStoreId = [...storeIds.values()].at(-1)!;
     reportId = await asPostgres(async (tx) => {
       const row = await one<{ id: string }>(
         tx,
         sql`insert into public.reports (organization_id, kind, period_start, period_end, store_id,
                                         storage_path, data_snapshot, calc_version, generated_at)
-            values (${orgId}::uuid, 'store_statement', '2026-10-01', '2026-10-31', ${storeId}::uuid,
+            values (${orgId}::uuid, 'store_statement', '2026-10-01', '2026-10-31', ${draftStoreId}::uuid,
                     ${`${orgId}/2026-10/utkast.pdf`}, '{}'::jsonb, 'test', '2026-11-01T05:17:00Z')
             returning id`,
       );
@@ -218,7 +221,15 @@ describe("Att göra: avtal, rapportutkast och larm", () => {
     const review = todos.find((t) => t.kind === "report-review");
     expect(review?.key).toBe("report-review:2026-10");
     expect(review?.title).toBe("Granska rapportutkastet för oktober");
-    expect(review?.link).toBe("/rapporter?manad=2026-10#granska");
+    const draftStoreId = [...storeIds.values()].at(-1)!;
+    expect(review?.link).toBe(`/rapporter?typ=butik&manad=2026-10&butiken=${draftStoreId}#granska`);
+    // Länken öppnar utkastet i granskningen (inte "Inget utkast att granska").
+    const url = new URL(review!.link!, "http://x");
+    const page = await loadReportsPage(owner, Object.fromEntries(url.searchParams.entries()), NOW);
+    expect(page.type).toBe("butik");
+    expect(page.storeId).toBe(draftStoreId);
+    expect(page.current?.id).toBe(reportId);
+    expect(page.current?.status).toBe("draft");
 
     const alert = todos.find((t) => t.kind === "alert");
     expect(alert?.key).toBe(`alert:machine:${machineIds.get("BL-001")}`);
@@ -399,6 +410,31 @@ describe("Lager och Drift planerar samma besök", () => {
       expect(p.plannedDay, p.machineId).toBe(driftDay.get(p.machineId) ?? null);
     }
   });
+
+  it("ett besök i dag har samma packlista på Lager och Drift (inget dras från dagens saldo)", async () => {
+    const ctx = await loadContextFor(owner, await listOrganizationsFor(owner.user), NOW);
+    const [lager, drift] = await as(owner, () =>
+      Promise.all([
+        loadLagerFor(owner, { period: OCT, scope: { storeId: null, machineId: null } }, NOW),
+        loadDriftOverview(ctx),
+      ]),
+    );
+    const today = drift.plan.days.find((d) => d.date === "2026-11-02");
+    let compared = 0;
+    for (const stop of today?.stops ?? []) {
+      const list = lager.packLists.find((p) => p.machineId === stop.machineId);
+      expect(list, stop.machineId).toBeDefined();
+      for (const line of list!.lines) {
+        const pack = stop.packs.find((x) => x.titleId === line.titleId);
+        expect(pack, line.titleName).toBeDefined();
+        // Lager vid besöket = saldot nu; behovet (att ta med + saknas i centrallagret) lika.
+        expect(pack!.projectedAtVisit, line.titleName).toBe(line.onHand);
+        expect(pack!.quantity + pack!.shortBy, line.titleName).toBe(line.quantity + line.shortBy);
+        compared += 1;
+      }
+    }
+    expect(compared).toBeGreaterThan(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -465,6 +501,26 @@ describe("Lönsamhet: återbetalningar och fasta kostnader", () => {
     expect(r.refundOre).toBe(4900);
     expect(r.fixedCostOre).toBe(row.fixedCostOre);
     expect(r.fixedCostOre).toBeLessThan(31000);
+
+    // Som skalet skickar filtret: ?automat=…&butik=<automatens butik>. Samma siffror.
+    const placed = await one<{ store_id: string }>(
+      db(),
+      sql`select store_id from public.machine_placements
+          where machine_id = ${machineId}::uuid and valid_to is null limit 1`,
+    );
+    const both = { storeId: placed.store_id, machineId };
+    const scoped = await loadDomainInputFor(owner, { period: OCT, ...both }, NOW);
+    const r2 = resultAfterProfit({
+      current: scoped.current,
+      organization: org.current,
+      refunds: adj.refunds,
+      fixedCosts: adj.fixedCosts,
+      scope: both,
+    });
+    expect(r2.fixedNote).toBeNull();
+    expect(r2.refundOre).toBe(r.refundOre);
+    expect(r2.fixedCostOre).toBe(r.fixedCostOre);
+    expect(r2.resultOre).toBe(r.resultOre);
   });
 
   it("påfyllaren får inga belopp", async () => {

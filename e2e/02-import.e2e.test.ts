@@ -22,7 +22,7 @@ let page: Page;
 
 beforeAll(async () => {
   browser = await launchBrowser();
-  ({ page, context } = await openPage(browser, e2e().baseUrl));
+  ({ page, context } = await openPage(browser, e2e().baseUrl, { theme: "light" }));
   await login(page, e2e().users.owner);
 });
 
@@ -44,10 +44,15 @@ describe("import av orderlistan", () => {
     await uploadSeedCsv();
     const confirm = page.getByRole("button", { name: /^Importera 460 order$/ });
     await confirm.waitFor();
+    await page.getByText("Förhandsvisning · inget är sparat ännu").scrollIntoViewIfNeeded();
     await screenshot(page, "02-import-forhandsvisning");
     await confirm.click();
     await page.getByText("Importerad", { exact: true }).waitFor();
-    await page.getByText(/460 nya order importerade/).first().waitFor();
+    await page
+      .getByText(/460 nya order importerade/)
+      .first()
+      .waitFor();
+    await page.getByText("Importerad", { exact: true }).scrollIntoViewIfNeeded();
     await screenshot(page, "02-import-klar");
   });
 
@@ -59,7 +64,11 @@ describe("import av orderlistan", () => {
     await page.getByText(/Inget nytt att importera/).waitFor();
     await save.click();
     await page.getByText("Importerad", { exact: true }).waitFor();
-    await page.getByText(/Inga nya order: 460 fanns redan/).first().waitFor();
+    await page
+      .getByText(/Inga nya order: 460 fanns redan/)
+      .first()
+      .waitFor();
+    await page.getByText("Importerad", { exact: true }).scrollIntoViewIfNeeded();
     await screenshot(page, "02-import-andra-gangen");
   });
 });

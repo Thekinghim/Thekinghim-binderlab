@@ -26,6 +26,9 @@ export const ACTION_ALERT_KINDS: ReadonlySet<string> = new Set([
   "machine_suspected_fault",
   "machine_offline",
   "import_failed",
+  // Systemlarm (src/server/monitoring): misslyckat rapportutskick, månadsutkast eller jobb.
+  "report_failed",
+  "job_failed",
 ]);
 
 const KIND_RULE: Record<string, string> = {
@@ -35,11 +38,14 @@ const KIND_RULE: Record<string, string> = {
   machine_offline:
     "Automaten har inte sålt på länge och räknas som ur drift (maskinhälsan på Drift).",
   import_failed: "Senaste importen från datakällan misslyckades.",
+  report_failed: "Ett rapportutskick eller månadens utkast misslyckades.",
+  job_failed: "Ett schemalagt jobb misslyckades.",
 };
 
 /** Länk till underlaget: automatens tidslinje på Drift, Datakällor för importer. */
 export function alertLink(a: Pick<AlertRef, "kind" | "machineId">): string {
   if (a.kind === "import_failed") return "/datakallor";
+  if (a.kind === "report_failed") return "/rapporter";
   if (a.machineId) return `/drift/automat/${encodeURIComponent(a.machineId)}`;
   return "/drift#larm";
 }

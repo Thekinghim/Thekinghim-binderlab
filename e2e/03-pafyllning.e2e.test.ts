@@ -23,7 +23,10 @@ let page: Page;
 
 beforeAll(async () => {
   browser = await launchBrowser();
-  ({ page, context } = await openPage(browser, e2e().baseUrl, { viewport: "mobile" }));
+  ({ page, context } = await openPage(browser, e2e().baseUrl, {
+    viewport: "mobile",
+    theme: "light",
+  }));
   await login(page, e2e().users.refiller);
 });
 
@@ -63,7 +66,11 @@ describe("påfyllning som påfyllare (375 px)", () => {
       async () => (await onHand("Ascended Heroes")).count === before.count + 4,
       `saldot för Ascended Heroes blir ${before.count + 4}`,
     );
-    await page.getByRole("heading", { level: 1 }).filter({ hasText: /registrerad/ }).waitFor();
+    await page.getByText("Påfyllning registrerad", { exact: true }).first().waitFor();
+    await page
+      .getByRole("heading", { level: 1 })
+      .filter({ hasText: /pack påfyllda i dag/ })
+      .waitFor();
     await screenshot(page, "03-pafyllning-registrerad-375");
   });
 

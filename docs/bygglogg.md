@@ -93,3 +93,6 @@ Tas bort när alla faser är klara.
 - 15:00 Fas 7 del 1 klar: demo-organisation (Nordljus Automater AB (demo), 14 720 order, spärr mot att radera kunders org),
   onboarding (/kom-igang, create_first_organization), global sökning i ⌘K. Till genomgången: /lager horisontell scroll vid 375 px
   (stock-matrix.tsx saknar relative), Hem klipper sexsiffriga belopp i Intäkt-rutan, demons telefonnummer → PTS fiktionsnummer.
+- 15:20 Integration klar (Hem/Att göra/Lönsamhet/Lager/Drift/Prognos/Rapporter kopplade, samma takt och besöksplan överallt,
+  "Vinst före fasta kostnader" på Hem). Genomgång av hela appen startad i tre grupper (genomgang-a/b/c).
+  Inför visning: `npm run db:reset -- dev && npm run db:seed && npm run db:seed-demo` (dev har ett testutkast som inte går att radera).

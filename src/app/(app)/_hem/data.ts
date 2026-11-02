@@ -23,7 +23,13 @@ import type {
 import type { OnboardingStatus } from "@/server/onboarding/model";
 import type { LostSalesSummary } from "@/server/purchasing/types";
 
-import { buildHomeModel, homeLostSales, type HomeLostSales, type HomeModel } from "./model";
+import {
+  buildHomeModel,
+  emptyRefillsInScope,
+  homeLostSales,
+  type HomeLostSales,
+  type HomeModel,
+} from "./model";
 
 export interface HomeLoaders {
   context(): Promise<AppContext>;
@@ -133,7 +139,11 @@ export async function loadHomeWith(
     today: ctx.today,
     scope,
     canEdit: ctx.canEdit,
-    lostSales: homeLostSales(lost),
+    lostSales: homeLostSales(
+      lost,
+      ctx.today,
+      todos ? emptyRefillsInScope(todos, p.scope, input.machines) : null,
+    ),
     onboarding: onboarding && !onboarding.complete ? onboarding : null,
     timeZone: ctx.timeZone,
   };

@@ -253,7 +253,7 @@ Migreringarna följer v2. Följande preciserades eller ändrades när SQL:en skr
 - Radering:
   - Ekonomiska tabeller har dessutom en trigger som stoppar `delete` för alla roller.
   - Följande kan raderas: medlemskap, obesvarade inbjudningar, alias, leverantörsartiklar, mål, utgångslägen, rapportmottagare och konton.
-  - Gallring körs som systemroll med `binderlab.allow_purge = 'on'` i transaktionen.
+  - Gallring körs som databasägaren `postgres` med `binderlab.allow_purge = 'on'` i transaktionen. Andra roller, även `service_role`, kan inte gallra (`20261102193000_hardening_purge_owner_only.sql`).
 - Felkoder från databasen (`BL001`–`BL020`) står i den första migreringen.
 
 **Härdning efter röd granskning (2 nov. 2026)**
@@ -314,3 +314,13 @@ Migreringen `20261102122143_drift_larm_arenden.sql`. Drizzle: `alerts` och `inci
 - **alert_runs**: en rad per körning av larmjobbet.
 - **field_submissions** och RPC:n **register_refill_once**: påfyllning från fältet med ett id
   som webbläsaren skapat; samma id igen ger samma lagerhändelse.
+
+## Fas 7: felövervakning (2 nov. 2026)
+
+Migreringen `20261102180000_drift_systemlarm.sql`: `alerts.alert_group` får värdet `system`
+(typerna `report_failed` och `job_failed`). Systemlarmen skrivs av `src/server/monitoring`
+(systemroll) när ett rapportutskick, månadsutkasten eller larmjobbet misslyckas, och stängs när
+samma sak lyckas; larmjobbet utvärderar inte familjen. En misslyckad import sparas som en rad i
+`imports` med status `failed` (och `storage_path` där filen skulle ha legat), och larmet kommer
+från regeln `import_failed`. Läsrätt som för övriga larm; påfyllaren ser dem inte. Se
+`docs/operations.md`.

@@ -136,8 +136,11 @@ export interface LowStockInput {
 
 /**
  * Titel nära slut i en automat:
- *   takt        = sålda pack de senaste `windowDays` dagarna t.o.m. i dag (domain.salesVelocity)
+ *   takt        = sålda pack de senaste `windowDays` hela dagarna t.o.m. i går
+ *                 (domain.salesVelocity), samma fönster som påfyllningspunkterna i Att göra,
+ *                 Lager och besöksplanen: dagen i dag är inte slut och skulle sänka takten
  *   dagar kvar  = golv(i lager / takt) (domain.daysOfStockLeft)
+ *   slut        = domain.stockoutDate(i går, i lager, takt), samma som i Att göra
  *   i lager 0 och titeln har sålt i fönstret  → critical ("slut")
  *   dagar kvar ≤ thresholdDays                → warning
  * Titlar utan försäljning i fönstret larmar inte (de tar inte slut med nuvarande takt).
@@ -162,12 +165,14 @@ export function lowStockAlerts(
     );
   }
   const today = businessDateAt(now, tz);
+  // Takten räknas på hela dagar t.o.m. i går (som Att göra); saldot är dagens.
+  const asOf = addDays(today, -1);
   const machineName = nameLookup(input.machines);
   const titleName = nameLookup(input.titles);
   const machines = new Map(input.machines.map((m) => [m.id, m]));
   const byPair = new Map<string, AnalyticsOrder[]>();
   for (const o of input.orders) {
-    if (o.machineId === null || o.businessDate > today) continue;
+    if (o.machineId === null || o.businessDate > asOf) continue;
     const k = `${o.machineId}\u0000${o.titleId}`;
     const list = byPair.get(k);
     if (list) list.push(o);
@@ -179,7 +184,7 @@ export function lowStockAlerts(
     if (!m || !isMachineActive(m, today)) continue;
     const orders = byPair.get(`${s.machineId}\u0000${s.titleId}`) ?? [];
     const v = salesVelocity(dailyUnits(orders), {
-      asOf: today,
+      asOf,
       days: windowDays,
       ...(m.activeFrom !== null ? { activeFrom: m.activeFrom } : {}),
     });
@@ -189,7 +194,7 @@ export function lowStockAlerts(
     if (onHand > 0 && daysLeft > thresholdDays) continue;
     const windowOrders = orders.filter((o) => o.businessDate >= v.start && o.businessDate <= v.end);
     const empty = onHand === 0;
-    const end = stockoutDate(today, onHand, v);
+    const end = stockoutDate(asOf, onHand, v);
     const rate = `${ratioTenths(v.units, v.days)} pack/dag (${v.units} pack på ${plural(v.days, "dag", "dagar")})`;
     const title = empty
       ? `${titleName(s.titleId)} är slut i ${machineName(m.id)}`

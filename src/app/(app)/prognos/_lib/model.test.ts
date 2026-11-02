@@ -327,6 +327,9 @@ describe("buildPageModel", () => {
     expect(m.lost.totalRevenueOre).toBe(row.lostRevenueOre);
     expect(m.lost.heading.title).toMatch(/^Slutsålt kostade ca/);
     expect(m.lost.heading.aside).toContain("Störst: Pokémon 151 i BL-001 Automat 1");
+    // Sidhuvudet: periodtexten kan sluta på en förkortning ("okt."), aldrig "..".
+    expect(m.heading.aside).toMatch(/Slutsålt kostade ca/);
+    expect(m.heading.aside).not.toMatch(/(?<!\.)\.\.(?!\.)/);
     expect(row.evidence.rule).toMatch(/Slutsåld/);
     expect(row.evidence.links.some((l) => l.href.startsWith("/lager?automat="))).toBe(true);
   });

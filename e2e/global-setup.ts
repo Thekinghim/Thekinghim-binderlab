@@ -36,7 +36,9 @@ async function waitForServer(baseUrl: string, timeoutMs: number): Promise<void> 
     }
     await new Promise((r) => setTimeout(r, 1_000));
   }
-  throw new Error(`Servern ${baseUrl} svarar inte (${last}). Starta den först (se docs/operations.md).`);
+  throw new Error(
+    `Servern ${baseUrl} svarar inte (${last}). Starta den först (se docs/operations.md).`,
+  );
 }
 
 export default async function setup(project: TestProject): Promise<void> {

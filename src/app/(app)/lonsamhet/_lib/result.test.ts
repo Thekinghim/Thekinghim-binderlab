@@ -156,6 +156,37 @@ describe("resultAfterProfit", () => {
     expect(r.resultOre).toBe(-6_500);
   });
 
+  it("automat- och butiksfilter (som skalet skickar): automaten går före butiken", () => {
+    // Båda automaterna i s1: butikens återbetalningar (65 kr) får inte räknas på m2.
+    const org: ProfitabilityInput = {
+      ...ORG,
+      placements: [
+        { machineId: "m1", storeId: "s1", from: "2026-01-01", to: null },
+        { machineId: "m2", storeId: "s1", from: "2026-01-01", to: null },
+      ],
+    };
+    const current: ProfitabilityInput = {
+      ...org,
+      orders: org.orders.filter((o) => o.machineId === "m2"),
+      placements: org.placements.filter((p) => p.machineId === "m2"),
+      agreements: org.agreements.filter((a) => a.storeId === "s1"),
+    };
+    const r = resultAfterProfit({
+      current,
+      organization: org,
+      refunds: REFUNDS,
+      fixedCosts: COSTS,
+      scope: { storeId: "s1", machineId: "m2" },
+    });
+    expect(r.fixedNote).toBeNull();
+    expect(r.profitOre).toBe(15_000);
+    expect(r.refundOre).toBe(2_500);
+    expect(r.fixedCostOre).toBe(19_000);
+    expect(r.resultOre).toBe(-6_500);
+    expect(r.machines.map((m) => m.key)).toEqual(["m2"]);
+    expect(r.machines[0]!.resultOre).toBe(r.resultOre);
+  });
+
   it("butiksfilter: butikens återbetalningar, fasta kostnader visas inte", () => {
     const current: ProfitabilityInput = {
       ...ORG,

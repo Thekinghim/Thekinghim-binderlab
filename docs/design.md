@@ -2,7 +2,7 @@
 
 Binderlab är en kontrollpanel för varuautomater med samlarkortspack. Den ska kännas som ett precisionsinstrument och hålla nivå inför ledningen på ett stort bolag. Reglerna gäller panelen, rapporterna (`/rapport/*`) och e-posten (`src/emails`).
 
-Visningssidan är `/design`. Den läser färgerna direkt ur `src/styles/tokens.css` och räknar kontrasten på servern (`src/app/design/tokens.ts`). Exempeldatan i `src/app/design/sample-data.ts` består av tre automater i tre butiker och ett års Awish-ordrar. Om den här filen och koden säger olika saker gäller koden. Rätta då filen i samma ändring.
+Visningssidan är `/design` (kräver inloggning). Den läser färgerna direkt ur `src/styles/tokens.css` och räknar kontrasten på servern (`src/app/design/tokens.ts`). Exempeldatan i `src/app/design/sample-data.ts` består av tre automater i tre butiker och ett års Awish-ordrar. Om den här filen och koden säger olika saker gäller koden. Rätta då filen i samma ändring.
 
 Källor i ordning:
 
@@ -607,6 +607,14 @@ Saklig, kort och konkret, som en instrumentpanel och inte en säljsida. Skriv va
      });
      const p = await ctx.newPage();
      p.on("console", (m) => m.type() === "error" && console.log("konsolfel:", m.text()));
+     // /design kräver inloggning (som /datamodell).
+     await p.goto("http://localhost:3200/logga-in");
+     await p.fill('input[name="email"]', "agare@binderlab.local");
+     await p.fill('input[name="password"]', "binderlab-dev");
+     await Promise.all([
+       p.waitForURL((u) => !u.pathname.startsWith("/logga-in")),
+       p.click('button[type="submit"]'),
+     ]);
      await p.goto("http://localhost:3200/design", { waitUntil: "load" });
      await p.waitForTimeout(2500);
      console.log("scrollWidth", await p.evaluate(() => document.documentElement.scrollWidth)); // ska vara 375

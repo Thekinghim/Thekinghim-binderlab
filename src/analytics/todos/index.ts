@@ -62,6 +62,7 @@ export { contractLink, CONTRACT_NOW_DAYS, CONTRACT_SOON_DAYS } from "./contracts
 export { LOST_REVENUE_FIGURE, prioritizeByLostSales } from "./lost-sales";
 export { reportDeadline } from "./reports";
 export { reviewLink } from "./report-review";
+export { todoInScope, type ScopeMachine, type TodoScope } from "./scope";
 export { missingPriceFingerprint } from "./missing-price";
 export { refillFingerprint } from "./refill";
 export type * from "./types";

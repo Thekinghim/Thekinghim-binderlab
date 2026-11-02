@@ -70,6 +70,7 @@ export interface Page {
 
 export interface BrowserContext {
   newPage(): Promise<Page>;
+  addInitScript(script: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -118,7 +119,8 @@ export const VIEWPORTS = {
 
 export interface PageOptions {
   readonly viewport?: keyof typeof VIEWPORTS;
-  readonly colorScheme?: "light" | "dark";
+  /** Appens tema (mörkt är standard i appen); sätts som det sparade valet i webbläsaren. */
+  readonly theme?: "light" | "dark";
 }
 
 /** Ny sida i ett eget sammanhang (egna cookies), svensk tid och språk. */
@@ -131,11 +133,15 @@ export async function openPage(
   const context = await browser.newContext({
     baseURL,
     viewport: VIEWPORTS[options.viewport ?? "desktop"],
-    colorScheme: options.colorScheme ?? "light",
+    colorScheme: options.theme ?? "dark",
     locale: "sv-SE",
     timezoneId: "Europe/Stockholm",
     ...(mobile ? { isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : {}),
   });
+  // Samma nyckel som src/lib/theme.ts (THEME_STORAGE_KEY).
+  await context.addInitScript(
+    `try { localStorage.setItem("binderlab-theme", ${JSON.stringify(options.theme ?? "dark")}); } catch {}`,
+  );
   const page = await context.newPage();
   // Dev-servern kompilerar sidor vid första besöket; det kan ta tid.
   page.setDefaultTimeout(Number(process.env.E2E_TIMEOUT_MS ?? 60_000));

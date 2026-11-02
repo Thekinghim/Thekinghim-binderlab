@@ -138,7 +138,9 @@ describe("exporter och filer", () => {
     }
     await loginAs(req, cast.personas.outsider);
     const theirs = await respond(() =>
-      GET(new Request(`${BASE}/avtal/x/fil`), { params: Promise.resolve({ id: cast.A.contractId }) }),
+      GET(new Request(`${BASE}/avtal/x/fil`), {
+        params: Promise.resolve({ id: cast.A.contractId }),
+      }),
     );
     const unknown = await respond(() =>
       GET(new Request(`${BASE}/avtal/x/fil`), {
@@ -229,7 +231,10 @@ describe("GET /sok", () => {
       const r = await respond(() => GET(new NextRequest(`${BASE}/sok?q=${encodeURIComponent(q)}`)));
       expect(r.status, q).toBe(200);
       const json = JSON.parse(r.body) as unknown;
-      expect([...keysDeep(json)].filter((k) => MONEY_KEY.test(k)), q).toEqual([]);
+      expect(
+        [...keysDeep(json)].filter((k) => MONEY_KEY.test(k)),
+        q,
+      ).toEqual([]);
       expect(r.body, q).not.toMatch(/\d\s?kr\b/);
       for (const id of cast.A.orderIds) expect(r.body, q).not.toContain(id);
     }
@@ -268,11 +273,12 @@ describe("POST /assistent/fraga", () => {
   it("fel ursprung nekas även för ägaren (CSRF)", async () => {
     const { POST } = await import("@/app/(app)/assistent/fraga/route");
     await loginAs(req, cast.personas.owner);
-    for (const headers of [
+    const attempts: Array<Record<string, string>> = [
       { origin: "https://evil.example", host: "localhost:3200" },
       { "sec-fetch-site": "cross-site", host: "localhost:3200" },
       { origin: "null", host: "localhost:3200" },
-    ]) {
+    ];
+    for (const headers of attempts) {
       const r = await respond(() => POST(post(headers)));
       expect(r.status, JSON.stringify(headers)).toBe(403);
     }
@@ -393,7 +399,15 @@ describe("sidorna", () => {
     60_000,
   );
 
-  it.each(["att-gora", "lager", "drift", "drift/larm", "drift/besok", "drift/pafyllning", "inkorg"])(
+  it.each([
+    "att-gora",
+    "lager",
+    "drift",
+    "drift/larm",
+    "drift/besok",
+    "drift/pafyllning",
+    "inkorg",
+  ])(
     "/%s: påfyllarens egen sida skickar inga belopp till klienten (props i sidans träd)",
     async (route) => {
       await loginAs(req, cast.personas.refiller);

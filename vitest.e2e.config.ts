@@ -21,7 +21,8 @@ export default defineConfig({
     environment: "node",
     include: ["e2e/**/*.e2e.test.ts"],
     globalSetup: ["e2e/global-setup.ts"],
-    // Flödena delar en databas och en server: en fil i taget, i namnordning.
+    // Flödena delar en databas och en server: en fil i taget. Filerna beror inte av
+    // varandra eller av ordningen (varje körning får egen källa, mottagare och pris).
     fileParallelism: false,
     sequence: { shuffle: false },
     testTimeout: 180_000,

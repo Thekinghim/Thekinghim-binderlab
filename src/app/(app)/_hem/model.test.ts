@@ -5,7 +5,13 @@ import { addDays, keyMetrics, type IsoDate, type Period } from "@/domain";
 
 import { homeHeadline } from "./headline";
 import { appHref, carriedParams } from "./links";
-import { buildHomeModel, coverageOf, homeLostSales, type HomeModelInput } from "./model";
+import {
+  buildHomeModel,
+  coverageOf,
+  emptyRefillsInScope,
+  homeLostSales,
+  type HomeModelInput,
+} from "./model";
 
 const TODAY = "2026-11-02";
 /** Hårda mellanslag (tusental, före enhet) som vanliga, för läsbara förväntningar. */
@@ -128,7 +134,7 @@ describe("buildHomeModel", () => {
     expect(revenue?.trend).toHaveLength(20);
     expect(plain(m.headline.title)).toBe("4 450 kr sedan 13 okt.");
     expect(m.headline.aside).toMatch(
-      /^Vinst .* efter alla kostnader, .* marginal, men .* saknar inköpspris och ingår inte\.$/,
+      /^Vinst .* före återbetalningar och fasta kostnader, .* marginal, men .* saknar inköpspris och ingår inte\.$/,
     );
   });
 
@@ -406,14 +412,83 @@ describe("integration: Att göra, avtal och förlorad försäljning på Hem", ()
       scope: { storeId: null, machineId: null },
       href: "/prognos?from=2026-10-01&to=2026-10-31#forlorad-forsaljning",
     } as const;
-    expect(homeLostSales(summary)).toEqual({
+    // I dag 1 nov.: perioden slutar i går, så "slut just nu" gäller.
+    expect(homeLostSales(summary, "2026-11-01")).toEqual({
       text: "Slutsålt kostade ca 3 200 kr i oktober.",
       href: "/prognos?from=2026-10-01&to=2026-10-31#forlorad-forsaljning",
       lostRevenueOre: 320_000,
       ongoing: 1,
     });
-    expect(homeLostSales({ ...summary, lostRevenueOre: 0 })).toBeNull();
-    expect(homeLostSales(null)).toBeNull();
+    expect(homeLostSales({ ...summary, lostRevenueOre: 0 }, "2026-11-01")).toBeNull();
+    expect(homeLostSales(null, "2026-11-01")).toBeNull();
+  });
+
+  it("homeLostSales räknar bara titlar som är slut nu och har kostat något", () => {
+    const base = {
+      period: { start: "2026-10-01", end: "2026-11-01" },
+      lostRevenueOre: 10_000,
+      lostGrossProfitOre: 0,
+      lostUnitsMilli: 1_000,
+      stockoutDayWeightBp: 10_000,
+      text: "Slutsålt kostade ca 100 kr.",
+      months: [],
+      series: [
+        {
+          key: "refill:m1:t1",
+          machineId: "m1",
+          titleId: "t1",
+          lostRevenueOre: 10_000,
+          lostUnitsMilli: 1_000,
+          ongoing: true,
+          since: "2026-10-30",
+        },
+        // Slut men säljer inte: kostar inget och räknas inte.
+        {
+          key: "refill:m1:t2",
+          machineId: "m1",
+          titleId: "t2",
+          lostRevenueOre: 0,
+          lostUnitsMilli: 0,
+          ongoing: true,
+          since: "2026-10-01",
+        },
+      ],
+      scope: { storeId: null, machineId: null },
+      href: "/prognos#forlorad-forsaljning",
+    } as const;
+    expect(homeLostSales(base, "2026-11-02")?.ongoing).toBe(1);
+    // En äldre period (september): pågår vid periodens slut, men det är inte "just nu".
+    const sep = { ...base, period: { start: "2026-09-01", end: "2026-09-30" } };
+    expect(homeLostSales(sep, "2026-11-02")?.ongoing).toBe(0);
+    // Med Att göra: antalet påfyllningspunkter med saldo 0 (samma som Att göra visar).
+    expect(homeLostSales(base, "2026-11-02", 3)?.ongoing).toBe(3);
+    expect(homeLostSales(sep, "2026-11-02", 3)?.ongoing).toBe(0);
+  });
+
+  it("emptyRefillsInScope räknar påfyllningspunkter med saldo 0 i filtret, som Att göra", () => {
+    const refill = (key: string, machineId: string, onHand: number): TodoItem =>
+      ({
+        key,
+        fingerprint: key,
+        kind: "refill",
+        level: "now",
+        urgency: 0,
+        atStakeOre: null,
+        daysLeft: 0,
+        title: key,
+        detail: "",
+        evidence: {
+          machineIds: [machineId],
+          storeIds: [],
+          figures: [{ key: "onHand", label: "I lager", value: onHand, unit: "packs" }],
+        },
+        link: "/lager",
+      }) as unknown as TodoItem;
+    const machines = inputFor({ start: "2026-10-01", end: "2026-10-31" }, null).machines;
+    const todos = [refill("a", "m1", 0), refill("b", "m1", 2), refill("c", "m2", 0)];
+    expect(emptyRefillsInScope(todos, { storeId: null, machineId: null }, machines)).toBe(2);
+    expect(emptyRefillsInScope(todos, { storeId: null, machineId: "m1" }, machines)).toBe(1);
+    expect(emptyRefillsInScope(todos, { storeId: "s1", machineId: null }, machines)).toBe(1);
   });
 });
 
@@ -434,7 +509,9 @@ describe("homeHeadline", () => {
     const h = homeHeadline(base);
     expect(h.title).toBe("79 987 kr på 20 dagar.");
     expect(h.aside).toBe("12 % bättre än perioden innan.");
-    expect(h.lead).toEqual(["Vinst 21 933 kr efter alla kostnader, 28,8 % marginal."]);
+    expect(h.lead).toEqual([
+      "Vinst 21 933 kr före återbetalningar och fasta kostnader, 28,8 % marginal.",
+    ]);
   });
   it("skriver förlust och sämre utan minustecken i ord", () => {
     const h = homeHeadline({ ...base, profitOre: -50_000, marginBp: -500, revenueChangeBp: -450 });
@@ -469,7 +546,7 @@ describe("homeHeadline", () => {
     expect(none.aside).not.toMatch(/0 kr/);
     const many = homeHeadline({ ...base, unpricedShareBp: 3_500, revenueChangeBp: null });
     expect(plain(many.aside)).toBe(
-      "Vinst 21 933 kr efter alla kostnader, 28,8 % marginal, men 35,0 % av intäkten saknar inköpspris och ingår inte.",
+      "Vinst 21 933 kr före återbetalningar och fasta kostnader, 28,8 % marginal, men 35,0 % av intäkten saknar inköpspris och ingår inte.",
     );
   });
   it("säger när perioden ligger före första ordern", () => {

@@ -443,6 +443,33 @@ describe("integrationens punkter: avtal, rapportutkast, larm och förlorad förs
     ).toBe(false);
   });
 
+  it("beloppet i risk kopplas inte till ett utkast som står först", () => {
+    const first = { ...review, level: "now" as const, urgency: 1e12 };
+    const page = buildPage(input([first, refill(M1, "soon", 294_667)]));
+    expect(page.header.description).toBe(
+      "Först: Granska 3 rapportutkast för oktober. " +
+        `Påfyllningarna: 2${NBSP}947${NBSP}kr i intäkt i risk de närmaste 7 dagarna.`,
+    );
+  });
+
+  it("med bara automatfilter följer avtal och rapporter automatens butik (som Hem)", () => {
+    const machines = input([]).machines;
+    const m = machines.find((x) => x.storeId === S1)!;
+    const other = machines.find((x) => x.storeId !== S1);
+    expect(inScope(contract, { scope: { storeId: null, machineId: m.id }, machines })).toBe(true);
+    if (other) {
+      expect(inScope(contract, { scope: { storeId: null, machineId: other.id }, machines })).toBe(
+        false,
+      );
+    }
+    expect(
+      inScope(contract, {
+        scope: { storeId: null, machineId: m.id },
+        machines: machines.map((x) => (x.id === m.id ? { ...x, storeId: "annan" } : x)),
+      }),
+    ).toBe(false);
+  });
+
   it("påfyllning med förlorad försäljning visar beloppet, bara för ekonomi", () => {
     const base = refill(M1, "now", 62_400, 0);
     const lost = {

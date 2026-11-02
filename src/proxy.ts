@@ -2,8 +2,8 @@
  * Proxy (Next 16:s efterföljare till middleware).
  *
  * Skickar oinloggade till /logga-in?next=… för skyddade sökvägar och förnyar
- * Supabase-sessionen. Öppna sökvägar: /logga-in, /inbjudan/*, /design*,
- * /datamodell, /rapport/* och statiska filer.
+ * Supabase-sessionen. Öppna sökvägar: /logga-in, /inbjudan/*, /rapport/*,
+ * /api/cron/* och statiska filer i roten (se src/server/auth/paths.ts).
  *
  * Proxyn är BARA en bekvämlighet. Behörigheten kontrolleras alltid i
  * serverkoden (requireUser/requireRole och RLS), eftersom en matcher eller en

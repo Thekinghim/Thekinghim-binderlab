@@ -101,14 +101,7 @@ export function createRequestMock(req: FakeRequest) {
 // ---------------------------------------------------------------------------
 
 export type PersonaName =
-  | "owner"
-  | "admin"
-  | "viewer"
-  | "refiller"
-  | "store"
-  | "outsider"
-  | "stranger"
-  | "anon";
+  "owner" | "admin" | "viewer" | "refiller" | "store" | "outsider" | "stranger" | "anon";
 
 export interface Persona {
   name: PersonaName;
@@ -270,8 +263,8 @@ export async function call(fn: () => Promise<unknown>): Promise<CallOutcome> {
             : typeof v.message === "string"
               ? v.message
               : v.errors
-              ? JSON.stringify(v.errors)
-              : "(inget meddelande)";
+                ? JSON.stringify(v.errors)
+                : "(inget meddelande)";
         return { kind: "refused", value, error };
       }
     }
@@ -314,7 +307,11 @@ export function isAuthDenial(outcome: CallOutcome): boolean {
 }
 
 /** Alla nycklar (rekursivt) i ett värde. Tål cykler (React-element har _owner). */
-export function keysDeep(value: unknown, out = new Set<string>(), seen = new WeakSet<object>()): Set<string> {
+export function keysDeep(
+  value: unknown,
+  out = new Set<string>(),
+  seen = new WeakSet<object>(),
+): Set<string> {
   if (!value || typeof value !== "object" || seen.has(value)) return out;
   seen.add(value);
   if (Array.isArray(value)) {

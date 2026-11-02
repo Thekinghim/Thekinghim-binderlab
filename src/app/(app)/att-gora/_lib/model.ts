@@ -7,6 +7,7 @@
 
 import {
   LOST_REVENUE_FIGURE,
+  todoInScope,
   type EvidenceFigure,
   type TodoItem,
   type TodoKind,
@@ -537,15 +538,11 @@ function machinesInScope(
 /**
  * Filtret i URL:en (?butik, ?automat): punkter som gäller automater visas bara om någon
  * av dem matchar. Punkter utan automat (inköpspris, dubbletter, rapporter till revisor)
- * gäller hela organisationen och visas alltid; rapporter till en butik följer butiken.
+ * gäller hela organisationen och visas alltid; rapporter och avtal för en butik följer
+ * butiken, med bara automatfilter automatens butik. Samma regel som Hem (`todoInScope`).
  */
 export function inScope(item: TodoItem, input: Pick<ModelInput, "scope" | "machines">): boolean {
-  const { storeId } = input.scope;
-  if (!storeId && !input.scope.machineId) return true;
-  const machines = item.evidence.machineIds;
-  if (machines.length > 0) return machinesInScope(machines, input);
-  if (storeId && item.evidence.storeIds.length > 0) return item.evidence.storeIds.includes(storeId);
-  return true;
+  return todoInScope(item, input.scope, input.machines);
 }
 
 /**
@@ -631,7 +628,19 @@ function headerView(
       : `${plural(visible.length, "sak", "saker")} att göra.`;
     aside = now > 0 ? `${formatInt(now)} måste göras i dag.` : "Inget måste göras i dag.";
     if (lead) parts.push(leadText(lead));
-    if (stake > 0) parts.push(`${kr(stake)} i intäkt står på spel de närmaste 7 dagarna.`);
+    if (stake > 0) {
+      // Beloppet gäller påfyllningar och tysta automater; när den första punkten är något
+      // annat (utkast, avtal, larm) sägs det, så att beloppet inte kopplas till den.
+      parts.push(
+        lead && RISK_KINDS.has(lead.kind)
+          ? `${kr(stake)} i intäkt står på spel de närmaste 7 dagarna.`
+          : `${
+              visible.some((i) => i.kind === "stale-machine")
+                ? "Påfyllningar och tysta automater"
+                : "Påfyllningarna"
+            }: ${kr(stake)} i intäkt i risk de närmaste 7 dagarna.`,
+      );
+    }
   }
   if (hidden > 0) parts.push(hiddenText(hidden, input.scope));
 

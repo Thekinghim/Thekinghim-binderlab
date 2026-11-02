@@ -50,8 +50,14 @@ describe("appens adress", () => {
 });
 
 describe("klientens IP", () => {
-  it("tar första adressen i x-forwarded-for", () => {
-    expect(clientIp(headers({ "x-forwarded-for": "203.0.113.5, 10.0.0.1" }))).toBe("203.0.113.5");
+  it("tar Vercels rubriker först, annars sista adressen i x-forwarded-for", () => {
+    // Det första värdet kan klienten skicka själv; det sista lade närmaste proxy till.
+    expect(clientIp(headers({ "x-forwarded-for": "203.0.113.5, 10.0.0.1" }))).toBe("10.0.0.1");
+    expect(
+      clientIp(
+        headers({ "x-forwarded-for": "6.6.6.6", "x-vercel-forwarded-for": "198.51.100.9" }),
+      ),
+    ).toBe("198.51.100.9");
     expect(clientIp(headers({ "x-real-ip": "198.51.100.7" }))).toBe("198.51.100.7");
     expect(clientIp(headers({}))).toBe("okänd");
   });

@@ -14,7 +14,7 @@ import { monthOf, type IsoMonth } from "@/domain";
 import { evidence, nameLookup } from "./common";
 import { urgencyOf, type TodoContext } from "./context";
 import { reportDeadline } from "./reports";
-import { capitalize, day, monthName, plural } from "./text";
+import { capitalize, day, monthName, plural, sentence } from "./text";
 import type { ReportDraftRef, ReportKind, TodoItem } from "./types";
 
 const KIND_NAME: Record<ReportKind, string> = {
@@ -49,9 +49,34 @@ function draftList(drafts: readonly ReportDraftRef[]): string {
   return joinSv(parts);
 }
 
-/** Länk till granskningen i Rapporter för månaden. */
-export function reviewLink(month: IsoMonth): string {
-  return `/rapporter?${new URLSearchParams({ manad: month }).toString()}#granska`;
+/** Rapporttypen i Rapporters adress (`?typ=`), för de sorter som går att granska där. */
+const URL_TYPE: Partial<Record<ReportKind, string>> = {
+  store_statement: "butik",
+  accountant_statement: "bokforing",
+  owner_statement: "delagare",
+};
+
+/**
+ * Länk till granskningen i Rapporter. Rapporter väljer typ och butik ur adressen (utan
+ * `typ` blir det butiksrapporten för första butiken), så länken pekar ut det första
+ * utkastet (ordning som i texten: butiksrapporter, bokföringsunderlag, ägarrapport;
+ * sedan butik). Övriga utkast för månaden står i arkivet på samma sida. Ett utkast av en
+ * sort som Rapporter inte granskar länkar till arkivet.
+ */
+export function reviewLink(month: IsoMonth, drafts: readonly ReportDraftRef[] = []): string {
+  const first = [...drafts].sort(
+    (a, b) =>
+      KIND_ORDER.indexOf(a.reportKind) - KIND_ORDER.indexOf(b.reportKind) ||
+      (a.storeId ?? "").localeCompare(b.storeId ?? "") ||
+      (a.id < b.id ? -1 : 1),
+  )[0];
+  const type = first ? URL_TYPE[first.reportKind] : undefined;
+  if (!first || !type) {
+    return `/rapporter?${new URLSearchParams({ manad: month }).toString()}${first ? "#arkiv" : "#granska"}`;
+  }
+  const params = new URLSearchParams({ typ: type, manad: month });
+  if (type === "butik" && first.storeId) params.set("butiken", first.storeId);
+  return `/rapporter?${params.toString()}#granska`;
 }
 
 /** En punkt per rapportmånad med utkast som inte godkänts. */
@@ -79,7 +104,7 @@ export function reportReviewTodos(ctx: TodoContext): TodoItem[] {
       .sort((a, b) => a.localeCompare(b, "sv"));
     const deadline =
       daysLeft < 0
-        ? `Skulle ha skickats senast ${day(due)}.`
+        ? sentence(`Skulle ha skickats senast ${day(due)}`)
         : daysLeft === 0
           ? "Ska skickas i dag."
           : `Ska skickas senast ${day(due)} (${plural(daysLeft, "dag", "dagar")} kvar).`;
@@ -109,7 +134,7 @@ export function reportReviewTodos(ctx: TodoContext): TodoItem[] {
           { key: "daysLeft", label: "Dagar kvar", value: daysLeft, unit: "days" },
         ],
       }),
-      link: reviewLink(month),
+      link: reviewLink(month, list),
       action: { kind: "review-report", label: "Granska utkasten", params: { month } },
     });
   }

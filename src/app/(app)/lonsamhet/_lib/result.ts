@@ -13,7 +13,7 @@
  * Intäkt, inköp, avgifter och butiksersättning ändras inte, så vattenfallet och tabellerna
  * på sidan går fortfarande ihop. Per automat summerar raderna till totalen (testas).
  *
- * Filter: med automatfilter gäller automatens återbetalningar och dess del av de fasta
+ * Filter: med automatfilter (även när butiken också står i adressen) gäller automatens återbetalningar och dess del av de fasta
  * kostnaderna (fördelningen räknas alltid på hela organisationen, `organization`). Med
  * butiksfilter gäller butikens återbetalningar; fasta kostnader fördelas per automat, inte
  * per butik, och visas därför inte (`fixedCost: null`).
@@ -71,7 +71,13 @@ export interface ResultInput {
 
 /** Resultatet efter återbetalningar och fasta kostnader. Ren funktion. */
 export function resultAfterProfit(input: ResultInput): ResultAfterProfit {
-  const { current, scope } = input;
+  const { current } = input;
+  // Automatfiltret går först: skalet lägger alltid till automatens butik i adressen
+  // (`?automat=…&butik=…`), och då gäller automatens återbetalningar och fasta kostnader.
+  const scope = {
+    storeId: input.scope.machineId ? null : input.scope.storeId,
+    machineId: input.scope.machineId,
+  };
   const period = current.period;
   const base = profitability(current, "machine");
   const profitOre = base.totals.profitOre;

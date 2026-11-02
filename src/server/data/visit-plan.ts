@@ -7,7 +7,8 @@
  *   takt     = de 14 hela dagarna t.o.m. i går (`planNow`), samma fönster som matrisen på
  *              Lager och påfyllningsregeln i Att göra; dagens försäljning är redan dragen
  *              från saldot men räknas inte i takten (dagen är inte slut)
- *   saldo    = lagret just nu
+ *   saldo    = lagret just nu (`stockDate: today`): till ett besök i dag dras ingen
+ *              försäljning, till ett besök i morgon en dags, osv. Samma packlista som Lager
  *   start    = i dag; besöksdagar mån–fre
  *   automater = de som är i drift i dag
  *   extra    = automater med misstänkt fel, fel eller ur drift (maskinhälsan, samma som
@@ -77,7 +78,7 @@ export function weeklyVisitPlan(input: WeeklyPlanInput): VisitPlan {
       stock: input.stock,
       ...(input.warehouseStock ? { warehouseStock: input.warehouseStock } : {}),
       extraVisits: input.health ? extraVisitsFromHealth(input.health, today) : [],
-      options: { timeZone, start: today },
+      options: { timeZone, start: today, stockDate: today },
     },
     planNow(addDays(today, -1), timeZone, now),
   );

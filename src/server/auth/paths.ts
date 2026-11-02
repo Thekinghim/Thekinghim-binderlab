@@ -1,13 +1,20 @@
 /**
  * Vilka sökvägar som är öppna utan inloggning, och säkra omdirigeringar.
- * Används av src/proxy.ts. Proxyn är bara en bekvämlighet: behörigheten
+ * Används av src/proxy.ts. /design och /datamodell kräver inloggning: de visar
+ * hela schemat och roll-/RLS-modellen. Proxyn är bara en bekvämlighet: behörigheten
  * kontrolleras alltid i serverkoden (requireUser/requireRole) och i RLS.
  */
 
 export const LOGIN_PATH = "/logga-in";
 
+/**
+ * Statiska filer: bara filer direkt i roten (favicon, sw.js, manifest, robots.txt)
+ * och under public/icons. En sökväg under appen som råkar sluta på .json eller
+ * .txt (t.ex. /inkorg/x.json) är INTE öppen, så att en framtida route med ett
+ * dynamiskt segment inte tappar proxyns omdirigering.
+ */
 const STATIC_FILE =
-  /\.(?:svg|png|jpe?g|gif|webp|avif|ico|css|js|mjs|map|txt|xml|json|woff2?|ttf|otf|webmanifest)$/i;
+  /^\/(?:icons\/)?[^/]+\.(?:svg|png|jpe?g|gif|webp|avif|ico|css|js|mjs|map|txt|xml|json|woff2?|ttf|otf|webmanifest)$/i;
 
 function isPathOrBelow(pathname: string, base: string): boolean {
   return pathname === base || pathname.startsWith(`${base}/`);
@@ -18,8 +25,6 @@ export function isPublicPath(pathname: string): boolean {
   return (
     isPathOrBelow(pathname, LOGIN_PATH) ||
     pathname.startsWith("/inbjudan/") ||
-    isPathOrBelow(pathname, "/design") ||
-    isPathOrBelow(pathname, "/datamodell") ||
     pathname.startsWith("/rapport/") ||
     pathname.startsWith("/_next/") ||
     // Schemalagda jobb (Vercel Cron) har ingen session; varje route kräver CRON_SECRET.

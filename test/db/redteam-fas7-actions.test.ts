@@ -159,11 +159,11 @@ describe("katalogen", () => {
     const known = new Set([...ACTIONS.map((a) => `${a.module}#${a.name}`), ...SPECIAL]);
     const missing: string[] = [];
     for (const file of files) {
-      const module = `@/${file.replace(/^src\//, "").replace(/\.tsx?$/, "")}`;
-      const mod = (await import(/* @vite-ignore */ module)) as Record<string, unknown>;
+      const specifier = `@/${file.replace(/^src\//, "").replace(/\.tsx?$/, "")}`;
+      const mod = (await import(/* @vite-ignore */ specifier)) as Record<string, unknown>;
       for (const [name, value] of Object.entries(mod)) {
-        if (typeof value === "function" && !known.has(`${module}#${name}`)) {
-          missing.push(`${module}#${name}`);
+        if (typeof value === "function" && !known.has(`${specifier}#${name}`)) {
+          missing.push(`${specifier}#${name}`);
         }
       }
     }
@@ -203,7 +203,9 @@ describe("fel roll, fel organisation, utan medlemskap och utloggad nekas och än
         if (!isDenied(outcome)) {
           problems.push(`${p}: lyckades (${JSON.stringify(outcome).slice(0, 160)})`);
         } else if (IN_ORG.includes(p) && !isAuthDenial(outcome)) {
-          problems.push(`${p}: nekades inte av rollkontrollen (${JSON.stringify(outcome).slice(0, 160)})`);
+          problems.push(
+            `${p}: nekades inte av rollkontrollen (${JSON.stringify(outcome).slice(0, 160)})`,
+          );
         }
       }
       expect(problems).toEqual([]);
@@ -251,7 +253,11 @@ describe("filuppladdning", () => {
       module: "@/app/(app)/datakallor/actions",
       name: "uploadChunk",
       make: (c: Cast) =>
-        form({ uploadId: c.idsA.import_uploads ?? crypto.randomUUID(), index: "0", chunk: new Blob(["a;b\r\n"]) }),
+        form({
+          uploadId: c.idsA.import_uploads ?? crypto.randomUUID(),
+          index: "0",
+          chunk: new Blob(["a;b\r\n"]),
+        }),
     },
   ];
 
@@ -280,7 +286,12 @@ describe("filuppladdning", () => {
     await loginAs(req, cast.personas.owner);
     const html = new TextEncoder().encode("<html><script>alert(document.cookie)</script></html>");
     const outcome = await call(() =>
-      fn(form({ contractId: cast.A.contractId, file: new Blob([html], { type: "application/pdf" }) }, "avtal.pdf")),
+      fn(
+        form(
+          { contractId: cast.A.contractId, file: new Blob([html], { type: "application/pdf" }) },
+          "avtal.pdf",
+        ),
+      ),
     );
     expect(outcome.kind).toBe("refused");
   });
@@ -289,7 +300,12 @@ describe("filuppladdning", () => {
     const fn = await load({ module: "@/app/(app)/avtal/actions", name: "uploadContractFile" });
     await loginAs(req, cast.personas.owner);
     const outcome = await call(() =>
-      fn(form({ contractId: cast.A.contractId, file: new Blob([PDF]) }, "../../../../tmp/rt7-pwned.pdf")),
+      fn(
+        form(
+          { contractId: cast.A.contractId, file: new Blob([PDF]) },
+          "../../../../tmp/rt7-pwned.pdf",
+        ),
+      ),
     );
     expect(outcome.kind).toBe("ok");
     const row = await one<{ storage_path: string | null; file_name: string | null }>(
@@ -422,14 +438,70 @@ describe("butiksportalen", () => {
     const fn = await load({ module: "@/server/portal/actions", name: "reportFault" });
     const problems: string[] = [];
     const attempts: Array<[PersonaName, Record<string, unknown>]> = [
-      ["owner", { storeId: cast.A.storeId, machineId: cast.A.machineId, kind: "store_other", description: "x" }],
-      ["refiller", { storeId: cast.A.storeId, machineId: cast.A.machineId, kind: "store_other", description: "x" }],
-      ["outsider", { storeId: cast.A.storeId, machineId: cast.A.machineId, kind: "store_other", description: "x" }],
-      ["stranger", { storeId: cast.A.storeId, machineId: cast.A.machineId, kind: "store_other", description: "x" }],
-      ["anon", { storeId: cast.A.storeId, machineId: cast.A.machineId, kind: "store_other", description: "x" }],
+      [
+        "owner",
+        {
+          storeId: cast.A.storeId,
+          machineId: cast.A.machineId,
+          kind: "store_other",
+          description: "x",
+        },
+      ],
+      [
+        "refiller",
+        {
+          storeId: cast.A.storeId,
+          machineId: cast.A.machineId,
+          kind: "store_other",
+          description: "x",
+        },
+      ],
+      [
+        "outsider",
+        {
+          storeId: cast.A.storeId,
+          machineId: cast.A.machineId,
+          kind: "store_other",
+          description: "x",
+        },
+      ],
+      [
+        "stranger",
+        {
+          storeId: cast.A.storeId,
+          machineId: cast.A.machineId,
+          kind: "store_other",
+          description: "x",
+        },
+      ],
+      [
+        "anon",
+        {
+          storeId: cast.A.storeId,
+          machineId: cast.A.machineId,
+          kind: "store_other",
+          description: "x",
+        },
+      ],
       // Butiken i A anmäler fel på B:s butik eller automat.
-      ["store", { storeId: cast.B.storeId, machineId: cast.B.machineId, kind: "store_other", description: "x" }],
-      ["store", { storeId: cast.A.storeId, machineId: cast.B.machineId, kind: "store_other", description: "x" }],
+      [
+        "store",
+        {
+          storeId: cast.B.storeId,
+          machineId: cast.B.machineId,
+          kind: "store_other",
+          description: "x",
+        },
+      ],
+      [
+        "store",
+        {
+          storeId: cast.A.storeId,
+          machineId: cast.B.machineId,
+          kind: "store_other",
+          description: "x",
+        },
+      ],
     ];
     for (const [p, input] of attempts) {
       const beforeA = await fingerprint(cast.A.orgId);
@@ -510,7 +582,10 @@ describe("inloggning och organisation", () => {
       req.cookies.clear();
       req.headers.clear();
       req.headers.set("host", "localhost:3200");
-      req.headers.set("x-forwarded-for", `10.9.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`);
+      req.headers.set(
+        "x-forwarded-for",
+        `10.9.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`,
+      );
       const f = new FormData();
       f.set("email", cast.personas.viewer.user!.email);
       f.set("password", PASSWORD);
@@ -580,7 +655,14 @@ describe("påfyllarens svar bär inga belopp", () => {
       [
         "@/app/(app)/lager/actions",
         "registerRefill",
-        [{ machineId: cast.A.machineId, titleId: cast.A.titleId, quantity: 1, fromWarehouse: false }],
+        [
+          {
+            machineId: cast.A.machineId,
+            titleId: cast.A.titleId,
+            quantity: 1,
+            fromWarehouse: false,
+          },
+        ],
       ],
       [
         "@/app/(app)/lager/actions",
@@ -590,7 +672,14 @@ describe("påfyllarens svar bär inga belopp", () => {
       [
         "@/app/(app)/att-gora/actions",
         "registerRefill",
-        [{ machineId: cast.A.machineId, titleId: cast.A.titleId, quantity: 1, fromWarehouse: false }],
+        [
+          {
+            machineId: cast.A.machineId,
+            titleId: cast.A.titleId,
+            quantity: 1,
+            fromWarehouse: false,
+          },
+        ],
       ],
       [
         "@/app/(app)/drift/actions",
@@ -608,7 +697,11 @@ describe("påfyllarens svar bär inga belopp", () => {
           ],
         ],
       ],
-      ["@/app/(app)/att-gora/actions", "dismissTodo", [sink(cast, { key: "stock:x:y", fingerprint: "z" })]],
+      [
+        "@/app/(app)/att-gora/actions",
+        "dismissTodo",
+        [sink(cast, { key: "stock:x:y", fingerprint: "z" })],
+      ],
     ];
     const problems: string[] = [];
     for (const [module, name, args] of calls) {

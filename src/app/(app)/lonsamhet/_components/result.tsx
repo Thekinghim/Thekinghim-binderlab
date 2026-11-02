@@ -9,6 +9,15 @@ const kr = (ore: number) => formatSek(ore / 100);
 /** Ett avdrag: "−1 200 kr" (0 kr utan minus). */
 const minus = (ore: number) => (ore > 0 ? `${MINUS}${kr(ore)}` : kr(0));
 
+/** "Gemensamma 391 kr fördelade efter nettointäkt, 90 kr direkt på automaten." */
+function fixedDetail(sharedOre: number, directOre: number): string {
+  const parts: string[] = [];
+  if (sharedOre > 0) parts.push(`gemensamma ${kr(sharedOre)} fördelade efter nettointäkt`);
+  if (directOre > 0) parts.push(`${kr(directOre)} direkt på automat`);
+  const text = parts.join(", ");
+  return `${text.charAt(0).toLocaleUpperCase("sv-SE")}${text.slice(1)}.`;
+}
+
 const LINK =
   "meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-muted underline-offset-4 transition-colors hover:text-fg hover:underline";
 
@@ -53,13 +62,17 @@ export function ResultAfterProfitPanel({ result }: { result: ResultAfterProfit }
   return (
     <PanelSection label="Efter vinsten" meta="Återbetalningar och fasta kostnader">
       <dl className="flex flex-col">
-        <Line label="Vinst" value={kr(r.profitOre)} detail="Samma som vattenfallet ovan." />
+        <Line
+          label="Vinst"
+          value={kr(r.profitOre)}
+          detail="Samma som vattenfallet ovan och som vinsten på Hem."
+        />
         <Line
           label="Återbetalningar till kunder"
           value={minus(r.refundOre)}
           detail={
             r.refundCount > 0
-              ? `${formatInt(r.refundCount)}${NBSP}${r.refundCount === 1 ? "ärende" : "ärenden"}, räknade på återbetalningsdagen.`
+              ? `${formatInt(r.refundCount)}${NBSP}${r.refundCount === 1 ? "ärende, räknat" : "ärenden, räknade"} på återbetalningsdagen.`
               : "Inga återbetalningar i perioden."
           }
         />
@@ -72,7 +85,7 @@ export function ResultAfterProfitPanel({ result }: { result: ResultAfterProfit }
             value={minus(r.fixedCostOre)}
             detail={
               r.fixedCostOre > 0
-                ? `Gemensamma ${kr(r.sharedFixedOre ?? 0)} fördelade efter nettointäkt, direkt på automat ${kr(r.directFixedOre ?? 0)}.`
+                ? fixedDetail(r.sharedFixedOre ?? 0, r.directFixedOre ?? 0)
                 : "Inga fasta kostnader i perioden."
             }
           />

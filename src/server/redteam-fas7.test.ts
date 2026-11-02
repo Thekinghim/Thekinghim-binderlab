@@ -68,39 +68,55 @@ async function securityHeaders(): Promise<Map<string, string>> {
 
 describe("säkerhetshuvuden", () => {
   /**
-   * HÅL (medel): inga säkerhetshuvuden alls (kontrollerat mot dev-servern: bara
+   * TÄPPT (var medel; åtgärdat i src/lib/security-headers.ts via next.config.ts):
+   * tidigare inga säkerhetshuvuden alls (kontrollerat mot dev-servern: bara
    * Cache-Control, Vary och X-Powered-By). Utan frame-ancestors/X-Frame-Options kan
    * vilken sida som helst ramas in (clickjacking mot Inställningar → Användare,
    * Godkänn rapport, Skicka). Åtgärd: headers() i next.config.ts för "/(.*)".
    */
-  it.fails("HÅL: alla sidor förbjuder inramning (CSP frame-ancestors 'none' eller X-Frame-Options DENY)", async () => {
-    const h = await securityHeaders();
-    const csp = h.get("content-security-policy") ?? "";
-    const framed = /frame-ancestors\s+('none'|'self')/.test(csp) || /^(DENY|SAMEORIGIN)$/i.test(h.get("x-frame-options") ?? "");
-    expect(framed).toBe(true);
-  });
+  it(
+    "TÄPPT: alla sidor förbjuder inramning (CSP frame-ancestors 'none' eller X-Frame-Options DENY)",
+    async () => {
+      const h = await securityHeaders();
+      const csp = h.get("content-security-policy") ?? "";
+      const framed =
+        /frame-ancestors\s+('none'|'self')/.test(csp) ||
+        /^(DENY|SAMEORIGIN)$/i.test(h.get("x-frame-options") ?? "");
+      expect(framed).toBe(true);
+    },
+  );
 
-  it.fails("HÅL: X-Content-Type-Options: nosniff på alla svar", async () => {
+  it("TÄPPT: X-Content-Type-Options: nosniff på alla svar", async () => {
     expect((await securityHeaders()).get("x-content-type-options")).toBe("nosniff");
   });
 
-  it.fails("HÅL: Referrer-Policy läcker inte sökvägar (inbjudningstoken, rapport-id) till andra webbplatser", async () => {
-    const policy = (await securityHeaders()).get("referrer-policy") ?? "";
-    expect(["no-referrer", "same-origin", "strict-origin", "strict-origin-when-cross-origin"]).toContain(policy);
-  });
+  it(
+    "TÄPPT: Referrer-Policy läcker inte sökvägar (inbjudningstoken, rapport-id) till andra webbplatser",
+    async () => {
+      const policy = (await securityHeaders()).get("referrer-policy") ?? "";
+      expect([
+        "no-referrer",
+        "same-origin",
+        "strict-origin",
+        "strict-origin-when-cross-origin",
+      ]).toContain(policy);
+    },
+  );
 
-  it.fails("HÅL: en Content-Security-Policy med default-src och object-src 'none'", async () => {
+  it("TÄPPT: en Content-Security-Policy med default-src och object-src 'none'", async () => {
     const csp = (await securityHeaders()).get("content-security-policy") ?? "";
     expect(csp).toMatch(/default-src/);
     expect(csp).toMatch(/object-src 'none'/);
     expect(csp).toMatch(/base-uri ('none'|'self')/);
   });
 
-  it.fails("HÅL: Strict-Transport-Security (HSTS) utanför development", async () => {
-    expect((await securityHeaders()).get("strict-transport-security") ?? "").toMatch(/max-age=\d{7,}/);
+  it("TÄPPT: Strict-Transport-Security (HSTS) utanför development", async () => {
+    expect((await securityHeaders()).get("strict-transport-security") ?? "").toMatch(
+      /max-age=\d{7,}/,
+    );
   });
 
-  it.fails("HÅL: X-Powered-By är avstängt (poweredByHeader: false)", async () => {
+  it("TÄPPT: X-Powered-By är avstängt (poweredByHeader: false)", async () => {
     const mod = (await import("../../next.config")) as { default: { poweredByHeader?: boolean } };
     expect(mod.default.poweredByHeader).toBe(false);
   });
@@ -192,18 +208,23 @@ describe("proxyn", () => {
    * sitter i serverkoden (requireUser/requireRole och RLS), så det läcker inget i dag,
    * men en framtida route.ts med ett dynamiskt segment förlorar proxyns omdirigering.
    * Åtgärd: matcha statiska filer bara under /_next, /public-filerna och rotens ikoner.
+   * TÄPPT: src/server/auth/paths.ts (STATIC_FILE gäller bara roten och /icons).
    */
-  it.fails("HÅL (låg): en sökväg under appen räknas inte som öppen bara för att den slutar på .json", () => {
-    expect(isPublicPath("/inkorg/x.json")).toBe(false);
-    expect(isPublicPath("/order/export.txt")).toBe(false);
-  });
+  it(
+    "TÄPPT (låg): en sökväg under appen räknas inte som öppen bara för att den slutar på .json",
+    () => {
+      expect(isPublicPath("/inkorg/x.json")).toBe(false);
+      expect(isPublicPath("/order/export.txt")).toBe(false);
+    },
+  );
 
   /**
    * Låg: /datamodell (hela schemat med tabeller, roller och RLS-regler) och /design är
    * öppna utan inloggning även i production. Det ger en angripare en karta över
    * behörighetsmodellen. Åtgärd: notFound() när APP_ENV är production, eller kräv inloggning.
+   * TÄPPT: båda kräver inloggning i proxyn och i sidorna (requireUser).
    */
-  it.fails("HÅL (låg): /datamodell kräver inloggning", () => {
+  it("TÄPPT (låg): /datamodell kräver inloggning", () => {
     expect(isPublicPath("/datamodell")).toBe(false);
   });
 });
@@ -229,7 +250,13 @@ describe("dev-inloggningen", () => {
     { APP_ENV: "development", DATABASE_URL: "postgres://u@127.0.0.1,db.example.com/x" },
   ])("spärras: %j", (env) => {
     expect(() =>
-      assertDevAuthAllowed({ NODE_ENV: "development", VERCEL: undefined, VERCEL_ENV: undefined, NEXT_PHASE: undefined, ...env }),
+      assertDevAuthAllowed({
+        NODE_ENV: "development",
+        VERCEL: undefined,
+        VERCEL_ENV: undefined,
+        NEXT_PHASE: undefined,
+        ...env,
+      }),
     ).toThrow();
   });
 
@@ -287,7 +314,10 @@ describe("inloggningens gräns", () => {
     const limiter = createRateLimiter({ limit: 5, windowMs: 60_000 });
     const results = await Promise.all(
       Array.from({ length: 50 }, (_, i) =>
-        loginFlow({ provider, limiter, ip: "203.0.113.5" }, { email: "a@b.se", password: `fel-${i}` }),
+        loginFlow(
+          { provider, limiter, ip: "203.0.113.5" },
+          { email: "a@b.se", password: `fel-${i}` },
+        ),
       ),
     );
     expect(provider.attempts).toBeLessThanOrEqual(5);
@@ -298,7 +328,10 @@ describe("inloggningens gräns", () => {
     const provider = fakeProvider("x");
     const limiter = createRateLimiter({ limit: 5, windowMs: 60_000 });
     for (let i = 0; i < 6; i += 1) {
-      await loginFlow({ provider, limiter, ip: "203.0.113.9" }, { email: "c@d.se", password: `fel-${i}` });
+      await loginFlow(
+        { provider, limiter, ip: "203.0.113.9" },
+        { email: "c@d.se", password: `fel-${i}` },
+      );
     }
     expect(provider.attempts).toBe(5);
   });
@@ -309,8 +342,9 @@ describe("inloggningens gräns", () => {
    * räknare per IP. Gränsen per konto (20) gäller fortfarande, men en spray mot många
    * konton (5 försök per konto och påhittad IP) begränsas inte. Åtgärd: läs
    * x-vercel-forwarded-for / x-real-ip som Vercel sätter, eller sista betrodda hoppet.
+   * TÄPPT: clientIp läser Vercels rubriker och annars sista värdet i X-Forwarded-For.
    */
-  it.fails("HÅL (låg): en påhittad X-Forwarded-For styr inte vilken IP som räknas", () => {
+  it("TÄPPT (låg): en påhittad X-Forwarded-For styr inte vilken IP som räknas", () => {
     const spoofed = new Headers({
       "x-forwarded-for": "1.2.3.4, 198.51.100.7",
       "x-real-ip": "198.51.100.7",

@@ -360,6 +360,26 @@ listan har alltid samma punkter.
 **Avbockade.** Listan "Avbockade" visar bara punkter vars orsak finns kvar (punkten skulle stå
 i listan utan avbockningen). En avbockning vars orsak är löst döljer inget och visas inte.
 
+**Larm och tyst automat.** Ett öppet larm om en automat som redan står som tyst automat blir
+ingen egen punkt (samma orsak). Det avgörs innan avbockningarna tas bort: bockar ägaren av
+punkten för den tysta automaten döljs också larmet för automaten i Att göra, tills automaten
+säljer igen eller punkten får ett nytt fingerprint. Larmet syns fortfarande på Drift.
+
+**Samma takt överallt.** Påfyllningspunkten, larmet "Titel nära slut" på Drift, matrisen på
+Lager och besöksplanen räknar takten på de 14 hela dagarna t.o.m. i går och slutdatumet som
+`stockoutDate(i går, saldo, takt)`. Saldot är dagens. Besöksplanen (`weeklyVisitPlan`, samma
+för Lager, Drift och Besöksplan) drar försäljning från saldot bara för dagarna från i dag till
+besöket, så ett besök i dag får samma packlista som Lagers påfyllningslista.
+
+**Filter.** Hem och Att göra filtrerar med samma regel (`todoInScope`): punkter med automater
+följer automaten (och butiken den står i), punkter om en butik (avtal, rapport till butiken)
+följer butiken, med bara automatfilter automatens butik. Övriga punkter gäller hela
+organisationen.
+
+**Länken till ett rapportutkast** pekar ut det första utkastet för månaden (typ och butik i
+adressen), så att Rapporter öppnar just det utkastet i granskningen. Övriga utkast för månaden
+står i arkivet på samma sida.
+
 Testerna finns i `src/analytics/todos/*.test.ts` (bland annat `integration.test.ts` för avtal,
 utkast, larm och förlorad försäljning) och `test/db/integration-fas7.test.ts`.
 
@@ -377,11 +397,16 @@ nyckeltalen ändras inte.
   efter nettointäkt per automat (alla order, även utan inköpspris), kostnader för en viss
   automat på den automaten.
 - **Automatfilter:** automatens återbetalningar och automatens del av fördelningen, räknad på
-  hela organisationen (annars skulle automaten bära alla gemensamma kostnader).
+  hela organisationen (annars skulle automaten bära alla gemensamma kostnader). Automaten går
+  före butiken när båda står i adressen (filtret i skalet lägger alltid till automatens butik).
 - **Butiksfilter:** butikens återbetalningar (placeringen på återbetalningsdagen). Fasta
   kostnader fördelas per automat, inte per butik, och visas inte med butiksfilter.
 - Per automat summerar vinst, återbetalningar, fasta kostnader och resultat till totalen
   (testas i `src/app/(app)/lonsamhet/_lib/result.test.ts`).
+
+**Vinst på Hem.** Hem visar vinsten före återbetalningar och fasta kostnader ("Vinst före fasta
+kostnader"), samma som raden "Vinst" här och vattenfallets slut. Resultatet efter fasta
+kostnader finns här och på Ekonomi.
 
 **Exempel.** Två automater, moms och kortavgift 0, provision 10 %: m1 vinst 300 kr, m2 150 kr.
 Återbetalt 40 kr (m1) och 25 kr (m2). Försäkring 300 kr/mån gemensam, service 90 kr/mån på m2.

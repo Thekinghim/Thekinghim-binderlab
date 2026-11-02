@@ -65,6 +65,48 @@ per IP för ogiltiga adresser. Försöket räknas innan lösenordet prövas, så
 parallella förfrågningar kommer inte förbi gränsen. Spärrade räknare tas
 aldrig bort i förtid. Gränsen räknas i minnet per serverinstans.
 
+Klientens IP för gränserna (`clientIp` i `src/server/request-info.ts`) är
+`x-vercel-forwarded-for`, annars `x-real-ip`, annars det SISTA värdet i
+`x-forwarded-for` (adressen som närmaste proxy lade till). Det första värdet
+skickar klienten själv och används aldrig. Körs appen bakom en annan proxy än
+Vercel ska den proxyn sätta `x-real-ip` eller lägga till klientens adress sist i
+`x-forwarded-for`.
+
+### Säkerhetshuvuden
+
+Alla svar får rubrikerna i `src/lib/security-headers.ts` (via `headers()` i
+`next.config.ts`):
+
+| Rubrik                       | Värde                                                                                                                                |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `Content-Security-Policy`    | `default-src 'self'`, skript bara från appen, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'` |
+| `X-Frame-Options`            | `DENY` (äldre webbläsare)                                                                                                            |
+| `X-Content-Type-Options`     | `nosniff`                                                                                                                            |
+| `Referrer-Policy`            | `strict-origin-when-cross-origin` (inbjudningstoken och id:n i sökvägen lämnar inte appen)                                           |
+| `Permissions-Policy`         | kamera, mikrofon, plats, betalning, USB m.fl. avstängda                                                                              |
+| `Strict-Transport-Security`  | `max-age=63072000` (ignoreras över http lokalt)                                                                                      |
+| `Cross-Origin-Opener-Policy` | `same-origin`                                                                                                                        |
+
+- `X-Powered-By` är avstängt (`poweredByHeader: false`).
+- CSP:n har `'unsafe-inline'` för skript eftersom Next bäddar in RSC-data utan
+  nonce; `'unsafe-eval'` och `ws:` finns bara i development. Sentry i
+  webbläsaren tillåts mot ursprunget i `NEXT_PUBLIC_SENTRY_DSN` (bara https).
+- PDF:er som visas i webbläsaren (`/avtal/[id]/fil`, `/rapport/[id]/fil/[typ]`,
+  `/portal/rapporter/[id]/pdf`) får en smalare policy utan `object-src`, så att
+  webbläsarens PDF-visare fungerar. Inramning är förbjuden även där.
+- En ny extern tjänst i webbläsaren (bilder, typsnitt, API) kräver en ändring i
+  `contentSecurityPolicy()`; annars blockeras den.
+- `/design` och `/datamodell` kräver inloggning (de visar schemat och roll-/RLS-modellen).
+  Proxyn släpper bara förbi statiska filer i roten och under `/icons`.
+
+### Uppladdningar
+
+Server actions tar emot högst 21 MB (`serverActions.bodySizeLimit` och
+`proxyClientMaxBodySize` i `next.config.ts`): avtalsfiler är högst 20 MB och
+utbetalningsfiler högst 10 MB. Importen laddar upp i bitar om 768 KiB.
+**Vercel Functions tar emot högst 4,5 MB per förfrågan**, så på Vercel stoppas
+avtalsfiler över cirka 4,4 MB av plattformen innan appen ser dem.
+
 Supabase-sessionens cookies är `httpOnly`, `SameSite=Lax` och `Secure`
 utanför development. Appen har ingen webbläsarklient mot Supabase.
 `SUPABASE_URL` och `SUPABASE_JWKS_URL` måste vara https utanför development.

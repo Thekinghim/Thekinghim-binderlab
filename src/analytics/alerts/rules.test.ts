@@ -60,7 +60,7 @@ describe("lowStockAlerts", () => {
     { id: "t1", name: "30th Celebration" },
     { id: "t2", name: "Surging Sparks" },
   ];
-  // 2 pack per dag de senaste 14 dagarna (19 okt.–1 nov.) + 2 i dag.
+  // 2 pack per dag de senaste 14 hela dagarna (19 okt.–1 nov.) + 2 i dag (räknas inte i takten).
   const orders = [
     ...daily("t1", "m1", "2026-10-19", 15, 2),
     ...daily("t2", "m1", "2026-10-19", 15, 1),
@@ -75,10 +75,11 @@ describe("lowStockAlerts", () => {
     const a = res[0];
     expect(a?.severity).toBe("warning");
     expect(a?.key).toBe("low_stock:m1:t1");
-    expect(t(a?.title)).toBe("30th Celebration i Automat 3 tar slut tor 5 nov.");
+    expect(t(a?.title)).toBe("30th Celebration i Automat 3 tar slut ons 4 nov.");
     expect(t(a?.detail)).toBe(
-      "5 pack kvar, säljer 2,0 pack/dag (28 pack på 14 dagar). Beräknat slut tor 5 nov.",
+      "5 pack kvar, säljer 2,0 pack/dag (28 pack på 14 dagar). Beräknat slut ons 4 nov.",
     );
+    expect(a?.evidence.period).toEqual({ start: "2026-10-19", end: "2026-11-01" });
     expect(a?.evidence.orderIds).toHaveLength(28);
   });
 

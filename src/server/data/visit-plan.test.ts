@@ -74,7 +74,7 @@ describe("weeklyVisitPlan (Lager och Drift)", () => {
           { machineId: "m2", titleId: "t1", onHand: 10 },
         ],
         extraVisits: [],
-        options: { timeZone: TZ, start: TODAY },
+        options: { timeZone: TZ, start: TODAY, stockDate: TODAY },
       },
       planNow("2026-11-01", TZ, NOW),
     );
@@ -93,5 +93,61 @@ describe("weeklyVisitPlan (Lager och Drift)", () => {
       "Ur drift",
     );
     expect(extraVisitsFromHealth([{ machineId: "m1", status: "ok" }], TODAY)).toEqual([]);
+  });
+
+  it("ett besök i dag får samma packlista som Lager: ingen försäljning dras från dagens saldo", () => {
+    const p = plan({
+      stock: [
+        { machineId: "m1", titleId: "t1", onHand: 3 },
+        { machineId: "m2", titleId: "t1", onHand: 10 },
+      ],
+    });
+    expect(dayOf(p, "m1")).toBe(TODAY);
+    const stop = p.days[0]!.stops.find((s) => s.machineId === "m1")!;
+    const line = stop.packs.find((x) => x.titleId === "t1")!;
+    expect(line.projectedAtVisit).toBe(3);
+    // 2 pack/dag i 7 dagar = 14, minus 3 i automaten.
+    expect(line.quantity).toBe(11);
+
+    // Lagers påfyllningslista: ett besök på planens första dag (i går) med dagens saldo.
+    const yesterday = "2026-11-01";
+    const lager = planVisits(
+      {
+        orders: base,
+        machines: [machines[0]!],
+        titles,
+        stock: [{ machineId: "m1", titleId: "t1", onHand: 3 }],
+        extraVisits: [{ machineId: "m1", reason: "", needBy: yesterday }],
+        options: {
+          timeZone: TZ,
+          start: yesterday,
+          visitWeekdays: [1, 2, 3, 4, 5, 6, 7],
+          maxStopsPerDay: 1,
+          minStopsPerTrip: 1,
+        },
+      },
+      planNow(yesterday, TZ, NOW),
+    );
+    const lagerLine = lager.days[0]!.stops[0]!.packs.find((x) => x.titleId === "t1")!;
+    expect(line.quantity).toBe(lagerLine.quantity);
+    expect(line.projectedAtVisit).toBe(lagerLine.projectedAtVisit);
+  });
+
+  it("ett besök senare i veckan drar försäljningen från i dag till besöket", () => {
+    const p = plan({
+      stock: [
+        { machineId: "m1", titleId: "t1", onHand: 100 },
+        { machineId: "m2", titleId: "t1", onHand: 5 },
+      ],
+    });
+    const day = dayOf(p, "m2")!;
+    expect(day > TODAY).toBe(true);
+    const line = p.days
+      .flatMap((d) => d.stops)
+      .find((s) => s.machineId === "m2")!
+      .packs.find((x) => x.titleId === "t1")!;
+    // 1 pack/dag: saldot 5 minus antalet dagar från i dag till besöket.
+    const days = (Date.parse(day) - Date.parse(TODAY)) / 86_400_000;
+    expect(line.projectedAtVisit).toBe(5 - days);
   });
 });
