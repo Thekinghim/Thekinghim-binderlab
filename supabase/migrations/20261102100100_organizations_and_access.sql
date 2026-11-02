@@ -75,8 +75,14 @@ revoke all on function private.orgs_with_role(public.member_role[]) from public,
 grant execute on function private.has_role(uuid, public.member_role[]) to authenticated;
 grant execute on function private.orgs_with_role(public.member_role[]) to authenticated;
 
--- Minst en ägare. Låser organisationsraden så att två samtidiga
--- nedgraderingar inte kan lämna organisationen utan ägare.
+-- Minst en ägare. Två samtidiga nedgraderingar får inte lämna organisationen
+-- utan ägare:
+--   * READ COMMITTED: låset på organisationsraden gör att den andra väntar,
+--     och räkningen (ny ögonblicksbild per sats) ser den första: BL005.
+--   * REPEATABLE READ/SERIALIZABLE: räkningen använder transaktionens gamla
+--     ögonblicksbild. Därför låses också ägarnas egna rader; en ägarrad som en
+--     annan transaktion redan ändrat ger då ett serialiseringsfel (40001) i
+--     stället för att båda går igenom.
 create function private.memberships_keep_owner() returns trigger
 language plpgsql security definer
 set search_path = ''
@@ -86,6 +92,11 @@ begin
     return null;
   end if;
   perform 1 from public.organizations o where o.id = old.organization_id for update;
+  if current_setting('transaction_isolation') <> 'read committed' then
+    perform 1 from public.memberships m
+    where m.organization_id = old.organization_id and m.role = 'owner'
+    for update;
+  end if;
   if not exists (
     select 1 from public.memberships m
     where m.organization_id = old.organization_id and m.role = 'owner'
@@ -95,6 +106,54 @@ begin
       message = 'Organisationen måste ha minst en ägare.',
       hint = 'Gör någon annan till ägare först.';
   end if;
+  return null;
+end
+$$;
+
+-- Medlemskap skapas bara av systemet: create_organization (ägaren) och
+-- accept_invitation (den inbjudna, med samtycke). En klient kan alltså inte
+-- lägga in en annan användare direkt, varken i den egna organisationen eller
+-- med någon annans user_id. INSERT-rättigheten och policyn finns kvar för att
+-- "insert ... on conflict do update" ska nå uppdateringsvägen (och dess
+-- kontroller); en faktisk ny rad stoppas här.
+-- Triggern heter "A05_…" så att den körs före FK-kontrollerna
+-- (RI_ConstraintTrigger_…): annars skulle felkoden avslöja om ett user_id finns.
+create function private.memberships_via_rpc_only() returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if current_user in ('anon', 'authenticated') then
+    raise exception using
+      errcode = '42501',
+      message = 'Medlemmar läggs till via inbjudan.',
+      hint = 'Använd create_invitation.';
+  end if;
+  return null;
+end
+$$;
+
+-- När någon förlorar rätten att bjuda in (nedgraderas eller tas bort) löper
+-- hens obesvarade inbjudningar som hen inte längre skulle få skapa ut:
+-- alla om hen inte längre är ägare/admin, ägarinbjudningar om hen inte
+-- längre är ägare.
+create function private.memberships_expire_invitations() returns trigger
+language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  v_new_role public.member_role := case when tg_op = 'UPDATE' then new.role end;
+begin
+  if old.role not in ('owner', 'admin') or v_new_role = 'owner' or v_new_role = old.role then
+    return null;
+  end if;
+  update public.invitations i
+  set expires_at = now()
+  where i.organization_id = old.organization_id
+    and i.invited_by = old.user_id
+    and i.accepted_at is null
+    and i.expires_at > now()
+    and (v_new_role is distinct from 'admin' or i.role = 'owner');
   return null;
 end
 $$;
@@ -141,6 +200,26 @@ create table public.profiles (
   unique (organization_id, id),
   unique (organization_id, user_id)
 );
+
+-- En profil hör till en medlem (eller till ingen, efter anonymisering).
+-- Kontrolleras efter RLS och före FK (namnet "A05_…"), så att felkoden inte
+-- avslöjar om ett user_id finns eller är medlem någon annanstans.
+create function private.profiles_member_only() returns trigger
+language plpgsql security definer
+set search_path = ''
+as $$
+begin
+  if new.user_id is not null and not exists (
+    select 1 from public.memberships m
+    where m.organization_id = new.organization_id and m.user_id = new.user_id
+  ) then
+    raise exception using
+      errcode = 'BL020',
+      message = 'Profilen måste höra till en medlem i organisationen.';
+  end if;
+  return null;
+end
+$$;
 
 create function private.profiles_anonymize() returns trigger
 language plpgsql
@@ -443,6 +522,21 @@ begin
       errcode = '42501',
       message = 'Bara ägaren kan arkivera organisationen.';
   end if;
+  -- Tidszonen avgör affärsdatum och därmed månadsgränserna. Med stängda
+  -- månader skulle ett byte flytta händelser vid månadsskiftet förbi spärren.
+  -- (Frågan körs med anroparens rättigheter; ägare/admin, de enda som når
+  -- hit, får läsa period_closes.)
+  if current_user = 'authenticated'
+     and new.timezone is distinct from old.timezone
+     and exists (
+       select 1 from public.period_closes pc
+       where pc.organization_id = old.id and pc.reopened_at is null
+     ) then
+    raise exception using
+      errcode = 'BL004',
+      message = 'Tidszonen kan inte ändras när det finns stängda månader.',
+      hint = 'Öppna de stängda månaderna först.';
+  end if;
   return new;
 end
 $$;
@@ -461,6 +555,8 @@ create trigger t99_forbid_delete before delete on public.organizations
 
 create trigger t00_forbid_org_change before update on public.memberships
   for each row execute function private.forbid_org_change();
+create trigger "A05_via_rpc_only" after insert on public.memberships
+  for each row execute function private.memberships_via_rpc_only();
 create trigger t10_guard_role before insert or update or delete on public.memberships
   for each row execute function private.memberships_guard_role();
 create trigger t20_stamp_insert before insert on public.memberships
@@ -469,11 +565,15 @@ create trigger t20_stamp_update before update on public.memberships
   for each row execute function private.stamp_update();
 create trigger t80_keep_owner after update or delete on public.memberships
   for each row execute function private.memberships_keep_owner();
+create trigger t81_expire_invitations after update of role or delete on public.memberships
+  for each row execute function private.memberships_expire_invitations();
 create trigger t90_audit after insert or update or delete on public.memberships
   for each row execute function private.audit();
 
 create trigger t00_forbid_org_change before update on public.profiles
   for each row execute function private.forbid_org_change();
+create trigger "A05_member_only" after insert on public.profiles
+  for each row execute function private.profiles_member_only();
 create trigger t10_anonymize before update on public.profiles
   for each row execute function private.profiles_anonymize();
 create trigger t20_stamp_insert before insert on public.profiles
@@ -568,6 +668,7 @@ create policy organizations_update on public.organizations
   with check (id = any (array(select private.orgs_with_role('owner', 'admin'))));
 
 -- memberships: eget medlemskap (alla roller) och alla för ägare/admin.
+-- Nya medlemskap skapas bara via RPC (se private.memberships_via_rpc_only).
 alter table public.memberships enable row level security;
 revoke all on table public.memberships from anon, authenticated;
 grant select, insert, delete on table public.memberships to authenticated;

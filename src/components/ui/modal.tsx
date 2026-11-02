@@ -59,9 +59,7 @@ export function Modal({
         size === "sm" ? "sm:max-w-[420px]" : "sm:max-w-[560px]",
       )}
     >
-      <div
-        className="relative flex max-h-[85dvh] animate-enter flex-col rounded-t-md border border-line-strong bg-raised sm:rounded-md"
-      >
+      <div className="relative flex max-h-[85dvh] animate-enter flex-col rounded-t-md border border-line-strong bg-raised sm:rounded-md">
         <header className="flex items-start justify-between gap-4 border-b border-line p-5">
           <div className="flex min-w-0 flex-col gap-2">
             {eyebrow ? <p className="label text-subtle">{eyebrow}</p> : null}

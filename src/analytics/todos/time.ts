@@ -14,8 +14,7 @@ export const DEFAULT_TIME_ZONE = "Europe/Stockholm";
 /** Millisekunder per timme. */
 export const HOUR_MS = 3_600_000;
 
-const INSTANT_PATTERN =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:?\d{2})$/i;
+const INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:?\d{2})$/i;
 
 /**
  * Tolkar en tidpunkt till millisekunder sedan 1970 (UTC).

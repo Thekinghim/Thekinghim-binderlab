@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { Button, IconButton } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/field";
 import { Icon, type IconName } from "@/components/ui/icon";
@@ -80,6 +80,14 @@ function Board({ theme }: { theme: "dark" | "light" }) {
         <IconButton icon="settings" label="Inställningar" size="sm" />
         <IconButton icon="download" label="Ladda ner" variant="secondary" disabled />
       </Row>
+      <Row label="Verktygsrad · ghost · en inaktiv">
+        <IconButton icon="filter" label="Filtrera" />
+        <IconButton icon="download" label="Ladda ner" disabled />
+        <IconButton icon="settings" label="Inställningar" />
+        <Button variant="ghost" size="sm" disabled>
+          Ångra
+        </Button>
+      </Row>
       <Row label="Segmentväljare">
         <Segmented
           label="Period"
@@ -106,9 +114,9 @@ function Board({ theme }: { theme: "dark" | "light" }) {
       </Row>
       <div className="flex flex-col gap-3">
         <p className="label text-subtle">Ikoner · 16 px · 1.25 linje</p>
-        <div className="flex flex-wrap gap-x-6 gap-y-4">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-y-4">
           {ICONS.map((n) => (
-            <div key={n} className="flex w-14 flex-col items-center gap-2 text-muted">
+            <div key={n} className="flex flex-col items-center gap-2 text-muted">
               <Icon name={n} />
               <span className="meta text-subtle">{n}</span>
             </div>
@@ -117,7 +125,14 @@ function Board({ theme }: { theme: "dark" | "light" }) {
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <Input label="Sök automat" placeholder="BL-001, Nordstan …" icon="search" />
-        <Input label="Inköpspris" type="number" defaultValue={42} suffix="kr" hint="Per pack, exkl. moms" />
+        <Input
+          label="Inköpspris"
+          type="number"
+          defaultValue={42}
+          suffix="kr"
+          hint="Per pack, exkl. moms"
+        />
+        <Input label="Påfyllningstakt" type="number" defaultValue={128} suffix="st/h" />
         <Input
           id={`larm-${theme}`}
           label="Larmgräns lager"
@@ -134,7 +149,11 @@ function Board({ theme }: { theme: "dark" | "light" }) {
             { value: "vecka", label: "Vecka" },
           ]}
         />
-        <Select label="Automat" disabled options={[{ value: "bl10", label: "BL-010 · Westfield Arninge" }]} />
+        <Select
+          label="Automat"
+          disabled
+          options={[{ value: "bl10", label: "BL-010 · Westfield Arninge" }]}
+        />
       </div>
       <Row label="Notis">
         <Button
@@ -197,8 +216,11 @@ function Board({ theme }: { theme: "dark" | "light" }) {
 
 export default function Page() {
   // Labbet ritas bara i klienten så att skärmbilder alltid visar senaste modulen.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
   if (!mounted) return null;
   return (
     <div className="grid lg:grid-cols-2">

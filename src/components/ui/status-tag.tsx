@@ -10,11 +10,27 @@ const labels: Record<Status, string> = {
   neutral: "Info",
 };
 
-/**
- * Statusetikett. Status bärs av form + text, inte bara färg:
- * fylld kvadrat = i drift, halvfylld = varning, signalfärgad
- * fylld kvadrat + kant = kritisk, streckad = offline.
+/*
+ * Tyngden följer allvaret. Normalläget är tyst så att avvikelserna syns
+ * i en kolumn där tio av fjorton rader är "I drift".
+ * - ok:       ingen ram, liten kvadrat i subtle, text i muted
+ * - neutral:  ingen ram, liten kvadrat, text i muted
+ * - warning:  1px ram (kontrollkant), halvfylld kvadrat, text i fg
+ * - offline:  streckad ram, streckad kvadrat, text i muted
+ * - critical: 1px ram i --bl-signal-line och signalkvadrat, text i fg.
+ *             Signalen sitter i ramen och glyfen; texten är vanlig fg
+ *             (högsta kontrast). Ingen fyllning och ingen signaltext.
+ * Status bärs alltid av form + text, aldrig bara av färg.
  */
+const tone: Record<Status, string> = {
+  ok: "border-transparent text-muted",
+  neutral: "border-transparent text-muted",
+  warning: "border-line-control text-fg",
+  offline: "border-dashed border-line-control text-muted",
+  critical: "border-signal-line text-fg",
+};
+
+/** Statusetikett. Höjd 24 px och samma inre luft i alla lägen, så glyferna linjerar i en kolumn. */
 export function StatusTag({
   status,
   children,
@@ -24,24 +40,27 @@ export function StatusTag({
   children?: React.ReactNode;
   className?: string;
 }) {
+  const quiet = status === "ok" || status === "neutral";
   return (
     <span
       className={cn(
         "label inline-flex h-6 items-center gap-1.5 rounded-xs border px-1.5 whitespace-nowrap",
-        status === "critical"
-          ? "border-signal/60 bg-signal-soft text-signal-fg"
-          : status === "offline"
-            ? "border-dashed border-line-control text-subtle"
-            : "border-line-strong text-muted",
+        tone[status],
         className,
       )}
     >
-      <StatusGlyph status={status} />
+      <span className={cn("inline-flex w-2 justify-center", quiet && "text-subtle")}>
+        <StatusGlyph status={status} size={status === "ok" ? 6 : 8} />
+      </span>
       {children ?? labels[status]}
     </span>
   );
 }
 
+/**
+ * Formen bär status: fylld kvadrat = i drift, halvfylld = varning,
+ * signalkvadrat = kritisk, streckad = offline, liten kvadrat = info.
+ */
 export function StatusGlyph({ status, size = 8 }: { status: Status; size?: number }) {
   const s = size;
   return (

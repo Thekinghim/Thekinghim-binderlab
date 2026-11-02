@@ -185,6 +185,9 @@ Migreringarna följer v2. Följande preciserades eller ändrades när SQL:en skr
 - Kolumnrättigheter: klienter får bara uppdatera vissa kolumner. Exempel: `orders` bara `title_id` och `machine_id`, `titles` inte `merged_into_id` (bara via `merge_titles`), `reports` bara `storage_path`. `invitations` och `period_closes` skrivs bara via RPC.
 - Inga klientroller har `truncate`, `references` eller `trigger` på någon tabell. `audit_log` saknar skrivrättigheter även för `service_role`.
 - Storage: klienter kan ladda upp och läsa, men inte skriva över eller radera filer (de är underlag).
+- Medlemskap skapas bara via `create_organization` och `accept_invitation`. En klient kan inte lägga in någon direkt i `memberships`, inte heller ägaren, eftersom det saknar samtycke.
+- När någon nedgraderas eller tas bort löper hens obesvarade inbjudningar som hen inte längre får skapa ut. En admin som bjuder in en adress igen rör inte en ägares ägarinbjudan.
+- `profiles.user_id` och `stock_events.performed_by` måste vara medlemmar i organisationen (BL020).
 
 **Datum och tid**
 - Datumintervall (`valid_from`, `valid_to`) är **inklusiva**: `valid_to` är sista giltiga dagen, null betyder tills vidare.
@@ -194,7 +197,7 @@ Migreringarna följer v2. Följande preciserades eller ändrades när SQL:en skr
 **Order och lager**
 - En order ändras aldrig, med två undantag. `title_id` kan sättas eller flyttas men aldrig tas bort. `machine_id` kan bara sättas när den saknas. När en källautomat kopplas (`source_machines.machine_id`) får dess order automaten automatiskt.
 - `orders.late_in_closed_period` (ny) flaggar order som importerats till en redan stängd månad.
-- `stock_events.seq` (identity) ger en entydig ordning för händelser med samma tid.
+- `stock_events.seq` ger en entydig ordning för händelser med samma tid. Den räknas **per organisation** med en egen sekvens i schemat `private` och sätts alltid av databasen. En global räknare skulle låta en organisation räkna andras lagerhändelser via glappet mellan två egna.
 - Kontroller per typ av lagerhändelse:
   - `sale` har alltid `quantity = −1` och `order_id`.
   - `count` har ett antal ≥ 0.
@@ -228,6 +231,16 @@ Migreringarna följer v2. Följande preciserades eller ändrades när SQL:en skr
   - Ekonomiska tabeller har dessutom en trigger som stoppar `delete` för alla roller.
   - Följande kan raderas: medlemskap, obesvarade inbjudningar, alias, leverantörsartiklar, mål, utgångslägen, rapportmottagare och konton.
   - Gallring körs som systemroll med `binderlab.allow_purge = 'on'` i transaktionen.
-- Felkoder från databasen (`BL001`–`BL019`) står i den första migreringen.
+- Felkoder från databasen (`BL001`–`BL020`) står i den första migreringen.
+
+**Härdning efter röd granskning (2 nov. 2026)**
+- Kontroller som läser organisationens data (stängda månader, automatgräns) är AFTER-triggers och körs alltså först när RLS har godkänt raden. BEFORE-triggers som måste räkna fram värden (`orders.business_date`, `stock_events.business_date` och `seq`) har en spärr före sig (`t05_rls_gate`) som nekar med samma kod och text som RLS. Utan det avslöjade felkoderna en annan organisations stängda månader, automatgräns och tidszon.
+- Kontroller som jämför användar-id (`A05_…`) körs före FK-kontrollerna, så att felkoden inte avslöjar om ett id finns.
+- `organization_id` saknar planerarstatistik (`set statistics 0`) i alla tabeller. Annars kunde estimatet (PostgREST `Prefer: count=planned`) visa ungefär hur många rader en annan organisation har.
+- Inga klientroller har rättigheter på sekvenser.
+- Sökvägar till filer (`storage_path` och storage-policyerna) måste vara `{organization_id}/segment/…/fil`, där varje segment börjar med en bokstav, en siffra, `_` eller `-`. `.`, `..`, tomma segment, `\`, `%` och mellanslag nekas. Servern ger filerna egna namn.
+- `data_sources.secret_ref` måste ligga i organisationens namnrymd: `{organization_id}/namn`. Importjobbet ska kontrollera samma sak innan det läser Vault.
+- Tidszonen kan inte ändras av en klient när organisationen har stängda månader (BL004).
+- Sista ägaren skyddas även under REPEATABLE READ: den andra transaktionen får 40001.
 
 **Känd begränsning:** `organization_settings` (moms och kortavgift) är inte tidsversionerad. En ändring slår igenom bakåt i tiden utom för stängda månader, som har sin ögonblicksbild.

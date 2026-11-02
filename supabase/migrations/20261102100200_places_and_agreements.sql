@@ -39,7 +39,7 @@ create table public.contracts (
   unique (organization_id, id),
   foreign key (organization_id, store_id) references public.stores (organization_id, id) on delete restrict,
   check (valid_to is null or valid_to >= valid_from),
-  check (storage_path is null or storage_path like organization_id::text || '/%')
+  check (storage_path is null or private.storage_path_org(storage_path) is not distinct from organization_id)
 );
 
 create table public.store_agreements (
@@ -135,6 +135,11 @@ create table public.machine_investments (
 -- ändras villkoren (allt utom intervallet) räknas båda intervallen, annars bara
 -- de dagar som läggs till eller tas bort (så att ett tillsvidareavtal kan
 -- avslutas i en öppen månad trots att det började i en stängd).
+--
+-- Kontrollerna i den här migreringen är AFTER-triggers: de körs först när RLS
+-- har godkänt raden. Som BEFORE-triggers (security definer) läste de en annan
+-- organisations stängda månader och automatgräns innan RLS nekade, och
+-- felkoden (BL004/BL019 i stället för 42501) avslöjade dem.
 -- -----------------------------------------------------------------------------
 create function private.guard_period_ranges() returns trigger
 language plpgsql security definer
@@ -154,6 +159,9 @@ declare
     else tg_table_name
   end;
 begin
+  if tg_op = 'DELETE' and private.purge_allowed() then
+    return null;
+  end if;
   if tg_op in ('UPDATE', 'DELETE') then
     v_old := datemultirange(daterange(old.valid_from, old.valid_to, '[]'));
   end if;
@@ -174,11 +182,14 @@ begin
   perform private.assert_period_open(
     coalesce(new.organization_id, old.organization_id), v_affected, v_what
   );
-  return coalesce(new, old);
+  return null;
 end
 $$;
 
--- Automatgräns per organisation (inför fler operatörer).
+-- Automatgräns per organisation (inför fler operatörer). AFTER INSERT: den
+-- nya automaten räknas med. Låset på organisationsraden tas först när RLS
+-- godkänt raden, så att ingen kan låsa (eller mäta låsen på) en annan
+-- organisation.
 create function private.machines_check_limit() returns trigger
 language plpgsql security definer
 set search_path = ''
@@ -192,17 +203,17 @@ begin
   where o.id = new.organization_id
   for update;
   if v_limit is null then
-    return new;
+    return null;
   end if;
   select count(*) into v_count
   from public.machines m
   where m.organization_id = new.organization_id and m.archived_at is null;
-  if v_count >= v_limit then
+  if v_count > v_limit then
     raise exception using
       errcode = 'BL019',
       message = format('Organisationen kan ha högst %s automater.', v_limit);
   end if;
-  return new;
+  return null;
 end
 $$;
 
@@ -233,7 +244,7 @@ create trigger t20_stamp_insert before insert on public.store_agreements
   for each row execute function private.stamp_insert();
 create trigger t20_stamp_update before update on public.store_agreements
   for each row execute function private.stamp_update();
-create trigger t40_period_guard before insert or update or delete on public.store_agreements
+create trigger t40_period_guard after insert or update or delete on public.store_agreements
   for each row execute function private.guard_period_ranges();
 create trigger t90_audit after insert or update or delete on public.store_agreements
   for each row execute function private.audit();
@@ -242,7 +253,7 @@ create trigger t99_forbid_delete before delete on public.store_agreements
 
 create trigger t00_forbid_org_change before update on public.machines
   for each row execute function private.forbid_org_change();
-create trigger t10_check_limit before insert on public.machines
+create trigger t10_check_limit after insert on public.machines
   for each row execute function private.machines_check_limit();
 create trigger t20_stamp_insert before insert on public.machines
   for each row execute function private.stamp_insert();
@@ -257,7 +268,7 @@ create trigger t20_stamp_insert before insert on public.machine_placements
   for each row execute function private.stamp_insert();
 create trigger t20_stamp_update before update on public.machine_placements
   for each row execute function private.stamp_update();
-create trigger t40_period_guard before insert or update or delete on public.machine_placements
+create trigger t40_period_guard after insert or update or delete on public.machine_placements
   for each row execute function private.guard_period_ranges();
 create trigger t90_audit after insert or update or delete on public.machine_placements
   for each row execute function private.audit();

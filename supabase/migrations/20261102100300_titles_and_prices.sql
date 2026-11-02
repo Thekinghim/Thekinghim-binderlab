@@ -88,6 +88,9 @@ $$;
 -- Ett nytt, ändrat eller borttaget pris får inte ändra kostnaden för någon
 -- dag i en stängd månad. Det gäller också ett pris med valid_from i en öppen
 -- månad som (i brist på senare pris) skulle gälla in i en stängd månad.
+-- AFTER-trigger: körs först när RLS godkänt raden. Som BEFORE-trigger
+-- (security definer) avslöjade felkoden (BL004 eller 42501) för den som inte
+-- får skriva priser när titelns priser ändrats och vilka månader som stängts.
 create function private.purchase_prices_period_guard() returns trigger
 language plpgsql security definer
 set search_path = ''
@@ -95,11 +98,14 @@ as $$
 declare
   v_affected datemultirange := '{}'::datemultirange;
 begin
+  if tg_op = 'DELETE' and private.purge_allowed() then
+    return null;
+  end if;
   if tg_op = 'UPDATE'
      and new.title_id = old.title_id
      and new.valid_from = old.valid_from
      and new.unit_cost_ore = old.unit_cost_ore then
-    return new;
+    return null;
   end if;
   if tg_op in ('UPDATE', 'DELETE') then
     v_affected := v_affected
@@ -112,7 +118,7 @@ begin
   perform private.assert_period_open(
     coalesce(new.organization_id, old.organization_id), v_affected, 'Inköpspriset'
   );
-  return coalesce(new, old);
+  return null;
 end
 $$;
 
@@ -161,7 +167,7 @@ create trigger t20_stamp_insert before insert on public.purchase_prices
   for each row execute function private.stamp_insert();
 create trigger t20_stamp_update before update on public.purchase_prices
   for each row execute function private.stamp_update();
-create trigger t40_period_guard before insert or update or delete on public.purchase_prices
+create trigger t40_period_guard after insert or update or delete on public.purchase_prices
   for each row execute function private.purchase_prices_period_guard();
 create trigger t90_audit after insert or update or delete on public.purchase_prices
   for each row execute function private.audit();

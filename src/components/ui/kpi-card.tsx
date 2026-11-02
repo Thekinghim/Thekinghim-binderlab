@@ -1,89 +1,94 @@
 "use client";
 
-import { useCountUp } from "@/lib/hooks/use-count-up";
 import { cn } from "@/lib/cn";
-import { formatDelta } from "@/lib/format";
-import { Sparkline } from "@/components/charts/sparkline";
+import { KpiTrace } from "./kpi-trace";
+import {
+  KpiAlert,
+  KpiDelta,
+  useKpiValue,
+  useValueFade,
+  type KpiDeltaKind,
+  type KpiMotion,
+} from "./kpi-parts";
+
+export { DeltaGlyph } from "./kpi-parts";
 
 type KpiCardProps = {
   label: string;
   value: number;
   format: (v: number) => string;
-  /** Förändring mot jämförelseperiod, 0.12 = +12 % */
+  /** Förändring mot jämförelseperiod. relative: 0.12 = +12 %. absolute: i värdets enhet. */
   delta?: number;
+  deltaKind?: KpiDeltaKind;
+  /** Enhet för absolut delta, t.ex. "st" */
+  deltaUnit?: string;
+  /** Jämförelsetext efter deltat. Tom sträng döljer den (när perioden står i rubriken). */
   deltaLabel?: string;
   trend?: ReadonlyArray<number>;
-  /** Kräver uppmärksamhet: signalmarkör + sparkline-punkt */
+  /** Jämförelseperiodens snitt: streckad hjälplinje i trenden */
+  reference?: number;
+  /** Kräver åtgärd: signalkvadrat + text, signalnod i trenden. Ingen signalkant. */
   alert?: boolean;
-  /** Text som förklarar varför kortet larmar (visas, så status inte bara är färg) */
+  /** Text som förklarar varför kortet larmar, t.ex. "Gräns 3 st" (status är aldrig bara färg) */
   alertText?: string;
-  /** Större negativ förändring är bra (t.ex. svinn, stopptid) */
+  /** Minskning är bra (t.ex. tomma fack, svinn, stopptid) */
   invert?: boolean;
+  /**
+   * panel: egen 1px kant (fristående nyckeltal). bare: ingen kant.
+   * Inuti en Panel släpps kanten automatiskt. Flera nyckeltal i rad: använd KpiStrip.
+   */
+  variant?: "panel" | "bare";
+  /** Visning vid värdebyte. Standard: tona, inte räkna. */
+  motion?: KpiMotion;
   className?: string;
 };
 
-/** Nyckeltal: siffran är huvudpersonen. Räknar upp vid värdebyte. */
+/** Ett fristående nyckeltal. Siffran är huvudpersonen. */
 export function KpiCard({
   label,
   value,
   format,
   delta,
+  deltaKind,
+  deltaUnit,
   deltaLabel = "mot föregående period",
   trend,
+  reference,
   alert,
   alertText,
   invert,
+  variant = "panel",
+  motion = "fade",
   className,
 }: KpiCardProps) {
-  const shown = useCountUp(value);
-  const good = delta === undefined ? undefined : invert ? delta < 0 : delta > 0;
+  const shown = useKpiValue(value, motion);
+  const ref = useValueFade<HTMLParagraphElement>(format(value), motion === "fade");
 
   return (
     <article
       className={cn(
-        "relative flex min-w-0 flex-col justify-between gap-5 rounded-md border bg-surface p-4 md:p-5",
-        alert ? "border-signal/50" : "border-line",
+        "relative flex min-w-0 flex-col gap-4",
+        variant === "panel" &&
+          "rounded-md border border-line bg-surface p-4 in-data-[frame=panel]:rounded-none in-data-[frame=panel]:border-0 in-data-[frame=panel]:bg-transparent in-data-[frame=panel]:p-0 md:p-5 md:in-data-[frame=panel]:p-0",
         className,
       )}
     >
-      <header className="flex items-center justify-between gap-2">
-        <h3 className="label truncate text-muted">{label}</h3>
-        {alert ? (
-          <span className="label flex items-center gap-1.5 text-signal-fg">
-            <span aria-hidden className="size-1.5 bg-signal" />
-            {alertText ?? "Avvikelse"}
-          </span>
-        ) : null}
-      </header>
+      <h3 className="label truncate text-muted">{label}</h3>
 
       <div className="flex flex-col gap-1">
-        <p className="tnum text-2xl font-medium md:text-[36px] md:leading-[40px] md:tracking-[-0.03em]">
+        <p ref={ref} className="tnum truncate text-xl font-medium sm:text-2xl">
           {format(shown)}
         </p>
         {delta !== undefined ? (
-          <p className="label tnum flex flex-wrap items-center gap-x-2 gap-y-0.5 text-subtle">
-            <span className={cn("inline-flex items-center gap-1", good ? "text-fg" : "text-muted")}>
-              <DeltaGlyph up={delta >= 0} />
-              {formatDelta(delta, Math.abs(delta) < 0.1 ? 1 : 0)}
-            </span>
-            <span className="tracking-[0.04em] normal-case">{deltaLabel}</span>
-          </p>
+          <KpiDelta
+            spec={{ delta, kind: deltaKind, unit: deltaUnit, invert }}
+            label={deltaLabel || undefined}
+          />
         ) : null}
+        {alert ? <KpiAlert className="mt-1">{alertText ?? "Kräver åtgärd"}</KpiAlert> : null}
       </div>
 
-      {trend ? (
-        <div className="-mx-1">
-          <Sparkline data={trend} alert={alert} height={36} />
-        </div>
-      ) : null}
+      {trend ? <KpiTrace data={trend} reference={reference} alert={alert} height={32} /> : null}
     </article>
-  );
-}
-
-export function DeltaGlyph({ up }: { up: boolean }) {
-  return (
-    <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden>
-      <path d={up ? "M4 0.5 L7.5 7 L0.5 7Z" : "M4 7.5 L7.5 1 L0.5 1Z"} fill="currentColor" />
-    </svg>
   );
 }

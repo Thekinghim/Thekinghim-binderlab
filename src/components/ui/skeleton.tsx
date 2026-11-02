@@ -3,10 +3,7 @@ import { cn } from "@/lib/cn";
 /** Laddningsyta. Pulserar svagt, ingen glänsande gradient. */
 export function Skeleton({ className }: { className?: string }) {
   return (
-    <span
-      aria-hidden
-      className={cn("block animate-pulse-soft rounded-xs bg-hover", className)}
-    />
+    <span aria-hidden className={cn("block animate-pulse-soft rounded-xs bg-hover", className)} />
   );
 }
 

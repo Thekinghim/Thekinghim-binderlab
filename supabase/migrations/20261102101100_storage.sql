@@ -1,7 +1,9 @@
 -- =============================================================================
 -- Lagring av filer: två privata buckets, imports (källfiler) och reports
--- (PDF:er). Sökvägen börjar med "{organization_id}/" och policyerna kontrollerar
--- has_role mot den delen. Påfyllaren har ingen åtkomst. Filerna är underlag
+-- (PDF:er). Sökvägen är "{organization_id}/…" och policyerna kontrollerar
+-- has_role mot den delen. private.storage_path_org godtar bara säkra sökvägar
+-- (inga '.', '..', tomma segment eller '\'), så att "A/../B/x" inte kan läggas
+-- upp i A och sedan hämtas ur B av en serverväg som normaliserar URL:en. Påfyllaren har ingen åtkomst. Filerna är underlag
 -- för bokföringen och kan därför inte skrivas över eller raderas av klienter.
 --
 -- Skapas bara om schemat storage finns (Supabase, eller lokalt via auth-shim).
@@ -23,7 +25,7 @@ begin
     using (
       bucket_id = 'imports'
       and private.has_role(
-        private.try_uuid((storage.foldername(name))[1]), 'owner', 'admin', 'viewer'
+        private.storage_path_org(name), 'owner', 'admin', 'viewer'
       )
     );
 
@@ -31,7 +33,7 @@ begin
     for insert to authenticated
     with check (
       bucket_id = 'imports'
-      and private.has_role(private.try_uuid((storage.foldername(name))[1]), 'owner', 'admin')
+      and private.has_role(private.storage_path_org(name), 'owner', 'admin')
     );
 
   create policy binderlab_reports_select on storage.objects
@@ -39,7 +41,7 @@ begin
     using (
       bucket_id = 'reports'
       and private.has_role(
-        private.try_uuid((storage.foldername(name))[1]), 'owner', 'admin', 'viewer'
+        private.storage_path_org(name), 'owner', 'admin', 'viewer'
       )
     );
 
@@ -47,7 +49,7 @@ begin
     for insert to authenticated
     with check (
       bucket_id = 'reports'
-      and private.has_role(private.try_uuid((storage.foldername(name))[1]), 'owner', 'admin')
+      and private.has_role(private.storage_path_org(name), 'owner', 'admin')
     );
 end
 $$;

@@ -67,7 +67,8 @@ export interface ReportRecipientRef {
 }
 
 /** Rapporttyp (reports.kind). */
-export type ReportKind = "store_statement" | "owner_statement" | "accountant_statement" | "profitability";
+export type ReportKind =
+  "store_statement" | "owner_statement" | "accountant_statement" | "profitability";
 
 /** Status för ett utskick (report_deliveries.status). */
 export type ReportDeliveryStatus = "queued" | "sent" | "delivered" | "failed" | "bounced";
@@ -127,11 +128,7 @@ export interface Evidence {
 
 /** Typ av punkt. */
 export type TodoKind =
-  | "refill"
-  | "missing-price"
-  | "duplicate-title"
-  | "stale-machine"
-  | "report-due";
+  "refill" | "missing-price" | "duplicate-title" | "stale-machine" | "report-due";
 
 /** Brådskenivå: 'now' (gör i dag), 'soon' (de närmaste dagarna), 'later' (när tid finns). */
 export type TodoLevel = "now" | "soon" | "later";

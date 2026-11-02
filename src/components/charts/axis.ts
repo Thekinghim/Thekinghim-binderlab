@@ -52,7 +52,8 @@ export function axisScale(ticks: ReadonlyArray<number>, unit: AxisUnit = "kr"): 
     label = unit.label;
   }
   const digits: 0 | 1 = ticks.every((t) => isWhole(t / divisor)) ? 0 : 1;
-  const fmt = (v: number, d: 0 | 1) => (d === 0 ? formatInt(v / divisor) : formatDecimal(v / divisor));
+  const fmt = (v: number, d: 0 | 1) =>
+    d === 0 ? formatInt(v / divisor) : formatDecimal(v / divisor);
   const value = (v: number, d: 0 | 1 = divisor > 1 ? 1 : digits) => fmt(v, d);
   return {
     label,
@@ -71,9 +72,11 @@ export function axisScale(ticks: ReadonlyArray<number>, unit: AxisUnit = "kr"): 
 /** Jämna gränsvärden för stegskalor, t.ex. max 41 → [10, 20, 30, 40]. */
 export function niceThresholds(max: number, steps = 4): number[] {
   if (!(max > 0)) return [1];
-  const raw = max / (steps + 0.5);
+  // Största jämna steg där översta gränsen fortfarande ligger under max,
+  // så att toppsteget ("40+") aldrig blir tomt.
+  const raw = max / steps;
   const pow = 10 ** Math.floor(Math.log10(raw));
   const n = raw / pow;
-  const step = (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * pow;
+  const step = (n >= 5 ? 5 : n >= 2.5 ? 2.5 : n >= 2 ? 2 : 1) * pow;
   return Array.from({ length: steps }, (_, i) => Math.round(step * (i + 1) * 1e6) / 1e6);
 }

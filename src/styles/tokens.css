@@ -33,11 +33,12 @@
   --bl-fg-muted: #a6a39d;
   --bl-fg-subtle: #8f8c86;
   --bl-fg-faint: #57554f; /* endast dekor/axlar, aldrig brödtext */
-  --bl-fg-disabled: #83807a; /* inaktiv kontroll: ≥4.5:1 mot bg/surface/raised */
+  --bl-fg-disabled: #8a8781; /* inaktiv kontroll: ≥4.5:1 mot bg/surface/raised/hover */
 
   /* Signal: den enda färgen */
   --bl-signal: #ff5a1f;
   --bl-signal-fg: #ff6d38;
+  --bl-signal-hover: #ff6d38; /* fylld signal under pekaren, on-signal ≥4.5:1 */
   --bl-signal-soft: rgb(255 90 31 / 0.13);
   --bl-signal-line: rgb(255 90 31 / 0.7); /* kant för kritisk kontroll, ≥3:1 */
   --bl-on-signal: #0a0a0b;
@@ -78,10 +79,11 @@
   --bl-fg-muted: #4f4d48;
   --bl-fg-subtle: #65635e;
   --bl-fg-faint: #aeaba4;
-  --bl-fg-disabled: #706e69;
+  --bl-fg-disabled: #6a6863;
 
   --bl-signal: #f0521a;
   --bl-signal-fg: #b53e0e;
+  --bl-signal-hover: #f46a38; /* ljusare än signal: on-signal 6.1:1 */
   --bl-signal-soft: rgb(240 82 26 / 0.1);
   --bl-signal-line: rgb(181 62 14 / 0.7);
   --bl-on-signal: #151514;
@@ -113,6 +115,7 @@
   --bl-dur-slow: 180ms;
   --bl-dur-count: 420ms; /* uppräkning av siffror vid periodbyte */
   --bl-dur-pulse: 1600ms; /* laddningsytor, en hel puls */
+  --bl-dur-tick: 960ms; /* knappens laddning: tre punkter tänds i tur och ordning */
   --bl-ease: cubic-bezier(0.2, 0, 0, 1);
   --bl-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 

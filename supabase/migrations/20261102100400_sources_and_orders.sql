@@ -11,8 +11,12 @@ create table public.data_sources (
   source_timezone text not null default 'Asia/Shanghai'
     check (private.is_valid_timezone(source_timezone)),
   config jsonb not null default '{}'::jsonb check (jsonb_typeof(config) = 'object'),
-  -- Namnet på hemligheten i Supabase Vault, aldrig själva värdet.
-  secret_ref text check (secret_ref ~ '^[A-Za-z0-9_.:/-]{1,200}$'),
+  -- Namnet på hemligheten i Supabase Vault, aldrig själva värdet. Vault är
+  -- gemensamt för projektet, så namnet måste ligga i organisationens egen
+  -- namnrymd: "{organization_id}/namn". Importjobbet kontrollerar samma sak.
+  secret_ref text check (
+    secret_ref ~ ('^' || organization_id::text || '/[A-Za-z0-9_-][A-Za-z0-9_.:-]{0,150}$')
+  ),
   cursor text,
   last_synced_at timestamptz,
   status public.data_source_status not null default 'active',
@@ -56,7 +60,7 @@ create table public.imports (
   trigger public.import_trigger not null,
   file_name text,
   file_sha256 text check (file_sha256 ~ '^[0-9a-f]{64}$'),
-  storage_path text check (storage_path like organization_id::text || '/%'),
+  storage_path text check (private.storage_path_org(storage_path) is not distinct from organization_id),
   parser_version text not null,
   mapping jsonb,
   rows_total integer not null default 0 check (rows_total >= 0),
@@ -147,6 +151,9 @@ create table public.import_rows (
 
 -- Affärsdatum i organisationens tidszon och flagga för sen import till
 -- stängd månad.
+-- BEFORE-triggers körs före RLS. Spärren t05_rls_gate (samma roller som
+-- policyn orders_insert) nekar därför först, annars skulle 22023-felet nedan
+-- avslöja organisationens tidszon (och att den finns) för en utomstående.
 create function private.orders_before_insert() returns trigger
 language plpgsql security definer
 set search_path = ''
@@ -243,6 +250,8 @@ create trigger t20_stamp_insert before insert on public.import_rows
 
 create trigger t00_forbid_org_change before update on public.orders
   for each row execute function private.forbid_org_change();
+create trigger t05_rls_gate before insert on public.orders
+  for each row execute function private.rls_insert_gate('owner', 'admin');
 create trigger t10_prepare before insert on public.orders
   for each row execute function private.orders_before_insert();
 create trigger t10_immutable before update on public.orders

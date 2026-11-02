@@ -27,7 +27,7 @@ create table public.reports (
   period_start date not null,
   period_end date not null,
   store_id uuid,
-  storage_path text check (storage_path like organization_id::text || '/%'),
+  storage_path text check (private.storage_path_org(storage_path) is not distinct from organization_id),
   generated_by uuid references auth.users (id) on delete set null,
   generated_at timestamptz not null default now(),
   data_snapshot jsonb not null check (jsonb_typeof(data_snapshot) = 'object'),

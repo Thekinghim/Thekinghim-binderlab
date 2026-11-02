@@ -5,15 +5,15 @@ import type { SVGProps } from "react";
  * raka ändar. Inga ikonbibliotek, så att formspråket hålls ihop.
  */
 const paths = {
-  // Baslinje med tre olika höga mätstreck: läget i stort, inte fyra rutor.
-  overview: "M2 13.5h12M4.5 13.5V9M8 13.5V3.5M11.5 13.5V6.5",
+  // Passmärken i fyra hörn och en punkt i mitten: hela fältet i ett ögonkast.
+  // Inte fyra rutor, och tydligt skild från stapelikonen "sales".
+  overview: "M2 5.5V2h3.5M10.5 2H14v3.5M14 10.5V14h-3.5M5.5 14H2v-3.5M7.25 7.25h1.5v1.5h-1.5z",
   sales: "M2.5 13.5h11M4 11V8M7 11V4.5M10 11V6.5M13 11V3",
   machine: "M3.5 1.5h9v13h-9zM3.5 10.5h9M5.5 4h3.5M5.5 6.5h3.5M11 4v1M11 6.5v1M6 12.5h4",
   inventory: "M2 5l6-3 6 3v6l-6 3-6-3zM2 5l6 3 6-3M8 8v6",
   margin: "M2.5 13.5L6 8l3 2.5 4.5-7M10.5 3.5h3v3",
   // Tre reglage med greppen i olika lägen (inte ett kugghjul, som annars liknar "sun").
-  settings:
-    "M2 4h7M11 4h3M9 2.5h2v3H9zM2 8h2M6 8h8M4 6.5h2v3H4zM2 12h8M12 12h2M10 10.5h2v3h-2z",
+  settings: "M2 4h7M11 4h3M9 2.5h2v3H9zM2 8h2M6 8h8M4 6.5h2v3H4zM2 12h8M12 12h2M10 10.5h2v3h-2z",
   design: "M2.5 2.5h11v11h-11zM2.5 6.5h11M6.5 6.5v7",
   search: "M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3l3.2 3.2",
   close: "M3.5 3.5l9 9M12.5 3.5l-9 9",

@@ -29,10 +29,14 @@ create unique index stock_locations_one_central
 
 -- quantity är förändringen (negativ för uttag), utom vid 'count' där den är
 -- det räknade antalet. seq ger en entydig ordning för händelser med samma tid.
+-- seq räknas PER ORGANISATION (en egen sekvens i schemat private, se
+-- private.stock_seq_next) och sätts alltid av triggern. En global räknare
+-- skulle låta varje organisation räkna andras lagerhändelser (och därmed
+-- försäljning) via glappet mellan två egna händelser.
 create table public.stock_events (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations (id) on delete restrict,
-  seq bigint generated always as identity,
+  seq bigint not null default 0,
   location_id uuid not null,
   title_id uuid not null,
   kind public.stock_event_kind not null,
@@ -126,8 +130,67 @@ where l.is_central;
 -- Triggerfunktioner
 -- -----------------------------------------------------------------------------
 
--- Affärsdatum från occurred_at och spärr mot stängd månad (gäller inte
--- försäljning: order som importeras sent till en stängd månad sparas).
+-- Sekvensen för en organisations lagerhändelser. Namnet bygger på en hash av
+-- organisationens id, så att katalogen (pg_class, läsbar för alla) inte
+-- listar organisationernas id. Ingen klientroll har rättigheter på den.
+create function private.stock_seq_name(p_organization_id uuid) returns text
+language sql immutable
+set search_path = ''
+as $$
+  select 'stock_events_seq_' || md5(p_organization_id::text)
+$$;
+
+create function private.ensure_stock_seq(p_organization_id uuid) returns regclass
+language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  v_name text := private.stock_seq_name(p_organization_id);
+  v_seq regclass := to_regclass('private.' || quote_ident(v_name));
+begin
+  if v_seq is not null then
+    return v_seq;
+  end if;
+  -- Två transaktioner som skapar samma sekvens samtidigt köas.
+  perform pg_advisory_xact_lock(hashtextextended(v_name, 0));
+  v_seq := to_regclass('private.' || quote_ident(v_name));
+  if v_seq is null then
+    execute format('create sequence private.%I as bigint', v_name);
+    execute format('revoke all on sequence private.%I from public', v_name);
+    if exists (select 1 from pg_catalog.pg_roles r where r.rolname = 'authenticated') then
+      execute format(
+        'revoke all on sequence private.%I from anon, authenticated, service_role', v_name
+      );
+    end if;
+    v_seq := to_regclass('private.' || quote_ident(v_name));
+  end if;
+  return v_seq;
+end
+$$;
+
+create function private.stock_seq_next(p_organization_id uuid) returns bigint
+language sql security definer
+set search_path = ''
+as $$
+  select nextval(private.ensure_stock_seq(p_organization_id))
+$$;
+
+-- Varje ny organisation får sin sekvens direkt.
+create function private.organizations_create_stock_seq() returns trigger
+language plpgsql security definer
+set search_path = ''
+as $$
+begin
+  perform private.ensure_stock_seq(new.id);
+  return null;
+end
+$$;
+
+-- Affärsdatum från occurred_at och ordningsnummer per organisation.
+-- Körs före RLS, så spärren t05_rls_gate nekar först den som inte är medlem
+-- med en roll som kan skapa lagerhändelser. Spärren mot stängd månad ligger i
+-- AFTER-triggern t40_period_guard (efter RLS), så att felkoden inte avslöjar
+-- stängda månader för den som ändå inte får skriva.
 create function private.stock_events_before_insert() returns trigger
 language plpgsql security definer
 set search_path = ''
@@ -140,14 +203,44 @@ begin
     return new;
   end if;
   new.business_date := (new.occurred_at at time zone v_tz)::date;
-  if new.kind <> 'sale' then
-    perform private.assert_period_open(
-      new.organization_id,
-      datemultirange(daterange(new.business_date, new.business_date, '[]')),
-      'Lagerhändelsen'
-    );
-  end if;
+  new.seq := private.stock_seq_next(new.organization_id);
   return new;
+end
+$$;
+
+-- Spärr mot stängd månad (gäller inte försäljning: order som importeras sent
+-- till en stängd månad sparas).
+create function private.stock_events_period_guard() returns trigger
+language plpgsql security definer
+set search_path = ''
+as $$
+begin
+  perform private.assert_period_open(
+    new.organization_id,
+    datemultirange(daterange(new.business_date, new.business_date, '[]')),
+    'Lagerhändelsen'
+  );
+  return null;
+end
+$$;
+
+-- Den som anges som utförare måste vara medlem i organisationen. Körs efter
+-- RLS och före FK-kontrollen (namnet "A05_…"), så att felkoden inte avslöjar
+-- om ett användar-id finns eller är medlem någon annanstans.
+create function private.stock_events_actor_is_member() returns trigger
+language plpgsql security definer
+set search_path = ''
+as $$
+begin
+  if not exists (
+    select 1 from public.memberships m
+    where m.organization_id = new.organization_id and m.user_id = new.performed_by
+  ) then
+    raise exception using
+      errcode = 'BL020',
+      message = 'Den som utförde lagerhändelsen måste vara medlem i organisationen.';
+  end if;
+  return null;
 end
 $$;
 
@@ -276,8 +369,16 @@ create trigger t01_append_only before update or delete on public.stock_events
   for each row execute function private.forbid_mutation();
 create trigger t01_no_truncate before truncate on public.stock_events
   for each statement execute function private.forbid_truncate();
+create trigger "A05_actor_is_member" after insert on public.stock_events
+  for each row when (new.performed_by is not null)
+  execute function private.stock_events_actor_is_member();
+create trigger t05_rls_gate before insert on public.stock_events
+  for each row execute function private.rls_insert_gate('owner', 'admin', 'refiller');
 create trigger t10_prepare before insert on public.stock_events
   for each row execute function private.stock_events_before_insert();
+create trigger t40_period_guard after insert on public.stock_events
+  for each row when (new.kind <> 'sale')
+  execute function private.stock_events_period_guard();
 create trigger t20_stamp_insert before insert on public.stock_events
   for each row execute function private.stamp_insert();
 create constraint trigger t80_check_transfer after insert on public.stock_events
@@ -290,6 +391,9 @@ create trigger t90_audit_insert after insert on public.stock_events
   execute function private.audit();
 create trigger t90_audit_update after update on public.stock_events
   for each row execute function private.audit();
+
+create trigger t50_create_stock_seq after insert on public.organizations
+  for each row execute function private.organizations_create_stock_seq();
 
 create trigger t50_create_location after insert on public.machines
   for each row execute function private.machines_create_location();

@@ -93,13 +93,12 @@ export function LabelBlock({
   /** "signal" färgar första raden i signaltext (endast för det som kräver åtgärd) */
   tone?: "signal";
 }) {
-  let y = box.y;
   const x = align === "end" ? box.x + box.w : box.x;
+  const heights = lines.map((line) => Math.max(...line.map((s) => labelSpec(s.kind).lh)));
   return (
     <g pointerEvents="none">
       {lines.map((line, li) => {
-        const lh = Math.max(...line.map((s) => labelSpec(s.kind).lh));
-        y += lh;
+        const y = box.y + heights.slice(0, li + 1).reduce((a, b) => a + b, 0);
         return (
           <text
             key={li}
@@ -107,7 +106,14 @@ export function LabelBlock({
             y={y - 4}
             textAnchor={align}
             className="tnum"
-            style={{ fontSize: labelSpec(line[0]?.kind ?? "body").size }}
+            // Gloria i ytans färg: linjer som korsar etiketten bryts i stället för att störa texten
+            style={{
+              fontSize: labelSpec(line[0]?.kind ?? "body").size,
+              stroke: "var(--bl-chart-halo, var(--bl-surface))",
+              strokeWidth: 4,
+              strokeLinejoin: "round",
+              paintOrder: "stroke",
+            }}
           >
             {line.map((s, si) => (
               <tspan

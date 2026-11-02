@@ -18,6 +18,7 @@ export const color = {
   signalFg: "var(--bl-signal-fg)",
   signalSoft: "var(--bl-signal-soft)",
   signalLine: "var(--bl-signal-line)",
+  signalHover: "var(--bl-signal-hover)",
   /** Fokusring: förgrundsfärgen, aldrig signal. */
   focus: "var(--bl-focus)",
   data: [
@@ -37,6 +38,7 @@ export const motion = {
   slow: 180,
   count: 420,
   pulse: 1600,
+  tick: 960,
   ease: [0.2, 0, 0, 1] as const,
 } as const;
 
