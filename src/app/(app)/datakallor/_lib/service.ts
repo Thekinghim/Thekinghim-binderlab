@@ -287,6 +287,25 @@ function detailRow(
 }
 
 /** En import med radlogg (fel, konflikter eller nya). null om den inte finns. */
+/**
+ * Finns importen i organisationen? Den snabba kontrollen före sidans laddningsläge, så att ett
+ * okänt id får HTTP 404 (se importer/[id]/layout.tsx). Ägare och admin, som användaren med RLS.
+ */
+export async function importExistsFor(viewer: Viewer, importId: string): Promise<boolean> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(importId)) {
+    return false;
+  }
+  const orgId = viewer.organization.id;
+  return asOperator(viewer, async (tx) => {
+    const [row] = await query(
+      tx,
+      sql`select 1 as found from public.imports i
+          where i.organization_id = ${orgId}::uuid and i.id = ${importId}::uuid`,
+    );
+    return row !== undefined;
+  });
+}
+
 export async function loadImportDetailFor(
   viewer: Viewer,
   importId: string,

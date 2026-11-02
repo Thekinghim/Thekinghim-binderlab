@@ -9,7 +9,9 @@
  * - Äkta minustecken (U+2212): "−1 240 kr". Aldrig bindestreck.
  * - Tankstreck (U+2013) i intervall: "1–30 nov." utan mellanslag när
  *   ändarna är enkla, "3 okt. – 1 nov." med hårda mellanslag när
- *   ändarna själva innehåller mellanslag.
+ *   ändarna själva innehåller mellanslag. Efter tankstrecket står ordfogning
+ *   (U+2060, `WJ`): tankstrecket tillåter annars en radbrytning efter sig,
+ *   även före ett hårt mellanslag ("3 okt. –" / " 1 nov.").
  * - Värden som saknas eller inte är ändliga (NaN, ±Infinity, ogiltigt
  *   datum) visas som ett ensamt tankstreck: "–".
  *
@@ -30,6 +32,12 @@ import {
 export const NBSP = " ";
 export const MINUS = "−";
 export const EN_DASH = "–";
+/** Ordfogning (U+2060): osynlig, förbjuder radbrytning. Står efter tankstrecket i intervall. */
+export const WJ = "\u2060";
+/** Tankstreck i ett intervall med enkla ändar: "1–30". */
+export const RANGE_DASH = `${EN_DASH}${WJ}`;
+/** Tankstreck i ett intervall vars ändar har mellanslag: "3 okt. – 1 nov.". */
+export const SPACED_RANGE_DASH = `${NBSP}${EN_DASH}${WJ}${NBSP}`;
 /** Visas för saknade eller ogiltiga värden. */
 export const MISSING = EN_DASH;
 
@@ -379,11 +387,15 @@ export function formatRelative(d: Date, now: Date = new Date()): string {
 // Perioder
 // ---------------------------------------------------------------------------
 
-/** Intervall: tätt tankstreck om ändarna saknar mellanslag, annars hårda mellanslag kring. */
-function range(a: string, b: string): string {
-  const spaced = /[\s ]/.test(a) || /[\s ]/.test(b);
-  return spaced ? `${a}${NBSP}${EN_DASH}${NBSP}${b}` : `${a}${EN_DASH}${b}`;
+/**
+ * Intervall: tätt tankstreck om ändarna saknar mellanslag, annars hårda mellanslag kring.
+ * Raden bryts aldrig vid tankstrecket (ordfogning efter det, se RANGE_DASH).
+ */
+export function formatRange(a: string, b: string): string {
+  const spaced = /[\s\u00a0\u202f]/.test(a) || /[\s\u00a0\u202f]/.test(b);
+  return spaced ? `${a}${SPACED_RANGE_DASH}${b}` : `${a}${RANGE_DASH}${b}`;
 }
+const range = formatRange;
 
 /**
  * Period med inklusivt slutdatum, alltid med år:
@@ -410,7 +422,7 @@ export function formatPeriod(period: Period): string {
       : range(formatMonth(start), formatMonth(end));
   }
   if (sy === ey && start.getMonth() === end.getMonth()) {
-    return `${start.getDate()}${EN_DASH}${end.getDate()}${NBSP}${monthShort(end)}${NBSP}${ey}`;
+    return `${start.getDate()}${RANGE_DASH}${end.getDate()}${NBSP}${monthShort(end)}${NBSP}${ey}`;
   }
   if (sy === ey) {
     return range(formatDate(start, { year: "never" }), formatDate(end, { year: "always" }));
@@ -435,7 +447,7 @@ export function formatPeriodShort(period: Period, now: Date = new Date()): strin
   if (isWholeYears({ start, end })) return sy === ey ? String(sy) : range(String(sy), String(ey));
   if (isFullMonth({ start, end })) return `${monthShort(start)}${yearSuffix}`;
   if (sy === ey && start.getMonth() === end.getMonth()) {
-    return `${start.getDate()}${EN_DASH}${end.getDate()}${NBSP}${monthShort(end)}${yearSuffix}`;
+    return `${start.getDate()}${RANGE_DASH}${end.getDate()}${NBSP}${monthShort(end)}${yearSuffix}`;
   }
   if (sy === ey) {
     return (

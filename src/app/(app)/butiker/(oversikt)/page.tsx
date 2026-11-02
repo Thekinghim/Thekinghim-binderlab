@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
-import { formatInt, NBSP } from "@/lib/format";
+import { formatInt, NBSP, SPACED_RANGE_DASH } from "@/lib/format";
 
-import { StoreKpis } from "./_components/kpis";
-import { AddStoreButton } from "./_components/store-dialogs";
-import { StoreTable } from "./_components/store-table";
-import { loadStoreList, periodQuery } from "./_lib/data";
-import { dayText, plural, sek, sentence } from "./_lib/model";
+import { StoreKpis } from "../_components/kpis";
+import { AddStoreButton } from "../_components/store-dialogs";
+import { StoreTable } from "../_components/store-table";
+import { loadStoreList, periodQuery } from "../_lib/data";
+import { dayText, plural, sek, sentence } from "../_lib/model";
 
 export const metadata: Metadata = { title: "Butiker" };
 
@@ -37,7 +37,7 @@ export default async function ButikerPage({
     cov && period.partial
       ? cov.start === cov.end
         ? dayText(cov.start, ctx.today)
-        : `${dayText(cov.start, ctx.today)}${NBSP}–${NBSP}${dayText(cov.end, ctx.today)}`
+        : `${dayText(cov.start, ctx.today)}${SPACED_RANGE_DASH}${dayText(cov.end, ctx.today)}`
       : null;
 
   return (

@@ -22,12 +22,8 @@ const INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[
  * Kastar `DomainError('invalid_input')` för strängar utan tidszon eller ogiltiga värden.
  */
 export function parseInstant(value: Date | string | number): number {
-  let ms: number;
-  if (value instanceof Date) ms = value.getTime();
-  else if (typeof value === "number") ms = value;
-  else if (typeof value === "string" && INSTANT_PATTERN.test(value)) ms = Date.parse(value);
-  else ms = NaN;
-  if (!Number.isFinite(ms)) {
+  const ms = instantMs(value);
+  if (ms === null) {
     throw new DomainError(
       "invalid_input",
       `Ogiltig tidpunkt: ${JSON.stringify(value)}. Väntat ISO 8601 med tidszon, t.ex. 2026-11-01T16:17:00Z.`,
@@ -119,9 +115,19 @@ export function startOfBusinessDate(date: IsoDate, timeZone: string = DEFAULT_TI
 
 /** Som `parseInstant`, men ger `null` i stället för att kasta för ogiltiga värden. */
 export function tryParseInstant(value: Date | string | number): number | null {
-  try {
-    return parseInstant(value);
-  } catch {
-    return null;
-  }
+  return instantMs(value);
+}
+
+/**
+ * Samma tolkning som `parseInstant`, utan undantag: `null` för ogiltiga värden. Ett
+ * undantag kostar en stackspårning, och `tryParseInstant` anropas per lagerhändelse och
+ * order (tiotusentals gånger per sidladdning med mycket data).
+ */
+function instantMs(value: Date | string | number): number | null {
+  let ms: number;
+  if (value instanceof Date) ms = value.getTime();
+  else if (typeof value === "number") ms = value;
+  else if (typeof value === "string" && INSTANT_PATTERN.test(value)) ms = Date.parse(value);
+  else ms = NaN;
+  return Number.isFinite(ms) ? ms : null;
 }

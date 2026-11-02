@@ -148,8 +148,30 @@ function grouped(events: readonly StockEventRef[]): Map<string, StockEventRef[]>
     if (list) list.push(e);
     else map.set(k, [e]);
   }
-  for (const list of map.values()) list.sort(compareStockEvents);
+  for (const [k, list] of map) map.set(k, sortedEvents(list));
   return map;
+}
+
+/**
+ * Samma ordning som `compareStockEvents`, men tidpunkten tolkas en gång per händelse i
+ * stället för vid varje jämförelse (sorteringen gör n·log n jämförelser).
+ */
+function sortedEvents(list: readonly StockEventRef[]): StockEventRef[] {
+  const keyed = list.map((e) => ({
+    e,
+    t: (e.occurredAt ? tryParseInstant(e.occurredAt) : null) ?? Number.MAX_SAFE_INTEGER,
+    s: e.seq ?? Number.MAX_SAFE_INTEGER,
+  }));
+  keyed.sort((x, y) => {
+    const a = x.e;
+    const b = y.e;
+    const d = compareDates(a.businessDate, b.businessDate);
+    if (d !== 0) return d;
+    if (x.t !== y.t) return x.t < y.t ? -1 : 1;
+    if (x.s !== y.s) return x.s < y.s ? -1 : 1;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+  return keyed.map((k) => k.e);
 }
 
 /** Tillstånd under genomspelningen. */

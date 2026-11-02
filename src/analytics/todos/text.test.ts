@@ -59,7 +59,7 @@ describe("text", () => {
     expect(weekdayDay("2026-10-31")).toBe(`lör 31${S}okt.`);
     expect(periodText({ start: "2026-11-01", end: "2026-11-30" })).toBe(`1–30${S}nov.`);
     expect(periodText({ start: "2026-10-28", end: "2026-11-03" })).toBe(
-      `28${S}okt.${S}–${S}3${S}nov.`,
+      `28${S}okt.${S}–\u2060${S}3${S}nov.`,
     );
     expect(periodText({ start: "2026-11-01", end: "2026-11-01" })).toBe(`1${S}nov.`);
   });

@@ -22,13 +22,19 @@ describe("sidorna i genomgång B", () => {
     expect(src).toContain("retry");
   });
 
+  // Listsidan och dess laddningsläge ligger i gruppen (oversikt) där segmentet har en
+  // detaljsida, så att detaljsidans existenskontroll körs före strömningen (HTTP 404).
+  const GROUPED = new Set(["automater", "butiker", "datakallor"]);
+
   it.each(segments)("%s har ett laddningsläge (loading.tsx) med etikett", (segment) => {
-    const file = join(APP, segment, "loading.tsx");
+    const file = join(APP, segment, GROUPED.has(segment) ? "(oversikt)" : "", "loading.tsx");
     expect(existsSync(file)).toBe(true);
     expect(readFileSync(file, "utf8")).toMatch(/label="Laddar /);
   });
 
-  it.each(["automater/[automat]", "butiker/[butik]", "datakallor/importer/[id]"])(
+  // not-found.tsx ligger ett segment upp: notFound() kastas i detaljsidans layout.tsx,
+  // och den fångas av förälderns gräns.
+  it.each(["automater", "butiker", "datakallor/importer"])(
     "%s har en svensk sida för okänt id (not-found.tsx) med en h1",
     (segment) => {
       const file = join(APP, segment, "not-found.tsx");

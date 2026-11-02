@@ -828,7 +828,7 @@ describe("Revision 5: kassaflöde", () => {
     expect(r.buckets[0]!.evidence.fixedCostIds).toEqual(["f-m", "f-q"]);
 
     const s = norm(r.summary);
-    expect(s).toContain("1 okt. – 31 dec.: in 2 989 kr, ut 3 399 kr, netto -410 kr.");
+    expect(s).toContain("1 okt. –\u2060 31 dec.: in 2 989 kr, ut 3 399 kr, netto -410 kr.");
     expect(s).toContain("Varav prognos från 16 nov.: netto -529 kr.");
     expect(s).toContain("Saldot blir negativt i oktober 2026: -400 kr.");
   });

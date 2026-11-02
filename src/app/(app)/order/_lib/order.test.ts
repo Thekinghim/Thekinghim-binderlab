@@ -232,13 +232,13 @@ describe("orderHeadline", () => {
   it("ger antal, dagar, betalt belopp och förändring mot jämförelseperioden", () => {
     expect(plainH(orderHeadline(base))).toEqual({
       title: `460 order på 20 dagar.`,
-      aside: `79 987 kr betalt, 12 % mer än 23 sep. – 12 okt.`,
+      aside: `79 987 kr betalt, 12 % mer än 23 sep. –\u2060 12 okt.`,
     });
   });
 
   it("skriver minskning med en decimal under 10 % och ingen extra punkt efter förkortning", () => {
     const phrase = comparePhrase({ ...base, compareTotals: { count: 1, amountOre: 8_500_000 } });
-    expect(plain(phrase)).toBe(`5,9 % mindre än 23 sep. – 12 okt.`);
+    expect(plain(phrase)).toBe(`5,9 % mindre än 23 sep. –\u2060 12 okt.`);
     expect(sentence("12 okt.")).toBe("12 okt.");
     expect(sentence("12 okt")).toBe("12 okt.");
   });
@@ -270,7 +270,7 @@ describe("orderHeadline", () => {
 
   it("säger att jämförelseperioden saknade order när det fanns data före den", () => {
     const h = orderHeadline({ ...base, compareTotals: { count: 0, amountOre: 0 } });
-    expect(plain(h.aside)).toBe(`79 987 kr betalt, inga order 23 sep. – 12 okt.`);
+    expect(plain(h.aside)).toBe(`79 987 kr betalt, inga order 23 sep. –\u2060 12 okt.`);
   });
 
   it("säger order per dag när det inte finns någon jämförelse och perioden är full av data", () => {
@@ -310,7 +310,7 @@ describe("orderHeadline", () => {
 
   it("har egna rubriker för inga order, inga träffar och ingen data alls", () => {
     expect(plainH(orderHeadline({ ...base, totals: { count: 0, amountOre: 0 } }))).toEqual({
-      title: `Inga order 13 okt. – 1 nov.`,
+      title: `Inga order 13 okt. –\u2060 1 nov.`,
       aside: "Senaste ordern kom 1 nov. 17:17.",
     });
     expect(

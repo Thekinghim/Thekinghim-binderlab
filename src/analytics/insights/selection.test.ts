@@ -91,7 +91,7 @@ describe("urval: 3–4 iakttagelser", () => {
     expect(texts(shown)).toEqual([
       "Automat 2 har inte sålt på 11 dagar",
       "Automat 1 har inte sålt på 9 dagar",
-      "Ingen försäljning 26 okt. – 1 nov.",
+      "Ingen försäljning 26 okt. –\u2060 1 nov.",
     ]);
   });
 
@@ -156,7 +156,7 @@ describe("utfyllnadsregler", () => {
     const [s] = periodSummaryRule(c);
     expect(plain(s?.text ?? "")).toBe("Intäkten var 588 kr, 20 % mer än förra veckan");
     expect(plain(s?.detail ?? "")).toBe(
-      "12 order 26 okt. – 1 nov. mot 490 kr och 10 order 19–25 okt.",
+      "12 order 26 okt. –\u2060 1 nov. mot 490 kr och 10 order 19–25 okt.",
     );
     expect(s?.score).toBe(1_200);
     expect(s?.tone).toBe("positive");

@@ -99,8 +99,66 @@ function compareEntries(a: MutableEntry, b: MutableEntry): number {
   return ia < ib ? -1 : ia > ib ? 1 : 0;
 }
 
-/** Bygger liggaren för perioden. Kastar `DomainError` vid ogiltig indata. */
+/** En byggd liggare och indatan den byggdes av (jämförs på identitet). */
+interface CachedLedger {
+  readonly start: IsoDate;
+  readonly end: IsoDate;
+  readonly count: number;
+  readonly prices: ProfitabilityInput["prices"];
+  readonly agreements: ProfitabilityInput["agreements"];
+  readonly placements: ProfitabilityInput["placements"];
+  readonly settings: Settings;
+  readonly ledger: Ledger;
+}
+
+/** Högst så många perioder sparas per orderlista. */
+const LEDGER_CACHE_PER_ORDERS = 24;
+
+/**
+ * Byggda liggare per orderlista. En sida räknar ofta flera vyer (lönsamhet, nyckeltal,
+ * titlar, scenarier) på samma order och period; liggaren byggs då en gång. Nyckeln är
+ * orderlistan (WeakMap: posten försvinner med listan, dvs. med förfrågan) och träffen
+ * kräver samma period och samma priser, avtal, placeringar och inställningar (samma
+ * objekt) och lika många order. Indatan är `readonly` och ändras inte efter anropet.
+ */
+const ledgerCache = new WeakMap<readonly OrderLine[], CachedLedger[]>();
+
+/**
+ * Bygger liggaren för perioden. Kastar `DomainError` vid ogiltig indata. Samma indata
+ * (samma objekt) ger samma liggare, som då inte byggs igen.
+ */
 export function buildLedger(input: ProfitabilityInput): Ledger {
+  const cached = ledgerCache.get(input.orders);
+  const hit = cached?.find(
+    (c) =>
+      c.start === input.period.start &&
+      c.end === input.period.end &&
+      c.count === input.orders.length &&
+      c.prices === input.prices &&
+      c.agreements === input.agreements &&
+      c.placements === input.placements &&
+      c.settings === input.settings,
+  );
+  if (hit) return hit.ledger;
+  const ledger = computeLedger(input);
+  const entry: CachedLedger = {
+    start: input.period.start,
+    end: input.period.end,
+    count: input.orders.length,
+    prices: input.prices,
+    agreements: input.agreements,
+    placements: input.placements,
+    settings: input.settings,
+    ledger,
+  };
+  if (cached) {
+    if (cached.length >= LEDGER_CACHE_PER_ORDERS) cached.shift();
+    cached.push(entry);
+  } else ledgerCache.set(input.orders, [entry]);
+  return ledger;
+}
+
+function computeLedger(input: ProfitabilityInput): Ledger {
   assertPeriod(input.period);
   const { period } = input;
   const context = createEconomicsContext(input);

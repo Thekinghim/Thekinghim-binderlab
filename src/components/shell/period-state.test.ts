@@ -181,8 +181,8 @@ describe("describePeriod", () => {
       rangeLabel: plain(desc.rangeLabel),
       comparisonLabel: plain(desc.comparisonLabel),
     }).toEqual({
-      rangeLabel: "27 okt. – 2 nov.",
-      comparisonLabel: "20–26 okt.",
+      rangeLabel: "27 okt. –\u2060 2 nov.",
+      comparisonLabel: "20–\u206026 okt.",
       days: 7,
     });
   });

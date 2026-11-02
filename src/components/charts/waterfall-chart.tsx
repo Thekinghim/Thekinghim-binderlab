@@ -3,7 +3,7 @@
 import { scaleBand, scaleLinear } from "d3-scale";
 import { useId, useMemo, useState, type KeyboardEvent } from "react";
 import { formatPercent } from "@/lib/format";
-import { useMeasure } from "@/lib/hooks/use-measure";
+import { svgSizeProps, unmeasuredStyle, useMeasure } from "@/lib/hooks/use-measure";
 import { axisScale, type AxisUnit } from "./axis";
 import { AxisText, AxisUnitLabel, ChartFigure, HatchPattern, Readout } from "./primitives";
 
@@ -114,7 +114,7 @@ export function WaterfallChart({
   height = 280,
   summary,
 }: WaterfallProps) {
-  const [ref, width] = useMeasure<HTMLDivElement>();
+  const [ref, width, measured] = useMeasure<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
   const uid = useId().replace(/:/g, "");
   const hatchId = `${uid}-h`;
@@ -260,10 +260,9 @@ export function WaterfallChart({
 
   return (
     <ChartFigure summary={summary}>
-      <div ref={ref} className="relative w-full" style={{ height }}>
+      <div ref={ref} className="relative w-full" style={{ height, ...unmeasuredStyle(measured) }}>
         <svg
-          width={width}
-          height={height}
+          {...svgSizeProps(width, height, measured)}
           className="absolute top-0 left-0 block overflow-visible focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-solid"
           role="img"
           tabIndex={0}

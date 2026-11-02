@@ -8,9 +8,9 @@ import { StateMessage } from "@/components/ui/state-message";
 import { formatInt, MINUS, NBSP } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
 
-import { AlertList } from "./_components/alert-list";
-import { HealthTable, type HealthRow } from "./_components/health-table";
-import { toAlertItems } from "./_lib/alert-items";
+import { AlertList } from "../_components/alert-list";
+import { HealthTable, type HealthRow } from "../_components/health-table";
+import { toAlertItems } from "../_lib/alert-items";
 import {
   alertHeadline,
   driftHeadline,
@@ -20,8 +20,8 @@ import {
   plural,
   sentenceEnd,
   sortAlerts,
-} from "./_lib/display";
-import { loadDriftOverview } from "./_lib/load";
+} from "../_lib/display";
+import { loadDriftOverview } from "../_lib/load";
 
 export const metadata: Metadata = { title: "Drift" };
 

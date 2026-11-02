@@ -4,7 +4,7 @@ import { extent, max as d3max } from "d3-array";
 import { scaleLinear } from "d3-scale";
 import { area, curveLinear, line } from "d3-shape";
 import { useMemo, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { useMeasure } from "@/lib/hooks/use-measure";
+import { svgSizeProps, unmeasuredStyle, useMeasure } from "@/lib/hooks/use-measure";
 import { formatDate, formatWeekdayDay } from "@/lib/format";
 import { axisScale, type AxisUnit } from "./axis";
 import {
@@ -135,7 +135,7 @@ export function LineChart({
   seriesName = "Period",
   compareName = "Föregående",
 }: LineChartProps) {
-  const [ref, width] = useMeasure<HTMLDivElement>();
+  const [ref, width, measured] = useMeasure<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
 
   const peakIndex = peakProp ?? highlightIndex ?? (data.length ? argmax(data) : undefined);
@@ -420,10 +420,9 @@ export function LineChart({
 
   return (
     <ChartFigure summary={summary}>
-      <div ref={ref} className="relative w-full" style={{ height }}>
+      <div ref={ref} className="relative w-full" style={{ height, ...unmeasuredStyle(measured) }}>
         <svg
-          width={width}
-          height={height}
+          {...svgSizeProps(width, height, measured)}
           className="absolute top-0 left-0 block overflow-visible focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-solid"
           tabIndex={0}
           role="img"

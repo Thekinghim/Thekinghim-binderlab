@@ -8,11 +8,11 @@ import { REFUND_NONE_KEY } from "@/domain/refunds";
 import { formatInt, formatPeriod } from "@/lib/format";
 import { isoDateToShellDate, loadPeriod, requireRoute } from "@/server/data/core";
 
-import { formatWhen, plural } from "../drift/_lib/display";
-import { InboxKpis } from "./_components/inbox-kpis";
-import { IncidentTable, type IncidentListRow } from "./_components/incident-table";
-import { loadInbox, type IncidentRow } from "./_lib/load";
-import { KIND_LABEL, kronorOfOre, STATUS_LABEL } from "./_lib/model";
+import { formatWhen, plural } from "../../drift/_lib/display";
+import { InboxKpis } from "../_components/inbox-kpis";
+import { IncidentTable, type IncidentListRow } from "../_components/incident-table";
+import { loadInbox, type IncidentRow } from "../_lib/load";
+import { KIND_LABEL, kronorOfOre, STATUS_LABEL } from "../_lib/model";
 
 export const metadata: Metadata = { title: "Inkorg" };
 

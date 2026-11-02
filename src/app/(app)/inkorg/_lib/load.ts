@@ -262,6 +262,21 @@ export interface IncidentDetail {
 }
 
 /** Ett ärende (eller tomt för ett nytt) med stamdata och ändringshistorik. */
+/**
+ * Finns ärendet i organisationen? Den snabba kontrollen före sidans laddningsläge, så att ett
+ * okänt id får HTTP 404 (se [id]/layout.tsx). Som den inloggade med RLS.
+ */
+export async function incidentExists(ctx: AppContext, id: string): Promise<boolean> {
+  return withUserDb(async (tx) => {
+    const [row] = await tx
+      .select({ id: s.incidents.id })
+      .from(s.incidents)
+      .where(and(eq(s.incidents.organizationId, ctx.organization.id), eq(s.incidents.id, id)))
+      .limit(1);
+    return row !== undefined;
+  });
+}
+
 export async function loadIncident(ctx: AppContext, id: string | null): Promise<IncidentDetail> {
   return withUserDb(async (tx) => {
     const orgId = ctx.organization.id;

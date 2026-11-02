@@ -30,6 +30,7 @@ import {
   formatPercent,
   formatSek,
   NBSP,
+  SPACED_RANGE_DASH,
 } from "@/lib/format";
 
 import type {
@@ -134,7 +135,7 @@ export function agreementState(
 export function agreementPeriodLabel(validFrom: IsoDate, validTo: IsoDate | null): string {
   const from = formatDate(isoToDate(validFrom), { year: "always" });
   if (validTo === null) return `${from}${NBSP}– tills vidare`;
-  return `${from}${NBSP}–${NBSP}${formatDate(isoToDate(validTo), { year: "always" })}`;
+  return `${from}${SPACED_RANGE_DASH}${formatDate(isoToDate(validTo), { year: "always" })}`;
 }
 
 export interface AgreementRecord {

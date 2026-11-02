@@ -8,7 +8,7 @@ import { Select } from "@/components/ui/field";
 import { Panel } from "@/components/ui/frame";
 import { StateMessage } from "@/components/ui/state-message";
 import { useToast } from "@/components/ui/toast";
-import { EN_DASH, formatInt, NBSP } from "@/lib/format";
+import { formatInt, NBSP, SPACED_RANGE_DASH } from "@/lib/format";
 
 import { mapSourceMachine } from "../actions";
 import { formatWhen } from "../_lib/display";
@@ -126,7 +126,7 @@ function QueueRow({
           {formatInt(entry.pendingOrders)}
           {NBSP}order väntar
           {entry.firstOrderAt
-            ? ` · ${formatWhen(entry.firstOrderAt, timeZone)}${NBSP}${EN_DASH}${NBSP}${formatWhen(entry.lastOrderAt, timeZone)}`
+            ? ` · ${formatWhen(entry.firstOrderAt, timeZone)}${SPACED_RANGE_DASH}${formatWhen(entry.lastOrderAt, timeZone)}`
             : ""}
         </p>
       </div>

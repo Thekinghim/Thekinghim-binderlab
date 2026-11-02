@@ -73,8 +73,9 @@ describe("sidorna i genomgång C", () => {
 
   it.each([
     "rapport/[id]",
-    "(app)/inkorg/[id]",
-    "(app)/drift/automat/[id]",
+    // Ett segment upp: notFound() kastas i detaljsidans layout.tsx (HTTP 404).
+    "(app)/inkorg",
+    "(app)/drift/automat",
     "portal/rapporter/[id]",
   ])("%s har en svensk sida för okänt id (not-found.tsx) som appens 404", (segment) => {
     const file = join(APP, segment, "not-found.tsx");

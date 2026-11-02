@@ -4,14 +4,14 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { formatInt } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
 
-import { ImportLog } from "./_components/import-log";
-import { MachineQueue } from "./_components/machine-queue";
-import { SourceList } from "./_components/source-list";
-import { UploadPanel } from "./_components/upload-panel";
-import { formatWhen, plural } from "./_lib/display";
-import { headlineOf } from "./_lib/headline";
-import { loadDatakallorFor } from "./_lib/service";
-import { currentViewer } from "./_lib/session";
+import { ImportLog } from "../_components/import-log";
+import { MachineQueue } from "../_components/machine-queue";
+import { SourceList } from "../_components/source-list";
+import { UploadPanel } from "../_components/upload-panel";
+import { formatWhen, plural } from "../_lib/display";
+import { headlineOf } from "../_lib/headline";
+import { loadDatakallorFor } from "../_lib/service";
+import { currentViewer } from "../_lib/session";
 
 export const metadata: Metadata = { title: "Datakällor" };
 

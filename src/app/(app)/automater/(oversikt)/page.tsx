@@ -5,12 +5,12 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatInt, NBSP } from "@/lib/format";
 
-import { MachineKpis } from "./_components/kpis";
-import { AddMachineButton } from "./_components/machine-dialogs";
-import { MachineTable } from "./_components/machine-table";
-import { UnpricedNote } from "./_components/unpriced-note";
-import { loadOverview } from "./_lib/data";
-import { nextMachineCode, overviewKpis, spreadText } from "./_lib/model";
+import { MachineKpis } from "../_components/kpis";
+import { AddMachineButton } from "../_components/machine-dialogs";
+import { MachineTable } from "../_components/machine-table";
+import { UnpricedNote } from "../_components/unpriced-note";
+import { loadOverview } from "../_lib/data";
+import { nextMachineCode, overviewKpis, spreadText } from "../_lib/model";
 
 export const metadata: Metadata = { title: "Automater" };
 

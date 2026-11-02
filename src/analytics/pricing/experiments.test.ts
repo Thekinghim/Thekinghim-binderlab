@@ -64,7 +64,7 @@ describe("proposePriceTests", () => {
     expect(a!.unitsPerWeekTenths).toBe(560);
     expect(a!.weeklyContributionOre).toBe(134_960);
     expect(plain(a!.text)).toBe(
-      "Experiment: höj 30th Celebration från 49,00 kr till 54,00 kr i Automat 1 och Automat 4 under 4 veckor (29 okt. – 25 nov.); Automat 2 och Automat 3 behåller 49,00 kr som kontroll. Höjningen lönar sig om försäljningen minskar mindre än 16 %. Titeln säljer 56 pack/vecka med 24,10 kr kvar per pack (28,60 kr med nytt pris).",
+      "Experiment: höj 30th Celebration från 49,00 kr till 54,00 kr i Automat 1 och Automat 4 under 4 veckor (29 okt. –\u2060 25 nov.); Automat 2 och Automat 3 behåller 49,00 kr som kontroll. Höjningen lönar sig om försäljningen minskar mindre än 16 %. Titeln säljer 56 pack/vecka med 24,10 kr kvar per pack (28,60 kr med nytt pris).",
     );
     expect(a!.evidence.orderIds).toHaveLength(224);
   });

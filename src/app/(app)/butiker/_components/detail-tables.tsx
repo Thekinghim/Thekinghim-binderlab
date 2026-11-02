@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import { parseIsoDate, wallClockIn } from "@/components/shell/period-state";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { StatusTag, type Status } from "@/components/ui/status-tag";
-import { formatDate, formatInt, formatSek, MISSING, NBSP } from "@/lib/format";
+import { formatDate, formatInt, formatSek, MISSING, SPACED_RANGE_DASH } from "@/lib/format";
 
 import type { AgreementState, AgreementView, RecipientView, StoreMachineRow } from "../_lib/types";
 import { percentBp } from "../_lib/model";
@@ -47,7 +47,7 @@ function agreementColumns(
         <span className="flex flex-col">
           <span className="tnum text-fg">
             {day(a.validFrom, today)}
-            {NBSP}–{NBSP}
+            {SPACED_RANGE_DASH}
             {a.validTo ? day(a.validTo, today) : "tills vidare"}
           </span>
           <span className="text-sm text-muted md:hidden">{a.termsLabel}</span>
@@ -166,7 +166,7 @@ function machineColumns(todayIso: string): Column<StoreMachineRow>[] {
             </StatusTag>
             <span className="meta text-subtle">
               {day(m.from, today)}
-              {NBSP}–{NBSP}
+              {SPACED_RANGE_DASH}
               {m.to ? day(m.to, today) : ""}
             </span>
           </span>

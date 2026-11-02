@@ -573,7 +573,7 @@ describe("homeHeadline", () => {
     );
     expect(
       plain(homeHeadline({ ...base, period: { start: "2026-10-01", end: "2026-10-19" } }).title),
-    ).toBe("79 987 kr 13–19 okt.");
+    ).toBe("79 987 kr 13–\u206019 okt.");
   });
   it("säger att vinsten inte går att räkna utan inköpspris och nämner en stor andel utan", () => {
     const none = homeHeadline({

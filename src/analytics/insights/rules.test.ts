@@ -69,7 +69,7 @@ describe("koncentration", () => {
     expect(r).toMatchObject({
       key: "concentration:a",
       text: `30th Celebration står för 33${S}% av intäkten`,
-      detail: `1${S}617${S}kr av 4${S}900${S}kr och 33${S}order av 100${S}order 26${S}okt.${S}–${S}1${S}nov.`,
+      detail: `1${S}617${S}kr av 4${S}900${S}kr och 33${S}order av 100${S}order 26${S}okt.${S}–\u2060${S}1${S}nov.`,
       score: 4_000 + 160,
       link: "/lonsamhet?grupp=titel&fran=2026-10-26&till=2026-11-01",
     });
@@ -166,7 +166,7 @@ describe("ökning och minskning per titel", () => {
       kind: "title-up",
       tone: "positive",
       text: `Mystery Pack säljer 40${S}% mer än förra veckan`,
-      detail: `28${S}pack mot 20${S}pack (26${S}okt.${S}–${S}1${S}nov. mot 19–25${S}okt.).`,
+      detail: `28${S}pack mot 20${S}pack (26${S}okt.${S}–\u2060${S}1${S}nov. mot 19–25${S}okt.).`,
       score: 5_000 + 800 + 48,
     });
     expect(r?.evidence.orderIds).toHaveLength(48);
@@ -217,7 +217,7 @@ describe("ökning och minskning per titel", () => {
       ),
     ).toBe("förra månaden");
     expect(compareLabel(WEEK, { start: "2025-10-27", end: "2025-11-02" })).toBe(
-      `27${S}okt.${S}–${S}2${S}nov.`,
+      `27${S}okt.${S}–\u2060${S}2${S}nov.`,
     );
   });
 });
@@ -232,7 +232,7 @@ describe("bästa dag", () => {
       key: "best-day:2026-10-31",
       tone: "positive",
       text: `Lördag 31${S}okt. var bästa dagen med 490${S}kr`,
-      detail: `3,2 gånger en genomsnittlig dag (154${S}kr) 26${S}okt.${S}–${S}1${S}nov., 10${S}order.`,
+      detail: `3,2 gånger en genomsnittlig dag (154${S}kr) 26${S}okt.${S}–\u2060${S}1${S}nov., 10${S}order.`,
       link: "/forsaljning?fran=2026-10-31&till=2026-10-31",
     });
     expect(r?.evidence.orderIds).toHaveLength(10);
@@ -276,7 +276,7 @@ describe("veckodagsmönster", () => {
     expect(r).toMatchObject({
       key: "weekday-pattern:6",
       text: `Lördagar ger 133${S}% mer intäkt än en genomsnittlig dag`,
-      detail: `Snitt 294${S}kr per lördag mot 126${S}kr per dag 5${S}okt.${S}–${S}1${S}nov. (4${S}lördagar).`,
+      detail: `Snitt 294${S}kr per lördag mot 126${S}kr per dag 5${S}okt.${S}–\u2060${S}1${S}nov. (4${S}lördagar).`,
     });
     expect(r?.evidence.dates).toEqual(["2026-10-10", "2026-10-17", "2026-10-24", "2026-10-31"]);
   });
@@ -312,7 +312,7 @@ describe("titel med förlust", () => {
       tone: "negative",
       score: 9_005,
       text: `Black Bolt går med förlust: −0,90${S}kr per pack`,
-      detail: `Snittpris 49,00${S}kr, inköpspris 45,00${S}kr, provision 4,90${S}kr per pack (5${S}order 26${S}okt.${S}–${S}1${S}nov.).`,
+      detail: `Snittpris 49,00${S}kr, inköpspris 45,00${S}kr, provision 4,90${S}kr per pack (5${S}order 26${S}okt.${S}–\u2060${S}1${S}nov.).`,
       link: "/inkopspriser?titel=bb",
     });
     expect(r?.evidence.figures.find((f) => f.key === "leftPerOrderOre")?.value).toBe(-90);
@@ -390,7 +390,7 @@ describe("computeInsights", () => {
     expect(computeInsights(DATA, WEEK, null, { maxCount: 2 })).toHaveLength(2);
     // Utan försäljning återstår bara den sanna iakttagelsen att inget sålts.
     expect(computeInsights(input(), WEEK).map((x) => x.text)).toEqual([
-      "Ingen försäljning 26\u00a0okt.\u00a0\u2013\u00a01\u00a0nov.",
+      "Ingen försäljning 26\u00a0okt.\u00a0\u2013\u2060\u00a01\u00a0nov.",
     ]);
   });
 

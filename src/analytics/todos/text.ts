@@ -14,7 +14,7 @@ import {
   type IsoMonth,
   type Period,
 } from "@/domain";
-import { EN_DASH, formatInt, MINUS, NBSP } from "@/lib/format";
+import { EN_DASH, formatInt, MINUS, NBSP, SPACED_RANGE_DASH } from "@/lib/format";
 
 const MONTHS_SHORT = [
   "jan.",
@@ -143,7 +143,7 @@ export function periodText(period: Period): string {
   if (a.year === b.year && a.month === b.month) {
     return `${a.day}${EN_DASH}${b.day}${NBSP}${MONTHS_SHORT[b.month - 1]}`;
   }
-  return `${day(period.start)}${NBSP}${EN_DASH}${NBSP}${day(period.end)}`;
+  return `${day(period.start)}${SPACED_RANGE_DASH}${day(period.end)}`;
 }
 
 /** Versal första bokstav: "lördagar" → "Lördagar". */
