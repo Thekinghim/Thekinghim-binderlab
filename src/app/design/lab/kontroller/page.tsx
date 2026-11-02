@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Button, IconButton } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/field";
 import { Icon, type IconName } from "@/components/ui/icon";
@@ -196,6 +196,10 @@ function Board({ theme }: { theme: "dark" | "light" }) {
 }
 
 export default function Page() {
+  // Labbet ritas bara i klienten så att skärmbilder alltid visar senaste modulen.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
   return (
     <div className="grid lg:grid-cols-2">
       <Board theme="dark" />

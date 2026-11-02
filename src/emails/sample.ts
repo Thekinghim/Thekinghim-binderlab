@@ -137,7 +137,12 @@ const bokforing: ReportEmailProps = {
       unit: "kr",
       note: `Kort ${formatSek(2_889.63)} · platshyra ${formatSek(9_800)}`,
     },
-    { label: "Försäljningar", value: 1_812, unit: "count", note: `Varav ${formatInt(3)} återbetalda` },
+    {
+      label: "Försäljningar",
+      value: 1_812,
+      unit: "count",
+      note: `Varav ${formatInt(3)} återbetalda`,
+    },
   ],
   rows: [
     { id: "BL-002", name: "Nordstan", location: "Göteborg", revenue: 14_980, revenueExVat: 11_984 },
@@ -169,9 +174,19 @@ const bokforing: ReportEmailProps = {
         amount: 105_120,
         verification: "V1041",
       },
-      { account: "2611", text: `Utgående moms, ${formatPercent(0.25, 0)}`, amount: 26_280, verification: "V1041" },
+      {
+        account: "2611",
+        text: `Utgående moms, ${formatPercent(0.25, 0)}`,
+        amount: 26_280,
+        verification: "V1041",
+      },
       { account: "6570", text: "Kortavgifter", amount: -2_889.63, verification: "V1042" },
-      { account: "5010", text: `Platshyra, ${formatInt(15)} platser`, amount: -9_800, verification: "V1043" },
+      {
+        account: "5010",
+        text: `Platshyra, ${formatInt(15)} platser`,
+        amount: -9_800,
+        verification: "V1043",
+      },
       {
         account: "4010",
         text: `Inköp av pack, leverans ${day(2026, 9, 6)}`,

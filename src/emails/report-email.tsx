@@ -420,7 +420,12 @@ function MachineTable({ props }: { props: ReportEmailProps }) {
                     <Text
                       size={12}
                       color={sub.good ? C.fg : C.subtle}
-                      style={{ ...tnum, marginTop: "2px", lineHeight: "16px", whiteSpace: "nowrap" }}
+                      style={{
+                        ...tnum,
+                        marginTop: "2px",
+                        lineHeight: "16px",
+                        whiteSpace: "nowrap",
+                      }}
                     >
                       {sub.glyph ? <Glyph>{sub.glyph}</Glyph> : null}
                       {sub.text}
