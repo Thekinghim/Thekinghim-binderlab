@@ -15,6 +15,7 @@ export {
   floorRatio,
   hundredthsFixed,
   hundredthsOf,
+  intOption,
   listText,
   marketEvidence,
   modalAmount,

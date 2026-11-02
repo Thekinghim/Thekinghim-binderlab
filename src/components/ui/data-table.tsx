@@ -248,7 +248,7 @@ function RowImpl<T>({ row, columns, ariaRowIndex, flagged, height, ctx }: RowPro
           style={{ height }}
           className={cn(
             "border-b border-line px-3 py-0 align-middle",
-            col.numeric ? "tnum text-right font-mono text-sm" : "text-left",
+            col.numeric ? "tnum text-right text-base" : "text-left",
             ctx.fixed && "overflow-hidden text-ellipsis whitespace-nowrap",
             ci === 0 && ctx.flaggable && !ctx.stickyFirst && "relative",
             ci === 0 && ctx.stickyFirst && "group-hover:bg-hover",
@@ -811,7 +811,7 @@ export function DataTable<T>({
                       "h-11 px-3 font-medium",
                       height !== undefined &&
                         "sticky bottom-0 z-[2] border-t border-line-strong bg-[var(--dt-bg)]",
-                      col.numeric ? "tnum text-right font-mono text-sm" : "label text-subtle",
+                      col.numeric ? "tnum text-right text-base" : "label text-subtle",
                       edgeClasses(col, ci, ctx, "z-[3]"),
                       virtual && "overflow-hidden text-ellipsis whitespace-nowrap",
                     )}

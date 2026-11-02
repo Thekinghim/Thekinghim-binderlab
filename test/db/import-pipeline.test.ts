@@ -185,7 +185,7 @@ describe("import", () => {
       file_name: "Orderlista nov.csv",
       file_sha256: r.file.sha256,
       storage_path: `${f.orgId}/${f.dataSourceId}/${r.file.sha256}.csv`,
-      parser_version: "awish_csv/1+pipeline/1",
+      parser_version: "awish_csv/2+pipeline/2",
       rows_total: 6,
       rows_new: 3,
       rows_duplicate: 0,
@@ -455,5 +455,42 @@ describe("import", () => {
     expect(a.file.storagePath).toBe(b.file.storagePath);
     const stored = await f.fileStore.get(a.file.storagePath!);
     expect(Buffer.from(stored).equals(Buffer.from(fixture("orderlista-overlapp.csv")))).toBe(true);
+  });
+
+  it("betald och sedan ej betald rad för samma order i en fil: en order, konflikten loggas med order-id", async () => {
+    const f = await setupImportOrg();
+    const r = await f.run(
+      awishCsv([
+        { no: "P1", time: "2026-11-02 10:00:00" },
+        { no: "P1", time: "2026-11-02 10:00:00", paid: "Unpaid" },
+      ]),
+    );
+    expect(r.summary).toMatchObject({ new: 1, conflict: 1, notPaid: 0 });
+    const [order] = await ordersOf(f.orgId);
+    const log = await rows<ImportRowLog>(
+      db(),
+      sql`select row_number, status::text as status, message, order_id, raw
+          from public.import_rows where import_id = ${r.importId} order by row_number`,
+    );
+    expect(log.map((l) => [l.row_number, l.status, l.order_id])).toEqual([
+      [2, "new", order?.id],
+      [3, "conflict", order?.id],
+    ]);
+    expect(log[1]?.message).toMatch(/ej betald/);
+  });
+
+  it("betalmetoden jämförs inte när mappningen tar bort kolumnen", async () => {
+    const f = await setupImportOrg();
+    const csv = awishCsv([{ no: "Q1", time: "2026-11-02 10:00:00", method: "Swish" }]);
+    await f.run(csv);
+    const r = await f.run(csv.replace(",Swish,", ",Card,"), {
+      mapping: { columns: { paymentMethod: null } },
+    });
+    expect(r.summary).toMatchObject({ duplicate: 1, conflict: 0 });
+    // Med kolumnen kvar är en annan betalmetod en konflikt.
+    const withMethod = await f.run(csv.replace(",Swish,", ",Card,"), {
+      mapping: { columns: { paymentMethod: "Payment Method" } },
+    });
+    expect(withMethod.summary).toMatchObject({ duplicate: 0, conflict: 1 });
   });
 });

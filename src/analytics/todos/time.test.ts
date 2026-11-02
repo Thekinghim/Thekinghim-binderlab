@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { businessDateAt, clockTimeAt, parseInstant } from "./time";
+import {
+  businessDateAt,
+  clockTimeAt,
+  parseInstant,
+  startOfBusinessDate,
+  tryParseInstant,
+} from "./time";
 
 describe("parseInstant", () => {
   it("tar Date, ms och ISO med Z eller offset", () => {
@@ -41,5 +47,32 @@ describe("businessDateAt", () => {
   it("annan tidszon kan anges", () => {
     expect(businessDateAt("2026-11-01T16:17:00Z", "Asia/Shanghai")).toBe("2026-11-02");
     expect(businessDateAt("2026-11-01T16:17:00Z", "UTC")).toBe("2026-11-01");
+  });
+});
+
+describe("startOfBusinessDate", () => {
+  it("00:00 svensk tid, vinter- och sommartid", () => {
+    expect(startOfBusinessDate("2026-11-02")).toBe(Date.UTC(2026, 10, 1, 23));
+    expect(startOfBusinessDate("2026-07-01")).toBe(Date.UTC(2026, 5, 30, 22));
+  });
+
+  it("dagarna kring sommartidsskiftena (29 mars och 25 okt. 2026)", () => {
+    expect(startOfBusinessDate("2026-03-29")).toBe(Date.UTC(2026, 2, 28, 23));
+    expect(startOfBusinessDate("2026-03-30")).toBe(Date.UTC(2026, 2, 29, 22));
+    expect(startOfBusinessDate("2026-10-25")).toBe(Date.UTC(2026, 9, 24, 22));
+    expect(startOfBusinessDate("2026-10-26")).toBe(Date.UTC(2026, 9, 25, 23));
+  });
+
+  it("annan tidszon", () => {
+    expect(startOfBusinessDate("2026-11-02", "Asia/Shanghai")).toBe(Date.UTC(2026, 10, 1, 16));
+    expect(startOfBusinessDate("2026-11-02", "UTC")).toBe(Date.UTC(2026, 10, 2));
+  });
+});
+
+describe("tryParseInstant", () => {
+  it("ger null i stället för att kasta", () => {
+    expect(tryParseInstant("2026-11-01T16:17:00Z")).toBe(Date.UTC(2026, 10, 1, 16, 17));
+    expect(tryParseInstant("2026-11-01T16:17")).toBeNull();
+    expect(tryParseInstant("nonsens")).toBeNull();
   });
 });

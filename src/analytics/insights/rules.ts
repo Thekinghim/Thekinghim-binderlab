@@ -8,6 +8,8 @@
  *   koncentration            4 000 + (andel − 25 %) i bp / 5 (högst 1 500)
  *   veckodagsmönster         3 500 + ökning i bp / 10 (högst 1 500)
  *   bästa dag                3 000 + (kvot − 1,5) i bp / 10 (högst 1 500)
+ *   intäkt i perioden        1 000 + |förändring i bp| / 10 (högst 999)   (utfyllnad)
+ *   mest sålda titel           500 + andel i bp / 20 (högst 499)          (utfyllnad)
  */
 
 import {
@@ -164,15 +166,17 @@ export function concentrationRule(ctx: InsightContext): Insight[] {
 /**
  * Stillastående automat: en automat i drift har inte sålt sedan sin senaste försäljningsdag,
  * minst 2 dagar räknat till periodens slut, och borde vid sin vanliga takt (14 dagar t.o.m.
- * senaste försäljningsdagen) ha sålt minst 3 pack under tiden. Är periodens slut i dag räknas
- * i dag som en dag utan försäljning.
+ * senaste försäljningsdagen) ha sålt minst 3 pack under tiden. Har automaten sålt efter
+ * periodens slut (t.o.m. `dataEnd`, i dag när `now` anges) slår regeln inte till.
+ * Med `now` slutar perioden senast i går, så bara hela dagar utan försäljning räknas.
  * "Automat 3 har inte sålt på 2 dagar"
  */
 export function staleMachineRule(ctx: InsightContext): Insight[] {
-  const { input, period } = ctx;
+  const { input, period, dataEnd } = ctx;
   const ref = period.end;
+  // Order efter periodens slut (t.o.m. dataEnd) räknas: en automat som sålt sedan dess är inte tyst.
   const byMachine = groupBy(
-    input.orders.filter((o) => o.machineId !== null && o.businessDate <= ref),
+    input.orders.filter((o) => o.machineId !== null && o.businessDate <= dataEnd),
     (o) => o.machineId as string,
   );
   const candidates: Insight[] = [];
@@ -253,7 +257,7 @@ export function titleChangeRule(ctx: InsightContext): Insight[] {
   const cd = periodDays(compare);
   const now = groupBy(orders, (o) => o.titleId);
   const before = groupBy(compareOrders, (o) => o.titleId);
-  const label = compareLabel(period, compare);
+  const label = compareLabel(ctx.requestedPeriod, ctx.requestedCompare);
 
   type Row = { titleId: string; cur: number; prev: number; changeBp: number };
   const rows: Row[] = [];
@@ -518,6 +522,140 @@ export function lossTitleRule(ctx: InsightContext): Insight[] {
   ];
 }
 
+// ---------------------------------------------------------------------------
+// Utfyllnad: intäkt i perioden och mest sålda titel
+// ---------------------------------------------------------------------------
+
+/**
+ * Intäkt i perioden, med förändring mot jämförelseperioden (per dag om perioderna är olika
+ * långa). Slår alltid till; låg poäng, så den visas bara när få andra regler slår till.
+ *   förändring = (intäkt × dagar före − intäkt före × dagar nu) / (intäkt före × dagar nu)
+ * Förändringen nämns bara när jämförelseperioden hade intäkt.
+ * "Intäkten var 1 911 kr, 12 % mer än förra veckan" · "Ingen försäljning 26 okt.–1 nov."
+ */
+export function periodSummaryRule(ctx: InsightContext): Insight[] {
+  const { input, orders, compareOrders, period, compare } = ctx;
+  const pd = periodDays(period);
+  const cd = periodDays(compare);
+  const total = revenue(orders, input.settings);
+  const before = revenue(compareOrders, input.settings);
+  const changeBp =
+    before > 0 ? roundHalfUp((total * cd - before * pd) * 10_000, before * pd) : null;
+  const label = compareLabel(ctx.requestedPeriod, ctx.requestedCompare);
+  const perDayNote = pd === cd ? "" : ", räknat per dag";
+  const change =
+    changeBp === null
+      ? ""
+      : changeBp === 0
+        ? `, lika mycket som ${label}`
+        : `, ${pct(Math.abs(changeBp))} ${changeBp > 0 ? "mer" : "mindre"} än ${label}`;
+  const compareText =
+    compareOrders.length > 0
+      ? ` mot ${kr(before)} och ${plural(compareOrders.length, "order", "order")} ${periodText(compare)}${perDayNote}`
+      : "";
+  return [
+    {
+      key: `period-summary:${period.start}:${period.end}`,
+      kind: "period-summary",
+      score: 1_000 + Math.min(999, roundHalfUp(Math.abs(changeBp ?? 0), 10)),
+      tone:
+        changeBp === null || changeBp === 0 ? "neutral" : changeBp > 0 ? "positive" : "negative",
+      text:
+        orders.length === 0
+          ? `Ingen försäljning ${periodText(period)}`
+          : `Intäkten var ${kr(total)}${change}`,
+      detail: sentence(
+        `${plural(orders.length, "order", "order")} ${periodText(period)}${compareText}`,
+      ),
+      evidence: evidence({
+        rule: "Intäkten i perioden jämfört med jämförelseperioden (per dag om de är olika långa).",
+        period,
+        orderIds: orders.map((o) => o.id),
+        dates: eachDay(period.start, period.end),
+        figures: [
+          { key: "revenueOre", label: "Intäkt i perioden", value: total, unit: "ore" },
+          { key: "orders", label: "Order i perioden", value: orders.length, unit: "count" },
+          {
+            key: "compareRevenueOre",
+            label: "Intäkt i jämförelseperioden",
+            value: before,
+            unit: "ore",
+          },
+          {
+            key: "compareOrders",
+            label: "Order i jämförelseperioden",
+            value: compareOrders.length,
+            unit: "count",
+          },
+          { key: "periodDays", label: "Dagar i perioden", value: pd, unit: "days" },
+          { key: "compareDays", label: "Dagar i jämförelseperioden", value: cd, unit: "days" },
+          ...(changeBp !== null
+            ? [
+                {
+                  key: "changeBp",
+                  label: "Förändring per dag",
+                  value: changeBp,
+                  unit: "bp" as const,
+                },
+              ]
+            : []),
+        ],
+      }),
+      link: links.salesPeriod(period),
+    },
+  ];
+}
+
+/**
+ * Mest sålda titel (störst intäkt, vid lika: lägst id) när minst 2 titlar sålt i perioden.
+ * Låg poäng; visas inte om koncentrationsregeln redan säger samma sak om titeln.
+ * "Mystery Pack sålde mest: 15 pack och 735 kr (38 % av intäkten)"
+ */
+export function topTitleRule(ctx: InsightContext): Insight[] {
+  const { input, orders, period } = ctx;
+  const byTitle = groupBy(orders, (o) => o.titleId);
+  if (byTitle.size < 2) return [];
+  const total = revenue(orders, input.settings);
+  if (total <= 0) return [];
+  const rows = [...byTitle.entries()]
+    .map(([titleId, list]) => ({ titleId, list, revenueOre: revenue(list, input.settings) }))
+    .sort(
+      (a, b) => b.revenueOre - a.revenueOre || byKey<{ titleId: string }>((r) => r.titleId)(a, b),
+    );
+  const top = rows[0];
+  if (!top) return [];
+  const shareBp = ratioBp(top.revenueOre, total) ?? 0;
+  const name = ctx.titleName(top.titleId);
+  const units = top.list.length; // alltid 1 pack per order
+  return [
+    {
+      key: `top-title:${top.titleId}`,
+      kind: "top-title",
+      score: 500 + Math.min(499, roundHalfUp(shareBp, 20)),
+      tone: "neutral",
+      text: `${name} sålde mest: ${plural(units, "pack", "pack")} och ${kr(top.revenueOre)} (${pct(shareBp)} av intäkten)`,
+      detail: sentence(
+        `${plural(byTitle.size, "titel", "titlar")} sålde ${periodText(period)}, totalt ${kr(total)}`,
+      ),
+      evidence: evidence({
+        rule: "Titeln med störst intäkt i perioden (minst 2 sålda titlar).",
+        period,
+        orderIds: top.list.map((o) => o.id),
+        dates: top.list.map((o) => o.businessDate),
+        titleIds: [top.titleId],
+        figures: [
+          { key: "titleRevenueOre", label: `Intäkt ${name}`, value: top.revenueOre, unit: "ore" },
+          { key: "units", label: `Pack ${name}`, value: units, unit: "packs" },
+          { key: "totalRevenueOre", label: "All intäkt", value: total, unit: "ore" },
+          { key: "shareBp", label: "Andel", value: shareBp, unit: "bp" },
+          { key: "titles", label: "Sålda titlar", value: byTitle.size, unit: "count" },
+        ],
+      }),
+      link: links.profitabilityByTitle(period),
+    },
+  ];
+}
+
 /** Alla regler i den ordning de körs. */
 export const INSIGHT_RULES = [
   lossTitleRule,
@@ -526,4 +664,6 @@ export const INSIGHT_RULES = [
   concentrationRule,
   weekdayPatternRule,
   bestDayRule,
+  periodSummaryRule,
+  topTitleRule,
 ] as const;

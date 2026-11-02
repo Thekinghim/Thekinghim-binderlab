@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { SectionHeader } from "@/components/ui/section-header";
 import { Segmented } from "@/components/ui/segmented";
 import { cn } from "@/lib/cn";
 import {
@@ -25,9 +24,11 @@ import {
   formatTime,
 } from "@/lib/format";
 import { periodFromPreset } from "@/lib/period";
+import { REF_NOW } from "../sample-data";
+import { SpecSection } from "./section";
 
-/** Fast referenstid så att exemplen är desamma på server och klient: mån 2 nov. 2026 09:30. */
-const NOW = new Date(2026, 10, 2, 9, 30);
+/** Samma referenstid som resten av /design: mån 2 nov. 2026 14:32 (senaste synk). */
+const NOW = REF_NOW;
 const d = (y: number, m: number, day: number, h = 0, min = 0) => new Date(y, m - 1, day, h, min);
 
 type Row = { fn: string; input: string; output: string };
@@ -216,6 +217,9 @@ const rules: { code: string; name: string; rule: string; example: string }[] = [
   },
 ];
 
+/** Antal exempel i tabellen (för innehållsindexet). */
+export const FORMAT_EXAMPLE_COUNT = groups.reduce((n, g) => n + g.rows.length, 0);
+
 type Mode = "utdata" | "tecken";
 
 export function FormatSection({ index }: { index: number }) {
@@ -223,32 +227,27 @@ export function FormatSection({ index }: { index: number }) {
   const reveal = mode === "tecken";
 
   return (
-    <section
+    <SpecSection
       id="formatering"
-      aria-labelledby="formatering-title"
-      className="border-t border-line py-16 md:py-20"
+      index={index}
+      eyebrow="Formatering"
+      title="Alla tal formateras på ett ställe."
+      aside={`${FORMAT_EXAMPLE_COUNT} exempel, samma utdata i panel, rapport och e-post.`}
+      space="tight"
+      actions={
+        <Segmented<Mode>
+          label="Visning av utdata"
+          size="sm"
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: "utdata", label: "Utdata" },
+            { value: "tecken", label: "Tecken" },
+          ]}
+        />
+      }
     >
-      <SectionHeader
-        id="formatering-title"
-        index={index}
-        eyebrow="Formatering"
-        title="Alla siffror formateras på ett ställe."
-        aside="Samma utdata i panel, rapport och e-post."
-        actions={
-          <Segmented<Mode>
-            label="Visning av utdata"
-            size="sm"
-            value={mode}
-            onChange={setMode}
-            options={[
-              { value: "utdata", label: "Utdata" },
-              { value: "tecken", label: "Tecken" },
-            ]}
-          />
-        }
-      />
-
-      <dl className="mt-10 grid grid-cols-1 border-t border-line sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="grid grid-cols-1 border-t border-line sm:grid-cols-2 lg:col-span-12 lg:grid-cols-4">
         {rules.map((r, i) => (
           <div
             key={r.code}
@@ -272,9 +271,9 @@ export function FormatSection({ index }: { index: number }) {
         ))}
       </dl>
 
-      <div className="mt-10">
+      <div className="lg:col-span-12">
         <p className="label text-subtle">
-          Referenstid <span className="tnum text-muted normal-case">now = 2026-11-02 09:30</span>
+          Referenstid <span className="tnum text-muted normal-case">now = 2026-11-02 14:32</span>
           <span className="text-faint"> · </span>
           Europe/Stockholm
         </p>
@@ -313,13 +312,13 @@ export function FormatSection({ index }: { index: number }) {
               {g.rows.map((r, i) => (
                 <tr key={i} className="border-t border-line">
                   <td className="py-2.5 pr-4 align-baseline">
-                    <code className="font-mono text-[13px] text-fg">{r.fn}</code>
+                    <code className="meta text-fg">{r.fn}</code>
                     <code className="mt-0.5 block font-mono text-xs text-subtle sm:hidden">
                       {r.input}
                     </code>
                   </td>
                   <td className="hidden py-2.5 pr-4 align-baseline sm:table-cell">
-                    <code className="font-mono text-[13px] text-subtle">{r.input}</code>
+                    <code className="meta text-subtle">{r.input}</code>
                   </td>
                   <td className="tnum py-2.5 text-right align-baseline whitespace-nowrap text-fg">
                     <Glyphs text={r.output} reveal={reveal} />
@@ -330,6 +329,6 @@ export function FormatSection({ index }: { index: number }) {
           ))}
         </table>
       </div>
-    </section>
+    </SpecSection>
   );
 }

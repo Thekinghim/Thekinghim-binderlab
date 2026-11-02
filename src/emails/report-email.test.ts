@@ -103,9 +103,9 @@ describe("renderReportEmail", () => {
   it("ger bokhållaren verifikationsnummer, moms och bilagor", () => {
     const { html, text } = renderReportEmail(sampleReportEmails.bokforing);
     expect(html).toContain("V1041");
-    expect(html).toContain(`105${NBSP}120,00${NBSP}kr`);
+    expect(html).toContain("Provision butiker");
     expect(text).toContain("forsaljning-2026-10.csv");
-    expect(text).toContain("2611 Utgående moms");
+    expect(text).toContain("3001 Försäljning varor");
   });
 
   it("ger delägaren resultat, kassaflöde och plan", () => {
@@ -113,7 +113,7 @@ describe("renderReportEmail", () => {
     expect(text).toContain("RESULTAT");
     expect(text).toContain("KASSAFLÖDE");
     expect(text).toContain("PLAN FÖR NOVEMBER");
-    expect(text).toContain("Obs: Under målet 30");
+    expect(text).toContain("Obs: Under målet 35");
   });
 });
 

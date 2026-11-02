@@ -16,6 +16,7 @@ export interface RawOrder {
   sourceMachineName: string;
   /** Källans id för automaten, om källan har ett (gRPC). CSV saknar det. */
   sourceMachineId?: string;
+  /** null = tom cell. Saknas kolumnen helt anges det i FetchResult.absentFields. */
   paymentMethod: string | null;
   amountOre: number;
   paidAtUtc: Date;
@@ -57,7 +58,16 @@ export interface FetchResult {
   parserVersion: string;
   /** Mappningen som användes (filer), sparas i imports.mapping. */
   mapping?: object;
+  /**
+   * Valfria fält som källan inte har med alls (t.ex. en export utan kolumnen
+   * Payment Method). De jämförs inte mot sparade order, så att en smalare
+   * export inte gör befintliga order till konflikter.
+   */
+  absentFields?: ReadonlyArray<OptionalField>;
 }
+
+/** Fält som en källa kan sakna. */
+export type OptionalField = "paymentMethod";
 
 /** Inställningar från datakällan som adaptern behöver. */
 export interface AdapterContext {
@@ -83,9 +93,29 @@ export interface SourceAdapter<Input extends AdapterInput = AdapterInput> {
   fetch(input: Input, cursor?: string): Promise<FetchResult>;
 }
 
-/** Nyckeln som en order kopplas till automaten med (source_machines.external_id). */
+/**
+ * Unicode-normalisering (NFKC) av text från källan innan den jämförs, hashas
+ * eller används som nyckel. Samma tecken kan skrivas på flera sätt: "é" som
+ * ett tecken (NFC) eller som "e" + accent (NFD, t.ex. en fil sparad på Mac).
+ * NFKC är samma regel som databasen använder för title_aliases.alias_normalized.
+ */
+export function normalizeText(text: string): string {
+  return text.normalize("NFKC");
+}
+
+/** Text för jämförelse: NFKC, blanktecken ihopslagna, trimmad. */
+export function comparableText(text: string | null | undefined): string {
+  return normalizeText(text ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Nyckeln som en order kopplas till automaten med (source_machines.external_id),
+ * NFKC-normaliserad så att samma automatnamn i NFC och NFD blir samma automat.
+ */
 export function machineKeyOf(
   order: Pick<RawOrder, "sourceMachineId" | "sourceMachineName">,
 ): string {
-  return order.sourceMachineId ?? order.sourceMachineName;
+  return normalizeText(order.sourceMachineId ?? order.sourceMachineName);
 }

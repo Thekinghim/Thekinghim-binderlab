@@ -1,291 +1,647 @@
-"use client";
-
-import { useEffect, useRef, useState } from "react";
-import { cn } from "@/lib/cn";
+import type { CSSProperties, ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/field";
+import { cn } from "@/lib/cn";
+import { NBSP, formatInt, formatNumber } from "@/lib/format";
+import { motion } from "@/lib/tokens";
+import { contrast, displayValue, resolveToken, type ThemeTokens } from "./tokens";
 
-/** Läser det faktiska värdet av en CSS-variabel i sitt lägessammanhang. */
-function useCssVar(name: string) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const [value, setValue] = useState("");
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const read = () => setValue(getComputedStyle(el).getPropertyValue(name).trim());
-    read();
-    const mo = new MutationObserver(read);
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
-    return () => mo.disconnect();
-  }, [name]);
-  return [ref, value] as const;
-}
+/* ------------------------------------------------------------------ */
+/* Färg                                                                */
+/* ------------------------------------------------------------------ */
 
-function Swatch({ token, name, note }: { token: string; name: string; note?: string }) {
-  const [ref, value] = useCssVar(token);
-  return (
-    <div className="flex min-w-0 items-center gap-3 border-b border-line py-2.5 last:border-b-0">
-      <span
-        ref={ref}
-        className="size-8 shrink-0 rounded-xs border border-line-strong"
-        style={{ background: `var(${token})` }}
-      />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-base">{name}</span>
-        <span className="label truncate tracking-normal text-subtle normal-case">{token}</span>
-      </div>
-      <span className="label tnum shrink-0 text-muted">{value || " "}</span>
-      {note ? <span className="sr-only">{note}</span> : null}
-    </div>
-  );
-}
+type Requirement = "text" | "graphic" | "decor" | "surface";
 
-const colorGroups: Array<{ title: string; items: Array<[string, string]> }> = [
+type ColorRow = { token: string; role: string; req: Requirement; against?: string };
+
+export const colorGroups: ReadonlyArray<{ title: string; rows: ReadonlyArray<ColorRow> }> = [
   {
     title: "Ytor",
-    items: [
-      ["--bl-bg", "Bakgrund"],
-      ["--bl-surface", "Yta"],
-      ["--bl-surface-raised", "Upphöjd yta"],
-      ["--bl-surface-hover", "Hover"],
+    rows: [
+      { token: "--bl-bg", role: "Bakgrund", req: "surface" },
+      { token: "--bl-surface", role: "Panel", req: "surface" },
+      { token: "--bl-surface-raised", role: "Meny, dialog, notis", req: "surface" },
+      { token: "--bl-surface-hover", role: "Rad under pekaren, valt segment", req: "surface" },
     ],
   },
   {
     title: "Linjer",
-    items: [
-      ["--bl-line", "Hårfin"],
-      ["--bl-line-strong", "Stark"],
-      ["--bl-line-control", "Formulärkant 3:1"],
-      ["--bl-grid", "Rutnät"],
+    rows: [
+      { token: "--bl-line", role: "Hårfin avdelare", req: "decor" },
+      { token: "--bl-line-strong", role: "Tabellhuvud, knappkant", req: "decor" },
+      { token: "--bl-line-control", role: "Fältkant, tröskel", req: "graphic" },
+      { token: "--bl-grid", role: "Koordinatnät på mätytor", req: "decor" },
     ],
   },
   {
     title: "Text",
-    items: [
-      ["--bl-fg", "Primär"],
-      ["--bl-fg-muted", "Dämpad"],
-      ["--bl-fg-subtle", "Diskret"],
-      ["--bl-fg-faint", "Dekor (ej text)"],
+    rows: [
+      { token: "--bl-fg", role: "Siffror, rubriker, fokusring", req: "text" },
+      { token: "--bl-fg-muted", role: "Brödtext, sekundärt", req: "text" },
+      { token: "--bl-fg-subtle", role: "Etiketter, grå rubrikdel", req: "text" },
+      { token: "--bl-fg-disabled", role: "Inaktiv kontroll", req: "text" },
+      { token: "--bl-fg-faint", role: "Axlar och dekor, aldrig text", req: "decor" },
     ],
   },
   {
     title: "Signal",
-    items: [
-      ["--bl-signal", "Signal"],
-      ["--bl-signal-fg", "Signal som text"],
-      ["--bl-signal-soft", "Signal, svag"],
-      ["--bl-focus", "Fokus"],
+    rows: [
+      { token: "--bl-signal", role: "Kräver åtgärd: glyf, stapel, nod", req: "graphic" },
+      { token: "--bl-signal-fg", role: "Signal som text", req: "text" },
+      { token: "--bl-signal-line", role: "Kant på kritisk status", req: "graphic" },
+      {
+        token: "--bl-on-signal",
+        role: "Text på fylld signal",
+        req: "text",
+        against: "--bl-signal",
+      },
+    ],
+  },
+  {
+    title: "Inverterat",
+    rows: [
+      { token: "--bl-inverse-bg", role: "Primärknapp", req: "graphic" },
+      {
+        token: "--bl-inverse-fg",
+        role: "Text på primärknapp",
+        req: "text",
+        against: "--bl-inverse-bg",
+      },
     ],
   },
 ];
 
-export function ColorSpecimen({ theme }: { theme: "dark" | "light" }) {
+export const colorTokenCount = colorGroups.reduce((n, g) => n + g.rows.length, 0);
+
+const reqLabel: Record<Requirement, string> = {
+  text: `≥${NBSP}4,5:1`,
+  graphic: `≥${NBSP}3:1`,
+  decor: "dekor",
+  surface: "yta",
+};
+const reqMin: Partial<Record<Requirement, number>> = { text: 4.5, graphic: 3 };
+
+const ratio = (r: number) => `${formatNumber(Math.floor(r * 10) / 10, 1)}:1`;
+
+function ThemeCell({
+  tokens,
+  row,
+  bgToken,
+}: {
+  tokens: Record<string, string>;
+  row: ColorRow;
+  bgToken: string;
+}) {
+  const value = resolveToken(tokens, row.token);
+  const bg = resolveToken(tokens, row.against ?? bgToken);
+  const c = row.req === "surface" ? null : contrast(value, bg);
+  const min = reqMin[row.req];
+  const fails = c !== null && min !== undefined && c < min;
   return (
-    <div data-theme={theme} className="rounded-md border border-line bg-bg p-4 md:p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <span className="label text-fg">{theme === "dark" ? "Mörkt läge" : "Ljust läge"}</span>
-        <span className="label text-subtle">{theme === "dark" ? "Primärt" : "Sekundärt"}</span>
-      </div>
-      <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-        {colorGroups.map((g) => (
-          <div key={g.title}>
-            <p className="label mb-1 text-subtle">{g.title}</p>
-            {g.items.map(([t, n]) => (
-              <Swatch key={t} token={t} name={n} />
-            ))}
-          </div>
-        ))}
-      </div>
-      <p className="label mt-5 mb-2 text-subtle">Dataramp</p>
-      <div className="flex gap-1">
-        <div className="flex flex-1 flex-col gap-1">
-          <div className="flex h-8">
-            {[
-              "--bl-data-0",
-              "--bl-data-5",
-              "--bl-data-4",
-              "--bl-data-3",
-              "--bl-data-2",
-              "--bl-data-1",
-            ].map((t) => (
-              <span
-                key={t}
-                className="flex-1 border-y border-line first:border-l last:border-r"
-                style={{ background: `var(${t})` }}
-              />
-            ))}
-          </div>
-          <div className="flex justify-between">
-            <span className="label text-[10px] text-subtle">data-0 · lägst</span>
-            <span className="label text-[10px] text-subtle">data-1 · högst</span>
-          </div>
-        </div>
-        <div className="flex w-14 shrink-0 flex-col gap-1">
-          <span className="h-8" style={{ background: "var(--bl-signal)" }} />
-          <span className="label text-right text-[10px] text-signal-fg">signal</span>
-        </div>
-      </div>
+    <div className="flex min-w-0 items-center gap-3">
+      <span
+        aria-hidden
+        className="size-6 shrink-0 rounded-xs border border-line-strong"
+        style={{ background: value }}
+      />
+      <span className="meta min-w-0 truncate text-muted">{displayValue(value)}</span>
+      <span
+        className={cn(
+          "meta tnum ml-auto shrink-0 text-right",
+          c === null ? "text-faint" : fails ? "text-signal-fg" : "text-fg",
+        )}
+      >
+        {c === null ? "–" : ratio(c)}
+        {fails ? " under krav" : ""}
+      </span>
     </div>
   );
 }
 
-const typeScale: Array<{
+/** Tokentabell: mörkt och ljust sida vid sida med kontrast mot bakgrunden, beräknad ur tokens.css. */
+export function ColorTable({ tokens }: { tokens: ThemeTokens }) {
+  return (
+    <table className="w-full table-fixed border-collapse text-left">
+      <caption className="sr-only">
+        Färgtokens med roll, värde och kontrast mot bakgrunden i mörkt och ljust läge
+      </caption>
+      <colgroup>
+        <col className="w-[38%] sm:w-[22%] lg:w-[18%]" />
+        <col className="hidden lg:table-column lg:w-[22%]" />
+        <col />
+        <col />
+        <col className="hidden w-[10%] sm:table-column" />
+      </colgroup>
+      <thead>
+        <tr className="border-b border-line-strong">
+          <th scope="col" className="label pb-2 font-normal text-subtle">
+            Token
+          </th>
+          <th scope="col" className="label hidden pb-2 font-normal text-subtle lg:table-cell">
+            Roll
+          </th>
+          <th scope="col" className="label pb-2 pl-4 font-normal text-subtle">
+            Mörkt <span className="hidden text-faint sm:inline">· mot bg</span>
+          </th>
+          <th scope="col" className="label pb-2 pl-4 font-normal text-subtle">
+            Ljust <span className="hidden text-faint sm:inline">· mot bg</span>
+          </th>
+          <th
+            scope="col"
+            className="label hidden pb-2 pl-4 text-right font-normal text-subtle sm:table-cell"
+          >
+            Krav
+          </th>
+        </tr>
+      </thead>
+      {colorGroups.map((g) => (
+        <tbody key={g.title}>
+          <tr>
+            <th
+              scope="rowgroup"
+              colSpan={5}
+              className="label pt-6 pb-2 text-left font-normal text-fg"
+            >
+              {g.title}
+              <span className="ml-2 text-faint">{String(g.rows.length).padStart(2, "0")}</span>
+            </th>
+          </tr>
+          {g.rows.map((r) => (
+            <tr key={r.token} className="border-t border-line">
+              <th scope="row" className="py-2 pr-2 align-middle font-normal">
+                <code className="meta block truncate text-fg">{r.token.replace("--bl-", "")}</code>
+                <span className="mt-0.5 block truncate text-xs text-subtle lg:hidden">
+                  {r.role}
+                </span>
+              </th>
+              <td className="hidden py-2 pr-4 align-middle text-sm text-muted lg:table-cell">
+                {r.role}
+              </td>
+              <td className="py-2 pl-4 align-middle">
+                <ThemeCell tokens={tokens.dark} row={r} bgToken="--bl-bg" />
+              </td>
+              <td className="py-2 pl-4 align-middle">
+                <ThemeCell tokens={tokens.light} row={r} bgToken="--bl-bg" />
+              </td>
+              <td className="meta hidden py-2 pl-4 text-right align-middle text-subtle sm:table-cell">
+                {reqLabel[r.req]}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      ))}
+    </table>
+  );
+}
+
+const ramp = [
+  "--bl-data-0",
+  "--bl-data-5",
+  "--bl-data-4",
+  "--bl-data-3",
+  "--bl-data-2",
+  "--bl-data-1",
+];
+
+/** Dataskalan som en tunn rad per läge: lägst till högst, med hex under varje steg. */
+export function DataRamp({ tokens }: { tokens: ThemeTokens }) {
+  return (
+    <div className="flex flex-col gap-4">
+      {(["dark", "light"] as const).map((t) => (
+        <div key={t} className="grid grid-cols-[56px_minmax(0,1fr)] items-start gap-3">
+          <span className="label pt-1 text-subtle">{t === "dark" ? "Mörkt" : "Ljust"}</span>
+          <div className="grid grid-cols-6">
+            {ramp.map((name) => {
+              const v = resolveToken(tokens[t], name);
+              return (
+                <div key={name} className="flex min-w-0 flex-col gap-1.5">
+                  <span aria-hidden className="h-6" style={{ background: v }} />
+                  <span className="meta truncate text-subtle">{name.replace("--bl-", "")}</span>
+                  <span className="meta hidden truncate text-faint sm:block">
+                    {displayValue(v)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Typografi                                                           */
+/* ------------------------------------------------------------------ */
+
+type TypeRow = {
   token: string;
   spec: string;
   className: string;
-  sample: string;
-  mono?: boolean;
-}> = [
-  {
-    token: "display",
-    spec: "64 / 64 / −4 %",
-    className: "text-display font-medium",
-    sample: "128 640 kr",
-  },
-  {
-    token: "3xl",
-    spec: "44 / 48 / −3 %",
-    className: "text-3xl font-medium",
-    sample: "Försäljning per automat",
-  },
-  {
-    token: "2xl",
-    spec: "32 / 36 / −2,5 %",
-    className: "text-2xl font-medium",
-    sample: "Intäkt per dag.",
-  },
-  {
-    token: "xl",
-    spec: "24 / 32 / −2 %",
-    className: "text-xl font-medium",
-    sample: "Lagret räcker 9 dagar till.",
-  },
-  {
-    token: "lg",
-    spec: "20 / 28 / −1,5 %",
-    className: "text-lg font-medium",
-    sample: "Påfyllning BL-010 Westfield Arninge",
-  },
-  {
-    token: "md",
-    spec: "16 / 24",
-    className: "text-md",
-    sample: "Brödtext för förklaringar och beskrivningar.",
-  },
-  {
-    token: "base",
-    spec: "14 / 20",
-    className: "text-base",
-    sample: "Standard i tabeller, formulär och menyer.",
-  },
-  {
-    token: "sm",
-    spec: "13 / 20",
-    className: "text-sm text-muted",
-    sample: "Sekundär text och hjälptexter.",
-  },
-  {
-    token: "label",
-    spec: "11 / 16 / +8 % MONO",
-    className: "label text-muted",
-    sample: "01 / Försäljning · Senast synk 14:32",
-    mono: true,
-  },
-];
+  sample: ReactNode;
+  font: "Geist" | "Geist Mono";
+};
 
-export function TypeSpecimen() {
+export function typeScale(revenue: string): TypeRow[] {
+  return [
+    {
+      token: "display",
+      spec: "64 / 64 · −4 %",
+      className: "text-3xl md:text-display font-medium tnum",
+      sample: revenue,
+      font: "Geist",
+    },
+    {
+      token: "3xl",
+      spec: "44 / 48 · −3 %",
+      className: "text-2xl md:text-3xl font-medium",
+      sample: "Intäkt per automat.",
+      font: "Geist",
+    },
+    {
+      token: "2xl",
+      spec: "32 / 36 · −2,5 %",
+      className: "text-xl md:text-2xl font-medium",
+      sample: "Black Bolt sålde slut i BL-002.",
+      font: "Geist",
+    },
+    {
+      token: "xl",
+      spec: "24 / 32 · −2 %",
+      className: "text-xl font-medium",
+      sample: "Lagret i BL-003 räcker 2 dagar till.",
+      font: "Geist",
+    },
+    {
+      token: "lg",
+      spec: "20 / 28 · −1,5 %",
+      className: "text-lg font-medium",
+      sample: "Påfyllning BL-002 Mobilia, fack 3.",
+      font: "Geist",
+    },
+    {
+      token: "md",
+      spec: "16 / 24",
+      className: "text-md",
+      sample: "BL-003 Väla Centrum har inte rapporterat sedan 28 okt. 09:12.",
+      font: "Geist",
+    },
+    {
+      token: "base",
+      spec: "14 / 20",
+      className: "text-base",
+      sample: "30th Celebration · fack 2 · 12 kvar",
+      font: "Geist",
+    },
+    {
+      token: "sm",
+      spec: "13 / 20",
+      className: "text-sm text-muted",
+      sample: "Senast synkad 14:32 från 3 av 3 automater.",
+      font: "Geist",
+    },
+    {
+      token: "label",
+      spec: "11 / 16 · +8 % · versal",
+      className: "label text-muted",
+      sample: "06 / Nyckeltal · 30 d",
+      font: "Geist Mono",
+    },
+    {
+      token: "meta",
+      spec: "12 / 16 · gemen",
+      className: "meta text-muted",
+      sample: "BL-002 · 1 nov. 17:17 · order 42780",
+      font: "Geist Mono",
+    },
+  ];
+}
+
+const tnumSamples = [5900, 4900, 79_900, 35_402];
+
+/** Typskalan i rader: token och mått till vänster, produkttext till höger. */
+export function TypeScale({ revenue }: { revenue: string }) {
+  const rows = typeScale(revenue);
   return (
     <div className="flex flex-col">
-      {typeScale.map((t) => (
+      {rows.map((t) => (
         <div
           key={t.token}
-          className="grid grid-cols-1 items-baseline gap-1 border-b border-line py-4 first:pt-0 md:grid-cols-[160px_1fr] md:gap-6"
+          className="grid grid-cols-1 items-baseline gap-1 border-t border-line py-4 md:grid-cols-12 md:gap-8"
         >
-          <div className="flex items-baseline gap-3 md:flex-col md:gap-0.5">
+          <div className="flex items-baseline gap-3 md:col-span-3 md:flex-col md:gap-0.5">
             <span className="label text-fg">{t.token}</span>
-            <span className="label tnum text-subtle">{t.spec}</span>
+            <span className="meta tnum text-subtle">
+              {t.spec} · {t.font}
+            </span>
           </div>
-          <p className={cn(t.className, "min-w-0 truncate")}>{t.sample}</p>
+          <p className={cn(t.className, "min-w-0 truncate md:col-span-9")}>{t.sample}</p>
         </div>
       ))}
+      <div className="grid grid-cols-1 gap-1 border-y border-line py-4 md:grid-cols-12 md:gap-8">
+        <div className="flex items-baseline gap-3 md:col-span-3 md:flex-col md:gap-0.5">
+          <span className="label text-fg">tnum</span>
+          <span className="meta text-subtle">Geist med tabulära siffror</span>
+        </div>
+        <div className="grid grid-cols-2 gap-8 md:col-span-9 md:max-w-md">
+          {[
+            { label: "Proportionell", tnum: false },
+            { label: "Tabulär", tnum: true },
+          ].map((c) => (
+            <div key={c.label} className="flex flex-col">
+              <span className="label mb-2 text-subtle">{c.label}</span>
+              {tnumSamples.map((v) => (
+                <span key={v} className={cn("text-right text-md", c.tnum && "tnum")}>
+                  {formatInt(v / 100)}
+                  {NBSP}kr
+                </span>
+              ))}
+              <span
+                className={cn(
+                  "mt-1 border-t border-line-strong pt-1 text-right text-md text-fg",
+                  c.tnum && "tnum",
+                )}
+              >
+                {formatInt(tnumSamples.reduce((s, v) => s + v, 0) / 100)}
+                {NBSP}kr
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
 
-export function SpacingSpecimen() {
-  const steps = [1, 2, 3, 4, 6, 8, 10, 12, 16, 20];
+/* ------------------------------------------------------------------ */
+/* Mått                                                                */
+/* ------------------------------------------------------------------ */
+
+/** Måttlinje med ändstreck och etikett i mono. */
+function Dim({
+  className,
+  style,
+  label,
+  vertical,
+}: {
+  className?: string;
+  style?: CSSProperties;
+  label: string;
+  vertical?: boolean;
+}) {
   return (
-    <div className="flex flex-col gap-2">
-      {steps.map((s) => (
-        <div key={s} className="grid grid-cols-[56px_48px_1fr] items-center gap-3">
-          <span className="label tnum text-fg">{s}</span>
-          <span className="label tnum text-subtle">{s * 4}px</span>
-          <span className="h-2 bg-data-3" style={{ width: s * 4 }} />
+    <span aria-hidden className={cn("pointer-events-none absolute", className)} style={style}>
+      <span
+        className={cn(
+          "absolute bg-line-control",
+          vertical ? "inset-y-0 left-1/2 w-px" : "inset-x-0 top-1/2 h-px",
+        )}
+      />
+      <span
+        className={cn(
+          "absolute bg-line-control",
+          vertical
+            ? "top-0 left-[calc(50%-3px)] h-px w-[7px]"
+            : "top-[calc(50%-3px)] left-0 h-[7px] w-px",
+        )}
+      />
+      <span
+        className={cn(
+          "absolute bg-line-control",
+          vertical
+            ? "bottom-0 left-[calc(50%-3px)] h-px w-[7px]"
+            : "top-[calc(50%-3px)] right-0 h-[7px] w-px",
+        )}
+      />
+      <span
+        className={cn(
+          "meta tnum absolute bg-bg px-0.5 leading-none text-fg",
+          vertical
+            ? "top-1/2 left-[calc(50%+6px)] -translate-y-1/2"
+            : "top-[calc(50%-14px)] left-1/2 -translate-x-1/2",
+        )}
+      >
+        {label}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * Avstånd uppmätta på en riktig nyckeltalscell: luft, avstånd mellan etikett,
+ * värde och delta, och 8 px-rytmen under.
+ */
+export function SpacingSpecimen({ value, delta }: { value: string; delta: string }) {
+  const steps = [4, 8, 12, 16, 24, 32, 40, 48, 64];
+  return (
+    <div className="flex flex-col gap-10">
+      <div className="grid-field relative overflow-hidden rounded-md border border-line px-6 py-12 sm:px-12">
+        <div className="relative mx-auto w-full max-w-[320px]">
+          {/* Cellen: samma mått som KpiStrip (py 16, etikett → värde 12, värde → delta 4). */}
+          <div className="relative border-y border-line-strong bg-bg py-4">
+            <p className="label text-muted">Intäkt</p>
+            <p className="tnum mt-3 text-2xl font-medium">{value}</p>
+            <p className="meta tnum mt-1 text-fg">{delta}</p>
+            <Dim vertical label="16" className="top-0 right-0 h-4 w-8 translate-x-full" />
+            <Dim vertical label="12" className="top-8 right-0 h-3 w-8 translate-x-full" />
+            <Dim vertical label="16" className="right-0 bottom-0 h-4 w-8 translate-x-full" />
+          </div>
+          <Dim label="320 · 2 kolumner" className="-bottom-8 left-0 h-4 w-full" />
         </div>
-      ))}
-      <p className="mt-2 text-sm text-muted">
-        Bas 4px, rytm i 8px. Halvsteg (4, 12) endast inuti komponenter. Sektioner skiljs med
-        64–80px.
-      </p>
+      </div>
+      <div className="flex flex-col gap-2">
+        {steps.map((s) => (
+          <div key={s} className="grid grid-cols-[32px_minmax(0,1fr)] items-center gap-3">
+            <span className="meta tnum text-right text-fg">{s}</span>
+            <span className="flex items-center gap-2">
+              <span
+                className={cn("h-2", s % 8 === 0 ? "bg-data-2" : "bg-data-4")}
+                style={{ width: s * 3 }}
+              />
+              <span className="meta text-subtle">
+                {s === 4
+                  ? "finjustering i kontroller"
+                  : s === 12
+                    ? "etikett → värde"
+                    : s === 16
+                      ? "cellens luft"
+                      : s === 48
+                        ? "rubrik → innehåll"
+                        : s === 64
+                          ? "mellan sektioner"
+                          : ""}
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
+  );
+}
+
+/**
+ * Hörnet på ett element förstorat 4×: samma radie- och kantklasser som
+ * komponenten, med radien utmätt (streckad kvadrat = r × 4 px).
+ */
+function Corner({ r, label, className }: { r: number; label: string; className: string }) {
+  return (
+    <figure className="m-0 flex min-w-0 flex-col gap-2">
+      <div className="relative h-28 overflow-hidden rounded-xs border border-line bg-bg">
+        <span
+          aria-hidden
+          className={cn(
+            "absolute top-5 left-5 block h-12 w-16 origin-top-left scale-[4]",
+            className,
+          )}
+        />
+        <span
+          aria-hidden
+          className="absolute border-r border-b border-dashed border-line-control"
+          style={{ top: 20, left: 20, width: r * 4, height: r * 4 }}
+        />
+        <span className="meta tnum absolute bottom-2 left-2 bg-bg px-1 text-fg">R {r}</span>
+      </div>
+      <figcaption className="meta text-subtle">{label}</figcaption>
+    </figure>
   );
 }
 
 export function RadiusSpecimen() {
-  const radii: Array<[string, string]> = [
-    ["xs", "2px · etiketter, markörer"],
-    ["sm", "4px · knappar, fält"],
-    ["md", "6px · paneler, modaler"],
-  ];
   return (
     <div className="grid grid-cols-3 gap-3">
-      {radii.map(([r, d]) => (
-        <div key={r} className="flex flex-col gap-2">
-          <span
-            className={cn(
-              "h-16 border border-line-control bg-raised",
-              r === "xs" ? "rounded-xs" : r === "sm" ? "rounded-sm" : "rounded-md",
-            )}
-          />
-          <span className="label text-fg">{r}</span>
-          <span className="text-xs text-subtle">{d}</span>
-        </div>
-      ))}
+      <Corner r={2} label="Statusetikett" className="rounded-xs border border-line-control" />
+      <Corner
+        r={4}
+        label="Knapp, fält"
+        className="rounded-sm border border-line-strong bg-surface"
+      />
+      <Corner r={6} label="Panel, dialog" className="rounded-md border border-line bg-surface" />
     </div>
   );
 }
 
-export function MotionSpecimen() {
-  const [on, setOn] = useState(false);
-  const rows: Array<[string, string, string]> = [
-    ["fast", "120ms", "Hover, färgbyten"],
-    ["base", "150ms", "Segment, växlar"],
-    ["slow", "180ms", "Modal, toast in"],
-    ["count", "420ms", "Siffror vid periodbyte"],
-  ];
+/** Kanter på riktiga kontroller: tabellrad (line), knapp (line-strong) och fält (line-control). */
+export function BorderSpecimen({ row }: { row: { id: string; name: string; value: string } }) {
   return (
-    <div className="flex flex-col gap-3">
-      {rows.map(([n, ms, use]) => (
-        <div key={n} className="grid grid-cols-[56px_56px_1fr] items-center gap-3">
-          <span className="label text-fg">{n}</span>
-          <span className="label tnum text-subtle">{ms}</span>
-          <div className="relative h-5 border-b border-line">
-            <span
-              className="absolute bottom-0 size-2.5 bg-fg"
-              style={{
-                left: on ? "calc(100% - 10px)" : 0,
-                transition: `left ${ms} var(--bl-ease)`,
-              }}
-            />
-            <span className="absolute -bottom-5 left-0 text-xs text-subtle">{use}</span>
-          </div>
+    <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-[minmax(0,1fr)_112px] items-center gap-4">
+        <div className="flex h-9 min-w-0 items-center justify-between gap-3 border-y border-line text-base">
+          <span className="truncate">
+            <span className="meta mr-2 text-subtle">{row.id}</span>
+            {row.name}
+          </span>
+          <span className="tnum shrink-0">{row.value}</span>
         </div>
-      ))}
-      <div className="mt-6 flex items-center gap-3">
-        <Button size="sm" onClick={() => setOn((v) => !v)}>
-          Spela upp
-        </Button>
-        <span className="label text-subtle">ease cubic-bezier(0.2, 0, 0, 1)</span>
+        <span className="meta text-subtle">line · rad</span>
       </div>
+      <div className="grid grid-cols-[minmax(0,1fr)_112px] items-center gap-4">
+        <div className="flex gap-2">
+          <Button size="sm" iconLeft="download">
+            Exportera
+          </Button>
+        </div>
+        <span className="meta text-subtle">line-strong · knapp</span>
+      </div>
+      <div className="grid grid-cols-[minmax(0,1fr)_112px] items-end gap-4">
+        <Input label="Inköpspris" defaultValue="31" suffix="kr" />
+        <span className="meta pb-2 text-subtle">line-control · fält</span>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Rörelse                                                             */
+/* ------------------------------------------------------------------ */
+
+export const durations: ReadonlyArray<{ token: string; ms: number; use: string; loop?: boolean }> =
+  [
+    { token: "fast", ms: motion.fast, use: "Hover, färg, fokus" },
+    { token: "base", ms: motion.base, use: "Segment, värdebyte i nyckeltal" },
+    { token: "slow", ms: motion.slow, use: "Dialog och notis in" },
+    { token: "count", ms: motion.count, use: "Uppräkning, bara på begäran" },
+    { token: "tick", ms: motion.tick, use: "Knapp som laddar, tre punkter", loop: true },
+    { token: "pulse", ms: motion.pulse, use: "Laddningsytor, en hel puls", loop: true },
+  ];
+
+const AXIS_MAX = 1000;
+
+/**
+ * Tidslinje 0–1 000 ms: varje token som nod på sitt värde. Raderna spelar
+ * upp sin rörelse vid hover eller fokus (ingen knapp). Loopar står utanför axeln.
+ */
+export function MotionTimeline() {
+  const ticks = [0, 120, 150, 180, 420, 1000];
+  return (
+    <div className="flex flex-col">
+      <div className="relative ml-0 h-10 md:ml-[25%]" aria-hidden>
+        <span className="absolute inset-x-0 bottom-0 h-px bg-line-strong" />
+        {ticks.map((t) => (
+          <span
+            key={t}
+            className="absolute bottom-0 flex -translate-x-1/2 flex-col items-center gap-1"
+            style={{ left: `${(t / AXIS_MAX) * 100}%` }}
+          >
+            <span
+              className={cn(
+                "meta tnum whitespace-nowrap text-subtle",
+                (t === 150 || t === 180) && "hidden sm:inline",
+                t === 1000 && "-translate-x-1/2",
+              )}
+            >
+              {t === 1000 ? "1 000 ms" : t}
+            </span>
+            <span className="h-2 w-px bg-line-strong" />
+          </span>
+        ))}
+      </div>
+      <ul className="flex flex-col">
+        {durations.map((d) => (
+          <li
+            key={d.token}
+            tabIndex={0}
+            aria-label={`${d.token}, ${d.ms} millisekunder: ${d.use}`}
+            className="group grid grid-cols-[minmax(0,1fr)] gap-2 border-b border-line py-3 outline-offset-2 md:grid-cols-[25%_minmax(0,1fr)] md:gap-0"
+          >
+            <span className="flex items-baseline gap-3 pr-4">
+              <span className="label w-12 shrink-0 text-fg">{d.token}</span>
+              <span className="meta tnum w-16 shrink-0 text-muted">
+                {formatInt(d.ms)}
+                {NBSP}ms
+              </span>
+              <span className="truncate text-sm text-subtle">{d.use}</span>
+            </span>
+            <span className="relative h-4">
+              <span className="absolute inset-x-0 top-1/2 h-px bg-line" />
+              {d.loop ? (
+                <span className="meta absolute top-0 right-0 text-subtle">loop →</span>
+              ) : (
+                <>
+                  <span
+                    className="absolute top-1/2 h-px bg-line-control"
+                    style={{ left: 0, width: `${(d.ms / AXIS_MAX) * 100}%` }}
+                  />
+                  <span
+                    className="absolute top-[calc(50%-4px)] size-2 bg-fg"
+                    style={{ left: `calc(${(d.ms / AXIS_MAX) * 100}% - 4px)` }}
+                  />
+                </>
+              )}
+              {/* Spelas upp vid hover/fokus: kvadraten löper sträckan på tokenens tid. */}
+              <span
+                className="absolute top-[calc(50%-4px)] left-0 size-2 border border-fg bg-bg opacity-0 transition-[left,opacity] group-hover:left-[calc(100%-8px)] group-hover:opacity-100 group-focus-visible:left-[calc(100%-8px)] group-focus-visible:opacity-100 motion-reduce:hidden"
+                style={{
+                  transitionDuration: `${d.ms}ms`,
+                  transitionTimingFunction: "var(--bl-ease)",
+                }}
+              />
+            </span>
+          </li>
+        ))}
+      </ul>
+      <p className="meta mt-3 text-subtle">
+        ease cubic-bezier(0.2, 0, 0, 1) · in-out cubic-bezier(0.4, 0, 0.2, 1)
+      </p>
     </div>
   );
 }

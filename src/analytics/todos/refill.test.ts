@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeTodos } from "./index";
+import { refillFingerprint } from "./refill";
 import { daily, input, machine, NOW, order, title } from "./test-helpers";
 import type { TodoInput } from "./types";
 
@@ -31,7 +32,8 @@ describe("påfyllning", () => {
       },
     });
     expect(t?.detail).toContain("räcker ca 2,0 dagar vid 2,0 pack per dag");
-    expect(t?.detail).toMatch(/Väntas ta slut 4\u00a0nov\.$/);
+    // Räcker 2,0 dagar räknat med i dag: 2 och 3 nov. (domänens stockoutDate med asOf = i går).
+    expect(t?.detail).toMatch(/Väntas ta slut 3\u00a0nov\.$/);
     expect(t?.evidence.orderIds).toHaveLength(28);
     expect(t?.evidence.period).toEqual({ start: "2026-10-19", end: "2026-11-01" });
     expect(t?.evidence.figures.find((f) => f.key === "daysLeftTenths")?.value).toBe(20);
@@ -142,5 +144,29 @@ describe("påfyllning", () => {
       stock: [{ machineId: "m1", titleId: "t1", onHand: 0 }],
     });
     expect(refills(i)).toHaveLength(0);
+  });
+});
+
+describe("påfyllning: slutdatum och avbockning", () => {
+  it("räcker 2,3 dagar den 2 nov. → väntas ta slut 4 nov. (inte 5 nov.)", () => {
+    // 3 per dag i 14 dagar = 42 pack; 7 i lager räcker 7 × 14 / 42 = 2,33 dagar: 2, 3 och 4 nov.
+    const i = base({
+      orders: daily("t1", "m1", "2026-10-19", 14, 3),
+      stock: [{ machineId: "m1", titleId: "t1", onHand: 7 }],
+    });
+    const t = refills(i)[0];
+    expect(t?.detail).toContain("räcker ca 2,3 dagar");
+    expect(t?.detail).toMatch(/Väntas ta slut 4 nov\.$/);
+  });
+
+  it("utan lastRestockedAt bygger fingerprint på saldot, så en påfyllning syns", () => {
+    const fp = (onHand: number) =>
+      refills(base({ stock: [{ machineId: "m1", titleId: "t1", onHand }] }))[0]?.fingerprint;
+    expect(fp(4)).toBe("soon|saldo:4");
+    expect(fp(3)).not.toBe(fp(4));
+    expect(refillFingerprint("soon", { onHand: 4, lastRestockedAt: "2026-10-30T08:00:00Z" })).toBe(
+      "soon|2026-10-30T08:00:00Z",
+    );
+    expect(refillFingerprint("now", { onHand: 0, lastRestockedAt: null })).toBe("now|saldo:0");
   });
 });

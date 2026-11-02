@@ -8,6 +8,7 @@
 export {
   ALERT_GROUP,
   dayAnomalyAlerts,
+  dayAnomalyDate,
   dedupeCandidates,
   healthAlerts,
   importAlerts,
@@ -21,10 +22,13 @@ export {
 } from "./rules";
 export { acknowledgeIncident, RECONCILE_DEFAULTS, reconcileAlerts } from "./incidents";
 export {
+  inDeliveryWindow,
   isQuiet,
   matchesSubscription,
   mergeDeliveries,
+  nextDeliveryAt,
   quietEndsAt,
   routeNotifications,
+  sendTimeFor,
 } from "./subscriptions";
 export type * from "./types";

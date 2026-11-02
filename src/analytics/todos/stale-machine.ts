@@ -6,14 +6,14 @@
  *   kronor i risk = automatens intäkt per dag de 14 dagarna t.o.m. senaste försäljningsdag × 7
  *   nivå          = alltid 'now' (en tyst automat är ofta trasig eller tom)
  *
- * Order utan betaltidpunkt räknas på affärsdatum: om automatens senaste affärsdatum är senare
- * än den senaste tidpunkten används datumet, och automaten flaggas först när det gått fler än
- * tak(gräns / 24) hela dagar sedan dess (för 48 h: ingen försäljning i förrgår, i går eller i dag).
- * En automat utan några order flaggas om den varit i drift i fler än så många dagar.
+ * Order utan (giltig) betaltidpunkt räknas som sålda i slutet av sin affärsdag (00:00 nästa
+ * dag i organisationens tidszon), så den tysta tiden underskattas hellre än överskattas.
+ * En automat utan några order flaggas när det gått mer än gränsen sedan driftstart
+ * (00:00 svensk tid dagen `activeFrom`): i drift sedan 31 okt. → 59 timmar kl. 11 den 2 nov.
  */
 
 import {
-  ceilDiv,
+  addDays,
   dailyUnits,
   daysBetween,
   floorDiv,
@@ -24,7 +24,7 @@ import {
 } from "@/domain";
 import { evidence, isMachineActive, links } from "./common";
 import { HORIZON_DAYS, urgencyOf, type TodoContext } from "./context";
-import { HOUR_MS, localParts, parseInstant } from "./time";
+import { HOUR_MS, localParts, startOfBusinessDate, tryParseInstant } from "./time";
 import { day, kr, plural, ratioTenths } from "./text";
 import type { AnalyticsOrder, MachineRef, TodoItem } from "./types";
 
@@ -37,36 +37,52 @@ export function silenceText(hours: number): string {
 
 interface LastSale {
   readonly order: AnalyticsOrder;
-  /** Tidpunkten, eller `null` när bara affärsdatumet är känt. */
+  /** Betaltidpunkten, eller `null` när bara affärsdatumet är känt (saknad eller ogiltig `orderedAt`). */
   readonly ms: number | null;
+  /**
+   * Senast möjliga försäljningstidpunkt: betaltidpunkten, eller slutet av affärsdagen
+   * (00:00 nästa dag) när bara datumet är känt. Tyst tid räknas härifrån.
+   */
+  readonly latestMs: number;
 }
 
+function compareLastSale(a: LastSale, b: LastSale): number {
+  if (a.latestMs !== b.latestMs) return a.latestMs - b.latestMs;
+  const ta = a.ms !== null ? 1 : 0;
+  const tb = b.ms !== null ? 1 : 0;
+  if (ta !== tb) return ta - tb;
+  return a.order.id < b.order.id ? -1 : a.order.id > b.order.id ? 1 : 0;
+}
+
+/**
+ * Senaste försäljningen. En order utan giltig betaltidpunkt räknas som såld i slutet av sin
+ * affärsdag, så att den tysta tiden aldrig överskattas. En ogiltig `orderedAt` hoppas över
+ * (ordern räknas på datum) i stället för att stoppa hela beräkningen.
+ */
 function lastSale(orders: readonly AnalyticsOrder[], timeZone: string): LastSale | null {
-  let timed: { order: AnalyticsOrder; ms: number } | null = null;
-  let dated: AnalyticsOrder | null = null;
+  let best: LastSale | null = null;
+  const endOfDay = new Map<IsoDate, number>();
   for (const o of orders) {
-    if (o.orderedAt !== undefined) {
-      const ms = parseInstant(o.orderedAt);
-      if (!timed || ms > timed.ms || (ms === timed.ms && o.id > timed.order.id))
-        timed = { order: o, ms };
+    const ms = o.orderedAt !== undefined ? tryParseInstant(o.orderedAt) : null;
+    let latestMs = ms;
+    if (latestMs === null) {
+      latestMs = endOfDay.get(o.businessDate) ?? null;
+      if (latestMs === null) {
+        latestMs = startOfBusinessDate(addDays(o.businessDate, 1), timeZone);
+        endOfDay.set(o.businessDate, latestMs);
+      }
     }
-    if (
-      !dated ||
-      o.businessDate > dated.businessDate ||
-      (o.businessDate === dated.businessDate && o.id > dated.id)
-    ) {
-      dated = o;
-    }
+    // Senast först; vid lika tid vinner en order med känd tidpunkt, sedan högst id.
+    const candidate: LastSale = { order: o, ms, latestMs };
+    if (!best || compareLastSale(candidate, best) > 0) best = candidate;
   }
-  if (timed && (!dated || localParts(timed.ms, timeZone).date >= dated.businessDate)) return timed;
-  return dated ? { order: dated, ms: null } : null;
+  return best;
 }
 
 /** Punkter för automater som inte sålt. */
 export function staleMachineTodos(ctx: TodoContext): TodoItem[] {
   const { input, today, nowMs, options } = ctx;
   const thresholdMs = options.staleHours * HOUR_MS;
-  const thresholdDays = ceilDiv(options.staleHours, 24);
   const ordersByMachine = new Map<string, AnalyticsOrder[]>();
   for (const o of input.orders) {
     if (o.machineId === null || o.businessDate > today) continue;
@@ -81,20 +97,15 @@ export function staleMachineTodos(ctx: TodoContext): TodoItem[] {
     const orders = ordersByMachine.get(m.id) ?? [];
     const last = lastSale(orders, options.timeZone);
     if (!last) {
-      if (m.activeFrom === null || daysBetween(m.activeFrom, today) <= thresholdDays) continue;
-      out.push(neverSold(ctx, m, m.activeFrom));
+      if (m.activeFrom === null) continue;
+      const sinceMs = nowMs - startOfBusinessDate(m.activeFrom, options.timeZone);
+      if (sinceMs <= thresholdMs) continue;
+      out.push(neverSold(ctx, m, m.activeFrom, floorDiv(sinceMs, HOUR_MS)));
       continue;
     }
-    let silentHours: number;
-    if (last.ms !== null) {
-      if (nowMs - last.ms <= thresholdMs) continue;
-      silentHours = floorDiv(nowMs - last.ms, HOUR_MS);
-    } else {
-      const days = daysBetween(last.order.businessDate, today);
-      if (days <= thresholdDays) continue;
-      silentHours = (days - 1) * 24; // minst så många timmar har gått
-    }
-    out.push(silentMachine(ctx, m, last, orders, silentHours));
+    const silentMs = nowMs - last.latestMs;
+    if (silentMs <= thresholdMs) continue;
+    out.push(silentMachine(ctx, m, last, orders, floorDiv(silentMs, HOUR_MS)));
   }
   return out;
 }
@@ -153,7 +164,12 @@ function silentMachine(
   };
 }
 
-function neverSold(ctx: TodoContext, m: MachineRef, activeFrom: IsoDate): TodoItem {
+function neverSold(
+  ctx: TodoContext,
+  m: MachineRef,
+  activeFrom: IsoDate,
+  silentHours: number,
+): TodoItem {
   const days = daysBetween(activeFrom, ctx.today);
   return {
     key: `stale-machine:${m.id}`,
@@ -164,12 +180,20 @@ function neverSold(ctx: TodoContext, m: MachineRef, activeFrom: IsoDate): TodoIt
     atStakeOre: 0,
     daysLeft: null,
     title: `${m.name} har inte sålt något sedan driftstart`,
-    detail: `I drift sedan ${day(activeFrom)} (${plural(days, "dag", "dagar")}). Ingen order är registrerad.`,
+    detail: `I drift sedan ${day(activeFrom)} (${silenceText(silentHours)}). Ingen order är registrerad.`,
     evidence: evidence({
       rule: `Automaten är i drift och har inte sålt på över ${ctx.options.staleHours} timmar.`,
       dates: [activeFrom],
       machineIds: [m.id],
-      figures: [{ key: "daysActive", label: "Dagar i drift", value: days, unit: "days" }],
+      figures: [
+        {
+          key: "silentHours",
+          label: "Timmar i drift utan försäljning",
+          value: silentHours,
+          unit: "hours",
+        },
+        { key: "daysActive", label: "Dagar sedan driftstart", value: days, unit: "days" },
+      ],
     }),
     link: links.machine(m.id),
   };

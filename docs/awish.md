@@ -4,22 +4,25 @@ Koden finns i `src/import/`. Adaptern (`awish_csv` nu, `awish_grpc` senare) tolk
 
 ## Kolumnmappning (orderlistan som CSV)
 
-| Awish-kolumn   | Fält                            | Anmärkning                                                                                                                     |
-| -------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Order No.      | `orders.external_id`            | Unikt per datakälla. Samma nummer igen blir dubblett eller konflikt.                                                           |
-| Name           | `orders.raw_title` → titel      | Kopplas via alias (normaliserat: NFKC, gemener, ett mellanslag). En okänd titel blir ny titel + alias och flaggas.             |
-| Order Machine  | `source_machines.external_id`   | En okänd automat hamnar i kön (`machine_id` null). Ordern sparas utan automat och får den när automaten kopplas.               |
-| Order Amount   | `orders.amount_ore`             | Beloppet märkt "Amount:". Tolkas som text till öre, inga flyttal. Negativa och tvetydiga belopp (t.ex. "1,234") blir felrader. |
-| Is Paid        | filter                          | Bara "Paid Success" importeras. Övriga räknas som "ej betalda".                                                                |
-| Payment Time   | `orders.ordered_at`             | Lokal tid i datakällans tidszon → UTC. `business_date` är datumet i organisationens tidszon.                                   |
-| Payment Method | `orders.payment_method`         | Valfri.                                                                                                                        |
-| ID, Date       | sparas bara i `import_rows.raw` |                                                                                                                                |
-| Actions        | ignoreras                       |                                                                                                                                |
+| Awish-kolumn   | Fält                            | Anmärkning                                                                                                                                                                                                                                                                                  |
+| -------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Order No.      | `orders.external_id`            | Unikt per datakälla, NFKC-normaliserat. Samma nummer igen blir dubblett eller konflikt. Exponentform från Excel ("4.27801E+11") blir felrad.                                                                                                                                                |
+| Name           | `orders.raw_title` → titel      | Kopplas via alias (normaliserat: NFKC, gemener, ett mellanslag). En okänd titel blir ny titel + alias och flaggas.                                                                                                                                                                          |
+| Order Machine  | `source_machines.external_id`   | Nyckeln är namnet, NFKC-normaliserat (samma automat i NFC och NFD). En okänd automat hamnar i kön (`machine_id` null). Ordern sparas utan automat och får den när automaten kopplas.                                                                                                        |
+| Order Amount   | `orders.amount_ore`             | Beloppet märkt exakt "Amount:" eller "Order Amount:" först på sin rad i cellen; "Discount Amount:", "Refund Amount:" och "Paid Amount:" tas aldrig. Flera olika "Amount:" blir felrad. Tolkas som text till öre, inga flyttal. Negativa och tvetydiga belopp (t.ex. "1,234") blir felrader. |
+| Is Paid        | filter                          | Bara "Paid Success" importeras. Övriga räknas som "ej betalda". En ej betald rad för en order som redan finns (eller är betald längre upp i filen) loggas som konflikt. En rad med fler kolumner än rubriken är alltid en felrad, eftersom Is Paid då kan stå i fel kolumn.                 |
+| Payment Time   | `orders.ordered_at`             | Lokal tid i datakällans tidszon → UTC. `business_date` är datumet i organisationens tidszon.                                                                                                                                                                                                |
+| Payment Method | `orders.payment_method`         | Valfri. Saknas kolumnen (eller mappas bort) jämförs betalmetoden inte mot sparade order.                                                                                                                                                                                                    |
+| ID, Date       | sparas bara i `import_rows.raw` |                                                                                                                                                                                                                                                                                             |
+| Actions        | ignoreras                       |                                                                                                                                                                                                                                                                                             |
 
 - Rubrikerna känns igen oavsett skiftläge, mellanslag och skiljetecken, även på svenska (Ordernummer, Produkt, Automat, Belopp, Betald, Betaltid, Betalmetod).
 - Användaren kan överstyra mappningen. Den som används sparas i `imports.mapping` och på datakällan (`config.csvMapping`) till nästa fil.
-- Avgränsare `,`, `;` eller tab gissas, eller anges. BOM, citattecken, radbrytning inom citat, blandade radslut och tomma rader hanteras. Filer som inte är UTF-8 läses som Windows-1252.
+- Avgränsare `,`, `;` eller tab gissas, eller anges. BOM, citattecken, radbrytning inom citat, blandade radslut och tomma rader hanteras. Filer som inte är UTF-8 alls läses som Windows-1252. En UTF-8-fil med en trasig byte avvisas med radnumret (i stället för att hela filen blir "PokÃ©mon").
 - Radnummer i importloggen är filens radnummer, där rubriken är rad 1.
+- Dubblett eller konflikt avgörs av fälten (belopp, tid, titel, automat, betalmetod) efter NFKC-normalisering och ihopslagna mellanslag, alltid först mot den sparade ordern och sedan mot samma ordernummer längre upp i filen. `orders.source_hash` (version `sh2`, NFKC) sparas som spårbarhet.
+- En automat som döps om i Awish blir en ny, okopplad källautomat, och redan importerade order med det gamla namnet blir konflikter om de importeras igen. CSV-filen saknar automat-id, så det går inte att följa ett namnbyte.
+- Samma Awish-konto som två datakällor (t.ex. CSV och senare gRPC) ger dubbla order, eftersom ordernumret är unikt per datakälla.
 - Det finns ingen kolumn för antal (alltid 1 pack per order), utmatning eller återbetalning.
 
 ## Tidszon: verifiering mot order 42780

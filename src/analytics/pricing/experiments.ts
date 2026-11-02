@@ -29,7 +29,6 @@ import {
   addDays,
   assertIsoDate,
   createEconomicsContext,
-  DomainError,
   orderEconomics,
   type EconomicsSources,
   type OrderLine,
@@ -48,6 +47,7 @@ import {
   tenthsOf,
   tenthsText,
   type MarketEvidence,
+  intOption,
 } from "./common";
 import type { NamedRef } from "./market";
 import { median } from "./robust";
@@ -116,14 +116,6 @@ export interface PriceTestProposal {
   readonly evidence: MarketEvidence;
 }
 
-function int(value: number | undefined, fallback: number, label: string, min: number): number {
-  const v = value ?? fallback;
-  if (!Number.isSafeInteger(v) || v < min) {
-    throw new DomainError("invalid_input", `${label} måste vara ett heltal ≥ ${min}, fick ${v}.`);
-  }
-  return v;
-}
-
 interface Candidate {
   titleId: string;
   orders: OrderLine[];
@@ -137,12 +129,12 @@ interface Candidate {
 /** Förslag på pristester enligt modulens regler. Tom lista när ingen titel uppfyller villkoren. */
 export function proposePriceTests(input: PriceTestInput): PriceTestProposal[] {
   assertIsoDate(input.asOf, "Sista dag med data");
-  const lookbackDays = int(input.lookbackDays, 28, "Underlagets längd", 1);
-  const stepOre = int(input.stepOre, 500, "Prissteget", 1);
-  const testDays = int(input.testDays, 28, "Testets längd", 1);
-  const minUnitsPerArm = int(input.minUnitsPerArm, 30, "Minsta antal pack per grupp", 0);
-  const quietDays = int(input.quietDays, 90, "Dagar utan prisändring", 0);
-  const maxTests = int(input.maxTests, 3, "Antal förslag", 0);
+  const lookbackDays = intOption(input.lookbackDays, 28, "Underlagets längd", 1);
+  const stepOre = intOption(input.stepOre, 500, "Prissteget", 1);
+  const testDays = intOption(input.testDays, 28, "Testets längd", 1);
+  const minUnitsPerArm = intOption(input.minUnitsPerArm, 30, "Minsta antal pack per grupp", 0);
+  const quietDays = intOption(input.quietDays, 90, "Dagar utan prisändring", 0);
+  const maxTests = intOption(input.maxTests, 3, "Antal förslag", 0);
   const titleName = nameLookup(input.titles ?? []);
   const machineName = nameLookup(input.machines ?? []);
   const ctx = createEconomicsContext(input);

@@ -53,6 +53,7 @@ export {
   RECORD_MIN_MONTHS,
   UNPRICED_NOTICE_BP,
   buildPartnerReport,
+  totalRevenue,
   type InventoryLine,
   type InventoryValue,
   type OwnerPayout,

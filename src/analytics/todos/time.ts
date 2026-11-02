@@ -6,7 +6,7 @@
  * eftersom de annars skulle tolkas i processens lokala tid.
  */
 
-import { DomainError, type IsoDate } from "@/domain";
+import { DomainError, parseIsoDate, type IsoDate } from "@/domain";
 
 /** Standardtidszon för affärsdatum. */
 export const DEFAULT_TIME_ZONE = "Europe/Stockholm";
@@ -87,4 +87,41 @@ export function clockTimeAt(
   timeZone: string = DEFAULT_TIME_ZONE,
 ): string {
   return localParts(parseInstant(instant), timeZone).time;
+}
+
+/**
+ * Tidpunkten då affärsdatumet börjar (00:00) i tidszonen, i ms sedan 1970 (UTC).
+ * Räknas med tidszonens förskjutning just då, så sommartidsskiften blir rätt:
+ * startOfBusinessDate('2026-11-02') → 2026-11-01T23:00:00Z (CET, +01:00).
+ * Finns inte 00:00 den dagen (zon som hoppar över midnatt) blir det första tidpunkten efter.
+ */
+export function startOfBusinessDate(date: IsoDate, timeZone: string = DEFAULT_TIME_ZONE): number {
+  const { year, month, day } = parseIsoDate(date);
+  const wallMs = Date.UTC(year, month - 1, day);
+  // Förskjutning (lokal väggtid − UTC) vid en tidpunkt, i ms (på minuten).
+  const offsetAt = (ms: number): number => {
+    const p = localParts(ms, timeZone);
+    const local = parseIsoDate(p.date);
+    const hh = Number(p.time.slice(0, 2));
+    const mm = Number(p.time.slice(3, 5));
+    return (
+      Date.UTC(local.year, local.month - 1, local.day, hh, mm) - Math.floor(ms / 60_000) * 60_000
+    );
+  };
+  const first = wallMs - offsetAt(wallMs);
+  let guess = Math.min(first, wallMs - offsetAt(first));
+  // Zoner som hoppar över midnatt: flytta fram till första tidpunkten på rätt datum.
+  while (localParts(guess, timeZone).date < date) guess += HOUR_MS;
+  // Zoner där midnatt finns två gånger eller gissningen hamnat för sent: gå bakåt per timme.
+  while (localParts(guess - HOUR_MS, timeZone).date === date) guess -= HOUR_MS;
+  return guess;
+}
+
+/** Som `parseInstant`, men ger `null` i stället för att kasta för ogiltiga värden. */
+export function tryParseInstant(value: Date | string | number): number | null {
+  try {
+    return parseInstant(value);
+  } catch {
+    return null;
+  }
 }

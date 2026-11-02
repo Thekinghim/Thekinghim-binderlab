@@ -17,13 +17,7 @@
  * 6. Veckoplan: till automaterna fördelat efter släppkurvans veckoandelar.
  */
 
-import {
-  allocateLargestRemainder,
-  assertIsoDate,
-  ceilDiv,
-  DomainError,
-  type IsoDate,
-} from "@/domain";
+import { allocateLargestRemainder, assertIsoDate, ceilDiv, type IsoDate } from "@/domain";
 import { fig, Ratio } from "../expansion/common";
 import { isMachineActive, nameLookup } from "../todos/common";
 import { day, pct, plural } from "../todos/text";
@@ -35,6 +29,7 @@ import {
   tenthsOf,
   tenthsText,
   type MarketEvidence,
+  intOption,
 } from "../pricing/common";
 import { median } from "../pricing/robust";
 import {
@@ -106,14 +101,6 @@ export interface ReleaseSuggestion {
   readonly evidence: MarketEvidence;
 }
 
-function int(value: number | undefined, fallback: number, label: string, min: number): number {
-  const v = value ?? fallback;
-  if (!Number.isSafeInteger(v) || v < min) {
-    throw new DomainError("invalid_input", `${label} måste vara ett heltal ≥ ${min}, fick ${v}.`);
-  }
-  return v;
-}
-
 function normalizeSeries(s: string | null | undefined): string | null {
   const t = (s ?? "").trim().toLocaleLowerCase("sv-SE").replace(/\s+/g, " ");
   return t === "" ? null : t;
@@ -127,11 +114,11 @@ export function suggestReleasePurchase(input: ReleaseSuggestionInput): ReleaseSu
   const H = horizonOf(input.horizonDays);
   const release = input.newRelease;
   assertIsoDate(release.releaseDate, "Släppdag");
-  const scaleBp = int(input.scaleBp, 10_000, "Antagandet om storlek", 0);
-  const boxSize = int(input.boxSize, 1, "Pack per låda", 1);
-  const minOrderQty = int(input.minOrderQty, 0, "Minsta beställning", 0);
-  const onHandUnits = int(input.onHandUnits, 0, "Pack i lager", 0);
-  const minComparable = int(input.minComparable, 2, "Minsta antal släpp i serien", 1);
+  const scaleBp = intOption(input.scaleBp, 10_000, "Antagandet om storlek", 0);
+  const boxSize = intOption(input.boxSize, 1, "Pack per låda", 1);
+  const minOrderQty = intOption(input.minOrderQty, 0, "Minsta beställning", 0);
+  const onHandUnits = intOption(input.onHandUnits, 0, "Pack i lager", 0);
+  const minComparable = intOption(input.minComparable, 2, "Minsta antal släpp i serien", 1);
   const titleName = nameLookup(input.titles ?? []);
   const machineName = nameLookup(input.machines);
   const name = titleName(release.titleId);
@@ -213,8 +200,9 @@ export function suggestReleasePurchase(input: ReleaseSuggestionInput): ReleaseSu
 
   const need = Math.max(machineUnits - onHandUnits, 0);
   let purchaseUnits = need === 0 ? 0 : Math.max(need, minOrderQty);
-  purchaseUnits = ceilDiv(purchaseUnits, boxSize) * boxSize;
-  const boxes = ceilDiv(purchaseUnits, boxSize);
+  // ceilDiv(0, n) ger −0; inget inköp är 0 lådor.
+  const boxes = purchaseUnits === 0 ? 0 : ceilDiv(purchaseUnits, boxSize);
+  purchaseUnits = boxes * boxSize;
   const warehouseUnits = onHandUnits + purchaseUnits - machineUnits;
 
   const weeklyUnits =

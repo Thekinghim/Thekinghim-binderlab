@@ -10,13 +10,15 @@
  *   återbetalning.
  */
 
-import type {
-  AdapterInput,
-  FetchResult,
-  RawMachine,
-  RawOrder,
-  RawRowError,
-  SourceAdapter,
+import {
+  normalizeText,
+  type AdapterInput,
+  type FetchResult,
+  type OptionalField,
+  type RawMachine,
+  type RawOrder,
+  type RawRowError,
+  type SourceAdapter,
 } from "../adapter";
 import { parseAmountOre } from "../amount";
 import { parseCsvTable } from "../csv-table";
@@ -33,7 +35,13 @@ import {
 import { formatInZone, parseSourceDateTime, zonedToUtc } from "../zoned";
 import { ZodError } from "zod";
 
-export const AWISH_CSV_PARSER_VERSION = "awish_csv/1";
+export const AWISH_CSV_PARSER_VERSION = "awish_csv/2";
+
+/**
+ * Ett ordernummer i exponentform ("4.27801E+11") har formaterats om av Excel:
+ * siffrorna efter den sjätte är borta, så flera order kan få samma nummer.
+ */
+const EXCEL_EXPONENT = /^\d+(?:[.,]\d+)?e[+-]?\d+$/i;
 
 export interface AwishCsvInput extends AdapterInput {
   file: { name: string; content: string | Uint8Array };
@@ -141,14 +149,27 @@ export function parseAwishCsv(input: AwishCsvInput): AwishCsvFetchResult {
     if (record.error) {
       problems.push(record.error);
     }
-    if (extra.some((v) => v.trim() !== "")) {
+    const misaligned = extra.some((v) => v.trim() !== "");
+    if (misaligned) {
       problems.push("Raden har fler kolumner än rubrikraden.");
     }
+    // Är raden trasig (för många kolumner, citattecken som inte stängs) står
+    // värdena kanske i fel kolumn, och "Is Paid" går inte att lita på. Raden
+    // blir då en felrad, aldrig en tyst "ej betald" (t.ex. ett ordernummer med
+    // kommatecken som delats i två kolumner).
+    const structurallyBroken = misaligned || Boolean(record.error);
 
     const isPaid = isPaidValue(cell(idx.isPaid));
-    const externalId = cell(idx.externalId).trim();
+    // NFKC: samma ordernummer skrivet med breda siffror eller i NFD blir samma nyckel.
+    const externalId = normalizeText(cell(idx.externalId)).trim();
     if (externalId === "") {
       problems.push("Ordernummer saknas.");
+    } else if (EXCEL_EXPONENT.test(externalId)) {
+      problems.push(
+        `Ordernumret "${externalId}" har formaterats om av Excel (exponentform) och är inte ` +
+          "längre exakt. Exportera orderlistan på nytt från Awish och ladda upp den utan att " +
+          "öppna och spara den i Excel.",
+      );
     } else if (externalId.length > 200) {
       problems.push("Ordernumret är längre än 200 tecken.");
     }
@@ -196,7 +217,7 @@ export function parseAwishCsv(input: AwishCsvInput): AwishCsvFetchResult {
         raw,
         message: problems.join(" "),
         externalId: externalId === "" ? undefined : externalId,
-        isPaid,
+        isPaid: structurallyBroken ? null : isPaid,
       });
       continue;
     }
@@ -214,15 +235,18 @@ export function parseAwishCsv(input: AwishCsvInput): AwishCsvFetchResult {
       raw,
       notes: notes.length > 0 ? notes : undefined,
     });
-    if (isPaid && !machines.has(machineName)) {
-      machines.set(machineName, { externalId: machineName, externalName: machineName });
+    const machineKey = normalizeText(machineName);
+    if (isPaid && !machines.has(machineKey)) {
+      machines.set(machineKey, { externalId: machineKey, externalName: machineName });
     }
   }
 
+  const absentFields: OptionalField[] = idx.paymentMethod < 0 ? ["paymentMethod"] : [];
   return {
     rows,
     machines: [...machines.values()],
     errors,
+    absentFields,
     parserVersion: AWISH_CSV_PARSER_VERSION,
     mapping: {
       version: 1,

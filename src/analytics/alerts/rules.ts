@@ -601,14 +601,33 @@ export function dedupeCandidates(candidates: readonly AlertCandidate[]): AlertCa
   return [...byKey.values()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 }
 
+/** Datum för ett larm om avvikande dag (ur nyckeln 'day_anomaly:<scope>:<datum>'). */
+export function dayAnomalyDate(c: Pick<AlertCandidate, "key" | "kind">): IsoDate | null {
+  if (c.kind !== "day_anomaly") return null;
+  const date = c.key.slice(c.key.lastIndexOf(":") + 1);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? (date as IsoDate) : null;
+}
+
+/** Avvikelse från förväntat i tiondels pack (utfall × 10 − förväntat), ur underlaget. */
+function deviationTenths(c: AlertCandidate): number | null {
+  const fig = (k: string) => c.evidence.figures.find((f) => f.key === k)?.value;
+  const actual = fig("actual");
+  const expected = fig("expectedTenths");
+  return actual === undefined || expected === undefined ? null : actual * 10 - expected;
+}
+
 /**
  * Gruppering: samma grundorsak ska inte larma flera gånger.
+ * - Låg dag (för en automat eller hela organisationen) stryks när en import har misslyckats
+ *   kritiskt: siffrorna är ofullständiga, och importlarmet är orsaken.
  * - Låg dag för en automat som har ett driftlarm stryks (driftlarmet förklarar den).
- * - Låg dag för hela organisationen stryks när en import har misslyckats kritiskt
- *   (siffrorna är ofullständiga) eller när någon automat har driftlarm (stopp i en automat
+ * - Låg dag för hela organisationen stryks när någon automat har driftlarm (stopp i en automat
  *   drar ner totalen).
- * Höga dagar stryks aldrig. Returnerar kvarvarande kandidater och de strukna med nyckeln till
- * larmet som förklarar dem, så att UI kan visa "ingår i …".
+ * - Avvikande dag för hela organisationen stryks när automaternas egna larm samma dag och åt
+ *   samma håll tillsammans står för minst hälften av avvikelsen (t.ex. en enda automat: −12
+ *   av −12 pack). Automatens larm är mer precist och behålls. Gäller både låga och höga dagar.
+ * Höga dagar stryks annars aldrig. Returnerar kvarvarande kandidater och de strukna med nyckeln
+ * till larmet som förklarar dem, så att UI kan visa "ingår i …".
  */
 export function suppressRelated(candidates: readonly AlertCandidate[]): {
   kept: AlertCandidate[];
@@ -623,22 +642,39 @@ export function suppressRelated(candidates: readonly AlertCandidate[]): {
   }
   const kept: AlertCandidate[] = [];
   const suppressed: { candidate: AlertCandidate; by: string }[] = [];
-  for (const c of candidates) {
-    if (c.kind === "day_anomaly" && c.severity === "warning") {
-      if (c.machineId && machineDown.has(c.machineId)) {
-        suppressed.push({ candidate: c, by: machineDown.get(c.machineId) as string });
-        continue;
-      }
-      if (!c.machineId && importKey) {
-        suppressed.push({ candidate: c, by: importKey });
-        continue;
-      }
-      if (!c.machineId && machineDown.size > 0) {
-        suppressed.push({ candidate: c, by: [...machineDown.values()].sort()[0] as string });
-        continue;
-      }
+  const explain = (c: AlertCandidate): string | null => {
+    if (c.kind !== "day_anomaly") return null;
+    if (c.severity === "warning") {
+      if (importKey) return importKey;
+      if (c.machineId) return machineDown.get(c.machineId) ?? null;
+      if (machineDown.size > 0) return [...machineDown.values()].sort()[0] ?? null;
     }
-    kept.push(c);
+    if (c.machineId) return null;
+    // Hela organisationen: förklaras av automaternas larm samma dag åt samma håll?
+    const date = dayAnomalyDate(c);
+    const total = deviationTenths(c);
+    if (date === null || total === null || total === 0) return null;
+    let covered = 0;
+    let biggest: { key: string; dev: number } | null = null;
+    for (const o of candidates) {
+      if (o.kind !== "day_anomaly" || !o.machineId || o.severity !== c.severity) continue;
+      if (dayAnomalyDate(o) !== date) continue;
+      const dev = deviationTenths(o);
+      if (dev === null || Math.sign(dev) !== Math.sign(total)) continue;
+      covered += dev;
+      if (
+        !biggest ||
+        Math.abs(dev) > Math.abs(biggest.dev) ||
+        (Math.abs(dev) === Math.abs(biggest.dev) && o.key < biggest.key)
+      )
+        biggest = { key: o.key, dev };
+    }
+    return biggest && Math.abs(covered) * 2 >= Math.abs(total) ? biggest.key : null;
+  };
+  for (const c of candidates) {
+    const by = explain(c);
+    if (by) suppressed.push({ candidate: c, by });
+    else kept.push(c);
   }
   return { kept, suppressed };
 }

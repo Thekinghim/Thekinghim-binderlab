@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { EnvError, parseClientEnv, parseServerEnv, type EnvSource } from "@/lib/env";
+import {
+  databaseUrlHosts,
+  EnvError,
+  isLocalDatabaseUrl,
+  parseClientEnv,
+  parseServerEnv,
+  type EnvSource,
+} from "@/lib/env";
 
 const DEV_SECRET = "d".repeat(40);
 
@@ -130,6 +137,27 @@ describe("parseServerEnv", () => {
     );
   });
 
+  it("kräver https för Supabase utanför development", () => {
+    for (const APP_ENV of ["preview", "production"]) {
+      const issues = issuesOf({
+        ...prodEnv,
+        APP_ENV,
+        SUPABASE_URL: "http://ukuuwokxbtwhqfnttzwr.supabase.co",
+        SUPABASE_JWKS_URL: "http://x.example/jwks.json",
+      });
+      expect(issues).toContain("SUPABASE_URL: måste börja med https:// utanför development");
+      expect(issues).toContain("SUPABASE_JWKS_URL: måste börja med https:// utanför development");
+    }
+    expect(() =>
+      parseServerEnv({
+        ...devEnv,
+        AUTH_PROVIDER: "supabase",
+        SUPABASE_URL: "http://127.0.0.1:54321",
+        SUPABASE_PUBLISHABLE_KEY: "sb_publishable_abc",
+      }),
+    ).not.toThrow();
+  });
+
   it("räknar tomma strängar som saknade", () => {
     const env = parseServerEnv({ ...devEnv, SENTRY_DSN: "  ", APP_URL: "" });
     expect(env.SENTRY_DSN).toBeUndefined();
@@ -152,5 +180,35 @@ describe("parseClientEnv", () => {
     expect(() => parseClientEnv({ NEXT_PUBLIC_SENTRY_DSN: "inte en adress" })).toThrow(
       /NEXT_PUBLIC_SENTRY_DSN: måste vara en http\(s\)-adress/,
     );
+  });
+});
+
+describe("lokal databas (dev-spärren)", () => {
+  it.each([
+    "postgres://postgres@127.0.0.1:54322/binderlab_dev",
+    "postgresql://u:p@localhost/x?sslmode=disable",
+    "postgres://u@[::1]:5432/x",
+  ])("%s är lokal", (url) => {
+    expect(isLocalDatabaseUrl(url)).toBe(true);
+  });
+
+  it.each([
+    "postgres://postgres@localhost:54322/db?host=db.evil.example",
+    "postgres://postgres@localhost:54322/db?HOST=db.evil.example",
+    "postgres://postgres@localhost:54322/db?hostaddr=10.0.0.5",
+    "postgres://localhost#@db.evil.example/db",
+    "postgres://localhost,db.evil.example/db",
+    "postgres://u@LOCALHOST.evil.example/db",
+    "postgres:///db",
+    "postgres://u@/db",
+    "mysql://u@localhost/db",
+  ])("%s är inte lokal", (url) => {
+    expect(isLocalDatabaseUrl(url)).toBe(false);
+  });
+
+  it("tolkar värdarna som postgres.js", () => {
+    expect(databaseUrlHosts("postgres://u:p@a,b:2/db")).toEqual(["a", "b"]);
+    expect(databaseUrlHosts("postgres://u@[::1]:5432/db")).toEqual(["::1"]);
+    expect(databaseUrlHosts("postgres://u@localhost/db?host=x")).toBeNull();
   });
 });

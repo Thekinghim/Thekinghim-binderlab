@@ -15,7 +15,7 @@ import { cn } from "@/lib/cn";
 import { Icon } from "./icon";
 import { StatusGlyph, type Status } from "./status-tag";
 
-type ToastInput = {
+export type ToastInput = {
   title: string;
   description?: string;
   tone?: Extract<Status, "ok" | "neutral" | "critical">;
@@ -72,17 +72,48 @@ function ToastView({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
     return () => clearTimeout(t);
   }, [paused, duration, onDismiss]);
 
+  return (
+    <ToastCard
+      item={item}
+      onDismiss={onDismiss}
+      progressMs={paused ? undefined : duration}
+      onPause={setPaused}
+    />
+  );
+}
+
+/**
+ * Notisens yta. ToastProvider ritar den med tidtagning; som statiskt exempel
+ * (t.ex. på /design) ritas den utan förlopp och utan stängknapp.
+ */
+export function ToastCard({
+  item,
+  onDismiss,
+  progressMs,
+  onPause,
+  className,
+}: {
+  item: ToastInput;
+  onDismiss?: () => void;
+  /** Förloppslinjens längd. Utelämnas: ingen linje. */
+  progressMs?: number;
+  onPause?: (paused: boolean) => void;
+  className?: string;
+}) {
   const tone = item.tone ?? "neutral";
+  const live = Boolean(onDismiss);
   return (
     <div
-      role={tone === "critical" ? "alert" : "status"}
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
-      onBlur={() => setPaused(false)}
+      role={live ? (tone === "critical" ? "alert" : "status") : undefined}
+      onMouseEnter={onPause ? () => onPause(true) : undefined}
+      onMouseLeave={onPause ? () => onPause(false) : undefined}
+      onFocus={onPause ? () => onPause(true) : undefined}
+      onBlur={onPause ? () => onPause(false) : undefined}
       className={cn(
-        "pointer-events-auto relative w-full animate-enter overflow-hidden rounded-md border bg-raised p-3.5 pr-10",
+        "pointer-events-auto relative w-full overflow-hidden rounded-md border bg-raised p-3.5",
+        live && "animate-enter pr-10",
         tone === "critical" ? "border-signal-line" : "border-line-strong",
+        className,
       )}
     >
       <div className="flex gap-3">
@@ -100,7 +131,7 @@ function ToastView({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
                   type="button"
                   onClick={() => {
                     item.action?.onClick();
-                    onDismiss();
+                    onDismiss?.();
                   }}
                   className="label text-fg underline decoration-line-control underline-offset-4 transition-[text-decoration-color] duration-fast hover:decoration-fg"
                 >
@@ -111,19 +142,21 @@ function ToastView({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
           ) : null}
         </div>
       </div>
-      <button
-        type="button"
-        onClick={onDismiss}
-        aria-label="Stäng notis"
-        className="absolute top-2.5 right-2.5 grid size-6 place-items-center rounded-xs text-subtle transition-colors duration-fast hover:bg-hover hover:text-fg"
-      >
-        <Icon name="close" size={12} />
-      </button>
-      {!paused ? (
+      {onDismiss ? (
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Stäng notis"
+          className="absolute top-2.5 right-2.5 grid size-6 place-items-center rounded-xs text-subtle transition-colors duration-fast hover:bg-hover hover:text-fg"
+        >
+          <Icon name="close" size={12} />
+        </button>
+      ) : null}
+      {progressMs !== undefined ? (
         <span
           aria-hidden
           className="absolute inset-x-0 bottom-0 h-px origin-left animate-toast-progress bg-line-control"
-          style={{ "--toast-dur": `${duration}ms` } as CSSProperties}
+          style={{ "--toast-dur": `${progressMs}ms` } as CSSProperties}
         />
       ) : null}
     </div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DomainError, profitability } from "@/domain";
+import { DomainError, keyMetrics, monthPeriod, profitability } from "@/domain";
 import { buildPartnerReport } from "./partner-report";
 import { agreement, octoberExample, ord, placement, price, sources } from "./testing/fixtures";
 
@@ -83,7 +83,7 @@ describe("resultat", () => {
       "2026-09",
       "2026-10",
     ]);
-    expect(r.trend.months[5]!.revenueOre).toBe(r.result.revenueOre);
+    expect(r.trend.months[5]!.revenueOre).toBe(r.result.totalRevenueOre);
     expect(() => buildPartnerReport(octoberExample(), "2026-10", { trendMonths: 5 })).toThrow(
       DomainError,
     );
@@ -120,7 +120,7 @@ describe("resultat", () => {
     const r = buildPartnerReport(src, "2026-11");
     expect(r.result.unpricedShareBp).toBe(1000);
     expect(plain(r.conclusion.text)).toBe(
-      "Vinsten blev 70 kr på 90 kr intäkt (marginal 77,8 %), men 10 % av intäkten saknar inköpspris och ingår inte.",
+      "Vinsten blev 70 kr på 100 kr intäkt (marginal 77,8 %), men 10 % av intäkten saknar inköpspris och ingår inte.",
     );
   });
 });
@@ -313,5 +313,75 @@ describe("viktiga händelser", () => {
     const e = buildPartnerReport(s, "2026-11").events.map((x) => x.kind);
     expect(e).toContain("machine_removed");
     expect(e).toContain("agreement_end");
+  });
+});
+
+describe("intäkten är samma tal som panelens (keyMetrics), även med order utan inköpspris", () => {
+  // Oktober: 2 order à 49 kr med pris. November: 4 order à 49 kr med pris och 2 à 59 kr utan.
+  const src = sources({
+    agreements: [
+      agreement("s-1", "2025-01-01", null, { commissionBp: 1000, monthlyRentOre: 5000 }),
+    ],
+    prices: [price("t-a", 2000, "2025-01-01")],
+    orders: [
+      ord("2026-10-05"),
+      ord("2026-10-06"),
+      ...["03", "04", "05", "06"].map((d) => ord(`2026-11-${d}`)),
+      ord("2026-11-07", { titleId: "t-c", amountOre: 5900 }),
+      ord("2026-11-08", { titleId: "t-c", amountOre: 5900 }),
+    ],
+  });
+  const r = buildPartnerReport(src, "2026-11", { trendMonths: 6 });
+  const panel = (m: string) => keyMetrics({ ...src, period: monthPeriod(m) });
+
+  it("resultatet: total intäkt 31 400 = panelen; vinstens underlag 19 600 + utan pris 11 800", () => {
+    expect(r.result.totalRevenueOre).toBe(31_400);
+    expect(r.result.totalRevenueOre).toBe(panel("2026-11").revenueOre);
+    expect([r.result.revenueOre, r.result.unpricedRevenueOre]).toEqual([19_600, 11_800]);
+    expect(r.result.profitOre).toBe(panel("2026-11").profitOre);
+    expect(r.result.marginBp).toBe(panel("2026-11").marginBp);
+  });
+
+  it("varje månad i utvecklingen har panelens intäkt, vinst och marginal", () => {
+    for (const m of r.trend.months) {
+      const k = panel(m.month);
+      expect([m.revenueOre, m.profitOre, m.marginBp], m.month).toEqual([
+        k.revenueOre,
+        k.profitOre,
+        k.marginBp,
+      ]);
+      expect(m.pricedRevenueOre + m.unpricedRevenueOre).toBe(m.revenueOre);
+    }
+  });
+
+  it("jämförelsen visar panelens intäkt och förändring: 9 800 → 31 400 = +22 041 bp", () => {
+    const p = r.previousMonth!;
+    expect([p.totalRevenueOre, p.totalRevenueChangeBp]).toEqual([9800, 22_041]);
+    // Vinstens underlag jämförs för sig: 9 800 → 19 600 = +10 000 bp.
+    expect([p.revenueOre, p.revenueChangeBp]).toEqual([9800, 10_000]);
+    expect(plain(p.text)).toContain("intäkt 98 kr (nu +220 %)");
+  });
+
+  it("slutsatsen nämner panelens intäkt", () => {
+    const solo = buildPartnerReport(src, "2026-11", { historyStart: "2026-11-01" });
+    expect(solo.conclusion.ruleId).toBe("partner.profit");
+    expect(plain(solo.conclusion.text)).toMatch(/^Vinsten blev .* på 314 kr intäkt/);
+  });
+
+  it("rekord räknas på panelens intäkt: en månad med bara order utan pris är inte 'lägsta'", () => {
+    const hist = sources({
+      prices: [price("t-a", 2000, "2025-01-01")],
+      orders: [
+        ...["05", "06", "07", "08", "09", "10"].map((m) => ord(`2026-${m}-10`)),
+        ...Array.from({ length: 3 }, (_, i) => ord(`2026-11-1${i}`, { titleId: "t-c" })),
+      ],
+    });
+    const x = buildPartnerReport(hist, "2026-11", { trendMonths: 7 });
+    expect(x.events.some((e) => e.kind === "record_low")).toBe(false);
+    const high = x.events.find((e) => e.kind === "record_high")!;
+    expect(plain(high.text)).toBe("Högsta intäkten på 7 månader: 147 kr.");
+    expect(high.evidence.figures[0]!.value).toBe(
+      keyMetrics({ ...hist, period: monthPeriod("2026-11") }).revenueOre,
+    );
   });
 });

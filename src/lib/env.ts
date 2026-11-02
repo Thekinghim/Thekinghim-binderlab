@@ -77,9 +77,61 @@ function optionalUrl(protocols: readonly string[], label: string) {
 
 const httpUrl = () => optionalUrl(["http:", "https:"], "http(s)-adress");
 
+/** Frågeparametrar som byter värd i postgres.js (host) eller libpq (hostaddr). */
+const HOST_OVERRIDE_PARAMS = new Set(["host", "hostaddr"]);
+
+/**
+ * Värdarna som en postgres-adress faktiskt ansluter till, tolkade som
+ * postgres.js gör (som läser adressen själv, inte med WHATWG URL). `null`
+ * om adressen är tvetydig: värden byts via `?host=`/`?hostaddr=`, eller
+ * adressen innehåller tecken (`#`, `\`, blanksteg) som WHATWG URL och
+ * postgres.js tolkar olika. En adress utan värd ger en tom lista (då gäller
+ * PGHOST, som vi inte litar på).
+ */
+export function databaseUrlHosts(url: string): string[] | null {
+  const parsed = parseUrl(url);
+  if (!parsed || (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:")) {
+    return null;
+  }
+  if (/[#\\\s]/.test(url)) {
+    return null;
+  }
+  for (const key of parsed.searchParams.keys()) {
+    if (HOST_OVERRIDE_PARAMS.has(key.toLowerCase())) {
+      return null;
+    }
+  }
+  const rest = url.slice(url.indexOf("://") + 3);
+  const end = rest.search(/[/?]/);
+  const authority = end === -1 ? rest : rest.slice(0, end);
+  const hostList = authority.slice(authority.lastIndexOf("@") + 1);
+  try {
+    return hostList
+      .split(",")
+      .filter(Boolean)
+      .map((part) => {
+        const match = /^\[([^\]]*)\](?::\d*)?$/.exec(part) ?? /^([^:]*)(?::\d*)?$/.exec(part);
+        return decodeURIComponent(match?.[1] ?? part).toLowerCase();
+      });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Pekar adressen bara på den egna maskinen? Både WHATWG-tolkningen och
+ * postgres.js-tolkningen måste ge lokala värdar.
+ */
 export function isLocalDatabaseUrl(url: string): boolean {
   const parsed = parseUrl(url);
-  return parsed !== null && LOCAL_HOSTS.has(parsed.hostname);
+  const hosts = databaseUrlHosts(url);
+  return (
+    parsed !== null &&
+    LOCAL_HOSTS.has(parsed.hostname) &&
+    hosts !== null &&
+    hosts.length > 0 &&
+    hosts.every((host) => LOCAL_HOSTS.has(host))
+  );
 }
 
 /**
@@ -221,6 +273,16 @@ function crossFieldIssues(env: ParsedServerEnv): string[] {
       issues.push(
         "SUPABASE_SECRET_KEY: saknas (krävs för inbjudningsmejl i preview och production)",
       );
+    }
+  }
+
+  if (env.APP_ENV !== "development") {
+    // Nycklarna som verifierar alla sessioner får inte hämtas okrypterat.
+    for (const key of ["SUPABASE_URL", "SUPABASE_JWKS_URL"] as const) {
+      const value = env[key];
+      if (value && !value.startsWith("https://")) {
+        issues.push(`${key}: måste börja med https:// utanför development`);
+      }
     }
   }
 

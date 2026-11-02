@@ -5,16 +5,23 @@
  * körningens kandidater med tidigare incidenter:
  *
  *   kandidat + öppen incident med samma nyckel
- *     → incidenten uppdateras (senast sedd, text, underlag). Avisering bara om
- *       allvaret skärps ('escalated') eller, om incidenten inte är kvitterad, när
+ *     → incidenten uppdateras (senast sedd, allvar, text, underlag). Avisering bara om
+ *       allvaret blir högre än i den senaste aviseringen ('escalated'; fladder warning ↔
+ *       critical larmar alltså en gång), eller, om incidenten inte är kvitterad, när
  *       påminnelsetiden för allvaret har gått sedan senaste aviseringen ('reminder').
  *   kandidat + stängd incident med samma nyckel, stängd för högst reopenWithinMinutes sedan
  *     → samma incident öppnas igen (fladder). Avisering ('reopened') bara om allvaret är högre
- *       än senast aviserat eller påminnelsetiden har gått.
+ *       än senast aviserat, eller om incidenten inte är kvitterad och påminnelsetiden har gått.
  *   kandidat utan incident
  *     → ny incident, avisering ('new').
  *   engångslarm (oneShot) vars nyckel redan finns, öppen eller stängd
- *     → ingenting (har redan larmat).
+ *     → ingenting (har redan larmat eller strukits).
+ *   låg dag som förklaras av ett annat larm
+ *     → stryks utan avisering och sparas stängd med `suppressedBy`, så att den inte larmar i en
+ *       senare körning när orsaken har löst sig. Förklaring är dels samma körnings kandidater
+ *       (suppressRelated), dels en tidigare driftincident för automaten (för hela
+ *       organisationen: vilken automat som helst) eller en kritisk importincident som var
+ *       öppen någon gång under dagen.
  *   öppen incident utan kandidat, i en familj som utvärderades
  *     → stängs när den inte setts på resolveAfterMinutes; dessförinnan lämnas den öppen.
  *       'resolved' aviseras bara om något aviserats sedan förra 'resolved'.
@@ -22,9 +29,16 @@
  * Funktionen är ren: anroparen sparar incidenterna och skickar aviseringarna.
  */
 
-import { DomainError } from "@/domain";
-import { parseInstant } from "@/analytics/todos/time";
-import { ALERT_GROUP, dedupeCandidates, SEVERITY_RANK, suppressRelated } from "./rules";
+import { addDays, DomainError } from "@/domain";
+import { DEFAULT_TIME_ZONE, parseInstant } from "@/analytics/todos/time";
+import { localDayStartMs } from "@/analytics/health/calendar";
+import {
+  ALERT_GROUP,
+  dayAnomalyDate,
+  dedupeCandidates,
+  SEVERITY_RANK,
+  suppressRelated,
+} from "./rules";
 import type {
   AlertCandidate,
   AlertGroup,
@@ -87,6 +101,41 @@ function fromCandidate(c: AlertCandidate) {
   };
 }
 
+/** Rang för senast aviserade allvar; −1 när inget aviserats. */
+function notifiedRank(i: AlertIncident): number {
+  return i.notifiedSeverity === null ? -1 : SEVERITY_RANK[i.notifiedSeverity];
+}
+
+/**
+ * Incidenten som förklarar en låg dag, bland tidigare incidenter: en driftincident för samma
+ * automat (för hela organisationen: vilken automat som helst) eller en kritisk importincident,
+ * som var öppen någon gång under affärsdagen [lokal midnatt, nästa midnatt).
+ */
+function explainedByHistory(
+  c: AlertCandidate,
+  incidents: Iterable<AlertIncident>,
+  nowMs: number,
+  timeZone: string,
+): string | null {
+  if (c.kind !== "day_anomaly" || c.severity !== "warning") return null;
+  const date = dayAnomalyDate(c);
+  if (date === null) return null;
+  const dayStart = localDayStartMs(date, timeZone);
+  const dayEnd = localDayStartMs(addDays(date, 1), timeZone);
+  const keys: string[] = [];
+  for (const i of incidents) {
+    if (i.suppressedBy !== null) continue;
+    const relevant =
+      (i.group === "machine" && (c.machineId === null || i.machineId === c.machineId)) ||
+      (i.group === "import" && i.severity === "critical");
+    if (!relevant) continue;
+    const from = parseInstant(i.openedAt);
+    const to = i.closedAt === null ? nowMs : parseInstant(i.closedAt);
+    if (from < dayEnd && to >= dayStart) keys.push(i.key);
+  }
+  return keys.sort()[0] ?? null;
+}
+
 /** Kvitterar en incident: inga fler påminnelser (skärpning aviseras fortfarande). */
 export function acknowledgeIncident(
   incident: AlertIncident,
@@ -113,6 +162,7 @@ export function reconcileAlerts(
   const resolveAfter = options.resolveAfterMinutes ?? RECONCILE_DEFAULTS.resolveAfterMinutes;
   const reopenWithin = options.reopenWithinMinutes ?? RECONCILE_DEFAULTS.reopenWithinMinutes;
   const groups = new Set(options.evaluatedGroups ?? ALL_GROUPS);
+  const tz = options.timeZone ?? DEFAULT_TIME_ZONE;
   for (const [label, v] of [
     ["Tid till stängning", resolveAfter],
     ["Fönster för fladder", reopenWithin],
@@ -122,7 +172,14 @@ export function reconcileAlerts(
     }
   }
 
-  const { kept } = suppressRelated(dedupeCandidates(candidates));
+  const grouped = suppressRelated(dedupeCandidates(candidates));
+  const kept: AlertCandidate[] = [];
+  const suppressed = [...grouped.suppressed];
+  for (const c of grouped.kept) {
+    const by = explainedByHistory(c, previous, nowMs, tz);
+    if (by !== null) suppressed.push({ candidate: c, by });
+    else kept.push(c);
+  }
   for (const c of kept) {
     if (!groups.has(ALERT_GROUP[c.kind])) {
       throw new DomainError(
@@ -168,7 +225,7 @@ export function reconcileAlerts(
     if (c.oneShot && prev) continue;
 
     if (prev && prev.status === "open") {
-      const escalated = SEVERITY_RANK[c.severity] > SEVERITY_RANK[prev.severity];
+      const escalated = SEVERITY_RANK[c.severity] > notifiedRank(prev);
       const reminder = !escalated && prev.acknowledgedAt === null && due(prev, c.severity);
       let next: AlertIncident = {
         ...prev,
@@ -177,7 +234,12 @@ export function reconcileAlerts(
         occurrences: prev.occurrences + 1,
       };
       if (escalated || reminder) {
-        next = { ...next, lastNotifiedAt: at, notifyCount: prev.notifyCount + 1 };
+        next = {
+          ...next,
+          lastNotifiedAt: at,
+          notifiedSeverity: c.severity,
+          notifyCount: prev.notifyCount + 1,
+        };
         notifications.push(notification(next, escalated ? "escalated" : "reminder", at));
       }
       latestByKey.set(c.key, next);
@@ -189,8 +251,7 @@ export function reconcileAlerts(
       prev.closedAt !== null &&
       nowMs - parseInstant(prev.closedAt) <= reopenWithin * MINUTE_MS
     ) {
-      const lastSeverity = prev.severity;
-      const escalated = SEVERITY_RANK[c.severity] > SEVERITY_RANK[lastSeverity];
+      const escalated = SEVERITY_RANK[c.severity] > notifiedRank(prev);
       let next: AlertIncident = {
         ...prev,
         ...data,
@@ -200,8 +261,13 @@ export function reconcileAlerts(
         occurrences: prev.occurrences + 1,
         reopenCount: prev.reopenCount + 1,
       };
-      if (escalated || due(prev, c.severity)) {
-        next = { ...next, lastNotifiedAt: at, notifyCount: prev.notifyCount + 1 };
+      if (escalated || (prev.acknowledgedAt === null && due(prev, c.severity))) {
+        next = {
+          ...next,
+          lastNotifiedAt: at,
+          notifiedSeverity: c.severity,
+          notifyCount: prev.notifyCount + 1,
+        };
         notifications.push(notification(next, "reopened", at));
       }
       latestByKey.set(c.key, next);
@@ -217,15 +283,39 @@ export function reconcileAlerts(
       lastSeenAt: at,
       closedAt: c.oneShot ? at : null,
       lastNotifiedAt: at,
+      notifiedSeverity: c.severity,
       notifyCount: 1,
       occurrences: 1,
       reopenCount: 0,
       acknowledgedAt: null,
       acknowledgedBy: null,
       resolvedNotifiedAt: null,
+      suppressedBy: null,
     };
     notifications.push(notification(created, "new", at));
     latestByKey.set(c.key, created);
+  }
+
+  // Strukna engångslarm sparas stängda utan avisering: samma nyckel larmar inte senare.
+  for (const { candidate: c, by } of suppressed) {
+    if (!c.oneShot || latestByKey.has(c.key)) continue;
+    latestByKey.set(c.key, {
+      id: `${c.key}@${at}`,
+      ...fromCandidate(c),
+      status: "closed",
+      openedAt: at,
+      lastSeenAt: at,
+      closedAt: at,
+      lastNotifiedAt: null,
+      notifiedSeverity: null,
+      notifyCount: 0,
+      occurrences: 1,
+      reopenCount: 0,
+      acknowledgedAt: null,
+      acknowledgedBy: null,
+      resolvedNotifiedAt: null,
+      suppressedBy: by,
+    });
   }
 
   for (const [key, inc] of latestByKey) {

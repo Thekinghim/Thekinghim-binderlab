@@ -26,7 +26,6 @@ import {
 } from "@/domain";
 import { fig, Ratio } from "../expansion/common";
 import { isMachineActive, nameLookup } from "../todos/common";
-import { plural } from "../todos/text";
 import type { MachineRef } from "../todos/types";
 import {
   bpOf,
@@ -226,7 +225,7 @@ export function releaseCurve(
     titleIds: used.map((p) => p.titleId),
     cumulativeBp,
     weeklyBp,
-    text: `Tidigare släpp (${listText(used.map((p) => name(p.titleId)))}) sålde i snitt ${pctAbs(firstWeek)} av de första ${plural(H, "dagarnas", "dagarnas")} försäljning under första veckan.`,
+    text: `Tidigare släpp (${listText(used.map((p) => name(p.titleId)))}) sålde i snitt ${pctAbs(firstWeek)} av de första ${H} dagarnas försäljning under första veckan.`,
     evidence: marketEvidence({
       rule: `Andel av försäljningen de första ${H} dagarna som sålts till och med varje dag; medelvärde av släppen, varje släpp väger lika.`,
       orderIds: used.flatMap((p) => p.orderIds),

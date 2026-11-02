@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Kbd } from "@/components/shell/kbd";
+import { routesForRole } from "@/components/shell/nav";
 import { Button } from "@/components/ui/button";
 import {
   CommandPalette,
@@ -8,62 +10,49 @@ import {
   useModifierKey,
   type CommandGroup,
 } from "@/components/ui/command-palette";
-import { PanelHeader } from "@/components/ui/frame";
-import { SectionHeader } from "@/components/ui/section-header";
 import { fuzzyMatch, highlightSegments, TIER } from "@/lib/fuzzy";
 import { cn } from "@/lib/cn";
+import { machines, stores, titles } from "../sample-data";
+import { SpecSection, Sub } from "./section";
 
-type Machine = { id: string; site: string; city: string };
-
-const machines: Machine[] = [
-  { id: "BL-001", site: "Mall of Scandinavia", city: "Solna" },
-  { id: "BL-002", site: "Täby Centrum", city: "Täby" },
-  { id: "BL-003", site: "Nordstan", city: "Göteborg" },
-  { id: "BL-004", site: "Emporia", city: "Malmö" },
-  { id: "BL-005", site: "Kungens Kurva", city: "Huddinge" },
-  { id: "BL-006", site: "Väla Centrum", city: "Helsingborg" },
-  { id: "BL-007", site: "Gränby Centrum", city: "Uppsala" },
-  { id: "BL-008", site: "Triangeln", city: "Malmö" },
-  { id: "BL-009", site: "Skrapan", city: "Västerås" },
-  { id: "BL-010", site: "Mobilia", city: "Malmö" },
-];
-
-function buildGroups(run: (label: string) => void): CommandGroup[] {
-  const nav = (
-    id: string,
-    label: string,
-    hint: string,
-    icon: CommandGroup["items"][number]["icon"],
-  ) => ({
-    id,
-    label,
-    hint,
-    icon,
-    onSelect: () => run(label),
-  });
+/** Paletten som skalet bygger för rollen Ägare, med verksamhetens butiker och automater. */
+export function buildGroups(run: (label: string) => void): CommandGroup[] {
+  const unpriced = titles.filter((t) => t.costOre === null);
   return [
     {
-      label: "Navigering",
-      items: [
-        nav("nav-oversikt", "Översikt", "G Ö", "overview"),
-        nav("nav-forsaljning", "Försäljning", "G F", "sales"),
-        nav("nav-automater", "Automater", "G A", "machine"),
-        nav("nav-lager", "Lager", "G L", "inventory"),
-        nav("nav-marginal", "Marginal", "G M", "margin"),
-        nav("nav-rapporter", "Rapporter", "G R", "report"),
-        nav("nav-installningar", "Inställningar", "G I", "settings"),
-      ],
+      label: "Navigera",
+      items: routesForRole("owner").map((r) => ({
+        id: `nav-${r.id}`,
+        label: r.label,
+        hint: r.href,
+        icon: r.icon,
+        onSelect: () => run(r.label),
+      })),
+    },
+    {
+      label: "Butiker",
+      items: stores.map((s) => ({
+        id: `s-${s.id}`,
+        label: `Filtrera på ${s.name}`,
+        hint: `${s.city} · ${machines.filter((m) => m.storeId === s.id).length} automat`,
+        icon: "filter" as const,
+        keywords: [s.name, s.city, "butik", "filter"],
+        onSelect: () => run(`Filtrera på ${s.name}`),
+      })),
     },
     {
       label: "Automater",
-      items: machines.map((m) => ({
-        id: m.id,
-        label: m.site,
-        hint: m.id,
-        keywords: [m.city],
-        icon: "machine" as const,
-        onSelect: () => run(`${m.id} ${m.site}`),
-      })),
+      items: machines.map((m) => {
+        const s = stores.find((x) => x.id === m.storeId);
+        return {
+          id: `m-${m.id}`,
+          label: `${m.code} ${m.name}`,
+          hint: s?.name,
+          icon: "machine" as const,
+          keywords: [m.code, m.name, s?.name ?? "", s?.city ?? "", "automat"],
+          onSelect: () => run(`${m.code} ${m.name}`),
+        };
+      }),
     },
     {
       label: "Åtgärder",
@@ -76,26 +65,26 @@ function buildGroups(run: (label: string) => void): CommandGroup[] {
           shortcut: ["P"],
           onSelect: () => run("Registrera påfyllning"),
         },
+        ...unpriced.map((t) => ({
+          id: `act-price-${t.id}`,
+          label: `Lägg in inköpspris för ${t.name}`,
+          icon: "margin" as const,
+          keywords: ["inköp", "pris", t.name],
+          onSelect: () => run(`Lägg in inköpspris för ${t.name}`),
+        })),
         {
           id: "act-csv",
-          label: "Exportera CSV",
+          label: "Exportera ordrar som CSV",
           icon: "download",
-          keywords: ["ladda ner", "export"],
+          keywords: ["ladda ner", "export", "awish"],
           shortcut: ["⇧", "E"],
-          onSelect: () => run("Exportera CSV"),
-        },
-        {
-          id: "act-theme",
-          label: "Byt till ljust läge",
-          icon: "sun",
-          keywords: ["tema", "mörkt"],
-          onSelect: () => run("Byt till ljust läge"),
+          onSelect: () => run("Exportera ordrar som CSV"),
         },
         {
           id: "act-report-store",
           label: "Skapa rapport till butik",
           icon: "report",
-          keywords: ["hyresvärd", "centrum"],
+          keywords: ["centrumledning", "hyra"],
           onSelect: () => run("Skapa rapport till butik"),
         },
         {
@@ -116,39 +105,36 @@ function buildGroups(run: (label: string) => void): CommandGroup[] {
   ];
 }
 
+/** Antal kommandon i paletten (för innehållsindexet). */
+export const COMMAND_COUNT = buildGroups(() => {}).reduce((n, g) => n + g.items.length, 0);
+
 const keys: Array<{ keys: string[]; action: string }> = [
   { keys: ["/"], action: "Öppna utanför textfält" },
   { keys: ["↑", "↓"], action: "Flytta, går runt i listan" },
   { keys: ["Home", "End"], action: "Första och sista träffen" },
   { keys: ["↵"], action: "Kör markerad rad" },
-  { keys: ["esc"], action: "Stäng, fokus tillbaka" },
+  { keys: ["Esc"], action: "Stäng, fokus tillbaka" },
 ];
 
 const tiers: Array<{ tier: number; name: string; query: string; text: string }> = [
-  { tier: TIER.prefix, name: "Prefix", query: "för", text: "Försäljning" },
-  { tier: TIER.wordStart, name: "Ordstart", query: "scan", text: "Mall of Scandinavia" },
+  { tier: TIER.prefix, name: "Prefix", query: "lön", text: "Lönsamhet" },
+  { tier: TIER.wordStart, name: "Ordstart", query: "cent", text: "Väla Centrum" },
   { tier: TIER.substring, name: "Delsträng", query: "fyll", text: "Registrera påfyllning" },
   { tier: TIER.subsequence, name: "Subsekvens", query: "rpb", text: "Skapa rapport till butik" },
 ];
-
-function Kbd({ children }: { children: string }) {
-  return (
-    <kbd className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-xs border border-line-strong px-1 font-mono text-[11px] leading-none text-muted">
-      {children}
-    </kbd>
-  );
-}
 
 function TierRow({ tier, name, query, text }: (typeof tiers)[number]) {
   const m = fuzzyMatch(query, text);
   return (
     <li className="grid grid-cols-[16px_minmax(0,1fr)] gap-x-3 gap-y-0.5 py-2.5">
-      <span className="tnum font-mono text-xs text-fg">{tier}</span>
+      <span className="meta tnum text-fg">{tier}</span>
       <span className="text-sm text-muted">{name}</span>
       <span aria-hidden />
-      <span className="flex min-w-0 items-baseline gap-2 font-mono text-xs">
+      <span className="meta flex min-w-0 items-baseline gap-2">
         <span className="shrink-0 text-subtle">”{query}”</span>
-        <span className="text-faint">→</span>
+        <span className="text-faint" aria-hidden>
+          →
+        </span>
         <span className="truncate font-sans text-sm">
           {highlightSegments(text, m?.indices ?? []).map((s, i) => (
             <span
@@ -169,6 +155,7 @@ function TierRow({ tier, name, query, text }: (typeof tiers)[number]) {
 }
 
 export function CommandSection({ index }: { index: number }) {
+  const n = String(index).padStart(2, "0");
   const [open, setOpen] = useState(false);
   const [last, setLast] = useState<{ label: string; n: number } | null>(null);
   const mod = useModifierKey();
@@ -176,38 +163,29 @@ export function CommandSection({ index }: { index: number }) {
     () => buildGroups((label) => setLast((prev) => ({ label, n: (prev?.n ?? 0) + 1 }))),
     [],
   );
-  const total = groups.reduce((n, g) => n + g.items.length, 0);
+  const hotkey = formatHotkey(mod) || "⌘K";
 
   return (
-    <section
+    <SpecSection
       id="kommandopalett"
-      aria-labelledby="kommandopalett-title"
-      className="border-t border-line py-16 md:py-20"
+      index={index}
+      eyebrow="Kommandopalett"
+      title={`${COMMAND_COUNT} kommandon bakom ${hotkey}.`}
+      aside={`${groups.length} grupper, rangordnade på hur tidigt i ordet träffen sitter.`}
+      actions={
+        <Button
+          iconLeft="search"
+          kbd={formatHotkey(mod) || undefined}
+          onClick={() => setOpen(true)}
+        >
+          Öppna paletten
+        </Button>
+      }
     >
-      <SectionHeader
-        id="kommandopalett-title"
-        index={index}
-        eyebrow="Kommandopalett"
-        title={`${total} kommandon bakom ${formatHotkey(mod) || "⌘K"}.`}
-        aside="Sidor, automater och åtgärder nås utan mus, rangordnade på hur tidigt i ordet träffen sitter."
-        actions={
-          <Button
-            iconLeft="search"
-            kbd={formatHotkey(mod) || undefined}
-            onClick={() => setOpen(true)}
-          >
-            Öppna paletten
-          </Button>
-        }
-      />
-
-      <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-10">
+      <Sub index={`${n}.1`} label="Paletten" meta="samma som i toppbaren" className="lg:col-span-7">
         <div className="flex min-w-0 flex-col gap-3">
           <CommandPalette inline groups={groups} />
-          <p
-            className="flex min-w-0 items-center gap-2 font-mono text-xs text-subtle"
-            aria-live="polite"
-          >
+          <p className="meta flex min-w-0 items-center gap-2 text-subtle" aria-live="polite">
             <span className="label shrink-0">Senast körd</span>
             <span className={cn("truncate", last ? "text-fg" : "text-subtle")}>
               {last ? last.label : "ingen ännu"}
@@ -215,71 +193,51 @@ export function CommandSection({ index }: { index: number }) {
             {last ? <span className="tnum shrink-0 text-subtle">#{last.n}</span> : null}
           </p>
         </div>
+      </Sub>
 
-        <div className="flex min-w-0 flex-col gap-8">
-          <div>
-            <PanelHeader
-              label="Tangentbord"
-              meta={mod ?? ""}
-              className="border-b border-line pb-2"
-            />
-            <dl className="divide-y divide-line">
-              <div className="flex items-center justify-between gap-4 py-2.5">
-                <dt className="flex items-center gap-1">
-                  <Kbd>{mod ?? "⌘"}</Kbd>
-                  <Kbd>K</Kbd>
+      <div className="flex min-w-0 flex-col gap-12 lg:col-span-5">
+        <Sub index={`${n}.2`} label="Tangentbord" meta={mod ?? ""}>
+          <dl className="divide-y divide-line">
+            <div className="flex items-center justify-between gap-4 pb-2.5">
+              <dt className="flex items-center gap-1 text-muted">
+                <Kbd>{mod ?? "⌘"}</Kbd>
+                <Kbd>K</Kbd>
+              </dt>
+              <dd className="text-right text-sm text-muted">Öppna och stäng</dd>
+            </div>
+            {keys.map((k) => (
+              <div key={k.action} className="flex items-center justify-between gap-4 py-2.5">
+                <dt className="flex items-center gap-1 text-muted">
+                  {k.keys.map((key) => (
+                    <Kbd key={key}>{key}</Kbd>
+                  ))}
                 </dt>
-                <dd className="text-right text-sm text-muted">Öppna och stäng</dd>
+                <dd className="text-right text-sm text-muted">{k.action}</dd>
               </div>
-              {keys.map((k) => (
-                <div key={k.action} className="flex items-center justify-between gap-4 py-2.5">
-                  <dt className="flex items-center gap-1">
-                    {k.keys.map((key) => (
-                      <Kbd key={key}>{key}</Kbd>
-                    ))}
-                  </dt>
-                  <dd className="text-right text-sm text-muted">{k.action}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
+            ))}
+          </dl>
+        </Sub>
 
-          <div>
-            <PanelHeader
-              label="Rangordning"
-              meta="src/lib/fuzzy.ts"
-              className="border-b border-line pb-2"
-            />
-            <ol className="divide-y divide-line">
-              {tiers.map((t) => (
-                <TierRow key={t.name} {...t} />
-              ))}
-            </ol>
-            <p className="mt-3 text-sm text-muted">
-              Skiftlägesokänslig. Å, ä och ö är egna bokstäver, så ”a” träffar inte ”å”. Ort och id
-              söks som nyckelord.
-            </p>
-          </div>
-        </div>
+        <Sub index={`${n}.3`} label="Rangordning" meta="4 nivåer">
+          <ol className="divide-y divide-line">
+            {tiers.map((t) => (
+              <TierRow key={t.name} {...t} />
+            ))}
+          </ol>
+          <p className="mt-3 text-sm text-muted">
+            Å, ä och ö är egna bokstäver, så ”a” träffar inte ”å”. Ort och id söks som nyckelord.
+          </p>
+        </Sub>
       </div>
 
-      <div className="mt-12 grid gap-8 md:grid-cols-2">
-        <figure className="flex min-w-0 flex-col gap-3">
-          <figcaption className="label text-subtle">Träff i id · ”bl-00”</figcaption>
-          <CommandPalette
-            inline
-            groups={groups}
-            defaultQuery="bl-00"
-            listClassName="max-h-[236px]"
-          />
-        </figure>
-        <figure className="flex min-w-0 flex-col gap-3">
-          <figcaption className="label text-subtle">Tomt resultat · ”kvitto”</figcaption>
-          <CommandPalette inline groups={groups} defaultQuery="kvitto" />
-        </figure>
-      </div>
+      <Sub index={`${n}.4`} label="Träff i id · ”bl-00”" className="lg:col-span-6">
+        <CommandPalette inline groups={groups} defaultQuery="bl-00" listClassName="max-h-[236px]" />
+      </Sub>
+      <Sub index={`${n}.5`} label="Ingen träff · ”kista”" className="lg:col-span-6">
+        <CommandPalette inline groups={groups} defaultQuery="kista" />
+      </Sub>
 
       <CommandPalette open={open} onOpenChange={setOpen} groups={groups} />
-    </section>
+    </SpecSection>
   );
 }

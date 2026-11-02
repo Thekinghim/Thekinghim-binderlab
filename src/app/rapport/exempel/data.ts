@@ -1,33 +1,50 @@
-import { seeded } from "@/lib/random";
+import {
+  byTitle,
+  machineById,
+  machines as allMachines,
+  ordersIn,
+  revenueByDay as dailyRevenue,
+  storeById,
+  totals as sumTotals,
+} from "@/app/design/sample-data";
 
 /**
- * Exempeldata för "Månadsrapport oktober 2026" till Westfield Arninge.
- * Deterministisk. Alla summor härleds ur produktraderna, så att
- * nyckeltal, diagram och tabeller stämmer med varandra.
+ * Exempeldata för "Månadsrapport oktober 2026" till Nordstan (BL-001).
+ * Siffrorna räknas ur samma Awish-ordrar som /design, så att rapporten,
+ * e-posten och panelen visar samma belopp för samma månad och automat.
  */
+
+const MACHINE = machineById.get("m1") ?? allMachines[0]!;
+const STORE = storeById.get(MACHINE.storeId)!;
+const IDX = [allMachines.indexOf(MACHINE)];
+
+const OCTOBER = { start: new Date(2026, 9, 1), end: new Date(2026, 9, 31) };
+const SEPTEMBER = { start: new Date(2026, 8, 1), end: new Date(2026, 8, 30) };
 
 export const reportMeta = {
   title: "Månadsrapport oktober 2026",
-  recipient: "Westfield Arninge, Centrumledningen",
-  period: { start: new Date(2026, 9, 1), end: new Date(2026, 9, 31) },
+  recipient: `${STORE.name}, Centrumledningen`,
+  period: OCTOBER,
   generatedAt: new Date(2026, 10, 2, 9, 14),
 };
 
 export const machine = {
-  id: "BL-010",
-  placement: "Plan 1, vid entré Norr",
-  installed: new Date(2026, 2, 14),
+  id: MACHINE.code,
+  placement: `${MACHINE.name}, ${STORE.name}`,
+  installed: MACHINE.installed,
 };
 
-/** Omsättningshyra enligt avtal: andel av intäkt exkl. moms. */
-export const RENT_SHARE = 0.1;
-export const VAT = 0.25;
+/** Provision enligt avtalet (andel av intäkten) och månadshyra i kronor. Moms och kortavgift är 0. */
+export const RENT_SHARE = STORE.commissionBp / 10_000;
+export const MONTHLY_RENT = STORE.rentOre / 100;
+export const VAT = 0;
 
 export type ProductRow = {
   id: string;
   product: string;
-  series: string;
-  /** Pris inkl. moms */
+  /** Inköpspris per pack i kronor; null = saknas */
+  cost: number | null;
+  /** Pris i automaten */
   price: number;
   units: number;
   unitsPrev: number;
@@ -35,115 +52,82 @@ export type ProductRow = {
   revenuePrev: number;
 };
 
-const RAW: Array<[string, string, string, number, number, number]> = [
-  // id, produkt, serie, pris, oktober, september
-  ["p1", "Booster, släpp 24 okt.", "Pokémon", 69, 212, 0],
-  ["p2", "Booster, föregående släpp", "Pokémon", 69, 148, 236],
-  ["p3", "Mini tin", "Pokémon", 129, 41, 38],
-  ["p4", "Blister 3-pack", "Pokémon", 199, 22, 19],
-  ["p5", "Booster", "One Piece", 59, 118, 92],
-  ["p6", "Booster, japansk", "One Piece", 49, 46, 33],
-  ["p7", "Play booster", "Magic: The Gathering", 79, 44, 51],
-  ["p8", "Collector booster", "Magic: The Gathering", 299, 6, 4],
-  ["p9", "Booster", "Lorcana", 69, 71, 66],
-  ["p10", "Booster", "Yu-Gi-Oh!", 49, 28, 31],
-  ["p11", "Kortfickor, 50 st", "Tillbehör", 39, 37, 30],
-];
+const octOrders = ordersIn(OCTOBER, IDX);
+const sepOrders = ordersIn(SEPTEMBER, IDX);
+const prevByTitle = new Map(byTitle(sepOrders).map((r) => [r.title.id, r]));
 
-export const products: ProductRow[] = RAW.map(([id, product, series, price, units, prev]) => ({
-  id,
-  product,
-  series,
-  price,
-  units,
-  unitsPrev: prev,
-  revenue: price * units,
-  revenuePrev: price * prev,
-}));
+/** En rad per titel. Black Bolt (släppet 24 okt.) har id "p1". */
+export const products: ProductRow[] = byTitle(octOrders).map((r) => {
+  const prev = prevByTitle.get(r.title.id);
+  return {
+    id: r.title.id === "t6" ? "p1" : r.title.id,
+    product: r.title.name,
+    cost: r.title.costOre === null ? null : r.title.costOre / 100,
+    price: r.title.priceOre / 100,
+    units: r.orders,
+    unitsPrev: prev?.orders ?? 0,
+    revenue: r.revenue / 100,
+    revenuePrev: (prev?.revenue ?? 0) / 100,
+  };
+});
 
-const total = (rows: ProductRow[], k: "revenue" | "revenuePrev" | "units" | "unitsPrev") =>
-  rows.reduce((s, r) => s + r[k], 0);
+const oct = sumTotals(octOrders, OCTOBER, IDX);
+const sep = sumTotals(sepOrders, SEPTEMBER, IDX);
 
 export const totals = {
-  revenue: total(products, "revenue"),
-  revenuePrev: total(products, "revenuePrev"),
-  units: total(products, "units"),
-  unitsPrev: total(products, "unitsPrev"),
-  /** Antal köp (en transaktion kan innehålla flera pack) */
-  purchases: 586,
-  purchasesPrev: 470,
+  revenue: oct.revenue / 100,
+  revenuePrev: sep.revenue / 100,
+  units: oct.orders,
+  unitsPrev: sep.orders,
+  /** Antal köp: en Awish-order är ett pack. */
+  purchases: oct.orders,
+  purchasesPrev: sep.orders,
 };
 
-export const revenueExVat = totals.revenue / (1 + VAT);
-export const rent = revenueExVat * RENT_SHARE;
+export const revenueExVat = totals.revenue;
+/** Butiksersättning: provision på intäkten plus månadshyran. */
+export const commission = oct.commission / 100;
+export const rent = (oct.commission + oct.rent) / 100;
 
-/** Serier för andelsstapeln: fyra största + Övrigt, störst först. */
+/** Titlar för andelsstapeln: fyra största + Övrigt, störst först. */
 export function seriesShare() {
-  const map = new Map<string, { value: number; prev: number }>();
-  for (const p of products) {
-    const key = ["Pokémon", "One Piece", "Magic: The Gathering", "Lorcana"].includes(p.series)
-      ? p.series
-      : "Övrigt";
-    const cur = map.get(key) ?? { value: 0, prev: 0 };
-    map.set(key, { value: cur.value + p.revenue, prev: cur.prev + p.revenuePrev });
+  const top = products.slice(0, 4);
+  const rest = products.slice(4);
+  const rows = top.map((p) => ({ label: p.product, value: p.revenue, prev: p.revenuePrev }));
+  if (rest.length) {
+    rows.push({
+      label: "Övrigt",
+      value: rest.reduce((s, p) => s + p.revenue, 0),
+      prev: rest.reduce((s, p) => s + p.revenuePrev, 0),
+    });
   }
-  const rows = [...map.entries()].map(([label, v]) => ({ label, ...v }));
-  const other = rows.filter((r) => r.label === "Övrigt");
-  return [...rows.filter((r) => r.label !== "Övrigt").sort((a, b) => b.value - a.value), ...other];
+  return rows;
+}
+
+/** Bästa och sämsta månad sedan installationen, för rubriken. */
+export function monthRank(): { rank: number; months: number } {
+  const months: number[] = [];
+  const start = MACHINE.installed;
+  for (let d = new Date(start.getFullYear(), start.getMonth(), 1); d <= OCTOBER.start;) {
+    const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    months.push(sumTotals(ordersIn({ start: d, end }, IDX), { start: d, end }, IDX).revenue);
+    d = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+  }
+  const value = oct.revenue;
+  return { rank: months.filter((m) => m > value).length + 1, months: months.length };
 }
 
 // ---------------------------------------------------------------------------
 // Dagar
 // ---------------------------------------------------------------------------
 
-function dayWeight(date: Date, rnd: () => number, releaseDay?: number): number {
-  const dow = date.getDay();
-  const week = dow === 6 ? 1.52 : dow === 0 ? 1.26 : dow === 5 ? 1.16 : 1;
-  let event = 1;
-  if (releaseDay !== undefined) {
-    const d = date.getDate();
-    if (d === releaseDay) event = 2.1;
-    else if (d === releaseDay + 1) event = 1.45;
-    else if (d === releaseDay + 2) event = 1.18;
-  }
-  return week * event * (0.88 + rnd() * 0.24);
-}
-
-/** Fördelar ett heltal på vikter så att summan blir exakt (största rest). */
-function allocate(totalValue: number, weights: number[]): number[] {
-  const sumW = weights.reduce((s, w) => s + w, 0) || 1;
-  const exact = weights.map((w) => (w / sumW) * totalValue);
-  const floors = exact.map(Math.floor);
-  let rest = totalValue - floors.reduce((s, v) => s + v, 0);
-  const order = exact.map((v, i) => ({ i, r: v - Math.floor(v) })).sort((a, b) => b.r - a.r);
-  for (const o of order) {
-    if (rest <= 0) break;
-    floors[o.i] = (floors[o.i] ?? 0) + 1;
-    rest--;
-  }
-  return floors;
-}
-
 const OCT = Array.from({ length: 31 }, (_, i) => new Date(2026, 9, i + 1));
-const SEP = Array.from({ length: 30 }, (_, i) => new Date(2026, 8, i + 1));
-
-const octRnd = seeded(2610);
-const sepRnd = seeded(926);
-
-/** Avvikelser sänker dagens försäljning något. */
-const DIP: Record<number, number> = { 12: 0.9, 21: 0.92, 29: 0.86, 30: 0.8 };
 
 export const days = OCT.map((date, i) => ({ date, index: i }));
 
-export const revenueByDay: number[] = allocate(
-  totals.revenue,
-  OCT.map((d) => dayWeight(d, octRnd, 24) * (DIP[d.getDate()] ?? 1)),
-);
+export const revenueByDay: number[] = dailyRevenue(octOrders, OCTOBER).map(Math.round);
 
-export const revenueByDayPrev: number[] = allocate(
-  totals.revenuePrev,
-  SEP.map((d) => dayWeight(d, sepRnd)),
-);
+export const revenueByDayPrev: number[] = dailyRevenue(sepOrders, SEPTEMBER).map(Math.round);
 
 export const bestDay = revenueByDay.reduce(
   (best, v, i) => (v > (revenueByDay[best] ?? 0) ? i : best),
@@ -226,13 +210,35 @@ export type Refill = {
   extra?: boolean;
 };
 
-export const refills: Refill[] = [
-  { date: new Date(2026, 9, 2, 8, 35), packs: 96, before: 0.41, after: 1 },
-  { date: new Date(2026, 9, 6, 8, 40), packs: 104, before: 0.37, after: 1 },
-  { date: new Date(2026, 9, 10, 8, 30), packs: 92, before: 0.43, after: 1 },
-  { date: new Date(2026, 9, 14, 8, 45), packs: 99, before: 0.4, after: 1 },
-  { date: new Date(2026, 9, 18, 8, 35), packs: 101, before: 0.39, after: 1 },
-  { date: new Date(2026, 9, 23, 8, 20), packs: 118, before: 0.3, after: 1 },
-  { date: new Date(2026, 9, 27, 8, 40), packs: 96, before: 0.22, after: 1 },
-  { date: new Date(2026, 9, 30, 8, 30), packs: 70, before: 0.31, after: 1, extra: true },
+const REFILL_DATES: Array<[Date, number, number, boolean?]> = [
+  [new Date(2026, 9, 2, 8, 35), 96, 0.41],
+  [new Date(2026, 9, 6, 8, 40), 104, 0.37],
+  [new Date(2026, 9, 10, 8, 30), 92, 0.43],
+  [new Date(2026, 9, 14, 8, 45), 99, 0.4],
+  [new Date(2026, 9, 18, 8, 35), 101, 0.39],
+  [new Date(2026, 9, 23, 8, 20), 118, 0.3],
+  [new Date(2026, 9, 27, 8, 40), 96, 0.22],
+  [new Date(2026, 9, 30, 8, 30), 70, 0.31, true],
 ];
+
+/** Påfyllningar som tillsammans ersätter de sålda packen (största rest). */
+export const refills: Refill[] = (() => {
+  const weights = REFILL_DATES.map((r) => r[1]);
+  const sumW = weights.reduce((x, y) => x + y, 0);
+  const exact = weights.map((w) => (w / sumW) * totals.units);
+  const packs = exact.map(Math.floor);
+  let rest = totals.units - packs.reduce((x, y) => x + y, 0);
+  exact
+    .map((v, i) => ({ i, r: v - Math.floor(v) }))
+    .sort((x, y) => y.r - x.r)
+    .forEach(({ i }) => {
+      if (rest-- > 0) packs[i] = (packs[i] ?? 0) + 1;
+    });
+  return REFILL_DATES.map(([date, , before, extra], i) => ({
+    date,
+    packs: packs[i] ?? 0,
+    before,
+    after: 1,
+    ...(extra ? { extra } : {}),
+  }));
+})();

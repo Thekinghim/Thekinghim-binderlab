@@ -90,10 +90,17 @@ describe("butiksersättning", () => {
     expect(plain(rent.calculation)).toBe(
       "1 000,00 kr per månad × 11 av 30 dagar (10–20 nov. 2026) = 366,67 kr",
     );
-    const none = r.compensation.steps.find((s) => s.kind === "no_agreement")!;
-    expect(none.amountOre).toBe(0);
-    expect(none.evidence.orderCount).toBe(2);
-    expect(none.evidence.dates).toEqual(["2026-11-05", "2026-11-25"]);
+    // Dagar utan avtal: 1–9 nov. och 21–30 nov., ett steg per sammanhängande följd.
+    const none = r.compensation.steps.filter((s) => s.kind === "no_agreement");
+    expect(none.map((s) => [plain(s.label), s.amountOre, s.evidence.orderCount])).toEqual([
+      ["Order utan avtal (1–9 nov. 2026)", 0, 1],
+      ["Order utan avtal (21–30 nov. 2026)", 0, 1],
+    ]);
+    expect(none.map((s) => s.evidence.scope.period)).toEqual([
+      { start: "2026-11-01", end: "2026-11-09" },
+      { start: "2026-11-21", end: "2026-11-30" },
+    ]);
+    expect(none.map((s) => s.evidence.dates)).toEqual([["2026-11-05"], ["2026-11-25"]]);
     expect(r.compensation.modelText).toContain("(10–20 nov. 2026)");
     expect(r.compensation.totalOre).toBe(compensationFromDomain(src, "s-1", "2026-11").totalOre);
   });
@@ -151,6 +158,87 @@ describe("butiksersättning", () => {
     expect(r.compensation.model).toBe("none");
     expect(r.compensation.totalOre).toBe(0);
     expect(r.compensation.modelText).toBe("Inget avtal gällde under månaden.");
+  });
+});
+
+describe("butiksersättning: stegens underlag förklarar hela intäkten", () => {
+  const baseOf = (r: StoreReport): number =>
+    r.compensation.steps
+      .filter(
+        (s) => s.kind === "commission" || s.kind === "no_commission" || s.kind === "no_agreement",
+      )
+      .reduce((sum, s) => sum + s.evidence.figures[0]!.value, 0);
+
+  it("order under ett avtal med bara hyra blir ett eget steg med 0 kr", () => {
+    const src = sources({
+      orders: [ord("2026-11-05"), ord("2026-11-05"), ord("2026-11-20", { amountOre: 5900 })],
+      agreements: [
+        agreement("s-1", "2026-01-01", "2026-11-15", { monthlyRentOre: 300_000 }),
+        agreement("s-1", "2026-11-16", null, { commissionBp: 1000, monthlyRentOre: 300_000 }),
+      ],
+    });
+    const r = buildStoreReport(src, "s-1", "2026-11");
+    expect(r.compensation.steps.map((s) => [s.kind, s.amountOre])).toEqual([
+      ["no_commission", 0],
+      ["commission", 590],
+      ["rent", 300_000],
+      ["total", 300_590],
+    ]);
+    const step = r.compensation.steps[0]!;
+    expect(plain(step.label)).toBe("Avtal utan provision (1–15 nov. 2026)");
+    expect(plain(step.calculation)).toBe(
+      "2 order (98,00 kr exkl. moms) såldes när avtalet bara hade hyra och ger ingen provision",
+    );
+    expect(step.evidence.orderCount).toBe(2);
+    expect(step.evidence.dates).toEqual(["2026-11-05"]);
+    expect(baseOf(r)).toBe(r.sales.revenueOre);
+    expect(r.compensation.totalOre).toBe(compensationFromDomain(src, "s-1", "2026-11").totalOre);
+  });
+
+  it("avtal med bara hyra och inga order ger inget provisionssteg", () => {
+    const src = sources({
+      agreements: [agreement("s-1", "2026-01-01", null, { monthlyRentOre: 300_000 })],
+    });
+    const r = buildStoreReport(src, "s-1", "2026-11");
+    expect(r.compensation.steps.map((s) => s.kind)).toEqual(["rent", "total"]);
+  });
+
+  it("underlaget summerar till intäkten med provision, bara hyra och dagar utan avtal (moms 25 %)", () => {
+    const src = sources({
+      settings: VAT_25,
+      orders: [
+        ord("2026-11-01"),
+        ord("2026-11-04"),
+        ord("2026-11-12"),
+        ord("2026-11-18"),
+        ord("2026-11-28", { amountOre: 5900 }),
+      ],
+      agreements: [
+        agreement("s-1", "2026-11-03", "2026-11-10", { commissionBp: 1200 }),
+        agreement("s-1", "2026-11-11", "2026-11-15", { monthlyRentOre: 150_000 }),
+        agreement("s-1", "2026-11-20", null, { commissionBp: 1000 }),
+      ],
+    });
+    const r = buildStoreReport(src, "s-1", "2026-11");
+    expect(r.compensation.steps.map((s) => s.kind)).toEqual([
+      "commission",
+      "no_commission",
+      "commission",
+      "no_agreement",
+      "no_agreement",
+      "rent",
+      "total",
+    ]);
+    expect(
+      r.compensation.steps
+        .filter((s) => s.kind === "no_agreement")
+        .map((s) => s.evidence.scope.period),
+    ).toEqual([
+      { start: "2026-11-01", end: "2026-11-02" },
+      { start: "2026-11-16", end: "2026-11-19" },
+    ]);
+    expect(baseOf(r)).toBe(r.sales.revenueOre);
+    expect(r.compensation.totalOre).toBe(compensationFromDomain(src, "s-1", "2026-11").totalOre);
   });
 });
 
@@ -417,6 +505,29 @@ describe("sekretess: butiksrapporten innehåller aldrig inköp, marginal, vinst 
   it("namn som råkar innehålla ett förbjudet ord stoppar inte rapporten", () => {
     const named = sources({ ...src, stores: [{ id: "s-1", name: "Vinsta centrum" }] });
     expect(buildStoreReport(named, "s-1", "2026-11").store.name).toBe("Vinsta centrum");
+  });
+
+  it("en titel eller automat med 'vinst', 'inköp' eller 'marginal' i namnet stoppar inte rapporten", () => {
+    const named = sources({
+      ...src,
+      titles: [
+        { id: "t-a", name: "Vinstpaketet" },
+        { id: "t-b", name: "Inköpsrea" },
+        { id: "t-c", name: "Marginal Edition" },
+      ],
+      machines: [{ id: "m-1", name: "Vinstautomaten", code: "BL-001" }],
+    });
+    const r = buildStoreReport(named, "s-1", "2026-11");
+    expect(r.topTitles.map((t) => t.name)).toContain("Vinstpaketet");
+    // Namnen citeras i slutsatsen och underlagen utan att kontrollen slår till.
+    expect(JSON.stringify(r)).toContain("Vinstautomaten");
+    expect(() => assertStoreReportSafe(r)).not.toThrow();
+    // Ordet utanför ett namn stoppas fortfarande, även när namnet står i samma text.
+    const leaked = {
+      ...r,
+      conclusion: { ...r.conclusion, text: `${r.conclusion.text} Vinsten blev 10 kr.` },
+    } as StoreReport;
+    expect(() => assertStoreReportSafe(leaked)).toThrow(/otillåten text/);
   });
 
   it("ingen moms ändrar inget i sekretessen", () => {

@@ -42,6 +42,7 @@ import {
   pctAbs,
   relativeChangeBp,
   type MarketEvidence,
+  intOption,
 } from "./common";
 import { median, medianAbsoluteDeviation, robustZ } from "./robust";
 
@@ -324,14 +325,6 @@ function yearSuffix(month: IsoMonth, other: IsoMonth): string {
   return month.slice(0, 4) === other.slice(0, 4) ? "" : ` ${month.slice(0, 4)}`;
 }
 
-function positiveInt(value: number | undefined, fallback: number, label: string, min = 0): number {
-  const v = value ?? fallback;
-  if (!Number.isSafeInteger(v) || v < min) {
-    throw new DomainError("invalid_input", `${label} måste vara ett heltal ≥ ${min}, fick ${v}.`);
-  }
-  return v;
-}
-
 /**
  * Inköp som var ovanligt billiga eller dyra jämfört med titelns tidigare inköp (median + MAD,
  * se modulens beskrivning). Sorterade på datum, sedan id. Varje flagga bär de tidigare inköpen
@@ -344,10 +337,10 @@ export function flagPurchaseAnomalies(
   input: MarketPriceInput,
   options: AnomalyOptions = {},
 ): PurchaseAnomaly[] {
-  const minHistory = positiveInt(options.minHistory, 5, "Minsta historik", 1);
-  const lookbackDays = positiveInt(options.lookbackDays, 365, "Historikens längd", 1);
-  const threshold = positiveInt(options.thresholdHundredths, 350, "Gränsen för robust z");
-  const minDeviationBp = positiveInt(options.minDeviationBp, 500, "Minsta avvikelse");
+  const minHistory = intOption(options.minHistory, 5, "Minsta historik", 1);
+  const lookbackDays = intOption(options.lookbackDays, 365, "Historikens längd", 1);
+  const threshold = intOption(options.thresholdHundredths, 350, "Gränsen för robust z", 0);
+  const minDeviationBp = intOption(options.minDeviationBp, 500, "Minsta avvikelse", 0);
   if (options.from !== undefined) assertIsoDate(options.from, "Från");
   if (options.to !== undefined) assertIsoDate(options.to, "Till");
   const titleName = nameLookup(input.titles ?? []);

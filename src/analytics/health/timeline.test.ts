@@ -148,4 +148,15 @@ describe("machineTimeline", () => {
     expect(open?.title).toBe("Ärende öppnat: power");
     expect(open?.detail).toBe("Pågår.");
   });
+
+  it("underlaget bär id för maskinhändelse, lagerhändelse och ärende", () => {
+    const rows = machineTimeline(input(), { ...range, order: "asc" });
+    const ev = (kind: string) => rows.find((r) => r.kind === kind)?.evidence;
+    expect(ev("signal")?.signalIds).toEqual(["s1"]);
+    expect(ev("refill")?.stockEventIds).toEqual(["e1"]);
+    expect(ev("waste")?.stockEventIds).toEqual(["e3"]);
+    expect(ev("incident_opened")?.incidentIds).toEqual(["i1"]);
+    expect(ev("incident_closed")?.incidentIds).toEqual(["i1"]);
+    expect(ev("sales")?.signalIds).toBeUndefined();
+  });
 });

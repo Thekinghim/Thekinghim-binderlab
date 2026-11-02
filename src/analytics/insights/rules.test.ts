@@ -27,6 +27,9 @@ function ctx(i: TodoInput, period: Period = WEEK, compare: Period = PREV): Insig
     input: i,
     period,
     compare,
+    requestedPeriod: period,
+    requestedCompare: compare,
+    dataEnd: period.end,
     orders: inRange(period),
     compareOrders: inRange(compare),
     titleName: (id) => names.get(id) ?? id,
@@ -385,7 +388,10 @@ describe("computeInsights", () => {
 
   it("maxCount och tomt resultat", () => {
     expect(computeInsights(DATA, WEEK, null, { maxCount: 2 })).toHaveLength(2);
-    expect(computeInsights(input(), WEEK)).toEqual([]);
+    // Utan försäljning återstår bara den sanna iakttagelsen att inget sålts.
+    expect(computeInsights(input(), WEEK).map((x) => x.text)).toEqual([
+      "Ingen försäljning 26\u00a0okt.\u00a0\u2013\u00a01\u00a0nov.",
+    ]);
   });
 
   it("deterministisk och oberoende av ordningen i indata", () => {

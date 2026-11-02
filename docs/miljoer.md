@@ -19,8 +19,11 @@ Binderlab körs i tre miljöer. Koden är densamma; skillnaden är miljövariabl
    `src/server/auth/password.ts`.
 
 Dev-inloggningen (`src/server/auth/dev-provider.ts`) har en hård spärr. Den
-kastar vid start om `APP_ENV` inte är `development` eller om `DATABASE_URL`
-pekar på något annat än localhost/127.0.0.1. Lösenorden hashas med scrypt.
+kastar vid start om `APP_ENV` inte är `development`, om `NODE_ENV=production`
+(`next start`), om `VERCEL`/`VERCEL_ENV` är satt, eller om `DATABASE_URL`
+pekar på något annat än localhost/127.0.0.1. Adressen tolkas som postgres.js
+gör: `?host=`, `?hostaddr=`, flera värdar och tecken som `#` och `\` nekas.
+Lösenorden hashas med scrypt.
 Sessionen är en HS256-JWT i en httpOnly-cookie med SameSite=Lax.
 Inbjudningsmejl hamnar i `.data/mail/*.eml`, och sökvägen skrivs ut i serverloggen.
 
@@ -56,9 +59,15 @@ Tester:
 
 Server actions finns i `src/server/actions/auth.ts`: `login`, `logout`,
 `createInvite`, `acceptInvite` och `switchOrganization`. Alla returnerar
-`{ ok, error? }` med svenska felmeddelanden. Inloggningen har en enkel gräns:
-5 misslyckade försök per IP och e-post på 15 minuter. Gränsen räknas i minnet
-per serverinstans.
+`{ ok, error? }` med svenska felmeddelanden. Inloggningen har en enkel gräns
+per 15 minuter: 5 försök per IP och e-post, 20 per konto oavsett IP, och 5
+per IP för ogiltiga adresser. Försöket räknas innan lösenordet prövas, så
+parallella förfrågningar kommer inte förbi gränsen. Spärrade räknare tas
+aldrig bort i förtid. Gränsen räknas i minnet per serverinstans.
+
+Supabase-sessionens cookies är `httpOnly`, `SameSite=Lax` och `Secure`
+utanför development. Appen har ingen webbläsarklient mot Supabase.
+`SUPABASE_URL` och `SUPABASE_JWKS_URL` måste vara https utanför development.
 
 ## Migreringar per miljö
 

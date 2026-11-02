@@ -1,0 +1,168 @@
+"use server";
+
+/**
+ * Server actions för Datakällor. Tunna omslag kring ./_lib/service: indata
+ * valideras här (zod), rollen kontrolleras både här (requireContextRole) och i
+ * tjänsten mot databasen, och allt läses och skrivs som användaren med RLS.
+ *
+ * Alla returnerar { ok, data } eller { ok: false, error } med ett svenskt
+ * meddelande. Ändringar som påverkar siffror (import, koppling av automat,
+ * källans tidszon) räknar om alla sidor (revalidateAppData) sist.
+ */
+
+import { ZodError } from "zod";
+
+import { ImportError } from "@/import/errors";
+import { dbErrorMessage } from "@/server/errors";
+import { AuthorizationError } from "@/server/access";
+import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/data/core";
+
+import {
+  chunkMetaSchema,
+  commitSchema,
+  createSourceSchema,
+  discardSchema,
+  mapMachineSchema,
+  previewSchema,
+  startUploadSchema,
+  updateSourceSchema,
+} from "./_lib/schemas";
+import {
+  appendChunkFor,
+  createDataSourceFor,
+  discardUploadFor,
+  mapSourceMachineFor,
+  runUploadFor,
+  startUploadFor,
+  updateDataSourceFor,
+} from "./_lib/service";
+import { currentViewer, uploadStaging } from "./_lib/session";
+import type { ActionResult, PreviewResult } from "./_lib/types";
+
+function failure(error: unknown): { ok: false; error: string } {
+  if (error instanceof ZodError) {
+    return { ok: false, error: error.issues[0]?.message ?? "Ogiltiga uppgifter." };
+  }
+  if (error instanceof ImportError || error instanceof AuthorizationError) {
+    return { ok: false, error: error.message };
+  }
+  console.error("[datakallor]", error);
+  return { ok: false, error: dbErrorMessage(error) };
+}
+
+async function operator() {
+  await requireContextRole(OPERATOR_ROLES);
+  return currentViewer();
+}
+
+async function deps() {
+  return { staging: uploadStaging() };
+}
+
+export async function createDataSource(raw: unknown): Promise<ActionResult<{ id: string }>> {
+  try {
+    const viewer = await operator();
+    const input = createSourceSchema.parse(raw);
+    const id = await createDataSourceFor(viewer, input);
+    revalidateAppData();
+    return { ok: true, data: { id } };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function updateDataSource(raw: unknown): Promise<ActionResult> {
+  try {
+    const viewer = await operator();
+    const input = updateSourceSchema.parse(raw);
+    await updateDataSourceFor(viewer, input);
+    revalidateAppData();
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function mapSourceMachine(
+  raw: unknown,
+): Promise<ActionResult<{ orders: number; externalName: string | null; machineCode: string }>> {
+  try {
+    const viewer = await operator();
+    const input = mapMachineSchema.parse(raw);
+    const data = await mapSourceMachineFor(viewer, input);
+    revalidateAppData();
+    return { ok: true, data };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function startUpload(raw: unknown): Promise<ActionResult<{ uploadId: string }>> {
+  try {
+    const viewer = await operator();
+    const input = startUploadSchema.parse(raw);
+    return { ok: true, data: await startUploadFor(viewer, await deps(), input) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** En bit av filen: FormData med uploadId, index och chunk (Blob). */
+export async function uploadChunk(
+  form: FormData,
+): Promise<ActionResult<{ received: number; size: number }>> {
+  try {
+    const viewer = await operator();
+    const meta = chunkMetaSchema.parse({ uploadId: form.get("uploadId"), index: form.get("index") });
+    const chunk = form.get("chunk");
+    if (!(chunk instanceof Blob)) {
+      return { ok: false, error: "En del av filen saknas. Ladda upp filen igen." };
+    }
+    const bytes = new Uint8Array(await chunk.arrayBuffer());
+    return { ok: true, data: await appendChunkFor(viewer, await deps(), { ...meta, bytes }) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** Förhandsvisning: skriver ingenting. */
+export async function previewUpload(raw: unknown): Promise<ActionResult<PreviewResult>> {
+  try {
+    const viewer = await operator();
+    const input = previewSchema.parse(raw);
+    return { ok: true, data: await runUploadFor(viewer, await deps(), { ...input, dryRun: true }) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** Importen: samma fil och mappning som förhandsvisades. */
+export async function commitUpload(raw: unknown): Promise<ActionResult<PreviewResult>> {
+  try {
+    const viewer = await operator();
+    const input = commitSchema.parse(raw);
+    const data = await runUploadFor(viewer, await deps(), {
+      uploadId: input.uploadId,
+      dataSourceId: input.dataSourceId,
+      mapping: input.mapping,
+      dryRun: false,
+      expectedSha256: input.sha256,
+      saveMapping: input.saveMapping,
+    });
+    revalidateAppData();
+    return { ok: true, data };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function discardUpload(raw: unknown): Promise<ActionResult> {
+  try {
+    const viewer = await operator();
+    const input = discardSchema.parse(raw);
+    await discardUploadFor(viewer, await deps(), input.uploadId);
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return failure(error);
+  }
+}

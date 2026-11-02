@@ -28,12 +28,12 @@ describe("titlar utan inköpspris", () => {
       title: "Lägg in inköpspris för Black Bolt",
       level: "soon",
       link: "/inkopspriser?titel=t2",
-      fingerprint: "2026-10-20",
+      fingerprint: "soon|-", // nivå + senaste prisändring (inget pris)
       atStakeOre: 34_300, // 30 × 49 kr × 7 / 30
       action: { kind: "add-price", label: "Lägg in inköpspris", params: { titleId: "t2" } },
     });
     expect(t2?.detail).toBe(
-      "Black Bolt står för 30\u00a0% av intäkten 4 okt. – 2 nov. (1 470 kr, 30 order) men saknar inköpspris, så de orderna räknas inte in i vinsten.",
+      "Black Bolt står för 30\u00a0% av intäkten 4 okt. – 2 nov. (1 470 kr, 30 order) men saknar inköpspris och räknas därför inte in i vinsten.",
     );
     expect(t2?.evidence.orderIds).toHaveLength(30);
     expect(t2?.evidence.figures.find((f) => f.key === "shareBp")?.value).toBe(2_970);
@@ -50,7 +50,7 @@ describe("titlar utan inköpspris", () => {
     });
     const [t2] = missing(i);
     expect(t2?.evidence.orderIds).toHaveLength(15); // 20–24 okt.
-    expect(t2?.fingerprint).toBe("2026-10-20");
+    expect(t2?.fingerprint).toBe("soon|2026-10-25");
   });
 
   it("inga punkter när alla titlar har pris eller inga order finns", () => {
@@ -72,5 +72,44 @@ describe("titlar utan inköpspris", () => {
       prices: [{ titleId: "a", unitCostOre: 1_000, validFrom: "2026-01-01" }],
     });
     expect(missing(i)[0]).toMatchObject({ key: "missing-price:b", level: "soon" });
+  });
+});
+
+describe("avbockning av saknat inköpspris", () => {
+  // Black Bolt säljer utan pris varje dag sedan 1 sep., så fönstrets första dag flyttas varje dag.
+  const longRunning = base({
+    orders: [...daily("t1", "m1", "2026-09-01", 64, 1), ...daily("t2", "m1", "2026-09-01", 64, 1)],
+  });
+  const fp = (i: TodoInput, now: string) =>
+    computeTodos(i, now).find((t) => t.key === "missing-price:t2")?.fingerprint;
+
+  it("fingerprint är detsamma nästa dag och nästa vecka när orsaken är oförändrad", () => {
+    expect(fp(longRunning, NOW)).toBe("soon|-");
+    expect(fp(longRunning, "2026-11-03T10:00:00Z")).toBe("soon|-");
+    expect(fp(longRunning, "2026-11-09T10:00:00Z")).toBe(fp(longRunning, NOW));
+  });
+
+  it("fingerprint ändras när ett pris läggs in som inte täcker alla order", () => {
+    const partly: TodoInput = {
+      ...longRunning,
+      prices: [
+        ...longRunning.prices,
+        { titleId: "t2", unitCostOre: 2_500, validFrom: "2026-10-30" },
+      ],
+    };
+    expect(fp(partly, NOW)).toBe("soon|2026-10-30");
+  });
+
+  it("fingerprint ändras när titeln blir viktigare ('later' → 'soon')", () => {
+    const small = base({
+      orders: [...daily("t1", "m1", "2026-10-20", 10, 7), ...daily("t2", "m1", "2026-11-01", 1, 1)],
+    });
+    expect(fp(small, NOW)).toBe("later|-");
+    expect(fp(base(), NOW)).toBe("soon|-");
+  });
+
+  it("texten är en hel mening utan klumpig formulering", () => {
+    const t = missing(base())[0];
+    expect(t?.detail).toMatch(/men saknar inköpspris och räknas därför inte in i vinsten\.$/);
   });
 });

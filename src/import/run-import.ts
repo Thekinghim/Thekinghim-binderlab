@@ -112,7 +112,7 @@ export interface RunImportResult {
 }
 
 /** Version av hela importflödet; sparas med tolkarens version i imports.parser_version. */
-export const IMPORT_PIPELINE_VERSION = "pipeline/1";
+export const IMPORT_PIPELINE_VERSION = "pipeline/2";
 
 type Row = Record<string, unknown>;
 

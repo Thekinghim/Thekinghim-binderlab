@@ -152,10 +152,13 @@ export function machineTimeline(input: TimelineInput, options: TimelineOptions):
         detail: text ? `${text}. Källa: ${s.source}.` : `Källa: ${s.source}.`,
         packs: 0,
         severity: s.kind === "offline" || s.kind === "fault" ? "critical" : "info",
-        evidence: evidence({
-          rule: "Händelse från leverantörens maskindata.",
-          machineIds: [input.machineId],
-        }),
+        evidence: {
+          ...evidence({
+            rule: "Händelse från leverantörens maskindata.",
+            machineIds: [input.machineId],
+          }),
+          signalIds: [s.id],
+        },
       }),
     );
   }
@@ -222,12 +225,15 @@ function stockEntry(
     detail: e.note?.trim() ?? "",
     packs,
     severity: e.kind === "waste" ? "warning" : "info",
-    evidence: evidence({
-      rule: "Lagerhändelse i automatens lagerplats.",
-      titleIds: [e.titleId],
-      machineIds: [e.machineId],
-      figures: [{ key: "quantity", label: "Antal", value: qty, unit: "packs" }],
-    }),
+    evidence: {
+      ...evidence({
+        rule: "Lagerhändelse i automatens lagerplats.",
+        titleIds: [e.titleId],
+        machineIds: [e.machineId],
+        figures: [{ key: "quantity", label: "Antal", value: qty, unit: "packs" }],
+      }),
+      stockEventIds: [e.id],
+    },
   });
 }
 
@@ -239,7 +245,10 @@ function incidentEntries(
 ): TimelineEntry[] {
   const out: TimelineEntry[] = [];
   const startMs = parseInstant(i.startedAt);
-  const ev = evidence({ rule: "Ärende registrerat för automaten.", machineIds: [machineId] });
+  const ev = {
+    ...evidence({ rule: "Ärende registrerat för automaten.", machineIds: [machineId] }),
+    incidentIds: [i.id],
+  };
   const description = i.description?.trim() || i.kind;
   if (inRange(startMs)) {
     out.push(

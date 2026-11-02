@@ -77,6 +77,25 @@ describe("parseAmountOre", () => {
     expect(parseAmountOre(input as string | null | undefined).ok).toBe(false);
   });
 
+  it.each([
+    ["Discount Amount: 20.00\nAmount: 170.00", 17000],
+    ["Refund Amount: 0.00\nOrder Amount: 170.00", 17000],
+    ["Paid Amount: 160.00\nAmount: 170.00", 17000],
+    ["Amount: 170.00; Discount Amount: 20.00", 17000],
+    ["Amount: 170.00\nAmount: 170.00", 17000],
+  ])("tar bara beloppet märkt exakt Amount:/Order Amount: i %j", (input, expected) => {
+    expect(parseAmountOre(input)).toEqual({ ok: true, ore: expected });
+  });
+
+  it.each([
+    ["Discount Amount: 20.00"],
+    ["Refund Amount: 0.00"],
+    ["Paid Amount: 160.00 Amount: 170.00"],
+    ["Amount: 170.00\nOrder Amount: 160.00"],
+  ])("nekar %j (inget entydigt orderbelopp)", (input) => {
+    expect(parseAmountOre(input).ok).toBe(false);
+  });
+
   it("tar emot högsta tillåtna beloppet exakt", () => {
     expect(parseAmountOre("10 000 000,00")).toEqual({ ok: true, ore: 1_000_000_000 });
   });

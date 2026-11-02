@@ -16,6 +16,7 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { JWTVerifyGetKey } from "jose";
 
+import { supabaseCookieOptions } from "./supabase-cookies";
 import { createSupabaseJwtVerifier, remoteJwks } from "./supabase-jwt";
 import type { AuthProvider, AuthSession, CookieJar, EmailLinkType, SignInResult } from "./types";
 
@@ -29,6 +30,11 @@ export interface SupabaseAuthProviderOptions {
   cookies: CookieJar;
   /** Nyckelkälla för tester; standard är SUPABASE_JWKS_URL. */
   jwks?: JWTVerifyGetKey;
+  /**
+   * Secure-flagga på sessionscookiesarna. Standard true; false bara lokalt
+   * (APP_ENV=development, http://localhost).
+   */
+  secureCookies?: boolean;
 }
 
 function required(value: string | undefined, name: string): string {
@@ -58,15 +64,18 @@ export class SupabaseAuthProvider implements AuthProvider {
 
   /** Klient med användarens cookies (publishable key, RLS gäller i Supabase). */
   private userClient(): SupabaseClient {
+    const flags = supabaseCookieOptions(this.options.secureCookies ?? true);
     this.client ??= createServerClient(this.url, this.publishableKey, {
+      cookieOptions: flags,
       cookies: {
         getAll: () => this.options.cookies.getAll(),
         setAll: (cookiesToSet) => {
           for (const { name, value, options } of cookiesToSet) {
             this.options.cookies.set(name, value, {
-              httpOnly: options.httpOnly,
-              secure: options.secure,
-              sameSite: options.sameSite,
+              // Flaggorna tvingas, oavsett vad biblioteket skickar.
+              httpOnly: flags.httpOnly,
+              secure: flags.secure,
+              sameSite: flags.sameSite,
               path: options.path,
               maxAge: options.maxAge,
               expires: options.expires,

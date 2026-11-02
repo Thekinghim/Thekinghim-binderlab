@@ -61,23 +61,46 @@ describe("automat som inte sålt", () => {
     expect(stale(future)).toHaveLength(0);
   });
 
-  it("automat utan order flaggas efter mer än 2 dagar i drift", () => {
+  it("automat utan order flaggas efter mer än 48 timmar i drift (från 00:00 svensk tid)", () => {
     const i = (activeFrom: string) =>
       input({ machines: [machine("m1", "Automat 1", { activeFrom })] });
     expect(stale(i("2026-10-25"))[0]).toMatchObject({
       title: "Automat 1 har inte sålt något sedan driftstart",
       fingerprint: "none",
     });
-    expect(stale(i("2026-10-31"))).toHaveLength(0);
+    // 31 okt. 00:00 CET → 2 nov. 11:00 = 59 timmar > 48.
+    const oct31 = stale(i("2026-10-31"))[0];
+    expect(oct31?.title).toBe("Automat 1 har inte sålt något sedan driftstart");
+    expect(oct31?.evidence.figures.find((f) => f.key === "silentHours")?.value).toBe(59);
+    expect(oct31?.detail).toContain("59\u00a0timmar");
+    expect(stale(i("2026-11-01"))).toHaveLength(0); // 35 timmar
     expect(stale(input())).toHaveLength(0); // okänd startdag
   });
 
-  it("order utan tidpunkt räknas på affärsdatum (mer än 2 hela dagar)", () => {
+  it("order utan tidpunkt räknas som såld i slutet av affärsdagen", () => {
     const i = (date: string) => input({ orders: [order({ titleId: "t1", businessDate: date })] });
+    // 30 okt. slutar 31 okt. 00:00 CET (30 okt. 23:00Z) → 59 timmar till 2 nov. 11:00.
     expect(stale(i("2026-10-30"))[0]).toMatchObject({
-      title: "Automat 1 har inte sålt på 48 timmar",
+      title: "Automat 1 har inte sålt på 59\u00a0timmar",
     });
-    expect(stale(i("2026-10-31"))).toHaveLength(0);
+    expect(stale(i("2026-10-31"))).toHaveLength(0); // 35 timmar
+  });
+
+  it("ogiltig orderedAt stoppar inte beräkningen; ordern räknas på affärsdatum", () => {
+    const recent = input({
+      orders: [
+        order({ titleId: "t1", businessDate: "2026-11-01", orderedAt: "inte en tid" }),
+        order({ titleId: "t1", businessDate: "2026-10-20", orderedAt: "2026-10-20T10:00:00Z" }),
+      ],
+    });
+    expect(() => computeTodos(recent, NOW)).not.toThrow();
+    expect(stale(recent)).toHaveLength(0); // 1 nov. räknas: 35 timmar
+    // Tidpunkt utan tidszon avvisas och ordern räknas på datum: 29 okt. slutar 29 okt. 23:00Z → 83 h.
+    const old = input({
+      orders: [order({ titleId: "t1", businessDate: "2026-10-29", orderedAt: "2026-10-29T12:00" })],
+    });
+    expect(stale(old)[0]?.title).toBe("Automat 1 har inte sålt på 3\u00a0dygn");
+    expect(stale(old)[0]?.evidence.figures.find((f) => f.key === "silentHours")?.value).toBe(83);
   });
 
   it("ett senare affärsdatum utan tidpunkt vinner över en äldre tidpunkt", () => {

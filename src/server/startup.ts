@@ -23,7 +23,14 @@ export function verifyServerStartup(
   const provider =
     source.AUTH_PROVIDER?.trim() || (rawAppEnv === "development" ? "dev" : "supabase");
   if (provider === "dev") {
-    assertDevAuthAllowed({ APP_ENV: rawAppEnv, DATABASE_URL: source.DATABASE_URL });
+    assertDevAuthAllowed({
+      APP_ENV: rawAppEnv,
+      DATABASE_URL: source.DATABASE_URL,
+      NODE_ENV: source.NODE_ENV,
+      VERCEL: source.VERCEL,
+      VERCEL_ENV: source.VERCEL_ENV,
+      NEXT_PHASE: source.NEXT_PHASE,
+    });
   }
   try {
     load();

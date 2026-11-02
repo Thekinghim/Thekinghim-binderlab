@@ -30,7 +30,8 @@ Kod: `claude/bygge` i Thekinghim/thekinghim-binderlab. `main` innehåller bara g
 - Dev-server: `npx next dev -p 3200`.
 - Supabase, Awish, Resend och Claude API går inte att nå från byggmiljön (nätverket blockerat, nycklar saknas). Allt byggs med
   adaptrar, med lokala implementationer för utveckling och test.
-- Commit och push vid varje avklarad fas. Inga pull requests utan att beställaren ber om det.
+- Commit och push löpande till claude/bygge (säkerhetskopia). Beställaren har bett mig slå ihop med main själv: görs vid varje avklarad fas,
+  bara när npm test, npm run test:db, tsc, lint och next build går igenom. Inga pull requests.
 
 ## Beslut under bygget
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { mergeProposals } from "./duplicates";
 import { computeTodos } from "./index";
 import { daily, input, NOW, title } from "./test-helpers";
 import type { TodoInput } from "./types";
@@ -55,5 +56,49 @@ describe("titlar som kan slås ihop", () => {
     const b = dups(input({ titles: [title("a", "Black Bolt"), title("b", "Black  bolt")] }))[0];
     expect(a?.key).toBe(b?.key);
     expect(a?.fingerprint).not.toBe(b?.fingerprint);
+  });
+});
+
+describe("flera stavningar av samma titel", () => {
+  it("tre varianter ger två förslag, båda in i titeln med flest order", () => {
+    const i = input({
+      titles: [title("a", "Black Bolt"), title("b", "Black bolt"), title("c", "Blak Bolt")],
+      orders: [...daily("a", "m1", "2026-10-20", 10, 1), ...daily("c", "m1", "2026-10-30", 2, 1)],
+    });
+    const params = dups(i).map((t) => t.action?.params);
+    expect(params).toHaveLength(2);
+    expect(params).toEqual(
+      expect.arrayContaining([
+        { fromTitleId: "b", intoTitleId: "a" },
+        { fromTitleId: "c", intoTitleId: "a" },
+      ]),
+    );
+  });
+
+  it("ingen titel slås ihop in i en titel som själv ska bort", () => {
+    const i = input({
+      titles: [
+        title("a", "Surging Sparks"),
+        title("b", "Surgin Sparks"),
+        title("c", "Surgin Spark"),
+      ],
+      orders: daily("a", "m1", "2026-10-20", 10, 1),
+    });
+    const todos = dups(i);
+    const from = todos.map((t) => t.action?.params.fromTitleId);
+    const into = todos.map((t) => t.action?.params.intoTitleId);
+    expect(new Set(from).size).toBe(from.length);
+    for (const id of into) expect(from).not.toContain(id);
+  });
+
+  it("singular och plural föreslås (vanlig felskrivning av setnamn)", () => {
+    const i = input({ titles: [title("a", "Lost Origin"), title("b", "Lost Origins")] });
+    expect(dups(i)).toHaveLength(1);
+  });
+
+  it("mergeProposals: titlar utan likhet ger inga förslag", () => {
+    expect(mergeProposals([title("a", "Mystery Pack"), title("b", "Black Bolt")], () => 0)).toEqual(
+      [],
+    );
   });
 });

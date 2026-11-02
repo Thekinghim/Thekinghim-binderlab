@@ -39,5 +39,15 @@ export {
   type DuplicateReason,
   type TitleComparison,
 } from "./similarity";
-export { businessDateAt, clockTimeAt, parseInstant, DEFAULT_TIME_ZONE } from "./time";
+export {
+  businessDateAt,
+  clockTimeAt,
+  parseInstant,
+  startOfBusinessDate,
+  tryParseInstant,
+  DEFAULT_TIME_ZONE,
+} from "./time";
+export { mergeProposals } from "./duplicates";
+export { missingPriceFingerprint } from "./missing-price";
+export { refillFingerprint } from "./refill";
 export type * from "./types";

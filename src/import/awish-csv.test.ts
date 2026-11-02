@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { AdapterContext } from "./adapter";
 import { awishGrpcAdapter, AWISH_GRPC_MISSING } from "./adapters/awish-grpc";
 import { parseAwishCsv, type AwishCsvInput } from "./adapters/awish-csv";
-import { parseCsvTable } from "./csv-table";
+import { decodeFile, parseCsvTable, scanUtf8 } from "./csv-table";
 import { ImportValidationError, MappingError, NotConfiguredError } from "./errors";
 import { sourceHash } from "./hash";
 
@@ -53,6 +53,20 @@ describe("parseCsvTable", () => {
     expect(t.records[1]?.cells).toEqual(["1,5", "2", "3"]);
   });
 
+  it("avvisar en UTF-8-fil med en trasig byte i stället för att avkoda den som Windows-1252", () => {
+    const good = new TextEncoder().encode("Name\nPokémon\n");
+    const bytes = new Uint8Array([...good, 0x58, 0xff, 0x0a]);
+    expect(scanUtf8(bytes)).toEqual({ multibyte: 1, firstInvalid: good.length + 1 });
+    expect(() => decodeFile(bytes)).toThrow(ImportValidationError);
+    expect(() => decodeFile(bytes)).toThrow(/rad 3/);
+    // Trasig byte före det första giltiga UTF-8-tecknet avvisas också.
+    expect(() => decodeFile(new Uint8Array([0xff, 0x0a, ...good]))).toThrow(ImportValidationError);
+    // Överlånga och surrogat-sekvenser räknas som ogiltiga.
+    expect(scanUtf8(new Uint8Array([0xc0, 0x80])).firstInvalid).toBe(0);
+    expect(scanUtf8(new Uint8Array([0xed, 0xa0, 0x80])).firstInvalid).toBe(0);
+    expect(scanUtf8(new TextEncoder().encode("å😀")).firstInvalid).toBe(-1);
+  });
+
   it("avkodar Windows-1252 när filen inte är giltig UTF-8", () => {
     const bytes = new Uint8Array([
       0x4e, 0x61, 0x6d, 0x65, 0x0a, 0x50, 0x6f, 0x6b, 0xe9, 0x6d, 0x6f, 0x6e, 0x0a,
@@ -71,7 +85,7 @@ describe("parseCsvTable", () => {
 describe("parseAwishCsv", () => {
   it("tolkar Awish orderlista (fixtur med BOM och CRLF)", () => {
     const r = parse(fixture("orderlista-2026-11-02.csv"));
-    expect(r.parserVersion).toBe("awish_csv/1");
+    expect(r.parserVersion).toBe("awish_csv/2");
     expect(r.mapping.delimiter).toBe(",");
     expect(r.rows.map((o) => [o.sourceRowNumber, o.externalId, o.isPaid])).toEqual([
       [2, "42780", true],
@@ -189,6 +203,51 @@ describe("parseAwishCsv", () => {
     }).rows[0]!;
     expect(sto.paidAtUtc.toISOString()).toBe("2026-10-25T00:30:00.000Z");
     expect(sto.notes?.[0]).toContain("två gånger");
+  });
+
+  it("ordernummer i exponentform (Excel) blir felrader", () => {
+    const r = parse(
+      `${HEADER}\n1,,Kort,4.27801E+11,M1,Card,Amount: 10,Paid Success,2026-11-02 10:00:00,x\n` +
+        `2,,Kort,"4,27801e+11",M1,Card,Amount: 10,Paid Success,2026-11-02 10:00:00,x\n` +
+        `3,,Kort,427801000000,M1,Card,Amount: 10,Paid Success,2026-11-02 10:00:00,x\n`,
+    );
+    expect(r.rows.map((o) => o.externalId)).toEqual(["427801000000"]);
+    expect(r.errors.map((e) => [e.sourceRowNumber, e.isPaid])).toEqual([
+      [2, true],
+      [3, true],
+    ]);
+    expect(r.errors[0]?.message).toMatch(/Excel/);
+  });
+
+  it("en rad med fler kolumner än rubriken är en felrad, inte ej betald", () => {
+    // Ordernumret 4,27801E+11 utan citat delas i två kolumner, så Is Paid hamnar fel.
+    const r = parse(
+      `${HEADER}\n1,,Kort,4,27801E+11,M1,Card,Amount: 10,Paid Success,2026-11-02 10:00:00,x\n`,
+    );
+    expect(r.rows).toEqual([]);
+    expect(r.errors[0]?.isPaid).toBeNull();
+  });
+
+  it("ordernummer, automatnyckel och källhash är samma i NFC och NFD", () => {
+    const row = (name: string, machine: string, no: string): string =>
+      `${HEADER}\n1,,"${name}",${no},"${machine}",Swish,Amount: 10,Paid Success,2026-11-02 10:00:00,x\n`;
+    const nfc = parse(row("Pokémon", "Coop Malmö", "４２７８０")).rows[0]!;
+    const nfd = parse(row("Pokémon".normalize("NFD"), "Coop Malmö".normalize("NFD"), "42780"))
+      .rows[0]!;
+    expect(nfc.externalId).toBe("42780");
+    expect(nfd.externalId).toBe("42780");
+    expect(sourceHash(nfd)).toBe(sourceHash(nfc));
+    expect(
+      parse(row("Pokémon".normalize("NFD"), "Coop Malmö".normalize("NFD"), "1")).machines,
+    ).toEqual([{ externalId: "Coop Malmö", externalName: "Coop Malmö".normalize("NFD") }]);
+  });
+
+  it("anger att Payment Method saknas när kolumnen inte finns", () => {
+    const without =
+      "Order No.,Name,Order Machine,Order Amount,Is Paid,Payment Time\n" +
+      `1,Kort,M1,Amount: 10,Paid Success,2026-11-02 10:00:00\n`;
+    expect(parse(without).absentFields).toEqual(["paymentMethod"]);
+    expect(parse(`${HEADER}\n`).absentFields).toEqual([]);
   });
 
   it("tom fil och fil utan data", () => {

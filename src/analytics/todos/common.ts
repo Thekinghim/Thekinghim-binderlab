@@ -82,6 +82,7 @@ export const links = {
     `/titlar/${encodeURIComponent(titleId)}${query({ fran: period.start, till: period.end })}`,
   profitabilityByTitle: (period: Period) =>
     `/lonsamhet${query({ grupp: "titel", fran: period.start, till: period.end })}`,
+  salesPeriod: (period: Period) => `/forsaljning${query({ fran: period.start, till: period.end })}`,
   salesDay: (date: IsoDate) => `/forsaljning${query({ fran: date, till: date })}`,
   salesWeekdays: (period: Period) =>
     `/forsaljning${query({ fran: period.start, till: period.end, vy: "veckodag" })}`,

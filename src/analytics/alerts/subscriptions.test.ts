@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { evidence } from "@/analytics/todos/common";
 import {
+  inDeliveryWindow,
   isQuiet,
+  nextDeliveryAt,
   mergeDeliveries,
   quietEndsAt,
   routeNotifications,
@@ -170,5 +172,73 @@ describe("mergeDeliveries", () => {
       ["low_stock:m2:t1", "new"],
       ["machine:m2", "resolved"],
     ]);
+  });
+});
+
+describe("tider för aviseringar", () => {
+  const weekdays = [{ days: [1, 2, 3, 4, 5], start: "07:00", end: "18:00" }];
+  const tz = "Europe/Stockholm";
+  const ms = (iso: string) => Date.parse(iso);
+
+  it("inom och utanför tiderna; tid över midnatt hör till startdagen", () => {
+    // Mån 2 nov. 10:00 svensk tid = 09:00Z.
+    expect(inDeliveryWindow(ms("2026-11-02T09:00:00Z"), weekdays, tz)).toBe(true);
+    expect(inDeliveryWindow(ms("2026-11-02T17:00:00Z"), weekdays, tz)).toBe(false); // 18:00
+    expect(inDeliveryWindow(ms("2026-11-07T09:00:00Z"), weekdays, tz)).toBe(false); // lördag
+    const friNight = [{ days: [5], start: "18:00", end: "02:00" }];
+    expect(inDeliveryWindow(ms("2026-11-07T00:00:00Z"), friNight, tz)).toBe(true); // lör 01:00
+    expect(inDeliveryWindow(ms("2026-11-08T00:00:00Z"), friNight, tz)).toBe(false); // sön 01:00
+    expect(
+      inDeliveryWindow(
+        ms("2026-11-08T00:00:00Z"),
+        [{ days: [7], start: "00:00", end: "00:00" }],
+        tz,
+      ),
+    ).toBe(true);
+  });
+
+  it("nästa tid: lördag → måndag 07:00, kväll → nästa morgon", () => {
+    expect(new Date(nextDeliveryAt(ms("2026-11-07T09:00:00Z"), weekdays, tz)).toISOString()).toBe(
+      "2026-11-09T06:00:00.000Z",
+    );
+    expect(new Date(nextDeliveryAt(ms("2026-11-02T19:00:00Z"), weekdays, tz)).toISOString()).toBe(
+      "2026-11-03T06:00:00.000Z",
+    );
+    // Över sommartidens slut: lör 24 okt. 12:00 (+02) → mån 26 okt. 07:00 (+01) = 06:00Z.
+    expect(new Date(nextDeliveryAt(ms("2026-10-24T10:00:00Z"), weekdays, tz)).toISOString()).toBe(
+      "2026-10-26T06:00:00.000Z",
+    );
+    expect(() => nextDeliveryAt(0, [], tz)).toThrow();
+    expect(() => inDeliveryWindow(0, [{ days: [0], start: "07:00", end: "18:00" }], tz)).toThrow();
+  });
+
+  it("routeNotifications: varning skjuts till nästa tid, kritiskt går direkt; tysta timmar gäller också", () => {
+    const sub: AlertSubscription = {
+      userId: "u1",
+      kinds: "all",
+      machineIds: "all",
+      deliveryWindows: weekdays,
+    };
+    // Lör 7 nov. 10:00 svensk tid.
+    const sat = "2026-11-07T09:00:00Z";
+    const d = routeNotifications([offline, lowStock], [sub], sat);
+    expect(d.map((x) => [x.sendAt, x.deferred, x.items.map((i) => i.key)])).toEqual([
+      ["2026-11-07T09:00:00.000Z", false, ["machine:m1"]],
+      ["2026-11-09T06:00:00.000Z", true, ["low_stock:m2:t1"]],
+    ]);
+    // Tider 06–22 alla dagar och tysta timmar 05–08: mån 05:30 → 08:00 (07:00Z).
+    const both: AlertSubscription = {
+      ...sub,
+      deliveryWindows: [{ days: [1, 2, 3, 4, 5, 6, 7], start: "06:00", end: "22:00" }],
+      quietHours: { start: "05:00", end: "08:00" },
+    };
+    const early = routeNotifications([lowStock], [both], "2026-11-02T04:30:00Z");
+    expect(early.map((x) => x.sendAt)).toEqual(["2026-11-02T07:00:00.000Z"]);
+    const noBypass = routeNotifications(
+      [offline],
+      [{ ...sub, criticalDuringQuietHours: false }],
+      sat,
+    );
+    expect(noBypass.map((x) => x.sendAt)).toEqual(["2026-11-09T06:00:00.000Z"]);
   });
 });

@@ -18,7 +18,7 @@ export function isPublicPath(pathname: string): boolean {
   return (
     isPathOrBelow(pathname, LOGIN_PATH) ||
     pathname.startsWith("/inbjudan/") ||
-    pathname.startsWith("/design") ||
+    isPathOrBelow(pathname, "/design") ||
     isPathOrBelow(pathname, "/datamodell") ||
     pathname.startsWith("/rapport/") ||
     pathname.startsWith("/_next/") ||
@@ -49,7 +49,14 @@ export function safeRedirectPath(next: unknown, fallback = "/"): string {
     if (isPathOrBelow(url.pathname, LOGIN_PATH)) {
       return fallback;
     }
-    return `${url.pathname}${url.search}${url.hash}`;
+    const result = `${url.pathname}${url.search}${url.hash}`;
+    // Kontrollera även RESULTATET: punktsegment ("/.//x", "/a/..//x",
+    // "/%2e//x") normaliseras annars till "//x", som webbläsaren tolkar som
+    // en adress till en annan värd.
+    if (!result.startsWith("/") || result.startsWith("//") || /^\/[\\\u0000-\u0020]/.test(result)) {
+      return fallback;
+    }
+    return result;
   } catch {
     return fallback;
   }

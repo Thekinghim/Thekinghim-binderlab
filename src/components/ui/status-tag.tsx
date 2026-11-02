@@ -6,7 +6,7 @@ const labels: Record<Status, string> = {
   ok: "I drift",
   warning: "Varning",
   critical: "Kritisk",
-  offline: "Offline",
+  offline: "Ur drift",
   neutral: "Info",
 };
 

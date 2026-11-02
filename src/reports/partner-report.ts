@@ -45,10 +45,20 @@ import {
 } from "./text";
 import type { Conclusion, Evidence, ReportSources } from "./types";
 
-/** Månadens resultat. Belopp i öre, för order med inköpspris (se `unpriced*`). */
+/**
+ * Månadens resultat. Belopp i öre.
+ *
+ * `totalRevenueOre` är intäkten för alla order, samma tal som panelens nyckeltal
+ * (`keyMetrics().revenueOre`, docs/berakningar.md avsnitt 6). Övriga belopp gäller order med
+ * inköpspris, som på sidan Lönsamhet: `revenueOre` är vinstens underlag och
+ * `revenueOre + unpricedRevenueOre = totalRevenueOre`.
+ */
 export interface PartnerResult {
   readonly orders: number;
   readonly pricedOrders: number;
+  /** Intäkt exkl. moms för alla order (= panelens Intäkt). Visas som "intäkt" i texterna. */
+  readonly totalRevenueOre: number;
+  /** Intäkt exkl. moms för order med inköpspris: underlaget för vinst och marginal. */
   readonly revenueOre: number;
   readonly costOre: number;
   readonly feesOre: number;
@@ -64,13 +74,23 @@ export interface PartnerResult {
   readonly evidence: Evidence;
 }
 
-/** Jämförelse mot en annan månad. */
+/**
+ * Jämförelse mot en annan månad. `totalRevenueOre`/`totalRevenueChangeBp` gäller alla order
+ * (panelens Intäkt och Förändring) och används i texten; `revenueOre`/`revenueChangeBp`
+ * jämför vinstens underlag (order med inköpspris), som `PartnerResult.revenueOre`.
+ */
 export interface PartnerComparison {
   readonly month: IsoMonth;
   readonly orders: number;
+  /** Intäkt för alla order den månaden (= panelens Intäkt). */
+  readonly totalRevenueOre: number;
+  /** Förändring i intäkt för alla order, nu mot då, i bp (= panelens Förändring). */
+  readonly totalRevenueChangeBp: number | null;
+  /** Intäkt för order med inköpspris den månaden (vinstens underlag). */
   readonly revenueOre: number;
   readonly profitOre: number;
   readonly marginBp: number | null;
+  /** Förändring i vinstens underlag (order med inköpspris), nu mot då, i bp. */
   readonly revenueChangeBp: number | null;
   readonly profitChangeBp: number | null;
   /** Skillnad i marginal (nu − då) i bp, `null` om någon marginal saknas. */
@@ -85,7 +105,12 @@ export interface PartnerTrendMonth {
   /** Falskt för månader före historikens start (värdena är då 0). */
   readonly hasData: boolean;
   readonly orders: number;
+  /** Intäkt exkl. moms för alla order (= panelens Intäkt för månaden). */
   readonly revenueOre: number;
+  /** Del av intäkten från order med inköpspris (vinstens och marginalens underlag). */
+  readonly pricedRevenueOre: number;
+  /** Del av intäkten från order utan inköpspris. */
+  readonly unpricedRevenueOre: number;
   readonly profitOre: number;
   readonly marginBp: number | null;
   readonly evidence: Evidence;
@@ -226,8 +251,10 @@ export const UNPRICED_NOTICE_BP = 500;
  * Bygger delägarrapporten för en kalendermånad.
  *
  * Regler:
+ * - Intäkt = Σ belopp exkl. moms för alla order, samma tal som panelen (`keyMetrics`).
+ *   Den används i utvecklingen, jämförelsetexterna, rekorden och slutsatsen.
  * - Resultat: vinst = intäkt − inköp − avgifter − butiksersättning för order med
- *   inköpspris; marginal = round(vinst × 10 000 / intäkt) bp.
+ *   inköpspris; marginal = round(vinst × 10 000 / intäkt med inköpspris) bp (som panelen).
  * - Jämförelse mot förra månaden och samma månad i fjol bara när historik finns
  *   (månaden slutar på eller efter historikens start); annars `null`.
  * - Utveckling: de senaste 6–12 månaderna till och med rapportmånaden; månader före
@@ -272,6 +299,7 @@ export function buildPartnerReport(
   const result: PartnerResult = {
     orders: t.orders,
     pricedOrders: t.pricedOrders,
+    totalRevenueOre: totalRevenue(t),
     revenueOre: t.revenueOre,
     costOre: t.costOre,
     feesOre: t.feesOre,
@@ -284,11 +312,12 @@ export function buildPartnerReport(
     unpricedRevenueOre: t.unpricedRevenueOre,
     unpricedShareBp: byTitle.unpriced.shareBp,
     evidence: evidence({
-      rule: "Vinst = intäkt − inköp − avgifter − butiksersättning (order med inköpspris; all hyra dras). Marginal = round(vinst × 10 000 / intäkt) bp.",
+      rule: "Intäkt = Σ belopp exkl. moms för alla order. Vinst = intäkt − inköp − avgifter − butiksersättning för order med inköpspris (all hyra dras). Marginal = round(vinst × 10 000 / intäkt med inköpspris) bp.",
       scope: { period },
       orderCount: t.orders,
       figures: [
-        fig("Intäkt", t.revenueOre, "ore"),
+        fig("Intäkt", totalRevenue(t), "ore"),
+        fig("Intäkt med inköpspris", t.revenueOre, "ore"),
         fig("Inköp", t.costOre, "ore"),
         fig("Avgifter", t.feesOre, "ore"),
         fig("Provision", t.commissionOre, "ore"),
@@ -307,6 +336,8 @@ export function buildPartnerReport(
     if (!hasHistory(otherPeriod, historyStart)) return null;
     const r = monthRows.get(other);
     const orders = r?.orders ?? 0;
+    const total = r ? totalRevenue(r) : 0;
+    const totalChange = changeBp(result.totalRevenueOre, total);
     const revenue = r?.revenueOre ?? 0;
     const profit = r?.profitOre ?? 0;
     const margin = r?.marginBp ?? null;
@@ -316,13 +347,15 @@ export function buildPartnerReport(
       margin === null || result.marginBp === null ? null : result.marginBp - margin;
     const parts = [
       `vinst ${krText(profit)}${profitChange === null ? "" : ` (nu ${signedPctText(profitChange)})`}`,
-      `intäkt ${krText(revenue)}${revenueChange === null ? "" : ` (nu ${signedPctText(revenueChange)})`}`,
+      `intäkt ${krText(total)}${totalChange === null ? "" : ` (nu ${signedPctText(totalChange)})`}`,
     ];
     if (marginDiff !== null)
       parts.push(`marginal ${pctText(margin!, 1)} (nu ${pointsText(marginDiff)})`);
     return {
       month: other,
       orders,
+      totalRevenueOre: total,
+      totalRevenueChangeBp: totalChange,
       revenueOre: revenue,
       profitOre: profit,
       marginBp: margin,
@@ -331,13 +364,13 @@ export function buildPartnerReport(
       marginDiffBp: marginDiff,
       text: `${label} (${monthText(other)}): ${parts.join(", ")}.`,
       evidence: evidence({
-        rule: "Förändring = round((nu − då) × 10 000 / |då|) bp; saknas när då = 0. Marginalskillnad i procentenheter.",
+        rule: "Förändring = round((nu − då) × 10 000 / |då|) bp; saknas när då = 0. Intäkten gäller alla order, vinsten order med inköpspris. Marginalskillnad i procentenheter.",
         scope: { period: otherPeriod },
         orderCount: orders,
         figures: [
-          fig("Intäkt då", revenue, "ore"),
+          fig("Intäkt då", total, "ore"),
           fig("Vinst då", profit, "ore"),
-          fig("Intäkt nu", result.revenueOre, "ore"),
+          fig("Intäkt nu", result.totalRevenueOre, "ore"),
           fig("Vinst nu", result.profitOre, "ore"),
         ],
       }),
@@ -352,18 +385,25 @@ export function buildPartnerReport(
   ).map((m) => {
     const r = monthRows.get(m);
     const hasData = hasHistory(monthPeriod(m), historyStart);
+    const total = r ? totalRevenue(r) : 0;
     return {
       month: m,
       hasData,
       orders: r?.orders ?? 0,
-      revenueOre: r?.revenueOre ?? 0,
+      revenueOre: total,
+      pricedRevenueOre: r?.revenueOre ?? 0,
+      unpricedRevenueOre: r?.unpricedRevenueOre ?? 0,
       profitOre: r?.profitOre ?? 0,
       marginBp: r?.marginBp ?? null,
       evidence: evidence({
-        rule: "Månadens vinst och intäkt räknade som i resultatet.",
+        rule: "Intäkt för alla order (som panelen); vinst och marginal för order med inköpspris, som i resultatet.",
         scope: { period: monthPeriod(m) },
         orderCount: r?.orders ?? 0,
-        figures: [fig("Intäkt", r?.revenueOre ?? 0, "ore"), fig("Vinst", r?.profitOre ?? 0, "ore")],
+        figures: [
+          fig("Intäkt", total, "ore"),
+          fig("Intäkt med inköpspris", r?.revenueOre ?? 0, "ore"),
+          fig("Vinst", r?.profitOre ?? 0, "ore"),
+        ],
       }),
     };
   });
@@ -844,7 +884,7 @@ function buildEvents(args: {
         scope: { period: { start: monthStart(withData[0]!.month), end: period.end } },
         orderCount: withData.reduce((s, m) => s + m.orders, 0),
         figures: [
-          fig("Intäkt denna månad", current.revenueOre, "ore"),
+          fig("Intäkt denna månad (alla order)", current.revenueOre, "ore"),
           fig(
             rule.includes("Högsta") ? "Högsta tidigare" : "Lägsta tidigare",
             rule.includes("Högsta") ? max : min,
@@ -858,7 +898,9 @@ function buildEvents(args: {
         severity: "positive",
         date: period.end,
         text: `Högsta intäkten på ${withData.length} månader: ${krText(current.revenueOre)}.`,
-        evidence: ev("Högsta intäkten bland månaderna med data i utvecklingen."),
+        evidence: ev(
+          "Högsta intäkten (alla order, som panelen) bland månaderna med data i utvecklingen.",
+        ),
       });
     } else if (current.revenueOre < min) {
       push({
@@ -866,7 +908,9 @@ function buildEvents(args: {
         severity: "warning",
         date: period.end,
         text: `Lägsta intäkten på ${withData.length} månader: ${krText(current.revenueOre)}.`,
-        evidence: ev("Lägsta intäkten bland månaderna med data i utvecklingen."),
+        evidence: ev(
+          "Lägsta intäkten (alla order, som panelen) bland månaderna med data i utvecklingen.",
+        ),
       });
     }
   }
@@ -919,7 +963,8 @@ function partnerConclusion(
   const scope = { period: monthPeriod(month) };
   const figures = [
     fig("Vinst", r.profitOre, "ore"),
-    fig("Intäkt", r.revenueOre, "ore"),
+    fig("Intäkt", r.totalRevenueOre, "ore"),
+    fig("Intäkt med inköpspris", r.revenueOre, "ore"),
     ...(r.marginBp === null ? [] : [fig("Marginal", r.marginBp, "bp")]),
     fig("Andel utan inköpspris", r.unpricedShareBp, "bp"),
   ];
@@ -939,7 +984,7 @@ function partnerConclusion(
   }
   if (r.profitOre < 0) {
     return {
-      text: `${capitalize(monthText(month))} gick med förlust: ${krText(r.profitOre)} på ${krText(r.revenueOre)} intäkt${caveat}.`,
+      text: `${capitalize(monthText(month))} gick med förlust: ${krText(r.profitOre)} på ${krText(r.totalRevenueOre)} intäkt${caveat}.`,
       ruleId: "partner.loss",
       evidence: ev("Vinsten är negativ."),
     };
@@ -968,10 +1013,22 @@ function partnerConclusion(
     };
   }
   return {
-    text: `Vinsten blev ${krText(r.profitOre)} på ${krText(r.revenueOre)} intäkt${margin}${caveat}.`,
+    text: `Vinsten blev ${krText(r.profitOre)} på ${krText(r.totalRevenueOre)} intäkt${margin}${caveat}.`,
     ruleId: "partner.profit",
     evidence: ev("Vinst = intäkt − inköp − avgifter − butiksersättning."),
   };
+}
+
+/**
+ * Intäkt för alla order = intäkt med inköpspris + intäkt utan inköpspris. Samma regel som
+ * panelens `keyMetrics().revenueOre` (docs/berakningar.md avsnitt 6), så delägarrapporten
+ * och panelen visar samma intäkt. Används på domänens summeringsrader.
+ */
+export function totalRevenue(row: {
+  readonly revenueOre: number;
+  readonly unpricedRevenueOre: number;
+}): number {
+  return safeOre(row.revenueOre + row.unpricedRevenueOre, "Intäkt");
 }
 
 function capitalize(s: string): string {

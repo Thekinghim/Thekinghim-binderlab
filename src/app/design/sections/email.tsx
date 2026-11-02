@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
-import { SectionHeader } from "@/components/ui/section-header";
 import { Segmented } from "@/components/ui/segmented";
 import { RECIPIENT_KINDS, type RecipientKind } from "@/emails/report-content";
 import { sampleReportEmails } from "@/emails/sample";
@@ -12,6 +11,7 @@ import { EmailFrame } from "../epost/email-frame";
 import { InboxRow } from "../epost/inbox-row";
 import { recipientNotes } from "../epost/recipients";
 import { checkEmailHtml, renderedSamples } from "../epost/samples";
+import { SpecSection } from "./section";
 
 const KINDS = RECIPIENT_KINDS.map((k) => k.value);
 const largest = Math.max(...KINDS.map((k) => checkEmailHtml(renderedSamples[k].html).bytes));
@@ -23,29 +23,23 @@ export function EmailSection({ index }: { index: number }) {
   const notes = recipientNotes[kind];
 
   return (
-    <section
+    <SpecSection
       id="e-post"
-      aria-labelledby="e-post-title"
-      className="border-t border-line py-16 md:py-20"
+      index={index}
+      eyebrow="E-post"
+      title="Ett mejl i tabellayout, tre mottagare."
+      aside={`Högst ${formatInt(largest / 1000)} kB, utan klasser och SVG.`}
+      actions={
+        <Link
+          href={`/design/epost?typ=${kind}`}
+          className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-line-strong bg-surface px-2.5 text-sm font-medium text-fg transition-[background-color,border-color] duration-[120ms] ease-instrument hover:border-line-control hover:bg-hover"
+        >
+          Hela förhandsvisningen
+          <Icon name="chevronRight" className="-mr-0.5 text-subtle" />
+        </Link>
+      }
     >
-      <SectionHeader
-        index={index}
-        id="e-post-title"
-        eyebrow="E-post"
-        title="Rapportmejl i tabellayout."
-        aside={`Tre mottagare, en mall, högst ${formatInt(largest / 1000)} kB utan klasser eller SVG.`}
-        actions={
-          <Link
-            href={`/design/epost?typ=${kind}`}
-            className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-line-strong bg-surface px-2.5 text-sm font-medium text-fg transition-[background-color,border-color] duration-[120ms] ease-instrument hover:border-line-control hover:bg-hover"
-          >
-            Hela förhandsvisningen
-            <Icon name="chevronRight" className="-mr-0.5 text-subtle" />
-          </Link>
-        }
-      />
-
-      <div className="mt-10 flex flex-col gap-6">
+      <div className="flex flex-col gap-6 lg:col-span-12">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <Segmented options={RECIPIENT_KINDS} value={kind} onChange={setKind} label="Mottagare" />
           <p className="label text-subtle">
@@ -88,6 +82,6 @@ export function EmailSection({ index }: { index: number }) {
           />
         </div>
       </div>
-    </section>
+    </SpecSection>
   );
 }

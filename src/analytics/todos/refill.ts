@@ -8,6 +8,8 @@
  *   kronor i risk = intäkt per dag × (7 − räcker), dvs. intäkt som uteblir de närmaste 7 dagarna
  *   nivå          = 'now' om lagret räcker mindre än 1 dag, annars 'soon'
  *
+ * Väntat slutdatum = i går + tak(räcker), domänens `stockoutDate` med asOf = i går.
+ *
  * Titlar utan försäljning i fönstret flaggas inte (takten är 0). Dagens försäljning ingår
  * inte i takten (dagen är inte slut) men har redan dragits från lagret.
  */
@@ -25,7 +27,23 @@ import {
 import { evidence, isMachineActive, links } from "./common";
 import { HORIZON_DAYS, urgencyOf, type TodoContext } from "./context";
 import { day, kr, plural, ratioTenths, sentence, tenths } from "./text";
-import type { AnalyticsOrder, TodoItem, TodoLevel } from "./types";
+import type { AnalyticsOrder, StockLevelRef, TodoItem, TodoLevel } from "./types";
+
+/**
+ * Fingerprint för en påfyllningspunkt: nivån plus senaste påfyllning (`lastRestockedAt`).
+ * En avbockning gäller då tills lagret räcker under 1 dag eller någon fyllt på.
+ * Saknas `lastRestockedAt` används saldot i stället: då syns punkten igen efter nästa
+ * försäljning eller påfyllning. Det är hellre en punkt för mycket än en påfyllning som döljs.
+ */
+export function refillFingerprint(
+  level: TodoLevel,
+  stock: Pick<StockLevelRef, "onHand" | "lastRestockedAt">,
+): string {
+  const restocked = stock.lastRestockedAt;
+  return restocked !== undefined && restocked !== null && restocked !== ""
+    ? `${level}|${restocked}`
+    : `${level}|saldo:${stock.onHand}`;
+}
 
 /** Påfyllningspunkter. */
 export function refillTodos(ctx: TodoContext): TodoItem[] {
@@ -70,7 +88,9 @@ export function refillTodos(ctx: TodoContext): TodoItem[] {
     const machineName = ctx.machineName(s.machineId);
     const perDay = ratioTenths(v.units, v.days);
     const revenuePerDay = kr(roundHalfUp(revenueOre, v.days));
-    const outDate = stockoutDate(today, onHand, v);
+    // Domänens konvention: saldot räknas som saldot efter asOf (i går), så sista packet
+    // säljs dag asOf + tak(räcker). 2,3 dagar räknat från i går kväll → slut 4 nov. om i dag är 2 nov.
+    const outDate = stockoutDate(asOf, onHand, v);
 
     const detail = empty
       ? `Slut i lager. Säljer i snitt ${perDay} pack och ${revenuePerDay} per dag (${v.days} dagar t.o.m. ${day(asOf)}).`
@@ -79,7 +99,7 @@ export function refillTodos(ctx: TodoContext): TodoItem[] {
 
     out.push({
       key: `refill:${s.machineId}:${s.titleId}`,
-      fingerprint: `${level}|${s.lastRestockedAt ?? "-"}`,
+      fingerprint: refillFingerprint(level, s),
       kind: "refill",
       level,
       urgency: urgencyOf(level, atStakeOre),

@@ -1,10 +1,14 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ExampleReport, RevenueChart } from "@/app/rapport/exempel/example-report";
+import {
+  EXAMPLE_PAGE_COUNT,
+  ExampleReport,
+  RevenueChart,
+} from "@/app/rapport/exempel/example-report";
 import { ReportMark } from "@/components/report/report-blocks";
 import { Icon } from "@/components/ui/icon";
-import { SectionHeader } from "@/components/ui/section-header";
 import { cn } from "@/lib/cn";
+import { SpecSection } from "./section";
 
 const EXAMPLE_HREF = "/rapport/exempel";
 
@@ -183,7 +187,7 @@ function ProofLabel({ label, meta }: { label: string; meta: string }) {
 
 /** Kod och attribut i mono, utan versaler. */
 function Code({ children }: { children: ReactNode }) {
-  return <code className="font-mono text-[11px] leading-4 text-subtle">{children}</code>;
+  return <code className="meta text-subtle">{children}</code>;
 }
 
 function Paper({ children, className }: { children: ReactNode; className?: string }) {
@@ -200,83 +204,74 @@ function Paper({ children, className }: { children: ReactNode; className?: strin
 
 export function PrintSection({ index }: { index: number }) {
   return (
-    <section
+    <SpecSection
       id="utskrift"
-      aria-labelledby="utskrift-title"
-      className="border-t border-line py-16 md:py-20"
+      index={index}
+      eyebrow="Utskrift"
+      title={`${EXAMPLE_PAGE_COUNT} A4-ark med fast sidhuvud och sidfot.`}
+      aside="Varje markering bärs av form och klarar svartvit laser."
+      tiles
     >
-      <SectionHeader
-        id="utskrift-title"
-        index={index}
-        eyebrow="Utskrift · Rapporter"
-        title="Rapporter är A4-ark med fast sidhuvud och sidfot."
-        aside="Varje markering bärs av form, så sidan klarar svartvit laserutskrift."
-      />
+      <figure className="bl-desk m-0 rounded-md border border-line p-3 sm:p-5 md:p-6 lg:col-span-9">
+        <ExampleReport headingLevel={3} layout="spread" visiblePages={[1, 2]} />
+        <figcaption className="mt-3 hidden gap-4 sm:grid sm:grid-cols-2 md:gap-6">
+          <span className="label text-subtle">
+            <span className="text-fg">Sida 1</span> · Sammanfattning
+          </span>
+          <span className="label text-subtle">
+            <span className="text-fg">Sida 2</span> · Sortiment
+          </span>
+        </figcaption>
+      </figure>
 
-      <div className="mt-10 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <figure className="bl-desk m-0 rounded-md border border-line p-3 sm:p-5 md:p-6">
-          <ExampleReport headingLevel={3} layout="spread" visiblePages={[1, 2]} />
-          <figcaption className="mt-3 hidden gap-4 sm:grid sm:grid-cols-2 md:gap-6">
-            <span className="label text-subtle">
-              <span className="text-fg">Sida 1</span> · Sammanfattning
-            </span>
-            <span className="label text-subtle">
-              <span className="text-fg">Sida 2</span> · Sortiment
-            </span>
-          </figcaption>
-        </figure>
-
-        <div className="flex flex-col rounded-md border border-line bg-surface">
-          <p className="flex items-baseline justify-between gap-3 border-b border-line px-4 py-3 md:px-5">
-            <span className="label text-muted">Specifikation</span>
-            <Code>&lt;ReportDocument&gt;</Code>
-          </p>
-          <dl className="flex flex-col px-4 md:px-5">
-            {spec.map(([k, v]) => (
-              <div
-                key={k}
-                className="grid grid-cols-[84px_1fr] gap-3 border-b border-line py-2.5 last:border-b-0"
-              >
-                <dt className="label text-subtle">{k}</dt>
-                <dd className="tnum flex flex-col font-mono text-xs text-fg">
-                  {v.map((line) => (
-                    <span key={line}>{line}</span>
-                  ))}
-                </dd>
-              </div>
-            ))}
-          </dl>
-          <div className="mt-auto flex flex-col gap-3 border-t border-line p-4 md:p-5">
-            <p className="text-sm text-muted">
-              Sidan sätter A4 och 0 mm marginal själv. Välj Spara som PDF i utskriftsdialogen.
-            </p>
-            <Link
-              href={EXAMPLE_HREF}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium whitespace-nowrap text-on-inverse transition-[background-color,border-color] duration-[120ms] ease-instrument hover:border-inverse-hover hover:bg-inverse-hover"
+      <div className="flex flex-col rounded-md border border-line bg-surface lg:col-span-3">
+        <p className="flex items-baseline justify-between gap-3 border-b border-line px-4 py-3 md:px-5">
+          <span className="label text-muted">Specifikation</span>
+          <Code>&lt;ReportDocument&gt;</Code>
+        </p>
+        <dl className="flex flex-col px-4 md:px-5">
+          {spec.map(([k, v]) => (
+            <div
+              key={k}
+              className="grid grid-cols-[84px_1fr] gap-3 border-b border-line py-2.5 last:border-b-0"
             >
-              Öppna exempelrapport
-              <Icon name="arrowUpRight" className="-mr-0.5" />
-            </Link>
-          </div>
+              <dt className="label text-subtle">{k}</dt>
+              <dd className="tnum flex flex-col font-mono text-xs text-fg">
+                {v.map((line) => (
+                  <span key={line}>{line}</span>
+                ))}
+              </dd>
+            </div>
+          ))}
+        </dl>
+        <div className="mt-auto flex flex-col gap-3 border-t border-line p-4 md:p-5">
+          <p className="text-sm text-muted">
+            Sidan sätter A4 och 0 mm marginal själv. Välj Spara som PDF i utskriftsdialogen.
+          </p>
+          <Link
+            href={EXAMPLE_HREF}
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium whitespace-nowrap text-on-inverse transition-[background-color,border-color] duration-[120ms] ease-instrument hover:border-inverse-hover hover:bg-inverse-hover"
+          >
+            Öppna exempelrapport
+            <Icon name="arrowUpRight" className="-mr-0.5" />
+          </Link>
         </div>
       </div>
 
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <figure className="m-0 flex flex-col gap-3">
-          <ProofLabel label="PDF på skärm" meta='data-tone="signal"' />
-          <Paper>
-            <RevenueChart />
-          </Paper>
-        </figure>
-        <figure className="m-0 flex flex-col gap-3">
-          <ProofLabel label="Samma diagram i gråskala" meta="filter: grayscale(1)" />
-          <Paper className="grayscale">
-            <RevenueChart />
-          </Paper>
-        </figure>
-      </div>
+      <figure className="m-0 flex flex-col gap-3 lg:col-span-6">
+        <ProofLabel label="PDF på skärm" meta='data-tone="signal"' />
+        <Paper>
+          <RevenueChart />
+        </Paper>
+      </figure>
+      <figure className="m-0 flex flex-col gap-3 lg:col-span-6">
+        <ProofLabel label="Samma diagram i gråskala" meta="filter: grayscale(1)" />
+        <Paper className="grayscale">
+          <RevenueChart />
+        </Paper>
+      </figure>
 
-      <div className="mt-4 overflow-hidden rounded-md border border-line">
+      <div className="overflow-hidden rounded-md border border-line lg:col-span-12">
         <p className="flex items-baseline justify-between gap-3 border-b border-line px-4 py-3 md:px-5">
           <span className="label text-muted">Kodning utan färg</span>
           <Code>--bl-signal: #111</Code>
@@ -287,7 +282,7 @@ export function PrintSection({ index }: { index: number }) {
           ))}
         </ul>
       </div>
-    </section>
+    </SpecSection>
   );
 }
 

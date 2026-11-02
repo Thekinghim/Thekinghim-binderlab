@@ -108,6 +108,27 @@ function safe(v: bigint): number {
 }
 
 // ---------------------------------------------------------------------------
+// Inställningar
+// ---------------------------------------------------------------------------
+
+/**
+ * Ett heltal ≥ `min` från inställningarna, eller `fallback` när värdet saknas. Kastar
+ * `DomainError('invalid_input')` med etiketten i meddelandet annars.
+ */
+export function intOption(
+  value: number | undefined,
+  fallback: number,
+  label: string,
+  min: number,
+): number {
+  const v = value ?? fallback;
+  if (!Number.isSafeInteger(v) || v < min) {
+    throw new DomainError("invalid_input", `${label} måste vara ett heltal ≥ ${min}, fick ${v}.`);
+  }
+  return v;
+}
+
+// ---------------------------------------------------------------------------
 // Bidrag per order
 // ---------------------------------------------------------------------------
 

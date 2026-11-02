@@ -2,7 +2,7 @@
  * CSV → rader med radnummer (papaparse). Hanterar BOM, avgränsarna , ; och
  * tab (gissas om den inte anges), citattecken, radbrytningar inom citat,
  * blandade radslut och tomma rader. Avkodar UTF-8, och Windows-1252 om filen
- * inte är giltig UTF-8 (Excel-export).
+ * inte är UTF-8 alls (Excel-export). En trasig UTF-8-fil avvisas.
  *
  * Radnumren är filens radnummer (rubriken på rad 1), som i ett kalkylblad,
  * så att felraderna i importloggen går att hitta i filen.
@@ -32,7 +32,78 @@ export const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
 const BOM = String.fromCharCode(0xfeff);
 
-/** Avkodar filens bytes till text (UTF-8, annars Windows-1252). */
+/**
+ * Går igenom hela filen som UTF-8. Returnerar antalet giltiga
+ * flerbytessekvenser (t.ex. "é" = C3 A9) och positionen för den första
+ * ogiltiga byten (-1 om filen är giltig UTF-8).
+ */
+export function scanUtf8(bytes: Uint8Array): { multibyte: number; firstInvalid: number } {
+  let multibyte = 0;
+  let firstInvalid = -1;
+  let i = 0;
+  const invalid = (): void => {
+    if (firstInvalid < 0) {
+      firstInvalid = i;
+    }
+    i += 1;
+  };
+  outer: while (i < bytes.length) {
+    const b = bytes[i] ?? 0;
+    if (b < 0x80) {
+      i += 1;
+      continue;
+    }
+    let len = 0;
+    let min = 0;
+    if (b >= 0xc2 && b <= 0xdf) {
+      len = 2;
+      min = 0x80;
+    } else if (b >= 0xe0 && b <= 0xef) {
+      len = 3;
+      min = 0x800;
+    } else if (b >= 0xf0 && b <= 0xf4) {
+      len = 4;
+      min = 0x10000;
+    } else {
+      invalid();
+      continue;
+    }
+    let cp = b & (0xff >> (len + 1));
+    for (let k = 1; k < len; k += 1) {
+      const c = bytes[i + k];
+      if (c === undefined || (c & 0xc0) !== 0x80) {
+        invalid();
+        continue outer;
+      }
+      cp = (cp << 6) | (c & 0x3f);
+    }
+    if (cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) {
+      invalid();
+      continue;
+    }
+    multibyte += 1;
+    i += len;
+  }
+  return { multibyte, firstInvalid };
+}
+
+function lineOfByte(bytes: Uint8Array, pos: number): number {
+  let line = 1;
+  for (let i = 0; i < pos && i < bytes.length; i += 1) {
+    if (bytes[i] === 0x0a) {
+      line += 1;
+    }
+  }
+  return line;
+}
+
+/**
+ * Avkodar filens bytes till text: UTF-8, eller Windows-1252 om filen inte är
+ * UTF-8 alls (Excel-export). En fil som har giltiga UTF-8-tecken (å, ä, ö, é
+ * ...) och dessutom en ogiltig byte är en trasig UTF-8-fil, inte Windows-1252:
+ * att avkoda den som Windows-1252 skulle göra "Pokémon" till "PokÃ©mon" i hela
+ * filen och skapa falska titlar och konflikter. Den avvisas med radnumret.
+ */
 export function decodeFile(content: string | Uint8Array): {
   text: string;
   encoding: CsvTable["encoding"];
@@ -43,11 +114,18 @@ export function decodeFile(content: string | Uint8Array): {
   if (content.byteLength > MAX_FILE_BYTES) {
     throw new ImportValidationError("Filen är för stor (högst 50 MB).");
   }
-  try {
+  const scan = scanUtf8(content);
+  if (scan.firstInvalid < 0) {
     return { text: new TextDecoder("utf-8", { fatal: true }).decode(content), encoding: "utf-8" };
-  } catch {
-    return { text: new TextDecoder("windows-1252").decode(content), encoding: "windows-1252" };
   }
+  if (scan.multibyte > 0) {
+    throw new ImportValidationError(
+      `Filen är UTF-8 men har ett ogiltigt tecken på rad ${lineOfByte(content, scan.firstInvalid)} ` +
+        `(byte ${scan.firstInvalid + 1}). Filen har troligen skadats eller sparats om. ` +
+        "Exportera orderlistan på nytt från Awish.",
+    );
+  }
+  return { text: new TextDecoder("windows-1252").decode(content), encoding: "windows-1252" };
 }
 
 const PAPA_ERROR_SV: Record<string, string> = {

@@ -6,6 +6,11 @@
  *   andel av intäkten = titelns intäkt utan pris / all intäkt i fönstret (bp)
  *   kronor i risk     = intäkt utan pris × 7 / 30 (intäkt per vecka utan vinstberäkning)
  *   nivå              = 'soon' om andelen är minst 10 %, annars 'later'
+ *   fingerprint       = nivå + titelns senaste prisändring (giltig från), eller '-' om inget pris finns
+ *
+ * Fingerprintet bygger på orsaken (inget pris gäller orderdagarna), inte på fönstrets datum.
+ * En avbockning gäller därför tills titeln blir viktigare (nivån går från 'later' till 'soon')
+ * eller ett inköpspris läggs in eller ändras, inte bara till nästa dag.
  */
 
 import {
@@ -15,6 +20,7 @@ import {
   ratioBp,
   summarizeLedger,
   type IsoDate,
+  type PurchasePrice,
 } from "@/domain";
 import { evidence, links } from "./common";
 import { HORIZON_DAYS, urgencyOf, type TodoContext } from "./context";
@@ -23,6 +29,23 @@ import type { TodoItem, TodoLevel } from "./types";
 
 /** Andel av intäkten (bp) från vilken punkten får nivån 'soon'. */
 export const MISSING_PRICE_SOON_BP = 1_000;
+
+/**
+ * Fingerprint för en punkt om saknat inköpspris: nivån plus det senaste `validFrom` bland
+ * titelns inköpspriser ('-' om titeln saknar pris helt). Ändras inte från dag till dag så
+ * länge orsaken är densamma.
+ */
+export function missingPriceFingerprint(
+  level: TodoLevel,
+  prices: readonly PurchasePrice[],
+  titleId: string,
+): string {
+  let latest: IsoDate | null = null;
+  for (const p of prices) {
+    if (p.titleId === titleId && (latest === null || p.validFrom > latest)) latest = p.validFrom;
+  }
+  return `${level}|${latest ?? "-"}`;
+}
 
 /** Punkter för titlar utan inköpspris. */
 export function missingPriceTodos(ctx: TodoContext): TodoItem[] {
@@ -63,7 +86,7 @@ export function missingPriceTodos(ctx: TodoContext): TodoItem[] {
     const acc = unpricedOrders.get(t.titleId);
     return {
       key: `missing-price:${t.titleId}`,
-      fingerprint: t.firstDate,
+      fingerprint: missingPriceFingerprint(level, input.prices, t.titleId),
       kind: "missing-price",
       level,
       urgency: urgencyOf(level, atStakeOre),
@@ -72,8 +95,8 @@ export function missingPriceTodos(ctx: TodoContext): TodoItem[] {
       title: `Lägg in inköpspris för ${name}`,
       detail:
         `${name} står för ${pct(shareBp)} av intäkten ${periodText(period)} ` +
-        `(${kr(t.revenueOre)}, ${plural(t.orders, "order", "order")}) men saknar inköpspris, ` +
-        `så de orderna räknas inte in i vinsten.`,
+        `(${kr(t.revenueOre)}, ${plural(t.orders, "order", "order")}) men saknar inköpspris ` +
+        `och räknas därför inte in i vinsten.`,
       evidence: evidence({
         rule: `Titeln har order de senaste ${options.unpricedWindowDays} dagarna utan inköpspris på orderdagen.`,
         period,

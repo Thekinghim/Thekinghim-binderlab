@@ -51,7 +51,7 @@ const kinds: Record<StateKind, KindSpec> = {
   "no-results": { prefix: "0 träffar", glyph: "neutral", appendCode: false, role: "status" },
   error: { prefix: "Fel", glyph: "critical", appendCode: true, role: "alert" },
   "loading-failed": { prefix: "Ej laddad", glyph: "critical", appendCode: true, role: "alert" },
-  offline: { prefix: "Offline", glyph: "offline", appendCode: true, role: "status" },
+  offline: { prefix: "Ur drift", glyph: "offline", appendCode: true, role: "status" },
   denied: { prefix: "Saknar behörighet", glyph: "warning", appendCode: true, role: "status" },
   "not-configured": {
     prefix: "Ej konfigurerad",

@@ -199,6 +199,16 @@ export type TimelineKind =
   | "incident_opened"
   | "incident_closed";
 
+/**
+ * Underlag för en rad i tidslinjen: som Evidence, plus id för händelsen raden bygger på, så att
+ * UI kan länka till maskinhändelsen, lagerhändelsen eller ärendet.
+ */
+export interface TimelineEvidence extends Evidence {
+  readonly signalIds?: string[];
+  readonly stockEventIds?: string[];
+  readonly incidentIds?: string[];
+}
+
 /** En rad i tidslinjen. */
 export interface TimelineEntry {
   /** Stabil nyckel, t.ex. 'sales:2026-11-02T13' eller 'stock:<id>'. */
@@ -215,7 +225,7 @@ export interface TimelineEntry {
   /** Positiv för påfyllning, negativ för svinn och försäljning; 0 annars. */
   readonly packs: number;
   readonly severity: "info" | "warning" | "critical";
-  readonly evidence: Evidence;
+  readonly evidence: TimelineEvidence;
 }
 
 /** Hur försäljning visas i tidslinjen. */

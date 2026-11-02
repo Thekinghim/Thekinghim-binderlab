@@ -4,7 +4,8 @@
  * Godkänt: "170", "170.00", "170,00", "170.5", "1 234,50", "1,234.50",
  * "1.234,50", "1 234", "Amount: 170.00", "SEK 170", "170 kr", "170:-".
  * En cell med flera märkta belopp ("Amount: 170.00\nDiscount: 0.00") ger
- * beloppet märkt "Amount:".
+ * beloppet märkt exakt "Amount:" eller "Order Amount:" (inte "Discount
+ * Amount:", "Refund Amount:" eller "Paid Amount:").
  *
  * Nekas: negativa belopp, fler än två decimaler, tvetydiga tal som "1,234"
  * (tusental eller tre decimaler?), andra valutor och allt annat som inte är
@@ -27,15 +28,30 @@ function fail(message: string): AmountResult {
   return { ok: false, message };
 }
 
-/** Plockar ut beloppet märkt "Amount:" ur en cell med flera märkta belopp. */
-function extractLabelled(text: string): string {
-  const match = /(?:^|[\s,;])(?:order\s*)?amount\s*[:：]\s*([^\n\r;|]*)/i.exec(text);
-  if (match) {
-    // Stanna vid nästa etikett på samma rad ("Amount: 170.00 Paid: 170.00").
-    const value = match[1] ?? "";
-    return value.replace(/\s+[A-Za-z][A-Za-z ]*[:：].*$/, "");
+/**
+ * Plockar ut beloppet märkt exakt "Amount:" eller "Order Amount:" ur en cell
+ * med flera märkta belopp. Etiketten måste stå först på sin rad i cellen (eller
+ * efter ; eller |), så att "Discount Amount:", "Refund Amount:" och
+ * "Paid Amount:" aldrig tas för orderbeloppet. Finns flera sådana etiketter
+ * med olika värden är cellen tvetydig och blir en felrad.
+ */
+function extractLabelled(text: string): { ok: true; text: string } | { ok: false } {
+  const values: string[] = [];
+  for (const segment of text.split(/[\n\r;|]/)) {
+    const match = /^\s*(?:order\s*)?amount\s*[:：]\s*(.*)$/i.exec(segment);
+    if (match) {
+      // Stanna vid nästa etikett på samma rad ("Amount: 170.00 Paid: 170.00").
+      values.push((match[1] ?? "").replace(/\s+[A-Za-z][A-Za-z ]*[:：].*$/, "").trim());
+    }
   }
-  return text;
+  if (values.length === 0) {
+    return { ok: true, text };
+  }
+  const distinct = [...new Set(values)];
+  if (distinct.length > 1) {
+    return { ok: false };
+  }
+  return { ok: true, text: distinct[0] ?? "" };
 }
 
 function stripCurrency(text: string): string | null {
@@ -61,7 +77,11 @@ export function parseAmountOre(input: string | null | undefined): AmountResult {
     return fail("Belopp saknas.");
   }
 
-  const stripped = stripCurrency(extractLabelled(original));
+  const labelled = extractLabelled(original);
+  if (!labelled.ok) {
+    return fail(`Flera olika belopp märkta "Amount:" i "${original.trim()}".`);
+  }
+  const stripped = stripCurrency(labelled.text);
   if (stripped === null) {
     return fail(`Okänd valuta eller text i beloppet "${original.trim()}".`);
   }

@@ -4,7 +4,8 @@ import { useRouter } from "next/navigation";
 import { useTransition, type ReactNode } from "react";
 import { AppShell } from "@/components/shell/app-shell";
 import type { Role } from "@/components/shell/nav";
-import type { ShellOrganization, ShellUser } from "@/components/shell/side-nav";
+import type { ShellMachine, ShellStore } from "@/components/shell/period-bar";
+import type { ShellOrganization, ShellUser, SyncState } from "@/components/shell/side-nav";
 import { useToast } from "@/components/ui/toast";
 import { logout, switchOrganization } from "@/server/actions/auth";
 
@@ -18,12 +19,24 @@ export function AppFrame({
   user,
   organizations,
   activeOrganizationId,
+  todoCount,
+  syncedAt,
+  syncState,
+  stores,
+  machines,
+  earliest,
   children,
 }: {
   role: Role;
   user: ShellUser;
   organizations: ShellOrganization[];
   activeOrganizationId?: string;
+  todoCount?: number;
+  syncedAt?: string;
+  syncState?: SyncState;
+  stores: ShellStore[];
+  machines: ShellMachine[];
+  earliest?: Date;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -36,6 +49,12 @@ export function AppFrame({
       user={user}
       organizations={organizations}
       activeOrganizationId={activeOrganizationId}
+      todoCount={todoCount}
+      syncedAt={syncedAt}
+      syncState={syncState}
+      stores={stores}
+      machines={machines}
+      earliest={earliest}
       onOrganizationChange={(id) =>
         startTransition(async () => {
           const result = await switchOrganization(id);

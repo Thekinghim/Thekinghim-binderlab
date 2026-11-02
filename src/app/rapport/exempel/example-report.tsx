@@ -35,6 +35,7 @@ import {
   formatWeekdayDay,
 } from "@/lib/format";
 import {
+  MONTHLY_RENT,
   OPEN_HOURS,
   RENT_SHARE,
   availability,
@@ -50,6 +51,7 @@ import {
   revenueByDay,
   revenueByDayPrev,
   revenueExVat,
+  monthRank,
   seriesShare,
   totals,
   weekdayAverages,
@@ -84,12 +86,11 @@ const weekendDays = days.filter((d) => [0, 5, 6].includes(d.date.getDay())).leng
 
 const share = seriesShare();
 const leader = share[0];
-const pokemonWithoutRelease =
-  products
-    .filter((p) => p.series === "Pokémon" && p.id !== "p1")
-    .reduce((s, p) => s + p.revenue, 0) /
-    products.filter((p) => p.series === "Pokémon").reduce((s, p) => s + p.revenuePrev, 0) -
-  1;
+/** Intäktens förändring mot september utan släppet. */
+const withoutRelease =
+  products.filter((p) => p.id !== "p1").reduce((s, p) => s + p.revenue, 0) / totals.revenuePrev - 1;
+const rank = monthRank();
+const unpriced = products.filter((p) => p.cost === null);
 
 const weekdays = weekdayAverages();
 const strongest = weekdays.reduce((b, d, i) => (d.value > (weekdays[b]?.value ?? 0) ? i : b), 0);
@@ -113,12 +114,18 @@ const slowest = Math.max(...incidents.map((i) => i.end.getTime() - i.start.getTi
 const productColumns: ReportColumn<ProductRow>[] = [
   {
     key: "product",
-    header: "Produkt",
+    header: "Titel",
     width: "29%",
     render: (p) => p.product,
     total: "Totalt",
   },
-  { key: "series", header: "Serie", width: "21%", render: (p) => p.series },
+  {
+    key: "cost",
+    header: "Inköp",
+    width: "15%",
+    numeric: true,
+    render: (p) => (p.cost === null ? "saknas" : formatSek(p.cost)),
+  },
   { key: "price", header: "Pris", numeric: true, render: (p) => formatSek(p.price) },
   {
     key: "units",
@@ -266,13 +273,17 @@ function SummaryPage({ level }: { level: HeadingLevel }) {
         as={TITLE_TAG[level]}
         eyebrow={`${machine.id} · ${machine.placement}`}
         title={`${formatSek(totals.revenue)} i oktober.`}
-        aside={`Automatens bästa månad sedan installationen ${formatDate(machine.installed)}.`}
+        aside={
+          rank.rank === 1
+            ? `Automatens bästa månad sedan installationen ${formatDate(machine.installed)}.`
+            : `Plats ${rank.rank} av ${rank.months} månader sedan installationen ${formatDate(machine.installed)}.`
+        }
       />
 
       <ReportKpiRow
         items={[
           {
-            label: "Intäkt inkl. moms",
+            label: "Intäkt",
             value: formatInt(totals.revenue),
             unit: "kr",
             delta: formatDelta(totals.revenue / totals.revenuePrev - 1),
@@ -294,10 +305,10 @@ function SummaryPage({ level }: { level: HeadingLevel }) {
             context: "mot sep.",
           },
           {
-            label: "Omsättningshyra",
+            label: "Butiksersättning",
             value: formatInt(rent),
             unit: "kr",
-            context: `${formatPercent(RENT_SHARE, 0)} exkl. moms`,
+            context: `${formatPercent(RENT_SHARE, 0)} + hyra`,
           },
         ]}
       />
@@ -326,7 +337,7 @@ function SummaryPage({ level }: { level: HeadingLevel }) {
         <ol className="flex flex-col">
           {[
             `Släppet lördag 24 okt. sålde ${formatInt(release?.units ?? 0)} pack på ${releaseDays} dagar, ${formatPercent(releaseShare, 0)} av månadens intäkt.`,
-            `Utan släppet hade Pokémon minskat ${formatPercent(Math.abs(pokemonWithoutRelease), 0)} mot september. One Piece växte ${formatDelta((share.find((s) => s.label === "One Piece")?.value ?? 0) / (share.find((s) => s.label === "One Piece")?.prev ?? 1) - 1)}.`,
+            `Utan släppet hade intäkten ${withoutRelease < 0 ? "minskat" : "ökat"} ${formatPercent(Math.abs(withoutRelease), 0)} mot september. ${unpriced.map((p) => p.product).join(", ") || "Alla titlar"} ${unpriced.length ? "saknar ännu inköpspris och ingår inte i vinsten." : "har inköpspris."}`,
             emptySlot
               ? `Fack 3 var tomt i ${formatDuration(emptySlot.end.getTime() - emptySlot.start.getTime())} den 29–30 okt. Från november fylls automaten på var tredje dag i stället för var fjärde.`
               : "",
@@ -343,10 +354,11 @@ function SummaryPage({ level }: { level: HeadingLevel }) {
       </ReportSection>
 
       <ReportNote className="mt-auto">
-        Källa: Binderlab kassasystem och automatlogg för {machine.id}. Belopp inkl. 25 % moms om
-        inget annat anges. Heldragen linje: oktober. Streckad: september, per dag i månaden.
-        Omsättningshyra enligt avtal: {formatPercent(RENT_SHARE, 0)} av intäkt exkl. moms,{" "}
-        {formatSek(revenueExVat)}. Snittköp: intäkt delad på {formatInt(totals.purchases)} köp.
+        Källa: Awish-ordrar och automatlogg för {machine.id}. Moms och kortavgift är 0 enligt
+        inställningarna. Heldragen linje: oktober. Streckad: september, per dag i månaden.
+        Butiksersättning enligt avtal: {formatPercent(RENT_SHARE, 0)} provision på{" "}
+        {formatSek(revenueExVat)} plus hyra {formatSek(MONTHLY_RENT)}. Snittköp: intäkt delad på{" "}
+        {formatInt(totals.purchases)} ordrar, en per pack.
       </ReportNote>
     </ReportPage>
   );
@@ -361,7 +373,7 @@ function AssortmentPage({ level }: { level: HeadingLevel }) {
         index={3}
         eyebrow="Sortiment"
         title={`${leader?.label ?? ""} stod för ${formatPercent((leader?.value ?? 0) / totals.revenue, 0)} av intäkten.`}
-        aside={`Utan släppet 24 okt. hade serien minskat ${formatPercent(Math.abs(pokemonWithoutRelease), 0)} mot september.`}
+        aside={`Utan släppet 24 okt. hade intäkten ${withoutRelease < 0 ? "minskat" : "ökat"} ${formatPercent(Math.abs(withoutRelease), 0)} mot september.`}
       >
         <ReportShareBar
           segments={share.map((s) => ({
@@ -370,10 +382,10 @@ function AssortmentPage({ level }: { level: HeadingLevel }) {
             note: `${formatDelta(s.value / s.prev - 1)}`,
           }))}
           format={formatSek}
-          summary="Andel av intäkten per serie i oktober 2026."
+          summary="Andel av intäkten per titel i oktober 2026."
         />
         <ReportTable
-          caption="Försäljning per produkt i oktober 2026 med förändring mot september"
+          caption="Försäljning per titel i oktober 2026 med förändring mot september"
           columns={productColumns}
           rows={sorted}
           rowKey={(p) => p.id}
@@ -381,7 +393,7 @@ function AssortmentPage({ level }: { level: HeadingLevel }) {
         />
         <ReportNote className="flex items-center gap-[1.5mm]">
           <ReportMark />
-          Markerad rad: släppet 24 okt., samma som markerad dag i diagram 01. Priser inkl. moms.
+          Markerad rad: släppet 24 okt., samma som markerad dag i diagram 01. Pris i automaten.
         </ReportNote>
       </ReportSection>
 
@@ -512,7 +524,7 @@ type ExampleReportProps = {
   className?: string;
 };
 
-/** "Månadsrapport oktober 2026" till Westfield Arninge. Tre A4-sidor. */
+/** "Månadsrapport oktober 2026" till Nordstan (BL-001). Tre A4-sidor. */
 export function ExampleReport({
   headingLevel = 1,
   layout,

@@ -11,13 +11,22 @@
  *
  * Tysta timmar (lokal tid i prenumerationens tidszon): aviseringen skjuts upp till slutet av de
  * tysta timmarna, utom kritiska larm när `criticalDuringQuietHours` (standard sant).
+ * Tider (`deliveryWindows`, t.ex. vardagar 07–18): utanför dem skjuts aviseringen upp till
+ * nästa tids början; samma undantag för kritiska larm. Båda villkoren gäller samtidigt.
  * Alla aviseringar till samma användare med samma sändtid samlas i ett utskick.
  */
 
-import { DomainError } from "@/domain";
+import { addDays, dayOfWeek, DomainError, type IsoDate } from "@/domain";
 import { DEFAULT_TIME_ZONE, localParts, parseInstant } from "@/analytics/todos/time";
+import { localDayStartMs } from "@/analytics/health/calendar";
 import { SEVERITY_RANK } from "./rules";
-import type { AlertDelivery, AlertNotification, AlertSubscription, QuietHours } from "./types";
+import type {
+  AlertDelivery,
+  AlertNotification,
+  AlertSubscription,
+  DeliveryWindow,
+  QuietHours,
+} from "./types";
 
 const MINUTE_MS = 60_000;
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -68,6 +77,113 @@ export function quietEndsAt(nowMs: number, quiet: QuietHours, timeZone: string):
   return candidate;
 }
 
+function checkDays(w: DeliveryWindow): void {
+  if (w.days.length === 0 || w.days.some((d) => !Number.isInteger(d) || d < 1 || d > 7)) {
+    throw new DomainError(
+      "invalid_input",
+      `Ogiltiga veckodagar i tid: ${JSON.stringify(w.days)}. Väntat 1 (måndag) … 7 (söndag).`,
+    );
+  }
+}
+
+/**
+ * Tidpunkten för lokal tid `minutes` efter midnatt på `date`. Vid sommartidsskifte justeras en
+ * timme; ett klockslag som inte finns (vårens hopp) ger första tiden efter hoppet.
+ */
+function localTimeMs(date: IsoDate, minutes: number, timeZone: string): number {
+  const base = localDayStartMs(date, timeZone) + minutes * MINUTE_MS;
+  for (const adjust of [0, -60, 60]) {
+    const ms = base + adjust * MINUTE_MS;
+    const p = localParts(ms, timeZone);
+    if (p.date === date && minutesOf(p.time) === minutes) return ms;
+  }
+  return base;
+}
+
+/**
+ * Sant om tidpunkten ligger inom någon av tiderna. En tid över midnatt hör till startdagen,
+ * så fredag 18:00–02:00 omfattar lördag 01:00.
+ */
+export function inDeliveryWindow(
+  ms: number,
+  windows: readonly DeliveryWindow[],
+  timeZone: string,
+): boolean {
+  const p = localParts(ms, timeZone);
+  const local = minutesOf(p.time);
+  const today = dayOfWeek(p.date);
+  const yesterday = dayOfWeek(addDays(p.date, -1));
+  return windows.some((w) => {
+    checkDays(w);
+    const start = minutesOf(w.start);
+    const end = minutesOf(w.end);
+    if (start === end) return w.days.includes(today);
+    if (start < end) return w.days.includes(today) && local >= start && local < end;
+    return (
+      (w.days.includes(today) && local >= start) || (w.days.includes(yesterday) && local < end)
+    );
+  });
+}
+
+/**
+ * Första tidpunkten ≥ `nowMs` inom någon av tiderna: `nowMs` om den redan är inom en tid,
+ * annars början på nästa tid (söker 8 dagar framåt).
+ * nextDeliveryAt(lör 10:00, [mån–fre 07:00–18:00]) → mån 07:00.
+ */
+export function nextDeliveryAt(
+  nowMs: number,
+  windows: readonly DeliveryWindow[],
+  timeZone: string,
+): number {
+  if (windows.length === 0) {
+    throw new DomainError("invalid_input", "Minst en tid behövs när tider anges.");
+  }
+  if (inDeliveryWindow(nowMs, windows, timeZone)) return nowMs;
+  const today = localParts(nowMs, timeZone).date;
+  let best: number | null = null;
+  for (let d = 0; d <= 8; d++) {
+    const date = addDays(today, d);
+    const weekday = dayOfWeek(date);
+    for (const w of windows) {
+      if (!w.days.includes(weekday)) continue;
+      const ms = localTimeMs(date, minutesOf(w.start), timeZone);
+      if (ms >= nowMs && (best === null || ms < best)) best = ms;
+    }
+    if (best !== null) return best;
+  }
+  throw new DomainError(
+    "invalid_input",
+    "Hittade ingen tid för aviseringar de närmaste 8 dagarna.",
+  );
+}
+
+/**
+ * Sändtid för en prenumeration: första tidpunkten ≥ nu som varken är inom de tysta timmarna
+ * eller utanför tiderna. Kritiska larm skickas direkt när `criticalDuringQuietHours` (standard
+ * sant).
+ */
+export function sendTimeFor(
+  n: Pick<AlertNotification, "severity">,
+  s: AlertSubscription,
+  nowMs: number,
+): number {
+  if (n.severity === "critical" && s.criticalDuringQuietHours !== false) return nowMs;
+  const tz = s.timeZone ?? DEFAULT_TIME_ZONE;
+  const windows = s.deliveryWindows ?? null;
+  let t = nowMs;
+  // Växla mellan villkoren tills båda håller (några varv räcker; tak mot oändlig loop).
+  for (let i = 0; i < 16; i++) {
+    const afterQuiet = s.quietHours ? quietEndsAt(t, s.quietHours, tz) : t;
+    const afterWindow = windows ? nextDeliveryAt(afterQuiet, windows, tz) : afterQuiet;
+    if (afterWindow === t) return t;
+    t = afterWindow;
+  }
+  throw new DomainError(
+    "invalid_input",
+    "Tysta timmar och tider överlappar så att ingen sändtid finns.",
+  );
+}
+
 /** Sant om aviseringen ska gå till prenumerationen (utan hänsyn till tysta timmar). */
 export function matchesSubscription(n: AlertNotification, s: AlertSubscription): boolean {
   if (s.active === false) return false;
@@ -102,11 +218,9 @@ export function routeNotifications(
   // användare → incident+orsak → (sändtid, avisering)
   const perUser = new Map<string, Map<string, { sendAt: number; n: AlertNotification }>>();
   for (const s of subscriptions) {
-    const tz = s.timeZone ?? DEFAULT_TIME_ZONE;
     for (const n of notifications) {
       if (!matchesSubscription(n, s)) continue;
-      const bypass = n.severity === "critical" && s.criticalDuringQuietHours !== false;
-      const sendAt = s.quietHours && !bypass ? quietEndsAt(nowMs, s.quietHours, tz) : nowMs;
+      const sendAt = sendTimeFor(n, s, nowMs);
       let user = perUser.get(s.userId);
       if (!user) {
         user = new Map();

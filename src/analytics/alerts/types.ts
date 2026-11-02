@@ -82,6 +82,12 @@ export interface AlertIncident {
   readonly lastSeenAt: string;
   readonly closedAt: string | null;
   readonly lastNotifiedAt: string | null;
+  /**
+   * Allvaret i den senaste aviseringen (inte 'resolved'). Skärpning aviseras bara när allvaret
+   * blir högre än detta, så att fladder mellan t.ex. misstänkt fel och offline inte larmar varje
+   * gång allvaret går upp igen. `null` = inget aviserat.
+   */
+  readonly notifiedSeverity: AlertSeverity | null;
   readonly notifyCount: number;
   /** Antal utvärderingar där problemet fanns. */
   readonly occurrences: number;
@@ -93,6 +99,12 @@ export interface AlertIncident {
   readonly acknowledgedBy: string | null;
   /** Senaste gången 'resolved' aviserades. */
   readonly resolvedNotifiedAt: string | null;
+  /**
+   * Nyckeln till incidenten som förklarar det här larmet, om det ströks utan avisering (t.ex.
+   * låg dag när automaten var offline). Strukna engångslarm sparas stängda, så att samma
+   * nyckel inte larmar i en senare körning.
+   */
+  readonly suppressedBy: string | null;
 }
 
 /** En avisering om en incident. */
@@ -127,6 +139,8 @@ export interface ReconcileOptions {
    * Standard: alla.
    */
   readonly evaluatedGroups?: readonly AlertGroup[];
+  /** Tidszon för affärsdatum (låg dag jämförs med incidenter under dagen). Standard 'Europe/Stockholm'. */
+  readonly timeZone?: string;
 }
 
 /** Resultat av `reconcileAlerts`. */
@@ -147,6 +161,18 @@ export interface QuietHours {
   readonly end: string;
 }
 
+/**
+ * Tid då en användare vill ha aviseringar, i lokal tid: veckodagar (1 = måndag … 7 = söndag)
+ * och klockslag [start, end). start > end betyder över midnatt och hör till startdagen
+ * ({ days: [5], start: '18:00', end: '02:00' } = fredag 18:00 till lördag 02:00).
+ * start = end betyder hela dygnet.
+ */
+export interface DeliveryWindow {
+  readonly days: readonly number[];
+  readonly start: string;
+  readonly end: string;
+}
+
 /** En användares prenumeration på larm. */
 export interface AlertSubscription {
   readonly userId: string;
@@ -156,9 +182,14 @@ export interface AlertSubscription {
   /** Lägsta allvar. Standard 'warning'. */
   readonly minSeverity?: AlertSeverity;
   readonly quietHours?: QuietHours | null;
-  /** Tidszon för tysta timmar. Standard 'Europe/Stockholm'. */
+  /**
+   * Tider då aviseringar skickas (t.ex. vardagar 07:00–18:00). Utanför dem skjuts aviseringen
+   * upp till nästa tid. `null`/utelämnat = alla tider. Tysta timmar gäller dessutom.
+   */
+  readonly deliveryWindows?: readonly DeliveryWindow[] | null;
+  /** Tidszon för tysta timmar och tider. Standard 'Europe/Stockholm'. */
   readonly timeZone?: string;
-  /** Kritiska larm skickas även under tysta timmar. Standard true. */
+  /** Kritiska larm skickas även under tysta timmar och utanför tiderna. Standard true. */
   readonly criticalDuringQuietHours?: boolean;
   /** Avisering när problemet är löst. Standard false. */
   readonly notifyResolved?: boolean;

@@ -16,7 +16,11 @@ export function createAuthProvider(env: ServerEnv, cookies: CookieJar): AuthProv
     // Inloggningstjänstens egen tabell (auth.users), se dev-provider.ts.
     return new DevAuthProvider({ env, cookies, db: getServiceDb });
   }
-  return new SupabaseAuthProvider({ env, cookies });
+  return new SupabaseAuthProvider({
+    env,
+    cookies,
+    secureCookies: env.APP_ENV !== "development",
+  });
 }
 
 /** Providern för den aktuella förfrågan (Next:s cookies). */

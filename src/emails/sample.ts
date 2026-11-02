@@ -8,14 +8,22 @@ import {
   formatSek,
   formatSignedKronor,
 } from "@/lib/format";
-import { seeded } from "@/lib/random";
+import {
+  machines,
+  ordersIn,
+  outageEvents,
+  revenueByDay,
+  storeById,
+  stores,
+  totals,
+} from "@/app/design/sample-data";
 import type { DailyPoint, RecipientKind, ReportEmailProps } from "./report-content";
 
 /**
- * Exempelmejl för oktober 2026, ett per mottagartyp. Siffrorna hänger
- * ihop: delägarens resultat, bokhållarens verifikationer och butikens
- * automater bygger på samma månad. Deterministiska, så server och klient
- * ger samma HTML.
+ * Exempelmejl för oktober 2026, ett per mottagartyp. Siffrorna räknas ur
+ * samma Awish-ordrar som /design och månadsrapporten (tre automater i tre
+ * butiker, moms och kortavgift 0), så att alla visar samma belopp.
+ * Deterministiska, så server och klient ger samma HTML.
  */
 
 const OCTOBER = { start: new Date(2026, 9, 1), end: new Date(2026, 9, 31) };
@@ -25,178 +33,172 @@ const BASE_URL = "https://app.binderlab.se";
 /** "9 nov." med hårt mellanslag (månad 0–11). */
 const day = (y: number, m: number, d: number) => formatDate(new Date(y, m, d), { year: "never" });
 
-/** Dagsförsäljning för oktober som summerar exakt till `total`. Toppen lör 24 okt. (släpp). */
-function october(total: number, seed: number): DailyPoint[] {
-  const rnd = seeded(seed);
-  const weights = Array.from({ length: 31 }, (_, i) => {
-    const date = new Date(2026, 9, i + 1);
-    const dow = date.getDay();
-    const weekend = dow === 6 ? 1.45 : dow === 0 ? 1.22 : dow === 5 ? 1.16 : 1;
-    const release = i + 1 === 24 ? 1.7 : i + 1 === 25 ? 1.25 : 1;
-    const payday = i + 1 === 23 || i + 1 === 26 ? 1.12 : 1;
-    return weekend * release * payday * (0.86 + rnd() * 0.26);
-  });
-  const sum = weights.reduce((a, b) => a + b, 0);
-  const values = weights.map((w) => Math.round((w / sum) * total));
-  // Avrundningsresten läggs på sista dagen så att summan stämmer.
-  values[30] = (values[30] ?? 0) + total - values.reduce((a, b) => a + b, 0);
-  return values.map((value, i) => ({
+const OCT_RANGE = { start: OCTOBER.start, end: OCTOBER.end };
+const SEP_RANGE = { start: new Date(2026, 8, 1), end: new Date(2026, 8, 30) };
+const ALL = machines.map((_, i) => i);
+const kr = (ore: number) => ore / 100;
+
+/** Dagsförsäljning i oktober ur samma Awish-ordrar som /design. Toppen lör 24 okt. (släpp). */
+function october(idx: ReadonlyArray<number>): DailyPoint[] {
+  return revenueByDay(ordersIn(OCT_RANGE, idx), OCT_RANGE).map((value, i) => ({
     date: new Date(2026, 9, i + 1),
-    value,
-    note: i + 1 === 24 ? "släppdag för ny serie" : undefined,
+    value: Math.round(value),
+    note: i + 1 === 24 ? "släppdag för Black Bolt" : undefined,
   }));
 }
+
+const oct = totals(ordersIn(OCT_RANGE, ALL), OCT_RANGE, ALL);
+const sep = totals(ordersIn(SEP_RANGE, ALL), SEP_RANGE, ALL);
+const perMachine = machines.map((m, i) => {
+  const o = totals(ordersIn(OCT_RANGE, [i]), OCT_RANGE, [i]);
+  const p = totals(ordersIn(SEP_RANGE, [i]), SEP_RANGE, [i]);
+  return { m, store: storeById.get(m.storeId), o, p };
+});
+
+/* Nordstan (BL-001): öppettid 10–20 alla dagar, två driftstopp i oktober. */
+const nordstan = perMachine[0]!;
+const OPEN_MIN = 31 * 10 * 60;
+const outages = outageEvents.filter((e) => e.machineId === nordstan.m.id && e.from >= OCTOBER.start);
+const outageMin = outages.reduce((n, e) => n + (e.to.getTime() - e.from.getTime()) / 60_000, 0);
+const availability = 1 - outageMin / OPEN_MIN;
 
 const butik: ReportEmailProps = {
   recipientKind: "butik",
   recipientName: "Maria",
   period: OCTOBER,
-  summary: `Automaterna var i drift ${formatPercent(0.992)} av öppettiden.`,
+  summary: `Automaten var i drift ${formatPercent(availability)} av öppettiden.`,
   kpis: [
-    { label: "Försäljning", value: 18_420, unit: "kr", change: { value: 0.062 } },
-    { label: "Sålda pack", value: 256, unit: "count", change: { value: 0.08 } },
-    { label: "I drift", value: 0.992, unit: "share", change: { value: 0.004, kind: "points" } },
+    {
+      label: "Försäljning",
+      value: kr(nordstan.o.revenue),
+      unit: "kr",
+      change: { value: nordstan.o.revenue / nordstan.p.revenue - 1 },
+    },
+    {
+      label: "Sålda pack",
+      value: nordstan.o.orders,
+      unit: "count",
+      change: { value: nordstan.o.orders / nordstan.p.orders - 1 },
+    },
+    { label: "I drift", value: availability, unit: "share" },
     {
       label: "Avbrott",
-      value: 2,
+      value: outages.length,
       unit: "count",
-      note: `Totalt ${formatDuration(164 * 60_000).replace(/ /g, NBSP)}`,
+      note: `Totalt ${formatDuration(outageMin * 60_000).replace(/ /g, NBSP)}`,
       lowerIsBetter: true,
     },
   ],
   rows: [
     {
-      id: "BL-001",
-      name: "Entré Syd, plan 2",
-      revenue: 13_870,
-      packs: 190,
-      availability: 0.996,
-    },
-    {
-      id: "BL-015",
-      name: "Foodcourten, plan 1",
-      revenue: 4_550,
-      packs: 66,
-      availability: 0.981,
+      id: nordstan.m.code,
+      name: nordstan.m.name,
+      revenue: kr(nordstan.o.revenue),
+      packs: nordstan.o.orders,
+      availability,
     },
   ],
-  daily: october(18_420, 11),
+  daily: october([0]),
   details: {
-    siteName: "Mall of Scandinavia",
-    availability: 0.992,
+    siteName: nordstan.store?.name ?? "",
+    availability,
     incidents: [
       {
-        start: new Date(2026, 9, 14, 11, 20),
-        durationMs: (2 * 60 + 5) * 60_000,
-        cause: "kortterminalen tappade anslutningen",
+        start: outages[0]?.from ?? OCTOBER.start,
+        durationMs: outages[0] ? outages[0].to.getTime() - outages[0].from.getTime() : 0,
+        cause: "kortterminalen svarade inte, omstart på distans",
       },
       {
-        start: new Date(2026, 9, 27, 16, 2),
-        durationMs: 39 * 60_000,
-        cause: `fack${NBSP}4 fastnade, löst på plats`,
+        start: outages[1]?.from ?? OCTOBER.start,
+        durationMs: outages[1] ? outages[1].to.getTime() - outages[1].from.getTime() : 0,
+        cause: "strömavbrott i centrumet",
       },
     ],
-    busiest: "Lördagar 13–16",
-    refills: { count: 9, last: new Date(2026, 9, 30) },
+    busiest: "Lördagar 12–15",
+    refills: { count: 8, last: new Date(2026, 9, 30) },
     nextVisit: new Date(2026, 10, 3, 7, 30),
     contact: { name: "Erik Sand", phone: "070-174 06 42" },
   },
-  reportUrl: `${BASE_URL}/r/2026-10/mall-of-scandinavia`,
+  reportUrl: `${BASE_URL}/r/2026-10/nordstan`,
   attachments: [
     {
-      name: "omsattning-mos-2026-10.pdf",
+      name: "forsaljning-nordstan-2026-10.pdf",
       size: 96_000,
-      description: "Försäljning per dag inkl. moms, underlag för omsättningshyran",
+      description: "Försäljning per dag, underlag för provisionen",
     },
   ],
   reportId: "R-2026-10-03",
   generatedAt: GENERATED,
 };
 
+const purchasesKr = kr(oct.purchases);
+const firstDelivery = Math.round(purchasesKr * 0.55 * 100) / 100;
+
 const bokforing: ReportEmailProps = {
   recipientKind: "bokforing",
   recipientName: "Karin",
   period: OCTOBER,
-  summary: `Försäljningen var ${formatKronor(131_400)} inklusive moms.`,
+  summary: `Försäljningen var ${formatKronor(kr(oct.revenue))} från ${formatInt(oct.orders)} ordrar.`,
   kpis: [
     {
       label: "Försäljning",
-      value: 131_400,
+      value: kr(oct.revenue),
       unit: "kr",
-      note: `Inkl. moms · exkl. ${formatSek(105_120)}`,
+      note: `Moms 0 % · ${formatInt(oct.orders)} ordrar`,
     },
     {
-      label: "Utgående moms",
-      value: 26_280,
+      label: "Butiksersättning",
+      value: kr(oct.storeCompensation),
       unit: "kr",
-      note: `${formatPercent(0.25, 0)} på all försäljning`,
+      note: `Provision ${formatSek(kr(oct.commission))} · hyra ${formatSek(kr(oct.rent))}`,
     },
+    { label: "Inköp", value: purchasesKr, unit: "kr", note: "Två leveranser" },
     {
-      label: "Avgifter",
-      value: 12_689.63,
-      unit: "kr",
-      note: `Kort ${formatSek(2_889.63)} · platshyra ${formatSek(9_800)}`,
-    },
-    {
-      label: "Försäljningar",
-      value: 1_812,
+      label: "Ordrar",
+      value: oct.orders,
       unit: "count",
-      note: `Varav ${formatInt(3)} återbetalda`,
+      note: `Varav ${formatInt(oct.unpricedOrders)} utan inköpspris`,
     },
   ],
-  rows: [
-    { id: "BL-002", name: "Nordstan", location: "Göteborg", revenue: 14_980, revenueExVat: 11_984 },
-    {
-      id: "BL-001",
-      name: "Mall of Scandinavia",
-      location: "Solna",
-      revenue: 13_870,
-      revenueExVat: 11_096,
-    },
-    { id: "BL-004", name: "Emporia", location: "Malmö", revenue: 12_410, revenueExVat: 9_928 },
-    {
-      id: "BL-008",
-      name: "Kungens Kurva",
-      location: "Huddinge",
-      revenue: 11_260,
-      revenueExVat: 9_008,
-    },
-    { id: "BL-003", name: "Täby Centrum", location: "Täby", revenue: 10_940, revenueExVat: 8_752 },
-  ],
-  rowsTotal: 15,
+  rows: perMachine.map(({ m, store, o }) => ({
+    id: m.code,
+    name: store?.name ?? "",
+    location: store?.city,
+    revenue: kr(o.revenue),
+    revenueExVat: kr(o.revenue),
+  })),
   details: {
     company: "Binderlab AB",
-    transactions: 1_812,
+    transactions: oct.orders,
     entries: [
       {
         account: "3001",
-        text: `Försäljning varor, ${formatPercent(0.25, 0)} moms`,
-        amount: 105_120,
+        text: "Försäljning varor, 0 % moms",
+        amount: kr(oct.revenue),
         verification: "V1041",
       },
       {
-        account: "2611",
-        text: `Utgående moms, ${formatPercent(0.25, 0)}`,
-        amount: 26_280,
-        verification: "V1041",
+        account: "6590",
+        text: `Provision butiker, ${formatInt(stores.length)} avtal`,
+        amount: -kr(oct.commission),
+        verification: "V1042",
       },
-      { account: "6570", text: "Kortavgifter", amount: -2_889.63, verification: "V1042" },
       {
         account: "5010",
-        text: `Platshyra, ${formatInt(15)} platser`,
-        amount: -9_800,
+        text: "Lokalhyra, Nordstan och Väla Centrum",
+        amount: -kr(oct.rent),
         verification: "V1043",
       },
       {
         account: "4010",
         text: `Inköp av pack, leverans ${day(2026, 9, 6)}`,
-        amount: -31_400,
+        amount: -firstDelivery,
         verification: "V1044",
       },
       {
         account: "4010",
         text: `Inköp av pack, leverans ${day(2026, 9, 20)}`,
-        amount: -26_800,
+        amount: -(Math.round((purchasesKr - firstDelivery) * 100) / 100),
         verification: "V1045",
       },
     ],
@@ -205,110 +207,92 @@ const bokforing: ReportEmailProps = {
   attachments: [
     {
       name: "forsaljning-2026-10.csv",
-      size: 214_000,
-      description: `Alla ${formatInt(1_812)} försäljningar med tid, automat och belopp`,
-    },
-    {
-      name: "kortinlosen-2026-10.pdf",
-      size: 88_000,
-      description: "Avräkning från kortinlösaren",
+      size: 96_000,
+      description: `Alla ${formatInt(oct.orders)} Awish-ordrar med tid, automat och belopp`,
     },
     {
       name: "verifikationer-V1041-V1045.pdf",
       size: 1_240_000,
-      description: "Fakturor och kvitton för V1041–V1045",
+      description: "Fakturor och avtal för V1041–V1045",
     },
   ],
   reportId: "R-2026-10-01",
   generatedAt: GENERATED,
 };
 
+const MARGIN_GOAL = 0.35;
+const opening = 118_400;
+const outflow = Math.round(kr(oct.purchases + oct.storeCompensation));
+const inflow = Math.round(kr(oct.revenue));
+
 const delagare: ReportEmailProps = {
   recipientKind: "delagare",
   recipientName: "Johan",
   period: OCTOBER,
-  summary: `Intäkten ökade ${formatPercent(0.124)} mot september.`,
+  summary: `Intäkten ökade ${formatPercent(oct.revenue / sep.revenue - 1)} mot september.`,
   kpis: [
-    { label: "Intäkt", value: 131_400, unit: "kr", change: { value: 0.124 } },
-    { label: "Resultat", value: 31_080, unit: "kr", change: { value: 0.091 } },
+    {
+      label: "Intäkt",
+      value: kr(oct.revenue),
+      unit: "kr",
+      change: { value: oct.revenue / sep.revenue - 1 },
+    },
+    {
+      label: "Resultat",
+      value: kr(oct.profit),
+      unit: "kr",
+      change: { value: oct.profit / sep.profit - 1 },
+    },
     {
       label: "Marginal",
-      value: 0.2957,
+      value: oct.margin ?? 0,
       unit: "share",
-      change: { value: -0.009, kind: "points" },
-      alert: `Under målet ${formatPercent(0.3, 0)}`,
-    },
-    { label: `Kassa ${day(2026, 9, 31)}`, value: 151_529, unit: "kr", change: { value: 0.28 } },
-  ],
-  rows: [
-    {
-      id: "BL-002",
-      name: "Nordstan",
-      location: "Göteborg",
-      revenue: 14_980,
-      change: 0.182,
-      margin: 0.331,
+      change: { value: (oct.margin ?? 0) - (sep.margin ?? 0), kind: "points" },
+      ...((oct.margin ?? 0) < MARGIN_GOAL
+        ? { alert: `Under målet ${formatPercent(MARGIN_GOAL, 0)}` }
+        : {}),
     },
     {
-      id: "BL-001",
-      name: "Mall of Scandinavia",
-      location: "Solna",
-      revenue: 13_870,
-      change: 0.064,
-      margin: 0.318,
-    },
-    {
-      id: "BL-004",
-      name: "Emporia",
-      location: "Malmö",
-      revenue: 12_410,
-      change: 0.149,
-      margin: 0.302,
-    },
-    {
-      id: "BL-008",
-      name: "Kungens Kurva",
-      location: "Huddinge",
-      revenue: 11_260,
-      change: -0.031,
-      margin: 0.294,
-    },
-    {
-      id: "BL-003",
-      name: "Täby Centrum",
-      location: "Täby",
-      revenue: 10_940,
-      change: 0.097,
-      margin: 0.326,
+      label: `Kassa ${day(2026, 9, 31)}`,
+      value: opening + inflow - outflow,
+      unit: "kr",
+      change: { value: (inflow - outflow) / opening },
     },
   ],
-  rowsTotal: 15,
-  daily: october(131_400, 42),
+  rows: perMachine
+    .slice()
+    .sort((a, b) => b.o.revenue - a.o.revenue)
+    .map(({ m, store, o, p }) => ({
+      id: m.code,
+      name: store?.name ?? "",
+      location: store?.city,
+      revenue: kr(o.revenue),
+      change: p.revenue ? o.revenue / p.revenue - 1 : undefined,
+      margin: o.margin ?? undefined,
+    })),
+  daily: october(ALL),
   details: {
     result: [
-      { label: "Intäkt exkl. moms", amount: 105_120 },
-      { label: "Varukostnad", amount: -58_200 },
-      { label: "Kortavgifter", amount: -2_889.63 },
-      { label: "Platshyra", amount: -9_800 },
-      { label: "Svinn", amount: -3_150 },
-      { label: "Resultat", amount: 31_080.37, total: true },
+      { label: "Intäkt med inköpspris", amount: kr(oct.pricedRevenue) },
+      { label: "Varukostnad", amount: -kr(oct.purchases) },
+      { label: "Butiksersättning", amount: -kr(oct.storeCompensation) },
+      { label: "Resultat", amount: kr(oct.profit), total: true },
     ],
-    margin: 0.2957,
-    cash: { opening: 118_400, inflow: 128_510, outflow: 95_381, closing: 151_529 },
+    margin: oct.margin ?? 0,
+    cash: { opening, inflow, outflow, closing: opening + inflow - outflow },
     plan: [
+      {
+        title: "Lägg in inköpspris för Black Bolt",
+        detail: `${formatInt(oct.unpricedOrders)} ordrar (${formatSek(kr(oct.unpricedRevenue))}) ingår inte i resultatet förrän priset finns.`,
+      },
       {
         title: `Julinköp: ${formatInt(1_400)}${NBSP}pack`,
         detail: `Leverans ${day(2026, 10, 9)} Räcker till ${day(2026, 11, 13)} i oktobers försäljningstakt.`,
-        amount: 72_000,
+        amount: 42_000,
       },
       {
-        title: "Flytta BL-014 från Kista Galleria till Täby Centrum",
-        detail: `Kista Galleria sålde ${formatPercent(0.41, 0)} under snittet i oktober. Flytt ${day(2026, 10, 16)}`,
-        amount: 4_500,
-      },
-      {
-        title: `Höj priset på One Piece-pack från ${formatSek(79)} till ${formatSek(85)}`,
-        detail: `Gäller från ${day(2026, 10, 1)} Väntad effekt ${formatSignedKronor(2_100, { decimals: 0 })} i månaden.`,
+        title: "Fyll på BL-002 Mobilia oftare",
+        detail: `Fack 3 tömdes ${day(2026, 9, 31)} Påfyllning varannan dag i december.`,
       },
     ],
   },

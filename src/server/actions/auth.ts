@@ -26,7 +26,8 @@ import { createRateLimiter } from "../rate-limit";
 import { clientIp, resolveAppBaseUrl } from "../request-info";
 import { getSessionUser } from "../session";
 
-// 5 misslyckade försök per IP och e-postadress per 15 minuter (per serverinstans).
+// Per 15 minuter (per serverinstans): 5 försök per IP och e-post, 20 per konto
+// (ACCOUNT_LOGIN_LIMIT) och 5 per IP för ogiltiga adresser. Se loginFlow.
 const globalForLimiter = globalThis as typeof globalThis & {
   __binderlabLoginLimiter?: ReturnType<typeof createRateLimiter>;
 };

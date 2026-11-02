@@ -30,13 +30,7 @@
  * behålla sortimentet.
  */
 
-import {
-  assertPeriod,
-  DomainError,
-  type EconomicsSources,
-  type OrderLine,
-  type Period,
-} from "@/domain";
+import { assertPeriod, type EconomicsSources, type OrderLine, type Period } from "@/domain";
 import { fig, Ratio, signedKr } from "../expansion/common";
 import { nameLookup } from "../todos/common";
 import { krExact, periodText, plural } from "../todos/text";
@@ -48,6 +42,7 @@ import {
   tenthsOf,
   tenthsText,
   type MarketEvidence,
+  intOption,
 } from "../pricing/common";
 import type { NamedRef } from "../pricing/market";
 import { median } from "../pricing/robust";
@@ -141,14 +136,6 @@ export interface MachineAssortmentRecommendation {
   readonly evidence: MarketEvidence;
 }
 
-function int(value: number | undefined, fallback: number, label: string, min: number): number {
-  const v = value ?? fallback;
-  if (!Number.isSafeInteger(v) || v < min) {
-    throw new DomainError("invalid_input", `${label} måste vara ett heltal ≥ ${min}, fick ${v}.`);
-  }
-  return v;
-}
-
 interface Candidate {
   titleId: string;
   currentSlots: number;
@@ -181,11 +168,11 @@ function prefer(c: Candidate, gain: Ratio, best: Candidate | null, bestGain: Rat
 export function recommendAssortment(input: AssortmentInput): MachineAssortmentRecommendation[] {
   assertPeriod(input.period);
   const o = input.options ?? {};
-  const slotCapacity = int(o.slotCapacity, 10, "Pack per fack", 1);
-  const refillDays = int(o.refillIntervalDays, 7, "Dagar mellan påfyllningar", 1);
-  const minExposureDays = int(o.minExposureDays, 14, "Minsta exponering", 1);
-  const similarCount = int(o.similarCount, 3, "Antal liknande automater", 0);
-  const minEffect = int(o.minEffectPerWeekOre, 2_000, "Minsta effekt", 0);
+  const slotCapacity = intOption(o.slotCapacity, 10, "Pack per fack", 1);
+  const refillDays = intOption(o.refillIntervalDays, 7, "Dagar mellan påfyllningar", 1);
+  const minExposureDays = intOption(o.minExposureDays, 14, "Minsta exponering", 1);
+  const similarCount = intOption(o.similarCount, 3, "Antal liknande automater", 0);
+  const minEffect = intOption(o.minEffectPerWeekOre, 2_000, "Minsta effekt", 0);
   const capPerWeek = new Ratio(slotCapacity * 7, refillDays);
   const titleName = nameLookup(input.titles ?? []);
   const machineName = nameLookup(input.machines);
@@ -226,7 +213,7 @@ export function recommendAssortment(input: AssortmentInput): MachineAssortmentRe
   for (const machineId of machineIds) {
     const rows = rowsByMachine.get(machineId) ?? [];
     const currentSlotsTotal = rows.reduce((s, r) => s + r.currentSlots, 0);
-    const capacity = int(
+    const capacity = intOption(
       input.capacityByMachine?.[machineId],
       currentSlotsTotal,
       `Kapaciteten för ${machineId}`,

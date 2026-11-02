@@ -65,6 +65,29 @@ describe("dev-inloggningens spärr", () => {
     ).toThrow(/lokal databas/);
   });
 
+  it("vägrar produktionsbyggen och Vercel även med APP_ENV=development", () => {
+    for (const extra of [
+      { NODE_ENV: "production" },
+      { VERCEL: "1" },
+      { VERCEL_ENV: "preview" },
+      { NODE_ENV: "production", NEXT_PHASE: "phase-production-server" },
+    ]) {
+      expect(
+        () => assertDevAuthAllowed({ APP_ENV: "development", DATABASE_URL: LOCAL, ...extra }),
+        JSON.stringify(extra),
+      ).toThrow(DevAuthForbiddenError);
+    }
+    // Själva bygget (next build) lokalt får gå igenom; `next start` stoppas ovan.
+    expect(() =>
+      assertDevAuthAllowed({
+        APP_ENV: "development",
+        DATABASE_URL: LOCAL,
+        NODE_ENV: "production",
+        NEXT_PHASE: "phase-production-build",
+      }),
+    ).not.toThrow();
+  });
+
   it("kräver DEV_AUTH_SECRET", () => {
     expect(() => provider({ APP_ENV: "development", DATABASE_URL: LOCAL })).toThrow(
       /DEV_AUTH_SECRET/,

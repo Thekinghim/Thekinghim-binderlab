@@ -17,7 +17,7 @@
  * Order på dagar då titeln inte hade något fack räknas separat (`unassignedUnits`): de tyder
  * på att fackfördelningen inte är uppdaterad.
  *
- * Likhet mellan automater: försäljningsmixen (andel av automatens pack per titel, i bp)
+ * Likhet mellan automater: försäljningsmixen (andel av automatens alla sålda pack per titel)
  * jämförs. likhet = 10 000 − Σ |andel_a − andel_b| / 2. Samma mix = 10 000, inga gemensamma
  * titlar = 0.
  */
@@ -258,19 +258,20 @@ export interface MachineSimilarity {
 }
 
 /**
- * Försäljningsmix per automat: andel av automatens pack per titel som bråk.
- * Automater utan försäljning saknas.
+ * Försäljningsmix per automat: andel av automatens pack per titel som bråk (alla sålda pack,
+ * även på dagar utan fack enligt fackfördelningen). Automater utan försäljning saknas.
  */
 function salesMix(rows: readonly SlotPerformance[]): Map<string, Map<string, Ratio>> {
+  const sold = (r: SlotPerformance) => r.units + r.unassignedUnits;
   const totals = new Map<string, number>();
-  for (const r of rows) totals.set(r.machineId, (totals.get(r.machineId) ?? 0) + r.units);
+  for (const r of rows) totals.set(r.machineId, (totals.get(r.machineId) ?? 0) + sold(r));
   const mix = new Map<string, Map<string, Ratio>>();
   for (const r of rows) {
     const total = totals.get(r.machineId)!;
-    if (total === 0 || r.units === 0) continue;
+    if (total === 0 || sold(r) === 0) continue;
     let m = mix.get(r.machineId);
     if (!m) mix.set(r.machineId, (m = new Map()));
-    m.set(r.titleId, new Ratio(r.units, total));
+    m.set(r.titleId, new Ratio(sold(r), total));
   }
   return mix;
 }

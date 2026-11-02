@@ -48,6 +48,7 @@ export const MESSAGES = {
   invitationMissing: "Inbjudan finns inte.",
   invitationExpired: "Inbjudan har gått ut.",
   invitationAccepted: "Inbjudan har redan använts.",
+  invitationOtherEmail: "Inbjudan gäller en annan e-postadress.",
   notMember: "Du är inte medlem i organisationen.",
 } as const;
 
@@ -65,37 +66,59 @@ const loginInput = z.object({
   password: z.string().max(1024),
 });
 
+/** Misslyckade försök per konto (oavsett IP) per fönster. */
+export const ACCOUNT_LOGIN_LIMIT = 20;
+
 export interface LoginContext {
   provider: AuthProvider;
+  /** Gränsen per IP och e-post är limiterns `limit`. */
   limiter: RateLimiter;
   /** Klientens IP (x-forwarded-for), eller "okänd". */
   ip: string;
+  /** Gräns per konto oavsett IP; standard ACCOUNT_LOGIN_LIMIT. */
+  accountLimit?: number;
 }
 
+/**
+ * Inloggning med lösenord.
+ *
+ * Försöket räknas INNAN lösenordet prövas (i ett synkront steg), så
+ * parallella förfrågningar kan inte passera gränsen. Tre räknare:
+ * - IP + e-post (limiterns gräns),
+ * - kontot oavsett IP (ACCOUNT_LOGIN_LIMIT; skydd mot många IP-adresser),
+ * - bara IP för ogiltiga adresser, så att skräpförsök inte skapar nya nycklar.
+ * En lyckad inloggning nollställer IP + e-post och kontot.
+ */
 export async function loginFlow(ctx: LoginContext, raw: unknown): Promise<ActionResult> {
   const parsed = loginInput.safeParse(raw);
   if (!parsed.success || parsed.data.email === "" || parsed.data.password === "") {
     return { ok: false, error: MESSAGES.loginMissing };
   }
   const { email, password } = parsed.data;
-  const key = `${ctx.ip}|${email}`;
-  const gate = ctx.limiter.check(key);
+  if (!z.email().safeParse(email).success) {
+    const gate = ctx.limiter.consume([{ key: `login:ip:${ctx.ip}` }]);
+    return gate.allowed
+      ? { ok: false, error: MESSAGES.loginInvalid }
+      : { ok: false, error: tooManyAttemptsMessage(gate.retryAfterMs) };
+  }
+  const pairKey = `login:ip-email:${ctx.ip}|${email}`;
+  const accountKey = `login:account:${email}`;
+  const gate = ctx.limiter.consume([
+    { key: pairKey },
+    { key: accountKey, limit: ctx.accountLimit ?? ACCOUNT_LOGIN_LIMIT },
+  ]);
   if (!gate.allowed) {
     return { ok: false, error: tooManyAttemptsMessage(gate.retryAfterMs) };
   }
-  if (!z.email().safeParse(email).success) {
-    ctx.limiter.hit(key);
-    return { ok: false, error: MESSAGES.loginInvalid };
-  }
   const result = await ctx.provider.signInWithPassword(email, password);
   if (!result.ok) {
-    ctx.limiter.hit(key);
     return {
       ok: false,
       error: result.reason === "unavailable" ? MESSAGES.loginUnavailable : MESSAGES.loginInvalid,
     };
   }
-  ctx.limiter.reset(key);
+  ctx.limiter.reset(pairKey);
+  ctx.limiter.reset(accountKey);
   return { ok: true };
 }
 
@@ -221,8 +244,26 @@ export async function acceptInviteFlow(
   let cameFromEmailLink = false;
 
   if (!user && emailTokenHash && ctx.provider.completeEmailLink) {
+    // Skydd mot inloggnings-CSRF: mejllänken byts mot en session bara för en
+    // giltig inbjudan, och bara om sessionen gäller inbjudans e-postadress.
+    // Annars kan en länk med angriparens egen token_hash logga in offret som
+    // angriparen.
+    const lookup = await describe(token);
+    const lookupError = lookupMessage(lookup);
+    if (lookupError || lookup.status !== "valid") {
+      return { ok: false, error: lookupError ?? MESSAGES.invitationMissing };
+    }
+    // Lösenordet kontrolleras innan engångslänken förbrukas.
+    const earlyPasswordError = password ? validateNewPassword(password) : null;
+    if (earlyPasswordError) {
+      return { ok: false, error: earlyPasswordError };
+    }
     user = await ctx.provider.completeEmailLink(emailTokenHash, emailLinkType ?? "invite");
     cameFromEmailLink = user !== null;
+    if (user && !sameEmail(user.email, lookup.email)) {
+      await signOutQuietly(ctx);
+      return { ok: false, error: MESSAGES.invitationOtherEmail };
+    }
   }
 
   if (!user) {
@@ -249,24 +290,45 @@ export async function acceptInviteFlow(
   } else if (cameFromEmailLink && password && ctx.provider.setPassword) {
     const passwordError = validateNewPassword(password);
     if (passwordError) {
+      // Kontrollerat redan före completeEmailLink; kvar som skydd.
+      await signOutQuietly(ctx);
       return { ok: false, error: passwordError };
     }
     await ctx.provider.setPassword(password);
   }
 
   const sessionUser = user;
+  let failure: string;
   try {
     const organizationId = await withUserDbFor(sessionUser, async (tx) => {
       const result = await tx.execute(sql`select public.accept_invitation(${token}) as id`);
       return (Array.from(result)[0] as { id?: unknown } | undefined)?.id;
     });
-    if (typeof organizationId !== "string") {
-      return { ok: false, error: MESSAGES.invitationMissing };
+    if (typeof organizationId === "string") {
+      ctx.cookies.set(ACTIVE_ORG_COOKIE, organizationId, activeOrgCookieOptions(ctx.secureCookies));
+      return { ok: true, data: { organizationId } };
     }
-    ctx.cookies.set(ACTIVE_ORG_COOKIE, organizationId, activeOrgCookieOptions(ctx.secureCookies));
-    return { ok: true, data: { organizationId } };
+    failure = MESSAGES.invitationMissing;
   } catch (error) {
-    return { ok: false, error: dbErrorMessage(error) };
+    failure = dbErrorMessage(error);
+  }
+  // En session som skapades av mejllänken i just det här anropet lämnas
+  // inte kvar när inbjudan inte kunde tas emot.
+  if (cameFromEmailLink) {
+    await signOutQuietly(ctx);
+  }
+  return { ok: false, error: failure };
+}
+
+function sameEmail(a: string | undefined, b: string): boolean {
+  return typeof a === "string" && a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+async function signOutQuietly(ctx: AcceptContext): Promise<void> {
+  try {
+    await ctx.provider.signOut();
+  } catch {
+    // Utloggningen får inte dölja det egentliga felet.
   }
 }
 

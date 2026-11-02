@@ -11,6 +11,7 @@ import type { NextRequest, NextResponse } from "next/server";
 import type { ServerEnv } from "@/lib/env";
 
 import { DEV_SESSION_COOKIE, verifyDevSession } from "./session-token";
+import { supabaseCookieOptions } from "./supabase-cookies";
 import { createSupabaseJwtVerifier, remoteJwks } from "./supabase-jwt";
 
 export interface ProxySessionResult {
@@ -40,7 +41,9 @@ export async function checkProxySession(
   }
 
   let response = next(request);
+  const flags = supabaseCookieOptions(env.APP_ENV !== "development");
   const supabase = createServerClient(url, key, {
+    cookieOptions: flags,
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (cookiesToSet) => {
@@ -49,7 +52,12 @@ export async function checkProxySession(
         }
         response = next(request);
         for (const { name, value, options } of cookiesToSet) {
-          response.cookies.set(name, value, options);
+          response.cookies.set(name, value, {
+            ...options,
+            httpOnly: flags.httpOnly,
+            secure: flags.secure,
+            sameSite: flags.sameSite,
+          });
         }
       },
     },

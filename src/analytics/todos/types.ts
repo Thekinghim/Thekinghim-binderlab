@@ -11,7 +11,10 @@ import type { EconomicsSources, IsoDate, OrderLine, Period } from "@/domain";
 
 /** En order med betaltidpunkt. Tidpunkten behövs för regeln om automater som inte sålt på 48 timmar. */
 export interface AnalyticsOrder extends OrderLine {
-  /** Betaltidpunkt (ISO 8601 med Z eller offset). Saknas den räknas ordern inte i 48-timmarsregeln. */
+  /**
+   * Betaltidpunkt (ISO 8601 med Z eller offset). Saknas den eller är ogiltig räknas ordern i
+   * 48-timmarsregeln som såld i slutet av sin affärsdag (00:00 nästa dag, svensk tid).
+   */
   readonly orderedAt?: string;
 }
 
@@ -45,7 +48,8 @@ export interface StockLevelRef {
   readonly onHand: number;
   /**
    * Senaste påfyllning eller inventering (tidpunkt eller datum). Används som fingerprint:
-   * en avbockad påfyllningspunkt kommer tillbaka efter nästa påfyllning.
+   * en avbockad påfyllningspunkt kommer tillbaka efter nästa påfyllning. Saknas den används
+   * saldot, och punkten kommer då tillbaka redan efter nästa försäljning.
    */
   readonly lastRestockedAt?: string | null;
 }

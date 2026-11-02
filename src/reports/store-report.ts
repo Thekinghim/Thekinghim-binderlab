@@ -20,6 +20,7 @@
 import {
   CALC_VERSION,
   DomainError,
+  addDays,
   addMonths,
   applyBp,
   buildLedger,
@@ -122,7 +123,12 @@ export type CompensationModel = "commission" | "rent" | "commission_and_rent" | 
 
 /** Ett steg i uträkningen av butikens ersättning. */
 export interface CompensationStep {
-  readonly kind: "commission" | "no_agreement" | "rent" | "total";
+  /**
+   * `commission`: provision enligt ett avtal. `no_commission`: order när avtalet bara hade
+   * hyra (0 kr). `no_agreement`: order på dagar utan avtal (0 kr). Stegens underlag summerar
+   * därmed alltid till månadens intäkt exkl. moms.
+   */
+  readonly kind: "commission" | "no_commission" | "no_agreement" | "rent" | "total";
   /** Kort rubrik, t.ex. "Provision 10 % (1–30 nov.)". */
   readonly label: string;
   /** Uträkningen i klartext, t.ex. "10 % av 30 400 kr = 3 040 kr". */
@@ -498,7 +504,9 @@ interface CommissionSegment {
  * Provision: ett steg per avtal med provision som gällde någon dag i månaden, med
  * underlaget (belopp exkl. moms för order de dagarna). Provisionen avrundas per order,
  * så summan kan skilja något öre från "sats × underlag"; då står det i uträkningen.
- * Order på dagar utan avtal ger ingen provision och visas som ett eget steg.
+ * Order under ett avtal utan provision (bara hyra) visas som ett steg per sådant avtal, och
+ * order på dagar utan avtal som ett steg per sammanhängande följd av dagar utan avtal; båda
+ * ger 0 kr. Stegens underlag summerar därför alltid till månadens intäkt exkl. moms.
  *
  * Hyra: round(Σ månadshyra × dagar / dagar i månaden), avrundad en gång per månad.
  */
@@ -513,9 +521,9 @@ function buildCompensation(
   const inMonth = agreements.filter(
     (a) => intersectPeriods(period, { start: a.validFrom, end: a.validTo ?? period.end }) !== null,
   );
+  // Ett segment per avtal som gällde någon dag i månaden (med eller utan provision).
   const segments = new Map<string, CommissionSegment>();
   for (const a of inMonth) {
-    if ((a.commissionBp ?? 0) === 0) continue;
     const range = intersectPeriods(period, { start: a.validFrom, end: a.validTo ?? period.end })!;
     segments.set(a.validFrom, {
       agreement: a,
@@ -526,41 +534,58 @@ function buildCompensation(
       dates: [],
     });
   }
-  let noAgreement: CommissionSegment | null = null;
-  for (const e of entries) {
-    const date = e.order.businessDate;
-    const a =
-      inMonth.find((x) => x.validFrom <= date && (x.validTo === null || date <= x.validTo)) ?? null;
-    if (a === null) {
-      noAgreement ??= {
+  // Ett segment per sammanhängande följd av dagar utan avtal.
+  const gaps: CommissionSegment[] = [];
+  for (const day of eachDay(period.start, period.end)) {
+    if (agreementOn(inMonth, day)) continue;
+    const last = gaps[gaps.length - 1];
+    if (last && addDays(last.range.end, 1) === day)
+      last.range = { start: last.range.start, end: day };
+    else
+      gaps.push({
         agreement: null,
-        range: { start: date, end: date },
+        range: { start: day, end: day },
         orders: 0,
         base: 0,
         commission: 0,
         dates: [],
-      };
-      noAgreement.range = {
-        start: minDate(noAgreement.range.start, date),
-        end: maxDate(noAgreement.range.end, date),
-      };
-      noAgreement.orders++;
-      noAgreement.base += e.netRevenueOre;
-      noAgreement.dates.push(date);
-      continue;
-    }
-    const seg = segments.get(a.validFrom);
-    if (!seg) continue; // avtal utan provision: ingen provision (e.commissionOre är 0)
+      });
+  }
+  for (const e of entries) {
+    const date = e.order.businessDate;
+    const a = agreementOn(inMonth, date);
+    const seg = a
+      ? segments.get(a.validFrom)!
+      : gaps.find((g) => g.range.start <= date && date <= g.range.end)!;
     seg.orders++;
     seg.base += e.netRevenueOre;
     seg.commission += e.commissionOre;
+    if (!seg.dates.includes(date)) seg.dates.push(date);
   }
+  for (const seg of [...segments.values(), ...gaps]) seg.dates.sort();
 
   const steps: CompensationStep[] = [];
-  for (const seg of [...segments.values()].sort((x, y) =>
-    x.range.start < y.range.start ? -1 : 1,
-  )) {
-    const bp = seg.agreement!.commissionBp!;
+  const byStart = (x: CommissionSegment, y: CommissionSegment): number =>
+    x.range.start < y.range.start ? -1 : x.range.start > y.range.start ? 1 : 0;
+  for (const seg of [...segments.values()].sort(byStart)) {
+    const bp = seg.agreement!.commissionBp ?? 0;
+    if (bp === 0) {
+      if (seg.orders === 0) continue;
+      steps.push({
+        kind: "no_commission",
+        label: `Avtal utan provision (${periodText(seg.range)})`,
+        calculation: `${ordersText(seg.orders)} (${krText(seg.base, "always")} exkl. moms) såldes när avtalet bara hade hyra och ger ingen provision`,
+        amountOre: 0,
+        evidence: evidence({
+          rule: "Avtalet som gällde orderns dag har ingen provisionssats; ersättningen är bara hyra.",
+          scope: { period: seg.range, storeId },
+          orderCount: seg.orders,
+          figures: [fig("Underlag exkl. moms", seg.base, "ore"), fig("Provisionssats", 0, "bp")],
+          dates: seg.dates,
+        }),
+      });
+      continue;
+    }
     const exact = applyBp(seg.base, bp);
     const roundingNote =
       exact === seg.commission
@@ -583,18 +608,19 @@ function buildCompensation(
       }),
     });
   }
-  if (noAgreement) {
+  for (const gap of gaps) {
+    if (gap.orders === 0) continue;
     steps.push({
       kind: "no_agreement",
-      label: "Order utan avtal",
-      calculation: `${ordersText(noAgreement.orders)} (${krText(noAgreement.base, "always")}) såldes dagar utan avtal och ger ingen provision`,
+      label: `Order utan avtal (${periodText(gap.range)})`,
+      calculation: `${ordersText(gap.orders)} (${krText(gap.base, "always")}) såldes dagar utan avtal och ger ingen provision`,
       amountOre: 0,
       evidence: evidence({
-        rule: "Order på dagar då butiken saknade avtal ger ingen provision.",
-        scope: { period: noAgreement.range, storeId },
-        orderCount: noAgreement.orders,
-        figures: [fig("Belopp exkl. moms", noAgreement.base, "ore")],
-        dates: noAgreement.dates,
+        rule: "Order på dagar då butiken saknade avtal ger ingen provision. Perioden är en sammanhängande följd av dagar utan avtal.",
+        scope: { period: gap.range, storeId },
+        orderCount: gap.orders,
+        figures: [fig("Belopp exkl. moms", gap.base, "ore")],
+        dates: gap.dates,
       }),
     });
   }
@@ -692,6 +718,13 @@ function buildCompensation(
       dates: inMonth.map((a) => a.validFrom),
     }),
   };
+}
+
+/** Avtalet som gällde en viss dag, eller `null` om butiken saknade avtal den dagen. */
+function agreementOn(agreements: readonly StoreAgreement[], date: IsoDate): StoreAgreement | null {
+  return (
+    agreements.find((a) => a.validFrom <= date && (a.validTo === null || date <= a.validTo)) ?? null
+  );
 }
 
 /** Avtalens villkor i klartext; flera avtal under månaden räknas upp med sina datum. */
@@ -819,14 +852,34 @@ const FORBIDDEN_TEXT = /inköp|vinst|marginal|lönsam|ägar/i;
 /**
  * Kontrollerar att butiksrapporten inte innehåller inköp, marginal, vinst eller andra
  * butikers data: inga förbjudna nycklar eller ord någonstans (även nästlat), och varje
- * `storeId` i underlagen är butikens egen. Namn och hälsning (som skrivs av människor)
- * undantas från ordkontrollen. Kastar `DomainError` vid fynd.
+ * `storeId` i underlagen är butikens egen. Namn (butik, automat, titel) och hälsning skrivs
+ * av människor och undantas från ordkontrollen, även där de citeras i andra texter: en titel
+ * som heter "Vinsttröja" stoppar alltså inte rapporten, men ordet "vinst" utanför ett namn
+ * gör det. Kastar `DomainError` vid fynd.
  */
 export function assertStoreReportSafe(report: StoreReport): void {
   const own = report.store.id;
+  const isHumanText = (path: string): boolean =>
+    path.endsWith(".name") || path.endsWith(".greeting");
+  // Namn och hälsning i rapporten, längst först så att ett kort namn inte delar ett långt.
+  const names = new Set<string>();
+  const collect = (value: unknown, path: string): void => {
+    if (typeof value === "string") {
+      if (isHumanText(path) && value.length > 0) names.add(value);
+    } else if (Array.isArray(value)) {
+      value.forEach((v, i) => collect(v, `${path}[${i}]`));
+    } else if (value !== null && typeof value === "object") {
+      for (const [k, v] of Object.entries(value)) collect(v, `${path}.${k}`);
+    }
+  };
+  collect(report, "rapport");
+  const humanTexts = [...names].sort((a, b) => b.length - a.length);
+  const withoutNames = (text: string): string =>
+    humanTexts.reduce((t, n) => t.split(n).join(" "), text);
+
   const walk = (value: unknown, path: string): void => {
     if (typeof value === "string") {
-      if (!path.endsWith(".name") && !path.endsWith(".greeting") && FORBIDDEN_TEXT.test(value)) {
+      if (!isHumanText(path) && FORBIDDEN_TEXT.test(withoutNames(value))) {
         throw new DomainError(
           "invalid_input",
           `Butiksrapporten innehåller otillåten text i ${path}.`,

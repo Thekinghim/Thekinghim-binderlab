@@ -8,7 +8,14 @@
  *
  * Regler (docs/datamodell.md, avsnitt 4):
  * - En order ändras aldrig. Finns ordernumret redan och källraden avviker
- *   (annan source_hash) blir raden `conflict` i loggen; ordern lämnas orörd.
+ *   (något av fälten belopp, tid, titel, automat, betalmetod) blir raden
+ *   `conflict` i loggen; ordern lämnas orörd. Fälten jämförs efter
+ *   NFKC-normalisering, och ett fält som källan inte har med (t.ex. en export
+ *   utan Payment Method) jämförs inte.
+ * - En rad jämförs först mot den sparade ordern och bara om ordern inte finns
+ *   mot samma ordernummer längre upp i filen.
+ * - En ej betald rad vars ordernummer redan finns (sparad, eller betald längre
+ *   upp i filen) är en `conflict`: källan visar en betald order som obetald.
  * - Bara betalda order importeras. Ej betalda räknas men loggas inte rad för rad.
  * - Dubbletter räknas bara (inga import_rows).
  * - Okänd titel → ny titel + alias. Okänd automat → source_machines-rad utan
@@ -19,7 +26,15 @@ import { sql, type SQL } from "drizzle-orm";
 
 import type { Tx } from "@/db/client";
 
-import { machineKeyOf, type FetchResult, type RawOrder, type RawRowError } from "./adapter";
+import {
+  comparableText,
+  machineKeyOf,
+  normalizeText,
+  type FetchResult,
+  type OptionalField,
+  type RawOrder,
+  type RawRowError,
+} from "./adapter";
 import { sourceHash } from "./hash";
 import { businessDateOf, formatInZone } from "./zoned";
 
@@ -115,6 +130,8 @@ export interface Classification {
   inFileRefs: Array<{ result: ImportRowResult; externalId: string }>;
   titleByNormalized: Map<string, string>;
   rawByResult: Map<ImportRowResult, Record<string, string>>;
+  /** Valfria fält som källan saknar (jämförs inte). */
+  absent: ReadonlySet<OptionalField>;
 }
 
 const CHUNK = 1000;
@@ -273,13 +290,44 @@ async function closedMonths(tx: Tx, organizationId: string): Promise<Set<string>
   return new Set(found.map((r) => r.month));
 }
 
+type Comparable = Pick<
+  StoredOrder,
+  "amountOre" | "orderedAt" | "rawTitle" | "paymentMethod" | "machineKey"
+>;
+
+function comparableOf(order: RawOrder): Comparable {
+  return {
+    amountOre: order.amountOre,
+    orderedAt: order.paidAtUtc,
+    rawTitle: order.rawTitle,
+    paymentMethod: order.paymentMethod,
+    machineKey: machineKeyOf(order),
+  };
+}
+
+/**
+ * Är källraden samma order som den sparade (eller som en tidigare rad i
+ * filen)? Jämför de tolkade fälten, normaliserade som i sourceHash. Fält som
+ * källan saknar helt (absent) jämförs inte. En sparad order utan källautomat
+ * räknas som avvikande, eftersom automaten då inte går att jämföra.
+ */
+function sameOrder(stored: Comparable, row: RawOrder, absent: ReadonlySet<OptionalField>): boolean {
+  return (
+    stored.amountOre === row.amountOre &&
+    stored.orderedAt.getTime() === row.paidAtUtc.getTime() &&
+    comparableText(stored.rawTitle) === comparableText(row.rawTitle) &&
+    stored.machineKey !== null &&
+    normalizeText(stored.machineKey) === machineKeyOf(row) &&
+    (absent.has("paymentMethod") ||
+      comparableText(stored.paymentMethod) === comparableText(row.paymentMethod))
+  );
+}
+
 function describeDifference(
-  stored: Pick<
-    StoredOrder,
-    "amountOre" | "orderedAt" | "rawTitle" | "paymentMethod" | "machineKey"
-  >,
+  stored: Comparable,
   row: RawOrder,
   timezone: string,
+  absent: ReadonlySet<OptionalField> = new Set(),
 ): string {
   const diffs: string[] = [];
   if (stored.amountOre !== row.amountOre) {
@@ -290,14 +338,18 @@ function describeDifference(
       `tid ${formatInZone(stored.orderedAt, timezone)} → ${formatInZone(row.paidAtUtc, timezone)}`,
     );
   }
-  const norm = (s: string | null): string => (s ?? "").replace(/\s+/g, " ").trim();
-  if (norm(stored.rawTitle) !== norm(row.rawTitle)) {
+  if (comparableText(stored.rawTitle) !== comparableText(row.rawTitle)) {
     diffs.push(`produkt "${stored.rawTitle}" → "${row.rawTitle}"`);
   }
-  if (stored.machineKey !== null && stored.machineKey !== machineKeyOf(row)) {
+  if (stored.machineKey === null) {
+    diffs.push("den sparade ordern saknar källautomat");
+  } else if (normalizeText(stored.machineKey) !== machineKeyOf(row)) {
     diffs.push(`automat "${stored.machineKey}" → "${machineKeyOf(row)}"`);
   }
-  if (norm(stored.paymentMethod) !== norm(row.paymentMethod)) {
+  if (
+    !absent.has("paymentMethod") &&
+    comparableText(stored.paymentMethod) !== comparableText(row.paymentMethod)
+  ) {
     diffs.push(`betalmetod "${stored.paymentMethod ?? ""}" → "${row.paymentMethod ?? ""}"`);
   }
   return diffs.length > 0
@@ -361,16 +413,20 @@ export async function classify(
   fetched: FetchResult,
 ): Promise<Classification> {
   const tz = ctx.organizationTimezone;
+  const absent = new Set<OptionalField>(fetched.absentFields ?? []);
   const rows: ImportRowResult[] = [];
   const rawByResult = new Map<ImportRowResult, Record<string, string>>();
 
+  const paid: RawOrder[] = [];
+  const unpaid: Array<{ result: ImportRowResult; externalId: string | null }> = [];
   for (const error of fetched.errors) {
     const result = errorResult(error);
     rows.push(result);
     rawByResult.set(result, error.raw);
+    if (result.status === "not_paid") {
+      unpaid.push({ result, externalId: error.externalId ?? null });
+    }
   }
-
-  const paid: RawOrder[] = [];
   for (const order of fetched.rows) {
     if (order.isPaid) {
       paid.push(order);
@@ -378,6 +434,7 @@ export async function classify(
       const result = resultFromOrder(order, "not_paid", tz);
       rows.push(result);
       rawByResult.set(result, order.raw);
+      unpaid.push({ result, externalId: order.externalId });
     }
   }
 
@@ -385,11 +442,16 @@ export async function classify(
     ...new Set(paid.map((o) => o.rawTitle)),
   ]);
   const machines = await lookupSourceMachines(tx, ctx, [...new Set(paid.map(machineKeyOf))]);
-  const existing = await lookupOrders(tx, ctx, [...new Set(paid.map((o) => o.externalId))]);
+  const existing = await lookupOrders(tx, ctx, [
+    ...new Set([
+      ...paid.map((o) => o.externalId),
+      ...unpaid.flatMap((u) => (u.externalId === null ? [] : [u.externalId])),
+    ]),
+  ]);
   const closed = await closedMonths(tx, ctx.organizationId);
 
   const candidates: Candidate[] = [];
-  const firstInFile = new Map<string, Candidate | { order: RawOrder; hash: string }>();
+  const firstInFile = new Map<string, RawOrder>();
   const inFileRefs: Classification["inFileRefs"] = [];
   const newTitles = new Map<string, NewTitle>();
   const unknownMachines = new Map<string, UnknownMachine>();
@@ -398,7 +460,7 @@ export async function classify(
   for (const order of paid) {
     const hash = sourceHash(order);
     const title = titles.get(order.rawTitle);
-    const normalizedTitle = title?.normalized ?? order.rawTitle.toLowerCase();
+    const normalizedTitle = title?.normalized ?? comparableText(order.rawTitle).toLowerCase();
     const machineKey = machineKeyOf(order);
     const machine = machines.get(machineKey);
     const result = resultFromOrder(order, "new", tz);
@@ -409,49 +471,40 @@ export async function classify(
     rows.push(result);
     rawByResult.set(result, order.raw);
 
-    const earlier = firstInFile.get(order.externalId);
+    // 1. Mot den sparade ordern (den avgör alltid, även om samma ordernummer
+    //    finns längre upp i filen med avvikande värden).
     const stored = existing.get(order.externalId);
-    if (earlier) {
-      // Samma ordernummer längre upp i samma fil.
-      if (earlier.hash === hash) {
-        result.status = "duplicate";
-      } else {
-        result.status = "conflict";
-        result.message = describeDifference(
-          {
-            amountOre: earlier.order.amountOre,
-            orderedAt: earlier.order.paidAtUtc,
-            rawTitle: earlier.order.rawTitle,
-            paymentMethod: earlier.order.paymentMethod,
-            machineKey: machineKeyOf(earlier.order),
-          },
-          order,
-          tz,
-        ).replace("den sparade ordern", `rad ${earlier.order.sourceRowNumber} i samma fil`);
-      }
-      result.orderId = stored?.id ?? null;
-      if (!stored) {
-        inFileRefs.push({ result, externalId: order.externalId });
-      }
-      result.lateInClosedPeriod = false;
-      continue;
-    }
-
     if (stored) {
-      firstInFile.set(order.externalId, { order, hash });
       result.orderId = stored.id;
       result.lateInClosedPeriod = false;
-      if (stored.sourceHash === hash) {
+      if (sameOrder(stored, order, absent)) {
         result.status = "duplicate";
       } else {
         result.status = "conflict";
-        result.message = describeDifference(stored, order, tz);
+        result.message = describeDifference(stored, order, tz, absent);
       }
       continue;
     }
 
+    // 2. Mot samma ordernummer längre upp i samma fil (ordern sparas en gång).
+    const earlier = firstInFile.get(order.externalId);
+    if (earlier) {
+      if (sameOrder(comparableOf(earlier), order, absent)) {
+        result.status = "duplicate";
+      } else {
+        result.status = "conflict";
+        result.message = describeDifference(comparableOf(earlier), order, tz, absent).replace(
+          "den sparade ordern",
+          `rad ${earlier.sourceRowNumber} i samma fil`,
+        );
+      }
+      inFileRefs.push({ result, externalId: order.externalId });
+      result.lateInClosedPeriod = false;
+      continue;
+    }
+
+    firstInFile.set(order.externalId, order);
     const candidate: Candidate = { order, hash, normalizedTitle, result };
-    firstInFile.set(order.externalId, candidate);
     candidates.push(candidate);
     if (order.notes && order.notes.length > 0) {
       result.message = order.notes.join(" ");
@@ -487,6 +540,31 @@ export async function classify(
     }
   }
 
+  // Ej betalda rader för en order som finns (sparad, eller betald i filen):
+  // källan visar en betald order som obetald. Loggas som konflikt; ordern
+  // ändras inte och ingen ny order skapas.
+  for (const u of unpaid) {
+    if (u.externalId === null) {
+      continue;
+    }
+    const stored = existing.get(u.externalId);
+    const earlier = firstInFile.get(u.externalId);
+    if (!stored && !earlier) {
+      continue;
+    }
+    u.result.status = "conflict";
+    u.result.orderId = stored?.id ?? null;
+    const where = stored
+      ? "den sparade ordern"
+      : `rad ${earlier?.sourceRowNumber ?? "?"} i samma fil`;
+    u.result.message =
+      `Källan visar ordern som ej betald, men ${where} är betald. Ordern ändras inte.` +
+      (u.result.message ? ` ${u.result.message}` : "");
+    if (!stored) {
+      inFileRefs.push({ result: u.result, externalId: u.externalId });
+    }
+  }
+
   rows.sort((a, b) => a.rowNumber - b.rowNumber);
   const count = (s: RowStatus): number => rows.filter((r) => r.status === s).length;
   const summary: ImportSummary = {
@@ -508,6 +586,7 @@ export async function classify(
     inFileRefs,
     titleByNormalized,
     rawByResult,
+    absent,
   };
 }
 
@@ -703,13 +782,13 @@ export async function commitClassification(
       const s = stored.get(cand.order.externalId);
       cand.result.orderId = s?.id ?? null;
       cand.result.lateInClosedPeriod = false;
-      if (s && s.sourceHash === cand.hash) {
+      if (s && (s.sourceHash === cand.hash || sameOrder(s, cand.order, c.absent))) {
         cand.result.status = "duplicate";
         cand.result.message = null;
       } else {
         cand.result.status = "conflict";
         cand.result.message = s
-          ? describeDifference(s, cand.order, ctx.organizationTimezone)
+          ? describeDifference(s, cand.order, ctx.organizationTimezone, c.absent)
           : "Ordern kunde inte sparas.";
       }
     }

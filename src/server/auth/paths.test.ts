@@ -8,7 +8,6 @@ describe("öppna sökvägar", () => {
     "/inbjudan/abc123",
     "/design",
     "/design/komponenter",
-    "/design-system",
     "/datamodell",
     "/datamodell/order",
     "/rapport/2026-10/butik",
@@ -27,6 +26,8 @@ describe("öppna sökvägar", () => {
     "/rapport",
     "/rapporter",
     "/datamodeller",
+    "/design-system",
+    "/designer-admin",
     "/logga-in-x",
     "/api/export.csv.php",
   ])("%s kräver inloggning", (path) => {
@@ -54,6 +55,13 @@ describe("säkra omdirigeringar", () => {
   ])("stoppar %s", (next) => {
     expect(safeRedirectPath(next)).toBe("/");
   });
+
+  it.each(["/.//evil.example", "/%2e//evil.example", "/a/..//evil.example", "/x/../\\evil"])(
+    "punktsegment normaliseras aldrig till en extern adress (%s)",
+    (next) => {
+      expect(safeRedirectPath(next)).not.toMatch(/^\/[/\\]/);
+    },
+  );
 
   it("bygger inloggningslänken med next", () => {
     expect(loginRedirectPath("/lonsamhet", "?vy=butik")).toBe(
