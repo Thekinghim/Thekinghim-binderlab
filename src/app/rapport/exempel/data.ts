@@ -89,10 +89,7 @@ export function seriesShare() {
   }
   const rows = [...map.entries()].map(([label, v]) => ({ label, ...v }));
   const other = rows.filter((r) => r.label === "Övrigt");
-  return [
-    ...rows.filter((r) => r.label !== "Övrigt").sort((a, b) => b.value - a.value),
-    ...other,
-  ];
+  return [...rows.filter((r) => r.label !== "Övrigt").sort((a, b) => b.value - a.value), ...other];
 }
 
 // ---------------------------------------------------------------------------
@@ -118,9 +115,7 @@ function allocate(totalValue: number, weights: number[]): number[] {
   const exact = weights.map((w) => (w / sumW) * totalValue);
   const floors = exact.map(Math.floor);
   let rest = totalValue - floors.reduce((s, v) => s + v, 0);
-  const order = exact
-    .map((v, i) => ({ i, r: v - Math.floor(v) }))
-    .sort((a, b) => b.r - a.r);
+  const order = exact.map((v, i) => ({ i, r: v - Math.floor(v) })).sort((a, b) => b.r - a.r);
   for (const o of order) {
     if (rest <= 0) break;
     floors[o.i] = (floors[o.i] ?? 0) + 1;

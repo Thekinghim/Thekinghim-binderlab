@@ -23,7 +23,14 @@ export function ReportMark({ className, label }: { className?: string; label?: s
       aria-label={label}
       aria-hidden={label ? undefined : true}
     >
-      <rect x="0.5" y="0.5" width="10" height="10" fill="none" style={{ stroke: "var(--bl-signal)" }} />
+      <rect
+        x="0.5"
+        y="0.5"
+        width="10"
+        height="10"
+        fill="none"
+        style={{ stroke: "var(--bl-signal)" }}
+      />
       <rect x="3" y="3" width="5" height="5" style={{ fill: "var(--bl-signal)" }} />
     </svg>
   );
@@ -117,7 +124,13 @@ export type ReportKpi = {
 };
 
 /** Nyckeltal på rad: stora siffror, tunna avdelare, ingen ram. */
-export function ReportKpiRow({ items, className }: { items: ReadonlyArray<ReportKpi>; className?: string }) {
+export function ReportKpiRow({
+  items,
+  className,
+}: {
+  items: ReadonlyArray<ReportKpi>;
+  className?: string;
+}) {
   return (
     <dl
       className={cn("grid border-t border-line-strong", className)}
@@ -205,7 +218,12 @@ export function ReportTable<T>({
   const align = (c: ReportColumn<T>) => (c.numeric ? "text-right" : "text-left");
   const cell = "px-[2mm] first:pl-0 last:pr-0";
   return (
-    <table className={cn("w-full border-separate border-spacing-0 text-[11px] leading-[15px]", className)}>
+    <table
+      className={cn(
+        "w-full border-separate border-spacing-0 text-[11px] leading-[15px]",
+        className,
+      )}
+    >
       <caption className="sr-only">
         {caption}
         {continued ? " (fortsättning)" : ""}
@@ -255,7 +273,10 @@ export function ReportTable<T>({
                     )}
                   >
                     {ci === 0 && marked ? (
-                      <ReportMark className="absolute top-1/2 -left-[5mm] -translate-y-1/2" label="Markerad" />
+                      <ReportMark
+                        className="absolute top-1/2 -left-[5mm] -translate-y-1/2"
+                        label="Markerad"
+                      />
                     ) : null}
                     {c.render(row, ri)}
                   </Tag>

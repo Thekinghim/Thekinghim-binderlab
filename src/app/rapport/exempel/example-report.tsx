@@ -76,8 +76,10 @@ const releaseShare = release ? release.revenue / totals.revenue : 0;
 const releaseDays = 31 - 24 + 1;
 
 const weekendShare =
-  days.reduce((s, d, i) => s + ([0, 5, 6].includes(d.date.getDay()) ? (revenueByDay[i] ?? 0) : 0), 0) /
-  totals.revenue;
+  days.reduce(
+    (s, d, i) => s + ([0, 5, 6].includes(d.date.getDay()) ? (revenueByDay[i] ?? 0) : 0),
+    0,
+  ) / totals.revenue;
 const weekendDays = days.filter((d) => [0, 5, 6].includes(d.date.getDay())).length;
 
 const share = seriesShare();
@@ -177,7 +179,11 @@ const incidentColumns: ReportColumn<Incident>[] = [
     width: "13%",
     render: (i) => formatDuration(i.end.getTime() - i.start.getTime()),
   },
-  { key: "action", header: "Åtgärd", render: (i) => <span className="text-muted">{i.action}</span> },
+  {
+    key: "action",
+    header: "Åtgärd",
+    render: (i) => <span className="text-muted">{i.action}</span>,
+  },
 ];
 
 const refillColumns: ReportColumn<Refill>[] = [

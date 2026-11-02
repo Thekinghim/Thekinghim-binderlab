@@ -331,7 +331,11 @@ export function ReportLineChart({
               {highlight.label}
             </Text>
             {highlight.sub ? (
-              <Text x={hp[0] + (hlRight ? -6 : 6)} y={-M.top + 24} anchor={hlRight ? "end" : "start"}>
+              <Text
+                x={hp[0] + (hlRight ? -6 : 6)}
+                y={-M.top + 24}
+                anchor={hlRight ? "end" : "start"}
+              >
                 {highlight.sub}
               </Text>
             ) : null}
@@ -501,7 +505,8 @@ export function ReportShareBar({
               className="tnum absolute top-0 font-mono text-[8px] leading-none text-faint"
               style={{
                 left: `${t}%`,
-                transform: t === 0 ? undefined : t === 100 ? "translateX(-100%)" : "translateX(-50%)",
+                transform:
+                  t === 0 ? undefined : t === 100 ? "translateX(-100%)" : "translateX(-50%)",
               }}
             >
               {t}
@@ -514,7 +519,10 @@ export function ReportShareBar({
         style={{ gridTemplateColumns: `repeat(${segments.length}, minmax(0, 1fr))` }}
       >
         {segments.map((s, i) => (
-          <li key={s.label} className="flex min-w-0 flex-col gap-[0.8mm] border-t border-line pt-[1.8mm]">
+          <li
+            key={s.label}
+            className="flex min-w-0 flex-col gap-[0.8mm] border-t border-line pt-[1.8mm]"
+          >
             <span className="flex items-center gap-[1.5mm] text-[10.5px] leading-[14px] text-fg">
               <span
                 aria-hidden
