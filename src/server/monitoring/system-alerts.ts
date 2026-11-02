@@ -65,7 +65,15 @@ export function clip(text: string, max: number): string {
 
 /** Felmeddelandet som text (högst `max` tecken), utan stackspår. */
 export function errorText(error: unknown, max = 300): string {
-  if (error instanceof Error) return clip(error.message || error.name, max);
+  if (error instanceof Error) {
+    // Drizzle lindar databasens fel i "Failed query: <sql> params: …": visa databasens eget
+    // meddelande, inte frågan och dess parametrar.
+    const cause = (error as { cause?: unknown }).cause;
+    if (error.message.startsWith("Failed query:") && cause instanceof Error && cause.message) {
+      return clip(`Databasfel: ${cause.message}`, max);
+    }
+    return clip(error.message || error.name, max);
+  }
   if (typeof error === "string") return clip(error, max);
   return "Okänt fel";
 }

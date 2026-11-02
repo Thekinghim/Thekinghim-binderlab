@@ -36,5 +36,5 @@ export function StoreKpis({
         : { delta: k.delta.value, kind: "relative", invert: k.invert }
       : undefined,
   }));
-  return <KpiStrip items={strip} label={label} comparison={comparison} />;
+  return <KpiStrip items={strip} label={label} headingLevel={2} comparison={comparison} />;
 }

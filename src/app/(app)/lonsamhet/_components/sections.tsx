@@ -228,7 +228,7 @@ export function TrendSection({
             summary={trendSummary(series, unit.noun)}
           />
         )}
-        {notes.length > 0 ? <p className="meta mt-4 text-subtle">{notes.join(" ")}</p> : null}
+        {notes.length > 0 ? <p className="mt-4 text-xs text-subtle">{notes.join(" ")}</p> : null}
       </Panel>
     </section>
   );

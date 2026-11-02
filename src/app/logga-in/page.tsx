@@ -32,7 +32,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   if (!config.ok) return <ConfigMissing issues={config.issues} />;
   const params = await searchParams;
   const next = safeRedirectPath(first(params.next));
-  if (await getSessionUser()) {
+  // Svarar inte databasen visas formuläret ändå (statusraden säger att databasen är nere),
+  // i stället för en felsida: den inloggade skickas vidare när databasen svarar igen.
+  const user = await getSessionUser().catch(() => null);
+  if (user) {
     redirect(next);
   }
   const notice = LOGIN_NOTICES[first(params.fel) ?? ""];

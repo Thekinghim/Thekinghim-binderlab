@@ -70,15 +70,20 @@ export function EmailRenderer({ jobs }: { jobs: readonly EmailJob[] }) {
   }, [rendered]);
 
   if (!rendered) {
-    return <p className="meta text-subtle">Mejlen renderas …</p>;
+    return (
+      <p role="status" className="text-sm text-subtle">
+        Mejlen renderas …
+      </p>
+    );
   }
   return (
     <div className="flex flex-col gap-10">
       {rendered.map((r) => (
         <article key={r.job.recipientId} className="flex min-w-0 flex-col gap-3">
           <header className="flex min-w-0 flex-col gap-1">
-            <p className="label text-subtle">
-              Till {r.job.name} · <span className="normal-case">{r.job.email}</span>
+            <p className="flex flex-wrap items-baseline gap-x-2 text-subtle">
+              <span className="label">Till {r.job.name}</span>
+              <span className="meta">{r.job.email}</span>
             </p>
             <h2 className="text-md text-balance text-fg">{r.subject}</h2>
             <p className="text-sm text-muted">{r.preheader}</p>

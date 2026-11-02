@@ -48,7 +48,12 @@ export function AcceptForm({
   const check = (e: FormEvent<HTMLFormElement>) => {
     const problem = asksPassword ? passwordProblem(password, confirm, passwordRequired) : null;
     setLocal(problem ?? {});
-    if (problem) e.preventDefault();
+    if (problem) {
+      e.preventDefault();
+      // Fokus till fältet med fel, så att felet läses upp och kan rättas direkt.
+      const el = problem.field ? e.currentTarget.elements.namedItem(problem.field) : null;
+      if (el instanceof HTMLElement) el.focus();
+    }
   };
 
   return (

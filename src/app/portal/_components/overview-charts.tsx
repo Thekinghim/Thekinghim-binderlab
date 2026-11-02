@@ -39,7 +39,7 @@ export function PortalKpis({ kpis, comparison }: { kpis: PortalKpi[]; comparison
     trend: k.trend.length > 1 ? k.trend : undefined,
     primary: k.id === "revenue",
   }));
-  return <KpiStrip items={items} comparison={comparison} label="Månaden" />;
+  return <KpiStrip items={items} comparison={comparison} label="Månaden" headingLevel={2} />;
 }
 
 /** Försäljning per månad (staplar, värden i kronor). Vald månad annoteras, aldrig signal. */

@@ -322,5 +322,9 @@ Migreringen `20261102180000_drift_systemlarm.sql`: `alerts.alert_group` får vä
 (systemroll) när ett rapportutskick, månadsutkasten eller larmjobbet misslyckas, och stängs när
 samma sak lyckas; larmjobbet utvärderar inte familjen. En misslyckad import sparas som en rad i
 `imports` med status `failed` (och `storage_path` där filen skulle ha legat), och larmet kommer
-från regeln `import_failed`. Läsrätt som för övriga larm; påfyllaren ser dem inte. Se
+från regeln `import_failed`. Läsrätt som för övriga larm; påfyllaren ser dem inte. Ett nytt
+systemlarm läggs i `alert_deliveries` till prenumeranterna (samma regler som övriga larm) och
+räknar upp `alerts.notify_count`. Rapportlarmet stängs också när en nyare version av rapporten
+(samma typ, period och butik) skickas, och utkastlarmet när de saknade utkasten skapats för
+hand. Länken på importlarm går till importens sida (`/datakallor/importer/<id>`). Se
 `docs/operations.md`.

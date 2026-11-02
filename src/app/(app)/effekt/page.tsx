@@ -93,7 +93,7 @@ export default async function EffektPage({
           ]}
         />
         {data.dataStartInMonth ? (
-          <p className="font-mono text-xs break-words text-subtle">
+          <p className="text-sm break-words text-subtle">
             Vinst per automat i {monthLabel(monthOfDate(data.dataStartInMonth))} räknas från första
             ordern ({day(data.dataStartInMonth)}); dagar utan data räknas inte som automatdagar.
           </p>

@@ -13,6 +13,12 @@ const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 type FieldErrors = { email?: string; password?: string };
 
+/** Flyttar fokus till fältet med namnet `name` i formuläret. */
+function focusField(form: HTMLFormElement, name: string): void {
+  const el = form.elements.namedItem(name);
+  if (el instanceof HTMLElement) el.focus();
+}
+
 function value(form: HTMLFormElement, name: string): string {
   const v = new FormData(form).get(name);
   return typeof v === "string" ? v : "";
@@ -72,7 +78,11 @@ function PasswordForm({
       password: value(e.currentTarget, "password") === "" ? "Skriv ditt lösenord." : undefined,
     };
     setFieldErrors(next);
-    if (next.email || next.password) e.preventDefault();
+    if (next.email || next.password) {
+      e.preventDefault();
+      // Fokus till första fältet med fel, så att felet läses upp och kan rättas direkt.
+      focusField(e.currentTarget, next.email ? "email" : "password");
+    }
   };
   return (
     <form action={action} onSubmit={check} noValidate className="flex flex-col gap-5">
@@ -163,7 +173,10 @@ function MagicLinkForm({
   const check = (e: FormEvent<HTMLFormElement>) => {
     const problem = emailProblem(value(e.currentTarget, "email"));
     setEmailError(problem);
-    if (problem) e.preventDefault();
+    if (problem) {
+      e.preventDefault();
+      focusField(e.currentTarget, "email");
+    }
   };
   return (
     <form action={action} onSubmit={check} noValidate className="flex flex-col gap-5">

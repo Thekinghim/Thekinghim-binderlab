@@ -16,12 +16,15 @@ function codeOf(pathname: string | null): string | null {
 /** Okänd automat (notFound() i sidan): kod som inte finns eller id från en annan organisation. */
 export default function MachineNotFound() {
   const code = codeOf(usePathname());
+  const message = code ? `Automaten ${code} finns inte.` : "Automaten finns inte.";
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-4 pt-8 pb-16 md:px-8 md:pt-12">
+      {/* Sidans rubrik för skärmläsare; blocket nedan säger samma sak synligt. */}
+      <h1 className="sr-only">{message}</h1>
       <StateMessage
         kind="empty"
         code="Ingen automat"
-        message={code ? `Automaten ${code} finns inte.` : "Automaten finns inte."}
+        message={message}
         detail="Länken kan vara fel, eller så hör automaten till en annan organisation."
         action={{ label: "Alla automater", href: "/automater" }}
         className="rounded-md border border-line bg-surface"

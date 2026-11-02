@@ -68,7 +68,10 @@ export function ProfitBridge({
   const steps: WaterfallStep[] = [
     { label: L.revenue, value: revenue, name: `${L.revenue}, prissatta order` },
     { label: L.purchases, value: -purchases, name: "Inköp av pack", ...f("purchases") },
-    { label: L.fees, value: -fees, name: "Kortavgifter", ...f("fees") },
+    // Steg som är 0 ritas inte (design.md 7): med kortavgift 0 % hoppar bryggan över avgifterna.
+    ...(fees !== 0 || flag?.step === "fees"
+      ? [{ label: L.fees, value: -fees, name: "Kortavgifter", ...f("fees") }]
+      : []),
     {
       label: L.storeCompensation,
       short: "Butiksers.",

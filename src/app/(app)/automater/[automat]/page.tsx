@@ -456,7 +456,11 @@ function UnitEconomicsSection({ data }: { data: MachineDetailData }) {
         }
       />
       {u ? (
-        <MachineKpis items={unitEconomicsKpis(u)} label="Enhetsekonomi · till periodens slut" />
+        <MachineKpis
+          items={unitEconomicsKpis(u)}
+          label="Enhetsekonomi · till periodens slut"
+          headingLevel={3}
+        />
       ) : (
         <StateMessage
           kind="not-configured"

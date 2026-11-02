@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useLayoutEffect, useState } from "react";
+
 import { cn } from "@/lib/cn";
 import { Skeleton } from "./skeleton";
 import { KpiTrace } from "./kpi-trace";
@@ -34,6 +36,11 @@ type KpiStripProps = {
   items: ReadonlyArray<KpiItem>;
   /** Remsans etikett, t.ex. "Nyckeltal · 30 dagar" */
   label?: string;
+  /**
+   * Rubriknivå för etiketten. Standard h3 (remsan under en sektionsrubrik); h2 när
+   * remsan står direkt under sidans h1, så att rubrikordningen inte hoppar över en nivå.
+   */
+  headingLevel?: 2 | 3;
   /** Skrivs en gång, t.ex. "Jämfört med 3 sep. – 2 okt." */
   comparison?: string;
   loading?: boolean;
@@ -42,19 +49,22 @@ type KpiStripProps = {
 };
 
 // Statiska klasser så att Tailwind hittar dem.
+// Brytpunkterna gäller remsans egen bredd (container queries), inte fönstrets: bredvid
+// sidomenyn är innehållet 250 px smalare, och ett belopp får aldrig klippas (design.md 5.1).
+// @xl = 36 rem (576 px): huvudpersonen på egen rad. @4xl = 56 rem (896 px): en rad.
 const lgCols: Record<number, string> = {
-  2: "lg:grid-cols-2",
-  3: "lg:grid-cols-3",
-  4: "lg:grid-cols-4",
-  5: "lg:grid-cols-5",
-  6: "lg:grid-cols-6",
-  7: "lg:grid-cols-7",
+  2: "@4xl:grid-cols-2",
+  3: "@4xl:grid-cols-3",
+  4: "@4xl:grid-cols-4",
+  5: "@4xl:grid-cols-5",
+  6: "@4xl:grid-cols-6",
+  7: "@4xl:grid-cols-7",
 };
 const smCols: Record<number, string> = {
-  1: "sm:grid-cols-1",
-  2: "sm:grid-cols-2",
-  3: "sm:grid-cols-3",
-  4: "sm:grid-cols-4",
+  1: "@xl:grid-cols-1",
+  2: "@xl:grid-cols-2",
+  3: "@xl:grid-cols-3",
+  4: "@xl:grid-cols-4",
 };
 /** Vilka celler som står först i sin rad vid `cols` kolumner (för att ta bort vänsterluften). */
 function rowStarts(spans: ReadonlyArray<number>, cols: number): boolean[] {
@@ -85,11 +95,73 @@ const lineLastInPanel = "[[data-frame=panel]>:last-child>&]:border-b-0";
 const nestedReset = "[[data-frame=panel]_[data-frame=panel]>&]:my-0";
 
 const smSpan: Record<number, string> = {
-  1: "sm:col-span-1",
-  2: "sm:col-span-2",
-  3: "sm:col-span-3",
-  4: "sm:col-span-4",
+  1: "@xl:col-span-1",
+  2: "@xl:col-span-2",
+  3: "@xl:col-span-3",
+  4: "@xl:col-span-4",
 };
+
+export type KpiStripCellLayout = {
+  /** Kolumner i 2-kolumnsläget (under @xl). */
+  baseSpan: 1 | 2;
+  /** Kolumner i mellanläget (@xl). */
+  smSpan: number;
+  /** Cellen står först i sin rad (ingen vänsterluft) i respektive läge. */
+  baseStart: boolean;
+  smStart: boolean;
+  lgStart: boolean;
+};
+
+/**
+ * Remsans rutnät i de tre lägena, ren funktion (testas i kpi-strip.test.ts).
+ * - Under @xl: 2 kolumner; vid udda antal fyller sista cellen raden.
+ * - @xl: huvudpersonen först på egen rad (CSS-order), övriga under i upp till 4 kolumner;
+ *   en ofull sista rad fylls av sista cellen, så att ingen tom ruta blir kvar.
+ * - @4xl: en rad, huvudpersonen spänner två kolumner.
+ */
+export function kpiStripLayout(items: ReadonlyArray<{ primary?: boolean }>): {
+  sm: number;
+  total: number;
+  cells: KpiStripCellLayout[];
+} {
+  const hasPrimary = items.some((i) => i.primary);
+  const rest = items.length - (hasPrimary ? 1 : 0);
+  const total = Math.min(7, items.length + (hasPrimary ? 1 : 0));
+  const sm = hasPrimary ? Math.max(1, Math.min(4, rest)) : 2;
+
+  const last = items.length - 1;
+  const fillLast = items.length % 2 === 1 && items.length > 1 && !items[last]?.primary;
+  const baseSpan = (i: number): 1 | 2 => (fillLast && i === last ? 2 : 1);
+  const baseStart = rowStarts(
+    items.map((_, i) => baseSpan(i)),
+    2,
+  );
+
+  const indices = items.map((_, i) => i);
+  const others = indices.filter((i) => !items[i]?.primary);
+  const lastOther = others[others.length - 1];
+  const lastRow = others.length % sm || sm;
+  const smSpanOf = (i: number) =>
+    items[i]?.primary ? sm : i === lastOther && lastRow < sm ? sm - lastRow + 1 : 1;
+  const smOrder = [...indices.filter((i) => items[i]?.primary), ...others];
+  const smStartOrdered = rowStarts(smOrder.map(smSpanOf), sm);
+  const lgStart = rowStarts(
+    items.map((i) => (i.primary ? 2 : 1)),
+    total,
+  );
+
+  return {
+    sm,
+    total,
+    cells: indices.map((i) => ({
+      baseSpan: baseSpan(i),
+      smSpan: smSpanOf(i),
+      baseStart: baseStart[i] ?? false,
+      smStart: smStartOrdered[smOrder.indexOf(i)] ?? false,
+      lgStart: lgStart[i] ?? false,
+    })),
+  };
+}
 
 /**
  * Nyckeltalsremsa: en sammanhängande rad utan kortramar, delad av 1px
@@ -106,41 +178,31 @@ const smSpan: Record<number, string> = {
 export function KpiStrip({
   items,
   label,
+  headingLevel = 3,
   comparison,
   loading,
   motion = "fade",
   className,
 }: KpiStripProps) {
-  const hasPrimary = items.some((i) => i.primary);
-  const rest = items.length - (hasPrimary ? 1 : 0);
-  const total = Math.min(7, items.length + (hasPrimary ? 1 : 0));
-  const sm = hasPrimary ? Math.max(1, Math.min(4, rest)) : 2;
+  const Heading = headingLevel === 2 ? "h2" : "h3";
   const hasHeader = Boolean(label || comparison);
-
-  // Udda antal: sista cellen fyller raden i 2-kolumnsläget i stället för att lämna en tom halva.
-  const last = items.length - 1;
-  const fillLast = items.length % 2 === 1 && items.length > 1 && !items[last]?.primary;
-  const baseStart = rowStarts(
-    items.map((_, i) => (fillLast && i === last ? 2 : 1)),
-    2,
-  );
-  const smStart = rowStarts(
-    items.map((it, i) => (it.primary ? sm : !hasPrimary && fillLast && i === last ? 2 : 1)),
-    sm,
-  );
-  const lgStart = rowStarts(
-    items.map((i) => (i.primary ? 2 : 1)),
-    total,
-  );
+  const layout = kpiStripLayout(items);
+  const { sm, total } = layout;
 
   return (
     <section
-      className={cn("min-w-0", !hasHeader && firstInPanel, lastInPanel, nestedReset, className)}
+      className={cn(
+        "@container min-w-0",
+        !hasHeader && firstInPanel,
+        lastInPanel,
+        nestedReset,
+        className,
+      )}
       aria-label={label ?? "Nyckeltal"}
     >
       {hasHeader ? (
         <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 pb-3">
-          {label ? <h3 className="label text-muted">{label}</h3> : <span />}
+          {label ? <Heading className="label text-muted">{label}</Heading> : <span />}
           {comparison ? <p className="meta tnum text-subtle">{comparison}</p> : null}
         </header>
       ) : null}
@@ -156,13 +218,14 @@ export function KpiStrip({
               loading={loading}
               motion={motion}
               span={cn(
-                item.primary && smSpan[sm],
-                item.primary && "lg:col-span-2",
-                fillLast && i === last && (hasPrimary ? "col-span-2 sm:col-span-1" : "col-span-2"),
-                fillLast && i === last && "lg:col-span-1",
-                baseStart[i] ? "pl-0" : "pl-4",
-                smStart[i] ? "sm:pl-0" : "sm:pl-4",
-                lgStart[i] ? "lg:pl-0" : "lg:pl-5",
+                layout.cells[i]?.baseSpan === 2 && "col-span-2",
+                smSpan[layout.cells[i]?.smSpan ?? 1],
+                item.primary
+                  ? "@xl:order-first @4xl:order-none @4xl:col-span-2"
+                  : "@4xl:col-span-1",
+                layout.cells[i]?.baseStart ? "pl-0" : "pl-4",
+                layout.cells[i]?.smStart ? "@xl:pl-0" : "@xl:pl-4",
+                layout.cells[i]?.lgStart ? "@4xl:pl-0" : "@4xl:pl-5",
               )}
             />
           ))}
@@ -170,6 +233,68 @@ export function KpiStrip({
       </div>
     </section>
   );
+}
+
+/**
+ * Storlekssteg för värdet, störst först. Steg 0 är remsans vanliga storlek (från @xl:
+ * 44 px för huvudpersonen, 32 px för övriga); ryms beloppet inte i cellen tas nästa steg.
+ */
+const PRIMARY_SIZES = [
+  "text-xl @xl:text-3xl",
+  "text-xl @xl:text-2xl",
+  "text-xl",
+  "text-lg",
+  "text-md",
+];
+const VALUE_SIZES = ["text-xl @xl:text-2xl", "text-xl", "text-lg", "text-md"];
+
+const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+
+/**
+ * Minskar värdets storlek ett steg i taget tills texten ryms (scrollWidth ≤ clientWidth),
+ * i stället för att klippa den. Börjar om från steg 0 när texten eller cellens bredd
+ * ändras. Före hydrering visas steg 0 (med ellips om det inte ryms).
+ */
+function useFitStep(ref: React.RefObject<HTMLElement | null>, text: string, max: number): number {
+  const [state, setState] = useState({ step: 0, text, width: 0 });
+  // Ny text: börja om från största storleken (justeras under rendering, inte i en effekt).
+  let step = state.step;
+  if (state.text !== text) {
+    step = 0;
+    setState({ step: 0, text, width: state.width });
+  }
+  useIsoLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // Mät den nya storleken direkt: med reducerad rörelse har alla egenskaper en övergång
+    // på 1 ms (globals.css), och då står den gamla teckenstorleken kvar i mätningen.
+    el.style.transition = "none";
+    const overflows = el.scrollWidth > el.clientWidth + 1;
+    el.style.transition = "";
+    if (step < max && overflows) {
+      // Bara ett steg per mätning, även när effekten körs två gånger (StrictMode).
+      setState((s) => (s.step === step ? { ...s, step: step + 1 } : s));
+    }
+  });
+  useEffect(() => {
+    const el = ref.current?.parentElement;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => {
+      const w = Math.round(entries[0]?.contentRect.width ?? 0);
+      setState((s) => (s.width === w ? s : { ...s, step: 0, width: w }));
+    });
+    ro.observe(el);
+    // Typsnittet kan bytas efter första mätningen (font-display: swap): mät om när det är laddat.
+    let live = true;
+    document.fonts?.ready.then(() => {
+      if (live) setState((s) => ({ ...s, step: 0 }));
+    });
+    return () => {
+      live = false;
+      ro.disconnect();
+    };
+  }, [ref]);
+  return step;
 }
 
 function KpiCell({
@@ -185,31 +310,28 @@ function KpiCell({
 }) {
   const shown = useKpiValue(item.value, motion);
   const text = item.format(shown);
-  const ref = useValueFade<HTMLElement>(item.format(item.value), motion === "fade");
+  const finalText = item.format(item.value);
+  const ref = useValueFade<HTMLElement>(finalText, motion === "fade");
   const { primary } = item;
+  const sizes = primary ? PRIMARY_SIZES : VALUE_SIZES;
+  const step = useFitStep(ref, finalText, sizes.length - 1);
 
   return (
     <div
       className={cn(
-        "-mt-px -ml-px flex min-w-0 flex-col border-t border-l border-line py-4 pr-4 lg:pr-5",
+        "-mt-px -ml-px flex min-w-0 flex-col border-t border-l border-line py-4 pr-4 @4xl:pr-5",
         span,
       )}
     >
       <dt className="label truncate text-muted">{item.label}</dt>
       {loading ? (
         <dd className="mt-3 flex flex-col gap-2" aria-label="Laddar">
-          <Skeleton className={cn("h-7", primary ? "w-40 sm:h-11" : "w-20 sm:h-8")} />
+          <Skeleton className={cn("h-7", primary ? "w-40 @xl:h-11" : "w-20 @xl:h-8")} />
           <Skeleton className="h-3 w-16" />
         </dd>
       ) : (
         <>
-          <dd
-            ref={ref}
-            className={cn(
-              "tnum mt-3 truncate text-xl font-medium",
-              primary ? "sm:text-3xl" : "sm:text-2xl",
-            )}
-          >
+          <dd ref={ref} className={cn("tnum mt-3 truncate font-medium", sizes[step])}>
             {text}
           </dd>
           {item.delta ? (
@@ -223,7 +345,7 @@ function KpiCell({
             </dd>
           ) : null}
           {item.trend ? (
-            <dd className="mt-auto hidden pt-4 sm:block">
+            <dd className="mt-auto hidden pt-4 @xl:block">
               <KpiTrace
                 data={item.trend}
                 reference={item.reference}

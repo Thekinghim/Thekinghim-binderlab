@@ -347,6 +347,9 @@ describe("buildPageModel", () => {
     expect(f.total.revenueHighOre).toBeGreaterThanOrEqual(f.total.revenueOre);
     expect(m.heading.title).toMatch(/^Ca\s.* kommande 4 veckor\.$/);
     expect(f.bySeries[0]?.explanation).toMatch(/Nivå/);
+    // "80 %" bryts aldrig mellan talet och procenttecknet (hårt mellanslag, design.md §4).
+    expect(f.coverage).toBe("80\u00a0%");
+    expect(f.heading.aside).toContain("80\u00a0%-intervall");
   });
 
   it("lägger backtestens veckor på samma veckor som historiken", () => {

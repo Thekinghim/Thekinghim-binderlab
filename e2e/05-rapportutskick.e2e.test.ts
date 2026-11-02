@@ -1,15 +1,17 @@
 /**
  * Rapportutskick: ägaren lägger till butikens mottagare, skapar butiksrapporten för oktober,
  * godkänner den (PDF skapas) och skickar. Mejlet hamnar i serverns lokala utkorg
- * (MAIL_PROVIDER=outbox) med rätt mottagare, ämne, hälsning och PDF som bilaga.
+ * (MAIL_PROVIDER=outbox) med rätt mottagare, ämne, hälsning och PDF som bilaga. Till sist
+ * pausas mottagaren, så att mottagarlistan inte växer för varje körning.
  */
 
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
+  expectNoPageErrors,
   launchBrowser,
   openPage,
   screenshot,
@@ -26,6 +28,7 @@ const MONTH = "oktober 2026";
 let browser: Browser;
 let context: BrowserContext;
 let page: Page;
+let errors: Error[];
 const run = Date.now().toString(36);
 const recipient = { name: `Butikschef ${run}`, email: `butik-${run}@example.se` };
 const greeting = `Tack för oktober! (${run})`;
@@ -59,9 +62,11 @@ async function findMail(to: string): Promise<{ dir: string; meta: OutboxMeta } |
 
 beforeAll(async () => {
   browser = await launchBrowser();
-  ({ page, context } = await openPage(browser, e2e().baseUrl));
+  ({ page, context, errors } = await openPage(browser, e2e().baseUrl));
   await login(page, e2e().users.owner);
 });
+
+afterEach(() => expectNoPageErrors(errors));
 
 afterAll(async () => {
   await context?.close();
@@ -127,6 +132,13 @@ describe("rapportutskick", () => {
     const html = await readFile(path.join(mail.dir, "message.html"), "utf8");
     expect(html).toContain(greeting);
     const eml = await readFile(path.join(mail.dir, "message.eml"), "utf8");
-    expect(eml).toMatch(new RegExp(`^To: .*${recipient.email.replace(".", "\\.")}`, "m"));
+    expect(eml).toMatch(new RegExp(`^To: .*${recipient.email.replace(/\./g, "\\.")}`, "m"));
+  });
+
+  it("mottagaren pausas efteråt", async () => {
+    await page.goto("/rapporter");
+    const row = page.getByRole("listitem").filter({ hasText: recipient.email });
+    await row.getByRole("button", { name: "Pausa", exact: true }).click();
+    await row.getByText("Pausad", { exact: true }).waitFor();
   });
 });

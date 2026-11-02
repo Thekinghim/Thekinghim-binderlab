@@ -70,7 +70,7 @@ export default async function AssistentPage() {
   const title = ready ? "Fråga om er data." : "Assistenten är inte konfigurerad.";
   const aside = !ready
     ? config.status === "not-configured"
-      ? "Den kräver ANTHROPIC_API_KEY."
+      ? "Den kräver en nyckel till Claude API."
       : `${config.variable} har ett ogiltigt värde.`
     : recent.length > 0
       ? `${formatInt(verified)} av dina ${formatInt(recent.length)} senaste svar hade alla tal i underlaget.`
@@ -80,9 +80,9 @@ export default async function AssistentPage() {
     ? null
     : config.status === "not-configured"
       ? {
-          message: config.message,
+          message: "Assistenten kräver en nyckel till Claude API.",
           detail:
-            "Sätt ANTHROPIC_API_KEY (och vid behov ANTHROPIC_MODEL) i miljövariablerna och starta om servern. Ingen fråga skickas förrän nyckeln finns.",
+            "Nyckeln sätts i serverns miljövariabler (se Inställning nedan). Ingen fråga skickas förrän nyckeln finns.",
         }
       : { message: config.message, detail: "Rätta värdet och starta om servern." };
 
@@ -223,8 +223,6 @@ export default async function AssistentPage() {
           <dd className="text-fg">
             {process.env.ANTHROPIC_MODEL?.trim() || "claude-opus-5-5 (standard)"}
           </dd>
-          <dt className="text-subtle">Dokumentation</dt>
-          <dd>docs/miljoer.md, avsnittet Assistent</dd>
         </dl>
       </section>
     </div>

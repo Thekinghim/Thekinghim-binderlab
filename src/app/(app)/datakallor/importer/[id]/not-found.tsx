@@ -4,6 +4,8 @@ import { StateMessage } from "@/components/ui/state-message";
 export default function ImportNotFound() {
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-4 pt-8 pb-16 md:px-8 md:pt-12">
+      {/* Sidans rubrik för skärmläsare; blocket nedan säger samma sak synligt. */}
+      <h1 className="sr-only">Importen finns inte.</h1>
       <StateMessage
         kind="empty"
         code="Ingen import"

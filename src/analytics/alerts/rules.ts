@@ -302,7 +302,9 @@ export function importAlerts(
       kind: "import_failed" as const,
       machineId: null,
       titleId: null,
-      link: `/datakallor/${encodeURIComponent(src.id)}`,
+      // Datakällor (det finns ingen egen sida per källa); en misslyckad import länkar till
+      // importens detaljsida nedan.
+      link: "/datakallor",
     };
     const ev = (
       rule: string,
@@ -319,6 +321,7 @@ export function importAlerts(
       const reason = last.message?.trim() ? ` Fel: ${last.message.trim()}` : "";
       out.push({
         ...base,
+        link: `/datakallor/importer/${encodeURIComponent(last.id)}`,
         severity: "critical",
         title: `Import från ${src.name} misslyckades`,
         detail:

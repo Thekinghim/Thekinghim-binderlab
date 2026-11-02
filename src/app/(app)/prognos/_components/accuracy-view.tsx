@@ -20,13 +20,16 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
         key: "period",
         header: "Vecka",
         sortValue: (r) => r.period.start,
-        render: (r) => <span className="tnum">{periodShort(r.period)}</span>,
+        render: (r) => <span className="tnum whitespace-nowrap">{periodShort(r.period)}</span>,
         csv: (r) => `${r.period.start}–${r.period.end}`,
       },
       {
         key: "actual",
-        header: "Utfall i testade serier, pack",
+        // Kort huvud så att tabellen ryms i 375 px; noten under förklarar vilka serier som testas.
+        header: "Utfall, pack",
         numeric: true,
+        // Under md: vecka och avvikelse (sektionens mått); antalen står i underlaget.
+        hideOnMobile: true,
         sortValue: (r) => r.actualMilli,
         render: (r) => packsMilli(r.actualMilli),
         csv: (r) => r.actualMilli / 1000,
@@ -35,6 +38,7 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
         key: "forecast",
         header: "Prognos, pack",
         numeric: true,
+        hideOnMobile: true,
         sortValue: (r) => r.forecastMilli,
         render: (r) => <span className="text-fg">{packsMilli(r.forecastMilli)}</span>,
         csv: (r) => r.forecastMilli / 1000,
@@ -81,7 +85,7 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
     },
     {
       id: "mape",
-      label: "Fel per vecka (MAPE)",
+      label: "Fel/vecka (MAPE)",
       value: t.mapeBp ?? Number.NaN,
       format: (v) => percentBp(Number.isFinite(v) ? v : null, 0),
     },
@@ -93,7 +97,7 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
     },
     {
       id: "naive",
-      label: "Förra veckans snitt",
+      label: "Fel, veckosnitt",
       value: t.naiveWapeBp ?? Number.NaN,
       format: (v) => percentBp(Number.isFinite(v) ? v : null, 0),
     },

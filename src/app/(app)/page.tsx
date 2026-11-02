@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
 import { Panel } from "@/components/ui/frame";
 import { SectionHeader, type SectionMeta } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
+import { requireRoute } from "@/server/data/core";
 import { EN_DASH, NBSP, formatDecimal, formatInt, formatPeriodShort } from "@/lib/format";
 
 import { DailyChart } from "./_hem/daily-chart";
 import { HomeKpis } from "./_hem/home-kpis";
 import { carriedParams } from "./_hem/links";
 import { loadHome } from "./_hem/load";
+import { HemSkeleton } from "./_hem/skeleton";
 import { shareText, type HomeDaily, type HomeModel } from "./_hem/model";
 import {
   ArrowLink,
@@ -34,6 +37,18 @@ type SearchParams = Record<string, string | string[] | undefined>;
  * göra). Allt räknas i @/domain och @/analytics via modellen i _hem/model.ts.
  */
 export default async function HemPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  // Rollen kontrolleras före strömningen, så att påfyllaren får en riktig omdirigering.
+  await requireRoute("hem");
+  // Skalet och skelettet går ut direkt; siffrorna strömmar in när de är räknade
+  // (Att göra och förlorad försäljning tar längst tid med mycket data).
+  return (
+    <Suspense fallback={<HemSkeleton />}>
+      <HemContent searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function HemContent({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
   const { model, today, scope, canEdit, lostSales, onboarding, timeZone } = await loadHome(sp);
   const { headline } = model;

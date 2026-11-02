@@ -350,6 +350,7 @@ export function ForecastChart({
                     x={atEdge ? geo.innerW + M.right - 1 : i === 0 ? 0 : x}
                     y={geo.innerH + 18}
                     anchor={atEdge ? "end" : i === 0 ? "start" : "middle"}
+                    upper={false}
                   >
                     {t}
                   </AxisText>

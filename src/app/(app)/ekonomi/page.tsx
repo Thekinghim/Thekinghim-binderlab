@@ -23,7 +23,7 @@ import { PayoutUpload } from "./_components/payout-upload";
 import { ReconciliationList } from "./_components/reconciliation";
 import { AccountTable, CashflowTable, VerificationTable } from "./_components/tables";
 import { economyHeadline } from "./_lib/headline";
-import { kr, monthText, periodShort, plural, sek, sentence, signedKr } from "./_lib/view";
+import { kr, monthText, periodShort, plural, sek, sentence, signedSek } from "./_lib/view";
 
 export const metadata: Metadata = { title: "Ekonomi" };
 
@@ -214,7 +214,9 @@ export default async function EkonomiPage({
             detail="Utbetalningar, verifikationer och kassaflöde avser alltid hela organisationen."
           />
         ) : null}
-        {result ? <EconomyKpis items={kpis} label={`Avstämning · ${when}`} /> : null}
+        {result ? (
+          <EconomyKpis items={kpis} label={`Avstämning · ${when}`} headingLevel={2} />
+        ) : null}
       </div>
 
       {/* 01 Avstämning */}
@@ -463,7 +465,7 @@ export default async function EkonomiPage({
           title={
             cash.result
               ? sentence(
-                  `Netto ${signedKr(cash.result.totals.total.netOre)} för ${periodShort(cash.result.range, ctx.today)}`,
+                  `Netto ${signedSek(cash.result.totals.total.netOre)} för ${periodShort(cash.result.range, ctx.today)}`,
                 )
               : "Kassaflöde per månad."
           }

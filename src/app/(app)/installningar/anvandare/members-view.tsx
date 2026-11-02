@@ -184,7 +184,7 @@ export function MembersView({
                       </span>
                     ) : null}
                   </span>
-                  <span className="meta truncate text-subtle">{m.email}</span>
+                  <span className="meta [overflow-wrap:anywhere] text-subtle">{m.email}</span>
                 </div>
                 <span className="text-base text-fg md:order-none">
                   <span className="sr-only">Roll: </span>
@@ -246,7 +246,7 @@ export function MembersView({
               {invitations.map((i) => (
                 <li key={i.id} className={ROW}>
                   <div className="flex min-w-0 flex-col">
-                    <span className="truncate text-base text-fg">{i.email}</span>
+                    <span className="text-base [overflow-wrap:anywhere] text-fg">{i.email}</span>
                     <span className="meta truncate text-subtle">
                       Skickad {i.sent} av {i.invitedBy}
                     </span>

@@ -573,7 +573,8 @@ function groupAside(items: readonly TodoItem[], economy: boolean): string {
   const stake = economy ? stakeOf(items) : 0;
   if (stake > 0) parts.push(`${kr(stake)} i intäkt i risk de närmaste 7 dagarna`);
   const unpriced = economy ? unpricedOf(items) : 0;
-  if (unpriced > 0) parts.push(`${kr(unpriced)} i intäkt saknar inköpspris`);
+  // "titlar utan inköpspris" står redan i första delen; beloppet säger vad det betyder.
+  if (unpriced > 0) parts.push(`${kr(unpriced)} i intäkt räknas inte in i vinsten`);
   return withPeriod(parts.join(", "));
 }
 

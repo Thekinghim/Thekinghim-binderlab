@@ -18,6 +18,24 @@ function code(c: string): string {
   return c.replace(/-/g, "‑");
 }
 
+/** Butikens status: åtgärd (med text för skärmläsare), arkiverad, avtal eller inget avtal. */
+function StoreStatus({ row: r }: { row: StoreRow }) {
+  return r.issue ? (
+    <span className="flex flex-col items-start">
+      <StatusTag status={r.issue.level === "neutral" ? "warning" : r.issue.level}>
+        {r.issue.short}
+      </StatusTag>
+      <span className="sr-only">Kräver åtgärd: {r.issue.text}</span>
+    </span>
+  ) : r.archived ? (
+    <StatusTag status="offline">Arkiverad</StatusTag>
+  ) : r.current ? (
+    <StatusTag status="ok">Avtal gäller</StatusTag>
+  ) : (
+    <StatusTag status="neutral">Inget avtal</StatusTag>
+  );
+}
+
 function columns(monthLabel: string): Column<StoreRow>[] {
   return [
     {
@@ -27,12 +45,19 @@ function columns(monthLabel: string): Column<StoreRow>[] {
       csv: (r) => r.name,
       hideable: false,
       render: (r) => (
-        <Link href={r.href} className="flex min-w-0 flex-col rounded-xs py-1 hover:text-fg">
+        // max-w under md: platsen kortas med ellips i stället för att göra kolumnen bredare.
+        <Link
+          href={r.href}
+          className="flex max-w-56 min-w-0 flex-col rounded-xs py-1 hover:text-fg md:max-w-none"
+        >
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="font-medium text-fg">{r.name}</span>
             {r.isExample ? <StatusTag status="neutral">Exempel</StatusTag> : null}
           </span>
           {r.place ? <span className="truncate text-sm text-muted">{r.place}</span> : null}
+          <span className="mt-1 md:hidden">
+            <StoreStatus row={r} />
+          </span>
         </Link>
       ),
     },
@@ -52,21 +77,10 @@ function columns(monthLabel: string): Column<StoreRow>[] {
       csv: (r) =>
         r.issue?.short ?? (r.archived ? "Arkiverad" : r.current ? "Avtal gäller" : "Inget avtal"),
       hideable: false,
-      render: (r) =>
-        r.issue ? (
-          <span className="flex flex-col items-start">
-            <StatusTag status={r.issue.level === "neutral" ? "warning" : r.issue.level}>
-              {r.issue.short}
-            </StatusTag>
-            <span className="sr-only">Kräver åtgärd: {r.issue.text}</span>
-          </span>
-        ) : r.archived ? (
-          <StatusTag status="offline">Arkiverad</StatusTag>
-        ) : r.current ? (
-          <StatusTag status="ok">Avtal gäller</StatusTag>
-        ) : (
-          <StatusTag status="neutral">Inget avtal</StatusTag>
-        ),
+      // Under md står statusen under namnet i första kolumnen (MachineCell på /design),
+      // så att beloppen ryms utan sidledsscroll.
+      hideOnMobile: true,
+      render: (r) => <StoreStatus row={r} />,
     },
     {
       key: "terms",
@@ -133,6 +147,9 @@ function columns(monthLabel: string): Column<StoreRow>[] {
       key: "earned",
       header: `Intjänat ${monthLabel}`,
       numeric: true,
+      // Månadens ersättning står i nyckeltalen och på butikens sida; under md får
+      // periodens intäkt plats bredvid butiken utan sidledsscroll.
+      hideOnMobile: true,
       sortValue: (r) => r.earnedMonthOre,
       csv: (r) => r.earnedMonthOre / 100,
       render: (r) => sek(r.earnedMonthOre),

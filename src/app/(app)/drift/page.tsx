@@ -103,7 +103,7 @@ export default async function DriftPage() {
             kind="not-configured"
             compact
             message="Leverantörens maskindata (ur drift, felkoder) hämtas inte ännu."
-            detail="Status härleds ur försäljningen tills Awish gRPC är kopplad."
+            detail="Status härleds ur försäljningen tills maskindata från Awish är kopplad."
             diagnostics={[{ label: "Källa", value: "awish_grpc · väntar på specifikation" }]}
           />
         ) : null}

@@ -22,10 +22,15 @@ import type { LagerMachine, LagerTitle, StockCell } from "../_lib/types";
  * På mobilen följer kolumnhuvudet med när sidan scrollas (sticky under toppraden). Det
  * kräver att matrisen inte ligger i en egen scrollyta, så ytan klipps i stället
  * (overflow-x: clip) när matrisen får plats från 375 px, dvs. upp till 3 automater.
- * Bredare matriser scrollar i sidled i sin egen yta, och då står huvudet still.
+ * Bredare matriser scrollar i sidled i sin egen yta, och då står huvudet still: en
+ * klistrig cell i en egen scrollyta räknar `top` från ytans överkant och skulle annars
+ * tryckas ned 56 px över första raden.
+ *
+ * Ytan är `relative`, så att de visuellt dolda etiketterna (`sr-only`, absolut
+ * positionerade) stannar i ytan och inte gör sidan bredare än 375 px.
  */
-function overflowClass(machines: number): string {
-  return machines <= 3 ? "overflow-x-clip" : "overflow-x-auto";
+function fitsWithoutScroll(machines: number): boolean {
+  return machines <= 3;
 }
 
 /**
@@ -34,6 +39,8 @@ function overflowClass(machines: number): string {
  * och där står huvudet still (top: auto); vänsterkolumnen är klistrig i sidled ändå.
  */
 const STICKY_HEAD = "sticky top-14 bg-bg md:top-auto";
+/** Kolumnhuvudet när matrisen scrollar i sidled: står still, vänsterkolumnen klistrig. */
+const STILL_HEAD = "bg-bg";
 
 export function StockMatrix({
   machines,
@@ -50,11 +57,13 @@ export function StockMatrix({
   canRegister: boolean;
   onSelect: (machine: LagerMachine, title: LagerTitle, cell: StockCell) => void;
 }) {
+  const fits = fitsWithoutScroll(machines.length);
+  const head = fits ? STICKY_HEAD : STILL_HEAD;
   return (
     <div
       className={cn(
-        "-mx-4 border-y border-line md:mx-0 md:rounded-md md:border",
-        overflowClass(machines.length),
+        "relative -mx-4 border-y border-line md:mx-0 md:rounded-md md:border",
+        fits ? "overflow-x-clip" : "overflow-x-auto",
       )}
     >
       <table
@@ -69,8 +78,8 @@ export function StockMatrix({
             <th
               scope="col"
               className={cn(
-                STICKY_HEAD,
-                "left-0 z-30 w-28 px-4 py-2 text-left align-bottom shadow-[inset_0_-1px_0_var(--bl-line-strong)] md:w-64",
+                head,
+                "sticky left-0 z-30 w-28 px-4 py-2 text-left align-bottom shadow-[inset_0_-1px_0_var(--bl-line-strong)] md:w-64",
               )}
             >
               <span className="label text-subtle">Titel</span>
@@ -80,7 +89,7 @@ export function StockMatrix({
                 key={m.id}
                 scope="col"
                 className={cn(
-                  STICKY_HEAD,
+                  head,
                   "z-20 border-l border-line px-2 py-2 text-right align-bottom font-normal shadow-[inset_0_-1px_0_var(--bl-line-strong)]",
                 )}
               >

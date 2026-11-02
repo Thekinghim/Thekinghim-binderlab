@@ -42,7 +42,7 @@ function Line({
     >
       <dt className="flex min-w-0 flex-col">
         <span className={total ? "font-medium text-fg" : "text-muted"}>{label}</span>
-        {detail ? <span className="meta text-subtle">{detail}</span> : null}
+        {detail ? <span className="text-xs text-subtle">{detail}</span> : null}
       </dt>
       <dd className={total ? "tnum font-medium text-fg" : "tnum text-fg"}>{value}</dd>
     </div>
@@ -93,8 +93,8 @@ export function ResultAfterProfitPanel({ result }: { result: ResultAfterProfit }
         <Line
           label={
             r.fixedCostOre === null
-              ? "Resultat efter återbetalningar"
-              : "Resultat efter fasta kostnader"
+              ? "Vinst efter återbetalningar, utan fasta kostnader"
+              : "Vinst efter fasta kostnader"
           }
           value={kr(r.resultOre)}
           detail={margin}

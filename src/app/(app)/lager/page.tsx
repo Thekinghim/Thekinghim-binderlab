@@ -77,7 +77,7 @@ export default async function LagerPage({ searchParams }: { searchParams: Promis
       <section aria-labelledby="historik" className="flex flex-col gap-6 md:gap-10">
         <SectionHeader
           id="historik"
-          index={view.hasWarehouse ? 4 : 3}
+          index={(view.hasWarehouse ? 4 : 3) - (view.machines.length > 0 ? 0 : 1)}
           eyebrow="Historik"
           title="Vem, när och hur mycket."
           aside={

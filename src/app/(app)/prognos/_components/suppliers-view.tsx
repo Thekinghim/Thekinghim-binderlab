@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition, type FormEvent } from "react";
+import { useCallback, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -21,6 +21,15 @@ import {
 } from "../actions";
 import type { SupplierView, SuppliersModel } from "../_lib/model";
 import { krExact, oreToField, parseCount, parseKronor } from "../_lib/units";
+
+/** Leverantörens läge: aktiv eller arkiverad. */
+function SupplierStatus({ archived }: { archived: boolean }) {
+  return archived ? (
+    <StatusTag status="offline">Arkiverad</StatusTag>
+  ) : (
+    <StatusTag status="ok">Aktiv</StatusTag>
+  );
+}
 
 /** Felet för ett ogiltigt ledtidsfält: negativt eller inte hela dagar. */
 function leadError(raw: string): string {
@@ -51,6 +60,21 @@ export function SuppliersView({
   const router = useRouter();
   const toast = useToast();
   const [dialog, setDialog] = useState<Dialog>(null);
+  // Dialogerna monteras bara när de är öppna: fokus lämnas tillbaka till knappen som
+  // öppnade dialogen när den stängs (annars hamnar fokus på body).
+  const returnTo = useRef<HTMLElement | null>(null);
+  const openDialog = useCallback((d: Dialog) => {
+    returnTo.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setDialog(d);
+  }, []);
+  const closeDialog = useCallback(() => {
+    setDialog(null);
+    const el = returnTo.current;
+    window.requestAnimationFrame(() => {
+      if (el?.isConnected) el.focus();
+    });
+  }, []);
   const [pending, start] = useTransition();
 
   const items: ItemRow[] = useMemo(
@@ -87,6 +111,10 @@ export function SuppliersView({
             <span className="text-xs text-subtle">
               {[r.contactName, r.email, r.phone].filter(Boolean).join(" · ") || "Ingen kontakt"}
             </span>
+            {/* Under md står läget här; kolumnen Läge är dold (design.md §5.1). */}
+            <span className="mt-1 md:hidden">
+              <SupplierStatus archived={r.archived} />
+            </span>
           </span>
         ),
         csv: (r) => r.name,
@@ -95,12 +123,8 @@ export function SuppliersView({
         key: "status",
         header: "Läge",
         hideable: false,
-        render: (r) =>
-          r.archived ? (
-            <StatusTag status="offline">Arkiverad</StatusTag>
-          ) : (
-            <StatusTag status="ok">Aktiv</StatusTag>
-          ),
+        hideOnMobile: true,
+        render: (r) => <SupplierStatus archived={r.archived} />,
         csv: (r) => (r.archived ? "Arkiverad" : "Aktiv"),
       },
       {
@@ -138,7 +162,7 @@ export function SuppliersView({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setDialog({ kind: "supplier", supplier: r })}
+                    onClick={() => openDialog({ kind: "supplier", supplier: r })}
                     aria-label={`Ändra ${r.name}`}
                   >
                     Ändra
@@ -160,7 +184,7 @@ export function SuppliersView({
     ],
     // toggleArchive är stabil nog: den läser bara rad och start.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [canEdit, pending],
+    [canEdit, pending, openDialog],
   );
 
   const itemColumns = useMemo<Column<ItemRow>[]>(
@@ -228,7 +252,7 @@ export function SuppliersView({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setDialog({ kind: "item", item: r, supplierId: r.supplierId })}
+                    onClick={() => openDialog({ kind: "item", item: r, supplierId: r.supplierId })}
                     aria-label={`Ändra ${r.title} hos ${r.supplierName}`}
                   >
                     Ändra
@@ -236,7 +260,7 @@ export function SuppliersView({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setDialog({ kind: "delete-item", item: r })}
+                    onClick={() => openDialog({ kind: "delete-item", item: r })}
                     aria-label={`Ta bort ${r.title} hos ${r.supplierName}`}
                   >
                     Ta bort
@@ -247,7 +271,7 @@ export function SuppliersView({
           ]
         : []),
     ],
-    [canEdit],
+    [canEdit, openDialog],
   );
 
   const active = model.suppliers.filter((s) => !s.archived);
@@ -262,7 +286,7 @@ export function SuppliersView({
               variant="secondary"
               size="sm"
               iconLeft="plus"
-              onClick={() => setDialog({ kind: "supplier", supplier: null })}
+              onClick={() => openDialog({ kind: "supplier", supplier: null })}
             >
               Ny leverantör
             </Button>
@@ -277,7 +301,7 @@ export function SuppliersView({
               canEdit
                 ? {
                     label: "Lägg till leverantör",
-                    onClick: () => setDialog({ kind: "supplier", supplier: null }),
+                    onClick: () => openDialog({ kind: "supplier", supplier: null }),
                   }
                 : undefined
             }
@@ -304,7 +328,7 @@ export function SuppliersView({
                 size="sm"
                 iconLeft="plus"
                 onClick={() =>
-                  setDialog({ kind: "item", item: null, supplierId: active[0]?.id ?? null })
+                  openDialog({ kind: "item", item: null, supplierId: active[0]?.id ?? null })
                 }
               >
                 Ny artikel
@@ -331,7 +355,7 @@ export function SuppliersView({
       ) : null}
 
       {dialog?.kind === "supplier" ? (
-        <SupplierDialog supplier={dialog.supplier} onClose={() => setDialog(null)} />
+        <SupplierDialog supplier={dialog.supplier} onClose={closeDialog} />
       ) : null}
       {dialog?.kind === "item" ? (
         <ItemDialog
@@ -339,11 +363,11 @@ export function SuppliersView({
           supplierId={dialog.supplierId}
           suppliers={active.length > 0 ? active : model.suppliers}
           titles={titles}
-          onClose={() => setDialog(null)}
+          onClose={closeDialog}
         />
       ) : null}
       {dialog?.kind === "delete-item" ? (
-        <DeleteItemDialog item={dialog.item} onClose={() => setDialog(null)} />
+        <DeleteItemDialog item={dialog.item} onClose={closeDialog} />
       ) : null}
     </div>
   );

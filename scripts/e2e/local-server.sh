@@ -18,7 +18,22 @@ DIR="${E2E_WORKDIR:-$ROOT/../binderlab-e2e}"
 PORT="${E2E_PORT:-3210}"
 DB="${E2E_DATABASE_URL:-postgres://postgres@127.0.0.1:54322/binderlab_e2e}"
 
-mkdir -p "$DIR"
+DIR="$(mkdir -p "$DIR" && cd "$DIR" && pwd)"
+if [ "$DIR" = "$ROOT" ]; then
+  echo "E2E_WORKDIR får inte vara projektet självt." >&2
+  exit 1
+fi
+MARKER="$DIR/.binderlab-e2e-kopia"
+if [ -n "$(ls -A "$DIR")" ] && [ ! -f "$MARKER" ]; then
+  echo "$DIR är inte tom och är ingen e2e-kopia (saknar $(basename "$MARKER")). Välj en annan E2E_WORKDIR." >&2
+  exit 1
+fi
+# Bort med förra kopians kod, så att borttagna filer och routes inte ligger kvar och testas
+# (behåller beroenden, bygget, lokala data och .env.local).
+find "$DIR" -mindepth 1 -maxdepth 1 \
+  ! -name node_modules ! -name .next ! -name .data ! -name .env.local ! -name "$(basename "$MARKER")" \
+  -exec rm -rf {} +
+touch "$MARKER"
 # Koden (inte beroenden, bygge, lokala data eller hemligheter).
 tar -C "$ROOT" \
   --exclude=./node_modules --exclude=./.next --exclude=./.data --exclude=./.git \
@@ -26,9 +41,16 @@ tar -C "$ROOT" \
   -cf - . | tar -C "$DIR" -xf -
 
 # Turbopack följer inte en symlänk till node_modules utanför projektet: hårda länkar (snabbt,
-# tar ingen plats) eller en kopia om katalogen ligger på ett annat filsystem.
+# tar ingen plats) eller en kopia om katalogen ligger på ett annat filsystem. Görs om när
+# package-lock.json har ändrats. OBS: kör aldrig npm install i kopian, de hårda länkarna
+# delar filer med projektets node_modules.
+LOCK_STAMP="$DIR/node_modules/.binderlab-e2e-lock"
+if [ -d "$DIR/node_modules" ] && ! cmp -s "$ROOT/package-lock.json" "$LOCK_STAMP"; then
+  rm -rf "$DIR/node_modules"
+fi
 if [ ! -d "$DIR/node_modules" ]; then
   cp -al "$ROOT/node_modules" "$DIR/node_modules" 2>/dev/null || cp -a "$ROOT/node_modules" "$DIR/node_modules"
+  cp "$ROOT/package-lock.json" "$LOCK_STAMP"
 fi
 
 if [ ! -f "$DIR/.env.local" ]; then

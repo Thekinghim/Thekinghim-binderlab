@@ -104,7 +104,7 @@ export default async function TodoPage({
                 ? "Listan räknas om vid varje försäljning och påfyllning. Nya punkter dyker upp här av sig själva."
                 : "Listan räknas om vid varje synk, påfyllning och prisändring. Nya punkter dyker upp här av sig själva."
             }
-            action={{ label: "Visa lagret →", href: "/lager" }}
+            action={{ label: "Visa lagret", href: "/lager" }}
           />
         </div>
       ) : null}

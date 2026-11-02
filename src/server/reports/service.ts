@@ -46,6 +46,7 @@ import { monthText } from "@/reports/text";
 
 import { buildSubject, renderReportText } from "@/emails/report-content";
 
+import { closeDraftsAlertIfComplete } from "./draft-coverage";
 import { reportEmailProps } from "./email";
 import { cleanEmailText } from "./email-cleanup";
 import { CONTENT_TYPE, excelOf, reportFileName, sieOf } from "./files";
@@ -441,12 +442,17 @@ export async function createReportFor(
   viewer: Viewer,
   req: ReportRequest,
   now: Date = new Date(),
+  monitor: MonitoringDeps = {},
 ): Promise<string> {
-  return as(viewer, EDIT_ROLES, async (tx) => {
+  const id = await as(viewer, EDIT_ROLES, async (tx) => {
     const orgId = viewer.organization.id;
     const snapshot = await snapshotTx(tx, orgId, viewer.organization.timezone, req, now);
     return insertReportTx(tx, orgId, snapshot, viewer.user.userId);
   });
+  // Ett utkast för hand kan fylla det som det schemalagda jobbet missade: då stängs
+  // månadens larm (report_drafts:<månad>). Kastar aldrig.
+  await closeDraftsAlertIfComplete(monitor, viewer.organization.id, req.month);
+  return id;
 }
 
 /** Skriver reports-raden. Används också av det schemalagda jobbet (utan användare). */

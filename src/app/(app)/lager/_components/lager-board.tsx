@@ -110,9 +110,12 @@ export function LagerBoard({
   }, [pathname, searchParams]);
 
   const { counts, window: salesWindow } = view;
-  const packFirst = view.packListFirst && view.machines.length > 0;
+  const hasMachines = view.machines.length > 0;
+  const packFirst = view.packListFirst && hasMachines;
+  // Numreringen följer sektionerna som visas: utan automat finns ingen påfyllningslista.
   const matrixIndex = packFirst ? 2 : 1;
   const packIndex = packFirst ? 1 : 2;
+  const warehouseIndex = hasMachines ? 3 : 2;
   const cellsTotal = counts.critical + counts.low + counts.ok;
   const warehouseTotal = view.warehouse.reduce((s, w) => s + Math.max(0, w.onHand), 0);
   const warehouseShort = view.warehouse.filter((w) => w.shortBy > 0);
@@ -145,8 +148,16 @@ export function LagerBoard({
           id="matris"
           index={matrixIndex}
           eyebrow={`Lager per automat · ${salesWindow.days} d`}
-          title={`${plural(cellsTotal, "plats", "platser")} i ${plural(view.machines.length, "automat", "automater")}.`}
-          aside={`En plats är en titel i en automat. Dagar kvar vid takten ${formatIsoDate(salesWindow.start, view.today)} – ${formatIsoDate(salesWindow.end, view.today)}, låg under ${tenthsText(view.lowThresholdTenths)} dagar.`}
+          title={
+            hasMachines
+              ? `${plural(cellsTotal, "plats", "platser")} i ${plural(view.machines.length, "automat", "automater")}.`
+              : "Ingen automat i urvalet."
+          }
+          aside={
+            hasMachines
+              ? `En plats är en titel i en automat. Dagar kvar vid takten ${formatIsoDate(salesWindow.start, view.today)} – ${formatIsoDate(salesWindow.end, view.today)}, låg under ${tenthsText(view.lowThresholdTenths)} dagar.`
+              : undefined
+          }
         />
         {view.machines.length === 0 || view.titles.length === 0 ? (
           <StateMessage
@@ -155,6 +166,11 @@ export function LagerBoard({
               view.machines.length === 0
                 ? "Ingen automat i drift i urvalet."
                 : "Inget lager registrerat i automaterna."
+            }
+            detail={
+              view.machines.length === 0
+                ? "En automat räknas när den är placerad i en butik under Automater."
+                : undefined
             }
           />
         ) : (
@@ -175,13 +191,15 @@ export function LagerBoard({
         <section aria-labelledby="centrallager" className="flex flex-col gap-6 md:gap-10">
           <SectionHeader
             id="centrallager"
-            index={3}
+            index={warehouseIndex}
             eyebrow="Centrallager"
             title={`${packs(warehouseTotal)} i centrallagret.`}
-            aside={warehouseAside(
-              warehouseShort.length,
-              warehouseLow.length - warehouseShort.length,
-            )}
+            // Tomt centrallager: tomläget nedan säger det, rubriken upprepar det inte.
+            aside={
+              view.warehouse.length === 0
+                ? undefined
+                : warehouseAside(warehouseShort.length, warehouseLow.length - warehouseShort.length)
+            }
           />
           {view.warehouse.length === 0 ? (
             <StateMessage kind="empty" message="Centrallagret är tomt och inget behövs i veckan." />

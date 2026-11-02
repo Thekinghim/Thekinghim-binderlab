@@ -12,6 +12,15 @@ import type { LostModel, LostRow } from "../_lib/model";
 import { daysBp, kr, packsMilli } from "../_lib/units";
 import { EvidenceButton } from "./evidence-button";
 
+/** Slutsåld just nu (varning) eller påfylld igen (info). */
+function LostStatus({ ongoing }: { ongoing: boolean }) {
+  return ongoing ? (
+    <StatusTag status="warning">Slutsåld nu</StatusTag>
+  ) : (
+    <StatusTag status="neutral">Påfylld</StatusTag>
+  );
+}
+
 /** Förlorad försäljning: nyckeltal, perioderna med slutsålt och summan per månad. */
 export function LostSalesView({ model }: { model: LostModel }) {
   const columns = useMemo<Column<LostRow>[]>(
@@ -24,6 +33,11 @@ export function LostSalesView({ model }: { model: LostModel }) {
           <span className="flex min-w-0 flex-col">
             <span className="text-fg">{r.title}</span>
             <span className="text-xs text-subtle">{r.machine}</span>
+            {/* Under md står perioden och läget här; kolumnerna är dolda (design.md §5.1). */}
+            <span className="tnum text-xs text-subtle md:hidden">{r.periodText}</span>
+            <span className="mt-1 md:hidden">
+              <LostStatus ongoing={r.ongoing} />
+            </span>
           </span>
         ),
         csv: (r) => `${r.title} – ${r.machine}`,
@@ -31,6 +45,7 @@ export function LostSalesView({ model }: { model: LostModel }) {
       {
         key: "period",
         header: "Slutsåld",
+        hideOnMobile: true,
         sortValue: (r) => r.start,
         render: (r) => <span className="tnum">{r.periodText}</span>,
         csv: (r) => `${r.start}–${r.end}`,
@@ -39,12 +54,8 @@ export function LostSalesView({ model }: { model: LostModel }) {
         key: "status",
         header: "Läge",
         hideable: false,
-        render: (r) =>
-          r.ongoing ? (
-            <StatusTag status="warning">Slutsåld nu</StatusTag>
-          ) : (
-            <StatusTag status="neutral">Påfylld</StatusTag>
-          ),
+        hideOnMobile: true,
+        render: (r) => <LostStatus ongoing={r.ongoing} />,
         csv: (r) => (r.ongoing ? "Slutsåld nu" : "Påfylld"),
       },
       {
@@ -63,6 +74,7 @@ export function LostSalesView({ model }: { model: LostModel }) {
         key: "days",
         header: "Dagar",
         numeric: true,
+        hideOnMobile: true,
         sortValue: (r) => r.dayWeightBp,
         render: (r) => daysBp(r.dayWeightBp),
         csv: (r) => r.dayWeightBp / 10_000,
@@ -91,7 +103,8 @@ export function LostSalesView({ model }: { model: LostModel }) {
       },
       {
         key: "revenue",
-        header: "Förlorad intäkt",
+        // Kort huvud (sektionen heter Förlorad försäljning) så att beloppet ryms i 375 px.
+        header: "Förlorat",
         numeric: true,
         sortValue: (r) => r.lostRevenueOre,
         render: (r) => <span className="text-fg">{kr(r.lostRevenueOre)}</span>,

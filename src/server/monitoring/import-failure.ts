@@ -130,7 +130,7 @@ export async function recordImportFailure(
             title: "Import misslyckades",
             detail: `Importen${input.fileName ? ` av ${input.fileName}` : ""} misslyckades. Fel: ${reason}. Inga order sparades; ladda upp filen igen.`,
             rule: "Larm när en import misslyckas.",
-            link: `/datakallor/${encodeURIComponent(input.dataSourceId)}`,
+            link: importId ? `/datakallor/importer/${encodeURIComponent(importId)}` : "/datakallor",
             now,
           })
         ).id,

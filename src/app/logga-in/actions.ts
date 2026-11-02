@@ -27,6 +27,7 @@ import { createRateLimiter } from "@/server/rate-limit";
 import { clientIp, resolveAppBaseUrl } from "@/server/request-info";
 
 import {
+  LOGIN_UNAVAILABLE,
   MAGIC_COOKIE,
   MAGIC_TTL_SECONDS,
   type ConfirmState,
@@ -41,7 +42,13 @@ function field(formData: FormData, name: string): string {
 
 export async function signIn(_prev: LoginState, formData: FormData): Promise<LoginState> {
   const email = field(formData, "email").trim();
-  const result = await login({ email, password: field(formData, "password") });
+  let result: Awaited<ReturnType<typeof login>>;
+  try {
+    result = await login({ email, password: field(formData, "password") });
+  } catch {
+    // Databasen eller inloggningstjänsten svarar inte: stanna i formuläret med ett fel.
+    return { error: LOGIN_UNAVAILABLE, email };
+  }
   if (!result.ok) {
     return { error: result.error, email };
   }

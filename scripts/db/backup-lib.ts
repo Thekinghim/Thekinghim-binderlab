@@ -5,7 +5,7 @@
  *   backupDatabase   pg_dump (custom-format) i en ögonblicksbild + manifest med radantal och
  *                    kontrollsummor tagna i SAMMA ögonblicksbild
  *   restoreDatabase  skapar en NY databas och kör pg_restore (vägrar skriva över en befintlig)
- *   tableChecksums   antal rader och md5 per tabell (raderna sorterade som text)
+ *   tableChecksums   antal rader och kontrollsumma per tabell (md5 per rad, summerad)
  *   compareChecksums skillnaderna mellan två uppsättningar
  *
  * Används av scripts/db/backup.ts, scripts/db/restore.ts och test/db/backup-restore.test.ts.
@@ -27,12 +27,17 @@ export interface TableChecksum {
   /** schema.tabell */
   readonly table: string;
   readonly rows: number;
-  /** md5 av alla rader som text, sorterade (tom tabell: md5 av ""). */
+  /**
+   * Kontrollsumma: md5 av "antal:summa1:summa2", där summorna är de två halvorna av varje
+   * rads md5 (raden som text) summerade. Samma innehåll ger samma summa i vilken ordning
+   * raderna än ligger.
+   */
   readonly md5: string;
 }
 
 export interface BackupManifest {
-  readonly format: "binderlab-backup/1";
+  /** /2: kontrollsumman per rad (summerad). /1 (hela tabellen som en sträng) läses inte. */
+  readonly format: "binderlab-backup/2";
   readonly createdAt: string;
   /** Värd och databas (utan användare och lösenord). */
   readonly source: { host: string; database: string };
@@ -166,10 +171,15 @@ async function checksumsWith(sql: Sql, schemas: readonly string[]): Promise<Tabl
   for (const table of await listTables(sql, schemas)) {
     const [schema, name] = table.split(".") as [string, string];
     const rel = `${quoteIdent(schema)}.${quoteIdent(name)}`;
+    // En md5 per rad, summerad (de två 64-bitarshalvorna var för sig) och sedan hashad med
+    // antalet: konstant minne oavsett tabellens storlek (ingen sträng av hela tabellen, som
+    // Postgres begränsar till 1 GB) och oberoende av radernas ordning.
     const [row] = await sql.unsafe<{ rows: string; md5: string }[]>(
       `select count(*)::text as rows,
-              md5(coalesce(string_agg(t::text, E'\\n' order by t::text collate "C"), '')) as md5
-       from ${rel} t`,
+              md5(count(*)::text || ':' ||
+                  coalesce(sum(('x' || substr(h, 1, 16))::bit(64)::bigint::numeric), 0)::text || ':' ||
+                  coalesce(sum(('x' || substr(h, 17, 16))::bit(64)::bigint::numeric), 0)::text) as md5
+       from (select md5(t::text) as h from ${rel} t) r`,
     );
     out.push({ table, rows: Number(row?.rows ?? 0), md5: row?.md5 ?? "" });
   }
@@ -267,7 +277,7 @@ export async function backupDatabase(options: BackupOptions): Promise<BackupMani
         select (select max(version) from supabase_migrations.schema_migrations) as version
         where to_regclass('supabase_migrations.schema_migrations') is not null`;
       const manifest: BackupManifest = {
-        format: "binderlab-backup/1",
+        format: "binderlab-backup/2",
         createdAt: new Date().toISOString(),
         source: describeUrl(options.url),
         serverVersion: info!.version,
@@ -293,7 +303,12 @@ export function manifestPathOf(dumpFile: string): string {
 
 export async function readManifest(dumpFile: string): Promise<BackupManifest> {
   const raw = JSON.parse(await readFile(manifestPathOf(dumpFile), "utf8")) as BackupManifest;
-  if (raw.format !== "binderlab-backup/1") {
+  if ((raw.format as string) === "binderlab-backup/1") {
+    throw new BackupError(
+      "Manifestet är från en äldre version av skriptet (kontrollsummorna räknades annorlunda). Ta en ny säkerhetskopia med npm run db:backup.",
+    );
+  }
+  if (raw.format !== "binderlab-backup/2") {
     throw new BackupError(`Okänt manifestformat: ${String(raw.format)}`);
   }
   return raw;
@@ -343,6 +358,31 @@ export async function restoreDatabase(options: RestoreOptions): Promise<void> {
   }
   const { args, env } = connectionArgs(options.targetUrl);
   log(`pg_restore ${path.basename(options.file)} → ${database} …`);
+  try {
+    await restoreInto(options, args, env);
+  } catch (error) {
+    // Ingen halvfärdig databas kvar: nästa försök ska inte stoppas av "finns redan".
+    log(`Återställningen misslyckades; tar bort ${database} …`);
+    const cleanup = connect(withDatabase(options.targetUrl, "postgres"));
+    try {
+      await cleanup.unsafe(`drop database if exists ${quoteIdent(database)} with (force)`);
+    } catch (dropError) {
+      const why = dropError instanceof Error ? dropError.message : String(dropError);
+      throw new BackupError(
+        `${error instanceof Error ? error.message : String(error)} (Databasen ${database} kunde inte tas bort: ${why}. Ta bort den för hand innan nästa försök.)`,
+      );
+    } finally {
+      await cleanup.end();
+    }
+    throw error;
+  }
+}
+
+async function restoreInto(
+  options: RestoreOptions,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
   await run(
     pgBinary("pg_restore"),
     [

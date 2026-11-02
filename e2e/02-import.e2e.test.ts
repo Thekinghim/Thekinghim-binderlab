@@ -1,12 +1,14 @@
 /**
- * Import: seedens orderlista (Awish-CSV) laddas upp till en egen datakälla, förhandsvisas
- * (inget sparas), bekräftas (nya order) och laddas upp en gång till (0 nya: alla är
- * dubbletter). Importloggen visar båda.
+ * Import: körningens orderlista (rader ur seedens Awish-CSV med körningens egna ordernummer,
+ * e2e/support/fixture.ts) laddas upp till datakällan "E2E-import", förhandsvisas (inget
+ * sparas), bekräftas (12 nya order) och laddas upp en gång till (0 nya: alla är dubbletter).
+ * Ordern syns sedan under Order.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, it } from "vitest";
 
 import {
+  expectNoPageErrors,
   launchBrowser,
   openPage,
   screenshot,
@@ -19,53 +21,66 @@ import { e2e, login } from "./support/session";
 let browser: Browser;
 let context: BrowserContext;
 let page: Page;
+let errors: Error[];
 
 beforeAll(async () => {
   browser = await launchBrowser();
-  ({ page, context } = await openPage(browser, e2e().baseUrl, { theme: "light" }));
+  ({ page, context, errors } = await openPage(browser, e2e().baseUrl, { theme: "light" }));
   await login(page, e2e().users.owner);
 });
+
+afterEach(() => expectNoPageErrors(errors));
 
 afterAll(async () => {
   await context?.close();
   await browser?.close();
 });
 
-/** Väljer källan, laddar upp seed-CSV:n och väntar på förhandsvisningen. */
-async function uploadSeedCsv(): Promise<void> {
+/** Väljer källan, laddar upp körningens CSV och väntar på förhandsvisningen. */
+async function uploadRunCsv(): Promise<void> {
   await page.goto("/datakallor");
   await page.getByLabel("Datakälla").selectOption({ label: e2e().importSource.name });
-  await page.locator('input[type="file"]').setInputFiles(e2e().seedCsv);
+  await page.locator('input[type="file"]').setInputFiles(e2e().importCsv.file);
   await page.getByText("Förhandsvisning · inget är sparat ännu").waitFor();
 }
 
 describe("import av orderlistan", () => {
-  it("förhandsvisning och import: 460 nya order", async () => {
-    await uploadSeedCsv();
-    const confirm = page.getByRole("button", { name: /^Importera 460 order$/ });
+  const rows = () => e2e().importCsv.rows;
+
+  it("förhandsvisning och import: alla rader blir nya order", async () => {
+    await uploadRunCsv();
+    const confirm = page.getByRole("button", { name: `Importera ${rows()} order`, exact: true });
     await confirm.waitFor();
     await page.getByText("Förhandsvisning · inget är sparat ännu").scrollIntoViewIfNeeded();
     await screenshot(page, "02-import-forhandsvisning");
     await confirm.click();
     await page.getByText("Importerad", { exact: true }).waitFor();
     await page
-      .getByText(/460 nya order importerade/)
+      .getByText(new RegExp(`${rows()} nya order importerade`))
       .first()
       .waitFor();
     await page.getByText("Importerad", { exact: true }).scrollIntoViewIfNeeded();
     await screenshot(page, "02-import-klar");
   });
 
+  it("ordern finns under Order", async () => {
+    const orderNo = e2e().importCsv.orderNumbers[0]!;
+    await page.goto(`/order?q=${encodeURIComponent(orderNo)}&period=allt`);
+    await page.getByText(orderNo).first().waitFor();
+    await screenshot(page, "02-import-order");
+  });
+
   it("samma fil igen ger 0 nya order", async () => {
-    await uploadSeedCsv();
+    await uploadRunCsv();
     const save = page.getByRole("button", { name: "Spara i loggen (0 nya)" });
     await save.waitFor();
-    expect(await page.getByRole("button", { name: /^Importera \d/ }).count()).toBe(0);
+    const importButtons = page.getByRole("button", { name: /^Importera \d/ });
+    if ((await importButtons.count()) > 0) throw new Error("Importknappen visas för 0 nya order.");
     await page.getByText(/Inget nytt att importera/).waitFor();
     await save.click();
     await page.getByText("Importerad", { exact: true }).waitFor();
     await page
-      .getByText(/Inga nya order: 460 fanns redan/)
+      .getByText(new RegExp(`Inga nya order: ${rows()} fanns redan`))
       .first()
       .waitFor();
     await page.getByText("Importerad", { exact: true }).scrollIntoViewIfNeeded();

@@ -195,7 +195,7 @@ export function TopTitles({ top, caption }: { top: HomeTopTitles; caption: strin
             rest: true,
             note:
               top.rest.unpricedTitles > 0
-                ? `varav ${formatInt(top.rest.unpricedTitles)} utan inköpspris, ingår inte i vinsten`
+                ? `Varav ${formatInt(top.rest.unpricedTitles)} utan inköpspris, som inte ingår i vinsten.`
                 : null,
           },
         ]
@@ -259,7 +259,7 @@ export function TopTitles({ top, caption }: { top: HomeTopTitles; caption: strin
                     />
                   </span>
                 </span>
-                {r.note ? <span className="meta mt-1.5 block text-subtle">{r.note}</span> : null}
+                {r.note ? <span className="mt-1.5 block text-xs text-subtle">{r.note}</span> : null}
                 <span className="meta mt-1 block text-subtle sm:hidden">
                   {formatInt(r.orders)}
                   {NBSP}order

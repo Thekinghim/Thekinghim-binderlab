@@ -243,6 +243,7 @@ export function AccountantReportDocument({
       recipient={recipient}
       period={datePeriod(snapshot.period)}
       generatedAt={new Date(snapshot.generatedAt)}
+      timeZone={snapshot.organization.timeZone}
       layout={layout}
       confidentiality={`Underlag för bokföringen · ${snapshot.organization.name}`}
     >

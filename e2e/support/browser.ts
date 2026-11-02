@@ -61,11 +61,22 @@ export interface Page {
   getByRole(role: string, options?: RoleOptions): Locator;
   getByLabel(text: TextMatch, options?: { exact?: boolean }): Locator;
   getByText(text: TextMatch, options?: { exact?: boolean }): Locator;
-  screenshot(options?: { path?: string; fullPage?: boolean }): Promise<Buffer>;
+  screenshot(options?: {
+    path?: string;
+    fullPage?: boolean;
+    caret?: "hide" | "initial";
+  }): Promise<Buffer>;
   evaluate<R>(fn: () => R): Promise<R>;
   setDefaultTimeout(ms: number): void;
   close(): Promise<void>;
   on(event: "pageerror", fn: (error: Error) => void): void;
+  on(event: "console", fn: (message: ConsoleMessage) => void): void;
+}
+
+export interface ConsoleMessage {
+  type(): string;
+  text(): string;
+  location(): { url: string; lineNumber: number; columnNumber: number };
 }
 
 export interface BrowserContext {
@@ -147,7 +158,51 @@ export async function openPage(
   page.setDefaultTimeout(Number(process.env.E2E_TIMEOUT_MS ?? 60_000));
   const errors: Error[] = [];
   page.on("pageerror", (error) => errors.push(error));
+  // Konsolfel räknas som fel (t.ex. Reacts "Hydration failed"), utom de som är kända och
+  // ofarliga (ALLOWED_CONSOLE_ERRORS).
+  page.on("console", (message) => {
+    if (message.type() !== "error") return;
+    const text = message.text();
+    if (ALLOWED_CONSOLE_ERRORS.some((re) => re.test(text))) return;
+    errors.push(new Error(`console.error på ${safePath(page.url())}: ${summarize(text)}`));
+  });
   return { page, context, errors };
+}
+
+/**
+ * Konsolfel som inte är fel i appen. Håll listan kort och förklara varje rad.
+ */
+export const ALLOWED_CONSOLE_ERRORS: readonly RegExp[] = [
+  // Webbläsaren loggar svar med felstatus som testet själv framkallar: fel lösenord (401/400
+  // från inloggningen) och sidor som rollen inte får se (403/404 före omdirigeringen).
+  /^Failed to load resource: the server responded with a status of (400|401|403|404)\b/,
+];
+
+/** Första raden och, för Reacts hydreringsfel, skillnaden (raderna med + och -). */
+function summarize(text: string): string {
+  const lines = text.split("\n");
+  const diff = lines.filter(
+    (l) => /^\s*[+-]\s+\S/.test(l) && !/^\s*-\s+(A server|Variable|Date|External|Invalid)/.test(l),
+  );
+  return [lines[0]?.slice(0, 300) ?? "", ...diff.slice(0, 24).map((l) => l.trimEnd())].join("\n");
+}
+
+function safePath(url: string): string {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return url;
+  }
+}
+
+/** Kastar om sidan har haft sidfel eller konsolfel; tömmer listan. */
+export function expectNoPageErrors(errors: Error[]): void {
+  const found = errors.splice(0, errors.length);
+  if (found.length > 0) {
+    throw new Error(
+      `Sidfel eller konsolfel (${found.length}):\n${found.map((e) => `- ${e.message}`).join("\n")}`,
+    );
+  }
 }
 
 /** Väntar tills `check` ger ett värde (inte undefined/false), annars kastar med `message`. */
@@ -172,6 +227,8 @@ export async function screenshot(page: Page, name: string): Promise<string> {
   const dir = path.resolve(process.env.E2E_SCREENSHOT_DIR ?? path.join(".data", "e2e"));
   mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${name}.png`);
-  await page.screenshot({ path: file, fullPage: false });
+  // caret: "initial": Playwright döljer annars markören med en inline-stil på fälten, och
+  // om sidan inte hunnit hydreras än ger det ett (falskt) hydreringsfel i konsolen.
+  await page.screenshot({ path: file, fullPage: false, caret: "initial" });
   return file;
 }

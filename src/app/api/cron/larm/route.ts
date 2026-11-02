@@ -14,6 +14,7 @@ import { getServiceDb } from "@/db/client";
 import { getServerEnv } from "@/lib/env";
 import { cronAuthorized } from "@/server/alerts/cron-auth";
 import { runAlertJob } from "@/server/alerts/job";
+import { CRON_JOBS, withCronMonitor } from "@/server/monitoring/cron-monitor";
 import { resolveAppBaseUrl } from "@/server/request-info";
 
 export const maxDuration = 60;
@@ -39,7 +40,15 @@ export async function GET(request: Request): Promise<Response> {
   } catch (error) {
     return json({ error: error instanceof Error ? error.message : "APP_URL saknas." }, 500);
   }
-  const result = await runAlertJob(getServiceDb(), { baseUrl });
-  const failed = result.organizations.filter((o) => o.status === "failed").length;
-  return json(result, failed > 0 && failed === result.organizations.length ? 500 : 200);
+  // Sentry Cron Monitors (när SENTRY_DSN finns): larmar när körningen uteblir eller felar.
+  const allFailed = (r: Awaited<ReturnType<typeof runAlertJob>>) => {
+    const failed = r.organizations.filter((o) => o.status === "failed").length;
+    return failed > 0 && failed === r.organizations.length;
+  };
+  const result = await withCronMonitor(
+    CRON_JOBS.larm,
+    () => runAlertJob(getServiceDb(), { baseUrl }),
+    (r) => !allFailed(r),
+  );
+  return json(result, allFailed(result) ? 500 : 200);
 }

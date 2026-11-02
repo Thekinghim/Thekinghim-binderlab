@@ -93,7 +93,7 @@ export function DataStartNote({
 }) {
   if (!clippedFrom) return null;
   return (
-    <p className="font-mono text-xs break-words text-subtle">
+    <p className="text-sm break-words text-subtle">
       Räknat från första ordern {day(clippedFrom)}
       {requested ? `; perioden ${periodText(requested)} börjar före den` : ""}. Dagar utan data
       räknas inte som dagar utan försäljning.

@@ -159,6 +159,7 @@ export default async function AvtalPage({
         ) : null}
         {o && o.expiringShareBp !== null ? (
           <EconomyKpis
+            headingLevel={2}
             label={`Intäkt ${periodText(o.window)}`}
             items={[
               {
@@ -409,8 +410,14 @@ export default async function AvtalPage({
             index={3}
             eyebrow={`Intäkt per butik · ${periodText(o.window)}`}
             title={`${sek(o.totalRevenueOre)} i intäkt, ${sek(o.expiringRevenueOre)} på avtal som löper ut.`}
-            aside={o.summary}
+            aside={
+              o.noContractShareBp !== null && o.noContractShareBp > 0
+                ? `${formatPercent(o.noContractShareBp / 10_000, 0)} kommer från butiker utan gällande avtal.`
+                : undefined
+            }
           />
+          {/* Hela förklaringen står under rubriken; den grå delen av rubriken är ett kort faktum. */}
+          <p className="max-w-3xl text-base text-pretty text-muted">{o.summary}</p>
           <Panel>
             <PanelSection label="Butiker" meta={formatInt(o.stores.length)}>
               <ul className="flex flex-col">

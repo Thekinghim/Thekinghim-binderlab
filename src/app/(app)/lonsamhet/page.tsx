@@ -172,7 +172,7 @@ export default async function LonsamhetPage({
               }
             />
             <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
-              <Panel grid marks className="lg:col-span-7">
+              <Panel grid marks className="lg:col-span-7 lg:self-start">
                 <LonsamhetBridge bridge={b} />
               </Panel>
               <Panel className="flex flex-col lg:col-span-5">

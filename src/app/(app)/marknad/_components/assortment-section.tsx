@@ -163,7 +163,7 @@ function MachineCard({
               ))}
             </Table>
             {rec.action === "keep" && rec.potentialEffectPerWeekOre > 0 ? (
-              <p className="meta text-subtle">
+              <p className="text-sm text-subtle">
                 Bästa omfördelningen ger {signedKronorWhole(rec.potentialEffectPerWeekOre)}/vecka,
                 under gränsen för att föreslå en ändring.
               </p>

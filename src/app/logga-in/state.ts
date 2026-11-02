@@ -15,6 +15,9 @@ export interface ConfirmState {
   error?: string;
 }
 
+/** När inloggningen inte når databasen eller tjänsten (formuläret står kvar). */
+export const LOGIN_UNAVAILABLE = "Inloggningen svarar inte just nu. Försök igen om en stund.";
+
 /** Cookie som binder en begärd länk till webbläsaren och bär `next`. */
 export const MAGIC_COOKIE = "bl_magic";
 /** Supabase-länkar gäller en timme som standard. */

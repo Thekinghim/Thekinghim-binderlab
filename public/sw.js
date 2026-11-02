@@ -94,11 +94,12 @@ function isFieldPage(url) {
   return PAGES.includes(url.pathname);
 }
 
-function offlinePage() {
+function offlinePage(path) {
+  const retry = PAGES.includes(path) ? path : "/drift/pafyllning";
   const html = `<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Ingen uppkoppling · Binderlab</title>
 <style>body{margin:0;background:#0a0a0b;color:#edeae4;font:14px/20px system-ui,sans-serif;padding:32px 16px}main{max-width:480px;margin:0 auto}p{color:#a6a39d}.l{font:11px/16px ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:#8f8c86}a{color:#edeae4}</style></head>
 <body><main><p class="l">Ur drift · ingen uppkoppling</p><h1 style="font-size:24px;line-height:32px;font-weight:500">Sidan finns inte sparad i telefonen.</h1>
-<p>Öppna Påfyllning en gång med uppkoppling, så fungerar den sedan utan nät.</p><p><a href="/drift/pafyllning">Försök igen →</a></p></main></body></html>`;
+<p>Öppna sidan en gång med uppkoppling, så fungerar den sedan utan nät.</p><p><a href="${retry}">Försök igen →</a></p></main></body></html>`;
   return new Response(html, {
     status: 503,
     headers: { "content-type": "text/html; charset=utf-8" },
@@ -108,13 +109,19 @@ function offlinePage() {
 async function networkFirst(request, url) {
   const scope = await currentScope();
   const cache = scope ? await caches.open(pageCacheName(scope)) : null;
+  const cached = cache ? await cache.match(url.pathname) : undefined;
+  const network = fetch(request);
   try {
-    const res = await Promise.race([
-      fetch(request),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), NETWORK_TIMEOUT_MS),
-      ),
-    ]);
+    // Väntetiden gäller bara när det finns en sparad sida att visa i stället. Utan sparad
+    // sida väntar vi på nätet: ett långsamt svar är bättre än "ingen uppkoppling".
+    const res = cached
+      ? await Promise.race([
+          network,
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("timeout")), NETWORK_TIMEOUT_MS),
+          ),
+        ])
+      : await network;
     if (res.redirected && SIGNED_OUT.includes(new URL(res.url).pathname)) {
       // Inte inloggad längre: inga sparade sidor kvar.
       await forgetUser();
@@ -123,8 +130,16 @@ async function networkFirst(request, url) {
     }
     return res;
   } catch {
-    const cached = cache ? await cache.match(url.pathname) : undefined;
-    return cached ?? offlinePage();
+    if (cached) {
+      // Nätet svarade för sent: visa den sparade sidan och spara det nya svaret när det kommer.
+      network
+        .then((res) => {
+          if (cache && res.ok && !res.redirected) return cache.put(url.pathname, res);
+        })
+        .catch(() => {});
+      return cached;
+    }
+    return offlinePage(url.pathname);
   }
 }
 

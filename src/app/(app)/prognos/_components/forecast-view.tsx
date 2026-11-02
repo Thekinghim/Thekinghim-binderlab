@@ -28,6 +28,15 @@ const GROUPS = [
   { value: "series", label: "Titel × automat" },
 ] as const;
 
+/** Datamängden bakom raden: "Lite data" eller "Tillräcklig". */
+function DataStatus({ lowData }: { lowData: boolean }) {
+  return lowData ? (
+    <StatusTag status="neutral">Lite data</StatusTag>
+  ) : (
+    <StatusTag status="ok">Tillräcklig</StatusTag>
+  );
+}
+
 function value(row: { revenueOre: number; unitsMilli: number }, metric: ForecastMetric): string {
   return metric === "revenue" ? kr(row.revenueOre) : packsMilli(row.unitsMilli);
 }
@@ -77,6 +86,10 @@ export function ForecastView({ model }: { model: ForecastModel }) {
           <span className="flex min-w-0 flex-col">
             <span className="text-fg">{r.name}</span>
             {r.sub ? <span className="text-xs text-subtle">{r.sub}</span> : null}
+            {/* Under md står dataläget här; kolumnen Data är dold (design.md §5.1). */}
+            <span className="mt-1 md:hidden">
+              <DataStatus lowData={r.lowData} />
+            </span>
           </span>
         ),
         csv: (r) => (r.sub && group === "series" ? `${r.name} – ${r.sub}` : r.name),
@@ -94,6 +107,8 @@ export function ForecastView({ model }: { model: ForecastModel }) {
         key: "range",
         header: `Intervall ${model.coverage}`,
         numeric: true,
+        // Intervallet för hela prognosen står i rubriken; under md ryms tabellen utan scroll.
+        hideOnMobile: true,
         sortValue: (r) => (metric === "revenue" ? r.total.revenueHighOre : r.total.unitsHighMilli),
         render: (r) => <span className="text-muted">{range(r.total, metric)}</span>,
         csv: (r) => range(r.total, metric),
@@ -102,12 +117,8 @@ export function ForecastView({ model }: { model: ForecastModel }) {
         key: "status",
         header: "Data",
         hideable: false,
-        render: (r) =>
-          r.lowData ? (
-            <StatusTag status="neutral">Lite data</StatusTag>
-          ) : (
-            <StatusTag status="ok">Tillräcklig</StatusTag>
-          ),
+        hideOnMobile: true,
+        render: (r) => <DataStatus lowData={r.lowData} />,
         csv: (r) => (r.lowData ? "Lite data" : "Tillräcklig"),
       },
       {

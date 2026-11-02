@@ -187,7 +187,7 @@ describe("buildPage", () => {
     expect(unpricedOf([missingPrice, refill(M1, "now", 1)])).toBe(223_500);
     const later = buildPage(input([missingPrice])).groups[0]!;
     expect(later.aside).toBe(
-      `1${NBSP}titel utan inköpspris, 2${NBSP}235${NBSP}kr i intäkt saknar inköpspris.`,
+      `1${NBSP}titel utan inköpspris, 2${NBSP}235${NBSP}kr i intäkt räknas inte in i vinsten.`,
     );
     expect(later.aside).not.toContain("i risk");
   });

@@ -8,6 +8,7 @@
 import { timingSafeEqual } from "node:crypto";
 
 import { getServiceDb } from "@/db/client";
+import { CRON_JOBS, withCronMonitor } from "@/server/monitoring/cron-monitor";
 import { createMonthlyDrafts } from "@/server/reports/drafts";
 
 export const runtime = "nodejs";
@@ -31,7 +32,13 @@ export async function GET(request: Request): Promise<Response> {
   if (!authorized(request.headers.get("authorization"), secret)) {
     return Response.json({ ok: false, error: "Obehörig." }, { status: 401 });
   }
-  const results = await createMonthlyDrafts(getServiceDb());
+  // Sentry Cron Monitors (när SENTRY_DSN finns): larmar när körningen uteblir eller felar.
+  // Fel per organisation blir dessutom larm på Drift (src/server/monitoring).
+  const results = await withCronMonitor(
+    CRON_JOBS.rapporter,
+    () => createMonthlyDrafts(getServiceDb()),
+    (rs) => rs.every((r) => r.errors.length === 0),
+  );
   const created = results.reduce((n, r) => n + r.created.length, 0);
   const errors = results.flatMap((r) => r.errors.map((e) => `${r.organizationId}: ${e}`));
   if (errors.length > 0) console.error("[cron/rapporter]", errors);

@@ -7,10 +7,26 @@
  *
  * Sentry laddas bara när `SENTRY_DSN` finns (då har sentry.server.config.ts startat SDK:n);
  * annars görs ingenting. `beforeSend` (src/server/observability/sentry-options.ts) tar bort
- * e-postadresser och hemligheter innan något skickas.
+ * e-postadresser och hemligheter innan något skickas; meddelandet och extra tvättas dessutom
+ * här. Efter varje händelse väntar vi (högst 2 s) på att den skickas: på Vercel fryses
+ * funktionen när svaret är skickat, och en händelse i kön går då förlorad.
  */
 
 import "server-only";
+
+import { scrubString } from "@/server/observability/sentry-options";
+
+/** Hur länge ett fångat fel får vänta på att skickas (serverlösa funktioner fryses efteråt). */
+const FLUSH_MS = 2_000;
+
+function scrubExtra(
+  extra: Readonly<Record<string, string | number | boolean | null>> | undefined,
+): Record<string, string | number | boolean | null> {
+  const out: Record<string, string | number | boolean | null> = {};
+  for (const [k, v] of Object.entries(extra ?? {}))
+    out[k] = typeof v === "string" ? scrubString(v) : v;
+  return out;
+}
 
 /** Det som skickas till Sentry för ett driftfel. Inga personuppgifter i taggar eller extra. */
 export interface FailureEvent {
@@ -39,15 +55,19 @@ export const captureToSentry: FailureCapture = async (event) => {
   if (!sentryEnabled()) return null;
   try {
     const Sentry = await import("@sentry/nextjs");
+    const message = scrubString(event.message);
     const context = {
       level: "error" as const,
       tags: { ...event.tags },
-      extra: { ...event.extra, beskrivning: event.message },
+      extra: { ...scrubExtra(event.extra), beskrivning: message },
       fingerprint: [...event.fingerprint],
     };
-    return event.error instanceof Error
-      ? Sentry.captureException(event.error, context)
-      : Sentry.captureMessage(event.message, context);
+    const id =
+      event.error instanceof Error
+        ? Sentry.captureException(event.error, context)
+        : Sentry.captureMessage(message, context);
+    await Sentry.flush(FLUSH_MS);
+    return id;
   } catch (error) {
     console.error("[monitoring] Kunde inte skicka till Sentry", error);
     return null;

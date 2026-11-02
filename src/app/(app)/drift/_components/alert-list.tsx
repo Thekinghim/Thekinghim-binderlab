@@ -104,7 +104,7 @@ export function AlertList({ items, canAck }: { items: AlertItem[]; canAck: boole
                       ))}
                     </dl>
                   ) : null}
-                  <p className="meta text-subtle">
+                  <p className="text-sm text-subtle">
                     {`Sett ${a.occurrences} ${a.occurrences === 1 ? "gång" : "gånger"}, aviserat ${a.notifyCount} ${a.notifyCount === 1 ? "gång" : "gånger"}, senast sett ${a.lastSeen}.`}
                   </p>
                   <Link

@@ -99,3 +99,6 @@ Tas bort när alla faser är klara.
 - 15:50 Säkerhetsgranskning av hela appen klar: 505 attacktester gröna (server actions, rutter, RPC:er, storage, IDOR, export, cron).
   Täppt: säkerhetshuvuden (CSP, X-Frame-Options, HSTS m.m.), smalare CSP för PDF, gallring bara som ägare, IP via Vercel-huvud,
   /design och /datamodell kräver inloggning, smalare regel för statiska filer. Kvar: nonce-CSP, gräns för utskick, stora avtalsfiler på Vercel (4,5 MB).
+- E2E, backup och övervakning klara: 17 e2e-tester i 6 flöden (inloggning, import, påfyllning, prisändring, rapportutskick,
+  felövervakning) gröna 3 av 3 körningar; backup/återställning testad; larm vid misslyckad import/rapport/cron + Sentry Cron Monitors.
+  E2E kör mot egen server på port 3210 och egen databas. Dev-servern på 3200 hade stannat och startades om.

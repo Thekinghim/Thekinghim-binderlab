@@ -129,7 +129,7 @@ function Suggestion({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) {
         names={ctx.names}
         extra={
           view.suggestionAsOf < ctx.today ? (
-            <p className="meta text-subtle">
+            <p className="text-sm text-subtle">
               Förslaget räknat per {dayText(view.suggestionAsOf, ctx.today)}, dagen före släppet.
             </p>
           ) : null
@@ -202,7 +202,7 @@ function Outcome({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) {
       </dl>
       <p className="max-w-3xl text-muted">{o.text}</p>
       {view.outcomeBasis === "suggestion" ? (
-        <p className="meta text-subtle">
+        <p className="text-sm text-subtle">
           Förslaget fastställdes inte; utfallet jämförs med förslaget per{" "}
           {dayText(view.suggestionAsOf, ctx.today)}.
         </p>

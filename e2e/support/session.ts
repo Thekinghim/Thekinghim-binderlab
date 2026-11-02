@@ -26,8 +26,13 @@ export async function submitLogin(page: Page, email: string, password: string): 
   await page.getByRole("button", { name: "Logga in", exact: true }).click();
 }
 
+/** Lösenordet för en av fixturens användare. */
+export function passwordFor(email: string): string {
+  return email === e2e().users.refiller ? e2e().refillerPassword : e2e().password;
+}
+
 /** Loggar in och väntar tills appen har tagit över (bort från /logga-in). */
 export async function login(page: Page, email: string): Promise<void> {
-  await submitLogin(page, email, e2e().password);
+  await submitLogin(page, email, passwordFor(email));
   await page.waitForURL((url) => !url.pathname.startsWith("/logga-in"));
 }

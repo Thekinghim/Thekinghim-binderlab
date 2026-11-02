@@ -390,11 +390,11 @@ Komponenterna ligger i `src/components/ui`, `charts`, `shell`, `brand` och `repo
 
 ### Nyckeltal
 
-| Komponent                | När                                                                                                                                                                                       |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `KpiStrip`               | **Standard** för två till sju nyckeltal. En sammanhängande remsa med 1 px avdelare och en `primary`. `comparison` skrivs en gång i huvudet. Under 640 px blir den 2 × 2 utan trendlinjer. |
-| `KpiCard`                | Ett ensamt nyckeltal. Sätt `deltaLabel=""` när jämförelsen står i rubriken. Flera i rad blir `KpiStrip`.                                                                                  |
-| `KpiTrace` / `Sparkline` | 1 px linje utan fyllning och en streckad referenslinje. Noden visas bara vid larm.                                                                                                        |
+| Komponent                | När                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `KpiStrip`               | **Standard** för två till sju nyckeltal. En sammanhängande remsa med 1 px avdelare och en `primary`. `comparison` skrivs en gång i huvudet. Lägena följer remsans egen bredd (container queries), inte fönstrets: under 576 px 2 × 2 utan trendlinjer, från 576 px huvudpersonen på egen rad, från 896 px en rad. Ett värde som inte ryms tas ner ett storlekssteg i taget i stället för att klippas. `headingLevel={2}` när remsan står direkt under sidans h1. |
+| `KpiCard`                | Ett ensamt nyckeltal. Sätt `deltaLabel=""` när jämförelsen står i rubriken. Flera i rad blir `KpiStrip`.                                                                                                                                                                                                                                                                                                                                                         |
+| `KpiTrace` / `Sparkline` | 1 px linje utan fyllning och en streckad referenslinje. Noden visas bara vid larm.                                                                                                                                                                                                                                                                                                                                                                               |
 
 - `alert` kräver alltid `alertText` ("Gräns 3 st").
 - `motion="fade"` är standard. Använd `count` bara när uppräkningen har en poäng.
@@ -680,7 +680,7 @@ Det här bryter mot reglerna ovan och ska rättas av den som äger filen:
 1. **`formatRelative`** skriver "igår". Ordlistan säger "i går". Utdatan används i `automater/_components/machine-table.tsx` och testas i `src/import`, så ändringen görs samlat.
 2. **Utskriftstemat saknar `--bl-signal-line`, `--bl-signal-hover` och `--bl-fg-disabled`.** De ärvs från appens läge, så en kritisk statusetikett får orange kant på ett ark med `tone="mono"`.
 3. **`::selection`** i `globals.css` använder `--bl-signal-soft`. Markering är inte en åtgärd.
-4. **Inloggningssidan** (`app/logga-in/auth-frame.tsx`) har nät bakom formuläret och en gradientmask.
+4. ~~**Inloggningssidan** har nät bakom formuläret och en gradientmask.~~ Rättad: `auth-frame.tsx` har varken nät eller mask (genomgång A, fas 7).
 5. **`--bl-line-control`** når bara 2,7–2,9:1 mot `hover` och `raised` i mörkt läge. Kontroller står därför på `bg-bg` (fältets fyllning).
 6. **Gråskalesnapshots per diagram (G15)** saknas. Kontrollen är manuell tills vidare.
 7. **`ReportMark`** på den markerade tabellraden i månadsrapporten (släppet) är signal i `tone="signal"`. Släppet är inget som kräver åtgärd; markeringen bör bli `fg`.

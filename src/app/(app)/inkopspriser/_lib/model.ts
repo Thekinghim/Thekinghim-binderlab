@@ -325,6 +325,10 @@ export function pageHeadline(
       aside: `${nameList(missing.map((r) => r.name))} har inte sålt i perioden.`,
     };
   }
+  if (active.length === 0) {
+    // Ny organisation: inga titlar än ("Alla 0 titlar har inköpspris" vore sant men tomt).
+    return { title: "Inga titlar ännu.", aside: "Titlar skapas när order importeras." };
+  }
   const lowest = lowestLeft(active);
   return {
     title: `Alla ${plural(active.length, "titel", "titlar")} har inköpspris.`,

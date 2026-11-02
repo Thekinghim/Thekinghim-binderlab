@@ -44,7 +44,7 @@ function NameCell({ row, selected }: { row: ProfitLine; selected: boolean }) {
       <span className="flex min-w-0 flex-col py-1.5">
         <span className="text-muted">{row.name}</span>
         {row.kind === "unallocated" ? (
-          <span className="meta text-subtle">Hyra som ingen order med inköpspris bär</span>
+          <span className="text-xs text-subtle">Hyra som ingen order med inköpspris bär</span>
         ) : null}
       </span>
     );

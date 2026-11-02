@@ -182,6 +182,12 @@ describe("titleRows: delvis utan pris", () => {
 });
 
 describe("pageHeadline", () => {
+  it("ny organisation utan titlar: säger att titlarna kommer med orderna", () => {
+    const h = pageHeadline([], DATES);
+    expect(h.title).toBe("Inga titlar ännu.");
+    expect(h.aside).toBe("Titlar skapas när order importeras.");
+  });
+
   it("titlar utan pris först, med order och intäkt som inte räknas", () => {
     const h = pageHeadline(
       [

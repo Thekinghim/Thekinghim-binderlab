@@ -507,7 +507,7 @@ function forecastModel(
   accuracy: AccuracyModel;
 } {
   const f = data.forecast;
-  const coverage = "80 %";
+  const coverage = formatPercent(0.8, 0);
   const series = new Map(f.series.map((s) => [s.key, s]));
 
   const bySeries: ForecastRow[] = f.series

@@ -51,12 +51,13 @@ export function HomeKpis({ kpis, comparison }: { kpis: HomeKpi[]; comparison: st
     alert: k.alertText !== null,
     alertText: k.alertText ?? undefined,
   }));
-  // Under 640 px står huvudtalet i en halv kolumn: låt etiketten brytas i stället för att kapas.
+  // Under 640 px står huvudtalet i en halv kolumn: låt etiketten brytas i stället för att kapas,
+  // och ge alla etiketter två raders höjd så att talen i samma rad står i höjd med varandra.
   return (
     <KpiStrip
       items={items}
       comparison={comparison}
-      className="max-sm:[&_dt]:text-balance max-sm:[&_dt]:whitespace-normal"
+      className="max-sm:[&_dt]:min-h-8 max-sm:[&_dt]:text-balance max-sm:[&_dt]:whitespace-normal"
     />
   );
 }

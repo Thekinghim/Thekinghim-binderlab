@@ -502,7 +502,7 @@ function RowsTable({ result, timeZone }: { result: PreviewResult; timeZone: stri
           onChange={setFilter}
           options={[
             { value: "all", label: "Alla" },
-            { value: "problems", label: `Fel och konflikter ${formatInt(counts.problems)}` },
+            { value: "problems", label: `Problem ${formatInt(counts.problems)}` },
             { value: "new", label: `Nya ${formatInt(counts.new)}` },
             { value: "duplicate", label: `Dubbletter ${formatInt(counts.duplicate)}` },
           ]}

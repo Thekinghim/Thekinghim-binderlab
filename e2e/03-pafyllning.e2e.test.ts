@@ -1,12 +1,14 @@
 /**
  * Påfyllning i fält: påfyllaren på en mobil (375 px) registrerar påfyllning av en titel i en
  * automat och ser det nya saldot direkt. Påfyllaren ser ingen ekonomi: inga kronor på
- * sidan, inga ekonomisidor i menyn, och Lönsamhet/Ekonomi skickar vidare.
+ * sidan, inga ekonomisidor i menyn, och Lönsamhet, Ekonomi, Inköpspriser och Rapporter
+ * skickar vidare.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
+  expectNoPageErrors,
   launchBrowser,
   openPage,
   screenshot,
@@ -20,15 +22,18 @@ import { e2e, login } from "./support/session";
 let browser: Browser;
 let context: BrowserContext;
 let page: Page;
+let errors: Error[];
 
 beforeAll(async () => {
   browser = await launchBrowser();
-  ({ page, context } = await openPage(browser, e2e().baseUrl, {
+  ({ page, context, errors } = await openPage(browser, e2e().baseUrl, {
     viewport: "mobile",
     theme: "light",
   }));
   await login(page, e2e().users.refiller);
 });
+
+afterEach(() => expectNoPageErrors(errors));
 
 afterAll(async () => {
   await context?.close();
@@ -82,7 +87,7 @@ describe("påfyllning som påfyllare (375 px)", () => {
     for (const name of ["Lönsamhet", "Ekonomi", "Inköpspriser", "Rapporter"]) {
       expect(await page.getByRole("link", { name, exact: true }).count()).toBe(0);
     }
-    for (const path of ["/lonsamhet", "/ekonomi"]) {
+    for (const path of ["/lonsamhet", "/ekonomi", "/inkopspriser", "/rapporter"]) {
       await page.goto(path);
       await page.waitForURL((url) => !url.pathname.startsWith(path));
     }

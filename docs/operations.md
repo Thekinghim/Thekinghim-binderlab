@@ -36,18 +36,35 @@ Fel som användaren inte ser själv, eller som händer när ingen är inloggad, 
 driver tjänsten (Sentry) och den som äger verksamheten (larm i appen). Koden finns i
 `src/server/monitoring`.
 
-| Händelse                                          | Larm i appen (`alerts`)                                    | Sentry-händelse (taggar)                        | Stängs när                           |
-| ------------------------------------------------- | ---------------------------------------------------------- | ----------------------------------------------- | ------------------------------------ |
-| Import misslyckas (uppladdning, inte fel i filen) | `import_failed`, nyckel `import:<källa>`, kritiskt         | `area=import`, `kind=import_failed`, källans id | nästa lyckade import från källan     |
-| Rapportutskick: en mottagare fick inte mejlet     | `report_failed`, nyckel `report:<rapport>`, kritiskt       | `area=report`, `report_id`                      | rapporten skickats till alla valda   |
-| Rapportutskick avbryts (PDF eller mejl)           | samma som ovan                                             | samma, med felet                                | samma                                |
-| Månadsutkasten (schemalagt) misslyckas            | `report_failed`, nyckel `report_drafts:<ÅÅÅÅ-MM>`, varning | `area=report`, `job=rapporter`                  | jobbet går igenom för organisationen |
-| Larmjobbet misslyckas för en organisation         | `job_failed`, nyckel `job:larm`, kritiskt                  | `area=job`, `job=larm`                          | nästa lyckade körning                |
+| Händelse                                                                                 | Larm i appen (`alerts`)                                    | Sentry-händelse (taggar)                                      | Stängs när                                                                             |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Import misslyckas (uppladdning, inte fel i filen)                                        | `import_failed`, nyckel `import:<källa>`, kritiskt         | `area=import`, `kind=import_failed`, källans id               | nästa lyckade import från källan                                                       |
+| Rapportutskick: en mottagare fick inte mejlet                                            | `report_failed`, nyckel `report:<rapport>`, kritiskt       | `area=report`, `report_id`                                    | rapporten, eller en nyare version av den (typ, månad, butik), skickats till alla valda |
+| Rapportutskick avbryts (PDF eller mejl)                                                  | samma som ovan                                             | samma, med felet                                              | samma                                                                                  |
+| Månadsutkasten (schemalagt) misslyckas                                                   | `report_failed`, nyckel `report_drafts:<ÅÅÅÅ-MM>`, varning | `area=report`, `job=rapporter`                                | jobbet går igenom, eller de saknade utkasten har skapats för hand under Rapporter      |
+| Jobbet för månadsutkast kraschar för en organisation                                     | `job_failed`, nyckel `job:rapporter`, kritiskt             | `area=job`, `job=rapporter`                                   | nästa lyckade körning (de andra organisationerna körs ändå)                            |
+| Larmjobbet misslyckas för en organisation                                                | `job_failed`, nyckel `job:larm`, kritiskt                  | `area=job`, `job=larm`                                        | nästa lyckade körning                                                                  |
+| Ett jobb körs inte alls (cron av, fel `CRON_SECRET`, Vercel nere) eller tar för lång tid | inget (appen kör ju inte)                                  | Sentry Cron Monitors: `binderlab-larm`, `binderlab-rapporter` | nästa lyckade incheckning                                                              |
 
 - **Var det syns**: Drift → Larm (med underlag) och Att göra (okvitterade, kritiska och
   varningar). Ägare, admin och läsare ser larmen. Påfyllaren ser bara larm om automater och
-  lager. Systemlarm skickas inte som push/e-post/sms (prenumerationerna gäller automater,
-  lager, import och avvikande dag).
+  lager.
+- **Aviseringar**: ett nytt systemlarm läggs i utskickskön (`alert_deliveries`) till dem som
+  prenumererar under Drift → Larminställningar, med samma regler som övriga larm (typ, lägsta
+  allvar, tysta timmar; kritiska larm går igenom tysta timmar om prenumerationen tillåter
+  det). Larmjobbet skickar kön var 10:e minut, även när utvärderingen för organisationen
+  misslyckas. Samma öppna larm aviseras inte igen. Påfyllaren får aldrig systemlarm
+  (`src/server/monitoring/notify.ts`).
+- **När jobben inte körs alls**: larmen i appen förutsätter att appen kör. Därför checkar båda
+  cron-routerna in hos Sentry Cron Monitors (`src/server/monitoring/cron-monitor.ts`) när
+  `SENTRY_DSN` finns: "in_progress" när ett behörigt anrop börjar, sedan "ok" eller "error".
+  Monitorerna skapas automatiskt vid första incheckningen med schemat från `vercel.json`
+  (`binderlab-larm` var 10:e minut, marginal 5 min; `binderlab-rapporter` den 1:a 05:17 UTC,
+  marginal 30 min). Uteblir en incheckning, till exempel för att `CRON_SECRET` är fel (401)
+  eller saknas (503) eller cron är avstängt, skapar Sentry ett ärende. **Vid överlämning:**
+  Sentry → Crons → kontrollera att båda monitorerna finns efter första körningen, och lägg en
+  larmregel (Alerts → "Cron monitor missed or failed check-in") som mejlar och sms:ar den som
+  har driften.
 - **Samma problem är ett larm**: högst en öppen rad per nyckel; nya fel räknar upp
   "förekomster" i stället för att skapa nya rader.
 - **Misslyckad import**: importens transaktion rullas tillbaka (inga order sparas). Felet
@@ -55,16 +72,27 @@ driver tjänsten (Sentry) och den som äger verksamheten (larm i appen). Koden f
   direkt för organisationen så att regeln `import_failed` skapar larmet med vanliga
   aviseringar. Fel i filen (saknade kolumner, tom fil, fel behörighet) är inga driftfel: de
   visas för användaren och ger inget larm.
-- **Sentry** får bara id:n och antal, aldrig e-postadresser (`beforeSend` tar dessutom bort
-  e-post, cookies och token). Utan `SENTRY_DSN` skickas ingenting, men larmen i appen skrivs
+- **Sentry** får bara id:n och antal, aldrig e-postadresser (meddelandet och `extra` tvättas
+  innan de skickas, och `beforeSend` tar dessutom bort e-post, cookies och token ur hela
+  händelsen; båda testas i `src/server/monitoring/sentry.test.ts`). Varje händelse väntar
+  högst 2 s på att skickas (`Sentry.flush`), eftersom Vercel fryser funktionen när svaret är
+  skickat. Samma sorts fel grupperas till ett ärende (fingeravtrycket innehåller inte
+  feltexten). Utan `SENTRY_DSN` skickas ingenting, men larmen i appen skrivs
   ändå. Fel som kastas ut ur en route eller sida fångas av `onRequestError`
   (`src/instrumentation.ts`).
 - **Systemroll**: larmen skrivs med `getServiceDb()` (användare får bara kvittera larm). Det
   är ett systemjobb i den mening som `docs/miljoer.md` beskriver: organisationen kommer alltid
   från den verifierade sessionen eller jobbet, och inget läses tillbaka till användaren.
 - **Tester**: `test/db/monitoring.test.ts` (import, utskick, utkast, larmjobbet, RLS),
-  `src/server/monitoring/sentry.test.ts` (Sentry med och utan DSN) och
-  `e2e/06-felovervakning.e2e.test.ts` (larmet på Drift och i Att göra).
+  `test/db/monitoring-closing.test.ts` (nya versioner, utkast för hand, fel per organisation i
+  månadsjobbet, aviseringar), `src/server/monitoring/sentry.test.ts` (Sentry med och utan DSN,
+  tvätt) och `cron-monitor.test.ts` (incheckningarna), samt
+  `e2e/06-felovervakning.e2e.test.ts`: ett framkallat databasfel i ett riktigt anrop till
+  `/api/cron/larm` och i en riktig import genom gränssnittet ger larm på Drift och i Att göra,
+  och nästa lyckade körning stänger jobblarmet.
+- **Inte testat här**: Sentry mot en riktig DSN (ingen nätåtkomst i utvecklingsmiljön). Gör
+  det en gång vid överlämningen: sätt `SENTRY_DSN` i Preview, ladda upp en trasig fil eller
+  kör `/api/cron/larm` och se att händelsen och incheckningen kommer in.
 
 Kontrollera att Sentry tar emot händelser efter att `SENTRY_DSN` satts eller bytts: Sentry →
 Project Settings → Client Keys, och se att händelser från `environment:production` kommer in
@@ -101,8 +129,11 @@ Skriptet (`scripts/db/backup.ts`, logiken i `scripts/db/backup-lib.ts`):
 1. Öppnar en läsande transaktion och exporterar en ögonblicksbild (`pg_export_snapshot`).
 2. Kör `pg_dump --format=custom --snapshot=…`, så att dumpen är exakt den ögonblicksbilden även
    om appen skriver under tiden.
-3. Räknar antal rader och en md5-kontrollsumma per tabell i samma ögonblicksbild och skriver
-   dem i `<fil>.manifest.json` (med servrar, versioner och senaste migrering, utan lösenord).
+3. Räknar antal rader och en kontrollsumma per tabell i samma ögonblicksbild och skriver dem i
+   `<fil>.manifest.json` (format `binderlab-backup/2`, med servrar, versioner och senaste
+   migrering, utan lösenord). Kontrollsumman är en md5 per rad (raden som text), summerad, så
+   den kräver konstant minne oavsett tabellens storlek och beror inte på radernas ordning.
+   Manifest från den första versionen (`/1`) läses inte; ta en ny dump.
 
 Kräver `pg_dump` i samma eller nyare version som servern (16). Sätt `PG_BIN_DIR` om den inte
 ligger i `PATH`. Lösenordet lämnas till `pg_dump` via miljön, aldrig på kommandoraden.
@@ -146,16 +177,20 @@ npm run db:restore -- --file backups/binderlab-2026-11-02.dump --target binderla
 # 2. Peka appen på den (lokalt: DATABASE_URL i .env.local) och kontrollera enligt D.
 ```
 
-- Kontrollen jämför varje tabells antal rader och md5 (alla rader som text, sorterade) med
+- Kontrollen jämför varje tabells antal rader och kontrollsumma (md5 per rad, summerad) med
   manifestet. Skiljer något sig avslutas skriptet med kod 2 och listar tabellerna.
 - `pg_restore` körs med `--single-transaction` och `--exit-on-error`: antingen kommer allt
   tillbaka eller ingenting. Behörigheter (`grant`), RLS-policyer och triggrar följer med.
+- Misslyckas `pg_restore` (trasig eller avbruten dump) tas den nyss skapade databasen bort
+  igen, så att nästa försök inte stoppas av "finns redan". Kan den inte tas bort säger
+  felmeddelandet det; ta då bort den för hand.
 - Mot en annan server: `--target-url <url>`; för en server som inte är lokal krävs
   `--allow-remote`, och `--no-owner` om rollerna heter annorlunda där.
 - Testat av `test/db/backup-restore.test.ts` (körs med `npm run test:db`, också i CI): seedens
   verksamhet dumpas, återställs till en ny databas, och antal rader och kontrollsummor stämmer i
-  alla tabeller; behörigheter, policyer och triggrar är desamma; en ändrad rad upptäcks; och
-  återställningen vägrar skriva över en befintlig eller en fjärrdatabas.
+  alla tabeller; behörigheter, policyer och triggrar är desamma; en ändrad rad och två värden
+  som bytt plats upptäcks men inte en annan radordning; en trasig dump lämnar ingen databas
+  efter sig; och återställningen vägrar skriva över en befintlig eller en fjärrdatabas.
 
 ### C. Hela Supabase-projektet är borta
 
@@ -262,7 +297,9 @@ skriv en incidentanteckning (nedan).
 | Symtom                                  | Troligen                                                  | Gör                                                                                |
 | --------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 | "Larmjobbet har inte körts" på Drift    | `CRON_SECRET` saknas, cron avstängt eller Hobby-plan      | Vercel → Settings → Cron Jobs; `curl -H "Authorization: Bearer …" …/api/cron/larm` |
+| Sentry: "missed check-in" för en cron   | Jobbet anropas inte, eller svarar 401/503 (`CRON_SECRET`) | Vercel → Logs för `/api/cron/*`; jämför `CRON_SECRET` i Vercel med hemligheten     |
 | Larm `job:larm`                         | Databasfel eller trasig data för en organisation          | Läs felet i larmet och `alert_runs.error`; Sentry-ärendet har stackspåret          |
+| Larm `job:rapporter`                    | Oväntat fel i månadsjobbet för en organisation            | Sentry-ärendet; skapa utkasten under Rapporter (då stängs månadens utkastlarm)     |
 | Larm `import:<källa>` efter uppladdning | Lagringen (bucket `imports`) eller databasen svarade inte | Ladda upp igen; inget sparades. Kvarstår: Supabase → Storage och Logs              |
 | Larm `report:<id>`                      | Resend nekar (domän, kvot) eller Chromium för PDF saknas  | Resend → Logs; skicka igen under Rapporter (bara de som inte fått den skickas)     |
 | Larm `report_drafts:<månad>`            | Saknade konton för SIE eller en butik utan avtal          | Skapa utkasten under Rapporter; felet står i larmet                                |
@@ -270,37 +307,70 @@ skriv en incidentanteckning (nedan).
 
 ## E2E-tester
 
-Fem flöden plus felövervakningen går genom webbläsaren med Playwright-biblioteket mot en
-körande server: inloggning (rätt och fel lösenord, rollen i kontomenyn), import (seedens
-orderlista: förhandsvisning, import, andra gången 0 nya), påfyllning (påfyllaren på 375 px,
-nytt saldo, ingen ekonomi), prisändring (Lönsamhet och Hem ändras, ändringsloggen) och
-rapportutskick (mottagare, utkast, godkännande, utskick, mejlet i utkorgen).
+Fem flöden plus felövervakningen går genom webbläsaren med Playwright-biblioteket (inte
+`@playwright/test`) och vitest mot en körande server:
+
+| Fil                 | Flöde                                                                                                                                                                                |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `01-inloggning`     | fel och rätt lösenord, rollen i kontomenyn, utloggning, läsaren når inte Datakällor                                                                                                  |
+| `02-import`         | körningens orderlista: förhandsvisning, 12 nya order, ordern under Order, andra gången 0 nya                                                                                         |
+| `03-pafyllning`     | påfyllaren på 375 px: registrera, nytt saldo, ingen ekonomi (och Lönsamhet, Ekonomi, Inköpspriser, Rapporter skickar vidare)                                                         |
+| `04-prisandring`    | nytt inköpspris: Lönsamhet och Hem (seedens fasta period i adressen) ändras, ändringsloggen                                                                                          |
+| `05-rapportutskick` | mottagare, utkast, godkännande (PDF), utskick, mejlet i utkorgen med PDF och hälsning; mottagaren pausas efteråt                                                                     |
+| `06-felovervakning` | framkallat databasfel i `/api/cron/larm` och i en import genom gränssnittet: larm på Drift och i Att göra, påfyllaren ser det inte (375 px, mörkt), nästa körning stänger jobblarmet |
+
+Varje test kontrollerar att sidan inte haft sidfel eller konsolfel (t.ex. Reacts
+hydreringsfel), utom en kort lista kända och ofarliga (`ALLOWED_CONSOLE_ERRORS` i
+`e2e/support/browser.ts`). Inga väntetider utan villkor.
 
 Servern under test ska ha en egen databas, eftersom testerna ändrar data:
 
 ```sh
 # 1. En egen server: kopierar arbetskatalogen till ../binderlab-e2e (egen .env.local med
-#    DATABASE_URL=…/binderlab_e2e och MAIL_PROVIDER=outbox) och startar next dev på 3210.
+#    DATABASE_URL=…/binderlab_e2e, CRON_SECRET och MAIL_PROVIDER=outbox) och startar
+#    next dev på 3210. Förra kopians kod tas bort först, så borttagna filer inte testas.
 npm run e2e:server
 
 # 2. Testerna (E2E_RESET=1 återställer och seedar binderlab_e2e först):
 E2E_DATABASE_URL=postgres://postgres@127.0.0.1:54322/binderlab_e2e \
-BASE_URL=http://localhost:3210 E2E_OUTBOX_DIR=../binderlab-e2e/.data/outbox E2E_RESET=1 \
+E2E_CRON_SECRET="$(grep ^CRON_SECRET= ../binderlab-e2e/.env.local | cut -d= -f2)" \
+E2E_OUTBOX_DIR=../binderlab-e2e/.data/outbox E2E_RESET=1 \
 npm run test:e2e
 ```
 
-| Variabel             | Vad                                                                   |
-| -------------------- | --------------------------------------------------------------------- |
-| `E2E_DATABASE_URL`   | Databasen som servern använder (krävs, lokal)                         |
-| `BASE_URL`           | Serverns adress (standard `http://localhost:3200`)                    |
-| `E2E_RESET`          | `1` = återställ och seeda databasen före testerna                     |
-| `E2E_OUTBOX_DIR`     | Serverns utkorg för mejl (standard `.data/outbox`)                    |
-| `E2E_SCREENSHOT_DIR` | Skärmbilder (standard `.data/e2e`)                                    |
-| `E2E_TIMEOUT_MS`     | Väntetid per steg (standard 60 000; dev-servern kompilerar vid behov) |
+| Variabel             | Vad                                                                                                 |
+| -------------------- | --------------------------------------------------------------------------------------------------- |
+| `E2E_DATABASE_URL`   | Databasen som servern använder (krävs): lokal, "e2e" eller "test" i namnet, inte den i `.env.local` |
+| `E2E_BASE_URL`       | Serverns adress (standard `http://localhost:3210`; port 3200, den vanliga dev-servern, vägras)      |
+| `E2E_CRON_SECRET`    | Serverns `CRON_SECRET`, för att köra larmjobbet (i CI samma som `CRON_SECRET`)                      |
+| `E2E_RESET`          | `1` = återställ och seeda databasen före testerna                                                   |
+| `E2E_OUTBOX_DIR`     | Serverns utkorg för mejl (standard `.data/outbox`)                                                  |
+| `E2E_SCREENSHOT_DIR` | Skärmbilder (standard `.data/e2e`)                                                                  |
+| `E2E_TIMEOUT_MS`     | Väntetid per steg (standard 60 000; dev-servern kompilerar vid behov)                               |
 
-Testerna går att köra flera gånger mot samma databas (varje körning får en egen datakälla,
-mottagare och ett nytt pris). Paketet `playwright` är inte ett beroende: lokalt finns det
-globalt, i CI installeras det i jobbet `e2e` (`.github/workflows/ci.yml`), som återställer och
-seedar en Postgres-container, startar servern och laddar upp skärmbilder, utkorg och serverlogg.
-CI-jobbet kör `next dev`: dev-inloggningens spärr stoppar den i ett produktionsbygge
-(`next start`), och bygget kontrolleras av jobbet `build`.
+Skydden i `e2e/global-setup.ts` och `e2e/support/fixture.ts`:
+
+- Databasen måste vara lokal, ha "e2e" eller "test" i namnet och får inte vara samma som
+  `DATABASE_URL` i `.env.local`; `E2E_RESET=1` raderar den annars inte.
+- Servern måste använda den databasen: påfyllaren får ett nytt lösenord för varje körning och
+  loggar in innan testerna börjar. Läser servern en annan databas stoppas körningen med ett
+  tydligt fel.
+
+**Data mellan körningar.** CI börjar alltid från en nyss seedad databas. Lokalt går testerna
+att köra flera gånger mot samma databas utan att den försämras: importen använder körningens
+egen orderlista (12 rader ur seedens CSV med nya ordernummer) i den fasta källan "E2E-import",
+priset ersätter samma dags pris, mottagaren pausas efter utskicket, felen tas bort efter testet.
+Varje körning lägger alltså till 12 order, 3 misslyckade importrader, ett pris, en rapportversion
+och en pausad mottagare. Kör med `E2E_RESET=1` när du vill börja om.
+
+**Kopian i `../binderlab-e2e`.** `node_modules` är hårda länkar till projektets (Turbopack
+följer inte en symlänk utanför projektet), och länkas om när `package-lock.json` ändrats. Kör
+aldrig `npm install` i kopian: det skriver i projektets filer.
+
+Paketet `playwright` är inte ett beroende: lokalt finns det globalt, i CI installeras det i
+jobbet `e2e` (`.github/workflows/ci.yml`), som återställer och seedar en Postgres-container,
+startar servern på 3210 och laddar upp skärmbilder, utkorg och serverlogg. CI-jobbet kör
+`next dev`: dev-inloggningens spärr stoppar den i ett produktionsbygge (`next start`), och
+bygget kontrolleras av jobbet `build`. Jobbet har inte körts på GitHub än; första körningen
+kan behöva längre `E2E_TIMEOUT_MS` eller `testTimeout` (300 s) om dev-servern kompilerar
+långsamt.

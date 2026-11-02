@@ -128,6 +128,14 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  /* Under lg står mobilmenyn fast i nederkant (56 px): ett fokuserat element (Tab) ska
+     inte hamna under den (WCAG 2.4.11). Ankarlänkar påverkas inte (de linjerar mot toppen). */
+  @media (width < 64rem) {
+    html {
+      scroll-padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+    }
+  }
+
   html,
   [data-theme] {
     background-color: var(--bl-bg);

@@ -214,7 +214,7 @@ export function PricingSection({
             </Panel>
           ))}
           {pricing.moreChanges > 0 ? (
-            <p className="meta text-subtle">
+            <p className="text-sm text-subtle">
               och {formatInt(pricing.moreChanges)} äldre i perioden.
             </p>
           ) : null}

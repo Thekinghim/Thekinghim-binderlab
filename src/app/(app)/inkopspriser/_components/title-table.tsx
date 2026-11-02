@@ -53,8 +53,10 @@ export function TitleTable({
 }) {
   const criticalKey = criticalIds.join(",");
   const critical = useMemo(() => new Set(criticalKey.split(",").filter(Boolean)), [criticalKey]);
-  const columns = useMemo<Column<TitleRow>[]>(
-    () => [
+  const columns = useMemo<Column<TitleRow>[]>(() => {
+    const statusOf = (r: TitleRow): Status =>
+      TAG[r.status] === "critical" && !critical.has(r.id) ? "warning" : TAG[r.status];
+    return [
       {
         key: "name",
         header: "Titel",
@@ -88,6 +90,10 @@ export function TitleTable({
                   {formatInt(r.unpricedOrders)} order utan pris
                 </span>
               ) : null}
+              {/* Under md står statusen på egen rad under namnet, så att beloppet ryms (design.md 5.1). */}
+              <span className="mt-1.5 md:hidden">
+                <StatusTag status={statusOf(r)}>{STATUS_LABEL[r.status]}</StatusTag>
+              </span>
             </span>
           );
         },
@@ -96,13 +102,10 @@ export function TitleTable({
         key: "status",
         header: "Status",
         hideable: false,
+        hideOnMobile: true,
         sortValue: (r) => STATUS_RANK[r.status],
         csv: (r) => STATUS_LABEL[r.status],
-        render: (r) => {
-          const status =
-            TAG[r.status] === "critical" && !critical.has(r.id) ? "warning" : TAG[r.status];
-          return <StatusTag status={status}>{STATUS_LABEL[r.status]}</StatusTag>;
-        },
+        render: (r) => <StatusTag status={statusOf(r)}>{STATUS_LABEL[r.status]}</StatusTag>,
       },
       {
         key: "cost",
@@ -189,9 +192,8 @@ export function TitleTable({
         csv: (r) => r.orders,
         render: (r) => formatInt(r.orders),
       },
-    ],
-    [baseQuery, selectedId, today, critical],
-  );
+    ];
+  }, [baseQuery, selectedId, today, critical]);
 
   return (
     <DataTable

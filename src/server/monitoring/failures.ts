@@ -4,9 +4,16 @@
  *
  *   recordImportFailure   misslyckad import (./import-failure.ts)
  *   recordReportSend      rapportutskick: larm 'report:<id>' när en mottagare inte fick
- *                         rapporten eller utskicket avbröts; stängs när utskicket lyckas
- *   recordDraftsOutcome   månadsutkasten (schemalagt): 'report_drafts:<månad>'
- *   recordJobOutcome      schemalagt jobb (larmjobbet): 'job:<namn>'
+ *                         rapporten eller utskicket avbröts; stängs när utskicket av den
+ *                         rapporten eller en nyare version av den (samma typ, månad och
+ *                         butik) lyckas
+ *   recordDraftsOutcome   månadsutkasten (schemalagt): 'report_drafts:<månad>'; stängs när
+ *                         jobbet lyckas eller när de saknade utkasten skapats för hand
+ *                         (closeDraftsAlertIfComplete i src/server/reports/draft-coverage.ts)
+ *   recordJobOutcome      schemalagt jobb (larmjobbet, månadsutkasten): 'job:<namn>'
+ *
+ * Ett nytt larm aviseras till prenumeranterna (./notify.ts), med samma regler som
+ * larmjobbets egna larm.
  *
  * Inget här kastar: övervakningen får aldrig dölja det ursprungliga felet eller stoppa ett
  * jobb. Fel i själva övervakningen skrivs till serverloggen.
@@ -17,8 +24,17 @@ import "server-only";
 import type { IsoMonth } from "@/domain";
 import { getServiceDb, type Db } from "@/db/client";
 
+import { sql } from "drizzle-orm";
+
+import { notifySystemAlert } from "./notify";
 import { captureToSentry, type FailureCapture } from "./sentry";
-import { errorText, raiseSystemAlert, resolveSystemAlert } from "./system-alerts";
+import {
+  errorText,
+  raiseSystemAlert,
+  resolveSystemAlert,
+  type SystemAlertInput,
+  type SystemAlertResult,
+} from "./system-alerts";
 
 export interface MonitoringDeps {
   /** Systemrollens databas. Standard: getServiceDb(). */
@@ -50,6 +66,48 @@ export async function safely<T>(what: string, fn: () => Promise<T>, fallback: T)
     console.error(`[monitoring] ${what}`, error);
     return fallback;
   }
+}
+
+/** Skapar (eller räknar upp) larmet och aviserar prenumeranterna när det är nytt. */
+export async function raiseAndNotify(db: Db, input: SystemAlertInput): Promise<SystemAlertResult> {
+  const alert = await raiseSystemAlert(db, input);
+  if (alert.created) {
+    await safely("avisering av systemlarm", () => notifySystemAlert(db, alert.id, input), 0);
+  }
+  return alert;
+}
+
+/**
+ * Stänger rapportlarmen för rapporten och alla versioner av den (samma organisation, typ,
+ * period och butik): ett lyckat utskick av en ny version löser den gamlas larm.
+ */
+async function resolveReportAlerts(
+  db: Db,
+  organizationId: string,
+  reportId: string,
+  now: Date = new Date(),
+): Promise<number> {
+  const rows = Array.from(
+    await db.execute<{ id: string }>(sql`
+      update public.alerts a
+      set status = 'closed', closed_at = ${now.toISOString()}::timestamptz
+      where a.organization_id = ${organizationId}::uuid
+        and a.alert_group = 'system'
+        and a.status = 'open'
+        and a.incident_key in (
+          select 'report:' || v.id::text
+          from public.reports r
+          join public.reports v
+            on v.organization_id = r.organization_id
+           and v.kind = r.kind
+           and v.period_start = r.period_start
+           and v.period_end = r.period_end
+           and v.store_id is not distinct from r.store_id
+          where r.organization_id = ${organizationId}::uuid and r.id = ${reportId}::uuid
+        )
+      returning a.id`),
+  );
+  return rows.length;
 }
 
 const MONTHS = [
@@ -103,7 +161,7 @@ export async function recordReportSend(
     if (input.sent === 0) return NOTHING;
     const resolved = await safely(
       "stänga rapportlarm",
-      () => resolveSystemAlert(db, input.organizationId, key, deps.now),
+      () => resolveReportAlerts(db, input.organizationId, input.reportId, deps.now),
       0,
     );
     return { ...NOTHING, resolved };
@@ -126,14 +184,15 @@ export async function recordReportSend(
           report_id: input.reportId,
         },
         extra: { sent: input.sent, failed, aborted },
-        fingerprint: ["report_failed", aborted ? "aborted" : "recipient", reason],
+        // Utan feltexten: samma sorts fel blir ett ärende (texten kan också innehålla adresser).
+        fingerprint: ["report_failed", aborted ? "aborted" : "recipient"],
       }),
     null,
   );
   const alert = await safely(
     "rapportlarm",
     () =>
-      raiseSystemAlert(db, {
+      raiseAndNotify(db, {
         organizationId: input.organizationId,
         kind: "report_failed",
         key,
@@ -198,7 +257,7 @@ export async function recordDraftsOutcome(
   const alert = await safely(
     "larm för månadsutkast",
     () =>
-      raiseSystemAlert(db, {
+      raiseAndNotify(db, {
         organizationId: input.organizationId,
         kind: "report_failed",
         key,
@@ -222,7 +281,10 @@ export async function recordDraftsOutcome(
 // Schemalagda jobb
 // ---------------------------------------------------------------------------
 
-const JOB_LABEL: Record<string, string> = { larm: "Larmjobbet" };
+const JOB_LABEL: Record<string, string> = {
+  larm: "Larmjobbet",
+  rapporter: "Jobbet för månadsutkast",
+};
 
 export interface JobOutcomeInput {
   readonly organizationId: string;
@@ -269,7 +331,7 @@ export async function recordJobOutcome(
   const alert = await safely(
     "jobblarm",
     () =>
-      raiseSystemAlert(db, {
+      raiseAndNotify(db, {
         organizationId: input.organizationId,
         kind: "job_failed",
         key,

@@ -131,7 +131,8 @@ export function RecipientActions({ recipient }: { recipient: RecipientView }) {
     });
 
   return (
-    <div className="flex justify-end gap-1">
+    // Under md står knapparna under varandra, så att tabellen ryms i 375 px.
+    <div className="flex flex-col items-end gap-1 md:flex-row md:justify-end">
       <Button
         variant="ghost"
         size="sm"

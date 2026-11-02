@@ -6,7 +6,13 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { launchBrowser, openPage, screenshot, type Browser } from "./support/browser";
+import {
+  expectNoPageErrors,
+  launchBrowser,
+  openPage,
+  screenshot,
+  type Browser,
+} from "./support/browser";
 import { e2e, login, submitLogin } from "./support/session";
 
 let browser: Browser;
@@ -21,7 +27,7 @@ afterAll(async () => {
 
 describe("inloggning", () => {
   it("fel lösenord ger ett fel och stannar på inloggningen", async () => {
-    const { page, context } = await openPage(browser, e2e().baseUrl);
+    const { page, context, errors } = await openPage(browser, e2e().baseUrl);
     await submitLogin(page, e2e().users.owner, "fel-losenord-123");
     const alert = page.getByRole("alert").filter({ hasText: /lösenord|e-post/i });
     await alert.waitFor();
@@ -31,6 +37,7 @@ describe("inloggning", () => {
     await page.goto("/lonsamhet");
     await page.waitForURL((url) => url.pathname.startsWith("/logga-in"));
     await screenshot(page, "01-inloggning-fel-losenord");
+    expectNoPageErrors(errors);
     await context.close();
   });
 
@@ -50,12 +57,12 @@ describe("inloggning", () => {
 
     await page.getByRole("button", { name: "Logga ut", exact: true }).click();
     await page.waitForURL((url) => url.pathname.startsWith("/logga-in"));
-    expect(errors).toEqual([]);
+    expectNoPageErrors(errors);
     await context.close();
   });
 
   it("läsaren (delägaren) har läsroll och når inte Datakällor", async () => {
-    const { page, context } = await openPage(browser, e2e().baseUrl, { theme: "dark" });
+    const { page, context, errors } = await openPage(browser, e2e().baseUrl, { theme: "dark" });
     await login(page, e2e().users.partner);
     const menu = page.getByRole("button", { name: /kontomeny/ });
     expect(await menu.innerText()).toMatch(/Läsare|Delägare/);
@@ -63,6 +70,7 @@ describe("inloggning", () => {
     await page.goto("/datakallor");
     await page.waitForURL((url) => !url.pathname.startsWith("/datakallor"));
     await screenshot(page, "01-inloggning-lasare-mork");
+    expectNoPageErrors(errors);
     await context.close();
   });
 });

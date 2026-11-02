@@ -147,14 +147,19 @@ jobs:
       DEV_AUTH_SECRET: ci-e2e-dev-auth-secret-not-a-real-secret-0123456789
       DEV_SEED_PASSWORD: binderlab-dev
       CRON_SECRET: ci-e2e-cron-secret-0123456789
+      # Testerna kör larmjobbet (e2e/06-felovervakning) med samma hemlighet som servern.
+      E2E_CRON_SECRET: ci-e2e-cron-secret-0123456789
       MAIL_PROVIDER: outbox
       PDF_RENDERER: local
       # Chromium för testerna och för serverns PDF (src/server/pdf/render.ts letar här).
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.pw-browsers
       E2E_DATABASE_URL: postgres://postgres@127.0.0.1:5432/binderlab_e2e
-      # Databasen återställs och seedas i egna steg nedan.
+      # Databasen återställs och seedas i egna steg nedan, så varje körning börjar från
+      # seeden (e2e/support/fixture.ts lägger bara till körningens egna order och data).
       E2E_RESET: "0"
-      BASE_URL: http://localhost:3200
+      # Samma port som den egna e2e-servern lokalt (3200 är den vanliga dev-serverns och
+      # vägras av e2e/global-setup.ts).
+      E2E_BASE_URL: http://localhost:3210
       E2E_OUTBOX_DIR: ${{ github.workspace }}/.data/outbox
       E2E_SCREENSHOT_DIR: ${{ github.workspace }}/.data/e2e
       # Dev-servern kompilerar varje sida vid första besöket.
@@ -175,9 +180,9 @@ jobs:
       - name: Starta servern
         run: |
           mkdir -p .data
-          nohup npx next dev -p 3200 > .data/server.log 2>&1 &
+          nohup npx next dev -p 3210 > .data/server.log 2>&1 &
           for i in $(seq 1 90); do
-            if curl -sf -o /dev/null http://localhost:3200/logga-in; then
+            if curl -sf -o /dev/null http://localhost:3210/logga-in; then
               echo "Servern svarar."
               exit 0
             fi

@@ -52,7 +52,9 @@ export default async function ExpansionPage({
 
   // Rubriken: bästa platsen i pipelinen, annars scenariot för en ny automat.
   let title = "Var nästa automat ska stå.";
-  let aside = "Lägg in platser i pipelinen eller räkna på en ny automat nedan.";
+  // Utan uppskattning: ett faktum ur datan i stället för en instruktion (design.md 4).
+  const activeProfiles = data.profiles.filter((p) => !p.archived).length;
+  let aside = `${formatInt(openLeads)} ${openLeads === 1 ? "öppen plats" : "öppna platser"} i pipelinen, ${formatInt(activeProfiles)} ${activeProfiles === 1 ? "butik" : "butiker"} att jämföra med.`;
   if (top) {
     title = `${top.name} har bäst potential.`;
     aside = `Uppskattning: ${kr(top.estimate.profitPerMonthOre!.expected)} vinst per månad, återbetald på ${paybackShort(top.estimate.paybackTenths?.expected)}.`;

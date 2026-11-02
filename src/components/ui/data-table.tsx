@@ -696,8 +696,14 @@ export function DataTable<T>({
         role={scrollable ? "region" : undefined}
         aria-label={scrollable ? caption : undefined}
         className={cn(
-          "relative w-full rounded-xs",
+          // scroll-mt-28: får ytan fokus (Tab) och är högre än fönstret linjeras den under
+          // toppbaren, inte bakom den (samma mått som ankarmålen, design.md §5.2).
+          "relative w-full scroll-mt-28 rounded-xs",
           height !== undefined ? "overflow-auto overscroll-contain" : "overflow-x-auto",
+          // Fokus (Tab) och scrollIntoView stannar inte under det klistriga huvudet eller
+          // summaraden (WCAG 2.4.11).
+          height !== undefined && "scroll-pt-11",
+          height !== undefined && hasFooter && "scroll-pb-11",
         )}
         style={height !== undefined ? { maxHeight: height } : undefined}
       >

@@ -237,6 +237,7 @@ export function PartnerReportDocument({
       recipient={recipient}
       period={datePeriod(snapshot.period)}
       generatedAt={new Date(snapshot.generatedAt)}
+      timeZone={snapshot.organization.timeZone}
       layout={layout}
     >
       <ReportPage className="gap-[8mm]">

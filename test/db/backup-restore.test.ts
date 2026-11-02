@@ -10,7 +10,7 @@
  * Kräver pg_dump/pg_restore i PATH (eller PG_BIN_DIR), samma eller nyare version än servern.
  */
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -24,6 +24,7 @@ import {
   backupDatabase,
   compareChecksums,
   databaseOf,
+  manifestPathOf,
   readManifest,
   restoreDatabase,
   tableChecksums,
@@ -152,5 +153,54 @@ describe("säkerhetskopia och återställning", () => {
     await expect(
       restoreDatabase({ file, targetUrl: "postgres://u:p@db.example.com:5432/ny" }),
     ).rejects.toThrow(/inte en lokal databas/);
+  });
+
+  it("en misslyckad återställning lämnar ingen halvfärdig databas efter sig", async () => {
+    const broken = path.join(dir, "trasig.dump");
+    const bytes = await readFile(file);
+    await writeFile(broken, bytes.subarray(0, Math.floor(bytes.length / 2)));
+    const name = `${TARGET_NAME.slice(0, 50)}_trasig`;
+    const url = withDatabase(SOURCE, name);
+    await expect(restoreDatabase({ file: broken, targetUrl: url })).rejects.toThrow();
+    const admin = postgres(withDatabase(SOURCE, "postgres"), { max: 1, onnotice: () => {} });
+    try {
+      const [row] = await admin<{ n: number }[]>`
+        select count(*)::int as n from pg_database where datname = ${name}`;
+      expect(row!.n).toBe(0);
+    } finally {
+      await admin.end();
+    }
+  });
+
+  it("kontrollsumman beror på innehållet, inte på radernas ordning", async () => {
+    const sql = postgres(TARGET, { max: 1, onnotice: () => {} });
+    try {
+      await sql.unsafe(`create schema kontroll`);
+      await sql.unsafe(`create table kontroll.a (id int, v text)`);
+      await sql.unsafe(`create table kontroll.b (id int, v text)`);
+      await sql.unsafe(`insert into kontroll.a values (1, 'x'), (2, 'y'), (3, null)`);
+      await sql.unsafe(`insert into kontroll.b values (3, null), (2, 'y'), (1, 'x')`);
+      const [a, b] = await tableChecksums(TARGET, ["kontroll"]);
+      expect(a!.rows).toBe(3);
+      expect(a!.md5).toBe(b!.md5);
+      // Byter två värden mellan raderna: samma antal, annan summa.
+      await sql.unsafe(
+        `update kontroll.b set v = case id when 1 then 'y' when 2 then 'x' end where id in (1, 2)`,
+      );
+      const [a2, b2] = await tableChecksums(TARGET, ["kontroll"]);
+      expect(a2!.md5).not.toBe(b2!.md5);
+    } finally {
+      await sql.unsafe(`drop schema if exists kontroll cascade`);
+      await sql.end();
+    }
+  });
+
+  it("manifest från den äldre versionen läses inte (kontrollsumman räknades annorlunda)", async () => {
+    const oldDump = path.join(dir, "gammal.dump");
+    await writeFile(
+      manifestPathOf(oldDump),
+      JSON.stringify({ ...manifest, format: "binderlab-backup/1" }),
+    );
+    await expect(readManifest(oldDump)).rejects.toThrow(/äldre version/);
   });
 });

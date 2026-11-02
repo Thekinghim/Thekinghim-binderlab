@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -47,6 +47,22 @@ export function OrdersView({
   hasCentralWarehouse: boolean;
 }) {
   const [dialog, setDialog] = useState<Dialog>(null);
+  // Dialogerna monteras bara när de är öppna. Knappen som öppnade dialogen får fokus
+  // tillbaka när den stängs (annars hamnar fokus på body); finns raden inte längre
+  // (t.ex. efter avbruten order) stannar fokus där webbläsaren lägger det.
+  const returnTo = useRef<HTMLElement | null>(null);
+  const openDialog = useCallback((d: Dialog) => {
+    returnTo.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setDialog(d);
+  }, []);
+  const closeDialog = useCallback(() => {
+    setDialog(null);
+    const el = returnTo.current;
+    window.requestAnimationFrame(() => {
+      if (el?.isConnected) el.focus();
+    });
+  }, []);
   const [showClosed, setShowClosed] = useState(false);
   const hasSupplier = suppliers.some((s) => !s.archived);
 
@@ -60,6 +76,15 @@ export function OrdersView({
           <span className="flex min-w-0 flex-col">
             <span className="font-mono text-sm text-fg">{r.number}</span>
             <span className="text-xs text-subtle">{r.supplierName}</span>
+            {/* Under md står läget och leveransdagen här; kolumnerna är dolda (design.md §5.1). */}
+            <span className="tnum text-xs text-subtle md:hidden">
+              {r.receivedOn
+                ? `Mottagen ${dateText(r.receivedOn)}`
+                : `Väntas ${dateText(r.expectedOn)}`}
+            </span>
+            <span className="mt-1 md:hidden">
+              <StatusTag status={r.tone}>{r.statusLabel}</StatusTag>
+            </span>
           </span>
         ),
         csv: (r) => `${r.number} ${r.supplierName}`,
@@ -68,6 +93,7 @@ export function OrdersView({
         key: "status",
         header: "Läge",
         hideable: false,
+        hideOnMobile: true,
         sortValue: (r) => r.statusLabel,
         render: (r) => <StatusTag status={r.tone}>{r.statusLabel}</StatusTag>,
         csv: (r) => r.statusLabel,
@@ -83,6 +109,7 @@ export function OrdersView({
       {
         key: "expected",
         header: "Väntas",
+        hideOnMobile: true,
         sortValue: (r) => r.expectedOn ?? "9999",
         render: (r) => (
           <span className="tnum">
@@ -117,7 +144,7 @@ export function OrdersView({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setDialog({ kind: "lines", order: r })}
+              onClick={() => openDialog({ kind: "lines", order: r })}
               aria-label={`Rader i ${r.number}`}
             >
               Rader
@@ -126,7 +153,7 @@ export function OrdersView({
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => setDialog({ kind: "order", order: r })}
+                onClick={() => openDialog({ kind: "order", order: r })}
               >
                 Beställ
               </Button>
@@ -135,7 +162,7 @@ export function OrdersView({
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => setDialog({ kind: "receive", order: r })}
+                onClick={() => openDialog({ kind: "receive", order: r })}
                 disabled={!hasCentralWarehouse}
               >
                 Ta emot
@@ -145,7 +172,7 @@ export function OrdersView({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setDialog({ kind: "close", order: r })}
+                onClick={() => openDialog({ kind: "close", order: r })}
                 aria-label={`Avsluta ${r.number} med restorder`}
               >
                 Avsluta
@@ -155,7 +182,7 @@ export function OrdersView({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setDialog({ kind: "cancel", order: r })}
+                onClick={() => openDialog({ kind: "cancel", order: r })}
                 aria-label={`Avbryt ${r.number}`}
               >
                 Avbryt
@@ -165,7 +192,7 @@ export function OrdersView({
         ),
       },
     ],
-    [canEdit, hasCentralWarehouse],
+    [canEdit, hasCentralWarehouse, openDialog],
   );
 
   return (
@@ -176,7 +203,7 @@ export function OrdersView({
             variant="secondary"
             size="sm"
             iconLeft="plus"
-            onClick={() => setDialog({ kind: "new" })}
+            onClick={() => openDialog({ kind: "new" })}
           >
             Ny inköpsorder
           </Button>
@@ -238,24 +265,20 @@ export function OrdersView({
       ) : null}
 
       {dialog?.kind === "receive" ? (
-        <ReceiveDialog order={dialog.order} onClose={() => setDialog(null)} />
+        <ReceiveDialog order={dialog.order} onClose={closeDialog} />
       ) : null}
       {dialog?.kind === "order" ? (
-        <MarkOrderedDialog order={dialog.order} today={today} onClose={() => setDialog(null)} />
+        <MarkOrderedDialog order={dialog.order} today={today} onClose={closeDialog} />
       ) : null}
       {dialog?.kind === "cancel" ? (
-        <CancelDialog order={dialog.order} onClose={() => setDialog(null)} />
+        <CancelDialog order={dialog.order} onClose={closeDialog} />
       ) : null}
-      {dialog?.kind === "lines" ? (
-        <LinesDialog order={dialog.order} onClose={() => setDialog(null)} />
-      ) : null}
-      {dialog?.kind === "close" ? (
-        <CloseDialog order={dialog.order} onClose={() => setDialog(null)} />
-      ) : null}
+      {dialog?.kind === "lines" ? <LinesDialog order={dialog.order} onClose={closeDialog} /> : null}
+      {dialog?.kind === "close" ? <CloseDialog order={dialog.order} onClose={closeDialog} /> : null}
       {canEdit && dialog?.kind === "new" ? (
         <CreateOrderDialog
           open
-          onClose={() => setDialog(null)}
+          onClose={closeDialog}
           suppliers={suppliers}
           draft={null}
           today={today}

@@ -15,32 +15,37 @@ export function ServiceLines({
     storage: { kind: "local" | "supabase"; configured: boolean; missing: string[] };
   };
 }) {
-  const lines: { key: string; message: string; detail: string }[] = [];
+  // Namnen på miljövariablerna är tekniska uppgifter: de står bakom "Visa detaljer".
+  const lines: { key: string; message: string; detail: string; settings: string }[] = [];
   if (status.mail.kind === "outbox") {
     lines.push({
       key: "mail",
       message: "E-post skickas inte härifrån: utskicken sparas i den lokala utkorgen.",
-      detail: "Sätt MAIL_PROVIDER=resend, RESEND_API_KEY och MAIL_FROM för riktiga utskick.",
+      detail: "Riktiga utskick kräver en e-postleverantör.",
+      settings: "MAIL_PROVIDER=resend, RESEND_API_KEY, MAIL_FROM",
     });
   } else if (!status.mail.configured) {
     lines.push({
       key: "mail",
       message: "Resend är valt men inte konfigurerat, så inget kan skickas.",
-      detail: `${status.mail.missing.join(", ")}.`,
+      detail: "Inställningarna för e-post saknas.",
+      settings: status.mail.missing.join(", "),
     });
   }
   if (!status.pdf.configured) {
     lines.push({
       key: "pdf",
       message: "PDF kan inte skapas på servern. Utskrift från webbläsaren fungerar.",
-      detail: `${status.pdf.missing.join(", ")}.`,
+      detail: "Inställningarna för PDF saknas.",
+      settings: status.pdf.missing.join(", "),
     });
   }
   if (!status.storage.configured) {
     lines.push({
       key: "storage",
       message: "Lagringen för PDF:er saknar inställningar.",
-      detail: `${status.storage.missing.join(", ")}.`,
+      detail: "PDF:erna kan inte sparas.",
+      settings: status.storage.missing.join(", "),
     });
   }
   if (lines.length === 0) return null;
@@ -53,6 +58,7 @@ export function ServiceLines({
           compact
           message={l.message}
           detail={l.detail}
+          diagnostics={l.settings ? [{ label: "Inställningar", value: l.settings }] : undefined}
         />
       ))}
     </div>

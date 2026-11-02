@@ -4,10 +4,11 @@ import { config } from "dotenv";
 import { defineConfig } from "vitest/config";
 
 // E2E: Playwright-biblioteket mot en körande server (BASE_URL, standard
-// http://localhost:3200) och dess databas (E2E_DATABASE_URL). Se docs/operations.md.
+// http://localhost:3210, den egna e2e-servern) och dess databas (E2E_DATABASE_URL, med
+// "e2e" eller "test" i namnet). Se docs/operations.md, avsnittet E2E-tester.
 //
 //   E2E_DATABASE_URL=postgres://postgres@127.0.0.1:54322/binderlab_e2e \
-//   BASE_URL=http://localhost:3210 E2E_RESET=1 npm run test:e2e
+//   E2E_CRON_SECRET=<CRON_SECRET i kopians .env.local> E2E_RESET=1 npm run test:e2e
 config({ path: [".env.local", ".env"], quiet: true });
 
 export default defineConfig({
@@ -25,8 +26,9 @@ export default defineConfig({
     // varandra eller av ordningen (varje körning får egen källa, mottagare och pris).
     fileParallelism: false,
     sequence: { shuffle: false },
-    testTimeout: 180_000,
-    hookTimeout: 180_000,
+    // Dev-servern kompilerar sidorna (och PDF:en) kallt vid första besöket; i CI tar det tid.
+    testTimeout: 300_000,
+    hookTimeout: 300_000,
     // Inga omkörningar: ett test som bara går igenom ibland är ett fel att rätta.
     retry: 0,
   },

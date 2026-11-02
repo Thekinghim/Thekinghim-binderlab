@@ -6,7 +6,7 @@ import type { CashflowResult } from "@/analytics/cashflow";
 import type { ReconciliationResult } from "@/analytics/reconciliation";
 import { formatDate } from "@/lib/format";
 
-import { isoToDate, periodShort, plural, sek, sentence, signedKr, type IsoPeriod } from "./view";
+import { isoToDate, periodShort, plural, sek, sentence, signedSek, type IsoPeriod } from "./view";
 
 export interface Headline {
   readonly title: string;
@@ -43,7 +43,7 @@ export function economyHeadline(
     };
   }
   const t = result.totals;
-  const facts = `Utbetalt ${sek(t.actualOre)} mot väntade ${sek(t.expectedOre)} för ${when}, skillnad ${signedKr(
+  const facts = `Utbetalt ${sek(t.actualOre)} mot väntade ${sek(t.expectedOre)} för ${when}, skillnad ${signedSek(
     t.differenceOre,
   )}.`;
   if (t.openDeviations > 0) {

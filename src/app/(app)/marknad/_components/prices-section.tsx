@@ -50,7 +50,7 @@ function SourceStatus({ source }: { source: MarketSourceView }) {
       );
     }
     return (
-      <p className="meta text-subtle">
+      <p className="text-sm text-subtle">
         Marknadspris: {source.sourceName} · {formatInt(Object.keys(source.latest).length)} titlar
         med pris. Testdata, inte riktiga marknadspriser.
       </p>

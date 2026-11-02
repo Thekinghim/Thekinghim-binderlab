@@ -137,9 +137,14 @@ function machineColumns(todayIso: string): Column<StoreMachineRow>[] {
       sortValue: (m) => m.code,
       hideable: false,
       render: (m) => (
-        <Link href={m.href} className="flex min-w-0 flex-col rounded-xs py-1 hover:text-fg">
+        <Link
+          href={m.href}
+          className="flex max-w-36 min-w-0 flex-col rounded-xs py-1 hover:text-fg md:max-w-none"
+        >
           <span className="meta text-fg">{m.code.replace(/-/g, "‑")}</span>
-          <span className="truncate text-sm text-muted">{m.name}</span>
+          <span className="truncate text-sm text-muted" title={m.name}>
+            {m.name}
+          </span>
         </Link>
       ),
     },
@@ -176,7 +181,8 @@ function machineColumns(todayIso: string): Column<StoreMachineRow>[] {
     },
     {
       key: "revenue",
-      header: "Intäkt här",
+      // Kort huvud så att beloppet ryms i 375 px; sektionen säger redan att det gäller butiken.
+      header: "Intäkt",
       numeric: true,
       sortValue: (m) => m.revenueOre,
       render: (m) => sek(m.revenueOre),
@@ -212,9 +218,13 @@ function recipientColumns(timeZone: string, now: Date, canEdit: boolean): Column
       sortValue: (r) => r.name,
       hideable: false,
       render: (r) => (
-        <span className="flex min-w-0 flex-col">
+        // max-w under md: adressen kortas med ellips (hela står i title) i stället för att
+        // göra tabellen bredare än skärmen.
+        <span className="flex max-w-32 min-w-0 flex-col md:max-w-none">
           <span className="text-fg">{r.name}</span>
-          <span className="meta truncate text-muted">{r.email}</span>
+          <span className="meta truncate text-muted" title={r.email}>
+            {r.email}
+          </span>
         </span>
       ),
     },
@@ -232,7 +242,7 @@ function recipientColumns(timeZone: string, now: Date, canEdit: boolean): Column
           ) : (
             <StatusTag status="offline">Pausad</StatusTag>
           )}
-          <span className="meta whitespace-nowrap text-subtle">
+          <span className="meta text-subtle">
             {r.lastSentAt
               ? `Senast ${formatDate(wallClockIn(new Date(r.lastSentAt), timeZone), {
                   year: "auto",

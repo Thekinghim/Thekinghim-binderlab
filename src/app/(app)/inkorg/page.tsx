@@ -277,12 +277,12 @@ export default async function InboxPage({
           </div>
         ) : null}
         <p className="text-sm text-muted">
-          Återbetalningarna räknas på återbetalningsdagen, automaten och titeln
-          (docs/berakningar.md, avsnitt 14). Lönsamhet drar dem från vinsten som en egen rad (vinst
-          efter återbetalningar). Intäkt, inköp och butiksersättning ändras inte.
+          Återbetalningarna räknas på återbetalningsdagen, automaten och titeln. Lönsamhet drar dem
+          från vinsten som en egen rad (vinst efter återbetalningar). Intäkt, inköp och
+          butiksersättning ändras inte.
         </p>
         {data.truncated ? (
-          <p className="font-mono text-xs text-muted">
+          <p className="text-sm text-muted">
             Fler än {formatInt(data.limit)} ärenden rör perioden: välj en kortare period för
             fullständig statistik.
           </p>

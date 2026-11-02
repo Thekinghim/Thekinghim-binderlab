@@ -65,12 +65,18 @@ export function ImportLog({
       header: "Tid",
       sortValue: (e) => when(e),
       render: (e) => (
-        <Link
-          href={`/datakallor/importer/${e.id}`}
-          className="tnum whitespace-nowrap text-fg underline-offset-4 hover:underline"
-        >
-          {formatWhen(when(e), timeZone, nowDate)}
-        </Link>
+        <span className="flex flex-col items-start gap-1">
+          <Link
+            href={`/datakallor/importer/${e.id}`}
+            className="tnum whitespace-nowrap text-fg underline-offset-4 hover:underline"
+          >
+            {formatWhen(when(e), timeZone, nowDate)}
+          </Link>
+          {/* Under md står statusen här, eftersom statuskolumnen är dold (design.md §5.1). */}
+          <span className="md:hidden">
+            <StatusTag status={statusOf(e)}>{STATUS[e.status].text}</StatusTag>
+          </span>
+        </span>
       ),
       csv: (e) => formatWhenWithYear(when(e), timeZone),
       width: 150,
@@ -78,6 +84,8 @@ export function ImportLog({
     {
       key: "file",
       header: "Fil",
+      // Filnamnet står i importens radlogg; under md får tid, status och antal plats.
+      hideOnMobile: true,
       sortValue: (e) => e.fileName ?? "",
       render: (e) => (
         <span
@@ -124,6 +132,7 @@ export function ImportLog({
       numeric: true,
       sortValue: (e) => e.rowsConflict,
       render: (e) => count(e.rowsConflict),
+      hideOnMobile: true,
     },
     {
       key: "error",
