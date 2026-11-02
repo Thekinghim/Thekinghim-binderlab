@@ -279,8 +279,8 @@ Inga migreringar, inga ändringar i `@/domain` eller `@/analytics` och inga nya 
 
 **Omgång 2:**
 
-- `npx vitest run` för mina sidor och `src/components`: 13 filer, alla gröna (se slutrapporten för antal). Nya tester: utgångna titlar (3), `packListAside`, `visitsTodayShort`, Ur drift i status och rubrik, `joinClauses`, `codesUnbroken`, `oneSentence`, dagar med data på Order, Butikernas rubrik i en mening.
-- Databastester mot egen testdatabas (`binderlab_test_genomgangb`, återställd med alla migreringar): `test/db/lager-data.test.ts` (16, varav 1 nytt för `lager_slot_periods` och laddaren) och `test/db/catalog.test.ts` (369, med den nya RPC:n i listan och anon-kontrollen).
+- `npx vitest run` för mina sidor och `src/components`: 13 filer och 243 tester, alla gröna (234 efter omgång 1). Nya tester: utgångna titlar (3), `packListAside`, `visitsTodayShort`, Ur drift i status och rubrik, `joinClauses`, `codesUnbroken`, `oneSentence`, dagar med data på Order, Butikernas rubrik i en mening.
+- Databastester mot egen testdatabas (`binderlab_test_genomgangb`, återställd med alla migreringar): `test/db/lager-data.test.ts` (16, varav 1 nytt för `lager_slot_periods` och laddaren) och `test/db/catalog.test.ts` (369, med den nya RPC:n i listan och anon-kontrollen). `test/db/redteam-fas7-komplettering.test.ts` (210) går också igenom.
 - `npx tsc --noEmit`: rent för mina filer. `eslint` och `prettier --check`: rent för alla ändrade filer.
 
 ## Skärmbilder

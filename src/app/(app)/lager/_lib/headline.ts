@@ -74,9 +74,7 @@ export function visitsText(view: Pick<LagerView, "packLists" | "machines" | "tod
  * Dagens besök i kort form för sidhuvudets fakta: "16 pack till BL‑003" eller "58 pack till
  * 3 automater", eller null om inget besök behövs i dag.
  */
-export function visitsTodayShort(
-  view: Pick<LagerView, "packLists" | "machines">,
-): string | null {
+export function visitsTodayShort(view: Pick<LagerView, "packLists" | "machines">): string | null {
   const due = view.packLists.filter((p) => p.dueToday);
   if (due.length === 0) return null;
   if (due.length === 1) return visitsToday(view);

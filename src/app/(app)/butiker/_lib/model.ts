@@ -351,9 +351,7 @@ export function listHeadline(
   // En mening i andra delen: rubriken har högst två (design.md §5.5).
   const split = `${sek(compensation)} (${formatPercent(compensation / revenue)}) till ${rows.length === 1 ? "butiken" : "butikerna"} och vinst ${sek(profit)}`;
   const topText =
-    active.length > 1
-      ? `, ${formatPercent(top.revenueOre / revenue, 0)} från ${top.name}`
-      : "";
+    active.length > 1 ? `, ${formatPercent(top.revenueOre / revenue, 0)} från ${top.name}` : "";
   return { title, aside: sentence(`${split}${topText}`) };
 }
 

@@ -108,3 +108,5 @@ Tas bort när alla faser är klara.
 - Dokumentation klar: README (snabbstart provad från noll), architecture, datamodell (alla tabeller och 23 RPC:er), berakningar,
   decisions (ADR), product (siffror från ny databas), operations (backup, personuppgifter och biträden), licenssammanställning.
   Öppet: licensen för paketet "buffers", demons telefonnummer/"Seriecentralen" ska bli fiktiva, Vercel-region (EU) i vercel.json.
+- Genomgång B klar (Lager: utgångna titlar inte kritiska; Automater: ur drift räknas rätt; Butiker; Prognos; Order).
+  Slutsteg startat (wf_9d9cbef5-cf1): prestanda 100 000 order + öppna punkter → slutverifiering → styrelsedemo-granskning → sista rättningar.
