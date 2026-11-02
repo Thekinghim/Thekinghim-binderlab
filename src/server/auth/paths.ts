@@ -22,6 +22,8 @@ export function isPublicPath(pathname: string): boolean {
     isPathOrBelow(pathname, "/datamodell") ||
     pathname.startsWith("/rapport/") ||
     pathname.startsWith("/_next/") ||
+    // Schemalagda jobb (Vercel Cron) har ingen session; varje route kräver CRON_SECRET.
+    pathname.startsWith("/api/cron/") ||
     STATIC_FILE.test(pathname)
   );
 }

@@ -40,6 +40,7 @@ import {
   RENT_SHARE,
   availability,
   bestDay,
+  commissionBase,
   days,
   incidents,
   machine,
@@ -50,7 +51,6 @@ import {
   reportMeta,
   revenueByDay,
   revenueByDayPrev,
-  revenueExVat,
   monthRank,
   seriesShare,
   totals,
@@ -339,7 +339,7 @@ function SummaryPage({ level }: { level: HeadingLevel }) {
             `Släppet lördag 24 okt. sålde ${formatInt(release?.units ?? 0)} pack på ${releaseDays} dagar, ${formatPercent(releaseShare, 0)} av månadens intäkt.`,
             `Utan släppet hade intäkten ${withoutRelease < 0 ? "minskat" : "ökat"} ${formatPercent(Math.abs(withoutRelease), 0)} mot september. ${unpriced.map((p) => p.product).join(", ") || "Alla titlar"} ${unpriced.length ? "saknar ännu inköpspris och ingår inte i vinsten." : "har inköpspris."}`,
             emptySlot
-              ? `Fack 3 var tomt i ${formatDuration(emptySlot.end.getTime() - emptySlot.start.getTime())} den 29–30 okt. Från november fylls automaten på var tredje dag i stället för var fjärde.`
+              ? `Fack 3 i ${machine.id} var tomt i ${formatDuration(emptySlot.end.getTime() - emptySlot.start.getTime())} den 29–30 okt. Från november fylls automaten på var tredje dag i stället för var fjärde.`
               : "",
           ].map((t, i) => (
             <li
@@ -357,8 +357,8 @@ function SummaryPage({ level }: { level: HeadingLevel }) {
         Källa: Awish-ordrar och automatlogg för {machine.id}. Moms och kortavgift är 0 enligt
         inställningarna. Heldragen linje: oktober. Streckad: september, per dag i månaden.
         Butiksersättning enligt avtal: {formatPercent(RENT_SHARE, 0)} provision på{" "}
-        {formatSek(revenueExVat)} plus hyra {formatSek(MONTHLY_RENT)}. Snittköp: intäkt delad på{" "}
-        {formatInt(totals.purchases)} ordrar, en per pack.
+        {formatSek(commissionBase)} (intäkt med inköpspris) plus hyra {formatSek(MONTHLY_RENT)}.
+        Snittköp: intäkt delad på {formatInt(totals.purchases)} ordrar, en per pack.
       </ReportNote>
     </ReportPage>
   );

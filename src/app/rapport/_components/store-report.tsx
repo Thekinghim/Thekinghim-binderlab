@@ -1,0 +1,304 @@
+/**
+ * Butiksrapporten som A4 (utskriftsläget i src/components/report). Bygger bara på
+ * ögonblicksbilden (`StoreSnapshot`): försäljning, ersättning steg för steg, titlar,
+ * automater och service. Innehåller ALDRIG inköp, marginal, vinst eller andra butikers
+ * siffror; testet i store-report.test.tsx renderar sidan och kontrollerar det.
+ */
+
+import {
+  ReportFact,
+  ReportKpiRow,
+  ReportNote,
+  ReportSection,
+  ReportTable,
+  ReportTitle,
+  type ReportColumn,
+} from "@/components/report/report-blocks";
+import { ReportBarChart } from "@/components/report/report-charts";
+import { ReportDocument, ReportPage, type ReportLayout } from "@/components/report/report-document";
+import { formatInt, formatSek, formatSekAxis } from "@/lib/format";
+import type { CompensationStep, StoreMachine, StoreTopTitle } from "@/reports";
+import type { StoreSnapshot } from "@/server/reports/snapshot";
+
+import {
+  SECTION_TAG,
+  TITLE_TAG,
+  datePeriod,
+  dayLabel,
+  delta,
+  kronor,
+  monthLabel,
+  monthName,
+  pct,
+  sek,
+  sekValue,
+  type HeadingLevel,
+} from "./shared";
+
+const titleColumns: ReportColumn<StoreTopTitle>[] = [
+  { key: "name", header: "Titel", width: "46%", render: (t) => t.name },
+  { key: "orders", header: "Sålda pack", numeric: true, render: (t) => formatInt(t.orders) },
+  { key: "revenue", header: "Försäljning", numeric: true, render: (t) => sek(t.revenueOre) },
+  { key: "share", header: "Andel", numeric: true, render: (t) => pct(t.shareBp) },
+];
+
+function machineColumns(daysInMonth: number, totals: { orders: number; revenueOre: number }) {
+  const cols: ReportColumn<StoreMachine>[] = [
+    { key: "name", header: "Automat", width: "40%", render: (m) => m.name, total: "Totalt" },
+    {
+      key: "days",
+      header: "Dagar i butiken",
+      numeric: true,
+      render: (m) => `${formatInt(m.placedDays)} av ${formatInt(daysInMonth)}`,
+    },
+    {
+      key: "orders",
+      header: "Sålda pack",
+      numeric: true,
+      render: (m) => formatInt(m.orders),
+      total: formatInt(totals.orders),
+    },
+    {
+      key: "revenue",
+      header: "Försäljning",
+      numeric: true,
+      render: (m) => sek(m.revenueOre),
+      total: sek(totals.revenueOre),
+    },
+  ];
+  return cols;
+}
+
+const stepColumns: ReportColumn<CompensationStep>[] = [
+  { key: "label", header: "Post", width: "30%", render: (s) => s.label },
+  {
+    key: "calc",
+    header: "Uträkning",
+    render: (s) => <span className="text-muted">{s.calculation}</span>,
+  },
+  {
+    key: "amount",
+    header: "Belopp",
+    numeric: true,
+    width: "20%",
+    render: (s) => kronor(s.amountOre),
+  },
+];
+
+export function StoreReportDocument({
+  snapshot,
+  layout = "stack",
+  level = "page",
+  recipient,
+}: {
+  snapshot: StoreSnapshot;
+  layout?: ReportLayout;
+  level?: HeadingLevel;
+  /** Mottagarens namn i sidhuvudet. Standard: butiken. */
+  recipient?: string;
+}) {
+  const r = snapshot.report;
+  const month = monthLabel(snapshot.month);
+  const prevName = monthName(r.comparison.month);
+  const steps = r.compensation.steps.filter((s) => s.kind !== "total");
+  const total = r.compensation.steps.find((s) => s.kind === "total");
+  const bestWeek = [...r.weeks].sort((a, b) => b.revenueOre - a.revenueOre)[0];
+  const weekData = r.weeks.map((w) => ({ label: `v. ${w.week}`, value: w.revenueOre / 100 }));
+
+  return (
+    <ReportDocument
+      title={`Butiksrapport ${month}`}
+      recipient={recipient ?? snapshot.store.name}
+      period={datePeriod(snapshot.period)}
+      generatedAt={new Date(snapshot.generatedAt)}
+      layout={layout}
+    >
+      <ReportPage className="gap-[8mm]">
+        <ReportTitle
+          as={TITLE_TAG[level]}
+          eyebrow={`Butiksrapport · ${snapshot.store.name}`}
+          title={r.conclusion.text}
+        >
+          {r.greeting ? <p className="whitespace-pre-line">{r.greeting}</p> : null}
+        </ReportTitle>
+
+        <ReportKpiRow
+          items={[
+            {
+              label: "Försäljning",
+              value: sekValue(r.sales.revenueOre),
+              unit: "kr",
+              delta: delta(r.comparison.revenueChangeBp),
+              context: r.comparison.revenueChangeBp === null ? undefined : `mot ${prevName}`,
+            },
+            {
+              label: "Sålda pack",
+              value: formatInt(r.sales.orders),
+              delta:
+                r.comparison.ordersDiff === 0
+                  ? "±0"
+                  : `${r.comparison.ordersDiff > 0 ? "+" : "−"}${formatInt(Math.abs(r.comparison.ordersDiff))}`,
+              context: `mot ${prevName}`,
+            },
+            {
+              label: "Snittköp",
+              value: r.sales.averageOrderOre === null ? "–" : sekValue(r.sales.averageOrderOre),
+              unit: r.sales.averageOrderOre === null ? undefined : "kr",
+            },
+            {
+              label: "Er ersättning",
+              value: sekValue(r.compensation.totalOre),
+              unit: "kr",
+              context:
+                r.compensation.model === "commission_and_rent"
+                  ? "provision + hyra"
+                  : r.compensation.model === "commission"
+                    ? "provision"
+                    : r.compensation.model === "rent"
+                      ? "hyra"
+                      : "inget avtal",
+            },
+          ]}
+        />
+
+        <ReportSection
+          as={SECTION_TAG[level]}
+          index={1}
+          eyebrow="Ersättning"
+          title={`Er ersättning för ${monthName(snapshot.month)}: ${kronor(r.compensation.totalOre)}.`}
+          aside={r.compensation.modelText}
+        >
+          <ReportTable
+            caption={`Ersättningen till ${snapshot.store.name} uträknad steg för steg.`}
+            columns={stepColumns}
+            rows={steps}
+            rowKey={(s, i) => `${s.kind}-${i}`}
+          />
+          {total ? (
+            <div className="flex items-baseline justify-between gap-[4mm] border-t border-line-strong pt-[2mm] text-[12px] leading-[16px]">
+              <span className="font-medium text-fg">{total.label}</span>
+              <span className="text-muted">{total.calculation}</span>
+              <span className="tnum font-mono font-medium text-fg">{kronor(total.amountOre)}</span>
+            </div>
+          ) : null}
+          <ReportNote>
+            Provisionen räknas per köp på beloppet exklusive moms, med det avtal som gällde den
+            dagen. Hyran räknas per dag när avtalet gäller en del av månaden.
+          </ReportNote>
+        </ReportSection>
+
+        {weekData.length > 0 ? (
+          <ReportSection
+            as={SECTION_TAG[level]}
+            index={2}
+            eyebrow="Försäljning per vecka"
+            title="Försäljning per vecka."
+            aside={
+              bestWeek && bestWeek.revenueOre > 0
+                ? `Mest i vecka ${bestWeek.week}: ${sek(bestWeek.revenueOre)} på ${formatInt(bestWeek.orders)} köp.`
+                : "Ingen försäljning under månaden."
+            }
+          >
+            <ReportBarChart
+              data={weekData}
+              format={formatSek}
+              formatAxis={formatSekAxis}
+              summary={`Försäljning per vecka i ${month}: ${r.weeks
+                .map((w) => `${w.label} ${sek(w.revenueOre)}`)
+                .join(", ")}.`}
+            />
+            {r.weeks.some((w) => w.partial) ? (
+              <ReportNote>
+                Veckor som bara delvis ligger i {monthName(snapshot.month)} räknas med de dagar som
+                hör till månaden.
+              </ReportNote>
+            ) : null}
+          </ReportSection>
+        ) : null}
+      </ReportPage>
+
+      <ReportPage className="gap-[8mm]">
+        <ReportSection
+          as={SECTION_TAG[level]}
+          index={3}
+          eyebrow="Titlar"
+          title={
+            r.topTitles[0]
+              ? `${r.topTitles[0].name} sålde mest.`
+              : "Inga titlar såldes under månaden."
+          }
+          aside={
+            r.topTitles[0]
+              ? `${formatInt(r.topTitles[0].orders)} pack, ${pct(r.topTitles[0].shareBp)} av försäljningen.`
+              : undefined
+          }
+        >
+          {r.topTitles.length > 0 ? (
+            <ReportTable
+              caption="Mest sålda titlar under månaden."
+              columns={titleColumns}
+              rows={r.topTitles}
+              rowKey={(t) => t.titleId}
+            />
+          ) : null}
+        </ReportSection>
+
+        <ReportSection
+          as={SECTION_TAG[level]}
+          index={4}
+          eyebrow="Automater"
+          title={`${formatInt(r.machines.length)} ${r.machines.length === 1 ? "automat" : "automater"} i butiken.`}
+          aside={`${formatInt(r.sales.orders)} sålda pack under ${monthName(snapshot.month)}.`}
+        >
+          <ReportTable
+            caption="Butikens automater under månaden."
+            columns={machineColumns(r.compensation.daysInMonth, {
+              orders: r.sales.orders,
+              revenueOre: r.sales.revenueOre,
+            })}
+            rows={r.machines}
+            rowKey={(m) => m.machineId}
+          />
+        </ReportSection>
+
+        <ReportSection
+          as={SECTION_TAG[level]}
+          index={5}
+          eyebrow="Service"
+          title={`${formatInt(snapshot.service.refills.count)} ${snapshot.service.refills.count === 1 ? "påfyllning" : "påfyllningar"}.`}
+          aside={
+            snapshot.service.refills.last
+              ? `Senast ${dayLabel(snapshot.service.refills.last)}.`
+              : "Ingen påfyllning registrerad under månaden."
+          }
+        >
+          <div className="grid grid-cols-3 gap-[6mm] border-t border-line pt-[3mm]">
+            <ReportFact label="Påfyllningar">
+              {formatInt(snapshot.service.refills.count)}
+              {snapshot.service.refills.last
+                ? `, senast ${dayLabel(snapshot.service.refills.last)}`
+                : ""}
+            </ReportFact>
+            <ReportFact label="Mest köp">
+              {snapshot.service.busiest ??
+                `Underlaget är för litet (${formatInt(snapshot.service.busiestOrders)} köp)`}
+            </ReportFact>
+            <ReportFact label="Snittköp">
+              {r.sales.averageOrderOre === null ? "–" : kronor(r.sales.averageOrderOre)}
+            </ReportFact>
+          </div>
+        </ReportSection>
+
+        <div className="mt-auto flex flex-col gap-[1.5mm]">
+          <ReportNote>
+            Försäljningen är köp i automater som stod i {snapshot.store.name} köpdagen, exklusive
+            moms
+            {r.sales.vatOre === 0 ? " (ingen moms tas ut)" : ""}. Förra månaden:{" "}
+            {sek(r.comparison.revenueOre)} på {formatInt(r.comparison.orders)} köp.
+          </ReportNote>
+          <ReportNote>Beräkningsversion {snapshot.calcVersion}.</ReportNote>
+        </div>
+      </ReportPage>
+    </ReportDocument>
+  );
+}

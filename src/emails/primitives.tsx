@@ -1,5 +1,5 @@
 import { createElement, type CSSProperties, type ReactNode } from "react";
-import { SYMBOL_GRID, SYMBOL_PARTS } from "@/components/brand/wordmark";
+import { SIGNAL_RING_MIN_PX, SYMBOL_GRID, SYMBOL_PARTS } from "@/components/brand/wordmark";
 import { EMAIL_COLOR, EMAIL_FONT, css, labelStyle } from "./theme";
 
 /*
@@ -186,7 +186,7 @@ function snapPx(r: { x: number; y: number; w: number; h: number }, size: number)
   };
 }
 
-/** Delar som ritas i signalfärg (ringen som fäster kortet). */
+/** Delar som ritas i signalfärg (ringen som fäster kortet), från SIGNAL_RING_MIN_PX. */
 const SIGNAL_PARTS: ReadonlySet<string> = new Set(["ring"]);
 
 /**
@@ -198,7 +198,9 @@ const SIGNAL_PARTS: ReadonlySet<string> = new Set(["ring"]);
 export function EmailSymbol({ size = 20 }: { size?: number }) {
   const parts = Object.entries(SYMBOL_PARTS).map(([name, r]) => ({
     rect: snapPx(r, size),
-    color: SIGNAL_PARTS.has(name) ? EMAIL_COLOR.signal : EMAIL_COLOR.fg,
+    // Under 28 px är ringen i textfärg, som i Symbol (ingen signal som dekor).
+    color:
+      SIGNAL_PARTS.has(name) && size >= SIGNAL_RING_MIN_PX ? EMAIL_COLOR.signal : EMAIL_COLOR.fg,
   }));
   const xs = [...new Set([0, size, ...parts.flatMap((p) => [p.rect.x0, p.rect.x1])])].sort(
     (a, b) => a - b,

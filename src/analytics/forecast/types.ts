@@ -61,7 +61,7 @@ export interface ForecastInput {
   readonly titles?: readonly TitleRef[];
   /** Automater. Dagar utanför drifttiden räknas inte, och prognosen är 0 efter `activeTo`. */
   readonly machines?: readonly MachineRef[];
-  /** Dagar som inte ska räknas som efterfrågan (slutsålt). Se `stockoutUnavailableDays`. */
+  /** Dagar som inte ska räknas som efterfrågan (slutsålt). Se `stockoutUnavailableDays` i `@/analytics/lost-sales`. */
   readonly unavailable?: readonly UnavailableDay[];
   readonly options?: ForecastOptions;
 }
@@ -171,7 +171,11 @@ export interface AggregateForecast {
   /** Titel- eller automat-id, eller 'total'. */
   readonly key: string;
   readonly seriesKeys: readonly string[];
-  readonly days: readonly { readonly date: IsoDate; readonly unitsMilli: number; readonly revenueOre: number }[];
+  readonly days: readonly {
+    readonly date: IsoDate;
+    readonly unitsMilli: number;
+    readonly revenueOre: number;
+  }[];
   readonly weeks: readonly ForecastTotal[];
   readonly total: ForecastTotal;
   /** Summan av seriernas dagsvarianser (serierna antas oberoende). */

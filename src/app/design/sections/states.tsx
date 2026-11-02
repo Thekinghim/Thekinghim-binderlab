@@ -2,13 +2,14 @@
 
 import { useState, type ReactNode } from "react";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { Segmented } from "@/components/ui/segmented";
 import { TableSkeleton } from "@/components/ui/skeleton";
 import { StatusTag } from "@/components/ui/status-tag";
 import { StateMessage, StateRow, type StateMessageProps } from "@/components/ui/state-message";
-import { cn } from "@/lib/cn";
 import { formatDate, formatInt, formatSek } from "@/lib/format";
 import type { Model } from "../model";
-import { machineStates, storeById, type Machine, type Totals } from "../sample-data";
+import { machineStates, type Machine, type Totals } from "../sample-data";
+import { MachineCell } from "./metrics";
 import { SpecSection, Sub } from "./section";
 
 type Kind = StateMessageProps["kind"];
@@ -16,12 +17,12 @@ type Mode = "ready" | "loading" | Kind;
 
 const kindNames: Record<Kind, string> = {
   empty: "Tomt",
-  "no-results": "Inga träffar",
+  "no-results": "Ingen träff",
   error: "Fel",
   "loading-failed": "Ej laddad",
   offline: "Ur drift",
   denied: "Behörighet",
-  "not-configured": "Ej konfigurerad",
+  "not-configured": "Ej inställd",
 };
 
 const order: Kind[] = [
@@ -44,10 +45,10 @@ const modes: ReadonlyArray<{ mode: Mode; name: string }> = [
 export const STATE_COUNT = modes.length;
 
 const diagnostics = [
-  { label: "Request-id", value: "req_7f3a91c2e04b" },
+  { label: "Begärans id", value: "req_7f3a91c2e04b" },
   { label: "Tid", value: "2 nov. 14:19:04" },
   { label: "Tjänst", value: "awish-sync · eu-north-1" },
-  { label: "Svar", value: "503 Service Unavailable" },
+  { label: "Svar", value: "503, tjänsten svarar inte" },
 ];
 
 /** Blocklägen i automattabellen. Copy för verksamhetens tre automater. */
@@ -76,7 +77,7 @@ const blocks: Record<Kind, Omit<StateMessageProps, "kind">> = {
     detail: "De andra tre diagrammen och alla nyckeltal är kompletta.",
     action: { label: "Ladda om de två" },
     diagnostics: [
-      { label: "Request-id", value: "req_19b0c6d2a771" },
+      { label: "Begärans id", value: "req_19b0c6d2a771" },
       { label: "Tid", value: "2 nov. 14:21:40" },
       { label: "Svar", value: "Tidsgräns 10 s överskreds" },
     ],
@@ -113,7 +114,7 @@ const rows: Record<Kind, Omit<StateMessageProps, "kind">> = {
     diagnostics,
   },
   "loading-failed": {
-    message: "Ordrar 1 001–1 403 kom inte fram.",
+    message: "Ordrar 42701–42799 kom inte fram.",
     action: { label: "Hämta igen" },
   },
   offline: { code: "BL-003", message: "Tyst sedan 14:05.", action: { label: "Felsök" } },
@@ -135,16 +136,16 @@ const rules: { rule: string; example: string }[] = [
     example: "FEL · UR DRIFT · SAKNAR BEHÖRIGHET · EJ LADDAD",
   },
   {
-    rule: "Signalfärg bara för fel som kräver åtgärd, och bara på glyfen.",
-    example: "Fel och Ej laddad. Tomt, ur drift och behörighet är grå.",
+    rule: "I ett tillståndsmeddelande står signalfärgen bara på glyfen, och bara vid fel.",
+    example: "Fel och Ej laddad har signalglyf. Tomt, ur drift och behörighet är grå.",
   },
   {
     rule: "Skriv vad som fortfarande gäller.",
     example: "Senaste lyckade synk 14:32. De andra diagrammen är kompletta.",
   },
   {
-    rule: "Tekniska uppgifter bakom Visa detaljer. Aldrig stacktrace.",
-    example: "Request-id, tid, tjänst och svarskod. Går att kopiera.",
+    rule: "Tekniska uppgifter bakom Visa detaljer. Aldrig ett felspår.",
+    example: "Begärans id, tid, tjänst och svarskod. Går att kopiera.",
   },
   {
     rule: "Inga ursäkter, utrop eller illustrationer.",
@@ -154,20 +155,18 @@ const rules: { rule: string; example: string }[] = [
 
 type Row = { machine: Machine; totals: Totals };
 
+const stateOf = (m: Machine) => machineStates.find((x) => x.machineId === m.id);
+
 const readyColumns: Column<Row>[] = [
   {
     key: "machine",
     header: "Automat",
-    render: (r) => (
-      <span className="flex min-w-0 items-baseline gap-2">
-        <span className="meta shrink-0 text-subtle">{r.machine.code.replace("-", "‑")}</span>
-        <span className="truncate">{storeById.get(r.machine.storeId)?.name}</span>
-      </span>
-    ),
+    render: (r) => <MachineCell row={{ machine: r.machine, status: stateOf(r.machine) }} />,
   },
   {
     key: "status",
     header: "Status",
+    hideOnMobile: true,
     render: (r) => {
       const s = machineStates.find((x) => x.machineId === r.machine.id);
       return s ? (
@@ -183,8 +182,8 @@ const readyColumns: Column<Row>[] = [
   },
 ];
 
-/** Panel där läget ersätter ritytan men axeln står kvar. */
-function PanelSlot({
+/** Diagramyta där läget ersätter ritytan men axeln står kvar. Ingen egen ram. */
+function ChartSlot({
   label,
   meta,
   ticks,
@@ -196,14 +195,14 @@ function PanelSlot({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 flex-col rounded-md border border-line bg-surface">
-      <div className="flex items-center justify-between gap-3 px-3 pt-3">
+    <div className="flex min-w-0 flex-col">
+      <div className="flex items-baseline justify-between gap-3">
         <span className="label truncate text-muted">{label}</span>
         <span className="label shrink-0 text-subtle">{meta}</span>
       </div>
-      <div className="mt-8 flex-1">{children}</div>
-      <div aria-hidden className="mx-3 mb-3 border-t border-line-strong" />
-      <div aria-hidden className="label tnum mx-3 -mt-2 mb-3 flex justify-between text-faint">
+      <div className="mt-6 flex-1">{children}</div>
+      <div aria-hidden className="mt-6 border-t border-line-strong" />
+      <div aria-hidden className="meta tnum mt-1.5 flex justify-between text-subtle">
         {ticks.map((t) => (
           <span key={t}>{t}</span>
         ))}
@@ -227,35 +226,21 @@ export function StatesSection({ index, model }: { index: number; model: Model })
       id="tillstand"
       index={index}
       eyebrow="Tillstånd"
-      title="Klart, laddar, tomt och fel."
-      aside="En rad text och en nästa åtgärd."
+      title={`Samma tabell i ${STATE_COUNT} lägen.`}
+      aside="Varje tomt läge och fel säger vad som saknas och vad du kan göra."
       space="tight"
-      meta={[
-        { label: "Lägen", value: `${STATE_COUNT} st` },
-        { label: "Illustrationer", value: "0" },
-      ]}
     >
       <div className="flex min-w-0 flex-col gap-12 lg:col-span-8">
-        <Sub index={`${n}.1`} label="Samma tabell i alla lägen" meta={`${STATE_COUNT} lägen`}>
+        <Sub index={`${n}.1`} label={`Automater · ${model.rangeLabel}`} meta="välj läge">
           <div className="flex min-w-0 flex-col rounded-md border border-line bg-surface">
-            <div className="flex flex-col gap-2 border-b border-line px-4 py-3 md:px-5">
-              <span className="label text-muted">Automater · {model.rangeLabel}</span>
-              <div role="group" aria-label="Tabellens läge" className="-mx-1 flex flex-wrap gap-1">
-                {modes.map((m) => (
-                  <button
-                    key={m.mode}
-                    type="button"
-                    aria-pressed={m.mode === mode}
-                    onClick={() => setMode(m.mode)}
-                    className={cn(
-                      "h-7 rounded-xs px-2 font-mono text-xs transition-colors duration-fast ease-instrument",
-                      m.mode === mode ? "bg-hover text-fg" : "text-subtle hover:text-fg",
-                    )}
-                  >
-                    {m.name}
-                  </button>
-                ))}
-              </div>
+            <div className="border-b border-line px-4 py-3 md:px-5">
+              <Segmented<Mode>
+                label="Tabellens läge"
+                size="sm"
+                value={mode}
+                onChange={setMode}
+                options={modes.map((m) => ({ value: m.mode, label: m.name }))}
+              />
             </div>
             <div className="min-h-[300px] px-4 md:px-5" aria-live="polite">
               {mode === "ready" ? (
@@ -267,6 +252,7 @@ export function StatesSection({ index, model }: { index: number; model: Model })
                     rowKey={(r) => r.machine.id}
                     dense
                     stickyFirstColumn={false}
+                    surface="surface"
                   />
                 </div>
               ) : mode === "loading" ? (
@@ -282,24 +268,26 @@ export function StatesSection({ index, model }: { index: number; model: Model })
         </Sub>
 
         <Sub index={`${n}.3`} label="I ett diagram" meta="axeln står kvar">
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-            <PanelSlot label="Intäkt per dag · BL-003" meta={days} ticks={ticks}>
+          <div className="grid gap-8 sm:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+            <ChartSlot label="Intäkt per dag · BL-003" meta={days} ticks={ticks}>
               <StateMessage
                 compact
                 kind="offline"
                 code="BL-003"
                 message="Tyst sedan 14:05."
                 action={{ label: "Felsök" }}
+                className="px-0"
               />
-            </PanelSlot>
-            <PanelSlot label="Marginal per titel" meta={days} ticks={ticks}>
+            </ChartSlot>
+            <ChartSlot label="Marginal per titel" meta={days} ticks={ticks}>
               <StateMessage
                 compact
                 kind="denied"
                 message="Kräver rollen Ägare."
                 action={{ label: "Begär" }}
+                className="px-0"
               />
-            </PanelSlot>
+            </ChartSlot>
           </div>
         </Sub>
       </div>
@@ -326,22 +314,18 @@ export function StatesSection({ index, model }: { index: number; model: Model })
           </thead>
           {order.map((k) => (
             <tbody key={k}>
-              <tr>
-                <th
-                  scope="rowgroup"
-                  colSpan={2}
-                  className="h-7 border-b border-line text-left font-mono text-xs font-normal text-subtle"
-                >
-                  {kindNames[k]}
-                </th>
-              </tr>
-              <StateRow colSpan={2} kind={k} {...rows[k]} />
+              <StateRow colSpan={2} kind={k} {...rows[k]} className="[&>div]:px-0" />
             </tbody>
           ))}
         </table>
       </Sub>
 
-      <Sub index={`${n}.4`} label="Copy" meta={`${rules.length} regler`} className="lg:col-span-12">
+      <Sub
+        index={`${n}.4`}
+        label="Formuleringar"
+        meta={`${rules.length} regler`}
+        className="lg:col-span-12"
+      >
         <ol>
           {rules.map((r, i) => (
             <li
@@ -350,7 +334,7 @@ export function StatesSection({ index, model }: { index: number; model: Model })
             >
               <span className="meta tnum pt-0.5 text-subtle">{String(i + 1).padStart(2, "0")}</span>
               <span className="text-base text-fg">{r.rule}</span>
-              <span className="meta col-start-2 mt-1 text-subtle md:col-start-3 md:mt-0 md:pt-0.5">
+              <span className="col-start-2 mt-1 text-sm text-subtle md:col-start-3 md:mt-0">
                 {r.example}
               </span>
             </li>

@@ -96,7 +96,7 @@ export function SectionHeader({
             {eyebrow ? <span>{eyebrow}</span> : null}
           </p>
         ) : null}
-        <Tag id={id} className={cn("font-medium text-balance", titleSize[size])}>
+        <Tag id={id} className={cn("font-medium text-balance hyphens-none", titleSize[size])}>
           <span className="text-fg">{title}</span>
           {aside ? <span className="text-subtle"> {aside}</span> : null}
         </Tag>

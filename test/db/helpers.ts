@@ -588,6 +588,82 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
         unit: "ore",
       },
     ]);
+    // Expansion och effekt (20261102121500_expansion_leads.sql).
+    await tx.insert(s.expansionLeads).values([
+      { ...org, name: "Ny plats", stage: "lead", storeType: "livs", city: "Malmö" },
+      { ...org, name: "Andra automat", stage: "meeting", storeId: store!.id },
+    ]);
+    await tx.insert(s.effectMeasurements).values([
+      { ...org, scope: "organization", metric: "admin_hours_month", month: "2025-03-01", value: 300 },
+      {
+        ...org,
+        scope: "store",
+        storeId: store!.id,
+        metric: "stockout_days_month",
+        month: "2025-03-01",
+        value: 1,
+      },
+      {
+        ...org,
+        scope: "machine",
+        machineId: machine!.id,
+        metric: "refill_hours_month",
+        month: "2025-03-01",
+        value: 120,
+      },
+    ]);
+    await tx.insert(s.effectSettings).values({ ...org, hourlyCostOre: 25_000 });
+    // Ekonomi (20261102121731_ekonomi_payouts_costs_contracts.sql).
+    const [payoutImport] = await tx
+      .insert(s.payoutImports)
+      .values({
+        ...org,
+        dataSourceId: source!.id,
+        fileName: "utbetalningar.csv",
+        fileSha256: "b".repeat(64),
+        storagePath: `${orgId}/payouts/${"b".repeat(64)}.csv`,
+        format: "payouts",
+        rowsTotal: 1,
+        rowsNew: 1,
+      })
+      .returning();
+    const [payout] = await tx
+      .insert(s.payouts)
+      .values({
+        ...org,
+        dataSourceId: source!.id,
+        importId: payoutImport!.id,
+        reference: "U-2025-03",
+        periodStart: "2025-03-01",
+        periodEnd: "2025-03-31",
+        paidOn: "2025-04-05",
+        amountOre: 16_800,
+        feesOre: 0,
+        sourceHash: "c".repeat(64),
+      })
+      .returning();
+    await tx.insert(s.payoutLines).values({
+      ...org,
+      payoutId: payout!.id,
+      importId: payoutImport!.id,
+      externalId: "42001",
+      amountOre: 7900,
+    });
+    await tx.insert(s.deviationReviews).values({
+      ...org,
+      deviationKey: "U-2025-03:fee",
+      action: "investigated",
+      note: "Kontrollerad mot Awish.",
+    });
+    await tx.insert(s.fixedCosts).values({
+      ...org,
+      name: "Försäkring",
+      category: "insurance",
+      amountOre: 120_000,
+      interval: "year",
+      startsOn: "2025-01-01",
+      machineId: machine!.id,
+    });
 
     const [recipient] = await tx
       .insert(s.reportRecipients)
@@ -645,6 +721,18 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       machineId: machine!.id,
       kind: "jam",
       startedAt: new Date("2025-03-12T09:00:00Z"),
+    });
+    // Assistent (20261102124000_assistent_assistant_logs.sql): ägarens fråga.
+    await tx.insert(s.assistantLogs).values({
+      ...org,
+      conversationId: randomUUID(),
+      userId: owner.id,
+      role: "owner",
+      question: "Vilken automat tjänade mest i mars?",
+      answer: "Automat 1 (BL-001).",
+      status: "answered",
+      provider: "local",
+      model: "lokal-testmodell",
     });
 
     const invitation = await one<{ token: string }>(

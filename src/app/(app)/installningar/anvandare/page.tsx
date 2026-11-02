@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { wallClockIn } from "@/components/shell/period-state";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -18,7 +19,9 @@ import {
   canRevokeInvitation,
   countByRole,
   headline,
+  invitationsAside,
   memberName,
+  membersAside,
   memberPermissions,
   roleMeta,
 } from "./model";
@@ -70,12 +73,34 @@ export default async function UsersPage() {
     canManage: canRevokeInvitation(data.role, i),
   }));
 
+  const newest = data.members.reduce<(typeof data.members)[number] | null>(
+    (best, m) => (best === null || m.createdAt > best.createdAt ? m : best),
+    null,
+  );
+  const firstExpiry = data.invitations.reduce<string | null>(
+    (min, i) => (min === null || i.expiresAt < min ? i.expiresAt : min),
+    null,
+  );
+
   return (
     <div className="mx-auto w-full max-w-[1280px] px-4 pt-8 pb-16 md:px-8 md:pt-12">
+      <nav aria-label="Brödsmulor" className="label mb-6 flex items-center gap-2 text-subtle">
+        <Link
+          href="/installningar"
+          className="rounded-xs underline decoration-line-strong underline-offset-4 hover:text-fg hover:decoration-fg"
+        >
+          Inställningar
+        </Link>
+        <span aria-hidden className="text-faint">
+          /
+        </span>
+        <span aria-current="page" className="text-fg">
+          Användare
+        </span>
+      </nav>
       <SectionHeader
         as="h1"
         size="xl"
-        eyebrow="Inställningar"
         title="Användare."
         aside={headline(members.length, invitations.length)}
         meta={roleMeta(data.members)}
@@ -94,6 +119,10 @@ export default async function UsersPage() {
         assignable={assignableRoles(data.role)}
         members={members}
         invitations={invitations}
+        membersAside={membersAside(
+          newest ? { name: memberName(newest), date: date(newest.createdAt) } : null,
+        )}
+        invitationsAside={invitationsAside(firstExpiry ? date(firstExpiry) : null)}
       />
 
       <section aria-labelledby="roller" className="mt-14 border-t border-line pt-6">

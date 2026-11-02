@@ -195,13 +195,17 @@ export interface ReconciliationOptions {
   readonly feeBp?: number;
   /** Fast avgift per order i öre. Standard 0. */
   readonly fixedFeePerOrderOre?: number;
-  /** Skillnad (i öre, absolut) som räknas som avrundning och inte visas. Standard 0. */
+  /**
+   * Skillnad (i öre, absolut) som räknas som avrundning och inte visas. Gäller avgiftsavvikelsen
+   * och den oförklarade resten tillsammans (t.ex. leverantören avrundar avgiften på totalen och
+   * vi per order); avvikelser på enskilda order visas alltid. Standard 0.
+   */
   readonly toleranceOre?: number;
   /**
    * Intervall där all försäljning ska täckas av utbetalningar. Standard: från den första
    * utbetalningens start till den sista utbetalningens slut.
    */
-  readonly coverage?: Period | null;
+  readonly coverage?: Period | IsoMonth | null;
   /** Högst så många order för att en skillnad ska tolkas som saknade order. Standard 20. */
   readonly maxInferredOrders?: number;
 }

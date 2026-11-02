@@ -116,6 +116,203 @@ Källkartor laddas upp vid bygget bara när `SENTRY_AUTH_TOKEN` finns, eftersom
 `withSentryConfig` i `next.config.ts` bara används då. Fel i serverkomponenter och
 route handlers fångas av `onRequestError` i `src/instrumentation.ts`.
 
+## Assistent
+
+Assistenten (`/assistent`) svarar på frågor på svenska med Claude API och verktyg som
+anropar beräkningslagret (`src/server/assistant`). Modellen kör aldrig SQL: varje verktyg
+läser via serverladdarna som användaren (RLS) och räknar med `@/domain` och `@/analytics`.
+
+| Variabel             | Värde                                                                       |
+| -------------------- | --------------------------------------------------------------------------- |
+| `ASSISTANT_PROVIDER` | `anthropic` (standard) eller `local` (lokal testmodell, bara lokalt)        |
+| `ANTHROPIC_API_KEY`  | Nyckeln till Claude API. HEMLIG, bara på servern.                           |
+| `ANTHROPIC_MODEL`    | `claude-opus-5-5` (standard) eller `claude-sonnet-5-5`. Inget annat godtas. |
+
+- **Utan nyckel** visar sidan "Assistenten kräver ANTHROPIC_API_KEY", frågefältet är
+  avstängt och inget skickas någonstans.
+- **Lokal testmodell** (`ASSISTANT_PROVIDER=local`): ingen AI. Den väljer ett verktyg med
+  nyckelord och svarar med verktygets egen sammanfattning, så att kedjan (roller, verktyg,
+  strömning, logg, kontroll av talen) kan provas utan nyckel. Sidan märker svaren
+  "Lokal testmodell · ingen AI". Värdet nekas utanför `APP_ENV=development`.
+- **Anropet**: strömmat (`client.beta.messages.stream`), adaptivt tänkande, insats
+  `medium`, cachning av systemprompt och verktyg, serverstyrd reserv vid avböjande
+  (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`). Högst 8 varv per fråga
+  och 60 frågor per användare och timme (per serverinstans).
+- **Roller**: ägare och admin får alla tio verktyg, läsaren alla utom Att göra, påfyllaren
+  bara lagerverktygen (sålda pack, lager, räckvidd, Att göra, stamdata). Urvalet görs på
+  servern och kontrolleras igen innan ett verktyg körs.
+- **Kontroll av talen**: efter svaret kontrolleras att varje tal i texten finns i något
+  verktygsresultat (eller i frågan). Saknas ett tal markeras det i svaret och frågan får
+  status `unverified` i loggen.
+- **Logg**: varje fråga sparas i `assistant_logs` (append-only, RLS) med svar, verktyg,
+  parametrar, resultat, kontroll, modell och tokenåtgång. Var och en ser sina egna frågor;
+  ägare och admin ser alla i organisationen.
+- **Tester**: verktygen, loggen, rollerna och hela loopen med en mockad klient körs mot
+  testdatabasen (`test/db/assistent-*.test.ts`); ingen test anropar Claude API.
+
+Beställaren: skapa en nyckel i Claude Console (API Keys), lägg den som `ANTHROPIC_API_KEY`
+i Vercel (Preview och Production) och sätt en månadsgräns för kostnaden i Console.
+
+## Butiksportal
+
+Butiksportalen (`/portal`, egen layout utanför appen) visar en butik dess egen
+försäljning per månad och vecka, mest sålda titlar, ersättningen steg för steg, sina
+månadsrapporter och låter butiken felanmäla en automat. Inga nya miljövariabler: portalen
+använder inloggningen (`AUTH_PROVIDER`), e-posten för inbjudningar och rapportlagringen
+(`REPORT_STORAGE`) som redan finns.
+
+- **Roll**: `store` i `memberships`, med `store_id` (check: bara för rollen store, och
+  rollen kräver en butik). Migreringar: `20261102130000_portal_store_role.sql` (rollen)
+  och `20261102130100_portal_store_access.sql` (kolumner, funktioner, policy).
+- **Inbjudan**: ägare eller admin bjuder in från butiken (`InviteStoreUser` i
+  `src/app/portal/_components/invite-store-user.tsx`, server action `inviteStoreUser`,
+  RPC `create_store_invitation`). Mottagaren tar emot på `/inbjudan/[token]` som vanligt;
+  `accept_invitation` skapar medlemskapet med inbjudans `store_id`.
+- **Dataåtkomst**: rollen store har inga rättigheter i appens tabeller, vyer, RPC:er
+  eller filer (ingen policy nämner den). Allt i portalen går via `portal_*`-funktionerna
+  (security definer, `search_path = ''`) som först kontrollerar att anroparen är
+  butiksanvändare för just den butiken, och som bara lämnar ut butikens försäljning,
+  avtalsvillkor (provision, hyra), automaternas perioder i butiken, butiksrapporter och
+  butikens egna felanmälningar. Ersättningen räknas i appen med `buildStoreReport`
+  (`@/reports`), samma beräkning som månadsrapporten.
+- **Rapporter**: innehållet visas bara om ögonblicksbilden är en butiksrapport för just
+  den butiken utan förbjudna fält (kontrolleras i databasen och igen med
+  `assertStoreReportSafe`). PDF:en hämtas via `/portal/rapporter/[id]/pdf` med
+  användarens session; storage-policyn `binderlab_reports_select_store` släpper bara
+  igenom butikens egna butiksrapporter.
+- **Felanmälan**: blir ett ärende i `incidents` med `kind = store_*` och
+  `created_by` = butiksanvändaren (syns i Inkorgen). Högst 10 per användare och timme
+  (per serverinstans) och 20 per dygn (databasen, `BL030`).
+- **Tema**: ljust som standard; valet sparas i `localStorage` (`binderlab-portal-theme`),
+  skilt från appens.
+- **Tester**: `test/db/portal-isolation.test.ts` (varje tabell och vy, RPC:er, filer,
+  requireRole) och `test/db/portal-functions.test.ts` (funktionerna, felmeddelanden,
+  rapporter, felanmälan, samma ersättning som appens beräkning);
+  `src/server/portal/model.test.ts` för den rena logiken.
+
+Beställaren: inget extra utöver inloggning och e-post. Bjud in butiken från Butiker när
+inbjudningsrutan är inkopplad där.
+
+## Ekonomi
+
+Ekonomi (`/ekonomi`) stämmer av automatleverantörens utbetalningar mot försäljningen,
+föreslår verifikationer per månad (SIE 4), visar kassaflödet och de fasta kostnaderna.
+Avtal (`/avtal`) håller butiksavtalen med villkor, uppsägningstid och avtalsfil. Koden
+finns i `src/server/accounting` (tjänster, adaptrar, frågor) och beräkningarna i
+`@/analytics/reconciliation`, `@/analytics/cashflow`, `@/analytics/contracts` och
+`@/reports` (SIE 4).
+
+| Variabel                | Värden                                            | Standard                                           |
+| ----------------------- | ------------------------------------------------- | -------------------------------------------------- |
+| `ACCOUNTING_PROVIDER`   | `none`, `local`, `fortnox`, `visma_enet`, `bokio` | `none`                                             |
+| `ACCOUNTING_OUTBOX_DIR` | katalog                                           | `.data/outbox/bokforing`                           |
+| `PAYOUT_SOURCE`         | `csv`, `awish_api`                                | `csv`                                              |
+| `CONTRACT_FILE_STORE`   | `local`, `supabase`                               | `local` med `AUTH_PROVIDER=dev`, annars `supabase` |
+| `CONTRACT_FILE_DIR`     | katalog                                           | `.data/contracts`                                  |
+
+- **Utbetalningar**: laddas upp som CSV på `/ekonomi` (ägare och admin). Två format känns
+  igen på rubrikerna: utbetalningar (Referens, Period från, Period till, Utbetald, Belopp,
+  Avgifter, Återbetalningar) och specifikation per order (Referens, Ordernummer, Belopp).
+  Samma referens igen är dubblett; med andra belopp blir den konflikt och den sparade
+  ändras inte. Filen sparas som underlag i `.data/imports/{org}/payouts/` (lokalt, samma
+  FileStore som orderimporten). `PAYOUT_SOURCE=awish_api` är förberedd
+  (`AwishPayoutApi`) men kastar tills Awish lämnat dokumentation för avräkningen.
+- **Avstämning**: väntad utbetalning = försäljning − avgifter − återbetalningar, per
+  utbetalningsperiod. Avvikelser förklaras (avgift, saknade order, tidszon, dubbletter …)
+  och kan markeras som utredda med en anteckning (`deviation_reviews`, append-only, även
+  i `audit_log`). Servern räknar om avvikelsen innan den sparas och sparar sitt eget
+  fingerprint: ändras avvikelsen senare gäller inte utredningen.
+- **Bokföring**: verifikationerna kommer från `sie4Verifications` (`@/reports`) med
+  kontona i `ledger_accounts`. `GET /ekonomi/sie?manad=ÅÅÅÅ-MM` ger SIE 4-filen (CP437).
+  Med `ACCOUNTING_PROVIDER=none` visar sidan "Ej konfigurerad" och SIE-filen. `local`
+  skriver filen och en JSON till utkorgen. Fortnox, Visma och Bokio har gränssnittet
+  (`BookkeepingAdapter` i `src/server/accounting/bookkeeping.ts`) men ingen
+  implementation ännu.
+- **Fasta kostnader**: `fixed_costs` (försäkring, programvara, transport, lager, övrigt),
+  per månad, kvartal eller år, gemensamma eller per automat. Arkiveras i stället för att
+  raderas; ändringar som påverkar en stängd månad stoppas (BL004) och loggas.
+  **Lönsamhet efter fasta kostnader** (för sidan Lönsamhet, som ägs av annan): anropa
+  `profitabilityWithFixedCosts({ ...input.current, fixedCosts, machines }, "revenue")`
+  från `@/analytics/cashflow` med perioden från `loadDomainInput` och de fasta
+  kostnaderna (`fixed_costs` som inte är arkiverade, mappade som i
+  `src/server/accounting/service.ts`, `toFixedCost`). Resultatet har en rad per automat
+  med `profitOre`, `fixedCostOre` och `profitAfterFixedOre`, och totalen. Ekonomi visar
+  totalen redan.
+- **Avtal**: `contracts` har fått rubrik, villkor, förlängning, uppsägningstid i månader,
+  uppsägningsdag och uppgifter om avtalsfilen. Villkoren för ersättningen är
+  `store_agreements` kopplade med `contract_id` (bara samma butik, BL041). Filen sparas
+  via FileStore i bucket `contracts` (`{org}/{avtal}/{sha256}.{pdf|png|jpg|docx}`),
+  typen kontrolleras mot innehållet, högst 20 MB. Hämtas via `GET /avtal/{id}/fil`.
+- **Påminnelse i Att göra**: regeln finns i `@/analytics/contracts`
+  (`contractReminders`): påminnelse 90 dagar före sista uppsägningsdag, nyckel
+  `contract:{id}:{slut}`, fingerprint som ändras när status eller datum ändras. Att göra
+  (`computeTodos`, ägs av annan) behöver en punkttyp `contract` som tar `due` ur
+  resultatet; avtalen läses med `queryContracts` i `src/server/accounting/queries.ts`.
+- **Tester**: `test/db/ekonomi.test.ts` (import, avstämning med avsiktliga avvikelser,
+  utredning, fasta kostnader, SIE, kassaflöde, avtal, filer, roller och RLS) och
+  `src/server/accounting/payout-csv.test.ts`.
+
+Beställaren: välj bokföringsprogram och skaffa API-åtkomst (Fortnox: integration i
+utvecklarportalen; Visma eEkonomi: Visma Developer; Bokio: API-nyckel), be Awish om
+avräkningens API-dokumentation, och lägg in kontoplanen (BAS) under Inställningar om den
+avviker från standard. Med Supabase: sätt `CONTRACT_FILE_STORE=supabase` (standard i
+preview och production) så att avtalsfilerna hamnar i bucket `contracts`.
+
+## Prognos & inköp
+
+Sidan `/prognos` (förlorad försäljning, prognos med backtest, inköpsförslag, inköpsorder, lagervärde, leverantörer) använder inga externa tjänster och inga nycklar. Allt räknas på servern ur databasen med `@/analytics/forecast`, `lost-sales` och `purchasing`; ändringar går via server actions i `src/app/(app)/prognos/actions.ts` till `src/server/purchasing` (RLS, bara ägare och admin). Inga nya tabeller: `suppliers`, `supplier_items`, `purchase_orders` och `purchase_order_lines` finns sedan grundmigreringen, och mottagning skriver `stock_events` (`receipt`) i centrallagret via databasens trigger.
+
+Leverantörsorder skickas inte elektroniskt: en inköpsorder markeras som beställd när den lagts hos leverantören (e-post, telefon, portal). Ska order skickas automatiskt krävs leverantörens API och ett beslut om adapter.
+
+## Drift: larm, push och sms
+
+Larmjobbet (`GET /api/cron/larm`, `src/server/alerts`) utvärderar för varje organisation
+maskinhälsa (`@/analytics/health`), titel nära slut, misslyckade importer och gårdagens
+försäljning, sparar incidenterna i `alerts` (samma problem är en rad, se
+`@/analytics/alerts`) och skickar utskicken i `alert_deliveries` som är på tur. Varje körning
+loggas i `alert_runs`. Jobbet kör som systemroll (`getServiceDb`) eftersom ingen användare är
+inloggad; proxyn släpper igenom `/api/cron/*` och routen kräver `CRON_SECRET`.
+
+| Variabel            | Värde                                                             | Lokalt                                       |
+| ------------------- | ----------------------------------------------------------------- | -------------------------------------------- |
+| `CRON_SECRET`       | Minst 16 tecken. Vercel Cron skickar `Authorization: Bearer …`.   | Valfritt; utan den svarar routen 503.        |
+| `PUSH_PROVIDER`     | `webpush` (VAPID) eller `outbox`                                  | `outbox`: `.data/outbox/push/*.json`         |
+| `VAPID_PUBLIC_KEY`  | Publik nyckel (base64url), skickas till webbläsaren               | Skapas i `.data/vapid-dev.json` om den saknas |
+| `VAPID_PRIVATE_KEY` | Hemlig nyckel                                                     | Som ovan                                     |
+| `VAPID_SUBJECT`     | `mailto:`-adress eller https-adress till den som driver tjänsten  | Behövs inte                                  |
+| `SMS_PROVIDER`      | `outbox` eller `off` (ingen leverantör vald)                      | `outbox`: `.data/outbox/sms/*.json`          |
+| `MAIL_PROVIDER` …   | Samma som rapporterna (Resend eller outbox)                       | `outbox`: `.data/outbox/<id>/`               |
+
+Kör jobbet lokalt:
+
+```sh
+CRON_SECRET=lokal-hemlighet-1234 npx next dev -p 3200   # eller lägg den i .env.local
+curl -H "Authorization: Bearer lokal-hemlighet-1234" http://localhost:3200/api/cron/larm
+```
+
+Schemaläggning i drift (Vercel): lägg till i `vercel.json`
+
+```json
+{ "crons": [{ "path": "/api/cron/larm", "schedule": "*/10 * * * *" }] }
+```
+
+och sätt `CRON_SECRET` i projektets miljövariabler. Vercel Hobby kör cron högst en gång om
+dagen; var 10:e minut kräver Pro.
+
+**Push** (Web Push): skapa nycklar med `npx web-push generate-vapid-keys` och sätt
+`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` och `VAPID_SUBJECT`. Varje användare slår på push per
+enhet under Drift → Larminställningar. På iPhone kräver push att Binderlab är tillagd på
+hemskärmen (iOS 16.4 eller senare). Enheter som push-tjänsten svarar 404/410 för stängs av.
+
+**Sms**: ingen leverantör är vald. En leverantör läggs till som en klass som implementerar
+`SmsSender` i `src/server/notify/sms.ts` och väljs med `SMS_PROVIDER`.
+
+**Fältläget (PWA)**: `src/app/manifest.ts` (installerbar, startar i `/drift`) och
+`public/sw.js` (service worker). Påfyllning (`/drift/pafyllning`) och besöksplanen
+(`/drift/besok`) sparas i webbläsaren och fungerar utan nät; påfyllningar köas i IndexedDB och
+skickas med ett id från webbläsaren (`register_refill_once`), så ett omförsök blir aldrig en
+dubbel lagerhändelse.
+
 ## Det här måste beställaren göra
 
 1. **Supabase, två projekt.** Behåll det befintliga

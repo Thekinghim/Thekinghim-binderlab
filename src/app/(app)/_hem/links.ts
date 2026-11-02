@@ -71,6 +71,9 @@ export function appHref(link: string, scope: DataScope | null = null): string {
     return build("/lonsamhet", params);
   }
 
+  // Sammanslagning av titlar har ingen egen sida än: punkten hanteras i Att göra.
+  if (path === "/titlar") return "/att-gora";
+
   if (path === "/lonsamhet" || path.startsWith("/automater/")) {
     renamePeriodParams(params);
     if (path === "/lonsamhet") withScope(params, scope);

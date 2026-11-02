@@ -1,0 +1,275 @@
+/**
+ * Verktygsloopen: frågan → modellen → verktyg → modellen … → svar. Varje varv strömmas;
+ * verktygen körs med validerade parametrar och bara om rollen har dem. Svaret kontrolleras
+ * till sist mot verktygsresultaten (verify.ts).
+ *
+ * Historiken skickas tillbaka oförändrad inom en fråga (assistentens innehåll, även
+ * tänkandeblock, läggs till som det kom), så att modellens tänkande gäller i nästa varv.
+ * Tidigare frågor i samtalet skickas bara som text (frågan och det slutliga svaret).
+ *
+ * Ingen databas här: verktygen får sitt sammanhang (ToolContext) och klienten är utbytbar,
+ * så att hela loopen kan testas med en mockad klient.
+ */
+
+import Anthropic from "@anthropic-ai/sdk";
+
+import { DomainError } from "@/domain";
+import { AuthorizationError } from "@/server/access";
+
+import type {
+  ModelClient,
+  ModelMessage,
+  ModelMessageParam,
+  ModelSystemBlock,
+} from "./model-client";
+import type {
+  AssistantEvent,
+  AssistantStatus,
+  AssistantUsage,
+  ToolCallRecord,
+  Verification,
+} from "./protocol";
+import { ToolInputError, type AssistantTool, type ToolContext } from "./tools/common";
+import { verifyNumbers } from "./verify";
+
+/** Högst så många varv (anrop till modellen) per fråga. */
+export const MAX_TURNS = 8;
+/** Högst så många försök med ett varv vars verktygsparametrar inte gick att tolka. */
+const MAX_JSON_RETRIES = 2;
+
+export interface HistoryEntry {
+  readonly question: string;
+  readonly answer: string;
+  /** Verktygsresultaten bakom svaret (räknas som underlag i kontrollen). */
+  readonly sources: readonly unknown[];
+}
+
+export interface RunArgs {
+  readonly client: ModelClient;
+  readonly tools: readonly AssistantTool<never>[];
+  readonly modelTools: readonly Anthropic.Beta.BetaTool[];
+  readonly ctx: ToolContext;
+  readonly system: readonly ModelSystemBlock[];
+  readonly history: readonly HistoryEntry[];
+  readonly question: string;
+  readonly emit: (event: AssistantEvent) => void;
+  readonly signal?: AbortSignal;
+  readonly maxTurns?: number;
+  /** Anropas för varje kört verktyg (så att anroparen kan logga dem även om loopen avbryts). */
+  readonly onToolCall?: (record: ToolCallRecord) => void;
+}
+
+export interface RunResult {
+  readonly status: AssistantStatus;
+  readonly answer: string;
+  readonly toolCalls: ToolCallRecord[];
+  readonly verification: Verification;
+  readonly usage: AssistantUsage;
+}
+
+/** Ett fel i varvet som inte är ett API-fel: parametrarna gick inte att tolka. */
+function isParseFailure(error: unknown): boolean {
+  return (
+    !(error instanceof Anthropic.APIError) &&
+    !(error instanceof Error && error.name === "AbortError")
+  );
+}
+
+function textOf(message: ModelMessage): string {
+  return message.content
+    .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("")
+    .trim();
+}
+
+function errorText(error: unknown): string {
+  if (error instanceof ToolInputError) return error.message;
+  if (error instanceof AuthorizationError) return "Din roll får inte använda det här verktyget.";
+  if (error instanceof DomainError) return error.message;
+  return "Verktyget kunde inte räkna fram ett resultat (internt fel).";
+}
+
+/** Kör ett verktyg. Fel blir ett verktygsfel som modellen får se, aldrig ett avbrott. */
+async function runTool(
+  block: Anthropic.Beta.BetaToolUseBlock,
+  args: RunArgs,
+): Promise<{ record: ToolCallRecord; content: string; isError: boolean }> {
+  const started = Date.now();
+  const tool = args.tools.find((t) => t.name === block.name);
+  const rawInput =
+    block.input && typeof block.input === "object" ? (block.input as Record<string, unknown>) : {};
+  const fail = (summary: string, extra?: unknown) => {
+    const result = { fel: summary, ...(extra !== undefined ? { tips: extra } : {}) };
+    return {
+      record: {
+        id: block.id,
+        name: block.name,
+        label: tool ? tool.label(rawInput as never) : block.name,
+        input: rawInput,
+        ok: false,
+        summary,
+        figures: [],
+        links: [],
+        result,
+        durationMs: Date.now() - started,
+      } satisfies ToolCallRecord,
+      content: JSON.stringify(result),
+      isError: true,
+    };
+  };
+
+  // Rollen kontrolleras här igen: modellen kan bara ha fått rollens verktyg, men ett
+  // namn utanför listan körs aldrig.
+  if (!tool || !tool.roles.includes(args.ctx.role)) {
+    return fail(`Verktyget ${block.name} finns inte för din roll.`);
+  }
+  const parsed = tool.input.safeParse(rawInput);
+  if (!parsed.success) {
+    return fail("Ogiltiga parametrar.", {
+      problem: parsed.error.issues.map(
+        (i) => `${i.path.join(".") || "(parametrar)"}: ${i.message}`,
+      ),
+      mottaget: JSON.stringify(rawInput).slice(0, 500),
+    });
+  }
+  try {
+    const output = await tool.run(args.ctx, parsed.data as never);
+    const result = { sammanfattning: output.summary, data: output.data };
+    return {
+      record: {
+        id: block.id,
+        name: tool.name,
+        label: tool.label(parsed.data as never),
+        input: parsed.data as Record<string, unknown>,
+        ok: true,
+        summary: output.summary,
+        figures: output.figures,
+        links: output.links,
+        result,
+        durationMs: Date.now() - started,
+      },
+      content: JSON.stringify({ ...result, lankar: output.links }),
+      isError: false,
+    };
+  } catch (error) {
+    if (!(error instanceof ToolInputError) && !(error instanceof DomainError)) {
+      console.error(`[assistent] verktyget ${tool.name} misslyckades:`, error);
+    }
+    return fail(errorText(error), error instanceof ToolInputError ? error.hint : undefined);
+  }
+}
+
+/** Kör loopen till ett svar. API-fel och avbrott kastas vidare (anroparen loggar dem). */
+export async function runAssistant(args: RunArgs): Promise<RunResult> {
+  const maxTurns = args.maxTurns ?? MAX_TURNS;
+  const messages: ModelMessageParam[] = [];
+  for (const h of args.history) {
+    messages.push({ role: "user", content: h.question });
+    messages.push({ role: "assistant", content: h.answer });
+  }
+  messages.push({ role: "user", content: args.question });
+
+  const toolCalls: ToolCallRecord[] = [];
+  const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, turns: 0 };
+  let status: AssistantStatus | null = null;
+  let answer = "";
+  let jsonRetries = 0;
+
+  for (let turn = 1; turn <= maxTurns && status === null; turn++) {
+    if (turn > 1) args.emit({ type: "turn", turn });
+    let message: ModelMessage;
+    try {
+      message = await args.client.turn(
+        { system: args.system, tools: args.modelTools, messages, signal: args.signal },
+        (text) => args.emit({ type: "text", text }),
+      );
+      jsonRetries = 0;
+    } catch (error) {
+      if (isParseFailure(error) && jsonRetries < MAX_JSON_RETRIES && !args.signal?.aborted) {
+        jsonRetries += 1;
+        turn -= 1; // samma varv igen
+        continue;
+      }
+      throw error;
+    }
+    usage.turns += 1;
+    usage.inputTokens += message.usage.input_tokens;
+    usage.outputTokens += message.usage.output_tokens;
+    usage.cacheReadTokens += message.usage.cache_read_input_tokens ?? 0;
+
+    const toolUses = message.content.filter(
+      (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use",
+    );
+
+    if (message.stop_reason === "refusal") {
+      status = "refused";
+      answer = textOf(message) || "Modellen avböjde att svara på frågan.";
+      break;
+    }
+    if (message.stop_reason === "pause_turn") {
+      messages.push({ role: "assistant", content: message.content });
+      continue;
+    }
+    if (toolUses.length === 0) {
+      answer = textOf(message);
+      status = message.stop_reason === "max_tokens" ? "limit" : "answered";
+      break;
+    }
+    if (message.stop_reason === "max_tokens") {
+      // Parametrarna kan vara avklippta: kör inte verktygen.
+      status = "limit";
+      answer = textOf(message);
+      break;
+    }
+
+    messages.push({ role: "assistant", content: message.content });
+    for (const block of toolUses) {
+      args.emit({
+        type: "tool_call",
+        id: block.id,
+        name: block.name,
+        label:
+          args.tools.find((t) => t.name === block.name)?.label(block.input as never) ?? block.name,
+        input: (block.input ?? {}) as Record<string, unknown>,
+      });
+    }
+    const results = await Promise.all(
+      toolUses.map(async (block) => {
+        const outcome = await runTool(block, args);
+        args.onToolCall?.(outcome.record);
+        args.emit({ type: "tool_result", call: outcome.record });
+        return outcome;
+      }),
+    );
+    toolCalls.push(...results.map((r) => r.record));
+    messages.push({
+      role: "user",
+      content: toolUses.map((block, i) => ({
+        type: "tool_result" as const,
+        tool_use_id: block.id,
+        content: results[i]!.content,
+        ...(results[i]!.isError ? { is_error: true } : {}),
+      })),
+    });
+  }
+
+  if (status === null) {
+    status = "limit";
+    answer =
+      answer || "Frågan krävde fler steg än assistenten tillåter. Dela upp den i mindre frågor.";
+  }
+
+  const sources: unknown[] = [
+    args.question,
+    ...toolCalls.filter((c) => c.ok).map((c) => c.result),
+    ...args.history.flatMap((h) => [h.question, ...h.sources]),
+  ];
+  const verification =
+    status === "answered" || status === "limit"
+      ? verifyNumbers(answer, sources)
+      : { checked: 0, unverified: [] };
+  if (status === "answered" && verification.unverified.length > 0) status = "unverified";
+
+  return { status, answer, toolCalls, verification, usage };
+}

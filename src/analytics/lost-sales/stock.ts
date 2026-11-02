@@ -20,14 +20,7 @@ import { tryParseInstant } from "../todos/time";
 
 /** Typ av lagerhändelse (stock_events.kind). */
 export type StockEventKind =
-  | "refill"
-  | "count"
-  | "sale"
-  | "waste"
-  | "adjustment"
-  | "transfer_in"
-  | "transfer_out"
-  | "receipt";
+  "refill" | "count" | "sale" | "waste" | "adjustment" | "transfer_in" | "transfer_out" | "receipt";
 
 /** En lagerhändelse. */
 export interface StockEventRef {
@@ -102,7 +95,12 @@ const KINDS: ReadonlySet<string> = new Set([
 ]);
 
 function validate(e: StockEventRef): void {
-  if (!e || typeof e.id !== "string" || typeof e.locationId !== "string" || typeof e.titleId !== "string") {
+  if (
+    !e ||
+    typeof e.id !== "string" ||
+    typeof e.locationId !== "string" ||
+    typeof e.titleId !== "string"
+  ) {
     throw new DomainError("invalid_input", "Lagerhändelsen saknar id, lagerplats eller titel.");
   }
   if (!KINDS.has(e.kind)) {
@@ -170,7 +168,10 @@ function apply(state: ReplayState, e: StockEventRef): { inflow: number; sold: nu
     state.level = e.quantity;
     state.known = true;
   } else {
-    if (!state.started && (INFLOW_KINDS.has(e.kind) || (e.kind === "adjustment" && e.quantity > 0))) {
+    if (
+      !state.started &&
+      (INFLOW_KINDS.has(e.kind) || (e.kind === "adjustment" && e.quantity > 0))
+    ) {
       state.known = true;
     }
     state.level += e.quantity;

@@ -96,8 +96,8 @@ function Figure({
   );
 }
 
-/** Fylld kvadrat + ring. Samma form som Node "signal-ring" i skärmdiagrammen. */
-function SignalNode({ x, y, size = 6 }: { x: number; y: number; size?: number }) {
+/** Topp: fylld kvadrat + ring i fg. Ett rekord är aldrig signal, inte ens när rapporten behåller färg. */
+function PeakNode({ x, y, size = 6 }: { x: number; y: number; size?: number }) {
   const h = size / 2;
   return (
     <g>
@@ -108,9 +108,9 @@ function SignalNode({ x, y, size = 6 }: { x: number; y: number; size?: number })
         height={size + 6}
         fill="none"
         strokeWidth={1}
-        style={{ stroke: "var(--bl-signal)" }}
+        style={{ stroke: "var(--bl-fg)" }}
       />
-      <rect x={x - h} y={y - h} width={size} height={size} style={{ fill: "var(--bl-signal)" }} />
+      <rect x={x - h} y={y - h} width={size} height={size} style={{ fill: "var(--bl-fg)" }} />
     </g>
   );
 }
@@ -339,7 +339,7 @@ export function ReportLineChart({
                 {highlight.sub}
               </Text>
             ) : null}
-            <SignalNode x={hp[0]} y={hp[1]} />
+            <PeakNode x={hp[0]} y={hp[1]} />
           </g>
         ) : null}
       </g>
@@ -406,8 +406,8 @@ export function ReportBarChart({
                 height={Math.max(0, innerH - by - 0.5)}
                 strokeWidth={1}
                 style={{
-                  fill: hl ? "var(--bl-signal)" : "var(--bl-data-5)",
-                  stroke: hl ? "var(--bl-signal)" : "var(--bl-data-3)",
+                  fill: hl ? "var(--bl-fg)" : "var(--bl-data-5)",
+                  stroke: hl ? "var(--bl-fg)" : "var(--bl-data-3)",
                 }}
               />
               <Text x={bx + bw / 2} y={by - 5} anchor="middle" strong={hl} size={hl ? 9.5 : 9} halo>

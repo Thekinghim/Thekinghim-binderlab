@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { formatPercent } from "@/lib/format";
@@ -15,6 +16,13 @@ type EmailFrameProps = {
   title: string;
   /** Etikett i ramens list, t.ex. "600 px" */
   label?: string;
+  /**
+   * Utdrag: visa högst så många px, avklippt efter närmaste hela block i
+   * mejlet (aldrig mitt i ett diagram). Iframen tas då ur tabbordningen.
+   */
+  clip?: number;
+  /** Länk till hela mejlet, visas under ett utdrag. */
+  moreHref?: string;
   className?: string;
 };
 
@@ -29,6 +37,8 @@ export function EmailFrame({
   height = "auto",
   title,
   label,
+  clip,
+  moreHref,
   className,
 }: EmailFrameProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -47,18 +57,34 @@ export function EmailFrame({
     return () => ro.disconnect();
   }, [width]);
 
+  const [cut, setCut] = useState<number | null>(null);
+
   const measureContent = useCallback(() => {
-    if (height !== "auto") return;
     const doc = frameRef.current?.contentDocument;
-    if (doc?.documentElement) setContentHeight(doc.documentElement.scrollHeight);
-  }, [height]);
+    if (!doc?.documentElement) return;
+    if (clip !== undefined) {
+      // Mejlets kort är tabellen med radie 6 px; dess rader är hela block.
+      const card = [...doc.querySelectorAll("table")].find((t) => t.style.borderRadius === "6px");
+      const bottoms = card
+        ? [...card.rows].map((r) => Math.round(r.getBoundingClientRect().bottom))
+        : [];
+      const fit = bottoms.filter((b) => b <= clip);
+      setCut(fit.length ? Math.max(...fit) : clip);
+      setContentHeight(doc.documentElement.scrollHeight);
+      return;
+    }
+    if (height !== "auto") return;
+    setContentHeight(doc.documentElement.scrollHeight);
+  }, [height, clip]);
 
   // srcDoc kan hinna ladda före hydrering, då missas onLoad.
   useEffect(() => {
     if (frameRef.current?.contentDocument?.readyState === "complete") measureContent();
   }, [html, measureContent]);
 
-  const frameHeight = typeof height === "number" ? height : contentHeight;
+  const frameHeight =
+    clip !== undefined ? contentHeight : typeof height === "number" ? height : contentHeight;
+  const shownHeight = clip !== undefined ? (cut ?? clip) : frameHeight;
 
   return (
     <figure
@@ -73,14 +99,15 @@ export function EmailFrame({
       ) : null}
       <div ref={wrapRef} className="w-full">
         <div
-          className="overflow-hidden rounded-sm border border-line bg-surface"
-          style={{ height: Math.ceil(frameHeight * scale) + 2 }}
+          className="relative overflow-hidden rounded-sm border border-line bg-surface"
+          style={{ height: Math.ceil(shownHeight * scale) + 2 }}
         >
           <iframe
             ref={frameRef}
             title={title}
             srcDoc={html}
             onLoad={measureContent}
+            tabIndex={clip !== undefined ? -1 : undefined}
             sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
             className="block border-0"
             style={{
@@ -91,6 +118,17 @@ export function EmailFrame({
             }}
           />
         </div>
+        {clip !== undefined && moreHref && cut !== null && cut < contentHeight ? (
+          <p className="meta tnum mt-2 flex items-center justify-between gap-3 text-subtle">
+            <span>Utdrag, {formatPercent(cut / contentHeight, 0)} av mejlet</span>
+            <Link
+              href={moreHref}
+              className="rounded-xs text-fg underline decoration-line-control underline-offset-4 transition-colors duration-fast ease-instrument hover:decoration-fg"
+            >
+              Visa hela mejlet
+            </Link>
+          </p>
+        ) : null}
       </div>
     </figure>
   );

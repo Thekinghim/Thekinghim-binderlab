@@ -37,7 +37,8 @@ import { citext, ore, safeBigint } from "./types";
 // Uppräkningstyper
 // ---------------------------------------------------------------------------
 
-export const memberRole = pgEnum("member_role", ["owner", "admin", "refiller", "viewer"]);
+/** "store" är butiksportalens roll (fas 10): ingen åtkomst till appen, bara portal_*-RPC:erna. */
+export const memberRole = pgEnum("member_role", ["owner", "admin", "refiller", "viewer", "store"]);
 export const organizationPlan = pgEnum("organization_plan", ["trial", "standard", "enterprise"]);
 export const commissionBase = pgEnum("commission_base", ["net_excl_vat"]);
 export const rentProration = pgEnum("rent_proration", ["daily"]);
@@ -103,7 +104,10 @@ export const reportDeliveryStatus = pgEnum("report_delivery_status", [
 export const alertSeverity = pgEnum("alert_severity", ["info", "warning", "critical"]);
 export const auditAction = pgEnum("audit_action", ["insert", "update", "delete"]);
 
-export type MemberRole = (typeof memberRole.enumValues)[number];
+/** Alla roller i memberships, även butiksportalens "store". */
+export type MembershipRole = (typeof memberRole.enumValues)[number];
+/** Appens roller. Butiksrollen ("store") når aldrig appen, bara /portal. */
+export type MemberRole = Exclude<MembershipRole, "store">;
 export type StockEventKind = (typeof stockEventKind.enumValues)[number];
 
 // ---------------------------------------------------------------------------
@@ -159,6 +163,8 @@ export const memberships = pgTable("memberships", {
   organizationId: orgId(),
   userId: uuid("user_id").notNull(),
   role: memberRole("role").notNull(),
+  /** Butiken för en butiksanvändare (role = store), annars null. */
+  storeId: uuid("store_id"),
   ...stamps(),
 });
 
@@ -167,6 +173,8 @@ export const invitations = pgTable("invitations", {
   organizationId: orgId(),
   email: citext("email").notNull(),
   role: memberRole("role").notNull(),
+  /** Butiken för en inbjudan till butiksportalen (role = store), annars null. */
+  storeId: uuid("store_id"),
   tokenHash: text("token_hash").notNull(),
   expiresAt: ts("expires_at").notNull(),
   acceptedAt: ts("accepted_at"),
@@ -189,6 +197,13 @@ export const stores = pgTable("stores", {
   phone: text("phone"),
   isExample: boolean("is_example").notNull().default(false),
   archivedAt: ts("archived_at"),
+  /** Platsattribut för likhet mellan platser (expansion). null = okänt. */
+  storeType: text("store_type"),
+  city: text("city"),
+  /** Öppettimmar per vecka, 0–168. */
+  openHoursPerWeek: integer("open_hours_per_week"),
+  /** Yta i m². */
+  areaSqm: integer("area_sqm"),
   ...stamps(),
 });
 
@@ -202,6 +217,16 @@ export const contracts = pgTable("contracts", {
   storagePath: text("storage_path"),
   note: text("note"),
   archivedAt: ts("archived_at"),
+  // Fas 9 (20261102121731_ekonomi_payouts_costs_contracts.sql): villkor och avtalsfilen.
+  title: text("title"),
+  terms: text("terms"),
+  renewalMonths: integer("renewal_months"),
+  fileName: text("file_name"),
+  fileContentType: text("file_content_type"),
+  fileSizeBytes: safeBigint("file_size_bytes"),
+  fileSha256: text("file_sha256"),
+  noticePeriodMonths: integer("notice_period_months"),
+  terminatedOn: day("terminated_on"),
   ...stamps(),
 });
 
@@ -601,6 +626,23 @@ export const alerts = pgTable("alerts", {
   triggeredAt: ts("triggered_at").notNull().defaultNow(),
   acknowledgedAt: ts("acknowledged_at"),
   acknowledgedBy: uuid("acknowledged_by"),
+  // Fas 8 (20261102122143_drift_larm_arenden.sql): incidentens tillstånd (@/analytics/alerts).
+  incidentKey: text("incident_key"),
+  alertGroup: text("alert_group"),
+  status: text("status").notNull().default("open"),
+  title: text("title"),
+  evidence: jsonb("evidence").notNull().$type<Record<string, unknown>>(),
+  link: text("link"),
+  lastSeenAt: ts("last_seen_at"),
+  closedAt: ts("closed_at"),
+  lastNotifiedAt: ts("last_notified_at"),
+  notifiedSeverity: alertSeverity("notified_severity"),
+  notifyCount: integer("notify_count").notNull().default(0),
+  occurrences: integer("occurrences").notNull().default(1),
+  reopenCount: integer("reopen_count").notNull().default(0),
+  oneShot: boolean("one_shot").notNull().default(false),
+  resolvedNotifiedAt: ts("resolved_notified_at"),
+  suppressedBy: text("suppressed_by"),
   ...stamps(),
 });
 
@@ -613,6 +655,14 @@ export const incidents = pgTable("incidents", {
   endedAt: ts("ended_at"),
   description: text("description"),
   actionTaken: text("action_taken"),
+  // Fas 8: kundärenden (status, ansvarig, order, titel, återbetalning i öre).
+  status: text("status").notNull().default("open"),
+  assigneeId: uuid("assignee_id"),
+  orderId: uuid("order_id"),
+  titleId: uuid("title_id"),
+  refundedOre: ore("refunded_ore").notNull().default(0),
+  refundedOn: day("refunded_on"),
+  customerContact: text("customer_contact"),
   ...stamps(),
 });
 
@@ -665,3 +715,21 @@ export const purchasePricePeriods = pgView("purchase_price_periods", {
   validFrom: day("valid_from").notNull(),
   validTo: day("valid_to"),
 }).existing();
+
+// Fas 9 Ekonomi: utbetalningar, avvikelser och fasta kostnader.
+export * from "./schema/ekonomi";
+
+// Expansion och effekt (expansion_leads, effect_measurements, effect_settings).
+export * from "./schema/expansion";
+
+// Fas 6 Rapporter: godkännande av rapporter.
+export * from "./schema/rapporter";
+
+// Fas 6b Assistent: logg över frågor och svar.
+export * from "./schema/assistant";
+
+// Fas 8 Drift: larmprenumerationer, push, utskick och påfyllning från fältet.
+export * from "./schema/drift";
+
+// Fas 11 Marknad: releaser, leverantörspriser, fackfördelning, sortiment och pristester.
+export * from "./schema/marknad";

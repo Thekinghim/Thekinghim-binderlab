@@ -6,13 +6,21 @@ import type { IconName } from "@/components/ui/icon";
  * kommandopaletten, och kan användas på servern (t.ex. för behörighet).
  */
 
-export type Role = "owner" | "admin" | "refiller" | "viewer";
+/**
+ * Roller i skalet. "store" är butiksportalens roll: den ser inga appmenyer (ingen rutt
+ * nämner den) och skickas till /portal, som har ett eget skal (src/app/portal).
+ */
+export type Role = "owner" | "admin" | "refiller" | "viewer" | "store";
+
+/** Butiksportalens startsida. */
+export const PORTAL_HREF = "/portal";
 
 export const roleLabel: Record<Role, string> = {
   owner: "Ägare",
   admin: "Administratör",
   refiller: "Påfyllare",
   viewer: "Läsare",
+  store: "Butik",
 };
 
 export type RouteId =
@@ -282,6 +290,7 @@ export function routesForRole(role: Role): ShellRoute[] {
 
 /** Rollens startsida: första rutten den får se (Hem, eller Att göra för påfyllare). */
 export function homeHref(role: Role): string {
+  if (role === "store") return PORTAL_HREF;
   return routesForRole(role)[0]?.href ?? "/";
 }
 

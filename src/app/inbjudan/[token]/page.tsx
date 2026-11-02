@@ -9,6 +9,7 @@ import { describeInvitation } from "@/server/invitations";
 import { getSessionUser } from "@/server/session";
 
 import { AcceptForm, SwitchAccount } from "./accept-form";
+import { devAccountExists } from "./account";
 
 export const metadata: Metadata = { title: "Inbjudan" };
 
@@ -19,9 +20,11 @@ function first(value: string | string[] | undefined): string {
 }
 
 const INVALID: Record<"missing" | "expired" | "accepted", { aside: string; body: string }> = {
+  // Okänd token: återkallad, ersatt av en ny länk ("Skicka igen") eller avklippt.
+  // Sidan kan inte skilja dem åt utan att avslöja mer, så texten är neutral.
   missing: {
-    aside: "Länken stämmer inte.",
-    body: "Kontrollera att hela länken kom med från mejlet, eller be den som bjöd in dig om en ny.",
+    aside: "Länken gäller inte längre.",
+    body: "Den kan ha återkallats eller ersatts av en nyare länk. Be den som bjöd in dig om en ny, eller kontrollera att hela länken kom med från mejlet.",
   },
   expired: {
     aside: "Den har gått ut.",
@@ -114,6 +117,21 @@ export default async function InvitationPage({
     body = <AcceptForm token={token} mode="accept" organizationName={lookup.organizationName} />;
   } else if (user) {
     body = <SwitchAccount currentEmail={user.email} invitedEmail={lookup.email} />;
+  } else if (provider === "dev" && (await devAccountExists(lookup.email))) {
+    body = (
+      <div className="flex flex-col gap-5">
+        <p className="text-base text-muted">
+          Det finns redan ett konto för {lookup.email}. Logga in, så kommer du tillbaka hit. Sedan
+          räcker ett klick för att gå med.
+        </p>
+        <Link
+          href={loginHref}
+          className="inline-flex h-9 w-full items-center justify-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse hover:bg-inverse-hover"
+        >
+          Logga in och gå med
+        </Link>
+      </div>
+    );
   } else if (provider === "dev") {
     body = (
       <AcceptForm

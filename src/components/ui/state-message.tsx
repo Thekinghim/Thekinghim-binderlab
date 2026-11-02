@@ -102,7 +102,7 @@ function ActionControl({
 
   if (compact) {
     const cls = cn(
-      "inline-flex h-7 items-center rounded-xs px-1.5 font-mono text-sm whitespace-nowrap underline-offset-4 transition-colors duration-[120ms] ease-instrument",
+      "inline-flex h-7 items-center rounded-xs px-1.5 font-mono text-sm whitespace-nowrap underline-offset-4 transition-colors duration-fast ease-instrument",
       emphasis === "primary"
         ? "text-fg underline decoration-line-control hover:decoration-fg"
         : "text-muted hover:text-fg",
@@ -117,7 +117,7 @@ function ActionControl({
         onClick={action.onClick}
         disabled={action.loading}
         aria-busy={action.loading || undefined}
-        className={cn(cls, "disabled:opacity-40")}
+        className={cn(cls, "disabled:text-disabled disabled:decoration-transparent")}
       >
         {label}
       </button>
@@ -129,7 +129,7 @@ function ActionControl({
       <a
         href={action.href}
         className={cn(
-          "inline-flex h-9 items-center rounded-sm border px-3.5 text-base font-medium whitespace-nowrap transition-[background-color,border-color,color] duration-[120ms] ease-instrument",
+          "inline-flex h-9 items-center rounded-sm border px-3.5 text-base font-medium whitespace-nowrap transition-[background-color,border-color,color] duration-fast ease-instrument",
           emphasis === "primary"
             ? "border-inverse bg-inverse text-on-inverse hover:border-inverse-hover hover:bg-inverse-hover"
             : "border-transparent text-muted hover:bg-hover hover:text-fg",
@@ -210,7 +210,7 @@ function Diagnostics({
         <button
           type="button"
           onClick={copy}
-          className="absolute top-1.5 right-1.5 inline-flex h-6 items-center rounded-xs px-1.5 text-muted transition-colors duration-[120ms] ease-instrument hover:bg-hover hover:text-fg"
+          className="absolute top-1 right-1 inline-flex h-7 items-center rounded-xs px-2 text-muted transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg"
         >
           {copyState === "copied" ? copyLabels.copied : copyLabels.idle}
         </button>
@@ -228,8 +228,8 @@ function Diagnostics({
 }
 
 /**
- * Tomt läge eller felläge utan illustration: en rad i monospace med
- * glyf och prefix, en mening om vad som saknas eller gick fel, och en
+ * Tomt läge eller felläge utan illustration: glyf och prefix i mono,
+ * en mening i sans om vad som saknas eller gick fel, och en
  * tydlig nästa åtgärd. Status bärs av prefixordet och glyfens form;
  * signalfärg används bara på glyfen, och bara för fel som kräver åtgärd.
  */
@@ -257,7 +257,7 @@ export function StateMessage({
       aria-controls={diagId}
       onClick={() => setOpen((v) => !v)}
       className={cn(
-        "inline-flex items-center gap-1 rounded-xs font-mono text-muted transition-colors duration-[120ms] ease-instrument hover:text-fg",
+        "inline-flex items-center gap-1 rounded-xs font-mono text-muted transition-colors duration-fast ease-instrument hover:text-fg",
         compact ? "h-7 px-1.5 text-sm" : "h-9 px-2 text-sm",
       )}
     >
@@ -269,16 +269,18 @@ export function StateMessage({
   ) : null;
 
   if (compact) {
+    // En radmall för alla lägen: prefix i mono på första raden, meningen i
+    // sans under, och åtgärderna högerställda på meningens baslinje.
     return (
       <div role={spec.role} className={cn("flex flex-col gap-2 px-3 py-2.5", className)}>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 gap-y-1">
           <Prefix kind={kind} code={code} />
-          <p className="min-w-0 flex-1 basis-56 font-mono text-sm text-fg">
+          <p className="col-start-1 min-w-0 text-sm text-fg">
             {message}
             {detail ? <span className="text-subtle"> {detail}</span> : null}
           </p>
           {action || secondaryAction || toggle ? (
-            <div className="-mr-1.5 ml-auto flex flex-wrap items-center justify-end gap-x-1">
+            <div className="col-start-2 row-span-2 row-start-1 -mr-1.5 -mb-1 flex flex-wrap items-center justify-end gap-x-1 self-end">
               {action ? <ActionControl action={action} emphasis="primary" compact /> : null}
               {secondaryAction ? (
                 <ActionControl action={secondaryAction} emphasis="secondary" compact />
@@ -298,7 +300,7 @@ export function StateMessage({
       className={cn("flex flex-col items-start px-5 pt-14 pb-6 md:px-6 md:pt-20", className)}
     >
       <Prefix kind={kind} code={code} />
-      <p className="mt-3 max-w-xl font-mono text-md text-pretty text-fg">{message}</p>
+      <p className="mt-3 max-w-xl text-md text-pretty text-fg">{message}</p>
       {detail ? <p className="mt-1.5 max-w-xl text-base text-muted">{detail}</p> : null}
       {action || secondaryAction || toggle ? (
         <div className="mt-6 flex flex-wrap items-center gap-2">

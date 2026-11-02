@@ -14,6 +14,7 @@ import type { MemberRole } from "@/db/schema";
 import { getServerEnv } from "@/lib/env";
 import { getAuthProvider } from "@/server/auth";
 import { createInviteFlow, type ActionResult } from "@/server/auth/flows";
+import { dbErrorMessage } from "@/server/errors";
 import { resolveAppBaseUrl } from "@/server/request-info";
 import { revalidateAppData } from "@/server/data/core";
 import { getActiveOrganization, getSessionUser } from "@/server/session";
@@ -25,8 +26,12 @@ import {
   removeMemberFlow,
   revokeInvitationFlow,
 } from "./members-data";
+import { inviteErrorFor } from "./model";
 
 const PAGE = "/installningar/anvandare";
+
+/** Det allmänna meddelandet för 42501, som dbErrorMessage formulerar det. */
+const FORBIDDEN_DB = dbErrorMessage({ code: "42501", severity: "ERROR", message: "" });
 
 async function activeOrganizationId(): Promise<string | null> {
   return (await getActiveOrganization())?.id ?? null;
@@ -41,10 +46,13 @@ async function sendInvite(email: string, role: MemberRole): Promise<ActionResult
   } catch {
     return { ok: false, error: "Appens adress (APP_URL) är inte inställd." };
   }
-  return createInviteFlow(
+  const result = await createInviteFlow(
     { provider: await getAuthProvider(), user: await getSessionUser(), baseUrl },
     { organizationId, email, role },
   );
+  return result.ok
+    ? result
+    : { ok: false, error: inviteErrorFor(role, result.error, FORBIDDEN_DB) };
 }
 
 /** Bjuder in en person (mejl med länk till /inbjudan/[token], gäller 7 dagar). */

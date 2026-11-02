@@ -268,3 +268,11 @@ Migreringarna följer v2. Följande preciserades eller ändrades när SQL:en skr
 - Sista ägaren skyddas även under REPEATABLE READ: den andra transaktionen får 40001.
 
 **Känd begränsning:** `organization_settings` (moms och kortavgift) är inte tidsversionerad. En ändring slår igenom bakåt i tiden utom för stängda månader, som har sin ögonblicksbild.
+
+## Expansion och effekt (fas 6b och 10, migrering `20261102121500_expansion_leads.sql`)
+
+- **stores** får platsattribut för likhet mellan platser: `store_type`, `city`, `open_hours_per_week` (0–168), `area_sqm`. null = okänt (räknas som olika). Redigeras under Expansion → Platsprofiler.
+- **expansion_leads**: tänkbara platser i pipelinen `lead → contacted → meeting → agreement → installed` (eller `lost`). Namn, kontaktperson, e-post, telefon, adress, anteckningar, nästa steg och datum, samma attribut som `stores`, erbjudna villkor (`commission_bp`, `monthly_rent_ore`), planerad investering (`purchase_ore`, `installation_ore`) och valfri `store_id` (andra automat i en befintlig butik). `stage_changed_at` sätts av databasen när steget ändras. Kan raderas.
+- **effect_measurements**: mätvärden per månad mot utgångsläget: `stockout_days_month` (dagar), `refill_hours_month` och `admin_hours_month` (minuter), för organisationen, en butik eller en automat. Vinst per automat lagras inte (räknas ur orderna). Unik per (mått, omfattning, månad).
+- **effect_settings**: en rad per organisation med `hourly_cost_ore` (tid i kronor) och `stockout_day_value_ore` (värde per undviken slutsåld dag; null = månadens vinst per automat och dag).
+- Läsrätt ägare, admin och läsare; skrivrätt ägare och admin. Påfyllaren ser inget. Ändringslogg (`audit_log`) för de nya tabellerna och nu också för `goals`, `baselines` och `machine_investments`.

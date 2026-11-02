@@ -160,7 +160,12 @@ interface Part {
 }
 
 /** Summa med intervall: summa ± z × √(Σ varians). */
-function totalOf(parts: readonly Part[], period: Period, days: number, zMilli: number): ForecastTotal {
+function totalOf(
+  parts: readonly Part[],
+  period: Period,
+  days: number,
+  zMilli: number,
+): ForecastTotal {
   let units = 0;
   let revenue = 0;
   let v = 0n;
@@ -215,11 +220,19 @@ function partOf(w: SeriesDays, from: number, to: number): Part {
   }
   const v = BigInt(w.dayVarianceMilli2) * BigInt(k);
   const price = BigInt(w.avgPriceOre);
-  return { unitsMilli: units, revenueOre: revenue, varianceMilli2: v, revenueVariance: v * price * price };
+  return {
+    unitsMilli: units,
+    revenueOre: revenue,
+    varianceMilli2: v,
+    revenueVariance: v * price * price,
+  };
 }
 
 /** Rullande veckor (7 dagar) i horisonten; sista veckan kan vara kortare. */
-function weekRanges(asOf: IsoDate, horizonDays: number): Array<{ from: number; to: number; period: Period }> {
+function weekRanges(
+  asOf: IsoDate,
+  horizonDays: number,
+): Array<{ from: number; to: number; period: Period }> {
   const out: Array<{ from: number; to: number; period: Period }> = [];
   for (let from = 0; from < horizonDays; from += 7) {
     const to = Math.min(horizonDays - 1, from + 6);
@@ -231,6 +244,22 @@ function weekRanges(asOf: IsoDate, horizonDays: number): Array<{ from: number; t
 // ---------------------------------------------------------------------------
 // Huvudfunktion
 // ---------------------------------------------------------------------------
+
+/**
+ * Dagarna som prognosen läser historik för: modellens `historyWeeks` veckor plus de dagar
+ * backtesten behöver bakåt (`backtestHorizonDays` + (`backtestOrigins` − 1) × `backtestStepDays`),
+ * t.o.m. `asOf`. Med standardvärdena 56 + 7 + 5 × 7 = 98 dagar. Slutsålda dagar inom
+ * perioden ska skickas som `unavailable` (se `stockoutUnavailableDays` i lost-sales).
+ */
+export function forecastHistoryPeriod(asOf: IsoDate, options?: ForecastOptions): Period {
+  assertIsoDate(asOf, "Prognosens utgångsdag");
+  const o = resolveForecastOptions(options);
+  const length =
+    7 * o.historyWeeks +
+    o.backtestHorizonDays +
+    Math.max(0, o.backtestOrigins - 1) * o.backtestStepDays;
+  return { start: addDays(asOf, -(length - 1)), end: asOf };
+}
 
 /**
  * Prognos för intäkt och antal per titel × automat, per titel, per automat och totalt,
@@ -262,9 +291,8 @@ export function forecastSales(input: ForecastInput): ForecastResult {
     trendMinUnits: o.trendMinUnits,
   };
   const span = 7 * o.historyWeeks;
-  const length =
-    span + o.backtestHorizonDays + Math.max(0, o.backtestOrigins - 1) * o.backtestStepDays;
-  const rangeStart = addDays(asOf, -(length - 1));
+  const rangeStart = forecastHistoryPeriod(asOf, input.options).start;
+  const length = daysBetween(rangeStart, asOf) + 1;
   const historyStart = addDays(asOf, -(span - 1));
   const priceStart = addDays(asOf, -(o.priceWindowDays - 1));
   const endIndex = length - 1;
@@ -311,9 +339,7 @@ export function forecastSales(input: ForecastInput): ForecastResult {
     for (let i = 0; i < length; i++) {
       const date = addDays(rangeStart, i);
       const ok =
-        date >= firstDate &&
-        active(machineId, date) &&
-        !unavailable.has(`${key}\u0000${date}`);
+        date >= firstDate && active(machineId, date) && !unavailable.has(`${key}\u0000${date}`);
       available[i] = ok;
       if (!ok && date >= historyStart && date >= firstDate) excludedDates.push(date);
     }
@@ -474,7 +500,12 @@ export function forecastSales(input: ForecastInput): ForecastResult {
       return { date: addDays(asOf, i + 1), unitsMilli: u, revenueOre: r };
     });
     const weeks = ranges.map((r) =>
-      totalOf(group.map((w) => partOf(w, r.from, r.to)), r.period, r.to - r.from + 1, o.zMilli),
+      totalOf(
+        group.map((w) => partOf(w, r.from, r.to)),
+        r.period,
+        r.to - r.from + 1,
+        o.zMilli,
+      ),
     );
     const total = totalOf(
       group.map((w) => partOf(w, 0, o.horizonDays - 1)),
@@ -562,7 +593,15 @@ export function forecastSales(input: ForecastInput): ForecastResult {
 }
 
 const WEEKDAY_SHORT = ["mån", "tis", "ons", "tor", "fre", "lör", "sön"] as const;
-const WEEKDAY_LONG = ["måndag", "tisdag", "onsdag", "torsdag", "fredag", "lördag", "söndag"] as const;
+const WEEKDAY_LONG = [
+  "måndag",
+  "tisdag",
+  "onsdag",
+  "torsdag",
+  "fredag",
+  "lördag",
+  "söndag",
+] as const;
 
 /** Intervall i kronor: "16 900–19 900 kr". */
 function krRange(t: ForecastTotal): string {
@@ -585,8 +624,10 @@ export function explainComponents(
   parts.push(
     `Nivå ${packsOneDecimal(c.levelMilli)} pack/dag (viktat snitt av ${historyWeeks} ${historyWeeks === 1 ? "vecka" : "veckor"}, senaste veckan väger mest)`,
   );
-  if (c.trendApplied) {
+  if (c.trendApplied && roundHalfUp(c.trendMilliPerWeek, 100) !== 0) {
     parts.push(`trend ${signedPacksOneDecimal(c.trendMilliPerWeek)} pack/dag per vecka`);
+  } else if (c.trendApplied) {
+    parts.push("ingen tydlig trend");
   } else {
     parts.push("ingen trend");
   }
@@ -655,8 +696,14 @@ export function overallAccuracy(
 ): ForecastAccuracy {
   const allPoints: BacktestPoint[] = [];
   const allOrigins: BacktestOrigin[] = [];
-  const sumPoints = new Map<string, { a: number; f: number; n: number; origin: IsoDate; date: IsoDate }>();
-  const sumOrigins = new Map<IsoDate, { a: number; f: number; n: number; days: number; period: Period }>();
+  const sumPoints = new Map<
+    string,
+    { a: number; f: number; n: number; origin: IsoDate; date: IsoDate }
+  >();
+  const sumOrigins = new Map<
+    IsoDate,
+    { a: number; f: number; n: number; days: number; period: Period }
+  >();
   for (const b of backtests) {
     for (const p of b.points) {
       allPoints.push(p);
@@ -682,19 +729,25 @@ export function overallAccuracy(
     forecastMilli: s.f,
     naiveMilli: s.n,
   }));
-  const totalOrigins = [...sumOrigins.values()].map((s) => ({ actualMilli: s.a, forecastMilli: s.f }));
+  const totalOrigins = [...sumOrigins.values()].map((s) => ({
+    actualMilli: s.a,
+    forecastMilli: s.f,
+  }));
   const total = accuracyMetrics(totalPoints, totalOrigins);
 
   const originDates = [...sumOrigins.keys()].sort();
   const n = originDates.length;
   const span =
-    horizonDays === 7 && stepDays === 7 ? `${n} ${n === 1 ? "veckan" : "veckorna"}` : `${n} testperioderna`;
+    horizonDays === 7 && stepDays === 7
+      ? `${n} ${n === 1 ? "veckan" : "veckorna"}`
+      : `${n} testperioderna`;
   let text: string;
   if (total.wapeBp === null) {
     text = "För lite historik för att mäta träffsäkerheten.";
   } else {
     text = `Träffsäkerhet de senaste ${span}: summan per dag missade i snitt ${pct(total.wapeBp)} (WAPE)`;
-    if (total.mapeBp !== null) text += `, summan per ${horizonDays === 7 ? "vecka" : "period"} ${pct(total.mapeBp)} (MAPE)`;
+    if (total.mapeBp !== null)
+      text += `, summan per ${horizonDays === 7 ? "vecka" : "period"} ${pct(total.mapeBp)} (MAPE)`;
     text += "";
     const bias = total.biasBp ?? 0;
     const biasRounded = roundHalfUp(bias, 100);

@@ -11,7 +11,6 @@ import {
   formatDateTime,
   formatDelta,
   formatInt,
-  formatKronor,
   formatPercent,
   formatSek,
 } from "@/lib/format";
@@ -40,18 +39,22 @@ type MachineRow = {
   status: (typeof machineStates)[number] | undefined;
 };
 
-/** Fyllnadsgrad med tröskel vid 20 %. Under gränsen: signalstapel och texten "under gräns". */
+/**
+ * Fyllnadsgrad med tröskel vid 20 %. Under gränsen är det en varning, inte ett
+ * larm: samma nivå som statusetiketten ("Fyllnad 17 %"), så stapeln blir fg
+ * och siffran halvfet, aldrig signal. Signal är för tomt fack.
+ */
 export function FillMeter({ value }: { value: number }) {
   const low = value < REFILL_THRESHOLD;
   return (
     <span className="inline-flex items-center justify-end gap-2.5">
-      <span className={cn("tnum", low && "text-signal-fg")}>
+      <span className={cn("tnum", low && "font-medium text-fg")}>
         {formatPercent(value, 0)}
         {low ? <span className="sr-only"> under gräns</span> : null}
       </span>
       <span className="relative hidden h-1.5 w-16 bg-hover sm:block" aria-hidden>
         <span
-          className={cn("absolute inset-y-0 left-0", low ? "bg-signal" : "bg-data-2")}
+          className={cn("absolute inset-y-0 left-0", low ? "bg-fg" : "bg-data-3")}
           style={{ width: `${value * 100}%` }}
         />
         <span
@@ -71,18 +74,15 @@ function machineColumns(rows: ReadonlyArray<MachineRow>, t: Totals): Column<Mach
       header: "Automat",
       width: 200,
       sortValue: (r) => r.machine.code,
-      render: (r) => (
-        <span className="flex min-w-0 items-baseline gap-2">
-          <span className="meta shrink-0 text-subtle">{r.machine.code.replace("-", "‑")}</span>
-          <span className="truncate">{storeById.get(r.machine.storeId)?.name}</span>
-        </span>
-      ),
+      render: (r) => <MachineCell row={r} />,
       footer: `Summa ${rows.length} st`,
     },
     {
       key: "status",
       header: "Status",
       width: 152,
+      // Under md står statusen under namnet i första kolumnen, så att intäkten får plats.
+      hideOnMobile: true,
       sortValue: (r) =>
         ["critical", "warning", "offline", "ok", "neutral"].indexOf(r.status?.status ?? "ok"),
       render: (r) =>
@@ -148,6 +148,27 @@ function machineColumns(rows: ReadonlyArray<MachineRow>, t: Totals): Column<Mach
   ];
 }
 
+/**
+ * Automat i första kolumnen. Under md står statusen på en egen rad under
+ * namnet (statuskolumnen döljs), så att intäkten aldrig kapas på 375 px.
+ */
+export function MachineCell({ row }: { row: Pick<MachineRow, "machine" | "status"> }) {
+  const s = row.status;
+  return (
+    <span className="flex min-w-0 flex-col gap-1 py-2 md:py-0">
+      <span className="flex min-w-0 items-baseline gap-2">
+        <span className="meta shrink-0 text-subtle">{row.machine.code.replace("-", "‑")}</span>
+        <span className="truncate">{storeById.get(row.machine.storeId)?.name}</span>
+      </span>
+      {s ? (
+        <span className="md:hidden">
+          <StatusTag status={s.status}>{s.status === "ok" ? undefined : s.statusText}</StatusTag>
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 /** Daglig marginal (utan hyra) och dagligt antal ur samma ordrar. */
 function dailySeries(model: Model) {
   const n = model.days;
@@ -189,7 +210,9 @@ export function MetricsSection({ index, model }: { index: number; model: Model }
     ? (emptySlotsByDay(model.previous, model.machineIdx).at(-1) ?? 0)
     : null;
 
-  const rel = (a: number, b: number | undefined) => (b ? { delta: a / b - 1 } : undefined);
+  // En decimal på alla relativa förändringar i remsan, så att raden läses jämnt.
+  const rel = (a: number, b: number | undefined) =>
+    b ? { delta: a / b - 1, format: (d: number) => formatDelta(d, 1) } : undefined;
 
   const items: KpiItem[] = [
     {
@@ -250,6 +273,10 @@ export function MetricsSection({ index, model }: { index: number; model: Model }
     status: machineStates.find((s) => s.machineId === m.machine.id),
   }));
   const columns = machineColumns(rows, t);
+  const unpricedNames = model.titles
+    .filter((r) => r.title.costOre === null)
+    .map((r) => r.title.name)
+    .join(", ");
   const flagged = rows.filter((r) => r.status?.status === "critical").length;
   const warned = rows.filter((r) => r.status?.status === "warning").length;
 
@@ -281,10 +308,10 @@ export function MetricsSection({ index, model }: { index: number; model: Model }
           items={items}
         />
         {t.unpricedOrders ? (
-          <p className="meta mt-3 text-subtle">
+          <p className="mt-3 text-sm text-subtle">
             Vinst och marginal räknar {formatInt(t.orders - t.unpricedOrders)} av{" "}
-            {formatInt(t.orders)} ordrar. {formatInt(t.unpricedOrders)} saknar inköpspris (
-            {formatKronor(t.unpricedRevenue / 100, { decimals: 0 })}).
+            {formatInt(t.orders)} ordrar. {unpricedNames} saknar inköpspris (
+            {formatInt(t.unpricedOrders)} ordrar, {formatSek(t.unpricedRevenue / 100)}).
           </p>
         ) : null}
       </div>
@@ -308,9 +335,9 @@ export function MetricsSection({ index, model }: { index: number; model: Model }
 
       <Sub
         index={`${n}.2`}
-        label={`Awish-ordrar · ${formatInt(model.days)} d`}
+        label={`Ordrar · ${formatInt(model.days)} d`}
         meta="1 order = 1 pack"
-        title={`${formatInt(t.orders)} ordrar summerar till ${formatKronor(t.revenue / 100)}.`}
+        title={`${formatInt(t.orders)} köp från betalsystemet Awish summerar till ${formatSek(t.revenue / 100)}.`}
         className="lg:col-span-12"
       >
         <OrderTable orders={model.orders} range={model.range} total={t.revenue} />

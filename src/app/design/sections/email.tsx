@@ -6,15 +6,14 @@ import { Icon } from "@/components/ui/icon";
 import { Segmented } from "@/components/ui/segmented";
 import { RECIPIENT_KINDS, type RecipientKind } from "@/emails/report-content";
 import { sampleReportEmails } from "@/emails/sample";
-import { formatInt } from "@/lib/format";
+import { formatSek } from "@/lib/format";
 import { EmailFrame } from "../epost/email-frame";
 import { InboxRow } from "../epost/inbox-row";
 import { recipientNotes } from "../epost/recipients";
-import { checkEmailHtml, renderedSamples } from "../epost/samples";
+import { renderedSamples } from "../epost/samples";
 import { SpecSection } from "./section";
 
-const KINDS = RECIPIENT_KINDS.map((k) => k.value);
-const largest = Math.max(...KINDS.map((k) => checkEmailHtml(renderedSamples[k].html).bytes));
+const octoberRevenue = sampleReportEmails.delagare.kpis[0]?.value ?? 0;
 
 /** Förhandsvisning av rapportmejlet: inkorgsrad, skrivbord 600 px och mobil 375 px. */
 export function EmailSection({ index }: { index: number }) {
@@ -27,12 +26,12 @@ export function EmailSection({ index }: { index: number }) {
       id="e-post"
       index={index}
       eyebrow="E-post"
-      title="Ett mejl i tabellayout, tre mottagare."
-      aside={`Högst ${formatInt(largest / 1000)} kB, utan klasser och SVG.`}
+      title={`Rapportmejlet för oktober, ${formatSek(octoberRevenue)} i intäkt.`}
+      aside="Samma mall till tre mottagare, var och en med sina siffror."
       actions={
         <Link
           href={`/design/epost?typ=${kind}`}
-          className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-line-strong bg-surface px-2.5 text-sm font-medium text-fg transition-[background-color,border-color] duration-[120ms] ease-instrument hover:border-line-control hover:bg-hover"
+          className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-line-strong bg-surface px-2.5 text-sm font-medium text-fg transition-[background-color,border-color] duration-fast ease-instrument hover:border-line-control hover:bg-hover"
         >
           Hela förhandsvisningen
           <Icon name="chevronRight" className="-mr-0.5 text-subtle" />
@@ -40,14 +39,7 @@ export function EmailSection({ index }: { index: number }) {
       }
     >
       <div className="flex flex-col gap-6 lg:col-span-12">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <Segmented options={RECIPIENT_KINDS} value={kind} onChange={setKind} label="Mottagare" />
-          <p className="label text-subtle">
-            600 px <span className="text-faint">·</span> tabellayout{" "}
-            <span className="text-faint">·</span> inline-stilar{" "}
-            <span className="text-faint">·</span> text/plain-version
-          </p>
-        </div>
+        <Segmented options={RECIPIENT_KINDS} value={kind} onChange={setKind} label="Mottagare" />
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,602px)_minmax(0,1fr)] lg:gap-8">
           <InboxRow
@@ -69,14 +61,16 @@ export function EmailSection({ index }: { index: number }) {
           <EmailFrame
             html={email.html}
             width={600}
-            height={760}
+            clip={760}
+            moreHref={`/design/epost?typ=${kind}`}
             label="Skrivbord · 600 px"
             title={`Rapportmejl till ${notes.who.toLocaleLowerCase("sv-SE")}, 600 px`}
           />
           <EmailFrame
             html={email.html}
             width={375}
-            height={760}
+            clip={760}
+            moreHref={`/design/epost?typ=${kind}`}
             label="Mobil · 375 px"
             title={`Rapportmejl till ${notes.who.toLocaleLowerCase("sv-SE")}, 375 px`}
           />

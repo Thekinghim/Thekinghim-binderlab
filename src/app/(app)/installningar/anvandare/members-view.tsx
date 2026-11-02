@@ -9,11 +9,10 @@ import { Modal } from "@/components/ui/modal";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { useToast } from "@/components/ui/toast";
-import { formatInt } from "@/lib/format";
 
 import { changeMemberRole, removeMember, resendInvitation, revokeInvitation } from "./actions";
 import { FormError } from "@/app/logga-in/form-error";
-import { ROLE_LABEL, canManageMembers, peopleCount } from "./model";
+import { ROLE_LABEL, canManageMembers } from "./model";
 import { RoleChoice } from "./role-choice";
 
 export interface MemberView {
@@ -54,8 +53,13 @@ export function MembersView({
   assignable,
   members,
   invitations,
+  membersAside,
+  invitationsAside,
 }: {
   organizationName: string;
+  /** Grå del av sektionsrubrikerna (model.ts → membersAside, invitationsAside). */
+  membersAside: string;
+  invitationsAside: string;
   actorRole: MemberRole;
   assignable: readonly MemberRole[];
   members: readonly MemberView[];
@@ -155,7 +159,7 @@ export function MembersView({
           index={1}
           eyebrow="Medlemmar"
           title="Med tillgång nu."
-          aside={`${peopleCount(members.length)} i ${organizationName}.`}
+          aside={membersAside}
           size="md"
         />
         <div className="mt-6">
@@ -231,21 +235,12 @@ export function MembersView({
           index={2}
           eyebrow="Inbjudningar"
           title="Väntar på svar."
-          aside={
-            invitations.length === 0
-              ? "Inga obesvarade inbjudningar."
-              : `${formatInt(invitations.length)} ${invitations.length === 1 ? "länk gäller" : "länkar gäller"} fortfarande.`
-          }
+          aside={invitationsAside}
           size="md"
         />
         <div className="mt-6">
           {invitations.length === 0 ? (
-            <StateMessage
-              kind="empty"
-              code="0 väntar"
-              compact
-              message="Alla inbjudningar är besvarade, återkallade eller har gått ut."
-            />
+            <StateMessage kind="empty" code="0 väntar" compact message="Ingen länk är aktiv." />
           ) : (
             <ul className="border-b border-line">
               {invitations.map((i) => (

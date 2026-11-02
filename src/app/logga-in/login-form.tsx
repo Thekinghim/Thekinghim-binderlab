@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
@@ -8,6 +8,22 @@ import { Input } from "@/components/ui/field";
 import { requestMagicLink, signIn } from "./actions";
 import { FormError } from "./form-error";
 import type { LoginState, MagicLinkState } from "./state";
+
+const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+type FieldErrors = { email?: string; password?: string };
+
+function value(form: HTMLFormElement, name: string): string {
+  const v = new FormData(form).get(name);
+  return typeof v === "string" ? v : "";
+}
+
+/** Fältkontroller före anropet, med svenska texter i stället för webbläsarens. */
+function emailProblem(email: string): string | undefined {
+  if (email.trim() === "") return "Skriv din e-postadress.";
+  if (!EMAIL.test(email.trim())) return "Det ser inte ut som en e-postadress.";
+  return undefined;
+}
 
 /**
  * Formuläret på /logga-in. Fungerar utan JavaScript (form action). Felen är
@@ -48,9 +64,18 @@ function PasswordForm({
   onUseMagicLink?: () => void;
 }) {
   const [state, action, pending] = useActionState<LoginState, FormData>(signIn, {});
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const error = state.error ?? (state.email === undefined ? notice : undefined);
+  const check = (e: FormEvent<HTMLFormElement>) => {
+    const next: FieldErrors = {
+      email: emailProblem(value(e.currentTarget, "email")),
+      password: value(e.currentTarget, "password") === "" ? "Skriv ditt lösenord." : undefined,
+    };
+    setFieldErrors(next);
+    if (next.email || next.password) e.preventDefault();
+  };
   return (
-    <form action={action} className="flex flex-col gap-5">
+    <form action={action} onSubmit={check} noValidate className="flex flex-col gap-5">
       <input type="hidden" name="next" value={next} />
       <Input
         label="E-postadress"
@@ -60,6 +85,7 @@ function PasswordForm({
         inputMode="email"
         spellCheck={false}
         defaultValue={state.email}
+        error={fieldErrors.email}
         required
         autoFocus
       />
@@ -68,9 +94,10 @@ function PasswordForm({
         name="password"
         type="password"
         autoComplete="current-password"
+        error={fieldErrors.password}
         required
       />
-      <FormError message={error} />
+      <FormError message={fieldErrors.email || fieldErrors.password ? undefined : error} />
       <Button type="submit" variant="primary" loading={pending} className="w-full">
         Logga in
       </Button>
@@ -102,6 +129,7 @@ function MagicLinkForm({
   const [state, action, pending] = useActionState<MagicLinkState, FormData>(requestMagicLink, {
     status: "idle",
   });
+  const [emailError, setEmailError] = useState<string>();
 
   if (state.status === "sent") {
     return (
@@ -132,14 +160,20 @@ function MagicLinkForm({
   }
 
   const error = state.error ?? (state.email === undefined ? notice : undefined);
+  const check = (e: FormEvent<HTMLFormElement>) => {
+    const problem = emailProblem(value(e.currentTarget, "email"));
+    setEmailError(problem);
+    if (problem) e.preventDefault();
+  };
   return (
-    <form action={action} className="flex flex-col gap-5">
+    <form action={action} onSubmit={check} noValidate className="flex flex-col gap-5">
       <input type="hidden" name="next" value={next} />
       <Input
         label="E-postadress"
         name="email"
         type="email"
         autoComplete="email"
+        error={emailError}
         inputMode="email"
         spellCheck={false}
         defaultValue={state.email}
@@ -147,7 +181,7 @@ function MagicLinkForm({
         required
         autoFocus
       />
-      <FormError message={error} />
+      <FormError message={emailError ? undefined : error} />
       <Button type="submit" variant="primary" loading={pending} className="w-full">
         Skicka inloggningslänk
       </Button>

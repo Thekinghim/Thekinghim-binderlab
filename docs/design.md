@@ -23,7 +23,7 @@ Källor i ordning:
 
 Varje linje, siffra och etikett har en uppgift. Det som inte mäter, avgränsar eller förklarar något tas bort.
 
-- **Gör:** använd 1 px linjer, raka hörn med små radier, mono-etiketter med mått ("07.2 / INTÄKT TILL VINST · 30 D") och siffror som kommer ur datan.
+- **Gör:** använd 1 px linjer, raka hörn med små radier, mono-etiketter med mått ("02.2 / INTÄKT TILL VINST · 30 D") och siffror som kommer ur datan.
 - **Gör inte:** skuggor, gradienter, glassmorphism, färgade ikonrutor, pill-knappar, dekorativa vänsterkantlinjer, illustrationer, emoji, ikonbibliotek. Tailwind-temat nollställer skuggor, standardpaletter och radier (`--shadow-*: initial` m.fl.), så de går inte att använda av misstag.
 
 ### Siffror först
@@ -191,17 +191,17 @@ Radien följer storleken. Inga helt rundade former (`rounded-full`), utom cirkel
 
 ### 2.6 Rörelse
 
-| Token / klass                                  | Värde                        | Användning                                                          |
-| ---------------------------------------------- | ---------------------------- | ------------------------------------------------------------------- |
-| `--bl-dur-fast` · `duration-fast`              | 120 ms                       | Hover och färgbyte. Standard för `transition-colors` utan duration. |
-| `--bl-dur-base` · `duration-base`              | 150 ms                       | Segmentbyte, värdebyte (KPI tonar 0,4 → 1).                         |
-| `--bl-dur-slow` · `duration-slow`              | 180 ms                       | Dialog och notis (`animate-enter`, `animate-fade`).                 |
-| `--bl-dur-count`                               | 420 ms                       | Uppräkning, bara med `motion="count"`. Standard är `fade`.          |
-| `--bl-dur-pulse` · `animate-pulse-soft`        | 1 600 ms                     | Skeleton (opacitet 0,55 ↔ 1).                                       |
-| `--bl-dur-tick` · `animate-tick` + `.bl-ticks` | 960 ms                       | Knappens laddning: tre punkter tänds i tur och ordning.             |
-| `animate-toast-progress`                       | `--toast-dur` (5 000 ms)     | Notisens tidsstapel, `scaleX` (aldrig `width`).                     |
-| `--bl-ease` · `ease-instrument`                | cubic-bezier(0.2, 0, 0, 1)   | All rörelse. Inget studsar.                                         |
-| `--bl-ease-in-out` · `ease-instrument-in-out`  | cubic-bezier(0.4, 0, 0.2, 1) | Pulserande laddning.                                                |
+| Token / klass                                  | Värde                        | Användning                                                                                                       |
+| ---------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `--bl-dur-fast` · `duration-fast`              | 120 ms                       | Hover och färgbyte. Standard för `transition-colors` utan duration.                                              |
+| `--bl-dur-base` · `duration-base`              | 150 ms                       | Segmentbyte, värdebyte (KPI tonar 0,4 → 1).                                                                      |
+| `--bl-dur-slow` · `duration-slow`              | 180 ms                       | Dialog och notis (`animate-enter`, `animate-fade`).                                                              |
+| `--bl-dur-count`                               | 420 ms                       | Uppräkning, bara med `motion="count"`. Standard är `fade`. Räknas inte som övergång och visas inte på `/design`. |
+| `--bl-dur-pulse` · `animate-pulse-soft`        | 1 600 ms                     | Skeleton (opacitet 0,55 ↔ 1).                                                                                    |
+| `--bl-dur-tick` · `animate-tick` + `.bl-ticks` | 960 ms                       | Knappens laddning: tre punkter tänds i tur och ordning.                                                          |
+| `animate-toast-progress`                       | `--toast-dur` (5 000 ms)     | Notisens tidsstapel, `scaleX` (aldrig `width`).                                                                  |
+| `--bl-ease` · `ease-instrument`                | cubic-bezier(0.2, 0, 0, 1)   | All rörelse. Inget studsar.                                                                                      |
+| `--bl-ease-in-out` · `ease-instrument-in-out`  | cubic-bezier(0.4, 0, 0.2, 1) | Pulserande laddning.                                                                                             |
 
 - Skriv `duration-fast/base/slow`, aldrig `duration-[..ms]`. I JS läses värdena från `motion` i `src/lib/tokens.ts`.
 - Animera `opacity` och `transform`, aldrig bredd, höjd eller layout.
@@ -215,15 +215,15 @@ Signalen (#FF5A1F i mörkt, #F0521A i ljust) är den enda kulören i systemet. D
 
 ### Får användas för
 
-| Fall                   | Exempel i koden                                                                                                            |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Kritiskt lager         | Tomt fack, fyllnad under påfyllningsgränsen (20 %): `KpiAlert` "Gräns 3 st", `alertIndex` i `LineChart`.                   |
-| Fel som stoppar arbete | `StateMessage kind="error"` och `"loading-failed"`: signal bara på glyfen. Fält med fel: signalkant plus ikon och feltext. |
-| Avvikelse över gräns   | Svinn över mål, titel utan inköpspris, negativ vinst ("Förlust", "! Under noll" i `ProfitBridge`).                         |
-| Kritisk status         | `StatusTag status="critical"`: ram i `--bl-signal-line` och signalkvadrat. Texten är `fg`.                                 |
-| Destruktiv åtgärd      | `Button variant="danger"`: ofylld, med signaltext och signalkant.                                                          |
-| Destruktiv bekräftelse | `Button variant="danger-confirm"`: fylld. **Bara** i bekräftelsedialogens sista steg.                                      |
-| Varumärke              | Ringen i symbolen (`SYMBOL_PARTS.ring`). Det är den enda varumärkesytan med signal. I `mono` blir den `currentColor`.      |
+| Fall                   | Exempel i koden                                                                                                                                                                                  |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Kritiskt lager         | Tomt fack: `KpiAlert` "BL-002 fack 3", `alertIndex` i `LineChart`, `StatusTag status="critical"`.                                                                                                |
+| Fel som stoppar arbete | `StateMessage kind="error"` och `"loading-failed"`: signal bara på glyfen. Fält med fel: signalkant plus ikon och feltext.                                                                       |
+| Avvikelse över gräns   | Svinn över mål, titel utan inköpspris, negativ vinst ("Förlust", "! Under noll" i `ProfitBridge`).                                                                                               |
+| Kritisk status         | `StatusTag status="critical"`: ram i `--bl-signal-line` och signalkvadrat. Texten är `fg`.                                                                                                       |
+| Destruktiv åtgärd      | `Button variant="danger"`: ofylld, med signaltext och signalkant.                                                                                                                                |
+| Destruktiv bekräftelse | `Button variant="danger-confirm"`: fylld. **Bara** i bekräftelsedialogens sista steg.                                                                                                            |
+| Varumärke              | Ringen i symbolen (`SYMBOL_PARTS.ring`), **bara från 28 px** (`SIGNAL_RING_MIN_PX`): rapporthuvud och omslag. Mindre än så (sidomeny, flik, favicon, e-post) och i `mono` är den `currentColor`. |
 
 ### Får inte användas för
 
@@ -231,8 +231,9 @@ Signalen (#FF5A1F i mörkt, #F0521A i ljust) är den enda kulören i systemet. D
 - **Fokus.** `--bl-focus` är `--bl-fg`.
 - **Dekor:** kvadrater före rubriker, bakgrunder, avdelare, ikoner, markering av vald rad eller valt segment.
 - **CTA.** Huvudåtgärden är `primary` (inverterad). `variant="signal"` är föråldrad och ritas som `danger`.
-- **Varumärkesytor** utöver symbolens ring: ingen orange logotyp, rubrik, favicon-bakgrund eller e-postram.
-- **Information som inte kräver åtgärd:** tomt läge, ur drift, saknar behörighet, varning. De är grå och bärs av form.
+- **Varumärkesytor** utöver symbolens ring från 28 px: ingen orange logotyp, rubrik, favicon, e-postram eller ring i sidomenyn.
+- **Information som inte kräver åtgärd:** tomt läge, ur drift, saknar behörighet, varning. De är grå och bärs av form. Fyllnad under påfyllningsgränsen (20 %) är en **varning**: statusetiketten `warning`, siffran halvfet i `fg` och stapeln i `fg` (`FillMeter` på `/design`). Signal är för tomt fack.
+- **Ett annat mått än det som ritas.** En intäktsstapel färgas aldrig av ett lagerlarm. Larmet står som text under stapeln (`BarDatum.noteAlert`, "! Tomt fack 3") och stapeln ritas som vanligt. `flag` används bara när själva värdet kräver åtgärd.
 
 ### Budget
 
@@ -255,7 +256,7 @@ Signal står aldrig ensam. Varje signalmarkering har:
 ### Rubriker
 
 - **Tvådelad rubrik** bara på sektionsnivå (`SectionHeader`, `SpecSection`): första delen i `fg`, andra i `text-subtle`. Den grå delen är ett påstående med en siffra eller ett faktum, räknat ur datan: "Intäkt per dag. Snitt 2 412 kr, topp 24 okt."
-- **Underavsnitt** (`Sub`): mono-etikett med mått ("07.3 / INTÄKT PER AUTOMAT · 30 D") och en mening i `fg` med en siffra.
+- **Underavsnitt** (`Sub`): mono-etikett med mått ("02.3 / INTÄKT PER AUTOMAT · 30 D") och en mening i `fg` med en siffra.
 - Alla rubriknivåer slutar med punkt. En rubrik som slutar på en förkortning med punkt ("24 okt.") får ingen extra.
 - `text-balance` och `hyphens-none` på rubriker. Avstavning mitt i ord är förbjuden.
 - Rubrikordningen följer dokumentet: h1 en gång, h2 för sektioner, h3 för underavsnitt.
@@ -269,7 +270,9 @@ Signal står aldrig ensam. Varje signalmarkering har:
 ### Siffror
 
 - Tal i löptext, tabeller och KPI sätts i **Geist sans med `.tnum`**, högerställda i kolumner. `Column.numeric` ger detta automatiskt.
-- I diagram (axlar, direktetiketter, läsruta) och i id, tider och metadata används **Geist Mono**. De hör till mätapparaten.
+- I diagram (axlar, direktetiketter, läsruta) och i id, tider och metadata används **Geist Mono**. De hör till mätapparaten. Alla rader i en direktetikett är mono; vikt och färg bär hierarkin (`title` 12 px halvfet fg, `body` 12 px muted, `value` 11 px). Text i SVG är minst 11 px.
+- Hela meningar står aldrig i mono, inte heller i tillståndsmeddelanden eller fotnoter. Mono är för etiketter, id, tider och mätvärden.
+- Datum i diagram skrivs som i löptexten: "24 okt." med punkt och gemener, även på axeln.
 - Ett tal och dess enhet hålls ihop med hårt mellanslag. Använd `NBSP` från `format.ts` när du sätter ihop egna strängar ("1{NBSP}signalfärg").
 - Id bryts aldrig: `BL‑002` skrivs med hårt bindestreck (U+2011) där det kan bryta.
 
@@ -306,7 +309,8 @@ All formatering av tal, belopp, datum och perioder går via `src/lib/format.ts`.
 | CSV                     | `formatCsvNumber(v)`                                | 79987,00 (ingen avgränsare, ASCII-minus)                            |
 
 - Månader förkortas enligt Språkrådet: punkt bara där ordet är förkortat ("okt.", "maj", "juni").
-- Deltan i KPI: relativ förändring med en decimal under 10 % (annars heltal). Räknare visas absolut med enhet ("+2 st"), procentenheter som "p.e.". Tecknet skrivs alltid ut.
+- Deltan i KPI: relativ förändring med en decimal under 10 % (annars heltal) som standard. I en remsa där deltan står bredvid varandra ges alla samma antal decimaler (`KpiDeltaSpec.format`, `/design` använder en decimal). Räknare visas absolut med enhet ("+2 st"), procentenheter som "p.e.". Tecknet skrivs alltid ut.
+- En summa i en mening eller rubrik skrivs i hela kronor (`formatSek`), också i tabellens summarad när rubriken säger samma belopp.
 - Perioder och jämförelser beräknas med `src/lib/period.ts` (`periodFromPreset`, `previousPeriod`), inte med egen datumaritmetik.
 
 ---
@@ -320,7 +324,8 @@ All formatering av tal, belopp, datum och perioder går via `src/lib/format.ts`.
 - Från `lg` ligger allt i ett **12-kolumnsrutnät** (`lg:grid-cols-12`, `gap-x-8 gap-y-12`). Under `lg` står allt i en kolumn.
 - Varje sektion fördelar kolumnerna efter sitt innehåll. Diagrammet som är huvudperson får 12. Därefter kommer par som 7 + 5 eller 8 + 4 (vattenfall 7 / staplar 5, värmekarta 7 / andelar 5). Tre eller fyra lika rutor i rad undviks.
 - Paneler som står tätt (exempelpaneler) använder `tiles` (`gap-4`).
-- Ingen horisontell scroll vid 375 px. Breda tabeller scrollar inuti sin egen yta. `ChartFigure` har `contain: inline-size`, så att diagram inte kan göra sidan bredare.
+- Ingen horisontell scroll vid 375 px. `ChartFigure` har `contain: inline-size`, så att diagram inte kan göra sidan bredare.
+- Ett belopp får aldrig klippas. Under md döljs sekundära kolumner (`hideOnMobile`) så att id, status och belopp ryms: statusen står då på en egen rad under namnet i första kolumnen (`MachineCell` på `/design`), och i en virtualiserad tabell räknas minsta bredden bara på kolumnerna som syns. Horisontell scroll i tabellen är en sista utväg.
 
 ### 5.2 Sektionsrytm
 
@@ -359,6 +364,8 @@ Intäkt 72 360 kr. 9,6 % mer än 3 sep. – 2 okt.        ORDRAR    1 483
 - `SectionHeader`: etikett och rubrik i kolumn 1–8. Metadata (`meta`, en lista med etikett och värde i mono) eller åtgärder (`actions`) står i kolumn 9–12. Med `meta` toppställs blocket mot etiketten, med bara `actions` står de i höjd med rubrikens nederkant.
 - Storlekar: `xl` (24 → 32 → 44), `lg` standard (24 → 32), `md` 20, `sm` 16.
 - Den grå delen räknas fram ur samma data som vyn och hårdkodas aldrig.
+- Metablocket används bara när det säger något som rubriken inte säger (period, urval, antal). Det är inte en mall som varje sektion ska ha; utan något att säga står rubriken ensam. Antal i metan räknas fram, och samma sak har samma tal och ord i index, sektion och kolofon.
+- På en lång visningssida kommer siffrorna först (nyckeltal, diagram, tillstånd, rapport, mejl) och grunderna efter. Sidan visar produkten, inte koden: funktionsnamn, attribut, CSS och sökvägar står här i docs.
 
 ---
 
@@ -368,18 +375,18 @@ Komponenterna ligger i `src/components/ui`, `charts`, `shell`, `brand` och `repo
 
 ### Knappar och kontroller
 
-| Komponent                    | När                                                                                                                |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `Button variant="primary"`   | Huvudåtgärden. Högst en per yta. Inverterad, aldrig signal.                                                        |
-| `secondary` (standard)       | Vanliga åtgärder.                                                                                                  |
-| `ghost`                      | Verktygsrader och tabellrader. Inaktiv ghost får ingen kant.                                                       |
-| `danger` / `danger-confirm`  | Se avsnitt 3.                                                                                                      |
-| `loading`                    | Tre punkter, `aria-busy`, `aria-disabled`. Fokus stannar och klick spärras. Använd inte `disabled` under laddning. |
-| `IconButton`                 | Ikon utan text. `label` är obligatorisk (blir `aria-label` och `title`).                                           |
-| `Segmented`                  | 2–5 ömsesidigt uteslutande lägen (period, vy). Radiogrupp: piltangenter flyttar.                                   |
-| `Input` / `Select` / `Field` | Formulär. `Select` är native. Enheten står efter talet (`suffix`). Fel visas med signalkant, ikon och text.        |
-| `Kbd` / `HotkeyHint`         | Kortkommandon. Visar "⌘K" på Apple och "Ctrl K" annars, och ingenting innan plattformen är känd.                   |
-| `Icon`                       | Egen uppsättning på 16 px-rutnät, 1,25 px linje, raka ändar. Inga ikonbibliotek och inga ikoner i färgade rutor.   |
+| Komponent                    | När                                                                                                                                                                                   |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Button variant="primary"`   | Huvudåtgärden. Högst en per yta. Inverterad, aldrig signal.                                                                                                                           |
+| `secondary` (standard)       | Vanliga åtgärder.                                                                                                                                                                     |
+| `ghost`                      | Verktygsrader och tabellrader. Inaktiv ghost får ingen kant.                                                                                                                          |
+| `danger` / `danger-confirm`  | Se avsnitt 3.                                                                                                                                                                         |
+| `loading`                    | Tre punkter, `aria-busy`, `aria-disabled`. Fokus stannar och klick spärras. Använd inte `disabled` under laddning.                                                                    |
+| `IconButton`                 | Ikon utan text. `label` är obligatorisk (blir `aria-label` och `title`).                                                                                                              |
+| `Segmented`                  | 2–5 ömsesidigt uteslutande lägen (period, vy). Radiogrupp: piltangenter flyttar.                                                                                                      |
+| `Input` / `Select` / `Field` | Formulär. `Select` är native. Enheten står efter talet (`suffix`). Fel visas med signalkant, ikon och text.                                                                           |
+| `Kbd` / `HotkeyHint`         | Kortkommandon. Visar "⌘K" på Apple och "Ctrl K" annars, och ingenting innan plattformen är känd. Alltid `.label` (versal), full textfärg, och "Ctrl K" med hårt mellanslag i löptext. |
+| `Icon`                       | Egen uppsättning på 16 px-rutnät, 1,25 px linje, raka ändar. Inga ikonbibliotek och inga ikoner i färgade rutor.                                                                      |
 
 ### Nyckeltal
 
@@ -438,7 +445,7 @@ Komponenterna ligger i `src/components/ui`, `charts`, `shell`, `brand` och `repo
 
 ### Kommandopalett
 
-`CommandPalette` med `useCommandPaletteHotkey` (⌘K på Apple, Ctrl+K annars, "/" utanför fält). Används för navigation och åtgärder som kan nås från var som helst. Registrera genvägen **en gång** (i toppbaren), annars växlar paletten två gånger. Bygg `groups` med `useMemo`. Lägg maskin-id i `hint` och ort i `keywords`. Träffar markeras i `fg`, aldrig i färg.
+`CommandPalette` med `useCommandPaletteHotkey` (⌘K på Apple, Ctrl+K annars, "/" utanför fält). Används för navigation och åtgärder som kan nås från var som helst. Registrera genvägen **en gång** (i toppbaren), annars växlar paletten två gånger. Bygg `groups` med `useMemo`. Lägg maskin-id i `hint` och ort i `keywords`. Träffar markeras i `fg`, aldrig i färg. Samma automatnamn som i resten av panelen ("BL-002 Mobilia"), platsen i butiken som `hint`. Esc rensar fältet först och stänger dialogen andra gången; i flödet (`inline`) rensar den. Sökraden får en synlig fokusmarkering i `inline`-läget.
 
 ### Skal och varumärke
 
@@ -449,7 +456,7 @@ Komponenterna ligger i `src/components/ui`, `charts`, `shell`, `brand` och `repo
 
 ## 7. Diagram
 
-Komponenter i `src/components/charts`: `LineChart`, `BarChart`, `WaterfallChart`, `ProfitBridge`, `Heatmap`, `ShareBar` och `Sparkline`. Byggstenarna (`AxisText`, `AxisUnitLabel`, `LabelBlock`, `Node`, `HatchPattern`, `Readout`, `ChartFigure`) finns i `primitives.tsx`, etikettplaceringen i `layout.ts` och axelenheterna i `axis.ts`.
+Komponenter i `src/components/charts`: `LineChart`, `BarChart`, `WaterfallChart`, `ProfitBridge`, `Heatmap`, `ShareBar` och `Sparkline`. En brygga som står nära ett nyckeltal för intäkt börjar på **samma** intäkt och drar av "Utan inköpspris" som eget steg (`WaterfallChart` direkt, `showShare={false}`), så att samma ord aldrig betyder två tal på samma skärm. Steg som är 0 ritas inte. Byggstenarna (`AxisText`, `AxisUnitLabel`, `LabelBlock`, `Node`, `HatchPattern`, `Readout`, `ChartFigure`) finns i `primitives.tsx`, etikettplaceringen i `layout.ts` och axelenheterna i `axis.ts`.
 
 ### Konstruktion
 
@@ -530,19 +537,19 @@ Saklig, kort och konkret, som en instrumentpanel och inte en säljsida. Skriv va
 
 ### Ordlista
 
-| Ord              | Betydelse                                                                                                    |
-| ---------------- | ------------------------------------------------------------------------------------------------------------ |
-| Order            | En betald Awish-order. En order är ett sålt pack.                                                            |
-| Fack             | En plats i automaten med en titel. Varje automat har sex fack.                                               |
-| Tomt fack        | Ett fack som sålt slut. Skrivs "Tomt fack 3", med enheten "st" i nyckeltal.                                  |
-| Påfyllning       | Ett besök där pack läggs i automaten. Gränsen för påfyllning är 20 % fyllnad.                                |
-| Ur drift         | Automaten kan inte sälja.                                                                                    |
-| Intäkt           | Betalt belopp minus moms. Med dagens inställningar (moms 0) samma som betalt belopp.                         |
-| Butiksersättning | Provision plus hyra till butiken där automaten står.                                                         |
-| Kortavgift       | Avgift till kortinlösaren, räknad på beloppet inklusive moms. I dag 0.                                       |
-| Vinst / Förlust  | Intäkt − inköp − avgifter − butiksersättning, bara för ordrar med inköpspris. Negativ vinst heter "Förlust". |
-| Svinn            | Pack som försvunnit eller skadats.                                                                           |
-| I dag, i år      | Skrivs isär.                                                                                                 |
+| Ord              | Betydelse                                                                                                                                                                                                                                     |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Order            | En betald Awish-order. En order är ett sålt pack.                                                                                                                                                                                             |
+| Fack             | En plats i automaten med en titel. Varje automat har sex fack.                                                                                                                                                                                |
+| Tomt fack        | Ett fack som sålt slut. Skrivs "Tomt fack 3", med enheten "st" i nyckeltal.                                                                                                                                                                   |
+| Påfyllning       | Ett besök där pack läggs i automaten. Gränsen för påfyllning är 20 % fyllnad.                                                                                                                                                                 |
+| Ur drift         | Automaten kan inte sälja.                                                                                                                                                                                                                     |
+| Intäkt           | Betalt belopp minus moms. Med dagens inställningar (moms 0) samma som betalt belopp.                                                                                                                                                          |
+| Butiksersättning | Provision plus hyra till butiken där automaten står.                                                                                                                                                                                          |
+| Kortavgift       | Avgift till kortinlösaren, räknad på beloppet inklusive moms. I dag 0.                                                                                                                                                                        |
+| Vinst / Förlust  | Intäkt − inköp − avgifter − butiksersättning, bara för ordrar med inköpspris. Negativ vinst heter "Förlust". Skriv aldrig "Resultat", varken i panel, rapport eller mejl. Står en titel utanför vinsten (saknar inköpspris) säger texten det. |
+| Svinn            | Pack som försvunnit eller skadats.                                                                                                                                                                                                            |
+| I dag, i år      | Skrivs isär.                                                                                                                                                                                                                                  |
 
 ### Ord att undvika
 
@@ -662,15 +669,12 @@ Saklig, kort och konkret, som en instrumentpanel och inte en säljsida. Skriv va
 
 Det här bryter mot reglerna ovan och ska rättas av den som äger filen:
 
-1. **`duration-[120ms]`** i stället för `duration-fast`: `ui/state-message.tsx`, `ui/command-palette.tsx`, `ui/data-table.tsx`, `charts/bar-chart.tsx`, `charts/share-bar.tsx`, `charts/waterfall-chart.tsx`, `app/design/sections/email.tsx`, `app/design/sections/print.tsx` och `app/rapport/exempel/page.tsx`.
-2. **Text under 11 px:** `text-[10px]` på sorteringsindex i `data-table.tsx` och `text-[11px]` i `command-palette.tsx` (ska vara `.label`). SVG-axeltext är 10 px i `AxisText`, `bar-chart.tsx` och `waterfall-chart.tsx`, och etikettypen `caps` i `layout.ts` är också 10 px. Måtten i `sections/brand.tsx` är specimen.
-3. **`disabled:opacity-40`** på kompakta åtgärder i `state-message.tsx`. Det ska vara `text-disabled`.
-4. **Utskriftstemat saknar `--bl-signal-line`, `--bl-signal-hover` och `--bl-fg-disabled`.** De ärvs från appens läge, så en kritisk statusetikett får orange kant på ett ark med `tone="mono"`.
-5. **Rekord i signal i rapporter och e-post:** `ReportLineChart highlight` och `ReportBarChart highlightIndex` (`report-charts.tsx`) ritar bästa dagen och starkaste veckodagen med `--bl-signal`, som blir orange med `tone="signal"`. `DailyBars` i `report-email.tsx` ritar högsta dagen i signal. Båda ska använda `fg`.
-6. **`formatRelative`** skriver "igår". Ordlistan säger "i går".
-7. **`::selection`** i `globals.css` använder `--bl-signal-soft`. Markering är inte en åtgärd.
-8. **Inloggningssidan** (`app/logga-in/auth-frame.tsx`) har nät bakom formuläret och en gradientmask.
-9. **`/design`** har etiketten "Copy" i sektionen Tillstånd.
-10. **`Column.numeric`** har JSDoc som säger "monospace", men cellerna sätts rätt i sans med `tnum`.
-11. **`--bl-line-control`** når bara 2,7–2,9:1 mot `hover` och `raised` i mörkt läge. Kontroller står därför på `bg-bg` (fältets fyllning).
-12. **Gråskalesnapshots per diagram (G15)** saknas. Kontrollen i 10.3 är manuell tills vidare.
+1. **`formatRelative`** skriver "igår". Ordlistan säger "i går". Utdatan används i `automater/_components/machine-table.tsx` och testas i `src/import`, så ändringen görs samlat.
+2. **Utskriftstemat saknar `--bl-signal-line`, `--bl-signal-hover` och `--bl-fg-disabled`.** De ärvs från appens läge, så en kritisk statusetikett får orange kant på ett ark med `tone="mono"`.
+3. **`::selection`** i `globals.css` använder `--bl-signal-soft`. Markering är inte en åtgärd.
+4. **Inloggningssidan** (`app/logga-in/auth-frame.tsx`) har nät bakom formuläret och en gradientmask.
+5. **`--bl-line-control`** når bara 2,7–2,9:1 mot `hover` och `raised` i mörkt läge. Kontroller står därför på `bg-bg` (fältets fyllning).
+6. **Gråskalesnapshots per diagram (G15)** saknas. Kontrollen är manuell tills vidare.
+7. **`ReportMark`** på den markerade tabellraden i månadsrapporten (släppet) är signal i `tone="signal"`. Släppet är inget som kräver åtgärd; markeringen bör bli `fg`.
+8. **Next.js dev-indikator** ligger över användarnamnet i sidomenyn i utvecklingsläge. `devIndicators: false` i `next.config.ts` tar bort den.
+9. **Apple-ikonen och `favicon.ico`** har kvar ringen i signalfärg. `app/icon.svg` är rättad.

@@ -5,7 +5,15 @@
  * förklaring och underlag, och status (stämmer, förklarad, avvikelse, utredd).
  */
 
-export { reconcilePayouts, payoutStatus, signedKrExact, DEVIATION_ORDER, RECONCILIATION_DEFAULTS } from "./reconcile";
+export {
+  reconcilePayouts,
+  payoutStatus,
+  signedKrExact,
+  chooseTimezoneShift,
+  splitRounding,
+  DEVIATION_ORDER,
+  RECONCILIATION_DEFAULTS,
+} from "./reconcile";
 export {
   financeEvidence,
   shiftMonths,

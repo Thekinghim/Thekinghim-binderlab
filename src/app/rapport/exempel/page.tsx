@@ -17,7 +17,7 @@ export default function ExampleReportPage() {
           <nav aria-label="Sökväg" className="label flex min-w-0 items-center gap-2 text-subtle">
             <Link
               href="/design#utskrift"
-              className="shrink-0 rounded-xs text-muted transition-colors duration-[120ms] ease-instrument hover:text-fg"
+              className="shrink-0 rounded-xs text-muted transition-colors duration-fast ease-instrument hover:text-fg"
             >
               Designsystem
             </Link>

@@ -5,7 +5,7 @@ import { scaleLinear, scaleTime } from "d3-scale";
 import { area, curveLinear, line } from "d3-shape";
 import { useMemo, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { useMeasure } from "@/lib/hooks/use-measure";
-import { formatDay, formatWeekdayDay } from "@/lib/format";
+import { formatDate, formatWeekdayDay } from "@/lib/format";
 import { axisScale, type AxisUnit } from "./axis";
 import {
   aroundPoint,
@@ -76,6 +76,9 @@ type LineChartProps = {
 };
 
 const M = { top: 48, right: 12, bottom: 28, left: 36 };
+
+/** "24 okt." som i löptexten, samma form på axeln och i etiketterna. */
+const day = (d: Date) => formatDate(d, { year: "never" });
 
 function argmax(data: ReadonlyArray<LinePoint>) {
   let b = 0;
@@ -148,7 +151,7 @@ export function LineChart({
       .x((p) => p[0])
       .y0(innerH)
       .y1((p) => p[1]);
-    const tickCount = Math.max(2, Math.min(data.length, Math.floor(innerW / 72)));
+    const tickCount = Math.max(2, Math.min(data.length, Math.floor(innerW / 80)));
     const step = Math.max(1, Math.ceil(data.length / tickCount));
     const yTicks = y.ticks(4);
     return {
@@ -203,7 +206,17 @@ export function LineChart({
       const p = geo.pts[idx];
       if (!p || lines.length === 0) return;
       const size = measureLines(lines);
-      const box = place(aroundPoint(p, size, prefer), obs, required);
+      // Nära punkten först. Är allt där upptaget av linjer eller andra
+      // etiketter läggs etiketten i bandet ovanför ritytan, med ledlinje.
+      const clampX = (x: number) => Math.min(Math.max(0, x), geo.innerW - size.w);
+      const band = [-M.top + 4, -M.top + 6 + size.h].flatMap((y) =>
+        [p[0] + 8, p[0] - 8 - size.w, p[0] - size.w / 2].map((x) => ({
+          x: clampX(x),
+          y,
+          ...size,
+        })),
+      );
+      const box = place([...aroundPoint(p, size, prefer), ...band], obs, required);
       if (!box) return;
       add({ key, box, lines, align: box.x + box.w / 2 < p[0] ? "end" : "start", anchor: p, tone });
     };
@@ -216,7 +229,7 @@ export function LineChart({
         alertIndex,
         [
           [{ text: `! ${alertNote ?? "Kräver åtgärd"}`, kind: "title" }],
-          [{ text: `${formatDay(d.date)} · ${format(d.value)}`, kind: "value" }],
+          [{ text: `${day(d.date)} · ${format(d.value)}`, kind: "value" }],
         ],
         "below",
         true,
@@ -228,7 +241,7 @@ export function LineChart({
       atPoint(
         "peak",
         peakIndex,
-        linesFor([{ text: `${formatDay(d.date)} · ${format(d.value)}`, kind: "title" }], peakIndex),
+        linesFor([{ text: `${day(d.date)} · ${format(d.value)}`, kind: "title" }], peakIndex),
         "above",
         true,
       );
@@ -277,9 +290,9 @@ export function LineChart({
         { x: geo.innerW - s.w, y: cLast[1] + d, ...s },
         { x: geo.innerW - s.w, y: cLast[1] - d - s.h, ...s },
       ]);
+      // Längs serien från vänster: där är det oftast glest, och högra änden
+      // har redan senaste värdet och dagens annotering.
       const along = (geo.cmp ?? [])
-        .slice()
-        .reverse()
         .flatMap(([px, py]) =>
           [6, 14].flatMap((d) => [
             { x: px - s.w / 2, y: py + d, ...s },
@@ -287,7 +300,7 @@ export function LineChart({
           ]),
         )
         .filter((b) => b.x >= 0 && b.x + b.w <= geo.innerW);
-      const box = place([...nearLast, ...along], obs, true, { hard: [geo.pts] });
+      const box = place([...along, ...nearLast], obs, true, { hard: [geo.pts] });
       // Ledlinje bara till sista punkten; längs serien står etiketten direkt vid linjen.
       if (box)
         add({
@@ -299,7 +312,14 @@ export function LineChart({
         });
     }
     // 5. Valfria: senaste och lägsta värdet. Utelämnas hellre än att krocka.
-    if (markExtremes && lastIndex >= 0 && lastIndex !== peakIndex && lastIndex !== alertIndex) {
+    if (
+      markExtremes &&
+      lastIndex >= 0 &&
+      lastIndex !== peakIndex &&
+      lastIndex !== alertIndex &&
+      // En annotering på sista punkten bär redan värdet (t.ex. "I dag · 915 kr").
+      !annAt.has(lastIndex)
+    ) {
       const d = data[lastIndex];
       const p = geo.pts[lastIndex];
       if (d && p) {
@@ -430,14 +450,15 @@ export function LineChart({
                   />
                   {(() => {
                     // Sista datumet högerställs vid kanten i stället för att klippas
-                    const t = formatDay(d.date);
+                    const t = day(d.date);
                     const tx = geo.xs[i] ?? 0;
-                    const atEdge = tx + (t.length * 6.8) / 2 > geo.innerW + M.right;
+                    const atEdge = tx + (t.length * 7.5) / 2 > geo.innerW + M.right;
                     return (
                       <AxisText
                         x={atEdge ? geo.innerW + M.right - 1 : tx}
                         y={geo.innerH + 18}
                         anchor={atEdge ? "end" : "middle"}
+                        upper={false}
                       >
                         {t}
                       </AxisText>

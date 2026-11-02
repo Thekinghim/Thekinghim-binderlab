@@ -11,12 +11,12 @@ export type LabelKind = "title" | "body" | "value" | "caps";
 export type LabelSpan = { text: string; kind: LabelKind };
 export type LabelLine = ReadonlyArray<LabelSpan>;
 
-/** Teckenbredd i px per typ (Geist ≈ 0,56 em, Geist Mono 0,6 em + spärrning). */
+/** Teckenbredd i px per typ (Geist Mono 0,6 em + spärrning). Alla direktetiketter är mono. */
 const SPEC: Record<LabelKind, { size: number; char: number; lh: number }> = {
-  title: { size: 12, char: 6.7, lh: 15 },
-  body: { size: 12, char: 6.4, lh: 15 },
+  title: { size: 12, char: 7.3, lh: 15 },
+  body: { size: 12, char: 7.2, lh: 15 },
   value: { size: 11, char: 6.6, lh: 14 },
-  caps: { size: 10, char: 6.6, lh: 14 },
+  caps: { size: 11, char: 7.3, lh: 15 },
 };
 
 export function labelSpec(kind: LabelKind) {

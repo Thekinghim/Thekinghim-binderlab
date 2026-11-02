@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { toIsoDate } from "@/components/shell/period-state";
-import { formatDateTime, formatInt, formatKronor } from "@/lib/format";
+import { formatDateTime, formatInt, formatKronor, formatSek } from "@/lib/format";
 import type { Period as DateRange } from "@/lib/period";
 import { REF_NOW, machines, orderDate, titles, type Order } from "../sample-data";
 
@@ -15,7 +15,7 @@ function orderColumns(total: number, count: number): Column<Order>[] {
     {
       key: "time",
       header: "Betaltid",
-      width: 148,
+      width: 124,
       hideable: false,
       sortValue: (o) => o.day * 1440 + o.minute,
       render: (o) => <span className="tnum">{formatDateTime(orderDate(o), { now: REF_NOW })}</span>,
@@ -26,6 +26,7 @@ function orderColumns(total: number, count: number): Column<Order>[] {
       key: "no",
       header: "Order",
       width: 96,
+      hideOnMobile: true,
       sortValue: (o) => o.no,
       render: (o) => <span className="meta tnum text-muted">{o.no}</span>,
       csv: (o) => o.no,
@@ -42,6 +43,7 @@ function orderColumns(total: number, count: number): Column<Order>[] {
       key: "title",
       header: "Titel",
       width: 200,
+      hideOnMobile: true,
       sortValue: (o) => titles[o.title]?.name ?? "",
       render: (o) => titles[o.title]?.name,
       csv: (o) => titles[o.title]?.name ?? "",
@@ -49,17 +51,19 @@ function orderColumns(total: number, count: number): Column<Order>[] {
     {
       key: "amount",
       header: "Belopp",
-      width: 120,
+      width: 112,
       numeric: true,
       sortValue: (o) => o.amountOre,
       render: (o) => formatKronor(o.amountOre / 100),
       csv: (o) => o.amountOre / 100,
-      footer: formatKronor(total / 100),
+      // Summan i hela kronor, som i nyckeltalen och rubriken.
+      footer: formatSek(total / 100),
     },
     {
       key: "cost",
       header: "Inköp",
-      width: 120,
+      width: 104,
+      hideOnMobile: true,
       numeric: true,
       sortValue: (o) => titles[o.title]?.costOre ?? -1,
       render: (o) => {
@@ -79,6 +83,7 @@ function orderColumns(total: number, count: number): Column<Order>[] {
       key: "payment",
       header: "Betalsätt",
       width: 104,
+      hideOnMobile: true,
       defaultHidden: true,
       sortValue: (o) => o.payment,
       render: (o) => <span className="text-muted">{o.payment}</span>,
@@ -90,6 +95,7 @@ function orderColumns(total: number, count: number): Column<Order>[] {
 /**
  * Awish-ordrarna för perioden och filtret: en rad per order (= ett pack).
  * Virtualiseras över 200 rader; summaraden är samma intäkt som nyckeltalen.
+ * Under md visas betaltid, automat och belopp, så att beloppet alltid syns.
  */
 export function OrderTable({
   orders,

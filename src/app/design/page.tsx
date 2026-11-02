@@ -19,7 +19,7 @@ async function countFiles(dir: string, skip: ReadonlyArray<string> = []): Promis
 }
 
 /**
- * Serverdelen läser tokens.css och räknar komponenter och diagram, så att
+ * Serverdelen läser tokens.css och räknar komponenterna, så att
  * färgtabellen, kontrasterna och kolofonen alltid följer källan.
  */
 export default async function Page({
@@ -31,9 +31,6 @@ export default async function Page({
   await searchParams;
   const css = await readFile(path.join(root, "src/styles/tokens.css"), "utf8");
   const tokens = parseThemeTokens(css);
-  const [components, charts] = await Promise.all([
-    countFiles("src/components/ui"),
-    countFiles("src/components/charts", ["primitives.tsx"]),
-  ]);
-  return <DesignSystemPage tokens={tokens} counts={{ components, charts }} />;
+  const components = await countFiles("src/components/ui");
+  return <DesignSystemPage tokens={tokens} counts={{ components }} />;
 }

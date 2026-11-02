@@ -110,7 +110,7 @@ function ThemeCell({
       <span
         className={cn(
           "meta tnum ml-auto shrink-0 text-right",
-          c === null ? "text-faint" : fails ? "text-signal-fg" : "text-fg",
+          c === null ? "text-subtle" : fails ? "text-signal-fg" : "text-fg",
         )}
       >
         {c === null ? "–" : ratio(c)}
@@ -136,10 +136,10 @@ export function ColorTable({ tokens }: { tokens: ThemeTokens }) {
             Roll
           </th>
           <th scope="col" className="label pb-2 pl-2 font-normal text-subtle sm:pl-4">
-            Mörkt <span className="hidden text-faint sm:inline">· mot bg</span>
+            Mörkt <span className="hidden sm:inline">· mot bg</span>
           </th>
           <th scope="col" className="label pb-2 pl-2 font-normal text-subtle sm:pl-4">
-            Ljust <span className="hidden text-faint sm:inline">· mot bg</span>
+            Ljust <span className="hidden sm:inline">· mot bg</span>
           </th>
           <th
             scope="col"
@@ -158,7 +158,7 @@ export function ColorTable({ tokens }: { tokens: ThemeTokens }) {
               className="label pt-6 pb-2 text-left font-normal text-fg"
             >
               {g.title}
-              <span className="ml-2 text-faint">{String(g.rows.length).padStart(2, "0")}</span>
+              <span className="ml-2 text-subtle">{String(g.rows.length).padStart(2, "0")}</span>
             </th>
           </tr>
           {g.rows.map((r) => (
@@ -167,12 +167,11 @@ export function ColorTable({ tokens }: { tokens: ThemeTokens }) {
                 scope="row"
                 className="w-[34%] py-2 pr-2 align-middle font-normal sm:w-[20%] lg:w-[16%]"
               >
-                <code className="meta block max-w-[112px] truncate text-fg sm:max-w-none">
+                <code className="meta block [overflow-wrap:anywhere] text-fg">
                   {r.token.replace("--bl-", "")}
                 </code>
-                <span className="mt-0.5 block max-w-[112px] truncate text-xs text-subtle sm:max-w-none lg:hidden">
-                  {r.role}
-                </span>
+                {/* Rollen bryts i stället för att kapas: "aldrig text" får inte försvinna. */}
+                <span className="mt-0.5 block text-xs text-subtle lg:hidden">{r.role}</span>
               </th>
               <td className="hidden py-2 pr-4 align-middle text-sm text-muted lg:table-cell">
                 {r.role}
@@ -194,6 +193,7 @@ export function ColorTable({ tokens }: { tokens: ThemeTokens }) {
   );
 }
 
+/** Lägst till högst. Numret är tokenens: data-1 är starkast, data-0 ligger närmast ytan. */
 const ramp = [
   "--bl-data-0",
   "--bl-data-5",
@@ -203,21 +203,24 @@ const ramp = [
   "--bl-data-1",
 ];
 
-/** Dataskalan som en tunn rad per läge: lägst till högst, med hex under varje steg. */
+/** Dataskalan som en tunn rad per läge, med tokenens nummer och hex under varje steg. */
 export function DataRamp({ tokens }: { tokens: ThemeTokens }) {
   return (
     <div className="flex flex-col gap-4">
       {(["dark", "light"] as const).map((t) => (
         <div key={t} className="grid grid-cols-[56px_minmax(0,1fr)] items-start gap-3">
           <span className="label pt-1 text-subtle">{t === "dark" ? "Mörkt" : "Ljust"}</span>
-          <div className="grid grid-cols-6">
+          <div className="grid grid-cols-6 gap-px">
             {ramp.map((name) => {
               const v = resolveToken(tokens[t], name);
               return (
                 <div key={name} className="flex min-w-0 flex-col gap-1.5">
                   <span aria-hidden className="h-6" style={{ background: v }} />
-                  <span className="meta truncate text-subtle">{name.replace("--bl-", "")}</span>
-                  <span className="meta hidden truncate text-faint sm:block">
+                  <span className="meta tnum text-subtle">
+                    <span className="hidden md:inline">data-</span>
+                    {name.replace("--bl-data-", "")}
+                  </span>
+                  <span className="meta hidden truncate text-subtle md:block">
                     {displayValue(v)}
                   </span>
                 </div>
@@ -226,6 +229,10 @@ export function DataRamp({ tokens }: { tokens: ThemeTokens }) {
           </div>
         </div>
       ))}
+      <p className="text-sm text-subtle">
+        Lägst till högst. Numret är tokenens: 1 är starkast och används för den aktuella serien, 0
+        ligger närmast ytan.
+      </p>
     </div>
   );
 }
@@ -283,7 +290,7 @@ export function typeScale(revenue: string): TypeRow[] {
       token: "md",
       spec: "16 / 24",
       className: "text-md",
-      sample: "BL-003 Väla Centrum har inte rapporterat sedan 28 okt. 09:12.",
+      sample: "BL-002 Mobilia har sålt slut på Black Bolt i fack 3.",
       font: "Geist",
     },
     {
@@ -311,13 +318,14 @@ export function typeScale(revenue: string): TypeRow[] {
       token: "meta",
       spec: "12 / 16 · gemen",
       className: "meta text-muted",
-      sample: "BL-002 · 1 nov. 17:17 · order 42780",
+      sample: "BL-001 · 1 nov. 17:17 · order 42780",
       font: "Geist Mono",
     },
   ];
 }
 
-const tnumSamples = [5900, 4900, 79_900, 35_402];
+// Ettor är smala i proportionella siffror: 1 111 mot 8 808 visar skillnaden.
+const tnumSamples = [111_100, 880_800, 11_100, 404_000];
 
 /** Typskalan i rader: token och mått till vänster, produkttext till höger. */
 export function TypeScale({ revenue }: { revenue: string }) {
@@ -332,10 +340,11 @@ export function TypeScale({ revenue }: { revenue: string }) {
           <div className="flex items-baseline gap-3 md:col-span-3 md:flex-col md:gap-0.5">
             <span className="label text-fg">{t.token}</span>
             <span className="meta tnum text-subtle">
-              {t.spec} · {t.font}
+              {t.spec} · {t.font.replace(" ", NBSP)}
             </span>
           </div>
-          <p className={cn(t.className, "min-w-0 truncate md:col-span-9")}>{t.sample}</p>
+          {/* Provtexten bryts hellre än kapas; raden linjerar på första baslinjen. */}
+          <p className={cn(t.className, "min-w-0 text-pretty md:col-span-9")}>{t.sample}</p>
         </div>
       ))}
       <div className="grid grid-cols-1 gap-1 border-y border-line py-4 md:grid-cols-12 md:gap-8">
@@ -449,32 +458,13 @@ export function SpacingSpecimen({ value, delta }: { value: string; delta: string
           <Dim label="320 · 2 kolumner" className="-bottom-8 left-0 h-4 w-full" />
         </div>
       </div>
-      <div className="flex flex-col gap-2">
-        {steps.map((s) => (
-          <div key={s} className="grid grid-cols-[32px_minmax(0,1fr)] items-center gap-3">
-            <span className="meta tnum text-right text-fg">{s}</span>
-            <span className="flex items-center gap-2">
-              <span
-                className={cn("h-2", s % 8 === 0 ? "bg-data-2" : "bg-data-4")}
-                style={{ width: s * 3 }}
-              />
-              <span className="meta text-subtle">
-                {s === 4
-                  ? "finjustering i kontroller"
-                  : s === 12
-                    ? "etikett → värde"
-                    : s === 16
-                      ? "cellens luft"
-                      : s === 48
-                        ? "rubrik → innehåll"
-                        : s === 64
-                          ? "mellan sektioner"
-                          : ""}
-              </span>
-            </span>
-          </div>
-        ))}
-      </div>
+      <p className="text-sm text-subtle">
+        <span className="meta tnum text-fg">
+          {steps.join(" · ")}
+          {NBSP}px
+        </span>
+        . Stegen på 8 bär layouten, 4 och 12 finjusterar kontroller.
+      </p>
     </div>
   );
 }
@@ -554,81 +544,87 @@ export function BorderSpecimen({ row }: { row: { id: string; name: string; value
 /* Rörelse                                                             */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Tiderna som sidan visar: tre övergångar och två loopar. motion.count
+ * (uppräkning, 420 ms) är ett tillval i KpiStrip och visas inte här.
+ */
 export const durations: ReadonlyArray<{ token: string; ms: number; use: string; loop?: boolean }> =
   [
-    { token: "fast", ms: motion.fast, use: "Hover, färg, fokus" },
-    { token: "base", ms: motion.base, use: "Segment, värdebyte i nyckeltal" },
-    { token: "slow", ms: motion.slow, use: "Dialog och notis in" },
-    { token: "count", ms: motion.count, use: "Uppräkning, bara på begäran" },
+    { token: "fast", ms: motion.fast, use: "Hover, färg och fokus" },
+    { token: "base", ms: motion.base, use: "Segment och värdebyte i nyckeltal" },
+    { token: "slow", ms: motion.slow, use: "Dialog och notis glider in" },
     { token: "tick", ms: motion.tick, use: "Knapp som laddar, tre punkter", loop: true },
     { token: "pulse", ms: motion.pulse, use: "Laddningsytor, en hel puls", loop: true },
   ];
 
-const AXIS_MAX = 1000;
+const AXIS_MAX = 200;
 
 /**
- * Tidslinje 0–1 000 ms: varje token som nod på sitt värde. Raderna spelar
- * upp sin rörelse vid hover eller fokus (ingen knapp). Loopar står utanför axeln.
+ * Övergångarna på en axel 0–200 ms, där varje token är en nod på sitt värde.
+ * Raderna spelar upp sin rörelse vid hover eller fokus (ingen knapp).
+ * Looparna står för sig under axeln, eftersom de inte är övergångar.
  */
 export function MotionTimeline() {
-  const ticks = [0, 120, 150, 180, 420, 1000];
+  const ticks = [0, motion.fast, motion.base, motion.slow, AXIS_MAX];
+  const transitions = durations.filter((d) => !d.loop);
+  const loops = durations.filter((d) => d.loop);
+  const row =
+    "group grid grid-cols-[minmax(0,1fr)] gap-2 border-b border-line py-3 outline-offset-2 md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:gap-8";
+  const name = (d: (typeof durations)[number]) => (
+    <span className="flex items-baseline gap-3">
+      <span className="label w-12 shrink-0 text-fg">{d.token}</span>
+      <span className="meta tnum w-16 shrink-0 text-muted">
+        {formatInt(d.ms)}
+        {NBSP}ms
+      </span>
+      <span className="min-w-0 text-sm text-subtle">{d.use}</span>
+    </span>
+  );
   return (
     <div className="flex flex-col">
-      <div className="relative ml-0 h-10 md:ml-[25%]" aria-hidden>
-        <span className="absolute inset-x-0 bottom-0 h-px bg-line-strong" />
-        {ticks.map((t) => (
-          <span
-            key={t}
-            className={cn(
-              "absolute bottom-0 flex flex-col gap-1",
-              t === 1000 ? "-translate-x-full items-end" : "-translate-x-1/2 items-center",
-            )}
-            style={{ left: `${(t / AXIS_MAX) * 100}%` }}
-          >
+      <div
+        className="hidden md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:gap-8"
+        aria-hidden
+      >
+        <span className="label self-end pb-1 text-subtle">Övergång</span>
+        <div className="relative h-10">
+          <span className="absolute inset-x-0 bottom-0 h-px bg-line-strong" />
+          {ticks.map((t) => (
             <span
+              key={t}
               className={cn(
-                "meta tnum whitespace-nowrap text-subtle",
-                (t === 150 || t === 180) && "hidden sm:inline",
+                "absolute bottom-0 flex flex-col gap-1",
+                t === AXIS_MAX ? "-translate-x-full items-end" : "-translate-x-1/2 items-center",
               )}
+              style={{ left: `${(t / AXIS_MAX) * 100}%` }}
             >
-              {t === 1000 ? "1 000 ms" : t}
+              <span className="meta tnum whitespace-nowrap text-subtle">
+                {t === AXIS_MAX ? `${t}${NBSP}ms` : t}
+              </span>
+              <span className="h-2 w-px bg-line-strong" />
             </span>
-            <span className="h-2 w-px bg-line-strong" />
-          </span>
-        ))}
+          ))}
+        </div>
       </div>
       <ul className="flex flex-col">
-        {durations.map((d) => (
+        {transitions.map((d) => (
           <li
             key={d.token}
             tabIndex={0}
             aria-label={`${d.token}, ${d.ms} millisekunder: ${d.use}`}
-            className="group grid grid-cols-[minmax(0,1fr)] gap-2 border-b border-line py-3 outline-offset-2 md:grid-cols-[25%_minmax(0,1fr)] md:gap-0"
+            className={row}
           >
-            <span className="flex items-baseline gap-3 pr-4">
-              <span className="label w-12 shrink-0 text-fg">{d.token}</span>
-              <span className="meta tnum w-16 shrink-0 text-muted">
-                {formatInt(d.ms)}
-                {NBSP}ms
-              </span>
-              <span className="truncate text-sm text-subtle">{d.use}</span>
-            </span>
+            {name(d)}
             <span className="relative h-4">
               <span className="absolute inset-x-0 top-1/2 h-px bg-line" />
-              {d.loop ? (
-                <span className="meta absolute top-0 right-0 text-subtle">loop →</span>
-              ) : (
-                <>
-                  <span
-                    className="absolute top-1/2 h-px bg-line-control"
-                    style={{ left: 0, width: `${(d.ms / AXIS_MAX) * 100}%` }}
-                  />
-                  <span
-                    className="absolute top-[calc(50%-4px)] size-2 bg-fg"
-                    style={{ left: `calc(${(d.ms / AXIS_MAX) * 100}% - 4px)` }}
-                  />
-                </>
-              )}
+              <span
+                className="absolute top-1/2 h-px bg-line-control"
+                style={{ left: 0, width: `${(d.ms / AXIS_MAX) * 100}%` }}
+              />
+              <span
+                className="absolute top-[calc(50%-4px)] size-2 bg-fg"
+                style={{ left: `calc(${(d.ms / AXIS_MAX) * 100}% - 4px)` }}
+              />
               {/* Spelas upp vid hover/fokus: kvadraten löper sträckan på tokenens tid. */}
               <span
                 className="absolute top-[calc(50%-4px)] left-0 size-2 border border-fg bg-bg opacity-0 transition-[left,opacity] group-hover:left-[calc(100%-8px)] group-hover:opacity-100 group-focus-visible:left-[calc(100%-8px)] group-focus-visible:opacity-100 motion-reduce:hidden"
@@ -641,8 +637,18 @@ export function MotionTimeline() {
           </li>
         ))}
       </ul>
-      <p className="meta mt-3 text-subtle">
-        ease cubic-bezier(0.2, 0, 0, 1) · in-out cubic-bezier(0.4, 0, 0.2, 1)
+      <p className="label mt-8 pb-1 text-subtle">Loop</p>
+      <ul className="flex flex-col border-t border-line">
+        {loops.map((d) => (
+          <li key={d.token} className={row}>
+            {name(d)}
+            <span className="meta self-center text-subtle">upprepas tills laddningen är klar</span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-sm text-subtle">
+        Alla övergångar startar snabbt och bromsar in mot slutet. Med reducerad rörelse står allt
+        still.
       </p>
     </div>
   );

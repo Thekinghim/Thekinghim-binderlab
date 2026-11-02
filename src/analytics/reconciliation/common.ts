@@ -37,6 +37,13 @@ export interface FinanceEvidence extends Evidence {
   readonly contractIds: string[];
   readonly fixedCostIds: string[];
   readonly purchaseIds: string[];
+  /**
+   * Leverantörens ordernummer (Awish "Order No.") som underlaget bygger på, även order som
+   * saknas bland våra order och därför inte har något `orderIds`-id (t.ex. "#999 finns i
+   * utbetalningen men inte hos oss"). `financeEvidence` sätter alltid fältet; det är valfritt
+   * i typen så att underlag som byggs på annat sätt (t.ex. rapporternas) fortfarande passar.
+   */
+  readonly externalOrderIds?: string[];
 }
 
 /** Indata till `financeEvidence`. Allt utom regeln är valfritt. */
@@ -52,13 +59,14 @@ export interface FinanceEvidenceInput {
   readonly contractIds?: Iterable<string>;
   readonly fixedCostIds?: Iterable<string>;
   readonly purchaseIds?: Iterable<string>;
+  readonly externalOrderIds?: Iterable<string>;
   readonly figures?: EvidenceFigure[];
 }
 
 /**
  * Bygger ett underlag: regeln i klartext, perioden och sorterade, unika listor över
- * order, dagar, titlar, automater, butiker, utbetalningar, avtal, kostnader och inköp
- * som resultatet bygger på, samt de tal (öre, bp, antal) som visas.
+ * order, dagar, titlar, automater, butiker, utbetalningar, avtal, kostnader, inköp och
+ * leverantörens ordernummer som resultatet bygger på, samt de tal (öre, bp, antal) som visas.
  */
 export function financeEvidence(e: FinanceEvidenceInput): FinanceEvidence {
   return {
@@ -76,6 +84,7 @@ export function financeEvidence(e: FinanceEvidenceInput): FinanceEvidence {
     contractIds: uniqueSorted(e.contractIds ?? []),
     fixedCostIds: uniqueSorted(e.fixedCostIds ?? []),
     purchaseIds: uniqueSorted(e.purchaseIds ?? []),
+    externalOrderIds: uniqueSorted(e.externalOrderIds ?? []),
   };
 }
 

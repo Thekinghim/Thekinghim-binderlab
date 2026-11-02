@@ -5,22 +5,24 @@ import {
   ExampleReport,
   RevenueChart,
 } from "@/app/rapport/exempel/example-report";
+import { machine, totals as reportTotals } from "@/app/rapport/exempel/data";
 import { ReportMark } from "@/components/report/report-blocks";
 import { Icon } from "@/components/ui/icon";
 import { cn } from "@/lib/cn";
-import { SpecSection } from "./section";
+import { formatSek } from "@/lib/format";
+import { SpecSection, Sub } from "./section";
 
 const EXAMPLE_HREF = "/rapport/exempel";
 
-/** Varje värde är en lista; varje del står på egen rad i den smala kolumnen. */
-const spec: Array<[string, string[]]> = [
-  ["Format", ["A4 · 210 × 297 mm"]],
-  ["Marginal", ["18 mm sidor", "16 mm topp och botten"]],
-  ["Sidhuvud", ["Ordmärke, rapport,", "mottagare, period"]],
-  ["Sidfot", ["Genereringstid,", "konfidentialitet,", "Sida x av y"]],
-  ["Tema", ['data-theme="print"', "signal = #111"]],
-  ["Text", ["Geist 12 px (9 pt)", "Mono 8,5–9,5 px"]],
-  ["Brytning", ["En ReportPage per ark", "break-after: page"]],
+/** Arket i klartext. Storlekar i pt, som i tryck. */
+const spec: Array<[string, string]> = [
+  ["Format", "A4, 210 × 297 mm"],
+  ["Marginal", "18 mm i sidled, 16 mm upptill och nedtill"],
+  ["Sidhuvud", "Ordmärke, rapport, mottagare och period"],
+  ["Sidfot", "Skapad, konfidentiell, sida x av y"],
+  ["Färg", "Svartvitt. Det som kräver åtgärd trycks svart och bärs av formen."],
+  ["Text", "Geist 9 pt, etiketter Geist Mono 6,5–7 pt"],
+  ["Sidbrytning", "Varje sida på ett eget ark"],
 ];
 
 /** Liten provbit av varje kodning. Ritas inuti PaperChip, alltså i rapportens tema. */
@@ -80,9 +82,9 @@ function Sample({ kind }: { kind: Encoding["kind"] }) {
             height={11}
             fill="none"
             strokeWidth={1}
-            style={{ stroke: "var(--bl-signal)" }}
+            style={{ stroke: "var(--bl-fg)" }}
           />
-          <rect x={25} y={4} width={6} height={6} style={{ fill: "var(--bl-signal)" }} />
+          <rect x={25} y={4} width={6} height={6} style={{ fill: "var(--bl-fg)" }} />
         </svg>
       );
     case "bar":
@@ -97,8 +99,8 @@ function Sample({ kind }: { kind: Encoding["kind"] }) {
               height={i === 2 ? 17 : 10 + i}
               strokeWidth={1}
               style={{
-                fill: i === 2 ? "var(--bl-signal)" : "var(--bl-data-5)",
-                stroke: i === 2 ? "var(--bl-signal)" : "var(--bl-data-3)",
+                fill: i === 2 ? "var(--bl-fg)" : "var(--bl-data-5)",
+                stroke: i === 2 ? "var(--bl-fg)" : "var(--bl-data-3)",
               }}
             />
           ))}
@@ -155,40 +157,26 @@ const encodings: Encoding[] = [
   {
     kind: "current",
     name: "Aktuell period",
-    form: "Heldragen 1,5 px · ihålig kvadrat · namn vid linjens slut",
+    form: "Heldragen linje, ihålig kvadrat, namn vid linjens slut",
   },
-  { kind: "compare", name: "Jämförelseperiod", form: "Streckad 1 px (4/3) · ingen markör" },
-  { kind: "point", name: "Markerad datapunkt", form: "Fylld kvadrat 6 px + ring 12 px" },
+  { kind: "compare", name: "Jämförelseperiod", form: "Streckad tunnare linje utan markör" },
+  { kind: "point", name: "Bästa dagen", form: "Fylld kvadrat med ring runt" },
   {
     kind: "bar",
-    name: "Markerad stapel",
-    form: "Fylld mot ljusgrå staplar med kant · värde ovanför",
+    name: "Starkaste stapeln",
+    form: "Fylld mot ljusgrå staplar med kant, värdet ovanför",
   },
   {
     kind: "incident",
     name: "Avvikelse",
-    form: "Fyllt block · numrerad ruta, samma nummer i tabellen",
+    form: "Fyllt block och numrerad ruta, samma nummer i tabellen",
   },
   {
     kind: "row",
     name: "Markerad tabellrad",
-    form: "Kvadrat med ring i vänstermarginalen · halvfet rad",
+    form: "Kvadrat med ring i marginalen och halvfet rad",
   },
 ];
-
-function ProofLabel({ label, meta }: { label: string; meta: string }) {
-  return (
-    <p className="flex items-baseline justify-between gap-3">
-      <span className="label text-muted">{label}</span>
-      <Code>{meta}</Code>
-    </p>
-  );
-}
-
-/** Kod och attribut i mono, utan versaler. */
-function Code({ children }: { children: ReactNode }) {
-  return <code className="meta text-subtle">{children}</code>;
-}
 
 function Paper({ children, className }: { children: ReactNode; className?: string }) {
   return (
@@ -202,16 +190,16 @@ function Paper({ children, className }: { children: ReactNode; className?: strin
 }
 
 export function PrintSection({ index }: { index: number }) {
+  const n = String(index).padStart(2, "0");
   return (
     <SpecSection
       id="utskrift"
       index={index}
       eyebrow="Utskrift"
-      title={`${EXAMPLE_PAGE_COUNT} A4-ark med fast sidhuvud och sidfot.`}
-      aside="Varje markering bärs av form och klarar svartvit laser."
-      tiles
+      title={`Månadsrapport till ${machine.placement.split(", ").pop() ?? ""}: ${formatSek(reportTotals.revenue)} i oktober.`}
+      aside={`Sida 1 och 2 av ${EXAMPLE_PAGE_COUNT}. Varje markering bärs av form och klarar svartvit laser.`}
     >
-      <figure className="bl-desk m-0 rounded-md border border-line p-3 sm:p-5 md:p-6 lg:col-span-9">
+      <figure className="bl-desk m-0 rounded-md p-3 sm:p-5 md:p-6 lg:col-span-9">
         <ExampleReport headingLevel={3} layout="spread" visiblePages={[1, 2]} />
         <figcaption className="mt-3 hidden gap-4 sm:grid sm:grid-cols-2 md:gap-6">
           <span className="label text-subtle">
@@ -223,58 +211,50 @@ export function PrintSection({ index }: { index: number }) {
         </figcaption>
       </figure>
 
-      <div className="flex flex-col rounded-md border border-line bg-surface lg:col-span-3">
-        <p className="flex items-baseline justify-between gap-3 border-b border-line px-4 py-3 md:px-5">
-          <span className="label text-muted">Specifikation</span>
-          <Code>&lt;ReportDocument&gt;</Code>
-        </p>
-        <dl className="flex flex-col px-4 md:px-5">
+      <Sub index={`${n}.1`} label="Arket" className="lg:col-span-3">
+        <dl className="flex flex-col">
           {spec.map(([k, v]) => (
             <div
               key={k}
-              className="grid grid-cols-[84px_1fr] gap-3 border-b border-line py-2.5 last:border-b-0"
+              className="grid grid-cols-[88px_minmax(0,1fr)] gap-3 border-b border-line py-2.5 last:border-b-0 lg:grid-cols-1 lg:gap-1"
             >
               <dt className="label text-subtle">{k}</dt>
-              <dd className="tnum flex flex-col font-mono text-xs text-fg">
-                {v.map((line) => (
-                  <span key={line}>{line}</span>
-                ))}
-              </dd>
+              <dd className="text-sm text-fg">{v}</dd>
             </div>
           ))}
         </dl>
-        <div className="mt-auto flex flex-col gap-3 border-t border-line p-4 md:p-5">
-          <p className="text-sm text-muted">
-            Sidan sätter A4 och 0 mm marginal själv. Välj Spara som PDF i utskriftsdialogen.
-          </p>
-          <Link
-            href={EXAMPLE_HREF}
-            className="inline-flex h-9 items-center justify-center gap-2 rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium whitespace-nowrap text-on-inverse transition-[background-color,border-color] duration-[120ms] ease-instrument hover:border-inverse-hover hover:bg-inverse-hover"
-          >
-            Öppna exempelrapport
-            <Icon name="arrowUpRight" className="-mr-0.5" />
-          </Link>
-        </div>
-      </div>
+        <Link
+          href={EXAMPLE_HREF}
+          className="mt-6 inline-flex h-9 items-center justify-center gap-2 rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium whitespace-nowrap text-on-inverse transition-[background-color,border-color] duration-fast ease-instrument hover:border-inverse-hover hover:bg-inverse-hover"
+        >
+          Öppna exempelrapport
+          <Icon name="arrowUpRight" className="-mr-0.5" />
+        </Link>
+      </Sub>
 
-      <figure className="m-0 flex flex-col gap-3 lg:col-span-6">
-        <ProofLabel label="Diagram 01 i gråskala" meta="filter: grayscale(1)" />
+      <Sub
+        index={`${n}.2`}
+        label="Diagram 01 i gråskala"
+        meta="som på svartvit laser"
+        className="lg:col-span-6"
+      >
         <Paper className="grayscale">
           <RevenueChart />
         </Paper>
-      </figure>
+      </Sub>
 
-      <div className="overflow-hidden rounded-md border border-line lg:col-span-6">
-        <p className="flex items-baseline justify-between gap-3 border-b border-line px-4 py-3 md:px-5">
-          <span className="label text-muted">Kodning utan färg</span>
-          <Code>--bl-signal: #111</Code>
-        </p>
-        <ul className="-mb-px grid sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+      <Sub
+        index={`${n}.3`}
+        label="Kodning utan färg"
+        meta={`${encodings.length} former`}
+        className="lg:col-span-6"
+      >
+        <ul className="grid sm:grid-cols-2 sm:gap-x-8">
           {encodings.map((e) => (
             <EncodingRow key={e.kind} encoding={e} />
           ))}
         </ul>
-      </div>
+      </Sub>
     </SpecSection>
   );
 }
@@ -296,13 +276,13 @@ function PaperChip({ children }: { children: ReactNode }) {
 
 function EncodingRow({ encoding }: { encoding: Encoding }) {
   return (
-    <li className="flex items-start gap-4 border-b border-line px-4 py-4 md:px-5">
+    <li className="flex items-start gap-4 border-b border-line py-3">
       <PaperChip>
         <Sample kind={encoding.kind} />
       </PaperChip>
-      <span className="flex min-w-0 flex-col gap-1">
+      <span className="flex min-w-0 flex-col gap-0.5">
         <span className="text-base text-fg">{encoding.name}</span>
-        <span className="font-mono text-xs text-subtle">{encoding.form}</span>
+        <span className="text-sm text-subtle">{encoding.form}</span>
       </span>
     </li>
   );

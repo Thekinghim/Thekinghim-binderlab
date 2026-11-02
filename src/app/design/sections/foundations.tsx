@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDelta, formatSek } from "@/lib/format";
+import { NBSP, formatDelta, formatSek } from "@/lib/format";
 import { motion } from "@/lib/tokens";
 import type { Model } from "../model";
 import { machines, storeById } from "../sample-data";
@@ -66,8 +66,8 @@ export function ColorSection({ index, tokens }: { index: number; tokens: ThemeTo
       >
         <ul className="flex flex-col text-sm text-muted">
           {[
-            ["Tomt fack", "glyf och kant"],
-            ["Fyllnad under 20 %", "stapel och nod"],
+            ["Tomt fack", "glyf, kant och nod"],
+            ["Titel utan inköpspris", "glyf och text"],
             ["Fel som stoppar arbete", "glyf"],
           ].map(([k, v]) => (
             <li
@@ -78,6 +78,10 @@ export function ColorSection({ index, tokens }: { index: number; tokens: ThemeTo
               <span className="meta text-subtle">{v}</span>
             </li>
           ))}
+          <li className="flex items-baseline justify-between gap-3 border-b border-line py-2">
+            <span>Varning, t.ex. fyllnad under 20 %</span>
+            <span className="meta text-subtle">fg, halvfet</span>
+          </li>
           <li className="flex items-baseline justify-between gap-3 py-2">
             <span>Rekord, toppar, fokus, dekor</span>
             <span className="meta text-subtle">aldrig</span>
@@ -95,13 +99,8 @@ export function TypeSection({ index, model }: { index: number; model: Model }) {
       index={index}
       eyebrow="Typografi"
       title="Geist för ord och tal."
-      aside="Geist Mono för etiketter, id och tider."
+      aside={`Geist${NBSP}Mono för etiketter, id och tider. ${typeScale("").length} steg, minst 11${NBSP}px.`}
       space="tight"
-      meta={[
-        { label: "Steg", value: `${typeScale("").length} st` },
-        { label: "Typsnitt", value: "2 st" },
-        { label: "Minsta", value: "11 px" },
-      ]}
     >
       <div className="lg:col-span-12">
         <TypeScale revenue={formatSek(model.t.revenue / 100)} />
@@ -123,14 +122,9 @@ export function MeasureSection({ index, model }: { index: number; model: Model }
       id="matt"
       index={index}
       eyebrow="Mått och rörelse"
-      title="8 px-rytm och radier på 2, 4 och 6 px."
-      aside={`All rörelse mellan ${motion.fast} och ${motion.slow} ms.`}
+      title={`8${NBSP}px-rytm och radier på 2, 4 och 6${NBSP}px.`}
+      aside={`Övergångar ${motion.fast}–${motion.slow}${NBSP}ms, laddning i loop.`}
       space="tight"
-      meta={[
-        { label: "Bas", value: "4 px" },
-        { label: "Radier", value: "3 st" },
-        { label: "Tider", value: `${durations.length} st` },
-      ]}
     >
       <Sub index={`${n}.1`} label="Avstånd" meta="px" className="lg:col-span-7">
         <SpacingSpecimen value={formatSek(model.t.revenue / 100)} delta={delta} />
@@ -149,7 +143,12 @@ export function MeasureSection({ index, model }: { index: number; model: Model }
           />
         </Sub>
       </div>
-      <Sub index={`${n}.4`} label="Rörelse" meta="ms" className="lg:col-span-12">
+      <Sub
+        index={`${n}.4`}
+        label="Rörelse"
+        meta={`${durations.length} tider`}
+        className="lg:col-span-12"
+      >
         <MotionTimeline />
       </Sub>
     </SpecSection>

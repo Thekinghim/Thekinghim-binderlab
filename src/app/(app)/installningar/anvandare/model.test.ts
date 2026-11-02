@@ -2,15 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import {
   LAST_OWNER_REASON,
+  OWNER_INVITE_REASON,
   OWNER_ONLY_REASON,
   assignableRoles,
   canManageMembers,
   canRevokeInvitation,
   countByRole,
   headline,
+  invitationsAside,
+  inviteErrorFor,
   isMemberRole,
   memberName,
   memberPermissions,
+  membersAside,
   roleMeta,
 } from "./model";
 
@@ -102,5 +106,35 @@ describe("rubrik och räknare", () => {
     expect(isMemberRole("owner")).toBe(true);
     expect(isMemberRole("superadmin")).toBe(false);
     expect(isMemberRole(undefined)).toBe(false);
+  });
+});
+
+describe("sektionsrubriker", () => {
+  it("medlemmar: den senast tillagda, inte antalet igen", () => {
+    expect(membersAside({ name: "delagare", date: "2 nov." })).toBe(
+      "Senast tillagd: delagare, 2 nov.",
+    );
+    expect(membersAside({ name: "kim", date: "2025-11-02" })).toBe(
+      "Senast tillagd: kim, 2025-11-02.",
+    );
+    expect(membersAside(null)).toBe("Ingen har tillgång ännu.");
+  });
+
+  it("inbjudningar: första länken som går ut, annars regeln", () => {
+    expect(invitationsAside("9 nov.")).toBe("Första länken går ut 9 nov.");
+    expect(invitationsAside(null)).toBe("En länk gäller i 7 dagar och kan användas en gång.");
+  });
+});
+
+describe("inviteErrorFor", () => {
+  const generic = "Du har inte behörighet till det här.";
+  it("det allmänna behörighetsfelet för en ägarinbjudan förklaras som ägarregeln", () => {
+    expect(inviteErrorFor("owner", generic, generic)).toBe(OWNER_INVITE_REASON);
+  });
+  it("andra fel och andra roller passerar oförändrade", () => {
+    expect(inviteErrorFor("viewer", generic, generic)).toBe(generic);
+    expect(inviteErrorFor("owner", "Personen är redan medlem.", generic)).toBe(
+      "Personen är redan medlem.",
+    );
   });
 });

@@ -14,7 +14,7 @@ export const recipientNotes: Record<RecipientKind, { who: string; gets: string; 
   },
   delagare: {
     who: "Delägaren",
-    gets: "Intäkt, resultat, marginal mot mål, kassaflöde, de fem största automaterna och planen för nästa månad.",
+    gets: "Intäkt, vinst, marginal mot mål, kassaflöde, de tre automaterna och planen för nästa månad.",
     omits: "Enskilda transaktioner och verifikationer.",
   },
 };

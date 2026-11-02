@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import type { Settings } from "@/domain";
 import type { AnalyticsOrder } from "../todos/types";
-import { reconcilePayouts } from "./reconcile";
+import { chooseTimezoneShift, reconcilePayouts, splitRounding } from "./reconcile";
 import type { Payout, PayoutReconciliation, ReconciliationInput } from "./types";
 
 const SETTINGS: Settings = { vatRateBp: 0, cardFeeBp: 0 };
@@ -119,7 +119,9 @@ describe("reconcilePayouts: grundregel", () => {
     const p = only(
       reconcilePayouts({
         orders: [],
-        payouts: [{ reference: "U", period: "2026-11", amountOre: -4900, feesOre: 0, refundsOre: 4900 }],
+        payouts: [
+          { reference: "U", period: "2026-11", amountOre: -4900, feesOre: 0, refundsOre: 4900 },
+        ],
         refunds: [{ id: "r1", date: "2026-11-05", amountOre: 4900 }],
         settings: SETTINGS,
       }),
@@ -132,7 +134,9 @@ describe("reconcilePayouts: grundregel", () => {
 describe("avvikelse: avgifter", () => {
   it("leverantören drar 3,00 kr i avgift när inställningen ger 0", () => {
     // Väntat 14 700. Utbetalt 14 400, avgift 300 → skillnad −300, helt förklarad av avgiften.
-    const p = only(run([{ reference: "U-11", period: "2026-11", amountOre: 14_400, feesOre: 300 }]));
+    const p = only(
+      run([{ reference: "U-11", period: "2026-11", amountOre: 14_400, feesOre: 300 }]),
+    );
     expect(p.differenceOre).toBe(-300);
     expect(p.deviations.map((d) => [d.kind, d.impactOre])).toEqual([["fee", -300]]);
     expect(p.status).toBe("deviation");
@@ -273,7 +277,9 @@ describe("avvikelse: dubbletter", () => {
     );
     expect(p.deviations.map((d) => [d.kind, d.impactOre])).toEqual([["duplicate-payout", 4900]]);
     expect(norm(p.deviations[0]!.title)).toBe("1 order betalas två gånger");
-    expect(norm(p.deviations[0]!.explanation)).toContain("förekommer flera gånger i specifikationen");
+    expect(norm(p.deviations[0]!.explanation)).toContain(
+      "förekommer flera gånger i specifikationen",
+    );
     checkIdentity(p);
   });
 
@@ -328,8 +334,18 @@ describe("avvikelse: dubbletter", () => {
     // U-b:s egna dagar 16–30 nov: o3 = 4 900. Leverantören betalar 9 800 (o2 + o3).
     // Skillnad +4 900 = överlappet (o2 på 10 nov).
     const res = run([
-      { reference: "U-b", period: { start: "2026-11-10", end: "2026-11-30" }, amountOre: 9800, feesOre: 0 },
-      { reference: "U-a", period: { start: "2026-11-01", end: "2026-11-15" }, amountOre: 9800, feesOre: 0 },
+      {
+        reference: "U-b",
+        period: { start: "2026-11-10", end: "2026-11-30" },
+        amountOre: 9800,
+        feesOre: 0,
+      },
+      {
+        reference: "U-a",
+        period: { start: "2026-11-01", end: "2026-11-15" },
+        amountOre: 9800,
+        feesOre: 0,
+      },
     ]);
     expect(res.payouts.map((p) => p.reference)).toEqual(["U-a", "U-b"]);
     const b = res.payouts[1]!;
@@ -406,7 +422,9 @@ describe("avvikelse: belopp, period och återbetalningar", () => {
 
   it("leverantören drar en återbetalning som vi inte känner till", () => {
     const p = only(
-      run([{ reference: "U-11", period: "2026-11", amountOre: 9800, feesOre: 0, refundsOre: 4900 }]),
+      run([
+        { reference: "U-11", period: "2026-11", amountOre: 9800, feesOre: 0, refundsOre: 4900 },
+      ]),
     );
     expect(p.deviations.map((d) => [d.kind, d.impactOre])).toEqual([["refund", -4900]]);
     expect(norm(p.deviations[0]!.explanation)).toContain("drog 49,00 kr i återbetalningar");
@@ -414,8 +432,12 @@ describe("avvikelse: belopp, period och återbetalningar", () => {
   });
 
   it("oförklarad rest och avrundning inom toleransen", () => {
-    const unexplained = only(run([{ reference: "U", period: "2026-11", amountOre: 14_823, feesOre: 0 }]));
-    expect(unexplained.deviations.map((d) => [d.kind, d.impactOre])).toEqual([["unexplained", 123]]);
+    const unexplained = only(
+      run([{ reference: "U", period: "2026-11", amountOre: 14_823, feesOre: 0 }]),
+    );
+    expect(unexplained.deviations.map((d) => [d.kind, d.impactOre])).toEqual([
+      ["unexplained", 123],
+    ]);
     expect(norm(unexplained.deviations[0]!.title)).toBe("+1,23 kr är oförklarat");
 
     const rounding = only(
@@ -481,7 +503,9 @@ describe("avvikelse: tidsförskjutning över periodgräns (tidszon)", () => {
     expect(nov!.status).toBe("explained");
     const text = norm(oct!.deviations[0]!.explanation);
     expect(text).toContain("Asia/Shanghai");
-    expect(text).toContain("order 42780 betalades 31 okt. 17:30 svensk tid = 1 nov. 00:30 i Asia/Shanghai");
+    expect(text).toContain(
+      "order 42780 betalades 31 okt. 17:30 svensk tid = 1 nov. 00:30 i Asia/Shanghai",
+    );
     expect(norm(nov!.summary)).toContain("beror på tidszonen");
     expect(res.totals.openDeviations).toBe(0);
     checkIdentity(oct!);
@@ -587,7 +611,9 @@ describe("försäljning utan utbetalning", () => {
 });
 
 describe("status utredd", () => {
-  const payouts: Payout[] = [{ reference: "U-11", period: "2026-11", amountOre: 14_400, feesOre: 300 }];
+  const payouts: Payout[] = [
+    { reference: "U-11", period: "2026-11", amountOre: 14_400, feesOre: 300 },
+  ];
 
   it("en utredning med rätt fingerprint gör avvikelsen och utbetalningen utredd", () => {
     const first = only(run(payouts));
@@ -596,7 +622,12 @@ describe("status utredd", () => {
     expect(fee.fingerprint).toBe("-300|0");
     const res = run(payouts, {
       resolutions: [
-        { key: fee.key, fingerprint: fee.fingerprint, note: "Ny prislista från Awish", resolvedBy: "u1" },
+        {
+          key: fee.key,
+          fingerprint: fee.fingerprint,
+          note: "Ny prislista från Awish",
+          resolvedBy: "u1",
+        },
       ],
     });
     const p = only(res);
@@ -673,7 +704,10 @@ describe("alla avvikelsetyper på en gång", () => {
       payouts,
       settings: SETTINGS,
       refunds: [{ id: "r1", date: "2026-11-15", amountOre: 1000 }],
-      options: { providerTimeZone: "Asia/Shanghai", coverage: { start: "2026-10-01", end: "2026-12-31" } },
+      options: {
+        providerTimeZone: "Asia/Shanghai",
+        coverage: { start: "2026-10-01", end: "2026-12-31" },
+      },
     };
     const res = reconcilePayouts(input);
     for (const p of res.payouts) checkIdentity(p);
@@ -730,11 +764,18 @@ describe("alla avvikelsetyper på en gång", () => {
 
 describe("ogiltig indata", () => {
   it("kastar tydliga fel", () => {
+    expect(() => run([{ reference: "U", period: "2026-13", amountOre: 0, feesOre: 0 }])).toThrow(
+      /ÅÅÅÅ-MM/,
+    );
     expect(() =>
-      run([{ reference: "U", period: "2026-13", amountOre: 0, feesOre: 0 }]),
-    ).toThrow(/ÅÅÅÅ-MM/);
-    expect(() =>
-      run([{ reference: "U", period: { start: "2026-11-30", end: "2026-11-01" }, amountOre: 0, feesOre: 0 }]),
+      run([
+        {
+          reference: "U",
+          period: { start: "2026-11-30", end: "2026-11-01" },
+          amountOre: 0,
+          feesOre: 0,
+        },
+      ]),
     ).toThrow(/slutar/);
     expect(() => run([{ reference: "U", period: "2026-11", amountOre: 1.5, feesOre: 0 }])).toThrow(
       /heltal/,
@@ -756,5 +797,181 @@ describe("ogiltig indata", () => {
     const res = run([]);
     expect(res.payouts).toEqual([]);
     expect(res.summary).toBe("Inga utbetalningar att stämma av.");
+  });
+});
+
+describe("rättningar efter revisionen", () => {
+  // 31 okt. 17:30 svensk tid = 1 nov. 00:30 i Asia/Shanghai; 1 nov. 17:17 = 2 nov. 00:17.
+  const late = order("o-late", "42780", "2026-10-31", 4900, "2026-10-31T16:30:00Z");
+  const doc = order("o-doc", "42781", "2026-11-01", 4900, "2026-11-01T16:17:00Z");
+  const tz = { providerTimeZone: "Asia/Shanghai" };
+
+  it("tidszon: en utbetalning som stämmer exakt får inga påhittade avvikelser", () => {
+    // Leverantören betalar oktober på svenska dagar: late = 4 900 = väntat, skillnad 0.
+    const res = reconcilePayouts({
+      orders: [late, doc],
+      payouts: [{ reference: "U-10", period: "2026-10", amountOre: 4900, feesOre: 0 }],
+      settings: SETTINGS,
+      options: tz,
+    });
+    const p = res.payouts[0]!;
+    expect(p.differenceOre).toBe(0);
+    expect(p.deviations).toEqual([]);
+    expect(p.status).toBe("matched");
+  });
+
+  it("tidszon utan specifikation är härledd, med specifikation belagd", () => {
+    const without = reconcilePayouts({
+      orders: [late, doc],
+      payouts: [{ reference: "U-10", period: "2026-10", amountOre: 0, feesOre: 0 }],
+      settings: SETTINGS,
+      options: tz,
+    }).payouts[0]!;
+    expect(without.deviations.map((d) => [d.kind, d.confidence])).toEqual([
+      ["timezone-shift", "inferred"],
+    ]);
+    const withLines = reconcilePayouts({
+      orders: [late, doc],
+      payouts: [
+        {
+          reference: "U-11",
+          period: "2026-11",
+          amountOre: 9800,
+          feesOre: 0,
+          lines: [
+            { externalId: "42780", amountOre: 4900 },
+            { externalId: "42781", amountOre: 4900 },
+          ],
+        },
+      ],
+      settings: SETTINGS,
+      options: { ...tz, coverage: "2026-11" },
+    }).payouts[0]!;
+    expect(withLines.deviations.map((d) => [d.kind, d.confidence])).toEqual([
+      ["timezone-shift", "confirmed"],
+    ]);
+  });
+
+  it("chooseTimezoneShift: förskjutningen antas bara när den minskar skillnaden", () => {
+    const a = { amountOre: 4900 };
+    const b = { amountOre: 5900 };
+    // Skillnad 0: ingen förskjutning (inte ens om in och ut tar ut varandra).
+    expect(chooseTimezoneShift(0, [a], [a])).toEqual({ inOrders: [], outOrders: [] });
+    // −4 900 och en order ut à 4 900: ut förklarar allt.
+    expect(chooseTimezoneShift(-4900, [], [a])).toEqual({ inOrders: [], outOrders: [a] });
+    // −1 000 = +4 900 − 5 900: båda riktningarna.
+    expect(chooseTimezoneShift(-1000, [a], [b])).toEqual({ inOrders: [a], outOrders: [b] });
+    // +4 900: bara in (rest 0); båda ger rest 5 900.
+    expect(chooseTimezoneShift(4900, [a], [b])).toEqual({ inOrders: [a], outOrders: [] });
+    // +100: ingen förskjutning gör det bättre (|100| < |100 − 4 900|).
+    expect(chooseTimezoneShift(100, [a], [])).toEqual({ inOrders: [], outOrders: [] });
+  });
+
+  it("splitRounding: toleransen gäller avgift och rest tillsammans", () => {
+    expect(splitRounding(1, 0, 5)).toEqual({
+      roundingOre: 1,
+      feeIsRounding: true,
+      residualIsRounding: false,
+    });
+    expect(splitRounding(-37, 0, 5)).toEqual({
+      roundingOre: 0,
+      feeIsRounding: false,
+      residualIsRounding: false,
+    });
+    // Rest 4 är avrundning; avgift 3 + 4 = 7 > 5 → avgiften visas.
+    expect(splitRounding(3, 4, 5)).toEqual({
+      roundingOre: 4,
+      feeIsRounding: false,
+      residualIsRounding: true,
+    });
+    // −3 + 4 = 1 ≤ 5 → båda är avrundning.
+    expect(splitRounding(-3, 4, 5)).toEqual({
+      roundingOre: 1,
+      feeIsRounding: true,
+      residualIsRounding: true,
+    });
+    expect(splitRounding(0, 0, 0)).toEqual({
+      roundingOre: 0,
+      feeIsRounding: false,
+      residualIsRounding: false,
+    });
+    expect(splitRounding(1, 0, 0).feeIsRounding).toBe(false);
+  });
+
+  it("avgift avrundad på totalen (1 öre) är avrundning med tolerans, avvikelse utan", () => {
+    // 3 × 4 900, 250 bp: vi 3 × 123 = 369, leverantören round(367,5) = 368.
+    // Utbetalt 14 700 − 368 = 14 332, väntat 14 331, skillnad +1.
+    const settings: Settings = { vatRateBp: 0, cardFeeBp: 250 };
+    const payout: Payout = {
+      reference: "U-11",
+      period: "2026-11",
+      amountOre: 14_332,
+      feesOre: 368,
+    };
+    const tolerant = run([payout], { settings, options: { toleranceOre: 5 } });
+    const p = only(tolerant);
+    expect(p.differenceOre).toBe(1);
+    expect(p.status).toBe("matched");
+    expect(p.roundingOre).toBe(1);
+    expect(p.deviations).toEqual([]);
+    expect(norm(p.summary)).toBe(
+      "U-11 (1–30 nov.): utbetalt 143,32 kr, väntat 143,31 kr. Stämmer (avrundning +0,01 kr).",
+    );
+    const strict = only(run([payout], { settings }));
+    expect(strict.deviations.map((d) => [d.kind, d.impactOre])).toEqual([["fee", 1]]);
+    expect(strict.status).toBe("deviation");
+  });
+
+  it("toleransen döljer inte saknade order även om nettot är 0", () => {
+    // 42003 saknas i utbetalningen (−4 900), 42999 saknas hos oss (+4 900): skillnad 0.
+    const p = only(
+      run(
+        [
+          {
+            reference: "U-11",
+            period: "2026-11",
+            amountOre: 14_700,
+            feesOre: 0,
+            lines: [
+              { externalId: "42001", amountOre: 4900 },
+              { externalId: "42002", amountOre: 4900 },
+              { externalId: "42999", amountOre: 4900 },
+            ],
+          },
+        ],
+        { options: { toleranceOre: 100 } },
+      ),
+    );
+    expect(p.differenceOre).toBe(0);
+    expect(p.deviations.map((d) => d.kind)).toEqual(["missing-in-payout", "missing-in-sales"]);
+    expect(p.status).toBe("deviation");
+  });
+
+  it("underlaget bär leverantörens ordernummer, även för order som saknas hos oss", () => {
+    const p = only(
+      run([
+        {
+          reference: "U-11",
+          period: "2026-11",
+          amountOre: 14_700,
+          feesOre: 0,
+          lines: [
+            { externalId: "42001", amountOre: 4900 },
+            { externalId: "42002", amountOre: 4900 },
+            { externalId: "42999", amountOre: 4900 },
+            { externalId: "42999", amountOre: 4900 },
+          ],
+        },
+      ]),
+    );
+    const ms = p.deviations.find((d) => d.kind === "missing-in-sales")!;
+    expect(ms.evidence.orderIds).toEqual([]);
+    expect(ms.evidence.externalOrderIds).toEqual(["42999"]);
+    const dup = p.deviations.find((d) => d.kind === "duplicate-payout")!;
+    expect(dup.evidence.externalOrderIds).toEqual(["42999"]);
+    const mp = p.deviations.find((d) => d.kind === "missing-in-payout")!;
+    expect(mp.evidence.orderIds).toEqual(["o3"]);
+    expect(mp.evidence.externalOrderIds).toEqual(["42003"]);
+    checkIdentity(p);
   });
 });

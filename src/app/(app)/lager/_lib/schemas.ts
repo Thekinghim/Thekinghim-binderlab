@@ -1,0 +1,51 @@
+/**
+ * Validering av indata till Lagers server actions. Allt från klienten är okontrollerat;
+ * här blir det typat eller avvisat med ett svenskt meddelande.
+ */
+
+import { z } from "zod";
+
+import { formatInt } from "@/lib/format";
+
+const uuid = z
+  .string()
+  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "Ogiltigt id.");
+
+/** Högsta antal pack i en registrering (samma gräns som register_refill). */
+export const MAX_PACKS = 10_000;
+
+const packs = (min: number, message: string) =>
+  z
+    .number({ error: message })
+    .int("Ange ett heltal.")
+    .min(min, message)
+    .max(MAX_PACKS, `Högst ${formatInt(MAX_PACKS)} pack.`);
+
+const note = z.string().trim().max(500, "Noteringen får vara högst 500 tecken.").optional();
+
+export const refillSchema = z.object({
+  machineId: uuid,
+  titleId: uuid,
+  quantity: packs(1, "Ange antal pack, minst 1."),
+  fromWarehouse: z.boolean(),
+  note,
+});
+
+export const countSchema = z.discriminatedUnion("location", [
+  z.object({
+    location: z.literal("machine"),
+    machineId: uuid,
+    titleId: uuid,
+    counted: packs(0, "Ange räknat antal, 0 eller mer."),
+    note,
+  }),
+  z.object({
+    location: z.literal("warehouse"),
+    titleId: uuid,
+    counted: packs(0, "Ange räknat antal, 0 eller mer."),
+    note,
+  }),
+]);
+
+export type RefillInput = z.infer<typeof refillSchema>;
+export type CountInput = z.infer<typeof countSchema>;

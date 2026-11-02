@@ -26,14 +26,34 @@ const views = await publicViews();
 const scoped = await orgScopedTables();
 const columns = await publicColumns();
 
-const APPEND_ONLY = ["audit_log", "import_rows", "report_deliveries", "stock_events"];
+const APPEND_ONLY = [
+  "assistant_logs",
+  "audit_log",
+  "deviation_reviews",
+  "import_rows",
+  "payout_imports",
+  "payout_lines",
+  "report_approvals",
+  "report_deliveries",
+  "stock_events",
+];
 const RPCS = [
   "accept_invitation",
   "close_period",
   "create_invitation",
   "create_organization",
+  "create_store_invitation",
   "list_members",
   "merge_titles",
+  "portal_agreements",
+  "portal_faults",
+  "portal_machines",
+  "portal_report",
+  "portal_report_fault",
+  "portal_reports",
+  "portal_sales",
+  "portal_stores",
+  "register_refill_once",
   "reopen_period",
 ];
 
@@ -45,11 +65,21 @@ describe("tabeller", () => {
   it("katalogen innehåller alla tabeller i datamodell v2", () => {
     expect(tables).toEqual(
       [
+        "alert_deliveries",
+        "alert_runs",
+        "alert_subscriptions",
         "alerts",
+        "assistant_logs",
         "audit_log",
         "baselines",
         "contracts",
         "data_sources",
+        "deviation_reviews",
+        "effect_measurements",
+        "effect_settings",
+        "expansion_leads",
+        "field_submissions",
+        "fixed_costs",
         "goals",
         "import_rows",
         "imports",
@@ -64,11 +94,16 @@ describe("tabeller", () => {
         "organization_settings",
         "organizations",
         "owner_shares",
+        "payout_imports",
+        "payout_lines",
+        "payouts",
         "period_closes",
         "profiles",
         "purchase_order_lines",
         "purchase_orders",
         "purchase_prices",
+        "push_subscriptions",
+        "report_approvals",
         "report_deliveries",
         "report_recipients",
         "reports",
@@ -373,10 +408,18 @@ describe("policyer", () => {
     ].sort();
     // memberships saknas med flit: påfyllaren ser sitt eget medlemskap via user_id, inte via rollen.
     expect(withRefiller).toEqual([
+      // Fas 8: egna rader (prenumerationer, push, utskick, inskick) och larm om automater/lager.
+      "alert_deliveries",
+      "alert_subscriptions",
+      "alerts",
+      // Fas 6b: påfyllarens egna frågor till assistenten (bara lagerdata).
+      "assistant_logs",
+      "field_submissions",
       "machine_placements",
       "machines",
       "organizations",
       "profiles",
+      "push_subscriptions",
       "stock_events",
       "stock_locations",
       "stores",
@@ -411,8 +454,18 @@ describe("anon", () => {
       close_period: sql`gen_random_uuid(), '2025-01-01'::date`,
       create_invitation: sql`gen_random_uuid(), 'a@b.se', 'viewer'`,
       create_organization: sql`'x', 'x'`,
+      create_store_invitation: sql`gen_random_uuid(), gen_random_uuid(), 'a@b.se'`,
       list_members: sql`gen_random_uuid()`,
       merge_titles: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid()`,
+      portal_agreements: sql`gen_random_uuid()`,
+      portal_faults: sql`gen_random_uuid()`,
+      portal_machines: sql`gen_random_uuid()`,
+      portal_report: sql`gen_random_uuid(), gen_random_uuid()`,
+      portal_report_fault: sql`gen_random_uuid(), gen_random_uuid(), 'store_other', 'x'`,
+      portal_reports: sql`gen_random_uuid()`,
+      portal_sales: sql`gen_random_uuid(), '2025-01-01'::date, '2025-01-31'::date`,
+      portal_stores: sql``,
+      register_refill_once: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
       reopen_period: sql`gen_random_uuid(), '2025-01-01'::date`,
     };
     const outcome = await asAnon((tx) =>
@@ -430,6 +483,7 @@ describe("Drizzle-schemat stämmer med databasen", () => {
   const drizzleViews = exported.filter((v): v is PgView => is(v, PgView));
 
   function dbType(c: { dataType: string; udtName: string }): string {
+    if (c.dataType === "ARRAY") return `${c.udtName.replace(/^_/, "")}[]`;
     return c.dataType === "USER-DEFINED" ? c.udtName : c.dataType;
   }
 

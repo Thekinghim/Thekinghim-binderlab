@@ -49,10 +49,10 @@ type WaterfallProps = {
 
 const M = { top: 40, right: 8, left: 36 };
 
-// Tecknets bredd i axeltext (Geist Mono 10 px + spärrning)
-const CH = 6.6;
+// Tecknets bredd i axeltext (Geist Mono 11 px + spärrning)
+const CH = 7.3;
 // Försiktig bredd för högerkanten: versaler + 0,06 em spärrning + reservtypsnitt
-const CH_UPPER = 7;
+const CH_UPPER = 7.7;
 
 /**
  * Axeletiketter: hela, kort form eller två rader på mellanslag. Räcker inte
@@ -337,7 +337,7 @@ export function WaterfallChart({
                     height={Math.max(0, h - sw)}
                     strokeWidth={sw}
                     style={{ fill, stroke }}
-                    className="transition-[stroke] duration-[120ms]"
+                    className="transition-[stroke] duration-fast"
                   />
                   {next && i !== lastIdx ? (
                     <line
@@ -367,7 +367,7 @@ export function WaterfallChart({
                       className="tnum"
                       style={{
                         fontFamily: "var(--bl-font-mono)",
-                        fontSize: isResult ? 11 : 10,
+                        fontSize: 11,
                         fontWeight: isResult && li === 0 ? 500 : 400,
                         fill: b.flag
                           ? "var(--bl-signal-fg)"
@@ -459,7 +459,7 @@ export function WaterfallChart({
                         className="tnum"
                         style={{
                           fontFamily: "var(--bl-font-mono)",
-                          fontSize: 10,
+                          fontSize: 11,
                           fill: "var(--bl-fg-subtle)",
                         }}
                       >

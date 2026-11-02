@@ -101,7 +101,11 @@ export interface HomeTitleRow {
 export interface HomeTopTitles {
   readonly rows: HomeTitleRow[];
   /** Övriga titlar sammanslagna, eller null om alla visas. */
-  readonly rest: { readonly titles: number; readonly orders: number; readonly revenueOre: number } | null;
+  readonly rest: {
+    readonly titles: number;
+    readonly orders: number;
+    readonly revenueOre: number;
+  } | null;
   readonly totalTitles: number;
 }
 
@@ -139,6 +143,8 @@ export interface HomeModel {
   readonly todos: HomeTodo[] | null;
   /** Antal punkter i Att göra totalt (efter filter). */
   readonly todoCount: number;
+  /** Antal av dem som gäller nu (nivå "now"). */
+  readonly todoNowCount: number;
 }
 
 export interface HomeModelInput {
@@ -239,13 +245,12 @@ function todosInScope(
   if (!scope.machineId && !scope.storeId) return [...todos];
   const inScope = new Set(
     machines
-      .filter((m) =>
-        scope.machineId ? m.id === scope.machineId : m.storeId === scope.storeId,
-      )
+      .filter((m) => (scope.machineId ? m.id === scope.machineId : m.storeId === scope.storeId))
       .map((m) => m.id),
   );
   return todos.filter(
-    (t) => t.evidence.machineIds.length === 0 || t.evidence.machineIds.some((id) => inScope.has(id)),
+    (t) =>
+      t.evidence.machineIds.length === 0 || t.evidence.machineIds.some((id) => inScope.has(id)),
   );
 }
 
@@ -295,9 +300,7 @@ function buildKpis(args: {
       trend: days.map((r) => r.profitOre),
       reference: hasPrev ? perDay(prev.profitOre, compareDays) : null,
       alertText:
-        unpriced && unpriced.orders > 0
-          ? `Utan ${shareText(unpriced.shareBp)} av intäkten`
-          : null,
+        unpriced && unpriced.orders > 0 ? `Utan ${shareText(unpriced.shareBp)} av intäkten` : null,
     },
     {
       id: "margin",
@@ -356,9 +359,7 @@ function buildTopTitles(
     }))
     .sort(
       (a, b) =>
-        b.revenueOre - a.revenueOre ||
-        b.orders - a.orders ||
-        a.name.localeCompare(b.name, "sv-SE"),
+        b.revenueOre - a.revenueOre || b.orders - a.orders || a.name.localeCompare(b.name, "sv-SE"),
     );
   const share = (v: number) => (totalRevenue > 0 ? roundHalfUp(v * 10_000, totalRevenue) : 0);
   // Slå inte ihop en enda titel till "övriga": visa den hellre.
@@ -379,7 +380,12 @@ function buildTopTitles(
   };
 }
 
-function buildInsights(input: HomeModelInput, scope: DataScope): HomeInsight[] {
+function buildInsights(
+  input: HomeModelInput,
+  scope: DataScope,
+  period: Period,
+  compare: Period | null,
+): HomeInsight[] {
   const orders: AnalyticsOrder[] = [
     ...input.current.orders,
     ...(input.previous?.orders ?? []),
@@ -392,8 +398,8 @@ function buildInsights(input: HomeModelInput, scope: DataScope): HomeInsight[] {
       titles: input.titles,
       machines: input.machines,
     },
-    input.period,
-    input.compare,
+    period,
+    compare,
     {
       now: input.now,
       timeZone: input.timeZone,
@@ -414,12 +420,26 @@ function buildInsights(input: HomeModelInput, scope: DataScope): HomeInsight[] {
     }));
 }
 
+/** Ett fel i en regel för Värt att veta får inte stoppa Hem: då visas inga iakttagelser. */
+function safeInsights(
+  input: HomeModelInput,
+  period: Period,
+  compare: Period | null,
+): HomeInsight[] {
+  try {
+    return buildInsights(input, input.scope, period, compare);
+  } catch (error) {
+    console.error("[hem] Värt att veta kunde inte räknas:", error);
+    return [];
+  }
+}
+
 function buildTodos(
   todos: readonly TodoItem[] | null,
   scope: DataScope,
   machines: readonly MachineRecord[],
-): { todos: HomeTodo[] | null; count: number } {
-  if (todos === null) return { todos: null, count: 0 };
+): { todos: HomeTodo[] | null; count: number; nowCount: number } {
+  if (todos === null) return { todos: null, count: 0, nowCount: 0 };
   const relevant = todosInScope(todos, scope, machines);
   // computeTodos sorterar redan efter brådska; nivån går ändå först om listan kommer osorterad.
   const top = relevant
@@ -433,27 +453,70 @@ function buildTodos(
       detail: t.detail,
       href: appHref(t.link),
     }));
-  return { todos: top, count: relevant.length };
+  return {
+    todos: top,
+    count: relevant.length,
+    nowCount: relevant.filter((t) => t.level === "now").length,
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Modellen
 // ---------------------------------------------------------------------------
 
+type ScopedInput = ProfitabilityInput & { readonly orders: readonly AnalyticsOrder[] };
+
+/** Samma indata begränsad till en del av perioden (urval av order, ingen beräkning). */
+function restrict(input: ScopedInput, range: Period): ScopedInput {
+  return {
+    ...input,
+    period: range,
+    orders: input.orders.filter(
+      (o) => o.businessDate >= range.start && o.businessDate <= range.end,
+    ),
+  };
+}
+
+/**
+ * Jämförelseperioden dag för dag mot täckningen: dag i i täckningen motsvarar dag i (räknat
+ * från samma förskjutning) i jämförelseperioden. null om den inte ryms i jämförelseperioden.
+ */
+export function alignedCompare(period: Period, compare: Period, coverage: Period): Period | null {
+  const offset = periodDays({ start: period.start, end: coverage.start }) - 1;
+  const start = addDays(compare.start, offset);
+  const end = addDays(start, periodDays(coverage) - 1);
+  if (start > compare.end) return null;
+  return { start, end: end > compare.end ? compare.end : end };
+}
+
 export function buildHomeModel(input: HomeModelInput): HomeModel {
-  const { current, previous, period, compare, dataStart, today } = input;
+  const { period, dataStart, today } = input;
   const titleName = (() => {
     const map = new Map(input.titles.map((t) => [t.id, t.name.trim() || t.id]));
     return (id: string) => map.get(id) ?? "Okänd titel";
   })();
 
-  const hasOrdersToday = current.orders.some((o) => o.businessDate === today);
+  const hasOrdersToday = input.current.orders.some((o) => o.businessDate === today);
   const coverage = coverageOf(period, dataStart, today, hasOrdersToday);
+
+  // Hem räknar på dagarna som har data (täckningen): före första ordern finns ingen
+  // försäljning att jämföra med, och en påbörjad dag utan order ännu skulle dra ned
+  // snittet. Jämförelsen gäller lika många dagar i jämförelseperioden, och bara om de
+  // ligger helt inom datan.
+  const current = coverage ? restrict(input.current, coverage) : input.current;
+  const compare =
+    coverage && input.compare ? alignedCompare(period, input.compare, coverage) : null;
   const comparable =
-    compare !== null && previous !== null && dataStart !== null && compare.start >= dataStart;
+    compare !== null &&
+    input.previous !== null &&
+    dataStart !== null &&
+    compare.start >= dataStart &&
+    periodDays(compare) === (coverage ? periodDays(coverage) : 0);
+  const previous =
+    comparable && input.previous && compare ? restrict(input.previous, compare) : null;
 
   const km = keyMetrics(current);
-  const prevKm = comparable && previous ? keyMetrics(previous) : null;
+  const prevKm = previous ? keyMetrics(previous) : null;
 
   const byTitle = profitability(current, "title");
   const unpricedSummary = byTitle.unpriced;
@@ -463,7 +526,10 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
           orders: unpricedSummary.orders,
           revenueOre: unpricedSummary.revenueOre,
           shareBp: unpricedSummary.shareBp,
-          titles: unpricedSummary.byTitle.map((t) => ({ id: t.titleId, name: titleName(t.titleId) })),
+          titles: unpricedSummary.byTitle.map((t) => ({
+            id: t.titleId,
+            name: titleName(t.titleId),
+          })),
           href:
             unpricedSummary.titleIds.length === 1 && unpricedSummary.titleIds[0]
               ? `/inkopspriser?titel=${encodeURIComponent(unpricedSummary.titleIds[0])}`
@@ -471,19 +537,10 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
         }
       : null;
 
-  const allDays = dayRows(current);
-  const days = coverage ? rowsIn(allDays, coverage) : [];
+  const days = coverage ? rowsIn(dayRows(current), coverage) : [];
   const coverageDays = coverage ? periodDays(coverage) : 0;
-
-  // Jämförelsen dag för dag: dag i i perioden mot dag i i jämförelseperioden.
-  let prevDays: ProfitabilityRow[] = [];
-  let compareDays = 0;
-  if (comparable && previous && compare && coverage) {
-    const all = dayRows(previous);
-    const offset = periodDays({ start: period.start, end: coverage.start }) - 1;
-    prevDays = all.slice(offset, offset + coverageDays);
-    compareDays = periodDays(compare);
-  }
+  const prevDays = previous ? dayRows(previous) : [];
+  const compareDays = compare && previous ? periodDays(compare) : 0;
 
   const kpis = buildKpis({
     km,
@@ -510,17 +567,23 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
       revenueOre,
       compareOre: prevDays.length === days.length ? prevDays.map(rowRevenue) : null,
       peakIndex,
-      peakRatioTenths: averageOre > 0 && peakIndex !== null ? roundHalfUp(peakValue * 10, averageOre) : null,
+      peakRatioTenths:
+        averageOre > 0 && peakIndex !== null ? roundHalfUp(peakValue * 10, averageOre) : null,
       averageOre,
     };
   }
 
   const topTitles = buildTopTitles(byTitle.rows, km.revenueOre, titleName);
-  const insights = coverage ? buildInsights(input, input.scope) : [];
-  const { todos, count } = buildTodos(input.todos, input.scope, input.machines);
-
-  const peakDate =
-    daily && daily.peakIndex !== null ? (daily.dates[daily.peakIndex] ?? null) : null;
+  // Iakttagelserna räknas från första dagen med data, så att snitt per dag och antal
+  // veckodagar inte späds ut av dagar före datan; jämförelsen bara när den ligger i datan.
+  let insights: HomeInsight[] = [];
+  if (coverage) {
+    const insightPeriod: Period = { start: coverage.start, end: period.end };
+    const insightCompare =
+      comparable && input.compare ? alignedCompare(period, input.compare, insightPeriod) : null;
+    insights = safeInsights(input, insightPeriod, insightCompare);
+  }
+  const { todos, count, nowCount } = buildTodos(input.todos, input.scope, input.machines);
 
   return {
     headline: homeHeadline({
@@ -535,13 +598,9 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
       period,
       today,
       dataStart,
-      peak:
-        peakDate && daily && daily.peakIndex !== null
-          ? { date: peakDate, revenueOre: daily.revenueOre[daily.peakIndex] ?? 0 }
-          : null,
     }),
     period,
-    compare,
+    compare: comparable ? compare : null,
     coverage,
     comparable,
     dataStart,
@@ -552,10 +611,14 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
     insights,
     todos,
     todoCount: count,
+    todoNowCount: nowCount,
   };
 }
 
 /** Veckodagens namn för ett affärsdatum (1 = måndag). */
 export function weekdayOf(date: IsoDate): string {
-  return ["måndag", "tisdag", "onsdag", "torsdag", "fredag", "lördag", "söndag"][dayOfWeek(date) - 1] ?? "";
+  return (
+    ["måndag", "tisdag", "onsdag", "torsdag", "fredag", "lördag", "söndag"][dayOfWeek(date) - 1] ??
+    ""
+  );
 }

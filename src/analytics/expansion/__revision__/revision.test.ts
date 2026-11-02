@@ -81,7 +81,9 @@ const store = (
 // Förväntad vinst/dag = (10 000·4 820 + 10 000·0 + 9 833·2 900)/29 833 = 76 715 700/29 833
 // Per månad (×365/12): förväntad 78 217, lägsta 0, högsta 146 608.
 // Intäkt per månad: förväntad 149 042, lägsta 0, högsta 298 083.
-// Återbetalning 2 100 000·10 / per månad: bästa 143 (A), förväntad 268, sämsta null (F = 0).
+// Månad = dagar i kalendermånaden (domänens regel för aktiva månader, se docs/berakningar.md), inte 365/12.
+// Talen uppdaterade 2 nov. så att enhetsekonomi, scenario och uppskattning ger samma svar (jfr fall 6).
+// Återbetalning 2 100 000·10 / per månad: bästa 141 (A), förväntad 263, sämsta null (F = 0).
 // Avkastning per år: förväntad round(76 715 700/29 833·365·10 000/2 100 000) = 4 470 bp,
 // lägsta 0, högsta 8 378.
 function case1(): { sources: ProfitabilityInput; stores: StoreProfile[] } {
@@ -162,20 +164,20 @@ describe("Revision fall 1: likhet, urval och uppskattning", () => {
       "s-c": "low-similarity",
     });
     expect(est.investmentOre).toBe(2_100_000);
-    expect(est.profitPerMonthOre).toEqual({ low: 0, expected: 78_217, high: 146_608 });
-    expect(est.revenuePerMonthOre).toEqual({ low: 0, expected: 149_042, high: 298_083 });
-    expect(est.paybackTenths).toEqual({ low: 143, expected: 268, high: null });
-    expect(est.annualReturnBp).toEqual({ low: 0, expected: 4_470, high: 8_378 });
+    expect(est.profitPerMonthOre).toEqual({ low: 0, expected: 79_717, high: 149_420 });
+    expect(est.revenuePerMonthOre).toEqual({ low: 0, expected: 151_900, high: 303_800 });
+    expect(est.paybackTenths).toEqual({ low: 141, expected: 263, high: null });
+    expect(est.annualReturnBp).toEqual({ low: 0, expected: 4_555, high: 8_538 });
     expect(est.confidence).toBe("high");
     // Platsens egen återbetalning: G 2 900/dag → 88 208/mån → 238 tiondelar.
-    expect(est.basis.find((b) => b.storeId === "s-g")!.paybackTenths).toBe(238);
+    expect(est.basis.find((b) => b.storeId === "s-g")!.paybackTenths).toBe(234);
     expect(est.basis.find((b) => b.storeId === "s-f")!.paybackTenths).toBeNull();
 
     // Märkt som uppskattning, med intervall och platser.
     const t = plain(est.text);
     expect(t.startsWith("Uppskattning för Ny plats:")).toBe(true);
-    expect(t).toContain("782 kr (0 kr till 1 466 kr) vinst per månad");
-    expect(t).toContain("26,8 månader");
+    expect(t).toContain("797 kr (0 kr till 1 494 kr) vinst per månad");
+    expect(t).toContain("26,3 månader");
     expect(t).toContain("A (100 % lik), F (100 %) och G (98 %)");
 
     // Underlaget pekar ut platser och automater.
@@ -187,8 +189,8 @@ describe("Revision fall 1: likhet, urval och uppskattning", () => {
   it("newMachineScenario ('liknar butik A') ger samma uppskattning som direkt anrop", () => {
     const { sources, stores } = case1();
     const res = newMachineScenario({ sources, stores, likeStoreId: "s-a", investment: INVESTMENT });
-    expect(res.profitPerMonthOre).toEqual({ low: 0, expected: 78_217, high: 146_608 });
-    expect(res.paybackTenths).toEqual({ low: 143, expected: 268, high: null });
+    expect(res.profitPerMonthOre).toEqual({ low: 0, expected: 79_717, high: 149_420 });
+    expect(res.paybackTenths).toEqual({ low: 141, expected: 263, high: null });
     expect(plain(res.text).startsWith("Uppskattning för en butik som liknar A:")).toBe(true);
   });
 });
@@ -281,14 +283,14 @@ describe("Revision fall 2: expansionspipeline", () => {
     const l3 = res[0]!.estimate;
     expect(l3.basis.map((b) => [b.storeId, b.similarity.scoreBp])).toEqual([["s-p", 9_527]]);
     expect(l3.excluded.map((e) => [e.storeId, e.reason])).toEqual([["s-q", "excluded"]]);
-    expect(l3.paybackTenths).toEqual({ low: 143, expected: 143, high: 143 });
+    expect(l3.paybackTenths).toEqual({ low: 141, expected: 141, high: 141 });
     expect(l3.confidence).toBe("low");
 
     const l1 = res[1]!.estimate;
     expect(l1.usesTerms).toBe(true);
     expect(l1.profitPerDayOre).toEqual({ low: 2_165, expected: 3_274, high: 4_330 });
-    expect(l1.profitPerMonthOre!.expected).toBe(99_576);
-    expect(l1.paybackTenths).toEqual({ low: 159, expected: 211, high: 319 });
+    expect(l1.profitPerMonthOre!.expected).toBe(101_485);
+    expect(l1.paybackTenths).toEqual({ low: 156, expected: 207, high: 313 });
 
     const l2 = res[2]!.estimate;
     expect(l2.status).toBe("insufficient-data");

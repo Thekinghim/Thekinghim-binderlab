@@ -11,7 +11,7 @@ import {
   type CommandGroup,
 } from "@/components/ui/command-palette";
 import { fuzzyMatch, highlightSegments, TIER } from "@/lib/fuzzy";
-import { cn } from "@/lib/cn";
+import { NBSP } from "@/lib/format";
 import { machines, stores, titles } from "../sample-data";
 import { SpecSection, Sub } from "./section";
 
@@ -24,7 +24,6 @@ export function buildGroups(run: (label: string) => void): CommandGroup[] {
       items: routesForRole("owner").map((r) => ({
         id: `nav-${r.id}`,
         label: r.label,
-        hint: r.href,
         icon: r.icon,
         onSelect: () => run(r.label),
       })),
@@ -44,13 +43,15 @@ export function buildGroups(run: (label: string) => void): CommandGroup[] {
       label: "Automater",
       items: machines.map((m) => {
         const s = stores.find((x) => x.id === m.storeId);
+        // Samma namn som i resten av panelen (id + butik); platsen i butiken som undertext.
+        const label = `${m.code} ${s?.name ?? ""}`.trim();
         return {
           id: `m-${m.id}`,
-          label: `${m.code} ${m.name}`,
-          hint: s?.name,
+          label,
+          hint: m.name,
           icon: "machine" as const,
           keywords: [m.code, m.name, s?.name ?? "", s?.city ?? "", "automat"],
-          onSelect: () => run(`${m.code} ${m.name}`),
+          onSelect: () => run(label),
         };
       }),
     },
@@ -113,7 +114,7 @@ const keys: Array<{ keys: string[]; action: string }> = [
   { keys: ["↑", "↓"], action: "Flytta, går runt i listan" },
   { keys: ["Home", "End"], action: "Första och sista träffen" },
   { keys: ["↵"], action: "Kör markerad rad" },
-  { keys: ["Esc"], action: "Stäng, fokus tillbaka" },
+  { keys: ["Esc"], action: "Rensa fältet, andra gången stäng" },
 ];
 
 const tiers: Array<{ tier: number; name: string; query: string; text: string }> = [
@@ -163,7 +164,7 @@ export function CommandSection({ index }: { index: number }) {
     () => buildGroups((label) => setLast((prev) => ({ label, n: (prev?.n ?? 0) + 1 }))),
     [],
   );
-  const hotkey = formatHotkey(mod) || "⌘K";
+  const hotkey = (formatHotkey(mod) || "⌘K").replace(" ", NBSP);
 
   return (
     <SpecSection
@@ -184,19 +185,19 @@ export function CommandSection({ index }: { index: number }) {
     >
       <Sub index={`${n}.1`} label="Paletten" meta="samma som i toppbaren" className="lg:col-span-7">
         <div className="flex min-w-0 flex-col gap-3">
-          <CommandPalette inline groups={groups} />
-          <p className="meta flex min-w-0 items-center gap-2 text-subtle" aria-live="polite">
-            <span className="label shrink-0">Senast körd</span>
-            <span className={cn("truncate", last ? "text-fg" : "text-subtle")}>
-              {last ? last.label : "ingen ännu"}
-            </span>
-            {last ? <span className="tnum shrink-0 text-subtle">#{last.n}</span> : null}
+          <CommandPalette inline groups={groups} listClassName="max-h-[520px]" />
+          <p className="min-h-5 text-sm text-subtle" aria-live="polite">
+            {last ? (
+              <>
+                Körde <span className="text-fg">{last.label}</span>
+              </>
+            ) : null}
           </p>
         </div>
       </Sub>
 
       <div className="flex min-w-0 flex-col gap-12 lg:col-span-5">
-        <Sub index={`${n}.2`} label="Tangentbord" meta={mod ?? ""}>
+        <Sub index={`${n}.2`} label="Tangentbord" meta={`${keys.length + 1} kortkommandon`}>
           <dl className="divide-y divide-line">
             <div className="flex items-center justify-between gap-4 pb-2.5">
               <dt className="flex items-center gap-1 text-muted">
@@ -229,13 +230,6 @@ export function CommandSection({ index }: { index: number }) {
           </p>
         </Sub>
       </div>
-
-      <Sub index={`${n}.4`} label="Träff i id · ”bl-00”" className="lg:col-span-6">
-        <CommandPalette inline groups={groups} defaultQuery="bl-00" listClassName="max-h-[236px]" />
-      </Sub>
-      <Sub index={`${n}.5`} label="Ingen träff · ”kista”" className="lg:col-span-6">
-        <CommandPalette inline groups={groups} defaultQuery="kista" />
-      </Sub>
 
       <CommandPalette open={open} onOpenChange={setOpen} groups={groups} />
     </SpecSection>

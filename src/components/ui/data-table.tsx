@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
@@ -26,7 +27,7 @@ import { Icon } from "./icon";
 export type Column<T> = {
   key: string;
   header: string;
-  /** Tal: högerställt, tabulärt, monospace. Sorteras fallande först. */
+  /** Tal: högerställt, Geist med tabulära siffror. Sorteras fallande först. */
   numeric?: boolean;
   /** Värde att sortera på. Utan detta går kolumnen inte att sortera. */
   sortValue?: (row: T) => number | string;
@@ -219,7 +220,7 @@ function edgeClasses<T>(col: Column<T>, ci: number, ctx: CellCtx, z = "z-[1]"): 
       ctx.stickyFirst &&
       cn(
         // Avdelaren ritas som pseudoelement så att radlinjerna löper obrutna.
-        "sticky left-0 bg-[var(--dt-bg)] after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-line after:transition-opacity after:duration-[120ms] after:ease-instrument",
+        "sticky left-0 bg-[var(--dt-bg)] after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-line after:transition-opacity after:duration-fast after:ease-instrument",
         z,
         ctx.scrolledX ? "after:opacity-100" : "after:opacity-0",
       ),
@@ -240,7 +241,7 @@ function RowImpl<T>({ row, columns, ariaRowIndex, flagged, height, ctx }: RowPro
     <tr
       aria-rowindex={ariaRowIndex}
       style={ctx.fixed ? { height } : undefined}
-      className="group transition-colors duration-[120ms] ease-instrument hover:bg-hover"
+      className="group transition-colors duration-fast ease-instrument hover:bg-hover"
     >
       {columns.map((col, ci) => (
         <td
@@ -397,7 +398,7 @@ function ColumnMenu<T>({
                     if (!locked) onToggle(col.key);
                   }}
                   className={cn(
-                    "flex h-8 w-full items-center gap-2.5 px-2.5 text-left text-sm outline-offset-[-2px] transition-colors duration-[120ms] ease-instrument",
+                    "flex h-8 w-full items-center gap-2.5 px-2.5 text-left text-sm outline-offset-[-2px] transition-colors duration-fast ease-instrument",
                     locked ? "cursor-default text-subtle" : "text-fg hover:bg-hover focus:bg-hover",
                   )}
                 >
@@ -593,6 +594,12 @@ export function DataTable<T>({
   const minWidth = virtual
     ? visibleColumns.reduce((sum, c) => sum + (c.width ?? DEFAULT_WIDTH), 0)
     : undefined;
+  // Under md är hideOnMobile-kolumnerna dolda; de ska inte heller tvinga fram bredd.
+  const minWidthMobile = virtual
+    ? visibleColumns
+        .filter((c) => !c.hideOnMobile)
+        .reduce((sum, c) => sum + (c.width ?? DEFAULT_WIDTH), 0)
+    : undefined;
   const sortable = visibleColumns.some((c) => c.sortValue);
 
   const bodyRows: ReactNode[] = [];
@@ -699,9 +706,16 @@ export function DataTable<T>({
           aria-describedby={sortable ? hintId : undefined}
           className={cn(
             "w-full border-separate border-spacing-0 text-base",
-            virtual && "table-fixed",
+            virtual && "min-w-(--dt-min-m) table-fixed md:min-w-(--dt-min)",
           )}
-          style={minWidth ? { minWidth } : undefined}
+          style={
+            minWidth
+              ? ({
+                  "--dt-min": `${minWidth}px`,
+                  "--dt-min-m": `${minWidthMobile ?? minWidth}px`,
+                } as CSSProperties)
+              : undefined
+          }
         >
           <caption
             className={cn(showCaption && !virtual ? "label pb-3 text-left text-muted" : "sr-only")}
@@ -750,7 +764,8 @@ export function DataTable<T>({
                         type="button"
                         onClick={(e) => onHeaderClick(col, e)}
                         className={cn(
-                          "label group/sort inline-flex max-w-full items-center gap-1 rounded-xs align-middle transition-colors duration-[120ms] ease-instrument",
+                          // Träffytan 28 px hög utan att rubrikraden växer.
+                          "label group/sort -my-1.5 inline-flex max-w-full items-center gap-1 rounded-xs py-1.5 align-middle transition-colors duration-fast ease-instrument",
                           col.numeric && "flex-row-reverse",
                           active ? "text-fg" : "text-subtle hover:text-fg",
                         )}
@@ -767,7 +782,7 @@ export function DataTable<T>({
                           )}
                         />
                         {active && sort.length > 1 ? (
-                          <span className="tnum text-[10px] text-subtle" aria-hidden>
+                          <span className="tnum label text-subtle" aria-hidden>
                             {pos + 1}
                           </span>
                         ) : null}

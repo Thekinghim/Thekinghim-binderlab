@@ -22,8 +22,10 @@
  * där leverantörens försäljning = utbetalt + avgifter + återbetalningar. Försäljningsgapet
  * förklaras i ordning: dubbletter i vår import, (med specifikation) order för order: dubbel
  * utbetalning, beloppsavvikelse, tidszon, annan period, saknade order; (utan specifikation)
- * tidszon för order nära midnatt, överlappande perioder och till sist saknade order om
- * resten är exakt ett antal order à ett vanligt pris. Det som återstår är oförklarat.
+ * tidszon för order nära midnatt (bara om den minskar skillnaden, märkt 'inferred'),
+ * överlappande perioder och till sist saknade order om resten är exakt ett antal order à ett
+ * vanligt pris. Avgiftsavvikelse och rest som tillsammans ligger inom toleransen räknas som
+ * avrundning. Det som återstår är oförklarat.
  */
 
 import {
@@ -35,6 +37,7 @@ import {
   isIsoDate,
   monthOf,
   type IsoDate,
+  type IsoMonth,
   type Period,
   type Settings,
 } from "@/domain";
@@ -276,6 +279,7 @@ function finishDeviation(
     titleIds: allOrders.map((o) => o.titleId),
     machineIds: allOrders.flatMap((o) => (o.machineId === null ? [] : [o.machineId])),
     payoutReferences,
+    externalOrderIds: [...c.externalIds, ...allOrders.map((o) => o.externalId)],
     figures: [
       oreFigure("impactOre", "Påverkan på skillnaden", c.impactOre),
       countFigure("orders", "Antal order", orderCount),
@@ -617,31 +621,21 @@ export function reconcilePayouts(input: ReconciliationInput): ReconciliationResu
     } else {
       // --- Utan specifikation: tidszon, överlapp och härledda saknade order. ---
       if (providerTz !== null) {
-        for (const o of canonicalOwn) {
-          const pd = providerDate(o);
-          if (pd !== null && !inPeriod(pd, p.period)) {
-            const c = get("timezone-shift");
-            c.outOrders.push(o);
-            c.impactOre -= o.amountOre;
-            explainedGap -= o.amountOre;
-          }
-        }
-        // Order utanför perioden hos oss som leverantören räknar hit (högst två dygn bort).
-        const near = [
-          ...eachDay(addDays(p.period.start, -2), addDays(p.period.start, -1)),
-          ...eachDay(addDays(p.period.end, 1), addDays(p.period.end, 2)),
-        ];
-        for (const d of near) {
-          for (const o of ordersByDate.get(d) ?? []) {
-            if (isExtra(o)) continue;
-            const pd = providerDate(o);
-            if (pd !== null && inPeriod(pd, p.period)) {
-              const c = get("timezone-shift");
-              c.inOrders.push(o);
-              c.impactOre += o.amountOre;
-              explainedGap += o.amountOre;
-            }
-          }
+        const shift = timezoneCandidates(
+          p.period,
+          canonicalOwn,
+          ordersByDate,
+          isExtra,
+          providerDate,
+        );
+        const pick = chooseTimezoneShift(gap - explainedGap, shift.inOrders, shift.outOrders);
+        if (pick.inOrders.length > 0 || pick.outOrders.length > 0) {
+          // Utan specifikation är förskjutningen en tolkning av beloppen, inte belagd per order.
+          const c = get("timezone-shift", "inferred");
+          c.inOrders.push(...pick.inOrders);
+          c.outOrders.push(...pick.outOrders);
+          c.impactOre = sumAmounts(pick.inOrders) - sumAmounts(pick.outOrders);
+          explainedGap += c.impactOre;
         }
       }
       const overlapOrders = overlapDays.flatMap((d) => ordersByDate.get(d) ?? []);
@@ -662,16 +656,18 @@ export function reconcilePayouts(input: ReconciliationInput): ReconciliationResu
         })}) ingår redan i ${refs}. Försäljningen de dagarna, ${krExact(
           overlapSales,
         )}, väntades där; ${krExact(impact)} av skillnaden förklaras av att dagarna betalats två gånger.`;
-        c.figures.push(oreFigure("overlapSalesOre", "Försäljning på överlappande dagar", overlapSales));
+        c.figures.push(
+          oreFigure("overlapSalesOre", "Försäljning på överlappande dagar", overlapSales),
+        );
       }
     }
 
     // --- Rest: härledda saknade order, avrundning eller oförklarat. ---
     const residual = gap - explainedGap;
-    let roundingOre = 0;
-    if (residual !== 0 && Math.abs(residual) <= tolerance) {
-      roundingOre = residual;
-    } else if (residual !== 0) {
+    const rounding = splitRounding(collectors.get("fee")?.impactOre ?? 0, residual, tolerance);
+    if (rounding.feeIsRounding) collectors.delete("fee");
+    const roundingOre = rounding.roundingOre;
+    if (residual !== 0 && !rounding.residualIsRounding) {
       const inferred =
         lines === undefined ? inferOrderCount(residual, canonicalOwn, orders, maxInferred) : null;
       if (inferred !== null) {
@@ -684,7 +680,9 @@ export function reconcilePayouts(input: ReconciliationInput): ReconciliationResu
         if (kind === "missing-in-sales") {
           const emptyDays = ownDays.filter((d) => (ordersByDate.get(d) ?? []).length === 0);
           c.dates.push(...emptyDays);
-          c.figures.push(daysFigure("daysWithoutOrders", "Dagar utan importerade order", emptyDays.length));
+          c.figures.push(
+            daysFigure("daysWithoutOrders", "Dagar utan importerade order", emptyDays.length),
+          );
           c.title = `Troligen ${ordersText(inferred.count)} som saknas i importen`;
           c.explanation = `Leverantören betalade för ${krExact(residual)} mer försäljning än vi har. Det är exakt ${ordersText(
             inferred.count,
@@ -762,6 +760,89 @@ export function reconcilePayouts(input: ReconciliationInput): ReconciliationResu
   return summarize(results, uncovered, staleResolutions);
 }
 
+/**
+ * Order nära periodgränsen som leverantören (i sin tidszon) räknar till en annan period än vi:
+ * `outOrders` = våra order i perioden som hos leverantören har en kalenderdag utanför den,
+ * `inOrders` = order högst två dygn utanför perioden som hos leverantören hamnar i den.
+ * Dubbletter i vår import tas inte med.
+ */
+function timezoneCandidates(
+  period: Period,
+  periodOrders: readonly AnalyticsOrder[],
+  ordersByDate: ReadonlyMap<IsoDate, readonly AnalyticsOrder[]>,
+  isExtra: (o: AnalyticsOrder) => boolean,
+  providerDate: (o: AnalyticsOrder) => IsoDate | null,
+): { inOrders: AnalyticsOrder[]; outOrders: AnalyticsOrder[] } {
+  const outOrders = periodOrders.filter((o) => {
+    const pd = providerDate(o);
+    return pd !== null && !inPeriod(pd, period);
+  });
+  const near = [
+    ...eachDay(addDays(period.start, -2), addDays(period.start, -1)),
+    ...eachDay(addDays(period.end, 1), addDays(period.end, 2)),
+  ];
+  const inOrders: AnalyticsOrder[] = [];
+  for (const d of near) {
+    for (const o of ordersByDate.get(d) ?? []) {
+      if (isExtra(o)) continue;
+      const pd = providerDate(o);
+      if (pd !== null && inPeriod(pd, period)) inOrders.push(o);
+    }
+  }
+  return { inOrders, outOrders };
+}
+
+/**
+ * Väljer vilken tidszonsförskjutning som ska antas när det inte finns någon specifikation.
+ * Regel: förskjutningen antas bara om den minskar skillnaden. Alternativen är ingen, båda
+ * riktningarna, bara in och bara ut; det som ger minst kvarvarande skillnad (|rest|) väljs,
+ * och vid lika väljs det första i den ordningen. Stämmer utbetalningen redan (rest 0) antas
+ * alltså ingen förskjutning, och inget hittas på.
+ *
+ * @param remaining skillnaden i försäljning som återstår innan tidszonen räknas in (öre)
+ */
+export function chooseTimezoneShift<T extends { readonly amountOre: number }>(
+  remaining: number,
+  inOrders: readonly T[],
+  outOrders: readonly T[],
+): { inOrders: T[]; outOrders: T[] } {
+  const inSum = sumAmounts(inOrders);
+  const outSum = sumAmounts(outOrders);
+  const options: { inOrders: T[]; outOrders: T[]; rest: number }[] = [
+    { inOrders: [], outOrders: [], rest: remaining },
+    { inOrders: [...inOrders], outOrders: [...outOrders], rest: remaining - inSum + outSum },
+    { inOrders: [...inOrders], outOrders: [], rest: remaining - inSum },
+    { inOrders: [], outOrders: [...outOrders], rest: remaining + outSum },
+  ];
+  let best = options[0]!;
+  for (const o of options) if (Math.abs(o.rest) < Math.abs(best.rest)) best = o;
+  return { inOrders: best.inOrders, outOrders: best.outOrders };
+}
+
+/**
+ * Toleransen gäller hela skillnaden, inte bara resten: små avvikelser utan order (avgiften
+ * och den oförklarade resten) räknas som avrundning så länge deras summa ligger inom
+ * toleransen. Typfallet är att leverantören avrundar avgiften på totalen medan vi avrundar
+ * per order (1 öre). Regler:
+ * - resten räknas som avrundning om |rest| ≤ tolerans;
+ * - avgiftsavvikelsen räknas som avrundning om |avgift + (resten om den är avrundning)| ≤ tolerans.
+ * Order-avvikelser (saknade order, dubbletter, belopp, tidszon) visas alltid.
+ */
+export function splitRounding(
+  feeImpactOre: number,
+  residualOre: number,
+  toleranceOre: number,
+): { roundingOre: number; feeIsRounding: boolean; residualIsRounding: boolean } {
+  const residualIsRounding = residualOre !== 0 && Math.abs(residualOre) <= toleranceOre;
+  const residualPart = residualIsRounding ? residualOre : 0;
+  const feeIsRounding = feeImpactOre !== 0 && Math.abs(feeImpactOre + residualPart) <= toleranceOre;
+  return {
+    roundingOre: residualPart + (feeIsRounding ? feeImpactOre : 0),
+    feeIsRounding,
+    residualIsRounding,
+  };
+}
+
 /** Antal order à ett vanligt belopp som exakt motsvarar resten, eller `null`. */
 function inferOrderCount(
   residual: number,
@@ -771,11 +852,13 @@ function inferOrderCount(
 ): { count: number; amountOre: number } | null {
   const source = periodOrders.length > 0 ? periodOrders : allOrders;
   const freq = new Map<number, number>();
-  for (const o of source) if (o.amountOre > 0) freq.set(o.amountOre, (freq.get(o.amountOre) ?? 0) + 1);
+  for (const o of source)
+    if (o.amountOre > 0) freq.set(o.amountOre, (freq.get(o.amountOre) ?? 0) + 1);
   const candidates = [...freq.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0]);
   const abs = Math.abs(residual);
   for (const [amount] of candidates) {
-    if (abs % amount === 0 && abs / amount <= maxCount) return { count: abs / amount, amountOre: amount };
+    if (abs % amount === 0 && abs / amount <= maxCount)
+      return { count: abs / amount, amountOre: amount };
   }
   return null;
 }
@@ -909,7 +992,10 @@ function buildPayoutResult(
   let tail: string;
   switch (status) {
     case "matched":
-      tail = parts.roundingOre !== 0 ? `Stämmer (avrundning ${signedKrExact(parts.roundingOre)}).` : "Stämmer.";
+      tail =
+        parts.roundingOre !== 0
+          ? `Stämmer (avrundning ${signedKrExact(parts.roundingOre)}).`
+          : "Stämmer.";
       break;
     case "explained":
       tail = `Skillnaden ${signedKrExact(differenceOre)} beror på tidszonen och jämnas ut i grannperioden.`;
@@ -919,7 +1005,10 @@ function buildPayoutResult(
       break;
     case "deviation":
       tail = `Skillnad ${signedKrExact(differenceOre)}. Att utreda: ${open
-        .map((d) => `${d.title.charAt(0).toLocaleLowerCase("sv-SE")}${d.title.slice(1)} (${signedKrExact(d.impactOre)})`)
+        .map(
+          (d) =>
+            `${d.title.charAt(0).toLocaleLowerCase("sv-SE")}${d.title.slice(1)} (${signedKrExact(d.impactOre)})`,
+        )
         .join("; ")}.`;
       break;
   }
@@ -961,7 +1050,7 @@ function uncoveredSales(args: {
   ordersByDate: Map<IsoDate, AnalyticsOrder[]>;
   refundsByDate: Map<IsoDate, Refund[]>;
   feesFor: (orders: readonly AnalyticsOrder[]) => number;
-  coverage: Period | null;
+  coverage: Period | IsoMonth | null;
   resolutions: Map<string, DeviationResolution>;
   used: Set<DeviationResolution>;
 }): Deviation[] {
@@ -1047,7 +1136,8 @@ function summarize(
   else {
     const status: string[] = [];
     if (byStatus.matched > 0) status.push(`${byStatus.matched} stämmer`);
-    if (byStatus.explained > 0) status.push(`${byStatus.explained} skiljer bara på grund av tidszonen`);
+    if (byStatus.explained > 0)
+      status.push(`${byStatus.explained} skiljer bara på grund av tidszonen`);
     if (byStatus.deviation > 0) status.push(`${byStatus.deviation} har avvikelser att utreda`);
     if (byStatus.investigated > 0) status.push(`${byStatus.investigated} är utredda`);
     parts.push(
@@ -1063,7 +1153,9 @@ function summarize(
       0,
     );
     const days = openUncovered.reduce((s, d) => s + d.evidence.dates.length, 0);
-    parts.push(`Försäljning ${krExact(sales)} på ${plural(days, "dag", "dagar")} saknar utbetalning`);
+    parts.push(
+      `Försäljning ${krExact(sales)} på ${plural(days, "dag", "dagar")} saknar utbetalning`,
+    );
   }
   const allRefs = payouts.map((p) => p.reference);
   return {

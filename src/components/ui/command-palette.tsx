@@ -226,7 +226,7 @@ function Kbd({ children, className }: { children: ReactNode; className?: string 
   return (
     <kbd
       className={cn(
-        "inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-xs border border-line-strong px-1 font-mono text-[11px] leading-none text-muted",
+        "label inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-xs border border-line-strong px-1 leading-none tracking-normal text-muted",
         className,
       )}
     >
@@ -348,8 +348,10 @@ function PalettePanel({
         break;
       }
       case "Escape":
-        if (inline) {
+        // Samma beteende i båda lägena: första Esc rensar fältet, nästa stänger dialogen.
+        if (query || inline) {
           e.preventDefault();
+          e.stopPropagation();
           updateQuery("");
         }
         break;
@@ -365,7 +367,14 @@ function PalettePanel({
       aria-label={inline ? label : undefined}
     >
       {/* Sökfält */}
-      <div className="flex h-12 items-center gap-3 border-b border-line pr-2 pl-4">
+      <div
+        className={cn(
+          "flex h-12 items-center gap-3 border-b border-line pr-2 pl-4",
+          // Fältet saknar egen ring; i flödet markeras hela sökraden när den har fokus.
+          inline &&
+            "rounded-t-md focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-fg focus-within:outline-solid",
+        )}
+      >
         <Icon name="search" className="shrink-0 text-subtle" />
         <input
           ref={inputRef}
@@ -394,7 +403,7 @@ function PalettePanel({
               updateQuery("");
               inputRef.current?.focus();
             }}
-            className="label rounded-xs px-1.5 py-0.5 text-subtle transition-colors duration-[120ms] ease-instrument hover:bg-hover hover:text-fg"
+            className="label inline-flex h-7 items-center rounded-xs px-2 text-subtle transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg"
           >
             Rensa
           </button>
@@ -404,10 +413,10 @@ function PalettePanel({
             type="button"
             onClick={onRequestClose}
             aria-label="Stäng"
-            className="inline-flex h-7 items-center rounded-sm px-1.5 text-muted transition-colors duration-[120ms] ease-instrument hover:bg-hover hover:text-fg"
+            className="inline-flex h-7 items-center rounded-sm px-1.5 text-muted transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg"
           >
             <span className="hidden sm:inline-flex">
-              <Kbd>esc</Kbd>
+              <Kbd>Esc</Kbd>
             </span>
             <Icon name="close" className="sm:hidden" />
           </button>
@@ -465,7 +474,7 @@ function PalettePanel({
                     <span
                       aria-hidden
                       className={cn(
-                        "absolute top-1/2 left-2 size-1 -translate-y-1/2 bg-fg transition-opacity duration-[120ms] ease-instrument",
+                        "absolute top-1/2 left-2 size-1 -translate-y-1/2 bg-fg transition-opacity duration-fast ease-instrument",
                         isActive ? "opacity-100" : "opacity-0",
                       )}
                     />
@@ -527,7 +536,7 @@ function PalettePanel({
                     updateQuery(s);
                     inputRef.current?.focus();
                   }}
-                  className="h-6 rounded-xs border border-line-strong px-2 font-mono text-xs text-muted transition-colors duration-[120ms] ease-instrument hover:border-line-control hover:bg-hover hover:text-fg"
+                  className="h-7 rounded-xs border border-line-strong px-2 font-mono text-xs text-muted transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover hover:text-fg"
                 >
                   {s}
                 </button>
@@ -545,8 +554,8 @@ function PalettePanel({
           <span className="mr-2">välj</span>
           <Kbd>↵</Kbd>
           <span className="mr-2">öppna</span>
-          <Kbd>esc</Kbd>
-          <span>{inline ? "rensa" : "stäng"}</span>
+          <Kbd>Esc</Kbd>
+          <span>{inline || query ? "rensa" : "stäng"}</span>
         </span>
         <span className="tnum ml-auto" role="status" aria-live="polite">
           {trimmed ? `${count} av ${total}` : `${total} kommandon`}

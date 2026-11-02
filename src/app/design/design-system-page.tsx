@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense, useMemo, type ReactNode } from "react";
+import { Fragment, Suspense, useMemo, type ReactNode } from "react";
 import { SYMBOL_PARTS } from "@/components/brand/wordmark";
 import { AppShell } from "@/components/shell/app-shell";
 import { parsePeriod, parseScope } from "@/components/shell/period-state";
@@ -20,11 +20,11 @@ import {
   todos,
 } from "./sample-data";
 import { BrandSection } from "./sections/brand";
-import { ChartsSection } from "./sections/charts";
+import { CHART_COUNT, ChartsSection } from "./sections/charts";
 import { COMMAND_COUNT, CommandSection } from "./sections/command";
 import { ControlsSection, iconNames } from "./sections/controls";
 import { EmailSection } from "./sections/email";
-import { FORMAT_EXAMPLE_COUNT, FormatSection } from "./sections/format";
+import { FORMAT_RULE_COUNT, FormatSection } from "./sections/format";
 import { ColorSection, MeasureSection, TypeSection } from "./sections/foundations";
 import { MetricsSection } from "./sections/metrics";
 import { PrintSection } from "./sections/print";
@@ -32,7 +32,7 @@ import { STATE_COUNT, StatesSection } from "./sections/states";
 import { colorTokenCount, durations, typeScale } from "./token-specimens";
 import type { ThemeTokens } from "./tokens";
 
-type Counts = { components: number; charts: number };
+type Counts = { components: number };
 
 export function DesignSystemPage({ tokens, counts }: { tokens: ThemeTokens; counts: Counts }) {
   return (
@@ -71,12 +71,38 @@ function Specimen({ tokens, counts }: { tokens: ThemeTokens; counts: Counts }) {
     return buildModel(period, parseScope(sp), fallback);
   }, [sp]);
 
+  // Ordning för en genomgång: siffrorna först (nyckeltal, diagram, tillstånd,
+  // rapport och mejl), sedan grunderna och sist ordmärket.
   const sections: Array<IndexEntry & { render: (i: number) => ReactNode }> = [
     {
-      id: "varumarke",
-      name: "Ordmärke",
-      count: `${Object.keys(SYMBOL_PARTS).length} delar`,
-      render: (i) => <BrandSection index={i} />,
+      id: "nyckeltal",
+      name: "Nyckeltal och tabeller",
+      count: `${formatInt(model.t.orders)} ordrar`,
+      render: (i) => <MetricsSection index={i} model={model} />,
+    },
+    {
+      id: "diagram",
+      name: "Diagram",
+      count: `${CHART_COUNT} diagram`,
+      render: (i) => <ChartsSection index={i} model={model} />,
+    },
+    {
+      id: "tillstand",
+      name: "Tillstånd",
+      count: `${STATE_COUNT} lägen`,
+      render: (i) => <StatesSection index={i} model={model} />,
+    },
+    {
+      id: "utskrift",
+      name: "Utskrift",
+      count: `${EXAMPLE_PAGE_COUNT} sidor A4`,
+      render: (i) => <PrintSection index={i} />,
+    },
+    {
+      id: "e-post",
+      name: "E-post",
+      count: `${RECIPIENT_KINDS.length} mottagare`,
+      render: (i) => <EmailSection index={i} />,
     },
     {
       id: "farg",
@@ -103,24 +129,6 @@ function Specimen({ tokens, counts }: { tokens: ThemeTokens; counts: Counts }) {
       render: (i) => <ControlsSection index={i} />,
     },
     {
-      id: "nyckeltal",
-      name: "Nyckeltal och tabeller",
-      count: `${formatInt(model.t.orders)} ordrar`,
-      render: (i) => <MetricsSection index={i} model={model} />,
-    },
-    {
-      id: "diagram",
-      name: "Diagram",
-      count: `${counts.charts} typer`,
-      render: (i) => <ChartsSection index={i} model={model} />,
-    },
-    {
-      id: "tillstand",
-      name: "Tillstånd",
-      count: `${STATE_COUNT} lägen`,
-      render: (i) => <StatesSection index={i} model={model} />,
-    },
-    {
       id: "kommandopalett",
       name: "Kommandopalett",
       count: `${COMMAND_COUNT} kommandon`,
@@ -129,20 +137,14 @@ function Specimen({ tokens, counts }: { tokens: ThemeTokens; counts: Counts }) {
     {
       id: "formatering",
       name: "Formatering",
-      count: `${FORMAT_EXAMPLE_COUNT} exempel`,
+      count: `${FORMAT_RULE_COUNT} regler`,
       render: (i) => <FormatSection index={i} />,
     },
     {
-      id: "utskrift",
-      name: "Utskrift",
-      count: `${EXAMPLE_PAGE_COUNT} sidor A4`,
-      render: (i) => <PrintSection index={i} />,
-    },
-    {
-      id: "e-post",
-      name: "E-post",
-      count: `${RECIPIENT_KINDS.length} mottagare`,
-      render: (i) => <EmailSection index={i} />,
+      id: "varumarke",
+      name: "Ordmärke",
+      count: `${Object.keys(SYMBOL_PARTS).length} delar`,
+      render: (i) => <BrandSection index={i} />,
     },
   ];
 
@@ -169,9 +171,14 @@ function Intro({ entries }: { entries: ReadonlyArray<IndexEntry> }) {
           Designsystem · uppdaterad {formatDate(REF_NOW, { year: "always" })}
         </p>
         <h1 className="text-3xl font-medium text-balance hyphens-none md:text-display">
-          Binderlab designsystem.{" "}
+          Binderlab designsystem. {/* Den grå delen bryts bara mellan leden, aldrig inuti ett. */}
           <span className="text-subtle">
-            1{NBSP}signalfärg, 2{NBSP}typsnitt, 3{NBSP}radier.
+            {["1 signalfärg,", "2 typsnitt,", "3 radier."].map((t, i) => (
+              <Fragment key={t}>
+                {i > 0 ? " " : null}
+                <span className="whitespace-nowrap">{t.replace(" ", NBSP)}</span>
+              </Fragment>
+            ))}
           </span>
         </h1>
         <p className="max-w-xl text-md text-muted">
@@ -211,12 +218,11 @@ function Colophon({ counts }: { counts: Counts }) {
     `uppdaterad ${formatDate(REF_NOW, { year: "always" })}`,
     `${colorTokenCount}${NBSP}färgtokens`,
     `${counts.components}${NBSP}komponenter`,
-    `${counts.charts}${NBSP}diagram`,
+    `${CHART_COUNT}${NBSP}diagram`,
   ];
   return (
-    <footer className="flex flex-col gap-3 border-t border-line py-8 sm:flex-row sm:items-baseline sm:justify-between">
+    <footer className="border-t border-line py-8">
       <p className="meta tnum text-subtle">{parts.join(" · ")}</p>
-      <p className="meta text-subtle">Regler och ordlista: docs/design.md</p>
     </footer>
   );
 }

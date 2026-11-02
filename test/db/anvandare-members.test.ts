@@ -18,6 +18,11 @@ import {
   removeMemberFlow,
   revokeInvitationFlow,
 } from "../../src/app/(app)/installningar/anvandare/members-data";
+import {
+  OWNER_INVITE_REASON,
+  inviteErrorFor,
+} from "../../src/app/(app)/installningar/anvandare/model";
+import { devAccountExists } from "../../src/app/inbjudan/[token]/account";
 import { getServiceDb } from "../../src/db/client";
 import type { MemberRole } from "../../src/db/schema";
 import { AuthorizationError, getRoleFor } from "../../src/server/access";
@@ -25,6 +30,7 @@ import { DevAuthProvider } from "../../src/server/auth/dev-provider";
 import { acceptInviteFlow, createInviteFlow, loginFlow } from "../../src/server/auth/flows";
 import { hashPassword } from "../../src/server/auth/password";
 import { MemoryCookieJar } from "../../src/server/auth/types";
+import { dbErrorMessage } from "../../src/server/errors";
 import { createRateLimiter } from "../../src/server/rate-limit";
 import {
   asAnon,
@@ -462,5 +468,38 @@ describe("bjud in delägaren som läsare och logga in som hen", () => {
     );
     expect(again).toMatchObject({ ok: true });
     expect(await roleOf(f.orgId, partner)).toBe("viewer");
+  });
+  it("admin som bjuder in en ägare nekas, och felet förklaras som ägarregeln", async () => {
+    const f = await orgWith(["admin"]);
+    const result = await createInviteFlow(
+      { provider: provider(), user: session(f.admin!), baseUrl: "http://localhost:3200" },
+      {
+        organizationId: f.orgId,
+        email: `ny-agare-${uniqueSuffix()}@test.binderlab.se`,
+        role: "owner",
+      },
+    );
+    expect(result.ok).toBe(false);
+    const generic = dbErrorMessage({ code: "42501", severity: "ERROR", message: "" });
+    expect(inviteErrorFor("owner", result.error!, generic)).toBe(OWNER_INVITE_REASON);
+    const pending = await one<{ n: number }>(
+      db(),
+      sql`select count(*)::int as n from public.invitations where organization_id = ${f.orgId}`,
+    );
+    expect(pending.n).toBe(0);
+  });
+
+  it("devAccountExists: bara ett konto med lösenord räknas, oavsett versaler", async () => {
+    const email = `konto-${uniqueSuffix()}@test.binderlab.se`;
+    expect(await devAccountExists(email)).toBe(false);
+    const user = await createUser(email);
+    expect(await devAccountExists(email)).toBe(false);
+    const encrypted = await hashPassword(PASSWORD);
+    await asPostgres((tx) =>
+      tx.execute(
+        sql`update auth.users set encrypted_password = ${encrypted} where id = ${user.id}::uuid`,
+      ),
+    );
+    expect(await devAccountExists(email.toUpperCase())).toBe(true);
   });
 });

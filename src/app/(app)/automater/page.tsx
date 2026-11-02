@@ -1,7 +1,105 @@
-import { placeholderMetadata, RoutePlaceholder } from "../placeholder";
+import type { Metadata } from "next";
 
-export const metadata = placeholderMetadata("automater");
+import { SectionHeader } from "@/components/ui/section-header";
+import { StateMessage } from "@/components/ui/state-message";
+import { formatInt, NBSP } from "@/lib/format";
 
-export default function Page() {
-  return <RoutePlaceholder id="automater" />;
+import { MachineKpis } from "./_components/kpis";
+import { AddMachineButton } from "./_components/machine-dialogs";
+import { MachineTable } from "./_components/machine-table";
+import { loadOverview } from "./_lib/data";
+import { nextMachineCode, overviewKpis, spreadText } from "./_lib/model";
+
+export const metadata: Metadata = { title: "Automater" };
+
+/**
+ * Automater: alla automater med periodens intäkt, vinst, status, butik och lager.
+ * Ägare, admin och läsare (påfyllaren skickas vidare av requireRoute). Ägare och admin
+ * lägger till automater här; redigering, flytt och avveckling görs på automatens sida.
+ */
+export default async function AutomaterPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const data = await loadOverview(await searchParams);
+  const { ctx, overview, period } = data;
+  const { totals, rows, headline } = overview;
+  const active = rows.filter((r) => r.lifecycle === "active");
+  const decommissioned = rows.filter((r) => r.lifecycle === "decommissioned").length;
+  const planned = rows.filter((r) => r.lifecycle === "planned").length;
+  const comparison = period.comparisonLabel ? `Jämfört med ${period.comparisonLabel}` : undefined;
+  const daysLabel = `${formatInt(period.days)}${NBSP}d`;
+
+  return (
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
+      <SectionHeader
+        as="h1"
+        size="xl"
+        eyebrow={data.scopeLabel ? `Automater · ${data.scopeLabel}` : "Automater"}
+        title={headline.title}
+        aside={headline.aside}
+        meta={[
+          { label: "Period", value: period.rangeLabel },
+          { label: "I drift", value: formatInt(totals.activeMachines) },
+          ...(planned > 0 ? [{ label: "Planerade", value: formatInt(planned) }] : []),
+          ...(decommissioned > 0
+            ? [{ label: "Avvecklade", value: formatInt(decommissioned) }]
+            : []),
+          { label: "Kräver åtgärd", value: formatInt(overview.flagged) },
+        ]}
+        actions={
+          ctx.canEdit ? (
+            <AddMachineButton
+              stores={data.stores}
+              today={ctx.today}
+              suggestedCode={nextMachineCode(rows.map((r) => r.code))}
+            />
+          ) : undefined
+        }
+      />
+
+      {rows.length === 0 ? (
+        <StateMessage
+          kind="empty"
+          message="Det finns inga automater i organisationen ännu."
+          detail={
+            ctx.canEdit
+              ? "Lägg till den första med knappen ovan. Order från Awish kopplas till den under Datakällor."
+              : "Ägare och admin lägger till automater."
+          }
+        />
+      ) : (
+        <>
+          {active.length > 0 ? (
+            <MachineKpis
+              items={overviewKpis(totals)}
+              label={`Nyckeltal · ${daysLabel}`}
+              comparison={comparison}
+            />
+          ) : null}
+
+          <section aria-labelledby="alla-automater" className="flex flex-col gap-6">
+            <SectionHeader
+              id="alla-automater"
+              index={1}
+              eyebrow={`Per automat · ${daysLabel}`}
+              title={
+                active.length === 0
+                  ? "Ingen automat i drift."
+                  : `${formatInt(active.length)} ${active.length === 1 ? "automat" : "automater"} i drift.`
+              }
+              aside={spreadText(rows)}
+            />
+            <MachineTable
+              rows={rows}
+              timeZone={ctx.timeZone}
+              now={ctx.now}
+              caption={`Automater, intäkt och vinst ${period.rangeLabel}`}
+            />
+          </section>
+        </>
+      )}
+    </div>
+  );
 }

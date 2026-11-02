@@ -78,6 +78,16 @@ export interface MemberPermissions {
 
 export const LAST_OWNER_REASON = "Sista ägaren. Gör någon annan till ägare först.";
 export const OWNER_ONLY_REASON = "Bara en ägare kan ändra en ägare.";
+export const OWNER_INVITE_REASON = "Bara en ägare kan bjuda in en ägare.";
+
+/**
+ * Felet efter en misslyckad inbjudan. En admin som bjuder in en ägare stoppas
+ * av create_invitation med det allmänna behörighetsfelet (42501); rollkontrollen
+ * för admin har redan passerat, så felet gäller ägarrollen och förklaras så.
+ */
+export function inviteErrorFor(role: MemberRole, error: string, genericForbidden: string): string {
+  return role === "owner" && error === genericForbidden ? OWNER_INVITE_REASON : error;
+}
 
 /**
  * Vad `actor` får göra med `member`. Sista ägaren kan varken byta roll eller
@@ -139,4 +149,26 @@ export function roleMeta(members: readonly Pick<MemberRow, "role">[]) {
 export function memberName(member: Pick<MemberRow, "displayName" | "email">): string {
   const name = member.displayName?.trim();
   return name ? name : (member.email.split("@")[0] ?? member.email);
+}
+
+/** Avslutar med punkt, utan att dubbla den efter en förkortning som "2 nov.". */
+function sentence(text: string): string {
+  return text.endsWith(".") ? text : `${text}.`;
+}
+
+/**
+ * Den grå delen av rubriken "Med tillgång nu.": den senast tillagda, så att
+ * sektionen säger något annat än sidans rubrik (som redan har antalet).
+ */
+export function membersAside(latest: { name: string; date: string } | null): string {
+  return latest
+    ? sentence(`Senast tillagd: ${latest.name}, ${latest.date}`)
+    : "Ingen har tillgång ännu.";
+}
+
+/** Den grå delen av "Väntar på svar.": när första länken går ut, annars regeln för länkar. */
+export function invitationsAside(firstExpires: string | null): string {
+  return firstExpires
+    ? sentence(`Första länken går ut ${firstExpires}`)
+    : "En länk gäller i 7 dagar och kan användas en gång.";
 }

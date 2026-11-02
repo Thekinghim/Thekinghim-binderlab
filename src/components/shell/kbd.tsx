@@ -12,7 +12,7 @@ export function Kbd({ children, className }: { children: ReactNode; className?: 
   return (
     <kbd
       className={cn(
-        "label inline-flex h-4 min-w-4 items-center justify-center rounded-xs border border-current/25 px-1 tracking-normal text-current/80",
+        "label inline-flex h-4 min-w-4 items-center justify-center rounded-xs border border-current/25 px-1 tracking-normal text-current",
         className,
       )}
     >

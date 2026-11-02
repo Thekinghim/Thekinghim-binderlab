@@ -85,6 +85,8 @@ export const totals = {
 };
 
 export const revenueExVat = totals.revenue;
+/** Provisionen räknas på intäkten med inköpspris (docs/berakningar.md): utan Black Bolt. */
+export const commissionBase = oct.pricedRevenue / 100;
 /** Butiksersättning: provision på intäkten plus månadshyran. */
 export const commission = oct.commission / 100;
 export const rent = (oct.commission + oct.rent) / 100;

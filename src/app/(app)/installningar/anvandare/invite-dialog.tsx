@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition, type FormEvent } from "react";
+import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 
 import type { MemberRole } from "@/db/schema";
 import { Button } from "@/components/ui/button";
@@ -31,13 +31,26 @@ export function InviteDialog({
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<MemberRole>(roles.includes("viewer") ? "viewer" : roles[0]!);
+  const defaultRole: MemberRole = roles.includes("viewer") ? "viewer" : roles[0]!;
+  const [role, setRole] = useState<MemberRole>(defaultRole);
   const [emailError, setEmailError] = useState<string>();
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
+  const emailRef = useRef<HTMLInputElement>(null);
 
+  // showModal() flyttar fokus till första fokuserbara elementet (stängknappen)
+  // och skriver över autoFocus. Fältet får fokus när dialogen väl är öppen.
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => emailRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
+
+  /** Stänger och nollställer: nästa inbjudan börjar alltid som läsare med tomt fält. */
   const close = () => {
     setOpen(false);
+    setEmail("");
+    setRole(defaultRole);
     setEmailError(undefined);
     setError(undefined);
   };
@@ -64,7 +77,6 @@ export function InviteDialog({
           : `${ROLE_LABEL[role]}. Länken gäller i 7 dagar.`,
         tone: "ok",
       });
-      setEmail("");
       close();
       router.refresh();
     });
@@ -94,7 +106,7 @@ export function InviteDialog({
             onChange={(e) => setEmail(e.target.value)}
             error={emailError}
             required
-            autoFocus
+            ref={emailRef}
           />
           <RoleChoice roles={roles} value={role} onChange={setRole} />
           <FormError message={error} />

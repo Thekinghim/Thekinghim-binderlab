@@ -23,6 +23,4 @@ export const MAGIC_TTL_SECONDS = 60 * 60;
 /** Felkoder i ?fel= (t.ex. från /logga-in/bekrafta) → svenska meddelanden. */
 export const LOGIN_NOTICES: Record<string, string> = {
   lank: "Länken har gått ut eller redan använts. Begär en ny.",
-  utloggad: "Du är utloggad.",
-  session: "Sessionen har gått ut. Logga in igen.",
 };

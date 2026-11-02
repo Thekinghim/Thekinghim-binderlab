@@ -1,0 +1,507 @@
+"use client";
+
+import Link from "next/link";
+import { useId, useRef, useState, useTransition, type FormEvent } from "react";
+
+import { FormError } from "@/app/logga-in/form-error";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/field";
+import { Icon } from "@/components/ui/icon";
+import { Modal } from "@/components/ui/modal";
+import { SectionHeader } from "@/components/ui/section-header";
+import { StatusTag } from "@/components/ui/status-tag";
+import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/cn";
+import { formatInt, NBSP } from "@/lib/format";
+
+import { dismissTodo, mergeTitles, registerRefill, undoDismissTodo } from "../actions";
+import type {
+  GroupView,
+  LinkActionView,
+  MergeActionView,
+  RefillActionView,
+  TodoView,
+} from "../_lib/model";
+
+/** Länk som ser ut som en knapp (sekundär eller ghost, liten). */
+const linkButton =
+  "inline-flex h-7 items-center justify-center gap-2 rounded-sm border px-2.5 text-sm font-medium whitespace-nowrap transition-colors duration-fast ease-instrument";
+const linkVariant = {
+  secondary: "border-line-strong bg-surface text-fg hover:border-line-control hover:bg-hover",
+  ghost: "border-transparent text-muted hover:bg-hover hover:text-fg",
+} as const;
+
+function ActionLink({
+  action,
+  variant = "secondary",
+}: {
+  action: LinkActionView;
+  variant?: keyof typeof linkVariant;
+}) {
+  return (
+    <Link href={action.href} className={cn(linkButton, linkVariant[variant])}>
+      <span>{action.label}</span>
+      <Icon name="chevronRight" className="-mr-0.5 shrink-0" />
+    </Link>
+  );
+}
+
+function rowId(key: string): string {
+  return `punkt-${key.replace(/[^a-zA-Z0-9-]/g, "-")}`;
+}
+
+/**
+ * Listan i Att göra: en sektion per brådskenivå, punkterna i den ordning reglerna
+ * sorterat dem. Bocka av döljer punkten direkt (med "Ångra" i notisen); fokus flyttas
+ * till nästa punkt så att tangentbordet inte tappar platsen.
+ */
+export function TodoBoard({ groups, canDismiss }: { groups: GroupView[]; canDismiss: boolean }) {
+  const toast = useToast();
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+  const [, startTransition] = useTransition();
+  const all = groups.flatMap((g) => g.items);
+
+  const focusAfter = (key: string) => {
+    const visible = all.filter((t) => !hidden.has(t.key));
+    const i = visible.findIndex((t) => t.key === key);
+    const next = visible[i + 1] ?? visible[i - 1];
+    requestAnimationFrame(() => {
+      const el = next ? document.getElementById(rowId(next.key)) : document.getElementById("main");
+      if (el && !next && !el.hasAttribute("tabindex")) el.setAttribute("tabindex", "-1");
+      el?.focus();
+    });
+  };
+
+  const dismiss = (item: TodoView) => {
+    focusAfter(item.key);
+    setHidden((prev) => new Set(prev).add(item.key));
+    startTransition(async () => {
+      const result = await dismissTodo({ key: item.key, fingerprint: item.fingerprint });
+      if (!result.ok) {
+        setHidden((prev) => {
+          const next = new Set(prev);
+          next.delete(item.key);
+          return next;
+        });
+        toast({
+          title: "Punkten kunde inte bockas av",
+          description: result.error,
+          tone: "critical",
+        });
+        return;
+      }
+      toast({
+        title: "Avbockad",
+        description: `${item.title} Den kommer tillbaka om läget ändras.`,
+        tone: "ok",
+        action: {
+          label: "Ångra",
+          onClick: () => {
+            startTransition(async () => {
+              const undo = await undoDismissTodo({ key: item.key });
+              if (!undo.ok) {
+                toast({ title: "Kunde inte ångra", description: undo.error, tone: "critical" });
+                return;
+              }
+              setHidden((prev) => {
+                const next = new Set(prev);
+                next.delete(item.key);
+                return next;
+              });
+            });
+          },
+        },
+      });
+    });
+  };
+
+  return (
+    <div className="flex flex-col">
+      {groups.map((g) => {
+        const items = g.items.filter((t) => !hidden.has(t.key));
+        if (items.length === 0) return null;
+        return (
+          <section
+            key={g.level}
+            aria-labelledby={`${g.id}-rubrik`}
+            className="scroll-mt-28 border-t border-line pt-10 pb-12 md:pt-12"
+          >
+            <SectionHeader
+              id={`${g.id}-rubrik`}
+              index={g.index}
+              eyebrow={g.eyebrow}
+              title={g.title}
+              aside={g.aside}
+              meta={[{ label: "Punkter", value: formatInt(items.length) }]}
+            />
+            <ol className="mt-8 flex flex-col md:mt-10">
+              {items.map((item) => (
+                <TodoRow
+                  key={item.key}
+                  item={item}
+                  canDismiss={canDismiss}
+                  onDismiss={() => dismiss(item)}
+                />
+              ))}
+            </ol>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function TodoRow({
+  item,
+  canDismiss,
+  onDismiss,
+}: {
+  item: TodoView;
+  canDismiss: boolean;
+  onDismiss: () => void;
+}) {
+  const titleId = useId();
+  return (
+    <li
+      id={rowId(item.key)}
+      tabIndex={-1}
+      aria-labelledby={titleId}
+      className="grid min-w-0 grid-cols-1 gap-x-8 gap-y-4 border-t border-line py-5 outline-offset-2 first:border-t-0 lg:grid-cols-12"
+    >
+      <div className="flex min-w-0 flex-col gap-2 lg:col-span-6">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <StatusTag status={item.status}>{item.statusText}</StatusTag>
+          <span className="label text-subtle">{item.eyebrow}</span>
+        </div>
+        <h3 id={titleId} className="text-md font-medium text-balance hyphens-none text-fg">
+          {item.title}
+        </h3>
+        <p className="max-w-2xl text-sm text-muted">{item.detail}</p>
+        <details className="group mt-1 max-w-2xl">
+          <summary className="meta inline-flex cursor-pointer list-none items-center gap-1 rounded-xs text-subtle hover:text-fg [&::-webkit-details-marker]:hidden">
+            <Icon
+              name="chevronRight"
+              size={12}
+              className="shrink-0 transition-transform duration-fast group-open:rotate-90"
+            />
+            Underlag
+          </summary>
+          <div className="mt-3 flex flex-col gap-3 border-t border-line pt-3">
+            <p className="text-sm text-muted">{item.rule}</p>
+            {item.evidence.length > 0 ? (
+              <dl className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
+                {item.evidence.map((f) => (
+                  <div
+                    key={f.label}
+                    className="flex items-baseline justify-between gap-4 border-b border-line py-1.5"
+                  >
+                    <dt className="text-sm text-muted">{f.label}</dt>
+                    <dd className="tnum text-sm text-fg">{f.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+          </div>
+        </details>
+      </div>
+
+      {item.figures.length > 0 ? (
+        <dl className="flex min-w-0 flex-wrap gap-x-6 gap-y-2 lg:col-span-3 lg:flex-col lg:gap-y-1.5">
+          {item.figures.map((f) => (
+            <div
+              key={f.label}
+              className="flex min-w-0 flex-col gap-0.5 lg:flex-row lg:items-baseline lg:justify-between lg:gap-4"
+            >
+              <dt className="label text-subtle">{f.label}</dt>
+              <dd className="tnum text-base text-fg">{f.value}</dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <div className="hidden lg:col-span-3 lg:block" />
+      )}
+
+      <div className="flex flex-wrap items-start gap-2 lg:col-span-3 lg:flex-col lg:items-end">
+        {item.action?.kind === "register-refill" ? (
+          <RefillDialog action={item.action} />
+        ) : item.action?.kind === "merge-titles" ? (
+          <MergeDialog action={item.action} />
+        ) : item.action?.kind === "link" ? (
+          <ActionLink action={item.action} />
+        ) : null}
+        <div className="flex flex-wrap gap-2 lg:justify-end">
+          {item.link ? <ActionLink action={item.link} variant="ghost" /> : null}
+          {canDismiss ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              iconLeft="check"
+              onClick={onDismiss}
+              aria-label={`Bocka av: ${item.title}`}
+            >
+              Bocka av
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Registrera påfyllning
+// ---------------------------------------------------------------------------
+
+function RefillDialog({ action }: { action: RefillActionView }) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [quantity, setQuantity] = useState(String(action.suggested));
+  const hasWarehouse = action.warehouseOnHand !== null;
+  const [fromWarehouse, setFromWarehouse] = useState(
+    hasWarehouse && (action.warehouseOnHand ?? 0) > 0,
+  );
+  const [quantityError, setQuantityError] = useState<string>();
+  const [error, setError] = useState<string>();
+  const [pending, startTransition] = useTransition();
+  const formId = useId();
+  const warehouseId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const close = () => {
+    setOpen(false);
+    setQuantityError(undefined);
+    setError(undefined);
+  };
+
+  const submit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const n = Number(quantity.trim());
+    if (!Number.isInteger(n) || n < 1 || n > 10_000) {
+      setQuantityError("Ange antal pack som ett heltal, minst 1.");
+      inputRef.current?.focus();
+      return;
+    }
+    if (fromWarehouse && action.warehouseOnHand !== null && n > action.warehouseOnHand) {
+      setQuantityError(
+        `Centrallagret har bara ${formatInt(action.warehouseOnHand)}${NBSP}pack. Minska antalet eller bocka ur centrallagret.`,
+      );
+      inputRef.current?.focus();
+      return;
+    }
+    setQuantityError(undefined);
+    setError(undefined);
+    startTransition(async () => {
+      const result = await registerRefill({
+        machineId: action.machineId,
+        titleId: action.titleId,
+        quantity: n,
+        fromWarehouse,
+      });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      toast({
+        title: "Påfyllning registrerad",
+        description: `${formatInt(n)}${NBSP}pack ${action.titleName} i ${action.machineName}.`,
+        tone: "ok",
+      });
+      close();
+    });
+  };
+
+  const after = Number.isInteger(Number(quantity)) ? action.onHand + Number(quantity) : null;
+  const capped =
+    action.unitsInWindow !== null && action.suggested < action.unitsInWindow - action.onHand;
+
+  return (
+    <>
+      <Button size="sm" variant="secondary" iconLeft="plus" onClick={() => setOpen(true)}>
+        {action.label}
+      </Button>
+      <Modal
+        open={open}
+        onClose={close}
+        size="sm"
+        eyebrow={action.machineCode ? `Påfyllning / ${action.machineCode}` : "Påfyllning"}
+        title={`Fyll på ${action.titleName}`}
+        description={`${action.machineName}. ${formatInt(action.onHand)}${NBSP}pack i automaten nu.`}
+      >
+        <form id={formId} onSubmit={submit} noValidate className="flex flex-col gap-5">
+          <Input
+            ref={inputRef}
+            label="Antal pack"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={10_000}
+            step={1}
+            suffix="pack"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            error={quantityError}
+            hint={
+              action.unitsInWindow !== null && action.windowDays !== null
+                ? `Sålt de senaste ${formatInt(action.windowDays)} dagarna: ${formatInt(action.unitsInWindow)}${NBSP}pack.${capped ? " Förslaget är begränsat av centrallagret." : ""}${after !== null && after > 0 ? ` Efter påfyllningen: ${formatInt(after)}${NBSP}pack i automaten.` : ""}`
+                : undefined
+            }
+            required
+            autoFocus
+          />
+          <label
+            htmlFor={warehouseId}
+            className={cn(
+              "flex items-start gap-3 rounded-sm border border-line-control px-3 py-2.5",
+              hasWarehouse ? "cursor-pointer hover:bg-hover" : "cursor-not-allowed border-dashed",
+            )}
+          >
+            <input
+              id={warehouseId}
+              type="checkbox"
+              checked={fromWarehouse}
+              disabled={!hasWarehouse}
+              onChange={(e) => setFromWarehouse(e.target.checked)}
+              className="mt-0.5 size-4 shrink-0 accent-[var(--bl-fg)]"
+            />
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-base text-fg">Ta packen från centrallagret</span>
+              <span className="text-sm text-muted">
+                {hasWarehouse
+                  ? `${formatInt(action.warehouseOnHand ?? 0)}${NBSP}pack ${action.titleName} i centrallagret. Lika många dras därifrån.`
+                  : "Organisationen har inget centrallager."}
+              </span>
+            </span>
+          </label>
+          <FormError message={error} />
+          <div className="flex flex-col-reverse gap-2 border-t border-line pt-4 sm:flex-row sm:justify-end">
+            <Button type="button" onClick={close}>
+              Avbryt
+            </Button>
+            <Button type="submit" variant="primary" loading={pending}>
+              Registrera påfyllning
+            </Button>
+          </div>
+        </form>
+      </Modal>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Slå ihop titlar
+// ---------------------------------------------------------------------------
+
+function MergeDialog({ action }: { action: MergeActionView }) {
+  const toast = useToast();
+  const [open, setOpen] = useState(false);
+  const [keep, setKeep] = useState<"into" | "from">("into");
+  const [error, setError] = useState<string>();
+  const [pending, startTransition] = useTransition();
+  const name = useId();
+
+  const kept = keep === "into" ? action.into : action.from;
+  const merged = keep === "into" ? action.from : action.into;
+
+  const close = () => {
+    setOpen(false);
+    setError(undefined);
+  };
+
+  const submit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(undefined);
+    startTransition(async () => {
+      const result = await mergeTitles({ fromTitleId: merged.id, intoTitleId: kept.id });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      const moved = result.data?.moved ?? 0;
+      toast({
+        title: "Titlarna är sammanslagna",
+        description: `${formatInt(moved)}${NBSP}order flyttades från "${merged.name}" till "${kept.name}".`,
+        tone: "ok",
+      });
+      close();
+    });
+  };
+
+  const options = [
+    { value: "into" as const, title: action.into },
+    { value: "from" as const, title: action.from },
+  ];
+
+  return (
+    <>
+      <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
+        Slå ihop
+      </Button>
+      <Modal
+        open={open}
+        onClose={close}
+        size="md"
+        eyebrow="Datakvalitet / Titlar"
+        title="Slå ihop två titlar"
+        description="Välj namnet som ska gälla. Ordrarna flyttas dit och den andra titeln arkiveras."
+      >
+        <form onSubmit={submit} className="flex flex-col gap-5">
+          <fieldset className="flex min-w-0 flex-col gap-1.5">
+            <legend className="label mb-1.5 text-muted">Behåll</legend>
+            <div className="flex flex-col rounded-sm border border-line-control">
+              {options.map((o) => {
+                const checked = keep === o.value;
+                return (
+                  <label
+                    key={o.value}
+                    className={cn(
+                      "flex cursor-pointer items-start gap-3 border-t border-line px-3 py-2.5 transition-colors first:border-t-0",
+                      checked ? "bg-hover" : "hover:bg-hover",
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name={name}
+                      value={o.value}
+                      checked={checked}
+                      onChange={() => setKeep(o.value)}
+                      className="mt-0.5 size-4 shrink-0 accent-[var(--bl-fg)]"
+                    />
+                    <span className="flex min-w-0 flex-col gap-0.5">
+                      <span className="text-base break-words text-fg">{o.title.name}</span>
+                      {o.title.orders !== null ? (
+                        <span className="tnum text-sm text-muted">
+                          {formatInt(o.title.orders)}
+                          {NBSP}order
+                        </span>
+                      ) : null}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+          <ul className="flex flex-col gap-1.5 text-sm text-muted">
+            <li>
+              Ordrarna för &quot;{merged.name}&quot; kopplas till &quot;{kept.name}&quot;. Lagret
+              flyttas med.
+            </li>
+            <li>
+              Originaldatan behålls: namnet som det stod i ordern och alla alias ändras inte, och
+              ändringen loggas.
+            </li>
+            <li>&quot;{merged.name}&quot; arkiveras och föreslås inte igen.</li>
+          </ul>
+          <FormError message={error} />
+          <div className="flex flex-col-reverse gap-2 border-t border-line pt-4 sm:flex-row sm:justify-end">
+            <Button type="button" onClick={close}>
+              Avbryt
+            </Button>
+            <Button type="submit" variant="primary" loading={pending}>
+              Slå ihop
+            </Button>
+          </div>
+        </form>
+      </Modal>
+    </>
+  );
+}

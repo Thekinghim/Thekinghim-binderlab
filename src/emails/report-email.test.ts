@@ -108,9 +108,9 @@ describe("renderReportEmail", () => {
     expect(text).toContain("3001 Försäljning varor");
   });
 
-  it("ger delägaren resultat, kassaflöde och plan", () => {
+  it("ger delägaren vinst, kassaflöde och plan", () => {
     const { text } = renderReportEmail(sampleReportEmails.delagare);
-    expect(text).toContain("RESULTAT");
+    expect(text).toContain("VINST");
     expect(text).toContain("KASSAFLÖDE");
     expect(text).toContain("PLAN FÖR NOVEMBER");
     expect(text).toContain("Obs: Under målet 35");

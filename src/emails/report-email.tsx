@@ -146,6 +146,22 @@ function SignalMark() {
   );
 }
 
+/** Markör för högsta dagen: samma fg som stapeln, så att bildtexten pekar ut den. */
+function PeakMark() {
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        width: "8px",
+        height: "8px",
+        backgroundColor: C.fg,
+        verticalAlign: "0px",
+        marginRight: "8px",
+      }}
+    />
+  );
+}
+
 function Glyph({ children }: { children: string }) {
   if (!children) return null;
   return (
@@ -289,8 +305,8 @@ function KpiGrid({ kpis, compare }: { kpis: EmailKpi[]; compare: string }) {
 
 /**
  * Stapelrad av tabellceller (Gmail visar inte SVG). Varje dag är en
- * cell med en inre cell vars höjd är värdet. Högsta dagen i signalfärg,
- * och bildtexten under säger vilken dag det är.
+ * cell med en inre cell vars höjd är värdet. Högsta dagen i fg (ett
+ * rekord är aldrig signal), och bildtexten under säger vilken dag det är.
  */
 function DailyBars({ daily }: { daily: DailyPoint[] }) {
   const H = 72;
@@ -307,7 +323,7 @@ function DailyBars({ daily }: { daily: DailyPoint[] }) {
         <tr>
           {daily.map((d, i) => {
             const h = Math.max(2, Math.round((d.value / max) * H));
-            const color = i === peak ? C.signal : C.bar;
+            const color = i === peak ? C.fg : C.bar;
             return (
               <td
                 key={i}
@@ -355,7 +371,7 @@ function DailyBars({ daily }: { daily: DailyPoint[] }) {
         </tr>
       </Table>
       <Text size={13} color={C.muted} style={{ marginTop: "14px" }}>
-        <SignalMark />
+        <PeakMark />
         {peakCaption(daily)}
       </Text>
     </>
@@ -747,7 +763,7 @@ export function ReportEmail(props: ReportEmailProps) {
     sections.push(
       <Row key="result">
         <SectionLabel index={next()} meta="exkl. moms">
-          Resultat
+          Vinst
         </SectionLabel>
         <Statement
           lines={[

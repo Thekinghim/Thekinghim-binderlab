@@ -33,6 +33,13 @@ export const CLEARSPACE_UNITS = 8;
 /** Minsta storlek: symbol 12 px på skärm, 4 mm i tryck. */
 export const MIN_SYMBOL_PX = 12;
 
+/**
+ * Ringen ritas i signalfärg först från 28 px (rapporthuvud, omslag). Mindre
+ * än så blir den en orange fläck på 1–2 px som läses som ett larm bredvid
+ * menyns räknare, så under gränsen är hela symbolen i textfärgen.
+ */
+export const SIGNAL_RING_MIN_PX = 28;
+
 type Rect = { x: number; y: number; w: number; h: number };
 
 /** Avrundar en rektangels kanter till hela pixlar vid given storlek. */
@@ -48,7 +55,7 @@ function snap(r: Rect, size: number): Rect {
 type SymbolProps = {
   /** Kantlängd i px. Standard 16. */
   size?: number;
-  /** Allt i currentColor, även ringen (svartvitt, enfärgstryck). */
+  /** Allt i currentColor, även ringen (svartvitt, enfärgstryck). Alltid så under 28 px. */
   mono?: boolean;
   className?: string;
   /** Tillgänglig etikett. Utan titel är symbolen dekorativ. */
@@ -82,7 +89,7 @@ export function Symbol({ size = 16, mono = false, className, title, style }: Sym
         y={ring.y}
         width={ring.w}
         height={ring.h}
-        fill={mono ? "currentColor" : "var(--bl-signal)"}
+        fill={mono || size < SIGNAL_RING_MIN_PX ? "currentColor" : "var(--bl-signal)"}
       />
     </svg>
   );

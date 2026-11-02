@@ -2,20 +2,22 @@
  * Hems rubrik: läget i en mening, räknat ur nyckeltalen.
  *
  *   "79 987 kr på 20 dagar." + "12 % bättre än perioden innan."
- *   Ingress: "Vinst 18 950 kr efter alla kostnader, 23,7 % marginal. Bästa dagen var lör 24 okt. med 7 964 kr."
+ *   Ingress: "Vinst 18 950 kr efter alla kostnader, 23,7 % marginal."
  *
  * Ren funktion utan databas och utan React. Inga beräkningar av ekonomi: talen kommer från
  * keyMetrics/changeBp i @/domain; här väljs bara formuleringen.
  */
 
 import { periodDays, type IsoDate, type Period } from "@/domain";
-import { NBSP, formatDate, formatInt, formatPercent, formatSek } from "@/lib/format";
+import { NBSP, formatInt, formatPercent } from "@/lib/format";
+
+import { dayText, kr, marginText, sentence } from "./text";
 
 /** Rubriken i två delar (första i fg, andra i grått) och en ingress med fler fakta. */
 export interface HomeHeadline {
   readonly title: string;
   readonly aside: string;
-  /** Meningar under rubriken (vinst, bästa dagen). Tom lista när det inte finns något mer att säga. */
+  /** Meningar under rubriken (vinsten, när rubriken bär jämförelsen). Kan vara tom. */
   readonly lead: string[];
   /** Läget: avgör vad sidan visar under rubriken. */
   readonly state: "no-data" | "no-orders" | "ok";
@@ -37,46 +39,12 @@ export interface HomeHeadlineInput {
   readonly period: Period;
   readonly today: IsoDate;
   readonly dataStart: IsoDate | null;
-  readonly peak: { readonly date: IsoDate; readonly revenueOre: number } | null;
-}
-
-/** 'ÅÅÅÅ-MM-DD' → Date mitt på dagen (samma kalenderdag i alla tidszoner), för format.ts. */
-export function dateOf(date: IsoDate): Date {
-  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
-  return new Date(y, m - 1, d, 12);
-}
-
-/** Belopp i öre som hela kronor: "79 987 kr". */
-export function kr(ore: number): string {
-  return formatSek(ore / 100);
-}
-
-/** Marginal i bp som procent med en decimal: "23,7 %". */
-export function marginText(bp: number): string {
-  return formatPercent(bp / 10_000, 1);
 }
 
 /** Förändring i bp som "12 %" (utan tecken), en decimal under 10 %. */
 function changeText(bp: number): string {
   const share = Math.abs(bp) / 10_000;
   return formatPercent(share, share < 0.1 ? 1 : 0);
-}
-
-/** "1 nov." (året bara när det inte är samma som i dag). */
-export function dayText(date: IsoDate, today: IsoDate): string {
-  return formatDate(dateOf(date), { year: "auto", now: dateOf(today) });
-}
-
-const WEEKDAYS = ["sön", "mån", "tis", "ons", "tor", "fre", "lör"] as const;
-
-/** "lör 24 okt." */
-export function weekdayDayText(date: IsoDate, today: IsoDate): string {
-  return `${WEEKDAYS[dateOf(date).getDay()] ?? ""} ${dayText(date, today)}`;
-}
-
-/** Lägger till punkt om meningen inte redan slutar med en (t.ex. "24 okt."). */
-export function sentence(text: string): string {
-  return /[.!?]$/.test(text) ? text : `${text}.`;
 }
 
 /** "på 20 dagar", "i dag", "i går", "den 31 okt." */
@@ -138,14 +106,6 @@ export function homeHeadline(input: HomeHeadlineInput): HomeHeadline {
     lead.push(profitSentence(input));
   } else {
     aside = profitSentence(input);
-  }
-
-  if (input.peak && periodDays(coverage) > 1) {
-    lead.push(
-      sentence(
-        `Bästa dagen var ${weekdayDayText(input.peak.date, today)} med ${kr(input.peak.revenueOre)}`,
-      ),
-    );
   }
 
   return { title, aside, lead, state: "ok" };

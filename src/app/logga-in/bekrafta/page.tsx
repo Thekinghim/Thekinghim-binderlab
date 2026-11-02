@@ -36,8 +36,8 @@ export default async function ConfirmPage({
           <span>Inloggningslänk</span>
         </>
       }
-      title="Bekräfta inloggningen."
-      aside="Ett klick, sedan är du inne."
+      title={tokenHash ? "Bekräfta inloggningen." : "Länken fungerar inte."}
+      aside={tokenHash ? "Ett klick, sedan är du inne." : "Den saknar en del."}
     >
       <ConfirmForm tokenHash={tokenHash} type={type} />
     </AuthFrame>

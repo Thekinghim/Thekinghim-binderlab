@@ -14,7 +14,11 @@ import type { StockEventRef } from "./stock";
 export interface LostSalesOptions {
   /** Dagar före slutförsäljningen som takten räknas på. Standard 28. */
   readonly rateWindowDays?: number;
-  /** Färre dagar med data än så här i takten markeras som osäker. Standard 7. */
+  /**
+   * Minsta antal dagar med data i takten. Heuristiken (saldot okänt) drar ingen slutsats
+   * med färre dagar; perioder enligt lagret räknas ändå men markeras (`rate.lowData`).
+   * Standard 7.
+   */
   readonly minRateDays?: number;
   /** Hur stor del av påfyllningsdagen som räknas som slutsåld, i bp. Standard 5 000 (en halv dag). */
   readonly refillDayShareBp?: number;
@@ -115,7 +119,11 @@ export interface StockoutPeriod {
   /** Förlorad intäkt minus inköp. `null` när inköpspris saknas. */
   readonly lostGrossProfitOre: number | null;
   /** Förlorad intäkt per månad (summerar exakt till `lostRevenueOre`). */
-  readonly byMonth: readonly { readonly month: IsoMonth; readonly lostRevenueOre: number; readonly weightBp: number }[];
+  readonly byMonth: readonly {
+    readonly month: IsoMonth;
+    readonly lostRevenueOre: number;
+    readonly weightBp: number;
+  }[];
   readonly text: string;
   readonly evidence: PlanEvidence;
 }
@@ -127,12 +135,15 @@ export interface LostSalesMonth {
   readonly period: Period;
   readonly partial: boolean;
   readonly lostRevenueOre: number;
-  /** Summan för perioder med inköpspris; perioder utan räknas i `periodsWithoutCost`. */
+  /** Förlorad intäkt minus inköp, för perioder med inköpspris. */
   readonly lostGrossProfitOre: number;
+  /** Perioder där kostnaden eller bruttoresultatet inte kunde räknas (takt, snittpris eller inköpspris saknas). */
   readonly periodsWithoutCost: number;
   readonly lostUnitsMilli: number;
   /** Slutsålda dagar (summerad vikt i bp, 10 000 = en dag). */
   readonly stockoutDayWeightBp: number;
+  /** Den del av `lostRevenueOre` som kommer från heuristiken (saldot okänt). */
+  readonly heuristicLostRevenueOre: number;
   readonly periodKeys: readonly string[];
   /** "Slutsålt kostade ca 3 200 kr i oktober." */
   readonly text: string;
@@ -151,11 +162,17 @@ export interface LostSalesResult {
     readonly lostGrossProfitOre: number;
     readonly lostUnitsMilli: number;
     readonly stockoutDayWeightBp: number;
+    /** Den del av `lostRevenueOre` som kommer från heuristiken (saldot okänt). */
+    readonly heuristicLostRevenueOre: number;
     readonly text: string;
     readonly evidence: PlanEvidence;
   };
   /** Alla slutsålda dagar (även före analysperioden, inom det som räknades), för prognosen. */
   readonly stockoutDays: readonly StockoutDay[];
   /** Dagar då order fanns trots saldo 0 enligt lagret (registreringar saknas troligen). */
-  readonly mismatches: readonly { readonly machineId: string; readonly titleId: string; readonly date: IsoDate }[];
+  readonly mismatches: readonly {
+    readonly machineId: string;
+    readonly titleId: string;
+    readonly date: IsoDate;
+  }[];
 }

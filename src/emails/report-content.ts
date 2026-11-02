@@ -305,7 +305,7 @@ export function buildIntro(props: ReportEmailProps): string {
     case "bokforing":
       return `Här är underlaget för ${formatPeriod(props.period)}: ${formatInt(props.details.transactions)} försäljningar, avgifter och hyror, med verifikationsnummer och bilagor.`;
     case "delagare":
-      return `Här är ${gen} resultat, kassaflöde och planen för ${nextPeriodName(props.period)}.`;
+      return `Här är ${gen} vinst, kassaflöde och planen för ${nextPeriodName(props.period)}.`;
   }
 }
 
@@ -542,7 +542,7 @@ export function renderReportText(props: ReportEmailProps): string {
     }
     case "delagare": {
       const d = props.details;
-      section("Resultat");
+      section("Vinst");
       for (const r of d.result) out.push(`${r.label}: ${formatSek(r.amount)}`);
       out.push(`Marginal: ${formatPercent(d.margin)}`);
       section("Kassaflöde");

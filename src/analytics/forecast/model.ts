@@ -19,7 +19,8 @@
  *    delat med avståndet mellan halvornas mittpunkter (W/2 veckor) = förändring per vecka.
  *    Räknas bara när båda halvorna har tillräckligt många dagar och pack.
  * 5. **Prognos för dag h** efter historikens slut:
- *    bas = nivå + trend × (eftersläpning + h/7), begränsad till nivå × (1 ± maxTrend) och ≥ 0;
+ *    bas = nivå + trend × (eftersläpning + (h − ½)/7) veckor, begränsad till nivå × (1 ± maxTrend)
+ *    och ≥ 0 (dagens mittpunkt ligger h − ½ dagar efter historikens slut);
  *    prognos = bas × veckodagsfaktor. Eftersläpningen är hur många veckor bakåt nivåns
  *    viktade medelpunkt ligger (ett viktat medel beskriver läget en bit tillbaka i tiden).
  */
@@ -240,7 +241,7 @@ export interface DayPrediction {
 
 /**
  * Prognosen för dag `h` (1 = dagen efter historikens slut):
- * bas = nivå + trend × (eftersläpning + h/7), begränsad till nivå × (1 ± maxTrendBp) och ≥ 0,
+ * bas = nivå + trend × (eftersläpning + (h − ½)/7), begränsad till nivå × (1 ± maxTrendBp) och ≥ 0,
  * prognos = bas × veckodagsfaktor / 10 000.
  */
 export function predictDay(c: ForecastComponents, h: number, maxTrendBp: number): DayPrediction {
@@ -251,8 +252,12 @@ export function predictDay(c: ForecastComponents, h: number, maxTrendBp: number)
   if (c.trendApplied && c.trendMilliPerWeek !== 0) {
     const ln = BigInt(c.levelLagWeeks.num);
     const ld = BigInt(c.levelLagWeeks.den);
-    // trend × (num/den + h/7) = trend × (7·num + h·den) / (7·den)
-    trend = roundHalfUp(BigInt(c.trendMilliPerWeek) * (7n * ln + BigInt(h) * ld), 7n * ld);
+    // Dag h har sin mittpunkt h − ½ dagar efter slutet:
+    // trend × (num/den + (2h − 1)/14) = trend × (14·num + (2h − 1)·den) / (14·den)
+    trend = roundHalfUp(
+      BigInt(c.trendMilliPerWeek) * (14n * ln + BigInt(2 * h - 1) * ld),
+      14n * ld,
+    );
   }
   const lo = roundHalfUp(level * Math.max(0, 10_000 - maxTrendBp), 10_000);
   const hi = roundHalfUp(level * (10_000 + maxTrendBp), 10_000);

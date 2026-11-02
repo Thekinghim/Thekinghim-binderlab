@@ -31,8 +31,17 @@ export interface PlanFigure {
   readonly unit: PlanFigureUnit;
 }
 
-/** Underlag (som `Evidence` i Att göra, men talen kan anges i tusendelar av pack). */
+/**
+ * Underlag (som `Evidence` i Att göra, men talen kan anges i tusendelar av pack). Dessutom
+ * id för inköpsorder, leverantörer och lagerhändelser som resultatet bygger på, så att UI
+ * kan länka dit. Listorna är sorterade och utan dubbletter. `planEvidence` sätter dem alltid
+ * (tomma när de inte gäller); de är valfria i typen så att underlag byggda för hand utan dem
+ * fortfarande är giltiga.
+ */
 export interface PlanEvidence extends Omit<Evidence, "figures"> {
+  readonly purchaseOrderIds?: string[];
+  readonly supplierIds?: string[];
+  readonly stockEventIds?: string[];
   readonly figures: PlanFigure[];
 }
 
@@ -50,10 +59,29 @@ export function planEvidence(e: {
   titleIds?: Iterable<string>;
   machineIds?: Iterable<string>;
   storeIds?: Iterable<string>;
+  purchaseOrderIds?: Iterable<string>;
+  supplierIds?: Iterable<string>;
+  stockEventIds?: Iterable<string>;
   figures?: PlanFigure[];
-}): PlanEvidence {
-  const base = evidence({ ...e, figures: [] });
-  return { ...base, figures: e.figures ?? [] };
+}): PlanEvidence & {
+  purchaseOrderIds: string[];
+  supplierIds: string[];
+  stockEventIds: string[];
+} {
+  const { purchaseOrderIds, supplierIds, stockEventIds, ...rest } = e;
+  const base = evidence({ ...rest, figures: [] });
+  return {
+    ...base,
+    purchaseOrderIds: sortedUnique(purchaseOrderIds),
+    supplierIds: sortedUnique(supplierIds),
+    stockEventIds: sortedUnique(stockEventIds),
+    figures: e.figures ?? [],
+  };
+}
+
+/** Sorterad lista utan dubbletter (kodpunktsordning, oberoende av språkinställning). */
+function sortedUnique(values: Iterable<string> | undefined): string[] {
+  return [...new Set(values ?? [])].sort();
 }
 
 // ---------------------------------------------------------------------------

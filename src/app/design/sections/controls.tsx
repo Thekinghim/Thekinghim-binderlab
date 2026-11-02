@@ -9,34 +9,46 @@ import { Modal, ModalPanel } from "@/components/ui/modal";
 import { Segmented } from "@/components/ui/segmented";
 import { StatusTag } from "@/components/ui/status-tag";
 import { ToastCard, useToast, type ToastInput } from "@/components/ui/toast";
-import { formatInt } from "@/lib/format";
-import { EMPTY_SLOT, machineById, machineLabel, machines, storeById, titles } from "../sample-data";
+import { formatDateTime, formatInt } from "@/lib/format";
+import {
+  EMPTY_SLOT,
+  machineById,
+  machineLabel,
+  machineStates,
+  machines,
+  REF_NOW,
+  storeById,
+  titles,
+} from "../sample-data";
 import { SpecSection, Sub } from "./section";
 
-export const iconNames: IconName[] = [
-  "overview",
-  "sales",
-  "machine",
-  "inventory",
-  "margin",
-  "report",
-  "columns",
-  "settings",
-  "search",
-  "filter",
-  "calendar",
-  "download",
-  "print",
-  "alert",
-  "info",
-  "check",
-  "close",
-  "plus",
-  "more",
-  "arrowUpRight",
-  "sun",
-  "moon",
+/** Ikonerna med vad de betyder i gränssnittet. */
+const icons: ReadonlyArray<[IconName, string]> = [
+  ["overview", "Översikt"],
+  ["sales", "Försäljning"],
+  ["machine", "Automat"],
+  ["inventory", "Lager"],
+  ["margin", "Marginal"],
+  ["report", "Rapport"],
+  ["columns", "Kolumner"],
+  ["settings", "Inställningar"],
+  ["search", "Sök"],
+  ["filter", "Filter"],
+  ["calendar", "Period"],
+  ["download", "Ladda ner"],
+  ["print", "Skriv ut"],
+  ["alert", "Larm"],
+  ["info", "Info"],
+  ["check", "Klart"],
+  ["close", "Stäng"],
+  ["plus", "Lägg till"],
+  ["more", "Fler val"],
+  ["arrowUpRight", "Öppna"],
+  ["sun", "Ljust läge"],
+  ["moon", "Mörkt läge"],
 ];
+
+export const iconNames: IconName[] = icons.map(([name]) => name);
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -51,11 +63,14 @@ const empty = machineById.get(EMPTY_SLOT.machineId) ?? machines[0];
 const emptyTitle = titles.find((t) => t.id === EMPTY_SLOT.titleId);
 const emptyLabel = empty ? machineLabel(empty) : "";
 
+// Kvittot gäller BL-001:s senaste påfyllning (30 okt.), inte det tomma facket i BL-002.
+const refilled = machines[0];
+const refilledAt = machineStates.find((m) => m.machineId === refilled?.id)?.lastRefill;
 const refillToast: ToastInput = {
   title: "Påfyllning registrerad",
-  description: `24 pack ${emptyTitle?.name ?? ""} i fack ${EMPTY_SLOT.slot}, ${emptyLabel}.`,
+  description: `24 pack ${titles[0]?.name ?? ""} i fack 2, ${refilled ? machineLabel(refilled) : ""}.`,
   tone: "ok",
-  meta: `${empty?.code ?? ""} · 14:32`,
+  meta: `${refilled?.code ?? ""} · ${refilledAt ? formatDateTime(refilledAt, { now: REF_NOW }) : ""}`,
 };
 const emptyToast: ToastInput = {
   title: `Fack ${EMPTY_SLOT.slot} är tomt`,
@@ -79,11 +94,6 @@ export function ControlsSection({ index }: { index: number }) {
       eyebrow="Kontroller"
       title="Höjd 28 eller 36 px, radie 4."
       aside="Fylld signal bara i dialogens sista steg."
-      meta={[
-        { label: "Knappar", value: "5 varianter" },
-        { label: "Ikoner", value: `${iconNames.length} st · 16 px` },
-        { label: "Fokus", value: "2 px fg" },
-      ]}
     >
       <Sub index={`${n}.1`} label="Knappar" meta="md 36 · sm 28" className="lg:col-span-7">
         <div className="flex flex-col">
@@ -207,17 +217,22 @@ export function ControlsSection({ index }: { index: number }) {
       </Sub>
 
       <Sub index={`${n}.4`} label="Ikoner" meta="16 px · 1,25 px linje" className="lg:col-span-7">
-        <ul className="grid grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-y-5">
-          {iconNames.map((name) => (
+        <ul className="grid grid-cols-[repeat(auto-fill,minmax(88px,1fr))] gap-y-5">
+          {icons.map(([name, text]) => (
             <li key={name} className="flex flex-col items-center gap-2 text-muted">
               <Icon name={name} />
-              <span className="meta text-subtle">{name}</span>
+              <span className="text-center text-xs text-subtle">{text}</span>
             </li>
           ))}
         </ul>
       </Sub>
 
-      <Sub index={`${n}.5`} label="Notis" meta="5 s · pausas vid hover" className="lg:col-span-6">
+      <Sub
+        index={`${n}.5`}
+        label="Notis"
+        meta="5 s · pausas när pekaren är över"
+        className="lg:col-span-6"
+      >
         <div className="flex flex-col gap-3 sm:max-w-[380px]">
           <ToastCard item={refillToast} />
           <ToastCard item={emptyToast} />
@@ -232,7 +247,7 @@ export function ControlsSection({ index }: { index: number }) {
         </div>
       </Sub>
 
-      <Sub index={`${n}.6`} label="Dialog" meta="Esc · fokusfälla" className="lg:col-span-6">
+      <Sub index={`${n}.6`} label="Dialog" meta="Esc stänger" className="lg:col-span-6">
         <div className="flex flex-col gap-3 sm:max-w-[420px]">
           {/* Statiskt exempel: inert, så att knapparna varken nås med tangentbord eller skärmläsare. */}
           <div inert>
@@ -251,7 +266,7 @@ export function ControlsSection({ index }: { index: number }) {
             />
           </div>
           <div className="pt-1">
-            <Button size="sm" variant="danger" iconLeft="alert" onClick={() => setOpen(true)}>
+            <Button size="sm" onClick={() => setOpen(true)}>
               Öppna dialogen
             </Button>
           </div>

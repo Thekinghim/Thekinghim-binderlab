@@ -34,7 +34,7 @@ export function AxisText({
       className="tnum"
       style={{
         fontFamily: "var(--bl-font-mono)",
-        fontSize: 10,
+        fontSize: 11,
         letterSpacing: upper ? "0.06em" : 0,
         textTransform: upper ? "uppercase" : "none",
         fill: emphasis ? "var(--bl-fg)" : "var(--bl-fg-subtle)",
@@ -64,9 +64,10 @@ export function AxisUnitLabel({
   );
 }
 
+// Allt i diagrammet står i Geist Mono (mätapparaten); vikt och färg bär hierarkin.
 const KIND_STYLE: Record<LabelKind, CSSProperties> = {
-  title: { fontFamily: "var(--bl-font-sans)", fontWeight: 500, fill: "var(--bl-fg)" },
-  body: { fontFamily: "var(--bl-font-sans)", fill: "var(--bl-fg-muted)" },
+  title: { fontFamily: "var(--bl-font-mono)", fontWeight: 500, fill: "var(--bl-fg)" },
+  body: { fontFamily: "var(--bl-font-mono)", fill: "var(--bl-fg-muted)" },
   value: { fontFamily: "var(--bl-font-mono)", fill: "var(--bl-fg-muted)" },
   caps: {
     fontFamily: "var(--bl-font-mono)",

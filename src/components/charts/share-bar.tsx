@@ -69,19 +69,20 @@ export function ShareBar({
               key={s.label}
               onPointerEnter={() => setActive(i)}
               className={cn(
-                "grid grid-cols-[minmax(0,1fr)_auto_3.5rem] items-center gap-x-4 gap-y-2 border-b border-line py-2.5 transition-colors duration-[120ms] last:border-b-0",
+                "grid grid-cols-[minmax(0,1fr)_auto_3.5rem] items-center gap-x-4 gap-y-2 border-b border-line py-2.5 transition-colors duration-fast last:border-b-0",
                 "sm:grid-cols-[minmax(0,10rem)_minmax(0,1fr)_auto_3.5rem] sm:py-2",
               )}
             >
               <span
                 className={cn(
-                  "truncate text-sm",
+                  "flex min-w-0 flex-col text-sm",
                   isEmph || isAlert || active === i ? "text-fg" : "text-muted",
                 )}
               >
-                {s.label}
+                <span className="truncate">{s.label}</span>
+                {/* Larmet på egen rad: text som kräver åtgärd kapas aldrig. */}
                 {isAlert ? (
-                  <span className="label ml-2 text-signal-fg">! {s.note ?? "Kräver åtgärd"}</span>
+                  <span className="label text-signal-fg">! {s.note ?? "Kräver åtgärd"}</span>
                 ) : null}
               </span>
               <span
@@ -90,25 +91,20 @@ export function ShareBar({
               >
                 <span
                   className={cn(
-                    "absolute inset-y-0 left-0 transition-colors duration-[120ms]",
-                    isAlert
-                      ? "bg-signal"
-                      : isEmph
-                        ? "bg-data-1"
-                        : active === i
-                          ? "bg-data-2"
-                          : "bg-data-3",
+                    "absolute inset-y-0 left-0 transition-colors duration-fast",
+                    // Stapeln visar intäkt; larmet gäller ett annat mått och bärs av texten.
+                    isEmph ? "bg-data-1" : active === i ? "bg-data-2" : "bg-data-3",
                   )}
                   style={{ width: `${Math.max(0.5, share * 100)}%` }}
                 />
               </span>
-              <span className="tnum text-right font-mono text-sm text-muted sm:col-start-3">
+              <span className="tnum text-right text-sm text-muted sm:col-start-3">
                 {format(s.value)}
               </span>
               <span
                 className={cn(
-                  "tnum text-right font-mono text-sm sm:col-start-4",
-                  isEmph || isAlert ? "font-medium text-fg" : "text-muted",
+                  "tnum text-right text-sm sm:col-start-4",
+                  isEmph ? "font-medium text-fg" : "text-muted",
                 )}
               >
                 {pct(share)}

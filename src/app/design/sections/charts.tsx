@@ -3,7 +3,7 @@
 import { BarChart } from "@/components/charts/bar-chart";
 import { Heatmap } from "@/components/charts/heatmap";
 import { LineChart } from "@/components/charts/line-chart";
-import { ProfitBridge } from "@/components/charts/profit-bridge";
+import { WaterfallChart, type WaterfallStep } from "@/components/charts/waterfall-chart";
 import { ShareBar } from "@/components/charts/share-bar";
 import { Panel } from "@/components/ui/frame";
 import { calendarDaysBetween } from "@/lib/period";
@@ -28,6 +28,9 @@ import {
   titleById,
 } from "../sample-data";
 import { SpecSection, Sub } from "./section";
+
+/** Diagrammen som sektionen visar: dag, brygga, automat, timme och titel. */
+export const CHART_COUNT = 5;
 
 const WEEKDAYS = ["Sön", "Mån", "Tis", "Ons", "Tor", "Fre", "Lör"];
 const weekday = (d: Date) => WEEKDAYS[d.getDay()] ?? "";
@@ -63,8 +66,9 @@ export function ChartsSection({ index, model }: { index: number; model: Model })
       code: m.machine.code,
       name: storeById.get(m.machine.storeId)?.name ?? "",
       value: m.totals.revenue / 100,
+      // Larmet gäller lagret, inte intäkten: text under stapeln, stapeln som vanligt.
       ...(m.machine.id === EMPTY_SLOT.machineId
-        ? { flag: true, note: `Tomt fack ${EMPTY_SLOT.slot}` }
+        ? { noteAlert: true, note: `Tomt fack ${EMPTY_SLOT.slot}` }
         : {}),
     }));
   const top = bars[0];
@@ -93,6 +97,30 @@ export function ChartsSection({ index, model }: { index: number; model: Model })
   const unpriced = model.titles.find((r) => r.title.costOre === null);
 
   const profit = t.profit / 100;
+  // Bryggan börjar på samma intäkt som nyckeltalen och drar av det som inte
+  // kan räknas (titlar utan inköpspris) som ett eget steg. Nollsteg ritas inte.
+  const bridge: WaterfallStep[] = [
+    { label: "Intäkt", value: t.revenue / 100, name: "Intäkt, alla ordrar" },
+    ...(t.unpricedRevenue
+      ? [
+          {
+            label: "Utan inköpspris",
+            short: "Utan pris",
+            value: -t.unpricedRevenue / 100,
+            name: `Utan inköpspris (${unpriced?.title.name ?? "titel"}), ingår inte i vinsten`,
+          },
+        ]
+      : []),
+    { label: "Inköp", value: -t.purchases / 100, name: "Inköp av pack" },
+    ...(t.fees ? [{ label: "Avgifter", value: -t.fees / 100, name: "Kortavgifter" }] : []),
+    {
+      label: "Butiksersättning",
+      short: "Butiksers.",
+      value: -t.storeCompensation / 100,
+      name: "Butiksersättning (provision och hyra)",
+    },
+    { label: profit < 0 ? "Förlust" : "Vinst", value: 0, total: true },
+  ];
 
   return (
     <SpecSection
@@ -106,7 +134,7 @@ export function ChartsSection({ index, model }: { index: number; model: Model })
       space="loose"
       meta={[
         { label: "Period", value: `${formatInt(days)} d` },
-        { label: "Diagram", value: "5 st" },
+        { label: "Diagram", value: `${CHART_COUNT} st` },
         { label: "Signal", value: "högst 1 per diagram" },
       ]}
     >
@@ -140,8 +168,15 @@ export function ChartsSection({ index, model }: { index: number; model: Model })
                     },
                   ]
                 : []),
+              // En etikett för dagens värde: vad det är och hur långt dagen har kommit.
               ...(todayIdx >= 0 && todayIdx !== peak
-                ? [{ index: todayIdx, text: "I dag", sub: `t.o.m. ${formatTime(REF_NOW)}` }]
+                ? [
+                    {
+                      index: todayIdx,
+                      text: `I dag · ${formatSek(chart.values[todayIdx] ?? 0)}`,
+                      sub: `t.o.m. ${formatTime(REF_NOW)}`,
+                    },
+                  ]
                 : []),
             ]}
             alertIndex={showsEmpty ? emptyIdx : undefined}
@@ -160,18 +195,16 @@ export function ChartsSection({ index, model }: { index: number; model: Model })
       <Sub
         index={`${n}.2`}
         label={`Intäkt till vinst · ${formatInt(model.days)} d`}
-        meta="moms 0 · kortavgift 0"
-        title={`Vinst ${formatSek(profit)}, ${t.margin === null ? "–" : formatPercent(t.margin)} av intäkten med inköpspris.`}
+        meta="exkl. moms"
+        title={`Vinst ${formatSek(profit)} av ${formatSek(t.revenue / 100)}, marginal ${t.margin === null ? "–" : formatPercent(t.margin)} på intäkten med inköpspris.`}
         className="lg:col-span-7"
       >
-        <ProfitBridge
-          revenue={t.pricedRevenue / 100}
-          purchases={t.purchases / 100}
-          fees={t.fees / 100}
-          storeCompensation={t.storeCompensation / 100}
-          unpricedRevenue={t.unpricedRevenue ? t.unpricedRevenue / 100 : undefined}
+        <WaterfallChart
+          steps={bridge}
           format={formatSek}
+          showShare={false}
           height={280}
+          summary={`Intäkt ${formatSek(t.revenue / 100)}${t.unpricedRevenue ? `, minus ${formatSek(t.unpricedRevenue / 100)} utan inköpspris` : ""}, minus inköp ${formatSek(t.purchases / 100)} och butiksersättning ${formatSek(t.storeCompensation / 100)} ger vinst ${formatSek(profit)}.`}
         />
       </Sub>
 

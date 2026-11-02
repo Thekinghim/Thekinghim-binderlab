@@ -1,0 +1,202 @@
+"use client";
+
+import { useMemo } from "react";
+
+import { DataTable, type Column } from "@/components/ui/data-table";
+import { KpiStrip } from "@/components/ui/kpi-strip";
+import { StateMessage } from "@/components/ui/state-message";
+import { StatusTag } from "@/components/ui/status-tag";
+import { formatInt } from "@/lib/format";
+
+import type { LostModel, LostRow } from "../_lib/model";
+import { daysBp, kr, packsMilli } from "../_lib/units";
+import { EvidenceButton } from "./evidence-button";
+
+/** Förlorad försäljning: nyckeltal, perioderna med slutsålt och summan per månad. */
+export function LostSalesView({ model }: { model: LostModel }) {
+  const columns = useMemo<Column<LostRow>[]>(
+    () => [
+      {
+        key: "title",
+        header: "Titel",
+        sortValue: (r) => r.title,
+        render: (r) => (
+          <span className="flex min-w-0 flex-col">
+            <span className="text-fg">{r.title}</span>
+            <span className="text-xs text-subtle">{r.machine}</span>
+          </span>
+        ),
+        csv: (r) => `${r.title} – ${r.machine}`,
+      },
+      {
+        key: "period",
+        header: "Slutsåld",
+        sortValue: (r) => r.start,
+        render: (r) => <span className="tnum">{r.periodText}</span>,
+        csv: (r) => `${r.start}–${r.end}`,
+      },
+      {
+        key: "status",
+        header: "Läge",
+        hideable: false,
+        render: (r) =>
+          r.ongoing ? (
+            <StatusTag status="warning">Slutsåld nu</StatusTag>
+          ) : (
+            <StatusTag status="neutral">Påfylld</StatusTag>
+          ),
+        csv: (r) => (r.ongoing ? "Slutsåld nu" : "Påfylld"),
+      },
+      {
+        key: "source",
+        header: "Källa",
+        hideOnMobile: true,
+        sortValue: (r) => r.source,
+        render: (r) => (
+          <span className="text-muted">
+            {r.source === "stock" ? "Lagret" : "Bedömd ur försäljningen"}
+          </span>
+        ),
+        csv: (r) => (r.source === "stock" ? "Lagret" : "Bedömd"),
+      },
+      {
+        key: "days",
+        header: "Dagar",
+        numeric: true,
+        sortValue: (r) => r.dayWeightBp,
+        render: (r) => daysBp(r.dayWeightBp),
+        csv: (r) => r.dayWeightBp / 10_000,
+      },
+      {
+        key: "rate",
+        header: "Takt före",
+        numeric: true,
+        hideOnMobile: true,
+        sortValue: (r) => r.ratePerDayMilli,
+        render: (r) => (
+          <span className={r.rateLowData ? "text-subtle" : undefined}>
+            {packsMilli(r.ratePerDayMilli)} /dag
+          </span>
+        ),
+        csv: (r) => r.ratePerDayMilli / 1000,
+      },
+      {
+        key: "units",
+        header: "Pack",
+        numeric: true,
+        hideOnMobile: true,
+        sortValue: (r) => r.lostUnitsMilli,
+        render: (r) => packsMilli(r.lostUnitsMilli),
+        csv: (r) => r.lostUnitsMilli / 1000,
+      },
+      {
+        key: "revenue",
+        header: "Förlorad intäkt",
+        numeric: true,
+        sortValue: (r) => r.lostRevenueOre,
+        render: (r) => <span className="text-fg">{kr(r.lostRevenueOre)}</span>,
+        csv: (r) => r.lostRevenueOre / 100,
+      },
+      {
+        key: "gross",
+        header: "Minus inköp",
+        numeric: true,
+        hideOnMobile: true,
+        sortValue: (r) => r.lostGrossProfitOre ?? -1,
+        render: (r) => (r.lostGrossProfitOre === null ? "–" : kr(r.lostGrossProfitOre)),
+        csv: (r) => (r.lostGrossProfitOre === null ? null : r.lostGrossProfitOre / 100),
+      },
+      {
+        key: "evidence",
+        header: "Underlag",
+        hideable: false,
+        render: (r) => (
+          <EvidenceButton evidence={r.evidence} title={`${r.title} i ${r.machine}`} text={r.text} />
+        ),
+      },
+    ],
+    [],
+  );
+
+  if (model.rows.length === 0) {
+    return (
+      <StateMessage
+        kind="empty"
+        compact
+        message={`Ingen titel var slutsåld ${model.periodText} i någon automat.`}
+        detail="Slutsålt räknas ur lagerhändelserna; där saldot är okänt bedöms det ur försäljningen."
+        action={{ label: "Öppna lagret", href: "/lager" }}
+      />
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-10">
+      <KpiStrip
+        label={`Förlorad försäljning · ${model.periodText}`}
+        items={[
+          {
+            id: "revenue",
+            label: "Förlorad intäkt",
+            value: model.totalRevenueOre,
+            format: kr,
+            primary: true,
+          },
+          {
+            id: "gross",
+            label: "Minus inköp",
+            value: model.totalGrossProfitOre,
+            format: kr,
+          },
+          {
+            id: "units",
+            label: "Förlorade pack",
+            value: model.totalUnitsMilli,
+            format: packsMilli,
+          },
+          {
+            id: "days",
+            label: "Slutsålda dagar",
+            value: model.totalDayWeightBp,
+            format: (v) => daysBp(v),
+          },
+        ]}
+      />
+
+      <DataTable
+        columns={columns}
+        rows={model.rows}
+        rowKey={(r) => r.key}
+        caption={`Perioder med slutsålt ${model.periodText}`}
+        defaultSort={{ key: "revenue", dir: "desc" }}
+        dense
+        exportFileName={`forlorad-forsaljning-${model.period.start}-${model.period.end}`}
+      />
+
+      {model.months.length > 1 ? (
+        <ul className="flex flex-col">
+          {model.months.map((m) => (
+            <li
+              key={m.month}
+              className="flex flex-col gap-1 border-t border-line py-3 last:border-b sm:flex-row sm:items-baseline sm:justify-between sm:gap-6"
+            >
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="text-fg">{m.text}</span>
+                <span className="text-xs text-subtle">{m.detail}</span>
+              </span>
+              <EvidenceButton evidence={m.evidence} title={m.text} />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {model.mismatches > 0 ? (
+        <p className="text-sm text-muted">
+          {formatInt(model.mismatches)} {model.mismatches === 1 ? "dag hade" : "dagar hade"}{" "}
+          försäljning trots saldo 0 i lagret. En påfyllning saknas troligen; de dagarna räknas som
+          att titeln fanns.
+        </p>
+      ) : null}
+    </div>
+  );
+}

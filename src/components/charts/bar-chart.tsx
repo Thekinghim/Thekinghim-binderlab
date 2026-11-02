@@ -25,6 +25,12 @@ export type BarDatum = {
   flag?: boolean;
   /** Text under stapeln, t.ex. "Fyllnad 6 % · under gräns" */
   note?: string;
+  /**
+   * Larm som gäller ett annat mått än stapelns (t.ex. tomt fack bredvid
+   * intäkten): `note` skrivs som "! note" i signaltext, men stapeln ritas
+   * som vanligt. Använd `flag` bara när själva värdet kräver åtgärd.
+   */
+  noteAlert?: boolean;
 };
 
 type BarChartProps = {
@@ -158,7 +164,7 @@ function HorizontalBars({
                 key={`${code ?? ""}${d.label}${i}`}
                 onPointerEnter={() => setActive(i)}
                 className={cn(
-                  "col-span-3 grid grid-cols-subgrid border-t border-line transition-colors duration-[120ms]",
+                  "col-span-3 grid grid-cols-subgrid border-t border-line transition-colors duration-fast",
                   active === i && "bg-hover",
                 )}
               >
@@ -197,7 +203,7 @@ function HorizontalBars({
                   <span className="relative block h-2 w-full">
                     <span
                       className={cn(
-                        "absolute inset-y-0 left-0 transition-colors duration-[120ms]",
+                        "absolute inset-y-0 left-0 transition-colors duration-fast",
                         isAlert
                           ? "border border-signal"
                           : isPeak
@@ -222,7 +228,7 @@ function HorizontalBars({
                 </span>
                 <span
                   className={cn(
-                    "tnum flex h-8 items-center justify-end font-mono text-sm",
+                    "tnum flex h-8 items-center justify-end text-sm",
                     isPeak || isAlert ? "font-medium text-fg" : "text-muted",
                   )}
                 >
@@ -232,10 +238,10 @@ function HorizontalBars({
                   <span
                     className={cn(
                       "label col-span-2 col-start-2 -mt-1 pb-2",
-                      isAlert ? "text-signal-fg" : "text-subtle",
+                      isAlert || d.noteAlert ? "text-signal-fg" : "text-subtle",
                     )}
                   >
-                    {isAlert ? "! " : ""}
+                    {isAlert || d.noteAlert ? "! " : ""}
                     {note}
                   </span>
                 ) : null}
@@ -301,8 +307,8 @@ function bandFor(n: number, innerW: number) {
     .paddingInner(innerW / n < 24 ? 0.2 : 0.38)
     .paddingOuter(0.1);
 }
-// Geist Mono 10 px versaler med 0,06 em spärrning
-const CH_MONO = 6.8;
+// Geist Mono 11 px versaler med 0,06 em spärrning
+const CH_MONO = 7.5;
 
 function VerticalBars({
   data,
@@ -430,7 +436,7 @@ function VerticalBars({
                     width={bw}
                     height={h}
                     pointerEvents="none"
-                    className="transition-[fill] duration-[120ms]"
+                    className="transition-[fill] duration-fast"
                     style={{
                       fill: isAlert
                         ? `url(#${hatchId})`
@@ -476,7 +482,7 @@ function VerticalBars({
                   y={g.y(g.avg) - 6}
                   textAnchor={right ? "start" : "end"}
                   className="tnum"
-                  style={{ fontFamily: "var(--bl-font-mono)", fontSize: 10 }}
+                  style={{ fontFamily: "var(--bl-font-mono)", fontSize: 11 }}
                 >
                   <tspan
                     style={{

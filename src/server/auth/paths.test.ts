@@ -14,6 +14,7 @@ describe("öppna sökvägar", () => {
     "/_next/static/chunk.js",
     "/favicon.ico",
     "/bilder/logo.svg",
+    "/api/cron/larm",
   ])("%s är öppen", (path) => {
     expect(isPublicPath(path)).toBe(true);
   });
@@ -30,6 +31,8 @@ describe("öppna sökvägar", () => {
     "/designer-admin",
     "/logga-in-x",
     "/api/export.csv.php",
+    "/api/cron",
+    "/api/cronjobb",
   ])("%s kräver inloggning", (path) => {
     expect(isPublicPath(path)).toBe(false);
   });

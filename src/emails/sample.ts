@@ -239,10 +239,11 @@ const delagare: ReportEmailProps = {
       change: { value: oct.revenue / sep.revenue - 1 },
     },
     {
-      label: "Resultat",
+      label: "Vinst",
       value: kr(oct.profit),
       unit: "kr",
       change: { value: oct.profit / sep.profit - 1 },
+      note: `Utan Black Bolt, som saknar inköpspris (${formatSek(kr(oct.unpricedRevenue))})`,
     },
     {
       label: "Marginal",
@@ -277,14 +278,14 @@ const delagare: ReportEmailProps = {
       { label: "Intäkt med inköpspris", amount: kr(oct.pricedRevenue) },
       { label: "Varukostnad", amount: -kr(oct.purchases) },
       { label: "Butiksersättning", amount: -kr(oct.storeCompensation) },
-      { label: "Resultat", amount: kr(oct.profit), total: true },
+      { label: "Vinst", amount: kr(oct.profit), total: true },
     ],
     margin: oct.margin ?? 0,
     cash: { opening, inflow, outflow, closing: opening + inflow - outflow },
     plan: [
       {
         title: "Lägg in inköpspris för Black Bolt",
-        detail: `${formatInt(oct.unpricedOrders)} ordrar (${formatSek(kr(oct.unpricedRevenue))}) ingår inte i resultatet förrän priset finns.`,
+        detail: `${formatInt(oct.unpricedOrders)} ordrar (${formatSek(kr(oct.unpricedRevenue))}) ingår inte i vinsten förrän priset finns.`,
       },
       {
         title: `Julinköp: ${formatInt(1_400)}${NBSP}pack`,

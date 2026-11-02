@@ -17,26 +17,49 @@ const ENV_LABEL = {
   production: null,
 } as const;
 
+/** Hur länge ett pingresultat återanvänds, så att anonyma sidvisningar inte belastar databasen. */
+const CACHE_MS = 10_000;
+
+const globalForPing = globalThis as typeof globalThis & {
+  __binderlabLoginPing?: { at: number; result: Promise<number | null> };
+};
+
 /**
  * Pingar databasen (select 1, ingen data). Systemfråga utan användare, som
- * hälsokontroller: läser inget som hör till någon organisation.
+ * hälsokontroller: läser inget som hör till någon organisation. Resultatet
+ * delas mellan förfrågningar i några sekunder.
  */
-async function ping(): Promise<number | null> {
+async function pingOnce(): Promise<number | null> {
   const started = performance.now();
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
       getServiceDb().execute(sql`select 1`),
-      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), PING_TIMEOUT_MS)),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("timeout")), PING_TIMEOUT_MS);
+      }),
     ]);
     return Math.max(1, Math.round(performance.now() - started));
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
+function ping(): Promise<number | null> {
+  const cached = globalForPing.__binderlabLoginPing;
+  const now = Date.now();
+  if (cached && now - cached.at < CACHE_MS) return cached.result;
+  const result = pingOnce();
+  globalForPing.__binderlabLoginPing = { at: now, result };
+  return result;
+}
+
 /**
- * Mono-raden längst ner på inloggningssidorna: drift, svarstid, miljö och
- * klockan i Stockholm. Ett faktum, ingen dekor.
+ * Mono-raden längst ner på inloggningssidorna: om databasen svarar (och hur
+ * snabbt), miljö, inloggningssätt och klockan i Stockholm. Raden påstår bara
+ * det den har mätt: databasens svar, inte resten av systemet.
  */
 export async function SystemStatus() {
   let envLabel: string | null = null;
@@ -51,7 +74,7 @@ export async function SystemStatus() {
   const ms = await ping();
   const now = wallClockIn(new Date(), TIME_ZONE);
   const parts = [
-    ms === null ? null : `Svarstid ${formatInt(ms)} ms`,
+    ms === null ? null : `Svar ${formatInt(ms)} ms`,
     envLabel,
     method || null,
     `${formatTime(now)} Stockholm`,
@@ -61,7 +84,7 @@ export async function SystemStatus() {
     <p className="label flex flex-wrap items-center gap-x-3 gap-y-1 text-subtle" role="status">
       <span className="inline-flex items-center gap-2 text-muted">
         <StatusGlyph status={ms === null ? "critical" : "ok"} size={ms === null ? 8 : 6} />
-        {ms === null ? "Inloggningen svarar inte" : "Alla system i drift"}
+        {ms === null ? "Databasen svarar inte" : "Databasen i drift"}
       </span>
       {parts.map((p) => (
         <span key={p} className="inline-flex items-center gap-3">
