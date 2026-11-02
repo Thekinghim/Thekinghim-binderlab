@@ -54,6 +54,13 @@ export interface RunSeedOptions {
   /** Var den importerade CSV-filen sparas. Standard: importens LocalFileStore. */
   fileStore?: FileStore;
   log?: (message: string) => void;
+  /**
+   * Annan organisation än standardens (Binderlab, slug binderlab). För tester som vill ha
+   * seedens data i en egen organisation utan att röra den vanliga seeden.
+   */
+  organization?: { name: string; slug: string };
+  /** Andra användare än agare@/delagare@binderlab.local (samma syfte som `organization`). */
+  users?: { owner: SeedUser; partner: SeedUser };
 }
 
 export interface SeedSectionResult {
@@ -168,10 +175,15 @@ async function ensureUser(
   return { id: created.id, email: user.email, fullName: user.fullName };
 }
 
-async function ensureOrganization(db: Db, owner: Actor, sections: Sections): Promise<string> {
+async function ensureOrganization(
+  db: Db,
+  owner: Actor,
+  sections: Sections,
+  organization: { name: string; slug: string } = SEED_ORGANIZATION,
+): Promise<string> {
   const existing = await first<{ id: string }>(
     db,
-    sql`select id from public.organizations where slug = ${SEED_ORGANIZATION.slug}`,
+    sql`select id from public.organizations where slug = ${organization.slug}`,
   );
   if (existing) {
     const member = await first<{ role: string }>(
@@ -181,7 +193,7 @@ async function ensureOrganization(db: Db, owner: Actor, sections: Sections): Pro
     );
     if (member?.role !== "owner") {
       throw new Error(
-        `Organisationen "${SEED_ORGANIZATION.slug}" finns men ${owner.email} är inte ägare. Seeden rör den inte.`,
+        `Organisationen "${organization.slug}" finns men ${owner.email} är inte ägare. Seeden rör den inte.`,
       );
     }
     sections.add("organization", false);
@@ -190,7 +202,7 @@ async function ensureOrganization(db: Db, owner: Actor, sections: Sections): Pro
   const created = await asActor(db, owner, (tx) =>
     single<{ id: string }>(
       tx,
-      sql`select public.create_organization(${SEED_ORGANIZATION.name}, ${SEED_ORGANIZATION.slug}) as id`,
+      sql`select public.create_organization(${organization.name}, ${organization.slug}) as id`,
       "Organisationen",
     ),
   );
@@ -502,11 +514,13 @@ export async function runSeed(db: Db, options: RunSeedOptions): Promise<RunSeedR
   const log = options.log ?? (() => {});
   const sections = new Sections();
 
-  const owner = await ensureUser(db, SEED_USERS.owner, options, sections);
-  const partner = await ensureUser(db, SEED_USERS.partner, options, sections);
-  const orgId = await ensureOrganization(db, owner, sections);
+  const users = options.users ?? SEED_USERS;
+  const organization = options.organization ?? SEED_ORGANIZATION;
+  const owner = await ensureUser(db, users.owner, options, sections);
+  const partner = await ensureUser(db, users.partner, options, sections);
+  const orgId = await ensureOrganization(db, owner, sections, organization);
   await ensurePartner(db, orgId, owner, partner, sections);
-  log(`Organisation ${SEED_ORGANIZATION.slug} (${orgId}), användare klara.`);
+  log(`Organisation ${organization.slug} (${orgId}), användare klara.`);
 
   const master = await asActor(db, owner, (tx) => ensureMasterData(tx, orgId, sections));
   log("Butiker, automater, avtal, titlar, inköpspriser och datakälla klara.");

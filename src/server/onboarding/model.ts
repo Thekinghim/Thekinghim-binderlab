@@ -293,7 +293,9 @@ export function buildOnboardingStatus(
       doneAt: m.count > 0 ? m.firstAt : null,
       detail:
         m.count > 0
-          ? `${count(m.count, "automat", "automater")}, ${count(m.placed, "placerad", "placerade")} i en butik.`
+          ? m.placed === 0
+            ? `${count(m.count, "automat", "automater")}, ingen placerad i en butik.`
+            : `${count(m.count, "automat", "automater")}, ${count(m.placed, "placerad", "placerade")} i en butik.`
           : "Ingen automat ännu.",
       blockedBy: null,
       action: { label: "Lägg till automat", href: "/automater" },

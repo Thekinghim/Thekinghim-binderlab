@@ -909,7 +909,12 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       sql`select public.create_store_invitation(${orgId}::uuid, ${store!.id}::uuid, ${storeUser.email}) as token`,
     );
     const claimsFor = (user: TestUser) =>
-      JSON.stringify({ sub: user.id, email: user.email, role: "authenticated", aud: "authenticated" });
+      JSON.stringify({
+        sub: user.id,
+        email: user.email,
+        role: "authenticated",
+        aud: "authenticated",
+      });
     await tx.execute(sql`select set_config('request.jwt.claims', ${claimsFor(storeUser)}, true)`);
     await tx.execute(sql`select public.accept_invitation(${storeInvitation.token})`);
     await tx.execute(sql`select set_config('request.jwt.claims', ${claimsFor(owner)}, true)`);

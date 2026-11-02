@@ -35,7 +35,9 @@ export default async function ButikerPage({
   const cov = period.coverage;
   const dataRange =
     cov && period.partial
-      ? `${dayText(cov.start, ctx.today)}${NBSP}–${NBSP}${dayText(cov.end, ctx.today)}`
+      ? cov.start === cov.end
+        ? dayText(cov.start, ctx.today)
+        : `${dayText(cov.start, ctx.today)}${NBSP}–${NBSP}${dayText(cov.end, ctx.today)}`
       : null;
 
   return (

@@ -18,7 +18,8 @@
     "test:all": "npm run test && npm run test:db",
     "test:domain:tz": "for tz in UTC Europe/Stockholm Asia/Shanghai; do echo \"TZ=$tz\"; TZ=$tz vitest run -c src/domain/testing/vitest.tz.config.ts || exit 1; done",
     "test:import:tz": "for tz in UTC Europe/Stockholm Asia/Shanghai; do echo \"TZ=$tz\"; TZ=$tz vitest run -c src/import/testing/vitest.tz.config.ts || exit 1; done",
-    "test:seed:tz": "for tz in UTC Europe/Stockholm Asia/Shanghai; do echo \"TZ=$tz\"; TZ=$tz vitest run -c src/seed/testing/vitest.tz.config.ts || exit 1; done"
+    "test:seed:tz": "for tz in UTC Europe/Stockholm Asia/Shanghai; do echo \"TZ=$tz\"; TZ=$tz vitest run -c src/seed/testing/vitest.tz.config.ts || exit 1; done",
+    "db:seed-demo": "tsx scripts/db/seed-demo.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
