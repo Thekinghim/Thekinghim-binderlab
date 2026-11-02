@@ -245,6 +245,25 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [sink(c)],
   },
+  // Datakällor → Automatisk synk (Chrome-tillägg), src/server/ingest/actions.ts
+  {
+    module: "@/server/ingest/actions",
+    name: "createExtensionSource",
+    allowed: OP,
+    args: (c) => [sink(c, { name: "Rödteam-tillägg", sourceTimezone: "Asia/Shanghai" })],
+  },
+  {
+    module: "@/server/ingest/actions",
+    name: "createSyncToken",
+    allowed: OP,
+    args: (c) => [sink(c, { name: "Rödteam-dator" })],
+  },
+  {
+    module: "@/server/ingest/actions",
+    name: "revokeSyncToken",
+    allowed: OP,
+    args: (c) => [sink(c, { id: c.idsA.sync_tokens })],
+  },
   // Drift
   {
     module: "@/app/(app)/drift/actions",

@@ -15,6 +15,7 @@ const PROVIDER: Record<string, string> = {
   awish_csv: "Awish, CSV-fil",
   awish_grpc: "Awish, API",
   awish_web: "Awish, webbhämtning",
+  awish_extension: "Awish, Chrome-tillägg",
 };
 
 /** Ord i providerns namn; står alla redan i datakällans namn upprepas providern inte. */
@@ -22,6 +23,7 @@ const PROVIDER_WORDS: Record<string, readonly string[]> = {
   awish_csv: ["awish", "csv"],
   awish_grpc: ["awish", "api"],
   awish_web: ["awish", "webb"],
+  awish_extension: ["awish", "tillägg"],
 };
 
 /** Providern att visa efter datakällans namn, eller null när namnet redan säger den. */

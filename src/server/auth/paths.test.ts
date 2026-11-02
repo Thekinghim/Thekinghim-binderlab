@@ -13,6 +13,8 @@ describe("öppna sökvägar", () => {
     "/sw.js",
     "/manifest.webmanifest",
     "/api/cron/larm",
+    "/api/ingest/awish",
+    "/api/ingest/awish/status",
   ])("%s är öppen", (path) => {
     expect(isPublicPath(path)).toBe(true);
   });
@@ -36,6 +38,9 @@ describe("öppna sökvägar", () => {
     "/api/export.csv.php",
     "/api/cron",
     "/api/cronjobb",
+    "/api/ingest",
+    "/api/ingestx/awish",
+    "/downloads/binderlab-awish-sync.zip",
   ])("%s kräver inloggning", (path) => {
     expect(isPublicPath(path)).toBe(false);
   });

@@ -11,10 +11,10 @@ import type { FirstRowCheck, ImportWarning } from "@/import/run-import";
 
 export type { FirstRowCheck, ImportField, ImportSummary, ImportWarning, RowStatus };
 
-export type ProviderKey = "awish_csv" | "awish_grpc" | "awish_web";
+export type ProviderKey = "awish_csv" | "awish_grpc" | "awish_web" | "awish_extension";
 export type SourceStatus = "active" | "paused" | "error";
 export type ImportStatus = "pending" | "running" | "succeeded" | "failed";
-export type ImportTrigger = "upload" | "schedule" | "webhook";
+export type ImportTrigger = "upload" | "schedule" | "webhook" | "extension";
 export type FieldSource = "auto" | "saved" | "override" | "none";
 
 /** Resultatet av en server action. */

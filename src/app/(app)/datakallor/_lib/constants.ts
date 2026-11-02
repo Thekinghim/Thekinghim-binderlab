@@ -27,6 +27,7 @@ export const PROVIDER_LABELS: Record<string, string> = {
   awish_csv: "Awish · orderlista (CSV)",
   awish_grpc: "Awish · API (gRPC)",
   awish_web: "Awish · webb",
+  awish_extension: "Awish · Chrome-tillägg",
 };
 
 /** Fälten i kolumnmappningen, i visningsordning. Samma som IMPORT_FIELDS i @/import. */

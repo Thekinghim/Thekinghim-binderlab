@@ -21,6 +21,7 @@ const TRIGGER: Record<ImportLogEntry["trigger"], string> = {
   upload: "Uppladdning",
   schedule: "Schemalagd",
   webhook: "Webhook",
+  extension: "Chrome-tillägg",
 };
 
 function count(n: number, flag = false) {

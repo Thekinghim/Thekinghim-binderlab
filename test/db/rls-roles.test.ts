@@ -57,8 +57,9 @@ const OWN_ROW_ONLY = ["profiles", "memberships"];
 /**
  * Tabeller där läsaren bara ser sina egna rader (fixturens rader är ägarens eller
  * larmjobbets) eller inga alls: larminställningar, push-enheter och utskick per
- * användare (fas 8), egna frågor till assistenten (fas 6b) och uppladdningar som bara
- * den som laddade upp ser, och bara som ägare eller admin (Datakällor).
+ * användare (fas 8), egna frågor till assistenten (fas 6b), uppladdningar som bara
+ * den som laddade upp ser, och bara som ägare eller admin (Datakällor), och synk-tokens
+ * för Chrome-tillägget (bara ägare och admin).
  */
 const VIEWER_OWN_ROWS_ONLY = [
   "alert_deliveries",
@@ -67,6 +68,8 @@ const VIEWER_OWN_ROWS_ONLY = [
   "import_upload_chunks",
   "import_uploads",
   "push_subscriptions",
+  // Awish Chrome-tillägget: synk-tokens syns bara för ägare och admin.
+  "sync_tokens",
 ];
 
 let F: TenantFixture;

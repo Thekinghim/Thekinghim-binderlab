@@ -51,9 +51,17 @@ export const dataSourceProvider = pgEnum("data_source_provider", [
   "awish_grpc",
   "awish_web",
   "awish_csv",
+  // Awish Chrome-tillägget (20261102235500_tillagg_enums.sql).
+  "awish_extension",
 ]);
 export const dataSourceStatus = pgEnum("data_source_status", ["active", "paused", "error"]);
-export const importTrigger = pgEnum("import_trigger", ["upload", "schedule", "webhook"]);
+export const importTrigger = pgEnum("import_trigger", [
+  "upload",
+  "schedule",
+  "webhook",
+  // En batch från Awish Chrome-tillägget (20261102235500_tillagg_enums.sql).
+  "extension",
+]);
 export const importStatus = pgEnum("import_status", ["pending", "running", "succeeded", "failed"]);
 export const importRowStatus = pgEnum("import_row_status", ["new", "conflict", "error"]);
 export const stockLocationKind = pgEnum("stock_location_kind", ["warehouse", "machine"]);
@@ -739,3 +747,6 @@ export * from "./schema/datakallor";
 
 // Fas 3 Att göra: avbockade punkter.
 export * from "./schema/att-gora";
+
+// Awish Chrome-tillägget: synk-tokens (docs/awish-tillagg.md).
+export * from "./schema/tillagg";

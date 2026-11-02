@@ -143,6 +143,8 @@ describe("tabeller", () => {
         "supplier_items",
         "supplier_price_quotes",
         "suppliers",
+        // Awish Chrome-tillägget: synk-tokens (20261102235600_tillagg_sync_tokens.sql).
+        "sync_tokens",
         "title_aliases",
         "titles",
         // Att göra: avbockade punkter (20261102113602_att_gora_todo_dismissals.sql).
