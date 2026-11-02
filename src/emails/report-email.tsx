@@ -938,9 +938,15 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export type RenderedEmail = { subject: string; html: string; text: string };
+export type RenderedEmail = {
+  subject: string;
+  /** Förhandstexten (dold i mejlet, visas i inkorgen efter ämnesraden) */
+  preheader: string;
+  html: string;
+  text: string;
+};
 
-/** Ämnesrad, komplett HTML-dokument och text/plain-version. */
+/** Ämnesrad, förhandstext, komplett HTML-dokument och text/plain-version. */
 export function renderReportEmail(props: ReportEmailProps): RenderedEmail {
   const subject = buildSubject(props);
   const body = finalizeMsoMarkers(renderToStaticMarkup(<ReportEmail {...props} />));
@@ -964,5 +970,5 @@ export function renderReportEmail(props: ReportEmailProps): RenderedEmail {
     "</body>",
     "</html>",
   ].join("\n");
-  return { subject, html, text: renderReportText(props) };
+  return { subject, preheader: buildPreheader(props), html, text: renderReportText(props) };
 }

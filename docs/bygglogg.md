@@ -35,3 +35,8 @@ Kod: `claude/bygge` i Thekinghim/thekinghim-binderlab. `main` innehåller bara g
 ## Beslut under bygget
 
 Se `docs/datamodell.md` (Beslut från beställaren) och planens avsnitt "Beslut under bygget".
+
+## Schemalagd kontroll
+
+Timvis kontroll av bygget: schemalagd uppgift `trig_011jdLLdDXA6g2gBGTGoFBzJ` ("Binderlab: fortsätt bygget", kl. xx:35 UTC).
+Tas bort när alla faser är klara.
