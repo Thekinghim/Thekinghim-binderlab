@@ -63,7 +63,7 @@ export interface StoreSimilarity {
 /** Normaliserar text för jämförelse: trimmat, gemener, ett mellanslag mellan ord. */
 export function normalizeAttribute(value: string | null | undefined): string | null {
   if (value === null || value === undefined) return null;
-  const v = value.trim().replace(/\s+/g, " ").toLocaleLowerCase("sv-SE");
+  const v = value.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("sv-SE");
   return v === "" ? null : v;
 }
 

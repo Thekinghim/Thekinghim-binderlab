@@ -267,7 +267,7 @@ describe("recommendAssortment", () => {
     // D behöver 3 fack (21/vecka), A 1 fack → 4 av 8
     expect(m2!.freeSlots).toBe(4);
     expect(m2!.action).toBe("keep");
-    expect(plain(m2!.text)).toContain("4 fack blir lediga");
+    expect(plain(m2!.text)).toContain("4 fack står lediga");
   });
 
   it("valda liknande automater ersätter likheten", () => {

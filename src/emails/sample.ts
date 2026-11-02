@@ -6,7 +6,6 @@ import {
   formatKronor,
   formatPercent,
   formatSek,
-  formatSignedKronor,
 } from "@/lib/format";
 import {
   machines,

@@ -9,6 +9,9 @@
  * - Jämförelse: övriga automater (eller `controlMachineIds`) under samma dagar. Justerad
  *   förändring = efter − före × (övrigas bidrag efter / övrigas bidrag före), så att säsong och
  *   allmän efterfrågan räknas bort. Saknar jämförelsegruppen bidrag före används ojusterad.
+ * - Underlag: `evidence` har automatens egna order och, i `machineIds`, både automaten och
+ *   jämförelseautomaterna. Jämförelsens order och tal finns i `control` och
+ *   `controlEvidence`, så att UI kan visa vad justeringen bygger på.
  * - Utfall mot väntad effekt (från rekommendationen): justerad förändring / väntad, i bp.
  * - Status: 'too-early' när L < 7, 'running' när L < fönstret, annars 'done'.
  */
@@ -81,8 +84,24 @@ export interface AssortmentFollowUp {
     readonly unitsBefore: number;
     readonly unitsAfter: number;
   }[];
+  /** Jämförelsegruppen som justeringen bygger på. */
+  readonly control: AssortmentFollowUpControl;
   readonly text: string;
+  /** Automatens egna order; `machineIds` innehåller även jämförelseautomaterna. */
   readonly evidence: MarketEvidence;
+  /** Jämförelseautomaternas order och bidrag före och efter. */
+  readonly controlEvidence: MarketEvidence;
+}
+
+/** Jämförelsegruppen i en uppföljning: automater med order under fönstren. */
+export interface AssortmentFollowUpControl {
+  /** Jämförelseautomater som hade order före eller efter, sorterade. */
+  readonly machineIds: readonly string[];
+  readonly unitsBefore: number;
+  readonly unitsAfter: number;
+  /** Bidrag per vecka före och efter, i öre (prissatta order). */
+  readonly contributionPerWeekBeforeOre: number;
+  readonly contributionPerWeekAfterOre: number;
 }
 
 /** Före/efter-mätning av en sortimentsändring (se modulens regler). */
@@ -123,10 +142,21 @@ export function assortmentFollowUp(input: AssortmentFollowUpInput): AssortmentFo
       expectedEffectPerWeekOre: expected,
       achievedBp: null,
       titles: [],
+      control: {
+        machineIds: [],
+        unitsBefore: 0,
+        unitsAfter: 0,
+        contributionPerWeekBeforeOre: 0,
+        contributionPerWeekAfterOre: 0,
+      },
       text: `${machineName}: ändringen genomförs ${day(input.implementedOn)}; inget att mäta ännu.`,
       evidence: marketEvidence({
         rule: "Före/efter med samma längd.",
         machineIds: [input.machineId],
+        dates: [input.implementedOn],
+      }),
+      controlEvidence: marketEvidence({
+        rule: "Jämförelseautomater under samma dagar; inget att mäta ännu.",
         dates: [input.implementedOn],
       }),
     };
@@ -181,6 +211,12 @@ export function assortmentFollowUp(input: AssortmentFollowUpInput): AssortmentFo
   const status: AssortmentFollowUp["status"] =
     L < 7 ? "too-early" : L < windowDays ? "running" : "done";
 
+  const controlMachineIds = [
+    ...new Set([...cb.orders, ...ca.orders].map((o) => o.machineId!)),
+  ].sort(compareStrings);
+  const controlWeekBefore = perWeek(cb.contribution).round();
+  const controlWeekAfter = perWeek(ca.contribution).round();
+
   const changed = [...new Set(input.changedTitleIds ?? [])].sort(compareStrings);
   const titles = changed.map((titleId) => ({
     titleId,
@@ -233,6 +269,13 @@ export function assortmentFollowUp(input: AssortmentFollowUpInput): AssortmentFo
     expectedEffectPerWeekOre: expected,
     achievedBp,
     titles,
+    control: {
+      machineIds: controlMachineIds,
+      unitsBefore: cb.units,
+      unitsAfter: ca.units,
+      contributionPerWeekBeforeOre: controlWeekBefore,
+      contributionPerWeekAfterOre: controlWeekAfter,
+    },
     text: parts.join(" "),
     evidence: marketEvidence({
       rule: "Bidrag per vecka före och efter med samma antal dagar; justerat med övriga automaters förändring under samma dagar.",
@@ -240,7 +283,7 @@ export function assortmentFollowUp(input: AssortmentFollowUpInput): AssortmentFo
       orderIds: [...b.orders, ...a.orders].map((o) => o.id),
       dates: [input.implementedOn],
       titleIds: changed,
-      machineIds: [input.machineId],
+      machineIds: [input.machineId, ...controlMachineIds],
       figures: [
         fig("windowDays", "Dagar per fönster", L, "days"),
         fig("contributionPerWeekBeforeOre", "Bidrag per vecka före", weekBefore.round(), "ore"),
@@ -252,6 +295,41 @@ export function assortmentFollowUp(input: AssortmentFollowUpInput): AssortmentFo
         ...(expected === null
           ? []
           : [fig("expectedEffectPerWeekOre", "Väntad effekt per vecka", expected, "ore")]),
+        fig(
+          "controlContributionPerWeekBeforeOre",
+          "Jämförelsens bidrag per vecka före",
+          controlWeekBefore,
+          "ore",
+        ),
+        fig(
+          "controlContributionPerWeekAfterOre",
+          "Jämförelsens bidrag per vecka efter",
+          controlWeekAfter,
+          "ore",
+        ),
+      ],
+    }),
+    controlEvidence: marketEvidence({
+      rule: input.controlMachineIds
+        ? "Valda jämförelseautomater under samma dagar före och efter."
+        : "Övriga automater med order under samma dagar före och efter.",
+      period: { start: before.start, end: after.end },
+      orderIds: [...cb.orders, ...ca.orders].map((o) => o.id),
+      dates: [input.implementedOn],
+      machineIds: controlMachineIds,
+      figures: [
+        fig("unitsBefore", "Pack före", cb.units, "packs"),
+        fig("unitsAfter", "Pack efter", ca.units, "packs"),
+        fig(
+          "contributionPerWeekBeforeOre",
+          "Bidrag per vecka före",
+          controlWeekBefore,
+          "ore",
+        ),
+        fig("contributionPerWeekAfterOre", "Bidrag per vecka efter", controlWeekAfter, "ore"),
+        ...(controlChangeBp === null
+          ? []
+          : [fig("controlChangeBp", "Förändring", controlChangeBp, "bp")]),
       ],
     }),
   };

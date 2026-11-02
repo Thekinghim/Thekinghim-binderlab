@@ -579,14 +579,16 @@ export function MotionTimeline() {
         {ticks.map((t) => (
           <span
             key={t}
-            className="absolute bottom-0 flex -translate-x-1/2 flex-col items-center gap-1"
+            className={cn(
+              "absolute bottom-0 flex flex-col gap-1",
+              t === 1000 ? "-translate-x-full items-end" : "-translate-x-1/2 items-center",
+            )}
             style={{ left: `${(t / AXIS_MAX) * 100}%` }}
           >
             <span
               className={cn(
                 "meta tnum whitespace-nowrap text-subtle",
                 (t === 150 || t === 180) && "hidden sm:inline",
-                t === 1000 && "-translate-x-1/2",
               )}
             >
               {t === 1000 ? "1 000 ms" : t}

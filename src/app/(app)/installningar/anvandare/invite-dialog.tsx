@@ -10,7 +10,7 @@ import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 
 import { inviteMember } from "./actions";
-import { FormError } from "./form-error";
+import { FormError } from "@/app/logga-in/form-error";
 import { ROLE_LABEL } from "./model";
 import { RoleChoice } from "./role-choice";
 

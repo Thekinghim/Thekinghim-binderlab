@@ -28,3 +28,39 @@ export const PROVIDER_LABELS: Record<string, string> = {
   awish_grpc: "Awish · API (gRPC)",
   awish_web: "Awish · webb",
 };
+
+/** Fälten i kolumnmappningen, i visningsordning. Samma som IMPORT_FIELDS i @/import. */
+export const MAPPING_FIELDS = [
+  "externalId",
+  "title",
+  "machine",
+  "amount",
+  "isPaid",
+  "paidAt",
+  "paymentMethod",
+  "rowId",
+  "orderDate",
+] as const;
+
+/** Svenska namn på fälten. Samma som FIELD_LABELS i @/import (kontrolleras i test). */
+export const MAPPING_FIELD_LABELS: Record<(typeof MAPPING_FIELDS)[number], string> = {
+  externalId: "Ordernummer",
+  title: "Produkt (titel)",
+  machine: "Automat",
+  amount: "Belopp",
+  isPaid: "Betalstatus",
+  paidAt: "Betaltid",
+  paymentMethod: "Betalmetod",
+  rowId: "Rad-ID i källan",
+  orderDate: "Orderdatum",
+};
+
+/** Fält som måste finnas. Samma som REQUIRED_FIELDS i @/import. */
+export const REQUIRED_MAPPING_FIELDS: ReadonlyArray<(typeof MAPPING_FIELDS)[number]> = [
+  "externalId",
+  "title",
+  "machine",
+  "amount",
+  "isPaid",
+  "paidAt",
+];

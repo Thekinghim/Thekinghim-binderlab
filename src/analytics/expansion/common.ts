@@ -7,7 +7,16 @@
  * en gång med domänens `roundHalfUp` (halva bort från noll).
  */
 
-import { DomainError, roundHalfUp, type IsoDate, type Period } from "@/domain";
+import {
+  daysInMonth,
+  DomainError,
+  eachDay,
+  MONTH_LCM,
+  roundHalfUp,
+  type IsoDate,
+  type LedgerEntry,
+  type Period,
+} from "@/domain";
 import { evidence } from "../todos/common";
 import { kr } from "../todos/text";
 import type { Evidence, FigureUnit } from "../todos/types";
@@ -177,12 +186,59 @@ export function weightedMean(items: readonly { value: Ratio; weight: number }[])
   return sum.div(weights);
 }
 
-/** Dagar per år i omräkningar framåt (per månad = per dag × 365 / 12). */
-export const DAYS_PER_YEAR = 365;
+/**
+ * Automatmånader som heltal i 1/`MONTH_LCM`: Σ över dagarna i perioden av
+ * `MONTH_LCM / dagar i dagens kalendermånad`. Samma regel som domänens "aktiva månader"
+ * i enhetsekonomin (`unitEconomics`), så en hel kalendermånad är exakt 1 automatmånad och
+ * 15 av 30 dagar exakt 0,5, oavsett hur lång månaden är.
+ */
+export function monthUnits(period: Period): number {
+  let units = 0;
+  for (const d of eachDay(period.start, period.end)) units += MONTH_LCM / daysInMonth(d);
+  return units;
+}
 
-/** Takt per dag → per månad (365/12 dagar). */
-export function perMonth(perDay: Ratio): Ratio {
-  return perDay.mul(new Ratio(DAYS_PER_YEAR, 12));
+/**
+ * Takt per automatmånad: belopp / (enheter / `MONTH_LCM`), exakt. Det är domänens regel
+ * för "vinst per månad" (vinst / aktiva månader), så jämförelse, scenario, pipeline och
+ * enhetsekonomi visar samma månadstal för samma automat och period.
+ * Kastar `DomainError('division_by_zero')` när `units` är 0.
+ */
+export function perMachineMonth(amount: Ratio | number, units: number): Ratio {
+  const a = amount instanceof Ratio ? amount : new Ratio(amount);
+  return a.mul(MONTH_LCM).div(units);
+}
+
+/** Månader per år i omräkningen till avkastning per år (per år = per månad × 12). */
+export const MONTHS_PER_YEAR = 12;
+
+/** Spåret till orderna: order-id och försäljningsdagar, sorterade och unika. */
+export interface OrderTrail {
+  readonly orderIds: string[];
+  readonly dates: IsoDate[];
+}
+
+/**
+ * Order-id och dagar för liggarens poster som uppfyller filtret (butik, automat, bara
+ * prissatta). Används i underlaget så att UI kan länka till exakt de order ett tal bygger på.
+ */
+export function orderTrail(
+  entries: readonly LedgerEntry[],
+  filter: { storeId?: string | null; machineId?: string | null; pricedOnly?: boolean } = {},
+): OrderTrail {
+  const ids = new Set<string>();
+  const dates = new Set<IsoDate>();
+  for (const e of entries) {
+    if (filter.storeId != null && e.storeId !== filter.storeId) continue;
+    if (filter.machineId != null && e.order.machineId !== filter.machineId) continue;
+    if (filter.pricedOnly && !e.priced) continue;
+    ids.add(e.order.id);
+    dates.add(e.order.businessDate);
+  }
+  return {
+    orderIds: [...ids].sort(),
+    dates: [...dates].sort(),
+  };
 }
 
 // ---------------------------------------------------------------------------

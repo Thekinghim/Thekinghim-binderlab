@@ -233,6 +233,9 @@ describe("releaseOutcome", () => {
     // 56 × 51,43 % = 28,8
     expect(r.expectedByNowTenths).toBe(288);
     expect(r.diffBp).toBe(-625);
+    // Lika mot lika: 25 pack i automaterna med förslag mot 28,8 → −13,19 %.
+    expect(r.plannedActual).toBe(25);
+    expect(r.plannedDiffBp).toBe(-1_319);
     expect(r.pace).toBe("on-track");
     const m1 = r.machines.find((m) => m.machineId === "m-1")!;
     expect(m1).toMatchObject({
@@ -249,7 +252,7 @@ describe("releaseOutcome", () => {
       { machineId: "m-9", actual: 1 },
     ]);
     expect(plain(r.text)).toBe(
-      "Destined Rivals efter 7 av 28 dagar: 27 pack sålda, förslaget väntade 28,8 hittills (−6 %). I linje med förslaget. Slutsålt: Automat 1 (12 nov.); där kunde mer ha sålts. 2 pack såldes i automater utan förslag.",
+      "Destined Rivals efter 7 av 28 dagar: 27 pack sålda, varav 25 i automaterna med förslag, förslaget väntade 28,8 hittills (−13 %). I linje med förslaget. Slutsålt: Automat 1 (12 nov.); där kunde mer ha sålts. 2 pack såldes i automater utan förslag.",
     );
   });
 
@@ -265,7 +268,7 @@ describe("releaseOutcome", () => {
     expect(r.expectedByNowTenths).toBe(560);
     expect(r.pace).toBe("behind");
     expect(plain(r.text)).toContain(
-      "efter 28 dagar: 27 pack sålda mot 56 föreslagna (−52 %). Efter förslaget.",
+      "efter 28 dagar: 27 pack sålda, varav 25 i automaterna med förslag mot 56 föreslagna (−55 %). Efter förslaget.",
     );
     const half = releaseOutcome({
       ...outcomeBase,
@@ -274,6 +277,27 @@ describe("releaseOutcome", () => {
       asOf: "2026-11-20",
     });
     expect(half.expectedByNowTenths).toBe(280);
+  });
+
+  it("oplanerad försäljning blåser inte upp riktningen: lika mot lika avgör", () => {
+    // Förslag 10 pack i m-1, jämn försäljning: väntat efter 14 av 28 dagar = 5.
+    // m-1 sålde 5 (i linje); m-9 utan förslag sålde 3 → totalt 8 (+60 %), men pace följer 5 mot 5.
+    const r = releaseOutcome({
+      titleId: "new",
+      releaseDate: "2026-11-07",
+      asOf: "2026-11-20",
+      allocations: [{ machineId: "m-1", units: 10 }],
+      orders: [
+        ...daily("a", "new", "m-1", "2026-11-07", 5, 1),
+        ...daily("b", "new", "m-9", "2026-11-07", 3, 1),
+      ],
+    });
+    expect(r.actual).toBe(8);
+    expect(r.diffBp).toBe(6_000);
+    expect(r.plannedActual).toBe(5);
+    expect(r.plannedDiffBp).toBe(0);
+    expect(r.pace).toBe("on-track");
+    expect(r.evidence.figures.find((f) => f.key === "plannedDiffBp")?.value).toBe(0);
   });
 
   it("före släppdagen: inget utfall", () => {

@@ -6,11 +6,21 @@
  * för varje placering räknas dagarna som ligger i perioden (båda ändar inräknade).
  * En butik där en automat stått utan att sälja får alltså automatdagar men ingen intäkt,
  * och drar ned snittet, som den ska.
+ *
+ * Automatmånader räknas med domänens regel för aktiva månader (Σ dagar / dagar i
+ * kalendermånaden, exakt i 1/`MONTH_LCM`), så "per månad" betyder samma sak här som i
+ * enhetsekonomin.
+ *
+ * Hyran är lönsamhetens hyra för butiken: den gäller avtalets dagar i perioden, också dagar
+ * innan automaten kom på plats om avtalet redan löpte. Det är butikens verkliga kostnad och
+ * samma tal som panelen visar; ett avtal som börjar samma dag som placeringen ger hyra
+ * bara för de dagarna.
  */
 
 import {
   addDays,
   assertPeriod,
+  buildLedger,
   intersectPeriods,
   NO_STORE_KEY,
   periodDays,
@@ -20,11 +30,13 @@ import {
   type ProfitabilityInput,
   type ProfitabilityRow,
 } from "@/domain";
+import { monthUnits, orderTrail } from "./common";
 import type { SiteHistory } from "./types";
 
 interface Acc {
   machineIds: Set<string>;
   machineDays: number;
+  machineMonthUnits: number;
   firstDay: IsoDate | null;
   lastDay: IsoDate | null;
 }
@@ -43,7 +55,13 @@ export function siteHistories(input: ProfitabilityInput): SiteHistory[] {
   const get = (storeId: string): Acc => {
     let a = acc.get(storeId);
     if (!a) {
-      a = { machineIds: new Set(), machineDays: 0, firstDay: null, lastDay: null };
+      a = {
+        machineIds: new Set(),
+        machineDays: 0,
+        machineMonthUnits: 0,
+        firstDay: null,
+        lastDay: null,
+      };
       acc.set(storeId, a);
     }
     return a;
@@ -58,6 +76,7 @@ export function siteHistories(input: ProfitabilityInput): SiteHistory[] {
     const a = get(p.storeId);
     a.machineIds.add(p.machineId);
     a.machineDays += periodDays(overlap);
+    a.machineMonthUnits += monthUnits(overlap);
     if (a.firstDay === null || overlap.start < a.firstDay) a.firstDay = overlap.start;
     if (a.lastDay === null || overlap.end > a.lastDay) a.lastDay = overlap.end;
   }
@@ -69,6 +88,7 @@ export function siteHistories(input: ProfitabilityInput): SiteHistory[] {
     get(r.key);
   }
 
+  const entries = buildLedger(input).entries;
   const out: SiteHistory[] = [];
   for (const storeId of [...acc.keys()].sort()) {
     const a = acc.get(storeId)!;
@@ -82,6 +102,8 @@ export function siteHistories(input: ProfitabilityInput): SiteHistory[] {
       period,
       machineIds: [...a.machineIds].sort(),
       machineDays: a.machineDays,
+      machineMonthUnits: a.machineMonthUnits,
+      ...orderTrail(entries, { storeId }),
       firstDay: a.firstDay,
       lastDay: a.lastDay,
       orders: r?.orders ?? 0,

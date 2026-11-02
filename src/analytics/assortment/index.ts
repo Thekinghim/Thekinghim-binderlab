@@ -25,5 +25,6 @@ export {
 export {
   assortmentFollowUp,
   type AssortmentFollowUp,
+  type AssortmentFollowUpControl,
   type AssortmentFollowUpInput,
 } from "./follow-up";

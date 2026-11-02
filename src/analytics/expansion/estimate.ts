@@ -10,29 +10,32 @@
  *      blir vinsten missvisande,
  *    - likheten är minst `minScoreBp` (standard 60 %).
  *    Av dem tas de `maxSites` mest lika (standard 3; lika likhet → lägst id).
- * 3. För varje plats räknas takten per automat och dag, exakt som bråk:
- *    intäkt / automatdagar och vinst / automatdagar. Vinsten är lönsamhetsvyns vinst
- *    (efter inköp, avgifter, provision och hyra). Anges villkor för den nya platsen
- *    (`terms`) ersätts platsens provision och hyra med dem: provision = intäkt per dag ×
- *    provisionssats, hyra per dag = månadshyra × 12 / 365.
+ * 3. För varje plats räknas takten per automat och månad, exakt som bråk, med domänens
+ *    regel för enhetsekonomi: belopp / automatmånader, där automatmånader = Σ dagar /
+ *    dagar i kalendermånaden (en hel oktober = 1, 15 av 30 novemberdagar = 0,5). Samma
+ *    automat och period ger därför samma vinst per månad och återbetalningstid här som i
+ *    `compareUnitEconomics`. Vinsten är lönsamhetsvyns vinst (efter inköp, avgifter,
+ *    provision och hyra). Anges villkor för den nya platsen (`terms`) ersätts platsens
+ *    provision och hyra med dem: provision = intäkt × provisionssats, hyra = månadshyra ×
+ *    automatmånader. Takten per dag (belopp / automatdagar) visas också.
  * 4. Förväntat värde = snittet av platsernas takt viktat efter likhet. Intervallet är
- *    lägsta och högsta platsens takt. Per månad = per dag × 365 / 12.
+ *    lägsta och högsta platsens takt.
  * 5. Återbetalningstid = investering / vinst per månad, i tiondels månader. Bästa fallet
  *    räknas från högsta vinsten, sämsta från lägsta. Vinst ≤ 0 → återbetalas inte (`null`).
- * 6. Avkastning per år = vinst per dag × 365 / investering, i bp.
+ * 6. Avkastning per år = vinst per månad × 12 / investering, i bp (som enhetsekonomin).
  *
  * Resultatet är alltid märkt som uppskattning (`kind: 'estimate'`, texten börjar med
  * "Uppskattning").
  */
 
-import { assertPeriod, BP_SCALE, type Period } from "@/domain";
+import { assertPeriod, BP_SCALE, MONTH_LCM, mulDivRound, type Period } from "@/domain";
 import { kr, pct, periodText, plural, tenths } from "../todos/text";
 import {
   assertNonNegative,
   assertRateBp,
-  DAYS_PER_YEAR,
   fig,
-  perMonth,
+  MONTHS_PER_YEAR,
+  perMachineMonth,
   Ratio,
   scenarioEvidence,
   weightedMean,
@@ -111,11 +114,15 @@ export function paybackTenths(investmentOre: number, profitPerMonth: Ratio): num
   return new Ratio(investmentOre * 10).div(profitPerMonth).round();
 }
 
-/** Avkastning per år i bp: round(vinst per dag × 365 × 10 000 / investering). `null` utan investering. */
-export function annualReturnBp(investmentOre: number, profitPerDay: Ratio): number | null {
+/**
+ * Avkastning per år i bp: round(vinst per månad × 12 × 10 000 / investering), samma regel
+ * som i enhetsekonomins jämförelse. `null` utan investering.
+ */
+export function annualReturnBp(investmentOre: number, profitPerMonth: Ratio): number | null {
+  assertNonNegative(investmentOre, "Investeringen");
   if (investmentOre === 0) return null;
-  return profitPerDay
-    .mul(DAYS_PER_YEAR * BP_SCALE)
+  return profitPerMonth
+    .mul(MONTHS_PER_YEAR * BP_SCALE)
     .div(investmentOre)
     .round();
 }
@@ -160,16 +167,28 @@ function rangeText(r: EstimateRange): string {
 interface SiteRates {
   revenuePerDay: Ratio;
   profitPerDay: Ratio;
+  revenuePerMonth: Ratio;
+  profitPerMonth: Ratio;
 }
 
+/**
+ * Platsens takt per automatdag och per automatmånad. Med villkor: vinst = täckningsbidrag
+ * − intäkt × provisionssats − månadshyra × automatmånader.
+ */
 function siteRates(h: SiteHistory, terms: SiteTerms | null): SiteRates {
-  const days = h.machineDays;
-  const revenuePerDay = new Ratio(h.revenueOre, days);
-  if (!terms) return { revenuePerDay, profitPerDay: new Ratio(h.profitOre, days) };
-  const contribution = new Ratio(h.contributionOre, days);
-  const commission = revenuePerDay.mul(new Ratio(terms.commissionBp ?? 0, BP_SCALE));
-  const rent = new Ratio((terms.monthlyRentOre ?? 0) * 12, DAYS_PER_YEAR);
-  return { revenuePerDay, profitPerDay: contribution.sub(commission).sub(rent) };
+  const units = h.machineMonthUnits;
+  let profit = new Ratio(h.profitOre);
+  if (terms) {
+    const commission = new Ratio(h.revenueOre).mul(new Ratio(terms.commissionBp ?? 0, BP_SCALE));
+    const rent = new Ratio(terms.monthlyRentOre ?? 0).mul(new Ratio(units, MONTH_LCM));
+    profit = new Ratio(h.contributionOre).sub(commission).sub(rent);
+  }
+  return {
+    revenuePerDay: new Ratio(h.revenueOre, h.machineDays),
+    profitPerDay: profit.div(h.machineDays),
+    revenuePerMonth: perMachineMonth(h.revenueOre, units),
+    profitPerMonth: perMachineMonth(profit, units),
+  };
 }
 
 /**
@@ -264,7 +283,7 @@ export function estimateSite(args: SiteEstimateArgs): SiteEstimate {
     ? `butiksersättning enligt angivna villkor: provision ${pct(terms.commissionBp ?? 0)}, hyra ${kr(terms.monthlyRentOre ?? 0)} per månad`
     : "butiksersättning enligt platsernas egna avtal";
   const rule =
-    "Snittet per automat och dag av de mest lika befintliga butikerna, viktat efter likhet (butikstyp, ort, öppettider, yta); intervallet är lägsta och högsta platsens takt. Per månad = per dag × 365 / 12. Återbetalningstid = investering / vinst per månad.";
+    "Snittet per automat och månad av de mest lika befintliga butikerna, viktat efter likhet (butikstyp, ort, öppettider, yta); intervallet är lägsta och högsta platsens takt. Per månad = belopp / aktiva automatmånader (som enhetsekonomin). Återbetalningstid = investering / vinst per månad.";
 
   if (chosen.length === 0) {
     const best = ranked.find((s) => !excludedIds.has(s.storeId));
@@ -306,63 +325,55 @@ export function estimateSite(args: SiteEstimateArgs): SiteEstimate {
   const rates: (SiteRates & { weight: number })[] = [];
   for (const { sim, history } of chosen) {
     const r = siteRates(history, terms);
-    const profitPerMonth = perMonth(r.profitPerDay);
     rates.push({ ...r, weight: sim.scoreBp });
     basis.push({
       storeId: sim.storeId,
       name: nameOf(sim.storeId),
       similarity: sim,
       machineDays: history.machineDays,
+      machineMonthsHundredths: mulDivRound(history.machineMonthUnits, 100, MONTH_LCM),
       machineIds: history.machineIds,
       revenuePerDayOre: r.revenuePerDay.round(),
       profitPerDayOre: r.profitPerDay.round(),
-      revenuePerMonthOre: perMonth(r.revenuePerDay).round(),
-      profitPerMonthOre: profitPerMonth.round(),
-      paybackTenths: paybackTenths(investment, profitPerMonth),
+      revenuePerMonthOre: r.revenuePerMonth.round(),
+      profitPerMonthOre: r.profitPerMonth.round(),
+      paybackTenths: paybackTenths(investment, r.profitPerMonth),
     });
   }
 
   // 4. Viktat snitt och intervall (en plats med vikt 0 räknas lika).
   const anyWeight = rates.some((r) => r.weight > 0);
   const w = (r: { weight: number }) => (anyWeight ? r.weight : 1);
-  const expRevenueDay = weightedMean(rates.map((r) => ({ value: r.revenuePerDay, weight: w(r) })));
-  const expProfitDay = weightedMean(rates.map((r) => ({ value: r.profitPerDay, weight: w(r) })));
-  const sortedProfit = [...rates].sort((a, b) => a.profitPerDay.compare(b.profitPerDay));
-  const sortedRevenue = [...rates].sort((a, b) => a.revenuePerDay.compare(b.revenuePerDay));
-  const minProfitDay = sortedProfit[0]!.profitPerDay;
-  const maxProfitDay = sortedProfit[sortedProfit.length - 1]!.profitPerDay;
-
-  const range = (low: Ratio, exp: Ratio, high: Ratio): EstimateRange => ({
-    low: low.round(),
-    expected: exp.round(),
-    high: high.round(),
-  });
-  const profitPerDayOre = range(minProfitDay, expProfitDay, maxProfitDay);
-  const profitPerMonthOre = range(
-    perMonth(minProfitDay),
-    perMonth(expProfitDay),
-    perMonth(maxProfitDay),
-  );
-  const revenuePerMonthOre = range(
-    perMonth(sortedRevenue[0]!.revenuePerDay),
-    perMonth(expRevenueDay),
-    perMonth(sortedRevenue[sortedRevenue.length - 1]!.revenuePerDay),
-  );
+  const mean = (pick: (r: SiteRates) => Ratio) =>
+    weightedMean(rates.map((r) => ({ value: pick(r), weight: w(r) })));
+  const span = (pick: (r: SiteRates) => Ratio): { min: Ratio; max: Ratio } => {
+    const sorted = rates.map(pick).sort((a, b) => a.compare(b));
+    return { min: sorted[0]!, max: sorted[sorted.length - 1]! };
+  };
+  const range = (pick: (r: SiteRates) => Ratio): EstimateRange => {
+    const { min, max } = span(pick);
+    return { low: min.round(), expected: mean(pick).round(), high: max.round() };
+  };
+  const profitPerDayOre = range((r) => r.profitPerDay);
+  const profitPerMonthOre = range((r) => r.profitPerMonth);
+  const revenuePerMonthOre = range((r) => r.revenuePerMonth);
+  const expProfitMonth = mean((r) => r.profitPerMonth);
+  const { min: minProfitMonth, max: maxProfitMonth } = span((r) => r.profitPerMonth);
 
   // 5–6. Återbetalning och avkastning.
   const payback: PaybackRange = {
-    low: paybackTenths(investment, perMonth(maxProfitDay)),
-    expected: paybackTenths(investment, perMonth(expProfitDay)),
-    high: paybackTenths(investment, perMonth(minProfitDay)),
+    low: paybackTenths(investment, maxProfitMonth),
+    expected: paybackTenths(investment, expProfitMonth),
+    high: paybackTenths(investment, minProfitMonth),
   };
-  const ret = annualReturnBp(investment, expProfitDay);
+  const ret = annualReturnBp(investment, expProfitMonth);
   const annual: EstimateRange | null =
     ret === null
       ? null
       : {
-          low: annualReturnBp(investment, minProfitDay)!,
+          low: annualReturnBp(investment, minProfitMonth)!,
           expected: ret,
-          high: annualReturnBp(investment, maxProfitDay)!,
+          high: annualReturnBp(investment, maxProfitMonth)!,
         };
 
   const confidence = estimateConfidence(basis.map((b) => b.similarity.scoreBp));
@@ -391,6 +402,12 @@ export function estimateSite(args: SiteEstimateArgs): SiteEstimate {
     figures.push(
       fig(`site:${b.storeId}:scoreBp`, `${b.name}: likhet`, b.similarity.scoreBp, "bp"),
       fig(`site:${b.storeId}:machineDays`, `${b.name}: automatdagar`, b.machineDays, "days"),
+      fig(
+        `site:${b.storeId}:machineMonths`,
+        `${b.name}: automatmånader (hundradelar)`,
+        b.machineMonthsHundredths,
+        "hundredths",
+      ),
       fig(
         `site:${b.storeId}:profitPerMonthOre`,
         `${b.name}: vinst per månad`,
@@ -423,6 +440,8 @@ export function estimateSite(args: SiteEstimateArgs): SiteEstimate {
       period,
       storeIds: basis.map((b) => b.storeId),
       machineIds: basis.flatMap((b) => b.machineIds),
+      orderIds: chosen.flatMap((c) => c.history.orderIds),
+      dates: chosen.flatMap((c) => c.history.dates),
       figures,
     }),
   };

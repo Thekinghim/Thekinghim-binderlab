@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDelta, formatInt, formatSek } from "@/lib/format";
+import { formatDelta, formatSek } from "@/lib/format";
 import { motion } from "@/lib/tokens";
 import type { Model } from "../model";
 import { machines, storeById } from "../sample-data";

@@ -17,7 +17,7 @@ import {
   resendInvitation,
   revokeInvitation,
 } from "./actions";
-import { FormError } from "./form-error";
+import { FormError } from "@/app/logga-in/form-error";
 import { ROLE_LABEL, canManageMembers, peopleCount } from "./model";
 import { RoleChoice } from "./role-choice";
 

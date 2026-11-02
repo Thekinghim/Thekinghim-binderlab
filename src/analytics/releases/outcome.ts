@@ -8,7 +8,11 @@
  *   är utfallet "i linje", över är det "före", under "efter".
  * - Slutsålt: automaten har sålt minst så många pack som den fick. Dagen då det skedde anges.
  *   En slutsåld automat kan ha sålt mer med mer lager: utfallet är då en undre gräns.
- * - Försäljning i automater utan förslag redovisas separat (ingår i totalen).
+ * - Försäljning i automater utan förslag redovisas separat. Den ingår i totalen (`actual`,
+ *   `diffBp`) men inte i jämförelsen lika mot lika (`plannedActual`, `plannedDiffBp`): sålt i
+ *   automaterna med förslag mot väntat för just dem. Riktningen (`pace`) och procenten i
+ *   texten bygger på jämförelsen lika mot lika, så att oplanerad försäljning inte blåser upp
+ *   avvikelsen.
  */
 
 import {
@@ -80,9 +84,17 @@ export interface ReleaseOutcome {
   /** Försäljning i automater utan förslag. */
   readonly unplanned: readonly { readonly machineId: string | null; readonly actual: number }[];
   readonly allocated: number;
+  /** Väntat hittills i automaterna med förslag, i tiondelar. */
   readonly expectedByNowTenths: number;
+  /** Sålda pack i alla automater (även utan förslag). */
   readonly actual: number;
+  /** (`actual` − väntat) / väntat i bp: total, inklusive automater utan förslag. */
   readonly diffBp: number | null;
+  /** Sålda pack i automaterna med förslag. */
+  readonly plannedActual: number;
+  /** (`plannedActual` − väntat) / väntat i bp: lika mot lika. */
+  readonly plannedDiffBp: number | null;
+  /** Riktning enligt `plannedDiffBp`. */
   readonly pace: ReleasePace | null;
   readonly text: string;
   readonly evidence: MarketEvidence;
@@ -142,6 +154,8 @@ export function releaseOutcome(input: ReleaseOutcomeInput): ReleaseOutcome {
       expectedByNowTenths: 0,
       actual: 0,
       diffBp: null,
+      plannedActual: 0,
+      plannedDiffBp: null,
       pace: null,
       text: `${name} släpps ${day(input.releaseDate)}; inget utfall ännu.`,
       evidence: marketEvidence({
@@ -193,7 +207,10 @@ export function releaseOutcome(input: ReleaseOutcomeInput): ReleaseOutcome {
 
   const expectedTotal = new Ratio(totalAllocated).mul(share);
   const diffBp = relativeChangeBp(new Ratio(orders.length), expectedTotal);
-  const pace = paceOf(diffBp, tolerance);
+  const unplannedUnits = unplanned.reduce((s, u) => s + u.actual, 0);
+  const plannedActual = orders.length - unplannedUnits;
+  const plannedDiffBp = relativeChangeBp(new Ratio(plannedActual), expectedTotal);
+  const pace = paceOf(plannedDiffBp, tolerance);
   const status = e >= H ? "done" : "running";
   const paceText =
     pace === "ahead"
@@ -203,10 +220,15 @@ export function releaseOutcome(input: ReleaseOutcomeInput): ReleaseOutcome {
         : pace === "on-track"
           ? "I linje med förslaget."
           : "";
+  const soldText =
+    unplannedUnits > 0
+      ? `${plural(orders.length, "pack", "pack")} sålda, varav ${plannedActual} i automaterna med förslag`
+      : `${plural(orders.length, "pack", "pack")} sålda`;
+  const diffText = plannedDiffBp === null ? "" : ` (${signedPct(plannedDiffBp)})`;
   const parts = [
     status === "done"
-      ? `${name} efter ${plural(H, "dag", "dagar")}: ${plural(orders.length, "pack", "pack")} sålda mot ${totalAllocated} föreslagna${diffBp === null ? "" : ` (${signedPct(diffBp)})`}.`
-      : `${name} efter ${e} av ${H} dagar: ${plural(orders.length, "pack", "pack")} sålda, förslaget väntade ${tenthsText(tenthsOf(expectedTotal))} hittills${diffBp === null ? "" : ` (${signedPct(diffBp)})`}.`,
+      ? `${name} efter ${plural(H, "dag", "dagar")}: ${soldText} mot ${totalAllocated} föreslagna${diffText}.`
+      : `${name} efter ${e} av ${H} dagar: ${soldText}, förslaget väntade ${tenthsText(tenthsOf(expectedTotal))} hittills${diffText}.`,
   ];
   if (paceText) parts.push(paceText);
   const soldOut = machines.filter((m) => m.soldOut);
@@ -215,7 +237,6 @@ export function releaseOutcome(input: ReleaseOutcomeInput): ReleaseOutcome {
       `Slutsålt: ${listText(soldOut.map((m) => `${machineName(m.machineId)} (${day(m.soldOutDate!)})`))}; där kunde mer ha sålts.`,
     );
   }
-  const unplannedUnits = unplanned.reduce((s, u) => s + u.actual, 0);
   if (unplannedUnits > 0) parts.push(`${unplannedUnits} pack såldes i automater utan förslag.`);
 
   return {
@@ -230,6 +251,8 @@ export function releaseOutcome(input: ReleaseOutcomeInput): ReleaseOutcome {
     expectedByNowTenths: tenthsOf(expectedTotal),
     actual: orders.length,
     diffBp,
+    plannedActual,
+    plannedDiffBp,
     pace,
     text: parts.join(" "),
     evidence: marketEvidence({
@@ -249,7 +272,11 @@ export function releaseOutcome(input: ReleaseOutcomeInput): ReleaseOutcome {
         fig("allocated", "Föreslagna pack", totalAllocated, "packs"),
         fig("expectedByNow", "Väntat hittills", tenthsOf(expectedTotal), "tenths"),
         fig("actual", "Sålda pack", orders.length, "packs"),
-        ...(diffBp === null ? [] : [fig("diffBp", "Avvikelse", diffBp, "bp")]),
+        fig("plannedActual", "Sålda pack i automater med förslag", plannedActual, "packs"),
+        ...(plannedDiffBp === null
+          ? []
+          : [fig("plannedDiffBp", "Avvikelse lika mot lika", plannedDiffBp, "bp")]),
+        ...(diffBp === null ? [] : [fig("diffBp", "Avvikelse inklusive automater utan förslag", diffBp, "bp")]),
       ],
     }),
   };

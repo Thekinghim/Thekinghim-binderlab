@@ -38,6 +38,15 @@ export interface SiteHistory {
   readonly machineIds: string[];
   /** Σ dagar per automat som stod i butiken under perioden. */
   readonly machineDays: number;
+  /**
+   * Automatmånader i 1/`MONTH_LCM` (domänens aktiva månader): Σ per automat och dag av
+   * `MONTH_LCM / dagar i månaden`. En automat en hel kalendermånad = `MONTH_LCM`.
+   */
+  readonly machineMonthUnits: number;
+  /** Butikens order i perioden (även utan inköpspris), sorterade. */
+  readonly orderIds: string[];
+  /** Dagar med försäljning i butiken under perioden, sorterade. */
+  readonly dates: IsoDate[];
   /** Första och sista dag med en automat i butiken under perioden. */
   readonly firstDay: IsoDate | null;
   readonly lastDay: IsoDate | null;
@@ -105,7 +114,9 @@ export interface BasisSite {
   /** Per automat och dag (avrundat för visning; räkningen görs exakt). */
   readonly revenuePerDayOre: number;
   readonly profitPerDayOre: number;
-  /** Per automat och månad (365/12 dagar). */
+  /** Automatmånader (domänens aktiva månader), hundradelar: 100 = en hel kalendermånad. */
+  readonly machineMonthsHundredths: number;
+  /** Per automat och månad (belopp / aktiva månader, som enhetsekonomin). */
   readonly revenuePerMonthOre: number;
   readonly profitPerMonthOre: number;
   /** Återbetalningstid med denna plats takt, tiondels månader. `null` om vinsten ≤ 0. */
