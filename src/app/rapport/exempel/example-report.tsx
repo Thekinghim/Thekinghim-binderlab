@@ -76,8 +76,10 @@ const releaseShare = release ? release.revenue / totals.revenue : 0;
 const releaseDays = 31 - 24 + 1;
 
 const weekendShare =
-  days.reduce((s, d, i) => s + ([0, 5, 6].includes(d.date.getDay()) ? (revenueByDay[i] ?? 0) : 0), 0) /
-  totals.revenue;
+  days.reduce(
+    (s, d, i) => s + ([0, 5, 6].includes(d.date.getDay()) ? (revenueByDay[i] ?? 0) : 0),
+    0,
+  ) / totals.revenue;
 const weekendDays = days.filter((d) => [0, 5, 6].includes(d.date.getDay())).length;
 
 const share = seriesShare();
@@ -177,7 +179,11 @@ const incidentColumns: ReportColumn<Incident>[] = [
     width: "13%",
     render: (i) => formatDuration(i.end.getTime() - i.start.getTime()),
   },
-  { key: "action", header: "Åtgärd", render: (i) => <span className="text-muted">{i.action}</span> },
+  {
+    key: "action",
+    header: "Åtgärd",
+    render: (i) => <span className="text-muted">{i.action}</span>,
+  },
 ];
 
 const refillColumns: ReportColumn<Refill>[] = [
@@ -253,10 +259,11 @@ export function RevenueChart() {
   );
 }
 
-function SummaryPage() {
+function SummaryPage({ level }: { level: HeadingLevel }) {
   return (
     <ReportPage className="gap-[9mm]">
       <ReportTitle
+        as={TITLE_TAG[level]}
         eyebrow={`${machine.id} · ${machine.placement}`}
         title={`${formatSek(totals.revenue)} i oktober.`}
         aside={`Automatens bästa månad sedan installationen ${formatDate(machine.installed)}.`}
@@ -296,6 +303,7 @@ function SummaryPage() {
       />
 
       <ReportSection
+        as={SECTION_TAG[level]}
         index={1}
         eyebrow="Försäljning"
         title="Intäkt per dag."
@@ -309,6 +317,7 @@ function SummaryPage() {
       </ReportSection>
 
       <ReportSection
+        as={SECTION_TAG[level]}
         index={2}
         eyebrow="Kommentar"
         title="Släppet och helgerna bar månaden."
@@ -343,11 +352,12 @@ function SummaryPage() {
   );
 }
 
-function AssortmentPage() {
+function AssortmentPage({ level }: { level: HeadingLevel }) {
   const sorted = [...products].sort((a, b) => b.revenue - a.revenue);
   return (
     <ReportPage className="gap-[9mm]">
       <ReportSection
+        as={SECTION_TAG[level]}
         index={3}
         eyebrow="Sortiment"
         title={`${leader?.label ?? ""} stod för ${formatPercent((leader?.value ?? 0) / totals.revenue, 0)} av intäkten.`}
@@ -376,6 +386,7 @@ function AssortmentPage() {
       </ReportSection>
 
       <ReportSection
+        as={SECTION_TAG[level]}
         index={4}
         eyebrow="Veckodagar"
         title={`${weekdays[strongest]?.label === "Lör" ? "Lördag" : (weekdays[strongest]?.label ?? "")} är starkast med ${formatSek(weekdays[strongest]?.value ?? 0)} i snitt.`}
@@ -393,10 +404,11 @@ function AssortmentPage() {
   );
 }
 
-function OperationsPage() {
+function OperationsPage({ level }: { level: HeadingLevel }) {
   return (
     <ReportPage className="gap-[8mm]">
       <ReportSection
+        as={SECTION_TAG[level]}
         index={5}
         eyebrow="Drift"
         title={`Tillgänglighet ${formatPercent(availability)} under centrumets öppettider.`}
@@ -443,6 +455,7 @@ function OperationsPage() {
       </ReportSection>
 
       <ReportSection
+        as={SECTION_TAG[level]}
         index={6}
         eyebrow="Påfyllning"
         title={`${refills.length} påfyllningar, ${formatInt(refillPacks)} pack.`}
@@ -485,7 +498,14 @@ function OperationsPage() {
   );
 }
 
+/** Nivå för rapportens h1-rubrik; sektionerna ligger ett steg under. */
+type HeadingLevel = 1 | 2 | 3;
+const TITLE_TAG = { 1: "h1", 2: "h2", 3: "h3" } as const;
+const SECTION_TAG = { 1: "h2", 2: "h3", 3: "h4" } as const;
+
 type ExampleReportProps = {
+  /** 1 som egen sida. 3 när rapporten visas under en h2, t.ex. på /design. */
+  headingLevel?: HeadingLevel;
   layout?: ReportLayout;
   tone?: ReportTone;
   visiblePages?: ReadonlyArray<number>;
@@ -493,7 +513,13 @@ type ExampleReportProps = {
 };
 
 /** "Månadsrapport oktober 2026" till Westfield Arninge. Tre A4-sidor. */
-export function ExampleReport({ layout, tone, visiblePages, className }: ExampleReportProps) {
+export function ExampleReport({
+  headingLevel = 1,
+  layout,
+  tone,
+  visiblePages,
+  className,
+}: ExampleReportProps) {
   return (
     <ReportDocument
       {...reportMeta}
@@ -502,9 +528,9 @@ export function ExampleReport({ layout, tone, visiblePages, className }: Example
       visiblePages={visiblePages}
       className={className}
     >
-      <SummaryPage />
-      <AssortmentPage />
-      <OperationsPage />
+      <SummaryPage level={headingLevel} />
+      <AssortmentPage level={headingLevel} />
+      <OperationsPage level={headingLevel} />
     </ReportDocument>
   );
 }

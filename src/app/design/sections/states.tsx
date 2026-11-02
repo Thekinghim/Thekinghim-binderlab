@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage, StateRow, type StateMessageProps } from "@/components/ui/state-message";
 import { cn } from "@/lib/cn";
@@ -275,22 +275,20 @@ export function StatesSection({ index }: { index: number }) {
                 </th>
               </tr>
             </thead>
-            <tbody>
-              {order.map((k) => (
-                <Fragment key={k}>
-                  <tr>
-                    <th
-                      scope="rowgroup"
-                      colSpan={2}
-                      className="h-7 border-b border-line bg-bg px-3 text-left font-mono text-xs font-normal text-subtle"
-                    >
-                      {kindNames[k]}
-                    </th>
-                  </tr>
-                  <StateRow colSpan={2} kind={k} {...rows[k]} />
-                </Fragment>
-              ))}
-            </tbody>
+            {order.map((k) => (
+              <tbody key={k}>
+                <tr>
+                  <th
+                    scope="rowgroup"
+                    colSpan={2}
+                    className="h-7 border-b border-line bg-bg px-3 text-left font-mono text-xs font-normal text-subtle"
+                  >
+                    {kindNames[k]}
+                  </th>
+                </tr>
+                <StateRow colSpan={2} kind={k} {...rows[k]} />
+              </tbody>
+            ))}
           </table>
         </div>
       </div>

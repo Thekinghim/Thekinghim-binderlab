@@ -33,11 +33,13 @@
   --bl-fg-muted: #a6a39d;
   --bl-fg-subtle: #8f8c86;
   --bl-fg-faint: #57554f; /* endast dekor/axlar, aldrig brödtext */
+  --bl-fg-disabled: #83807a; /* inaktiv kontroll: ≥4.5:1 mot bg/surface/raised */
 
   /* Signal: den enda färgen */
   --bl-signal: #ff5a1f;
   --bl-signal-fg: #ff6d38;
   --bl-signal-soft: rgb(255 90 31 / 0.13);
+  --bl-signal-line: rgb(255 90 31 / 0.7); /* kant för kritisk kontroll, ≥3:1 */
   --bl-on-signal: #0a0a0b;
 
   /* Inverterad (primärknapp) */
@@ -53,7 +55,8 @@
   --bl-data-5: #383734;
   --bl-data-0: #161618; /* lägsta värde i värmekarta */
 
-  --bl-focus: #ff5a1f;
+  /* Fokus är förgrundsfärgen, aldrig signal: tabbsteg är inte larm. */
+  --bl-focus: var(--bl-fg);
   --bl-overlay: rgb(5 5 6 / 0.72);
 }
 
@@ -75,10 +78,12 @@
   --bl-fg-muted: #4f4d48;
   --bl-fg-subtle: #65635e;
   --bl-fg-faint: #aeaba4;
+  --bl-fg-disabled: #706e69;
 
   --bl-signal: #f0521a;
   --bl-signal-fg: #b53e0e;
   --bl-signal-soft: rgb(240 82 26 / 0.1);
+  --bl-signal-line: rgb(181 62 14 / 0.7);
   --bl-on-signal: #151514;
 
   --bl-inverse-bg: #151514;
@@ -92,7 +97,7 @@
   --bl-data-5: #d3d0ca;
   --bl-data-0: #f0eee9;
 
-  --bl-focus: #d9470f;
+  --bl-focus: var(--bl-fg);
   --bl-overlay: rgb(21 21 20 / 0.4);
 }
 
@@ -107,6 +112,7 @@
   --bl-dur-base: 150ms;
   --bl-dur-slow: 180ms;
   --bl-dur-count: 420ms; /* uppräkning av siffror vid periodbyte */
+  --bl-dur-pulse: 1600ms; /* laddningsytor, en hel puls */
   --bl-ease: cubic-bezier(0.2, 0, 0, 1);
   --bl-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 

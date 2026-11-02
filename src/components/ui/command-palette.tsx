@@ -437,7 +437,7 @@ function PalettePanel({
                 className="label flex items-center justify-between px-4 pt-2.5 pb-1.5 text-subtle"
               >
                 <span>{group.label}</span>
-                {trimmed ? <span className="tnum text-faint">{group.rows.length}</span> : null}
+                {trimmed ? <span className="tnum text-subtle">{group.rows.length}</span> : null}
               </div>
               {group.rows.map((row, ri) => {
                 const i = (starts[gi] ?? 0) + ri;

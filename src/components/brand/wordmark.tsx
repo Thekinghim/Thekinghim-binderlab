@@ -3,7 +3,8 @@ import { cn } from "@/lib/cn";
 
 /**
  * Binderlab-symbolen: en pärmrygg, ett kort i fickan och ringen som
- * fäster kortet i ryggen. Tillsammans bildar de ett gement "b".
+ * fäster kortet i ryggen vid baslinjen. Tillsammans bildar de ett gement
+ * "b": stammen och bågen möts nedtill, öppningen mellan dem pekar uppåt.
  *
  * Ritad på ett 16-rutnät med heltalskoordinater och bara fyllda ytor
  * (inga linjer), så att den blir skarp i 16 px. Vid storlekar som inte
@@ -14,12 +15,16 @@ export const SYMBOL_GRID = 16;
 
 /** Symbolens geometri i rutnätsenheter. */
 export const SYMBOL_PARTS = {
-  /** Ryggrad: 3 × 14, från ascender till baslinje */
-  spine: { x: 2, y: 1, w: 3, h: 14 },
-  /** Kortet: 7 × 10, samlarkortets proportion (63 × 88 mm ≈ 0,7) */
+  /** Ryggrad: 3 × 13, från ascenderhöjd till baslinje */
+  spine: { x: 2, y: 2, w: 3, h: 13 },
+  /** Kortet: 7 × 10, samlarkortets proportion (63 × 88 mm ≈ 0,7). Överkant på x-höjd. */
   card: { x: 7, y: 5, w: 7, h: 10 },
-  /** Ringen: 2 × 2, fäster kortet i ryggen. Det enda elementet i signalfärg. */
-  ring: { x: 5, y: 5, w: 2, h: 2 },
+  /**
+   * Ringen: 2 × 2 vid baslinjen, fäster kortet i ryggen och sluter b:et
+   * nedtill. Enda elementet i signalfärg; i enfärg får den samma färg som
+   * resten och formen är oförändrad.
+   */
+  ring: { x: 5, y: 13, w: 2, h: 2 },
 } as const;
 
 /** Friyta X runt ordmärket, i symbolens rutnätsenheter: halva symbolens höjd. */
@@ -43,7 +48,7 @@ function snap(r: Rect, size: number): Rect {
 type SymbolProps = {
   /** Kantlängd i px. Standard 16. */
   size?: number;
-  /** Allt i currentColor (svartvitt, enfärgstryck, favicon på ljus flik). */
+  /** Allt i currentColor, även ringen (svartvitt, enfärgstryck). */
   mono?: boolean;
   className?: string;
   /** Tillgänglig etikett. Utan titel är symbolen dekorativ. */
@@ -86,19 +91,20 @@ export function Symbol({ size = 16, mono = false, className, title, style }: Sym
 type WordmarkSize = "sm" | "md" | "lg" | "xl";
 
 /**
- * Storlekar. Symbolen är något högre än versalhöjden: ryggraden når
- * ascenderhöjd (b, d, l), kortets överkant ligger på x-höjd. Texten
- * sitter på symbolens baslinje.
+ * Storlekar i px. Textstorleken är vald efter symbolen så att de linjerar
+ * optiskt i Geist Semibold (versal- och ascenderhöjd 0,71 em, x-höjd
+ * 0,54 em): ryggradens överkant når ascenderhöjden (B, b, l), kortets
+ * överkant ligger på x-höjden och kortets underkant på baslinjen.
+ * text ≈ symbol × (13 / 16) / 0,71 ≈ symbol × 1,14.
  */
-const SIZES: Record<WordmarkSize, { symbol: number; text: number; gap: number }> = {
-  /** Sidomeny, mobilhuvud */
-  sm: { symbol: 16, text: 15, gap: 7 },
-  /** Inloggning, dialoger */
-  md: { symbol: 20, text: 19, gap: 8 },
-  /** Rapportrubrik */
-  lg: { symbol: 24, text: 23, gap: 10 },
-  /** Specimen, omslag */
-  xl: { symbol: 64, text: 62, gap: 22 },
+export const WORDMARK_SIZES: Record<
+  WordmarkSize,
+  { symbol: number; text: number; gap: number; use: string }
+> = {
+  sm: { symbol: 16, text: 18, gap: 7, use: "Sidomeny" },
+  md: { symbol: 20, text: 23, gap: 8, use: "Inloggning, e-post" },
+  lg: { symbol: 24, text: 28, gap: 10, use: "Rapportrubrik" },
+  xl: { symbol: 64, text: 73, gap: 24, use: "Omslag" },
 };
 
 type WordmarkProps = {
@@ -110,10 +116,12 @@ type WordmarkProps = {
 
 /** Symbol + "Binderlab" i Geist Semibold, -0,03 em. */
 export function Wordmark({ size = "sm", mono = false, className }: WordmarkProps) {
-  const s = SIZES[size];
-  // Symbolens nedersta rutnätsenhet är luft; dra ned den så att kortets
-  // underkant ligger exakt på textens baslinje.
-  const drop = Math.round(s.symbol / SYMBOL_GRID);
+  const s = WORDMARK_SIZES[size];
+  // Symbolens baslinje (kortets underkant) efter avrundning till hel pixel.
+  // Raden under den är luft; dra ned symbolen så att baslinjerna sammanfaller.
+  const { card } = SYMBOL_PARTS;
+  const bottom = Math.round(((card.y + card.h) * s.symbol) / SYMBOL_GRID);
+  const drop = s.symbol - bottom;
   return (
     <span
       className={cn(

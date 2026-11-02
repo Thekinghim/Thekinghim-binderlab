@@ -31,9 +31,11 @@
   --color-muted: var(--bl-fg-muted);
   --color-subtle: var(--bl-fg-subtle);
   --color-faint: var(--bl-fg-faint);
+  --color-disabled: var(--bl-fg-disabled);
   --color-signal: var(--bl-signal);
   --color-signal-fg: var(--bl-signal-fg);
   --color-signal-soft: var(--bl-signal-soft);
+  --color-signal-line: var(--bl-signal-line);
   --color-on-signal: var(--bl-on-signal);
   --color-inverse: var(--bl-inverse-bg);
   --color-on-inverse: var(--bl-inverse-fg);
@@ -87,10 +89,23 @@
   --radius-sm: 4px;
   --radius-md: 6px;
 
-  /* Rörelse */
+  /*
+   * Rörelse. Komponenter skriver duration-fast/base/slow och
+   * ease-instrument, aldrig duration-[..ms]. Standardövergången är
+   * "fast" så att transition-colors utan duration matchar knapparna.
+   */
   --ease-instrument: var(--bl-ease);
-  --default-transition-duration: var(--bl-dur-base);
+  --ease-instrument-in-out: var(--bl-ease-in-out);
+  --transition-duration-fast: var(--bl-dur-fast);
+  --transition-duration-base: var(--bl-dur-base);
+  --transition-duration-slow: var(--bl-dur-slow);
+  --default-transition-duration: var(--bl-dur-fast);
   --default-transition-timing-function: var(--bl-ease);
+
+  /* Animationer: animate-enter (paneler, notiser), animate-fade, animate-pulse-soft (laddning) */
+  --animate-enter: bl-enter var(--bl-dur-slow) var(--bl-ease);
+  --animate-fade: bl-fade var(--bl-dur-slow) var(--bl-ease);
+  --animate-pulse-soft: bl-shimmer var(--bl-dur-pulse) var(--bl-ease-in-out) infinite;
 
   --breakpoint-sm: 640px;
   --breakpoint-md: 768px;
@@ -136,6 +151,11 @@
     color: var(--bl-fg);
   }
 
+  /*
+   * Fokus: 2px ring i förgrundsfärg, 2px utanför kanten. Ringen ligger
+   * alltså utanför en eventuell signalkant (felläge) och förväxlas
+   * aldrig med den. Fel bärs av kant + ikon + text, aldrig av fokus.
+   */
   :focus-visible {
     outline: 2px solid var(--bl-focus);
     outline-offset: 2px;
@@ -154,13 +174,26 @@
 }
 
 @layer utilities {
-  /* Monospace-etikett: VERSALER, liten, bred spärrning */
+  /* Monospace-etikett: VERSALER, liten, bred spärrning. Läser typskalan. */
   .label {
     font-family: var(--bl-font-mono);
-    font-size: 11px;
-    line-height: 16px;
-    letter-spacing: 0.08em;
+    font-size: var(--text-label);
+    line-height: var(--text-label--line-height);
+    letter-spacing: var(--text-label--letter-spacing);
     text-transform: uppercase;
+  }
+
+  /*
+   * Metatext i monospace: tokennamn, tider, ID och deltatexter.
+   * Gemener, ingen spärrning, 12/16. Komplement till .label, inte
+   * en variant av den (ångra aldrig .label med normal-case).
+   */
+  .meta {
+    font-family: var(--bl-font-mono);
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
+    letter-spacing: 0;
+    text-transform: none;
   }
 
   .tnum {

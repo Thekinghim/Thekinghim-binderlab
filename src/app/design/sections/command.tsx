@@ -209,10 +209,10 @@ export function CommandSection({ index }: { index: number }) {
             aria-live="polite"
           >
             <span className="label shrink-0">Senast körd</span>
-            <span className={cn("truncate", last ? "text-fg" : "text-faint")}>
+            <span className={cn("truncate", last ? "text-fg" : "text-subtle")}>
               {last ? last.label : "ingen ännu"}
             </span>
-            {last ? <span className="tnum shrink-0 text-faint">#{last.n}</span> : null}
+            {last ? <span className="tnum shrink-0 text-subtle">#{last.n}</span> : null}
           </p>
         </div>
 

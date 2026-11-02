@@ -65,10 +65,25 @@ export const EMAIL_FONT = {
   mono: "Geist Mono, ui-monospace, Menlo, Consolas, monospace",
 } as const;
 
-/** Mejlets innerbredd och sidomarginal i px. */
+/** Mejlets innerbredd i px. */
 export const EMAIL_WIDTH = 600;
-export const EMAIL_GUTTER = 32;
-export const EMAIL_GUTTER_MOBILE = 20;
+
+/**
+ * Sidomarginal i px. Grundvärdet står inline och gäller i alla klienter,
+ * även Gmail som inte läser mejlets <style>: det är valt så att mejlet
+ * ryms i 375 px utan media query. Klienter som läser media queries får
+ * luftigare marginal på breda skärmar och smalare under 400 px.
+ */
+export const EMAIL_GUTTER = 24;
+export const EMAIL_GUTTER_WIDE = 32;
+export const EMAIL_GUTTER_NARROW = 20;
+
+/** Stora siffror och rubrik: grundvärde, bred skärm, smal skärm (px, radhöjd). */
+export const EMAIL_DISPLAY = {
+  base: { size: 24, line: 30 },
+  wide: { size: 26, line: 32 },
+  narrow: { size: 22, line: 28 },
+} as const;
 
 /**
  * Inline-stil med Outlook-egenskaper (mso-*) som Reacts CSSProperties

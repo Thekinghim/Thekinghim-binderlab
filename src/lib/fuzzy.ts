@@ -99,9 +99,19 @@ function matchNormalized(q: string, t: string): FuzzyMatch | null {
     };
   }
 
-  // Subsekvens: girig, men hoppar fram till nästa ordstart om tecknet finns där.
+  // Subsekvens: girig, men hoppar fram till nästa ordstart om tecknet finns där
+  // och resten av frågan fortfarande ryms efter den positionen.
   const query = q.replace(/\s+/g, "");
   if (query.length === 0) return null;
+  // latest[qi] = senaste position där query[qi] kan stå och resten ändå matcha.
+  const latest: number[] = new Array<number>(query.length);
+  let bound = t.length;
+  for (let qi = query.length - 1; qi >= 0; qi--) {
+    const at = t.lastIndexOf(query.charAt(qi), bound - 1);
+    if (at === -1) return null;
+    latest[qi] = at;
+    bound = at;
+  }
   const indices: number[] = [];
   let ti = 0;
   let bonus = 0;
@@ -113,7 +123,8 @@ function matchNormalized(q: string, t: string): FuzzyMatch | null {
     const prevIdx = indices[indices.length - 1];
     const consecutive = prevIdx !== undefined && next === prevIdx + 1;
     if (!consecutive && !isWordStart(t, next)) {
-      for (let k = next + 1; k < t.length; k++) {
+      const limit = latest[qi] ?? next;
+      for (let k = next + 1; k <= limit; k++) {
         if (t.charAt(k) === ch && isWordStart(t, k)) {
           pick = k;
           break;

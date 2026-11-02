@@ -210,9 +210,9 @@ export function formatChange(c: KpiChange): string {
 
 /** ▲, ▼ eller ingenting vid oförändrat. */
 export function changeGlyph(c: KpiChange): string {
-  const d = c.kind === "points" ? 1 : 3;
-  const rounded = Number(c.value.toFixed(d));
-  return rounded > 0 ? ARROW_UP : rounded < 0 ? ARROW_DOWN : "";
+  // Samma avrundning som formatChange, så att ±0 inte får en pil.
+  const shown = Number((c.value * 100).toFixed(1));
+  return shown > 0 ? ARROW_UP : shown < 0 ? ARROW_DOWN : "";
 }
 
 /** Om förändringen är en förbättring (styr bara ordval, aldrig ensam färg). */
@@ -363,13 +363,25 @@ export function dailyRange(daily: ReadonlyArray<DailyPoint>): string {
 }
 
 export function incidentLine(i: Incident): string {
-  return `${formatDate(i.start, { year: "never" })} ${formatTime(i.start)} · ${formatDuration(i.durationMs)} · ${i.cause}`;
+  return `${formatDate(i.start, { year: "never" })} ${formatTime(i.start)} · ${keepTogether(formatDuration(i.durationMs))} · ${i.cause}`;
+}
+
+/** Hårda mellanslag, så att "2 h 44 min" inte bryts mitt i. */
+function keepTogether(s: string): string {
+  return s.replace(/ /g, NBSP);
+}
+
+/** "1 fil" · "3 filer" */
+export function fileCount(n: number): string {
+  return n === 1 ? "1 fil" : `${formatInt(n)} filer`;
 }
 
 export function incidentsSummary(incidents: ReadonlyArray<Incident>): string {
   if (incidents.length === 0) return "Inga";
   const total = incidents.reduce((acc, i) => acc + i.durationMs, 0);
-  return `${formatInt(incidents.length)} tillfällen, totalt ${formatDuration(total)}`;
+  const count =
+    incidents.length === 1 ? "1 tillfälle" : `${formatInt(incidents.length)} tillfällen`;
+  return `${count}, totalt ${keepTogether(formatDuration(total))}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -379,16 +391,32 @@ export function incidentsSummary(incidents: ReadonlyArray<Incident>): string {
 export type RowColumn = {
   label: string;
   value: (r: EmailMachineRow) => string;
-  /** Pil framför värdet (förändring) */
-  glyph?: (r: EmailMachineRow) => string;
+  /**
+   * Andra rad i samma cell, i mindre grå text (antal pack under
+   * försäljningen, förändring under intäkten). Två värden i en cell gör
+   * tabellen smal nog för 320 px utan media query.
+   */
+  sub?: (r: EmailMachineRow) => RowSub | undefined;
+};
+
+export type RowSub = {
+  text: string;
+  /** Pil framför texten (förändring) */
+  glyph?: string;
+  /** Förbättring skrivs i förgrundsfärg, försämring i dämpad. Status bärs alltid av pil och tecken. */
+  good?: boolean;
 };
 
 export function rowColumns(kind: RecipientKind): RowColumn[] {
   switch (kind) {
     case "butik":
       return [
-        { label: "Pack", value: (r) => (r.packs === undefined ? EN_DASH : formatInt(r.packs)) },
-        { label: "Försäljning", value: (r) => formatSek(r.revenue) },
+        {
+          label: "Försäljning",
+          value: (r) => formatSek(r.revenue),
+          sub: (r) =>
+            r.packs === undefined ? undefined : { text: `${formatInt(r.packs)}${NBSP}pack` },
+        },
         {
           label: "I drift",
           value: (r) => (r.availability === undefined ? EN_DASH : formatPercent(r.availability)),
@@ -404,11 +432,17 @@ export function rowColumns(kind: RecipientKind): RowColumn[] {
       ];
     case "delagare":
       return [
-        { label: "Intäkt", value: (r) => formatSek(r.revenue) },
         {
-          label: "Förändring",
-          value: (r) => (r.change === undefined ? EN_DASH : formatDelta(r.change, 1)),
-          glyph: (r) => (r.change === undefined ? "" : changeGlyph({ value: r.change })),
+          label: "Intäkt",
+          value: (r) => formatSek(r.revenue),
+          sub: (r) =>
+            r.change === undefined
+              ? undefined
+              : {
+                  text: formatDelta(r.change, 1),
+                  glyph: changeGlyph({ value: r.change }),
+                  good: r.change > 0,
+                },
         },
         {
           label: "Marginal",
@@ -460,8 +494,9 @@ export function renderReportText(props: ReportEmailProps): string {
   for (const k of props.kpis) {
     const parts = [`${k.label}: ${formatKpiValue(k)}`];
     if (k.change) parts.push(`(${formatChange(k.change)} ${cmp})`);
-    if (k.note) parts.push(`(${k.note})`);
-    out.push(parts.join(" "));
+    let line = parts.join(" ");
+    if (k.note) line += ` · ${k.note}`;
+    out.push(line);
     if (k.alert) out.push(`  Obs: ${k.alert}`);
   }
 
@@ -473,9 +508,14 @@ export function renderReportText(props: ReportEmailProps): string {
   section(rowsTitle(props));
   const cols = rowColumns(props.recipientKind);
   props.rows.forEach((r, i) => {
-    const values = cols.map((c) => `${c.label.toLocaleLowerCase("sv-SE")} ${c.value(r)}`);
+    const values = cols.map((c) => {
+      const sub = c.sub?.(r);
+      return `${c.label.toLocaleLowerCase("sv-SE")} ${c.value(r)}${sub ? ` (${sub.text})` : ""}`;
+    });
     const rank = props.recipientKind === "delagare" ? `${i + 1}. ` : "";
-    out.push(`${rank}${r.id} ${r.name}${r.location ? `, ${r.location}` : ""}: ${values.join(", ")}`);
+    out.push(
+      `${rank}${r.id} ${r.name}${r.location ? `, ${r.location}` : ""}: ${values.join(", ")}`,
+    );
   });
 
   switch (props.recipientKind) {

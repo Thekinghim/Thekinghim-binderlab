@@ -1,0 +1,666 @@
+/**
+ * Drizzle-schema för Binderlab (datamodell v2).
+ *
+ * Källan till sanningen är SQL-migreringarna i supabase/migrations. Den här
+ * filen beskriver samma tabeller, vyer och uppräkningstyper för TypeScript.
+ * test/db/catalog.test.ts jämför den mot information_schema (kolumner, typer
+ * och null-barhet) så att de inte glider isär.
+ *
+ * Konventioner:
+ * - Belopp i öre: `ore()` (bigint i databasen, säkert heltal i JS).
+ * - Procentsatser i baspunkter: `integer`.
+ * - Tider: `timestamptz` som `Date` (absolut tidpunkt, oberoende av processens tidszon).
+ * - Affärsdatum: `date` som sträng `YYYY-MM-DD` (aldrig `Date`).
+ * - Datumintervall (valid_from/valid_to) är inklusiva; valid_to null = tills vidare.
+ * - `business_date` räknas fram av databasen (orders: från ordered_at, stock_events:
+ *   från occurred_at) i organisationens tidszon. Den är därför valfri vid insert.
+ */
+
+import { sql } from "drizzle-orm";
+import {
+  bigint,
+  boolean,
+  date,
+  integer,
+  jsonb,
+  pgEnum,
+  pgTable,
+  pgView,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
+
+import { citext, ore, safeBigint } from "./types";
+
+// ---------------------------------------------------------------------------
+// Uppräkningstyper
+// ---------------------------------------------------------------------------
+
+export const memberRole = pgEnum("member_role", ["owner", "admin", "refiller", "viewer"]);
+export const organizationPlan = pgEnum("organization_plan", ["trial", "standard", "enterprise"]);
+export const commissionBase = pgEnum("commission_base", ["net_excl_vat"]);
+export const rentProration = pgEnum("rent_proration", ["daily"]);
+export const machineInvestmentKind = pgEnum("machine_investment_kind", [
+  "purchase",
+  "installation",
+  "other",
+]);
+export const dataSourceProvider = pgEnum("data_source_provider", [
+  "awish_grpc",
+  "awish_web",
+  "awish_csv",
+]);
+export const dataSourceStatus = pgEnum("data_source_status", ["active", "paused", "error"]);
+export const importTrigger = pgEnum("import_trigger", ["upload", "schedule", "webhook"]);
+export const importStatus = pgEnum("import_status", ["pending", "running", "succeeded", "failed"]);
+export const importRowStatus = pgEnum("import_row_status", ["new", "conflict", "error"]);
+export const stockLocationKind = pgEnum("stock_location_kind", ["warehouse", "machine"]);
+export const stockEventKind = pgEnum("stock_event_kind", [
+  "refill",
+  "count",
+  "sale",
+  "waste",
+  "adjustment",
+  "transfer_in",
+  "transfer_out",
+  "receipt",
+]);
+export const purchaseOrderStatus = pgEnum("purchase_order_status", [
+  "draft",
+  "ordered",
+  "partially_received",
+  "received",
+  "cancelled",
+]);
+export const targetScope = pgEnum("target_scope", ["organization", "store", "machine"]);
+export const goalMetric = pgEnum("goal_metric", ["revenue", "profit", "active_machines"]);
+export const baselineMetric = pgEnum("baseline_metric", [
+  "profit_per_machine_month",
+  "stockout_days_month",
+  "refill_hours_month",
+  "admin_hours_month",
+]);
+export const baselineUnit = pgEnum("baseline_unit", ["ore", "days", "minutes", "count"]);
+export const reportRecipientKind = pgEnum("report_recipient_kind", [
+  "store",
+  "accountant",
+  "partner",
+]);
+export const reportKind = pgEnum("report_kind", [
+  "store_statement",
+  "owner_statement",
+  "accountant_statement",
+  "profitability",
+]);
+export const reportDeliveryStatus = pgEnum("report_delivery_status", [
+  "queued",
+  "sent",
+  "delivered",
+  "failed",
+  "bounced",
+]);
+export const alertSeverity = pgEnum("alert_severity", ["info", "warning", "critical"]);
+export const auditAction = pgEnum("audit_action", ["insert", "update", "delete"]);
+
+export type MemberRole = (typeof memberRole.enumValues)[number];
+export type StockEventKind = (typeof stockEventKind.enumValues)[number];
+
+// ---------------------------------------------------------------------------
+// Gemensamma kolumner
+// ---------------------------------------------------------------------------
+
+const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
+const day = (name: string) => date(name, { mode: "string" });
+
+const id = () => uuid("id").primaryKey().defaultRandom();
+const orgId = () => uuid("organization_id").notNull();
+const created = () => ({
+  createdAt: ts("created_at").notNull().defaultNow(),
+  createdBy: uuid("created_by"),
+});
+const stamps = () => ({
+  ...created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+/** Räknas fram av databasen; skickas som null om den inte anges. */
+const derivedBusinessDate = () =>
+  day("business_date")
+    .notNull()
+    .$defaultFn(() => sql`null`);
+
+// ---------------------------------------------------------------------------
+// 1. Organisation och åtkomst
+// ---------------------------------------------------------------------------
+
+export const organizations = pgTable("organizations", {
+  id: id(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  timezone: text("timezone").notNull().default("Europe/Stockholm"),
+  currency: text("currency").notNull().default("SEK"),
+  plan: organizationPlan("plan").notNull().default("standard"),
+  machineLimit: integer("machine_limit"),
+  archivedAt: ts("archived_at"),
+  ...stamps(),
+});
+
+export const profiles = pgTable("profiles", {
+  id: id(),
+  organizationId: orgId(),
+  userId: uuid("user_id"),
+  displayName: text("display_name").notNull(),
+  anonymizedAt: ts("anonymized_at"),
+  ...stamps(),
+});
+
+export const memberships = pgTable("memberships", {
+  id: id(),
+  organizationId: orgId(),
+  userId: uuid("user_id").notNull(),
+  role: memberRole("role").notNull(),
+  ...stamps(),
+});
+
+export const invitations = pgTable("invitations", {
+  id: id(),
+  organizationId: orgId(),
+  email: citext("email").notNull(),
+  role: memberRole("role").notNull(),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: ts("expires_at").notNull(),
+  acceptedAt: ts("accepted_at"),
+  acceptedBy: uuid("accepted_by"),
+  invitedBy: uuid("invited_by"),
+  ...stamps(),
+});
+
+// ---------------------------------------------------------------------------
+// 2. Platser och avtal
+// ---------------------------------------------------------------------------
+
+export const stores = pgTable("stores", {
+  id: id(),
+  organizationId: orgId(),
+  name: text("name").notNull(),
+  address: text("address"),
+  contactName: text("contact_name"),
+  email: citext("email"),
+  phone: text("phone"),
+  isExample: boolean("is_example").notNull().default(false),
+  archivedAt: ts("archived_at"),
+  ...stamps(),
+});
+
+export const contracts = pgTable("contracts", {
+  id: id(),
+  organizationId: orgId(),
+  storeId: uuid("store_id").notNull(),
+  validFrom: day("valid_from").notNull(),
+  validTo: day("valid_to"),
+  noticePeriodDays: integer("notice_period_days"),
+  storagePath: text("storage_path"),
+  note: text("note"),
+  archivedAt: ts("archived_at"),
+  ...stamps(),
+});
+
+export const storeAgreements = pgTable("store_agreements", {
+  id: id(),
+  organizationId: orgId(),
+  storeId: uuid("store_id").notNull(),
+  contractId: uuid("contract_id"),
+  validFrom: day("valid_from").notNull(),
+  validTo: day("valid_to"),
+  commissionBp: integer("commission_bp"),
+  monthlyRentOre: ore("monthly_rent_ore"),
+  commissionBase: commissionBase("commission_base").notNull().default("net_excl_vat"),
+  rentProration: rentProration("rent_proration").notNull().default("daily"),
+  note: text("note"),
+  ...stamps(),
+});
+
+export const machines = pgTable("machines", {
+  id: id(),
+  organizationId: orgId(),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  serial: text("serial"),
+  activeFrom: day("active_from"),
+  activeTo: day("active_to"),
+  isExample: boolean("is_example").notNull().default(false),
+  archivedAt: ts("archived_at"),
+  ...stamps(),
+});
+
+export const machinePlacements = pgTable("machine_placements", {
+  id: id(),
+  organizationId: orgId(),
+  machineId: uuid("machine_id").notNull(),
+  storeId: uuid("store_id").notNull(),
+  validFrom: day("valid_from").notNull(),
+  validTo: day("valid_to"),
+  note: text("note"),
+  ...stamps(),
+});
+
+export const machineInvestments = pgTable("machine_investments", {
+  id: id(),
+  organizationId: orgId(),
+  machineId: uuid("machine_id").notNull(),
+  kind: machineInvestmentKind("kind").notNull(),
+  amountOre: ore("amount_ore").notNull(),
+  investedOn: day("invested_on").notNull(),
+  depreciationMonths: integer("depreciation_months"),
+  note: text("note"),
+  ...stamps(),
+});
+
+// ---------------------------------------------------------------------------
+// 3. Titlar och priser
+// ---------------------------------------------------------------------------
+
+export const titles = pgTable("titles", {
+  id: id(),
+  organizationId: orgId(),
+  name: text("name").notNull(),
+  series: text("series"),
+  mergedIntoId: uuid("merged_into_id"),
+  archivedAt: ts("archived_at"),
+  ...stamps(),
+});
+
+export const titleAliases = pgTable("title_aliases", {
+  id: id(),
+  organizationId: orgId(),
+  titleId: uuid("title_id").notNull(),
+  alias: text("alias").notNull(),
+  aliasNormalized: text("alias_normalized")
+    .notNull()
+    .generatedAlwaysAs(sql`lower(btrim(regexp_replace(normalize(alias, NFKC), '\\s+', ' ', 'g')))`),
+  ...stamps(),
+});
+
+export const purchasePrices = pgTable("purchase_prices", {
+  id: id(),
+  organizationId: orgId(),
+  titleId: uuid("title_id").notNull(),
+  unitCostOre: ore("unit_cost_ore").notNull(),
+  validFrom: day("valid_from").notNull(),
+  note: text("note"),
+  ...stamps(),
+});
+
+// ---------------------------------------------------------------------------
+// 4. Datakällor och import
+// ---------------------------------------------------------------------------
+
+export const dataSources = pgTable("data_sources", {
+  id: id(),
+  organizationId: orgId(),
+  provider: dataSourceProvider("provider").notNull(),
+  name: text("name").notNull(),
+  sourceTimezone: text("source_timezone").notNull().default("Asia/Shanghai"),
+  config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
+  secretRef: text("secret_ref"),
+  cursor: text("cursor"),
+  lastSyncedAt: ts("last_synced_at"),
+  status: dataSourceStatus("status").notNull().default("active"),
+  archivedAt: ts("archived_at"),
+  ...stamps(),
+});
+
+export const sourceMachines = pgTable("source_machines", {
+  id: id(),
+  organizationId: orgId(),
+  dataSourceId: uuid("data_source_id").notNull(),
+  externalId: text("external_id").notNull(),
+  externalDeviceNo: text("external_device_no"),
+  externalName: text("external_name"),
+  machineId: uuid("machine_id"),
+  ...stamps(),
+});
+
+export const imports = pgTable("imports", {
+  id: id(),
+  organizationId: orgId(),
+  dataSourceId: uuid("data_source_id").notNull(),
+  trigger: importTrigger("trigger").notNull(),
+  fileName: text("file_name"),
+  fileSha256: text("file_sha256"),
+  storagePath: text("storage_path"),
+  parserVersion: text("parser_version").notNull(),
+  mapping: jsonb("mapping").$type<Record<string, unknown>>(),
+  rowsTotal: integer("rows_total").notNull().default(0),
+  rowsNew: integer("rows_new").notNull().default(0),
+  rowsDuplicate: integer("rows_duplicate").notNull().default(0),
+  rowsConflict: integer("rows_conflict").notNull().default(0),
+  rowsError: integer("rows_error").notNull().default(0),
+  status: importStatus("status").notNull().default("pending"),
+  startedAt: ts("started_at"),
+  finishedAt: ts("finished_at"),
+  ...stamps(),
+});
+
+/** Append-only. */
+export const importRows = pgTable("import_rows", {
+  id: id(),
+  organizationId: orgId(),
+  importId: uuid("import_id").notNull(),
+  rowNumber: integer("row_number").notNull(),
+  raw: jsonb("raw").$type<Record<string, unknown>>().notNull(),
+  status: importRowStatus("status").notNull(),
+  message: text("message"),
+  orderId: uuid("order_id"),
+  ...created(),
+});
+
+export const orders = pgTable("orders", {
+  id: id(),
+  organizationId: orgId(),
+  dataSourceId: uuid("data_source_id").notNull(),
+  externalId: text("external_id").notNull(),
+  rawTitle: text("raw_title").notNull(),
+  titleId: uuid("title_id"),
+  orderedAt: ts("ordered_at").notNull(),
+  businessDate: derivedBusinessDate(),
+  amountOre: ore("amount_ore").notNull(),
+  paymentMethod: text("payment_method"),
+  sourceMachineId: uuid("source_machine_id"),
+  machineId: uuid("machine_id"),
+  importId: uuid("import_id"),
+  sourceHash: text("source_hash").notNull(),
+  lateInClosedPeriod: boolean("late_in_closed_period").notNull().default(false),
+  ...stamps(),
+});
+
+// ---------------------------------------------------------------------------
+// 5. Lager
+// ---------------------------------------------------------------------------
+
+export const stockLocations = pgTable("stock_locations", {
+  id: id(),
+  organizationId: orgId(),
+  kind: stockLocationKind("kind").notNull(),
+  machineId: uuid("machine_id"),
+  name: text("name").notNull(),
+  isCentral: boolean("is_central").notNull().default(false),
+  archivedAt: ts("archived_at"),
+  ...stamps(),
+});
+
+/** Append-only. quantity är förändringen, utom vid 'count' (räknat antal). */
+export const stockEvents = pgTable("stock_events", {
+  id: id(),
+  organizationId: orgId(),
+  seq: bigint("seq", { mode: "number" }).notNull().generatedAlwaysAsIdentity(),
+  locationId: uuid("location_id").notNull(),
+  titleId: uuid("title_id").notNull(),
+  kind: stockEventKind("kind").notNull(),
+  quantity: integer("quantity").notNull(),
+  occurredAt: ts("occurred_at").notNull().defaultNow(),
+  businessDate: derivedBusinessDate(),
+  performedBy: uuid("performed_by").default(sql`auth.uid()`),
+  orderId: uuid("order_id"),
+  transferGroupId: uuid("transfer_group_id"),
+  note: text("note"),
+  ...created(),
+});
+
+// ---------------------------------------------------------------------------
+// 6. Inköp
+// ---------------------------------------------------------------------------
+
+export const suppliers = pgTable("suppliers", {
+  id: id(),
+  organizationId: orgId(),
+  name: text("name").notNull(),
+  contactName: text("contact_name"),
+  email: citext("email"),
+  phone: text("phone"),
+  defaultLeadTimeDays: integer("default_lead_time_days"),
+  archivedAt: ts("archived_at"),
+  ...stamps(),
+});
+
+export const supplierItems = pgTable("supplier_items", {
+  id: id(),
+  organizationId: orgId(),
+  supplierId: uuid("supplier_id").notNull(),
+  titleId: uuid("title_id").notNull(),
+  packSize: integer("pack_size").notNull().default(1),
+  minOrderQty: integer("min_order_qty").notNull().default(1),
+  leadTimeDays: integer("lead_time_days"),
+  unitCostOre: ore("unit_cost_ore").notNull(),
+  ...stamps(),
+});
+
+export const purchaseOrders = pgTable("purchase_orders", {
+  id: id(),
+  organizationId: orgId(),
+  supplierId: uuid("supplier_id").notNull(),
+  status: purchaseOrderStatus("status").notNull().default("draft"),
+  orderedOn: day("ordered_on"),
+  expectedOn: day("expected_on"),
+  receivedOn: day("received_on"),
+  note: text("note"),
+  ...stamps(),
+});
+
+export const purchaseOrderLines = pgTable("purchase_order_lines", {
+  id: id(),
+  organizationId: orgId(),
+  purchaseOrderId: uuid("purchase_order_id").notNull(),
+  titleId: uuid("title_id").notNull(),
+  quantity: integer("quantity").notNull(),
+  unitCostOre: ore("unit_cost_ore").notNull(),
+  receivedQuantity: integer("received_quantity").notNull().default(0),
+  ...stamps(),
+});
+
+// ---------------------------------------------------------------------------
+// 7. Mål och utgångsläge
+// ---------------------------------------------------------------------------
+
+export const goals = pgTable("goals", {
+  id: id(),
+  organizationId: orgId(),
+  scope: targetScope("scope").notNull(),
+  storeId: uuid("store_id"),
+  machineId: uuid("machine_id"),
+  month: day("month").notNull(),
+  metric: goalMetric("metric").notNull(),
+  /** Öre för revenue/profit, antal för active_machines. */
+  target: safeBigint("target").notNull(),
+  ...stamps(),
+});
+
+export const baselines = pgTable("baselines", {
+  id: id(),
+  organizationId: orgId(),
+  scope: targetScope("scope").notNull(),
+  storeId: uuid("store_id"),
+  machineId: uuid("machine_id"),
+  metric: baselineMetric("metric").notNull(),
+  /** Heltal i enheten `unit`. */
+  value: safeBigint("value").notNull(),
+  unit: baselineUnit("unit").notNull(),
+  measuredFrom: day("measured_from"),
+  measuredTo: day("measured_to"),
+  source: text("source"),
+  ...stamps(),
+});
+
+// ---------------------------------------------------------------------------
+// 8. Perioder
+// ---------------------------------------------------------------------------
+
+/** Skrivs bara via close_period()/reopen_period(). */
+export const periodCloses = pgTable("period_closes", {
+  id: id(),
+  organizationId: orgId(),
+  month: day("month").notNull(),
+  closedAt: ts("closed_at").notNull().defaultNow(),
+  closedBy: uuid("closed_by"),
+  reopenedAt: ts("reopened_at"),
+  reopenedBy: uuid("reopened_by"),
+  snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull().default({}),
+  ...stamps(),
+});
+
+// ---------------------------------------------------------------------------
+// 9. Rapporter
+// ---------------------------------------------------------------------------
+
+export const reportRecipients = pgTable("report_recipients", {
+  id: id(),
+  organizationId: orgId(),
+  name: text("name").notNull(),
+  email: citext("email").notNull(),
+  kind: reportRecipientKind("kind").notNull(),
+  storeId: uuid("store_id"),
+  active: boolean("active").notNull().default(true),
+  ...stamps(),
+});
+
+export const reports = pgTable("reports", {
+  id: id(),
+  organizationId: orgId(),
+  kind: reportKind("kind").notNull(),
+  periodStart: day("period_start").notNull(),
+  periodEnd: day("period_end").notNull(),
+  storeId: uuid("store_id"),
+  storagePath: text("storage_path"),
+  generatedBy: uuid("generated_by"),
+  generatedAt: ts("generated_at").notNull().defaultNow(),
+  dataSnapshot: jsonb("data_snapshot").$type<Record<string, unknown>>().notNull(),
+  calcVersion: text("calc_version").notNull(),
+  ...stamps(),
+});
+
+/** Append-only. */
+export const reportDeliveries = pgTable("report_deliveries", {
+  id: id(),
+  organizationId: orgId(),
+  reportId: uuid("report_id").notNull(),
+  recipientId: uuid("recipient_id"),
+  email: citext("email").notNull(),
+  status: reportDeliveryStatus("status").notNull(),
+  sentAt: ts("sent_at"),
+  providerMessageId: text("provider_message_id"),
+  error: text("error"),
+  ...created(),
+});
+
+// ---------------------------------------------------------------------------
+// 10. Inställningar och ägande
+// ---------------------------------------------------------------------------
+
+export const organizationSettings = pgTable("organization_settings", {
+  id: id(),
+  organizationId: orgId(),
+  vatRateBp: integer("vat_rate_bp").notNull().default(0),
+  cardFeeBp: integer("card_fee_bp").notNull().default(0),
+  fiscalYearStartMonth: integer("fiscal_year_start_month").notNull().default(1),
+  ...stamps(),
+});
+
+export const ownerShares = pgTable("owner_shares", {
+  id: id(),
+  organizationId: orgId(),
+  memberUserId: uuid("member_user_id"),
+  holderName: text("holder_name").notNull(),
+  shareBp: integer("share_bp").notNull(),
+  validFrom: day("valid_from").notNull(),
+  ...stamps(),
+});
+
+export const ledgerAccounts = pgTable("ledger_accounts", {
+  id: id(),
+  organizationId: orgId(),
+  key: text("key").notNull(),
+  basAccount: text("bas_account").notNull(),
+  name: text("name").notNull(),
+  ...stamps(),
+});
+
+// ---------------------------------------------------------------------------
+// 11. Senare faser
+// ---------------------------------------------------------------------------
+
+export const alerts = pgTable("alerts", {
+  id: id(),
+  organizationId: orgId(),
+  kind: text("kind").notNull(),
+  severity: alertSeverity("severity").notNull(),
+  machineId: uuid("machine_id"),
+  storeId: uuid("store_id"),
+  titleId: uuid("title_id"),
+  message: text("message"),
+  triggeredAt: ts("triggered_at").notNull().defaultNow(),
+  acknowledgedAt: ts("acknowledged_at"),
+  acknowledgedBy: uuid("acknowledged_by"),
+  ...stamps(),
+});
+
+export const incidents = pgTable("incidents", {
+  id: id(),
+  organizationId: orgId(),
+  machineId: uuid("machine_id").notNull(),
+  kind: text("kind").notNull(),
+  startedAt: ts("started_at").notNull(),
+  endedAt: ts("ended_at"),
+  description: text("description"),
+  actionTaken: text("action_taken"),
+  ...stamps(),
+});
+
+// ---------------------------------------------------------------------------
+// 12. Ändringslogg (append-only, skrivs bara av triggern private.audit())
+// ---------------------------------------------------------------------------
+
+export const auditLog = pgTable("audit_log", {
+  id: id(),
+  organizationId: orgId(),
+  tableName: text("table_name").notNull(),
+  rowId: uuid("row_id").notNull(),
+  action: auditAction("action").notNull(),
+  actorId: uuid("actor_id"),
+  occurredAt: ts("occurred_at").notNull().defaultNow(),
+  before: jsonb("before").$type<Record<string, unknown>>(),
+  after: jsonb("after").$type<Record<string, unknown>>(),
+});
+
+// ---------------------------------------------------------------------------
+// Vyer (security_invoker = true: RLS gäller den som frågar)
+// ---------------------------------------------------------------------------
+
+/** Saldo per lagerplats och titel: senaste inventering plus händelserna efter. */
+export const stockLevels = pgView("stock_levels", {
+  organizationId: uuid("organization_id").notNull(),
+  locationId: uuid("location_id").notNull(),
+  titleId: uuid("title_id").notNull(),
+  quantity: integer("quantity").notNull(),
+  lastCountedAt: ts("last_counted_at"),
+  lastEventAt: ts("last_event_at"),
+}).existing();
+
+/** stock_levels för centrallagret. */
+export const warehouseStock = pgView("warehouse_stock", {
+  organizationId: uuid("organization_id").notNull(),
+  locationId: uuid("location_id").notNull(),
+  titleId: uuid("title_id").notNull(),
+  quantity: integer("quantity").notNull(),
+  lastCountedAt: ts("last_counted_at"),
+  lastEventAt: ts("last_event_at"),
+}).existing();
+
+/** Prisperioder per titel. valid_to är sista dagen (inklusive), null = tills vidare. */
+export const purchasePricePeriods = pgView("purchase_price_periods", {
+  id: uuid("id").notNull(),
+  organizationId: uuid("organization_id").notNull(),
+  titleId: uuid("title_id").notNull(),
+  unitCostOre: ore("unit_cost_ore").notNull(),
+  validFrom: day("valid_from").notNull(),
+  validTo: day("valid_to"),
+}).existing();

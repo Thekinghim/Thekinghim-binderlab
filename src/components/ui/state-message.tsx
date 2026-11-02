@@ -163,38 +163,66 @@ function Prefix({ kind, code }: { kind: StateKind; code?: string }) {
   );
 }
 
-function Diagnostics({ id, items }: { id: string; items: ReadonlyArray<StateDiagnostic> }) {
-  const [copied, setCopied] = useState(false);
+type CopyState = "idle" | "copied" | "failed";
+
+const copyLabels: Record<CopyState, string> = {
+  idle: "Kopiera",
+  copied: "Kopierat",
+  failed: "Kunde inte kopiera",
+};
+
+function Diagnostics({
+  id,
+  items,
+  open,
+  className,
+}: {
+  id: string;
+  items: ReadonlyArray<StateDiagnostic>;
+  open: boolean;
+  className?: string;
+}) {
+  const [copyState, setCopyState] = useState<CopyState>("idle");
   const text = items.map((d) => `${d.label}: ${d.value}`).join("\n");
   const copy = async () => {
     try {
+      if (!navigator.clipboard) throw new Error("clipboard saknas");
       await navigator.clipboard.writeText(text);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1600);
+      setCopyState("copied");
+      window.setTimeout(() => setCopyState("idle"), 1600);
     } catch {
-      setCopied(false);
+      // Återkoppling i stället för tyst fel; texten går att markera manuellt.
+      setCopyState("failed");
+      window.setTimeout(() => setCopyState("idle"), 3200);
     }
   };
   return (
-    <div
-      id={id}
-      className="relative w-full max-w-xl rounded-sm border border-line bg-bg font-mono text-xs"
-    >
-      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 px-3 py-2.5 pr-20">
-        {items.map((d) => (
-          <div key={d.label} className="contents">
-            <dt className="text-subtle">{d.label}</dt>
-            <dd className="tnum break-all text-fg">{d.value}</dd>
-          </div>
-        ))}
-      </dl>
-      <button
-        type="button"
-        onClick={copy}
-        className="absolute top-1.5 right-1.5 inline-flex h-6 items-center rounded-xs px-1.5 text-muted transition-colors duration-[120ms] ease-instrument hover:bg-hover hover:text-fg"
-      >
-        <span aria-live="polite">{copied ? "Kopierat" : "Kopiera"}</span>
-      </button>
+    <div id={id} hidden={!open} className={cn("w-full", className)}>
+      <div className="relative w-full max-w-xl rounded-sm border border-line bg-bg font-mono text-xs select-text">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1 px-3 pt-2.5 pr-20 pb-2.5">
+          {items.map((d) => (
+            <div key={d.label} className="contents">
+              <dt className="text-subtle">{d.label}</dt>
+              <dd className="tnum [overflow-wrap:anywhere] text-fg">{d.value}</dd>
+            </div>
+          ))}
+        </dl>
+        <button
+          type="button"
+          onClick={copy}
+          className="absolute top-1.5 right-1.5 inline-flex h-6 items-center rounded-xs px-1.5 text-muted transition-colors duration-[120ms] ease-instrument hover:bg-hover hover:text-fg"
+        >
+          {copyState === "copied" ? copyLabels.copied : copyLabels.idle}
+        </button>
+      </div>
+      <span aria-live="polite" className="sr-only">
+        {copyState === "idle" ? "" : copyLabels[copyState]}
+      </span>
+      {copyState === "failed" ? (
+        <p className="mt-1.5 font-mono text-xs text-muted">
+          Kunde inte kopiera. Markera texten och kopiera manuellt.
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -250,7 +278,7 @@ export function StateMessage({
             {detail ? <span className="text-subtle"> {detail}</span> : null}
           </p>
           {action || secondaryAction || toggle ? (
-            <div className="-mx-1.5 flex flex-wrap items-center gap-x-1">
+            <div className="-mr-1.5 ml-auto flex flex-wrap items-center justify-end gap-x-1">
               {action ? <ActionControl action={action} emphasis="primary" compact /> : null}
               {secondaryAction ? (
                 <ActionControl action={secondaryAction} emphasis="secondary" compact />
@@ -259,7 +287,7 @@ export function StateMessage({
             </div>
           ) : null}
         </div>
-        {hasDiag && open ? <Diagnostics id={diagId} items={diagnostics} /> : null}
+        {hasDiag ? <Diagnostics id={diagId} items={diagnostics} open={open} /> : null}
       </div>
     );
   }
@@ -281,10 +309,8 @@ export function StateMessage({
           {toggle}
         </div>
       ) : null}
-      {hasDiag && open ? (
-        <div className="mt-4 w-full">
-          <Diagnostics id={diagId} items={diagnostics} />
-        </div>
+      {hasDiag ? (
+        <Diagnostics id={diagId} items={diagnostics} open={open} className="mt-4" />
       ) : null}
     </div>
   );

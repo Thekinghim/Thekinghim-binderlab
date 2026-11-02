@@ -139,43 +139,48 @@ export function ReportPage({ children, className }: ReportPageProps) {
   if (!meta || !position) {
     throw new Error("<ReportPage> måste vara ett barn till <ReportDocument>.");
   }
-  const overflow = useOverflow();
+  const [bodyRef, overflowPx] = useOverflow();
 
   return (
     <section
       className="bl-sheet"
       aria-label={`Sida ${position.number} av ${position.total}`}
       data-page={position.number}
-      data-overflow={overflow.px > 0 ? overflow.px : undefined}
+      data-overflow={overflowPx > 0 ? overflowPx : undefined}
     >
       <div className="bl-page">
         <ReportHeader meta={meta} />
-        <div ref={overflow.ref} className={cn("bl-page-body pt-[9mm] pb-[6mm]", className)}>
-          {children}
+        <div ref={bodyRef} className="bl-page-body pt-[9mm] pb-[6mm]">
+          {/* Växer med innehållet; när det blir högre än brödytan klipps det och flaggas. */}
+          <div className={cn("flex flex-[1_0_auto] flex-col", className)}>{children}</div>
         </div>
         <ReportFooter meta={meta} position={position} />
-        {overflow.px > 0 ? <OverflowFlag px={overflow.px} /> : null}
+        {overflowPx > 0 ? <OverflowFlag px={overflowPx} /> : null}
       </div>
     </section>
   );
 }
 
-/** Mäter hur många px brödytans innehåll sticker ut nedåt. */
+/**
+ * Mäter hur många px brödytans innehåll sticker ut nedåt. Observerar
+ * innehållsbehållaren, som växer med allt som ligger i den.
+ */
 function useOverflow() {
   const ref = useRef<HTMLDivElement>(null);
   const [px, setPx] = useState(0);
   useLayoutEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    const content = el?.firstElementChild;
+    if (!el || !content) return;
     // ResizeObserver rapporterar direkt vid observe, så första mätningen sker där.
     const ro = new ResizeObserver(() => {
       setPx(Math.max(0, Math.ceil(el.scrollHeight - el.clientHeight)));
     });
     ro.observe(el);
-    Array.from(el.children).forEach((c) => ro.observe(c));
+    ro.observe(content);
     return () => ro.disconnect();
   }, []);
-  return { ref, px };
+  return [ref, px] as const;
 }
 
 function OverflowFlag({ px }: { px: number }) {
@@ -185,7 +190,10 @@ function OverflowFlag({ px }: { px: number }) {
       role="alert"
       className="absolute inset-x-0 bottom-0 flex items-center gap-2 bg-inverse px-[18mm] py-2 font-mono text-[11px] leading-4 text-on-inverse"
     >
-      <span aria-hidden className="size-2 shrink-0 bg-signal outline outline-offset-2 outline-on-inverse" />
+      <span
+        aria-hidden
+        className="size-2 shrink-0 bg-on-inverse outline outline-offset-2 outline-on-inverse"
+      />
       Innehållet är {formatInt(px)} px för högt för arket. Flytta ett block till nästa sida.
     </p>
   );

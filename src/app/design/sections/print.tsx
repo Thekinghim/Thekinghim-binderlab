@@ -19,14 +19,19 @@ const spec: Array<[string, string[]]> = [
   ["Brytning", ["En ReportPage per ark", "break-after: page"]],
 ];
 
-/** Liten provbit av varje kodning, ritad i rapportens tema. */
+/** Liten provbit av varje kodning. Ritas inuti PaperChip, alltså i rapportens tema. */
 function Sample({ kind }: { kind: Encoding["kind"] }) {
   const common = { width: 56, height: 20, viewBox: "0 0 56 20", "aria-hidden": true } as const;
   switch (kind) {
     case "current":
       return (
         <svg {...common}>
-          <path d="M2 14L18 8L34 11L54 5" fill="none" strokeWidth={1.5} style={{ stroke: "var(--bl-data-1)" }} />
+          <path
+            d="M2 14L18 8L34 11L54 5"
+            fill="none"
+            strokeWidth={1.5}
+            style={{ stroke: "var(--bl-data-1)" }}
+          />
           {[
             [18, 8],
             [34, 11],
@@ -46,14 +51,33 @@ function Sample({ kind }: { kind: Encoding["kind"] }) {
     case "compare":
       return (
         <svg {...common}>
-          <path d="M2 12L18 14L34 9L54 11" fill="none" strokeWidth={1} strokeDasharray="4 3" style={{ stroke: "var(--bl-data-3)" }} />
+          <path
+            d="M2 12L18 14L34 9L54 11"
+            fill="none"
+            strokeWidth={1}
+            strokeDasharray="4 3"
+            style={{ stroke: "var(--bl-data-3)" }}
+          />
         </svg>
       );
     case "point":
       return (
         <svg {...common}>
-          <path d="M2 17L22 14L28 7L36 15L54 16" fill="none" strokeWidth={1.5} style={{ stroke: "var(--bl-data-1)" }} />
-          <rect x={22.5} y={1.5} width={11} height={11} fill="none" strokeWidth={1} style={{ stroke: "var(--bl-signal)" }} />
+          <path
+            d="M2 17L22 14L28 7L36 15L54 16"
+            fill="none"
+            strokeWidth={1.5}
+            style={{ stroke: "var(--bl-data-1)" }}
+          />
+          <rect
+            x={22.5}
+            y={1.5}
+            width={11}
+            height={11}
+            fill="none"
+            strokeWidth={1}
+            style={{ stroke: "var(--bl-signal)" }}
+          />
           <rect x={25} y={4} width={6} height={6} style={{ fill: "var(--bl-signal)" }} />
         </svg>
       );
@@ -79,10 +103,30 @@ function Sample({ kind }: { kind: Encoding["kind"] }) {
     case "incident":
       return (
         <svg {...common}>
-          <rect x={0.5} y={10.5} width={55} height={8} fill="none" strokeWidth={1} style={{ stroke: "var(--bl-line-strong)" }} />
+          <rect
+            x={0.5}
+            y={10.5}
+            width={55}
+            height={8}
+            fill="none"
+            strokeWidth={1}
+            style={{ stroke: "var(--bl-line-strong)" }}
+          />
           <rect x={30} y={10} width={7} height={9} style={{ fill: "var(--bl-signal)" }} />
-          <rect x={27.5} y={0.5} width={9} height={8} strokeWidth={1} style={{ fill: "var(--bl-bg)", stroke: "var(--bl-fg)" }} />
-          <text x={32} y={6.8} textAnchor="middle" style={{ fontFamily: "var(--bl-font-mono)", fontSize: 7, fill: "var(--bl-fg)" }}>
+          <rect
+            x={27.5}
+            y={0.5}
+            width={9}
+            height={8}
+            strokeWidth={1}
+            style={{ fill: "var(--bl-bg)", stroke: "var(--bl-fg)" }}
+          />
+          <text
+            x={32}
+            y={6.8}
+            textAnchor="middle"
+            style={{ fontFamily: "var(--bl-font-mono)", fontSize: 7, fill: "var(--bl-fg)" }}
+          >
             3
           </text>
         </svg>
@@ -104,12 +148,28 @@ type Encoding = {
 };
 
 const encodings: Encoding[] = [
-  { kind: "current", name: "Aktuell period", form: "Heldragen 1,5 px · ihålig kvadrat · namn vid linjens slut" },
+  {
+    kind: "current",
+    name: "Aktuell period",
+    form: "Heldragen 1,5 px · ihålig kvadrat · namn vid linjens slut",
+  },
   { kind: "compare", name: "Jämförelseperiod", form: "Streckad 1 px (4/3) · ingen markör" },
   { kind: "point", name: "Markerad datapunkt", form: "Fylld kvadrat 6 px + ring 12 px" },
-  { kind: "bar", name: "Markerad stapel", form: "Fylld mot ljusgrå staplar med kant · värde ovanför" },
-  { kind: "incident", name: "Avvikelse", form: "Fyllt block · numrerad ruta, samma nummer i tabellen" },
-  { kind: "row", name: "Markerad tabellrad", form: "Kvadrat med ring i vänstermarginalen · halvfet rad" },
+  {
+    kind: "bar",
+    name: "Markerad stapel",
+    form: "Fylld mot ljusgrå staplar med kant · värde ovanför",
+  },
+  {
+    kind: "incident",
+    name: "Avvikelse",
+    form: "Fyllt block · numrerad ruta, samma nummer i tabellen",
+  },
+  {
+    kind: "row",
+    name: "Markerad tabellrad",
+    form: "Kvadrat med ring i vänstermarginalen · halvfet rad",
+  },
 ];
 
 function ProofLabel({ label, meta }: { label: string; meta: string }) {
@@ -140,7 +200,11 @@ function Paper({ children, className }: { children: ReactNode; className?: strin
 
 export function PrintSection({ index }: { index: number }) {
   return (
-    <section id="utskrift" aria-labelledby="utskrift-title" className="border-t border-line py-16 md:py-20">
+    <section
+      id="utskrift"
+      aria-labelledby="utskrift-title"
+      className="border-t border-line py-16 md:py-20"
+    >
       <SectionHeader
         id="utskrift-title"
         index={index}
@@ -151,12 +215,12 @@ export function PrintSection({ index }: { index: number }) {
 
       <div className="mt-10 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         <figure className="bl-desk m-0 rounded-md border border-line p-3 sm:p-5 md:p-6">
-          <ExampleReport layout="spread" visiblePages={[1, 2]} />
-          <figcaption className="mt-3 grid gap-4 sm:grid-cols-2 md:gap-6">
+          <ExampleReport headingLevel={3} layout="spread" visiblePages={[1, 2]} />
+          <figcaption className="mt-3 hidden gap-4 sm:grid sm:grid-cols-2 md:gap-6">
             <span className="label text-subtle">
               <span className="text-fg">Sida 1</span> · Sammanfattning
             </span>
-            <span className="label hidden text-subtle sm:block">
+            <span className="label text-subtle">
               <span className="text-fg">Sida 2</span> · Sortiment
             </span>
           </figcaption>
@@ -169,7 +233,10 @@ export function PrintSection({ index }: { index: number }) {
           </p>
           <dl className="flex flex-col px-4 md:px-5">
             {spec.map(([k, v]) => (
-              <div key={k} className="grid grid-cols-[84px_1fr] gap-3 border-b border-line py-2.5 last:border-b-0">
+              <div
+                key={k}
+                className="grid grid-cols-[84px_1fr] gap-3 border-b border-line py-2.5 last:border-b-0"
+              >
                 <dt className="label text-subtle">{k}</dt>
                 <dd className="tnum flex flex-col font-mono text-xs text-fg">
                   {v.map((line) => (
@@ -224,12 +291,27 @@ export function PrintSection({ index }: { index: number }) {
   );
 }
 
+/**
+ * Ett litet pappersprov i data-theme="print" utan data-tone, så att
+ * signalen är #111 och data-5 ljusgrå oavsett appens läge.
+ */
+function PaperChip({ children }: { children: ReactNode }) {
+  return (
+    <span
+      data-theme="print"
+      className="flex shrink-0 items-center rounded-xs border border-line bg-bg px-2 py-1.5"
+    >
+      {children}
+    </span>
+  );
+}
+
 function EncodingRow({ encoding }: { encoding: Encoding }) {
   return (
     <li className="flex items-start gap-4 border-b border-line px-4 py-4 md:px-5">
-      <span className="mt-0.5 shrink-0">
+      <PaperChip>
         <Sample kind={encoding.kind} />
-      </span>
+      </PaperChip>
       <span className="flex min-w-0 flex-col gap-1">
         <span className="text-base text-fg">{encoding.name}</span>
         <span className="font-mono text-xs text-subtle">{encoding.form}</span>
