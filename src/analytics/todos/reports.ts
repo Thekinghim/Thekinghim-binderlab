@@ -110,9 +110,13 @@ export function reportTodos(ctx: TodoContext): TodoItem[] {
       .map((x) => x.d);
     const latestFailed = failed[failed.length - 1];
 
+    // Butiken i parentes, utom när mottagarens namn redan säger den ("Maria Dahl, Bio Fyren").
+    const store = r.kind === "store" && r.storeId !== null ? storeName(r.storeId) : null;
     const to =
-      r.kind === "store" && r.storeId !== null && storeName(r.storeId) !== r.storeId
-        ? `${r.name} (${storeName(r.storeId)})`
+      store !== null &&
+      store !== r.storeId &&
+      !r.name.toLocaleLowerCase("sv-SE").includes(store.toLocaleLowerCase("sv-SE"))
+        ? `${r.name} (${store})`
         : r.name;
     const deadline =
       daysLeft < 0
