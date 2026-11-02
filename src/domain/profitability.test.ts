@@ -356,6 +356,77 @@ describe("provision, hyra eller båda", () => {
   });
 });
 
+describe("hyran bärs bara av order på dagar med hyresavtal", () => {
+  // Butik 1: 1–14 nov. bara provision 10 %; från 15 nov. hyra 300,00 kr/mån (16 dagar).
+  // Hyra nov. = round(30 000 × 16 / 30) = 16 000.
+  const agreements = [
+    agreement("s-1", "2026-01-01", "2026-11-14", { commissionBp: 1000 }),
+    agreement("s-1", "2026-11-15", null, { monthlyRentOre: 30_000 }),
+  ];
+  const base: ProfitabilityInput = {
+    orders: [],
+    prices: [price("t-a", 2000, "2026-01-01")],
+    agreements,
+    placements: [placement("m-1", "s-1", "2026-01-01", null)],
+    settings: NO_TAX,
+    period: { start: "2026-11-01", end: "2026-11-30" },
+  };
+
+  it("en order före avtalsbytet bär ingen hyra", () => {
+    const r = profitability(
+      {
+        ...base,
+        orders: [
+          order({ id: "f1", titleId: "t-a", businessDate: "2026-11-10", amountOre: 4900 }),
+          order({ id: "f2", titleId: "t-b", businessDate: "2026-11-20", amountOre: 4900 }),
+        ],
+        prices: [...base.prices, price("t-b", 2000, "2026-01-01")],
+      },
+      "title",
+    );
+    const row = (k: string) => r.rows.find((x) => x.key === k)!;
+    // f1 (10 nov., inget hyresavtal) bär 0; f2 (20 nov.) bär hela 16 000.
+    expect(row("t-a")).toMatchObject({ rentOre: 0, commissionOre: 490, profitOre: 2410 });
+    expect(row("t-b")).toMatchObject({ rentOre: 16_000, commissionOre: 0, profitOre: -13_100 });
+    expect(r.totals.rentOre).toBe(16_000);
+  });
+
+  it("bara order på dagar utan hyra: hyran är ej fördelad", () => {
+    const r = profitability(
+      { ...base, orders: [order({ businessDate: "2026-11-10", amountOre: 4900 })] },
+      "machine",
+    );
+    expect(r.rows.find((x) => x.key === "m-1")).toMatchObject({ rentOre: 0, profitOre: 2410 });
+    expect(r.rows.find((x) => x.key === UNALLOCATED_KEY)).toMatchObject({
+      rentOre: 16_000,
+      unallocatedRentOre: 16_000,
+    });
+    expect(r.totals.profitOre).toBe(2410 - 16_000);
+  });
+
+  it("två hyresnivåer i samma månad vägs efter dagens hyra", () => {
+    // 1–15 nov. 30 000/mån, 16–30 nov. 60 000/mån: hyra = (30 000 × 15 + 60 000 × 15) / 30 = 45 000.
+    // Två lika stora order, en i varje halva: vikter 1 : 2 → 15 000 och 30 000.
+    const r = profitability(
+      {
+        ...base,
+        agreements: [
+          agreement("s-1", "2026-01-01", "2026-11-15", { monthlyRentOre: 30_000 }),
+          agreement("s-1", "2026-11-16", null, { monthlyRentOre: 60_000 }),
+        ],
+        orders: [
+          order({ id: "h1", businessDate: "2026-11-05", amountOre: 4900 }),
+          order({ id: "h2", businessDate: "2026-11-25", amountOre: 4900 }),
+        ],
+      },
+      "day",
+    );
+    const rent = (d: string) => r.rows.find((x) => x.key === d)!.rentOre;
+    expect(rent("2026-11-05")).toBe(15_000);
+    expect(rent("2026-11-25")).toBe(30_000);
+  });
+});
+
 describe("särskilda rader och diagnostik", () => {
   const input: ProfitabilityInput = {
     orders: [

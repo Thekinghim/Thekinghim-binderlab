@@ -83,7 +83,8 @@ export interface Ledger {
 
 /** Månadshyran som gällde en dag i butik-månaden (0 om inget hyresavtal gällde). */
 function rentRateOn(sm: StoreMonthRent, date: IsoDate): number {
-  for (const seg of sm.segments) if (seg.start <= date && date <= seg.end) return seg.monthlyRentOre;
+  for (const seg of sm.segments)
+    if (seg.start <= date && date <= seg.end) return seg.monthlyRentOre;
   return 0;
 }
 

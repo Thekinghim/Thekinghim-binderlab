@@ -80,10 +80,9 @@ function ToastView({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
       className={cn(
-        "pointer-events-auto relative w-full overflow-hidden rounded-md border bg-raised p-3.5 pr-10",
-        tone === "critical" ? "border-signal/60" : "border-line-strong",
+        "pointer-events-auto relative w-full animate-enter overflow-hidden rounded-md border bg-raised p-3.5 pr-10",
+        tone === "critical" ? "border-signal-line" : "border-line-strong",
       )}
-      style={{ animation: "bl-enter var(--bl-dur-slow) var(--bl-ease)" }}
     >
       <div className="flex gap-3">
         <span className={cn("mt-1.5", tone === "critical" ? "" : "text-muted")}>
@@ -94,7 +93,7 @@ function ToastView({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
           {item.description ? <p className="text-sm text-muted">{item.description}</p> : null}
           {item.meta || item.action ? (
             <div className="mt-1 flex items-center gap-3">
-              {item.meta ? <span className="label tnum text-subtle">{item.meta}</span> : null}
+              {item.meta ? <span className="meta tnum text-subtle">{item.meta}</span> : null}
               {item.action ? (
                 <button
                   type="button"
@@ -102,7 +101,7 @@ function ToastView({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
                     item.action?.onClick();
                     onDismiss();
                   }}
-                  className="label text-fg underline decoration-line-control underline-offset-4 hover:decoration-fg"
+                  className="label text-fg underline decoration-line-control underline-offset-4 transition-[text-decoration-color] duration-fast hover:decoration-fg"
                 >
                   {item.action.label}
                 </button>
@@ -115,7 +114,7 @@ function ToastView({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
         type="button"
         onClick={onDismiss}
         aria-label="Stäng notis"
-        className="absolute top-2.5 right-2.5 grid size-6 place-items-center rounded-xs text-subtle hover:bg-hover hover:text-fg"
+        className="absolute top-2.5 right-2.5 grid size-6 place-items-center rounded-xs text-subtle transition-colors duration-fast hover:bg-hover hover:text-fg"
       >
         <Icon name="close" size={12} />
       </button>

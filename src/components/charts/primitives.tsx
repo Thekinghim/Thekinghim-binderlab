@@ -1,9 +1,13 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { cn } from "@/lib/cn";
+import { labelSpec, type Box, type LabelKind, type LabelLine } from "./layout";
 
-/** Monospace axeltext i SVG. */
+/**
+ * Monospace axeltext i SVG. Versaler som standard (kategorier, datum);
+ * `upper={false}` för tal och enheter, så att "tkr" aldrig blir "TKR".
+ */
 export function AxisText({
   x,
   y,
@@ -11,6 +15,7 @@ export function AxisText({
   anchor = "middle",
   baseline = "auto",
   emphasis,
+  upper = true,
 }: {
   x: number;
   y: number;
@@ -18,6 +23,7 @@ export function AxisText({
   anchor?: "start" | "middle" | "end";
   baseline?: "auto" | "middle" | "hanging";
   emphasis?: boolean;
+  upper?: boolean;
 }) {
   return (
     <text
@@ -29,8 +35,8 @@ export function AxisText({
       style={{
         fontFamily: "var(--bl-font-mono)",
         fontSize: 10,
-        letterSpacing: "0.06em",
-        textTransform: "uppercase",
+        letterSpacing: upper ? "0.06em" : 0,
+        textTransform: upper ? "uppercase" : "none",
         fill: emphasis ? "var(--bl-fg)" : "var(--bl-fg-subtle)",
       }}
     >
@@ -39,7 +45,122 @@ export function AxisText({
   );
 }
 
-/** Kvadratisk nod på datapunkt. Ihålig som standard, fylld när aktiv. */
+/** Axelns enhet, en gång, ovanför axeln. Gemener: "tkr", "köp/tim". */
+export function AxisUnitLabel({
+  x,
+  y,
+  children,
+  anchor = "end",
+}: {
+  x: number;
+  y: number;
+  children: ReactNode;
+  anchor?: "start" | "middle" | "end";
+}) {
+  return (
+    <AxisText x={x} y={y} anchor={anchor} upper={false}>
+      {children}
+    </AxisText>
+  );
+}
+
+const KIND_STYLE: Record<LabelKind, CSSProperties> = {
+  title: { fontFamily: "var(--bl-font-sans)", fontWeight: 500, fill: "var(--bl-fg)" },
+  body: { fontFamily: "var(--bl-font-sans)", fill: "var(--bl-fg-muted)" },
+  value: { fontFamily: "var(--bl-font-mono)", fill: "var(--bl-fg-muted)" },
+  caps: {
+    fontFamily: "var(--bl-font-mono)",
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    fill: "var(--bl-fg-subtle)",
+  },
+};
+
+/**
+ * Direktetikett i SVG: en eller flera rader, där varje rad kan blanda
+ * typer (t.ex. "SNITT" i versaler + "4 131 kr" i gemener). Placeras i en ruta
+ * som räknats fram med layout.place().
+ */
+export function LabelBlock({
+  box,
+  lines,
+  align = "start",
+  tone,
+}: {
+  box: Box;
+  lines: ReadonlyArray<LabelLine>;
+  align?: "start" | "end";
+  /** "signal" färgar första raden i signaltext (endast för det som kräver åtgärd) */
+  tone?: "signal";
+}) {
+  let y = box.y;
+  const x = align === "end" ? box.x + box.w : box.x;
+  return (
+    <g pointerEvents="none">
+      {lines.map((line, li) => {
+        const lh = Math.max(...line.map((s) => labelSpec(s.kind).lh));
+        y += lh;
+        return (
+          <text
+            key={li}
+            x={x}
+            y={y - 4}
+            textAnchor={align}
+            className="tnum"
+            style={{ fontSize: labelSpec(line[0]?.kind ?? "body").size }}
+          >
+            {line.map((s, si) => (
+              <tspan
+                key={si}
+                style={{
+                  ...KIND_STYLE[s.kind],
+                  fontSize: labelSpec(s.kind).size,
+                  ...(tone === "signal" && li === 0 ? { fill: "var(--bl-signal-fg)" } : null),
+                }}
+              >
+                {s.text}
+              </tspan>
+            ))}
+          </text>
+        );
+      })}
+    </g>
+  );
+}
+
+/**
+ * Skraffering för minskningar och avdrag. userSpaceOnUse ger samma täthet i
+ * alla staplar; 1 px linje i fg-muted håller över 3:1 i alla tre teman.
+ */
+export function HatchPattern({ id, tone = "muted" }: { id: string; tone?: "muted" | "signal" }) {
+  return (
+    <pattern
+      id={id}
+      width={4}
+      height={4}
+      patternUnits="userSpaceOnUse"
+      patternTransform="rotate(45)"
+    >
+      <line
+        x1={0}
+        y1={0}
+        x2={0}
+        y2={4}
+        strokeWidth={1}
+        style={{ stroke: tone === "signal" ? "var(--bl-signal)" : "var(--bl-fg-muted)" }}
+      />
+    </pattern>
+  );
+}
+
+/**
+ * Nod på datapunkt. Formen bär betydelsen, så att den överlever svartvitt:
+ * - "hollow": ihålig kvadrat (vanlig punkt, t.ex. lägsta/senaste)
+ * - "solid": fylld kvadrat i fg (aktiv punkt, topp/rekord)
+ * - "circle": ihålig cirkel (jämförelseserien)
+ * - "signal-ring" / "alert": fylld kvadrat + ring i signal (kräver åtgärd)
+ * - "signal": fylld kvadrat i signal (aktiv punkt som kräver åtgärd)
+ */
 export function Node({
   x,
   y,
@@ -49,10 +170,21 @@ export function Node({
   x: number;
   y: number;
   size?: number;
-  variant?: "hollow" | "solid" | "signal" | "signal-ring";
+  variant?: "hollow" | "solid" | "circle" | "signal" | "signal-ring" | "alert";
 }) {
   const h = size / 2;
-  if (variant === "signal-ring") {
+  if (variant === "circle") {
+    return (
+      <circle
+        cx={x}
+        cy={y}
+        r={h}
+        strokeWidth={1}
+        style={{ fill: "var(--bl-surface)", stroke: "var(--bl-data-2)" }}
+      />
+    );
+  }
+  if (variant === "signal-ring" || variant === "alert") {
     return (
       <g>
         <rect

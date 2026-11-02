@@ -5,13 +5,15 @@ import type { SVGProps } from "react";
  * raka ändar. Inga ikonbibliotek, så att formspråket hålls ihop.
  */
 const paths = {
-  overview: "M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z",
+  // Baslinje med tre olika höga mätstreck: läget i stort, inte fyra rutor.
+  overview: "M2 13.5h12M4.5 13.5V9M8 13.5V3.5M11.5 13.5V6.5",
   sales: "M2.5 13.5h11M4 11V8M7 11V4.5M10 11V6.5M13 11V3",
   machine: "M3.5 1.5h9v13h-9zM3.5 10.5h9M5.5 4h3.5M5.5 6.5h3.5M11 4v1M11 6.5v1M6 12.5h4",
   inventory: "M2 5l6-3 6 3v6l-6 3-6-3zM2 5l6 3 6-3M8 8v6",
   margin: "M2.5 13.5L6 8l3 2.5 4.5-7M10.5 3.5h3v3",
+  // Tre reglage med greppen i olika lägen (inte ett kugghjul, som annars liknar "sun").
   settings:
-    "M8 5.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4",
+    "M2 4h7M11 4h3M9 2.5h2v3H9zM2 8h2M6 8h8M4 6.5h2v3H4zM2 12h8M12 12h2M10 10.5h2v3h-2z",
   design: "M2.5 2.5h11v11h-11zM2.5 6.5h11M6.5 6.5v7",
   search: "M7 2.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zM10.3 10.3l3.2 3.2",
   close: "M3.5 3.5l9 9M12.5 3.5l-9 9",
@@ -33,7 +35,8 @@ const paths = {
   info: "M8 1.5a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13zM8 7v4.5M8 4.5v1",
   sun: "M8 5a3 3 0 1 1 0 6 3 3 0 0 1 0-6zM8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3 3l1 1M12 12l1 1M3 13l1-1M12 4l1-1",
   moon: "M13 9.5A5.5 5.5 0 0 1 6.5 3a5.5 5.5 0 1 0 6.5 6.5z",
-  more: "M3.5 8h.01M8 8h.01M12.5 8h.01",
+  // Tre kvadrater på 1.5px, ritas med rak ände (se SOLID_SQUARES).
+  more: "M2.75 8h1.5M7.25 8h1.5M11.75 8h1.5",
   external: "M9.5 2.5h4v4M13.5 2.5L7.5 8.5M11.5 9.5v4h-9v-9h4",
   logout: "M6 2.5H2.5v11H6M10 5l3 3-3 3M13 8H6",
   report: "M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3M5.5 8h5M5.5 10.5h5M5.5 13h2.5",
@@ -50,8 +53,14 @@ type IconProps = Omit<SVGProps<SVGSVGElement>, "name"> & {
   label?: string;
 };
 
+/**
+ * Ikoner vars streck är 1.5px långa och ska bli exakta 1.5px-kvadrater:
+ * linjebredd 1.5 med rak (butt) ände. Aldrig runda prickar.
+ */
+const SOLID_SQUARES: ReadonlySet<IconName> = new Set<IconName>(["more"]);
+
 export function Icon({ name, size = 16, label, strokeWidth = 1.25, ...rest }: IconProps) {
-  const dotted = name === "more";
+  const squares = SOLID_SQUARES.has(name);
   return (
     <svg
       width={size}
@@ -59,8 +68,8 @@ export function Icon({ name, size = 16, label, strokeWidth = 1.25, ...rest }: Ic
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
-      strokeWidth={dotted ? 2 : strokeWidth}
-      strokeLinecap={dotted ? "round" : "square"}
+      strokeWidth={squares ? 1.5 : strokeWidth}
+      strokeLinecap={squares ? "butt" : "square"}
       strokeLinejoin="miter"
       role={label ? "img" : undefined}
       aria-label={label}

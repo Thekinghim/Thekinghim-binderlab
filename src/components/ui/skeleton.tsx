@@ -5,8 +5,7 @@ export function Skeleton({ className }: { className?: string }) {
   return (
     <span
       aria-hidden
-      className={cn("block rounded-xs bg-hover", className)}
-      style={{ animation: "bl-shimmer 1.6s var(--bl-ease-in-out) infinite" }}
+      className={cn("block animate-pulse-soft rounded-xs bg-hover", className)}
     />
   );
 }

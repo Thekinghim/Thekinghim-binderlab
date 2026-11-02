@@ -370,22 +370,18 @@ describe("policyer", () => {
     const withRefiller = [
       ...new Set(policies.filter((p) => p.expr.includes("'refiller'")).map((p) => p.table)),
     ].sort();
-    expect(withRefiller).toEqual(
-      [
-        "machine_placements",
-        "machines",
-        "memberships",
-        "organizations",
-        "profiles",
-        "stock_events",
-        "stock_locations",
-        "stores",
-        "title_aliases",
-        "titles",
-      ]
-        .filter((t) => t !== "memberships") // eget medlemskap via user_id, inte roll
-        .sort(),
-    );
+    // memberships saknas med flit: påfyllaren ser sitt eget medlemskap via user_id, inte via rollen.
+    expect(withRefiller).toEqual([
+      "machine_placements",
+      "machines",
+      "organizations",
+      "profiles",
+      "stock_events",
+      "stock_locations",
+      "stores",
+      "title_aliases",
+      "titles",
+    ]);
   });
 });
 
