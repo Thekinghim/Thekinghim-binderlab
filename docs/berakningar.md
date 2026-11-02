@@ -290,9 +290,7 @@ Ett kundärende (sidan Inkorg) kan ha ett återbetalt belopp i öre och en åter
 pack och fick 49,00 kr tillbaka 20 okt.: vinst efter återbetalningar 7 660 − 4 900 = **2 760
 öre**, marginal 2 760 / 30 400 = 9,08 % (908 bp). Testerna finns i `src/domain/refunds.test.ts`.
 
-Sidan Lönsamhet visar inte justeringen ännu; den kan läggas till som en egen rad
-"Återbetalningar" under vinsten med `applyRefunds` på vyns rader.
-Sidan Inkorg säger det också: återbetalningarna visas inte i Lönsamhet än.
+Sidan Lönsamhet visar justeringen som en egen rad under vattenfallet, se avsnitt 17.
 
 ## 15. Maskinhälsa: tystnad och importerad försäljning (`src/analytics/health`)
 
@@ -324,3 +322,68 @@ lyckad import efter midnatt i dag.
 Begränsning: en organisation med en enda automat i en CSV-källa kan inte skilja en tyst
 automat från en fil utan ny försäljning; där fångar datalarmet efter 36 timmar problemet.
 Testerna finns i `src/analytics/health/coverage.test.ts` och `test/db/drift-alerts.test.ts`.
+
+## 16. Att göra (`src/analytics/todos`)
+
+Att göra räknas om vid varje sidvisning ur order, lager, priser, rapporter, avtal och larm.
+Varje punkt har en stabil nyckel (samma orsak ger samma nyckel) och ett fingerprint
+(orsakens tillstånd). En avbockning gäller så länge fingerprintet är oförändrat.
+
+| Punkt              | Regel                                                                                                                        | Nivå                                               |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Påfyllning         | Lagret räcker under **2,5 dagar** vid snittförsäljningen de **14** senaste hela dagarna (t.o.m. i går)                       | nu under 1 dag, annars snart                       |
+| Tyst automat       | Ingen försäljning på **48 timmar**                                                                                           | nu                                                 |
+| Larm               | Öppet, okvitterat larm om automat (fel, misstänkt fel, ur drift) eller import; inte "titel nära slut" (= påfyllning)         | kritiskt: nu, varning: snart                       |
+| Rapportutkast      | Utkast (senaste versionen, inte godkänd, inte skickad), en punkt per rapportmånad                                            | som utskicket                                      |
+| Rapport att skicka | Förra månadens rapport till varje aktiv mottagare, senast månadens sista dag                                                 | försenad: nu, 0–3 dagar kvar: snart, annars senare |
+| Avtal              | Påminnelse **90 dagar** före sista uppsägningsdag (`contractReminders`, samma som sidan Avtal); uppsagt eller utgånget avtal | ≤ 7 dagar: nu, ≤ 30 dagar: snart, annars senare    |
+| Saknat inköpspris  | Titel med försäljning de senaste **30** dagarna utan inköpspris                                                              | senare                                             |
+| Möjlig dubblett    | Två titlar med nästan samma namn                                                                                             | senare                                             |
+
+**Belopp i risk** ("I risk 7 d") är bara påfyllning och tysta automater: intäkt per dag ×
+(7 − dagar som lagret räcker). En titel utan inköpspris säljer som vanligt (bara vinsten blir
+ofullständig) och räknas inte dit.
+
+**Ordning.** Nivån väger alltid tyngst (nu, snart, senare). Inom en nivå sorteras punkterna
+efter brådskevärdet:
+
+> brådska = nivå × 10¹² + kronor i risk de närmaste 7 dagarna + förlorad intäkt (öre)
+
+Förlorad intäkt är `@/analytics/lost-sales` för titeln i automaten de senaste 14 hela dagarna
+(samma som Prognos visar). Den ändrar bara ordningen och underlaget ("Förlorat 14 d"), inte
+nivån och inte "I risk 7 d", så att samma intäkt aldrig räknas två gånger. Menyns räknare och
+listan har alltid samma punkter.
+
+**Dagar med tiondelar.** Att göra visar "räcker 0,4 d" med en decimal eftersom gränsen är
+2,5 dagar; lagerprognosen (avsnitt 8) visar hela dagar till slutdatum.
+
+**Avbockade.** Listan "Avbockade" visar bara punkter vars orsak finns kvar (punkten skulle stå
+i listan utan avbockningen). En avbockning vars orsak är löst döljer inget och visas inte.
+
+Testerna finns i `src/analytics/todos/*.test.ts` (bland annat `integration.test.ts` för avtal,
+utkast, larm och förlorad försäljning) och `test/db/integration-fas7.test.ts`.
+
+## 17. Lönsamhet efter vinsten: återbetalningar och fasta kostnader
+
+Under vattenfallet visar Lönsamhet två avdrag som egna rader. Vattenfallet, tabellerna och
+nyckeltalen ändras inte.
+
+> vinst efter återbetalningar = vinst − återbetalningar (avsnitt 14)
+>
+> resultat = vinst efter återbetalningar − fasta kostnader i perioden
+
+- **Fasta kostnader** (`fixed_costs`, sidan Ekonomi) periodiseras över de dagar de gäller och
+  fördelas med `profitabilityWithFixedCosts` (`@/analytics/cashflow`): gemensamma kostnader
+  efter nettointäkt per automat (alla order, även utan inköpspris), kostnader för en viss
+  automat på den automaten.
+- **Automatfilter:** automatens återbetalningar och automatens del av fördelningen, räknad på
+  hela organisationen (annars skulle automaten bära alla gemensamma kostnader).
+- **Butiksfilter:** butikens återbetalningar (placeringen på återbetalningsdagen). Fasta
+  kostnader fördelas per automat, inte per butik, och visas inte med butiksfilter.
+- Per automat summerar vinst, återbetalningar, fasta kostnader och resultat till totalen
+  (testas i `src/app/(app)/lonsamhet/_lib/result.test.ts`).
+
+**Exempel.** Två automater, moms och kortavgift 0, provision 10 %: m1 vinst 300 kr, m2 150 kr.
+Återbetalt 40 kr (m1) och 25 kr (m2). Försäkring 300 kr/mån gemensam, service 90 kr/mån på m2.
+Vinst 450 − återbetalningar 65 = 385 kr; fasta kostnader 300 (fördelas 200 + 100 efter
+intäkten 1 000 : 500) + 90 = 390 kr; resultat **−5 kr**.

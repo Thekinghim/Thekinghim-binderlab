@@ -3,10 +3,14 @@
  * in). Testas i test/db/onboarding-organisation.test.ts; ./actions.ts kopplar ihop
  * flödet med sessionen och sätter den aktiva organisationen.
  *
- * Organisationen skapas med RPC:n create_organization (ägarmedlemskap, inställningar,
- * centrallager och profil i en transaktion), körd som användaren. Bara den som inte är
- * med i någon organisation och inte har ett butikskonto får skapa en här: andra har
- * redan en väg in, och ett nytt medlemskap kräver annars en inbjudan.
+ * Organisationen skapas med RPC:n create_first_organization, körd som användaren
+ * (supabase/migrations/20261102181500_onboarding_create_first_organization.sql). Bara den
+ * som inte är med i någon organisation och inte har ett butikskonto får skapa en här:
+ * andra har redan en väg in, och ett nytt medlemskap kräver annars en inbjudan. Regeln
+ * gäller i databasen: RPC:n låser per användare, kontrollerar medlemskapen och skapar
+ * organisationen (ägarmedlemskap, inställningar, centrallager och profil) i samma
+ * transaktion, så samtidiga anrop ger en organisation. BL060 = redan medlem, BL061 =
+ * butikskonto.
  */
 
 import "server-only";
@@ -14,10 +18,9 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { listOrganizationsFor, withUserDbFor, type SessionUser } from "@/server/access";
+import { withUserDbFor, type SessionUser } from "@/server/access";
 import type { ActionResult } from "@/server/auth/flows";
 import { dbErrorMessage, pgErrorOf } from "@/server/errors";
-import { queryPortalStores } from "@/server/portal/queries";
 
 export const CREATE_ORGANIZATION_MESSAGES = {
   notLoggedIn: "Du är inte inloggad.",
@@ -77,29 +80,25 @@ export async function createOrganizationFor(
   }
   const name = parsed.data.name;
 
-  if ((await listOrganizationsFor(user)).length > 0) {
-    return { ok: false, error: M.alreadyMember };
-  }
-  if ((await withUserDbFor(user, queryPortalStores)).length > 0) {
-    return { ok: false, error: M.storeAccount };
-  }
-
   const base = slugFromName(name);
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const slug = attempt === 0 ? base : `${base}-${randomSuffix()}`;
     try {
       const id = await withUserDbFor(user, async (tx) => {
         const result = Array.from(
-          await tx.execute(sql`select public.create_organization(${name}, ${slug}) as id`),
+          await tx.execute(sql`select public.create_first_organization(${name}, ${slug}) as id`),
         ) as Array<{ id?: unknown }>;
         return result[0]?.id;
       });
       if (typeof id !== "string") return { ok: false, error: M.failed };
       return { ok: true, data: { organizationId: id } };
     } catch (error) {
+      const code = pgErrorOf(error)?.code;
       // Kortnamnet finns redan: försök igen med ett tillägg.
-      if (pgErrorOf(error)?.code === "23505") continue;
-      console.error("[onboarding] create_organization misslyckades:", error);
+      if (code === "23505") continue;
+      if (code === "BL060") return { ok: false, error: M.alreadyMember };
+      if (code === "BL061") return { ok: false, error: M.storeAccount };
+      console.error("[onboarding] create_first_organization misslyckades:", error);
       return { ok: false, error: dbErrorMessage(error, M.failed) };
     }
   }

@@ -88,7 +88,8 @@ export function appHref(
     return build(path, params);
   }
 
-  return build(path, params);
+  // Övriga sidor (Avtal, Rapporter, Drift …) tar länken som den är, med ankaret.
+  return `${build(path, params)}${url.hash}`;
 }
 
 /**

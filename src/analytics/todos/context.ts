@@ -3,6 +3,7 @@
  * namnuppslag och brådskevärdet.
  */
 
+import { CONTRACT_DEFAULTS } from "@/analytics/contracts/contracts";
 import { DomainError, type IsoDate } from "@/domain";
 import { machineNames, titleNames } from "./common";
 import { businessDateAt, DEFAULT_TIME_ZONE, parseInstant } from "./time";
@@ -16,6 +17,7 @@ export const TODO_DEFAULTS: Required<TodoOptions> = {
   staleHours: 48,
   unpricedWindowDays: 30,
   reportDueDay: null,
+  contractReminderDays: CONTRACT_DEFAULTS.reminderLeadDays,
 };
 
 /** Dagar framåt som "kronor i risk" räknas över. */
@@ -53,6 +55,7 @@ export function createTodoContext(input: TodoInput, now: Date | string | number)
   assertPositiveInteger(options.refillThresholdCentidays, "Gränsen för påfyllning");
   assertPositiveInteger(options.staleHours, "Gränsen för stillastående automat");
   assertPositiveInteger(options.unpricedWindowDays, "Fönstret för saknade inköpspriser");
+  assertPositiveInteger(options.contractReminderDays, "Påminnelsen för avtal");
   if (options.reportDueDay !== null)
     assertPositiveInteger(options.reportDueDay, "Sista dag för rapporter");
   const nowMs = parseInstant(now);

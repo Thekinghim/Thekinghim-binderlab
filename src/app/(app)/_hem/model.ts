@@ -11,6 +11,7 @@
 
 import { computeInsights, type Insight } from "@/analytics/insights";
 import type { AnalyticsOrder, TodoItem, TodoLevel } from "@/analytics/todos";
+import type { LostSalesSummary } from "@/server/purchasing/types";
 import {
   addDays,
   changeBp,
@@ -262,10 +263,16 @@ function todosInScope(
       .filter((m) => (scope.machineId ? m.id === scope.machineId : m.storeId === scope.storeId))
       .map((m) => m.id),
   );
-  return todos.filter(
-    (t) =>
-      t.evidence.machineIds.length === 0 || t.evidence.machineIds.some((id) => inScope.has(id)),
-  );
+  // Som Att göra: punkter med automat följer automaten, punkter om en butik (rapport,
+  // avtal) följer butiksfiltret, och resten gäller hela organisationen.
+  return todos.filter((t) => {
+    if (t.evidence.machineIds.length > 0)
+      return t.evidence.machineIds.some((id) => inScope.has(id));
+    if (scope.storeId && t.evidence.storeIds.length > 0) {
+      return t.evidence.storeIds.includes(scope.storeId);
+    }
+    return true;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -495,7 +502,7 @@ function buildTodos(
       title: t.title,
       detail: t.detail,
       href: appHref(t.link),
-      orgWide: filtered && t.evidence.machineIds.length === 0,
+      orgWide: filtered && t.evidence.machineIds.length === 0 && t.evidence.storeIds.length === 0,
     }));
   return {
     todos: top,
@@ -645,4 +652,25 @@ export function weekdayOf(date: IsoDate): string {
     ["måndag", "tisdag", "onsdag", "torsdag", "fredag", "lördag", "söndag"][dayOfWeek(date) - 1] ??
     ""
   );
+}
+
+/** Förlorad försäljning som Hem visar den: texten och länken till underlaget. */
+export interface HomeLostSales {
+  /** T.ex. "Slutsålt kostade ca 3 200 kr i oktober." */
+  readonly text: string;
+  readonly href: string;
+  readonly lostRevenueOre: number;
+  /** Titlar × automater som är slut just nu (perioden pågår). */
+  readonly ongoing: number;
+}
+
+/** Förlorad försäljning som Hem visar den, eller null när inget förlorats. */
+export function homeLostSales(summary: LostSalesSummary | null): HomeLostSales | null {
+  if (!summary || summary.lostRevenueOre <= 0) return null;
+  return {
+    text: summary.text,
+    href: summary.href,
+    lostRevenueOre: summary.lostRevenueOre,
+    ongoing: summary.series.filter((x) => x.ongoing).length,
+  };
 }

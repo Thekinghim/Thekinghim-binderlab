@@ -22,6 +22,7 @@ import {
   type MachineRecord,
 } from "@/server/data/core";
 import { isUuid } from "@/server/access";
+import { loadMachineHealth } from "@/server/data/health";
 
 import {
   buildOverview,
@@ -125,10 +126,16 @@ function hasOrdersOn(orders: readonly { businessDate: IsoDate }[], day: IsoDate)
 }
 
 async function signalsFor(ctx: AppContext) {
-  const [recent, stock, master] = await Promise.all([
+  const [recent, stock, master, health] = await Promise.all([
     loadDomainInput({ period: recentWindow(ctx.today) }),
     loadStock(),
     loadMasterData(),
+    // Samma status som Drift (försäljningens täckning räknas med). Ett fel här ska inte
+    // stoppa sidan: då räknas hälsan på orderna som förut.
+    loadMachineHealth().catch((error: unknown) => {
+      console.error("[automater] Maskinhälsan kunde inte läsas:", error);
+      return null;
+    }),
   ]);
   return {
     recent,
@@ -140,6 +147,7 @@ async function signalsFor(ctx: AppContext) {
       master,
       now: new Date(ctx.now),
       timeZone: ctx.timeZone,
+      health,
     }),
   };
 }

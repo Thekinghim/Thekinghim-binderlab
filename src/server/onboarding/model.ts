@@ -4,9 +4,12 @@
  * Rena funktioner utan databas (testas i model.test.ts). Fakta läses i ./status.ts under
  * RLS och skickas hit. Inget steg bockas av för hand: ett steg är klart när datan finns.
  *
- * Panelen har det den behöver (complete) när det finns minst en butik, en automat, en
- * datakälla, en import med order och inköpspris för minst 90 % av intäkten. Avtalet med
- * butiken rekommenderas men krävs inte (en butik kan sakna ersättning).
+ * Panelen har det den behöver (complete) när det finns minst en butik, en automat som
+ * står (eller ska stå) i en butik, en datakälla, en import med order och inköpspris för
+ * minst 90 % av intäkten. Utan placering hamnar ingen order på en butik, så automat-
+ * steget kräver den. Avtalet med butiken rekommenderas men krävs inte (en butik kan
+ * sakna ersättning). Arkiverade butiker, automater och datakällor räknas inte, och inte
+ * heller avtal eller placeringar som har löpt ut.
  *
  * Tiden räknas från organisationens created_at till den tidpunkt då varje steg blev
  * klart (första radens created_at, importens finished_at och, för inköpspriserna, när
@@ -57,6 +60,12 @@ export interface OnboardingFacts {
     readonly firstAt: string | null;
     /** Automater som står i en butik i dag. */
     readonly placed: number;
+    /** Automater som står i en butik i dag eller är placerade från ett senare datum. */
+    readonly placedOrPlanned: number;
+    /** När den första sådana placeringen lades in. */
+    readonly placedAt: string | null;
+    /** Kod för äldsta automaten utan placering (länkmål), annars null. */
+    readonly unplacedCode: string | null;
   };
   readonly dataSources: { readonly count: number; readonly firstAt: string | null };
   readonly imports: {
@@ -106,6 +115,8 @@ export interface PriceCoverage {
   readonly pricedRevenueOre: number;
   /** pricedRevenueOre / revenueOre i bp, null utan intäkt. */
   readonly pricedShareBp: number | null;
+  /** Nettointäkt för order utan tolkad titel (kan inte få inköpspris), i öre. */
+  readonly untitledRevenueOre: number;
 }
 
 export interface OnboardingStatus {
@@ -125,6 +136,12 @@ export interface OnboardingStatus {
   readonly completedAt: string | null;
   /** completedAt − startedAt, eller now − startedAt medan det pågår. */
   readonly elapsedMs: number;
+  /**
+   * Alla krävda steg blev klara inom en minut från start: datan lades in på en gång
+   * (seed, exempeldata, flytt från ett annat system). Tiderna säger då inget om hur
+   * lång tid onboarding tar och visas inte.
+   */
+  readonly loadedAtOnce: boolean;
   readonly coverage: PriceCoverage;
   /** Första steget att göra, eller null. */
   readonly next: OnboardingStep | null;
@@ -146,12 +163,19 @@ export function priceCoverage(
   const index = prices instanceof PriceIndex ? prices : new PriceIndex(prices);
   let revenue = 0;
   let priced = 0;
+  let untitled = 0;
   for (const g of groups) {
     const net = (g.amountOre - vatOfGross(g.amountOre, vatRateBp)) * g.orders;
     revenue += net;
-    if (g.titleId !== null && index.priceOn(g.titleId, g.businessDate) !== null) priced += net;
+    if (g.titleId === null) untitled += net;
+    else if (index.priceOn(g.titleId, g.businessDate) !== null) priced += net;
   }
-  return { revenueOre: revenue, pricedRevenueOre: priced, pricedShareBp: ratioBp(priced, revenue) };
+  return {
+    revenueOre: revenue,
+    pricedRevenueOre: priced,
+    pricedShareBp: ratioBp(priced, revenue),
+    untitledRevenueOre: untitled,
+  };
 }
 
 function reached(c: PriceCoverage): boolean {
@@ -205,6 +229,25 @@ export function coverageText(bp: number): string {
   return formatPercent(Math.floor(bp / 10) / 1000);
 }
 
+/** Andel i bp som procent med en decimal, avrundad uppåt (en liten andel blir aldrig 0,0 %). */
+function shareTextUp(bp: number): string {
+  return formatPercent(Math.ceil(bp / 10) / 1000);
+}
+
+/** Gränsen för "på en gång": alla krävda steg klara inom så här lång tid från start. */
+export const LOADED_AT_ONCE_MS = 60_000;
+
+/** Inköpspriser: hela datan, inte skalets standardperiod, så att alla order utan pris syns. */
+export const PRICES_HREF = "/inkopspriser?saknar=pris&period=allt";
+
+function priceDetail(c: PriceCoverage): string {
+  if (c.pricedShareBp === null) return "Ingen intäkt att täcka ännu.";
+  const base = `${coverageText(c.pricedShareBp)} av intäkten har inköpspris, gränsen är ${coverageText(PRICE_COVERAGE_TARGET_BP)}.`;
+  const untitledBp = ratioBp(c.untitledRevenueOre, c.revenueOre);
+  if (untitledBp === null || untitledBp === 0) return base;
+  return `${base} ${shareTextUp(untitledBp)} är order utan tolkad titel, som inte kan få inköpspris förrän titeln är känd.`;
+}
+
 interface StepDraft {
   readonly id: OnboardingStepId;
   readonly title: string;
@@ -220,7 +263,7 @@ const WAITING_TEXT: Record<OnboardingStepId, string> = {
   organisation: "Väntar på organisationen.",
   butik: "Väntar på en butik.",
   avtal: "Väntar på en butik.",
-  automat: "Väntar på en automat.",
+  automat: "Väntar på en butik att placera den i.",
   datakalla: "Väntar på en datakälla.",
   import: "Väntar på en datakälla.",
   inkopspriser: "Väntar på importerade order.",
@@ -287,18 +330,24 @@ export function buildOnboardingStatus(
     },
     {
       id: "automat",
-      title: "Lägg till automaten.",
-      why: "Varje order hör till en automat, och automaten till den butik där den står.",
+      title: "Lägg till automaten och placera den i butiken.",
+      why: "Varje order hör till en automat, och ordern räknas på den butik där automaten står.",
       required: true,
-      doneAt: m.count > 0 ? m.firstAt : null,
+      doneAt: m.count > 0 && m.placedOrPlanned > 0 ? latest(m.firstAt, m.placedAt) : null,
       detail:
-        m.count > 0
-          ? m.placed === 0
+        m.count === 0
+          ? "Ingen automat ännu."
+          : m.placedOrPlanned === 0
             ? `${count(m.count, "automat", "automater")}, ingen placerad i en butik.`
-            : `${count(m.count, "automat", "automater")}, ${count(m.placed, "placerad", "placerade")} i en butik.`
-          : "Ingen automat ännu.",
-      blockedBy: null,
-      action: { label: "Lägg till automat", href: "/automater" },
+            : `${count(m.count, "automat", "automater")}, ${count(m.placedOrPlanned, "placerad", "placerade")} i en butik.`,
+      blockedBy: "butik",
+      action:
+        m.count > 0 && m.placedOrPlanned === 0 && m.unplacedCode
+          ? {
+              label: `Placera ${m.unplacedCode}`,
+              href: `/automater/${encodeURIComponent(m.unplacedCode.toLowerCase())}`,
+            }
+          : { label: "Lägg till automat", href: "/automater" },
     },
     {
       id: "datakalla",
@@ -329,12 +378,9 @@ export function buildOnboardingStatus(
       why: "En order utan inköpspris räknas inte in i vinsten, så vinsten blir bara rätt när priserna finns.",
       required: true,
       doneAt: pricesReachedAt,
-      detail:
-        coverage.pricedShareBp === null
-          ? "Ingen intäkt att täcka ännu."
-          : `${coverageText(coverage.pricedShareBp)} av intäkten har inköpspris, gränsen är ${coverageText(PRICE_COVERAGE_TARGET_BP)}.`,
+      detail: priceDetail(coverage),
       blockedBy: "import",
-      action: { label: "Ange inköpspriser", href: "/inkopspriser?saknar=pris" },
+      action: { label: "Ange inköpspriser", href: PRICES_HREF },
     },
   ];
 
@@ -363,6 +409,7 @@ export function buildOnboardingStatus(
   const complete = requiredDone === required.length;
   const completedAt = complete ? latest(...required.map((x) => x.doneAt)) : null;
   const end = completedAt ? Date.parse(completedAt) : now.getTime();
+  const elapsedMs = Math.max(0, end - start);
   const next =
     steps.find((x) => x.required && x.state === "todo") ??
     steps.find((x) => x.state === "todo") ??
@@ -379,7 +426,8 @@ export function buildOnboardingStatus(
     done: steps.filter((x) => x.state === "done").length,
     steps,
     completedAt,
-    elapsedMs: Math.max(0, end - start),
+    elapsedMs,
+    loadedAtOnce: complete && elapsedMs < LOADED_AT_ONCE_MS,
     coverage,
     next,
   };

@@ -10,7 +10,15 @@ import { HomeKpis } from "./_hem/home-kpis";
 import { carriedParams } from "./_hem/links";
 import { loadHome } from "./_hem/load";
 import { shareText, type HomeDaily, type HomeModel } from "./_hem/model";
-import { ArrowLink, InsightList, TodoList, TopTitles, UnpricedNote } from "./_hem/sections";
+import {
+  ArrowLink,
+  InsightList,
+  LostSalesNote,
+  TodoList,
+  TopTitles,
+  UnpricedNote,
+} from "./_hem/sections";
+import { OnboardingChecklist } from "./kom-igang/_components/onboarding-checklist";
 import { dateOf, kr, sentence, weekdayDayText } from "./_hem/text";
 
 export const metadata: Metadata = { title: "Hem" };
@@ -27,7 +35,7 @@ type SearchParams = Record<string, string | string[] | undefined>;
  */
 export default async function HemPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
-  const { model, today, scope, canEdit } = await loadHome(sp);
+  const { model, today, scope, canEdit, lostSales, onboarding, timeZone } = await loadHome(sp);
   const { headline } = model;
 
   const periodText = (p: { start: string; end: string }) =>
@@ -100,6 +108,16 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
         meta={meta}
       />
 
+      {onboarding ? (
+        <OnboardingChecklist
+          status={onboarding}
+          canEdit={canEdit}
+          timeZone={timeZone}
+          variant="compact"
+          className="mt-8 md:mt-10"
+        />
+      ) : null}
+
       {headline.state === "no-data" ? (
         <StateMessage
           className="mt-12"
@@ -113,6 +131,7 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
           <div className="mt-8 flex flex-col gap-4 md:mt-10">
             <HomeKpis kpis={model.kpis} comparison={comparison} />
             {model.unpriced ? <UnpricedNote unpriced={model.unpriced} canEdit={canEdit} /> : null}
+            {lostSales ? <LostSalesNote lost={lostSales} /> : null}
           </div>
 
           {headline.state === "no-orders" ? (

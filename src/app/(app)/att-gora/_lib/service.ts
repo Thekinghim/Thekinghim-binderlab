@@ -166,11 +166,16 @@ export interface DismissedTodo {
  * just nu (`currentKeys`, efter avbockning). En punkt vars orsak ändrats visas i
  * listan igen och tas därför inte med här. Nyast först. Påfyllaren får bara sina
  * lagerpunkter (RLS); läsaren har ingen lista.
+ *
+ * `stillCaused`: nycklarna vars orsak finns kvar (loadTodoStateFor().dismissed). Anges
+ * den tas avbockningar vars orsak redan är löst bort, så att listan bara visar det som
+ * avbockningen faktiskt döljer.
  */
 export async function loadDismissedFor(
   viewer: Viewer,
   currentKeys: ReadonlySet<string>,
   now: Date = new Date(),
+  stillCaused?: ReadonlySet<string>,
 ): Promise<DismissedTodo[]> {
   const role = await requireRoleFor(viewer.user, viewer.organization.id, TODO_ROLES);
   const since = new Date(now.getTime() - DISMISSED_LIST_DAYS * 86_400_000);
@@ -198,6 +203,7 @@ export async function loadDismissedFor(
   );
   return rows
     .filter((r) => !currentKeys.has(r.key))
+    .filter((r) => stillCaused === undefined || stillCaused.has(r.key))
     .filter((r) => role !== "refiller" || isStockKey(r.key))
     .map((r) => ({
       key: r.key,

@@ -41,6 +41,8 @@ import {
 } from "@/server/access";
 import { businessToday } from "@/server/data/core/loaders";
 import type { Mailer, MailAttachment } from "@/server/mail/report-mailer";
+import { recordReportSend, type MonitoringDeps } from "@/server/monitoring/failures";
+import { monthText } from "@/reports/text";
 
 import { buildSubject, renderReportText } from "@/emails/report-content";
 
@@ -51,6 +53,7 @@ import {
   DB_KIND,
   RECIPIENT_KIND,
   TYPE_BY_DB_KIND,
+  TYPE_LABEL,
   isReportDbKind,
   type RecipientDbKind,
   type ReportType,
@@ -601,6 +604,8 @@ export interface SendDeps {
   ) => Promise<Record<string, { html: string }>>;
   /** Länk till rapporten i appen. */
   readonly reportUrl: (reportId: string) => string;
+  /** Felövervakningen (Sentry och larm). Standard: systemrollen och Sentry när DSN finns. */
+  readonly monitor?: MonitoringDeps;
   readonly sender?: { name: string; address: string; email: string };
   /** Avsändarens kontaktperson (butiksmejlet). */
   readonly contact?: { name: string; phone: string | null } | null;
@@ -660,14 +665,33 @@ export async function sendReportFor(
   const skipped = chosen.length - targets.length;
   if (targets.length === 0) return { sent: 0, failed: [], skipped };
 
-  const pdf = await ensurePdfFor(viewer, report.id, { store: deps.store, render: deps.render });
-  const attachments = await mailAttachments(report.snapshot, pdf.bytes);
+  // Felövervakning (Sentry och larm på Drift): utskick som avbryts eller inte når fram.
+  const monitored = {
+    organizationId: orgId,
+    reportId: report.id,
+    label: `${TYPE_LABEL[report.type].toLocaleLowerCase("sv-SE")} ${monthText(report.month)}${report.storeName ? ` · ${report.storeName}` : ""}`,
+    month: report.month,
+  };
   const followText = req.followText?.trim() || null;
-  const rendered = await deps.renderEmails(
-    report.id,
-    targets.map((r) => r.id),
-    followText,
-  );
+  let attachments: MailAttachment[];
+  let rendered: Record<string, { html: string }>;
+  try {
+    const pdf = await ensurePdfFor(viewer, report.id, { store: deps.store, render: deps.render });
+    attachments = await mailAttachments(report.snapshot, pdf.bytes);
+    rendered = await deps.renderEmails(
+      report.id,
+      targets.map((r) => r.id),
+      followText,
+    );
+  } catch (error) {
+    await recordReportSend(deps.monitor ?? {}, {
+      ...monitored,
+      sent: 0,
+      failedErrors: [],
+      error,
+    });
+    throw error;
+  }
 
   let sent = 0;
   const failed: { email: string; error: string }[] = [];
@@ -716,6 +740,11 @@ export async function sendReportFor(
       });
     });
   }
+  await recordReportSend(deps.monitor ?? {}, {
+    ...monitored,
+    sent,
+    failedErrors: failed.map((f) => f.error),
+  });
   return { sent, failed, skipped };
 }
 

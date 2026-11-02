@@ -14,11 +14,12 @@
  */
 
 import { createTodoContext } from "@/analytics/todos/context";
-import { businessDateAt } from "@/analytics/todos/time";
 import { isMachineActive } from "@/analytics/todos/common";
 import { refillTodos } from "@/analytics/todos/refill";
 import { TODO_DEFAULTS, type AnalyticsOrder, type StockLevelRef } from "@/analytics/todos";
+import type { MachineHealth } from "@/analytics/health";
 import { planVisits, type VisitPlan } from "@/analytics/visits";
+import { planNow, weeklyVisitPlan } from "@/server/data/visit-plan";
 import {
   addDays,
   dailyUnits,
@@ -61,6 +62,11 @@ export interface LagerModelInput {
   readonly scope: DataScope;
   /** Sant om organisationen har ett centrallager (stock_locations.is_central). */
   readonly hasCentral: boolean;
+  /**
+   * Maskinhälsan som på Drift (loadMachineHealthFor). Automater med fel får ett besök i dag
+   * i veckoplanen, precis som på Drift. Utelämnad = inga extra besök.
+   */
+  readonly health?: readonly Pick<MachineHealth, "machineId" | "status">[] | null;
 }
 
 export interface LagerModel {
@@ -135,17 +141,8 @@ export function warehouseStatus(
   return "ok";
 }
 
-/**
- * Tidpunkten besöksplanen räknar från: mitt på dagen `asOf` i tidszonen, så att planens
- * "i dag" blir `asOf` (i går) och fönstret slutar där, precis som påfyllningsregeln.
- */
-export function planNow(asOf: IsoDate, timeZone: string, now: Date): Date {
-  for (const hour of ["12", "00", "22"]) {
-    const at = new Date(`${asOf}T${hour}:00:00Z`);
-    if (businessDateAt(at, timeZone) === asOf) return at;
-  }
-  return new Date(now.getTime() - 24 * 3_600_000);
-}
+/** Planens tidpunkt (i går mitt på dagen); flyttad till @/server/data/visit-plan. */
+export { planNow };
 
 /** Bygger vymodellen. Ren funktion; `now` är den enda tidskällan. */
 export function buildLagerModel(input: LagerModelInput): LagerModel {
@@ -225,16 +222,19 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
   };
 
   // Veckoplanen (alla automater, besöksdagar mån–fre från i dag): planerad dag, senaste
-  // dag och centrallagrets veckobehov.
-  const weekly: VisitPlan = planVisits(
-    {
-      ...planBase,
-      machines: activeMachines,
-      stock: machineStock,
-      options: { timeZone, start: today },
-    },
-    planAt,
-  );
+  // dag och centrallagrets veckobehov. Samma funktion och samma indata som Drift
+  // (weeklyVisitPlan), inklusive extra besök för automater som Drift visar med fel.
+  const weekly: VisitPlan = weeklyVisitPlan({
+    orders,
+    machines: activeMachines,
+    titles: master.titles,
+    stock: machineStock,
+    warehouseStock: hasWarehouse ? warehouseStock : null,
+    health: input.health ?? null,
+    today,
+    timeZone,
+    now,
+  });
   const weeklyStop = new Map(
     weekly.days.flatMap((d) =>
       d.stops.map((s) => [s.machineId, { day: d.date, stop: s }] as const),

@@ -40,6 +40,7 @@ async function getJson<T>(url: string, signal: AbortSignal): Promise<T> {
     throw new SearchHttpError("Sessionen har gått ut. Logga in igen.");
   }
   if (res.status === 403) throw new SearchHttpError("Du har inte behörighet att söka här.");
+  if (res.status === 429) throw new SearchHttpError("För många sökningar. Vänta en stund.");
   if (!res.ok) throw new SearchHttpError("Sökningen svarar inte. Försök igen.");
   return (await res.json()) as T;
 }

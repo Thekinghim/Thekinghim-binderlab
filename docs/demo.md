@@ -40,8 +40,20 @@ npm run db:seed-demo -- --radera       # bara radera demon
 ```
 
 Återställningen raderar demoorganisationen och alla dess rader i gallringsläget (`binderlab.allow_purge`).
-Den vägrar för alla organisationer utom demons egna (`nordljus-demo`, `nordljus-demo-stor`). Användarna och
-de uppladdade filerna under `.data/` finns kvar.
+Användarna och de uppladdade filerna under `.data/` finns kvar.
+
+Slug räcker inte för att känna igen demon: appen sätter slug ur namnet, så en kund som döper sin organisation
+till "Nordljus (demo)" får slug `nordljus-demo`. Spärren i `src/seed/demo/guard.ts` släpper därför bara igenom en
+organisation som uppfyller allt detta:
+
+- slug är `nordljus-demo` eller `nordljus-demo-stor` och namnet innehåller "(demo",
+- den skapades av `demo@binderlab.local` (`organizations.created_by`) och den användaren är ägare i den,
+- vid radering: alla medlemmar är demons egna användare (`demo@`, `demo-lasare@`, `demo-pafyllare@`).
+
+Annars vägrar både seeden och återställningen och säger varför. Har någon utanför demon bjudits in för att titta
+på den, ta bort den medlemmen i appen innan du återställer. Är sluggen upptagen av en kundorganisation rör demon
+den inte alls; då går det inte att seeda demon i den databasen. Kontrollen görs igen med organisationsraden låst i
+samma transaktion som raderingen.
 
 Återställ efter en visning där någon har ändrat saker. Återställ också när generatorn har ändrats: annars krockar
 de nya filerna med de importerade orderna, och seeden stoppar med ett meddelande om `--aterstall`.

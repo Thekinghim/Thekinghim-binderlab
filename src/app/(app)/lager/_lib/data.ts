@@ -23,6 +23,8 @@ import {
 } from "@/server/data/core/loaders";
 import { ALL_ROLES, type DataScope } from "@/server/data/core/types";
 
+import { loadMachineHealthFor } from "@/server/data/health";
+
 import { buildLagerModel, WINDOW_DAYS } from "./model";
 import { HISTORY_LIMIT, type HistoryEntry, type HistoryKind, type LagerView } from "./types";
 
@@ -166,14 +168,16 @@ export async function loadLagerFor(
   const orgId = viewer.organization.id;
   const timeZone = viewer.organization.timezone;
   const today = businessToday(now, timeZone);
-  // Fönstret slutar i går (matrisen, Att göra och besöksplanen via planNow). Dagens
+  // Fönstret slutar i går (matrisen, Att göra och besöksplanen via weeklyVisitPlan). Dagens
   // försäljning läses också men räknas inte i takten; saldot är alltid dagens.
   const salesFrom: IsoDate = addDays(today, -(WINDOW_DAYS + 1));
 
-  const [master, stock, sales] = await Promise.all([
+  const [master, stock, sales, health] = await Promise.all([
     loadMasterDataFor(viewer, now),
     loadStockFor(viewer),
     loadSalesCountsFor(viewer, { period: { start: salesFrom, end: today } }),
+    // Samma maskinhälsa som Drift: automater med fel får besök i dag i veckoplanen.
+    loadMachineHealthFor(viewer, now),
   ]);
 
   const model = buildLagerModel({
@@ -185,6 +189,7 @@ export async function loadLagerFor(
     sales: sales.rows,
     scope: args.scope,
     hasCentral: await withUserDbFor(viewer.user, (tx) => queryHasCentral(tx, orgId)),
+    health,
   });
 
   const titleName = new Map(master.titles.map((t) => [t.id, t.name]));

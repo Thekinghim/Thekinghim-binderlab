@@ -73,7 +73,7 @@ function inPeriod(iso: string | null, start: string, end: string, timeZone: stri
  * Inkorg: kundärenden (kund som inte fick vara, fel belopp, återbetalning) kopplade till
  * automat, order och tidpunkt. Statistik per automat och titel för perioden. Återbetalningarna
  * räknas med @/domain/refunds som en separat justering (docs/berakningar.md, avsnitt 14); sidan
- * Lönsamhet visar den inte än, och texten här säger det.
+ * Lönsamhet visar den som en egen rad under vinsten.
  */
 export default async function InboxPage({
   searchParams,
@@ -278,8 +278,8 @@ export default async function InboxPage({
         ) : null}
         <p className="text-sm text-muted">
           Återbetalningarna räknas på återbetalningsdagen, automaten och titeln
-          (docs/berakningar.md, avsnitt 14). De visas inte i Lönsamhet än: vinsten där är före
-          återbetalningar. Intäkt, inköp och butiksersättning ändras inte.
+          (docs/berakningar.md, avsnitt 14). Lönsamhet drar dem från vinsten som en egen rad (vinst
+          efter återbetalningar). Intäkt, inköp och butiksersättning ändras inte.
         </p>
         {data.truncated ? (
           <p className="font-mono text-xs text-muted">

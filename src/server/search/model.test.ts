@@ -12,6 +12,7 @@ import {
   masterGroups,
   orderGroup,
   orderGroups,
+  isIndexableTerm,
   orderTerms,
   pricePick,
   refillPick,
@@ -168,6 +169,21 @@ describe("order", () => {
   it("söker inte i order utan ett ord på minst tre tecken", () => {
     expect(orderTerms("42", master)).toBeNull();
     expect(orderTerms("a b", master)).toBeNull();
+  });
+
+  it("söker inte i order med ord utan tre bokstäver eller siffror i följd", () => {
+    for (const q of ["---", "...", "///", "%_%_%", "\\\\\\", "a-b-c", "bl-2", "-- .. //"]) {
+      expect(orderTerms(q, master), q).toBeNull();
+    }
+    expect(isIndexableTerm("bl-001")).toBe(true);
+    expect(isIndexableTerm("åäö")).toBe(true);
+    expect(isIndexableTerm("a1b")).toBe(true);
+    expect(isIndexableTerm("a-1")).toBe(false);
+  });
+
+  it("söker i order när minst ett ord kan använda indexet", () => {
+    const terms = orderTerms("asc ---", master)!;
+    expect(terms.map((t) => t.text)).toEqual(["asc", "---"]);
   });
 
   it("översätter ord till titlar och automater", () => {

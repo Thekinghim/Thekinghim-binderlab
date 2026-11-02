@@ -204,6 +204,11 @@ export function machineSignals(args: {
   master: MasterData;
   now: Date;
   timeZone: string;
+  /**
+   * Hälsan som Drift räknar den (loadMachineHealth: försäljningen ur lagret och hur långt
+   * den är importerad). Saknas den räknas hälsan här på orderna, utan täckningen.
+   */
+  health?: readonly MachineHealth[] | null;
 }): MachineSignals {
   const { recent, stock, master, now, timeZone } = args;
   const refill = new Map<string, TodoItem[]>();
@@ -233,6 +238,10 @@ export function machineSignals(args: {
     }
   } catch (error) {
     console.error("[automater] Påfyllningsregeln kunde inte räknas:", error);
+  }
+  if (args.health) {
+    for (const h of args.health) health.set(h.machineId, h);
+    return { refill, health };
   }
   try {
     for (const h of machineHealth(

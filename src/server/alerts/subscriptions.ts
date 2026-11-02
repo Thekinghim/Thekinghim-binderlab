@@ -10,6 +10,10 @@ import type {
   DeliveryWindow,
 } from "@/analytics/alerts";
 
+/**
+ * Larmtyperna som går att prenumerera på (samma lista som private.alert_kinds_valid).
+ * Systemlarmen (report_failed, job_failed) syns på Drift men aviseras inte.
+ */
 export const ALERT_KINDS: readonly AlertKind[] = [
   "machine_offline",
   "machine_fault",
@@ -34,6 +38,8 @@ export const KIND_LABEL: Record<AlertKind, string> = {
   low_stock: "Titel nära slut",
   import_failed: "Misslyckad import",
   day_anomaly: "Avvikande dag",
+  report_failed: "Misslyckad rapport",
+  job_failed: "Misslyckat schemalagt jobb",
 };
 
 export const SEVERITY_LABEL: Record<AlertSeverity, string> = {

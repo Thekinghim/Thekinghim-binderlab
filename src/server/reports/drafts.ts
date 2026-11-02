@@ -18,6 +18,7 @@ import { and, eq, isNull } from "drizzle-orm";
 
 import type { Db } from "@/db/client";
 import * as s from "@/db/schema";
+import { recordDraftsOutcome } from "@/server/monitoring/failures";
 import { addMonths, monthEnd, monthOf, monthStart, type IsoMonth } from "@/domain";
 import { businessToday } from "@/server/data/core/loaders";
 import { queryPlacements } from "@/server/data/core/queries";
@@ -97,5 +98,11 @@ export async function draftsForOrganization(
       );
     }
   }
+  // Felövervakning: misslyckade utkast ger larm på Drift och Sentry-händelse; ett lyckat
+  // jobb stänger månadens larm.
+  await recordDraftsOutcome(
+    { db, now },
+    { organizationId: orgId, month, created: result.created.length, errors: result.errors },
+  );
   return result;
 }

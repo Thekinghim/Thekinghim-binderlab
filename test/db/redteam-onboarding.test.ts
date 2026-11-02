@@ -60,9 +60,8 @@ describe("redteam: läsning av status", () => {
 });
 
 describe("redteam: skapa organisation", () => {
-  // KÄNT HÅL: kontrollen "redan medlem" och RPC:n körs i olika transaktioner, så
-  // samtidiga anrop skapar flera organisationer. Ta bort .fails när det är rättat.
-  it.fails("två samtidiga anrop ger bara en organisation", async () => {
+  // Rättat: create_first_organization låser per användare och kontrollerar i databasen.
+  it("två samtidiga anrop ger bara en organisation", async () => {
     const user = await createUser(`race-${uniqueSuffix()}@test.binderlab.se`);
     const results = await Promise.all(
       Array.from({ length: 4 }, (_, i) =>
@@ -75,9 +74,8 @@ describe("redteam: skapa organisation", () => {
     expect({ ok, orgs: orgs.length }).toEqual({ ok: 1, orgs: 1 });
   });
 
-  // KÄNT HÅL: portal_stores() döljer arkiverade butiker, och listOrganizationsFor
-  // hoppar över rollen store, så kontot ser ut att sakna allt. Ta bort .fails när rättat.
-  it.fails("butikskonto vars butik arkiverats nekas", async () => {
+  // Rättat: create_first_organization nekar varje konto med rollen store (BL061).
+  it("butikskonto vars butik arkiverats nekas", async () => {
     const tenant = await seedPortalTenant();
     const storeUser = await inviteStoreUser(tenant.owner, tenant.orgId, tenant.storeId);
     await asServiceRole((tx) =>
@@ -98,15 +96,17 @@ describe("redteam: skapa organisation", () => {
     expect(r.ok).toBe(true);
   });
 
-  it("RPC:n create_organization kan anropas direkt av butikskonto (före appens kontroll)", async () => {
+  // Rättat: create_organization nekar butikskonton i databasen (BL061).
+  it("RPC:n create_organization nekar ett butikskonto som anropar den direkt", async () => {
     const tenant = await seedPortalTenant();
     const storeUser = await inviteStoreUser(tenant.owner, tenant.orgId, tenant.storeId);
-    const res = await asUser(storeUser, (tx) =>
-      one<{ id: string }>(
-        tx,
-        sql`select public.create_organization('Direkt', ${`direkt-${uniqueSuffix()}`}) as id`,
+    await expect(
+      asUser(storeUser, (tx) =>
+        one<{ id: string }>(
+          tx,
+          sql`select public.create_organization('Direkt', ${`direkt-${uniqueSuffix()}`}) as id`,
+        ),
       ),
-    );
-    expect(typeof res.id).toBe("string");
+    ).rejects.toThrow();
   });
 });

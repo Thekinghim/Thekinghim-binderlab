@@ -60,6 +60,7 @@ export const RECONCILE_DEFAULTS = {
   reopenWithinMinutes: 120,
 };
 
+/** Familjerna som reglerna utvärderar (standard för evaluatedGroups). `system` ingår inte. */
 const ALL_GROUPS: readonly AlertGroup[] = ["machine", "stock", "import", "sales"];
 const HOUR_MS = 3_600_000;
 const MINUTE_MS = 60_000;

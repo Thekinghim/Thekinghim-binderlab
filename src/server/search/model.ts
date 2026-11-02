@@ -218,11 +218,23 @@ export interface OrderTerm {
   readonly machineIds: readonly string[];
 }
 
+const INDEXABLE_RUN = new RegExp(`[\\p{L}\\p{N}]{${MIN_ORDER_TERM}}`, "u");
+
+/**
+ * Sant om ordet kan använda trigramindexet: minst MIN_ORDER_TERM bokstäver eller
+ * siffror i följd ("asc", "001" i "bl-001"). Bara längden räcker inte: "---", "..."
+ * och "%_%_%" har inga trigram och skulle läsa alla organisationens order.
+ */
+export function isIndexableTerm(term: string): boolean {
+  return INDEXABLE_RUN.test(term);
+}
+
 /** Sökordens villkor för order, eller null om sökningen inte ska gå mot order. */
 export function orderTerms(q: string, master: SearchMaster): OrderTerm[] | null {
   const terms = searchTerms(q);
-  // Utan ett ord på minst tre tecken kan trigramindexet inte användas: ingen ordersökning.
-  if (!terms.some((t) => t.length >= MIN_ORDER_TERM)) return null;
+  // Utan ett ord som kan använda trigramindexet: ingen ordersökning. Övriga ord
+  // (t.ex. "e" i "asc e") filtrerar bara bland de rader indexet redan gett.
+  if (!terms.some(isIndexableTerm)) return null;
   return terms.map((text) => {
     const n = normalize(text);
     const titleIds = master.titles

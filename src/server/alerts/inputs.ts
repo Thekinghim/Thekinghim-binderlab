@@ -20,7 +20,13 @@ import "server-only";
 import { and, asc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 
 import type { DataSourceRef, ImportRunRef } from "@/analytics/alerts";
-import type { HealthInput, MachineSignal, SalesCoverage } from "@/analytics/health";
+import {
+  machineHealth,
+  type HealthInput,
+  type MachineHealth,
+  type MachineSignal,
+  type SalesCoverage,
+} from "@/analytics/health";
 import type { AnalyticsOrder, StockLevelRef } from "@/analytics/todos";
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
@@ -98,6 +104,14 @@ export function healthInputOf(data: HealthData, timeZone: string): HealthInput {
     })),
     options: { timeZone },
   };
+}
+
+/**
+ * Maskinhälsan ur datan: samma uträkning på Drift, Automater och i larmjobbet, så att en
+ * automat har samma status överallt.
+ */
+export function healthOf(data: HealthData, timeZone: string, now: Date): MachineHealth[] {
+  return machineHealth(healthInputOf(data, timeZone), now);
 }
 
 /**

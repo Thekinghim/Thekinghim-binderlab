@@ -90,3 +90,6 @@ Tas bort när alla faser är klara.
 - 14:45 Fas 7 startad i tre spår parallellt med fas 7 del 1: integration (wf_0ceb3b4f-49c), säkerhetsgranskning (wf_78b49347-40d),
   e2e + backup + övervakning (wf_5edd7611-a2e). Efter integrationen: genomgång av hela appen (spåret "genomgang"), sedan prestanda
   (100 000 order), dokumentation (README, architecture, operations, decisions, product) och slutverifiering.
+- 15:00 Fas 7 del 1 klar: demo-organisation (Nordljus Automater AB (demo), 14 720 order, spärr mot att radera kunders org),
+  onboarding (/kom-igang, create_first_organization), global sökning i ⌘K. Till genomgången: /lager horisontell scroll vid 375 px
+  (stock-matrix.tsx saknar relative), Hem klipper sexsiffriga belopp i Intäkt-rutan, demons telefonnummer → PTS fiktionsnummer.

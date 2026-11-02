@@ -277,13 +277,11 @@ finns i `src/server/accounting` (tjänster, adaptrar, frågor) och beräkningarn
 - **Fasta kostnader**: `fixed_costs` (försäkring, programvara, transport, lager, övrigt),
   per månad, kvartal eller år, gemensamma eller per automat. Arkiveras i stället för att
   raderas; ändringar som påverkar en stängd månad stoppas (BL004) och loggas.
-  **Lönsamhet efter fasta kostnader** (för sidan Lönsamhet, som ägs av annan): anropa
-  `profitabilityWithFixedCosts({ ...input.current, fixedCosts, machines }, "revenue")`
-  från `@/analytics/cashflow` med perioden från `loadDomainInput` och de fasta
-  kostnaderna (`fixed_costs` som inte är arkiverade, mappade som i
-  `src/server/accounting/service.ts`, `toFixedCost`). Resultatet har en rad per automat
-  med `profitOre`, `fixedCostOre` och `profitAfterFixedOre`, och totalen. Ekonomi visar
-  totalen redan.
+  **Lönsamhet efter fasta kostnader**: sidan Lönsamhet visar under vattenfallet
+  återbetalningar och fasta kostnader som egna rader och resultatet efter dem
+  (`src/app/(app)/lonsamhet/_lib/result.ts`, `profitabilityWithFixedCosts` med fördelning
+  efter intäkt; laddas med `loadProfitAdjustments` i `src/server/data/adjustments.ts`). Se
+  docs/berakningar.md avsnitt 17.
 - **Avtal**: `contracts` har fått rubrik, villkor, förlängning, uppsägningstid i månader,
   uppsägningsdag och uppgifter om avtalsfilen. Villkoren för ersättningen är
   `store_agreements` kopplade med `contract_id` (bara samma butik, BL041). Filen sparas
@@ -298,8 +296,8 @@ finns i `src/server/accounting` (tjänster, adaptrar, frågor) och beräkningarn
 - **Påminnelse i Att göra**: regeln finns i `@/analytics/contracts`
   (`contractReminders`): påminnelse 90 dagar före sista uppsägningsdag, nyckel
   `contract:{id}:{slut}`, fingerprint som ändras när status eller datum ändras. Att göra
-  (`computeTodos`, ägs av annan) behöver en punkttyp `contract` som tar `due` ur
-  resultatet; avtalen läses med `queryContracts` i `src/server/accounting/queries.ts`.
+  tar `due` ur resultatet som punkttypen `contract` (`src/analytics/todos/contracts.ts`);
+  avtalen läses i `loadTodosFor` (`queryActiveContracts`). Se docs/berakningar.md avsnitt 16.
 - **Tester**: `test/db/ekonomi.test.ts` (import, avstämning med avsiktliga avvikelser,
   utredning, återbetalningar, arkivering och ny import, fasta kostnader, verifikationer
   per utbetalning, nummerserie och leveranslogg, SIE, kassaflöde, avtal, filer, roller
@@ -346,14 +344,19 @@ CRON_SECRET=lokal-hemlighet-1234 npx next dev -p 3200   # eller lägg den i .env
 curl -H "Authorization: Bearer lokal-hemlighet-1234" http://localhost:3200/api/cron/larm
 ```
 
-Schemaläggning i drift (Vercel): lägg till i `vercel.json`
+Schemaläggning i drift (Vercel): båda jobben står i `vercel.json`.
 
-```json
-{ "crons": [{ "path": "/api/cron/larm", "schedule": "*/10 * * * *" }] }
-```
+| Route                 | Schema (UTC)   | Vad                                                    |
+| --------------------- | -------------- | ------------------------------------------------------ |
+| `/api/cron/larm`      | `*/10 * * * *` | Larmjobbet (var 10:e minut)                            |
+| `/api/cron/rapporter` | `17 5 1 * *`   | Månadsutkast för förra månaden (den 1:a kl. 05:17 UTC) |
 
-och sätt `CRON_SECRET` i projektets miljövariabler. Vercel Hobby kör cron högst en gång om
-dagen; var 10:e minut kräver Pro.
+Sätt `CRON_SECRET` (minst 16 tecken) i projektets miljövariabler för Production. Vercel
+skickar den som `Authorization: Bearer <CRON_SECRET>` till varje cron-route; utan den svarar
+båda routerna 503 och gör ingenting, och fel hemlighet ger 401. Vercel kör cron bara i
+Production, inte i förhandsversioner. Vercel Hobby kör cron högst en gång om dagen, så
+larmjobbet var 10:e minut kräver Pro (på Hobby avvisas `vercel.json` vid driftsättning; byt
+då larmets schema till en gång om dagen, t.ex. `7 6 * * *`).
 
 **Push** (Web Push): skapa nycklar med `npx web-push generate-vapid-keys` och sätt
 `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` och `VAPID_SUBJECT`. Varje användare slår på push per
@@ -506,7 +509,8 @@ Beställaren behöver för riktiga utskick:
 6. **Första ägaren.** Skapa ägarens användare i Supabase (Authentication → Users →
    Invite). Logga sedan in och skapa organisationen. RPC:n `create_organization`
    gör den inloggade till ägare.
-7. **Larm (Drift).** Sätt `CRON_SECRET` och schemalägg `/api/cron/larm` var 10:e minut
-   (`vercel.json`, se avsnittet Drift). Skapa VAPID-nycklar för push och sätt
+7. **Larm (Drift).** Sätt `CRON_SECRET` i Vercel (Production). `/api/cron/larm` (var 10:e
+   minut, kräver Vercel Pro) och `/api/cron/rapporter` står redan i `vercel.json`, se
+   avsnittet Drift. Skapa VAPID-nycklar för push och sätt
    `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` och `VAPID_SUBJECT`. Välj en sms-leverantör om
    sms behövs (ingen är kopplad).

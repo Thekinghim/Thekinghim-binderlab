@@ -5,7 +5,7 @@ import { addDays, keyMetrics, type IsoDate, type Period } from "@/domain";
 
 import { homeHeadline } from "./headline";
 import { appHref, carriedParams } from "./links";
-import { buildHomeModel, coverageOf, type HomeModelInput } from "./model";
+import { buildHomeModel, coverageOf, homeLostSales, type HomeModelInput } from "./model";
 
 const TODAY = "2026-11-02";
 /** Hårda mellanslag (tusental, före enhet) som vanliga, för läsbara förväntningar. */
@@ -284,7 +284,12 @@ describe("buildHomeModel", () => {
       daysLeft: null,
       title: key,
       detail: "",
-      evidence: { machineIds, titleIds: [], orderIds: [] } as unknown as TodoItem["evidence"],
+      evidence: {
+        machineIds,
+        titleIds: [],
+        orderIds: [],
+        storeIds: [],
+      } as unknown as TodoItem["evidence"],
       link: "/lager?automat=m1",
     });
     const todos = [
@@ -309,6 +314,106 @@ describe("buildHomeModel", () => {
       ["a", true],
     ]);
     expect(buildHomeModel(inputFor(THIRTY, THIRTY_BEFORE)).todos).toBeNull();
+  });
+});
+
+describe("integration: Att göra, avtal och förlorad försäljning på Hem", () => {
+  const item = (
+    key: string,
+    kind: TodoItem["kind"],
+    ev: { machineIds?: string[]; storeIds?: string[] },
+    link: string,
+  ): TodoItem => ({
+    key,
+    fingerprint: key,
+    kind,
+    level: "soon",
+    urgency: 0,
+    atStakeOre: null,
+    daysLeft: 10,
+    title: key,
+    detail: "",
+    evidence: {
+      rule: "r",
+      period: null,
+      orderIds: [],
+      dates: [],
+      titleIds: [],
+      machineIds: ev.machineIds ?? [],
+      storeIds: ev.storeIds ?? [],
+      recipientIds: [],
+      figures: [],
+    },
+    link,
+  });
+
+  it("punkter om en butik (avtal, rapport) följer butiksfiltret och behåller ankaret", () => {
+    const todos = [
+      item("contract:c1:2027-01-31", "contract", { storeIds: ["s1"] }, "/avtal#avtal-c1"),
+      item("contract:c2:2027-01-31", "contract", { storeIds: ["s2"] }, "/avtal#avtal-c2"),
+      item("report-review:2026-10", "report-review", {}, "/rapporter?manad=2026-10#granska"),
+    ];
+    const all = buildHomeModel(inputFor(THIRTY, THIRTY_BEFORE, { todos }));
+    expect(all.todos?.map((t) => t.href)).toEqual([
+      "/avtal#avtal-c1",
+      "/avtal#avtal-c2",
+      "/rapporter?manad=2026-10#granska",
+    ]);
+    const scoped = buildHomeModel(
+      inputFor(THIRTY, THIRTY_BEFORE, { todos, scope: { storeId: "s1", machineId: null } }),
+    );
+    expect(scoped.todos?.map((t) => [t.key, t.orgWide])).toEqual([
+      ["contract:c1:2027-01-31", false],
+      ["report-review:2026-10", true],
+    ]);
+  });
+
+  it("appHref behåller ankaret för Avtal, Rapporter och Drift", () => {
+    expect(appHref("/avtal#avtal-c1")).toBe("/avtal#avtal-c1");
+    expect(appHref("/rapporter?manad=2026-10#granska")).toBe("/rapporter?manad=2026-10#granska");
+    expect(appHref("/drift/automat/m1")).toBe("/drift/automat/m1");
+  });
+
+  it("homeLostSales visar texten bara när något förlorats", () => {
+    const summary = {
+      period: { start: "2026-10-01", end: "2026-10-31" },
+      lostRevenueOre: 320_000,
+      lostGrossProfitOre: 120_000,
+      lostUnitsMilli: 65_000,
+      stockoutDayWeightBp: 40_000,
+      text: "Slutsålt kostade ca 3 200 kr i oktober.",
+      months: [],
+      series: [
+        {
+          key: "refill:m1:t1",
+          machineId: "m1",
+          titleId: "t1",
+          lostRevenueOre: 200_000,
+          lostUnitsMilli: 40_000,
+          ongoing: true,
+          since: "2026-10-28",
+        },
+        {
+          key: "refill:m2:t1",
+          machineId: "m2",
+          titleId: "t1",
+          lostRevenueOre: 120_000,
+          lostUnitsMilli: 25_000,
+          ongoing: false,
+          since: "2026-10-03",
+        },
+      ],
+      scope: { storeId: null, machineId: null },
+      href: "/prognos?from=2026-10-01&to=2026-10-31#forlorad-forsaljning",
+    } as const;
+    expect(homeLostSales(summary)).toEqual({
+      text: "Slutsålt kostade ca 3 200 kr i oktober.",
+      href: "/prognos?from=2026-10-01&to=2026-10-31#forlorad-forsaljning",
+      lostRevenueOre: 320_000,
+      ongoing: 1,
+    });
+    expect(homeLostSales({ ...summary, lostRevenueOre: 0 })).toBeNull();
+    expect(homeLostSales(null)).toBeNull();
   });
 });
 

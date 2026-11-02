@@ -47,6 +47,8 @@ export const ALERT_GROUP: Record<AlertKind, AlertGroup> = {
   low_stock: "stock",
   import_failed: "import",
   day_anomaly: "sales",
+  report_failed: "system",
+  job_failed: "system",
 };
 
 /** Rang för allvar: högre är allvarligare. */
@@ -60,6 +62,8 @@ const KIND_RANK: Record<AlertKind, number> = {
   low_stock: 0,
   import_failed: 0,
   day_anomaly: 0,
+  report_failed: 0,
+  job_failed: 0,
 };
 
 const MINUTE_MS = 60_000;

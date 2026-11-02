@@ -43,6 +43,8 @@ const RPCS = [
   "accept_invitation",
   "attach_contract_file",
   "close_period",
+  // Kom igång: första organisationen, med lås och medlemskapskontroll i databasen.
+  "create_first_organization",
   "create_invitation",
   "create_organization",
   "create_store_invitation",
@@ -490,6 +492,7 @@ describe("anon", () => {
       accept_invitation: sql`'x'`,
       attach_contract_file: sql`gen_random_uuid(), gen_random_uuid(), 'x', 'x', 'application/pdf', 1::bigint, 'x'`,
       close_period: sql`gen_random_uuid(), '2025-01-01'::date`,
+      create_first_organization: sql`'x', 'x'`,
       create_invitation: sql`gen_random_uuid(), 'a@b.se', 'viewer'`,
       create_organization: sql`'x', 'x'`,
       create_store_invitation: sql`gen_random_uuid(), gen_random_uuid(), 'a@b.se'`,

@@ -11,6 +11,7 @@ import { CommandDialog, type PaletteRow, type PaletteSection } from "./command-d
 import { machineLabel, withCarried } from "./command-links";
 import {
   isInternalHref,
+  purgeForeignRecent,
   pushRecent,
   readRecent,
   recentKey,
@@ -117,6 +118,11 @@ export function CommandMenu({
 
   const storageKey = recentKey({ organizationId, user: userEmail, role });
   const [recent, setRecent] = useState<RecentEntry[]>([]);
+  // Andra användares sparade val (och egna för en annan roll) tas bort direkt, även
+  // om paletten aldrig öppnas: localStorage kan läsas av den som sitter vid datorn.
+  useEffect(() => {
+    if (organizationId) purgeForeignRecent({ organizationId, user: userEmail, role });
+  }, [organizationId, userEmail, role]);
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(() => setRecent(readRecent(storageKey)), 0);

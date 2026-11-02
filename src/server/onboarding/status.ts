@@ -14,7 +14,13 @@ import { sql } from "drizzle-orm";
 
 import type { Tx } from "@/db/client";
 import type { MemberRole } from "@/db/schema";
-import { requireRoleFor, withUserDbFor, type SessionUser } from "@/server/access";
+import {
+  AuthorizationError,
+  isUuid,
+  requireRoleFor,
+  withUserDbFor,
+  type SessionUser,
+} from "@/server/access";
 
 import {
   buildOnboardingStatus,
@@ -56,6 +62,9 @@ function int(value: unknown): number {
 /** Fakta för organisationen, läst som användaren (RLS). */
 export async function queryOnboardingFacts(tx: Tx, orgId: string): Promise<OnboardingFacts> {
   const org = sql`${orgId}::uuid`;
+  // "I dag" i organisationens tidszon: avtal och placeringar som gäller i dag eller
+  // senare räknas, de som har löpt ut gör det inte.
+  const today = sql`(now() at time zone o.timezone)::date`;
   const [summary] = await rows(
     tx,
     sql`select
@@ -66,14 +75,19 @@ export async function queryOnboardingFacts(tx: Tx, orgId: string): Promise<Onboa
           (select min(s.created_at) from public.stores s
             where s.organization_id = o.id and s.archived_at is null) as stores_at,
           (select count(*) from public.store_agreements sa
-            where sa.organization_id = o.id) as agreements,
+            join public.stores s on s.organization_id = sa.organization_id and s.id = sa.store_id
+            where sa.organization_id = o.id and s.archived_at is null
+              and (sa.valid_to is null or sa.valid_to >= ${today})) as agreements,
           (select min(sa.created_at) from public.store_agreements sa
-            where sa.organization_id = o.id) as agreements_at,
+            join public.stores s on s.organization_id = sa.organization_id and s.id = sa.store_id
+            where sa.organization_id = o.id and s.archived_at is null
+              and (sa.valid_to is null or sa.valid_to >= ${today})) as agreements_at,
           (select s.id from public.stores s
             where s.organization_id = o.id and s.archived_at is null
             order by (exists (select 1 from public.store_agreements sa
                               where sa.organization_id = s.organization_id
-                                and sa.store_id = s.id)),
+                                and sa.store_id = s.id
+                                and (sa.valid_to is null or sa.valid_to >= ${today}))),
                      s.created_at, s.id
             limit 1) as agreement_target,
           (select count(*) from public.machines m
@@ -82,10 +96,33 @@ export async function queryOnboardingFacts(tx: Tx, orgId: string): Promise<Onboa
             where m.organization_id = o.id and m.archived_at is null) as machines_at,
           (select count(distinct mp.machine_id) from public.machine_placements mp
             join public.machines m on m.organization_id = mp.organization_id and m.id = mp.machine_id
-            where mp.organization_id = o.id and m.archived_at is null
-              and mp.valid_from <= (now() at time zone o.timezone)::date
-              and (mp.valid_to is null or mp.valid_to >= (now() at time zone o.timezone)::date)
+            join public.stores s on s.organization_id = mp.organization_id and s.id = mp.store_id
+            where mp.organization_id = o.id and m.archived_at is null and s.archived_at is null
+              and mp.valid_from <= ${today}
+              and (mp.valid_to is null or mp.valid_to >= ${today})
           ) as placed,
+          (select count(distinct mp.machine_id) from public.machine_placements mp
+            join public.machines m on m.organization_id = mp.organization_id and m.id = mp.machine_id
+            join public.stores s on s.organization_id = mp.organization_id and s.id = mp.store_id
+            where mp.organization_id = o.id and m.archived_at is null and s.archived_at is null
+              and (mp.valid_to is null or mp.valid_to >= ${today})
+          ) as placed_or_planned,
+          (select min(mp.created_at) from public.machine_placements mp
+            join public.machines m on m.organization_id = mp.organization_id and m.id = mp.machine_id
+            join public.stores s on s.organization_id = mp.organization_id and s.id = mp.store_id
+            where mp.organization_id = o.id and m.archived_at is null and s.archived_at is null
+              and (mp.valid_to is null or mp.valid_to >= ${today})
+          ) as placed_at,
+          (select m.code from public.machines m
+            where m.organization_id = o.id and m.archived_at is null
+              and not exists (
+                select 1 from public.machine_placements mp
+                join public.stores s on s.organization_id = mp.organization_id and s.id = mp.store_id
+                where mp.organization_id = m.organization_id and mp.machine_id = m.id
+                  and s.archived_at is null
+                  and (mp.valid_to is null or mp.valid_to >= ${today}))
+            order by m.created_at, m.code
+            limit 1) as unplaced_code,
           (select count(*) from public.data_sources ds
             where ds.organization_id = o.id and ds.archived_at is null) as sources,
           (select min(ds.created_at) from public.data_sources ds
@@ -102,7 +139,10 @@ export async function queryOnboardingFacts(tx: Tx, orgId: string): Promise<Onboa
     tx,
     sql`select count(*) as n, min(coalesce(i.finished_at, i.created_at)) as first_at
         from public.imports i
+        join public.data_sources ds
+          on ds.organization_id = i.organization_id and ds.id = i.data_source_id
         where i.organization_id = ${org}
+          and ds.archived_at is null
           and exists (select 1 from public.orders x
                       where x.organization_id = i.organization_id and x.import_id = i.id)`,
   );
@@ -135,6 +175,9 @@ export async function queryOnboardingFacts(tx: Tx, orgId: string): Promise<Onboa
       count: int(summary.machines),
       firstAt: iso(summary.machines_at),
       placed: int(summary.placed),
+      placedOrPlanned: int(summary.placed_or_planned),
+      placedAt: iso(summary.placed_at),
+      unplacedCode: typeof summary.unplaced_code === "string" ? summary.unplaced_code : null,
     },
     dataSources: { count: int(summary.sources), firstAt: iso(summary.sources_at) },
     imports: {
@@ -167,6 +210,8 @@ export async function loadOnboardingStatusFor(
   organizationId: string,
   now: Date = new Date(),
 ): Promise<OnboardingStatus> {
+  // Ett id som inte är en uuid är ingen organisation användaren är med i.
+  if (!isUuid(organizationId)) throw new AuthorizationError("forbidden");
   await requireRoleFor(user, organizationId, ONBOARDING_ROLES);
   const facts = await withUserDbFor(user, (tx) => queryOnboardingFacts(tx, organizationId));
   return buildOnboardingStatus(organizationId, facts, now);

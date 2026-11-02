@@ -22,9 +22,11 @@ import {
   type SQL,
 } from "drizzle-orm";
 
-import type { AnalyticsOrder } from "@/analytics/todos";
+import type { Contract } from "@/analytics/contracts";
+import type { AlertRef, AnalyticsOrder, ReportDraftRef } from "@/analytics/todos";
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
+import { reportStatuses, type DeliveryStatus } from "@/server/reports/status";
 import type { IsoDate, MachineInvestment, Period, PurchasePrice, StoreAgreement } from "@/domain";
 
 import type {
@@ -579,4 +581,139 @@ export async function queryTodoDismissals(
   } catch {
     return [];
   }
+}
+
+// ---------------------------------------------------------------------------
+// Att göra: avtal, rapportutkast och larm (ägare och admin)
+// ---------------------------------------------------------------------------
+
+/** Butiksavtalen som inte är arkiverade, i den form @/analytics/contracts vill ha. */
+export async function queryActiveContracts(tx: Tx, orgId: string): Promise<Contract[]> {
+  const rows = await tx
+    .select({
+      id: s.contracts.id,
+      storeId: s.contracts.storeId,
+      name: s.contracts.title,
+      validFrom: s.contracts.validFrom,
+      validTo: s.contracts.validTo,
+      noticeMonths: s.contracts.noticePeriodMonths,
+      noticeDays: s.contracts.noticePeriodDays,
+      renewalMonths: s.contracts.renewalMonths,
+      terminatedOn: s.contracts.terminatedOn,
+    })
+    .from(s.contracts)
+    .where(and(eq(s.contracts.organizationId, orgId), isNull(s.contracts.archivedAt)))
+    .orderBy(asc(s.contracts.validFrom), asc(s.contracts.id));
+  return rows;
+}
+
+/**
+ * Rapportutkast som väntar på granskning: senaste versionen av varje rapport (typ, period,
+ * butik) med period som slutar `since` eller senare, som inte är godkänd och inte skickad.
+ * Samma regel som arkivet i Rapporter (`reportStatuses`).
+ */
+export async function queryReportDrafts(
+  tx: Tx,
+  orgId: string,
+  since: IsoDate,
+): Promise<ReportDraftRef[]> {
+  const reports = await tx
+    .select({
+      id: s.reports.id,
+      kind: s.reports.kind,
+      periodStart: s.reports.periodStart,
+      periodEnd: s.reports.periodEnd,
+      storeId: s.reports.storeId,
+      generatedAt: s.reports.generatedAt,
+    })
+    .from(s.reports)
+    .where(and(eq(s.reports.organizationId, orgId), gte(s.reports.periodEnd, since)));
+  if (reports.length === 0) return [];
+  const ids = reports.map((r) => r.id);
+  const [approvals, deliveries] = await Promise.all([
+    tx
+      .select({ reportId: s.reportApprovals.reportId })
+      .from(s.reportApprovals)
+      .where(
+        and(eq(s.reportApprovals.organizationId, orgId), inArray(s.reportApprovals.reportId, ids)),
+      ),
+    tx
+      .select({ reportId: s.reportDeliveries.reportId, status: s.reportDeliveries.status })
+      .from(s.reportDeliveries)
+      .where(
+        and(
+          eq(s.reportDeliveries.organizationId, orgId),
+          inArray(s.reportDeliveries.reportId, ids),
+        ),
+      ),
+  ]);
+  const approved = new Set(approvals.map((a) => a.reportId));
+  const deliveriesBy = new Map<string, { status: DeliveryStatus }[]>();
+  for (const d of deliveries) {
+    const list = deliveriesBy.get(d.reportId) ?? [];
+    list.push({ status: d.status });
+    deliveriesBy.set(d.reportId, list);
+  }
+  const statuses = reportStatuses(
+    reports.map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      periodStart: r.periodStart,
+      periodEnd: r.periodEnd,
+      storeId: r.storeId,
+      generatedAt: r.generatedAt.toISOString(),
+      approved: approved.has(r.id),
+      deliveries: deliveriesBy.get(r.id) ?? [],
+    })),
+  );
+  return reports
+    .filter((r) => statuses.get(r.id) === "draft")
+    .map((r) => ({
+      id: r.id,
+      reportKind: r.kind,
+      periodStart: r.periodStart,
+      periodEnd: r.periodEnd,
+      storeId: r.storeId,
+      generatedAt: r.generatedAt.toISOString(),
+    }));
+}
+
+/** Öppna larm (incidenter) som inte strukits av ett annat larm. */
+export async function queryOpenAlerts(tx: Tx, orgId: string): Promise<AlertRef[]> {
+  const rows = await tx
+    .select({
+      id: s.alerts.id,
+      key: s.alerts.incidentKey,
+      kind: s.alerts.kind,
+      severity: s.alerts.severity,
+      machineId: s.alerts.machineId,
+      titleId: s.alerts.titleId,
+      title: s.alerts.title,
+      message: s.alerts.message,
+      triggeredAt: s.alerts.triggeredAt,
+      acknowledgedAt: s.alerts.acknowledgedAt,
+    })
+    .from(s.alerts)
+    .where(
+      and(
+        eq(s.alerts.organizationId, orgId),
+        eq(s.alerts.status, "open"),
+        isNull(s.alerts.suppressedBy),
+        isNotNull(s.alerts.incidentKey),
+      ),
+    )
+    .orderBy(asc(s.alerts.triggeredAt), asc(s.alerts.id))
+    .limit(200);
+  return rows.map((r) => ({
+    id: r.id,
+    key: r.key ?? r.id,
+    kind: r.kind,
+    severity: r.severity,
+    machineId: r.machineId,
+    titleId: r.titleId,
+    title: r.title ?? "",
+    detail: r.message ?? "",
+    openedAt: r.triggeredAt.toISOString(),
+    acknowledged: r.acknowledgedAt !== null,
+  }));
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
@@ -17,6 +18,8 @@ export const metadata: Metadata = { title: "Automater" };
  * Automater: alla automater med periodens intäkt, vinst, status, butik och lager.
  * Ägare, admin och läsare (påfyllaren skickas vidare av requireRoute). Ägare och admin
  * lägger till automater här; redigering, flytt och avveckling görs på automatens sida.
+ * Statusen är densamma som på Drift (loadMachineHealth: samma maskinhälsa och samma
+ * täckning av försäljningen). Länken går till enhetsekonomin för alla automater.
  */
 export default async function AutomaterPage({
   searchParams,
@@ -102,6 +105,17 @@ export default async function AutomaterPage({
                   : `${formatInt(active.length)} ${active.length === 1 ? "automat" : "automater"} i drift.`
               }
               aside={period.pendingToday ? "Status, lager och senaste order." : spreadText(rows)}
+              actions={
+                <Link
+                  href="/automater/enhetsekonomi"
+                  className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-muted underline-offset-4 transition-colors hover:text-fg hover:underline"
+                >
+                  <span>Enhetsekonomi och återbetalningstid</span>
+                  <span aria-hidden className="text-subtle">
+                    →
+                  </span>
+                </Link>
+              }
             />
             <MachineTable
               rows={rows}

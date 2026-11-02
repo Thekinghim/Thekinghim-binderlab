@@ -33,16 +33,25 @@ export default async function KomIgangPage() {
     });
 
   const remaining = status.requiredTotal - status.requiredDone;
+  // Data som lades in på en gång (seed, exempeldata) säger inget om hur lång tid
+  // onboarding tar: då visas ingen tid, bara att panelen har det den behöver.
   const title = status.complete
-    ? `Klart på ${formatDuration(status.elapsedMs)}.`
-    : `${formatInt(status.requiredDone)} av ${formatInt(status.requiredTotal)} steg klara.`;
+    ? status.loadedAtOnce
+      ? "Panelen har det den behöver."
+      : `Klart på ${formatDuration(status.elapsedMs)}.`
+    : `${formatInt(status.requiredDone)} av ${formatInt(status.requiredTotal)} nödvändiga steg klara.`;
   const aside = status.complete
-    ? `Alla ${formatInt(status.requiredTotal)} nödvändiga steg är gjorda.`
-    : `${formatInt(remaining)} steg kvar, ${formatDuration(status.elapsedMs)} sedan start.`;
+    ? status.loadedAtOnce
+      ? `Alla ${formatInt(status.requiredTotal)} nödvändiga steg är gjorda. Datan lades in på en gång, så ingen tid mäts.`
+      : `Alla ${formatInt(status.requiredTotal)} nödvändiga steg är gjorda.`
+    : `${formatInt(remaining)} kvar, ${formatDuration(status.elapsedMs)} sedan start.`;
+  const nextTitle = status.next?.title.replace(/\.$/, "");
   const description = status.complete
     ? "Panelen har butiker, automater, order och inköpspriser, så nyckeltal och vinst räknas på riktiga siffror."
     : status.next
-      ? `Nästa: ${status.next.title.replace(/\.$/, "")}. ${status.next.why}`
+      ? ctx.canEdit
+        ? `Nästa: ${nextTitle}. ${status.next.why}`
+        : `Väntar på att en ägare eller administratör gör steg ${status.next.number}: ${nextTitle?.toLowerCase()}. ${status.next.why}`
       : undefined;
 
   const meta: SectionMeta[] = [
@@ -79,7 +88,7 @@ export default async function KomIgangPage() {
           index={1}
           eyebrow={`Steg · ${formatInt(status.steps.length)} st`}
           title="Det panelen behöver."
-          aside={`${formatInt(stepsDone)} av ${formatInt(status.steps.length)} klara, räknat ur datan.`}
+          aside={`${formatInt(stepsDone)} av ${formatInt(status.steps.length)} klara inklusive rekommenderade, räknat ur datan.`}
           description={
             ctx.canEdit
               ? undefined

@@ -11,17 +11,32 @@
 import type { TodoItem } from "@/analytics/todos";
 import { routeById } from "@/components/shell/nav";
 import type { SearchParamsInput } from "@/components/shell/period-state";
-import { addDays, type IsoDate } from "@/domain";
+import { addDays, type IsoDate, type Period } from "@/domain";
 import { AuthorizationError } from "@/server/access";
-import type { AppContext, AppPeriod, DomainInput, DomainInputArgs } from "@/server/data/core";
+import type {
+  AppContext,
+  AppPeriod,
+  DataScope,
+  DomainInput,
+  DomainInputArgs,
+} from "@/server/data/core";
+import type { OnboardingStatus } from "@/server/onboarding/model";
+import type { LostSalesSummary } from "@/server/purchasing/types";
 
-import { buildHomeModel, type HomeModel } from "./model";
+import { buildHomeModel, homeLostSales, type HomeLostSales, type HomeModel } from "./model";
 
 export interface HomeLoaders {
   context(): Promise<AppContext>;
   period(sp: SearchParamsInput): Promise<AppPeriod>;
   domainInput(args: DomainInputArgs): Promise<DomainInput>;
   todos(): Promise<TodoItem[]>;
+  /**
+   * Förlorad försäljning för perioden och filtret (lostSalesSummary i Prognos & inköp).
+   * null för roller utan ekonomi. Utelämnad = visas inte.
+   */
+  lostSales?(period: Period, scope: DataScope): Promise<LostSalesSummary | null>;
+  /** Kom igång-checklistan för organisationen, eller null. Utelämnad = visas inte. */
+  onboarding?(orgId: string): Promise<OnboardingStatus | null>;
 }
 
 /** Filtret som det visas: automatens kod och namn, eller butikens namn. */
@@ -41,6 +56,11 @@ export interface HomeData {
   readonly scope: HomeScopeLabel | null;
   /** Rollen får ändra (ägare, admin): styr länkar till åtgärder. */
   readonly canEdit: boolean;
+  /** Förlorad försäljning i perioden, eller null (ingen, eller rollen ser den inte). */
+  readonly lostSales: HomeLostSales | null;
+  /** Kom igång, tills alla nödvändiga steg är klara (annars null). */
+  readonly onboarding: OnboardingStatus | null;
+  readonly timeZone: string;
 }
 
 /**
@@ -61,10 +81,12 @@ export async function loadHomeWith(
   const later =
     p.period.end < ctx.today ? { start: addDays(p.period.end, 1), end: ctx.today } : null;
 
-  const [input, laterInput, todos] = await Promise.all([
+  const [input, laterInput, todos, lost, onboarding] = await Promise.all([
     loaders.domainInput({ period: p.period, compare: p.compare, ...p.scope }),
     later ? loaders.domainInput({ period: later, compare: null, ...p.scope }) : null,
     hasTodos ? loaders.todos() : Promise.resolve(null),
+    loaders.lostSales ? loaders.lostSales(p.period, p.scope) : Promise.resolve(null),
+    loaders.onboarding ? loaders.onboarding(ctx.organization.id) : Promise.resolve(null),
   ]);
 
   const model = buildHomeModel({
@@ -105,5 +127,14 @@ export async function loadHomeWith(
     };
   }
 
-  return { model, periodKey: p.key, today: ctx.today, scope, canEdit: ctx.canEdit };
+  return {
+    model,
+    periodKey: p.key,
+    today: ctx.today,
+    scope,
+    canEdit: ctx.canEdit,
+    lostSales: homeLostSales(lost),
+    onboarding: onboarding && !onboarding.complete ? onboarding : null,
+    timeZone: ctx.timeZone,
+  };
 }

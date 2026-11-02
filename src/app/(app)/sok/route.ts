@@ -6,23 +6,47 @@
  *
  * Svaret är JSON och filtrerat på rollen (src/server/search): påfyllaren får inga order
  * och inga belopp. Allt läses som användaren med RLS. 401 utan session, 403 utan
- * behörighet, 400 vid ogiltiga parametrar. Klienten avbryter förfrågningar som hunnit
- * bli inaktuella (AbortController), så svaren cachas aldrig.
+ * behörighet, 400 vid ogiltiga parametrar, 429 vid för många sökningar. Klienten
+ * avbryter förfrågningar som hunnit bli inaktuella (AbortController), så svaren cachas
+ * aldrig.
+ *
+ * Gräns: SEARCHES_PER_MINUTE per användare (räknas per serverinstans). Paletten väntar
+ * 140 ms mellan tangenttryck och återanvänder svar, så vanlig skrivning ligger långt
+ * under; gränsen skyddar databasen mot skript.
  */
 
 import type { NextRequest } from "next/server";
 
 import { isUuid } from "@/server/access";
+import { createRateLimiter } from "@/server/rate-limit";
 import { pickList, search } from "@/server/search";
-import { AuthorizationError } from "@/server/session";
+import { AuthorizationError, getSessionUser } from "@/server/session";
 
 export const dynamic = "force-dynamic";
 
 const HEADERS = { "cache-control": "private, no-store" };
 
+/** Sökningar per användare och minut. */
+const SEARCHES_PER_MINUTE = 240;
+const limiter = createRateLimiter({ limit: SEARCHES_PER_MINUTE, windowMs: 60_000 });
+
 export async function GET(request: NextRequest): Promise<Response> {
   const sp = request.nextUrl.searchParams;
   try {
+    const user = await getSessionUser();
+    if (!user) {
+      return Response.json({ error: "Logga in igen." }, { status: 401, headers: HEADERS });
+    }
+    const decision = limiter.consume([{ key: `sok:${user.userId}` }]);
+    if (!decision.allowed) {
+      return Response.json(
+        { error: "För många sökningar. Vänta en stund." },
+        {
+          status: 429,
+          headers: { ...HEADERS, "retry-after": String(Math.ceil(decision.retryAfterMs / 1000)) },
+        },
+      );
+    }
     const list = sp.get("lista");
     if (list !== null) {
       if (list === "inkopspris")

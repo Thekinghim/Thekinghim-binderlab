@@ -7,6 +7,7 @@
  * ('2026-11-01T16:17:00Z' eller '…+01:00'), aldrig lokal tid utan zon.
  */
 
+import type { Contract } from "@/analytics/contracts/types";
 import type { EconomicsSources, IsoDate, OrderLine, Period } from "@/domain";
 
 /** En order med betaltidpunkt. Tidpunkten behövs för regeln om automater som inte sålt på 48 timmar. */
@@ -90,6 +91,46 @@ export interface ReportDeliveryRef {
   readonly sentAt?: string | null;
 }
 
+/** Ett rapportutkast som väntar på granskning (senaste versionen, inte godkänd, inte skickad). */
+export interface ReportDraftRef {
+  readonly id: string;
+  readonly reportKind: ReportKind;
+  readonly periodStart: IsoDate;
+  readonly periodEnd: IsoDate;
+  readonly storeId: string | null;
+  /** När utkastet skapades (ISO 8601 med tidszon). */
+  readonly generatedAt: string;
+}
+
+/** Allvar för ett larm (enum alert_severity). */
+export type AlertSeverityRef = "info" | "warning" | "critical";
+
+/** Ett öppet larm (tabellen alerts, incidenten från @/analytics/alerts). */
+export interface AlertRef {
+  readonly id: string;
+  /** Incidentnyckeln, t.ex. 'machine:<id>' eller 'import:<källa>'. */
+  readonly key: string;
+  /** Typ (alerts.kind), t.ex. 'machine_offline', 'import_failed'. */
+  readonly kind: string;
+  readonly severity: AlertSeverityRef;
+  readonly machineId: string | null;
+  readonly titleId: string | null;
+  readonly title: string;
+  readonly detail: string;
+  /** När incidenten öppnades (ISO 8601 med tidszon). */
+  readonly openedAt: string;
+  /** Kvitterat av någon: då tar någon hand om det och det står inte i Att göra. */
+  readonly acknowledged: boolean;
+}
+
+/** Förlorad försäljning per titel och automat (@/analytics/lost-sales via servern). */
+export interface LostSalesRef {
+  /** Samma nyckel som påfyllningspunkten: 'refill:<automat>:<titel>'. */
+  readonly key: string;
+  /** Uppskattad förlorad intäkt i perioden, öre. */
+  readonly lostRevenueOre: number;
+}
+
 // ---------------------------------------------------------------------------
 // Underlag
 // ---------------------------------------------------------------------------
@@ -132,14 +173,28 @@ export interface Evidence {
 
 /** Typ av punkt. */
 export type TodoKind =
-  "refill" | "missing-price" | "duplicate-title" | "stale-machine" | "report-due";
+  | "refill"
+  | "missing-price"
+  | "duplicate-title"
+  | "stale-machine"
+  | "report-due"
+  | "report-review"
+  | "contract"
+  | "alert";
 
 /** Brådskenivå: 'now' (gör i dag), 'soon' (de närmaste dagarna), 'later' (när tid finns). */
 export type TodoLevel = "now" | "soon" | "later";
 
 /** Åtgärd som kan göras direkt från punkten. */
 export interface TodoAction {
-  readonly kind: "register-refill" | "add-price" | "merge-titles" | "send-report";
+  readonly kind:
+    | "register-refill"
+    | "add-price"
+    | "merge-titles"
+    | "send-report"
+    | "review-report"
+    | "open-contract"
+    | "open-alert";
   /** Knapptext, verbet först. */
   readonly label: string;
   readonly params: Readonly<Record<string, string>>;
@@ -183,6 +238,8 @@ export interface TodoOptions {
   readonly unpricedWindowDays?: number;
   /** Sista dag i månaden att skicka förra månadens rapporter. `null` = månadens sista dag. */
   readonly reportDueDay?: number | null;
+  /** Dagar före sista uppsägningsdag som ett avtal tas upp. Standard 90 (som /avtal). */
+  readonly contractReminderDays?: number;
 }
 
 /** Indata till `computeTodos`. */
@@ -194,6 +251,12 @@ export interface TodoInput extends EconomicsSources {
   readonly stores?: readonly StoreRef[];
   readonly reportRecipients: readonly ReportRecipientRef[];
   readonly reportDeliveries: readonly ReportDeliveryRef[];
+  /** Rapportutkast som inte godkänts (senaste versionen). Saknas = inga. */
+  readonly reportDrafts?: readonly ReportDraftRef[];
+  /** Butiksavtal (inte arkiverade), för påminnelsen före sista uppsägningsdag. */
+  readonly contracts?: readonly Contract[];
+  /** Öppna larm. Bara okvitterade larm om automater och importer blir punkter. */
+  readonly alerts?: readonly AlertRef[];
   readonly options?: TodoOptions;
 }
 

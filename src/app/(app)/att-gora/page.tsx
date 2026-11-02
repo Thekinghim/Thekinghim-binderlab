@@ -5,13 +5,8 @@ import { wallClockIn } from "@/components/shell/period-state";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatRelative, formatTime } from "@/lib/format";
-import {
-  loadMasterData,
-  loadStock,
-  loadTodos,
-  requireRoute,
-  scopeFromSearchParams,
-} from "@/server/data/core";
+import { loadMasterData, loadStock, requireRoute, scopeFromSearchParams } from "@/server/data/core";
+import { loadRankedTodoState } from "@/server/data/todos";
 import { getActiveOrganization, requireUser } from "@/server/session";
 
 import { HeaderMeta } from "./_components/header-meta";
@@ -22,8 +17,9 @@ import { loadDismissedFor } from "./_lib/service";
 export const metadata: Metadata = { title: "Att göra" };
 
 /**
- * Att göra: det som kräver åtgärd, räknat automatiskt ur order, lager, priser och
- * rapporter (@/analytics/todos via loadTodos, samma lista som menyns räknare).
+ * Att göra: det som kräver åtgärd, räknat automatiskt ur order, lager, priser, rapporter,
+ * avtal och larm (@/analytics/todos, samma punkter som menyns räknare), med påfyllningar
+ * där slutsålt redan kostat intäkt först inom sin nivå (loadRankedTodoState).
  * Ingen manuell lista: punkter försvinner när orsaken är löst och kan bockas av.
  *
  * Ägare och admin ser alla regler. Påfyllaren ser bara lagerpunkter, utan belopp
@@ -36,17 +32,24 @@ export default async function TodoPage({
 }) {
   const ctx = await requireRoute("att-gora");
   const sp = await searchParams;
-  const [todos, master, stock, user, organization] = await Promise.all([
-    loadTodos(),
+  const [state, master, stock, user, organization] = await Promise.all([
+    loadRankedTodoState(),
     loadMasterData(),
     loadStock(),
     requireUser(),
     getActiveOrganization(),
   ]);
   const now = new Date(ctx.now);
-  // Avbockade punkter som inte står i listan just nu (RLS: påfyllaren bara lagerpunkter).
+  const todos = state.items;
+  // Avbockade punkter vars orsak finns kvar (RLS: påfyllaren bara lagerpunkter). En
+  // avbockning vars orsak redan är löst döljer inget och visas inte.
   const dismissed = organization
-    ? await loadDismissedFor({ user, organization }, new Set(todos.map((t) => t.key)), now)
+    ? await loadDismissedFor(
+        { user, organization },
+        new Set(todos.map((t) => t.key)),
+        now,
+        new Set(state.dismissed.map((t) => t.key)),
+      )
     : [];
   const wall = (d: Date) => wallClockIn(d, ctx.timeZone);
 

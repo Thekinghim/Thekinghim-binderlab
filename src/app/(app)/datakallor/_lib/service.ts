@@ -15,7 +15,7 @@ import { sql } from "drizzle-orm";
 
 import { getServiceDb, type Db, type Tx } from "@/db/client";
 import { parseCsvTable } from "@/import/csv-table";
-import { ImportValidationError, MappingError } from "@/import/errors";
+import { ImportError, ImportValidationError, MappingError } from "@/import/errors";
 import type { FileStore } from "@/import/file-store";
 import { sha256Hex } from "@/import/hash";
 import {
@@ -25,8 +25,9 @@ import {
   type ImportField,
   type MappingOverride,
 } from "@/import/mapping";
-import { notPaidOf, runImport } from "@/import/run-import";
-import { requireRoleFor, withUserDbFor } from "@/server/access";
+import { IMPORT_PIPELINE_VERSION, notPaidOf, runImport } from "@/import/run-import";
+import { AuthorizationError, requireRoleFor, withUserDbFor } from "@/server/access";
+import { recordImportFailure, type MonitoringDeps } from "@/server/monitoring";
 import { loadMasterDataFor, type Viewer } from "@/server/data/core/loaders";
 import { OPERATOR_ROLES } from "@/server/data/core/types";
 
@@ -456,6 +457,8 @@ export interface UploadDeps {
   readonly fileStore?: FileStore;
   /** Anslutningen runImport använder; den kör ändå som användaren med RLS. */
   readonly db?: Db;
+  /** Felövervakningen (Sentry och larm) vid en misslyckad import. Standard: systemrollen. */
+  readonly monitor?: MonitoringDeps;
 }
 
 function owner(viewer: Viewer) {
@@ -606,19 +609,44 @@ export async function runUploadFor(
       );
     }
   }
-  const result = await runImport(deps.db ?? getServiceDb(), {
-    organizationId: viewer.organization.id,
-    dataSourceId: input.dataSourceId,
-    actorUserId: viewer.user.userId,
-    actorEmail: viewer.user.email,
-    file: { name: meta.fileName, content },
-    mapping: input.mapping,
-    dryRun: input.dryRun,
-    fileStore: deps.fileStore,
-    saveMapping: input.saveMapping,
-    // Alla rader: urvalet för webbläsaren görs i toPreviewResult.
-    rowLimit: Number.MAX_SAFE_INTEGER,
-  });
+  let result: Awaited<ReturnType<typeof runImport>>;
+  try {
+    result = await runImport(deps.db ?? getServiceDb(), {
+      organizationId: viewer.organization.id,
+      dataSourceId: input.dataSourceId,
+      actorUserId: viewer.user.userId,
+      actorEmail: viewer.user.email,
+      file: { name: meta.fileName, content },
+      mapping: input.mapping,
+      dryRun: input.dryRun,
+      fileStore: deps.fileStore,
+      saveMapping: input.saveMapping,
+      // Alla rader: urvalet för webbläsaren görs i toPreviewResult.
+      rowLimit: Number.MAX_SAFE_INTEGER,
+    });
+  } catch (error) {
+    // En import som misslyckas av andra skäl än indata eller behörighet loggas som
+    // misslyckad, ger ett larm på Drift och en Sentry-händelse (src/server/monitoring).
+    if (
+      !input.dryRun &&
+      !(error instanceof ImportError) &&
+      !(error instanceof AuthorizationError)
+    ) {
+      await recordImportFailure(
+        { db: deps.db, ...deps.monitor },
+        {
+          organizationId: viewer.organization.id,
+          dataSourceId: input.dataSourceId,
+          actorUserId: viewer.user.userId,
+          fileName: meta.fileName,
+          sha256: sha256Hex(content),
+          parserVersion: IMPORT_PIPELINE_VERSION,
+          error,
+        },
+      );
+    }
+    throw error;
+  }
   if (!input.dryRun) {
     if (result.importId) {
       // Tidszonen som tiderna tolkades i sparas med importen, så att importens

@@ -115,7 +115,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     roles: READERS,
     mobileRank: 6,
     phase: 5,
-    lead: "Inköp och leveranser.",
+    lead: "Varje order, sökbar och exporterbar.",
   },
   {
     id: "lager",

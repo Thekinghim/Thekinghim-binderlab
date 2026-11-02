@@ -26,13 +26,21 @@ export type AlertKind =
   | "machine_offline"
   | "low_stock"
   | "import_failed"
-  | "day_anomaly";
+  | "day_anomaly"
+  /** Ett rapportutskick eller månadsutkasten misslyckades (skrivs av src/server/monitoring). */
+  | "report_failed"
+  /** Ett schemalagt jobb (t.ex. larmjobbet) misslyckades (skrivs av src/server/monitoring). */
+  | "job_failed";
 
 /**
  * Familj av larm. Typerna i en familj delar incident (t.ex. misstänkt fel som blir offline är
  * samma problem) och utvärderas tillsammans.
+ *
+ * `system` (misslyckade rapporter och jobb) har inga regler: incidenterna skrivs direkt när
+ * felet inträffar och stängs när samma sak lyckas (src/server/monitoring). Larmjobbet
+ * utvärderar aldrig familjen och stänger därför inte heller dess incidenter.
  */
-export type AlertGroup = "machine" | "stock" | "import" | "sales";
+export type AlertGroup = "machine" | "stock" | "import" | "sales" | "system";
 
 /** Underlag för larm: som Evidence, plus importer och datakällor. */
 export interface AlertEvidence extends Evidence {

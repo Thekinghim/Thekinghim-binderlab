@@ -10,7 +10,7 @@ import { StatusGlyph, type Status } from "@/components/ui/status-tag";
 import { cn } from "@/lib/cn";
 import { NBSP, formatInt } from "@/lib/format";
 
-import type { HomeInsight, HomeTodo, HomeTopTitles, HomeUnpriced } from "./model";
+import type { HomeInsight, HomeLostSales, HomeTodo, HomeTopTitles, HomeUnpriced } from "./model";
 import { shareText, unpricedShareText } from "./model";
 import { kr } from "./text";
 
@@ -316,6 +316,24 @@ export function UnpricedNote({ unpriced, canEdit }: { unpriced: HomeUnpriced; ca
       <ArrowLink href={unpriced.href}>
         {canEdit ? "Lägg in inköpspris" : "Visa inköpspriser"}
       </ArrowLink>
+    </p>
+  );
+}
+
+/**
+ * Förlorad försäljning i perioden (Prognos & inköp): "Slutsålt kostade ca 3 200 kr i
+ * oktober." med hur många titlar som är slut just nu och länken till underlaget.
+ */
+export function LostSalesNote({ lost }: { lost: HomeLostSales }) {
+  return (
+    <p className="flex flex-col gap-1 text-sm text-muted sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-3">
+      <span>
+        <span className="text-fg">{lost.text}</span>
+        {lost.ongoing > 0
+          ? ` ${formatInt(lost.ongoing)}${NBSP}${lost.ongoing === 1 ? "titel är" : "titlar är"} slut i en automat just nu.`
+          : null}
+      </span>
+      <ArrowLink href={lost.href}>Förlorad försäljning</ArrowLink>
     </p>
   );
 }

@@ -31,12 +31,14 @@ import {
   type AlertNotification,
   type AlertSubscription,
 } from "@/analytics/alerts";
-import { localDayStartMs, machineHealth } from "@/analytics/health";
+import { localDayStartMs } from "@/analytics/health";
 import { businessDateAt } from "@/analytics/todos/time";
 import type { Db, Tx } from "@/db/client";
 import * as s from "@/db/schema";
 
-import { alertColumns, healthInputOf, knownUntil, loadHealthData, loadImportData } from "./inputs";
+import { recordJobOutcome } from "@/server/monitoring/failures";
+
+import { alertColumns, healthOf, knownUntil, loadHealthData, loadImportData } from "./inputs";
 import { incidentChanged, incidentToColumns, isRowId, rowToIncident, type AlertRow } from "./store";
 import { rowToSubscription, FIELD_KINDS, type SubscriptionRow } from "./subscriptions";
 
@@ -120,7 +122,7 @@ export async function collectCandidates(
   const today = businessDateAt(now, timeZone);
   const data = await loadHealthData(tx, orgId, today, now);
   // Tystnaden räknas bara fram till dit försäljningen är importerad (healthInputOf).
-  const health = machineHealth(healthInputOf(data, timeZone), now);
+  const health = healthOf(data, timeZone, now);
   const imports = await loadImportData(tx, orgId, now, data.coverage);
   // Avvikande dag bedömer i går: bara när försäljningen är känd hela i går (annars är en
   // fil som inte laddats upp än en "dålig dag").
@@ -225,8 +227,9 @@ export async function evaluateOrganization(
   orgId: string,
   now: Date = new Date(),
 ): Promise<EvaluationSummary> {
+  let summary: EvaluationSummary;
   try {
-    return await db.transaction(async (tx) => {
+    summary = await db.transaction(async (tx) => {
       const [lock] = await tx.execute<{ locked: boolean }>(
         sql`select pg_try_advisory_xact_lock(hashtextextended(${`alerts/${orgId}`}, 0)) as locked`,
       );
@@ -296,18 +299,30 @@ export async function evaluateOrganization(
       });
     } catch {
       // Organisationen finns inte: inget att logga.
+      return failedSummary(orgId, message);
     }
-    return {
-      organizationId: orgId,
-      status: "failed",
-      machines: 0,
-      candidates: 0,
-      openIncidents: 0,
-      notifications: 0,
-      deliveries: 0,
-      error: message,
-    };
+    // Felövervakning: Sentry och ett systemlarm (job:larm) som syns på Drift.
+    await recordJobOutcome({ db, now }, { organizationId: orgId, job: "larm", error });
+    return failedSummary(orgId, message);
   }
+  // Lyckad körning stänger ett tidigare jobblarm.
+  if (summary.status === "ok") {
+    await recordJobOutcome({ db, now }, { organizationId: orgId, job: "larm", error: null });
+  }
+  return summary;
+}
+
+function failedSummary(orgId: string, message: string): EvaluationSummary {
+  return {
+    organizationId: orgId,
+    status: "failed",
+    machines: 0,
+    candidates: 0,
+    openIncidents: 0,
+    notifications: 0,
+    deliveries: 0,
+    error: message,
+  };
 }
 
 /** Alla organisationer som inte är arkiverade. */

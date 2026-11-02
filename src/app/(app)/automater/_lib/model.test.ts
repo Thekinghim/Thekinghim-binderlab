@@ -13,6 +13,7 @@ import {
   machineHeadline,
   machineDaysIn,
   machineHref,
+  machineSignals,
   machineSpan,
   machineUnpriced,
   nextMachineCode,
@@ -643,5 +644,35 @@ describe("heatThresholds", () => {
   it("värmekartan får gränserna för sin topp", () => {
     const orders = [1, 2, 3].map(() => order("m1", "t1", "2026-10-18T11:30:00Z"));
     expect(salesHeatmap(orders, TZ).thresholds).toEqual(heatThresholds(3));
+  });
+});
+
+describe("machineSignals: samma status som Drift", () => {
+  it("använder Drifts hälsa när den finns, i stället för att räkna om på orderna", () => {
+    const fromDrift = [
+      { machineId: "m1", status: "ok", title: "I drift" },
+      { machineId: "m2", status: "offline", title: "Ur drift" },
+    ] as unknown as MachineHealth[];
+    const empty = {
+      sources: {
+        prices: [],
+        agreements: [],
+        placements: [],
+        settings: { vatRateBp: 0, cardFeeBp: 0 },
+      },
+      current: { orders: [] },
+    } as unknown as DomainInput;
+    const signals = machineSignals({
+      recent: empty,
+      stock: { machineStock: [] } as unknown as StockSnapshot,
+      master: { titles: [], machines: [], stores: [] } as unknown as MasterData,
+      now: new Date("2026-11-02T10:00:00Z"),
+      timeZone: "Europe/Stockholm",
+      health: fromDrift,
+    });
+    expect([...signals.health.entries()].map(([id, h]) => [id, h.status])).toEqual([
+      ["m1", "ok"],
+      ["m2", "offline"],
+    ]);
   });
 });

@@ -5,7 +5,13 @@
  * underlag (evidence) och summeras bara för rubriken (sumOre).
  */
 
-import type { EvidenceFigure, TodoItem, TodoKind, TodoLevel } from "@/analytics/todos";
+import {
+  LOST_REVENUE_FIGURE,
+  type EvidenceFigure,
+  type TodoItem,
+  type TodoKind,
+  type TodoLevel,
+} from "@/analytics/todos";
 import type { Role } from "@/components/shell/nav";
 import { routeById } from "@/components/shell/nav";
 import type { Status } from "@/components/ui/status-tag";
@@ -187,6 +193,9 @@ const KIND_NOUN: Record<TodoKind, [string, string]> = {
   refill: ["påfyllning", "påfyllningar"],
   "stale-machine": ["tyst automat", "tysta automater"],
   "report-due": ["rapport att skicka", "rapporter att skicka"],
+  "report-review": ["utkast att granska", "utkast att granska"],
+  contract: ["avtal att se över", "avtal att se över"],
+  alert: ["larm", "larm"],
   "missing-price": ["titel utan inköpspris", "titlar utan inköpspris"],
   "duplicate-title": ["möjlig dubblett", "möjliga dubbletter"],
 };
@@ -195,6 +204,9 @@ const KIND_LABEL: Record<TodoKind, string> = {
   refill: "Påfyllning",
   "stale-machine": "Ingen försäljning",
   "report-due": "Rapport",
+  "report-review": "Rapportutkast",
+  contract: "Avtal",
+  alert: "Larm",
   "missing-price": "Inköpspris",
   "duplicate-title": "Datakvalitet",
 };
@@ -202,7 +214,10 @@ const KIND_LABEL: Record<TodoKind, string> = {
 const KIND_ORDER: readonly TodoKind[] = [
   "refill",
   "stale-machine",
+  "alert",
+  "report-review",
   "report-due",
+  "contract",
   "missing-price",
   "duplicate-title",
 ];
@@ -265,18 +280,30 @@ export function primaryFigures(item: TodoItem, economy: boolean): FigureView[] {
       out.push({ label, value: kr(item.atStakeOre) });
     }
   };
+  const deadline = () => {
+    if (item.daysLeft === null) return;
+    out.push(
+      item.daysLeft < 0
+        ? { label: "Försenad", value: plural(-item.daysLeft, "dag", "dagar") }
+        : { label: "Dagar kvar", value: formatInt(item.daysLeft) },
+    );
+  };
   switch (item.kind) {
     case "refill": {
       const tenths = figureValue(item, "daysLeftTenths");
       const onHand = figureValue(item, "onHand");
+      const lostOre = figureValue(item, LOST_REVENUE_FIGURE);
+      const lost = economy && lostOre !== null && lostOre > 0 ? lostOre : null;
       if (onHand !== null)
         out.push({ label: "I automaten", value: formatFigure({ value: onHand, unit: "packs" }) });
       if (onHand !== null && onHand <= 0) {
-        out.push({ label: "Räcker", value: "Slut" });
+        // "0 pack" säger redan att den är slut; då får förlorad försäljning platsen.
+        if (lost === null) out.push({ label: "Räcker", value: "Slut" });
       } else if (tenths !== null) {
         out.push({ label: "Räcker", value: `${formatDecimal(tenths / 10)}${NBSP}d` });
       }
       stake();
+      if (lost !== null) out.push({ label: "Förlorat 14 d", value: kr(lost) });
       break;
     }
     case "stale-machine": {
@@ -286,16 +313,34 @@ export function primaryFigures(item: TodoItem, economy: boolean): FigureView[] {
       break;
     }
     case "report-due": {
-      if (item.daysLeft !== null) {
-        out.push(
-          item.daysLeft < 0
-            ? { label: "Försenad", value: plural(-item.daysLeft, "dag", "dagar") }
-            : { label: "Dagar kvar", value: formatInt(item.daysLeft) },
-        );
-      }
+      deadline();
       const failed = figureValue(item, "failedDeliveries");
       if (failed !== null && failed > 0)
         out.push({ label: "Misslyckade", value: formatInt(failed) });
+      break;
+    }
+    case "report-review": {
+      const drafts = figureValue(item, "drafts");
+      if (drafts !== null) out.push({ label: "Utkast", value: formatInt(drafts) });
+      deadline();
+      break;
+    }
+    case "contract": {
+      const toDeadline = figureValue(item, "daysToDeadline");
+      const toEnd = figureValue(item, "daysToEnd");
+      if (toDeadline !== null && toDeadline >= 0)
+        out.push({ label: "Säg upp inom", value: plural(toDeadline, "dag", "dagar") });
+      if (toEnd !== null)
+        out.push(
+          toEnd < 0
+            ? { label: "Gick ut för", value: plural(-toEnd, "dag", "dagar") }
+            : { label: "Slutar om", value: plural(toEnd, "dag", "dagar") },
+        );
+      break;
+    }
+    case "alert": {
+      const hours = figureValue(item, "openHours");
+      if (hours !== null) out.push({ label: "Öppet", value: `${formatInt(hours)}${NBSP}h` });
       break;
     }
     case "missing-price": {
@@ -402,7 +447,16 @@ function actionFor(item: TodoItem, input: ModelInput): ActionView | null {
         ? { kind: "link", label: a.label, href: item.link }
         : null;
     case "send-report":
+    case "review-report":
       return canOpen(input.role, "rapporter")
+        ? { kind: "link", label: a.label, href: item.link }
+        : null;
+    case "open-contract":
+      return canOpen(input.role, "avtal")
+        ? { kind: "link", label: a.label, href: item.link }
+        : null;
+    case "open-alert":
+      return canOpen(input.role, item.link.startsWith("/datakallor") ? "datakallor" : "drift")
         ? { kind: "link", label: a.label, href: item.link }
         : null;
   }
@@ -569,7 +623,7 @@ function headerView(
     aside =
       input.role === "refiller"
         ? "Lagret räcker minst 2,5 dagar i alla automater, och alla har sålt de senaste 48 timmarna."
-        : "Lagret räcker, automaterna säljer, alla titlar har inköpspris och rapporterna är skickade.";
+        : "Lagret räcker, automaterna säljer, alla titlar har inköpspris, rapporterna är skickade och inget larm eller avtal väntar.";
   } else {
     const onlyRefills = visible.every((i) => i.kind === "refill");
     title = onlyRefills
@@ -603,6 +657,9 @@ const KIND_BY_PREFIX: Record<string, TodoKind> = {
   refill: "refill",
   "stale-machine": "stale-machine",
   "report-due": "report-due",
+  "report-review": "report-review",
+  contract: "contract",
+  alert: "alert",
   "missing-price": "missing-price",
   "duplicate-title": "duplicate-title",
 };
