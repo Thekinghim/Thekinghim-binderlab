@@ -26,6 +26,9 @@ import { NoOrganization } from "./no-organization";
  * Allt läses via de gemensamma laddarna (withUserDb, RLS) och memoiseras per förfrågan,
  * så sidorna kan anropa samma laddare utan dubbla frågor.
  */
+// Inloggade sidor läser sessionen per förfrågan och förrenderas aldrig vid bygget.
+export const dynamic = "force-dynamic";
+
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const user = await requireUser();
   const ctx = await loadOptionalContext();

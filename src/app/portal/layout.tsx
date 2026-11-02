@@ -25,6 +25,9 @@ export const viewport: Viewport = {
  * butiksanvändare får inget innehåll här: sidorna kräver en butik
  * (requirePortalContext) och skickar övriga till appen eller /portal/ingen-butik.
  */
+// Inloggade sidor läser sessionen per förfrågan och förrenderas aldrig vid bygget.
+export const dynamic = "force-dynamic";
+
 export default async function PortalLayout({ children }: { children: ReactNode }) {
   const ctx = await getPortalContext();
   const theme = portalTheme((await cookies()).get(PORTAL_THEME_COOKIE)?.value);
