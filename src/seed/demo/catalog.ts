@@ -10,7 +10,9 @@
  * Perioden är 1 feb – 2 nov 2026 (svensk tid). Butikerna ligger i Mälardalen,
  * så att en påfyllare och ett centrallager är rimligt. Namnen på butiker,
  * personer och företag är påhittade; e-postadresserna använder domänen
- * `.example` (reserverad, når aldrig någon).
+ * `.example` (reserverad, når aldrig någon), och telefonnumren ligger i PTS
+ * nummerserier för fiktiva nummer (070-174 06 05 – 070-174 06 99 och
+ * 08-465 004 00 – 08-465 004 99), som aldrig delas ut till någon.
  */
 
 import type { IsoDate } from "@/domain/types";
@@ -102,7 +104,7 @@ export const DEMO_STORES: readonly DemoStore[] = [
     areaSqm: 140,
     contactName: "Linnea Ek",
     email: "linnea@kortkammaren.example",
-    phone: "021-10 20 30",
+    phone: "070-174 06 10",
     hours: { first: 11, last: 18 },
   },
   {
@@ -115,7 +117,7 @@ export const DEMO_STORES: readonly DemoStore[] = [
     areaSqm: 18_000,
     contactName: "Per Holm",
     email: "centrumledning@kvarnhagen.example",
-    phone: "016-44 55 66",
+    phone: "070-174 06 11",
     hours: { first: 10, last: 19 },
   },
   {
@@ -128,7 +130,7 @@ export const DEMO_STORES: readonly DemoStore[] = [
     areaSqm: 45,
     contactName: "Sanna Vik",
     email: "kiosken@stationen-arboga.example",
-    phone: "0589-12 34 56",
+    phone: "070-174 06 12",
     hours: { first: 8, last: 20 },
   },
   {
@@ -141,7 +143,7 @@ export const DEMO_STORES: readonly DemoStore[] = [
     areaSqm: 320,
     contactName: "Karin Sjöberg",
     email: "karin@lekboden.example",
-    phone: "019-70 80 90",
+    phone: "070-174 06 13",
     hours: { first: 10, last: 17 },
   },
   {
@@ -154,7 +156,7 @@ export const DEMO_STORES: readonly DemoStore[] = [
     areaSqm: 1_200,
     contactName: "Oskar Lund",
     email: "info@kagelhallen.example",
-    phone: "0221-55 66 77",
+    phone: "070-174 06 14",
     hours: { first: 13, last: 21 },
   },
   {
@@ -167,20 +169,20 @@ export const DEMO_STORES: readonly DemoStore[] = [
     areaSqm: 900,
     contactName: "Maria Dahl",
     email: "maria@biofyren.example",
-    phone: "0171-22 33 44",
+    phone: "070-174 06 15",
     hours: { first: 14, last: 21 },
   },
   {
     key: "s7",
-    name: "Seriecentralen",
+    name: "Rutor och Rollspel",
     address: "Stora torget 4, 733 30 Sala",
     city: "Sala",
     storeType: "Serie- och spelbutik",
     openHoursPerWeek: 48,
     areaSqm: 110,
     contactName: "Viktor Ahl",
-    email: "viktor@seriecentralen.example",
-    phone: "0224-80 90 10",
+    email: "viktor@rutorochrollspel.example",
+    phone: "070-174 06 16",
     hours: { first: 10, last: 17 },
   },
 ];
@@ -271,7 +273,7 @@ export const DEMO_CONTRACTS: Readonly<Record<string, DemoContract & { storeKey: 
   },
   c7: {
     storeKey: "s7",
-    title: "Placeringsavtal Seriecentralen",
+    title: "Placeringsavtal Rutor och Rollspel",
     validFrom: "2026-02-01",
     validTo: null,
     noticePeriodMonths: 3,
@@ -522,7 +524,7 @@ export const DEMO_MACHINES: readonly DemoMachine[] = [
     code: "NA-09",
     name: "Automat 09",
     serial: "NL-2601-0109",
-    awishName: "NA-09 Seriecentralen",
+    awishName: "NA-09 Rutor och Rollspel",
     activeFrom: "2026-02-01",
     placements: [{ storeKey: "s7", validFrom: "2026-02-01", validTo: null, baseRate: 5 }],
     refillWeekdays: [4],
@@ -843,7 +845,7 @@ export const DEMO_SUPPLIERS: readonly DemoSupplier[] = [
     name: "Nordisk Hobbygrossist AB",
     contactName: "Henrik Falk",
     email: "order@nordiskhobby.example",
-    phone: "08-123 456 70",
+    phone: "08-465 004 10",
     leadTimeDays: 6,
   },
   {
@@ -851,7 +853,7 @@ export const DEMO_SUPPLIERS: readonly DemoSupplier[] = [
     name: "Kortdepån Skandinavien AB",
     contactName: "Ida Norén",
     email: "inkop@kortdepan.example",
-    phone: "031-765 43 21",
+    phone: "08-465 004 11",
     leadTimeDays: 10,
   },
 ];
@@ -1055,7 +1057,7 @@ export const DEMO_LEADS: readonly {
     address: "Stensborgsgatan 3, 721 32 Västerås",
     contactName: "Felix Ström",
     contactEmail: "felix@spelhallennova.example",
-    contactPhone: "021-44 33 22",
+    contactPhone: "070-174 06 20",
     notes: "Mycket ungdomar på helger. Vill ha provision i stället för hyra.",
     nextStep: "Visa förslag på placering vid kassan",
     nextStepOn: "2026-11-10",
@@ -1115,7 +1117,7 @@ export const DEMO_LEADS: readonly {
     address: "Kvarnhagsvägen 2, 632 20 Eskilstuna",
     contactName: "Per Holm",
     contactEmail: "centrumledning@kvarnhagen.example",
-    contactPhone: "016-44 55 66",
+    contactPhone: "070-174 06 11",
     notes: "Plats vid lekhörnan. Kopplas till omförhandlingen av hyresavtalet (löper ut 31 dec).",
     nextStep: "Skicka avtalsförslag med tre platser",
     nextStepOn: "2026-11-20",
@@ -1155,7 +1157,7 @@ export const DEMO_LEADS: readonly {
     address: "Kungsgatan 5, 745 31 Enköping",
     contactName: "Maria Dahl",
     contactEmail: "maria@biofyren.example",
-    contactPhone: "0171-22 33 44",
+    contactPhone: "070-174 06 15",
     notes: "Installerad 16 maj.",
     nextStep: null,
     nextStepOn: null,
@@ -1254,7 +1256,7 @@ export const DEMO_INCIDENTS: readonly {
     actionTaken: "Spiralen justerad, pengarna återbetalda via Swish.",
     linkOrder: true,
     refund: true,
-    customerContact: "070-111 22 33",
+    customerContact: "070-174 06 30",
     assignToOwner: true,
   },
   {

@@ -10,7 +10,7 @@ import { StatusGlyph, type Status } from "@/components/ui/status-tag";
 import { cn } from "@/lib/cn";
 import { NBSP, formatInt } from "@/lib/format";
 
-import type { HomeInsight, HomeTodo, HomeTopTitles, HomeUnpriced } from "./model";
+import type { HomeInsight, HomeLostSales, HomeTodo, HomeTopTitles, HomeUnpriced } from "./model";
 import { shareText, unpricedShareText } from "./model";
 import { kr } from "./text";
 
@@ -195,7 +195,7 @@ export function TopTitles({ top, caption }: { top: HomeTopTitles; caption: strin
             rest: true,
             note:
               top.rest.unpricedTitles > 0
-                ? `varav ${formatInt(top.rest.unpricedTitles)} utan inköpspris, ingår inte i vinsten`
+                ? `Varav ${formatInt(top.rest.unpricedTitles)} utan inköpspris, som inte ingår i vinsten.`
                 : null,
           },
         ]
@@ -259,7 +259,7 @@ export function TopTitles({ top, caption }: { top: HomeTopTitles; caption: strin
                     />
                   </span>
                 </span>
-                {r.note ? <span className="meta mt-1.5 block text-subtle">{r.note}</span> : null}
+                {r.note ? <span className="mt-1.5 block text-xs text-subtle">{r.note}</span> : null}
                 <span className="meta mt-1 block text-subtle sm:hidden">
                   {formatInt(r.orders)}
                   {NBSP}order
@@ -316,6 +316,24 @@ export function UnpricedNote({ unpriced, canEdit }: { unpriced: HomeUnpriced; ca
       <ArrowLink href={unpriced.href}>
         {canEdit ? "Lägg in inköpspris" : "Visa inköpspriser"}
       </ArrowLink>
+    </p>
+  );
+}
+
+/**
+ * Förlorad försäljning i perioden (Prognos & inköp): "Slutsålt kostade ca 3 200 kr i
+ * oktober." med hur många titlar som är slut just nu och länken till underlaget.
+ */
+export function LostSalesNote({ lost }: { lost: HomeLostSales }) {
+  return (
+    <p className="flex flex-col gap-1 text-sm text-muted sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-3">
+      <span>
+        <span className="text-fg">{lost.text}</span>
+        {lost.ongoing > 0
+          ? ` ${formatInt(lost.ongoing)}${NBSP}${lost.ongoing === 1 ? "titel är" : "titlar är"} slut i en automat just nu.`
+          : null}
+      </span>
+      <ArrowLink href={lost.href}>Förlorad försäljning</ArrowLink>
     </p>
   );
 }

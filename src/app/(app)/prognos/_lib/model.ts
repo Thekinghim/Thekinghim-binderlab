@@ -64,6 +64,11 @@ export interface LostModel {
   readonly totalUnitsMilli: number;
   readonly totalDayWeightBp: number;
   readonly rows: readonly LostRow[];
+  /**
+   * Perioder som varken kostar dagar eller kronor i perioden (titlar som togs ur sortimentet
+   * före den). De visas inte i tabellen; antalet står under den.
+   */
+  readonly hiddenWithoutCost: number;
   readonly months: readonly {
     readonly month: string;
     readonly text: string;
@@ -344,7 +349,10 @@ export interface PageModel {
 
 function lookup(data: PrognosData): NameLookup & { supplier(id: string): string } {
   const titles = new Map(data.titles.map((t) => [t.id, t.name]));
-  const machines = new Map(data.machines.map((m) => [m.id, `${m.code} ${m.name}`]));
+  // Automatens namn, som i Att göra och på Lager ("Automat 05"); koden bara när namnet saknas.
+  const machines = new Map(
+    data.machines.map((m) => [m.id, m.name.trim() || codesUnbroken(m.code)]),
+  );
   const suppliers = new Map(data.suppliers.map((s) => [s.id, s.name]));
   return {
     asOf: data.asOf,
@@ -380,7 +388,15 @@ export function krRangeText(lowOre: number, highOre: number): string {
  * ("… 1 nov.." → "… 1 nov."). Texterna kommer från @/analytics.
  */
 export function tidy(text: string): string {
-  return text.replace(/(?<!\.)\.\.(?!\.)/g, ".");
+  return codesUnbroken(text.replace(/(?<!\.)\.\.(?!\.)/g, "."));
+}
+
+/**
+ * Automatkoder bryts aldrig: "NA-05" → "NA‑05" med hårt bindestreck (U+2011), som på
+ * Lager. Gäller även koder i texterna från @/analytics.
+ */
+export function codesUnbroken(text: string): string {
+  return text.replace(/\b([A-ZÅÄÖ]{1,4})-(\d{1,4})\b/g, "$1\u2011$2");
 }
 
 const WEEKDAYS = ["Mån", "Tis", "Ons", "Tor", "Fre", "Lör", "Sön"] as const;
@@ -393,6 +409,21 @@ const WEEKDAYS_PLURAL = [
   "Lördagarna",
   "Söndagarna",
 ] as const;
+
+/**
+ * Delmeningar som en mening: "Slutsålt kostade ca 4 100 kr 4 okt. – 1 nov., 1 titel bör
+ * beställas för ca 1 100 kr." Punkten efter en förkortning står kvar.
+ */
+export function oneSentence(parts: readonly string[]): string {
+  return parts
+    .map((p, i) => {
+      const lead = i > 0 && /^[A-ZÅÄÖ][a-zåäö]/.test(p) ? p[0]!.toLowerCase() + p.slice(1) : p;
+      return i < parts.length - 1 && !/\s(jan|feb|apr|aug|sep|okt|nov|dec)\.$/.test(lead)
+        ? lead.replace(/\.$/, "")
+        : lead;
+    })
+    .join(", ");
+}
 
 function plural(n: number, one: string, many: string): string {
   return `${formatInt(n)}${NBSP}${n === 1 ? one : many}`;
@@ -446,7 +477,8 @@ export function purchaseOrderNumber(id: string): string {
 
 function lostModel(data: PrognosData, names: NameLookup, now: Date): LostModel {
   const r = data.lostSales;
-  const rows: LostRow[] = r.periods.map((p) => ({
+  const costing = r.periods.filter((p) => p.lostDayWeightBp > 0 || p.lostRevenueOre > 0);
+  const rows: LostRow[] = costing.map((p) => ({
     key: p.key,
     titleId: p.titleId,
     title: names.title(p.titleId),
@@ -467,7 +499,11 @@ function lostModel(data: PrognosData, names: NameLookup, now: Date): LostModel {
     evidence: evidenceView(p.evidence, names),
   }));
   const top = [...rows].sort((a, b) => b.lostRevenueOre - a.lostRevenueOre)[0];
-  const ongoing = rows.filter((x) => x.ongoing).length;
+  // Slutsålt nu: pågående perioder, utom de som pågått längre än maxOpenDays (analysen
+  // räknar dem som tagna ur sortimentet). Räknat i titlar och automater, inte perioder.
+  const current = r.periods.filter((p) => p.ongoing && !p.capped);
+  const ongoingTitles = new Set(current.map((p) => p.titleId)).size;
+  const ongoingMachines = new Set(current.map((p) => p.machineId)).size;
   let aside: string;
   if (rows.length === 0) aside = "Alla titlar fanns i automaterna enligt lagret och försäljningen.";
   else {
@@ -475,7 +511,11 @@ function lostModel(data: PrognosData, names: NameLookup, now: Date): LostModel {
     if (top && top.lostRevenueOre > 0) {
       parts.push(`Störst: ${top.title} i ${top.machine}, ${approxKr(top.lostRevenueOre)}.`);
     }
-    if (ongoing > 0) parts.push(`${plural(ongoing, "titel är", "titlar är")} slutsålda nu.`);
+    if (ongoingTitles > 0) {
+      parts.push(
+        `${plural(ongoingTitles, "titel är slutsåld", "titlar är slutsålda")} nu${ongoingMachines > 1 ? ` i ${plural(ongoingMachines, "automat", "automater")}` : ""}.`,
+      );
+    }
     aside = parts.join(" ") || "Kostnaden kan inte räknas: takt eller pris saknas.";
   }
   return {
@@ -487,6 +527,7 @@ function lostModel(data: PrognosData, names: NameLookup, now: Date): LostModel {
     totalUnitsMilli: r.total.lostUnitsMilli,
     totalDayWeightBp: r.total.stockoutDayWeightBp,
     rows,
+    hiddenWithoutCost: r.periods.length - costing.length,
     months: r.months.map((m) => ({
       month: m.month,
       text: tidy(m.text),
@@ -507,7 +548,7 @@ function forecastModel(
   accuracy: AccuracyModel;
 } {
   const f = data.forecast;
-  const coverage = "80 %";
+  const coverage = formatPercent(0.8, 0);
   const series = new Map(f.series.map((s) => [s.key, s]));
 
   const bySeries: ForecastRow[] = f.series
@@ -1020,9 +1061,9 @@ export function buildPageModel(data: PrognosData, now: Date = new Date()): PageM
   const valuation = valuationModel(data, names);
   const suppliers = suppliersModel(data, names);
 
-  const answerParts: string[] = [
-    `${forecast.coverage}-intervall ${krRangeText(forecast.total.revenueLowOre, forecast.total.revenueHighOre)}.`,
-  ];
+  // Högst två meningar i rubriken (design.md §5.5): beloppet, och vad som kostar eller ska
+  // göras i en mening. Intervallet står i sidhuvudets fakta.
+  const answerParts: string[] = [];
   if (data.lostSales.total.lostRevenueOre > 0) {
     answerParts.push(
       `Slutsålt kostade ${approxKr(data.lostSales.total.lostRevenueOre)} ${periodShort(data.lostSales.period, now)}.`,
@@ -1047,16 +1088,27 @@ export function buildPageModel(data: PrognosData, now: Date = new Date()): PageM
         data.forecast.series.length === 0
           ? "Ingen prognos ännu."
           : `${approxKr(forecast.total.revenueOre).replace(/^ca/, "Ca")} kommande 4 veckor.`,
-      aside: data.forecast.series.length === 0 ? forecast.heading.aside : answerParts.join(" "),
+      // tidy: periodtexten kan sluta på en förkortning ("sep."), så att meningen annars får "..".
+      aside:
+        data.forecast.series.length === 0 ? forecast.heading.aside : tidy(oneSentence(answerParts)),
     },
     meta: [
       { label: "Prognos", value: periodShort(forecast.horizon, now) },
+      ...(data.forecast.series.length === 0
+        ? []
+        : [
+            {
+              label: `${forecast.coverage}-intervall`,
+              value: krRangeText(forecast.total.revenueLowOre, forecast.total.revenueHighOre),
+            },
+          ]),
       {
-        label: "Träffsäkerhet",
+        // Felet, inte träffsäkerheten: etikett och värde ska peka åt samma håll.
+        label: "Prognosfel",
         value:
           accuracy.total.wapeBp === null
             ? "–"
-            : `${formatPercent(accuracy.total.wapeBp / 10_000, 0)} fel/dag`,
+            : `${formatPercent(accuracy.total.wapeBp / 10_000, 0)} per dag`,
       },
       {
         label: "Att beställa",

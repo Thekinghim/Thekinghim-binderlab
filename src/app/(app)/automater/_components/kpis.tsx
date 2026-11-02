@@ -18,10 +18,13 @@ export function MachineKpis({
   items,
   label,
   comparison,
+  headingLevel = 2,
 }: {
   items: readonly KpiView[];
   label: string;
   comparison?: string;
+  /** h2 direkt under sidans h1 (standard), h3 inne i en sektion. */
+  headingLevel?: 2 | 3;
 }) {
   const strip: KpiItem[] = items.map((k) => ({
     id: k.id,
@@ -36,5 +39,7 @@ export function MachineKpis({
         : { delta: k.delta.value, kind: "relative" }
       : undefined,
   }));
-  return <KpiStrip items={strip} label={label} comparison={comparison} />;
+  return (
+    <KpiStrip items={strip} label={label} headingLevel={headingLevel} comparison={comparison} />
+  );
 }

@@ -35,5 +35,8 @@ export function LonsamhetKpis({
           ? { delta: k.delta, kind: "absolute", unit: "p.e.", invert: k.invert }
           : { delta: k.delta, kind: "relative", invert: k.invert },
   }));
-  return <KpiStrip items={items} label={label} comparison={comparison ?? undefined} />;
+  // Remsan står direkt under sidans h1: etiketten blir h2.
+  return (
+    <KpiStrip items={items} label={label} headingLevel={2} comparison={comparison ?? undefined} />
+  );
 }

@@ -4,7 +4,8 @@
  */
 
 import type { HealthStatus, MachineHealth } from "@/analytics/health";
-import { sentence } from "@/analytics/todos/text";
+import type { IsoDate } from "@/domain";
+import { sentence, weekdayDay } from "@/analytics/todos/text";
 import type { Status } from "@/components/ui/status-tag";
 import { wallClockIn } from "@/components/shell/period-state";
 import { formatDateTime, formatInt, MISSING, NBSP } from "@/lib/format";
@@ -121,4 +122,68 @@ export function healthRank(status: HealthStatus): number {
 export function sentenceEnd(text: string): string {
   const t = text.trim();
   return /[.!?]$/.test(t) ? t : `${t}.`;
+}
+
+/** Det ur ett larm som rubrik och sortering behöver. */
+export interface AlertLike {
+  readonly kind: string;
+  readonly severity: "critical" | "warning" | "info" | string;
+  readonly machineId: string | null;
+  readonly title: string;
+  readonly openedAt: string;
+  readonly evidence: { readonly dates: readonly string[] };
+}
+
+const SEVERITY_RANK: Record<string, number> = { critical: 0, warning: 1, info: 2 };
+
+/**
+ * Larmen i den ordning de ska hanteras: kritiska först, sedan det som tar slut
+ * först (lagerlarmets beräknade slutdatum), sedan äldst öppnade.
+ */
+export function sortAlerts<T extends AlertLike>(alerts: readonly T[]): T[] {
+  const due = (a: AlertLike) => (a.kind === "low_stock" ? (a.evidence.dates[0] ?? null) : null);
+  return [...alerts].sort((a, b) => {
+    const s = (SEVERITY_RANK[a.severity] ?? 3) - (SEVERITY_RANK[b.severity] ?? 3);
+    if (s !== 0) return s;
+    const da = due(a);
+    const db = due(b);
+    if (da !== db) {
+      if (da === null) return 1;
+      if (db === null) return -1;
+      return da < db ? -1 : 1;
+    }
+    return a.openedAt < b.openedAt ? -1 : a.openedAt > b.openedAt ? 1 : 0;
+  });
+}
+
+/**
+ * Rubriken på /drift när alla automater är i drift men larm är öppna: det som
+ * ska göras ("5 titlar i 3 automater tar slut senast tor 5 nov."), inte att allt är i drift.
+ */
+export function alertHeadline(alerts: readonly AlertLike[]): string | null {
+  if (alerts.length === 0) return null;
+  const low = alerts.filter((a) => a.kind === "low_stock");
+  if (low.length === alerts.length) {
+    const empty = low.filter((a) => a.severity === "critical");
+    const near = low.filter((a) => a.severity !== "critical");
+    const machines = new Set(low.map((a) => a.machineId)).size;
+    const last = near
+      .map((a) => a.evidence.dates[0])
+      .filter((d): d is string => typeof d === "string")
+      .sort()
+      .at(-1);
+    const where = `i ${plural(machines, "automat", "automater")}`;
+    const when = last ? `senast ${weekdayDay(last as IsoDate)}` : "inom kort";
+    if (near.length === 0) {
+      return `${plural(empty.length, "titel är slut", "titlar är slut")} ${where}.`;
+    }
+    if (empty.length === 0) {
+      return sentence(`${plural(near.length, "titel", "titlar")} ${where} tar slut ${when}`);
+    }
+    return sentence(
+      `${plural(empty.length, "titel är slut", "titlar är slut")} och ${formatInt(near.length)} tar slut ${when}`,
+    );
+  }
+  const first = sortAlerts(alerts)[0]!;
+  return `${plural(alerts.length, "öppet larm", "öppna larm")}: ${sentence(first.title)}`;
 }

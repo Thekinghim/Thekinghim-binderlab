@@ -38,9 +38,11 @@ import {
   type SessionUser,
 } from "@/server/access";
 import { todayIn, toIsoDate } from "@/components/shell/period-state";
+import { loadCoverage } from "@/server/alerts/inputs";
 
 import {
   DEFAULT_SETTINGS,
+  queryActiveContracts,
   queryAgreements,
   queryDataSources,
   queryDisplayName,
@@ -49,10 +51,12 @@ import {
   queryInvestments,
   queryMachineCountsByOrg,
   queryMachines,
+  queryOpenAlerts,
   queryOrders,
   queryPlacements,
   queryPrices,
   queryReportDeliveries,
+  queryReportDrafts,
   queryReportRecipients,
   querySaleEventsAsOrders,
   querySalesCounts,
@@ -404,19 +408,41 @@ function withoutEconomy(item: TodoItem): TodoItem {
   };
 }
 
+/** Punkterna i Att göra före och efter avbockningarna. */
+export interface TodoState {
+  /** Det som står i listan: sorterat efter brådska, utan avbockade. */
+  readonly items: TodoItem[];
+  /**
+   * Punkter som finns (orsaken finns kvar) men är avbockade med samma fingerprint. En
+   * avbockning vars nyckel inte står här har en orsak som är löst eller ändrad.
+   */
+  readonly dismissed: TodoItem[];
+}
+
 /**
  * Punkterna i Att göra, sorterade efter brådska och utan avbockade. Ägare och admin får
  * alla regler; påfyllaren påfyllning och tysta automater, räknade på försäljningen i
  * lagret (utan belopp). Läsaren har ingen Att göra-lista (tom).
  */
 export async function loadTodosFor(viewer: Viewer, now: Date = new Date()): Promise<TodoItem[]> {
+  return (await loadTodoStateFor(viewer, now)).items;
+}
+
+/**
+ * Som loadTodosFor, men med de avbockade punkterna vars orsak finns kvar (för listan
+ * "Avbockade" i Att göra, som då inte visar punkter som redan är lösta).
+ *
+ * Ägare och admin får också larm som kräver åtgärd, rapportutkast att granska och avtal
+ * att säga upp eller omförhandla (påminnelsen 90 dagar före sista uppsägningsdag).
+ */
+export async function loadTodoStateFor(viewer: Viewer, now: Date = new Date()): Promise<TodoState> {
   const orgId = viewer.organization.id;
   const timeZone = viewer.organization.timezone;
   const today = businessToday(now, timeZone);
   const range: Period = { start: addDays(today, -TODO_LOOKBACK_DAYS), end: today };
 
   return asViewer(viewer, ALL_ROLES, async (tx, role) => {
-    if (role === "viewer") return [];
+    if (role === "viewer") return { items: [], dismissed: [] };
     const economy = canSeeEconomy(role);
     const master = await masterData(tx, orgId, today);
     const stockRows = await queryStock(tx, orgId);
@@ -429,16 +455,28 @@ export async function loadTodosFor(viewer: Viewer, now: Date = new Date()): Prom
         lastRestockedAt: r.lastRestockedAt,
       }));
     const dismissals = await queryTodoDismissals(tx, orgId);
+    // Hur långt försäljningen är importerad per automat: tystnaden räknas fram till dit,
+    // som på Drift (maskinhälsan), så att alla sidor säger samma antal timmar.
+    const salesDataUntil = (await loadCoverage(tx, orgId, now)).map((c) => ({
+      machineId: c.machineId,
+      until: c.dataUntil?.toISOString() ?? null,
+    }));
 
     let input: TodoInput;
     if (economy) {
+      const reportSince = addDays(today, -TODO_REPORT_LOOKBACK_DAYS);
       const [prices, agreements, settings, orders, recipients, deliveries] = await Promise.all([
         queryPrices(tx, orgId),
         queryAgreements(tx, orgId),
         querySettings(tx, orgId),
         queryOrders(tx, orgId, range, NO_SCOPE),
         queryReportRecipients(tx, orgId),
-        queryReportDeliveries(tx, orgId, addDays(today, -TODO_REPORT_LOOKBACK_DAYS)),
+        queryReportDeliveries(tx, orgId, reportSince),
+      ]);
+      const [drafts, contracts, alerts] = await Promise.all([
+        queryReportDrafts(tx, orgId, reportSince),
+        queryActiveContracts(tx, orgId),
+        queryOpenAlerts(tx, orgId),
       ]);
       input = {
         orders: orders.orders,
@@ -452,6 +490,10 @@ export async function loadTodosFor(viewer: Viewer, now: Date = new Date()): Prom
         stock,
         reportRecipients: recipients,
         reportDeliveries: deliveries,
+        reportDrafts: drafts,
+        contracts,
+        alerts,
+        salesDataUntil,
         options: { timeZone },
       };
     } else {
@@ -467,6 +509,7 @@ export async function loadTodosFor(viewer: Viewer, now: Date = new Date()): Prom
         stock,
         reportRecipients: [],
         reportDeliveries: [],
+        salesDataUntil,
         options: { timeZone },
       };
     }
@@ -475,6 +518,8 @@ export async function loadTodosFor(viewer: Viewer, now: Date = new Date()): Prom
     const visible = economy
       ? computed
       : computed.filter((t) => REFILLER_TODO_KINDS.has(t.kind)).map(withoutEconomy);
-    return applyDismissals(visible, dismissals);
+    const items = applyDismissals(visible, dismissals);
+    const shown = new Set(items.map((t) => t.key));
+    return { items, dismissed: visible.filter((t) => !shown.has(t.key)) };
   });
 }

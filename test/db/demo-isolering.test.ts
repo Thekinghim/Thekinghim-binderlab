@@ -2,7 +2,8 @@
  * Demoorganisationen blandas aldrig med den riktiga: båda seedas i samma
  * databas, och demoanvändarna (alla tre roller) ser bara demon medan den
  * riktiga organisationens användare bara ser sin egen. Återställningen
- * raderar bara demon och vägrar för allt annat.
+ * raderar bara demon och vägrar för allt annat, även en kundorganisation som
+ * fått demons slug ur sitt namn.
  */
 
 import { mkdtempSync } from "node:fs";
@@ -16,7 +17,17 @@ import { LocalFileStore } from "../../src/import/file-store";
 import { DEMO_USERS } from "../../src/seed/demo/catalog";
 import { resetDemo, runDemoSeed, type RunDemoSeedResult } from "../../src/seed/demo/run-demo-seed";
 import { runSeed, type RunSeedResult } from "../../src/seed/run-seed";
-import { asUser, db, one, orgScopedTables, rows, type TestUser } from "./helpers";
+import { slugFromName } from "../../src/server/onboarding/create-organization";
+import {
+  asUser,
+  createUser,
+  db,
+  one,
+  orgScopedTables,
+  rows,
+  uniqueSuffix,
+  type TestUser,
+} from "./helpers";
 
 const PASSWORD = "binderlab-dev-test";
 const scoped = await orgScopedTables();
@@ -67,7 +78,28 @@ const DATA_TABLES = [
 
 beforeAll(async () => {
   const fileStore = new LocalFileStore(mkdtempSync(path.join(tmpdir(), "binderlab-demo-iso-")));
-  real = await runSeed(db(), { password: PASSWORD, manageUsers: true, fileStore });
+  // Den riktiga organisationen med egen slug och egna användare (samma seed och samma data
+  // som verksamhetens), så att filen inte tar seedens "binderlab" och agare@/delagare@ från
+  // seed.test.ts när alla databastester körs i samma databas.
+  const suffix = uniqueSuffix();
+  real = await runSeed(db(), {
+    password: PASSWORD,
+    manageUsers: true,
+    fileStore,
+    organization: { name: `Riktig ${suffix}`, slug: `riktig-${suffix}` },
+    users: {
+      owner: {
+        email: `riktig-agare-${suffix}@test.binderlab.se`,
+        fullName: "Ägare",
+        role: "owner",
+      },
+      partner: {
+        email: `riktig-delagare-${suffix}@test.binderlab.se`,
+        fullName: "Delägare",
+        role: "viewer",
+      },
+    },
+  });
   realCounts = await countsFor(real.organizationId);
   demo = await runDemoSeed(db(), { password: PASSWORD, manageUsers: true, fileStore });
 }, 300_000);
@@ -146,6 +178,57 @@ describe("demo: isolering mot den riktiga organisationen", () => {
 describe("demo: återställning", () => {
   it("vägrar för allt som inte är demon", async () => {
     await expect(resetDemo(db(), "binderlab")).rejects.toThrow(/inte en demoorganisation/);
+  });
+
+  it("vägrar en kundorganisation som fått demons slug ur sitt namn", async () => {
+    // Samma väg som onboardingen: slug ur namnet, skapad av en vanlig användare.
+    const name = "Nordljus (demo) stor";
+    const slug = slugFromName(name);
+    expect(slug).toBe("nordljus-demo-stor");
+    const customer = await createUser();
+    const created = await asUser(customer, (tx) =>
+      one<{ id: string }>(tx, sql`select public.create_organization(${name}, ${slug}) as id`),
+    );
+    await asUser(customer, (tx) =>
+      tx.execute(
+        sql`insert into public.stores (organization_id, name) values (${created.id}::uuid, 'Kundens butik')`,
+      ),
+    );
+    const before = await countsFor(created.id);
+
+    await expect(resetDemo(db(), slug)).rejects.toThrow(/inte av demons ägare/);
+    // Seeden (--stor) skriver inte heller i den.
+    await expect(
+      runDemoSeed(db(), { password: PASSWORD, manageUsers: true, large: true }),
+    ).rejects.toThrow(/inte av demons ägare/);
+
+    const left = await rows(
+      db(),
+      sql`select 1 from public.organizations where id = ${created.id}::uuid`,
+    );
+    expect(left).toHaveLength(1);
+    expect(await countsFor(created.id)).toEqual(before);
+  }, 120_000);
+
+  it("vägrar radera demon när någon utanför demon är medlem", async () => {
+    const colleague = await createUser();
+    await db().execute(
+      sql`insert into public.memberships (organization_id, user_id, role)
+          values (${demo.organizationId}::uuid, ${colleague.id}::uuid, 'viewer')`,
+    );
+    try {
+      await expect(resetDemo(db(), "nordljus-demo")).rejects.toThrow(colleague.email);
+      const left = await rows(
+        db(),
+        sql`select 1 from public.orders where organization_id = ${demo.organizationId}::uuid limit 1`,
+      );
+      expect(left).toHaveLength(1);
+    } finally {
+      await db().execute(
+        sql`delete from public.memberships
+            where organization_id = ${demo.organizationId}::uuid and user_id = ${colleague.id}::uuid`,
+      );
+    }
   });
 
   it("raderar demon helt och lämnar den riktiga organisationen orörd", async () => {

@@ -59,6 +59,7 @@ export function OnboardingChecklist({
           canEdit={canEdit}
           timeZone={timeZone}
           now={now}
+          showElapsed={!status.loadedAtOnce}
         />
       ))}
     </ol>
@@ -75,12 +76,15 @@ function StepRow({
   canEdit,
   timeZone,
   now,
+  showElapsed,
 }: {
   step: OnboardingStep;
   primary: boolean;
   canEdit: boolean;
   timeZone: string;
   now: Date;
+  /** Visa "efter X min" (inte när datan lades in på en gång). */
+  showElapsed: boolean;
 }) {
   const titleId = `steg-${step.id}`;
   const done = step.state === "done";
@@ -117,7 +121,7 @@ function StepRow({
         {done && step.doneAt ? (
           <p className="meta tnum text-subtle">
             <time dateTime={step.doneAt}>{when(step.doneAt, timeZone, now)}</time>
-            {step.sinceStartMs !== null && step.id !== "organisation"
+            {showElapsed && step.sinceStartMs !== null && step.id !== "organisation"
               ? ` · efter ${formatDuration(step.sinceStartMs)}`
               : ""}
           </p>
@@ -156,13 +160,16 @@ function StepLink({
   const base =
     "inline-flex h-9 items-center gap-1.5 rounded-sm border px-3.5 text-base font-medium whitespace-nowrap transition-[background-color,border-color,color] duration-fast ease-instrument";
   if (disabled) {
-    // Väntar på ett tidigare steg: ingen länk, streckad kant bär läget.
+    // Väntar på ett tidigare steg: ingen länk, streckad kant bär läget. role="link" med
+    // aria-disabled så att skärmläsaren läser den som en länk som inte går att följa.
     return (
       <span
-        aria-disabled
+        role="link"
+        aria-disabled="true"
         className={cn(base, "cursor-not-allowed border-dashed border-line-strong text-disabled")}
       >
         {children}
+        <span className="sr-only"> (väntar på ett tidigare steg)</span>
       </span>
     );
   }
@@ -207,12 +214,17 @@ function CompactChecklist({
         <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
           <p className="label text-muted">
             <span className="text-fg">Kom igång</span>
-            <span className="text-faint"> / </span>
-            {`${formatInt(status.requiredDone)} av ${formatInt(status.requiredTotal)} steg`}
+            <span aria-hidden className="text-faint">
+              {" / "}
+            </span>
+            <span className="sr-only">: </span>
+            {`${formatInt(status.requiredDone)} av ${formatInt(status.requiredTotal)} nödvändiga`}
           </p>
           <p className="meta tnum text-subtle">
             {status.complete
-              ? `Klart på ${formatDuration(status.elapsedMs)}`
+              ? status.loadedAtOnce
+                ? "Klart"
+                : `Klart på ${formatDuration(status.elapsedMs)}`
               : `Pågått ${formatDuration(status.elapsedMs)}`}
           </p>
         </div>

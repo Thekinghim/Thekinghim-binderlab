@@ -5,7 +5,7 @@
  * Funktionerna som tar `orders` filtrerar inte på period; skicka in de order som ska räknas.
  */
 
-import { assertOrder, assertSettings, vatOfGross } from "./economics";
+import { assertOrders, assertSettings, vatOfGross } from "./economics";
 import { buildLedger } from "./ledger";
 import { applyBp, checkSafe, mulDivRound, ratioBp, roundHalfUp, BP_SCALE } from "./money";
 import { summarizeLedger, type ProfitabilityResult } from "./profitability";
@@ -13,9 +13,9 @@ import type { OrderLine, ProfitabilityInput, Settings } from "./types";
 
 /** Betalt belopp inkl. moms, i öre. */
 export function grossRevenue(orders: readonly OrderLine[]): number {
+  assertOrders(orders);
   let sum = 0;
   for (const o of orders) {
-    assertOrder(o);
     sum += o.amountOre;
   }
   return checkSafe(sum, "Intäkten");
@@ -24,9 +24,9 @@ export function grossRevenue(orders: readonly OrderLine[]): number {
 /** Moms i orderna: Σ round(belopp × moms / (10 000 + moms)), per order. */
 export function vat(orders: readonly OrderLine[], settings: Settings): number {
   assertSettings(settings);
+  assertOrders(orders);
   let sum = 0;
   for (const o of orders) {
-    assertOrder(o);
     sum += vatOfGross(o.amountOre, settings.vatRateBp);
   }
   return checkSafe(sum, "Momsen");
@@ -35,9 +35,9 @@ export function vat(orders: readonly OrderLine[], settings: Settings): number {
 /** Nettointäkt (exkl. moms) i öre: Σ (belopp − moms), med momsen avrundad per order. */
 export function revenue(orders: readonly OrderLine[], settings: Settings): number {
   assertSettings(settings);
+  assertOrders(orders);
   let sum = 0;
   for (const o of orders) {
-    assertOrder(o);
     sum += o.amountOre - vatOfGross(o.amountOre, settings.vatRateBp);
   }
   return checkSafe(sum, "Intäkten");
@@ -47,9 +47,9 @@ export function revenue(orders: readonly OrderLine[], settings: Settings): numbe
 export function cardFees(orders: readonly OrderLine[], settings: Settings): number {
   assertSettings(settings);
   if (settings.cardFeeBp === 0) return 0;
+  assertOrders(orders);
   let sum = 0;
   for (const o of orders) {
-    assertOrder(o);
     sum += applyBp(o.amountOre, settings.cardFeeBp);
   }
   return checkSafe(sum, "Kortavgifterna");

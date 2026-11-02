@@ -148,7 +148,7 @@ export function ImportRows({
             )
           }
           options={[
-            { value: "problem", label: `Fel och konflikter ${formatInt(c.error + c.conflict)}` },
+            { value: "problem", label: `Problem ${formatInt(c.error + c.conflict)}` },
             { value: "fel", label: `Fel ${formatInt(c.error)}` },
             { value: "konflikter", label: `Konflikter ${formatInt(c.conflict)}` },
             { value: "nya", label: `Nya ${formatInt(c.new)}` },
@@ -160,6 +160,7 @@ export function ImportRows({
           <StateMessage kind="empty" message={emptyText} compact />
         ) : (
           <DataTable
+            surface="bg"
             columns={columns}
             rows={detail.rows}
             rowKey={(r) => String(r.rowNumber)}

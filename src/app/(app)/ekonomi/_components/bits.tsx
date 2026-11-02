@@ -24,13 +24,23 @@ export type EconomyKpi = {
 
 const FORMAT: Record<EconomyKpi["unit"], (v: number) => string> = {
   ore: (v) => formatSek(v / 100),
-  "signed-ore": (v) => formatSignedKronor(v / 100, { decimals: 2 }),
+  // Hela kronor i nyckeltal, som i rubrikerna (design.md 4); öret står i avstämningen.
+  "signed-ore": (v) => formatSignedKronor(v / 100, { decimals: 0 }),
   count: (v) => formatInt(v),
   bp: (v) => formatPercent(v / 10_000),
 };
 
 /** Nyckeltalsremsa där värdena är öre, antal eller bp. */
-export function EconomyKpis({ items, label }: { items: readonly EconomyKpi[]; label: string }) {
+export function EconomyKpis({
+  items,
+  label,
+  headingLevel,
+}: {
+  items: readonly EconomyKpi[];
+  label: string;
+  /** 2 när remsan står direkt under sidans h1. */
+  headingLevel?: 2 | 3;
+}) {
   const kpis: KpiItem[] = items.map((k) => ({
     id: k.id,
     label: k.label,
@@ -40,7 +50,7 @@ export function EconomyKpis({ items, label }: { items: readonly EconomyKpi[]; la
     alert: k.alert,
     alertText: k.alertText,
   }));
-  return <KpiStrip items={kpis} label={label} />;
+  return <KpiStrip items={kpis} label={label} headingLevel={headingLevel} />;
 }
 
 type TextAreaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & {

@@ -52,7 +52,7 @@ export const LEAD_STAGES = [
 export type LeadStageKey = (typeof LEAD_STAGES)[number];
 
 export const LEAD_STAGE_LABEL: Record<LeadStageKey, string> = {
-  lead: "Lead",
+  lead: "Intressent",
   contacted: "Kontaktad",
   meeting: "Möte",
   agreement: "Avtal",

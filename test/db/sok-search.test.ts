@@ -162,9 +162,12 @@ describe("prestanda med 100 000 order", () => {
   ];
 
   beforeAll(async () => {
-    // Som databasägare (utan RLS) för fart; datan hör till A. B får lika många, så att
+    // Som databasägare (utan RLS) för fart; datan hör till A. B får 20 000, så att
     // indexen innehåller en annan organisations rader också.
-    for (const org of [A, B]) {
+    for (const [org, count] of [
+      [A, BULK],
+      [B, 20_000],
+    ] as const) {
       await asPostgres((tx) =>
         tx.execute(
           sql`insert into public.orders
@@ -176,7 +179,7 @@ describe("prestanda med 100 000 order", () => {
                      ${org.machineId}::uuid,
                      '2024-01-01T08:00:00Z'::timestamptz + g * interval '7 minutes',
                      7900 + (g % 5) * 1000, ${`bulk-${randomUUID()}-`} || g
-              from generate_series(1, ${BULK}) g`,
+              from generate_series(1, ${count}) g`,
         ),
       );
     }

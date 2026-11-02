@@ -2,8 +2,9 @@
  * Hems rubrik: läget i en mening, räknat ur nyckeltalen.
  *
  *   "79 987 kr på 30 dagar." + "12 % bättre än perioden innan."
- *   Ingress: "Vinst 18 950 kr efter alla kostnader, 23,7 % marginal."
- *   Utan jämförelse: "79 987 kr sedan 13 okt." + "Vinst 21 205 kr efter alla kostnader, …"
+ *   Ingress: "Vinst 18 950 kr före återbetalningar och fasta kostnader, 23,7 % marginal."
+ *   Utan jämförelse: "79 987 kr sedan 13 okt." + "Vinst 21 205 kr."
+ *   Ingress: "Före återbetalningar och fasta kostnader, 23,7 % marginal på order med inköpspris."
  *
  * Ren funktion utan databas och utan React. Inga beräkningar av ekonomi: talen kommer från
  * keyMetrics/changeBp i @/domain; här väljs bara formuleringen.
@@ -70,19 +71,33 @@ function spanText(period: Period, dataStart: IsoDate, today: IsoDate): string {
   return `den ${dayText(start, today)}`;
 }
 
-/** Vinsten i en mening; säger när den inte går att räkna eller när en stor del saknar pris. */
-function profitSentence(input: HomeHeadlineInput): string {
+/**
+ * Vinsten i två delar: beloppet ("Vinst 18 950 kr") och resten av meningen ("före
+ * återbetalningar och fasta kostnader, 23,7 % marginal …"). `amount` är null när vinsten inte
+ * går att räkna; `rest` säger då varför.
+ */
+function profitParts(input: HomeHeadlineInput): { amount: string | null; rest: string } {
   const { profitOre, marginBp, pricedOrders, unpricedShareBp } = input;
   if (pricedOrders === 0) {
-    return "Vinsten går inte att räkna förrän orderna har inköpspris.";
+    return { amount: null, rest: "Vinsten går inte att räkna förrän orderna har inköpspris." };
   }
   const amount = profitOre < 0 ? `Förlust ${kr(-profitOre)}` : `Vinst ${kr(profitOre)}`;
-  const margin = marginBp === null ? "" : `, ${marginText(marginBp)} marginal`;
+  // Marginalen gäller bara order med inköpspris (berakningar.md 6); intäkten i rubriken alla.
+  // (Från 20 % säger meningen i stället att den andelen inte ingår.)
+  const basis =
+    unpricedShareBp > 0 && unpricedShareBp < UNPRICED_HEADLINE_BP ? " på order med inköpspris" : "";
+  const margin = marginBp === null ? "" : `, ${marginText(marginBp)} marginal${basis}`;
   const missing =
     unpricedShareBp >= UNPRICED_HEADLINE_BP
       ? `, men ${formatPercent(unpricedShareBp / 10_000, 1)} av intäkten saknar inköpspris och ingår inte`
       : "";
-  return `${amount} efter alla kostnader${margin}${missing}.`;
+  return { amount, rest: `före återbetalningar och fasta kostnader${margin}${missing}.` };
+}
+
+/** Vinsten i en mening; säger när den inte går att räkna eller när en stor del saknar pris. */
+function profitSentence(input: HomeHeadlineInput): string {
+  const { amount, rest } = profitParts(input);
+  return amount === null ? rest : `${amount} ${rest}`;
 }
 
 /** Rubriken för Hem. */
@@ -125,7 +140,15 @@ export function homeHeadline(input: HomeHeadlineInput): HomeHeadline {
         : `${changeText(revenueChangeBp)} ${revenueChangeBp > 0 ? "bättre" : "sämre"} än perioden innan.`;
     lead.push(profitSentence(input));
   } else {
-    aside = profitSentence(input);
+    // Utan jämförelse bär vinstbeloppet rubrikens andra del och resten står i ingressen,
+    // så att rubriken inte blir sex rader på en smal skärm.
+    const { amount, rest } = profitParts(input);
+    if (amount === null) {
+      aside = rest;
+    } else {
+      aside = `${amount}.`;
+      lead.push(rest.charAt(0).toLocaleUpperCase("sv-SE") + rest.slice(1));
+    }
   }
 
   return { title, aside, lead, state: "ok" };

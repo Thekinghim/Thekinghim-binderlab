@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import { parseIsoDate, wallClockIn } from "@/components/shell/period-state";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { StatusTag, type Status } from "@/components/ui/status-tag";
-import { formatDate, formatInt, formatSek, MISSING, NBSP } from "@/lib/format";
+import { formatDate, formatInt, formatSek, MISSING, SPACED_RANGE_DASH } from "@/lib/format";
 
 import type { AgreementState, AgreementView, RecipientView, StoreMachineRow } from "../_lib/types";
 import { percentBp } from "../_lib/model";
@@ -47,7 +47,7 @@ function agreementColumns(
         <span className="flex flex-col">
           <span className="tnum text-fg">
             {day(a.validFrom, today)}
-            {NBSP}–{NBSP}
+            {SPACED_RANGE_DASH}
             {a.validTo ? day(a.validTo, today) : "tills vidare"}
           </span>
           <span className="text-sm text-muted md:hidden">{a.termsLabel}</span>
@@ -115,6 +115,7 @@ export function AgreementsTable({
   );
   return (
     <DataTable
+      surface="bg"
       columns={cols}
       rows={agreements}
       rowKey={(a) => a.id}
@@ -137,9 +138,14 @@ function machineColumns(todayIso: string): Column<StoreMachineRow>[] {
       sortValue: (m) => m.code,
       hideable: false,
       render: (m) => (
-        <Link href={m.href} className="flex min-w-0 flex-col rounded-xs py-1 hover:text-fg">
+        <Link
+          href={m.href}
+          className="flex max-w-36 min-w-0 flex-col rounded-xs py-1 hover:text-fg md:max-w-none"
+        >
           <span className="meta text-fg">{m.code.replace(/-/g, "‑")}</span>
-          <span className="truncate text-sm text-muted">{m.name}</span>
+          <span className="truncate text-sm text-muted" title={m.name}>
+            {m.name}
+          </span>
         </Link>
       ),
     },
@@ -160,7 +166,7 @@ function machineColumns(todayIso: string): Column<StoreMachineRow>[] {
             </StatusTag>
             <span className="meta text-subtle">
               {day(m.from, today)}
-              {NBSP}–{NBSP}
+              {SPACED_RANGE_DASH}
               {m.to ? day(m.to, today) : ""}
             </span>
           </span>
@@ -176,7 +182,8 @@ function machineColumns(todayIso: string): Column<StoreMachineRow>[] {
     },
     {
       key: "revenue",
-      header: "Intäkt här",
+      // Kort huvud så att beloppet ryms i 375 px; sektionen säger redan att det gäller butiken.
+      header: "Intäkt",
       numeric: true,
       sortValue: (m) => m.revenueOre,
       render: (m) => sek(m.revenueOre),
@@ -195,7 +202,13 @@ export function MachinesTable({
 }) {
   const cols = useMemo(() => machineColumns(today), [today]);
   return (
-    <DataTable columns={cols} rows={machines} rowKey={(m) => m.placementId} caption={caption} />
+    <DataTable
+      surface="bg"
+      columns={cols}
+      rows={machines}
+      rowKey={(m) => m.placementId}
+      caption={caption}
+    />
   );
 }
 
@@ -212,9 +225,13 @@ function recipientColumns(timeZone: string, now: Date, canEdit: boolean): Column
       sortValue: (r) => r.name,
       hideable: false,
       render: (r) => (
-        <span className="flex min-w-0 flex-col">
+        // max-w under md: adressen kortas med ellips (hela står i title) i stället för att
+        // göra tabellen bredare än skärmen.
+        <span className="flex max-w-32 min-w-0 flex-col md:max-w-none">
           <span className="text-fg">{r.name}</span>
-          <span className="meta truncate text-muted">{r.email}</span>
+          <span className="meta truncate text-muted" title={r.email}>
+            {r.email}
+          </span>
         </span>
       ),
     },
@@ -232,7 +249,7 @@ function recipientColumns(timeZone: string, now: Date, canEdit: boolean): Column
           ) : (
             <StatusTag status="offline">Pausad</StatusTag>
           )}
-          <span className="meta whitespace-nowrap text-subtle">
+          <span className="meta text-subtle">
             {r.lastSentAt
               ? `Senast ${formatDate(wallClockIn(new Date(r.lastSentAt), timeZone), {
                   year: "auto",
@@ -273,5 +290,13 @@ export function RecipientsTable({
     () => recipientColumns(timeZone, new Date(now), canEdit),
     [timeZone, now, canEdit],
   );
-  return <DataTable columns={cols} rows={recipients} rowKey={(r) => r.id} caption={caption} />;
+  return (
+    <DataTable
+      surface="bg"
+      columns={cols}
+      rows={recipients}
+      rowKey={(r) => r.id}
+      caption={caption}
+    />
+  );
 }

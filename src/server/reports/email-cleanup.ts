@@ -229,7 +229,7 @@ export function cleanEmailText(text: string, kind: CleanupKind): string {
   // Länken till rapporten och sidfoten hör inte till sista sektionen.
   let cta = -1;
   all.forEach((line, i) => {
-    if (/^Öppna (rapporten|underlaget): /.test(line)) cta = i;
+    if (/^Öppna (rapporten|underlaget|butiksportalen): /.test(line)) cta = i;
   });
   const trailerStart = cta > 0 && all[cta - 1] === "" ? cta - 1 : cta;
   const lines = trailerStart >= 0 ? all.slice(0, trailerStart) : all;

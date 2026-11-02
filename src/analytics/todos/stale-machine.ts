@@ -91,6 +91,20 @@ export function staleMachineTodos(ctx: TodoContext): TodoItem[] {
     else ordersByMachine.set(o.machineId, [o]);
   }
 
+  // Hur långt försäljningen är importerad per automat. Tystnaden räknas fram till dit
+  // (högst till nu, minst till senaste försäljningen), som maskinhälsan på Drift.
+  const untilByMachine = new Map<string, number>();
+  for (const c of input.salesDataUntil ?? []) {
+    const ms = c.until ? tryParseInstant(c.until) : null;
+    if (ms === null) continue;
+    const prev = untilByMachine.get(c.machineId);
+    if (prev === undefined || ms > prev) untilByMachine.set(c.machineId, ms);
+  }
+  const endFor = (machineId: string, sinceMs: number): number => {
+    const until = untilByMachine.get(machineId);
+    return until === undefined ? nowMs : Math.max(Math.min(until, nowMs), sinceMs);
+  };
+
   const out: TodoItem[] = [];
   for (const m of input.machines) {
     if (!isMachineActive(m, today)) continue;
@@ -98,12 +112,13 @@ export function staleMachineTodos(ctx: TodoContext): TodoItem[] {
     const last = lastSale(orders, options.timeZone);
     if (!last) {
       if (m.activeFrom === null) continue;
-      const sinceMs = nowMs - startOfBusinessDate(m.activeFrom, options.timeZone);
+      const startMs = startOfBusinessDate(m.activeFrom, options.timeZone);
+      const sinceMs = endFor(m.id, startMs) - startMs;
       if (sinceMs <= thresholdMs) continue;
       out.push(neverSold(ctx, m, m.activeFrom, floorDiv(sinceMs, HOUR_MS)));
       continue;
     }
-    const silentMs = nowMs - last.latestMs;
+    const silentMs = endFor(m.id, last.latestMs) - last.latestMs;
     if (silentMs <= thresholdMs) continue;
     out.push(silentMachine(ctx, m, last, orders, floorDiv(silentMs, HOUR_MS)));
   }

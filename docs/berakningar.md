@@ -290,9 +290,7 @@ Ett kundärende (sidan Inkorg) kan ha ett återbetalt belopp i öre och en åter
 pack och fick 49,00 kr tillbaka 20 okt.: vinst efter återbetalningar 7 660 − 4 900 = **2 760
 öre**, marginal 2 760 / 30 400 = 9,08 % (908 bp). Testerna finns i `src/domain/refunds.test.ts`.
 
-Sidan Lönsamhet visar inte justeringen ännu; den kan läggas till som en egen rad
-"Återbetalningar" under vinsten med `applyRefunds` på vyns rader.
-Sidan Inkorg säger det också: återbetalningarna visas inte i Lönsamhet än.
+Sidan Lönsamhet visar justeringen som en egen rad under vattenfallet, se avsnitt 17.
 
 ## 15. Maskinhälsa: tystnad och importerad försäljning (`src/analytics/health`)
 
@@ -324,3 +322,295 @@ lyckad import efter midnatt i dag.
 Begränsning: en organisation med en enda automat i en CSV-källa kan inte skilja en tyst
 automat från en fil utan ny försäljning; där fångar datalarmet efter 36 timmar problemet.
 Testerna finns i `src/analytics/health/coverage.test.ts` och `test/db/drift-alerts.test.ts`.
+
+## 16. Att göra (`src/analytics/todos`)
+
+Att göra räknas om vid varje sidvisning ur order, lager, priser, rapporter, avtal och larm.
+Varje punkt har en stabil nyckel (samma orsak ger samma nyckel) och ett fingerprint
+(orsakens tillstånd). En avbockning gäller så länge fingerprintet är oförändrat.
+
+| Punkt              | Regel                                                                                                                        | Nivå                                               |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| Påfyllning         | Lagret räcker under **2,5 dagar** vid snittförsäljningen de **14** senaste hela dagarna (t.o.m. i går)                       | nu under 1 dag, annars snart                       |
+| Tyst automat       | Ingen försäljning på **48 timmar**, räknat fram till importens slut som på Drift (`salesDataUntil`)                          | nu                                                 |
+| Larm               | Öppet, okvitterat larm om automat (fel, misstänkt fel, ur drift) eller import; inte "titel nära slut" (= påfyllning)         | kritiskt: nu, varning: snart                       |
+| Rapportutkast      | Utkast (senaste versionen, inte godkänd, inte skickad), en punkt per rapportmånad                                            | som utskicket                                      |
+| Rapport att skicka | Förra månadens rapport till varje aktiv mottagare, senast månadens sista dag                                                 | försenad: nu, 0–3 dagar kvar: snart, annars senare |
+| Avtal              | Påminnelse **90 dagar** före sista uppsägningsdag (`contractReminders`, samma som sidan Avtal); uppsagt eller utgånget avtal | ≤ 7 dagar: nu, ≤ 30 dagar: snart, annars senare    |
+| Saknat inköpspris  | Titel med försäljning de senaste **30** dagarna utan inköpspris                                                              | minst 10 % av intäkten: snart, annars senare       |
+| Möjlig dubblett    | Två titlar med nästan samma namn                                                                                             | senare                                             |
+
+**Belopp i risk** ("I risk 7 d") är bara påfyllning och tysta automater: intäkt per dag ×
+(7 − dagar som lagret räcker). En titel utan inköpspris säljer som vanligt (bara vinsten blir
+ofullständig) och räknas inte dit.
+
+**Ordning.** Nivån väger alltid tyngst (nu, snart, senare). Inom en nivå sorteras punkterna
+efter brådskevärdet:
+
+> brådska = nivå × 10¹² + kronor i risk de närmaste 7 dagarna + förlorad intäkt (öre)
+
+Förlorad intäkt är `@/analytics/lost-sales` för titeln i automaten de senaste 14 hela dagarna
+(samma som Prognos visar). Den ändrar bara ordningen och underlaget ("Förlorat 14 d"), inte
+nivån och inte "I risk 7 d", så att samma intäkt aldrig räknas två gånger. Menyns räknare och
+listan har alltid samma punkter.
+
+**Utgångna titlar.** En titel som har gått ur sortimentet i en automat (alla perioder i
+`machine_slots` har slutat och ingen börjar senare, läst via `lager_slot_periods`) fylls inte på
+utan säljs ut. Den ger ingen påfyllningspunkt, räknas inte i menyns räknare och planeras inte i
+besöksplanen. Regeln är en (`@/analytics/todos/assortment`) och gäller Lager, Drift och Att göra.
+
+**Dagar med tiondelar.** Att göra visar "räcker 0,4 d" med en decimal eftersom gränsen är
+2,5 dagar; lagerprognosen (avsnitt 8) visar hela dagar till slutdatum.
+
+**Avbockade.** Listan "Avbockade" visar bara punkter vars orsak finns kvar (punkten skulle stå
+i listan utan avbockningen). En avbockning vars orsak är löst döljer inget och visas inte.
+
+**Larm och tyst automat.** Ett öppet larm om en automat som redan står som tyst automat blir
+ingen egen punkt (samma orsak). Det avgörs innan avbockningarna tas bort: bockar ägaren av
+punkten för den tysta automaten döljs också larmet för automaten i Att göra, tills automaten
+säljer igen eller punkten får ett nytt fingerprint. Larmet syns fortfarande på Drift.
+
+**Samma takt överallt.** Påfyllningspunkten, larmet "Titel nära slut" på Drift, matrisen på
+Lager och besöksplanen räknar takten på de 14 hela dagarna t.o.m. i går och slutdatumet som
+`stockoutDate(i går, saldo, takt)`. Saldot är dagens. Besöksplanen (`weeklyVisitPlan`, samma
+för Lager, Drift och Besöksplan) drar försäljning från saldot bara för dagarna från i dag till
+besöket, så ett besök i dag får samma packlista som Lagers påfyllningslista.
+
+**Filter.** Hem och Att göra filtrerar med samma regel (`todoInScope`): punkter med automater
+följer automaten (och butiken den står i), punkter om en butik (avtal, rapport till butiken)
+följer butiken, med bara automatfilter automatens butik. Övriga punkter gäller hela
+organisationen.
+
+**Länken till ett rapportutkast** pekar ut det första utkastet för månaden (typ och butik i
+adressen), så att Rapporter öppnar just det utkastet i granskningen. Övriga utkast för månaden
+står i arkivet på samma sida.
+
+Testerna finns i `src/analytics/todos/*.test.ts` (bland annat `integration.test.ts` för avtal,
+utkast, larm och förlorad försäljning) och `test/db/integration-fas7.test.ts`.
+
+## 17. Lönsamhet efter vinsten: återbetalningar och fasta kostnader
+
+Under vattenfallet visar Lönsamhet två avdrag som egna rader. Vattenfallet, tabellerna och
+nyckeltalen ändras inte.
+
+> vinst efter återbetalningar = vinst − återbetalningar (avsnitt 14)
+>
+> resultat = vinst efter återbetalningar − fasta kostnader i perioden
+
+- **Fasta kostnader** (`fixed_costs`, sidan Ekonomi) periodiseras över de dagar de gäller och
+  fördelas med `profitabilityWithFixedCosts` (`@/analytics/cashflow`): gemensamma kostnader
+  efter nettointäkt per automat (alla order, även utan inköpspris), kostnader för en viss
+  automat på den automaten.
+- **Automatfilter:** automatens återbetalningar och automatens del av fördelningen, räknad på
+  hela organisationen (annars skulle automaten bära alla gemensamma kostnader). Automaten går
+  före butiken när båda står i adressen (filtret i skalet lägger alltid till automatens butik).
+- **Butiksfilter:** butikens återbetalningar (placeringen på återbetalningsdagen). Fasta
+  kostnader fördelas per automat, inte per butik, och visas inte med butiksfilter.
+- Per automat summerar vinst, återbetalningar, fasta kostnader och resultat till totalen
+  (testas i `src/app/(app)/lonsamhet/_lib/result.test.ts`).
+
+**Vinst på Hem.** Hem visar vinsten före återbetalningar och fasta kostnader ("Vinst före fasta
+kostnader"), samma som raden "Vinst" här och vattenfallets slut. Resultatet efter fasta
+kostnader finns här och på Ekonomi.
+
+**Exempel.** Två automater, moms och kortavgift 0, provision 10 %: m1 vinst 300 kr, m2 150 kr.
+Återbetalt 40 kr (m1) och 25 kr (m2). Försäkring 300 kr/mån gemensam, service 90 kr/mån på m2.
+Vinst 450 − återbetalningar 65 = 385 kr; fasta kostnader 300 (fördelas 200 + 100 efter
+intäkten 1 000 : 500) + 90 = 390 kr; resultat **−5 kr**.
+
+**Var reglerna står i koden.** Gränserna är standardvärden i `TODO_DEFAULTS`
+(`src/analytics/todos/context.ts`): `refillWindowDays: 14`, `refillThresholdCentidays: 250` (2,5 dagar i
+hundradelar), `staleHours: 48`, `unpricedWindowDays: 30` och `contractReminderDays` = 90 (`CONTRACT_DEFAULTS`
+i `src/analytics/contracts/contracts.ts`). Horisonten för "I risk 7 d" är `HORIZON_DAYS = 7`. Reglerna per
+punkt: `refill.ts` (påfyllning), `stale-machine.ts` (tyst automat, intäkt per dag de 14 dagarna t.o.m. senaste
+försäljningsdag × 7), `missing-price.ts` (andel ≥ `MISSING_PRICE_SOON_BP` = 10 % ger "snart"; kronor i
+risk = intäkt utan pris × 7 / 30, räknas inte in i "I risk 7 d"), `contracts.ts` (`CONTRACT_NOW_DAYS = 7`,
+`CONTRACT_SOON_DAYS = 30`), `reports.ts` (`REPORT_SOON_DAYS = 3`) och `alerts.ts`.
+
+## 18. Förlorad försäljning (`src/analytics/lost-sales`)
+
+Hur mycket intäkt som uteblev för att en titel var slutsåld i en automat. Visas på Prognos & inköp, på Hem
+("Slutsålt kostade ca … i oktober", via `lostSalesSummary` i `src/server/purchasing/lost-sales-summary.ts`) och
+som ordning och underlag ("Förlorat 14 d") i Att göra.
+
+Per titel × automat och dag:
+
+| Läge                                                              | Bedömning                                                                    |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Saldo > 0 vid dagens början                                       | fanns                                                                        |
+| Saldo ≤ 0 vid dagens början, ingen påfyllning under dagen         | slutsåld hela dagen                                                          |
+| Saldo ≤ 0 vid dagens början, påfylld under dagen                  | påfyllningsdag, räknas som en halv slutsåld dag (`refillDayShareBp` = 5 000) |
+| Saldo ≤ 0 men order samma dag                                     | fanns (lagret saknar en registrering); dagen listas som avvikelse            |
+| Dagen då sista packet säljs                                       | räknas inte (försiktigt)                                                     |
+| Saldot okänt (före första inventering eller efter negativt saldo) | heuristik, se nedan                                                          |
+
+- **Saldot** räknas ur lagerhändelserna som vyn `stock_levels`: senaste inventering plus alla händelser efter den
+  (`stock.ts`, `replayStockDaily`).
+- **Heuristik när saldot är okänt:** minst 2 dagar i rad utan försäljning av titeln, där takten före säger minst
+  3 pack (då är chansen under 5 % att det blir 0 av en slump), och automaten sålde andra titlar minst hälften av
+  dagarna. Takten måste bygga på minst 7 dagar med data. Kostnaden för dessa dagar redovisas också separat
+  (`heuristicLostRevenueOre`).
+- **Takt före** = sålda pack / dagar med data de 28 dagarna före periodens första dag (`rateWindowDays`);
+  slutsålda dagar räknas inte.
+- **Kostnad** = takt × slutsålda dagar (viktade) × snittpris exkl. moms, avrundat en gång per period.
+  Bruttoresultat = kostnaden − takt × dagar × inköpspriset som gällde periodens första dag.
+- **Långa perioder:** efter 28 slutsålda dagar i rad (`maxOpenDays`) antas titeln vara borttagen ur sortimentet,
+  och dagarna därefter kostar inget.
+- **Per månad:** periodens kostnad fördelas på månaderna efter slutsålda dagar med största-restmetoden, så att
+  månaderna summerar exakt till totalen.
+
+- **Ordning inom dagen:** händelserna ordnas på tidpunkt, sedan `seq`, som vyn `stock_levels`. Tidpunkten måste
+  vara ISO 8601: `queryMachineStockEvents` formaterar den i databasen (`to_char … 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'`),
+  som `queryOrders`. Med Postgres textformat ordnades händelserna bara på `seq` och förlorad försäljning blev för låg
+  (rättat i fas 7, `test/db/prestanda.test.ts`).
+- **Titeldagar:** summan av slutsålda dagar över alla titlar och automater. En titel slutsåld i två automater samma
+  dag är två titeldagar, så totalen kan bli fler än periodens dagar. Perioder som varken kostar dagar eller kronor i
+  analysperioden (titlar som togs ur sortimentet före den) räknas inte i texten och visas inte på Prognos.
+
+Standardvärdena står i `LOST_SALES_DEFAULTS` (`lost-sales.ts`). Testerna: `lost-sales.test.ts`.
+
+## 19. Prognos (`src/analytics/forecast`)
+
+Försäljningsprognos per titel × automat för de kommande 4 veckorna (`FORECAST_DEFAULTS.horizonDays = 28`), med
+osäkerhetsintervall och träffsäkerhet. Allt räknas i heltal (tusendelar av pack, bp), så samma historik ger alltid
+exakt samma prognos.
+
+1. **Historik:** 8 veckor t.o.m. `asOf` (`historyWeeks`). Bara dagar då titeln gick att köpa räknas: automaten i
+   drift, serien har startat och dagen är inte slutsåld enligt avsnitt 18 (`stockoutUnavailableDays` i
+   `lost-sales/unavailable.ts`). En slutsåld dag är alltså inte efterfrågan 0. En serie startar vid första kända
+   saldo över 0 i lagret, tidigast vid första ordern i datan (`src/server/purchasing/series-start.ts`).
+2. **Veckodagsfaktorer:** takten per veckodag delat med snittakten, krympt mot 1,0 med 2 "snittdagar" per veckodag
+   (`weekdayPriorDays`) och skalade så att snittet är exakt 1,0.
+3. **Nivå:** viktat glidande medel av veckorna (vikt 1 för den äldsta, 8 för den senaste) på veckodagsjusterade dagar.
+4. **Trend:** takten i senare halvan minus den tidigare, per vecka. Räknas bara när båda halvorna har minst 7 dagar
+   och 10 pack, och är begränsad till ±30 % av nivån (`maxTrendBp = 3 000`).
+5. **Prognos för dag h** = (nivå + trend × tid sedan nivåns medelpunkt) × veckodagsfaktor, minst 0.
+6. **Intäkt** = antal × snittpris exkl. moms de senaste 28 dagarna (seriens, annars titelns i alla automater),
+   avrundat per dag.
+7. **Intervall (80 %):** summan ± z × √varians med z = 1,282. Dagsvariansen är den största av backtestens
+   residualvarians och prognosen själv (Poisson-golv). För k dagar är variansen k × dagsvariansen; serier summeras
+   som oberoende.
+8. **Träffsäkerhet** (`backtest.ts`): 6 rullande ursprung à 7 dagar, en vecka isär. WAPE = Σ|prognos − utfall| /
+   Σ utfall, MAPE per vecka, bias (positiv = för hög) och jämförelse med att gissa snittet de 7 dagarna före.
+   Sidan visar WAPE som "fel/dag".
+
+Testerna: `forecast.test.ts` och `purity.test.ts` (samma resultat i tre tidszoner).
+
+## 20. Inköpsplan och lagervärde (`src/analytics/purchasing`)
+
+Periodisk beställning: en order kan läggas var 7:e dag (`reviewPeriodDays`), med servicenivå 95 %
+(`serviceLevelBp = 9 500`, z = 1,645) och standardledtid 7 dagar (`PURCHASING_DEFAULTS` i `plan.ts`).
+
+1. **Leverantör:** titelns leverantörsartikel med lägst pris per pack, sedan kortast ledtid. Ledtid = artikelns,
+   annars leverantörens standard, annars 7 dagar.
+2. **Behov** = prognosen (avsnitt 19, summerad per titel över automaterna, `demandFromForecast`) dag för dag under
+   ledtid + intervall, plus säkerhetslager.
+3. **Säkerhetslager** = z × √((ledtid + intervall) × dagsvarians), med prognosens dagsvarians.
+4. **Lagerposition** = centrallager + lager i automater + beställt som väntas inom ledtid + intervall. Negativa
+   saldon räknas som 0. Utkast räknas inte som beställt (`includeDraftOrders: false`).
+5. **Antal:** saknade pack avrundade uppåt → minst minsta order → uppåt till hela boxar. Saknas 13,2 pack med
+   minsta order 24 och box 12 blir det 24; saknas 25 blir det 36.
+6. **Täckning:** dagar som lagerpositionen räcker; senaste beställningsdag = väntat slut − ledtid. Tar lagret slut
+   före leverans även vid beställning i dag är raden sen.
+
+**Lagervärde** (`valuation.ts`): (centrallager + automater) × det inköpspris som gäller i dag, annars
+leverantörsartikelns pris; titlar utan båda räknas som 0 och listas. Kapitalbindning = lagervärde + kvar att ta emot
+på öppna inköpsorder × radens pris. Testerna: `purchasing.test.ts`, `test/db/prognos-inkop.test.ts`.
+
+## 21. Avstämning mot utbetalningar (`src/analytics/reconciliation`)
+
+Per utbetalning från leverantören, med perioden i affärsdagar i datakällans tidszon:
+
+> väntad utbetalning = försäljning − avgifter − återbetalningar
+>
+> skillnad = utbetalt − väntad utbetalning
+
+- **Försäljning** = betalt belopp för våra order med affärsdatum i perioden. En dag som redan täcks av en tidigare
+  utbetalning räknas bara där.
+- **Avgifter** = Σ round(belopp × avgift / 10 000) + fast avgift per order (domänens `cardFees`; båda är 0 i dag).
+- **Återbetalningar** = kundärendenas `refunded_ore` med `refunded_on` i perioden.
+- **Uppdelning:** skillnaden delas upp i avvikelser som summerar exakt till den: dubbletter i vår import, sedan (med
+  leverantörens specifikation per order) dubbel utbetalning, beloppsavvikelse, tidszon, annan period och saknade
+  order; utan specifikation tidszon för order nära midnatt (bara om det minskar skillnaden, märkt som slutsats),
+  överlappande perioder och saknade order om resten är exakt ett antal order à ett vanligt pris. Avgiftsavvikelse
+  och rest inom toleransen (standard 0 öre) är avrundning; resten är oförklarad.
+- **Utredd avvikelse:** servern räknar om avvikelsen och sparar sitt eget fingerprint i `deviation_reviews`.
+  Ändras avvikelsen gäller inte utredningen längre.
+
+Testerna: `reconcile.test.ts`, `common.test.ts`, `test/db/ekonomi.test.ts`.
+
+## 22. Kassaflöde och fasta kostnader (`src/analytics/cashflow`)
+
+Per månad eller vecka, faktiskt (datum ≤ i dag) och prognos (datum > i dag). In: utbetalningar. Ut: inköp,
+butiksersättning och fasta kostnader.
+
+- **Utbetalningar:** faktiska på `paid_on`. Väntade följer rytmen och fördröjningen i de registrerade
+  utbetalningarna (med färre än två antas en per månad): känd försäljning + snittet de senaste 28 dagarna
+  (`forecastWindowDays`) × dagar kvar − avgifter, avrundat en gång per period. En passerad utbetalningsdag utan
+  registrerad utbetalning läggs som försenad dagen efter i dag.
+- **Butiksersättning** för månad M = provision (`storeCompensation`) + hyra (`rentByStoreMonth`), betald månad
+  M + 1 (`storeCompensationLagMonths`). Faktiska butiksbetalningar ersätter den beräknade ersättningen för sin
+  butik och månad.
+- **Inköp:** betalda på sitt datum; planerade som prognos (en delvis mottagen inköpsorder delas i mottaget och rest)
+  plus påfyllnad av lagret i försäljningstakt.
+- **Fasta kostnader** (`fixed-costs.ts`): betalas i förskott på startdagen och sedan var 1, 3 eller 12 månad på
+  samma dag (kapad till månadens sista dag; 31 jan → 28 feb → 31 mars). Varje betalning periodiseras på de dagar
+  den avser: round(belopp × dagar i perioden / dagar betalningen avser). I lönsamheten bärs kostnader med automat av
+  den automaten och övriga fördelas efter nettointäkt med största-restmetoden (avsnitt 17).
+
+Begränsning: kassaflödet tar inte emot kända återbetalningar som egen post (faktiska utbetalningar är redan netto).
+Testerna: `cashflow.test.ts`, `fixed-costs.test.ts`.
+
+## 23. Enhetsekonomi sida vid sida (`src/analytics/expansion/unit-economics-compare.ts`)
+
+Bygger på domänens `unitEconomics` (avsnitt 9) och lägger till, per automat:
+
+| Post              | Formel                                                                                     |
+| ----------------- | ------------------------------------------------------------------------------------------ |
+| Intäkt per dag    | round(intäkt för prissatta order / aktiva dagar)                                           |
+| Vinst per dag     | round(vinst före avskrivning / aktiva dagar)                                               |
+| Flottans snitt    | Σ vinst / Σ aktiva dagar (viktat efter automatdagar)                                       |
+| Mot snitt         | round((automatens − snittet) × 10 000 / \|snittet\|) bp                                    |
+| Avkastning per år | vinst per månad × 12 / investering, bp (`annualReturnBp`); visas inte utan investering     |
+| Rang              | efter vinst per dag, 1 = bäst; lika → lägst id; automater utan aktiva dagar får ingen rang |
+
+Aktiva månader räknas exakt som bråk med gemensam nämnare 377 580 (`MONTH_LCM`, minsta gemensamma multipel av 28–31),
+så en hel kalendermånad är exakt 1. Sidan Enhetsekonomi och Expansion räknar från första ordern när skalets period
+börjar tidigare.
+
+## 24. Expansion: uppskattning för en ny plats (`src/analytics/expansion`)
+
+1. **Likhet** (`similarity.ts`): butikstyp 40 %, ort 25 %, öppettimmar per vecka 20 % och yta 15 %
+   (`DEFAULT_SIMILARITY_WEIGHTS`). Typ och ort matchar 100 % eller 0; timmar och yta 100 % − |a − b| / max(a, b).
+   Ett okänt värde ger 0 för attributet.
+2. **Underlag** (`estimate.ts`, `SITE_ESTIMATE_DEFAULTS`): butiker med minst 28 automatdagar, högst 10 % av
+   intäkten utan inköpspris och minst 60 % likhet; de 3 mest lika.
+3. **Takt per plats:** vinst och intäkt per automatmånad med samma regel som enhetsekonomin. Anges villkor för den nya
+   platsen ersätts platsens provision och hyra med dem.
+4. **Förväntat värde** = snittet viktat efter likhet; intervallet = lägsta och högsta platsens takt.
+5. **Återbetalningstid** = investering / vinst per månad i tiondels månader (bästa fallet från högsta vinsten, sämsta
+   från lägsta; vinst ≤ 0 → återbetalas inte). Avkastning per år som i avsnitt 23.
+6. Resultatet märks alltid "Uppskattning". Pipelinen (`pipeline.ts`) sorterar leads med uppskattning först, sedan
+   kortast återbetalningstid, högst vinst per månad och id. Scenariot "ny automat" (`src/analytics/scenarios`)
+   använder samma regler.
+
+## 25. Effekt mot utgångsläget (`src/analytics/effect`)
+
+| Mått                       | Enhet   | Bättre | Värde per månad                                       |
+| -------------------------- | ------- | ------ | ----------------------------------------------------- |
+| `profit_per_machine_month` | öre     | högre  | räknas: round(vinst × dagar i månaden / automatdagar) |
+| `stockout_days_month`      | dagar   | lägre  | mätvärde (`effect_measurements`)                      |
+| `refill_hours_month`       | minuter | lägre  | mätvärde                                              |
+| `admin_hours_month`        | minuter | lägre  | mätvärde                                              |
+
+- **Utgångsläget** (`baselines`) gäller en hel månad. En pågående månad jämförs med utgångsläge × dagar hittills /
+  dagar i månaden.
+- **Förbättring** = värde − utgångsläge (högre är bättre) eller utgångsläge − värde (lägre är bättre); i procent mot
+  utgångsläget (visas inte när det är 0).
+- **I kronor:** vinst = förbättring per automatmånad × automatmånader; tid = minuter × timkostnad / 60
+  (`effect_settings.hourly_cost_ore`); slutsålda dagar = dagar × värde per dag (inställt, annars månadens vinst per
+  automat och dag).
+- Vinst per automat räknas från första ordern, så dagar utan data räknas inte som automatdagar.
+
+Utan ett utgångsläge som beställaren själv registrerat finns ingen jämförelse att lita på; se `docs/product.md`.
+Testerna: `effect.test.ts`, `test/db/expansion-service.test.ts`.

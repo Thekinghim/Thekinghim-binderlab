@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { PrintButton } from "@/components/report/print-button";
+import { StateMessage } from "@/components/ui/state-message";
+import { DomainError } from "@/domain";
 import { ReportStatusTag } from "@/app/(app)/rapporter/_components/report-status";
 import { TYPE_LABEL } from "@/server/reports/kinds";
 import { fileKindsOf } from "@/server/reports/files";
@@ -34,6 +36,8 @@ export default async function ReportPrintPage({ params }: { params: Promise<{ id
   } catch (error) {
     if (error instanceof ReportError) notFound();
     if (error instanceof AuthorizationError) redirect("/");
+    // Underlaget går inte att läsa (äldre eller trasigt format): säg det i stället för ett 500-fel.
+    if (error instanceof DomainError) return <UnreadableReport />;
     throw error;
   }
   const s = report.snapshot;
@@ -76,6 +80,22 @@ export default async function ReportPrintPage({ params }: { params: Promise<{ id
       <main className="px-4 py-6 md:px-8 md:py-12 print:p-0">
         <ReportView snapshot={s} />
       </main>
+    </div>
+  );
+}
+
+/** Rapporten finns men underlaget har ett format som appen inte kan rendera. */
+function UnreadableReport() {
+  return (
+    <div className="mx-auto flex min-h-dvh w-full max-w-[1280px] flex-col gap-6 bg-bg px-4 pt-8 pb-16 md:px-8 md:pt-12">
+      <h1 className="sr-only">Rapportens underlag kan inte visas.</h1>
+      <StateMessage
+        kind="loading-failed"
+        message="Rapportens underlag kan inte visas."
+        detail="Underlaget har ett format som den här versionen av Binderlab inte läser. Skapa en ny version av rapporten under Rapporter."
+        action={{ label: "Till Rapporter", href: "/rapporter" }}
+        className="rounded-md border border-line bg-surface"
+      />
     </div>
   );
 }

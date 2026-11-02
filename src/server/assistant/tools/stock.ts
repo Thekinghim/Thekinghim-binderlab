@@ -20,7 +20,13 @@ import {
 import { todayIn } from "@/components/shell/period-state";
 import { formatDate, formatDecimal } from "@/lib/format";
 import { normalize } from "@/lib/fuzzy";
-import { loadSalesCountsFor, loadStockFor, loadTodosFor } from "@/server/data/core/loaders";
+import { loadSlotPeriodsFor, withoutRetired } from "@/server/data/assortment";
+import {
+  businessToday,
+  loadSalesCountsFor,
+  loadStockFor,
+  loadTodosFor,
+} from "@/server/data/core/loaders";
 import { ALL_ROLES, canSeeEconomy } from "@/server/data/core/types";
 
 import {
@@ -444,7 +450,16 @@ export const todosTool = defineTool({
   roles: TODO_ROLES,
   input: todosInput,
   async run(ctx: ToolContext, input) {
-    const todos = await loadTodosFor(ctx.viewer, ctx.now);
+    // Samma punkter som Att göra: inga påfyllningar av utgångna titlar.
+    const [all, periods] = await Promise.all([
+      loadTodosFor(ctx.viewer, ctx.now),
+      loadSlotPeriodsFor(ctx.viewer),
+    ]);
+    const todos = withoutRetired(
+      all,
+      periods,
+      businessToday(ctx.now, ctx.viewer.organization.timezone),
+    );
     const shown = todos.slice(0, input.antal ?? 15);
     const economy = canSeeEconomy(ctx.role);
     return {

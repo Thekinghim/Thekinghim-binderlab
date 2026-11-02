@@ -15,7 +15,7 @@ import { sql } from "drizzle-orm";
 
 import { getServiceDb, type Db, type Tx } from "@/db/client";
 import { parseCsvTable } from "@/import/csv-table";
-import { ImportValidationError, MappingError } from "@/import/errors";
+import { ImportError, ImportValidationError, MappingError } from "@/import/errors";
 import type { FileStore } from "@/import/file-store";
 import { sha256Hex } from "@/import/hash";
 import {
@@ -25,8 +25,9 @@ import {
   type ImportField,
   type MappingOverride,
 } from "@/import/mapping";
-import { notPaidOf, runImport } from "@/import/run-import";
-import { requireRoleFor, withUserDbFor } from "@/server/access";
+import { IMPORT_PIPELINE_VERSION, notPaidOf, runImport } from "@/import/run-import";
+import { AuthorizationError, requireRoleFor, withUserDbFor } from "@/server/access";
+import { recordImportFailure, type MonitoringDeps } from "@/server/monitoring";
 import { loadMasterDataFor, type Viewer } from "@/server/data/core/loaders";
 import { OPERATOR_ROLES } from "@/server/data/core/types";
 
@@ -286,6 +287,25 @@ function detailRow(
 }
 
 /** En import med radlogg (fel, konflikter eller nya). null om den inte finns. */
+/**
+ * Finns importen i organisationen? Den snabba kontrollen före sidans laddningsläge, så att ett
+ * okänt id får HTTP 404 (se importer/[id]/layout.tsx). Ägare och admin, som användaren med RLS.
+ */
+export async function importExistsFor(viewer: Viewer, importId: string): Promise<boolean> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(importId)) {
+    return false;
+  }
+  const orgId = viewer.organization.id;
+  return asOperator(viewer, async (tx) => {
+    const [row] = await query(
+      tx,
+      sql`select 1 as found from public.imports i
+          where i.organization_id = ${orgId}::uuid and i.id = ${importId}::uuid`,
+    );
+    return row !== undefined;
+  });
+}
+
 export async function loadImportDetailFor(
   viewer: Viewer,
   importId: string,
@@ -456,6 +476,8 @@ export interface UploadDeps {
   readonly fileStore?: FileStore;
   /** Anslutningen runImport använder; den kör ändå som användaren med RLS. */
   readonly db?: Db;
+  /** Felövervakningen (Sentry och larm) vid en misslyckad import. Standard: systemrollen. */
+  readonly monitor?: MonitoringDeps;
 }
 
 function owner(viewer: Viewer) {
@@ -606,19 +628,44 @@ export async function runUploadFor(
       );
     }
   }
-  const result = await runImport(deps.db ?? getServiceDb(), {
-    organizationId: viewer.organization.id,
-    dataSourceId: input.dataSourceId,
-    actorUserId: viewer.user.userId,
-    actorEmail: viewer.user.email,
-    file: { name: meta.fileName, content },
-    mapping: input.mapping,
-    dryRun: input.dryRun,
-    fileStore: deps.fileStore,
-    saveMapping: input.saveMapping,
-    // Alla rader: urvalet för webbläsaren görs i toPreviewResult.
-    rowLimit: Number.MAX_SAFE_INTEGER,
-  });
+  let result: Awaited<ReturnType<typeof runImport>>;
+  try {
+    result = await runImport(deps.db ?? getServiceDb(), {
+      organizationId: viewer.organization.id,
+      dataSourceId: input.dataSourceId,
+      actorUserId: viewer.user.userId,
+      actorEmail: viewer.user.email,
+      file: { name: meta.fileName, content },
+      mapping: input.mapping,
+      dryRun: input.dryRun,
+      fileStore: deps.fileStore,
+      saveMapping: input.saveMapping,
+      // Alla rader: urvalet för webbläsaren görs i toPreviewResult.
+      rowLimit: Number.MAX_SAFE_INTEGER,
+    });
+  } catch (error) {
+    // En import som misslyckas av andra skäl än indata eller behörighet loggas som
+    // misslyckad, ger ett larm på Drift och en Sentry-händelse (src/server/monitoring).
+    if (
+      !input.dryRun &&
+      !(error instanceof ImportError) &&
+      !(error instanceof AuthorizationError)
+    ) {
+      await recordImportFailure(
+        { db: deps.db, ...deps.monitor },
+        {
+          organizationId: viewer.organization.id,
+          dataSourceId: input.dataSourceId,
+          actorUserId: viewer.user.userId,
+          fileName: meta.fileName,
+          sha256: sha256Hex(content),
+          parserVersion: IMPORT_PIPELINE_VERSION,
+          error,
+        },
+      );
+    }
+    throw error;
+  }
   if (!input.dryRun) {
     if (result.importId) {
       // Tidszonen som tiderna tolkades i sparas med importen, så att importens

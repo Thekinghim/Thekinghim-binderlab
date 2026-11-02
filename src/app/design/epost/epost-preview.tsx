@@ -122,8 +122,18 @@ export function EpostPreview({ initialKind }: { initialKind: RecipientKind }) {
       <div className="mt-10 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <Segmented options={RECIPIENT_KINDS} value={kind} onChange={select} label="Mottagare" />
         <p className="label text-subtle">
-          600 px <span className="text-faint">·</span> tabellayout{" "}
-          <span className="text-faint">·</span> inline-stilar <span className="text-faint">·</span>{" "}
+          600 px{" "}
+          <span aria-hidden className="text-faint">
+            ·
+          </span>{" "}
+          tabellayout{" "}
+          <span aria-hidden className="text-faint">
+            ·
+          </span>{" "}
+          inline-stilar{" "}
+          <span aria-hidden className="text-faint">
+            ·
+          </span>{" "}
           text/plain-version
         </p>
       </div>

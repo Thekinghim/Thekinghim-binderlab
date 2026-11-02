@@ -30,6 +30,7 @@ import {
   formatPercent,
   formatSek,
   NBSP,
+  SPACED_RANGE_DASH,
 } from "@/lib/format";
 
 import type {
@@ -134,7 +135,7 @@ export function agreementState(
 export function agreementPeriodLabel(validFrom: IsoDate, validTo: IsoDate | null): string {
   const from = formatDate(isoToDate(validFrom), { year: "always" });
   if (validTo === null) return `${from}${NBSP}– tills vidare`;
-  return `${from}${NBSP}–${NBSP}${formatDate(isoToDate(validTo), { year: "always" })}`;
+  return `${from}${SPACED_RANGE_DASH}${formatDate(isoToDate(validTo), { year: "always" })}`;
 }
 
 export interface AgreementRecord {
@@ -348,13 +349,11 @@ export function listHeadline(
   const title = `${plural(active.length, "butik", "butiker")} gav ${sek(revenue)} ${span}.`;
   if (revenue <= 0) return { title, aside: "Ingen försäljning i perioden." };
   const top = [...rows].sort((a, b) => b.revenueOre - a.revenueOre)[0]!;
-  const parts = [
-    `${sek(compensation)} (${formatPercent(compensation / revenue)}) till ${rows.length === 1 ? "butiken" : "butikerna"}, vinst ${sek(profit)}`,
-  ];
-  if (active.length > 1) {
-    parts.push(`${top.name} står för ${formatPercent(top.revenueOre / revenue, 0)}`);
-  }
-  return { title, aside: parts.map(sentence).join(" ") };
+  // En mening i andra delen: rubriken har högst två (design.md §5.5).
+  const split = `${sek(compensation)} (${formatPercent(compensation / revenue)}) till ${rows.length === 1 ? "butiken" : "butikerna"} och vinst ${sek(profit)}`;
+  const topText =
+    active.length > 1 ? `, ${formatPercent(top.revenueOre / revenue, 0)} från ${top.name}` : "";
+  return { title, aside: sentence(`${split}${topText}`) };
 }
 
 /** Förändring som text: "12 % mer än" / "8 % mindre än" / "lika mycket som". */

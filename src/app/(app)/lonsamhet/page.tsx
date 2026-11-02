@@ -6,13 +6,16 @@ import { Panel } from "@/components/ui/frame";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatInt, formatPercent, formatSek, NBSP } from "@/lib/format";
+import { loadProfitAdjustments } from "@/server/data/adjustments";
 import { loadDomainInput, loadPeriod, requireRoute } from "@/server/data/core";
 
 import { CompensationBreakdown, UnpricedSummary } from "./_components/breakdown";
 import { LonsamhetBridge } from "./_components/bridge";
 import { LonsamhetKpis } from "./_components/kpis";
+import { ResultAfterProfitPanel } from "./_components/result";
 import { TableSection, TrendSection } from "./_components/sections";
 import { buildLonsamhetModel, type TrendKey, type ViewKey } from "./_lib/model";
+import { resultAfterProfit } from "./_lib/result";
 import {
   canonicalLonsamhetQuery,
   parseTitleParam,
@@ -40,8 +43,10 @@ function allHistoryHref(sp: SearchParams): string {
 const SECTION = "flex scroll-mt-28 flex-col gap-10 border-t border-line py-12 md:gap-12 md:py-16";
 
 /**
- * Lönsamhet: vad tjänar vi, och var? Vattenfall från intäkt till vinst, tabell per titel,
- * automat och butik, utveckling per vecka eller månad och order utan inköpspris.
+ * Lönsamhet: vad tjänar vi, och var? Vattenfall från intäkt till vinst, och under det
+ * återbetalningar och fasta kostnader som egna rader (resultat efter fasta kostnader),
+ * tabell per titel, automat och butik, utveckling per vecka eller månad och order utan
+ * inköpspris.
  *
  * Ägare, admin och läsare. Påfyllaren skickas till sin startsida av requireRoute och
  * får aldrig någon ekonomi (loadDomainInput kontrollerar rollen igen mot databasen).
@@ -83,6 +88,23 @@ export default async function LonsamhetPage({
     },
     { today: ctx.today, carry: carriedQuery(sp).replace(/^\?/, ""), lastOrderDate },
   );
+
+  // Efter vinsten: återbetalningar och fasta kostnader. Fördelningen av de fasta kostnaderna
+  // räknas på hela organisationen även med automatfilter (annars fick automaten alla).
+  const [adjustments, organization] = await Promise.all([
+    loadProfitAdjustments(p.period),
+    p.scope.machineId || p.scope.storeId
+      ? loadDomainInput({ period: p.period })
+      : Promise.resolve(input),
+  ]);
+  const result = resultAfterProfit({
+    current: input.current,
+    organization: organization.current,
+    refunds: adjustments.refunds,
+    fixedCosts: adjustments.fixedCosts,
+    scope: p.scope,
+    machines: input.machines.map((m) => ({ id: m.id, name: m.code || m.name })),
+  });
 
   const selectedTitle = parseTitleParam(sp.titel);
   const initialView: ViewKey = parseViewParam(sp.vy) ?? "title";
@@ -143,19 +165,20 @@ export default async function LonsamhetPage({
               title="Från intäkt till vinst."
               aside={
                 b.revenueOre > 0
-                  ? `${b.unpricedRevenueOre > 0 ? "Intäkten med inköpspris, " : ""}${formatSek(b.revenueOre / 100)}${b.unpricedRevenueOre > 0 ? "," : ""} blev ${formatSek(b.profitOre / 100)} efter inköp, avgifter och butiksersättning${
+                  ? `${b.unpricedRevenueOre > 0 ? "Intäkten med inköpspris, " : ""}${formatSek(b.revenueOre / 100)}${b.unpricedRevenueOre > 0 ? "," : ""} blev ${formatSek(b.profitOre / 100)} efter ${b.feesOre !== 0 ? "inköp, avgifter och" : "inköp och"} butiksersättning${
                       b.marginBp === null ? "" : ` (${formatPercent(b.marginBp / 10_000)})`
                     }.`
                   : "Ingen order med inköpspris i perioden."
               }
             />
             <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
-              <Panel grid marks className="lg:col-span-7">
+              <Panel grid marks className="lg:col-span-7 lg:self-start">
                 <LonsamhetBridge bridge={b} />
               </Panel>
               <Panel className="flex flex-col lg:col-span-5">
                 <UnpricedSummary unpriced={model.unpriced} />
                 <CompensationBreakdown bridge={b} />
+                <ResultAfterProfitPanel result={result} />
               </Panel>
             </div>
           </section>

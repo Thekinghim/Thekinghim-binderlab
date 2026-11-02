@@ -113,7 +113,7 @@ describe("onboardingStatus: status per steg", () => {
       organisation: "done",
       butik: "todo",
       avtal: "waiting",
-      automat: "todo",
+      automat: "waiting",
       datakalla: "todo",
       import: "waiting",
       inkopspriser: "waiting",
@@ -139,7 +139,12 @@ describe("onboardingStatus: status per steg", () => {
     expect(step(s, "automat").detail).toBe("1 automat, 1 placerad i en butik.");
     expect(step(s, "import").detail).toBe("2 order från 1 import.");
     expect(step(s, "avtal").action?.href).toBe(`/butiker/${ops.storeId}#ersattning`);
-    expect(s.coverage).toEqual({ revenueOre: 16_800, pricedRevenueOre: 0, pricedShareBp: 0 });
+    expect(s.coverage).toEqual({
+      revenueOre: 16_800,
+      pricedRevenueOre: 0,
+      pricedShareBp: 0,
+      untitledRevenueOre: 0,
+    });
   });
 
   it("pris för en av två titlar (47 %) räcker inte; med båda är panelen klar", async () => {
@@ -190,6 +195,133 @@ describe("onboardingStatus: status per steg", () => {
     expect(step(s, "inkopspriser").state).toBe("waiting");
   });
 
+  it("automat utan placering är inte klar, och panelen är då inte klar", async () => {
+    const { owner, orgId } = await newOwnerOrg();
+    const ops = await seedOperations(owner, orgId);
+    await asUser(owner, (tx) =>
+      tx.execute(
+        sql`insert into public.purchase_prices (organization_id, title_id, unit_cost_ore, valid_from)
+            values (${orgId}, ${ops.titleA}, 4500, '2025-01-01'),
+                   (${orgId}, ${ops.titleB}, 5200, '2025-01-01')`,
+      ),
+    );
+    expect((await loadOnboardingStatusFor(session(owner), orgId, NOW)).complete).toBe(true);
+
+    // Placeringen avslutas: automaten står inte längre i någon butik.
+    await asUser(owner, (tx) =>
+      tx.execute(
+        sql`update public.machine_placements set valid_to = '2025-06-30'
+            where organization_id = ${orgId}`,
+      ),
+    );
+    const s = await loadOnboardingStatusFor(session(owner), orgId, NOW);
+    expect(step(s, "automat").state).toBe("todo");
+    expect(step(s, "automat").detail).toBe("1\u00a0automat, ingen placerad i en butik.");
+    expect(step(s, "automat").action).toEqual({
+      label: "Placera BL-001",
+      href: "/automater/bl-001",
+    });
+    expect(s.complete).toBe(false);
+    expect(s.next?.id).toBe("automat");
+  });
+
+  it("placering från ett senare datum räknas som placerad", async () => {
+    const { owner, orgId } = await newOwnerOrg();
+    await asUser(owner, async (tx) => {
+      const store = await one<{ id: string }>(
+        tx,
+        sql`insert into public.stores (organization_id, name) values (${orgId}, 'Ny butik') returning id`,
+      );
+      const machine = await one<{ id: string }>(
+        tx,
+        sql`insert into public.machines (organization_id, code, name)
+            values (${orgId}, 'BL-200', 'Ny automat') returning id`,
+      );
+      await tx.execute(
+        sql`insert into public.machine_placements (organization_id, machine_id, store_id, valid_from)
+            values (${orgId}, ${machine.id}, ${store.id}, current_date + 30)`,
+      );
+    });
+    const s = await loadOnboardingStatusFor(session(owner), orgId, NOW);
+    expect(step(s, "automat").state).toBe("done");
+  });
+
+  it("utgångna avtal, avtal i arkiverade butiker och importer från arkiverade källor räknas inte", async () => {
+    const { owner, orgId } = await newOwnerOrg();
+    const ops = await seedOperations(owner, orgId);
+    await asUser(owner, (tx) =>
+      tx.execute(
+        sql`insert into public.store_agreements (organization_id, store_id, valid_from, valid_to,
+              commission_bp)
+            values (${orgId}, ${ops.storeId}, '2024-01-01', '2024-12-31', 1000)`,
+      ),
+    );
+    const expired = await loadOnboardingStatusFor(session(owner), orgId, NOW);
+    expect(step(expired, "avtal").state).toBe("todo");
+    expect(step(expired, "avtal").action?.href).toBe(`/butiker/${ops.storeId}#ersattning`);
+
+    // Ett gällande avtal i en butik som sedan arkiveras.
+    const other = await asUser(owner, async (tx) => {
+      const store = await one<{ id: string }>(
+        tx,
+        sql`insert into public.stores (organization_id, name) values (${orgId}, 'Stängs') returning id`,
+      );
+      await tx.execute(
+        sql`insert into public.store_agreements (organization_id, store_id, valid_from, commission_bp)
+            values (${orgId}, ${store.id}, '2025-01-01', 1000)`,
+      );
+      return store.id;
+    });
+    expect(step(await loadOnboardingStatusFor(session(owner), orgId, NOW), "avtal").state).toBe(
+      "done",
+    );
+    await asUser(owner, (tx) =>
+      tx.execute(sql`update public.stores set archived_at = now() where id = ${other}`),
+    );
+    expect(step(await loadOnboardingStatusFor(session(owner), orgId, NOW), "avtal").state).toBe(
+      "todo",
+    );
+
+    // Datakällan arkiveras: importen från den räknas inte heller.
+    await asUser(owner, (tx) =>
+      tx.execute(
+        sql`update public.data_sources set archived_at = now() where organization_id = ${orgId}`,
+      ),
+    );
+    const s = await loadOnboardingStatusFor(session(owner), orgId, NOW);
+    expect(step(s, "datakalla").state).toBe("todo");
+    expect(step(s, "import").state).toBe("waiting");
+  });
+
+  it("order utan titel räknas som utan pris och står i stegets text", async () => {
+    const { owner, orgId } = await newOwnerOrg();
+    const ops = await seedOperations(owner, orgId);
+    await asUser(owner, async (tx) => {
+      await tx.execute(
+        sql`insert into public.purchase_prices (organization_id, title_id, unit_cost_ore, valid_from)
+            values (${orgId}, ${ops.titleA}, 4500, '2025-01-01'),
+                   (${orgId}, ${ops.titleB}, 5200, '2025-01-01')`,
+      );
+      const ref = await one<{ data_source_id: string; machine_id: string; import_id: string }>(
+        tx,
+        sql`select data_source_id, machine_id, import_id from public.orders
+            where organization_id = ${orgId} limit 1`,
+      );
+      await tx.execute(
+        sql`insert into public.orders (organization_id, data_source_id, external_id, raw_title,
+              title_id, ordered_at, amount_ore, payment_method, machine_id, import_id, source_hash)
+            values (${orgId}, ${ref.data_source_id}, '3', 'Okänd booster', null,
+              '2025-03-12T10:00:00Z', 8900, 'card', ${ref.machine_id}, ${ref.import_id}, 'h3')`,
+      );
+    });
+    const s = await loadOnboardingStatusFor(session(owner), orgId, NOW);
+    // 16 800 med pris av 25 700 (65,3 %); 8 900 utan titel.
+    expect(s.coverage.untitledRevenueOre).toBe(8_900);
+    expect(step(s, "inkopspriser").state).toBe("todo");
+    expect(step(s, "inkopspriser").detail).toContain("är order utan tolkad titel");
+    expect(step(s, "inkopspriser").action?.href).toBe("/inkopspriser?saknar=pris&period=allt");
+  });
+
   it("arkiverade butiker och automater räknas inte", async () => {
     const { owner, orgId } = await newOwnerOrg();
     await asUser(owner, (tx) =>
@@ -234,7 +366,11 @@ describe("onboardingStatus: tid per steg", () => {
         sql`update public.stores set created_at = ${plus(5)} where organization_id = ${orgId}`,
       );
       await tx.execute(
-        sql`update public.machines set created_at = ${plus(12)} where organization_id = ${orgId}`,
+        sql`update public.machines set created_at = ${plus(10)} where organization_id = ${orgId}`,
+      );
+      await tx.execute(
+        sql`update public.machine_placements set created_at = ${plus(12)}
+            where organization_id = ${orgId}`,
       );
       await tx.execute(
         sql`update public.data_sources set created_at = ${plus(20)} where organization_id = ${orgId}`,
@@ -261,12 +397,14 @@ describe("onboardingStatus: tid per steg", () => {
     const s = await loadOnboardingStatusFor(session(owner), orgId, NOW);
     expect(s.startedAt).toBe(plus(0));
     expect(step(s, "butik").sinceStartMs).toBe(5 * 60_000);
+    // Automaten är klar när den står i butiken (placeringen), inte när den lades till.
     expect(step(s, "automat").sinceStartMs).toBe(12 * 60_000);
     expect(step(s, "datakalla").sinceStartMs).toBe(20 * 60_000);
     expect(step(s, "import").doneAt).toBe(plus(30));
     expect(step(s, "inkopspriser").doneAt).toBe(plus(45));
     expect(s.complete).toBe(true);
     expect(s.elapsedMs).toBe(45 * 60_000);
+    expect(s.loadedAtOnce).toBe(false);
   });
 
   it("pågående onboarding: tiden räknas till nu", async () => {

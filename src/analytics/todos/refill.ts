@@ -11,7 +11,9 @@
  * Väntat slutdatum = i går + tak(räcker), domänens `stockoutDate` med asOf = i går.
  *
  * Titlar utan försäljning i fönstret flaggas inte (takten är 0). Dagens försäljning ingår
- * inte i takten (dagen är inte slut) men har redan dragits från lagret.
+ * inte i takten (dagen är inte slut) men har redan dragits från lagret. En titel som har
+ * gått ur sortimentet i automaten (`input.slotPeriods`, ./assortment.ts) fylls inte på och
+ * flaggas inte, som på Lager och i besöksplanen.
  */
 
 import {
@@ -24,6 +26,7 @@ import {
   salesVelocity,
   stockoutDate,
 } from "@/domain";
+import { assortmentKey, retiredPairs } from "./assortment";
 import { evidence, isMachineActive, links } from "./common";
 import { HORIZON_DAYS, urgencyOf, type TodoContext } from "./context";
 import { day, kr, plural, ratioTenths, sentence, tenths } from "./text";
@@ -62,10 +65,12 @@ export function refillTodos(ctx: TodoContext): TodoItem[] {
     else byPair.set(k, [o]);
   }
 
+  const retired = retiredPairs(input.slotPeriods ?? [], today);
   const out: TodoItem[] = [];
   for (const s of input.stock) {
     const machine = machines.get(s.machineId);
     if (!machine || !isMachineActive(machine, today)) continue;
+    if (retired.has(assortmentKey(s.machineId, s.titleId))) continue;
     const orders = byPair.get(`${s.machineId}\u0000${s.titleId}`) ?? [];
     const v = salesVelocity(dailyUnits(orders), {
       asOf,

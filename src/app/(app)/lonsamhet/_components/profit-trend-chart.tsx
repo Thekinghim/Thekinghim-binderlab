@@ -14,7 +14,7 @@ import {
   Readout,
 } from "@/components/charts/primitives";
 import { formatInt, formatPercent, MISSING } from "@/lib/format";
-import { useMeasure } from "@/lib/hooks/use-measure";
+import { svgSizeProps, unmeasuredStyle, useMeasure } from "@/lib/hooks/use-measure";
 
 export type TrendDatum = {
   /** Kort etikett på axeln, t.ex. "V42" eller "okt.". */
@@ -60,7 +60,7 @@ const CH_MONO = 6.8;
  * Tangentbord: ett tabbstopp, ← → flyttar läsrutan, Home/End till ändarna.
  */
 export function ProfitTrendChart({ data, format, summary, height = 320 }: Props) {
-  const [ref, width] = useMeasure<HTMLDivElement>();
+  const [ref, width, measured] = useMeasure<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
   const uid = useId().replace(/:/g, "");
   const hatchId = `${uid}-h`;
@@ -183,10 +183,13 @@ export function ProfitTrendChart({ data, format, summary, height = 320 }: Props)
 
   return (
     <ChartFigure summary={summary}>
-      <div ref={ref} className="relative w-full" style={{ height: total }}>
+      <div
+        ref={ref}
+        className="relative w-full"
+        style={{ height: total, ...unmeasuredStyle(measured) }}
+      >
         <svg
-          width={width}
-          height={total}
+          {...svgSizeProps(width, total, measured)}
           className="absolute top-0 left-0 block overflow-visible focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-solid"
           tabIndex={0}
           role="img"

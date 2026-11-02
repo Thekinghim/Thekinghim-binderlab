@@ -18,6 +18,40 @@ function code(c: string): string {
   return c.replace(/-/g, "‑");
 }
 
+/** Butikens status: åtgärd (med text för skärmläsare), arkiverad, avtal eller inget avtal. */
+function StoreStatus({ row: r }: { row: StoreRow }) {
+  return r.issue ? (
+    <span className="flex flex-col items-start">
+      <StatusTag status={r.issue.level === "neutral" ? "warning" : r.issue.level}>
+        {r.issue.short}
+      </StatusTag>
+      <span className="sr-only">Kräver åtgärd: {r.issue.text}</span>
+    </span>
+  ) : r.archived ? (
+    <StatusTag status="offline">Arkiverad</StatusTag>
+  ) : r.current ? (
+    <StatusTag status="ok">Avtal gäller</StatusTag>
+  ) : (
+    <StatusTag status="neutral">Inget avtal</StatusTag>
+  );
+}
+
+const SHORT_MONTH: Record<string, string> = {
+  januari: "jan.",
+  februari: "feb.",
+  augusti: "aug.",
+  september: "sep.",
+  oktober: "okt.",
+  november: "nov.",
+  december: "dec.",
+  april: "apr.",
+};
+
+/** "november" → "nov." (mars, maj, juni och juli står kvar). */
+export function shortMonth(month: string): string {
+  return SHORT_MONTH[month] ?? month;
+}
+
 function columns(monthLabel: string): Column<StoreRow>[] {
   return [
     {
@@ -27,12 +61,24 @@ function columns(monthLabel: string): Column<StoreRow>[] {
       csv: (r) => r.name,
       hideable: false,
       render: (r) => (
-        <Link href={r.href} className="flex min-w-0 flex-col rounded-xs py-1 hover:text-fg">
+        // max-w: platsen kortas med ellips i stället för att göra kolumnen bredare (hela
+        // adressen står i title och på butikens sida).
+        <Link
+          href={r.href}
+          className="flex max-w-56 min-w-0 flex-col rounded-xs py-1 hover:text-fg md:max-w-52"
+        >
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="font-medium text-fg">{r.name}</span>
             {r.isExample ? <StatusTag status="neutral">Exempel</StatusTag> : null}
           </span>
-          {r.place ? <span className="truncate text-sm text-muted">{r.place}</span> : null}
+          {r.place ? (
+            <span className="truncate text-sm text-muted" title={r.place}>
+              {r.place}
+            </span>
+          ) : null}
+          <span className="mt-1 md:hidden">
+            <StoreStatus row={r} />
+          </span>
         </Link>
       ),
     },
@@ -52,31 +98,23 @@ function columns(monthLabel: string): Column<StoreRow>[] {
       csv: (r) =>
         r.issue?.short ?? (r.archived ? "Arkiverad" : r.current ? "Avtal gäller" : "Inget avtal"),
       hideable: false,
-      render: (r) =>
-        r.issue ? (
-          <span className="flex flex-col items-start">
-            <StatusTag status={r.issue.level === "neutral" ? "warning" : r.issue.level}>
-              {r.issue.short}
-            </StatusTag>
-            <span className="sr-only">Kräver åtgärd: {r.issue.text}</span>
-          </span>
-        ) : r.archived ? (
-          <StatusTag status="offline">Arkiverad</StatusTag>
-        ) : r.current ? (
-          <StatusTag status="ok">Avtal gäller</StatusTag>
-        ) : (
-          <StatusTag status="neutral">Inget avtal</StatusTag>
-        ),
+      // Under md står statusen under namnet i första kolumnen (MachineCell på /design),
+      // så att beloppen ryms utan sidledsscroll.
+      hideOnMobile: true,
+      render: (r) => <StoreStatus row={r} />,
     },
     {
       key: "terms",
-      header: "Ersättningsmodell",
+      // "Avtal" i rubriken: villkoren i avtalet, kortare än "Ersättningsmodell".
+      header: "Avtal",
       sortValue: (r) => r.current?.termsLabel ?? "",
       csv: (r) => r.current?.termsLabel ?? "",
       hideOnMobile: true,
       render: (r) =>
         r.current ? (
-          <span className="text-sm text-muted">{r.current.termsLabel}</span>
+          <span className="block max-w-44 text-sm whitespace-normal text-muted">
+            {r.current.termsLabel}
+          </span>
         ) : (
           <span className="text-sm text-subtle">{MISSING}</span>
         ),
@@ -86,10 +124,17 @@ function columns(monthLabel: string): Column<StoreRow>[] {
       header: "Automater",
       sortValue: (r) => r.machineCodes.length,
       csv: (r) => r.machineCodes.join(" "),
-      hideOnMobile: true,
+      // Bara från 1 400 px: under det ryms beloppen utan sidledsscroll. Koderna står
+      // på butikens sida.
+      className: "hidden min-[1400px]:table-cell",
       render: (r) =>
+        // En kod per rad: kolumnen blir smal nog för att tabellen ska rymmas vid 1 440 px.
         r.machineCodes.length > 0 ? (
-          <span className="meta text-muted">{r.machineCodes.map(code).join(" · ")}</span>
+          <span className="meta flex flex-col text-muted">
+            {r.machineCodes.map((c) => (
+              <span key={c}>{code(c)}</span>
+            ))}
+          </span>
         ) : (
           <span className="text-sm text-subtle">{MISSING}</span>
         ),
@@ -131,8 +176,12 @@ function columns(monthLabel: string): Column<StoreRow>[] {
     },
     {
       key: "earned",
-      header: `Intjänat ${monthLabel}`,
+      // Kort månad i rubriken ("Intjänat nov."), så att kolumnen inte breddar tabellen.
+      header: `Intjänat ${shortMonth(monthLabel)}`,
       numeric: true,
+      // Månadens ersättning står i nyckeltalen och på butikens sida; under md får
+      // periodens intäkt plats bredvid butiken utan sidledsscroll.
+      hideOnMobile: true,
       sortValue: (r) => r.earnedMonthOre,
       csv: (r) => r.earnedMonthOre / 100,
       render: (r) => sek(r.earnedMonthOre),
@@ -153,6 +202,7 @@ export function StoreTable({
   const cols = useMemo(() => columns(monthLabel), [monthLabel]);
   return (
     <DataTable
+      surface="bg"
       columns={cols}
       rows={rows}
       rowKey={(r) => r.id}

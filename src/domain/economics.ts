@@ -78,6 +78,20 @@ export function assertOrder(order: OrderLine): void {
   assertNonNegativeInteger(order.amountOre, `Beloppet för order ${order.externalId ?? order.id}`);
 }
 
+/** Orderlistor där varje order redan är kontrollerad (antal order när de kontrollerades). */
+const checkedOrderLists = new WeakMap<readonly OrderLine[], number>();
+
+/**
+ * assertOrder för varje order i listan (första felet kastas). En lista som redan är
+ * kontrollerad (samma objekt, lika många order) kontrolleras inte igen: samma order
+ * summeras ofta i flera nyckeltal och vyer under en sidladdning.
+ */
+export function assertOrders(orders: readonly OrderLine[]): void {
+  if (checkedOrderLists.get(orders) === orders.length) return;
+  for (const order of orders) assertOrder(order);
+  checkedOrderLists.set(orders, orders.length);
+}
+
 /** Bygger uppslagen och kontrollerar indata (överlapp, dubbletter, ogiltiga värden). */
 export function createEconomicsContext(sources: EconomicsSources): EconomicsContext {
   assertSettings(sources.settings);

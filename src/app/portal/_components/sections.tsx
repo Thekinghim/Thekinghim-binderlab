@@ -1,7 +1,7 @@
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatInt } from "@/lib/format";
-import type { CompensationStep, StoreReport } from "@/reports";
+import type { CompensationStep, StoreReport, StoreWeek } from "@/reports";
 import { visibleSteps } from "@/server/portal/model";
 
 import { EvidenceDetails } from "./evidence";
@@ -26,19 +26,50 @@ export function TitlesHeader({ report }: { report: StoreReport }) {
   );
 }
 
-export function WeeksBlock({ report }: { report: StoreReport }) {
-  const withSales = report.weeks.filter((w) => w.orders > 0);
-  const best = withSales.reduce<(typeof report.weeks)[number] | null>(
-    (b, w) => (b === null || w.revenueOre > b.revenueOre ? w : b),
-    null,
-  );
+/**
+ * Försäljning per vecka. Med `today` (pågående månad) visas kommande veckor med
+ * "–" i stället för 0, och "Bästa veckan" först när minst två hela veckor är slut.
+ */
+export function WeeksBlock({ report, today }: { report: StoreReport; today?: string }) {
+  const isFuture = (w: StoreWeek) => today !== undefined && w.range.start > today;
+  const isOver = (w: StoreWeek) => today === undefined || w.range.end < today;
+  const whole = report.weeks.filter((w) => !w.partial && isOver(w));
+  const best =
+    whole.length >= 2
+      ? whole.reduce<StoreWeek | null>(
+          (b, w) => (b === null || w.revenueOre > b.revenueOre ? w : b),
+          null,
+        )
+      : today === undefined
+        ? report.weeks.reduce<StoreWeek | null>(
+            (b, w) => (w.orders > 0 && (b === null || w.revenueOre > b.revenueOre) ? w : b),
+            null,
+          )
+        : null;
+  const current =
+    today !== undefined
+      ? report.weeks.find((w) => w.range.start <= today && w.range.end >= today)
+      : undefined;
+  // Har veckan som pågår inte sålt än, säger den senaste veckan med försäljning mer.
+  const latest =
+    current && current.orders === 0
+      ? report.weeks.filter((w) => w.range.end < current.range.start && w.orders > 0).at(-1)
+      : undefined;
   return (
     <>
       <SectionHeader
         index="03.2"
         eyebrow="Per vecka"
-        title={best ? `Bästa veckan: ${best.label}.` : "Försäljning per vecka."}
-        aside={best ? `${kr(best.revenueOre)} på ${formatInt(best.orders)} pack.` : undefined}
+        title={best ? `Bästa veckan: ${nbsp(best.label)}.` : "Försäljning per vecka."}
+        aside={
+          best
+            ? `${kr(best.revenueOre)} på ${formatInt(best.orders)} pack.`
+            : latest
+              ? `${nbsp(latest.label)}: ${kr(latest.revenueOre)} på ${formatInt(latest.orders)} pack.`
+              : current
+                ? `Vecka ${current.week} pågår: ${kr(current.revenueOre)} på ${formatInt(current.orders)} pack hittills.`
+                : undefined
+        }
         size="md"
       />
       <table className="w-full text-base">
@@ -48,25 +79,38 @@ export function WeeksBlock({ report }: { report: StoreReport }) {
             <th scope="col" className="label h-9 text-left font-normal text-subtle">
               Vecka
             </th>
-            <th scope="col" className="label h-9 text-right font-normal text-subtle">
+            <th scope="col" className="label h-9 pl-3 text-right font-normal text-subtle">
               Pack
             </th>
-            <th scope="col" className="label h-9 text-right font-normal text-subtle">
+            <th scope="col" className="label h-9 pl-3 text-right font-normal text-subtle">
               Försäljning
             </th>
           </tr>
         </thead>
         <tbody>
-          {report.weeks.map((w) => (
-            <tr key={w.key} className="h-11 border-b border-line">
-              <th scope="row" className="text-left font-normal text-fg">
-                {w.label}
-                {w.partial ? <span className="meta text-subtle"> · del</span> : null}
-              </th>
-              <td className="tnum text-right text-muted">{formatInt(w.orders)}</td>
-              <td className="tnum text-right text-fg">{kr(w.revenueOre)}</td>
-            </tr>
-          ))}
+          {report.weeks.map((w) => {
+            const future = isFuture(w);
+            return (
+              <tr key={w.key} className="h-11 border-b border-line">
+                <th scope="row" className="text-left font-normal text-fg">
+                  {nbsp(w.label)}
+                  {future ? (
+                    <span className="meta text-subtle"> · kommer</span>
+                  ) : w === current ? (
+                    <span className="meta text-subtle"> · pågår</span>
+                  ) : w.partial ? (
+                    <span className="meta text-subtle"> · del</span>
+                  ) : null}
+                </th>
+                <td className="tnum pl-3 text-right text-muted">
+                  {future ? <span aria-label="Inte än">–</span> : formatInt(w.orders)}
+                </td>
+                <td className="tnum pl-3 text-right whitespace-nowrap text-fg">
+                  {future ? <span aria-label="Inte än">–</span> : kr(w.revenueOre)}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </>
@@ -156,6 +200,11 @@ export function CompensationSection({
       ) : null}
     </section>
   );
+}
+
+/** Etiketten utan radbrytning inne i "v. 44 (1 nov.)". */
+function nbsp(text: string): string {
+  return text.replace(/ /g, "\u00a0");
 }
 
 /** Meningen med exakt en avslutande punkt. */

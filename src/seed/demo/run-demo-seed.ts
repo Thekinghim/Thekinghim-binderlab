@@ -22,7 +22,8 @@
  * Demon är en EGEN organisation. Dess användare är bara medlemmar där, och
  * RLS hindrar att något blandas med den riktiga organisationen (se
  * test/db/demo-isolering.test.ts). resetDemo raderar demoorganisationen helt
- * (gallringsläget, bara för demons egna slug) så att den kan skapas på nytt.
+ * (gallringsläget) så att den kan skapas på nytt, men bara om spärren i guard.ts
+ * godkänner den: demons slug, skapad av demons ägare och bara demons användare.
  */
 
 import { sql, type SQL } from "drizzle-orm";
@@ -70,8 +71,9 @@ import {
 } from "./catalog";
 import { demoOrderFiles, demoPayoutFiles, planIncidents } from "./files";
 import { generateDemo, type DemoGeneration } from "./generate";
+import { DEMO_SLUGS, demoOrganizationProblem, type DemoOrganizationFacts } from "./guard";
 
-export const DEMO_SLUGS: readonly string[] = [DEMO_ORGANIZATION.slug, DEMO_ORGANIZATION_LARGE.slug];
+export { DEMO_SLUGS };
 
 export interface RunDemoSeedOptions {
   /** Lösenord för demoanvändarna (krävs när användarna skapas). */
@@ -208,26 +210,49 @@ async function ensureUser(
   return { id: created.id, email: user.email, fullName: user.fullName };
 }
 
+/**
+ * Det spärren (guard.ts) behöver veta om organisationen med sluggen. `lock`
+ * låser organisationsraden i den pågående transaktionen.
+ */
+async function demoOrganizationFacts(
+  executor: Db | Tx,
+  slug: string,
+  lock = false,
+): Promise<(DemoOrganizationFacts & { id: string }) | null> {
+  const org = await first<{ id: string; name: string; created_by_email: string | null }>(
+    executor,
+    lock
+      ? sql`select o.id, o.name, u.email as created_by_email
+            from public.organizations o left join auth.users u on u.id = o.created_by
+            where o.slug = ${slug} for update of o`
+      : sql`select o.id, o.name, u.email as created_by_email
+            from public.organizations o left join auth.users u on u.id = o.created_by
+            where o.slug = ${slug}`,
+  );
+  if (!org) {
+    return null;
+  }
+  const members = await rows<{ email: string | null; role: string }>(
+    executor,
+    sql`select u.email, m.role::text as role
+        from public.memberships m left join auth.users u on u.id = m.user_id
+        where m.organization_id = ${org.id}::uuid
+        order by u.email`,
+  );
+  return { id: org.id, slug, name: org.name, createdByEmail: org.created_by_email, members };
+}
+
 async function ensureOrganization(
   db: Db,
   org: { name: string; slug: string },
   owner: Actor,
   sections: Sections,
 ): Promise<string> {
-  const existing = await first<{ id: string }>(
-    db,
-    sql`select id from public.organizations where slug = ${org.slug}`,
-  );
+  const existing = await demoOrganizationFacts(db, org.slug);
   if (existing) {
-    const member = await first<{ role: string }>(
-      db,
-      sql`select role::text as role from public.memberships
-          where organization_id = ${existing.id}::uuid and user_id = ${owner.id}::uuid`,
-    );
-    if (member?.role !== "owner") {
-      throw new Error(
-        `Organisationen "${org.slug}" finns men ${owner.email} är inte ägare. Demon rör den inte.`,
-      );
+    const problem = demoOrganizationProblem(existing, { forReset: false });
+    if (problem) {
+      throw new Error(`Vägrar: ${problem}`);
     }
     sections.add("organization", false);
     return existing.id;
@@ -1155,7 +1180,10 @@ export async function runDemoSeed(db: Db, options: RunDemoSeedOptions): Promise<
 
 /**
  * Raderar demoorganisationen och allt i den (gallringsläget, som databasägare), så att
- * den kan seedas på nytt. Vägrar för allt utom demons egna slug. Användarna och de
+ * den kan seedas på nytt. Vägrar för allt som inte är demon enligt spärren i guard.ts:
+ * rätt slug och namn räcker inte, organisationen måste också vara skapad av demons
+ * ägare och bara ha demons användare som medlemmar (en kund som döper sin
+ * organisation till "Nordljus (demo)" får annars samma slug). Användarna och de
  * importerade filerna på disk lämnas kvar. Null om organisationen inte finns.
  */
 export async function resetDemo(
@@ -1165,16 +1193,17 @@ export async function resetDemo(
   if (!DEMO_SLUGS.includes(slug)) {
     throw new Error(`Vägrar: ${slug} är inte en demoorganisation.`);
   }
-  const org = await first<{ id: string; name: string }>(
-    db,
-    sql`select id, name from public.organizations where slug = ${slug}`,
-  );
-  if (!org) {
+  // Snabb kontroll utan lås (för ett tydligt fel innan något görs); samma
+  // kontroll görs igen med raden låst i raderingstransaktionen nedan.
+  const checked = await demoOrganizationFacts(db, slug);
+  if (!checked) {
     return null;
   }
-  if (!org.name.includes("(demo")) {
-    throw new Error(`Vägrar: ${org.name} ser inte ut som en demoorganisation.`);
+  const problem = demoOrganizationProblem(checked, { forReset: true });
+  if (problem) {
+    throw new Error(`Vägrar: ${problem}`);
   }
+  const org = { id: checked.id };
   // Tabellerna med organization_id och beroendena mellan dem (barn före förälder).
   const tables = (
     await rows<{ table_name: string }>(
@@ -1212,6 +1241,14 @@ export async function resetDemo(
   const deleteOrder = [...order.filter((t) => t !== "audit_log"), "audit_log"];
   const deleted: Record<string, number> = {};
   await db.transaction(async (tx) => {
+    const locked = await demoOrganizationFacts(tx, slug, true);
+    const lockedProblem =
+      locked && locked.id === org.id
+        ? demoOrganizationProblem(locked, { forReset: true })
+        : `${slug} ändrades under återställningen.`;
+    if (lockedProblem) {
+      throw new Error(`Vägrar: ${lockedProblem}`);
+    }
     await tx.execute(sql`select set_config('binderlab.allow_purge', 'on', true)`);
     for (const table of deleteOrder) {
       // Spärren "minst en ägare" gäller även gallringen; medlemskapen raderas därför

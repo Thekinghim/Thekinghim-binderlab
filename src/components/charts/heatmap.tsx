@@ -4,7 +4,7 @@ import { max as d3max } from "d3-array";
 import { scaleBand, scaleThreshold } from "d3-scale";
 import { useMemo, useState, type KeyboardEvent } from "react";
 import { formatInt } from "@/lib/format";
-import { useMeasure } from "@/lib/hooks/use-measure";
+import { svgSizeProps, unmeasuredStyle, useMeasure } from "@/lib/hooks/use-measure";
 import { niceThresholds } from "./axis";
 import { AxisText, ChartFigure, Readout } from "./primitives";
 
@@ -58,7 +58,7 @@ export function Heatmap({
   summary,
   cellHeight = 24,
 }: HeatmapProps) {
-  const [ref, width] = useMeasure<HTMLDivElement>();
+  const [ref, width, measured] = useMeasure<HTMLDivElement>();
   const [active, setActive] = useState<[number, number] | null>(null);
   const top = useMemo(() => d3max(values.flat()) ?? 1, [values]);
   const thresholds = useMemo(
@@ -136,10 +136,9 @@ export function Heatmap({
 
   return (
     <ChartFigure summary={summary}>
-      <div ref={ref} className="relative w-full" style={{ height }}>
+      <div ref={ref} className="relative w-full" style={{ height, ...unmeasuredStyle(measured) }}>
         <svg
-          width={width}
-          height={height}
+          {...svgSizeProps(width, height, measured)}
           className="absolute top-0 left-0 block overflow-visible focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-solid"
           role="img"
           tabIndex={0}

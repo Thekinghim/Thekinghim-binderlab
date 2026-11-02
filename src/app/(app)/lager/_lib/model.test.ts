@@ -13,8 +13,15 @@ import {
   statusTone,
   tenthsText,
 } from "./display";
-import { headlineOf, machineList, visitsText } from "./headline";
-import { buildLagerModel, planNow, salesAsOrders, warehouseStatus } from "./model";
+import {
+  headlineOf,
+  machineList,
+  packListAside,
+  visitsText,
+  visitsToday,
+  visitsTodayShort,
+} from "./headline";
+import { buildLagerModel, planNow, retiredPairs, salesAsOrders, warehouseStatus } from "./model";
 import type { LagerView, PackList } from "./types";
 
 const M1 = "00000000-0000-4000-8000-000000000001";
@@ -305,13 +312,62 @@ function packList(machineId: string, extra: Partial<PackList>): PackList {
   };
 }
 
+describe("utgångna titlar (sortimentet)", () => {
+  // Gammal titel (T3) gick ur sortimentet i BL-002 den 31 juli; Black Bolt (T1) gäller i BL-001.
+  const periods = [
+    { machineId: M2, titleId: T3, validFrom: "2026-02-01", validTo: "2026-07-31" },
+    { machineId: M1, titleId: T1, validFrom: "2026-02-01", validTo: null },
+    { machineId: M1, titleId: T2, validFrom: "2026-02-01", validTo: "2026-05-31" },
+    { machineId: M1, titleId: T2, validFrom: "2026-12-01", validTo: null },
+  ];
+  const withSlots = (extraStock: StockRow[] = []) =>
+    buildLagerModel({
+      now: NOW,
+      timeZone: "Europe/Stockholm",
+      today: TODAY,
+      master,
+      stock: [...stock, ...extraStock],
+      sales,
+      scope: { storeId: null, machineId: null },
+      hasCentral: true,
+      slotPeriods: periods,
+    });
+
+  it("räknar ett par som utgånget bara när ingen period gäller i dag eller senare", () => {
+    const r = retiredPairs(periods, TODAY);
+    expect(r.size).toBe(1);
+    expect([...r][0]).toContain(T3);
+    // Sista dagen räknas fortfarande som i sortimentet.
+    expect(retiredPairs([{ ...periods[0]!, validTo: TODAY }], TODAY).size).toBe(0);
+  });
+
+  it("visar inte en titel som gått ur sortimentet överallt och inte finns kvar", () => {
+    const model = withSlots();
+    expect(model.titles.map((t) => t.id)).not.toContain(T3);
+    expect(model.retiredTitles).toEqual([{ id: T3, name: "Gammal titel" }]);
+    // Den tomma platsen för Gammal titel räknas inte som Kritisk längre.
+    expect(model.counts).toEqual({ critical: 1, low: 1, ok: 1 });
+    const h = headlineOf(viewOf(model));
+    expect(h.title).toBe("1 plats kritisk, 1 låg.");
+  });
+
+  it("visar en utgången titel med pack kvar, men utan status och påfyllning", () => {
+    const model = withSlots([row(M1, T3, 3)]);
+    const cell = cellOf(model, M2, T3);
+    expect(cell).toMatchObject({ retired: true, status: "ok", suggested: 0 });
+    expect(cellOf(model, M1, T3)).toMatchObject({ retired: false });
+    expect(model.retiredTitles).toEqual([]);
+  });
+});
+
 describe("headlineOf", () => {
   it("svarar med antal kritiska och låga, det mest brådskande och dagens besök", () => {
     const h = headlineOf(viewOf(build()));
     expect(h.title).toBe("2 platser kritiska, 1 låg.");
-    expect(h.aside).toBe(
-      `Black Bolt i ${codeText("BL-001")} är slut. 10${NBSP}pack till ${codeText("BL-001")} i dag.`,
-    );
+    // Högst två meningar: dagens besök står i sidhuvudets fakta (visitsToday).
+    // Automatens namn i meningen (som Att göra och Prognos); koden står i tabellen.
+    expect(h.aside).toBe("Black Bolt i Automat 1 är slut.");
+    expect(visitsToday(viewOf(build()))).toBe(`10${NBSP}pack till ${codeText("BL-001")}`);
   });
 
   it("räknar bara automater som ska besökas i dag, och nämner nästa besöksdag", () => {
@@ -330,16 +386,36 @@ describe("headlineOf", () => {
       ],
     };
     expect(visitsText(view)).toBe(
-      `16${NBSP}pack till ${codeText("BL-003")} i dag. ${codeText("BL-001")} och ${codeText("BL-002")} i morgon.`,
+      `16${NBSP}pack till ${codeText("BL-003")} i dag, ${codeText("BL-001")} och ${codeText("BL-002")} i morgon.`,
     );
     const none = {
       ...view,
       packLists: view.packLists.map((p) => ({ ...p, dueToday: false, plannedDay: "2026-11-05" })),
     };
     expect(visitsText(none)).toBe(
-      `Inget besök behövs i dag. ${codeText("BL-001")}, ${codeText("BL-002")} och ${codeText("BL-003")} den 5${NBSP}nov.`,
+      `Inget besök behövs i dag, nästa besök ${codeText("BL-001")}, ${codeText("BL-002")} och ${codeText("BL-003")} den 5${NBSP}nov.`,
     );
     expect(machineList(["A", "B", "C", "D"])).toBe("4 automater");
+    // Kort form i sidhuvudets fakta: antal automater när fler än en ska besökas.
+    const two = {
+      ...view,
+      packLists: view.packLists.map((p) => ({ ...p, dueToday: true })),
+    };
+    expect(visitsTodayShort(two)).toBe(`57${NBSP}pack till 3 automater`);
+    expect(visitsTodayShort(view)).toBe(`16${NBSP}pack till ${codeText("BL-003")}`);
+  });
+});
+
+describe("packListAside", () => {
+  it("ger aldrig dubbel punkt efter en förkortning", () => {
+    expect(packListAside({ needBy: "2026-11-06", plannedDay: null }, TODAY)).toBe(
+      `Besök senast 6${NBSP}nov.`,
+    );
+    expect(packListAside({ needBy: "2026-11-06", plannedDay: "2026-11-03" }, TODAY)).toBe(
+      `Besök senast 6${NBSP}nov., planerat i morgon.`,
+    );
+    expect(packListAside({ needBy: TODAY, plannedDay: TODAY }, TODAY)).toBe("Besök senast i dag.");
+    expect(packListAside({ needBy: null, plannedDay: null }, TODAY)).toMatch(/^Ingen titel/);
   });
 });
 

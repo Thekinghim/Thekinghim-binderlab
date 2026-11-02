@@ -341,7 +341,7 @@ describe("Revision 4: titlar utan inköpspris", () => {
     const b = find(mp, "missing-price:tB");
     expect(b.level).toBe("soon");
     expect(b.atStakeOre).toBe(4_573);
-    expect(plain(b.detail)).toContain("Mystery Pack står för 36 % av intäkten");
+    expect(plain(b.detail)).toContain("Mystery Pack står för 36,4 % av intäkten");
     expect(plain(b.detail)).toContain("196 kr, 4 order");
     expect(b.link).toBe("/inkopspriser?titel=tB");
     expect(b.evidence.orderIds).toHaveLength(4);

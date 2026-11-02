@@ -22,6 +22,7 @@ export function InboxKpis({
   return (
     <KpiStrip
       label={`Ärenden · ${period}`}
+      headingLevel={2}
       items={[
         { id: "open", label: "Öppna ärenden", value: open, format: formatInt, primary: true },
         { id: "created", label: "Nya i perioden", value: created, format: formatInt },

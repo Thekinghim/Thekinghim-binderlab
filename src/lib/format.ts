@@ -9,7 +9,9 @@
  * - Äkta minustecken (U+2212): "−1 240 kr". Aldrig bindestreck.
  * - Tankstreck (U+2013) i intervall: "1–30 nov." utan mellanslag när
  *   ändarna är enkla, "3 okt. – 1 nov." med hårda mellanslag när
- *   ändarna själva innehåller mellanslag.
+ *   ändarna själva innehåller mellanslag. Efter tankstrecket står ordfogning
+ *   (U+2060, `WJ`): tankstrecket tillåter annars en radbrytning efter sig,
+ *   även före ett hårt mellanslag ("3 okt. –" / " 1 nov.").
  * - Värden som saknas eller inte är ändliga (NaN, ±Infinity, ogiltigt
  *   datum) visas som ett ensamt tankstreck: "–".
  *
@@ -30,6 +32,12 @@ import {
 export const NBSP = " ";
 export const MINUS = "−";
 export const EN_DASH = "–";
+/** Ordfogning (U+2060): osynlig, förbjuder radbrytning. Står efter tankstrecket i intervall. */
+export const WJ = "\u2060";
+/** Tankstreck i ett intervall med enkla ändar: "1–30". */
+export const RANGE_DASH = `${EN_DASH}${WJ}`;
+/** Tankstreck i ett intervall vars ändar har mellanslag: "3 okt. – 1 nov.". */
+export const SPACED_RANGE_DASH = `${NBSP}${EN_DASH}${WJ}${NBSP}`;
 /** Visas för saknade eller ogiltiga värden. */
 export const MISSING = EN_DASH;
 
@@ -77,10 +85,19 @@ function isValidDate(d: Date): boolean {
 // Tal
 // ---------------------------------------------------------------------------
 
+/**
+ * Avrundar till heltal med halva bort från noll (−384,5 → −385), som Intl och kronorna i
+ * @/domain. Math.round avrundar halva mot +∞ (−384,5 → −384), så att samma belopp med
+ * olika tecken kunde visas som 385 och −384 på samma rad.
+ */
+function roundInt(value: number): number {
+  return Math.sign(value) * Math.round(Math.abs(value));
+}
+
 /** 12 480 · −3 (avrundat heltal) */
 export function formatInt(value: number): string {
   if (!Number.isFinite(value)) return MISSING;
-  return num(Math.round(value), 0);
+  return num(roundInt(value), 0);
 }
 
 /** 1 234,57 med valfritt antal decimaler (standard 0). */
@@ -151,7 +168,7 @@ export function formatSignedKronor(value: number, options: KronorOptions = {}): 
 /** 12 480 kr (hela kronor, för tabeller och KPI:er). Motsvarar formatKronor(v, { decimals: 0 }). */
 export function formatSek(value: number): string {
   if (!Number.isFinite(value)) return MISSING;
-  return `${num(Math.round(value), 0)}${NBSP}kr`;
+  return `${num(roundInt(value), 0)}${NBSP}kr`;
 }
 
 /** Axlar och kompakta etiketter: 8 000 · 12 tkr · 31,1 tkr · 1,2 mkr */
@@ -169,7 +186,7 @@ export function formatSekAxis(value: number): string {
 /** Alltid i tkr: 2,9 tkr · 131,4 tkr */
 export function formatTkr(value: number): string {
   if (!Number.isFinite(value)) return MISSING;
-  const k = Math.round(value / 100) / 10;
+  const k = roundInt(value / 100) / 10;
   return `${Number.isInteger(k) ? formatInt(k) : formatDecimal(k)}${NBSP}tkr`;
 }
 
@@ -370,11 +387,15 @@ export function formatRelative(d: Date, now: Date = new Date()): string {
 // Perioder
 // ---------------------------------------------------------------------------
 
-/** Intervall: tätt tankstreck om ändarna saknar mellanslag, annars hårda mellanslag kring. */
-function range(a: string, b: string): string {
-  const spaced = /[\s ]/.test(a) || /[\s ]/.test(b);
-  return spaced ? `${a}${NBSP}${EN_DASH}${NBSP}${b}` : `${a}${EN_DASH}${b}`;
+/**
+ * Intervall: tätt tankstreck om ändarna saknar mellanslag, annars hårda mellanslag kring.
+ * Raden bryts aldrig vid tankstrecket (ordfogning efter det, se RANGE_DASH).
+ */
+export function formatRange(a: string, b: string): string {
+  const spaced = /[\s\u00a0\u202f]/.test(a) || /[\s\u00a0\u202f]/.test(b);
+  return spaced ? `${a}${SPACED_RANGE_DASH}${b}` : `${a}${RANGE_DASH}${b}`;
 }
+const range = formatRange;
 
 /**
  * Period med inklusivt slutdatum, alltid med år:
@@ -401,7 +422,7 @@ export function formatPeriod(period: Period): string {
       : range(formatMonth(start), formatMonth(end));
   }
   if (sy === ey && start.getMonth() === end.getMonth()) {
-    return `${start.getDate()}${EN_DASH}${end.getDate()}${NBSP}${monthShort(end)}${NBSP}${ey}`;
+    return `${start.getDate()}${RANGE_DASH}${end.getDate()}${NBSP}${monthShort(end)}${NBSP}${ey}`;
   }
   if (sy === ey) {
     return range(formatDate(start, { year: "never" }), formatDate(end, { year: "always" }));
@@ -426,7 +447,7 @@ export function formatPeriodShort(period: Period, now: Date = new Date()): strin
   if (isWholeYears({ start, end })) return sy === ey ? String(sy) : range(String(sy), String(ey));
   if (isFullMonth({ start, end })) return `${monthShort(start)}${yearSuffix}`;
   if (sy === ey && start.getMonth() === end.getMonth()) {
-    return `${start.getDate()}${EN_DASH}${end.getDate()}${NBSP}${monthShort(end)}${yearSuffix}`;
+    return `${start.getDate()}${RANGE_DASH}${end.getDate()}${NBSP}${monthShort(end)}${yearSuffix}`;
   }
   if (sy === ey) {
     return (

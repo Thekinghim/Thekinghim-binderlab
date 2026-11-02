@@ -11,12 +11,18 @@ Binderlab körs i tre miljöer. Koden är densamma; skillnaden är miljövariabl
 
 ## Lokal
 
-1. Starta Postgres (se `docs/bygglogg.md`) och kör `npm run db:reset -- dev`.
+1. Starta Postgres 16 på port 54322, till exempel i Docker enligt README ("Snabbstart lokalt").
 2. Kopiera `.env.example` till `.env.local` och sätt `DEV_AUTH_SECRET`
-   (`openssl rand -base64 48`).
+   (`openssl rand -base64 48`). `DATABASE_URL` och `DATABASE_URL_TEST` pekar redan på
+   `127.0.0.1:54322`. Kör sedan `npm run db:reset -- dev` (den läser `.env.local` och
+   avbryter med "DATABASE_URL saknas" om filen inte finns).
 3. Skapa en första användare: bjud in via en ägare, eller sätt ett lösenord direkt
    i `auth.users.encrypted_password` med `hashPassword()` från
    `src/server/auth/password.ts`.
+   Enklast är `npm run db:seed`: den skapar `agare@binderlab.local` (ägare) och
+   `delagare@binderlab.local` (läsare) med lösenordet i `DEV_SEED_PASSWORD` (standard
+   `binderlab-dev`) och importerar verksamhetens försäljning 13 okt.–1 nov. 2026.
+   `npm run db:seed-demo` lägger till demoorganisationen (`docs/demo.md`).
 
 Dev-inloggningen (`src/server/auth/dev-provider.ts`) har en hård spärr. Den
 kastar vid start om `APP_ENV` inte är `development`, om `NODE_ENV=production`
@@ -34,6 +40,7 @@ Tester:
 | `npm run test`           | Enhetstester                                                  |
 | `npm run test:db`        | Databastester; återställer `binderlab_test` vid varje körning |
 | `npm run test:domain:tz` | Beräkningarna under tre tidszoner                             |
+| `npm run test:e2e`       | Webbläsartester mot en egen server, se `docs/operations.md`   |
 
 ## Inloggning och behörighet i koden
 
@@ -64,6 +71,48 @@ per 15 minuter: 5 försök per IP och e-post, 20 per konto oavsett IP, och 5
 per IP för ogiltiga adresser. Försöket räknas innan lösenordet prövas, så
 parallella förfrågningar kommer inte förbi gränsen. Spärrade räknare tas
 aldrig bort i förtid. Gränsen räknas i minnet per serverinstans.
+
+Klientens IP för gränserna (`clientIp` i `src/server/request-info.ts`) är
+`x-vercel-forwarded-for`, annars `x-real-ip`, annars det SISTA värdet i
+`x-forwarded-for` (adressen som närmaste proxy lade till). Det första värdet
+skickar klienten själv och används aldrig. Körs appen bakom en annan proxy än
+Vercel ska den proxyn sätta `x-real-ip` eller lägga till klientens adress sist i
+`x-forwarded-for`.
+
+### Säkerhetshuvuden
+
+Alla svar får rubrikerna i `src/lib/security-headers.ts` (via `headers()` i
+`next.config.ts`):
+
+| Rubrik                       | Värde                                                                                                                                |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `Content-Security-Policy`    | `default-src 'self'`, skript bara från appen, `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, `frame-ancestors 'none'` |
+| `X-Frame-Options`            | `DENY` (äldre webbläsare)                                                                                                            |
+| `X-Content-Type-Options`     | `nosniff`                                                                                                                            |
+| `Referrer-Policy`            | `strict-origin-when-cross-origin` (inbjudningstoken och id:n i sökvägen lämnar inte appen)                                           |
+| `Permissions-Policy`         | kamera, mikrofon, plats, betalning, USB m.fl. avstängda                                                                              |
+| `Strict-Transport-Security`  | `max-age=63072000` (ignoreras över http lokalt)                                                                                      |
+| `Cross-Origin-Opener-Policy` | `same-origin`                                                                                                                        |
+
+- `X-Powered-By` är avstängt (`poweredByHeader: false`).
+- CSP:n har `'unsafe-inline'` för skript eftersom Next bäddar in RSC-data utan
+  nonce; `'unsafe-eval'` och `ws:` finns bara i development. Sentry i
+  webbläsaren tillåts mot ursprunget i `NEXT_PUBLIC_SENTRY_DSN` (bara https).
+- PDF:er som visas i webbläsaren (`/avtal/[id]/fil`, `/rapport/[id]/fil/[typ]`,
+  `/portal/rapporter/[id]/pdf`) får en smalare policy utan `object-src`, så att
+  webbläsarens PDF-visare fungerar. Inramning är förbjuden även där.
+- En ny extern tjänst i webbläsaren (bilder, typsnitt, API) kräver en ändring i
+  `contentSecurityPolicy()`; annars blockeras den.
+- `/design` och `/datamodell` kräver inloggning (de visar schemat och roll-/RLS-modellen).
+  Proxyn släpper bara förbi statiska filer i roten och under `/icons`.
+
+### Uppladdningar
+
+Server actions tar emot högst 21 MB (`serverActions.bodySizeLimit` och
+`proxyClientMaxBodySize` i `next.config.ts`): avtalsfiler är högst 20 MB och
+utbetalningsfiler högst 10 MB. Importen laddar upp i bitar om 768 KiB.
+**Vercel Functions tar emot högst 4,5 MB per förfrågan**, så på Vercel stoppas
+avtalsfiler över cirka 4,4 MB av plattformen innan appen ser dem.
 
 Supabase-sessionens cookies är `httpOnly`, `SameSite=Lax` och `Secure`
 utanför development. Appen har ingen webbläsarklient mot Supabase.
@@ -277,13 +326,11 @@ finns i `src/server/accounting` (tjänster, adaptrar, frågor) och beräkningarn
 - **Fasta kostnader**: `fixed_costs` (försäkring, programvara, transport, lager, övrigt),
   per månad, kvartal eller år, gemensamma eller per automat. Arkiveras i stället för att
   raderas; ändringar som påverkar en stängd månad stoppas (BL004) och loggas.
-  **Lönsamhet efter fasta kostnader** (för sidan Lönsamhet, som ägs av annan): anropa
-  `profitabilityWithFixedCosts({ ...input.current, fixedCosts, machines }, "revenue")`
-  från `@/analytics/cashflow` med perioden från `loadDomainInput` och de fasta
-  kostnaderna (`fixed_costs` som inte är arkiverade, mappade som i
-  `src/server/accounting/service.ts`, `toFixedCost`). Resultatet har en rad per automat
-  med `profitOre`, `fixedCostOre` och `profitAfterFixedOre`, och totalen. Ekonomi visar
-  totalen redan.
+  **Lönsamhet efter fasta kostnader**: sidan Lönsamhet visar under vattenfallet
+  återbetalningar och fasta kostnader som egna rader och resultatet efter dem
+  (`src/app/(app)/lonsamhet/_lib/result.ts`, `profitabilityWithFixedCosts` med fördelning
+  efter intäkt; laddas med `loadProfitAdjustments` i `src/server/data/adjustments.ts`). Se
+  docs/berakningar.md avsnitt 17.
 - **Avtal**: `contracts` har fått rubrik, villkor, förlängning, uppsägningstid i månader,
   uppsägningsdag och uppgifter om avtalsfilen. Villkoren för ersättningen är
   `store_agreements` kopplade med `contract_id` (bara samma butik, BL041). Filen sparas
@@ -298,8 +345,8 @@ finns i `src/server/accounting` (tjänster, adaptrar, frågor) och beräkningarn
 - **Påminnelse i Att göra**: regeln finns i `@/analytics/contracts`
   (`contractReminders`): påminnelse 90 dagar före sista uppsägningsdag, nyckel
   `contract:{id}:{slut}`, fingerprint som ändras när status eller datum ändras. Att göra
-  (`computeTodos`, ägs av annan) behöver en punkttyp `contract` som tar `due` ur
-  resultatet; avtalen läses med `queryContracts` i `src/server/accounting/queries.ts`.
+  tar `due` ur resultatet som punkttypen `contract` (`src/analytics/todos/contracts.ts`);
+  avtalen läses i `loadTodosFor` (`queryActiveContracts`). Se docs/berakningar.md avsnitt 16.
 - **Tester**: `test/db/ekonomi.test.ts` (import, avstämning med avsiktliga avvikelser,
   utredning, återbetalningar, arkivering och ny import, fasta kostnader, verifikationer
   per utbetalning, nummerserie och leveranslogg, SIE, kassaflöde, avtal, filer, roller
@@ -346,14 +393,19 @@ CRON_SECRET=lokal-hemlighet-1234 npx next dev -p 3200   # eller lägg den i .env
 curl -H "Authorization: Bearer lokal-hemlighet-1234" http://localhost:3200/api/cron/larm
 ```
 
-Schemaläggning i drift (Vercel): lägg till i `vercel.json`
+Schemaläggning i drift (Vercel): båda jobben står i `vercel.json`.
 
-```json
-{ "crons": [{ "path": "/api/cron/larm", "schedule": "*/10 * * * *" }] }
-```
+| Route                 | Schema (UTC)   | Vad                                                    |
+| --------------------- | -------------- | ------------------------------------------------------ |
+| `/api/cron/larm`      | `*/10 * * * *` | Larmjobbet (var 10:e minut)                            |
+| `/api/cron/rapporter` | `17 5 1 * *`   | Månadsutkast för förra månaden (den 1:a kl. 05:17 UTC) |
 
-och sätt `CRON_SECRET` i projektets miljövariabler. Vercel Hobby kör cron högst en gång om
-dagen; var 10:e minut kräver Pro.
+Sätt `CRON_SECRET` (minst 16 tecken) i projektets miljövariabler för Production. Vercel
+skickar den som `Authorization: Bearer <CRON_SECRET>` till varje cron-route; utan den svarar
+båda routerna 503 och gör ingenting, och fel hemlighet ger 401. Vercel kör cron bara i
+Production, inte i förhandsversioner. Vercel Hobby kör cron högst en gång om dagen, så
+larmjobbet var 10:e minut kräver Pro (på Hobby avvisas `vercel.json` vid driftsättning; byt
+då larmets schema till en gång om dagen, t.ex. `7 6 * * *`).
 
 **Push** (Web Push): skapa nycklar med `npx web-push generate-vapid-keys` och sätt
 `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` och `VAPID_SUBJECT`. Varje användare slår på push per
@@ -466,6 +518,33 @@ Beställaren behöver för riktiga utskick:
    `REPORT_SIE_FIRST_NUMBER`).
 5. Testa ett riktigt utskick till egen adress i Outlook och Gmail före första utskicket.
 
+## Översikt: adaptrar och variabler
+
+Varje extern tjänst har en lokal ersättare. Tabellen samlar variablerna som väljer adapter (detaljerna står i
+avsnitten ovan och i `.env.example`; valideringen i `src/lib/env.ts` och i respektive adapter). Arkitekturen bakom
+står i `docs/architecture.md`.
+
+| Variabel              | Värden                                                      | Standard lokalt (`APP_ENV=development`) | Standard i preview och production              |
+| --------------------- | ----------------------------------------------------------- | --------------------------------------- | ---------------------------------------------- |
+| `AUTH_PROVIDER`       | `dev`, `supabase`                                           | `dev`                                   | `supabase` (`dev` vägras)                      |
+| `IMPORT_FILE_STORE`   | `local`, `supabase`                                         | `local` (`.data/imports`)               | `supabase` (bucket `imports`)                  |
+| `REPORT_STORAGE`      | `local`, `supabase`                                         | `local` (`.data/reports`)               | `supabase` (bucket `reports`)                  |
+| `CONTRACT_FILE_STORE` | `local`, `supabase`                                         | `local` med `AUTH_PROVIDER=dev`         | `supabase` (bucket `contracts`)                |
+| `MAIL_PROVIDER`       | `outbox`, `resend`                                          | `outbox` (`.data/outbox`)               | `outbox`: sätt `resend`                        |
+| `PDF_RENDERER`        | `local`, `sparticuz`, `off`                                 | `local`                                 | `sparticuz` på Vercel                          |
+| `PUSH_PROVIDER`       | `webpush`, `outbox`                                         | `outbox`                                | `webpush` när VAPID-nycklarna finns, annars av |
+| `SMS_PROVIDER`        | `outbox`, `off`                                             | `outbox`                                | `off` (ingen leverantör vald)                  |
+| `ASSISTANT_PROVIDER`  | `anthropic`, `local`                                        | `anthropic` (utan nyckel avstängd)      | `anthropic` (`local` vägras)                   |
+| `ACCOUNTING_PROVIDER` | `none`, `local`, `fortnox`, `visma_enet`, `bokio`           | `none`                                  | `none` (övriga inte byggda)                    |
+| `PAYOUT_SOURCE`       | `csv`, `awish_api`                                          | `csv`                                   | `csv` (`awish_api` kastar)                     |
+| `MARKET_PRICE_SOURCE` | `none`, `local`, `tcgplayer`, `cardmarket`, `pricecharting` | `none`                                  | `none` (`local` vägras i production)           |
+| `SENTRY_DSN`          | DSN                                                         | tomt (inget skickas)                    | sätt i Vercel                                  |
+| `CRON_SECRET`         | minst 16 tecken                                             | valfritt (cron svarar annars 503)       | krävs i Production                             |
+
+"Sätt" betyder att standardvärdet inte byts av sig självt: `MAIL_PROVIDER` är `outbox` även i production, så
+utan `MAIL_PROVIDER=resend` hamnar rapportmejlen i serverns utkorg i stället för hos mottagarna. Kontrollera den och
+VAPID-nycklarna (push) särskilt vid första driftsättningen.
+
 ## Det här måste beställaren göra
 
 1. **Supabase, två projekt.** Behåll det befintliga
@@ -504,9 +583,23 @@ Beställaren behöver för riktiga utskick:
 5. **Första migreringen.** Kör "Migrera databasen" mot `development` och sedan mot
    `production`.
 6. **Första ägaren.** Skapa ägarens användare i Supabase (Authentication → Users →
-   Invite). Logga sedan in och skapa organisationen. RPC:n `create_organization`
-   gör den inloggade till ägare.
-7. **Larm (Drift).** Sätt `CRON_SECRET` och schemalägg `/api/cron/larm` var 10:e minut
-   (`vercel.json`, se avsnittet Drift). Skapa VAPID-nycklar för push och sätt
+   Invite). Logga sedan in och skapa organisationen under Kom igång. RPC:n
+   `create_first_organization` gör den inloggade till ägare (och nekar ett konto som
+   redan är med i en organisation eller är ett butikskonto).
+7. **Larm (Drift).** Sätt `CRON_SECRET` i Vercel (Production). `/api/cron/larm` (var 10:e
+   minut, kräver Vercel Pro) och `/api/cron/rapporter` står redan i `vercel.json`, se
+   avsnittet Drift. Skapa VAPID-nycklar för push och sätt
    `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` och `VAPID_SUBJECT`. Välj en sms-leverantör om
    sms behövs (ingen är kopplad).
+8. **E-post för rapporter och larm (Resend).** Verifiera avsändardomänen i Resend och
+   sätt i Vercel (Preview och Production) `MAIL_PROVIDER=resend`, `RESEND_API_KEY` och
+   `MAIL_FROM` (till exempel `Binderlab <rapporter@binderlab.se>`), gärna också
+   `MAIL_REPLY_TO`. **Standardvärdet är `outbox` i alla miljöer, även production**
+   (`src/server/mail/report-mailer.ts`): utan steget skrivs rapport- och larmmejlen till
+   serverns disk och når aldrig butiker, bokhållare eller den som prenumererar på larm.
+   Inbjudningar och inloggningslänkar går via Supabase Auth och dess SMTP (steg 1).
+9. **Assistenten.** Skapa en nyckel i Claude Console → API Keys och sätt
+   `ANTHROPIC_API_KEY` i Vercel (hemlig, bara på servern), vid behov `ANTHROPIC_MODEL`.
+   Utan nyckel visar `/assistent` att den saknas och skickar ingenting. Frågorna och
+   verktygens resultat skickas till Anthropic, se `docs/operations.md`
+   (Personuppgifter och biträden) innan nyckeln sätts.

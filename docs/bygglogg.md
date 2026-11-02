@@ -1,81 +1,92 @@
 # Bygglogg
 
-Plan: [Binderlab – prompter till Claude Code](https://claude.ai/artifact/BmmkHvJAqJdoB4nDfJTwGe) (Claude Docs).
-Beställaren är borta. Arbetet går självständigt igenom planen tills alla faser är klara och avbockade.
-Kod: `claude/bygge` i Thekinghim/thekinghim-binderlab. `main` innehåller bara grunden tills beställaren slår ihop.
+Byggets logg: läget per fas i planen och vad som gjordes, i tidsordning. Koden byggdes på grenen `claude/bygge` och
+slås ihop med `main` efter varje avklarad fas när hela testsviten är grön. `main` är produktion (`docs/operations.md`).
+Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut från beställaren) och
+`docs/decisions.md`.
 
 ## Läge
 
-| Fas                                     | Status      | Anteckning                                                              |
-| --------------------------------------- | ----------- | ----------------------------------------------------------------------- |
-| 1 Designsystem                          | Klar        | Godkänd av beställaren                                                  |
-| 1b Granska och komplettera              | Pågår       | Granskning klar (31 punkter, `scratchpad/critique.json`); tillägg byggs |
-| 2 Data, säkerhet, inloggning, import    | Pågår       | Datamodell v2 godkänd; backend byggs; UI efter 1b                       |
-| 3 Skal, Hem, Att göra                   | Ej påbörjad |                                                                         |
-| 4 Lönsamhet, Inköpspriser               | Ej påbörjad | Beräkningar byggs i fas 2                                               |
-| 5 Order, Lager, Automater, Butiker      | Ej påbörjad |                                                                         |
-| 6 Rapporter                             | Ej påbörjad | Kräver e-postleverantör (Resend) för riktiga utskick                    |
-| 6b Intelligens                          | Ej påbörjad | Assistenten kräver Claude API-nyckel                                    |
-| 7 Kvalitet, drift, överlämning          | Ej påbörjad |                                                                         |
-| 8 Drift: maskinhälsa, larm, ärenden     | Ej påbörjad |                                                                         |
-| 9 Ekonomi: avstämning, bokföring, avtal | Ej påbörjad |                                                                         |
-| 10 Butiksportal, expansion              | Ej påbörjad |                                                                         |
-| 11 Marknadsintelligens                  | Ej påbörjad | Externa priskällor kopplas inte utan beställarens OK                    |
-| 12 Plattform                            | Väntar      | Enligt planen först när 2–3 pilotoperatörer finns                       |
+| Fas                                     | Status | Anteckning                                                                          |
+| --------------------------------------- | ------ | ----------------------------------------------------------------------------------- |
+| 1 Designsystem                          | Klar   | Godkänd av beställaren; `/design` och `docs/design.md`                              |
+| 1b Granska och komplettera              | Klar   | 31 granskningspunkter åtgärdade                                                     |
+| 2 Data, säkerhet, inloggning, import    | Klar   | Datamodell v2 med RLS, dev- och Supabase-inloggning, Awish-import (CSV)             |
+| 3 Skal, Hem, Att göra                   | Klar   |                                                                                     |
+| 4 Lönsamhet, Inköpspriser               | Klar   |                                                                                     |
+| 5 Order, Lager, Automater, Butiker      | Klar   |                                                                                     |
+| 6 Rapporter                             | Klar   | Riktiga utskick kräver Resend (`MAIL_PROVIDER=resend`)                              |
+| 6b Intelligens                          | Klar   | Assistenten kräver `ANTHROPIC_API_KEY`                                              |
+| 7 Kvalitet, drift, överlämning          | Klar   | Se `docs/review/fas-7/slutrapport.md`                                               |
+| 8 Drift: maskinhälsa, larm, ärenden     | Klar   | Maskinhälsan härleds ur försäljningen tills Awish maskindata finns                  |
+| 9 Ekonomi: avstämning, bokföring, avtal | Klar   | Bokföringsprogram (Fortnox, Visma, Bokio) har gränssnitt men ingen implementation   |
+| 10 Butiksportal, expansion              | Klar   |                                                                                     |
+| 11 Marknadsintelligens                  | Klar   | Ingen extern priskälla kopplad; beställaren väljer källa (`docs/marknadskallor.md`) |
+| 12 Plattform                            | Väntar | Enligt planen först när 2–3 pilotoperatörer finns (README, "Läge och kvarstående")  |
 
-## Arbetsregler
+## Arbetsregler under bygget
 
-- Lokal Postgres 16: `127.0.0.1:54322`, databaser `binderlab_dev` och `binderlab_test`. Starta med
-  `su postgres -c "/usr/lib/postgresql/16/bin/pg_ctl -D /home/user/.pgdata -o '-p 54322 -k /tmp' -l /home/user/.pgdata/log.txt start"`.
-- Dev-server: `npx next dev -p 3200`.
-- Supabase, Awish, Resend och Claude API går inte att nå från byggmiljön (nätverket blockerat, nycklar saknas). Allt byggs med
-  adaptrar, med lokala implementationer för utveckling och test.
-- Commit och push löpande till claude/bygge (säkerhetskopia). Beställaren har bett mig slå ihop med main själv: görs vid varje avklarad fas,
-  bara när npm test, npm run test:db, tsc, lint och next build går igenom. Inga pull requests.
+- Lokal Postgres 16 på `127.0.0.1:54322` med databaserna `binderlab_dev` och `binderlab_test`; dev-server
+  `npx next dev -p 3200`.
+- Supabase, Awish, Resend, Sentry och Claude API gick inte att nå från byggmiljön (inget nät, inga nycklar). Allt
+  byggdes med adaptrar och lokala implementationer för utveckling och test.
+- Sammanslagning med `main` bara när `npm test`, `npm run test:db`, `tsc`, lint och `next build` går igenom.
 
-## Beslut under bygget
+## Logg 2 nov. 2026
 
-Se `docs/datamodell.md` (Beslut från beställaren) och planens avsnitt "Beslut under bygget".
+### Fas 1b klar och på `main`
 
-## Schemalagd kontroll
+- Bygget typkontrollerar bara appens kod (`tsconfig.build.json`); tester och skript kontrolleras av
+  `npm run typecheck` i CI.
+- Saknad miljö stoppar inte servern: `/design` och `/datamodell` fungerar utan nycklar, inloggade sidor visar att
+  konfigurationen saknas (`src/server/config-status.ts`). Dev-inloggningens spärr gäller som tidigare.
+- `next build` och `next start` verifierade utan miljövariabler.
 
-Timvis kontroll av bygget: schemalagd uppgift `trig_011jdLLdDXA6g2gBGTGoFBzJ` ("Binderlab: fortsätt bygget", kl. xx:35 UTC).
-Tas bort när alla faser är klara.
+### Fas 2–5: alla sidor och slutkontroll (`main` 76cf22a)
 
-## Arbetsflöden 2 nov. (kl. 10:50)
+- Byggda, granskade och rättade: inloggning, inbjudan, användare, Datakällor, Hem, Att göra, Lönsamhet,
+  Inköpspriser, Inställningar, Order, Lager, Automater, Butiker.
+- Hela testsviten grön: 1 866 databastester, 2 165 enhetstester, eslint rent. Avstämning mellan vyer
+  (`test/db/consistency.test.ts`) och revisorns handräknade test; inga sifferavvikelser.
+- Ny migrering `20261102160000_hardening_org_statistics.sql` (statistikskydd på `import_uploads*`).
 
-- Fas 1b slutsteg: wf_36bd270a-1ca (ny /design, docs/design.md, före/efter).
-- Fas 2–5 sidor, fyra parallella delar av fas2-5-ui-part.js: inloggning+datakällor+hem, att-göra+lönsamhet, inköpspriser+order, lager+automater+butiker.
-  Datalagrets rapport: scratchpad/ui-core-report.md. Efter alla fyra: avstämningsagent (summor mellan vyer, prisändring mitt i period) körs separat.
-- Fas 6–11 sidor, fyra parallella delar av fas6-11-ui.js: rapporter+prognos, assistent+expansion(+enhetsekonomi, effekt), drift(+inkorg, PWA)+marknad, ekonomi(+avtal)+portal.
-- Omkörning av logik: prognos/förlorad försäljning/inköp, avstämning/kassaflöde/avtal, expansion-fix (logic-ahead-rerun).
-- Menyposter och platshållare för fas 6–11 lades in i src/components/shell/nav.ts av huvudagenten.
-- Efter allt: fas 7 (kvalitet, onboarding, demoläge, e2e, dokumentation) och integration (Hem/Att göra kopplas till förlorad försäljning, avtal, rapporter).
+### Fas 6–11
 
-## 12:40 – fas 1b klar och på main
+- Fas 6: Rapporter (butik, bokföring med SIE 4 och Excel, delägare; PDF, utskick, arkiv, schemaläggning).
+- Fas 6b: Prognos & inköp, Assistent, Expansion, Enhetsekonomi, Effekt.
+- Fas 8: Drift, Inkorg, larm, push, besöksplan och fältläge (PWA). Fas 11: Marknad.
+- Fas 9–10: Ekonomi (avstämning, verifikationer, kassaflöde), Avtal och Butiksportal.
 
-- Bygget typkontrollerar bara appens kod (tsconfig.build.json); tester och skript kontrolleras av `npm run typecheck` i CI.
-- Saknad miljö stoppar inte servern: /design och /datamodell fungerar utan nycklar, inloggade sidor visar ConfigMissing
-  (src/server/config-status.ts). Dev-inloggningens spärr gäller som tidigare.
-- Verifierat: `next build` och `next start` utan miljövariabler i en separat worktree (/home/user/wt-build).
+### Fas 7
 
-## Att ta i fas 7 (integration och dokumentation)
+- **Del 1:** demoorganisationen Nordljus Automater AB (demo) med 14 720 order och spärr mot att radera kunders
+  organisationer, onboarding (Kom igång) och global sökning (⌘K).
+- **Integration:** Hem, Att göra, Lönsamhet, Lager, Drift, Prognos och Rapporter kopplade till samma takt,
+  besöksplan, förlorad försäljning, avtalspåminnelser och rapportutkast.
+- **Säkerhet:** 505 attacktester (server actions, rutter, RPC:er, storage, IDOR, export, cron); säkerhetshuvuden
+  (CSP, X-Frame-Options, HSTS m.m.), gallring bara som ägare, IP via Vercel-huvud, `/design` och `/datamodell`
+  kräver inloggning.
+- **E2E, backup och övervakning:** 18 e2e-tester i sex flöden mot egen server och databas, säkerhetskopia med
+  återställningstest, larm vid misslyckad import, rapport och cron, Sentry Cron Monitors.
+- **Genomgång A, B och C** av alla sidor (`docs/review/fas-7/genomgang-*.md`) med rättningar.
+- **Dokumentation:** README (snabbstart provad från noll), architecture, datamodell, berakningar, decisions,
+  product, operations, licenssammanställning.
+- **Öppna punkter:** okänt id ger HTTP 404, diagrammen skalas före mätning, utgångna titlar ger inga
+  påfyllningspunkter, demons telefonnummer är PTS fiktionsnummer, Vercel-region `arn1`, temat ur en cookie,
+  licensen för `buffers` utredd.
+- **Prestanda** med 109 247 order i `next start`: ingen sida över 800 ms TTFB eller målet för färdig sida
+  (`docs/review/fas-7/prestanda.md`). Ny migrering `20261102230000_prestanda_stock_levels.sql`.
+- **Slutverifiering:** prettier, eslint, tsc; 2 545 enhetstester i tre tidszoner; 2 408 databastester i en hel
+  körning; 18 e2e-tester; `next build` utan miljö och med CI:s värden. Krocken mellan `seed.test.ts` och
+  demotesterna löst.
+- **Styrelsedemo-granskningen** (betyg 7/10) och rättningarna efter den: se `docs/review/fas-7/slutrapport.md`.
 
-- docs/berakningar.md: avsnitt om Att göra (2,5 dagar, 14 dagars fönster, belopp i risk = påfyllning + tysta automater, 48 h, 30 dagar för saknat inköpspris, tiondelar av dag).
-- docs/datamodell.md: list_members, todo_dismissals, import_uploads m.fl. tabeller från fas 2–11.
-- Brödsmulor och kommandopalett: mål för Inställningar → Användare.
-- Avbockade punkter i Att göra: filtrera bort sådana vars orsak är löst (kräver att loadTodosFor returnerar punkter före avbockning).
-- toast.tsx: timern startar om vid omrendering.
-- Hem/Att göra: koppla förlorad försäljning (lostSalesSummary), avtalspåminnelser och rapportutkast.
+## Beställarens krav 2 nov. kväll
 
-## 13:10 – alla sidor i fas 2–5 klara
-
-- Byggda, granskade och rättade: inloggning, inbjudan, användare, Datakällor, Hem, Att göra, Lönsamhet, Inköpspriser, Inställningar, Order, Lager, Automater, Butiker.
-- Fas 9–10 (Ekonomi, Avtal, Butiksportal) och fas 6b (Assistent, Expansion, Enhetsekonomi, Effekt) klara.
-- Pågår: slutkontroll fas 2–5 (wf_2c6fb7c8-67a), fas 6 Rapporter+Prognos, fas 8+11 Drift+Marknad, fas 7 del 1 (demo, onboarding, sökning).
-- Öppet till integrationen: /lager och /drift planerar besök från olika dagar (gårdagens resp. dagens takt).
-- 13:30 Fas 8 (Drift, Inkorg, larm, PWA, besöksplan) och fas 11 (Marknad) klara. Öppet till integrationen: Automater ska använda
-  healthInputOf/loadHealthData (samma status som Drift), återbetalningar i Lönsamhet via applyRefunds, cron för /api/cron/larm i vercel.json.
-- 13:45 Fas 6 (Rapporter: butik, bokföring med SIE och Excel, delägare; PDF, utskick, arkiv, schemaläggning) och fas 6b Prognos & inköp klara.
-  Öppet till integrationen: Att göra-punkt "rapportutkast väntar på granskning"; REPORT_SIE_SERIES/FIRST_NUMBER bestäms med bokhållaren.
-  Alla sidor för fas 2–11 är nu byggda. Kvar: slutkontroll fas 2–5 (pågår), fas 7 del 1 (pågår), fas 7 integration/kvalitet/dokumentation.
+- Ingen manuell nedladdning från Awish. Byggs nu: Chrome-tillägg (MV3) som synkar var 10:e minut med användarens Awish-inloggning,
+  hela historiken första gången, via ett ingest-API med återkallbar synk-token; larm om synken tystnar. Ersätts av gRPC-adaptern när Awish
+  levererat app-ID/token. Frågat beställaren efter koden till det gamla ChatGPT-tillägget.
+- Beställaren vill att jag driftsätter allt. Byggs nu: scripts/deploy/* (Supabase Management API, Vercel API, inbjudan av ägaren)
+  - docs/driftsattning.md. Kräver SUPABASE_ACCESS_TOKEN, VERCEL_TOKEN och nätverk till api.supabase.com, *.supabase.co, api.vercel.com
+    i en ny session. Ägarens e-post bekräftas av beställaren innan inbjudan skickas.
+- Arbetsflöde: wf_19bddf0c-b50.

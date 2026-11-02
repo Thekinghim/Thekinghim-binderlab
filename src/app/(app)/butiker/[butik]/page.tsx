@@ -63,7 +63,7 @@ export default async function StorePage({
         <nav aria-label="Brödsmulor">
           <Link
             href={`/butiker${data.query}`}
-            className="meta inline-flex items-center gap-1.5 rounded-xs text-subtle hover:text-fg"
+            className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-subtle hover:text-fg"
           >
             <span aria-hidden className="text-faint">
               ←

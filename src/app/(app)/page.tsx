@@ -1,16 +1,27 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
 import { Panel } from "@/components/ui/frame";
 import { SectionHeader, type SectionMeta } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
+import { requireRoute } from "@/server/data/core";
 import { EN_DASH, NBSP, formatDecimal, formatInt, formatPeriodShort } from "@/lib/format";
 
 import { DailyChart } from "./_hem/daily-chart";
 import { HomeKpis } from "./_hem/home-kpis";
 import { carriedParams } from "./_hem/links";
 import { loadHome } from "./_hem/load";
+import { HemSkeleton } from "./_hem/skeleton";
 import { shareText, type HomeDaily, type HomeModel } from "./_hem/model";
-import { ArrowLink, InsightList, TodoList, TopTitles, UnpricedNote } from "./_hem/sections";
+import {
+  ArrowLink,
+  InsightList,
+  LostSalesNote,
+  TodoList,
+  TopTitles,
+  UnpricedNote,
+} from "./_hem/sections";
+import { OnboardingChecklist } from "./kom-igang/_components/onboarding-checklist";
 import { dateOf, kr, sentence, weekdayDayText } from "./_hem/text";
 
 export const metadata: Metadata = { title: "Hem" };
@@ -26,8 +37,20 @@ type SearchParams = Record<string, string | string[] | undefined>;
  * göra). Allt räknas i @/domain och @/analytics via modellen i _hem/model.ts.
  */
 export default async function HemPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  // Rollen kontrolleras före strömningen, så att påfyllaren får en riktig omdirigering.
+  await requireRoute("hem");
+  // Skalet och skelettet går ut direkt; siffrorna strömmar in när de är räknade
+  // (Att göra och förlorad försäljning tar längst tid med mycket data).
+  return (
+    <Suspense fallback={<HemSkeleton />}>
+      <HemContent searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function HemContent({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
-  const { model, today, scope, canEdit } = await loadHome(sp);
+  const { model, today, scope, canEdit, lostSales, onboarding, timeZone } = await loadHome(sp);
   const { headline } = model;
 
   const periodText = (p: { start: string; end: string }) =>
@@ -80,11 +103,10 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
   if (scopeText)
     meta.unshift({ label: scope?.kind === "machine" ? "Automat" : "Butik", value: scopeText });
 
-  const comparison = model.compare
-    ? `${periodText(model.period)} · jämfört med ${periodText(model.compare)}`
-    : model.dataStart
-      ? `${periodText(model.period)} · ingen jämförelse, datan börjar ${dayOnly(model.dataStart)}`
-      : periodText(model.period);
+  // Perioden och jämförelsen står i metablocket bredvid rubriken; remsan upprepar dem inte.
+  const comparisonLabel = model.compare
+    ? `Nyckeltal jämfört med ${periodText(model.compare)}`
+    : "Nyckeltal utan jämförelse";
 
   const revenue = model.kpis.find((k) => k.id === "revenue")?.value ?? 0;
 
@@ -100,6 +122,16 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
         meta={meta}
       />
 
+      {onboarding ? (
+        <OnboardingChecklist
+          status={onboarding}
+          canEdit={canEdit}
+          timeZone={timeZone}
+          variant="compact"
+          className="mt-8 md:mt-10"
+        />
+      ) : null}
+
       {headline.state === "no-data" ? (
         <StateMessage
           className="mt-12"
@@ -111,8 +143,9 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
       ) : (
         <>
           <div className="mt-8 flex flex-col gap-4 md:mt-10">
-            <HomeKpis kpis={model.kpis} comparison={comparison} />
+            <HomeKpis kpis={model.kpis} ariaLabel={comparisonLabel} />
             {model.unpriced ? <UnpricedNote unpriced={model.unpriced} canEdit={canEdit} /> : null}
+            {lostSales ? <LostSalesNote lost={lostSales} /> : null}
           </div>
 
           {headline.state === "no-orders" ? (
@@ -196,6 +229,7 @@ function DailyAndTodos({
         <DailySection
           daily={model.daily}
           todayPending={model.todayPending}
+          todayPartial={model.todayPartial}
           today={today}
           sp={sp}
           revenue={revenue}
@@ -218,6 +252,7 @@ function DailyAndTodos({
 function DailySection({
   daily,
   todayPending,
+  todayPartial,
   today,
   sp,
   revenue,
@@ -226,6 +261,7 @@ function DailySection({
 }: {
   daily: HomeDaily;
   todayPending: boolean;
+  todayPartial: boolean;
   today: string;
   sp: SearchParams;
   revenue: number;
@@ -254,6 +290,7 @@ function DailySection({
   const aside = [
     sentence(`Snitt ${kr(daily.averageOre)} per dag${peakText ? `, ${peakText}` : ""}`),
     todayPending ? "I dag är inte med: inga order än." : "",
+    todayPartial ? "I dag är inte med: dagen pågår." : "",
   ]
     .filter(Boolean)
     .join(" ");

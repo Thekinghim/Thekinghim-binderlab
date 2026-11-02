@@ -10,7 +10,7 @@ import { cn } from "@/lib/cn";
 import { formatInt, MISSING } from "@/lib/format";
 
 import { deleteLead, saveLead, saveStoreProfile, setLeadArchived, setLeadStage } from "../actions";
-import { bpToInput, kr, oreToInput, paybackShort } from "../_lib/display";
+import { bpToInput, dateText, kr, oreToInput, paybackShort } from "../_lib/display";
 import type { Named } from "../_lib/data";
 import {
   LEAD_STAGE_LABEL,
@@ -247,7 +247,7 @@ export function PipelineView({
                         {lead.nextStepOn ? (
                           <span className="meta tnum">
                             {" "}
-                            · {lead.nextStepOn}
+                            · {dateText(lead.nextStepOn)}
                             {overdue ? " · passerat" : ""}
                           </span>
                         ) : null}

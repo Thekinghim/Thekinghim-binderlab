@@ -7,7 +7,7 @@
 import type { ScenarioFigure } from "@/analytics/expansion";
 import { minutesText } from "@/analytics/effect";
 import { kr, krExact, pct, tenths } from "@/analytics/todos/text";
-import { formatInt, formatMonth, MISSING, NBSP } from "@/lib/format";
+import { formatDate, formatInt, formatMonth, MISSING, NBSP } from "@/lib/format";
 
 export { kr, krExact, pct, tenths, minutesText };
 
@@ -58,6 +58,12 @@ export function figureText(f: Pick<ScenarioFigure, "value" | "unit">): string {
 }
 
 /** 'ÅÅÅÅ-MM' → "november 2026". */
+/** 'ÅÅÅÅ-MM-DD' → "9 nov." (året bara när det inte är i år). */
+export function dateText(date: string): string {
+  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
+  return formatDate(new Date(y, m - 1, d), { year: "auto" });
+}
+
 export function monthLabel(month: string): string {
   const [y, m] = month.split("-").map(Number) as [number, number];
   return formatMonth(new Date(y, m - 1, 1));

@@ -9,7 +9,7 @@ import { formatDelta, MISSING } from "@/lib/format";
 
 import { periodShort } from "../_lib/dates";
 import type { AccuracyModel, AccuracyOrigin } from "../_lib/model";
-import { packsMilli, percentBp } from "../_lib/units";
+import { packsWhole, percentBp } from "../_lib/units";
 import { EvidenceButton } from "./evidence-button";
 
 /** Träffsäkerheten: backtest med rullande ursprung, per vecka och sammanfattat. */
@@ -20,23 +20,28 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
         key: "period",
         header: "Vecka",
         sortValue: (r) => r.period.start,
-        render: (r) => <span className="tnum">{periodShort(r.period)}</span>,
+        render: (r) => <span className="tnum whitespace-nowrap">{periodShort(r.period)}</span>,
         csv: (r) => `${r.period.start}–${r.period.end}`,
       },
       {
         key: "actual",
-        header: "Utfall i testade serier, pack",
+        // Kort huvud så att tabellen ryms i 375 px; noten under förklarar vilka serier som testas.
+        header: "Utfall, pack",
         numeric: true,
+        // Under md: vecka och avvikelse (sektionens mått); antalen står i underlaget.
+        hideOnMobile: true,
         sortValue: (r) => r.actualMilli,
-        render: (r) => packsMilli(r.actualMilli),
+        // Utfallet är sålda pack (heltal); prognoserna avrundas till hela pack.
+        render: (r) => packsWhole(r.actualMilli),
         csv: (r) => r.actualMilli / 1000,
       },
       {
         key: "forecast",
         header: "Prognos, pack",
         numeric: true,
+        hideOnMobile: true,
         sortValue: (r) => r.forecastMilli,
-        render: (r) => <span className="text-fg">{packsMilli(r.forecastMilli)}</span>,
+        render: (r) => <span className="text-fg">{packsWhole(r.forecastMilli)}</span>,
         csv: (r) => r.forecastMilli / 1000,
       },
       {
@@ -53,7 +58,7 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
         numeric: true,
         hideOnMobile: true,
         sortValue: (r) => r.naiveMilli,
-        render: (r) => <span className="text-muted">{packsMilli(r.naiveMilli)}</span>,
+        render: (r) => <span className="text-muted">{packsWhole(r.naiveMilli)}</span>,
         csv: (r) => r.naiveMilli / 1000,
       },
     ],
@@ -74,32 +79,34 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
   const items: KpiItem[] = [
     {
       id: "wape",
-      label: "Fel per dag (WAPE)",
+      label: "Fel per dag",
       value: t.wapeBp ?? Number.NaN,
       format: (v) => percentBp(Number.isFinite(v) ? v : null, 0),
       primary: true,
     },
     {
       id: "mape",
-      label: "Fel per vecka (MAPE)",
+      label: "Fel per vecka",
       value: t.mapeBp ?? Number.NaN,
       format: (v) => percentBp(Number.isFinite(v) ? v : null, 0),
     },
     {
       id: "bias",
-      label: "Bias",
+      label: "För högt/lågt",
       value: t.biasBp ?? Number.NaN,
       format: (v) => (Number.isFinite(v) ? formatDelta(v / 10_000) : MISSING),
     },
     {
       id: "naive",
-      label: "Förra veckans snitt",
+      label: "Fel, veckosnitt",
       value: t.naiveWapeBp ?? Number.NaN,
       format: (v) => percentBp(Number.isFinite(v) ? v : null, 0),
     },
     {
       id: "series",
-      label: "Per titel och automat",
+      // Felet per serie (titel × automat, se noten under tabellen). Kort nog för att inte
+      // kortas med ellips vid fem nyckeltal i bredd.
+      label: "Fel per serie",
       value: model.series.wapeBp ?? Number.NaN,
       format: (v) => percentBp(Number.isFinite(v) ? v : null, 0),
     },
@@ -107,9 +114,10 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
 
   return (
     <div className="flex flex-col gap-10">
-      <KpiStrip label={`Backtest · ${model.origins.length} veckor`} items={items} />
+      <KpiStrip label={`Prövad på ${model.origins.length} veckor`} items={items} />
       <div className="flex flex-col gap-3">
         <DataTable
+          surface="bg"
           columns={columns}
           rows={model.origins}
           rowKey={(r) => r.origin}

@@ -25,7 +25,7 @@ import {
   createEconomicsContext,
   type EconomicsContext,
 } from "./economics";
-import { allocateLargestRemainderBig } from "./money";
+import { allocateLargestRemainder, allocateLargestRemainderBig } from "./money";
 import { rentByStoreMonth, type StoreMonthRent } from "./rent";
 import type { IsoDate, IsoMonth, OrderLine, Period, ProfitabilityInput, Settings } from "./types";
 
@@ -99,13 +99,95 @@ function compareEntries(a: MutableEntry, b: MutableEntry): number {
   return ia < ib ? -1 : ia > ib ? 1 : 0;
 }
 
-/** Bygger liggaren för perioden. Kastar `DomainError` vid ogiltig indata. */
+/** En byggd liggare och indatan den byggdes av (jämförs på identitet). */
+interface CachedLedger {
+  readonly start: IsoDate;
+  readonly end: IsoDate;
+  readonly count: number;
+  readonly prices: ProfitabilityInput["prices"];
+  readonly agreements: ProfitabilityInput["agreements"];
+  readonly placements: ProfitabilityInput["placements"];
+  readonly settings: Settings;
+  readonly ledger: Ledger;
+}
+
+/** Högst så många perioder sparas per orderlista. */
+const LEDGER_CACHE_PER_ORDERS = 24;
+
+/**
+ * Byggda liggare per orderlista. En sida räknar ofta flera vyer (lönsamhet, nyckeltal,
+ * titlar, scenarier) på samma order och period; liggaren byggs då en gång. Nyckeln är
+ * orderlistan (WeakMap: posten försvinner med listan, dvs. med förfrågan) och träffen
+ * kräver samma period och samma priser, avtal, placeringar och inställningar (samma
+ * objekt) och lika många order. Indatan är `readonly` och ändras inte efter anropet.
+ */
+const ledgerCache = new WeakMap<readonly OrderLine[], CachedLedger[]>();
+
+/**
+ * Bygger liggaren för perioden. Kastar `DomainError` vid ogiltig indata. Samma indata
+ * (samma objekt) ger samma liggare, som då inte byggs igen.
+ */
 export function buildLedger(input: ProfitabilityInput): Ledger {
+  const cached = ledgerCache.get(input.orders);
+  const hit = cached?.find(
+    (c) =>
+      c.start === input.period.start &&
+      c.end === input.period.end &&
+      c.count === input.orders.length &&
+      c.prices === input.prices &&
+      c.agreements === input.agreements &&
+      c.placements === input.placements &&
+      c.settings === input.settings,
+  );
+  if (hit) return hit.ledger;
+  const ledger = computeLedger(input);
+  const entry: CachedLedger = {
+    start: input.period.start,
+    end: input.period.end,
+    count: input.orders.length,
+    prices: input.prices,
+    agreements: input.agreements,
+    placements: input.placements,
+    settings: input.settings,
+    ledger,
+  };
+  if (cached) {
+    if (cached.length >= LEDGER_CACHE_PER_ORDERS) cached.shift();
+    cached.push(entry);
+  } else ledgerCache.set(input.orders, [entry]);
+  return ledger;
+}
+
+/** Orderlistor som redan är kontrollerade (antal order när de kontrollerades). */
+const validatedOrders = new WeakMap<readonly OrderLine[], number>();
+
+/**
+ * Kontrollerar varje order (assertOrder) och att inget id finns två gånger, i listans
+ * ordning (första felet kastas). En lista som redan är kontrollerad (samma objekt, lika
+ * många order) kontrolleras inte igen: samma order räknas ofta för flera perioder.
+ */
+function validateOrders(orders: readonly OrderLine[]): void {
+  if (validatedOrders.get(orders) === orders.length) return;
+  const seen = new Set<string>();
+  for (const order of orders) {
+    assertOrder(order);
+    if (seen.has(order.id)) {
+      throw new DomainError(
+        "duplicate_order",
+        `Order ${order.externalId} (${order.id}) finns två gånger.`,
+      );
+    }
+    seen.add(order.id);
+  }
+  validatedOrders.set(orders, orders.length);
+}
+
+function computeLedger(input: ProfitabilityInput): Ledger {
   assertPeriod(input.period);
   const { period } = input;
   const context = createEconomicsContext(input);
 
-  const seen = new Set<string>();
+  validateOrders(input.orders);
   const entries: MutableEntry[] = [];
   let outside = 0;
   let withoutMachine = 0;
@@ -115,14 +197,6 @@ export function buildLedger(input: ProfitabilityInput): Ledger {
   const storesWithoutAgreement = new Set<string>();
 
   for (const order of input.orders) {
-    assertOrder(order);
-    if (seen.has(order.id)) {
-      throw new DomainError(
-        "duplicate_order",
-        `Order ${order.externalId} (${order.id}) finns två gånger.`,
-      );
-    }
-    seen.add(order.id);
     const date = order.businessDate;
     if (date < period.start || date > period.end) {
       outside++;
@@ -173,15 +247,24 @@ export function buildLedger(input: ProfitabilityInput): Ledger {
     list.sort(compareEntries);
     // Vikt = nettointäkt × den månadshyra som gällde orderns dag. Order på dagar utan
     // hyresavtal (t.ex. före ett avtalsbyte från bara provision till hyra) bär ingen hyra.
-    const rates = list.map((e) => BigInt(rentRateOn(sm, e.order.businessDate)));
-    let weights = list.map((e, i) => BigInt(e.netRevenueOre) * rates[i]!);
-    if (weights.every((w) => w === 0n)) weights = rates; // alla netto 0 → lika per order och hyresdag
-    if (weights.every((w) => w === 0n)) {
+    const rates = list.map((e) => rentRateOn(sm, e.order.businessDate));
+    let weights = list.map((e, i) => e.netRevenueOre * rates[i]!);
+    if (weights.every((w) => w === 0)) weights = rates; // alla netto 0 → lika per order och hyresdag
+    if (weights.every((w) => w === 0)) {
       // Inga order på dagar med hyra: hyran kan inte bäras av någon order.
       unallocatedRent.push({ storeId: sm.storeId, month: sm.month, rentOre: sm.rentOre });
       continue;
     }
-    const shares = allocateLargestRemainderBig(sm.rentOre, weights);
+    // Vikterna som vanliga tal när produkterna är säkra heltal (samma fördelning, se
+    // allocateLargestRemainder); annars som bigint, som förut.
+    const shares = weights.every((w) => Number.isSafeInteger(w))
+      ? allocateLargestRemainder(sm.rentOre, weights)
+      : allocateLargestRemainderBig(
+          sm.rentOre,
+          list.map((e, i) =>
+            weights === rates ? BigInt(rates[i]!) : BigInt(e.netRevenueOre) * BigInt(rates[i]!),
+          ),
+        );
     for (let i = 0; i < list.length; i++) list[i]!.rentOre = shares[i]!;
   }
 

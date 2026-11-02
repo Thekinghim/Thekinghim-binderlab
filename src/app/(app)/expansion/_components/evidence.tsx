@@ -8,6 +8,7 @@ import { formatInt } from "@/lib/format";
 
 import { figureText } from "../_lib/display";
 import type { EvidenceLink } from "../_lib/model";
+import { orderCountOf, type OrderCounted } from "../_lib/slim";
 
 /**
  * Underlaget för en siffra: regeln i klartext, talen den bygger på och länkar till samma
@@ -20,13 +21,15 @@ export function EvidenceDetails({
   label = "Underlag",
   className,
 }: {
-  evidence: ScenarioEvidence;
+  /** Order-id:na kan vara utbytta mot antalet (withOrderCounts). */
+  evidence: ScenarioEvidence & OrderCounted;
   links: readonly EvidenceLink[];
   label?: string;
   className?: string;
 }) {
   const parts: string[] = [];
-  if (evidence.orderIds.length > 0) parts.push(`${formatInt(evidence.orderIds.length)} order`);
+  const orders = orderCountOf(evidence);
+  if (orders > 0) parts.push(`${formatInt(orders)} order`);
   if (evidence.dates.length > 0) parts.push(`${formatInt(evidence.dates.length)} dagar`);
   return (
     <details className={cn("group min-w-0", className)}>
@@ -93,7 +96,7 @@ export function DataStartNote({
 }) {
   if (!clippedFrom) return null;
   return (
-    <p className="font-mono text-xs break-words text-subtle">
+    <p className="text-sm break-words text-subtle">
       Räknat från första ordern {day(clippedFrom)}
       {requested ? `; perioden ${periodText(requested)} börjar före den` : ""}. Dagar utan data
       räknas inte som dagar utan försäljning.

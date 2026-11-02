@@ -9,6 +9,7 @@ import "server-only";
 
 import {
   compareUnitEconomics,
+  estimateSite,
   expansionPipeline,
   siteHistories,
   type LeadPotential,
@@ -228,7 +229,10 @@ export interface ExpansionPageData {
   readonly defaultInvestment: DefaultInvestment | null;
   readonly params: ScenarioParams;
   readonly newMachine: {
+    /** Valet i formuläret: en butiks id, eller `plats:<id>` för en plats i pipelinen. */
     readonly likeStoreId: string | null;
+    /** Platsen i pipelinen som scenariot räknar på (standard: den med bäst potential). */
+    readonly lead: { readonly id: string; readonly name: string } | null;
     readonly estimate: SiteEstimate | null;
     readonly errors: ScenarioInputError[];
   };
@@ -246,6 +250,9 @@ export interface ExpansionPageData {
 }
 
 const DEFAULT_DELTA_ORE = 500;
+
+/** Värdet i scenariots val för en plats i pipelinen: `plats:<id>`. */
+export const LEAD_PREFIX = "plats:";
 
 /** Elasticitet som text ("-1,5", "−0,5", "0") → hundradelar. */
 function parseElasticity(text: string): number | null {
@@ -284,15 +291,38 @@ export async function loadExpansionPage(sp: SearchParamsInput): Promise<Expansio
   const histories = siteHistories(input.current);
   const defInv = defaultInvestment(input.investments, ctx.today);
 
-  // Scenario: ny automat i en butik som liknar X. Standard: butiken med mest vinst.
+  // Pipeline: öppna platser rangordnade efter uppskattad återbetalningstid.
+  const open = leads.filter((l) => !l.archived && OPEN_STAGES.includes(l.stage));
+  const pipeline = expansionPipeline({
+    leads: open.map(toAnalyticsLead),
+    stores,
+    histories,
+    period: input.current.period,
+    defaultInvestment: defInv?.plan ?? { purchaseOre: 0, installationOre: 0 },
+  });
+
+  // Scenario: ny automat. Standard: platsen i pipelinen med bäst potential (samma som
+  // rubriken), annars en butik som liknar den med mest vinst. En befintlig butik jämförs
+  // med sig själv (100 % lik), så den passar bara när man frågar "en till som X".
   const nmErrors: ScenarioInputError[] = [];
+  const topLead = pipeline.find((x) => x.estimate.status === "ok" && x.estimate.investmentOre > 0);
+  const leadParam = params.likeStoreId?.startsWith(LEAD_PREFIX)
+    ? params.likeStoreId.slice(LEAD_PREFIX.length)
+    : null;
+  const chosenLead =
+    (leadParam ? open.find((l) => l.id === leadParam) : undefined) ??
+    (params.likeStoreId === null && topLead
+      ? open.find((l) => l.id === topLead.leadId)
+      : undefined);
   const bestStore = [...histories]
     .filter((h) => stores.some((s) => s.id === h.storeId))
     .sort((a, b) => b.profitOre - a.profitOre)[0]?.storeId;
-  const likeStoreId =
-    params.likeStoreId && stores.some((s) => s.id === params.likeStoreId)
+  const likeStoreId = chosenLead
+    ? null
+    : params.likeStoreId && stores.some((s) => s.id === params.likeStoreId)
       ? params.likeStoreId
       : (bestStore ?? stores[0]?.id ?? null);
+  const leadRef = chosenLead ? toAnalyticsLead(chosenLead) : null;
   const money = (text: string, field: string, label: string, fallback: number | null) => {
     if (text === "") return fallback;
     const r = parseAmountOre(text);
@@ -302,12 +332,17 @@ export async function loadExpansionPage(sp: SearchParamsInput): Promise<Expansio
     }
     return r.ore;
   };
-  const purchase = money(params.purchase, "inkop", "Automat", defInv?.plan.purchaseOre ?? null);
+  const purchase = money(
+    params.purchase,
+    "inkop",
+    "Automat",
+    leadRef?.investment?.purchaseOre ?? defInv?.plan.purchaseOre ?? null,
+  );
   const installation = money(
     params.installation,
     "installation",
     "Installation",
-    defInv?.plan.installationOre ?? null,
+    leadRef?.investment?.installationOre ?? defInv?.plan.installationOre ?? null,
   );
   let commissionBp: number | null = null;
   if (params.commission !== "") {
@@ -322,16 +357,31 @@ export async function loadExpansionPage(sp: SearchParamsInput): Promise<Expansio
   const rentOre = money(params.rent, "hyra", "Hyra", null);
   const terms =
     commissionBp === null && rentOre === null ? null : { commissionBp, monthlyRentOre: rentOre };
-  const estimate =
-    likeStoreId && purchase !== null && installation !== null
-      ? newMachineScenario({
-          sources: input.current,
-          stores,
-          likeStoreId,
-          investment: { purchaseOre: purchase, installationOre: installation },
-          terms,
-        })
-      : null;
+  let estimate: SiteEstimate | null = null;
+  if (purchase !== null && installation !== null) {
+    const investment = { purchaseOre: purchase, installationOre: installation };
+    if (leadRef) {
+      // Samma uträkning som pipelinen för platsen (estimateSite), med formulärets värden.
+      estimate = estimateSite({
+        target: leadRef,
+        targetName: leadRef.name.trim() || leadRef.id,
+        stores,
+        histories,
+        period: input.current.period,
+        investment,
+        terms: terms ?? leadRef.terms ?? null,
+        options: { excludeStoreIds: leadRef.storeId ? [leadRef.storeId] : [] },
+      });
+    } else if (likeStoreId) {
+      estimate = newMachineScenario({
+        sources: input.current,
+        stores,
+        likeStoreId,
+        investment,
+        terms,
+      });
+    }
+  }
 
   // Scenario: prisändring. Standard: titeln med flest sålda pack, +5 kr.
   const priceErrors: ScenarioInputError[] = [];
@@ -380,16 +430,6 @@ export async function loadExpansionPage(sp: SearchParamsInput): Promise<Expansio
   // Mål: utfall och prognos för månaderna som har mål.
   const progress = await goalsProgress(goals, ctx.today, stores, input.machines);
 
-  // Pipeline: öppna platser rangordnade efter uppskattad återbetalningstid.
-  const open = leads.filter((l) => !l.archived && OPEN_STAGES.includes(l.stage));
-  const pipeline = expansionPipeline({
-    leads: open.map(toAnalyticsLead),
-    stores,
-    histories,
-    period: input.current.period,
-    defaultInvestment: defInv?.plan ?? { purchaseOre: 0, installationOre: 0 },
-  });
-
   return {
     ctx: { canEdit: ctx.canEdit, today: ctx.today },
     period: periodLabelInfo(p, dp),
@@ -397,7 +437,12 @@ export async function loadExpansionPage(sp: SearchParamsInput): Promise<Expansio
     profiles,
     defaultInvestment: defInv,
     params,
-    newMachine: { likeStoreId, estimate, errors: nmErrors },
+    newMachine: {
+      likeStoreId: chosenLead ? `${LEAD_PREFIX}${chosenLead.id}` : likeStoreId,
+      lead: chosenLead ? { id: chosenLead.id, name: chosenLead.name } : null,
+      estimate,
+      errors: nmErrors,
+    },
     price: { titleId, deltaOre, elasticityHundredths: elasticity, scenario, errors: priceErrors },
     goals: { records: goals, progress },
     leads,

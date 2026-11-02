@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { SectionHeader } from "@/components/ui/section-header";
 import { StatusTag } from "@/components/ui/status-tag";
@@ -24,7 +24,8 @@ const ACTION: Record<string, string> = {
 /** Ett kundärende: uppgifter, order, hantering och ändringshistorik (audit_log). */
 export default async function IncidentPage({ params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireRoute("inkorg");
-  if (!ctx.canSeeEconomy) notFound();
+  // Påfyllaren hanterar inga kundärenden: samma förklaring som i listan.
+  if (!ctx.canSeeEconomy) redirect("/inkorg");
   const { id } = await params;
   if (!UUID.test(id)) notFound();
   const data = await loadIncident(ctx, id.toLowerCase());

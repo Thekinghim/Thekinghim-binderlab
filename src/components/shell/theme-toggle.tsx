@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { IconButton } from "@/components/ui/button";
-import { THEME_STORAGE_KEY, type Theme } from "@/lib/theme";
+import { THEME_STORAGE_KEY, themeCookie, type Theme } from "@/lib/theme";
 
 function read(): Theme {
   return document.documentElement.dataset.theme === "light" ? "light" : "dark";
@@ -14,8 +14,10 @@ function subscribe(cb: () => void) {
   return () => mo.disconnect();
 }
 
+/** Byter tema och sparar valet: cookien (servern renderar rätt tema) och localStorage. */
 export function setTheme(t: Theme) {
   document.documentElement.dataset.theme = t;
+  document.cookie = themeCookie(t, location.protocol === "https:");
   try {
     localStorage.setItem(THEME_STORAGE_KEY, t);
   } catch {

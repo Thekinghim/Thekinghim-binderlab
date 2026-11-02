@@ -4,7 +4,7 @@ import { sum } from "d3-array";
 import { useId, useState, type ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { formatPercent } from "@/lib/format";
-import { useMeasure } from "@/lib/hooks/use-measure";
+import { svgSizeProps, unmeasuredStyle, useMeasure } from "@/lib/hooks/use-measure";
 import { ChartFigure, HatchPattern } from "./primitives";
 
 export type ShareSegment = {
@@ -218,7 +218,7 @@ function CompactShare({
   summary: string;
   fallback: ReactNode;
 }) {
-  const [ref, width] = useMeasure<HTMLDivElement>();
+  const [ref, width, measured] = useMeasure<HTMLDivElement>();
   const hatchId = useId().replace(/:/g, "");
   const BAR = 10;
   const GAP = 2;
@@ -268,8 +268,18 @@ function CompactShare({
 
   return (
     <ChartFigure summary={summary}>
-      <div ref={ref} className="relative w-full" style={{ height: BAR + 6 + levels * LEVEL }}>
-        <svg width={width} height={BAR} className="block" role="img" aria-label={summary}>
+      <div
+        ref={ref}
+        className="relative w-full"
+        style={{ height: BAR + 6 + levels * LEVEL, ...unmeasuredStyle(measured) }}
+      >
+        <svg
+          {...svgSizeProps(width, BAR, measured)}
+          preserveAspectRatio="none"
+          className="block"
+          role="img"
+          aria-label={summary}
+        >
           <defs>
             <HatchPattern id={hatchId} tone="signal" />
           </defs>

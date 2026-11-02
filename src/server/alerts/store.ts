@@ -50,8 +50,10 @@ const KINDS: readonly AlertKind[] = [
   "low_stock",
   "import_failed",
   "day_anomaly",
+  "report_failed",
+  "job_failed",
 ];
-const GROUPS: readonly AlertGroup[] = ["machine", "stock", "import", "sales"];
+const GROUPS: readonly AlertGroup[] = ["machine", "stock", "import", "sales", "system"];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

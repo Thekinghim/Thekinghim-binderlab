@@ -257,6 +257,7 @@ export function MachineTable({
   );
   return (
     <DataTable
+      surface="bg"
       columns={cols}
       rows={rows}
       rowKey={(r) => r.id}

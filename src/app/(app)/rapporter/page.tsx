@@ -49,7 +49,8 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
   const monthReports = data.archive.filter((r) => r.month === data.month);
   const drafts = monthReports.filter((r) => r.status === "draft").length;
   const approved = monthReports.filter((r) => r.status === "approved").length;
-  const sentReports = monthReports.filter((r) => r.status === "sent").length;
+  // Utkast för andra månader väntar också: rubriken och sidopanelen räknar dem.
+  const otherDrafts = data.archive.filter((r) => r.month !== data.month && r.status === "draft");
 
   const title =
     data.expected.length === 0
@@ -61,12 +62,16 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
     data.expected.length === 0
       ? "Lägg till butiker, bokhållare och delägare under Mottagare."
       : drafts > 0
-        ? `${formatInt(drafts)} ${drafts === 1 ? "utkast väntar" : "utkast väntar"} på granskning.`
+        ? `${formatInt(drafts)} utkast väntar på granskning.`
         : approved > 0
           ? `${formatInt(approved)} ${approved === 1 ? "godkänd rapport väntar" : "godkända rapporter väntar"} på utskick.`
-          : delivered === data.expected.length
-            ? "Inget väntar."
-            : "Skapa utkasten nedan.";
+          : otherDrafts.length > 0
+            ? `${formatInt(otherDrafts.length)} utkast för ${[
+                ...new Set(otherDrafts.map((r) => monthName(r.month))),
+              ].join(" och ")} väntar på granskning.`
+            : delivered === data.expected.length
+              ? "Inget väntar."
+              : "Skapa utkasten nedan.";
 
   const preview = data.preview;
   const sentAll = data.archive.filter((r) => r.status === "sent").length;
@@ -86,8 +91,11 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
         aside={aside}
         meta={[
           { label: "Månad", value: month },
-          { label: "Utkast", value: formatInt(drafts) },
-          { label: "Skickade", value: formatInt(sentReports) },
+          {
+            label: "Utskick",
+            value: `${formatInt(delivered)} av ${formatInt(data.expected.length)}`,
+          },
+          { label: "Utkast", value: formatInt(drafts + otherDrafts.length) },
         ]}
       />
 
@@ -155,7 +163,7 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
           }
           aside={
             data.current
-              ? `${formatInt(data.eligible.length)} ${data.eligible.length === 1 ? "mottagare kan" : "mottagare kan"} få rapporten.`
+              ? `${formatInt(data.eligible.length)} mottagare kan få rapporten.`
               : "Skapa ett utkast först. Inget skickas utan godkännande."
           }
         />

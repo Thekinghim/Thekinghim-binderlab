@@ -1092,9 +1092,9 @@ describe("8. Rate limit", () => {
     expect(calls).toHaveLength(5);
   });
 
-  it("x-forwarded-for: första värdet används (säkert bara bakom Vercel, som skriver över rubriken)", () => {
+  it("x-forwarded-for: klientens påhittade första värde används inte, bara det sista hoppet", () => {
     const headers = new Headers({ "x-forwarded-for": "6.6.6.6, 203.0.113.7" });
-    expect(clientIp(headers)).toBe("6.6.6.6");
+    expect(clientIp(headers)).toBe("203.0.113.7");
     expect(clientIp(new Headers({ "x-forwarded-for": "x".repeat(100) }))).toBe("okänd");
   });
 });

@@ -392,6 +392,7 @@ export const SEED_LEDGER_ACCOUNTS: readonly { key: string; basAccount: string; n
   { key: "settlement", basAccount: "1580", name: "Fordran på kortinlösen" },
   { key: "inventory", basAccount: "1460", name: "Lager av handelsvaror" },
   { key: "equipment", basAccount: "1220", name: "Inventarier och verktyg" },
+  { key: "bank", basAccount: "1930", name: "Företagskonto/checkkonto/affärskonto" },
   { key: "store_payable", basAccount: "2440", name: "Leverantörsskulder" },
   { key: "vat_out", basAccount: "2611", name: "Utgående moms på försäljning inom Sverige, 25 %" },
   { key: "sales", basAccount: "3004", name: "Försäljning inom Sverige, momsfri" },

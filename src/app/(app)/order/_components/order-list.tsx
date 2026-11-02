@@ -37,7 +37,8 @@ const SORT_LABEL: Record<OrderSortKey, string> = {
 };
 
 const MOBILE_COLUMNS = new Set(["nr", "titel", "belopp"]);
-const MOBILE_WIDTH: Record<string, number> = { nr: 76, belopp: 100 };
+// Belopp 88 px: "1 393 kr" ryms, och titelkolumnen får plats för "BL-001 · 1 nov. 17:17".
+const MOBILE_WIDTH: Record<string, number> = { nr: 68, belopp: 88 };
 
 const WIDE_QUERY = "(min-width: 768px)";
 
@@ -270,10 +271,11 @@ export function OrderList({
           return (
             <div className="block w-full cursor-pointer leading-tight" onClick={() => onOpen(r)}>
               {label}
-              <span className="tnum mt-0.5 block truncate font-mono text-xs text-muted md:hidden">
-                {formatAt(r.orderedAt, timeZone, now)}
-                {" · "}
-                {machine ? machine.code : "Okopplad"}
+              {/* Automatkoden står först och kortas aldrig; tiden får ge vika om raden är smal. */}
+              <span className="tnum mt-0.5 flex min-w-0 font-mono text-xs whitespace-nowrap text-muted md:hidden">
+                <span className="shrink-0">{machine ? machine.code : "Okopplad"}</span>
+                <span className="shrink-0 whitespace-pre">{" · "}</span>
+                <span className="min-w-0 truncate">{formatAt(r.orderedAt, timeZone, now)}</span>
               </span>
             </div>
           );

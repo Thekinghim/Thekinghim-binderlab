@@ -12,7 +12,13 @@ import { MobileNav } from "./mobile-nav";
 import { activeRouteId, homeHref, routeById, routesForRole, type Role } from "./nav";
 import type { ShellMachine, ShellStore } from "./period-bar";
 import { periodChoices } from "./period-state";
-import { Sidebar, type ShellOrganization, type ShellUser, type SyncState } from "./side-nav";
+import {
+  Sidebar,
+  type ShellOrganization,
+  type ShellUser,
+  type SyncState,
+  type TodoCountSource,
+} from "./side-nav";
 import { setTheme, useTheme } from "./theme-toggle";
 import { Topbar, type Period } from "./topbar";
 import { useCarriedQuery, usePeriod, useScope } from "./use-period";
@@ -30,7 +36,7 @@ export type AppShellProps = {
   activeOrganizationId?: string;
   onOrganizationChange?: (id: string) => void;
   /** Antal öppna åtgärder, visas vid "Att göra". */
-  todoCount?: number;
+  todoCount?: TodoCountSource;
   /** Senaste synk, visas som "Synkad 1 nov. 21:23". */
   syncedAt?: Date | string;
   syncState?: SyncState;

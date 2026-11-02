@@ -60,6 +60,8 @@ export function csvDate(d: Date): string {
 
 const NEEDS_QUOTES = /[";\r\n]/;
 const FORMULA_START = /^[=+\-@\t\r]/;
+/** Ett negativt tal ("-3,50", "-12"): ingen formel, och Excel ska läsa det som tal. */
+const NEGATIVE_NUMBER = /^-\d+(?:,\d+)?$/;
 
 /** Ett fält, citerat vid behov. */
 export function csvField(value: CsvCell, options: CsvOptions = {}): string {
@@ -69,7 +71,9 @@ export function csvField(value: CsvCell, options: CsvOptions = {}): string {
   if (value instanceof Date) return csvDate(value);
 
   let s = value;
-  if ((options.escapeFormulas ?? true) && FORMULA_START.test(s)) s = `'${s}`;
+  if ((options.escapeFormulas ?? true) && FORMULA_START.test(s) && !NEGATIVE_NUMBER.test(s)) {
+    s = `'${s}`;
+  }
   return NEEDS_QUOTES.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

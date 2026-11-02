@@ -6,6 +6,9 @@
 
 import type { IsoDate } from "@/domain";
 
+/** Sortimentets perioder (lager_slot_periods); regeln för utgångna titlar är @/analytics/todos/assortment. */
+export type { SlotPeriod } from "@/analytics/todos/assortment";
+
 /** Status i en cell. Alltid med text i vyn (Kritisk, Låg, OK). */
 export type StockStatus = "critical" | "low" | "ok";
 
@@ -46,6 +49,12 @@ export interface StockCell {
   readonly suggested: number;
   /** Senaste påfyllning eller inventering (ISO 8601), eller null. */
   readonly lastRestockedAt: string | null;
+  /**
+   * Titeln har gått ur sortimentet i automaten: sista perioden i sortimentet
+   * (machine_slots) slutade före i dag och ingen ny är planerad. Platsen fylls inte på,
+   * så den räknas inte som Kritisk eller Låg och står inte i rubriken. `status` är då "ok".
+   */
+  readonly retired: boolean;
 }
 
 /** En rad i centrallagret. */
@@ -155,6 +164,12 @@ export interface LagerView {
   /** Antal händelser i perioden (historiken visar högst HISTORY_LIMIT). */
   readonly historyTotal: number;
   readonly counts: { readonly critical: number; readonly low: number; readonly ok: number };
+  /**
+   * Titlar som har gått ur sortimentet i alla automater i urvalet och inte finns kvar
+   * någonstans (0 pack i automaterna och i centrallagret). De visas inte i matrisen;
+   * sidan nämner dem under den.
+   */
+  readonly retiredTitles: LagerTitle[];
   /** Rättigheter: påfyllning och inventering (ägare, admin, påfyllare). */
   readonly canRegister: boolean;
   /**

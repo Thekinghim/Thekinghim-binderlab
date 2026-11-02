@@ -401,7 +401,7 @@ function viewHeading(result: ProfitabilityResult, lines: readonly ProfitLine[], 
     items: items.length,
     top: topLine
       ? {
-          name: topLine.code ? `${topLine.code} ${topLine.name}` : topLine.name,
+          name: topLine.name || topLine.code || "",
           profitOre: topLine.profitOre,
           marginBp: topLine.marginBp,
         }
@@ -467,11 +467,10 @@ export function buildLonsamhetModel(
   const hv = headlineView(views);
   const top = topContributor(views[hv]);
   const topMachine = top && hv === "machine" ? names.machine(top.key) : null;
+  // Bara namnet i rubriken (koden står i tabellen): "Automat 03 står för …", inte "NA-03 Automat 03".
   const topName = top
     ? topMachine
-      ? topMachine.code
-        ? `${topMachine.code} ${topMachine.name}`
-        : topMachine.name
+      ? topMachine.name || topMachine.code
       : hv === "store"
         ? names.store(top.key)
         : names.title(top.key)

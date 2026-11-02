@@ -164,13 +164,18 @@ export default async function PortalOverviewPage({ searchParams }: { searchParam
           )}
         </div>
         <div className="flex min-w-0 flex-col gap-8 lg:col-span-5">
-          <WeeksBlock report={report} />
+          <WeeksBlock report={report} today={partial ? overview.today : undefined} />
         </div>
       </section>
 
       <CompensationSection report={report} hasAgreement={hasAgreement} />
 
-      <MachinesSection report={report} machinesToday={machinesToday} />
+      <MachinesSection
+        report={report}
+        machinesToday={machinesToday}
+        placedDays={overview.placedDaysSoFar}
+        partial={partial}
+      />
     </div>
   );
 }
@@ -260,6 +265,9 @@ function TrendSection({ trend, month }: { trend: readonly PortalTrendMonth[]; mo
   );
   const total = complete.reduce((s, t) => s + t.revenueOre, 0);
   const totalComp = complete.reduce((s, t) => s + t.compensationOre, 0);
+  // Snittet räknas bara på hela månader: en pågående månad drar ned det. Med
+  // färre än två hela månader finns inget snitt att jämföra med.
+  const meanOfComplete = complete.length >= 2 ? total / complete.length / 100 : undefined;
   const selectedIndex = Math.max(
     0,
     trend.findIndex((t) => t.month === month),
@@ -294,6 +302,7 @@ function TrendSection({ trend, month }: { trend: readonly PortalTrendMonth[]; mo
             value: t.revenueOre / 100,
           }))}
           selectedIndex={selectedIndex}
+          mean={meanOfComplete}
           summary={`Försäljning per månad, ${monthText(trend[0]!.month)} till ${monthText(
             trend[trend.length - 1]!.month,
           )}.`}
@@ -320,13 +329,13 @@ function TrendTable({ trend }: { trend: readonly PortalTrendMonth[] }) {
             <th scope="col" className="label h-9 text-left font-normal text-subtle">
               Månad
             </th>
-            <th scope="col" className="label h-9 text-right font-normal text-subtle">
-              Sålda pack
+            <th scope="col" className="label h-9 pl-3 text-right font-normal text-subtle">
+              Pack
             </th>
-            <th scope="col" className="label h-9 text-right font-normal text-subtle">
+            <th scope="col" className="label h-9 pl-3 text-right font-normal text-subtle">
               Försäljning
             </th>
-            <th scope="col" className="label h-9 text-right font-normal text-subtle">
+            <th scope="col" className="label h-9 pl-3 text-right font-normal text-subtle">
               Ersättning
             </th>
           </tr>
@@ -343,9 +352,13 @@ function TrendTable({ trend }: { trend: readonly PortalTrendMonth[] }) {
                 </Link>
                 {t.partial ? <span className="meta text-subtle"> · pågår</span> : null}
               </th>
-              <td className="tnum text-right text-muted">{formatInt(t.orders)}</td>
-              <td className="tnum text-right text-fg">{kr(t.revenueOre)}</td>
-              <td className="tnum text-right text-fg">{kr(t.compensationOre)}</td>
+              <td className="tnum pl-3 text-right whitespace-nowrap text-muted">
+                {formatInt(t.orders)}
+              </td>
+              <td className="tnum pl-3 text-right whitespace-nowrap text-fg">{kr(t.revenueOre)}</td>
+              <td className="tnum pl-3 text-right whitespace-nowrap text-fg">
+                {kr(t.compensationOre)}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -357,9 +370,13 @@ function TrendTable({ trend }: { trend: readonly PortalTrendMonth[] }) {
 function MachinesSection({
   report,
   machinesToday,
+  placedDays,
+  partial,
 }: {
   report: StoreReport;
   machinesToday: { machineId: string; code: string; name: string }[];
+  placedDays: Readonly<Record<string, number>>;
+  partial: boolean;
 }) {
   const todayIds = new Set(machinesToday.map((m) => m.machineId));
   const best = report.machines[0];
@@ -391,31 +408,34 @@ function MachinesSection({
         <StateMessage kind="empty" message="Inga automater stod i butiken under månaden." />
       ) : (
         <ul className="flex flex-col border-t border-line-strong">
-          {report.machines.map((m) => (
-            <li
-              key={m.machineId}
-              className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-line py-4"
-            >
-              <div className="flex min-w-0 flex-col gap-1">
-                <span className="text-base text-fg">{m.name}</span>
-                <span className="meta text-subtle">
-                  {formatInt(m.placedDays)} {m.placedDays === 1 ? "dag" : "dagar"} i butiken ·{" "}
-                  {formatInt(m.orders)} pack
-                </span>
-              </div>
-              <div className="flex items-baseline gap-4">
-                <span className="tnum text-md text-fg">{kr(m.revenueOre)}</span>
-                {todayIds.has(m.machineId) ? (
-                  <Link
-                    href={`/portal/felanmalan?automat=${m.machineId}`}
-                    className="text-sm text-muted underline-offset-4 hover:text-fg hover:underline"
-                  >
-                    Felanmäl
-                  </Link>
-                ) : null}
-              </div>
-            </li>
-          ))}
+          {report.machines.map((m) => {
+            const days = placedDays[m.machineId] ?? m.placedDays;
+            return (
+              <li
+                key={m.machineId}
+                className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-b border-line py-4"
+              >
+                <div className="flex min-w-0 flex-col gap-1">
+                  <span className="text-base text-fg">{m.name}</span>
+                  <span className="meta text-subtle">
+                    {formatInt(days)} {days === 1 ? "dag" : "dagar"} i butiken
+                    {partial ? " hittills" : ""} · {formatInt(m.orders)} pack
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-4">
+                  <span className="tnum text-md text-fg">{kr(m.revenueOre)}</span>
+                  {todayIds.has(m.machineId) ? (
+                    <Link
+                      href={`/portal/felanmalan?automat=${m.machineId}`}
+                      className="text-sm text-muted underline-offset-4 hover:text-fg hover:underline"
+                    >
+                      Felanmäl
+                    </Link>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>

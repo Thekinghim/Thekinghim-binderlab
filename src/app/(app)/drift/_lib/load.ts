@@ -11,28 +11,24 @@ import { and, asc, desc, eq, gte, inArray, isNull, lt, ne, or } from "drizzle-or
 
 import type { AlertIncident } from "@/analytics/alerts";
 import {
-  machineHealth,
   machineTimeline,
   type MachineHealth,
   type MachineIncident,
   type MachineStockEvent,
   type TimelineEntry,
 } from "@/analytics/health";
-import { planVisits, type ExtraVisit, type VisitPlan } from "@/analytics/visits";
+import type { VisitPlan } from "@/analytics/visits";
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
-import { addDays, type IsoDate } from "@/domain";
-import {
-  alertColumns,
-  healthInputOf,
-  loadHealthData,
-  type HealthData,
-} from "@/server/alerts/inputs";
+import { addDays } from "@/domain";
+import { alertColumns, healthOf, loadHealthData, type HealthData } from "@/server/alerts/inputs";
 import { rowToIncident, type AlertRow } from "@/server/alerts/store";
 import { defaultSubscription, type SubscriptionRow } from "@/server/alerts/subscriptions";
 import { channelStatus, type ChannelStatus } from "@/server/notify";
 import { queryStock } from "@/server/data/core/queries";
 import type { AppContext } from "@/server/data/core";
+import { querySlotPeriods, type SlotPeriod } from "@/server/data/assortment";
+import { weeklyVisitPlan } from "@/server/data/visit-plan";
 import { withUserDb } from "@/server/session";
 
 /** Senaste körningen av larmjobbet. */
@@ -57,21 +53,6 @@ export interface DriftOverview {
   readonly recentAlerts: AlertView[];
   readonly lastRun: AlertRunInfo | null;
   readonly plan: VisitPlan;
-}
-
-/** Extra besök ur maskinhälsan: misstänkt fel, fel och ur drift ska besökas i dag. */
-export function extraVisitsFromHealth(
-  health: readonly MachineHealth[],
-  today: IsoDate,
-): ExtraVisit[] {
-  const reason: Partial<Record<MachineHealth["status"], string>> = {
-    offline: "Ur drift",
-    fault: "Fel rapporterat",
-    suspected_fault: "Misstänkt fel",
-  };
-  return health
-    .filter((h) => reason[h.status])
-    .map((h) => ({ machineId: h.machineId, reason: reason[h.status] as string, needBy: today }));
 }
 
 async function names(tx: Tx, orgId: string, userIds: string[]): Promise<Map<string, string>> {
@@ -139,24 +120,26 @@ async function loadLastRun(tx: Tx, orgId: string): Promise<AlertRunInfo | null> 
   return row ? { ...row, ranAt: row.ranAt.toISOString() } : null;
 }
 
+/** Veckans besöksplan: samma funktion, samma takt (gårdagens) och samma sortiment som Lager. */
 function buildPlan(
   data: HealthData,
   health: readonly MachineHealth[],
   warehouse: { titleId: string; onHand: number }[] | null,
+  slotPeriods: readonly SlotPeriod[],
   ctx: AppContext,
 ): VisitPlan {
-  return planVisits(
-    {
-      orders: data.orders,
-      machines: data.machines.filter((m) => !m.archived),
-      titles: data.titles,
-      stock: data.stock,
-      ...(warehouse ? { warehouseStock: warehouse } : {}),
-      extraVisits: extraVisitsFromHealth(health, ctx.today),
-      options: { timeZone: ctx.timeZone, start: ctx.today },
-    },
-    new Date(ctx.now),
-  );
+  return weeklyVisitPlan({
+    orders: data.orders,
+    machines: data.machines.filter((m) => !m.archived),
+    titles: data.titles,
+    stock: data.stock,
+    warehouseStock: warehouse,
+    health,
+    slotPeriods,
+    today: ctx.today,
+    timeZone: ctx.timeZone,
+    now: new Date(ctx.now),
+  });
 }
 
 /** Översikten på /drift: hälsa per automat, larm, senaste körning och veckans besök. */
@@ -165,14 +148,15 @@ export async function loadDriftOverview(ctx: AppContext): Promise<DriftOverview>
   return withUserDb(async (tx) => {
     const orgId = ctx.organization.id;
     const data = await loadHealthData(tx, orgId, ctx.today, new Date(ctx.now));
-    const health = machineHealth(healthInputOf(data, ctx.timeZone), now);
+    const health = healthOf(data, ctx.timeZone, now);
     const alerts = await loadAlerts(tx, orgId, now);
     const lastRun = ctx.canSeeEconomy ? await loadLastRun(tx, orgId) : null;
     const stockRows = await queryStock(tx, orgId);
     const warehouse = stockRows
       .filter((r) => r.isCentral)
       .map((r) => ({ titleId: r.titleId, onHand: r.onHand }));
-    const plan = buildPlan(data, health, warehouse.length > 0 ? warehouse : null, ctx);
+    const slotPeriods = await querySlotPeriods(tx, orgId);
+    const plan = buildPlan(data, health, warehouse.length > 0 ? warehouse : null, slotPeriods, ctx);
     return { data, health, openAlerts: alerts.open, recentAlerts: alerts.recent, lastRun, plan };
   });
 }
@@ -185,12 +169,13 @@ export async function loadVisitPlan(
   return withUserDb(async (tx) => {
     const orgId = ctx.organization.id;
     const data = await loadHealthData(tx, orgId, ctx.today, new Date(ctx.now));
-    const health = machineHealth(healthInputOf(data, ctx.timeZone), now);
+    const health = healthOf(data, ctx.timeZone, now);
     const stockRows = await queryStock(tx, orgId);
     const warehouse = stockRows
       .filter((r) => r.isCentral)
       .map((r) => ({ titleId: r.titleId, onHand: r.onHand }));
-    const plan = buildPlan(data, health, warehouse.length > 0 ? warehouse : null, ctx);
+    const slotPeriods = await querySlotPeriods(tx, orgId);
+    const plan = buildPlan(data, health, warehouse.length > 0 ? warehouse : null, slotPeriods, ctx);
     return { data, health, plan, hasWarehouse: warehouse.length > 0 };
   });
 }
@@ -217,10 +202,7 @@ export async function loadMachineTimeline(
     const data = await loadHealthData(tx, orgId, ctx.today, new Date(ctx.now));
     const machine = data.machines.find((m) => m.id === machineId);
     if (!machine) return null;
-    const health =
-      machineHealth(healthInputOf(data, ctx.timeZone), now).find(
-        (h) => h.machineId === machineId,
-      ) ?? null;
+    const health = healthOf(data, ctx.timeZone, now).find((h) => h.machineId === machineId) ?? null;
     const from = new Date(now.getTime() - days * 86_400_000);
 
     const stockRows = await tx

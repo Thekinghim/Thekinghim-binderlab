@@ -14,7 +14,7 @@ import {
   type IsoMonth,
   type Period,
 } from "@/domain";
-import { EN_DASH, formatInt, MINUS, NBSP } from "@/lib/format";
+import { EN_DASH, formatInt, MINUS, NBSP, SPACED_RANGE_DASH } from "@/lib/format";
 
 const MONTHS_SHORT = [
   "jan.",
@@ -80,6 +80,12 @@ export function krExact(ore: number): string {
   return `${sign}${formatInt(whole)},${String(cents).padStart(2, "0")}${NBSP}kr`;
 }
 
+/** Procent från bp med en decimal, som andelen utan inköpspris på Lönsamhet: 352 bp → "3,5 %". */
+export function pct1(bp: number): string {
+  const tenths = roundHalfUp(bp, 10);
+  return `${formatInt(Math.trunc(tenths / 10))},${Math.abs(tenths % 10)}${NBSP}%`;
+}
+
 /** Procent från bp, hela procent: 3 312 bp → "33 %". */
 export function pct(bp: number): string {
   return `${formatInt(roundHalfUp(bp, 100))}${NBSP}%`;
@@ -137,7 +143,7 @@ export function periodText(period: Period): string {
   if (a.year === b.year && a.month === b.month) {
     return `${a.day}${EN_DASH}${b.day}${NBSP}${MONTHS_SHORT[b.month - 1]}`;
   }
-  return `${day(period.start)}${NBSP}${EN_DASH}${NBSP}${day(period.end)}`;
+  return `${day(period.start)}${SPACED_RANGE_DASH}${day(period.end)}`;
 }
 
 /** Versal första bokstav: "lördagar" → "Lördagar". */

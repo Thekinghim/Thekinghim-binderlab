@@ -23,6 +23,7 @@ import {
   monthPeriod,
   overlapDays,
   type IsoDate,
+  type IsoMonth,
 } from "@/domain";
 import { evidence, links, nameLookup } from "./common";
 import { urgencyOf, type TodoContext } from "./context";
@@ -53,18 +54,30 @@ const DONE: ReadonlySet<ReportDeliveryRef["status"]> = new Set(["queued", "sent"
 /** Antal dagar kvar till sista dag då punkten får nivån 'soon'. */
 export const REPORT_SOON_DAYS = 3;
 
+/**
+ * Sista dag att skicka rapporterna för `reportMonth` (månaden efter, dag `reportDueDay` eller
+ * månadens sista dag), dagar kvar från i dag och nivån. Samma regel för utkast att granska.
+ */
+export function reportDeadline(
+  ctx: Pick<TodoContext, "today" | "options">,
+  reportMonth: IsoMonth,
+): { due: IsoDate; daysLeft: number; level: TodoLevel } {
+  const month = addMonths(reportMonth, 1);
+  const due: IsoDate =
+    ctx.options.reportDueDay === null
+      ? monthEnd(month)
+      : `${month}-${String(Math.min(ctx.options.reportDueDay, daysInMonth(month))).padStart(2, "0")}`;
+  const daysLeft = daysBetween(ctx.today, due);
+  const level: TodoLevel = daysLeft < 0 ? "now" : daysLeft <= REPORT_SOON_DAYS ? "soon" : "later";
+  return { due, daysLeft, level };
+}
+
 /** Punkter för rapporter som inte skickats. */
 export function reportTodos(ctx: TodoContext): TodoItem[] {
   const { input, today, options } = ctx;
-  const month = monthOf(today);
-  const reportMonth = addMonths(month, -1);
+  const reportMonth = addMonths(monthOf(today), -1);
   const period = monthPeriod(reportMonth);
-  const due: IsoDate =
-    options.reportDueDay === null
-      ? monthEnd(month)
-      : `${month}-${String(Math.min(options.reportDueDay, daysInMonth(month))).padStart(2, "0")}`;
-  const daysLeft = daysBetween(today, due);
-  const level: TodoLevel = daysLeft < 0 ? "now" : daysLeft <= REPORT_SOON_DAYS ? "soon" : "later";
+  const { due, daysLeft, level } = reportDeadline(ctx, reportMonth);
   const storeName = nameLookup(input.stores ?? []);
 
   const out: TodoItem[] = [];
@@ -97,9 +110,13 @@ export function reportTodos(ctx: TodoContext): TodoItem[] {
       .map((x) => x.d);
     const latestFailed = failed[failed.length - 1];
 
+    // Butiken i parentes, utom när mottagarens namn redan säger den ("Maria Dahl, Bio Fyren").
+    const store = r.kind === "store" && r.storeId !== null ? storeName(r.storeId) : null;
     const to =
-      r.kind === "store" && r.storeId !== null && storeName(r.storeId) !== r.storeId
-        ? `${r.name} (${storeName(r.storeId)})`
+      store !== null &&
+      store !== r.storeId &&
+      !r.name.toLocaleLowerCase("sv-SE").includes(store.toLocaleLowerCase("sv-SE"))
+        ? `${r.name} (${store})`
         : r.name;
     const deadline =
       daysLeft < 0

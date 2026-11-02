@@ -11,9 +11,9 @@ import {
   loadMasterData,
   loadOptionalContext,
   loadSyncInfo,
-  loadTodos,
 } from "@/server/data/core";
 import { redirectStoreUserToPortal } from "@/server/portal/session";
+import { loadTodoCount } from "@/server/data/todos";
 import { requireUser } from "@/server/session";
 import { AppFrame } from "./app-frame";
 import { NoOrganization } from "./no-organization";
@@ -44,12 +44,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   }
 
   const hasTodos = routeById("att-gora").roles.includes(ctx.role);
-  const [master, sync, dataStart, machineCounts, todoCount] = await Promise.all([
+  // Räknaren i menyn väntas inte in: den skickas som ett löfte och strömmar in när
+  // punkterna är räknade (Att göra läser order och lager och tar längst tid i skalet).
+  const todoCount = hasTodos ? countTodos() : undefined;
+  const [master, sync, dataStart, machineCounts] = await Promise.all([
     loadMasterData(),
     loadSyncInfo(),
     loadDataStart(),
     loadMachineCounts(),
-    hasTodos ? countTodos() : Promise.resolve(undefined),
   ]);
 
   const stores: ShellStore[] = master.stores
@@ -88,7 +90,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 /** Antal punkter i Att göra. Ett fel i reglerna får inte stoppa hela appen: då visas ingen räknare. */
 async function countTodos(): Promise<number | undefined> {
   try {
-    return (await loadTodos()).length;
+    // Samma punkter som listan: utan påfyllningar av utgångna titlar (som Lager och Drift).
+    return await loadTodoCount();
   } catch (error) {
     console.error("[layout] Att göra kunde inte räknas:", error);
     return undefined;

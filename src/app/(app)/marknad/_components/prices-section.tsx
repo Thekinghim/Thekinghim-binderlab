@@ -50,7 +50,7 @@ function SourceStatus({ source }: { source: MarketSourceView }) {
       );
     }
     return (
-      <p className="meta text-subtle">
+      <p className="text-sm text-subtle">
         Marknadspris: {source.sourceName} · {formatInt(Object.keys(source.latest).length)} titlar
         med pris. Testdata, inte riktiga marknadspriser.
       </p>
@@ -93,11 +93,11 @@ function Trend({
             <p className="label text-subtle">
               Inköpspris per pack · {name} · {formatInt(trend.purchases)} inköp
             </p>
-            {trend.points.length >= 2 ? (
+            {trend.points.length >= 3 ? (
               <PriceChart
                 points={trend.points.map((p) => ({ date: p.date, ore: p.unitCostOre }))}
                 medianOre={trend.medianOre}
-                medianLabel={`MEDIAN ${kronor(trend.medianOre)}`}
+                medianLabel="Median"
                 marker={
                   markerIndex >= 0 && expensive
                     ? { index: markerIndex, note: `! Dyrt: ${kronor(expensive.unitCostOre)}` }
@@ -105,6 +105,23 @@ function Trend({
                 }
                 summary={`${name}: ${formatInt(trend.purchases)} inköp från ${kronor(trend.minOre)} till ${kronor(trend.maxOre)}, median ${kronor(trend.medianOre)}.`}
               />
+            ) : trend.points.length === 2 ? (
+              // Två priser: en linje säger inget som siffrorna inte säger bättre.
+              <dl className="grid grid-cols-2 gap-x-8 gap-y-3" aria-label={`Priser för ${name}`}>
+                {trend.points.map((p, i) => (
+                  <div key={p.id} className="flex flex-col gap-1">
+                    <dt className="label text-subtle">
+                      {i === 0 ? "Först" : "Senast"} · {dayText(p.date, ctx.today)}
+                    </dt>
+                    <dd className="tnum text-lg">
+                      {kronor(p.unitCostOre)}
+                      {markerIndex === i ? (
+                        <span className="meta ml-2 text-signal-fg">! Dyrt</span>
+                      ) : null}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
             ) : (
               <StateMessage
                 kind="empty"

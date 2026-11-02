@@ -1,10 +1,10 @@
 "use client";
 
 import { extent, max as d3max } from "d3-array";
-import { scaleLinear, scaleTime } from "d3-scale";
+import { scaleLinear } from "d3-scale";
 import { area, curveLinear, line } from "d3-shape";
 import { useMemo, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { useMeasure } from "@/lib/hooks/use-measure";
+import { svgSizeProps, unmeasuredStyle, useMeasure } from "@/lib/hooks/use-measure";
 import { formatDate, formatWeekdayDay } from "@/lib/format";
 import { axisScale, type AxisUnit } from "./axis";
 import {
@@ -80,6 +80,18 @@ const M = { top: 48, right: 12, bottom: 28, left: 36 };
 /** "24 okt." som i löptexten, samma form på axeln och i etiketterna. */
 const day = (d: Date) => formatDate(d, { year: "never" });
 
+/** Datumets väggklocka (lokala fält) som millisekunder, oberoende av tidszon och sommartid. */
+function wallMs(d: Date): number {
+  return Date.UTC(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate(),
+    d.getHours(),
+    d.getMinutes(),
+    d.getSeconds(),
+  );
+}
+
 function argmax(data: ReadonlyArray<LinePoint>) {
   let b = 0;
   data.forEach((d, i) => {
@@ -123,7 +135,7 @@ export function LineChart({
   seriesName = "Period",
   compareName = "Föregående",
 }: LineChartProps) {
-  const [ref, width] = useMeasure<HTMLDivElement>();
+  const [ref, width, measured] = useMeasure<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
 
   const peakIndex = peakProp ?? highlightIndex ?? (data.length ? argmax(data) : undefined);
@@ -133,15 +145,20 @@ export function LineChart({
   const geo = useMemo(() => {
     const innerW = Math.max(10, width - M.left - M.right);
     const innerH = height - M.top - M.bottom;
+    // Väggklockans tid (som om den vore UTC): samma läge på servern (UTC) och i webbläsaren
+    // (svensk tid), och lika långa dagar även vid sommartidens slut. Annars blir x olika i
+    // serverrenderingen och hydreringen.
     const [d0 = new Date(), d1 = new Date()] = extent(data, (d) => d.date);
-    const x = scaleTime().domain([d0, d1]).range([0, innerW]);
+    const x = scaleLinear()
+      .domain([wallMs(d0), wallMs(d1)])
+      .range([0, innerW]);
     const top = Math.max(
       d3max(data, (d) => d.value) ?? 1,
       d3max(compare ?? []) ?? 0,
       reference?.value ?? 0,
     );
     const y = scaleLinear().domain([0, top]).range([innerH, 0]).nice(4);
-    const xs = data.map((d) => x(d.date));
+    const xs = data.map((d) => x(wallMs(d.date)));
     const pts = data.map((d, i) => [xs[i] ?? 0, y(d.value)] as [number, number]);
     const cmp = compare?.map((v, i) => [xs[i] ?? 0, y(v)] as [number, number]);
     // Raka segment: inga påhittade mellanvärden eller överslängar.
@@ -403,10 +420,9 @@ export function LineChart({
 
   return (
     <ChartFigure summary={summary}>
-      <div ref={ref} className="relative w-full" style={{ height }}>
+      <div ref={ref} className="relative w-full" style={{ height, ...unmeasuredStyle(measured) }}>
         <svg
-          width={width}
-          height={height}
+          {...svgSizeProps(width, height, measured)}
           className="absolute top-0 left-0 block overflow-visible focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-solid"
           tabIndex={0}
           role="img"

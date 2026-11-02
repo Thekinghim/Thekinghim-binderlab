@@ -56,6 +56,8 @@ export function ValuationView({ model }: { model: ValuationModel }) {
       {
         key: "value",
         header: "Lagervärde",
+        // Under md visas kapitalbindningen (sektionens mått); lagervärdet står i summaraden ovan.
+        hideOnMobile: true,
         numeric: true,
         sortValue: (r) => (r.unitCostOre === null ? -1 : r.valueOre),
         // Utan inköpspris finns inget värde att visa (inte 0 kr).
@@ -156,6 +158,7 @@ export function ValuationView({ model }: { model: ValuationModel }) {
       ) : (
         <div className="flex flex-col gap-3">
           <DataTable
+            surface="bg"
             columns={columns}
             rows={model.rows}
             rowKey={(r) => r.titleId}

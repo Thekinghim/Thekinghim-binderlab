@@ -8,7 +8,8 @@ import { StatusGlyph } from "@/components/ui/status-tag";
 import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
 
-import { codeText, packs, relativeDay } from "../_lib/display";
+import { codeText, packs } from "../_lib/display";
+import { packListAside } from "../_lib/headline";
 import type { LagerMachine, PackList as PackListData, PackListLine } from "../_lib/types";
 
 /**
@@ -45,12 +46,7 @@ export function PackList({
         ? `Inget att ta med till ${codeText(machine.code)}: centrallagret saknar det som behövs.`
         : `Inget behöver med till ${codeText(machine.code)} i dag.`
       : `Ta med ${packs(list.totalPacks)} till ${codeText(machine.code)}.`;
-  const aside =
-    list.needBy === null
-      ? "Ingen titel väntas ta slut den närmaste veckan."
-      : list.plannedDay
-        ? `Besök senast ${relativeDay(list.needBy, today)}${list.plannedDay !== list.needBy ? `, planerat ${relativeDay(list.plannedDay, today)}` : ""}.`
-        : `Besök senast ${relativeDay(list.needBy, today)}.`;
+  const aside = packListAside(list, today);
 
   return (
     <div className="flex flex-col gap-6">

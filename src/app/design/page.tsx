@@ -1,6 +1,8 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { Metadata } from "next";
+import { requireUser } from "@/server/session";
+
 import { DesignSystemPage } from "./design-system-page";
 import { parseThemeTokens } from "./tokens";
 
@@ -27,6 +29,8 @@ export default async function Page({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // Bara för inloggade (även proxyn kräver det).
+  await requireUser();
   // Sidan läser periodvalet ur URL:en, så den renderas per begäran.
   await searchParams;
   const css = await readFile(path.join(root, "src/styles/tokens.css"), "utf8");

@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { SectionHeader } from "@/components/ui/section-header";
+import { StateMessage } from "@/components/ui/state-message";
+import { formatInt } from "@/lib/format";
 import { TYPE_LABEL } from "@/server/reports/kinds";
 import { appBaseUrl, currentReportViewer, reportSender } from "@/server/reports/runtime";
 import {
@@ -25,6 +28,13 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 function one(v: string | string[] | undefined): string {
   return (Array.isArray(v) ? v[0] : v) ?? "";
 }
+
+/** Rapporttypen i bestämd form, i rubriken. */
+const DEFINITE = {
+  butik: "butiksrapporten",
+  bokforing: "bokföringsunderlaget",
+  delagare: "delägarrapporten",
+} as const;
 
 /**
  * Rapportmejlen för en rapport, renderade med mallen i src/emails. Visar förhandsvisningen
@@ -105,12 +115,25 @@ export default async function EmailPage({
           </nav>
         </div>
       </div>
-      <main className="mx-auto max-w-[1280px] px-4 py-8 md:px-8">
+      <main className="mx-auto flex max-w-[1280px] flex-col gap-10 px-4 py-8 md:px-8">
+        <SectionHeader
+          as="h1"
+          size="md"
+          eyebrow="Mejl"
+          title={
+            jobs.length === 0
+              ? "Inget mejl att visa."
+              : `${formatInt(jobs.length)} mejl med ${DEFINITE[report.snapshot.type]}.`
+          }
+          aside={jobs.length === 0 ? undefined : "Så som mottagarna får dem."}
+        />
         {jobs.length === 0 ? (
-          <p className="text-base text-muted">
-            Ingen aktiv mottagare kan få den här rapporten. Lägg till en under Rapporter →
-            Mottagare.
-          </p>
+          <StateMessage
+            kind="empty"
+            message="Ingen aktiv mottagare kan få den här rapporten."
+            action={{ label: "Lägg till mottagare", href: "/rapporter#mottagare" }}
+            className="rounded-md border border-line bg-surface"
+          />
         ) : (
           <EmailRenderer jobs={jobs} />
         )}

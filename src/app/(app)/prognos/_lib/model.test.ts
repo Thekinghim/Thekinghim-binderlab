@@ -9,7 +9,14 @@ import { addDays, revenue, type IsoDate, type OrderLine } from "@/domain";
 import type { PrognosData, PurchaseOrderRecord } from "@/server/purchasing/types";
 
 import { evidenceView, figureText } from "./evidence";
-import { buildPageModel, krRangeText, purchaseOrderNumber } from "./model";
+import {
+  buildPageModel,
+  codesUnbroken,
+  krRangeText,
+  oneSentence,
+  purchaseOrderNumber,
+  tidy,
+} from "./model";
 import { oreToField, parseCount, parseKronor } from "./units";
 
 const SETTINGS = { vatRateBp: 0, cardFeeBp: 0 };
@@ -308,6 +315,21 @@ describe("units", () => {
     expect(parseCount("2,5")).toBeNull();
     expect(oreToField(4_505)).toBe("45,05");
   });
+  it("bryter aldrig automatkoder, inte heller i texterna från analysen", () => {
+    expect(codesUnbroken("Förlorat i NA-05 och BL-001.")).toBe(
+      "Förlorat i NA\u201105 och BL\u2011001.",
+    );
+    expect(codesUnbroken("2026-11-02, 4-veckor")).toBe("2026-11-02, 4-veckor");
+    expect(tidy("Slutsålt i NA-05 sedan 1 nov..")).toBe("Slutsålt i NA\u201105 sedan 1 nov.");
+  });
+  it("skriver rubrikens andra del som en mening", () => {
+    expect(
+      oneSentence(["Slutsålt kostade ca 4 100 kr 4 okt. – 1 nov.", "1 titel bör beställas."]),
+    ).toBe("Slutsålt kostade ca 4 100 kr 4 okt. – 1 nov., 1 titel bör beställas.");
+    expect(oneSentence(["Slutsålt kostade ca 4 100 kr.", "Titlar behöver en leverantör."])).toBe(
+      "Slutsålt kostade ca 4 100 kr, titlar behöver en leverantör.",
+    );
+  });
   it("skriver intervall och ordernummer", () => {
     expect(krRangeText(1_690_000, 1_990_000)).toBe("16 900–19 900 kr");
     expect(purchaseOrderNumber("abcdef12-0000")).toBe("IO‑ABCDEF");
@@ -322,11 +344,17 @@ describe("buildPageModel", () => {
     expect(m.lost.rows).toHaveLength(1);
     const row = m.lost.rows[0]!;
     expect(row.title).toBe("Pokémon 151");
-    expect(row.machine).toBe("BL-001 Automat 1");
+    // Automatens namn, som i Att göra och på Lager.
+    expect(row.machine).toBe("Automat 1");
     expect(row.lostRevenueOre).toBeGreaterThan(0);
     expect(m.lost.totalRevenueOre).toBe(row.lostRevenueOre);
     expect(m.lost.heading.title).toMatch(/^Slutsålt kostade ca/);
-    expect(m.lost.heading.aside).toContain("Störst: Pokémon 151 i BL-001 Automat 1");
+    expect(m.lost.heading.aside).toContain("Störst: Pokémon 151 i Automat 1");
+    // Pågående slutsålt räknas i titlar och böjs i ental.
+    expect(m.lost.heading.aside).not.toMatch(/1\u00a0titel är slutsålda/);
+    // Sidhuvudet: periodtexten kan sluta på en förkortning ("okt."), aldrig "..".
+    expect(m.heading.aside).toMatch(/Slutsålt kostade ca/);
+    expect(m.heading.aside).not.toMatch(/(?<!\.)\.\.(?!\.)/);
     expect(row.evidence.rule).toMatch(/Slutsåld/);
     expect(row.evidence.links.some((l) => l.href.startsWith("/lager?automat="))).toBe(true);
   });
@@ -344,6 +372,9 @@ describe("buildPageModel", () => {
     expect(f.total.revenueHighOre).toBeGreaterThanOrEqual(f.total.revenueOre);
     expect(m.heading.title).toMatch(/^Ca\s.* kommande 4 veckor\.$/);
     expect(f.bySeries[0]?.explanation).toMatch(/Nivå/);
+    // "80 %" bryts aldrig mellan talet och procenttecknet (hårt mellanslag, design.md §4).
+    expect(f.coverage).toBe("80\u00a0%");
+    expect(f.heading.aside).toContain("80\u00a0%-intervall");
   });
 
   it("lägger backtestens veckor på samma veckor som historiken", () => {

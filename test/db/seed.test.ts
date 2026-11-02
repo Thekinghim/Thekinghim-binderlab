@@ -358,6 +358,7 @@ describe("seed: organisation, användare, butiker", () => {
       store_commission: "6050",
       card_fees: "6040",
       vat_out: "2611",
+      bank: "1930",
     });
     const ds = await one<{ provider: string; tz: string; mapped: number }>(
       db(),

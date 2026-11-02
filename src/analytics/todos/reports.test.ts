@@ -45,6 +45,12 @@ describe("rapporter att skicka", () => {
     expect(todos[1]?.title).toBe("Skicka bokföringsunderlaget för oktober till Byrån");
   });
 
+  it("upprepar inte butiken när mottagarens namn redan säger den", () => {
+    const named = [{ ...recipients[0]!, name: "Anna Berg, ICA Nära" }];
+    const todos = reports({ reportRecipients: named });
+    expect(todos[0]?.title).toBe("Skicka butiksrapporten för oktober till Anna Berg, ICA Nära");
+  });
+
   it("skickad, köad eller levererad rapport tar bort punkten", () => {
     for (const status of ["queued", "sent", "delivered"] as const) {
       expect(reports({ reportDeliveries: [delivery({ status })] }).map((t) => t.key)).toEqual([

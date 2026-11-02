@@ -82,5 +82,9 @@ export const MAX_SEARCH_LENGTH = 100;
 export const MAX_SEARCH_TERMS = 6;
 /** Flest träffar per grupp. */
 export const HITS_PER_GROUP = 5;
-/** Kortaste sökord som söker i order (kortare ord kan inte använda trigramindexet). */
+/**
+ * Kortaste följd av bokstäver eller siffror som ett sökord måste ha för att söka i
+ * order. Trigramindexet bygger på just sådana följder: ett ord som "42", "---" eller
+ * "%_%" ger inga trigram, och då läser Postgres varje order i organisationen.
+ */
 export const MIN_ORDER_TERM = 3;

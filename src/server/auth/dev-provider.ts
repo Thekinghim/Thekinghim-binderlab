@@ -131,6 +131,14 @@ export class DevAuthProvider implements AuthProvider {
     (this.options.log ?? console.info)(`[dev-mejl] Inbjudan till ${email} sparad i ${file}`);
   }
 
+  /**
+   * Sätter lösenordet för den inbjudna adressen. Ett befintligt konto UTAN
+   * lösenord (t.ex. skapat av en tidigare inbjudan som aldrig accepterades) får
+   * lösenordet här; ett konto MED lösenord avvisas (account_exists). Det är säkert
+   * eftersom anroparen redan har verifierat en giltig inbjudningstoken för exakt
+   * den här adressen, och token bara mejlas dit (samma modell som Supabase
+   * inbjudningar). Röd granskning fas 7 granskade beteendet.
+   */
   async registerInvitedUser(email: string, password: string): Promise<SignInResult> {
     const encrypted = await hashPassword(password);
     const normalized = email.trim().toLowerCase();

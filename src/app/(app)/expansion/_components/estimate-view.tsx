@@ -53,14 +53,27 @@ export function SiteEstimateView({
   investmentNote?: string;
 }) {
   if (estimate.status !== "ok") {
+    // Har ingen butik tillräckligt lång historik är det tiden som saknas, inte
+    // platsprofilerna: då jämförs inte butiken med sig själv ("Mest lik: X, 100 %").
+    const onlyShort =
+      estimate.excluded.length > 0 &&
+      estimate.excluded.every((e) => e.reason === "short-history" || e.reason === "excluded");
     return (
       <div className="flex flex-col gap-4">
         <StateMessage
           kind="empty"
           code="Inget underlag"
-          message={estimate.text}
-          detail={estimate.detail}
-          action={{ label: "Fyll i platsprofiler", href: "#platsprofiler" }}
+          message={
+            onlyShort
+              ? "Ingen butik har sålt länge nog för en uppskattning: det krävs 28 automatdagar med försäljningsdata."
+              : estimate.text
+          }
+          detail={
+            onlyShort
+              ? "Automatdagar räknas från första ordern, inte från när automaten ställdes ut. Uppskattningen räknas när en butik har 28 dagar."
+              : estimate.detail
+          }
+          action={onlyShort ? undefined : { label: "Fyll i platsprofiler", href: "#platsprofiler" }}
         />
         {estimate.excluded.length > 0 ? <Excluded estimate={estimate} /> : null}
       </div>

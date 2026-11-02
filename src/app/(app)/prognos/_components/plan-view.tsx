@@ -52,6 +52,10 @@ const proposalColumns: Column<PlanLineView>[] = [
       <span className="flex min-w-0 flex-col">
         <span className="text-fg">{r.title}</span>
         <LineNotes r={r} />
+        {/* Under md står läget här; kolumnen Läge är dold (design.md §5.1, MachineCell). */}
+        <span className="mt-1 md:hidden">
+          <StatusTag status={r.tone}>{r.statusLabel}</StatusTag>
+        </span>
       </span>
     ),
     csv: notesCsv,
@@ -60,6 +64,7 @@ const proposalColumns: Column<PlanLineView>[] = [
     key: "status",
     header: "Läge",
     hideable: false,
+    hideOnMobile: true,
     render: (r) => <StatusTag status={r.tone}>{r.statusLabel}</StatusTag>,
     csv: (r) => r.statusLabel,
   },
@@ -111,6 +116,8 @@ const proposalColumns: Column<PlanLineView>[] = [
     key: "value",
     header: "Värde",
     numeric: true,
+    // Under md står förslagets summa i raden ovanför tabellen; beloppet klipps aldrig.
+    hideOnMobile: true,
     sortValue: (r) => r.orderValueOre,
     render: (r) => kr(r.orderValueOre),
     csv: (r) => r.orderValueOre / 100,
@@ -141,6 +148,10 @@ const allColumns: Column<PlanLineView>[] = [
         <span className="text-fg">{r.title}</span>
         <span className="text-xs text-subtle">{r.supplierName ?? "Ingen leverantör"}</span>
         <LineNotes r={r} />
+        {/* Under md står läget här; kolumnen Läge är dold (design.md §5.1, MachineCell). */}
+        <span className="mt-1 md:hidden">
+          <StatusTag status={r.tone}>{r.statusLabel}</StatusTag>
+        </span>
       </span>
     ),
     csv: notesCsv,
@@ -149,6 +160,7 @@ const allColumns: Column<PlanLineView>[] = [
     key: "status",
     header: "Läge",
     hideable: false,
+    hideOnMobile: true,
     sortValue: (r) => r.statusLabel,
     render: (r) => <StatusTag status={r.tone}>{r.statusLabel}</StatusTag>,
     csv: (r) => r.statusLabel,
@@ -220,11 +232,15 @@ export function PlanView({
 }) {
   const [draft, setDraft] = useState<OrderDraft | null>(null);
   const [open, setOpen] = useState(false);
+  // Ny nyckel för varje öppning: formuläret börjar om från förslaget, medan dialogen
+  // ligger kvar monterad vid stängning så att fokus går tillbaka till knappen.
+  const [openCount, setOpenCount] = useState(0);
   const hasSupplier = suppliers.some((s) => !s.archived);
   const others = useMemo(() => model.lines.filter((l) => l.status !== "no-demand"), [model.lines]);
 
   const openDraft = (d: OrderDraft | null) => {
     setDraft(d);
+    setOpenCount((n) => n + 1);
     setOpen(true);
   };
 
@@ -291,6 +307,7 @@ export function PlanView({
               </div>
             </div>
             <DataTable
+              surface="bg"
               columns={proposalColumns}
               rows={p.lines}
               rowKey={(r) => r.titleId}
@@ -325,6 +342,7 @@ export function PlanView({
             ) : null}
           </div>
           <DataTable
+            surface="bg"
             columns={allColumns}
             rows={others}
             rowKey={(r) => r.titleId}
@@ -336,8 +354,9 @@ export function PlanView({
         </section>
       ) : null}
 
-      {canEdit && open ? (
+      {canEdit && openCount > 0 ? (
         <CreateOrderDialog
+          key={openCount}
           open={open}
           onClose={() => setOpen(false)}
           suppliers={suppliers}

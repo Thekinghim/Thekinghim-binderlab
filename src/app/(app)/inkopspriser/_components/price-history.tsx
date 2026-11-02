@@ -6,6 +6,7 @@ import {
   formatInt,
   formatKronor,
   formatSignedKronor,
+  SPACED_RANGE_DASH,
 } from "@/lib/format";
 
 import { formatDayShort, kr, timelineShares, type TimelineEntry } from "../_lib/model";
@@ -14,7 +15,7 @@ function range(e: TimelineEntry, today: string): string {
   const from = formatDayShort(e.validFrom, today);
   return e.validTo === null
     ? `${from}${NBSP}${EN_DASH} tills vidare`
-    : `${from}${NBSP}${EN_DASH}${NBSP}${formatDayShort(e.validTo, today)}`;
+    : `${from}${SPACED_RANGE_DASH}${formatDayShort(e.validTo, today)}`;
 }
 
 /**

@@ -23,6 +23,9 @@ import {
 } from "@/server/data/core/loaders";
 import { ALL_ROLES, type DataScope } from "@/server/data/core/types";
 
+import { querySlotPeriods } from "@/server/data/assortment";
+import { loadMachineHealthFor } from "@/server/data/health";
+
 import { buildLagerModel, WINDOW_DAYS } from "./model";
 import { HISTORY_LIMIT, type HistoryEntry, type HistoryKind, type LagerView } from "./types";
 
@@ -166,14 +169,17 @@ export async function loadLagerFor(
   const orgId = viewer.organization.id;
   const timeZone = viewer.organization.timezone;
   const today = businessToday(now, timeZone);
-  // Fönstret slutar i går (matrisen, Att göra och besöksplanen via planNow). Dagens
+  // Fönstret slutar i går (matrisen, Att göra och besöksplanen via weeklyVisitPlan). Dagens
   // försäljning läses också men räknas inte i takten; saldot är alltid dagens.
   const salesFrom: IsoDate = addDays(today, -(WINDOW_DAYS + 1));
 
-  const [master, stock, sales] = await Promise.all([
+  const [master, stock, sales, health, slotPeriods] = await Promise.all([
     loadMasterDataFor(viewer, now),
     loadStockFor(viewer),
     loadSalesCountsFor(viewer, { period: { start: salesFrom, end: today } }),
+    // Samma maskinhälsa som Drift: automater med fel får besök i dag i veckoplanen.
+    loadMachineHealthFor(viewer, now),
+    withUserDbFor(viewer.user, (tx) => querySlotPeriods(tx, orgId)),
   ]);
 
   const model = buildLagerModel({
@@ -185,6 +191,8 @@ export async function loadLagerFor(
     sales: sales.rows,
     scope: args.scope,
     hasCentral: await withUserDbFor(viewer.user, (tx) => queryHasCentral(tx, orgId)),
+    health,
+    slotPeriods,
   });
 
   const titleName = new Map(master.titles.map((t) => [t.id, t.name]));
@@ -219,6 +227,7 @@ export async function loadLagerFor(
     history: history.entries,
     historyTotal: history.total,
     counts: model.counts,
+    retiredTitles: model.retiredTitles,
     canRegister: (REGISTER_ROLES as readonly string[]).includes(role),
     packListFirst: role === "refiller" || args.scope.machineId !== null,
   };

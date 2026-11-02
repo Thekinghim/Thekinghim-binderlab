@@ -10,6 +10,10 @@ import type {
   DeliveryWindow,
 } from "@/analytics/alerts";
 
+/**
+ * Larmtyperna som går att prenumerera på (samma lista som private.alert_kinds_valid).
+ * Systemlarmen (report_failed, job_failed) syns på Drift men aviseras inte.
+ */
 export const ALERT_KINDS: readonly AlertKind[] = [
   "machine_offline",
   "machine_fault",
@@ -34,6 +38,8 @@ export const KIND_LABEL: Record<AlertKind, string> = {
   low_stock: "Titel nära slut",
   import_failed: "Misslyckad import",
   day_anomaly: "Avvikande dag",
+  report_failed: "Misslyckad rapport",
+  job_failed: "Misslyckat schemalagt jobb",
 };
 
 export const SEVERITY_LABEL: Record<AlertSeverity, string> = {
@@ -126,7 +132,7 @@ export interface SubscriptionInput {
 
 export type FieldErrors = Partial<Record<keyof SubscriptionInput | "form", string>>;
 
-/** Svenskt telefonnummer till E.164: "070-123 45 67" → "+46701234567". */
+/** Svenskt telefonnummer till E.164: "070-174 06 05" → "+46701740605" (PTS fiktiva nummer i exemplen). */
 export function normalizePhone(raw: string): string | null {
   const compact = raw.replace(/[\s()-]/g, "");
   if (compact === "") return null;
@@ -168,7 +174,7 @@ export function validateSubscription(
 
   const phone = normalizePhone(input.phone);
   if (phone !== null && !PHONE.test(phone))
-    errors.phone = "Ange numret som 070-123 45 67 eller +46701234567.";
+    errors.phone = "Ange numret som 070-174 06 05 eller +46701740605.";
   if (channels.includes("sms") && phone === null) errors.phone = "Ange ett nummer för sms.";
 
   if (input.quiet && (!TIME.test(input.quietStart) || !TIME.test(input.quietEnd))) {

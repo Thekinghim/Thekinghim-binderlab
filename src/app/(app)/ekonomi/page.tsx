@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
 import { Panel, PanelSection } from "@/components/ui/frame";
+import { Skeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { addMonths, eachMonth } from "@/domain";
-import { formatDateTime, formatInt, NBSP } from "@/lib/format";
+import { formatDate, formatDateTime, formatInt, NBSP } from "@/lib/format";
 import {
   currentViewer,
   loadBookkeepingFor,
@@ -12,7 +14,9 @@ import {
   loadFixedCostsFor,
   loadReconciliationFor,
   PAYOUT_FILE_COLUMNS,
+  type BookkeepingView,
 } from "@/server/accounting";
+import { bookkeepingAdapter } from "@/server/accounting/bookkeeping";
 import { loadPeriod, requireRoute } from "@/server/data/core";
 
 import { EconomyKpis, type EconomyKpi } from "./_components/bits";
@@ -23,7 +27,16 @@ import { PayoutUpload } from "./_components/payout-upload";
 import { ReconciliationList } from "./_components/reconciliation";
 import { AccountTable, CashflowTable, VerificationTable } from "./_components/tables";
 import { economyHeadline } from "./_lib/headline";
-import { kr, monthText, periodShort, plural, sek, sentence, signedKr } from "./_lib/view";
+import {
+  isoToDate,
+  kr,
+  monthText,
+  periodShort,
+  plural,
+  sek,
+  sentence,
+  signedSek,
+} from "./_lib/view";
 
 export const metadata: Metadata = { title: "Ekonomi" };
 
@@ -68,9 +81,14 @@ export default async function EkonomiPage({
         : thisMonth;
   if (!months.includes(month)) months.unshift(month);
 
-  const [rec, books, cash, fixed] = await Promise.all([
+  // Bokföringen (verifikationer för räkenskapsårets månader) är den tyngsta delen och
+  // behövs inte för rubriken: den startas här och strömmar in i sin sektion (Suspense).
+  const books = loadBookkeepingFor(viewer, month, ctx.today);
+  // Avvisas löftet innan sektionen väntar på det ska det inte räknas som ohanterat;
+  // sektionen får felet ändå (sidans error.tsx).
+  books.catch(() => undefined);
+  const [rec, cash, fixed] = await Promise.all([
     loadReconciliationFor(viewer, p.period),
-    loadBookkeepingFor(viewer, month, ctx.today),
     loadCashflowFor(viewer, ctx.today, p.dataStart),
     loadFixedCostsFor(viewer, p.period, ctx.today),
   ]);
@@ -102,39 +120,19 @@ export default async function EkonomiPage({
       ]
     : [];
 
-  // Bokföring
-  const verificationRows = books.verifications.map((v) => {
-    const debit = v.transactions
-      .filter((t) => t.amountOre > 0)
-      .reduce((s, t) => s + t.amountOre, 0);
-    return {
-      key: `${v.series}-${v.number}`,
-      number: v.number,
-      date: v.date,
-      text: v.text,
-      amountOre: debit,
-      rows: v.transactions
-        .map((t) => `${t.account} ${t.amountOre >= 0 ? "D" : "K"} ${kr(Math.abs(t.amountOre))}`)
-        .join(" · "),
-    };
-  });
-  const accountTotals = books.accountTotals.reduce(
-    (s, a) => ({ debitOre: s.debitOre + a.debitOre, creditOre: s.creditOre + a.creditOre }),
-    { debitOre: 0, creditOre: 0 },
-  );
-  const sieHref = `/ekonomi/sie?manad=${month}`;
-  const closedMonth = books.state === "closed";
-  const canDownload = closedMonth && !books.error && books.verifications.length > 0;
-  const canDeliver =
-    canEdit &&
-    canDownload &&
-    books.status.configured &&
-    books.delivery === null &&
-    books.laterDelivery === null;
-  const firstNo = books.verifications[0]?.number;
-  const lastNo = books.verifications[books.verifications.length - 1]?.number;
   const scoped = Boolean(p.scope.storeId || p.scope.machineId);
+  const bookkeepingStatus = bookkeepingAdapter().status();
   const payoutIds = Object.fromEntries(rec.payouts.map((x) => [x.reference, x.id]));
+
+  // Loggen visar avvikelsens rubrik, inte den interna nyckeln
+  const deviationTitle = new Map<string, string>(
+    result
+      ? [...result.payouts.flatMap((x) => x.deviations), ...result.uncovered].map((d) => [
+          d.key,
+          d.title,
+        ])
+      : [],
+  );
 
   // Kassaflöde
   const cashRows =
@@ -148,6 +146,7 @@ export default async function EkonomiPage({
       fixedCostsOre: b.total.fixedCostsOre,
       netOre: b.total.netOre,
       summary: b.summary,
+      note: cashNote(b, rec.payouts, ctx.today),
     })) ?? [];
 
   const rep = cash.replenishment;
@@ -156,9 +155,7 @@ export default async function EkonomiPage({
     ? `Inköp framåt: utöver lagda inköpsorder fylls lagret på i takt med försäljningen. Inköpsvärdet för sålda pack ${periodShort(
         rep.window,
         ctx.today,
-      )} var ${kr(rep.windowCostOre)} (${plural(rep.windowDays, "dag", "dagar")}); samma takt per dag ger ${kr(
-        added,
-      )} i påfyllnad till och med ${monthText(rep.months[rep.months.length - 1]?.month ?? thisMonth)}, utöver inköpsorder som redan är planerade samma månad.${
+      )} var ${sek(rep.windowCostOre)} (${plural(rep.windowDays, "dag", "dagar")}); samma takt per dag ger ${sek(added)} i påfyllnad till och med ${monthText(rep.months[rep.months.length - 1]?.month ?? thisMonth)}, utöver inköpsorder som redan är planerade samma månad.${
         rep.coverageBp !== null && rep.coverageBp < 10_000
           ? ` Order utan inköpspris saknar inköpsvärde (${Math.round(rep.coverageBp / 100)} % av orderna har pris).`
           : ""
@@ -201,7 +198,7 @@ export default async function EkonomiPage({
             { label: "Att utreda", value: formatInt(result?.totals.openDeviations ?? 0) },
             {
               label: "Bokföring",
-              value: books.status.configured ? books.status.label : "Ej kopplad",
+              value: bookkeepingStatus.configured ? bookkeepingStatus.label : "Ej kopplad",
             },
           ]}
         />
@@ -214,7 +211,9 @@ export default async function EkonomiPage({
             detail="Utbetalningar, verifikationer och kassaflöde avser alltid hela organisationen."
           />
         ) : null}
-        {result ? <EconomyKpis items={kpis} label={`Avstämning · ${when}`} /> : null}
+        {result ? (
+          <EconomyKpis items={kpis} label={`Avstämning · ${when}`} headingLevel={2} />
+        ) : null}
       </div>
 
       {/* 01 Avstämning */}
@@ -226,7 +225,7 @@ export default async function EkonomiPage({
           title="Utbetalningar mot försäljningen."
           aside={
             result
-              ? result.summary
+              ? reconciliationFact(result)
               : `${sentence(`Ingen utbetalning med period i ${when}`)} Väntad utbetalning = försäljning − avgifter − återbetalningar.`
           }
         />
@@ -235,6 +234,7 @@ export default async function EkonomiPage({
             {result ? (
               <ReconciliationList
                 result={result}
+                today={ctx.today}
                 canEdit={canEdit}
                 period={p.period}
                 payoutIds={payoutIds}
@@ -261,7 +261,7 @@ export default async function EkonomiPage({
               <StateMessage
                 compact
                 kind="no-results"
-                code={`${rec.ordersWithoutTitle} order`}
+                code={`${formatInt(rec.ordersWithoutTitle)} order`}
                 message="Order utan titel ingår inte i avstämningen."
               />
             ) : null}
@@ -295,7 +295,10 @@ export default async function EkonomiPage({
                         </span>
                         <span className="text-fg">
                           {r.action === "investigated" ? "Utredd" : "Öppnad igen"}:{" "}
-                          <span className="font-mono text-xs text-muted">{r.deviationKey}</span>
+                          <span className="text-muted">
+                            {deviationTitle.get(r.deviationKey) ??
+                              deviationFallback(r.deviationKey)}
+                          </span>
                         </span>
                         {r.note ? <span className="text-muted">{r.note}</span> : null}
                       </li>
@@ -313,8 +316,10 @@ export default async function EkonomiPage({
                         <span className="truncate text-fg">{i.fileName}</span>
                         <span className="meta text-subtle">
                           {formatDateTime(new Date(i.createdAt))} · {formatInt(i.rowsNew)} nya ·{" "}
-                          {formatInt(i.rowsDuplicate)} dubbletter ·{" "}
-                          {formatInt(i.rowsConflict + i.rowsError)} fel
+                          {i.rowsDuplicate === 1
+                            ? "1 dubblett"
+                            : `${formatInt(i.rowsDuplicate)} dubbletter`}{" "}
+                          · {formatInt(i.rowsConflict + i.rowsError)} fel
                         </span>
                       </li>
                     ))}
@@ -327,132 +332,9 @@ export default async function EkonomiPage({
       </section>
 
       {/* 02 Bokföring */}
-      <section id="bokforing" aria-labelledby="bokforing-rubrik" className={SECTION}>
-        <SectionHeader
-          id="bokforing-rubrik"
-          index={2}
-          eyebrow={`Bokföring · ${monthText(month)}`}
-          title={`Verifikationer för ${monthText(month)}.`}
-          aside={
-            books.error
-              ? books.error
-              : books.verifications.length === 0
-                ? "Ingen försäljning, utbetalning, butiksersättning eller inköp att bokföra."
-                : `${plural(books.verifications.length, "verifikation", "verifikationer")} (BL ${firstNo}–${lastNo}, numrerade i följd över räkenskapsåret), debet ${kr(
-                    accountTotals.debitOre,
-                  )} = kredit ${kr(accountTotals.creditOre)}.`
-          }
-        />
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <MonthPicker months={months} value={month} />
-          <div className="flex flex-wrap gap-2">
-            {canDownload ? (
-              <a
-                href={sieHref}
-                download
-                className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg transition-colors hover:border-line-control hover:bg-hover"
-              >
-                Ladda ned SIE-fil
-              </a>
-            ) : null}
-            {canDeliver ? <DeliverButton month={month} label={books.status.label} /> : null}
-          </div>
-        </div>
-        {!closedMonth ? (
-          <StateMessage
-            compact
-            kind="no-results"
-            code="Pågår"
-            message={sentence(
-              `${monthText(month)} pågår, så verifikationerna är ett preliminärt förslag`,
-            )}
-            detail="Butiksersättning och inköpsvärde bokförs på månadens sista dag. SIE-filen och leveransen till bokföringsprogrammet öppnas när månaden är slut."
-          />
-        ) : null}
-        {books.delivery ? (
-          <StateMessage
-            compact
-            kind={books.changedSinceDelivery ? "error" : "no-results"}
-            code={`BL ${books.delivery.firstNumber}–${books.delivery.lastNumber}`}
-            message={`Skickad till ${PROVIDER_LABEL[books.delivery.provider]} ${formatDateTime(
-              new Date(books.delivery.createdAt),
-            )}${books.delivery.actor ? ` av ${books.delivery.actor}` : ""}.`}
-            detail={
-              books.changedSinceDelivery
-                ? "Verifikationerna har ändrats sedan de skickades (t.ex. sent importerade order eller utbetalningar). Bokför skillnaden för hand i bokföringsprogrammet; månaden skickas inte två gånger."
-                : "Månaden skickas inte igen. Numren ligger fast och nästa månad fortsätter efter dem."
-            }
-          />
-        ) : books.laterDelivery && closedMonth && books.verifications.length > 0 ? (
-          <StateMessage
-            compact
-            kind="no-results"
-            code="Ej skickad"
-            message={sentence(
-              `${monthText(books.laterDelivery.month)} är redan skickad, och månaderna skickas i ordning`,
-            )}
-            detail="Bokför den här månaden med SIE-filen eller för hand."
-          />
-        ) : null}
-        {books.bankFallback ? (
-          <StateMessage
-            compact
-            kind="not-configured"
-            code="1930"
-            message="Kontoplanen saknar bankkonto (nyckeln bank), så utbetalningarna bokförs på BAS 1930."
-            detail="Lägg till bankkontot i kontoplanen om bolaget använder ett annat konto."
-            action={{ label: "Öppna inställningar", href: "/installningar" }}
-          />
-        ) : null}
-        {!books.status.configured ? (
-          <StateMessage
-            compact
-            kind="not-configured"
-            message={books.status.detail}
-            action={canDownload ? { label: "Ladda ned SIE-fil", href: sieHref } : undefined}
-          />
-        ) : null}
-        {books.error ? (
-          <StateMessage
-            kind="error"
-            message={books.error}
-            detail="Kontoplanen finns under Inställningar."
-            action={{ label: "Öppna inställningar", href: "/installningar" }}
-          />
-        ) : books.verifications.length > 0 ? (
-          <div className="grid grid-cols-1 gap-x-8 gap-y-10 lg:grid-cols-12">
-            <div className="min-w-0 lg:col-span-7">
-              <VerificationTable rows={verificationRows} month={month} />
-            </div>
-            <div className="flex min-w-0 flex-col gap-4 lg:col-span-5">
-              <AccountTable rows={books.accountTotals} month={month} totals={accountTotals} />
-              <p className="text-sm text-muted">
-                {books.payoutsBooked > 0
-                  ? `${plural(books.payoutsBooked, "utbetalning", "utbetalningar")} från leverantören bokförs på dagen pengarna kom in: bank och faktiska avgifter mot fordran på kortinlösen. Det som står kvar på fordran är order som leverantören inte har betalat ut (avvikelserna i avstämningen).`
-                  : "Ingen utbetalning kom in under månaden. Försäljningen står som fordran på kortinlösen tills utbetalningen kommer."}
-                {books.daysWithActualFees > 0
-                  ? ` ${plural(books.daysWithActualFees, "dag", "dagar")} bokförs utan uppskattad kortavgift, eftersom utbetalningens faktiska avgifter bokförs i stället.`
-                  : ""}
-              </p>
-              {books.totals ? (
-                <p className="text-sm text-muted">
-                  Försäljning {kr(books.totals.grossOre)} (
-                  {plural(books.totals.orders, "order", "order")}), butiksersättning{" "}
-                  {kr(books.totals.compensationOre)}, inköpsvärde sålda pack{" "}
-                  {kr(books.totals.costOre)}
-                  {books.totals.unpricedOrders > 0
-                    ? `; ${plural(books.totals.unpricedOrders, "order", "order")} saknar inköpspris och har inget inköpsvärde`
-                    : ""}
-                  .
-                </p>
-              ) : null}
-              {books.totals ? (
-                <EvidenceDetails evidence={{ ...toFinanceEvidence(books.totals.evidence) }} />
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-      </section>
+      <Suspense fallback={<BookkeepingSkeleton month={month} />}>
+        <BookkeepingSection books={books} month={month} months={months} canEdit={canEdit} />
+      </Suspense>
 
       {/* 03 Kassaflöde */}
       <section aria-labelledby="kassaflode" className={SECTION}>
@@ -463,11 +345,17 @@ export default async function EkonomiPage({
           title={
             cash.result
               ? sentence(
-                  `Netto ${signedKr(cash.result.totals.total.netOre)} för ${periodShort(cash.result.range, ctx.today)}`,
+                  `Netto ${signedSek(cash.result.totals.total.netOre)} för ${periodShort(cash.result.range, ctx.today)}`,
                 )
               : "Kassaflöde per månad."
           }
-          aside={cash.result ? cash.result.summary : (cash.error ?? undefined)}
+          aside={
+            cash.result
+              ? cash.result.totals.forecast.netOre !== 0
+                ? `Varav prognos efter i dag: ${signedSek(cash.result.totals.forecast.netOre)}.`
+                : `In ${sek(cash.result.totals.total.inOre)}, ut ${sek(cash.result.totals.total.outOre)}.`
+              : (cash.error ?? undefined)
+          }
         />
         {cash.result ? (
           <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
@@ -509,7 +397,7 @@ export default async function EkonomiPage({
           }
           aside={
             at && at.fixedCostOre > 0
-              ? fixed.allocation!.summary
+              ? allocationFact(fixed.allocation!, machineCode)
               : (fixed.error ??
                 "Försäkring, programvara och transport dras från vinsten de dagar de gäller.")
           }
@@ -557,6 +445,205 @@ export default async function EkonomiPage({
   );
 }
 
+/** Bokföringen: verifikationer för månaden, SIE-fil och leverans. Strömmar in (Suspense). */
+async function BookkeepingSection({
+  books: booksPromise,
+  month,
+  months,
+  canEdit,
+}: {
+  books: Promise<BookkeepingView>;
+  month: string;
+  months: string[];
+  canEdit: boolean;
+}) {
+  const books = await booksPromise;
+  const verificationRows = books.verifications.map((v) => {
+    const debit = v.transactions
+      .filter((t) => t.amountOre > 0)
+      .reduce((s, t) => s + t.amountOre, 0);
+    return {
+      key: `${v.series}-${v.number}`,
+      number: v.number,
+      date: v.date,
+      text: v.text,
+      amountOre: debit,
+      rows: v.transactions
+        .map((t) => `${t.account} ${t.amountOre >= 0 ? "D" : "K"} ${kr(Math.abs(t.amountOre))}`)
+        .join(" · "),
+    };
+  });
+  const accountTotals = books.accountTotals.reduce(
+    (s, a) => ({ debitOre: s.debitOre + a.debitOre, creditOre: s.creditOre + a.creditOre }),
+    { debitOre: 0, creditOre: 0 },
+  );
+  const sieHref = `/ekonomi/sie?manad=${month}`;
+  const closedMonth = books.state === "closed";
+  const canDownload = closedMonth && !books.error && books.verifications.length > 0;
+  const canDeliver =
+    canEdit &&
+    canDownload &&
+    books.status.configured &&
+    books.delivery === null &&
+    books.laterDelivery === null;
+  const firstNo = books.verifications[0]?.number;
+  const lastNo = books.verifications[books.verifications.length - 1]?.number;
+
+  return (
+    <section id="bokforing" aria-labelledby="bokforing-rubrik" className={SECTION}>
+      <SectionHeader
+        id="bokforing-rubrik"
+        index={2}
+        eyebrow={`Bokföring · ${monthText(month)}`}
+        title={`Verifikationer för ${monthText(month)}.`}
+        aside={
+          books.error
+            ? books.error
+            : books.verifications.length === 0
+              ? "Ingen försäljning, utbetalning, butiksersättning eller inköp att bokföra."
+              : `${plural(books.verifications.length, "verifikation", "verifikationer")} (BL ${firstNo}–${lastNo}, numrerade i följd över räkenskapsåret), debet ${kr(
+                  accountTotals.debitOre,
+                )} = kredit ${kr(accountTotals.creditOre)}.`
+        }
+      />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <MonthPicker months={months} value={month} />
+        <div className="flex flex-wrap gap-2">
+          {canDownload ? (
+            <a
+              href={sieHref}
+              download
+              className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg transition-colors hover:border-line-control hover:bg-hover"
+            >
+              Ladda ned SIE-fil
+            </a>
+          ) : null}
+          {canDeliver ? <DeliverButton month={month} label={books.status.label} /> : null}
+        </div>
+      </div>
+      {!closedMonth ? (
+        <StateMessage
+          compact
+          kind="no-results"
+          code="Pågår"
+          message={sentence(
+            `${monthText(month)} pågår, så verifikationerna är ett preliminärt förslag`,
+          )}
+          detail="Butiksersättning och inköpsvärde bokförs på månadens sista dag. SIE-filen och leveransen till bokföringsprogrammet öppnas när månaden är slut."
+        />
+      ) : null}
+      {books.delivery ? (
+        <StateMessage
+          compact
+          kind={books.changedSinceDelivery ? "error" : "no-results"}
+          code={`BL ${books.delivery.firstNumber}–${books.delivery.lastNumber}`}
+          message={`Skickad till ${PROVIDER_LABEL[books.delivery.provider]} ${formatDateTime(
+            new Date(books.delivery.createdAt),
+          )}${books.delivery.actor ? ` av ${books.delivery.actor}` : ""}.`}
+          detail={
+            books.changedSinceDelivery
+              ? "Verifikationerna har ändrats sedan de skickades (t.ex. sent importerade order eller utbetalningar). Bokför skillnaden för hand i bokföringsprogrammet; månaden skickas inte två gånger."
+              : "Månaden skickas inte igen. Numren ligger fast och nästa månad fortsätter efter dem."
+          }
+        />
+      ) : books.laterDelivery && closedMonth && books.verifications.length > 0 ? (
+        <StateMessage
+          compact
+          kind="no-results"
+          code="Ej skickad"
+          message={sentence(
+            `${monthText(books.laterDelivery.month)} är redan skickad, och månaderna skickas i ordning`,
+          )}
+          detail="Bokför den här månaden med SIE-filen eller för hand."
+        />
+      ) : null}
+      {books.bankFallback ? (
+        <StateMessage
+          compact
+          kind="not-configured"
+          code="1930"
+          message="Kontoplanen saknar bankkonto (nyckeln bank), så utbetalningarna bokförs på BAS 1930."
+          detail="Lägg till bankkontot i kontoplanen om bolaget använder ett annat konto."
+          action={{ label: "Öppna inställningar", href: "/installningar" }}
+        />
+      ) : null}
+      {!books.status.configured ? (
+        <StateMessage
+          compact
+          kind="not-configured"
+          message={books.status.detail}
+          action={canDownload ? { label: "Ladda ned SIE-fil", href: sieHref } : undefined}
+        />
+      ) : null}
+      {books.error ? (
+        <StateMessage
+          kind="error"
+          message={books.error}
+          detail="Kontoplanen finns under Inställningar."
+          action={{ label: "Öppna inställningar", href: "/installningar" }}
+        />
+      ) : books.verifications.length > 0 ? (
+        <div className="grid grid-cols-1 gap-x-8 gap-y-10 lg:grid-cols-12">
+          <div className="min-w-0 lg:col-span-7">
+            <VerificationTable rows={verificationRows} month={month} />
+          </div>
+          <div className="flex min-w-0 flex-col gap-4 lg:col-span-5">
+            <AccountTable rows={books.accountTotals} month={month} totals={accountTotals} />
+            <p className="text-sm text-muted">
+              {books.payoutsBooked > 0
+                ? `${plural(books.payoutsBooked, "utbetalning", "utbetalningar")} från leverantören bokförs på dagen pengarna kom in: bank och faktiska avgifter mot fordran på kortinlösen. Det som står kvar på fordran är order som leverantören inte har betalat ut (avvikelserna i avstämningen).`
+                : "Ingen utbetalning kom in under månaden. Försäljningen står som fordran på kortinlösen tills utbetalningen kommer."}
+              {books.daysWithActualFees > 0
+                ? ` ${plural(books.daysWithActualFees, "dag", "dagar")} bokförs utan uppskattad kortavgift, eftersom utbetalningens faktiska avgifter bokförs i stället.`
+                : ""}
+            </p>
+            {books.totals ? (
+              <p className="text-sm text-muted">
+                Försäljning {kr(books.totals.grossOre)} (
+                {plural(books.totals.orders, "order", "order")}), butiksersättning{" "}
+                {kr(books.totals.compensationOre)}, inköpsvärde sålda pack{" "}
+                {kr(books.totals.costOre)}
+                {books.totals.unpricedOrders > 0
+                  ? `; ${plural(books.totals.unpricedOrders, "order", "order")} saknar inköpspris och har inget inköpsvärde`
+                  : ""}
+                .
+              </p>
+            ) : null}
+            {books.totals ? (
+              <EvidenceDetails evidence={{ ...toFinanceEvidence(books.totals.evidence) }} />
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+/** Platshållaren medan bokföringen räknas. */
+function BookkeepingSkeleton({ month }: { month: string }) {
+  return (
+    <section
+      aria-busy="true"
+      aria-label={`Laddar bokföringen för ${monthText(month)}`}
+      className={SECTION}
+    >
+      <div className="flex flex-col gap-3">
+        <Skeleton className="h-3 w-40" />
+        <Skeleton className="h-8 w-full max-w-xl" />
+      </div>
+      <Skeleton className="h-9 w-56" />
+      <div className="grid grid-cols-1 gap-x-8 gap-y-10 lg:grid-cols-12">
+        <div className="lg:col-span-7">
+          <TableSkeleton rows={6} />
+        </div>
+        <div className="lg:col-span-5">
+          <TableSkeleton rows={4} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /** Rapportens underlag (@/reports) i samma form som ekonomins underlag, för visningen. */
 function toFinanceEvidence(e: {
   rule: string;
@@ -584,4 +671,63 @@ function toFinanceEvidence(e: {
       unit: f.unit,
     })),
   };
+}
+
+/** En mening om utbetalningarna som rubriken inte redan säger. */
+function reconciliationFact(result: {
+  payouts: readonly { reference: string; paidOn: string; expected: { orders: number } }[];
+}): string {
+  const orders = result.payouts.reduce((s, x) => s + x.expected.orders, 0);
+  const last = [...result.payouts].sort((a, b) => (a.paidOn < b.paidOn ? 1 : -1))[0];
+  return `${plural(result.payouts.length, "utbetalning", "utbetalningar")} täcker ${plural(
+    orders,
+    "order",
+    "order",
+  )}${last ? `; senast ${last.reference}` : ""}.`;
+}
+
+/** Fördelningen av gemensamma kostnader i en mening. */
+function allocationFact(
+  allocation: {
+    method: "revenue" | "equal";
+    rows: readonly { key: string; kind: string; sharedFixedOre: number; shareBp: number | null }[];
+  },
+  codes: ReadonlyMap<string, string>,
+): string {
+  const how =
+    allocation.method === "revenue"
+      ? "Gemensamma kostnader fördelas efter nettointäkt"
+      : "Gemensamma kostnader fördelas lika per automat";
+  const top = allocation.rows
+    .filter((r) => r.kind === "machine" && r.sharedFixedOre > 0)
+    .sort((a, b) => b.sharedFixedOre - a.sharedFixedOre)[0];
+  if (!top) return `${how}.`;
+  const share = top.shareBp === null ? "" : ` (${Math.round(top.shareBp / 100)}${NBSP}%)`;
+  return `${how}: ${codes.get(top.key) ?? "en automat"} bär mest, ${sek(top.sharedFixedOre)}${share}.`;
+}
+
+/** Den interna nyckeln ('AW-2026-10:missing-in-payout') som läsbar text, om rubriken saknas. */
+function deviationFallback(key: string): string {
+  const ref = key.split(":")[0];
+  return ref ? `en avvikelse i ${ref}` : "en avvikelse";
+}
+
+/**
+ * Förklaring på en månad i kassaflödet där inget kom in: utbetalningen för
+ * månadens försäljning kommer först efter månadens slut.
+ */
+function cashNote(
+  b: { key: string; range: { end: string }; total: { payoutsOre: number } },
+  payouts: readonly { reference: string; periodEnd: string; paidOn: string | null }[],
+  today: string,
+): string | null {
+  if (b.total.payoutsOre !== 0) return null;
+  const later = payouts.find(
+    (x) => x.periodEnd.slice(0, 7) === b.key && x.paidOn !== null && x.paidOn > b.range.end,
+  );
+  if (!later || later.paidOn === null) return null;
+  const day = formatDate(isoToDate(later.paidOn), { year: "auto", now: isoToDate(today) });
+  return sentence(
+    `Utbetalningen för månaden (${later.reference}) ${later.paidOn > today ? "kommer" : "kom"} ${day}`,
+  );
 }

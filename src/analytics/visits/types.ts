@@ -41,6 +41,12 @@ export interface VisitPlanOptions {
   readonly timeZone?: string;
   /** Första dagen i planen. Standard: i dag. Planen omfattar 7 dagar. */
   readonly start?: IsoDate;
+  /**
+   * Dagen saldot gäller (standard: planens "i dag" från `now`). När takten räknas t.o.m. i
+   * går men saldot är dagens, dras försäljning bara för dagarna från saldots dag till
+   * besöket, så att ett besök i dag får samma packlista som Lager.
+   */
+  readonly stockDate?: IsoDate;
   /** Veckodagar då besök görs (1 = måndag). Standard måndag–fredag. */
   readonly visitWeekdays?: readonly number[];
   /** Högst så många besök per dag. Standard 8. */

@@ -39,6 +39,11 @@ export function signedKr(ore: number): string {
   return formatSignedKronor(ore / 100);
 }
 
+/** Öre → "+12 kr" / "−713 kr" (hela kronor, i rubriker och meningar, design.md 4). */
+export function signedSek(ore: number): string {
+  return formatSignedKronor(ore / 100, { decimals: 0 });
+}
+
 export function periodText(p: IsoPeriod): string {
   return formatPeriod({ start: isoToDate(p.start), end: isoToDate(p.end) });
 }

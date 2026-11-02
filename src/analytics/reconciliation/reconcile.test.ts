@@ -6,7 +6,13 @@
 import { describe, expect, it } from "vitest";
 import type { Settings } from "@/domain";
 import type { AnalyticsOrder } from "../todos/types";
-import { chooseTimezoneShift, reconcilePayouts, splitRounding } from "./reconcile";
+import {
+  chooseTimezoneShift,
+  feeBasisText,
+  reconcilePayouts,
+  splitRounding,
+  summaryAmounts,
+} from "./reconcile";
 import type { Payout, PayoutReconciliation, ReconciliationInput } from "./types";
 
 const SETTINGS: Settings = { vatRateBp: 0, cardFeeBp: 0 };
@@ -588,7 +594,7 @@ describe("försäljning utan utbetalning", () => {
     expect(d.impactOre).toBe(-10_800);
     expect(d.evidence.dates).toEqual(["2026-10-05", "2026-10-06"]);
     expect(norm(d.title)).toBe("Ingen utbetalning för 2 dagar med försäljning (5–6 okt.)");
-    expect(norm(res.summary)).toContain("Försäljning 108,00 kr på 2 dagar saknar utbetalning.");
+    expect(norm(res.summary)).toContain("Försäljning 108 kr på 2 dagar saknar utbetalning.");
     expect(res.totals.openDeviations).toBe(1);
   });
 
@@ -973,5 +979,24 @@ describe("rättningar efter revisionen", () => {
     expect(mp.evidence.orderIds).toEqual(["o3"]);
     expect(mp.evidence.externalOrderIds).toEqual(["42003"]);
     checkIdentity(p);
+  });
+});
+
+describe("läsbar formatering i avstämningens texter", () => {
+  it("avgiften i procent, aldrig i baspunkter", () => {
+    expect(norm(feeBasisText(175, 0))).toBe("1,75 % av försäljningen");
+    expect(norm(feeBasisText(150, 0))).toBe("1,5 % av försäljningen");
+    expect(norm(feeBasisText(200, 200))).toBe("2 % av försäljningen plus 2,00 kr per order");
+    expect(norm(feeBasisText(0, 200))).toBe("2,00 kr per order");
+    expect(feeBasisText(0, 0)).toBe("ingen avgift");
+    expect(feeBasisText(0, 0)).not.toMatch(/bp/);
+  });
+
+  it("sammanfattningen i hela kronor, med ören bara när skillnaden är under en krona", () => {
+    const n = (s: { actual: string; expected: string; difference: string }) =>
+      `${norm(s.actual)} / ${norm(s.expected)} / ${norm(s.difference)}`;
+    expect(n(summaryAmounts(7_391_200, 7_462_500))).toBe("73 912 kr / 74 625 kr / -713 kr");
+    expect(n(summaryAmounts(19_600, 19_600))).toBe("196 kr / 196 kr / ±0 kr");
+    expect(n(summaryAmounts(37_500, 37_437))).toBe("375,00 kr / 374,37 kr / +0,63 kr");
   });
 });

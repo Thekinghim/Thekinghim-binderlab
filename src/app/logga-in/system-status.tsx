@@ -68,9 +68,12 @@ async function ping(): Promise<number | null> {
 export async function SystemStatus() {
   let envLabel: string | null = null;
   let method = "";
+  // Svarstiden är driftuppgift: den visas inte för anonyma besökare i produktion.
+  let showLatency = true;
   try {
     const env = getServerEnv();
     envLabel = ENV_LABEL[env.APP_ENV];
+    showLatency = env.APP_ENV !== "production";
     method = env.AUTH_PROVIDER === "dev" ? "Dev-inloggning" : "";
   } catch {
     envLabel = "Miljön är felkonfigurerad";
@@ -78,7 +81,7 @@ export async function SystemStatus() {
   const ms = await ping();
   const now = wallClockIn(new Date(), TIME_ZONE);
   const parts = [
-    ms === null ? null : `Svar ${formatInt(ms)} ms`,
+    ms === null || !showLatency ? null : `Svar ${formatInt(ms)} ms`,
     envLabel,
     method || null,
     `${formatTime(now)} Stockholm`,

@@ -5,7 +5,14 @@
  * underlag (evidence) och summeras bara för rubriken (sumOre).
  */
 
-import type { EvidenceFigure, TodoItem, TodoKind, TodoLevel } from "@/analytics/todos";
+import {
+  LOST_REVENUE_FIGURE,
+  todoInScope,
+  type EvidenceFigure,
+  type TodoItem,
+  type TodoKind,
+  type TodoLevel,
+} from "@/analytics/todos";
 import type { Role } from "@/components/shell/nav";
 import { routeById } from "@/components/shell/nav";
 import type { Status } from "@/components/ui/status-tag";
@@ -187,6 +194,9 @@ const KIND_NOUN: Record<TodoKind, [string, string]> = {
   refill: ["påfyllning", "påfyllningar"],
   "stale-machine": ["tyst automat", "tysta automater"],
   "report-due": ["rapport att skicka", "rapporter att skicka"],
+  "report-review": ["utkast att granska", "utkast att granska"],
+  contract: ["avtal att se över", "avtal att se över"],
+  alert: ["larm", "larm"],
   "missing-price": ["titel utan inköpspris", "titlar utan inköpspris"],
   "duplicate-title": ["möjlig dubblett", "möjliga dubbletter"],
 };
@@ -195,6 +205,9 @@ const KIND_LABEL: Record<TodoKind, string> = {
   refill: "Påfyllning",
   "stale-machine": "Ingen försäljning",
   "report-due": "Rapport",
+  "report-review": "Rapportutkast",
+  contract: "Avtal",
+  alert: "Larm",
   "missing-price": "Inköpspris",
   "duplicate-title": "Datakvalitet",
 };
@@ -202,7 +215,10 @@ const KIND_LABEL: Record<TodoKind, string> = {
 const KIND_ORDER: readonly TodoKind[] = [
   "refill",
   "stale-machine",
+  "alert",
+  "report-review",
   "report-due",
+  "contract",
   "missing-price",
   "duplicate-title",
 ];
@@ -265,18 +281,30 @@ export function primaryFigures(item: TodoItem, economy: boolean): FigureView[] {
       out.push({ label, value: kr(item.atStakeOre) });
     }
   };
+  const deadline = () => {
+    if (item.daysLeft === null) return;
+    out.push(
+      item.daysLeft < 0
+        ? { label: "Försenad", value: plural(-item.daysLeft, "dag", "dagar") }
+        : { label: "Dagar kvar", value: formatInt(item.daysLeft) },
+    );
+  };
   switch (item.kind) {
     case "refill": {
       const tenths = figureValue(item, "daysLeftTenths");
       const onHand = figureValue(item, "onHand");
+      const lostOre = figureValue(item, LOST_REVENUE_FIGURE);
+      const lost = economy && lostOre !== null && lostOre > 0 ? lostOre : null;
       if (onHand !== null)
         out.push({ label: "I automaten", value: formatFigure({ value: onHand, unit: "packs" }) });
       if (onHand !== null && onHand <= 0) {
-        out.push({ label: "Räcker", value: "Slut" });
+        // "0 pack" säger redan att den är slut; då får förlorad försäljning platsen.
+        if (lost === null) out.push({ label: "Räcker", value: "Slut" });
       } else if (tenths !== null) {
         out.push({ label: "Räcker", value: `${formatDecimal(tenths / 10)}${NBSP}d` });
       }
       stake();
+      if (lost !== null) out.push({ label: "Förlorat 14 d", value: kr(lost) });
       break;
     }
     case "stale-machine": {
@@ -286,16 +314,34 @@ export function primaryFigures(item: TodoItem, economy: boolean): FigureView[] {
       break;
     }
     case "report-due": {
-      if (item.daysLeft !== null) {
-        out.push(
-          item.daysLeft < 0
-            ? { label: "Försenad", value: plural(-item.daysLeft, "dag", "dagar") }
-            : { label: "Dagar kvar", value: formatInt(item.daysLeft) },
-        );
-      }
+      deadline();
       const failed = figureValue(item, "failedDeliveries");
       if (failed !== null && failed > 0)
         out.push({ label: "Misslyckade", value: formatInt(failed) });
+      break;
+    }
+    case "report-review": {
+      const drafts = figureValue(item, "drafts");
+      if (drafts !== null) out.push({ label: "Utkast", value: formatInt(drafts) });
+      deadline();
+      break;
+    }
+    case "contract": {
+      const toDeadline = figureValue(item, "daysToDeadline");
+      const toEnd = figureValue(item, "daysToEnd");
+      if (toDeadline !== null && toDeadline >= 0)
+        out.push({ label: "Säg upp inom", value: plural(toDeadline, "dag", "dagar") });
+      if (toEnd !== null)
+        out.push(
+          toEnd < 0
+            ? { label: "Gick ut för", value: plural(-toEnd, "dag", "dagar") }
+            : { label: "Slutar om", value: plural(toEnd, "dag", "dagar") },
+        );
+      break;
+    }
+    case "alert": {
+      const hours = figureValue(item, "openHours");
+      if (hours !== null) out.push({ label: "Öppet", value: `${formatInt(hours)}${NBSP}h` });
       break;
     }
     case "missing-price": {
@@ -402,7 +448,16 @@ function actionFor(item: TodoItem, input: ModelInput): ActionView | null {
         ? { kind: "link", label: a.label, href: item.link }
         : null;
     case "send-report":
+    case "review-report":
       return canOpen(input.role, "rapporter")
+        ? { kind: "link", label: a.label, href: item.link }
+        : null;
+    case "open-contract":
+      return canOpen(input.role, "avtal")
+        ? { kind: "link", label: a.label, href: item.link }
+        : null;
+    case "open-alert":
+      return canOpen(input.role, item.link.startsWith("/datakallor") ? "datakallor" : "drift")
         ? { kind: "link", label: a.label, href: item.link }
         : null;
   }
@@ -483,15 +538,11 @@ function machinesInScope(
 /**
  * Filtret i URL:en (?butik, ?automat): punkter som gäller automater visas bara om någon
  * av dem matchar. Punkter utan automat (inköpspris, dubbletter, rapporter till revisor)
- * gäller hela organisationen och visas alltid; rapporter till en butik följer butiken.
+ * gäller hela organisationen och visas alltid; rapporter och avtal för en butik följer
+ * butiken, med bara automatfilter automatens butik. Samma regel som Hem (`todoInScope`).
  */
 export function inScope(item: TodoItem, input: Pick<ModelInput, "scope" | "machines">): boolean {
-  const { storeId } = input.scope;
-  if (!storeId && !input.scope.machineId) return true;
-  const machines = item.evidence.machineIds;
-  if (machines.length > 0) return machinesInScope(machines, input);
-  if (storeId && item.evidence.storeIds.length > 0) return item.evidence.storeIds.includes(storeId);
-  return true;
+  return todoInScope(item, input.scope, input.machines);
 }
 
 /**
@@ -502,9 +553,17 @@ export function inScope(item: TodoItem, input: Pick<ModelInput, "scope" | "machi
 const RISK_KINDS: ReadonlySet<TodoKind> = new Set(["refill", "stale-machine"]);
 
 /** Intäkt i risk de närmaste 7 dagarna (öre), bara för RISK_KINDS. */
+/**
+ * Varje punkt avrundad till hela kronor innan summan tas, så att rubrikens summa är summan
+ * av beloppen på raderna (11 840 kr, inte 11 841 kr när raderna säger 11 840 kr).
+ */
+function wholeKronor(ore: number): number {
+  return Math.round(Math.max(ore, 0) / 100) * 100;
+}
+
 export function stakeOf(items: readonly TodoItem[]): number {
   return sumOre(
-    items.filter((i) => RISK_KINDS.has(i.kind)).map((i) => Math.max(i.atStakeOre ?? 0, 0)),
+    items.filter((i) => RISK_KINDS.has(i.kind)).map((i) => wholeKronor(i.atStakeOre ?? 0)),
   );
 }
 
@@ -513,7 +572,7 @@ export function unpricedOf(items: readonly TodoItem[]): number {
   return sumOre(
     items
       .filter((i) => i.kind === "missing-price")
-      .map((i) => Math.max(figureValue(i, "unpricedRevenueOre") ?? 0, 0)),
+      .map((i) => wholeKronor(figureValue(i, "unpricedRevenueOre") ?? 0)),
   );
 }
 
@@ -522,7 +581,8 @@ function groupAside(items: readonly TodoItem[], economy: boolean): string {
   const stake = economy ? stakeOf(items) : 0;
   if (stake > 0) parts.push(`${kr(stake)} i intäkt i risk de närmaste 7 dagarna`);
   const unpriced = economy ? unpricedOf(items) : 0;
-  if (unpriced > 0) parts.push(`${kr(unpriced)} i intäkt saknar inköpspris`);
+  // "titlar utan inköpspris" står redan i första delen; beloppet säger vad det betyder.
+  if (unpriced > 0) parts.push(`${kr(unpriced)} i intäkt räknas inte in i vinsten`);
   return withPeriod(parts.join(", "));
 }
 
@@ -538,10 +598,8 @@ function leadText(item: TodoItem): string {
     const tenths = figureValue(item, "daysLeftTenths");
     if (onHand !== null && onHand <= 0) fact = "";
     else if (tenths !== null) fact = `, räcker ${formatDecimal(tenths / 10)}${NBSP}d`;
-  } else if (item.kind === "stale-machine") {
-    const hours = figureValue(item, "silentHours");
-    if (hours !== null) fact = `, tyst i ${formatInt(hours)}${NBSP}h`;
   }
+  // En tyst automat: titeln säger redan hur länge ("har inte sålt på 66 timmar").
   return `Först: ${stripPeriod(item.title)}${fact}.`;
 }
 
@@ -569,7 +627,7 @@ function headerView(
     aside =
       input.role === "refiller"
         ? "Lagret räcker minst 2,5 dagar i alla automater, och alla har sålt de senaste 48 timmarna."
-        : "Lagret räcker, automaterna säljer, alla titlar har inköpspris och rapporterna är skickade.";
+        : "Lagret räcker, automaterna säljer, alla titlar har inköpspris, rapporterna är skickade och inget larm eller avtal väntar.";
   } else {
     const onlyRefills = visible.every((i) => i.kind === "refill");
     title = onlyRefills
@@ -577,7 +635,26 @@ function headerView(
       : `${plural(visible.length, "sak", "saker")} att göra.`;
     aside = now > 0 ? `${formatInt(now)} måste göras i dag.` : "Inget måste göras i dag.";
     if (lead) parts.push(leadText(lead));
-    if (stake > 0) parts.push(`${kr(stake)} i intäkt står på spel de närmaste 7 dagarna.`);
+    if (stake > 0) {
+      // Beloppet gäller påfyllningar och tysta automater; när den första punkten är något
+      // annat (utkast, avtal, larm) sägs det, så att beloppet inte kopplas till den.
+      // Rubrikens belopp är summan för alla punkter; den första punktens egen andel sägs
+      // för sig, så att summan inte läses som den automatens belopp.
+      const leadStake = lead && RISK_KINDS.has(lead.kind) ? wholeKronor(lead.atStakeOre ?? 0) : 0;
+      parts.push(
+        lead && RISK_KINDS.has(lead.kind)
+          ? leadStake >= stake
+            ? `${kr(stake)} i intäkt står på spel de närmaste 7 dagarna.`
+            : leadStake > 0
+              ? `Den står för ${kr(leadStake)} av ${kr(stake)} i intäkt i risk de närmaste 7 dagarna.`
+              : `Totalt ${kr(stake)} i intäkt i risk de närmaste 7 dagarna.`
+          : `${
+              visible.some((i) => i.kind === "stale-machine")
+                ? "Påfyllningar och tysta automater"
+                : "Påfyllningarna"
+            }: ${kr(stake)} i intäkt i risk de närmaste 7 dagarna.`,
+      );
+    }
   }
   if (hidden > 0) parts.push(hiddenText(hidden, input.scope));
 
@@ -603,6 +680,9 @@ const KIND_BY_PREFIX: Record<string, TodoKind> = {
   refill: "refill",
   "stale-machine": "stale-machine",
   "report-due": "report-due",
+  "report-review": "report-review",
+  contract: "contract",
+  alert: "alert",
   "missing-price": "missing-price",
   "duplicate-title": "duplicate-title",
 };

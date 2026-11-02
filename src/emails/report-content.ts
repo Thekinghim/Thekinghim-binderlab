@@ -321,7 +321,23 @@ export function buildReason(props: ReportEmailProps, sender: Sender): string {
 }
 
 export function ctaLabel(kind: RecipientKind): string {
+  if (kind === "butik") return "Öppna butiksportalen";
   return kind === "bokforing" ? "Öppna underlaget" : "Öppna rapporten";
+}
+
+/**
+ * Raden under knappen. Butiken och bokhållaren har oftast inget konto i panelen: allt de
+ * behöver är bifogat, och länken kräver inloggning (butiken i butiksportalen).
+ */
+export function ctaNote(kind: RecipientKind, senderName: string): string | null {
+  switch (kind) {
+    case "butik":
+      return `Hela rapporten är bifogad som PDF. I butiksportalen finns alla godkända rapporter; den kräver ett konto, som ni får av ${senderName}.`;
+    case "bokforing":
+      return "Allt underlag är bifogat. Länken kräver inloggning i Binderlab.";
+    case "delagare":
+      return null;
+  }
 }
 
 export function unsubscribeHref(props: ReportEmailProps): string {
@@ -525,7 +541,7 @@ export function renderReportText(props: ReportEmailProps): string {
       out.push(`I drift: ${formatPercent(d.availability)} av öppettiden`);
       out.push(`Avbrott: ${incidentsSummary(d.incidents)}`);
       for (const i of d.incidents) out.push(`  ${incidentLine(i)}`);
-      out.push(`Mest besökt: ${d.busiest}`);
+      out.push(`Flest köp: ${d.busiest}`);
       out.push(
         `Påfyllningar: ${formatInt(d.refills.count)}, senast ${formatLongDay(d.refills.last).toLocaleLowerCase("sv-SE")}`,
       );
@@ -569,6 +585,8 @@ export function renderReportText(props: ReportEmailProps): string {
   }
 
   out.push("", `${ctaLabel(props.recipientKind)}: ${props.reportUrl}`);
+  const note = ctaNote(props.recipientKind, sender.name);
+  if (note) out.push(note);
 
   out.push("", "--", `${sender.name} · ${sender.address} · ${sender.email}`);
   out.push(buildReason(props, sender));

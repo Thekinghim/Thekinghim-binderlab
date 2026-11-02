@@ -81,7 +81,7 @@ describe("cashflow: per månad", () => {
       payoutLagDays: 5,
     });
     expect(norm(r.assumptions[0]!)).toBe(
-      "Prognosen bygger på försäljningen 18 okt. – 14 nov. (28 dagar): 1 372 kr, i snitt 49 kr per dag.",
+      "Prognosen bygger på försäljningen 18 okt. –\u2060 14 nov. (28 dagar): 1 372 kr, i snitt 49 kr per dag.",
     );
     expect(norm(r.assumptions[1]!)).toBe(
       "Utbetalningar kommer månadsvis, 5 dagar efter periodens slut (som U-10).",

@@ -4,6 +4,7 @@ import {
   kr,
   krExact,
   pct,
+  pct1,
   periodText,
   plural,
   ratioTenths,
@@ -33,6 +34,9 @@ describe("text", () => {
   it("procent från bp", () => {
     expect(pct(3_312)).toBe(`33${S}%`);
     expect(pct(3_350)).toBe(`34${S}%`);
+    expect(pct1(352)).toBe(`3,5${S}%`);
+    expect(pct1(345)).toBe(`3,5${S}%`);
+    expect(pct1(1_200)).toBe(`12,0${S}%`);
     expect(pct(0)).toBe(`0${S}%`);
   });
 
@@ -55,7 +59,7 @@ describe("text", () => {
     expect(weekdayDay("2026-10-31")).toBe(`lör 31${S}okt.`);
     expect(periodText({ start: "2026-11-01", end: "2026-11-30" })).toBe(`1–30${S}nov.`);
     expect(periodText({ start: "2026-10-28", end: "2026-11-03" })).toBe(
-      `28${S}okt.${S}–${S}3${S}nov.`,
+      `28${S}okt.${S}–\u2060${S}3${S}nov.`,
     );
     expect(periodText({ start: "2026-11-01", end: "2026-11-01" })).toBe(`1${S}nov.`);
   });

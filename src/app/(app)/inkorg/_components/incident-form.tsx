@@ -223,7 +223,7 @@ export function IncidentForm({
           onChange={(e) => set("refunded", e.target.value)}
           error={errors.refunded}
           suffix="kr"
-          hint="Räknas på återbetalningsdagen. Visas inte i Lönsamhet än."
+          hint="Räknas på återbetalningsdagen och dras från vinsten i Lönsamhet."
         />
         <Input
           label="Återbetald den"

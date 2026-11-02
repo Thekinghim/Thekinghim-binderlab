@@ -13,9 +13,11 @@ import {
   machineHeadline,
   machineDaysIn,
   machineHref,
+  machineSignals,
   machineSpan,
   machineUnpriced,
   nextMachineCode,
+  joinClauses,
   overviewHeadline,
   placementLines,
   salesHeatmap,
@@ -236,16 +238,20 @@ describe("statusOf", () => {
     expect(plain(s.reason)).toBe("Fyll på Black Bolt i Automat 1 och 1 titel till.");
   });
 
-  it("fel och tom går före påfyllning; ur drift och misstänkt fel är grå", () => {
+  it("fel, tom och ur drift går före påfyllning och kräver åtgärd; misstänkt fel är grått", () => {
     expect(statusOf({ ...base, health: health("fault"), refill: [refill("now")] }).label).toBe(
       "Fel",
     );
     expect(statusOf({ ...base, health: health("empty"), refill: [] }).flagged).toBe(true);
-    expect(
-      statusOf({ ...base, health: health("offline"), refill: [refill("soon")] }),
-    ).toMatchObject({
-      status: "offline",
-      label: "Ur drift",
+    expect(statusOf({ ...base, health: health("offline"), refill: [refill("now")] })).toMatchObject(
+      {
+        status: "critical",
+        label: "Ur drift",
+        flagged: true,
+      },
+    );
+    expect(statusOf({ ...base, health: health("suspected_fault"), refill: [] })).toMatchObject({
+      status: "warning",
       flagged: false,
     });
     expect(statusOf({ ...base, health: health("ok"), refill: [refill("soon")] }).label).toBe(
@@ -418,7 +424,7 @@ describe("buildOverview och detaljvyns figurer", () => {
       today: "2026-11-02",
     });
     expect(plain(h.title)).toBe("BL-001: 550 kr på 14 dagar.");
-    expect(plain(h.aside)).toBe("175 % bättre än perioden innan. Står i Centrum sedan 1 okt.");
+    expect(plain(h.aside)).toBe("175 % bättre än perioden innan, står i Centrum sedan 1 okt.");
   });
 });
 
@@ -458,6 +464,24 @@ describe("overviewHeadline och spreadText", () => {
         top: null,
       }).title,
     ).toBe("Inga order i dag ännu.");
+    // Ur drift räknas inte som i drift, och står i antalet som kräver åtgärd.
+    expect(
+      plain(
+        overviewHeadline({
+          rows: [row],
+          totals: { ...totals, offlineMachines: 1 },
+          span: span30,
+          flagged: 1,
+          top: null,
+        }).aside,
+      ),
+    ).toBe("1 av 2 automater i drift, 1 ur drift, 1 automat kräver åtgärd.");
+    expect(joinClauses(["Vinst 8 kr.", "Står i Centrum sedan 1 okt."])).toBe(
+      "Vinst 8 kr, står i Centrum sedan 1 okt.",
+    );
+    expect(joinClauses(["Samma som perioden innan.", "BL-001 står för 42 %."])).toBe(
+      "Samma som perioden innan, BL-001 står för 42 %.",
+    );
   });
 
   it("åtgärd före toppen", () => {
@@ -643,5 +667,35 @@ describe("heatThresholds", () => {
   it("värmekartan får gränserna för sin topp", () => {
     const orders = [1, 2, 3].map(() => order("m1", "t1", "2026-10-18T11:30:00Z"));
     expect(salesHeatmap(orders, TZ).thresholds).toEqual(heatThresholds(3));
+  });
+});
+
+describe("machineSignals: samma status som Drift", () => {
+  it("använder Drifts hälsa när den finns, i stället för att räkna om på orderna", () => {
+    const fromDrift = [
+      { machineId: "m1", status: "ok", title: "I drift" },
+      { machineId: "m2", status: "offline", title: "Ur drift" },
+    ] as unknown as MachineHealth[];
+    const empty = {
+      sources: {
+        prices: [],
+        agreements: [],
+        placements: [],
+        settings: { vatRateBp: 0, cardFeeBp: 0 },
+      },
+      current: { orders: [] },
+    } as unknown as DomainInput;
+    const signals = machineSignals({
+      recent: empty,
+      stock: { machineStock: [] } as unknown as StockSnapshot,
+      master: { titles: [], machines: [], stores: [] } as unknown as MasterData,
+      now: new Date("2026-11-02T10:00:00Z"),
+      timeZone: "Europe/Stockholm",
+      health: fromDrift,
+    });
+    expect([...signals.health.entries()].map(([id, h]) => [id, h.status])).toEqual([
+      ["m1", "ok"],
+      ["m2", "offline"],
+    ]);
   });
 });

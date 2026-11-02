@@ -33,7 +33,7 @@ describe("titlar utan inköpspris", () => {
       action: { kind: "add-price", label: "Lägg in inköpspris", params: { titleId: "t2" } },
     });
     expect(t2?.detail).toBe(
-      "Black Bolt står för 30\u00a0% av intäkten 4 okt. – 2 nov. (1 470 kr, 30 order) men saknar inköpspris och räknas därför inte in i vinsten.",
+      "Black Bolt står för 29,7\u00a0% av intäkten 4 okt. –\u2060 2 nov. (1 470 kr, 30 order) men saknar inköpspris och räknas därför inte in i vinsten.",
     );
     expect(t2?.evidence.orderIds).toHaveLength(30);
     expect(t2?.evidence.figures.find((f) => f.key === "shareBp")?.value).toBe(2_970);

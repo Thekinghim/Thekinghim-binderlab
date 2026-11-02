@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import { machineLabel, withCarried } from "./command-links";
-import { isInternalHref, parseRecent, pushRecent, recentKey, RECENT_LIMIT } from "./command-recent";
+import {
+  isForeignRecentKey,
+  isInternalHref,
+  parseRecent,
+  parseRecentKey,
+  pushRecent,
+  recentKey,
+  RECENT_LIMIT,
+  sanitizeRecent,
+  type RecentEntry,
+} from "./command-recent";
 
 const current = new URLSearchParams("period=7d&butik=s1&automat=m1&q=ignoreras");
 
@@ -63,5 +73,58 @@ describe("senaste val", () => {
     expect(list).toHaveLength(RECENT_LIMIT);
     expect(list[0]!.id).toBe("c3");
     expect(list.filter((e) => e.id === "c3")).toHaveLength(1);
+  });
+});
+
+describe("senaste val läcker inga belopp", () => {
+  const order: RecentEntry = {
+    type: "link",
+    id: "order:o1",
+    label: "30th Celebration",
+    code: "42780",
+    meta: ["BL-001", "1 nov. 17:17", "170 kr"],
+    href: "/order?period=allt&q=42780&order=o1",
+    carry: "none",
+  };
+  const machine: RecentEntry = {
+    type: "link",
+    id: "machine:m1",
+    label: "BL-001 Mobilia",
+    meta: ["Mobilia"],
+    href: "/automater/m1",
+    carry: "all",
+  };
+
+  it("orderträffar sparas utan metadata, andra träffar behåller sin", () => {
+    expect(sanitizeRecent(order)).toMatchObject({ code: "42780", meta: [] });
+    expect(sanitizeRecent(machine)).toBe(machine);
+    const stored = JSON.stringify(pushRecent([machine], order));
+    expect(stored).not.toContain("170 kr");
+    expect(stored).not.toContain("17:17");
+  });
+
+  it("metadata på orderträffar som redan sparats kastas när listan läses", () => {
+    const [e] = parseRecent(JSON.stringify([order]));
+    expect(e).toMatchObject({ id: "order:o1", meta: [] });
+  });
+
+  it("andra användares listor och egna listor för en annan roll är främmande", () => {
+    const me = { organizationId: "o1", user: "Pafyllare@x.se", role: "refiller" };
+    const key = (organizationId: string, user: string, role: string) =>
+      recentKey({ organizationId, user, role });
+    expect(isForeignRecentKey(key("o1", "pafyllare@x.se", "refiller"), me)).toBe(false);
+    expect(isForeignRecentKey(key("o2", "pafyllare@x.se", "owner"), me)).toBe(false);
+    expect(isForeignRecentKey(key("o1", "agare@x.se", "owner"), me)).toBe(true);
+    expect(isForeignRecentKey(key("o2", "agare@x.se", "owner"), me)).toBe(true);
+    expect(isForeignRecentKey(key("o1", "pafyllare@x.se", "owner"), me)).toBe(true);
+    expect(isForeignRecentKey("binderlab-palett-senaste:trasig", me)).toBe(true);
+    expect(isForeignRecentKey("binderlab-tema", me)).toBe(false);
+  });
+
+  it("nyckeln går att läsa tillbaka", () => {
+    expect(
+      parseRecentKey(recentKey({ organizationId: "o", user: "A@x.se", role: "admin" })),
+    ).toEqual({ organizationId: "o", user: "a@x.se", role: "admin" });
+    expect(parseRecentKey("annat")).toBeNull();
   });
 });

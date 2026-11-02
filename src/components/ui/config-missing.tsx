@@ -25,7 +25,6 @@ export function ConfigMissing({ issues }: { issues: readonly string[] }) {
         <StateMessage
           kind="not-configured"
           message="Inloggning och data är avstängda tills miljön är komplett."
-          action={{ label: "Visa designsystemet", href: "/design" }}
         />
         <ul className="flex flex-col border-t border-line">
           {issues.map((issue) => (

@@ -268,7 +268,13 @@ describe("läsaren (viewer)", () => {
   });
 
   it.each(tables)("kan inte skriva i %s", async (table) => {
-    const row = await sampleRow(table, F.orgId);
+    // En profil får läsaren lägga in åt sig själv (profiles_insert); en kopia av läsarens egen
+    // rad krockar då med unikheten (23505) i stället för att nekas. Välj någon annans rad.
+    const row = await sampleRow(
+      table,
+      F.orgId,
+      table === "profiles" ? sql`t.user_id is distinct from ${viewer.id}::uuid` : undefined,
+    );
     const insert = await asUser(viewer, async (tx) =>
       attempt(tx, async (sp) =>
         sp.execute(

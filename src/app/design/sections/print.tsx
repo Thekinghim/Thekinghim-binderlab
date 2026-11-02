@@ -202,10 +202,11 @@ export function PrintSection({ index }: { index: number }) {
       <figure className="bl-desk m-0 rounded-md p-3 sm:p-5 md:p-6 lg:col-span-9">
         <ExampleReport headingLevel={3} layout="spread" visiblePages={[1, 2]} />
         <figcaption className="mt-3 hidden gap-4 sm:grid sm:grid-cols-2 md:gap-6">
-          <span className="label text-subtle">
+          {/* text-muted: text-subtle når bara 4,3:1 mot skrivbordet i ljust läge. */}
+          <span className="label text-muted">
             <span className="text-fg">Sida 1</span> · Sammanfattning
           </span>
-          <span className="label text-subtle">
+          <span className="label text-muted">
             <span className="text-fg">Sida 2</span> · Sortiment
           </span>
         </figcaption>

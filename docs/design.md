@@ -2,7 +2,7 @@
 
 Binderlab är en kontrollpanel för varuautomater med samlarkortspack. Den ska kännas som ett precisionsinstrument och hålla nivå inför ledningen på ett stort bolag. Reglerna gäller panelen, rapporterna (`/rapport/*`) och e-posten (`src/emails`).
 
-Visningssidan är `/design`. Den läser färgerna direkt ur `src/styles/tokens.css` och räknar kontrasten på servern (`src/app/design/tokens.ts`). Exempeldatan i `src/app/design/sample-data.ts` består av tre automater i tre butiker och ett års Awish-ordrar. Om den här filen och koden säger olika saker gäller koden. Rätta då filen i samma ändring.
+Visningssidan är `/design` (kräver inloggning). Den läser färgerna direkt ur `src/styles/tokens.css` och räknar kontrasten på servern (`src/app/design/tokens.ts`). Exempeldatan i `src/app/design/sample-data.ts` består av tre automater i tre butiker och ett års Awish-ordrar. Om den här filen och koden säger olika saker gäller koden. Rätta då filen i samma ändring.
 
 Källor i ordning:
 
@@ -131,7 +131,7 @@ Med `data-tone="signal"` på rapporten behålls kulören för PDF som läses på
 
 #### Lägen
 
-- Mörkt är standard (`<html data-theme="dark">`, `themeColor` #0A0A0B). Ljust sätts med `data-theme="light"` på valfritt element, och variablerna ärvs nedåt. Valet sparas i `localStorage` (`binderlab-theme`) och sätts före rendering av `themeInitScript` i `src/lib/theme.ts`.
+- Mörkt är standard (`<html data-theme="dark">`, `themeColor` #0A0A0B). Ljust sätts med `data-theme="light"` på valfritt element, och variablerna ärvs nedåt. Valet sparas i cookien `binderlab-theme` (och i `localStorage`), och rotlayouten renderar `data-theme` och `themeColor` ur cookien på servern (`src/lib/theme.ts`): rätt tema redan i första HTML-svaret, inget blink och inget inline-skript. Ett äldre val som bara finns i `localStorage` flyttas till cookien av `ThemeSync` vid första besöket.
 - Varianten `light:` i Tailwind följer `data-theme`, inte `prefers-color-scheme`.
 - E-post är alltid ljus (avsnitt 8).
 
@@ -272,7 +272,7 @@ Signal står aldrig ensam. Varje signalmarkering har:
 - Tal i löptext, tabeller och KPI sätts i **Geist sans med `.tnum`**, högerställda i kolumner. `Column.numeric` ger detta automatiskt.
 - I diagram (axlar, direktetiketter, läsruta) och i id, tider och metadata används **Geist Mono**. De hör till mätapparaten. Alla rader i en direktetikett är mono; vikt och färg bär hierarkin (`title` 12 px halvfet fg, `body` 12 px muted, `value` 11 px). Text i SVG är minst 11 px.
 - Hela meningar står aldrig i mono, inte heller i tillståndsmeddelanden eller fotnoter. Mono är för etiketter, id, tider och mätvärden.
-- Datum i diagram skrivs som i löptexten: "24 okt." med punkt och gemener, även på axeln.
+- Datum i diagram skrivs som i löptexten: "24 okt." med punkt och gemener, även på axeln (`formatDate(d, { year: "never" })`, som `LineChart`). `formatDay` utan punkt är bara för täta listor där punkten inte ryms, aldrig på en axel.
 - Ett tal och dess enhet hålls ihop med hårt mellanslag. Använd `NBSP` från `format.ts` när du sätter ihop egna strängar ("1{NBSP}signalfärg").
 - Id bryts aldrig: `BL‑002` skrivs med hårt bindestreck (U+2011) där det kan bryta.
 
@@ -288,25 +288,25 @@ All formatering av tal, belopp, datum och perioder går via `src/lib/format.ts`.
 | Saknat värde    | `MISSING` = "–"    | NaN, ±Infinity och ogiltigt datum. Aldrig "NaN" eller tom cell.                       |
 | Decimalkomma    | ,                  | "4,5:1", "1,25 px". Aldrig decimalpunkt i UI-text.                                    |
 
-| Behov                   | Funktion                                            | Utdata                                                              |
-| ----------------------- | --------------------------------------------------- | ------------------------------------------------------------------- |
-| Belopp med ören         | `formatKronor(v)`                                   | 79 987,00 kr                                                        |
-| Belopp i hela kronor    | `formatSek(v)` / `formatKronor(v, { decimals: 0 })` | 12 480 kr                                                           |
-| Beloppsförändring       | `formatSignedKronor(v)`                             | +1 240,00 kr · −1 240,00 kr · ±0,00 kr                              |
-| Tkr                     | `formatTkr(v)`                                      | 31,1 tkr                                                            |
-| Heltal / decimal        | `formatInt`, `formatNumber(v, d)`, `formatDecimal`  | 12 480 · 12,4                                                       |
-| Andel som procent       | `formatPercent(share, digits = 1)`                  | 33,1 % · (v, 0) → 33 %                                              |
-| Förändring som andel    | `formatDelta(change, digits = 0)`                   | +42 % · −8 % · ±0 %                                                 |
-| Datum                   | `formatDate(d)`                                     | 1 nov. 2026 (`year: "auto"` utelämnar innevarande år)               |
-| Datum och tid           | `formatDateTime(d)`                                 | 1 nov. 17:17                                                        |
-| Tid                     | `formatTime(d)`                                     | 09:05                                                               |
-| Månad                   | `formatMonth(d)`                                    | november 2026                                                       |
-| Axel och täta etiketter | `formatDay(d)`, `formatWeekdayDay(d)`               | 26 okt · tis 26 okt (utan punkt)                                    |
-| Period, med år          | `formatPeriod(p)`                                   | 1–30 nov. 2026 · oktober–november 2026 · 28 dec. 2025 – 3 jan. 2026 |
-| Period, kort            | `formatPeriodShort(p)`                              | 3 okt. – 1 nov. · nov.                                              |
-| Relativ tid (logg)      | `formatRelative(d)`                                 | nyss · för 4 min sedan · tor 08:00                                  |
-| Varaktighet             | `formatDuration(ms)`                                | 45 s · 2 h 14 min                                                   |
-| CSV                     | `formatCsvNumber(v)`                                | 79987,00 (ingen avgränsare, ASCII-minus)                            |
+| Behov                | Funktion                                            | Utdata                                                              |
+| -------------------- | --------------------------------------------------- | ------------------------------------------------------------------- |
+| Belopp med ören      | `formatKronor(v)`                                   | 79 987,00 kr                                                        |
+| Belopp i hela kronor | `formatSek(v)` / `formatKronor(v, { decimals: 0 })` | 12 480 kr                                                           |
+| Beloppsförändring    | `formatSignedKronor(v)`                             | +1 240,00 kr · −1 240,00 kr · ±0,00 kr                              |
+| Tkr                  | `formatTkr(v)`                                      | 31,1 tkr                                                            |
+| Heltal / decimal     | `formatInt`, `formatNumber(v, d)`, `formatDecimal`  | 12 480 · 12,4                                                       |
+| Andel som procent    | `formatPercent(share, digits = 1)`                  | 33,1 % · (v, 0) → 33 %                                              |
+| Förändring som andel | `formatDelta(change, digits = 0)`                   | +42 % · −8 % · ±0 %                                                 |
+| Datum                | `formatDate(d)`                                     | 1 nov. 2026 (`year: "auto"` utelämnar innevarande år)               |
+| Datum och tid        | `formatDateTime(d)`                                 | 1 nov. 17:17                                                        |
+| Tid                  | `formatTime(d)`                                     | 09:05                                                               |
+| Månad                | `formatMonth(d)`                                    | november 2026                                                       |
+| Täta etiketter       | `formatDay(d)`, `formatWeekdayDay(d)`               | 26 okt · tis 26 okt (utan punkt; inte på axlar, se Siffror)         |
+| Period, med år       | `formatPeriod(p)`                                   | 1–30 nov. 2026 · oktober–november 2026 · 28 dec. 2025 – 3 jan. 2026 |
+| Period, kort         | `formatPeriodShort(p)`                              | 3 okt. – 1 nov. · nov.                                              |
+| Relativ tid (logg)   | `formatRelative(d)`                                 | nyss · för 4 min sedan · tor 08:00                                  |
+| Varaktighet          | `formatDuration(ms)`                                | 45 s · 2 h 14 min                                                   |
+| CSV                  | `formatCsvNumber(v)`                                | 79987,00 (ingen avgränsare, ASCII-minus)                            |
 
 - Månader förkortas enligt Språkrådet: punkt bara där ordet är förkortat ("okt.", "maj", "juni").
 - Deltan i KPI: relativ förändring med en decimal under 10 % (annars heltal) som standard. I en remsa där deltan står bredvid varandra ges alla samma antal decimaler (`KpiDeltaSpec.format`, `/design` använder en decimal). Räknare visas absolut med enhet ("+2 st"), procentenheter som "p.e.". Tecknet skrivs alltid ut.
@@ -390,11 +390,11 @@ Komponenterna ligger i `src/components/ui`, `charts`, `shell`, `brand` och `repo
 
 ### Nyckeltal
 
-| Komponent                | När                                                                                                                                                                                       |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `KpiStrip`               | **Standard** för två till sju nyckeltal. En sammanhängande remsa med 1 px avdelare och en `primary`. `comparison` skrivs en gång i huvudet. Under 640 px blir den 2 × 2 utan trendlinjer. |
-| `KpiCard`                | Ett ensamt nyckeltal. Sätt `deltaLabel=""` när jämförelsen står i rubriken. Flera i rad blir `KpiStrip`.                                                                                  |
-| `KpiTrace` / `Sparkline` | 1 px linje utan fyllning och en streckad referenslinje. Noden visas bara vid larm.                                                                                                        |
+| Komponent                | När                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `KpiStrip`               | **Standard** för två till sju nyckeltal. En sammanhängande remsa med 1 px avdelare och en `primary`. `comparison` skrivs en gång i huvudet. Lägena följer remsans egen bredd (container queries), inte fönstrets: under 576 px 2 × 2 utan trendlinjer, från 576 px huvudpersonen på egen rad, från 896 px en rad. Ett värde som inte ryms tas ner ett storlekssteg i taget i stället för att klippas, och cellerna utom huvudpersonen delar steget så att talen i raden står i samma storlek. `note` säger grunden när den inte är självklar ("på order med inköpspris"). `headingLevel={2}` när remsan står direkt under sidans h1; `ariaLabel` när remsan saknar synligt huvud. |
+| `KpiCard`                | Ett ensamt nyckeltal. Sätt `deltaLabel=""` när jämförelsen står i rubriken. Flera i rad blir `KpiStrip`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `KpiTrace` / `Sparkline` | 1 px linje utan fyllning och en streckad referenslinje. Noden visas bara vid larm.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 - `alert` kräver alltid `alertText` ("Gräns 3 st").
 - `motion="fade"` är standard. Använd `count` bara när uppräkningen har en poäng.
@@ -607,6 +607,14 @@ Saklig, kort och konkret, som en instrumentpanel och inte en säljsida. Skriv va
      });
      const p = await ctx.newPage();
      p.on("console", (m) => m.type() === "error" && console.log("konsolfel:", m.text()));
+     // /design kräver inloggning (som /datamodell).
+     await p.goto("http://localhost:3200/logga-in");
+     await p.fill('input[name="email"]', "agare@binderlab.local");
+     await p.fill('input[name="password"]', "binderlab-dev");
+     await Promise.all([
+       p.waitForURL((u) => !u.pathname.startsWith("/logga-in")),
+       p.click('button[type="submit"]'),
+     ]);
      await p.goto("http://localhost:3200/design", { waitUntil: "load" });
      await p.waitForTimeout(2500);
      console.log("scrollWidth", await p.evaluate(() => document.documentElement.scrollWidth)); // ska vara 375
@@ -672,7 +680,7 @@ Det här bryter mot reglerna ovan och ska rättas av den som äger filen:
 1. **`formatRelative`** skriver "igår". Ordlistan säger "i går". Utdatan används i `automater/_components/machine-table.tsx` och testas i `src/import`, så ändringen görs samlat.
 2. **Utskriftstemat saknar `--bl-signal-line`, `--bl-signal-hover` och `--bl-fg-disabled`.** De ärvs från appens läge, så en kritisk statusetikett får orange kant på ett ark med `tone="mono"`.
 3. **`::selection`** i `globals.css` använder `--bl-signal-soft`. Markering är inte en åtgärd.
-4. **Inloggningssidan** (`app/logga-in/auth-frame.tsx`) har nät bakom formuläret och en gradientmask.
+4. ~~**Inloggningssidan** har nät bakom formuläret och en gradientmask.~~ Rättad: `auth-frame.tsx` har varken nät eller mask (genomgång A, fas 7).
 5. **`--bl-line-control`** når bara 2,7–2,9:1 mot `hover` och `raised` i mörkt läge. Kontroller står därför på `bg-bg` (fältets fyllning).
 6. **Gråskalesnapshots per diagram (G15)** saknas. Kontrollen är manuell tills vidare.
 7. **`ReportMark`** på den markerade tabellraden i månadsrapporten (släppet) är signal i `tone="signal"`. Släppet är inget som kräver åtgärd; markeringen bör bli `fg`.

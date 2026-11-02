@@ -17,6 +17,7 @@ import {
 import * as s from "@/db/schema";
 import { listOrganizationsFor, type SessionUser } from "@/server/access";
 import { loadTodosFor, type Viewer } from "@/server/data/core/loaders";
+import { loadRankedTodoStateFor } from "@/server/data/todos";
 
 import {
   asUser,
@@ -87,7 +88,15 @@ async function seedFixture(): Promise<Fixture> {
     ]);
     const [source] = await tx
       .insert(s.dataSources)
-      .values({ ...org, provider: "awish_csv", name: "Awish CSV" })
+      // En automatisk källa som hämtade nyss: tystnaden räknas fram till hämtningen, som på
+      // Drift (sales_data_until). Med en CSV-källa och en enda automat slutar täckningen vid
+      // automatens egen sista order, och då är det datalarmet som säger till, inte Att göra.
+      .values({
+        ...org,
+        provider: "awish_grpc",
+        name: "Awish",
+        lastSyncedAt: new Date(NOW.getTime() - 60 * 60 * 1000),
+      })
       .returning();
     const [imp] = await tx
       .insert(s.imports)
@@ -405,5 +414,45 @@ describe("mergeTitlesFor", () => {
     );
     expect(raw.map((r) => r.raw_title)).toEqual(["Pokemon 151", "Surging Sparks"]);
     expect((await loadTodosFor(owner, NOW)).some((t) => t.kind === "duplicate-title")).toBe(false);
+  });
+});
+
+describe("utgångna titlar (sortimentet) i Att göra", () => {
+  // Sist i filen: lägger till sortimentet för fixturens automat.
+  it("ger ingen påfyllningspunkt för en titel som gått ur sortimentet, som Lager och Drift", async () => {
+    const refillKey = `refill:${fx.machineId}:${fx.titleId}`;
+    // Titeln tar slut igen (påfyllningen ovan fyllde på den): svinn ner till 0.
+    const left = await stockOf(fx.machineLocationId, fx.titleId);
+    if (left > 0) {
+      await asUser(fx.owner, (tx) =>
+        tx.insert(s.stockEvents).values({
+          organizationId: fx.orgId,
+          locationId: fx.machineLocationId,
+          titleId: fx.titleId,
+          kind: "waste",
+          quantity: -left,
+          occurredAt: new Date("2025-03-14T08:00:00Z"),
+        }),
+      );
+    }
+    expect((await loadRankedTodoStateFor(owner, NOW)).items.map((t) => t.key)).toContain(refillKey);
+    // Titeln gick ur automatens sortiment den 1 mars; resten säljs ut.
+    await db().execute(
+      sql`insert into public.machine_slots (organization_id, machine_id, title_id, slots, valid_from, valid_to)
+          values (${fx.orgId}::uuid, ${fx.machineId}::uuid, ${fx.titleId}::uuid, 1, '2025-01-01', '2025-03-01')`,
+    );
+    for (const viewer of [owner, refiller]) {
+      const state = await loadRankedTodoStateFor(viewer, NOW);
+      expect(state.items.map((t) => t.key)).not.toContain(refillKey);
+      expect(state.dismissed.map((t) => t.key)).not.toContain(refillKey);
+    }
+    // Den andra titeln (inget registrerat sortiment) påverkas inte.
+    const other = (await loadTodosFor(owner, NOW)).filter(
+      (t) => t.kind === "refill" && t.key !== refillKey,
+    );
+    const ranked = (await loadRankedTodoStateFor(owner, NOW)).items.filter(
+      (t) => t.kind === "refill",
+    );
+    expect(ranked.map((t) => t.key)).toEqual(other.map((t) => t.key));
   });
 });

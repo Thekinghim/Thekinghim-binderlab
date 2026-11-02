@@ -290,14 +290,14 @@ describe("buildLonsamhetModel", () => {
     expect(m.headline).toEqual({
       kind: "profit",
       title: `Ni behöll 49,2${NBSP}% av intäkten.`,
-      aside: "BL-002 Automat 2 står för drygt hälften av vinsten.",
+      aside: "Automat 2 står för drygt hälften av vinsten.",
     });
-    expect(m.viewTitles.machine.title).toBe("BL-002 Automat 2 gav mest vinst.");
-    expect(m.comparisonLabel).toBe(`Jämfört med 23${NBSP}sep.${NBSP}–${NBSP}12${NBSP}okt.`);
+    expect(m.viewTitles.machine.title).toBe("Automat 2 gav mest vinst.");
+    expect(m.comparisonLabel).toBe(`Jämfört med 23${NBSP}sep.${NBSP}–\u2060${NBSP}12${NBSP}okt.`);
     // 25 order nu mot 20 före: +25 %.
     expect(m.kpis.find((k) => k.id === "orders")?.delta).toBeCloseTo(0.25);
     expect(m.kpis.find((k) => k.id === "margin")?.delta).toBe(0);
-    expect(m.periodLabel).toBe(`13${NBSP}okt.${NBSP}–${NBSP}1${NBSP}nov.`);
+    expect(m.periodLabel).toBe(`13${NBSP}okt.${NBSP}–\u2060${NBSP}1${NBSP}nov.`);
     expect(m.days).toBe(20);
   });
 
@@ -306,7 +306,7 @@ describe("buildLonsamhetModel", () => {
     const weeks = m.trend.week.buckets;
     expect(weeks.map((w) => w.axis)).toEqual(["V42", "V43", "V44"]);
     expect(weeks[0]).toMatchObject({ partial: true, start: "2026-10-13", end: "2026-10-18" });
-    expect(weeks[0]?.name).toBe(`Vecka 42 · 13–18${NBSP}okt.`);
+    expect(weeks[0]?.name).toBe(`Vecka 42 · 13–\u206018${NBSP}okt.`);
     const weekSum = weeks.reduce((s, w) => s + w.profitOre, 0) + m.trend.week.unallocatedProfitOre;
     expect(weekSum).toBe(m.totals.profitOre);
     const months = m.trend.month.buckets;

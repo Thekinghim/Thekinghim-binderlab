@@ -41,9 +41,12 @@ import {
 } from "@/server/access";
 import { businessToday } from "@/server/data/core/loaders";
 import type { Mailer, MailAttachment } from "@/server/mail/report-mailer";
+import { recordReportSend, type MonitoringDeps } from "@/server/monitoring/failures";
+import { monthText } from "@/reports/text";
 
 import { buildSubject, renderReportText } from "@/emails/report-content";
 
+import { closeDraftsAlertIfComplete } from "./draft-coverage";
 import { reportEmailProps } from "./email";
 import { cleanEmailText } from "./email-cleanup";
 import { CONTENT_TYPE, excelOf, reportFileName, sieOf } from "./files";
@@ -51,6 +54,7 @@ import {
   DB_KIND,
   RECIPIENT_KIND,
   TYPE_BY_DB_KIND,
+  TYPE_LABEL,
   isReportDbKind,
   type RecipientDbKind,
   type ReportType,
@@ -438,12 +442,17 @@ export async function createReportFor(
   viewer: Viewer,
   req: ReportRequest,
   now: Date = new Date(),
+  monitor: MonitoringDeps = {},
 ): Promise<string> {
-  return as(viewer, EDIT_ROLES, async (tx) => {
+  const id = await as(viewer, EDIT_ROLES, async (tx) => {
     const orgId = viewer.organization.id;
     const snapshot = await snapshotTx(tx, orgId, viewer.organization.timezone, req, now);
     return insertReportTx(tx, orgId, snapshot, viewer.user.userId);
   });
+  // Ett utkast för hand kan fylla det som det schemalagda jobbet missade: då stängs
+  // månadens larm (report_drafts:<månad>). Kastar aldrig.
+  await closeDraftsAlertIfComplete(monitor, viewer.organization.id, req.month);
+  return id;
 }
 
 /** Skriver reports-raden. Används också av det schemalagda jobbet (utan användare). */
@@ -601,6 +610,8 @@ export interface SendDeps {
   ) => Promise<Record<string, { html: string }>>;
   /** Länk till rapporten i appen. */
   readonly reportUrl: (reportId: string) => string;
+  /** Felövervakningen (Sentry och larm). Standard: systemrollen och Sentry när DSN finns. */
+  readonly monitor?: MonitoringDeps;
   readonly sender?: { name: string; address: string; email: string };
   /** Avsändarens kontaktperson (butiksmejlet). */
   readonly contact?: { name: string; phone: string | null } | null;
@@ -660,14 +671,33 @@ export async function sendReportFor(
   const skipped = chosen.length - targets.length;
   if (targets.length === 0) return { sent: 0, failed: [], skipped };
 
-  const pdf = await ensurePdfFor(viewer, report.id, { store: deps.store, render: deps.render });
-  const attachments = await mailAttachments(report.snapshot, pdf.bytes);
+  // Felövervakning (Sentry och larm på Drift): utskick som avbryts eller inte når fram.
+  const monitored = {
+    organizationId: orgId,
+    reportId: report.id,
+    label: `${TYPE_LABEL[report.type].toLocaleLowerCase("sv-SE")} ${monthText(report.month)}${report.storeName ? ` · ${report.storeName}` : ""}`,
+    month: report.month,
+  };
   const followText = req.followText?.trim() || null;
-  const rendered = await deps.renderEmails(
-    report.id,
-    targets.map((r) => r.id),
-    followText,
-  );
+  let attachments: MailAttachment[];
+  let rendered: Record<string, { html: string }>;
+  try {
+    const pdf = await ensurePdfFor(viewer, report.id, { store: deps.store, render: deps.render });
+    attachments = await mailAttachments(report.snapshot, pdf.bytes);
+    rendered = await deps.renderEmails(
+      report.id,
+      targets.map((r) => r.id),
+      followText,
+    );
+  } catch (error) {
+    await recordReportSend(deps.monitor ?? {}, {
+      ...monitored,
+      sent: 0,
+      failedErrors: [],
+      error,
+    });
+    throw error;
+  }
 
   let sent = 0;
   const failed: { email: string; error: string }[] = [];
@@ -716,6 +746,11 @@ export async function sendReportFor(
       });
     });
   }
+  await recordReportSend(deps.monitor ?? {}, {
+    ...monitored,
+    sent,
+    failedErrors: failed.map((f) => f.error),
+  });
   return { sent, failed, skipped };
 }
 

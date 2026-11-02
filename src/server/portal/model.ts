@@ -15,8 +15,10 @@
 import {
   addMonths,
   compareDates,
+  intersectPeriods,
   monthOf,
   monthPeriod,
+  periodDays,
   type IsoDate,
   type IsoMonth,
   type OrderLine,
@@ -173,7 +175,11 @@ export function resolvePortalMonth(
   first: IsoMonth,
   current: IsoMonth,
 ): IsoMonth {
-  if (!requested || !MONTH_RE.test(requested)) return current;
+  // Utan val: den senaste hela månaden (som månadsrapporten), inte den som pågår, utom när
+  // butiken bara har den pågående månaden.
+  const lastFull = addMonths(current, -1);
+  const fallback = lastFull >= first ? lastFull : current;
+  if (!requested || !MONTH_RE.test(requested)) return fallback;
   const m = requested as IsoMonth;
   if (m > current) return current;
   if (m < first) return first;
@@ -216,6 +222,12 @@ export interface PortalOverview {
   readonly trend: readonly PortalTrendMonth[];
   /** Summa för trendens hela månader (utan pågående månad). */
   readonly trendTotals: { months: number; revenueOre: number; compensationOre: number };
+  /**
+   * Dagar automaten hittills stått i butiken i månaden (till och med i dag), per
+   * automat. För en hel månad samma som rapportens `placedDays`; för pågående
+   * månad räknas inte dagarna efter i dag.
+   */
+  readonly placedDaysSoFar: Readonly<Record<string, number>>;
 }
 
 /**
@@ -246,10 +258,27 @@ export function buildPortalOverview(
       };
     });
   const complete = trend.filter((t) => !t.partial);
+  const partial = month === current;
+  const period = monthPeriod(month);
+  const placedDaysSoFar: Record<string, number> = {};
+  for (const m of report.machines) {
+    if (!partial) {
+      placedDaysSoFar[m.machineId] = m.placedDays;
+      continue;
+    }
+    const soFar = { start: period.start, end: today };
+    let days = 0;
+    for (const p of sources.placements) {
+      if (p.machineId !== m.machineId || p.storeId !== storeId) continue;
+      const overlap = intersectPeriods(soFar, { start: p.from, end: p.to ?? today });
+      if (overlap) days += periodDays(overlap);
+    }
+    placedDaysSoFar[m.machineId] = days;
+  }
   return {
     month,
-    period: monthPeriod(month),
-    partial: month === current,
+    period,
+    partial,
     today,
     report,
     trend,
@@ -258,6 +287,7 @@ export function buildPortalOverview(
       revenueOre: complete.reduce((s, t) => s + t.revenueOre, 0),
       compensationOre: complete.reduce((s, t) => s + t.compensationOre, 0),
     },
+    placedDaysSoFar,
   };
 }
 

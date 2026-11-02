@@ -6,7 +6,7 @@ import type {
 } from "@/analytics/reconciliation";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag, type Status } from "@/components/ui/status-tag";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatInt } from "@/lib/format";
 
 import { isoToDate, kr, periodText, signedKr } from "../_lib/view";
 import { DeviationReview } from "./deviation-review";
@@ -75,11 +75,13 @@ function DeviationItem({
 
 function PayoutBlock({
   p,
+  today,
   canEdit,
   viewPeriod,
   payoutId,
 }: {
   p: PayoutReconciliation;
+  today: string;
   canEdit: boolean;
   viewPeriod: { start: string; end: string };
   payoutId: string | undefined;
@@ -100,7 +102,8 @@ function PayoutBlock({
             <span>{periodText(p.period)}</span>
           </h3>
           <p className="meta text-subtle">
-            Utbetald {formatDate(isoToDate(p.paidOn), { year: "always" })} · {p.expected.orders}{" "}
+            {p.paidOn > today ? "Utbetalas" : "Utbetald"}{" "}
+            {formatDate(isoToDate(p.paidOn), { year: "always" })} · {formatInt(p.expected.orders)}{" "}
             order
           </p>
         </div>
@@ -139,11 +142,14 @@ function PayoutBlock({
 /** Varje utbetalning med väntat, utbetalt, skillnad, avvikelser och underlag. */
 export function ReconciliationList({
   result,
+  today,
   canEdit,
   period,
   payoutIds,
 }: {
   result: ReconciliationResult;
+  /** I dag ('ÅÅÅÅ-MM-DD'): en utbetalningsdag efter i dag skrivs "Utbetalas". */
+  today: string;
   canEdit: boolean;
   period: { start: string; end: string };
   /** Utbetalningens id per referens (för arkiveringen). */
@@ -155,6 +161,7 @@ export function ReconciliationList({
         <PayoutBlock
           key={p.key}
           p={p}
+          today={today}
           canEdit={canEdit}
           viewPeriod={period}
           payoutId={p.key === p.reference ? payoutIds[p.reference] : undefined}

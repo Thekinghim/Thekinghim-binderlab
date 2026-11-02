@@ -36,7 +36,8 @@ export const sekValue = (ore: number) => formatSek(ore / 100).replace(/\s*kr$/, 
 export const pct = (bp: number | null, digits = 1) =>
   bp === null ? "–" : formatPercent(bp / 10_000, digits);
 /** Förändring i bp → "+12 %". */
-export const delta = (bp: number | null) => (bp === null ? undefined : formatDelta(bp / 10_000));
+// En decimal, som mejlet (formatDelta(…, 1)): samma förändring står likadant i PDF och mejl.
+export const delta = (bp: number | null) => (bp === null ? undefined : formatDelta(bp / 10_000, 1));
 /** "oktober 2026" */
 export const monthLabel = (month: string) => formatMonth(localDate(`${month}-01`));
 /** "oktober" */

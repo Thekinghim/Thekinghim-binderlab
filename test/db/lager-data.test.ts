@@ -400,3 +400,38 @@ describe("lager_performers", () => {
     expect(await nameOf(refiller.user.userId)).toBe(profile[0]?.display_name);
   });
 });
+
+describe("lager_slot_periods", () => {
+  it("ger påfyllaren sortimentets perioder och Lager räknar en utgången titel utan status", async () => {
+    // Surging Sparks gick ur sortimentet i automaten den 28 feb. (5 pack påfyllda i mars
+    // finns kvar och säljs ut), Black Bolt gäller tills vidare.
+    await db().execute(
+      sql`insert into public.machine_slots (organization_id, machine_id, title_id, slots, valid_from, valid_to)
+          values (${fx.orgId}::uuid, ${fx.machineId}::uuid, ${fx.secondTitleId}::uuid, 1, '2025-01-01', '2025-02-28'),
+                 (${fx.orgId}::uuid, ${fx.machineId}::uuid, ${fx.titleId}::uuid, 1, '2025-01-01', null)`,
+    );
+    const res = await asUser({ id: refiller.user.userId, email: refiller.user.email }, (tx) =>
+      tx.execute(sql`select * from public.lager_slot_periods(${fx.orgId}::uuid)`),
+    );
+    const list = Array.from(res) as Record<string, unknown>[];
+    expect(list).toHaveLength(2);
+    expect(Object.keys(list[0] ?? {}).sort()).toEqual([
+      "machine_id",
+      "title_id",
+      "valid_from",
+      "valid_to",
+    ]);
+    await expect(
+      asUser({ id: outsider.user.userId, email: outsider.user.email }, (tx) =>
+        tx.execute(sql`select * from public.lager_slot_periods(${fx.orgId}::uuid)`),
+      ),
+    ).rejects.toThrow();
+
+    const view = await loadLagerFor(refiller, { period: ALL_TIME, scope: NO_SCOPE }, NOW);
+    const i = view.titles.findIndex((t) => t.id === fx.secondTitleId);
+    const j = view.titles.findIndex((t) => t.id === fx.titleId);
+    expect(view.cells[i]?.[0]).toMatchObject({ retired: true, status: "ok", suggested: 0 });
+    expect(view.cells[j]?.[0]).toMatchObject({ retired: false });
+    expect(view.packLists[0]?.lines.map((l) => l.titleId) ?? []).not.toContain(fx.secondTitleId);
+  });
+});

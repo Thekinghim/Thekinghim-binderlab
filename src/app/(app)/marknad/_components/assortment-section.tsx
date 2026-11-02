@@ -64,6 +64,7 @@ function MachineCard({
   period: { start: string; end: string };
 }) {
   const rec = view.recommendation;
+  const done = view.implemented;
   const info = slots[view.machineId] ?? NO_SLOTS;
   const headingId = `sortiment-${view.machineId}`;
   return (
@@ -76,11 +77,15 @@ function MachineCard({
             </p>
             <h3 id={headingId} className="text-lg font-medium text-balance">
               <span className="meta text-fg">{view.code}</span>
-              {rec
-                ? rec.action === "change"
-                  ? ` · ${signedKronorWhole(rec.effectPerWeekOre)}/vecka med nytt sortiment.`
-                  : " · behåll sortimentet."
-                : "."}
+              {done
+                ? // Genomförd: visa det sparade värdet från när ändringen gjordes,
+                  // inte förslaget räknat om på dagens period.
+                  ` · nytt sortiment ${dayText(done.implementedOn, ctx.today)}, väntat ${signedKronorWhole(done.expectedEffectPerWeekOre)}/vecka.`
+                : rec
+                  ? rec.action === "change"
+                    ? ` · ${signedKronorWhole(rec.effectPerWeekOre)}/vecka med nytt sortiment.`
+                    : " · behåll sortimentet."
+                  : "."}
             </h3>
           </div>
           <div className="shrink-0">
@@ -100,8 +105,19 @@ function MachineCard({
 
         {rec ? (
           <>
-            <p className="max-w-3xl text-muted">{rec.text}</p>
-            {rec.changes.length > 0 ? (
+            <p className="max-w-3xl text-muted">
+              {done && rec.changes.length === 0
+                ? "Ändringen är genomförd. Utfallet följs upp under Uppföljning."
+                : done
+                  ? `Genomfört: ${rec.changes
+                      .map(
+                        (c) =>
+                          `${ctx.names.title[c.titleId] ?? c.titleId} ${c.fromSlots} → ${c.toSlots} fack`,
+                      )
+                      .join(", ")}. Utfallet följs upp under Uppföljning.`
+                  : rec.text}
+            </p>
+            {rec.changes.length > 0 && !done ? (
               <ul className="flex flex-col gap-1" aria-label={`Ändringar i ${view.code}`}>
                 {rec.changes.map((c) => (
                   <li
@@ -121,7 +137,11 @@ function MachineCard({
               </ul>
             ) : null}
             <Table
-              caption={`Sortiment i ${view.code}`}
+              caption={
+                done
+                  ? `Sortiment i ${view.code} efter ändringen, med försäljningen ${periodLabel(period)}`
+                  : `Sortiment i ${view.code}`
+              }
               head={[
                 { label: "Titel" },
                 { label: "Fack", numeric: true },
@@ -135,8 +155,8 @@ function MachineCard({
                 <Row key={l.titleId}>
                   <Cell header>{ctx.names.title[l.titleId] ?? l.titleId}</Cell>
                   <Cell numeric>
-                    {l.currentSlots === l.recommendedSlots
-                      ? formatInt(l.currentSlots)
+                    {done || l.currentSlots === l.recommendedSlots
+                      ? formatInt(l.recommendedSlots)
                       : `${formatInt(l.currentSlots)} → ${formatInt(l.recommendedSlots)}`}
                   </Cell>
                   <Cell numeric className="text-muted">
@@ -163,7 +183,7 @@ function MachineCard({
               ))}
             </Table>
             {rec.action === "keep" && rec.potentialEffectPerWeekOre > 0 ? (
-              <p className="meta text-subtle">
+              <p className="text-sm text-subtle">
                 Bästa omfördelningen ger {signedKronorWhole(rec.potentialEffectPerWeekOre)}/vecka,
                 under gränsen för att föreslå en ändring.
               </p>
@@ -236,6 +256,7 @@ export function AssortmentSection({
     (m) => m.recommendation?.action === "change" && m.implemented === null,
   );
   const effect = changes.reduce((s, m) => s + (m.recommendation?.effectPerWeekOre ?? 0), 0);
+  const implemented = machines.filter((m) => m.implemented !== null);
   const days =
     Math.round(
       (Date.parse(assortment.period.end) - Date.parse(assortment.period.start)) / 86_400_000,
@@ -245,7 +266,9 @@ export function AssortmentSection({
       ? "Ingen automat har fackfördelning."
       : changes.length > 0
         ? `${formatInt(changes.length)} av ${formatInt(machines.length)} automater kan ge ${signedKronorWhole(effect)}/vecka.`
-        : `Behåll sortimentet i ${machines.length === 1 ? "automaten" : `alla ${formatInt(machines.length)} automater`}.`;
+        : implemented.length > 0
+          ? `${implemented.map((m) => m.code).join(", ")} har nytt sortiment, inget mer föreslås.`
+          : `Behåll sortimentet i ${machines.length === 1 ? "automaten" : `alla ${formatInt(machines.length)} automater`}.`;
   const asideParts = [`Mätt ${periodLabel(assortment.period)}.`];
   if (assortment.withoutSlots.length > 0) {
     asideParts.push(

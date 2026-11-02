@@ -124,7 +124,7 @@ export default async function PrognosPage({
         <SectionHeader
           id="traffsakerhet"
           index={3}
-          eyebrow="Träffsäkerhet · backtest"
+          eyebrow="Träffsäkerhet · prövad bakåt"
           title={m.accuracy.heading.title}
           aside={m.accuracy.heading.aside}
         />

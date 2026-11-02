@@ -159,7 +159,7 @@ describe("buildPage", () => {
     expect(page.header.aside).toBe("1 måste göras i dag.");
     expect(page.header.description).toBe(
       `Först: Fyll på Titel 1 i Automat, räcker 0,3${NBSP}d. ` +
-        `3${NBSP}947${NBSP}kr i intäkt står på spel de närmaste 7 dagarna.`,
+        `Den står för 2${NBSP}947${NBSP}kr av 3${NBSP}947${NBSP}kr i intäkt i risk de närmaste 7 dagarna.`,
     );
     expect(page.header.meta.find((m) => m.label === "I risk 7 d")?.value).toBe(
       `3${NBSP}947${NBSP}kr`,
@@ -187,7 +187,7 @@ describe("buildPage", () => {
     expect(unpricedOf([missingPrice, refill(M1, "now", 1)])).toBe(223_500);
     const later = buildPage(input([missingPrice])).groups[0]!;
     expect(later.aside).toBe(
-      `1${NBSP}titel utan inköpspris, 2${NBSP}235${NBSP}kr i intäkt saknar inköpspris.`,
+      `1${NBSP}titel utan inköpspris, 2${NBSP}235${NBSP}kr i intäkt räknas inte in i vinsten.`,
     );
     expect(later.aside).not.toContain("i risk");
   });
@@ -331,5 +331,171 @@ describe("mått och förslag", () => {
     expect(suggestRefill(40, 36, null)).toBe(1);
     expect(suggestRefill(-2, 4, 0)).toBe(4);
     expect(suggestRefill(0, null, null)).toBe(1);
+  });
+});
+
+describe("integrationens punkter: avtal, rapportutkast, larm och förlorad försäljning", () => {
+  const contract = item({
+    key: "contract:c1:2027-02-28",
+    kind: "contract",
+    level: "soon",
+    daysLeft: 28,
+    title: "Avtalet med ICA Nära löper ut 28 feb. 2027",
+    link: "/avtal#avtal-c1",
+    evidence: {
+      rule: "Sista uppsägningsdag.",
+      period: null,
+      orderIds: [],
+      dates: [],
+      titleIds: [],
+      machineIds: [],
+      storeIds: [S1],
+      recipientIds: [],
+      figures: [
+        {
+          key: "daysToDeadline",
+          label: "Dagar till sista uppsägningsdag",
+          value: 28,
+          unit: "days",
+        },
+        { key: "daysToEnd", label: "Dagar till avtalets slut", value: 118, unit: "days" },
+      ],
+    },
+    action: { kind: "open-contract", label: "Öppna avtalet", params: { contractId: "c1" } },
+  });
+  const review = item({
+    key: "report-review:2026-10",
+    kind: "report-review",
+    level: "later",
+    daysLeft: 28,
+    title: "Granska 3 rapportutkast för oktober",
+    link: "/rapporter?manad=2026-10#granska",
+    evidence: {
+      rule: "Utkast.",
+      period: null,
+      orderIds: [],
+      dates: [],
+      titleIds: [],
+      machineIds: [],
+      storeIds: [],
+      recipientIds: [],
+      figures: [{ key: "drafts", label: "Utkast", value: 3, unit: "count" }],
+    },
+    action: { kind: "review-report", label: "Granska utkasten", params: { month: "2026-10" } },
+  });
+  const alert = item({
+    key: `alert:machine:${M2}`,
+    kind: "alert",
+    level: "now",
+    title: "BL-002 har slutat sälja",
+    link: `/drift/automat/${M2}`,
+    evidence: {
+      rule: "Misstänkt fel.",
+      period: null,
+      orderIds: [],
+      dates: [],
+      titleIds: [],
+      machineIds: [M2],
+      storeIds: [],
+      recipientIds: [],
+      figures: [{ key: "openHours", label: "Öppet", value: 3, unit: "hours" }],
+    },
+    action: { kind: "open-alert", label: "Öppna automaten", params: { alertId: "a1" } },
+  });
+
+  it("visar etikett, mått och länk för varje ny sort", () => {
+    const page = buildPage(input([alert, contract, review]));
+    const views = page.groups.flatMap((g) => g.items);
+    const byKey = new Map(views.map((v) => [v.key, v]));
+    expect(byKey.get(contract.key)?.eyebrow).toBe("Avtal");
+    expect(byKey.get(contract.key)?.figures).toEqual([
+      { label: "Säg upp inom", value: `28${NBSP}dagar` },
+      { label: "Slutar om", value: `118${NBSP}dagar` },
+    ]);
+    expect(byKey.get(contract.key)?.action).toEqual({
+      kind: "link",
+      label: "Öppna avtalet",
+      href: "/avtal#avtal-c1",
+    });
+    expect(byKey.get(review.key)?.figures[0]).toEqual({ label: "Utkast", value: "3" });
+    expect(byKey.get(review.key)?.action).toMatchObject({
+      href: "/rapporter?manad=2026-10#granska",
+    });
+    expect(byKey.get(alert.key)?.eyebrow).toBe(`Larm · BL${"‑"}002`);
+    expect(byKey.get(alert.key)?.figures).toEqual([{ label: "Öppet", value: `3${NBSP}h` }]);
+    expect(kindSummary([alert, contract, review])).toBe(
+      `1${NBSP}larm, 1${NBSP}utkast att granska och 1${NBSP}avtal att se över`,
+    );
+  });
+
+  it("avtalet följer butiksfiltret; larmet följer automaten", () => {
+    expect(
+      inScope(contract, { scope: { storeId: S1, machineId: null }, machines: input([]).machines }),
+    ).toBe(true);
+    expect(
+      inScope(contract, {
+        scope: { storeId: "annan", machineId: null },
+        machines: input([]).machines,
+      }),
+    ).toBe(false);
+    expect(
+      inScope(alert, { scope: { storeId: null, machineId: M1 }, machines: input([]).machines }),
+    ).toBe(false);
+  });
+
+  it("beloppet i risk kopplas inte till ett utkast som står först", () => {
+    const first = { ...review, level: "now" as const, urgency: 1e12 };
+    const page = buildPage(input([first, refill(M1, "soon", 294_667)]));
+    expect(page.header.description).toBe(
+      "Först: Granska 3 rapportutkast för oktober. " +
+        `Påfyllningarna: 2${NBSP}947${NBSP}kr i intäkt i risk de närmaste 7 dagarna.`,
+    );
+  });
+
+  it("med bara automatfilter följer avtal och rapporter automatens butik (som Hem)", () => {
+    const machines = input([]).machines;
+    const m = machines.find((x) => x.storeId === S1)!;
+    const other = machines.find((x) => x.storeId !== S1);
+    expect(inScope(contract, { scope: { storeId: null, machineId: m.id }, machines })).toBe(true);
+    if (other) {
+      expect(inScope(contract, { scope: { storeId: null, machineId: other.id }, machines })).toBe(
+        false,
+      );
+    }
+    expect(
+      inScope(contract, {
+        scope: { storeId: null, machineId: m.id },
+        machines: machines.map((x) => (x.id === m.id ? { ...x, storeId: "annan" } : x)),
+      }),
+    ).toBe(false);
+  });
+
+  it("påfyllning med förlorad försäljning visar beloppet, bara för ekonomi", () => {
+    const base = refill(M1, "now", 62_400, 0);
+    const lost = {
+      ...base,
+      evidence: {
+        ...base.evidence,
+        figures: [
+          ...base.evidence.figures,
+          {
+            key: "lostRevenueOre",
+            label: "Förlorat när slut, 14 d",
+            value: 31_200,
+            unit: "ore" as const,
+          },
+        ],
+      },
+    };
+    expect(primaryFigures(lost, true)).toContainEqual({
+      label: "Förlorat 14 d",
+      value: `312${NBSP}kr`,
+    });
+    expect(primaryFigures(lost, false).some((f) => f.label.startsWith("Förlorat"))).toBe(false);
+  });
+
+  it("läsaren och påfyllaren får ingen länk till sidor de inte ser", () => {
+    const page = buildPage(input([contract, review], { role: "refiller", economy: false }));
+    for (const v of page.groups.flatMap((g) => g.items)) expect(v.action).toBeNull();
   });
 });

@@ -3,6 +3,8 @@ import {
   EN_DASH,
   MINUS,
   NBSP,
+  RANGE_DASH,
+  SPACED_RANGE_DASH,
   formatCompact,
   formatCsvNumber,
   formatDate,
@@ -18,6 +20,7 @@ import {
   formatPercent,
   formatPeriod,
   formatPeriodShort,
+  formatRange,
   formatRelative,
   formatSek,
   formatSekAxis,
@@ -29,7 +32,8 @@ import {
 } from "./format";
 
 /** "~" står för hårt mellanslag (U+00A0) i förväntade värden. */
-const t = (s: string) => s.replace(/~/g, NBSP);
+// ~ = hårt mellanslag; tankstreck i intervall följs av ordfogning (U+2060).
+const t = (s: string) => s.replace(/~/g, NBSP).replace(/–/g, "–\u2060");
 
 const NOW = new Date(2026, 10, 2, 9, 30); // mån 2 nov. 2026 09:30
 const d = (y: number, m: number, day: number, h = 0, min = 0) => new Date(y, m - 1, day, h, min);
@@ -105,6 +109,14 @@ describe("formatSek (heltal, befintligt beteende)", () => {
     expect(formatSek(12480.6)).toBe(t("12~481~kr"));
     expect(formatSek(-3200)).toBe(t("−3~200~kr"));
     expect(formatSek(0)).toBe(t("0~kr"));
+  });
+
+  it("avrundar halva kronor bort från noll, lika för båda tecknen", () => {
+    expect(formatSek(384.5)).toBe(t("385~kr"));
+    expect(formatSek(-384.5)).toBe(t("−385~kr"));
+    expect(formatSek(-0.4)).toBe(t("0~kr"));
+    expect(formatInt(-2.5)).toBe("−3");
+    expect(formatInt(2.5)).toBe("3");
     expect(formatSek(-0.4)).toBe(t("0~kr"));
     expect(formatSek(NaN)).toBe("–");
   });
@@ -279,6 +291,19 @@ describe("formatRelative", () => {
   });
 });
 
+describe("formatRange", () => {
+  it("bryter aldrig raden efter tankstrecket (ordfogning U+2060 efter det)", () => {
+    expect(formatRange("1", "30")).toBe("1–\u206030");
+    expect(formatRange("3 okt.", "1 nov.")).toBe(`3 okt.${NBSP}–\u2060${NBSP}1 nov.`);
+    expect(RANGE_DASH).toBe("–\u2060");
+    expect(SPACED_RANGE_DASH).toBe(`${NBSP}–\u2060${NBSP}`);
+    // Ingen brytpunkt kvar: varken vanligt mellanslag eller ett tankstreck utan ordfogning.
+    const text = formatPeriod(p(d(2026, 10, 3), d(2026, 11, 1)));
+    expect(text).not.toMatch(/ /);
+    expect(text).not.toMatch(/–(?!\u2060)/);
+  });
+});
+
 describe("formatPeriod", () => {
   it("enskild dag", () => {
     expect(formatPeriod(p(d(2026, 11, 1), d(2026, 11, 1)))).toBe(t("1~nov.~2026"));
@@ -295,12 +320,12 @@ describe("formatPeriod", () => {
     expect(formatPeriod(p(d(2028, 2, 1), d(2028, 2, 28)))).toBe(t("1–28~feb.~2028"));
   });
   it("flera hela månader", () => {
-    expect(formatPeriod(p(d(2026, 10, 1), d(2026, 11, 30)))).toBe("oktober–november 2026");
+    expect(formatPeriod(p(d(2026, 10, 1), d(2026, 11, 30)))).toBe(t("oktober–november 2026"));
     expect(formatPeriod(p(d(2025, 12, 1), d(2026, 1, 31)))).toBe(t("december 2025~–~januari 2026"));
   });
   it("hela år", () => {
     expect(formatPeriod(p(d(2026, 1, 1), d(2026, 12, 31)))).toBe("2026");
-    expect(formatPeriod(p(d(2025, 1, 1), d(2026, 12, 31)))).toBe("2025–2026");
+    expect(formatPeriod(p(d(2025, 1, 1), d(2026, 12, 31)))).toBe(t("2025–2026"));
   });
   it("över månadsgräns och årets början", () => {
     expect(formatPeriod(p(d(2026, 10, 3), d(2026, 11, 1)))).toBe(t("3~okt.~–~1~nov.~2026"));

@@ -137,7 +137,7 @@ export function Evidence({
           </Link>
         ) : links.length > 1 ? (
           <div className="flex flex-col gap-1">
-            <p className="meta text-subtle">
+            <p className="text-sm text-subtle">
               {formatInt(evidence.orderIds.length)}
               {NBSP}order i underlaget, per titel (orderlistan visar titelns alla order i perioden):
             </p>

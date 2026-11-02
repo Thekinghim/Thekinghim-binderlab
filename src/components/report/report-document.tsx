@@ -13,6 +13,7 @@ import {
   type ReactNode,
 } from "react";
 import { Wordmark } from "@/components/brand/wordmark";
+import { DEFAULT_TIME_ZONE, wallClockIn } from "@/components/shell/period-state";
 import { cn } from "@/lib/cn";
 import { formatDate, formatInt, formatPeriod, formatTime } from "@/lib/format";
 import type { Period } from "@/lib/period";
@@ -38,9 +39,19 @@ export type ReportMeta = {
   title: string;
   /** "Westfield Arninge, Centrumledningen". Står i sidhuvud och konfidentialitetsrad. */
   recipient: string;
+  /**
+   * Avsändaren, operatören som rapporten kommer från ("Nordljus Automater AB"). Står först
+   * i sidhuvudet och i sidfoten, så att mottagaren ser vem rapporten är från.
+   */
+  sender?: string;
   /** Rapportperioden, inklusive slutdag. */
   period: Period;
   generatedAt: Date;
+  /**
+   * Tidszonen som "Genererad …" skrivs i (organisationens, standard Europe/Stockholm).
+   * Samma klockslag på servern (UTC på Vercel), i webbläsaren och i PDF:en.
+   */
+  timeZone?: string;
   /** Ersätter "Konfidentiellt · för {mottagare}" i sidfoten. */
   confidentiality?: string;
 };
@@ -202,7 +213,17 @@ function OverflowFlag({ px }: { px: number }) {
 function ReportHeader({ meta }: { meta: ReportMeta }) {
   return (
     <header className="flex items-end justify-between gap-[8mm] border-b border-line-strong pb-[3.5mm]">
-      <Wordmark size="lg" mono className="shrink-0" />
+      {meta.sender ? (
+        // Avsändaren (operatören) är det mottagaren ska se; verktyget står litet under.
+        <div className="flex max-w-[70mm] min-w-0 shrink-0 flex-col gap-[1.5mm]">
+          <span className="text-[15px] leading-[19px] font-semibold text-balance text-fg">
+            {meta.sender}
+          </span>
+          <Wordmark size="sm" mono className="text-subtle" />
+        </div>
+      ) : (
+        <Wordmark size="lg" mono className="shrink-0" />
+      )}
       <dl className="flex min-w-0 items-end gap-[6mm] text-[10.5px] leading-[14px]">
         <HeaderItem label="Rapport">{meta.title}</HeaderItem>
         <HeaderItem label="Mottagare">{meta.recipient}</HeaderItem>
@@ -232,12 +253,14 @@ function HeaderItem({
 }
 
 function ReportFooter({ meta, position }: { meta: ReportMeta; position: PagePosition }) {
-  const generated = `${formatDate(meta.generatedAt)} ${formatTime(meta.generatedAt)}`;
+  const wall = wallClockIn(meta.generatedAt, meta.timeZone ?? DEFAULT_TIME_ZONE);
+  const generated = `${formatDate(wall)} ${formatTime(wall)}`;
   return (
     <footer className="tnum grid grid-cols-[1fr_auto_1fr] items-baseline gap-[6mm] border-t border-line pt-[2.5mm] font-mono text-[8.5px] leading-[12px] tracking-[0.02em] text-subtle">
       <span>Genererad {generated}</span>
       <span className="text-center">
-        {meta.confidentiality ?? `Konfidentiellt · för ${meta.recipient}`}
+        {meta.confidentiality ??
+          `Konfidentiellt · ${meta.sender ? `från ${meta.sender} ` : ""}för ${meta.recipient}`}
       </span>
       <span className="text-right text-fg">
         Sida {position.number} av {position.total}

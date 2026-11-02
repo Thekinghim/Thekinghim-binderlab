@@ -105,6 +105,18 @@ function base(snapshot: ReportSnapshot, ctx: EmailContext) {
   };
 }
 
+/**
+ * Butikens länk går till butiksportalen (/portal), där butiken ser sina godkända
+ * rapporter. /rapport/<id> kräver ett konto i panelen, som butiken inte har.
+ */
+export function portalUrlFor(reportUrl: string): string {
+  try {
+    return `${new URL(reportUrl).origin}/portal`;
+  } catch {
+    return reportUrl;
+  }
+}
+
 function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
   const r = s.report;
   const kpis: EmailKpi[] = [
@@ -141,6 +153,7 @@ function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
   const refillsLast = s.service.refills.last ? localDate(s.service.refills.last) : MISSING_DATE;
   return {
     ...base(s, ctx),
+    reportUrl: portalUrlFor(ctx.reportUrl),
     recipientKind: "butik",
     intro:
       ctx.followText?.trim() ||

@@ -16,6 +16,7 @@ export function AuthFrame({
   title,
   aside,
   children,
+  systemStatus = true,
 }: {
   /** Mono-raden ovanför rubriken, t.ex. "01 / Inloggning". */
   eyebrow: ReactNode;
@@ -24,6 +25,11 @@ export function AuthFrame({
   /** Andra, grå delen: ett faktum. */
   aside?: ReactNode;
   children: ReactNode;
+  /**
+   * Systemstatus (databasens svarstid, miljö, inloggningssätt) i sidfoten. Av för sidor som
+   * visas för andra än personalen, t.ex. en butiks inbjudan.
+   */
+  systemStatus?: boolean;
 }) {
   return (
     <div className="min-h-dvh overflow-x-clip bg-bg">
@@ -47,7 +53,7 @@ export function AuthFrame({
         </main>
 
         <footer className="border-t border-line py-3">
-          <SystemStatus />
+          {systemStatus ? <SystemStatus /> : null}
         </footer>
       </div>
     </div>

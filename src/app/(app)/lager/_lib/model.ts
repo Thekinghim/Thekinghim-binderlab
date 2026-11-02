@@ -14,11 +14,13 @@
  */
 
 import { createTodoContext } from "@/analytics/todos/context";
-import { businessDateAt } from "@/analytics/todos/time";
 import { isMachineActive } from "@/analytics/todos/common";
 import { refillTodos } from "@/analytics/todos/refill";
 import { TODO_DEFAULTS, type AnalyticsOrder, type StockLevelRef } from "@/analytics/todos";
+import type { MachineHealth } from "@/analytics/health";
 import { planVisits, type VisitPlan } from "@/analytics/visits";
+import { retiredPairs } from "@/analytics/todos/assortment";
+import { planNow, weeklyVisitPlan } from "@/server/data/visit-plan";
 import {
   addDays,
   dailyUnits,
@@ -43,6 +45,7 @@ import type {
   PackList,
   PackListLine,
   PackListMissing,
+  SlotPeriod,
   StockCell,
   StockStatus,
   WarehouseRow,
@@ -61,6 +64,16 @@ export interface LagerModelInput {
   readonly scope: DataScope;
   /** Sant om organisationen har ett centrallager (stock_locations.is_central). */
   readonly hasCentral: boolean;
+  /**
+   * Maskinhälsan som på Drift (loadMachineHealthFor). Automater med fel får ett besök i dag
+   * i veckoplanen, precis som på Drift. Utelämnad = inga extra besök.
+   */
+  readonly health?: readonly Pick<MachineHealth, "machineId" | "status">[] | null;
+  /**
+   * Sortimentets perioder (lager_slot_periods). En titel vars sista period har passerat
+   * räknas som utgången i automaten (`StockCell.retired`). Utelämnad = inga utgångna.
+   */
+  readonly slotPeriods?: readonly SlotPeriod[] | null;
 }
 
 export interface LagerModel {
@@ -73,6 +86,7 @@ export interface LagerModel {
   readonly warehouse: WarehouseRow[];
   readonly packLists: PackList[];
   readonly counts: { readonly critical: number; readonly low: number; readonly ok: number };
+  readonly retiredTitles: LagerTitle[];
 }
 
 /** Fönstret för takten (samma som påfyllningsregeln i Att göra). */
@@ -135,21 +149,16 @@ export function warehouseStatus(
   return "ok";
 }
 
-/**
- * Tidpunkten besöksplanen räknar från: mitt på dagen `asOf` i tidszonen, så att planens
- * "i dag" blir `asOf` (i går) och fönstret slutar där, precis som påfyllningsregeln.
- */
-export function planNow(asOf: IsoDate, timeZone: string, now: Date): Date {
-  for (const hour of ["12", "00", "22"]) {
-    const at = new Date(`${asOf}T${hour}:00:00Z`);
-    if (businessDateAt(at, timeZone) === asOf) return at;
-  }
-  return new Date(now.getTime() - 24 * 3_600_000);
-}
+/** Par (automat, titel) som har gått ur sortimentet; samma regel som Drift och Att göra. */
+export { retiredPairs };
+
+/** Planens tidpunkt (i går mitt på dagen); flyttad till @/server/data/visit-plan. */
+export { planNow };
 
 /** Bygger vymodellen. Ren funktion; `now` är den enda tidskällan. */
 export function buildLagerModel(input: LagerModelInput): LagerModel {
   const { now, timeZone, today, master, stock, sales, scope, hasCentral } = input;
+  const retired = retiredPairs(input.slotPeriods ?? [], today);
   const asOf = addDays(today, -1);
   const windowStart = addDays(asOf, -(WINDOW_DAYS - 1));
 
@@ -225,16 +234,20 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
   };
 
   // Veckoplanen (alla automater, besöksdagar mån–fre från i dag): planerad dag, senaste
-  // dag och centrallagrets veckobehov.
-  const weekly: VisitPlan = planVisits(
-    {
-      ...planBase,
-      machines: activeMachines,
-      stock: machineStock,
-      options: { timeZone, start: today },
-    },
-    planAt,
-  );
+  // dag och centrallagrets veckobehov. Samma funktion och samma indata som Drift
+  // (weeklyVisitPlan), inklusive extra besök för automater som Drift visar med fel.
+  const weekly: VisitPlan = weeklyVisitPlan({
+    orders,
+    machines: activeMachines,
+    titles: master.titles,
+    stock: machineStock,
+    warehouseStock: hasWarehouse ? warehouseStock : null,
+    health: input.health ?? null,
+    slotPeriods: input.slotPeriods ?? null,
+    today,
+    timeZone,
+    now,
+  });
   const weeklyStop = new Map(
     weekly.days.flatMap((d) =>
       d.stops.map((s) => [s.machineId, { day: d.date, stop: s }] as const),
@@ -268,6 +281,8 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
     const lines: PackListLine[] = [];
     const missing: PackListMissing[] = [];
     for (const p of stop?.packs ?? []) {
+      // En utgången titel fylls inte på (säljs ut).
+      if (retired.has(pairKey(m.id, p.titleId))) continue;
       if (p.quantity > 0) {
         suggestedByPair.set(pairKey(m.id, p.titleId), p.quantity);
         lines.push({
@@ -324,7 +339,9 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
     // som varit tomt länge säljer inget och ska ändå stå som Kritisk).
     const stocked = row !== undefined || v.units > 0;
     const level = refillLevel.get(`refill:${m.id}:${titleId}`);
-    const status: StockStatus = !stocked ? "ok" : onHand === 0 ? "critical" : (level ?? "ok");
+    const isRetired = stocked && retired.has(k);
+    const status: StockStatus =
+      !stocked || isRetired ? "ok" : onHand === 0 ? "critical" : (level ?? "ok");
     return {
       machineId: m.id,
       titleId,
@@ -334,22 +351,35 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
       daysLeft: daysOfStockLeft(onHand, v),
       stockoutDate: stockoutDate(asOf, onHand, v),
       status,
-      suggested: suggestedByPair.get(k) ?? 0,
+      suggested: isRetired ? 0 : (suggestedByPair.get(k) ?? 0),
       lastRestockedAt: row?.lastRestockedAt ?? null,
+      retired: isRetired,
     };
   };
 
   const candidateTitles = master.titles.filter((t) => !t.archived);
-  const rows = candidateTitles
+  const centralOnHand = (titleId: string) => centralRows.get(titleId)?.onHand ?? 0;
+  // Utgången överallt: lagerförd någonstans, alla lagerförda platser utgångna, inget kvar.
+  const goneEverywhere = (titleId: string, cells: readonly StockCell[]) =>
+    cells.some((c) => c.stocked) &&
+    cells.every((c) => !c.stocked || (c.retired && c.onHand === 0)) &&
+    centralOnHand(titleId) <= 0;
+  const allRows = candidateTitles
     .map((t) => ({ title: t, cells: machines.map((m) => cellFor(m, t.id)) }))
     .filter(
       (r) =>
-        r.cells.some((c) => c.stocked) ||
-        (machines.length > 0 && (centralRows.get(r.title.id)?.onHand ?? 0) > 0),
-    )
+        r.cells.some((c) => c.stocked) || (machines.length > 0 && centralOnHand(r.title.id) > 0),
+    );
+  const retiredRows = allRows.filter((r) => goneEverywhere(r.title.id, r.cells));
+  const hiddenTitles = new Set(retiredRows.map((r) => r.title.id));
+  const rows = allRows
+    .filter((r) => !hiddenTitles.has(r.title.id))
     .sort((a, b) => {
       const worst = (cells: StockCell[]) =>
-        Math.min(...cells.filter((c) => c.stocked).map((c) => STATUS_RANK[c.status]), 3);
+        Math.min(
+          ...cells.filter((c) => c.stocked && !c.retired).map((c) => STATUS_RANK[c.status]),
+          3,
+        );
       return worst(a.cells) - worst(b.cells) || compareText(a.title.name, b.title.name);
     });
 
@@ -370,6 +400,8 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
   const warehouse: WarehouseRow[] = hasWarehouse
     ? [...warehouseTitleIds]
         .filter((id) => titleById.get(id) && !titleById.get(id)!.archived)
+        // Utgången överallt och inget behov: hör inte hemma i lagret längre.
+        .filter((id) => !(hiddenTitles.has(id) && (weekNeed.get(id)?.need ?? 0) === 0))
         .map((titleId) => {
           const row = centralRows.get(titleId);
           const onHand = row?.onHand ?? 0;
@@ -398,7 +430,7 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
     : [];
 
   const counts = { critical: 0, low: 0, ok: 0 };
-  for (const r of rows) for (const c of r.cells) if (c.stocked) counts[c.status] += 1;
+  for (const r of rows) for (const c of r.cells) if (c.stocked && !c.retired) counts[c.status] += 1;
 
   return {
     window: { start: windowStart, end: asOf, days: WINDOW_DAYS },
@@ -415,5 +447,8 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
     warehouse,
     packLists,
     counts,
+    retiredTitles: retiredRows
+      .map((r) => ({ id: r.title.id, name: r.title.name }))
+      .sort((a, b) => compareText(a.name, b.name)),
   };
 }

@@ -44,7 +44,7 @@ function NameCell({ row, selected }: { row: ProfitLine; selected: boolean }) {
       <span className="flex min-w-0 flex-col py-1.5">
         <span className="text-muted">{row.name}</span>
         {row.kind === "unallocated" ? (
-          <span className="meta text-subtle">Hyra som ingen order med inköpspris bär</span>
+          <span className="text-xs text-subtle">Hyra som ingen order med inköpspris bär</span>
         ) : null}
       </span>
     );
@@ -192,6 +192,13 @@ export function columnsFor(
       footer: pct(totals.marginBp),
     },
   ];
+  // Utan kortavgifter (0 kr på alla rader) tar kolumnen bara plats; CSV-exporten har den kvar.
+  const hasFees = totals.feesOre !== 0 || rows.some((r) => r.feesOre !== 0);
+  if (!hasFees)
+    cols.splice(
+      cols.findIndex((c) => c.key === "fees"),
+      1,
+    );
   if (showUnpriced) {
     cols.push({
       key: "unpriced",

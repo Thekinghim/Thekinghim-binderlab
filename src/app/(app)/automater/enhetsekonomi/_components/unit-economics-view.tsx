@@ -65,7 +65,7 @@ export function UnitEconomicsKpis({
     { id: "investment", label: "Investerat", value: investmentOre, format: sek },
     { id: "book", label: "Bokfört värde", value: bookValueOre, format: sek },
   ];
-  return <KpiStrip items={items} label="Flottan" comparison={comparison} />;
+  return <KpiStrip items={items} label="Flottan" headingLevel={2} comparison={comparison} />;
 }
 
 export function ProfitPerDayChart({
@@ -127,11 +127,13 @@ export function ComparisonTable({
           <Link
             href={lonsamhetHref(period, r.machineId)}
             className="flex min-w-0 flex-col rounded-xs hover:underline"
+            title={r.name}
           >
             <span className="font-mono text-sm">
               {codes[r.machineId] ?? r.machineId.slice(0, 8)}
             </span>
-            <span className="truncate text-sm text-muted">{r.name}</span>
+            {/* Under md bara koden, så att vinst och återbetalning ryms i 375 px. */}
+            <span className="hidden truncate text-sm text-muted md:block">{r.name}</span>
           </Link>
         ),
         csv: (r) => r.name,
@@ -143,6 +145,8 @@ export function ComparisonTable({
         sortValue: (r) => r.activeDays,
         render: (r) => formatInt(r.activeDays),
         hideOnMobile: true,
+        // Dold från start så att tabellen ryms i 1 440 px; kan väljas under Kolumner.
+        defaultHidden: true,
       },
       {
         key: "revenueDay",
@@ -189,6 +193,8 @@ export function ComparisonTable({
         numeric: true,
         sortValue: (r) => r.investmentOre,
         render: (r) => (r.investmentOre === 0 ? MISSING : kr(r.investmentOre)),
+        // Summan står i nyckeltalen (Investerat); under md får återbetalningen plats.
+        hideOnMobile: true,
       },
       {
         key: "book",
@@ -219,6 +225,7 @@ export function ComparisonTable({
   );
   return (
     <DataTable
+      surface="bg"
       columns={columns}
       rows={rows}
       rowKey={(r) => r.machineId}
@@ -380,6 +387,7 @@ export function InvestmentsSection({
         />
       ) : (
         <DataTable
+          surface="bg"
           columns={columns}
           rows={investments}
           rowKey={(r) => r.id}

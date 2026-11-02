@@ -1,15 +1,24 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useCallback, useState, useTransition, type ReactNode } from "react";
 import { AppShell } from "@/components/shell/app-shell";
 import { CommandMenu } from "@/components/shell/command-menu";
+import { DeniedNotice } from "@/components/shell/denied-notice";
+import { clearAllRecent } from "@/components/shell/command-recent";
 import type { Role } from "@/components/shell/nav";
 import type { ShellMachine, ShellStore } from "@/components/shell/period-bar";
-import type { ShellOrganization, ShellUser, SyncState } from "@/components/shell/side-nav";
+import type {
+  ShellOrganization,
+  ShellUser,
+  SyncState,
+  TodoCountSource,
+} from "@/components/shell/side-nav";
 import { useCommandPaletteHotkey } from "@/components/ui/command-palette";
 import { useToast } from "@/components/ui/toast";
 import { logout, switchOrganization } from "@/server/actions/auth";
+
+import { crumbsFor } from "./crumbs";
 
 /**
  * Klientdelen av appens layout: kopplar skalets organisationsväxlare och
@@ -37,7 +46,7 @@ export function AppFrame({
   user: ShellUser;
   organizations: ShellOrganization[];
   activeOrganizationId?: string;
-  todoCount?: number;
+  todoCount?: TodoCountSource;
   syncedAt?: string;
   syncState?: SyncState;
   stores: ShellStore[];
@@ -46,7 +55,10 @@ export function AppFrame({
   children: ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const toast = useToast();
+  const orgName = (organizations.find((o) => o.id === activeOrganizationId) ?? organizations[0])
+    ?.name;
   const [, startTransition] = useTransition();
   const [paletteOpen, setPaletteOpen] = useState(false);
   useCommandPaletteHotkey(setPaletteOpen);
@@ -55,6 +67,9 @@ export function AppFrame({
   const signOut = useCallback(
     () =>
       startTransition(async () => {
+        // Palettens senaste val (ordernummer, titlar) ska inte finnas kvar för nästa
+        // person vid datorn. Rensas före utloggningen, även om den skulle misslyckas.
+        clearAllRecent();
         const result = await logout();
         if (result.ok) router.replace("/logga-in");
         else toast({ title: "Kunde inte logga ut", description: result.error, tone: "critical" });
@@ -75,6 +90,7 @@ export function AppFrame({
         stores={stores}
         machines={machines}
         earliest={earliest}
+        crumbs={crumbsFor(pathname, orgName)}
         onOrganizationChange={(id) =>
           startTransition(async () => {
             const result = await switchOrganization(id);
@@ -92,6 +108,9 @@ export function AppFrame({
       >
         {children}
       </AppShell>
+      <Suspense fallback={null}>
+        <DeniedNotice role={role} />
+      </Suspense>
       <Suspense fallback={null}>
         <CommandMenu
           open={paletteOpen}

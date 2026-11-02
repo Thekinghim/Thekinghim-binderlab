@@ -43,11 +43,15 @@ const RPCS = [
   "accept_invitation",
   "attach_contract_file",
   "close_period",
+  // Kom igång: första organisationen, med lås och medlemskapskontroll i databasen.
+  "create_first_organization",
   "create_invitation",
   "create_organization",
   "create_store_invitation",
   // Lager (fas 5): visningsnamn för dem som registrerat lagerhändelser, alla roller.
   "lager_performers",
+  // Lager (fas 7): sortimentets perioder per automat och titel, alla roller.
+  "lager_slot_periods",
   "list_members",
   "merge_titles",
   "portal_agreements",
@@ -490,10 +494,12 @@ describe("anon", () => {
       accept_invitation: sql`'x'`,
       attach_contract_file: sql`gen_random_uuid(), gen_random_uuid(), 'x', 'x', 'application/pdf', 1::bigint, 'x'`,
       close_period: sql`gen_random_uuid(), '2025-01-01'::date`,
+      create_first_organization: sql`'x', 'x'`,
       create_invitation: sql`gen_random_uuid(), 'a@b.se', 'viewer'`,
       create_organization: sql`'x', 'x'`,
       create_store_invitation: sql`gen_random_uuid(), gen_random_uuid(), 'a@b.se'`,
       lager_performers: sql`gen_random_uuid()`,
+      lager_slot_periods: sql`gen_random_uuid()`,
       list_members: sql`gen_random_uuid()`,
       merge_titles: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid()`,
       portal_agreements: sql`gen_random_uuid()`,

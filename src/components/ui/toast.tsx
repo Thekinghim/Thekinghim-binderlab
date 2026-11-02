@@ -65,12 +65,18 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 function ToastView({ item, onDismiss }: { item: ToastItem; onDismiss: () => void }) {
   const [paused, setPaused] = useState(false);
   const duration = item.duration ?? 5000;
+  // onDismiss är en ny funktion vid varje rendering av listan (t.ex. när sidan räknas om
+  // efter en server action). Den läses via en ref så att timern inte startar om då.
+  const dismissRef = useRef(onDismiss);
+  useEffect(() => {
+    dismissRef.current = onDismiss;
+  }, [onDismiss]);
 
   useEffect(() => {
     if (paused) return;
-    const t = setTimeout(onDismiss, duration);
+    const t = setTimeout(() => dismissRef.current(), duration);
     return () => clearTimeout(t);
-  }, [paused, duration, onDismiss]);
+  }, [paused, duration]);
 
   return (
     <ToastCard

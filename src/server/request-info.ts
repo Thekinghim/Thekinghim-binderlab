@@ -38,9 +38,19 @@ export function resolveAppBaseUrl(
   throw new Error("APP_URL saknas: kan inte bygga länkar i mejl.");
 }
 
-/** Klientens IP enligt proxyrubrikerna (Vercel sätter x-forwarded-for). */
+/**
+ * Klientens IP enligt rubriken som den närmaste betrodda proxyn sätter.
+ *
+ * 1. `x-vercel-forwarded-for` och `x-real-ip`: Vercel skriver över dem med
+ *    klientens adress, så klienten kan inte välja dem själv.
+ * 2. Annars det SISTA värdet i `x-forwarded-for`, alltså adressen som den
+ *    närmaste proxyn lade till. De första värdena skickar klienten själv och
+ *    kan vara påhittade; att läsa dem skulle ge en angripare en ny räknare i
+ *    inloggningsgränsen för varje påhittad adress.
+ */
 export function clientIp(headers: HeaderGetter): string {
-  const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const ip = forwarded || headers.get("x-real-ip")?.trim();
+  const first = (name: string) => headers.get(name)?.split(",")[0]?.trim();
+  const forwarded = headers.get("x-forwarded-for")?.split(",").at(-1)?.trim();
+  const ip = first("x-vercel-forwarded-for") || first("x-real-ip") || forwarded;
   return ip && ip.length <= 64 ? ip : "okänd";
 }

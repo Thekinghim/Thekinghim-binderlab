@@ -178,6 +178,11 @@ export interface CashItem {
    * redan passerat utan att den registrerats. Den ligger då som prognos i morgon.
    */
   readonly overdue: boolean;
+  /**
+   * Det ursprungliga datumet (förfallodag eller väntad betaldag) för en försenad post, som
+   * ligger på `date` = i morgon. Saknas när posten inte är försenad.
+   */
+  readonly dueDate?: IsoDate;
   readonly label: string;
   readonly evidence: FinanceEvidence;
 }

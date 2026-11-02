@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 
-import { day, periodText } from "@/analytics/todos/text";
+import { periodText } from "@/analytics/todos/text";
 import { SectionHeader } from "@/components/ui/section-header";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { formatInt } from "@/lib/format";
@@ -12,11 +12,17 @@ import { PriceChangeView, SiteEstimateView } from "./_components/estimate-view";
 import { GoalsView } from "./_components/goals-view";
 import { PipelineView, StoreProfilesView } from "./_components/pipeline-view";
 import { NewMachineForm, PriceChangeForm } from "./_components/scenario-forms";
-import { loadExpansionPage, type Names } from "./_lib/data";
-import { kr, oreToInput, paybackShort, pct } from "./_lib/display";
-import { evidenceLinks, monthOfDate, OPEN_STAGES } from "./_lib/model";
+import { LEAD_PREFIX, loadExpansionPage, type Names } from "./_lib/data";
+import { kr, monthLabel, oreToInput, paybackShort, pct } from "./_lib/display";
+import { evidenceLinks, LEAD_STAGE_LABEL, monthOfDate, OPEN_STAGES } from "./_lib/model";
+import { withOrderCounts } from "./_lib/slim";
 
 export const metadata: Metadata = { title: "Expansion" };
+
+/** Punkt sist, utan dubbel punkt efter en förkortning ("2 nov."). */
+function endSentence(text: string): string {
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
 
 function lookups(names: Names) {
   return {
@@ -52,7 +58,9 @@ export default async function ExpansionPage({
 
   // Rubriken: bästa platsen i pipelinen, annars scenariot för en ny automat.
   let title = "Var nästa automat ska stå.";
-  let aside = "Lägg in platser i pipelinen eller räkna på en ny automat nedan.";
+  // Utan uppskattning: ett faktum ur datan i stället för en instruktion (design.md 4).
+  const activeProfiles = data.profiles.filter((p) => !p.archived).length;
+  let aside = `${formatInt(openLeads)} ${openLeads === 1 ? "öppen plats" : "öppna platser"} i pipelinen, ${formatInt(activeProfiles)} ${activeProfiles === 1 ? "butik" : "butiker"} att jämföra med.`;
   if (top) {
     title = `${top.name} har bäst potential.`;
     aside = `Uppskattning: ${kr(top.estimate.profitPerMonthOre!.expected)} vinst per månad, återbetald på ${paybackShort(top.estimate.paybackTenths?.expected)}.`;
@@ -72,9 +80,17 @@ export default async function ExpansionPage({
   const goalLinks = Object.fromEntries(
     data.goals.progress.map((g) => [g.goalId, evidenceLinks(g.evidence, names)]),
   );
-  const storeOptions = data.profiles
-    .filter((p) => !p.archived)
-    .map((p) => ({ value: p.id, label: p.name }));
+  // Den nya platsen: en plats i pipelinen (jämförs med liknande butiker) eller "en till
+  // som" en befintlig butik (jämförs med sig själv och butiker som liknar den).
+  const storeOptions = [
+    ...data.pipeline.map((p) => ({
+      value: `${LEAD_PREFIX}${p.leadId}`,
+      label: `${p.name} (pipelinen)`,
+    })),
+    ...data.profiles
+      .filter((p) => !p.archived)
+      .map((p) => ({ value: p.id, label: `En till som ${p.name}` })),
+  ];
   const titleOptions = data.names.titles
     .filter((t) => !t.archived)
     .map((t) => ({ value: t.id, label: t.name }))
@@ -95,7 +111,7 @@ export default async function ExpansionPage({
           meta={[
             { label: "Underlag", value: periodLabel },
             { label: "Öppna platser", value: formatInt(openLeads) },
-            { label: "Mål efter", value: formatInt(goalsBehind) },
+            { label: "Mål som ligger efter", value: formatInt(goalsBehind) },
           ]}
         />
         <DataStartNote clippedFrom={data.period.clippedFrom} requested={data.period.requested} />
@@ -110,9 +126,15 @@ export default async function ExpansionPage({
           id="ny-automat-h"
           index={1}
           eyebrow="Scenario · ny automat"
-          title="Vad ger en ny automat i en butik som liknar en vi har?"
-          aside={`Räknat på ${periodLabel}, hela flottan.`}
-          description={`Platserna jämförs på butikstyp, ort, öppettider och yta. Tomma investeringsfält = ${invText}.`}
+          title="Vad ger en ny automat på en ny plats?"
+          aside={
+            data.newMachine.lead
+              ? endSentence(
+                  `${data.newMachine.lead.name} i pipelinen, räknat på liknande butiker ${periodLabel}`,
+                )
+              : `Räknat på ${periodLabel}, hela flottan.`
+          }
+          description={`Platserna jämförs på butikstyp, ort, öppettider och yta. "En till som" en befintlig butik bygger på butiken själv och butiker som liknar den. Tomma investeringsfält = ${invText}.`}
         />
         <Suspense>
           <NewMachineForm
@@ -198,15 +220,11 @@ export default async function ExpansionPage({
                 ? "Alla mål är i fas eller nådda."
                 : `${formatInt(goalsBehind)} ${goalsBehind === 1 ? "mål ligger" : "mål ligger"} efter.`
           }
-          aside={
-            data.goals.progress.length === 0
-              ? "Utfall och prognos visas när ett mål finns."
-              : `Prognos till och med ${day(data.ctx.today)}: snittet hittills, eller de senaste 28 dagarna tidigt i månaden.`
-          }
+          aside={goalsFact(data.goals.progress, monthOfDate(data.ctx.today))}
         />
         <GoalsView
           goals={data.goals.records}
-          progress={data.goals.progress}
+          progress={withOrderCounts(data.goals.progress)}
           links={goalLinks}
           stores={data.names.stores}
           machines={data.names.machines}
@@ -229,11 +247,14 @@ export default async function ExpansionPage({
               ? "Pipelinen är tom."
               : `${formatInt(openLeads)} ${openLeads === 1 ? "öppen plats" : "öppna platser"}.`
           }
-          aside="Lead → kontaktad → möte → avtal → installerad. Rangordnade efter uppskattad återbetalningstid."
+          aside={pipelineFact(
+            data.leads,
+            top ? { name: top.name, payback: top.estimate.paybackTenths?.expected } : null,
+          )}
         />
         <PipelineView
           leads={data.leads}
-          pipeline={data.pipeline}
+          pipeline={withOrderCounts(data.pipeline)}
           links={leadLinks}
           stores={data.names.stores}
           canEdit={data.ctx.canEdit}
@@ -299,4 +320,48 @@ export default async function ExpansionPage({
       </section>
     </div>
   );
+}
+
+/** Ett faktum om målen: innevarande månads prognos mot målet, annars antalet mål. */
+function goalsFact(
+  progress: readonly {
+    month: string;
+    metric: "revenue" | "profit" | "active_machines";
+    target: number;
+    forecast: number;
+    status: string;
+  }[],
+  thisMonth: string,
+): string {
+  if (progress.length === 0) return "Utfall och prognos visas när ett mål finns.";
+  const now =
+    progress.find((g) => g.month === thisMonth && g.metric === "revenue") ??
+    progress.find((g) => g.month === thisMonth);
+  if (!now) {
+    return `${formatInt(progress.length)} ${progress.length === 1 ? "mål" : "mål"}, inget för ${monthLabel(thisMonth)}.`;
+  }
+  const v = (x: number) => (now.metric === "active_machines" ? formatInt(x) : kr(x));
+  return `${capitalize(monthLabel(thisMonth))}: prognos ${v(now.forecast)} mot målet ${v(now.target)}.`;
+}
+
+/** Ett faktum om pipelinen: platsen med kortast återbetalning, annars platser per steg. */
+function pipelineFact(
+  leads: readonly { archived: boolean; stage: (typeof OPEN_STAGES)[number] | string }[],
+  top: { name: string; payback: number | null | undefined } | null,
+): string {
+  if (top && top.payback !== null && top.payback !== undefined) {
+    return `Kortast återbetalning: ${top.name}, ${paybackShort(top.payback)}.`;
+  }
+  const open = leads.filter(
+    (l) => !l.archived && (OPEN_STAGES as readonly string[]).includes(l.stage),
+  );
+  if (open.length === 0) return "Inga platser under bearbetning.";
+  const counts = OPEN_STAGES.map((s) => [s, open.filter((l) => l.stage === s).length] as const)
+    .filter(([, n]) => n > 0)
+    .map(([s, n]) => `${formatInt(n)} ${LEAD_STAGE_LABEL[s].toLowerCase()}`);
+  return `${counts.join(", ")}.`;
+}
+
+function capitalize(text: string): string {
+  return text.charAt(0).toLocaleUpperCase("sv-SE") + text.slice(1);
 }
