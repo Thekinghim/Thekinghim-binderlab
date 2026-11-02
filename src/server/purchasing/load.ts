@@ -247,7 +247,10 @@ export async function loadPrognosFor(
   };
 
   // Hur säker efterfrågan i inköpsplanen är: serier med lite data per titel (hela org.).
-  const basis = new Map<string, { series: number; lowData: number; lowDataMilli: number; unitsMilli: number }>();
+  const basis = new Map<
+    string,
+    { series: number; lowData: number; lowDataMilli: number; unitsMilli: number }
+  >();
   for (const sf of forecastAll.series) {
     const b = basis.get(sf.titleId) ?? { series: 0, lowData: 0, lowDataMilli: 0, unitsMilli: 0 };
     b.series += 1;
@@ -262,7 +265,10 @@ export async function loadPrognosFor(
   return {
     today,
     asOf,
-    forecastHistory: { start: addDays(asOf, -(7 * resolveForecastOptions().historyWeeks - 1)), end: asOf },
+    forecastHistory: {
+      start: addDays(asOf, -(7 * resolveForecastOptions().historyWeeks - 1)),
+      end: asOf,
+    },
     demandBasis: [...basis.entries()].map(([titleId, b]) => ({
       titleId,
       series: b.series,

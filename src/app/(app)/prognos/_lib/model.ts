@@ -10,7 +10,7 @@
 import { approxKr, packs } from "@/analytics/forecast/common";
 import type { AccuracyMetrics, ForecastTotal } from "@/analytics/forecast/types";
 import type { PurchaseLine, PurchaseLineStatus } from "@/analytics/purchasing/types";
-import { dayOfWeek, ratioBp, type IsoDate, type Period } from "@/domain";
+import { daysBetween, dayOfWeek, ratioBp, type IsoDate, type Period } from "@/domain";
 import { formatInt, formatPercent, NBSP } from "@/lib/format";
 import type {
   PrognosData,
@@ -20,7 +20,7 @@ import type {
 } from "@/server/purchasing/types";
 
 import { dateText, periodShort } from "./dates";
-import { evidenceView, type EvidenceView, type NameLookup } from "./evidence";
+import { evidenceView, type EvidenceOptions, type EvidenceView, type NameLookup } from "./evidence";
 
 // ---------------------------------------------------------------------------
 // Typer
@@ -155,6 +155,8 @@ export interface AccuracyModel {
   readonly total: AccuracyMetrics;
   readonly series: AccuracyMetrics;
   readonly origins: readonly AccuracyOrigin[];
+  /** Varför utfallet här kan vara lägre än veckans försäljning i diagrammet. */
+  readonly note: string;
   readonly evidence: EvidenceView;
 }
 
@@ -187,6 +189,17 @@ export interface PlanLineView {
   readonly coverDays: number | null;
   readonly projectedStockout: IsoDate | null;
   readonly orderBy: IsoDate | null;
+  /**
+   * Efterfrågan bygger delvis på automater med lite data (under 14 dagar): antal sådana
+   * automater av alla och deras andel av prognosen. null = alla automater har nog data.
+   */
+  readonly lowData: {
+    readonly lowDataSeries: number;
+    readonly series: number;
+    readonly shareBp: number;
+  } | null;
+  /** Öppna utkast med titeln (räknas inte som beställt). */
+  readonly drafts: readonly { readonly number: string; readonly quantity: number }[];
   readonly text: string;
   readonly evidence: EvidenceView;
 }
@@ -199,6 +212,12 @@ export interface ProposalView {
   readonly expectedArrival: IsoDate;
   readonly text: string;
   readonly lines: readonly PlanLineView[];
+  /** Öppna utkast till leverantören (räknas inte som beställt: beställ eller avbryt dem). */
+  readonly drafts: readonly {
+    readonly id: string;
+    readonly number: string;
+    readonly packs: number;
+  }[];
   readonly evidence: EvidenceView;
 }
 
@@ -223,6 +242,10 @@ export interface PurchaseOrderView {
   readonly expectedOn: IsoDate | null;
   readonly receivedOn: IsoDate | null;
   readonly overdue: boolean;
+  /** Utkast som legat längre än `STALE_DRAFT_DAYS` dagar. */
+  readonly staleDraft: boolean;
+  /** Avslutad med restorder: mottagen men inte allt kom. */
+  readonly closedShort: boolean;
   readonly note: string | null;
   readonly createdAt: string;
   readonly totalPacks: number;
@@ -272,6 +295,8 @@ export interface ValuationModel {
   readonly onOrderValueOre: number;
   readonly capitalTiedOre: number;
   readonly titlesWithoutCost: readonly string[];
+  /** Summorna saknar titlar utan inköpspris. */
+  readonly incomplete: boolean;
   readonly rows: readonly ValuationRow[];
   readonly evidence: EvidenceView;
 }
@@ -323,6 +348,7 @@ function lookup(data: PrognosData): NameLookup & { supplier(id: string): string 
   const suppliers = new Map(data.suppliers.map((s) => [s.id, s.name]));
   return {
     asOf: data.asOf,
+    historyPeriod: data.forecastHistory,
     title: (id) => titles.get(id) ?? "Okänd titel",
     machine: (id) => machines.get(id) ?? "Okänd automat",
     supplier: (id) => suppliers.get(id) ?? "Okänd leverantör",
@@ -397,6 +423,16 @@ function planStatus(line: PurchaseLine): { label: string; tone: Tone } {
       return { label: "Ingen efterfrågan", tone: "neutral" };
   }
 }
+
+/** Ett utkast äldre än så här markeras (det räknas inte som beställt och kan vara glömt). */
+export const STALE_DRAFT_DAYS = 7;
+
+/** Länken från underlag till avsnittet Inköpsorder. */
+const PURCHASE_ORDERS_HREF = "#inkopsorder";
+const STOCK_EVIDENCE: EvidenceOptions = {
+  centralStock: true,
+  purchaseOrdersHref: PURCHASE_ORDERS_HREF,
+};
 
 /** Kort nummer för en inköpsorder: IO-<första 6 tecknen i id> (id:t är slumpat). */
 export function purchaseOrderNumber(id: string): string {
@@ -608,6 +644,9 @@ function forecastModel(
       total: acc.total,
       series: acc.series,
       origins,
+      note:
+        "Utfallet i tabellen gäller de serier (titel × automat) som fanns när testveckan började och dagar då titeln gick att köpa. " +
+        "Nya serier och slutsålda dagar testas inte, så det kan vara lägre än veckans försäljning i diagrammet.",
       evidence: evidenceView(acc.evidence, names),
     },
   };
@@ -631,8 +670,45 @@ function accuracyAside(m: AccuracyMetrics, weeks: number, fallback: string): str
 
 function planModel(data: PrognosData, names: ReturnType<typeof lookup>): PlanModel {
   const p = data.plan;
+  const basis = new Map(data.demandBasis.map((b) => [b.titleId, b]));
+  // Öppna utkast per titel och per leverantör (räknas inte som beställt i planen).
+  const draftOrders = data.purchaseOrders.filter((po) => po.status === "draft");
+  const draftsByTitle = new Map<string, { number: string; quantity: number }[]>();
+  for (const po of draftOrders) {
+    for (const l of po.lines) {
+      const list = draftsByTitle.get(l.titleId) ?? [];
+      list.push({ number: purchaseOrderNumber(po.id), quantity: l.quantity });
+      draftsByTitle.set(l.titleId, list);
+    }
+  }
   const lineView = (l: PurchaseLine): PlanLineView => {
     const st = planStatus(l);
+    const b = basis.get(l.titleId);
+    const lowData =
+      b && b.lowDataSeries > 0
+        ? {
+            lowDataSeries: b.lowDataSeries,
+            series: b.series,
+            shareBp: b.unitsMilli > 0 ? ratioBp(b.lowDataUnitsMilli, b.unitsMilli) : 0,
+          }
+        : null;
+    const ev = evidenceView(l.evidence, names, STOCK_EVIDENCE);
+    const extra: { key: string; label: string; value: string }[] = [];
+    if (lowData) {
+      extra.push({
+        key: "lowDataSeries",
+        label: "Automater med lite data (under 14 dagar)",
+        value: `${formatInt(lowData.lowDataSeries)} av ${formatInt(lowData.series)}, ${formatPercent(lowData.shareBp / 10_000, 0)} av prognosen`,
+      });
+    }
+    const drafts = draftsByTitle.get(l.titleId) ?? [];
+    if (drafts.length > 0) {
+      extra.push({
+        key: "draftPacks",
+        label: "I utkast (räknas inte som beställt)",
+        value: `${formatInt(drafts.reduce((sum, d) => sum + d.quantity, 0))}${NBSP}pack`,
+      });
+    }
     return {
       titleId: l.titleId,
       title: names.title(l.titleId),
@@ -662,8 +738,10 @@ function planModel(data: PrognosData, names: ReturnType<typeof lookup>): PlanMod
       coverDays: l.coverDays,
       projectedStockout: l.projectedStockout,
       orderBy: l.orderBy,
+      lowData,
+      drafts,
       text: tidy(l.text),
-      evidence: evidenceView(l.evidence, names),
+      evidence: extra.length > 0 ? { ...ev, figures: [...ev.figures, ...extra] } : ev,
     };
   };
   const lines = p.lines.map(lineView);
@@ -683,7 +761,14 @@ function planModel(data: PrognosData, names: ReturnType<typeof lookup>): PlanMod
     expectedArrival: o.expectedArrival,
     text: tidy(o.text),
     lines: o.lines.map(lineView),
-    evidence: evidenceView(o.evidence, names),
+    drafts: draftOrders
+      .filter((po) => po.supplierId === o.supplierId)
+      .map((po) => ({
+        id: po.id,
+        number: purchaseOrderNumber(po.id),
+        packs: po.lines.reduce((sum, l) => sum + l.quantity, 0),
+      })),
+    evidence: evidenceView(o.evidence, names, STOCK_EVIDENCE),
   }));
 
   let title: string;
@@ -704,6 +789,18 @@ function planModel(data: PrognosData, names: ReturnType<typeof lookup>): PlanMod
   }
   if (counts.order > 0 && counts["no-supplier"] > 0) {
     asideParts.push(`${plural(counts["no-supplier"], "titel", "titlar")} till saknar leverantör.`);
+  }
+  const lowDataOrder = lines.filter((l) => l.status === "order" && l.lowData).length;
+  if (lowDataOrder > 0) {
+    asideParts.push(
+      `${plural(lowDataOrder, "förslag bygger", "förslag bygger")} delvis på automater med lite data: kontrollera antalet.`,
+    );
+  }
+  const draftTitles = lines.filter((l) => l.status === "order" && l.drafts.length > 0).length;
+  if (draftTitles > 0) {
+    asideParts.push(
+      `${plural(draftTitles, "titel", "titlar")} finns redan i ett utkast som inte är beställt.`,
+    );
   }
   if (asideParts.length === 0) {
     if (counts.order === 0 && counts["no-supplier"] > 0) {
@@ -731,22 +828,39 @@ function orderView(
   const st = PO_STATUS[po.status];
   const open = po.status === "ordered" || po.status === "partially_received";
   const overdue = open && po.expectedOn !== null && po.expectedOn < today;
+  const totalPacks = po.lines.reduce((s, l) => s + l.quantity, 0);
+  const receivedPacks = po.lines.reduce((s, l) => s + l.receivedQuantity, 0);
+  const closedShort = po.status === "received" && receivedPacks < totalPacks;
+  const created = po.createdAt.slice(0, 10);
+  const staleDraft =
+    po.status === "draft" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(created) &&
+    daysBetween(created, today) > STALE_DRAFT_DAYS;
+  const label = overdue
+    ? { label: "Försenad", tone: "warning" as Tone }
+    : closedShort
+      ? { label: "Avslutad med restorder", tone: "offline" as Tone }
+      : staleDraft
+        ? { label: "Gammalt utkast", tone: "warning" as Tone }
+        : st;
   return {
     id: po.id,
     number: purchaseOrderNumber(po.id),
     supplierId: po.supplierId,
     supplierName: names.supplier(po.supplierId),
     status: po.status,
-    statusLabel: overdue ? "Försenad" : st.label,
-    tone: overdue ? "warning" : st.tone,
+    statusLabel: label.label,
+    tone: label.tone,
     orderedOn: po.orderedOn,
     expectedOn: po.expectedOn,
     receivedOn: po.receivedOn,
     overdue,
+    staleDraft,
+    closedShort,
     note: po.note,
     createdAt: po.createdAt,
-    totalPacks: po.lines.reduce((s, l) => s + l.quantity, 0),
-    receivedPacks: po.lines.reduce((s, l) => s + l.receivedQuantity, 0),
+    totalPacks,
+    receivedPacks,
     totalOre: po.lines.reduce((s, l) => s + l.quantity * l.unitCostOre, 0),
     lines: po.lines.map((l) => ({
       id: l.id,
@@ -780,7 +894,12 @@ function ordersModel(
   else title = `${plural(open.length, "öppen inköpsorder", "öppna inköpsorder")}.`;
   const parts: string[] = [];
   if (overdue > 0) parts.push(`${plural(overdue, "är försenad", "är försenade")}.`);
-  if (drafts > 0) parts.push(`${plural(drafts, "utkast", "utkast")} väntar på att beställas.`);
+  const stale = open.filter((v) => v.staleDraft).length;
+  if (drafts > 0) {
+    parts.push(
+      `${plural(drafts, "utkast", "utkast")} väntar på att beställas och räknas inte som beställt${stale > 0 ? ` (${formatInt(stale)} äldre än ${STALE_DRAFT_DAYS} dagar)` : ""}.`,
+    );
+  }
   if (next?.expectedOn)
     parts.push(
       `Nästa leverans väntas ${dateText(next.expectedOn, now)} från ${next.supplierName}.`,
@@ -814,18 +933,21 @@ function valuationModel(data: PrognosData, names: NameLookup): ValuationModel {
     coverDays: t.coverDays,
     negativeStockLocations: t.negativeStockLocations,
     text: tidy(t.text),
-    evidence: evidenceView(t.evidence, names),
+    evidence: evidenceView(t.evidence, names, STOCK_EVIDENCE),
   }));
+  const incomplete = v.titlesWithoutCost.length > 0;
   const title =
     v.capitalTiedOre === 0 && rows.length === 0
       ? "Inget lager registrerat."
-      : `Kapitalbindning ${approxKr(v.capitalTiedOre)}.`;
+      : incomplete
+        ? `Kapitalbindning minst ${approxKr(v.capitalTiedOre).replace(/^ca\s/, "ca ")}.`
+        : `Kapitalbindning ${approxKr(v.capitalTiedOre)}.`;
   const parts = [
     `Lagervärde ${approxKr(v.valueOre)} (centrallager ${approxKr(v.warehouseValueOre)}, automater ${approxKr(v.machineValueOre)}), beställt ${approxKr(v.onOrderValueOre)}.`,
   ];
-  if (v.titlesWithoutCost.length > 0) {
+  if (incomplete) {
     parts.push(
-      `${plural(v.titlesWithoutCost.length, "titel", "titlar")} saknar inköpspris och räknas inte.`,
+      `Summorna är ofullständiga: ${plural(v.titlesWithoutCost.length, "titel", "titlar")} saknar inköpspris och räknas inte.`,
     );
   }
   return {
@@ -836,8 +958,9 @@ function valuationModel(data: PrognosData, names: NameLookup): ValuationModel {
     onOrderValueOre: v.onOrderValueOre,
     capitalTiedOre: v.capitalTiedOre,
     titlesWithoutCost: v.titlesWithoutCost.map((id) => names.title(id)),
+    incomplete,
     rows,
-    evidence: evidenceView(v.evidence, names),
+    evidence: evidenceView(v.evidence, names, STOCK_EVIDENCE),
   };
 }
 
@@ -899,13 +1022,16 @@ export function buildPageModel(data: PrognosData, now: Date = new Date()): PageM
       `Slutsålt kostade ${approxKr(data.lostSales.total.lostRevenueOre)} ${periodShort(data.lostSales.period, now)}.`,
     );
   }
+  const scoped = Boolean(data.scope.storeId || data.scope.machineId);
+  // Inköpen gäller alltid hela organisationen (centrallagret är gemensamt).
+  const orgNote = scoped ? " i hela organisationen" : "";
   if (plan.counts.order > 0) {
     answerParts.push(
-      `${plural(plan.counts.order, "titel", "titlar")} bör beställas för ${approxKr(plan.totalOre)}.`,
+      `${plural(plan.counts.order, "titel", "titlar")}${orgNote} bör beställas för ${approxKr(plan.totalOre)}.`,
     );
   } else if (plan.counts["no-supplier"] > 0) {
     answerParts.push(
-      `${plural(plan.counts["no-supplier"], "titel", "titlar")} behöver en leverantör.`,
+      `${plural(plan.counts["no-supplier"], "titel", "titlar")}${orgNote} behöver en leverantör.`,
     );
   }
 
@@ -926,13 +1052,24 @@ export function buildPageModel(data: PrognosData, now: Date = new Date()): PageM
             ? "–"
             : `${formatPercent(accuracy.total.wapeBp / 10_000, 0)} fel/dag`,
       },
-      { label: "Att beställa", value: plan.counts.order > 0 ? approxKr(plan.totalOre) : "Inget" },
-      { label: "Kapitalbindning", value: approxKr(valuation.capitalTiedOre) },
+      {
+        label: "Att beställa",
+        value:
+          plan.counts.order > 0
+            ? approxKr(plan.totalOre)
+            : plan.counts["no-supplier"] > 0
+              ? `${plural(plan.counts["no-supplier"], "titel", "titlar")} utan leverantör`
+              : "Inget",
+      },
+      {
+        label: "Kapitalbindning",
+        value: `${valuation.incomplete ? "minst " : ""}${approxKr(valuation.capitalTiedOre)}`,
+      },
     ],
     today: data.today,
     asOf: data.asOf,
     canEdit: data.canEdit,
-    scoped: Boolean(data.scope.storeId || data.scope.machineId),
+    scoped,
     hasCentralWarehouse: data.hasCentralWarehouse,
     lost,
     forecast,

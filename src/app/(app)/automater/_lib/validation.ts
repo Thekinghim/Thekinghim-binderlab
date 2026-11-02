@@ -244,3 +244,36 @@ export function planDecommission(args: {
       .map((p) => ({ id: p.id, to: activeTo })),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Driftstart och återaktivering
+// ---------------------------------------------------------------------------
+
+/**
+ * Första placeringens startdag om driftstarten skulle hamna efter den (en flytt får inte
+ * ligga före driftstarten, så en placering får inte heller göra det), annars null.
+ */
+export function placementBeforeStart(
+  placements: readonly PlacementSpan[],
+  activeFrom: IsoDate,
+): IsoDate | null {
+  const first = placements.reduce<IsoDate | null>(
+    (min, p) => (min === null || p.from < min ? p.from : min),
+    null,
+  );
+  return first !== null && first < activeFrom ? first : null;
+}
+
+/**
+ * Återaktivering: den senaste placeringen öppnas igen om den slutade på automatens sista
+ * dag (avvecklingen avslutade den), så att automaten står kvar i butiken och hyra och
+ * provision räknas. Slutade den tidigare (automaten flyttades ut före avvecklingen) öppnas
+ * ingen.
+ */
+export function placementToReopen(
+  placements: readonly PlacementSpan[],
+  activeTo: IsoDate,
+): PlacementSpan | null {
+  const latest = [...placements].sort((a, b) => (a.from < b.from ? 1 : a.from > b.from ? -1 : 0))[0];
+  return latest && latest.to === activeTo ? latest : null;
+}
