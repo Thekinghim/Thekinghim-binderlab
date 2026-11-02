@@ -263,8 +263,8 @@ export function ForecastView({ model }: { model: ForecastModel }) {
         />
         {model.ordersWithoutMachine > 0 ? (
           <p className="text-xs text-subtle">
-            {formatInt(model.ordersWithoutMachine)} order saknar automat och ingår inte. Koppla automaterna i
-            Datakällor.
+            {formatInt(model.ordersWithoutMachine)} order saknar automat och ingår inte. Koppla
+            automaterna i Datakällor.
           </p>
         ) : null}
       </div>

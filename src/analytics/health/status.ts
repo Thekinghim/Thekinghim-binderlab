@@ -515,7 +515,12 @@ function evaluate(
         dates: [localParts(sinceMs, tz).date],
         orderIds: p.lastOrder ? [p.lastOrder.id] : [],
         figures: [
-          { key: "offlineMinutes", label: "Minuter utan anslutning", value: minutes, unit: "count" },
+          {
+            key: "offlineMinutes",
+            label: "Minuter utan anslutning",
+            value: minutes,
+            unit: "count",
+          },
         ],
       },
       { signal },

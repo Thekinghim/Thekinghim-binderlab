@@ -87,6 +87,6 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
   hela historiken första gången, via ett ingest-API med återkallbar synk-token; larm om synken tystnar. Ersätts av gRPC-adaptern när Awish
   levererat app-ID/token. Frågat beställaren efter koden till det gamla ChatGPT-tillägget.
 - Beställaren vill att jag driftsätter allt. Byggs nu: scripts/deploy/* (Supabase Management API, Vercel API, inbjudan av ägaren)
-  + docs/driftsattning.md. Kräver SUPABASE_ACCESS_TOKEN, VERCEL_TOKEN och nätverk till api.supabase.com, *.supabase.co, api.vercel.com
-  i en ny session. Ägarens e-post bekräftas av beställaren innan inbjudan skickas.
+  - docs/driftsattning.md. Kräver SUPABASE_ACCESS_TOKEN, VERCEL_TOKEN och nätverk till api.supabase.com, *.supabase.co, api.vercel.com
+    i en ny session. Ägarens e-post bekräftas av beställaren innan inbjudan skickas.
 - Arbetsflöde: wf_19bddf0c-b50.

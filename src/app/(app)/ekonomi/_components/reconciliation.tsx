@@ -103,7 +103,8 @@ function PayoutBlock({
           </h3>
           <p className="meta text-subtle">
             {p.paidOn > today ? "Utbetalas" : "Utbetald"}{" "}
-            {formatDate(isoToDate(p.paidOn), { year: "always" })} · {formatInt(p.expected.orders)} order
+            {formatDate(isoToDate(p.paidOn), { year: "always" })} · {formatInt(p.expected.orders)}{" "}
+            order
           </p>
         </div>
         <dl className="grid grid-cols-3 gap-4 md:col-span-5">

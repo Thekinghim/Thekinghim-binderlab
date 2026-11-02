@@ -269,7 +269,10 @@ export interface TodoInput extends EconomicsSources {
    * precis som på Drift, så att Att göra, Hem och Drift säger samma antal timmar.
    * Saknas = till nu.
    */
-  readonly salesDataUntil?: readonly { readonly machineId: string; readonly until: string | null }[];
+  readonly salesDataUntil?: readonly {
+    readonly machineId: string;
+    readonly until: string | null;
+  }[];
   readonly options?: TodoOptions;
 }
 

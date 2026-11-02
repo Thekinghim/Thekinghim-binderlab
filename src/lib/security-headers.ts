@@ -76,8 +76,7 @@ export function securityHeaderRules(options: SecurityHeaderOptions): HeaderRule[
     // konsolvarning på varje sida.
     {
       key: "Permissions-Policy",
-      value:
-        "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=()",
+      value: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=()",
     },
     { key: "Strict-Transport-Security", value: "max-age=63072000" },
     { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
