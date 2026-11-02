@@ -27,6 +27,7 @@ import { defaultSubscription, type SubscriptionRow } from "@/server/alerts/subsc
 import { channelStatus, type ChannelStatus } from "@/server/notify";
 import { queryStock } from "@/server/data/core/queries";
 import type { AppContext } from "@/server/data/core";
+import { querySlotPeriods, type SlotPeriod } from "@/server/data/assortment";
 import { weeklyVisitPlan } from "@/server/data/visit-plan";
 import { withUserDb } from "@/server/session";
 
@@ -119,11 +120,12 @@ async function loadLastRun(tx: Tx, orgId: string): Promise<AlertRunInfo | null> 
   return row ? { ...row, ranAt: row.ranAt.toISOString() } : null;
 }
 
-/** Veckans besöksplan: samma funktion och samma takt (gårdagens) som Lager. */
+/** Veckans besöksplan: samma funktion, samma takt (gårdagens) och samma sortiment som Lager. */
 function buildPlan(
   data: HealthData,
   health: readonly MachineHealth[],
   warehouse: { titleId: string; onHand: number }[] | null,
+  slotPeriods: readonly SlotPeriod[],
   ctx: AppContext,
 ): VisitPlan {
   return weeklyVisitPlan({
@@ -133,6 +135,7 @@ function buildPlan(
     stock: data.stock,
     warehouseStock: warehouse,
     health,
+    slotPeriods,
     today: ctx.today,
     timeZone: ctx.timeZone,
     now: new Date(ctx.now),
@@ -152,7 +155,8 @@ export async function loadDriftOverview(ctx: AppContext): Promise<DriftOverview>
     const warehouse = stockRows
       .filter((r) => r.isCentral)
       .map((r) => ({ titleId: r.titleId, onHand: r.onHand }));
-    const plan = buildPlan(data, health, warehouse.length > 0 ? warehouse : null, ctx);
+    const slotPeriods = await querySlotPeriods(tx, orgId);
+    const plan = buildPlan(data, health, warehouse.length > 0 ? warehouse : null, slotPeriods, ctx);
     return { data, health, openAlerts: alerts.open, recentAlerts: alerts.recent, lastRun, plan };
   });
 }
@@ -170,7 +174,8 @@ export async function loadVisitPlan(
     const warehouse = stockRows
       .filter((r) => r.isCentral)
       .map((r) => ({ titleId: r.titleId, onHand: r.onHand }));
-    const plan = buildPlan(data, health, warehouse.length > 0 ? warehouse : null, ctx);
+    const slotPeriods = await querySlotPeriods(tx, orgId);
+    const plan = buildPlan(data, health, warehouse.length > 0 ? warehouse : null, slotPeriods, ctx);
     return { data, health, plan, hasWarehouse: warehouse.length > 0 };
   });
 }

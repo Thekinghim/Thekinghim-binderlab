@@ -26,6 +26,7 @@ import type { Contract } from "@/analytics/contracts";
 import type { AlertRef, AnalyticsOrder, ReportDraftRef } from "@/analytics/todos";
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
+import { toSafeInteger } from "@/db/types";
 import { reportStatuses, type DeliveryStatus } from "@/server/reports/status";
 import type { IsoDate, MachineInvestment, Period, PurchasePrice, StoreAgreement } from "@/domain";
 
@@ -271,52 +272,53 @@ export async function queryOrders(
   scope: DataScope,
 ): Promise<OrderQueryResult> {
   const conditions: SQL[] = [
-    eq(s.orders.organizationId, orgId),
-    gte(s.orders.businessDate, range.start),
-    lte(s.orders.businessDate, range.end),
+    sql`o.organization_id = ${orgId}::uuid`,
+    sql`o.business_date >= ${range.start}::date`,
+    sql`o.business_date <= ${range.end}::date`,
   ];
-  if (scope.machineId) conditions.push(eq(s.orders.machineId, scope.machineId));
+  if (scope.machineId) conditions.push(sql`o.machine_id = ${scope.machineId}::uuid`);
   if (scope.storeId) {
-    conditions.push(
-      placedInStore(
-        sql`${s.orders.machineId}`,
-        sql`${s.orders.businessDate}`,
-        orgId,
-        scope.storeId,
-      ),
-    );
+    conditions.push(placedInStore(sql`o.machine_id`, sql`o.business_date`, orgId, scope.storeId));
   }
-  const rows = await tx
-    .select({
-      id: s.orders.id,
-      externalId: s.orders.externalId,
-      titleId: s.orders.titleId,
-      machineId: s.orders.machineId,
-      businessDate: s.orders.businessDate,
-      amountOre: s.orders.amountOre,
-      orderedAt: s.orders.orderedAt,
-    })
-    .from(s.orders)
-    .where(and(...conditions))
-    .orderBy(asc(s.orders.orderedAt), asc(s.orders.id));
+  // Rå SQL i stället för Drizzles select: med 100 000 order är det radernas omvandling
+  // som tar tid. Tidpunkten formateras i databasen precis som Date.toISOString()
+  // (UTC, millisekunder, "Z"), och beloppet kontrolleras som säkert heltal som i schemat.
+  const rows = (await tx.execute(sql`
+    select o.id, o.external_id, o.title_id, o.machine_id,
+           o.business_date::text as business_date, o.amount_ore,
+           to_char(o.ordered_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as ordered_at
+    from public.orders o
+    where ${sql.join(conditions, sql` and `)}
+    order by o.ordered_at, o.id
+  `)) as unknown as Iterable<OrderRow>;
   const orders: AnalyticsOrder[] = [];
   let withoutTitle = 0;
   for (const r of rows) {
-    if (r.titleId === null) {
+    if (r.title_id === null) {
       withoutTitle += 1;
       continue;
     }
     orders.push({
       id: r.id,
-      externalId: r.externalId,
-      titleId: r.titleId,
-      machineId: r.machineId,
-      businessDate: r.businessDate,
-      amountOre: r.amountOre,
-      orderedAt: r.orderedAt.toISOString(),
+      externalId: r.external_id,
+      titleId: r.title_id,
+      machineId: r.machine_id,
+      businessDate: r.business_date,
+      amountOre: toSafeInteger(r.amount_ore),
+      orderedAt: r.ordered_at,
     });
   }
   return { orders, withoutTitle };
+}
+
+interface OrderRow {
+  readonly id: string;
+  readonly external_id: string;
+  readonly title_id: string | null;
+  readonly machine_id: string | null;
+  readonly business_date: string;
+  readonly amount_ore: string | number;
+  readonly ordered_at: string;
 }
 
 /** Första affärsdagen med en order, eller null. */

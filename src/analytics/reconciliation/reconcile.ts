@@ -42,7 +42,9 @@ import {
   type Settings,
 } from "@/domain";
 import { DEFAULT_TIME_ZONE, businessDateAt, clockTimeAt, tryParseInstant } from "../todos/time";
-import { day, krExact, periodText, plural } from "../todos/text";
+import { formatInt, MINUS, NBSP } from "@/lib/format";
+
+import { day, kr, krExact, periodText, plural } from "../todos/text";
 import type { AnalyticsOrder } from "../todos/types";
 import {
   addOre,
@@ -95,6 +97,48 @@ export const RECONCILIATION_DEFAULTS = {
 
 /** Högst så många ordernummer räknas upp i en text; resten finns i underlaget. */
 const MAX_LISTED = 5;
+
+/**
+ * Avgiftsinställningen i löptext, i procent och inte i baspunkter: 175 bp → "1,75 % av
+ * försäljningen", 0 bp med fast avgift → "2,00 kr per order", ingenting → "ingen avgift".
+ */
+export function feeBasisText(feeBp: number, fixedFeeOre: number): string {
+  // Heltalsräkning (inga flyttal): 175 → "1,75", 150 → "1,5", 200 → "2".
+  const rest = feeBp % 100;
+  const decimals =
+    rest === 0 ? "" : rest % 10 === 0 ? `,${rest / 10}` : `,${String(rest).padStart(2, "0")}`;
+  const share =
+    feeBp > 0 ? `${formatInt(Math.trunc(feeBp / 100))}${decimals}${NBSP}% av försäljningen` : null;
+  const fixed = fixedFeeOre > 0 ? `${krExact(fixedFeeOre)} per order` : null;
+  if (share && fixed) return `${share} plus ${fixed}`;
+  return share ?? fixed ?? "ingen avgift";
+}
+
+/**
+ * Belopp i avstämningens sammanfattning (`result.summary`, i rubriken på Ekonomi). En summa i
+ * en rubrik skrivs i hela kronor (design.md): "Utbetalt 73 912 kr mot väntat 74 625 kr
+ * (−713 kr)". Är skillnaden under en krona skrivs alla tre beloppen med ören, så att
+ * avrundningen inte motsäger skillnaden ("375 kr mot 374 kr (+0,63 kr)").
+ */
+export function summaryAmounts(
+  actualOre: number,
+  expectedOre: number,
+): { actual: string; expected: string; difference: string } {
+  const difference = actualOre - expectedOre;
+  const exact = difference !== 0 && Math.abs(difference) < 100;
+  const amount = exact ? krExact : kr;
+  return {
+    actual: amount(actualOre),
+    expected: amount(expectedOre),
+    difference: exact
+      ? signedKrExact(difference)
+      : difference === 0
+        ? `±${kr(0)}`
+        : difference > 0
+          ? `+${kr(difference)}`
+          : `${MINUS}${kr(-difference)}`,
+  };
+}
 
 /** Belopp med tecken och ören: +49,00 kr, −49,00 kr, ±0,00 kr. */
 export function signedKrExact(ore: number): string {
@@ -491,10 +535,7 @@ export function reconcilePayouts(input: ReconciliationInput): ReconciliationResu
       const c = get("fee");
       c.impactOre = -feeDelta;
       c.title = `Avgifterna är ${krExact(Math.abs(feeDelta))} ${feeDelta > 0 ? "högre" : "lägre"} än väntat`;
-      const basis =
-        fixedFee > 0
-          ? `${feeBp} bp av försäljningen plus ${krExact(fixedFee)} per order`
-          : `${feeBp} bp av försäljningen`;
+      const basis = feeBasisText(feeBp, fixedFee);
       c.explanation = `Leverantören drog ${krExact(p.raw.feesOre)} i avgifter. Inställningarna (${basis}) ger ${krExact(
         expectedFees,
       )} för ${ordersText(own.length)} på totalt ${krExact(salesOre)}. Kontrollera avtalet med leverantören eller avgiftsinställningen.`;
@@ -985,6 +1026,7 @@ function buildPayoutResult(
     refundsOre: parts.actualRefunds,
     salesOre: p.raw.amountOre + p.raw.feesOre + parts.actualRefunds,
   };
+  // Utbetalningens rad har ören: skillnaderna och avrundningen förklaras på öret.
   const head = `${p.reference} (${periodText(p.period)}): utbetalt ${krExact(
     actual.payoutOre,
   )}, väntat ${krExact(expected.payoutOre)}`;
@@ -1140,10 +1182,9 @@ function summarize(
       status.push(`${byStatus.explained} skiljer bara på grund av tidszonen`);
     if (byStatus.deviation > 0) status.push(`${byStatus.deviation} har avvikelser att utreda`);
     if (byStatus.investigated > 0) status.push(`${byStatus.investigated} är utredda`);
+    const sum = summaryAmounts(actualOre, expectedOre);
     parts.push(
-      `${plural(payouts.length, "utbetalning", "utbetalningar")}: ${status.join(", ")}. Utbetalt ${krExact(
-        actualOre,
-      )} mot väntat ${krExact(expectedOre)} (${signedKrExact(differenceOre)})`,
+      `${plural(payouts.length, "utbetalning", "utbetalningar")}: ${status.join(", ")}. Utbetalt ${sum.actual} mot väntat ${sum.expected} (${sum.difference})`,
     );
   }
   const openUncovered = uncovered.filter((d) => d.status === "open");
@@ -1153,9 +1194,7 @@ function summarize(
       0,
     );
     const days = openUncovered.reduce((s, d) => s + d.evidence.dates.length, 0);
-    parts.push(
-      `Försäljning ${krExact(sales)} på ${plural(days, "dag", "dagar")} saknar utbetalning`,
-    );
+    parts.push(`Försäljning ${kr(sales)} på ${plural(days, "dag", "dagar")} saknar utbetalning`);
   }
   const allRefs = payouts.map((p) => p.reference);
   return {

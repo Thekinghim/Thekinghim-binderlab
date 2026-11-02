@@ -9,7 +9,7 @@ import { AxisText, AxisUnitLabel, ChartFigure, HatchPattern, Readout } from "./p
 
 export type WaterfallStep = {
   label: string;
-  /** Kortare etikett när platsen inte räcker, t.ex. "Butiksers." */
+  /** Kortare etikett när platsen inte räcker, t.ex. "Till butiken". Hela ord, inga förkortningar. */
   short?: string;
   /** Förändring (positiv/negativ). Ignoreras för total. */
   value: number;

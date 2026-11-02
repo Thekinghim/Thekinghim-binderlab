@@ -214,7 +214,10 @@ function CompactChecklist({
         <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
           <p className="label text-muted">
             <span className="text-fg">Kom igång</span>
-            <span className="text-faint"> / </span>
+            <span aria-hidden className="text-faint">
+              {" / "}
+            </span>
+            <span className="sr-only">: </span>
             {`${formatInt(status.requiredDone)} av ${formatInt(status.requiredTotal)} nödvändiga`}
           </p>
           <p className="meta tnum text-subtle">

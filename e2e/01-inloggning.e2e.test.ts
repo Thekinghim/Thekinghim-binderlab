@@ -61,6 +61,29 @@ describe("inloggning", () => {
     await context.close();
   });
 
+  it("okända id i detaljsidorna ger HTTP 404, kända 200", async () => {
+    const { page, context } = await openPage(browser, e2e().baseUrl);
+    await login(page, e2e().users.owner);
+    const unknown = "00000000-0000-4000-8000-000000000000";
+    for (const path of [
+      `/automater/${unknown}`,
+      "/automater/xx-999",
+      `/butiker/${unknown}`,
+      `/inkorg/${unknown}`,
+      `/drift/automat/${unknown}`,
+      `/datakallor/importer/${unknown}`,
+      `/rapport/${unknown}`,
+    ]) {
+      const res = await context.request.get(`${e2e().baseUrl}${path}`, { maxRedirects: 0 });
+      expect(res.status(), path).toBe(404);
+    }
+    for (const path of ["/automater", "/butiker", "/inkorg", "/drift", "/datakallor"]) {
+      const res = await context.request.get(`${e2e().baseUrl}${path}`, { maxRedirects: 0 });
+      expect(res.status(), path).toBe(200);
+    }
+    await context.close();
+  });
+
   it("läsaren (delägaren) har läsroll och når inte Datakällor", async () => {
     const { page, context, errors } = await openPage(browser, e2e().baseUrl, { theme: "dark" });
     await login(page, e2e().users.partner);
@@ -69,6 +92,10 @@ describe("inloggning", () => {
     expect(await page.getByRole("link", { name: "Datakällor" }).count()).toBe(0);
     await page.goto("/datakallor");
     await page.waitForURL((url) => !url.pathname.startsWith("/datakallor"));
+    // Inte tyst: startsidan förklarar varför (requireRoute → ?nekad=datakallor).
+    const notice = page.getByRole("region", { name: "Notiser" });
+    await notice.getByText("Du har inte tillgång till Datakällor.").waitFor();
+    await page.waitForURL((url) => !url.searchParams.has("nekad"));
     await screenshot(page, "01-inloggning-lasare-mork");
     expectNoPageErrors(errors);
     await context.close();

@@ -13,11 +13,15 @@
  *   automater = de som är i drift i dag
  *   extra    = automater med misstänkt fel, fel eller ur drift (maskinhälsan, samma som
  *              Drift visar) ska besökas i dag
+ *   sortiment = titlar som gått ur sortimentet i en automat (lager_slot_periods,
+ *              @/analytics/todos/assortment) planeras inte: de fylls inte på utan säljs ut,
+ *              som på Lager och i Att göra
  *
  * Ren modul utan databas, så att Lagers vymodell kan använda den direkt.
  */
 
 import type { MachineHealth } from "@/analytics/health";
+import { assortmentKey, retiredPairs, type SlotPeriod } from "@/analytics/todos/assortment";
 import { isMachineActive } from "@/analytics/todos/common";
 import { businessDateAt } from "@/analytics/todos/time";
 import type { AnalyticsOrder, StockLevelRef, TitleRef } from "@/analytics/todos/types";
@@ -61,6 +65,8 @@ export interface WeeklyPlanInput {
   readonly warehouseStock: readonly { titleId: string; onHand: number }[] | null;
   /** Maskinhälsan (som på Drift). null/utelämnad = inga extra besök. */
   readonly health?: readonly Pick<MachineHealth, "machineId" | "status">[] | null;
+  /** Sortimentets perioder. Utgångna titlar planeras inte. null/utelämnad = inga utgångna. */
+  readonly slotPeriods?: readonly SlotPeriod[] | null;
   /** Dagens affärsdatum i tidszonen. */
   readonly today: IsoDate;
   readonly timeZone: string;
@@ -70,12 +76,21 @@ export interface WeeklyPlanInput {
 /** Veckans besöksplan, likadan på Lager och Drift. */
 export function weeklyVisitPlan(input: WeeklyPlanInput): VisitPlan {
   const { today, timeZone, now } = input;
+  const retired = retiredPairs(input.slotPeriods ?? [], today);
+  const inAssortment = (machineId: string | null, titleId: string) =>
+    machineId === null || !retired.has(assortmentKey(machineId, titleId));
   return planVisits(
     {
-      orders: input.orders,
+      orders:
+        retired.size === 0
+          ? input.orders
+          : input.orders.filter((o) => inAssortment(o.machineId, o.titleId)),
       machines: input.machines.filter((m) => isMachineActive(m, today)),
       titles: input.titles,
-      stock: input.stock,
+      stock:
+        retired.size === 0
+          ? input.stock
+          : input.stock.filter((s) => inAssortment(s.machineId, s.titleId)),
       ...(input.warehouseStock ? { warehouseStock: input.warehouseStock } : {}),
       extraVisits: input.health ? extraVisitsFromHealth(input.health, today) : [],
       options: { timeZone, start: today, stockDate: today },

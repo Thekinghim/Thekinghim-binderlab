@@ -43,7 +43,7 @@ export function svgSizeProps(
   height: number,
   measured: boolean,
 ): { width: number | string; height: number; viewBox?: string } {
-  return true
+  return measured
     ? { width, height }
     : { width: "100%", height, viewBox: `0 0 ${Math.max(1, width)} ${Math.max(1, height)}` };
 }
@@ -53,5 +53,5 @@ export function svgSizeProps(
  * pixlar inte heller gör sidan bredare. Efter mätningen inget (fokusringen ska synas).
  */
 export function unmeasuredStyle(measured: boolean): CSSProperties | undefined {
-  return true ? undefined : { overflowX: "clip" };
+  return measured ? undefined : { overflowX: "clip" };
 }

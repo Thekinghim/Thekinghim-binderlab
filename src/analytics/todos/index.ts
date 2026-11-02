@@ -40,6 +40,13 @@ export function computeTodos(input: TodoInput, now: Date | string | number): Tod
 }
 
 export { applyDismissals, obsoleteDismissals } from "./dismissals";
+export {
+  assortmentKey,
+  isRetiredRefill,
+  retiredPairs,
+  withoutRetiredRefills,
+  type SlotPeriod,
+} from "./assortment";
 export { sortTodos, urgencyOf, TODO_DEFAULTS, HORIZON_DAYS } from "./context";
 export {
   compareTitles,

@@ -356,7 +356,8 @@ Allt stannar inte i EU. Databasen, filerna och inloggningen ligger i Supabases E
   Claude API hos Anthropic, som behandlar dem utanför EU. Inga e-postadresser eller telefonnummer ingår i verktygens
   resultat, men en användare kan skriva vad som helst i en fråga. Assistenten är avstängd tills `ANTHROPIC_API_KEY`
   sätts.
-- **Vercel** kör funktionerna i USA om ingen region väljs; `vercel.json` sätter ingen.
+- **Vercel** skulle köra funktionerna i USA om ingen region väljs; `vercel.json` sätter därför `"regions": ["arn1"]`
+  (Stockholm), se `docs/operations.md`.
 - **Resend och Sentry** har EU-regioner som måste väljas.
 
 Inga personuppgiftsbiträdesavtal är tecknade. Biträdena, vad var och en får, lagringstider och vad som återstår står i

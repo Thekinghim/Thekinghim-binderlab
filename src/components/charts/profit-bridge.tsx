@@ -74,7 +74,8 @@ export function ProfitBridge({
       : []),
     {
       label: L.storeCompensation,
-      short: "Butiksers.",
+      // Hela ord när platsen inte räcker (ordlistan avråder från förkortningar).
+      short: "Till butiken",
       value: -storeCompensation,
       name: "Butiksersättning (provision och hyra)",
       ...f("storeCompensation"),

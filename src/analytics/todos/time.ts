@@ -6,7 +6,7 @@
  * eftersom de annars skulle tolkas i processens lokala tid.
  */
 
-import { DomainError, parseIsoDate, type IsoDate } from "@/domain";
+import { DomainError, fromDayNumber, parseIsoDate, type IsoDate } from "@/domain";
 
 /** Standardtidszon för affärsdatum. */
 export const DEFAULT_TIME_ZONE = "Europe/Stockholm";
@@ -55,6 +55,65 @@ function partsFormatter(timeZone: string): Intl.DateTimeFormat {
 
 /** Datum och klockslag för en tidpunkt i tidszonen. */
 export function localParts(ms: number, timeZone: string = DEFAULT_TIME_ZONE) {
+  const offset = Number.isFinite(ms) ? steadyOffset(ms, timeZone) : null;
+  if (offset === null) return intlParts(ms, timeZone);
+  const wall = ms + offset;
+  const day = Math.floor(wall / DAY_MS);
+  const minutes = Math.floor((wall - day * DAY_MS) / 60_000);
+  return {
+    date: fromDayNumber(day),
+    time: `${pad2(Math.floor(minutes / 60))}:${pad2(minutes % 60)}`,
+  };
+}
+
+const DAY_MS = 86_400_000;
+/**
+ * Snabbvägen gäller tidpunkter 1972–2099. Sedan 1972 är alla tidszoners förskjutningar
+ * hela minuter, så väggtiden på minuten är tidpunkten plus förskjutningen.
+ */
+const STEADY_FROM_MS = 63_072_000_000; // 1972-01-01T00:00:00Z
+const STEADY_TO_MS = 4_102_444_800_000; // 2100-01-01T00:00:00Z
+const STEADY_CACHE_MAX = 50_000;
+const steadyOffsets = new Map<string, Map<number, number | null>>();
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
+/** Förskjutningen (väggtid − UTC) i ms enligt Intl, vid en tidpunkt på hel minut. */
+function intlOffset(ms: number, timeZone: string): number {
+  const p = intlParts(ms, timeZone);
+  const { year, month, day } = parseIsoDate(p.date);
+  const wall = Date.UTC(year, month - 1, day, Number(p.time.slice(0, 2)), Number(p.time.slice(3)));
+  return wall - ms;
+}
+
+/**
+ * Förskjutningen under timmen som `ms` ligger i, eller `null` om den inte är densamma i
+ * timmens början och nästa timmes början (då kan ett skifte ligga inne i timmen, och
+ * Intl får räkna). Två skiften inom en timme förekommer inte, så samma förskjutning i
+ * båda ändarna betyder samma förskjutning hela timmen. Sparas per tidszon och timme:
+ * Intl.formatToParts är dyr och anropas annars en gång per order.
+ */
+function steadyOffset(ms: number, timeZone: string): number | null {
+  if (ms < STEADY_FROM_MS || ms >= STEADY_TO_MS) return null;
+  const hour = Math.floor(ms / HOUR_MS) * HOUR_MS;
+  let zone = steadyOffsets.get(timeZone);
+  if (!zone) {
+    zone = new Map();
+    steadyOffsets.set(timeZone, zone);
+  }
+  const cached = zone.get(hour);
+  if (cached !== undefined) return cached;
+  const start = intlOffset(hour, timeZone);
+  const offset = start === intlOffset(hour + HOUR_MS, timeZone) ? start : null;
+  if (zone.size >= STEADY_CACHE_MAX) zone.clear();
+  zone.set(hour, offset);
+  return offset;
+}
+
+/** Datum och klockslag enligt Intl (den långsamma vägen; ger facit för snabbvägen). */
+export function intlParts(ms: number, timeZone: string = DEFAULT_TIME_ZONE) {
   const parts = partsFormatter(timeZone).formatToParts(new Date(ms));
   const get = (type: Intl.DateTimeFormatPartTypes): string =>
     parts.find((p) => p.type === type)?.value ?? "";

@@ -212,18 +212,27 @@ export default async function AssistentPage() {
               : "Nyckeln sätts i miljövariablerna, aldrig i appen."
           }
         />
-        <dl className="meta grid max-w-3xl grid-cols-1 gap-y-2 text-muted sm:grid-cols-[auto_1fr] sm:gap-x-8">
-          <dt className="text-subtle">ASSISTANT_PROVIDER</dt>
-          <dd className="text-fg">
-            {ready ? config.provider : (process.env.ASSISTANT_PROVIDER ?? "anthropic")}
-          </dd>
-          <dt className="text-subtle">ANTHROPIC_API_KEY</dt>
-          <dd className="text-fg">{process.env.ANTHROPIC_API_KEY?.trim() ? "satt" : "saknas"}</dd>
-          <dt className="text-subtle">ANTHROPIC_MODEL</dt>
-          <dd className="text-fg">
-            {process.env.ANTHROPIC_MODEL?.trim() || "claude-opus-5-5 (standard)"}
-          </dd>
-        </dl>
+        {/* Variabelnamnen är för driften: bakom "Visa detaljer", inte i sidans första läsning. */}
+        <details className="group max-w-3xl text-sm">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-xs font-mono text-xs text-muted transition-colors hover:text-fg [&::-webkit-details-marker]:hidden">
+            <span aria-hidden className="text-faint group-open:rotate-90">
+              ›
+            </span>
+            Visa detaljer för driften
+          </summary>
+          <dl className="meta mt-3 grid grid-cols-1 gap-y-2 text-muted sm:grid-cols-[auto_1fr] sm:gap-x-8">
+            <dt className="text-subtle">ASSISTANT_PROVIDER</dt>
+            <dd className="text-fg">
+              {ready ? config.provider : (process.env.ASSISTANT_PROVIDER ?? "anthropic")}
+            </dd>
+            <dt className="text-subtle">ANTHROPIC_API_KEY</dt>
+            <dd className="text-fg">{process.env.ANTHROPIC_API_KEY?.trim() ? "satt" : "saknas"}</dd>
+            <dt className="text-subtle">ANTHROPIC_MODEL</dt>
+            <dd className="text-fg">
+              {process.env.ANTHROPIC_MODEL?.trim() || "claude-opus-5-5 (standard)"}
+            </dd>
+          </dl>
+        </details>
       </section>
     </div>
   );

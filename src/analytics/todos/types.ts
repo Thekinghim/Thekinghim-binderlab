@@ -9,6 +9,7 @@
 
 import type { Contract } from "@/analytics/contracts/types";
 import type { EconomicsSources, IsoDate, OrderLine, Period } from "@/domain";
+import type { SlotPeriod } from "./assortment";
 
 /** En order med betaltidpunkt. Tidpunkten behövs för regeln om automater som inte sålt på 48 timmar. */
 export interface AnalyticsOrder extends OrderLine {
@@ -257,6 +258,11 @@ export interface TodoInput extends EconomicsSources {
   readonly contracts?: readonly Contract[];
   /** Öppna larm. Bara okvitterade larm om automater och importer blir punkter. */
   readonly alerts?: readonly AlertRef[];
+  /**
+   * Sortimentets perioder (RPC:n lager_slot_periods). En utgången titel (se
+   * ./assortment.ts) ger ingen påfyllningspunkt. Saknas = inga utgångna.
+   */
+  readonly slotPeriods?: readonly SlotPeriod[];
   readonly options?: TodoOptions;
 }
 

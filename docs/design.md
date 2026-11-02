@@ -131,7 +131,7 @@ Med `data-tone="signal"` på rapporten behålls kulören för PDF som läses på
 
 #### Lägen
 
-- Mörkt är standard (`<html data-theme="dark">`, `themeColor` #0A0A0B). Ljust sätts med `data-theme="light"` på valfritt element, och variablerna ärvs nedåt. Valet sparas i `localStorage` (`binderlab-theme`) och sätts före rendering av `themeInitScript` i `src/lib/theme.ts`.
+- Mörkt är standard (`<html data-theme="dark">`, `themeColor` #0A0A0B). Ljust sätts med `data-theme="light"` på valfritt element, och variablerna ärvs nedåt. Valet sparas i cookien `binderlab-theme` (och i `localStorage`), och rotlayouten renderar `data-theme` och `themeColor` ur cookien på servern (`src/lib/theme.ts`): rätt tema redan i första HTML-svaret, inget blink och inget inline-skript. Ett äldre val som bara finns i `localStorage` flyttas till cookien av `ThemeSync` vid första besöket.
 - Varianten `light:` i Tailwind följer `data-theme`, inte `prefers-color-scheme`.
 - E-post är alltid ljus (avsnitt 8).
 

@@ -6,14 +6,8 @@
 
 import type { IsoDate } from "@/domain";
 
-/** En period i sortimentet: titeln i automaten från och med `validFrom` t.o.m. `validTo`. */
-export interface SlotPeriod {
-  readonly machineId: string;
-  readonly titleId: string;
-  readonly validFrom: IsoDate;
-  /** Sista dagen, eller null (tills vidare). */
-  readonly validTo: IsoDate | null;
-}
+/** Sortimentets perioder (lager_slot_periods); regeln för utgångna titlar är @/analytics/todos/assortment. */
+export type { SlotPeriod } from "@/analytics/todos/assortment";
 
 /** Status i en cell. Alltid med text i vyn (Kritisk, Låg, OK). */
 export type StockStatus = "critical" | "low" | "ok";

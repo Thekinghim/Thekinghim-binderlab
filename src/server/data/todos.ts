@@ -1,8 +1,11 @@
 /**
  * Att göra med prioritering efter förlorad försäljning, för sidorna som visar listan i
- * ordning (Att göra och Hem). Menyns räknare använder loadTodos (samma punkter, samma
+ * ordning (Att göra och Hem). Menyns räknare använder loadTodoCount (samma punkter, samma
  * antal): förlorad försäljning ändrar bara ordningen och underlaget, aldrig vilka punkter
  * som finns.
+ *
+ * Påfyllningar av titlar som gått ur sortimentet tas bort (./assortment.ts), som på Lager
+ * och i Drifts besöksplan.
  *
  * Förlorad intäkt per titel och automat räknas av @/analytics/lost-sales via
  * lostSalesSummaryFor (Prognos & inköp), för de senaste 14 hela dagarna (påfyllningens
@@ -19,8 +22,9 @@ import { getRoleFor } from "@/server/access";
 import { lostSalesSummary, lostSalesSummaryFor } from "@/server/purchasing/lost-sales-summary";
 import type { LostSalesSummary } from "@/server/purchasing/types";
 import { currentViewer } from "@/server/purchasing/session";
-import { getActiveOrganization } from "@/server/session";
+import { getActiveOrganization, withUserDb } from "@/server/session";
 
+import { loadSlotPeriodsFor, querySlotPeriods, todoStateWithoutRetired } from "./assortment";
 import { loadContext, loadTodoState } from "./core";
 import { businessToday, loadTodoStateFor, type TodoState, type Viewer } from "./core/loaders";
 import { canSeeEconomy } from "./core/types";
@@ -68,8 +72,35 @@ export async function loadRankedTodoStateFor(
   viewer: Viewer,
   now: Date = new Date(),
 ): Promise<TodoState> {
-  const state = await loadTodoStateFor(viewer, now);
+  const [raw, periods] = await Promise.all([
+    loadTodoStateFor(viewer, now),
+    loadSlotPeriodsFor(viewer),
+  ]);
+  const state = todoStateWithoutRetired(
+    raw,
+    periods,
+    businessToday(now, viewer.organization.timezone),
+  );
   return rankTodoState(viewer, state, now, (period) => lostSalesSummaryFor(viewer, period, now));
+}
+
+/**
+ * Punkterna i Att göra som den inloggade, utan påfyllningar av utgångna titlar, i
+ * laddarens ordning. Memoiserad per förfrågan: menyns räknare och listan delar den.
+ */
+export const loadVisibleTodoState = cache(async (): Promise<TodoState> => {
+  if (!(await getActiveOrganization())) return { items: [], dismissed: [] };
+  const ctx = await loadContext();
+  const [state, periods] = await Promise.all([
+    loadTodoState(),
+    withUserDb((tx) => querySlotPeriods(tx, ctx.organization.id)),
+  ]);
+  return todoStateWithoutRetired(state, periods, ctx.today);
+});
+
+/** Antalet punkter i Att göra, för menyns räknare (samma punkter som listan). */
+export async function loadTodoCount(): Promise<number> {
+  return (await loadVisibleTodoState()).items.length;
 }
 
 /**
@@ -81,7 +112,10 @@ export async function loadRankedTodoStateFor(
 export const loadRankedTodoState = cache(async (): Promise<TodoState> => {
   if (!(await getActiveOrganization())) return { items: [], dismissed: [] };
   const ctx = await loadContext();
-  return rankTodoState(await currentViewer(), await loadTodoState(), new Date(ctx.now), (period) =>
-    lostSalesSummary(period),
+  return rankTodoState(
+    await currentViewer(),
+    await loadVisibleTodoState(),
+    new Date(ctx.now),
+    (period) => lostSalesSummary(period),
   );
 });

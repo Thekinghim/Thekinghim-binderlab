@@ -283,6 +283,19 @@ flowchart LR
 
   Inbjudningar och rapportutskick har ingen gräns.
 
+- **Okänt id ger HTTP 404.** Next.js bestämmer statuskoden när svaret börjar strömmas, och ett
+  `loading.tsx` ovanför sidan gör att `notFound()` i sidan bara ger 200 med `noindex`. Detaljsidorna
+  (`automater/[automat]`, `butiker/[butik]`, `inkorg/[id]`, `drift/automat/[id]`,
+  `datakallor/importer/[id]`) kontrollerar därför id:t i en egen `layout.tsx` (snabb fråga eller skalets redan
+  laddade stamdata) och har sitt laddningsläge i segmentet under den. Listsidans `page.tsx` och `loading.tsx`
+  ligger i gruppen `(oversikt)`, så att listans laddningsläge inte omsluter detaljsidan, och sidan för okänt
+  id (`not-found.tsx`) ligger ett segment upp, där layoutens `notFound()` fångas. Provat i
+  `e2e/01-inloggning.e2e.test.ts` och `src/components/ui/detail-status.test.ts`.
+- **Nekad sida förklaras.** `requireRoute` skickar den som saknar behörighet till rollens startsida med
+  `?nekad=<rutt>` (`deniedHref` i `src/components/shell/nav.ts`), och skalet visar en notis om vem sidan är för
+  (`DeniedNotice`) och tar bort parametern ur adressen.
+- **Temat** renderas på servern ur cookien `binderlab-theme` (`src/lib/theme.ts`): rätt `data-theme` i första
+  HTML-svaret, inget inline-skript.
 - **Push-endpoints** måste vara en känd push-tjänst (både i servern och i databasen) så att servern inte kan fås att
   anropa interna adresser.
 - **Sentry** får bara id:n och antal; e-post, cookies, Authorization-rubriker och inbjudningstoken tvättas bort (`src/server/observability/sentry-options.ts`, används av `src/server/monitoring/sentry.ts`).

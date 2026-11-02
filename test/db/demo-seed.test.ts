@@ -175,7 +175,7 @@ describe("demo: butiker, avtal och automater", () => {
     );
     expect(r).toEqual([
       { store: "Stationskiosken Arboga", from: "2026-02-01", to: "2026-06-14" },
-      { store: "Seriecentralen", from: "2026-06-15", to: null },
+      { store: "Rutor och Rollspel", from: "2026-06-15", to: null },
     ]);
   });
 

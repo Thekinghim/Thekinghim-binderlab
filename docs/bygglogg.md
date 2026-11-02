@@ -110,3 +110,13 @@ Tas bort när alla faser är klara.
   Öppet: licensen för paketet "buffers", demons telefonnummer/"Seriecentralen" ska bli fiktiva, Vercel-region (EU) i vercel.json.
 - Genomgång B klar (Lager: utgångna titlar inte kritiska; Automater: ur drift räknas rätt; Butiker; Prognos; Order).
   Slutsteg startat (wf_9d9cbef5-cf1): prestanda 100 000 order + öppna punkter → slutverifiering → styrelsedemo-granskning → sista rättningar.
+- Öppna punkter (spåret "öppna punkter" i slutsteget) klara: okänt id ger HTTP 404 i automat, butik, inkorg,
+  drift/automat och import (existenskontroll i detaljsegmentets layout.tsx, listorna i `(oversikt)`); diagram
+  skalas till skärmen före mätningen (ingen horisontell scroll vid 375 px under laddning); ordfogning efter
+  tankstrecket i intervall; avstämningen i procent och hela kronor; utgångna titlar ger inga påfyllningspunkter
+  (Att göra, menyns räknare, Drift och Lager läser samma sortiment); demons telefonnummer är PTS fiktionsnummer
+  och "Seriecentralen" heter "Rutor och Rollspel" (demon omseedad); `"regions": ["arn1"]`; nekad sida förklaras
+  (`?nekad=`); temat renderas ur en cookie (inget inline-skript, inget mörkt blink); licensen för `buffers` utredd
+  (README). Kvar: requireRoute-raden i `src/server/data/core/index.ts` är ändrad (en rad); laddaren
+  `loadTodoStateFor` bör skicka `slotPeriods` till `computeTodos` när prestandaspåret är klart (filtret ligger nu
+  i `src/server/data/todos.ts`); seed.test.ts krockar fortfarande med demo-testerna i en hel körning.

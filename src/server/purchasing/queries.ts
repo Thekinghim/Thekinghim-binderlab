@@ -191,9 +191,11 @@ export async function queryMachineStockEvents(
         and l.kind = 'machine'
         and e.business_date <= ${end}::date
         and (lc.d is null or e.business_date >= lc.d)
-      order by e.business_date, e.occurred_at, e.seq, e.id
     `,
   );
+  // Ingen sortering i databasen: genomspelningen (replayStockDaily) ordnar händelserna
+  // själv per lagerplats och titel med en total ordning (datum, tidpunkt, seq, id), så
+  // svaret beror inte på radernas ordning. Med 100 000 order sparar det en sortering på disk.
   return list.map((r) => ({
     id: r.id,
     locationId: r.location_id,

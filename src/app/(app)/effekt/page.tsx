@@ -7,6 +7,7 @@ import { daysInMonth } from "@/domain";
 import { formatInt } from "@/lib/format";
 
 import { loadEffectPage, type Names } from "../expansion/_lib/data";
+import { withOrderCounts } from "../expansion/_lib/slim";
 import { BASELINE_METRIC_LABEL, monthLabel } from "../expansion/_lib/display";
 import { signedPct } from "@/analytics/expansion";
 import { day } from "@/analytics/todos/text";
@@ -127,7 +128,7 @@ export default async function EffektPage({
             {data.series.map((s) => (
               <SeriesView
                 key={s.baselineId}
-                series={s}
+                series={withOrderCounts(s)}
                 scope={scopeOf(s)}
                 links={evidenceLinks(s.latest?.evidence ?? s.evidence, names)}
               />

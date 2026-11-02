@@ -25,7 +25,7 @@ import {
   createEconomicsContext,
   type EconomicsContext,
 } from "./economics";
-import { allocateLargestRemainderBig } from "./money";
+import { allocateLargestRemainder, allocateLargestRemainderBig } from "./money";
 import { rentByStoreMonth, type StoreMonthRent } from "./rent";
 import type { IsoDate, IsoMonth, OrderLine, Period, ProfitabilityInput, Settings } from "./types";
 
@@ -158,12 +158,36 @@ export function buildLedger(input: ProfitabilityInput): Ledger {
   return ledger;
 }
 
+/** Orderlistor som redan är kontrollerade (antal order när de kontrollerades). */
+const validatedOrders = new WeakMap<readonly OrderLine[], number>();
+
+/**
+ * Kontrollerar varje order (assertOrder) och att inget id finns två gånger, i listans
+ * ordning (första felet kastas). En lista som redan är kontrollerad (samma objekt, lika
+ * många order) kontrolleras inte igen: samma order räknas ofta för flera perioder.
+ */
+function validateOrders(orders: readonly OrderLine[]): void {
+  if (validatedOrders.get(orders) === orders.length) return;
+  const seen = new Set<string>();
+  for (const order of orders) {
+    assertOrder(order);
+    if (seen.has(order.id)) {
+      throw new DomainError(
+        "duplicate_order",
+        `Order ${order.externalId} (${order.id}) finns två gånger.`,
+      );
+    }
+    seen.add(order.id);
+  }
+  validatedOrders.set(orders, orders.length);
+}
+
 function computeLedger(input: ProfitabilityInput): Ledger {
   assertPeriod(input.period);
   const { period } = input;
   const context = createEconomicsContext(input);
 
-  const seen = new Set<string>();
+  validateOrders(input.orders);
   const entries: MutableEntry[] = [];
   let outside = 0;
   let withoutMachine = 0;
@@ -173,14 +197,6 @@ function computeLedger(input: ProfitabilityInput): Ledger {
   const storesWithoutAgreement = new Set<string>();
 
   for (const order of input.orders) {
-    assertOrder(order);
-    if (seen.has(order.id)) {
-      throw new DomainError(
-        "duplicate_order",
-        `Order ${order.externalId} (${order.id}) finns två gånger.`,
-      );
-    }
-    seen.add(order.id);
     const date = order.businessDate;
     if (date < period.start || date > period.end) {
       outside++;
@@ -231,15 +247,24 @@ function computeLedger(input: ProfitabilityInput): Ledger {
     list.sort(compareEntries);
     // Vikt = nettointäkt × den månadshyra som gällde orderns dag. Order på dagar utan
     // hyresavtal (t.ex. före ett avtalsbyte från bara provision till hyra) bär ingen hyra.
-    const rates = list.map((e) => BigInt(rentRateOn(sm, e.order.businessDate)));
-    let weights = list.map((e, i) => BigInt(e.netRevenueOre) * rates[i]!);
-    if (weights.every((w) => w === 0n)) weights = rates; // alla netto 0 → lika per order och hyresdag
-    if (weights.every((w) => w === 0n)) {
+    const rates = list.map((e) => rentRateOn(sm, e.order.businessDate));
+    let weights = list.map((e, i) => e.netRevenueOre * rates[i]!);
+    if (weights.every((w) => w === 0)) weights = rates; // alla netto 0 → lika per order och hyresdag
+    if (weights.every((w) => w === 0)) {
       // Inga order på dagar med hyra: hyran kan inte bäras av någon order.
       unallocatedRent.push({ storeId: sm.storeId, month: sm.month, rentOre: sm.rentOre });
       continue;
     }
-    const shares = allocateLargestRemainderBig(sm.rentOre, weights);
+    // Vikterna som vanliga tal när produkterna är säkra heltal (samma fördelning, se
+    // allocateLargestRemainder); annars som bigint, som förut.
+    const shares = weights.every((w) => Number.isSafeInteger(w))
+      ? allocateLargestRemainder(sm.rentOre, weights)
+      : allocateLargestRemainderBig(
+          sm.rentOre,
+          list.map((e, i) =>
+            weights === rates ? BigInt(rates[i]!) : BigInt(e.netRevenueOre) * BigInt(rates[i]!),
+          ),
+        );
     for (let i = 0; i < list.length; i++) list[i]!.rentOre = shares[i]!;
   }
 

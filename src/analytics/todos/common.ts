@@ -5,9 +5,12 @@
 import { compareDates, type IsoDate, type Period } from "@/domain";
 import type { Evidence, EvidenceFigure, MachineRef, TitleRef } from "./types";
 
-/** Sorterade unika strängar. */
+/**
+ * Sorterade unika strängar. Standardsorteringen jämför UTF-16-kodenheter, precis som
+ * `<` på strängar, men utan ett JS-anrop per jämförelse (underlag kan ha 100 000 order-id).
+ */
 export function uniqueSorted<T extends string>(values: Iterable<T>): T[] {
-  return [...new Set(values)].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  return [...new Set(values)].sort();
 }
 
 /** Bygger ett underlag med sorterade, unika listor. Tomma listor om inget anges. */

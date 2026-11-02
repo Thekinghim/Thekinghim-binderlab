@@ -368,8 +368,15 @@ const ECONOMY_PAGES = [
 ];
 const OPERATOR_PAGES = ["datakallor", "installningar", "installningar/anvandare"];
 
+/**
+ * Listsidor med en detaljsida ligger i gruppen (oversikt), så att detaljsidans
+ * existenskontroll körs före listans laddningsläge (HTTP 404 för okänt id).
+ */
+const GROUPED = new Set(["automater", "butiker", "datakallor", "drift", "inkorg"]);
+
 async function renderPage(route: string, params: Record<string, string> = {}) {
-  const mod = (await import(/* @vite-ignore */ `@/app/(app)/${route}/page`)) as {
+  const file = GROUPED.has(route) ? `${route}/(oversikt)` : route;
+  const mod = (await import(/* @vite-ignore */ `@/app/(app)/${file}/page`)) as {
     default: (props: unknown) => Promise<unknown>;
   };
   return call(() =>
@@ -384,7 +391,8 @@ describe("sidorna", () => {
       await loginAs(req, cast.personas.refiller);
       const outcome = await renderPage(route);
       expect(outcome.kind).toBe("redirect");
-      expect((outcome as { to: string }).to).toBe("/att-gora");
+      // Startsidan med en förklaring (?nekad=<rutt>, DeniedNotice i skalet).
+      expect((outcome as { to: string }).to).toBe(`/att-gora?nekad=${route.split("/")[0]}`);
     },
     60_000,
   );

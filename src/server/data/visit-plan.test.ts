@@ -27,6 +27,12 @@ function plan(args: {
     machineId: string;
     status: "ok" | "offline" | "fault" | "suspected_fault" | "empty";
   }[];
+  slotPeriods?: {
+    machineId: string;
+    titleId: string;
+    validFrom: string;
+    validTo: string | null;
+  }[];
 }) {
   return weeklyVisitPlan({
     orders: args.orders ?? base,
@@ -38,6 +44,7 @@ function plan(args: {
     ],
     warehouseStock: null,
     health: args.health ?? null,
+    slotPeriods: args.slotPeriods ?? null,
     today: TODAY,
     timeZone: TZ,
     now: NOW,
@@ -149,5 +156,27 @@ describe("weeklyVisitPlan (Lager och Drift)", () => {
     // 1 pack/dag: saldot 5 minus antalet dagar från i dag till besöket.
     const days = (Date.parse(day) - Date.parse(TODAY)) / 86_400_000;
     expect(line.projectedAtVisit).toBe(5 - days);
+  });
+
+  it("planerar inte en titel som gått ur sortimentet i automaten (samma regel som Lager och Att göra)", () => {
+    const low = [
+      { machineId: "m1", titleId: "t1", onHand: 1 },
+      { machineId: "m2", titleId: "t1", onHand: 10 },
+    ];
+    expect(dayOf(plan({ stock: low }), "m1")).toBe(TODAY);
+    const retired = plan({
+      stock: low,
+      slotPeriods: [
+        { machineId: "m1", titleId: "t1", validFrom: "2026-02-01", validTo: "2026-10-31" },
+      ],
+    });
+    // Titeln säljs ut i m1: inget besök för den, och inget behov i planen.
+    expect(dayOf(retired, "m1")).toBeNull();
+    // En period som fortfarande gäller ändrar ingenting.
+    const current = plan({
+      stock: low,
+      slotPeriods: [{ machineId: "m1", titleId: "t1", validFrom: "2026-02-01", validTo: null }],
+    });
+    expect(dayOf(current, "m1")).toBe(TODAY);
   });
 });

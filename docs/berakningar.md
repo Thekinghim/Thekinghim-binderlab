@@ -354,6 +354,11 @@ Förlorad intäkt är `@/analytics/lost-sales` för titeln i automaten de senast
 nivån och inte "I risk 7 d", så att samma intäkt aldrig räknas två gånger. Menyns räknare och
 listan har alltid samma punkter.
 
+**Utgångna titlar.** En titel som har gått ur sortimentet i en automat (alla perioder i
+`machine_slots` har slutat och ingen börjar senare, läst via `lager_slot_periods`) fylls inte på
+utan säljs ut. Den ger ingen påfyllningspunkt, räknas inte i menyns räknare och planeras inte i
+besöksplanen. Regeln är en (`@/analytics/todos/assortment`) och gäller Lager, Drift och Att göra.
+
 **Dagar med tiondelar.** Att göra visar "räcker 0,4 d" med en decimal eftersom gränsen är
 2,5 dagar; lagerprognosen (avsnitt 8) visar hela dagar till slutdatum.
 

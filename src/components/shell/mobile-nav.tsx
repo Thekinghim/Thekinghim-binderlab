@@ -14,7 +14,7 @@ import {
   OrgSwitcher,
   SyncStatus,
   syncHref,
-  TodoCounter,
+  TodoCountSlot,
   UserMenu,
   WithCarriedQuery,
   type ShellNavProps,
@@ -76,8 +76,8 @@ export function MobileNav(props: ShellNavProps) {
                     >
                       <span className="flex h-4 items-center gap-1">
                         <Icon name={r.icon} />
-                        {r.counter === "todo" && props.todoCount ? (
-                          <TodoCounter count={props.todoCount} />
+                        {r.counter === "todo" ? (
+                          <TodoCountSlot count={props.todoCount} hideZero />
                         ) : null}
                       </span>
                       <span className={cn("text-xs", active && "font-medium")}>{r.label}</span>

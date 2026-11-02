@@ -15,6 +15,7 @@ import { NewMachineForm, PriceChangeForm } from "./_components/scenario-forms";
 import { loadExpansionPage, type Names } from "./_lib/data";
 import { kr, monthLabel, oreToInput, paybackShort, pct } from "./_lib/display";
 import { evidenceLinks, LEAD_STAGE_LABEL, monthOfDate, OPEN_STAGES } from "./_lib/model";
+import { withOrderCounts } from "./_lib/slim";
 
 export const metadata: Metadata = { title: "Expansion" };
 
@@ -204,7 +205,7 @@ export default async function ExpansionPage({
         />
         <GoalsView
           goals={data.goals.records}
-          progress={data.goals.progress}
+          progress={withOrderCounts(data.goals.progress)}
           links={goalLinks}
           stores={data.names.stores}
           machines={data.names.machines}
@@ -234,7 +235,7 @@ export default async function ExpansionPage({
         />
         <PipelineView
           leads={data.leads}
-          pipeline={data.pipeline}
+          pipeline={withOrderCounts(data.pipeline)}
           links={leadLinks}
           stores={data.names.stores}
           canEdit={data.ctx.canEdit}

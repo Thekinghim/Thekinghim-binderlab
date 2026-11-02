@@ -297,6 +297,44 @@ export function homeHref(role: Role): string {
   return routesForRole(role)[0]?.href ?? "/";
 }
 
+/** Sökparametern som säger vilken sida användaren skickades bort från (requireRoute). */
+export const DENIED_PARAM = "nekad";
+
+/**
+ * Dit requireRoute skickar den som saknar behörighet: rollens startsida med
+ * `?nekad=<rutt>`, så att startsidan kan förklara varför (DeniedNotice i skalet).
+ */
+export function deniedHref(role: Role, id: RouteId): string {
+  return `${homeHref(role)}?${DENIED_PARAM}=${encodeURIComponent(id)}`;
+}
+
+/** "ägare och administratör", "ägare, administratör och läsare". */
+function rolesText(roles: ReadonlyArray<Role>): string {
+  const names = roles.map((r) => roleLabel[r].toLowerCase());
+  return names.length <= 1
+    ? (names[0] ?? "")
+    : `${names.slice(0, -1).join(", ")} och ${names[names.length - 1]}`;
+}
+
+/**
+ * Förklaringen på startsidan efter en nekad sida, eller null för ett okänt eller
+ * tillåtet värde (en manipulerad länk visar ingenting).
+ */
+export function deniedNotice(
+  role: Role,
+  value: string | null | undefined,
+): { title: string; description: string } | null {
+  const route = shellRoutes.find((r) => r.id === value);
+  if (!route || route.roles.includes(role)) return null;
+  const home = routesForRole(role)[0];
+  return {
+    title: `Du har inte tillgång till ${route.label}.`,
+    description:
+      `Sidan är för ${rolesText(route.roles)}. Du är inloggad som ${roleLabel[role].toLowerCase()}` +
+      (home ? ` och kom till ${home.label} i stället.` : "."),
+  };
+}
+
 /** Rutten med ett visst id. */
 export function routeById(id: RouteId): ShellRoute {
   const r = shellRoutes.find((x) => x.id === id);

@@ -82,6 +82,11 @@ export interface ConsoleMessage {
 export interface BrowserContext {
   newPage(): Promise<Page>;
   addInitScript(script: string): Promise<void>;
+  addCookies(cookies: { name: string; value: string; url: string }[]): Promise<void>;
+  /** HTTP-anrop med sammanhangets cookies (inloggningen), utan att rendera sidan. */
+  readonly request: {
+    get(url: string, options?: { maxRedirects?: number }): Promise<{ status(): number }>;
+  };
   close(): Promise<void>;
 }
 
@@ -149,7 +154,11 @@ export async function openPage(
     timezoneId: "Europe/Stockholm",
     ...(mobile ? { isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : {}),
   });
-  // Samma nyckel som src/lib/theme.ts (THEME_STORAGE_KEY).
+  // Temat renderas på servern ur cookien (src/lib/theme.ts, THEME_COOKIE), och samma
+  // nyckel i localStorage (THEME_STORAGE_KEY).
+  await context.addCookies([
+    { name: "binderlab-theme", value: options.theme ?? "dark", url: baseURL },
+  ]);
   await context.addInitScript(
     `try { localStorage.setItem("binderlab-theme", ${JSON.stringify(options.theme ?? "dark")}); } catch {}`,
   );

@@ -23,16 +23,11 @@ import {
 } from "@/server/data/core/loaders";
 import { ALL_ROLES, type DataScope } from "@/server/data/core/types";
 
+import { querySlotPeriods } from "@/server/data/assortment";
 import { loadMachineHealthFor } from "@/server/data/health";
 
 import { buildLagerModel, WINDOW_DAYS } from "./model";
-import {
-  HISTORY_LIMIT,
-  type HistoryEntry,
-  type HistoryKind,
-  type LagerView,
-  type SlotPeriod,
-} from "./types";
+import { HISTORY_LIMIT, type HistoryEntry, type HistoryKind, type LagerView } from "./types";
 
 /** Roller som får registrera påfyllning och inventering (RLS och register_refill). */
 export const REGISTER_ROLES = ["owner", "admin", "refiller"] as const;
@@ -72,32 +67,6 @@ async function queryPerformers(tx: Tx, orgId: string): Promise<Map<string, strin
     map.set(r.user_id, r.display_name?.trim() || null);
   }
   return map;
-}
-
-/**
- * Sortimentets perioder via lager_slot_periods (security definer, alla roller):
- * machine_slots får påfyllaren inte läsa direkt, men Lager behöver veta vilka titlar
- * som gått ur sortimentet. Bara automat, titel och datum.
- */
-async function querySlotPeriods(tx: Tx, orgId: string): Promise<SlotPeriod[]> {
-  const result = await tx.execute(
-    sql`select machine_id::text as machine_id, title_id::text as title_id,
-               valid_from::text as valid_from, valid_to::text as valid_to
-        from public.lager_slot_periods(${orgId}::uuid)`,
-  );
-  return (
-    Array.from(result) as {
-      machine_id: string;
-      title_id: string;
-      valid_from: string;
-      valid_to: string | null;
-    }[]
-  ).map((r) => ({
-    machineId: r.machine_id,
-    titleId: r.title_id,
-    validFrom: r.valid_from as IsoDate,
-    validTo: (r.valid_to ?? null) as IsoDate | null,
-  }));
 }
 
 async function queryHistory(

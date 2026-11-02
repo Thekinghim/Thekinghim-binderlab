@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Suspense,
+  use,
   useEffect,
   useId,
   useRef,
@@ -48,7 +49,7 @@ export type ShellNavProps = {
   role?: Role;
   /** Sökväg som räknas som aktiv. Standard: aktuell sökväg. */
   activeHref?: string;
-  todoCount?: number;
+  todoCount?: TodoCountSource;
   user?: ShellUser;
   organizations?: ShellOrganization[];
   activeOrganizationId?: string;
@@ -68,6 +69,47 @@ export type ShellNavProps = {
 /* ------------------------------------------------------------------ */
 
 /** Räknare för sådant som kräver åtgärd. Signal bara när talet är större än noll. */
+/**
+ * Antalet i Att göra: ett tal, eller ett löfte som layouten skickar utan att vänta på det
+ * (räknaren strömmar in när punkterna är räknade, så att skalet och sidan inte väntar).
+ * `undefined` = räknaren kunde inte räknas.
+ */
+export type TodoCountSource = number | Promise<number | undefined> | undefined;
+
+/** Räknaren för en TodoCountSource. `hideZero`: visa inget när det inte finns något att göra. */
+export function TodoCountSlot({
+  count,
+  hideZero = false,
+  className,
+}: {
+  count: TodoCountSource;
+  hideZero?: boolean;
+  className?: string;
+}) {
+  if (count === undefined || typeof count === "number") {
+    const n = count ?? 0;
+    return hideZero && n <= 0 ? null : <TodoCounter count={n} className={className} />;
+  }
+  return (
+    <Suspense fallback={null}>
+      <StreamedTodoCounter count={count} hideZero={hideZero} className={className} />
+    </Suspense>
+  );
+}
+
+function StreamedTodoCounter({
+  count,
+  hideZero,
+  className,
+}: {
+  count: Promise<number | undefined>;
+  hideZero: boolean;
+  className?: string;
+}) {
+  const n = use(count) ?? 0;
+  return hideZero && n <= 0 ? null : <TodoCounter count={n} className={className} />;
+}
+
 export function TodoCounter({ count, className }: { count: number; className?: string }) {
   if (count <= 0) {
     return (
@@ -104,7 +146,7 @@ export function NavRow({
   number,
   active,
   query,
-  todoCount = 0,
+  todoCount,
   onNavigate,
   dense = false,
   numbered = true,
@@ -113,7 +155,7 @@ export function NavRow({
   number: number;
   active: boolean;
   query: string;
-  todoCount?: number;
+  todoCount?: TodoCountSource;
   onNavigate?: () => void;
   dense?: boolean;
   /** Visa löpnumret. Av i "Mer"-arket, där urvalet ger luckor i numreringen. */
@@ -141,7 +183,7 @@ export function NavRow({
           </span>
         ) : null}
         <span className={cn("flex-1 truncate", active && "font-medium")}>{route.label}</span>
-        {route.counter === "todo" ? <TodoCounter count={todoCount} /> : null}
+        {route.counter === "todo" ? <TodoCountSlot count={todoCount} /> : null}
       </Link>
     </li>
   );
@@ -162,7 +204,7 @@ export function NavList({
   numbering: Map<RouteId, number>;
   activeId: RouteId | null;
   query: string;
-  todoCount?: number;
+  todoCount?: TodoCountSource;
   onNavigate?: () => void;
   dense?: boolean;
   numbered?: boolean;

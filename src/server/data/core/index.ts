@@ -21,7 +21,7 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 
 import type { TodoItem } from "@/analytics/todos";
-import { homeHref, routeById, type RouteId } from "@/components/shell/nav";
+import { deniedHref, routeById, type RouteId } from "@/components/shell/nav";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import type { MemberRole } from "@/db/schema";
 import type { IsoDate, Period } from "@/domain";
@@ -127,7 +127,8 @@ export async function requireContextRole(roles: readonly MemberRole[]): Promise<
  */
 export async function requireRoute(id: RouteId): Promise<AppContext> {
   const ctx = await loadContext();
-  if (!routeById(id).roles.includes(ctx.role)) redirect(homeHref(ctx.role));
+  // Till startsidan med ?nekad=<rutt>, som skalet förklarar (DeniedNotice).
+  if (!routeById(id).roles.includes(ctx.role)) redirect(deniedHref(ctx.role, id));
   return ctx;
 }
 

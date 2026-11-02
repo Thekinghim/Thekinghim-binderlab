@@ -188,8 +188,8 @@ tills det finns 2–3 pilotoperatörer.
   månad. Effekten kan därför inte visas än (`docs/product.md`).
 - **Övrigt:** assistenten använder inte filtren för butik och automat, antalet fack per automat på Marknad är fast 6
   (`SLOTS_PER_MACHINE`), Lönsamhet med bara butiksfilter visar inga fasta kostnader, säkerhetskopian av databasen
-  innehåller inte filerna i Storage, och demons telefonnummer och butiksnamnet "Seriecentralen" bör bytas mot
-  fiktiva (PTS fiktionsnummer) före en extern visning.
+  innehåller inte filerna i Storage. Demons telefonnummer ligger i PTS serier för fiktiva nummer och alla namn är
+  påhittade (`src/seed/demo/catalog.ts`).
 - **Utvecklingsdatabasen** `binderlab_dev` på byggmaskinen innehåller testposter från bygget (lagerhändelser, ett
   rapportutkast för september som inte får godkännas, utgångslägen på Effekt med mera). Siffrorna och skärmbilderna i
   dokumentationen är tagna i en nyskapad databas. Kör `npm run db:reset -- dev && npm run db:seed && npm run db:seed-demo`
@@ -210,8 +210,8 @@ tills det finns 2–3 pilotoperatörer.
    operatör.
 6. Bestäm plan, automatgräns (`organizations.machine_limit`) och hur en ny operatör kommer in (i dag: inbjudan i
    Supabase och Kom igång). Plattformsfrågorna (fakturering, administration av flera operatörer) är fas 12.
-7. Teckna personuppgiftsbiträdesavtal med Supabase, Vercel, Resend, Sentry och Anthropic, välj EU-region för Vercels
-   funktioner, bestäm lagringstider och bygg gallringen (i dag gallras inget efter 7 år eller 24 månader). Se
+7. Teckna personuppgiftsbiträdesavtal med Supabase, Vercel, Resend, Sentry och Anthropic (Vercels funktioner körs
+   redan i Stockholm, `arn1` i `vercel.json`), bestäm lagringstider och bygg gallringen (i dag gallras inget efter 7 år eller 24 månader). Se
    [docs/operations.md](docs/operations.md#personuppgifter-och-biträden).
 
 ## Licens och ägande
@@ -231,9 +231,22 @@ på:
 | `web-push` (3.6.7)                                    | MPL-2.0                     | Web Push. Ändringar i paketets egna filer ska delas; resten av koden påverkas inte.                                   |
 | `sentry` (0.45.0, Sentry CLI)                         | FSL-1.1-Apache-2.0          | Via `@sentry/nextjs` vid bygget (källkartor). Fri att använda men inte för en konkurrerande tjänst.                   |
 | `jszip` (3.10.2)                                      | MIT eller GPL-3.0-or-later  | Via `exceljs`. Välj MIT.                                                                                              |
-| `buffers` (0.1.1)                                     | anges inte i paketet        | Via `exceljs` → `unzipper` → `binary`. Licensen behöver klargöras eller paketet ersättas.                             |
+| `buffers` (0.1.1)                                     | anges inte i paketet        | Se nedan. Kan tas bort med en `overrides` i `package.json`.                                                           |
 | `caniuse-lite`                                        | CC-BY-4.0                   | Webbläsardata vid bygget.                                                                                             |
 | `geist`                                               | SIL Open Font License       | Typsnitten; får bäddas in men inte säljas separat.                                                                    |
+
+**`buffers`.** `npm ls buffers` ger `exceljs@4.4.0 → unzipper@0.10.14 → binary@0.3.0 → buffers@0.1.1`.
+Paketet (James Halliday, 2011) saknar både `license` i `package.json` och licenstext, så det är formellt "alla
+rättigheter förbehållna". Binderlab använder aldrig koden: `unzipper` behövs bara av exceljs strömmande läsare
+(`stream.xlsx.WorkbookReader`), och appen skriver bara Excel (`src/reports/excel.ts`, `xlsx.writeBuffer`)
+och läser i testerna med `xlsx.load`, som går via `jszip`. Filen följer ändå med i driftsättningen, eftersom
+`exceljs` laddar läsaren när paketet importeras. Två sätt att bli av med det:
+
+1. **Rekommenderat:** `unzipper` 0.12 har inte `binary` och `buffers` som beroenden. Lägg till
+   `"overrides": { "exceljs": { "unzipper": "^0.12.3" } }` i `package.json`, kör `npm install` och sedan
+   `npm test` (Excel-testerna i `src/reports`) och `npm run build`. Det är inte gjort, eftersom beroendena inte
+   uppdaterades under överlämningen.
+2. Byt Excel-biblioteket mot ett utan `unzipper` (till exempel att skriva XLSX med `jszip` direkt). Större ändring.
 
 Sammanställningen är räknad med ett skript över `package-lock.json` och paketens `package.json`, inte granskad av
 jurist. Ta om den efter varje uppdatering av beroendena, till exempel med `npx license-checker-rseidelsohn --production

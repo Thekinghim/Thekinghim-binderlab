@@ -56,7 +56,16 @@ function monthLength(year: number, month: number): number {
 }
 
 /** Delar upp ett affärsdatum. Kastar `DomainError` om datumet inte finns. */
+/**
+ * Tolkade datum. Samma sträng ger alltid samma delar, och beräkningarna tolkar samma
+ * datum många gånger (varje order kontrolleras i varje vy). Töms när den blir stor.
+ */
+const PARSED_DATES = new Map<string, DateParts>();
+const PARSED_DATES_MAX = 20_000;
+
 export function parseIsoDate(date: string): DateParts {
+  const cached = typeof date === "string" ? PARSED_DATES.get(date) : undefined;
+  if (cached) return cached;
   const m = typeof date === "string" ? DATE_PATTERN.exec(date) : null;
   if (!m) {
     throw new DomainError(
@@ -70,7 +79,10 @@ export function parseIsoDate(date: string): DateParts {
   if (year < 1 || month < 1 || month > 12 || day < 1 || day > monthLength(year, month)) {
     throw new DomainError("invalid_date", `Datumet ${date} finns inte i kalendern.`);
   }
-  return { year, month, day };
+  const parts: DateParts = Object.freeze({ year, month, day });
+  if (PARSED_DATES.size >= PARSED_DATES_MAX) PARSED_DATES.clear();
+  PARSED_DATES.set(date, parts);
+  return parts;
 }
 
 /** Sant om värdet är ett giltigt affärsdatum 'ÅÅÅÅ-MM-DD'. */
@@ -135,8 +147,14 @@ export function toDayNumber(date: IsoDate): number {
   return daysFromCivil(p.year, p.month, p.day);
 }
 
+/** Formaterade dagnummer (som PARSED_DATES, åt andra hållet). */
+const FORMATTED_DAYS = new Map<number, IsoDate>();
+
 /** Affärsdatum för ett dagnummer. 0 → '1970-01-01'. */
+
 export function fromDayNumber(dayNumber: number): IsoDate {
+  const cached = FORMATTED_DAYS.get(dayNumber);
+  if (cached !== undefined) return cached;
   if (
     !Number.isSafeInteger(dayNumber) ||
     dayNumber < MIN_DAY_NUMBER ||
@@ -145,7 +163,10 @@ export function fromDayNumber(dayNumber: number): IsoDate {
     throw new DomainError("invalid_date", `Dagnumret ${dayNumber} ligger utanför år 1–9999.`);
   }
   const p = civilFromDays(dayNumber);
-  return `${pad4(p.year)}-${pad2(p.month)}-${pad2(p.day)}`;
+  const date = `${pad4(p.year)}-${pad2(p.month)}-${pad2(p.day)}`;
+  if (FORMATTED_DAYS.size >= PARSED_DATES_MAX) FORMATTED_DAYS.clear();
+  FORMATTED_DAYS.set(dayNumber, date);
+  return date;
 }
 
 /** Lägger till (eller drar ifrån, vid negativt tal) hela kalenderdagar. addDays('2026-02-28', 1) → '2026-03-01'. */

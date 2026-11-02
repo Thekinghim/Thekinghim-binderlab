@@ -19,6 +19,7 @@ import { refillTodos } from "@/analytics/todos/refill";
 import { TODO_DEFAULTS, type AnalyticsOrder, type StockLevelRef } from "@/analytics/todos";
 import type { MachineHealth } from "@/analytics/health";
 import { planVisits, type VisitPlan } from "@/analytics/visits";
+import { retiredPairs } from "@/analytics/todos/assortment";
 import { planNow, weeklyVisitPlan } from "@/server/data/visit-plan";
 import {
   addDays,
@@ -148,21 +149,8 @@ export function warehouseStatus(
   return "ok";
 }
 
-/**
- * Par (automat, titel) som har gått ur sortimentet: paret har perioder i sortimentet,
- * ingen av dem gäller i dag och ingen börjar senare. Ett par utan perioder räknas aldrig
- * som utgånget (sortimentet är inte registrerat).
- */
-export function retiredPairs(periods: readonly SlotPeriod[], today: IsoDate): Set<string> {
-  const current = new Set<string>();
-  const seen = new Set<string>();
-  for (const p of periods) {
-    const k = pairKey(p.machineId, p.titleId);
-    seen.add(k);
-    if (p.validTo === null || p.validTo >= today) current.add(k);
-  }
-  return new Set([...seen].filter((k) => !current.has(k)));
-}
+/** Par (automat, titel) som har gått ur sortimentet; samma regel som Drift och Att göra. */
+export { retiredPairs };
 
 /** Planens tidpunkt (i går mitt på dagen); flyttad till @/server/data/visit-plan. */
 export { planNow };
@@ -255,6 +243,7 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
     stock: machineStock,
     warehouseStock: hasWarehouse ? warehouseStock : null,
     health: input.health ?? null,
+    slotPeriods: input.slotPeriods ?? null,
     today,
     timeZone,
     now,

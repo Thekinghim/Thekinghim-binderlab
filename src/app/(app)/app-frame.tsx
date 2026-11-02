@@ -4,10 +4,16 @@ import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useCallback, useState, useTransition, type ReactNode } from "react";
 import { AppShell } from "@/components/shell/app-shell";
 import { CommandMenu } from "@/components/shell/command-menu";
+import { DeniedNotice } from "@/components/shell/denied-notice";
 import { clearAllRecent } from "@/components/shell/command-recent";
 import type { Role } from "@/components/shell/nav";
 import type { ShellMachine, ShellStore } from "@/components/shell/period-bar";
-import type { ShellOrganization, ShellUser, SyncState } from "@/components/shell/side-nav";
+import type {
+  ShellOrganization,
+  ShellUser,
+  SyncState,
+  TodoCountSource,
+} from "@/components/shell/side-nav";
 import { useCommandPaletteHotkey } from "@/components/ui/command-palette";
 import { useToast } from "@/components/ui/toast";
 import { logout, switchOrganization } from "@/server/actions/auth";
@@ -40,7 +46,7 @@ export function AppFrame({
   user: ShellUser;
   organizations: ShellOrganization[];
   activeOrganizationId?: string;
-  todoCount?: number;
+  todoCount?: TodoCountSource;
   syncedAt?: string;
   syncState?: SyncState;
   stores: ShellStore[];
@@ -102,6 +108,9 @@ export function AppFrame({
       >
         {children}
       </AppShell>
+      <Suspense fallback={null}>
+        <DeniedNotice role={role} />
+      </Suspense>
       <Suspense fallback={null}>
         <CommandMenu
           open={paletteOpen}

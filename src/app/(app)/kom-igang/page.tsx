@@ -88,7 +88,7 @@ export default async function KomIgangPage() {
           index={1}
           eyebrow={`Steg · ${formatInt(status.steps.length)} st`}
           title="Det panelen behöver."
-          aside={`${formatInt(stepsDone)} av ${formatInt(status.steps.length)} klara inklusive rekommenderade, räknat ur datan.`}
+          aside={`${formatInt(stepsDone)} av ${formatInt(status.steps.length)} klara, rekommenderade inräknade.`}
           description={
             ctx.canEdit
               ? undefined

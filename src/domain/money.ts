@@ -184,13 +184,60 @@ export function checkSafe(value: number, what: string): number {
  */
 export function allocateLargestRemainder(totalOre: number, weights: readonly number[]): number[] {
   assertSafeInteger(totalOre, "Beloppet att fördela");
+  for (let i = 0; i < weights.length; i++) assertNonNegativeInteger(weights[i], "Vikten");
+  const fast = allocateSafe(totalOre, weights);
+  if (fast) return fast;
   const w: bigint[] = new Array<bigint>(weights.length);
-  for (let i = 0; i < weights.length; i++) {
-    const v = weights[i];
-    assertNonNegativeInteger(v, "Vikten");
-    w[i] = BigInt(v);
-  }
+  for (let i = 0; i < weights.length; i++) w[i] = BigInt(weights[i]!);
   return allocateLargestRemainderBig(totalOre, w);
+}
+
+/**
+ * Samma fördelning som `allocateLargestRemainderBig`, med vanliga tal, när alla
+ * mellanresultat (total × vikt och summan av vikterna) är säkra heltal: då är `%` och
+ * divisionen av (produkt − rest) exakta. Annars `null` (anroparen räknar med bigint).
+ * Vikterna ska redan vara kontrollerade (heltal ≥ 0). Liggaren fördelar hyran med den
+ * här vägen; med 100 000 order var bigint en stor del av tiden.
+ */
+function allocateSafe(totalOre: number, weights: readonly number[]): number[] | null {
+  const n = weights.length;
+  if (n === 0) return null;
+  let sum = 0;
+  for (let i = 0; i < n; i++) {
+    sum += weights[i]!;
+    if (!Number.isSafeInteger(sum)) return null;
+  }
+  const w = sum === 0 ? new Array<number>(n).fill(1) : weights;
+  if (sum === 0) sum = n;
+  const negative = totalOre < 0;
+  const total = negative ? -totalOre : totalOre;
+  if (total !== 0 && sum > Math.floor(Number.MAX_SAFE_INTEGER / total)) return null;
+  const base = new Array<number>(n);
+  const rest = new Array<number>(n);
+  let allocated = 0;
+  for (let i = 0; i < n; i++) {
+    const p = total * w[i]!;
+    const r = p % sum;
+    base[i] = (p - r) / sum;
+    rest[i] = r;
+    allocated += base[i]!;
+  }
+  let leftover = total - allocated; // 0 ≤ leftover < n
+  if (leftover > 0) {
+    const order = Array.from({ length: n }, (_, i) => i);
+    order.sort((a, b) => {
+      const ra = rest[a]!;
+      const rb = rest[b]!;
+      if (ra !== rb) return ra > rb ? -1 : 1;
+      return a - b;
+    });
+    for (let k = 0; k < n && leftover > 0; k++, leftover--) {
+      const i = order[k]!;
+      base[i] = base[i]! + 1;
+    }
+  }
+  if (negative) for (let i = 0; i < n; i++) base[i] = base[i] === 0 ? 0 : -base[i]!;
+  return base;
 }
 
 /**
