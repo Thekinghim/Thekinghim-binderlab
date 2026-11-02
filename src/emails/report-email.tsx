@@ -198,7 +198,7 @@ function Preheader({ text }: { text: string }) {
 const th: CSSProperties = {
   ...labelStyle,
   fontWeight: 400,
-  padding: "0 0 8px 10px",
+  padding: "0 0 8px 8px",
   borderBottom: LINE_STRONG,
   whiteSpace: "nowrap",
 };
@@ -206,10 +206,10 @@ const th: CSSProperties = {
 const numCell: CSSProperties = {
   ...tnum,
   fontFamily: F.sans,
-  fontSize: "14px",
+  fontSize: "13px",
   lineHeight: "20px",
   color: C.fg,
-  padding: "12px 0 12px 10px",
+  padding: "12px 0 12px 8px",
   borderBottom: LINE,
   whiteSpace: "nowrap",
 };
@@ -235,7 +235,7 @@ function KpiGrid({ kpis, compare }: { kpis: EmailKpi[]; compare: string }) {
                 colSpan={pair.length === 1 ? 2 : undefined}
                 style={{
                   width: pair.length === 1 ? "100%" : "50%",
-                  padding: ci === 0 ? "18px 16px 20px 0" : "18px 0 20px 20px",
+                  padding: ci === 0 ? "18px 16px 20px 0" : "18px 0 20px 16px",
                   borderLeft: ci === 1 ? LINE : undefined,
                   borderBottom: LINE,
                 }}
@@ -523,9 +523,6 @@ function LedgerBlock({ d }: { d: LedgerDetails }) {
           <th scope="col" align="left" style={th}>
             Benämning
           </th>
-          <th scope="col" align="left" style={th}>
-            Ver.
-          </th>
           <th scope="col" align="right" style={th}>
             Belopp
           </th>
@@ -546,14 +543,18 @@ function LedgerBlock({ d }: { d: LedgerDetails }) {
             >
               {e.account}
             </td>
-            <td valign="top" style={{ ...numCell, whiteSpace: "normal", color: C.fg }}>
-              {e.text}
-            </td>
-            <td
-              valign="top"
-              style={{ ...numCell, fontFamily: F.mono, fontSize: "12px", color: C.subtle }}
-            >
-              {e.verification}
+            <td valign="top" style={{ ...numCell, whiteSpace: "normal" }}>
+              <Text color={C.fg} size={14} style={{ lineHeight: "20px" }}>
+                {e.text}
+              </Text>
+              <Text
+                mono
+                size={11}
+                color={C.subtle}
+                style={{ marginTop: "2px", lineHeight: "16px" }}
+              >
+                Ver. {e.verification}
+              </Text>
             </td>
             <td align="right" valign="top" style={numCell}>
               {formatKronor(e.amount)}
