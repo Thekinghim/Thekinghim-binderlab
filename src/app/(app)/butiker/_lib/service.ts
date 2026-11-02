@@ -23,12 +23,14 @@ import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import { ECONOMY_ROLES, OPERATOR_ROLES } from "@/server/data/core/types";
 import { dbErrorMessage, pgErrorOf } from "@/server/errors";
 
-import { dayText, type AgreementRecord } from "./model";
-import type { RecipientView, StoreDetail } from "./types";
+import { dayText, monthName, type AgreementRecord } from "./model";
+import type { AgreementResult, RecipientView, StoreDetail } from "./types";
 import {
+  agreementChangeImpact,
   archiveStoreSchema,
   checkAgreementEnd,
   firstIssue,
+  newAgreementImpact,
   newAgreementSchema,
   planNewAgreement,
   recipientIdSchema,
@@ -38,6 +40,7 @@ import {
   updateRecipientSchema,
   updateStoreSchema,
   type AgreementSpan,
+  type DayRange,
 } from "./validation";
 
 export type { Viewer };
@@ -114,38 +117,62 @@ export async function loadAgreementsFor(viewer: Viewer): Promise<AgreementRecord
   });
 }
 
+async function recipientRows(
+  tx: Tx,
+  orgId: string,
+  storeId: string | null,
+): Promise<Array<RecipientView & { storeId: string }>> {
+  const rows = await query<{
+    id: string;
+    store_id: string;
+    name: string;
+    email: string;
+    active: boolean;
+    last_sent: unknown;
+  }>(
+    tx,
+    sql`select r.id, r.store_id, r.name, r.email::text as email, r.active,
+               (select max(coalesce(d.sent_at, d.created_at))
+                  from public.report_deliveries d
+                 where d.organization_id = r.organization_id and d.recipient_id = r.id
+                   and d.status in ('sent', 'delivered')) as last_sent
+        from public.report_recipients r
+        where r.organization_id = ${orgId}::uuid and r.kind = 'store' and r.store_id is not null
+          and (${storeId}::uuid is null or r.store_id = ${storeId}::uuid)
+        order by r.active desc, r.name`,
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    storeId: r.store_id,
+    name: r.name,
+    email: r.email,
+    active: Boolean(r.active),
+    lastSentAt: iso(r.last_sent),
+  }));
+}
+
 /** Butikens rapportmottagare (kind = store) med senaste lyckade utskick. */
 export async function loadRecipientsFor(viewer: Viewer, storeId: string): Promise<RecipientView[]> {
   const orgId = viewer.organization.id;
   await requireRoleFor(viewer.user, orgId, ECONOMY_ROLES);
   if (!isUuid(storeId)) return [];
-  return withUserDbFor(viewer.user, async (tx) => {
-    const rows = await query<{
-      id: string;
-      name: string;
-      email: string;
-      active: boolean;
-      last_sent: unknown;
-    }>(
-      tx,
-      sql`select r.id, r.name, r.email::text as email, r.active,
-                 (select max(coalesce(d.sent_at, d.created_at))
-                    from public.report_deliveries d
-                   where d.organization_id = r.organization_id and d.recipient_id = r.id
-                     and d.status in ('sent', 'delivered')) as last_sent
-          from public.report_recipients r
-          where r.organization_id = ${orgId}::uuid and r.store_id = ${storeId}::uuid
-            and r.kind = 'store'
-          order by r.active desc, r.name`,
-    );
-    return rows.map((r) => ({
-      id: r.id,
-      name: r.name,
-      email: r.email,
-      active: Boolean(r.active),
-      lastSentAt: iso(r.last_sent),
-    }));
+  const rows = await withUserDbFor(viewer.user, (tx) => recipientRows(tx, orgId, storeId));
+  return rows.map(({ storeId: _s, ...r }) => {
+    void _s;
+    return r;
   });
+}
+
+/** Alla butikers rapportmottagare, per butik (för listans Att göra-räkning). */
+export async function loadAllRecipientsFor(
+  viewer: Viewer,
+): Promise<Map<string, RecipientView[]>> {
+  const orgId = viewer.organization.id;
+  await requireRoleFor(viewer.user, orgId, ECONOMY_ROLES);
+  const rows = await withUserDbFor(viewer.user, (tx) => recipientRows(tx, orgId, null));
+  const out = new Map<string, RecipientView[]>();
+  for (const { storeId, ...r } of rows) out.set(storeId, [...(out.get(storeId) ?? []), r]);
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -172,16 +199,76 @@ function fail(error: unknown, context: string): { ok: false; error: string } {
   if (pg?.code === "23514" && /terms_check/.test(pg.message)) {
     return { ok: false, error: "Ange provision, hyra eller båda." };
   }
+  if (pg?.code === "23505" && /report_recipients_store_email/.test(pg.message)) {
+    return { ok: false, error: "Adressen tar redan emot butikens rapport." };
+  }
   if (!pg || !/^BL0\d\d$/.test(pg.code)) console.error(`[butiker] ${context}`, error);
   return { ok: false, error: dbErrorMessage(error) };
 }
 
 async function storeExists(tx: Tx, orgId: string, storeId: string): Promise<boolean> {
-  const rows = await tx
-    .select({ id: s.stores.id })
+  return (await storeState(tx, orgId, storeId)) !== null;
+}
+
+/** Butikens läge, eller null om den inte finns (i organisationen, under RLS). */
+async function storeState(
+  tx: Tx,
+  orgId: string,
+  storeId: string,
+): Promise<{ archived: boolean } | null> {
+  const [row] = await tx
+    .select({ archivedAt: s.stores.archivedAt })
     .from(s.stores)
     .where(and(eq(s.stores.organizationId, orgId), eq(s.stores.id, storeId)));
-  return rows.length > 0;
+  return row ? { archived: row.archivedAt !== null } : null;
+}
+
+/** Felet för en ändring av en butik som inte finns eller är arkiverad, eller null. */
+async function storeProblem(tx: Tx, orgId: string, storeId: string): Promise<string | null> {
+  const state = await storeState(tx, orgId, storeId);
+  if (!state) return "Butiken finns inte.";
+  if (state.archived) return "Butiken är arkiverad. Återställ den först.";
+  return null;
+}
+
+/**
+ * Meddelandet när en avtalsändring räknar om ersättning för dagar som passerat: vilka
+ * dagar, och vilka butiksrapporter för de dagarna som redan skickats och till vem.
+ */
+async function historyMessage(
+  tx: Tx,
+  orgId: string,
+  storeId: string,
+  range: DayRange,
+  ref: IsoDate,
+): Promise<string> {
+  const sent = await query<{ period_start: string; names: string | null }>(
+    tx,
+    sql`select r.period_start::text as period_start,
+               string_agg(distinct coalesce(rr.name, d.email::text), ', ') as names
+        from public.reports r
+        join public.report_deliveries d
+          on d.organization_id = r.organization_id and d.report_id = r.id
+        left join public.report_recipients rr
+          on rr.organization_id = d.organization_id and rr.id = d.recipient_id
+        where r.organization_id = ${orgId}::uuid and r.store_id = ${storeId}::uuid
+          and r.kind = 'store_statement' and d.status in ('sent', 'delivered')
+          and r.period_start <= ${range.end}::date and r.period_end >= ${range.start}::date
+        group by r.period_start
+        order by r.period_start`,
+  );
+  const days =
+    range.start === range.end
+      ? dayText(range.start, ref)
+      : `${dayText(range.start, ref)}–${dayText(range.end, ref)}`;
+  const parts = [`Ändringen räknar om butikens ersättning bakåt i tiden, för ${days}`];
+  for (const r of sent) {
+    parts.push(
+      `Butiksrapporten för ${monthName(r.period_start)} är redan skickad${r.names ? ` till ${r.names}` : ""} och stämmer inte längre`,
+    );
+  }
+  parts.push("Bekräfta och spara igen om ändringen ska gälla bakåt");
+  return parts.map((p) => (p.endsWith(".") ? p : `${p}.`)).join(" ");
 }
 
 /** Lägger till en butik. */
@@ -324,7 +411,7 @@ export async function createAgreementFor(
   viewer: Viewer,
   raw: unknown,
   today?: IsoDate,
-): Promise<ActionResult<{ id: string; closedId: string | null }>> {
+): Promise<AgreementResult<{ id: string; closedId: string | null }>> {
   const denied = await guard(viewer);
   if (denied) return denied;
   const parsed = newAgreementSchema.safeParse(raw);
@@ -334,14 +421,21 @@ export async function createAgreementFor(
   try {
     return await withUserDbFor(
       viewer.user,
-      async (tx): Promise<ActionResult<{ id: string; closedId: string | null }>> => {
-        if (!(await storeExists(tx, orgId, v.storeId))) {
-          return { ok: false, error: "Butiken finns inte." };
-        }
+      async (tx): Promise<AgreementResult<{ id: string; closedId: string | null }>> => {
+        const problem = await storeProblem(tx, orgId, v.storeId);
+        if (problem) return { ok: false, error: problem };
         const ref = today ?? businessToday(new Date(), viewer.organization.timezone);
         const existing = await lockStoreAgreements(tx, orgId, v.storeId);
         const plan = planNewAgreement(existing, v.validFrom, v.validTo, (d) => dayText(d, ref));
         if (!plan.ok) return { ok: false, error: plan.message };
+        const impact = newAgreementImpact(v.validFrom, v.validTo, ref);
+        if (impact && !v.confirmHistory) {
+          return {
+            ok: false,
+            needsConfirm: true,
+            error: await historyMessage(tx, orgId, v.storeId, impact, ref),
+          };
+        }
         if (plan.close) {
           await tx
             .update(s.storeAgreements)
@@ -381,7 +475,7 @@ export async function updateAgreementFor(
   viewer: Viewer,
   raw: unknown,
   today?: IsoDate,
-): Promise<ActionResult<{ storeId: string }>> {
+): Promise<AgreementResult<{ storeId: string }>> {
   const denied = await guard(viewer);
   if (denied) return denied;
   const parsed = updateAgreementSchema.safeParse(raw);
@@ -391,9 +485,15 @@ export async function updateAgreementFor(
   try {
     return await withUserDbFor(
       viewer.user,
-      async (tx): Promise<ActionResult<{ storeId: string }>> => {
+      async (tx): Promise<AgreementResult<{ storeId: string }>> => {
         const [a] = await tx
-          .select({ storeId: s.storeAgreements.storeId })
+          .select({
+            storeId: s.storeAgreements.storeId,
+            validFrom: s.storeAgreements.validFrom,
+            validTo: s.storeAgreements.validTo,
+            commissionBp: s.storeAgreements.commissionBp,
+            monthlyRentOre: s.storeAgreements.monthlyRentOre,
+          })
           .from(s.storeAgreements)
           .where(
             and(
@@ -402,16 +502,37 @@ export async function updateAgreementFor(
             ),
           );
         if (!a) return { ok: false, error: "Avtalet finns inte." };
+        const storeIssue = await storeProblem(tx, orgId, a.storeId);
+        if (storeIssue) return { ok: false, error: storeIssue };
         const ref = today ?? businessToday(new Date(), viewer.organization.timezone);
         const existing = await lockStoreAgreements(tx, orgId, a.storeId);
-        const problem = checkAgreementEnd(existing, v.agreementId, v.validTo, (d) =>
+        // Utelämnad sista dag = oförändrad.
+        const validTo = v.validTo === undefined ? isoDateOrNull(a.validTo) : v.validTo;
+        const problem = checkAgreementEnd(existing, v.agreementId, validTo, (d) =>
           dayText(d, ref),
         );
         if (problem) return { ok: false, error: problem };
+        const impact = agreementChangeImpact(
+          {
+            validFrom: isoDateOrNull(a.validFrom) ?? "0001-01-01",
+            validTo: isoDateOrNull(a.validTo),
+            commissionBp: a.commissionBp ?? null,
+            monthlyRentOre: a.monthlyRentOre === null ? null : Number(a.monthlyRentOre),
+          },
+          { validTo, commissionBp: v.commissionBp, monthlyRentOre: v.monthlyRentOre },
+          ref,
+        );
+        if (impact && !v.confirmHistory) {
+          return {
+            ok: false,
+            needsConfirm: true,
+            error: await historyMessage(tx, orgId, a.storeId, impact, ref),
+          };
+        }
         await tx
           .update(s.storeAgreements)
           .set({
-            validTo: v.validTo,
+            validTo,
             commissionBp: v.commissionBp,
             monthlyRentOre: v.monthlyRentOre,
             note: v.note,
@@ -443,9 +564,8 @@ export async function createStoreRecipientFor(
   const orgId = viewer.organization.id;
   try {
     return await withUserDbFor(viewer.user, async (tx): Promise<ActionResult<{ id: string }>> => {
-      if (!(await storeExists(tx, orgId, v.storeId))) {
-        return { ok: false, error: "Butiken finns inte." };
-      }
+      const problem = await storeProblem(tx, orgId, v.storeId);
+      if (problem) return { ok: false, error: problem };
       const dup = await query<{ id: string }>(
         tx,
         sql`select id from public.report_recipients
@@ -482,7 +602,22 @@ export async function updateStoreRecipientFor(viewer: Viewer, raw: unknown): Pro
   const v = parsed.data;
   const orgId = viewer.organization.id;
   try {
-    const n = await withUserDbFor(viewer.user, async (tx) => {
+    return await withUserDbFor(viewer.user, async (tx): Promise<ActionResult> => {
+      // Samma adress två gånger för samma butik ger dubbla utskick. En ny adress får inte
+      // finnas hos en annan mottagare; att pausa en befintlig dubblett går alltid.
+      const dup = await query<{ id: string; active: boolean; same: boolean }>(
+        tx,
+        sql`select o.id, o.active, lower(r.email::text) = lower(${v.email}) as same
+            from public.report_recipients r
+            join public.report_recipients o
+              on o.organization_id = r.organization_id and o.store_id = r.store_id
+             and o.kind = 'store' and o.id <> r.id and lower(o.email::text) = lower(${v.email})
+            where r.organization_id = ${orgId}::uuid and r.id = ${v.recipientId}::uuid
+              and r.kind = 'store'`,
+      );
+      if (dup.some((d) => !d.same || (v.active && d.active))) {
+        return { ok: false, error: `${v.email} tar redan emot butikens rapport.` };
+      }
       const rows = await tx
         .update(s.reportRecipients)
         .set({ name: v.name, email: v.email, active: v.active })
@@ -494,10 +629,9 @@ export async function updateStoreRecipientFor(viewer: Viewer, raw: unknown): Pro
           ),
         )
         .returning({ id: s.reportRecipients.id });
-      return rows.length;
+      if (rows.length === 0) return { ok: false, error: "Mottagaren finns inte." };
+      return { ok: true, data: undefined };
     });
-    if (n === 0) return { ok: false, error: "Mottagaren finns inte." };
-    return { ok: true, data: undefined };
   } catch (error) {
     return fail(error, "updateRecipient");
   }

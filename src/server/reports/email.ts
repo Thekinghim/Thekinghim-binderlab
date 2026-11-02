@@ -5,7 +5,12 @@
  *
  * Mallen har fält som Binderlab ännu inte har underlag för (andel i drift, nästa besök,
  * kassaflödets in- och utgående kassa). De lämnas som saknade värden (NaN / ogiltigt
- * datum) och visas då som "–" enligt designsystemet, aldrig som påhittade siffror.
+ * datum), aldrig som påhittade siffror, och raderna tas sedan bort ur det renderade
+ * mejlet (./email-cleanup).
+ *
+ * Ämnesraden är kort ("Butiksrapport oktober 2026 · Spelbutiken"); slutsatsen står överst
+ * i mejlet. Avregistrering sker med ett svar till avsändaren (mailto), eftersom
+ * mottagarna inte har konto i appen.
  */
 
 import type {
@@ -15,10 +20,11 @@ import type {
   ReportEmailProps,
   Sender,
 } from "@/emails/report-content";
-import { formatInt, formatKronor, MINUS } from "@/lib/format";
+import { formatInt, formatKronor, formatMonth, MINUS } from "@/lib/format";
 import { sie4Verifications } from "@/reports";
 import type { Period as DatePeriod } from "@/lib/period";
 
+import { TYPE_LABEL } from "./kinds";
 import type {
   AccountantSnapshot,
   PartnerSnapshot,
@@ -60,8 +66,30 @@ const kr = (ore: number) => ore / 100;
 const share = (bp: number | null) => (bp === null ? MISSING_NUMBER : bp / 10_000);
 const change = (bp: number | null) => (bp === null ? undefined : { value: bp / 10_000 });
 
+/** Kort ämnesrad: "Butiksrapport oktober 2026 · Spelbutiken". */
+export function reportSubject(snapshot: ReportSnapshot): string {
+  const month = formatMonth(localDate(snapshot.period.start), { year: "always" });
+  const who = snapshot.type === "butik" ? snapshot.store.name : snapshot.organization.name;
+  return `${TYPE_LABEL[snapshot.type]} ${month} · ${who}`;
+}
+
+/**
+ * Avregistrering utan inloggning: ett förifyllt svar till avsändaren. Mottagarna saknar
+ * konto i appen, så en länk dit skulle inte fungera.
+ */
+export function unsubscribeMailto(snapshot: ReportSnapshot, email: string | undefined): string | undefined {
+  const to = email?.trim();
+  if (!to) return undefined;
+  const subject = `Avregistrera: ${TYPE_LABEL[snapshot.type].toLocaleLowerCase("sv-SE")}`;
+  const body = "Jag vill inte längre få den här rapporten via e-post.";
+  return `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
 function base(snapshot: ReportSnapshot, ctx: EmailContext) {
+  const unsubscribeUrl = unsubscribeMailto(snapshot, ctx.sender?.email);
   return {
+    subject: reportSubject(snapshot),
+    ...(unsubscribeUrl ? { unsubscribeUrl } : {}),
     recipientName: ctx.recipientName,
     period: datePeriod(snapshot),
     summary: snapshot.report.conclusion.text,

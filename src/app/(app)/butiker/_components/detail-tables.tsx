@@ -219,33 +219,29 @@ function recipientColumns(timeZone: string, now: Date, canEdit: boolean): Column
       ),
     },
     {
+      // Status och senaste rapport i samma kolumn, så att tabellen ryms bredvid
+      // kontaktuppgifterna med åtgärderna synliga.
       key: "status",
       header: "Status",
       sortValue: (r) => (r.active ? 0 : 1),
       hideable: false,
-      render: (r) =>
-        r.active ? (
-          <StatusTag status="ok">Aktiv</StatusTag>
-        ) : (
-          <StatusTag status="offline">Pausad</StatusTag>
-        ),
-    },
-    {
-      key: "last",
-      header: "Senaste rapport",
-      hideOnMobile: true,
-      sortValue: (r) => r.lastSentAt ?? "",
-      render: (r) =>
-        r.lastSentAt ? (
-          <span className="meta text-muted">
-            {formatDate(wallClockIn(new Date(r.lastSentAt), timeZone), {
-              year: "auto",
-              now: localNow,
-            })}
+      render: (r) => (
+        <span className="flex flex-col items-start gap-1">
+          {r.active ? (
+            <StatusTag status="ok">Aktiv</StatusTag>
+          ) : (
+            <StatusTag status="offline">Pausad</StatusTag>
+          )}
+          <span className="meta whitespace-nowrap text-subtle">
+            {r.lastSentAt
+              ? `Senast ${formatDate(wallClockIn(new Date(r.lastSentAt), timeZone), {
+                  year: "auto",
+                  now: localNow,
+                })}`
+              : "Ingen rapport ännu"}
           </span>
-        ) : (
-          <span className="text-sm text-subtle">Ingen ännu</span>
-        ),
+        </span>
+      ),
     },
   ];
   if (canEdit) {

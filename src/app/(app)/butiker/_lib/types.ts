@@ -60,14 +60,16 @@ export interface StoreRow {
   readonly revenueChange: number | null;
   /** Butiksersättning i perioden (provision + hyra). */
   readonly compensationOre: number;
+  /** Butiksersättning i jämförelseperioden, eller null utan jämförelse. */
+  readonly previousCompensationOre: number | null;
   /** Vinst för prissatta order i perioden. */
   readonly profitOre: number;
   /** Hittills intjänad ersättning denna månad. */
   readonly earnedMonthOre: number;
   /** Avtalet som gäller i dag, eller null. */
   readonly current: AgreementView | null;
-  /** Något som kräver åtgärd (inget avtal trots automat). */
-  readonly flag: string | null;
+  /** Det viktigaste som kräver åtgärd (samma regler som butikens sida), eller null. */
+  readonly issue: StoreIssue | null;
   readonly href: string;
 }
 
@@ -116,16 +118,23 @@ export interface StoreIssue {
   readonly id: string;
   readonly level: "critical" | "warning" | "neutral";
   readonly text: string;
+  /** Kort etikett för listans statuskolumn ("Inget avtal i dag"). */
+  readonly short: string;
+  /** Kräver åtgärd (inte bara information, som ett inlagt kommande avtal). */
+  readonly actionable: boolean;
 }
 
 /** Nyckeltal (formateras i klienten). */
 export interface KpiView {
   readonly id: string;
   readonly label: string;
-  readonly value: number;
+  /** null = går inte att räkna (visas som "–"). */
+  readonly value: number | null;
   readonly kind: "sek" | "int" | "percent";
   readonly primary?: boolean;
   readonly delta?: { readonly kind: "relative" | "absolute"; readonly value: number } | null;
+  /** Minskning är bra (t.ex. butiksersättning: en kostnad). */
+  readonly invert?: boolean;
   readonly trend?: readonly number[];
 }
 
@@ -134,3 +143,12 @@ export interface DailyPoint {
   readonly date: IsoDate;
   readonly value: number;
 }
+
+/**
+ * Svar från avtalsändringarna. `needsConfirm`: ändringen räknar om ersättning för dagar
+ * före i dag; felet säger vilka dagar och rapporter som berörs, och samma ändring sparas
+ * först när den skickas igen med bekräftelsen.
+ */
+export type AgreementResult<T> =
+  | { ok: true; data?: T; error?: undefined }
+  | { ok: false; error: string; data?: undefined; needsConfirm?: boolean };

@@ -13,7 +13,13 @@ import {
   toURLSearchParams,
   type SearchParamsInput,
 } from "@/components/shell/period-state";
-import { daysBetween, profitability, storeCompensation, type ProfitabilityInput } from "@/domain";
+import {
+  profitability,
+  storeCompensation,
+  type IsoDate,
+  type Period,
+  type ProfitabilityInput,
+} from "@/domain";
 import { isUuid } from "@/server/access";
 import {
   loadDomainInput,
@@ -29,6 +35,7 @@ import {
   buildStoreRows,
   compensationHeadline,
   dailySeries,
+  dataCoverage,
   listHeadline,
   listKpis,
   machinesIn,
@@ -36,12 +43,18 @@ import {
   monthLabel,
   monthToDate,
   revenueOf,
+  spanText,
   storeHeadline,
   storeIssues,
   storeKpis,
   toAgreementView,
 } from "./model";
-import { loadAgreementsFor, loadRecipientsFor, loadStoresFor } from "./service";
+import {
+  loadAgreementsFor,
+  loadAllRecipientsFor,
+  loadRecipientsFor,
+  loadStoresFor,
+} from "./service";
 import { currentViewer } from "./session";
 import type {
   AgreementView,
@@ -56,24 +69,43 @@ import type {
 } from "./types";
 
 export interface PeriodInfo {
+  /** Dagar med data (se dataCoverage): rubrikernas antal dagar. */
   readonly days: number;
+  /** "på 20 dagar". */
+  readonly span: string;
+  /** Hela perioden ("4 okt. – 2 nov."). */
   readonly rangeLabel: string;
   readonly comparisonLabel: string | null;
+  /** Dagarna med data, eller null. */
+  readonly coverage: Period | null;
+  /** Perioden börjar före första ordern eller slutar med en dag utan data. */
+  readonly partial: boolean;
 }
 
-/** Dagar med data: från första ordern om perioden börjar före den. */
-function dataDays(p: AppPeriod): number {
-  return p.dataStart && p.dataStart > p.period.start && p.dataStart <= p.period.end
-    ? daysBetween(p.dataStart, p.period.end) + 1
-    : p.days;
+function hasOrdersOn(orders: readonly { businessDate: IsoDate }[], day: IsoDate): boolean {
+  return orders.some((o) => o.businessDate === day);
 }
 
-function periodInfo(p: AppPeriod, hasComparison: boolean): PeriodInfo {
+function periodInfo(
+  p: AppPeriod,
+  today: IsoDate,
+  orders: readonly { businessDate: IsoDate }[],
+  hasComparison: boolean,
+): PeriodInfo {
   const d = describePeriod(p.resolved);
+  // Dagarna med data räknas på organisationens order (som Hem och Automater), inte
+  // butikens, så att alla sidor anger samma antal dagar för samma period.
+  const coverage = dataCoverage(p.period, p.dataStart, today, hasOrdersOn(orders, today));
+  const span = spanText(coverage, today);
   return {
-    days: dataDays(p),
+    days: span.days,
+    span: span.text,
     rangeLabel: d.rangeLabel,
     comparisonLabel: hasComparison ? d.comparisonLabel : null,
+    coverage,
+    partial:
+      coverage !== null &&
+      (coverage.start !== p.period.start || coverage.end !== p.period.end),
   };
 }
 
@@ -89,9 +121,18 @@ export function periodQuery(sp: SearchParamsInput): string {
   return s ? `?${s}` : "";
 }
 
-/** Jämförelseperioden räknas bara om den har order (inte före första ordern). */
-function comparable(previous: ProfitabilityInput | null): ProfitabilityInput | null {
-  return previous && previous.orders.length > 0 ? previous : null;
+/**
+ * Jämförelsen gäller bara när jämförelseperioden har order och ligger helt inom datan
+ * (som på Hem och Automater): en halv jämförelseperiod ger skenbara ökningar.
+ */
+function comparable(p: AppPeriod, previous: ProfitabilityInput | null): ProfitabilityInput | null {
+  return previous &&
+    previous.orders.length > 0 &&
+    p.compare !== null &&
+    p.dataStart !== null &&
+    p.compare.start >= p.dataStart
+    ? previous
+    : null;
 }
 
 /** Butiksregistret, en gång per förfrågan (sidan och metadata delar det). */
@@ -117,6 +158,8 @@ export interface StoreListData {
   readonly monthLabel: string;
   /** Butiksfiltrets namn, om filtret är satt. */
   readonly scopeLabel: string | null;
+  /** Automatfiltrets kod om det är satt (det gäller inte listan, som visar butiker). */
+  readonly ignoredMachine: string | null;
   readonly flagged: number;
   readonly examples: number;
 }
@@ -126,14 +169,15 @@ export async function loadStoreList(searchParams: SearchParamsInput): Promise<St
   const p = await loadPeriod(searchParams);
   const viewer = await currentViewer();
   const month = monthToDate(ctx.today);
-  const [input, monthInput, master, stores, agreements] = await Promise.all([
+  const [input, monthInput, master, stores, agreements, recipients] = await Promise.all([
     loadDomainInput({ period: p.period, compare: p.compare }),
     loadDomainInput({ period: month }),
     loadMasterData(),
     loadStores(),
     loadAgreementsFor(viewer),
+    loadAllRecipientsFor(viewer),
   ]);
-  const previousInput = comparable(input.previous);
+  const previousInput = comparable(p, input.previous);
   const current = profitability(input.current, "store");
   const previous = previousInput ? profitability(previousInput, "store") : null;
   const earned = new Map(
@@ -150,20 +194,25 @@ export async function loadStoreList(searchParams: SearchParamsInput): Promise<St
     current,
     previous,
     earnedMonth: earned,
+    recipients,
     today: ctx.today,
     query: periodQuery(searchParams),
   });
   const monthName = monthLabel(ctx.today);
-  const info = periodInfo(p, previous !== null);
+  const info = periodInfo(p, ctx.today, input.current.orders, previous !== null);
+  const machineId = p.scope.machineId;
   return {
     ctx,
     period: info,
     rows,
-    kpis: listKpis(rows, monthName, previous),
-    headline: listHeadline(rows, info.days),
+    kpis: listKpis(rows, monthName),
+    headline: listHeadline(rows, info.span),
     monthLabel: monthName,
     scopeLabel: filterId ? (stores.find((s) => s.id === filterId)?.name ?? null) : null,
-    flagged: rows.filter((r) => r.flag !== null).length,
+    ignoredMachine: machineId
+      ? (master.machines.find((m) => m.id === machineId)?.code ?? "vald automat")
+      : null,
+    flagged: rows.filter((r) => r.issue !== null).length,
     examples: rows.filter((r) => r.isExample && !r.archived).length,
   };
 }
@@ -204,22 +253,32 @@ export async function loadStoreDetail(
 
   const p = await loadPeriod(searchParams);
   const month = monthToDate(ctx.today);
-  const [input, monthInput, master, agreements, recipients] = await Promise.all([
+  const [input, orgInput, monthInput, master, agreements, recipients] = await Promise.all([
     loadDomainInput({ period: p.period, compare: p.compare, storeId }),
+    // Organisationens order (cachat per förfrågan): bara för dagarna med data.
+    loadDomainInput({ period: p.period }),
     loadDomainInput({ period: month, storeId }),
     loadMasterData(),
     loadAgreementsFor(viewer),
     loadRecipientsFor(viewer, storeId),
   ]);
-  const previousInput = comparable(input.previous);
+  const previousInput = comparable(p, input.previous);
   const byStore = profitability(input.current, "store");
   const prevByStore = previousInput ? profitability(previousInput, "store") : null;
   const row = byStore.rows.find((r) => r.kind === "item" && r.key === storeId);
   const prevRow = prevByStore
     ? (prevByStore.rows.find((r) => r.kind === "item" && r.key === storeId) ?? undefined)
     : null;
-  const daily = dailySeries(profitability(input.current, "day"));
-  const dailyPrev = previousInput ? dailySeries(profitability(previousInput, "day")) : null;
+  const info = periodInfo(p, ctx.today, orgInput.current.orders, prevByStore !== null);
+  // Dagsserien klipps till dagarna med data (inga nolldagar före första ordern eller
+  // för en dag som ännu inte har data); jämförelsen klipps på samma ställen.
+  const cov = info.coverage;
+  const fullDaily = dailySeries(profitability(input.current, "day"));
+  const skip = cov ? fullDaily.filter((d) => d.date < cov.start).length : 0;
+  const daily = cov ? fullDaily.filter((d) => d.date >= cov.start && d.date <= cov.end) : [];
+  const dailyPrev = previousInput
+    ? dailySeries(profitability(previousInput, "day")).slice(skip, skip + daily.length)
+    : null;
 
   const mc = monthCompensation({
     today: ctx.today,
@@ -273,7 +332,6 @@ export async function loadStoreDetail(
     ctx.today,
   );
 
-  const info = periodInfo(p, prevByStore !== null);
   return {
     ctx,
     period: info,
@@ -282,7 +340,8 @@ export async function loadStoreDetail(
       name: store.name,
       revenueOre: revenueOf(row),
       previousRevenueOre: prevByStore ? revenueOf(prevRow ?? undefined) : null,
-      days: info.days,
+      profitOre: row?.profitOre ?? 0,
+      span: info.span,
       month: mc,
     }),
     kpis: storeKpis({ current: row, previous: prevRow, daily }),

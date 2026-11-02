@@ -60,7 +60,7 @@ function FormDialog({
         const result = await onSubmit(data);
         if (!result.ok) setError(result.error);
       } catch (err) {
-        console.error("[automater] Ändringen kunde inte skickas:", err);
+        console.warn("[automater] Ändringen kunde inte skickas:", err);
         setError(SEND_FAILED);
       }
     });
@@ -271,7 +271,7 @@ export function MachineActions({
                 if (r.ok) done(`${machine.code} är i drift igen`);
                 else toast({ title: r.error, tone: "critical", meta: machine.code });
               } catch (err) {
-                console.error("[automater] Återaktiveringen kunde inte skickas:", err);
+                console.warn("[automater] Återaktiveringen kunde inte skickas:", err);
                 toast({ title: SEND_FAILED, tone: "critical", meta: machine.code });
               }
             })

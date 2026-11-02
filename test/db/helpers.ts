@@ -725,6 +725,9 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
     await tx
       .insert(s.ledgerAccounts)
       .values({ ...org, key: "sales", basAccount: "3001", name: "Försäljning" });
+    // Larm skrivs bara av larmjobbet (systemrollen) sedan fas 8
+    // (20261102122143_drift_larm_arenden.sql): raden läggs in som postgres i samma transaktion.
+    await tx.execute(sql`set local role postgres`);
     await tx.insert(s.alerts).values({
       ...org,
       kind: "low_stock",
@@ -734,6 +737,7 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       titleId: title!.id,
       message: "Lågt lager",
     });
+    await tx.execute(sql`set local role authenticated`);
     await tx.insert(s.incidents).values({
       ...org,
       machineId: machine!.id,

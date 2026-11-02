@@ -71,6 +71,11 @@ export interface AccountantSnapshot extends SnapshotBase {
   readonly sie: Sie4Options;
   /** Konton som behövs för SIE men saknas i kontoplanen; tom = exporten går att skapa. */
   readonly missingAccounts: readonly string[];
+  /**
+   * Order i perioden vars titel inte är kopplad. De ingår i försäljningen och
+   * butiksersättningen men saknar inköpspris. Saknas i äldre ögonblicksbilder.
+   */
+  readonly ordersWithoutTitle?: number;
 }
 
 export interface PartnerSnapshot extends SnapshotBase {
@@ -113,6 +118,10 @@ export interface SnapshotInput {
   readonly ledgerAccounts?: readonly LedgerAccount[];
   /** Räkenskapsårets första månad, 1–12. Standard 1. */
   readonly fiscalYearStartMonth?: number;
+  /** Order i perioden utan kopplad titel (ingår i `sources.orders` med en egen titel). */
+  readonly ordersWithoutTitle?: number;
+  /** SIE: verifikationsserie och första nummer. Standard "A" och 1. */
+  readonly sieSeries?: { readonly series: string; readonly firstNumber: number };
 }
 
 /** Konton som SIE-exporten behöver med dagens inställningar. */
@@ -211,9 +220,10 @@ export function buildSnapshot(input: SnapshotInput): ReportSnapshot {
         orgNumber: input.organization.orgNumber,
         ledgerAccounts,
         fiscalYear: fiscalYearOf(input.month, input.fiscalYearStartMonth ?? 1),
-        verificationSeries: "A",
-        firstVerificationNumber: 1,
-        generatedOn: base.period.end,
+        verificationSeries: input.sieSeries?.series ?? "A",
+        firstVerificationNumber: input.sieSeries?.firstNumber ?? 1,
+        // Dagen då underlaget skapas (#GEN), inte periodens slut.
+        generatedOn: input.generatedAt.slice(0, 10),
       };
       return {
         ...base,
@@ -221,6 +231,7 @@ export function buildSnapshot(input: SnapshotInput): ReportSnapshot {
         report,
         sie,
         missingAccounts: requiredAccounts(report).filter((k) => !have.has(k)),
+        ordersWithoutTitle: input.ordersWithoutTitle ?? 0,
       };
     }
     case "delagare": {

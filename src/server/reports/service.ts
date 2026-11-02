@@ -44,6 +44,7 @@ import type { Mailer, MailAttachment } from "@/server/mail/report-mailer";
 import { buildSubject, renderReportText } from "@/emails/report-content";
 
 import { reportEmailProps } from "./email";
+import { cleanEmailText } from "./email-cleanup";
 import { CONTENT_TYPE, excelOf, reportFileName, sieOf } from "./files";
 import {
   DB_KIND,
@@ -641,7 +642,7 @@ export async function sendReportFor(
     // Ämne och text räknas här ur samma props; HTML:en kommer från mallen (renderEmails).
     const html = rendered[r.id]?.html;
     const subject = buildSubject(props);
-    const text = renderReportText(props);
+    const text = cleanEmailText(renderReportText(props), report.snapshot.type);
     let status: DeliveryStatus = "sent";
     let providerMessageId: string | null = null;
     let error: string | null = null;

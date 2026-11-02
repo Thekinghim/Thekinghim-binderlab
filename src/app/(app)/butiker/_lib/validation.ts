@@ -6,7 +6,7 @@
 
 import { z } from "zod";
 
-import { addDays, isIsoDate, type IsoDate } from "@/domain";
+import { addDays, isIsoDate, maxDate, minDate, type IsoDate } from "@/domain";
 import { parseAmountOre } from "@/import/amount";
 
 const uuid = z.uuid({ message: "Ogiltigt id." });
@@ -153,6 +153,8 @@ export const newAgreementSchema = z
     validFrom: isoDate("Giltig från"),
     validTo: optionalDate("Sista dagen"),
     ...termsShape,
+    /** Bekräftat att ersättning för dagar före i dag räknas om. */
+    confirmHistory: checkbox,
   })
   .refine((v) => v.validTo === null || v.validTo >= v.validFrom, {
     message: "Avtalet kan inte sluta före det börjar.",
@@ -161,11 +163,24 @@ export const newAgreementSchema = z
   .transform(withTerms);
 export type NewAgreementInput = z.infer<typeof newAgreementSchema>;
 
+/** Sista dagen vid ändring: utelämnad = oförändrad, tom = tills vidare. */
+const keptDate = (label: string) =>
+  z
+    .string()
+    .trim()
+    .nullable()
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v ? v : null))
+    .refine((v) => v === undefined || v === null || isIsoDate(v), {
+      message: `${label} måste vara ett datum (ÅÅÅÅ-MM-DD).`,
+    });
+
 export const updateAgreementSchema = z
   .object({
     agreementId: uuid,
-    validTo: optionalDate("Sista dagen"),
+    validTo: keptDate("Sista dagen"),
     ...termsShape,
+    confirmHistory: checkbox,
   })
   .transform(withTerms);
 export type UpdateAgreementInput = z.infer<typeof updateAgreementSchema>;
@@ -205,12 +220,12 @@ export function firstIssue(error: z.ZodError): string {
 // Nytt avtal: ersätter det som gäller, utan överlapp
 // ---------------------------------------------------------------------------
 
-/** Ett befintligt avtal (giltighet), för planeringen. */
 /** Avslutande punkt, utan att dubbla punkten efter en förkortning ("1 dec."). */
 function stop(text: string): string {
   return text.endsWith(".") ? text : `${text}.`;
 }
 
+/** Ett befintligt avtal (giltighet), för planeringen. */
 export interface AgreementSpan {
   readonly id: string;
   readonly validFrom: IsoDate;
@@ -296,4 +311,74 @@ export function checkAgreementEnd(
     return `Nästa avtal börjar ${stop(formatDay(next.validFrom))} Sista dagen måste vara senast ${stop(formatDay(addDays(next.validFrom, -1)))}`;
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Ändringar bakåt i tiden
+// ---------------------------------------------------------------------------
+
+/** Dagar (från och med, till och med). */
+export interface DayRange {
+  readonly start: IsoDate;
+  readonly end: IsoDate;
+}
+
+function union(ranges: readonly DayRange[]): DayRange | null {
+  if (ranges.length === 0) return null;
+  return ranges.reduce((a, b) => ({ start: minDate(a.start, b.start), end: maxDate(a.end, b.end) }));
+}
+
+/**
+ * Dagarna före i dag som ett nytt avtal räknar om (ersättningen för dem ändras), eller
+ * null om avtalet börjar i dag eller senare.
+ */
+export function newAgreementImpact(
+  validFrom: IsoDate,
+  validTo: IsoDate | null,
+  today: IsoDate,
+): DayRange | null {
+  const yesterday = addDays(today, -1);
+  if (validFrom > yesterday) return null;
+  return { start: validFrom, end: validTo !== null ? minDate(validTo, yesterday) : yesterday };
+}
+
+/**
+ * Dagarna före i dag som en rättning av ett avtal räknar om: hela den passerade
+ * giltigheten när provision eller hyra ändras, och dagarna mellan gammal och ny sista
+ * dag när sista dagen flyttas. null om bara framtiden påverkas.
+ */
+export function agreementChangeImpact(
+  before: {
+    readonly validFrom: IsoDate;
+    readonly validTo: IsoDate | null;
+    readonly commissionBp: number | null;
+    readonly monthlyRentOre: number | null;
+  },
+  after: {
+    readonly validTo: IsoDate | null;
+    readonly commissionBp: number | null;
+    readonly monthlyRentOre: number | null;
+  },
+  today: IsoDate,
+): DayRange | null {
+  const yesterday = addDays(today, -1);
+  const ranges: DayRange[] = [];
+  const termsChanged =
+    before.commissionBp !== after.commissionBp || before.monthlyRentOre !== after.monthlyRentOre;
+  if (termsChanged) {
+    let end = yesterday;
+    if (before.validTo !== null) end = minDate(end, before.validTo);
+    if (after.validTo !== null) end = minDate(end, after.validTo);
+    if (before.validFrom <= end) ranges.push({ start: before.validFrom, end });
+  }
+  if (before.validTo !== after.validTo) {
+    // Minst en av dem är satt (annars vore de lika).
+    const a = before.validTo;
+    const b = after.validTo;
+    const first = a === null ? b! : b === null ? a : minDate(a, b);
+    const last = a === null || b === null ? yesterday : minDate(maxDate(a, b), yesterday);
+    const start = addDays(first, 1);
+    if (start <= last) ranges.push({ start, end: last });
+  }
+  return union(ranges);
 }

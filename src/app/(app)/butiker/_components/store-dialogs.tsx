@@ -5,6 +5,7 @@ import { useId, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
+import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 
 import { createStore, setStoreArchived, updateStore } from "../actions";
@@ -134,37 +135,41 @@ export function AddStoreButton({ query }: { query: string }) {
 }
 
 /** Redigera och arkivera på butikens sida. Ägare och admin. */
-export function StoreActions({ store }: { store: StoreDetail }) {
+export function StoreActions({ store, machines }: { store: StoreDetail; machines: readonly string[] }) {
   const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
   const [archiving, startArchive] = useTransition();
   const router = useRouter();
   const toast = useToast();
+  const closeConfirm = () => {
+    if (archiving) return;
+    setConfirm(false);
+    setArchiveError(null);
+  };
+  const archive = () =>
+    startArchive(async () => {
+      setArchiveError(null);
+      const r = await setStoreArchived({ storeId: store.id, archived: !store.archived });
+      if (!r.ok) {
+        // Felet stoppar arbetet: visas i dialogen, där beslutet fattas.
+        setArchiveError(r.error);
+        return;
+      }
+      setConfirm(false);
+      toast({
+        title: store.archived ? `${store.name} är återställd` : `${store.name} är arkiverad`,
+        tone: "ok",
+      });
+      router.refresh();
+    });
+  const blocked = !store.archived && machines.length > 0;
   return (
     <div className="flex flex-wrap gap-2" data-print="hide">
       <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
         Redigera
       </Button>
-      <Button
-        variant="secondary"
-        size="sm"
-        loading={archiving}
-        onClick={() =>
-          startArchive(async () => {
-            const r = await setStoreArchived({ storeId: store.id, archived: !store.archived });
-            if (r.ok) {
-              toast({
-                title: store.archived
-                  ? `${store.name} är återställd`
-                  : `${store.name} är arkiverad`,
-                tone: "ok",
-              });
-              router.refresh();
-            } else {
-              toast({ title: r.error, tone: "critical", meta: store.name });
-            }
-          })
-        }
-      >
+      <Button variant="secondary" size="sm" onClick={() => setConfirm(true)}>
         {store.archived ? "Återställ" : "Arkivera"}
       </Button>
       <FormDialog
@@ -184,6 +189,46 @@ export function StoreActions({ store }: { store: StoreDetail }) {
       >
         <StoreFields store={store} />
       </FormDialog>
+      <Modal
+        open={confirm}
+        onClose={closeConfirm}
+        size="sm"
+        eyebrow={`Butiker / ${store.name}`}
+        title={store.archived ? `Återställ ${store.name}?` : `Arkivera ${store.name}?`}
+        description={
+          store.archived
+            ? "Butiken visas i listorna igen och kan få avtal, automater och rapportmottagare."
+            : blocked
+              ? `${machines.join(", ")} står i butiken. Flytta ${machines.length === 1 ? "automaten" : "automaterna"} under Automater innan butiken arkiveras.`
+              : "Butiken döljs i listorna och kan inte få nya avtal eller mottagare. Historiken, avtalen och rapporterna finns kvar, och du kan återställa butiken."
+        }
+        footer={
+          <>
+            <Button variant="secondary" onClick={closeConfirm} disabled={archiving}>
+              {blocked ? "Stäng" : "Avbryt"}
+            </Button>
+            {blocked ? null : (
+              <Button
+                variant={store.archived ? "primary" : "danger-confirm"}
+                loading={archiving}
+                onClick={archive}
+              >
+                {store.archived ? "Återställ" : "Arkivera"}
+              </Button>
+            )}
+          </>
+        }
+      >
+        {archiveError ? (
+          <p role="alert" className="flex items-start gap-2 text-sm">
+            <span aria-hidden className="mt-1.5 inline-block size-2 shrink-0 bg-signal" />
+            <span className="text-fg">
+              <span className="sr-only">Kräver åtgärd: </span>
+              {archiveError}
+            </span>
+          </p>
+        ) : null}
+      </Modal>
     </div>
   );
 }

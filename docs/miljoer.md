@@ -318,6 +318,8 @@ Sidan `/prognos` (förlorad försäljning, prognos med backtest, inköpsförslag
 
 Leverantörsorder skickas inte elektroniskt: en inköpsorder markeras som beställd när den lagts hos leverantören (e-post, telefon, portal). Ska order skickas automatiskt krävs leverantörens API och ett beslut om adapter.
 
+Regler som gäller utan inställning: utkast räknas inte som beställt i inköpsförslaget eller kapitalbindningen (de visas som "i utkast" på förslagets rader); en delvis mottagen order kan avslutas med restorder (resten räknas då inte längre som beställt); en inköpsorder måste bestå av leverantörens artiklar, i hela boxar och minst minsta order. Prognosen räknar en titel i en automat från första kända saldo över 0 i lagret (inte från första försäljningen), dock tidigast från första ordern i datan, och intervallen tar med nivåns osäkerhet när den skattats på få dagar.
+
 ## Drift: larm, push och sms
 
 Larmjobbet (`GET /api/cron/larm`, `src/server/alerts`) utvärderar för varje organisation

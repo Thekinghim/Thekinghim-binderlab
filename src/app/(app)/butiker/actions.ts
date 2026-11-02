@@ -30,8 +30,11 @@ import {
   type Viewer,
 } from "./_lib/service";
 import { currentViewer } from "./_lib/session";
+import type { AgreementResult } from "./_lib/types";
 
-async function run<T>(fn: (viewer: Viewer) => Promise<ActionResult<T>>): Promise<ActionResult<T>> {
+async function run<R extends { ok: boolean }>(
+  fn: (viewer: Viewer) => Promise<R>,
+): Promise<R | { ok: false; error: string }> {
   let viewer: Viewer;
   try {
     await requireContextRole(OPERATOR_ROLES);
@@ -86,6 +89,8 @@ export async function setStoreArchived(input: {
 /**
  * Nytt avtal från och med ett datum. Provision i procent ("12,5") och hyra i kronor per
  * månad ("750"); minst en av dem. Avtalet som gäller dagen före avslutas dagen före.
+ * Ett avtal som börjar före i dag räknar om passerad ersättning: det sparas bara med
+ * `confirmHistory` (annars `needsConfirm` och vilka dagar och rapporter som berörs).
  */
 export async function createAgreement(input: {
   storeId: string;
@@ -94,18 +99,23 @@ export async function createAgreement(input: {
   commission?: string;
   rent?: string;
   note?: string;
-}): Promise<ActionResult<{ id: string; closedId: string | null }>> {
+  confirmHistory?: boolean;
+}): Promise<AgreementResult<{ id: string; closedId: string | null }>> {
   return run((v) => createAgreementFor(v, input));
 }
 
-/** Rättar ett avtals provision, hyra, anteckning och sista dag. */
+/**
+ * Rättar ett avtals provision, hyra, anteckning och sista dag (utelämnad = oförändrad,
+ * tom = tills vidare). En rättning som räknar om passerade dagar kräver `confirmHistory`.
+ */
 export async function updateAgreement(input: {
   agreementId: string;
-  validTo?: string;
+  validTo?: string | null;
   commission?: string;
   rent?: string;
   note?: string;
-}): Promise<ActionResult<{ storeId: string }>> {
+  confirmHistory?: boolean;
+}): Promise<AgreementResult<{ storeId: string }>> {
   return run((v) => updateAgreementFor(v, input));
 }
 

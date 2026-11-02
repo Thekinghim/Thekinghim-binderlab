@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
@@ -55,6 +55,34 @@ function TermsFields({ agreement }: { agreement?: AgreementView }) {
   );
 }
 
+/**
+ * Bekräftelsen när en ändring räknar om passerad ersättning. Visas först när servern
+ * har sagt vilka dagar och rapporter som berörs (felet ovanför knapparna).
+ */
+function ConfirmHistory() {
+  const id = useId();
+  return (
+    <div className="flex items-start gap-3 border-t border-line pt-4">
+      <input
+        id={id}
+        type="checkbox"
+        name="confirmHistory"
+        aria-describedby={`${id}-hint`}
+        className="mt-0.5 size-4 shrink-0 accent-current"
+      />
+      <div className="flex flex-col gap-0.5">
+        <label htmlFor={id} className="text-base text-fg">
+          Räkna om ersättningen bakåt i tiden
+        </label>
+        <p id={`${id}-hint`} className="text-sm text-muted">
+          Hem, Lönsamhet och kommande rapporter visar de nya beloppen. Skickade rapporter ändras
+          inte.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /** Knappen "Nytt avtal" med formulär. Ägare och admin. */
 export function NewAgreementButton({
   storeId,
@@ -71,9 +99,14 @@ export function NewAgreementButton({
   minFrom: IsoDate | null;
 }) {
   const [open, setOpen] = useState(false);
+  const [needsConfirm, setNeedsConfirm] = useState(false);
   const router = useRouter();
   const toast = useToast();
   const from = minFrom && minFrom > today ? minFrom : today;
+  const close = () => {
+    setOpen(false);
+    setNeedsConfirm(false);
+  };
   return (
     <>
       <Button variant="secondary" size="sm" iconLeft="plus" onClick={() => setOpen(true)}>
@@ -81,7 +114,7 @@ export function NewAgreementButton({
       </Button>
       <FormDialog
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={close}
         eyebrow={`Butiker / ${storeName} / Nytt avtal`}
         title="Nytt avtal."
         description={
@@ -98,9 +131,13 @@ export function NewAgreementButton({
             commission: text(data, "commission"),
             rent: text(data, "rent"),
             note: text(data, "note"),
+            confirmHistory: data.get("confirmHistory") === "on",
           });
-          if (!result.ok) return result;
-          setOpen(false);
+          if (!result.ok) {
+            if (result.needsConfirm) setNeedsConfirm(true);
+            return result;
+          }
+          close();
           toast({
             title: "Avtalet är sparat",
             description: result.data?.closedId ? "Det tidigare avtalet är avslutat." : undefined,
@@ -117,6 +154,7 @@ export function NewAgreementButton({
         </div>
         <TermsFields agreement={current ?? undefined} />
         <Input name="note" label="Anteckning" autoComplete="off" maxLength={500} />
+        {needsConfirm ? <ConfirmHistory /> : null}
       </FormDialog>
     </>
   );
@@ -131,8 +169,14 @@ export function EditAgreementButton({
   storeName: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [needsConfirm, setNeedsConfirm] = useState(false);
   const router = useRouter();
   const toast = useToast();
+  const close = () => {
+    setOpen(false);
+    setNeedsConfirm(false);
+  };
+  const started = agreement.state !== "upcoming";
   return (
     <>
       <Button
@@ -145,10 +189,14 @@ export function EditAgreementButton({
       </Button>
       <FormDialog
         open={open}
-        onClose={() => setOpen(false)}
+        onClose={close}
         eyebrow={`Butiker / ${storeName} / Avtal`}
         title="Ändra avtal."
-        description={`Gäller ${agreement.periodLabel}. Nya villkor från ett senare datum läggs in som nytt avtal.`}
+        description={
+          started
+            ? `Gäller ${agreement.periodLabel}. Rätta bara fel i avtalet: ändrade villkor räknar om ersättningen bakåt till avtalets start. Nya villkor från ett datum läggs in som nytt avtal.`
+            : `Gäller ${agreement.periodLabel}. Nya villkor från ett senare datum läggs in som nytt avtal.`
+        }
         submitLabel="Spara"
         onSubmit={async (data) => {
           const result = await updateAgreement({
@@ -157,9 +205,13 @@ export function EditAgreementButton({
             commission: text(data, "commission"),
             rent: text(data, "rent"),
             note: text(data, "note"),
+            confirmHistory: data.get("confirmHistory") === "on",
           });
-          if (!result.ok) return result;
-          setOpen(false);
+          if (!result.ok) {
+            if (result.needsConfirm) setNeedsConfirm(true);
+            return result;
+          }
+          close();
           toast({ title: "Avtalet är ändrat", tone: "ok", meta: storeName });
           router.refresh();
           return { ok: true };
@@ -181,6 +233,7 @@ export function EditAgreementButton({
           autoComplete="off"
           maxLength={500}
         />
+        {needsConfirm ? <ConfirmHistory /> : null}
       </FormDialog>
     </>
   );

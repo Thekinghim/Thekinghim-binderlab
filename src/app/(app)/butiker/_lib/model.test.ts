@@ -7,10 +7,15 @@ import {
   buildStoreRows,
   changeText,
   compensationHeadline,
+  dataCoverage,
+  ENDING_SOON_DAYS,
   listHeadline,
+  listKpis,
   monthCompensation,
   percentBp,
   placeText,
+  spanText,
+  storeHeadline,
   storeIssues,
   termsLabel,
   toAgreementView,
@@ -152,6 +157,9 @@ describe("listan", () => {
     current: result,
     previous: null,
     earnedMonth: new Map(comp.stores.map((c) => [c.storeId, c.totalOre])),
+    recipients: new Map([
+      ["s1", [{ id: "r1", name: "A", email: "a@b.se", active: true, lastSentAt: null }]],
+    ]),
     today: "2026-11-02",
     query: "?period=30d",
   });
@@ -168,24 +176,84 @@ describe("listan", () => {
     const total = rows.reduce((n, r) => n + r.compensationOre, 0);
     expect(total).toBe(storeCompensation(input()).totalOre);
   });
-  it("sorterar på intäkt och flaggar butik med automat men utan avtal", () => {
+  it("sorterar på intäkt och flaggar det som kräver åtgärd, som butikens sida", () => {
     expect(rows.map((r) => r.id)).toEqual(["s1", "s2", "s3"]);
-    expect(rows[2]!.flag).toBe("Inget avtal i dag");
+    expect(rows[2]!.issue).toMatchObject({ short: "Inget avtal i dag", level: "critical" });
     expect(rows[2]!.machineCodes).toEqual(["BL-003"]);
-    expect(rows[0]!.flag).toBeNull();
+    // Gallerian har avtal men ingen tar emot rapporten.
+    expect(rows[1]!.issue?.short).toBe("Ingen rapportmottagare");
+    expect(rows[0]!.issue).toBeNull();
     expect(rows[0]!.href).toBe("/butiker/s1?period=30d");
     expect(rows[0]!.current?.termsLabel).toBe(`Provision 10${NB}%`);
   });
   it("rubriken bär intäkten och andelen till butikerna", () => {
-    const h = listHeadline(rows, 2);
+    const h = listHeadline(rows, `på 2${NB}dagar`);
     expect(h.title).toBe(`3${NB}butiker gav 220${NB}kr på 2${NB}dagar.`);
     expect(h.aside).toContain(`35${NB}kr till butikerna`);
     expect(h.aside).toContain("Kiosken står för 68");
-    expect(listHeadline([], 30).title).toBe("Inga butiker ännu.");
+    expect(listHeadline([rows[0]!], "i dag").aside).toContain("till butiken,");
+    expect(listHeadline([], "i dag").title).toBe("Inga butiker ännu.");
+  });
+
+  it("nyckeltalen jämför bara de visade butikerna, och ersättningen är en kostnad", () => {
+    const prev = rows.map((r, i) => ({
+      ...r,
+      previousRevenueOre: r.revenueOre * 2,
+      previousCompensationOre: i === 0 ? 3_000 : 99_999,
+    }));
+    const k = listKpis([prev[0]!], "november");
+    const comp = k.find((x) => x.id === "compensation")!;
+    // 1 500 mot 3 000 öre = −50 %, inte mot alla butikers ersättning.
+    expect(comp.delta).toEqual({ kind: "relative", value: -0.5 });
+    expect(comp.invert).toBe(true);
+    expect(listKpis(rows, "november").find((x) => x.id === "compensation")!.delta).toBeNull();
+    const empty = listKpis([{ ...rows[2]!, revenueOre: 0, compensationOre: 0 }], "november");
+    expect(empty.find((x) => x.id === "share")!.value).toBeNull();
+  });
+});
+
+describe("dagar med data", () => {
+  const period = { start: "2026-10-04", end: "2026-11-02" };
+  it("från första ordern och till i går när dagens order inte kommit (som Hem)", () => {
+    const c = dataCoverage(period, "2026-10-13", "2026-11-02", false);
+    expect(c).toEqual({ start: "2026-10-13", end: "2026-11-01" });
+    expect(spanText(c, "2026-11-02")).toEqual({ days: 20, text: `på 20${NB}dagar` });
+    expect(dataCoverage(period, "2026-10-13", "2026-11-02", true)?.end).toBe("2026-11-02");
+    expect(dataCoverage(period, null, "2026-11-02", false)).toBeNull();
+    expect(spanText({ start: "2026-11-01", end: "2026-11-01" }, "2026-11-02").text).toBe("i går");
+  });
+  it("avtal som slutar snart: samma gräns som Avtal", () => {
+    expect(ENDING_SOON_DAYS).toBe(90);
   });
 });
 
 describe("en butik", () => {
+  it("rubriken säger vad vi tjänade och vad butiken fått, utan att blanda ihop dem", () => {
+    const h = storeHeadline({
+      name: "Kiosken",
+      revenueOre: 15_000,
+      previousRevenueOre: 10_000,
+      profitOre: 9_000,
+      span: `på 2${NB}dagar`,
+      month: {
+        monthLabel: "november",
+        start: "2026-11-01",
+        end: "2026-11-02",
+        days: 2,
+        daysInMonth: 30,
+        revenueOre: 15_000,
+        orders: 2,
+        commissionOre: 1_500,
+        rentOre: 0,
+        totalOre: 1_500,
+      },
+    });
+    expect(h.title).toBe(`Kiosken gav 150${NB}kr på 2${NB}dagar.`);
+    expect(h.aside).toBe(
+      `50${NB}% mer än perioden innan. Vinst för oss 90${NB}kr efter inköp och ersättning. Butikens ersättning hittills i november är 15${NB}kr.`,
+    );
+  });
+
   it("intjänat denna månad och rubriken", () => {
     const comp = storeCompensation(input());
     const m = monthCompensation({

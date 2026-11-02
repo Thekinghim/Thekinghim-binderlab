@@ -256,7 +256,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     label: "Assistent",
     icon: "search",
     section: "main",
-    roles: READERS,
+    roles: ["owner", "admin", "refiller", "viewer"],
     phase: 6,
     lead: "Fråga om er data på svenska.",
   },

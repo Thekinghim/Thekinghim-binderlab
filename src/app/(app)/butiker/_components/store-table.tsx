@@ -39,14 +39,18 @@ function columns(monthLabel: string): Column<StoreRow>[] {
     {
       key: "status",
       header: "Status",
-      sortValue: (r) => (r.flag ? 0 : r.archived ? 2 : 1),
-      csv: (r) => r.flag ?? (r.archived ? "Arkiverad" : "Avtal gäller"),
+      sortValue: (r) =>
+        r.issue ? (r.issue.level === "critical" ? 0 : r.issue.level === "warning" ? 1 : 2) : r.archived ? 4 : 3,
+      csv: (r) =>
+        r.issue?.short ?? (r.archived ? "Arkiverad" : r.current ? "Avtal gäller" : "Inget avtal"),
       hideable: false,
       render: (r) =>
-        r.flag ? (
+        r.issue ? (
           <span className="flex flex-col items-start">
-            <StatusTag status="critical">{r.flag}</StatusTag>
-            <span className="sr-only">Kräver åtgärd: lägg in ett avtal för butiken.</span>
+            <StatusTag status={r.issue.level === "neutral" ? "warning" : r.issue.level}>
+              {r.issue.short}
+            </StatusTag>
+            <span className="sr-only">Kräver åtgärd: {r.issue.text}</span>
           </span>
         ) : r.archived ? (
           <StatusTag status="offline">Arkiverad</StatusTag>

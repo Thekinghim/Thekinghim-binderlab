@@ -5,15 +5,19 @@
  * bara ihop per butik eller formateras. Testas i model.test.ts.
  */
 
+import { CONTRACT_DEFAULTS } from "@/analytics/contracts";
 import { parseIsoDate } from "@/components/shell/period-state";
 import {
   addDays,
   changeBp,
   daysBetween,
   daysInMonth,
+  maxDate,
+  minDate,
   monthOf,
   monthStart,
   type IsoDate,
+  type Period,
   type ProfitabilityResult,
   type ProfitabilityRow,
 } from "@/domain";
@@ -40,8 +44,11 @@ import type {
   StoreRow,
 } from "./types";
 
-/** Så många dagar före slutet varnar sidan för ett avtal utan efterföljare. */
-export const ENDING_SOON_DAYS = 45;
+/**
+ * Så många dagar före slutet varnar sidan för ett avtal utan efterföljare: samma gräns
+ * som påminnelserna under Avtal (@/analytics/contracts), så att sidorna säger samma sak.
+ */
+export const ENDING_SOON_DAYS: number = CONTRACT_DEFAULTS.reminderLeadDays;
 
 // ---------------------------------------------------------------------------
 // Text
@@ -54,6 +61,11 @@ function isoToDate(iso: IsoDate): Date {
 /** "13 okt." (året bara när det inte är samma år som i dag). */
 export function dayText(iso: IsoDate, today: IsoDate): string {
   return formatDate(isoToDate(iso), { year: "auto", now: isoToDate(today) });
+}
+
+/** "oktober 2026". */
+export function monthName(iso: IsoDate): string {
+  return formatMonth(isoToDate(iso), { year: "always" });
 }
 
 /** Första bokstaven versal och en avslutande punkt (om meningen inte redan slutar med en). */
@@ -160,6 +172,35 @@ export function agreementsOf(
 // Siffror ur beräkningslagret
 // ---------------------------------------------------------------------------
 
+/**
+ * Dagarna med data i perioden, som på Hem och Automater: från organisationens första
+ * order och, om perioden slutar i dag utan någon order i dag, bara till och med i går.
+ * null om inga dagar återstår. Rubrikernas antal dagar, snittet per dag och
+ * dagsdiagrammet räknas på dessa dagar; beloppen gäller hela perioden.
+ */
+export function dataCoverage(
+  period: Period,
+  dataStart: IsoDate | null,
+  today: IsoDate,
+  hasOrdersToday: boolean,
+): Period | null {
+  if (dataStart === null) return null;
+  const start = maxDate(period.start, dataStart);
+  let end = period.end;
+  if (end >= today && !hasOrdersToday) end = minDate(end, addDays(today, -1));
+  return start <= end ? { start, end } : null;
+}
+
+/** "på 20 dagar", "i dag", "i går" eller "den 31 okt." för rubrikerna. */
+export function spanText(range: Period | null, today: IsoDate): { days: number; text: string } {
+  if (range === null) return { days: 0, text: "i perioden" };
+  const days = daysBetween(range.start, range.end) + 1;
+  if (days > 1) return { days, text: `på ${plural(days, "dag", "dagar")}` };
+  if (range.start === today) return { days, text: "i dag" };
+  if (range.start === addDays(today, -1)) return { days, text: "i går" };
+  return { days, text: `den ${dayText(range.start, today)}` };
+}
+
 /** Intäkt för alla order på raden (prissatta och utan pris). */
 export function revenueOf(row: ProfitabilityRow | undefined): number {
   return row ? row.revenueOre + row.unpricedRevenueOre : 0;
@@ -243,6 +284,8 @@ export function buildStoreRows(args: {
   previous: ProfitabilityResult | null;
   /** storeCompensation för månaden hittills: storeId → totalOre. */
   earnedMonth: ReadonlyMap<string, number>;
+  /** Butikernas rapportmottagare (för Att göra), storeId → mottagare. */
+  recipients: ReadonlyMap<string, readonly RecipientView[]>;
   today: IsoDate;
   query: string;
 }): StoreRow[] {
@@ -251,9 +294,17 @@ export function buildStoreRows(args: {
   return args.stores
     .map((s): StoreRow => {
       const row = cur.get(s.id);
-      const current =
-        agreementsOf(args.agreements, s.id).find((a) => a.state === "current") ?? null;
+      const own = agreementsOf(args.agreements, s.id);
+      const current = own.find((a) => a.state === "current") ?? null;
       const machineCodes = machinesIn(s.id, args.placements, args.machineCodes, args.today);
+      const issue =
+        storeIssues({
+          agreements: own,
+          machineCodes,
+          recipients: args.recipients.get(s.id) ?? [],
+          archived: s.archived,
+          today: args.today,
+        }).find((i) => i.actionable) ?? null;
       return {
         id: s.id,
         name: s.name,
@@ -268,11 +319,11 @@ export function buildStoreRows(args: {
           ? changeShare(revenueOf(row), revenueOf(prev.get(s.id)))
           : null,
         compensationOre: compensationOf(row),
+        previousCompensationOre: args.previous ? compensationOf(prev.get(s.id)) : null,
         profitOre: row?.profitOre ?? 0,
         earnedMonthOre: args.earnedMonth.get(s.id) ?? 0,
         current,
-        flag:
-          !s.archived && current === null && machineCodes.length > 0 ? "Inget avtal i dag" : null,
+        issue,
         href: `/butiker/${s.id}${args.query}`,
       };
     })
@@ -287,17 +338,19 @@ export function buildStoreRows(args: {
 /** Rubriken på listan: intäkten först, sedan vad butikerna fick och vem som bär mest. */
 export function listHeadline(
   rows: readonly StoreRow[],
-  days: number,
+  span: string,
 ): { title: string; aside: string | undefined } {
   const active = rows.filter((r) => !r.archived);
   if (active.length === 0) return { title: "Inga butiker ännu.", aside: undefined };
   const revenue = rows.reduce((n, r) => n + r.revenueOre, 0);
   const compensation = rows.reduce((n, r) => n + r.compensationOre, 0);
-  const title = `${plural(active.length, "butik", "butiker")} gav ${sek(revenue)} på ${plural(days, "dag", "dagar")}.`;
+  const profit = rows.reduce((n, r) => n + r.profitOre, 0);
+  const title = `${plural(active.length, "butik", "butiker")} gav ${sek(revenue)} ${span}.`;
   if (revenue <= 0) return { title, aside: "Ingen försäljning i perioden." };
   const top = [...rows].sort((a, b) => b.revenueOre - a.revenueOre)[0]!;
   const parts = [
-    `${sek(compensation)} till butikerna, ${formatPercent(compensation / revenue)} av intäkten`,
+    `${sek(compensation)} till ${rows.length === 1 ? "butiken" : "butikerna"}, ${formatPercent(compensation / revenue)} av intäkten`,
+    `vinst ${sek(profit)}`,
   ];
   if (active.length > 1) {
     parts.push(`${top.name} står för ${formatPercent(top.revenueOre / revenue, 0)}`);
@@ -314,20 +367,19 @@ export function changeText(current: number, previous: number): string | null {
   return `${formatDelta(Math.abs(bp) / 10_000, digits).replace(/^[+−±]/, "")} ${bp > 0 ? "mer" : "mindre"} än`;
 }
 
-export function listKpis(
-  rows: readonly StoreRow[],
-  monthLabel: string,
-  previous: ProfitabilityResult | null,
-): KpiView[] {
+/**
+ * Listans nyckeltal. Jämförelsen räknas på de visade raderna (samma butiker i båda
+ * perioderna), så att ett butiksfilter jämför butiken med sig själv.
+ */
+export function listKpis(rows: readonly StoreRow[], monthLabel: string): KpiView[] {
   const revenue = rows.reduce((n, r) => n + r.revenueOre, 0);
   const compensation = rows.reduce((n, r) => n + r.compensationOre, 0);
   const earned = rows.reduce((n, r) => n + r.earnedMonthOre, 0);
+  const compared = rows.length > 0 && rows.every((r) => r.previousRevenueOre !== null);
   const prevRevenue = rows.reduce((n, r) => n + (r.previousRevenueOre ?? 0), 0);
-  const prevCompensation = previous
-    ? previous.rows.filter((r) => r.kind === "item").reduce((n, r) => n + compensationOf(r), 0)
-    : 0;
+  const prevCompensation = rows.reduce((n, r) => n + (r.previousCompensationOre ?? 0), 0);
   const rel = (cur: number, prev: number) => {
-    const bp = previous ? changeBp(cur, prev) : null;
+    const bp = compared ? changeBp(cur, prev) : null;
     return bp === null ? null : { kind: "relative" as const, value: bp / 10_000 };
   };
   return [
@@ -341,15 +393,16 @@ export function listKpis(
     },
     {
       id: "compensation",
-      label: "Butiksersättning",
+      label: "Till butikerna",
       value: compensation,
       kind: "sek",
       delta: rel(compensation, prevCompensation),
+      invert: true,
     },
     {
       id: "share",
       label: "Andel av intäkten",
-      value: revenue > 0 ? compensation / revenue : 0,
+      value: revenue > 0 ? compensation / revenue : null,
       kind: "percent",
     },
     { id: "earned", label: `Intjänat ${monthLabel}`, value: earned, kind: "sek" },
@@ -429,24 +482,36 @@ export function compensationHeadline(
   };
 }
 
-/** Rubriken på butikens sida: intäkten i perioden och förändringen. */
+/**
+ * Rubriken på butikens sida: intäkten i perioden och förändringen, vad vi tjänade
+ * (vinsten efter inköp och ersättning) och vad butiken fått i ersättning i månaden.
+ */
 export function storeHeadline(args: {
   name: string;
   revenueOre: number;
   previousRevenueOre: number | null;
-  days: number;
+  profitOre: number;
+  /** "på 20 dagar". */
+  span: string;
   month: MonthCompensation;
 }): { title: string; aside: string } {
   const title =
     args.revenueOre > 0
-      ? `${args.name} gav ${sek(args.revenueOre)} på ${plural(args.days, "dag", "dagar")}.`
-      : `${args.name} har ingen försäljning på ${plural(args.days, "dag", "dagar")}.`;
+      ? `${args.name} gav ${sek(args.revenueOre)} ${args.span}.`
+      : `${args.name} har ingen försäljning ${args.span}.`;
   const parts: string[] = [];
   if (args.previousRevenueOre !== null && args.revenueOre > 0) {
     const change = changeText(args.revenueOre, args.previousRevenueOre);
     if (change) parts.push(`${change} perioden innan`);
   }
-  parts.push(`butiken har tjänat ${sek(args.month.totalOre)} hittills i ${args.month.monthLabel}`);
+  if (args.revenueOre > 0) {
+    parts.push(
+      `${args.profitOre < 0 ? "förlust" : "vinst"} för oss ${sek(Math.abs(args.profitOre))} efter inköp och ersättning`,
+    );
+  }
+  parts.push(
+    `butikens ersättning hittills i ${args.month.monthLabel} är ${sek(args.month.totalOre)}`,
+  );
   return { title, aside: parts.map(sentence).join(" ") };
 }
 
@@ -483,10 +548,11 @@ export function storeKpis(args: {
     },
     {
       id: "compensation",
-      label: "Butiksersättning",
+      label: "Till butiken",
       value: compensation,
       kind: "sek",
       delta: rel(compensation, compensationOf(prev ?? undefined)),
+      invert: true,
     },
     {
       id: "profit",
@@ -518,6 +584,8 @@ export function storeIssues(args: {
       id: "no-agreement",
       level: "critical",
       text: `Inget avtal gäller i dag för ${codes}. Ingen provision eller hyra räknas.`,
+      short: "Inget avtal i dag",
+      actionable: true,
     });
   }
   if (current?.validTo && !upcoming) {
@@ -527,6 +595,8 @@ export function storeIssues(args: {
         id: "ending",
         level: "warning",
         text: `Avtalet slutar ${dayText(current.validTo, args.today)}, om ${plural(left, "dag", "dagar")}, och inget nytt avtal är inlagt.`,
+        short: `Avtalet slutar ${dayText(current.validTo, args.today)}`,
+        actionable: true,
       });
     }
   }
@@ -535,6 +605,8 @@ export function storeIssues(args: {
       id: "upcoming",
       level: "neutral",
       text: `Nytt avtal från ${dayText(upcoming.validFrom, args.today)}: ${upcoming.termsLabel.toLocaleLowerCase("sv-SE")}.`,
+      short: `Nytt avtal ${dayText(upcoming.validFrom, args.today)}`,
+      actionable: false,
     });
   }
   if (args.machineCodes.length > 0 && !args.recipients.some((r) => r.active)) {
@@ -542,6 +614,8 @@ export function storeIssues(args: {
       id: "no-recipient",
       level: "neutral",
       text: "Ingen tar emot butikens månadsrapport.",
+      short: "Ingen rapportmottagare",
+      actionable: true,
     });
   }
   return out;

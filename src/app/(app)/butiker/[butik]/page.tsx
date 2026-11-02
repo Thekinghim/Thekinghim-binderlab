@@ -89,24 +89,39 @@ export default async function StorePage({
               label: "Status",
               value: store.archived ? (
                 <StatusTag status="offline">Arkiverad</StatusTag>
-              ) : store.isExample ? (
-                <StatusTag status="neutral">Exempel</StatusTag>
               ) : current ? (
                 <StatusTag status="ok">Avtal gäller</StatusTag>
               ) : (
-                <StatusTag status="neutral">Inget avtal</StatusTag>
+                <StatusTag status={placed.length > 0 ? "critical" : "neutral"}>
+                  Inget avtal
+                </StatusTag>
               ),
             },
+            ...(store.isExample
+              ? [{ label: "Typ", value: <StatusTag status="neutral">Exempel</StatusTag> }]
+              : []),
             { label: "Period", value: period.rangeLabel },
             { label: "Automater", value: formatInt(placed.length) },
             { label: "Modell", value: current ? MODEL_LABEL[current.model] : MISSING },
           ]}
-          actions={ctx.canEdit ? <StoreActions store={store} /> : undefined}
+          actions={
+            ctx.canEdit ? (
+              <StoreActions store={store} machines={placed.map((m) => m.code)} />
+            ) : undefined
+          }
         />
         {data.issues.length > 0 ? <Issues data={data} /> : null}
       </div>
 
-      <StoreKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
+      <div className="flex flex-col gap-3">
+        <StoreKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
+        <p className="max-w-[72ch] text-sm text-muted">
+          {sentence(
+            `Till butiken är provision på alla order och hyra för hela perioden ${period.rangeLabel}`,
+          )}{" "}
+          Vinsten gäller order med inköpspris, som på Lönsamhet.
+        </p>
+      </div>
 
       <SalesSection data={data} days={days} />
       <CompensationSection data={data} />
@@ -152,6 +167,7 @@ function Issues({ data }: { data: StoreDetailData }) {
 }
 
 function SalesSection({ data, days }: { data: StoreDetailData; days: string }) {
+  // data.daily är redan klippt till dagarna med data, så snittet räknas på dem.
   const total = data.daily.reduce((s, d) => s + d.value, 0);
   const mean = data.daily.length > 0 ? total / data.daily.length : 0;
   const peak = data.daily.reduce<(typeof data.daily)[number] | null>(
@@ -170,7 +186,7 @@ function SalesSection({ data, days }: { data: StoreDetailData; days: string }) {
         title="Försäljning per dag."
         aside={
           total > 0 && peak
-            ? `Snitt ${sek(mean * 100)}, topp ${dayText(peak.date, data.ctx.today)} med ${sek(peak.value * 100)}.`
+            ? `Snitt ${sek(mean * 100)} per dag ${data.period.span}, topp ${dayText(peak.date, data.ctx.today)} med ${sek(peak.value * 100)}.`
             : "Ingen försäljning i perioden."
         }
       />
@@ -392,7 +408,7 @@ function ContactSection({ data }: { data: StoreDetailData }) {
         }
       />
       <div className="grid grid-cols-1 gap-x-8 gap-y-12 lg:grid-cols-12">
-        <Sub index="04.1" label="Kontaktuppgifter" className="lg:col-span-5">
+        <Sub index="04.1" label="Kontaktuppgifter" className="lg:col-span-4">
           <dl className="flex flex-col">
             {contact.map((c) => (
               <div
@@ -421,7 +437,7 @@ function ContactSection({ data }: { data: StoreDetailData }) {
           index="04.2"
           label="Rapportmottagare"
           meta={plural(recipients.length, "mottagare", "mottagare")}
-          className="lg:col-span-7"
+          className="lg:col-span-8"
         >
           <div className="flex flex-col gap-4">
             {recipients.length > 0 ? (

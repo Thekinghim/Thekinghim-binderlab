@@ -89,9 +89,9 @@ export function ValuationView({ model }: { model: ValuationModel }) {
         header: "Andel",
         numeric: true,
         hideOnMobile: true,
-        sortValue: (r) => r.shareBp ?? -1,
-        render: (r) => percentBp(r.shareBp, 0),
-        csv: (r) => (r.shareBp === null ? null : r.shareBp / 100),
+        sortValue: (r) => (r.unitCostOre === null ? -1 : (r.shareBp ?? -1)),
+        render: (r) => percentBp(r.unitCostOre === null ? null : r.shareBp, 0),
+        csv: (r) => (r.unitCostOre === null || r.shareBp === null ? null : r.shareBp / 100),
       },
       {
         key: "cover",

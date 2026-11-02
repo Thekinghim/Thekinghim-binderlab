@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { renderReportEmail, type ReportEmailProps } from "@/emails/report-email";
+import { cleanEmailHtml } from "@/server/reports/email-cleanup";
 
 export interface EmailJob {
   readonly recipientId: string;
@@ -51,7 +52,13 @@ export function EmailRenderer({ jobs }: { jobs: readonly EmailJob[] }) {
   );
   const rendered = useMemo(
     () =>
-      inBrowser ? jobs.map((job) => ({ job, ...renderReportEmail(revive(job.props)) })) : null,
+      inBrowser
+        ? jobs.map((job) => {
+            const email = renderReportEmail(revive(job.props));
+            // Rader utan underlag ("–") tas bort, samma regler som textdelen på servern.
+            return { job, ...email, html: cleanEmailHtml(email.html, job.props.recipientKind) };
+          })
+        : null,
     [inBrowser, jobs],
   );
 
