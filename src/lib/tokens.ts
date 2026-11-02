@@ -13,9 +13,13 @@ export const color = {
   muted: "var(--bl-fg-muted)",
   subtle: "var(--bl-fg-subtle)",
   faint: "var(--bl-fg-faint)",
+  disabled: "var(--bl-fg-disabled)",
   signal: "var(--bl-signal)",
   signalFg: "var(--bl-signal-fg)",
   signalSoft: "var(--bl-signal-soft)",
+  signalLine: "var(--bl-signal-line)",
+  /** Fokusring: förgrundsfärgen, aldrig signal. */
+  focus: "var(--bl-focus)",
   data: [
     "var(--bl-data-1)",
     "var(--bl-data-2)",
@@ -26,11 +30,13 @@ export const color = {
   data0: "var(--bl-data-0)",
 } as const;
 
+/** Speglar --bl-dur-* (ms). I CSS: duration-fast/base/slow, animate-enter m.fl. */
 export const motion = {
   fast: 120,
   base: 150,
   slow: 180,
   count: 420,
+  pulse: 1600,
   ease: [0.2, 0, 0, 1] as const,
 } as const;
 

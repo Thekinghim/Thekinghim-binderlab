@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useRef, type KeyboardEvent } from "react";
 import { cn } from "@/lib/cn";
 
 export type SegmentOption<T extends string> = { value: T; label: string };
@@ -17,8 +17,12 @@ type SegmentedProps<T extends string> = {
 
 /**
  * Segmentväljare som radiogroup: piltangenter flyttar och väljer,
- * bara det valda segmentet ligger i tabbordningen. Markören glider
- * mellan lägen på 150 ms.
+ * bara det valda segmentet ligger i tabbordningen.
+ *
+ * En ram, 1px avdelare mellan lägena och ingen flytande platta: valt
+ * läge markeras statiskt (upphöjd yta, förgrundstext och ett 2px
+ * index under etiketten), så det syns redan i serverrenderad HTML och
+ * bärs av form, inte bara av färg.
  */
 export function Segmented<T extends string>({
   options,
@@ -29,24 +33,10 @@ export function Segmented<T extends string>({
   className,
 }: SegmentedProps<T>) {
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
-  const [indicator, setIndicator] = useState<{ left: number; width: number } | null>(null);
   const activeIndex = Math.max(
     0,
     options.findIndex((o) => o.value === value),
   );
-
-  useLayoutEffect(() => {
-    const measure = () => {
-      const el = refs.current[activeIndex];
-      if (el) setIndicator({ left: el.offsetLeft, width: el.offsetWidth });
-    };
-    measure();
-    const parent = refs.current[0]?.parentElement;
-    if (!parent) return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(parent);
-    return () => ro.disconnect();
-  }, [activeIndex, options.length]);
 
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
     const delta =
@@ -73,17 +63,11 @@ export function Segmented<T extends string>({
       role="radiogroup"
       aria-label={label}
       className={cn(
-        "relative inline-flex w-fit max-w-full [scrollbar-width:none] overflow-x-auto rounded-sm border border-line-strong bg-bg p-0.5",
+        "inline-flex w-fit max-w-full [scrollbar-width:none] divide-x divide-line-strong overflow-x-auto rounded-sm border border-line-strong",
+        size === "sm" ? "h-7" : "h-8",
         className,
       )}
     >
-      {indicator ? (
-        <span
-          aria-hidden
-          className="absolute top-0.5 bottom-0.5 rounded-xs border border-line-strong bg-raised transition-[left,width] duration-[150ms] ease-instrument"
-          style={{ left: indicator.left, width: indicator.width }}
-        />
-      ) : null}
       {options.map((o, i) => {
         const selected = o.value === value;
         return (
@@ -99,12 +83,20 @@ export function Segmented<T extends string>({
             onClick={() => onChange(o.value)}
             onKeyDown={onKeyDown}
             className={cn(
-              "label relative z-10 shrink-0 rounded-xs px-2.5 whitespace-nowrap transition-colors duration-[120ms] focus-visible:outline-offset-0",
-              size === "sm" ? "h-6" : "h-7",
-              selected ? "text-fg" : "text-subtle hover:text-fg",
+              "label relative shrink-0 whitespace-nowrap transition-[background-color,color] duration-fast ease-instrument focus-visible:-outline-offset-2",
+              size === "sm" ? "px-2.5" : "px-3",
+              selected
+                ? "bg-hover text-fg"
+                : "text-subtle hover:bg-hover/50 hover:text-fg",
             )}
           >
             {o.label}
+            {selected ? (
+              <span
+                aria-hidden
+                className={cn("absolute bottom-1 h-0.5 bg-fg", size === "sm" ? "inset-x-2.5" : "inset-x-3")}
+              />
+            ) : null}
           </button>
         );
       })}

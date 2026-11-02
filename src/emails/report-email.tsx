@@ -943,7 +943,12 @@ export function ReportEmail(props: ReportEmailProps) {
                           color={C.subtle}
                           style={{ ...tnum, marginTop: "12px" }}
                         >
-                          {footerMeta.join(" · ")}
+                          {footerMeta.map((m, i) => (
+                            <span key={m}>
+                              {i > 0 ? " · " : null}
+                              <span style={{ whiteSpace: "nowrap" }}>{m}</span>
+                            </span>
+                          ))}
                         </Text>
                       ) : null}
                     </td>

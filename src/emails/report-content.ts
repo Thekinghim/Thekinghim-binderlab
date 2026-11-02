@@ -394,7 +394,7 @@ export type RowColumn = {
   /**
    * Andra rad i samma cell, i mindre grå text (antal pack under
    * försäljningen, förändring under intäkten). Två värden i en cell gör
-   * tabellen smal nog för 320 px utan media query.
+   * tabellen smal nog för 375 px utan media query (Gmail) och 320 px med.
    */
   sub?: (r: EmailMachineRow) => RowSub | undefined;
 };

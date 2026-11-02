@@ -60,8 +60,7 @@ export function Modal({
       )}
     >
       <div
-        className="relative flex max-h-[85dvh] flex-col rounded-t-md border border-line-strong bg-raised sm:rounded-md"
-        style={{ animation: "bl-enter var(--bl-dur-slow) var(--bl-ease)" }}
+        className="relative flex max-h-[85dvh] animate-enter flex-col rounded-t-md border border-line-strong bg-raised sm:rounded-md"
       >
         <header className="flex items-start justify-between gap-4 border-b border-line p-5">
           <div className="flex min-w-0 flex-col gap-2">

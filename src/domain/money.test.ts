@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DomainError } from "./errors";
 import {
   allocateLargestRemainder,
+  allocateLargestRemainderBig,
   applyBp,
   ceilDiv,
   floorDiv,
@@ -133,6 +134,16 @@ describe("allocateLargestRemainder", () => {
 
   it("negativ vikt kastar", () => {
     expect(() => allocateLargestRemainder(10, [1, -1])).toThrow(DomainError);
+  });
+
+  it("bigint-vikter större än 2^53 ger samma resultat som skalade vikter", () => {
+    // Nettointäkt × månadshyra kan bli större än Number.MAX_SAFE_INTEGER.
+    const big = [4_900n * 10n ** 12n, 0n, 5_900n * 10n ** 12n];
+    expect(allocateLargestRemainderBig(6_000, big)).toEqual(
+      allocateLargestRemainder(6_000, [4_900, 0, 5_900]),
+    );
+    expect(allocateLargestRemainderBig(6_000, big)).toEqual([2_722, 0, 3_278]);
+    expect(() => allocateLargestRemainderBig(10, [1n, -1n])).toThrow(DomainError);
   });
 
   it("stora belopp och vikter", () => {

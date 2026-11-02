@@ -134,7 +134,7 @@ const ALL_VIEWS: readonly GroupBy[] = ["title", "machine", "store", "day", "week
  *  - totalen är densamma i alla vyer
  *  - varje rad: vinst = intäkt − inköp − avgifter − (provision + hyra)
  *  - betalt = moms + intäkt + moms utan pris + intäkt utan pris
- *  - all hyra = Σ storeMonthRent
+ *  - all hyra = Σ storeMonthRent = totals.rentOre (1.1.0)
  *  - vattenfallet: intäkt + avdrag = vinst
  */
 function assertIdentities(input: ProfitabilityInput): Record<GroupBy, ProfitabilityResult> {
@@ -155,8 +155,11 @@ function assertIdentities(input: ProfitabilityInput): Record<GroupBy, Profitabil
         row.vatOre + row.revenueOre + row.unpricedVatOre + row.unpricedRevenueOre,
       );
     }
+    // Beräkningsregler 1.1.0: all hyra dras från vinsten, även den del som fördelats på
+    // order utan pris (den ingår i ej fördelad hyra). unpricedRentOre är en delmängd.
     const rentAll = r.storeMonthRent.reduce((a, x) => a + x.rentOre, 0);
-    expect(r.totals.rentOre + r.totals.unpricedRentOre).toBe(rentAll);
+    expect(r.totals.rentOre).toBe(rentAll);
+    expect(r.totals.unpricedRentOre).toBeLessThanOrEqual(r.totals.unallocatedRentOre);
 
     const steps = r.waterfall.steps;
     expect(steps.map((s) => s.key)).toEqual(["revenue", "cost", "fees", "compensation", "profit"]);
@@ -502,24 +505,29 @@ describe(`revision 1: prisändring mitt i perioden (TZ=${process.env.TZ ?? "?"})
  *
  *  order titel automat butik datum  belopp inköp prov   hyra
  *  p1    A     M1      S1    10-20  4 900  2 000  588       0
- *  p2    B     M1      S1    11-04  5 900  3 300  708   2 120  (sista dagen med 12 %)
- *  p3    A     M1      S1    11-05  4 900  2 000  490   1 760  (nytt avtal 10 %)
- *  p4    B     M1      S1    11-10  5 900  3 300  590   2 120
+ *  p2    B     M1      S1    11-04  5 900  3 300  708       0  (sista dagen med 12 %, ingen hyra den dagen)
+ *  p3    A     M1      S1    11-05  4 900  2 000  490   2 722  (nytt avtal 10 % + hyra)
+ *  p4    B     M1      S1    11-10  5 900  3 300  590   3 278
  *  q1    A     M2      S2    10-25  4 900  2 000    0  26 344
  *  q2    B     M2      S2    10-31  5 900  3 000    0  31 721  (sista dagen i S2)
  *  q3    A     M2      –     11-02  4 900  2 000    0       0  (oplacerad)
  *  q4    B     M2      S3    11-03  5 900  3 300  472  14 568  (efter flytten)
- *  r1    A     M3      S3    10-24  4 900  2 000  392  13 684
- *  r2    B     M3      S3    10-25  5 900  3 000  472  16 477
+ *  r1    A     M3      S3    10-24  4 900  2 000  392  13 203  (avtal 750 kr/mån)
+ *  r2    B     M3      S3    10-25  5 900  3 000  472  16 958  (avtal 800 kr/mån)
  *  r3    A     M3      S3    11-10  4 900  2 000  392  12 099
  *  + två order utanför perioden (19 okt. och 11 nov.) som inte räknas.
  *
- * Fördelning (största rest):
- *   S1 nov. 6 000 på p2/p3/p4 (5 900/4 900/5 900, Σ 16 700):
- *     2 119 r 12 700, 1 760 r 8 000, 2 119 r 12 700 → 5 998, +1 p2, +1 p4 → 2 120, 1 760, 2 120
+ * Fördelning (största rest). Beräkningsregler 1.1.0: vikt = netto × månadshyran som gällde
+ * orderns dag (iakttagelse 2 i revisionen; tidigare bar p2 hyra från ett avtal som började
+ * dagen efter).
+ *   S1 nov. 6 000 på p2/p3/p4, vikter 5 900 × 0 / 4 900 × 30 000 / 5 900 × 30 000
+ *     (∝ 0 / 4 900 / 5 900, Σ 10 800):
+ *     0, 2 722 r 2 400, 3 277 r 8 400 → 5 999, +1 p4 → 0, 2 722, 3 278
  *   S2 okt. 58 065 på q1/q2 (4 900/5 900, Σ 10 800):
  *     26 344 r 3 300, 31 720 r 7 500 → +1 q2 → 26 344, 31 721
- *   S3 okt. 30 161 på r1/r2: 13 684 r 1 700, 16 476 r 9 100 → +1 r2 → 13 684, 16 477
+ *   S3 okt. 30 161 på r1/r2, vikter 4 900 × 75 000 / 5 900 × 80 000 (∝ 735 / 944, Σ 1 679):
+ *     30 161 × 735 / 1 679 = 13 203 r 498, 30 161 × 944 / 1 679 = 16 957 r 1 181
+ *     → +1 r2 → 13 203, 16 958
  *   S3 nov. 26 667 på q4/r3 (5 900/4 900): 14 568 r 900, 12 098 r 9 900 → +1 r3 → 14 568, 12 099
  *
  * Totalt: intäkt 58 900, inköp 27 900, prov 4 104, hyra 120 893 + 50 000 ej fördelad = 170 893
@@ -595,15 +603,15 @@ describe(`revision 2: avtalsbyte, flytt och period över två månader (TZ=${pro
       revenueOre: 29_400,
       costOre: 12_000,
       commissionOre: 1_862,
-      rentOre: 53_887,
-      profitOre: -38_349,
+      rentOre: 54_368, // 0 + 2 722 + 26 344 + 0 + 13 203 + 12 099
+      profitOre: -38_830,
     });
     expect(pick(rowOf(r, "B"), {} as Expected)).toEqual({
       revenueOre: 29_500,
       costOre: 15_900,
       commissionOre: 2_242,
-      rentOre: 67_006,
-      profitOre: -55_648,
+      rentOre: 66_525, // 0 + 3 278 + 31 721 + 14 568 + 16 958
+      profitOre: -55_167,
     });
     expect(pick(rowOf(r, UNALLOCATED_KEY), {} as Expected)).toEqual({
       revenueOre: 0,
@@ -712,8 +720,9 @@ describe(`revision 2: avtalsbyte, flytt och period över två månader (TZ=${pro
     expect(rowOf(r, "2026-W43")!.range).toEqual({ start: "2026-10-20", end: "2026-10-25" });
     expect(rowOf(r, "2026-W46")!.range).toEqual({ start: "2026-11-09", end: "2026-11-10" });
     const profits = r.rows.map((x) => x.profitOre);
-    expect(profits).toEqual([-46_357, -28_821, -9_118, -9_701, -50_000]);
-    expect(r.rows.map((x) => x.rentOre)).toEqual([56_505, 31_721, 18_448, 14_219, 50_000]);
+    // W45: p2 0 + p3 2 722 + q3 0 + q4 14 568 = 17 290; W46: p4 3 278 + r3 12 099 = 15 377.
+    expect(profits).toEqual([-46_357, -28_821, -7_960, -10_859, -50_000]);
+    expect(r.rows.map((x) => x.rentOre)).toEqual([56_505, 31_721, 17_290, 15_377, 50_000]);
   });
 
   it("identiteterna håller i alla vyer", () => {
@@ -748,8 +757,11 @@ describe(`revision 2: avtalsbyte, flytt och period över två månader (TZ=${pro
  *   15 572 r 800, 18 750 r 0, 21 927 r 22 800, 18 750 r 0 → 74 999, +1 u6
  *
  * Prissatta (u1, u4, u6, u7): intäkt 22 600, inköp 10 500, prov 2 004, hyra 56 250
- *   vinst 22 600 − 10 500 − 58 254 = −46 154, marginal −20 422,1 → −20 422
  * Utan pris (u2, u3, u5): intäkt 24 700, prov 2 728, hyra 18 750 (C och D)
+ * Beräkningsregler 1.1.0 (iakttagelse 1): hyran på order utan pris (18 750, u5) dras ändå
+ * från vinsten som ej fördelad hyra. Hyra i vinsten = 56 250 + 18 750 = 75 000.
+ *   vinst 22 600 − 10 500 − (2 004 + 75 000) = −64 904,
+ *   marginal −64 904 × 10 000 / 22 600 = −28 718,6 → −28 719
  * Andel utan pris: 24 700 × 10 000 / 47 300 = 5 221,99 → 5 222 bp
  */
 const SC3: ProfitabilityInput = {
@@ -776,11 +788,12 @@ describe(`revision 3: två titlar saknar pris (TZ=${process.env.TZ ?? "?"})`, ()
       revenueOre: 22_600,
       costOre: 10_500,
       commissionOre: 2_004,
-      rentOre: 56_250,
-      profitOre: -46_154,
-      marginBp: -20_422,
+      rentOre: 75_000,
+      profitOre: -64_904,
+      marginBp: -28_719,
       orders: 7,
     });
+    expect(r.totals.unallocatedRentOre).toBe(18_750);
     expect(r.totals.pricedOrders).toBe(4);
     expect(r.totals.unpricedOrders).toBe(3);
     expect(r.totals.unpricedRevenueOre).toBe(24_700);
@@ -814,7 +827,7 @@ describe(`revision 3: två titlar saknar pris (TZ=${process.env.TZ ?? "?"})`, ()
     expect(r.waterfall.excluded.revenueOre).toBe(24_700);
     expect(r.waterfall.excluded.shareBp).toBe(5_222);
     expect(r.waterfall.steps.map((s) => s.valueOre)).toEqual([
-      22_600, -10_500, 0, -58_254, -46_154,
+      22_600, -10_500, 0, -77_004, -64_904,
     ]);
   });
 
@@ -854,6 +867,14 @@ describe(`revision 3: två titlar saknar pris (TZ=${process.env.TZ ?? "?"})`, ()
       12_900,
     ]);
     expect(d.unpricedCommissionOre).toBe(1_548);
+    // Hyran på C:s order utan pris (u5) ligger på raden 'unallocated' och dras från vinsten.
+    expect(pick(rowOf(r, UNALLOCATED_KEY), {} as Expected)).toEqual({
+      revenueOre: 0,
+      costOre: 0,
+      commissionOre: 0,
+      rentOre: 18_750,
+      profitOre: -18_750,
+    });
   });
 
   it("per titel på sidan Inköpspriser (C: aktuellt pris 35,00 för alla tre orderna)", () => {
@@ -886,13 +907,14 @@ describe(`revision 3: två titlar saknar pris (TZ=${process.env.TZ ?? "?"})`, ()
 
   it("när priset för D läggs in slår det igenom direkt och andelen faller", () => {
     // D 100,00 från 1 nov.: u3 blir prissatt. Prissatt intäkt 22 600 + 12 900 = 35 500,
-    // inköp 10 500 + 10 000 = 20 500, prov 2 004 + 1 548 = 3 552, hyra oförändrad 56 250.
-    // Vinst 35 500 − 20 500 − 59 802 = −44 802. Utan pris: 11 800 / 47 300 → 2 494,7 → 2 495 bp.
+    // inköp 10 500 + 10 000 = 20 500, prov 2 004 + 1 548 = 3 552, hyra oförändrad 75 000
+    // (1.1.0: all hyra, även u5:s 18 750 som fortfarande saknar pris).
+    // Vinst 35 500 − 20 500 − 78 552 = −63 552. Utan pris: 11 800 / 47 300 → 2 494,7 → 2 495 bp.
     const r = profitability(
       { ...SC3, prices: [...SC3.prices, p("D", 10_000, "2026-11-01")] },
       "title",
     );
-    expect(r.totals.profitOre).toBe(-44_802);
+    expect(r.totals.profitOre).toBe(-63_552);
     expect(r.unpriced.shareBp).toBe(2_495);
     expect(r.unpriced.titleIds).toEqual(["C"]);
   });
@@ -904,7 +926,7 @@ describe(`revision 3: två titlar saknar pris (TZ=${process.env.TZ ?? "?"})`, ()
 
 describe(`revision 4: vyerna titel, automat och butik mot varandra (TZ=${process.env.TZ ?? "?"})`, () => {
   it("SC2: summan per titel = per automat = per butik = totalen, fält för fält (handräknat)", () => {
-    // Vinst: titel −38 349 − 55 648 − 50 000; automat 2 624 − 61 805 − 34 816 − 50 000;
+    // Vinst: titel −38 830 − 55 167 − 50 000; automat 2 624 − 61 805 − 34 816 − 50 000;
     //        butik 2 624 − 102 265 − 47 256 + 2 900. Alla = −143 997.
     const v = profitabilityViews(SC2, ["title", "machine", "store"]);
     for (const g of ["title", "machine", "store"] as const) {
@@ -1197,12 +1219,11 @@ describe(`revision 5: kantfall (TZ=${process.env.TZ ?? "?"})`, () => {
     expect(t[0]!.averagePriceOre).toBe(4_900);
   });
 
-  it("iakttagelse: en enda order utan pris tar med sig hela butikens månadshyra ur vinsten", () => {
-    // Enligt avsnitt 4–5 i docs/berakningar.md: hyran fördelas på ALLA order i butik-månaden
-    // och den del som hör till order utan pris ingår inte i vinsten.
-    // Utan order: hyran 150 000 är ej fördelad → vinst −150 000.
-    // Med en enda order utan pris (49,00): hela hyran fördelas på den → vinst 0.
-    // Vinsten blir alltså 1 500 kr BÄTTRE av att sälja ett pack som saknar inköpspris.
+  it("iakttagelse 1 (åtgärdad i 1.1.0): en order utan pris tar inte med sig hyran ur vinsten", () => {
+    // Före 1.1.0: hyran fördelades på alla order och andelen på order utan pris ingick inte
+    // i vinsten, så en enda order utan pris gjorde vinsten 1 500 kr BÄTTRE (−150 000 → 0).
+    // Från 1.1.0 (docs/berakningar.md avsnitt 5): hyran på order utan pris är ej fördelad
+    // hyra och dras från vinsten. Utan order: −150 000. Med en order utan pris: −150 000.
     const base: ProfitabilityInput = {
       orders: [],
       prices: [],
@@ -1216,8 +1237,9 @@ describe(`revision 5: kantfall (TZ=${process.env.TZ ?? "?"})`, () => {
       { ...base, orders: [o("w", "Z", "M2", "2026-11-10", 4900)] },
       "store",
     );
-    expect(withUnpriced.totals.profitOre).toBe(0);
+    expect(withUnpriced.totals.profitOre).toBe(-150_000);
     expect(withUnpriced.totals.unpricedRentOre).toBe(150_000);
+    expect(withUnpriced.totals.unallocatedRentOre).toBe(150_000);
     expect(withUnpriced.unpriced.shareBp).toBe(10_000);
   });
 

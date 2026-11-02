@@ -62,6 +62,7 @@ export {
 
 export {
   allocateLargestRemainder,
+  allocateLargestRemainderBig,
   applyBp,
   BP_SCALE,
   ceilDiv,

@@ -39,15 +39,20 @@ function FieldShell({ id, label, hint, error, children, className }: FieldShellP
   );
 }
 
+/**
+ * Fokus ritas av den globala :focus-visible-ringen (förgrundsfärg, 2px
+ * utanför kanten), så en signalkant i felläge syns kvar innanför ringen.
+ * Inaktiv: streckad kant, ingen fyllning, läsbar text (--bl-fg-disabled).
+ */
 const control =
-  "h-9 w-full min-w-0 rounded-sm border bg-bg px-3 text-base text-fg transition-[border-color,background-color] duration-[120ms] ease-instrument placeholder:text-subtle hover:border-muted focus-visible:outline-2 focus-visible:outline-offset-0 disabled:opacity-40";
+  "h-9 w-full min-w-0 rounded-sm border bg-bg px-3 text-base text-fg transition-[border-color,background-color] duration-fast ease-instrument placeholder:text-subtle enabled:hover:border-muted disabled:cursor-not-allowed disabled:border-dashed disabled:border-line-strong disabled:bg-transparent disabled:text-disabled disabled:placeholder:text-disabled";
 
 type InputProps = InputHTMLAttributes<HTMLInputElement> & {
   label: string;
   hint?: string;
   error?: string;
   icon?: IconName;
-  /** Enhet till höger i monospace, t.ex. "kr" eller "st" */
+  /** Enhet till höger i samma typsnitt som talet, t.ex. "kr", "st" eller "%" */
   suffix?: string;
   wrapperClassName?: string;
 };
@@ -77,13 +82,14 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
             error ? "border-signal" : "border-line-control",
             icon && "pl-9",
             suffix && "pr-10",
-            rest.type === "number" && "tnum text-right font-mono",
+            // Tal sätts i Geist med tabulära siffror, aldrig i mono.
+            rest.type === "number" && "tnum text-right",
             className,
           )}
           {...rest}
         />
         {suffix ? (
-          <span className="label pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-subtle">
+          <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm text-subtle">
             {suffix}
           </span>
         ) : null}
