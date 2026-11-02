@@ -39,7 +39,8 @@ export async function acceptInvitation(
     emailLinkType: linkType === "invite" || linkType === "magiclink" ? linkType : undefined,
   });
   if (!result.ok) {
-    const isPasswordError = result.error.startsWith("Lösenordet") || result.error === MESSAGES.acceptPasswordNeeded;
+    const isPasswordError =
+      result.error.startsWith("Lösenordet") || result.error === MESSAGES.acceptPasswordNeeded;
     return {
       error: result.error,
       field: isPasswordError ? "password" : undefined,

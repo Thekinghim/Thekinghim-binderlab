@@ -105,7 +105,9 @@ export function canRevokeInvitation(actor: MemberRole, invitation: Pick<Invitati
   return actor === "owner" || (actor === "admin" && invitation.role !== "owner");
 }
 
-export function countByRole(members: readonly Pick<MemberRow, "role">[]): Record<MemberRole, number> {
+export function countByRole(
+  members: readonly Pick<MemberRow, "role">[],
+): Record<MemberRole, number> {
   const counts: Record<MemberRole, number> = { owner: 0, admin: 0, viewer: 0, refiller: 0 };
   for (const m of members) counts[m.role] += 1;
   return counts;

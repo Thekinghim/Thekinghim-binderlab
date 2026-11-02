@@ -170,7 +170,8 @@ export function UploadPanel({
     setPhase({ kind: "done", result: committed.data });
     const added = committed.data.summary.new;
     toast({
-      title: added > 0 ? `${formatInt(added)} nya order importerade` : "Importen är sparad i loggen",
+      title:
+        added > 0 ? `${formatInt(added)} nya order importerade` : "Importen är sparad i loggen",
       description:
         added > 0
           ? "Hem, Lönsamhet och Att göra är uppdaterade."
@@ -232,13 +233,16 @@ export function UploadPanel({
             onDrop={onDrop}
             className={cn(
               "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed bg-surface px-4 py-12 text-center transition-[border-color,background-color] duration-fast ease-instrument has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-focus",
-              dragging ? "border-fg bg-hover" : "border-line-strong hover:border-line-control hover:bg-hover",
+              dragging
+                ? "border-fg bg-hover"
+                : "border-line-strong hover:border-line-control hover:bg-hover",
             )}
           >
             <Icon name="download" size={20} className="rotate-180 text-muted" />
             <span className="text-base font-medium text-fg">Välj orderlistan (CSV)</span>
             <span className="text-sm text-muted">
-              eller dra den hit · högst 50 MB · {source?.name ?? ""} i {source?.sourceTimezone ?? ""}
+              eller dra den hit · högst 50 MB · {source?.name ?? ""} i{" "}
+              {source?.sourceTimezone ?? ""}
             </span>
             <input
               ref={inputRef}

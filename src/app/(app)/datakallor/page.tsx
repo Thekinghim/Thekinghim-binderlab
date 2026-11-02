@@ -83,7 +83,9 @@ export default async function DatakallorPage() {
           aside={
             data.queue.length === 0
               ? "Nya namn från Awish hamnar här."
-              : `${formatInt(queuedOrders)} order räknas inte på någon automat förrän de kopplas.`
+              : queuedOrders === 0
+                ? "Inga order väntar på dem ännu."
+                : `${formatInt(queuedOrders)} order räknas inte på någon automat förrän de kopplas.`
           }
         />
         <MachineQueue queue={data.queue} machines={data.machines} timeZone={data.timeZone} />

@@ -38,7 +38,8 @@ export default async function UsersPage() {
 
   const tz = ctx.timeZone;
   const now = wallClockIn(new Date(ctx.now), tz);
-  const date = (isoTime: string) => formatDate(wallClockIn(new Date(isoTime), tz), { year: "auto", now });
+  const date = (isoTime: string) =>
+    formatDate(wallClockIn(new Date(isoTime), tz), { year: "auto", now });
   const ownerCount = countByRole(data.members).owner;
   const nameById = new Map(data.members.map((m) => [m.userId, memberName(m)]));
 

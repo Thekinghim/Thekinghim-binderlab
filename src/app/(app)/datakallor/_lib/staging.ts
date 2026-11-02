@@ -154,7 +154,9 @@ export class UploadStaging {
     if (meta.received !== meta.size) {
       throw new ImportValidationError("Filen är inte färdiguppladdad. Ladda upp filen igen.");
     }
-    const content = new Uint8Array(await readFile(path.join(this.dir(owner, uploadId), "data.bin")));
+    const content = new Uint8Array(
+      await readFile(path.join(this.dir(owner, uploadId), "data.bin")),
+    );
     if (content.byteLength !== meta.size) {
       throw new ImportValidationError("Filen är ofullständig. Ladda upp filen igen.");
     }

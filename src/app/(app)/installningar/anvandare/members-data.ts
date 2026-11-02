@@ -232,14 +232,16 @@ export async function findManageableInvitationFor(
   const { organizationId, invitationId } = parsed.data;
   const actor = await authorize(user, organizationId);
   if (!isRole(actor)) return { ok: false, error: actor.error ?? MEMBER_MESSAGES.forbidden };
-  const row = await withUserDbFor(user as SessionUser, async (tx) =>
-    Array.from(
-      await tx.execute(
-        sql`select i.email::text as email, i.role::text as role from public.invitations i
+  const row = await withUserDbFor(
+    user as SessionUser,
+    async (tx) =>
+      Array.from(
+        await tx.execute(
+          sql`select i.email::text as email, i.role::text as role from public.invitations i
             where i.id = ${invitationId}::uuid and i.organization_id = ${organizationId}::uuid
               and i.accepted_at is null`,
-      ),
-    )[0],
+        ),
+      )[0],
   );
   const invitation = row as { email: string; role: string } | undefined;
   if (!invitation || !isMemberRole(invitation.role)) {

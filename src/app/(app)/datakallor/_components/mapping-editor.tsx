@@ -7,11 +7,7 @@ import { Select } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
 import { formatInt } from "@/lib/format";
 
-import {
-  MAPPING_FIELD_LABELS,
-  MAPPING_FIELDS,
-  REQUIRED_MAPPING_FIELDS,
-} from "../_lib/constants";
+import { MAPPING_FIELD_LABELS, MAPPING_FIELDS, REQUIRED_MAPPING_FIELDS } from "../_lib/constants";
 import type { FieldSource, ImportField, PreviewMapping } from "../_lib/types";
 
 type Delimiter = "," | ";" | "\t";
@@ -97,7 +93,10 @@ export function MappingEditor({
                 value={columns[field] ?? ""}
                 options={options}
                 onChange={(e) =>
-                  setColumns((c) => ({ ...c, [field]: e.target.value === "" ? null : e.target.value }))
+                  setColumns((c) => ({
+                    ...c,
+                    [field]: e.target.value === "" ? null : e.target.value,
+                  }))
                 }
                 error={isMissing ? "Obligatoriskt: välj kolumnen." : undefined}
                 hint={fieldChanged ? "Ändrad" : SOURCE_TEXT[mapping.source[field]]}

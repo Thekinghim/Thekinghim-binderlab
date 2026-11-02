@@ -68,7 +68,10 @@ export function ImportLog({
       header: "Fil",
       sortValue: (e) => e.fileName ?? "",
       render: (e) => (
-        <span className="block max-w-[16ch] truncate sm:max-w-[28ch]" title={e.fileName ?? undefined}>
+        <span
+          className="block max-w-[16ch] truncate sm:max-w-[28ch]"
+          title={e.fileName ?? undefined}
+        >
           {e.fileName ?? TRIGGER[e.trigger]}
         </span>
       ),
@@ -129,7 +132,9 @@ export function ImportLog({
       key: "status",
       header: "Status",
       sortValue: (e) => e.status,
-      render: (e) => <StatusTag status={STATUS[e.status].status}>{STATUS[e.status].text}</StatusTag>,
+      render: (e) => (
+        <StatusTag status={STATUS[e.status].status}>{STATUS[e.status].text}</StatusTag>
+      ),
       csv: (e) => STATUS[e.status].text,
       hideOnMobile: true,
     },

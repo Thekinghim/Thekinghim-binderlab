@@ -23,11 +23,7 @@ export const timeZoneSchema = z
   .refine(isValidTimeZone, "Okänd tidszon.");
 
 export const createSourceSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, "Ange ett namn.")
-    .max(200, "Namnet får vara högst 200 tecken."),
+  name: z.string().trim().min(1, "Ange ett namn.").max(200, "Namnet får vara högst 200 tecken."),
   sourceTimezone: timeZoneSchema,
 });
 
@@ -72,5 +68,7 @@ export const mapMachineSchema = z.object({
 
 export function parseRowFilter(value: unknown): ImportRowFilter {
   const v = Array.isArray(value) ? value[0] : value;
-  return (IMPORT_ROW_FILTERS as readonly unknown[]).includes(v) ? (v as ImportRowFilter) : "problem";
+  return (IMPORT_ROW_FILTERS as readonly unknown[]).includes(v)
+    ? (v as ImportRowFilter)
+    : "problem";
 }

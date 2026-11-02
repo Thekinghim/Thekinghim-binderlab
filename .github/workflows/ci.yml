@@ -43,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        tz: [UTC, Europe/Stockholm]
+        tz: [UTC, Europe/Stockholm, Asia/Shanghai]
     env:
       TZ: ${{ matrix.tz }}
     steps:
@@ -55,9 +55,9 @@ jobs:
       - run: npm ci
       - name: Enhetstester
         run: npm run test
-      - name: Beräkningslagret under UTC, Europe/Stockholm och Asia/Shanghai
+      - name: Beräkningar, import och seed under UTC, Europe/Stockholm och Asia/Shanghai
         if: matrix.tz == 'UTC'
-        run: npm run test:domain:tz
+        run: npm run test:domain:tz && npm run test:import:tz && npm run test:seed:tz
 
   db:
     name: Databastester (Postgres 16)

@@ -11,12 +11,7 @@ import { StateMessage } from "@/components/ui/state-message";
 import { useToast } from "@/components/ui/toast";
 import { formatInt } from "@/lib/format";
 
-import {
-  changeMemberRole,
-  removeMember,
-  resendInvitation,
-  revokeInvitation,
-} from "./actions";
+import { changeMemberRole, removeMember, resendInvitation, revokeInvitation } from "./actions";
 import { FormError } from "@/app/logga-in/form-error";
 import { ROLE_LABEL, canManageMembers, peopleCount } from "./model";
 import { RoleChoice } from "./role-choice";
@@ -267,7 +262,9 @@ export function MembersView({
                   </span>
                   <span className="meta tnum hidden text-muted md:block">Går ut {i.expires}</span>
                   <div className="col-span-2 flex min-h-7 items-center gap-1 md:col-span-1 md:w-[168px] md:justify-end">
-                    <span className="meta tnum mr-auto text-muted md:hidden">Går ut {i.expires}</span>
+                    <span className="meta tnum mr-auto text-muted md:hidden">
+                      Går ut {i.expires}
+                    </span>
                     {i.canManage ? (
                       <>
                         <Button

@@ -84,11 +84,7 @@ export default async function ImportDetailPage({
           },
         ]}
       />
-      <ImportRows
-        detail={detail}
-        filter={filter}
-        timeZone={ctx.timeZone}
-      />
+      <ImportRows detail={detail} filter={filter} timeZone={ctx.timeZone} />
     </div>
   );
 }

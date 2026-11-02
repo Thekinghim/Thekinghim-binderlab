@@ -818,7 +818,9 @@ describe("Revision scenario 5: delägarrapport med jämförelser, utveckling, la
     expect(r.events[0]!.text).toBe(
       `Inköpspriset för 30th Celebration ändrades från 20,00${N}kr till 25,00${N}kr den 16 november 2026.`,
     );
-    expect(r.events[3]!.text).toBe(`Högsta intäkten på 12 månader: 206${N}kr.`);
+    // Rekordet gäller intäkten för alla order (25 500 öre), samma tal som Hem visar som Intäkt.
+    // Revisionen räknade först bara prissatta order (20 600); beslutat 2 nov.: intäkt = alla order.
+    expect(r.events[3]!.text).toBe(`Högsta intäkten på 12 månader: 255${N}kr.`);
   });
 
   it("vinstfördelning exakt på öret: 1 113 + 1 113 + 1 114 = 3 340", () => {

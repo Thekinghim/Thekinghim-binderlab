@@ -117,8 +117,8 @@ function MagicLinkForm({
           </div>
         </dl>
         <p className="text-base text-muted">
-          Om adressen har ett konto har vi skickat en länk. Öppna den i den här webbläsaren.
-          Kommer inget inom några minuter: kontrollera adressen eller skräpposten.
+          Om adressen har ett konto har vi skickat en länk. Öppna den i den här webbläsaren. Kommer
+          inget inom några minuter: kontrollera adressen eller skräpposten.
         </p>
         <form action={action}>
           <input type="hidden" name="next" value={next} />

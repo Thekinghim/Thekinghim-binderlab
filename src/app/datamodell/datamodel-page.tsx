@@ -13,7 +13,10 @@ const decisions: Array<[string, string]> = [
   ["Moms", "Ingen. vat_rate_bp = 0, beräkningarna klarar moms om det ändras."],
   ["Provision", "Alltid på belopp exkl. moms. Hyra proportioneras per dag vid delmånad."],
   ["Kortavgift", "Inte med i beräkningarna nu. card_fee_bp = 0."],
-  ["Källans tidszon", "Troligen Asia/Shanghai. Inställning per datakälla, verifieras mot order 42780."],
+  [
+    "Källans tidszon",
+    "Troligen Asia/Shanghai. Inställning per datakälla, verifieras mot order 42780.",
+  ],
   [
     "Ändrade order",
     "Förekommer inte. Avvikande källrad loggas som konflikt, ordern ändras aldrig.",

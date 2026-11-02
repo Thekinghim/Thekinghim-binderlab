@@ -31,8 +31,8 @@ export function MachineQueue({
   if (queue.length === 0) {
     return (
       <p className="max-w-xl text-sm text-muted">
-        Om Awish skickar ett automatnamn som inte är kopplat hamnar det här. Orderna sparas ändå
-        och får automaten när namnet kopplas.
+        Om Awish skickar ett automatnamn som inte är kopplat hamnar det här. Orderna sparas ändå och
+        får automaten när namnet kopplas.
       </p>
     );
   }
@@ -79,7 +79,7 @@ function QueueRow({
     { value: "", label: "Välj automat" },
     ...machines.map((m) => ({
       value: m.id,
-      label: `${m.code} · ${m.name}${m.storeName ? ` (${m.storeName})` : ""}`,
+      label: `${m.code} · ${m.name}${m.storeName ? ` · ${m.storeName}` : ""}`,
     })),
   ];
 
@@ -104,7 +104,11 @@ function QueueRow({
     });
 
   return (
-    <Panel role="group" className="grid min-w-0 gap-4 md:grid-cols-12 md:items-end" aria-labelledby={headingId}>
+    <Panel
+      role="group"
+      className="grid min-w-0 gap-4 md:grid-cols-12 md:items-end"
+      aria-labelledby={headingId}
+    >
       <div className="flex min-w-0 flex-col gap-1 md:col-span-5">
         <p className="label text-subtle">Namn i Awish · {entry.dataSourceName}</p>
         <p id={headingId} className="truncate text-md font-medium text-fg">

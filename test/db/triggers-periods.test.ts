@@ -153,14 +153,12 @@ describe("månadsstängning (mars 2025 stängd)", () => {
         .values({ organizationId: F.orgId, name: "Ny butik" })
         .returning();
       return attempt(tx, (sp) =>
-        sp
-          .insert(s.storeAgreements)
-          .values({
-            organizationId: F.orgId,
-            storeId: store!.id,
-            validFrom: "2025-02-01",
-            commissionBp: 1500,
-          }),
+        sp.insert(s.storeAgreements).values({
+          organizationId: F.orgId,
+          storeId: store!.id,
+          validFrom: "2025-02-01",
+          commissionBp: 1500,
+        }),
       );
     });
     expect(outcome.code).toBe("BL004");
@@ -280,14 +278,12 @@ describe("prisperioder: priset som gällde orderns dag används", () => {
     F = await seedTenantFixture();
     await asUser(F.owner, async (tx) => {
       // Nytt pris mitt i maj.
-      await tx
-        .insert(s.purchasePrices)
-        .values({
-          organizationId: F.orgId,
-          titleId: F.titleId,
-          unitCostOre: 5000,
-          validFrom: "2025-05-15",
-        });
+      await tx.insert(s.purchasePrices).values({
+        organizationId: F.orgId,
+        titleId: F.titleId,
+        unitCostOre: 5000,
+        validFrom: "2025-05-15",
+      });
       const base = {
         organizationId: F.orgId,
         dataSourceId: F.dataSourceId,

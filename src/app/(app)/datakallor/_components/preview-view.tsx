@@ -60,7 +60,13 @@ export function PreviewView({
   const s = result.summary;
   const committed = !result.dryRun;
   const items: KpiItem[] = [
-    { id: "new", label: committed ? "Nya order" : "Nya", value: s.new, format: formatInt, primary: true },
+    {
+      id: "new",
+      label: committed ? "Nya order" : "Nya",
+      value: s.new,
+      format: formatInt,
+      primary: true,
+    },
     { id: "dup", label: "Dubbletter", value: s.duplicate, format: formatInt },
     {
       id: "conflict",
@@ -92,8 +98,8 @@ export function PreviewView({
           <span className="text-subtle">{asideOf(result)}</span>
         </h3>
         <p className="meta tnum truncate text-muted">
-          {result.file.name} · {formatBytes(result.file.bytes)} · {plural(s.total, "rad", "rader")} ·{" "}
-          {result.dataSource.name}
+          {result.file.name} · {formatBytes(result.file.bytes)} · {plural(s.total, "rad", "rader")}{" "}
+          · {result.dataSource.name}
         </p>
       </div>
 
@@ -133,7 +139,11 @@ export function PreviewView({
       ) : null}
 
       {!committed && result.mapping && onRemap ? (
-        <MappingEditor key={result.file.sha256 + JSON.stringify(result.mapping.columns)} mapping={result.mapping} onApply={onRemap} />
+        <MappingEditor
+          key={result.file.sha256 + JSON.stringify(result.mapping.columns)}
+          mapping={result.mapping}
+          onApply={onRemap}
+        />
       ) : null}
 
       <RowsTable result={result} timeZone={timeZone} />
@@ -148,7 +158,9 @@ export function PreviewView({
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             {onCancel ? <Button onClick={onCancel}>Avbryt</Button> : null}
             <Button variant={s.new > 0 ? "primary" : "secondary"} onClick={onConfirm}>
-              {s.new > 0 ? `Importera ${plural(s.new, "order", "order")}` : "Spara i loggen (0 nya)"}
+              {s.new > 0
+                ? `Importera ${plural(s.new, "order", "order")}`
+                : "Spara i loggen (0 nya)"}
             </Button>
           </div>
         </div>
@@ -196,7 +208,10 @@ function TimezoneCheck({
     label: z.label,
   }));
   if (!options.some((o) => o.value === result.dataSource.sourceTimezone)) {
-    options.unshift({ value: result.dataSource.sourceTimezone, label: result.dataSource.sourceTimezone });
+    options.unshift({
+      value: result.dataSource.sourceTimezone,
+      label: result.dataSource.sourceTimezone,
+    });
   }
 
   const change = () =>
@@ -215,7 +230,9 @@ function TimezoneCheck({
       <div className="grid gap-6 md:grid-cols-12">
         <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3 md:col-span-7">
           <div className="flex flex-col gap-1">
-            <dt className="label text-subtle">Order {first.externalId} · rad {formatInt(first.rowNumber)}</dt>
+            <dt className="label text-subtle">
+              Order {first.externalId} · rad {formatInt(first.rowNumber)}
+            </dt>
             <dd className="tnum text-base text-fg">{first.sourceLocal}</dd>
             <dd className="text-xs text-subtle">Payment Time i filen</dd>
           </div>
@@ -326,7 +343,9 @@ function NameList({
 }
 
 function RowsTable({ result, timeZone }: { result: PreviewResult; timeZone: string }) {
-  const problems = result.rows.filter((r) => r.status === "error" || r.status === "conflict").length;
+  const problems = result.rows.filter(
+    (r) => r.status === "error" || r.status === "conflict",
+  ).length;
   const [filter, setFilter] = useState<RowFilter>(problems > 0 ? "problems" : "all");
   const rows = useMemo(
     () =>
@@ -353,7 +372,9 @@ function RowsTable({ result, timeZone }: { result: PreviewResult; timeZone: stri
       key: "status",
       header: "Status",
       sortValue: (r) => r.status,
-      render: (r) => <StatusTag status={ROW_TONE[r.status]}>{ROW_STATUS_LABELS[r.status]}</StatusTag>,
+      render: (r) => (
+        <StatusTag status={ROW_TONE[r.status]}>{ROW_STATUS_LABELS[r.status]}</StatusTag>
+      ),
       csv: (r) => ROW_STATUS_LABELS[r.status],
       width: 120,
     },
@@ -369,7 +390,7 @@ function RowsTable({ result, timeZone }: { result: PreviewResult; timeZone: stri
       header: "Meddelande",
       sortValue: (r) => r.message ?? "",
       render: (r) => (
-        <span className="block min-w-[32ch] max-w-[48ch] text-sm whitespace-normal text-muted">
+        <span className="block max-w-[48ch] min-w-[32ch] text-sm whitespace-normal text-muted">
           {[r.message, ...r.notes].filter(Boolean).join(" ") || MISSING}
         </span>
       ),
@@ -461,8 +482,8 @@ function RowsTable({ result, timeZone }: { result: PreviewResult; timeZone: stri
       />
       {result.rowsHidden > 0 ? (
         <p className="text-xs text-subtle">
-          Urval: de första 100 raderna och alla rader med fel eller konflikt. Alla rader med fel
-          och konflikter finns i importloggen efter importen.
+          Urval: de första 100 raderna och alla rader med fel eller konflikt. Alla rader med fel och
+          konflikter finns i importloggen efter importen.
         </p>
       ) : null}
       <p className="text-xs text-subtle">

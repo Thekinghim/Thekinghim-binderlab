@@ -106,22 +106,39 @@ export function SourceList({
                   </div>
                   {s.lastImport ? (
                     <p className="col-span-2 border-t border-line pt-3 text-sm text-muted md:col-span-12">
-                      Senaste import {formatWhen(s.lastImport.finishedAt ?? s.lastImport.createdAt, timeZone, nowDate)}
-                      {s.lastImport.fileName ? <> · <span className="text-fg">{s.lastImport.fileName}</span></> : null}
+                      Senaste import{" "}
+                      {formatWhen(
+                        s.lastImport.finishedAt ?? s.lastImport.createdAt,
+                        timeZone,
+                        nowDate,
+                      )}
+                      {s.lastImport.fileName ? (
+                        <>
+                          {" "}
+                          · <span className="text-fg">{s.lastImport.fileName}</span>
+                        </>
+                      ) : null}
                       {" · "}
                       <span className="tnum">
-                        {formatInt(s.lastImport.rowsNew)} nya, {formatInt(s.lastImport.rowsDuplicate)}{" "}
-                        dubbletter
+                        {formatInt(s.lastImport.rowsNew)} nya,{" "}
+                        {formatInt(s.lastImport.rowsDuplicate)} dubbletter
                         {s.lastImport.rowsConflict > 0
                           ? `, ${formatInt(s.lastImport.rowsConflict)} konflikter`
                           : ""}
-                        {s.lastImport.rowsError > 0 ? `, ${formatInt(s.lastImport.rowsError)} fel` : ""}
+                        {s.lastImport.rowsError > 0
+                          ? `, ${formatInt(s.lastImport.rowsError)} fel`
+                          : ""}
                       </span>
                       {s.unmapped > 0 ? (
                         <>
                           {" · "}
-                          <a href="#okanda-automater" className="text-fg underline underline-offset-4">
-                            {formatInt(s.unmapped)} okända automater
+                          <a
+                            href="#okanda-automater"
+                            className="text-fg underline underline-offset-4"
+                          >
+                            {s.unmapped === 1
+                              ? "1 okänd automat"
+                              : `${formatInt(s.unmapped)} okända automater`}
                           </a>
                         </>
                       ) : null}

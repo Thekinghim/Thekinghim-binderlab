@@ -198,49 +198,48 @@ export async function loadDatakallorFor(
     return {
       timeZone: viewer.organization.timezone,
       now: now.toISOString(),
-      sources: sources.map(
-        (r): SourceView => ({
-          id: String(r.id),
-          name: String(r.name),
-          provider: String(r.provider) as ProviderKey,
-          sourceTimezone: String(r.source_timezone),
-          status: String(r.status) as SourceStatus,
-          lastSyncedAt: iso(r.last_synced_at),
-          archived: r.archived_at !== null && r.archived_at !== undefined,
-          acceptsFiles: r.provider === "awish_csv",
-          orders: int(r.orders),
-          unmapped: int(r.unmapped),
-          lastImport: lastBySource.get(String(r.id)) ?? null,
-          savedMapping: savedMappingOf(r.config),
-        }),
-      ),
+      sources: sources.map((r): SourceView => ({
+        id: String(r.id),
+        name: String(r.name),
+        provider: String(r.provider) as ProviderKey,
+        sourceTimezone: String(r.source_timezone),
+        status: String(r.status) as SourceStatus,
+        lastSyncedAt: iso(r.last_synced_at),
+        archived: r.archived_at !== null && r.archived_at !== undefined,
+        acceptsFiles: r.provider === "awish_csv",
+        orders: int(r.orders),
+        unmapped: int(r.unmapped),
+        lastImport: lastBySource.get(String(r.id)) ?? null,
+        savedMapping: savedMappingOf(r.config),
+      })),
       imports: entries,
-      queue: queue.map(
-        (r): QueueEntry => ({
-          id: String(r.id),
-          dataSourceId: String(r.data_source_id),
-          dataSourceName: String(r.data_source_name ?? ""),
-          externalId: String(r.external_id),
-          externalName:
-            r.external_name === null || r.external_name === undefined
-              ? null
-              : String(r.external_name),
-          pendingOrders: int(r.pending_orders),
-          firstOrderAt: iso(r.first_order_at),
-          lastOrderAt: iso(r.last_order_at),
-          suggestedMachineId: suggestMachine(
-            typeof r.external_name === "string" ? r.external_name : String(r.external_id),
-            machines,
-          ),
-        }),
-      ),
+      queue: queue.map((r): QueueEntry => ({
+        id: String(r.id),
+        dataSourceId: String(r.data_source_id),
+        dataSourceName: String(r.data_source_name ?? ""),
+        externalId: String(r.external_id),
+        externalName:
+          r.external_name === null || r.external_name === undefined
+            ? null
+            : String(r.external_name),
+        pendingOrders: int(r.pending_orders),
+        firstOrderAt: iso(r.first_order_at),
+        lastOrderAt: iso(r.last_order_at),
+        suggestedMachineId: suggestMachine(
+          typeof r.external_name === "string" ? r.external_name : String(r.external_id),
+          machines,
+        ),
+      })),
       machines,
     };
   });
 }
 
 /** Fälten i radloggen, tagna ur källraden med importens mappning. */
-function detailRow(r: Row, columns: Partial<Record<string, string | null>> | null): ImportDetailRow {
+function detailRow(
+  r: Row,
+  columns: Partial<Record<string, string | null>> | null,
+): ImportDetailRow {
   const raw: Record<string, string> = {};
   if (isRecord(r.raw)) {
     for (const [k, v] of Object.entries(r.raw)) raw[k] = v === null ? "" : String(v);
@@ -315,9 +314,10 @@ export async function loadImportDetailFor(
       ),
     ]);
     const count = (s: string) => int(counts.find((c) => c.status === s)?.n);
-    const mapping = isRecord(head.mapping) && isRecord(head.mapping.columns)
-      ? (head.mapping.columns as Partial<Record<string, string | null>>)
-      : null;
+    const mapping =
+      isRecord(head.mapping) && isRecord(head.mapping.columns)
+        ? (head.mapping.columns as Partial<Record<string, string | null>>)
+        : null;
     return {
       entry: importEntry(head),
       sourceTimezone: String(head.source_timezone),
@@ -524,7 +524,10 @@ export async function previewUploadFor(
   input: { uploadId: string; dataSourceId: string; mapping?: MappingOverride },
 ): Promise<PreviewOutcome> {
   try {
-    return { kind: "preview", result: await runUploadFor(viewer, deps, { ...input, dryRun: true }) };
+    return {
+      kind: "preview",
+      result: await runUploadFor(viewer, deps, { ...input, dryRun: true }),
+    };
   } catch (error) {
     if (!(error instanceof MappingError)) throw error;
     const { meta, content } = await deps.staging.read(owner(viewer), input.uploadId);

@@ -117,7 +117,10 @@ export async function uploadChunk(
 ): Promise<ActionResult<{ received: number; size: number }>> {
   try {
     const viewer = await operator();
-    const meta = chunkMetaSchema.parse({ uploadId: form.get("uploadId"), index: form.get("index") });
+    const meta = chunkMetaSchema.parse({
+      uploadId: form.get("uploadId"),
+      index: form.get("index"),
+    });
     const chunk = form.get("chunk");
     if (!(chunk instanceof Blob)) {
       return { ok: false, error: "En del av filen saknas. Ladda upp filen igen." };

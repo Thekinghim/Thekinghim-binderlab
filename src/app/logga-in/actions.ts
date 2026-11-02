@@ -90,7 +90,11 @@ export async function requestMagicLink(
   try {
     baseUrl = resolveAppBaseUrl(env, requestHeaders);
   } catch {
-    return { status: "idle", email, error: "Inloggningen svarar inte just nu. Försök igen om en stund." };
+    return {
+      status: "idle",
+      email,
+      error: "Inloggningen svarar inte just nu. Försök igen om en stund.",
+    };
   }
   // Länken förbrukas bara i den webbläsare som begärde den (skydd mot att
   // någon loggar in en annan person med sin egen länk). Cookien bär också

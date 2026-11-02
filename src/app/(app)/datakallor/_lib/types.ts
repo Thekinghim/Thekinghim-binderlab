@@ -19,8 +19,7 @@ export type FieldSource = "auto" | "saved" | "override" | "none";
 
 /** Resultatet av en server action. */
 export type ActionResult<T = undefined> =
-  | { ok: true; data: T; error?: undefined }
-  | { ok: false; error: string; data?: undefined };
+  { ok: true; data: T; error?: undefined } | { ok: false; error: string; data?: undefined };
 
 export interface ImportLogEntry {
   readonly id: string;

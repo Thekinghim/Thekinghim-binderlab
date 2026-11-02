@@ -17,7 +17,11 @@ function first(value: string | string[] | undefined): string {
  * Länken förbrukas först när personen trycker på knappen (POST), så att
  * e-postprogram som förhandsgranskar länkar inte förbrukar den.
  */
-export default async function ConfirmPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+export default async function ConfirmPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>;
+}) {
   const params = await searchParams;
   const tokenHash = first(params.token_hash);
   const type = first(params.type);

@@ -174,13 +174,12 @@ export function ImportRows({
       </div>
       {detail.truncated ? (
         <p className="text-xs text-subtle">
-          Visar de första {formatInt(detail.rows.length)} raderna. Exportera eller filtrera för
-          att se färre.
+          Visar de första {formatInt(detail.rows.length)} raderna. Exportera eller filtrera för att
+          se färre.
         </p>
       ) : null}
       <p className="text-xs text-subtle">
-        Dubbletter sparas inte rad för rad, bara som antal. Ej betalda rader räknas men loggas
-        inte.
+        Dubbletter sparas inte rad för rad, bara som antal. Ej betalda rader räknas men loggas inte.
       </p>
     </section>
   );

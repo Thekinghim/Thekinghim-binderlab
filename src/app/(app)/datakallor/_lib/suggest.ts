@@ -47,6 +47,8 @@ export function suggestMachine(
     }
   }
   if (best) return best.id;
-  const exact = machines.filter((m) => fold(m.name) === name || fold(`${m.code} ${m.name}`) === name);
+  const exact = machines.filter(
+    (m) => fold(m.name) === name || fold(`${m.code} ${m.name}`) === name,
+  );
   return exact.length === 1 ? (exact[0]?.id ?? null) : null;
 }

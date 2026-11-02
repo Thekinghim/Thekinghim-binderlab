@@ -48,7 +48,10 @@ async function sendInvite(email: string, role: MemberRole): Promise<ActionResult
 }
 
 /** Bjuder in en person (mejl med länk till /inbjudan/[token], gäller 7 dagar). */
-export async function inviteMember(input: { email: string; role: MemberRole }): Promise<ActionResult> {
+export async function inviteMember(input: {
+  email: string;
+  role: MemberRole;
+}): Promise<ActionResult> {
   const result = await sendInvite(String(input?.email ?? ""), input?.role);
   if (result.ok) revalidatePath(PAGE);
   return result;
