@@ -15,6 +15,8 @@
  * 3. Tillägget läser hela historiken (en sida i sekunden) och ordrarna finns i Binderlab.
  * 4. Utloggad från Awish: popupen säger det och Binderlab får rapporten.
  * 5. Nya ordrar efter ny inloggning: bara de nya skickas.
+ * 6. "Testa avläsningen" i popupen och avläsningen under Datakällor visar kolumnerna.
+ * 7. Reserv: Awish svarar med ett JavaScript-skal; tillägget läser den öppna fliken.
  */
 
 import { mkdtempSync } from "node:fs";
@@ -222,6 +224,7 @@ describe("Chrome-tillägget end-to-end", () => {
     await popup.goto(`chrome-extension://${extensionId}/popup.html`);
     await popup.locator("#binderlab-url").fill(BINDERLAB);
     await popup.locator("#token").fill(token);
+    const savedAt = Date.now();
     await popup.getByRole("button", { name: "Spara" }).click();
 
     const paid = awish.orders
@@ -251,7 +254,7 @@ describe("Chrome-tillägget end-to-end", () => {
     );
     expect(pages.every((h) => h.cookie)).toBe(true);
     const htmlPages = awish.hits.filter(
-      (h) => !h.xhr && h.path.startsWith("/dashboard/orders/index"),
+      (h) => h.at >= savedAt && !h.xhr && h.path.startsWith("/dashboard/orders/index"),
     );
     for (let i = 1; i < htmlPages.length; i += 1) {
       expect(htmlPages[i]!.at - htmlPages[i - 1]!.at).toBeGreaterThanOrEqual(900);
@@ -319,5 +322,51 @@ describe("Chrome-tillägget end-to-end", () => {
         select last_status from public.sync_tokens where organization_id = ${orgId}::uuid`;
       return r[0]?.last_status === "ok";
     });
+  }, 120_000);
+
+  it("6. Kontrollen: 'Testa avläsningen' i popupen och avläsningen i Datakällor visar kolumnerna", async () => {
+    await popup.getByRole("button", { name: "Testa avläsningen" }).click();
+    const diagnosis = await until("diagnosen", async () => {
+      const t = (await popup.locator("#diagnosis").textContent()) ?? "";
+      return t.includes("Kolumner:") ? t : null;
+    }).catch(async (error: unknown) => {
+      console.error("[e2e] diagnos", await popup.locator("#diagnosis").textContent());
+      throw error;
+    });
+    expect(diagnosis).toContain("Läser via: HTML-tabellen · /dashboard/orders/index");
+    expect(diagnosis).toContain("Ordernummer ← Order No.");
+    expect(diagnosis).toContain("Belopp ← Order Amount");
+    expect(diagnosis).toContain("Betald ← Is Paid");
+
+    const page = await context.newPage();
+    await page.goto(`${BINDERLAB}/datakallor`, { timeout: 120_000 });
+    const reading = page.getByText("Ordernummer ← Order No.", { exact: false });
+    await reading.first().waitFor({ timeout: 30_000 });
+    await page
+      .getByText(/Avläsning · HTML-tabellen/)
+      .first()
+      .waitFor({ timeout: 30_000 });
+    await page.close();
+  }, 240_000);
+
+  it("7. Reserv: orderlistan ritas med JavaScript, tillägget läser den öppna fliken", async () => {
+    const before = (await ordersInBinderlab()).length;
+    const newer = makeOrders(3, 51_072, Date.UTC(2026, 10, 2, 9, 30, 0)).map((o) => ({
+      ...o,
+      paid: true,
+    }));
+    awish.orders = [...newer, ...awish.orders];
+    // Fliken visar listan med de nya ordrarna; därefter svarar Awish bara med ett skal.
+    await awishPage.reload();
+    await awishPage.locator("table").first().waitFor();
+    awish.setShell(true);
+    await popup.reload();
+    await popup.getByRole("button", { name: "Synka nu" }).click();
+    await until("ordrarna ur fliken", async () => (await ordersInBinderlab()).length >= before + 3);
+    expect(await ordersInBinderlab()).toEqual(expect.arrayContaining(newer.map((o) => o.orderNo)));
+    await until("popupen säger att fliken läses", async () =>
+      ((await popup.locator("#source").textContent()) ?? "").includes("Öppen Awish-flik"),
+    );
+    awish.setShell(false);
   }, 120_000);
 });

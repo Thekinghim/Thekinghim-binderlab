@@ -107,13 +107,60 @@ export interface ExtensionSourceView {
   errorRowsLast24h: number;
   /** Tyst längre än larmgränsen (två timmar). */
   silent: boolean;
+  /** Hur tillägget senast läste Awish (från den senaste batchen med rader). */
+  reading: ExtensionReading | null;
   tokens: SyncTokenView[];
+}
+
+export interface ExtensionReading {
+  at: string;
+  mode: "json" | "html" | "tab" | null;
+  path: string | null;
+  /** Fält → rubrik (HTML) eller nyckel (JSON) i Awish. */
+  columns: Record<string, string>;
+  /** Rader i batchen som redan fanns i en annan Awish-källa. */
+  otherSourceDuplicates: number;
+}
+
+/** En annan datakälla med Awish ordernummer (CSV, webb, gRPC) i organisationen. */
+export interface OtherAwishSource {
+  id: string;
+  name: string;
+  provider: string;
+  status: string;
+  archived: boolean;
+  orders: number;
 }
 
 export interface ExtensionPanelData {
   now: string;
   silenceMinutes: number;
   sources: ExtensionSourceView[];
+  /** Andra Awish-källor med ordrar: deras ordernummer räknas som dubbletter i tillägget. */
+  otherAwishSources: OtherAwishSource[];
+}
+
+function readingOf(value: unknown, at: unknown): ExtensionReading | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as { report?: unknown; otherSourceDuplicates?: unknown };
+  const report = (v.report ?? {}) as { mode?: unknown; path?: unknown; columns?: unknown };
+  const columns: Record<string, string> = {};
+  if (report.columns && typeof report.columns === "object") {
+    for (const [k, c] of Object.entries(report.columns as Record<string, unknown>)) {
+      if (typeof c === "string") columns[k] = c;
+    }
+  }
+  const mode =
+    report.mode === "json" || report.mode === "html" || report.mode === "tab" ? report.mode : null;
+  if (mode === null && Object.keys(columns).length === 0) return null;
+  return {
+    at: iso(at) ?? new Date(0).toISOString(),
+    mode,
+    path: typeof report.path === "string" ? report.path : null,
+    columns,
+    otherSourceDuplicates:
+      typeof v.otherSourceDuplicates === "number" ? v.otherSourceDuplicates : 0,
+  };
 }
 
 /** Datakällor av typen Awish-tillägg med tokens och status. Bara ägare och admin. */
@@ -124,7 +171,7 @@ export async function loadExtensionPanelFor(
   const orgId = viewer.organization.id;
   return asOperator(viewer, async (tx) => {
     const since = new Date(now.getTime() - 86_400_000).toISOString();
-    const [sources, tokens] = await Promise.all([
+    const [sources, tokens, others] = await Promise.all([
       query(
         tx,
         sql`select ds.id, ds.name, ds.source_timezone, ds.status::text as status,
@@ -144,8 +191,17 @@ export async function loadExtensionPanelFor(
                        and i.created_at >= ${since}::timestamptz and i.status = 'failed')::int as failed_24h,
                    coalesce((select sum(i.rows_error) from public.imports i
                      where i.organization_id = ds.organization_id and i.data_source_id = ds.id
-                       and i.created_at >= ${since}::timestamptz), 0)::int as error_rows_24h
+                       and i.created_at >= ${since}::timestamptz), 0)::int as error_rows_24h,
+                   r.mapping as reading, r.created_at as reading_at
             from public.data_sources ds
+            left join lateral (
+              select i.mapping, i.created_at from public.imports i
+              where i.organization_id = ds.organization_id and i.data_source_id = ds.id
+                and i.trigger = 'extension' and i.mapping ? 'report'
+                and jsonb_typeof(i.mapping -> 'report') = 'object'
+              order by i.created_at desc
+              limit 1
+            ) r on true
             where ds.organization_id = ${orgId}::uuid and ds.provider = 'awish_extension'
             order by ds.archived_at nulls first, ds.created_at`,
       ),
@@ -158,6 +214,17 @@ export async function loadExtensionPanelFor(
             left join public.profiles p on p.organization_id = t.organization_id and p.user_id = t.created_by
             where t.organization_id = ${orgId}::uuid
             order by t.revoked_at nulls first, t.created_at desc`,
+      ),
+      query(
+        tx,
+        sql`select ds.id, ds.name, ds.provider::text as provider, ds.status::text as status,
+                   ds.archived_at,
+                   (select count(*) from public.orders o
+                     where o.organization_id = ds.organization_id and o.data_source_id = ds.id)::int as orders
+            from public.data_sources ds
+            where ds.organization_id = ${orgId}::uuid
+              and ds.provider in ('awish_grpc', 'awish_web', 'awish_csv')
+            order by ds.archived_at nulls first, ds.created_at`,
       ),
     ]);
     const tokensBySource = new Map<string, SyncTokenView[]>();
@@ -207,9 +274,20 @@ export async function loadExtensionPanelFor(
           failedLast24h: Number(s.failed_24h ?? 0),
           errorRowsLast24h: Number(s.error_rows_24h ?? 0),
           silent,
+          reading: readingOf(s.reading, s.reading_at),
           tokens: sourceTokens,
         };
       }),
+      otherAwishSources: others
+        .map((o): OtherAwishSource => ({
+          id: String(o.id),
+          name: String(o.name),
+          provider: String(o.provider),
+          status: String(o.status),
+          archived: o.archived_at !== null && o.archived_at !== undefined,
+          orders: Number(o.orders ?? 0),
+        }))
+        .filter((o) => o.orders > 0),
     };
   });
 }

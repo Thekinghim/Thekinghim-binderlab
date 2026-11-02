@@ -63,6 +63,10 @@ function render(s: Snapshot): void {
     a.rel = "noreferrer";
     a.textContent = `Öppna ${awishHost}`;
     banner.append(a);
+  } else if (st.lastRun?.source === "tab" && !st.lastError) {
+    banner.hidden = false;
+    banner.dataset.tone = "neutral";
+    banner.textContent = `Awish läses ur den öppna fliken med orderlistan: bara de senaste ordrarna, inte hela historiken. Låt fliken med ${awishHost} vara öppen.`;
   }
 
   $("headline").textContent = s.running
@@ -84,11 +88,14 @@ function render(s: Snapshot): void {
   $("new-orders").textContent = run
     ? `${int(run.newOrders)} senast · ${int(st.totals.newOrders)} totalt`
     : "–";
-  $("source").textContent = st.awish.api
-    ? `JSON (${st.awish.apiSource === "discovered" ? "panelens API" : "XHR"})`
-    : run?.source === "html"
-      ? "HTML-tabellen"
-      : "–";
+  $("source").textContent =
+    run?.source === "tab"
+      ? "Öppen Awish-flik (bara senaste sidan)"
+      : st.awish.api
+        ? `JSON (${st.awish.apiSource === "discovered" ? "panelens API" : "XHR"})`
+        : run?.source === "html"
+          ? "HTML-tabellen"
+          : "–";
   $("data-source").textContent = st.dataSourceName
     ? `${st.dataSourceName}${st.binderlabOrders !== null ? ` · ${int(st.binderlabOrders)} order` : ""}`
     : "–";
@@ -130,6 +137,71 @@ chrome.runtime.onMessage.addListener((message) => {
 $("sync-now").addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ type: "sync-now" });
   if (snapshot) render({ ...snapshot, running: true });
+});
+
+const FIELD_LABELS: Record<string, string> = {
+  externalId: "Ordernummer",
+  title: "Produkt",
+  machine: "Automat",
+  amount: "Belopp",
+  isPaid: "Betald",
+  paidAt: "Betaltid",
+  paymentMethod: "Betalsätt",
+  rowId: "ID",
+  orderDate: "Datum",
+};
+
+interface Diagnosis {
+  ok: boolean;
+  error?: string;
+  kind?: string;
+  mode?: string;
+  path?: string;
+  api?: string | null;
+  columns?: Record<string, string>;
+  seen?: number;
+  skipped?: number;
+  hasMore?: boolean;
+  lastPage?: number | null;
+  sample?: Array<Record<string, string>>;
+}
+
+function describeDiagnosis(d: Diagnosis): string {
+  if (!d.ok) return `Fel (${d.kind ?? "okänt"}): ${d.error ?? ""}`;
+  const mode = d.mode === "json" ? "JSON-API" : d.mode === "tab" ? "öppen flik" : "HTML-tabellen";
+  const lines = [
+    `Läser via: ${mode} · ${d.path ?? "–"}`,
+    `Rader på sida 1: ${d.seen ?? 0}${d.skipped ? ` (${d.skipped} utan ordernummer)` : ""}`,
+    `Fler sidor: ${d.hasMore ? "ja" : "nej"}${d.lastPage ? ` · sista sidan ${d.lastPage}` : ""}`,
+    "",
+    "Kolumner:",
+    ...Object.entries(d.columns ?? {}).map(
+      ([field, name]) => `  ${FIELD_LABELS[field] ?? field} ← ${name}`,
+    ),
+  ];
+  if (d.sample && d.sample.length > 0) {
+    lines.push("", "Första raderna:");
+    for (const r of d.sample) {
+      lines.push(
+        `  ${r.externalId} · ${r.title} · ${r.machine} · ${r.amount} · ${r.isPaid} · ${r.paidAt}`,
+      );
+    }
+  }
+  return lines.join("\n");
+}
+
+$("diagnose").addEventListener("click", async () => {
+  const out = $("diagnosis");
+  const button = $("diagnose") as HTMLButtonElement;
+  out.hidden = false;
+  out.textContent = "Läser första sidan i Awish …";
+  button.disabled = true;
+  try {
+    const d = await chrome.runtime.sendMessage<Diagnosis | null>({ type: "diagnose" });
+    out.textContent = d ? describeDiagnosis(d) : "Inget svar från tillägget.";
+  } finally {
+    button.disabled = false;
+  }
 });
 
 $("full-resync").addEventListener("click", async () => {

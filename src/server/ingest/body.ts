@@ -41,7 +41,14 @@ export const reportSchema = z
     fullHistory: z.boolean().optional(),
     pagesRead: z.number().int().min(0).max(1_000_000).optional(),
     rowsSeen: z.number().int().min(0).max(100_000_000).optional(),
-    mode: z.enum(["json", "html"]).optional(),
+    mode: z.enum(["json", "html", "tab"]).optional(),
+    /** Rubrikerna (HTML) eller nycklarna (JSON) som lästes, per fält. Syns i Datakällor. */
+    columns: z
+      .record(z.string().regex(/^[A-Za-z]{1,30}$/), z.string().max(100))
+      .refine((c) => Object.keys(c).length <= 20, "För många kolumner.")
+      .optional(),
+    /** Sökvägen i Awish som lästes, utan parametrar. */
+    path: z.string().max(200).optional(),
   })
   .strict();
 

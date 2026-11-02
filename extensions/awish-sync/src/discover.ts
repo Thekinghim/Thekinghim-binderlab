@@ -5,6 +5,10 @@
  * tillägget kan läsa samma API i stället för HTML-tabellen. Inget skickas någon
  * annanstans, och sidan påverkas inte (anropen går igenom oförändrade).
  *
+ * Bara anrop mot orderlistan rapporteras (samma regel som isOrdersApiPath i
+ * ./reader.ts, som service workern också kontrollerar): återbetalningar, topplistor och
+ * annat på samma ursprung med ordernummer i svaret används aldrig som orderkälla.
+ *
  * Klassiskt skript (inte modul): byggskriptet tar bort raden "export {}".
  */
 
@@ -18,6 +22,17 @@
   w.__binderlabAwishDiscover = true;
   const ORDER_KEY = /^(?:order_?(?:no|sn|number|num|id|code)|out_?trade_?no|trade_?no)$/i;
   let reported = "";
+  const ordersPath = (pathname: string): boolean => {
+    const path = pathname
+      .replace(/\.(?:html|json)$/i, "")
+      .replace(/\/+$/, "")
+      .toLowerCase();
+    if (path === "/dashboard/orders/index" || path === "/dashboard/orders") return true;
+    if (/refund|after_?sale|statistic|stats|rank|top|summary|report|export|chart/.test(path)) {
+      return false;
+    }
+    return /^(?:\/[a-z0-9_-]+){0,3}\/orders?\/(?:index|list|lists|getlist|page)$/.test(path);
+  };
 
   const looksLikeOrders = (json: unknown, depth = 0): boolean => {
     if (depth > 3 || json === null || typeof json !== "object") return false;
@@ -35,6 +50,7 @@
     try {
       const absolute = new URL(url, location.href);
       if (absolute.origin !== location.origin) return;
+      if (!ordersPath(absolute.pathname)) return;
       if (!/^\s*[[{]/.test(text)) return;
       if (!looksLikeOrders(JSON.parse(text))) return;
       const href = absolute.toString();

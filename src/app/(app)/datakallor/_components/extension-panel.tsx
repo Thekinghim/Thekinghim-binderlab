@@ -13,9 +13,14 @@ import { StatusTag, type Status } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
 import { formatInt } from "@/lib/format";
 import { createExtensionSource, createSyncToken, revokeSyncToken } from "@/server/ingest/actions";
-import type { ExtensionSourceView, SyncTokenView } from "@/server/ingest/manage";
+import type {
+  ExtensionReading,
+  ExtensionSourceView,
+  OtherAwishSource,
+  SyncTokenView,
+} from "@/server/ingest/manage";
 
-import { SOURCE_TIMEZONES } from "../_lib/constants";
+import { PROVIDER_LABELS, SOURCE_TIMEZONES } from "../_lib/constants";
 import { formatWhen } from "../_lib/display";
 
 const LOGGED_OUT_HINT = "Logga in på dash.awish.vip i Chrome så fortsätter synken.";
@@ -49,8 +54,103 @@ function tokenStatus(token: SyncTokenView): { status: Status; text: string } {
 const linkButton =
   "relative inline-flex h-9 select-none items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse transition-[background-color,border-color,color] duration-fast ease-instrument hover:border-inverse-hover hover:bg-inverse-hover";
 
+const FIELD_LABELS: Record<string, string> = {
+  externalId: "Ordernummer",
+  title: "Produkt",
+  machine: "Automat",
+  amount: "Belopp",
+  isPaid: "Betald",
+  paidAt: "Betaltid",
+  paymentMethod: "Betalsätt",
+  rowId: "ID",
+  orderDate: "Datum",
+};
+
+const READING_ORDER = [
+  "externalId",
+  "title",
+  "machine",
+  "amount",
+  "isPaid",
+  "paidAt",
+  "paymentMethod",
+  "orderDate",
+  "rowId",
+];
+
+/** Hur tillägget läser Awish: sätt, sökväg och vilken kolumn som blev vilket fält. */
+function ReadingLine({
+  reading,
+  timeZone,
+  now,
+}: {
+  reading: ExtensionReading;
+  timeZone: string;
+  now: Date;
+}) {
+  const mode =
+    reading.mode === "json"
+      ? "JSON-API"
+      : reading.mode === "tab"
+        ? "öppen Awish-flik"
+        : reading.mode === "html"
+          ? "HTML-tabellen"
+          : "okänt";
+  const columns = READING_ORDER.filter((f) => reading.columns[f]).map(
+    (f) => `${FIELD_LABELS[f] ?? f} ← ${reading.columns[f]}`,
+  );
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <p className="label text-subtle">
+        Avläsning · {mode}
+        {reading.path ? ` · ${reading.path}` : ""} · {formatWhen(reading.at, timeZone, now)}
+      </p>
+      {columns.length > 0 ? (
+        <p className="meta break-words text-muted">{columns.join(" · ")}</p>
+      ) : null}
+      {reading.mode === "tab" ? (
+        <p className="text-sm text-muted">
+          Tillägget når inte orderlistan direkt och läser bara den öppna fliken med orderlistan: de
+          senaste ordrarna, inte hela historiken. Se felsökningen i docs/awish-tillagg.md.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** Varning när organisationen redan har Awish-ordrar i en annan källa (t.ex. CSV). */
+function OtherSourcesNotice({ others }: { others: readonly OtherAwishSource[] }) {
+  if (others.length === 0) return null;
+  const total = others.reduce((sum, o) => sum + o.orders, 0);
+  const names = others
+    .map(
+      (o) =>
+        `${o.name} (${PROVIDER_LABELS[o.provider] ?? o.provider}${o.archived ? ", arkiverad" : ""})`,
+    )
+    .join(", ");
+  const activeCsv = others.some(
+    (o) => o.provider === "awish_csv" && !o.archived && o.status !== "paused",
+  );
+  return (
+    <Panel className="flex flex-col gap-2" role="note" aria-label="Andra Awish-källor">
+      <p className="flex items-start gap-2 text-sm font-medium text-fg">
+        <Icon name="alert" size={14} />
+        Organisationen har redan {formatInt(total)} Awish-ordrar i {names}.
+      </p>
+      <p className="text-sm text-muted">
+        Tillägget hoppar över ordernummer som redan finns där, så samma order räknas inte två gånger
+        när det läser historiken.
+        {activeCsv
+          ? " Ladda inte upp fler Awish-orderlistor som CSV när tillägget är igång: CSV-importen jämför bara mot sin egen källa. Pausa CSV-källan när tillägget har läst hela historiken."
+          : ""}
+      </p>
+    </Panel>
+  );
+}
+
 export function ExtensionPanel({
   sources,
+  otherAwishSources = [],
   timeZone,
   now,
   appUrl,
@@ -58,6 +158,7 @@ export function ExtensionPanel({
   silenceMinutes,
 }: {
   sources: readonly ExtensionSourceView[];
+  otherAwishSources?: readonly OtherAwishSource[];
   timeZone: string;
   now: string;
   appUrl: string;
@@ -78,6 +179,7 @@ export function ExtensionPanel({
 
   return (
     <div className="flex flex-col gap-6">
+      <OtherSourcesNotice others={otherAwishSources} />
       {active.length === 0 ? (
         <StateMessage
           kind="not-configured"
@@ -157,6 +259,9 @@ export function ExtensionPanel({
                   ) : null}
                   {errors.length > 0 ? (
                     <p className="text-sm text-muted">Senaste fel: {errors[0]}</p>
+                  ) : null}
+                  {s.reading ? (
+                    <ReadingLine reading={s.reading} timeZone={timeZone} now={nowDate} />
                   ) : null}
 
                   <div className="flex flex-col gap-3 border-t border-line pt-4">
@@ -404,7 +509,7 @@ function SourceDialog({ open, onClose }: { open: boolean; onClose: () => void })
       onClose={onClose}
       eyebrow="Ny datakälla"
       title="Awish via Chrome-tillägget"
-      description="Ordrarna som tillägget skickar hamnar i den här källan. Använd inte samma Awish-konto i en CSV-källa samtidigt, då blir orderna dubbla."
+      description="Ordrarna som tillägget skickar hamnar i den här källan. Ordrar som redan finns i en annan Awish-källa (till exempel en uppladdad CSV) räknas som dubbletter och importeras inte igen."
       footer={
         <>
           <Button onClick={onClose}>Avbryt</Button>

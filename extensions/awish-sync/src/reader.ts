@@ -9,7 +9,9 @@
  *   på kolumnordningen. Okänsligt för skiftläge, mellanslag och skiljetecken.
  * - JSON (om panelen laddar tabellen via XHR/fetch): raderna hittas i svaret
  *   (rows, data, list, records, ...) och fälten på nycklarnas namn (order_no, goods_name,
- *   machine_name, pay_time, ...), samma synonymer som rubrikerna.
+ *   machine_name, pay_time, ...). Belopp och betalstatus kräver entydiga nycklar
+ *   (order_amount/amount, is_paid/pay_status/payment_status): en allmän "status",
+ *   "price" eller "pay_amount" tas aldrig, och då läses HTML-tabellen i stället.
  *
  * Värdena skickas som källans text (beloppscellen "Amount: 170.00", "Paid Success",
  * Payment Time i källans tid): Binderlab tolkar dem med samma regler som en uppladdad
@@ -76,8 +78,13 @@ export interface ExtractedPage {
   text: string;
 }
 
+/** Vilken rubrik (HTML) eller nyckel (JSON) som lästes för varje fält. */
+export type ColumnMapping = Partial<Record<Field, string>>;
+
 export interface PageRead {
   rows: OrderRow[];
+  /** Rubrikerna eller nycklarna som användes (skickas i rapporten och syns i Datakällor). */
+  columns: ColumnMapping;
   /** Valfria fält som tabellen inte har (Payment Method). */
   absent: "paymentMethod"[];
   /** Antal rader i tabellen (även de som inte gick att läsa). */
@@ -136,28 +143,10 @@ const SYNONYMS: Record<Field, readonly string[]> = {
     "设备名称",
     "设备",
   ],
-  amount: [
-    "orderamount",
-    "amount",
-    "totalamount",
-    "payamount",
-    "totalfee",
-    "money",
-    "price",
-    "belopp",
-    "订单金额",
-    "金额",
-  ],
-  isPaid: [
-    "ispaid",
-    "paid",
-    "paystatus",
-    "paymentstatus",
-    "paystate",
-    "status",
-    "betald",
-    "支付状态",
-  ],
+  // Aldrig "Pay Amount", "Paid Amount", "Price" eller "Discount Amount": bara orderns belopp.
+  amount: ["orderamount", "amount", "totalamount", "belopp", "订单金额", "金额"],
+  // Aldrig en allmän "Status" (orderstatus, återbetald, ...): bara betalstatus.
+  isPaid: ["ispaid", "paid", "paystatus", "paymentstatus", "paystate", "betald", "支付状态"],
   paidAt: ["paymenttime", "paytime", "paidtime", "paidat", "paymentat", "betaltid", "支付时间"],
   paymentMethod: [
     "paymentmethod",
@@ -181,16 +170,31 @@ const SYNONYMS: Record<Field, readonly string[]> = {
   ],
 };
 
+/**
+ * Nycklar i JSON-svar. Strängare än rubrikerna: i ett API betyder "status", "paid",
+ * "price", "money" eller "pay_amount" ofta något annat än orderns belopp och om den är
+ * betald, och ett tal (1/0) skrivs om till "Paid Success". Saknas en entydig nyckel för
+ * belopp eller betalstatus används inte JSON alls (HTML-tabellen läses i stället).
+ */
+const JSON_SYNONYMS: Record<Field, readonly string[]> = {
+  ...SYNONYMS,
+  amount: ["orderamount", "amount"],
+  isPaid: ["ispaid", "paystatus", "paymentstatus"],
+};
+
 const FIELDS = Object.keys(SYNONYMS) as Field[];
 
 /** Kolumnindex per fält (−1 = saknas). Varje kolumn används högst en gång. */
-export function mapColumns(headers: readonly string[]): Record<Field, number> {
+export function mapColumns(
+  headers: readonly string[],
+  synonymsByField: Record<Field, readonly string[]> = SYNONYMS,
+): Record<Field, number> {
   const normalized = headers.map(normalizeHeader);
   const used = new Set<number>();
   const out = Object.fromEntries(FIELDS.map((f) => [f, -1])) as Record<Field, number>;
   // Fält med specifika namn först, så att "Order Amount" inte tas av något annat.
   for (const field of FIELDS) {
-    const synonyms = SYNONYMS[field];
+    const synonyms = synonymsByField[field];
     let best = -1;
     let bestRank = Number.POSITIVE_INFINITY;
     normalized.forEach((h, i) => {
@@ -209,8 +213,36 @@ export function mapColumns(headers: readonly string[]): Record<Field, number> {
   return out;
 }
 
+/** Mappningen med JSON-nycklarnas regler (se JSON_SYNONYMS). */
+export function mapJsonKeys(keys: readonly string[]): Record<Field, number> {
+  return mapColumns(keys, JSON_SYNONYMS);
+}
+
 export function missingFields(columns: Record<Field, number>): Field[] {
   return REQUIRED_FIELDS.filter((f) => columns[f] < 0);
+}
+
+/** Rubriken eller nyckeln per fält som används (för rapporten). */
+function mappingOf(columns: Record<Field, number>, names: readonly string[]): ColumnMapping {
+  const out: ColumnMapping = {};
+  for (const f of FIELDS) {
+    const name = columns[f] < 0 ? undefined : names[columns[f]];
+    if (name !== undefined) out[f] = name.slice(0, 100);
+  }
+  return out;
+}
+
+/**
+ * Är raderna sorterade äldst först? Bara när alla rader har ett numeriskt ID och minst
+ * tre rader ökar hela vägen. Synken förutsätter nyast först (den slutar läsa vid kända
+ * ordernummer), så en lista som visar äldst först får inte användas.
+ */
+export function looksAscending(rows: readonly OrderRow[]): boolean {
+  if (rows.length < 3) return false;
+  const ids = rows.map((r) => (r.rowId && /^\d{1,15}$/.test(r.rowId) ? Number(r.rowId) : NaN));
+  if (ids.some((n) => !Number.isFinite(n))) return false;
+  for (let i = 1; i < ids.length; i += 1) if (!(ids[i]! > ids[i - 1]!)) return false;
+  return true;
 }
 
 /**
@@ -303,7 +335,13 @@ export function readGrid(grid: Grid, page: number): PageRead {
       pageRow: i + 1,
     });
   });
-  return { rows, absent: columns.paymentMethod < 0 ? ["paymentMethod"] : [], seen, skipped };
+  return {
+    rows,
+    columns: mappingOf(columns, grid.headers.map(clean)),
+    absent: columns.paymentMethod < 0 ? ["paymentMethod"] : [],
+    seen,
+    skipped,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -420,7 +458,7 @@ const TOTAL_KEYS = ["total", "count", "totalcount", "totalrows", "totalelements"
 function looksLikeOrders(items: Json[]): boolean {
   const first = items.find(isRecord);
   if (!first) return false;
-  const columns = mapColumns(Object.keys(first));
+  const columns = mapJsonKeys(Object.keys(first));
   return columns.externalId >= 0 && (columns.amount >= 0 || columns.title >= 0);
 }
 
@@ -524,12 +562,12 @@ function textOf(value: Json, field: Field): string {
 /** Raderna i ett JSON-svar. Fälten hittas på nycklarnas namn (som rubrikerna). */
 export function readJsonItems(items: readonly Record<string, Json>[], page: number): PageRead {
   const keys = [...new Set(items.flatMap((i) => Object.keys(i)))];
-  const columns = mapColumns(keys);
+  const columns = mapJsonKeys(keys);
   const missing = missingFields(columns);
   if (items.length > 0 && missing.length > 0) {
     throw new ReaderError(
       "layout",
-      `Awish svar saknar fält: ${missing.join(", ")}. Tillägget läser HTML-tabellen i stället.`,
+      `Awish svar saknar entydiga fält: ${missing.join(", ")}. Tillägget läser HTML-tabellen i stället.`,
     );
   }
   const keyOf = (f: Field): string | null => (columns[f] < 0 ? null : (keys[columns[f]] ?? null));
@@ -561,6 +599,7 @@ export function readJsonItems(items: readonly Record<string, Json>[], page: numb
   });
   return {
     rows,
+    columns: mappingOf(columns, keys),
     absent: keyOf("paymentMethod") === null ? ["paymentMethod"] : [],
     seen: items.length,
     skipped,
@@ -587,7 +626,30 @@ export interface JsonApi {
 const SIZE_PARAMS = ["limit", "pagesize", "size", "rows", "perpage", "per_page", "length", "ps"];
 const OFFSET_PARAMS = ["offset", "start", "skip"];
 
-/** Tolkar adressen som panelen själv anropade och tar fram hur sidorna bläddras. */
+/**
+ * Sökvägar som får användas som orderkälla i JSON: orderlistans egen adress
+ * (ordersPath, med eller utan .html/index) och ett API som uttryckligen är en orderlista
+ * (".../order/list", ".../orders/index"). Allt annat som panelen anropar (återbetalningar,
+ * topplistor på startsidan, statistik ...) avvisas, även om svaret har ordernummer.
+ */
+export function isOrdersApiPath(pathname: string, ordersPath: string): boolean {
+  const strip = (p: string) => p.replace(/\.(?:html|json)$/i, "").replace(/\/+$/, "");
+  const path = strip(pathname).toLowerCase();
+  const own = strip(ordersPath).toLowerCase();
+  if (path === own || path === own.replace(/\/index$/, "")) return true;
+  if (/refund|after_?sale|statistic|stats|rank|top|summary|report|export|chart/.test(path)) {
+    return false;
+  }
+  return /^(?:\/[a-z0-9_-]+){0,3}\/orders?\/(?:index|list|lists|getlist|page)$/.test(path);
+}
+
+/**
+ * Tolkar adressen som panelen själv anropade och tar fram hur sidorna bläddras.
+ *
+ * Bara sökvägen behålls: panelens filter, sökning och sortering (filter, op, search,
+ * sort, order ...) gäller det användaren tittade på i panelen, inte hela orderlistan.
+ * I stället begärs alltid "sort=id&order=desc" (nyast först), som synken förutsätter.
+ */
 export function jsonApiFromUrl(url: string, ajaxHeader = true): JsonApi | null {
   let u: URL;
   try {
@@ -616,6 +678,10 @@ export function jsonApiFromUrl(url: string, ajaxHeader = true): JsonApi | null {
       u.searchParams.delete(key);
     }
   }
+  u.search = "";
+  u.hash = "";
+  u.searchParams.set("sort", "id");
+  u.searchParams.set("order", "desc");
   return { url: u.toString(), style, pageParam, sizeParam, pageSize, ajaxHeader };
 }
 

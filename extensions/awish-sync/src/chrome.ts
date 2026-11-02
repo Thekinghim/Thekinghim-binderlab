@@ -60,7 +60,18 @@ export interface ChromeApi {
     request(permissions: { origins: string[] }): Promise<boolean>;
     contains(permissions: { origins: string[] }): Promise<boolean>;
   };
-  tabs: { create(props: { url: string }): Promise<unknown> };
+  tabs: {
+    create(props: { url: string }): Promise<unknown>;
+    /** Med host-behörighet för adressen behövs inte behörigheten "tabs". */
+    query(filter: { url?: string | string[] }): Promise<Array<{ id?: number; url?: string }>>;
+  };
+  scripting?: {
+    executeScript<T>(details: {
+      target: { tabId: number };
+      func: () => T;
+      world?: "ISOLATED" | "MAIN";
+    }): Promise<Array<{ result?: T }>>;
+  };
 }
 
 export const chromeApi = (globalThis as unknown as { chrome: ChromeApi }).chrome;

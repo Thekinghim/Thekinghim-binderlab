@@ -11,9 +11,11 @@ import { extractHtml } from "../../../extensions/awish-sync/src/extract-html";
 import {
   findJsonRows,
   findOrderTable,
+  isOrdersApiPath,
   jsonApiFromUrl,
   jsonLoggedOut,
   jsonPageUrl,
+  looksAscending,
   looksLoggedOut,
   mapColumns,
   pageUrl,
@@ -232,7 +234,7 @@ describe("JSON (panelens XHR-API)", () => {
             orderSn: "A-1",
             goods: { title: "Box" },
             device_name: "Ica",
-            money: 170,
+            amount: 170,
             pay_status: true,
             pay_time: 1_762_013_820,
           },
@@ -264,9 +266,7 @@ describe("JSON (panelens XHR-API)", () => {
       sizeParam: "limit",
       pageSize: 20,
     });
-    expect(jsonPageUrl(offset, 3)).toBe(
-      `${BASE}?sort=id&order=desc&filter=%7B%7D&limit=20&offset=40`,
-    );
+    expect(jsonPageUrl(offset, 3)).toBe(`${BASE}?sort=id&order=desc&limit=20&offset=40`);
     const page = jsonApiFromUrl(`${BASE}?page=2&pageSize=50`)!;
     expect(page).toMatchObject({
       style: "page",
@@ -274,6 +274,103 @@ describe("JSON (panelens XHR-API)", () => {
       sizeParam: "pageSize",
       pageSize: 50,
     });
-    expect(jsonPageUrl(page, 1)).toBe(`${BASE}?pageSize=50&page=1`);
+    expect(jsonPageUrl(page, 1)).toBe(`${BASE}?sort=id&order=desc&pageSize=50&page=1`);
+  });
+
+  it("panelens filter, sökning och sortering följer inte med: alltid nyast först", () => {
+    const api = jsonApiFromUrl(
+      `${BASE}?search=Ica&sort=createtime&order=asc&offset=0&limit=10` +
+        `&filter=${encodeURIComponent('{"machine_name":"Ica"}')}&op=${encodeURIComponent('{"machine_name":"="}')}`,
+    )!;
+    const u = new URL(jsonPageUrl(api, 2));
+    expect([...u.searchParams.keys()].sort()).toEqual(["limit", "offset", "order", "sort"]);
+    expect(u.searchParams.get("sort")).toBe("id");
+    expect(u.searchParams.get("order")).toBe("desc");
+    expect(u.searchParams.get("offset")).toBe("10");
+  });
+
+  it("belopp och betalstatus kräver entydiga nycklar (aldrig status, price, pay_amount)", () => {
+    const base = {
+      order_no: "A-1",
+      goods_name: "Box",
+      machine_name: "Ica",
+      pay_time: "2026-11-02 08:00:00",
+    };
+    // Allmän status och pris: ingen JSON-avläsning (HTML-tabellen läses i stället).
+    expect(() => readJsonItems([{ ...base, price: 170, status: 1 }], 1)).toThrow(ReaderError);
+    expect(() => readJsonItems([{ ...base, pay_amount: 170, is_paid: 1 }], 1)).toThrow(/amount/);
+    expect(() => readJsonItems([{ ...base, order_amount: 170, status: "1" }], 1)).toThrow(/isPaid/);
+    // Både Order Amount och Pay Amount: orderns belopp tas.
+    const read = readJsonItems(
+      [{ ...base, pay_amount: 150, order_amount: 170, pay_status: 1, status: 0 }],
+      1,
+    );
+    expect(read.rows[0]).toMatchObject({ amount: "170.00", isPaid: "Paid Success" });
+    expect(read.columns).toMatchObject({
+      externalId: "order_no",
+      amount: "order_amount",
+      isPaid: "pay_status",
+      paidAt: "pay_time",
+    });
+  });
+});
+
+describe("vilka adresser och vilken ordning som godtas", () => {
+  it("bara orderlistan (eller ett API som uttryckligen är en orderlista) är en orderkälla", () => {
+    const own = "/dashboard/orders/index";
+    for (const ok of [
+      "/dashboard/orders/index",
+      "/dashboard/orders/index.html",
+      "/dashboard/orders",
+      "/dashboard/orders/",
+      "/api/order/list",
+      "/api/v1/orders/index",
+    ]) {
+      expect(isOrdersApiPath(ok, own), ok).toBe(true);
+    }
+    for (const no of [
+      "/dashboard/refund/index",
+      "/dashboard/orders/refund",
+      "/dashboard/refund/orders/index",
+      "/dashboard/index/index",
+      "/dashboard/statistics/order/list",
+      "/dashboard/top/orders/list",
+      "/dashboard/machines/index",
+    ]) {
+      expect(isOrdersApiPath(no, own), no).toBe(false);
+    }
+  });
+
+  it("en lista som visar äldsta ordern först känns igen", () => {
+    const asc = [...orders.slice(0, 20)].reverse();
+    const html = renderOrdersPage(asc, 1);
+    const { read } = readHtmlPage(html, 1);
+    expect(looksAscending(read.rows)).toBe(true);
+    expect(looksAscending(readHtmlPage(renderOrdersPage(orders, 1), 1).read.rows)).toBe(false);
+  });
+
+  it("HTML-tabellen: kolumnmappningen med rubrikerna som de står", () => {
+    const { read } = readHtmlPage(renderOrdersPage(orders, 1), 1);
+    expect(read.columns).toMatchObject({
+      externalId: "Order No.",
+      title: "Name",
+      machine: "Order Machine",
+      amount: "Order Amount",
+      isPaid: "Is Paid",
+      paidAt: "Payment Time",
+    });
+  });
+
+  it("HTML: en allmän Status-kolumn eller Price tas aldrig som betalstatus eller belopp", () => {
+    const columns = mapColumns([
+      "Order No.",
+      "Name",
+      "Order Machine",
+      "Price",
+      "Status",
+      "Payment Time",
+    ]);
+    expect(columns.amount).toBe(-1);
+    expect(columns.isPaid).toBe(-1);
   });
 });

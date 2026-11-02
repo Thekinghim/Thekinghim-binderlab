@@ -48,8 +48,7 @@ create table public.sync_tokens (
 create index sync_tokens_source_idx on public.sync_tokens (organization_id, data_source_id);
 
 -- Datakällan är ett aktivt Awish-tillägg. Security definer: kontrollen ska ge samma svar
--- oavsett vad anroparen ser (RLS på data_sources avgör sedan med policyn nedan om raden
--- får skrivas, så en rad i en annan organisation nekas med 42501 som alla andra tabeller).
+-- oavsett vad anroparen ser på data_sources.
 create function private.is_extension_source(p_organization_id uuid, p_data_source_id uuid)
 returns boolean
 language sql stable security definer
@@ -66,7 +65,8 @@ revoke all on function private.is_extension_source(uuid, uuid) from public, anon
 grant execute on function private.is_extension_source(uuid, uuid) to authenticated;
 
 -- Regler som RLS inte kan uttrycka:
---   * datakällan måste vara ett Awish-tillägg (awish_extension) och inte arkiverad;
+--   * datakällan måste vara ett Awish-tillägg (awish_extension) och inte arkiverad
+--     (kontrolleras efter RLS, private.sync_tokens_check_source nedan);
 --   * hash, prefix och datakälla ändras aldrig; en återkallad token förblir återkallad;
 --   * klientroller (authenticated) får bara ändra namn och återkalla. revoked_by sätts
 --     av databasen. Kontaktfälten skrivs bara av systemrollen (ingest-API:t).
@@ -78,11 +78,6 @@ declare
   v_client boolean := current_user in ('authenticated', 'anon');
 begin
   if tg_op = 'INSERT' then
-    if not private.is_extension_source(new.organization_id, new.data_source_id) then
-      raise exception using
-        errcode = 'BL070',
-        message = 'Synk-token kan bara skapas för en aktiv datakälla av typen Awish-tillägg.';
-    end if;
     if v_client then
       new.last_seen_at := null;
       new.last_batch_at := null;
@@ -122,10 +117,30 @@ $$;
 
 revoke all on function private.sync_tokens_guard() from public;
 
+-- Datakällan kontrolleras EFTER RLS (en AFTER-trigger körs efter policyernas WITH CHECK),
+-- så att en rad i en annan organisation nekas med 42501 som i alla andra tabeller.
+create function private.sync_tokens_check_source() returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if not private.is_extension_source(new.organization_id, new.data_source_id) then
+    raise exception using
+      errcode = 'BL070',
+      message = 'Synk-token kan bara skapas för en aktiv datakälla av typen Awish-tillägg.';
+  end if;
+  return null;
+end
+$$;
+
+revoke all on function private.sync_tokens_check_source() from public;
+
 create trigger t00_forbid_org_change before update on public.sync_tokens
   for each row execute function private.forbid_org_change();
 create trigger t10_guard before insert or update on public.sync_tokens
   for each row execute function private.sync_tokens_guard();
+create trigger t80_check_source after insert on public.sync_tokens
+  for each row execute function private.sync_tokens_check_source();
 create trigger t20_stamp_insert before insert on public.sync_tokens
   for each row execute function private.stamp_insert();
 create trigger t20_stamp_update before update on public.sync_tokens

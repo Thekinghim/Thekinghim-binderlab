@@ -62,6 +62,7 @@ export async function ExtensionSection({ index }: { index: number }) {
       />
       <ExtensionPanel
         sources={data.sources}
+        otherAwishSources={data.otherAwishSources}
         timeZone={tz}
         now={data.now}
         appUrl={appBaseUrl(requestHeaders)}

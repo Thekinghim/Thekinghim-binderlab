@@ -179,16 +179,21 @@ describe("token", () => {
     await expect(authenticate(deps(), header)).rejects.toMatchObject({ status: 401 });
   });
 
-  it("för många ogiltiga försök från samma IP ger 429", async () => {
+  it("för många ogiltiga försök från samma IP ger 429, men en giltig token släpps fram", async () => {
     const d = deps();
     for (let i = 0; i < 20; i++) {
       await authenticate(d, "Bearer x", "10.0.0.9").catch(() => undefined);
     }
-    await expect(authenticate(d, `Bearer ${A.token}`, "10.0.0.9")).rejects.toMatchObject({
+    await expect(authenticate(d, "Bearer x", "10.0.0.9")).rejects.toMatchObject({
       status: 429,
     });
+    // Spärren gäller bara misslyckade försök: en giltig token från samma IP (t.ex. ett
+    // kontorsnät, eller nyckeln "okänd" utan proxyrubriker) fungerar ändå.
+    await expect(authenticate(d, `Bearer ${A.token}`, "10.0.0.9")).resolves.toBeTruthy();
     // En annan IP påverkas inte.
-    await expect(authenticate(d, `Bearer ${A.token}`, "10.0.0.10")).resolves.toBeTruthy();
+    await expect(authenticate(d, "Bearer x", "10.0.0.10")).rejects.toMatchObject({
+      status: 401,
+    });
   });
 
   it("läsare och påfyllare kan inte skapa, se eller återkalla tokens", async () => {

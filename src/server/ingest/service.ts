@@ -18,7 +18,15 @@
  * Varje batch med rader blir en import (trigger 'extension') i en transaktion med
  * samma lås per datakälla som filimporten. En tom batch är en hjärtslag: inget
  * importeras, men last_synced_at uppdateras om tillägget rapporterar att synken
- * gick bra. Larmet för utebliven hämtning (src/analytics/alerts/rules.ts,
+ * gick bra och källan är aktiv (inte pausad).
+ *
+ * Samma Awish-order i flera källor: ordernumret är unikt per datakälla, men en
+ * organisation som redan har laddat upp Awish orderlista som CSV (awish_csv) eller har
+ * en annan Awish-källa får inte samma order två gånger när tillägget läser historiken.
+ * En betald rad vars ordernummer redan finns i en annan Awish-källa i organisationen
+ * räknas därför som dubblett och importeras inte (imports.mapping.otherSourceDuplicates).
+ * Status-API:t räknar på samma sätt alla Awish-källor, så att tillägget slutar läsa vid
+ * ordrar som finns i CSV-källan. Larmet för utebliven hämtning (src/analytics/alerts/rules.ts,
  * importAlerts) slår till när last_synced_at är äldre än två timmar.
  */
 
@@ -45,6 +53,12 @@ import {
 import { bearerToken, hashToken } from "./tokens";
 
 type Row = Record<string, unknown>;
+
+/**
+ * Datakällor med Awish ordernummer: samma order kan finnas i flera av dem. Listan står
+ * också som literal i SQL-frågorna nedan (inga råa SQL-fragment).
+ */
+export const AWISH_PROVIDERS = ["awish_grpc", "awish_web", "awish_csv", "awish_extension"] as const;
 
 const UNAUTHORIZED =
   "Token är ogiltig eller återkallad. Skapa en ny token under Datakällor i Binderlab.";
@@ -108,15 +122,19 @@ export async function authenticate(
   authorization: string | null | undefined,
   clientKey = "okänd",
 ): Promise<TokenContext> {
+  // Spärren gäller bara misslyckade försök: en giltig token släpps alltid fram, även om
+  // någon annan bakom samma IP (eller utan proxyrubriker, nyckeln "okänd") har provat
+  // ogiltiga tokens. Token har 256 bitar slump, så spärren är bara ett skydd mot brus.
   const badKey = `bad:${clientKey}`;
-  const blocked = deps.limiters.badToken.check(badKey, BAD_TOKEN_PER_MINUTE);
-  if (!blocked.allowed) throw rateLimited(blocked.retryAfterMs);
-
-  const token = bearerToken(authorization);
-  if (!token) {
+  const reject = (): never => {
+    const blocked = deps.limiters.badToken.check(badKey, BAD_TOKEN_PER_MINUTE);
+    if (!blocked.allowed) throw rateLimited(blocked.retryAfterMs);
     deps.limiters.badToken.hit(badKey);
     throw new IngestError("unauthorized", 401, UNAUTHORIZED);
-  }
+  };
+
+  const token = bearerToken(authorization);
+  if (!token) return reject();
   const [row] = await query<{
     id: string;
     organization_id: string;
@@ -141,10 +159,7 @@ export async function authenticate(
         join public.organizations o on o.id = t.organization_id
         where t.token_hash = ${hashToken(token)}`,
   );
-  if (!row || row.revoked_at !== null) {
-    deps.limiters.badToken.hit(badKey);
-    throw new IngestError("unauthorized", 401, UNAUTHORIZED);
-  }
+  if (!row || row.revoked_at !== null) return reject();
   if (row.org_archived_at !== null) {
     throw new IngestError("forbidden", 403, "Organisationen är arkiverad.");
   }
@@ -205,6 +220,8 @@ export interface IngestResult {
   /** imports.id, eller null för en hjärtslag utan rader. */
   importId: string | null;
   summary: ImportSummary | null;
+  /** Betalda rader vars ordernummer redan finns i en annan Awish-källa (räknas som dubbletter). */
+  otherSourceDuplicates: number;
   unknownMachines: number;
   newTitles: number;
   lastSyncedAt: string | null;
@@ -256,7 +273,7 @@ export async function ingestBatch(
           tx,
           sql`update public.data_sources set last_synced_at = now()
               where organization_id = ${ctx.organizationId}::uuid and id = ${ctx.dataSourceId}::uuid
-                and archived_at is null
+                and archived_at is null and status <> 'paused'
               returning last_synced_at`,
         );
         return iso(r?.last_synced_at);
@@ -267,7 +284,14 @@ export async function ingestBatch(
       error: report && report.state !== "ok" ? (report.message ?? null) : null,
       clientVersion,
     });
-    return { importId: null, summary: null, unknownMachines: 0, newTitles: 0, lastSyncedAt };
+    return {
+      importId: null,
+      summary: null,
+      otherSourceDuplicates: 0,
+      unknownMachines: 0,
+      newTitles: 0,
+      lastSyncedAt,
+    };
   }
 
   const sha256 = sha256Hex(JSON.stringify({ rows: body.rows, absent: body.absent ?? [] }));
@@ -309,7 +333,7 @@ export async function ingestBatch(
         config: {},
         secretRef: null,
       };
-      const fetched = parseAwishExtensionBatch({
+      const parsed = parseAwishExtensionBatch({
         context,
         rows: body.rows,
         absent: body.absent,
@@ -324,6 +348,21 @@ export async function ingestBatch(
         dataSourceId: ctx.dataSourceId,
         organizationTimezone: source.org_timezone,
       };
+      // Ordrar som redan finns i en annan Awish-källa (t.ex. en uppladdad CSV) är samma
+      // order: de importeras inte en gång till.
+      const elsewhere = await ordersInOtherAwishSources(
+        tx,
+        ctx,
+        parsed.rows.filter((r) => r.isPaid).map((r) => r.externalId),
+      );
+      const fetched =
+        elsewhere.size === 0
+          ? parsed
+          : {
+              ...parsed,
+              rows: parsed.rows.filter((r) => !(r.isPaid && elsewhere.has(r.externalId))),
+            };
+      const otherSourceDuplicates = parsed.rows.length - fetched.rows.length;
       const classification = await classify(tx, pipelineCtx, fetched);
       const [created] = await query<{ id: string }>(
         tx,
@@ -334,14 +373,18 @@ export async function ingestBatch(
               ${ctx.organizationId}::uuid, ${ctx.dataSourceId}::uuid, 'extension',
               ${batchFileName(body)}, ${sha256}, ${batchStoragePath(ctx, sha256)},
               ${`${fetched.parserVersion}+${IMPORT_PIPELINE_VERSION}`},
-              ${JSON.stringify({ ...(fetched.mapping ?? {}), report: report ?? null, client: body.client ?? null, batch: body.batch ?? null })}::jsonb,
+              ${JSON.stringify({ ...(fetched.mapping ?? {}), report: report ?? null, client: body.client ?? null, batch: body.batch ?? null, otherSourceDuplicates })}::jsonb,
               'running', clock_timestamp()
             )
             returning id`,
       );
       if (!created) throw new Error("Importen kunde inte skapas.");
       const outcome = await commitClassification(tx, pipelineCtx, created.id, classification);
-      const s = outcome.summary;
+      const s: ImportSummary = {
+        ...outcome.summary,
+        total: outcome.summary.total + otherSourceDuplicates,
+        duplicate: outcome.summary.duplicate + otherSourceDuplicates,
+      };
       await tx.execute(
         sql`update public.imports
             set rows_total = ${s.total}, rows_new = ${s.new}, rows_duplicate = ${s.duplicate},
@@ -358,6 +401,7 @@ export async function ingestBatch(
       return {
         importId: created.id,
         summary: s,
+        otherSourceDuplicates,
         unknownMachines: outcome.unknownMachines.length,
         newTitles: outcome.newTitles.length,
         lastSyncedAt: iso(synced?.last_synced_at),
@@ -394,6 +438,26 @@ export async function ingestBatch(
       "Binderlab kunde inte spara batchen. Tillägget försöker igen.",
     );
   }
+}
+
+/** Ordernummer (av de givna) som finns i en annan Awish-källa i organisationen. */
+async function ordersInOtherAwishSources(
+  tx: Tx,
+  ctx: TokenContext,
+  externalIds: readonly string[],
+): Promise<Set<string>> {
+  if (externalIds.length === 0) return new Set();
+  const found = await query<{ external_id: string }>(
+    tx,
+    sql`select distinct o.external_id
+        from public.orders o
+        join public.data_sources ds on ds.organization_id = o.organization_id and ds.id = o.data_source_id
+        where o.organization_id = ${ctx.organizationId}::uuid
+          and o.data_source_id <> ${ctx.dataSourceId}::uuid
+          and ds.provider in ('awish_grpc', 'awish_web', 'awish_csv', 'awish_extension')
+          and o.external_id in (select jsonb_array_elements_text(${JSON.stringify([...new Set(externalIds)])}::jsonb))`,
+  );
+  return new Set(found.map((r) => r.external_id));
 }
 
 /** Skaparen måste fortfarande vara ägare eller admin (kontrolleras i samma transaktion). */
@@ -444,10 +508,16 @@ export interface IngestStatus {
   dataSource: { id: string; name: string; sourceTimezone: string; status: string };
   lastSyncedAt: string | null;
   orders: {
+    /** Ordrar i organisationens alla Awish-källor (tillägget, CSV, ...). */
     count: number;
+    /** Ordrar i just den här datakällan. */
+    sourceCount: number;
     latestExternalId: string | null;
     latestOrderedAt: string | null;
-    /** De senaste ordernumren (högst 500), nyast först: tillägget slutar läsa när det når dem. */
+    /**
+     * De senaste ordernumren (högst 500) i alla Awish-källor, nyast först: tillägget
+     * slutar läsa när det når dem, även när de kom från en uppladdad CSV.
+     */
     knownExternalIds: string[];
   };
   limits: { maxRows: number; maxBodyBytes: number };
@@ -468,11 +538,15 @@ export async function ingestStatus(deps: IngestDeps, ctx: TokenContext): Promise
       status: string;
       last_synced_at: unknown;
       orders: number;
+      family_orders: number;
     }>(
       tx,
       sql`select ds.id, ds.name, ds.source_timezone, ds.status::text as status, ds.last_synced_at,
                  (select count(*) from public.orders o
-                   where o.organization_id = ds.organization_id and o.data_source_id = ds.id)::int as orders
+                   where o.organization_id = ds.organization_id and o.data_source_id = ds.id)::int as orders,
+                 (select count(*) from public.orders o
+                   join public.data_sources f on f.organization_id = o.organization_id and f.id = o.data_source_id
+                   where o.organization_id = ds.organization_id and f.provider in ('awish_grpc', 'awish_web', 'awish_csv', 'awish_extension'))::int as family_orders
           from public.data_sources ds
           where ds.organization_id = ${ctx.organizationId}::uuid and ds.id = ${ctx.dataSourceId}::uuid`,
     );
@@ -482,8 +556,9 @@ export async function ingestStatus(deps: IngestDeps, ctx: TokenContext): Promise
     const recent = await query<{ external_id: string; ordered_at: unknown }>(
       tx,
       sql`select o.external_id, o.ordered_at from public.orders o
+          join public.data_sources f on f.organization_id = o.organization_id and f.id = o.data_source_id
           where o.organization_id = ${ctx.organizationId}::uuid
-            and o.data_source_id = ${ctx.dataSourceId}::uuid
+            and f.provider in ('awish_grpc', 'awish_web', 'awish_csv', 'awish_extension')
           order by o.ordered_at desc, o.external_id desc
           limit ${STATUS_KNOWN_IDS}`,
     );
@@ -497,7 +572,8 @@ export async function ingestStatus(deps: IngestDeps, ctx: TokenContext): Promise
       },
       lastSyncedAt: iso(source.last_synced_at),
       orders: {
-        count: Number(source.orders),
+        count: Number(source.family_orders),
+        sourceCount: Number(source.orders),
         latestExternalId: recent[0]?.external_id ?? null,
         latestOrderedAt: iso(recent[0]?.ordered_at),
         knownExternalIds: recent.map((r) => r.external_id),

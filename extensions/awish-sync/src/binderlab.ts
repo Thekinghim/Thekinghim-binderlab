@@ -29,6 +29,8 @@ export interface IngestStatus {
     latestExternalId: string | null;
     latestOrderedAt: string | null;
     knownExternalIds: string[];
+    /** Ordrar i just den här datakällan (count gäller alla Awish-källor i organisationen). */
+    sourceCount?: number;
   };
   limits: { maxRows: number; maxBodyBytes: number };
 }
@@ -39,7 +41,11 @@ export interface Report {
   fullHistory?: boolean;
   pagesRead?: number;
   rowsSeen?: number;
-  mode?: "json" | "html";
+  mode?: "json" | "html" | "tab";
+  /** Rubrikerna (HTML) eller nycklarna (JSON) per fält, som de lästes. */
+  columns?: Partial<Record<string, string>>;
+  /** Sökvägen som lästes, utan parametrar. */
+  path?: string;
 }
 
 export interface BatchResult {

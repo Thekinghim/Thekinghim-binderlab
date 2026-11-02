@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { extractHtml } from "../../../extensions/awish-sync/src/extract-html";
 import type { OrderRow } from "../../../extensions/awish-sync/src/reader";
+import { AwishReader } from "../../../extensions/awish-sync/src/awish";
 import { initialState, runSync, type SyncDeps } from "../../../extensions/awish-sync/src/sync";
 import {
   makeOrders,
@@ -37,6 +38,12 @@ interface Fake {
   crashAfterAwishHits?: number;
   tokenRevoked: boolean;
   slept: number[];
+  /** Ordrar i just tilläggets källa (status.orders.sourceCount); saknas = som count. */
+  sourceCount?: number;
+  /** Awish orderlista är tom (t.ex. ett filter i panelen) fast det finns ordrar. */
+  emptyList?: boolean;
+  /** Awish svarar med ett skal som ritas med JavaScript (ingen tabell i HTML:en). */
+  shell?: boolean;
 }
 
 function fake(overrides: Partial<Fake> = {}): Fake {
@@ -91,7 +98,13 @@ function fetchFor(f: Fake): typeof fetch {
         return json(ordersJson(f.orders, offset, limit));
       }
       const page = Number(url.searchParams.get("page") ?? "1");
-      return new Response(renderOrdersPage(f.orders, page), {
+      if (f.shell) {
+        return new Response(
+          '<!doctype html><html><head><title>Awish</title></head><body><div id="app"></div><script src="/app.js"></script></body></html>',
+          { status: 200, headers: { "content-type": "text/html" } },
+        );
+      }
+      return new Response(renderOrdersPage(f.emptyList ? [] : f.orders, page), {
         status: 200,
         headers: { "content-type": "text/html" },
       });
@@ -126,6 +139,7 @@ function fetchFor(f: Fake): typeof fetch {
             latestExternalId: null,
             latestOrderedAt: null,
             knownExternalIds: [...f.known],
+            ...(f.sourceCount === undefined ? {} : { sourceCount: f.sourceCount }),
           },
           limits: { maxRows: 500, maxBodyBytes: 2_000_000 },
         });
@@ -133,7 +147,7 @@ function fetchFor(f: Fake): typeof fetch {
       if (url.pathname === "/api/ingest/awish" && init?.method === "POST") {
         const body = JSON.parse(String(init.body)) as {
           rows: OrderRow[];
-          report?: { state: string; message?: string };
+          report?: { state: string; message?: string; columns?: Record<string, string> };
         };
         expect(body.rows.length).toBeLessThanOrEqual(500);
         if (body.rows.length === 0) {
@@ -232,7 +246,8 @@ describe("första synken: hela historiken", () => {
 
 describe("vanlig synk", () => {
   it("slutar läsa vid kända ordernummer (plus en sida överlapp) och skickar bara nya", async () => {
-    const f = fake();
+    // Historiken är några dagar gammal: dess ej betalda ordrar bevakas inte längre.
+    const f = fake({ orders: makeOrders(95, 42_000, Date.UTC(2026, 9, 28, 16, 0, 0)) });
     const first = await runSync(deps(f), settings, initialState());
     // Fem nya ordrar högst upp.
     const newer = makeOrders(5, 42_095, Date.UTC(2026, 10, 2, 9, 0, 0));
@@ -331,6 +346,179 @@ describe("fel", () => {
       (await runSync(deps(f), { binderlabUrl: BINDERLAB, token: "x" }, initialState())).lastError,
     ).toMatch(/Token/);
     expect(f.awishHits).toEqual([]);
+  });
+});
+
+describe("granskningens fynd", () => {
+  it("tom orderlista på sida 1 fast Binderlab har ordrar: fel, inte en lyckad synk", async () => {
+    const f = fake();
+    const first = await runSync(deps(f), settings, initialState());
+    expect(first.lastError).toBeNull();
+    f.emptyList = true;
+    f.reports = [];
+    const state = await runSync(deps(f), settings, first);
+    expect(state.lastError).toMatch(/orderlista är tom/);
+    expect(state.lastSuccessAt).toBe(first.lastSuccessAt);
+    expect(f.reports.map((r) => r.state)).toEqual(["error"]);
+  });
+
+  it("tom orderlista hos en ny kund utan ordrar är en lyckad synk", async () => {
+    const f = fake({ emptyList: true });
+    const state = await runSync(deps(f), settings, initialState());
+    expect(state.lastError).toBeNull();
+    expect(f.reports.at(-1)).toMatchObject({ state: "ok" });
+  });
+
+  it("sen betalning: en ej betald order långt ner läses och skickas när den blivit betald", async () => {
+    const orders = makeOrders(95).map((o) => ({ ...o, paid: true }));
+    const x = orders[70]!; // sida 4
+    x.paid = false;
+    const f = fake({ orders });
+    const first = await runSync(deps(f), settings, initialState());
+    expect(first.unpaidSince[x.orderNo]).toBeDefined();
+    // Nya ordrar ovanför, och X blir betald.
+    f.orders = [...makeOrders(3, 42_095, Date.UTC(2026, 10, 2, 9, 0, 0)), ...orders];
+    x.paid = true;
+    f.batches = [];
+    const state = await runSync(deps(f), settings, first);
+    const sent = f.batches.flatMap((b) => b.rows.map((r) => r.externalId));
+    expect(sent).toContain(x.orderNo);
+    expect(state.unpaidSince[x.orderNo]).toBeUndefined();
+    expect(state.lastRun?.pagesRead).toBe(4);
+  });
+
+  it("ej betalda ordrar ur gammal historik bevakas inte (ingen extra läsning)", async () => {
+    const f = fake({ orders: makeOrders(95, 42_000, Date.UTC(2026, 9, 20, 16, 0, 0)) });
+    const first = await runSync(deps(f), settings, initialState());
+    expect(first.sentUnpaid.length).toBeGreaterThan(0);
+    expect(Object.values(first.unpaidSince).every((v) => v === "")).toBe(true);
+    const again = await runSync(deps(f), settings, first);
+    expect(again.lastRun?.pagesRead).toBe(2);
+  });
+
+  it("bevakningen har ett tak: högst unpaidLookbackPages sidor", async () => {
+    const f = fake({ orders: makeOrders(95, 42_000, Date.UTC(2026, 9, 20, 16, 0, 0)) });
+    const first = await runSync(deps(f), settings, initialState());
+    const gone = { ...first, sentUnpaid: ["finns-inte"], unpaidSince: {} };
+    const again = await runSync(deps(f, { unpaidLookbackPages: 3 }), settings, gone);
+    expect(again.lastRun?.pagesRead).toBe(3);
+  });
+
+  it("ordrar som redan finns i en annan Awish-källa: historiken läses ändå en gång, sedan inte", async () => {
+    // Binderlab har 95 ordrar från en CSV-källa, tilläggets egen källa är tom.
+    const f = fake();
+    for (const id of paidIds(f.orders)) f.known.add(id);
+    f.sourceCount = 0;
+    const first = await runSync(deps(f), settings, initialState());
+    expect(first.lastRun?.mode).toBe("full");
+    expect(first.historyDoneAt).not.toBeNull();
+    const again = await runSync(deps(f), settings, first);
+    expect(again.lastRun?.mode).toBe("incremental");
+  });
+
+  it("rapporten har kolumnerna och sökvägen som lästes", async () => {
+    const f = fake();
+    const state = await runSync(deps(f), settings, initialState());
+    expect(f.batches[0]?.report).toMatchObject({
+      state: "ok",
+      mode: "html",
+      path: "/dashboard/orders/index",
+      columns: { externalId: "Order No.", amount: "Order Amount", isPaid: "Is Paid" },
+    });
+    expect(state.lastRun?.columns).toMatchObject({ externalId: "Order No." });
+  });
+
+  it("äldst först i HTML-listan: fel i stället för att läsa fel ände", async () => {
+    const f = fake();
+    const first = await runSync(deps(f), settings, initialState());
+    f.orders = [...f.orders].reverse();
+    const state = await runSync(deps(f), settings, first);
+    expect(state.lastError).toMatch(/äldsta ordern först/);
+  });
+
+  it("reserv: sidan ritas med JavaScript, en öppen flik visar orderlistan (bara sida 1)", async () => {
+    const f = fake({ shell: true });
+    const tabPage = extractHtml(renderOrdersPage(f.orders, 1));
+    const state = await runSync(
+      deps(f, {
+        readOpenTab: async () => ({ page: tabPage, url: `${AWISH}/dashboard/orders/index` }),
+      }),
+      settings,
+      initialState(),
+    );
+    expect(state.loggedOut).toBe(false);
+    expect(state.lastError).toBeNull();
+    expect(state.lastRun).toMatchObject({ source: "tab", pagesRead: 1, rowsSent: 20 });
+    expect(state.historyDoneAt).toBeNull();
+    expect(f.reports.at(-1)).toMatchObject({ state: "ok", mode: "tab" });
+  });
+
+  it("reserv: utloggad från Awish med en gammal flik öppen är fortfarande utloggad", async () => {
+    const f = fake({ loggedIn: false, known: new Set(["1"]) });
+    // Fliken öppnades före utloggningen och visar fortfarande ordrarna.
+    const stale = extractHtml(renderOrdersPage(f.orders, 1));
+    const state = await runSync(
+      deps(f, {
+        readOpenTab: async () => ({ page: stale, url: `${AWISH}/dashboard/orders/index` }),
+      }),
+      settings,
+      initialState(),
+    );
+    expect(state.loggedOut).toBe(true);
+    expect(f.batches).toEqual([]);
+    expect(f.reports.at(-1)).toMatchObject({ state: "logged_out" });
+  });
+
+  it("reserv: tom lista via fetch men orderlistan i fliken (tabellen ritas efteråt)", async () => {
+    const f = fake();
+    const first = await runSync(deps(f), settings, initialState());
+    f.emptyList = true;
+    const newer = makeOrders(2, 42_095, Date.UTC(2026, 10, 2, 9, 0, 0));
+    const tabPage = extractHtml(renderOrdersPage([...newer, ...f.orders], 1));
+    f.batches = [];
+    const state = await runSync(
+      deps(f, {
+        readOpenTab: async () => ({ page: tabPage, url: `${AWISH}/dashboard/orders/index` }),
+      }),
+      settings,
+      first,
+    );
+    expect(state.lastError).toBeNull();
+    expect(state.lastRun?.source).toBe("tab");
+    expect(f.batches.flatMap((b) => b.rows.map((r) => r.externalId))).toEqual(
+      expect.arrayContaining(paidIds(newer)),
+    );
+  });
+
+  it("reserv: en flik utan orderlistan hjälper inte (layoutfel kvarstår)", async () => {
+    const f = fake({ shell: true });
+    const state = await runSync(
+      deps(f, {
+        readOpenTab: async () => ({
+          page: extractHtml("<html><body><p>Välkommen</p></body></html>"),
+          url: `${AWISH}/dashboard/orders/index`,
+        }),
+      }),
+      settings,
+      initialState(),
+    );
+    expect(state.lastError).toMatch(/Hittar inte ordertabellen/);
+  });
+
+  it("ett upptäckt API utanför orderlistan används inte; filter från panelen följer inte med", () => {
+    const memory = initialState().awish;
+    const reader = new AwishReader(deps(fake()), memory);
+    expect(reader.useDiscoveredApi(`${AWISH}/dashboard/refund/index?offset=0&limit=10`)).toBe(
+      false,
+    );
+    expect(reader.useDiscoveredApi("https://evil.example/dashboard/orders/index")).toBe(false);
+    expect(memory.api).toBeNull();
+    expect(
+      reader.useDiscoveredApi(
+        `${AWISH}/dashboard/orders/index?filter=%7B%22machine_name%22%3A%22Ica%22%7D&order=asc&offset=0&limit=10`,
+      ),
+    ).toBe(true);
+    expect(memory.api?.url).toBe(`${AWISH}/dashboard/orders/index?sort=id&order=desc`);
   });
 });
 

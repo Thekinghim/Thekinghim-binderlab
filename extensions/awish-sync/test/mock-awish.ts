@@ -221,6 +221,11 @@ export interface MockAwishServer {
   hits: { path: string; at: number; cookie: boolean; xhr: boolean }[];
   /** Loggar ut alla (sessionen slutar gälla). */
   expireSessions(): void;
+  /**
+   * Orderlistan svarar med ett skal som ritas med JavaScript (som en SPA), utan tabell i
+   * HTML:en. En flik som redan visar listan behåller den (tilläggets reserv läser den).
+   */
+  setShell(on: boolean): void;
   close(): Promise<void>;
 }
 
@@ -234,7 +239,7 @@ export async function startMockAwish(options: {
 }): Promise<MockAwishServer> {
   const sessions = new Set<string>();
   const hits: MockAwishServer["hits"] = [];
-  const state = { orders: options.orders };
+  const state = { orders: options.orders, shell: false };
 
   const handler = (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -282,6 +287,12 @@ export async function startMockAwish(options: {
       }
       const page = Math.max(1, Number(url.searchParams.get("page") ?? "1") || 1);
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      if (state.shell) {
+        res.end(
+          '<!DOCTYPE html><html><head><title>Awish Dashboard</title></head><body><div id="app"></div></body></html>',
+        );
+        return;
+      }
       res.end(renderOrdersPage(state.orders, page, options.render));
       return;
     }
@@ -306,6 +317,9 @@ export async function startMockAwish(options: {
     },
     hits,
     expireSessions: () => sessions.clear(),
+    setShell: (on: boolean) => {
+      state.shell = on;
+    },
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   } as MockAwishServer;
 }

@@ -21,10 +21,11 @@ import {
   VERSION,
 } from "./config.js";
 import { AwishReader } from "./awish.js";
+import { extractDocument } from "./extract-dom.js";
 import { normalizeBaseUrl } from "./binderlab.js";
 import { chromeApi, type MessageSender } from "./chrome.js";
 import { extractHtml } from "./extract-html.js";
-import type { ExtractedPage } from "./reader.js";
+import { isOrdersApiPath, ReaderError, type ExtractedPage } from "./reader.js";
 import { initialState, runSync, type Settings, type SyncDeps, type SyncState } from "./sync.js";
 
 const chrome = chromeApi;
@@ -89,10 +90,46 @@ async function parseHtml(html: string): Promise<ExtractedPage> {
 }
 
 // ---------------------------------------------------------------------------
+// Reserv: den färdigritade orderlistan i en öppen Awish-flik
+// ---------------------------------------------------------------------------
+
+/**
+ * Läser orderlistan i en öppen flik på Awish (chrome.scripting, isolerad värld: bara
+ * DOM:en läses, sidans skript och inloggning rörs inte). Bara flikar på Awish-panelens
+ * orderlista; ingen flik öppnas eller laddas om.
+ */
+async function readOpenTab(): Promise<{ page: ExtractedPage; url: string } | null> {
+  if (!chrome.scripting) return null;
+  const tabs = await chrome.tabs.query({ url: `${AWISH_ORIGIN}/*` });
+  for (const tab of tabs) {
+    if (tab.id === undefined || !tab.url) continue;
+    let url: URL;
+    try {
+      url = new URL(tab.url);
+    } catch {
+      continue;
+    }
+    if (url.origin !== AWISH_ORIGIN || !isOrdersApiPath(url.pathname, ORDERS_PATH)) continue;
+    const [first] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: extractDocument as () => ExtractedPage,
+    });
+    if (first?.result) return { page: first.result, url: tab.url };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Synken
 // ---------------------------------------------------------------------------
 
 let running: Promise<SyncState> | null = null;
+/**
+ * Något ändrades medan en körning pågick (nya inställningar): kör en gång till efteråt.
+ * "Läs hela historiken igen" sparas under en egen nyckel (fullRequested) i stället för i
+ * läget, som den pågående körningen skriver över när den sparar.
+ */
+let rerun = false;
 
 async function setBadge(state: SyncState): Promise<void> {
   const problem = state.loggedOut || state.tokenInvalid || Boolean(state.lastError);
@@ -121,6 +158,7 @@ function deps(): SyncDeps {
     ordersPath: ORDERS_PATH,
     pageSize: AWISH_PAGE_SIZE,
     apiProbeIntervalMs: API_PROBE_INTERVAL_MS,
+    readOpenTab,
     version: VERSION,
     pageDelayMs: PAGE_DELAY_MS,
     batchSize: BATCH_SIZE,
@@ -132,32 +170,77 @@ function deps(): SyncDeps {
 }
 
 async function sync(options: { full?: boolean } = {}): Promise<SyncState> {
+  if (options.full) await chrome.storage.local.set({ fullRequested: true });
   if (running) {
-    if (options.full) {
-      const state = await loadState();
-      state.fullRequested = true;
-      await saveState(state);
-    }
+    if (options.full) rerun = true;
     return running;
   }
   running = (async () => {
     const settings = await loadSettings();
     const state = await loadState();
+    const { fullRequested } = await chrome.storage.local.get("fullRequested");
+    const runOptions = fullRequested === true ? { ...options, full: true } : options;
+    if (fullRequested === true) await chrome.storage.local.set({ fullRequested: false });
     // Ett JSON-API som panelen själv anropade (./discover.ts) används från nästa körning.
     const { discoveredApi } = await chrome.storage.local.get("discoveredApi");
     if (typeof discoveredApi === "string") {
-      new AwishReader({ ...deps(), fetch }, state.awish).useDiscoveredApi(discoveredApi);
+      new AwishReader(deps(), state.awish).useDiscoveredApi(discoveredApi);
       await chrome.storage.local.set({ discoveredApi: null });
     }
-    const next = await runSync(deps(), settings, state, options);
+    const next = await runSync(deps(), settings, state, runOptions);
     await saveState(next);
     await setBadge(next).catch(() => undefined);
     broadcast(next);
     return next;
   })().finally(() => {
     running = null;
+    if (rerun) {
+      rerun = false;
+      void sync();
+    }
   });
   return running;
+}
+
+/**
+ * "Testa avläsningen": läser sida 1 i Awish som synken gör, men skickar ingenting till
+ * Binderlab och sparar inget. Visar vad tillägget hittar (sätt, sökväg, kolumner, de
+ * första raderna), för att kontrollera avläsningen mot den riktiga panelen.
+ */
+async function diagnose(): Promise<unknown> {
+  const state = await loadState();
+  const memory = structuredClone(state.awish);
+  const { discoveredApi } = await chrome.storage.local.get("discoveredApi");
+  const reader = new AwishReader(deps(), memory);
+  if (typeof discoveredApi === "string") reader.useDiscoveredApi(discoveredApi);
+  try {
+    const read = await reader.readPage(1);
+    return {
+      ok: true,
+      mode: read.mode,
+      path: read.path,
+      api: memory.api ? new URL(memory.api.url).pathname : null,
+      columns: read.columns,
+      seen: read.seen,
+      skipped: read.skipped,
+      hasMore: read.hasMore,
+      lastPage: read.lastPage,
+      sample: read.rows.slice(0, 3).map((r) => ({
+        externalId: r.externalId,
+        title: r.title,
+        machine: r.machine,
+        amount: r.amount,
+        isPaid: r.isPaid,
+        paidAt: r.paidAt,
+      })),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      kind: error instanceof ReaderError ? error.kind : "error",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 async function ensureAlarm(): Promise<void> {
@@ -188,6 +271,7 @@ type Message =
   | { type: "get-state" }
   | { type: "sync-now" }
   | { type: "full-resync" }
+  | { type: "diagnose" }
   | { type: "save-settings"; binderlabUrl: string; token: string }
   | { type: "awish-api"; url: string };
 
@@ -232,6 +316,9 @@ async function handle(message: Message, sender: MessageSender): Promise<unknown>
       if (!fromExtension(sender)) return null;
       void sync({ full: true });
       return { ok: true };
+    case "diagnose":
+      if (!fromExtension(sender)) return null;
+      return diagnose();
     case "save-settings": {
       if (!fromExtension(sender)) return null;
       const binderlabUrl = normalizeBaseUrl(message.binderlabUrl);
@@ -245,6 +332,12 @@ async function handle(message: Message, sender: MessageSender): Promise<unknown>
         };
       }
       await chrome.storage.local.set({ settings: { binderlabUrl, token } });
+      if (running) {
+        // Den pågående körningen skriver över läget när den sparar: kör igen efteråt
+        // (med de nya inställningarna), vilket också rättar flaggorna nedan.
+        rerun = true;
+        return { ok: true };
+      }
       const state = await loadState();
       state.tokenInvalid = false;
       state.lastError = null;
@@ -254,7 +347,9 @@ async function handle(message: Message, sender: MessageSender): Promise<unknown>
     }
     case "awish-api": {
       if (!fromAwishTab(sender) || typeof message.url !== "string") return null;
-      if (new URL(message.url).origin !== AWISH_ORIGIN) return null;
+      const discovered = new URL(message.url);
+      if (discovered.origin !== AWISH_ORIGIN) return null;
+      if (!isOrdersApiPath(discovered.pathname, ORDERS_PATH)) return null;
       await chrome.storage.local.set({ discoveredApi: message.url });
       return { ok: true };
     }

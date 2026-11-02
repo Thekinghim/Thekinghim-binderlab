@@ -9,6 +9,16 @@
  * 2. Annars HTML-tabellen, tolkad med DOMParser i offscreen-dokumentet (eller
  *    tokeniseraren som reserv). Kolumnerna hittas på rubriktexterna.
  *
+ * 3. Reserv: om 1–2 inte hittar någon ordertabell (sidan är ett skal som ritas med
+ *    JavaScript, eller listan är tom fast Binderlab har ordrar) och det finns en öppen
+ *    flik med orderlistan, läses den färdigritade tabellen i fliken (chrome.scripting,
+ *    bara sida 1: de senaste ordrarna). INTE när Awish säger att användaren är utloggad:
+ *    en flik som öppnades före utloggningen visar fortfarande gamla ordrar, och då ska
+ *    popupen och Binderlab säga "utloggad" i stället för att synken ser lyckad ut.
+ *
+ * Bara orderlistans egen adress (eller ett API som uttryckligen är en orderlista, se
+ * isOrdersApiPath) används, med "nyast först". En lista som visar äldst först avvisas.
+ *
  * Utloggning (omdirigering till inloggningen, ett lösenordsfält utan ordertabell, 401
  * eller ett JSON-svar som säger det) blir ReaderError "logged_out".
  */
@@ -16,9 +26,11 @@
 import {
   findJsonRows,
   findOrderTable,
+  isOrdersApiPath,
   jsonApiFromUrl,
   jsonLoggedOut,
   jsonPageUrl,
+  looksAscending,
   looksLoggedOut,
   pageUrl,
   readGrid,
@@ -40,6 +52,11 @@ export interface AwishDeps {
   ordersPath: string;
   pageSize: number;
   apiProbeIntervalMs: number;
+  /**
+   * Läser orderlistan i en öppen Awish-flik (den färdigritade sidan), eller null om
+   * ingen sådan flik finns. Saknas i tester och utanför Chrome.
+   */
+  readOpenTab?: () => Promise<{ page: ExtractedPage; url: string } | null>;
 }
 
 /** Det tillägget kommer ihåg om hur Awish läses (sparas i chrome.storage). */
@@ -54,10 +71,15 @@ export interface AwishMemory {
 }
 
 export interface AwishPage extends PageRead {
-  mode: "json" | "html";
+  mode: "json" | "html" | "tab";
   hasMore: boolean;
   lastPage: number | null;
+  /** Sökvägen som lästes (utan parametrar), för rapporten. */
+  path: string;
 }
+
+const ASCENDING_MESSAGE =
+  "Awish orderlista visar äldsta ordern först. Sortera på ID (nyast först) i Awish-panelen, eller rensa sorteringen, så fortsätter synken.";
 
 function isLoginUrl(url: string): boolean {
   try {
@@ -112,10 +134,14 @@ export class AwishReader {
     return res;
   }
 
-  /** Ett JSON-API som panelen själv anropade (från ./discover.ts). */
+  /**
+   * Ett JSON-API som panelen själv anropade (från ./discover.ts). Används bara om det är
+   * orderlistan (isOrdersApiPath); filter och sortering från panelen följer inte med.
+   */
   useDiscoveredApi(url: string): boolean {
     try {
       this.assertAwish(url);
+      if (!isOrdersApiPath(new URL(url).pathname, this.deps.ordersPath)) return false;
     } catch {
       return false;
     }
@@ -191,6 +217,8 @@ export class AwishReader {
     } catch {
       return null;
     }
+    // API:t bryr sig inte om sort=id&order=desc: använd inte JSON (HTML-tabellen i stället).
+    if (page === 1 && looksAscending(read.rows)) return null;
     const lastPage =
       found.total === null ? null : Math.max(1, Math.ceil(found.total / api.pageSize));
     const hasMore =
@@ -198,7 +226,7 @@ export class AwishReader {
       (found.total === null
         ? found.items.length >= api.pageSize
         : page * api.pageSize < found.total);
-    return { ...read, mode: "json", hasMore, lastPage };
+    return { ...read, mode: "json", hasMore, lastPage, path: new URL(api.url).pathname };
   }
 
   private async readHtml(page: number): Promise<AwishPage> {
@@ -217,6 +245,8 @@ export class AwishReader {
       if (page > 1)
         return {
           rows: [],
+          columns: {},
+          path: new URL(url).pathname,
           absent: [],
           seen: 0,
           skipped: 0,
@@ -230,16 +260,65 @@ export class AwishReader {
       );
     }
     const read = readGrid(table, page);
+    if (page === 1 && looksAscending(read.rows)) throw new ReaderError("layout", ASCENDING_MESSAGE);
     const pagination = readPagination(extracted, page, url, this.deps.pageSize);
     this.memory.htmlPageParam = pagination.param;
     const hasMore =
       read.seen > 0 &&
       (pagination.hasNext || (pagination.lastPage === null && read.seen >= this.deps.pageSize));
-    return { ...read, mode: "html", hasMore, lastPage: pagination.lastPage };
+    return {
+      ...read,
+      mode: "html",
+      hasMore,
+      lastPage: pagination.lastPage,
+      path: new URL(url).pathname,
+    };
   }
 
-  /** Sida n (från 1, nyast först). */
-  async readPage(page: number): Promise<AwishPage> {
+  /** Sida 1 ur en öppen Awish-flik, eller null om det inte finns någon med orderlistan. */
+  private async readTab(): Promise<AwishPage | null> {
+    if (!this.deps.readOpenTab) return null;
+    let tab: { page: ExtractedPage; url: string } | null;
+    try {
+      tab = await this.deps.readOpenTab();
+    } catch {
+      return null;
+    }
+    if (!tab) return null;
+    this.assertAwish(tab.url);
+    const table = findOrderTable(tab.page.tables);
+    if (!table) return null;
+    const read = readGrid(table, 1);
+    if (looksAscending(read.rows)) throw new ReaderError("layout", ASCENDING_MESSAGE);
+    return {
+      ...read,
+      mode: "tab",
+      hasMore: false,
+      lastPage: null,
+      path: new URL(tab.url).pathname,
+    };
+  }
+
+  /** Sida n (från 1, nyast först). Sida 1 kan komma ur en öppen flik (se readTab). */
+  async readPage(page: number, options: { expectRows?: boolean } = {}): Promise<AwishPage> {
+    try {
+      const read = await this.readPageDirect(page);
+      // Tom lista fast Binderlab har ordrar: kanske en tabell som ritas med JavaScript.
+      if (page === 1 && read.seen === 0 && options.expectRows) {
+        const viaTab = await this.readTab();
+        if (viaTab && viaTab.seen > 0) return viaTab;
+      }
+      return read;
+    } catch (error) {
+      const fallback = page === 1 && error instanceof ReaderError && error.kind === "layout";
+      if (!fallback) throw error;
+      const viaTab = await this.readTab();
+      if (viaTab) return viaTab;
+      throw error;
+    }
+  }
+
+  private async readPageDirect(page: number): Promise<AwishPage> {
     if (this.memory.api) {
       const viaJson = await this.readJson(this.memory.api, page);
       if (viaJson) return viaJson;

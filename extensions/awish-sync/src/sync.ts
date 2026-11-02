@@ -2,10 +2,15 @@
  * Synken: Binderlabs status → Awish sidor (nyast först) → batcher till Binderlab.
  *
  * - Vanlig synk (var 10:e minut): läser från sida 1 tills den når ordernummer som
- *   Binderlab redan har (status-API:t) och en sida till (överlapp). Bara rader som
- *   Binderlab inte har skickas; en ej betald order skickas en gång, och igen när den
- *   blivit betald.
- * - Hela historiken (första gången, när Binderlab inte har några order, eller "Läs hela
+ *   Binderlab redan har (status-API:t, alla Awish-källor i organisationen) och en sida
+ *   till (överlapp). Bara rader som Binderlab inte har skickas; en ej betald order
+ *   skickas en gång, och igen när den blivit betald. Så länge en ej betald order från
+ *   det senaste dygnet inte har setts i körningen läses fler sidor (högst
+ *   unpaidLookbackPages), så att en sen betalning inte missas fast nya ordrar hamnat
+ *   ovanför den.
+ * - En tom orderlista på sida 1 när Binderlab redan har ordrar är ett fel, inte en
+ *   lyckad synk (annars tystnar larmet för utebliven synk medan inget läses).
+ * - Hela historiken (första gången, när källan inte har några order, eller "Läs hela
  *   historiken igen"): alla sidor bakåt, en sida i sekunden. Läget sparas efter varje
  *   skickad batch, så att en avbruten läsning fortsätter där den slutade.
  * - Batcher om högst 200 rader. Återförsök med backoff ligger i ./binderlab.ts.
@@ -19,7 +24,7 @@
 
 import { AwishReader, LOGGED_OUT_MESSAGE, type AwishDeps, type AwishMemory } from "./awish.js";
 import { BinderlabClient, BinderlabError, type BatchResult, type Report } from "./binderlab.js";
-import { ReaderError, type OrderRow } from "./reader.js";
+import { ReaderError, type ColumnMapping, type OrderRow } from "./reader.js";
 
 export interface Settings {
   binderlabUrl: string;
@@ -38,7 +43,10 @@ export interface FullHistory {
 
 export interface RunSummary {
   mode: "incremental" | "full";
-  source: "json" | "html" | null;
+  source: "json" | "html" | "tab" | null;
+  /** Sökvägen och kolumnerna som lästes (som i rapporten till Binderlab). */
+  path?: string | null;
+  columns?: ColumnMapping | null;
   pagesRead: number;
   rowsSeen: number;
   rowsSent: number;
@@ -63,6 +71,14 @@ export interface SyncState {
   awish: AwishMemory;
   /** Ordernummer som skickats som ej betalda (de senaste 2 000). */
   sentUnpaid: string[];
+  /**
+   * Bevakning av ej betalda ordrar (nyckel = ordernummer i sentUnpaid): en ISO-tid =
+   * bevakas från då (orderns tid), "" = bevakas inte (för gammal). Saknas ett ordernummer
+   * här (läge från en äldre version) bevakas det från nu.
+   */
+  unpaidSince: Record<string, string>;
+  /** När hela historiken senast lästes klart (null = aldrig, då läses den vid nästa synk). */
+  historyDoneAt: string | null;
   /** Datakällans namn i Binderlab (för popupen). */
   dataSourceName: string | null;
   binderlabOrders: number | null;
@@ -81,6 +97,8 @@ export function initialState(): SyncState {
     fullRequested: false,
     awish: { api: null, apiSource: null, apiProbeFailedAt: null, htmlPageParam: null },
     sentUnpaid: [],
+    unpaidSince: {},
+    historyDoneAt: null,
     dataSourceName: null,
     binderlabOrders: null,
   };
@@ -98,6 +116,35 @@ export interface SyncDeps extends Omit<AwishDeps, "fetch"> {
   saveState?: (state: SyncState) => Promise<void>;
   /** Anropas när något i läget ändrats (popupen uppdateras). */
   onProgress?: (state: SyncState) => void;
+  /** Högst så många sidor läses för att hitta ej betalda ordrar (standard 15). */
+  unpaidLookbackPages?: number;
+  /** Så länge bevakas en ej betald order för en sen betalning (standard 24 h). */
+  unpaidWatchMs?: number;
+}
+
+const DEFAULT_UNPAID_LOOKBACK_PAGES = 15;
+const DEFAULT_UNPAID_WATCH_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Orderns tid ur Date (eller Payment Time), ungefär: källans tidszon är okänd här, men
+ * några timmar fel spelar ingen roll för hur länge en ej betald order bevakas. Ett datum
+ * utan klockslag räknas som slutet av dagen. null = ingen tid i raden.
+ */
+function orderTimeMs(row: OrderRow): number | null {
+  for (const value of [row.orderDate, row.paidAt]) {
+    const v = (value ?? "").trim();
+    let m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2})?)/.exec(v);
+    if (m) {
+      const ms = Date.parse(`${m[1]}T${m[2]}Z`);
+      if (Number.isFinite(ms)) return ms;
+    }
+    m = /^(\d{4}-\d{2}-\d{2})$/.exec(v);
+    if (m) {
+      const ms = Date.parse(`${m[1]}T23:59:59Z`);
+      if (Number.isFinite(ms)) return ms;
+    }
+  }
+  return null;
 }
 
 const MAX_CELL = 2000;
@@ -139,7 +186,7 @@ export async function runSync(
   previous: SyncState,
   options: { full?: boolean } = {},
 ): Promise<SyncState> {
-  const state: SyncState = structuredClone(previous);
+  const state: SyncState = structuredClone({ ...initialState(), ...previous });
   const now = () => deps.now().toISOString();
   state.lastRunAt = now();
   const progress = () => deps.onProgress?.(state);
@@ -168,7 +215,16 @@ export async function runSync(
     state.tokenInvalid = false;
     state.dataSourceName = status.dataSource.name;
     state.binderlabOrders = status.orders.count;
-    if (status.orders.count === 0 && !state.full?.active) options = { ...options, full: true };
+    // Hela historiken första gången: när organisationen inte har några Awish-ordrar, eller
+    // när just den här källan är tom och historiken aldrig lästs klart med tillägget
+    // (ordrar som redan finns i en CSV-källa räknas av Binderlab som dubbletter).
+    const own = status.orders.sourceCount ?? status.orders.count;
+    if (
+      !state.full?.active &&
+      (status.orders.count === 0 || (own === 0 && state.historyDoneAt === null))
+    ) {
+      options = { ...options, full: true };
+    }
   } catch (error) {
     if (error instanceof BinderlabError && error.kind === "auth") state.tokenInvalid = true;
     state.lastError = errorText(error);
@@ -202,19 +258,40 @@ export async function runSync(
     finishedAt: now(),
   };
   const unpaid = new Set(state.sentUnpaid);
+  // Ej betalda ordrar som fortfarande bevakas (en sen betalning kan komma).
+  const watchMs = deps.unpaidWatchMs ?? DEFAULT_UNPAID_WATCH_MS;
+  const nowMs = deps.now().getTime();
+  for (const id of unpaid) state.unpaidSince[id] ??= now();
+  for (const [id, since] of Object.entries(state.unpaidSince)) {
+    if (!unpaid.has(id)) delete state.unpaidSince[id];
+    else if (since !== "" && !(nowMs - Date.parse(since) <= watchMs)) state.unpaidSince[id] = "";
+  }
+  const watched = new Set(
+    Object.entries(state.unpaidSince)
+      .filter(([, since]) => since !== "")
+      .map(([id]) => id),
+  );
+  const lookbackPages = deps.unpaidLookbackPages ?? DEFAULT_UNPAID_LOOKBACK_PAGES;
   const seenThisRun = new Set<string>();
   let buffer: OrderRow[] = [];
   let absent = new Set<"paymentMethod">();
   let bufferedThroughPage = 0;
 
-  const flush = async (report?: Report): Promise<void> => {
+  /** Hur Awish lästes (följer med varje batch, så att Datakällor visar kolumnerna). */
+  const reading = (): Pick<Report, "mode" | "columns" | "path"> => ({
+    ...(summary.source ? { mode: summary.source } : {}),
+    ...(summary.columns ? { columns: summary.columns } : {}),
+    ...(summary.path ? { path: summary.path } : {}),
+  });
+
+  const flush = async (): Promise<void> => {
     if (buffer.length === 0) return;
     summary.batches += 1;
     const result: BatchResult = await binder.postBatch({
       rows: buffer.map(trimRow),
       absent: [...absent],
       batch: summary.batches,
-      report,
+      report: { state: "ok", ...reading() },
     });
     summary.rowsSent += buffer.length;
     summary.newOrders += result.summary?.new ?? 0;
@@ -223,10 +300,25 @@ export async function runSync(
     state.totals.rowsSent += buffer.length;
     state.totals.newOrders += result.summary?.new ?? 0;
     for (const r of buffer) {
-      if (isPaid(r)) unpaid.delete(r.externalId);
-      else unpaid.add(r.externalId);
+      if (isPaid(r)) {
+        unpaid.delete(r.externalId);
+        delete state.unpaidSince[r.externalId];
+      } else {
+        unpaid.add(r.externalId);
+        // Bevakas från orderns egen tid (en gammal ej betald order ur historiken bevakas
+        // inte); utan tid i raden från nu, men bara i en vanlig synk (nya ordrar).
+        if (!(r.externalId in state.unpaidSince)) {
+          const at = orderTimeMs(r) ?? (full ? null : nowMs);
+          state.unpaidSince[r.externalId] =
+            at !== null && nowMs - at <= watchMs ? new Date(Math.min(at, nowMs)).toISOString() : "";
+        }
+      }
     }
     state.sentUnpaid = [...unpaid].slice(-2000);
+    const keep = new Set(state.sentUnpaid);
+    for (const id of Object.keys(state.unpaidSince)) {
+      if (!keep.has(id)) delete state.unpaidSince[id];
+    }
     if (state.full?.active) {
       state.full.nextPage = bufferedThroughPage + 1;
       state.full.rowsSent += buffer.length;
@@ -255,7 +347,7 @@ export async function runSync(
       let read;
       for (let attempt = 0; ; attempt += 1) {
         try {
-          read = await reader.readPage(page);
+          read = await reader.readPage(page, { expectRows: (state.binderlabOrders ?? 0) > 0 });
           break;
         } catch (error) {
           const transient =
@@ -265,7 +357,17 @@ export async function runSync(
         }
       }
       state.loggedOut = false;
+      // Tom lista fast Binderlab har ordrar: ett filter, en tabell som ritas med
+      // JavaScript eller ett nytt sidformat. Inte en lyckad synk.
+      if (page === 1 && read.seen === 0 && (state.binderlabOrders ?? 0) > 0) {
+        throw new ReaderError(
+          "layout",
+          `Awish orderlista är tom, fast Binderlab redan har ${state.binderlabOrders} ordrar. Kontrollera att inget filter eller ingen sökning är aktiv i orderlistan på dash.awish.vip.`,
+        );
+      }
       summary.source = read.mode;
+      summary.path = read.path;
+      if (Object.keys(read.columns).length > 0) summary.columns = read.columns;
       summary.pagesRead += 1;
       summary.rowsSeen += read.seen;
       if (state.full?.active) {
@@ -298,7 +400,9 @@ export async function runSync(
       if (read.seen === 0 || !read.hasMore) break;
       if (!full) {
         if (reachedKnown && stopAfter === null) stopAfter = page + deps.overlapPages;
-        if (stopAfter !== null && page >= stopAfter) break;
+        // Läs vidare så länge en bevakad ej betald order inte setts (högst lookbackPages).
+        const waiting = [...watched].some((id) => !seenThisRun.has(id));
+        if (stopAfter !== null && page >= stopAfter && (!waiting || page >= lookbackPages)) break;
         if (page >= deps.maxIncrementalPages) break;
       }
       page += 1;
@@ -311,11 +415,16 @@ export async function runSync(
       fullHistory: full,
       pagesRead: summary.pagesRead,
       rowsSeen: summary.rowsSeen,
-      ...(summary.source ? { mode: summary.source } : {}),
+      ...reading(),
+      ...(summary.source === "tab"
+        ? { message: "Läser bara den öppna Awish-fliken (de senaste ordrarna)." }
+        : {}),
     };
     await flush();
     await binder.postBatch({ rows: [], report });
     if (state.full?.active) state.full = null;
+    // Ur en flik läses bara sida 1: historiken är inte läst klart.
+    if (full && summary.source !== "tab") state.historyDoneAt = now();
     return finish(null);
   } catch (error) {
     if (error instanceof ReaderError && error.kind === "logged_out") {

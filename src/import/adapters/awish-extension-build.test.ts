@@ -44,7 +44,9 @@ describe("tilläggets zip", () => {
     );
     expect(manifest.manifest_version).toBe(3);
     expect(manifest.host_permissions).toEqual(["https://dash.awish.vip/*"]);
-    expect(manifest.permissions.sort()).toEqual(["alarms", "offscreen", "storage"]);
+    // "scripting": reserven som läser den färdigritade orderlistan i en öppen Awish-flik
+    // (bara flikar som host_permissions täcker, alltså dash.awish.vip).
+    expect(manifest.permissions.sort()).toEqual(["alarms", "offscreen", "scripting", "storage"]);
     expect(manifest.background).toEqual({ service_worker: "background.js", type: "module" });
     expect(JSON.stringify(manifest)).not.toMatch(/<all_urls>|"tabs"|"cookies"|"webRequest"/);
   });
