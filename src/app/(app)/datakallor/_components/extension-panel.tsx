@@ -131,7 +131,9 @@ export function ExtensionPanel({
                               s.failedLast24h > 0
                                 ? `${formatInt(s.failedLast24h)} misslyckade`
                                 : null,
-                              s.errorRowsLast24h > 0 ? `${formatInt(s.errorRowsLast24h)} rader` : null,
+                              s.errorRowsLast24h > 0
+                                ? `${formatInt(s.errorRowsLast24h)} rader`
+                                : null,
                             ]
                               .filter(Boolean)
                               .join(", ")}
@@ -177,7 +179,10 @@ export function ExtensionPanel({
                         Ingen token. Skapa en och klistra in den i tillägget.
                       </p>
                     ) : (
-                      <ul className="flex flex-col divide-y divide-line" aria-label={`Tokens för ${s.name}`}>
+                      <ul
+                        className="flex flex-col divide-y divide-line"
+                        aria-label={`Tokens för ${s.name}`}
+                      >
                         {s.tokens.map((t) => {
                           const ts = tokenStatus(t);
                           return (
@@ -188,7 +193,7 @@ export function ExtensionPanel({
                               <span className="col-span-2 min-w-0 truncate text-base text-fg md:col-span-3">
                                 {t.name}
                               </span>
-                              <code className="label truncate text-muted md:col-span-2">
+                              <code className="meta truncate text-muted md:col-span-2">
                                 {t.prefix}…
                               </code>
                               <span className="md:col-span-2">
@@ -322,7 +327,7 @@ function InstallGuide({ appUrl, zipPath }: { appUrl: string; zipPath: string }) 
         </Step>
         <Step n={2} title="Läs in det i Chrome">
           <p className="text-sm text-muted">
-            Öppna <code className="label text-fg">chrome://extensions</code>, slå på{" "}
+            Öppna <code className="meta text-fg">chrome://extensions</code>, slå på{" "}
             <span className="text-fg">Utvecklarläge</span> uppe till höger, klicka{" "}
             <span className="text-fg">Läs in okomprimerat</span> och välj den uppackade mappen.
           </p>
@@ -337,7 +342,7 @@ function InstallGuide({ appUrl, zipPath }: { appUrl: string; zipPath: string }) 
           </p>
           {appUrl ? (
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <code className="label min-w-0 truncate rounded-sm border border-line bg-bg px-2 py-1 text-fg">
+              <code className="meta min-w-0 truncate rounded-sm border border-line bg-bg px-2 py-1 text-fg">
                 {appUrl}
               </code>
               <CopyButton value={appUrl} label="Kopiera Binderlabs adress" />
@@ -346,9 +351,9 @@ function InstallGuide({ appUrl, zipPath }: { appUrl: string; zipPath: string }) 
         </Step>
         <Step n={4} title="Klart">
           <p className="text-sm text-muted">
-            Var inloggad på dash.awish.vip i Chrome. Tillägget läser hela historiken första
-            gången (en sida i sekunden) och sedan nya ordrar var tionde minut, så länge Chrome är
-            öppet. Statusen syns här och i tillägget.
+            Var inloggad på dash.awish.vip i Chrome. Tillägget läser hela historiken första gången
+            (en sida i sekunden) och sedan nya ordrar var tionde minut, så länge Chrome är öppet.
+            Statusen syns här och i tillägget.
           </p>
         </Step>
       </ol>
@@ -416,7 +421,13 @@ function SourceDialog({ open, onClose }: { open: boolean; onClose: () => void })
           submit();
         }}
       >
-        <Input label="Namn" value={name} maxLength={200} onChange={(e) => setName(e.target.value)} required />
+        <Input
+          label="Namn"
+          value={name}
+          maxLength={200}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
         <Select
           label="Källans tidszon"
           value={zone}
@@ -503,7 +514,7 @@ function TokenDialog({
             <div className="flex min-w-0 items-center gap-2">
               <code
                 data-testid="sync-token"
-                className="label min-w-0 flex-1 break-all rounded-sm border border-line bg-bg px-2 py-2 text-fg"
+                className="meta min-w-0 flex-1 rounded-sm border border-line bg-bg px-2 py-2 break-all text-fg"
               >
                 {token}
               </code>
@@ -514,7 +525,7 @@ function TokenDialog({
             <div className="flex flex-col gap-1.5">
               <span className="label text-muted">Binderlabs adress</span>
               <div className="flex min-w-0 items-center gap-2">
-                <code className="label min-w-0 flex-1 truncate rounded-sm border border-line bg-bg px-2 py-2 text-fg">
+                <code className="meta min-w-0 flex-1 truncate rounded-sm border border-line bg-bg px-2 py-2 text-fg">
                   {appUrl}
                 </code>
                 <CopyButton value={appUrl} label="Kopiera adressen" />
@@ -573,7 +584,11 @@ function RevokeDialog({
         setError(result.error);
         return;
       }
-      toast({ title: "Token är återkallad", description: "Tillägget med den token slutar synka direkt.", tone: "ok" });
+      toast({
+        title: "Token är återkallad",
+        description: "Tillägget med den token slutar synka direkt.",
+        tone: "ok",
+      });
       onClose();
       router.refresh();
     });

@@ -122,7 +122,12 @@ beforeAll(async () => {
 });
 
 async function ordersOf(org: Org) {
-  return rows<{ external_id: string; amount_ore: number; ordered_at: Date; machine_id: string | null }>(
+  return rows<{
+    external_id: string;
+    amount_ore: number;
+    ordered_at: Date;
+    machine_id: string | null;
+  }>(
     db(),
     sql`select external_id, amount_ore, ordered_at, machine_id from public.orders
         where organization_id = ${org.orgId} and data_source_id = ${org.sourceId}
@@ -266,7 +271,9 @@ describe("token", () => {
     });
     const hash = await asUser(A.owner, (tx) =>
       attempt(tx, (sp) =>
-        sp.execute(sql`update public.sync_tokens set token_hash = ${"1".repeat(64)} where id = ${created.id}`),
+        sp.execute(
+          sql`update public.sync_tokens set token_hash = ${"1".repeat(64)} where id = ${created.id}`,
+        ),
       ),
     );
     expect(hash.code).toBe("BL070");
@@ -276,7 +283,11 @@ describe("token", () => {
             where id = ${created.id}`,
       ),
     );
-    const after = await one<{ name: string; last_status: string | null; last_seen_at: Date | null }>(
+    const after = await one<{
+      name: string;
+      last_status: string | null;
+      last_seen_at: Date | null;
+    }>(
       db(),
       sql`select name, last_status, last_seen_at from public.sync_tokens where id = ${created.id}`,
     );
@@ -357,7 +368,13 @@ describe("import", () => {
     expect(result.importId).not.toBeNull();
     expect(result.summary).toMatchObject({ total: 4, new: 2, notPaid: 1, error: 1 });
     expect(result.unknownMachines).toBe(2);
-    const imp = await one<{ trigger: string; status: string; file_name: string; created_by: string; parser_version: string }>(
+    const imp = await one<{
+      trigger: string;
+      status: string;
+      file_name: string;
+      created_by: string;
+      parser_version: string;
+    }>(
       db(),
       sql`select trigger::text, status::text, file_name, created_by, parser_version
           from public.imports where id = ${result.importId}`,
@@ -395,7 +412,14 @@ describe("import", () => {
   it("är idempotent på ordernummer: samma batch igen ger bara dubbletter", async () => {
     const d = deps();
     const ctx = await authenticate(d, `Bearer ${org.token}`);
-    const again = await ingestBatch(d, ctx, body([row("42780"), row("42781", { amount: "Order Amount: 79.00\nPaid Amount: 79.00", machine: "Coop Forum" })]));
+    const again = await ingestBatch(
+      d,
+      ctx,
+      body([
+        row("42780"),
+        row("42781", { amount: "Order Amount: 79.00\nPaid Amount: 79.00", machine: "Coop Forum" }),
+      ]),
+    );
     expect(again.summary).toMatchObject({ total: 2, new: 0, duplicate: 2, conflict: 0 });
     expect((await ordersOf(org)).length).toBe(2);
     // Samma ordernummer med annat belopp ändrar aldrig ordern: konflikt.
@@ -430,7 +454,12 @@ describe("import", () => {
       body([], { report: { state: "logged_out", message: "Inte inloggad på dash.awish.vip" } }),
     );
     expect(out.importId).toBeNull();
-    const loggedOut = await one<{ last_status: string; last_error: string; client_version: string; age: number }>(
+    const loggedOut = await one<{
+      last_status: string;
+      last_error: string;
+      client_version: string;
+      age: number;
+    }>(
       db(),
       sql`select t.last_status, t.last_error, t.client_version,
                  extract(epoch from now() - ds.last_synced_at)::int as age
@@ -465,13 +494,19 @@ describe("import", () => {
     expect(source.newLast24h).toBe(2);
     expect(source.errorRowsLast24h).toBe(1);
     expect(source.silent).toBe(false);
-    expect(source.tokens[0]).toMatchObject({ id: org.tokenId, prefix: org.token.slice(0, 11), lastStatus: "ok" });
+    expect(source.tokens[0]).toMatchObject({
+      id: org.tokenId,
+      prefix: org.token.slice(0, 11),
+      lastStatus: "ok",
+    });
     expect(JSON.stringify(panel)).not.toContain(org.token);
   });
 
   it("en pausad datakälla tar inte emot rader (409)", async () => {
     const p = await setupOrg();
-    await db().execute(sql`update public.data_sources set status = 'paused' where id = ${p.sourceId}`);
+    await db().execute(
+      sql`update public.data_sources set status = 'paused' where id = ${p.sourceId}`,
+    );
     const d = deps();
     await expect(
       ingestBatch(d, await authenticate(d, `Bearer ${p.token}`), body([row("1")])),
@@ -537,7 +572,11 @@ describe("larm vid tystnad", () => {
     expect(silent[0]!.title).toMatch(/Ingen hämtning från Awish via tillägg/);
     // En lyckad hjärtslag nollställer.
     const d = deps();
-    await ingestBatch(d, await authenticate(d, `Bearer ${p.token}`), body([], { report: { state: "ok" } }));
+    await ingestBatch(
+      d,
+      await authenticate(d, `Bearer ${p.token}`),
+      body([], { report: { state: "ok" } }),
+    );
     const { candidates } = await db().transaction((tx) =>
       collectCandidates(tx, p.orgId, "Europe/Stockholm", new Date()),
     );
@@ -569,7 +608,11 @@ describe("HTTP (route handlers)", () => {
   }
 
   it("CORS bara för chrome-extension://, inga cookies", async () => {
-    const res = await post({ origin: EXTENSION_ORIGIN, auth: `Bearer ${A.token}`, body: { rows: [], report: { state: "ok" } } });
+    const res = await post({
+      origin: EXTENSION_ORIGIN,
+      auth: `Bearer ${A.token}`,
+      body: { rows: [], report: { state: "ok" } },
+    });
     expect(res.status).toBe(200);
     expect(res.headers.get("access-control-allow-origin")).toBe(EXTENSION_ORIGIN);
     expect(res.headers.get("access-control-allow-credentials")).toBeNull();
@@ -613,7 +656,11 @@ describe("HTTP (route handlers)", () => {
 
   it("batch via POST och status via GET", async () => {
     const p = await setupOrg();
-    const res = await post({ origin: EXTENSION_ORIGIN, auth: `Bearer ${p.token}`, body: { rows: [row("777")] } });
+    const res = await post({
+      origin: EXTENSION_ORIGIN,
+      auth: `Bearer ${p.token}`,
+      body: { rows: [row("777")] },
+    });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, summary: { new: 1 } });
     const { GET } = await import("../../src/app/api/ingest/awish/status/route");

@@ -37,6 +37,11 @@ export interface DeployOptions {
   forceDeploy: boolean;
   /** Hoppa över själva driftsättningen (bara variabler). */
   skipDeploy: boolean;
+  /**
+   * Får utvecklingsprojektets databaslösenord bytas när det är okänt
+   * (--byt-dev-losenord)? Bryter GitHub-hemligheten och lokala .env-filer.
+   */
+  rotateDevPassword: boolean;
   /** Valfria värden som förs vidare till Vercel om de finns i sessionen. */
   passthrough: Record<string, string>;
 }
@@ -62,9 +67,9 @@ export const PASSTHROUGH_VARS: readonly { key: string; sensitive: boolean }[] = 
 export const USAGE = `Användning:
   npx tsx scripts/deploy/all.ts [--dry-run] [--agare <e-post>] [--app-url <https://…>]
                                  [--vercel-team <id|slug>] [--supabase-org <id>]
-                                 [--force-deploy] [--skip-deploy]
+                                 [--force-deploy] [--skip-deploy] [--byt-dev-losenord]
   npx tsx scripts/deploy/supabase.ts [--dry-run] [--app-url …]
-  npx tsx scripts/deploy/vercel.ts [--dry-run] [--force-deploy] [--skip-deploy]
+  npx tsx scripts/deploy/vercel.ts [--dry-run] [--force-deploy] [--skip-deploy] [--byt-dev-losenord]
   npx tsx scripts/deploy/invite-owner.ts <e-post> [--dry-run] [--miljo production|preview]
 
 Kräver SUPABASE_ACCESS_TOKEN och VERCEL_TOKEN i miljön. Se docs/driftsattning.md.`;
@@ -109,7 +114,14 @@ export interface ParsedArgs {
 }
 
 const VALUE_FLAGS = new Set(["--agare", "--app-url", "--vercel-team", "--supabase-org", "--miljo"]);
-const BOOLEAN_FLAGS = new Set(["--dry-run", "--force-deploy", "--skip-deploy", "--help", "-h"]);
+const BOOLEAN_FLAGS = new Set([
+  "--dry-run",
+  "--force-deploy",
+  "--skip-deploy",
+  "--byt-dev-losenord",
+  "--help",
+  "-h",
+]);
 
 export function parseArgs(argv: readonly string[]): ParsedArgs {
   const flags = new Set<string>();
@@ -174,6 +186,7 @@ export function buildOptions(
     inviteTarget: parseInviteTarget(args.values.get("--miljo")),
     forceDeploy: args.flags.has("--force-deploy"),
     skipDeploy: args.flags.has("--skip-deploy"),
+    rotateDevPassword: args.flags.has("--byt-dev-losenord"),
     passthrough,
   };
 }

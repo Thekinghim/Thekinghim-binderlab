@@ -48,7 +48,8 @@ function render(s: Snapshot): void {
   if (!s.settings) {
     banner.hidden = false;
     banner.dataset.tone = "neutral";
-    banner.textContent = "Klistra in Binderlabs adress och en token från Datakällor i Binderlab för att börja.";
+    banner.textContent =
+      "Klistra in Binderlabs adress och en token från Datakällor i Binderlab för att börja.";
   } else if (st.tokenInvalid) {
     banner.hidden = false;
     banner.textContent = `Binderlab nekar token: ${st.lastError ?? "ogiltig eller återkallad"} Skapa en ny under Datakällor och klistra in den här.`;
@@ -80,7 +81,9 @@ function render(s: Snapshot): void {
   $("last-run").textContent = run
     ? `${when(run.finishedAt)} · ${int(run.pagesRead)} ${run.pagesRead === 1 ? "sida" : "sidor"}, ${int(run.rowsSent)} skickade`
     : "–";
-  $("new-orders").textContent = run ? `${int(run.newOrders)} senast · ${int(st.totals.newOrders)} totalt` : "–";
+  $("new-orders").textContent = run
+    ? `${int(run.newOrders)} senast · ${int(st.totals.newOrders)} totalt`
+    : "–";
   $("source").textContent = st.awish.api
     ? `JSON (${st.awish.apiSource === "discovered" ? "panelens API" : "XHR"})`
     : run?.source === "html"
@@ -151,9 +154,10 @@ $("settings").addEventListener("submit", async (event) => {
     saved.textContent = "Adressen är inte giltig.";
     return;
   }
-  // Behörighet för Binderlabs adress (valfri: utan den går anropen via CORS).
+  // Behörighet för Binderlabs adress (valfri: utan den går anropen via CORS, som
+  // Binderlab tillåter för chrome-extension://). Väntar inte på svaret.
   try {
-    await chrome.permissions.request({ origins: [`${origin}/*`] });
+    chrome.permissions.request({ origins: [`${origin}/*`] }).catch(() => undefined);
   } catch {
     // Behörigheten är inte nödvändig.
   }

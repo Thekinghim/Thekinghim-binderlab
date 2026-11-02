@@ -121,6 +121,8 @@ const SYNONYMS: Record<Field, readonly string[]> = {
     "itemname",
     "title",
     "produkt",
+    "goods",
+    "item",
     "商品名称",
     "商品",
   ],
@@ -156,15 +158,7 @@ const SYNONYMS: Record<Field, readonly string[]> = {
     "betald",
     "支付状态",
   ],
-  paidAt: [
-    "paymenttime",
-    "paytime",
-    "paidtime",
-    "paidat",
-    "paymentat",
-    "betaltid",
-    "支付时间",
-  ],
+  paidAt: ["paymenttime", "paytime", "paidtime", "paidat", "paymentat", "betaltid", "支付时间"],
   paymentMethod: [
     "paymentmethod",
     "paymethod",
@@ -340,10 +334,7 @@ export function looksLoggedOut(page: ExtractedPage, finalUrl: string): boolean {
   if (LOGIN_PATH.test(path)) return true;
   const hasOrders = findOrderTable(page.tables) !== null;
   if (hasOrders) return false;
-  return (
-    page.hasPasswordInput ||
-    /\b(?:log ?in|sign ?in)\b|登录|logga in/i.test(page.title)
-  );
+  return page.hasPasswordInput || /\b(?:log ?in|sign ?in)\b|登录|logga in/i.test(page.title);
 }
 
 const PAGE_PARAMS = ["page", "p", "pagenum", "pageno", "pageindex", "current", "pn"];
@@ -392,9 +383,10 @@ export function readPagination(
     const disabled = /disabled/.test(link.className);
     if (p.page === currentPage + 1 && !disabled) hasNext = true;
   }
-  const total = /(?:total|totalt|共|showing[^\d]*\d+\s*(?:to|-)\s*\d+\s*of)\s*[:：]?\s*([\d\s,]{1,12})\s*(?:条|rows|rader|entries|records|items)?/i.exec(
-    page.text,
-  );
+  const total =
+    /(?:total|totalt|共|showing[^\d]*\d+\s*(?:to|-)\s*\d+\s*of)\s*[:：]?\s*([\d\s,]{1,12})\s*(?:条|rows|rader|entries|records|items)?/i.exec(
+      page.text,
+    );
   if (total?.[1]) {
     const n = Number(total[1].replace(/[\s,]/g, ""));
     if (Number.isFinite(n) && n > 0) {
@@ -433,7 +425,9 @@ function looksLikeOrders(items: Json[]): boolean {
 }
 
 /** Raderna och totalen i ett JSON-svar, eller null om svaret inte ser ut som ordrar. */
-export function findJsonRows(json: Json): { items: Record<string, Json>[]; total: number | null } | null {
+export function findJsonRows(
+  json: Json,
+): { items: Record<string, Json>[]; total: number | null } | null {
   const queue: Array<{ value: Json; depth: number; total: number | null }> = [
     { value: json, depth: 0, total: null },
   ];
@@ -452,7 +446,10 @@ export function findJsonRows(json: Json): { items: Record<string, Json>[]; total
     if (!isRecord(value) || depth > 3) continue;
     let here = total;
     for (const [k, v] of Object.entries(value)) {
-      if (TOTAL_KEYS.includes(normalizeHeader(k)) && (typeof v === "number" || /^\d+$/.test(String(v)))) {
+      if (
+        TOTAL_KEYS.includes(normalizeHeader(k)) &&
+        (typeof v === "number" || /^\d+$/.test(String(v)))
+      ) {
         here = Number(v);
       }
     }
@@ -474,7 +471,9 @@ export function jsonLoggedOut(json: Json): boolean {
     code === 401 ||
     code === "401" ||
     LOGIN_PATH.test(url) ||
-    /not ?log(?:ged)? ?in|please log ?in|unauthori[sz]ed|login required|请登录|未登录|登录超时/i.test(msg)
+    /not ?log(?:ged)? ?in|please log ?in|unauthori[sz]ed|login required|请登录|未登录|登录超时/i.test(
+      msg,
+    )
   );
 }
 
@@ -516,7 +515,10 @@ function textOf(value: Json, field: Field): string {
   if ((field === "paidAt" || field === "orderDate") && /^\d{10}(?:\d{3})?$/.test(s)) {
     return textOf(Number(s), field);
   }
-  return s.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  return s
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** Raderna i ett JSON-svar. Fälten hittas på nycklarnas namn (som rubrikerna). */

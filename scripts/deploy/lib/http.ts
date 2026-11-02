@@ -1,8 +1,14 @@
 /**
  * Liten HTTP-klient för Supabase Management API och Vercel REST API.
  *
- * - Försöker igen vid 429 och 502/503/504 (respekterar Retry-After) och vid
- *   nätverksfel, med växande väntetid.
+ * - Försöker igen vid 429 (respekterar Retry-After). Vid 502/503/504,
+ *   nätverksfel och tidsgräns försöker den bara igen för anrop som tål att
+ *   göras två gånger (GET, HEAD, PUT, PATCH, DELETE, eller `idempotent: true`).
+ *   Ett POST som skapar något görs aldrig om: det kan ha gått igenom trots
+ *   felet, och då blir det dubbletter (t.ex. två betalda Supabase-projekt).
+ *   Anroparen läser i stället om listan innan något skapas igen.
+ * - Varje anrop har en tidsgräns (standard 60 s), så ett hängande anrop inte
+ *   stoppar skriptet för alltid.
  * - Fel blir `ApiError` med metod, sökväg (utan frågeparametrar som kan bära
  *   hemligheter), status och API:ts eget meddelande, på svenska.
  * - Dry-run-spärr: i dry-run vägrar klienten allt utom GET, så att ett
@@ -56,6 +62,8 @@ export interface ApiClientOptions {
   sleep?: Sleep;
   /** Antal omförsök (standard 4). */
   retries?: number;
+  /** Tidsgräns per anrop i ms (standard 60 000). */
+  timeoutMs?: number;
 }
 
 export interface RequestOptions {
@@ -65,6 +73,13 @@ export interface RequestOptions {
   allow?: readonly number[];
   /** Tillåt ett ändrande anrop även i dry-run (används aldrig av stegen). */
   readOnly?: boolean;
+  /**
+   * Anropet tål att göras två gånger (t.ex. database/query, som skyddas av
+   * sin egen kontroll). Då görs POST om vid 5xx och nätverksfel.
+   */
+  idempotent?: boolean;
+  /** Tidsgräns för just det här anropet i ms. */
+  timeoutMs?: number;
 }
 
 export interface ApiResponse<T> {
@@ -83,7 +98,15 @@ export interface ApiClient {
   get<T = unknown>(path: string, options?: Omit<RequestOptions, "body">): Promise<ApiResponse<T>>;
 }
 
-const RETRY_STATUS = new Set([429, 502, 503, 504]);
+/** Omförsök för alla metoder: begäran behandlades inte. */
+const RETRY_ALWAYS = new Set([429]);
+/** Omförsök bara för anrop som tål att göras två gånger. */
+const RETRY_IF_IDEMPOTENT = new Set([502, 503, 504]);
+const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "PUT", "PATCH", "DELETE"]);
+
+export function isTransient(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 0 || error.status >= 500);
+}
 
 function apiMessageOf(body: unknown, text: string): string {
   if (body && typeof body === "object") {
@@ -104,6 +127,7 @@ function apiMessageOf(body: unknown, text: string): string {
 export function createApiClient(options: ApiClientOptions): ApiClient {
   const sleep = options.sleep ?? realSleep;
   const retries = options.retries ?? 4;
+  const defaultTimeout = options.timeoutMs ?? 60_000;
   const base = options.baseUrl.replace(/\/+$/, "");
   if (options.token) options.log.secret(options.token);
   for (const value of Object.values(options.headers ?? {})) options.log.secret(value);
@@ -133,28 +157,42 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       payload = JSON.stringify(req.body);
     }
 
+    const repeatable = IDEMPOTENT_METHODS.has(upper) || req.idempotent === true;
+    const timeoutMs = req.timeoutMs ?? defaultTimeout;
     let attempt = 0;
     for (;;) {
       let response: Response;
+      let text: string;
       try {
-        response = await options.fetch(url.toString(), { method: upper, headers, body: payload });
+        const signal = AbortSignal.timeout(timeoutMs);
+        response = await options.fetch(url.toString(), {
+          method: upper,
+          headers,
+          body: payload,
+          signal,
+        });
+        text = await response.text();
       } catch (error) {
-        if (attempt < retries) {
+        if (repeatable && attempt < retries) {
           attempt += 1;
           await sleep(1000 * 2 ** attempt);
           continue;
         }
-        const reason = error instanceof Error ? error.message : String(error);
+        const timedOut =
+          error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+        const reason = timedOut
+          ? `inget svar inom ${timeoutMs >= 1000 ? `${Math.round(timeoutMs / 1000)} s` : `${timeoutMs} ms`}`
+          : options.log.redact(error instanceof Error ? error.message : String(error));
         throw new ApiError(
           options.service,
           upper,
           path,
           0,
-          `${options.log.redact(reason)}; kontrollera att ${url.host} är öppet i sessionens nätverk`,
+          `${reason}; kontrollera att ${url.host} är öppet i sessionens nätverk` +
+            (repeatable ? "" : ". Anropet kan ha gått igenom och gjordes inte om"),
           undefined,
         );
       }
-      const text = await response.text();
       let body: unknown = undefined;
       if (text.length > 0) {
         try {
@@ -166,7 +204,10 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       if (response.ok || req.allow?.includes(response.status)) {
         return { status: response.status, data: body as T };
       }
-      if (RETRY_STATUS.has(response.status) && attempt < retries) {
+      const retryable =
+        RETRY_ALWAYS.has(response.status) ||
+        (repeatable && RETRY_IF_IDEMPOTENT.has(response.status));
+      if (retryable && attempt < retries) {
         attempt += 1;
         const retryAfter = Number.parseInt(response.headers.get("retry-after") ?? "", 10);
         await sleep(Number.isFinite(retryAfter) ? retryAfter * 1000 : 1000 * 2 ** attempt);

@@ -903,8 +903,8 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       data: Buffer.from("abc"),
     });
     // Awish Chrome-tillägget (20261102235600_tillagg_sync_tokens.sql): en datakälla av typen
-    // awish_extension med en synk-token (bara hashen sparas). Källan är pausad, så att den
-    // aldrig synkade källan inte ger larm om utebliven hämtning i andra tester.
+    // awish_extension med en synk-token (bara hashen sparas). Källan arkiveras efteråt, så att
+    // den inte räknas som en källa eller ger larm om utebliven hämtning i andra tester.
     const [extensionSource] = await tx
       .insert(s.dataSources)
       .values({
@@ -912,7 +912,6 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
         provider: "awish_extension",
         name: "Awish via Chrome-tillägg",
         sourceTimezone: "Asia/Shanghai",
-        status: "paused",
       })
       .returning();
     await tx.insert(s.syncTokens).values({
@@ -922,6 +921,9 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       tokenHash: randomUUID().replace(/-/g, "").repeat(2),
       tokenPrefix: "blsync_Test",
     });
+    await tx.execute(
+      sql`update public.data_sources set archived_at = now() where id = ${extensionSource!.id}::uuid`,
+    );
     // Butiksportalen (20261102130100_portal_store_access.sql): butiksanvändaren tar emot en
     // butiksinbjudan med samtycke (accept_invitation som butiksanvändaren i samma transaktion).
     const storeInvitation = await one<{ token: string }>(

@@ -55,6 +55,11 @@ export async function ensureOwnerUser(
     if (users.length < 200) break;
   }
   if (found) {
+    if (found.banned_until && Date.parse(found.banned_until) > Date.now()) {
+      ctx.log.manual(
+        `Ägarens konto ${email} är spärrat (banned_until ${found.banned_until}). Häv spärren i Supabase → Authentication → Users.`,
+      );
+    }
     if (found.email_confirmed_at) {
       ctx.log.ok(`Ägarens konto finns redan och e-posten är bekräftad.`);
       return "fanns";
@@ -71,14 +76,24 @@ export async function ensureOwnerUser(
     ctx.log.plan(`skapa kontot ${email} med bekräftad e-post (inget lösenord)`);
     return "planerad";
   }
-  const { status } = await auth.request("POST", "/admin/users", {
-    body: { email, email_confirm: true, app_metadata: { binderlab_first_owner: true } },
-    allow: [422],
-  });
+  const { status, data } = await auth.request<{ code?: string; error_code?: string; msg?: string }>(
+    "POST",
+    "/admin/users",
+    {
+      body: { email, email_confirm: true, app_metadata: { binderlab_first_owner: true } },
+      allow: [422],
+    },
+  );
   if (status === 422) {
-    // Skapades samtidigt (eller listan var ofullständig): räkna som klart.
-    ctx.log.ok(`Ägarens konto finns redan.`);
-    return "fanns";
+    const code = data?.code ?? data?.error_code;
+    if (code === "email_exists" || (!code && /already been registered/i.test(data?.msg ?? ""))) {
+      // Skapades samtidigt (eller listan var ofullständig): räkna som klart.
+      ctx.log.ok(`Ägarens konto finns redan.`);
+      return "fanns";
+    }
+    throw new Error(
+      `Supabase Auth: kontot ${email} kunde inte skapas (422${code ? ` ${code}` : ""}: ${ctx.log.redact(data?.msg ?? "okänt fel")}).`,
+    );
   }
   ctx.log.ok(`Skapade ägarens konto ${email} (bekräftad e-post, inget lösenord).`);
   return "skapad";

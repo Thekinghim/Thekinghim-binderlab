@@ -26,7 +26,11 @@ export async function GET(request: Request): Promise<Response> {
   if (denied) return denied;
   try {
     const deps = { db: getServiceDb(), limiters: ingestLimiters() };
-    const ctx = await authenticate(deps, request.headers.get("authorization"), clientKeyOf(request));
+    const ctx = await authenticate(
+      deps,
+      request.headers.get("authorization"),
+      clientKeyOf(request),
+    );
     return json(await ingestStatus(deps, ctx), 200, origin);
   } catch (error) {
     return errorResponse(error, origin);

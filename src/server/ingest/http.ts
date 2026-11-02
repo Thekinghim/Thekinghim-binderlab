@@ -12,7 +12,7 @@
 
 import { clientIp } from "@/server/request-info";
 
-import { IngestError } from "./service";
+import { IngestError } from "./body";
 
 const EXTENSION_ORIGIN = /^chrome-extension:\/\/[a-p]{32}$/;
 
@@ -32,7 +32,12 @@ export function corsHeaders(origin: string | null): Record<string, string> {
   };
 }
 
-export function json(body: unknown, status: number, origin: string | null, extra: Record<string, string> = {}): Response {
+export function json(
+  body: unknown,
+  status: number,
+  origin: string | null,
+  extra: Record<string, string> = {},
+): Response {
   return Response.json(body, {
     status,
     headers: { "cache-control": "no-store", ...corsHeaders(origin), ...extra },
@@ -66,7 +71,11 @@ export function checkOrigin(request: Request): { origin: string | null; denied: 
   return {
     origin: null,
     denied: json(
-      { ok: false, error: "Bara Binderlabs Chrome-tillägg får anropa det här API:t.", code: "forbidden" },
+      {
+        ok: false,
+        error: "Bara Binderlabs Chrome-tillägg får anropa det här API:t.",
+        code: "forbidden",
+      },
       403,
       null,
     ),
@@ -79,7 +88,10 @@ export function preflight(request: Request): Response {
   if (!isExtensionOrigin(origin)) {
     return new Response(null, { status: 403, headers: { "cache-control": "no-store" } });
   }
-  return new Response(null, { status: 204, headers: { "cache-control": "no-store", ...corsHeaders(origin) } });
+  return new Response(null, {
+    status: 204,
+    headers: { "cache-control": "no-store", ...corsHeaders(origin) },
+  });
 }
 
 /** Nyckel för begränsningen av ogiltiga tokens: klientens IP (samma regel som inloggningen). */

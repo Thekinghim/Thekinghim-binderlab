@@ -103,7 +103,10 @@ export interface SyncDeps extends Omit<AwishDeps, "fetch"> {
 const MAX_CELL = 2000;
 
 function isPaid(row: OrderRow): boolean {
-  return /^\s*paid\s*success\s*$/i.test(row.isPaid) || /^(?:paid|success|betald|yes|true|1)$/i.test(row.isPaid.trim());
+  return (
+    /^\s*paid\s*success\s*$/i.test(row.isPaid) ||
+    /^(?:paid|success|betald|yes|true|1)$/i.test(row.isPaid.trim())
+  );
 }
 
 function trimRow(row: OrderRow): OrderRow {
@@ -147,7 +150,11 @@ export async function runSync(
   }
   let binder: BinderlabClient;
   try {
-    binder = new BinderlabClient({ fetch: deps.fetch, sleep: deps.sleep, version: deps.version }, settings.binderlabUrl, settings.token);
+    binder = new BinderlabClient(
+      { fetch: deps.fetch, sleep: deps.sleep, version: deps.version },
+      settings.binderlabUrl,
+      settings.token,
+    );
   } catch (error) {
     state.lastError = errorText(error);
     return state;
@@ -170,7 +177,14 @@ export async function runSync(
 
   const full = Boolean(options.full || state.fullRequested || state.full?.active);
   if (full && (!state.full?.active || options.full || state.fullRequested)) {
-    state.full = { active: true, nextPage: 1, startedAt: now(), pagesRead: 0, rowsSent: 0, lastPage: null };
+    state.full = {
+      active: true,
+      nextPage: 1,
+      startedAt: now(),
+      pagesRead: 0,
+      rowsSent: 0,
+      lastPage: null,
+    };
   }
   state.fullRequested = false;
   const reader = new AwishReader({ ...deps, fetch: deps.fetch }, state.awish);
@@ -244,7 +258,8 @@ export async function runSync(
           read = await reader.readPage(page);
           break;
         } catch (error) {
-          const transient = error instanceof ReaderError && (error.kind === "network" || error.kind === "http");
+          const transient =
+            error instanceof ReaderError && (error.kind === "network" || error.kind === "http");
           if (!transient || attempt >= 2) throw error;
           await deps.sleep(5_000 * (attempt + 1));
         }
@@ -307,7 +322,10 @@ export async function runSync(
       state.loggedOut = true;
       try {
         await flush();
-        await binder.postBatch({ rows: [], report: { state: "logged_out", message: LOGGED_OUT_MESSAGE } });
+        await binder.postBatch({
+          rows: [],
+          report: { state: "logged_out", message: LOGGED_OUT_MESSAGE },
+        });
       } catch {
         // Rapporten är bara information; nästa körning försöker igen.
       }
@@ -320,7 +338,10 @@ export async function runSync(
     const message = errorText(error);
     try {
       await flush();
-      await binder.postBatch({ rows: [], report: { state: "error", message: message.slice(0, 500) } });
+      await binder.postBatch({
+        rows: [],
+        report: { state: "error", message: message.slice(0, 500) },
+      });
     } catch {
       // Binderlab nås inte: felet syns i popupen.
     }

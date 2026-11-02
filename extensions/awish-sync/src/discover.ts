@@ -22,10 +22,13 @@
   const looksLikeOrders = (json: unknown, depth = 0): boolean => {
     if (depth > 3 || json === null || typeof json !== "object") return false;
     if (Array.isArray(json)) {
-      const first = json.find((x) => x && typeof x === "object" && !Array.isArray(x)) as Record<string, unknown> | undefined;
+      const first = json.find((x) => x && typeof x === "object" && !Array.isArray(x)) as
+        Record<string, unknown> | undefined;
       return Boolean(first && Object.keys(first).some((k) => ORDER_KEY.test(k)));
     }
-    return Object.values(json as Record<string, unknown>).some((v) => looksLikeOrders(v, depth + 1));
+    return Object.values(json as Record<string, unknown>).some((v) =>
+      looksLikeOrders(v, depth + 1),
+    );
   };
 
   const report = (url: string, text: string) => {
@@ -37,7 +40,10 @@
       const href = absolute.toString();
       if (href === reported) return;
       reported = href;
-      window.postMessage({ source: "binderlab-awish-sync", type: "awish-api", url: href }, location.origin);
+      window.postMessage(
+        { source: "binderlab-awish-sync", type: "awish-api", url: href },
+        location.origin,
+      );
     } catch {
       // Inte JSON, eller inte ordrar: inget att göra.
     }
@@ -47,7 +53,8 @@
   w.fetch = async function (this: unknown, input: RequestInfo | URL, init?: RequestInit) {
     const response = await originalFetch.call(this, input, init);
     try {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const url =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       if (/json|javascript/i.test(response.headers.get("content-type") ?? "")) {
         response
           .clone()
@@ -62,10 +69,16 @@
   } as typeof fetch;
 
   const open = w.XMLHttpRequest.prototype.open;
-  w.XMLHttpRequest.prototype.open = function (this: XMLHttpRequest, method: string, url: string | URL, ...rest: unknown[]) {
+  w.XMLHttpRequest.prototype.open = function (
+    this: XMLHttpRequest,
+    method: string,
+    url: string | URL,
+    ...rest: unknown[]
+  ) {
     this.addEventListener("load", () => {
       try {
-        if (this.responseType === "" || this.responseType === "text") report(String(url), this.responseText);
+        if (this.responseType === "" || this.responseType === "text")
+          report(String(url), this.responseText);
         else if (this.responseType === "json") report(String(url), JSON.stringify(this.response));
       } catch {
         // Får aldrig störa sidan.

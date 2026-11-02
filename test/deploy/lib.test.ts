@@ -127,6 +127,60 @@ describe("HTTP-klienten", () => {
     await expect(api.get("/q")).rejects.toThrow(/nådde inte fram.*api\.example\.com är öppet/);
   });
 
+  it("gör aldrig om ett POST vid 5xx eller nätverksfel (kan ha gått igenom), men vid 429", async () => {
+    const r504 = client([() => new Response("Gateway Timeout", { status: 504 })]);
+    await expect(r504.api.request("POST", "/skapa", { body: {} })).rejects.toThrow(/svarade 504/);
+    expect(r504.calls).toHaveLength(1);
+
+    const net = client([() => Promise.reject(new TypeError("socket hang up"))]);
+    await expect(net.api.request("POST", "/skapa", { body: {} })).rejects.toThrow(
+      /kan ha gått igenom och gjordes inte om/,
+    );
+    expect(net.calls).toHaveLength(1);
+
+    const limited = client([
+      () => new Response("{}", { status: 429 }),
+      () => new Response(JSON.stringify({ id: 1 }), { status: 201 }),
+    ]);
+    expect((await limited.api.request("POST", "/skapa", { body: {} })).data).toEqual({ id: 1 });
+    expect(limited.calls).toHaveLength(2);
+  });
+
+  it("gör om idempotenta anrop (PATCH, idempotent: true) vid 503", async () => {
+    const patch = client([
+      () => new Response("", { status: 503 }),
+      () => new Response("{}", { status: 200 }),
+    ]);
+    await patch.api.request("PATCH", "/x", { body: {} });
+    expect(patch.calls).toHaveLength(2);
+    const query = client([
+      () => new Response("", { status: 502 }),
+      () => new Response("[]", { status: 201 }),
+    ]);
+    await query.api.request("POST", "/database/query", { body: {}, idempotent: true });
+    expect(query.calls).toHaveLength(2);
+  });
+
+  it("har en tidsgräns per anrop", async () => {
+    const { log } = capture();
+    const api = createApiClient({
+      service: "Test",
+      baseUrl: "https://api.example.com",
+      fetch: (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+        }),
+      log,
+      dryRun: false,
+      sleep: async () => {},
+      retries: 0,
+      timeoutMs: 20,
+    });
+    await expect(api.request("POST", "/hang", { body: {} })).rejects.toThrow(
+      /inget svar inom 20 ms/,
+    );
+  });
+
   it("vägrar ändrande anrop i dry-run", async () => {
     const { api, calls } = client([], true);
     await expect(api.request("POST", "/w", { body: {} })).rejects.toBeInstanceOf(DryRunViolation);
@@ -248,19 +302,43 @@ describe("Supabase-hjälpare", () => {
     expect(Object.keys(diff)).toContain("mailer_templates_invite_content");
   });
 
-  it("auth: utvecklingsprojektets site_url byts bara från standardvärdet", () => {
-    const settings = {
-      siteUrl: "https://binderlab.vercel.app",
-      siteUrlOnlyIfDefault: true,
+  it("auth: rensar främmande *.vercel.app-poster och site_url när projektets värdar är kända", () => {
+    const current = {
+      site_url: "https://binderlab.vercel.app",
+      uri_allow_list:
+        "https://binderlab.vercel.app/**,https://*-x.vercel.app/**,https://app.binderlab.se/**,https://binderlab-team.vercel.app/**",
+    };
+    const pruned = desiredAuthConfig(current, {
+      siteUrl: undefined,
+      redirectUrls: [],
+      ownVercelHosts: ["binderlab-team.vercel.app"],
+      smtp: null,
+    });
+    // Egna domäner och projektets egen *.vercel.app ligger kvar; främmande och jokertecken tas bort.
+    expect(pruned.uri_allow_list).toBe(
+      "https://app.binderlab.se/**,https://binderlab-team.vercel.app/**",
+    );
+    expect(pruned.site_url).toBe("http://localhost:3000");
+    // Utan kända värdar rörs inget, och utan siteUrl lämnas site_url.
+    const untouched = desiredAuthConfig(current, {
+      siteUrl: undefined,
       redirectUrls: [],
       smtp: null,
-    };
-    expect(desiredAuthConfig({ site_url: "http://localhost:3000" }, settings).site_url).toBe(
-      "https://binderlab.vercel.app",
-    );
+    });
+    expect(untouched.uri_allow_list).toBe(current.uri_allow_list);
+    expect(untouched.site_url).toBeUndefined();
+    // dropRedirects tar bort exakta poster.
     expect(
-      desiredAuthConfig({ site_url: "https://dev.binderlab.se" }, settings).site_url,
-    ).toBeUndefined();
+      desiredAuthConfig(
+        { uri_allow_list: "https://*-t.vercel.app/**,https://a.se/**" },
+        {
+          siteUrl: undefined,
+          redirectUrls: [],
+          dropRedirects: ["https://*-t.vercel.app/**"],
+          smtp: null,
+        },
+      ).uri_allow_list,
+    ).toBe("https://a.se/**");
   });
 
   it("Resend som SMTP tolkar avsändaren", () => {

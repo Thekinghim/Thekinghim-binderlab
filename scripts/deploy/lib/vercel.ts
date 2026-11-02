@@ -84,20 +84,36 @@ export function isRepoLink(project: VercelProject, repo: { org: string; repo: st
   );
 }
 
-export async function listProjects(ctx: Ctx, scope: Scope): Promise<VercelProject[]> {
-  const all: VercelProject[] = [];
-  let until: number | undefined;
+/**
+ * Projekten i ett team. `repoUrl`/`search` filtrerar på serversidan (om
+ * API:t inte känner igen dem kommer hela listan, som ändå filtreras här).
+ * OSÄKER: bläddringen (`from` = pagination.next). Den stannar så fort en sida
+ * inte ger några nya projekt, så den kan aldrig hämta samma sida om och om igen.
+ */
+export async function listProjects(
+  ctx: Ctx,
+  scope: Scope,
+  filter: { repoUrl?: string; search?: string } = {},
+): Promise<VercelProject[]> {
+  const all = new Map<string, VercelProject>();
+  let from: number | string | undefined;
   for (let page = 0; page < 20; page += 1) {
     const { data } = await ctx.api.get<{
       projects?: VercelProject[];
-      pagination?: { next?: number | null };
-    }>("/v10/projects", { query: { ...scopeQuery(scope), limit: 100, until } });
-    all.push(...(data.projects ?? []));
+      pagination?: { next?: number | string | null };
+    }>("/v10/projects", { query: { ...scopeQuery(scope), limit: 100, ...filter, from } });
+    let added = 0;
+    for (const project of data.projects ?? []) {
+      if (!all.has(project.id)) {
+        all.set(project.id, project);
+        added += 1;
+      }
+    }
     const next = data.pagination?.next;
-    if (!next) break;
-    until = next;
+    if (!next || added === 0 || next === from) break;
+    from = next;
   }
-  return all;
+  return [...all.values()];
 }
 
 export interface ResolvedProject {
@@ -123,8 +139,11 @@ export async function resolveProject(
   }
   if (scopes.length === 0) throw new Error("Vercel: token ser inget team eller konto.");
   const repoName = `${opts.repo.org}/${opts.repo.repo}`;
+  const repoUrl = `https://github.com/${repoName}`;
+  // Läs ALLA team först: har flera team ett kopplat projekt väljs inget i tysthet.
+  const hits: { scope: Scope; project: VercelProject }[] = [];
   for (const scope of scopes) {
-    const projects = await listProjects(ctx, scope);
+    const projects = await listProjects(ctx, scope, { repoUrl });
     const linked = projects.filter((p) => isRepoLink(p, opts.repo));
     if (linked.length > 1) {
       const preferred = linked.find((p) => p.name === opts.name);
@@ -133,13 +152,21 @@ export async function resolveProject(
           `Vercel: flera projekt i ${scope.slug} är kopplade till ${repoName} (${linked.map((p) => p.name).join(", ")}). Ange vilket genom att ta bort kopplingen på de andra.`,
         );
       }
-      ctx.log.ok(`Vercel-projektet ${preferred.name} (${scope.slug}) är kopplat till ${repoName}.`);
-      return { scope, project: preferred, created: false };
+      hits.push({ scope, project: preferred });
+    } else if (linked[0]) {
+      hits.push({ scope, project: linked[0] });
     }
-    if (linked[0]) {
-      ctx.log.ok(`Vercel-projektet ${linked[0].name} (${scope.slug}) är kopplat till ${repoName}.`);
-      return { scope, project: linked[0], created: false };
-    }
+  }
+  if (hits.length > 1) {
+    throw new Error(
+      `Vercel: projekt i flera team är kopplade till ${repoName} (${hits.map((h) => `${h.project.name} i ${h.scope.slug}`).join(", ")}). ` +
+        `Ange vilket team med --vercel-team <slug>.`,
+    );
+  }
+  if (hits[0]) {
+    const { scope, project } = hits[0];
+    ctx.log.ok(`Vercel-projektet ${project.name} (${scope.slug}) är kopplat till ${repoName}.`);
+    return { scope, project, created: false };
   }
   // Inget kopplat projekt: skapa i det enda teamet (eller det angivna).
   const teams = scopes.filter((s) => s.teamId);
@@ -149,7 +176,9 @@ export async function resolveProject(
       `Vercel: inget projekt är kopplat till ${repoName}, och token ser flera team (${teams.map((t) => t.slug).join(", ")}). Ange --vercel-team <slug>.`,
     );
   }
-  const sameName = (await listProjects(ctx, target)).find((p) => p.name === opts.name);
+  const sameName = (await listProjects(ctx, target, { search: opts.name })).find(
+    (p) => p.name === opts.name,
+  );
   if (sameName && sameName.link && !isRepoLink(sameName, opts.repo)) {
     throw new Error(
       `Vercel: projektet ${opts.name} i ${target.slug} är kopplat till ett annat repo (${sameName.link.org}/${sameName.link.repo}). Avbryter.`,
@@ -222,29 +251,39 @@ export async function ensureFunctionRegion(
   return true;
 }
 
-interface Domain {
+export interface Domain {
   name: string;
   verified?: boolean;
   redirect?: string | null;
   gitBranch?: string | null;
 }
 
+/** Projektets domäner (alla, även omdirigeringar och grenar). */
+export async function listDomains(
+  ctx: Ctx,
+  scope: Scope,
+  project: VercelProject,
+): Promise<Domain[]> {
+  const { status, data } = await ctx.api.get<{ domains?: Domain[] }>(
+    `/v9/projects/${project.id}/domains`,
+    { query: scopeQuery(scope), allow: [404] },
+  );
+  return status === 200 ? (data.domains ?? []) : [];
+}
+
 /** Produktionsdomänen: en egen verifierad domän om det finns, annars *.vercel.app. */
+export function pickProductionDomain(domains: readonly Domain[]): string | undefined {
+  const prod = domains.filter((d) => !d.redirect && !d.gitBranch && d.verified !== false);
+  const custom = prod.find((d) => !d.name.endsWith(".vercel.app"));
+  return (custom ?? prod[0])?.name;
+}
+
 export async function productionDomain(
   ctx: Ctx,
   scope: Scope,
   project: VercelProject,
 ): Promise<string | undefined> {
-  const { status, data } = await ctx.api.get<{ domains?: Domain[] }>(
-    `/v9/projects/${project.id}/domains`,
-    { query: scopeQuery(scope), allow: [404] },
-  );
-  if (status !== 200) return undefined;
-  const prod = (data.domains ?? []).filter(
-    (d) => !d.redirect && !d.gitBranch && d.verified !== false,
-  );
-  const custom = prod.find((d) => !d.name.endsWith(".vercel.app"));
-  return (custom ?? prod[0])?.name;
+  return pickProductionDomain(await listDomains(ctx, scope, project));
 }
 
 // ---------------------------------------------------------------------------
@@ -259,13 +298,27 @@ export interface DesiredVar {
   sensitive: boolean;
   /** Känt värde: sätts om det skiljer sig. */
   value?: string;
-  /** Genererat värde: sätts bara om variabeln saknas. */
-  generate?: () => Promise<string> | string;
+  /**
+   * Genererat värde: sätts bara om variabeln saknas (eller inte godtas).
+   * undefined = gick inte att generera nu (variabeln lämnas som den är).
+   */
+  generate?: () => Promise<string | undefined> | string | undefined;
   /**
    * För genererade värden: godtas det befintliga (läsbara) värdet? Annars
-   * genereras ett nytt. Känsliga värden går inte att läsa och godtas alltid.
+   * genereras ett nytt. Känsliga värden går inte att läsa; för dem gäller `tag`.
    */
   accept?: (current: string) => boolean;
+  /**
+   * Vad värdet ska peka på (inget hemligt, t.ex. "<ref>@<poolerns värd>").
+   * Bokförs i BINDERLAB_DEPLOY_STATE när skriptet sätter värdet. Ett känsligt
+   * genererat värde vars bokförda tagg saknas eller skiljer sig genereras om.
+   */
+  tag?: string;
+  /**
+   * Värdet måste vara eget per miljö. En befintlig variabel som delas med
+   * andra miljöer godtas aldrig, utan delas upp (även om den inte går att läsa).
+   */
+  exclusive?: boolean;
 }
 
 export interface EnvEntry {
@@ -294,6 +347,11 @@ export interface EnvSyncResult {
   changes: EnvChange[];
   /** Något ändrades i production (kräver ny driftsättning). */
   productionChanged: boolean;
+  /**
+   * Redan före den här körningen fanns ändringar som ingen lyckad
+   * driftsättning tagit med (t.ex. bygget misslyckades förra gången).
+   */
+  pendingBefore: boolean;
 }
 
 export async function listEnv(ctx: Ctx, scope: Scope, project: VercelProject): Promise<EnvEntry[]> {
@@ -341,17 +399,91 @@ async function readValue(
 
 interface State {
   v: 1;
+  /** sha256-prefix av känsliga värden som skriptet satt. */
   fp: Record<string, string>;
+  /** Vad genererade värden pekar på (DesiredVar.tag). */
+  tags?: Record<string, string>;
+  /** Variabler eller region har ändrats sedan senaste lyckade driftsättningen. */
+  pending?: boolean;
+}
+
+function record(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).filter((e): e is [string, string] => typeof e[1] === "string"),
+  );
 }
 
 function parseState(value: string | undefined): State {
   if (!value) return { v: 1, fp: {} };
   try {
     const parsed = JSON.parse(value) as Partial<State>;
-    return { v: 1, fp: typeof parsed.fp === "object" && parsed.fp ? parsed.fp : {} };
+    return {
+      v: 1,
+      fp: record(parsed.fp),
+      tags: record(parsed.tags),
+      pending: parsed.pending === true,
+    };
   } catch {
     return { v: 1, fp: {} };
   }
+}
+
+function serializeState(state: State): string {
+  const out: State = { v: 1, fp: state.fp };
+  if (state.tags && Object.keys(state.tags).length > 0) out.tags = state.tags;
+  if (state.pending) out.pending = true;
+  return JSON.stringify(out);
+}
+
+function findStateEntry(entries: readonly EnvEntry[], target: Target): EnvEntry | undefined {
+  return entries.find(
+    (e) =>
+      e.key === STATE_KEY &&
+      !e.gitBranch &&
+      targetsOf(e).length === 1 &&
+      targetsOf(e)[0] === target,
+  );
+}
+
+async function writeState(
+  ctx: Ctx,
+  scope: Scope,
+  project: VercelProject,
+  entry: EnvEntry | undefined,
+  target: Target,
+  state: State,
+): Promise<void> {
+  const query = scopeQuery(scope);
+  const value = serializeState(state);
+  if (entry) {
+    await ctx.api.request("PATCH", `/v9/projects/${project.id}/env/${entry.id}`, {
+      query,
+      body: { value, type: "encrypted", target: [target] },
+    });
+  } else {
+    await ctx.api.request("POST", `/v10/projects/${project.id}/env`, {
+      query,
+      body: { key: STATE_KEY, value, type: "encrypted", target: [target] },
+    });
+  }
+}
+
+/**
+ * Efter en lyckad produktionsdriftsättning: nollställ "pending", så att nästa
+ * körning vet att versionen som kör har de nuvarande variablerna.
+ */
+export async function markProductionDeployed(
+  ctx: Ctx,
+  scope: Scope,
+  project: VercelProject,
+): Promise<void> {
+  const entries = await listEnv(ctx, scope, project);
+  const entry = findStateEntry(entries, "production");
+  if (!entry) return;
+  const state = parseState(await readValue(ctx, scope, project, entry));
+  if (!state.pending || ctx.dryRun) return;
+  await writeState(ctx, scope, project, entry, "production", { ...state, pending: false });
 }
 
 /**
@@ -361,29 +493,39 @@ function parseState(value: string | undefined): State {
  *   det skiljer sig.
  * - Ett genererat värde (CRON_SECRET, lösenord, VAPID) sätts bara om
  *   variabeln saknas, så att en ny körning inte byter fungerande hemligheter.
- * - En variabel som delas mellan flera miljöer med fel värde delas upp.
+ * - En variabel som delas mellan flera miljöer med fel värde delas upp. En
+ *   `exclusive` variabel (DATABASE_URL, SUPABASE_SECRET_KEY) som delas delas
+ *   alltid upp, eftersom samma värde aldrig kan vara rätt för båda.
+ * - Ett känsligt genererat värde med `tag` genereras om när den bokförda
+ *   taggen saknas eller skiljer sig (t.ex. DATABASE_URL mot fel projekt).
  * - Variabler som skriptet inte hanterar rörs aldrig.
+ * - Ändras något i production bokförs `pending` tills en driftsättning lyckats
+ *   (`markProductionDeployed`). `markPending` gör samma sak för ändringar
+ *   utanför variablerna (funktionsregionen).
  */
 export async function syncEnv(
   ctx: Ctx,
   scope: Scope,
   project: VercelProject,
   desired: readonly DesiredVar[],
+  opts: { markPending?: boolean } = {},
 ): Promise<EnvSyncResult> {
   const entries = (await listEnv(ctx, scope, project)).filter((e) => !e.gitBranch);
   const changes: EnvChange[] = [];
   const query = scopeQuery(scope);
   const statesByTarget = new Map<Target, { entry: EnvEntry | undefined; state: State }>();
   for (const target of ["production", "preview"] as const) {
-    const entry = entries.find(
-      (e) => e.key === STATE_KEY && targetsOf(e).length === 1 && targetsOf(e)[0] === target,
-    );
+    const entry = findStateEntry(entries, target);
     const raw = entry ? await readValue(ctx, scope, project, entry) : undefined;
     statesByTarget.set(target, { entry, state: parseState(raw) });
   }
   const nextFp = new Map<Target, Record<string, string>>([
     ["production", { ...statesByTarget.get("production")!.state.fp }],
     ["preview", { ...statesByTarget.get("preview")!.state.fp }],
+  ]);
+  const nextTags = new Map<Target, Record<string, string>>([
+    ["production", { ...statesByTarget.get("production")!.state.tags }],
+    ["preview", { ...statesByTarget.get("preview")!.state.tags }],
   ]);
   /** Mål som ska tas bort från delade variabler, per variabel-id. */
   const removeTargets = new Map<string, Set<string>>();
@@ -401,12 +543,29 @@ export async function syncEnv(
       continue;
     }
     const fpMap = nextFp.get(d.target)!;
+    const shared = targetsOf(covering).length > 1;
     const current = await readValue(ctx, scope, project, covering);
     if (d.value === undefined) {
-      if (current === undefined || !d.accept || d.accept(current)) {
+      const tagged = nextTags.get(d.target)![d.key];
+      let keep: boolean;
+      let why = "";
+      if (d.exclusive && shared) {
+        keep = false;
+        why = `delas med ${targetsOf(covering).join("+")}`;
+      } else if (current !== undefined) {
+        keep = !d.accept || d.accept(current);
+        why = "pekar fel";
+      } else if (d.tag !== undefined && tagged !== d.tag) {
+        keep = false;
+        why = tagged === undefined ? "okänt vart den pekar" : "pekar på ett annat mål";
+      } else {
+        keep = true;
+      }
+      if (keep) {
         changes.push({ key: d.key, target: d.target, action: "behållen" });
         continue;
       }
+      ctx.log.info(`${d.key} (${d.target}) godtas inte (${why}); ett nytt värde tas fram.`);
       const value = await d.generate?.();
       if (value === undefined) continue;
       if (d.sensitive) ctx.log.secret(value);
@@ -421,9 +580,11 @@ export async function syncEnv(
       continue;
     }
     const same =
-      current !== undefined ? current === d.value : fpMap[d.key] === fingerprint(d.value);
+      !(d.exclusive && shared) &&
+      (current !== undefined ? current === d.value : fpMap[d.key] === fingerprint(d.value));
     if (same) {
       if (d.sensitive) fpMap[d.key] = fingerprint(d.value);
+      if (d.tag !== undefined) nextTags.get(d.target)![d.key] = d.tag;
       changes.push({ key: d.key, target: d.target, action: "oförändrad" });
       continue;
     }
@@ -438,8 +599,9 @@ export async function syncEnv(
   }
 
   const typeOf = (d: DesiredVar) => (d.sensitive ? "sensitive" : "encrypted");
-  const record = (d: DesiredVar, value: string) => {
+  const recordSet = (d: DesiredVar, value: string) => {
     if (d.sensitive) nextFp.get(d.target)![d.key] = fingerprint(value);
+    if (d.tag !== undefined) nextTags.get(d.target)![d.key] = d.tag;
   };
 
   for (const [id, remove] of removeTargets) {
@@ -465,7 +627,7 @@ export async function syncEnv(
   }
   for (const { d, entry, value } of updates) {
     changes.push({ key: d.key, target: d.target, action: "uppdaterad" });
-    record(d, value);
+    recordSet(d, value);
     if (ctx.dryRun) {
       ctx.log.plan(`uppdatera ${d.key} (${d.target})`);
       continue;
@@ -480,7 +642,7 @@ export async function syncEnv(
     if (!changes.some((c) => c.key === d.key && c.target === d.target && c.action === "uppdelad")) {
       changes.push({ key: d.key, target: d.target, action: "skapad" });
     }
-    record(d, value);
+    recordSet(d, value);
     if (ctx.dryRun) {
       ctx.log.plan(
         `sätta ${d.key} (${d.target})${d.value === undefined ? " med ett genererat värde" : ""}`,
@@ -498,25 +660,24 @@ export async function syncEnv(
       .filter((c) => c.action !== "oförändrad" && c.action !== "behållen")
       .map((c) => c.target),
   );
-  // Fingeravtrycken för känsliga värden (inga värden, bara sha256-prefix).
+  const pendingBefore = statesByTarget.get("production")!.state.pending === true;
+  // Bokföringen: fingeravtryck (sha256-prefix), taggar och pending. Inga värden.
   for (const target of ["production", "preview"] as const) {
     const before = statesByTarget.get(target)!;
-    const fp = nextFp.get(target)!;
-    if (JSON.stringify(before.state.fp) === JSON.stringify(fp) && before.entry) continue;
-    if (Object.keys(fp).length === 0 && !before.entry) continue;
-    const value = JSON.stringify({ v: 1, fp } satisfies State);
+    const next: State = {
+      v: 1,
+      fp: nextFp.get(target)!,
+      tags: nextTags.get(target)!,
+      pending:
+        target === "production"
+          ? pendingBefore || changedTargets.has("production") || opts.markPending === true
+          : false,
+    };
+    const unchanged = serializeState(before.state) === serializeState(next);
+    if (unchanged && before.entry) continue;
+    if (!before.entry && Object.keys(next.fp).length === 0 && !next.pending) continue;
     if (ctx.dryRun) continue;
-    if (before.entry) {
-      await ctx.api.request("PATCH", `/v9/projects/${project.id}/env/${before.entry.id}`, {
-        query,
-        body: { value, type: "encrypted", target: [target] },
-      });
-    } else {
-      await ctx.api.request("POST", `/v10/projects/${project.id}/env`, {
-        query,
-        body: { key: STATE_KEY, value, type: "encrypted", target: [target] },
-      });
-    }
+    await writeState(ctx, scope, project, before.entry, target, next);
   }
 
   for (const target of ["production", "preview"] as const) {
@@ -526,7 +687,7 @@ export async function syncEnv(
       `${target}: ${changed.length} ${ctx.dryRun ? "att ändra" : "ändrade"} (${changed.map((c) => c.key).join(", ") || "inga"}), ${mine.length - changed.length} redan rätt.`,
     );
   }
-  return { changes, productionChanged: changedTargets.has("production") };
+  return { changes, productionChanged: changedTargets.has("production"), pendingBefore };
 }
 
 // ---------------------------------------------------------------------------

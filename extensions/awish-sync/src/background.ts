@@ -53,7 +53,11 @@ let creating: Promise<void> | null = null;
 async function ensureOffscreen(): Promise<boolean> {
   if (!chrome.offscreen) return false;
   const url = chrome.runtime.getURL("offscreen.html");
-  const existing = (await chrome.runtime.getContexts?.({ contextTypes: ["OFFSCREEN_DOCUMENT"], documentUrls: [url] })) ?? [];
+  const existing =
+    (await chrome.runtime.getContexts?.({
+      contextTypes: ["OFFSCREEN_DOCUMENT"],
+      documentUrls: [url],
+    })) ?? [];
   if (existing.length > 0) return true;
   creating ??= chrome.offscreen
     .createDocument({
@@ -159,7 +163,10 @@ async function sync(options: { full?: boolean } = {}): Promise<SyncState> {
 async function ensureAlarm(): Promise<void> {
   const existing = await chrome.alarms.get(ALARM_NAME);
   if (!existing) {
-    await chrome.alarms.create(ALARM_NAME, { periodInMinutes: SYNC_INTERVAL_MINUTES, delayInMinutes: 1 });
+    await chrome.alarms.create(ALARM_NAME, {
+      periodInMinutes: SYNC_INTERVAL_MINUTES,
+      delayInMinutes: 1,
+    });
   }
 }
 
@@ -184,13 +191,19 @@ type Message =
   | { type: "save-settings"; binderlabUrl: string; token: string }
   | { type: "awish-api"; url: string };
 
+/** Popupen eller inställningssidan (tilläggets egna sidor, även öppnade i en flik). */
 function fromExtension(sender: MessageSender): boolean {
-  return sender.id === chrome.runtime.id && !sender.tab;
+  return (
+    sender.id === chrome.runtime.id && (sender.url ?? "").startsWith(chrome.runtime.getURL(""))
+  );
 }
 
 function fromAwishTab(sender: MessageSender): boolean {
   try {
-    return sender.id === chrome.runtime.id && new URL(sender.url ?? sender.tab?.url ?? "").origin === AWISH_ORIGIN;
+    return (
+      sender.id === chrome.runtime.id &&
+      new URL(sender.url ?? sender.tab?.url ?? "").origin === AWISH_ORIGIN
+    );
   } catch {
     return false;
   }
@@ -223,9 +236,13 @@ async function handle(message: Message, sender: MessageSender): Promise<unknown>
       if (!fromExtension(sender)) return null;
       const binderlabUrl = normalizeBaseUrl(message.binderlabUrl);
       // "__keep__": bara adressen ändras, den sparade token behålls.
-      const token = message.token === "__keep__" ? ((await loadSettings())?.token ?? "") : message.token.trim();
+      const token =
+        message.token === "__keep__" ? ((await loadSettings())?.token ?? "") : message.token.trim();
       if (!/^blsync_[A-Za-z0-9_-]{43}$/.test(token)) {
-        return { ok: false, error: "Token har fel form. Kopiera den på nytt från Datakällor i Binderlab." };
+        return {
+          ok: false,
+          error: "Token har fel form. Kopiera den på nytt från Datakällor i Binderlab.",
+        };
       }
       await chrome.storage.local.set({ settings: { binderlabUrl, token } });
       const state = await loadState();
@@ -248,9 +265,12 @@ async function handle(message: Message, sender: MessageSender): Promise<unknown>
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const m = message as { type?: unknown; target?: unknown };
-  if (m?.target === "offscreen" || typeof m?.type !== "string" || m.type === "state-changed") return false;
+  if (m?.target === "offscreen" || typeof m?.type !== "string" || m.type === "state-changed")
+    return false;
   handle(message as Message, sender)
     .then(sendResponse)
-    .catch((error: unknown) => sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+    .catch((error: unknown) =>
+      sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) }),
+    );
   return true;
 });

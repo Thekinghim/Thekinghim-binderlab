@@ -67,7 +67,10 @@ export const extensionBatchSchema = z
       .array(extensionRowSchema)
       .max(MAX_BATCH_ROWS, `Högst ${MAX_BATCH_ROWS} rader per batch.`),
     /** Fält som källan inte har med alls (t.ex. en lista utan Payment Method). */
-    absent: z.array(z.enum(["paymentMethod"])).max(1).optional(),
+    absent: z
+      .array(z.enum(["paymentMethod"]))
+      .max(1)
+      .optional(),
   })
   .passthrough();
 

@@ -28,7 +28,13 @@ const SRC_DIR = path.join(ROOT, "extensions", "awish-sync");
 const DEFAULT_AWISH = "https://dash.awish.vip";
 /** Innehållsskript är klassiska skript, inte moduler. */
 const CLASSIC_SCRIPTS = new Set(["discover.ts", "bridge.ts"]);
-const STATIC_FILES = ["manifest.json", "popup.html", "popup.css", "offscreen.html", "icons/icon-192.png"];
+const STATIC_FILES = [
+  "manifest.json",
+  "popup.html",
+  "popup.css",
+  "offscreen.html",
+  "icons/icon-192.png",
+];
 
 function parseArgs(argv) {
   const out = {
@@ -70,7 +76,9 @@ function transpile(file, source, awishOrigin) {
       sourceMap: false,
     },
   });
-  const errors = (result.diagnostics ?? []).filter((d) => d.category === ts.DiagnosticCategory.Error);
+  const errors = (result.diagnostics ?? []).filter(
+    (d) => d.category === ts.DiagnosticCategory.Error,
+  );
   if (errors.length > 0) {
     throw new Error(`${file}: ${ts.flattenDiagnosticMessageText(errors[0].messageText, "\n")}`);
   }
@@ -159,19 +167,31 @@ export async function buildExtension(options) {
   await mkdir(out, { recursive: true });
   const files = new Map();
 
-  const srcFiles = (await readdir(path.join(SRC_DIR, "src"))).filter((f) => f.endsWith(".ts") && !f.endsWith(".d.ts")).sort();
+  const srcFiles = (await readdir(path.join(SRC_DIR, "src")))
+    .filter((f) => f.endsWith(".ts") && !f.endsWith(".d.ts"))
+    .sort();
   for (const file of srcFiles) {
     const source = await readFile(path.join(SRC_DIR, "src", file), "utf8");
-    files.set(file.replace(/\.ts$/, ".js"), Buffer.from(transpile(file, source, awishOrigin), "utf8"));
+    files.set(
+      file.replace(/\.ts$/, ".js"),
+      Buffer.from(transpile(file, source, awishOrigin), "utf8"),
+    );
   }
   for (const file of STATIC_FILES) {
     const full = path.join(SRC_DIR, file);
     await stat(full);
     const data = await readFile(full);
-    files.set(file, file === "manifest.json" ? Buffer.from(manifestFor(data.toString("utf8"), awishOrigin), "utf8") : data);
+    files.set(
+      file,
+      file === "manifest.json"
+        ? Buffer.from(manifestFor(data.toString("utf8"), awishOrigin), "utf8")
+        : data,
+    );
   }
 
-  const entries = [...files.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([name, data]) => ({ name, data }));
+  const entries = [...files.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, data]) => ({ name, data }));
   for (const { name, data } of entries) {
     const target = path.join(out, ...name.split("/"));
     await mkdir(path.dirname(target), { recursive: true });

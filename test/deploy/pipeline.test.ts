@@ -50,11 +50,17 @@ interface Run {
   outcome: Awaited<ReturnType<typeof runDeploy>>;
 }
 
-function makeDeps(state: FakeState, lines: string[], migrations = MIGRATIONS): Deps {
+function makeDeps(
+  state: FakeState,
+  lines: string[],
+  migrations = MIGRATIONS,
+  extra: Partial<Deps> = {},
+): Deps {
   const log = createLogger((_level: LogLevel, line: string) => lines.push(line));
   let n = 0;
   return {
-    fetch: createFakeFetch(state),
+    ...extra,
+    fetch: extra.fetch ?? createFakeFetch(state),
     sleep: async () => {},
     log,
     readMigrations: async () => migrations,
@@ -70,7 +76,12 @@ function makeDeps(state: FakeState, lines: string[], migrations = MIGRATIONS): D
 async function run(
   state: FakeState,
   argv: string[] = [],
-  opts: { phases?: Phase[]; env?: Record<string, string>; migrations?: MigrationFile[] } = {},
+  opts: {
+    phases?: Phase[];
+    env?: Record<string, string>;
+    migrations?: MigrationFile[];
+    deps?: Partial<Deps>;
+  } = {},
 ): Promise<Run> {
   const lines: string[] = [];
   const options = buildOptions(
@@ -78,7 +89,7 @@ async function run(
     { SUPABASE_ACCESS_TOKEN: SUPABASE_TOKEN, VERCEL_TOKEN, ...opts.env },
     opts.phases ?? ["supabase", "vercel", "invite"],
   );
-  const deps = makeDeps(state, lines, opts.migrations);
+  const deps = makeDeps(state, lines, opts.migrations, opts.deps);
   const outcome = await runDeploy(options, deps);
   printSummary(deps.log, outcome, options.dryRun);
   return { lines, output: lines.join("\n"), outcome };
@@ -142,8 +153,24 @@ describe("all.ts från noll", () => {
     expect(state.supabase.auth[ref]!.site_url).toBe("https://binderlab.vercel.app");
     expect(state.supabase.auth[ref]!.uri_allow_list).toBe("https://binderlab.vercel.app/**");
     expect(state.supabase.auth[DEV_REF]!.uri_allow_list).toBe(
-      `https://*-${TEAM.slug}.vercel.app/**`,
+      `https://binderlab-*-${TEAM.slug}.vercel.app/**`,
     );
+    // Utvecklingsprojektets site_url lämnas (appen skickar alltid redirect_to).
+    expect(state.supabase.auth[DEV_REF]!.site_url).toBe("http://localhost:3000");
+    // Den antagna adressen skrevs inte in i produktionens auth före driftsättningen.
+    const firstDeploy = state.calls.findIndex(
+      (c) => c.method === "POST" && c.path === "/v13/deployments",
+    );
+    const prodAuthUrlWrites = state.calls
+      .map((c, i) => ({ c, i }))
+      .filter(
+        ({ c }) =>
+          c.method === "PATCH" &&
+          c.path === `/v1/projects/${ref}/config/auth` &&
+          /site_url|uri_allow_list/.test(JSON.stringify(c.body)),
+      );
+    expect(prodAuthUrlWrites.length).toBeGreaterThan(0);
+    for (const { i } of prodAuthUrlWrites) expect(i).toBeGreaterThan(firstDeploy);
 
     // Utvecklingsprojektet bytte från HS256 till ES256.
     expect(state.supabase.signingKeys[DEV_REF]!.find((k) => k.status === "in_use")!.algorithm).toBe(
@@ -209,12 +236,12 @@ describe("all.ts från noll", () => {
       if (key.startsWith("NEXT_PUBLIC_")) expect(v.value).not.toMatch(/sb_secret_/);
     }
 
-    // Utvecklingsprojektets lösenord var okänt: det byttes med en SCRAM-verifierare.
-    expect(state.supabase.passwordVerifiers[DEV_REF]).toMatch(/^SCRAM-SHA-256\$4096:/);
-    const previewUrl = new URL(preview.DATABASE_URL!.value);
-    expect(previewUrl.username).toBe(`postgres.${DEV_REF}`);
-    const alter = state.calls.find((c) => /alter role/.test(JSON.stringify(c.body)))!;
-    expect(JSON.stringify(alter.body)).not.toContain(decodeURIComponent(previewUrl.password));
+    // Utvecklingsprojektets lösenord är okänt: det byts INTE utan --byt-dev-losenord.
+    expect(state.supabase.passwordVerifiers[DEV_REF]).toBeUndefined();
+    expect(preview.DATABASE_URL).toBeUndefined();
+    expect(outcome.manual.join("\n")).toMatch(
+      /DATABASE_URL för Preview.*SUPABASE_DEV_DB_PASSWORD.*--byt-dev-losenord/,
+    );
 
     // Driftsättning från main.
     const deploy = state.calls.find((c) => c.method === "POST" && c.path === "/v13/deployments")!;
@@ -473,5 +500,299 @@ describe("faser och fel", () => {
     const { output } = await run(state);
     expect(output).toMatch(/Väntar på prod.*COMING_UP/);
     expect(output).toMatch(/Driftsättningen: (QUEUED|BUILDING)/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Granskningens fynd (docs/driftsattning.md → Säkerhet)
+// ---------------------------------------------------------------------------
+
+type Fetch = ReturnType<typeof createFakeFetch>;
+
+/** Vercel ger projektet en annan domän än <namn>.vercel.app (namnet var upptaget). */
+function foreignDefaultDomain(state: FakeState): Fetch {
+  const inner = createFakeFetch(state);
+  return async (input, init) => {
+    const response = await inner(input, init);
+    const url = new URL(input);
+    if (url.host === "api.vercel.com" && url.pathname === "/v13/deployments") {
+      for (const domains of Object.values(state.vercel.domains)) {
+        for (const d of domains) {
+          if (d.name === "binderlab.vercel.app") d.name = "binderlab-thekinghim.vercel.app";
+        }
+      }
+    }
+    return response;
+  };
+}
+
+function authWrites(state: FakeState, ref: string): string[] {
+  return state.calls
+    .filter((c) => c.method === "PATCH" && c.path === `/v1/projects/${ref}/config/auth`)
+    .map((c) => JSON.stringify(c.body));
+}
+
+describe("adresserna i Supabase Auth", () => {
+  it("skriver aldrig in en antagen *.vercel.app-adress, och sätter den riktiga efter driftsättningen", async () => {
+    const state = initialState();
+    const { outcome } = await run(state, [], { deps: { fetch: foreignDefaultDomain(state) } });
+    const ref = prodRef(state);
+    const auth = state.supabase.auth[ref]!;
+    expect(auth.site_url).toBe("https://binderlab-thekinghim.vercel.app");
+    expect(auth.uri_allow_list).toBe("https://binderlab-thekinghim.vercel.app/**");
+    for (const body of authWrites(state, ref)) expect(body).not.toContain("binderlab.vercel.app");
+    expect(envOf(state, "production").APP_URL!.value).toBe(
+      "https://binderlab-thekinghim.vercel.app",
+    );
+    expect(outcome.appUrl).toBe("https://binderlab-thekinghim.vercel.app");
+  });
+
+  it("supabase.ts följt av vercel.ts sätter produktionens adresser", async () => {
+    const state = initialState();
+    const deps = { fetch: foreignDefaultDomain(state) };
+    const first = await run(state, [], { phases: ["supabase"], deps });
+    expect(first.output).toContain("sätts när Vercel gett projektet sin adress");
+    const ref = prodRef(state);
+    expect(state.supabase.auth[ref]!.site_url).toBe("http://localhost:3000");
+    expect(state.supabase.auth[ref]!.uri_allow_list).toBe("");
+    await run(state, [], { phases: ["vercel"], deps });
+    expect(state.supabase.auth[ref]!.site_url).toBe("https://binderlab-thekinghim.vercel.app");
+    expect(state.supabase.auth[ref]!.uri_allow_list).toBe(
+      "https://binderlab-thekinghim.vercel.app/**",
+    );
+  });
+
+  it("tar bort främmande *.vercel.app-poster och en främmande site_url i produktionen", async () => {
+    const state = initialState();
+    await run(state);
+    const ref = prodRef(state);
+    state.supabase.auth[ref]!.uri_allow_list =
+      "https://binderlab.vercel.app/**,https://evil.vercel.app/**,https://*.vercel.app/**,https://app.exempel.se/**";
+    // Domänen byter namn (projektet döptes om); site_url pekar då på en adress som inte längre är projektets.
+    state.vercel.domains[state.vercel.projects[0]!.id]![0]!.name = "binderlab-ny.vercel.app";
+    await run(state, [], { phases: ["vercel"] });
+    expect(state.supabase.auth[ref]!.uri_allow_list).toBe(
+      "https://app.exempel.se/**,https://binderlab-ny.vercel.app/**",
+    );
+    expect(state.supabase.auth[ref]!.site_url).toBe("https://binderlab-ny.vercel.app");
+  });
+
+  it("godtar inte en befintlig APP_URL vars värd inte är projektets", async () => {
+    const state = initialState();
+    await run(state);
+    const project = state.vercel.projects[0]!;
+    const row = state.vercel.envs[project.id]!.find(
+      (e) => e.key === "APP_URL" && e.target.includes("production"),
+    )!;
+    row.value = "https://nagon-annan.vercel.app";
+    await run(state);
+    expect(envOf(state, "production").APP_URL!.value).toBe("https://binderlab.vercel.app");
+    expect(String(state.supabase.auth[prodRef(state)]!.uri_allow_list)).not.toContain(
+      "nagon-annan",
+    );
+  });
+});
+
+describe("produktionsprojektet i Supabase", () => {
+  it("ett binderlab-prod i en annan organisation används inte (avbryter före alla ändringar)", async () => {
+    const state = initialState();
+    const foreign = "foreignprodxxxxxxxxx";
+    state.supabase.projects.push({
+      id: foreign,
+      name: "binderlab-prod",
+      organization_id: "nagon-annans-org",
+      region: "eu-north-1",
+      status: "ACTIVE_HEALTHY",
+      bootPolls: 0,
+    });
+    await expect(run(state)).rejects.toThrow(
+      /binderlab-prod finns i en annan organisation.*foreignprodxxxxxxxxx i nagon-annans-org.*--supabase-org/,
+    );
+    expect(mutatingCalls(state)).toEqual([]);
+  });
+
+  it("ett 504 på POST /v1/projects (projektet skapades ändå) ger ett projekt och rätt lösenord", async () => {
+    const state = initialState();
+    const inner = createFakeFetch(state);
+    let failed = false;
+    const fetch: Fetch = async (input, init) => {
+      const response = await inner(input, init);
+      const url = new URL(input);
+      if (!failed && url.pathname === "/v1/projects" && init?.method === "POST") {
+        failed = true;
+        return new Response("Gateway Timeout", { status: 504 });
+      }
+      return response;
+    };
+    const { outcome, output } = await run(state, [], { deps: { fetch } });
+    expect(outcome.ok).toBe(true);
+    expect(state.supabase.projects.filter((p) => p.name === "binderlab-prod")).toHaveLength(1);
+    expect(
+      state.calls.filter((c) => c.method === "POST" && c.path === "/v1/projects"),
+    ).toHaveLength(1);
+    expect(output).toContain("skapades ändå");
+    const ref = prodRef(state);
+    const db = new URL(envOf(state, "production").DATABASE_URL!.value);
+    expect(decodeURIComponent(db.password)).toBe(state.supabase.dbPasswords[ref]);
+    expect(state.supabase.passwordVerifiers[ref]).toBeUndefined();
+  });
+});
+
+describe("DATABASE_URL", () => {
+  it("en känslig DATABASE_URL som delas mellan Production och Preview delas alltid upp", async () => {
+    const state = initialState();
+    await run(state, [], { deps: { devDbPassword: "DEVLOSEN_kant_eeeeeeeeeeeeeeeee" } });
+    const project = state.vercel.projects[0]!;
+    const devUrl = `postgresql://postgres.${DEV_REF}:x@aws-1-eu-north-1.pooler.supabase.com:6543/postgres`;
+    state.vercel.envs[project.id] = [
+      ...state.vercel.envs[project.id]!.filter((e) => e.key !== "DATABASE_URL"),
+      {
+        id: "env_9999",
+        key: "DATABASE_URL",
+        value: devUrl,
+        type: "sensitive",
+        target: ["production", "preview"],
+      },
+    ];
+    const { outcome } = await run(state, [], {
+      deps: { devDbPassword: "DEVLOSEN_kant_eeeeeeeeeeeeeeeee" },
+    });
+    const ref = prodRef(state);
+    const rows = state.vercel.envs[project.id]!.filter((e) => e.key === "DATABASE_URL");
+    expect(rows.map((r) => r.target)).toEqual([["preview"], ["production"]]);
+    expect(rows.find((r) => r.target[0] === "production")!.value).toContain(`postgres.${ref}:`);
+    expect(rows.find((r) => r.target[0] === "preview")!.value).toContain(`postgres.${DEV_REF}:`);
+    // Produktionens lösenord var okänt i den här körningen: det byttes (SCRAM).
+    expect(state.supabase.passwordVerifiers[ref]).toMatch(/^SCRAM-SHA-256\$/);
+    expect(state.supabase.passwordVerifiers[DEV_REF]).toBeUndefined();
+    expect(outcome.deployed).toBe(true);
+  });
+
+  it("genererar om en känslig DATABASE_URL när den bokförda taggen pekar på ett annat projekt", async () => {
+    const state = initialState();
+    await run(state);
+    const ref = prodRef(state);
+    const project = state.vercel.projects[0]!;
+    const stateRow = state.vercel.envs[project.id]!.find(
+      (e) => e.key === "BINDERLAB_DEPLOY_STATE" && e.target[0] === "production",
+    )!;
+    const parsed = JSON.parse(stateRow.value) as { tags: Record<string, string> };
+    expect(parsed.tags.DATABASE_URL).toBe(`${ref}@aws-1-eu-north-1.pooler.supabase.com`);
+    parsed.tags.DATABASE_URL = `${DEV_REF}@aws-1-eu-north-1.pooler.supabase.com`;
+    stateRow.value = JSON.stringify(parsed);
+    const { output } = await run(state);
+    expect(output).toContain("DATABASE_URL (production) godtas inte (pekar på ett annat mål)");
+    expect(state.supabase.passwordVerifiers[ref]).toMatch(/^SCRAM-SHA-256\$/);
+    // Tredje körningen: taggen stämmer, inget byts.
+    const verifier = state.supabase.passwordVerifiers[ref];
+    await run(state);
+    expect(state.supabase.passwordVerifiers[ref]).toBe(verifier);
+  });
+
+  it("--byt-dev-losenord byter utvecklingsprojektets lösenord med en SCRAM-verifierare", async () => {
+    const state = initialState();
+    const { output } = await run(state, ["--byt-dev-losenord"]);
+    expect(state.supabase.passwordVerifiers[DEV_REF]).toMatch(/^SCRAM-SHA-256\$4096:/);
+    const previewUrl = new URL(envOf(state, "preview").DATABASE_URL!.value);
+    expect(previewUrl.username).toBe(`postgres.${DEV_REF}`);
+    const alter = state.calls.find((c) => /alter role/.test(JSON.stringify(c.body)))!;
+    expect(JSON.stringify(alter.body)).not.toContain(decodeURIComponent(previewUrl.password));
+    expect(output).toContain("Uppdatera GitHub-hemligheten DATABASE_URL (development)");
+    expect(output).not.toContain(decodeURIComponent(previewUrl.password));
+  });
+
+  it("SUPABASE_DEV_DB_PASSWORD ger Preview en DATABASE_URL utan att lösenordet byts", async () => {
+    const state = initialState();
+    const known = "DEVLOSEN_kant_ffffffffffffffffff";
+    const { output } = await run(state, [], { deps: { devDbPassword: known } });
+    expect(state.supabase.passwordVerifiers[DEV_REF]).toBeUndefined();
+    expect(decodeURIComponent(new URL(envOf(state, "preview").DATABASE_URL!.value).password)).toBe(
+      known,
+    );
+    expect(output).not.toContain(known);
+  });
+});
+
+describe("driftsättningen", () => {
+  function failingDeploys(state: FakeState): Fetch {
+    const inner = createFakeFetch(state);
+    let failId: string | undefined;
+    return async (input, init) => {
+      const url = new URL(input);
+      const response = await inner(input, init);
+      if (url.host === "api.vercel.com" && url.pathname === "/v13/deployments") {
+        failId = ((await response.clone().json()) as { id: string }).id;
+      }
+      if (failId && url.pathname === `/v13/deployments/${failId}`) {
+        state.vercel.deployments.find((x) => x.id === failId)!.readyState = "ERROR";
+        return new Response(JSON.stringify({ id: failId, readyState: "ERROR" }), { status: 200 });
+      }
+      return response;
+    };
+  }
+
+  it("driftsätter igen efter en misslyckad driftsättning, och sedan inte mer", async () => {
+    const state = initialState();
+    await run(state);
+    const env = { RESEND_API_KEY: RESEND, MAIL_FROM: "a@b.se" };
+    await expect(run(state, [], { env, deps: { fetch: failingDeploys(state) } })).rejects.toThrow(
+      /ERROR/,
+    );
+    const count = () => state.calls.filter((c) => c.path === "/v13/deployments").length;
+    const before = count();
+    const { outcome, output } = await run(state, [], { env });
+    expect(count()).toBe(before + 1);
+    expect(outcome.deployed).toBe(true);
+    expect(output).toContain("tidigare ändringar har inte nått en färdig version");
+    const third = await run(state, [], { env });
+    expect(third.outcome.deployed).toBe(false);
+    expect(third.output).toContain("Produktionen är redan driftsatt");
+  });
+
+  it("--skip-deploy med ändrade variabler: nästa körning driftsätter", async () => {
+    const state = initialState();
+    await run(state);
+    const env = { RESEND_API_KEY: RESEND, MAIL_FROM: "a@b.se" };
+    expect((await run(state, ["--skip-deploy"], { env })).outcome.deployed).toBe(false);
+    expect((await run(state, [], { env })).outcome.deployed).toBe(true);
+  });
+});
+
+describe("Vercel-projektet", () => {
+  it("avbryter om projekt i flera team är kopplade till repot (utan --vercel-team)", async () => {
+    const state = initialState();
+    await run(state);
+    state.vercel.teams.push({ id: "team_annat", slug: "annat", billing: { plan: "pro" } });
+    state.vercel.projects.push({
+      ...state.vercel.projects[0]!,
+      id: "prj_777",
+      teamId: "team_annat",
+    });
+    await expect(run(state)).rejects.toThrow(
+      /flera team.*binderlab i thekinghim.*annat.*--vercel-team/,
+    );
+    const { outcome } = await run(state, ["--vercel-team", TEAM.slug]);
+    expect(outcome.ok).toBe(true);
+  });
+});
+
+describe("ägaren", () => {
+  it("ett 422 som inte är email_exists döljs inte", async () => {
+    const state = initialState();
+    await run(state);
+    const inner = createFakeFetch(state);
+    const fetch: Fetch = async (input, init) => {
+      const url = new URL(input);
+      if (url.pathname === "/auth/v1/admin/users" && init?.method === "POST") {
+        return new Response(
+          JSON.stringify({ code: "validation_failed", msg: "Unable to validate email address" }),
+          { status: 422 },
+        );
+      }
+      return inner(input, init);
+    };
+    await expect(run(state, [OWNER], { phases: ["invite"], deps: { fetch } })).rejects.toThrow(
+      /kunde inte skapas \(422 validation_failed: Unable to validate email address\)/,
+    );
   });
 });

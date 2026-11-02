@@ -11,7 +11,14 @@
 import { createHash } from "node:crypto";
 
 import type { MigrationFile } from "../../../src/db/migrator";
-import { ApiError, createApiClient, type ApiClient, type FetchLike, type Sleep } from "./http";
+import {
+  ApiError,
+  createApiClient,
+  isTransient,
+  type ApiClient,
+  type FetchLike,
+  type Sleep,
+} from "./http";
 import type { Logger } from "./log";
 import { scramSha256Verifier } from "./secrets";
 
@@ -82,6 +89,68 @@ export function findDevProject(projects: SupabaseProject[], ref: string): Supaba
   return found;
 }
 
+/** Organisationens id och slug som ett projekt bär (det ena eller båda). */
+export function projectOrgIds(project: SupabaseProject): string[] {
+  return [project.organization_id, project.organization_slug].filter(
+    (v): v is string => typeof v === "string" && v.length > 0,
+  );
+}
+
+/**
+ * Vilka organisations-id:n produktionsprojektet får ligga i: den angivna
+ * (--supabase-org) eller utvecklingsprojektets. Är den angivna samma
+ * organisation som utvecklingsprojektets räknas både id och slug.
+ */
+export function allowedOrgIds(dev: SupabaseProject, requested: string | undefined): string[] {
+  const devIds = projectOrgIds(dev);
+  if (!requested) return devIds;
+  return devIds.includes(requested) ? devIds : [requested];
+}
+
+export interface ProdSelection {
+  /** Projektet med rätt namn i rätt organisation. */
+  match: SupabaseProject | undefined;
+  /** Projekt med samma namn i en annan (eller okänd) organisation. */
+  foreign: SupabaseProject[];
+}
+
+/**
+ * Letar upp produktionsprojektet på namn OCH organisation. Ett projekt med
+ * samma namn i en annan organisation som token råkar se används aldrig
+ * (då skulle migreringar, nycklar och Vercel-variabler gå dit); det ger ett
+ * fel. Finns flera med samma namn i rätt organisation avbryts det också.
+ */
+export function selectProdProject(
+  projects: readonly SupabaseProject[],
+  name: string,
+  orgIds: readonly string[],
+): ProdSelection {
+  const named = projects.filter((p) => p.name === name && p.status !== "REMOVED");
+  const mine = named.filter((p) => projectOrgIds(p).some((id) => orgIds.includes(id)));
+  const foreign = named.filter((p) => !mine.includes(p));
+  if (mine.length > 1) {
+    throw new Error(
+      `Supabase: flera projekt heter ${name} (${mine.map(projectRef).join(", ")}). Ta bort eller byt namn på de överflödiga.`,
+    );
+  }
+  return { match: mine[0], foreign };
+}
+
+export function assertNoForeignProd(
+  selection: ProdSelection,
+  name: string,
+  orgIds: readonly string[],
+): void {
+  if (selection.foreign.length === 0) return;
+  const list = selection.foreign
+    .map((p) => `${projectRef(p)} i ${projectOrgIds(p).join("/") || "okänd organisation"}`)
+    .join(", ");
+  throw new Error(
+    `Supabase: ${name} finns i en annan organisation än den som ska användas (${orgIds.join("/") || "okänd"}): ${list}. ` +
+      `Det används inte som produktion. Byt namn på det projektet, eller ange --supabase-org <organisation> om det är rätt organisation.`,
+  );
+}
+
 export interface EnsureProdResult {
   project: SupabaseProject | null;
   created: boolean;
@@ -90,21 +159,30 @@ export interface EnsureProdResult {
 }
 
 /**
- * Hittar produktionsprojektet på namn, eller skapar det i regionen med ett
- * genererat lösenord. Finns flera med samma namn avbryts det.
+ * Hittar produktionsprojektet på namn i rätt organisation, eller skapar det i
+ * regionen med ett genererat lösenord. Finns det i en annan organisation,
+ * eller flera med samma namn, avbryts det.
+ *
+ * Skapandet görs aldrig om automatiskt (ett POST som får 5xx eller tappar
+ * anslutningen kan ändå ha skapat projektet). I stället läses listan om; dyker
+ * projektet upp används det, med lösenordet som just skickades.
  */
 export async function ensureProdProject(
   ctx: Ctx,
   projects: SupabaseProject[],
-  opts: { name: string; region: string; organization: string; password: () => string },
+  opts: {
+    name: string;
+    region: string;
+    organization: string;
+    orgIds: readonly string[];
+    password: () => string;
+    recoverPolls?: number;
+    recoverIntervalMs?: number;
+  },
 ): Promise<EnsureProdResult> {
-  const matches = projects.filter((p) => p.name === opts.name && p.status !== "REMOVED");
-  if (matches.length > 1) {
-    throw new Error(
-      `Supabase: flera projekt heter ${opts.name} (${matches.map(projectRef).join(", ")}). Ta bort eller byt namn på de överflödiga.`,
-    );
-  }
-  const existing = matches[0];
+  const selection = selectProdProject(projects, opts.name, opts.orgIds);
+  assertNoForeignProd(selection, opts.name, opts.orgIds);
+  const existing = selection.match;
   if (existing) {
     if (existing.region && existing.region !== opts.region) {
       ctx.log.warn(
@@ -122,11 +200,36 @@ export async function ensureProdProject(
   }
   const password = ctx.log.secret(opts.password());
   const base = { name: opts.name, db_pass: password, region: opts.region };
+  const create = async (orgField: "organization_id" | "organization_slug") => {
+    try {
+      return (
+        await ctx.api.request<SupabaseProject>("POST", "/v1/projects", {
+          body: { ...base, [orgField]: opts.organization },
+        })
+      ).data;
+    } catch (error) {
+      if (!isTransient(error)) throw error;
+      // Kan ha skapats trots felet: läs om listan i stället för att skapa igen.
+      const polls = opts.recoverPolls ?? 6;
+      for (let i = 0; i < polls; i += 1) {
+        await ctx.sleep(opts.recoverIntervalMs ?? 10_000);
+        const again = selectProdProject(await listProjects(ctx), opts.name, opts.orgIds);
+        if (again.match) {
+          ctx.log.warn(
+            `POST /v1/projects svarade med fel, men ${opts.name} (${projectRef(again.match)}) skapades ändå. Det används.`,
+          );
+          return again.match;
+        }
+      }
+      throw new Error(
+        `${(error as Error).message}\nProjektet syns inte i listan efter felet. Kontrollera i Supabase-panelen att inget ${opts.name} ` +
+          `håller på att skapas innan du kör igen (annars kan det bli två).`,
+      );
+    }
+  };
   let created: SupabaseProject;
   try {
-    ({ data: created } = await ctx.api.request<SupabaseProject>("POST", "/v1/projects", {
-      body: { ...base, organization_id: opts.organization },
-    }));
+    created = await create("organization_id");
   } catch (error) {
     // OSÄKER: nyare versioner av API:t vill ha organization_slug.
     if (
@@ -135,9 +238,7 @@ export async function ensureProdProject(
       error.status < 500 &&
       /slug/i.test(error.apiMessage)
     ) {
-      ({ data: created } = await ctx.api.request<SupabaseProject>("POST", "/v1/projects", {
-        body: { ...base, organization_slug: opts.organization },
-      }));
+      created = await create("organization_slug");
     } else if (error instanceof ApiError && /limit|maximum|free/i.test(error.apiMessage)) {
       throw new Error(
         `${error.message}\nOrganisationen har troligen nått gränsen för antal gratisprojekt. Uppgradera planen eller pausa ett projekt i Supabase och kör igen.`,
@@ -329,7 +430,9 @@ export async function runQuery<T = Record<string, unknown>>(
   const { data } = await ctx.api.request<T[] | { result?: T[] }>(
     "POST",
     `/v1/projects/${ref}/database/query`,
-    { body: { query } },
+    // Tål att göras om: migreringarna skyddas av kontrollen "redan körd",
+    // bokföringen och lösenordsbytet ger samma resultat två gånger.
+    { body: { query }, idempotent: true, timeoutMs: 10 * 60_000 },
   );
   if (Array.isArray(data)) {
     // Ett svar per sats (som postgres.js ger) eller bara sista satsens rader.
@@ -426,17 +529,35 @@ export function resendSmtp(passthrough: Record<string, string>): SmtpSettings | 
   };
 }
 
+export const DEFAULT_SITE_URL = "http://localhost:3000";
+
 export interface AuthSettings {
+  /** site_url. undefined = rör inte (utöver rensningen nedan). */
   siteUrl: string | undefined;
-  /**
-   * Sätt site_url bara om den nuvarande är Supabases standard (localhost)
-   * eller saknas. Används för utvecklingsprojektet, där varje förhandsversion
-   * har egen adress och länkarna alltid bär redirect_to.
-   */
-  siteUrlOnlyIfDefault?: boolean;
-  /** Adresser som läggs till i uri_allow_list (befintliga behålls). */
+  /** Adresser som läggs till i uri_allow_list (andra befintliga behålls, utom nedan). */
   redirectUrls: readonly string[];
+  /** Exakta poster som tas bort ur uri_allow_list (t.ex. äldre mönster skriptet satt). */
+  dropRedirects?: readonly string[];
+  /**
+   * Produktionens egna *.vercel.app-värdar (alla domäner Vercel-projektet har).
+   * När den är satt tas varje post i uri_allow_list vars värd slutar på
+   * .vercel.app och inte är en av dessa bort (även jokertecken), och en
+   * site_url på en sådan främmande värd återställs. Annars kan en domän som
+   * någon annan äger få inloggningslänkarnas engångskod.
+   */
+  ownVercelHosts?: readonly string[];
   smtp: SmtpSettings | null;
+}
+
+function hostOf(entry: string): string | undefined {
+  return /^https?:\/\/([^/?#]+)/i.exec(entry.trim())?.[1]?.toLowerCase();
+}
+
+/** Är adressen (eller mönstret) på en *.vercel.app-värd som inte är projektets? */
+export function isForeignVercelEntry(entry: string, ownHosts: readonly string[]): boolean {
+  const host = hostOf(entry);
+  if (!host || !host.endsWith(".vercel.app")) return false;
+  return host.includes("*") || !ownHosts.map((h) => h.toLowerCase()).includes(host);
 }
 
 export function desiredAuthConfig(
@@ -444,10 +565,16 @@ export function desiredAuthConfig(
   settings: AuthSettings,
 ): Record<string, unknown> {
   const existing = typeof current.uri_allow_list === "string" ? current.uri_allow_list : "";
+  const own = settings.ownVercelHosts;
+  const drop = new Set(settings.dropRedirects ?? []);
   const list = existing
     .split(",")
     .map((s) => s.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((entry) => !drop.has(entry))
+    .filter(
+      (entry) => settings.redirectUrls.includes(entry) || !own || !isForeignVercelEntry(entry, own),
+    );
   for (const url of settings.redirectUrls) if (!list.includes(url)) list.push(url);
   const desired: Record<string, unknown> = {
     disable_signup: true,
@@ -460,10 +587,11 @@ export function desiredAuthConfig(
     mailer_templates_magic_link_content: MAGIC_LINK_TEMPLATE,
   };
   const currentSite = typeof current.site_url === "string" ? current.site_url : "";
-  const isDefaultSite =
-    currentSite === "" || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/.test(currentSite);
-  if (settings.siteUrl && (!settings.siteUrlOnlyIfDefault || isDefaultSite)) {
+  if (settings.siteUrl) {
     desired.site_url = settings.siteUrl;
+  } else if (own && currentSite && isForeignVercelEntry(currentSite, own)) {
+    // En främmande site_url får inte ligga kvar: den är standardadressen i mejlens länkar.
+    desired.site_url = DEFAULT_SITE_URL;
   }
   if (settings.smtp) {
     desired.smtp_host = settings.smtp.host;
@@ -776,6 +904,7 @@ async function runQueryReadOnly<T>(ctx: Ctx, ref: string, query: string): Promis
   const { data } = await ctx.api.request<T[]>("POST", `/v1/projects/${ref}/database/query`, {
     body: { query: `set transaction read only; ${query}` },
     readOnly: true,
+    idempotent: true,
   });
   return Array.isArray(data) ? data : [];
 }

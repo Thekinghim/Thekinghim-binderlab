@@ -18,7 +18,11 @@ export interface ChromeApi {
     sendMessage<T = unknown>(message: unknown): Promise<T>;
     onMessage: {
       addListener(
-        cb: (message: unknown, sender: MessageSender, sendResponse: (response: unknown) => void) => boolean | void,
+        cb: (
+          message: unknown,
+          sender: MessageSender,
+          sendResponse: (response: unknown) => void,
+        ) => boolean | void,
       ): void;
     };
     onInstalled: { addListener(cb: () => void): void };
@@ -32,7 +36,10 @@ export interface ChromeApi {
     };
   };
   alarms: {
-    create(name: string, info: { periodInMinutes?: number; delayInMinutes?: number }): Promise<void> | void;
+    create(
+      name: string,
+      info: { periodInMinutes?: number; delayInMinutes?: number },
+    ): Promise<void> | void;
     get(name: string): Promise<unknown>;
     onAlarm: { addListener(cb: (alarm: { name: string }) => void): void };
   };
@@ -42,7 +49,11 @@ export interface ChromeApi {
     setTitle(details: { title: string }): Promise<void>;
   };
   offscreen?: {
-    createDocument(params: { url: string; reasons: string[]; justification: string }): Promise<void>;
+    createDocument(params: {
+      url: string;
+      reasons: string[];
+      justification: string;
+    }): Promise<void>;
     closeDocument(): Promise<void>;
   };
   permissions: {

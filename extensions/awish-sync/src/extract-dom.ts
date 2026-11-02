@@ -18,7 +18,10 @@ function cellText(el: Element): string {
     const e = node as Element;
     const tag = e.tagName.toLowerCase();
     if (tag === "script" || tag === "style" || tag === "template") return;
-    if (e.getAttribute("hidden") !== null || /display\s*:\s*none/i.test(e.getAttribute("style") ?? "")) {
+    if (
+      e.getAttribute("hidden") !== null ||
+      /display\s*:\s*none/i.test(e.getAttribute("style") ?? "")
+    ) {
       return;
     }
     if (tag === "br") parts.push("\n");
@@ -56,7 +59,11 @@ export function extractDocument(doc: Document): ExtractedPage {
     let headerRow = headRows[headRows.length - 1] ?? null;
     if (!headerRow) {
       const first = all[0];
-      if (first && cells(first).length > 0 && cells(first).every((c) => c.tagName.toLowerCase() === "th")) {
+      if (
+        first &&
+        cells(first).length > 0 &&
+        cells(first).every((c) => c.tagName.toLowerCase() === "th")
+      ) {
         headerRow = first;
       }
     }
@@ -70,7 +77,8 @@ export function extractDocument(doc: Document): ExtractedPage {
     href: a.getAttribute("href") ?? "",
     text: (a.textContent ?? "").replace(/\s+/g, " ").trim(),
     rel: a.getAttribute("rel") ?? "",
-    className: `${a.getAttribute("class") ?? ""} ${a.closest("li")?.getAttribute("class") ?? ""}`.trim(),
+    className:
+      `${a.getAttribute("class") ?? ""} ${a.closest("li")?.getAttribute("class") ?? ""}`.trim(),
   }));
   return {
     tables,

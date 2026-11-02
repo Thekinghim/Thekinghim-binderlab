@@ -32,7 +32,11 @@ export async function POST(request: Request): Promise<Response> {
   if (denied) return denied;
   try {
     const deps = { db: getServiceDb(), limiters: ingestLimiters() };
-    const ctx = await authenticate(deps, request.headers.get("authorization"), clientKeyOf(request));
+    const ctx = await authenticate(
+      deps,
+      request.headers.get("authorization"),
+      clientKeyOf(request),
+    );
     const body = await readIngestBody(request);
     const result = await ingestBatch(deps, ctx, body);
     return json({ ok: true, ...result }, 200, origin);

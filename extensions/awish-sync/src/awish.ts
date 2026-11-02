@@ -95,7 +95,10 @@ export class AwishReader {
     try {
       res = await this.deps.fetch(url, { credentials: "include", cache: "no-store", headers });
     } catch {
-      throw new ReaderError("network", "Awish-panelen svarar inte. Synken försöker igen om en stund.");
+      throw new ReaderError(
+        "network",
+        "Awish-panelen svarar inte. Synken försöker igen om en stund.",
+      );
     }
     if ((res.redirected && isLoginUrl(res.url)) || res.status === 401 || res.status === 419) {
       throw new ReaderError("logged_out", LOGGED_OUT_MESSAGE);
@@ -126,7 +129,10 @@ export class AwishReader {
   /** Provar om orderlistans adress svarar med JSON som ett XHR-anrop. */
   private async probeJson(): Promise<JsonApi | null> {
     const failedAt = this.memory.apiProbeFailedAt ? Date.parse(this.memory.apiProbeFailedAt) : NaN;
-    if (Number.isFinite(failedAt) && this.deps.now().getTime() - failedAt < this.deps.apiProbeIntervalMs) {
+    if (
+      Number.isFinite(failedAt) &&
+      this.deps.now().getTime() - failedAt < this.deps.apiProbeIntervalMs
+    ) {
       return null;
     }
     const base = this.ordersUrl;
@@ -166,7 +172,10 @@ export class AwishReader {
   }
 
   private async readJson(api: JsonApi, page: number): Promise<AwishPage | null> {
-    const res = await this.get(jsonPageUrl(api, page), api.ajaxHeader ? JSON_HEADERS : { accept: "application/json" });
+    const res = await this.get(
+      jsonPageUrl(api, page),
+      api.ajaxHeader ? JSON_HEADERS : { accept: "application/json" },
+    );
     let json: unknown;
     try {
       json = await res.json();
@@ -182,15 +191,21 @@ export class AwishReader {
     } catch {
       return null;
     }
-    const lastPage = found.total === null ? null : Math.max(1, Math.ceil(found.total / api.pageSize));
+    const lastPage =
+      found.total === null ? null : Math.max(1, Math.ceil(found.total / api.pageSize));
     const hasMore =
       found.items.length > 0 &&
-      (found.total === null ? found.items.length >= api.pageSize : page * api.pageSize < found.total);
+      (found.total === null
+        ? found.items.length >= api.pageSize
+        : page * api.pageSize < found.total);
     return { ...read, mode: "json", hasMore, lastPage };
   }
 
   private async readHtml(page: number): Promise<AwishPage> {
-    const url = page === 1 ? this.ordersUrl : pageUrl(this.ordersUrl, page, this.memory.htmlPageParam ?? "page");
+    const url =
+      page === 1
+        ? this.ordersUrl
+        : pageUrl(this.ordersUrl, page, this.memory.htmlPageParam ?? "page");
     const res = await this.get(url, { accept: "text/html,application/xhtml+xml" });
     const html = await res.text();
     const extracted = await this.deps.parseHtml(html);
@@ -199,7 +214,16 @@ export class AwishReader {
     }
     const table = findOrderTable(extracted.tables);
     if (!table) {
-      if (page > 1) return { rows: [], absent: [], seen: 0, skipped: 0, mode: "html", hasMore: false, lastPage: page - 1 };
+      if (page > 1)
+        return {
+          rows: [],
+          absent: [],
+          seen: 0,
+          skipped: 0,
+          mode: "html",
+          hasMore: false,
+          lastPage: page - 1,
+        };
       throw new ReaderError(
         "layout",
         "Hittar inte ordertabellen i Awish (rubrikerna Order No., Name, Order Machine, Order Amount, Is Paid, Payment Time). Awish kan ha ändrat sidan.",
@@ -208,7 +232,9 @@ export class AwishReader {
     const read = readGrid(table, page);
     const pagination = readPagination(extracted, page, url, this.deps.pageSize);
     this.memory.htmlPageParam = pagination.param;
-    const hasMore = read.seen > 0 && (pagination.hasNext || (pagination.lastPage === null && read.seen >= this.deps.pageSize));
+    const hasMore =
+      read.seen > 0 &&
+      (pagination.hasNext || (pagination.lastPage === null && read.seen >= this.deps.pageSize));
     return { ...read, mode: "html", hasMore, lastPage: pagination.lastPage };
   }
 

@@ -7,8 +7,11 @@
  */
 
 (() => {
-  const runtime = (globalThis as unknown as { chrome?: { runtime?: { sendMessage(m: unknown): Promise<unknown> } } })
-    .chrome?.runtime;
+  const runtime = (
+    globalThis as unknown as {
+      chrome?: { runtime?: { sendMessage(m: unknown): Promise<unknown> } };
+    }
+  ).chrome?.runtime;
   if (!runtime) return;
   window.addEventListener("message", (event: MessageEvent) => {
     if (event.source !== window || event.origin !== location.origin) return;

@@ -11,7 +11,9 @@
       <header class="head">
         <p class="label">Binderlab / Awish-synk</p>
         <h1 id="headline">Automatisk synk</h1>
-        <p id="subline" class="muted">Läser orderlistan i Awish med din inloggning och skickar nya ordrar till Binderlab.</p>
+        <p id="subline" class="muted">
+          Läser orderlistan i Awish med din inloggning och skickar nya ordrar till Binderlab.
+        </p>
       </header>
 
       <div id="banner" class="banner" role="status" hidden></div>
@@ -19,12 +21,30 @@
       <section class="block" aria-labelledby="status-rubrik">
         <p id="status-rubrik" class="label">Status</p>
         <dl class="facts">
-          <div><dt class="label">Senast synkad</dt><dd id="last-success">–</dd></div>
-          <div><dt class="label">Senaste körning</dt><dd id="last-run">–</dd></div>
-          <div><dt class="label">Nya order</dt><dd id="new-orders">–</dd></div>
-          <div><dt class="label">Läser via</dt><dd id="source">–</dd></div>
-          <div><dt class="label">Datakälla</dt><dd id="data-source">–</dd></div>
-          <div><dt class="label">Fel</dt><dd id="error">Inga</dd></div>
+          <div>
+            <dt class="label">Senast synkad</dt>
+            <dd id="last-success">–</dd>
+          </div>
+          <div>
+            <dt class="label">Senaste körning</dt>
+            <dd id="last-run">–</dd>
+          </div>
+          <div>
+            <dt class="label">Nya order</dt>
+            <dd id="new-orders">–</dd>
+          </div>
+          <div>
+            <dt class="label">Läser via</dt>
+            <dd id="source">–</dd>
+          </div>
+          <div>
+            <dt class="label">Datakälla</dt>
+            <dd id="data-source">–</dd>
+          </div>
+          <div>
+            <dt class="label">Fel</dt>
+            <dd id="error">Inga</dd>
+          </div>
         </dl>
         <p id="history" class="muted" hidden></p>
         <div class="row">
@@ -38,12 +58,26 @@
         <form id="settings" class="form" autocomplete="off">
           <label class="field">
             <span class="label">Binderlabs adress</span>
-            <input id="binderlab-url" name="binderlabUrl" type="url" placeholder="https://app.binderlab.se" required />
+            <input
+              id="binderlab-url"
+              name="binderlabUrl"
+              type="url"
+              placeholder="https://app.binderlab.se"
+              required
+            />
           </label>
           <label class="field">
             <span class="label">Token</span>
-            <input id="token" name="token" type="password" placeholder="blsync_…" spellcheck="false" />
-            <span id="token-hint" class="hint">Skapas under Datakällor → Automatisk synk i Binderlab. Visas bara en gång där.</span>
+            <input
+              id="token"
+              name="token"
+              type="password"
+              placeholder="blsync_…"
+              spellcheck="false"
+            />
+            <span id="token-hint" class="hint"
+              >Skapas under Datakällor → Automatisk synk i Binderlab. Visas bara en gång där.</span
+            >
           </label>
           <div class="row">
             <button type="submit" class="primary">Spara</button>
@@ -53,7 +87,10 @@
       </section>
 
       <footer class="foot">
-        <p class="hint">Tillägget läser bara <span id="awish-origin">dash.awish.vip</span> och skickar bara till Binderlabs adress ovan. Version <span id="version">–</span>.</p>
+        <p class="hint">
+          Tillägget läser bara <span id="awish-origin">dash.awish.vip</span> och skickar bara till
+          Binderlabs adress ovan. Version <span id="version">–</span>.
+        </p>
       </footer>
     </main>
     <script type="module" src="popup.js"></script>

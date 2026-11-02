@@ -27,7 +27,8 @@ const ENTITIES: Record<string, string> = {
 export function decodeEntities(text: string): string {
   return text.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e: string) => {
     if (e[0] === "#") {
-      const code = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      const code =
+        e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
       return Number.isFinite(code) && code > 0 && code < 0x110000 ? String.fromCodePoint(code) : m;
     }
     return ENTITIES[e.toLowerCase()] ?? m;
@@ -120,16 +121,33 @@ export function extractHtml(html: string): ExtractedPage {
     if (name === "li" && !closing) liClass = attr(tag, "class");
     if (name === "a") {
       if (!closing) {
-        link = { href: attr(tag, "href"), rel: attr(tag, "rel"), className: `${attr(tag, "class")} ${liClass}`.trim(), text: [] };
+        link = {
+          href: attr(tag, "href"),
+          rel: attr(tag, "rel"),
+          className: `${attr(tag, "class")} ${liClass}`.trim(),
+          text: [],
+        };
       } else if (link) {
-        links.push({ href: link.href, rel: link.rel, className: link.className, text: tidy(link.text.join("")) });
+        links.push({
+          href: link.href,
+          rel: link.rel,
+          className: link.className,
+          text: tidy(link.text.join("")),
+        });
         link = null;
       }
       continue;
     }
     if (name === "table") {
       if (!closing) {
-        stack.push({ headerRows: [], bodyRows: [], inHead: false, row: null, rowIsHeader: false, cell: null });
+        stack.push({
+          headerRows: [],
+          bodyRows: [],
+          inHead: false,
+          row: null,
+          rowIsHeader: false,
+          cell: null,
+        });
       } else if (top) {
         finishRow(top);
         stack.pop();

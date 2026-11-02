@@ -61,7 +61,10 @@ describe("awish_extension: batch från tillägget", () => {
     const result = parseAwishExtensionBatch({
       context,
       rows: [
-        row({ externalId: "1", amount: "Amount: 79.00\nDiscount Amount: 0.00\r\nPaid Amount: 79.00" }),
+        row({
+          externalId: "1",
+          amount: "Amount: 79.00\nDiscount Amount: 0.00\r\nPaid Amount: 79.00",
+        }),
         row({ externalId: "2", amount: "Amount: 1,234" }),
         row({ externalId: "3", isPaid: "Unpaid" }),
         row({ externalId: "4", title: "  " }),
@@ -81,7 +84,10 @@ describe("awish_extension: batch från tillägget", () => {
   it("tider med tidszon (Z eller +08:00) är redan entydiga", () => {
     const result = parseAwishExtensionBatch({
       context,
-      rows: [row({ paidAt: "2026-11-01T16:17:00Z" }), row({ externalId: "2", paidAt: "2026-11-02T00:17:00+08:00" })],
+      rows: [
+        row({ paidAt: "2026-11-01T16:17:00Z" }),
+        row({ externalId: "2", paidAt: "2026-11-02T00:17:00+08:00" }),
+      ],
     });
     expect(result.rows.map((r) => r.paidAtUtc.toISOString())).toEqual([
       "2026-11-01T16:17:00.000Z",
@@ -106,7 +112,10 @@ describe("awish_extension: batch från tillägget", () => {
   it("Excel-exponent och citattecken i fälten hanteras som i CSV", () => {
     const result = parseAwishExtensionBatch({
       context,
-      rows: [row({ externalId: "4.27801E+11" }), row({ externalId: "5", title: 'Box "Elite" ,Trainer' })],
+      rows: [
+        row({ externalId: "4.27801E+11" }),
+        row({ externalId: "5", title: 'Box "Elite" ,Trainer' }),
+      ],
     });
     expect(result.errors).toHaveLength(1);
     expect(result.rows[0]!.rawTitle).toBe('Box "Elite" ,Trainer');
@@ -114,13 +123,17 @@ describe("awish_extension: batch från tillägget", () => {
 
   it("tom batch och för stor batch avvisas", () => {
     expect(() => parseAwishExtensionBatch({ context, rows: [] })).toThrow(/tom/);
-    const many = Array.from({ length: MAX_BATCH_ROWS + 1 }, (_, i) => row({ externalId: String(i) }));
+    const many = Array.from({ length: MAX_BATCH_ROWS + 1 }, (_, i) =>
+      row({ externalId: String(i) }),
+    );
     expect(() => parseAwishExtensionBatch({ context, rows: many })).toThrow(/500/);
     expect(extensionBatchSchema.safeParse({ rows: many }).success).toBe(false);
   });
 
   it("schemat avvisar okända fält i en rad och för långa celler", () => {
-    expect(extensionBatchSchema.safeParse({ rows: [{ ...row(), extra: "x" }] }).success).toBe(false);
+    expect(extensionBatchSchema.safeParse({ rows: [{ ...row(), extra: "x" }] }).success).toBe(
+      false,
+    );
     expect(
       extensionBatchSchema.safeParse({ rows: [row({ title: "x".repeat(2001) })] }).success,
     ).toBe(false);

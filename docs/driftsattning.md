@@ -31,50 +31,68 @@ inget återstår). Utskriften är på svenska, och `→ skulle:` markerar vad dr
 
 ### Valfria flaggor och variabler
 
-| Flagga / variabel                                                                           | Betydelse                                                                                                    |
-| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `--app-url https://app.binderlab.se`                                                        | Appens adress i produktion. Standard: projektets egna domän i Vercel, annars `https://<projekt>.vercel.app`. |
-| `BINDERLAB_APP_URL`                                                                         | Samma som `--app-url`.                                                                                       |
-| `--vercel-team <slug>`, `VERCEL_TEAM_ID`                                                    | Vilket Vercel-team. Behövs bara om token ser flera team och inget projekt redan är kopplat till repot.       |
-| `--supabase-org <id>`, `SUPABASE_ORG_ID`                                                    | Organisation för produktionsprojektet. Standard: utvecklingsprojektets.                                      |
-| `--force-deploy` / `--skip-deploy`                                                          | Driftsätt även om inget ändrats / ändra bara inställningar.                                                  |
-| `SUPABASE_DEV_DB_PASSWORD`                                                                  | Databaslösenordet för utvecklingsprojektet. Utan det byts lösenordet (se steg 4).                            |
-| `RESEND_API_KEY` + `MAIL_FROM`                                                              | Kopplar Resend som SMTP i båda Supabase-projekten och sätter `MAIL_PROVIDER=resend` i Vercel.                |
-| `MAIL_REPLY_TO`                                                                             | Förs vidare till Vercel.                                                                                     |
-| `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`                                                      | Förs vidare till Vercel (assistenten).                                                                       |
-| `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | Förs vidare till Vercel.                                                                                     |
-| `VAPID_SUBJECT`                                                                             | Kontaktadress för Web Push. Standard: `mailto:<ägarens e-post>` när `--agare` anges.                         |
+| Flagga / variabel                                                                           | Betydelse                                                                                               |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `--app-url https://app.binderlab.se`                                                        | Appens adress i produktion. Standard: projektets egna domän i Vercel (se steg 3).                       |
+| `BINDERLAB_APP_URL`                                                                         | Samma som `--app-url`.                                                                                  |
+| `--vercel-team <slug>`, `VERCEL_TEAM_ID`                                                    | Vilket Vercel-team. Behövs bara om token ser flera team och inget projekt redan är kopplat till repot.  |
+| `--supabase-org <id>`, `SUPABASE_ORG_ID`                                                    | Organisation för produktionsprojektet. Standard: utvecklingsprojektets.                                 |
+| `--force-deploy` / `--skip-deploy`                                                          | Driftsätt även om inget ändrats / ändra bara inställningar.                                             |
+| `SUPABASE_DEV_DB_PASSWORD`                                                                  | Databaslösenordet för utvecklingsprojektet. Ger Preview en `DATABASE_URL` utan att lösenordet byts.     |
+| `--byt-dev-losenord`                                                                        | Får byta utvecklingsprojektets okända lösenord (bryter GitHub-hemligheten och `.env`-filer; se steg 9). |
+| `RESEND_API_KEY` + `MAIL_FROM`                                                              | Kopplar Resend som SMTP i båda Supabase-projekten och sätter `MAIL_PROVIDER=resend` i Vercel.           |
+| `MAIL_REPLY_TO`                                                                             | Förs vidare till Vercel.                                                                                |
+| `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`                                                      | Förs vidare till Vercel (assistenten).                                                                  |
+| `SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` | Förs vidare till Vercel.                                                                                |
+| `VAPID_SUBJECT`                                                                             | Kontaktadress för Web Push. Standard: `mailto:<ägarens e-post>` när `--agare` anges.                    |
 
 Valfria värden sätts bara när de finns i sessionens miljö. Skripten läser **inte** `.env.local` (där ligger de lokala
 värdena).
 
 ### Delskript
 
-| Skript                                                      | Gör                                                                                                                |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `scripts/deploy/all.ts`                                     | Allt nedan i ordning.                                                                                              |
-| `scripts/deploy/supabase.ts`                                | Steg 1–7. Steg 3 läser bara Vercel (om `VERCEL_TOKEN` finns) för adresserna.                                       |
-| `scripts/deploy/vercel.ts`                                  | Steg 1–3 och 8–10. Kräver att produktionsprojektet finns; i Supabase byts bara ett okänt databaslösenord (steg 9). |
-| `scripts/deploy/invite-owner.ts <e-post> [--miljo preview]` | Steg 11. `--miljo preview` lägger kontot i utvecklingsprojektet.                                                   |
+| Skript                                                      | Gör                                                                                                                                                       |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/deploy/all.ts`                                     | Allt nedan i ordning.                                                                                                                                     |
+| `scripts/deploy/supabase.ts`                                | Steg 1–7. Steg 3 läser bara Vercel (om `VERCEL_TOKEN` finns) för adresserna.                                                                              |
+| `scripts/deploy/vercel.ts`                                  | Steg 1–3 och 8–11. Kräver att produktionsprojektet finns. I Supabase ändras bara produktionens adresser (steg 11) och ett okänt databaslösenord (steg 9). |
+| `scripts/deploy/invite-owner.ts <e-post> [--miljo preview]` | Steg 12. `--miljo preview` lägger kontot i utvecklingsprojektet.                                                                                          |
 
 Alla tar `--dry-run`. Det finns inget npm-skript (package.json ägs av andra); kör med `npx tsx`.
 
 ## Vad som sker i varje steg
 
 1. **Supabase-projekten.** Listar projekten (`GET /v1/projects`). Utvecklingsprojektet `ukuuwokxbtwhqfnttzwr` måste
-   finnas; ett pausat projekt väcks. `binderlab-prod` skapas i `eu-north-1` om det saknas (`POST /v1/projects`) med ett
-   genererat lösenord (32 slumpbytes). Skriptet väntar tills projektet är `ACTIVE_HEALTHY` och tjänsterna svarar.
+   finnas; ett pausat projekt väcks. `binderlab-prod` letas upp på namn **och organisation** (utvecklingsprojektets, eller
+   `--supabase-org`). Finns ett `binderlab-prod` i en annan organisation som token ser avbryts allt innan något ändras;
+   det används aldrig som produktion. Saknas det skapas det i `eu-north-1` (`POST /v1/projects`) med ett genererat
+   lösenord (32 slumpbytes). Skapandet görs aldrig om automatiskt: svarar `POST` med 5xx eller tappas anslutningen läses
+   listan om, och dyker projektet upp används det (med lösenordet som skickades). Skriptet väntar tills projektet är
+   `ACTIVE_HEALTHY` och tjänsterna svarar.
 2. **API-nycklar.** Hämtar publishable- och secret-nyckeln (`GET /v1/projects/{ref}/api-keys?reveal=true`) och skapar
    dem om de saknas. JWKS-adressen är `https://{ref}.supabase.co/auth/v1/.well-known/jwks.json`.
 3. **Vercel-projektet** (läsning). Letar i alla team som token ser efter projektet kopplat till
-   `Thekinghim/thekinghim-binderlab`, och skapar annars `binderlab` (Next.js) kopplat till repot. Appens adress väljs:
-   `--app-url`, annars projektets egna domän, annars befintlig `APP_URL`, annars `https://binderlab.vercel.app`. Blir
-   produktionsdomänen en annan efter första driftsättningen rättas `APP_URL` och Supabase, och appen driftsätts igen.
+   `Thekinghim/thekinghim-binderlab`, och skapar annars `binderlab` (Next.js) kopplat till repot. Har projekt i flera team
+   en koppling till repot avbryts det (ange `--vercel-team`). Appens adress väljs:
+   1. `--app-url`;
+   2. en egen verifierad domän i Vercel-projektet;
+   3. befintlig `APP_URL`, men bara om värden är en av projektets domäner;
+   4. projektets `*.vercel.app`-domän;
+   5. annars **antas** `https://binderlab.vercel.app` (projektet har ingen domän före första driftsättningen).
+
+   En antagen adress används bara som `APP_URL` för första bygget. Den skrivs **aldrig** in i Supabase Auth, eftersom
+   namnet kan tillhöra någon annan (se [Säkerhet](#säkerhet)). Blir domänen en annan efter första driftsättningen rättas
+   `APP_URL` och appen driftsätts igen.
+
 4. **Inloggning (auth)** i båda projekten (`PATCH /v1/projects/{ref}/config/auth`, bara fält som skiljer sig):
    - `disable_signup: true`, `mailer_autoconfirm: false` (bekräftad e-post krävs), e-post som inloggning på.
-   - `site_url`: appens adress i produktion. I utvecklingsprojektet bara om den är Supabases standard (localhost).
-   - `uri_allow_list`: produktionen får `{APP_URL}/**`, utvecklingen `https://*-<team>.vercel.app/**`
-     (förhandsversionerna). Befintliga adresser behålls.
+   - `site_url` och `uri_allow_list` i produktionen: `{APP_URL}` och `{APP_URL}/**`, men bara när adressen är bekräftad
+     (steg 3, punkt 1–4). Annars sätts de i steg 11. Är Vercel-projektets domäner kända tas varje `*.vercel.app`-post som
+     inte är projektets egen bort ur produktionens lista (även jokertecken), och en sådan `site_url` återställs till
+     `http://localhost:3000`. Andra befintliga poster (t.ex. en egen domän) behålls.
+   - Utvecklingen får `https://binderlab-*-<team>.vercel.app/**` (förhandsversionerna: `binderlab-<hash>-<team>` och
+     `binderlab-git-<gren>-<team>`). Det äldre, bredare mönstret `https://*-<team>.vercel.app/**` tas bort. `site_url`
+     lämnas som den är, eftersom appen alltid skickar `redirect_to`.
    - Mallarna "Invite user" och "Magic Link" på svenska med länken
      `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=invite` respektive `type=magiclink` (`docs/miljoer.md`).
    - Med `RESEND_API_KEY` och `MAIL_FROM`: SMTP via `smtp.resend.com:465`.
@@ -109,23 +127,37 @@ Alla tar `--dry-run`. Det finns inget npm-skript (package.json ägs av andra); k
    | `MAIL_PROVIDER=resend` och valfria värden                                 | om de finns i sessionen                          | samma              |                 |
    | `BINDERLAB_DEPLOY_STATE`                                                  | fingeravtryck (sha256-prefix) av känsliga värden | samma              | krypterad       |
 
-   Regler: ett känt värde sätts bara om det skiljer sig (känsliga jämförs via fingeravtrycket, eftersom Vercel inte
-   lämnar ut dem). Genererade värden (`CRON_SECRET`, lösenord, VAPID) sätts bara om variabeln saknas, så en omkörning byter
-   aldrig fungerande hemligheter. En variabel som delas mellan miljöer med fel värde delas upp. Andra variabler rörs inte.
+   Regler:
+   - Ett känt värde sätts bara om det skiljer sig. Känsliga värden jämförs via fingeravtrycket, eftersom Vercel inte
+     lämnar ut dem.
+   - Genererade värden (`CRON_SECRET`, lösenord, VAPID) sätts bara om variabeln saknas, så en omkörning byter aldrig
+     fungerande hemligheter.
+   - En variabel som delas mellan miljöer med fel värde delas upp. `DATABASE_URL` och `SUPABASE_SECRET_KEY` delas
+     **alltid** upp när de delas, även om de inte går att läsa: samma värde kan aldrig vara rätt för båda projekten.
+   - `BINDERLAB_DEPLOY_STATE` bokför vart `DATABASE_URL` pekar (`<ref>@<poolerns värd>`, inget hemligt). En känslig
+     `DATABASE_URL` vars bokförda mål saknas eller skiljer sig godtas inte, och ett nytt värde tas fram.
+   - Andra variabler rörs inte.
 
    `DATABASE_URL` byggs av poolerns adress (`GET /v1/projects/{ref}/config/database/pooler`) och lösenordet. Lösenordet
-   är känt bara när produktionsprojektet skapas i samma körning. Saknas `DATABASE_URL` i Vercel och lösenordet är okänt
-   byts det: skriptet räknar ut en SCRAM-SHA-256-verifierare lokalt och kör `alter role postgres with password
-'<verifierare>'`, så klartexten aldrig finns i SQL:en eller i databasens loggar. För utvecklingsprojektet betyder det
-   att tidigare `DATABASE_URL` med det gamla lösenordet (t.ex. GitHub-hemligheten för workflowet "Migrera databasen")
-   slutar fungera. Ange `SUPABASE_DEV_DB_PASSWORD` för att behålla det.
+   är känt bara när produktionsprojektet skapas i samma körning (eller via `SUPABASE_DEV_DB_PASSWORD` för utvecklingen).
+   När ett nytt värde behövs och lösenordet är okänt:
+   - **Produktionen**: lösenordet byts. Skriptet räknar ut en SCRAM-SHA-256-verifierare lokalt och kör
+     `alter role postgres with password '<verifierare>'`, så klartexten aldrig finns i SQL:en eller i databasens loggar.
+     Används GitHub-hemligheten `DATABASE_URL` (production) måste den bytas; skriptet varnar.
+   - **Utvecklingen**: lösenordet byts bara med `--byt-dev-losenord`, eftersom det bryter GitHub-hemligheten för
+     workflowet "Migrera databasen" och lokala `.env`-filer. Utan flaggan sätts ingen `DATABASE_URL` för Preview, och
+     sammanfattningen säger vad som ska göras (bäst: kör igen med `SUPABASE_DEV_DB_PASSWORD`).
 
 10. **Driftsättning.** Om något ändrats i Production (eller projektet är nytt, eller ingen färdig version finns) startas
-    en produktionsdriftsättning från `main` (`POST /v13/deployments` med `gitSource`). Skriptet väntar tills den är
-    `READY` och hämtar sedan `{APP_URL}/logga-in`: svaret ska vara 200 och sidan får inte säga "inte konfigurerat". Säger
-    den det skrivs variabelnamnen som saknas ut (aldrig värden). Förhandsversioner som redan finns får de nya
-    Preview-värdena först när de byggs om.
-11. **Ägaren.** Kontot skapas i produktionsprojektet med bekräftad e-post och utan lösenord
+    en produktionsdriftsättning från `main` (`POST /v13/deployments` med `gitSource`). Ändringar bokförs som `pending` i
+    `BINDERLAB_DEPLOY_STATE` (Production) tills en driftsättning blivit `READY`. Misslyckas bygget, eller körs
+    `--skip-deploy`, driftsätter nästa körning därför igen, fast variablerna redan stämmer. Förhandsversioner som redan
+    finns får de nya Preview-värdena först när de byggs om.
+11. **Produktionens adresser i Supabase** (både `all.ts` och `vercel.ts`). Efter driftsättningen läses projektets domäner
+    i Vercel. `site_url` och `uri_allow_list` i produktionsprojektet sätts till den bekräftade adressen, och främmande
+    `*.vercel.app`-poster tas bort (steg 4). Sedan hämtas `{APP_URL}/logga-in`: svaret ska vara 200 och sidan får inte
+    säga "inte konfigurerat". Säger den det skrivs variabelnamnen som saknas ut (aldrig värden).
+12. **Ägaren.** Kontot skapas i produktionsprojektet med bekräftad e-post och utan lösenord
     (`POST {SUPABASE_URL}/auth/v1/admin/users` med secret key). Finns kontot bekräftas e-posten om det behövs. Ägaren gör
     sedan:
     1. Öppnar `{APP_URL}/logga-in`, skriver sin e-post och trycker på "Skicka inloggningslänk".
@@ -155,32 +187,44 @@ Alla tar `--dry-run`. Det finns inget npm-skript (package.json ägs av andra); k
 - Databaslösenordet lämnar skriptet bara inuti `DATABASE_URL` till Vercel (känslig variabel) och, när projektet skapas,
   till Supabase. Byte av lösenord skickar bara en SCRAM-verifierare.
 - Dry-run skickar bara GET och läsfrågor (`set transaction read only`); klienten vägrar allt annat.
+- **Inloggningslänkar.** Mallarna skickar engångskoden till `{{ .RedirectTo }}`, som är `redirect_to` (om den finns i
+  `uri_allow_list`) eller annars `site_url`. Den som kan få in en egen domän där kan alltså, med den publika nyckeln,
+  begära en äkta inloggningslänk till ägarens adress som lämnar koden hos sig. Därför skrivs bara bekräftade adresser in
+  (steg 3), och främmande `*.vercel.app`-poster och en främmande `site_url` tas bort i produktionen. Förhandsmönstret
+  `binderlab-*-<team>.vercel.app` börjar med projektnamnet. Det smalnar av vilka värdar som matchar, men det är
+  fortfarande ett jokertecken på en delad domän. Utvecklingsprojektet ska därför inte ha riktiga kunddata.
+- **Fel organisation.** Produktionsprojektet väljs bara i rätt Supabase-organisation; ett namne någon annanstans ger ett
+  fel.
+- **Dubbletter.** HTTP-klienten gör aldrig om ett `POST` vid 5xx, nätverksfel eller tidsgräns (det kan ha gått igenom),
+  bara vid 429. `database/query` görs om eftersom den skyddas av kontrollen "redan körd". Varje anrop har en tidsgräns
+  (60 s, `database/query` 10 min).
 
 ## Endpoints och hur säkra de är
 
 API:erna gick inte att nå från byggmiljön. Allt är skrivet efter dokumentationen, med tydliga felmeddelanden. Raderna
 märkta **osäker** är de där form eller beteende kan skilja sig; skriptet hanterar fel där och skriver vad som ska göras.
 
-| Endpoint                                                                                                                | Säkerhet | Om det inte fungerar                                                                                                    |
-| ----------------------------------------------------------------------------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `GET/POST /v1/projects`, `GET /v1/projects/{ref}`                                                                       | säker    | `POST` provas med `organization_slug` om `organization_id` nekas.                                                       |
-| `GET /v1/projects/{ref}/health?services=…`                                                                              | säker    | Hoppas över vid 404.                                                                                                    |
-| `POST /v1/projects/{ref}/restore` (pausat projekt)                                                                      | osäker   | Väck projektet i Supabase-panelen och kör igen.                                                                         |
-| `GET/POST /v1/projects/{ref}/api-keys?reveal=true`                                                                      | säker    | Maskerad secret key ger ett fel som säger att token saknar rätt.                                                        |
-| `GET/PATCH /v1/projects/{ref}/config/auth`                                                                              | säker    |                                                                                                                         |
-| `…/config/auth/signing-keys` (+ `/legacy`, `PATCH /{id}`)                                                               | osäker   | Manuellt steg: Project Settings → JWT Keys.                                                                             |
-| `POST /v1/projects/{ref}/database/query` med flera satser                                                               | osäker   | Felet säger det; kör då `npm run db:migrate -- --url <session-pooler, port 5432>`.                                      |
-| Svarets form från `database/query` (rader från sista satsen)                                                            | osäker   | Både en lista med rader och en lista per sats hanteras.                                                                 |
-| `alter role postgres` via `database/query` och att poolern tar det nya lösenordet direkt                                | osäker   | Byt lösenordet i Supabase → Database → Settings och kör med `SUPABASE_DEV_DB_PASSWORD`/ta bort `DATABASE_URL` i Vercel. |
-| `GET /v1/projects/{ref}/config/database/pooler`                                                                         | säker    | Faller tillbaka på `aws-0-{region}.pooler.supabase.com` med en varning.                                                 |
-| Storage `GET/POST /storage/v1/bucket`, Auth `…/auth/v1/admin/users`                                                     | säker    |                                                                                                                         |
-| Vercel `GET /v2/teams`, `/v2/user`, `GET /v10/projects`, `POST /v11/projects`                                           | säker    |                                                                                                                         |
-| Vercel `POST /v9/projects/{id}/link` (koppla ett befintligt okopplat projekt)                                           | osäker   | Koppla repot under Settings → Git och kör igen.                                                                         |
-| Vercel `GET /v10/projects/{id}/env`, `GET /v1/projects/{id}/env/{id}`, `POST /v10/…/env`, `PATCH/DELETE /v9/…/env/{id}` | säker    |                                                                                                                         |
-| Vercel `PATCH /v9/…/env/{id}` med bara `target` (uppdelning)                                                            | osäker   | Ta bort den delade variabeln för hand och kör igen.                                                                     |
-| Vercel `PATCH /v9/projects/{id}` (`serverlessFunctionRegion`)                                                           | säker    | `vercel.json` (`regions: ["arn1"]`) gäller ändå.                                                                        |
-| Vercel `POST /v13/deployments` (`gitSource`), `GET /v13/deployments/{id}`, `GET /v6/deployments`                        | säker    |                                                                                                                         |
-| Vercel `GET /v9/projects/{id}/domains`                                                                                  | säker    |                                                                                                                         |
+| Endpoint                                                                                                                | Säkerhet | Om det inte fungerar                                                                                                                                    |
+| ----------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET/POST /v1/projects`, `GET /v1/projects/{ref}`                                                                       | säker    | `POST` provas med `organization_slug` om `organization_id` nekas.                                                                                       |
+| `GET /v1/projects/{ref}/health?services=…`                                                                              | säker    | Hoppas över vid 404.                                                                                                                                    |
+| `POST /v1/projects/{ref}/restore` (pausat projekt)                                                                      | osäker   | Väck projektet i Supabase-panelen och kör igen.                                                                                                         |
+| `GET/POST /v1/projects/{ref}/api-keys?reveal=true`                                                                      | säker    | Maskerad secret key ger ett fel som säger att token saknar rätt.                                                                                        |
+| `GET/PATCH /v1/projects/{ref}/config/auth`                                                                              | säker    |                                                                                                                                                         |
+| `…/config/auth/signing-keys` (+ `/legacy`, `PATCH /{id}`)                                                               | osäker   | Manuellt steg: Project Settings → JWT Keys.                                                                                                             |
+| `POST /v1/projects/{ref}/database/query` med flera satser                                                               | osäker   | Felet säger det; kör då `npm run db:migrate -- --url <session-pooler, port 5432>`.                                                                      |
+| Svarets form från `database/query` (rader från sista satsen)                                                            | osäker   | Både en lista med rader och en lista per sats hanteras.                                                                                                 |
+| `alter role postgres` via `database/query` och att poolern tar det nya lösenordet direkt                                | osäker   | Byt lösenordet i Supabase → Database → Settings och kör med `SUPABASE_DEV_DB_PASSWORD`/ta bort `DATABASE_URL` i Vercel.                                 |
+| `GET /v1/projects/{ref}/config/database/pooler`                                                                         | säker    | Faller tillbaka på `aws-0-{region}.pooler.supabase.com` med en varning. Värden ingår i den bokförda taggen, så en fel gissning rättas när API:t svarar. |
+| Storage `GET/POST /storage/v1/bucket`, Auth `…/auth/v1/admin/users`                                                     | säker    |                                                                                                                                                         |
+| Vercel `GET /v2/teams`, `/v2/user`, `POST /v11/projects`                                                                | säker    |                                                                                                                                                         |
+| Vercel `GET /v10/projects` med `repoUrl`/`search` och bläddring via `from`                                              | osäker   | Okända filter ignoreras (listan filtreras ändå lokalt). Bläddringen stannar när en sida inte ger nya projekt.                                           |
+| Vercel `POST /v9/projects/{id}/link` (koppla ett befintligt okopplat projekt)                                           | osäker   | Koppla repot under Settings → Git och kör igen.                                                                                                         |
+| Vercel `GET /v10/projects/{id}/env`, `GET /v1/projects/{id}/env/{id}`, `POST /v10/…/env`, `PATCH/DELETE /v9/…/env/{id}` | säker    |                                                                                                                                                         |
+| Vercel `PATCH /v9/…/env/{id}` med bara `target` (uppdelning)                                                            | osäker   | Ta bort den delade variabeln för hand och kör igen.                                                                                                     |
+| Vercel `PATCH /v9/projects/{id}` (`serverlessFunctionRegion`)                                                           | säker    | `vercel.json` (`regions: ["arn1"]`) gäller ändå.                                                                                                        |
+| Vercel `POST /v13/deployments` (`gitSource`), `GET /v13/deployments/{id}`, `GET /v6/deployments`                        | säker    |                                                                                                                                                         |
+| Vercel `GET /v9/projects/{id}/domains`                                                                                  | säker    |                                                                                                                                                         |
 
 ## Kvar för hand
 
@@ -196,6 +240,8 @@ Det här kan inte skripten göra, och sammanfattningen påminner om det som gäl
 - **Egen domän** (t.ex. `app.binderlab.se`): lägg till den i Vercel → Settings → Domains och kör igen med
   `--app-url https://app.binderlab.se`.
 - **Valfritt**: Sentry, Claude API (`ANTHROPIC_API_KEY`), sms-leverantör. Kör igen med värdena i miljön.
+- **`DATABASE_URL` för Preview**, om utvecklingsprojektets lösenord inte är känt: kör igen med
+  `SUPABASE_DEV_DB_PASSWORD=<lösenordet>` (Supabase → Database → Settings), eller med `--byt-dev-losenord`.
 - **GitHub Environments** behövs inte längre för migreringar (skripten kör dem). Workflowet "Migrera databasen" finns
   kvar och kräver då `DATABASE_URL` med det aktuella lösenordet.
 
@@ -209,8 +255,14 @@ npx vitest run -c test/deploy/vitest.config.ts
   körning från noll, andra körningen ändrar ingenting och driftsätter inte, redan körda och ändrade migreringar, en
   migrering som misslyckas, befintligt projekt med okänt lösenord, uppdelning av delade variabler, roterad nyckel,
   dry-run (bara läsningar), faserna var för sig, Hobby-varning, "inte konfigurerat", fel token, och att ingen hemlighet
-  finns i utskriften.
-- `test/deploy/lib.test.ts`: maskning, HTTP-klienten (omförsök, fel, dry-run-spärr), argument, auth-diff, SMTP,
+  finns i utskriften. Dessutom granskningens fall: en antagen adress som blev en annan (även med `supabase.ts` följt av
+  `vercel.ts`), rensning av främmande `*.vercel.app`-poster, `binderlab-prod` i fel organisation, 504 på
+  `POST /v1/projects`, delad och felmärkt `DATABASE_URL`, `--byt-dev-losenord` och `SUPABASE_DEV_DB_PASSWORD`, ny
+  driftsättning efter ett misslyckat bygge och efter `--skip-deploy`, flera Vercel-team och ett 422 vid ägarkontot.
+- `test/db/redteam-driftsattning.test.ts` (granskningens egna tester, körs med `vitest.db.config.ts`): samma fynd sett
+  utifrån.
+- `test/deploy/lib.test.ts`: maskning, HTTP-klienten (omförsök bara när det är säkert, tidsgräns, fel, dry-run-spärr),
+  argument, auth-diff och rensning av främmande adresser, SMTP,
   genererade hemligheter och att skripten inte skriver filer.
 - `test/deploy/migrations.db.test.ts`: frågorna som skickas till `database/query` körs mot en riktig Postgres 16 med
   auth-shimmen: alla 50+ riktiga migreringar, samma bokföring som `migrate.ts`, idempotens, återställning vid fel,

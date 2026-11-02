@@ -45,7 +45,14 @@ export interface Report {
 export interface BatchResult {
   ok: true;
   importId: string | null;
-  summary: { total: number; new: number; duplicate: number; conflict: number; error: number; notPaid: number } | null;
+  summary: {
+    total: number;
+    new: number;
+    duplicate: number;
+    conflict: number;
+    error: number;
+    notPaid: number;
+  } | null;
   lastSyncedAt: string | null;
 }
 
@@ -86,7 +93,10 @@ export class BinderlabClient {
   ) {
     this.base = normalizeBaseUrl(baseUrl);
     if (!/^blsync_[A-Za-z0-9_-]{43}$/.test(token.trim())) {
-      throw new BinderlabError("settings", "Token har fel form. Kopiera den på nytt från Datakällor i Binderlab.");
+      throw new BinderlabError(
+        "settings",
+        "Token har fel form. Kopiera den på nytt från Datakällor i Binderlab.",
+      );
     }
     this.token = token.trim();
   }
@@ -119,7 +129,11 @@ export class BinderlabClient {
     if (res.status === 401 || res.status === 403) throw new BinderlabError("auth", message);
     if (res.status === 429) {
       const retry = Number(res.headers.get("retry-after") ?? "0");
-      throw new BinderlabError("rate", message, Number.isFinite(retry) && retry > 0 ? retry * 1000 : undefined);
+      throw new BinderlabError(
+        "rate",
+        message,
+        Number.isFinite(retry) && retry > 0 ? retry * 1000 : undefined,
+      );
     }
     if (res.status === 400 || res.status === 409 || res.status === 413) {
       throw new BinderlabError("invalid", message);
