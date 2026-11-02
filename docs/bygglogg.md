@@ -87,3 +87,6 @@ Tas bort när alla faser är klara.
 - Ny migrering 20261102160000_hardening_org_statistics.sql (statistikskydd på import_uploads*).
 - Planen: prompt 5 avbockad, lägestabell uppdaterad.
 - Kvar: seed.test.ts krockar med demo-isolering.test.ts (fas 7-agenten äger), fas 7.
+- 14:45 Fas 7 startad i tre spår parallellt med fas 7 del 1: integration (wf_0ceb3b4f-49c), säkerhetsgranskning (wf_78b49347-40d),
+  e2e + backup + övervakning (wf_5edd7611-a2e). Efter integrationen: genomgång av hela appen (spåret "genomgang"), sedan prestanda
+  (100 000 order), dokumentation (README, architecture, operations, decisions, product) och slutverifiering.
