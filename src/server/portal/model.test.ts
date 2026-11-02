@@ -162,6 +162,18 @@ describe("buildPortalOverview", () => {
     expect(o.trendTotals.months).toBe(2);
   });
 
+  it("pågående månad räknar dagar i butiken bara till och med i dag", () => {
+    const o = buildPortalOverview(sources, "s1", "2026-10", "2026-08", "2026-10-20");
+    // m1 hela oktober hittills (1–20), m2 till och med 10 oktober
+    expect(o.placedDaysSoFar).toEqual({ m1: 20, m2: 10 });
+    const m1 = o.report.machines.find((m) => m.machineId === "m1")!;
+    expect(m1.placedDays).toBe(31);
+    const full = buildPortalOverview(sources, "s1", "2026-09", "2026-08", "2026-10-20");
+    expect(full.placedDaysSoFar).toEqual(
+      Object.fromEntries(full.report.machines.map((m) => [m.machineId, m.placedDays])),
+    );
+  });
+
   it("innehåller aldrig inköp, marginal eller vinst", () => {
     const o = buildPortalOverview(sources, "s1", "2026-09", "2026-08", "2026-11-02");
     expect(JSON.stringify(o)).not.toMatch(/cost|margin|profit|purchase|inköp|vinst/i);

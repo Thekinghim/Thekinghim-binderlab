@@ -60,6 +60,8 @@ export function TitleTable({
       {
         key: "name",
         header: "Titel",
+        // Namnet får inte tryckas ihop av de många beloppskolumnerna (bröts på tre rader).
+        className: "md:min-w-48",
         sortValue: (r) => r.name,
         csv: (r) => r.name,
         hideable: false,
@@ -125,6 +127,10 @@ export function TitleTable({
                   från {formatDayShort(r.currentFrom, today)}
                 </span>
               ) : null}
+              {/* Snittet i perioden bara när priset har ändrats under den (annars samma tal). */}
+              {r.averageCostOre !== null && r.averageCostOre !== r.currentCostOre ? (
+                <span className="meta text-subtle">snitt {money(r.averageCostOre)}</span>
+              ) : null}
             </span>
           ),
       },
@@ -142,6 +148,9 @@ export function TitleTable({
         header: "Snitt inköp",
         numeric: true,
         hideOnMobile: true,
+        // Samma som inköpspriset så länge priset inte ändrats i perioden; skillnaden står då
+        // under inköpspriset. Kolumnen finns i kolumnvalet.
+        defaultHidden: true,
         sortValue: (r) => r.averageCostOre ?? Number.NaN,
         csv: (r) => (r.averageCostOre === null ? "" : kr(r.averageCostOre)),
         render: (r) => money(r.averageCostOre),

@@ -80,6 +80,12 @@ export function krExact(ore: number): string {
   return `${sign}${formatInt(whole)},${String(cents).padStart(2, "0")}${NBSP}kr`;
 }
 
+/** Procent från bp med en decimal, som andelen utan inköpspris på Lönsamhet: 352 bp → "3,5 %". */
+export function pct1(bp: number): string {
+  const tenths = roundHalfUp(bp, 10);
+  return `${formatInt(Math.trunc(tenths / 10))},${Math.abs(tenths % 10)}${NBSP}%`;
+}
+
 /** Procent från bp, hela procent: 3 312 bp → "33 %". */
 export function pct(bp: number): string {
   return `${formatInt(roundHalfUp(bp, 100))}${NBSP}%`;

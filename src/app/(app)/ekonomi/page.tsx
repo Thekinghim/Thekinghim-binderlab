@@ -4,7 +4,7 @@ import { Panel, PanelSection } from "@/components/ui/frame";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { addMonths, eachMonth } from "@/domain";
-import { formatDateTime, formatInt, NBSP } from "@/lib/format";
+import { formatDate, formatDateTime, formatInt, NBSP } from "@/lib/format";
 import {
   currentViewer,
   loadBookkeepingFor,
@@ -23,7 +23,16 @@ import { PayoutUpload } from "./_components/payout-upload";
 import { ReconciliationList } from "./_components/reconciliation";
 import { AccountTable, CashflowTable, VerificationTable } from "./_components/tables";
 import { economyHeadline } from "./_lib/headline";
-import { kr, monthText, periodShort, plural, sek, sentence, signedSek } from "./_lib/view";
+import {
+  isoToDate,
+  kr,
+  monthText,
+  periodShort,
+  plural,
+  sek,
+  sentence,
+  signedSek,
+} from "./_lib/view";
 
 export const metadata: Metadata = { title: "Ekonomi" };
 
@@ -136,6 +145,16 @@ export default async function EkonomiPage({
   const scoped = Boolean(p.scope.storeId || p.scope.machineId);
   const payoutIds = Object.fromEntries(rec.payouts.map((x) => [x.reference, x.id]));
 
+  // Loggen visar avvikelsens rubrik, inte den interna nyckeln
+  const deviationTitle = new Map<string, string>(
+    result
+      ? [...result.payouts.flatMap((x) => x.deviations), ...result.uncovered].map((d) => [
+          d.key,
+          d.title,
+        ])
+      : [],
+  );
+
   // Kassaflöde
   const cashRows =
     cash.result?.buckets.map((b) => ({
@@ -148,6 +167,7 @@ export default async function EkonomiPage({
       fixedCostsOre: b.total.fixedCostsOre,
       netOre: b.total.netOre,
       summary: b.summary,
+      note: cashNote(b, rec.payouts, ctx.today),
     })) ?? [];
 
   const rep = cash.replenishment;
@@ -228,7 +248,7 @@ export default async function EkonomiPage({
           title="Utbetalningar mot försäljningen."
           aside={
             result
-              ? result.summary
+              ? reconciliationFact(result)
               : `${sentence(`Ingen utbetalning med period i ${when}`)} Väntad utbetalning = försäljning − avgifter − återbetalningar.`
           }
         />
@@ -237,6 +257,7 @@ export default async function EkonomiPage({
             {result ? (
               <ReconciliationList
                 result={result}
+                today={ctx.today}
                 canEdit={canEdit}
                 period={p.period}
                 payoutIds={payoutIds}
@@ -297,7 +318,10 @@ export default async function EkonomiPage({
                         </span>
                         <span className="text-fg">
                           {r.action === "investigated" ? "Utredd" : "Öppnad igen"}:{" "}
-                          <span className="font-mono text-xs text-muted">{r.deviationKey}</span>
+                          <span className="text-muted">
+                            {deviationTitle.get(r.deviationKey) ??
+                              deviationFallback(r.deviationKey)}
+                          </span>
                         </span>
                         {r.note ? <span className="text-muted">{r.note}</span> : null}
                       </li>
@@ -315,8 +339,10 @@ export default async function EkonomiPage({
                         <span className="truncate text-fg">{i.fileName}</span>
                         <span className="meta text-subtle">
                           {formatDateTime(new Date(i.createdAt))} · {formatInt(i.rowsNew)} nya ·{" "}
-                          {formatInt(i.rowsDuplicate)} dubbletter ·{" "}
-                          {formatInt(i.rowsConflict + i.rowsError)} fel
+                          {i.rowsDuplicate === 1
+                            ? "1 dubblett"
+                            : `${formatInt(i.rowsDuplicate)} dubbletter`}{" "}
+                          · {formatInt(i.rowsConflict + i.rowsError)} fel
                         </span>
                       </li>
                     ))}
@@ -469,7 +495,13 @@ export default async function EkonomiPage({
                 )
               : "Kassaflöde per månad."
           }
-          aside={cash.result ? cash.result.summary : (cash.error ?? undefined)}
+          aside={
+            cash.result
+              ? cash.result.totals.forecast.netOre !== 0
+                ? `Varav prognos efter i dag: ${signedSek(cash.result.totals.forecast.netOre)}.`
+                : `In ${sek(cash.result.totals.total.inOre)}, ut ${sek(cash.result.totals.total.outOre)}.`
+              : (cash.error ?? undefined)
+          }
         />
         {cash.result ? (
           <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
@@ -511,7 +543,7 @@ export default async function EkonomiPage({
           }
           aside={
             at && at.fixedCostOre > 0
-              ? fixed.allocation!.summary
+              ? allocationFact(fixed.allocation!, machineCode)
               : (fixed.error ??
                 "Försäkring, programvara och transport dras från vinsten de dagar de gäller.")
           }
@@ -586,4 +618,61 @@ function toFinanceEvidence(e: {
       unit: f.unit,
     })),
   };
+}
+
+/** En mening om utbetalningarna som rubriken inte redan säger. */
+function reconciliationFact(result: {
+  payouts: readonly { reference: string; paidOn: string; expected: { orders: number } }[];
+}): string {
+  const orders = result.payouts.reduce((s, x) => s + x.expected.orders, 0);
+  const last = [...result.payouts].sort((a, b) => (a.paidOn < b.paidOn ? 1 : -1))[0];
+  return `${plural(result.payouts.length, "utbetalning", "utbetalningar")} täcker ${plural(
+    orders,
+    "order",
+    "order",
+  )}${last ? `; senast ${last.reference}` : ""}.`;
+}
+
+/** Fördelningen av gemensamma kostnader i en mening. */
+function allocationFact(
+  allocation: {
+    method: "revenue" | "equal";
+    rows: readonly { key: string; kind: string; sharedFixedOre: number; shareBp: number | null }[];
+  },
+  codes: ReadonlyMap<string, string>,
+): string {
+  const how =
+    allocation.method === "revenue"
+      ? "Gemensamma kostnader fördelas efter nettointäkt"
+      : "Gemensamma kostnader fördelas lika per automat";
+  const top = allocation.rows
+    .filter((r) => r.kind === "machine" && r.sharedFixedOre > 0)
+    .sort((a, b) => b.sharedFixedOre - a.sharedFixedOre)[0];
+  if (!top) return `${how}.`;
+  const share = top.shareBp === null ? "" : ` (${Math.round(top.shareBp / 100)}${NBSP}%)`;
+  return `${how}: ${codes.get(top.key) ?? "en automat"} bär mest, ${sek(top.sharedFixedOre)}${share}.`;
+}
+
+/** Den interna nyckeln ('AW-2026-10:missing-in-payout') som läsbar text, om rubriken saknas. */
+function deviationFallback(key: string): string {
+  const ref = key.split(":")[0];
+  return ref ? `en avvikelse i ${ref}` : "en avvikelse";
+}
+
+/**
+ * Förklaring på en månad i kassaflödet där inget kom in: utbetalningen för
+ * månadens försäljning kommer först efter månadens slut.
+ */
+function cashNote(
+  b: { key: string; range: { end: string }; total: { payoutsOre: number } },
+  payouts: readonly { reference: string; periodEnd: string; paidOn: string | null }[],
+  today: string,
+): string | null {
+  if (b.total.payoutsOre !== 0) return null;
+  const later = payouts.find(
+    (x) => x.periodEnd.slice(0, 7) === b.key && x.paidOn !== null && x.paidOn > b.range.end,
+  );
+  if (!later || later.paidOn === null) return null;
+  const day = formatDate(isoToDate(later.paidOn), { year: "auto", now: isoToDate(today) });
+  return `Utbetalningen för månaden (${later.reference}) ${later.paidOn > today ? "kommer" : "kom"} ${day}.`;
 }

@@ -26,7 +26,13 @@ import { ALL_ROLES, type DataScope } from "@/server/data/core/types";
 import { loadMachineHealthFor } from "@/server/data/health";
 
 import { buildLagerModel, WINDOW_DAYS } from "./model";
-import { HISTORY_LIMIT, type HistoryEntry, type HistoryKind, type LagerView } from "./types";
+import {
+  HISTORY_LIMIT,
+  type HistoryEntry,
+  type HistoryKind,
+  type LagerView,
+  type SlotPeriod,
+} from "./types";
 
 /** Roller som får registrera påfyllning och inventering (RLS och register_refill). */
 export const REGISTER_ROLES = ["owner", "admin", "refiller"] as const;
@@ -66,6 +72,32 @@ async function queryPerformers(tx: Tx, orgId: string): Promise<Map<string, strin
     map.set(r.user_id, r.display_name?.trim() || null);
   }
   return map;
+}
+
+/**
+ * Sortimentets perioder via lager_slot_periods (security definer, alla roller):
+ * machine_slots får påfyllaren inte läsa direkt, men Lager behöver veta vilka titlar
+ * som gått ur sortimentet. Bara automat, titel och datum.
+ */
+async function querySlotPeriods(tx: Tx, orgId: string): Promise<SlotPeriod[]> {
+  const result = await tx.execute(
+    sql`select machine_id::text as machine_id, title_id::text as title_id,
+               valid_from::text as valid_from, valid_to::text as valid_to
+        from public.lager_slot_periods(${orgId}::uuid)`,
+  );
+  return (
+    Array.from(result) as {
+      machine_id: string;
+      title_id: string;
+      valid_from: string;
+      valid_to: string | null;
+    }[]
+  ).map((r) => ({
+    machineId: r.machine_id,
+    titleId: r.title_id,
+    validFrom: r.valid_from as IsoDate,
+    validTo: (r.valid_to ?? null) as IsoDate | null,
+  }));
 }
 
 async function queryHistory(
@@ -172,12 +204,13 @@ export async function loadLagerFor(
   // försäljning läses också men räknas inte i takten; saldot är alltid dagens.
   const salesFrom: IsoDate = addDays(today, -(WINDOW_DAYS + 1));
 
-  const [master, stock, sales, health] = await Promise.all([
+  const [master, stock, sales, health, slotPeriods] = await Promise.all([
     loadMasterDataFor(viewer, now),
     loadStockFor(viewer),
     loadSalesCountsFor(viewer, { period: { start: salesFrom, end: today } }),
     // Samma maskinhälsa som Drift: automater med fel får besök i dag i veckoplanen.
     loadMachineHealthFor(viewer, now),
+    withUserDbFor(viewer.user, (tx) => querySlotPeriods(tx, orgId)),
   ]);
 
   const model = buildLagerModel({
@@ -190,6 +223,7 @@ export async function loadLagerFor(
     scope: args.scope,
     hasCentral: await withUserDbFor(viewer.user, (tx) => queryHasCentral(tx, orgId)),
     health,
+    slotPeriods,
   });
 
   const titleName = new Map(master.titles.map((t) => [t.id, t.name]));
@@ -224,6 +258,7 @@ export async function loadLagerFor(
     history: history.entries,
     historyTotal: history.total,
     counts: model.counts,
+    retiredTitles: model.retiredTitles,
     canRegister: (REGISTER_ROLES as readonly string[]).includes(role),
     packListFirst: role === "refiller" || args.scope.machineId !== null,
   };

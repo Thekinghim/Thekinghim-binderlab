@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 
 import { cn } from "@/lib/cn";
 import { Skeleton } from "./skeleton";
@@ -30,6 +30,8 @@ export type KpiItem = {
   /** Kräver åtgärd. Ange alltid alertText, t.ex. "Gräns 3 st". */
   alert?: boolean;
   alertText?: string;
+  /** Grunden för talet när den inte är självklar, t.ex. "på order med inköpspris". */
+  note?: string;
 };
 
 type KpiStripProps = {
@@ -46,6 +48,8 @@ type KpiStripProps = {
   loading?: boolean;
   motion?: KpiMotion;
   className?: string;
+  /** Namn för skärmläsare när remsan saknar synligt huvud (standard label, annars "Nyckeltal"). */
+  ariaLabel?: string;
 };
 
 // Statiska klasser så att Tailwind hittar dem.
@@ -183,11 +187,19 @@ export function KpiStrip({
   loading,
   motion = "fade",
   className,
+  ariaLabel,
 }: KpiStripProps) {
   const Heading = headingLevel === 2 ? "h2" : "h3";
   const hasHeader = Boolean(label || comparison);
   const layout = kpiStripLayout(items);
   const { sm, total } = layout;
+  // Cellerna utom huvudpersonen delar storlekssteg: behöver ett belopp krympa för att rymmas
+  // krymper hela raden lika mycket, så att talen står i samma storlek och baslinje.
+  const [steps, setSteps] = useState<Readonly<Record<string, number>>>({});
+  const reportStep = useCallback((id: string, step: number) => {
+    setSteps((s) => (s[id] === step ? s : { ...s, [id]: step }));
+  }, []);
+  const sharedStep = sharedFitStep(items, steps);
 
   return (
     <section
@@ -198,7 +210,7 @@ export function KpiStrip({
         nestedReset,
         className,
       )}
-      aria-label={label ?? "Nyckeltal"}
+      aria-label={ariaLabel ?? label ?? "Nyckeltal"}
     >
       {hasHeader ? (
         <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 pb-3">
@@ -217,6 +229,8 @@ export function KpiStrip({
               item={item}
               loading={loading}
               motion={motion}
+              minStep={item.primary ? 0 : sharedStep}
+              onStep={reportStep}
               span={cn(
                 layout.cells[i]?.baseSpan === 2 && "col-span-2",
                 smSpan[layout.cells[i]?.smSpan ?? 1],
@@ -251,11 +265,27 @@ const VALUE_SIZES = ["text-xl @xl:text-2xl", "text-xl", "text-lg", "text-md"];
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 /**
+ * Det storlekssteg cellerna utom huvudpersonen delar: det största steg någon av dem behöver
+ * (ren funktion, testas i kpi-strip.test.ts). Celler som inte rapporterat räknas som steg 0.
+ */
+export function sharedFitStep(
+  items: ReadonlyArray<{ id: string; primary?: boolean }>,
+  steps: Readonly<Record<string, number>>,
+): number {
+  return items.reduce((max, i) => (i.primary ? max : Math.max(max, steps[i.id] ?? 0)), 0);
+}
+
+/**
  * Minskar värdets storlek ett steg i taget tills texten ryms (scrollWidth ≤ clientWidth),
  * i stället för att klippa den. Börjar om från steg 0 när texten eller cellens bredd
  * ändras. Före hydrering visas steg 0 (med ellips om det inte ryms).
  */
-function useFitStep(ref: React.RefObject<HTMLElement | null>, text: string, max: number): number {
+function useFitStep(
+  ref: React.RefObject<HTMLElement | null>,
+  text: string,
+  max: number,
+  minStep = 0,
+): { own: number; shown: number } {
   const [state, setState] = useState({ step: 0, text, width: 0 });
   // Ny text: börja om från största storleken (justeras under rendering, inte i en effekt).
   let step = state.step;
@@ -263,6 +293,8 @@ function useFitStep(ref: React.RefObject<HTMLElement | null>, text: string, max:
     step = 0;
     setState({ step: 0, text, width: state.width });
   }
+  // Visat steg: cellens eget eller radens gemensamma, det som är mindre (högre steg).
+  const shown = Math.min(max, Math.max(step, minStep));
   useIsoLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -271,9 +303,9 @@ function useFitStep(ref: React.RefObject<HTMLElement | null>, text: string, max:
     el.style.transition = "none";
     const overflows = el.scrollWidth > el.clientWidth + 1;
     el.style.transition = "";
-    if (step < max && overflows) {
+    if (shown < max && overflows) {
       // Bara ett steg per mätning, även när effekten körs två gånger (StrictMode).
-      setState((s) => (s.step === step ? { ...s, step: step + 1 } : s));
+      setState((s) => (s.step === step ? { ...s, step: shown + 1 } : s));
     }
   });
   useEffect(() => {
@@ -294,7 +326,7 @@ function useFitStep(ref: React.RefObject<HTMLElement | null>, text: string, max:
       ro.disconnect();
     };
   }, [ref]);
-  return step;
+  return { own: step, shown };
 }
 
 function KpiCell({
@@ -302,11 +334,17 @@ function KpiCell({
   loading,
   motion,
   span,
+  minStep = 0,
+  onStep,
 }: {
   item: KpiItem;
   loading?: boolean;
   motion: KpiMotion;
   span?: string;
+  /** Radens gemensamma storlekssteg (för celler utom huvudpersonen). */
+  minStep?: number;
+  /** Rapporterar steget cellen själv behöver, så att raden kan dela det. */
+  onStep?: (id: string, step: number) => void;
 }) {
   const shown = useKpiValue(item.value, motion);
   const text = item.format(shown);
@@ -314,7 +352,12 @@ function KpiCell({
   const ref = useValueFade<HTMLElement>(finalText, motion === "fade");
   const { primary } = item;
   const sizes = primary ? PRIMARY_SIZES : VALUE_SIZES;
-  const step = useFitStep(ref, finalText, sizes.length - 1);
+  const fit = useFitStep(ref, finalText, sizes.length - 1, minStep);
+  const step = fit.shown;
+  const { id } = item;
+  useEffect(() => {
+    onStep?.(id, fit.own);
+  }, [onStep, id, fit.own]);
 
   return (
     <div
@@ -339,6 +382,7 @@ function KpiCell({
               <KpiDelta spec={item.delta} />
             </dd>
           ) : null}
+          {item.note ? <dd className="meta mt-1 text-subtle">{item.note}</dd> : null}
           {item.alert ? (
             <dd className="mt-2">
               <KpiAlert>{item.alertText ?? "Kräver åtgärd"}</KpiAlert>

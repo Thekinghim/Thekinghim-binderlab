@@ -47,10 +47,13 @@ export function TrendChart({
   data,
   summary,
   selectedIndex,
+  mean,
 }: {
   data: BarDatum[];
   summary: string;
   selectedIndex: number;
+  /** Snitt för hela månader i kronor; utan värde ritas ingen snittlinje. */
+  mean?: number;
 }) {
   return (
     <BarChart
@@ -61,6 +64,8 @@ export function TrendChart({
       height={240}
       peakIndex={selectedIndex}
       highlightNote="Vald månad"
+      showMean={mean !== undefined}
+      meanValue={mean}
       summary={summary}
     />
   );

@@ -105,6 +105,14 @@ describe("formatSek (heltal, befintligt beteende)", () => {
     expect(formatSek(12480.6)).toBe(t("12~481~kr"));
     expect(formatSek(-3200)).toBe(t("−3~200~kr"));
     expect(formatSek(0)).toBe(t("0~kr"));
+  });
+
+  it("avrundar halva kronor bort från noll, lika för båda tecknen", () => {
+    expect(formatSek(384.5)).toBe(t("385~kr"));
+    expect(formatSek(-384.5)).toBe(t("−385~kr"));
+    expect(formatSek(-0.4)).toBe(t("0~kr"));
+    expect(formatInt(-2.5)).toBe("−3");
+    expect(formatInt(2.5)).toBe("3");
     expect(formatSek(-0.4)).toBe(t("0~kr"));
     expect(formatSek(NaN)).toBe("–");
   });

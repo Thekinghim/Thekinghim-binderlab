@@ -27,7 +27,25 @@ const VERDICT: Record<PriceEffectVerdict, { label: string; status: Status }> = {
   "no-data": { label: "Underlag saknas", status: "offline" },
 };
 
+/** Första bokstaven gemen, för ett skäl som fortsätter en mening. */
+function lcFirst(text: string): string {
+  return text.charAt(0).toLowerCase() + text.slice(1);
+}
+
+/**
+ * Nyckeltalen för en prisändring. Pack före och efter är fakta och står alltid
+ * i stor stil. Effekten och bidraget är skattningar: bara en tydlig effekt
+ * visas som nyckeltal, annars står "–" och skattningen i grått under.
+ */
 function EffectFigures({ effect }: { effect: PriceChangeEffect }) {
+  const sure = effect.verdict === "clear";
+  const noise =
+    effect.noiseBp !== null ? `, vanlig variation ±${percentOfBp(effect.noiseBp, 0)}` : "";
+  const volume = effect.effectBp === null ? null : deltaOfBp(effect.effectBp);
+  const contribution =
+    effect.contributionEffectPerWeekOre === null
+      ? null
+      : `${signedKronorWhole(effect.contributionEffectPerWeekOre)}/vecka`;
   return (
     <dl className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
       <div className="flex flex-col gap-1">
@@ -45,37 +63,71 @@ function EffectFigures({ effect }: { effect: PriceChangeEffect }) {
         </dd>
       </div>
       <div className="flex flex-col gap-1">
-        <dt className="label text-subtle">Effekt på volym</dt>
-        <dd className="tnum text-lg">
-          {effect.effectBp === null ? "–" : deltaOfBp(effect.effectBp)}
-        </dd>
+        <dt className="label text-subtle">Volym mot väntat</dt>
+        {sure || volume === null ? (
+          <dd className="tnum text-lg">{volume ?? "–"}</dd>
+        ) : (
+          <dd className="flex flex-col gap-0.5">
+            <span className="tnum text-lg text-subtle">–</span>
+            <span className="tnum text-sm text-muted">
+              Skattat {volume}
+              {noise}
+            </span>
+          </dd>
+        )}
       </div>
       <div className="flex flex-col gap-1">
         <dt className="label text-subtle">Bidrag/vecka</dt>
-        <dd className="tnum text-lg">
-          {effect.contributionEffectPerWeekOre === null
-            ? "–"
-            : signedKronorWhole(effect.contributionEffectPerWeekOre)}
-        </dd>
+        {sure || contribution === null ? (
+          <dd className="tnum text-lg">{contribution ?? "–"}</dd>
+        ) : (
+          <dd className="flex flex-col gap-0.5">
+            <span className="tnum text-lg text-subtle">–</span>
+            <span className="tnum text-sm text-muted">Skattat {contribution}</span>
+          </dd>
+        )}
       </div>
     </dl>
   );
+}
+
+/** En mening om slutsatsen; hela uträkningen ligger under "Underlag". */
+function effectSentence(effect: PriceChangeEffect): string {
+  if (effect.verdict === "clear" && effect.effectBp !== null) {
+    const c =
+      effect.contributionEffectPerWeekOre === null
+        ? ""
+        : `, ${signedKronorWhole(effect.contributionEffectPerWeekOre)}/vecka i bidrag`;
+    return `Volymen blev ${deltaOfBp(effect.effectBp)} mot väntat${c}.`;
+  }
+  const reason = effect.reasons[0];
+  if (effect.verdict === "no-data") return reason ?? effect.text;
+  return reason ? `Ingen säker slutsats än: ${lcFirst(reason)}` : "Ingen säker slutsats än.";
 }
 
 function EffectBlock({ effect, ctx }: { effect: PriceChangeEffect; ctx: SectionContext }) {
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <EffectFigures effect={effect} />
-      <p className="max-w-3xl text-muted">{effect.text}</p>
-      {effect.elasticityHundredths !== null ? (
-        <p className="meta text-subtle">
-          Elasticitet {formatNumber(effect.elasticityHundredths / 100, 2)}
-          {effect.noiseBp !== null
-            ? ` · vanlig variation upp till ${percentOfBp(effect.noiseBp, 0)}`
-            : ""}
-        </p>
-      ) : null}
-      <Evidence evidence={effect.evidence} names={ctx.names} />
+      <p className="max-w-3xl text-muted">{effectSentence(effect)}</p>
+      <Evidence
+        evidence={effect.evidence}
+        names={ctx.names}
+        extra={
+          <div className="flex max-w-3xl flex-col gap-1 border-t border-line pt-3">
+            <p className="text-muted">{effect.text}</p>
+            {effect.elasticityHundredths !== null ? (
+              <p className="text-subtle">
+                Elasticitet {formatNumber(effect.elasticityHundredths / 100, 2)}
+                {effect.noiseBp !== null
+                  ? `, vanlig variation upp till ${percentOfBp(effect.noiseBp, 0)}`
+                  : ""}
+                .
+              </p>
+            ) : null}
+          </div>
+        }
+      />
       {effect.control !== "none" ? (
         <Evidence
           label={effect.control === "machines" ? "Kontrollautomater" : "Jämförelsegrupp"}

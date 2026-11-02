@@ -165,7 +165,7 @@ export default async function LonsamhetPage({
               title="Från intäkt till vinst."
               aside={
                 b.revenueOre > 0
-                  ? `${b.unpricedRevenueOre > 0 ? "Intäkten med inköpspris, " : ""}${formatSek(b.revenueOre / 100)}${b.unpricedRevenueOre > 0 ? "," : ""} blev ${formatSek(b.profitOre / 100)} efter inköp, avgifter och butiksersättning${
+                  ? `${b.unpricedRevenueOre > 0 ? "Intäkten med inköpspris, " : ""}${formatSek(b.revenueOre / 100)}${b.unpricedRevenueOre > 0 ? "," : ""} blev ${formatSek(b.profitOre / 100)} efter ${b.feesOre !== 0 ? "inköp, avgifter och" : "inköp och"} butiksersättning${
                       b.marginBp === null ? "" : ` (${formatPercent(b.marginBp / 10_000)})`
                     }.`
                   : "Ingen order med inköpspris i perioden."

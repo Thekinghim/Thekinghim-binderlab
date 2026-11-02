@@ -77,10 +77,19 @@ function isValidDate(d: Date): boolean {
 // Tal
 // ---------------------------------------------------------------------------
 
+/**
+ * Avrundar till heltal med halva bort från noll (−384,5 → −385), som Intl och kronorna i
+ * @/domain. Math.round avrundar halva mot +∞ (−384,5 → −384), så att samma belopp med
+ * olika tecken kunde visas som 385 och −384 på samma rad.
+ */
+function roundInt(value: number): number {
+  return Math.sign(value) * Math.round(Math.abs(value));
+}
+
 /** 12 480 · −3 (avrundat heltal) */
 export function formatInt(value: number): string {
   if (!Number.isFinite(value)) return MISSING;
-  return num(Math.round(value), 0);
+  return num(roundInt(value), 0);
 }
 
 /** 1 234,57 med valfritt antal decimaler (standard 0). */
@@ -151,7 +160,7 @@ export function formatSignedKronor(value: number, options: KronorOptions = {}): 
 /** 12 480 kr (hela kronor, för tabeller och KPI:er). Motsvarar formatKronor(v, { decimals: 0 }). */
 export function formatSek(value: number): string {
   if (!Number.isFinite(value)) return MISSING;
-  return `${num(Math.round(value), 0)}${NBSP}kr`;
+  return `${num(roundInt(value), 0)}${NBSP}kr`;
 }
 
 /** Axlar och kompakta etiketter: 8 000 · 12 tkr · 31,1 tkr · 1,2 mkr */
@@ -169,7 +178,7 @@ export function formatSekAxis(value: number): string {
 /** Alltid i tkr: 2,9 tkr · 131,4 tkr */
 export function formatTkr(value: number): string {
   if (!Number.isFinite(value)) return MISSING;
-  const k = Math.round(value / 100) / 10;
+  const k = roundInt(value / 100) / 10;
   return `${Number.isInteger(k) ? formatInt(k) : formatDecimal(k)}${NBSP}tkr`;
 }
 

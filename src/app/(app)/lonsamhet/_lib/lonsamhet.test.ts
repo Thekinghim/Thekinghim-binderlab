@@ -290,9 +290,9 @@ describe("buildLonsamhetModel", () => {
     expect(m.headline).toEqual({
       kind: "profit",
       title: `Ni behöll 49,2${NBSP}% av intäkten.`,
-      aside: "BL-002 Automat 2 står för drygt hälften av vinsten.",
+      aside: "Automat 2 står för drygt hälften av vinsten.",
     });
-    expect(m.viewTitles.machine.title).toBe("BL-002 Automat 2 gav mest vinst.");
+    expect(m.viewTitles.machine.title).toBe("Automat 2 gav mest vinst.");
     expect(m.comparisonLabel).toBe(`Jämfört med 23${NBSP}sep.${NBSP}–${NBSP}12${NBSP}okt.`);
     // 25 order nu mot 20 före: +25 %.
     expect(m.kpis.find((k) => k.id === "orders")?.delta).toBeCloseTo(0.25);

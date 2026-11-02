@@ -103,11 +103,10 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
   if (scopeText)
     meta.unshift({ label: scope?.kind === "machine" ? "Automat" : "Butik", value: scopeText });
 
-  const comparison = model.compare
-    ? `${periodText(model.period)} · jämfört med ${periodText(model.compare)}`
-    : model.dataStart
-      ? `${periodText(model.period)} · ingen jämförelse, datan börjar ${dayOnly(model.dataStart)}`
-      : periodText(model.period);
+  // Perioden och jämförelsen står i metablocket bredvid rubriken; remsan upprepar dem inte.
+  const comparisonLabel = model.compare
+    ? `Nyckeltal jämfört med ${periodText(model.compare)}`
+    : "Nyckeltal utan jämförelse";
 
   const revenue = model.kpis.find((k) => k.id === "revenue")?.value ?? 0;
 
@@ -144,7 +143,7 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
       ) : (
         <>
           <div className="mt-8 flex flex-col gap-4 md:mt-10">
-            <HomeKpis kpis={model.kpis} comparison={comparison} />
+            <HomeKpis kpis={model.kpis} ariaLabel={comparisonLabel} />
             {model.unpriced ? <UnpricedNote unpriced={model.unpriced} canEdit={canEdit} /> : null}
             {lostSales ? <LostSalesNote lost={lostSales} /> : null}
           </div>
@@ -230,6 +229,7 @@ function DailyAndTodos({
         <DailySection
           daily={model.daily}
           todayPending={model.todayPending}
+          todayPartial={model.todayPartial}
           today={today}
           sp={sp}
           revenue={revenue}
@@ -252,6 +252,7 @@ function DailyAndTodos({
 function DailySection({
   daily,
   todayPending,
+  todayPartial,
   today,
   sp,
   revenue,
@@ -260,6 +261,7 @@ function DailySection({
 }: {
   daily: HomeDaily;
   todayPending: boolean;
+  todayPartial: boolean;
   today: string;
   sp: SearchParams;
   revenue: number;
@@ -288,6 +290,7 @@ function DailySection({
   const aside = [
     sentence(`Snitt ${kr(daily.averageOre)} per dag${peakText ? `, ${peakText}` : ""}`),
     todayPending ? "I dag är inte med: inga order än." : "",
+    todayPartial ? "I dag är inte med: dagen pågår." : "",
   ]
     .filter(Boolean)
     .join(" ");

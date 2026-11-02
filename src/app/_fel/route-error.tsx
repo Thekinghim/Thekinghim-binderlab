@@ -3,7 +3,14 @@
 import { useEffect, useState } from "react";
 
 import { StateMessage, type StateDiagnostic } from "@/components/ui/state-message";
-import { formatTime } from "@/lib/format";
+
+/** Klockan i Stockholm, som resten av appen (inte webbläsarens tidszon): "15:51". */
+const stockholmTime = new Intl.DateTimeFormat("sv-SE", {
+  timeZone: "Europe/Stockholm",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
 
 export type RouteErrorProps = {
   /** Det som kastades. Från en serverkomponent är det ett Error med `digest` (fel-id i serverloggen). */
@@ -42,7 +49,7 @@ export function RouteError({
   const [where] = useState<{ at: string; path: string } | null>(() =>
     typeof window === "undefined"
       ? null
-      : { at: formatTime(new Date()), path: window.location.pathname },
+      : { at: stockholmTime.format(new Date()), path: window.location.pathname },
   );
   useEffect(() => {
     console.error(error);
@@ -52,7 +59,10 @@ export function RouteError({
   const diagnostics: StateDiagnostic[] = [];
   if (digest) diagnostics.push({ label: "Fel-id", value: digest });
   if (where) {
-    diagnostics.push({ label: "Tid", value: where.at }, { label: "Sida", value: where.path });
+    diagnostics.push(
+      { label: "Tid", value: `${where.at} Stockholm` },
+      { label: "Sida", value: where.path },
+    );
   }
 
   const again = retry ?? reset ?? (() => window.location.reload());
@@ -69,7 +79,8 @@ export function RouteError({
       <h1 className="mt-3 text-2xl font-medium text-balance hyphens-none md:text-3xl">
         <span className="text-fg">Sidan kunde inte laddas.</span>{" "}
         <span className="text-subtle" suppressHydrationWarning>
-          Servern fick inget svar när uppgifterna skulle hämtas
+          {/* Neutral: felet kan vara en databas som inte svarar lika väl som ett programfel. */}
+          Ett fel stoppade sidan
           {where ? ` kl. ${where.at}` : ""}.
         </span>
       </h1>

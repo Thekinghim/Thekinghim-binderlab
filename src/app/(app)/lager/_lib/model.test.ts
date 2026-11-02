@@ -14,7 +14,13 @@ import {
   tenthsText,
 } from "./display";
 import { headlineOf, machineList, visitsText } from "./headline";
-import { buildLagerModel, planNow, salesAsOrders, warehouseStatus } from "./model";
+import {
+  buildLagerModel,
+  planNow,
+  retiredPairs,
+  salesAsOrders,
+  warehouseStatus,
+} from "./model";
 import type { LagerView, PackList } from "./types";
 
 const M1 = "00000000-0000-4000-8000-000000000001";
@@ -304,6 +310,54 @@ function packList(machineId: string, extra: Partial<PackList>): PackList {
     ...extra,
   };
 }
+
+describe("utgångna titlar (sortimentet)", () => {
+  // Gammal titel (T3) gick ur sortimentet i BL-002 den 31 juli; Black Bolt (T1) gäller i BL-001.
+  const periods = [
+    { machineId: M2, titleId: T3, validFrom: "2026-02-01", validTo: "2026-07-31" },
+    { machineId: M1, titleId: T1, validFrom: "2026-02-01", validTo: null },
+    { machineId: M1, titleId: T2, validFrom: "2026-02-01", validTo: "2026-05-31" },
+    { machineId: M1, titleId: T2, validFrom: "2026-12-01", validTo: null },
+  ];
+  const withSlots = (extraStock: StockRow[] = []) =>
+    buildLagerModel({
+      now: NOW,
+      timeZone: "Europe/Stockholm",
+      today: TODAY,
+      master,
+      stock: [...stock, ...extraStock],
+      sales,
+      scope: { storeId: null, machineId: null },
+      hasCentral: true,
+      slotPeriods: periods,
+    });
+
+  it("räknar ett par som utgånget bara när ingen period gäller i dag eller senare", () => {
+    const r = retiredPairs(periods, TODAY);
+    expect(r.size).toBe(1);
+    expect([...r][0]).toContain(T3);
+    // Sista dagen räknas fortfarande som i sortimentet.
+    expect(retiredPairs([{ ...periods[0]!, validTo: TODAY }], TODAY).size).toBe(0);
+  });
+
+  it("visar inte en titel som gått ur sortimentet överallt och inte finns kvar", () => {
+    const model = withSlots();
+    expect(model.titles.map((t) => t.id)).not.toContain(T3);
+    expect(model.retiredTitles).toEqual([{ id: T3, name: "Gammal titel" }]);
+    // Den tomma platsen för Gammal titel räknas inte som Kritisk längre.
+    expect(model.counts).toEqual({ critical: 1, low: 1, ok: 1 });
+    const h = headlineOf(viewOf(model));
+    expect(h.title).toBe("1 plats kritisk, 1 låg.");
+  });
+
+  it("visar en utgången titel med pack kvar, men utan status och påfyllning", () => {
+    const model = withSlots([row(M1, T3, 3)]);
+    const cell = cellOf(model, M2, T3);
+    expect(cell).toMatchObject({ retired: true, status: "ok", suggested: 0 });
+    expect(cellOf(model, M1, T3)).toMatchObject({ retired: false });
+    expect(model.retiredTitles).toEqual([]);
+  });
+});
 
 describe("headlineOf", () => {
   it("svarar med antal kritiska och låga, det mest brådskande och dagens besök", () => {

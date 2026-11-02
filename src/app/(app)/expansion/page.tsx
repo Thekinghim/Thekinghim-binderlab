@@ -13,8 +13,8 @@ import { GoalsView } from "./_components/goals-view";
 import { PipelineView, StoreProfilesView } from "./_components/pipeline-view";
 import { NewMachineForm, PriceChangeForm } from "./_components/scenario-forms";
 import { loadExpansionPage, type Names } from "./_lib/data";
-import { kr, oreToInput, paybackShort, pct } from "./_lib/display";
-import { evidenceLinks, monthOfDate, OPEN_STAGES } from "./_lib/model";
+import { kr, monthLabel, oreToInput, paybackShort, pct } from "./_lib/display";
+import { evidenceLinks, LEAD_STAGE_LABEL, monthOfDate, OPEN_STAGES } from "./_lib/model";
 
 export const metadata: Metadata = { title: "Expansion" };
 
@@ -200,11 +200,7 @@ export default async function ExpansionPage({
                 ? "Alla mål är i fas eller nådda."
                 : `${formatInt(goalsBehind)} ${goalsBehind === 1 ? "mål ligger" : "mål ligger"} efter.`
           }
-          aside={
-            data.goals.progress.length === 0
-              ? "Utfall och prognos visas när ett mål finns."
-              : `Prognos till och med ${day(data.ctx.today)}: snittet hittills, eller de senaste 28 dagarna tidigt i månaden.`
-          }
+          aside={goalsFact(data.goals.progress, monthOfDate(data.ctx.today))}
         />
         <GoalsView
           goals={data.goals.records}
@@ -231,7 +227,10 @@ export default async function ExpansionPage({
               ? "Pipelinen är tom."
               : `${formatInt(openLeads)} ${openLeads === 1 ? "öppen plats" : "öppna platser"}.`
           }
-          aside="Lead → kontaktad → möte → avtal → installerad. Rangordnade efter uppskattad återbetalningstid."
+          aside={pipelineFact(
+            data.leads,
+            top ? { name: top.name, payback: top.estimate.paybackTenths?.expected } : null,
+          )}
         />
         <PipelineView
           leads={data.leads}
@@ -301,4 +300,48 @@ export default async function ExpansionPage({
       </section>
     </div>
   );
+}
+
+/** Ett faktum om målen: innevarande månads prognos mot målet, annars antalet mål. */
+function goalsFact(
+  progress: readonly {
+    month: string;
+    metric: "revenue" | "profit" | "active_machines";
+    target: number;
+    forecast: number;
+    status: string;
+  }[],
+  thisMonth: string,
+): string {
+  if (progress.length === 0) return "Utfall och prognos visas när ett mål finns.";
+  const now =
+    progress.find((g) => g.month === thisMonth && g.metric === "revenue") ??
+    progress.find((g) => g.month === thisMonth);
+  if (!now) {
+    return `${formatInt(progress.length)} ${progress.length === 1 ? "mål" : "mål"}, inget för ${monthLabel(thisMonth)}.`;
+  }
+  const v = (x: number) => (now.metric === "active_machines" ? formatInt(x) : kr(x));
+  return `${capitalize(monthLabel(thisMonth))}: prognos ${v(now.forecast)} mot målet ${v(now.target)}.`;
+}
+
+/** Ett faktum om pipelinen: platsen med kortast återbetalning, annars platser per steg. */
+function pipelineFact(
+  leads: readonly { archived: boolean; stage: (typeof OPEN_STAGES)[number] | string }[],
+  top: { name: string; payback: number | null | undefined } | null,
+): string {
+  if (top && top.payback !== null && top.payback !== undefined) {
+    return `Kortast återbetalning: ${top.name}, ${paybackShort(top.payback)}.`;
+  }
+  const open = leads.filter(
+    (l) => !l.archived && (OPEN_STAGES as readonly string[]).includes(l.stage),
+  );
+  if (open.length === 0) return "Inga platser under bearbetning.";
+  const counts = OPEN_STAGES.map((s) => [s, open.filter((l) => l.stage === s).length] as const)
+    .filter(([, n]) => n > 0)
+    .map(([s, n]) => `${formatInt(n)} ${LEAD_STAGE_LABEL[s].toLowerCase()}`);
+  return `${counts.join(", ")}.`;
+}
+
+function capitalize(text: string): string {
+  return text.charAt(0).toLocaleUpperCase("sv-SE") + text.slice(1);
 }

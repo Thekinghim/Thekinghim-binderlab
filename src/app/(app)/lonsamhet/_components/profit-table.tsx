@@ -192,6 +192,13 @@ export function columnsFor(
       footer: pct(totals.marginBp),
     },
   ];
+  // Utan kortavgifter (0 kr på alla rader) tar kolumnen bara plats; CSV-exporten har den kvar.
+  const hasFees = totals.feesOre !== 0 || rows.some((r) => r.feesOre !== 0);
+  if (!hasFees)
+    cols.splice(
+      cols.findIndex((c) => c.key === "fees"),
+      1,
+    );
   if (showUnpriced) {
     cols.push({
       key: "unpriced",

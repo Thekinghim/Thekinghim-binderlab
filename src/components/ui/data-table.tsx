@@ -208,6 +208,8 @@ type CellCtx = {
   flaggable: boolean;
   stickyFirst: boolean;
   scrolledX: boolean;
+  /** Tabellen är bredare än ytan. Först då behöver den fasta kolumnen egen bakgrund. */
+  overflowX: boolean;
   fixed: boolean;
 };
 
@@ -220,8 +222,10 @@ function edgeClasses<T>(col: Column<T>, ci: number, ctx: CellCtx, z = "z-[1]"): 
       ctx.stickyFirst &&
       cn(
         // Avdelaren ritas som pseudoelement så att radlinjerna löper obrutna.
-        "sticky left-0 bg-[var(--dt-bg)] after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-line after:transition-opacity after:duration-fast after:ease-instrument",
+        "sticky left-0 after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-line after:transition-opacity after:duration-fast after:ease-instrument",
         z,
+        // Utan horisontell scroll smälter kolumnen in i ytan den ligger på.
+        ctx.overflowX && "bg-[var(--dt-bg)]",
         ctx.scrolledX ? "after:opacity-100" : "after:opacity-0",
       ),
   );
@@ -252,7 +256,7 @@ function RowImpl<T>({ row, columns, ariaRowIndex, flagged, height, ctx }: RowPro
             col.numeric ? "tnum text-right text-base" : "text-left",
             ctx.fixed && "overflow-hidden text-ellipsis whitespace-nowrap",
             ci === 0 && ctx.flaggable && !ctx.stickyFirst && "relative",
-            ci === 0 && ctx.stickyFirst && "group-hover:bg-hover",
+            ci === 0 && ctx.stickyFirst && ctx.overflowX && "group-hover:bg-hover",
             edgeClasses(col, ci, ctx),
             col.className,
           )}
@@ -542,6 +546,7 @@ export function DataTable<T>({
   const [scrolledX, setScrolledX] = useState(false);
   // Scrollytan blir ett tabbstopp bara när den faktiskt går att scrolla.
   const [overflows, setOverflows] = useState(virtual);
+  const [overflowX, setOverflowX] = useState(false);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -550,6 +555,7 @@ export function DataTable<T>({
       setViewport(el.clientHeight || viewportFallback(height));
       setHeadOffset(theadRef.current?.offsetHeight ?? 36);
       setOverflows(el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
+      setOverflowX(el.scrollWidth > el.clientWidth + 1);
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -587,9 +593,10 @@ export function DataTable<T>({
       flaggable: Boolean(isFlagged),
       stickyFirst: stickyFirstColumn,
       scrolledX,
+      overflowX,
       fixed: virtual,
     }),
-    [visibleColumns.length, isFlagged, stickyFirstColumn, scrolledX, virtual],
+    [visibleColumns.length, isFlagged, stickyFirstColumn, scrolledX, overflowX, virtual],
   );
   const minWidth = virtual
     ? visibleColumns.reduce((sum, c) => sum + (c.width ?? DEFAULT_WIDTH), 0)

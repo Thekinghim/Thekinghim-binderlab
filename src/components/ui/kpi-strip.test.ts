@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { kpiStripLayout } from "./kpi-strip";
+import { kpiStripLayout, sharedFitStep } from "./kpi-strip";
 
 describe("kpiStripLayout", () => {
   it("Hem: fem nyckeltal med vinsten som andra cell", () => {
@@ -36,5 +36,18 @@ describe("kpiStripLayout", () => {
     const l = kpiStripLayout([{ primary: true }, {}, {}, {}, {}]);
     expect(l.cells.map((c) => c.smSpan)).toEqual([4, 1, 1, 1, 1]);
     expect(l.cells.map((c) => c.baseSpan)).toEqual([1, 1, 1, 1, 2]);
+  });
+});
+
+describe("sharedFitStep", () => {
+  const items = [{ id: "a" }, { id: "p", primary: true }, { id: "b" }, { id: "c" }];
+
+  it("övriga celler delar det största steget någon av dem behöver", () => {
+    expect(sharedFitStep(items, { a: 0, b: 2, c: 1 })).toBe(2);
+  });
+
+  it("huvudpersonens steg påverkar inte raden, och saknade celler räknas som 0", () => {
+    expect(sharedFitStep(items, { p: 3 })).toBe(0);
+    expect(sharedFitStep(items, {})).toBe(0);
   });
 });

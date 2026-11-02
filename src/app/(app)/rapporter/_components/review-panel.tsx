@@ -152,8 +152,8 @@ export function ReviewPanel({
             <span className="text-muted">Inte än</span>
           )}
         </Fact>
-        <Fact label="Beräkning">
-          <span className="tnum font-mono text-sm">v{report.calcVersion}</span>
+        <Fact label="Beräkningsversion">
+          <span className="tnum font-mono text-sm">{report.calcVersion}</span>
         </Fact>
         <div className="col-span-2 flex flex-wrap items-center gap-2">
           <a

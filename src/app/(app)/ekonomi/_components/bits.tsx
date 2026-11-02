@@ -24,7 +24,8 @@ export type EconomyKpi = {
 
 const FORMAT: Record<EconomyKpi["unit"], (v: number) => string> = {
   ore: (v) => formatSek(v / 100),
-  "signed-ore": (v) => formatSignedKronor(v / 100, { decimals: 2 }),
+  // Hela kronor i nyckeltal, som i rubrikerna (design.md 4); öret står i avstämningen.
+  "signed-ore": (v) => formatSignedKronor(v / 100, { decimals: 0 }),
   count: (v) => formatInt(v),
   bp: (v) => formatPercent(v / 10_000),
 };

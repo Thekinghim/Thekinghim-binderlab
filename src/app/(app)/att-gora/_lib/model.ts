@@ -553,9 +553,17 @@ export function inScope(item: TodoItem, input: Pick<ModelInput, "scope" | "machi
 const RISK_KINDS: ReadonlySet<TodoKind> = new Set(["refill", "stale-machine"]);
 
 /** Intäkt i risk de närmaste 7 dagarna (öre), bara för RISK_KINDS. */
+/**
+ * Varje punkt avrundad till hela kronor innan summan tas, så att rubrikens summa är summan
+ * av beloppen på raderna (11 840 kr, inte 11 841 kr när raderna säger 11 840 kr).
+ */
+function wholeKronor(ore: number): number {
+  return Math.round(Math.max(ore, 0) / 100) * 100;
+}
+
 export function stakeOf(items: readonly TodoItem[]): number {
   return sumOre(
-    items.filter((i) => RISK_KINDS.has(i.kind)).map((i) => Math.max(i.atStakeOre ?? 0, 0)),
+    items.filter((i) => RISK_KINDS.has(i.kind)).map((i) => wholeKronor(i.atStakeOre ?? 0)),
   );
 }
 
@@ -564,7 +572,7 @@ export function unpricedOf(items: readonly TodoItem[]): number {
   return sumOre(
     items
       .filter((i) => i.kind === "missing-price")
-      .map((i) => Math.max(figureValue(i, "unpricedRevenueOre") ?? 0, 0)),
+      .map((i) => wholeKronor(figureValue(i, "unpricedRevenueOre") ?? 0)),
   );
 }
 
@@ -590,10 +598,8 @@ function leadText(item: TodoItem): string {
     const tenths = figureValue(item, "daysLeftTenths");
     if (onHand !== null && onHand <= 0) fact = "";
     else if (tenths !== null) fact = `, räcker ${formatDecimal(tenths / 10)}${NBSP}d`;
-  } else if (item.kind === "stale-machine") {
-    const hours = figureValue(item, "silentHours");
-    if (hours !== null) fact = `, tyst i ${formatInt(hours)}${NBSP}h`;
   }
+  // En tyst automat: titeln säger redan hur länge ("har inte sålt på 66 timmar").
   return `Först: ${stripPeriod(item.title)}${fact}.`;
 }
 

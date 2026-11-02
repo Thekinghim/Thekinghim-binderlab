@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { MachineHealth } from "@/analytics/health";
 
-import { driftHeadline, figureText, firstSentence } from "./display";
+import { alertHeadline, driftHeadline, figureText, firstSentence, sortAlerts } from "./display";
 
 function h(status: MachineHealth["status"], title = "Automat"): MachineHealth {
   return {
@@ -61,5 +61,51 @@ describe("underlagets tal", () => {
     expect(firstSentence("Senaste försäljning sön 1 nov. 17:09. Under tystnaden.")).toBe(
       "Senaste försäljning sön 1 nov. 17:09.",
     );
+  });
+});
+
+describe("larmen på Drift", () => {
+  const a = (
+    id: string,
+    over: Partial<{
+      kind: string;
+      severity: string;
+      machineId: string;
+      dates: string[];
+      openedAt: string;
+    }> = {},
+  ) => ({
+    id,
+    kind: over.kind ?? "low_stock",
+    severity: over.severity ?? "warning",
+    machineId: over.machineId ?? "m1",
+    title: `Larm ${id}`,
+    openedAt: over.openedAt ?? "2026-11-02T10:00:00Z",
+    evidence: { dates: over.dates ?? [] },
+  });
+
+  it("sorterar kritiska först och sedan på beräknat slutdatum", () => {
+    const sorted = sortAlerts([
+      a("tor", { dates: ["2026-11-05"] }),
+      a("ons", { dates: ["2026-11-04"] }),
+      a("utan"),
+      a("slut", { severity: "critical" }),
+    ]);
+    expect(sorted.map((x) => x.id)).toEqual(["slut", "ons", "tor", "utan"]);
+  });
+
+  it("rubriken säger vad som tar slut och när", () => {
+    expect(
+      alertHeadline([
+        a("1", { machineId: "m1", dates: ["2026-11-04"] }),
+        a("2", { machineId: "m2", dates: ["2026-11-05"] }),
+        a("3", { machineId: "m2", dates: ["2026-11-04"] }),
+      ]),
+    ).toBe("3\u00a0titlar i 2\u00a0automater tar slut senast tor 5\u00a0nov.");
+    expect(alertHeadline([a("1", { severity: "critical" })])).toBe(
+      "1\u00a0titel är slut i 1\u00a0automat.",
+    );
+    expect(alertHeadline([a("1", { kind: "import_failed" })])).toBe("1\u00a0öppet larm: Larm 1.");
+    expect(alertHeadline([])).toBeNull();
   });
 });

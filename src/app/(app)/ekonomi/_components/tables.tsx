@@ -7,9 +7,9 @@
 
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { StatusTag } from "@/components/ui/status-tag";
-import { formatCsvNumber, formatDay } from "@/lib/format";
+import { formatCsvNumber, formatDate } from "@/lib/format";
 
-import { isoToDate, kr, monthText, signedKr } from "../_lib/view";
+import { isoToDate, kr, monthText, sek, signedSek } from "../_lib/view";
 
 // ---------------------------------------------------------------------------
 // Verifikationer
@@ -38,7 +38,11 @@ const VERIFICATION_COLUMNS: ReadonlyArray<Column<VerificationRow>> = [
     key: "datum",
     header: "Datum",
     sortValue: (r) => r.date,
-    render: (r) => <span className="meta">{formatDay(isoToDate(r.date))}</span>,
+    render: (r) => (
+      <span className="tnum whitespace-nowrap">
+        {formatDate(isoToDate(r.date), { year: "never" })}
+      </span>
+    ),
     csv: (r) => r.date,
     width: 96,
   },
@@ -147,6 +151,8 @@ export type CashRow = {
   fixedCostsOre: number;
   netOre: number;
   summary: string;
+  /** Förklaring när månaden ser tom ut, t.ex. att utbetalningen kom månaden efter. */
+  note: string | null;
 };
 
 const PHASE: Record<CashRow["phase"], string> = {
@@ -161,8 +167,11 @@ const CASH_COLUMNS: ReadonlyArray<Column<CashRow>> = [
     header: "Månad",
     sortValue: (r) => r.key,
     render: (r) => (
-      <span className="whitespace-nowrap text-fg" title={r.summary}>
-        {monthText(r.key)}
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="whitespace-nowrap text-fg" title={r.summary}>
+          {monthText(r.key)}
+        </span>
+        {r.note ? <span className="text-xs text-subtle">{r.note}</span> : null}
       </span>
     ),
     csv: (r) => r.key,
@@ -185,7 +194,7 @@ const CASH_COLUMNS: ReadonlyArray<Column<CashRow>> = [
     header: "Utbetalningar in",
     numeric: true,
     sortValue: (r) => r.payoutsOre,
-    render: (r) => kr(r.payoutsOre),
+    render: (r) => sek(r.payoutsOre),
     csv: (r) => formatCsvNumber(r.payoutsOre / 100),
   },
   {
@@ -194,7 +203,7 @@ const CASH_COLUMNS: ReadonlyArray<Column<CashRow>> = [
     numeric: true,
     hideOnMobile: true,
     sortValue: (r) => r.purchasesOre,
-    render: (r) => kr(r.purchasesOre),
+    render: (r) => sek(r.purchasesOre),
     csv: (r) => formatCsvNumber(r.purchasesOre / 100),
   },
   {
@@ -203,7 +212,7 @@ const CASH_COLUMNS: ReadonlyArray<Column<CashRow>> = [
     numeric: true,
     hideOnMobile: true,
     sortValue: (r) => r.storeCompensationOre,
-    render: (r) => kr(r.storeCompensationOre),
+    render: (r) => sek(r.storeCompensationOre),
     csv: (r) => formatCsvNumber(r.storeCompensationOre / 100),
   },
   {
@@ -212,7 +221,7 @@ const CASH_COLUMNS: ReadonlyArray<Column<CashRow>> = [
     numeric: true,
     hideOnMobile: true,
     sortValue: (r) => r.fixedCostsOre,
-    render: (r) => kr(r.fixedCostsOre),
+    render: (r) => sek(r.fixedCostsOre),
     csv: (r) => formatCsvNumber(r.fixedCostsOre / 100),
   },
   {
@@ -220,7 +229,7 @@ const CASH_COLUMNS: ReadonlyArray<Column<CashRow>> = [
     header: "Netto",
     numeric: true,
     sortValue: (r) => r.netOre,
-    render: (r) => <span className="text-fg">{signedKr(r.netOre)}</span>,
+    render: (r) => <span className="text-fg">{signedSek(r.netOre)}</span>,
     csv: (r) => formatCsvNumber(r.netOre / 100),
   },
 ];

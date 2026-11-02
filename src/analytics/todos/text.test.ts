@@ -4,6 +4,7 @@ import {
   kr,
   krExact,
   pct,
+  pct1,
   periodText,
   plural,
   ratioTenths,
@@ -33,6 +34,9 @@ describe("text", () => {
   it("procent från bp", () => {
     expect(pct(3_312)).toBe(`33${S}%`);
     expect(pct(3_350)).toBe(`34${S}%`);
+    expect(pct1(352)).toBe(`3,5${S}%`);
+    expect(pct1(345)).toBe(`3,5${S}%`);
+    expect(pct1(1_200)).toBe(`12,0${S}%`);
     expect(pct(0)).toBe(`0${S}%`);
   });
 

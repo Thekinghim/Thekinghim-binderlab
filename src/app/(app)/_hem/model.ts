@@ -60,6 +60,8 @@ export interface HomeKpi {
   readonly reference: number | null;
   /** Text när nyckeltalet kräver åtgärd (bara vinsten, när order saknar inköpspris). */
   readonly alertText: string | null;
+  /** Grunden när den inte är hela intäkten: marginalen gäller bara order med inköpspris. */
+  readonly note: string | null;
 }
 
 /** Intäkt per dag för huvuddiagrammet. */
@@ -148,6 +150,8 @@ export interface HomeModel {
   readonly dataStart: IsoDate | null;
   /** I dag ingår i perioden men har inga order ännu (och visas därför inte i diagrammet). */
   readonly todayPending: boolean;
+  /** I dag ingår i perioden och har order, men dagen pågår och visas inte i diagrammet. */
+  readonly todayPartial: boolean;
   readonly kpis: HomeKpi[];
   readonly daily: HomeDaily | null;
   readonly unpriced: HomeUnpriced | null;
@@ -203,7 +207,8 @@ function rowRevenue(row: ProfitabilityRow): number {
 
 /**
  * Dagarna som diagrammet visar: från första ordern (organisationens) och, om perioden
- * slutar i dag och ingen order kommit i dag, bara t.o.m. i går. null om inga dagar återstår.
+ * slutar i dag, bara t.o.m. i går (dagen pågår, eller har inga order än). Bara en period
+ * som är just i dag visar dagen. null om inga dagar återstår.
  * Bara visning: nyckeltalen gäller hela perioden.
  */
 export function coverageOf(
@@ -215,7 +220,9 @@ export function coverageOf(
   if (dataStart === null) return null;
   const start = maxDate(period.start, dataStart);
   let end = period.end;
-  if (end >= today && !hasOrdersToday) end = addDays(today, -1);
+  // Dagen som pågår är bara delvis med: i en period på flera dagar slutar diagrammet i går,
+  // så att den halva dagen inte ritas som ett ras och inte drar ned snittet per dag.
+  if (end >= today && (!hasOrdersToday || start < today)) end = addDays(today, -1);
   if (end > period.end) end = period.end;
   return start <= end ? { start, end } : null;
 }
@@ -326,6 +333,8 @@ function buildKpis(args: {
       trend: priced ? marginTrend : [],
       reference: hasPrev ? prevMargin : null,
       alertText: null,
+      // Marginalen räknas på order med inköpspris (berakningar.md 6), intäkten bredvid på alla.
+      note: unpriced && unpriced.orders > 0 && priced ? "på order med inköpspris" : null,
     },
     {
       id: "orders",
@@ -349,7 +358,11 @@ function buildKpis(args: {
       reference: hasPrev ? prev.averageOrderValueOre : null,
       alertText: null,
     },
-  ].map((k) => ({ ...k, trend: days.length > 1 ? k.trend : [] })) as HomeKpi[];
+  ].map((k) => ({
+    note: null,
+    ...k,
+    trend: days.length > 1 ? k.trend : [],
+  })) as HomeKpi[];
 }
 
 /** Andel i bp som procent: hela procent, en decimal under 1 %. */
@@ -406,8 +419,18 @@ function buildTopTitles(
  * och mest sålda titel i topplistan. De visas inte i Värt att veta, så att samma uppgift
  * inte står flera gånger på sidan.
  */
-function shownElsewhere(kind: Insight["kind"], hasChart: boolean): boolean {
+function shownElsewhere(
+  insight: Insight,
+  hasChart: boolean,
+  staleTodoMachines: ReadonlySet<string>,
+): boolean {
+  const { kind } = insight;
   if (kind === "period-summary" || kind === "top-title") return true;
+  // En tyst automat som redan står bland punkterna från Att göra (i timmar) upprepas inte
+  // här i dagar.
+  if (kind === "stale-machine") {
+    return insight.evidence.machineIds.some((id) => staleTodoMachines.has(id));
+  }
   return kind === "best-day" && hasChart;
 }
 
@@ -417,6 +440,7 @@ function buildInsights(
   period: Period,
   compare: Period | null,
   hasChart: boolean,
+  staleTodoMachines: ReadonlySet<string>,
 ): HomeInsight[] {
   const orders: AnalyticsOrder[] = [
     ...input.current.orders,
@@ -441,7 +465,7 @@ function buildInsights(
     },
   );
   return insights
-    .filter((i) => !shownElsewhere(i.kind, hasChart))
+    .filter((i) => !shownElsewhere(i, hasChart, staleTodoMachines))
     .slice(0, HOME_INSIGHT_COUNT)
     .map((i) => {
       const titleId = i.kind === "concentration" ? i.evidence.titleIds[0] : undefined;
@@ -461,9 +485,10 @@ function safeInsights(
   period: Period,
   compare: Period | null,
   hasChart: boolean,
+  staleTodoMachines: ReadonlySet<string>,
 ): HomeInsight[] {
   try {
-    return buildInsights(input, input.scope, period, compare, hasChart);
+    return buildInsights(input, input.scope, period, compare, hasChart, staleTodoMachines);
   } catch (error) {
     console.error("[hem] Värt att veta kunde inte räknas:", error);
     return [];
@@ -474,27 +499,31 @@ function buildTodos(
   todos: readonly TodoItem[] | null,
   scope: DataScope,
   machines: readonly MachineRecord[],
-): { todos: HomeTodo[] | null; count: number; nowCount: number } {
-  if (todos === null) return { todos: null, count: 0, nowCount: 0 };
+): { todos: HomeTodo[] | null; count: number; nowCount: number; staleMachines: Set<string> } {
+  if (todos === null) return { todos: null, count: 0, nowCount: 0, staleMachines: new Set() };
   const relevant = todosInScope(todos, scope, machines);
   const filtered = Boolean(scope.machineId || scope.storeId);
   // computeTodos sorterar redan efter brådska; nivån går ändå först om listan kommer osorterad.
-  const top = relevant
+  const shown = relevant
     .map((t, i) => ({ t, i }))
     .sort((a, b) => LEVEL_ORDER[a.t.level] - LEVEL_ORDER[b.t.level] || a.i - b.i)
-    .slice(0, HOME_TODO_COUNT)
-    .map(({ t }) => ({
-      key: t.key,
-      level: t.level,
-      title: t.title,
-      detail: t.detail,
-      href: appHref(t.link),
-      orgWide: filtered && t.evidence.machineIds.length === 0 && t.evidence.storeIds.length === 0,
-    }));
+    .slice(0, HOME_TODO_COUNT);
+  const staleMachines = new Set(
+    shown.filter(({ t }) => t.kind === "stale-machine").flatMap(({ t }) => t.evidence.machineIds),
+  );
+  const top = shown.map(({ t }) => ({
+    key: t.key,
+    level: t.level,
+    title: t.title,
+    detail: t.detail,
+    href: appHref(t.link),
+    orgWide: filtered && t.evidence.machineIds.length === 0 && t.evidence.storeIds.length === 0,
+  }));
   return {
     todos: top,
     count: relevant.length,
     nowCount: relevant.filter((t) => t.level === "now").length,
+    staleMachines,
   };
 }
 
@@ -526,6 +555,8 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
   const coverage = coverageOf(period, dataStart, today, hasOrdersToday);
   const todayPending =
     period.start <= today && period.end >= today && !hasOrdersToday && periodDays(period) > 1;
+  const todayPartial =
+    period.start <= today && period.end >= today && hasOrdersToday && periodDays(period) > 1;
 
   const km = keyMetrics(current);
   const prevKm = previous ? keyMetrics(previous) : null;
@@ -591,6 +622,11 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
   const topTitles = buildTopTitles(byTitle.rows, km.revenueOre, titleName);
   // Iakttagelserna räknas från första dagen med data, så att snitt per dag och antal
   // veckodagar inte späds ut av dagar före datan.
+  const { todos, count, nowCount, staleMachines } = buildTodos(
+    input.todos,
+    input.scope,
+    input.machines,
+  );
   let insights: HomeInsight[] = [];
   if (coverage && km.orderCount > 0) {
     insights = safeInsights(
@@ -598,9 +634,9 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
       { start: coverage.start, end: period.end },
       compare,
       daily !== null,
+      staleMachines,
     );
   }
-  const { todos, count, nowCount } = buildTodos(input.todos, input.scope, input.machines);
 
   return {
     headline: homeHeadline({
@@ -622,6 +658,7 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
     comparable,
     dataStart,
     todayPending,
+    todayPartial,
     kpis,
     daily,
     unpriced,

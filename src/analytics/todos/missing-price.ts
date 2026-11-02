@@ -24,7 +24,7 @@ import {
 } from "@/domain";
 import { evidence, links } from "./common";
 import { HORIZON_DAYS, urgencyOf, type TodoContext } from "./context";
-import { kr, pct, periodText, plural } from "./text";
+import { kr, pct1, periodText, plural } from "./text";
 import type { TodoItem, TodoLevel } from "./types";
 
 /** Andel av intäkten (bp) från vilken punkten får nivån 'soon'. */
@@ -94,7 +94,7 @@ export function missingPriceTodos(ctx: TodoContext): TodoItem[] {
       daysLeft: null,
       title: `Lägg in inköpspris för ${name}`,
       detail:
-        `${name} står för ${pct(shareBp)} av intäkten ${periodText(period)} ` +
+        `${name} står för ${pct1(shareBp)} av intäkten ${periodText(period)} ` +
         `(${kr(t.revenueOre)}, ${plural(t.orders, "order", "order")}) men saknar inköpspris ` +
         `och räknas därför inte in i vinsten.`,
       evidence: evidence({

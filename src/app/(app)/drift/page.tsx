@@ -10,7 +10,16 @@ import { requireRoute } from "@/server/data/core";
 import { AlertList } from "./_components/alert-list";
 import { HealthTable, type HealthRow } from "./_components/health-table";
 import { toAlertItems } from "./_lib/alert-items";
-import { driftHeadline, formatWhen, healthRank, plural, sentenceEnd } from "./_lib/display";
+import {
+  alertHeadline,
+  driftHeadline,
+  firstSentence,
+  formatWhen,
+  healthRank,
+  plural,
+  sentenceEnd,
+  sortAlerts,
+} from "./_lib/display";
 import { loadDriftOverview } from "./_lib/load";
 
 export const metadata: Metadata = { title: "Drift" };
@@ -30,7 +39,16 @@ export default async function DriftPage() {
   const now = new Date(ctx.now);
   const overview = await loadDriftOverview(ctx);
   const { health, data, plan } = overview;
-  const headline = driftHeadline(health);
+  const machinesHeadline = driftHeadline(health);
+  const openAlerts = sortAlerts(overview.openAlerts);
+  // Alla automater i drift men larm öppna: rubriken bär det som ska göras.
+  const allRunning =
+    health.some((h) => h.status === "ok") &&
+    health.every((h) => h.status === "ok" || h.status === "inactive");
+  const alertTitle = allRunning ? alertHeadline(openAlerts) : null;
+  const headline = alertTitle
+    ? { title: alertTitle, aside: machinesHeadline.title }
+    : machinesHeadline;
 
   const machineById = new Map(data.machines.map((m) => [m.id, m]));
   const lastSale = new Map<string, string>();
@@ -39,6 +57,12 @@ export default async function DriftPage() {
     const prev = lastSale.get(o.machineId);
     if (!prev || prev < o.orderedAt) lastSale.set(o.machineId, o.orderedAt);
   }
+  // Det som gäller alla rader (t.ex. hur långt importen har kommit) står en gång
+  // ovanför tabellen; cellen visar bara det som gäller automaten.
+  const rest = (detail: string) => detail.slice(firstSentence(detail).length).trim();
+  const rests = health.map((h) => rest(h.detail));
+  const commonDetail =
+    health.length > 1 && rests[0] && rests.every((r) => r === rests[0]) ? rests[0] : null;
   const rows: HealthRow[] = health.map((h) => {
     const m = machineById.get(h.machineId);
     return {
@@ -48,7 +72,7 @@ export default async function DriftPage() {
       status: h.status,
       since: formatWhen(h.since, ctx.timeZone, now),
       lastSale: formatWhen(lastSale.get(h.machineId) ?? null, ctx.timeZone, now),
-      detail: h.detail,
+      detail: commonDetail ? firstSentence(h.detail) : h.detail,
       rule: h.evidence.rule,
       expected: h.silence
         ? `${tenthsText(milliToTenths(h.silence.expectedMilli))}${NBSP}pack under tystnaden (${plural(h.silence.historyOrders, "order", "order")} i historiken)`
@@ -60,7 +84,7 @@ export default async function DriftPage() {
     };
   });
 
-  const items = toAlertItems(overview.openAlerts, ctx.timeZone, now);
+  const items = toAlertItems(openAlerts, ctx.timeZone, now);
   const resolved = toAlertItems(overview.recentAlerts, ctx.timeZone, now);
   const critical = overview.openAlerts.filter((a) => a.severity === "critical").length;
   const firstDay = plan.days[0];
@@ -114,7 +138,10 @@ export default async function DriftPage() {
             action={{ label: "Lägg till en automat", href: "/automater" }}
           />
         ) : (
-          <HealthTable rows={rows} />
+          <div className="flex flex-col gap-3">
+            {commonDetail ? <p className="max-w-3xl text-sm text-muted">{commonDetail}</p> : null}
+            <HealthTable rows={rows} />
+          </div>
         )}
       </section>
 

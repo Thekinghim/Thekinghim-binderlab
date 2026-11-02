@@ -105,12 +105,22 @@ const THIRTY: Period = { start: "2026-10-04", end: TODAY };
 const THIRTY_BEFORE: Period = { start: "2026-09-04", end: "2026-10-03" };
 
 describe("coverageOf", () => {
-  it("börjar vid första ordern och slutar i går när dagen saknar order", () => {
+  it("börjar vid första ordern och slutar i går när perioden går fram till i dag", () => {
     expect(coverageOf(THIRTY, DATA_START, TODAY, false)).toEqual({
       start: DATA_START,
       end: "2026-11-01",
     });
-    expect(coverageOf(THIRTY, DATA_START, TODAY, true)).toEqual({ start: DATA_START, end: TODAY });
+    // Dagen pågår: den ritas inte som en hel dag fast den har order.
+    expect(coverageOf(THIRTY, DATA_START, TODAY, true)).toEqual({
+      start: DATA_START,
+      end: "2026-11-01",
+    });
+  });
+  it("visar dagen när perioden är just i dag och har order", () => {
+    expect(coverageOf({ start: TODAY, end: TODAY }, DATA_START, TODAY, true)).toEqual({
+      start: TODAY,
+      end: TODAY,
+    });
   });
   it("är null utan data eller när perioden ligger före datan", () => {
     expect(coverageOf(THIRTY, null, TODAY, false)).toBeNull();
@@ -133,8 +143,9 @@ describe("buildHomeModel", () => {
     expect(revenue?.delta).toBeNull();
     expect(revenue?.trend).toHaveLength(20);
     expect(plain(m.headline.title)).toBe("4 450 kr sedan 13 okt.");
-    expect(m.headline.aside).toMatch(
-      /^Vinst .* före återbetalningar och fasta kostnader, .* marginal, men .* saknar inköpspris och ingår inte\.$/,
+    expect(m.headline.aside).toMatch(/^Vinst [^,]*\skr\.$/);
+    expect(m.headline.lead.join(" ")).toMatch(
+      /^Före återbetalningar och fasta kostnader, .* marginal, men .* saknar inköpspris och ingår inte\.$/,
     );
   });
 
@@ -235,6 +246,31 @@ describe("buildHomeModel", () => {
     expect(plain(m.headline.title)).toBe("2 450 kr på 10 dagar.");
     expect(plain(m.headline.aside)).toBe("23 % bättre än perioden innan.");
     expect(m.headline.lead[0]).toMatch(/^Vinst /);
+  });
+
+  it("ritar inte dagen som pågår, men räknar den i nyckeltalen", () => {
+    const input = inputFor(THIRTY, null);
+    const withToday = {
+      ...input,
+      current: { ...input.current, orders: [...input.current.orders, order("t1", TODAY)] },
+    };
+    const m = buildHomeModel(withToday);
+    expect(m.todayPartial).toBe(true);
+    expect(m.todayPending).toBe(false);
+    expect(m.coverage).toEqual({ start: DATA_START, end: "2026-11-01" });
+    expect(m.daily?.dates.at(-1)).toBe("2026-11-01");
+    // Snittet per dag räknas på hela dagar: dagens order ingår inte.
+    const fullDays = buildHomeModel(input);
+    expect(m.daily?.averageOre).toBe(fullDays.daily?.averageOre);
+    expect(m.kpis.find((k) => k.id === "orders")?.value).toBe(
+      (fullDays.kpis.find((k) => k.id === "orders")?.value ?? 0) + 1,
+    );
+  });
+
+  it("säger att marginalen gäller order med inköpspris när några saknar pris", () => {
+    const m = buildHomeModel(inputFor(THIRTY, null));
+    expect(m.kpis.find((k) => k.id === "margin")?.note).toBe("på order med inköpspris");
+    expect(m.kpis.find((k) => k.id === "revenue")?.note).toBeNull();
   });
 
   it("jämför hela perioderna som skalet, även när i dag saknar order", () => {
@@ -510,6 +546,11 @@ describe("homeHeadline", () => {
     expect(h.title).toBe("79 987 kr på 20 dagar.");
     expect(h.aside).toBe("12 % bättre än perioden innan.");
     expect(h.lead).toEqual([
+      "Vinst 21 933 kr före återbetalningar och fasta kostnader, 28,8 % marginal på order med inköpspris.",
+    ]);
+  });
+  it("säger inte grunden för marginalen när alla order har inköpspris", () => {
+    expect(homeHeadline({ ...base, unpricedShareBp: 0 }).lead).toEqual([
       "Vinst 21 933 kr före återbetalningar och fasta kostnader, 28,8 % marginal.",
     ]);
   });
@@ -545,8 +586,9 @@ describe("homeHeadline", () => {
     expect(none.aside).toBe("Vinsten går inte att räkna förrän orderna har inköpspris.");
     expect(none.aside).not.toMatch(/0 kr/);
     const many = homeHeadline({ ...base, unpricedShareBp: 3_500, revenueChangeBp: null });
-    expect(plain(many.aside)).toBe(
-      "Vinst 21 933 kr före återbetalningar och fasta kostnader, 28,8 % marginal, men 35,0 % av intäkten saknar inköpspris och ingår inte.",
+    expect(plain(many.aside)).toBe("Vinst 21 933 kr.");
+    expect(plain(many.lead.join(" "))).toBe(
+      "Före återbetalningar och fasta kostnader, 28,8 % marginal, men 35,0 % av intäkten saknar inköpspris och ingår inte.",
     );
   });
   it("säger när perioden ligger före första ordern", () => {

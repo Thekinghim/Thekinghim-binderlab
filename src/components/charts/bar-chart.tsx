@@ -55,6 +55,11 @@ type BarChartProps = {
   alertIndex?: number;
   /** Visa snittlinje */
   showMean?: boolean;
+  /**
+   * Snittet som linjen visar, i samma enhet som värdena. Standard: snittet av
+   * alla staplar. Ange när vissa staplar inte ska räknas (t.ex. en pågående månad).
+   */
+  meanValue?: number;
   /** Kolumnrubriker i liggande läge */
   labelHeading?: string;
   valueHeading?: string;
@@ -104,6 +109,7 @@ function HorizontalBars({
   highlightIndex,
   alertIndex,
   showMean = true,
+  meanValue,
   labelHeading = "Automat",
   valueHeading = "Intäkt",
   summary,
@@ -118,8 +124,9 @@ function HorizontalBars({
       .range([0, 100])
       .nice(4);
     const ticks = x.ticks(4);
-    return { x, ticks, axis: axisScale(ticks, unit), avg: mean(data, (d) => d.value) ?? 0 };
-  }, [data, unit]);
+    const avg = meanValue ?? mean(data, (d) => d.value) ?? 0;
+    return { x, ticks, axis: axisScale(ticks, unit), avg };
+  }, [data, unit, meanValue]);
 
   const pct = (v: number) => Math.max(0, Math.min(100, g.x(v)));
   const avgPct = pct(g.avg);
@@ -134,8 +141,9 @@ function HorizontalBars({
         <span className="label self-end pb-2 text-subtle">{labelHeading}</span>
         <div className="relative h-8" aria-hidden>
           {showMean ? (
+            // Smal skärm: mittkolumnen rymmer inte annoteringen; den står då under axeln.
             <span
-              className="tnum meta absolute bottom-2 whitespace-nowrap text-muted"
+              className="tnum meta absolute bottom-2 hidden whitespace-nowrap text-muted sm:inline"
               style={
                 avgPct > 60
                   ? { right: `${100 - avgPct}%`, paddingRight: 6 }
@@ -259,6 +267,8 @@ function HorizontalBars({
               className={cn(
                 "tnum meta absolute top-1.5 text-subtle",
                 i === 0 ? "" : "-translate-x-1/2",
+                // Smal skärm: varannan markering, annars krockar siffrorna
+                i % 2 === 1 && "hidden sm:inline",
               )}
               style={{ left: `${pct(t)}%` }}
             >
@@ -269,6 +279,13 @@ function HorizontalBars({
         <span className="meta pt-1.5 text-right text-subtle" aria-hidden>
           {g.axis.label}
         </span>
+        {showMean ? (
+          <span className="tnum meta col-span-3 pt-1 text-muted sm:hidden" aria-hidden>
+            <span className="mr-1.5 inline-block w-4 border-t border-dashed border-subtle align-middle" />
+            <span className="label text-subtle">Snitt </span>
+            {format(g.avg)}
+          </span>
+        ) : null}
       </div>
     </ChartFigure>
   );
@@ -319,6 +336,7 @@ function VerticalBars({
   highlightNote,
   alertIndex,
   showMean = true,
+  meanValue,
   height = 240,
   summary,
 }: BarChartProps) {
@@ -350,12 +368,12 @@ function VerticalBars({
       y,
       ticks,
       axis: axisScale(ticks, unit),
-      avg: mean(data, (d) => d.value) ?? 0,
+      avg: meanValue ?? mean(data, (d) => d.value) ?? 0,
       labelEvery,
       xLabels,
       notes: noteRows.notes,
     };
-  }, [data, width, height, unit, alertIndex]);
+  }, [data, width, height, unit, alertIndex, meanValue]);
 
   const onKey = (e: KeyboardEvent<SVGSVGElement>) => {
     const cur = active ?? peak ?? 0;
@@ -373,6 +391,32 @@ function VerticalBars({
   const hl = peak !== undefined ? data[peak] : undefined;
   const hlx = peak !== undefined ? (g.x(peak) ?? 0) + bw / 2 : 0;
   const right = hlx > g.innerW * 0.6;
+  const meanLabel = showMean ? placeMeanLabel() : null;
+
+  /**
+   * Snittets etikett ligger ovanför linjen, på sidan bort från toppens
+   * annotering. Täcks den av en stapel som når över linjen provas andra
+   * sidan, och annars står den i marginalen ovanför diagrammet.
+   */
+  function placeMeanLabel(): { x: number; y: number; anchor: "start" | "end" } {
+    const w = (6 + format(g.avg).length) * CH_MONO;
+    const yAvg = g.y(g.avg);
+    const covered = (x0: number, x1: number) =>
+      data.some((d, i) => {
+        const bx = g.x(i) ?? 0;
+        return bx < x1 && bx + bw > x0 && g.y(d.value) < yAvg - 3;
+      });
+    const sides: Array<{ x: number; anchor: "start" | "end"; span: [number, number] }> = [
+      { x: g.innerW, anchor: "end", span: [g.innerW - w, g.innerW] },
+      { x: 4, anchor: "start", span: [4, 4 + w] },
+    ];
+    if (right) sides.reverse();
+    const free = sides.find((s) => !covered(s.span[0], s.span[1]));
+    if (free) return { x: free.x, y: yAvg - 6, anchor: free.anchor };
+    return right
+      ? { x: 0, y: -MV.top + 12, anchor: "start" }
+      : { x: g.innerW, y: -MV.top + 12, anchor: "end" };
+  }
 
   return (
     <ChartFigure summary={summary}>
@@ -478,9 +522,9 @@ function VerticalBars({
                   strokeDasharray="4 3"
                 />
                 <text
-                  x={right ? 4 : g.innerW}
-                  y={g.y(g.avg) - 6}
-                  textAnchor={right ? "start" : "end"}
+                  x={meanLabel?.x ?? 0}
+                  y={meanLabel?.y ?? 0}
+                  textAnchor={meanLabel?.anchor ?? "end"}
                   className="tnum"
                   style={{ fontFamily: "var(--bl-font-mono)", fontSize: 11 }}
                 >
