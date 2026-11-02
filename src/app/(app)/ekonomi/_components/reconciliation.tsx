@@ -6,7 +6,7 @@ import type {
 } from "@/analytics/reconciliation";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag, type Status } from "@/components/ui/status-tag";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatInt } from "@/lib/format";
 
 import { isoToDate, kr, periodText, signedKr } from "../_lib/view";
 import { DeviationReview } from "./deviation-review";
@@ -103,7 +103,7 @@ function PayoutBlock({
           </h3>
           <p className="meta text-subtle">
             {p.paidOn > today ? "Utbetalas" : "Utbetald"}{" "}
-            {formatDate(isoToDate(p.paidOn), { year: "always" })} · {p.expected.orders} order
+            {formatDate(isoToDate(p.paidOn), { year: "always" })} · {formatInt(p.expected.orders)} order
           </p>
         </div>
         <dl className="grid grid-cols-3 gap-4 md:col-span-5">

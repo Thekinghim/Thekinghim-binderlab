@@ -261,7 +261,7 @@ export default async function EkonomiPage({
               <StateMessage
                 compact
                 kind="no-results"
-                code={`${rec.ordersWithoutTitle} order`}
+                code={`${formatInt(rec.ordersWithoutTitle)} order`}
                 message="Order utan titel ingår inte i avstämningen."
               />
             ) : null}

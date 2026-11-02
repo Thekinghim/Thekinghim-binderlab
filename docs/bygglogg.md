@@ -120,3 +120,12 @@ Tas bort när alla faser är klara.
   (README). Kvar: requireRoute-raden i `src/server/data/core/index.ts` är ändrad (en rad); laddaren
   `loadTodoStateFor` bör skicka `slotPeriods` till `computeTodos` när prestandaspåret är klart (filtret ligger nu
   i `src/server/data/todos.ts`); seed.test.ts krockar fortfarande med demo-testerna i en hel körning.
+- Prestanda (100 000 order, `next start`) klar: ingen sida över 800 ms TTFB eller över målet för färdig sida; Ekonomi 30 d
+  på gränsen (2,0 s). Ny migrering 20261102230000_prestanda_stock_levels.sql. Se docs/review/fas-7/prestanda.md.
+  Öppet: `queryMachineStockEvents` skickar tidpunkten som Postgres-text, så händelserna inom en dag ordnas bara på `seq`
+  (Prognos och förlorad försäljning, siffrorna ändras vid rättning; se rapporten).
+- 18:00 Slutverifiering grön: prettier, eslint, tsc; 2 545 enhetstester (UTC, Stockholm, Shanghai) och tidszonstesterna;
+  2 408 databastester i en hel körning; 18 e2e-tester mot egen server på 3210; `next build` utan miljö och med CI:s värden;
+  `next start` utan miljö visar saknad konfiguration på /logga-in och skickar / dit. Krocken mellan seed.test.ts och
+  demotesterna är löst: demo-isolering seedar en egen riktig organisation, demo-seed raderar demon efteråt och
+  redteam-demo frigör sin slug. Dev återställd för visning (460 order, 79 987 kr; demon 14 720 order).

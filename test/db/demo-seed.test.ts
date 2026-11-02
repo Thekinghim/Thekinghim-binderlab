@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { sql } from "drizzle-orm";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { LocalFileStore } from "../../src/import/file-store";
 import { verifyPassword } from "../../src/server/auth/password";
@@ -22,7 +22,7 @@ import {
   DEMO_USERS,
 } from "../../src/seed/demo/catalog";
 import { generateDemo, ordersByMonth } from "../../src/seed/demo/generate";
-import { runDemoSeed, type RunDemoSeedResult } from "../../src/seed/demo/run-demo-seed";
+import { resetDemo, runDemoSeed, type RunDemoSeedResult } from "../../src/seed/demo/run-demo-seed";
 import { stockholmToUtcMs } from "../../src/seed/orders";
 import { db, one, rows } from "./helpers";
 
@@ -94,6 +94,12 @@ beforeAll(async () => {
   countsAfterFirst = await tableCounts(org);
   second = await runDemoSeed(db(), { password: PASSWORD, manageUsers: true, fileStore });
 }, 300_000);
+
+// Demon raderas efteråt, så att slug nordljus-demo är ledig för redteam-demo.test.ts och
+// demo-isolering.test.ts när alla databastester körs i samma databas.
+afterAll(async () => {
+  await resetDemo(db(), "nordljus-demo");
+}, 120_000);
 
 describe("demo: order via importen", () => {
   it("samma order och summa som generatorn, en import per månad", async () => {

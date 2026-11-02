@@ -121,6 +121,16 @@ function daysText(weightBp: number): string {
   return `${tenths(t)} dagar`;
 }
 
+/**
+ * Slutsålda dagar summerade över titlar och automater ("titeldagar"): en titel slutsåld i
+ * två automater samma dag är två titeldagar. Totalen kan därför bli fler än periodens dagar.
+ */
+function titleDaysText(weightBp: number): string {
+  const t = roundHalfUp(weightBp, 1_000);
+  if (t % 10 === 0) return plural(t / 10, "titeldag", "titeldagar");
+  return `${tenths(t)} titeldagar`;
+}
+
 /** Arbetsdata per serie. */
 interface Series {
   readonly machineId: string;
@@ -618,6 +628,7 @@ export function lostSales(input: LostSalesInput): LostSalesResult {
   const totalUnits = months.reduce((sum, m) => sum + m.lostUnitsMilli, 0);
   const totalWeight = months.reduce((sum, m) => sum + m.stockoutDayWeightBp, 0);
   const totalHeuristic = months.reduce((sum, m) => sum + m.heuristicLostRevenueOre, 0);
+  const costing = periods.filter((p) => p.lostDayWeightBp > 0 || p.lostRevenueOre > 0).length;
 
   stockoutDays.sort((x, y) =>
     x.machineId !== y.machineId
@@ -651,10 +662,12 @@ export function lostSales(input: LostSalesInput): LostSalesResult {
       lostUnitsMilli: totalUnits,
       stockoutDayWeightBp: totalWeight,
       heuristicLostRevenueOre: totalHeuristic,
+      // Perioder som varken kostar dagar eller kronor i analysperioden (titlar som togs ur
+      // sortimentet före den) räknas inte i texten; de visas inte heller på Prognos.
       text:
-        periods.length === 0
+        costing === 0
           ? `Inget slutsålt ${periodText(period)}.`
-          : `Slutsålt kostade ${approxKr(totalRevenue)} ${periodText(period)} (${plural(periods.length, "period", "perioder")}, ${daysText(totalWeight)}).`,
+          : `Slutsålt kostade ${approxKr(totalRevenue)} ${periodText(period)} (${plural(costing, "period", "perioder")}, ${titleDaysText(totalWeight)}).`,
       evidence: planEvidence({
         rule: "Summan av månaderna, som är summan av de slutsålda perioderna.",
         period,

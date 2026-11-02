@@ -64,6 +64,11 @@ export interface LostModel {
   readonly totalUnitsMilli: number;
   readonly totalDayWeightBp: number;
   readonly rows: readonly LostRow[];
+  /**
+   * Perioder som varken kostar dagar eller kronor i perioden (titlar som togs ur sortimentet
+   * före den). De visas inte i tabellen; antalet står under den.
+   */
+  readonly hiddenWithoutCost: number;
   readonly months: readonly {
     readonly month: string;
     readonly text: string;
@@ -469,7 +474,8 @@ export function purchaseOrderNumber(id: string): string {
 
 function lostModel(data: PrognosData, names: NameLookup, now: Date): LostModel {
   const r = data.lostSales;
-  const rows: LostRow[] = r.periods.map((p) => ({
+  const costing = r.periods.filter((p) => p.lostDayWeightBp > 0 || p.lostRevenueOre > 0);
+  const rows: LostRow[] = costing.map((p) => ({
     key: p.key,
     titleId: p.titleId,
     title: names.title(p.titleId),
@@ -518,6 +524,7 @@ function lostModel(data: PrognosData, names: NameLookup, now: Date): LostModel {
     totalUnitsMilli: r.total.lostUnitsMilli,
     totalDayWeightBp: r.total.stockoutDayWeightBp,
     rows,
+    hiddenWithoutCost: r.periods.length - costing.length,
     months: r.months.map((m) => ({
       month: m.month,
       text: tidy(m.text),

@@ -105,7 +105,7 @@ describe("machineHealth: misstänkt fel ur tystnad", () => {
     const [h] = health({ orders }, MON_1830);
     expect(h?.status).toBe("offline");
     expect(h?.source).toBe("sales");
-    expect(h?.title).toBe("Automat 1 är troligen offline");
+    expect(h?.title).toBe("Automat 1 är troligen ur drift");
     expect(txt(h?.detail)).toContain("Maskindata saknas");
   });
 

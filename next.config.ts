@@ -14,6 +14,10 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   // Avslöja inte ramverket i varje svar.
   poweredByHeader: false,
+  // Ingen dev-indikator ("N") över sidan: demon körs med next dev (dev-inloggningen spärras
+  // i next start), och indikatorn täckte användarnamnet i sidomenyn och Hem i mobilmenyn.
+  // Kompilerings- och körfel visas ändå.
+  devIndicators: false,
   experimental: {
     serverActions: { bodySizeLimit: MAX_ACTION_BODY },
     // Proxyn buffrar förfrågans kropp; standard 10 MB skulle klippa avtalsfiler.

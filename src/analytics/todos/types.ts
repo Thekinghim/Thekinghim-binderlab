@@ -263,6 +263,13 @@ export interface TodoInput extends EconomicsSources {
    * ./assortment.ts) ger ingen påfyllningspunkt. Saknas = inga utgångna.
    */
   readonly slotPeriods?: readonly SlotPeriod[];
+  /**
+   * Hur långt försäljningen är importerad per automat (som `salesCoverage` i maskinhälsan,
+   * ISO 8601 UTC). En tyst automats tystnad räknas fram till dit i stället för till nu,
+   * precis som på Drift, så att Att göra, Hem och Drift säger samma antal timmar.
+   * Saknas = till nu.
+   */
+  readonly salesDataUntil?: readonly { readonly machineId: string; readonly until: string | null }[];
   readonly options?: TodoOptions;
 }
 

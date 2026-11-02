@@ -72,10 +72,12 @@ export function securityHeaderRules(options: SecurityHeaderOptions): HeaderRule[
     { key: "X-Content-Type-Options", value: "nosniff" },
     // Sökvägar kan bära inbjudningstoken och id:n: skicka bara ursprunget utåt.
     { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+    // Bara funktioner som Chromium känner igen; okända (t.ex. bluetooth) ger en
+    // konsolvarning på varje sida.
     {
       key: "Permissions-Policy",
       value:
-        "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), bluetooth=()",
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=()",
     },
     { key: "Strict-Transport-Security", value: "max-age=63072000" },
     { key: "Cross-Origin-Opener-Policy", value: "same-origin" },

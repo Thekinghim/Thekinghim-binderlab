@@ -18,7 +18,16 @@ import { DEMO_USERS } from "../../src/seed/demo/catalog";
 import { resetDemo, runDemoSeed, type RunDemoSeedResult } from "../../src/seed/demo/run-demo-seed";
 import { runSeed, type RunSeedResult } from "../../src/seed/run-seed";
 import { slugFromName } from "../../src/server/onboarding/create-organization";
-import { asUser, createUser, db, one, orgScopedTables, rows, type TestUser } from "./helpers";
+import {
+  asUser,
+  createUser,
+  db,
+  one,
+  orgScopedTables,
+  rows,
+  uniqueSuffix,
+  type TestUser,
+} from "./helpers";
 
 const PASSWORD = "binderlab-dev-test";
 const scoped = await orgScopedTables();
@@ -69,7 +78,28 @@ const DATA_TABLES = [
 
 beforeAll(async () => {
   const fileStore = new LocalFileStore(mkdtempSync(path.join(tmpdir(), "binderlab-demo-iso-")));
-  real = await runSeed(db(), { password: PASSWORD, manageUsers: true, fileStore });
+  // Den riktiga organisationen med egen slug och egna användare (samma seed och samma data
+  // som verksamhetens), så att filen inte tar seedens "binderlab" och agare@/delagare@ från
+  // seed.test.ts när alla databastester körs i samma databas.
+  const suffix = uniqueSuffix();
+  real = await runSeed(db(), {
+    password: PASSWORD,
+    manageUsers: true,
+    fileStore,
+    organization: { name: `Riktig ${suffix}`, slug: `riktig-${suffix}` },
+    users: {
+      owner: {
+        email: `riktig-agare-${suffix}@test.binderlab.se`,
+        fullName: "Ägare",
+        role: "owner",
+      },
+      partner: {
+        email: `riktig-delagare-${suffix}@test.binderlab.se`,
+        fullName: "Delägare",
+        role: "viewer",
+      },
+    },
+  });
   realCounts = await countsFor(real.organizationId);
   demo = await runDemoSeed(db(), { password: PASSWORD, manageUsers: true, fileStore });
 }, 300_000);

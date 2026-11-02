@@ -370,6 +370,7 @@ export function cashflow(input: CashflowInput): CashflowResult {
       phase: "forecast",
       amountOre: amount,
       overdue,
+      ...(overdue ? { dueDate: payDate } : {}),
       label: overdue
         ? `Utbetalning för ${periodText(s)} väntades ${day(payDate)} men saknas`
         : `Väntad utbetalning för ${periodText(s)}`,
@@ -484,6 +485,7 @@ export function cashflow(input: CashflowInput): CashflowResult {
       ...(overdue ? { phase: "forecast" as const } : {}),
       amountOre: total,
       overdue,
+      ...(overdue ? { dueDate: due } : {}),
       label: overdue
         ? `Butiksersättning för ${monthName(month)} förföll ${day(due)} men är inte betald (${kr(total)})`
         : `Butiksersättning för ${monthName(month)} (provision ${kr(commission)}, hyra ${kr(rent)})`,
@@ -531,6 +533,7 @@ export function cashflow(input: CashflowInput): CashflowResult {
       phase: planned ? "forecast" : phaseOf(date),
       amountOre: p.amountOre,
       overdue,
+      ...(overdue ? { dueDate: p.date } : {}),
       label: `${planned ? "Planerat inköp" : "Inköp"}${p.label ? ` ${p.label}` : ""}`,
       evidence: financeEvidence({
         rule: planned ? "Planerat inköp på planerad betaldag." : "Betalt inköp på betaldagen.",

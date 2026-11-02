@@ -167,7 +167,7 @@ export async function queryMachineStockEvents(
     kind: StockEventRef["kind"];
     quantity: number;
     business_date: string;
-    occurred_at: Date | string;
+    occurred_at: string;
     seq: number | string;
   }>(
     tx,
@@ -181,7 +181,9 @@ export async function queryMachineStockEvents(
         group by e.location_id, e.title_id
       )
       select e.id, e.location_id, l.machine_id, e.title_id, e.kind, e.quantity,
-             e.business_date::text as business_date, e.occurred_at, e.seq
+             e.business_date::text as business_date,
+             to_char(e.occurred_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as occurred_at,
+             e.seq
       from public.stock_events e
       join public.stock_locations l
         on l.organization_id = e.organization_id and l.id = e.location_id
@@ -193,6 +195,9 @@ export async function queryMachineStockEvents(
         and (lc.d is null or e.business_date >= lc.d)
     `,
   );
+  // Tidpunkten formateras i databasen som ISO 8601 (som Date.toISOString() och queryOrders).
+  // Postgres textformat ("2026-09-01 06:58:00+00") godtas inte av tryParseInstant, och då
+  // ordnades händelserna inom en dag bara på seq, inte på tid som vyn stock_levels gör.
   // Ingen sortering i databasen: genomspelningen (replayStockDaily) ordnar händelserna
   // själv per lagerplats och titel med en total ordning (datum, tidpunkt, seq, id), så
   // svaret beror inte på radernas ordning. Med 100 000 order sparar det en sortering på disk.
@@ -204,7 +209,7 @@ export async function queryMachineStockEvents(
     kind: r.kind,
     quantity: Number(r.quantity),
     businessDate: r.business_date,
-    occurredAt: r.occurred_at instanceof Date ? r.occurred_at.toISOString() : String(r.occurred_at),
+    occurredAt: r.occurred_at,
     seq: Number(r.seq),
   }));
 }

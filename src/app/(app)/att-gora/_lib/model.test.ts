@@ -159,7 +159,7 @@ describe("buildPage", () => {
     expect(page.header.aside).toBe("1 måste göras i dag.");
     expect(page.header.description).toBe(
       `Först: Fyll på Titel 1 i Automat, räcker 0,3${NBSP}d. ` +
-        `3${NBSP}947${NBSP}kr i intäkt står på spel de närmaste 7 dagarna.`,
+        `Den står för 2${NBSP}947${NBSP}kr av 3${NBSP}947${NBSP}kr i intäkt i risk de närmaste 7 dagarna.`,
     );
     expect(page.header.meta.find((m) => m.label === "I risk 7 d")?.value).toBe(
       `3${NBSP}947${NBSP}kr`,

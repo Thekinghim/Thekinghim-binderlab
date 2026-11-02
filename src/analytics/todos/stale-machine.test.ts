@@ -32,6 +32,32 @@ describe("automat som inte sålt", () => {
     expect(t?.atStakeOre).toBeGreaterThan(0);
   });
 
+  it("tystnaden räknas fram till importens slut, som på Drift", () => {
+    // NOW = 2 nov. 10:00Z. Försäljningen är importerad t.o.m. 1 nov. 19:00Z: 58 timmar, inte 73.
+    const [t] = stale(
+      withLast("2026-10-30T09:00:00Z", {
+        salesDataUntil: [{ machineId: "m1", until: "2026-11-01T19:00:00Z" }],
+      }),
+    );
+    expect(t?.title).toBe("Automat 1 har inte sålt på 58\u00a0timmar");
+    // Importen före senaste försäljningen eller efter nu ändrar inget.
+    expect(
+      stale(
+        withLast("2026-10-31T09:00:00Z", {
+          salesDataUntil: [{ machineId: "m1", until: "2026-11-03T00:00:00Z" }],
+        }),
+      )[0]?.title,
+    ).toBe("Automat 1 har inte sålt på 49\u00a0timmar");
+    // Under 48 timmar till importens slut: ingen punkt än.
+    expect(
+      stale(
+        withLast("2026-10-31T09:00:00Z", {
+          salesDataUntil: [{ machineId: "m1", until: "2026-11-01T09:00:00Z" }],
+        }),
+      ),
+    ).toHaveLength(0);
+  });
+
   it("slår inte till vid exakt 48 timmar eller mindre", () => {
     expect(stale(withLast("2026-10-31T10:00:00Z"))).toHaveLength(0);
     expect(stale(withLast("2026-11-02T09:00:00Z"))).toHaveLength(0);

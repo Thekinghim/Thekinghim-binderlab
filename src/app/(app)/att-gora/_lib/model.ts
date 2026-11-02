@@ -638,9 +638,16 @@ function headerView(
     if (stake > 0) {
       // Beloppet gäller påfyllningar och tysta automater; när den första punkten är något
       // annat (utkast, avtal, larm) sägs det, så att beloppet inte kopplas till den.
+      // Rubrikens belopp är summan för alla punkter; den första punktens egen andel sägs
+      // för sig, så att summan inte läses som den automatens belopp.
+      const leadStake = lead && RISK_KINDS.has(lead.kind) ? wholeKronor(lead.atStakeOre ?? 0) : 0;
       parts.push(
         lead && RISK_KINDS.has(lead.kind)
-          ? `${kr(stake)} i intäkt står på spel de närmaste 7 dagarna.`
+          ? leadStake >= stake
+            ? `${kr(stake)} i intäkt står på spel de närmaste 7 dagarna.`
+            : leadStake > 0
+              ? `Den står för ${kr(leadStake)} av ${kr(stake)} i intäkt i risk de närmaste 7 dagarna.`
+              : `Totalt ${kr(stake)} i intäkt i risk de närmaste 7 dagarna.`
           : `${
               visible.some((i) => i.kind === "stale-machine")
                 ? "Påfyllningar och tysta automater"

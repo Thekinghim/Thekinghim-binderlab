@@ -6,6 +6,8 @@
  *   räknade men inte med.
  * - Vyn stock_levels (20261102230000_prestanda_stock_levels.sql) ger samma rader som den
  *   tidigare definitionen (20261102100500_stock.sql), som står här som facit.
+ * - queryMachineStockEvents skickar tidpunkten som ISO 8601, så att genomspelningen i
+ *   Prognos och förlorad försäljning ordnar händelserna inom en dag på tid, som vyn.
  */
 
 import { and, asc, eq, gte, lte, sql } from "drizzle-orm";
@@ -13,8 +15,10 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import type { AnalyticsOrder } from "@/analytics/todos";
 import * as s from "@/db/schema";
+import { stockLevels } from "@/analytics/lost-sales/stock";
 import { withUserDbFor } from "@/server/access";
 import { queryOrders } from "@/server/data/core/queries";
+import { queryMachineStockEvents } from "@/server/purchasing/queries";
 
 import { asUser, db, rows, seedTenantFixture, type TenantFixture } from "./helpers";
 
@@ -258,5 +262,52 @@ describe("stock_levels", () => {
     );
     expect(actual.length).toBeGreaterThan(2);
     expect(actual).toEqual(expected);
+  });
+});
+
+describe("queryMachineStockEvents", () => {
+  it("skickar ISO-tid, så att saldot inom en dag följer tiden som vyn stock_levels", async () => {
+    // Samma dag: påfyllningen kl. 18 läggs in före inventeringen kl. 7 (lägre seq). Ordnat
+    // på tid blir saldot 7 + 5 = 12; ordnat bara på seq (det tidigare felet) blir det 7.
+    await asUser(fx.owner, async (tx) => {
+      const base = { organizationId: fx.orgId, locationId: fx.machineLocationId };
+      await tx.insert(s.stockEvents).values({
+        ...base,
+        titleId: fx.titleId,
+        kind: "refill",
+        quantity: 5,
+        occurredAt: new Date("2025-07-10T16:00:00Z"),
+      });
+      await tx.insert(s.stockEvents).values({
+        ...base,
+        titleId: fx.titleId,
+        kind: "count",
+        quantity: 7,
+        occurredAt: new Date("2025-07-10T05:00:00Z"),
+      });
+    });
+    const user = { userId: fx.owner.id, email: fx.owner.email };
+    const events = await withUserDbFor(user, (tx) =>
+      queryMachineStockEvents(tx, fx.orgId, "2025-01-01", "2025-12-31"),
+    );
+    expect(events.length).toBeGreaterThan(0);
+    for (const e of events)
+      expect(e.occurredAt).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
+
+    const replayed = stockLevels(events, "2025-12-31");
+    const view = await rows<{ location_id: string; title_id: string; quantity: number }>(
+      db(),
+      sql`select location_id, title_id, quantity from public.stock_levels
+          where organization_id = ${fx.orgId}::uuid and location_id = ${fx.machineLocationId}::uuid`,
+    );
+    expect(view.length).toBeGreaterThan(0);
+    for (const v of view) {
+      const r = replayed.find((x) => x.locationId === v.location_id && x.titleId === v.title_id);
+      expect(r?.onHand).toBe(Number(v.quantity));
+    }
+    const main = replayed.find(
+      (x) => x.locationId === fx.machineLocationId && x.titleId === fx.titleId,
+    );
+    expect(main?.onHand).toBe(12);
   });
 });

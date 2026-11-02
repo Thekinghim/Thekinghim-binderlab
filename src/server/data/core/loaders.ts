@@ -38,6 +38,7 @@ import {
   type SessionUser,
 } from "@/server/access";
 import { todayIn, toIsoDate } from "@/components/shell/period-state";
+import { loadCoverage } from "@/server/alerts/inputs";
 
 import {
   DEFAULT_SETTINGS,
@@ -454,6 +455,12 @@ export async function loadTodoStateFor(viewer: Viewer, now: Date = new Date()): 
         lastRestockedAt: r.lastRestockedAt,
       }));
     const dismissals = await queryTodoDismissals(tx, orgId);
+    // Hur långt försäljningen är importerad per automat: tystnaden räknas fram till dit,
+    // som på Drift (maskinhälsan), så att alla sidor säger samma antal timmar.
+    const salesDataUntil = (await loadCoverage(tx, orgId, now)).map((c) => ({
+      machineId: c.machineId,
+      until: c.dataUntil?.toISOString() ?? null,
+    }));
 
     let input: TodoInput;
     if (economy) {
@@ -486,6 +493,7 @@ export async function loadTodoStateFor(viewer: Viewer, now: Date = new Date()): 
         reportDrafts: drafts,
         contracts,
         alerts,
+        salesDataUntil,
         options: { timeZone },
       };
     } else {
@@ -501,6 +509,7 @@ export async function loadTodoStateFor(viewer: Viewer, now: Date = new Date()): 
         stock,
         reportRecipients: [],
         reportDeliveries: [],
+        salesDataUntil,
         options: { timeZone },
       };
     }

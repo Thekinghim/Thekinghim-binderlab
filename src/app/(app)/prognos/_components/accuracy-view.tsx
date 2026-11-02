@@ -79,20 +79,20 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
   const items: KpiItem[] = [
     {
       id: "wape",
-      label: "Fel per dag (WAPE)",
+      label: "Fel per dag",
       value: t.wapeBp ?? Number.NaN,
       format: (v) => percentBp(Number.isFinite(v) ? v : null, 0),
       primary: true,
     },
     {
       id: "mape",
-      label: "Fel/vecka (MAPE)",
+      label: "Fel per vecka",
       value: t.mapeBp ?? Number.NaN,
       format: (v) => percentBp(Number.isFinite(v) ? v : null, 0),
     },
     {
       id: "bias",
-      label: "Bias",
+      label: "För högt/lågt",
       value: t.biasBp ?? Number.NaN,
       format: (v) => (Number.isFinite(v) ? formatDelta(v / 10_000) : MISSING),
     },
@@ -114,7 +114,7 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
 
   return (
     <div className="flex flex-col gap-10">
-      <KpiStrip label={`Backtest · ${model.origins.length} veckor`} items={items} />
+      <KpiStrip label={`Prövad på ${model.origins.length} veckor`} items={items} />
       <div className="flex flex-col gap-3">
         <DataTable
           surface="bg"

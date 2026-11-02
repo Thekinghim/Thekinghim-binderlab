@@ -45,6 +45,12 @@ export function daysBp(bp: number): string {
   return `${formatNumber(v, Number.isInteger(v) ? 0 : 1)}${NBSP}${v === 1 ? "dag" : "dagar"}`;
 }
 
+/** Slutsålda dagar summerade över titlar och automater: 19 titeldagar, 741,5 titeldagar. */
+export function titleDaysBp(bp: number): string {
+  const v = bp / 10_000;
+  return `${formatNumber(v, Number.isInteger(v) ? 0 : 1)}${NBSP}${v === 1 ? "titeldag" : "titeldagar"}`;
+}
+
 /** 12 st / 12 pack */
 export function packsText(n: number): string {
   return `${formatInt(n)}${NBSP}pack`;

@@ -179,7 +179,7 @@ describe("revision 1: misstänkt fel härlett ur tystnad", () => {
     expect(h.source).toBe("sales");
     expect(h.silence?.expectedMilli).toBe(8_500);
     expect(h.silence?.zeroProbabilityBp).toBe(2);
-    expect(h.title).toBe("Automat 1 är troligen offline");
+    expect(h.title).toBe("Automat 1 är troligen ur drift");
     // 23,5 h (ons 17:00): λ = 7,5 ⇒ e^−7,5 = 0,055 % ⇒ fortfarande bara misstänkt fel.
     const before = health(o, sthlm("2026-11-04", "17:00"));
     expect(before.status).toBe("suspected_fault");

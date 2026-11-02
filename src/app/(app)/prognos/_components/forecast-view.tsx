@@ -7,7 +7,7 @@ import { Panel } from "@/components/ui/frame";
 import { Segmented } from "@/components/ui/segmented";
 import { StatusTag } from "@/components/ui/status-tag";
 import { StateMessage } from "@/components/ui/state-message";
-import { NBSP } from "@/lib/format";
+import { formatInt, NBSP } from "@/lib/format";
 
 import { dayText, periodShort } from "../_lib/dates";
 import type { ForecastModel, ForecastRow } from "../_lib/model";
@@ -263,7 +263,7 @@ export function ForecastView({ model }: { model: ForecastModel }) {
         />
         {model.ordersWithoutMachine > 0 ? (
           <p className="text-xs text-subtle">
-            {model.ordersWithoutMachine} order saknar automat och ingår inte. Koppla automaterna i
+            {formatInt(model.ordersWithoutMachine)} order saknar automat och ingår inte. Koppla automaterna i
             Datakällor.
           </p>
         ) : null}

@@ -501,21 +501,21 @@ function evaluate(
     const heartbeat = signal.kind !== "offline";
     const detail = heartbeat
       ? `Ingen kontakt sedan ${whenText(parseInstant(signal.at), tz)} (${durationText(Math.floor((nowMs - parseInstant(signal.at)) / MINUTE_MS))}). ${lastSaleText}`
-      : `Leverantören rapporterade offline ${whenText(sinceMs, tz)} (för ${durationText(minutes)} sedan). ${lastSaleText}`;
+      : `Leverantören rapporterade att automaten tappade anslutningen ${whenText(sinceMs, tz)} (för ${durationText(minutes)} sedan). ${lastSaleText}`;
     return base(
       "offline",
       "vendor",
       sinceMs,
-      `${name} är offline`,
+      `${name} saknar anslutning`,
       detail,
       {
         rule: heartbeat
-          ? `Offline när leverantören inte hört av automaten på ${o.heartbeatTimeoutMinutes} minuter.`
-          : "Offline när leverantörens senaste anslutningshändelse är offline.",
+          ? `Utan anslutning när leverantören inte hört av automaten på ${o.heartbeatTimeoutMinutes} minuter.`
+          : "Utan anslutning när leverantörens senaste anslutningshändelse säger att automaten är frånkopplad.",
         dates: [localParts(sinceMs, tz).date],
         orderIds: p.lastOrder ? [p.lastOrder.id] : [],
         figures: [
-          { key: "offlineMinutes", label: "Minuter offline", value: minutes, unit: "count" },
+          { key: "offlineMinutes", label: "Minuter utan anslutning", value: minutes, unit: "count" },
         ],
       },
       { signal },
@@ -644,7 +644,7 @@ function evaluate(
         "offline",
         "sales",
         p.silenceStartMs,
-        `${name} är troligen offline`,
+        `${name} är troligen ur drift`,
         `${why} Maskindata saknas, så statusen är härledd ur försäljningen.`,
         {
           ...ev,

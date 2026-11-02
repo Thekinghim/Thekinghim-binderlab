@@ -9,7 +9,7 @@ import { StatusTag } from "@/components/ui/status-tag";
 import { formatInt } from "@/lib/format";
 
 import type { LostModel, LostRow } from "../_lib/model";
-import { daysBp, kr, packsMilli, packsWhole } from "../_lib/units";
+import { daysBp, kr, packsMilli, packsWhole, titleDaysBp } from "../_lib/units";
 import { EvidenceButton } from "./evidence-button";
 
 /** Slutsåld just nu (varning) eller påfylld igen (info). */
@@ -123,7 +123,12 @@ export function LostSalesView({ model }: { model: LostModel }) {
         numeric: true,
         hideOnMobile: true,
         sortValue: (r) => r.lostGrossProfitOre ?? -1,
-        render: (r) => (r.lostGrossProfitOre === null ? "–" : kr(r.lostGrossProfitOre)),
+        render: (r) =>
+          r.lostGrossProfitOre === null ? (
+            <span className="text-subtle">Pris saknas</span>
+          ) : (
+            kr(r.lostGrossProfitOre)
+          ),
         csv: (r) => (r.lostGrossProfitOre === null ? null : r.lostGrossProfitOre / 100),
       },
       {
@@ -177,9 +182,10 @@ export function LostSalesView({ model }: { model: LostModel }) {
           },
           {
             id: "days",
-            label: "Slutsålda dagar",
+            // Summa över titlar och automater (se noten under tabellen), inte kalenderdagar.
+            label: "Titeldagar slutsålt",
             value: model.totalDayWeightBp,
-            format: (v) => daysBp(v),
+            format: (v) => titleDaysBp(v),
           },
         ]}
       />
@@ -194,6 +200,14 @@ export function LostSalesView({ model }: { model: LostModel }) {
         dense
         exportFileName={`forlorad-forsaljning-${model.period.start}-${model.period.end}`}
       />
+
+      <p className="text-sm text-muted">
+        En titeldag är en titel slutsåld i en automat en dag; samma titel slutsåld i två automater
+        samma dag är två titeldagar. Påfyllningsdagen räknas som en halv dag.
+        {model.hiddenWithoutCost > 0
+          ? ` ${formatInt(model.hiddenWithoutCost)} ${model.hiddenWithoutCost === 1 ? "titel" : "titlar"} som togs ur sortimentet före perioden kostar inget och visas inte.`
+          : ""}
+      </p>
 
       {model.months.length > 1 ? (
         <ul className="flex flex-col">

@@ -13,7 +13,7 @@ import { describe, expect, it } from "vitest";
 
 import { slugFromName } from "../../src/server/onboarding/create-organization";
 import { resetDemo } from "../../src/seed/demo/run-demo-seed";
-import { asUser, createUser, db, rows } from "./helpers";
+import { asUser, createUser, db, rows, uniqueSuffix } from "./helpers";
 
 describe("rödteam: demoåterställningen rör bara demon", () => {
   it("en kundorganisation som råkar heta 'Nordljus (demo)' raderas inte", async () => {
@@ -42,5 +42,12 @@ describe("rödteam: demoåterställningen rör bara demon", () => {
       sql`select 1 from public.organizations where id = ${orgId}::uuid`,
     );
     expect(left).toHaveLength(1);
+
+    // Slug frigörs efteråt, så att demo-seed.test.ts och demo-isolering.test.ts kan seeda
+    // demon i samma databas oavsett i vilken ordning filerna körs.
+    await db().execute(
+      sql`update public.organizations set slug = ${`kund-${uniqueSuffix()}`}
+          where id = ${orgId}::uuid`,
+    );
   });
 });
