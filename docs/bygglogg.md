@@ -41,3 +41,13 @@ Se `docs/datamodell.md` (Beslut från beställaren) och planens avsnitt "Beslut 
 
 Timvis kontroll av bygget: schemalagd uppgift `trig_011jdLLdDXA6g2gBGTGoFBzJ` ("Binderlab: fortsätt bygget", kl. xx:35 UTC).
 Tas bort när alla faser är klara.
+
+## Arbetsflöden 2 nov. (kl. 10:50)
+
+- Fas 1b slutsteg: wf_36bd270a-1ca (ny /design, docs/design.md, före/efter).
+- Fas 2–5 sidor, fyra parallella delar av fas2-5-ui-part.js: inloggning+datakällor+hem, att-göra+lönsamhet, inköpspriser+order, lager+automater+butiker.
+  Datalagrets rapport: scratchpad/ui-core-report.md. Efter alla fyra: avstämningsagent (summor mellan vyer, prisändring mitt i period) körs separat.
+- Fas 6–11 sidor, fyra parallella delar av fas6-11-ui.js: rapporter+prognos, assistent+expansion(+enhetsekonomi, effekt), drift(+inkorg, PWA)+marknad, ekonomi(+avtal)+portal.
+- Omkörning av logik: prognos/förlorad försäljning/inköp, avstämning/kassaflöde/avtal, expansion-fix (logic-ahead-rerun).
+- Menyposter och platshållare för fas 6–11 lades in i src/components/shell/nav.ts av huvudagenten.
+- Efter allt: fas 7 (kvalitet, onboarding, demoläge, e2e, dokumentation) och integration (Hem/Att göra kopplas till förlorad försäljning, avtal, rapporter).

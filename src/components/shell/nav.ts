@@ -25,6 +25,15 @@ export type RouteId =
   | "butiker"
   | "inkopspriser"
   | "rapporter"
+  | "prognos"
+  | "expansion"
+  | "drift"
+  | "inkorg"
+  | "ekonomi"
+  | "avtal"
+  | "marknad"
+  | "effekt"
+  | "assistent"
   | "datakallor"
   | "installningar";
 
@@ -151,6 +160,96 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     mobileRank: 7,
     phase: 6,
     lead: "Utskick och underlag.",
+  },
+  {
+    id: "prognos",
+    href: "/prognos",
+    label: "Prognos & inköp",
+    icon: "sales",
+    section: "main",
+    roles: READERS,
+    phase: 6,
+    lead: "Vad som säljer de kommande fyra veckorna och vad som ska beställas.",
+  },
+  {
+    id: "expansion",
+    href: "/expansion",
+    label: "Expansion",
+    icon: "arrowUpRight",
+    section: "main",
+    roles: READERS,
+    phase: 6,
+    lead: "Nya platser, scenarier och mål.",
+  },
+  {
+    id: "drift",
+    href: "/drift",
+    label: "Drift",
+    icon: "machine",
+    section: "main",
+    roles: ALL,
+    phase: 8,
+    lead: "Maskinhälsa, larm och besöksplan.",
+  },
+  {
+    id: "inkorg",
+    href: "/inkorg",
+    label: "Inkorg",
+    icon: "info",
+    section: "main",
+    roles: ALL,
+    phase: 8,
+    lead: "Kundärenden och återbetalningar.",
+  },
+  {
+    id: "ekonomi",
+    href: "/ekonomi",
+    label: "Ekonomi",
+    icon: "margin",
+    section: "main",
+    roles: READERS,
+    phase: 9,
+    lead: "Avstämning, bokföring och kassaflöde.",
+  },
+  {
+    id: "avtal",
+    href: "/avtal",
+    label: "Avtal",
+    icon: "report",
+    section: "main",
+    roles: READERS,
+    phase: 9,
+    lead: "Butiksavtal, villkor och förfallodatum.",
+  },
+  {
+    id: "marknad",
+    href: "/marknad",
+    label: "Marknad",
+    icon: "overview",
+    section: "main",
+    roles: READERS,
+    phase: 11,
+    lead: "Releaser, priser och sortiment.",
+  },
+  {
+    id: "effekt",
+    href: "/effekt",
+    label: "Effekt",
+    icon: "check",
+    section: "main",
+    roles: READERS,
+    phase: 10,
+    lead: "Förbättringen mot läget före Binderlab.",
+  },
+  {
+    id: "assistent",
+    href: "/assistent",
+    label: "Assistent",
+    icon: "search",
+    section: "main",
+    roles: READERS,
+    phase: 6,
+    lead: "Fråga om er data på svenska.",
   },
   {
     id: "datakallor",

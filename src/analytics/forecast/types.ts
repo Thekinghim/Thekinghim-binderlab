@@ -28,8 +28,11 @@ export interface ForecastOptions {
   readonly trendMinUnits?: number;
   /** Färre dagar med data än så här ger status 'low-data'. Standard 14. */
   readonly minHistoryDays?: number;
-  /** z-värde för intervallet i tusendelar. Standard 1 282 (80 %-intervall). */
-  readonly intervalZMilli?: number;
+  /**
+   * Osäkerhetsintervallets täckning i bp: 5 000, 8 000, 9 000, 9 500 eller 9 900.
+   * Standard 8 000 (80 %-intervall: utfallet väntas hamna utanför ungefär var femte gång).
+   */
+  readonly intervalCoverageBp?: number;
   /** Dagar bakåt som snittpriset räknas på. Standard 28. */
   readonly priceWindowDays?: number;
   /** Antal ursprung i backtesten. Standard 6. */
