@@ -35,7 +35,9 @@ beforeAll(async () => {
 function upload(user: TestUser, bucket: string, name: string) {
   return asUser(user, (tx) =>
     attempt(tx, (sp) =>
-      sp.execute(sql`insert into storage.objects (bucket_id, name, owner) values (${bucket}, ${name}, ${user.id})`),
+      sp.execute(
+        sql`insert into storage.objects (bucket_id, name, owner) values (${bucket}, ${name}, ${user.id})`,
+      ),
     ),
   );
 }
@@ -61,12 +63,15 @@ describe("storage", () => {
     ]);
   });
 
-  it.each(["imports", "reports"])("%s: ägaren laddar upp i sin egen mapp, läsaren kan läsa", async (bucket) => {
-    const name = `${A.orgId}/${randomUUID()}.pdf`;
-    expect((await upload(A.owner, bucket, name)).ok).toBe(true);
-    expect((await visible(A.owner, bucket, A.orgId)).n).toBeGreaterThan(0);
-    expect((await visible(viewer, bucket, A.orgId)).n).toBeGreaterThan(0);
-  });
+  it.each(["imports", "reports"])(
+    "%s: ägaren laddar upp i sin egen mapp, läsaren kan läsa",
+    async (bucket) => {
+      const name = `${A.orgId}/${randomUUID()}.pdf`;
+      expect((await upload(A.owner, bucket, name)).ok).toBe(true);
+      expect((await visible(A.owner, bucket, A.orgId)).n).toBeGreaterThan(0);
+      expect((await visible(viewer, bucket, A.orgId)).n).toBeGreaterThan(0);
+    },
+  );
 
   it.each(["imports", "reports"])("%s: påfyllaren har ingen åtkomst", async (bucket) => {
     await upload(A.owner, bucket, `${A.orgId}/${randomUUID()}.csv`);
@@ -78,14 +83,19 @@ describe("storage", () => {
     expect((await upload(viewer, bucket, `${A.orgId}/${randomUUID()}.csv`)).code).toBe("42501");
   });
 
-  it.each(["imports", "reports"])("%s: ingen åtkomst till en annan organisations mapp", async (bucket) => {
-    await upload(B.owner, bucket, `${B.orgId}/${randomUUID()}.csv`);
-    expect((await visible(A.owner, bucket, B.orgId)).n).toBe(0);
-    expect((await upload(A.owner, bucket, `${B.orgId}/${randomUUID()}.csv`)).code).toBe("42501");
-    // Sökvägar som inte börjar med ett uuid nekas också.
-    expect((await upload(A.owner, bucket, `inte-ett-uuid/${randomUUID()}.csv`)).code).toBe("42501");
-    expect((await upload(A.owner, bucket, `${randomUUID()}.csv`)).code).toBe("42501");
-  });
+  it.each(["imports", "reports"])(
+    "%s: ingen åtkomst till en annan organisations mapp",
+    async (bucket) => {
+      await upload(B.owner, bucket, `${B.orgId}/${randomUUID()}.csv`);
+      expect((await visible(A.owner, bucket, B.orgId)).n).toBe(0);
+      expect((await upload(A.owner, bucket, `${B.orgId}/${randomUUID()}.csv`)).code).toBe("42501");
+      // Sökvägar som inte börjar med ett uuid nekas också.
+      expect((await upload(A.owner, bucket, `inte-ett-uuid/${randomUUID()}.csv`)).code).toBe(
+        "42501",
+      );
+      expect((await upload(A.owner, bucket, `${randomUUID()}.csv`)).code).toBe("42501");
+    },
+  );
 
   it("filer kan inte skrivas över eller raderas av klienter", async () => {
     const name = `${A.orgId}/${randomUUID()}.csv`;
@@ -94,7 +104,9 @@ describe("storage", () => {
       tx.execute(sql`update storage.objects set name = name where name = ${name}`),
     );
     expect((changed as unknown as { count: number }).count).toBe(0);
-    const removed = await asUser(A.owner, (tx) => tx.execute(sql`delete from storage.objects where name = ${name}`));
+    const removed = await asUser(A.owner, (tx) =>
+      tx.execute(sql`delete from storage.objects where name = ${name}`),
+    );
     expect((removed as unknown as { count: number }).count).toBe(0);
   });
 });

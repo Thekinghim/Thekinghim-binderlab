@@ -54,7 +54,12 @@ const compositeFks = (
           and att.attname <> 'organization_id'
         order by cl.relname, con.conname`,
   )
-).map((r): CompositeFk => ({ name: r.name, table: r.table, column: r.column, refTable: r.ref_table }));
+).map((r): CompositeFk => ({
+  name: r.name,
+  table: r.table,
+  column: r.column,
+  refTable: r.ref_table,
+}));
 
 let A: TenantFixture;
 let B: TenantFixture;
@@ -66,7 +71,8 @@ beforeAll(async () => {
 
 describe("fixturen", () => {
   it.each(tables)("%s har minst en rad för organisationen", async (table) => {
-    const where = table === "organizations" ? sql`id = ${A.orgId}` : sql`organization_id = ${A.orgId}`;
+    const where =
+      table === "organizations" ? sql`id = ${A.orgId}` : sql`organization_id = ${A.orgId}`;
     const { n } = await one<{ n: number }>(
       db(),
       sql`select count(*)::int as n from ${rel(table)} where ${where}`,
@@ -79,8 +85,14 @@ describe("läsning: en användare i A ser 0 rader från B", () => {
   it.each(relations)("%s", async (relation) => {
     const orgColumn = relation === "organizations" ? sql`id` : sql`organization_id`;
     const [own, foreign] = await asUser(A.owner, async (tx) => [
-      await one<{ n: number }>(tx, sql`select count(*)::int as n from ${rel(relation)} where ${orgColumn} = ${A.orgId}`),
-      await one<{ n: number }>(tx, sql`select count(*)::int as n from ${rel(relation)} where ${orgColumn} <> ${A.orgId}`),
+      await one<{ n: number }>(
+        tx,
+        sql`select count(*)::int as n from ${rel(relation)} where ${orgColumn} = ${A.orgId}`,
+      ),
+      await one<{ n: number }>(
+        tx,
+        sql`select count(*)::int as n from ${rel(relation)} where ${orgColumn} <> ${A.orgId}`,
+      ),
     ]);
     expect(foreign!.n).toBe(0);
     // Kontroll åt andra hållet: ägaren ser sin egen data (utom vyer som kan vara tomma).
@@ -110,7 +122,9 @@ describe("skrivning: update som flyttar organization_id nekas", () => {
     const row = await sampleRow(table, A.orgId);
     const outcome = await asUser(A.owner, (tx) =>
       attempt(tx, (sp) =>
-        sp.execute(sql`update ${rel(table)} set organization_id = ${B.orgId} where id = ${row!.id as string}`),
+        sp.execute(
+          sql`update ${rel(table)} set organization_id = ${B.orgId} where id = ${row!.id as string}`,
+        ),
       ),
     );
     expect(outcome.ok).toBe(false);
@@ -121,7 +135,9 @@ describe("skrivning: update som flyttar organization_id nekas", () => {
     const row = await sampleRow(table, A.orgId);
     const outcome = await asServiceRole((tx) =>
       attempt(tx, (sp) =>
-        sp.execute(sql`update ${rel(table)} set organization_id = ${B.orgId} where id = ${row!.id as string}`),
+        sp.execute(
+          sql`update ${rel(table)} set organization_id = ${B.orgId} where id = ${row!.id as string}`,
+        ),
       ),
     );
     expect(outcome.ok).toBe(false);
@@ -133,7 +149,9 @@ describe("skrivning: update som flyttar organization_id nekas", () => {
     const row = await sampleRow(table, A.orgId);
     const outcome = await asPostgres((tx) =>
       attempt(tx, (sp) =>
-        sp.execute(sql`update ${rel(table)} set organization_id = ${B.orgId} where id = ${row!.id as string}`),
+        sp.execute(
+          sql`update ${rel(table)} set organization_id = ${B.orgId} where id = ${row!.id as string}`,
+        ),
       ),
     );
     expect(outcome.ok).toBe(false);

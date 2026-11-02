@@ -74,7 +74,10 @@ function connect(url: string) {
  * Kör migreringar som inte redan körts, i versionsordning, en transaktion per
  * fil. Returnerar versionerna som kördes.
  */
-export async function applyMigrations(url: string, options: MigrateOptions = {}): Promise<string[]> {
+export async function applyMigrations(
+  url: string,
+  options: MigrateOptions = {},
+): Promise<string[]> {
   const log = options.log ?? (() => {});
   const migrations = await readMigrations(options.dir);
   const sql = connect(url);
@@ -98,7 +101,9 @@ export async function applyMigrations(url: string, options: MigrateOptions = {})
         if (done.has(m.version)) {
           const statements = done.get(m.version);
           if (statements && statements.length === 1 && statements[0] !== m.sql) {
-            log(`VARNING: ${m.file} har ändrats sedan den kördes. Skriv en ny migrering i stället.`);
+            log(
+              `VARNING: ${m.file} har ändrats sedan den kördes. Skriv en ny migrering i stället.`,
+            );
           }
           continue;
         }

@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import type { Tx } from "../../src/db/client";
 import * as s from "../../src/db/schema";
 import {
   affected,
@@ -36,9 +37,16 @@ beforeAll(async () => {
 describe("ändringsloggen", () => {
   it("en prisändring ger en rad med före, efter och aktör", async () => {
     await asUser(F.owner, (tx) =>
-      tx.execute(sql`update public.purchase_prices set unit_cost_ore = 4700 where id = ${F.priceId}`),
+      tx.execute(
+        sql`update public.purchase_prices set unit_cost_ore = 4700 where id = ${F.priceId}`,
+      ),
     );
-    const entry = await one<{ action: string; actor_id: string; before: { unit_cost_ore: number }; after: { unit_cost_ore: number } }>(
+    const entry = await one<{
+      action: string;
+      actor_id: string;
+      before: { unit_cost_ore: number };
+      after: { unit_cost_ore: number };
+    }>(
       db(),
       sql`select action, actor_id, before, after from public.audit_log
           where organization_id = ${F.orgId} and table_name = 'purchase_prices' and row_id = ${F.priceId}
@@ -108,13 +116,23 @@ describe("ändringsloggen", () => {
       ),
     );
     expect(insert.code).toBe("42501");
-    for (const run of [asUser.bind(null, F.owner), asServiceRole]) {
+    const runners: Array<<T>(fn: (tx: Tx) => Promise<T>) => Promise<T>> = [
+      (fn) => asUser(F.owner, fn),
+      (fn) => asServiceRole(fn),
+    ];
+    for (const run of runners) {
       const update = await run((tx) =>
-        attempt(tx, (sp) => sp.execute(sql`update public.audit_log set after = '{}'::jsonb where id = ${row!.id as string}`)),
+        attempt(tx, (sp) =>
+          sp.execute(
+            sql`update public.audit_log set after = '{}'::jsonb where id = ${row!.id as string}`,
+          ),
+        ),
       );
       expect(update.code).toBe("42501");
       const del = await run((tx) =>
-        attempt(tx, (sp) => sp.execute(sql`delete from public.audit_log where id = ${row!.id as string}`)),
+        attempt(tx, (sp) =>
+          sp.execute(sql`delete from public.audit_log where id = ${row!.id as string}`),
+        ),
       );
       expect(del.code).toBe("42501");
     }
@@ -126,37 +144,61 @@ describe("append-only-tabeller nekar update och delete", () => {
     const row = await sampleRow(table, F.orgId);
     const column = table === "audit_log" ? sql`occurred_at` : sql`created_at`;
     const update = await asUser(F.owner, (tx) =>
-      attempt(tx, (sp) => sp.execute(sql`update ${rel(table)} set ${column} = ${column} where id = ${row!.id as string}`)),
+      attempt(tx, (sp) =>
+        sp.execute(
+          sql`update ${rel(table)} set ${column} = ${column} where id = ${row!.id as string}`,
+        ),
+      ),
     );
     expect(update.code).toBe("42501");
     const del = await asUser(F.owner, (tx) =>
-      attempt(tx, (sp) => sp.execute(sql`delete from ${rel(table)} where id = ${row!.id as string}`)),
+      attempt(tx, (sp) =>
+        sp.execute(sql`delete from ${rel(table)} where id = ${row!.id as string}`),
+      ),
     );
     expect(del.code).toBe("42501");
   });
 
-  it.each(APPEND_ONLY.filter((t) => t !== "audit_log"))("%s: service_role stoppas av triggern", async (table) => {
-    const row = await sampleRow(table, F.orgId);
-    const update = await asServiceRole((tx) =>
-      attempt(tx, (sp) => sp.execute(sql`update ${rel(table)} set created_at = now() where id = ${row!.id as string}`)),
-    );
-    expect(update.code).toBe("BL002");
-    const del = await asServiceRole((tx) =>
-      attempt(tx, (sp) => sp.execute(sql`delete from ${rel(table)} where id = ${row!.id as string}`)),
-    );
-    expect(del.code).toBe("BL002");
-  });
+  it.each(APPEND_ONLY.filter((t) => t !== "audit_log"))(
+    "%s: service_role stoppas av triggern",
+    async (table) => {
+      const row = await sampleRow(table, F.orgId);
+      const update = await asServiceRole((tx) =>
+        attempt(tx, (sp) =>
+          sp.execute(
+            sql`update ${rel(table)} set created_at = now() where id = ${row!.id as string}`,
+          ),
+        ),
+      );
+      expect(update.code).toBe("BL002");
+      const del = await asServiceRole((tx) =>
+        attempt(tx, (sp) =>
+          sp.execute(sql`delete from ${rel(table)} where id = ${row!.id as string}`),
+        ),
+      );
+      expect(del.code).toBe("BL002");
+    },
+  );
 
-  it.each(APPEND_ONLY)("%s: även databasägaren stoppas (update, delete, truncate)", async (table) => {
-    const row = await sampleRow(table, F.orgId);
-    const column = table === "audit_log" ? sql`occurred_at` : sql`created_at`;
-    const outcomes = await asPostgres(async (tx) => [
-      await attempt(tx, (sp) => sp.execute(sql`update ${rel(table)} set ${column} = now() where id = ${row!.id as string}`)),
-      await attempt(tx, (sp) => sp.execute(sql`delete from ${rel(table)} where id = ${row!.id as string}`)),
-      await attempt(tx, (sp) => sp.execute(sql`truncate ${rel(table)} cascade`)),
-    ]);
-    expect(outcomes.map((o) => o.code)).toEqual(["BL002", "BL002", "BL002"]);
-  });
+  it.each(APPEND_ONLY)(
+    "%s: även databasägaren stoppas (update, delete, truncate)",
+    async (table) => {
+      const row = await sampleRow(table, F.orgId);
+      const column = table === "audit_log" ? sql`occurred_at` : sql`created_at`;
+      const outcomes = await asPostgres(async (tx) => [
+        await attempt(tx, (sp) =>
+          sp.execute(
+            sql`update ${rel(table)} set ${column} = now() where id = ${row!.id as string}`,
+          ),
+        ),
+        await attempt(tx, (sp) =>
+          sp.execute(sql`delete from ${rel(table)} where id = ${row!.id as string}`),
+        ),
+        await attempt(tx, (sp) => sp.execute(sql`truncate ${rel(table)} cascade`)),
+      ]);
+      expect(outcomes.map((o) => o.code)).toEqual(["BL002", "BL002", "BL002"]);
+    },
+  );
 
   it("gallringsjobbet (systemroll + binderlab.allow_purge) kan radera import_rows", async () => {
     const row = await sampleRow("import_rows", F.orgId);
@@ -182,7 +224,9 @@ describe("ekonomiska data raderas inte", () => {
     async (table) => {
       const row = await sampleRow(table, F.orgId);
       const outcome = await asServiceRole((tx) =>
-        attempt(tx, (sp) => sp.execute(sql`delete from ${rel(table)} where id = ${row!.id as string}`)),
+        attempt(tx, (sp) =>
+          sp.execute(sql`delete from ${rel(table)} where id = ${row!.id as string}`),
+        ),
       );
       expect(outcome.ok).toBe(false);
       expect(["BL003", "23503"]).toContain(outcome.code);
@@ -218,7 +262,11 @@ describe("en raderad användare (GDPR)", () => {
       sql`select actor_id from public.audit_log where table_name = 'stock_events' and row_id = ${event!.id}`,
     );
     expect(audit.actor_id).toBeNull();
-    const profile = await one<{ display_name: string; anonymized_at: Date | null; user_id: string | null }>(
+    const profile = await one<{
+      display_name: string;
+      anonymized_at: Date | null;
+      user_id: string | null;
+    }>(
       db(),
       sql`select display_name, anonymized_at, user_id from public.profiles
           where organization_id = ${F.orgId} and anonymized_at is not null`,

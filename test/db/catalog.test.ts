@@ -85,24 +85,29 @@ describe("tabeller", () => {
     expect(scoped).toEqual(tables.filter((t) => t !== "organizations"));
   });
 
-  it.each(tables)("%s har RLS påslaget och minst en select-policy för authenticated", async (table) => {
-    const [info] = await rows<{ rls: boolean; policies: number }>(
-      db(),
-      sql`select c.relrowsecurity as rls,
+  it.each(tables)(
+    "%s har RLS påslaget och minst en select-policy för authenticated",
+    async (table) => {
+      const [info] = await rows<{ rls: boolean; policies: number }>(
+        db(),
+        sql`select c.relrowsecurity as rls,
                  (select count(*)::int from pg_policies p
                    where p.schemaname = 'public' and p.tablename = c.relname
                      and p.cmd in ('SELECT', 'ALL')) as policies
           from pg_class c join pg_namespace n on n.oid = c.relnamespace
           where n.nspname = 'public' and c.relname = ${table}`,
-    );
-    expect(info?.rls).toBe(true);
-    expect(info?.policies).toBeGreaterThan(0);
-  });
+      );
+      expect(info?.rls).toBe(true);
+      expect(info?.policies).toBeGreaterThan(0);
+    },
+  );
 
-  it.each(scoped)("%s har forbid_org_change-trigger, unique (organization_id, id) och FK till organizations", async (table) => {
-    const triggers = await rows<{ name: string }>(
-      db(),
-      sql`select t.tgname as name from pg_trigger t
+  it.each(scoped)(
+    "%s har forbid_org_change-trigger, unique (organization_id, id) och FK till organizations",
+    async (table) => {
+      const triggers = await rows<{ name: string }>(
+        db(),
+        sql`select t.tgname as name from pg_trigger t
           join pg_proc p on p.oid = t.tgfoid
           join pg_namespace pn on pn.oid = p.pronamespace
           where t.tgrelid = ${`public.${table}`}::regclass
@@ -111,30 +116,31 @@ describe("tabeller", () => {
             and (t.tgtype & 2) = 2   -- before
             and (t.tgtype & 16) = 16 -- update
             and (t.tgtype & 1) = 1   -- for each row`,
-    );
-    expect(triggers.length).toBe(1);
+      );
+      expect(triggers.length).toBe(1);
 
-    const uniques = await rows<{ cols: string[] }>(
-      db(),
-      sql`select array(select a.attname::text from unnest(con.conkey) k(n)
+      const uniques = await rows<{ cols: string[] }>(
+        db(),
+        sql`select array(select a.attname::text from unnest(con.conkey) k(n)
                        join pg_attribute a on a.attrelid = con.conrelid and a.attnum = k.n
                        order by a.attname) as cols
           from pg_constraint con
           where con.conrelid = ${`public.${table}`}::regclass and con.contype in ('u', 'p')`,
-    );
-    expect(uniques.map((u) => u.cols.join(","))).toContain("id,organization_id");
+      );
+      expect(uniques.map((u) => u.cols.join(","))).toContain("id,organization_id");
 
-    const orgFk = await rows<{ deltype: string }>(
-      db(),
-      sql`select con.confdeltype::text as deltype from pg_constraint con
+      const orgFk = await rows<{ deltype: string }>(
+        db(),
+        sql`select con.confdeltype::text as deltype from pg_constraint con
           join pg_attribute a on a.attrelid = con.conrelid and a.attnum = con.conkey[1]
           where con.conrelid = ${`public.${table}`}::regclass and con.contype = 'f'
             and con.confrelid = 'public.organizations'::regclass
             and array_length(con.conkey, 1) = 1 and a.attname = 'organization_id'`,
-    );
-    expect(orgFk.length).toBe(1);
-    expect(orgFk[0]!.deltype).toBe("r"); // on delete restrict
-  });
+      );
+      expect(orgFk.length).toBe(1);
+      expect(orgFk[0]!.deltype).toBe("r"); // on delete restrict
+    },
+  );
 
   it("FK:er mellan organisationsdata är sammansatta och nollar aldrig organization_id", async () => {
     const fks = await rows<{
@@ -168,10 +174,18 @@ describe("tabeller", () => {
       if (!scoped.includes(fk.table) || !scoped.includes(fk.ref)) {
         continue;
       }
-      if (fk.cols.length !== 2 || fk.cols[0] !== "organization_id" || fk.refcols[0] !== "organization_id" || fk.refcols[1] !== "id") {
+      if (
+        fk.cols.length !== 2 ||
+        fk.cols[0] !== "organization_id" ||
+        fk.refcols[0] !== "organization_id" ||
+        fk.refcols[1] !== "id"
+      ) {
         problems.push(`${fk.name}: inte (organization_id, x) → (organization_id, id)`);
       }
-      if (["n", "d"].includes(fk.deltype) && (fk.setcols.length === 0 || fk.setcols.includes("organization_id"))) {
+      if (
+        ["n", "d"].includes(fk.deltype) &&
+        (fk.setcols.length === 0 || fk.setcols.includes("organization_id"))
+      ) {
         problems.push(`${fk.name}: on delete set null/default utan kolumnlista`);
       }
       if (fk.deltype === "c") {
@@ -182,42 +196,48 @@ describe("tabeller", () => {
     expect(problems).toEqual([]);
   });
 
-  it.each(tables.filter((t) => t !== "audit_log"))("%s har created_at/created_by och stämplas av triggers", async (table) => {
-    const names = columnsOf(table).map((c) => c.column);
-    expect(names).toContain("created_at");
-    expect(names).toContain("created_by");
-    const triggerFns = await rows<{ fn: string }>(
-      db(),
-      sql`select p.proname as fn from pg_trigger t join pg_proc p on p.oid = t.tgfoid
+  it.each(tables.filter((t) => t !== "audit_log"))(
+    "%s har created_at/created_by och stämplas av triggers",
+    async (table) => {
+      const names = columnsOf(table).map((c) => c.column);
+      expect(names).toContain("created_at");
+      expect(names).toContain("created_by");
+      const triggerFns = await rows<{ fn: string }>(
+        db(),
+        sql`select p.proname as fn from pg_trigger t join pg_proc p on p.oid = t.tgfoid
           where t.tgrelid = ${`public.${table}`}::regclass and not t.tgisinternal`,
-    );
-    const fns = triggerFns.map((t) => t.fn);
-    expect(fns).toContain("stamp_insert");
-    if (APPEND_ONLY.includes(table)) {
-      expect(names).not.toContain("updated_at");
-      expect(fns).not.toContain("stamp_update");
-    } else {
-      expect(names).toContain("updated_at");
-      expect(fns).toContain("stamp_update");
-    }
-  });
+      );
+      const fns = triggerFns.map((t) => t.fn);
+      expect(fns).toContain("stamp_insert");
+      if (APPEND_ONLY.includes(table)) {
+        expect(names).not.toContain("updated_at");
+        expect(fns).not.toContain("stamp_update");
+      } else {
+        expect(names).toContain("updated_at");
+        expect(fns).toContain("stamp_update");
+      }
+    },
+  );
 
-  it.each(APPEND_ONLY)("%s är append-only (trigger, ingen truncate, inga update/delete-rättigheter)", async (table) => {
-    const triggerFns = await rows<{ fn: string }>(
-      db(),
-      sql`select p.proname as fn from pg_trigger t join pg_proc p on p.oid = t.tgfoid
+  it.each(APPEND_ONLY)(
+    "%s är append-only (trigger, ingen truncate, inga update/delete-rättigheter)",
+    async (table) => {
+      const triggerFns = await rows<{ fn: string }>(
+        db(),
+        sql`select p.proname as fn from pg_trigger t join pg_proc p on p.oid = t.tgfoid
           where t.tgrelid = ${`public.${table}`}::regclass and not t.tgisinternal`,
-    );
-    const fns = triggerFns.map((t) => t.fn);
-    expect(fns).toContain("forbid_mutation");
-    expect(fns).toContain("forbid_truncate");
-    const [privs] = await rows<{ upd: boolean; del: boolean }>(
-      db(),
-      sql`select has_table_privilege('authenticated', ${`public.${table}`}, 'UPDATE') as upd,
+      );
+      const fns = triggerFns.map((t) => t.fn);
+      expect(fns).toContain("forbid_mutation");
+      expect(fns).toContain("forbid_truncate");
+      const [privs] = await rows<{ upd: boolean; del: boolean }>(
+        db(),
+        sql`select has_table_privilege('authenticated', ${`public.${table}`}, 'UPDATE') as upd,
                  has_table_privilege('authenticated', ${`public.${table}`}, 'DELETE') as del`,
-    );
-    expect(privs).toEqual({ upd: false, del: false });
-  });
+      );
+      expect(privs).toEqual({ upd: false, del: false });
+    },
+  );
 
   it("audit_log kan inte skrivas av någon klientroll, inte ens service_role", async () => {
     const [privs] = await rows<Record<string, boolean>>(
@@ -314,7 +334,13 @@ describe("funktioner", () => {
 
 describe("policyer", () => {
   it("alla policyer i public gäller authenticated och läser auth.uid() via (select ...)", async () => {
-    const policies = await rows<{ table: string; name: string; roles: string[]; qual: string | null; check: string | null }>(
+    const policies = await rows<{
+      table: string;
+      name: string;
+      roles: string[];
+      qual: string | null;
+      check: string | null;
+    }>(
       db(),
       sql`select tablename as table, policyname as name, roles::text[] as roles, qual, with_check as check
           from pg_policies where schemaname = 'public'`,
@@ -376,7 +402,9 @@ describe("anon", () => {
   });
 
   it.each([...tables, ...views])("select på %s ger permission denied", async (relation) => {
-    const outcome = await asAnon((tx) => attempt(tx, (sp) => sp.execute(sql`select count(*) from ${rel(relation)}`)));
+    const outcome = await asAnon((tx) =>
+      attempt(tx, (sp) => sp.execute(sql`select count(*) from ${rel(relation)}`)),
+    );
     expect(outcome.code).toBe("42501");
   });
 
@@ -390,15 +418,18 @@ describe("anon", () => {
       reopen_period: sql`gen_random_uuid(), '2025-01-01'::date`,
     };
     const outcome = await asAnon((tx) =>
-      attempt(tx, (sp) => sp.execute(sql`select ${sql.identifier("public")}.${sql.identifier(fn)}(${args[fn]!})`)),
+      attempt(tx, (sp) =>
+        sp.execute(sql`select ${sql.identifier("public")}.${sql.identifier(fn)}(${args[fn]!})`),
+      ),
     );
     expect(outcome.code).toBe("42501");
   });
 });
 
 describe("Drizzle-schemat stämmer med databasen", () => {
-  const drizzleTables = Object.values(schema).filter((v): v is PgTable => is(v, PgTable));
-  const drizzleViews = Object.values(schema).filter((v): v is PgView => is(v, PgView));
+  const exported: unknown[] = Object.values(schema);
+  const drizzleTables = exported.filter((v): v is PgTable => is(v, PgTable));
+  const drizzleViews = exported.filter((v): v is PgView => is(v, PgView));
 
   function dbType(c: { dataType: string; udtName: string }): string {
     return c.dataType === "USER-DEFINED" ? c.udtName : c.dataType;
@@ -412,7 +443,9 @@ describe("Drizzle-schemat stämmer med databasen", () => {
   it.each(drizzleTables.map((t) => [getTableConfig(t).name, t] as const))(
     "%s: kolumner, typer och null-barhet",
     (name, table) => {
-      const expected = columnsOf(name).map((c) => `${c.column}: ${dbType(c)}${c.nullable ? "" : " not null"}`);
+      const expected = columnsOf(name).map(
+        (c) => `${c.column}: ${dbType(c)}${c.nullable ? "" : " not null"}`,
+      );
       const actual = getTableConfig(table).columns.map(
         (c) => `${c.name}: ${c.getSQLType()}${c.notNull ? " not null" : ""}`,
       );
@@ -420,11 +453,17 @@ describe("Drizzle-schemat stämmer med databasen", () => {
     },
   );
 
-  it.each(drizzleViews.map((v) => [getViewConfig(v).name, v] as const))("vyn %s: kolumner och typer", (name, view) => {
-    const expected = columnsOf(name).map((c) => `${c.column}: ${dbType(c)}`);
-    const fields = Object.values(getViewConfig(view).selectedFields) as { name: string; getSQLType(): string }[];
-    expect(fields.map((c) => `${c.name}: ${c.getSQLType()}`).sort()).toEqual(expected.sort());
-  });
+  it.each(drizzleViews.map((v) => [getViewConfig(v).name, v] as const))(
+    "vyn %s: kolumner och typer",
+    (name, view) => {
+      const expected = columnsOf(name).map((c) => `${c.column}: ${dbType(c)}`);
+      const fields = Object.values(getViewConfig(view).selectedFields) as {
+        name: string;
+        getSQLType(): string;
+      }[];
+      expect(fields.map((c) => `${c.name}: ${c.getSQLType()}`).sort()).toEqual(expected.sort());
+    },
+  );
 
   it("uppräkningstyperna har samma värden i samma ordning", async () => {
     const enums = await rows<{ name: string; values: string[] }>(
@@ -434,7 +473,7 @@ describe("Drizzle-schemat stämmer med databasen", () => {
           join pg_namespace n on n.oid = t.typnamespace
           where n.nspname = 'public' group by t.typname`,
     );
-    const drizzleEnums = Object.values(schema)
+    const drizzleEnums = exported
       .filter((v): v is typeof schema.memberRole => typeof v === "function" && "enumName" in v)
       .map((e) => ({ name: e.enumName, values: [...e.enumValues] }));
     expect(drizzleEnums.sort((a, b) => a.name.localeCompare(b.name))).toEqual(

@@ -54,9 +54,15 @@ describe("renderReportEmail", () => {
         expect(email.html).not.toMatch(/url\(/);
       });
 
-      it("har exakt ett <style> och bara attributselektorer i media query", () => {
+      it("har exakt ett <style>, och grundlayouten står inline", () => {
         expect(email.html.match(/<style>/g)).toHaveLength(1);
-        expect(email.html).toContain("@media only screen and (max-width:620px)");
+        expect(email.html).toContain("@media only screen and (min-width:621px)");
+        expect(email.html).toContain("@media only screen and (max-width:400px)");
+        // Gmail läser inte attributselektorerna: grundvärdena måste rymmas i 375 px.
+        expect(email.html).toContain(
+          `data-m="outer" style="padding:16px 8px 32px"`,
+        );
+        expect(email.html).toMatch(/data-m="gutter" style="padding:\d+px 24px/);
       });
 
       it("ersätter Outlook-markörerna med villkorskommentarer", () => {

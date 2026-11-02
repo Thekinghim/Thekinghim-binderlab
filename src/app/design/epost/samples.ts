@@ -1,21 +1,14 @@
-import "client-only";
-import { renderReportEmail, type RenderedEmail } from "@/emails/report-email";
+import type { RenderedEmail } from "@/emails/report-email";
 import type { RecipientKind } from "@/emails/report-content";
-import { sampleReportEmails } from "@/emails/sample";
+import rendered from "./rendered-samples.json";
 
 /*
- * Exempelmejlen renderade till HTML en gång, när modulen laddas.
- *
- * Next tillåter inte react-dom/server i serverkomponenter eller
- * route handlers, så förhandsvisningen renderar i klientlagret (SSR och
- * webbläsare). I produktion körs renderReportEmail i utskicksjobbet,
- * som är vanlig Node.
+ * Exempelmejlen som färdig HTML och text. Filen skrivs av
+ * rendered-samples.test.ts från src/emails/sample.ts, så att varken
+ * react-dom/server eller själva mallen hamnar i klientpaketet. Testet
+ * fallerar om filen inte längre stämmer med mallen.
  */
-export const renderedSamples: Record<RecipientKind, RenderedEmail> = {
-  butik: renderReportEmail(sampleReportEmails.butik),
-  bokforing: renderReportEmail(sampleReportEmails.bokforing),
-  delagare: renderReportEmail(sampleReportEmails.delagare),
-};
+export const renderedSamples: Record<RecipientKind, RenderedEmail> = rendered;
 
 export type EmailChecks = {
   bytes: number;

@@ -1,4 +1,13 @@
-import { NBSP, formatDuration, formatKronor, formatPercent, formatSek } from "@/lib/format";
+import {
+  NBSP,
+  formatDate,
+  formatDuration,
+  formatInt,
+  formatKronor,
+  formatPercent,
+  formatSek,
+  formatSignedKronor,
+} from "@/lib/format";
 import { seeded } from "@/lib/random";
 import type { DailyPoint, RecipientKind, ReportEmailProps } from "./report-content";
 
@@ -12,6 +21,9 @@ import type { DailyPoint, RecipientKind, ReportEmailProps } from "./report-conte
 const OCTOBER = { start: new Date(2026, 9, 1), end: new Date(2026, 9, 31) };
 const GENERATED = new Date(2026, 10, 2, 7, 0);
 const BASE_URL = "https://app.binderlab.se";
+
+/** "9 nov." med hårt mellanslag (månad 0–11). */
+const day = (y: number, m: number, d: number) => formatDate(new Date(y, m, d), { year: "never" });
 
 /** Dagsförsäljning för oktober som summerar exakt till `total`. Toppen lör 24 okt. (släpp). */
 function october(total: number, seed: number): DailyPoint[] {
@@ -81,7 +93,7 @@ const butik: ReportEmailProps = {
       {
         start: new Date(2026, 9, 27, 16, 2),
         durationMs: 39 * 60_000,
-        cause: "fack 4 fastnade, löst på plats",
+        cause: `fack${NBSP}4 fastnade, löst på plats`,
       },
     ],
     busiest: "Lördagar 13–16",
@@ -125,7 +137,7 @@ const bokforing: ReportEmailProps = {
       unit: "kr",
       note: `Kort ${formatSek(2_889.63)} · platshyra ${formatSek(9_800)}`,
     },
-    { label: "Försäljningar", value: 1_812, unit: "count", note: "Varav 3 återbetalda" },
+    { label: "Försäljningar", value: 1_812, unit: "count", note: `Varav ${formatInt(3)} återbetalda` },
   ],
   rows: [
     { id: "BL-002", name: "Nordstan", location: "Göteborg", revenue: 14_980, revenueExVat: 11_984 },
@@ -153,22 +165,22 @@ const bokforing: ReportEmailProps = {
     entries: [
       {
         account: "3001",
-        text: "Försäljning varor, 25 % moms",
+        text: `Försäljning varor, ${formatPercent(0.25, 0)} moms`,
         amount: 105_120,
         verification: "V1041",
       },
-      { account: "2611", text: "Utgående moms, 25 %", amount: 26_280, verification: "V1041" },
+      { account: "2611", text: `Utgående moms, ${formatPercent(0.25, 0)}`, amount: 26_280, verification: "V1041" },
       { account: "6570", text: "Kortavgifter", amount: -2_889.63, verification: "V1042" },
-      { account: "5010", text: "Platshyra, 15 platser", amount: -9_800, verification: "V1043" },
+      { account: "5010", text: `Platshyra, ${formatInt(15)} platser`, amount: -9_800, verification: "V1043" },
       {
         account: "4010",
-        text: "Inköp av pack, leverans 6 okt.",
+        text: `Inköp av pack, leverans ${day(2026, 9, 6)}`,
         amount: -31_400,
         verification: "V1044",
       },
       {
         account: "4010",
-        text: "Inköp av pack, leverans 20 okt.",
+        text: `Inköp av pack, leverans ${day(2026, 9, 20)}`,
         amount: -26_800,
         verification: "V1045",
       },
@@ -179,7 +191,7 @@ const bokforing: ReportEmailProps = {
     {
       name: "forsaljning-2026-10.csv",
       size: 214_000,
-      description: "Alla 1 812 försäljningar med tid, automat och belopp",
+      description: `Alla ${formatInt(1_812)} försäljningar med tid, automat och belopp`,
     },
     {
       name: "kortinlosen-2026-10.pdf",
@@ -209,9 +221,9 @@ const delagare: ReportEmailProps = {
       value: 0.2957,
       unit: "share",
       change: { value: -0.009, kind: "points" },
-      alert: "Under målet 30 %",
+      alert: `Under målet ${formatPercent(0.3, 0)}`,
     },
-    { label: "Kassa 31 okt.", value: 151_529, unit: "kr", change: { value: 0.28 } },
+    { label: `Kassa ${day(2026, 9, 31)}`, value: 151_529, unit: "kr", change: { value: 0.28 } },
   ],
   rows: [
     {
@@ -270,18 +282,18 @@ const delagare: ReportEmailProps = {
     cash: { opening: 118_400, inflow: 128_510, outflow: 95_381, closing: 151_529 },
     plan: [
       {
-        title: "Julinköp: 1 400 pack",
-        detail: "Leverans 9 nov. Räcker till 13 dec. i oktobers försäljningstakt.",
+        title: `Julinköp: ${formatInt(1_400)}${NBSP}pack`,
+        detail: `Leverans ${day(2026, 10, 9)} Räcker till ${day(2026, 11, 13)} i oktobers försäljningstakt.`,
         amount: 72_000,
       },
       {
         title: "Flytta BL-014 från Kista Galleria till Täby Centrum",
-        detail: "Kista Galleria sålde 41 % under snittet i oktober. Flytt 16 nov.",
+        detail: `Kista Galleria sålde ${formatPercent(0.41, 0)} under snittet i oktober. Flytt ${day(2026, 10, 16)}`,
         amount: 4_500,
       },
       {
-        title: "Höj priset på One Piece-pack från 79 till 85 kr",
-        detail: "Gäller från 1 nov. Väntad effekt +2 100 kr i månaden.",
+        title: `Höj priset på One Piece-pack från ${formatSek(79)} till ${formatSek(85)}`,
+        detail: `Gäller från ${day(2026, 10, 1)} Väntad effekt ${formatSignedKronor(2_100, { decimals: 0 })} i månaden.`,
       },
     ],
   },
@@ -290,7 +302,7 @@ const delagare: ReportEmailProps = {
     {
       name: "rapport-2026-10.pdf",
       size: 412_000,
-      description: "Hela månadsrapporten, 8 sidor",
+      description: `Hela månadsrapporten, ${formatInt(8)}${NBSP}sidor`,
     },
   ],
   reportId: "R-2026-10-02",

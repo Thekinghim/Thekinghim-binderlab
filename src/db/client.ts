@@ -23,11 +23,11 @@ import "server-only";
 
 import { sql } from "drizzle-orm";
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
+import postgres, { type Sql } from "postgres";
 
 import * as schema from "./schema";
 
-export type Db = PostgresJsDatabase<typeof schema>;
+export type Db = PostgresJsDatabase<typeof schema> & { $client: Sql };
 /** Transaktionen som `withRls` och `db.transaction` ger. */
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 

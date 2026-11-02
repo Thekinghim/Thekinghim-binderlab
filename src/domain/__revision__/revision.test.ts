@@ -150,9 +150,7 @@ function assertIdentities(input: ProfitabilityInput): Record<GroupBy, Profitabil
     }
     for (const row of [...r.rows, r.totals]) {
       expect(row.compensationOre).toBe(row.commissionOre + row.rentOre);
-      expect(row.profitOre).toBe(
-        row.revenueOre - row.costOre - row.feesOre - row.compensationOre,
-      );
+      expect(row.profitOre).toBe(row.revenueOre - row.costOre - row.feesOre - row.compensationOre);
       expect(row.grossOre).toBe(
         row.vatOre + row.revenueOre + row.unpricedVatOre + row.unpricedRevenueOre,
       );
@@ -337,14 +335,20 @@ describe(`revision 1: prisändring mitt i perioden (TZ=${process.env.TZ ?? "?"})
   it("utan prisändringarna skulle vinsten vara exakt inköpsskillnaden högre/lägre", () => {
     // Utan A:s höjning 16 nov.: a2, b2, c3 kostar 2 000 i stället för 2 500 → inköp −1 500.
     const noAChange = profitability(
-      { ...SC1, prices: SC1_PRICES.filter((x) => !(x.titleId === "A" && x.validFrom > "2026-11-01")) },
+      {
+        ...SC1,
+        prices: SC1_PRICES.filter((x) => !(x.titleId === "A" && x.validFrom > "2026-11-01")),
+      },
       "title",
     );
     expect(noAChange.totals.costOre).toBe(23_400);
     expect(noAChange.totals.profitOre).toBe(-197_328);
     // Utan B:s sänkning 10 nov.: a4, b3, c2 kostar 3 000 i stället för 2 800 → inköp +600.
     const noBChange = profitability(
-      { ...SC1, prices: SC1_PRICES.filter((x) => !(x.titleId === "B" && x.validFrom > "2026-11-01")) },
+      {
+        ...SC1,
+        prices: SC1_PRICES.filter((x) => !(x.titleId === "B" && x.validFrom > "2026-11-01")),
+      },
       "title",
     );
     expect(noBChange.totals.costOre).toBe(25_500);
@@ -792,8 +796,20 @@ describe(`revision 3: två titlar saknar pris (TZ=${process.env.TZ ?? "?"})`, ()
     expect(r.unpriced.shareBp).toBe(5_222);
     expect(r.unpriced.titleIds).toEqual(["C", "D"]);
     expect(r.unpriced.byTitle).toEqual([
-      { titleId: "D", orders: 1, revenueOre: 12_900, firstDate: "2026-11-04", lastDate: "2026-11-04" },
-      { titleId: "C", orders: 2, revenueOre: 11_800, firstDate: "2026-11-03", lastDate: "2026-11-06" },
+      {
+        titleId: "D",
+        orders: 1,
+        revenueOre: 12_900,
+        firstDate: "2026-11-04",
+        lastDate: "2026-11-04",
+      },
+      {
+        titleId: "C",
+        orders: 2,
+        revenueOre: 11_800,
+        firstDate: "2026-11-03",
+        lastDate: "2026-11-06",
+      },
     ]);
     expect(r.waterfall.excluded.revenueOre).toBe(24_700);
     expect(r.waterfall.excluded.shareBp).toBe(5_222);
@@ -832,7 +848,10 @@ describe(`revision 3: två titlar saknar pris (TZ=${process.env.TZ ?? "?"})`, ()
     ]);
     const d = rowOf(r, "D")!;
     expect([d.revenueOre, d.profitOre, d.marginBp, d.unpricedRevenueOre]).toEqual([
-      0, 0, null, 12_900,
+      0,
+      0,
+      null,
+      12_900,
     ]);
     expect(d.unpricedCommissionOre).toBe(1_548);
   });
@@ -869,7 +888,10 @@ describe(`revision 3: två titlar saknar pris (TZ=${process.env.TZ ?? "?"})`, ()
     // D 100,00 från 1 nov.: u3 blir prissatt. Prissatt intäkt 22 600 + 12 900 = 35 500,
     // inköp 10 500 + 10 000 = 20 500, prov 2 004 + 1 548 = 3 552, hyra oförändrad 56 250.
     // Vinst 35 500 − 20 500 − 59 802 = −44 802. Utan pris: 11 800 / 47 300 → 2 494,7 → 2 495 bp.
-    const r = profitability({ ...SC3, prices: [...SC3.prices, p("D", 10_000, "2026-11-01")] }, "title");
+    const r = profitability(
+      { ...SC3, prices: [...SC3.prices, p("D", 10_000, "2026-11-01")] },
+      "title",
+    );
     expect(r.totals.profitOre).toBe(-44_802);
     expect(r.unpriced.shareBp).toBe(2_495);
     expect(r.unpriced.titleIds).toEqual(["C"]);
@@ -886,11 +908,26 @@ describe(`revision 4: vyerna titel, automat och butik mot varandra (TZ=${process
     //        butik 2 624 − 102 265 − 47 256 + 2 900. Alla = −143 997.
     const v = profitabilityViews(SC2, ["title", "machine", "store"]);
     for (const g of ["title", "machine", "store"] as const) {
-      expect(v[g].rows.reduce((a, r) => a + r.profitOre, 0), g).toBe(-143_997);
-      expect(v[g].rows.reduce((a, r) => a + r.rentOre, 0), g).toBe(170_893);
-      expect(v[g].rows.reduce((a, r) => a + r.revenueOre, 0), g).toBe(58_900);
-      expect(v[g].rows.reduce((a, r) => a + r.commissionOre, 0), g).toBe(4_104);
-      expect(v[g].rows.reduce((a, r) => a + r.costOre, 0), g).toBe(27_900);
+      expect(
+        v[g].rows.reduce((a, r) => a + r.profitOre, 0),
+        g,
+      ).toBe(-143_997);
+      expect(
+        v[g].rows.reduce((a, r) => a + r.rentOre, 0),
+        g,
+      ).toBe(170_893);
+      expect(
+        v[g].rows.reduce((a, r) => a + r.revenueOre, 0),
+        g,
+      ).toBe(58_900);
+      expect(
+        v[g].rows.reduce((a, r) => a + r.commissionOre, 0),
+        g,
+      ).toBe(4_104);
+      expect(
+        v[g].rows.reduce((a, r) => a + r.costOre, 0),
+        g,
+      ).toBe(27_900);
     }
   });
 
@@ -1160,6 +1197,30 @@ describe(`revision 5: kantfall (TZ=${process.env.TZ ?? "?"})`, () => {
     expect(t[0]!.averagePriceOre).toBe(4_900);
   });
 
+  it("iakttagelse: en enda order utan pris tar med sig hela butikens månadshyra ur vinsten", () => {
+    // Enligt avsnitt 4–5 i docs/berakningar.md: hyran fördelas på ALLA order i butik-månaden
+    // och den del som hör till order utan pris ingår inte i vinsten.
+    // Utan order: hyran 150 000 är ej fördelad → vinst −150 000.
+    // Med en enda order utan pris (49,00): hela hyran fördelas på den → vinst 0.
+    // Vinsten blir alltså 1 500 kr BÄTTRE av att sälja ett pack som saknar inköpspris.
+    const base: ProfitabilityInput = {
+      orders: [],
+      prices: [],
+      agreements: [S2_AGREEMENT],
+      placements: [pl("M2", "S2", "2026-01-01", null)],
+      settings: NO_TAX,
+      period: NOV,
+    };
+    expect(profitability(base, "store").totals.profitOre).toBe(-150_000);
+    const withUnpriced = profitability(
+      { ...base, orders: [o("w", "Z", "M2", "2026-11-10", 4900)] },
+      "store",
+    );
+    expect(withUnpriced.totals.profitOre).toBe(0);
+    expect(withUnpriced.totals.unpricedRentOre).toBe(150_000);
+    expect(withUnpriced.unpriced.shareBp).toBe(10_000);
+  });
+
   it("ogiltig indata ger DomainError, inte fel siffror", () => {
     const bad = (patch: Partial<ProfitabilityInput>) => () =>
       profitability({ ...SC1, ...patch }, "title");
@@ -1168,8 +1229,8 @@ describe(`revision 5: kantfall (TZ=${process.env.TZ ?? "?"})`, () => {
     );
     expect(bad({ orders: [...SC1_ORDERS, SC1_ORDERS[0]!] })).toThrow(DomainError);
     expect(bad({ prices: [...SC1_PRICES, p("A", 2100, "2026-11-16")] })).toThrow(DomainError);
-    expect(
-      bad({ agreements: [S1_AGREEMENT, ag("S1", "2026-06-01", null, 500, null)] }),
-    ).toThrow(DomainError);
+    expect(bad({ agreements: [S1_AGREEMENT, ag("S1", "2026-06-01", null, 500, null)] })).toThrow(
+      DomainError,
+    );
   });
 });

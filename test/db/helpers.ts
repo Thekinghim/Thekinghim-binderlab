@@ -152,7 +152,9 @@ export function uniqueSuffix(): string {
   return randomUUID().slice(0, 8);
 }
 
-export async function createUser(email = `user-${uniqueSuffix()}@test.binderlab.se`): Promise<TestUser> {
+export async function createUser(
+  email = `user-${uniqueSuffix()}@test.binderlab.se`,
+): Promise<TestUser> {
   const row = await one<{ id: string }>(
     db(),
     sql`insert into auth.users (email, raw_user_meta_data)
@@ -175,7 +177,11 @@ export async function addMember(orgId: string, user: TestUser, role: MemberRole)
     await tx.insert(s.memberships).values({ organizationId: orgId, userId: user.id, role });
     await tx
       .insert(s.profiles)
-      .values({ organizationId: orgId, userId: user.id, displayName: user.email.split("@")[0] ?? "x" })
+      .values({
+        organizationId: orgId,
+        userId: user.id,
+        displayName: user.email.split("@")[0] ?? "x",
+      })
       .onConflictDoNothing();
   });
 }
@@ -255,12 +261,18 @@ export async function orgScopedTables(): Promise<string[]> {
   const cols = await publicColumns();
   const tables = new Set(await publicTables());
   return [
-    ...new Set(cols.filter((c) => c.column === "organization_id" && tables.has(c.table)).map((c) => c.table)),
+    ...new Set(
+      cols.filter((c) => c.column === "organization_id" && tables.has(c.table)).map((c) => c.table),
+    ),
   ].sort();
 }
 
 /** En rad (som jsonb-objekt) ur tabellen för organisationen, läst som postgres. */
-export async function sampleRow(table: string, orgId: string, where?: SQL): Promise<Row | undefined> {
+export async function sampleRow(
+  table: string,
+  orgId: string,
+  where?: SQL,
+): Promise<Row | undefined> {
   const orgColumn = table === "organizations" ? sql`id` : sql`organization_id`;
   const result = await rows<{ row: Row }>(
     db(),
@@ -329,15 +341,32 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
     const org = { organizationId: orgId };
     const [store] = await tx
       .insert(s.stores)
-      .values({ ...org, name: "ICA Testbutik", address: "Storgatan 1", contactName: "Anna", email: "anna@example.se" })
+      .values({
+        ...org,
+        name: "ICA Testbutik",
+        address: "Storgatan 1",
+        contactName: "Anna",
+        email: "anna@example.se",
+      })
       .returning();
     const [contract] = await tx
       .insert(s.contracts)
-      .values({ ...org, storeId: store!.id, validFrom: "2025-01-01", storagePath: `${orgId}/contracts/avtal.pdf` })
+      .values({
+        ...org,
+        storeId: store!.id,
+        validFrom: "2025-01-01",
+        storagePath: `${orgId}/contracts/avtal.pdf`,
+      })
       .returning();
     const [agreement] = await tx
       .insert(s.storeAgreements)
-      .values({ ...org, storeId: store!.id, contractId: contract!.id, validFrom: "2025-01-01", commissionBp: 2000 })
+      .values({
+        ...org,
+        storeId: store!.id,
+        contractId: contract!.id,
+        validFrom: "2025-01-01",
+        commissionBp: 2000,
+      })
       .returning();
     const [machine] = await tx
       .insert(s.machines)
@@ -364,7 +393,9 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       ])
       .returning();
     // En dubblett som slås ihop med den första (titles.merged_into_id blir satt).
-    await tx.execute(sql`select public.merge_titles(${orgId}, ${duplicateTitle!.id}, ${title!.id})`);
+    await tx.execute(
+      sql`select public.merge_titles(${orgId}, ${duplicateTitle!.id}, ${title!.id})`,
+    );
     await tx.insert(s.titleAliases).values({ ...org, titleId: title!.id, alias: "Pokemon 151" });
     const [price] = await tx
       .insert(s.purchasePrices)
@@ -380,7 +411,13 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       .returning();
     const [sourceMachine] = await tx
       .insert(s.sourceMachines)
-      .values({ ...org, dataSourceId: source!.id, externalId: "AW-1", externalName: "Order Machine 1", machineId: machine!.id })
+      .values({
+        ...org,
+        dataSourceId: source!.id,
+        externalId: "AW-1",
+        externalName: "Order Machine 1",
+        machineId: machine!.id,
+      })
       .returning();
     const [imp] = await tx
       .insert(s.imports)
@@ -441,13 +478,45 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
 
     const locations = await tx.select().from(s.stockLocations);
     const central = locations.find((l) => l.organizationId === orgId && l.isCentral);
-    const machineLocation = locations.find((l) => l.organizationId === orgId && l.machineId === machine!.id);
+    const machineLocation = locations.find(
+      (l) => l.organizationId === orgId && l.machineId === machine!.id,
+    );
     const transferGroupId = randomUUID();
     await tx.insert(s.stockEvents).values([
-      { ...org, locationId: machineLocation!.id, titleId: title!.id, kind: "refill", quantity: 10, occurredAt: new Date("2025-03-01T08:00:00Z") },
-      { ...org, locationId: machineLocation!.id, titleId: title!.id, kind: "count", quantity: 10, occurredAt: new Date("2025-03-05T08:00:00Z") },
-      { ...org, locationId: central!.id, titleId: secondTitle!.id, kind: "transfer_out", quantity: -5, transferGroupId, occurredAt: new Date("2025-03-02T08:00:00Z") },
-      { ...org, locationId: machineLocation!.id, titleId: secondTitle!.id, kind: "transfer_in", quantity: 5, transferGroupId, occurredAt: new Date("2025-03-02T08:00:00Z") },
+      {
+        ...org,
+        locationId: machineLocation!.id,
+        titleId: title!.id,
+        kind: "refill",
+        quantity: 10,
+        occurredAt: new Date("2025-03-01T08:00:00Z"),
+      },
+      {
+        ...org,
+        locationId: machineLocation!.id,
+        titleId: title!.id,
+        kind: "count",
+        quantity: 10,
+        occurredAt: new Date("2025-03-05T08:00:00Z"),
+      },
+      {
+        ...org,
+        locationId: central!.id,
+        titleId: secondTitle!.id,
+        kind: "transfer_out",
+        quantity: -5,
+        transferGroupId,
+        occurredAt: new Date("2025-03-02T08:00:00Z"),
+      },
+      {
+        ...org,
+        locationId: machineLocation!.id,
+        titleId: secondTitle!.id,
+        kind: "transfer_in",
+        quantity: 5,
+        transferGroupId,
+        occurredAt: new Date("2025-03-02T08:00:00Z"),
+      },
     ]);
 
     const [supplier] = await tx
@@ -468,7 +537,13 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       .returning();
     const [line] = await tx
       .insert(s.purchaseOrderLines)
-      .values({ ...org, purchaseOrderId: po!.id, titleId: title!.id, quantity: 36, unitCostOre: 4300 })
+      .values({
+        ...org,
+        purchaseOrderId: po!.id,
+        titleId: title!.id,
+        quantity: 36,
+        unitCostOre: 4300,
+      })
       .returning();
     await tx
       .update(s.purchaseOrderLines)
@@ -477,18 +552,52 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
 
     await tx.insert(s.goals).values([
       { ...org, scope: "organization", month: "2025-03-01", metric: "revenue", target: 1_000_000 },
-      { ...org, scope: "store", storeId: store!.id, month: "2025-03-01", metric: "profit", target: 300_000 },
-      { ...org, scope: "machine", machineId: machine!.id, month: "2025-03-01", metric: "revenue", target: 500_000 },
+      {
+        ...org,
+        scope: "store",
+        storeId: store!.id,
+        month: "2025-03-01",
+        metric: "profit",
+        target: 300_000,
+      },
+      {
+        ...org,
+        scope: "machine",
+        machineId: machine!.id,
+        month: "2025-03-01",
+        metric: "revenue",
+        target: 500_000,
+      },
     ]);
     await tx.insert(s.baselines).values([
       { ...org, scope: "organization", metric: "admin_hours_month", value: 600, unit: "minutes" },
-      { ...org, scope: "store", storeId: store!.id, metric: "stockout_days_month", value: 2, unit: "days" },
-      { ...org, scope: "machine", machineId: machine!.id, metric: "profit_per_machine_month", value: 250_000, unit: "ore" },
+      {
+        ...org,
+        scope: "store",
+        storeId: store!.id,
+        metric: "stockout_days_month",
+        value: 2,
+        unit: "days",
+      },
+      {
+        ...org,
+        scope: "machine",
+        machineId: machine!.id,
+        metric: "profit_per_machine_month",
+        value: 250_000,
+        unit: "ore",
+      },
     ]);
 
     const [recipient] = await tx
       .insert(s.reportRecipients)
-      .values({ ...org, name: "Butikschef", email: "chef@example.se", kind: "store", storeId: store!.id })
+      .values({
+        ...org,
+        name: "Butikschef",
+        email: "chef@example.se",
+        kind: "store",
+        storeId: store!.id,
+      })
       .returning();
     const [report] = await tx
       .insert(s.reports)
@@ -519,7 +628,9 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       shareBp: 10_000,
       validFrom: "2025-01-01",
     });
-    await tx.insert(s.ledgerAccounts).values({ ...org, key: "sales", basAccount: "3001", name: "Försäljning" });
+    await tx
+      .insert(s.ledgerAccounts)
+      .values({ ...org, key: "sales", basAccount: "3001", name: "Försäljning" });
     await tx.insert(s.alerts).values({
       ...org,
       kind: "low_stock",

@@ -391,16 +391,32 @@ export function incidentsSummary(incidents: ReadonlyArray<Incident>): string {
 export type RowColumn = {
   label: string;
   value: (r: EmailMachineRow) => string;
-  /** Pil framför värdet (förändring) */
-  glyph?: (r: EmailMachineRow) => string;
+  /**
+   * Andra rad i samma cell, i mindre grå text (antal pack under
+   * försäljningen, förändring under intäkten). Två värden i en cell gör
+   * tabellen smal nog för 320 px utan media query.
+   */
+  sub?: (r: EmailMachineRow) => RowSub | undefined;
+};
+
+export type RowSub = {
+  text: string;
+  /** Pil framför texten (förändring) */
+  glyph?: string;
+  /** Förbättring skrivs i förgrundsfärg, försämring i dämpad. Status bärs alltid av pil och tecken. */
+  good?: boolean;
 };
 
 export function rowColumns(kind: RecipientKind): RowColumn[] {
   switch (kind) {
     case "butik":
       return [
-        { label: "Pack", value: (r) => (r.packs === undefined ? EN_DASH : formatInt(r.packs)) },
-        { label: "Försäljning", value: (r) => formatSek(r.revenue) },
+        {
+          label: "Försäljning",
+          value: (r) => formatSek(r.revenue),
+          sub: (r) =>
+            r.packs === undefined ? undefined : { text: `${formatInt(r.packs)}${NBSP}pack` },
+        },
         {
           label: "I drift",
           value: (r) => (r.availability === undefined ? EN_DASH : formatPercent(r.availability)),
@@ -416,11 +432,17 @@ export function rowColumns(kind: RecipientKind): RowColumn[] {
       ];
     case "delagare":
       return [
-        { label: "Intäkt", value: (r) => formatSek(r.revenue) },
         {
-          label: "Ändring",
-          value: (r) => (r.change === undefined ? EN_DASH : formatDelta(r.change, 1)),
-          glyph: (r) => (r.change === undefined ? "" : changeGlyph({ value: r.change })),
+          label: "Intäkt",
+          value: (r) => formatSek(r.revenue),
+          sub: (r) =>
+            r.change === undefined
+              ? undefined
+              : {
+                  text: formatDelta(r.change, 1),
+                  glyph: changeGlyph({ value: r.change }),
+                  good: r.change > 0,
+                },
         },
         {
           label: "Marginal",
@@ -486,7 +508,10 @@ export function renderReportText(props: ReportEmailProps): string {
   section(rowsTitle(props));
   const cols = rowColumns(props.recipientKind);
   props.rows.forEach((r, i) => {
-    const values = cols.map((c) => `${c.label.toLocaleLowerCase("sv-SE")} ${c.value(r)}`);
+    const values = cols.map((c) => {
+      const sub = c.sub?.(r);
+      return `${c.label.toLocaleLowerCase("sv-SE")} ${c.value(r)}${sub ? ` (${sub.text})` : ""}`;
+    });
     const rank = props.recipientKind === "delagare" ? `${i + 1}. ` : "";
     out.push(
       `${rank}${r.id} ${r.name}${r.location ? `, ${r.location}` : ""}: ${values.join(", ")}`,

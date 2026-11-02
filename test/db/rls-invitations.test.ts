@@ -40,7 +40,9 @@ async function invite(by: TestUser, email: string, role = "viewer"): Promise<str
 
 async function accept(user: TestUser, token: string) {
   return asUser(user, (tx) =>
-    attempt(tx, (sp) => one<{ org: string }>(sp, sql`select public.accept_invitation(${token}) as org`)),
+    attempt(tx, (sp) =>
+      one<{ org: string }>(sp, sql`select public.accept_invitation(${token}) as org`),
+    ),
   );
 }
 
@@ -54,7 +56,10 @@ describe("inbjudningar", () => {
       sql`select token_hash from public.invitations where organization_id = ${F.orgId} and email = ${email}`,
     );
     expect(stored.token_hash).toBe(createHash("sha256").update(token).digest("hex"));
-    const plain = await rows(db(), sql`select 1 from public.invitations where token_hash = ${token}`);
+    const plain = await rows(
+      db(),
+      sql`select 1 from public.invitations where token_hash = ${token}`,
+    );
     expect(plain).toHaveLength(0);
   });
 
@@ -140,7 +145,11 @@ describe("inbjudningar", () => {
     for (const role of ["refiller", "viewer"] as const) {
       const member = await createMember(F.orgId, role);
       const outcome = await asUser(member, (tx) =>
-        attempt(tx, (sp) => sp.execute(sql`select public.create_invitation(${F.orgId}, 'x@test.binderlab.se', 'viewer')`)),
+        attempt(tx, (sp) =>
+          sp.execute(
+            sql`select public.create_invitation(${F.orgId}, 'x@test.binderlab.se', 'viewer')`,
+          ),
+        ),
       );
       expect(outcome.code).toBe("42501");
       const visible = await asUser(member, (tx) =>
@@ -159,7 +168,11 @@ describe("inbjudningar", () => {
     );
     expect(insert.code).toBe("42501");
     const update = await asUser(F.owner, (tx) =>
-      attempt(tx, (sp) => sp.execute(sql`update public.invitations set role = 'owner' where organization_id = ${F.orgId}`)),
+      attempt(tx, (sp) =>
+        sp.execute(
+          sql`update public.invitations set role = 'owner' where organization_id = ${F.orgId}`,
+        ),
+      ),
     );
     expect(update.code).toBe("42501");
   });

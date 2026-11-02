@@ -184,6 +184,24 @@ export function checkSafe(value: number, what: string): number {
  */
 export function allocateLargestRemainder(totalOre: number, weights: readonly number[]): number[] {
   assertSafeInteger(totalOre, "Beloppet att fördela");
+  const w: bigint[] = new Array<bigint>(weights.length);
+  for (let i = 0; i < weights.length; i++) {
+    const v = weights[i];
+    assertNonNegativeInteger(v, "Vikten");
+    w[i] = BigInt(v);
+  }
+  return allocateLargestRemainderBig(totalOre, w);
+}
+
+/**
+ * Som `allocateLargestRemainder` men med vikter som `bigint` (≥ 0), för vikter som är
+ * produkter och kan bli större än 2^53 (t.ex. nettointäkt × månadshyra).
+ */
+export function allocateLargestRemainderBig(
+  totalOre: number,
+  weights: readonly bigint[],
+): number[] {
+  assertSafeInteger(totalOre, "Beloppet att fördela");
   const n = weights.length;
   if (n === 0) {
     if (totalOre === 0) return [];
@@ -192,10 +210,10 @@ export function allocateLargestRemainder(totalOre: number, weights: readonly num
   let weightSum = 0n;
   const w: bigint[] = new Array<bigint>(n);
   for (let i = 0; i < n; i++) {
-    const v = weights[i];
-    assertNonNegativeInteger(v, "Vikten");
-    w[i] = BigInt(v);
-    weightSum += w[i]!;
+    const v = weights[i]!;
+    if (v < 0n) throw new DomainError("invalid_input", "Vikten får inte vara negativ.");
+    w[i] = v;
+    weightSum += v;
   }
   if (weightSum === 0n) {
     w.fill(1n);

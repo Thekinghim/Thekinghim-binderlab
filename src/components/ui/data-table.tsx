@@ -218,9 +218,10 @@ function edgeClasses<T>(col: Column<T>, ci: number, ctx: CellCtx, z = "z-[1]"): 
     ci === 0 &&
       ctx.stickyFirst &&
       cn(
-        "sticky left-0 border-r bg-[var(--dt-bg)]",
+        // Avdelaren ritas som pseudoelement så att radlinjerna löper obrutna.
+        "sticky left-0 bg-[var(--dt-bg)] after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-line after:transition-opacity after:duration-[120ms] after:ease-instrument",
         z,
-        ctx.scrolledX ? "border-r-line" : "border-r-transparent",
+        ctx.scrolledX ? "after:opacity-100" : "after:opacity-0",
       ),
   );
 }
@@ -291,6 +292,9 @@ function ColumnMenu<T>({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const menuId = useId();
+  const countId = useId();
+  // Menyn förankras i knappens högerkant om den får plats, annars i vänsterkanten.
+  const [align, setAlign] = useState<"left" | "right">("right");
   const visibleCount = columns.filter((c) => !hidden.has(c.key)).length;
 
   useEffect(() => {
@@ -341,10 +345,14 @@ function ColumnMenu<T>({
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          if (!open) setAlign(menuAlign(buttonRef.current));
+          setOpen((o) => !o);
+        }}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" && !open) {
             e.preventDefault();
+            setAlign(menuAlign(buttonRef.current));
             setOpen(true);
           }
         }}
@@ -358,56 +366,77 @@ function ColumnMenu<T>({
       </Button>
       {open ? (
         <div
-          id={menuId}
-          role="menu"
-          aria-label="Visade kolumner"
-          onKeyDown={onMenuKey}
-          className="absolute top-full right-0 z-30 mt-1 w-60 rounded-sm border border-line-strong bg-raised py-1 motion-safe:animate-[bl-fade_120ms_var(--bl-ease)]"
+          className={cn(
+            "absolute top-full z-30 mt-1 w-60 max-w-[calc(100vw-2rem)] rounded-sm border border-line-strong bg-raised motion-safe:animate-[bl-fade_120ms_var(--bl-ease)]",
+            align === "right" ? "right-0" : "left-0",
+          )}
         >
-          {columns.map((col, i) => {
-            const checked = !hidden.has(col.key);
-            const locked = col.hideable === false || (checked && visibleCount === 1);
-            return (
-              <button
-                key={col.key}
-                ref={(el) => {
-                  itemRefs.current[i] = el;
-                }}
-                type="button"
-                role="menuitemcheckbox"
-                aria-checked={checked}
-                aria-disabled={locked || undefined}
-                tabIndex={-1}
-                onClick={() => {
-                  if (!locked) onToggle(col.key);
-                }}
-                className={cn(
-                  "flex h-8 w-full items-center gap-2.5 px-2.5 text-left text-sm outline-offset-[-2px] transition-colors duration-[120ms] ease-instrument",
-                  locked ? "cursor-default text-subtle" : "text-fg hover:bg-hover focus:bg-hover",
-                )}
-              >
-                <span
-                  aria-hidden
+          <div
+            id={menuId}
+            role="menu"
+            aria-label="Visade kolumner"
+            aria-describedby={countId}
+            onKeyDown={onMenuKey}
+            className="py-1"
+          >
+            {columns.map((col, i) => {
+              const checked = !hidden.has(col.key);
+              const locked = col.hideable === false || (checked && visibleCount === 1);
+              return (
+                <button
+                  key={col.key}
+                  ref={(el) => {
+                    itemRefs.current[i] = el;
+                  }}
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={checked}
+                  aria-disabled={locked || undefined}
+                  tabIndex={-1}
+                  onClick={() => {
+                    if (!locked) onToggle(col.key);
+                  }}
                   className={cn(
-                    "grid size-3 shrink-0 place-items-center rounded-xs border",
-                    checked ? "border-fg bg-fg text-bg" : "border-line-control",
-                    locked && checked && "border-line-control bg-line-control",
+                    "flex h-8 w-full items-center gap-2.5 px-2.5 text-left text-sm outline-offset-[-2px] transition-colors duration-[120ms] ease-instrument",
+                    locked ? "cursor-default text-subtle" : "text-fg hover:bg-hover focus:bg-hover",
                   )}
                 >
-                  {checked ? <Icon name="check" size={10} strokeWidth={2} /> : null}
-                </span>
-                <span className="min-w-0 flex-1 truncate">{col.header}</span>
-                {col.hideable === false ? <span className="label text-subtle">Fast</span> : null}
-              </button>
-            );
-          })}
-          <p className="tnum mt-1 border-t border-line px-2.5 pt-2 pb-1 font-mono text-xs text-subtle">
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "grid size-3 shrink-0 place-items-center rounded-xs border",
+                      checked ? "border-fg bg-fg text-bg" : "border-line-control",
+                      locked && checked && "border-line-control bg-line-control",
+                    )}
+                  >
+                    {checked ? <Icon name="check" size={10} strokeWidth={2} /> : null}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">{col.header}</span>
+                  {col.hideable === false ? <span className="label text-subtle">Fast</span> : null}
+                </button>
+              );
+            })}
+          </div>
+          <p
+            id={countId}
+            className="tnum border-t border-line px-2.5 pt-2 pb-2 font-mono text-xs text-subtle"
+          >
             {visibleCount} av {columns.length} visas · minst en
           </p>
         </div>
       ) : null}
     </div>
   );
+}
+
+const MENU_WIDTH = 240;
+const VIEWPORT_GUTTER = 16;
+
+function menuAlign(button: HTMLElement | null): "left" | "right" {
+  if (!button) return "right";
+  const r = button.getBoundingClientRect();
+  if (r.right - MENU_WIDTH >= VIEWPORT_GUTTER) return "right";
+  return "left";
 }
 
 // ---------------------------------------------------------------------------
@@ -510,6 +539,8 @@ export function DataTable<T>({
   const [viewport, setViewport] = useState(typeof height === "number" ? height : 600);
   const [headOffset, setHeadOffset] = useState(36);
   const [scrolledX, setScrolledX] = useState(false);
+  // Scrollytan blir ett tabbstopp bara när den faktiskt går att scrolla.
+  const [overflows, setOverflows] = useState(virtual);
 
   useLayoutEffect(() => {
     const el = scrollRef.current;
@@ -517,12 +548,15 @@ export function DataTable<T>({
     const measure = () => {
       setViewport(el.clientHeight || viewportFallback(height));
       setHeadOffset(theadRef.current?.offsetHeight ?? 36);
+      setOverflows(el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
     return () => ro.disconnect();
   }, [height]);
+  const scrollable = virtual || overflows;
 
   // Ny sortering börjar överst.
   const sortSig = sort.map((s) => `${s.key}:${s.dir}`).join(",");
@@ -651,9 +685,9 @@ export function DataTable<T>({
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        tabIndex={0}
-        role="region"
-        aria-label={caption}
+        tabIndex={scrollable ? 0 : undefined}
+        role={scrollable ? "region" : undefined}
+        aria-label={scrollable ? caption : undefined}
         className={cn(
           "relative w-full rounded-xs",
           height !== undefined ? "overflow-auto overscroll-contain" : "overflow-x-auto",
@@ -716,7 +750,7 @@ export function DataTable<T>({
                         type="button"
                         onClick={(e) => onHeaderClick(col, e)}
                         className={cn(
-                          "label group/sort inline-flex max-w-full items-center gap-1 rounded-xs transition-colors duration-[120ms] ease-instrument",
+                          "label group/sort inline-flex max-w-full items-center gap-1 rounded-xs align-middle transition-colors duration-[120ms] ease-instrument",
                           col.numeric && "flex-row-reverse",
                           active ? "text-fg" : "text-subtle hover:text-fg",
                         )}
@@ -745,7 +779,9 @@ export function DataTable<T>({
                         ) : null}
                       </button>
                     ) : (
-                      <span className="label text-subtle">{col.header}</span>
+                      <span className="label inline-block align-middle text-subtle">
+                        {col.header}
+                      </span>
                     )}
                   </th>
                 );

@@ -74,8 +74,10 @@ import {
 import {
   EMAIL_COLOR as C,
   EMAIL_FONT as F,
+  EMAIL_DISPLAY,
   EMAIL_GUTTER,
-  EMAIL_GUTTER_MOBILE,
+  EMAIL_GUTTER_NARROW,
+  EMAIL_GUTTER_WIDE,
   EMAIL_WIDTH,
   bodyStyle,
   css,
@@ -89,6 +91,8 @@ export { buildPreheader, buildSubject, renderReportText } from "./report-content
 const LINE = `1px solid ${C.line}`;
 const LINE_STRONG = `1px solid ${C.lineStrong}`;
 const GUTTER = `${EMAIL_GUTTER}px`;
+/** Yttre luft runt kortet. Smal i sidled så att mejlet ryms i 375 px även i Gmail. */
+const OUTER_PADDING = "16px 8px 32px";
 
 // ---------------------------------------------------------------------------
 // Små delar
@@ -194,7 +198,7 @@ function Preheader({ text }: { text: string }) {
 const th: CSSProperties = {
   ...labelStyle,
   fontWeight: 400,
-  padding: "0 0 8px 12px",
+  padding: "0 0 8px 10px",
   borderBottom: LINE_STRONG,
   whiteSpace: "nowrap",
 };
@@ -205,7 +209,7 @@ const numCell: CSSProperties = {
   fontSize: "14px",
   lineHeight: "20px",
   color: C.fg,
-  padding: "12px 0 12px 12px",
+  padding: "12px 0 12px 10px",
   borderBottom: LINE,
   whiteSpace: "nowrap",
 };
@@ -244,8 +248,8 @@ function KpiGrid({ kpis, compare }: { kpis: EmailKpi[]; compare: string }) {
                     ...tnum,
                     marginTop: "6px",
                     fontFamily: F.sans,
-                    fontSize: "26px",
-                    lineHeight: "32px",
+                    fontSize: `${EMAIL_DISPLAY.base.size}px`,
+                    lineHeight: `${EMAIL_DISPLAY.base.line}px`,
                     fontWeight: 500,
                     letterSpacing: "-0.5px",
                     color: C.fg,
@@ -360,7 +364,6 @@ function DailyBars({ daily }: { daily: DailyPoint[] }) {
 
 function MachineTable({ props }: { props: ReportEmailProps }) {
   const cols = rowColumns(props.recipientKind);
-  const ranked = props.recipientKind === "delagare";
   return (
     <table
       width="100%"
@@ -371,7 +374,7 @@ function MachineTable({ props }: { props: ReportEmailProps }) {
     >
       <thead>
         <tr>
-          <th scope="col" align="left" colSpan={ranked ? 2 : 1} style={{ ...th, paddingLeft: 0 }}>
+          <th scope="col" align="left" style={{ ...th, paddingLeft: 0 }}>
             Automat
           </th>
           {cols.map((c) => (
@@ -382,23 +385,8 @@ function MachineTable({ props }: { props: ReportEmailProps }) {
         </tr>
       </thead>
       <tbody>
-        {props.rows.map((r, i) => (
+        {props.rows.map((r) => (
           <tr key={r.id}>
-            {ranked ? (
-              <td
-                valign="top"
-                width={28}
-                style={{
-                  ...labelStyle,
-                  ...tnum,
-                  width: "20px",
-                  padding: "14px 8px 12px 0",
-                  borderBottom: LINE,
-                }}
-              >
-                {String(i + 1).padStart(2, "0")}
-              </td>
-            ) : null}
             <th
               scope="row"
               align="left"
@@ -423,12 +411,24 @@ function MachineTable({ props }: { props: ReportEmailProps }) {
                 {r.location ? ` · ${r.location}` : ""}
               </Text>
             </th>
-            {cols.map((c) => (
-              <td key={c.label} align="right" valign="top" style={numCell}>
-                {c.glyph ? <Glyph>{c.glyph(r)}</Glyph> : null}
-                {c.value(r)}
-              </td>
-            ))}
+            {cols.map((c) => {
+              const sub = c.sub?.(r);
+              return (
+                <td key={c.label} align="right" valign="top" style={numCell}>
+                  {c.value(r)}
+                  {sub ? (
+                    <Text
+                      size={12}
+                      color={sub.good ? C.fg : C.subtle}
+                      style={{ ...tnum, marginTop: "2px", lineHeight: "16px", whiteSpace: "nowrap" }}
+                    >
+                      {sub.glyph ? <Glyph>{sub.glyph}</Glyph> : null}
+                      {sub.text}
+                    </Text>
+                  ) : null}
+                </td>
+              );
+            })}
           </tr>
         ))}
       </tbody>
@@ -809,7 +809,7 @@ export function ReportEmail(props: ReportEmailProps) {
       >
         <tbody>
           <tr>
-            <td align="center" {...mobile("outer")} style={{ padding: "32px 12px 40px" }}>
+            <td align="center" {...mobile("outer")} style={{ padding: OUTER_PADDING }}>
               <MsoOpen width={EMAIL_WIDTH} />
               <table
                 role="presentation"
@@ -874,8 +874,8 @@ export function ReportEmail(props: ReportEmailProps) {
                               style={{
                                 margin: "12px 0 0",
                                 fontFamily: F.sans,
-                                fontSize: "26px",
-                                lineHeight: "32px",
+                                fontSize: `${EMAIL_DISPLAY.base.size}px`,
+                                lineHeight: `${EMAIL_DISPLAY.base.line}px`,
                                 fontWeight: 500,
                                 letterSpacing: "-0.6px",
                                 color: C.fg,
@@ -963,20 +963,28 @@ export function ReportEmail(props: ReportEmailProps) {
 // ---------------------------------------------------------------------------
 
 /**
- * Den enda <style> i mejlet: mobilanpassning för klienter som läser
- * media queries (Apple Mail, iOS, Outlook-apparna). Selektorerna är
- * attributselektorer eftersom mejlet saknar klasser. Utan blocket är
- * mejlet fortfarande läsbart i 320 px: allt är flytande upp till 600 px.
+ * Den enda <style> i mejlet. Grundlayouten står inline och fungerar utan
+ * blocket (Gmail läser det inte, eftersom mejlet saknar klasser och
+ * selektorerna därför är attributselektorer). Klienter som läser media
+ * queries (Apple Mail, iOS, Outlook-apparna) får mer luft på breda skärmar
+ * och något smalare marginal under 400 px.
  */
+const display = (d: { size: number; line: number }) =>
+  `font-size:${d.size}px!important;line-height:${d.line}px!important`;
+const gutter = (px: number) => `padding-left:${px}px!important;padding-right:${px}px!important`;
+
 const STYLE = [
   ":root{color-scheme:light only;supported-color-schemes:light only}",
   "table,td{mso-table-lspace:0pt;mso-table-rspace:0pt}",
   "a[x-apple-data-detectors]{color:inherit!important;text-decoration:none!important}",
-  "@media only screen and (max-width:620px){",
-  "[data-m=outer]{padding:12px 8px 32px!important}",
-  `[data-m=gutter]{padding-left:${EMAIL_GUTTER_MOBILE}px!important;padding-right:${EMAIL_GUTTER_MOBILE}px!important}`,
-  "[data-m=h1]{font-size:22px!important;line-height:28px!important}",
-  "[data-m=kpi]{font-size:22px!important;line-height:28px!important}",
+  "@media only screen and (min-width:621px){",
+  "[data-m=outer]{padding:32px 12px 40px!important}",
+  `[data-m=gutter]{${gutter(EMAIL_GUTTER_WIDE)}}`,
+  `[data-m=h1],[data-m=kpi]{${display(EMAIL_DISPLAY.wide)}}`,
+  "}",
+  "@media only screen and (max-width:400px){",
+  `[data-m=gutter]{${gutter(EMAIL_GUTTER_NARROW)}}`,
+  `[data-m=h1],[data-m=kpi]{${display(EMAIL_DISPLAY.narrow)}}`,
   "}",
 ].join("");
 
