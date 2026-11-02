@@ -1,0 +1,115 @@
+/*
+ * Binderlab designtokens
+ * ---------------------------------------------------------------
+ * Den enda källan för färg, typ, spacing, radier och rörelse.
+ * Tailwind läser dessa via @theme i globals.css. TS-kod som behöver
+ * värden (diagram, animationer) läser src/lib/tokens.ts, som speglar
+ * de icke-färgade värdena här.
+ *
+ * Lägen: mörkt är standard. Ljust aktiveras med data-theme="light"
+ * på valfritt element; variablerna ärvs nedåt, så ett ljust kort kan
+ * ligga i en mörk sida (används på /design).
+ */
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Ytor: nästan svart, varje steg ett snäpp ljusare */
+  --bl-bg: #0a0a0b;
+  --bl-surface: #111113;
+  --bl-surface-raised: #18181b;
+  --bl-surface-hover: #1e1e22;
+
+  /* Linjer: 1px hårfina */
+  --bl-line: #232327;
+  --bl-line-strong: #36363c;
+  --bl-line-control: #63615c; /* 3:1 mot ytor, för formulärkanter */
+  --bl-grid: rgb(237 234 228 / 0.045);
+  --bl-grid-mark: rgb(237 234 228 / 0.22);
+
+  /* Text: varm off-white och gråskala */
+  --bl-fg: #edeae4;
+  --bl-fg-muted: #a6a39d;
+  --bl-fg-subtle: #8f8c86;
+  --bl-fg-faint: #57554f; /* endast dekor/axlar, aldrig brödtext */
+
+  /* Signal: den enda färgen */
+  --bl-signal: #ff5a1f;
+  --bl-signal-fg: #ff6d38;
+  --bl-signal-soft: rgb(255 90 31 / 0.13);
+  --bl-on-signal: #0a0a0b;
+
+  /* Inverterad (primärknapp) */
+  --bl-inverse-bg: #edeae4;
+  --bl-inverse-fg: #0a0a0b;
+  --bl-inverse-hover: #ffffff;
+
+  /* Dataramp i gråskala: 1 = starkast */
+  --bl-data-1: #edeae4;
+  --bl-data-2: #b3b0aa;
+  --bl-data-3: #84817c;
+  --bl-data-4: #5b5955;
+  --bl-data-5: #383734;
+  --bl-data-0: #161618; /* lägsta värde i värmekarta */
+
+  --bl-focus: #ff5a1f;
+  --bl-overlay: rgb(5 5 6 / 0.72);
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bl-bg: #f4f3ef;
+  --bl-surface: #fbfaf8;
+  --bl-surface-raised: #ffffff;
+  --bl-surface-hover: #eeece7;
+
+  --bl-line: #e0ded8;
+  --bl-line-strong: #c9c6bf;
+  --bl-line-control: #8f8c86;
+  --bl-grid: rgb(21 21 20 / 0.055);
+  --bl-grid-mark: rgb(21 21 20 / 0.3);
+
+  --bl-fg: #151514;
+  --bl-fg-muted: #4f4d48;
+  --bl-fg-subtle: #65635e;
+  --bl-fg-faint: #aeaba4;
+
+  --bl-signal: #f0521a;
+  --bl-signal-fg: #b53e0e;
+  --bl-signal-soft: rgb(240 82 26 / 0.1);
+  --bl-on-signal: #151514;
+
+  --bl-inverse-bg: #151514;
+  --bl-inverse-fg: #f4f3ef;
+  --bl-inverse-hover: #2a2a28;
+
+  --bl-data-1: #151514;
+  --bl-data-2: #4a4844;
+  --bl-data-3: #7c7974;
+  --bl-data-4: #aaa7a0;
+  --bl-data-5: #d3d0ca;
+  --bl-data-0: #f0eee9;
+
+  --bl-focus: #d9470f;
+  --bl-overlay: rgb(21 21 20 / 0.4);
+}
+
+:root {
+  /* Typsnitt */
+  --bl-font-sans:
+    var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --bl-font-mono: var(--font-geist-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* Rörelse: snabbt och subtilt, inget studsigt */
+  --bl-dur-fast: 120ms;
+  --bl-dur-base: 150ms;
+  --bl-dur-slow: 180ms;
+  --bl-dur-count: 420ms; /* uppräkning av siffror vid periodbyte */
+  --bl-ease: cubic-bezier(0.2, 0, 0, 1);
+  --bl-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Rutnät i bakgrund */
+  --bl-grid-size: 32px;
+}

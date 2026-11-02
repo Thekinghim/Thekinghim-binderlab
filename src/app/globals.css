@@ -1,0 +1,249 @@
+@import "tailwindcss";
+@import "../styles/tokens.css";
+@import "../styles/print.css";
+
+/* Lägesväxling via data-theme, inte media query (mörkt är standard). */
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+
+/*
+ * Tailwind-temat pekar enbart på tokens. Standardpaletter, skuggor och
+ * radier nollställs så att de inte kan användas av misstag.
+ */
+@theme inline {
+  --color-*: initial;
+  --shadow-*: initial;
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+  --radius-*: initial;
+  --font-*: initial;
+
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --color-bg: var(--bl-bg);
+  --color-surface: var(--bl-surface);
+  --color-raised: var(--bl-surface-raised);
+  --color-hover: var(--bl-surface-hover);
+  --color-line: var(--bl-line);
+  --color-line-strong: var(--bl-line-strong);
+  --color-line-control: var(--bl-line-control);
+  --color-fg: var(--bl-fg);
+  --color-muted: var(--bl-fg-muted);
+  --color-subtle: var(--bl-fg-subtle);
+  --color-faint: var(--bl-fg-faint);
+  --color-signal: var(--bl-signal);
+  --color-signal-fg: var(--bl-signal-fg);
+  --color-signal-soft: var(--bl-signal-soft);
+  --color-on-signal: var(--bl-on-signal);
+  --color-inverse: var(--bl-inverse-bg);
+  --color-on-inverse: var(--bl-inverse-fg);
+  --color-inverse-hover: var(--bl-inverse-hover);
+  --color-data-0: var(--bl-data-0);
+  --color-data-1: var(--bl-data-1);
+  --color-data-2: var(--bl-data-2);
+  --color-data-3: var(--bl-data-3);
+  --color-data-4: var(--bl-data-4);
+  --color-data-5: var(--bl-data-5);
+  --color-focus: var(--bl-focus);
+  --color-overlay: var(--bl-overlay);
+
+  --font-sans: var(--bl-font-sans);
+  --font-mono: var(--bl-font-mono);
+
+  /* Typskala: storlek / radhöjd / spärrning */
+  --text-label: 11px;
+  --text-label--line-height: 16px;
+  --text-label--letter-spacing: 0.08em;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 20px;
+  --text-base: 14px;
+  --text-base--line-height: 20px;
+  --text-md: 16px;
+  --text-md--line-height: 24px;
+  --text-md--letter-spacing: -0.005em;
+  --text-lg: 20px;
+  --text-lg--line-height: 28px;
+  --text-lg--letter-spacing: -0.015em;
+  --text-xl: 24px;
+  --text-xl--line-height: 32px;
+  --text-xl--letter-spacing: -0.02em;
+  --text-2xl: 32px;
+  --text-2xl--line-height: 36px;
+  --text-2xl--letter-spacing: -0.025em;
+  --text-3xl: 44px;
+  --text-3xl--line-height: 48px;
+  --text-3xl--letter-spacing: -0.03em;
+  --text-display: 64px;
+  --text-display--line-height: 64px;
+  --text-display--letter-spacing: -0.04em;
+
+  /* Spacing: bas 4px, rytm i 8px-steg (2, 4, 6, 8 …) */
+  --spacing: 4px;
+
+  /* Radier: små */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+
+  /* Rörelse */
+  --ease-instrument: var(--bl-ease);
+  --default-transition-duration: var(--bl-dur-base);
+  --default-transition-timing-function: var(--bl-ease);
+
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html,
+  [data-theme] {
+    background-color: var(--bl-bg);
+    color: var(--bl-fg);
+  }
+
+  body {
+    font-family: var(--bl-font-sans);
+    font-size: 14px;
+    line-height: 20px;
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  /* Inga spinnpilar i nummerfält: värden skrivs, inte klickas fram */
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  ::selection {
+    background: var(--bl-signal-soft);
+    color: var(--bl-fg);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--bl-focus);
+    outline-offset: 2px;
+  }
+
+  /* Stäng av rörelse helt för den som bett om det */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 1ms !important;
+      animation-duration: 1ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+}
+
+@layer utilities {
+  /* Monospace-etikett: VERSALER, liten, bred spärrning */
+  .label {
+    font-family: var(--bl-font-mono);
+    font-size: 11px;
+    line-height: 16px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings:
+      "tnum",
+      "zero" 0;
+  }
+
+  /* Svagt koordinatsystem. Används på utvalda ytor, inte överallt. */
+  .grid-field {
+    background-image:
+      linear-gradient(to right, var(--bl-grid) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--bl-grid) 1px, transparent 1px);
+    background-size: var(--bl-grid-size) var(--bl-grid-size);
+    background-position: -1px -1px;
+  }
+
+  .grid-field-fine {
+    --bl-grid-size: 16px;
+  }
+
+  /* Diagonal skraffering för negativa steg i vattenfall m.m. */
+  .hatch {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      var(--bl-line-strong) 0 1px,
+      transparent 1px 5px
+    );
+  }
+
+  .sr-only-focusable:not(:focus):not(:focus-within) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+@keyframes bl-shimmer {
+  0% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.55;
+  }
+}
+
+@keyframes bl-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bl-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+dialog::backdrop {
+  background: var(--bl-overlay);
+  animation: bl-fade var(--bl-dur-slow) var(--bl-ease);
+}
+
+@keyframes bl-progress {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
