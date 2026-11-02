@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { periodText, sentence } from "@/analytics/todos/text";
+import { day, periodText, sentence } from "@/analytics/todos/text";
 import {
   PrintButton,
   ReportDocument,
@@ -155,6 +155,9 @@ export default async function SalesDeckPage({
               {sentence(
                 `Källa: betalda order och butiksavtal i Binderlab för ${periodText(data.period)}`,
               )}{" "}
+              {data.clippedFrom
+                ? `Räknat från första ordern ${day(data.clippedFrom)}; dagar före den räknas inte. `
+                : ""}
               Beloppen är historiska snitt, inte en utlovad ersättning; utfallet beror på plats och
               försäljning. Inga butiksnamn och inga enskilda butikers belopp redovisas, och snittet
               visas bara när minst {SALES_DECK_MIN_STORES} butiker ingår.

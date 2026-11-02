@@ -46,6 +46,15 @@ describe("seriesStartsFromStock", () => {
     expect(by.get("m-3:t-y")).toBe("2026-10-25");
   });
 
+  it("flyttar en start före första orderdatan fram till den", () => {
+    const starts = seriesStartsFromStock(
+      [ev("a1", "m-1", "t-wf", "count", 5, "2026-10-12")],
+      AS_OF,
+      "2026-10-13",
+    );
+    expect(starts).toEqual([{ machineId: "m-1", titleId: "t-wf", date: "2026-10-13" }]);
+  });
+
   it("ger ingen start för centrallagret eller ett saldo som aldrig varit över 0", () => {
     const starts = seriesStartsFromStock(
       [

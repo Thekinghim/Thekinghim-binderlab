@@ -4,6 +4,7 @@
  */
 
 import type { HealthStatus, MachineHealth } from "@/analytics/health";
+import { sentence } from "@/analytics/todos/text";
 import type { Status } from "@/components/ui/status-tag";
 import { wallClockIn } from "@/components/shell/period-state";
 import { formatDateTime, formatInt, MISSING, NBSP } from "@/lib/format";
@@ -74,7 +75,7 @@ export function driftHeadline(health: readonly MachineHealth[]): { title: string
   const more = problems.length - 1;
   return {
     title: `${formatInt(ok)} av ${plural(active.length, "automat", "automater")} i drift.`,
-    aside: `${first.title}.${more > 0 ? ` Och ${plural(more, "automat", "automater")} till.` : ""}`,
+    aside: `${sentence(first.title)}${more > 0 ? ` Och ${plural(more, "automat", "automater")} till.` : ""}`,
   };
 }
 

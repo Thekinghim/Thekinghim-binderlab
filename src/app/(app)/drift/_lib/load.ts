@@ -218,7 +218,9 @@ export async function loadMachineTimeline(
     const machine = data.machines.find((m) => m.id === machineId);
     if (!machine) return null;
     const health =
-      machineHealth(healthInputOf(data, ctx.timeZone), now).find((h) => h.machineId === machineId) ?? null;
+      machineHealth(healthInputOf(data, ctx.timeZone), now).find(
+        (h) => h.machineId === machineId,
+      ) ?? null;
     const from = new Date(now.getTime() - days * 86_400_000);
 
     const stockRows = await tx

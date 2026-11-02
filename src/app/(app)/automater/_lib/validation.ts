@@ -274,6 +274,8 @@ export function placementToReopen(
   placements: readonly PlacementSpan[],
   activeTo: IsoDate,
 ): PlacementSpan | null {
-  const latest = [...placements].sort((a, b) => (a.from < b.from ? 1 : a.from > b.from ? -1 : 0))[0];
+  const latest = [...placements].sort((a, b) =>
+    a.from < b.from ? 1 : a.from > b.from ? -1 : 0,
+  )[0];
   return latest && latest.to === activeTo ? latest : null;
 }

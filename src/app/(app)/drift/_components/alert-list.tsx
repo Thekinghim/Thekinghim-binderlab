@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 
 import type { AlertSeverity } from "@/analytics/alerts";
+import { sentence } from "@/analytics/todos/text";
 import { Button } from "@/components/ui/button";
 import { StatusTag, type Status } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
@@ -85,7 +86,7 @@ export function AlertList({ items, canAck }: { items: AlertItem[]; canAck: boole
               </span>
             </div>
             <div className="flex min-w-0 flex-col gap-1 md:col-span-6">
-              <p className="text-base text-fg">{a.title}.</p>
+              <p className="text-base text-fg">{sentence(a.title)}</p>
               <p className="text-sm text-muted">{a.detail}</p>
               <details className="mt-1">
                 <summary className="w-fit cursor-pointer rounded-xs text-sm text-muted hover:text-fg">

@@ -8,6 +8,7 @@
 
 import { z } from "zod";
 
+import { addDays, daysInMonth, isIsoDate, type IsoDate } from "@/domain";
 import { parseAmountOre } from "@/import/amount";
 
 import { LEAD_STAGES } from "./model";
@@ -106,16 +107,24 @@ const optionalUuid = optional((v) =>
   UUID_RE.test(v) ? { ok: true, value: v } : { ok: false, message: "Valet är ogiltigt." },
 );
 const ISO_DATE_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+/** Datum i kalendern (inte 2026-02-30) mellan år 2000 och 2100. */
+function dateIssue(label: string, v: string): string | null {
+  if (!ISO_DATE_RE.test(v)) return `${label}: ange ett datum (ÅÅÅÅ-MM-DD).`;
+  if (!isIsoDate(v)) return `${label}: datumet ${v} finns inte i kalendern.`;
+  if (v < "2000-01-01" || v > "2100-12-31")
+    return `${label}: ange ett datum mellan år 2000 och 2100.`;
+  return null;
+}
 const isoDate = (label: string) =>
-  z
-    .string({ error: `${label} saknas.` })
-    .regex(ISO_DATE_RE, `${label}: ange ett datum (ÅÅÅÅ-MM-DD).`);
+  z.string({ error: `${label} saknas.` }).superRefine((v, ctx) => {
+    const issue = dateIssue(label, v);
+    if (issue) ctx.addIssue({ code: "custom", message: issue });
+  });
 const optionalDate = (label: string) =>
-  optional((v) =>
-    ISO_DATE_RE.test(v)
-      ? { ok: true, value: v }
-      : { ok: false, message: `${label}: ange ett datum (ÅÅÅÅ-MM-DD).` },
-  );
+  optional((v) => {
+    const issue = dateIssue(label, v);
+    return issue === null ? { ok: true, value: v } : { ok: false, message: issue };
+  });
 const isoMonth = z
   .string({ error: "Ange en månad (ÅÅÅÅ-MM)." })
   .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Ange en månad (ÅÅÅÅ-MM).");
@@ -144,6 +153,28 @@ export const investmentSchema = z.object({
   note: optionalText(300, "Anteckning"),
 });
 export type InvestmentInput = z.infer<typeof investmentSchema>;
+
+/** Hur långt från i dag ett investeringsdatum får ligga (dagar, åt båda hållen). */
+export const INVESTMENT_DATE_WINDOW_DAYS = 2 * 366;
+
+/**
+ * Investeringen med datumet inom ±2 år från `today`. Investeringar kan inte raderas
+ * (ekonomiska uppgifter), så ett orimligt datum (9999-12-31) ska stoppas vid fältet.
+ * Äldre automater registreras med ett datum högst två år bakåt; avskrivningen räknas från det.
+ */
+export function investmentSchemaAt(today: IsoDate) {
+  const min = addDays(today, -INVESTMENT_DATE_WINDOW_DAYS);
+  const max = addDays(today, INVESTMENT_DATE_WINDOW_DAYS);
+  return investmentSchema.superRefine((v, ctx) => {
+    if (v.investedOn < min || v.investedOn > max) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["investedOn"],
+        message: `Datum: ange ett datum mellan ${min} och ${max}.`,
+      });
+    }
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Mål
@@ -252,6 +283,11 @@ export const leadSchema = z.object({
 });
 export type LeadInput = z.infer<typeof leadSchema>;
 
+export const leadArchiveSchema = z.object({
+  id: uuid("Platsen"),
+  archived: z.boolean({ error: "Ange arkivera eller ta tillbaka." }),
+});
+
 export const leadStageSchema = z.object({
   id: uuid("Leaden"),
   stage: z.enum(LEAD_STAGES, { error: "Välj steg." }),
@@ -307,6 +343,49 @@ function metricValue(
     return z.NEVER;
   }
   return Math.floor((h * 60 + 50) / 100);
+}
+
+// Övre gränser för mätvärdena (per månad och automat). Slutsålda dagar kan inte vara fler
+// än månadens dagar per automat; tid högst dygnets alla timmar (744 h på 31 dagar) per
+// automat. Databasen tillåter högst 1 000 000 (dagar eller minuter).
+const DB_MAX_VALUE = 1_000_000;
+const MAX_HOURS_PER_MACHINE_MONTH = 31 * 24;
+
+/**
+ * Felmeddelande när ett mätvärde (eller utgångsläge, `month` = null: en hel månad på 31
+ * dagar) är orimligt stort för omfattningen, annars null. `machines` = automater i
+ * omfattningen (minst 1). Värdet är i måttets enhet: dagar eller minuter.
+ */
+export function metricLimitIssue(
+  metric: BaselineMetricKey,
+  value: number,
+  month: string | null,
+  machines: number,
+): string | null {
+  if (metric === "profit_per_machine_month") return null;
+  const n = Math.max(1, Math.floor(machines));
+  const dim = month === null ? 31 : daysInMonth(month);
+  if (metric === "stockout_days_month") {
+    const max = Math.min(dim * n, DB_MAX_VALUE);
+    if (value <= max) return null;
+    return `Högst ${max} slutsålda dagar: ${dim} dagar${month === null ? "" : " i månaden"} × ${n} ${n === 1 ? "automat" : "automater"}.`;
+  }
+  const maxHours = Math.min(MAX_HOURS_PER_MACHINE_MONTH * n, Math.floor(DB_MAX_VALUE / 60));
+  if (value <= maxHours * 60) return null;
+  return `Högst ${maxHours} timmar per månad (${MAX_HOURS_PER_MACHINE_MONTH} h × ${n} ${n === 1 ? "automat" : "automater"}).`;
+}
+
+/** Kastar ett fältfel på "value" om mätvärdet är orimligt (se `metricLimitIssue`). */
+export function assertMetricLimit(
+  metric: BaselineMetricKey,
+  value: number,
+  month: string | null,
+  machines: number,
+): void {
+  const message = metricLimitIssue(metric, value, month, machines);
+  if (message) {
+    throw new z.ZodError([{ code: "custom", path: ["value"], message, input: value }]);
+  }
 }
 
 export const baselineSchema = z

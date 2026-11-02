@@ -350,7 +350,8 @@ export function machineHealth(input: HealthInput, now: Date | string | number): 
   for (const c of input.salesCoverage ?? []) {
     const ms = parseInstant(c.until);
     const prev = coverageByMachine.get(c.machineId);
-    if (!prev || ms > prev.ms) coverageByMachine.set(c.machineId, { ms, sourceName: c.sourceName ?? null });
+    if (!prev || ms > prev.ms)
+      coverageByMachine.set(c.machineId, { ms, sourceName: c.sourceName ?? null });
   }
   const stockByMachine = new Map<string, number>();
   for (const s of input.stock ?? []) {
@@ -652,7 +653,15 @@ function evaluate(
     silence.minutes >= o.minSilenceMinutes
       ? ` Under tystnaden (${durationText(silence.minutes)}) brukar den sälja ${expectedText} pack; sannolikheten för noll är ${probabilityText(silence.zeroProbabilityBp)}.`
       : "";
-  return base("ok", "sales", null, `${name} är i drift`, `${lastSaleText}${quiet}${coverageText}`, ev, {
-    silence,
-  });
+  return base(
+    "ok",
+    "sales",
+    null,
+    `${name} är i drift`,
+    `${lastSaleText}${quiet}${coverageText}`,
+    ev,
+    {
+      silence,
+    },
+  );
 }

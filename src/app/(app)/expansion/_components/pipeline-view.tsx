@@ -9,7 +9,7 @@ import { StateMessage } from "@/components/ui/state-message";
 import { cn } from "@/lib/cn";
 import { formatInt, MISSING } from "@/lib/format";
 
-import { deleteLead, saveLead, saveStoreProfile, setLeadStage } from "../actions";
+import { deleteLead, saveLead, saveStoreProfile, setLeadArchived, setLeadStage } from "../actions";
 import { bpToInput, kr, oreToInput, paybackShort } from "../_lib/display";
 import type { Named } from "../_lib/data";
 import {
@@ -61,6 +61,30 @@ function LeadStageSelect({ lead, disabled }: { lead: LeadRecord; disabled: boole
 }
 
 /** Pipelinen: öppna platser i rangordning efter uppskattad återbetalningstid, sedan avslutade. */
+/** Arkivera en avslutad plats, eller ta tillbaka en arkiverad. */
+function ArchiveButton({ lead }: { lead: LeadRecord }) {
+  const { pending, run } = useActionRunner();
+  const archive = !lead.archived;
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="ghost"
+      disabled={pending}
+      aria-label={archive ? `Arkivera ${lead.name}` : `Ta tillbaka ${lead.name}`}
+      onClick={() =>
+        run(
+          setLeadArchived,
+          { id: lead.id, archived: archive },
+          { success: archive ? `${lead.name} är arkiverad` : `${lead.name} är tillbaka` },
+        )
+      }
+    >
+      {archive ? "Arkivera" : "Ta tillbaka"}
+    </Button>
+  );
+}
+
 export function PipelineView({
   leads,
   pipeline,
@@ -80,8 +104,10 @@ export function PipelineView({
 }) {
   const [editing, setEditing] = useState<LeadRecord | "new" | null>(null);
   const byId = useMemo(() => new Map(leads.map((l) => [l.id, l])), [leads]);
-  const closed = leads.filter((l) => !OPEN_STAGES.includes(l.stage));
-  const counts = LEAD_STAGES.map((s) => ({ s, n: leads.filter((l) => l.stage === s).length }));
+  const active = leads.filter((l) => !l.archived);
+  const closed = active.filter((l) => !OPEN_STAGES.includes(l.stage));
+  const archived = leads.filter((l) => l.archived);
+  const counts = LEAD_STAGES.map((s) => ({ s, n: active.filter((l) => l.stage === s).length }));
 
   const fields = useMemo<FieldSpec[]>(
     () => [
@@ -299,6 +325,40 @@ export function PipelineView({
                     <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(c)}>
                       Ändra
                     </Button>
+                    <ArchiveButton lead={c} />
+                    <DeleteButton
+                      action={deleteLead}
+                      id={c.id}
+                      what="platsen"
+                      success="Platsen är borttagen"
+                    />
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+      {archived.length > 0 ? (
+        <details className="group">
+          <summary className="meta cursor-pointer list-none text-muted hover:text-fg [&::-webkit-details-marker]:hidden">
+            <span aria-hidden className="text-faint">
+              ›{" "}
+            </span>
+            Arkiverade platser · {formatInt(archived.length)}
+          </summary>
+          <ul className="mt-3 flex flex-col">
+            {archived.map((c) => (
+              <li
+                key={c.id}
+                className="flex flex-wrap items-center justify-between gap-3 border-t border-line py-2"
+              >
+                <span className="text-sm text-fg">
+                  {c.name} <span className="text-muted">· {LEAD_STAGE_LABEL[c.stage]}</span>
+                </span>
+                {canEdit ? (
+                  <span className="flex gap-1">
+                    <ArchiveButton lead={c} />
                     <DeleteButton
                       action={deleteLead}
                       id={c.id}

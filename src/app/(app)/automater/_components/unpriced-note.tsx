@@ -18,13 +18,7 @@ function listNames(names: readonly string[], max = 3): string {
  * läggs in. För en automat även butikshyran på orderna, som dras från organisationens
  * vinst (ej fördelad hyra) och inte från automatens.
  */
-export function UnpricedNote({
-  unpriced,
-  canEdit,
-}: {
-  unpriced: UnpricedView;
-  canEdit: boolean;
-}) {
+export function UnpricedNote({ unpriced, canEdit }: { unpriced: UnpricedView; canEdit: boolean }) {
   const rent =
     unpriced.rentOre > 0
       ? ` Butikshyran på dem, ${formatSek(unpriced.rentOre / 100)}, dras från organisationens vinst, inte från automatens.`
@@ -34,8 +28,8 @@ export function UnpricedNote({
       <span>
         Vinst och marginal räknar inte med {formatInt(unpriced.orders)}
         {NBSP}order ({formatPercent(unpriced.shareBp / 10_000, 1)} av intäkten,{" "}
-        {formatSek(unpriced.revenueOre / 100)}) som saknar inköpspris:{" "}
-        {listNames(unpriced.titles)}.{rent}
+        {formatSek(unpriced.revenueOre / 100)}) som saknar inköpspris: {listNames(unpriced.titles)}.
+        {rent}
       </span>
       <Link
         href={unpriced.href}

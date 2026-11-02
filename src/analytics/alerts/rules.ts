@@ -391,7 +391,13 @@ export function importAlerts(
           evidence: ev(
             `Larm när den senaste importerade försäljningen från en källa som laddas upp för hand är äldre än ${durationText(interval)}.`,
             [],
-            [{ key: "minutesSinceData", label: "Minuter sedan senaste försäljning", value: minutes }],
+            [
+              {
+                key: "minutesSinceData",
+                label: "Minuter sedan senaste försäljning",
+                value: minutes,
+              },
+            ],
           ),
         });
       }

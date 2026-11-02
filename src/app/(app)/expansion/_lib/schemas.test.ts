@@ -5,8 +5,11 @@ import {
   effectSettingsSchema,
   goalSchema,
   investmentSchema,
+  investmentSchemaAt,
+  leadArchiveSchema,
   leadSchema,
   measurementSchema,
+  metricLimitIssue,
   parseHundredths,
   parseSignedOre,
 } from "./schemas";
@@ -146,5 +149,61 @@ describe("formulär", () => {
       hourlyCostOre: 35_000,
       stockoutDayValueOre: null,
     });
+  });
+});
+
+describe("datum och gränser", () => {
+  const inv = (investedOn: string) => ({
+    machineId: UUID,
+    kind: "purchase",
+    amountOre: "38 633",
+    investedOn,
+  });
+
+  it("datum som inte finns i kalendern ger fel vid fältet", () => {
+    for (const d of ["2026-02-30", "2026-02-31", "2025-02-29"]) {
+      const r = investmentSchema.safeParse(inv(d));
+      expect(r.success).toBe(false);
+      expect(r.error?.issues[0]?.path).toEqual(["investedOn"]);
+      expect(r.error?.issues[0]?.message).toContain("finns inte i kalendern");
+    }
+    expect(investmentSchema.safeParse(inv("2024-02-29")).success).toBe(true);
+    const lead = leadSchema.safeParse({ name: "Ica", stage: "lead", nextStepOn: "2026-04-31" });
+    expect(lead.success).toBe(false);
+    expect(lead.error?.issues[0]?.path).toEqual(["nextStepOn"]);
+  });
+
+  it("investeringsdatum inom två år från i dag", () => {
+    const schema = investmentSchemaAt("2026-11-02");
+    expect(schema.safeParse(inv("2026-10-01")).success).toBe(true);
+    expect(schema.safeParse(inv("2025-01-01")).success).toBe(true);
+    for (const d of ["9999-12-31", "2029-01-01", "2024-01-01"]) {
+      const r = schema.safeParse(inv(d));
+      expect(r.success).toBe(false);
+      expect(r.error?.issues[0]?.path).toEqual(["investedOn"]);
+    }
+  });
+
+  it("slutsålda dagar högst dagar i månaden × automater", () => {
+    expect(metricLimitIssue("stockout_days_month", 90, "2026-11", 3)).toBeNull();
+    expect(metricLimitIssue("stockout_days_month", 91, "2026-11", 3)).toContain("Högst 90");
+    expect(metricLimitIssue("stockout_days_month", 999_999, "2026-02", 1)).toContain("Högst 28");
+    // Utgångsläge (ingen månad): 31 dagar per automat.
+    expect(metricLimitIssue("stockout_days_month", 31, null, 0)).toBeNull();
+  });
+
+  it("tid högst 744 h per automat och månad", () => {
+    expect(metricLimitIssue("refill_hours_month", 744 * 60, "2026-11", 1)).toBeNull();
+    expect(metricLimitIssue("admin_hours_month", 744 * 60 + 1, "2026-11", 1)).toContain(
+      "Högst 744 timmar",
+    );
+    // Aldrig över databasens gräns (1 000 000 minuter).
+    expect(metricLimitIssue("refill_hours_month", 1_000_001, "2026-11", 100)).toContain("16666");
+    expect(metricLimitIssue("profit_per_machine_month", 10 ** 12, null, 1)).toBeNull();
+  });
+
+  it("arkivering kräver id och sant/falskt", () => {
+    expect(leadArchiveSchema.safeParse({ id: UUID, archived: true }).success).toBe(true);
+    expect(leadArchiveSchema.safeParse({ id: UUID, archived: "ja" }).success).toBe(false);
   });
 });

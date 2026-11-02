@@ -23,6 +23,7 @@ import { PlacementsTable, RecentOrdersTable, StockTable } from "../_components/d
 import { MachineKpis } from "../_components/kpis";
 import { MachineActions } from "../_components/machine-dialogs";
 import { Sub } from "../_components/sub";
+import { UnpricedNote } from "../_components/unpriced-note";
 import {
   isMachineId,
   loadMachineDetail,
@@ -43,7 +44,6 @@ const WEEKDAYS_LONG = [
   "lördagar",
   "söndagar",
 ];
-const TOP_TITLES = 8;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const slug = decodeURIComponent((await params).automat);
@@ -92,7 +92,7 @@ export default async function MachinePage({
   if (!data) notFound();
 
   const { ctx, machine, period, headline, status, store } = data;
-  const days = `${formatInt(period.days)}${NBSP}d`;
+  const days = `${formatInt(period.span.days)}${NBSP}d`;
   const comparison = period.comparisonLabel ? `Jämfört med ${period.comparisonLabel}` : undefined;
   const today = parseIsoDate(ctx.today) ?? new Date();
   const listHref = `/automater${data.query}`;
@@ -146,7 +146,18 @@ export default async function MachinePage({
         />
       </div>
 
-      <MachineKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
+      {period.pendingToday ? (
+        <StateMessage
+          kind="empty"
+          message={`Inga order har kommit in från ${machine.code} i dag ännu.`}
+          detail="Intäkt och vinst för i dag visas när dagens order har importerats. Välj 7 dagar eller 30 dagar i periodraden för hela dagar."
+        />
+      ) : (
+        <div className="flex flex-col gap-4">
+          <MachineKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
+          {data.unpriced ? <UnpricedNote unpriced={data.unpriced} canEdit={ctx.canEdit} /> : null}
+        </div>
+      )}
 
       <SalesSection data={data} days={days} today={today} />
       <TitlesAndHours data={data} days={days} />
@@ -203,13 +214,13 @@ function SalesSection({
             code={data.machine.code}
             daily={daily}
             compare={data.dailyCompare}
-            compareName={data.period.comparisonLabel ? `Föreg. ${days}` : undefined}
+            compareName={data.period.comparisonLabel ? "Perioden innan" : undefined}
           />
         </Panel>
       ) : (
         <StateMessage
           kind="empty"
-          message={`Inga order i ${data.machine.code} ${data.period.rangeLabel}.`}
+          message={sentence(`Inga order i ${data.machine.code} ${data.period.rangeLabel}`)}
           detail="Välj en längre period i periodraden."
         />
       )}
@@ -250,14 +261,10 @@ function TitlesAndHours({ data, days }: { data: MachineDetailData; days: string 
             index="02.1"
             label={`Bästa titlar · ${days}`}
             meta={`${formatInt(titles.length)} titlar`}
-            title={
-              titles.length > TOP_TITLES
-                ? `De ${TOP_TITLES} största av ${formatInt(titles.length)} titlar.`
-                : `${formatInt(titles.length)} ${titles.length === 1 ? "titel" : "titlar"} såldes.`
-            }
+            title={`${formatInt(titles.length)} ${titles.length === 1 ? "titel" : "titlar"} såldes.`}
             className="lg:col-span-5"
           >
-            <TitleBars titles={titles.slice(0, TOP_TITLES)} />
+            <TitleBars titles={titles} />
           </Sub>
           <Sub
             index="02.2"
@@ -270,13 +277,13 @@ function TitlesAndHours({ data, days }: { data: MachineDetailData; days: string 
             }
             className="lg:col-span-7"
           >
-            <SalesHeatmap heat={heat} days={data.period.days} />
+            <SalesHeatmap heat={heat} days={data.period.span.days} />
           </Sub>
         </div>
       ) : (
         <StateMessage
           kind="empty"
-          message={`Inga order i ${data.machine.code} ${data.period.rangeLabel}.`}
+          message={sentence(`Inga order i ${data.machine.code} ${data.period.rangeLabel}`)}
         />
       )}
     </section>
@@ -328,7 +335,7 @@ function StockSection({ data }: { data: MachineDetailData }) {
           kind="empty"
           message={`Inget lager registrerat i ${data.machine.code}.`}
           detail="Påfyllningar registreras under Lager."
-          action={{ label: "Öppna Lager →", href: "/lager" }}
+          action={{ label: "Öppna Lager", href: "/lager" }}
         />
       )}
     </section>
@@ -370,7 +377,7 @@ function OrdersSection({ data }: { data: MachineDetailData }) {
           kind="empty"
           message={`Inga order är kopplade till ${data.machine.code}.`}
           detail="Order från Awish kopplas till automaten under Datakällor."
-          action={{ label: "Öppna Datakällor →", href: "/datakallor" }}
+          action={{ label: "Öppna Datakällor", href: "/datakallor" }}
         />
       )}
     </section>
@@ -434,9 +441,7 @@ function UnitEconomicsSection({ data }: { data: MachineDetailData }) {
           u
             ? u.paybackMonths === null
               ? "Automaten har inte gått med vinst ännu."
-              : u.paybackMonths === 0
-                ? "Investeringen är återbetald."
-                : `Återbetalningstid ${formatDecimal(u.paybackMonths)}${NBSP}månader.`
+              : `Återbetalningstid ${formatDecimal(u.paybackMonths)}${NBSP}månader.`
             : "Investeringen är inte registrerad."
         }
         aside={
@@ -457,7 +462,7 @@ function UnitEconomicsSection({ data }: { data: MachineDetailData }) {
           kind="not-configured"
           message={`Inköp och installation av ${data.machine.code} saknas.`}
           detail="Återbetalningstid, bokfört värde och vinst efter avskrivning visas när investeringen är registrerad."
-          action={data.ctx.canEdit ? { label: "Registrera investering →", href } : undefined}
+          action={data.ctx.canEdit ? { label: "Registrera investering", href } : undefined}
         />
       )}
     </section>

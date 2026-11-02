@@ -10,7 +10,7 @@
 
 import "server-only";
 
-import { and, asc, desc, eq, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
 
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
@@ -27,7 +27,6 @@ import {
   queryAgreements,
   queryFirstOrderDate,
   queryMachines,
-  queryOrders,
   queryPlacements,
   queryPrices,
   querySettings,
@@ -48,6 +47,62 @@ export interface LoadArgs {
   readonly comment?: string | null;
   /** Nu (ISO 8601). */
   readonly now: string;
+}
+
+/**
+ * Titel-id för order vars titel i källan ännu inte är kopplad till en titel. Sådana order
+ * är ändå försäljning: de bokförs och ger butiken ersättning. De saknar inköpspris och
+ * står på en egen rad ("Titel ej kopplad") i tabeller per titel.
+ */
+export const UNLINKED_TITLE_ID = "titel-ej-kopplad";
+export const UNLINKED_TITLE_NAME = "Titel ej kopplad";
+
+export interface ReportOrder {
+  readonly id: string;
+  readonly externalId: string;
+  readonly titleId: string;
+  readonly machineId: string | null;
+  readonly businessDate: IsoDate;
+  readonly amountOre: number;
+  readonly orderedAt: string | null;
+  /** Sant när titeln inte är kopplad (titleId = UNLINKED_TITLE_ID). */
+  readonly unlinkedTitle: boolean;
+}
+
+/**
+ * ALLA order med affärsdatum i fönstret, även de vars titel inte är kopplad (till skillnad
+ * från panelens queryOrders, som bara tar med prissättningsbara order).
+ */
+export async function queryReportOrders(tx: Tx, orgId: string, range: Period): Promise<ReportOrder[]> {
+  const rows = await tx
+    .select({
+      id: s.orders.id,
+      externalId: s.orders.externalId,
+      titleId: s.orders.titleId,
+      machineId: s.orders.machineId,
+      businessDate: s.orders.businessDate,
+      amountOre: s.orders.amountOre,
+      orderedAt: s.orders.orderedAt,
+    })
+    .from(s.orders)
+    .where(
+      and(
+        eq(s.orders.organizationId, orgId),
+        gte(s.orders.businessDate, range.start),
+        lte(s.orders.businessDate, range.end),
+      ),
+    )
+    .orderBy(asc(s.orders.orderedAt), asc(s.orders.id));
+  return rows.map((r) => ({
+    id: r.id,
+    externalId: r.externalId,
+    titleId: r.titleId ?? UNLINKED_TITLE_ID,
+    machineId: r.machineId,
+    businessDate: r.businessDate,
+    amountOre: r.amountOre,
+    orderedAt: r.orderedAt ? r.orderedAt.toISOString() : null,
+    unlinkedTitle: r.titleId === null,
+  }));
 }
 
 /** Ordrarnas fönster för en rapportmånad. */
@@ -170,7 +225,7 @@ export async function loadSnapshotInput(tx: Tx, args: LoadArgs): Promise<Snapsho
   const period = { start: monthStart(args.month), end: monthEnd(args.month) };
   const today = args.now.slice(0, 10);
 
-  const [organization, settings, titles, placements, stores, prices, agreements, orderResult] =
+  const [organization, settings, titles, placements, stores, prices, agreements, orders] =
     await Promise.all([
       queryOrganization(tx, orgId),
       querySettings(tx, orgId),
@@ -179,13 +234,15 @@ export async function loadSnapshotInput(tx: Tx, args: LoadArgs): Promise<Snapsho
       queryStores(tx, orgId),
       queryPrices(tx, orgId),
       queryAgreements(tx, orgId),
-      queryOrders(tx, orgId, window, { storeId: null, machineId: null }),
+      queryReportOrders(tx, orgId, window),
     ]);
+  const inPeriod = (o: ReportOrder) => o.businessDate >= period.start && o.businessDate <= period.end;
+  const ordersWithoutTitle = orders.filter((o) => inPeriod(o) && o.unlinkedTitle).length;
   const machines = await queryMachines(tx, orgId, placements, today);
   const historyStart = await queryFirstOrderDate(tx, orgId);
 
   const sources: ReportSources = {
-    orders: orderResult.orders.map((o) => ({
+    orders: orders.map((o) => ({
       id: o.id,
       externalId: o.externalId,
       titleId: o.titleId,
@@ -204,7 +261,12 @@ export async function loadSnapshotInput(tx: Tx, args: LoadArgs): Promise<Snapsho
     settings: { vatRateBp: settings.vatRateBp, cardFeeBp: settings.cardFeeBp },
     stores: stores.map((x) => ({ id: x.id, name: x.name })),
     machines: machines.map((m) => ({ id: m.id, name: m.name, code: m.code })),
-    titles: titles.map((t) => ({ id: t.id, name: t.name })),
+    titles: [
+      ...titles.map((t) => ({ id: t.id, name: t.name })),
+      ...(orders.some((o) => o.unlinkedTitle)
+        ? [{ id: UNLINKED_TITLE_ID, name: UNLINKED_TITLE_NAME }]
+        : []),
+    ],
   };
 
   const input: SnapshotInput = {
@@ -214,6 +276,7 @@ export async function loadSnapshotInput(tx: Tx, args: LoadArgs): Promise<Snapsho
     sources,
     generatedAt: args.now,
     historyStart,
+    ordersWithoutTitle,
   };
 
   switch (args.type) {
@@ -229,9 +292,7 @@ export async function loadSnapshotInput(tx: Tx, args: LoadArgs): Promise<Snapsho
             p.from <= date &&
             (p.to === null || p.to >= date),
         );
-      const storeOrders = orderResult.orders.filter(
-        (o) => o.businessDate >= period.start && o.businessDate <= period.end,
-      );
+      const storeOrders = orders.filter(inPeriod);
       const busy = busiestWindow(
         storeOrders
           .filter((o) => onDay(o.machineId, o.businessDate))

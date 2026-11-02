@@ -6,15 +6,21 @@ import type { DomainInput, MasterData, StockSnapshot } from "@/server/data/core/
 
 import {
   buildOverview,
+  coverageOf,
+  heatThresholds,
   lifecycleOf,
   machineFigures,
   machineHeadline,
+  machineDaysIn,
   machineHref,
+  machineSpan,
+  machineUnpriced,
   nextMachineCode,
   overviewHeadline,
   placementLines,
   salesHeatmap,
   sentence,
+  spanOf,
   spreadText,
   statusOf,
   stockLines,
@@ -287,7 +293,9 @@ describe("buildOverview och detaljvyns figurer", () => {
     signals: { refill: new Map(), health: new Map() },
     lastOrderAt: new Map([["m1", "2026-10-16T10:00:00.000Z"]]),
     today: "2026-11-02",
-    days: 14,
+    scope: { storeId: null, machineId: null },
+    coverage: { start: "2026-10-13", end: "2026-10-26" },
+    pendingToday: false,
     query: "",
   });
 
@@ -308,11 +316,78 @@ describe("buildOverview och detaljvyns figurer", () => {
     expect(m1?.revenueChange).toBeCloseTo(1.75, 4);
   });
 
-  it("vinsten per automat summerar till totalen (hyran fördelas av domänen)", () => {
-    const sum = overview.rows.reduce((s, r) => s + r.profitOre, 0);
-    // Ej fördelad hyra (BL-003 utan order) ligger på en egen rad i domänen.
-    expect(sum).toBeLessThanOrEqual(overview.totals.profitOre + 1);
+  it("raderna plus ej fördelad hyra summerar exakt till totalen", () => {
+    // Mystery Pack saknar inköpspris: hyran på de orderna är ej fördelad.
+    const partly = { ...input, current: { ...input.current, prices: prices.slice(0, 1) } };
+    const o = buildOverview({
+      input: partly,
+      master,
+      stock,
+      signals: { refill: new Map(), health: new Map() },
+      lastOrderAt: new Map(),
+      today: "2026-11-02",
+      scope: { storeId: null, machineId: null },
+      coverage: { start: "2026-10-13", end: "2026-10-26" },
+      pendingToday: false,
+      query: "",
+    });
+    const sum = o.rows.reduce((s, r) => s + r.profitOre, 0);
+    const other = o.others.reduce((s, r) => s + r.profitOre, 0);
+    expect(o.others.map((x) => x.label)).toEqual(["Ej fördelad hyra"]);
+    expect(other).toBeLessThan(0);
+    expect(sum + other).toBe(o.totals.profitOre);
+    expect(o.unpriced).toMatchObject({ orders: 2, titles: ["Mystery Pack"] });
+    // Utan saknade priser finns ingen sådan rad, och raderna är totalen.
+    expect(overview.others).toEqual([]);
+    expect(overview.rows.reduce((s, r) => s + r.profitOre, 0)).toBe(overview.totals.profitOre);
     expect(machineFigures(input.current, "m1").profitOre).toBe(overview.rows[0]?.profitOre);
+  });
+
+  it("intäkt per automatdag räknas på dagarna i butik (BL-003 t.o.m. 20 okt.)", () => {
+    // 14 + 14 + 8 automatdagar (13–26 okt., BL-003 13–20 okt.).
+    expect(machineDaysIn(input.current, input.period, master.machines)).toBe(36);
+    expect(overview.totals.revenuePerMachineDayOre).toBe(Math.round(70_000 / 36));
+  });
+
+  it("automatfiltret: summan är automatens rad på hela organisationens indata", () => {
+    const focused = buildOverview({
+      input,
+      master,
+      stock,
+      signals: { refill: new Map(), health: new Map() },
+      lastOrderAt: new Map(),
+      today: "2026-11-02",
+      scope: { storeId: null, machineId: "m2" },
+      coverage: { start: "2026-10-13", end: "2026-10-26" },
+      pendingToday: false,
+      query: "",
+    });
+    expect(focused.rows.map((r) => r.code)).toEqual(["BL-002"]);
+    expect(focused.others).toEqual([]);
+    const fig = machineFigures(input.current, "m2");
+    expect(focused.totals.profitOre).toBe(fig.profitOre);
+    expect(focused.totals.profitOre).toBe(focused.rows[0]?.profitOre);
+    expect(focused.totals.revenueOre).toBe(15_000);
+    // BL-002 sålde inget i jämförelseperioden: ingen förändring.
+    expect(focused.totals.revenueChange).toBeNull();
+    expect(focused.totals.revenuePerMachineDayOre).toBe(Math.round(15_000 / 14));
+  });
+
+  it("order utan inköpspris: antal, andel, titlar och länk", () => {
+    const unpricedInput = {
+      ...input,
+      current: { ...input.current, prices: prices.filter((p) => p.titleId === "t1") },
+    };
+    const u = machineUnpriced(unpricedInput.current, "m1", master);
+    expect(u).toMatchObject({
+      orders: 1,
+      revenueOre: 15_000,
+      titles: ["Mystery Pack"],
+      href: "/inkopspriser?titel=t2",
+    });
+    expect(u?.shareBp).toBe(Math.round((15_000 * 10_000) / 55_000));
+    expect(u?.rentOre).toBeGreaterThan(0);
+    expect(overview.unpriced).toBeNull();
   });
 
   it("rubriken bär summan, antalet dagar och jämförelsen", () => {
@@ -338,7 +413,7 @@ describe("buildOverview och detaljvyns figurer", () => {
       activeTo: null,
       figures: fig,
       previous: machineFigures(input.previous!, "m1"),
-      days: 14,
+      span: spanOf({ start: "2026-10-13", end: "2026-10-26" }, "2026-11-02"),
       store: { name: "Centrum", since: "2026-10-01" },
       today: "2026-11-02",
     });
@@ -361,13 +436,28 @@ describe("overviewHeadline och spreadText", () => {
     activeMachines: 2,
   };
   it("tomma lägen", () => {
-    expect(overviewHeadline({ rows: [], totals, days: 30, flagged: 0, top: null }).title).toBe(
+    const span30 = spanOf({ start: "2026-10-04", end: "2026-11-02" }, "2026-11-02");
+    const today = spanOf({ start: "2026-11-02", end: "2026-11-02" }, "2026-11-02");
+    expect(overviewHeadline({ rows: [], totals, span: span30, flagged: 0, top: null }).title).toBe(
       "Inga automater ännu.",
     );
     const row = { lifecycle: "active" } as MachineListRow;
     expect(
-      plain(overviewHeadline({ rows: [row], totals, days: 30, flagged: 0, top: null }).title),
+      plain(overviewHeadline({ rows: [row], totals, span: span30, flagged: 0, top: null }).title),
     ).toBe("Ingen försäljning på 30 dagar.");
+    expect(
+      overviewHeadline({ rows: [row], totals, span: today, flagged: 0, top: null }).title,
+    ).toBe("Ingen försäljning i dag.");
+    expect(
+      overviewHeadline({
+        rows: [row],
+        totals,
+        span: today,
+        pendingToday: true,
+        flagged: 0,
+        top: null,
+      }).title,
+    ).toBe("Inga order i dag ännu.");
   });
 
   it("åtgärd före toppen", () => {
@@ -378,18 +468,18 @@ describe("overviewHeadline och spreadText", () => {
         overviewHeadline({
           rows: [row],
           totals: t,
-          days: 1,
+          span: spanOf({ start: "2026-11-01", end: "2026-11-01" }, "2026-11-02"),
           flagged: 1,
           top: { code: "BL-001", shareBp: 6000 },
         }),
       ),
-    ).toEqual({ title: "1 000 kr på en dag från 2 automater.", aside: "1 automat kräver åtgärd." });
+    ).toEqual({ title: "1 000 kr i går från 2 automater.", aside: "1 automat kräver åtgärd." });
     expect(
       plain(
         overviewHeadline({
           rows: [row],
           totals: t,
-          days: 1,
+          span: spanOf({ start: "2026-11-01", end: "2026-11-01" }, "2026-11-02"),
           flagged: 0,
           top: { code: "BL-001", shareBp: 6000 },
         }).aside,
@@ -489,5 +579,69 @@ describe("stockLines och placementLines", () => {
       current: false,
       days: 20,
     });
+  });
+});
+
+describe("dagar med data", () => {
+  const today = "2026-11-02";
+  const period = { start: "2026-10-04", end: "2026-11-02" };
+  it("från första ordern, t.o.m. i går när dagens order inte kommit", () => {
+    expect(coverageOf(period, "2026-10-13", today, false)).toEqual({
+      start: "2026-10-13",
+      end: "2026-11-01",
+    });
+    expect(coverageOf(period, "2026-10-13", today, true)).toEqual({
+      start: "2026-10-13",
+      end: "2026-11-02",
+    });
+    expect(coverageOf(period, null, today, false)).toBeNull();
+    expect(coverageOf({ start: today, end: today }, "2026-10-13", today, false)).toBeNull();
+    // En period som slutat påverkas inte av i dag.
+    const past = { start: "2026-10-20", end: "2026-10-26" };
+    expect(coverageOf(past, "2026-10-13", today, false)).toEqual(past);
+  });
+
+  it("automatens dagar: driftstart och sista dag", () => {
+    const c = { start: "2026-10-13", end: "2026-11-01" };
+    expect(machineSpan(c, "2026-10-15", null)).toEqual({ start: "2026-10-15", end: "2026-11-01" });
+    expect(machineSpan(c, null, "2026-10-20")).toEqual({ start: "2026-10-13", end: "2026-10-20" });
+    expect(machineSpan(c, "2026-11-05", null)).toBeNull();
+    expect(machineSpan(null, null, null)).toBeNull();
+  });
+
+  it("rubrikens tidsangivelse", () => {
+    const p = (v: { text: string; days: number }) => ({ ...v, text: plain(v.text) });
+    expect(p(spanOf({ start: "2026-10-13", end: "2026-11-01" }, today))).toEqual({
+      days: 20,
+      text: "på 20 dagar",
+    });
+    expect(spanOf({ start: today, end: today }, today).text).toBe("i dag");
+    expect(spanOf({ start: "2026-11-01", end: "2026-11-01" }, today).text).toBe("i går");
+    expect(plain(spanOf({ start: "2026-10-31", end: "2026-10-31" }, today).text)).toBe(
+      "den 31 okt.",
+    );
+  });
+});
+
+describe("heatThresholds", () => {
+  it("heltalsgränser, högst fem steg och inga dubbletter", () => {
+    expect(heatThresholds(6)).toEqual([3, 5]);
+    expect(heatThresholds(4)).toEqual([2, 3, 4]);
+    expect(heatThresholds(5)).toEqual([2, 3, 4, 5]);
+    expect(heatThresholds(12)).toEqual([4, 7, 10]);
+    expect(heatThresholds(40)).toEqual([9, 17, 25, 33]);
+    expect(heatThresholds(1)).toEqual([2]);
+    expect(heatThresholds(0)).toEqual([2]);
+    for (const top of [2, 3, 7, 9, 23, 100]) {
+      const t = heatThresholds(top);
+      expect(t.every(Number.isInteger)).toBe(true);
+      expect(new Set(t).size).toBe(t.length);
+      expect(t.length).toBeLessThanOrEqual(4);
+    }
+  });
+
+  it("värmekartan får gränserna för sin topp", () => {
+    const orders = [1, 2, 3].map(() => order("m1", "t1", "2026-10-18T11:30:00Z"));
+    expect(salesHeatmap(orders, TZ).thresholds).toEqual(heatThresholds(3));
   });
 });

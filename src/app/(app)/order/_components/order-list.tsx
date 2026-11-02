@@ -238,6 +238,7 @@ export function OrderList({
       },
       {
         key: "tid",
+        hideOnMobile: true,
         header: "Tid",
         width: 132,
         sortValue: (r) => Date.parse(r.orderedAt),
@@ -269,19 +270,18 @@ export function OrderList({
           return (
             <div className="block w-full cursor-pointer leading-tight" onClick={() => onOpen(r)}>
               {label}
-              {wide ? null : (
-                <span className="tnum mt-0.5 block truncate font-mono text-xs text-muted">
-                  {formatAt(r.orderedAt, timeZone, now)}
-                  {" · "}
-                  {machine ? machine.code : "Okopplad"}
-                </span>
-              )}
+              <span className="tnum mt-0.5 block truncate font-mono text-xs text-muted md:hidden">
+                {formatAt(r.orderedAt, timeZone, now)}
+                {" · "}
+                {machine ? machine.code : "Okopplad"}
+              </span>
             </div>
           );
         },
       },
       {
         key: "automat",
+        hideOnMobile: true,
         header: "Automat",
         width: 112,
         sortValue: (r) => rank(machineRank, r.machineId),
@@ -298,6 +298,7 @@ export function OrderList({
       },
       {
         key: "butik",
+        hideOnMobile: true,
         header: "Butik",
         width: 200,
         sortValue: (r) => rank(storeRank, r.storeId),
@@ -321,9 +322,10 @@ export function OrderList({
         footer: formatSek(totals.amountOre / 100),
       },
     ];
-  }, [refs, timeZone, now, onOpen, totals.amountOre, wide]);
+  }, [refs, timeZone, now, onOpen, totals.amountOre]);
   // Under 768 px: ordernummer, titel (med tid och automat under) och belopp ryms utan
-  // sidledsscroll. Butiken finns i detaljvyn.
+  // sidledsscroll. Butiken finns i detaljvyn. Kolumnerna och andra raden döljs med CSS
+  // (rätt redan före hydrering); bredderna och radhöjden följer skärmen i JS.
   const columns = useMemo(
     () =>
       wide

@@ -45,7 +45,10 @@ export const alertSubscriptions = pgTable("alert_subscriptions", {
   /** null = alla automater. */
   machineIds: uuid("machine_ids").array(),
   minSeverity: severity("min_severity").notNull().default("warning"),
-  channels: text("channels").array().notNull().default(sql`ARRAY['push', 'email']`),
+  channels: text("channels")
+    .array()
+    .notNull()
+    .default(sql`ARRAY['push', 'email']`),
   phone: text("phone"),
   quietStart: text("quiet_start"),
   quietEnd: text("quiet_end"),
@@ -83,7 +86,10 @@ export const alertDeliveries = pgTable("alert_deliveries", {
   status: text("status").notNull().default("pending"),
   subject: text("subject").notNull(),
   items: jsonb("items").notNull().$type<unknown[]>(),
-  alertIds: uuid("alert_ids").array().notNull().default(sql`'{}'::uuid[]`),
+  alertIds: uuid("alert_ids")
+    .array()
+    .notNull()
+    .default(sql`'{}'::uuid[]`),
   results: jsonb("results").notNull().default([]).$type<unknown[]>(),
   sentAt: ts("sent_at"),
   ...stamps(),

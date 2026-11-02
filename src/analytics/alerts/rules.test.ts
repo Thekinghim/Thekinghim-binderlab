@@ -171,6 +171,29 @@ describe("importAlerts", () => {
     expect(rows[0]?.severity).toBe("warning");
   });
 
+  it("manuell källa: datalarm när senaste försäljningen är äldre än intervallet", () => {
+    const manual: DataSourceRef = {
+      ...src,
+      manual: true,
+      expectedIntervalMinutes: 36 * 60,
+      lastSyncedAt: "2026-10-31T07:00:00Z",
+      dataUntil: "2026-10-30T20:00:00Z",
+    };
+    const res = importAlerts({ sources: [manual], imports: [] }, NOW);
+    expect(res).toHaveLength(1);
+    expect(res[0]?.kind).toBe("import_failed");
+    expect(res[0]?.severity).toBe("warning");
+    expect(t(res[0]?.title)).toBe(
+      "Försäljningen från Awish CSV är inte importerad sedan fre 30 okt. 21:00",
+    );
+    expect(t(res[0]?.detail)).toContain("innehöll ingen nyare försäljning");
+    // Färsk försäljning, eller en källa som aldrig haft försäljning: inget larm.
+    const fresh = { ...manual, dataUntil: "2026-11-01T20:00:00Z" };
+    expect(importAlerts({ sources: [fresh], imports: [] }, NOW)).toEqual([]);
+    const empty = { ...manual, dataUntil: null };
+    expect(importAlerts({ sources: [empty], imports: [] }, NOW)).toEqual([]);
+  });
+
   it("hängd import, källa med fel, pausad källa och schemalagd källa utan hämtning", () => {
     const stuck = importAlerts(
       {

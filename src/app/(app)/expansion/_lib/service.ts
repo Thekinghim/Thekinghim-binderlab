@@ -10,7 +10,7 @@
 
 import "server-only";
 
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
@@ -308,6 +308,24 @@ export function setLeadStageFor(
     const done = await tx
       .update(s.expansionLeads)
       .set({ stage: input.stage })
+      .where(and(eq(s.expansionLeads.organizationId, orgId), eq(s.expansionLeads.id, input.id)))
+      .returning({ id: s.expansionLeads.id });
+    if (done.length === 0) notFound("Platsen");
+  });
+}
+
+/**
+ * Arkiverar en plats (döljs ur pipelinen och listan med avslutade platser, men finns kvar
+ * med sin historik) eller tar tillbaka den. Tidpunkten sätts av databasen.
+ */
+export function setLeadArchivedFor(
+  viewer: Viewer,
+  input: { id: string; archived: boolean },
+): Promise<void> {
+  return write(viewer, async (tx, orgId) => {
+    const done = await tx
+      .update(s.expansionLeads)
+      .set({ archivedAt: input.archived ? sql`now()` : null })
       .where(and(eq(s.expansionLeads.organizationId, orgId), eq(s.expansionLeads.id, input.id)))
       .returning({ id: s.expansionLeads.id });
     if (done.length === 0) notFound("Platsen");

@@ -292,3 +292,33 @@ pack och fick 49,00 kr tillbaka 20 okt.: vinst efter återbetalningar 7 660 − 
 
 Sidan Lönsamhet visar inte justeringen ännu; den kan läggas till som en egen rad
 "Återbetalningar" under vinsten med `applyRefunds` på vyns rader.
+Sidan Inkorg säger det också: återbetalningarna visas inte i Lönsamhet än.
+
+## 15. Maskinhälsa: tystnad och importerad försäljning (`src/analytics/health`)
+
+Misstänkt fel härleds ur försäljningen så länge leverantörens maskindata saknas: en automat är
+misstänkt fel när sannolikheten för noll försäljning under tystnaden är under 1 % (Poisson,
+samma veckodag och timme de senaste 8 veckorna, minst 20 order).
+
+Tystnaden räknas **från senaste försäljning till senaste importerade försäljning i automatens
+datakälla**, inte till nu:
+
+> tystnadens slut = min(nu, täckning) där täckning = `sales_data_until.data_until`
+
+- Awish CSV (uppladdning för hand): täckningen är den senaste ordern i källan, i någon automat.
+  Filen innehåller all försäljning fram till exporten, så den senaste ordern är en säker undre
+  gräns. En automat som är tyst medan andra automater i samma fil säljer larmar alltså; alla
+  automater i en källa larmar inte bara för att dagens fil inte är uppladdad.
+- Automatiska källor (gRPC): täckningen är senaste hämtningen (eller ordern, om den är senare).
+- Automater utan order de senaste 70 dagarna får organisationens senaste täckning.
+- När täckningen slutar före nu står det i förklaringen: "Försäljningen från … är importerad
+  till och med …; tystnaden är bedömd fram till dit."
+
+Datat självt bedöms av importregeln: är den senaste försäljningen från en CSV-källa äldre än
+36 timmar blir det ett datalarm (`import_failed`, varning) "Försäljningen från … är inte
+importerad sedan …". Avvikande dag (i går) bedöms bara när varje källa har försäljning eller en
+lyckad import efter midnatt i dag.
+
+Begränsning: en organisation med en enda automat i en CSV-källa kan inte skilja en tyst
+automat från en fil utan ny försäljning; där fångar datalarmet efter 36 timmar problemet.
+Testerna finns i `src/analytics/health/coverage.test.ts` och `test/db/drift-alerts.test.ts`.

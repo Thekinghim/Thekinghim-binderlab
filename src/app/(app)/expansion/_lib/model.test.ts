@@ -6,6 +6,9 @@ import { storeCompensation, type MachineInvestment } from "@/domain";
 
 import {
   analyticsStage,
+  clipToData,
+  machinesInScope,
+  placementsFromData,
   defaultInvestment,
   evidenceLinks,
   leadInvestment,
@@ -173,5 +176,56 @@ describe("underlag", () => {
       },
       { label: "Per dag", href: "/lonsamhet?from=2026-10-01&to=2026-10-31&grupp=dag" },
     ]);
+  });
+});
+
+describe("perioden från första ordern", () => {
+  it("klipper starten till första ordern", () => {
+    const p = { start: "2026-10-04", end: "2026-11-02" };
+    expect(clipToData(p, "2026-10-13")).toEqual({
+      period: { start: "2026-10-13", end: "2026-11-02" },
+      days: 21,
+      clippedFrom: "2026-10-13",
+    });
+    expect(clipToData(p, "2026-10-01")).toEqual({ period: p, days: 30, clippedFrom: null });
+    expect(clipToData(p, null)).toEqual({ period: p, days: 30, clippedFrom: null });
+    // Första ordern efter perioden: orörd (inga order alls i perioden).
+    expect(clipToData(p, "2026-12-01").clippedFrom).toBeNull();
+  });
+
+  it("placeringar börjar tidigast vid första ordern", () => {
+    const pl = [
+      { machineId: "m-1", storeId: "s-1", from: "2026-10-01", to: null },
+      { machineId: "m-2", storeId: "s-1", from: "2026-09-01", to: "2026-10-05" },
+      { machineId: "m-3", storeId: "s-2", from: "2026-10-20", to: null },
+    ];
+    expect(placementsFromData(pl, "2026-10-13")).toEqual([
+      { machineId: "m-1", storeId: "s-1", from: "2026-10-13", to: null },
+      { machineId: "m-3", storeId: "s-2", from: "2026-10-20", to: null },
+    ]);
+    expect(placementsFromData(pl, null)).toEqual(pl);
+  });
+});
+
+describe("automater i omfattningen", () => {
+  const master = {
+    machines: [
+      { id: "m-1", archived: false },
+      { id: "m-2", archived: false },
+      { id: "m-3", archived: true },
+    ],
+    placements: [
+      { machineId: "m-1", storeId: "s-1", from: "2026-10-01", to: null },
+      { machineId: "m-2", storeId: "s-1", from: "2026-10-01", to: "2026-10-31" },
+      { machineId: "m-3", storeId: "s-2", from: "2026-11-01", to: null },
+    ],
+  };
+  it("räknar automater per omfattning och månad", () => {
+    expect(machinesInScope(master, "machine", null, "2026-11")).toBe(1);
+    expect(machinesInScope(master, "store", "s-1", "2026-10")).toBe(2);
+    expect(machinesInScope(master, "store", "s-1", "2026-11")).toBe(1);
+    expect(machinesInScope(master, "store", "s-9", "2026-11")).toBe(1);
+    expect(machinesInScope(master, "organization", null, "2026-11")).toBe(3);
+    expect(machinesInScope(master, "organization", null, "2026-09")).toBe(2);
   });
 });

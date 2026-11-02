@@ -186,7 +186,12 @@ export async function loadPrognosFor(
 
   // En titel som legat i automaten utan att sälja räknas från första kända saldo, inte
   // från första försäljningen (annars överskattas nya och svaga serier).
-  const seriesStarts = seriesStartsFromStock(db.events, asOf);
+  // Dagar före första ordern i datan saknar orderdata och räknas inte som försäljning 0.
+  let firstOrder: IsoDate | null = null;
+  for (const o of all.current.orders) {
+    if (firstOrder === null || o.businessDate < firstOrder) firstOrder = o.businessDate;
+  }
+  const seriesStarts = seriesStartsFromStock(db.events, asOf, firstOrder);
 
   const forecastFor = (orders: DomainInput["current"]["orders"]): ForecastResult =>
     forecastSales({

@@ -77,8 +77,8 @@ describe("kundärende: innehåll", () => {
     const over = validateIncident(input, { ...CTX, orderAmountOre: 4900 });
     expect(over.ok).toBe(false);
     if (!over.ok) expect(over.errors.refunded).toMatch(/orderns belopp/);
-    expect(validateIncident({ ...input, refunded: "49" }, { ...CTX, orderAmountOre: 4900 }).ok).toBe(
-      true,
-    );
+    expect(
+      validateIncident({ ...input, refunded: "49" }, { ...CTX, orderAmountOre: 4900 }).ok,
+    ).toBe(true);
   });
 });

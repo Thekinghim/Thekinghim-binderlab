@@ -21,7 +21,7 @@ import * as s from "@/db/schema";
 import type { AlertDelivery } from "@/analytics/alerts";
 import { deliverDue } from "@/server/alerts/deliver";
 import { evaluateOrganization } from "@/server/alerts/evaluate";
-import { loadHealthData } from "@/server/alerts/inputs";
+import { healthInputOf, loadHealthData } from "@/server/alerts/inputs";
 import type { DispatchResult, Recipient } from "@/server/notify";
 
 import {
@@ -156,11 +156,8 @@ async function deliveryCount(): Promise<number> {
 describe("härledning av misstänkt fel", () => {
   it("automaten som slutat sälja är misstänkt fel, den andra i drift", async () => {
     const health = await asUser(owner, async (tx) => {
-      const data = await loadHealthData(tx, orgId, "2026-10-20");
-      return machineHealth(
-        { orders: data.orders, machines: data.machines, stock: data.stock },
-        NOW,
-      );
+      const data = await loadHealthData(tx, orgId, "2026-10-20", NOW);
+      return machineHealth(healthInputOf(data, "Europe/Stockholm"), NOW);
     });
     const byId = new Map(health.map((h) => [h.machineId, h]));
     expect(byId.get(m1)?.status).toBe("ok");
@@ -175,14 +172,38 @@ describe("härledning av misstänkt fel", () => {
 
   it("påfyllaren får samma status ur lagrets försäljning (utan belopp)", async () => {
     const health = await asUser(refiller, async (tx) => {
-      const data = await loadHealthData(tx, orgId, "2026-10-20");
+      const data = await loadHealthData(tx, orgId, "2026-10-20", NOW);
       expect(data.orders.every((o) => o.amountOre === 0)).toBe(true);
-      return machineHealth(
-        { orders: data.orders, machines: data.machines, stock: data.stock },
-        NOW,
-      );
+      // Täckningen (bara tidpunkter) når påfyllaren också.
+      expect(data.coverage.map((c) => c.dataSourceId)).toEqual([dataSourceId, dataSourceId]);
+      return machineHealth(healthInputOf(data, "Europe/Stockholm"), NOW);
     });
     expect(health.find((h) => h.machineId === m2)?.status).toBe("suspected_fault");
+  });
+
+  it("tystnaden räknas till senaste importerade försäljning i källan, inte till nu", async () => {
+    // Två timmar senare utan ny fil: Automat Ett har ingen försäljning efter 16:15 heller,
+    // men det är datat som släpar. Automat Två är fortfarande misstänkt fel.
+    const later = new Date(NOW.getTime() + 20 * 3_600_000);
+    const health = await asUser(viewer, async (tx) => {
+      const data = await loadHealthData(tx, orgId, "2026-10-21", later);
+      const lastOrder = data.coverage.find((c) => c.machineId === m1)?.dataUntil;
+      expect(lastOrder?.toISOString()).toBe("2026-10-20T14:15:00.000Z");
+      return machineHealth(healthInputOf(data, "Europe/Stockholm"), later);
+    });
+    const one = health.find((h) => h.machineId === m1)!;
+    expect(one.status).toBe("ok");
+    expect(one.dataUntil).toBe("2026-10-20T14:15:00.000Z");
+    expect(health.find((h) => h.machineId === m2)?.status).toBe("suspected_fault");
+  });
+
+  it("en användare utan roll i organisationen kan inte läsa täckningen", async () => {
+    const outsider = await createUser(`outsider-${uniqueSuffix()}@test.binderlab.se`);
+    await createOrg(outsider, `Annan ${uniqueSuffix()}`);
+    const r = await asUser(outsider, (tx) =>
+      attempt(tx, (sp) => sp.execute(sql`select * from public.sales_data_until(${orgId}::uuid)`)),
+    );
+    expect(r.ok).toBe(false);
   });
 });
 

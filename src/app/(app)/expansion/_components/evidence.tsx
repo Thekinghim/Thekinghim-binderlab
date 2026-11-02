@@ -1,6 +1,8 @@
 import Link from "next/link";
 
 import type { ScenarioEvidence } from "@/analytics/expansion";
+import { day, periodText } from "@/analytics/todos/text";
+import type { IsoDate, Period } from "@/domain";
 import { cn } from "@/lib/cn";
 import { formatInt } from "@/lib/format";
 
@@ -75,5 +77,26 @@ export function EstimateTag({ children = "Uppskattning" }: { children?: string }
     <span className="label inline-flex h-6 shrink-0 items-center rounded-xs border border-dashed border-line-control px-1.5 text-muted">
       {children}
     </span>
+  );
+}
+
+/**
+ * Mono-rad när skalets period börjar före första ordern: siffrorna räknas då från första
+ * ordern, så att dagar utan data inte räknas som dagar utan försäljning.
+ */
+export function DataStartNote({
+  clippedFrom,
+  requested,
+}: {
+  clippedFrom: IsoDate | null;
+  requested?: Period;
+}) {
+  if (!clippedFrom) return null;
+  return (
+    <p className="font-mono text-xs break-words text-subtle">
+      Räknat från första ordern {day(clippedFrom)}
+      {requested ? `; perioden ${periodText(requested)} börjar före den` : ""}. Dagar utan data
+      räknas inte som dagar utan försäljning.
+    </p>
   );
 }

@@ -150,8 +150,7 @@ async function members(
   return rows
     .filter(
       (r) =>
-        r.userId &&
-        ((ASSIGNEE_ROLES as readonly string[]).includes(r.role) || r.userId === keep),
+        r.userId && ((ASSIGNEE_ROLES as readonly string[]).includes(r.role) || r.userId === keep),
     )
     .map((r) => ({ userId: r.userId as string, name: r.name ?? "Medlem utan namn" }))
     .sort((a, b) => a.name.localeCompare(b.name, "sv"));

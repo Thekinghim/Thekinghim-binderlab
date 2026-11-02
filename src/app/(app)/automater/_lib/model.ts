@@ -396,7 +396,9 @@ export function machineDaysIn(
   const result = unitEconomics({
     ...input,
     period: range,
-    orders: input.orders.filter((o) => o.businessDate >= range.start && o.businessDate <= range.end),
+    orders: input.orders.filter(
+      (o) => o.businessDate >= range.start && o.businessDate <= range.end,
+    ),
     investments: [],
     machineIds: ids,
   });

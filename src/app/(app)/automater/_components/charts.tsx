@@ -82,6 +82,7 @@ export function SalesHeatmap({ heat, days }: { heat: HeatmapView; days: number }
       colLabels={heat.colLabels}
       format={(v) => `${formatInt(v)}${NBSP}köp`}
       unit="köp"
+      thresholds={heat.thresholds}
       cellLabel={(r, c) => `${heat.rowLabels[r] ?? ""} ${hourRange(heat.firstHour + c)}`}
       summary={`Antal köp per veckodag och timme, summerat över ${formatInt(days)} dagar: ${formatInt(heat.total)} köp.${
         peak

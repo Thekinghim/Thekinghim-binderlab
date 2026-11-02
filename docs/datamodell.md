@@ -289,15 +289,24 @@ Migreringen `20261102122143_drift_larm_arenden.sql`. Drizzle: `alerts` och `inci
   skrivs av larmjobbet; klienter får bara kvittera (`acknowledged_at`; vem och när sätts av
   databasen). Påfyllaren ser larm i familjerna `machine` och `stock`.
 - **incidents** är kundärenden: `status` (`open`, `in_progress`, `resolved`, där `resolved` ⇔
-  `ended_at`), `assignee_id` (medlem), `order_id` (sammansatt FK; ordern måste komma från
+  `ended_at`), `assignee_id` (ägare eller admin), `order_id` (sammansatt FK; ordern måste komma från
   ärendets automat), `title_id`, `refunded_ore` (≥ 0), `refunded_on` (krävs när beloppet > 0),
   `customer_contact`. Ändringar loggas i `audit_log`, och en återbetalning i en stängd månad
-  stoppas (BL004). Påfyllaren ser inga ärenden.
+  kan inte läggas till, ändras eller flyttas till en annan automat eller titel (BL004).
+  Påfyllaren och butiken ser inga ärenden.
 - **alert_subscriptions**: en per användare och organisation (`kinds` och `machine_ids`, null =
   alla; `min_severity`, `channels`, `phone`, tysta timmar `quiet_start`/`quiet_end` som
   'TT:MM', `delivery_windows`, `critical_during_quiet`, `notify_resolved`, `reminders`,
   `active`). Var och en ser och ändrar bara sin egen; påfyllaren bara för automater och lager.
 - **push_subscriptions**: Web Push per enhet (`endpoint`, `p256dh`, `auth_secret`), egna rader.
+  `endpoint` måste vara en känd push-tjänst (`private.push_endpoint_allowed`: FCM, Mozilla,
+  Apple, Windows), eftersom servern gör en POST dit.
+- **alerts** (kvittering): användare får bara sätta `acknowledged_at`; `acknowledged_by` sätts
+  alltid av databasen till den inloggade, och kvitteringar loggas i `audit_log`.
+- RPC **sales_data_until(org, at)**: hur långt den importerade försäljningen räcker per automat
+  (datakällan som automatens senaste order kom från, `data_until`, `synced_at`). Bara
+  tidpunkter; ägare, admin, läsare, påfyllare och systemet. Maskinhälsan räknar tystnaden fram
+  till `data_until` (docs/berakningar.md, avsnitt 15).
 - **alert_deliveries**: utskick per användare och sändtid (kö och logg), skrivs av larmjobbet.
 - **alert_runs**: en rad per körning av larmjobbet.
 - **field_submissions** och RPC:n **register_refill_once**: påfyllning från fältet med ett id

@@ -22,9 +22,11 @@ import {
 } from "@/analytics/expansion";
 import {
   addDays,
+  monthEnd,
   monthStart,
   MONTH_LCM,
   mulDivRound,
+  periodDays,
   roundHalfUp,
   storeCompensation,
   type IsoDate,
@@ -291,6 +293,46 @@ export function wholeMonths(period: Period): Period {
   return { start: monthStart(months[0]!), end: addDays(next, -1) };
 }
 
+/**
+ * Perioden som räknas: dagar före första ordern (organisationens första dag med data) har
+ * ingen försäljning att mäta, så de räknas inte som automatdagar utan försäljning. Börjar
+ * perioden före första ordern klipps starten dit och `clippedFrom` anger det (sidorna
+ * skriver det i en mono-rad). Utan data alls, eller när första ordern ligger efter
+ * periodens slut, lämnas perioden orörd.
+ */
+export interface DataPeriod {
+  readonly period: Period;
+  readonly days: number;
+  /** Första ordern, när perioden klipptes dit; annars null. */
+  readonly clippedFrom: IsoDate | null;
+}
+
+export function clipToData(period: Period, dataStart: IsoDate | null): DataPeriod {
+  if (dataStart !== null && dataStart > period.start && dataStart <= period.end) {
+    const clipped = { start: dataStart, end: period.end };
+    return { period: clipped, days: periodDays(clipped), clippedFrom: dataStart };
+  }
+  return { period, days: periodDays(period), clippedFrom: null };
+}
+
+/**
+ * Placeringarna med start tidigast vid första ordern (för mått per kalendermånad, där
+ * perioden inte kan klippas: dagarna före första ordern räknas då inte som automatdagar).
+ * Placeringar som slutade före första ordern tas bort.
+ */
+export function placementsFromData<T extends { from: IsoDate; to: IsoDate | null }>(
+  placements: readonly T[],
+  dataStart: IsoDate | null,
+): T[] {
+  if (dataStart === null) return [...placements];
+  const out: T[] = [];
+  for (const p of placements) {
+    if (p.to !== null && p.to < dataStart) continue;
+    out.push(p.from < dataStart ? { ...p, from: dataStart } : p);
+  }
+  return out;
+}
+
 /** 'ÅÅÅÅ-MM' → 'ÅÅÅÅ-MM-01' (formatet i goals.month och effect_measurements.month). */
 export function monthToDate(month: IsoMonth): IsoDate {
   return `${month}-01`;
@@ -344,4 +386,41 @@ export function evidenceLinks(
     links.push({ label: "Per dag", href: lonsamhet(period, { grupp: "dag" }) });
   }
   return links;
+}
+
+// ---------------------------------------------------------------------------
+// Automater i en omfattning (gräns för mätvärden)
+// ---------------------------------------------------------------------------
+
+/**
+ * Antal automater som ett mätvärde gäller: en automat; för en butik de automater som stått
+ * där under månaden (eller någon gång, när `month` är null); för hela flottan alla
+ * automater som inte är arkiverade, plus de som stått placerade under månaden. Minst 1.
+ */
+export function machinesInScope(
+  master: {
+    readonly machines: readonly { id: string; archived: boolean }[];
+    readonly placements: readonly {
+      machineId: string;
+      storeId: string;
+      from: IsoDate;
+      to: IsoDate | null;
+    }[];
+  },
+  scope: "organization" | "store" | "machine",
+  storeId: string | null,
+  month: IsoMonth | null,
+): number {
+  if (scope === "machine") return 1;
+  const start = month === null ? null : monthStart(month);
+  const end = month === null ? null : monthEnd(month);
+  const overlaps = (p: { from: IsoDate; to: IsoDate | null }) =>
+    start === null || end === null || (p.from <= end && (p.to === null || p.to >= start));
+  const ids = new Set<string>();
+  for (const p of master.placements) {
+    if (scope === "store" && p.storeId !== storeId) continue;
+    if (overlaps(p)) ids.add(p.machineId);
+  }
+  if (scope === "organization") for (const m of master.machines) if (!m.archived) ids.add(m.id);
+  return Math.max(1, ids.size);
 }

@@ -5,6 +5,8 @@ import {
   decommissionSchema,
   moveMachineSchema,
   normalizeCode,
+  placementBeforeStart,
+  placementToReopen,
   planDecommission,
   planMove,
   updateMachineSchema,
@@ -163,5 +165,24 @@ describe("sentences", () => {
     expect(sentences("BL-001 startar 1 maj", "Välj senare.")).toBe(
       "BL-001 startar 1 maj. Välj senare.",
     );
+  });
+});
+
+describe("driftstart och återaktivering", () => {
+  const spans = [
+    { id: "a", storeId: "s1", from: "2026-10-01", to: "2026-10-14" },
+    { id: "b", storeId: "s2", from: "2026-10-15", to: "2026-10-31" },
+  ];
+  it("driftstarten får inte ligga efter första placeringen", () => {
+    expect(placementBeforeStart(spans, "2026-10-13")).toBe("2026-10-01");
+    expect(placementBeforeStart(spans, "2026-10-01")).toBeNull();
+    expect(placementBeforeStart(spans, "2026-09-01")).toBeNull();
+    expect(placementBeforeStart([], "2026-10-13")).toBeNull();
+  });
+  it("placeringen som avvecklingen avslutade öppnas igen", () => {
+    expect(placementToReopen(spans, "2026-10-31")?.id).toBe("b");
+    // Flyttades ut före sista dagen: ingen öppnas.
+    expect(placementToReopen(spans, "2026-11-05")).toBeNull();
+    expect(placementToReopen([], "2026-10-31")).toBeNull();
   });
 });

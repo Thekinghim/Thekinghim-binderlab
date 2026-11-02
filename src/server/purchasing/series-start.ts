@@ -6,6 +6,9 @@
  * Regel: serien börjar första dagen då titeln bevisligen fanns i automaten, dvs. känt
  * saldo över 0 vid dagens början eller slut, eller ett inflöde (påfyllning, inventering
  * som höjde saldot). Före det är saldot okänt eller 0 och dagen räknas inte.
+ *
+ * `dataStart` är första dagen med orderdata (t.ex. första importerade ordern). En start
+ * före den flyttas fram dit: dagar utan orderdata får inte räknas som försäljning 0.
  */
 
 import { replayStockDaily, type StockEventRef } from "@/analytics/lost-sales";
@@ -15,6 +18,7 @@ import type { IsoDate } from "@/domain";
 export function seriesStartsFromStock(
   events: readonly StockEventRef[],
   end: IsoDate,
+  dataStart: IsoDate | null = null,
 ): SeriesStart[] {
   const out: SeriesStart[] = [];
   for (const series of replayStockDaily(events, end)) {
@@ -25,7 +29,9 @@ export function seriesStartsFromStock(
         (d.opening !== null && d.opening > 0) ||
         (d.closing !== null && d.closing > 0),
     );
-    if (first) out.push({ machineId: series.machineId, titleId: series.titleId, date: first.date });
+    if (!first) continue;
+    const date = dataStart !== null && first.date < dataStart ? dataStart : first.date;
+    out.push({ machineId: series.machineId, titleId: series.titleId, date });
   }
   return out;
 }

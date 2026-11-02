@@ -13,6 +13,7 @@ import { AuthorizationError, listOrganizationsFor } from "@/server/access";
 import type { Viewer } from "@/server/data/core/loaders";
 import {
   cancelPurchaseOrderFor,
+  closePurchaseOrderFor,
   createPurchaseOrderFor,
   createSupplierFor,
   deleteSupplierItemFor,
@@ -303,6 +304,23 @@ describe("lostSalesSummaryFor", () => {
     expect(sum.href).toBe("/prognos?from=2025-05-01&to=2025-05-31#forlorad-forsaljning");
   });
 
+  it("filtrerar på automaten och länkar med samma filter", async () => {
+    const mine = await lostSalesSummaryFor(owner, MAY, NOW, {
+      storeId: null,
+      machineId: fx.machineId,
+    });
+    expect(mine.lostRevenueOre).toBe(19 * 7_900);
+    expect(mine.href).toBe(
+      `/prognos?from=2025-05-01&to=2025-05-31&automat=${fx.machineId}#forlorad-forsaljning`,
+    );
+    const other = await lostSalesSummaryFor(owner, MAY, NOW, {
+      storeId: null,
+      machineId: fx.orgId,
+    });
+    expect(other.lostRevenueOre).toBe(0);
+    expect(other.series).toHaveLength(0);
+  });
+
   it("räknar inte i dag (perioden slutar i går)", async () => {
     const sum = await lostSalesSummaryFor(owner, { start: "2025-06-01", end: "2025-06-30" }, NOW);
     expect(sum.period).toEqual({ start: "2025-06-01", end: "2025-06-01" });
@@ -496,7 +514,7 @@ describe("inköpsorder och mottagning", () => {
         status: "ordered",
         expectedOn: null,
         note: null,
-        lines: [{ titleId: fx.titleId, quantity: 5, unitCostOre: 4_300 }],
+        lines: [{ titleId: fx.titleId, quantity: 36, unitCostOre: 4_300 }],
       },
       NOW,
     );
@@ -516,6 +534,118 @@ describe("inköpsorder och mottagning", () => {
     await expect(cancelPurchaseOrderFor(reader, { id: poId })).rejects.toBeInstanceOf(
       AuthorizationError,
     );
+  });
+});
+
+describe("regler för inköpsorder", () => {
+  const base = { supplierId: "", status: "ordered" as const, expectedOn: null, note: null };
+
+  it("kräver artikel hos leverantören, minsta order och hela boxar", async () => {
+    await expect(
+      createPurchaseOrderFor(
+        owner,
+        {
+          ...base,
+          supplierId,
+          lines: [{ titleId: fx.secondTitleId, quantity: 36, unitCostOre: 4_300 }],
+        },
+        NOW,
+      ),
+    ).rejects.toThrow(/finns inte hos leverantören/);
+    await expect(
+      createPurchaseOrderFor(
+        owner,
+        { ...base, supplierId, lines: [{ titleId: fx.titleId, quantity: 40, unitCostOre: 4_300 }] },
+        NOW,
+      ),
+    ).rejects.toThrow(/hela boxar om 36/);
+    const itemId = await saveSupplierItemFor(owner, {
+      supplierId,
+      titleId: fx.secondTitleId,
+      packSize: 12,
+      minOrderQty: 24,
+      leadTimeDays: null,
+      unitCostOre: 3_900,
+    });
+    await expect(
+      createPurchaseOrderFor(
+        owner,
+        {
+          ...base,
+          supplierId,
+          lines: [{ titleId: fx.secondTitleId, quantity: 12, unitCostOre: 3_900 }],
+        },
+        NOW,
+      ),
+    ).rejects.toThrow(/minsta order är 24/);
+    await deleteSupplierItemFor(owner, { id: itemId });
+  });
+
+  it("räknar inte utkast som beställt: förslaget står kvar", async () => {
+    const before = await loadPrognosFor(owner, { period: MAY }, NOW);
+    const line = before.plan.lines.find((l) => l.titleId === fx.titleId)!;
+    const draftId = await createPurchaseOrderFor(
+      owner,
+      {
+        ...base,
+        supplierId,
+        status: "draft",
+        lines: [{ titleId: fx.titleId, quantity: 72, unitCostOre: 4_300 }],
+      },
+      NOW,
+    );
+    const after = await loadPrognosFor(owner, { period: MAY }, NOW);
+    const afterLine = after.plan.lines.find((l) => l.titleId === fx.titleId)!;
+    expect(afterLine.onOrderCounted).toBe(line.onOrderCounted);
+    expect(afterLine.orderQty).toBe(line.orderQty);
+    expect(after.valuation.onOrderValueOre).toBe(before.valuation.onOrderValueOre);
+    await cancelPurchaseOrderFor(owner, { id: draftId });
+  });
+
+  it("avslutar en delvis mottagen order med restorder", async () => {
+    const before = await loadPrognosFor(owner, { period: MAY }, NOW);
+    const onOrderBefore = before.plan.lines.find((l) => l.titleId === fx.titleId)!.onOrderCounted;
+    const poId = await createPurchaseOrderFor(
+      owner,
+      { ...base, supplierId, lines: [{ titleId: fx.titleId, quantity: 72, unitCostOre: 4_300 }] },
+      NOW,
+    );
+    await expect(closePurchaseOrderFor(owner, { id: poId }, NOW)).rejects.toThrow(
+      /Avbryt den i stället/,
+    );
+    const data = await loadPrognosFor(owner, { period: MAY }, NOW);
+    const lineId = data.purchaseOrders.find((p) => p.id === poId)!.lines[0]!.id;
+    await receivePurchaseOrderFor(owner, { id: poId, lines: [{ lineId, quantity: 36 }] }, NOW);
+    await expect(closePurchaseOrderFor(reader, { id: poId }, NOW)).rejects.toBeInstanceOf(
+      AuthorizationError,
+    );
+    await expect(closePurchaseOrderFor(otherOwner, { id: poId }, NOW)).rejects.toThrow(
+      /finns inte/,
+    );
+
+    expect(await closePurchaseOrderFor(owner, { id: poId }, NOW)).toEqual({ missing: 36 });
+    const after = await loadPrognosFor(owner, { period: MAY }, NOW);
+    const po = after.purchaseOrders.find((p) => p.id === poId)!;
+    expect(po).toMatchObject({ status: "received", receivedOn: TODAY });
+    expect(po.note).toMatch(/restorder: 36 pack kom aldrig/);
+    expect(po.lines[0]!.receivedQuantity).toBe(36);
+    // Resten räknas inte längre som beställt.
+    expect(after.plan.lines.find((l) => l.titleId === fx.titleId)!.onOrderCounted).toBe(
+      onOrderBefore,
+    );
+    await expect(closePurchaseOrderFor(owner, { id: poId }, NOW)).rejects.toThrow(/redan mottagen/);
+  });
+
+  it("räknar serien från första kända saldo och tar med nivåns osäkerhet", async () => {
+    const data = await loadPrognosFor(owner, { period: MAY }, NOW);
+    const series = data.forecast.series.find((x) => x.titleId === fx.titleId)!;
+    expect(series.levelVarianceMilli2).toBeGreaterThan(0);
+    expect(series.startDate <= "2025-04-01").toBe(true);
+    expect(data.forecastHistory).toEqual({ start: "2025-04-07", end: "2025-06-01" });
+    expect(data.demandBasis.find((b) => b.titleId === fx.titleId)).toMatchObject({
+      series: 1,
+      lowDataSeries: 0,
+    });
   });
 });
 

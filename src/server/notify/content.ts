@@ -11,6 +11,7 @@
 import type { AlertDelivery, AlertNotification, AlertSeverity } from "@/analytics/alerts";
 import { whenText } from "@/analytics/health";
 import { EMAIL_COLOR, EMAIL_FONT, EMAIL_WIDTH } from "@/emails/theme";
+import { sentence } from "@/analytics/todos/text";
 import { formatInt, NBSP } from "@/lib/format";
 
 import type { PushPayload } from "./push";
@@ -62,7 +63,7 @@ export function pushPayload(delivery: AlertDelivery): PushPayload {
 export function smsText(delivery: AlertDelivery, baseUrl: string): string {
   const first = delivery.items[0];
   const parts = [
-    `Binderlab: ${delivery.subject}.`,
+    `Binderlab: ${sentence(delivery.subject)}`,
     first ? first.detail : "",
     absoluteLink(baseUrl, delivery.items.length === 1 && first ? first.link : "/drift"),
   ].filter(Boolean);
@@ -117,7 +118,7 @@ export function alertEmail(
       const tag = `${critical ? "Kräver åtgärd · " : ""}${SEVERITY_LABEL[n.severity]} · ${REASON_LABEL[n.reason]}`;
       return `<tr><td style="${style({ padding: "16px 0", borderTop: i === 0 ? "0" : `1px solid ${EMAIL_COLOR.line}` })}">
 <div style="${label}">${marker}${esc(tag)}</div>
-<div style="${style({ fontFamily: EMAIL_FONT.sans, fontSize: "16px", lineHeight: "24px", color: EMAIL_COLOR.fg, marginTop: "4px" })}">${esc(n.title)}.</div>
+<div style="${style({ fontFamily: EMAIL_FONT.sans, fontSize: "16px", lineHeight: "24px", color: EMAIL_COLOR.fg, marginTop: "4px" })}">${esc(sentence(n.title))}</div>
 <div style="${style({ fontFamily: EMAIL_FONT.sans, fontSize: "14px", lineHeight: "20px", color: EMAIL_COLOR.muted, marginTop: "4px" })}">${esc(n.detail)}</div>
 <div style="${style({ fontFamily: EMAIL_FONT.sans, fontSize: "12px", lineHeight: "16px", color: EMAIL_COLOR.subtle, marginTop: "8px" })}">Underlag: ${esc(n.evidence.rule)}</div>
 <div style="${style({ fontFamily: EMAIL_FONT.sans, fontSize: "14px", lineHeight: "20px", marginTop: "8px" })}"><a href="${esc(absoluteLink(options.baseUrl, n.link))}" style="${style({ color: EMAIL_COLOR.fg })}">Öppna underlaget →</a></div>
@@ -133,7 +134,7 @@ export function alertEmail(
 <table role="presentation" width="${EMAIL_WIDTH}" cellpadding="0" cellspacing="0" style="${style({ width: "100%", maxWidth: `${EMAIL_WIDTH}px`, background: EMAIL_COLOR.surface, border: `1px solid ${EMAIL_COLOR.line}` })}">
 <tr><td style="${style({ padding: "24px" })}">
 <div style="${label}">Binderlab · ${esc(options.organizationName)} · Larm</div>
-<h1 style="${style({ fontFamily: EMAIL_FONT.sans, fontSize: "24px", lineHeight: "32px", fontWeight: 500, color: EMAIL_COLOR.fg, margin: "12px 0 0" })}">${esc(delivery.subject)}. <span style="${style({ color: EMAIL_COLOR.subtle })}">${esc(`${formatInt(delivery.items.length)}${NBSP}${delivery.items.length === 1 ? "larm" : "larm"}, ${when}.`)}</span></h1>
+<h1 style="${style({ fontFamily: EMAIL_FONT.sans, fontSize: "24px", lineHeight: "32px", fontWeight: 500, color: EMAIL_COLOR.fg, margin: "12px 0 0" })}">${esc(sentence(delivery.subject))} <span style="${style({ color: EMAIL_COLOR.subtle })}">${esc(`${formatInt(delivery.items.length)}${NBSP}${delivery.items.length === 1 ? "larm" : "larm"}, ${when}.`)}</span></h1>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="${style({ marginTop: "16px" })}">
 ${rows}
 </table>
@@ -143,12 +144,12 @@ ${rows}
 </body></html>`;
 
   const text = [
-    `${delivery.subject}.`,
+    sentence(delivery.subject),
     `${formatInt(delivery.items.length)} larm, ${when}. ${options.organizationName}.`,
     "",
     ...delivery.items.flatMap((n) => [
       `${n.severity === "critical" && n.reason !== "resolved" ? "! " : ""}${SEVERITY_LABEL[n.severity]} · ${REASON_LABEL[n.reason]}`,
-      `${n.title}.`,
+      sentence(n.title),
       n.detail,
       `Underlag: ${n.evidence.rule}`,
       absoluteLink(options.baseUrl, n.link),

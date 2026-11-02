@@ -142,11 +142,7 @@ export async function saveAlertSubscription(
 // ---------------------------------------------------------------------------
 
 const pushInput = z.object({
-  endpoint: z
-    .string()
-    .url()
-    .max(2000)
-    .refine(isAllowedPushEndpoint, "Okänd push-tjänst."),
+  endpoint: z.string().url().max(2000).refine(isAllowedPushEndpoint, "Okänd push-tjänst."),
   keys: z.object({ p256dh: z.string().min(20).max(200), auth: z.string().min(8).max(100) }),
   userAgent: z.string().max(300).optional(),
 });

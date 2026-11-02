@@ -47,12 +47,16 @@ import {
 } from "@/server/data/core";
 
 import {
+  clipToData,
   defaultInvestment,
   OPEN_STAGES,
+  placementsFromData,
   salesDeck,
   toAnalyticsLead,
   wholeMonths,
+  monthOfDate,
   monthsIn,
+  type DataPeriod,
   type DefaultInvestment,
   type LeadRecord,
   type SalesDeck,
@@ -89,8 +93,31 @@ export interface Names {
   readonly titles: Named[];
 }
 
-function periodLabelInfo(p: AppPeriod) {
-  return { key: p.key, period: p.period, days: p.days };
+/**
+ * Perioden sidan räknar på: skalets period, klippt till första ordern (dagar före första
+ * ordern saknar data och ska inte räknas som dagar utan försäljning). `requested` är
+ * skalets period och `clippedFrom` första ordern när perioden klipptes.
+ */
+export interface PeriodInfo {
+  readonly key: string;
+  readonly period: Period;
+  readonly days: number;
+  readonly requested: Period;
+  readonly clippedFrom: IsoDate | null;
+}
+
+function dataPeriodOf(p: AppPeriod): DataPeriod {
+  return clipToData(p.period, p.dataStart);
+}
+
+function periodLabelInfo(p: AppPeriod, dp: DataPeriod = dataPeriodOf(p)): PeriodInfo {
+  return {
+    key: p.key,
+    period: dp.period,
+    days: dp.days,
+    requested: p.period,
+    clippedFrom: dp.clippedFrom,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -99,7 +126,7 @@ function periodLabelInfo(p: AppPeriod) {
 
 export interface UnitEconomicsPageData {
   readonly ctx: Pick<AppContext, "canEdit" | "today">;
-  readonly period: { key: string; period: Period; days: number };
+  readonly period: PeriodInfo;
   readonly comparison: UnitEconomicsComparison;
   /** Domänens enhetsekonomi per automat (avskrivning, bokfört värde). */
   readonly units: MachineUnitEconomics[];
@@ -112,9 +139,10 @@ export interface UnitEconomicsPageData {
 export async function loadUnitEconomicsPage(sp: SearchParamsInput): Promise<UnitEconomicsPageData> {
   const ctx = await requireRoute("automater");
   const p = await loadPeriod(sp);
+  const dp = dataPeriodOf(p);
   const viewer = await currentViewer();
   const [input, investments] = await Promise.all([
-    loadDomainInput({ period: p.period, ...p.scope }),
+    loadDomainInput({ period: dp.period, ...p.scope }),
     loadInvestmentsFor(viewer),
   ]);
   const inScope = new Set<string>(input.current.placements.map((pl) => pl.machineId));
@@ -130,7 +158,7 @@ export async function loadUnitEconomicsPage(sp: SearchParamsInput): Promise<Unit
   );
   return {
     ctx: { canEdit: ctx.canEdit, today: ctx.today },
-    period: periodLabelInfo(p),
+    period: periodLabelInfo(p, dp),
     comparison,
     units: unitEconomics(ueInput),
     investments: investments.filter((i) => inScope.has(i.machineId)),
@@ -194,7 +222,7 @@ export interface ScenarioInputError {
 
 export interface ExpansionPageData {
   readonly ctx: Pick<AppContext, "canEdit" | "today">;
-  readonly period: { key: string; period: Period; days: number };
+  readonly period: PeriodInfo;
   readonly names: Names;
   readonly profiles: StoreProfileRecord[];
   readonly defaultInvestment: DefaultInvestment | null;
@@ -232,12 +260,13 @@ function parseElasticity(text: string): number | null {
 export async function loadExpansionPage(sp: SearchParamsInput): Promise<ExpansionPageData> {
   const ctx = await requireRoute("expansion");
   const p = await loadPeriod(sp);
+  const dp = dataPeriodOf(p);
   const viewer = await currentViewer();
   const params = scenarioParams(sp);
 
   // Hela flottan: expansionen jämför alla platser, oavsett filter i skalet.
   const [input, profiles, goals, leads] = await Promise.all([
-    loadDomainInput({ period: p.period }),
+    loadDomainInput({ period: dp.period }),
     loadStoreProfilesFor(viewer),
     loadGoalsFor(viewer),
     loadLeadsFor(viewer),
@@ -363,7 +392,7 @@ export async function loadExpansionPage(sp: SearchParamsInput): Promise<Expansio
 
   return {
     ctx: { canEdit: ctx.canEdit, today: ctx.today },
-    period: periodLabelInfo(p),
+    period: periodLabelInfo(p, dp),
     names: namesOf(input),
     profiles,
     defaultInvestment: defInv,
@@ -416,6 +445,8 @@ async function goalsProgress(
 export interface SalesDeckPageData {
   readonly organizationName: string;
   readonly period: Period;
+  /** Första ordern, när skalets period började före den (perioden är då klippt dit). */
+  readonly clippedFrom: IsoDate | null;
   readonly deck: SalesDeck;
   readonly generatedAt: string;
 }
@@ -423,10 +454,12 @@ export interface SalesDeckPageData {
 export async function loadSalesDeckPage(sp: SearchParamsInput): Promise<SalesDeckPageData> {
   const ctx = await requireRoute("expansion");
   const p = await loadPeriod(sp);
-  const input = await loadDomainInput({ period: p.period });
+  const dp = dataPeriodOf(p);
+  const input = await loadDomainInput({ period: dp.period });
   return {
     organizationName: ctx.organization.name,
-    period: p.period,
+    period: dp.period,
+    clippedFrom: dp.clippedFrom,
     deck: salesDeck(input.current),
     generatedAt: ctx.now,
   };
@@ -441,8 +474,13 @@ export const EFFECT_MAX_MONTHS = 24;
 
 export interface EffectPageData {
   readonly ctx: Pick<AppContext, "canEdit" | "today">;
-  readonly period: { key: string; period: Period; days: number };
+  readonly period: PeriodInfo;
   readonly months: IsoMonth[];
+  /**
+   * Första ordern när den ligger mitt i en av månaderna: den månadens automatdagar räknas
+   * från första ordern (sidan skriver det i en mono-rad). Annars null.
+   */
+  readonly dataStartInMonth: IsoDate | null;
   readonly baselines: BaselineRecord[];
   readonly measurements: MeasurementRecord[];
   readonly settings: EffectSettingsRecord;
@@ -453,8 +491,10 @@ export interface EffectPageData {
 export async function loadEffectPage(sp: SearchParamsInput): Promise<EffectPageData> {
   const ctx = await requireRoute("effekt");
   const p = await loadPeriod(sp);
+  const dp = dataPeriodOf(p);
   const viewer = await currentViewer();
-  const months = monthsIn(p.period).slice(-EFFECT_MAX_MONTHS);
+  // Månader från första ordern; dagarna före den räknas inte som automatdagar.
+  const months = monthsIn(dp.period).slice(-EFFECT_MAX_MONTHS);
   const span = wholeMonths({ start: monthStart(months[0]!), end: p.period.end });
   const [input, baselines, measurements, settings] = await Promise.all([
     loadDomainInput({ period: { start: span.start, end: minDate(span.end, ctx.today) } }),
@@ -464,6 +504,7 @@ export async function loadEffectPage(sp: SearchParamsInput): Promise<EffectPageD
   ]);
   const series = binderlabEffect({
     ...input.current,
+    placements: placementsFromData(input.current.placements, p.dataStart),
     baselines: baselines.map((b) => ({
       id: b.id,
       metric: b.metric,
@@ -495,8 +536,14 @@ export async function loadEffectPage(sp: SearchParamsInput): Promise<EffectPageD
   });
   return {
     ctx: { canEdit: ctx.canEdit, today: ctx.today },
-    period: periodLabelInfo(p),
+    period: periodLabelInfo(p, dp),
     months,
+    dataStartInMonth:
+      p.dataStart !== null &&
+      months.includes(monthOfDate(p.dataStart)) &&
+      p.dataStart > monthStart(monthOfDate(p.dataStart))
+        ? p.dataStart
+        : null,
     baselines,
     measurements,
     settings,

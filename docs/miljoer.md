@@ -357,15 +357,30 @@ dagen; var 10:e minut kräver Pro.
 `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` och `VAPID_SUBJECT`. Varje användare slår på push per
 enhet under Drift → Larminställningar. På iPhone kräver push att Binderlab är tillagd på
 hemskärmen (iOS 16.4 eller senare). Enheter som push-tjänsten svarar 404/410 för stängs av.
+Bara webbläsarnas egna push-tjänster godtas som endpoint (fcm.googleapis.com,
+\*.push.services.mozilla.com, \*.push.apple.com, \*.notify.windows.com), i både servern och
+databasen; annars kunde servern fås att anropa interna adresser. Provlarm är begränsade till 3
+per 10 minuter per användare och 20 per organisation (per serverinstans).
+
+**Datakällornas aktualitet**: Awish CSV laddas upp för hand. Maskinhälsan räknar tystnaden
+bara fram till senaste importerade försäljning i källan, så en fil som inte laddats upp än
+larmar inte alla automater. Är källans senaste försäljning äldre än 36 timmar blir det ett
+datalarm ("Försäljningen från … är inte importerad sedan …"), inte ett maskinlarm.
+Gårdagens avvikande dag bedöms först när försäljningen för hela i går är importerad.
 
 **Sms**: ingen leverantör är vald. En leverantör läggs till som en klass som implementerar
-`SmsSender` i `src/server/notify/sms.ts` och väljs med `SMS_PROVIDER`.
+`SmsSender` i `src/server/notify/sms.ts` och väljs med `SMS_PROVIDER`. Innan en riktig
+leverantör kopplas på: verifiera telefonnumret (engångskod) innan det sparas, annars kan en
+användare skicka sms till valfria nummer på bolagets bekostnad via provlarmet.
 
 **Fältläget (PWA)**: `src/app/manifest.ts` (installerbar, startar i `/drift`) och
 `public/sw.js` (service worker). Påfyllning (`/drift/pafyllning`) och besöksplanen
 (`/drift/besok`) sparas i webbläsaren och fungerar utan nät; påfyllningar köas i IndexedDB och
 skickas med ett id från webbläsaren (`register_refill_once`), så ett omförsök blir aldrig en
-dubbel lagerhändelse.
+dubbel lagerhändelse. Sparade sidor ligger i en cache per inloggad användare (en hash av
+organisation och användare) och rensas när någon annan loggar in eller när inloggningen eller
+utloggningen visas. Ikoner för installation: `public/icons/` (192, 512 och maskerbar 512 px,
+renderade ur `src/app/icon.svg`).
 
 ## Marknad
 

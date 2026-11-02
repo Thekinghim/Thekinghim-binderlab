@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 
 import { wallClockIn } from "@/components/shell/period-state";
 import { DataTable, type Column } from "@/components/ui/data-table";
@@ -16,30 +16,71 @@ import {
   NBSP,
 } from "@/lib/format";
 
-import type { MachineListRow } from "../_lib/types";
+import type { MachineListRow, MachinesOverview, OtherRow } from "../_lib/types";
 
 function sek(ore: number): string {
   return formatSek(ore / 100);
 }
 
-function columns(timeZone: string, now: Date): Column<MachineListRow>[] {
+/** Fotraden: en rad per post utanför automaterna och sist summan, i jämna rader. */
+function Foot({ lines }: { lines: readonly ReactNode[] }) {
+  return (
+    <span className="flex flex-col py-1">
+      {lines.map((l, i) => (
+        <span key={i} className="block h-6 leading-6 whitespace-nowrap">
+          {l}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+interface FootData {
+  readonly others: readonly OtherRow[];
+  readonly totals: MachinesOverview["totals"];
+}
+
+/** Siffror som bara gäller när perioden har order (döljs medan dagens order inte kommit). */
+const FIGURE_KEYS = new Set(["revenue", "profit", "margin", "share", "orders", "top"]);
+
+function columns(
+  timeZone: string,
+  now: Date,
+  foot: FootData | null,
+  pending: boolean,
+): Column<MachineListRow>[] {
   const localNow = wallClockIn(now, timeZone);
-  return [
+  const f = (
+    pick: (o: OtherRow) => ReactNode,
+    total: (t: MachinesOverview["totals"]) => ReactNode,
+  ): ReactNode =>
+    foot ? <Foot lines={[...foot.others.map(pick), total(foot.totals)]} /> : undefined;
+  const cols: Column<MachineListRow>[] = [
     {
       key: "machine",
       header: "Automat",
       sortValue: (r) => r.code,
       csv: (r) => `${r.code} ${r.name}`,
       hideable: false,
+      footer: f(
+        (o) => o.label,
+        () => "Totalt",
+      ),
       render: (r) => (
-        <Link
-          href={r.href}
-          className="flex min-w-0 flex-col rounded-xs py-1 hover:text-fg"
-          aria-label={`${r.code} ${r.name}`}
-        >
-          <span className="meta text-fg">{r.code.replace("-", "‑")}</span>
-          <span className="truncate text-sm text-muted">{r.name}</span>
-        </Link>
+        <span className="flex min-w-0 flex-col gap-1 py-1">
+          <Link
+            href={r.href}
+            className="flex min-w-0 flex-col rounded-xs hover:text-fg"
+            aria-label={`${r.code} ${r.name}`}
+          >
+            <span className="meta text-fg">{r.code.replace("-", "‑")}</span>
+            <span className="truncate text-sm text-muted">{r.name}</span>
+          </Link>
+          {/* Under md står statusen här, under namnet (design.md 5.1). */}
+          <span className="md:hidden">
+            <StatusTag status={r.status.status}>{r.status.label}</StatusTag>
+          </span>
+        </span>
       ),
     },
     {
@@ -48,6 +89,7 @@ function columns(timeZone: string, now: Date): Column<MachineListRow>[] {
       sortValue: (r) => (r.status.flagged ? 0 : r.status.status === "ok" ? 2 : 1),
       csv: (r) => r.status.label,
       hideable: false,
+      hideOnMobile: true,
       render: (r) => (
         <span className="flex flex-col items-start gap-1">
           <StatusTag status={r.status.status}>{r.status.label}</StatusTag>
@@ -76,6 +118,10 @@ function columns(timeZone: string, now: Date): Column<MachineListRow>[] {
       numeric: true,
       sortValue: (r) => r.revenueOre,
       csv: (r) => r.revenueOre / 100,
+      footer: f(
+        (o) => (o.revenueOre !== 0 ? sek(o.revenueOre) : ""),
+        (t) => sek(t.revenueOre),
+      ),
       render: (r) => (
         <span className="flex flex-col items-end">
           <span>{sek(r.revenueOre)}</span>
@@ -93,6 +139,10 @@ function columns(timeZone: string, now: Date): Column<MachineListRow>[] {
       numeric: true,
       sortValue: (r) => r.profitOre,
       csv: (r) => r.profitOre / 100,
+      footer: f(
+        (o) => sek(o.profitOre),
+        (t) => sek(t.profitOre),
+      ),
       render: (r) => sek(r.profitOre),
     },
     {
@@ -102,6 +152,10 @@ function columns(timeZone: string, now: Date): Column<MachineListRow>[] {
       hideOnMobile: true,
       sortValue: (r) => r.marginBp ?? Number.NEGATIVE_INFINITY,
       csv: (r) => (r.marginBp === null ? "" : r.marginBp / 100),
+      footer: f(
+        () => "",
+        (t) => (t.marginBp === null ? MISSING : formatPercent(t.marginBp / 10_000, 1)),
+      ),
       render: (r) => (r.marginBp === null ? MISSING : formatPercent(r.marginBp / 10_000, 1)),
     },
     {
@@ -119,6 +173,10 @@ function columns(timeZone: string, now: Date): Column<MachineListRow>[] {
       numeric: true,
       hideOnMobile: true,
       sortValue: (r) => r.orders,
+      footer: f(
+        (o) => (o.orders !== 0 ? formatInt(o.orders) : ""),
+        (t) => formatInt(t.orders),
+      ),
       render: (r) => formatInt(r.orders),
     },
     {
@@ -167,21 +225,36 @@ function columns(timeZone: string, now: Date): Column<MachineListRow>[] {
         ),
     },
   ];
+  return pending ? cols.filter((c) => !FIGURE_KEYS.has(c.key)) : cols;
 }
 
-/** Alla automater med periodens intäkt, vinst och status. */
+/**
+ * Alla automater med periodens intäkt, vinst och status. Fotraden visar ej fördelad hyra
+ * (och order utan automat) och summan, så att raderna går ihop med nyckeltalen.
+ */
 export function MachineTable({
   rows,
+  others,
+  totals,
+  pending = false,
   timeZone,
   now,
   caption,
 }: {
   rows: readonly MachineListRow[];
+  others: readonly OtherRow[];
+  /** Summan i fotraden, eller null utan fotrad. */
+  totals: MachinesOverview["totals"] | null;
+  /** Dagens order har inte kommit: inga belopp. */
+  pending?: boolean;
   timeZone: string;
   now: string;
   caption: string;
 }) {
-  const cols = useMemo(() => columns(timeZone, new Date(now)), [timeZone, now]);
+  const cols = useMemo(
+    () => columns(timeZone, new Date(now), totals && !pending ? { others, totals } : null, pending),
+    [timeZone, now, others, totals, pending],
+  );
   return (
     <DataTable
       columns={cols}

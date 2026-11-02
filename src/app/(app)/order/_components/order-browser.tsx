@@ -68,8 +68,13 @@ const SEARCH_DELAY_MS = 300;
  * Efter att detaljvyn stängts: fokus till orderns knapp i listan om den syns, annars
  * till sidans rubrik (t.ex. när ordern öppnades via länk och inte finns bland raderna).
  */
-function restoreFocus(orderId: string): void {
+function restoreFocus(orderId: string, frames = 0): void {
   requestAnimationFrame(() => {
+    // Vänta tills dialogen faktiskt stängts (den lämnar själv tillbaka fokus först).
+    if (document.querySelector("dialog[open]") && frames < 30) {
+      restoreFocus(orderId, frames + 1);
+      return;
+    }
     const button = document.querySelector<HTMLElement>(
       `[data-order-button="${CSS.escape(orderId)}"]`,
     );
@@ -77,9 +82,11 @@ function restoreFocus(orderId: string): void {
       button.focus();
       return;
     }
+    // Fokus som ligger kvar i den stängda dialogen (eller på body) räknas som tappat.
     const active = document.activeElement;
-    if (active && active !== document.body) return;
-    const h1 = document.querySelector<HTMLElement>("main h1, h1");
+    const lost = !active || active === document.body || active.closest("dialog:not([open])");
+    if (!lost) return;
+    const h1 = document.querySelector<HTMLElement>("h1");
     if (h1) {
       if (!h1.hasAttribute("tabindex")) h1.setAttribute("tabindex", "-1");
       h1.focus();

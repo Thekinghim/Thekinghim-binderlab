@@ -5,10 +5,18 @@
  * timkostnaden. Bara ägare och admin; allt skrivs som användaren med RLS.
  */
 
-import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/data/core";
+import type { IsoMonth } from "@/domain";
+import {
+  loadMasterData,
+  OPERATOR_ROLES,
+  requireContextRole,
+  revalidateAppData,
+} from "@/server/data/core";
 
 import { failure, type ActionResult } from "../expansion/_lib/action-result";
+import { machinesInScope } from "../expansion/_lib/model";
 import {
+  assertMetricLimit,
   baselineSchema,
   effectSettingsSchema,
   idSchema,
@@ -28,9 +36,29 @@ async function operator() {
   return currentViewer();
 }
 
+/**
+ * Stoppar orimliga mätvärden vid fältet (fler slutsålda dagar än månaden har per automat,
+ * mer tid än dygnets timmar per automat). Automaterna i omfattningen läses med RLS.
+ */
+async function checkLimit(v: {
+  metric: Parameters<typeof assertMetricLimit>[0];
+  value: number;
+  month: string | null;
+  scope: "organization" | "store" | "machine";
+  storeId: string | null;
+}) {
+  if (v.metric === "profit_per_machine_month") return;
+  const master = await loadMasterData();
+  const machines = machinesInScope(master, v.scope, v.storeId, v.month as IsoMonth | null);
+  assertMetricLimit(v.metric, v.value, v.month, machines);
+}
+
 export async function saveBaseline(raw: unknown): Promise<ActionResult<{ id: string }>> {
   try {
-    const id = await saveBaselineFor(await operator(), baselineSchema.parse(raw));
+    const viewer = await operator();
+    const input = baselineSchema.parse(raw);
+    await checkLimit({ ...input, month: null });
+    const id = await saveBaselineFor(viewer, input);
     revalidateAppData();
     return { ok: true, data: { id } };
   } catch (error) {
@@ -50,7 +78,10 @@ export async function deleteBaseline(raw: unknown): Promise<ActionResult> {
 
 export async function saveMeasurement(raw: unknown): Promise<ActionResult<{ id: string }>> {
   try {
-    const id = await saveMeasurementFor(await operator(), measurementSchema.parse(raw));
+    const viewer = await operator();
+    const input = measurementSchema.parse(raw);
+    await checkLimit(input);
+    const id = await saveMeasurementFor(viewer, input);
     revalidateAppData();
     return { ok: true, data: { id } };
   } catch (error) {

@@ -3,11 +3,13 @@ import Link from "next/link";
 
 import { SectionHeader } from "@/components/ui/section-header";
 import type { SearchParamsInput } from "@/components/shell/period-state";
+import { daysInMonth } from "@/domain";
 import { formatInt } from "@/lib/format";
 
 import { loadEffectPage, type Names } from "../expansion/_lib/data";
 import { BASELINE_METRIC_LABEL, monthLabel } from "../expansion/_lib/display";
 import { signedPct } from "@/analytics/expansion";
+import { day } from "@/analytics/todos/text";
 import { evidenceLinks, monthOfDate } from "../expansion/_lib/model";
 import { BaselinesSection, MeasurementsSection, SeriesView } from "./_components/effect-view";
 
@@ -50,11 +52,21 @@ export default async function EffektPage({
   const monthsText =
     first === last ? monthLabel(first) : `${monthLabel(first)} – ${monthLabel(last)}`;
 
-  const latestBp = lead?.latest?.improvementBp ?? null;
+  // Rubriken bygger på senaste hela månaden; finns bara en pågående månad står det
+  // "hittills" och hur många dagar som mätts.
+  const point = lead
+    ? ([...lead.points].reverse().find((pt) => pt.value !== null && !pt.partial) ?? lead.latest)
+    : null;
+  const pointBp = point?.improvementBp ?? null;
+  const when = point
+    ? point.partial
+      ? `hittills i ${monthLabel(point.month)} (${formatInt(point.measuredDays)} av ${formatInt(daysInMonth(point.month))} dagar)`
+      : `i ${monthLabel(point.month)}`
+    : "";
   const title = lead
-    ? latestBp === null
-      ? `${BASELINE_METRIC_LABEL[lead.metric]}: ${monthLabel(lead.latest!.month)}.`
-      : `${BASELINE_METRIC_LABEL[lead.metric]} ${signedPct(latestBp)} mot före Binderlab.`
+    ? pointBp === null
+      ? `${BASELINE_METRIC_LABEL[lead.metric]}: ${monthLabel(point!.month)}.`
+      : `${BASELINE_METRIC_LABEL[lead.metric]} ${signedPct(pointBp)} mot före Binderlab ${when}.`
     : data.baselines.length === 0
       ? "Utgångsläget före Binderlab är inte registrerat."
       : "Inga värden att jämföra ännu.";
@@ -67,18 +79,26 @@ export default async function EffektPage({
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
-      <SectionHeader
-        as="h1"
-        size="xl"
-        eyebrow="Effekt"
-        title={title}
-        aside={aside}
-        meta={[
-          { label: "Månader", value: monthsText },
-          { label: "Utgångslägen", value: formatInt(data.baselines.length) },
-          { label: "Mätvärden", value: formatInt(data.measurements.length) },
-        ]}
-      />
+      <div className="flex flex-col gap-4">
+        <SectionHeader
+          as="h1"
+          size="xl"
+          eyebrow="Effekt"
+          title={title}
+          aside={aside}
+          meta={[
+            { label: "Månader", value: monthsText },
+            { label: "Utgångslägen", value: formatInt(data.baselines.length) },
+            { label: "Mätvärden", value: formatInt(data.measurements.length) },
+          ]}
+        />
+        {data.dataStartInMonth ? (
+          <p className="font-mono text-xs break-words text-subtle">
+            Vinst per automat i {monthLabel(monthOfDate(data.dataStartInMonth))} räknas från första
+            ordern {day(data.dataStartInMonth)}. Dagar utan data räknas inte som automatdagar.
+          </p>
+        ) : null}
+      </div>
 
       <section aria-labelledby="forbattring" className="flex flex-col gap-8">
         <SectionHeader

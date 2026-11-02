@@ -32,6 +32,9 @@ const STATUS: Record<
   missed: { status: "warning", text: "Missat" },
 };
 
+/** Mål för en månad som inte har börjat: varken prognos eller status. */
+const NOT_STARTED = { status: "neutral", text: "Ej påbörjad" } as const;
+
 function value(metric: GoalRecord["metric"], v: number) {
   return metric === "active_machines" ? String(v) : kr(v);
 }
@@ -162,9 +165,11 @@ export function GoalsView({
           {progress.map((g) => {
             const share =
               g.target > 0 ? Math.max(0, Math.min(1, g.actual / g.target)) : g.actual > 0 ? 1 : 0;
+            // Månaden har inte börjat: ingen prognos och ingen status (inte "i fas").
+            const notStarted = g.measuredThrough === null;
             const forecastShare =
-              g.target > 0 ? Math.max(0, Math.min(1, g.forecast / g.target)) : 0;
-            const st = STATUS[g.status];
+              notStarted || g.target <= 0 ? 0 : Math.max(0, Math.min(1, g.forecast / g.target));
+            const st = notStarted ? NOT_STARTED : STATUS[g.status];
             const rec = byId.get(g.goalId);
             return (
               <li
@@ -176,8 +181,16 @@ export function GoalsView({
                     <p className="label text-subtle">
                       {monthLabel(g.month)} · {METRIC_LABEL[g.metric]}
                     </p>
-                    <p className="text-base text-fg">{g.text}</p>
-                    <p className="text-sm text-muted">{g.detail}</p>
+                    <p className="text-base text-fg">
+                      {notStarted
+                        ? `${METRIC_LABEL[g.metric]}: mål ${value(g.metric, g.target)} i ${monthLabel(g.month)}.`
+                        : g.text}
+                    </p>
+                    <p className="text-sm text-muted">
+                      {notStarted
+                        ? "Månaden har inte börjat. Utfall och prognos räknas från den första dagen."
+                        : g.detail}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <StatusTag status={st.status}>{st.text}</StatusTag>
@@ -204,7 +217,11 @@ export function GoalsView({
                 <div
                   className="relative h-2 w-full border border-line"
                   role="img"
-                  aria-label={`Utfall ${value(g.metric, g.actual)}, prognos ${value(g.metric, g.forecast)}, mål ${value(g.metric, g.target)}`}
+                  aria-label={
+                    notStarted
+                      ? `Ej påbörjad, mål ${value(g.metric, g.target)}`
+                      : `Utfall ${value(g.metric, g.actual)}, prognos ${value(g.metric, g.forecast)}, mål ${value(g.metric, g.target)}`
+                  }
                 >
                   <span
                     className="absolute inset-y-0 left-0 border-r border-dashed border-line-control"
@@ -220,7 +237,7 @@ export function GoalsView({
                     Utfall {value(g.metric, g.actual)}
                     {g.progressBp !== null ? ` (${pct(g.progressBp)})` : ""}
                   </span>
-                  <span>Prognos {value(g.metric, g.forecast)}</span>
+                  <span>Prognos {notStarted ? "–" : value(g.metric, g.forecast)}</span>
                   <span>Mål {value(g.metric, g.target)}</span>
                 </div>
                 <EvidenceDetails evidence={g.evidence} links={links[g.goalId] ?? []} />

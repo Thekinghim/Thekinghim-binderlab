@@ -4,7 +4,7 @@ import { SectionHeader } from "@/components/ui/section-header";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { formatInt } from "@/lib/format";
 
-import { EvidenceDetails } from "../../expansion/_components/evidence";
+import { DataStartNote, EvidenceDetails } from "../../expansion/_components/evidence";
 import { loadUnitEconomicsPage } from "../../expansion/_lib/data";
 import { kr, paybackShort } from "../../expansion/_lib/display";
 import { evidenceLinks } from "../../expansion/_lib/model";
@@ -70,6 +70,7 @@ export default async function EnhetsekonomiPage({
             },
           ]}
         />
+        <DataStartNote clippedFrom={period.clippedFrom} requested={period.requested} />
         <EvidenceDetails
           evidence={comparison.evidence}
           links={evidenceLinks(comparison.evidence, names, 0)}

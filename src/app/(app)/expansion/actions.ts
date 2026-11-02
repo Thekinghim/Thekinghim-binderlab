@@ -12,6 +12,7 @@ import { failure, type ActionResult } from "./_lib/action-result";
 import {
   goalSchema,
   idSchema,
+  leadArchiveSchema,
   leadSchema,
   leadStageSchema,
   storeProfileSchema,
@@ -22,6 +23,7 @@ import {
   saveGoalFor,
   saveLeadFor,
   saveStoreProfileFor,
+  setLeadArchivedFor,
   setLeadStageFor,
 } from "./_lib/service";
 import { currentViewer } from "./_lib/session";
@@ -57,6 +59,17 @@ export async function setLeadStage(raw: unknown): Promise<ActionResult> {
   try {
     const viewer = await operator();
     await setLeadStageFor(viewer, leadStageSchema.parse(raw));
+    revalidateAppData();
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return failure(error, "expansion");
+  }
+}
+
+export async function setLeadArchived(raw: unknown): Promise<ActionResult> {
+  try {
+    const viewer = await operator();
+    await setLeadArchivedFor(viewer, leadArchiveSchema.parse(raw));
     revalidateAppData();
     return { ok: true, data: undefined };
   } catch (error) {

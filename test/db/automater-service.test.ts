@@ -259,6 +259,17 @@ describe("redigera", () => {
     expect(r.error).toMatch(/^BL-001 har order från 10.mars/);
   });
 
+  it("driftstart efter första placeringen nekas", async () => {
+    const r = await updateMachineFor(owner, {
+      machineId: F.machineId,
+      name: "Automat Ett",
+      activeFrom: "2025-02-01",
+    });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/^BL-001 står i en butik från 1.jan/);
+    expect((await machine(F.machineId)).active_from).toBe("2025-01-01");
+  });
+
   it("läsaren får inte redigera", async () => {
     const r = await updateMachineFor(reader, {
       machineId: F.machineId,
@@ -348,6 +359,11 @@ describe("flytt, avveckling och återaktivering", () => {
     expect(move.error).toContain("avvecklad");
     expect(await reactivateMachineFor(owner, { machineId: F.machineId })).toEqual({ ok: true });
     expect((await machine(F.machineId)).active_to).toBeNull();
+    // Placeringen som avvecklingen avslutade öppnas igen: automaten står kvar i butiken.
+    expect((await placements(F.machineId)).at(-1)).toMatchObject({
+      store_id: secondStoreId,
+      valid_to: null,
+    });
     expect((await reactivateMachineFor(owner, { machineId: F.machineId })).ok).toBe(false);
   });
 

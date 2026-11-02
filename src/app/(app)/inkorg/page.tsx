@@ -277,9 +277,9 @@ export default async function InboxPage({
           </div>
         ) : null}
         <p className="text-sm text-muted">
-          Återbetalningarna räknas på återbetalningsdagen, automaten och titeln (docs/berakningar.md,
-          avsnitt 14). De visas inte i Lönsamhet än: vinsten där är före återbetalningar. Intäkt,
-          inköp och butiksersättning ändras inte.
+          Återbetalningarna räknas på återbetalningsdagen, automaten och titeln
+          (docs/berakningar.md, avsnitt 14). De visas inte i Lönsamhet än: vinsten där är före
+          återbetalningar. Intäkt, inköp och butiksersättning ändras inte.
         </p>
         {data.truncated ? (
           <p className="font-mono text-xs text-muted">

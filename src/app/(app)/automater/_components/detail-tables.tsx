@@ -17,6 +17,18 @@ import {
 
 import type { PlacementLine, RecentOrder, StockLine } from "../_lib/types";
 
+/** Betalsätt från Awish (samma översättning som på ordersidan). */
+const PAYMENT: Record<string, string> = {
+  card: "Kort",
+  swish: "Swish",
+  cash: "Kontant",
+};
+
+function paymentText(method: string | null): string {
+  if (!method) return MISSING;
+  return PAYMENT[method.trim().toLowerCase()] ?? method;
+}
+
 function day(iso: string | null, now: Date): string {
   const d = parseIsoDate(iso);
   return d ? formatDate(d, { year: "auto", now }) : MISSING;
@@ -48,30 +60,38 @@ export function StockTable({
   const cols = useMemo((): Column<StockLine>[] => {
     const n = new Date(now);
     const local = wallClockIn(n, timeZone);
+    const status = (l: StockLine) =>
+      l.level === "now" ? (
+        <StatusTag status={l.titleId === firstNow ? "critical" : "warning"}>
+          {l.onHand <= 0 ? "Slut" : "Fyll på nu"}
+        </StatusTag>
+      ) : l.level === "soon" ? (
+        <StatusTag status="warning">Fyll på snart</StatusTag>
+      ) : l.onHand <= 0 ? (
+        <StatusTag status="offline">Slut</StatusTag>
+      ) : (
+        <StatusTag status="ok">Räcker</StatusTag>
+      );
     return [
       {
         key: "title",
         header: "Titel",
         sortValue: (l) => l.name,
         hideable: false,
-        render: (l) => <span className="text-sm">{l.name}</span>,
+        render: (l) => (
+          <span className="flex min-w-0 flex-col gap-1 py-1">
+            <span className="text-sm">{l.name}</span>
+            {/* Under md står statusen här, under namnet (design.md 5.1). */}
+            <span className="md:hidden">{status(l)}</span>
+          </span>
+        ),
       },
       {
         key: "status",
         header: "Status",
+        hideOnMobile: true,
         sortValue: (l) => (l.level === "now" ? 0 : l.level === "soon" ? 1 : 2),
-        render: (l) =>
-          l.level === "now" ? (
-            <StatusTag status={l.titleId === firstNow ? "critical" : "warning"}>
-              {l.onHand <= 0 ? "Slut" : "Fyll på nu"}
-            </StatusTag>
-          ) : l.level === "soon" ? (
-            <StatusTag status="warning">Fyll på snart</StatusTag>
-          ) : l.onHand <= 0 ? (
-            <StatusTag status="offline">Slut</StatusTag>
-          ) : (
-            <StatusTag status="ok">Räcker</StatusTag>
-          ),
+        render: (l) => status(l),
       },
       {
         key: "onHand",
@@ -169,7 +189,7 @@ export function RecentOrdersTable({
         header: "Betalning",
         hideOnMobile: true,
         sortValue: (o) => o.paymentMethod ?? "",
-        render: (o) => <span className="text-sm text-muted">{o.paymentMethod ?? MISSING}</span>,
+        render: (o) => <span className="text-sm text-muted">{paymentText(o.paymentMethod)}</span>,
       },
       {
         key: "external",

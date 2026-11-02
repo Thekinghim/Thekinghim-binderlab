@@ -7,7 +7,7 @@ import { SectionHeader } from "@/components/ui/section-header";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { formatInt } from "@/lib/format";
 
-import { EstimateTag } from "./_components/evidence";
+import { DataStartNote, EstimateTag } from "./_components/evidence";
 import { PriceChangeView, SiteEstimateView } from "./_components/estimate-view";
 import { GoalsView } from "./_components/goals-view";
 import { PipelineView, StoreProfilesView } from "./_components/pipeline-view";
@@ -44,7 +44,7 @@ export default async function ExpansionPage({
   const names = lookups(data.names);
   const { estimate } = data.newMachine;
   const top = data.pipeline.find((p) => p.estimate.status === "ok" && p.estimate.investmentOre > 0);
-  const openLeads = data.leads.filter((l) => OPEN_STAGES.includes(l.stage)).length;
+  const openLeads = data.leads.filter((l) => !l.archived && OPEN_STAGES.includes(l.stage)).length;
   const missingProfiles = data.profiles.filter(
     (p) => !p.archived && (p.storeType === null || p.city === null),
   ).length;
@@ -85,18 +85,21 @@ export default async function ExpansionPage({
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
-      <SectionHeader
-        as="h1"
-        size="xl"
-        eyebrow="Expansion"
-        title={title}
-        aside={aside}
-        meta={[
-          { label: "Underlag", value: periodLabel },
-          { label: "Öppna platser", value: formatInt(openLeads) },
-          { label: "Mål efter", value: formatInt(goalsBehind) },
-        ]}
-      />
+      <div className="flex flex-col gap-4">
+        <SectionHeader
+          as="h1"
+          size="xl"
+          eyebrow="Expansion"
+          title={title}
+          aside={aside}
+          meta={[
+            { label: "Underlag", value: periodLabel },
+            { label: "Öppna platser", value: formatInt(openLeads) },
+            { label: "Mål efter", value: formatInt(goalsBehind) },
+          ]}
+        />
+        <DataStartNote clippedFrom={data.period.clippedFrom} requested={data.period.requested} />
+      </div>
 
       <section
         id="ny-automat"
