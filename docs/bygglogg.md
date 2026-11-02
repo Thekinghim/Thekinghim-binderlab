@@ -74,3 +74,5 @@ Tas bort när alla faser är klara.
 - Fas 9–10 (Ekonomi, Avtal, Butiksportal) och fas 6b (Assistent, Expansion, Enhetsekonomi, Effekt) klara.
 - Pågår: slutkontroll fas 2–5 (wf_2c6fb7c8-67a), fas 6 Rapporter+Prognos, fas 8+11 Drift+Marknad, fas 7 del 1 (demo, onboarding, sökning).
 - Öppet till integrationen: /lager och /drift planerar besök från olika dagar (gårdagens resp. dagens takt).
+- 13:30 Fas 8 (Drift, Inkorg, larm, PWA, besöksplan) och fas 11 (Marknad) klara. Öppet till integrationen: Automater ska använda
+  healthInputOf/loadHealthData (samma status som Drift), återbetalningar i Lönsamhet via applyRefunds, cron för /api/cron/larm i vercel.json.

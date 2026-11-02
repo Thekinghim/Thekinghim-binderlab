@@ -99,7 +99,12 @@ security definer
 set search_path = ''
 as $$
 begin
-  if (select auth.uid()) is null or new.storage_path is null then
+  -- Systemet (ingen inloggad) och användare utan skrivrätt i organisationen (som RLS
+  -- ändå nekar) berörs inte.
+  if (select auth.uid()) is null
+     or new.storage_path is null
+     or not private.has_role(new.organization_id, 'owner', 'admin')
+  then
     return new;
   end if;
   if tg_op = 'UPDATE' then
@@ -139,10 +144,14 @@ create index reports_storage_path_idx on public.reports (organization_id, storag
 
 create function private.report_deliveries_require_approval() returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 begin
-  if (select auth.uid()) is not null and not exists (
+  -- Användare utan skrivrätt nekas ändå av RLS; här gäller kontrollen ägare och admin.
+  if (select auth.uid()) is not null
+     and private.has_role(new.organization_id, 'owner', 'admin')
+     and not exists (
     select 1 from public.report_approvals a
     where a.organization_id = new.organization_id and a.report_id = new.report_id
   ) then
@@ -154,7 +163,7 @@ begin
 end
 $$;
 
-revoke all on function private.report_deliveries_require_approval() from public;
+revoke all on function private.report_deliveries_require_approval() from public, anon;
 
 create trigger t30_require_approval before insert on public.report_deliveries
   for each row execute function private.report_deliveries_require_approval();

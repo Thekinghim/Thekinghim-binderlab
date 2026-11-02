@@ -707,7 +707,9 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       })
       .returning();
     // Ett utskick kräver ett godkännande (20261102145500_rapporter_review_fixes.sql).
-    await tx.insert(s.reportApprovals).values({ ...org, reportId: report!.id, approvedBy: owner.id });
+    await tx
+      .insert(s.reportApprovals)
+      .values({ ...org, reportId: report!.id, approvedBy: owner.id });
     await tx.insert(s.reportDeliveries).values({
       ...org,
       reportId: report!.id,
