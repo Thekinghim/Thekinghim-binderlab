@@ -155,7 +155,11 @@ export async function savePushDevice(input: unknown): Promise<{ ok: boolean; err
   const ctx = await requireContextRole(ALL_ROLES);
   const parsed = pushInput.safeParse(input);
   if (!parsed.success)
-    return { ok: false, error: "Webbläsaren gav en ogiltig push-prenumeration." };
+    return {
+      ok: false,
+      error:
+        "Webbläsaren gav en push-prenumeration som Binderlab inte kan använda (okänd push-tjänst).",
+    };
   const p = parsed.data;
   try {
     await withUserDb((tx) =>

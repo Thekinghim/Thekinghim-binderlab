@@ -234,20 +234,46 @@ finns i `src/server/accounting` (tjänster, adaptrar, frågor) och beräkningarn
   igen på rubrikerna: utbetalningar (Referens, Period från, Period till, Utbetald, Belopp,
   Avgifter, Återbetalningar) och specifikation per order (Referens, Ordernummer, Belopp).
   Samma referens igen är dubblett; med andra belopp blir den konflikt och den sparade
-  ändras inte. Filen sparas som underlag i `.data/imports/{org}/payouts/` (lokalt, samma
-  FileStore som orderimporten). `PAYOUT_SOURCE=awish_api` är förberedd
-  (`AwishPayoutApi`) men kastar tills Awish lämnat dokumentation för avräkningen.
+  ändras inte. Filen sparas som underlag i samma lagring som orderimporten, vald med
+  `IMPORT_FILE_STORE` (`local`: `.data/imports/{org}/payouts/`, standard i development;
+  `supabase`: bucket `imports`, standard i preview och production). En felaktig
+  utbetalning arkiveras med en anteckning (knappen Arkivera, loggas) och kan sedan
+  importeras rättad med samma referens; referensen är unik bara bland icke arkiverade.
+  Avgifter och återbetalningar är avdrag: minustecken eller inte betyder samma sak, så en
+  kreditering av avgifter syns i stället som ett högre utbetalt belopp. En period över
+  366 dagar blir en felrad. `PAYOUT_SOURCE=awish_api` är förberedd (`AwishPayoutApi`)
+  men kastar tills Awish lämnat dokumentation för avräkningen.
 - **Avstämning**: väntad utbetalning = försäljning − avgifter − återbetalningar, per
   utbetalningsperiod. Avvikelser förklaras (avgift, saknade order, tidszon, dubbletter …)
   och kan markeras som utredda med en anteckning (`deviation_reviews`, append-only, även
   i `audit_log`). Servern räknar om avvikelsen innan den sparas och sparar sitt eget
-  fingerprint: ändras avvikelsen senare gäller inte utredningen.
-- **Bokföring**: verifikationerna kommer från `sie4Verifications` (`@/reports`) med
-  kontona i `ledger_accounts`. `GET /ekonomi/sie?manad=ÅÅÅÅ-MM` ger SIE 4-filen (CP437).
-  Med `ACCOUNTING_PROVIDER=none` visar sidan "Ej konfigurerad" och SIE-filen. `local`
-  skriver filen och en JSON till utkorgen. Fortnox, Visma och Bokio har gränssnittet
+  fingerprint: ändras avvikelsen senare gäller inte utredningen. En utredning utan
+  fingerprint stoppas av databasen. Kända återbetalningar är kundärendenas
+  `refunded_ore`/`refunded_on` (`incidents`). Med fler än en datakälla jämförs en
+  utbetalning bara med order från sin egen källa, i den källans tidszon.
+- **Bokföring**: dagskassa, butiksersättning och inköpsvärde kommer från
+  `sie4Verifications` (`@/reports`). `src/server/accounting/vouchers.ts` lägger till en
+  verifikation per utbetalning, daterad dagen pengarna kom in: D bank (`bank`, 1930), D
+  kortavgifter (leverantörens faktiska avgifter), D försäljning och moms
+  (återbetalningar), K fordran på kortinlösen (`settlement`, 1580). Kvar på 1580 står då
+  order som leverantören inte betalat ut. Dagar som en utbetalning täcker bokförs utan
+  uppskattad kortavgift (ingen dubbelbokning). Saknar kontoplanen `bank` används BAS 1930
+  och sidan säger det; migreringen `20261102142000` lägger in `bank` i befintliga
+  organisationer (seeden, som ägs av annan, bör lägga till den i `SEED_LEDGER_ACCOUNTS`).
+  Numren (serie BL) löper fortlöpande över räkenskapsåret. `GET /ekonomi/sie?manad=ÅÅÅÅ-MM`
+  ger SIE 4-filen (CP437, `#GEN` = dagens datum) för en avslutad månad; pågående och
+  framtida månader ger 422. Leverans till bokföringsprogrammet: bara avslutade månader,
+  en gång per månad och i ordning, loggad i `voucher_deliveries` (append-only, audit).
+  En skickad månad behåller sina nummer; ändras den efteråt visar sidan det. Med
+  `ACCOUNTING_PROVIDER=none` visar sidan "Ej konfigurerad" och SIE-filen. `local` skriver
+  filen och en JSON till utkorgen. Fortnox, Visma och Bokio har gränssnittet
   (`BookkeepingAdapter` i `src/server/accounting/bookkeeping.ts`) men ingen
   implementation ännu.
+- **Kassaflöde**: `@/analytics/cashflow`. Utbetalningsrytmen läses ur utbetalningarna
+  först när det finns minst två; annars antas en i månaden. Inköp framåt: lagda
+  inköpsorder (en delvis mottagen order delas i mottaget och rest) plus påfyllnad av
+  lagret i försäljningstakt (inköpsvärdet för sålda pack i prognosfönstret, per dag,
+  minus redan planerade inköpsorder samma månad). Antagandena står på sidan.
 - **Fasta kostnader**: `fixed_costs` (försäkring, programvara, transport, lager, övrigt),
   per månad, kvartal eller år, gemensamma eller per automat. Arkiveras i stället för att
   raderas; ändringar som påverkar en stängd månad stoppas (BL004) och loggas.
@@ -262,15 +288,23 @@ finns i `src/server/accounting` (tjänster, adaptrar, frågor) och beräkningarn
   uppsägningsdag och uppgifter om avtalsfilen. Villkoren för ersättningen är
   `store_agreements` kopplade med `contract_id` (bara samma butik, BL041). Filen sparas
   via FileStore i bucket `contracts` (`{org}/{avtal}/{sha256}.{pdf|png|jpg|docx}`),
-  typen kontrolleras mot innehållet, högst 20 MB. Hämtas via `GET /avtal/{id}/fil`.
+  typen kontrolleras mot innehållet, högst 20 MB. Filkolumnerna (`storage_path`,
+  `file_*`) sätts bara av servern via `public.attach_contract_file`; en klient som skriver
+  dem direkt stoppas (42501), och typen är begränsad till tillåtlistan. Hämtas via
+  `GET /avtal/{id}/fil`: typen kontrolleras mot innehållet igen, PDF visas inline och
+  allt annat laddas ned med `Content-Security-Policy: sandbox; default-src 'none'` och
+  `nosniff`. Ett felaktigt avtal arkiveras (och kan återställas) och ger då inga
+  påminnelser.
 - **Påminnelse i Att göra**: regeln finns i `@/analytics/contracts`
   (`contractReminders`): påminnelse 90 dagar före sista uppsägningsdag, nyckel
   `contract:{id}:{slut}`, fingerprint som ändras när status eller datum ändras. Att göra
   (`computeTodos`, ägs av annan) behöver en punkttyp `contract` som tar `due` ur
   resultatet; avtalen läses med `queryContracts` i `src/server/accounting/queries.ts`.
 - **Tester**: `test/db/ekonomi.test.ts` (import, avstämning med avsiktliga avvikelser,
-  utredning, fasta kostnader, SIE, kassaflöde, avtal, filer, roller och RLS) och
-  `src/server/accounting/payout-csv.test.ts`.
+  utredning, återbetalningar, arkivering och ny import, fasta kostnader, verifikationer
+  per utbetalning, nummerserie och leveranslogg, SIE, kassaflöde, avtal, filer, roller
+  och RLS), `test/db/redteam-ekonomi.test.ts` (granskningens attacktester),
+  `src/server/accounting/payout-csv.test.ts` och `src/server/accounting/vouchers.test.ts`.
 
 Beställaren: välj bokföringsprogram och skaffa API-åtkomst (Fortnox: integration i
 utvecklarportalen; Visma eEkonomi: Visma Developer; Bokio: API-nyckel), be Awish om

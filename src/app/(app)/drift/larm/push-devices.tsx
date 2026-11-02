@@ -131,7 +131,7 @@ export function PushDevices({
       const r = await sendTestAlert();
       setResults(r.results);
       toast({
-        title: r.ok ? "Provlarm skickat" : "Provlarmet nådde ingen kanal",
+        title: r.ok ? "Provlarm skickat" : (r.error ?? "Provlarmet nådde ingen kanal"),
         tone: r.ok ? "ok" : "critical",
       });
     });

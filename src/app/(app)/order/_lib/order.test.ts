@@ -7,19 +7,29 @@ import { describe, expect, it } from "vitest";
 
 import { formatCsvNumber } from "@/lib/format";
 
-import { csvKronor, csvTime, csvTimeFormatter, orderCsv, orderCsvFileName } from "./csv";
-import { averageOre, comparePhrase, orderHeadline, sentence, type HeadlineInput } from "./headline";
+import {
+  csvKronor,
+  csvTime,
+  csvTimeFormatter,
+  orderCsv,
+  orderCsvColumns,
+  orderCsvFileName,
+  orderCsvPart,
+} from "./csv";
+import { comparePhrase, orderHeadline, sentence, type HeadlineInput } from "./headline";
 import {
   cleanQuery,
   DEFAULT_SORT,
   hasPageFilter,
   likePattern,
   listSignature,
+  lockedListQuery,
   parseOrderParams,
   searchTerms,
   withOrderParams,
 } from "./params";
 import { buildRefs, matchTerms, rankMap, sortRanks, titleChoices } from "./refs";
+import { providerNote } from "../_components/order-detail";
 import type { OrderRefs, OrderRow } from "./types";
 
 const T1 = "11111111-1111-4111-8111-111111111111";
@@ -121,6 +131,30 @@ describe("listSignature", () => {
   });
 });
 
+describe("lockedListQuery", () => {
+  it("låser en relativ period till datum och tar bort detaljvyn", () => {
+    const q = lockedListQuery(
+      `period=30d&butik=${S1}&q=mystery&order=${T1}`,
+      { start: "2026-10-03", end: "2026-11-01" },
+    );
+    const sp = new URLSearchParams(q);
+    expect(sp.get("period")).toBeNull();
+    expect(sp.get("from")).toBe("2026-10-03");
+    expect(sp.get("to")).toBe("2026-11-01");
+    expect(sp.get("butik")).toBe(S1);
+    expect(sp.get("q")).toBe("mystery");
+    expect(sp.get("order")).toBeNull();
+  });
+});
+
+describe("detaljvyns datakälla", () => {
+  it("upprepar inte providern när namnet redan säger den", () => {
+    expect(providerNote("Awish (CSV)", "awish_csv")).toBeNull();
+    expect(providerNote("Awish", "awish_csv")).toBe("Awish, CSV-fil");
+    expect(providerNote("Kassasystem", "awish_grpc")).toBe("Awish, API");
+  });
+});
+
 describe("sökord", () => {
   it("delar på mellanslag, tar bort dubbletter och kapar efter sex ord", () => {
     expect(searchTerms(" Mystery  mystery BL-002 ")).toEqual(["Mystery", "BL-002"]);
@@ -179,6 +213,7 @@ const base: HeadlineInput = {
   compare: { start: "2026-09-23", end: "2026-10-12" },
   days: 20,
   periodKey: "eget",
+  hasOrders: true,
   latestOrderAt: "2026-11-01T16:17:00.000Z",
   dataStart: "2026-01-01",
   filtered: false,
@@ -222,16 +257,33 @@ describe("orderHeadline", () => {
     expect(plain(h.aside)).toBe(`79 987 kr betalt, inga order 23 sep. – 12 okt.`);
   });
 
-  it("använder snittet när det inte finns någon jämförelse (Allt)", () => {
+  it("säger order per dag när det inte finns någon jämförelse och perioden är full av data", () => {
     const h = orderHeadline({
       ...base,
       compare: null,
       compareTotals: null,
-      dataStart: "2025-01-01",
+      dataStart: "2026-10-13",
     });
-    expect(plain(h.aside)).toBe(`79 987 kr betalt, snitt 173,88 kr per order.`);
-    expect(averageOre(base.totals)).toBe(17_388);
-    expect(averageOre({ count: 0, amountOre: 0 })).toBeNull();
+    // "Allt": perioden börjar med första ordern, så den upprepas inte.
+    expect(plain(h.aside)).toBe(`79 987 kr betalt, i snitt 23 order per dag.`);
+    const few = orderHeadline({
+      ...base,
+      totals: { count: 46, amountOre: 799_870 },
+      compare: null,
+      compareTotals: null,
+    });
+    expect(plain(few.aside)).toBe(`7 999 kr betalt, i snitt 2,3 order per dag.`);
+  });
+
+  it("säger när urvalets första order kom, med filter", () => {
+    const h = orderHeadline({
+      ...base,
+      compare: null,
+      compareTotals: null,
+      dataStart: "2026-10-20",
+      filtered: true,
+    });
+    expect(plain(h.aside)).toBe(`79 987 kr betalt. Första ordern i urvalet kom 20 okt.`);
   });
 
   it("skriver i dag i stället för antal dagar", () => {
@@ -246,9 +298,22 @@ describe("orderHeadline", () => {
       aside: "Senaste ordern kom 1 nov. 17:17.",
     });
     expect(
-      orderHeadline({ ...base, totals: { count: 0, amountOre: 0 }, filtered: true }).title,
-    ).toBe("Inga order matchar filtret.");
-    expect(orderHeadline({ ...base, latestOrderAt: null }).title).toBe("Inga order ännu.");
+      plainH(orderHeadline({ ...base, totals: { count: 0, amountOre: 0 }, filtered: true })),
+    ).toEqual({
+      title: "Inga order matchar filtret.",
+      aside: "Senaste ordern som matchar kom 1 nov. 17:17.",
+    });
+    expect(
+      orderHeadline({
+        ...base,
+        totals: { count: 0, amountOre: 0 },
+        filtered: true,
+        latestOrderAt: null,
+      }).aside,
+    ).toBe("Inte heller utanför perioden.");
+    expect(orderHeadline({ ...base, hasOrders: false, latestOrderAt: null }).title).toBe(
+      "Inga order ännu.",
+    );
   });
 });
 
@@ -322,6 +387,15 @@ describe("CSV", () => {
     for (const ore of [0, 5, 100, 12_950, 7_998_700, -350]) {
       expect(csvKronor(ore)).toBe(formatCsvNumber(ore / 100, 2));
     }
+  });
+
+  it("ger samma fil i strömmade delar som i ett stycke", () => {
+    const columns = orderCsvColumns(refs, "Europe/Stockholm");
+    const parts =
+      orderCsvPart(rows.slice(0, 1), columns, true) + orderCsvPart(rows.slice(1), columns, false);
+    expect(parts).toBe(orderCsv(rows, refs, "Europe/Stockholm"));
+    expect(orderCsvPart([], columns, false)).toBe("");
+    expect(orderCsvPart([], columns, true)).toBe(orderCsv([], refs, "Europe/Stockholm"));
   });
 
   it("namnger filen efter perioden", () => {
