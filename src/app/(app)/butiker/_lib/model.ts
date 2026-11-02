@@ -349,8 +349,7 @@ export function listHeadline(
   if (revenue <= 0) return { title, aside: "Ingen försäljning i perioden." };
   const top = [...rows].sort((a, b) => b.revenueOre - a.revenueOre)[0]!;
   const parts = [
-    `${sek(compensation)} till ${rows.length === 1 ? "butiken" : "butikerna"}, ${formatPercent(compensation / revenue)} av intäkten`,
-    `vinst ${sek(profit)}`,
+    `${sek(compensation)} (${formatPercent(compensation / revenue)}) till ${rows.length === 1 ? "butiken" : "butikerna"}, vinst ${sek(profit)}`,
   ];
   if (active.length > 1) {
     parts.push(`${top.name} står för ${formatPercent(top.revenueOre / revenue, 0)}`);
@@ -393,7 +392,7 @@ export function listKpis(rows: readonly StoreRow[], monthLabel: string): KpiView
     },
     {
       id: "compensation",
-      label: "Till butikerna",
+      label: rows.length === 1 ? "Till butiken" : "Till butikerna",
       value: compensation,
       kind: "sek",
       delta: rel(compensation, prevCompensation),
@@ -614,7 +613,7 @@ export function storeIssues(args: {
       id: "no-recipient",
       level: "neutral",
       text: "Ingen tar emot butikens månadsrapport.",
-      short: "Ingen rapportmottagare",
+      short: "Ingen mottagare",
       actionable: true,
     });
   }

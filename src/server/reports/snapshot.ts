@@ -23,6 +23,7 @@ import {
   buildAccountantReport,
   buildPartnerReport,
   buildStoreReport,
+  sie4Verifications,
   type AccountantReport,
   type LedgerAccount,
   type PartnerOwner,
@@ -76,6 +77,11 @@ export interface AccountantSnapshot extends SnapshotBase {
    * butiksersättningen men saknar inköpspris. Saknas i äldre ögonblicksbilder.
    */
   readonly ordersWithoutTitle?: number;
+  /**
+   * Sista verifikationsnumret i SIE-filen (null om filen inte kan skapas). Nästa månads
+   * underlag fortsätter numreringen härifrån. Saknas i äldre ögonblicksbilder.
+   */
+  readonly sieLastNumber?: number | null;
 }
 
 export interface PartnerSnapshot extends SnapshotBase {
@@ -168,6 +174,31 @@ export function stockAtMonthEnd(
   return { stock, unknown };
 }
 
+/** Kalenderdagen ('ÅÅÅÅ-MM-DD') för en tidpunkt i organisationens tidszon. */
+export function localDay(iso: string, timeZone: string): IsoDate {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/** Sista verifikationsnumret i SIE-filen, eller null om filen inte kan skapas. */
+export function lastVerificationNumber(report: AccountantReport, sie: Sie4Options): number | null {
+  try {
+    const list = sie4Verifications(report, sie);
+    const last = list[list.length - 1];
+    return last ? last.number : (sie.firstVerificationNumber ?? 1) - 1;
+  } catch {
+    return null;
+  }
+}
+
 function cleanText(value: string | null | undefined, max: number): string | null {
   if (value === null || value === undefined) return null;
   const t = value.replace(/\r\n?/g, "\n").trim();
@@ -223,7 +254,7 @@ export function buildSnapshot(input: SnapshotInput): ReportSnapshot {
         verificationSeries: input.sieSeries?.series ?? "A",
         firstVerificationNumber: input.sieSeries?.firstNumber ?? 1,
         // Dagen då underlaget skapas (#GEN), inte periodens slut.
-        generatedOn: input.generatedAt.slice(0, 10),
+        generatedOn: localDay(input.generatedAt, input.organization.timeZone),
       };
       return {
         ...base,
@@ -232,6 +263,7 @@ export function buildSnapshot(input: SnapshotInput): ReportSnapshot {
         sie,
         missingAccounts: requiredAccounts(report).filter((k) => !have.has(k)),
         ordersWithoutTitle: input.ordersWithoutTitle ?? 0,
+        sieLastNumber: lastVerificationNumber(report, sie),
       };
     }
     case "delagare": {

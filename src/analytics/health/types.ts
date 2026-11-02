@@ -109,9 +109,14 @@ export interface HealthInput {
 export interface SalesCoverage {
   readonly machineId: string;
   /** Senaste tidpunkt som försäljningen är känd till (ISO 8601 UTC). */
-  readonly until: string;
+  readonly until?: string | null;
   /** Datakällans namn, för förklaringen. */
   readonly sourceName?: string | null;
+  /**
+   * Automatens senaste order oavsett titel (ISO 8601 UTC). En order vars titel inte matchats
+   * finns inte bland försäljningshändelserna, men automaten har ändå sålt.
+   */
+  readonly lastSaleAt?: string | null;
 }
 
 /** En timme i veckan (1 = måndag … 7 = söndag, timme 0–23) och vad den bidrar med. */

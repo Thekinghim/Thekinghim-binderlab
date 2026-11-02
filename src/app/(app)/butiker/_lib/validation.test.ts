@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  agreementChangeImpact,
   checkAgreementEnd,
+  newAgreementImpact,
   newAgreementSchema,
   parsePercentBp,
   parseRentOre,
@@ -80,7 +82,15 @@ describe("scheman", () => {
   });
   it("ändrat avtal: villkoren tolkas på samma sätt", () => {
     const v = updateAgreementSchema.parse({ agreementId: STORE, commission: "", rent: "900" });
-    expect(v).toMatchObject({ commissionBp: null, monthlyRentOre: 90_000, validTo: null });
+    expect(v).toMatchObject({ commissionBp: null, monthlyRentOre: 90_000, confirmHistory: false });
+    // Utelämnad sista dag = oförändrad; tom = tills vidare.
+    expect(v.validTo).toBeUndefined();
+    expect(
+      updateAgreementSchema.parse({ agreementId: STORE, rent: "1", validTo: "" }).validTo,
+    ).toBe(null);
+    expect(
+      updateAgreementSchema.parse({ agreementId: STORE, rent: "1", validTo: "2026-12-31" }).validTo,
+    ).toBe("2026-12-31");
   });
   it("mottagare: e-post krävs", () => {
     expect(recipientSchema.safeParse({ storeId: STORE, name: "Anna", email: "" }).success).toBe(
@@ -146,5 +156,58 @@ describe("checkAgreementEnd", () => {
     expect(checkAgreementEnd(list, "a", null)).toMatch(/Nästa avtal/);
     expect(checkAgreementEnd(list, "a", "2026-09-30")).toMatch(/före det börjar/);
     expect(checkAgreementEnd(list, "x", null)).toBe("Avtalet finns inte.");
+  });
+});
+
+describe("ändringar bakåt i tiden", () => {
+  const TODAY = "2026-11-02";
+  const a = {
+    validFrom: "2026-10-01",
+    validTo: null,
+    commissionBp: 1_000,
+    monthlyRentOre: null,
+  } as const;
+
+  it("nytt avtal: bara dagar före i dag räknas om", () => {
+    expect(newAgreementImpact("2026-11-02", null, TODAY)).toBeNull();
+    expect(newAgreementImpact("2026-12-01", null, TODAY)).toBeNull();
+    expect(newAgreementImpact("2026-10-15", null, TODAY)).toEqual({
+      start: "2026-10-15",
+      end: "2026-11-01",
+    });
+    expect(newAgreementImpact("2026-10-15", "2026-10-20", TODAY)).toEqual({
+      start: "2026-10-15",
+      end: "2026-10-20",
+    });
+  });
+
+  it("rättning: villkor bakåt till start, sista dag mellan gammalt och nytt slut", () => {
+    // Bara anteckningen: inget räknas om.
+    expect(agreementChangeImpact(a, { ...a }, TODAY)).toBeNull();
+    // Nya villkor på ett avtal som började 1 okt.
+    expect(agreementChangeImpact(a, { ...a, commissionBp: 1_200 }, TODAY)).toEqual({
+      start: "2026-10-01",
+      end: "2026-11-01",
+    });
+    // Sista dagen i framtiden påverkar inte passerade dagar.
+    expect(agreementChangeImpact(a, { ...a, validTo: "2026-12-31" }, TODAY)).toBeNull();
+    // Sista dagen bakåt: dagarna efter den nya sista dagen till i går.
+    expect(agreementChangeImpact(a, { ...a, validTo: "2026-10-20" }, TODAY)).toEqual({
+      start: "2026-10-21",
+      end: "2026-11-01",
+    });
+    // Ett avslutat avtal förlängs: dagarna mellan gammalt och nytt slut.
+    expect(
+      agreementChangeImpact(
+        { ...a, validTo: "2026-10-10" },
+        { ...a, validTo: "2026-10-20" },
+        TODAY,
+      ),
+    ).toEqual({ start: "2026-10-11", end: "2026-10-20" });
+    // Ett kommande avtal kan rättas fritt.
+    const upcoming = { ...a, validFrom: "2026-12-01" };
+    expect(
+      agreementChangeImpact(upcoming, { ...upcoming, monthlyRentOre: 50_000 }, TODAY),
+    ).toBeNull();
   });
 });

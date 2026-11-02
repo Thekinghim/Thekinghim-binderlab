@@ -60,12 +60,14 @@ export interface CoverageRow {
   readonly dataUntil: Date | null;
   /** Senaste lyckade import från källan. */
   readonly syncedAt: Date | null;
+  /** Automatens senaste order oavsett titel (även order vars titel inte matchats). */
+  readonly lastOrderAt: Date | null;
 }
 
 /** Täckningen per automat. Bara tidpunkter: fungerar för alla roller utom butiken. */
 export async function loadCoverage(tx: Tx, orgId: string, at: Date): Promise<CoverageRow[]> {
   const res = await tx.execute(
-    sql`select machine_id, data_source_id, source_name, manual, data_until, synced_at
+    sql`select machine_id, data_source_id, source_name, manual, data_until, synced_at, last_order_at
         from public.sales_data_until(${orgId}::uuid, ${at.toISOString()}::timestamptz)`,
   );
   const toDate = (v: unknown): Date | null =>
@@ -77,6 +79,7 @@ export async function loadCoverage(tx: Tx, orgId: string, at: Date): Promise<Cov
     manual: r.manual === true,
     dataUntil: toDate(r.data_until),
     syncedAt: toDate(r.synced_at),
+    lastOrderAt: toDate(r.last_order_at),
   }));
 }
 
@@ -87,11 +90,12 @@ export function healthInputOf(data: HealthData, timeZone: string): HealthInput {
     machines: data.machines,
     signals: data.signals,
     stock: data.stock,
-    salesCoverage: data.coverage.flatMap((c): SalesCoverage[] =>
-      c.dataUntil
-        ? [{ machineId: c.machineId, until: c.dataUntil.toISOString(), sourceName: c.sourceName }]
-        : [],
-    ),
+    salesCoverage: data.coverage.map((c): SalesCoverage => ({
+      machineId: c.machineId,
+      until: c.dataUntil?.toISOString() ?? null,
+      sourceName: c.sourceName,
+      lastSaleAt: c.lastOrderAt?.toISOString() ?? null,
+    })),
     options: { timeZone },
   };
 }

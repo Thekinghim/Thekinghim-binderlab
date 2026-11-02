@@ -181,7 +181,7 @@ describe("listan", () => {
     expect(rows[2]!.issue).toMatchObject({ short: "Inget avtal i dag", level: "critical" });
     expect(rows[2]!.machineCodes).toEqual(["BL-003"]);
     // Gallerian har avtal men ingen tar emot rapporten.
-    expect(rows[1]!.issue?.short).toBe("Ingen rapportmottagare");
+    expect(rows[1]!.issue?.short).toBe("Ingen mottagare");
     expect(rows[0]!.issue).toBeNull();
     expect(rows[0]!.href).toBe("/butiker/s1?period=30d");
     expect(rows[0]!.current?.termsLabel).toBe(`Provision 10${NB}%`);
@@ -189,9 +189,9 @@ describe("listan", () => {
   it("rubriken bär intäkten och andelen till butikerna", () => {
     const h = listHeadline(rows, `på 2${NB}dagar`);
     expect(h.title).toBe(`3${NB}butiker gav 220${NB}kr på 2${NB}dagar.`);
-    expect(h.aside).toContain(`35${NB}kr till butikerna`);
+    expect(h.aside).toContain(`35${NB}kr (15,9${NB}%) till butikerna, vinst`);
     expect(h.aside).toContain("Kiosken står för 68");
-    expect(listHeadline([rows[0]!], "i dag").aside).toContain("till butiken,");
+    expect(listHeadline([rows[0]!], "i dag").aside).toContain("till butiken, vinst");
     expect(listHeadline([], "i dag").title).toBe("Inga butiker ännu.");
   });
 

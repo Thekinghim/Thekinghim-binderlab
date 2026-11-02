@@ -100,6 +100,18 @@ export function ReviewPanel({
       });
       if (!result.ok) return setError(result.error);
       const { sent, failed } = result.data;
+      // Valet töms efter utskicket: bara de som misslyckades står kvar, så att ett nytt
+      // klick inte skickar rapporten en gång till till dem som just fått den.
+      const failedEmails = new Set(failed.map((f) => f.email.toLowerCase()));
+      setChosen(
+        new Set(
+          ids.filter((id) => {
+            const r = recipients.find((x) => x.id === id);
+            return r !== undefined && failedEmails.has(r.email.toLowerCase());
+          }),
+        ),
+      );
+      if (failed.length === 0) setFollowText("");
       if (failed.length > 0) {
         setError(
           `${formatInt(failed.length)} utskick misslyckades: ${failed.map((f) => `${f.email} (${f.error})`).join(", ")}`,
@@ -189,6 +201,21 @@ export function ReviewPanel({
           )
         ) : null}
 
+        {approved && !report.hasPdf ? (
+          <StateMessage
+            kind="error"
+            compact
+            message="PDF:en saknas i lagringen trots att rapporten är godkänd."
+            detail={
+              canEdit
+                ? "Den skapas när du öppnar PDF:en eller skickar rapporten. Butiksportalen kan inte visa filen förrän dess."
+                : "En ägare eller admin skapar den."
+            }
+            action={canEdit ? { label: "Skapa PDF →", href: `/rapport/${report.id}/fil/pdf` } : undefined}
+            className="px-0"
+          />
+        ) : null}
+
         {approved && canEdit ? (
           recipients.length === 0 ? (
             <StateMessage
@@ -247,7 +274,7 @@ export function ReviewPanel({
                 >
                   {chosen.size === 0
                     ? "Välj mottagare"
-                    : `Skicka till ${formatInt(chosen.size)} ${chosen.size === 1 ? "mottagare" : "mottagare"}`}
+                    : `Skicka till ${formatInt(chosen.size)} mottagare`}
                 </Button>
                 {[...chosen].some((id) => deliveredTo.has(id)) ? (
                   <span className="text-sm text-muted">

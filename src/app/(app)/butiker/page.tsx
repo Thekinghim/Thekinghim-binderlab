@@ -72,17 +72,18 @@ export default async function ButikerPage({
           <div className="flex flex-col gap-3">
             {data.ignoredMachine ? (
               <p className="text-sm text-muted">
-                Automatfiltret ({data.ignoredMachine}) gäller inte här. Butiker visar hela
-                butikerna.
+                {data.scopeLabel
+                  ? `Siffrorna gäller hela ${data.scopeLabel}, inte bara ${data.ignoredMachine}. Automatens egna siffror finns under Automater.`
+                  : `Automatfiltret (${data.ignoredMachine}) gäller inte här. Butiker visar hela butikerna.`}
               </p>
             ) : null}
             <StoreKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
             <p className="max-w-[72ch] text-sm text-muted">
               {sentence(
-                `Till butikerna är det som ska betalas ut: provision på alla order och hyra för hela perioden ${period.rangeLabel}`,
+                `Till ${rows.length === 1 ? "butiken" : "butikerna"} är det som ska betalas ut: provision på alla order och hyra för hela perioden ${period.rangeLabel}`,
               )}{" "}
-              Lönsamhet räknar butiksersättningen bara på order med inköpspris och visar därför
-              ett lägre belopp.
+              Lönsamhet räknar butiksersättningen bara på order med inköpspris och visar därför ett
+              lägre belopp.
             </p>
           </div>
 
@@ -91,7 +92,7 @@ export default async function ButikerPage({
               id="alla-butiker"
               index={1}
               eyebrow={`Per butik · ${days}`}
-              title={`${sek(earned)} intjänat av butikerna hittills i ${data.monthLabel}.`}
+              title={`${sek(earned)} intjänat av ${active.length === 1 ? "butiken" : "butikerna"} hittills i ${data.monthLabel}.`}
               aside={
                 withAgreement === active.length
                   ? `${plural(withAgreement, "butik", "butiker")} med gällande avtal.`

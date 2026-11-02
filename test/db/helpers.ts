@@ -737,6 +737,43 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       titleId: title!.id,
       message: "Lågt lager",
     });
+    // Drift: ägarens larminställningar, en push-enhet, ett skickat utskick, en körning av
+    // larmjobbet och en påfyllning från fältet (skrivs i appen via RPC eller av jobbet).
+    await tx.insert(s.alertSubscriptions).values({ ...org, userId: owner.id, channels: ["email"] });
+    await tx.insert(s.pushSubscriptions).values({
+      ...org,
+      userId: owner.id,
+      endpoint: `https://fcm.googleapis.com/fcm/send/${randomUUID()}`,
+      p256dh: "p".repeat(40),
+      authSecret: "a".repeat(16),
+    });
+    await tx.insert(s.alertDeliveries).values({
+      ...org,
+      userId: owner.id,
+      sendAt: new Date("2025-03-12T09:00:00Z"),
+      status: "sent",
+      subject: "Lågt lager",
+      items: [],
+      sentAt: new Date("2025-03-12T09:00:00Z"),
+    });
+    await tx
+      .insert(s.alertRuns)
+      .values({ ...org, ranAt: new Date("2025-03-12T09:00:00Z"), status: "ok" });
+    const [refill] = await rows<{ id: string }>(
+      tx,
+      sql`select id from public.stock_events where organization_id = ${orgId}::uuid and kind = 'refill' limit 1`,
+    );
+    await tx.insert(s.fieldSubmissions).values({
+      ...org,
+      clientId: randomUUID(),
+      machineId: machine!.id,
+      titleId: title!.id,
+      quantity: 10,
+      fromWarehouse: false,
+      occurredAt: new Date("2025-03-01T08:00:00Z"),
+      stockEventId: refill!.id,
+      submittedBy: owner.id,
+    });
     await tx.execute(sql`set local role authenticated`);
     await tx.insert(s.incidents).values({
       ...org,

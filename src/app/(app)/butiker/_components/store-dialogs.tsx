@@ -135,7 +135,13 @@ export function AddStoreButton({ query }: { query: string }) {
 }
 
 /** Redigera och arkivera på butikens sida. Ägare och admin. */
-export function StoreActions({ store, machines }: { store: StoreDetail; machines: readonly string[] }) {
+export function StoreActions({
+  store,
+  machines,
+}: {
+  store: StoreDetail;
+  machines: readonly string[];
+}) {
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const [archiveError, setArchiveError] = useState<string | null>(null);

@@ -167,6 +167,8 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     section: "main",
     roles: READERS,
     mobileRank: 7,
+    // Sidan väljer månad själv (?manad); skalets period och filter gäller inte här.
+    context: false,
     phase: 6,
     lead: "Utskick och underlag.",
   },

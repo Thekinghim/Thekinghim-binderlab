@@ -104,8 +104,7 @@ function periodInfo(
     comparisonLabel: hasComparison ? d.comparisonLabel : null,
     coverage,
     partial:
-      coverage !== null &&
-      (coverage.start !== p.period.start || coverage.end !== p.period.end),
+      coverage !== null && (coverage.start !== p.period.start || coverage.end !== p.period.end),
   };
 }
 

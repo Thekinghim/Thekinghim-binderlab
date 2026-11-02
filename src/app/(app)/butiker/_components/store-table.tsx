@@ -40,7 +40,15 @@ function columns(monthLabel: string): Column<StoreRow>[] {
       key: "status",
       header: "Status",
       sortValue: (r) =>
-        r.issue ? (r.issue.level === "critical" ? 0 : r.issue.level === "warning" ? 1 : 2) : r.archived ? 4 : 3,
+        r.issue
+          ? r.issue.level === "critical"
+            ? 0
+            : r.issue.level === "warning"
+              ? 1
+              : 2
+          : r.archived
+            ? 4
+            : 3,
       csv: (r) =>
         r.issue?.short ?? (r.archived ? "Arkiverad" : r.current ? "Avtal gäller" : "Inget avtal"),
       hideable: false,

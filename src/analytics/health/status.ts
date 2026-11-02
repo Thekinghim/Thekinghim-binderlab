@@ -228,6 +228,8 @@ interface MachinePrep {
   /** Hur långt försäljningsdatat räcker (ms), om det slutar före nu. */
   readonly dataUntilMs: number | null;
   readonly dataSourceName: string | null;
+  /** Senaste order utan försäljningshändelse, när den är senare än försäljningshändelserna. */
+  readonly unmatchedSaleMs: number | null;
 }
 
 function lastOrderOf(
@@ -347,11 +349,19 @@ export function machineHealth(input: HealthInput, now: Date | string | number): 
     else signalsByMachine.set(s.machineId, [s]);
   }
   const coverageByMachine = new Map<string, { ms: number; sourceName: string | null }>();
+  const lastSaleByMachine = new Map<string, number>();
   for (const c of input.salesCoverage ?? []) {
-    const ms = parseInstant(c.until);
-    const prev = coverageByMachine.get(c.machineId);
-    if (!prev || ms > prev.ms)
-      coverageByMachine.set(c.machineId, { ms, sourceName: c.sourceName ?? null });
+    if (c.until) {
+      const ms = parseInstant(c.until);
+      const prev = coverageByMachine.get(c.machineId);
+      if (!prev || ms > prev.ms)
+        coverageByMachine.set(c.machineId, { ms, sourceName: c.sourceName ?? null });
+    }
+    if (c.lastSaleAt) {
+      const ms = parseInstant(c.lastSaleAt);
+      if (ms <= nowMs && ms > (lastSaleByMachine.get(c.machineId) ?? -Infinity))
+        lastSaleByMachine.set(c.machineId, ms);
+    }
   }
   const stockByMachine = new Map<string, number>();
   for (const s of input.stock ?? []) {
@@ -365,6 +375,13 @@ export function machineHealth(input: HealthInput, now: Date | string | number): 
     const last = lastOrderOf(orders, tz);
     let silenceStartMs = last.startMs;
     let fromActivation = false;
+    // En senare order utan försäljningshändelse (titeln inte matchad) avslutar också tystnaden.
+    const lastSaleMs = lastSaleByMachine.get(m.id);
+    const unmatchedSaleMs =
+      lastSaleMs !== undefined && (silenceStartMs === null || lastSaleMs > silenceStartMs)
+        ? lastSaleMs
+        : null;
+    if (unmatchedSaleMs !== null) silenceStartMs = unmatchedSaleMs;
     if (silenceStartMs === null && m.activeFrom !== null) {
       silenceStartMs = localDayStartMs(m.activeFrom, tz);
       fromActivation = true;
@@ -391,6 +408,7 @@ export function machineHealth(input: HealthInput, now: Date | string | number): 
       onHand: stockByMachine.has(m.id) ? (stockByMachine.get(m.id) ?? 0) : null,
       dataUntilMs,
       dataSourceName: coverage?.sourceName ?? null,
+      unmatchedSaleMs,
     });
   }
   // Skydd mot orimligt långa kalendrar (en automat som varit tyst i flera år): historik äldre
@@ -431,11 +449,14 @@ function evaluate(
   const coverageRule = lagging
     ? " Tystnaden räknas fram till senaste importerade försäljning i automatens datakälla, inte fram till nu."
     : "";
-  const lastSaleText = p.lastOrder
-    ? p.lastOrder.orderedAt !== undefined
-      ? `Senaste försäljning ${whenText(parseInstant(p.lastOrder.orderedAt), tz)}.`
-      : sentence(`Senaste försäljning ${day(p.lastOrder.businessDate)}`)
-    : "Ingen försäljning registrerad.";
+  const lastSaleText =
+    p.unmatchedSaleMs !== null
+      ? `Senaste order ${whenText(p.unmatchedSaleMs, tz)} (titeln är inte matchad, så ordern finns inte i lagret).`
+      : p.lastOrder
+        ? p.lastOrder.orderedAt !== undefined
+          ? `Senaste försäljning ${whenText(parseInstant(p.lastOrder.orderedAt), tz)}.`
+          : sentence(`Senaste försäljning ${day(p.lastOrder.businessDate)}`)
+        : "Ingen försäljning registrerad.";
 
   const base = (
     status: HealthStatus,

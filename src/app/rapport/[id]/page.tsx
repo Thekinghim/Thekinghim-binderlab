@@ -38,7 +38,7 @@ export default async function ReportPrintPage({ params }: { params: Promise<{ id
   }
   const s = report.snapshot;
   const scope = s.type === "butik" ? s.store.name : monthLabel(s.month);
-  const back = `/rapporter?manad=${s.month}&typ=${s.type}${s.type === "butik" ? `&butik=${s.store.id}` : ""}`;
+  const back = `/rapporter?manad=${s.month}&typ=${s.type}${s.type === "butik" ? `&butiken=${s.store.id}` : ""}`;
 
   return (
     <div className="bl-desk min-h-dvh">

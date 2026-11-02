@@ -306,7 +306,8 @@ Migreringen `20261102122143_drift_larm_arenden.sql`. Drizzle: `alerts` och `inci
 - **alerts** (kvittering): användare får bara sätta `acknowledged_at`; `acknowledged_by` sätts
   alltid av databasen till den inloggade, och kvitteringar loggas i `audit_log`.
 - RPC **sales_data_until(org, at)**: hur långt den importerade försäljningen räcker per automat
-  (datakällan som automatens senaste order kom från, `data_until`, `synced_at`). Bara
+  (datakällan som automatens senaste order kom från, `data_until`, `synced_at`, automatens
+  senaste order `last_order_at`). Bara
   tidpunkter; ägare, admin, läsare, påfyllare och systemet. Maskinhälsan räknar tystnaden fram
   till `data_until` (docs/berakningar.md, avsnitt 15).
 - **alert_deliveries**: utskick per användare och sändtid (kö och logg), skrivs av larmjobbet.

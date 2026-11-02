@@ -180,7 +180,7 @@ async function archiveTx(tx: Tx, orgId: string, limit: number, ids?: string[]) {
     .orderBy(desc(s.reports.periodStart), desc(s.reports.generatedAt))
     .limit(limit);
   const reportIds = reports.map((r) => r.id);
-  const [approvals, deliveries, stores, names] = await Promise.all([
+  const [approvals, deliveries, stores, names, files] = await Promise.all([
     reportIds.length
       ? tx
           .select({
@@ -222,8 +222,20 @@ async function archiveTx(tx: Tx, orgId: string, limit: number, ids?: string[]) {
       .from(s.stores)
       .where(eq(s.stores.organizationId, orgId)),
     profileNames(tx, orgId),
+    reportIds.length
+      ? tx
+          .select({ reportId: s.reportFiles.reportId })
+          .from(s.reportFiles)
+          .where(
+            and(
+              eq(s.reportFiles.organizationId, orgId),
+              eq(s.reportFiles.kind, "pdf"),
+              inArray(s.reportFiles.reportId, reportIds),
+            ),
+          )
+      : Promise.resolve([]),
   ]);
-  return { reports, approvals, deliveries, stores, names };
+  return { reports, approvals, deliveries, stores, names, files };
 }
 
 function toArchive(data: Awaited<ReturnType<typeof archiveTx>>, all: boolean) {
@@ -243,6 +255,7 @@ function toArchive(data: Awaited<ReturnType<typeof archiveTx>>, all: boolean) {
     deliveriesBy.set(d.reportId, list);
   }
   const storeName = new Map(data.stores.map((x) => [x.id, x.name]));
+  const withPdf = new Set(data.files.map((f) => f.reportId));
   const valid = data.reports.filter((r) => isReportDbKind(r.kind));
   const statuses = reportStatuses(
     valid.map((r) => ({
@@ -276,7 +289,8 @@ function toArchive(data: Awaited<ReturnType<typeof archiveTx>>, all: boolean) {
       generatedAt: r.generatedAt.toISOString(),
       generatedBy: r.generatedBy ? (data.names.get(r.generatedBy) ?? null) : null,
       calcVersion: r.calcVersion,
-      hasPdf: r.storagePath !== null,
+      // Sant först när PDF:en faktiskt sparats (report_files), inte när sökvägen satts.
+      hasPdf: withPdf.has(r.id),
       status: statuses.get(r.id) ?? "draft",
       approvedAt: a ? a.approvedAt.toISOString() : null,
       approvedBy: a?.approvedBy ? (data.names.get(a.approvedBy) ?? null) : null,
@@ -503,19 +517,22 @@ export async function ensurePdfFor(
   const orgId = viewer.organization.id;
   const report = await getReportFor(viewer, id);
   const fileName = reportFileName(report.snapshot, "pdf");
+  const role = await requireRoleFor(viewer.user, orgId, READ_ROLES);
+  const canEdit = EDIT_ROLES.includes(role);
   if (report.storagePath && isValidStoragePath(report.storagePath)) {
+    let bytes: Uint8Array | null = null;
     try {
-      return {
-        bytes: await deps.store.get(report.storagePath),
-        fileName,
-        snapshot: report.snapshot,
-      };
+      bytes = await deps.store.get(report.storagePath);
     } catch {
       // Filen saknas i lagringen (t.ex. lokal disk som rensats): skapa den igen nedan.
     }
+    if (bytes) {
+      // Filen finns men markeringen saknas (äldre rapport): skriv den nu.
+      if (!report.hasPdf && canEdit) await markPdfStored(viewer, id, report.storagePath, bytes);
+      return { bytes, fileName, snapshot: report.snapshot };
+    }
   }
-  const role = await requireRoleFor(viewer.user, orgId, READ_ROLES);
-  if (!EDIT_ROLES.includes(role)) {
+  if (!canEdit) {
     throw new ReportError("PDF:en är inte skapad än. En ägare eller admin skapar den.");
   }
   const bytes = await deps.render(id);
@@ -529,7 +546,29 @@ export async function ensurePdfFor(
         .where(and(eq(s.reports.organizationId, orgId), eq(s.reports.id, id)));
     });
   }
+  await markPdfStored(viewer, id, storagePath, bytes);
   return { bytes, fileName, snapshot: report.snapshot };
+}
+
+/** report_files-raden: PDF:en finns i lagringen. Idempotent. */
+async function markPdfStored(
+  viewer: Viewer,
+  reportId: string,
+  storagePath: string,
+  bytes: Uint8Array,
+): Promise<void> {
+  await as(viewer, EDIT_ROLES, async (tx) => {
+    await tx
+      .insert(s.reportFiles)
+      .values({
+        organizationId: viewer.organization.id,
+        reportId,
+        kind: "pdf",
+        storagePath,
+        byteSize: bytes.byteLength,
+      })
+      .onConflictDoNothing();
+  });
 }
 
 // ---------------------------------------------------------------------------

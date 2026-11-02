@@ -307,11 +307,16 @@ export function AccountantReportDocument({
                 : `${formatInt(n.missing)} nummer saknas: ${gapsText(n.gaps.slice(0, 8))}${n.gaps.length > 8 ? " m.fl." : ""}.`
           }
         >
-          <div className="grid grid-cols-4 gap-[6mm] border-t border-line pt-[3mm]">
+          <div className="grid grid-cols-5 gap-[6mm] border-t border-line pt-[3mm]">
             <ReportFact label="Första">{n ? n.first : "–"}</ReportFact>
             <ReportFact label="Sista">{n ? n.last : "–"}</ReportFact>
             <ReportFact label="I intervallet">
               {n ? `${formatInt(n.count)} av ${formatInt(n.span)}` : "–"}
+            </ReportFact>
+            <ReportFact label="Utan titel">
+              {snapshot.ordersWithoutTitle === undefined
+                ? "–"
+                : formatInt(snapshot.ordersWithoutTitle)}
             </ReportFact>
             <ReportFact label="Luckor">
               <span className="flex items-center gap-1.5">
@@ -336,6 +341,9 @@ export function AccountantReportDocument({
               : ""}
             {rec.duplicateExternalIds.length > 0
               ? `Ordernummer som förekommer två gånger: ${rec.duplicateExternalIds.join(", ")}. `
+              : ""}
+            {(snapshot.ordersWithoutTitle ?? 0) > 0
+              ? `${formatInt(snapshot.ordersWithoutTitle ?? 0)} order saknar kopplad titel. De ingår i försäljningen och butiksersättningen men saknar inköpspris; koppla titeln under Datakällor. `
               : ""}
             {failedChecks === 0
               ? "Alla kontrollsummor stämmer."

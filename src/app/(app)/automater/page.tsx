@@ -95,13 +95,13 @@ export default async function AutomaterPage({
             <SectionHeader
               id="alla-automater"
               index={1}
-              eyebrow={`Per automat · ${daysLabel}`}
+              eyebrow={period.pendingToday ? "Per automat · nu" : `Per automat · ${daysLabel}`}
               title={
                 active.length === 0
                   ? "Ingen automat i drift."
                   : `${formatInt(active.length)} ${active.length === 1 ? "automat" : "automater"} i drift.`
               }
-              aside={spreadText(rows)}
+              aside={period.pendingToday ? "Status, lager och senaste order." : spreadText(rows)}
             />
             <MachineTable
               rows={rows}

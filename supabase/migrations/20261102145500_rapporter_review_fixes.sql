@@ -5,10 +5,11 @@
 --    (append-only, en per rapport och filtyp). Arkivet visar "PDF finns" utifrån
 --    den här raden i stället för reports.storage_path, som sätts redan när
 --    utkastet skapas (databasen kräver en sökväg på varje rapport).
--- 2. reports.storage_path är låst till "{organization_id}/{ÅÅÅÅ-MM}/{id}.pdf" för
---    inloggade användare. En ägare eller admin kan alltså inte peka om en rapport
---    till en annan rapports PDF (som butiksportalens lagringsregel då skulle lämna
---    ut till fel butik).
+-- 2. reports.storage_path kan inte pekas om av inloggade användare: en ändring måste
+--    ge rapportens egen sökväg "{organization_id}/{ÅÅÅÅ-MM}/{id}.pdf", och en ny
+--    rapport får inte återanvända en annan rapports sökväg. En ägare eller admin kan
+--    alltså inte peka en rapport mot en annan rapports PDF (som butiksportalens
+--    lagringsregel då skulle lämna ut till fel butik).
 -- 3. report_deliveries: ett utskick kan bara loggas för en godkänd rapport, även
 --    direkt mot databasen.
 -- 4. Butiksportalen visar bara den SENASTE godkända versionen av en rapport.
@@ -94,26 +95,43 @@ create policy report_files_insert on public.report_files
 
 create function private.reports_storage_path_check() returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 begin
-  if (select auth.uid()) is not null
-     and new.storage_path is distinct from
-       new.organization_id::text || '/' || to_char(new.period_start, 'YYYY-MM') || '/'
-         || new.id::text || '.pdf'
-  then
+  if (select auth.uid()) is null or new.storage_path is null then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' then
+    if new.storage_path is distinct from old.storage_path
+       and new.storage_path is distinct from
+         new.organization_id::text || '/' || to_char(new.period_start, 'YYYY-MM') || '/'
+           || new.id::text || '.pdf'
+    then
+      raise exception using
+        errcode = '23514',
+        message = 'Rapportens PDF har en fast sökväg och kan inte pekas om.';
+    end if;
+  elsif exists (
+    select 1 from public.reports r
+    where r.organization_id = new.organization_id
+      and r.storage_path = new.storage_path
+      and r.id <> new.id
+  ) then
     raise exception using
       errcode = '23514',
-      message = 'Rapportens PDF har en fast sökväg och kan inte pekas om.';
+      message = 'Sökvägen används redan av en annan rapport.';
   end if;
   return new;
 end
 $$;
 
-revoke all on function private.reports_storage_path_check() from public;
+revoke all on function private.reports_storage_path_check() from public, anon;
 
 create trigger t05_storage_path before insert or update of storage_path on public.reports
   for each row execute function private.reports_storage_path_check();
+
+create index reports_storage_path_idx on public.reports (organization_id, storage_path);
 
 -- -----------------------------------------------------------------------------
 -- 3. Utskick kräver godkännande

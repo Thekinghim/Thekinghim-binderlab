@@ -311,6 +311,8 @@ datakälla**, inte till nu:
   automater i en källa larmar inte bara för att dagens fil inte är uppladdad.
 - Automatiska källor (gRPC): täckningen är senaste hämtningen (eller ordern, om den är senare).
 - Automater utan order de senaste 70 dagarna får organisationens senaste täckning.
+- Tystnaden börjar vid automatens senaste order oavsett titel (`last_order_at`): en order vars
+  titel inte matchats finns inte bland lagrets försäljningshändelser, men automaten har sålt.
 - När täckningen slutar före nu står det i förklaringen: "Försäljningen från … är importerad
   till och med …; tystnaden är bedömd fram till dit."
 

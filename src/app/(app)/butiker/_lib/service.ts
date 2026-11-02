@@ -8,6 +8,12 @@
  * läsare (avtal och mottagare är ekonomi, påfyllaren får dem aldrig). Ändring: ägare och
  * admin. Ändringarna loggas i audit_log av triggarna på stores, store_agreements och
  * report_recipients.
+ *
+ * Avtal: en ändring som räknar om ersättning för dagar före i dag (nytt avtal med start
+ * bakåt, rättade villkor på ett avtal som börjat, flyttad sista dag bakåt) sparas bara
+ * med `confirmHistory`; annars svarar tjänsten med `needsConfirm` och vilka dagar och
+ * skickade butiksrapporter som berörs. Arkiverade butiker får inga nya avtal eller
+ * mottagare. En adress tar emot en butiks rapport högst en gång (även unikt index).
  */
 
 import "server-only";
@@ -164,9 +170,7 @@ export async function loadRecipientsFor(viewer: Viewer, storeId: string): Promis
 }
 
 /** Alla butikers rapportmottagare, per butik (för listans Att göra-räkning). */
-export async function loadAllRecipientsFor(
-  viewer: Viewer,
-): Promise<Map<string, RecipientView[]>> {
+export async function loadAllRecipientsFor(viewer: Viewer): Promise<Map<string, RecipientView[]>> {
   const orgId = viewer.organization.id;
   await requireRoleFor(viewer.user, orgId, ECONOMY_ROLES);
   const rows = await withUserDbFor(viewer.user, (tx) => recipientRows(tx, orgId, null));
@@ -508,9 +512,7 @@ export async function updateAgreementFor(
         const existing = await lockStoreAgreements(tx, orgId, a.storeId);
         // Utelämnad sista dag = oförändrad.
         const validTo = v.validTo === undefined ? isoDateOrNull(a.validTo) : v.validTo;
-        const problem = checkAgreementEnd(existing, v.agreementId, validTo, (d) =>
-          dayText(d, ref),
-        );
+        const problem = checkAgreementEnd(existing, v.agreementId, validTo, (d) => dayText(d, ref));
         if (problem) return { ok: false, error: problem };
         const impact = agreementChangeImpact(
           {

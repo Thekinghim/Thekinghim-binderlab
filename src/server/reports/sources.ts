@@ -10,7 +10,7 @@
 
 import "server-only";
 
-import { and, asc, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lt, lte, sql } from "drizzle-orm";
 
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
@@ -35,7 +35,14 @@ import {
 } from "@/server/data/core/queries";
 
 import type { ReportType } from "./kinds";
-import type { SnapshotInput, SnapshotOrganization, SnapshotStockEvent } from "./snapshot";
+import {
+  asSnapshot,
+  fiscalYearOf,
+  lastVerificationNumber,
+  type SnapshotInput,
+  type SnapshotOrganization,
+  type SnapshotStockEvent,
+} from "./snapshot";
 import { busiestWindow, refillSummary, type StoreService } from "./store-service";
 
 export interface LoadArgs {
@@ -221,6 +228,70 @@ async function queryStoreRefillDates(
   return Array.from(rows).map((r) => String((r as { d: string }).d));
 }
 
+type Env = Readonly<Record<string, string | undefined>>;
+
+/**
+ * Verifikationsserie och första nummer för SIE-exporten enligt miljön:
+ * REPORT_SIE_SERIES (standard "A") och REPORT_SIE_FIRST_NUMBER (standard 1, numret för
+ * räkenskapsårets första underlag). Bestäms tillsammans med bokhållaren.
+ */
+export function sieSettingsFromEnv(env: Env = process.env): { series: string; firstNumber: number } {
+  const series = env.REPORT_SIE_SERIES?.trim() || "A";
+  const n = Number(env.REPORT_SIE_FIRST_NUMBER?.trim() || "1");
+  return {
+    series: /^[A-Za-z0-9]{1,10}$/.test(series) ? series : "A",
+    firstNumber: Number.isSafeInteger(n) && n >= 1 ? n : 1,
+  };
+}
+
+/**
+ * Numreringen för månadens SIE-fil: fortsätter efter det senaste GODKÄNDA
+ * bokföringsunderlaget för en tidigare månad i samma räkenskapsår och serie, så att två
+ * månader som importeras till samma räkenskapsår inte får samma verifikationsnummer.
+ * Utan ett sådant underlag börjar numreringen på REPORT_SIE_FIRST_NUMBER.
+ */
+export async function querySieNumbering(
+  tx: Tx,
+  orgId: string,
+  month: IsoMonth,
+  fiscalYear: Period,
+  env: Env = process.env,
+): Promise<{ series: string; firstNumber: number }> {
+  const conf = sieSettingsFromEnv(env);
+  const rows = await tx
+    .select({ snapshot: s.reports.dataSnapshot, periodStart: s.reports.periodStart })
+    .from(s.reports)
+    .innerJoin(
+      s.reportApprovals,
+      and(
+        eq(s.reportApprovals.organizationId, s.reports.organizationId),
+        eq(s.reportApprovals.reportId, s.reports.id),
+      ),
+    )
+    .where(
+      and(
+        eq(s.reports.organizationId, orgId),
+        eq(s.reports.kind, "accountant_statement"),
+        gte(s.reports.periodStart, fiscalYear.start),
+        lt(s.reports.periodStart, monthStart(month)),
+      ),
+    )
+    .orderBy(desc(s.reports.periodStart), desc(s.reports.generatedAt));
+  for (const r of rows) {
+    let snap: ReturnType<typeof asSnapshot>;
+    try {
+      snap = asSnapshot(r.snapshot);
+    } catch {
+      continue;
+    }
+    if (snap.type !== "bokforing" || snap.sie.verificationSeries !== conf.series) continue;
+    const last = snap.sieLastNumber ?? lastVerificationNumber(snap.report, snap.sie);
+    if (last === null) continue;
+    return { series: conf.series, firstNumber: Math.max(conf.firstNumber, last + 1) };
+  }
+  return conf;
+}
+
 /** Allt `buildSnapshot` behöver för en rapport. */
 export async function loadSnapshotInput(tx: Tx, args: LoadArgs): Promise<SnapshotInput> {
   const orgId = args.organizationId;
@@ -315,12 +386,16 @@ export async function loadSnapshotInput(tx: Tx, args: LoadArgs): Promise<Snapsho
         storeService,
       };
     }
-    case "bokforing":
+    case "bokforing": {
+      const ledgerAccounts = await queryLedgerAccounts(tx, orgId);
+      const fiscal = fiscalYearOf(args.month, settings.fiscalYearStartMonth);
       return {
         ...input,
-        ledgerAccounts: await queryLedgerAccounts(tx, orgId),
+        ledgerAccounts,
         fiscalYearStartMonth: settings.fiscalYearStartMonth,
+        sieSeries: await querySieNumbering(tx, orgId, args.month, fiscal),
       };
+    }
     case "delagare": {
       const [owners, stockEvents] = await Promise.all([
         queryOwnersOn(tx, orgId, period.end),

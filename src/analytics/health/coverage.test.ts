@@ -77,3 +77,24 @@ describe("machineHealth: försäljning som inte importerats än", () => {
     expect(b[0]?.dataUntil ?? null).toBeNull();
   });
 });
+
+describe("machineHealth: order utan matchad titel", () => {
+  it("en senare order utan försäljningshändelse avslutar tystnaden", () => {
+    const o = scheduleOrders("m1", "2026-09-01", 70, OPEN, {
+      until: localMs("2026-11-03", "11:00"),
+    });
+    const now = localIso("2026-11-03", "16:00");
+    const [silent] = machineHealth({ orders: o, machines: [machineRef("m1", "Automat 1")] }, now);
+    expect(silent?.status).toBe("suspected_fault");
+    const [h] = machineHealth(
+      {
+        orders: o,
+        machines: [machineRef("m1", "Automat 1")],
+        salesCoverage: [{ machineId: "m1", lastSaleAt: localIso("2026-11-03", "15:50") }],
+      },
+      now,
+    );
+    expect(h?.status).toBe("ok");
+    expect(txt(h?.detail)).toContain("titeln är inte matchad");
+  });
+});

@@ -98,9 +98,9 @@ export async function approveReport(raw: unknown): Promise<ActionResult> {
   try {
     const viewer = await operator();
     const input = approveSchema.parse(raw);
-    await approveReportFor(viewer, input.reportId, input.note ?? null);
-    // PDF:en skapas direkt vid godkännandet, så att den godkända versionen finns som fil
-    // (arkivet och butiksportalen läser den). Går det inte nu skapas den vid utskicket.
+    // PDF:en skapas och sparas FÖRE godkännandet: en godkänd rapport har alltid sin fil
+    // (butiksportalen visar godkända rapporter och länkar till PDF:en). Går det inte
+    // godkänns rapporten inte, och felet visas.
     try {
       await ensurePdfFor(viewer, input.reportId, {
         store: await userReportStore(),
@@ -109,7 +109,13 @@ export async function approveReport(raw: unknown): Promise<ActionResult> {
     } catch (error) {
       unstable_rethrow(error);
       console.error("[rapporter] PDF vid godkännande:", error);
+      const reason = error instanceof Error ? error.message : "okänt fel";
+      return {
+        ok: false,
+        error: `PDF:en kunde inte skapas, så rapporten är inte godkänd: ${reason}`,
+      };
     }
+    await approveReportFor(viewer, input.reportId, input.note ?? null);
     refresh();
     return { ok: true, data: undefined };
   } catch (error) {

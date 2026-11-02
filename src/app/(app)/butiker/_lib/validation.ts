@@ -325,7 +325,10 @@ export interface DayRange {
 
 function union(ranges: readonly DayRange[]): DayRange | null {
   if (ranges.length === 0) return null;
-  return ranges.reduce((a, b) => ({ start: minDate(a.start, b.start), end: maxDate(a.end, b.end) }));
+  return ranges.reduce((a, b) => ({
+    start: minDate(a.start, b.start),
+    end: maxDate(a.end, b.end),
+  }));
 }
 
 /**

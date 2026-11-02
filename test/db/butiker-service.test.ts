@@ -167,7 +167,7 @@ describe("avtal", () => {
     const id = await newStore();
     const a = await createAgreementFor(
       owner,
-      { storeId: id, validFrom: "2026-10-01", commission: "12" },
+      { storeId: id, validFrom: "2026-10-01", commission: "12", confirmHistory: true },
       TODAY,
     );
     expect(a.ok).toBe(true);
@@ -210,7 +210,13 @@ describe("avtal", () => {
     expect(before.ok).toBe(false);
     const bounded = await createAgreementFor(
       owner,
-      { storeId: id, validFrom: "2026-11-01", validTo: "2026-11-30", commission: "5" },
+      {
+        storeId: id,
+        validFrom: "2026-11-01",
+        validTo: "2026-11-30",
+        commission: "5",
+        confirmHistory: true,
+      },
       TODAY,
     );
     expect(bounded.ok).toBe(true);
@@ -229,7 +235,7 @@ describe("avtal", () => {
     const id = await newStore();
     const a = await createAgreementFor(
       owner,
-      { storeId: id, validFrom: "2026-10-01", commission: "12" },
+      { storeId: id, validFrom: "2026-10-01", commission: "12", confirmHistory: true },
       TODAY,
     );
     await createAgreementFor(owner, { storeId: id, validFrom: "2026-12-01", rent: "900" }, TODAY);
@@ -240,9 +246,25 @@ describe("avtal", () => {
       TODAY,
     );
     expect(clash.ok).toBe(false);
-    const fixed = await updateAgreementFor(
+    // Nya villkor gäller bakåt till 1 okt.: kräver bekräftelse.
+    const unconfirmed = await updateAgreementFor(
       owner,
       { agreementId, validTo: "2026-11-30", commission: "12,5", rent: "100" },
+      TODAY,
+    );
+    expect(unconfirmed).toMatchObject({ ok: false, needsConfirm: true });
+    expect(unconfirmed.error).toMatch(
+      /räknar om butikens ersättning bakåt.*1\u00a0okt\.–1\u00a0nov\./,
+    );
+    const fixed = await updateAgreementFor(
+      owner,
+      {
+        agreementId,
+        validTo: "2026-11-30",
+        commission: "12,5",
+        rent: "100",
+        confirmHistory: true,
+      },
       TODAY,
     );
     expect(fixed).toEqual({ ok: true, data: { storeId: id } });
@@ -262,7 +284,7 @@ describe("avtal", () => {
     const id = await newStore();
     const r = await createAgreementFor(
       owner,
-      { storeId: id, validFrom: "2025-10-15", commission: "10" },
+      { storeId: id, validFrom: "2025-10-15", commission: "10", confirmHistory: true },
       TODAY,
     );
     expect(r.ok).toBe(false);
@@ -270,7 +292,121 @@ describe("avtal", () => {
   });
 });
 
+describe("ändringar bakåt i tiden", () => {
+  it("ett nytt avtal före i dag kräver bekräftelse och nämner skickade rapporter", async () => {
+    const id = await newStore("Bakåt");
+    const first = await createAgreementFor(
+      owner,
+      { storeId: id, validFrom: TODAY, commission: "10" },
+      TODAY,
+    );
+    expect(first.ok).toBe(true);
+    // En skickad butiksrapport för oktober.
+    const rid = await createStoreRecipientFor(owner, {
+      storeId: id,
+      name: "Per Ek",
+      email: "per@ek.se",
+    });
+    {
+      const tx = db();
+      const [rep] = await rows<{ id: string }>(
+        tx,
+        sql`insert into public.reports (organization_id, kind, period_start, period_end, store_id, storage_path, data_snapshot, calc_version)
+            values (${orgId}, 'store_statement', '2026-10-01', '2026-10-31', ${id}, ${`${orgId}/2026-10/butik.pdf`}, '{}'::jsonb, 't')
+            returning id`,
+      );
+      await tx.execute(
+        sql`insert into public.report_deliveries (organization_id, report_id, recipient_id, email, status, sent_at)
+            values (${orgId}, ${rep!.id}, ${rid.ok ? rid.data!.id : null}, 'per@ek.se', 'sent', now())`,
+      );
+    }
+    const back = await createAgreementFor(
+      owner,
+      { storeId: id, validFrom: "2026-10-20", validTo: "2026-11-01", rent: "500" },
+      TODAY,
+    );
+    expect(back).toMatchObject({ ok: false, needsConfirm: true });
+    expect(back.error).toContain("oktober 2026 är redan skickad till Per Ek");
+    expect((await agreementsOf(id)).length).toBe(1);
+    const ok = await createAgreementFor(
+      owner,
+      {
+        storeId: id,
+        validFrom: "2026-10-20",
+        validTo: "2026-11-01",
+        rent: "500",
+        confirmHistory: true,
+      },
+      TODAY,
+    );
+    expect(ok.ok).toBe(true);
+    expect((await agreementsOf(id)).length).toBe(2);
+  });
+
+  it("utelämnad sista dag är oförändrad; framtida rättning kräver ingen bekräftelse", async () => {
+    const id = await newStore();
+    const a = await createAgreementFor(
+      owner,
+      { storeId: id, validFrom: "2026-12-01", validTo: "2027-05-31", commission: "8" },
+      TODAY,
+    );
+    const agreementId = a.ok ? a.data!.id : "";
+    expect(
+      await updateAgreementFor(owner, { agreementId, commission: "9", note: "Rättat" }, TODAY),
+    ).toEqual({ ok: true, data: { storeId: id } });
+    expect((await agreementsOf(id))[0]).toMatchObject({
+      valid_to: "2027-05-31",
+      commission_bp: 900,
+    });
+  });
+
+  it("en arkiverad butik får inga nya avtal eller mottagare", async () => {
+    const id = await newStore();
+    expect((await setStoreArchivedFor(owner, { storeId: id, archived: true })).ok).toBe(true);
+    const error = "Butiken är arkiverad. Återställ den först.";
+    expect(
+      await createAgreementFor(owner, { storeId: id, validFrom: TODAY, commission: "5" }, TODAY),
+    ).toEqual({ ok: false, error });
+    expect(
+      await createStoreRecipientFor(owner, { storeId: id, name: "A", email: "a@arkiv.se" }),
+    ).toEqual({ ok: false, error });
+  });
+});
+
 describe("rapportmottagare", () => {
+  it("två mottagare får inte samma adress, inte heller genom en ändring", async () => {
+    const id = await newStore();
+    const a = await createStoreRecipientFor(owner, {
+      storeId: id,
+      name: "Olle",
+      email: "olle@x.se",
+    });
+    const b = await createStoreRecipientFor(owner, { storeId: id, name: "Rut", email: "rut@x.se" });
+    const bid = b.ok ? b.data!.id : "";
+    expect(
+      await updateStoreRecipientFor(owner, {
+        recipientId: bid,
+        name: "Rut",
+        email: "OLLE@x.se",
+        active: true,
+      }),
+    ).toEqual({ ok: false, error: "OLLE@x.se tar redan emot butikens rapport." });
+    expect(a.ok).toBe(true);
+    // Databasen spärrar aktiva dubbletter även utanför tjänsten.
+    await expect(
+      asUser(ownerUser, (tx) =>
+        tx.insert(s.reportRecipients).values({
+          organizationId: orgId,
+          name: "Dubblett",
+          email: "olle@x.se",
+          kind: "store",
+          storeId: id,
+          active: true,
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+
   it("lägg till, dubblett, pausa, ta bort; loggas", async () => {
     const id = await newStore();
     const r = await createStoreRecipientFor(owner, {

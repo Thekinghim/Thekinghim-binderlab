@@ -35,6 +35,7 @@ const APPEND_ONLY = [
   "payout_lines",
   "report_approvals",
   "report_deliveries",
+  "report_files",
   "stock_events",
   "voucher_deliveries",
 ];
@@ -117,6 +118,7 @@ describe("tabeller", () => {
         "releases",
         "report_approvals",
         "report_deliveries",
+        "report_files",
         "report_recipients",
         "reports",
         "source_machines",
