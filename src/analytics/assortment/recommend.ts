@@ -27,7 +27,9 @@
  *
  * Effekt = Σ bidrag per vecka med föreslagna fack − Σ med nuvarande fack (samma modell).
  * Är effekten under `minEffectPerWeekOre` (standard 2 000 = 20 kr/vecka) blir rådet att
- * behålla sortimentet.
+ * behålla sortimentet. Då är raderna (`recommendedSlots`), `fingerprint` och `freeSlots` den
+ * nuvarande fördelningen, så att inget i resultatet motsäger rådet; bästa omfördelningen finns
+ * kvar som underlag i `potentialSlots` och `potentialEffectPerWeekOre`.
  */
 
 import { assertPeriod, type EconomicsSources, type OrderLine, type Period } from "@/domain";
@@ -90,7 +92,13 @@ export interface AssortmentInput extends EconomicsSources {
 export interface AssortmentLine {
   readonly titleId: string;
   readonly currentSlots: number;
+  /** Fack enligt rådet: vid "behåll" samma som `currentSlots`. */
   readonly recommendedSlots: number;
+  /**
+   * Fack i bästa omfördelningen, även när den ger för lite för att föreslås. Skiljer sig från
+   * `recommendedSlots` bara vid "behåll" och visas då som ett underlag, inte som ett råd.
+   */
+  readonly potentialSlots: number;
   /** Var efterfrågan kommer ifrån. */
   readonly source: "observed" | "similar";
   /** Låst: behåller sina fack (saknar pris eller har för lite data). */
@@ -98,7 +106,7 @@ export interface AssortmentLine {
   /** Efterfrågan i pack per vecka, tiondelar. `null` om okänd. */
   readonly demandPerWeekTenths: number | null;
   readonly contributionPerPackOre: number | null;
-  /** Väntat bidrag per vecka med nuvarande respektive föreslagna fack, i öre. */
+  /** Väntat bidrag per vecka med nuvarande respektive rådets fack, i öre. */
   readonly currentContributionPerWeekOre: number | null;
   readonly recommendedContributionPerWeekOre: number | null;
   /** Automater som efterfrågan bygger på (liknande automater för nya titlar). */
@@ -119,11 +127,15 @@ export interface AssortmentChange {
 export interface MachineAssortmentRecommendation {
   /** Stabil nyckel 'assortment:<automat>'. */
   readonly key: string;
-  /** Föreslagen fördelning som text, ändras när rekommendationen ändras. */
+  /**
+   * Rådets fördelning som text ('titel:fack', sorterat), ändras när rekommendationen ändras.
+   * Vid "behåll" är det den nuvarande fördelningen.
+   */
   readonly fingerprint: string;
   readonly machineId: string;
   readonly action: "change" | "keep";
   readonly capacity: number;
+  /** Lediga fack enligt rådet (vid "behåll": kapacitet − nuvarande fack). */
   readonly freeSlots: number;
   readonly lines: readonly AssortmentLine[];
   readonly changes: readonly AssortmentChange[];
@@ -333,6 +345,7 @@ export function recommendAssortment(input: AssortmentInput): MachineAssortmentRe
         titleId: c.titleId,
         currentSlots: c.currentSlots,
         recommendedSlots: c.slots,
+        potentialSlots: c.slots,
         source: c.source,
         locked: c.locked,
         demandPerWeekTenths: c.demand ? tenthsOf(c.demand) : null,
@@ -386,6 +399,24 @@ export function recommendAssortment(input: AssortmentInput): MachineAssortmentRe
     const potentialOre = potential.round();
     const action: MachineAssortmentRecommendation["action"] =
       changes.length > 0 && potentialOre >= minEffect ? "change" : "keep";
+    if (action === "keep") {
+      // Rådet är att behålla: raderna visar nuvarande fack, bästa omfördelningen bara i potentialSlots.
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i]!;
+        lines[i] = {
+          ...l,
+          recommendedSlots: l.currentSlots,
+          recommendedContributionPerWeekOre: l.currentContributionPerWeekOre,
+        };
+      }
+      lines.sort(
+        (a, b) =>
+          b.recommendedSlots - a.recommendedSlots ||
+          b.potentialSlots - a.potentialSlots ||
+          compareStrings(a.titleId, b.titleId),
+      );
+      free = Math.max(capacity - lines.reduce((s, l) => s + l.currentSlots, 0), 0);
+    }
     const lockedLines = lines.filter((l) => l.locked);
     const mName = machineName(machineId);
     const parts: string[] = [];
@@ -405,7 +436,9 @@ export function recommendAssortment(input: AssortmentInput): MachineAssortmentRe
     }
     if (free > 0)
       parts.push(
-        `${plural(free, "fack", "fack")} blir lediga: ingen titel med känt bidrag behöver dem.`,
+        action === "change"
+          ? `${plural(free, "fack", "fack")} blir lediga: ingen titel med känt bidrag behöver dem.`
+          : `${plural(free, "fack", "fack")} står lediga: ingen titel med känt bidrag behöver dem.`,
       );
     if (lockedLines.length > 0) {
       parts.push(

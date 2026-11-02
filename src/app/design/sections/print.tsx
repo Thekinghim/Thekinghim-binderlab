@@ -194,7 +194,6 @@ function Paper({ children, className }: { children: ReactNode; className?: strin
   return (
     <div
       data-theme="print"
-      data-tone="signal"
       className={cn("rounded-sm border border-line px-3 pt-4 pb-3 sm:px-5 sm:pt-5", className)}
     >
       {children}
@@ -259,24 +258,18 @@ export function PrintSection({ index }: { index: number }) {
       </div>
 
       <figure className="m-0 flex flex-col gap-3 lg:col-span-6">
-        <ProofLabel label="PDF på skärm" meta='data-tone="signal"' />
-        <Paper>
-          <RevenueChart />
-        </Paper>
-      </figure>
-      <figure className="m-0 flex flex-col gap-3 lg:col-span-6">
-        <ProofLabel label="Samma diagram i gråskala" meta="filter: grayscale(1)" />
+        <ProofLabel label="Diagram 01 i gråskala" meta="filter: grayscale(1)" />
         <Paper className="grayscale">
           <RevenueChart />
         </Paper>
       </figure>
 
-      <div className="overflow-hidden rounded-md border border-line lg:col-span-12">
+      <div className="overflow-hidden rounded-md border border-line lg:col-span-6">
         <p className="flex items-baseline justify-between gap-3 border-b border-line px-4 py-3 md:px-5">
           <span className="label text-muted">Kodning utan färg</span>
           <Code>--bl-signal: #111</Code>
         </p>
-        <ul className="-mb-px grid sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="-mb-px grid sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
           {encodings.map((e) => (
             <EncodingRow key={e.kind} encoding={e} />
           ))}
