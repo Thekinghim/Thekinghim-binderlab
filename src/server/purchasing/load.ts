@@ -37,6 +37,7 @@ import {
   querySupplierItems,
   querySuppliers,
 } from "./queries";
+import { seriesStartsFromStock } from "./series-start";
 import type { HistoryWeek, PrognosData, PurchaseOrderRecord } from "./types";
 
 export type { Viewer };
@@ -73,7 +74,7 @@ export function lostPeriodOf(period: Period, asOf: IsoDate): Period {
 }
 
 /** Automaterna som filtret omfattar (null = alla). */
-function machinesInScope(input: DomainInput, scope: DataScope): Set<string> | null {
+export function machinesInScope(input: DomainInput, scope: DataScope): Set<string> | null {
   if (scope.machineId) return new Set([scope.machineId]);
   if (scope.storeId) {
     return new Set(
@@ -183,8 +184,22 @@ export async function loadPrognosFor(
     date: d.date,
   }));
 
+  // En titel som legat i automaten utan att sälja räknas från första kända saldo, inte
+  // från första försäljningen (annars överskattas nya och svaga serier).
+  const seriesStarts = seriesStartsFromStock(db.events, asOf);
+
   const forecastFor = (orders: DomainInput["current"]["orders"]): ForecastResult =>
-    forecastSales({ orders, asOf, settings, titles, machines, unavailable });
+    forecastSales({
+      orders,
+      asOf,
+      settings,
+      titles,
+      machines,
+      unavailable,
+      seriesStarts,
+      // Intervallet tar med att nivån är osäker när den skattats på få dagar.
+      options: { levelUncertainty: true },
+    });
   const forecastAll = forecastFor(all.current.orders);
   const forecast = scoped ? forecastFor(inScope.current.orders) : forecastAll;
 
@@ -226,14 +241,35 @@ export async function loadPrognosFor(
       .map(toPurchaseOrderRef),
     prices: all.sources.prices,
     demand: demandFromForecast(forecastAll, today),
-    // Ett utkast är en beställning som ska läggas: räknas som beställt, så att förslaget
-    // inte föreslår samma sak två gånger.
-    options: { includeDraftOrders: true },
+    // Utkast räknas inte som beställt (de kan glömmas och skulle då dölja behovet för
+    // alltid). Sidan visar i stället "utkast finns" på förslagets rader.
+    options: { includeDraftOrders: false },
   };
+
+  // Hur säker efterfrågan i inköpsplanen är: serier med lite data per titel (hela org.).
+  const basis = new Map<string, { series: number; lowData: number; lowDataMilli: number; unitsMilli: number }>();
+  for (const sf of forecastAll.series) {
+    const b = basis.get(sf.titleId) ?? { series: 0, lowData: 0, lowDataMilli: 0, unitsMilli: 0 };
+    b.series += 1;
+    b.unitsMilli += sf.total.unitsMilli;
+    if (sf.status === "low-data") {
+      b.lowData += 1;
+      b.lowDataMilli += sf.total.unitsMilli;
+    }
+    basis.set(sf.titleId, b);
+  }
 
   return {
     today,
     asOf,
+    forecastHistory: { start: addDays(asOf, -(7 * resolveForecastOptions().historyWeeks - 1)), end: asOf },
+    demandBasis: [...basis.entries()].map(([titleId, b]) => ({
+      titleId,
+      series: b.series,
+      lowDataSeries: b.lowData,
+      lowDataUnitsMilli: b.lowDataMilli,
+      unitsMilli: b.unitsMilli,
+    })),
     lostPeriod,
     scope,
     canEdit: (OPERATOR_ROLES as readonly MemberRole[]).includes(role),

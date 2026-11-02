@@ -22,7 +22,12 @@ import { planVisits, type ExtraVisit, type VisitPlan } from "@/analytics/visits"
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
 import { addDays, type IsoDate } from "@/domain";
-import { alertColumns, loadHealthData, type HealthData } from "@/server/alerts/inputs";
+import {
+  alertColumns,
+  healthInputOf,
+  loadHealthData,
+  type HealthData,
+} from "@/server/alerts/inputs";
 import { rowToIncident, type AlertRow } from "@/server/alerts/store";
 import { defaultSubscription, type SubscriptionRow } from "@/server/alerts/subscriptions";
 import { channelStatus, type ChannelStatus } from "@/server/notify";
@@ -159,17 +164,8 @@ export async function loadDriftOverview(ctx: AppContext): Promise<DriftOverview>
   const now = new Date(ctx.now);
   return withUserDb(async (tx) => {
     const orgId = ctx.organization.id;
-    const data = await loadHealthData(tx, orgId, ctx.today);
-    const health = machineHealth(
-      {
-        orders: data.orders,
-        machines: data.machines,
-        signals: data.signals,
-        stock: data.stock,
-        options: { timeZone: ctx.timeZone },
-      },
-      now,
-    );
+    const data = await loadHealthData(tx, orgId, ctx.today, new Date(ctx.now));
+    const health = machineHealth(healthInputOf(data, ctx.timeZone), now);
     const alerts = await loadAlerts(tx, orgId, now);
     const lastRun = ctx.canSeeEconomy ? await loadLastRun(tx, orgId) : null;
     const stockRows = await queryStock(tx, orgId);
@@ -188,17 +184,8 @@ export async function loadVisitPlan(
   const now = new Date(ctx.now);
   return withUserDb(async (tx) => {
     const orgId = ctx.organization.id;
-    const data = await loadHealthData(tx, orgId, ctx.today);
-    const health = machineHealth(
-      {
-        orders: data.orders,
-        machines: data.machines,
-        signals: data.signals,
-        stock: data.stock,
-        options: { timeZone: ctx.timeZone },
-      },
-      now,
-    );
+    const data = await loadHealthData(tx, orgId, ctx.today, new Date(ctx.now));
+    const health = machineHealth(healthInputOf(data, ctx.timeZone), now);
     const stockRows = await queryStock(tx, orgId);
     const warehouse = stockRows
       .filter((r) => r.isCentral)
@@ -227,20 +214,11 @@ export async function loadMachineTimeline(
   const now = new Date(ctx.now);
   return withUserDb(async (tx) => {
     const orgId = ctx.organization.id;
-    const data = await loadHealthData(tx, orgId, ctx.today);
+    const data = await loadHealthData(tx, orgId, ctx.today, new Date(ctx.now));
     const machine = data.machines.find((m) => m.id === machineId);
     if (!machine) return null;
     const health =
-      machineHealth(
-        {
-          orders: data.orders,
-          machines: data.machines,
-          signals: data.signals,
-          stock: data.stock,
-          options: { timeZone: ctx.timeZone },
-        },
-        now,
-      ).find((h) => h.machineId === machineId) ?? null;
+      machineHealth(healthInputOf(data, ctx.timeZone), now).find((h) => h.machineId === machineId) ?? null;
     const from = new Date(now.getTime() - days * 86_400_000);
 
     const stockRows = await tx
@@ -476,7 +454,7 @@ export async function loadAlertSettings(ctx: AppContext): Promise<AlertSettings>
 export async function loadRefillData(ctx: AppContext) {
   return withUserDb(async (tx) => {
     const orgId = ctx.organization.id;
-    const data = await loadHealthData(tx, orgId, ctx.today);
+    const data = await loadHealthData(tx, orgId, ctx.today, new Date(ctx.now));
     const stockRows = await queryStock(tx, orgId);
     const since = addDays(ctx.today, -14);
     const recent = await tx

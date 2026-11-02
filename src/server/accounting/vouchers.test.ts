@@ -4,7 +4,6 @@ import { decodeCp437, type AccountantReport, type LedgerAccount } from "@/report
 
 import { buildSieFile, monthVouchers, type PayoutForBooking } from "./vouchers";
 
-
 const ACCOUNTS: LedgerAccount[] = [
   { key: "settlement", account: "1580", name: "Fordran på kortinlösen" },
   { key: "bank", account: "1930", name: "Företagskonto" },

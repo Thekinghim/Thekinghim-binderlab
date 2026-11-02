@@ -13,9 +13,15 @@ import { describe, expect, it } from "vitest";
 import type { AnalyticsOrder } from "@/analytics/todos";
 import { addDays, eachDay } from "@/domain";
 
+import { orderLinks } from "./display";
 import {
   activeExperimentTitles,
+  analysisPeriod,
   buildMarketModel,
+  experimentPriceCheck,
+  lastFullDay,
+  pricesView,
+  pricingView,
   historicalReleases,
   slotLinesOn,
   slotPrefill,
@@ -29,7 +35,7 @@ import {
   normalizeTitle,
   parseLocalPrices,
 } from "./sources";
-import type { MarketData, ReleaseRow } from "./types";
+import type { MarketData, PriceExperimentRow, ReleaseRow } from "./types";
 
 const TODAY = "2026-11-02";
 
@@ -255,8 +261,8 @@ describe("modellen", () => {
     expect(withRelease.some((r) => r.titleId === "merged")).toBe(false);
   });
 
-  it("förslaget räknas per i dag före släppet och per dagen före efteråt", () => {
-    expect(suggestionDay(release({ releaseDate: "2026-11-10" }), TODAY)).toBe(TODAY);
+  it("förslaget räknas per i går (sista hela dagen) före släppet och per dagen före efteråt", () => {
+    expect(suggestionDay(release({ releaseDate: "2026-11-10" }), TODAY)).toBe("2026-11-01");
     expect(suggestionDay(release({ releaseDate: "2026-07-06" }), TODAY)).toBe("2026-07-05");
   });
 
@@ -351,5 +357,138 @@ describe("modellen", () => {
     const view = withRelease.releases[0]!;
     expect(view.status).toBe("upcoming");
     expect(view.needsAction).toBe(true);
+  });
+
+  it("analysen räknar bara hela dagar med data", () => {
+    const d = data({ dataStart: "2026-10-13" });
+    expect(lastFullDay(d)).toBe("2026-11-01");
+    // 30 dagar bakåt från i dag, men data först från 13 okt. och i dag är inte slut.
+    expect(analysisPeriod(d, { start: "2026-10-04", end: TODAY })).toEqual({
+      start: "2026-10-13",
+      end: "2026-11-01",
+    });
+    // En period helt före första ordern blir en dag lång (för kort för sortimentet).
+    expect(analysisPeriod(d, { start: "2026-09-01", end: "2026-09-30" })).toEqual({
+      start: "2026-09-30",
+      end: "2026-09-30",
+    });
+    const model = buildMarketModel(d, { start: "2026-10-04", end: TODAY });
+    expect(model.assortment.period).toEqual({ start: "2026-10-13", end: "2026-11-01" });
+  });
+
+  it("pristestets resultat visas bara när testpriset syns i orderna", () => {
+    const experiment = (over: Partial<PriceExperimentRow> = {}): PriceExperimentRow => ({
+      id: "e1",
+      titleId: "old",
+      proposalKey: "price-test:old:up:2026-10-20",
+      direction: "up",
+      fromOre: 4900,
+      toOre: 5400,
+      startedOn: "2026-10-20",
+      testDays: 28,
+      stoppedOn: null,
+      testMachineIds: ["m1"],
+      controlMachineIds: ["m2"],
+      text: null,
+      ...over,
+    });
+    // "old" säljs för 49 kr i m1 hela tiden: testpriset 54 kr infördes aldrig.
+    const d = data({ experiments: [experiment()] });
+    const missing = experimentPriceCheck(d, d.experiments[0]!, "2026-11-01")!;
+    expect(missing.status).toBe("missing");
+    expect(missing.orders).toBe(26);
+    expect(missing.atTestPrice).toBe(0);
+    expect(missing.otherModalOre).toBe(4900);
+    const view = pricingView(d, { start: "2026-10-04", end: TODAY }).experiments[0]!;
+    expect(view.measuredTo).toBe("2026-11-01");
+    expect(view.priceCheck?.status).toBe("missing");
+    expect(view.evaluation).toBeNull();
+
+    // Med testpriset i m1 från startdagen räknas effekten.
+    const priced = data({ experiments: [experiment()] });
+    const orders = priced.orders.map((o) =>
+      o.titleId === "old" && o.machineId === "m1" && o.businessDate >= "2026-10-20"
+        ? { ...o, amountOre: 5400 }
+        : o,
+    );
+    const ok = data({ experiments: [experiment()], orders });
+    expect(experimentPriceCheck(ok, ok.experiments[0]!, "2026-11-01")!.status).toBe("ok");
+    const okView = pricingView(ok, { start: "2026-10-04", end: TODAY }).experiments[0]!;
+    expect(okView.evaluation?.ok).toBe(true);
+
+    // Ett test som börjar i dag har ingen hel dag att mäta.
+    const fresh = data({ experiments: [experiment({ startedOn: TODAY })] });
+    const freshView = pricingView(fresh, { start: "2026-10-04", end: TODAY }).experiments[0]!;
+    expect(freshView.status).toBe("planned");
+    expect(freshView.priceCheck).toBeNull();
+    expect(freshView.evaluation).toBeNull();
+  });
+
+  it("bara faktiska inköp flaggas; utkast och marknadspriser är inte leverantörspriser", () => {
+    const quote = (id: string, day: string, ore: number, kind: "quote" | "purchase") => ({
+      id,
+      supplierId: "s1",
+      titleId: "old",
+      quotedOn: day,
+      validUntil: null,
+      unitCostOre: ore,
+      quantity: 10,
+      kind,
+      source: "manual" as const,
+      note: null,
+      createdBy: null,
+    });
+    const history = [0, 1, 2, 3, 4, 5].map((i) =>
+      quote(`p${i}`, addDays("2026-05-01", i * 14), 2000 + (i % 2) * 20, "purchase"),
+    );
+    const d = data({
+      suppliers: [{ id: "s1", name: "Grossisten", archived: false }],
+      quotes: [
+        ...history,
+        quote("offer", "2026-10-20", 2600, "quote"),
+        quote("bought", "2026-10-21", 2600, "purchase"),
+        { ...quote("market", "2026-10-22", 9900, "purchase"), source: "market" as const },
+      ],
+      purchaseLines: [
+        {
+          id: "draft",
+          purchaseOrderId: "po1",
+          supplierId: "s1",
+          titleId: "old",
+          date: "2026-10-23",
+          unitCostOre: 9900,
+          quantity: 10,
+          status: "draft",
+        },
+      ],
+    });
+    const view = pricesView(d, { start: "2026-10-04", end: TODAY });
+    expect(view.purchases.map((p) => p.id)).not.toContain("market");
+    expect(view.purchases.map((p) => p.id)).not.toContain("draft");
+    expect(view.anomalies.ok && view.anomalies.value.map((a) => a.purchaseId)).toEqual(["bought"]);
+    // Offerten syns i prisutvecklingen.
+    expect(view.trends.ok && view.trends.value[0]!.purchases).toBe(8);
+  });
+
+  it("länken till underlaget avgränsas till titeln och automaten", () => {
+    const name = (id: string) => (id === "t1" ? "Titel 1" : "Titel 2");
+    const base = {
+      period: { start: "2026-10-01", end: "2026-10-28" },
+      orderIds: ["o1", "o2"],
+      dates: [],
+      machineIds: ["m1"],
+    };
+    expect(orderLinks({ ...base, titleIds: ["t1"] }, name)).toEqual([
+      {
+        href: "/order?from=2026-10-01&to=2026-10-28&automat=m1&titel=t1",
+        label: "2\u00a0order i underlaget →",
+      },
+    ]);
+    const many = orderLinks({ ...base, machineIds: [], titleIds: ["t1", "t2"] }, name);
+    expect(many.map((l) => l.href)).toEqual([
+      "/order?from=2026-10-01&to=2026-10-28&titel=t1",
+      "/order?from=2026-10-01&to=2026-10-28&titel=t2",
+    ]);
+    expect(orderLinks({ ...base, orderIds: [], titleIds: ["t1"] }, name)).toEqual([]);
   });
 });

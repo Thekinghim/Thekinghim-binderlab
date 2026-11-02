@@ -70,7 +70,16 @@ function Suggestion({ view, ctx }: { view: ReleaseView; ctx: SectionContext }) {
   }
   const s = view.suggestion.value;
   if (s.status !== "ok") {
-    return <StateMessage kind="empty" code="Inget förslag" compact message={s.text} />;
+    // Analysens text uppmanar att lägga in mängden för hand, men släppformuläret har inget
+    // fält för mängd (förslaget fastställs bara när det kan räknas), så den meningen tas bort.
+    return (
+      <StateMessage
+        kind="empty"
+        code="Inget förslag"
+        compact
+        message={s.text.replace(/\s*Lägg in mängden för hand\.\s*$/, "")}
+      />
+    );
   }
   return (
     <div className="flex min-w-0 flex-col gap-4">

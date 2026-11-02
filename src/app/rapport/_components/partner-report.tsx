@@ -39,6 +39,7 @@ import {
   pct,
   sek,
   sekValue,
+  sentence,
   type HeadingLevel,
 } from "./shared";
 
@@ -393,7 +394,9 @@ export function PartnerReportDocument({
           eyebrow="Lager"
           title={
             r.inventory
-              ? `Lagervärde ${sek(r.inventory.totalValueOre)} den ${dayLabel(r.inventory.asOf)}.`
+              ? sentence(
+                  `Lagervärde ${sek(r.inventory.totalValueOre)} den ${dayLabel(r.inventory.asOf)}`,
+                )
               : "Lagervärdet saknas."
           }
           aside={

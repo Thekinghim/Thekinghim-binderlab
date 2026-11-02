@@ -69,6 +69,8 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
             : "Skapa utkasten nedan.";
 
   const preview = data.preview;
+  const sentAll = data.archive.filter((r) => r.status === "sent").length;
+  const draftAll = data.archive.filter((r) => r.status === "draft").length;
   const scope =
     data.type === "butik"
       ? (data.stores.find((x) => x.id === data.storeId)?.name ?? "ingen butik")
@@ -179,7 +181,7 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
           aside={
             data.archive.length === 0
               ? "Skapade rapporter sparas här med underlag och beräkningsversion."
-              : `${formatInt(data.archive.filter((r) => r.status === "sent").length)} skickade, ${formatInt(data.archive.filter((r) => r.status === "draft").length)} utkast.`
+              : `${formatInt(sentAll)} ${sentAll === 1 ? "skickad" : "skickade"}, ${formatInt(draftAll)} utkast.`
           }
         />
         <ArchiveTable rows={data.archive} timeZone={viewer.organization.timezone} />

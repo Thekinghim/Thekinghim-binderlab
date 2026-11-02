@@ -219,6 +219,47 @@ export async function createPurchaseOrderFor(
       if (expectedOn !== null && expectedOn < today) {
         throw new PurchasingError("Väntad leverans kan inte ligga före i dag.");
       }
+      // Varje rad måste vara en artikel hos leverantören, minst minsta order och hela boxar.
+      const items = await tx
+        .select({
+          titleId: s.supplierItems.titleId,
+          packSize: s.supplierItems.packSize,
+          minOrderQty: s.supplierItems.minOrderQty,
+          title: s.titles.name,
+        })
+        .from(s.supplierItems)
+        .innerJoin(
+          s.titles,
+          and(
+            eq(s.titles.organizationId, s.supplierItems.organizationId),
+            eq(s.titles.id, s.supplierItems.titleId),
+          ),
+        )
+        .where(
+          and(
+            eq(s.supplierItems.organizationId, orgId),
+            eq(s.supplierItems.supplierId, input.supplierId),
+          ),
+        );
+      const byTitle = new Map(items.map((i) => [i.titleId, i]));
+      for (const l of input.lines) {
+        const item = byTitle.get(l.titleId);
+        if (!item) {
+          throw new PurchasingError(
+            "En titel på ordern finns inte hos leverantören. Lägg till den som artikel först.",
+          );
+        }
+        if (l.quantity < item.minOrderQty) {
+          throw new PurchasingError(
+            `${item.title}: minsta order är ${item.minOrderQty} pack, ordern har ${l.quantity}.`,
+          );
+        }
+        if (l.quantity % item.packSize !== 0) {
+          throw new PurchasingError(
+            `${item.title}: beställ i hela boxar om ${item.packSize} pack (${l.quantity} är inte jämnt delbart).`,
+          );
+        }
+      }
       const [po] = await tx
         .insert(s.purchaseOrders)
         .values({
@@ -290,6 +331,53 @@ export async function cancelPurchaseOrderFor(viewer: Viewer, input: { id: string
       .update(s.purchaseOrders)
       .set({ status: "cancelled" })
       .where(and(eq(s.purchaseOrders.organizationId, orgId), eq(s.purchaseOrders.id, input.id)));
+  });
+}
+
+export interface CloseResult {
+  /** Pack som aldrig kom (beställt − mottaget, summa över raderna). */
+  readonly missing: number;
+}
+
+/**
+ * Avslutar en delvis mottagen order med restorder: det som inte kommit räknas inte längre
+ * som beställt. Ordern blir `received` (mottagen) i dag, raderna behåller sitt mottagna
+ * antal och anteckningen får en rad om hur mycket som aldrig kom.
+ */
+export async function closePurchaseOrderFor(
+  viewer: Viewer,
+  input: { id: string },
+  now: Date = new Date(),
+): Promise<CloseResult> {
+  const today = todayOf(viewer, now);
+  const orgId = viewer.organization.id;
+  return asOperator(viewer, async (tx) => {
+    const order = await lockOrder(tx, orgId, input.id);
+    if (order.status !== "partially_received") {
+      throw new PurchasingError(
+        order.status === "ordered"
+          ? "Inget har tagits emot på ordern. Avbryt den i stället."
+          : order.status === "draft"
+            ? "Ett utkast kan inte avslutas. Avbryt det i stället."
+            : order.status === "received"
+              ? "Ordern är redan mottagen."
+              : "Ordern är avbruten.",
+      );
+    }
+    const missing = order.lines.reduce(
+      (sum, l) => sum + Math.max(0, l.quantity - l.receivedQuantity),
+      0,
+    );
+    const line = `Avslutad ${today} med restorder: ${missing} pack kom aldrig.`;
+    await tx
+      .update(s.purchaseOrders)
+      .set({
+        status: "received",
+        receivedOn: today,
+        note: order.note ? `${order.note}\n${line}` : line,
+      })
+      .where(and(eq(s.purchaseOrders.organizationId, orgId), eq(s.purchaseOrders.id, input.id)));
+    return { missing };
   });
 }
 

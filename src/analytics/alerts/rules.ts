@@ -189,7 +189,17 @@ export function lowStockAlerts(
     const rate = `${ratioTenths(v.units, v.days)} pack/dag (${v.units} pack på ${plural(v.days, "dag", "dagar")})`;
     const title = empty
       ? `${titleName(s.titleId)} är slut i ${machineName(m.id)}`
-      : `${titleName(s.titleId)} i ${machineName(m.id)} tar slut om ${plural(daysLeft, "dag", "dagar")}`;
+      : `${titleName(s.titleId)} i ${machineName(m.id)} tar slut ${
+          // Samma uträkning som "Beräknat slut" i texten (stockoutDate), så att rubrik och text
+          // aldrig säger olika saker.
+          end === null
+            ? `om ${plural(daysLeft, "dag", "dagar")}`
+            : end <= today
+              ? "i dag"
+              : end === addDays(today, 1)
+                ? "i morgon"
+                : weekdayDay(end)
+        }`;
     const detail = empty
       ? `0 pack kvar. Titeln säljer ${rate}.`
       : `${plural(onHand, "pack", "pack")} kvar, säljer ${rate}.${end ? ` ${sentence(`Beräknat slut ${weekdayDay(end)}`)}` : ""}`;
@@ -363,7 +373,29 @@ export function importAlerts(
       continue;
     }
     const interval = src.expectedIntervalMinutes ?? null;
-    if (interval !== null && interval > 0) {
+    if (src.manual && interval !== null && interval > 0) {
+      // Manuell uppladdning: datat är gammalt när den senaste importerade försäljningen är
+      // äldre än intervallet. En källa som aldrig haft försäljning bedöms inte.
+      const dataMs = src.dataUntil ? parseInstant(src.dataUntil) : null;
+      const syncedMs = src.lastSyncedAt ? parseInstant(src.lastSyncedAt) : null;
+      if (dataMs !== null && nowMs - dataMs > interval * MINUTE_MS) {
+        const minutes = Math.floor((nowMs - dataMs) / MINUTE_MS);
+        const uploadedAfter = syncedMs !== null && syncedMs > dataMs;
+        out.push({
+          ...base,
+          severity: "warning",
+          title: `Försäljningen från ${src.name} är inte importerad sedan ${whenText(dataMs, tz)}`,
+          detail: uploadedAfter
+            ? `Senaste uppladdningen ${whenText(syncedMs, tz)} innehöll ingen nyare försäljning. Kontrollera att filen är den senaste exporten, eller om alla automater i källan står still.`
+            : `Ingen fil är uppladdad sedan dess. Ladda upp den senaste exporten; tills dess bedöms automaterna bara fram till ${whenText(dataMs, tz)}.`,
+          evidence: ev(
+            `Larm när den senaste importerade försäljningen från en källa som laddas upp för hand är äldre än ${durationText(interval)}.`,
+            [],
+            [{ key: "minutesSinceData", label: "Minuter sedan senaste försäljning", value: minutes }],
+          ),
+        });
+      }
+    } else if (interval !== null && interval > 0) {
       const limit = Math.max(minStale, interval * staleIntervals);
       const lastOk = src.lastSyncedAt ? parseInstant(src.lastSyncedAt) : null;
       if (lastOk === null || nowMs - lastOk > limit * MINUTE_MS) {

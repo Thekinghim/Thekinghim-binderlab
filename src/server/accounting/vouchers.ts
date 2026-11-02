@@ -11,8 +11,9 @@
  *      debet  försäljning (sales)          återbetalningar exkl. moms
  *      debet  utgående moms (vat_out)      momsen i återbetalningarna
  *      kredit avräkning (settlement)       utbetalt + avgifter + återbetalningar
- *    Efter utbetalningen står bara den oförklarade skillnaden kvar på avräkningskontot (1580),
- *    samma belopp som avstämningen visar.
+ *    Efter utbetalningen står bara order som leverantören inte betalat ut kvar på
+ *    avräkningskontot (1580): avstämningens avvikelser per order. Avgiftsavvikelsen bokförs
+ *    som kostnad, eftersom de faktiska avgifterna bokförs här.
  * 2. För dagar som en importerad utbetalning täcker bokförs ingen uppskattad kortavgift i
  *    dagskassan (inställningen card_fee_bp): de faktiska avgifterna bokförs vid utbetalningen,
  *    och samma avgift ska inte bokföras två gånger.
@@ -188,13 +189,18 @@ export function monthVouchers(input: MonthVoucherInput): MonthVouchers {
 
   const usedNumbers = new Set(verifications.flatMap((v) => v.transactions.map((t) => t.account)));
   const used = new Map<string, LedgerAccount>();
-  for (const a of accounts) if (usedNumbers.has(a.account) && !used.has(a.account)) used.set(a.account, a);
+  for (const a of accounts)
+    if (usedNumbers.has(a.account) && !used.has(a.account)) used.set(a.account, a);
   return {
     verifications,
     accounts: [...used.values()].sort((a, b) =>
       a.account < b.account ? -1 : a.account > b.account ? 1 : 0,
     ),
-    bankFallback: bankFallback && verifications.some((v) => v.transactions.some((t) => t.account === DEFAULT_BANK_ACCOUNT.account)),
+    bankFallback:
+      bankFallback &&
+      verifications.some((v) =>
+        v.transactions.some((t) => t.account === DEFAULT_BANK_ACCOUNT.account),
+      ),
     daysWithActualFees,
   };
 }
@@ -216,7 +222,10 @@ export function buildSieFile(args: {
   for (const v of args.verifications) {
     const sum = v.transactions.reduce((s, t) => s + t.amountOre, 0);
     if (sum !== 0) {
-      throw new DomainError("invalid_input", `Verifikationen "${v.text}" balanserar inte (${sum} öre).`);
+      throw new DomainError(
+        "invalid_input",
+        `Verifikationen "${v.text}" balanserar inte (${sum} öre).`,
+      );
     }
     for (const t of v.transactions) used.add(t.account);
   }
@@ -239,7 +248,8 @@ export function buildSieFile(args: {
       `#VER ${sieString(v.series)} ${sieString(String(v.number))} ${sieDate(v.date)} ${sieString(v.text)}`,
     );
     lines.push("{");
-    for (const t of v.transactions) lines.push(`   #TRANS ${t.account} {} ${sieAmount(t.amountOre)}`);
+    for (const t of v.transactions)
+      lines.push(`   #TRANS ${t.account} {} ${sieAmount(t.amountOre)}`);
     lines.push("}");
   }
   return new Uint8Array(encodeCp437(lines.join("\r\n") + "\r\n"));

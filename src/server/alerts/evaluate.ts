@@ -31,12 +31,12 @@ import {
   type AlertNotification,
   type AlertSubscription,
 } from "@/analytics/alerts";
-import { machineHealth } from "@/analytics/health";
+import { localDayStartMs, machineHealth } from "@/analytics/health";
 import { businessDateAt } from "@/analytics/todos/time";
 import type { Db, Tx } from "@/db/client";
 import * as s from "@/db/schema";
 
-import { alertColumns, loadHealthData, loadImportData } from "./inputs";
+import { alertColumns, healthInputOf, knownUntil, loadHealthData, loadImportData } from "./inputs";
 import { incidentChanged, incidentToColumns, isRowId, rowToIncident, type AlertRow } from "./store";
 import { rowToSubscription, FIELD_KINDS, type SubscriptionRow } from "./subscriptions";
 
@@ -118,18 +118,14 @@ export async function collectCandidates(
   now: Date,
 ): Promise<{ candidates: AlertCandidate[]; machines: number }> {
   const today = businessDateAt(now, timeZone);
-  const data = await loadHealthData(tx, orgId, today);
-  const health = machineHealth(
-    {
-      orders: data.orders,
-      machines: data.machines,
-      signals: data.signals,
-      stock: data.stock,
-      options: { timeZone },
-    },
-    now,
-  );
-  const imports = await loadImportData(tx, orgId, now);
+  const data = await loadHealthData(tx, orgId, today, now);
+  // Tystnaden räknas bara fram till dit försäljningen är importerad (healthInputOf).
+  const health = machineHealth(healthInputOf(data, timeZone), now);
+  const imports = await loadImportData(tx, orgId, now, data.coverage);
+  // Avvikande dag bedömer i går: bara när försäljningen är känd hela i går (annars är en
+  // fil som inte laddats upp än en "dålig dag").
+  const known = knownUntil(data.coverage);
+  const yesterdayKnown = known === null || known.getTime() >= localDayStartMs(today, timeZone);
   const candidates: AlertCandidate[] = [
     ...healthAlerts(health),
     ...lowStockAlerts(
@@ -146,10 +142,12 @@ export async function collectCandidates(
       { sources: imports.sources, imports: imports.imports, options: { timeZone } },
       now,
     ),
-    ...dayAnomalyAlerts(
-      { orders: data.orders, machines: data.machines, options: { timeZone } },
-      now,
-    ),
+    ...(yesterdayKnown
+      ? dayAnomalyAlerts(
+          { orders: data.orders, machines: data.machines, options: { timeZone } },
+          now,
+        )
+      : []),
   ];
   return { candidates, machines: data.machines.length };
 }

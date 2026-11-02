@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { TYPE_LABEL } from "@/server/reports/kinds";
-import { appBaseUrl, currentReportViewer } from "@/server/reports/runtime";
+import { appBaseUrl, currentReportViewer, reportSender } from "@/server/reports/runtime";
 import {
   eligibleRecipients,
   emailPropsFor,
@@ -78,6 +78,7 @@ export default async function EmailPage({
     props: emailPropsFor(report, r, {
       followText,
       reportUrl: `${base}/rapport/${report.id}`,
+      sender: reportSender(viewer.organization.name),
       attachments: attachments.map((a) =>
         a.filename.endsWith(".pdf") && a.content.byteLength === 0
           ? { filename: a.filename, content: { byteLength: Number.NaN } }

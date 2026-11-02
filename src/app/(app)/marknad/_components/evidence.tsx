@@ -139,8 +139,7 @@ export function Evidence({
           <div className="flex flex-col gap-1">
             <p className="meta text-subtle">
               {formatInt(evidence.orderIds.length)}
-              {NBSP}order i underlaget, per titel (orderlistan visar titelns alla order i
-              perioden):
+              {NBSP}order i underlaget, per titel (orderlistan visar titelns alla order i perioden):
             </p>
             <ul className="flex flex-wrap gap-x-4 gap-y-1">
               {links.map((l) => (

@@ -117,7 +117,12 @@ function PriceCheck({ view, ctx }: { view: ExperimentView; ctx: SectionContext }
   return (
     <div className="flex min-w-0 flex-col gap-2">
       {check.status === "missing" ? (
-        <StateMessage kind="not-configured" code="Testpriset syns inte" compact message={check.text} />
+        <StateMessage
+          kind="not-configured"
+          code="Testpriset syns inte"
+          compact
+          message={check.text}
+        />
       ) : (
         <p className={check.status === "partial" ? "max-w-3xl text-fg" : "meta text-subtle"}>
           {check.text}
@@ -275,7 +280,7 @@ export function PricingSection({
                       confirm={{
                         eyebrow: "Experiment",
                         title: `Starta pristest för ${ctx.names.title[p.titleId] ?? "titeln"}`,
-                        description: `Ändra priset till ${kronor(p.toOre)} i testautomaterna från ${dayText(p.period.start, ctx.today)}. Priset ändras i automaterna, inte här; panelen mäter effekten mot kontrollautomaterna.`,
+                        description: `Ändra priset till ${kronor(p.toOre)} i testautomaterna från ${dayText(p.period.start, ctx.today)}. Priset ändras i Awish, inte här. Panelen kontrollerar i orderna att testpriset tagits i bruk och mäter effekten mot kontrollautomaterna från första hela dagen.`,
                         confirmLabel: "Starta",
                       }}
                     >

@@ -60,8 +60,14 @@ export interface OrderList {
   readonly totals: OrderTotals;
   /** Samma filter i jämförelseperioden, eller null. */
   readonly compareTotals: OrderTotals | null;
-  /** Senaste ordern i organisationen (oavsett filter), ISO, eller null. */
+  /** Snittorder (nettointäkt per order, @/domain averageOrderValueOre), öre, eller null. */
+  readonly averageOrderValueOre: number | null;
+  /** Organisationen har minst en order (oavsett filter och period). */
+  readonly hasOrders: boolean;
+  /** Senaste ordern som matchar filtret, utan periodgräns (ISO), eller null. */
   readonly latestOrderAt: string | null;
+  /** Första affärsdagen med en order som matchar filtret, utan periodgräns, eller null. */
+  readonly firstOrderDate: IsoDate | null;
   /** Första raderna i vald sortering. */
   readonly rows: readonly OrderRow[];
   /** Offset för nästa sida, eller null när allt är laddat. */
@@ -72,6 +78,12 @@ export interface OrderList {
 export interface OrderPage {
   readonly rows: readonly OrderRow[];
   readonly nextOffset: number | null;
+}
+
+/** Var nästa sida börjar: offset, och i tidsordning även sista radens id (markör). */
+export interface OrderPageStart {
+  readonly offset: number;
+  readonly afterId: string | null;
 }
 
 /** Allt om en order, för detaljvyn. */

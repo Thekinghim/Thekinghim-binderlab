@@ -36,9 +36,11 @@ const APPEND_ONLY = [
   "report_approvals",
   "report_deliveries",
   "stock_events",
+  "voucher_deliveries",
 ];
 const RPCS = [
   "accept_invitation",
+  "attach_contract_file",
   "close_period",
   "create_invitation",
   "create_organization",
@@ -126,6 +128,7 @@ describe("tabeller", () => {
         "suppliers",
         "title_aliases",
         "titles",
+        "voucher_deliveries",
       ].sort(),
     );
     expect(scoped).toEqual(tables.filter((t) => t !== "organizations"));
@@ -461,6 +464,7 @@ describe("anon", () => {
   it.each(RPCS)("kan inte köra %s", async (fn) => {
     const args: Record<string, ReturnType<typeof sql>> = {
       accept_invitation: sql`'x'`,
+      attach_contract_file: sql`gen_random_uuid(), gen_random_uuid(), 'x', 'x', 'application/pdf', 1::bigint, 'x'`,
       close_period: sql`gen_random_uuid(), '2025-01-01'::date`,
       create_invitation: sql`gen_random_uuid(), 'a@b.se', 'viewer'`,
       create_organization: sql`'x', 'x'`,

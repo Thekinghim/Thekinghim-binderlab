@@ -8,8 +8,10 @@ import { Input, Select } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { formatInt } from "@/lib/format";
+import { dayText } from "@/server/market/display";
 
 import { saveSlots } from "../actions";
+import { replacedStarts, shiftDay } from "../_lib/dates";
 import type { Option } from "../_lib/types";
 
 export interface SlotLine {
@@ -26,6 +28,8 @@ export function SlotsEditorButton({
   prefill,
   prefillNote,
   today,
+  lockedThrough,
+  starts,
   capacity,
   label,
 }: {
@@ -38,6 +42,10 @@ export function SlotsEditorButton({
   prefill: readonly SlotLine[];
   prefillNote: string | null;
   today: string;
+  /** Senaste genomförda sortimentsändring: fördelningen får börja tidigast dagen efter. */
+  lockedThrough: string | null;
+  /** Startdagar för automatens fackperioder. */
+  starts: readonly string[];
   capacity: number;
   label: string;
 }) {
@@ -50,13 +58,16 @@ export function SlotsEditorButton({
   const [lines, setLines] = useState<{ titleId: string; slots: string }[]>(
     start.map((l) => ({ titleId: l.titleId, slots: String(l.slots) })),
   );
-  const [validFrom, setValidFrom] = useState(today);
+  const minFrom = lockedThrough ? shiftDay(lockedThrough, 1) : null;
+  const defaultFrom = minFrom && minFrom > today ? minFrom : today;
+  const [validFrom, setValidFrom] = useState(defaultFrom);
+  const replaced = replacedStarts(starts, validFrom);
   const total = lines.reduce((s, l) => s + (Number(l.slots) || 0), 0);
   const used = new Set(lines.map((l) => l.titleId));
 
   function reset() {
     setLines(start.map((l) => ({ titleId: l.titleId, slots: String(l.slots) })));
-    setValidFrom(today);
+    setValidFrom(defaultFrom);
     setError(null);
   }
 
@@ -99,7 +110,7 @@ export function SlotsEditorButton({
         description={
           current.length === 0 && prefillNote
             ? prefillNote
-            : "Den nya fördelningen gäller från och med dagen nedan. Tidigare perioder sparas."
+            : "Den nya fördelningen gäller från och med dagen nedan. Perioder före den dagen sparas."
         }
       >
         <form
@@ -166,8 +177,22 @@ export function SlotsEditorButton({
             type="date"
             value={validFrom}
             onChange={(e) => setValidFrom(e.target.value)}
+            min={minFrom ?? undefined}
+            max={shiftDay(today, 90)}
             required
+            hint={
+              lockedThrough
+                ? `Tidigast ${dayText(minFrom!, today)}: fackfördelningen från den genomförda sortimentsändringen ${dayText(lockedThrough, today)} följs upp och skrivs inte över.`
+                : undefined
+            }
           />
+          {replaced.length > 0 ? (
+            <p className="text-sm text-fg" role="status">
+              {replaced.length === 1
+                ? `Fackfördelningen som börjar ${dayText(replaced[0]!, today)} ersätts.`
+                : `${formatInt(replaced.length)} fackfördelningar som börjar ${replaced.map((d) => dayText(d, today)).join(", ")} ersätts.`}
+            </p>
+          ) : null}
           {error ? (
             <p role="alert" className="text-sm text-signal-fg">
               {error}

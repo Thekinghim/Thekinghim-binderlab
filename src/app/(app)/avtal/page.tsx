@@ -18,6 +18,7 @@ import { requireRoute } from "@/server/data/core";
 import { EconomyKpis } from "../ekonomi/_components/bits";
 import { EvidenceDetails } from "../ekonomi/_components/evidence";
 import { isoToDate, periodText, plural, sek } from "../ekonomi/_lib/view";
+import { ContractArchive } from "./_components/contract-archive";
 import { ContractDialog } from "./_components/contract-dialog";
 import { ContractFileUpload } from "./_components/contract-file";
 import type { AgreementOption, ContractDraft } from "./_lib/types";
@@ -42,8 +43,9 @@ const CATEGORY: Record<ExpiringCategory, string> = {
   "no-contract": "Inget gällande avtal",
 };
 
-function day(date: string, today: string): string {
-  return formatDate(isoToDate(date), { year: "auto", now: isoToDate(today) });
+/** Avtalsdatum skrivs alltid med år (ett avtal löper ofta över årsskiftet). */
+function day(date: string): string {
+  return formatDate(isoToDate(date), { year: "always" });
 }
 
 function termsLabel(a: AgreementRecord): string {
@@ -90,8 +92,14 @@ function noticeText(c: ContractRecord): string {
  * Svarar först på hur mycket av intäkten som ligger på avtal som löper ut inom 12 månader.
  * Ägare, admin och läsare; ägare och admin ändrar.
  */
-export default async function AvtalPage() {
+export default async function AvtalPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const ctx = await requireRoute("avtal");
+  const sp = await searchParams;
+  const scoped = Boolean(sp.butik || sp.automat);
   const viewer = await currentViewer();
   const data = await loadContractsFor(viewer, ctx.today);
   const canEdit = ctx.canEdit;
@@ -101,6 +109,7 @@ export default async function AvtalPage() {
     data.reminders.reminders.map((r) => [r.contractId, r]),
   );
   const active = data.contracts.filter((c) => !c.archived);
+  const archivedContracts = data.contracts.filter((c) => c.archived);
   const stores = data.stores.filter((s) => !s.archived).map((s) => ({ id: s.id, name: s.name }));
   const agreementOptions: AgreementOption[] = data.agreements.map((a) => ({
     id: a.id,
@@ -139,6 +148,15 @@ export default async function AvtalPage() {
             { label: "Butiker", value: formatInt(stores.length) },
           ]}
         />
+        {scoped ? (
+          <StateMessage
+            compact
+            kind="no-results"
+            code="Alla butiker"
+            message="Filtret på butik och automat gäller inte Avtal."
+            detail="Avtalen och andelen av intäkten avser alltid hela organisationen."
+          />
+        ) : null}
         {o && o.expiringShareBp !== null ? (
           <EconomyKpis
             label={`Intäkt ${periodText(o.window)}`}
@@ -180,7 +198,7 @@ export default async function AvtalPage() {
           }
           aside={
             due[0]?.term.noticeDeadline
-              ? `Närmast: ${storeName.get(due[0].storeId) ?? "butiken"}, sista dag ${day(due[0].term.noticeDeadline, ctx.today)}.`
+              ? `Närmast: ${storeName.get(due[0].storeId) ?? "butiken"}, sista dag ${day(due[0].term.noticeDeadline)}.`
               : `${plural(active.length, "avtal", "avtal")} bevakas, påminnelse 90 dagar före sista uppsägningsdag.`
           }
         />
@@ -272,14 +290,14 @@ export default async function AvtalPage() {
                     <div className="flex flex-col gap-0.5">
                       <dt className="label text-subtle">Gäller</dt>
                       <dd className="text-fg">
-                        {day(c.validFrom, ctx.today)} –{" "}
-                        {r?.term.currentEnd ? day(r.term.currentEnd, ctx.today) : "tills vidare"}
+                        {day(c.validFrom)} –{" "}
+                        {r?.term.currentEnd ? day(r.term.currentEnd) : "tills vidare"}
                       </dd>
                     </div>
                     <div className="flex flex-col gap-0.5">
                       <dt className="label text-subtle">Sista uppsägning</dt>
                       <dd className="text-fg">
-                        {r?.term.noticeDeadline ? day(r.term.noticeDeadline, ctx.today) : "–"}
+                        {r?.term.noticeDeadline ? day(r.term.noticeDeadline) : "–"}
                         <span className="meta block text-subtle">
                           Uppsägningstid {noticeText(c).toLowerCase()}
                         </span>
@@ -293,7 +311,7 @@ export default async function AvtalPage() {
                           : "Ingen"}
                         {c.terminatedOn ? (
                           <span className="meta block text-subtle">
-                            Uppsagt {day(c.terminatedOn, ctx.today)}
+                            Uppsagt {day(c.terminatedOn)}
                           </span>
                         ) : null}
                       </dd>
@@ -340,6 +358,11 @@ export default async function AvtalPage() {
                           initial={draftOf(c, data.agreements)}
                           trigger={{ label: "Ändra", variant: "ghost", size: "sm" }}
                         />
+                        <ContractArchive
+                          id={c.id}
+                          archived={false}
+                          label={`${storeName.get(c.storeId) ?? "Okänd butik"}: ${c.title ?? "Avtal"}`}
+                        />
                       </>
                     ) : null}
                   </div>
@@ -348,6 +371,34 @@ export default async function AvtalPage() {
             })}
           </ul>
         )}
+        {archivedContracts.length > 0 ? (
+          <Panel>
+            <PanelSection label="Arkiverade avtal" meta={formatInt(archivedContracts.length)}>
+              <ul className="flex flex-col">
+                {archivedContracts.map((c) => (
+                  <li
+                    key={c.id}
+                    className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-line py-3 first:border-t-0 first:pt-0"
+                  >
+                    <span className="min-w-0 text-sm text-muted">
+                      <span className="text-fg">{storeName.get(c.storeId) ?? "Okänd butik"}</span>
+                      {" · "}
+                      {c.title ?? "Avtal"} · {day(c.validFrom)} –{" "}
+                      {c.validTo ? day(c.validTo) : "tills vidare"}
+                    </span>
+                    {canEdit ? (
+                      <ContractArchive
+                        id={c.id}
+                        archived
+                        label={`${storeName.get(c.storeId) ?? "Okänd butik"}: ${c.title ?? "Avtal"}`}
+                      />
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </PanelSection>
+          </Panel>
+        ) : null}
       </section>
 
       {/* 03 Intäkt per butik */}
@@ -373,7 +424,7 @@ export default async function AvtalPage() {
                     </span>
                     <span className="meta text-subtle sm:order-none">
                       {CATEGORY[row.category]}
-                      {row.currentEnd ? ` · ${day(row.currentEnd, ctx.today)}` : ""}
+                      {row.currentEnd ? ` · ${day(row.currentEnd)}` : ""}
                     </span>
                     <span className="tnum text-right text-fg">{sek(row.revenueOre)}</span>
                     <span className="tnum text-right text-muted">

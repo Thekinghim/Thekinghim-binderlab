@@ -70,10 +70,21 @@ export async function renderReportEmails(
   );
 }
 
+/**
+ * Avsändaren i mejlets sidfot: organisationens namn och adressen i MAIL_FROM. Postadress
+ * finns inte i inställningarna än och visas därför som saknad ("–"), aldrig påhittad.
+ */
+export function reportSender(organizationName: string) {
+  const from = mailerStatus().from;
+  const email = /<([^>]+)>/.exec(from)?.[1] ?? from;
+  return { name: organizationName, address: "–", email: email.trim() };
+}
+
 /** Allt utskicket behöver i den här förfrågan. */
-export async function sendDeps(): Promise<SendDeps> {
+export async function sendDeps(organizationName: string): Promise<SendDeps> {
   const base = await appBaseUrl();
   return {
+    sender: reportSender(organizationName),
     mailer: getMailer(),
     store: await userReportStore(),
     render: renderReportPdf,

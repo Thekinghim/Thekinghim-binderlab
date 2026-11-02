@@ -225,6 +225,9 @@ interface MachinePrep {
   readonly fromActivation: boolean;
   readonly vendor: VendorState;
   readonly onHand: number | null;
+  /** Hur långt försäljningsdatat räcker (ms), om det slutar före nu. */
+  readonly dataUntilMs: number | null;
+  readonly dataSourceName: string | null;
 }
 
 function lastOrderOf(
@@ -343,6 +346,12 @@ export function machineHealth(input: HealthInput, now: Date | string | number): 
     if (list) list.push(s);
     else signalsByMachine.set(s.machineId, [s]);
   }
+  const coverageByMachine = new Map<string, { ms: number; sourceName: string | null }>();
+  for (const c of input.salesCoverage ?? []) {
+    const ms = parseInstant(c.until);
+    const prev = coverageByMachine.get(c.machineId);
+    if (!prev || ms > prev.ms) coverageByMachine.set(c.machineId, { ms, sourceName: c.sourceName ?? null });
+  }
   const stockByMachine = new Map<string, number>();
   for (const s of input.stock ?? []) {
     stockByMachine.set(s.machineId, (stockByMachine.get(s.machineId) ?? 0) + Math.max(0, s.onHand));
@@ -365,6 +374,8 @@ export function machineHealth(input: HealthInput, now: Date | string | number): 
       if (ord.orderedAt !== undefined) sales.push({ id: ord.id, ms: parseInstant(ord.orderedAt) });
     }
     const active = isMachineActive(m, today);
+    const coverage = coverageByMachine.get(m.id);
+    const dataUntilMs = coverage && coverage.ms < nowMs ? coverage.ms : null;
     if (active && silenceStartMs !== null) {
       calendarFrom = Math.min(calendarFrom, historyStartMs(silenceStartMs, o.historyWeeks, tz));
     }
@@ -377,6 +388,8 @@ export function machineHealth(input: HealthInput, now: Date | string | number): 
       fromActivation,
       vendor: vendorState(signalsByMachine.get(m.id) ?? [], nowMs, o.heartbeatTimeoutMinutes),
       onHand: stockByMachine.has(m.id) ? (stockByMachine.get(m.id) ?? 0) : null,
+      dataUntilMs,
+      dataSourceName: coverage?.sourceName ?? null,
     });
   }
   // Skydd mot orimligt långa kalendrar (en automat som varit tyst i flera år): historik äldre
@@ -404,6 +417,19 @@ function evaluate(
   const m = p.machine;
   const tz = o.timeZone;
   const link = links.machine(m.id);
+  // Tystnaden bedöms bara fram till dit försäljningen är importerad (eftersläpning i datat är
+  // inte en tyst automat). Leverantörens maskindata gäller fram till nu.
+  const endMs =
+    p.dataUntilMs === null
+      ? nowMs
+      : Math.max(Math.min(p.dataUntilMs, nowMs), p.silenceStartMs ?? p.dataUntilMs);
+  const lagging = nowMs - endMs >= o.minSilenceMinutes * MINUTE_MS && endMs < nowMs;
+  const coverageText = lagging
+    ? ` Försäljningen${p.dataSourceName ? ` från ${p.dataSourceName}` : ""} är importerad till och med ${whenText(endMs, tz)}; tystnaden är bedömd fram till dit.`
+    : "";
+  const coverageRule = lagging
+    ? " Tystnaden räknas fram till senaste importerade försäljning i automatens datakälla, inte fram till nu."
+    : "";
   const lastSaleText = p.lastOrder
     ? p.lastOrder.orderedAt !== undefined
       ? `Senaste försäljning ${whenText(parseInstant(p.lastOrder.orderedAt), tz)}.`
@@ -428,6 +454,7 @@ function evaluate(
     detail,
     silence: extra.silence ?? null,
     signal: extra.signal ?? null,
+    dataUntil: source === "sales" && endMs < nowMs ? new Date(endMs).toISOString() : null,
     evidence: evidence({ machineIds: [m.id], ...ev }),
     link,
   });
@@ -525,7 +552,7 @@ function evaluate(
     calendar,
     sales: p.sales,
     fromMs: p.silenceStartMs,
-    nowMs,
+    nowMs: endMs,
     historyWeeks: o.historyWeeks,
     include: (hourStart, date) =>
       (m0.activeFrom === null || date >= m0.activeFrom) &&
@@ -574,7 +601,7 @@ function evaluate(
       unit: "hours",
     },
   ];
-  const rule = `Misstänkt fel när sannolikheten för noll försäljning under tystnaden är under ${probabilityText(o.alarmProbabilityBp)}, räknat på samma veckodagar och timmar de senaste ${o.historyWeeks} veckorna (minst ${o.minHistoryOrders} order).`;
+  const rule = `Misstänkt fel när sannolikheten för noll försäljning under tystnaden är under ${probabilityText(o.alarmProbabilityBp)}, räknat på samma veckodagar och timmar de senaste ${o.historyWeeks} veckorna (minst ${o.minHistoryOrders} order).${coverageRule}`;
   const ev = {
     rule,
     period: {
@@ -589,7 +616,7 @@ function evaluate(
   if (silence.anomalous) {
     const hours = Math.floor(silence.minutes / 60);
     const derivedOffline = hours >= o.offlineAfterHours && !p.vendor.hasConnectivity;
-    const why = `Ingen försäljning sedan ${sinceText} (${durationText(silence.minutes)}). Samma veckodagar och timmar brukar ge ${expectedText} pack${busiest ? `, mest ${busiest}` : ""}; sannolikheten för noll försäljning är ${probabilityText(silence.zeroProbabilityBp)}.`;
+    const why = `Ingen försäljning sedan ${sinceText} (${durationText(silence.minutes)}). Samma veckodagar och timmar brukar ge ${expectedText} pack${busiest ? `, mest ${busiest}` : ""}; sannolikheten för noll försäljning är ${probabilityText(silence.zeroProbabilityBp)}.${coverageText}`;
     if (derivedOffline) {
       return base(
         "offline",
@@ -615,7 +642,7 @@ function evaluate(
       "sales",
       null,
       `${name}: för lite historik`,
-      `${plural(silence.historyOrders, "order", "order")} de senaste ${o.historyWeeks} veckorna; minst ${o.minHistoryOrders} behövs för att bedöma tystnad. ${lastSaleText}`,
+      `${plural(silence.historyOrders, "order", "order")} de senaste ${o.historyWeeks} veckorna; minst ${o.minHistoryOrders} behövs för att bedöma tystnad. ${lastSaleText}${coverageText}`,
       ev,
       { silence },
     );
@@ -625,7 +652,7 @@ function evaluate(
     silence.minutes >= o.minSilenceMinutes
       ? ` Under tystnaden (${durationText(silence.minutes)}) brukar den sälja ${expectedText} pack; sannolikheten för noll är ${probabilityText(silence.zeroProbabilityBp)}.`
       : "";
-  return base("ok", "sales", null, `${name} är i drift`, `${lastSaleText}${quiet}`, ev, {
+  return base("ok", "sales", null, `${name} är i drift`, `${lastSaleText}${quiet}${coverageText}`, ev, {
     silence,
   });
 }

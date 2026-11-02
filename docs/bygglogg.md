@@ -58,3 +58,12 @@ Tas bort när alla faser är klara.
 - Saknad miljö stoppar inte servern: /design och /datamodell fungerar utan nycklar, inloggade sidor visar ConfigMissing
   (src/server/config-status.ts). Dev-inloggningens spärr gäller som tidigare.
 - Verifierat: `next build` och `next start` utan miljövariabler i en separat worktree (/home/user/wt-build).
+
+## Att ta i fas 7 (integration och dokumentation)
+
+- docs/berakningar.md: avsnitt om Att göra (2,5 dagar, 14 dagars fönster, belopp i risk = påfyllning + tysta automater, 48 h, 30 dagar för saknat inköpspris, tiondelar av dag).
+- docs/datamodell.md: list_members, todo_dismissals, import_uploads m.fl. tabeller från fas 2–11.
+- Brödsmulor och kommandopalett: mål för Inställningar → Användare.
+- Avbockade punkter i Att göra: filtrera bort sådana vars orsak är löst (kräver att loadTodosFor returnerar punkter före avbockning).
+- toast.tsx: timern startar om vid omrendering.
+- Hem/Att göra: koppla förlorad försäljning (lostSalesSummary), avtalspåminnelser och rapportutkast.

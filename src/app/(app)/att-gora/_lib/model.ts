@@ -377,7 +377,7 @@ function actionFor(item: TodoItem, input: ModelInput): ActionView | null {
         machineId,
         titleId,
         machineName: machine?.name ?? machineId,
-        machineCode: machine?.code ?? "",
+        machineCode: machine ? unbreakable(machine.code) : "",
         titleName: input.titles.find((t) => t.id === titleId)?.name ?? titleId,
         onHand,
         warehouseOnHand,

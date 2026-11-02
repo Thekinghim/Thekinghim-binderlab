@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
+import { dayText } from "@/server/market/display";
 
 import { implementAssortment } from "../actions";
+import { latestDay, replacedStarts, shiftDay } from "../_lib/dates";
 
 /** Markerar en sortimentsrekommendation som genomförd från och med en dag. */
 export function ImplementButton({
@@ -18,6 +20,8 @@ export function ImplementButton({
   periodStart,
   periodEnd,
   today,
+  lockedThrough,
+  starts,
   summary,
   effectText,
 }: {
@@ -27,6 +31,10 @@ export function ImplementButton({
   periodStart: string;
   periodEnd: string;
   today: string;
+  /** Senaste genomförda sortimentsändring i automaten, eller null. */
+  lockedThrough: string | null;
+  /** Startdagar för automatens fackperioder. */
+  starts: readonly string[];
   /** Ändringarna i en mening. */
   summary: string;
   effectText: string;
@@ -34,7 +42,15 @@ export function ImplementButton({
   const router = useRouter();
   const toast = useToast();
   const [open, setOpen] = useState(false);
-  const [day, setDay] = useState(today);
+  // Tidigast dagen efter mätperioden, högst 7 dagar bakåt och efter en tidigare ändring.
+  const minDay = latestDay(
+    shiftDay(periodEnd, 1),
+    shiftDay(today, -7),
+    lockedThrough ? shiftDay(lockedThrough, 1) : null,
+  )!;
+  const defaultDay = minDay > today ? minDay : today;
+  const [day, setDay] = useState(defaultDay);
+  const replaced = replacedStarts(starts, day);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -69,7 +85,7 @@ export function ImplementButton({
         type="button"
         size="sm"
         onClick={() => {
-          setDay(today);
+          setDay(defaultDay);
           setError(null);
           setOpen(true);
         }}
@@ -96,8 +112,16 @@ export function ImplementButton({
             type="date"
             value={day}
             onChange={(e) => setDay(e.target.value)}
+            min={minDay}
+            max={shiftDay(today, 30)}
             required
+            hint={`Från ${dayText(minDay, today)} till ${dayText(shiftDay(today, 30), today)}: efter mätperioden och högst 7 dagar bakåt.`}
           />
+          {replaced.length > 0 ? (
+            <p className="text-sm text-fg" role="status">
+              {`Fackfördelningen som börjar ${replaced.map((d) => dayText(d, today)).join(", ")} ersätts av rekommendationen.`}
+            </p>
+          ) : null}
           {error ? (
             <p role="alert" className="text-sm text-signal-fg">
               {error}

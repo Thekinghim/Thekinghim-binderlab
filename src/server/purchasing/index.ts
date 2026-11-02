@@ -6,10 +6,18 @@
 
 import "server-only";
 
-export { forecastRange, HISTORY_WEEKS, loadPrognosFor, lostPeriodOf, OPEN_STATUSES } from "./load";
+export {
+  forecastRange,
+  HISTORY_WEEKS,
+  loadPrognosFor,
+  lostPeriodOf,
+  machinesInScope,
+  OPEN_STATUSES,
+} from "./load";
 export { lostSalesHref, lostSalesSummary, lostSalesSummaryFor } from "./lost-sales-summary";
 export {
   cancelPurchaseOrderFor,
+  closePurchaseOrderFor,
   createPurchaseOrderFor,
   createSupplierFor,
   deleteSupplierItemFor,
@@ -19,7 +27,9 @@ export {
   saveSupplierItemFor,
   setSupplierArchivedFor,
   updateSupplierFor,
+  type CloseResult,
   type ReceiveResult,
 } from "./service";
+export { seriesStartsFromStock } from "./series-start";
 export { currentViewer } from "./session";
 export type * from "./types";

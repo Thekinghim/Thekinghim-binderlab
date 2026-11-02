@@ -5,6 +5,11 @@
  * samtidiga körningar aldrig skickar samma utskick två gånger. Utfallet per kanal sparas på
  * raden (results), och push-enheter som push-tjänsten säger inte finns längre stängs av.
  * Körs som systemroll av /api/cron/larm.
+ *
+ * Behörigheten kontrolleras igen när utskicket skickas, inte bara när det köades: ett
+ * utskick som väntat under tysta timmar skickas inte till den som tagits bort ur
+ * organisationen eller stängt av sina larm, och den som blivit påfyllare får bara
+ * larmen om automater och lager.
  */
 
 import "server-only";
@@ -22,6 +27,8 @@ import {
   type Recipient,
 } from "@/server/notify";
 
+import { FIELD_KINDS } from "./subscriptions";
+
 export interface DeliverySummary {
   readonly processed: number;
   readonly sent: number;
@@ -34,6 +41,12 @@ type Dispatcher = (
   recipient: Recipient,
   options: DispatchOptions,
 ) => Promise<DispatchResult>;
+
+/** Ämnesrad när några larm filtrerats bort (samma form som routeNotifications). */
+function subjectOf(items: readonly AlertNotification[]): string {
+  const first = items[0]?.title ?? "Larm";
+  return items.length > 1 ? `${items.length} larm: ${first} med flera` : first;
+}
 
 /** Användarens e-post (auth.users). Larmjobbet kör som systemroll och får läsa den. */
 async function userEmail(db: Db, userId: string): Promise<string | null> {
@@ -85,12 +98,46 @@ export async function deliverDue(
           .where(eq(s.alertDeliveries.id, id));
         return "skipped" as const;
       }
+      const skip = async (detail: string) => {
+        await tx
+          .update(s.alertDeliveries)
+          .set({
+            status: "skipped",
+            results: [{ channel: "all", status: "skipped", detail }],
+            sentAt: now,
+          })
+          .where(eq(s.alertDeliveries.id, id));
+        return "skipped" as const;
+      };
+      const [member] = await tx
+        .select({ role: s.memberships.role })
+        .from(s.memberships)
+        .where(
+          and(
+            eq(s.memberships.organizationId, row.organizationId),
+            eq(s.memberships.userId, row.userId),
+          ),
+        );
+      if (!member || member.role === "store") {
+        return skip("Användaren är inte längre medlem i organisationen");
+      }
+      let items = row.items as AlertNotification[];
+      if (member.role === "refiller") {
+        items = items.filter((i) => FIELD_KINDS.includes(i.kind));
+        if (items.length === 0) {
+          return skip("Påfyllaren får bara larm om automater och lager");
+        }
+      }
       const [org] = await tx
         .select({ name: s.organizations.name, timezone: s.organizations.timezone })
         .from(s.organizations)
         .where(eq(s.organizations.id, row.organizationId));
       const [sub] = await tx
-        .select({ channels: s.alertSubscriptions.channels, phone: s.alertSubscriptions.phone })
+        .select({
+          channels: s.alertSubscriptions.channels,
+          phone: s.alertSubscriptions.phone,
+          active: s.alertSubscriptions.active,
+        })
         .from(s.alertSubscriptions)
         .where(
           and(
@@ -98,6 +145,7 @@ export async function deliverDue(
             eq(s.alertSubscriptions.userId, row.userId),
           ),
         );
+      if (sub && !sub.active) return skip("Användaren har stängt av sina larm");
       const devices = await tx
         .select({
           id: s.pushSubscriptions.id,
@@ -117,8 +165,8 @@ export async function deliverDue(
         userId: row.userId,
         sendAt: row.sendAt.toISOString(),
         deferred: row.deferred,
-        subject: row.subject,
-        items: row.items as AlertNotification[],
+        subject: items.length === (row.items as unknown[]).length ? row.subject : subjectOf(items),
+        items,
       };
       const recipient: Recipient = {
         userId: row.userId,

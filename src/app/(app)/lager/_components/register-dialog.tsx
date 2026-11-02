@@ -283,7 +283,7 @@ export function RegisterDialog({
                   m === "refill" && target.cell.suggested > 0 ? String(target.cell.suggested) : "",
                 );
               }}
-              className="w-full [&>button]:min-h-11 [&>button]:flex-1"
+              className="h-auto! w-full [&>button]:min-h-11 [&>button]:flex-1"
             />
           ) : null}
 

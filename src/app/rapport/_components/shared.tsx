@@ -49,3 +49,6 @@ export const dayLabel = (iso: string) => formatDate(localDate(iso), { year: "nev
 export type HeadingLevel = "page" | "embedded";
 export const TITLE_TAG = { page: "h1", embedded: "h2" } as const;
 export const SECTION_TAG = { page: "h2", embedded: "h3" } as const;
+
+/** Avslutar en mening utan dubbel punkt efter en förkortning ("30 okt."). */
+export const sentence = (text: string) => (text.endsWith(".") ? text : `${text}.`);

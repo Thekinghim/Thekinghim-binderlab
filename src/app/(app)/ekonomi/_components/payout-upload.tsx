@@ -17,6 +17,7 @@ export function PayoutUpload({ columns }: { columns: { payouts: string; lines: s
   const toast = useToast();
   const input = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState<string>();
+  const [importedName, setImportedName] = useState<string>();
   const [error, setError] = useState<string>();
   const [result, setResult] = useState<PayoutImportResultView>();
   const [pending, startTransition] = useTransition();
@@ -39,6 +40,7 @@ export function PayoutUpload({ columns }: { columns: { payouts: string; lines: s
         return;
       }
       setResult(res.data);
+      setImportedName(file.name);
       toast({
         title:
           res.data.format === "payouts"
@@ -59,19 +61,38 @@ export function PayoutUpload({ columns }: { columns: { payouts: string; lines: s
     <div className="flex flex-col gap-4">
       <form onSubmit={submit} className="flex flex-col gap-3 sm:flex-row sm:items-end" noValidate>
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <label htmlFor="payout-file" className="label text-muted">
+          <span id="payout-file-label" className="label text-muted">
             Utbetalningsfil (CSV)
-          </label>
+          </span>
+          {/* Webbläsarens filväljare visar text på webbläsarens språk; knappen är på svenska. */}
           <input
             ref={input}
             id="payout-file"
             name="file"
             type="file"
+            className="sr-only"
+            tabIndex={-1}
             accept=".csv,text/csv,text/plain"
-            onChange={(e) => setFileName(e.target.files?.[0]?.name)}
-            aria-describedby="payout-file-hint"
-            className="block w-full min-w-0 rounded-sm border border-line-control bg-bg text-sm text-muted file:mr-3 file:h-9 file:cursor-pointer file:border-0 file:border-r file:border-line-strong file:bg-surface file:px-3 file:text-sm file:text-fg hover:file:bg-hover"
+            onChange={(e) => {
+              setFileName(e.target.files?.[0]?.name);
+              setError(undefined);
+            }}
           />
+          <div className="flex min-w-0 items-center gap-3 rounded-sm border border-line-control bg-bg pr-3">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              aria-labelledby="payout-file-label payout-file-button"
+              aria-describedby="payout-file-name payout-file-hint"
+              onClick={() => input.current?.click()}
+            >
+              <span id="payout-file-button">Välj fil</span>
+            </Button>
+            <span id="payout-file-name" className="min-w-0 truncate text-sm text-muted">
+              {fileName ?? "Ingen fil vald"}
+            </span>
+          </div>
           <p id="payout-file-hint" className="text-xs text-subtle">
             Utbetalningar: {columns.payouts}. Specifikation per order: {columns.lines}.
           </p>
@@ -84,9 +105,9 @@ export function PayoutUpload({ columns }: { columns: { payouts: string; lines: s
       {result ? (
         <div role="status" className="flex flex-col gap-2 border-t border-line pt-3">
           <p className="meta text-muted">
-            {fileName ?? "Filen"}: {formatInt(result.rowsTotal)} rader · {formatInt(result.rowsNew)}{" "}
-            nya · {formatInt(result.rowsDuplicate)} dubbletter · {formatInt(result.rowsConflict)}{" "}
-            konflikter · {formatInt(result.rowsError)} fel
+            {importedName ?? "Filen"}: {formatInt(result.rowsTotal)} rader ·{" "}
+            {formatInt(result.rowsNew)} nya · {formatInt(result.rowsDuplicate)} dubbletter ·{" "}
+            {formatInt(result.rowsConflict)} konflikter · {formatInt(result.rowsError)} fel
           </p>
           {result.messages.length > 0 ? (
             <ul className="flex flex-col gap-1 text-sm text-muted">

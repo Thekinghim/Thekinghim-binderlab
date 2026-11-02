@@ -104,12 +104,13 @@ function termCondition(t: TermMatch, placements: readonly PlacementWindow[]): SQ
   return sql`(${sql.join(parts, sql` or `)})`;
 }
 
-function where(orgId: string, f: OrderQueryFilter, period: Period = f.period): SQL {
-  const parts: SQL[] = [
-    sql`o.organization_id = ${orgId}::uuid`,
-    sql`o.business_date >= ${period.start}::date`,
-    sql`o.business_date <= ${period.end}::date`,
-  ];
+/** Filtrets villkor. `period` null = utan periodgräns (urvalets första och senaste order). */
+function where(orgId: string, f: OrderQueryFilter, period: Period | null = f.period): SQL {
+  const parts: SQL[] = [sql`o.organization_id = ${orgId}::uuid`];
+  if (period) {
+    parts.push(sql`o.business_date >= ${period.start}::date`);
+    parts.push(sql`o.business_date <= ${period.end}::date`);
+  }
   if (f.machineId) parts.push(sql`o.machine_id = ${f.machineId}::uuid`);
   if (f.storeId) parts.push(placedIn(f.placements, [f.storeId]));
   if (f.titleId) parts.push(sql`o.title_id = ${f.titleId}::uuid`);
@@ -170,21 +171,119 @@ export async function queryOrderTotals(
   return { count: toNumber(r.n), amountOre: toNumber(r.total) };
 }
 
-/** Senaste ordern i organisationen (oavsett filter), eller null. */
-export async function queryLatestOrderAt(tx: Tx, orgId: string): Promise<string | null> {
+/** Beloppen i perioden med antal order per belopp (få olika belopp), för snittordern. */
+export async function queryOrderAmounts(
+  tx: Tx,
+  orgId: string,
+  filter: OrderQueryFilter,
+): Promise<{ amountOre: number; count: number }[]> {
   const rows = list(
     await tx.execute(sql`
-      select max(o.ordered_at) as at from public.orders o
-      where o.organization_id = ${orgId}::uuid`),
+      select o.amount_ore as amount, count(*)::bigint as n
+      from public.orders o
+      where ${where(orgId, filter)}
+      group by o.amount_ore`),
+  );
+  return rows.map((r) => ({ amountOre: toNumber(r.amount), count: toNumber(r.n) }));
+}
+
+/**
+ * Första affärsdagen och senaste ordern som matchar filtret (butik, automat, titel,
+ * sökning) utan periodgräns. Båda null när inget matchar.
+ */
+export async function queryOrderSpan(
+  tx: Tx,
+  orgId: string,
+  filter: OrderQueryFilter,
+): Promise<{ firstDate: IsoDate | null; latestAt: string | null }> {
+  const rows = list(
+    await tx.execute(sql`
+      select min(o.business_date)::text as first, max(o.ordered_at) as latest
+      from public.orders o
+      where ${where(orgId, filter, null)}`),
+  );
+  const r = rows[0] ?? {};
+  return {
+    firstDate: r.first ? String(r.first) : null,
+    latestAt: r.latest ? toIso(r.latest) : null,
+  };
+}
+
+/** Finns det någon order alls i organisationen? */
+export async function queryHasOrders(tx: Tx, orgId: string): Promise<boolean> {
+  const rows = list(
+    await tx.execute(sql`
+      select exists(select 1 from public.orders o where o.organization_id = ${orgId}::uuid) as e`),
+  );
+  return Boolean(rows[0]?.e);
+}
+
+/** Orderns exakta tid som text (för markören i tidsordning), eller null. */
+export async function queryOrderedAtText(
+  tx: Tx,
+  orgId: string,
+  orderId: string,
+): Promise<string | null> {
+  const rows = list(
+    await tx.execute(sql`
+      select o.ordered_at::text as at from public.orders o
+      where o.organization_id = ${orgId}::uuid and o.id = ${orderId}::uuid`),
   );
   const at = rows[0]?.at;
-  return at ? toIso(at) : null;
+  return at ? String(at) : null;
+}
+
+/** Markör i tidsordning: raderna efter denna order (tid, id). */
+export interface TimeCursor {
+  readonly orderedAt: string;
+  readonly id: string;
+}
+
+function rowsSql(
+  orgId: string,
+  filter: OrderQueryFilter,
+  sort: OrderSort,
+  ranks: SortRanks,
+  withRawTitle: boolean,
+  after: TimeCursor | null,
+): SQL {
+  const cursor =
+    after === null || sort.key !== "tid"
+      ? sql``
+      : sort.dir === "asc"
+        ? sql` and (o.ordered_at, o.id) > (${after.orderedAt}::timestamptz, ${after.id}::uuid)`
+        : sql` and (o.ordered_at, o.id) < (${after.orderedAt}::timestamptz, ${after.id}::uuid)`;
+  const raw = withRawTitle
+    ? sql`o.raw_title`
+    : sql`case when o.title_id is null then o.raw_title end`;
+  return sql`
+      select o.id, o.external_id, o.ordered_at, o.business_date::text as business_date,
+             o.title_id, ${raw} as raw_title,
+             o.machine_id, o.amount_ore
+      from public.orders o
+      where ${where(orgId, filter)}${cursor}
+      order by ${orderBy(sort, ranks, filter.placements)}`;
+}
+
+function toRow(r: Record<string, unknown>): RawOrderRow {
+  return {
+    id: String(r.id),
+    externalId: String(r.external_id),
+    orderedAt: toIso(r.ordered_at),
+    businessDate: String(r.business_date),
+    titleId: r.title_id ? String(r.title_id) : null,
+    rawTitle: r.raw_title === null || r.raw_title === undefined ? null : String(r.raw_title),
+    machineId: r.machine_id ? String(r.machine_id) : null,
+    amountOre: toNumber(r.amount_ore),
+  };
 }
 
 /**
  * Raderna i vald sortering, från `offset`. `limit` null = alla. Hämtar en rad extra för
  * att veta om det finns fler. Originaltiteln kommer bara med när ordern saknar titel,
- * utom med `withRawTitle` (exporten).
+ * utom med `withRawTitle` (exporten). Med markör `after` (bara sortering på tid) börjar
+ * sidan efter markören i stället för vid offset, så att order som kommer in under tiden
+ * inte förskjuter raderna.
  */
 export async function queryOrderRows(
   tx: Tx,
@@ -195,33 +294,45 @@ export async function queryOrderRows(
   offset: number,
   limit: number | null,
   withRawTitle = false,
+  after: TimeCursor | null = null,
 ): Promise<{ rows: RawOrderRow[]; more: boolean }> {
-  const page = limit === null ? sql`` : sql`limit ${limit + 1} offset ${offset}`;
-  const raw = withRawTitle
-    ? sql`o.raw_title`
-    : sql`case when o.title_id is null then o.raw_title end`;
+  const skip = after !== null && sort.key === "tid" ? 0 : offset;
+  const page = limit === null ? sql`` : sql`limit ${limit + 1} offset ${skip}`;
   const result = list(
-    await tx.execute(sql`
-      select o.id, o.external_id, o.ordered_at, o.business_date::text as business_date,
-             o.title_id, ${raw} as raw_title,
-             o.machine_id, o.amount_ore
-      from public.orders o
-      where ${where(orgId, filter)}
-      order by ${orderBy(sort, ranks, filter.placements)}
-      ${page}`),
+    await tx.execute(
+      sql`${rowsSql(orgId, filter, sort, ranks, withRawTitle, after)}
+      ${page}`,
+    ),
   );
   const more = limit !== null && result.length > limit;
-  const rows = (more ? result.slice(0, limit) : result).map((r) => ({
-    id: String(r.id),
-    externalId: String(r.external_id),
-    orderedAt: toIso(r.ordered_at),
-    businessDate: String(r.business_date),
-    titleId: r.title_id ? String(r.title_id) : null,
-    rawTitle: r.raw_title === null || r.raw_title === undefined ? null : String(r.raw_title),
-    machineId: r.machine_id ? String(r.machine_id) : null,
-    amountOre: toNumber(r.amount_ore),
-  }));
-  return { rows, more };
+  return { rows: (more ? result.slice(0, limit) : result).map(toRow), more };
+}
+
+/**
+ * Alla rader i vald sortering (med originaltitel) i satser om `batch`, ur en databas-
+ * markör i transaktionen: en enda fråga, så att satserna hör till samma ögonblicksbild.
+ * `onBatch` får varje sats och kan vänta (mottrycket när svaret strömmas ut).
+ */
+export async function forEachOrderRowBatch(
+  tx: Tx,
+  orgId: string,
+  filter: OrderQueryFilter,
+  sort: OrderSort,
+  ranks: SortRanks,
+  batch: number,
+  onBatch: (rows: RawOrderRow[]) => Promise<void>,
+): Promise<void> {
+  const size = sql.raw(String(Math.max(1, Math.trunc(batch))));
+  await tx.execute(
+    sql`declare order_export no scroll cursor for ${rowsSql(orgId, filter, sort, ranks, true, null)}`,
+  );
+  for (;;) {
+    const result = list(await tx.execute(sql`fetch forward ${size} from order_export`));
+    if (result.length === 0) break;
+    await onBatch(result.map(toRow));
+    if (result.length < batch) break;
+  }
+  await tx.execute(sql`close order_export`);
 }
 
 export interface RawOrderDetail {

@@ -93,6 +93,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     counter: "todo",
     phase: 3,
     lead: "Det som kräver åtgärd nu.",
+      context: false,
   },
   {
     id: "lonsamhet",

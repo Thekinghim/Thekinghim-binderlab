@@ -11,7 +11,13 @@
  * Skräp i URL:en ger aldrig fel, bara standardvärden.
  */
 
-import { toURLSearchParams, type SearchParamsInput } from "@/components/shell/period-state";
+import {
+  FROM_PARAM,
+  PERIOD_PARAM,
+  TO_PARAM,
+  toURLSearchParams,
+  type SearchParamsInput,
+} from "@/components/shell/period-state";
 
 export const SEARCH_PARAM = "q";
 export const TITLE_PARAM = "titel";
@@ -150,6 +156,23 @@ export function withOrderParams(
 export function listSignature(input: SearchParamsInput): string {
   const sp = toURLSearchParams(input);
   sp.delete(ORDER_PARAM);
+  sp.sort();
+  return sp.toString();
+}
+
+/**
+ * Listans query med perioden låst till datum (?from=&to=), för påfyllningen: en relativ
+ * period ("30d", "idag") räknas annars om vid varje sida och flyttar sig vid midnatt.
+ */
+export function lockedListQuery(
+  input: SearchParamsInput,
+  period: { readonly start: string; readonly end: string },
+): string {
+  const sp = toURLSearchParams(input);
+  sp.delete(ORDER_PARAM);
+  sp.delete(PERIOD_PARAM);
+  sp.set(FROM_PARAM, period.start);
+  sp.set(TO_PARAM, period.end);
   sp.sort();
   return sp.toString();
 }

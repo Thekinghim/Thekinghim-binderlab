@@ -26,10 +26,18 @@ import {
 } from "@/server/alerts/subscriptions";
 import { ALL_ROLES, OPERATOR_ROLES, requireContextRole } from "@/server/data/core";
 import { dispatchDelivery, type Channel, type ChannelResult } from "@/server/notify";
+import { isAllowedPushEndpoint } from "@/server/notify/push-endpoint";
+import { createRateLimiter } from "@/server/rate-limit";
 import { resolveAppBaseUrl } from "@/server/request-info";
 import { withUserDb } from "@/server/session";
 
 const uuid = z.string().uuid();
+
+/**
+ * Provlarm: högst 3 per 10 minuter per användare och 20 per organisation. Varje provlarm
+ * skickar e-post (och sms när en leverantör kopplas på) på bolagets bekostnad.
+ */
+const testAlertLimiter = createRateLimiter({ limit: 3, windowMs: 10 * 60_000 });
 
 function pgMessage(error: unknown): string | null {
   const e = error as {
@@ -134,7 +142,11 @@ export async function saveAlertSubscription(
 // ---------------------------------------------------------------------------
 
 const pushInput = z.object({
-  endpoint: z.string().url().startsWith("https://").max(2000),
+  endpoint: z
+    .string()
+    .url()
+    .max(2000)
+    .refine(isAllowedPushEndpoint, "Okänd push-tjänst."),
   keys: z.object({ p256dh: z.string().min(20).max(200), auth: z.string().min(8).max(100) }),
   userAgent: z.string().max(300).optional(),
 });
@@ -196,8 +208,24 @@ export async function removePushDevice(id: string): Promise<{ ok: boolean }> {
 }
 
 /** Skickar ett provlarm till den inloggade i hennes kanaler. Inget sparas i larmloggen. */
-export async function sendTestAlert(): Promise<{ ok: boolean; results: ChannelResult[] }> {
+export async function sendTestAlert(): Promise<{
+  ok: boolean;
+  results: ChannelResult[];
+  error?: string;
+}> {
   const ctx = await requireContextRole(ALL_ROLES);
+  const limit = testAlertLimiter.consume([
+    { key: `user:${ctx.user.id}` },
+    { key: `org:${ctx.organization.id}`, limit: 20 },
+  ]);
+  if (!limit.allowed) {
+    const minutes = Math.max(1, Math.ceil(limit.retryAfterMs / 60_000));
+    return {
+      ok: false,
+      results: [],
+      error: `Du har skickat flera provlarm i rad. Försök igen om ${minutes} min.`,
+    };
+  }
   const { channels, phone, devices } = await withUserDb(async (tx) => {
     const [sub] = await tx
       .select({ channels: s.alertSubscriptions.channels, phone: s.alertSubscriptions.phone })

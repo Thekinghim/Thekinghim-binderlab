@@ -68,7 +68,7 @@ export function PackList({
             options={machines.map((m) => ({ value: m.id, label: m.code }))}
             value={machine.id}
             onChange={onMachine}
-            className="w-full sm:w-fit [&>button]:min-h-11 [&>button]:flex-1 sm:[&>button]:min-w-24"
+            className="h-auto! w-full sm:w-fit [&>button]:min-h-11 [&>button]:flex-1 sm:[&>button]:min-w-24"
           />
         ) : (
           <Select

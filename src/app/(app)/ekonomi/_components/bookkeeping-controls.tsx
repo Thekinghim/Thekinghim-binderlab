@@ -35,9 +35,13 @@ export function MonthPicker({ months, value }: { months: string[]; value: string
   );
 }
 
-/** Skickar månadens verifikationer till bokföringsprogrammet (bara när ett är kopplat). */
+/**
+ * Skickar en avslutad månads verifikationer till bokföringsprogrammet (bara när ett är kopplat
+ * och månaden inte redan är skickad). Leveransen loggas och kan inte göras två gånger.
+ */
 export function DeliverButton({ month, label }: { month: string; label: string }) {
   const toast = useToast();
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   return (
     <Button
@@ -45,11 +49,12 @@ export function DeliverButton({ month, label }: { month: string; label: string }
       onClick={() =>
         startTransition(async () => {
           const res = await deliverVouchers({ month });
+          if (res.ok) router.refresh();
           toast(
             res.ok
               ? {
                   title: `${formatInt(res.data.count)} verifikationer skickade`,
-                  description: `${monthText(month)} till ${label}.`,
+                  description: `${monthText(month)} till ${label}, BL ${res.data.firstNumber}–${res.data.lastNumber}.`,
                   tone: "ok",
                 }
               : {

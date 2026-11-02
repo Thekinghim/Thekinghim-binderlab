@@ -57,11 +57,12 @@ export function Sheet({
           titleId={titleId}
           className="max-h-[85dvh] animate-enter rounded-t-md sm:rounded-md [&>header]:pr-16"
         >
+          {/* IconButton har "relative" och size-9 i basklasserna (cn slår inte ihop): därför "!". */}
           <IconButton
             icon="close"
             label="Stäng"
             onClick={onClose}
-            className="absolute top-2 right-2 size-11"
+            className="absolute! top-2 right-2 size-11!"
           />
           {children}
         </ModalPanel>

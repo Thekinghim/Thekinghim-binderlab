@@ -16,8 +16,11 @@ import * as s from "@/db/schema";
 import { LocalFileStore } from "@/import/file-store";
 import { AuthorizationError, listOrganizationsFor, type SessionUser } from "@/server/access";
 import {
+  archiveContractFor,
   archiveFixedCostFor,
+  archivePayoutFor,
   attachContractFileFor,
+  deliverVouchersFor,
   importPayoutFileFor,
   loadBookkeepingFor,
   loadCashflowFor,
@@ -196,6 +199,8 @@ beforeAll(async () => {
         ["store_payable", "2440", "Leverantörsskulder"],
         ["cogs", "4010", "Inköp"],
         ["inventory", "1460", "Lager"],
+        // Inget bankkonto: utbetalningarna bokförs då på BAS 1930 (och det flaggas).
+        ["card_fees", "6040", "Kontokortsavgifter"],
       ].map(([key, basAccount, name]) => ({
         organizationId: fx.orgId,
         key: key!,
@@ -528,7 +533,7 @@ describe("fasta kostnader", () => {
 
 describe("bokföring och SIE", () => {
   it("ger balanserade verifikationer och en SIE 4-fil för månaden", async () => {
-    const books = await loadBookkeepingFor(owner, "2025-04");
+    const books = await loadBookkeepingFor(owner, "2025-04", "2025-05-02");
     expect(books.error).toBeNull();
     expect(books.verifications.length).toBeGreaterThan(0);
     for (const v of books.verifications) {
@@ -537,11 +542,170 @@ describe("bokföring och SIE", () => {
     const debit = books.accountTotals.reduce((sum, a) => sum + a.debitOre, 0);
     const credit = books.accountTotals.reduce((sum, a) => sum + a.creditOre, 0);
     expect(debit).toBe(credit);
-    const file = await sieFileFor(viewer, "2025-04");
+    const file = await sieFileFor(viewer, "2025-04", "2025-05-02");
     const text = Buffer.from(file.bytes).toString("latin1");
     expect(text.startsWith("#FLAGGA 0")).toBe(true);
     expect(text).toContain("#SIETYP 4");
-    await expect(sieFileFor(refiller, "2025-04")).rejects.toBeInstanceOf(AuthorizationError);
+    await expect(sieFileFor(refiller, "2025-04", "2025-05-02")).rejects.toBeInstanceOf(
+      AuthorizationError,
+    );
+  });
+
+  it("utbetalningen bokförs: bank och faktiska avgifter mot fordran; kvar står de saknade orderna", async () => {
+    const books = await loadBookkeepingFor(owner, "2025-04", "2025-05-02");
+    const payout = books.verifications.find((v) => v.text.startsWith("Utbetalning U-APR-1"))!;
+    expect(payout.date).toBe("2025-04-15");
+    expect(payout.transactions).toEqual([
+      { account: "1930", amountOre: 38_700 },
+      { account: "6040", amountOre: 500 },
+      { account: "1580", amountOre: -39_200 },
+    ]);
+    expect(books.bankFallback).toBe(true);
+    expect(books.payoutsBooked).toBe(1);
+    // Fordran på kortinlösen efter utbetalningen = order som leverantören inte betalat ut.
+    const settlement = books.verifications
+      .flatMap((v) => v.transactions)
+      .filter((t) => t.account === "1580")
+      .reduce((sum, t) => sum + t.amountOre, 0);
+    const rec = await loadReconciliationFor(owner, APRIL);
+    const missing = rec.result!.payouts[0]!.deviations.find((d) => d.kind === "missing-in-payout")!;
+    expect(settlement).toBe(-missing.impactOre);
+  });
+
+  it("pågående och framtida månader: ingen SIE-fil, ingen leverans; #GEN är dagens datum", async () => {
+    await expect(loadBookkeepingFor(owner, "2025-06", "2025-05-02")).rejects.toThrow(
+      /har inte börjat/,
+    );
+    const open = await loadBookkeepingFor(owner, "2025-05", "2025-05-02");
+    expect(open.state).toBe("open");
+    await expect(sieFileFor(owner, "2025-05", "2025-05-02")).rejects.toThrow(/pågår/);
+    await expect(deliverVouchersFor(owner, "2025-05", "2025-05-02")).rejects.toThrow(/pågår/);
+    const file = await sieFileFor(owner, "2025-04", "2025-05-02");
+    expect(Buffer.from(file.bytes).toString("latin1")).toContain("#GEN 20250502");
+  });
+
+  it("numren löper över räkenskapsåret, en månad skickas en gång och i ordning", async () => {
+    const outbox = await mkdtemp(path.join(tmpdir(), "binderlab-bokforing-"));
+    const before = {
+      provider: process.env.ACCOUNTING_PROVIDER,
+      dir: process.env.ACCOUNTING_OUTBOX_DIR,
+    };
+    process.env.ACCOUNTING_PROVIDER = "local";
+    process.env.ACCOUNTING_OUTBOX_DIR = outbox;
+    try {
+      await asUser(fx.owner, (tx) =>
+        tx.insert(s.orders).values(order(fx, "50100", "2025-05-06T10:00:00Z")),
+      );
+      const april = await loadBookkeepingFor(owner, "2025-04", "2025-06-02");
+      const may = await loadBookkeepingFor(owner, "2025-05", "2025-06-02");
+      const aprilLast = april.verifications.at(-1)!.number;
+      expect(april.verifications[0]!.number).toBe(1);
+      expect(may.verifications[0]!.number).toBe(aprilLast + 1);
+
+      // Maj kan inte skickas före april? Jo, men då kan april inte skickas efteråt.
+      await expect(deliverVouchersFor(viewer, "2025-04", "2025-06-02")).rejects.toBeInstanceOf(
+        AuthorizationError,
+      );
+      const sent = await deliverVouchersFor(owner, "2025-04", "2025-06-02");
+      expect(sent).toMatchObject({
+        count: april.verifications.length,
+        firstNumber: 1,
+        lastNumber: aprilLast,
+      });
+      await expect(deliverVouchersFor(owner, "2025-04", "2025-06-02")).rejects.toThrow(
+        /redan skickad/,
+      );
+      const logged = await rows<{ n: number }>(
+        db(),
+        sql`select count(*)::int as n from public.voucher_deliveries
+            where organization_id = ${fx.orgId} and month = '2025-04-01'`,
+      );
+      expect(logged[0]!.n).toBe(1);
+      const audit = await rows<{ n: number }>(
+        db(),
+        sql`select count(*)::int as n from public.audit_log
+            where organization_id = ${fx.orgId} and table_name = 'voucher_deliveries'`,
+      );
+      expect(audit[0]!.n).toBe(1);
+      const mutate = await asUser(fx.owner, (tx) =>
+        attempt(tx, (sp) =>
+          sp.execute(
+            sql`update public.voucher_deliveries set last_number = 1 where organization_id = ${fx.orgId}`,
+          ),
+        ),
+      );
+      expect(mutate.ok).toBe(false);
+
+      // En sen order i april: aprils nummer ligger fast, ändringen syns, maj fortsätter efter.
+      await asUser(fx.owner, (tx) =>
+        tx.insert(s.orders).values(order(fx, "50101", "2025-04-29T10:00:00Z")),
+      );
+      const aprilAgain = await loadBookkeepingFor(owner, "2025-04", "2025-06-02");
+      expect(aprilAgain.delivery?.lastNumber).toBe(aprilLast);
+      expect(aprilAgain.changedSinceDelivery).toBe(true);
+      const mayAgain = await loadBookkeepingFor(owner, "2025-05", "2025-06-02");
+      expect(mayAgain.verifications[0]!.number).toBe(aprilLast + 1);
+      await deliverVouchersFor(owner, "2025-05", "2025-06-02");
+      const marchView = await loadBookkeepingFor(owner, "2025-03", "2025-06-02");
+      expect(marchView.laterDelivery?.month).toBe("2025-04");
+    } finally {
+      process.env.ACCOUNTING_PROVIDER = before.provider;
+      process.env.ACCOUNTING_OUTBOX_DIR = before.dir;
+      if (before.provider === undefined) delete process.env.ACCOUNTING_PROVIDER;
+      if (before.dir === undefined) delete process.env.ACCOUNTING_OUTBOX_DIR;
+      await rm(outbox, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("rättning av en felaktig utbetalning", () => {
+  it("arkiveras med anteckning och importeras igen med samma referens", async () => {
+    const wrong = csv([
+      "Referens;Period från;Period till;Utbetald;Belopp;Avgifter",
+      "U-JUL-1;2025-07-01;2025-07-31;2025-08-05;100,00;0",
+    ]);
+    await importPayoutFileFor(owner, { name: "jul.csv", bytes: wrong }, { fileStore: files });
+    const id = (
+      await rows<{ id: string }>(
+        db(),
+        sql`select id from public.payouts where organization_id = ${fx.orgId} and reference = 'U-JUL-1'`,
+      )
+    )[0]!.id;
+    await expect(archivePayoutFor(viewer, { id, note: "Fel belopp" })).rejects.toBeInstanceOf(
+      AuthorizationError,
+    );
+    await expect(archivePayoutFor(owner, { id, note: " " })).rejects.toThrow(/varför/);
+    expect(await archivePayoutFor(owner, { id, note: "Fel belopp i Awish-exporten" })).toEqual({
+      reference: "U-JUL-1",
+    });
+    await expect(archivePayoutFor(owner, { id, note: "Igen" })).rejects.toThrow(/redan arkiverad/);
+    const fixed = await importPayoutFileFor(
+      owner,
+      {
+        name: "jul-rattad.csv",
+        bytes: csv([
+          "Referens;Period från;Period till;Utbetald;Belopp;Avgifter",
+          "U-JUL-1;2025-07-01;2025-07-31;2025-08-05;120,00;0",
+        ]),
+      },
+      { fileStore: files },
+    );
+    expect(fixed).toMatchObject({ rowsNew: 1, rowsConflict: 0 });
+    const both = await rows<{ archived: boolean; amount: number }>(
+      db(),
+      sql`select archived_at is not null as archived, amount_ore::int as amount from public.payouts
+          where organization_id = ${fx.orgId} and reference = 'U-JUL-1' order by created_at`,
+    );
+    expect(both).toEqual([
+      { archived: true, amount: 10_000 },
+      { archived: false, amount: 12_000 },
+    ]);
+    const audit = await rows<{ n: number }>(
+      db(),
+      sql`select count(*)::int as n from public.audit_log
+          where organization_id = ${fx.orgId} and table_name = 'payouts' and row_id = ${id}`,
+    );
+    expect(audit[0]!.n).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -550,6 +714,22 @@ describe("kassaflöde", () => {
     const cash = await loadCashflowFor(owner, "2025-04-20");
     expect(cash.error).toBeNull();
     expect(cash.result!.buckets.map((b) => b.key)).toContain("2025-04");
+    // Två utbetalningar (april och juli): rytmen läses ur den senaste.
+    expect(cash.payouts).toBe(2);
+    expect(cash.payoutCycleNote).toMatch(/följer den senaste/);
+    // En enda utbetalning i intervallet: ingen rytm läses ut ur den, en i månaden antas.
+    const early = await loadCashflowFor(owner, "2025-02-10");
+    expect(early.payouts).toBe(1);
+    expect(early.payoutCycleNote).toMatch(/en utbetalning i månaden antas/);
+    expect(early.result!.basis.payoutCycle).toBe("month");
+    // Inköp framåt: lagret fylls på i försäljningstakt (inköpsvärdet 20 kr per sålt pack).
+    const rep = cash.replenishment!;
+    expect(rep.windowCostOre).toBeGreaterThan(0);
+    const may = rep.months.find((m) => m.month === "2025-05")!;
+    expect(may.days).toBe(31);
+    expect(may.addedOre).toBe(Math.round((rep.windowCostOre * 31) / rep.windowDays));
+    const mayBucket = cash.result!.buckets.find((b) => b.key === "2025-05")!;
+    expect(mayBucket.forecast.purchasesOre).toBe(may.addedOre);
     await expect(loadCashflowFor(refiller, "2025-04-20")).rejects.toBeInstanceOf(
       AuthorizationError,
     );
@@ -625,6 +805,49 @@ describe("avtal", () => {
       sql`select count(*)::int as n from public.audit_log where table_name = 'contracts' and row_id = ${id}`,
     );
     expect(audit[0]!.n).toBeGreaterThanOrEqual(2);
+
+    // Filkolumnerna kan inte skrivas direkt av en användare, bara via servern.
+    const direct = await asUser(fx.owner, (tx) =>
+      attempt(tx, (sp) =>
+        sp.execute(sql`update public.contracts set file_name = 'annan.pdf' where id = ${id}`),
+      ),
+    );
+    expect(direct.code).toBe("42501");
+    // Stämmer den sparade typen inte med innehållet skickas filen inte (även en tillåten typ).
+    await db().execute(
+      sql`update public.contracts set file_content_type = 'image/png' where id = ${id}`,
+    );
+    await expect(readContractFileFor(owner, id, { fileStore: files })).rejects.toThrow(
+      /stämmer inte med filtypen/,
+    );
+    await db().execute(
+      sql`update public.contracts set file_content_type = 'application/pdf' where id = ${id}`,
+    );
+
+    // Arkiverat avtal ger ingen påminnelse; det kan återställas.
+    await archiveContractFor(owner, { id, archived: true });
+    const archived = await loadContractsFor(owner, "2025-07-15");
+    expect(archived.reminders.reminders.some((r) => r.contractId === id)).toBe(false);
+    await archiveContractFor(owner, { id, archived: false });
+    const restored = await loadContractsFor(owner, "2025-07-15");
+    expect(restored.reminders.reminders.some((r) => r.contractId === id)).toBe(true);
+  });
+
+  it("storage_path: annan organisation ger fortfarande 23514 (check före filspärren), '..' nekas", async () => {
+    const other = await createOrg(await createUser(), `Annan ${uniqueSuffix()}`);
+    const [c] = await rows<{ id: string }>(
+      db(),
+      sql`select id from public.contracts where organization_id = ${fx.orgId} limit 1`,
+    );
+    const set = (p: string) =>
+      asUser(fx.owner, (tx) =>
+        attempt(tx, (sp) =>
+          sp.execute(sql`update public.contracts set storage_path = ${p} where id = ${c!.id}`),
+        ),
+      );
+    expect((await set(`${other}/reports/2025-03.pdf`)).code).toBe("23514");
+    expect((await set(`${fx.orgId}/../${other}/x.pdf`)).ok).toBe(false);
+    expect((await set(`${fx.orgId}/${c!.id}/${"f".repeat(64)}.pdf`)).code).toBe("42501");
   });
 
   it("storage: bucket contracts följer samma policy som imports och reports", async () => {
@@ -653,5 +876,25 @@ describe("avtal", () => {
       );
     expect(await visible(viewer)).toBe(1);
     expect(await visible(refiller)).toBe(0);
+  });
+});
+
+describe("återbetalningar", () => {
+  it("kända återbetalningar (kundärenden) räknas i avstämningen och bokförs vid utbetalningen", async () => {
+    await asUser(fx.owner, (tx) =>
+      tx.insert(s.incidents).values({
+        organizationId: fx.orgId,
+        machineId: fx.machineId,
+        kind: "no_output",
+        startedAt: new Date("2025-04-05T09:00:00Z"),
+        refundedOre: 4900,
+        refundedOn: "2025-04-05",
+      }),
+    );
+    const view = await loadReconciliationFor(owner, APRIL);
+    expect(view.refunds.map((r) => r.amountOre)).toEqual([4900]);
+    const p = view.result!.payouts[0]!;
+    expect(p.expected.refundsOre).toBe(4900);
+    expect(p.expected.payoutOre).toBe(p.expected.salesOre - p.expected.feesOre - 4900);
   });
 });

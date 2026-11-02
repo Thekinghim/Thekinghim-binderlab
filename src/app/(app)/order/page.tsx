@@ -8,8 +8,8 @@ import { formatKronor, formatPeriodShort, MISSING } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
 
 import { OrderBrowser } from "./_components/order-browser";
-import { averageOre, formatAt, isoToLocalDate, orderHeadline, sentence } from "./_lib/headline";
-import { hasPageFilter, listSignature, withOrderParams } from "./_lib/params";
+import { formatAt, isoToLocalDate, orderHeadline, sentence } from "./_lib/headline";
+import { hasPageFilter, listSignature, lockedListQuery, withOrderParams } from "./_lib/params";
 import { titleChoices } from "./_lib/refs";
 import { loadOrderDetailFor, loadOrderListFor } from "./_lib/service";
 import { currentViewer, listArgsFrom } from "./_lib/session";
@@ -46,13 +46,13 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
     compare: list.compare,
     days: period.days,
     periodKey: period.key,
+    hasOrders: list.hasOrders,
     latestOrderAt: list.latestOrderAt,
-    dataStart: period.dataStart,
+    dataStart: list.firstOrderDate,
     filtered: scoped || pageFiltered,
     timeZone: ctx.timeZone,
     now,
   });
-  const avg = averageOre(list.totals);
   const periodText = formatPeriodShort(
     { start: isoToLocalDate(list.period.start), end: isoToLocalDate(list.period.end) },
     now,
@@ -60,7 +60,7 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
   const canOpenImport = routeById("datakallor").roles.includes(ctx.role);
 
   let empty = null;
-  if (list.latestOrderAt === null) {
+  if (!list.hasOrders) {
     empty = (
       <StateMessage
         kind="empty"
@@ -99,11 +99,29 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
         <StateMessage
           kind="empty"
           message={sentence(`Inga order ${periodText}`)}
-          detail={`Senaste ordern kom ${formatAt(list.latestOrderAt, ctx.timeZone, now)}.`}
           action={{ label: "Visa hela historiken", href: `/order?${all}` }}
         />
       );
   }
+
+  // Sidofakta säger bara det rubriken inte säger: utan träffar står senaste ordern redan där.
+  const meta =
+    list.totals.count === 0
+      ? [{ label: "Period", value: periodText }]
+      : [
+          { label: "Period", value: periodText },
+          {
+            label: "Snitt per order",
+            value:
+              list.averageOrderValueOre === null
+                ? MISSING
+                : formatKronor(list.averageOrderValueOre / 100),
+          },
+          {
+            label: "Senaste order",
+            value: formatAt(list.latestOrderAt, ctx.timeZone, now),
+          },
+        ];
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
@@ -113,19 +131,13 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
         eyebrow="Order"
         title={headline.title}
         aside={headline.aside}
-        meta={[
-          { label: "Period", value: periodText },
-          { label: "Snitt per order", value: avg === null ? MISSING : formatKronor(avg / 100) },
-          {
-            label: "Senaste order",
-            value: formatAt(list.latestOrderAt, ctx.timeZone, now),
-          },
-        ]}
+        meta={meta}
       />
 
       <section aria-label="Orderlista" className="flex min-w-0 flex-col">
         <OrderBrowser
           query={listSignature(sp)}
+          pageQuery={lockedListQuery(sp, list.period)}
           rows={list.rows}
           nextOffset={list.nextOffset}
           totals={list.totals}

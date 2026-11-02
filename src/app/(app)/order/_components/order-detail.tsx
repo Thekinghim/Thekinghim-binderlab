@@ -17,6 +17,23 @@ const PROVIDER: Record<string, string> = {
   awish_web: "Awish, webbhämtning",
 };
 
+/** Ord i providerns namn; står alla redan i datakällans namn upprepas providern inte. */
+const PROVIDER_WORDS: Record<string, readonly string[]> = {
+  awish_csv: ["awish", "csv"],
+  awish_grpc: ["awish", "api"],
+  awish_web: ["awish", "webb"],
+};
+
+/** Providern att visa efter datakällans namn, eller null när namnet redan säger den. */
+export function providerNote(name: string, provider: string): string | null {
+  const label = PROVIDER[provider] ?? provider;
+  const words = PROVIDER_WORDS[provider];
+  const lower = name.toLocaleLowerCase("sv-SE");
+  if (words?.every((w) => lower.includes(w))) return null;
+  if (lower === label.toLocaleLowerCase("sv-SE")) return null;
+  return label;
+}
+
 const TRIGGER: Record<string, string> = {
   upload: "Uppladdad fil",
   schedule: "Schemalagd hämtning",
@@ -138,6 +155,7 @@ export function OrderDetailView({
     detail.title !== null &&
     detail.title.name.trim().toLowerCase() === detail.rawTitle.trim().toLowerCase();
   const imp = detail.import;
+  const provider = providerNote(detail.dataSource.name, detail.dataSource.provider);
 
   return (
     <div className="flex flex-col">
@@ -209,10 +227,12 @@ export function OrderDetailView({
       <Group label="Källa">
         <Row label="Datakälla">
           {detail.dataSource.name}
-          <Muted>
-            {" · "}
-            {PROVIDER[detail.dataSource.provider] ?? detail.dataSource.provider}
-          </Muted>
+          {provider ? (
+            <Muted>
+              {" · "}
+              {provider}
+            </Muted>
+          ) : null}
         </Row>
         <Row label="Import">
           {imp ? (

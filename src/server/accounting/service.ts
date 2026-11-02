@@ -71,7 +71,6 @@ import { AuthorizationError, requireRoleFor, withUserDbFor } from "@/server/acce
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import {
   queryAgreements,
-  queryFirstOrderDate,
   queryMachines,
   queryOrders,
   queryPlacements,
@@ -103,12 +102,7 @@ import {
   sniffContractFile,
 } from "./contract-files";
 import { CsvPayoutSource, payoutSourceStatus } from "./payout-source";
-import {
-  buildSieFile,
-  monthVouchers,
-  type MonthVouchers,
-  type PayoutForBooking,
-} from "./vouchers";
+import { buildSieFile, monthVouchers, type MonthVouchers, type PayoutForBooking } from "./vouchers";
 import {
   activeResolutions,
   queryAgreementRecords,
@@ -558,7 +552,8 @@ export async function archivePayoutFor(
         ),
       )
       .returning({ reference: s.payouts.reference });
-    if (rows.length === 0) throw new AccountingError("Utbetalningen finns inte eller är redan arkiverad.");
+    if (rows.length === 0)
+      throw new AccountingError("Utbetalningen finns inte eller är redan arkiverad.");
     return { reference: rows[0]!.reference };
   });
 }
@@ -778,8 +773,9 @@ async function buildBookkeeping(
   const adapter = bookkeepingAdapter();
   const status = adapter.status();
   const latestDelivery = (m: string) =>
-    deliveries.filter((d) => d.month === m).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0] ??
-    null;
+    deliveries
+      .filter((d) => d.month === m)
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0] ?? null;
   const delivery = latestDelivery(month);
   const laterDelivery =
     deliveries.filter((d) => d.month > month).sort((a, b) => (a.month < b.month ? -1 : 1))[0] ??
@@ -815,7 +811,9 @@ async function buildBookkeeping(
       const report = buildAccountantReport(
         {
           ...sources,
-          orders: orders.orders.filter((o) => o.businessDate >= mp.start && o.businessDate <= mp.end),
+          orders: orders.orders.filter(
+            (o) => o.businessDate >= mp.start && o.businessDate <= mp.end,
+          ),
           stores: stores.map((x) => ({ id: x.id, name: x.name })),
           machines: machines.map((x) => ({ id: x.id, name: x.name, code: x.code })),
           titles: titles.map((x) => ({ id: x.id, name: x.name })),
@@ -866,7 +864,10 @@ async function buildBookkeeping(
       ...base,
       verifications: vouchers.verifications,
       accountTotals: accountTotalsOf(vouchers.verifications, vouchers.accounts),
-      accounts: [...accounts, ...vouchers.accounts.filter((a) => !accounts.some((x) => x.key === a.key))],
+      accounts: [
+        ...accounts,
+        ...vouchers.accounts.filter((a) => !accounts.some((x) => x.key === a.key)),
+      ],
       totals: built.totals,
       error: null,
       bankFallback: vouchers.bankFallback,
@@ -964,18 +965,16 @@ export async function deliverVouchersFor(
     }
     const firstNumber = view.verifications[0]!.number;
     const lastNumber = view.verifications[view.verifications.length - 1]!.number;
-    await tx
-      .insert(s.voucherDeliveries)
-      .values({
-        organizationId: orgId,
-        month: `${month}-01`,
-        provider: adapter.kind as s.VoucherProvider,
-        series: VERIFICATION_SERIES,
-        firstNumber,
-        lastNumber,
-        verificationCount: view.verifications.length,
-        fileSha256: sha256Hex(view.sie),
-      });
+    await tx.insert(s.voucherDeliveries).values({
+      organizationId: orgId,
+      month: `${month}-01`,
+      provider: adapter.kind as s.VoucherProvider,
+      series: VERIFICATION_SERIES,
+      firstNumber,
+      lastNumber,
+      verificationCount: view.verifications.length,
+      fileSha256: sha256Hex(view.sie),
+    });
     const result = await adapter.deliver({
       organizationId: orgId,
       month,
@@ -1175,7 +1174,10 @@ function replenishmentForecast(
   const tomorrow = addDays(today, 1);
   if (tomorrow > result.range.end) return null;
   const months = eachMonth(tomorrow, result.range.end).map((m) => {
-    const span = { start: maxDate(`${m}-01`, tomorrow), end: minDate(monthEnd(m), result.range.end) };
+    const span = {
+      start: maxDate(`${m}-01`, tomorrow),
+      end: minDate(monthEnd(m), result.range.end),
+    };
     const days = daysBetween(span.start, span.end) + 1;
     const projectedOre = mulDivRound(cost.costOre, days, windowDays);
     const plannedOre = planned
@@ -1581,8 +1583,15 @@ export async function readContractFileFor(
   }
   const sniffed = sniffContractFile(bytes);
   if (sniffed !== row.contentType) {
-    console.error("[avtal] filens innehåll stämmer inte med typen", contractId, row.contentType, sniffed);
-    throw new AccountingError("Avtalsfilens innehåll stämmer inte med filtypen. Ladda upp den igen.");
+    console.error(
+      "[avtal] filens innehåll stämmer inte med typen",
+      contractId,
+      row.contentType,
+      sniffed,
+    );
+    throw new AccountingError(
+      "Avtalsfilens innehåll stämmer inte med filtypen. Ladda upp den igen.",
+    );
   }
   return { fileName: row.fileName, contentType: sniffed, bytes };
 }

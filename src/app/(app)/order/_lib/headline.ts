@@ -1,16 +1,17 @@
 /**
  * Orderlistans rubrik: ett påstående med siffror, räknat ur listans antal och summa och
- * jämförelseperiodens summa med samma filter. Förändring och snitt kommer från @/domain.
+ * jämförelseperiodens summa med samma filter. Förändringen kommer från @/domain.
+ * Första och senaste order gäller urvalet (filter och sökning), inte hela organisationen.
  * Rent och klientsäkert.
  */
 
 import { wallClockIn } from "@/components/shell/period-state";
-import { changeBp, roundHalfUp, type IsoDate, type Period } from "@/domain";
+import { changeBp, type IsoDate, type Period } from "@/domain";
 import {
   formatDate,
   formatDateTime,
   formatInt,
-  formatKronor,
+  formatNumber,
   formatPercent,
   formatPeriodShort,
   formatSek,
@@ -29,8 +30,11 @@ export interface HeadlineInput {
   readonly days: number;
   /** "idag" ger "i dag" i stället för "på 1 dag". */
   readonly periodKey: string;
+  /** Organisationen har minst en order. */
+  readonly hasOrders: boolean;
+  /** Senaste ordern som matchar filtret (utan periodgräns), eller null. */
   readonly latestOrderAt: string | null;
-  /** Första dagen med order i organisationen, eller null. */
+  /** Första affärsdagen med en order som matchar filtret (utan periodgräns), eller null. */
   readonly dataStart: IsoDate | null;
   /** Sökning, titel-, butiks- eller automatfilter är satt. */
   readonly filtered: boolean;
@@ -75,11 +79,6 @@ function periodPhrase(input: HeadlineInput): string {
   return `på ${plural(input.days, "dag", "dagar")}`;
 }
 
-/** Snittbelopp per order (öre), avrundat som i beräkningslagret. null utan order. */
-export function averageOre(totals: OrderTotals): number | null {
-  return totals.count > 0 ? roundHalfUp(totals.amountOre, totals.count) : null;
-}
-
 /**
  * "12 % mer än 23 sep. – 12 okt." · "4,2 % mindre än …" · "samma som …" · "inga order …".
  * null utan jämförelse, eller när jämförelseperioden ligger före första ordern.
@@ -99,41 +98,49 @@ export function comparePhrase(input: HeadlineInput): string | null {
   return `${pct} ${bp > 0 ? "mer" : "mindre"} än ${cp}`;
 }
 
+/** "i snitt 23 order per dag" (en decimal under 10). */
+function perDayPhrase(count: number, days: number): string {
+  const perDay = count / days;
+  return `i snitt ${formatNumber(perDay, perDay < 10 ? 1 : 0)}${NBSP}order per dag`;
+}
+
 export function orderHeadline(input: HeadlineInput): Headline {
-  const latest = formatAt(input.latestOrderAt, input.timeZone, input.now);
-  if (input.latestOrderAt === null) {
+  if (!input.hasOrders) {
     return { title: "Inga order ännu.", aside: "Orderna kommer in via Datakällor." };
   }
+  const latest = formatAt(input.latestOrderAt, input.timeZone, input.now);
   if (input.totals.count === 0) {
-    return input.filtered
-      ? {
-          title: "Inga order matchar filtret.",
-          aside: sentence(`Senaste ordern kom ${latest}`),
-        }
-      : {
-          title: sentence(
-            `Inga order ${input.periodKey === "idag" ? "i dag" : shortPeriod(input.period, input.now)}`,
-          ),
-          aside: sentence(`Senaste ordern kom ${latest}`),
-        };
+    if (input.filtered) {
+      return {
+        title: "Inga order matchar filtret.",
+        aside:
+          input.latestOrderAt === null
+            ? "Inte heller utanför perioden."
+            : sentence(`Senaste ordern som matchar kom ${latest}`),
+      };
+    }
+    return {
+      title: sentence(
+        `Inga order ${input.periodKey === "idag" ? "i dag" : shortPeriod(input.period, input.now)}`,
+      ),
+      aside: sentence(`Senaste ordern kom ${latest}`),
+    };
   }
   const paid = `${formatSek(input.totals.amountOre / 100)} betalt`;
   const title = `${plural(input.totals.count, "order", "order")} ${periodPhrase(input)}.`;
   const change = comparePhrase(input);
   if (change) return { title, aside: sentence(`${paid}, ${change}`) };
   // Ingen jämförelse: jämförelseperioden ligger före första ordern, eller "Allt".
-  if (input.dataStart !== null && input.dataStart >= input.period.start) {
+  // Började urvalet efter periodens första dag säger vi när (perioden säger inte det).
+  if (input.dataStart !== null && input.dataStart > input.period.start) {
+    const first = formatDate(isoToLocalDate(input.dataStart), { year: "auto", now: input.now });
     return {
       title,
       aside: sentence(
-        `${paid}. Första ordern kom ${formatDate(isoToLocalDate(input.dataStart), { year: "auto", now: input.now })}`,
+        `${paid}. ${input.filtered ? "Första ordern i urvalet" : "Första ordern"} kom ${first}`,
       ),
     };
   }
-  const avg = averageOre(input.totals);
-  return {
-    title,
-    aside:
-      avg !== null ? sentence(`${paid}, snitt ${formatKronor(avg / 100)} per order`) : `${paid}.`,
-  };
+  if (input.periodKey === "idag" || input.days <= 1) return { title, aside: `${paid}.` };
+  return { title, aside: sentence(`${paid}, ${perDayPhrase(input.totals.count, input.days)}`) };
 }

@@ -3,12 +3,14 @@
  * i oktober") och prioriteringen i Att göra (vilken påfyllning som kostar mest).
  *
  *   import { lostSalesSummary } from "@/server/purchasing";
- *   const lost = await lostSalesSummary(p.period);          // i en serverkomponent
+ *   const lost = await lostSalesSummary(p.period, p.scope); // i en serverkomponent
  *   lost.text;                                               // rubrik/nyckeltal
  *   lost.series.find((s) => s.key === todo.key);             // 'refill:<automat>:<titel>'
  *
  * Siffrorna kommer från @/analytics/lost-sales; här väljs bara indata och perioden.
- * Bara ägare, admin och läsare (ekonomi). För påfyllare returnerar `lostSalesSummary` null.
+ * Bara ägare, admin och läsare (ekonomi). För påfyllare, butiksanvändare och den som saknar
+ * organisation returnerar `lostSalesSummary` null. Med butik/automat (`scope`) räknas bara
+ * den butikens eller automatens order och lager, som på sidan.
  */
 
 import "server-only";
@@ -19,18 +21,23 @@ import { lostSales } from "@/analytics/lost-sales";
 import { addDays, type IsoDate, type Period } from "@/domain";
 import { getRoleFor, requireRoleFor, withUserDbFor } from "@/server/access";
 import { businessToday, loadDomainInputFor, type Viewer } from "@/server/data/core/loaders";
-import { canSeeEconomy, ECONOMY_ROLES } from "@/server/data/core/types";
+import { canSeeEconomy, ECONOMY_ROLES, type DataScope } from "@/server/data/core/types";
+import { getActiveOrganization } from "@/server/session";
 
-import { lostPeriodOf } from "./load";
+import { lostPeriodOf, machinesInScope } from "./load";
 import { queryMachineStockEvents } from "./queries";
 import { currentViewer } from "./session";
 import type { LostSalesSummary } from "./types";
 
 const LOOKBACK_DAYS = 60;
 
-/** Adressen till underlaget: sektionen Förlorad försäljning med samma period. */
-export function lostSalesHref(period: Period): string {
+const NO_SCOPE: DataScope = { storeId: null, machineId: null };
+
+/** Adressen till underlaget: sektionen Förlorad försäljning med samma period och filter. */
+export function lostSalesHref(period: Period, scope: DataScope = NO_SCOPE): string {
   const q = new URLSearchParams({ from: period.start, to: period.end });
+  if (scope.storeId) q.set("butik", scope.storeId);
+  if (scope.machineId) q.set("automat", scope.machineId);
   return `/prognos?${q.toString()}#forlorad-forsaljning`;
 }
 
@@ -42,6 +49,7 @@ export async function lostSalesSummaryFor(
   viewer: Viewer,
   period: Period,
   now: Date = new Date(),
+  scope: DataScope = NO_SCOPE,
 ): Promise<LostSalesSummary> {
   const orgId = viewer.organization.id;
   await requireRoleFor(viewer.user, orgId, ECONOMY_ROLES);
@@ -49,16 +57,21 @@ export async function lostSalesSummaryFor(
   const lostPeriod = lostPeriodOf(period, asOf);
   const from = addDays(lostPeriod.start, -LOOKBACK_DAYS);
 
-  const input = await loadDomainInputFor(
-    viewer,
-    { period: { start: from, end: lostPeriod.end } },
-    now,
-  );
-  const events = await withUserDbFor(viewer.user, (tx) =>
+  const range = { start: from, end: lostPeriod.end };
+  const scoped = Boolean(scope.storeId || scope.machineId);
+  const input = await loadDomainInputFor(viewer, { period: range }, now);
+  const inScope = scoped
+    ? await loadDomainInputFor(viewer, { period: range, ...scope }, now)
+    : input;
+  const allEvents = await withUserDbFor(viewer.user, (tx) =>
     queryMachineStockEvents(tx, orgId, from, lostPeriod.end),
   );
+  const machines = machinesInScope(input, scope);
+  const events = machines
+    ? allEvents.filter((e) => e.machineId !== null && machines.has(e.machineId))
+    : allEvents;
   const result = lostSales({
-    orders: input.current.orders,
+    orders: inScope.current.orders,
     stockEvents: events,
     period: lostPeriod,
     settings: input.settings,
@@ -122,23 +135,40 @@ export async function lostSalesSummaryFor(
       text: m.text,
     })),
     series,
-    href: lostSalesHref(lostPeriod),
+    scope,
+    href: lostSalesHref(lostPeriod, scope),
   };
 }
 
 const lostSalesSummaryCached = cache(
-  async (start: IsoDate, end: IsoDate): Promise<LostSalesSummary | null> => {
+  async (
+    start: IsoDate,
+    end: IsoDate,
+    storeId: string | null,
+    machineId: string | null,
+  ): Promise<LostSalesSummary | null> => {
+    // Butiksanvändare och den utan organisation har ingen ekonomi att visa.
+    if (!(await getActiveOrganization())) return null;
     const viewer = await currentViewer();
     const role = await getRoleFor(viewer.user, viewer.organization.id);
     if (role === null || !canSeeEconomy(role)) return null;
-    return lostSalesSummaryFor(viewer, { start, end });
+    return lostSalesSummaryFor(viewer, { start, end }, new Date(), { storeId, machineId });
   },
 );
 
 /**
- * För serverkomponenter (Hem, Att göra): förlorad försäljning för perioden som den
- * inloggade användaren, memoiserad per förfrågan. null för påfyllare (ingen ekonomi).
+ * För serverkomponenter (Hem, Att göra): förlorad försäljning för perioden (och butiken
+ * eller automaten i filtret, om det finns) som den inloggade användaren, memoiserad per
+ * förfrågan. null för påfyllare, butiksanvändare och den utan organisation (ingen ekonomi).
  */
-export function lostSalesSummary(period: Period): Promise<LostSalesSummary | null> {
-  return lostSalesSummaryCached(period.start, period.end);
+export function lostSalesSummary(
+  period: Period,
+  scope?: Partial<DataScope> | null,
+): Promise<LostSalesSummary | null> {
+  return lostSalesSummaryCached(
+    period.start,
+    period.end,
+    scope?.storeId ?? null,
+    scope?.machineId ?? null,
+  );
 }

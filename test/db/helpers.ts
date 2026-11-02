@@ -351,13 +351,14 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       .returning();
     const [contract] = await tx
       .insert(s.contracts)
-      .values({
-        ...org,
-        storeId: store!.id,
-        validFrom: "2025-01-01",
-        storagePath: `${orgId}/contracts/avtal.pdf`,
-      })
+      .values({ ...org, storeId: store!.id, validFrom: "2025-01-01" })
       .returning();
+    // Avtalsfilen sätts bara via servern (20261102142000_ekonomi_review_fixes.sql).
+    await tx.execute(
+      sql`select public.attach_contract_file(${orgId}::uuid, ${contract!.id}::uuid,
+            ${`${orgId}/${contract!.id}/${"d".repeat(64)}.pdf`}, 'avtal.pdf', 'application/pdf',
+            1024::bigint, ${"d".repeat(64)})`,
+    );
     const [agreement] = await tx
       .insert(s.storeAgreements)
       .values({
@@ -658,8 +659,19 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
     await tx.insert(s.deviationReviews).values({
       ...org,
       deviationKey: "U-2025-03:fee",
+      fingerprint: "fee:0:0",
       action: "investigated",
       note: "Kontrollerad mot Awish.",
+    });
+    await tx.insert(s.voucherDeliveries).values({
+      ...org,
+      month: "2025-03-01",
+      provider: "local",
+      series: "BL",
+      firstNumber: 1,
+      lastNumber: 31,
+      verificationCount: 31,
+      fileSha256: "e".repeat(64),
     });
     await tx.insert(s.fixedCosts).values({
       ...org,

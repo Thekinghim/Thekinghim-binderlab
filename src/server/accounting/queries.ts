@@ -357,7 +357,13 @@ export async function queryPurchases(tx: Tx, orgId: string): Promise<PurchaseRec
     if (status === "partially_received") {
       const receivedOre = Number(r.received_ore);
       return [
-        { id: `${id}:mottaget`, supplier, status: "received", date: date(r.received_date), amountOre: receivedOre },
+        {
+          id: `${id}:mottaget`,
+          supplier,
+          status: "received",
+          date: date(r.received_date),
+          amountOre: receivedOre,
+        },
         {
           id: `${id}:rest`,
           supplier,

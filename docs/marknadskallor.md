@@ -60,7 +60,7 @@ Beställaren väljer källa och godkänner villkor och kostnad. Därefter byggs 
   - `none` (standard): panelen visar "Ej konfigurerad" och nämner kandidaterna.
   - `local`: `LocalMarketPriceSource` läser `.data/market-prices.json` (eller `MARKET_PRICE_LOCAL_FILE`). Bara för utveckling och test, vägrar i production, och priserna märks "Lokal testkälla" i panelen.
   - `tcgplayer`, `cardmarket`, `pricecharting`: ger läget "inte inkopplad" med förklaring. Det finns medvetet ingen implementation.
-- En ny källa läggs till som en klass som implementerar `MarketPriceSource`, med nycklar i miljövariabler (aldrig i databasen), och registreras i `marketSourceStatus`. Priser som ska sparas läggs i `supplier_price_quotes` med `source = 'market'`, så att de syns i samma prisutveckling och kan skiljas från egna offerter.
+- En ny källa läggs till som en klass som implementerar `MarketPriceSource`, med nycklar i miljövariabler (aldrig i databasen), och registreras i `marketSourceStatus`. Priser som ska sparas läggs i en egen tabell för marknadspriser (byggs när källan väljs), inte i `supplier_price_quotes`: där kräver varje rad en leverantör, och marknadspriser får inte påverka inköpsprisernas median, trend eller flaggor. Värdet `source = 'market'` i `supplier_price_quotes` används därför inte, och prisanalysen (`purchaseSources` i `src/server/market/model.ts`) räknar aldrig med sådana rader. Marknadspriset visas bredvid inköpspriset som en separat kolumn.
 
 Filformat för den lokala källan:
 

@@ -463,7 +463,7 @@ describe("revision 4: titel nära slut och misslyckad import", () => {
     const [a] = run(5);
     expect(a?.severity).toBe("warning");
     expect(a?.key).toBe("low_stock:m1:t1");
-    expect(nbsp(a?.title)).toBe("30th Celebration i Automat 1 tar slut om 2 dagar");
+    expect(nbsp(a?.title)).toBe("30th Celebration i Automat 1 tar slut tor 5 nov.");
     expect(nbsp(a?.detail)).toBe(
       "5 pack kvar, säljer 2,0 pack/dag (28 pack på 14 dagar). Beräknat slut tor 5 nov.",
     );

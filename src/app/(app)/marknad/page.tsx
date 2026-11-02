@@ -127,13 +127,23 @@ export default async function MarknadPage({
     query,
   };
   const slots: SlotInfo = Object.fromEntries(
-    data.machines.map((m) => [
-      m.id,
-      {
-        current: slotLinesOn(data, m.id, data.today),
-        prefill: slotPrefill(data, m.id, period),
-      },
-    ]),
+    data.machines.map((m) => {
+      const changes = data.assortmentChanges.filter((c) => c.machineId === m.id);
+      return [
+        m.id,
+        {
+          current: slotLinesOn(data, m.id, data.today),
+          prefill: slotPrefill(data, m.id, model.assortment.period),
+          lockedThrough: changes.reduce<string | null>(
+            (max, c) => (max === null || c.implementedOn > max ? c.implementedOn : max),
+            null,
+          ),
+          starts: [
+            ...new Set(data.slots.filter((x) => x.machineId === m.id).map((x) => x.validFrom)),
+          ].sort(),
+        },
+      ];
+    }),
   );
 
   const upcoming = model.releases.filter((r) => r.status === "upcoming").length;

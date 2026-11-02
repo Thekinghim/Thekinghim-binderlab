@@ -137,7 +137,7 @@ export async function sendReport(raw: unknown): Promise<ActionResult<SendResult>
         followText: input.followText ?? null,
         resend: input.resend ?? false,
       },
-      await sendDeps(),
+      await sendDeps(viewer.organization.name),
     );
     refresh();
     return { ok: true, data: result };

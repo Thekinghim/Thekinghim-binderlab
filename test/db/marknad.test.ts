@@ -425,7 +425,9 @@ describe("leverantörspriser", () => {
             quotedOn: addDays("2026-04-01", i * 14),
             unitCost,
             quantity: "36",
+            kind: "purchase",
           }),
+          NOW,
         ),
       );
     }
@@ -439,6 +441,20 @@ describe("leverantörspriser", () => {
         quantity: "36",
         kind: "purchase",
       }),
+      NOW,
+    );
+    // En lika dyr offert visas i prisutvecklingen men flaggas inte: bara inköp flaggas.
+    const offer = await createQuoteFor(
+      ownerV,
+      createQuoteSchema.parse({
+        newSupplierName: supplierName,
+        titleId: M.titles.a,
+        quotedOn: "2026-10-21",
+        unitCost: "26,00",
+        quantity: "36",
+        kind: "quote",
+      }),
+      NOW,
     );
     const data = await loadMarketDataFor(ownerV, NOW);
     // Samma leverantör återanvänds (namnet jämförs utan skiftläge).
@@ -449,13 +465,15 @@ describe("leverantörspriser", () => {
     expect(view.trends.ok).toBe(true);
     if (!view.trends.ok || !view.anomalies.ok) return;
     const trend = view.trends.value.find((t) => t.titleId === M.titles.a)!;
-    expect(trend.purchases).toBe(7);
-    expect(trend.medianOre).toBe(2000);
+    expect(trend.purchases).toBe(8);
+    // Median av sex inköp kring 20 kr och två à 26 kr (inköp och offert).
+    expect(trend.medianOre).toBe(2005);
     expect(view.anomalies.value.map((a) => a.purchaseId)).toEqual([expensive]);
     expect(view.anomalies.value[0]!.direction).toBe("expensive");
     expect(view.anomalies.value[0]!.evidence.purchaseIds).toContain(ids[0]);
 
     await deleteQuoteFor(ownerV, expensive);
+    await deleteQuoteFor(ownerV, offer);
     await expect(deleteQuoteFor(ownerV, expensive)).rejects.toBeInstanceOf(MarketError);
   });
 
@@ -588,7 +606,11 @@ describe("sortiment", () => {
     const model = buildMarketModel(after, PERIOD);
     const followUp = model.assortment.followUps.find((f) => f.change.id === done.id)!;
     expect(followUp.followUp.ok).toBe(true);
-    if (followUp.followUp.ok) expect(followUp.followUp.value.status).toBe("too-early");
+    // Genomförd i dag: uppföljningen räknar bara hela dagar, så den har inte börjat.
+    if (followUp.followUp.ok) expect(followUp.followUp.value.status).toBe("not-started");
+    expect(
+      model.assortment.machines.ok && model.assortment.machines.value[0]?.implemented?.id,
+    ).toBe(done.id);
   });
 });
 
@@ -611,7 +633,9 @@ describe("prissättning", () => {
     expect(proposal?.experiment).toBe(true);
     if (!proposal) return;
     const started = await startExperimentFor(ownerV, { proposalKey: proposal.key }, NOW);
-    expect(started.startedOn).toBe("2026-11-03");
+    // Underlaget räknas till och med i går (sista hela dagen); testet börjar i dag.
+    expect(started.startedOn).toBe(TODAY);
+    expect(proposal.evidence.period?.end).toBe("2026-11-01");
     const after = await loadMarketDataFor(ownerV, NOW);
     const row = after.experiments.find((e) => e.id === started.id)!;
     expect(row.testMachineIds.length + row.controlMachineIds.length).toBe(3);
@@ -623,5 +647,176 @@ describe("prissättning", () => {
     expect(await stopExperimentFor(ownerV, started.id, NOW)).toBe("deleted");
     const gone = await loadMarketDataFor(ownerV, NOW);
     expect(gone.experiments.some((e) => e.id === started.id)).toBe(false);
+  });
+});
+
+describe("granskningens rättelser", () => {
+  const PERIOD = { start: "2026-10-06", end: TODAY };
+
+  it("samma pristest kan inte startas flera gånger samtidigt", async () => {
+    const data = await loadMarketDataFor(ownerV, NOW);
+    const proposal = priceTestProposals(data).find((p) => p.titleId === M.titles.steady)!;
+    expect(proposal).toBeDefined();
+    const results = await Promise.allSettled(
+      [1, 2, 3].map(() => startExperimentFor(ownerV, { proposalKey: proposal.key }, NOW)),
+    );
+    const ok = results.filter((r) => r.status === "fulfilled");
+    expect(ok).toHaveLength(1);
+    for (const r of results) {
+      if (r.status === "rejected") expect(r.reason).toBeInstanceOf(MarketError);
+    }
+    const after = await loadMarketDataFor(ownerV, NOW);
+    const mine = after.experiments.filter((e) => e.titleId === M.titles.steady);
+    expect(mine).toHaveLength(1);
+    expect(await stopExperimentFor(ownerV, mine[0]!.id, NOW)).toBe("deleted");
+  });
+
+  it("en sortimentsändring genomförs en gång och låser fackhistoriken bakåt", async () => {
+    const m2 = M.machines[1]!;
+    await saveSlotsFor(
+      ownerV,
+      saveSlotsSchema.parse({
+        machineId: m2,
+        validFrom: "2026-10-01",
+        lines: [
+          { titleId: M.titles.base, slots: 3 },
+          { titleId: M.titles.steady, slots: 1 },
+        ],
+      }),
+      NOW,
+    );
+    const data = await loadMarketDataFor(ownerV, NOW);
+    const view = assortmentView(data, PERIOD);
+    // Analysperioden slutar i går, sista hela dagen.
+    expect(view.period.end).toBe("2026-11-01");
+    const rec = view.machines.ok
+      ? view.machines.value.find((m) => m.machineId === m2)?.recommendation
+      : null;
+    expect(rec?.action).toBe("change");
+    if (!rec) return;
+    const input = (implementedOn: IsoDate) => ({
+      machineId: m2,
+      fingerprint: rec.fingerprint,
+      implementedOn,
+      periodStart: PERIOD.start,
+      periodEnd: PERIOD.end,
+    });
+    // Inom mätperioden och för långt bakåt nekas.
+    await expect(implementAssortmentFor(ownerV, input("2026-11-01"), NOW)).rejects.toThrow(
+      /efter rekommendationens mätperiod/,
+    );
+    await expect(implementAssortmentFor(ownerV, input("2026-10-20"), NOW)).rejects.toThrow(
+      /högst 7 dagar bakåt/,
+    );
+
+    const results = await Promise.allSettled(
+      [1, 2, 3].map(() => implementAssortmentFor(ownerV, input(TODAY), NOW)),
+    );
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    for (const r of results) {
+      if (r.status === "rejected") expect(r.reason).toBeInstanceOf(MarketError);
+    }
+    const after = await loadMarketDataFor(ownerV, NOW);
+    expect(after.assortmentChanges.filter((c) => c.machineId === m2)).toHaveLength(1);
+
+    // Fackfördelningen från genomförandedagen och bakåt kan inte skrivas över.
+    for (const validFrom of [TODAY, "2026-10-15"]) {
+      await expect(
+        saveSlotsFor(
+          ownerV,
+          saveSlotsSchema.parse({
+            machineId: m2,
+            validFrom,
+            lines: [{ titleId: M.titles.base, slots: 1 }],
+          }),
+          NOW,
+        ),
+      ).rejects.toThrow(/kan inte skrivas över/);
+    }
+    const slotsAfter = (await loadMarketDataFor(ownerV, NOW)).slots.filter(
+      (x) => x.machineId === m2 && x.validFrom === TODAY,
+    );
+    expect(slotsAfter.length).toBeGreaterThan(0);
+  });
+
+  it("släpp: en titel per släpp, främmande id och byte av titel på fastställt förslag nekas", async () => {
+    await expect(
+      createReleaseFor(
+        ownerV,
+        createReleaseSchema.parse({ name: "Igen", releaseDate: "2026-12-01", titleId: M.titles.n }),
+      ),
+    ).rejects.toThrow(/Titeln har redan ett släpp/);
+    await expect(
+      createReleaseFor(
+        ownerV,
+        createReleaseSchema.parse({
+          name: "Främmande",
+          releaseDate: "2026-12-01",
+          titleId: randomUUID(),
+        }),
+      ),
+    ).rejects.toThrow("Titeln finns inte.");
+    await expect(
+      createReleaseFor(
+        ownerV,
+        createReleaseSchema.parse({
+          name: "Främmande",
+          releaseDate: "2026-12-01",
+          supplierId: randomUUID(),
+        }),
+      ),
+    ).rejects.toThrow("Leverantören finns inte.");
+
+    // Ett släpp utan titel fastställs; titeln får kopplas men sedan inte bytas.
+    const fields = { name: "Okänd titel", series: "SV", releaseDate: "2026-11-20" };
+    const id = await createReleaseFor(ownerV, createReleaseSchema.parse(fields));
+    await lockReleasePlanFor(ownerV, id, NOW);
+    await updateReleaseFor(ownerV, {
+      id,
+      ...createReleaseSchema.parse({ ...fields, titleId: M.titles.b }),
+    });
+    await expect(
+      updateReleaseFor(ownerV, {
+        id,
+        ...createReleaseSchema.parse({ ...fields, titleId: M.titles.a }),
+      }),
+    ).rejects.toThrow(/fastställt för en annan titel/);
+    await deleteReleaseFor(ownerV, id);
+  });
+
+  it("inköpspriser: rimligt datum, 0 kr kräver anteckning, främmande leverantör nekas", async () => {
+    const base = { newSupplierName: `Datum ${uniqueSuffix()}`, titleId: M.titles.a };
+    await expect(
+      createQuoteFor(
+        ownerV,
+        createQuoteSchema.parse({ ...base, quotedOn: "2099-12-31", unitCost: "20" }),
+        NOW,
+      ),
+    ).rejects.toThrow(/högst 90 dagar fram/);
+    await expect(
+      createQuoteFor(
+        ownerV,
+        createQuoteSchema.parse({ ...base, quotedOn: TODAY, unitCost: "0" }),
+        NOW,
+      ),
+    ).rejects.toThrow(/0 kr kräver en anteckning/);
+    const free = await createQuoteFor(
+      ownerV,
+      createQuoteSchema.parse({ ...base, quotedOn: TODAY, unitCost: "0", note: "Gratisexemplar" }),
+      NOW,
+    );
+    await deleteQuoteFor(ownerV, free);
+    await expect(
+      createQuoteFor(
+        ownerV,
+        createQuoteSchema.parse({
+          supplierId: randomUUID(),
+          titleId: M.titles.a,
+          quotedOn: TODAY,
+          unitCost: "20",
+        }),
+        NOW,
+      ),
+    ).rejects.toThrow("Leverantören finns inte.");
   });
 });

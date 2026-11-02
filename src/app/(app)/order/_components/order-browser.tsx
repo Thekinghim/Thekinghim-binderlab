@@ -31,6 +31,8 @@ import { OrderList } from "./order-list";
 export interface OrderBrowserProps {
   /** Listans query (period, filter, sökning, sortering) som servern laddade raderna med. */
   readonly query: string;
+  /** Samma query med perioden låst till datum, för påfyllningen. */
+  readonly pageQuery: string;
   readonly rows: readonly OrderRow[];
   readonly nextOffset: number | null;
   readonly totals: OrderTotals;
@@ -61,6 +63,29 @@ type DetailState =
     };
 
 const SEARCH_DELAY_MS = 300;
+
+/**
+ * Efter att detaljvyn stängts: fokus till orderns knapp i listan om den syns, annars
+ * till sidans rubrik (t.ex. när ordern öppnades via länk och inte finns bland raderna).
+ */
+function restoreFocus(orderId: string): void {
+  requestAnimationFrame(() => {
+    const button = document.querySelector<HTMLElement>(
+      `[data-order-button="${CSS.escape(orderId)}"]`,
+    );
+    if (button) {
+      button.focus();
+      return;
+    }
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    const h1 = document.querySelector<HTMLElement>("main h1, h1");
+    if (h1) {
+      if (!h1.hasAttribute("tabindex")) h1.setAttribute("tabindex", "-1");
+      h1.focus();
+    }
+  });
+}
 
 /** Sätter eller tar bort ?order= utan att ladda om sidan (ingen serverförfrågan). */
 function replaceOrderParam(orderId: string | null): void {
@@ -134,10 +159,12 @@ export function OrderBrowser(props: OrderBrowserProps) {
     [fetchDetail],
   );
 
+  const openId = detail.status === "closed" ? null : detail.id;
   const closeOrder = useCallback(() => {
     replaceOrderParam(null);
     setDetail({ status: "closed" });
-  }, []);
+    if (openId) restoreFocus(openId);
+  }, [openId]);
 
   const titleName = useMemo(
     () => new Map(props.refs.titles.map((t) => [t.id, t.name])),
@@ -145,6 +172,10 @@ export function OrderBrowser(props: OrderBrowserProps) {
   );
   const machineCode = useMemo(
     () => new Map(props.refs.machines.map((m) => [m.id, m.code])),
+    [props.refs],
+  );
+  const storeName = useMemo(
+    () => new Map(props.refs.stores.map((s) => [s.id, s.name])),
     [props.refs],
   );
 
@@ -170,7 +201,7 @@ export function OrderBrowser(props: OrderBrowserProps) {
       : r?.machineId
         ? machineCode.get(r.machineId)
         : null;
-    const store = d?.store?.name ?? null;
+    const store = d ? (d.store?.name ?? null) : r?.storeId ? (storeName.get(r.storeId) ?? null) : null;
     if (orderedAt) {
       modalDescription = `${formatAt(orderedAt, props.timeZone, now)}${
         machine ? ` i ${machine}${store ? `, ${store}` : ""}` : ""
@@ -193,7 +224,7 @@ export function OrderBrowser(props: OrderBrowserProps) {
       ) : (
         <OrderList
           key={props.query}
-          query={props.query}
+          query={props.pageQuery}
           rows={props.rows}
           nextOffset={props.nextOffset}
           totals={props.totals}

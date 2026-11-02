@@ -215,21 +215,22 @@ function DismissedList({
       <h2 id={`${listId}-rubrik`} className="sr-only">
         Avbockade punkter
       </h2>
-      <Button
-        size="sm"
-        variant="ghost"
+      <button
+        type="button"
         aria-expanded={open}
         aria-controls={listId}
         onClick={() => setOpen((v) => !v)}
-        className="-ml-2.5"
+        className={cn(linkButton, linkVariant.ghost, "-ml-2.5")}
       >
         <Icon
           name="chevronRight"
           size={12}
           className={cn("shrink-0 transition-transform duration-fast", open && "rotate-90")}
         />
-        {open ? "Dölj avbockade" : "Visa avbockade"} ({formatInt(items.length)})
-      </Button>
+        <span>
+          {open ? "Dölj avbockade" : "Visa avbockade"} ({formatInt(items.length)})
+        </span>
+      </button>
       <div id={listId} hidden={!open} className="mt-4">
         <p className="max-w-2xl text-sm text-muted">
           Punkter som bockats av de senaste 14 dagarna. De visas i listan igen av sig själva om

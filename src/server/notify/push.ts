@@ -20,6 +20,8 @@ import path from "node:path";
 
 import webpush from "web-push";
 
+import { isAllowedPushEndpoint } from "./push-endpoint";
+
 type Env = Readonly<Record<string, string | undefined>>;
 
 export interface PushTarget {
@@ -174,6 +176,11 @@ export class WebPushSender implements PushSender {
   constructor(private readonly vapid: { subject: string; publicKey: string; privateKey: string }) {}
 
   async send(target: PushTarget, payload: PushPayload): Promise<PushOutcome> {
+    // Bara kända push-tjänster (ingen POST till interna adresser). Databasen spärrar redan
+    // andra adresser; det här är ett andra skydd.
+    if (!isAllowedPushEndpoint(target.endpoint)) {
+      return { ok: false, gone: true, detail: "okänd push-tjänst" };
+    }
     try {
       const res = await webpush.sendNotification(
         { endpoint: target.endpoint, keys: { p256dh: target.p256dh, auth: target.auth } },
@@ -191,10 +198,12 @@ export class WebPushSender implements PushSender {
         typeof error === "object" && error !== null && "statusCode" in error
           ? Number((error as { statusCode: unknown }).statusCode)
           : null;
+      // Bara statuskoden visas: nätverksfelets text kan avslöja något om nätet bakom servern.
+      if (!status) console.error("[push] Utskicket misslyckades:", error);
       return {
         ok: false,
         gone: status === 404 || status === 410,
-        detail: status ? `HTTP ${status}` : error instanceof Error ? error.message : "okänt fel",
+        detail: status ? `HTTP ${status}` : "push-tjänsten svarade inte",
       };
     }
   }

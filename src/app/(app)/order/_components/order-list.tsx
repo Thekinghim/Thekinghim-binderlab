@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { DataTable, type Column, type SortKey } from "@/components/ui/data-table";
 import { StateMessage } from "@/components/ui/state-message";
 import { cn } from "@/lib/cn";
-import { formatInt, formatKronor, MISSING, NBSP } from "@/lib/format";
+import { formatInt, formatKronor, formatSek, MISSING, NBSP } from "@/lib/format";
 
 import { loadMoreOrders } from "../actions";
 import { formatAt } from "../_lib/headline";
@@ -23,7 +23,9 @@ import type { OrderRefs, OrderRow, OrderTotals } from "../_lib/types";
 const ROW_HEIGHT = 36;
 /** Hämta nästa sida när så här många px återstår av scrollytan. */
 const PREFETCH_PX = ROW_HEIGHT * 40;
-const TABLE_HEIGHT = 640;
+/** Scrollytans höjd (design.md); på mobil högst 60 % av skärmen, så sidan går att scrolla förbi. */
+const TABLE_HEIGHT = 560;
+const TABLE_HEIGHT_MOBILE = "min(560px, 60dvh)";
 
 const SORT_LABEL: Record<OrderSortKey, string> = {
   nr: "Ordernummer",
@@ -60,6 +62,18 @@ function isSortKey(key: string): key is OrderSortKey {
 
 function sameSort(a: OrderSort, b: OrderSort): boolean {
   return a.key === b.key && a.dir === b.dir;
+}
+
+/**
+ * Serverns ordning för lika värden: nyaste först, sedan id fallande. När allt är laddat
+ * får tabellen raderna i den ordningen; tabellens sortering är stabil, så lika värden
+ * hamnar då som vid omladdning och i CSV:n.
+ */
+function canonicalOrder(rows: readonly OrderRow[]): readonly OrderRow[] {
+  return [...rows].sort((a, b) => {
+    if (a.orderedAt !== b.orderedAt) return a.orderedAt < b.orderedAt ? 1 : -1;
+    return a.id < b.id ? 1 : a.id > b.id ? -1 : 0;
+  });
 }
 
 export function OrderList({
@@ -115,7 +129,10 @@ export function OrderList({
     setError(null);
     let res: Awaited<ReturnType<typeof loadMoreOrders>>;
     try {
-      res = await loadMoreOrders(query, next);
+      res = await loadMoreOrders(query, {
+        offset: next,
+        afterId: rows.length > 0 ? (rows[rows.length - 1]?.id ?? null) : null,
+      });
     } catch {
       res = { ok: false, message: "Fler order gick inte att hämta. Kontrollera anslutningen." };
     }
@@ -131,7 +148,7 @@ export function OrderList({
       return [...cur, ...res.data.rows.filter((r) => !seen.has(r.id))];
     });
     setNext(res.data.nextOffset);
-  }, [next, query]);
+  }, [next, query, rows]);
 
   const loadMoreRef = useRef(loadMore);
   useEffect(() => {
@@ -210,8 +227,9 @@ export function OrderList({
             type="button"
             aria-haspopup="dialog"
             aria-label={`Visa order ${r.externalId}`}
+            data-order-button={r.id}
             onClick={() => onOpen(r)}
-            className="rounded-xs font-mono text-sm text-fg underline decoration-line-control underline-offset-4 transition-colors hover:decoration-fg"
+            className="inline-flex min-h-7 w-full items-center rounded-xs font-mono text-sm text-fg underline decoration-line-control underline-offset-4 transition-colors hover:decoration-fg"
           >
             {r.externalId}
           </button>
@@ -236,11 +254,29 @@ export function OrderList({
         sortValue: (r) => rank(titleRank, r.titleId),
         render: (r) => {
           const name = r.titleId ? titles.get(r.titleId) : undefined;
-          if (name) return <span title={name}>{name}</span>;
-          return (
-            <span className="text-muted" title={r.rawTitle ?? undefined}>
+          const label = name ? (
+            <span className="block truncate" title={name}>
+              {name}
+            </span>
+          ) : (
+            <span className="block truncate text-muted" title={r.rawTitle ?? undefined}>
               {r.rawTitle ?? MISSING}
             </span>
+          );
+          // Klick på titeln öppnar också ordern (tangentbord: ordernumret är knappen).
+          // Under 768 px står tid och automat på en andra rad, eftersom kolumnerna saknas.
+          const machine = r.machineId ? machines.get(r.machineId) : undefined;
+          return (
+            <div className="block w-full cursor-pointer leading-tight" onClick={() => onOpen(r)}>
+              {label}
+              {wide ? null : (
+                <span className="tnum mt-0.5 block truncate font-mono text-xs text-muted">
+                  {formatAt(r.orderedAt, timeZone, now)}
+                  {" · "}
+                  {machine ? machine.code : "Okopplad"}
+                </span>
+              )}
+            </div>
           );
         },
       },
@@ -281,11 +317,13 @@ export function OrderList({
         width: 120,
         sortValue: (r) => r.amountOre,
         render: (r) => formatKronor(r.amountOre / 100),
-        footer: formatKronor(totals.amountOre / 100),
+        // Hela kronor, som rubriken (design.md: summaraden säger samma belopp som rubriken).
+        footer: formatSek(totals.amountOre / 100),
       },
     ];
-  }, [refs, timeZone, now, onOpen, totals.amountOre]);
-  // Under 768 px: ordernummer, titel och belopp ryms utan sidledsscroll (resten finns i detaljvyn).
+  }, [refs, timeZone, now, onOpen, totals.amountOre, wide]);
+  // Under 768 px: ordernummer, titel (med tid och automat under) och belopp ryms utan
+  // sidledsscroll. Butiken finns i detaljvyn.
   const columns = useMemo(
     () =>
       wide
@@ -300,6 +338,7 @@ export function OrderList({
     [allColumns, wide],
   );
 
+  const tableRows = useMemo(() => (complete ? canonicalOrder(rows) : rows), [complete, rows]);
   const defaultSort = useMemo(() => [{ key: sort.key, dir: sort.dir }], [sort]);
   const sortSig = `${sort.key}:${sort.dir}:${resets}`;
   const partial = rows.length < totals.count;
@@ -344,15 +383,15 @@ export function OrderList({
         <DataTable
           key={sortSig}
           columns={columns}
-          rows={rows}
+          rows={tableRows}
           rowKey={(r) => r.id}
           caption={`Order, ${formatInt(totals.count)} st, sorterade på ${SORT_LABEL[sort.key].toLowerCase()}`}
           defaultSort={defaultSort}
           onSortChange={onSortChange}
           virtualize={rows.length > 200}
-          dense
+          dense={wide}
           surface="bg"
-          maxHeight={rows.length > 200 ? TABLE_HEIGHT : undefined}
+          maxHeight={rows.length > 200 ? (wide ? TABLE_HEIGHT : TABLE_HEIGHT_MOBILE) : undefined}
         />
       </div>
 

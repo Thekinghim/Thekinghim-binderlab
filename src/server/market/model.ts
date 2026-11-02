@@ -354,29 +354,29 @@ export function purchaseSources(data: MarketData): PurchaseSource[] {
     ...data.quotes
       .filter((q) => q.source !== "market")
       .map((q): PurchaseSource => ({
-      id: q.id,
-      origin: "quote",
-      kind: q.kind,
-      titleId: q.titleId,
-      supplierId: q.supplierId,
-      date: q.quotedOn,
-      unitCostOre: q.unitCostOre,
-      quantity: q.quantity,
-      isPurchase: q.kind === "purchase",
-    })),
+        id: q.id,
+        origin: "quote",
+        kind: q.kind,
+        titleId: q.titleId,
+        supplierId: q.supplierId,
+        date: q.quotedOn,
+        unitCostOre: q.unitCostOre,
+        quantity: q.quantity,
+        isPurchase: q.kind === "purchase",
+      })),
     ...data.purchaseLines
       .filter((l) => l.status !== "draft")
       .map((l): PurchaseSource => ({
-      id: l.id,
-      origin: "purchase-order",
-      kind: "order-line",
-      titleId: l.titleId,
-      supplierId: l.supplierId,
-      date: l.date,
-      unitCostOre: l.unitCostOre,
-      quantity: l.quantity,
-      isPurchase: true,
-    })),
+        id: l.id,
+        origin: "purchase-order",
+        kind: "order-line",
+        titleId: l.titleId,
+        supplierId: l.supplierId,
+        date: l.date,
+        unitCostOre: l.unitCostOre,
+        quantity: l.quantity,
+        isPurchase: true,
+      })),
   ];
 }
 

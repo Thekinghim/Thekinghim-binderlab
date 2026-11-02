@@ -347,7 +347,7 @@ describe("behörighet", () => {
       tx.insert(s.pushSubscriptions).values({
         organizationId: orgId,
         userId: owner.id,
-        endpoint: `https://push.example/${randomUUID()}`,
+        endpoint: `https://fcm.googleapis.com/fcm/send/${randomUUID()}`,
         p256dh: "x".repeat(40),
         authSecret: "y".repeat(16),
       }),

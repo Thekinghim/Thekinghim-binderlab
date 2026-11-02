@@ -133,7 +133,7 @@ export function ReleaseFormButton({
         title={editing ? values.name || "Släpp" : "Lägg in ett kortsläpp"}
         description={
           locked
-            ? "Förslaget är fastställt. Lås upp det för att ändra släppdag, storlek eller förpackning."
+            ? "Förslaget är fastställt. Lås upp det för att ändra titel, släppdag, storlek eller förpackning."
             : "Förslaget på inköp och fördelning räknas från tidigare släpp i samma serie."
         }
       >
@@ -174,7 +174,12 @@ export function ReleaseFormButton({
             value={values.titleId}
             onChange={(e) => set("titleId", e.target.value)}
             options={[{ value: "", label: "Ingen titel ännu" }, ...titles]}
-            hint="Koppla när titeln finns i orderna, så att utfallet kan mätas."
+            disabled={locked && Boolean(initial?.titleId)}
+            hint={
+              locked && initial?.titleId
+                ? "Förslaget är fastställt för titeln. Lås upp det för att byta titel."
+                : "Koppla när titeln finns i orderna, så att utfallet kan mätas."
+            }
           />
           <Select
             label="Leverantör"

@@ -75,7 +75,7 @@ describe("lowStockAlerts", () => {
     const a = res[0];
     expect(a?.severity).toBe("warning");
     expect(a?.key).toBe("low_stock:m1:t1");
-    expect(t(a?.title)).toBe("30th Celebration i Automat 3 tar slut om 2 dagar");
+    expect(t(a?.title)).toBe("30th Celebration i Automat 3 tar slut tor 5 nov.");
     expect(t(a?.detail)).toBe(
       "5 pack kvar, säljer 2,0 pack/dag (28 pack på 14 dagar). Beräknat slut tor 5 nov.",
     );

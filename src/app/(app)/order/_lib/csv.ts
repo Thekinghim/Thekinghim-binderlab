@@ -3,7 +3,7 @@
  * BOM. Tider i organisationens tidszon. Rent, testas i order.test.ts.
  */
 
-import { csvFileName, toCsv, type CsvColumn } from "@/lib/csv";
+import { CSV_EOL, csvFileName, toCsv, type CsvColumn } from "@/lib/csv";
 
 import type { OrderRefs, OrderRow } from "./types";
 
@@ -102,6 +102,19 @@ export function orderCsvColumns(refs: OrderRefs, timeZone: string): CsvColumn<Or
 
 export function orderCsv(rows: readonly OrderRow[], refs: OrderRefs, timeZone: string): string {
   return toCsv(rows, orderCsvColumns(refs, timeZone));
+}
+
+/**
+ * En del av filen när den strömmas ut: första delen har BOM och rubrikrad, de följande
+ * bara rader. Delarna efter varandra blir exakt orderCsv för alla rader.
+ */
+export function orderCsvPart(
+  rows: readonly OrderRow[],
+  columns: readonly CsvColumn<OrderRow>[],
+  first: boolean,
+): string {
+  const csv = toCsv(rows, columns, { bom: first });
+  return first ? csv : csv.slice(csv.indexOf(CSV_EOL) + CSV_EOL.length);
 }
 
 /** "order-2026-10-13--2026-11-01.csv" */

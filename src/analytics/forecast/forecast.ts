@@ -6,8 +6,10 @@
  * - **Serier.** En serie är en titel i en automat som sålt minst en gång under historiken
  *   (standard 8 veckor t.o.m. `asOf`) och vars automat är i drift dagen efter `asOf`.
  *   Order utan automat räknas inte.
- * - **Dagar med data.** Före seriens första försäljning, utanför automatens drifttid och på
- *   dagar i `unavailable` (slutsålt) räknas dagen inte alls (se model.ts).
+ * - **Dagar med data.** Före seriens start, utanför automatens drifttid och på dagar i
+ *   `unavailable` (slutsålt) räknas dagen inte alls (se model.ts). Serien startar vid första
+ *   försäljningen, eller tidigare enligt `seriesStarts` (titeln låg i automaten utan att
+ *   sälja: de dagarna räknas som efterfrågan 0, annars överskattas nya och svaga serier).
  * - **Antal.** Modellen i model.ts: veckodagsjusterat, viktat glidande medel med trend.
  *   Efter automatens sista driftdag är prognosen 0.
  * - **Intäkt** = antal × snittpris exkl. moms, avrundat per dag. Snittpriset är seriens
@@ -17,6 +19,8 @@
  *   prognosen själv (Poisson-golv: slumpen i ett litet antal köp). För en summa över k dagar
  *   är variansen k × dagsvariansen; för flera serier summeras varianserna (oberoende).
  *   Intervallet är summan ± z × √varians (z = 1,282 för 80 %), nedre gränsen minst 0.
+ *   Med `levelUncertainty` läggs nivåns osäkerhet till: nivåvarians = snittprognos per dag /
+ *   dagar med data, och en summa över k dagar får k² × nivåvarians (samma fel alla dagar).
  * - **Träffsäkerhet** mäts med backtest på rullande ursprung (backtest.ts).
  */
 
@@ -82,6 +86,7 @@ export const FORECAST_DEFAULTS = {
   backtestOrigins: 6,
   backtestHorizonDays: 7,
   backtestStepDays: 7,
+  levelUncertainty: false,
 } as const satisfies Required<ForecastOptions>;
 
 /** z-värden (i tusendelar) för de täckningar som stöds, normalfördelning. */
@@ -93,7 +98,10 @@ export const Z_BY_COVERAGE_BP: Readonly<Record<number, number>> = {
   9_900: 2_576,
 };
 
-type ResolvedOptions = { -readonly [K in keyof Required<ForecastOptions>]: number } & {
+type ResolvedOptions = {
+  -readonly [K in Exclude<keyof Required<ForecastOptions>, "levelUncertainty">]: number;
+} & {
+  levelUncertainty: boolean;
   zMilli: number;
 };
 
@@ -153,7 +161,7 @@ function rangeText(lowMilli: number, highMilli: number): string {
 interface Part {
   readonly unitsMilli: number;
   readonly revenueOre: number;
-  /** Dagsvarians × antal aktiva dagar (milli²). */
+  /** Dagsvarians × antal aktiva dagar + nivåvarians × dagar² (milli²). */
   readonly varianceMilli2: bigint;
   /** Dagsvarians × antal aktiva dagar × snittpris² (milli² × öre²). */
   readonly revenueVariance: bigint;
@@ -197,6 +205,8 @@ interface SeriesDays {
   /** Aktiv dag i horisonten (automaten i drift). */
   readonly active: readonly boolean[];
   readonly dayVarianceMilli2: number;
+  /** Nivåns varians (milli²), räknas k² gånger för k dagar. */
+  readonly levelVarianceMilli2: number;
   readonly avgPriceOre: number;
 }
 
@@ -218,7 +228,7 @@ function partOf(w: SeriesDays, from: number, to: number): Part {
     revenue += d.revenueOre;
     if (w.active[i]) k += 1;
   }
-  const v = BigInt(w.dayVarianceMilli2) * BigInt(k);
+  const v = BigInt(w.dayVarianceMilli2) * BigInt(k) + BigInt(w.levelVarianceMilli2) * BigInt(k * k);
   const price = BigInt(w.avgPriceOre);
   return {
     unitsMilli: units,
@@ -282,6 +292,13 @@ export function forecastSales(input: ForecastInput): ForecastResult {
     assertIsoDate(u.date, "Dag utan försäljning");
     unavailable.add(`${seriesKey(u.machineId, u.titleId)}\u0000${u.date}`);
   }
+  const starts = new Map<string, IsoDate>();
+  for (const st of input.seriesStarts ?? []) {
+    assertIsoDate(st.date, "Seriens första dag");
+    const k = seriesKey(st.machineId, st.titleId);
+    const cur = starts.get(k);
+    if (cur === undefined || st.date < cur) starts.set(k, st.date);
+  }
 
   const model: ModelSettings = {
     historyWeeks: o.historyWeeks,
@@ -329,8 +346,12 @@ export function forecastSales(input: ForecastInput): ForecastResult {
     if (!orders.some((x) => x.businessDate >= historyStart)) continue;
     if (!active(machineId, horizon.start)) continue;
 
-    let firstDate = orders[0]!.businessDate;
-    for (const x of orders) if (x.businessDate < firstDate) firstDate = x.businessDate;
+    let firstSale = orders[0]!.businessDate;
+    for (const x of orders) if (x.businessDate < firstSale) firstSale = x.businessDate;
+    const knownStart = starts.get(key);
+    const startSource: SeriesForecast["startSource"] =
+      knownStart !== undefined && knownStart < firstSale ? "stock" : "first-sale";
+    const firstDate = startSource === "stock" ? knownStart! : firstSale;
 
     // Daglig historik.
     const units = new Array<number>(length).fill(0);
@@ -413,6 +434,11 @@ export function forecastSales(input: ForecastInput): ForecastResult {
     const poissonVar = activeCount > 0 ? roundHalfUp(sumMilli * MILLI, activeCount) : 0;
     const useResiduals = resVar !== null && resVar > poissonVar;
     const dayVar = useResiduals ? resVar : poissonVar;
+    // Nivåns osäkerhet: snittprognosen per aktiv dag / dagar med data (Poisson-skattning).
+    const levelVar =
+      o.levelUncertainty && activeCount > 0 && comps.availableDays > 0
+        ? roundHalfUp(sumMilli * MILLI, activeCount * comps.availableDays)
+        : 0;
 
     const backtest: SeriesBacktest = {
       key,
@@ -433,10 +459,19 @@ export function forecastSales(input: ForecastInput): ForecastResult {
       priceSource,
       dayVarianceMilli2: dayVar,
       varianceSource: useResiduals ? "residuals" : "poisson",
+      levelVarianceMilli2: levelVar,
+      startDate: firstDate,
+      startSource,
       days,
       accuracy: metrics,
     };
-    const tmp: SeriesDays = { days, active: activeDays, dayVarianceMilli2: dayVar, avgPriceOre };
+    const tmp: SeriesDays = {
+      days,
+      active: activeDays,
+      dayVarianceMilli2: dayVar,
+      levelVarianceMilli2: levelVar,
+      avgPriceOre,
+    };
     const weeks = weekRanges(asOf, o.horizonDays).map((r) =>
       totalOf([partOf(tmp, r.from, r.to)], r.period, r.to - r.from + 1, o.zMilli),
     );
@@ -453,7 +488,10 @@ export function forecastSales(input: ForecastInput): ForecastResult {
       rule:
         `Prognos = nivå (viktat glidande medel av ${o.historyWeeks} veckor, veckodagsjusterat) + trend, ` +
         `× veckodagsfaktor; intäkt = antal × snittpris exkl. moms. Intervall: ±${packsOneDecimal(o.zMilli)} × √varians ` +
-        `(${useResiduals ? "backtestens residualer" : "Poisson-golv"}).`,
+        `(${useResiduals ? "backtestens residualer" : "Poisson-golv"}${levelVar > 0 ? " plus nivåns osäkerhet: snittprognos / dagar med data, × dagar²" : ""}).` +
+        (startSource === "stock"
+          ? ` Serien räknas från ${firstDate} (första kända saldo i automaten), före första försäljningen ${firstSale}.`
+          : ""),
       period: comps.history,
       orderIds: historyOrderIds,
       dates: excludedDates,
@@ -468,6 +506,16 @@ export function forecastSales(input: ForecastInput): ForecastResult {
         fig("historyUnits", "Sålda pack i historiken", comps.units, "packs"),
         fig("availableDays", "Dagar med data", comps.availableDays, "days"),
         fig("excludedDays", "Dagar som inte räknades", comps.excludedDays, "days"),
+        ...(startSource === "stock"
+          ? [
+              fig(
+                "daysBeforeFirstSale",
+                "Dagar i automaten före första försäljningen",
+                daysBetween(firstDate, firstSale),
+                "days",
+              ),
+            ]
+          : []),
         fig("avgPriceOre", "Snittpris exkl. moms", avgPriceOre, "ore"),
         fig("forecastUnitsMilli", "Prognos, pack", total.unitsMilli, "milli"),
         fig("forecastLowMilli", "Prognos, nedre gräns", total.unitsLowMilli, "milli"),
@@ -656,7 +704,7 @@ export function explainComponents(
     text += ` Snittpris ${kronor},${String(ore).padStart(2, "0")} kr (${src}).`;
   }
   if (c.excludedDays > 0) {
-    text += ` ${c.excludedDays} ${c.excludedDays === 1 ? "dag" : "dagar"} utan data räknades inte (slutsålt, ur drift eller före första försäljningen).`;
+    text += ` ${c.excludedDays} ${c.excludedDays === 1 ? "dag" : "dagar"} utan data räknades inte (slutsålt, ur drift eller före seriens start).`;
   }
   if (c.trendNote) text += ` ${c.trendNote}`;
   return text;

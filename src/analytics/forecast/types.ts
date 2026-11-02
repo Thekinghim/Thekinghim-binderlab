@@ -41,6 +41,23 @@ export interface ForecastOptions {
   readonly backtestHorizonDays?: number;
   /** Dagar mellan två backtest-ursprung. Standard 7. */
   readonly backtestStepDays?: number;
+  /**
+   * Räkna med osäkerheten i själva nivån (skattad på få dagar) i intervallen. Nivåns
+   * varians per dag är snittprognosen / dagar med data (Poisson), och den är samma för
+   * alla dagar i en summa: k dagar ger k × dagsvarians + k² × nivåvarians. Standard false.
+   */
+  readonly levelUncertainty?: boolean;
+}
+
+/**
+ * Första dagen en titel fanns i en automat (t.ex. första kända saldo över 0 enligt lagret).
+ * Dagar från den räknas som dagar med data även före första försäljningen, så att en titel
+ * som legat osåld i automaten inte överskattas.
+ */
+export interface SeriesStart {
+  readonly machineId: string;
+  readonly titleId: string;
+  readonly date: IsoDate;
 }
 
 /** En dag då titeln inte gick att köpa i automaten (t.ex. slutsåld). Räknas inte som efterfrågan 0. */
@@ -63,6 +80,11 @@ export interface ForecastInput {
   readonly machines?: readonly MachineRef[];
   /** Dagar som inte ska räknas som efterfrågan (slutsålt). Se `stockoutUnavailableDays` i `@/analytics/lost-sales`. */
   readonly unavailable?: readonly UnavailableDay[];
+  /**
+   * Seriernas första dag i automaten. Utan den börjar en serie vid första försäljningen.
+   * Ett datum efter första försäljningen ignoreras.
+   */
+  readonly seriesStarts?: readonly SeriesStart[];
   readonly options?: ForecastOptions;
 }
 
@@ -102,7 +124,7 @@ export interface ForecastComponents {
   /** Sålda pack och dagar med data i historiken. */
   readonly units: number;
   readonly availableDays: number;
-  /** Dagar i historiken som inte räknades (slutsålt, ur drift, före första försäljningen). */
+  /** Dagar i historiken som inte räknades (slutsålt, ur drift, före seriens start). */
   readonly excludedDays: number;
 }
 
@@ -154,6 +176,14 @@ export interface SeriesForecast {
   readonly dayVarianceMilli2: number;
   /** Varifrån variansen kommer: backtestens residualer eller Poisson-golvet (= prognosen). */
   readonly varianceSource: "residuals" | "poisson";
+  /**
+   * Nivåns osäkerhet per dag (milli²), 0 om `levelUncertainty` inte är på. Samma för alla
+   * dagar i en summa (k dagar: k² × nivåvarians).
+   */
+  readonly levelVarianceMilli2: number;
+  /** Seriens första dag: första försäljningen eller `seriesStarts` om den är tidigare. */
+  readonly startDate: IsoDate;
+  readonly startSource: "first-sale" | "stock";
   readonly days: readonly ForecastDay[];
   /** Fyra rullande veckor (7 dagar var) från dagen efter `asOf`. */
   readonly weeks: readonly ForecastTotal[];

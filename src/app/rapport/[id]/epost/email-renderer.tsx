@@ -50,7 +50,8 @@ export function EmailRenderer({ jobs }: { jobs: readonly EmailJob[] }) {
     () => false,
   );
   const rendered = useMemo(
-    () => (inBrowser ? jobs.map((job) => ({ job, ...renderReportEmail(revive(job.props)) })) : null),
+    () =>
+      inBrowser ? jobs.map((job) => ({ job, ...renderReportEmail(revive(job.props)) })) : null,
     [inBrowser, jobs],
   );
 

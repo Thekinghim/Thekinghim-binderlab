@@ -12,7 +12,7 @@ import { AuthorizationError } from "@/server/session";
 import { isUuid } from "./_lib/params";
 import { loadOrderDetailFor, loadOrderPageFor } from "./_lib/service";
 import { currentViewer, listArgsFrom } from "./_lib/session";
-import type { OrderDetail, OrderPage } from "./_lib/types";
+import type { OrderDetail, OrderPage, OrderPageStart } from "./_lib/types";
 
 export type ActionResult<T> =
   { readonly ok: true; readonly data: T } | { readonly ok: false; readonly message: string };
@@ -29,23 +29,31 @@ function failure(error: unknown): { ok: false; message: string } {
 }
 
 /**
- * Nästa sida i listan. `query` är sidans query-sträng (period, filter, sökning,
- * sortering), `offset` var förra sidan slutade.
+ * Nästa sida i listan. `query` är listans query-sträng med perioden låst till datum
+ * (filter, sökning, sortering), `start` var förra sidan slutade: offset och, i
+ * tidsordning, sista radens id.
  */
 export async function loadMoreOrders(
   query: string,
-  offset: number,
+  start: OrderPageStart,
 ): Promise<ActionResult<OrderPage>> {
   try {
     if (typeof query !== "string" || query.length > MAX_QUERY) {
       return { ok: false, message: "Ogiltig förfrågan." };
     }
-    if (!Number.isSafeInteger(offset) || offset < 0 || offset > MAX_OFFSET) {
+    const offset = start?.offset;
+    if (
+      typeof offset !== "number" ||
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      offset > MAX_OFFSET
+    ) {
       return { ok: false, message: "Ogiltig förfrågan." };
     }
+    const afterId = isUuid(start.afterId) ? start.afterId : null;
     await requireContextRole(ECONOMY_ROLES);
     const { args } = await listArgsFrom(new URLSearchParams(query));
-    const page = await loadOrderPageFor(await currentViewer(), args, offset);
+    const page = await loadOrderPageFor(await currentViewer(), args, { offset, afterId });
     return { ok: true, data: page };
   } catch (error) {
     return failure(error);

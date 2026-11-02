@@ -78,6 +78,19 @@ export interface PrognosData {
   readonly today: IsoDate;
   /** Sista hela dag med data (i går). */
   readonly asOf: IsoDate;
+  /** Historiken som prognosen anpassas på (8 veckor t.o.m. `asOf`), för länkar till orderna. */
+  readonly forecastHistory: Period;
+  /**
+   * Underlaget för efterfrågan per titel i inköpsplanen (hela organisationen): antal serier
+   * (automater) och hur många av dem som har lite data, med deras andel av prognosen.
+   */
+  readonly demandBasis: readonly {
+    readonly titleId: string;
+    readonly series: number;
+    readonly lowDataSeries: number;
+    readonly lowDataUnitsMilli: number;
+    readonly unitsMilli: number;
+  }[];
   /** Perioden som förlorad försäljning räknas för (periodvalet, högst t.o.m. i går). */
   readonly lostPeriod: Period;
   readonly scope: DataScope;
@@ -138,6 +151,8 @@ export interface LostSalesSummary {
     /** Senaste slutsålda periodens första dag. */
     readonly since: IsoDate;
   }[];
-  /** Länk till underlaget: sektionen Förlorad försäljning med samma period. */
+  /** Filtret siffran gäller (null = hela organisationen). */
+  readonly scope: DataScope;
+  /** Länk till underlaget: sektionen Förlorad försäljning med samma period och filter. */
   readonly href: string;
 }

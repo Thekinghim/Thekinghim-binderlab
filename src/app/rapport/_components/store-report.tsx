@@ -32,6 +32,7 @@ import {
   pct,
   sek,
   sekValue,
+  sentence,
   type HeadingLevel,
 } from "./shared";
 
@@ -268,7 +269,7 @@ export function StoreReportDocument({
           title={`${formatInt(snapshot.service.refills.count)} ${snapshot.service.refills.count === 1 ? "påfyllning" : "påfyllningar"}.`}
           aside={
             snapshot.service.refills.last
-              ? `Senast ${dayLabel(snapshot.service.refills.last)}.`
+              ? sentence(`Senast ${dayLabel(snapshot.service.refills.last)}`)
               : "Ingen påfyllning registrerad under månaden."
           }
         >

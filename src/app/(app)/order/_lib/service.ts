@@ -11,12 +11,19 @@
 
 import "server-only";
 
-import { PlacementIndex, type Period } from "@/domain";
+import {
+  averageOrderValueOre,
+  PlacementIndex,
+  type IsoDate,
+  type OrderLine,
+  type Period,
+} from "@/domain";
 import { requireRoleFor, withUserDbFor, isUuid } from "@/server/access";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import {
   queryMachines,
   queryPlacements,
+  querySettings,
   queryStores,
   queryTitles,
 } from "@/server/data/core/queries";
@@ -25,15 +32,27 @@ import type { Tx } from "@/db/client";
 
 import { searchTerms, type OrderParams } from "./params";
 import {
-  queryLatestOrderAt,
+  forEachOrderRowBatch,
+  queryHasOrders,
+  queryOrderAmounts,
   queryOrderDetail,
+  queryOrderedAtText,
   queryOrderRows,
+  queryOrderSpan,
   queryOrderTotals,
   type OrderQueryFilter,
   type RawOrderRow,
+  type TimeCursor,
 } from "./queries";
 import { buildRefs, matchTerms, sortRanks } from "./refs";
-import type { OrderDetail, OrderList, OrderPage, OrderRefs, OrderRow } from "./types";
+import type {
+  OrderDetail,
+  OrderList,
+  OrderPage,
+  OrderPageStart,
+  OrderRefs,
+  OrderRow,
+} from "./types";
 
 /** Rader i första laddningen. */
 export const FIRST_PAGE = 500;
@@ -41,6 +60,8 @@ export const FIRST_PAGE = 500;
 export const NEXT_PAGE = 1000;
 /** Flest rader i en CSV-export. */
 export const EXPORT_LIMIT = 500_000;
+/** Rader per sats när exporten strömmas ut. */
+export const EXPORT_BATCH = 10_000;
 
 export interface OrderListArgs {
   readonly period: Period;
@@ -86,6 +107,29 @@ function withStore(rows: readonly RawOrderRow[], placements: PlacementIndex): Or
   }));
 }
 
+/**
+ * Orderna som rader för beräkningslagret, en per order, ur belopp och antal. Bara
+ * beloppet används av snittordern; övriga fält är platshållare.
+ */
+function linesFromAmounts(
+  amounts: readonly { amountOre: number; count: number }[],
+  businessDate: IsoDate,
+): OrderLine[] {
+  const lines: OrderLine[] = [];
+  for (const a of amounts) {
+    const line: OrderLine = {
+      id: "urval",
+      externalId: "urval",
+      titleId: "urval",
+      machineId: null,
+      businessDate,
+      amountOre: a.amountOre,
+    };
+    for (let i = 0; i < a.count; i++) lines.push(line);
+  }
+  return lines;
+}
+
 async function asEconomyViewer<T>(viewer: Viewer, fn: (tx: Tx) => Promise<T>): Promise<T> {
   await requireRoleFor(viewer.user, viewer.organization.id, ECONOMY_ROLES);
   return withUserDbFor(viewer.user, fn);
@@ -105,7 +149,16 @@ export async function loadOrderListFor(
     const compareTotals = args.compare
       ? await queryOrderTotals(tx, orgId, ctx.filter, args.compare)
       : null;
-    const latestOrderAt = await queryLatestOrderAt(tx, orgId);
+    // Snittordern räknas i beräkningslagret (netto, som på Hem), ur beloppen i urvalet.
+    const averageOre =
+      totals.count > 0
+        ? averageOrderValueOre(
+            linesFromAmounts(await queryOrderAmounts(tx, orgId, ctx.filter), args.period.start),
+            await querySettings(tx, orgId),
+          )
+        : null;
+    const span = await queryOrderSpan(tx, orgId, ctx.filter);
+    const hasOrders = span.latestAt !== null || (await queryHasOrders(tx, orgId));
     const page = await queryOrderRows(
       tx,
       orgId,
@@ -120,7 +173,10 @@ export async function loadOrderListFor(
       compare: args.compare,
       totals,
       compareTotals,
-      latestOrderAt,
+      averageOrderValueOre: averageOre,
+      hasOrders,
+      latestOrderAt: span.latestAt,
+      firstOrderDate: span.firstDate,
       rows: withStore(page.rows, ctx.placements),
       nextOffset: page.more ? page.rows.length : null,
       refs: ctx.refs,
@@ -128,30 +184,43 @@ export async function loadOrderListFor(
   });
 }
 
-/** Nästa sida i samma sortering (när man scrollar). */
+/**
+ * Nästa sida i samma sortering (när man scrollar). I tidsordning börjar sidan efter
+ * `start.afterId` (markör), så att order som importeras under tiden inte förskjuter
+ * raderna; annars från `start.offset`.
+ */
 export async function loadOrderPageFor(
   viewer: Viewer,
   args: Omit<OrderListArgs, "compare">,
-  offset: number,
+  start: OrderPageStart,
   now: Date = new Date(),
   limit: number = NEXT_PAGE,
 ): Promise<OrderPage> {
-  const start = Number.isSafeInteger(offset) && offset > 0 ? offset : 0;
+  const offset = Number.isSafeInteger(start.offset) && start.offset > 0 ? start.offset : 0;
   const size = Math.min(Math.max(1, Math.trunc(limit)), 5000);
+  const orgId = viewer.organization.id;
   return asEconomyViewer(viewer, async (tx) => {
     const ctx = await context(tx, viewer, args, now);
+    let after: TimeCursor | null = null;
+    if (args.params.sort.key === "tid" && start.afterId && isUuid(start.afterId)) {
+      const id = start.afterId.toLowerCase();
+      const at = await queryOrderedAtText(tx, orgId, id);
+      if (at) after = { orderedAt: at, id };
+    }
     const page = await queryOrderRows(
       tx,
-      viewer.organization.id,
+      orgId,
       ctx.filter,
       args.params.sort,
       sortRanks(ctx.refs),
-      start,
+      offset,
       size,
+      false,
+      after,
     );
     return {
       rows: withStore(page.rows, ctx.placements),
-      nextOffset: page.more ? start + page.rows.length : null,
+      nextOffset: page.more ? offset + page.rows.length : null,
     };
   });
 }
@@ -179,6 +248,45 @@ export async function loadOrderExportFor(
       refs: ctx.refs,
       truncated: page.more,
     };
+  });
+}
+
+export interface OrderExportSink {
+  /**
+   * Anropas en gång före första satsen med antalet order och namnen. Returnerar false
+   * för att avbryta (för många order); då hämtas inga rader.
+   */
+  begin(info: { readonly count: number; readonly refs: OrderRefs }): boolean;
+  /** En sats rader i vald sortering. Får vänta (mottryck). */
+  batch(rows: OrderRow[]): Promise<void>;
+}
+
+/**
+ * Exporten som ström: räknar urvalet, och om det ryms (högst EXPORT_LIMIT) hämtas alla
+ * rader i satser om EXPORT_BATCH ur en databasmarkör i samma transaktion. Ingen sats
+ * hålls kvar i minnet efter att den skickats vidare.
+ */
+export async function streamOrderExportFor(
+  viewer: Viewer,
+  args: Omit<OrderListArgs, "compare">,
+  sink: OrderExportSink,
+  now: Date = new Date(),
+  batch: number = EXPORT_BATCH,
+): Promise<void> {
+  const orgId = viewer.organization.id;
+  await asEconomyViewer(viewer, async (tx) => {
+    const ctx = await context(tx, viewer, args, now);
+    const { count } = await queryOrderTotals(tx, orgId, ctx.filter);
+    if (!sink.begin({ count, refs: ctx.refs })) return;
+    await forEachOrderRowBatch(
+      tx,
+      orgId,
+      ctx.filter,
+      args.params.sort,
+      sortRanks(ctx.refs),
+      batch,
+      (rows) => sink.batch(withStore(rows, ctx.placements)),
+    );
   });
 }
 

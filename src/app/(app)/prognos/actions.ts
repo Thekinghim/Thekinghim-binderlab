@@ -17,6 +17,7 @@ import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/
 import { dbErrorMessage } from "@/server/errors";
 import {
   cancelPurchaseOrderFor,
+  closePurchaseOrderFor,
   createPurchaseOrderFor,
   createSupplierFor,
   currentViewer,
@@ -27,6 +28,7 @@ import {
   saveSupplierItemFor,
   setSupplierArchivedFor,
   updateSupplierFor,
+  type CloseResult,
   type ReceiveResult,
 } from "@/server/purchasing";
 import {
@@ -130,5 +132,12 @@ export async function receivePurchaseOrder(raw: unknown): Promise<ActionResult<R
   return run(async () => {
     const viewer = await operator();
     return receivePurchaseOrderFor(viewer, receiveSchema.parse(raw));
+  });
+}
+
+export async function closePurchaseOrder(raw: unknown): Promise<ActionResult<CloseResult>> {
+  return run(async () => {
+    const viewer = await operator();
+    return closePurchaseOrderFor(viewer, idSchema.parse(raw));
   });
 }

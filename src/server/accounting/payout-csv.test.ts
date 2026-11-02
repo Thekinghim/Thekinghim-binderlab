@@ -124,13 +124,18 @@ describe("parsePayoutFile: gränser (granskningen)", () => {
       ]),
     );
     expect(r.errors).toEqual([
-      { lineNumber: 2, message: "Perioden är längre än 366 dagar. Dela upp utbetalningen per månad." },
+      {
+        lineNumber: 2,
+        message: "Perioden är längre än 366 dagar. Dela upp utbetalningen per månad.",
+      },
     ]);
     expect(r.payouts.map((p) => p.reference)).toEqual(["U-2"]);
   });
 
   it("ett för långt ordernummer får ett eget meddelande", () => {
-    const r = parsePayoutFile(file(["Referens;Ordernummer;Belopp", `U-1;${"9".repeat(101)};170,00`]));
+    const r = parsePayoutFile(
+      file(["Referens;Ordernummer;Belopp", `U-1;${"9".repeat(101)};170,00`]),
+    );
     expect(r.errors[0]?.message).toBe("Ordernumret är längre än 100 tecken.");
   });
 

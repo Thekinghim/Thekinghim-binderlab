@@ -241,8 +241,15 @@ export interface DataSourceRef {
   readonly provider: string;
   readonly status: "active" | "paused" | "error";
   readonly lastSyncedAt: string | null;
-  /** Hur ofta källan hämtas automatiskt, i minuter (gRPC: 10). `null` = manuell uppladdning. */
+  /**
+   * Förväntat intervall mellan importer, i minuter (gRPC: 10; CSV som laddas upp varje dag:
+   * 2 160). `null` = inget larm för utebliven import.
+   */
   readonly expectedIntervalMinutes?: number | null;
+  /** Sant för källor som laddas upp för hand: aktualiteten bedöms på datat, inte hämtningen. */
+  readonly manual?: boolean;
+  /** Senaste importerade försäljning i källan (ISO 8601 UTC), om känd. */
+  readonly dataUntil?: string | null;
 }
 
 /** Prognos för en dag: förväntat antal pack i tiondelar (125 = 12,5). */

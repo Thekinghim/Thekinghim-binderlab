@@ -96,7 +96,22 @@ export interface HealthInput {
   readonly signals?: readonly MachineSignal[];
   /** Lagersaldon. Används för att skilja "tom" från "fel". */
   readonly stock?: readonly StockLevelRef[];
+  /**
+   * Hur långt den importerade försäljningen räcker per automat. Tystnaden räknas bara fram
+   * till dit: försäljning som inte importerats än är en eftersläpning i datat, inte en tyst
+   * automat. Saknas en automat här räknas tystnaden fram till nu.
+   */
+  readonly salesCoverage?: readonly SalesCoverage[];
   readonly options?: HealthOptions;
+}
+
+/** Försäljningsdatats täckning för en automat (ur datakällan som automatens order kommer från). */
+export interface SalesCoverage {
+  readonly machineId: string;
+  /** Senaste tidpunkt som försäljningen är känd till (ISO 8601 UTC). */
+  readonly until: string;
+  /** Datakällans namn, för förklaringen. */
+  readonly sourceName?: string | null;
 }
 
 /** En timme i veckan (1 = måndag … 7 = söndag, timme 0–23) och vad den bidrar med. */
@@ -145,6 +160,11 @@ export interface MachineHealth {
   readonly silence: SilenceAnalysis | null;
   /** Den leverantörshändelse statusen bygger på. */
   readonly signal: MachineSignal | null;
+  /**
+   * När försäljningsdatat inte räcker fram till nu: hur långt det räcker (ISO 8601 UTC).
+   * Tystnaden är då bedömd fram till den tidpunkten.
+   */
+  readonly dataUntil?: string | null;
   readonly evidence: Evidence;
   readonly link: string;
 }

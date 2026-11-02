@@ -22,10 +22,22 @@ import { ImplementButton } from "./implement-button";
 import { SlotsEditorButton, type SlotLine } from "./slots-editor";
 import { Cell, Row, Table } from "./table";
 
-/** Fackfördelning i dag och förifyllning per automat. */
+/** Fackfördelning i dag, förifyllning och fackhistorikens gränser per automat. */
 export type SlotInfo = Readonly<
-  Record<string, { current: readonly SlotLine[]; prefill: readonly SlotLine[] }>
+  Record<
+    string,
+    {
+      current: readonly SlotLine[];
+      prefill: readonly SlotLine[];
+      /** Senaste genomförda sortimentsändring; fack före och den dagen är låsta. */
+      lockedThrough: string | null;
+      /** Startdagar för automatens fackperioder (för varning om ersättning). */
+      starts: readonly string[];
+    }
+  >
 >;
+
+const NO_SLOTS = { current: [], prefill: [], lockedThrough: null, starts: [] } as const;
 
 function changeWord(c: AssortmentChange): string {
   switch (c.kind) {
@@ -52,7 +64,7 @@ function MachineCard({
   period: { start: string; end: string };
 }) {
   const rec = view.recommendation;
-  const info = slots[view.machineId] ?? { current: [], prefill: [] };
+  const info = slots[view.machineId] ?? NO_SLOTS;
   const headingId = `sortiment-${view.machineId}`;
   return (
     <Panel>
@@ -176,6 +188,8 @@ function MachineCard({
                 periodStart={period.start}
                 periodEnd={period.end}
                 today={ctx.today}
+                lockedThrough={info.lockedThrough}
+                starts={info.starts}
                 summary={rec.changes
                   .map(
                     (c) =>
@@ -193,6 +207,8 @@ function MachineCard({
               prefill={info.prefill}
               prefillNote={null}
               today={ctx.today}
+              lockedThrough={info.lockedThrough}
+              starts={info.starts}
               capacity={view.capacity}
               label="Ändra fack"
             />
@@ -278,7 +294,7 @@ export function AssortmentSection({
       {assortment.withoutSlots.length > 0 ? (
         <ul className="flex flex-col gap-2" aria-label="Automater utan fackfördelning">
           {assortment.withoutSlots.map((m) => {
-            const info = slots[m.id] ?? { current: [], prefill: [] };
+            const info = slots[m.id] ?? NO_SLOTS;
             return (
               <li
                 key={m.id}
@@ -302,6 +318,8 @@ export function AssortmentSection({
                         : null
                     }
                     today={ctx.today}
+                    lockedThrough={info.lockedThrough}
+                    starts={info.starts}
                     capacity={capacity}
                     label="Registrera fack"
                   />

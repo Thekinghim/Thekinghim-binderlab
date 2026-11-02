@@ -476,8 +476,12 @@ export async function unlockReleasePlanFor(viewer: Viewer, releaseId: string): P
 // Leverantörspriser
 // ---------------------------------------------------------------------------
 
-export async function createQuoteFor(viewer: Viewer, input: CreateQuoteInput): Promise<string> {
-  const today = businessToday(new Date(), viewer.organization.timezone);
+export async function createQuoteFor(
+  viewer: Viewer,
+  input: CreateQuoteInput,
+  now: Date = new Date(),
+): Promise<string> {
+  const today = businessToday(now, viewer.organization.timezone);
   if (input.quotedOn > addDays(today, QUOTE_MAX_DAYS_AHEAD)) {
     throw new MarketError(
       `Datumet kan ligga högst ${QUOTE_MAX_DAYS_AHEAD} dagar fram (${dayText(addDays(today, QUOTE_MAX_DAYS_AHEAD), today)}).`,
@@ -682,49 +686,49 @@ export async function implementAssortmentFor(
   };
   const id = await explained(() =>
     withUserDbFor(viewer.user, async (tx) => {
-    const orgId = viewer.organization.id;
-    // Ett anrop i taget per automat; kontrollerna nedan görs under låset.
-    await lockKey(tx, `marknad:slots:${orgId}:${input.machineId}`);
-    const [already] = await tx
-      .select({ id: s.assortmentChanges.id })
-      .from(s.assortmentChanges)
-      .where(
-        and(
-          eq(s.assortmentChanges.organizationId, orgId),
-          eq(s.assortmentChanges.machineId, input.machineId),
-          eq(s.assortmentChanges.fingerprint, rec.fingerprint),
-        ),
+      const orgId = viewer.organization.id;
+      // Ett anrop i taget per automat; kontrollerna nedan görs under låset.
+      await lockKey(tx, `marknad:slots:${orgId}:${input.machineId}`);
+      const [already] = await tx
+        .select({ id: s.assortmentChanges.id })
+        .from(s.assortmentChanges)
+        .where(
+          and(
+            eq(s.assortmentChanges.organizationId, orgId),
+            eq(s.assortmentChanges.machineId, input.machineId),
+            eq(s.assortmentChanges.fingerprint, rec.fingerprint),
+          ),
+        );
+      if (already) throw new MarketError("Rekommendationen är redan markerad som genomförd.");
+      const locked = await lastImplementedOn(tx, orgId, input.machineId);
+      if (locked && input.implementedOn <= locked) {
+        throw new MarketError(
+          `Automaten har en genomförd sortimentsändring ${dayText(locked, data.today)}. Välj en dag efter den.`,
+        );
+      }
+      const [row] = await tx
+        .insert(s.assortmentChanges)
+        .values({
+          organizationId: orgId,
+          machineId: input.machineId,
+          implementedOn: input.implementedOn,
+          recommendationKey: rec.key,
+          fingerprint: rec.fingerprint,
+          expectedEffectPerWeekOre: rec.effectPerWeekOre,
+          changedTitleIds: [...new Set(rec.changes.map((c) => c.titleId))].sort(),
+          snapshot,
+        })
+        .returning({ id: s.assortmentChanges.id });
+      await replaceSlots(
+        tx,
+        orgId,
+        input.machineId,
+        input.implementedOn,
+        rec.lines
+          .filter((l) => l.recommendedSlots > 0)
+          .map((l) => ({ titleId: l.titleId, slots: l.recommendedSlots })),
       );
-    if (already) throw new MarketError("Rekommendationen är redan markerad som genomförd.");
-    const locked = await lastImplementedOn(tx, orgId, input.machineId);
-    if (locked && input.implementedOn <= locked) {
-      throw new MarketError(
-        `Automaten har en genomförd sortimentsändring ${dayText(locked, data.today)}. Välj en dag efter den.`,
-      );
-    }
-    const [row] = await tx
-      .insert(s.assortmentChanges)
-      .values({
-        organizationId: orgId,
-        machineId: input.machineId,
-        implementedOn: input.implementedOn,
-        recommendationKey: rec.key,
-        fingerprint: rec.fingerprint,
-        expectedEffectPerWeekOre: rec.effectPerWeekOre,
-        changedTitleIds: [...new Set(rec.changes.map((c) => c.titleId))].sort(),
-        snapshot,
-      })
-      .returning({ id: s.assortmentChanges.id });
-    await replaceSlots(
-      tx,
-      orgId,
-      input.machineId,
-      input.implementedOn,
-      rec.lines
-        .filter((l) => l.recommendedSlots > 0)
-        .map((l) => ({ titleId: l.titleId, slots: l.recommendedSlots })),
-    );
-    return row!.id;
+      return row!.id;
     }),
   );
   return { id, effectPerWeekOre: rec.effectPerWeekOre };
@@ -750,56 +754,56 @@ export async function startExperimentFor(
   }
   const id = await explained(() =>
     withUserDbFor(viewer.user, async (tx) => {
-    const orgId = viewer.organization.id;
-    // Ett anrop i taget per titel; kontrollen görs under låset (dubbelklick, flera flikar).
-    await lockKey(tx, `marknad:experiment:${orgId}:${proposal.titleId}`);
-    const running = await tx
-      .select({ id: s.priceExperiments.id })
-      .from(s.priceExperiments)
-      .where(
-        and(
-          eq(s.priceExperiments.organizationId, orgId),
-          eq(s.priceExperiments.titleId, proposal.titleId),
-          isNull(s.priceExperiments.stoppedOn),
-          sql`${s.priceExperiments.startedOn} + ${s.priceExperiments.testDays} - 1 >= ${data.today}::date`,
-        ),
-      );
-    if (running.length > 0) throw new MarketError("Titeln har redan ett pristest som pågår.");
-    const [row] = await tx
-      .insert(s.priceExperiments)
-      .values({
-        organizationId: viewer.organization.id,
-        titleId: proposal.titleId,
-        proposalKey: proposal.key,
-        direction: proposal.direction,
-        fromOre: proposal.fromOre,
-        toOre: proposal.toOre,
-        startedOn: proposal.period.start,
-        testDays: proposal.evaluation.windowDays,
-        snapshot: {
-          text: proposal.text,
-          breakEvenVolumeChangeBp: proposal.breakEvenVolumeChangeBp,
-          weeklyContributionOre: proposal.weeklyContributionOre,
-          rule: proposal.evidence.rule,
-          figures: proposal.evidence.figures,
-        },
-      })
-      .returning({ id: s.priceExperiments.id });
-    await tx.insert(s.priceExperimentMachines).values([
-      ...proposal.testMachineIds.map((machineId) => ({
-        organizationId: viewer.organization.id,
-        experimentId: row!.id,
-        machineId,
-        arm: "test" as const,
-      })),
-      ...proposal.controlMachineIds.map((machineId) => ({
-        organizationId: viewer.organization.id,
-        experimentId: row!.id,
-        machineId,
-        arm: "control" as const,
-      })),
-    ]);
-    return row!.id;
+      const orgId = viewer.organization.id;
+      // Ett anrop i taget per titel; kontrollen görs under låset (dubbelklick, flera flikar).
+      await lockKey(tx, `marknad:experiment:${orgId}:${proposal.titleId}`);
+      const running = await tx
+        .select({ id: s.priceExperiments.id })
+        .from(s.priceExperiments)
+        .where(
+          and(
+            eq(s.priceExperiments.organizationId, orgId),
+            eq(s.priceExperiments.titleId, proposal.titleId),
+            isNull(s.priceExperiments.stoppedOn),
+            sql`${s.priceExperiments.startedOn} + ${s.priceExperiments.testDays} - 1 >= ${data.today}::date`,
+          ),
+        );
+      if (running.length > 0) throw new MarketError("Titeln har redan ett pristest som pågår.");
+      const [row] = await tx
+        .insert(s.priceExperiments)
+        .values({
+          organizationId: viewer.organization.id,
+          titleId: proposal.titleId,
+          proposalKey: proposal.key,
+          direction: proposal.direction,
+          fromOre: proposal.fromOre,
+          toOre: proposal.toOre,
+          startedOn: proposal.period.start,
+          testDays: proposal.evaluation.windowDays,
+          snapshot: {
+            text: proposal.text,
+            breakEvenVolumeChangeBp: proposal.breakEvenVolumeChangeBp,
+            weeklyContributionOre: proposal.weeklyContributionOre,
+            rule: proposal.evidence.rule,
+            figures: proposal.evidence.figures,
+          },
+        })
+        .returning({ id: s.priceExperiments.id });
+      await tx.insert(s.priceExperimentMachines).values([
+        ...proposal.testMachineIds.map((machineId) => ({
+          organizationId: viewer.organization.id,
+          experimentId: row!.id,
+          machineId,
+          arm: "test" as const,
+        })),
+        ...proposal.controlMachineIds.map((machineId) => ({
+          organizationId: viewer.organization.id,
+          experimentId: row!.id,
+          machineId,
+          arm: "control" as const,
+        })),
+      ]);
+      return row!.id;
     }),
   );
   return { id, startedOn: proposal.period.start };

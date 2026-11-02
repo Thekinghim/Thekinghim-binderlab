@@ -8,14 +8,19 @@
  * Leverantörens maskindata (online/offline/fel) finns inte ännu: Awish-adaptern för gRPC
  * väntar på specifikationen (docs/awish.md). Tills dess härleds statusen ur försäljningen,
  * och `vendorSignals` är tomt med `vendorConfigured: false`.
+ *
+ * Försäljningens täckning (public.sales_data_until) säger hur långt den importerade
+ * försäljningen räcker per automat. Awish CSV laddas upp för hand en gång per dag, så fram
+ * till nästa fil är försäljningen efter den senaste filen okänd, inte noll. Maskinhälsan
+ * räknar därför tystnaden bara fram till täckningen.
  */
 
 import "server-only";
 
-import { and, asc, eq, gte, inArray, isNull, lte } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 
 import type { DataSourceRef, ImportRunRef } from "@/analytics/alerts";
-import type { MachineSignal } from "@/analytics/health";
+import type { HealthInput, MachineSignal, SalesCoverage } from "@/analytics/health";
 import type { AnalyticsOrder, StockLevelRef } from "@/analytics/todos";
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
@@ -40,11 +45,82 @@ export interface HealthData {
   readonly signals: MachineSignal[];
   /** Sant när leverantörens maskindata finns (Awish gRPC eller webhook). */
   readonly vendorConfigured: boolean;
+  /** Hur långt försäljningen är importerad, per automat (tom om ingen datakälla har order). */
+  readonly coverage: CoverageRow[];
+}
+
+/** En rad ur public.sales_data_until. */
+export interface CoverageRow {
+  readonly machineId: string;
+  readonly dataSourceId: string | null;
+  readonly sourceName: string | null;
+  /** Sant för källor som laddas upp för hand (Awish CSV). */
+  readonly manual: boolean;
+  /** Senaste kända försäljning i källan (manuell) eller senaste hämtning (automatisk). */
+  readonly dataUntil: Date | null;
+  /** Senaste lyckade import från källan. */
+  readonly syncedAt: Date | null;
+}
+
+/** Täckningen per automat. Bara tidpunkter: fungerar för alla roller utom butiken. */
+export async function loadCoverage(tx: Tx, orgId: string, at: Date): Promise<CoverageRow[]> {
+  const res = await tx.execute(
+    sql`select machine_id, data_source_id, source_name, manual, data_until, synced_at
+        from public.sales_data_until(${orgId}::uuid, ${at.toISOString()}::timestamptz)`,
+  );
+  const toDate = (v: unknown): Date | null =>
+    v === null || v === undefined ? null : v instanceof Date ? v : new Date(String(v));
+  return (Array.from(res) as Record<string, unknown>[]).map((r) => ({
+    machineId: String(r.machine_id),
+    dataSourceId: r.data_source_id === null ? null : String(r.data_source_id),
+    sourceName: r.source_name === null ? null : String(r.source_name),
+    manual: r.manual === true,
+    dataUntil: toDate(r.data_until),
+    syncedAt: toDate(r.synced_at),
+  }));
+}
+
+/** Indata till machineHealth ur HealthData (samma för sidorna och larmjobbet). */
+export function healthInputOf(data: HealthData, timeZone: string): HealthInput {
+  return {
+    orders: data.orders,
+    machines: data.machines,
+    signals: data.signals,
+    stock: data.stock,
+    salesCoverage: data.coverage.flatMap((c): SalesCoverage[] =>
+      c.dataUntil
+        ? [{ machineId: c.machineId, until: c.dataUntil.toISOString(), sourceName: c.sourceName }]
+        : [],
+    ),
+    options: { timeZone },
+  };
+}
+
+/**
+ * Tidpunkten som all försäljning är känd till (den tidigaste täckningen bland källorna som
+ * har automater), eller null när ingen källa har order. För en manuell källa räcker en
+ * import efter tidpunkten också (filen bör då innehålla allt fram till exporten).
+ */
+export function knownUntil(coverage: readonly CoverageRow[]): Date | null {
+  const bySource = new Map<string, number>();
+  for (const c of coverage) {
+    if (!c.dataSourceId || !c.dataUntil) continue;
+    const ms = Math.max(c.dataUntil.getTime(), c.syncedAt?.getTime() ?? 0);
+    bySource.set(c.dataSourceId, ms);
+  }
+  if (bySource.size === 0) return null;
+  return new Date(Math.min(...bySource.values()));
 }
 
 /** Automater, titlar, försäljning (70 dagar), lager i automaterna. */
-export async function loadHealthData(tx: Tx, orgId: string, today: IsoDate): Promise<HealthData> {
+export async function loadHealthData(
+  tx: Tx,
+  orgId: string,
+  today: IsoDate,
+  now: Date = new Date(),
+): Promise<HealthData> {
   const placements = await queryPlacements(tx, orgId);
+  const coverage = await loadCoverage(tx, orgId, now);
   const [machines, titles, orders, stockRows] = await Promise.all([
     queryMachines(tx, orgId, placements, today),
     queryTitles(tx, orgId),
@@ -69,12 +145,19 @@ export async function loadHealthData(tx: Tx, orgId: string, today: IsoDate): Pro
     stock,
     signals: [],
     vendorConfigured: false,
+    coverage,
   };
 }
 
-/** Förväntat hämtintervall per leverantör (minuter); null = manuell uppladdning. */
-function expectedInterval(provider: string): number | null {
-  return provider === "awish_grpc" ? 10 : null;
+/**
+ * Förväntat intervall mellan importer per leverantör (minuter). gRPC hämtas var tionde
+ * minut. CSV laddas upp för hand varje dag: utan ny försäljning på 36 timmar larmar
+ * importregeln att datat inte är importerat (ett datalarm, inte ett maskinlarm).
+ */
+export function expectedInterval(provider: string): number | null {
+  if (provider === "awish_grpc") return 10;
+  if (provider === "awish_csv") return 36 * 60;
+  return null;
 }
 
 /** Datakällor och importer de senaste 14 dagarna (för importlarmet). Ägare/admin/läsare eller systemet. */
@@ -82,7 +165,12 @@ export async function loadImportData(
   tx: Tx,
   orgId: string,
   now: Date,
+  coverage: readonly CoverageRow[] = [],
 ): Promise<{ sources: DataSourceRef[]; imports: ImportRunRef[] }> {
+  const untilBySource = new Map<string, Date>();
+  for (const c of coverage) {
+    if (c.dataSourceId && c.dataUntil) untilBySource.set(c.dataSourceId, c.dataUntil);
+  }
   const sources = await tx
     .select({
       id: s.dataSources.id,
@@ -130,6 +218,8 @@ export async function loadImportData(
       status: x.status,
       lastSyncedAt: x.lastSyncedAt ? x.lastSyncedAt.toISOString() : null,
       expectedIntervalMinutes: expectedInterval(x.provider),
+      manual: x.provider === "awish_csv",
+      dataUntil: untilBySource.get(x.id)?.toISOString() ?? null,
     })),
     imports: runs.map((r) => ({
       id: r.id,

@@ -240,7 +240,7 @@ describe("buildPage", () => {
     const action = buildPage(input([refill(M1, "now", 1)])).groups[0]!.items[0]!.action;
     expect(action).toMatchObject({
       kind: "register-refill",
-      machineCode: "BL-001",
+      machineCode: "BL\u2011001",
       titleName: "Titel 1",
       onHand: 1,
       warehouseOnHand: 10,
