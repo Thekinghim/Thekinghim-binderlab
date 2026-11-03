@@ -41,6 +41,8 @@ export interface ContractTemplateInput {
   /** Butikens andel i bp (5 000 = 50 %). */
   readonly shareBp: number;
   readonly lossTreatment: "zero" | "proportional";
+  /** Dra av VMB-moms från vinsten före delningen. Saknas = falskt (ingen VMB). */
+  readonly vmbBeforeSplit?: boolean;
   /** Fast hyra per månad (öre), null = ingen. */
   readonly monthlyRentOre: number | null;
   /** Kort referens som står på avtalet (avtalets id, första 8 tecknen). */
@@ -52,9 +54,21 @@ export interface ContractSection {
   readonly paragraphs: readonly string[];
 }
 
-/** Definitionen av vinsten, som den står i avtalet (och visas i dialogen). */
+/**
+ * Definitionen av vinsten, som den står i avtalet (och visas i dialogen). Standard: ingen
+ * VMB-moms dras före delningen.
+ */
 export const PROFIT_DEFINITION =
+  "Vinst = försäljning inklusive moms − återbetalningar till kunder − inköpspris för sålda varor − kort- och betalningsavgifter. Moms enligt vinstmarginalbeskattning (VMB) dras inte före delningen; den betalas av Operatören. Vinsten räknas per kalendermånad.";
+
+/** Definitionen när avtalet drar av VMB-momsen före delningen (avtalets val). */
+export const PROFIT_DEFINITION_VMB =
   "Vinst = försäljning inklusive moms − återbetalningar till kunder − moms enligt vinstmarginalbeskattning (VMB) − inköpspris för sålda varor − kort- och betalningsavgifter. Vinsten räknas per kalendermånad.";
+
+/** Vinstens definition enligt avtalets val (`vmbBeforeSplit`, standard falskt). */
+export function profitDefinition(vmbBeforeSplit: boolean | undefined = false): string {
+  return vmbBeforeSplit === true ? PROFIT_DEFINITION_VMB : PROFIT_DEFINITION;
+}
 
 function lossText(lossTreatment: ContractTemplateInput["lossTreatment"], shareBp: number): string {
   return lossTreatment === "zero"
@@ -68,7 +82,7 @@ export function contractSections(input: ContractTemplateInput): ContractSection[
   const ours = pctText(10_000 - input.shareBp);
   const payment: string[] = [
     `Butiken får ${share} av vinsten från automaten. Operatören behåller ${ours}.`,
-    PROFIT_DEFINITION,
+    profitDefinition(input.vmbBeforeSplit),
     lossText(input.lossTreatment, input.shareBp),
   ];
   if (input.monthlyRentOre !== null && input.monthlyRentOre > 0) {
@@ -100,7 +114,7 @@ export function contractSections(input: ContractTemplateInput): ContractSection[
     {
       heading: "5. Rapport och utbetalning",
       paragraphs: [
-        `Operatören skickar en rapport för varje månad och betalar ut Butikens andel senast den ${CONTRACT_PAYOUT_DAY} i månaden efter. Rapporten visar försäljning, VMB-moms, inköp, avgifter, vinst och Butikens andel.`,
+        `Operatören skickar en rapport för varje månad och betalar ut Butikens andel senast den ${CONTRACT_PAYOUT_DAY} i månaden efter. Rapporten visar försäljning, ${input.vmbBeforeSplit === true ? "VMB-moms, " : ""}inköp, avgifter, vinst och Butikens andel.`,
         "Butiken anger det konto utbetalningen ska gå till. Butiken får på begäran se underlaget för rapporten.",
       ],
     },
@@ -220,11 +234,12 @@ ${signatureHtml(input.store)}
 export function contractTermsSummary(input: {
   readonly shareBp: number;
   readonly lossTreatment: ContractTemplateInput["lossTreatment"];
+  readonly vmbBeforeSplit?: boolean;
   readonly monthlyRentOre?: number | null;
 }): string {
   return [
     `Vinstdelning: butiken får ${pctText(input.shareBp)} av vinsten efter kostnader.`,
-    PROFIT_DEFINITION,
+    profitDefinition(input.vmbBeforeSplit),
     lossText(input.lossTreatment, input.shareBp),
     ...(input.monthlyRentOre != null && input.monthlyRentOre > 0
       ? [`Fast hyra ${krText(input.monthlyRentOre)} per månad.`]

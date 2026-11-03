@@ -14,10 +14,12 @@
  *    regel för enhetsekonomi: belopp / automatmånader, där automatmånader = Σ dagar /
  *    dagar i kalendermånaden (en hel oktober = 1, 15 av 30 novemberdagar = 0,5). Samma
  *    automat och period ger därför samma vinst per månad och återbetalningstid här som i
- *    `compareUnitEconomics`. Vinsten är lönsamhetsvyns vinst (efter inköp, avgifter,
+ *    `compareUnitEconomics`. Vinsten är lönsamhetsvyns vinst (efter inköp, avgifter, VMB-moms,
  *    butikens andel och hyra). Anges villkor för den nya platsen (`terms`) ersätts platsens
- *    ersättning med dem: vinstdelning = andel × max(0, täckningsbidrag − VMB-moms), där
- *    VMB-moms = 20 % av max(0, intäkt − inköp) (förlust ger butiken 0); provision = intäkt
+ *    ersättning med dem (VMB-momsen på vår vinst är kvar): vinstdelning = andel × max(0,
+ *    täckningsbidrag), utan VMB-avdrag som standard; med avtalets val `vmbBeforeSplit`
+ *    andel × max(0, täckningsbidrag − VMB-moms), där VMB-moms = 20 % av max(0, intäkt −
+ *    inköp) (förlust ger butiken 0); provision = intäkt
  *    × provisionssats; hyra = månadshyra × automatmånader. Takten per dag (belopp /
  *    automatdagar) visas också.
  * 4. Förväntat värde = snittet av platsernas takt viktat efter likhet. Intervallet är
@@ -35,7 +37,7 @@ import {
   BP_SCALE,
   MONTH_LCM,
   mulDivRound,
-  VMB_VAT_PERCENT,
+  vmbVatOfMargin,
   type Period,
 } from "@/domain";
 import { kr, pct, periodText, plural, tenths } from "../todos/text";
@@ -193,12 +195,17 @@ function siteRates(h: SiteHistory, terms: SiteTerms | null): SiteRates {
     const shareBp = terms.profitShareBp ?? 0;
     let share = new Ratio(0);
     if (shareBp > 0) {
-      const margin = h.revenueOre - h.costOre;
-      const vmb = margin > 0 ? mulDivRound(margin, VMB_VAT_PERCENT, 100) : 0;
+      // Samma regel som avtalet (profitSplit): VMB på platsens marginal bara när avtalet
+      // drar av den före delningen (standard: nej).
+      const vmb = terms.vmbBeforeSplit === true ? vmbVatOfMargin(h.revenueOre - h.costOre) : 0;
       const base = h.contributionOre - vmb;
       if (base > 0) share = new Ratio(base).mul(new Ratio(shareBp, BP_SCALE));
     }
-    profit = new Ratio(h.contributionOre).sub(share).sub(commission).sub(rent);
+    profit = new Ratio(h.contributionOre)
+      .sub(new Ratio(h.vmbVatOre))
+      .sub(share)
+      .sub(commission)
+      .sub(rent);
   }
   return {
     revenuePerDay: new Ratio(h.revenueOre, h.machineDays),

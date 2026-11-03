@@ -11,6 +11,7 @@ function line(p: Partial<ProfitLine> & Pick<ProfitLine, "key" | "name">): Profit
     revenueOre: 100_000,
     costOre: 50_000,
     feesOre: 2_000,
+    vmbVatOre: 0,
     compensationOre: 10_000,
     profitOre: 38_000,
     marginBp: 3800,
@@ -58,7 +59,7 @@ describe("lonsamhetCsv", () => {
     const csv = lonsamhetCsv("title", rows, totals, [{ key: "name", dir: "asc" }]);
     const lines = csv.replace(/^﻿/, "").trimEnd().split("\r\n");
     expect(lines[0]).toBe(
-      "Titel;Order;Order med inköpspris;Order utan inköpspris;Intäkt med inköpspris (kr);Inköp (kr);Avgifter (kr);Butiksersättning (kr);Vinst (kr);Marginal (%);Intäkt utan inköpspris (kr)",
+      "Titel;Order;Order med inköpspris;Order utan inköpspris;Intäkt med inköpspris (kr);Inköp (kr);Avgifter (kr);VMB-moms (kr);Butiksersättning (kr);Vinst (kr);Marginal (%);Intäkt utan inköpspris (kr)",
     );
     expect(lines.map((l) => l.split(";")[0])).toEqual([
       "Titel",
@@ -69,9 +70,11 @@ describe("lonsamhetCsv", () => {
       "Ej fördelad hyra",
       "Totalt",
     ]);
-    expect(lines[2]).toBe("Black Bolt;10;10;0;1000,00;500,00;20,00;100,00;21113,50;27,84;0,00");
+    expect(lines[2]).toBe(
+      "Black Bolt;10;10;0;1000,00;500,00;20,00;0,00;100,00;21113,50;27,84;0,00",
+    );
     // Negativa belopp blir tal, inte text med apostrof.
     expect(lines[4]).toContain(";-33,50;-0,50;");
-    expect(lines[5]?.split(";")[8]).toBe("-111,12");
+    expect(lines[5]?.split(";")[9]).toBe("-111,12");
   });
 });

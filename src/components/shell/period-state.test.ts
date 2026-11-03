@@ -6,11 +6,13 @@ import {
   parseIsoDate,
   parsePeriod,
   parseScope,
+  parseVmbView,
   todayIn,
   toIsoDate,
   wallClockIn,
   withPeriod,
   withScope,
+  withVmbView,
   type DateRange,
 } from "./period-state";
 
@@ -163,6 +165,14 @@ describe("skrivning", () => {
   it("carriedQuery bär bara skalets parametrar", () => {
     expect(carriedQuery(sp("period=7d&sort=x&butik=s1"))).toBe("?period=7d&butik=s1");
     expect(carriedQuery(sp("sort=x"))).toBe("");
+  });
+  it("vyknappen Med VMB: ?vmb=1, standard av, följer med mellan sidor", () => {
+    expect(parseVmbView(sp(""))).toBe(false);
+    expect(parseVmbView(sp("vmb=0"))).toBe(false);
+    expect(parseVmbView(sp("vmb=1"))).toBe(true);
+    expect(withVmbView(sp("period=7d"), true).toString()).toBe("period=7d&vmb=1");
+    expect(withVmbView(sp("period=7d&vmb=1"), false).toString()).toBe("period=7d");
+    expect(carriedQuery(sp("period=7d&vmb=1&sort=x"))).toBe("?period=7d&vmb=1");
   });
   it("parseIsoDate avvisar omöjliga datum", () => {
     expect(parseIsoDate("2028-02-29")).not.toBeNull();

@@ -222,6 +222,7 @@ describe("vad funktionerna lämnar ut", () => {
         monthlyRentOre: null,
         commissionBase: "net_excl_vat",
         lossTreatment: "zero",
+        vmbBeforeSplit: false,
       },
     ]);
     const a2 = await asUser(f.storeA2, (tx) => queryPortalAgreements(tx, f.a2.storeId));
@@ -233,6 +234,7 @@ describe("vad funktionerna lämnar ut", () => {
         monthlyRentOre: 50000,
         commissionBase: "net_excl_vat",
         lossTreatment: "zero",
+        vmbBeforeSplit: false,
       },
     ]);
   });

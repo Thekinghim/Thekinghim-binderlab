@@ -342,6 +342,7 @@ export async function loadStoreDetail(
       profitOre: row?.profitOre ?? 0,
       span: info.span,
       month: mc,
+      vmb: input.settings.vmb === true,
     }),
     kpis: storeKpis({ current: row, previous: prevRow, daily }),
     daily,

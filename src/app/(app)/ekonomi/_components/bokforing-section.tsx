@@ -1,7 +1,8 @@
 /**
  * Ekonomi → Bokföring: en rad per månad (nyast först) med status, nyckeltal och månadspaketet
  * (SIE 4 + PDF + Excel + kvitton) att skicka till Fortnox/Talenom. Ingen automatisk
- * bokföring. Under raden: kvitton och VMB-uträkningen. Sist: kontoplanen.
+ * bokföring. Överst: "VMB i bokföringen" (standard av). Under raden: kvitton och
+ * VMB-uträkningen (när VMB är på). Sist: kontoplanen.
  */
 
 import { SectionHeader } from "@/components/ui/section-header";
@@ -23,7 +24,13 @@ import {
 } from "@/server/bokforing/service";
 
 import { capitalize, isoToDate, kr, monthText, plural } from "../_lib/view";
-import { ArchiveReceiptButton, PlanForm, ReceiptDrop, SentToggle } from "./bokforing-controls";
+import {
+  ArchiveReceiptButton,
+  PlanForm,
+  ReceiptDrop,
+  SentToggle,
+  VmbBookkeepingSwitch,
+} from "./bokforing-controls";
 
 const SECTION = "rise flex scroll-mt-28 flex-col gap-8 pb-12 md:gap-10 md:pb-16";
 
@@ -52,6 +59,7 @@ export async function BokforingSection({
     view = await loadBokforingFor(viewer, today);
   } catch (error) {
     if (!(error instanceof BokforingError)) throw error;
+    // T.ex. momssats skild från 0: gäller med och utan VMB, så VMB-knappen visas inte här.
     return (
       <section id="bokforing" className={SECTION}>
         <StateMessage kind="error" message={error.message} />
@@ -92,6 +100,8 @@ export async function BokforingSection({
         }
       />
 
+      <VmbBookkeepingSwitch on={view.settings.vmbEnabled} canEdit={canEdit} />
+
       <ol className="flex flex-col gap-3" aria-label="Månader">
         {view.months.map((m) => (
           <MonthItem key={m.month} row={m} canEdit={canEdit} today={today} />
@@ -127,7 +137,7 @@ function MonthItem({ row, canEdit, today }: { row: MonthRow; canEdit: boolean; t
   const b = row.book;
   const figures: [string, number][] = [
     ["Försäljning", netSales(b)],
-    ["VMB-moms", b.vmb.vatOre],
+    ...(b.vmbEnabled ? ([["VMB-moms", b.vmb.vatOre]] as [string, number][]) : []),
     ["Inköp", b.purchasesOre],
     ["Butikernas andel", b.storeShareOre],
     ["Resultat", b.resultOre],
@@ -148,7 +158,12 @@ function MonthItem({ row, canEdit, today }: { row: MonthRow; canEdit: boolean; t
           <h3 className="text-base font-medium text-fg">{capitalize(monthText(row.month))}</h3>
           <StatusTag status={tag}>{statusText}</StatusTag>
         </div>
-        <dl className="grid flex-1 grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-5">
+        <dl
+          className={cn(
+            "grid flex-1 grid-cols-2 gap-x-4 gap-y-2",
+            b.vmbEnabled ? "sm:grid-cols-5" : "sm:grid-cols-4",
+          )}
+        >
           {figures.map(([label, v]) => (
             <div key={label} className="flex min-w-0 flex-col">
               <dt className="label text-subtle">{label}</dt>
@@ -199,7 +214,9 @@ function MonthItem({ row, canEdit, today }: { row: MonthRow; canEdit: boolean; t
               ? ` · ${plural(b.unpricedOrders, "order", "order")} utan inköpspris`
               : ""}
           </span>
-          <span className="text-subtle normal-case">VMB-uträkning</span>
+          <span className="text-subtle normal-case">
+            {b.vmbEnabled ? "VMB-uträkning" : "Utan VMB"}
+          </span>
         </summary>
         <div className="grid grid-cols-1 gap-6 border-t border-line p-4 lg:grid-cols-2">
           <div className="flex min-w-0 flex-col gap-3">
@@ -227,23 +244,34 @@ function MonthItem({ row, canEdit, today }: { row: MonthRow; canEdit: boolean; t
             )}
             {canEdit ? <ReceiptDrop month={row.month} maxBytes={UPLOAD_MAX_BYTES} /> : null}
           </div>
-          <table className="w-full self-start text-sm">
-            <tbody>
-              <Step label="Försäljning inkl. moms" ore={b.salesInclVatOre} />
-              {b.refundsOre !== 0 ? (
-                <Step label="− Återbetalningar till kunder" ore={b.refundsOre} />
-              ) : null}
-              <Step label={`− ${PURCHASE_BASIS_LABEL[b.purchaseBasis]}`} ore={b.vmb.purchasesOre} />
-              {b.vmb.carryInOre > 0 ? (
-                <Step label="− Underskott från förra månaden" ore={b.vmb.carryInOre} />
-              ) : null}
-              <Step label="= Marginal" ore={b.vmb.marginOre} strong />
-              <Step label="VMB-moms 20 % av positiv marginal" ore={b.vmb.vatOre} strong />
-              {b.vmb.carryOutOre > 0 ? (
-                <Step label="Underskott till nästa månad" ore={b.vmb.carryOutOre} />
-              ) : null}
-            </tbody>
-          </table>
+          {b.vmbEnabled ? (
+            <table className="w-full self-start text-sm">
+              <tbody>
+                <Step label="Försäljning inkl. moms" ore={b.salesInclVatOre} />
+                {b.refundsOre !== 0 ? (
+                  <Step label="− Återbetalningar till kunder" ore={b.refundsOre} />
+                ) : null}
+                <Step
+                  label={`− ${PURCHASE_BASIS_LABEL[b.purchaseBasis]}`}
+                  ore={b.vmb.purchasesOre}
+                />
+                {b.vmb.carryInOre > 0 ? (
+                  <Step label="− Underskott från förra månaden" ore={b.vmb.carryInOre} />
+                ) : null}
+                <Step label="= Marginal" ore={b.vmb.marginOre} strong />
+                <Step label="VMB-moms 20 % av positiv marginal" ore={b.vmb.vatOre} strong />
+                {b.vmb.carryOutOre > 0 ? (
+                  <Step label="Underskott till nästa månad" ore={b.vmb.carryOutOre} />
+                ) : null}
+              </tbody>
+            </table>
+          ) : (
+            <p className="self-start text-sm text-muted">
+              {row.status === "sent"
+                ? "Skickad utan VMB: ingen VMB-moms."
+                : "VMB är av: ingen VMB-moms och inget underskott."}
+            </p>
+          )}
         </div>
       </details>
     </li>

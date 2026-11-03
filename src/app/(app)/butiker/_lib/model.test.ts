@@ -107,6 +107,11 @@ describe("texter", () => {
     expect(termsLabel(800, 75_000)).toBe(`Provision 8${NB}% · hyra 750${NB}kr/mån`);
     expect(termsLabel(null, 150_000)).toBe(`Hyra 1${NB}500${NB}kr/mån`);
     expect(termsLabel(5_000, null, "profit_after_costs")).toBe("Vinstdelning 50/50");
+    // Utan VMB som standard; avtalets val på syns i texten.
+    expect(termsLabel(5_000, null, "profit_after_costs", false)).toBe("Vinstdelning 50/50");
+    expect(termsLabel(5_000, null, "profit_after_costs", true)).toBe(
+      "Vinstdelning 50/50 · VMB dras före delning",
+    );
     expect(termsLabel(4_000, 50_000, "profit_after_costs")).toBe(
       `Vinstdelning 40${NB}% · hyra 500${NB}kr/mån`,
     );

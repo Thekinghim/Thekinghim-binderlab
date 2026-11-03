@@ -196,6 +196,9 @@ function validateAgreement(a: StoreAgreement): void {
       `Avtalet för butik ${a.storeId} har okänd förlusthantering.`,
     );
   }
+  if (a.vmbBeforeSplit !== undefined && typeof a.vmbBeforeSplit !== "boolean") {
+    throw new DomainError("invalid_input", `Avtalet för butik ${a.storeId} har okänt VMB-val.`);
+  }
 }
 
 /** Uppslag: vilket avtal gällde för butiken en viss dag? */

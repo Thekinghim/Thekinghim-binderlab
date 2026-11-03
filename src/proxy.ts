@@ -12,11 +12,24 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 
+import { parseVmbView, VMB_HEADER } from "@/components/shell/period-state";
 import { getServerEnv } from "@/lib/env";
 import { LOGIN_PATH, isPublicPath, loginRedirectPath } from "@/server/auth/paths";
 import { checkProxySession } from "@/server/auth/proxy-session";
 
 let reportedEnvError = false;
+
+/**
+ * Skickar förfrågan vidare med vyknappen "Med VMB" (?vmb=1) som header, så att serverns
+ * laddare läser samma val som URL:en (requestVmbView i src/server/data/core). En header
+ * från klienten skrivs alltid över.
+ */
+function forward(request: NextRequest): NextResponse {
+  const headers = new Headers(request.headers);
+  if (parseVmbView(request.nextUrl.searchParams)) headers.set(VMB_HEADER, "1");
+  else headers.delete(VMB_HEADER);
+  return NextResponse.next({ request: { headers } });
+}
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { pathname, search } = request.nextUrl;
@@ -27,9 +40,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   let authenticated = false;
   let response = NextResponse.next();
   try {
-    const result = await checkProxySession(request, getServerEnv(), (req) =>
-      NextResponse.next({ request: req }),
-    );
+    const result = await checkProxySession(request, getServerEnv(), forward);
     authenticated = result.authenticated;
     response = result.response;
   } catch (error) {

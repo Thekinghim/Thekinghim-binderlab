@@ -115,6 +115,7 @@ import {
   queryOrderIdsFromSources,
   queryPayoutImports,
   queryPayoutLines,
+  queryHasPayoutSource,
   queryPayouts,
   queryPayoutsForBooking,
   queryProviderSource,
@@ -1067,6 +1068,11 @@ export interface CashflowView {
   readonly replenishment: ReplenishmentForecast | null;
   /** Antagandet om utbetalningsrytmen, i klartext. */
   readonly payoutCycleNote: string;
+  /**
+   * Sant när utbetalningar läses in (queryHasPayoutSource). Falskt: inga utbetalningar visas
+   * som väntade eller saknade (Awish-utbetalningarna är inte inlästa).
+   */
+  readonly payoutsTracked: boolean;
 }
 
 /** Minsta antal registrerade utbetalningar för att rytmen ska läsas ur dem. */
@@ -1097,18 +1103,21 @@ export async function loadCashflowFor(
   };
   return asRole(viewer, ECONOMY_ROLES, async (tx) => {
     const ordersFrom = addDays(range.start, -62);
-    const [sources, orders, payouts, purchases, costs] = await Promise.all([
+    const [sources, orders, payouts, purchases, costs, payoutsTracked] = await Promise.all([
       economicsSources(tx, orgId),
       queryOrders(tx, orgId, { start: ordersFrom, end: today }, NO_SCOPE),
       queryPayouts(tx, orgId, { start: addDays(range.start, -62), end: range.end }),
       queryPurchases(tx, orgId),
       queryFixedCosts(tx, orgId),
+      queryHasPayoutSource(tx, orgId),
     ]);
     const activeCosts = costs.filter((c) => !c.archived);
     const fewPayouts = payouts.length < MIN_PAYOUTS_FOR_CYCLE;
     const payoutCycleNote = fewPayouts
       ? payouts.length === 0
-        ? "Ingen utbetalning är registrerad: en utbetalning i månaden antas."
+        ? payoutsTracked
+          ? "Ingen utbetalning är registrerad: en utbetalning i månaden antas."
+          : "Inga utbetalningar är inlästa: kommande utbetalningar antas en gång i månaden."
         : "Bara en utbetalning är registrerad, så rytmen går inte att läsa ut: en utbetalning i månaden antas."
       : "Utbetalningsrytmen följer den senaste utbetalningens period.";
     const base = {
@@ -1117,6 +1126,7 @@ export async function loadCashflowFor(
       fixedCosts: activeCosts.length,
       payouts: payouts.length,
       payoutCycleNote,
+      payoutsTracked,
     };
     const planned = toPurchases(purchases);
     const input = {
@@ -1128,7 +1138,10 @@ export async function loadCashflowFor(
       asOf: today,
       range,
       granularity: "month" as const,
-      ...(fewPayouts ? { options: { payoutCycle: "month" as const } } : {}),
+      options: {
+        ...(fewPayouts ? { payoutCycle: "month" as const } : {}),
+        payoutsTracked,
+      },
     };
     try {
       const firstPass = cashflow(input);

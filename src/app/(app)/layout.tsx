@@ -81,6 +81,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         };
       })}
       activeOrganizationId={ctx.organization.id}
+      vmbUserKey={ctx.canSeeEconomy ? ctx.user.id : null}
       todoCount={todoCount}
       syncedAt={sync?.syncedAt ?? undefined}
       syncState={sync?.state}

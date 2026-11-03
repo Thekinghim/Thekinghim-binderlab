@@ -30,8 +30,9 @@ describe("placeringsavtalet", () => {
     expect(t).toContain("Butiken får 50 % av vinsten");
     expect(t).toContain("Operatören behåller 50 %");
     expect(t).toContain(
-      "försäljning inklusive moms − återbetalningar till kunder − moms enligt vinstmarginalbeskattning (VMB) − inköpspris för sålda varor − kort- och betalningsavgifter",
+      "försäljning inklusive moms − återbetalningar till kunder − inköpspris för sålda varor − kort- och betalningsavgifter",
     );
+    expect(t).toContain("dras inte före delningen");
     expect(t).toContain("får Butiken 0 kr");
     expect(t).not.toContain("hyra");
   });
@@ -47,6 +48,20 @@ describe("placeringsavtalet", () => {
     const t = text({ ...INPUT, lossTreatment: "proportional", monthlyRentOre: 50_000 });
     expect(t).toContain("bär Butiken 50 % av förlusten");
     expect(t).toContain("fast hyra på 500 kr per månad");
+  });
+
+  it("utan VMB-avdrag som standard; avtal med VMB-avdrag säger det i texten och villkoren", () => {
+    expect(text(INPUT)).not.toContain("− moms enligt vinstmarginalbeskattning");
+    expect(text({ ...INPUT, vmbBeforeSplit: false })).toBe(text(INPUT));
+    const t = text({ ...INPUT, vmbBeforeSplit: true });
+    expect(t).toContain("− moms enligt vinstmarginalbeskattning (VMB)");
+    expect(t).not.toContain("dras inte före delningen");
+    expect(contractTermsSummary({ shareBp: 5_000, lossTreatment: "zero" })).toContain(
+      "dras inte före delningen",
+    );
+    expect(
+      contractTermsSummary({ shareBp: 5_000, lossTreatment: "zero", vmbBeforeSplit: true }),
+    ).toContain("− moms enligt vinstmarginalbeskattning (VMB)");
   });
 
   it("HTML: parterna, tomma rader för det som saknas, och escapad text", () => {

@@ -68,14 +68,26 @@ export function payoutSpan(result: ReconciliationResult): IsoPeriod {
   return { start, end };
 }
 
+/** Utan källa för utbetalningar: en neutral rad, inga väntade eller saknade utbetalningar. */
+export const NO_PAYOUT_SOURCE_TEXT =
+  "Utbetalningarna från Awish är inte inlästa. Ladda upp dem som CSV för att stämma av.";
+
+/**
+ * `payoutsTracked` = det finns en källa för utbetalningar (en inläst utbetalning eller fil).
+ * Utan den visas varken väntade eller saknade utbetalningar, bara en neutral rad.
+ */
 export function economyHeadline(
   result: ReconciliationResult | null,
   cash: CashflowResult | null,
   period: IsoPeriod,
   today: string,
+  payoutsTracked = true,
 ): Headline {
   const when = periodShort(period, today);
   if (!result || result.payouts.length === 0) {
+    if (!payoutsTracked) {
+      return { title: "Inga utbetalningar är inlästa.", aside: NO_PAYOUT_SOURCE_TEXT };
+    }
     const next = nextExpectedPayout(cash);
     return {
       title: sentence(`Ingen utbetalning för ${when}`),

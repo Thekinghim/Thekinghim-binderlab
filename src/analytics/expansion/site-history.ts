@@ -116,6 +116,7 @@ export function siteHistories(input: ProfitabilityInput): SiteHistory[] {
       commissionOre: r?.commissionOre ?? 0,
       rentOre: r?.rentOre ?? 0,
       contributionOre: revenue - cost - fees,
+      vmbVatOre: r?.vmbVatOre ?? 0,
       profitOre: r?.profitOre ?? 0,
     });
   }

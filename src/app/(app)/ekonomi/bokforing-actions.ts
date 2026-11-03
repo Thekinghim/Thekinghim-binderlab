@@ -7,6 +7,7 @@
  */
 
 import { unstable_rethrow } from "next/navigation";
+import { after } from "next/server";
 import { z, ZodError } from "zod";
 
 import { AccountingError, currentViewer } from "@/server/accounting";
@@ -15,14 +16,17 @@ import {
   archiveReceiptFor,
   markMonthSentFor,
   saveBokforingSettingsFor,
+  setBokforingVmbFor,
   unmarkMonthSentFor,
   uploadReceiptFor,
   type BokforingSettingsInput,
 } from "@/server/bokforing/service";
 import { MAX_RECEIPT_BYTES } from "@/server/bokforing/receipts";
+import { refreshUnsentPackagesFor } from "@/server/bokforing/stored";
 import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/data/core";
 import { businessToday } from "@/server/data/core/loaders";
 import { dbErrorMessage } from "@/server/errors";
+import { getPdfRenderer, pdfStatus } from "@/server/pdf/render";
 
 import { monthSchema } from "./_lib/schemas";
 
@@ -50,6 +54,34 @@ export async function saveBokforingSettings(raw: BokforingSettingsInput): Promis
   try {
     const { viewer } = await operator();
     await saveBokforingSettingsFor(viewer, raw);
+    revalidateAppData();
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/**
+ * "VMB i bokföringen" på eller av. Svarar direkt när valet är sparat; sparade paket för
+ * månader som inte är skickade tas fram på nytt efter svaret (after), annars gör det
+ * schemalagda jobbet eller nedladdningen det.
+ */
+export async function setBokforingVmb(raw: { enabled: boolean }): Promise<BokforingResult> {
+  try {
+    const { enabled } = z.object({ enabled: z.boolean() }).parse(raw);
+    const { viewer, today } = await operator();
+    await setBokforingVmbFor(viewer, enabled);
+    // Efter svaret: valet är sparat även om PDF-renderingen tar lång tid eller går fel.
+    after(async () => {
+      try {
+        const renderPdf = pdfStatus().configured
+          ? (html: string) => getPdfRenderer().renderHtml(html)
+          : null;
+        await refreshUnsentPackagesFor(viewer, today, { renderPdf });
+      } catch (error) {
+        console.error("[bokforing] paketen togs inte fram på nytt", error);
+      }
+    });
     revalidateAppData();
     return { ok: true, data: undefined };
   } catch (error) {

@@ -11,6 +11,7 @@ import { useToast } from "@/components/ui/toast";
 
 import { DialogButtons, FormError } from "../../ekonomi/_components/bits";
 import { createContract } from "../actions";
+import { VmbBeforeSplitCheckbox } from "./vmb-before-split";
 
 /**
  * Skapa avtal: butik och startdag, ett klick. Avtalet (PDF), villkoren 50/50 av vinsten
@@ -43,6 +44,7 @@ export function CreateContract({
   const startOf = (value: string) => options.find((o) => o.value === value)?.suggestedFrom ?? today;
   const [target, setTarget] = useState(first ? initialTarget! : (options[0]?.value ?? ""));
   const [validFrom, setValidFrom] = useState(() => startOf(target));
+  const [vmbBeforeSplit, setVmbBeforeSplit] = useState(false);
   const [confirm, setConfirm] = useState<string>();
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
@@ -58,7 +60,12 @@ export function CreateContract({
     if (!validFrom) return setError("Ange startdag.");
     setError(undefined);
     startTransition(async () => {
-      const res = await createContract({ target, validFrom, confirmHistory: Boolean(confirm) });
+      const res = await createContract({
+        target,
+        validFrom,
+        confirmHistory: Boolean(confirm),
+        vmbBeforeSplit,
+      });
       if (!res.ok) {
         if (res.needsConfirm) setConfirm(res.error);
         else setError(res.error);
@@ -118,6 +125,11 @@ export function CreateContract({
               setValidFrom(e.target.value);
               reset();
             }}
+          />
+          <VmbBeforeSplitCheckbox
+            id="skapa-avtal-vmb"
+            checked={vmbBeforeSplit}
+            onChange={setVmbBeforeSplit}
           />
           {orgNumberMissing ? (
             <p className="meta text-subtle">

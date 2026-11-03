@@ -114,7 +114,18 @@ export {
   type LedgerEntry,
   type StoreMonthSplit,
   type UnallocatedRent,
+  type VmbMonth,
 } from "./ledger";
+
+export {
+  VMB_RATE_PERCENT,
+  vmbApplies,
+  vmbChain,
+  vmbVat,
+  type VmbInput,
+  type VmbMonthInput,
+  type VmbResult,
+} from "./vmb";
 
 export {
   CALC_VERSION,
@@ -125,6 +136,7 @@ export {
   summarizeLedger,
   TOTAL_KEY,
   UNALLOCATED_KEY,
+  vmbPreliminary,
   type ProfitabilityOptions,
   type ProfitabilityResult,
   type ProfitabilityRow,
@@ -132,6 +144,7 @@ export {
   type RowKind,
   type UnpricedSummary,
   type UnpricedTitle,
+  type VmbSummary,
   type WaterfallKey,
   type WaterfallStep,
 } from "./profitability";

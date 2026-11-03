@@ -67,7 +67,7 @@ export default async function EkonomiPage({
   ]);
 
   const result = rec.result;
-  const headline = economyHeadline(result, cash.result, p.period, ctx.today);
+  const headline = economyHeadline(result, cash.result, p.period, ctx.today, cash.payoutsTracked);
   const when = periodShort(p.period, ctx.today);
   const canEdit = ctx.canEdit;
 

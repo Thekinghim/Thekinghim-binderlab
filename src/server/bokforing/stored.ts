@@ -108,15 +108,23 @@ export function systemReceiptStore(env: Env = process.env): FileStore {
 // Underlagets fingeravtryck
 // ---------------------------------------------------------------------------
 
-/** sha256 av allt som påverkar paketets innehåll (inte dagens datum). */
+/**
+ * sha256 av allt som påverkar paketets innehåll (inte dagens datum). En månad med VMB på
+ * hashas utan valet och utan kontot för försäljning utan VMB (som inte används); med VMB av
+ * blir fingeravtrycket ett annat. Allt i `book` ingår, även avtalets VMB-val per butik
+ * (`stores[].split`), så osända månader får en ny version när innehållet ändras. Skickade
+ * månader med ett sparat paket behåller det (se ensureStoredPackage).
+ */
 export function packageFingerprint(org: OrgRef, src: PackageSource): string {
+  const { vmbEnabled, ...withoutChoice } = src.book;
+  const { sales, ...vmbPlan } = src.settings.plan;
   return sha256Hex(
     new TextEncoder().encode(
       JSON.stringify({
         v: 1,
         company: org.name,
-        book: src.book,
-        plan: src.settings.plan,
+        book: vmbEnabled ? withoutChoice : src.book,
+        plan: vmbEnabled ? vmbPlan : { ...vmbPlan, sales },
         series: src.settings.series,
         orgNumber: src.settings.orgNumber,
         number: src.number,
@@ -155,8 +163,11 @@ export interface EnsureResult {
 }
 
 /**
- * Sparar månadens paket om det saknas eller om underlaget har ändrats (ny version).
- * Systemrollen; anroparen har kontrollerat behörigheten.
+ * Sparar månadens paket om det saknas eller om underlaget har ändrats (ny version). En
+ * månad som är markerad som skickad och redan har ett sparat paket ändras aldrig här (inte
+ * av det schemalagda jobbet, nedladdningen eller VMB-knappen): ändrade siffror syns som
+ * "ändrad sedan skickad", och "ångra skickad" ger en ny version. Systemrollen; anroparen
+ * har kontrollerat behörigheten.
  */
 export async function ensureStoredPackage(
   org: OrgRef,
@@ -183,6 +194,7 @@ export async function ensureStoredPackage(
   const { src, row } = read;
   if (!src || !hasContent(src))
     return { stored: row ? toStored(row) : null, created: false, bytes: null };
+  if (row && src.sentAt) return { stored: toStored(row), created: false, bytes: null };
 
   const fingerprint = packageFingerprint(org, src);
   if (row && row.fingerprint === fingerprint) {
@@ -345,6 +357,50 @@ export async function storedPackagesFor(viewer: Viewer): Promise<Map<string, Sto
       .where(eq(s.bookkeepingPackages.organizationId, viewer.organization.id)),
   );
   return new Map(rows.map((r) => [r.month.slice(0, 7), toStored(r)]));
+}
+
+/**
+ * Efter ändrat "VMB i bokföringen": tar fram nya versioner av sparade paket för avslutade
+ * månader som inte är markerade som skickade (skickade månader behåller sitt val och sitt
+ * paket). Ägare och admin. Returnerar antalet nya versioner; fel loggas och lämnas åt det
+ * schemalagda jobbet och nedladdningen, som tar fram paketet när underlaget ändrats.
+ */
+export async function refreshUnsentPackagesFor(
+  viewer: Viewer,
+  today: IsoDate,
+  deps: PackageDeps = {},
+): Promise<number> {
+  await requireRoleFor(viewer.user, viewer.organization.id, ["owner", "admin"]);
+  const rows = await withUserDbFor(viewer.user, (tx) =>
+    tx
+      .select({ month: s.bookkeepingPackages.month })
+      .from(s.bookkeepingPackages)
+      .leftJoin(
+        s.bookkeepingMonths,
+        and(
+          eq(s.bookkeepingMonths.organizationId, s.bookkeepingPackages.organizationId),
+          eq(s.bookkeepingMonths.month, s.bookkeepingPackages.month),
+        ),
+      )
+      .where(
+        and(
+          eq(s.bookkeepingPackages.organizationId, viewer.organization.id),
+          isNull(s.bookkeepingMonths.sentAt),
+        ),
+      ),
+  );
+  let created = 0;
+  for (const r of rows) {
+    const month = r.month.slice(0, 7);
+    if (month >= today.slice(0, 7)) continue;
+    try {
+      const res = await ensureStoredPackage(viewer.organization, month, today, deps);
+      if (res.created) created++;
+    } catch (error) {
+      console.error("bokforing: paketet kunde inte tas fram på nytt", month, error);
+    }
+  }
+  return created;
 }
 
 export interface ReadyLine {

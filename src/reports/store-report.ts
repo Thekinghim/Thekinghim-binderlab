@@ -169,6 +169,8 @@ export interface StoreProfitSplit {
   readonly orders: number;
   readonly shareBp: number;
   readonly lossTreatment: LossTreatment;
+  /** Avtalets val: VMB-moms dras före delningen (saknas i ögonblicksbilder före 1.3.0 = sant). */
+  readonly vmbBeforeSplit?: boolean;
   /** Försäljning inkl. moms. */
   readonly salesInclVatOre: number;
   /** Återbetalningar till kunder (saknas i ögonblicksbilder före 1.2.0 = 0). */
@@ -855,6 +857,7 @@ function profitSplitRow(
     orders: seg.orders,
     shareBp,
     lossTreatment,
+    vmbBeforeSplit: a.vmbBeforeSplit === true,
     salesInclVatOre,
     refundsOre: pending ? 0 : (r?.refundsOre ?? 0),
     vmbVatOre: pending ? 0 : (r?.vmbVatOre ?? 0),
@@ -865,7 +868,10 @@ function profitSplitRow(
     operatorShareOre: profitOre - storeShareOre,
     pending,
     evidence: evidence({
-      rule: "Vinst = försäljning inkl. moms − återbetalningar − VMB-moms (20 % av försäljning − återbetalningar − inköp, om positiv) − inköp − kortavgifter. Butikens andel = round(vinst × andel / 10 000), 0 vid förlust om inte avtalet delar förlusten.",
+      rule:
+        a.vmbBeforeSplit !== true
+          ? "Vinst = försäljning inkl. moms − återbetalningar − inköp − kortavgifter (avtalet drar inte VMB-moms före delningen). Butikens andel = round(vinst × andel / 10 000), 0 vid förlust om inte avtalet delar förlusten."
+          : "Vinst = försäljning inkl. moms − återbetalningar − VMB-moms (20 % av försäljning − återbetalningar − inköp, om positiv) − inköp − kortavgifter. Butikens andel = round(vinst × andel / 10 000), 0 vid förlust om inte avtalet delar förlusten.",
       scope: { period: seg.range, storeId },
       orderCount: seg.orders,
       figures: pending
@@ -919,7 +925,9 @@ function modelText(agreements: readonly StoreAgreement[], period: Period): strin
     const parts: string[] = [];
     if (isProfitSplit(a)) {
       const bp = a.commissionBp ?? 0;
-      parts.push(`${pctText(bp, bp % 100 === 0 ? 0 : 1)} av vinsten efter kostnader`);
+      parts.push(
+        `${pctText(bp, bp % 100 === 0 ? 0 : 1)} av vinsten efter kostnader${a.vmbBeforeSplit === true ? " (VMB-moms dras före delning)" : ""}`,
+      );
     } else if ((a.commissionBp ?? 0) > 0) {
       const bp = a.commissionBp!;
       parts.push(`provision ${pctText(bp, bp % 100 === 0 ? 0 : 1)} på försäljningen exkl. moms`);

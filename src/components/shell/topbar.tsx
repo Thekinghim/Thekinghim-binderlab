@@ -19,6 +19,7 @@ import {
   type ShellStore,
 } from "./period-bar";
 import { ThemeToggle } from "./theme-toggle";
+import { VmbToggle } from "./vmb-toggle";
 
 /**
  * Äldre, lokalt periodval (används av /design och /datamodell som styr
@@ -48,6 +49,11 @@ export type TopbarProps = {
   machines?: ShellMachine[];
   /** Första dagen med data; ger "Allt" ett intervall och spärrar datumväljaren före den. */
   earliest?: Date;
+  /**
+   * Visa vyknappen "Med VMB" (roller som ser ekonomi). Värdet är användarens nyckel för
+   * att minnas valet (localStorage). null/utelämnad = ingen knapp.
+   */
+  vmbUserKey?: string | null;
   /** Äldre lokalt periodval. När period och onPeriodChange ges ersätter de URL-periodvalet. */
   period?: Period;
   onPeriodChange?: (p: Period) => void;
@@ -72,6 +78,7 @@ export function Topbar({
   stores = [],
   machines = [],
   earliest,
+  vmbUserKey = null,
   period,
   onPeriodChange,
   comparison,
@@ -143,6 +150,7 @@ export function Topbar({
                 machines={machines}
                 earliest={earliest}
                 hasScope={hasScope}
+                vmbUserKey={vmbUserKey}
               />
             </Suspense>
           )}
@@ -188,11 +196,13 @@ function UrlContext({
   machines,
   earliest,
   hasScope,
+  vmbUserKey,
 }: {
   stores: ShellStore[];
   machines: ShellMachine[];
   earliest?: Date;
   hasScope: boolean;
+  vmbUserKey: string | null;
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filterId = useId();
@@ -202,6 +212,7 @@ function UrlContext({
       {/* Rad 1: periodval och filter. Rad 2: läsraden i mono (och filterknappen på mobil). */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <PeriodControl earliest={earliest} className="max-w-full" />
+        {vmbUserKey ? <VmbToggle userKey={vmbUserKey} /> : null}
         {hasScope ? (
           <ScopeFilter
             stores={stores}

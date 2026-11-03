@@ -70,6 +70,8 @@ export interface PortalAgreementRow {
   /** Saknas i äldre rader (före vinstdelning): 'net_excl_vat'. */
   readonly commissionBase?: CommissionBase;
   readonly lossTreatment?: LossTreatment;
+  /** Saknas i äldre rader: sant (VMB dras före delningen). */
+  readonly vmbBeforeSplit?: boolean;
 }
 
 /** En period då en automat stod i butiken (portal_machines). */
@@ -131,6 +133,7 @@ export function portalSources(
       monthlyRentOre: a.monthlyRentOre,
       ...(a.commissionBase ? { commissionBase: a.commissionBase } : {}),
       ...(a.lossTreatment ? { lossTreatment: a.lossTreatment } : {}),
+      ...(a.vmbBeforeSplit === true ? { vmbBeforeSplit: true } : {}),
     })),
     placements: machines.map((m) => ({
       machineId: m.machineId,

@@ -115,15 +115,17 @@ describe("avtal med vinstdelning", () => {
       commission_base: string;
       commission_bp: number;
       loss_treatment: string;
+      vmb_before_split: boolean;
     }>(
       db(),
-      sql`select commission_base::text, commission_bp, loss_treatment::text
+      sql`select commission_base::text, commission_bp, loss_treatment::text, vmb_before_split
           from public.store_agreements where store_id = ${storeId}`,
     );
     expect(a).toEqual({
       commission_base: "profit_after_costs",
       commission_bp: 5_000,
       loss_treatment: "zero",
+      vmb_before_split: false,
     });
   });
 
@@ -189,20 +191,52 @@ describe("avtal med vinstdelning", () => {
 });
 
 describe("butiksrapporten med vinstdelning", () => {
-  it("oktober: försäljning, VMB-moms, inköp och butikens 50 %", async () => {
+  it("oktober, standard utan VMB-avdrag: butikens andel = 50 % × vinst efter kostnader", async () => {
     const snap = await previewReportFor(viewer, { type: "butik", month: "2025-10", storeId }, NOW);
     if (snap.type !== "butik") throw new Error("fel typ");
     const c = snap.report.compensation;
     expect(c.model).toBe("profit_split");
-    // 398 kr sålt, 260 kr inköp: marginal 138 kr, VMB 27,60 kr, vinst 110,40 kr.
-    expect(c.splits[0]).toMatchObject({
+    // 398 kr sålt, 260 kr inköp: vinst 138 kr (ingen VMB-moms före delningen), butiken 69 kr.
+    const x = c.splits[0]!;
+    expect(x).toMatchObject({
       salesInclVatOre: 39_800,
-      vmbVatOre: 2_760,
+      vmbVatOre: 0,
+      vmbBeforeSplit: false,
       purchasesOre: 26_000,
-      profitOre: 11_040,
-      storeShareOre: 5_520,
+      profitOre: 13_800,
+      storeShareOre: 6_900,
     });
-    expect(c.totalOre).toBe(5_520);
+    expect(x.storeShareOre).toBe(
+      Math.round(
+        (x.shareBp * (x.salesInclVatOre - (x.refundsOre ?? 0) - x.purchasesOre - x.cardFeesOre)) /
+          10_000,
+      ),
+    );
+    expect(c.totalOre).toBe(6_900);
+  });
+
+  it("oktober med avtalets val på: VMB-moms dras före delningen", async () => {
+    await db().execute(
+      sql`update public.store_agreements set vmb_before_split = true where store_id = ${storeId}`,
+    );
+    try {
+      const snap = await previewReportFor(
+        viewer,
+        { type: "butik", month: "2025-10", storeId },
+        NOW,
+      );
+      if (snap.type !== "butik") throw new Error("fel typ");
+      // Marginal 138 kr, VMB 27,60 kr, vinst 110,40 kr, butiken 55,20 kr.
+      expect(snap.report.compensation.splits[0]).toMatchObject({
+        vmbVatOre: 2_760,
+        profitOre: 11_040,
+        storeShareOre: 5_520,
+      });
+    } finally {
+      await db().execute(
+        sql`update public.store_agreements set vmb_before_split = false where store_id = ${storeId}`,
+      );
+    }
   });
 
   it("september: ett pack saknar inköpspris, rapporten stoppas med en rad", async () => {

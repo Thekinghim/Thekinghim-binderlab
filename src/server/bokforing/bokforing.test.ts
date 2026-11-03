@@ -26,6 +26,10 @@ import { assertZipName, buildZip, crc32 } from "./zip";
 // Hjälp
 // ---------------------------------------------------------------------------
 
+/** Månaderna med "VMB i bokföringen" på (samma utfall som före valet). */
+const bookVmb = (f: readonly MonthFigures[], opening: number) =>
+  bookMonths(f, opening, new Map(), true);
+
 function figures(month: string, over: Partial<MonthFigures> = {}): MonthFigures {
   return {
     month,
@@ -217,7 +221,7 @@ describe("VMB (samlad beräkning per månad)", () => {
   });
 
   it("resultat = försäljning − moms − inköp − kortavgifter − butikernas andel", () => {
-    const [b] = bookMonths([figures("2026-10")], 0);
+    const [b] = bookVmb([figures("2026-10")], 0);
     expect(b!.vmb.vatOre).toBe(12_000);
     expect(b!.resultOre).toBe(100_000 - 12_000 - 40_000 - 1_500 - 16_000);
     expect(monthResult(b!, b!.vmb.vatOre)).toBe(b!.resultOre);
@@ -245,7 +249,7 @@ describe("kontoplan", () => {
 // ---------------------------------------------------------------------------
 
 describe("SIE 4", () => {
-  const [book] = bookMonths([figures("2026-10")], 0);
+  const [book] = bookVmb([figures("2026-10")], 0);
   const ver = monthVerification(book!, DEFAULT_PLAN, "A", 10);
   const text = buildSieText({
     company: "Binderlab AB",
@@ -287,7 +291,7 @@ describe("SIE 4", () => {
   });
 
   it("noll VMB-moms ger ingen momsrad, och en negativ butiksandel byter sida", () => {
-    const [b] = bookMonths(
+    const [b] = bookVmb(
       [
         figures("2026-10", {
           purchasesOre: 200_000,
@@ -436,7 +440,7 @@ describe("zip", () => {
 });
 
 describe("månadspaketet", () => {
-  const [, book] = bookMonths(
+  const [, book] = bookVmb(
     [figures("2026-09", { salesInclVatOre: 10_000, purchasesOre: 50_000 }), figures("2026-10")],
     0,
   );
@@ -556,7 +560,7 @@ describe("månadspaketet", () => {
 
 describe("preliminärt paket", () => {
   it("har en rad om varför i läs mig och preliminar i filnamnet", async () => {
-    const [book] = bookMonths([figures("2026-10")], 0);
+    const [book] = bookVmb([figures("2026-10")], 0);
     const base = {
       company: "Binderlab AB",
       orgNumber: null,
@@ -590,7 +594,7 @@ describe("preliminärt paket", () => {
 
 describe("sammanfattningen", () => {
   it("visar VMB steg för steg, butikerna och verifikationen, och skyddar texten", () => {
-    const [b] = bookMonths([figures("2026-10")], 2_500);
+    const [b] = bookVmb([figures("2026-10")], 2_500);
     const v = monthVerification(b!, DEFAULT_PLAN, "A", 10);
     const html = summaryHtml({
       company: "Binderlab <AB>",
@@ -614,7 +618,7 @@ describe("sammanfattningen", () => {
 
 describe("granskning: återbetalningar, tomma månader, momssats", () => {
   it("återbetalningar dras från försäljningen i VMB, verifikationen och resultatet", () => {
-    const [b] = bookMonths([figures("2026-10", { refundsOre: 5_000 })], 0);
+    const [b] = bookVmb([figures("2026-10", { refundsOre: 5_000 })], 0);
     // Marginal = 100 000 − 5 000 − 40 000 = 55 000 → moms 11 000.
     expect(b!.vmb).toMatchObject({ salesInclVatOre: 95_000, marginOre: 55_000, vatOre: 11_000 });
     expect(b!.resultOre).toBe(95_000 - 11_000 - 40_000 - 1_500 - 16_000);
@@ -642,7 +646,7 @@ describe("granskning: återbetalningar, tomma månader, momssats", () => {
   });
 
   it("en månad utan transaktioner ger ingen tom #VER och ingen SIE-fil i paketet", async () => {
-    const [b] = bookMonths(
+    const [b] = bookVmb(
       [
         figures("2026-10", {
           orders: 0,
@@ -688,7 +692,7 @@ describe("granskning: återbetalningar, tomma månader, momssats", () => {
   });
 
   it("ofärdig vinstdelning syns i sammanfattningen", () => {
-    const [b] = bookMonths([figures("2026-10", { profitSplitUnpricedOrders: 3 })], 0);
+    const [b] = bookVmb([figures("2026-10", { profitSplitUnpricedOrders: 3 })], 0);
     const html = summaryHtml({
       company: "Binderlab AB",
       orgNumber: null,
@@ -702,7 +706,7 @@ describe("granskning: återbetalningar, tomma månader, momssats", () => {
     expect(html).toContain("Butikernas andel är inte färdigräknad: 3 order");
   });
 
-  it("VMB nekas när momssatsen i Inställningar inte är 0", () => {
+  it("bokföringen nekas när momssatsen i Inställningar inte är 0", () => {
     const report = {
       vatRateBp: 2_500,
       totals: { grossOre: 0, feesOre: 0, costOre: 0, unpricedOrders: 0, orders: 0 },
@@ -720,5 +724,129 @@ describe("granskning: återbetalningar, tomma månader, momssats", () => {
       1_000,
     );
     expect(ok).toMatchObject({ refundsOre: 1_000, profitSplitUnpricedOrders: 2 });
+  });
+});
+
+describe('"VMB i bokföringen" (standard av)', () => {
+  const sie = (b: Parameters<typeof monthVerification>[0]) =>
+    buildSieText({
+      company: "Binderlab AB",
+      orgNumber: null,
+      fiscalYear: { start: "2026-01-01", end: "2026-12-31" },
+      plan: DEFAULT_PLAN,
+      verifications: [monthVerification(b, DEFAULT_PLAN, "BL", 10)],
+      generatedOn: "2026-11-03",
+    });
+
+  it("av som standard: ingen VMB-moms, inga VMB-rader och resultatet utan VMB", () => {
+    const [b] = bookMonths([figures("2026-10")], 0);
+    expect(b!.vmbEnabled).toBe(false);
+    expect(b!.vmb).toMatchObject({ vatOre: 0, carryInOre: 0, carryOutOre: 0, marginOre: 60_000 });
+    expect(b!.resultOre).toBe(100_000 - 40_000 - 1_500 - 16_000);
+    const v = monthVerification(b!, DEFAULT_PLAN, "BL", 10);
+    expect(v.rows.reduce((s, r) => s + r.amountOre, 0)).toBe(0);
+    expect(v.rows.some((r) => r.key === "vat_vmb" || r.key === "sales_vmb")).toBe(false);
+    const by = (acc: string) =>
+      v.rows.filter((r) => r.account === acc).reduce((s, r) => s + r.amountOre, 0);
+    expect(by("3000")).toBe(-100_000);
+    expect(by("2616")).toBe(0);
+    expect(by("3211")).toBe(0);
+    expect(by("1580")).toBe(100_000 - 1_500);
+    const text = sie(b!);
+    expect(text).not.toContain("2616");
+    expect(text).not.toContain("3211");
+    expect(text).toContain('#KONTO 3000 "Försäljning inom Sverige"');
+  });
+
+  it("på ger exakt samma verifikation och resultat som före valet", () => {
+    const [on] = bookMonths([figures("2026-10")], 0, new Map(), true);
+    const [old] = bookVmb([figures("2026-10")], 0);
+    expect(on).toEqual(old);
+    expect(on!.vmbEnabled).toBe(true);
+    expect(on!.vmb.vatOre).toBe(12_000);
+    const rows = monthVerification(on!, DEFAULT_PLAN, "BL", 10).rows;
+    expect(rows.map((r) => [r.account, r.amountOre])).toEqual([
+      ["1580", 100_000],
+      ["3211", -88_000],
+      ["2616", -12_000],
+      ["6040", 1_500],
+      ["1580", -1_500],
+      ["6090", 9_000],
+      ["2990", -9_000],
+      ["6090", 5_000],
+      ["5010", 2_000],
+      ["2990", -7_000],
+    ]);
+    expect(sie(on!)).not.toContain("#KONTO 3000");
+  });
+
+  it("en månad utan VMB för inget underskott vidare; skickade månader behåller sitt val", () => {
+    const f = [
+      figures("2026-08", { salesInclVatOre: 10_000, purchasesOre: 50_000 }),
+      figures("2026-09", { salesInclVatOre: 10_000, purchasesOre: 50_000 }),
+      figures("2026-10"),
+    ];
+    // Augusti skickad med VMB (underskott 40 000), september av, oktober på.
+    const [aug, sep, oct] = bookMonths(
+      f,
+      0,
+      new Map([["2026-08", 40_000]]),
+      (m) => m !== "2026-09",
+    );
+    expect(aug!.vmb).toMatchObject({ vatOre: 0, carryOutOre: 40_000 });
+    expect(sep!.vmbEnabled).toBe(false);
+    expect(sep!.vmb).toMatchObject({ vatOre: 0, carryInOre: 0, carryOutOre: 0 });
+    expect(oct!.vmb).toMatchObject({ carryInOre: 0, vatOre: 12_000 });
+    // Alla på: septembers underskott förs till oktober.
+    const [, , octOn] = bookMonths(f, 0, new Map([["2026-08", 40_000]]), true);
+    expect(octOn!.vmb.carryInOre).toBe(80_000);
+  });
+
+  it("sammanfattningen och läs mig säger om VMB tillämpades", async () => {
+    const [off] = bookMonths([figures("2026-10")], 0);
+    const [on] = bookVmb([figures("2026-10")], 0);
+    const html = (b: typeof off) =>
+      summaryHtml({
+        company: "Binderlab AB",
+        orgNumber: null,
+        book: b!,
+        verification: monthVerification(b!, DEFAULT_PLAN, "BL", 10),
+        accountNames: new Map(),
+        receipts: 0,
+        generatedOn: "2026-11-03",
+        sentOn: null,
+      });
+    expect(html(off)).toContain("· utan VMB ·");
+    expect(html(off)).not.toContain("VMB-moms (samlad beräkning)");
+    expect(html(off)).not.toContain("− VMB-moms");
+    expect(html(off)).not.toContain("Underskott");
+    expect(html(on)).toContain("· med VMB ·");
+    expect(html(on)).toContain("VMB-moms (samlad beräkning)");
+    const pkg = await buildMonthPackage({
+      company: "Binderlab AB",
+      orgNumber: null,
+      book: off!,
+      plan: DEFAULT_PLAN,
+      series: "BL",
+      number: 10,
+      fiscalYear: { start: "2026-01-01", end: "2026-12-31" },
+      generatedOn: "2026-11-03",
+      sentOn: null,
+      receipts: [],
+      renderPdf: null,
+    });
+    expect(pkg.verification.rows.some((r) => r.key === "vat_vmb")).toBe(false);
+  });
+
+  it("momssats 0 krävs även utan VMB (annars blir momsen försäljning i SIE-filen)", () => {
+    const report = {
+      vatRateBp: 2_500,
+      totals: { grossOre: 0, feesOre: 0, costOre: 0, unpricedOrders: 0, orders: 0 },
+      stores: [],
+      days: [],
+    } as unknown as AccountantReport;
+    expect(() => monthFiguresFromReport("2026-10", report, 0, "received_purchases", 0)).toThrow(
+      VmbVatRateError,
+    );
   });
 });

@@ -77,6 +77,17 @@ function resultLines(s: PartnerSnapshot): ResultLine[] {
     },
     { label: "Inköp", now: r.costOre, prev: null, lastYear: null, kind: "minus" },
     { label: "Avgifter", now: r.feesOre, prev: null, lastYear: null, kind: "minus" },
+    ...(r.vmbVatOre
+      ? [
+          {
+            label: "VMB-moms",
+            now: r.vmbVatOre,
+            prev: null,
+            lastYear: null,
+            kind: "minus" as const,
+          },
+        ]
+      : []),
     { label: "Provision", now: r.commissionOre, prev: null, lastYear: null, kind: "minus" },
     { label: "Hyra", now: r.rentOre, prev: null, lastYear: null, kind: "minus" },
     {

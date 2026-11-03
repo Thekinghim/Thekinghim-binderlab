@@ -3,8 +3,8 @@
  * återbetalningstid.
  *
  * Vinst per månad:
- *   Automatens vinst i perioden (prissatta order, efter inköp, avgifter, provision och
- *   fördelad hyra; samma siffra som i lönsamhetsvyn per automat) delat med antalet
+ *   Automatens vinst i perioden (prissatta order, efter inköp, avgifter, VMB-moms, provision
+ *   och fördelad hyra; samma siffra som i lönsamhetsvyn per automat) delat med antalet
  *   aktiva månader. Aktiva månader = Σ över kalendermånader (aktiva dagar / dagar i
  *   månaden), där en dag är aktiv om automaten var placerad i en butik. Saknar automaten
  *   placeringar räknas hela perioden. Bråket räknas exakt (gemensam nämnare 377 580 =
@@ -127,7 +127,8 @@ export function unitEconomics(input: UnitEconomicsInput): MachineUnitEconomics[]
       continue;
     }
     s.revenue += e.netRevenueOre;
-    s.profit += e.netRevenueOre - e.costOre - e.cardFeeOre - e.commissionOre - e.rentOre;
+    s.profit +=
+      e.netRevenueOre - e.costOre - e.cardFeeOre - e.vmbVatOre - e.commissionOre - e.rentOre;
   }
 
   const out: MachineUnitEconomics[] = [];

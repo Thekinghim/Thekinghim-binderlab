@@ -102,6 +102,7 @@ function sortValues(rows: readonly ProfitLine[]) {
     revenue: priced((r) => r.revenueOre),
     cost: priced((r) => r.costOre),
     fees: priced((r) => r.feesOre),
+    vmb: priced((r) => r.vmbVatOre),
     compensation: priced((r) => r.compensationOre),
     profit: priced((r) => r.profitOre),
     margin: item((r) => (r.marginBp === null ? Number.NaN : r.marginBp)),
@@ -167,6 +168,15 @@ export function columnsFor(
       hideOnMobile: true,
     },
     {
+      key: "vmb",
+      header: "VMB-moms",
+      numeric: true,
+      sortValue: sv.vmb,
+      render: (r) => (onlyUnpriced(r) ? MISSING : kr(r.vmbVatOre)),
+      footer: kr(totals.vmbVatOre),
+      hideOnMobile: true,
+    },
+    {
       key: "compensation",
       header: "Butiksersättning",
       numeric: true,
@@ -197,6 +207,13 @@ export function columnsFor(
   if (!hasFees)
     cols.splice(
       cols.findIndex((c) => c.key === "fees"),
+      1,
+    );
+  // Utan VMB (eller ingen VMB-moms i perioden) visas inte kolumnen; CSV-exporten har den kvar.
+  const hasVmb = totals.vmbVatOre !== 0 || rows.some((r) => r.vmbVatOre !== 0);
+  if (!hasVmb)
+    cols.splice(
+      cols.findIndex((c) => c.key === "vmb"),
       1,
     );
   if (showUnpriced) {
@@ -247,6 +264,7 @@ function csvColumns(view: ViewKey): CsvColumn<ProfitLine>[] {
     { header: "Intäkt med inköpspris (kr)", csv: (r) => csvKr(r.revenueOre) },
     { header: "Inköp (kr)", csv: (r) => csvKr(r.costOre) },
     { header: "Avgifter (kr)", csv: (r) => csvKr(r.feesOre) },
+    { header: "VMB-moms (kr)", csv: (r) => csvKr(r.vmbVatOre) },
     { header: "Butiksersättning (kr)", csv: (r) => csvKr(r.compensationOre) },
     { header: "Vinst (kr)", csv: (r) => csvKr(r.profitOre) },
     {

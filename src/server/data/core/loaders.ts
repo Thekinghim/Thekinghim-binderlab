@@ -23,8 +23,10 @@ import type { Tx } from "@/db/client";
 import type { MemberRole } from "@/db/schema";
 import {
   addDays,
+  buildLedger,
   maxDate,
   minDate,
+  vmbApplies,
   type EconomicsSources,
   type IsoDate,
   type MachineInvestment,
@@ -301,6 +303,11 @@ export interface DomainInputArgs {
   readonly compare?: Period | null;
   readonly storeId?: string | null;
   readonly machineId?: string | null;
+  /**
+   * Vyknappen "Med VMB": vår vinst bär VMB-moms (`Settings.vmb`, @/domain vmbApplies).
+   * Standard av (vinst före VMB-moms). Bokföringen följer "VMB i bokföringen" (standard av).
+   */
+  readonly vmb?: boolean;
 }
 
 interface ScopedSources {
@@ -377,15 +384,15 @@ export async function loadDomainInputFor(
   // Avvisas transaktionen först väntar ingen på dessa; felet kommer därifrån.
   masterP.catch(() => {});
   baseP.catch(() => {});
-  return withUserDbFor(viewer.user, async (tx) => {
+  const loaded = withUserDbFor(viewer.user, async (tx) => {
     const [orderResult, refundRows] = await Promise.all([
       queryOrders(tx, orgId, span, scope),
       queryPeriodRefunds(tx, orgId, span),
     ]);
-    const [master, { prices, agreements, investments, settings }] = await Promise.all([
-      masterP,
-      baseP,
-    ]);
+    const [master, base] = await Promise.all([masterP, baseP]);
+    const { prices, agreements, investments } = base;
+    // Vyknappen avgör om vinsten bär VMB-moms; organisationens inställningar ändras inte.
+    const settings = args.vmb === true ? { ...base.settings, vmb: true } : base.settings;
     // Vinstdelningen drar återbetalningarna från butikens försäljning.
     const refunds = refundRows.map((r) => ({
       machineId: r.machineId,
@@ -436,6 +443,30 @@ export async function loadDomainInputFor(
       },
     };
   });
+  const filtered = scope.storeId !== null || scope.machineId !== null;
+  if (!filtered || args.vmb !== true) return loaded;
+  // Filtrerad vy med VMB: VMB-momsen är organisationens (samlad per månad), så urvalets order
+  // bär sin del av den, samma som i den ofiltrerade vyns rad (ledger.ts `vmbByOrder`).
+  const [data, org] = await Promise.all([
+    loaded,
+    loadDomainInputFor(viewer, { ...args, storeId: null, machineId: null }, now),
+  ]);
+  if (!vmbApplies(data.settings)) return data;
+  const sharesOf = (input: ProfitabilityInput): Map<string, number> => {
+    const out = new Map<string, number>();
+    for (const e of buildLedger(input).entries) {
+      if (e.vmbVatOre !== 0) out.set(e.order.id, e.vmbVatOre);
+    }
+    return out;
+  };
+  return {
+    ...data,
+    current: { ...data.current, vmbByOrder: sharesOf(org.current) },
+    previous:
+      data.previous && org.previous
+        ? { ...data.previous, vmbByOrder: sharesOf(org.previous) }
+        : data.previous,
+  };
 }
 
 /**

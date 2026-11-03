@@ -8,6 +8,7 @@ import { z } from "zod";
 
 export const PLAN_KEYS = [
   "settlement",
+  "sales",
   "sales_vmb",
   "vat_vmb",
   "card_fees",
@@ -32,8 +33,13 @@ export const PROPOSED_PLAN: Readonly<Record<PlanKey, PlanAccountInfo>> = {
     account: "1580",
     name: "Fordringar för kontokort och kuponger",
   },
+  sales: {
+    use: "Försäljning (utan VMB)",
+    account: "3000",
+    name: "Försäljning inom Sverige",
+  },
   sales_vmb: {
-    use: "Försäljning (VMB)",
+    use: "Försäljning (med VMB)",
     account: "3211",
     name: "Försäljning positiv VMB 25 %",
   },

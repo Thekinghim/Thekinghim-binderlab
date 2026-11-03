@@ -111,6 +111,7 @@ export async function loadAgreementsFor(viewer: Viewer): Promise<AgreementRecord
         commissionBp: s.storeAgreements.commissionBp,
         monthlyRentOre: s.storeAgreements.monthlyRentOre,
         commissionBase: s.storeAgreements.commissionBase,
+        vmbBeforeSplit: s.storeAgreements.vmbBeforeSplit,
         note: s.storeAgreements.note,
       })
       .from(s.storeAgreements)
@@ -465,6 +466,7 @@ export async function createAgreementFor(
             commissionBp: v.commissionBp,
             monthlyRentOre: v.monthlyRentOre,
             commissionBase: v.commissionBase,
+            vmbBeforeSplit: v.vmbBeforeSplit ?? false,
             note: v.note,
           })
           .returning({ id: s.storeAgreements.id });
@@ -503,6 +505,7 @@ export async function updateAgreementFor(
             commissionBp: s.storeAgreements.commissionBp,
             monthlyRentOre: s.storeAgreements.monthlyRentOre,
             commissionBase: s.storeAgreements.commissionBase,
+            vmbBeforeSplit: s.storeAgreements.vmbBeforeSplit,
           })
           .from(s.storeAgreements)
           .where(
@@ -527,12 +530,14 @@ export async function updateAgreementFor(
             commissionBp: a.commissionBp ?? null,
             monthlyRentOre: a.monthlyRentOre === null ? null : Number(a.monthlyRentOre),
             commissionBase: a.commissionBase,
+            vmbBeforeSplit: a.vmbBeforeSplit,
           },
           {
             validTo,
             commissionBp: v.commissionBp,
             monthlyRentOre: v.monthlyRentOre,
             commissionBase: v.commissionBase,
+            vmbBeforeSplit: v.vmbBeforeSplit,
           },
           ref,
         );
@@ -550,6 +555,7 @@ export async function updateAgreementFor(
             commissionBp: v.commissionBp,
             monthlyRentOre: v.monthlyRentOre,
             commissionBase: v.commissionBase,
+            ...(v.vmbBeforeSplit !== undefined ? { vmbBeforeSplit: v.vmbBeforeSplit } : {}),
             note: v.note,
           })
           .where(

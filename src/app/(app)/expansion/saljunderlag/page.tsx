@@ -135,7 +135,7 @@ export default async function SalesDeckPage({
                 >
                   <ol className="flex flex-col">
                     {[
-                      `Vinst = försäljning − moms (VMB) − inköp av korten − kortavgifter, per månad. Butiken får 50 %.`,
+                      `Vinst = försäljning − inköp av korten − kortavgifter, per månad. Butiken får 50 %.`,
                       `Butiken står bara för plats och el. Vi står för automaten, korten, påfyllning och service. En månad utan vinst ger 0 kr, aldrig en kostnad.`,
                       `Snittet är all ersättning till butikerna delat med antalet automatmånader (${hundredthsText(deck.machineMonthsHundredths)} under perioden). En automat en hel månad räknas som 1.`,
                     ].map((t, i) => (

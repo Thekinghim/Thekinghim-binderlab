@@ -218,6 +218,16 @@ describe("cashflow: varianter", () => {
     expect(norm(late.label)).toBe("Utbetalning för 1–31 okt. väntades 5 nov. men saknas");
   });
 
+  it("utan källa för utbetalningar: ingen passerad utbetalning blir saknad, kommande prognostiseras", () => {
+    const r = cashflow({ ...BASE, payouts: [], options: { payoutsTracked: false } });
+    const payouts = r.items.filter((i) => i.kind === "payout");
+    expect(payouts.some((i) => i.overdue)).toBe(false);
+    expect(payouts.every((i) => (i.dueDate ?? i.date) > BASE.asOf)).toBe(true);
+    // Med källa (standard) är oktobers utebliven utbetalning försenad.
+    const tracked = cashflow({ ...BASE, payouts: [] });
+    expect(tracked.items.some((i) => i.kind === "payout" && i.overdue)).toBe(true);
+  });
+
   it("faktiska butiksbetalningar ersätter avtalsberäkningen för det som har hänt", () => {
     const r = cashflow({
       ...BASE,

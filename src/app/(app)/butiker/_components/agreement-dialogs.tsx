@@ -9,6 +9,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { useToast } from "@/components/ui/toast";
 import { formatNumber } from "@/lib/format";
 
+import { VmbBeforeSplitCheckbox } from "../../avtal/_components/vmb-before-split";
 import { updateAgreement } from "../actions";
 import type { AgreementView } from "../_lib/types";
 import { FormDialog, text } from "./form-dialog";
@@ -36,8 +37,8 @@ const MODELS: { value: Model; label: string }[] = [
 ];
 
 /**
- * Villkoren: vinstdelning 50/50 (hälften av vinsten efter VMB-moms, inköp och kortavgifter)
- * och valfri hyra. Valet "Andel av försäljning" visas bara för gamla avtal med den modellen,
+ * Villkoren: vinstdelning 50/50 (hälften av vinsten efter inköp och kortavgifter; VMB-moms
+ * dras bara om avtalets val är på) och valfri hyra. Valet "Andel av försäljning" visas bara för gamla avtal med den modellen,
  * så att de kan rättas till vinstdelning.
  */
 function TermsFields({ agreement }: { agreement?: AgreementView }) {
@@ -82,6 +83,13 @@ function TermsFields({ agreement }: { agreement?: AgreementView }) {
           className="tnum text-right"
         />
       </div>
+      {model === "split" ? (
+        <VmbBeforeSplitCheckbox
+          id={`avtal-${agreement?.id ?? "nytt"}-vmb`}
+          name="vmbBeforeSplit"
+          checked={agreement?.vmbBeforeSplit ?? false}
+        />
+      ) : null}
     </div>
   );
 }
@@ -132,6 +140,9 @@ export function EditAgreementButton({
             commission: text(data, "commission"),
             rent: text(data, "rent"),
             note: text(data, "note"),
+            ...(text(data, "model") === "split"
+              ? { vmbBeforeSplit: data.get("vmbBeforeSplit") === "on" }
+              : {}),
             confirmHistory: needsConfirm,
           });
           if (!result.ok) {

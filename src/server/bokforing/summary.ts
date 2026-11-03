@@ -1,12 +1,13 @@
 /**
  * Sammanfattningen i månadspaketet: en A4-sida (HTML som skrivs ut till PDF med Chromium,
- * src/server/pdf/render.ts). VMB-uträkningen steg för steg, butikernas andel per butik,
- * resultatet och verifikationen. Ren funktion: samma indata ger samma HTML.
+ * src/server/pdf/render.ts). Om VMB tillämpades (rubriken), VMB-uträkningen steg för steg
+ * när VMB är på, butikernas andel per butik, resultatet och verifikationen. Ren funktion:
+ * samma indata ger samma HTML.
  */
 
 import { dateText, krText, monthText } from "@/reports";
 
-import { PURCHASE_BASIS_LABEL, type MonthBook } from "./month";
+import { PURCHASE_BASIS_LABEL, type MonthBook, type StoreShare } from "./month";
 import type { MonthVerification } from "./sie";
 
 export interface SummaryInput {
@@ -25,6 +26,14 @@ const esc = (s: string) =>
     c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;",
   );
 const kr = (ore: number) => esc(krText(ore, "always"));
+
+/** Avtalet i butikstabellen: vinstdelning med eller utan VMB-avdrag före delningen. */
+function splitText(split: StoreShare["split"]): string {
+  if (!split) return "Provision eller hyra";
+  return split.vmbBeforeSplit
+    ? `Vinstdelning, VMB-moms ${kr(split.vmbVatOre)} dragen före delning`
+    : "Vinstdelning";
+}
 
 function stepRows(rows: readonly [string, string, boolean?][]): string {
   return rows
@@ -62,7 +71,7 @@ export function summaryHtml(input: SummaryInput): string {
     ...(b.refundsOre !== 0
       ? ([["− Återbetalningar till kunder", kr(b.refundsOre)]] as [string, string][])
       : []),
-    ["− VMB-moms", kr(v.vatOre)],
+    ...(b.vmbEnabled ? ([["− VMB-moms", kr(v.vatOre)]] as [string, string][]) : []),
     ["− Inköp", kr(b.purchasesOre)],
     ["− Kortavgifter", kr(b.cardFeesOre)],
     ["− Butikernas andel", kr(b.storeShareOre)],
@@ -72,11 +81,11 @@ export function summaryHtml(input: SummaryInput): string {
     ? b.stores
         .map(
           (s) =>
-            `<tr><td>${esc(s.name)}</td><td class="n">${s.orders}</td><td class="n">${kr(s.salesInclVatOre)}</td><td class="n">${kr(s.shareOre)}</td><td class="n">${kr(s.rentOre)}</td><td class="n">${kr(s.totalOre)}</td></tr>`,
+            `<tr><td>${esc(s.name)}</td><td>${splitText(s.split)}</td><td class="n">${s.orders}</td><td class="n">${kr(s.salesInclVatOre)}</td><td class="n">${kr(s.shareOre)}</td><td class="n">${kr(s.rentOre)}</td><td class="n">${kr(s.totalOre)}</td></tr>`,
         )
         .join("") +
-      `<tr class="total"><td>Summa</td><td class="n">${b.stores.reduce((s, x) => s + x.orders, 0)}</td><td class="n">${kr(b.stores.reduce((s, x) => s + x.salesInclVatOre, 0))}</td><td class="n">${kr(b.stores.reduce((s, x) => s + x.shareOre, 0))}</td><td class="n">${kr(b.stores.reduce((s, x) => s + x.rentOre, 0))}</td><td class="n">${kr(b.storeShareOre)}</td></tr>`
-    : `<tr><td colspan="6">Inga butiker med försäljning.</td></tr>`;
+      `<tr class="total"><td>Summa</td><td></td><td class="n">${b.stores.reduce((s, x) => s + x.orders, 0)}</td><td class="n">${kr(b.stores.reduce((s, x) => s + x.salesInclVatOre, 0))}</td><td class="n">${kr(b.stores.reduce((s, x) => s + x.shareOre, 0))}</td><td class="n">${kr(b.stores.reduce((s, x) => s + x.rentOre, 0))}</td><td class="n">${kr(b.storeShareOre)}</td></tr>`
+    : `<tr><td colspan="7">Inga butiker med försäljning.</td></tr>`;
   const ver = input.verification.rows
     .map(
       (r) =>
@@ -96,7 +105,12 @@ export function summaryHtml(input: SummaryInput): string {
   if (b.unpricedOrders > 0) {
     notes.push(`${b.unpricedOrders} order saknar inköpspris och har inget inköpsvärde.`);
   }
-  if (b.purchaseBasis === "received_purchases" && b.purchasesOre === 0 && b.salesInclVatOre > 0) {
+  if (
+    b.vmbEnabled &&
+    b.purchaseBasis === "received_purchases" &&
+    b.purchasesOre === 0 &&
+    b.salesInclVatOre > 0
+  ) {
     notes.push("Inga mottagna inköp i månaden: hela försäljningen är marginal.");
   }
 
@@ -120,14 +134,21 @@ footer { margin-top: 10px; color: #555; font-size: 8pt; }
 </style></head>
 <body class="bl-report">
 <h1>Bokföring ${esc(name)}</h1>
-<p class="meta">${esc(input.company)}${input.orgNumber ? ` · ${esc(input.orgNumber)}` : ""} · ${b.orders} order · framtagen ${esc(dateText(input.generatedOn))}${input.sentOn ? ` · skickad ${esc(dateText(input.sentOn))}` : ""}</p>
-<div class="grid">
+<p class="meta">${esc(input.company)}${input.orgNumber ? ` · ${esc(input.orgNumber)}` : ""} · ${b.orders} order · ${b.vmbEnabled ? "med VMB" : "utan VMB"} · framtagen ${esc(dateText(input.generatedOn))}${input.sentOn ? ` · skickad ${esc(dateText(input.sentOn))}` : ""}</p>
+${
+  b.vmbEnabled
+    ? `<div class="grid">
 <section><h2>VMB-moms (samlad beräkning)</h2><table>${stepRows(vmbSteps)}</table></section>
 <section><h2>Resultat</h2><table>${stepRows(resultSteps)}</table></section>
-</div>
+</div>`
+    : `<div class="grid">
+<section><h2>Resultat (utan VMB)</h2><table>${stepRows(resultSteps)}</table></section>
+<section><h2>VMB</h2><p class="note">VMB i bokföringen är av: ingen VMB-moms och inget underskott i verifikationen.</p></section>
+</div>`
+}
 ${notes.map((n) => `<p class="note">${esc(n)}</p>`).join("")}
 <h2>Butikernas andel</h2>
-<table><tr><th>Butik</th><th class="n">Order</th><th class="n">Försäljning</th><th class="n">Andel</th><th class="n">Hyra</th><th class="n">Att betala</th></tr>${stores}</table>
+<table><tr><th>Butik</th><th>Avtal</th><th class="n">Order</th><th class="n">Försäljning</th><th class="n">Andel</th><th class="n">Hyra</th><th class="n">Att betala</th></tr>${stores}</table>
 <h2>Verifikation ${esc(input.verification.series)} ${input.verification.number} · ${esc(dateText(input.verification.date))}</h2>
 <table><tr><th>Konto</th><th>Namn</th><th>Text</th><th class="n">Debet</th><th class="n">Kredit</th></tr>${ver}
 <tr class="total"><td colspan="3">Summa</td><td class="n">${kr(debit)}</td><td class="n">${kr(debit)}</td></tr></table>

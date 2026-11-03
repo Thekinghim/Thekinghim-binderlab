@@ -218,17 +218,27 @@ describe("estimateSite", () => {
     expect(e.detail).toContain("provision 15 %, hyra 300 kr per månad");
   });
 
-  it("vinstdelning 50 %: butiken får hälften av täckningsbidraget efter VMB-moms", () => {
+  it("vinstdelning 50 %: utan VMB-avdrag som standard får butiken hälften av täckningsbidraget", () => {
     const none = estimate({ terms: { commissionBp: 0, monthlyRentOre: 0 } });
     const split = estimate({
       terms: { commissionBp: null, monthlyRentOre: 0, profitShareBp: 5_000 },
     });
     const n = none.profitPerMonthOre!.expected;
     const p = split.profitPerMonthOre!.expected;
-    // Andelen räknas på (bidrag − VMB-moms) < bidrag, så vi behåller mer än hälften.
-    expect(p).toBeGreaterThan(Math.round(n / 2));
-    expect(p).toBeLessThan(n);
+    expect(Math.abs(p - n / 2)).toBeLessThanOrEqual(1);
     expect(split.detail).toMatch(/50\s%\sav vinsten efter kostnader/);
+  });
+
+  it("vinstdelning med VMB-avdrag: butikens andel räknas på bidraget efter VMB-moms", () => {
+    const none = estimate({ terms: { commissionBp: 0, monthlyRentOre: 0 } });
+    const split = estimate({
+      terms: { commissionBp: null, monthlyRentOre: 0, profitShareBp: 5_000, vmbBeforeSplit: true },
+    });
+    const n = none.profitPerMonthOre!.expected;
+    const p = split.profitPerMonthOre!.expected;
+    // Andelen räknas på (bidrag − VMB-moms) < bidrag, så vi behåller mer än hälften.
+    expect(p).toBeGreaterThan(Math.round(n / 2) + 1);
+    expect(p).toBeLessThan(n);
   });
 
   it("maxSites begränsar urvalet; resten markeras", () => {

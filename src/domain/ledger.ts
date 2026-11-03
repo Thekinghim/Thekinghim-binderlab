@@ -21,6 +21,16 @@
  * proportion till beloppet inkl. moms, med största-restmetoden. Order utan pris bär ingen
  * andel; `profitSplits` visar hur många de är, och butiksrapporten stoppas då.
  * Återbetalningar (`refunds`) dras från försäljningen i återbetalningens månad.
+ *
+ * VMB-moms på vår vinst (vmb.ts, samlad per kalendermånad): bara med `settings.vmb` och
+ * momssats 0 (annars är momsen redan dragen från intäkten). Per månad i perioden
+ *   marginal = Σ belopp inkl. moms (order med inköpspris) − återbetalningar − inköp − underskott
+ * med underskottet fört vidare mellan periodens månader (från 0 vid periodens början). Momsen
+ * fördelas på månadens order med inköpspris i proportion till max(0, belopp − inköp), med
+ * största-restmetoden, så att alla vyer summerar exakt till periodens VMB-moms (`vmb`).
+ * En månad som bara delvis ligger i perioden räknas på periodens dagar (`partialMonth`).
+ * I en filtrerad vy (butik/automat) ger `vmbByOrder` orderns del av hela organisationens
+ * VMB-moms, så att butikens sida visar samma VMB-moms och vinst som butikens rad.
  */
 
 import { assertPeriod, eachMonth, maxDate, minDate, monthEnd, monthStart } from "./dates";
@@ -34,6 +44,7 @@ import {
 import { allocateLargestRemainder, allocateLargestRemainderBig } from "./money";
 import { isProfitSplit, profitSplit, type ProfitSplitResult } from "./profit-split";
 import { rentByStoreMonth, type StoreMonthRent } from "./rent";
+import { vmbApplies, vmbVat, type VmbResult } from "./vmb";
 import type {
   IsoDate,
   IsoMonth,
@@ -61,6 +72,19 @@ export interface LedgerEntry {
   readonly commissionOre: number;
   /** Orderns andel av butikens månadshyra (även för order utan pris). */
   readonly rentOre: number;
+  /** Orderns andel av månadens VMB-moms (0 för order utan pris och utan VMB). */
+  readonly vmbVatOre: number;
+}
+
+/** VMB-momsen för en kalendermånad (den del av månaden som ligger i perioden). */
+export interface VmbMonth extends VmbResult {
+  readonly month: IsoMonth;
+  /** Månadens dagar i perioden. */
+  readonly range: Period;
+  /** Sant när perioden bara täcker en del av månaden: momsen är då preliminär. */
+  readonly partialMonth: boolean;
+  /** Återbetalningar i månaden (ingår i `salesInclVatOre`, som är efter återbetalningar). */
+  readonly refundsOre: number;
 }
 
 /** Vinstdelningen för en butik, en kalendermånad och ett avtal (inom perioden). */
@@ -118,6 +142,8 @@ export interface Ledger {
   readonly unallocatedRent: readonly UnallocatedRent[];
   /** Vinstdelning per butik, månad och avtal (bara avtal med vinstdelning). */
   readonly profitSplits: readonly StoreMonthSplit[];
+  /** VMB-moms per månad i perioden, äldst först. Tom utan VMB (`vmbApplies`). */
+  readonly vmb: readonly VmbMonth[];
   readonly diagnostics: LedgerDiagnostics;
   /** Uppslagen som användes (priser, placeringar, avtal). */
   readonly context: EconomicsContext;
@@ -151,6 +177,7 @@ interface CachedLedger {
   readonly placements: ProfitabilityInput["placements"];
   readonly settings: Settings;
   readonly refunds: ProfitabilityInput["refunds"];
+  readonly vmbByOrder: ProfitabilityInput["vmbByOrder"];
   readonly ledger: Ledger;
 }
 
@@ -181,7 +208,8 @@ export function buildLedger(input: ProfitabilityInput): Ledger {
       c.agreements === input.agreements &&
       c.placements === input.placements &&
       c.settings === input.settings &&
-      c.refunds === input.refunds,
+      c.refunds === input.refunds &&
+      c.vmbByOrder === input.vmbByOrder,
   );
   if (hit) return hit.ledger;
   const ledger = computeLedger(input);
@@ -194,6 +222,7 @@ export function buildLedger(input: ProfitabilityInput): Ledger {
     placements: input.placements,
     settings: input.settings,
     refunds: input.refunds,
+    vmbByOrder: input.vmbByOrder,
     ledger,
   };
   if (cached) {
@@ -269,6 +298,7 @@ function computeLedger(input: ProfitabilityInput): Ledger {
       cardFeeOre: econ.cardFeeOre,
       commissionOre: econ.commissionOre,
       rentOre: 0,
+      vmbVatOre: 0,
     });
     agreementOf.push(econ.agreement);
   }
@@ -323,6 +353,10 @@ function computeLedger(input: ProfitabilityInput): Ledger {
     input.refunds ?? [],
   );
 
+  const vmb = vmbApplies(input.settings)
+    ? allocateVmb(period, entries, input.refunds ?? [], input.vmbByOrder)
+    : [];
+
   return {
     period,
     settings: input.settings,
@@ -330,6 +364,7 @@ function computeLedger(input: ProfitabilityInput): Ledger {
     storeMonthRent,
     unallocatedRent,
     profitSplits,
+    vmb,
     diagnostics: {
       ordersOutsidePeriod: outside,
       ordersWithoutMachine: withoutMachine,
@@ -426,6 +461,7 @@ function allocateProfitSplits(
       cardFeesOre: fees,
       shareBp: g.agreement.commissionBp ?? 0,
       lossTreatment: g.agreement.lossTreatment ?? "zero",
+      vmbBeforeSplit: g.agreement.vmbBeforeSplit === true,
     });
     if (priced.length > 0 && result.storeShareOre !== 0) {
       const shares = allocateLargestRemainder(
@@ -462,5 +498,78 @@ function allocateProfitSplits(
             ? 1
             : 0,
   );
+  return out;
+}
+
+/**
+ * VMB-momsen per månad i perioden (samlad: alla order med inköpspris och alla
+ * återbetalningar i perioden), och fördelningen på orderna (se filhuvudet).
+ */
+function allocateVmb(
+  period: Period,
+  entries: MutableEntry[],
+  refunds: readonly SourceRefund[],
+  orgShares?: ReadonlyMap<string, number>,
+): VmbMonth[] {
+  const byMonth = new Map<IsoMonth, MutableEntry[]>();
+  for (const e of entries) {
+    if (!e.priced) continue;
+    const list = byMonth.get(e.month);
+    if (list) list.push(e);
+    else byMonth.set(e.month, [e]);
+  }
+  const refundsByMonth = new Map<IsoMonth, number>();
+  for (const r of refunds) {
+    if (!(r.amountOre > 0)) continue;
+    if (r.refundedOn < period.start || r.refundedOn > period.end) continue;
+    const m = r.refundedOn.slice(0, 7);
+    refundsByMonth.set(m, (refundsByMonth.get(m) ?? 0) + r.amountOre);
+  }
+  const out: VmbMonth[] = [];
+  let carry = 0;
+  for (const month of eachMonth(period.start, period.end)) {
+    const list = byMonth.get(month) ?? [];
+    let sales = 0;
+    let purchases = 0;
+    for (const e of list) {
+      sales += e.grossOre;
+      purchases += e.costOre;
+    }
+    const refundsOre = refundsByMonth.get(month) ?? 0;
+    const result = vmbVat({
+      salesInclVatOre: sales - refundsOre,
+      purchasesOre: purchases,
+      carryInOre: carry,
+    });
+    carry = result.carryOutOre;
+    let vatOre = result.vatOre;
+    if (orgShares) {
+      // Filtrerad vy: orderns del av organisationens VMB-moms (samma tal som i den ofiltrerade
+      // vyns rad), inte momsen på urvalets egen marginal.
+      vatOre = 0;
+      for (const e of list) {
+        e.vmbVatOre = orgShares.get(e.order.id) ?? 0;
+        vatOre += e.vmbVatOre;
+      }
+    } else if (result.vatOre !== 0) {
+      list.sort(compareEntries);
+      const weights = list.map((e) => Math.max(0, e.grossOre - e.costOre));
+      // En positiv marginal kräver minst en order med belopp över inköpet.
+      const shares = allocateLargestRemainder(result.vatOre, weights);
+      for (let i = 0; i < list.length; i++) list[i]!.vmbVatOre = shares[i]!;
+    }
+    const range = {
+      start: maxDate(period.start, monthStart(month)),
+      end: minDate(period.end, monthEnd(month)),
+    };
+    out.push({
+      ...result,
+      vatOre,
+      month,
+      range,
+      partialMonth: range.start !== monthStart(month) || range.end !== monthEnd(month),
+      refundsOre,
+    });
+  }
   return out;
 }

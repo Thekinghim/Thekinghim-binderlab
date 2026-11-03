@@ -318,6 +318,7 @@ export async function queryAgreements(tx: Tx, orgId: string): Promise<StoreAgree
       monthlyRentOre: s.storeAgreements.monthlyRentOre,
       commissionBase: s.storeAgreements.commissionBase,
       lossTreatment: s.storeAgreements.lossTreatment,
+      vmbBeforeSplit: s.storeAgreements.vmbBeforeSplit,
     })
     .from(s.storeAgreements)
     .where(eq(s.storeAgreements.organizationId, orgId))

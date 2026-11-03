@@ -25,18 +25,18 @@ const orders = [
 const prices = [price("t-a", 13_000, "2026-10-15"), price("t-b", 16_500, "2026-10-15")];
 
 describe("butiksrapport med vinstdelning 50/50", () => {
-  it("visar försäljning, VMB-moms, inköp, kortavgifter, vinst och butikens andel", () => {
+  it("avtal med VMB-avdrag: visar försäljning, VMB-moms, inköp, kortavgifter, vinst och andel", () => {
     const src = sources({
       orders,
       prices,
-      agreements: [split()],
+      agreements: [split({ vmbBeforeSplit: true })],
       settings: { vatRateBp: 0, cardFeeBp: 200 },
     });
     const r = buildStoreReport(src, "s-1", "2026-11");
     const c = r.compensation;
     expect(c.model).toBe("profit_split");
     expect(plain(c.modelText)).toBe(
-      "50 % av vinsten efter kostnader, giltigt från 15 oktober 2026.",
+      "50 % av vinsten efter kostnader (VMB-moms dras före delning), giltigt från 15 oktober 2026.",
     );
     expect(c.splits).toHaveLength(1);
     // Försäljning 647 kr, inköp 425 kr → marginal 222 kr, VMB-moms 44,40 kr.
@@ -61,6 +61,26 @@ describe("butiksrapport med vinstdelning 50/50", () => {
     // Rapporten får ändå inte visa inköp utanför ersättningen.
     expect(() => assertStoreReportSafe(r)).not.toThrow();
     expect(JSON.stringify(r.topTitles)).not.toMatch(/purchase|profit/i);
+  });
+
+  it("standard utan VMB-avdrag: andelen räknas på vinsten efter inköp och kortavgifter", () => {
+    const src = sources({
+      orders,
+      prices,
+      agreements: [split()],
+      settings: { vatRateBp: 0, cardFeeBp: 200 },
+    });
+    const c = buildStoreReport(src, "s-1", "2026-11").compensation;
+    expect(plain(c.modelText)).toBe(
+      "50 % av vinsten efter kostnader, giltigt från 15 oktober 2026.",
+    );
+    // Vinst = 64 700 − 42 500 − 1 294 = 20 906 öre; butiken 10 453 öre.
+    expect(c.splits[0]).toMatchObject({
+      vmbBeforeSplit: false,
+      vmbVatOre: 0,
+      profitOre: 20_906,
+      storeShareOre: 10_453,
+    });
   });
 
   it("förlust: butiken får 0 kr", () => {

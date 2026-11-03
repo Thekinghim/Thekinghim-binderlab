@@ -20,6 +20,7 @@ import {
   maxDate,
   periodDays,
   profitability,
+  vmbPreliminary,
   roundHalfUp,
   type IsoDate,
   type KeyMetrics,
@@ -283,8 +284,10 @@ function buildKpis(args: {
   prevDays: ProfitabilityRow[];
   compareDays: number;
   unpriced: HomeUnpriced | null;
+  /** Vinsten bär VMB-moms; `preliminary` när perioden inte är avslutade hela månader. */
+  vmb: { readonly applies: boolean; readonly preliminary: boolean };
 }): HomeKpi[] {
-  const { km, prev, priced, days, prevDays, compareDays, unpriced } = args;
+  const { km, prev, priced, days, prevDays, compareDays, unpriced, vmb } = args;
   const revenueTrend = days.map(rowRevenue);
   const marginTrend = carryForward(days.map((r) => r.marginBp));
   const aovTrend = carryForward(
@@ -322,6 +325,12 @@ function buildKpis(args: {
       alertText:
         unpriced && unpriced.orders > 0
           ? `${unpricedShareText(unpriced.shareBp)} av intäkten saknar inköpspris`
+          : null,
+      note:
+        priced && vmb.applies
+          ? vmb.preliminary
+            ? "efter VMB-moms (preliminär)"
+            : "efter VMB-moms"
           : null,
     },
     {
@@ -597,6 +606,7 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
     prevDays,
     compareDays,
     unpriced,
+    vmb: { applies: byTitle.vmb.applies, preliminary: vmbPreliminary(byTitle.vmb, today) },
   });
 
   let daily: HomeDaily | null = null;

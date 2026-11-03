@@ -172,8 +172,9 @@ export function splitRows(c: StoreCompensationBreakdown): SplitRow[] {
     const refunds = x.refundsOre ?? 0;
     if (refunds !== 0)
       rows.push({ key: `${id}-refund`, label: `${pre}Återbetalningar`, amountOre: -refunds });
+    if (x.vmbBeforeSplit !== false)
+      rows.push({ key: `${id}-vat`, label: `${pre}VMB-moms`, amountOre: -x.vmbVatOre });
     rows.push(
-      { key: `${id}-vat`, label: `${pre}VMB-moms`, amountOre: -x.vmbVatOre },
       { key: `${id}-buy`, label: `${pre}Inköp`, amountOre: -x.purchasesOre },
       { key: `${id}-fee`, label: `${pre}Kortavgifter`, amountOre: -x.cardFeesOre },
       { key: `${id}-res`, label: `${pre}Vinst`, amountOre: x.profitOre, strong: true },
@@ -232,6 +233,7 @@ export function StoreReportDocument({
     total !== undefined &&
     (!split || r.compensation.rentOre !== 0 || r.compensation.commissionOre !== 0);
   const sharesLoss = splitList.some((x) => x.lossTreatment === "proportional");
+  const noVmb = split && splitList.every((x) => x.vmbBeforeSplit === false);
   const bestWeek = [...r.weeks].sort((a, b) => b.revenueOre - a.revenueOre)[0];
   const weekData = r.weeks.map((w) => ({ label: `v. ${w.week}`, value: w.revenueOre / 100 }));
 
@@ -327,7 +329,7 @@ export function StoreReportDocument({
           ) : null}
           <ReportNote>
             {split
-              ? `Vinst = försäljning − VMB-moms (20 % av försäljning minus inköp) − inköp − kortavgifter. ${sharesLoss ? "Vid förlust bär ni er andel av förlusten." : "Ingen vinst ger 0 kr."}`
+              ? `${noVmb ? "Vinst = försäljning − inköp − kortavgifter." : "Vinst = försäljning − VMB-moms (20 % av försäljning minus inköp) − inköp − kortavgifter."} ${sharesLoss ? "Vid förlust bär ni er andel av förlusten." : "Ingen vinst ger 0 kr."}`
               : "Provisionen räknas per köp på beloppet exklusive moms, med det avtal som gällde den dagen. Hyran räknas per dag när avtalet gäller en del av månaden."}
           </ReportNote>
         </ReportSection>

@@ -229,7 +229,7 @@ export const profitabilityTool = defineTool({
   title: "Lönsamhet",
   label: (input) => `Lönsamhet per ${GROUP_LABEL[input.per]}`,
   description:
-    "Lönsamhet uppdelad per automat, butik, titel, månad, vecka eller dag för en period: intäkt, inköp, butiksersättning, vinst, marginal och order per rad, sorterad. Använd för 'vilken automat tjänade mest', 'sämsta titlarna', 'vinst per månad'. Vinst = intäkt − inköp − avgifter − butiksersättning (provision + hyra).",
+    "Lönsamhet uppdelad per automat, butik, titel, månad, vecka eller dag för en period: intäkt, inköp, VMB-moms, butiksersättning, vinst, marginal och order per rad, sorterad. Använd för 'vilken automat tjänade mest', 'sämsta titlarna', 'vinst per månad'. Vinst = intäkt − inköp − avgifter − butiksersättning (vinstandel/provision + hyra); utan VMB som standard (VMB-moms 0), med VMB-moms dragen bara när vyknappen \"Med VMB\" är på.",
   roles: ECONOMY_ROLES,
   input: profitabilityInput,
   async run(ctx: ToolContext, input) {
@@ -276,6 +276,8 @@ export const profitabilityTool = defineTool({
       intaktOre: rowRevenue(r),
       inkop: kr(r.costOre),
       inkopOre: r.costOre,
+      vmbMoms: kr(r.vmbVatOre),
+      vmbMomsOre: r.vmbVatOre,
       butiksersattning: kr(r.compensationOre),
       butiksersattningOre: r.compensationOre,
       vinst: kr(r.profitOre),

@@ -23,6 +23,7 @@ import {
   ratioBp,
   topContributor,
   UNALLOCATED_KEY,
+  vmbPreliminary,
   weekOf,
   type IsoDate,
   type Period,
@@ -69,6 +70,8 @@ export interface ProfitLine {
   readonly revenueOre: number;
   readonly costOre: number;
   readonly feesOre: number;
+  /** VMB-moms på vår vinst (0 utan VMB). */
+  readonly vmbVatOre: number;
   readonly compensationOre: number;
   readonly profitOre: number;
   /** Marginal i bp, null när intäkten med pris är 0. */
@@ -133,9 +136,19 @@ export interface UnpricedBlock {
   readonly titles: UnpricedTitleLine[];
 }
 
-/** Vattenfallet: Intäkt → Inköp → Avgifter → Butiksersättning → Vinst (prissatta order). */
+/**
+ * Vattenfallet: Intäkt → VMB-moms → Inköp → Avgifter → Butiksersättning → Vinst (prissatta
+ * order).
+ */
 export interface Bridge {
   readonly revenueOre: number;
+  /** VMB-moms, eller null när organisationen inte redovisar VMB (inget steg). */
+  readonly vmbVatOre: number | null;
+  /**
+   * Sant när VMB-momsen är preliminär: perioden är inte en eller flera hela, avslutade
+   * månader (vmbPreliminary).
+   */
+  readonly vmbPreliminary: boolean;
   readonly costOre: number;
   readonly feesOre: number;
   readonly compensationOre: number;
@@ -284,6 +297,7 @@ function toLine(
     revenueOre: row.revenueOre,
     costOre: row.costOre,
     feesOre: row.feesOre,
+    vmbVatOre: row.vmbVatOre,
     compensationOre: row.compensationOre,
     profitOre: row.profitOre,
     marginBp: row.marginBp,
@@ -501,6 +515,7 @@ export function buildLonsamhetModel(
     revenueOre: totalsRow.revenueOre,
     costOre: totalsRow.costOre,
     feesOre: totalsRow.feesOre,
+    vmbVatOre: totalsRow.vmbVatOre,
     compensationOre: totalsRow.compensationOre,
     unpricedShareBp: unpriced.shareBp,
     top:
@@ -572,6 +587,8 @@ export function buildLonsamhetModel(
 
   const bridge: Bridge = {
     revenueOre: totalsRow.revenueOre,
+    vmbVatOre: all.title.vmb.applies ? totalsRow.vmbVatOre : null,
+    vmbPreliminary: vmbPreliminary(all.title.vmb, today),
     costOre: totalsRow.costOre,
     feesOre: totalsRow.feesOre,
     compensationOre: totalsRow.compensationOre,

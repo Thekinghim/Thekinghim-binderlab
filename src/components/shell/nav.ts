@@ -67,6 +67,8 @@ export type ShellRoute = {
   counter?: "todo";
   /** false: sidan har inget periodval eller filter (kontextraden döljs). */
   context?: false;
+  /** false: sidan visar ingen vinst som vyknappen "Med VMB" ändrar (knappen döljs). */
+  vmb?: false;
   /** Fasen då sidan byggs (platshållarna visar den). */
   phase: number;
   /** Andra delen av rubriken på platshållaren. */
@@ -235,6 +237,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     roles: READERS,
     phase: 9,
     lead: "Avstämning, bokföring och kassaflöde.",
+    vmb: false,
   },
   {
     id: "avtal",
@@ -246,6 +249,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     roles: READERS,
     phase: 9,
     lead: "Butiksavtal, villkor och förfallodatum.",
+    vmb: false,
   },
   {
     id: "marknad",

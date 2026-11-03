@@ -35,6 +35,8 @@ export interface AgreementView {
   readonly monthlyRentOre: number | null;
   /** 'profit_after_costs' = vinstdelning: `commissionBp` är butikens andel av vinsten. */
   readonly commissionBase: CommissionBase;
+  /** Vinstdelning: VMB-moms dras före delningen (avtalets val). */
+  readonly vmbBeforeSplit: boolean;
   readonly note: string | null;
   readonly model: CompensationModel;
   readonly state: AgreementState;

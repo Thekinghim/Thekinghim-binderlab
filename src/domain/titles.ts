@@ -3,7 +3,9 @@
  * blir kvar per order, med varning när en titel går med förlust.
  *
  *   snittpris        = round(Σ netto / n)
- *   kvar per order   = round((Σ netto − Σ kortavgift − Σ provision − n × aktuellt inköpspris) / n)
+ *   kvar per order   = round((Σ netto − Σ kortavgift − Σ provision − VMB − n × aktuellt inköpspris) / n)
+ *   VMB              = med VMB (vmbApplies): 20 % av max(0, Σ netto − n × aktuellt inköpspris),
+ *                      annars 0
  *   hyra per order   = round(Σ fördelad hyra / n)            (redovisas separat, ingår inte ovan)
  *   kvar efter hyra  = round((… ovan … − Σ hyra) / n)
  *   förlustvarning   = kvar per order ≤ 0
@@ -16,6 +18,7 @@ import { assertIsoDate } from "./dates";
 import { buildLedger } from "./ledger";
 import { BP_SCALE, fromBigInt, roundHalfUp } from "./money";
 import type { IsoDate, ProfitabilityInput } from "./types";
+import { vmbApplies, vmbVatOfMargin } from "./vmb";
 
 /** En rad per titel. */
 export interface TitleEconomics {
@@ -78,6 +81,7 @@ export function titleEconomics(input: TitleEconomicsInput): TitleEconomics[] {
   const asOf = input.asOf ?? input.period.end;
   assertIsoDate(asOf, "Datum för aktuellt pris");
   const prices = ledger.context.prices;
+  const withVmb = vmbApplies(ledger.settings);
 
   const acc = new Map<string, Acc>();
   const get = (titleId: string): Acc => {
@@ -109,8 +113,12 @@ export function titleEconomics(input: TitleEconomicsInput): TitleEconomics[] {
     const unitCost = price ? price.unitCostOre : null;
     const n = BigInt(a.orders);
     const has = a.orders > 0;
+    const vmb =
+      withVmb && unitCost !== null
+        ? BigInt(vmbVatOfMargin(fromBigInt(a.net - n * BigInt(unitCost), "Marginalen")))
+        : 0n;
     const leftNumerator =
-      unitCost === null ? null : a.net - a.fee - a.commission - n * BigInt(unitCost);
+      unitCost === null ? null : a.net - a.fee - a.commission - vmb - n * BigInt(unitCost);
     const left = has && leftNumerator !== null ? roundHalfUp(leftNumerator, n) : null;
     const leftAfterRent =
       has && leftNumerator !== null ? roundHalfUp(leftNumerator - a.rent, n) : null;

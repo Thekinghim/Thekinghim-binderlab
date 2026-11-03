@@ -63,6 +63,8 @@ export interface PartnerResult {
   readonly revenueOre: number;
   readonly costOre: number;
   readonly feesOre: number;
+  /** VMB-moms på vår vinst (0 utan VMB). Saknas i rapporter före beräkningsversion 1.3.0. */
+  readonly vmbVatOre?: number;
   readonly commissionOre: number;
   readonly rentOre: number;
   readonly compensationOre: number;
@@ -126,6 +128,8 @@ export interface PartnerRow {
   readonly revenueOre: number;
   readonly costOre: number;
   readonly feesOre: number;
+  /** Saknas i rapporter före beräkningsversion 1.3.0. */
+  readonly vmbVatOre?: number;
   readonly commissionOre: number;
   readonly rentOre: number;
   readonly compensationOre: number;
@@ -304,6 +308,7 @@ export function buildPartnerReport(
     revenueOre: t.revenueOre,
     costOre: t.costOre,
     feesOre: t.feesOre,
+    vmbVatOre: t.vmbVatOre,
     commissionOre: t.commissionOre,
     rentOre: t.rentOre,
     compensationOre: t.compensationOre,
@@ -313,7 +318,7 @@ export function buildPartnerReport(
     unpricedRevenueOre: t.unpricedRevenueOre,
     unpricedShareBp: byTitle.unpriced.shareBp,
     evidence: evidence({
-      rule: "Intäkt = Σ belopp exkl. moms för alla order. Vinst = intäkt − inköp − avgifter − butiksersättning för order med inköpspris (all hyra dras). Marginal = round(vinst × 10 000 / intäkt med inköpspris) bp.",
+      rule: `Intäkt = Σ belopp exkl. moms för alla order. Vinst = intäkt − inköp − avgifter${t.vmbVatOre !== 0 ? " − VMB-moms" : ""} − butiksersättning för order med inköpspris (all hyra dras).${t.vmbVatOre !== 0 ? " VMB-moms = 20 % av en positiv marginal (försäljning − återbetalningar − inköp) per månad." : ""} Marginal = round(vinst × 10 000 / intäkt med inköpspris) bp.`,
       scope: { period },
       orderCount: t.orders,
       figures: [
@@ -321,6 +326,7 @@ export function buildPartnerReport(
         fig("Intäkt med inköpspris", t.revenueOre, "ore"),
         fig("Inköp", t.costOre, "ore"),
         fig("Avgifter", t.feesOre, "ore"),
+        ...(t.vmbVatOre !== 0 ? [fig("VMB-moms", t.vmbVatOre, "ore")] : []),
         fig("Provision", t.commissionOre, "ore"),
         fig("Hyra", t.rentOre, "ore"),
         fig("Vinst", t.profitOre, "ore"),
@@ -434,6 +440,7 @@ export function buildPartnerReport(
       revenueOre: r.revenueOre,
       costOre: r.costOre,
       feesOre: r.feesOre,
+      vmbVatOre: r.vmbVatOre,
       commissionOre: r.commissionOre,
       rentOre: r.rentOre,
       compensationOre: r.compensationOre,
@@ -445,13 +452,14 @@ export function buildPartnerReport(
         rule:
           kind === "unallocated"
             ? "Hyra som ingen order med inköpspris bär (butik utan försäljning, eller hyra på order utan pris). Dras från vinsten."
-            : "Vinst = intäkt − inköp − avgifter − butiksersättning för radens order med inköpspris.",
+            : `Vinst = intäkt − inköp − avgifter${r.vmbVatOre !== 0 ? " − VMB-moms" : ""} − butiksersättning för radens order med inköpspris.`,
         scope,
         orderCount: r.orders,
         figures: [
           fig("Intäkt", r.revenueOre, "ore"),
           fig("Inköp", r.costOre, "ore"),
           fig("Avgifter", r.feesOre, "ore"),
+          ...(r.vmbVatOre !== 0 ? [fig("VMB-moms", r.vmbVatOre, "ore")] : []),
           fig("Butiksersättning", r.compensationOre, "ore"),
           fig("Vinst", r.profitOre, "ore"),
         ],

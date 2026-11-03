@@ -6,6 +6,7 @@
  *
  *   försäljning  = Σ belopp inkl. moms − återbetalningar till kunder (på återbetalningsdagen)
  *   VMB-moms     = 20 % av max(0, försäljning − inköp)        (25/125, vinstmarginalbeskattning)
+ *                  om avtalet drar av VMB före delningen (`vmbBeforeSplit`), annars 0 (standard)
  *   vinst        = försäljning − VMB-moms − inköp − kortavgifter
  *   butikens del = round(vinst × andel / 10 000)               vinst ≥ 0
  *                = 0                                          vinst < 0, förlust 'zero' (standard)
@@ -17,17 +18,14 @@
  */
 
 import { DomainError } from "./errors";
-import {
-  applyBp,
-  assertBp,
-  assertNonNegativeInteger,
-  assertSafeInteger,
-  mulDivRound,
-} from "./money";
+import { applyBp, assertBp, assertNonNegativeInteger } from "./money";
 import type { LossTreatment, StoreAgreement } from "./types";
+import { VMB_RATE_PERCENT, vmbVatOfMargin } from "./vmb";
 
-/** VMB-momsen är 25/125 = 20 % av en positiv marginal (inkl. moms). */
-export const VMB_VAT_PERCENT = 20;
+export { vmbVatOfMargin };
+
+/** VMB-momsen är 25/125 = 20 % av en positiv marginal (inkl. moms), se vmb.ts. */
+export const VMB_VAT_PERCENT = VMB_RATE_PERCENT;
 
 /** Standardvillkor för nya avtal: 50 % av vinsten efter kostnader, förlust ger 0. */
 export const DEFAULT_PROFIT_SHARE_BP = 5_000;
@@ -49,6 +47,8 @@ export interface ProfitSplitInput {
   /** Butikens andel i bp (5 000 = 50 %). */
   readonly shareBp: number;
   readonly lossTreatment: LossTreatment;
+  /** Dra av VMB-moms från vinsten före delningen. Standard falskt (ingen VMB). */
+  readonly vmbBeforeSplit?: boolean;
 }
 
 export interface ProfitSplitResult {
@@ -58,7 +58,10 @@ export interface ProfitSplitResult {
   readonly refundsOre: number;
   /** Försäljning − återbetalningar − inköp (underlaget för VMB-momsen). */
   readonly marginOre: number;
+  /** VMB-momsen som dras före delningen (0 när avtalet inte drar av den). */
   readonly vmbVatOre: number;
+  /** Avtalets val: VMB dras före delningen (saknas i ögonblicksbilder före 1.3.0 = sant). */
+  readonly vmbBeforeSplit?: boolean;
   readonly purchasesOre: number;
   readonly cardFeesOre: number;
   /** Vinst efter kostnader (kan vara negativ). */
@@ -69,12 +72,6 @@ export interface ProfitSplitResult {
   readonly storeShareOre: number;
   /** Operatörens del = vinst − butikens del. */
   readonly operatorShareOre: number;
-}
-
-/** VMB-moms på en marginal: 20 % av en positiv marginal, annars 0. */
-export function vmbVatOfMargin(marginOre: number): number {
-  assertSafeInteger(marginOre, "Marginalen");
-  return marginOre > 0 ? mulDivRound(marginOre, VMB_VAT_PERCENT, 100) : 0;
 }
 
 /** Vinstdelningen för en butik, månad och avtal (se filhuvudet). */
@@ -90,7 +87,8 @@ export function profitSplit(input: ProfitSplitInput): ProfitSplitResult {
   }
   const netSalesOre = input.salesInclVatOre - refundsOre;
   const marginOre = netSalesOre - input.purchasesOre;
-  const vmbVatOre = vmbVatOfMargin(marginOre);
+  const vmbBeforeSplit = input.vmbBeforeSplit === true;
+  const vmbVatOre = vmbBeforeSplit ? vmbVatOfMargin(marginOre) : 0;
   const profitOre = netSalesOre - vmbVatOre - input.purchasesOre - input.cardFeesOre;
   const storeShareOre =
     profitOre >= 0 || input.lossTreatment === "proportional"
@@ -101,6 +99,7 @@ export function profitSplit(input: ProfitSplitInput): ProfitSplitResult {
     refundsOre,
     marginOre,
     vmbVatOre,
+    vmbBeforeSplit,
     purchasesOre: input.purchasesOre,
     cardFeesOre: input.cardFeesOre,
     profitOre,

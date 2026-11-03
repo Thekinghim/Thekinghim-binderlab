@@ -395,6 +395,7 @@ export const ACTIONS: ActionSpec[] = [
       sink(c, {
         plan: {
           settlement: "1580",
+          sales: "3000",
           sales_vmb: "3211",
           vat_vmb: "2616",
           card_fees: "6040",
@@ -408,6 +409,12 @@ export const ACTIONS: ActionSpec[] = [
         openingCarryOre: 0,
       }),
     ],
+  },
+  {
+    module: "@/app/(app)/ekonomi/bokforing-actions",
+    name: "setBokforingVmb",
+    allowed: OP,
+    args: () => [{ enabled: false }],
   },
   {
     module: "@/app/(app)/ekonomi/bokforing-actions",

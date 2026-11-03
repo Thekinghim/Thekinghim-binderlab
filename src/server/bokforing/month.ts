@@ -9,17 +9,22 @@
  *   Försäljning (netto) = försäljning inkl. moms − återbetalningar till kunder
  *   Resultat = försäljning (netto) − VMB-moms − inköp − kortavgifter − butikernas andel
  *
- * VMB förutsätter momssats 0 i Inställningar (annars räknas utgående moms två gånger).
+ * VMB räknas bara när "VMB i bokföringen" är på (bookkeeping_settings.vmb_enabled, standard
+ * av). Av: VMB-momsen är 0, inget underskott förs vidare och resultatet är försäljning −
+ * inköp − kortavgifter − butikernas andel. En skickad månad behåller valet den skickades med.
+ *
+ * Bokföringen förutsätter momssats 0 i Inställningar, med eller utan VMB: med VMB skulle
+ * utgående moms räknas två gånger, utan VMB skulle momsen bokas som försäljning.
  */
 
 import type { AccountantReport } from "@/reports";
 
 import { vmbChain, type VmbResult } from "./vmb";
 
-/** Momssatsen i Inställningar är inte 0: VMB skulle räkna utgående moms två gånger. */
+/** Momssatsen i Inställningar är inte 0: bokföringen räknar bara med momssats 0 (se filhuvudet). */
 export class VmbVatRateError extends Error {
   constructor() {
-    super("VMB kräver momssats 0 i Inställningar.");
+    super("Bokföringen kräver momssats 0 i Inställningar.");
     this.name = "VmbVatRateError";
   }
 }
@@ -41,6 +46,11 @@ export interface StoreShare {
   readonly rentOre: number;
   /** Andel + hyra. */
   readonly totalOre: number;
+  /**
+   * Vinstdelning enligt avtalet (null = provision eller ingen andel): om VMB-momsen drogs före
+   * delningen och hur mycket som drogs i butikens delning.
+   */
+  readonly split?: { readonly vmbBeforeSplit: boolean; readonly vmbVatOre: number } | null;
 }
 
 export interface MonthDay {
@@ -75,9 +85,15 @@ export interface MonthFigures {
 }
 
 export interface MonthBook extends MonthFigures {
+  /** VMB i bokföringen för månaden (av = ingen VMB-moms och inget underskott). */
+  readonly vmbEnabled: boolean;
+  /** VMB-uträkningen; allt 0 utom försäljning, inköp och marginal när VMB är av. */
   readonly vmb: VmbResult;
   readonly resultOre: number;
 }
+
+/** VMB per månad: samma för alla, eller per månad ("ÅÅÅÅ-MM"). */
+export type VmbChoice = boolean | ((month: string) => boolean);
 
 export function monthFiguresFromReport(
   month: string,
@@ -86,6 +102,7 @@ export function monthFiguresFromReport(
   basis: PurchaseBasis,
   refundsOre = 0,
 ): MonthFigures {
+  // Momssats 0 krävs med och utan VMB (se filhuvudet).
   if (report.vatRateBp !== 0) throw new VmbVatRateError();
   if (!Number.isSafeInteger(refundsOre) || refundsOre < 0) {
     throw new RangeError("Återbetalningarna ska vara ett heltal ≥ 0 i öre.");
@@ -101,6 +118,7 @@ export function monthFiguresFromReport(
       shareOre: s.commissionOre,
       rentOre: s.rentOre,
       totalOre: s.compensationOre,
+      split: s.split ?? null,
     }))
     .sort((a, b) => b.totalOre - a.totalOre || a.name.localeCompare(b.name, "sv"));
   return {
@@ -133,26 +151,44 @@ export function monthResult(f: MonthFigures, vatOre: number): number {
   return netSales(f) - vatOre - f.purchasesOre - f.cardFeesOre - f.storeShareOre;
 }
 
+/** VMB-raden för en månad utan VMB: ingen moms, inget underskott in eller ut. */
+function noVmb(f: MonthFigures): VmbResult {
+  const salesInclVatOre = netSales(f);
+  return {
+    salesInclVatOre,
+    purchasesOre: f.purchasesOre,
+    carryInOre: 0,
+    marginOre: salesInclVatOre - f.purchasesOre,
+    vatOre: 0,
+    baseOre: 0,
+    carryOutOre: 0,
+  };
+}
+
 /**
- * Månaderna med VMB och resultat, underskottet fört vidare från den äldsta. En skickad månads
- * underskott (`sentCarryOut`) gäller för nästa månad.
+ * Månaderna med resultat och (när VMB är på) VMB, underskottet fört vidare från den äldsta.
+ * En skickad månads underskott (`sentCarryOut`) gäller för nästa månad. En månad utan VMB
+ * för inte något underskott vidare. `vmb` är "VMB i bokföringen" (standard av).
  */
 export function bookMonths(
   figures: readonly MonthFigures[],
   openingCarryOre: number,
   sentCarryOut: ReadonlyMap<string, number> = new Map(),
+  vmb: VmbChoice = false,
 ): MonthBook[] {
+  const on = (month: string) => (typeof vmb === "function" ? vmb(month) : vmb);
   const chain = vmbChain(
     figures.map((f) => ({
       month: f.month,
       salesInclVatOre: netSales(f),
       purchasesOre: f.purchasesOre,
-      fixedCarryOutOre: sentCarryOut.get(f.month) ?? null,
+      fixedCarryOutOre: on(f.month) ? (sentCarryOut.get(f.month) ?? null) : 0,
     })),
     openingCarryOre,
   );
   return figures.map((f) => {
-    const vmb = chain.get(f.month)!;
-    return { ...f, vmb, resultOre: monthResult(f, vmb.vatOre) };
+    const vmbEnabled = on(f.month);
+    const r = vmbEnabled ? chain.get(f.month)! : noVmb(f);
+    return { ...f, vmbEnabled, vmb: r, resultOre: monthResult(f, r.vatOre) };
   });
 }

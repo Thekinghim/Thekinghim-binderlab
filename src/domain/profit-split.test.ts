@@ -15,6 +15,7 @@ describe("profitSplit", () => {
       cardFeesOre: 15_000,
       shareBp: 5_000,
       lossTreatment: "zero",
+      vmbBeforeSplit: true,
     });
     expect(r).toMatchObject({
       marginOre: 400_000,
@@ -32,11 +33,33 @@ describe("profitSplit", () => {
       cardFeesOre: 0,
       shareBp: 5_000,
       lossTreatment: "zero",
+      vmbBeforeSplit: true,
     });
     // VMB = round(101 × 0,2) = 20; vinst 81; butiken round(40,5) = 41; vi 40.
     expect([r.vmbVatOre, r.profitOre, r.storeShareOre, r.operatorShareOre]).toEqual([
       20, 81, 41, 40,
     ]);
+  });
+
+  it("standard utan VMB-avdrag: butikens andel = andel × vinst efter inköp och kortavgifter", () => {
+    const base = {
+      salesInclVatOre: 1_000_000,
+      purchasesOre: 600_000,
+      cardFeesOre: 15_000,
+      shareBp: 5_000,
+      lossTreatment: "zero" as const,
+    };
+    const r = profitSplit(base);
+    expect(profitSplit({ ...base, vmbBeforeSplit: false })).toEqual(r);
+    // Vinst = 10 000 − 6 000 − 150 = 3 850 kr; butiken 1 925 kr.
+    expect(r).toMatchObject({
+      marginOre: 400_000,
+      vmbVatOre: 0,
+      vmbBeforeSplit: false,
+      profitOre: 385_000,
+      storeShareOre: 192_500,
+      operatorShareOre: 192_500,
+    });
   });
 
   it("negativ marginal ger ingen VMB-moms", () => {
@@ -51,6 +74,7 @@ describe("profitSplit", () => {
       purchasesOre: 9_000,
       cardFeesOre: 1_401,
       shareBp: 5_000,
+      vmbBeforeSplit: true,
     };
     // marginal 1 000 → VMB 200; vinst 10 000 − 200 − 9 000 − 1 401 = −601
     const zero = profitSplit({ ...base, lossTreatment: "zero" });
@@ -73,9 +97,11 @@ describe("profitSplit", () => {
 });
 
 describe("liggaren med vinstdelning", () => {
+  // Avtalet drar av VMB före delningen (valet på); standard utan VMB testas nedan.
   const split = agreement("s-1", "2026-01-01", null, {
     commissionBp: 5_000,
     commissionBase: "profit_after_costs",
+    vmbBeforeSplit: true,
   });
   function input(extra: Partial<ProfitabilityInput> = {}): ProfitabilityInput {
     return {
@@ -92,6 +118,22 @@ describe("liggaren med vinstdelning", () => {
       ...extra,
     };
   }
+
+  it("standardavtal (utan VMB-avdrag): butikens andel = bp × vinst efter inköp och kortavgifter", () => {
+    const plain = agreement("s-1", "2026-01-01", null, {
+      commissionBp: 5_000,
+      commissionBase: "profit_after_costs",
+    });
+    const ledger = buildLedger(input({ agreements: [plain] }));
+    const s = ledger.profitSplits[0]!;
+    const fees = ledger.entries.reduce((a, e) => a + e.cardFeeOre, 0);
+    // Försäljning 64 700, inköp 42 500, ingen VMB-moms.
+    expect(s.result.vmbVatOre).toBe(0);
+    expect(s.result.vmbBeforeSplit).toBe(false);
+    expect(s.result.profitOre).toBe(64_700 - 42_500 - fees);
+    expect(s.result.storeShareOre).toBe(Math.round((5_000 * (64_700 - 42_500 - fees)) / 10_000));
+    expect(ledger.entries.reduce((a, e) => a + e.commissionOre, 0)).toBe(s.result.storeShareOre);
+  });
 
   it("räknar per butik och månad och fördelar andelen exakt på orderna", () => {
     const ledger = buildLedger(input());
@@ -138,8 +180,9 @@ describe("liggaren med vinstdelning", () => {
     expect(ledger.profitSplits.map((s) => [s.range.start, s.range.end, s.orders])).toEqual([
       ["2026-11-11", "2026-11-30", 1],
     ]);
-    // Provision 10 % på de två första orderna, vinstdelning på den sista.
-    expect(ledger.entries.map((e) => e.commissionOre)).toEqual([1_990, 1_990, 3_360]);
+    // Provision 10 % på de två första orderna, vinstdelning på den sista (utan VMB-avdrag:
+    // 50 % av 24 900 − 16 500 = 4 200).
+    expect(ledger.entries.map((e) => e.commissionOre)).toEqual([1_990, 1_990, 4_200]);
   });
 
   it("månad utan försäljning ger en rad med 0", () => {

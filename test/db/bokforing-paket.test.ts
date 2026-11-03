@@ -26,10 +26,12 @@ import {
   loadBokforingFor,
   markMonthSentFor,
   saveBokforingSettingsFor,
+  setBokforingVmbFor,
   uploadReceiptFor,
 } from "../../src/server/bokforing/service";
 import {
   readyPackageFor,
+  refreshUnsentPackagesFor,
   runBokforingForAll,
   storedPackageFor,
   type PackageDeps,
@@ -414,6 +416,135 @@ describe("behörigheter (RLS) för bookkeeping_packages", () => {
       ),
     );
     expect(upd.ok).toBe(false);
+  });
+});
+
+describe('"VMB i bokföringen": standard av, knapp för att slå på', () => {
+  let o: Org;
+  const sieOf = async (v: Viewer, month: string) => {
+    const pkg = await storedPackageFor(v, month, TODAY, deps);
+    const files = zipNames(pkg.bytes);
+    return {
+      version: pkg.stored.version,
+      sie: files.get(`verifikation-${month}.si`)!.toString("latin1"),
+      summary: files.get(`sammanfattning-${month}.html`)!.toString("utf8"),
+      readme: files.get("LAS-MIG.txt")!.toString("utf8"),
+    };
+  };
+  beforeAll(async () => {
+    o = await seedOrg();
+    await addOrders(o, "2026-09", 2);
+    await addOrders(o, "2026-10", 3);
+  });
+
+  it("av som standard: jobbet bokför utan VMB-moms och utan VMB-konton", async () => {
+    const view = await loadBokforingFor(o.ownerV, TODAY);
+    expect(view.settings.vmbEnabled).toBe(false);
+    const oct = view.months.find((m) => m.month === "2026-10")!.book;
+    expect(oct.vmbEnabled).toBe(false);
+    expect(oct.vmb.vatOre).toBe(0);
+    // 3 × 100 kr sålt, inköp 3 × 20 kr, provision 10 %: inget VMB-avdrag i resultatet.
+    expect(oct.resultOre).toBe(30_000 - 6_000 - oct.cardFeesOre - oct.storeShareOre);
+    await run(o);
+    const p = await sieOf(o.ownerV, "2026-10");
+    expect(p.sie).not.toContain("2616");
+    expect(p.sie).not.toContain("3211");
+    expect(p.sie).toMatch(/#TRANS 3000 \{\} -300\.00 /);
+    expect(p.summary).toContain("· utan VMB ·");
+    expect(p.readme).toContain("Utan VMB");
+  });
+
+  it("läsaren och påfyllaren kan inte ändra valet, varken via tjänsten eller direkt", async () => {
+    await expect(setBokforingVmbFor(o.viewerV, true)).rejects.toBeInstanceOf(AuthorizationError);
+    await expect(setBokforingVmbFor(o.refillerV, true)).rejects.toBeInstanceOf(AuthorizationError);
+    for (const u of [o.viewer, o.refiller]) {
+      const upd = await asUser(u, (tx) =>
+        attempt(tx, (sp) =>
+          sp.execute(sql`update public.bookkeeping_settings set vmb_enabled = true
+                          where organization_id = ${o.orgId} returning id`),
+        ),
+      );
+      expect(upd.ok && upd.value.length > 0).toBe(false);
+    }
+    expect((await loadBokforingFor(o.ownerV, TODAY)).settings.vmbEnabled).toBe(false);
+  });
+
+  it("på: osända månaders paket tas fram på nytt med VMB-moms; jobbet gör sedan ingenting", async () => {
+    const before = (await sieOf(o.ownerV, "2026-10")).version;
+    await setBokforingVmbFor(o.ownerV, true);
+    expect((await loadBokforingFor(o.viewerV, TODAY)).settings.vmbEnabled).toBe(true);
+    expect(await refreshUnsentPackagesFor(o.ownerV, TODAY, deps)).toBeGreaterThanOrEqual(1);
+    const p = await sieOf(o.ownerV, "2026-10");
+    expect(p.version).toBe(before + 1);
+    expect(p.sie).toContain("#TRANS 2616");
+    expect(p.sie).toContain("#TRANS 3211");
+    expect(p.sie).not.toContain("#TRANS 3000");
+    expect(p.summary).toContain("· med VMB ·");
+    const again = await run(o);
+    expect(again.organizations.find((x) => x.month === "2026-10")).toMatchObject({
+      status: "unchanged",
+    });
+  });
+
+  it("en skickad månad behåller sitt val när VMB slås av; osända följer knappen", async () => {
+    await markMonthSentFor(o.ownerV, "2026-10", TODAY);
+    const sentVersion = (await sieOf(o.ownerV, "2026-10")).version;
+    const vatOn = (await loadBokforingFor(o.ownerV, TODAY)).months.find(
+      (m) => m.month === "2026-10",
+    )!.book.vmb.vatOre;
+    expect(vatOn).toBeGreaterThan(0);
+    await setBokforingVmbFor(o.ownerV, false);
+    await refreshUnsentPackagesFor(o.ownerV, TODAY, deps);
+    await run(o);
+    const view = await loadBokforingFor(o.ownerV, TODAY);
+    const oct = view.months.find((m) => m.month === "2026-10")!;
+    expect(oct.book.vmbEnabled).toBe(true);
+    expect(oct.book.vmb.vatOre).toBe(vatOn);
+    expect(oct.changedSinceSent).toBe(false);
+    expect((await sieOf(o.ownerV, "2026-10")).version).toBe(sentVersion);
+    const sep = view.months.find((m) => m.month === "2026-09")!;
+    expect(sep.book.vmbEnabled).toBe(false);
+    expect(sep.book.vmb.vatOre).toBe(0);
+  });
+
+  it("en skickad månad med sparat paket får ingen ny version när underlaget ändrats", async () => {
+    // Som ett paket sparat före ändringen (t.ex. nya fält eller ändrat avtalsval): annat fingeravtryck.
+    const svc = getServiceDb();
+    await svc.execute(sql`update public.bookkeeping_packages set fingerprint = ${"c".repeat(64)}
+                           where organization_id = ${o.orgId} and month = '2026-10-01'`);
+    const before = (await sieOf(o.ownerV, "2026-10")).version;
+    const r = await run(o);
+    expect(r.organizations.find((x) => x.month === "2026-10")).toMatchObject({
+      status: "unchanged",
+      version: before,
+    });
+    expect(await refreshUnsentPackagesFor(o.ownerV, TODAY, deps)).toBe(0);
+    expect((await sieOf(o.ownerV, "2026-10")).version).toBe(before);
+    const [row] = await rows<{ fp: string }>(
+      svc,
+      sql`select fingerprint as fp from public.bookkeeping_packages
+          where organization_id = ${o.orgId} and month = '2026-10-01'`,
+    );
+    expect(row!.fp).toBe("c".repeat(64));
+  });
+
+  it("VMB kan inte slås på när momssatsen inte är 0", async () => {
+    const svc = getServiceDb();
+    await svc.execute(
+      sql`update public.organization_settings set vat_rate_bp = 2500 where organization_id = ${o.orgId}`,
+    );
+    try {
+      await expect(setBokforingVmbFor(o.ownerV, true)).rejects.toThrow(/momssats 0/);
+      const [row] = await rows<{ on: boolean }>(
+        svc,
+        sql`select vmb_enabled as on from public.bookkeeping_settings where organization_id = ${o.orgId}`,
+      );
+      expect(row!.on).toBe(false);
+    } finally {
+      await svc.execute(
+        sql`update public.organization_settings set vat_rate_bp = 0 where organization_id = ${o.orgId}`,
+      );
+    }
   });
 });
 

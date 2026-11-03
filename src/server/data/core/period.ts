@@ -9,6 +9,7 @@
 import {
   parsePeriod,
   parseScope,
+  parseVmbView,
   toIsoDate,
   type SearchParamsInput,
 } from "@/components/shell/period-state";
@@ -75,6 +76,7 @@ export function resolveAppPeriod(
     days: periodDays(period),
     dataStart,
     scope: scopeFromSearchParams(sp),
+    vmb: parseVmbView(sp),
     resolved,
   };
 }

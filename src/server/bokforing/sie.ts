@@ -4,8 +4,12 @@
  * månadens sista dag. Försäljning = försäljning inkl. moms − återbetalningar till kunder:
  *
  *   D avräkning (1580)          försäljning
+ *   VMB av (standard):
+ *   K försäljning (3000)        försäljning
+ *   VMB på ("VMB i bokföringen"):
  *   K försäljning VMB (3211)    försäljning − VMB-moms
  *   K utgående moms VMB (2616)  VMB-moms (när marginalen är positiv)
+ *
  *   D kortavgifter (6040)       kortavgifter            K avräkning (1580)
  *   D butikernas andel (6090)   per butik               K skuld till butikerna (2990)
  *   D hyra (5010)               per butik               K skuld till butikerna (2990)
@@ -59,11 +63,15 @@ export function monthVerification(
   const add = (key: PlanKey, amountOre: number, text: string) => {
     if (amountOre !== 0) rows.push({ key, account: plan[key], amountOre, text: text.slice(0, 80) });
   };
-  const vat = book.vmb.vatOre;
   const sales = netSales(book);
   add("settlement", sales, `Försäljning automater ${name}`);
-  add("sales_vmb", -(sales - vat), `Försäljning VMB ${name}`);
-  add("vat_vmb", -vat, `VMB-moms ${name}`);
+  if (book.vmbEnabled) {
+    const vat = book.vmb.vatOre;
+    add("sales_vmb", -(sales - vat), `Försäljning VMB ${name}`);
+    add("vat_vmb", -vat, `VMB-moms ${name}`);
+  } else {
+    add("sales", -sales, `Försäljning ${name}`);
+  }
   add("card_fees", book.cardFeesOre, `Kortavgifter ${name}`);
   add("settlement", -book.cardFeesOre, `Kortavgifter ${name}`);
   for (const s of book.stores) {

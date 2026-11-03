@@ -112,6 +112,22 @@ describe("priceChangeScenario", () => {
     );
   });
 
+  it("med VMB: vinsten drar VMB-moms, och prisändringen bär 20 % VMB-moms på marginalen", () => {
+    const res = priceChangeScenario({
+      ...priceInput({ settings: { ...NO_TAX, vmb: true } }),
+      titleId: "t-a",
+      deltaOre: 1000,
+    });
+    // Marginal 10 × (49 − 20) = 290 kr → VMB-moms 58 kr; vinst 490 − 200 − 49 − 58 = 183 kr.
+    expect(res.base).toMatchObject({
+      vmbVatOre: 5_800,
+      contributionOre: 18_300,
+      profitOre: 18_300,
+    });
+    // +10 kr: + 100 kr intäkt − 10 kr provision − 20 kr VMB-moms = +70 kr.
+    expect(res.selected).toMatchObject({ contributionOre: 25_300, profitChangeOre: 7_000 });
+  });
+
   it("tabell för flera elasticiteter, 0 först och sedan fallande", () => {
     const res = priceChangeScenario({ ...priceInput(), titleId: "t-a", deltaOre: 1000 });
     expect(res.table.map((r) => r.elasticityHundredths)).toEqual([...DEFAULT_ELASTICITIES]);

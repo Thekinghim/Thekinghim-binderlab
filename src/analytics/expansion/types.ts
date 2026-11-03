@@ -65,7 +65,11 @@ export interface SiteHistory {
   readonly rentOre: number;
   /** Täckningsbidrag före butiksersättning = intäkt − inköp − avgifter. */
   readonly contributionOre: number;
-  /** Vinst = täckningsbidrag − provision − hyra (samma som lönsamhetsvyn per butik). */
+  /** VMB-moms på vår vinst (samma som lönsamhetsvyn per butik). */
+  readonly vmbVatOre: number;
+  /**
+   * Vinst = täckningsbidrag − VMB-moms − butiksersättning (samma som lönsamhetsvyn per butik).
+   */
   readonly profitOre: number;
 }
 
@@ -89,9 +93,12 @@ export interface SiteTerms {
   readonly monthlyRentOre: number | null;
   /**
    * Vinstdelning: butikens andel i bp av vinsten efter kostnader (5 000 = 50 %, alla nya
-   * avtal). Uppskattas på platsens hela underlag: andel × max(0, täckningsbidrag − VMB-moms).
+   * avtal). Uppskattas på platsens hela underlag: andel × max(0, täckningsbidrag), utan
+   * VMB-avdrag som standard (som nya avtal).
    */
   readonly profitShareBp?: number | null;
+  /** Vinstdelning: dra av VMB-moms före delningen (avtalets val). Saknas = falskt. */
+  readonly vmbBeforeSplit?: boolean;
 }
 
 /** Ett intervall: lägsta, förväntat (viktat snitt) och högsta. */

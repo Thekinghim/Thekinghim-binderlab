@@ -65,6 +65,11 @@ export interface StoreAgreement {
   readonly commissionBase?: CommissionBase;
   /** Vinstdelning med förlust: 'zero' (butiken får 0, standard) eller 'proportional'. */
   readonly lossTreatment?: LossTreatment;
+  /**
+   * Vinstdelning: dra av VMB-moms från vinsten före delningen (profit-split.ts). Saknas =
+   * falskt: utan VMB som standard, valet slås på per avtal.
+   */
+  readonly vmbBeforeSplit?: boolean;
 }
 
 /** Underlaget för butikens andel. */
@@ -87,6 +92,13 @@ export interface Settings {
   readonly vatRateBp: Bp;
   /** Kortavgift i bp på beloppet inklusive moms (0 i dag). */
   readonly cardFeeBp: Bp;
+  /**
+   * Vinstmarginalbeskattning (VMB): vår vinst bär VMB-moms (ledger.ts). Gäller bara när
+   * momssatsen är 0 (annars är momsen redan dragen från intäkten). Standard: av. Sätts av
+   * vyknappen "Med VMB" (?vmb=1, loadDomainInputFor `vmb`), inte av organisationen; bokföringen
+   * följer "VMB i bokföringen" (standard av) oberoende av den.
+   */
+  readonly vmb?: boolean;
 }
 
 /** Period av hela affärsdagar, båda ändar inräknade. */
@@ -139,4 +151,9 @@ export interface SourceRefund {
 export interface ProfitabilityInput extends EconomicsSources {
   readonly orders: readonly OrderLine[];
   readonly period: Period;
+  /**
+   * Filtrerad vy med VMB: orderns del av hela organisationens VMB-moms (order-id → öre, från
+   * den ofiltrerade liggaren). Saknas = VMB-momsen räknas på urvalets egen marginal.
+   */
+  readonly vmbByOrder?: ReadonlyMap<string, number>;
 }

@@ -99,6 +99,8 @@ export interface AppPeriod {
   readonly dataStart: IsoDate | null;
   /** Filtret i URL:en. */
   readonly scope: DataScope;
+  /** Vyknappen "Med VMB" (?vmb=1): vinsten visas efter VMB-moms. */
+  readonly vmb: boolean;
   /** Skalets tolkning (Date vid lokal midnatt), för describePeriod och komponenter. */
   readonly resolved: ResolvedPeriod;
 }

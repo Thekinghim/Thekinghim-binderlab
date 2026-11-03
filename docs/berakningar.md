@@ -1,8 +1,8 @@
 # Binderlab: så räknas siffrorna
 
-Version av beräkningsreglerna: **1.2.0** (`CALC_VERSION` i `src/domain/profitability.ts`, sparas med varje rapport).
+Version av beräkningsreglerna: **1.3.0** (`CALC_VERSION` i `src/domain/profitability.ts`, sparas med varje rapport).
 
-Det här dokumentet beskriver hur panelen och rapporterna räknar fram intäkt, inköp, avgifter, butiksersättning och vinst. Det är skrivet så att en bokhållare ska kunna räkna efter för hand. Alla exempel nedan finns som automatiska tester i `src/domain/*.test.ts` och kontrolleras vid varje ändring.
+Det här dokumentet beskriver hur panelen och rapporterna räknar fram intäkt, inköp, avgifter, VMB-moms, butiksersättning och vinst. Det är skrivet så att en bokhållare ska kunna räkna efter för hand. Alla exempel nedan finns som automatiska tester i `src/domain/*.test.ts` och kontrolleras vid varje ändring.
 
 ## 1. Grundregler
 
@@ -91,19 +91,20 @@ Hyra kan läggas till båda och är tom som standard. Nya villkor skapas med **S
 
 Räknas per **butik, kalendermånad och avtal** (de dagar i månaden avtalet gällde), på butikens order **med inköpspris**:
 
-| Post            | Formel                                                                           |
-| --------------- | -------------------------------------------------------------------------------- |
-| Försäljning     | Σ belopp **inklusive** moms                                                      |
-| Återbetalningar | Σ återbetalt till kunder (kundärenden) med återbetalningsdag i avtalets dagar    |
-| Inköp           | Σ inköpspris för de sålda packen (avsnitt 3)                                     |
-| VMB-moms        | 20 % av (försäljning − återbetalningar − inköp) om det är positivt, annars 0     |
-| Kortavgifter    | Σ kortavgift per order (avsnitt 2)                                               |
-| **Vinst**       | försäljning − återbetalningar − VMB-moms − inköp − kortavgifter                  |
-| Butikens andel  | round(vinst × andel / 10 000) om vinsten ≥ 0                                     |
-| Vid förlust     | `zero` (standard): 0 kr. `proportional`: round(vinst × andel / 10 000), negativt |
-| Vår andel       | vinst − butikens andel                                                           |
+| Post            | Formel                                                                                                             |
+| --------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Försäljning     | Σ belopp **inklusive** moms                                                                                        |
+| Återbetalningar | Σ återbetalt till kunder (kundärenden) med återbetalningsdag i avtalets dagar                                      |
+| Inköp           | Σ inköpspris för de sålda packen (avsnitt 3)                                                                       |
+| VMB-moms        | 0 (standard); 20 % av (försäljning − återbetalningar − inköp) om positivt bara om avtalet drar av VMB före delning |
+| Kortavgifter    | Σ kortavgift per order (avsnitt 2)                                                                                 |
+| **Vinst**       | försäljning − återbetalningar − VMB-moms − inköp − kortavgifter                                                    |
+| Butikens andel  | round(vinst × andel / 10 000) om vinsten ≥ 0                                                                       |
+| Vid förlust     | `zero` (standard): 0 kr. `proportional`: round(vinst × andel / 10 000), negativt                                   |
+| Vår andel       | vinst − butikens andel                                                                                             |
 
-- VMB-momsen är vinstmarginalbeskattningen: 25 % moms på marginalen inklusive moms = 20 % av marginalen (25/125). Den räknas här på butikens månad, inte på hela redovisningsperioden som i momsdeklarationen (Ekonomi → Bokföring, `src/server/bokforing/vmb.ts`, med underskott som förs vidare); ett underskott förs inte vidare mellan månaderna i butiksavräkningen.
+- **Utan VMB som standard; knapp för att slå på.** Valet **Dra av VMB-moms före delning** (`store_agreements.vmb_before_split`, per avtal) är **av** som standard, även för alla befintliga avtal: butikens andel = andel × (försäljning − återbetalningar − inköp − kortavgifter), utan VMB-avdrag, och en eventuell VMB-moms bärs helt av oss. På = butikens andel räknas på vinsten efter VMB-moms. Valet görs i Skapa avtal och i avtalsformuläret under Butiker, och står i avtalets text (PDF); i butiksrapportens rad "Avtal" och i Bokföringens sammanfattning per butik står VMB bara när valet är på ("… (VMB-moms dras före delning)").
+- VMB-momsen är vinstmarginalbeskattningen: 25 % moms på marginalen inklusive moms = 20 % av marginalen (25/125). Den räknas här på butikens månad, inte på hela redovisningsperioden som i momsdeklarationen (Ekonomi → Bokföring, med underskott som förs vidare); ett underskott förs inte vidare mellan månaderna i butiksavräkningen. Uträkningen är densamma överallt (`src/domain/vmb.ts`: `vmbVat`, `vmbChain`, `vmbVatOfMargin`); bokföringen, butiksavräkningen och vår vinst (avsnitt 5) använder den.
 - Avrundning: halva öre bort från noll, **en gång** per butik, månad och avtal (inte per order).
 - Liggaren fördelar butikens andel på månadens order med inköpspris i proportion till beloppet inkl. moms, med största-restmetoden, så att alla vyer (titel, automat, dag …) summerar exakt till andelen. Order utan inköpspris bär ingen andel.
 - Byts avtalet mitt i månaden räknas en vinstdelning per avtal, var och en på sina dagar.
@@ -113,22 +114,24 @@ Räknas per **butik, kalendermånad och avtal** (de dagar i månaden avtalet gä
 - **Bokföringen** (`buildAccountantReport`) räknar `profitSplitUnpricedOrders`: order utan inköpspris i butiker med vinstdelning. Är det fler än 0 säger slutsatsen att butikernas andel inte är färdigräknad och inte ska bokföras förrän priserna finns.
 - **Saknat inköpspris stoppar butiksrapporten.** Har någon av butikens order i månaden inget inköpspris räknas rapporten inte (aldrig med en gissning): förhandsvisningen och "Skapa utkast" visar en rad, t.ex. "Butiksrapporten kan inte räknas: 3 order saknar inköpspris (Mystery Pack Premium). Lägg in priserna under Inköpspriser.", med länk till Inköpspriser.
 - Butiksportalen ser inga inköpspriser. Där står andelen som "i månadsrapporten" tills rapporten är godkänd; den godkända rapporten visar hela uträkningen.
-- Butiksrapporten visar avtalet ("50 % av vinsten efter kostnader, giltigt från …") och tabellen Försäljning, (Återbetalningar), VMB-moms, Inköp, Kortavgifter, Vinst, Er andel 50 %, (Hyra). Raden "Er ersättning" (andel + hyra) visas bara när det finns hyra eller provision; annars är den samma tal som "Er andel". Inköp och vinst visas bara som månadens summor för butiken, aldrig per titel eller automat.
+- Butiksrapporten visar avtalet ("50 % av vinsten efter kostnader, giltigt från …"; med avtalets val på "… (VMB-moms dras före delning) …") och tabellen Försäljning, (Återbetalningar), VMB-moms (bara när avtalet drar av den), Inköp, Kortavgifter, Vinst, Er andel 50 %, (Hyra). Raden "Er ersättning" (andel + hyra) visas bara när det finns hyra eller provision; annars är den samma tal som "Er andel". Inköp och vinst visas bara som månadens summor för butiken, aldrig per titel eller automat.
 - Avtalsmallen (`src/reports/contract-pdf.ts`) skriver samma definition. Med `proportional` bär butiken sin andel av en förlust den månaden; förlusten förs inte vidare till kommande månader.
-- **Uppskattningar per order** (prisändring i Expansion, `price-change.ts`): butikens nya andel = nuvarande andel + andel × (ny ordervinst − nuvarande ordervinst), ordervinst = belopp − VMB-moms − inköp − avgift. Månadens förlustgolv räknas inte om.
-- **Nya platser** (Expansion, `estimate.ts`): utan erbjuden hyra används liknande platsers faktiska ersättning (som redan är vinstdelning). Med erbjuden hyra räknas villkoren som vinstdelning 50 % + hyra: andel × max(0, täckningsbidrag − VMB-moms) på platsens hela underlag. Fältet "Erbjuden provision" finns inte längre.
+- **Uppskattningar per order** (prisändring i Expansion, `price-change.ts`): butikens nya andel = nuvarande andel + andel × (ny ordervinst − nuvarande ordervinst), ordervinst = belopp − VMB-moms − inköp − avgift. Månadens förlustgolv räknas inte om. Med vyknappen drar vårt nya bidrag VMB-moms: orderns del av månadens VMB-moms + 20 % av ändringen i orderns marginal (aldrig under 0).
+- **Nya platser** (Expansion, `estimate.ts`): utan erbjuden hyra används liknande platsers faktiska ersättning (som redan är vinstdelning). Med erbjuden hyra räknas villkoren som vinstdelning 50 % + hyra: andel × max(0, täckningsbidrag) på platsens hela underlag, utan VMB-avdrag som nya avtal (med `vmbBeforeSplit` på: andel × max(0, täckningsbidrag − VMB-moms)). Fältet "Erbjuden provision" finns inte längre.
 
 **Exempel** (kortavgift 2 %, vinstdelning 50 %): två pack à 199,00 kr (inköp 130,00 kr) och ett à 249,00 kr (inköp 165,00 kr).
 
-| Post           | Uträkning                          | Öre       |
-| -------------- | ---------------------------------- | --------- |
-| Försäljning    | 2 × 19 900 + 24 900                | 64 700    |
-| Inköp          | 2 × 13 000 + 16 500                | 42 500    |
-| VMB-moms       | 20 % av (64 700 − 42 500 = 22 200) | 4 440     |
-| Kortavgifter   | 398 + 398 + 498                    | 1 294     |
-| Vinst          | 64 700 − 4 440 − 42 500 − 1 294    | 16 466    |
-| Butikens andel | 50 % av 16 466                     | **8 233** |
-| Vår andel      | 16 466 − 8 233                     | 8 233     |
+| Post           | Uträkning               | Öre        |
+| -------------- | ----------------------- | ---------- |
+| Försäljning    | 2 × 19 900 + 24 900     | 64 700     |
+| Inköp          | 2 × 13 000 + 16 500     | 42 500     |
+| VMB-moms       | standard: dras inte     | 0          |
+| Kortavgifter   | 398 + 398 + 498         | 1 294      |
+| Vinst          | 64 700 − 42 500 − 1 294 | 20 906     |
+| Butikens andel | 50 % av 20 906          | **10 453** |
+| Vår andel      | 20 906 − 10 453         | 10 453     |
+
+Med avtalets val "Dra av VMB-moms före delning" på: VMB-moms 20 % av (64 700 − 42 500 = 22 200) = 4 440, vinst 64 700 − 4 440 − 42 500 − 1 294 = 16 466, butikens andel 8 233.
 
 Förlust: ett pack à 100,00 kr med inköp 130,00 kr ger marginal −30,00 kr, ingen VMB-moms och vinst −30,00 kr; butiken får 0 kr (`zero`).
 
@@ -180,11 +183,53 @@ Den är ändå en kostnad för perioden och dras alltid från vinsten. Den visas
 
 ### Vinst och marginal
 
-> vinst = intäkt − inköp − avgifter − butiksersättning
+> vinst = intäkt − inköp − avgifter − butiksersättning (− VMB-moms med vyknappen "Med VMB")
 >
 > marginal = round(vinst × 10 000 / intäkt) bp
 
-Marginalen visas inte (–) när intäkten är 0.
+Marginalen visas inte (–) när intäkten är 0. Samma vinst och marginal visas på Hem, Lönsamhet (vattenfall, nyckeltal och tabeller), Butiker, Automater, Enhetsekonomi, Expansion och i AI-rådgivarens underlag.
+
+**Vyknappen "Med VMB"** (kontextraden bredvid period och filter, standard **av**): av = omsättning och vinst före VMB-moms; på = vinsten och marginalen efter VMB-moms i alla vyerna ovan, och vattenfallet får steget VMB-moms. Valet står i URL:en (`?vmb=1`, följer med mellan sidor som perioden) och minns per användare i webbläsaren. Knappen ändrar bara vår vinst: butikens andel följer avtalets val (avsnitt 4) och Bokföringen följer sin egen knapp "VMB i bokföringen" (standard av, avsnitt Bokföringen nedan), oberoende av vyknappen. Delägar- och bokföringsrapporterna räknas utan knappen (vinst före VMB-moms; VMB-momsen står i Bokföringen när "VMB i bokföringen" är på).
+
+**Avstämning** (per butik med vinstdelning 50 %, testas i `src/domain/vmb.test.ts` och `test/db/consistency-vmb.test.ts`):
+
+> vår vinst = försäljning − återbetalningar − inköp − kortavgifter − butikens andel (− VMB-moms med vyknappen)
+>
+> butikens andel = 50 % × (försäljning − återbetalningar − inköp − kortavgifter − VMB-moms om avtalet drar av den)
+
+Exempel (64 700 sålt, 42 500 inköp, VMB-moms 4 440): avtal på, vy av: andel 8 880, vinst 13 320; avtal på, vy på: 8 880 och 8 880; avtal av, vy av: 11 100 och 11 100; avtal av, vy på: 11 100 och 6 660.
+
+### VMB-moms på vår vinst (`src/domain/ledger.ts`, `src/domain/vmb.ts`)
+
+Bolaget är momsregistrerat. Appen räknar **utan VMB som standard; knapp för att slå på** (vyknappen "Med VMB" här, "VMB i bokföringen" i Bokföringen). VMB räknas som **vinstmarginalbeskattning, samlad per kalendermånad**, och kräver momssats 0 i Inställningar (annars skulle momsen räknas två gånger). Bokföringen kräver momssats 0 även utan VMB (annars skulle momsen bokas som försäljning). Med vyknappen "Med VMB" på dras VMB-momsen från vår vinst (`Settings.vmb` sätts av förfrågan, `vmbApplies`; proxyn läser `?vmb=1`). Med knappen av, eller med en annan momssats, är VMB-momsen på vår vinst 0 och steget visas inte.
+
+Per kalendermånad i den valda perioden, på order **med inköpspris**:
+
+> marginal = Σ belopp inkl. moms − återbetalningar till kunder (återbetalningsdagen) − Σ inköp − underskott från förra månaden
+>
+> VMB-moms = 20 % av marginalen (= 25/125), avrundad till hela ören (halva bort från noll), om marginalen är positiv; annars 0 och underskottet (−marginal) förs till nästa månad
+
+- **VMB i bokföringen** (Ekonomi → Bokföring, `bookkeeping_settings.vmb_enabled`, standard **av**; knappen "VMB i bokföringen" slår på det, ägare och admin). Av: månadspaketet (SIE 4, PDF, Excel) bokför försäljningen på kontot för försäljning utan VMB (förslag 3000) och resultatet = försäljning − återbetalningar − inköp − kortavgifter − butikernas andel; ingen VMB-moms, ingen rad för utgående moms VMB och inget underskott som förs vidare. På: VMB som nedan (3211/2616, samlad beräkning, underskott förs vidare). PDF:ens rubrikrad säger "med VMB" eller "utan VMB". En månad som markerats som skickad behåller valet den skickades med (ögonblicksbilden; skickade före valet = på). Ändras valet tas nya versioner av de sparade paketen för månader som inte är skickade fram (efter svaret, annars av det schemalagda jobbet eller nedladdningen). En skickad månad med sparat paket får aldrig en ny version (varken av jobbet, nedladdningen eller knappen); ändrade siffror syns som "ändrad sedan skickad", och "Ångra skickad" ger en ny version. Bokföringen kräver momssats 0 i Inställningar, med eller utan VMB.
+- **Samma uträkning som Bokföringen** (`vmbVat`/`vmbChain`). För en avslutad hel månad, utan order utan inköpspris och med "Inköpsvärde sålda pack" som underlag, är Lönsamhetens VMB-moms exakt Bokföringens med "VMB i bokföringen" på (testas i `test/db/consistency-vmb.test.ts`).
+- **Perioden:** momsen räknas på periodens marginal. Underskottet förs vidare mellan periodens månader och börjar på 0 vid periodens början (ett underskott från före perioden räknas inte; det gör Bokföringen).
+- **Preliminär:** täcker perioden bara en del av en månad, eller är en månad i perioden inte slut, är VMB-momsen preliminär (`vmbPreliminary`). Lönsamhet skriver då en rad under vattenfallet ("VMB-momsen är preliminär: perioden är inte en avslutad månad.") och Hem skriver "efter VMB-moms (preliminär)" under vinsten. Den moms som redovisas är Bokföringens, för hela månaden.
+- **Fördelning:** månadens VMB-moms fördelas på månadens order med inköpspris i proportion till max(0, belopp − inköp), med största-restmetoden (lika rest: datum, sedan order-id). Därför summerar alla vyer (titel, automat, butik, dag, vecka, månad) exakt till periodens VMB-moms. Order utan inköpspris bär ingen VMB-moms (de ingår inte i vinsten).
+- **Filter:** med butiks- eller automatfilter bär urvalets order sin del av hela organisationens VMB-moms (samma fördelning som utan filter, `vmbByOrder`), så att en butiks sida visar samma VMB-moms och vinst som butikens rad. Momsen räknas inte på urvalets egen marginal (VMB redovisas samlat för bolaget).
+- **Avstämning (vyknappen på):** försäljning (order med inköpspris) = vår vinst efter återbetalningar + butiksersättning + VMB-moms + inköp + kortavgifter + återbetalningar, exakt på öret. Med knappen av faller VMB-momsen bort ur båda leden.
+- **Mot butikens andel (vyknappen på, avtalet drar av VMB):** vid 50/50 är vår vinst efter återbetalningar lika med butikens andel utom för vinsten på order före avtalets startdag (den är helt vår), öresavrundningen per butik och månad och att vår VMB-moms är samlad medan butikens räknas per butik och månad.
+
+**Exempel** (moms 0, kortavgift 0, vinstdelning 50 %, vyknappen på): två pack à 199,00 kr (inköp 130,00 kr) och ett à 249,00 kr (inköp 165,00 kr) i november.
+
+| Post             | Uträkning                                          | Öre    |
+| ---------------- | -------------------------------------------------- | ------ |
+| Intäkt           | 2 × 19 900 + 24 900                                | 64 700 |
+| VMB-moms         | 20 % av (64 700 − 42 500 = 22 200)                 | 4 440  |
+| Inköp            | 2 × 13 000 + 16 500                                | 42 500 |
+| Butiksersättning | 50 % av (64 700 − 4 440 − 42 500), avtalet på      | 8 880  |
+| Vinst            | 64 700 − 4 440 − 42 500 − 8 880                    | 8 880  |
+| Fördelning       | vikter 6 900 : 6 900 : 8 400 → 1 380, 1 380, 1 680 |        |
+
+Med en återbetalning på 50,00 kr i oktober och ett pack à 100,00 kr (inköp 130,00 kr) i oktober blir oktobers marginal 10 000 − 5 000 − 13 000 = −8 000: ingen VMB-moms och 8 000 i underskott till november, vars VMB-moms blir 20 % av (22 200 − 8 000) = 2 840.
 
 ### Order utan inköpspris
 
@@ -231,7 +276,7 @@ Tidsvyerna (dag, vecka, månad) visar alla dagar/veckor/månader i perioden, äv
 
 ### Vattenfall
 
-Intäkt → Inköp → Avgifter → Butiksersättning → Vinst, för prissatta order. Butiksersättningen innehåller all hyra i perioden (även ej fördelad). Avdragen visas som negativa belopp och summerar till vinsten. Bredvid visas intäkten utan pris som "ingår inte".
+Intäkt → VMB-moms → Inköp → Avgifter → Butiksersättning → Vinst, för prissatta order (steget VMB-moms bara med vyknappen "Med VMB"). Butiksersättningen innehåller all hyra i perioden (även ej fördelad). Avdragen visas som negativa belopp och summerar till vinsten. Bredvid visas intäkten utan pris som "ingår inte".
 
 ## 6. Nyckeltal
 
@@ -240,7 +285,7 @@ Intäkt → Inköp → Avgifter → Butiksersättning → Vinst, för prissatta 
 | Intäkt                | Σ nettointäkt (alla order)                                                                     |
 | Antal order           | antal order (= antal pack)                                                                     |
 | Snittorder            | round(intäkt / antal order)                                                                    |
-| Marginal              | round(vinst × 10 000 / intäkt) för prissatta order                                             |
+| Marginal              | round(vinst × 10 000 / intäkt) för prissatta order (efter VMB-moms med vyknappen)              |
 | Förändring            | round((nu − före) × 10 000 / \|före\|) bp; visas inte när föregående värde är 0                |
 | Största bidragsgivare | raden med störst vinst och dess andel av totala vinsten (visas inte när totala vinsten är ≤ 0) |
 
@@ -252,10 +297,12 @@ För varje titel och vald period, med _n_ = antal order av titeln:
 | ------------------- | ---------------------------------------------------------------------------------------- |
 | Snittpris           | round(Σ netto / _n_)                                                                     |
 | Aktuellt inköpspris | priset som gäller periodens sista dag                                                    |
-| Kvar per order      | round((Σ netto − Σ kortavgift − Σ provision − _n_ × aktuellt inköpspris) / _n_)          |
+| Kvar per order      | round((Σ netto − Σ kortavgift − Σ provision − VMB − _n_ × aktuellt inköpspris) / _n_)    |
 | Hyra per order      | round(Σ fördelad hyra / _n_), visas separat och ingår inte i "kvar per order"            |
 | Kvar efter hyra     | round((Σ netto − Σ kortavgift − Σ provision − Σ hyra − _n_ × aktuellt inköpspris) / _n_) |
 | Förlustvarning      | kvar per order ≤ 0                                                                       |
+
+VMB = med vyknappen "Med VMB" 20 % av max(0, Σ netto − _n_ × aktuellt inköpspris), annars 0.
 
 "Kvar per order" svarar på frågan: vad lämnar nästa sålda pack med dagens inköpspris? Därför används det aktuella priset för alla order i perioden. Snittet av de priser som faktiskt gällde visas också.
 
@@ -302,7 +349,7 @@ pack hemma, hur länge det räcker vid alla automaters takt och vad veckans bes�
 
 | Post                    | Formel                                                                                                          |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Vinst                   | automatens vinst i perioden (samma som i vyn per automat)                                                       |
+| Vinst                   | automatens vinst i perioden (efter VMB-moms med vyknappen; samma som i vyn per automat)                         |
 | Aktiva månader          | Σ per kalendermånad (dagar då automaten var placerad / dagar i månaden). En hel månad = 1, 15 av 30 dagar = 0,5 |
 | Vinst per månad         | round(vinst / aktiva månader)                                                                                   |
 | Avskrivning per månad   | round(investering / avskrivningstid i månader), linjärt                                                         |
@@ -329,21 +376,22 @@ Beräkningarna kontrolleras automatiskt (`npm test`, `npm run test:domain:tz`):
 - **Tidszon:** samma beräkningar ger identiska resultat när servern går i UTC, Europe/Stockholm och Asia/Shanghai.
 - **Ordning:** resultatet beror inte på i vilken ordning orderna läses in.
 
-## 12. Det som inte ingår (i version 1.2.0)
+## 12. Det som inte ingår (i version 1.3.0)
 
-- Moms på hyra och provision (butikens faktura) räknas inte. Bolaget är i dag inte momsregistrerat.
+- Moms på hyra och provision (butikens faktura) räknas inte. Försäljningens moms: utan VMB som standard; med VMB när "VMB i bokföringen" är på (avsnitt 5 och Bokföringen); den ingående momsen på övriga kostnader hanteras i bokföringen.
 - Kortavgiften räknas på alla order oavsett betalsätt (den är 0 i dag). Vinstdelningen använder samma modellerade avgift, inte de verkliga avgifterna från utbetalningsfilerna.
 - Svinn, lagerjusteringar och frakt ingår inte i inköpet; inköp = inköpspris × antal sålda pack.
 - Avskrivningar och investeringar ingår inte i vinsten i lönsamhetsvyerna, bara i enhetsekonomin.
 
 ## 13. Ändringar
 
-| Version | Ändring                                                                                                                                                                                                                                                                |
-| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1.2.0   | Vinstdelning: avtal med underlaget `profit_after_costs` ger butiken en andel av vinsten efter VMB-moms, inköp och kortavgifter, per butik och månad (avsnitt 4). Förlusthantering `zero` (standard) eller `proportional`. Provision på försäljningen räknas som förut. |
-| 1.1.0   | Hyran på order utan inköpspris dras från vinsten som ej fördelad hyra (tidigare låg den utanför vinsten, så att en saknad inköpspris kunde göra vinsten bättre). Totalen ändras bara när det finns order utan pris i butiker med hyra.                                 |
-| 1.1.0   | Hyran fördelas efter netto × den månadshyra som gällde orderns dag. Order på dagar utan hyresavtal bär ingen hyra. Hyran per butik och månad och totalen ändras inte, bara fördelningen mellan raderna när avtalet byts mitt i månaden.                                |
-| 1.0.0   | Första versionen.                                                                                                                                                                                                                                                      |
+| Version | Ändring                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.3.0   | Allt räknas utan VMB som standard; knapp för att slå på. Vyknappen "Med VMB" (standard av): på drar VMB-momsen, samlad per kalendermånad med underskott som förs vidare inom perioden, som egen post från vår vinst i alla vyer, vattenfallet och nyckeltalen (avsnitt 5). Avtalets val "Dra av VMB-moms före delning" (standard av, även befintliga avtal). Bokföringens knapp "VMB i bokföringen" (standard av). En gemensam uträkning för Bokföringen, butiksavräkningen och vår vinst (`src/domain/vmb.ts`). |
+| 1.2.0   | Vinstdelning: avtal med underlaget `profit_after_costs` ger butiken en andel av vinsten efter VMB-moms, inköp och kortavgifter, per butik och månad (avsnitt 4). Förlusthantering `zero` (standard) eller `proportional`. Provision på försäljningen räknas som förut.                                                                                                                                                                                                                                           |
+| 1.1.0   | Hyran på order utan inköpspris dras från vinsten som ej fördelad hyra (tidigare låg den utanför vinsten, så att en saknad inköpspris kunde göra vinsten bättre). Totalen ändras bara när det finns order utan pris i butiker med hyra.                                                                                                                                                                                                                                                                           |
+| 1.1.0   | Hyran fördelas efter netto × den månadshyra som gällde orderns dag. Order på dagar utan hyresavtal bär ingen hyra. Hyran per butik och månad och totalen ändras inte, bara fördelningen mellan raderna när avtalet byts mitt i månaden.                                                                                                                                                                                                                                                                          |
+| 1.0.0   | Första versionen.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ## 14. Återbetalningar från kundärenden (`src/domain/refunds.ts`)
 
@@ -492,8 +540,8 @@ nyckeltalen ändras inte.
 - Per automat summerar vinst, återbetalningar, fasta kostnader och resultat till totalen
   (testas i `src/app/(app)/lonsamhet/_lib/result.test.ts`).
 
-**Vinst på Hem.** Hem visar vinsten före återbetalningar och fasta kostnader ("Vinst före fasta
-kostnader"), samma som raden "Vinst" här och vattenfallets slut. Resultatet efter fasta
+**Vinst på Hem.** Hem visar vinsten (efter VMB-moms med vyknappen) men före återbetalningar och fasta kostnader
+("Vinst före fasta kostnader"), samma som raden "Vinst" här och vattenfallets slut. Resultatet efter fasta
 kostnader finns här och på Ekonomi.
 
 **Exempel.** Två automater, moms och kortavgift 0, provision 10 %: m1 vinst 300 kr, m2 150 kr.
@@ -630,7 +678,11 @@ butiksersättning och fasta kostnader.
 - **Utbetalningar:** faktiska på `paid_on`. Väntade följer rytmen och fördröjningen i de registrerade
   utbetalningarna (med färre än två antas en per månad): känd försäljning + snittet de senaste 28 dagarna
   (`forecastWindowDays`) × dagar kvar − avgifter, avrundat en gång per period. En passerad utbetalningsdag utan
-  registrerad utbetalning läggs som försenad dagen efter i dag.
+  registrerad utbetalning läggs som försenad dagen efter i dag. **Utan källa för utbetalningar** (ingen inläst
+  utbetalning och ingen uppladdad utbetalningsfil, `queryHasPayoutSource`; Awish-utbetalningarna importeras inte
+  automatiskt) är en passerad utbetalning okänd, inte försenad: den läggs inte in (`payoutsTracked: false`), bara
+  kommande prognostiseras. Ekonomis rubrik visar då bara en neutral rad ("Utbetalningarna från Awish är inte inlästa.
+  Ladda upp dem som CSV för att stämma av.") och ingen väntad eller saknad utbetalning.
 - **Butiksersättning** för månad M = provision (`storeCompensation`) + hyra (`rentByStoreMonth`), betald månad
   M + 1 (`storeCompensationLagMonths`). Faktiska butiksbetalningar ersätter den beräknade ersättningen för sin
   butik och månad.
@@ -668,8 +720,8 @@ börjar tidigare.
    Ett okänt värde ger 0 för attributet.
 2. **Underlag** (`estimate.ts`, `SITE_ESTIMATE_DEFAULTS`): butiker med minst 28 automatdagar, högst 10 % av
    intäkten utan inköpspris och minst 60 % likhet; de 3 mest lika.
-3. **Takt per plats:** vinst och intäkt per automatmånad med samma regel som enhetsekonomin. Anges villkor för den nya
-   platsen ersätts platsens provision och hyra med dem.
+3. **Takt per plats:** vinst (efter VMB-moms med vyknappen) och intäkt per automatmånad med samma regel som enhetsekonomin. Anges
+   villkor för den nya platsen ersätts platsens provision och hyra med dem; VMB-momsen på vår vinst är kvar.
 4. **Förväntat värde** = snittet viktat efter likhet; intervallet = lägsta och högsta platsens takt.
 5. **Återbetalningstid** = investering / vinst per månad i tiondels månader (bästa fallet från högsta vinsten, sämsta
    från lägsta; vinst ≤ 0 → återbetalas inte). Avkastning per år som i avsnitt 23.
@@ -714,7 +766,7 @@ Testerna: `effect.test.ts`, `test/db/expansion-service.test.ts`.
 - **Förval:** listan börjar med platser i steget Avtal eller Möte, sedan butiker utan avtal; butiker med avtal står sist med "(har avtal)". Har butiken öppna villkor som är andel av försäljningen föreslås deras startdag som "Gäller från", så att ett klick ("Skapa ändå") skriver om dem till vinstdelning bakåt.
 - **Startdag före i dag** räknar om butikens ersättning bakåt och kräver ett extra klick ("Skapa ändå"). Stängda månader ändras inte (databasen stoppar).
 - **Parter:** organisationens namn och organisationsnumret från Ekonomi → Bokföring (saknas det står en tom rad). Butikens namn, adress, kontakt, e-post och telefon; tomt blir en rad att fylla i.
-- **Avtalets ersättning** står i klartext: Butiken får 50 % av vinsten, vinst = försäljning inklusive moms − VMB-moms − inköpspris för sålda varor − kort- och betalningsavgifter, per kalendermånad; negativ vinst ger 0 kr (förlusten förs inte vidare). Återbetalningar till kunder dras från försäljningen. Med `proportional` står i stället att butiken bär sin andel av förlusten den månaden (förs inte vidare). Hyra står bara med om villkoren har hyra.
+- **Avtalets ersättning** står i klartext: Butiken får 50 % av vinsten, vinst = försäljning inklusive moms − inköpspris för sålda varor − kort- och betalningsavgifter, per kalendermånad (VMB-moms dras inte före delningen, standard; med avtalets val på står "− moms enligt vinstmarginalbeskattning (VMB)" i definitionen); negativ vinst ger 0 kr (förlusten förs inte vidare). Återbetalningar till kunder dras från försäljningen. Med `proportional` står i stället att butiken bär sin andel av förlusten den månaden (förs inte vidare). Hyra står bara med om villkoren har hyra.
 - **Övriga villkor:** vi äger och sköter automat och varor (påfyllning, lager, service, kundärenden); butiken ger plats och el; rapport och utbetalning senast den 15 i månaden efter; vi försäkrar automat och varor, butiken ansvarar för skador den vållar, ingen ansvarar för indirekta skador; tills vidare med 1 månads uppsägning, omedelbar uppsägning vid väsentligt avtalsbrott som inte rättas inom 14 dagar, automaten hämtas inom 14 dagar.
 - **Status:** utkast → skickat (`sent_at`, "Markera skickat") → signerat (`signed_at`, när den signerade kopian laddas upp eller "Signerat utan fil"). Avtal som registrerats för hand (`template` null) har ingen status.
 - **Mallen är inte juridiskt granskad.** Dialogen säger det tills första avtalet är skapat: låt Talenom läsa den en gång. En ändrad mall får ett nytt namn (`-v2`), så att varje avtal visar vilken text det skapades med.

@@ -4,7 +4,17 @@
  * src/db/schema.ts. Ingen koppling till Fortnox: underlaget laddas ned och skickas in.
  */
 
-import { bigint, date, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  boolean,
+  date,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from "drizzle-orm/pg-core";
 
 import { ore } from "../types";
 
@@ -28,6 +38,8 @@ export const bookkeepingSettings = pgTable("bookkeeping_settings", {
   orgNumber: text("org_number"),
   purchaseBasis: text("purchase_basis").$type<PurchaseBasis>().notNull(),
   openingCarryOre: ore("opening_carry_ore").notNull(),
+  /** "VMB i bokföringen" (20261104150000_bokforing_vmb_val.sql). Standard av. */
+  vmbEnabled: boolean("vmb_enabled").notNull().default(false),
   ...stamps(),
 });
 

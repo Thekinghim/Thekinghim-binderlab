@@ -53,6 +53,8 @@ export interface BokforingSettings {
   readonly orgNumber: string | null;
   readonly purchaseBasis: PurchaseBasis;
   readonly openingCarryOre: number;
+  /** "VMB i bokföringen" (standard av): månadspaketet bokförs med VMB-moms. */
+  readonly vmbEnabled: boolean;
   /** Sant när inställningarna sparats (annars visas förslaget). */
   readonly saved: boolean;
 }
@@ -64,6 +66,7 @@ export const DEFAULT_SETTINGS: BokforingSettings = {
   orgNumber: null,
   purchaseBasis: "received_purchases",
   openingCarryOre: 0,
+  vmbEnabled: false,
   saved: false,
 };
 
@@ -76,6 +79,13 @@ export interface MonthSnapshot {
   readonly carryOutOre: number;
   readonly storeShareOre: number;
   readonly resultOre: number;
+  /** VMB i bokföringen när månaden skickades (saknas = på: så räknades alla före valet). */
+  readonly vmbEnabled?: boolean;
+}
+
+/** VMB för en skickad månad: valet i ögonblicksbilden, saknas = på. */
+export function snapshotVmb(snapshot: MonthSnapshot | null): boolean {
+  return snapshot?.vmbEnabled ?? true;
 }
 
 export interface ReceiptRow {
@@ -139,6 +149,11 @@ async function asRole<T>(
 // Läsning
 // ---------------------------------------------------------------------------
 
+/** Inställningarna är sparade (saveBokforingSettingsFor skriver alltid hela kontoplanen). */
+function isSavedPlan(raw: unknown): boolean {
+  return !!raw && typeof raw === "object" && Object.keys(raw).length > 0;
+}
+
 async function readSettings(tx: Tx, orgId: string): Promise<BokforingSettings> {
   const [row] = await tx
     .select()
@@ -151,7 +166,9 @@ async function readSettings(tx: Tx, orgId: string): Promise<BokforingSettings> {
     orgNumber: row.orgNumber,
     purchaseBasis: row.purchaseBasis,
     openingCarryOre: row.openingCarryOre,
-    saved: true,
+    vmbEnabled: row.vmbEnabled,
+    // VMB-knappen kan skapa raden med tom kontoplan: då är inställningarna inte sparade.
+    saved: isSavedPlan(row.accountPlan),
   };
 }
 
@@ -176,6 +193,7 @@ function toSnapshot(b: MonthBook): MonthSnapshot {
     carryOutOre: b.vmb.carryOutOre,
     storeShareOre: b.storeShareOre,
     resultOre: b.resultOre,
+    vmbEnabled: b.vmbEnabled,
   };
 }
 
@@ -190,6 +208,7 @@ function parseSnapshot(raw: unknown): MonthSnapshot | null {
       carryOutOre: z.number().int().min(0),
       storeShareOre: z.number().int(),
       resultOre: z.number().int(),
+      vmbEnabled: z.boolean().optional(),
     })
     .safeParse(raw);
   return r.success ? r.data : null;
@@ -208,7 +227,10 @@ export interface OrgRef {
   readonly timezone: string;
 }
 
-/** Alla månader från den första med order till och med `until`, med VMB-kedjan. */
+/**
+ * Alla månader från den första med order till och med `until`, med VMB-kedjan när VMB är
+ * på. En skickad månad räknas med valet den skickades med; övriga med inställningen.
+ */
 async function build(tx: Tx, org: OrgRef, today: IsoDate, until: string): Promise<Built> {
   const orgId = org.id;
   const [settings, first, sentRows] = await Promise.all([
@@ -216,6 +238,19 @@ async function build(tx: Tx, org: OrgRef, today: IsoDate, until: string): Promis
     firstMonth(tx, orgId, org.timezone, today),
     tx.select().from(s.bookkeepingMonths).where(eq(s.bookkeepingMonths.organizationId, orgId)),
   ]);
+  const sent = new Map<string, { sentAt: string; snapshot: MonthSnapshot | null }>();
+  for (const r of sentRows) {
+    if (r.sentAt) {
+      sent.set(r.month.slice(0, 7), {
+        sentAt: r.sentAt.toISOString(),
+        snapshot: parseSnapshot(r.snapshot),
+      });
+    }
+  }
+  const vmbFor = (m: string) => {
+    const x = sent.get(m);
+    return x ? snapshotVmb(x.snapshot) : settings.vmbEnabled;
+  };
   const months = first <= until ? eachMonth(`${first}-01`, `${until}-01`) : [];
   const reports = await monthReportsIn(tx, orgId, months);
   const figures = months.map((m) => {
@@ -233,24 +268,22 @@ async function build(tx: Tx, org: OrgRef, today: IsoDate, until: string): Promis
       throw error;
     }
   });
-  const sent = new Map<string, { sentAt: string; snapshot: MonthSnapshot | null }>();
-  for (const r of sentRows) {
-    if (r.sentAt) {
-      sent.set(r.month.slice(0, 7), {
-        sentAt: r.sentAt.toISOString(),
-        snapshot: parseSnapshot(r.snapshot),
-      });
-    }
-  }
   const carry = new Map<string, number>();
   for (const [m, v] of sent) if (v.snapshot) carry.set(m, v.snapshot.carryOutOre);
-  return { settings, books: bookMonths(figures, settings.openingCarryOre, carry), sent };
+  return {
+    settings,
+    books: bookMonths(figures, settings.openingCarryOre, carry, vmbFor),
+    sent,
+  };
 }
 
 function changed(b: MonthBook, snap: MonthSnapshot | null): boolean {
   if (!snap) return false;
   const now = toSnapshot(b);
-  return (Object.keys(now) as (keyof MonthSnapshot)[]).some((k) => now[k] !== snap[k]);
+  if (b.vmbEnabled !== snapshotVmb(snap)) return true;
+  return (Object.keys(now) as (keyof MonthSnapshot)[])
+    .filter((k) => k !== "vmbEnabled")
+    .some((k) => now[k] !== snap[k]);
 }
 
 async function receiptsIn(tx: Tx, orgId: string, month?: string) {
@@ -363,6 +396,25 @@ export async function saveBokforingSettingsFor(
         org_number = excluded.org_number,
         purchase_basis = excluded.purchase_basis,
         opening_carry_ore = excluded.opening_carry_ore`);
+  });
+}
+
+/**
+ * "VMB i bokföringen" på eller av (ägare och admin). Skickade månader behåller sitt val;
+ * övriga månaders sparade paket blir inaktuella (fingeravtrycket ändras) och tas fram på
+ * nytt (refreshUnsentPackagesFor, det schemalagda jobbet eller nedladdningen).
+ */
+export async function setBokforingVmbFor(viewer: Viewer, enabled: boolean): Promise<void> {
+  if (typeof enabled !== "boolean") throw new BokforingError("Ogiltigt val.");
+  const orgId = viewer.organization.id;
+  await asRole(viewer, OPERATOR_ROLES, async (tx) => {
+    if (enabled && (await querySettings(tx, orgId)).vatRateBp !== 0) {
+      throw new BokforingError(new VmbVatRateError().message);
+    }
+    await tx.execute(sql`
+      insert into public.bookkeeping_settings (organization_id, account_plan, vmb_enabled)
+      values (${orgId}::uuid, '{}'::jsonb, ${enabled})
+      on conflict (organization_id) do update set vmb_enabled = excluded.vmb_enabled`);
   });
 }
 

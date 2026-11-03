@@ -236,6 +236,12 @@ export interface CashflowOptions {
   readonly storeCompensationDueDay?: number | null;
   /** Saldo på kontot vid intervallets början. `null` = visa inget saldo. */
   readonly openingBalanceOre?: number | null;
+  /**
+   * Sant (standard) när utbetalningarna läses in. Falskt när det inte finns någon källa för
+   * dem: en väntad utbetalning med utbetalningsdag ≤ i dag läggs inte in (den är okänd, inte
+   * försenad), bara kommande utbetalningar prognostiseras.
+   */
+  readonly payoutsTracked?: boolean;
 }
 
 /** Indata till `cashflow`. */

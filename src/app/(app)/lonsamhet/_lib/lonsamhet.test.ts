@@ -388,3 +388,39 @@ describe("parametrar och länkar", () => {
     expect(priceHref("a b")).toBe("/inkopspriser?titel=a%20b#titel");
   });
 });
+
+describe("VMB-moms i Lönsamhet", () => {
+  function withVmb(): LonsamhetInput {
+    const base = docExample();
+    return {
+      ...base,
+      current: { ...base.current, settings: { vatRateBp: 0, cardFeeBp: 0, vmb: true } },
+    };
+  }
+
+  it("dras som eget steg: 4 × (49 − 20) kr = 116 kr marginal ger 23,20 kr VMB-moms", () => {
+    const m = buildLonsamhetModel(withVmb(), { today: "2026-12-01" });
+    expect(m.bridge.vmbVatOre).toBe(2_320);
+    expect(m.bridge.vmbPreliminary).toBe(false);
+    // −3,60 kr utan VMB (avsnitt 5) − 23,20 kr.
+    expect(m.bridge.profitOre).toBe(-2_680);
+    expect(m.totals.vmbVatOre).toBe(2_320);
+    expect(m.kpis.find((k) => k.id === "profit")?.value).toBe(-2_680);
+    expect(
+      m.bridge.revenueOre -
+        m.bridge.vmbVatOre! -
+        m.bridge.costOre -
+        m.bridge.feesOre -
+        m.bridge.compensationOre,
+    ).toBe(m.bridge.profitOre);
+  });
+
+  it("preliminär när månaden inte är slut; inget steg utan VMB", () => {
+    expect(buildLonsamhetModel(withVmb(), { today: "2026-11-30" }).bridge.vmbPreliminary).toBe(
+      true,
+    );
+    const plain = buildLonsamhetModel(docExample(), { today: "2026-11-30" });
+    expect(plain.bridge.vmbVatOre).toBeNull();
+    expect(plain.bridge.vmbPreliminary).toBe(false);
+  });
+});

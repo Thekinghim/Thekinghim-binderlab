@@ -122,6 +122,7 @@ export function termsLabel(
   commissionBp: number | null,
   monthlyRentOre: number | null,
   commissionBase: CommissionBase = "net_excl_vat",
+  vmbBeforeSplit = false,
 ): string {
   const parts: string[] = [];
   if (commissionBase === "profit_after_costs") {
@@ -130,6 +131,7 @@ export function termsLabel(
         ? "vinstdelning 50/50"
         : `vinstdelning ${percentBp(commissionBp ?? 0)}`,
     );
+    if (vmbBeforeSplit) parts.push("VMB dras före delning");
   } else if (commissionBp !== null) parts.push(`provision ${percentBp(commissionBp)}`);
   if (monthlyRentOre !== null) parts.push(`hyra ${sek(monthlyRentOre)}/mån`);
   return parts.length > 0 ? sentence(parts.join(" · ")).replace(/\.$/, "") : "Ingen ersättning";
@@ -161,6 +163,8 @@ export interface AgreementRecord {
   readonly monthlyRentOre: number | null;
   /** Saknas = 'net_excl_vat' (andel av försäljningen). */
   readonly commissionBase?: CommissionBase;
+  /** Vinstdelning: VMB-moms dras före delningen. Saknas = falskt. */
+  readonly vmbBeforeSplit?: boolean;
   readonly note: string | null;
 }
 
@@ -169,9 +173,10 @@ export function toAgreementView(a: AgreementRecord, today: IsoDate): AgreementVi
   return {
     ...a,
     commissionBase: base,
+    vmbBeforeSplit: a.vmbBeforeSplit === true,
     model: compensationModel(a.commissionBp, a.monthlyRentOre, base),
     state: agreementState(a, today),
-    termsLabel: termsLabel(a.commissionBp, a.monthlyRentOre, base),
+    termsLabel: termsLabel(a.commissionBp, a.monthlyRentOre, base, a.vmbBeforeSplit === true),
     periodLabel: agreementPeriodLabel(a.validFrom, a.validTo),
   };
 }
@@ -492,7 +497,8 @@ export function compensationHeadline(
 
 /**
  * Rubriken på butikens sida: intäkten i perioden och förändringen, vad vi tjänade
- * (vinsten efter inköp och ersättning) och vad butiken fått i ersättning i månaden.
+ * (vinsten efter inköp och ersättning, och VMB-moms med vyknappen "Med VMB") och vad butiken
+ * fått i ersättning i månaden.
  */
 export function storeHeadline(args: {
   name: string;
@@ -502,6 +508,8 @@ export function storeHeadline(args: {
   /** "på 20 dagar". */
   span: string;
   month: MonthCompensation;
+  /** Vinsten är efter VMB-moms (vyknappen "Med VMB"). Standard av. */
+  vmb?: boolean;
 }): { title: string; aside: string } {
   const title =
     args.revenueOre > 0
@@ -514,7 +522,7 @@ export function storeHeadline(args: {
   }
   if (args.revenueOre > 0) {
     parts.push(
-      `${args.profitOre < 0 ? "förlust" : "vinst"} för oss ${sek(Math.abs(args.profitOre))} efter inköp och ersättning`,
+      `${args.profitOre < 0 ? "förlust" : "vinst"} för oss ${sek(Math.abs(args.profitOre))} efter ${args.vmb ? "inköp, VMB-moms och ersättning" : "inköp och ersättning"}`,
     );
   }
   parts.push(

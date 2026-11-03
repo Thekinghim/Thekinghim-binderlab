@@ -117,6 +117,7 @@ export async function updateAgreement(input: {
   commission?: string;
   rent?: string;
   note?: string;
+  vmbBeforeSplit?: boolean;
   confirmHistory?: boolean;
 }): Promise<AgreementResult<{ storeId: string }>> {
   return run((v) => updateAgreementFor(v, input));

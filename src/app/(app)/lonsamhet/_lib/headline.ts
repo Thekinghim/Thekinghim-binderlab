@@ -37,6 +37,8 @@ export interface HeadlineInput {
   readonly revenueOre: number;
   readonly costOre: number;
   readonly feesOre: number;
+  /** VMB-moms (0 utan VMB). Standard 0. */
+  readonly vmbVatOre?: number;
   readonly compensationOre: number;
   /** Andel av intäkten som saknar inköpspris, bp. */
   readonly unpricedShareBp: number;
@@ -104,6 +106,7 @@ function largestDeduction(input: HeadlineInput): string {
     ["Butiksersättningen", input.compensationOre],
     ["Inköpen", input.costOre],
     ["Avgifterna", input.feesOre],
+    ["VMB-momsen", input.vmbVatOre ?? 0],
   ];
   items.sort((a, b) => b[1] - a[1]);
   const [label, value] = items[0] ?? ["Butiksersättningen", 0];

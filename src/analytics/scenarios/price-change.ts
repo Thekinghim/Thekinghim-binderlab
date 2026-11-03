@@ -6,7 +6,9 @@
  * 1. Varje order räknas om med det nya beloppet (belopp + N) genom domänens
  *    `orderEconomics`: moms, kortavgift och provision följer det nya priset enligt samma
  *    regler som i lönsamheten. Inköpet är oförändrat.
- *    Bidrag per order = nettointäkt − inköp − avgift − butikens ersättning.
+ *    Bidrag per order = nettointäkt − inköp − avgift − VMB-moms − butikens ersättning.
+ *    VMB-moms (bara med VMB, `vmbApplies`): orderns nuvarande del av månadens VMB-moms
+ *    (liggaren) + 20 % av ändringen i orderns marginal (belopp − inköp), aldrig under 0.
  *    Vinstdelning (avtal 'profit_after_costs'): butikens nya andel = nuvarande andel +
  *    andel × (ny ordervinst − nuvarande ordervinst), där ordervinst = belopp − VMB-moms
  *    (20 % av max(0, belopp − inköp)) − inköp − avgift. Uppskattning per order: månadens
@@ -86,6 +88,8 @@ export interface PriceChangeBase {
   readonly revenueOre: number;
   readonly costOre: number;
   readonly feesOre: number;
+  /** VMB-moms på vår vinst (0 utan VMB). */
+  readonly vmbVatOre: number;
   readonly commissionOre: number;
   readonly contributionOre: number;
   readonly rentOre: number;
@@ -176,6 +180,7 @@ export function priceChangeScenario(input: PriceChangeScenarioInput): PriceChang
   let revenue = 0;
   let cost = 0;
   let fees = 0;
+  let vmb = 0;
   let commission = 0;
   let rent = 0;
   let newGross = 0;
@@ -212,26 +217,37 @@ export function priceChangeScenario(input: PriceChangeScenarioInput): PriceChang
           agreement!.commissionBp ?? 0,
         );
     }
+    const afterVmb =
+      ledger.vmb.length === 0
+        ? 0
+        : Math.max(
+            0,
+            e.vmbVatOre +
+              vmbVatOfMargin(after.grossOre - e.costOre) -
+              vmbVatOfMargin(e.grossOre - e.costOre),
+          );
     n++;
     gross += e.grossOre;
     revenue += e.netRevenueOre;
     cost += e.costOre;
     fees += e.cardFeeOre;
+    vmb += e.vmbVatOre;
     commission += e.commissionOre;
     rent += e.rentOre;
     newGross += after.grossOre;
     newRevenue += after.netRevenueOre;
-    newContribution += after.netRevenueOre - e.costOre - after.cardFeeOre - afterShare;
+    newContribution += after.netRevenueOre - e.costOre - after.cardFeeOre - afterVmb - afterShare;
     orderIds.push(e.order.id);
     dates.push(e.order.businessDate);
   }
-  const contribution = revenue - cost - fees - commission;
+  const contribution = revenue - cost - fees - vmb - commission;
   const base: PriceChangeBase = {
     units: n,
     grossOre: gross,
     revenueOre: revenue,
     costOre: cost,
     feesOre: fees,
+    vmbVatOre: vmb,
     commissionOre: commission,
     contributionOre: contribution,
     rentOre: rent,

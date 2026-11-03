@@ -362,6 +362,8 @@ export function cashflow(input: CashflowInput): CashflowResult {
     const amount = knownSales - knownFees + forecastSales - forecastFees;
     if (amount === 0) continue;
     const overdue = payDate <= asOf;
+    // Utan källa för utbetalningar är en passerad utbetalning okänd, inte försenad.
+    if (overdue && options.payoutsTracked === false) continue;
     push({
       key: `payout-forecast:${s.start}`,
       kind: "payout",

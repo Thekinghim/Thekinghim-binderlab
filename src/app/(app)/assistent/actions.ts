@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 
 import type { ActionResult } from "@/server/auth/flows";
 import { runAdvisor, setSuggestionStatusFor } from "@/server/assistant/advisor/service";
+import { requestVmbView } from "@/server/data/core";
 import type { Viewer } from "@/server/data/core/loaders";
 import { AuthorizationError, getActiveOrganization, requireUser } from "@/server/session";
 
@@ -57,7 +58,8 @@ export async function generateSuggestions(): Promise<ActionResult<{ accepted: nu
   const viewer = await currentViewer();
   if (!viewer) return { ok: false, error: FORBIDDEN };
   try {
-    const r = await runAdvisor({ viewer, trigger: "manual" });
+    // Underlaget följer vyknappen "Med VMB" på sidan där knappen trycktes.
+    const r = await runAdvisor({ viewer, trigger: "manual", vmb: await requestVmbView() });
     switch (r.status) {
       case "ok":
         refresh();

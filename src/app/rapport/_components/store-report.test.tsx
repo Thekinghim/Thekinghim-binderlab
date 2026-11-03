@@ -124,6 +124,7 @@ describe("butiksrapporten med vinstdelning", () => {
       {
         ...agreement("s-1", "2026-10-01", null, { commissionBp: 5_000 }),
         commissionBase: "profit_after_costs",
+        vmbBeforeSplit: true,
       },
       agreement("s-2", "2026-01-01", null, { monthlyRentOre: 99_900 }),
     ],
@@ -142,7 +143,9 @@ describe("butiksrapporten med vinstdelning", () => {
     // 398 kr sålt, 260 kr inköp: VMB 27,60 kr, vinst 110,40 kr, butiken 55,20 kr.
     expect(snap.report.compensation.totalOre).toBe(5_520);
     const text = visibleText(renderToStaticMarkup(<StoreReportDocument snapshot={snap} />));
-    expect(text).toContain("Avtal: 50 % av vinsten efter kostnader, giltigt från 1 oktober 2026.");
+    expect(text).toContain(
+      "Avtal: 50 % av vinsten efter kostnader (VMB-moms dras före delning), giltigt från 1 oktober 2026.",
+    );
     for (const label of [
       "Försäljning",
       "VMB-moms",

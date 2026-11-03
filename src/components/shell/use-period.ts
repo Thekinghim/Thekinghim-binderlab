@@ -1,14 +1,17 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import {
   carriedQuery,
   describePeriod,
   parsePeriod,
   parseScope,
+  parseVmbView,
+  VMB_PARAM,
   withPeriod,
   withScope,
+  withVmbView,
   type ParseOptions,
   type PeriodDescription,
   type PeriodSelection,
@@ -102,6 +105,58 @@ export function useScope(): Scope & { setScope: (scope: Partial<Scope>) => void 
     [replace, sp],
   );
   return { ...scope, setScope };
+}
+
+/** Nyckeln i localStorage för användarens senaste val av "Med VMB". */
+export function vmbStorageKey(userKey: string): string {
+  return `binderlab:vmb:${userKey}`;
+}
+
+function readStored(key: string | null): "1" | "0" | null {
+  if (!key) return null;
+  try {
+    const v = window.localStorage.getItem(key);
+    return v === "1" || v === "0" ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(key: string | null, on: boolean): void {
+  if (!key) return;
+  try {
+    window.localStorage.setItem(key, on ? "1" : "0");
+  } catch {
+    // Privat läge eller blockerad lagring: valet gäller bara URL:en.
+  }
+}
+
+/**
+ * Vyknappen "Med VMB" (?vmb=1). Valet minns per användare i localStorage (`userKey`):
+ * saknas parametern i URL:en och användaren senast valde på, sätts den. En länk med
+ * ?vmb=1 visar alltid vyn med VMB.
+ */
+export function useVmbView(userKey: string | null): {
+  on: boolean;
+  setOn: (on: boolean) => void;
+} {
+  const [sp, replace] = useQuery();
+  const on = parseVmbView(sp);
+  const key = userKey ? vmbStorageKey(userKey) : null;
+  const hasParam = sp.has(VMB_PARAM);
+  useEffect(() => {
+    if (!hasParam && readStored(key) === "1") replace(withVmbView(sp, true));
+    // Bara när sidan öppnas eller parametern försvinner, inte vid varje annat val.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, hasParam]);
+  const setOn = useCallback(
+    (next: boolean) => {
+      writeStored(key, next);
+      replace(withVmbView(sp, next));
+    },
+    [key, replace, sp],
+  );
+  return { on, setOn };
 }
 
 /** "?period=7d&butik=s1" att hänga på interna länkar så att vyn följer med. */

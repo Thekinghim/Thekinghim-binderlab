@@ -138,6 +138,8 @@ const termsShape = {
   commission: z.string().optional().nullable(),
   rent: z.string().optional().nullable(),
   note: optionalText(500, "Anteckningen"),
+  /** Vinstdelning: dra av VMB-moms före delningen. Utelämnad = oförändrad (nytt avtal: av). */
+  vmbBeforeSplit: z.boolean().optional(),
 };
 
 function withTerms<
@@ -405,12 +407,14 @@ export function agreementChangeImpact(
     readonly commissionBp: number | null;
     readonly monthlyRentOre: number | null;
     readonly commissionBase?: CommissionBase;
+    readonly vmbBeforeSplit?: boolean;
   },
   after: {
     readonly validTo: IsoDate | null;
     readonly commissionBp: number | null;
     readonly monthlyRentOre: number | null;
     readonly commissionBase?: CommissionBase;
+    readonly vmbBeforeSplit?: boolean;
   },
   today: IsoDate,
 ): DayRange | null {
@@ -419,7 +423,10 @@ export function agreementChangeImpact(
   const termsChanged =
     before.commissionBp !== after.commissionBp ||
     before.monthlyRentOre !== after.monthlyRentOre ||
-    (before.commissionBase ?? "net_excl_vat") !== (after.commissionBase ?? "net_excl_vat");
+    (before.commissionBase ?? "net_excl_vat") !== (after.commissionBase ?? "net_excl_vat") ||
+    (after.commissionBase === "profit_after_costs" &&
+      (before.vmbBeforeSplit ?? false) !==
+        (after.vmbBeforeSplit ?? before.vmbBeforeSplit ?? false));
   if (termsChanged) {
     let end = yesterday;
     if (before.validTo !== null) end = minDate(end, before.validTo);

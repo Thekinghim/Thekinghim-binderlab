@@ -175,6 +175,8 @@ export interface CreateContractInput {
   readonly target: string;
   readonly validFrom: IsoDate;
   readonly confirmHistory?: boolean;
+  /** Dra av VMB-moms från vinsten före delningen. Standard falskt. */
+  readonly vmbBeforeSplit?: boolean;
 }
 
 export type CreateContractResult =
@@ -320,6 +322,7 @@ export async function createStoreContractFor(
     const terms = {
       shareBp: DEFAULT_PROFIT_SHARE_BP,
       lossTreatment: "zero" as const,
+      vmbBeforeSplit: input.vmbBeforeSplit === true,
       monthlyRentOre,
     };
     await tx.insert(s.contracts).values({
@@ -338,6 +341,7 @@ export async function createStoreContractFor(
       commissionBp: terms.shareBp,
       commissionBase: "profit_after_costs" as const,
       lossTreatment: terms.lossTreatment,
+      vmbBeforeSplit: terms.vmbBeforeSplit,
       monthlyRentOre,
       contractId,
       note: "Enligt placeringsavtal (mall)",
@@ -384,6 +388,7 @@ export async function createStoreContractFor(
         validFrom: input.validFrom,
         shareBp: terms.shareBp,
         lossTreatment: terms.lossTreatment,
+        vmbBeforeSplit: terms.vmbBeforeSplit,
         monthlyRentOre,
         reference: contractId.slice(0, 8).toUpperCase(),
       },
@@ -444,6 +449,7 @@ export async function contractTemplateHtmlFor(viewer: Viewer, contractId: string
         .select({
           commissionBp: s.storeAgreements.commissionBp,
           lossTreatment: s.storeAgreements.lossTreatment,
+          vmbBeforeSplit: s.storeAgreements.vmbBeforeSplit,
           monthlyRentOre: s.storeAgreements.monthlyRentOre,
         })
         .from(s.storeAgreements)
@@ -465,6 +471,7 @@ export async function contractTemplateHtmlFor(viewer: Viewer, contractId: string
       validFrom: c.validFrom,
       shareBp: terms?.commissionBp ?? DEFAULT_PROFIT_SHARE_BP,
       lossTreatment: terms?.lossTreatment ?? "zero",
+      vmbBeforeSplit: terms?.vmbBeforeSplit ?? false,
       monthlyRentOre: terms?.monthlyRentOre === undefined ? null : terms.monthlyRentOre,
       reference: c.id.slice(0, 8).toUpperCase(),
     });

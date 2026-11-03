@@ -254,6 +254,7 @@ export const storeAgreements = pgTable("store_agreements", {
   monthlyRentOre: ore("monthly_rent_ore"),
   commissionBase: commissionBase("commission_base").notNull().default("net_excl_vat"),
   lossTreatment: lossTreatment("loss_treatment").notNull().default("zero"),
+  vmbBeforeSplit: boolean("vmb_before_split").notNull().default(false),
   rentProration: rentProration("rent_proration").notNull().default("daily"),
   note: text("note"),
   ...stamps(),

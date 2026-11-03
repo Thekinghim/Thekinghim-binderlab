@@ -245,6 +245,7 @@ export function buildSnapshot(input: SnapshotInput) {
     butik: storeName.get(r.key) ?? r.key,
     intakt30: kr(rowRevenue(r)),
     butiksersattning30: kr(r.compensationOre),
+    ...(views30.title.vmb.applies ? { vmbMoms30: kr(r.vmbVatOre) } : {}),
     butiksandel: pct(
       rowRevenue(r) > 0 ? Math.round((r.compensationOre * 10_000) / rowRevenue(r)) : null,
     ),
@@ -372,6 +373,10 @@ export function buildSnapshot(input: SnapshotInput) {
       foregaende7: metrics(mPrev7),
       forandring7: change(m7, mPrev7),
       andelUtanInkopspris30: pct(m30.unpricedShareBp),
+      // Alla vinsttal här är efter inköp, avgifter och butiksersättning, och efter VMB-moms
+      // bara när vyknappen "Med VMB" var på (vinstEfterVmbMoms).
+      vinstEfterVmbMoms: views30.title.vmb.applies,
+      ...(views30.title.vmb.applies ? { vmbMoms30: kr(views30.title.totals.vmbVatOre) } : {}),
     },
     titlar: titles,
     automater: machines,

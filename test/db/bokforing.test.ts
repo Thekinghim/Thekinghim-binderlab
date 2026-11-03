@@ -28,6 +28,7 @@ import {
   monthPackageFor,
   readReceiptFor,
   saveBokforingSettingsFor,
+  setBokforingVmbFor,
   unmarkMonthSentFor,
   uploadReceiptFor,
 } from "../../src/server/bokforing/service";
@@ -371,6 +372,8 @@ describe("månader, VMB och skickad", () => {
     await addOrders(o, "2026-09", 10);
     await addOrders(o, "2026-10", 5);
     await saveBokforingSettingsFor(o.ownerV, settings({ openingCarryOre: 90_000 }));
+    // "VMB i bokföringen" på (standard av): samma utfall som före valet.
+    await setBokforingVmbFor(o.ownerV, true);
   });
 
   it("en rad per månad, nyast först, med VMB och underskott som förs vidare", async () => {
@@ -446,6 +449,7 @@ describe("kvitton och månadspaketet", () => {
     o = await seedOrg();
     await addOrders(o, "2026-10", 3);
     await saveBokforingSettingsFor(o.ownerV, settings());
+    await setBokforingVmbFor(o.ownerV, true);
   });
 
   it("laddar upp, känner igen dubbletter, nekar fel filtyp och tar bort", async () => {
@@ -569,6 +573,7 @@ describe("återbetalningar, mottagna inköp och ofärdig vinstdelning", () => {
       );
     });
     await saveBokforingSettingsFor(o.ownerV, settings({ purchaseBasis: "received_purchases" }));
+    await setBokforingVmbFor(o.ownerV, true);
   });
 
   it("återbetalningen dras från försäljningen och bara mottaget antal räknas som inköp", async () => {

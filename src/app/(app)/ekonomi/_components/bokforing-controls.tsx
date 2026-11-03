@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * Klientdelar för Ekonomi → Bokföring: markera som skickad, kvitton (dra och släpp, foto på
- * mobilen) och kontoplanen.
+ * Klientdelar för Ekonomi → Bokföring: VMB på/av, markera som skickad, kvitton (dra och
+ * släpp, foto på mobilen) och kontoplanen.
  */
 
 import { useRouter } from "next/navigation";
@@ -18,6 +18,7 @@ import type { AccountPlan } from "@/server/bokforing/plan";
 import {
   archiveReceipt,
   saveBokforingSettings,
+  setBokforingVmb,
   setMonthSent,
   uploadReceipts,
 } from "../bokforing-actions";
@@ -41,6 +42,57 @@ const OK_TYPES = new Set([
 ]);
 /** Namnet eller webbläsarens typ räcker här; servern avgör av innehållet. */
 const acceptable = (f: File) => OK_EXT.test(f.name) || OK_TYPES.has(f.type);
+
+/**
+ * "VMB i bokföringen" (standard av). Av: paketet bokförs utan VMB-moms. Skickade månader
+ * behåller sitt val. Läsaren ser läget utan att kunna ändra.
+ */
+export function VmbBookkeepingSwitch({ on, canEdit }: { on: boolean; canEdit: boolean }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [pending, start] = useTransition();
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-describedby="bokforing-vmb-hint"
+        disabled={!canEdit || pending}
+        onClick={() =>
+          start(async () => {
+            const res = await setBokforingVmb({ enabled: !on }).catch(() =>
+              unreachable("Ändringen"),
+            );
+            if (res.ok) {
+              router.refresh();
+              toast({ title: on ? "VMB av" : "VMB på", tone: "ok" });
+            } else {
+              toast({ title: "Inte ändrad", description: res.error, tone: "critical" });
+            }
+          })
+        }
+        className={cn(
+          "label flex h-8 items-center gap-2 rounded-sm border border-line-strong px-2.5 transition-colors disabled:cursor-not-allowed",
+          on ? "bg-hover font-medium text-fg" : "text-muted hover:text-fg",
+          pending && "opacity-60",
+        )}
+      >
+        <span
+          aria-hidden
+          className={cn(
+            "inline-block size-2 rounded-xs border border-current",
+            on ? "bg-current" : "bg-transparent",
+          )}
+        />
+        VMB i bokföringen<span aria-hidden>: {on ? "på" : "av"}</span>
+      </button>
+      <span id="bokforing-vmb-hint" className="text-sm text-subtle">
+        {on ? "Paketet bokförs med VMB-moms." : "Paketet bokförs utan VMB."}
+      </span>
+    </div>
+  );
+}
 
 /** Markera som skickad / ångra. */
 export function SentToggle({ month, sent }: { month: string; sent: boolean }) {
@@ -300,7 +352,7 @@ export function PlanForm({
           disabled={!canEdit}
         />
         <Select
-          label="Inköp i VMB"
+          label="Inköp"
           name="basis"
           defaultValue={purchaseBasis}
           disabled={!canEdit}

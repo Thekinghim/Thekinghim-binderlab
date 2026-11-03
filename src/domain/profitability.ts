@@ -14,7 +14,8 @@
  * dag och vecka; per butik på butikens rad; per månad på månadens rad.
  *
  *   betalt (grossOre)   = vatOre + revenueOre + unpricedVatOre + unpricedRevenueOre
- *   vinst               = revenueOre − costOre − feesOre − compensationOre
+ *   vinst               = revenueOre − costOre − feesOre − vmbVatOre − compensationOre
+ *   vmbVatOre           = radens del av VMB-momsen (ledger.ts; 0 utan VMB)
  *   compensationOre     = commissionOre + rentOre
  *   all hyra i perioden = Σ rentOre      (ej fördelad hyra, även den på order utan pris, ingår)
  *   unpricedRentOre     = informativt: hyra på radens order utan pris, som redan ingår i
@@ -34,13 +35,20 @@ import {
   monthStart,
   weekOf,
 } from "./dates";
-import { buildLedger, type Ledger, type LedgerDiagnostics, type LedgerEntry } from "./ledger";
+import {
+  buildLedger,
+  type Ledger,
+  type LedgerDiagnostics,
+  type LedgerEntry,
+  type VmbMonth,
+} from "./ledger";
 import { checkSafe, ratioBp } from "./money";
 import type { StoreMonthRent } from "./rent";
 import type { GroupBy, IsoDate, Period, ProfitabilityInput } from "./types";
+import { vmbApplies } from "./vmb";
 
 /** Version av beräkningsreglerna. Sparas med rapporter (`reports.calc_version`). */
-export const CALC_VERSION = "1.2.0";
+export const CALC_VERSION = "1.3.0";
 
 /** Nyckel för ej fördelad hyra. */
 export const UNALLOCATED_KEY = "unallocated";
@@ -79,13 +87,15 @@ export interface ProfitabilityRow {
   readonly costOre: number;
   /** Avgifter (kortavgift), prissatta order. */
   readonly feesOre: number;
+  /** VMB-moms (vinstmarginalbeskattning), prissatta order. 0 utan VMB (`vmbApplies`). */
+  readonly vmbVatOre: number;
   /** Provision, prissatta order. */
   readonly commissionOre: number;
   /** Hyra som dras från vinsten: fördelad på prissatta order + ej fördelad hyra. */
   readonly rentOre: number;
   /** Butiksersättning = provision + hyra. */
   readonly compensationOre: number;
-  /** Vinst = intäkt − inköp − avgifter − butiksersättning. */
+  /** Vinst = intäkt − inköp − avgifter − VMB-moms − butiksersättning. */
   readonly profitOre: number;
   /** Marginal i bp = round(vinst × 10 000 / intäkt). `null` när intäkten är 0. */
   readonly marginBp: number | null;
@@ -135,7 +145,7 @@ export interface UnpricedSummary {
   readonly byTitle: UnpricedTitle[];
 }
 
-export type WaterfallKey = "revenue" | "cost" | "fees" | "compensation" | "profit";
+export type WaterfallKey = "revenue" | "vmb" | "cost" | "fees" | "compensation" | "profit";
 
 /** Ett steg i vattenfallet. Avdrag har negativt värde; summan av stegen före vinsten = vinsten. */
 export interface WaterfallStep {
@@ -147,8 +157,9 @@ export interface WaterfallStep {
 }
 
 /**
- * Vattenfall Intäkt → Inköp → Avgifter → Butiksersättning → Vinst för prissatta order.
- * Butiksersättningen innehåller all hyra i perioden (även ej fördelad).
+ * Vattenfall Intäkt → VMB-moms → Inköp → Avgifter → Butiksersättning → Vinst för prissatta
+ * order. Steget VMB-moms finns bara med VMB (`vmbApplies`). Butiksersättningen innehåller all
+ * hyra i perioden (även ej fördelad).
  */
 export interface ProfitabilityWaterfall {
   readonly steps: readonly WaterfallStep[];
@@ -172,9 +183,24 @@ export interface ProfitabilityResult {
   readonly totals: ProfitabilityRow;
   readonly unpriced: UnpricedSummary;
   readonly waterfall: ProfitabilityWaterfall;
+  /** VMB-momsen för perioden (samma som `totals.vmbVatOre`), per månad. */
+  readonly vmb: VmbSummary;
   /** Hyra per butik och månad, för spårbarhet. */
   readonly storeMonthRent: readonly StoreMonthRent[];
   readonly diagnostics: LedgerDiagnostics;
+}
+
+/** VMB-momsen i perioden. */
+export interface VmbSummary {
+  /** Sant med VMB (`vmbApplies`). */
+  readonly applies: boolean;
+  readonly vatOre: number;
+  /**
+   * Sant när perioden bara täcker en del av en månad: momsen är räknad på periodens dagar och
+   * är preliminär. Se även `vmbPreliminary` (en månad som inte är slut är också preliminär).
+   */
+  readonly partial: boolean;
+  readonly months: readonly VmbMonth[];
 }
 
 /** Inställningar för grupperingen. */
@@ -192,6 +218,7 @@ class RowAccumulator {
   revenueOre = 0;
   costOre = 0;
   feesOre = 0;
+  vmbVatOre = 0;
   commissionOre = 0;
   rentOre = 0;
   unallocatedRentOre = 0;
@@ -217,6 +244,7 @@ class RowAccumulator {
       this.revenueOre += e.netRevenueOre;
       this.costOre += e.costOre;
       this.feesOre += e.cardFeeOre;
+      this.vmbVatOre += e.vmbVatOre;
       this.commissionOre += e.commissionOre;
       this.rentOre += e.rentOre;
     } else {
@@ -237,7 +265,10 @@ class RowAccumulator {
   finish(): ProfitabilityRow {
     const what = `Raden ${this.key}`;
     const compensation = checkSafe(this.commissionOre + this.rentOre, what);
-    const profit = checkSafe(this.revenueOre - this.costOre - this.feesOre - compensation, what);
+    const profit = checkSafe(
+      this.revenueOre - this.costOre - this.feesOre - this.vmbVatOre - compensation,
+      what,
+    );
     const row: ProfitabilityRow = {
       key: this.key,
       kind: this.kind,
@@ -251,6 +282,7 @@ class RowAccumulator {
       revenueOre: checkSafe(this.revenueOre, what),
       costOre: checkSafe(this.costOre, what),
       feesOre: checkSafe(this.feesOre, what),
+      vmbVatOre: checkSafe(this.vmbVatOre, what),
       commissionOre: checkSafe(this.commissionOre, what),
       rentOre: checkSafe(this.rentOre, what),
       compensationOre: compensation,
@@ -354,10 +386,21 @@ function deduction(valueOre: number): number {
 function buildWaterfall(
   totals: ProfitabilityRow,
   unpriced: UnpricedSummary,
+  vmbApplies: boolean,
 ): ProfitabilityWaterfall {
   return {
     steps: [
       { key: "revenue", label: "Intäkt", valueOre: totals.revenueOre, total: false },
+      ...(vmbApplies
+        ? [
+            {
+              key: "vmb" as const,
+              label: "VMB-moms",
+              valueOre: deduction(totals.vmbVatOre),
+              total: false,
+            },
+          ]
+        : []),
       { key: "cost", label: "Inköp", valueOre: deduction(totals.costOre), total: false },
       { key: "fees", label: "Avgifter", valueOre: deduction(totals.feesOre), total: false },
       {
@@ -470,7 +513,13 @@ export function summarizeLedger(
     rows: finished,
     totals: totalRow,
     unpriced,
-    waterfall: buildWaterfall(totalRow, unpriced),
+    waterfall: buildWaterfall(totalRow, unpriced, vmbApplies(ledger.settings)),
+    vmb: {
+      applies: vmbApplies(ledger.settings),
+      vatOre: totalRow.vmbVatOre,
+      partial: ledger.vmb.some((m) => m.partialMonth),
+      months: ledger.vmb,
+    },
     storeMonthRent: ledger.storeMonthRent,
     diagnostics: ledger.diagnostics,
   };
@@ -505,4 +554,14 @@ export function profitabilityViews<G extends GroupBy>(
   const out = {} as Record<G, ProfitabilityResult>;
   for (const g of groupBys) out[g] = summarizeLedger(ledger, g, options);
   return out;
+}
+
+/**
+ * Sant när periodens VMB-moms är preliminär: perioden täcker bara en del av en månad, eller
+ * en månad i perioden är inte slut (`today` = dagens affärsdatum). Momsen för en avslutad
+ * hel månad är den som redovisas (Ekonomi → Bokföring, med underskott från tidigare månader).
+ */
+export function vmbPreliminary(vmb: VmbSummary, today: IsoDate): boolean {
+  if (!vmb.applies) return false;
+  return vmb.partial || vmb.months.some((m) => monthEnd(m.month) >= today);
 }

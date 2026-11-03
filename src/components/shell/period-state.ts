@@ -4,6 +4,7 @@
  *   ?period=idag | 7d | 30d | manad | allt
  *   ?from=2026-10-13&to=2026-11-01           (eget intervall, båda ändar ingår)
  *   ?butik=<id>&automat=<id>                 (globalt filter)
+ *   ?vmb=1                                   (vyknappen "Med VMB": vinst efter VMB-moms)
  *
  * Allt här är rena funktioner utan React, så att samma tolkning används i
  * Server Components (parsePeriod(await searchParams)) och i klienten
@@ -36,6 +37,13 @@ export const FROM_PARAM = "from";
 export const TO_PARAM = "to";
 export const STORE_PARAM = "butik";
 export const MACHINE_PARAM = "automat";
+export const VMB_PARAM = "vmb";
+
+/**
+ * Förfrågans header som proxyn (src/proxy.ts) sätter från ?vmb=1, så att serverns laddare
+ * räknar vinsten efter VMB-moms utan att varje sida skickar valet vidare.
+ */
+export const VMB_HEADER = "x-binderlab-vmb";
 
 /** Parametrar som skalet äger och som följer med när man byter sida. */
 export const SHELL_PARAMS = [
@@ -44,6 +52,7 @@ export const SHELL_PARAMS = [
   TO_PARAM,
   STORE_PARAM,
   MACHINE_PARAM,
+  VMB_PARAM,
 ] as const;
 
 export const periodChoices: ReadonlyArray<{ key: PeriodKey; label: string; short: string }> = [
@@ -269,6 +278,22 @@ export function withScope(current: SearchParamsInput, scope: Partial<Scope>): UR
     if (value === null || value === "") next.delete(param);
     else next.set(param, value);
   }
+  return next;
+}
+
+/**
+ * Vyknappen "Med VMB" (?vmb=1). Standard av: omsättning och vinst före VMB-moms. Bokföringen
+ * följer sin egen knapp "VMB i bokföringen" (standard av), oberoende av vyknappen.
+ */
+export function parseVmbView(sp: SearchParamsInput): boolean {
+  return readParam(sp, VMB_PARAM) === "1";
+}
+
+/** Ny query med vyknappen satt (på = ?vmb=1, av = parametern tas bort). */
+export function withVmbView(current: SearchParamsInput, on: boolean): URLSearchParams {
+  const next = toURLSearchParams(current);
+  if (on) next.set(VMB_PARAM, "1");
+  else next.delete(VMB_PARAM);
   return next;
 }
 

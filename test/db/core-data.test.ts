@@ -120,6 +120,7 @@ describe("loadDomainInputFor", () => {
         monthlyRentOre: null,
         commissionBase: "net_excl_vat",
         lossTreatment: "zero",
+        vmbBeforeSplit: false,
       },
     ]);
     expect(input.current.refunds).toEqual([]);

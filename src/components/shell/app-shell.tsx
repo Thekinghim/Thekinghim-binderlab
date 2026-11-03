@@ -59,6 +59,8 @@ export type AppShellProps = {
   signOutHref?: string;
   /** Första dagen med data (för "Allt" och datumväljaren). */
   earliest?: Date;
+  /** Vyknappen "Med VMB": användarens nyckel för att minnas valet. null = ingen knapp. */
+  vmbUserKey?: string | null;
   /**
    * Visa periodval och filter. Standard: på, utom för rutter med
    * context: false i ./nav (Datakällor, Inställningar).
@@ -129,6 +131,7 @@ export function AppShell(props: AppShellProps) {
             stores={props.stores}
             machines={props.machines}
             earliest={props.earliest}
+            vmbUserKey={route?.vmb === false ? null : (props.vmbUserKey ?? null)}
             period={props.period}
             onPeriodChange={props.onPeriodChange}
             comparison={props.comparison}

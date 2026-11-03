@@ -4,11 +4,16 @@ import { formatPercent } from "@/lib/format";
 import type { AxisUnit } from "./axis";
 import { WaterfallChart, type WaterfallStep } from "./waterfall-chart";
 
-type CostKey = "purchases" | "fees" | "storeCompensation";
+type CostKey = "vmb" | "purchases" | "fees" | "storeCompensation";
 
 export type ProfitBridgeProps = {
   /** Intäkt för prissatta order, i kronor (öre / 100) */
   revenue: number;
+  /**
+   * VMB-moms (vinstmarginalbeskattning), positivt belopp i kronor. Utelämnad = inget steg
+   * (organisationen redovisar inte VMB).
+   */
+  vmb?: number;
   /** Inköp, positivt belopp i kronor */
   purchases: number;
   /** Avgifter (kortavgifter), positivt belopp i kronor */
@@ -32,13 +37,14 @@ export type ProfitBridgeProps = {
 };
 
 /**
- * Lönsamhetsbrygga (fas 4): Intäkt → Inköp → Avgifter → Butiksersättning → Vinst,
+ * Lönsamhetsbrygga (fas 4): Intäkt → (VMB-moms) → Inköp → Avgifter → Butiksersättning → Vinst,
  * för prissatta order, enligt docs/berakningar.md avsnitt 5. Avdragen ritas
  * som minskningar och summerar exakt till vinsten. Negativ vinst heter
  * "Förlust" och flaggas (signal + "! Under noll"), eftersom den kräver åtgärd.
  */
 export function ProfitBridge({
   revenue,
+  vmb,
   purchases,
   fees,
   storeCompensation,
@@ -50,10 +56,11 @@ export function ProfitBridge({
   height = 280,
   summary,
 }: ProfitBridgeProps) {
-  const profit = revenue - purchases - fees - storeCompensation;
+  const profit = revenue - (vmb ?? 0) - purchases - fees - storeCompensation;
   const margin = revenue ? profit / revenue : undefined;
   const L = {
     revenue: labels.revenue ?? "Intäkt",
+    vmb: labels.vmb ?? "VMB-moms",
     purchases: labels.purchases ?? "Inköp",
     fees: labels.fees ?? "Avgifter",
     storeCompensation: labels.storeCompensation ?? "Butiksersättning",
@@ -67,6 +74,9 @@ export function ProfitBridge({
 
   const steps: WaterfallStep[] = [
     { label: L.revenue, value: revenue, name: `${L.revenue}, prissatta order` },
+    ...(vmb !== undefined
+      ? [{ label: L.vmb, value: -vmb, name: "VMB-moms (vinstmarginalbeskattning)", ...f("vmb") }]
+      : []),
     { label: L.purchases, value: -purchases, name: "Inköp av pack", ...f("purchases") },
     // Steg som är 0 ritas inte (design.md 7): med kortavgift 0 % hoppar bryggan över avgifterna.
     ...(fees !== 0 || flag?.step === "fees"
@@ -91,7 +101,7 @@ export function ProfitBridge({
 
   const text =
     summary ??
-    `${L.revenue} ${format(revenue)} minus inköp ${format(purchases)}, avgifter ${format(fees)} och butiksersättning ${format(storeCompensation)} ger ${resultLabel.toLowerCase()} ${format(loss ? -profit : profit)}${margin !== undefined ? `, marginal ${formatPercent(margin)}` : ""}.${unpricedRevenue ? ` ${format(unpricedRevenue)} i intäkt saknar inköpspris och ingår inte.` : ""}`;
+    `${L.revenue} ${format(revenue)} minus ${vmb !== undefined ? `VMB-moms ${format(vmb)}, ` : ""}inköp ${format(purchases)}, avgifter ${format(fees)} och butiksersättning ${format(storeCompensation)} ger ${resultLabel.toLowerCase()} ${format(loss ? -profit : profit)}${margin !== undefined ? `, marginal ${formatPercent(margin)}` : ""}.${unpricedRevenue ? ` ${format(unpricedRevenue)} i intäkt saknar inköpspris och ingår inte.` : ""}`;
 
   return (
     <WaterfallChart

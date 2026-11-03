@@ -3,7 +3,8 @@
  *
  *   verifikation-ÅÅÅÅ-MM.si      SIE 4I (Fortnox → Bokföring → Importera SIE); saknas när
  *                               månaden inte har några transaktioner
- *   sammanfattning-ÅÅÅÅ-MM.pdf   en sida: VMB steg för steg, butikernas andel, resultat
+ *   sammanfattning-ÅÅÅÅ-MM.pdf   en sida: med eller utan VMB, VMB steg för steg (när VMB
+ *                               är på), butikernas andel, resultat
  *                               (.html om PDF inte kan skapas i miljön)
  *   rader-ÅÅÅÅ-MM.xlsx           verifikationens rader, butiker, dagar, kvitton
  *   kvitton/NNN-namn.ext         månadens kvitton
@@ -146,7 +147,12 @@ export async function buildMonthPackage(input: MonthPackageInput): Promise<Month
       ? `${sieName}: importera i Fortnox under Bokföring → Importera SIE. Filen har kontonamn ` +
         "(#KONTO); välj att inte skriva över Fortnox egna kontonamn vid importen."
       : "Ingen verifikation: månaden har inga transaktioner att bokföra.",
-    `${summary.name}: VMB-momsen steg för steg, butikernas andel och resultatet.`,
+    book.vmbEnabled
+      ? "Med VMB: försäljningen bokförs med VMB-moms (samlad beräkning per månad)."
+      : "Utan VMB: ingen VMB-moms och inget underskott i verifikationen.",
+    book.vmbEnabled
+      ? `${summary.name}: VMB-momsen steg för steg, butikernas andel och resultatet.`
+      : `${summary.name}: resultatet och butikernas andel.`,
     `rader-${m}.xlsx: verifikationens rader, butiker, dagar och kvitton.`,
     `kvitton/: ${receiptRows.length} kvitton, förteckning i kvitton/index.csv.`,
     "",

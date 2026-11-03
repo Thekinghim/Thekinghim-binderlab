@@ -66,6 +66,12 @@ export interface AccountantStoreRow extends SalesAmounts {
   readonly commissionOre: number;
   readonly rentOre: number;
   readonly compensationOre: number;
+  /**
+   * Vinstdelning i perioden (null = inget avtal med vinstdelning): avtalets val att dra av
+   * VMB-moms före delningen (sant om något av periodens avtal gör det) och VMB-momsen som
+   * drogs i butikens delning. Saknas i rapporter före beräkningsversion 1.3.0.
+   */
+  readonly split?: { readonly vmbBeforeSplit: boolean; readonly vmbVatOre: number } | null;
   readonly evidence: Evidence;
 }
 
@@ -248,6 +254,15 @@ export function buildAccountantReport(sources: ReportSources, period: Period): A
       };
     });
 
+  const splitOf = new Map<string, { vmbBeforeSplit: boolean; vmbVatOre: number }>();
+  for (const x of ledger.profitSplits) {
+    const prev = splitOf.get(x.storeId);
+    const before = x.result.vmbBeforeSplit !== false;
+    splitOf.set(x.storeId, {
+      vmbBeforeSplit: (prev?.vmbBeforeSplit ?? false) || before,
+      vmbVatOre: (prev?.vmbVatOre ?? 0) + x.result.vmbVatOre,
+    });
+  }
   const stores: AccountantStoreRow[] = byStore.rows
     .filter((r) => r.kind === "item" || r.kind === "no-store")
     .map((r) => {
@@ -265,6 +280,7 @@ export function buildAccountantReport(sources: ReportSources, period: Period): A
         commissionOre: commission,
         rentOre: rent,
         compensationOre: commission + rent,
+        split: isStore ? (splitOf.get(r.key) ?? null) : null,
         evidence: evidence({
           rule: isStore
             ? "Butikens order = order från automater som stod i butiken orderns dag. Ersättning = provision + hyra."

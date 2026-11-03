@@ -30,6 +30,27 @@ export interface PayoutRecord {
   readonly createdAt: string;
 }
 
+/**
+ * Sant när organisationen har en källa för utbetalningar: minst en inläst utbetalning (ej
+ * arkiverad) eller en uppladdad utbetalningsfil. Utan den är utbetalningarna okända, och
+ * ingen utbetalning ska visas som väntad eller saknad.
+ */
+export async function queryHasPayoutSource(tx: Tx, orgId: string): Promise<boolean> {
+  const [payout, upload] = await Promise.all([
+    tx
+      .select({ id: s.payouts.id })
+      .from(s.payouts)
+      .where(and(eq(s.payouts.organizationId, orgId), isNull(s.payouts.archivedAt)))
+      .limit(1),
+    tx
+      .select({ id: s.payoutImports.id })
+      .from(s.payoutImports)
+      .where(eq(s.payoutImports.organizationId, orgId))
+      .limit(1),
+  ]);
+  return payout.length > 0 || upload.length > 0;
+}
+
 /** Utbetalningar (ej arkiverade) vars period överlappar `range`, äldst först. */
 export async function queryPayouts(
   tx: Tx,

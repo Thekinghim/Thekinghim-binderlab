@@ -87,6 +87,7 @@ export function agreement(
     monthlyRentOre?: number | null;
     commissionBase?: StoreAgreement["commissionBase"];
     lossTreatment?: StoreAgreement["lossTreatment"];
+    vmbBeforeSplit?: boolean;
   },
 ): StoreAgreement {
   return {
@@ -97,6 +98,7 @@ export function agreement(
     monthlyRentOre: terms.monthlyRentOre ?? null,
     ...(terms.commissionBase ? { commissionBase: terms.commissionBase } : {}),
     ...(terms.lossTreatment ? { lossTreatment: terms.lossTreatment } : {}),
+    ...(terms.vmbBeforeSplit !== undefined ? { vmbBeforeSplit: terms.vmbBeforeSplit } : {}),
   };
 }
 

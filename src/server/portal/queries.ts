@@ -88,7 +88,8 @@ export async function queryPortalAgreements(
   const result = await rows(
     tx,
     sql`select valid_from::text as valid_from, valid_to::text as valid_to, commission_bp, monthly_rent_ore,
-               commission_base::text as commission_base, loss_treatment::text as loss_treatment
+               commission_base::text as commission_base, loss_treatment::text as loss_treatment,
+               vmb_before_split
         from public.portal_agreements(${storeId}::uuid)`,
   );
   return result.map((r) => ({
@@ -99,6 +100,7 @@ export async function queryPortalAgreements(
     commissionBase:
       str(r.commission_base) === "profit_after_costs" ? "profit_after_costs" : "net_excl_vat",
     lossTreatment: str(r.loss_treatment) === "proportional" ? "proportional" : "zero",
+    vmbBeforeSplit: r.vmb_before_split === true,
   }));
 }
 

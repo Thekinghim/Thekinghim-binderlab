@@ -138,13 +138,13 @@ export async function budgetState(
 // ---------------------------------------------------------------------------
 
 /** Underlaget för organisationen (läst som viewer under RLS). Kräver ägare eller admin. */
-export async function loadSnapshotFor(viewer: Viewer, now: Date): Promise<Snapshot> {
+export async function loadSnapshotFor(viewer: Viewer, now: Date, vmb = false): Promise<Snapshot> {
   const today = businessToday(now, viewer.organization.timezone);
   const asOf = addDays(today, -1);
   const period = { start: addDays(asOf, -29), end: asOf };
   const compare = { start: addDays(asOf, -59), end: addDays(asOf, -30) };
   const [data, stock] = await Promise.all([
-    loadDomainInputFor(viewer, { period, compare }, now),
+    loadDomainInputFor(viewer, { period, compare, vmb }, now),
     loadStockFor(viewer),
   ]);
   return buildSnapshot({
@@ -180,6 +180,8 @@ export type RunOutcome =
 export interface RunArgs {
   readonly viewer: Viewer;
   readonly trigger: "cron" | "manual";
+  /** Vyknappen "Med VMB" (manuell körning från en sida med ?vmb=1). Standard av. */
+  readonly vmb?: boolean;
   readonly now?: Date;
   readonly env?: Env;
   /** För tester: egen modell i stället för Claude API. */
@@ -290,7 +292,7 @@ export async function runAdvisor(args: RunArgs): Promise<RunOutcome> {
   };
 
   try {
-    const snapshot = await loadSnapshotFor(args.viewer, now);
+    const snapshot = await loadSnapshotFor(args.viewer, now, args.vmb === true);
     const previous = Array.from(
       await db.execute(
         sql`select title from public.ai_suggestions

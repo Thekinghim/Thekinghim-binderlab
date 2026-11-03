@@ -40,6 +40,7 @@ export function AppFrame({
   stores,
   machines,
   earliest,
+  vmbUserKey = null,
   children,
 }: {
   role: Role;
@@ -52,6 +53,8 @@ export function AppFrame({
   stores: ShellStore[];
   machines: ShellMachine[];
   earliest?: Date;
+  /** Vyknappen "Med VMB" (roller som ser ekonomi): användarens id. */
+  vmbUserKey?: string | null;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -90,6 +93,7 @@ export function AppFrame({
         stores={stores}
         machines={machines}
         earliest={earliest}
+        vmbUserKey={vmbUserKey}
         crumbs={crumbsFor(pathname, orgName)}
         onOrganizationChange={(id) =>
           startTransition(async () => {

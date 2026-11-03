@@ -172,6 +172,7 @@ export async function createContract(
         target: z.string().regex(/^(store|lead):[0-9a-f-]{36}$/i, "Välj en butik."),
         validFrom: date,
         confirmHistory: z.boolean().optional(),
+        vmbBeforeSplit: z.boolean().optional(),
       })
       .parse(raw);
     const result = await createStoreContractFor(viewer, input, {
