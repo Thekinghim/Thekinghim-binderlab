@@ -1,10 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import type { AnalyticsOrder, TodoItem } from "@/analytics/todos";
-import { addDays, keyMetrics, type IsoDate, type Period } from "@/domain";
+import {
+  addDays,
+  buildLedger,
+  keyMetrics,
+  profitability,
+  type IsoDate,
+  type Period,
+} from "@/domain";
 
 import { homeHeadline } from "./headline";
 import { appHref, carriedParams } from "./links";
+import { kr } from "./text";
 import {
   buildHomeModel,
   coverageOf,
@@ -144,9 +152,10 @@ describe("buildHomeModel", () => {
     expect(revenue?.delta).toBeNull();
     expect(revenue?.trend).toHaveLength(20);
     expect(plain(m.headline.title)).toBe("4 450 kr sedan 13 okt.");
-    expect(m.headline.aside).toMatch(/^Vinst [^,]*\skr\.$/);
+    // Hela vinsten och vår del (butiken har 10 % provision).
+    expect(plain(m.headline.aside)).toBe("Vinst 2 070 kr, vår del 1 725 kr.");
     expect(m.headline.lead.join(" ")).toMatch(
-      /^Före återbetalningar och fasta kostnader, .* marginal, men .* saknar inköpspris och ingår inte\.$/,
+      /^Före återbetalningar och fasta kostnader, .* vår marginal, men .* saknar inköpspris och ingår inte\.$/,
     );
   });
 
@@ -168,7 +177,12 @@ describe("buildHomeModel", () => {
       period: { start: DATA_START, end: "2026-11-01" },
       orders: input.current.orders,
     });
-    expect(m.kpis.find((k) => k.id === "profit")?.value).toBe(full.profitOre);
+    // Vår vinst som Lönsamhet; nyckeltalet visar hela vinsten (vår + butikens hyra och provision).
+    expect(m.profitSplit?.ourOre).toBe(full.profitOre);
+    const totals = profitability(input.current, "title").totals;
+    expect(m.kpis.find((k) => k.id === "profit")?.value).toBe(
+      full.profitOre + totals.compensationOre,
+    );
     expect(m.kpis.find((k) => k.id === "margin")?.value).toBe(full.marginBp);
     // Hyran för 4–12 okt. och 2 nov. ingår: vinsten är lägre än för dagarna med order.
     expect(full.profitOre).toBeLessThan(covered.profitOre);
@@ -672,5 +686,159 @@ describe("homeStaleImport", () => {
     expect(homeStaleImport(sync("2026-10-28T10:00:00Z"), "2026-10-28", NOW, TZ)).toEqual({
       date: "2026-10-28",
     });
+  });
+});
+
+describe("hela vinsten på Hem", () => {
+  // Två butiker: s1 vinstdelning 50 % (VMB dras före delningen), s2 provision 10 % + hyra.
+  const PERIOD: Period = { start: "2026-10-01", end: "2026-10-31" };
+  const agreements = [
+    {
+      storeId: "s1",
+      validFrom: "2026-10-01",
+      validTo: null,
+      commissionBp: 5_000,
+      monthlyRentOre: null,
+      commissionBase: "profit_after_costs" as const,
+      lossTreatment: "zero" as const,
+      vmbBeforeSplit: true,
+    },
+    {
+      storeId: "s2",
+      validFrom: "2026-10-01",
+      validTo: null,
+      commissionBp: 1_000,
+      monthlyRentOre: 50_000,
+    },
+  ];
+  const placements = [
+    { machineId: "m1", storeId: "s1", from: "2026-10-01", to: null },
+    { machineId: "m2", storeId: "s2", from: "2026-10-01", to: null },
+  ];
+  const orders: AnalyticsOrder[] = [];
+  for (let d: IsoDate = "2026-10-13"; d <= "2026-10-31"; d = addDays(d, 1)) {
+    orders.push(order("t1", d, 15_000, "m1"), order("t1", d, 15_000, "m2"));
+    orders.push(order("t2", d, 9_900, "m1"));
+  }
+  const machines = [
+    { id: "m1", storeId: "s1" },
+    { id: "m2", storeId: "s2" },
+  ].map((m) => ({
+    ...m,
+    name: m.id,
+    code: m.id.toUpperCase(),
+    serial: null,
+    activeFrom: "2026-10-01",
+    activeTo: null,
+    isExample: false,
+    archived: false,
+  }));
+  const prices = [
+    { titleId: "t1", unitCostOre: 6_000, validFrom: "2026-01-01" },
+    { titleId: "t2", unitCostOre: 4_000, validFrom: "2026-01-01" },
+  ];
+
+  /** Indata som loadDomainInputFor bygger den: urval på butiken, VMB-momsen organisationens. */
+  function inputs(vmb: boolean, storeId: string | null) {
+    const settings = { vatRateBp: 0, cardFeeBp: 150, vmb };
+    const org = { prices, agreements, placements, settings, orders, period: PERIOD };
+    if (!storeId) return { org, scoped: org };
+    const vmbByOrder = new Map(
+      buildLedger(org)
+        .entries.filter((e) => e.vmbVatOre !== 0)
+        .map((e) => [e.order.id, e.vmbVatOre] as const),
+    );
+    const mine = new Set(placements.filter((p) => p.storeId === storeId).map((p) => p.machineId));
+    const scoped = {
+      ...org,
+      agreements: agreements.filter((a) => a.storeId === storeId),
+      placements: placements.filter((p) => p.storeId === storeId),
+      orders: orders.filter((o) => o.machineId !== null && mine.has(o.machineId)),
+      ...(vmb ? { vmbByOrder } : {}),
+    };
+    return { org, scoped };
+  }
+
+  function home(vmb: boolean, storeId: string | null) {
+    const { org, scoped } = inputs(vmb, storeId);
+    const sources = {
+      prices: scoped.prices,
+      agreements: scoped.agreements,
+      placements: scoped.placements,
+      settings: scoped.settings,
+    };
+    const m = buildHomeModel({
+      ...inputFor(PERIOD, null),
+      current: scoped,
+      previous: null,
+      sources,
+      machines,
+      period: PERIOD,
+      dataStart: "2026-10-13",
+      scope: { storeId, machineId: null },
+    });
+    return { m, org };
+  }
+
+  for (const vmb of [false, true]) {
+    it(`alla butiker${vmb ? ", med VMB" : ""}: hela vinsten = vår vinst + butikernas del, som Lönsamhet`, () => {
+      const { m, org } = home(vmb, null);
+      const lons = profitability(org, "store");
+      const t = lons.totals;
+      const profit = m.kpis.find((k) => k.id === "profit")!;
+      expect(m.profitSplit).toEqual({
+        totalOre: t.profitOre + t.compensationOre,
+        ourOre: t.profitOre,
+        storesOre: t.compensationOre,
+      });
+      expect(profit.value).toBe(t.profitOre + t.compensationOre);
+      expect(profit.parts).toEqual([
+        { id: "ours", label: "Vår del", value: t.profitOre },
+        { id: "stores", label: "Butikernas del", value: t.compensationOre },
+      ]);
+      // Butiker: raderna summerar till samma delar.
+      const rows = lons.rows.filter((r) => r.kind === "item");
+      expect(rows.reduce((n, r) => n + r.profitOre + r.compensationOre, 0)).toBe(
+        t.profitOre + t.compensationOre,
+      );
+      expect(m.kpis.find((k) => k.id === "margin")?.value).toBe(t.marginBp);
+      expect(t.vmbVatOre > 0).toBe(vmb);
+    });
+
+    for (const storeId of ["s1", "s2"]) {
+      it(`butik ${storeId}${vmb ? ", med VMB" : ""}: butikens vinst och delning, som butikens rad`, () => {
+        const { m, org } = home(vmb, storeId);
+        const row = profitability(org, "store").rows.find((r) => r.key === storeId)!;
+        expect(row.compensationOre).toBeGreaterThan(0);
+        expect(m.profitSplit).toEqual({
+          totalOre: row.profitOre + row.compensationOre,
+          ourOre: row.profitOre,
+          storesOre: row.compensationOre,
+        });
+        expect(m.kpis.find((k) => k.id === "profit")?.parts).toEqual([
+          { id: "stores", label: "Butikens del", value: row.compensationOre },
+          { id: "ours", label: "Vår del", value: row.profitOre },
+        ]);
+      });
+    }
+  }
+
+  it("med VMB dras VMB-momsen från hela vinsten (avtalet avgör vems del som bär den)", () => {
+    const off = home(false, null).m.profitSplit!;
+    const on = home(true, null);
+    const vmb = profitability(on.org, "title").totals.vmbVatOre;
+    expect(vmb).toBeGreaterThan(0);
+    expect(on.m.profitSplit!.totalOre).toBe(off.totalOre - vmb);
+    // s1 drar VMB före delningen i båda lägena: butikens del ändras inte av vyknappen.
+    expect(on.m.profitSplit!.storesOre).toBe(off.storesOre);
+    expect(on.m.kpis.find((k) => k.id === "profit")?.note).toBe("efter VMB-moms");
+  });
+
+  it("rubriken säger hela vinsten och vår del", () => {
+    const { m } = home(false, null);
+    const s = m.profitSplit!;
+    expect(plain(m.headline.aside)).toBe(
+      plain(`Vinst ${kr(s.totalOre)}, vår del ${kr(s.ourOre)}.`),
+    );
   });
 });

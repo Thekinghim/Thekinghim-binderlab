@@ -132,6 +132,15 @@ export function shortDateText(date: IsoDate): string {
   return `${day} ${MONTHS_SHORT[month - 1]}`;
 }
 
+/** Sant om perioden är exakt en hel kalendermånad (1–31 okt.). */
+export function isWholeMonth(period: Period): boolean {
+  const s = parseIsoDate(period.start);
+  const e = parseIsoDate(period.end);
+  return (
+    s.year === e.year && s.month === e.month && s.day === 1 && e.day === daysInMonth(period.end)
+  );
+}
+
 /**
  * Period som text. Hel kalendermånad → "november 2026"; inom en månad → "1–15 nov. 2026";
  * över månadsskifte → "20 okt.–10 nov. 2026"; över årsskifte → "20 dec. 2025–10 jan. 2026";

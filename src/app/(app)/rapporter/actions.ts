@@ -65,18 +65,31 @@ const createSchema = z.object({
   type: z.enum(["butik", "bokforing", "delagare"], { error: "Välj rapporttyp." }),
   month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, { error: "Välj månad." }),
   storeId: uuid.nullable().optional(),
+  /** Eget datum 'ÅÅÅÅ-MM-DD' (båda eller inget). Kontrolleras i tjänsten. */
+  from: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, { error: "Skriv datum som ÅÅÅÅ-MM-DD." })
+    .nullish(),
+  to: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, { error: "Skriv datum som ÅÅÅÅ-MM-DD." })
+    .nullish(),
   greeting: z.string().max(1000, { error: "Hälsningen får vara högst 1 000 tecken." }).nullish(),
   comment: z.string().max(2000, { error: "Kommentaren får vara högst 2 000 tecken." }).nullish(),
 });
 
-/** Skapar ett utkast (ny version) för vald typ, månad och butik. */
+/** Skapar ett utkast (ny version) för vald typ, månad (eller eget datum) och butik. */
 export async function createReport(raw: unknown): Promise<ActionResult<{ id: string }>> {
   try {
     const viewer = await operator();
     const input = createSchema.parse(raw);
+    if (Boolean(input.from) !== Boolean(input.to)) {
+      return { ok: false, error: "Fyll i både från och till." };
+    }
     const id = await createReportFor(viewer, {
       type: input.type,
       month: input.month,
+      period: input.from && input.to ? { start: input.from, end: input.to } : null,
       storeId: input.storeId ?? null,
       greeting: input.greeting ?? null,
       comment: input.comment ?? null,

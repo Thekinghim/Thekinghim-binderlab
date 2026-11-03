@@ -166,6 +166,17 @@ function kpi(home: HomeData, id: string): number | null {
   return k.value;
 }
 
+/**
+ * Vår vinst på Hem. Nyckeltalet "Vinst" visar hela vinsten (vår del + butikernas del);
+ * vår del är samma tal som Lönsamhetens vinst.
+ */
+function ourProfit(home: HomeData): number | null {
+  const split = home.model.profitSplit;
+  const total = home.model.kpis.find((x) => x.id === "profit")?.value ?? null;
+  expect(total).toBe(split ? split.ourOre + split.storesOre : null);
+  return split ? split.ourOre : null;
+}
+
 /** Provision på order utan pris per kontroll (för handräkningen i första testet). */
 const unpricedCommissionSeen = new Map<string, number>();
 
@@ -231,7 +242,7 @@ async function expectPagesAgree(sp: SearchParamsInput, label: string) {
   const machines = await loadOverview(sp);
 
   const revenue = kpi(home, "revenue");
-  const profit = kpi(home, "profit");
+  const profit = ourProfit(home);
   const orders = kpi(home, "orders");
 
   // Lönsamhet mot Hem: all intäkt = prissatt + utan pris; vinst och marginal identiska.
@@ -239,6 +250,8 @@ async function expectPagesAgree(sp: SearchParamsInput, label: string) {
   expect(lons.totals.revenueOre + lons.totals.unpricedRevenueOre, label).toBe(revenue);
   expect(lons.orders, label).toBe(orders);
   expect(lons.totals.profitOre, label).toBe(profit);
+  // Hela vinsten på Hem = vår vinst + butikernas del (butiksersättningen) på Lönsamhet.
+  expect(kpi(home, "profit"), label).toBe(lons.totals.profitOre + lons.totals.compensationOre);
   expect(lons.bridge.marginBp, label).toBe(kpi(home, "margin"));
   expectViewsConsistent(lons);
 
@@ -440,7 +453,7 @@ describe("(b, e) samma siffror på alla sidor, före prisändringarna", () => {
       expect(kpi(theirs, k), k).toBe(kpi(mine, k));
     }
     const lons = await as(reader, () => lonsamhet(SEED_RANGE));
-    expect(lons.totals.profitOre).toBe(kpi(mine, "profit"));
+    expect(lons.totals.profitOre).toBe(ourProfit(mine));
   });
 });
 
@@ -518,7 +531,7 @@ describe("(a) prisändring mitt i perioden, via server action på /inkopspriser"
 
       // Hem visar samma vinst direkt.
       const home = await loadHome(SEED_RANGE);
-      expect(kpi(home, "profit")).toBe(after.totals.profitOre);
+      expect(ourProfit(home)).toBe(after.totals.profitOre);
     });
   });
 
@@ -602,7 +615,7 @@ describe("(c) ett nytt pris syns direkt i Hem, Att göra och Lönsamhet", () => 
       // Hem.
       const homeAfter = await loadHome(SEED_RANGE);
       expect(homeAfter.model.unpriced?.titles.map((t) => t.id) ?? []).not.toContain(flair);
-      expect(kpi(homeAfter, "profit")).toBe((kpi(homeBefore, "profit") ?? 0) + 53_824);
+      expect(ourProfit(homeAfter)).toBe((ourProfit(homeBefore) ?? 0) + 53_824);
       expect(kpi(homeAfter, "revenue")).toBe(kpi(homeBefore, "revenue"));
       expect(homeAfter.model.topTitles.rows.find((r) => r.id === flair)?.unpriced ?? false).toBe(
         false,

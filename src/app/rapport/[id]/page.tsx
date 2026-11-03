@@ -13,7 +13,8 @@ import { getReportFor, ReportError, type ReportDetail } from "@/server/reports/s
 import { AuthorizationError } from "@/server/session";
 
 import { ReportView } from "../_components/report-view";
-import { monthLabel } from "../_components/shared";
+import { periodLabel } from "../_components/shared";
+import { isWholeMonth } from "@/reports/text";
 
 export const metadata: Metadata = { title: "Rapport" };
 
@@ -41,8 +42,9 @@ export default async function ReportPrintPage({ params }: { params: Promise<{ id
     throw error;
   }
   const s = report.snapshot;
-  const scope = s.type === "butik" ? s.store.name : monthLabel(s.month);
-  const back = `/rapporter?manad=${s.month}&typ=${s.type}${s.type === "butik" ? `&butiken=${s.store.id}` : ""}`;
+  const scope = s.type === "butik" ? s.store.name : periodLabel(s);
+  const range = isWholeMonth(s.period) ? "" : `&fran=${s.period.start}&till=${s.period.end}`;
+  const back = `/rapporter?manad=${s.month}&typ=${s.type}${s.type === "butik" ? `&butiken=${s.store.id}` : ""}${range}`;
 
   return (
     <div className="bl-desk min-h-dvh">

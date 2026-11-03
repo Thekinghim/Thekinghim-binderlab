@@ -41,6 +41,7 @@ export function HomeKpis({ kpis, ariaLabel }: { kpis: HomeKpi[]; ariaLabel: stri
     alert: k.alertText !== null,
     alertText: k.alertText ?? undefined,
     note: k.note ?? undefined,
+    parts: k.parts && k.parts.length > 0 ? k.parts : undefined,
   }));
   // Under 640 px står huvudtalet i en halv kolumn: låt etiketten brytas i stället för att kapas,
   // och ge alla etiketter två raders höjd så att talen i samma rad står i höjd med varandra.

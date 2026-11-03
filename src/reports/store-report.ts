@@ -29,13 +29,16 @@ import {
   addDays,
   addMonths,
   applyBp,
+  assertPeriod,
   buildLedger,
   eachDay,
   intersectPeriods,
   maxDate,
   minDate,
+  monthOf,
   monthPeriod,
   periodDays,
+  previousPeriod,
   ratioBp,
   roundHalfUp,
   changeBp,
@@ -47,11 +50,13 @@ import {
   type LossTreatment,
   type Period,
   type StoreAgreement,
+  type StoreMonthRent,
   type StoreMonthSplit,
 } from "@/domain";
 import { Catalog, evidence, fig, monthScope, sumEntries } from "./shared";
 import {
   dateText,
+  isWholeMonth,
   krText,
   listText,
   monthNameText,
@@ -78,9 +83,11 @@ export interface StoreSales {
   readonly evidence: Evidence;
 }
 
-/** Jämförelse mot förra månaden. */
+/** Jämförelse mot förra månaden (eget datum: lika lång period dagarna före). */
 export interface StoreComparison {
   readonly month: IsoMonth;
+  /** Jämförelseperioden. Saknas i äldre ögonblicksbilder (= hela `month`). */
+  readonly period?: Period;
   readonly revenueOre: number;
   readonly orders: number;
   /** Förändring i intäkt i bp, `null` när förra månaden saknade försäljning. */
@@ -273,9 +280,16 @@ export const FLAT_CHANGE_BP = 200;
 export function buildStoreReport(
   sources: ReportSources,
   storeId: string,
-  month: IsoMonth,
+  monthOrPeriod: IsoMonth | Period,
   options: StoreReportOptions = {},
 ): StoreReport {
+  if (typeof monthOrPeriod !== "string") {
+    assertPeriod(monthOrPeriod);
+    if (!isWholeMonth(monthOrPeriod)) {
+      return buildRangeStoreReport(sources, storeId, monthOrPeriod, options);
+    }
+  }
+  const month = typeof monthOrPeriod === "string" ? monthOrPeriod : monthOf(monthOrPeriod.start);
   const period = monthScope(month);
   const prevMonth = addMonths(month, -1);
   const prevPeriod = monthPeriod(prevMonth);
@@ -375,9 +389,8 @@ export function buildStoreReport(
   }
   const compensation = buildCompensation(
     entries,
-    ledger.storeMonthRent,
+    ledger.storeMonthRent.filter((r) => r.storeId === storeId && r.month === month),
     storeId,
-    month,
     period,
     ctx.agreements.agreementsFor(storeId),
     splits,
@@ -390,7 +403,7 @@ export function buildStoreReport(
     period,
     store,
     conclusion: storeConclusion({
-      month,
+      periodName: monthText(month),
       prevName,
       sales,
       comparison,
@@ -403,6 +416,152 @@ export function buildStoreReport(
     comparison,
     weeks,
     topTitles,
+    machines,
+    compensation,
+  };
+  assertStoreReportSafe(report);
+  return report;
+}
+
+/**
+ * Butiksrapporten för ett eget datumintervall (t.ex. 15–31 okt.), högst ett år.
+ *
+ * Samma regler som månadsrapporten, med tre skillnader:
+ * - Jämförelsen görs mot lika många dagar närmast före (`previousPeriod`).
+ * - Hyran räknas per kalendermånad för dagarna i intervallet (ett steg per månad).
+ * - Vinstdelningen räknas per kalendermånad och avtal på intervallets dagar, som i
+ *   liggaren (Butiker, Lönsamhet): förlusthanteringen och avrundningen gäller varje månad
+ *   för sig, och över ett månadsskifte står ett andelssteg per månad.
+ */
+function buildRangeStoreReport(
+  sources: ReportSources,
+  storeId: string,
+  range: Period,
+  options: StoreReportOptions,
+): StoreReport {
+  const period: Period = { start: range.start, end: range.end };
+  const month = monthOf(period.start);
+  const prevPeriod = previousPeriod(period);
+  const catalog = new Catalog(sources);
+  const topN = options.topTitles ?? 5;
+  if (!Number.isSafeInteger(topN) || topN < 0) {
+    throw new DomainError(
+      "invalid_input",
+      `Antalet topptitlar måste vara ett heltal ≥ 0, fick ${topN}.`,
+    );
+  }
+  // Egna liggare för intervallet och jämförelsen: hyra och vinstdelning räknas bara på
+  // intervallets dagar.
+  const ledger = buildLedger({ ...sources, period });
+  const prevLedger = buildLedger({ ...sources, period: prevPeriod });
+  const ctx = ledger.context;
+  const known =
+    sources.stores.some((s) => s.id === storeId) ||
+    ctx.agreements.agreementsFor(storeId).length > 0 ||
+    ctx.placements
+      .machineIds()
+      .some((m) => ctx.placements.placementsFor(m).some((p) => p.storeId === storeId));
+  if (!known) {
+    throw new DomainError("invalid_input", `Butiken ${storeId} är okänd.`);
+  }
+  const store: NamedEntity = { id: storeId, name: catalog.store(storeId) };
+  const entries = ledger.entries.filter((e) => e.storeId === storeId);
+  const prevEntries = prevLedger.entries.filter((e) => e.storeId === storeId);
+  const scope = { period, storeId };
+  const name = periodText(period);
+  const prevName = periodText(prevPeriod);
+
+  const revenueOre = sumEntries(entries, (e) => e.netRevenueOre);
+  const grossOre = sumEntries(entries, (e) => e.grossOre);
+  const vatOre = sumEntries(entries, (e) => e.vatOre);
+  const sales: StoreSales = {
+    revenueOre,
+    grossOre,
+    vatOre,
+    orders: entries.length,
+    averageOrderOre: entries.length === 0 ? null : roundHalfUp(revenueOre, entries.length),
+    evidence: evidence({
+      rule: "Intäkt = Σ belopp exkl. moms för order från automater som stod i butiken orderns dag.",
+      scope,
+      orderCount: entries.length,
+      figures: [
+        fig("Intäkt exkl. moms", revenueOre, "ore"),
+        fig("Moms", vatOre, "ore"),
+        fig("Betalt inkl. moms", grossOre, "ore"),
+        fig("Antal order", entries.length, "count"),
+      ],
+    }),
+  };
+
+  const prevRevenue = sumEntries(prevEntries, (e) => e.netRevenueOre);
+  const revenueChange = changeBp(revenueOre, prevRevenue);
+  const comparison: StoreComparison = {
+    month: monthOf(prevPeriod.start),
+    period: prevPeriod,
+    revenueOre: prevRevenue,
+    orders: prevEntries.length,
+    revenueChangeBp: revenueChange,
+    ordersDiff: entries.length - prevEntries.length,
+    text:
+      revenueChange === null
+        ? `Ingen försäljning ${prevName} att jämföra med.`
+        : `${signedPctText(revenueChange)} mot ${prevName} (${krText(prevRevenue)} på ${ordersText(prevEntries.length)}).`,
+    evidence: evidence({
+      rule: "Förändring = round((intäkt nu − intäkt lika många dagar före) × 10 000 / intäkt då) bp.",
+      scope: { period: prevPeriod, storeId },
+      orderCount: prevEntries.length,
+      figures: [
+        fig("Intäkt i perioden", revenueOre, "ore"),
+        fig("Intäkt perioden före", prevRevenue, "ore"),
+        ...(revenueChange === null ? [] : [fig("Förändring", revenueChange, "bp")]),
+      ],
+    }),
+  };
+
+  const weeks = buildWeeks(entries, period, storeId);
+  const allTitles = rankTitles(entries, revenueOre, period, storeId, catalog);
+  const machines = buildMachines(entries, period, storeId, ctx.placements, catalog);
+  const splits = ledger.profitSplits.filter((x) => x.storeId === storeId);
+  if (!options.pendingSplit) {
+    const unpriced = splits.reduce((n, x) => n + x.unpricedOrders, 0);
+    if (unpriced > 0) {
+      const titles = [...new Set(splits.flatMap((x) => x.unpricedTitleIds))].map((id) =>
+        catalog.title(id),
+      );
+      throw new DomainError(
+        "missing_price",
+        `${MISSING_PRICES_MESSAGE} ${ordersText(unpriced)} saknar inköpspris (${listText(titles)}). Lägg in priserna under Inköpspriser.`,
+      );
+    }
+  }
+  const compensation = buildCompensation(
+    entries,
+    ledger.storeMonthRent.filter((r) => r.storeId === storeId),
+    storeId,
+    period,
+    ctx.agreements.agreementsFor(storeId),
+    splits,
+  );
+  const report: StoreReport = {
+    kind: "store",
+    calcVersion: CALC_VERSION,
+    month,
+    period,
+    store,
+    conclusion: storeConclusion({
+      periodName: name,
+      prevName: `perioden före (${prevName})`,
+      sales,
+      comparison,
+      titles: allTitles,
+      compensation,
+      scope,
+    }),
+    greeting: options.greeting ?? null,
+    sales,
+    comparison,
+    weeks,
+    topTitles: allTitles.slice(0, topN),
     machines,
     compensation,
   };
@@ -595,9 +754,9 @@ interface CommissionSegment {
  */
 function buildCompensation(
   entries: readonly LedgerEntry[],
-  storeMonthRent: ReturnType<typeof buildLedger>["storeMonthRent"],
+  /** Butikens hyra per kalendermånad inom perioden (en rad för en månadsrapport). */
+  rentRows: readonly StoreMonthRent[],
   storeId: string,
-  month: IsoMonth,
   period: Period,
   agreements: readonly StoreAgreement[],
   profitSplits: readonly StoreMonthSplit[],
@@ -605,19 +764,23 @@ function buildCompensation(
   const inMonth = agreements.filter(
     (a) => intersectPeriods(period, { start: a.validFrom, end: a.validTo ?? period.end }) !== null,
   );
-  // Ett segment per avtal som gällde någon dag i månaden (med eller utan provision).
+  // Ett segment per avtal som gällde någon dag i perioden (med eller utan provision).
+  // Vinstdelning räknas per kalendermånad (berakningar.md 4): eget datum över ett
+  // månadsskifte ger ett segment per avtal och månad, samma andel som månadsrapporterna.
   const segments = new Map<string, CommissionSegment>();
   for (const a of inMonth) {
     const range = intersectPeriods(period, { start: a.validFrom, end: a.validTo ?? period.end })!;
-    segments.set(a.validFrom, {
-      agreement: a,
-      range,
-      orders: 0,
-      base: 0,
-      gross: 0,
-      commission: 0,
-      dates: [],
-    });
+    for (const part of isProfitSplit(a) ? byMonth(range) : [range]) {
+      segments.set(segmentKey(a, part.start), {
+        agreement: a,
+        range: part,
+        orders: 0,
+        base: 0,
+        gross: 0,
+        commission: 0,
+        dates: [],
+      });
+    }
   }
   // Ett segment per sammanhängande följd av dagar utan avtal.
   const gaps: CommissionSegment[] = [];
@@ -641,7 +804,7 @@ function buildCompensation(
     const date = e.order.businessDate;
     const a = agreementOn(inMonth, date);
     const seg = a
-      ? segments.get(a.validFrom)!
+      ? segments.get(segmentKey(a, date))!
       : gaps.find((g) => g.range.start <= date && date <= g.range.end)!;
     seg.orders++;
     seg.base += e.netRevenueOre;
@@ -657,10 +820,13 @@ function buildCompensation(
   const splits: StoreProfitSplit[] = [];
   for (const seg of [...segments.values()].sort(byStart)) {
     if (isProfitSplit(seg.agreement)) {
-      const ms = profitSplits.find((x) => x.validFrom === seg.agreement!.validFrom);
+      const month = monthOf(seg.range.start);
+      const ms = profitSplits.find(
+        (x) => x.validFrom === seg.agreement!.validFrom && x.month === month,
+      );
       const split = profitSplitRow(seg, ms ?? null, storeId);
       splits.push(split);
-      steps.push(shareStep(split, storeId));
+      steps.push(shareStep(split, storeId, period));
       continue;
     }
     const bp = seg.agreement!.commissionBp ?? 0;
@@ -720,44 +886,64 @@ function buildCompensation(
     });
   }
 
-  const sm = storeMonthRent.find((r) => r.storeId === storeId && r.month === month) ?? null;
-  const rentOre = sm?.rentOre ?? 0;
-  const dim = sm?.daysInMonth ?? periodDays(period);
-  const rentParts: RentPart[] = (sm?.segments ?? []).map((s) => ({
-    monthlyRentOre: s.monthlyRentOre,
-    start: s.start,
-    end: s.end,
-    days: s.days,
-  }));
-  if (sm) {
-    const single = rentParts.length === 1 ? rentParts[0]! : null;
+  // Hyran avrundas en gång per kalendermånad. Eget datum över flera månader ger ett
+  // hyressteg per månad; summan är periodens hyra.
+  const rentOre = rentRows.reduce((n, r) => n + r.rentOre, 0);
+  const dim = rentRows.length === 1 ? rentRows[0]!.daysInMonth : periodDays(period);
+  const rentParts: RentPart[] = rentRows.flatMap((r) =>
+    r.segments.map((s) => ({
+      monthlyRentOre: s.monthlyRentOre,
+      start: s.start,
+      end: s.end,
+      days: s.days,
+    })),
+  );
+  for (const sm of rentRows) {
+    const smParts = sm.segments.map((s) => ({
+      monthlyRentOre: s.monthlyRentOre,
+      start: s.start,
+      end: s.end,
+      days: s.days,
+    }));
+    const smDim = sm.daysInMonth;
+    const several = rentRows.length > 1;
+    const single = smParts.length === 1 ? smParts[0]! : null;
     let calculation: string;
-    if (single && single.days === dim) {
-      calculation = `${krText(single.monthlyRentOre, "always")} per månad, hela månaden = ${krText(rentOre, "always")}`;
+    if (single && single.days === smDim) {
+      calculation = `${krText(single.monthlyRentOre, "always")} per månad, hela månaden = ${krText(sm.rentOre, "always")}`;
     } else if (single) {
-      calculation = `${krText(single.monthlyRentOre, "always")} per månad × ${single.days} av ${dim} dagar (${periodText({ start: single.start, end: single.end })}) = ${krText(rentOre, "always")}`;
+      calculation = `${krText(single.monthlyRentOre, "always")} per månad × ${single.days} av ${smDim} dagar (${periodText({ start: single.start, end: single.end })}) = ${krText(sm.rentOre, "always")}`;
     } else {
-      const terms = rentParts
+      const terms = smParts
         .map((p) => `${krText(p.monthlyRentOre, "always")} × ${p.days} dagar`)
         .join(" + ");
-      calculation = `(${terms}) / ${dim} dagar = ${krText(rentOre, "always")}`;
+      calculation = `(${terms}) / ${smDim} dagar = ${krText(sm.rentOre, "always")}`;
     }
     steps.push({
       kind: "rent",
-      label: rentParts.length === 1 && rentParts[0]!.days === dim ? "Hyra" : "Hyra (delmånad)",
+      label: several
+        ? `Hyra (${periodText({ start: smParts[0]!.start, end: smParts[smParts.length - 1]!.end })})`
+        : smParts.length === 1 && smParts[0]!.days === smDim
+          ? "Hyra"
+          : "Hyra (delmånad)",
       calculation,
-      amountOre: rentOre,
+      amountOre: sm.rentOre,
       evidence: evidence({
         rule: "Hyra = round(Σ månadshyra × dagar med hyran / dagar i månaden), avrundad en gång per butik och månad.",
-        scope: { period, storeId },
+        scope: {
+          period: several
+            ? { start: smParts[0]!.start, end: smParts[smParts.length - 1]!.end }
+            : period,
+          storeId,
+        },
         orderCount: 0,
         figures: [
-          ...rentParts.flatMap((p) => [
+          ...smParts.flatMap((p) => [
             fig("Månadshyra", p.monthlyRentOre, "ore"),
             fig("Dagar", p.days, "days"),
           ]),
-          fig("Dagar i månaden", dim, "days"),
-          fig("Hyra", rentOre, "ore"),
+          fig("Dagar i månaden", smDim, "days"),
+          fig("Hyra", sm.rentOre, "ore"),
         ],
       }),
     });
@@ -891,7 +1077,7 @@ function profitSplitRow(
 }
 
 /** Steget "Butikens andel 50 % av vinsten" i uträkningen. */
-function shareStep(split: StoreProfitSplit, storeId: string): CompensationStep {
+function shareStep(split: StoreProfitSplit, storeId: string, period: Period): CompensationStep {
   const pct = pctText(split.shareBp, split.shareBp % 100 === 0 ? 0 : 1);
   const calculation = split.pending
     ? "Räknas i månadsrapporten"
@@ -900,15 +1086,29 @@ function shareStep(split: StoreProfitSplit, storeId: string): CompensationStep {
       : `${pct} av ${krText(split.profitOre, "always")} = ${krText(split.storeShareOre, "always")}`;
   return {
     kind: "share",
-    label: `Er andel ${pct}${split.range.start.slice(8) === "01" && isMonthEnd(split.range.end) ? "" : ` (${periodText(split.range)})`}`,
+    label: `Er andel ${pct}${split.range.start === period.start && split.range.end === period.end ? "" : ` (${periodText(split.range)})`}`,
     calculation,
     amountOre: split.storeShareOre,
     evidence: { ...split.evidence, scope: { period: split.range, storeId } },
   };
 }
 
-function isMonthEnd(date: IsoDate): boolean {
-  return addDays(date, 1).slice(8) === "01";
+/** Segmentets nyckel: avtalet, och för vinstdelning även kalendermånaden. */
+function segmentKey(a: StoreAgreement, date: IsoDate): string {
+  return isProfitSplit(a) ? `${a.validFrom}|${monthOf(date)}` : a.validFrom;
+}
+
+/** Perioden delad per kalendermånad. */
+function byMonth(range: Period): Period[] {
+  const out: Period[] = [];
+  let start = range.start;
+  while (start <= range.end) {
+    const m = monthPeriod(monthOf(start));
+    const end = m.end < range.end ? m.end : range.end;
+    out.push({ start, end });
+    start = addDays(end, 1);
+  }
+  return out;
 }
 
 /** Avtalet som gällde en viss dag, eller `null` om butiken saknade avtal den dagen. */
@@ -967,7 +1167,8 @@ function modelText(agreements: readonly StoreAgreement[], period: Period): strin
  * Har butiken sålt minst två titlar läggs den mest sålda titeln och dess andel till.
  */
 function storeConclusion(args: {
-  month: IsoMonth;
+  /** "november 2026" eller "15–31 okt. 2026". */
+  periodName: string;
   prevName: string;
   sales: StoreSales;
   comparison: StoreComparison;
@@ -975,7 +1176,7 @@ function storeConclusion(args: {
   compensation: StoreCompensationBreakdown;
   scope: { period: Period; storeId: string };
 }): Conclusion {
-  const { month, prevName, sales, comparison, titles, compensation, scope } = args;
+  const { periodName, prevName, sales, comparison, titles, compensation, scope } = args;
   const top = titles[0];
   const figures = [
     fig("Intäkt exkl. moms", sales.revenueOre, "ore"),
@@ -993,7 +1194,7 @@ function storeConclusion(args: {
     const tail =
       compensation.totalOre > 0 ? `; ersättningen blir ${krText(compensation.totalOre)}` : "";
     return {
-      text: `Ingen försäljning i ${monthText(month)}${tail}.`,
+      text: `Ingen försäljning i ${periodName}${tail}.`,
       ruleId: "store.no_sales",
       evidence: ev("Inga order från butikens automater under månaden.", [
         fig("Ersättning", compensation.totalOre, "ore"),

@@ -130,6 +130,17 @@ function kpi(home: HomeData, k: string): number | null {
   return x.value;
 }
 
+/**
+ * Vår vinst på Hem. Nyckeltalet "Vinst" visar hela vinsten (vår del + butikernas del);
+ * vår del är samma tal som Lönsamhetens vinst.
+ */
+function ourProfit(home: HomeData): number | null {
+  const split = home.model.profitSplit;
+  const total = home.model.kpis.find((x) => x.id === "profit")?.value ?? null;
+  expect(total).toBe(split ? split.ourOre + split.storesOre : null);
+  return split ? split.ourOre : null;
+}
+
 // ---------------------------------------------------------------------------
 // Fristående facit i SQL (använder inte src/domain).
 // ---------------------------------------------------------------------------
@@ -237,7 +248,7 @@ async function expectPagesMatchFacit(sp: SearchParamsInput, from: string, to: st
   expect(home.model.period, label).toMatchObject({ start: from, end: to });
   expect(kpi(home, "revenue"), label).toBe(f.revenueAll);
   expect(kpi(home, "orders"), label).toBe(f.orders);
-  expect(kpi(home, "profit"), label).toBe(f.profit);
+  expect(ourProfit(home), label).toBe(f.profit);
   expect(kpi(home, "margin"), label).toBe(f.marginBp);
   expect(l.totals.revenueOre, label).toBe(f.revenuePriced);
   expect(l.totals.costOre, label).toBe(f.cost);
@@ -345,7 +356,7 @@ describe("handräknat mot seedens rådata (moms 0, kortavgift 0)", () => {
     const home = await loadHome(SEED_RANGE);
     expect(kpi(home, "revenue")).toBe(7_998_700);
     expect(kpi(home, "orders")).toBe(460);
-    expect(kpi(home, "profit")).toBe(2_193_345);
+    expect(ourProfit(home)).toBe(2_193_345);
     expect(kpi(home, "margin")).toBe(2_880);
 
     const l = await lonsamhet(SEED_RANGE);
@@ -386,13 +397,13 @@ describe("handräknat mot seedens rådata (moms 0, kortavgift 0)", () => {
   it("30 dagar och Allt: hyran räknas per dag, även dagar utan order", async () => {
     const d30 = await loadHome({ period: "30d" });
     expect(d30.model.period).toMatchObject({ start: "2026-10-04", end: "2026-11-02" });
-    expect(kpi(d30, "profit")).toBe(2_120_522);
+    expect(ourProfit(d30)).toBe(2_120_522);
     expect(kpi(d30, "margin")).toBe(2_784);
     expect((await lonsamhet({ period: "30d" })).bridge.rentOre).toBe(218_226);
 
     const all = await loadHome({ period: "allt" });
     expect(all.model.period).toMatchObject({ start: "2026-10-13", end: "2026-11-02" });
-    expect(kpi(all, "profit")).toBe(2_185_845);
+    expect(ourProfit(all)).toBe(2_185_845);
   });
 
   /*
@@ -452,7 +463,7 @@ describe("ny prisändring mitt i perioden via /inkopspriser", () => {
     expect(res).toMatchObject({ ok: true });
 
     const home = await loadHome(SEED_RANGE);
-    expect(kpi(home, "profit")).toBe(2_183_995);
+    expect(ourProfit(home)).toBe(2_183_995);
     expect(kpi(home, "margin")).toBe(2_868);
     const l = await lonsamhet(SEED_RANGE);
     expect(l.totals.costOre).toBe(4_721_400 + 9_350);
@@ -517,7 +528,7 @@ describe("moms 25 % och kortavgift 2,5 % (seeden har 0, så avrundningen prövas
     expect(l.bridge.marginBp).toBe(1_214);
     const home = await loadHome(sp);
     expect(kpi(home, "revenue")).toBe(54_240);
-    expect(kpi(home, "profit")).toBe(5_039);
+    expect(ourProfit(home)).toBe(5_039);
 
     expect((await facit("2026-10-20", "2026-10-20", "BL-001")).profit).toBe(5_039);
     await expectPagesMatchFacit(SEED_RANGE, "2026-10-13", "2026-11-01");

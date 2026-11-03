@@ -393,3 +393,70 @@ describe("schemalagda utkast", () => {
     expect(second.skipped).toBe(4);
   });
 });
+
+describe("eget datum", () => {
+  const RANGE = { start: "2025-10-11", end: "2025-10-31" };
+
+  it("butiksrapport 11–31 okt.: siffrorna, hyran per dag och arkivraden följer intervallet", async () => {
+    const id = await createReportFor(
+      ownerViewer,
+      { type: "butik", month: OCT, period: RANGE, storeId: storeA },
+      NOW,
+    );
+    const report = await getReportFor(ownerViewer, id);
+    expect(report.custom).toBe(true);
+    expect(report.period).toEqual(RANGE);
+    const snap = report.snapshot;
+    if (snap.type !== "butik") throw new Error("fel typ");
+    expect(snap.period).toEqual(RANGE);
+    // Order 1003 (11 okt.) och 1004 (18 okt.) i Nordstan.
+    expect(snap.report.sales.orders).toBe(2);
+    expect(snap.report.compensation.commissionOre).toBe(490 + 590);
+    // 62 kr × 21 / 31 dagar = 42 kr.
+    expect(snap.report.compensation.rentOre).toBe(4200);
+    // Månadsrapporten för samma butik ersätts inte av intervallet (olika perioder).
+    const archive = await listArchiveFor(ownerViewer);
+    const row = archive.find((r) => r.id === id)!;
+    expect(row.status).toBe("draft");
+    expect(row.month).toBe(OCT);
+  });
+
+  it("stoppar fel datum, framtida datum och delägarrapport med eget datum", async () => {
+    await expect(
+      previewReportFor(
+        ownerViewer,
+        {
+          type: "butik",
+          month: OCT,
+          period: { start: "2025-10-20", end: "2025-10-10" },
+          storeId: storeA,
+        },
+        NOW,
+      ),
+    ).rejects.toThrow(ReportError);
+    await expect(
+      previewReportFor(
+        ownerViewer,
+        {
+          type: "butik",
+          month: "2025-11",
+          period: { start: "2025-11-01", end: "2025-11-06" },
+          storeId: storeA,
+        },
+        NOW,
+      ),
+    ).rejects.toThrow(/efter i dag/);
+    await expect(
+      previewReportFor(ownerViewer, { type: "delagare", month: OCT, period: RANGE }, NOW),
+    ).rejects.toThrow(/per månad/);
+  });
+
+  it("innevarande månad fram till i dag går med eget datum", async () => {
+    const snap = await previewReportFor(
+      ownerViewer,
+      { type: "bokforing", month: "2025-11", period: { start: "2025-11-01", end: "2025-11-05" } },
+      NOW,
+    );
+    expect(snap.period).toEqual({ start: "2025-11-01", end: "2025-11-05" });
+  });
+});

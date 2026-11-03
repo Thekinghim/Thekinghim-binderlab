@@ -4,7 +4,7 @@
  * som granskades och godkändes. Ren modul (exceljs i minnet, ingen disk).
  */
 
-import { buildAccountantWorkbook, exportSie4 } from "@/reports";
+import { buildAccountantWorkbook, exportSie4, isWholeMonth } from "@/reports";
 
 import type { ReportSnapshot } from "./snapshot";
 
@@ -39,10 +39,16 @@ export function slug(text: string): string {
   );
 }
 
-/** Filnamn: "binderlab-butik-nordstan-2026-10.pdf", "binderlab-bokforing-2026-10.se". */
+/**
+ * Filnamn: "binderlab-butik-nordstan-2026-10.pdf", "binderlab-bokforing-2026-10.se"; eget
+ * datum: "binderlab-butik-nordstan-2026-10-15--2026-10-31.pdf".
+ */
 export function reportFileName(snapshot: ReportSnapshot, kind: ReportFileKind): string {
   const scope = snapshot.type === "butik" ? `butik-${slug(snapshot.store.name)}` : snapshot.type;
-  return `binderlab-${scope}-${snapshot.month}.${EXTENSION[kind]}`;
+  const when = isWholeMonth(snapshot.period)
+    ? snapshot.month
+    : `${snapshot.period.start}--${snapshot.period.end}`;
+  return `binderlab-${scope}-${when}.${EXTENSION[kind]}`;
 }
 
 /** Vilka filer rapporttypen har. */

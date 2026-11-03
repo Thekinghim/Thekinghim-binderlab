@@ -101,4 +101,38 @@ describe("prisändring", () => {
     expect(after.home).not.toBe(before.home);
     await screenshot(page, "04-prisandring-lonsamhet");
   });
+
+  it("klick var som helst på titelraden visar redigeraren, och direktlänk sparar", async () => {
+    // Klick i en sifferkolumn, inte på namnet: redigeraren rullas fram med markören i priset.
+    await page.goto("/inkopspriser");
+    const row = page.getByRole("row").filter({ hasText: TITLE }).first();
+    await row.locator("td:visible").last().click();
+    const form = page.getByRole("form", { name: `Nytt inköpspris för ${TITLE}` });
+    await form.waitFor();
+    await expect
+      .poll(() => page.evaluate(() => document.activeElement?.getAttribute("name")))
+      .toBe("unitCost");
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const top = document.querySelector('input[name="unitCost"]')?.getBoundingClientRect().top;
+          return top !== undefined && top >= 0 && top < window.innerHeight;
+        }),
+      )
+      .toBe(true);
+
+    // Direktlänk (Hem, Att göra) och klick direkt: knappen väntar in sidans skript i stället
+    // för att ladda om sidan och tappa priset (felet "jag kan inte ändra inköpspriser").
+    const url = page.url();
+    await page.goto(url, { waitUntil: "commit" });
+    const price = newPrice();
+    await form.getByLabel("Inköpspris per pack").fill(price);
+    await form.getByLabel("Giltig från").fill(PRICE_VALID_FROM);
+    await form.getByRole("button", { name: "Spara pris" }).click();
+    await page
+      .getByText(/^Inköpspriset (sparat|ändrat)$/)
+      .first()
+      .waitFor();
+    expect(page.url()).toBe(url);
+  });
 });

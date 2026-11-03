@@ -13,6 +13,7 @@ import {
   CALC_VERSION,
   DomainError,
   monthEnd,
+  monthOf,
   monthPeriod,
   parseIsoMonth,
   type IsoDate,
@@ -23,6 +24,7 @@ import {
   buildAccountantReport,
   buildPartnerReport,
   buildStoreReport,
+  isWholeMonth,
   sie4Verifications,
   type AccountantReport,
   type LedgerAccount,
@@ -101,6 +103,11 @@ export type SnapshotStockEvent = StockEventRef;
 export interface SnapshotInput {
   readonly type: ReportType;
   readonly month: IsoMonth;
+  /**
+   * Eget datum (butik och bokföring): rapportens dagar. Saknas = hela `month`. `month` är
+   * då månaden som intervallet börjar i.
+   */
+  readonly period?: Period | null;
   readonly organization: SnapshotOrganization;
   /** Order (gärna 13 månader bakåt), priser, avtal, placeringar och namn. */
   readonly sources: ReportSources;
@@ -215,10 +222,15 @@ function cleanText(value: string | null | undefined, max: number): string | null
  */
 export function buildSnapshot(input: SnapshotInput): ReportSnapshot {
   parseIsoMonth(input.month);
+  const period = input.period ?? monthPeriod(input.month);
+  const custom = !isWholeMonth(period);
+  if (custom && monthOf(period.start) !== input.month) {
+    throw new DomainError("invalid_input", "Perioden ska börja i rapportens månad.");
+  }
   const base = {
     version: SNAPSHOT_VERSION,
     month: input.month,
-    period: monthPeriod(input.month),
+    period,
     organization: input.organization,
     generatedAt: input.generatedAt,
     calcVersion: CALC_VERSION,
@@ -227,7 +239,7 @@ export function buildSnapshot(input: SnapshotInput): ReportSnapshot {
   switch (input.type) {
     case "butik": {
       if (!input.storeId) throw new DomainError("invalid_input", "Välj en butik.");
-      const report = buildStoreReport(input.sources, input.storeId, input.month, {
+      const report = buildStoreReport(input.sources, input.storeId, custom ? period : input.month, {
         greeting: cleanText(input.greeting, 1000),
       });
       return {
@@ -243,6 +255,10 @@ export function buildSnapshot(input: SnapshotInput): ReportSnapshot {
       };
     }
     case "bokforing": {
+      const fiscalYear = fiscalYearOf(input.month, input.fiscalYearStartMonth ?? 1);
+      if (period.end > fiscalYear.end) {
+        throw new DomainError("invalid_input", "Perioden måste ligga inom ett räkenskapsår.");
+      }
       const report = buildAccountantReport(input.sources, base.period);
       const ledgerAccounts = [...(input.ledgerAccounts ?? [])];
       const have = new Set(ledgerAccounts.map((a) => a.key));
@@ -250,7 +266,7 @@ export function buildSnapshot(input: SnapshotInput): ReportSnapshot {
         company: input.organization.name,
         orgNumber: input.organization.orgNumber,
         ledgerAccounts,
-        fiscalYear: fiscalYearOf(input.month, input.fiscalYearStartMonth ?? 1),
+        fiscalYear,
         verificationSeries: input.sieSeries?.series ?? "A",
         firstVerificationNumber: input.sieSeries?.firstNumber ?? 1,
         // Dagen då underlaget skapas (#GEN), inte periodens slut.
@@ -267,6 +283,9 @@ export function buildSnapshot(input: SnapshotInput): ReportSnapshot {
       };
     }
     case "delagare": {
+      if (custom) {
+        throw new DomainError("invalid_input", "Delägarrapporten görs per månad.");
+      }
       const stock = input.stockEvents ? stockAtMonthEnd(input.stockEvents, input.month) : null;
       const report = buildPartnerReport(input.sources, input.month, {
         owners: input.owners && input.owners.length > 0 ? input.owners : undefined,

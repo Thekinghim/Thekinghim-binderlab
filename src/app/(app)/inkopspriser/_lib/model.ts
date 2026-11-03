@@ -721,3 +721,6 @@ export function signalTitleIds(rows: readonly TitleRow[], max = 3): string[] {
     .slice(0, max)
     .map((r) => r.id);
 }
+
+/** Titelns sektion (rubrik och prisredigerare): tabellen rullar dit och sätter markören i priset. */
+export const PRICE_EDITOR_ID = "titel";

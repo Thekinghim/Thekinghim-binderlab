@@ -30,7 +30,7 @@ import {
   datePeriod,
   kronor,
   localDate,
-  monthLabel,
+  periodLabel,
   pct,
   sekValue,
   type HeadingLevel,
@@ -230,7 +230,7 @@ export function AccountantReportDocument({
   const r = snapshot.report;
   const t = r.totals;
   const rec = r.reconciliation;
-  const month = monthLabel(snapshot.month);
+  const month = periodLabel(snapshot);
   const n = rec.numbers;
   const dayPages = splitRows(r.days, DAY_ROWS, DAY_ROWS_FIRST);
   const failedChecks = rec.checks.filter((c) => !c.ok).length;

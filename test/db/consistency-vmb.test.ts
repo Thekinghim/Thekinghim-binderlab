@@ -187,6 +187,17 @@ function kpi(home: HomeData, id: string): number | null {
   return k.value;
 }
 
+/**
+ * Vår vinst på Hem. Nyckeltalet "Vinst" visar hela vinsten (vår del + butikernas del);
+ * vår del är samma tal som Lönsamhetens vinst.
+ */
+function ourProfit(home: HomeData): number | null {
+  const split = home.model.profitSplit;
+  const total = home.model.kpis.find((x) => x.id === "profit")?.value ?? null;
+  expect(total).toBe(split ? split.ourOre + split.storesOre : null);
+  return split ? split.ourOre : null;
+}
+
 /** Försäljning inkl. moms för order med inköpspris (moms 0: = intäkten med pris). */
 function pricedSales(page: Page): number {
   return buildLedger(page.input.current).entries.reduce(
@@ -352,7 +363,11 @@ describe("vyknappen Med VMB på (seedad databas, vinstdelning 50/50)", () => {
       const page = await lonsamhet(SEED_ON);
       expect(carriedQuery(SEED_ON)).toContain("vmb=1");
       const home = await loadHome(SEED_ON);
-      expect(kpi(home, "profit")).toBe(page.model.totals.profitOre);
+      expect(ourProfit(home)).toBe(page.model.totals.profitOre);
+      // Hela vinsten = vår vinst + butikernas del, efter VMB-moms.
+      expect(kpi(home, "profit")).toBe(
+        page.model.totals.profitOre + page.model.totals.compensationOre,
+      );
       expect(home.model.kpis.find((k) => k.id === "profit")?.note).toBe(
         "efter VMB-moms (preliminär)",
       );
@@ -374,6 +389,26 @@ describe("vyknappen Med VMB på (seedad databas, vinstdelning 50/50)", () => {
         const filtered = await lonsamhet({ ...SEED_ON, butik: id });
         expect(filtered.model.totals.vmbVatOre, name).toBe(row.vmbVatOre);
         expect(filtered.model.totals.profitOre, name).toBe(row.profitOre);
+        // Hem med butiksfilter: butikens hela vinst och delning, samma som butikens rad.
+        view.vmb = true;
+        const home = await loadHome({ ...SEED_ON, butik: id });
+        expect(home.model.profitSplit, name).toEqual({
+          totalOre: row.profitOre + row.compensationOre,
+          ourOre: row.profitOre,
+          storesOre: row.compensationOre,
+        });
+        expect(kpi(home, "profit"), name).toBe(row.profitOre + row.compensationOre);
+      }
+      // Vy av: samma kontroll utan VMB-moms.
+      const off = await lonsamhet(SEED_RANGE);
+      const offByStore = profitability(off.input.current, "store");
+      for (const [name, id] of storeIds) {
+        const row = offByStore.rows.find((r) => r.key === id);
+        if (!row) continue;
+        view.vmb = false;
+        const home = await loadHome({ ...SEED_RANGE, butik: id });
+        expect(home.model.profitSplit?.ourOre, name).toBe(row.profitOre);
+        expect(kpi(home, "profit"), name).toBe(row.profitOre + row.compensationOre);
       }
       for (const [code, id] of machineIds) {
         const row = byMachine.rows.find((r) => r.key === id);
@@ -459,7 +494,8 @@ describe("vy av/på × avtal på/av: vinsten stämmer exakt", () => {
       expect(off.vmbInProfit).toBe(0);
       expect(off.page.model.bridge.vmbVatOre).toBeNull();
       const home = await loadHome(SEED_RANGE);
-      expect(kpi(home, "profit")).toBe(off.profit);
+      expect(ourProfit(home)).toBe(off.profit);
+      expect(kpi(home, "profit")).toBe(off.profit + off.storeShare);
       expect(home.model.kpis.find((k) => k.id === "profit")?.note ?? null).toBeNull();
       const stores = await loadStoreList(SEED_RANGE);
       expect(stores.rows.reduce((n, r) => n + r.profitOre, 0)).toBe(off.profit);

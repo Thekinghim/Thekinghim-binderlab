@@ -4,11 +4,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useId, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/field";
+import { Input, Select } from "@/components/ui/field";
 import { Segmented } from "@/components/ui/segmented";
 import { StateMessage } from "@/components/ui/state-message";
 import { useToast } from "@/components/ui/toast";
+import type { IsoMonth } from "@/domain";
 import type { ReportType } from "@/server/reports/kinds";
+import { allowsRange, defaultRange, rangeError } from "@/server/reports/range";
 
 import { createReport } from "../actions";
 import { TextArea } from "./text-area";
@@ -19,14 +21,22 @@ const TYPES: { value: ReportType; label: string }[] = [
   { value: "delagare", label: "Delägare" },
 ];
 
+const MODES = [
+  { value: "month" as const, label: "Månad" },
+  { value: "range" as const, label: "Eget datum" },
+];
+
 /**
- * Val av rapport (typ, månad, butik) i URL:en, så att förhandsvisningen räknas på
+ * Val av rapport (typ, månad eller eget datum, butik) i URL:en, så att förhandsvisningen räknas på
  * servern och valet går att länka till (Att göra länkar hit). Hälsning och kommentar
  * följer med när utkastet skapas och sparas i rapportens underlag.
  */
 export function ReportBuilder({
   type,
   month,
+  range,
+  rangeProblem,
+  today,
   months,
   stores,
   storeId,
@@ -36,6 +46,12 @@ export function ReportBuilder({
 }: {
   type: ReportType;
   month: string;
+  /** Eget datum som förhandsvisningen räknas på; null = hela månaden. */
+  range: { start: string; end: string } | null;
+  /** Fel i ett eget datum i adressen. */
+  rangeProblem: string | null;
+  /** Affärsdagen i dag, högsta till-datum. */
+  today: string;
   months: { value: string; label: string }[];
   stores: readonly { id: string; name: string }[];
   storeId: string | null;
@@ -51,13 +67,41 @@ export function ReportBuilder({
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const textId = useId();
+  const canRange = allowsRange(type);
+  const [mode, setMode] = useState<"month" | "range">(
+    canRange && (range || rangeProblem) ? "range" : "month",
+  );
+  // Det förhandsvisningen räknas på just nu: eget datum eller hela månaden.
+  const shown = range ?? defaultRange(month as IsoMonth, today);
+  const [from, setFrom] = useState(params.get("fran") ?? shown.start);
+  const [to, setTo] = useState(params.get("till") ?? shown.end);
+  const draftError = mode === "range" ? rangeError(from, to, today) : null;
+  // Inmatat men inte visat än: utkastet skapas på det som visas, så Skapa väntar.
+  const dirty = mode === "range" && (from !== shown.start || to !== shown.end);
 
-  function go(next: { typ?: ReportType; manad?: string; butiken?: string | null }) {
+  function go(next: {
+    typ?: ReportType;
+    manad?: string;
+    butiken?: string | null;
+    fran?: string | null;
+    till?: string | null;
+  }) {
     const q = new URLSearchParams(params.toString());
     q.delete("mottagare");
     q.delete("period");
     q.set("typ", next.typ ?? type);
     q.set("manad", next.manad ?? month);
+    const typeNext = next.typ ?? type;
+    const fran = next.fran === undefined ? q.get("fran") : next.fran;
+    const till = next.till === undefined ? q.get("till") : next.till;
+    if (fran && till && allowsRange(typeNext)) {
+      q.set("fran", fran);
+      q.set("till", till);
+      q.set("manad", fran.slice(0, 7));
+    } else {
+      q.delete("fran");
+      q.delete("till");
+    }
     const store = next.butiken === undefined ? storeId : next.butiken;
     if ((next.typ ?? type) === "butik" && store) q.set("butiken", store);
     else q.delete("butiken");
@@ -69,7 +113,9 @@ export function ReportBuilder({
     startTransition(async () => {
       const result = await createReport({
         type,
-        month,
+        month: range ? range.start.slice(0, 7) : month,
+        from: range?.start ?? null,
+        to: range?.end ?? null,
         storeId: type === "butik" ? storeId : null,
         greeting: type === "butik" ? text : null,
         comment: type === "delagare" ? text : null,
@@ -108,12 +154,63 @@ export function ReportBuilder({
             onChange={(v) => go({ typ: v, butiken: v === "butik" ? storeId : null })}
           />
         </div>
-        <Select
-          label="Månad"
-          options={months}
-          value={month}
-          onChange={(e) => go({ manad: e.target.value })}
-        />
+        {canRange ? (
+          <div className="flex flex-col gap-1.5">
+            <span className="label text-muted">Period</span>
+            <Segmented
+              label="Period"
+              options={MODES}
+              value={mode}
+              onChange={(v) => {
+                setMode(v);
+                if (v === "month" && (range || rangeProblem)) go({ fran: null, till: null });
+              }}
+            />
+          </div>
+        ) : null}
+        {mode === "month" || !canRange ? (
+          <Select
+            label="Månad"
+            options={months}
+            value={month}
+            onChange={(e) => go({ manad: e.target.value, fran: null, till: null })}
+          />
+        ) : (
+          <form
+            className="flex flex-col gap-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!draftError) go({ fran: from, till: to });
+            }}
+          >
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Från"
+                type="date"
+                value={from}
+                max={today}
+                onChange={(e) => setFrom(e.target.value)}
+              />
+              <Input
+                label="Till"
+                type="date"
+                value={to}
+                max={today}
+                onChange={(e) => setTo(e.target.value)}
+              />
+            </div>
+            {draftError || rangeProblem ? (
+              <p role="alert" className="text-sm text-signal-fg">
+                {draftError ?? rangeProblem}
+              </p>
+            ) : null}
+            <div>
+              <Button type="submit" variant="secondary" disabled={Boolean(draftError) || !dirty}>
+                Visa
+              </Button>
+            </div>
+          </form>
+        )}
         {type === "butik" ? (
           stores.length > 0 ? (
             <Select
@@ -123,7 +220,9 @@ export function ReportBuilder({
               onChange={(e) => go({ butiken: e.target.value })}
             />
           ) : (
-            <p className="text-sm text-muted">Ingen butik hade en automat under månaden.</p>
+            <p className="text-sm text-muted">
+              Ingen butik hade en automat under {range ? "perioden" : "månaden"}.
+            </p>
           )
         ) : null}
       </div>
@@ -155,7 +254,7 @@ export function ReportBuilder({
               variant="primary"
               onClick={create}
               loading={pending}
-              disabled={!canCreate}
+              disabled={!canCreate || dirty}
               iconLeft="plus"
             >
               {currentId ? "Skapa ny version" : "Skapa utkast"}

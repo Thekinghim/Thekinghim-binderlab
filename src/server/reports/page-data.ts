@@ -9,11 +9,12 @@ import "server-only";
 import { eq } from "drizzle-orm";
 
 import * as s from "@/db/schema";
-import { addMonths, monthEnd, monthOf, monthStart, type IsoMonth } from "@/domain";
+import { addMonths, monthEnd, monthOf, monthStart, type IsoMonth, type Period } from "@/domain";
 import { businessToday } from "@/server/data/core/loaders";
 import { queryFirstOrderDate, queryPlacements, queryStores } from "@/server/data/core/queries";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
 
+import { allowsRange, isCustomRange, rangeError } from "./range";
 import { RECIPIENT_KIND, TYPE_BY_RECIPIENT_KIND, isReportType, type ReportType } from "./kinds";
 import {
   eligibleRecipients,
@@ -37,6 +38,9 @@ export interface ReportsPageParams {
   readonly period?: string | null;
   readonly butiken?: string | null;
   readonly mottagare?: string | null;
+  /** Eget datum: ?fran=ÅÅÅÅ-MM-DD&till=ÅÅÅÅ-MM-DD. */
+  readonly fran?: string | null;
+  readonly till?: string | null;
 }
 
 export interface StoreChoice {
@@ -56,6 +60,12 @@ export interface ReportsPageData {
   readonly canEdit: boolean;
   readonly type: ReportType;
   readonly month: IsoMonth;
+  /** Eget datum som rapporten räknas på; null = hela månaden. */
+  readonly range: Period | null;
+  /** Fel i ett eget datum (då visas månaden). */
+  readonly rangeError: string | null;
+  /** Organisationens affärsdag i dag ('ÅÅÅÅ-MM-DD'), högsta till-datum. */
+  readonly today: string;
   readonly months: readonly IsoMonth[];
   readonly stores: readonly StoreChoice[];
   readonly allStores: readonly StoreChoice[];
@@ -101,18 +111,32 @@ export async function loadReportsPage(
 
   const months = selectableMonths(base.dataStart, today);
   const recipient = base.recipients.find((r) => r.id === params.mottagare) ?? null;
-  const rawMonth = params.manad ?? params.period ?? "";
-  const month: IsoMonth =
-    MONTH.test(rawMonth) && rawMonth < monthOf(today)
-      ? (rawMonth as IsoMonth)
-      : addMonths(monthOf(today), -1);
   const type: ReportType = isReportType(params.typ)
     ? params.typ
     : recipient
       ? TYPE_BY_RECIPIENT_KIND[recipient.kind]
       : "butik";
 
-  const period = { start: monthStart(month), end: monthEnd(month) };
+  // Eget datum: används när det är giltigt och typen tillåter det. Ett intervall som är
+  // exakt en hel månad blir den månaden.
+  let range: Period | null = null;
+  let rangeProblem: string | null = null;
+  if (params.fran || params.till) {
+    const from = params.fran ?? "";
+    const to = params.till ?? "";
+    rangeProblem = !allowsRange(type) ? null : rangeError(from, to, today);
+    if (allowsRange(type) && !rangeProblem && isCustomRange({ start: from, end: to })) {
+      range = { start: from, end: to };
+    }
+  }
+  const rawMonth = range ? monthOf(range.start) : (params.manad ?? params.period ?? "");
+  const month: IsoMonth = range
+    ? (rawMonth as IsoMonth)
+    : MONTH.test(rawMonth) && rawMonth < monthOf(today)
+      ? (rawMonth as IsoMonth)
+      : addMonths(monthOf(today), -1);
+
+  const period = range ?? { start: monthStart(month), end: monthEnd(month) };
   const placedIds = storesPlacedIn(base.placements, period);
   const storeName = new Map(base.stores.map((x) => [x.id, x.name]));
   const stores = placedIds.map((id) => ({ id, name: storeName.get(id) ?? id }));
@@ -127,10 +151,12 @@ export async function loadReportsPage(
   let preview: ReportSnapshot | null = null;
   let previewError: string | null = null;
   if (type === "butik" && !storeId) {
-    previewError = "Ingen butik hade en automat under månaden.";
+    previewError = range
+      ? "Ingen butik hade en automat under perioden."
+      : "Ingen butik hade en automat under månaden.";
   } else {
     try {
-      preview = await previewReportFor(viewer, { type, month, storeId }, now);
+      preview = await previewReportFor(viewer, { type, month, period: range, storeId }, now);
     } catch (error) {
       if (!(error instanceof ReportError)) throw error;
       previewError = error.message;
@@ -142,21 +168,26 @@ export async function loadReportsPage(
     archive.find(
       (r) =>
         r.type === type &&
-        r.month === month &&
+        r.period.start === period.start &&
+        r.period.end === period.end &&
         (type !== "butik" || r.storeId === storeId) &&
         r.status !== "superseded",
     ) ?? null;
 
   // Månadens utskick: varje aktiv mottagare vars butik hade en automat (som i Att göra).
+  // En rapport med eget datum inom månaden (t.ex. 15–31 okt.) räknas som månadens.
+  const monthPeriod = { start: monthStart(month), end: monthEnd(month) };
+  const monthIds = range ? storesPlacedIn(base.placements, monthPeriod) : placedIds;
   const expected: ExpectedDelivery[] = [];
   for (const r of base.recipients) {
     if (!r.active) continue;
-    if (r.kind === "store" && (!r.storeId || !placedIds.includes(r.storeId))) continue;
+    if (r.kind === "store" && (!r.storeId || !monthIds.includes(r.storeId))) continue;
     const t = TYPE_BY_RECIPIENT_KIND[r.kind];
     const delivered = archive.some(
       (a) =>
         a.type === t &&
         a.month === month &&
+        a.period.end <= monthPeriod.end &&
         (t !== "butik" || a.storeId === r.storeId) &&
         a.deliveries.some((d) => d.recipientId === r.id && DONE_DELIVERY.has(d.status)),
     );
@@ -172,6 +203,9 @@ export async function loadReportsPage(
     canEdit,
     type,
     month,
+    range,
+    rangeError: rangeProblem,
+    today,
     months,
     stores,
     allStores: base.stores.filter((x) => !x.archived).map((x) => ({ id: x.id, name: x.name })),

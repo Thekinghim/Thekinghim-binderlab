@@ -10,6 +10,7 @@ import { StatusGlyph } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
 import { isIsoDate } from "@/domain";
 import { formatInt, formatKronor, formatPeriodShort, formatSignedKronor } from "@/lib/format";
+import { useHydrated } from "@/lib/use-hydrated";
 
 import { addPurchasePrice } from "../actions";
 import {
@@ -71,6 +72,9 @@ export function PriceForm({
   const [amountError, setAmountError] = useState<string>();
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
+  // Före hydreringen skulle knappen skicka formuläret som en vanlig sidladdning: priset
+  // försvann utan fel. Knappen är därför avstängd tills sidans skript har laddats.
+  const ready = useHydrated();
 
   const parsed = amount.trim() === "" ? null : parsePriceInput(amount);
   const dateOk = isIsoDate(validFrom);
@@ -229,7 +233,7 @@ export function PriceForm({
 
       <FormError message={error} />
       <div className="flex justify-end border-t border-line pt-4">
-        <Button type="submit" variant="primary" loading={pending}>
+        <Button type="submit" variant="primary" loading={pending} disabled={!ready}>
           Spara pris
         </Button>
       </div>

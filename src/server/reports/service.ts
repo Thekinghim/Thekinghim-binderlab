@@ -29,6 +29,7 @@ import {
   monthStart,
   parseIsoMonth,
   type IsoMonth,
+  type Period,
 } from "@/domain";
 import type { MemberRole } from "@/db/schema";
 import { isValidStoragePath, type FileStore } from "@/import/file-store";
@@ -42,7 +43,7 @@ import {
 import { businessToday } from "@/server/data/core/loaders";
 import type { Mailer, MailAttachment } from "@/server/mail/report-mailer";
 import { recordReportSend, type MonitoringDeps } from "@/server/monitoring/failures";
-import { monthText } from "@/reports/text";
+import { isWholeMonth, monthText, periodText } from "@/reports/text";
 
 import { buildSubject, renderReportText } from "@/emails/report-content";
 
@@ -59,6 +60,7 @@ import {
   type RecipientDbKind,
   type ReportType,
 } from "./kinds";
+import { allowsRange, rangeError } from "./range";
 import { asSnapshot, buildSnapshot, storeIdOf, type ReportSnapshot } from "./snapshot";
 import { loadSnapshotInput, storesPlacedIn } from "./sources";
 import { DONE_DELIVERY, reportStatuses, type DeliveryStatus, type ReportStatus } from "./status";
@@ -115,6 +117,10 @@ export interface ArchiveRow {
   readonly id: string;
   readonly type: ReportType;
   readonly month: IsoMonth;
+  /** Rapportens dagar: hela månaden eller ett eget datum. */
+  readonly period: Period;
+  /** Sant för eget datum (inte en hel kalendermånad). */
+  readonly custom: boolean;
   readonly storeId: string | null;
   readonly storeName: string | null;
   readonly generatedAt: string;
@@ -289,6 +295,8 @@ function toArchive(data: Awaited<ReturnType<typeof archiveTx>>, all: boolean) {
       id: r.id,
       type: TYPE_BY_DB_KIND[r.kind as keyof typeof TYPE_BY_DB_KIND],
       month: monthOf(r.periodStart),
+      period: { start: r.periodStart, end: r.periodEnd },
+      custom: !isWholeMonth({ start: r.periodStart, end: r.periodEnd }),
       storeId: r.storeId,
       storeName: r.storeId ? (storeName.get(r.storeId) ?? null) : null,
       generatedAt: r.generatedAt.toISOString(),
@@ -370,6 +378,11 @@ async function getReportTx(tx: Tx, orgId: string, id: string): Promise<ReportDet
 export interface ReportRequest {
   readonly type: ReportType;
   readonly month: IsoMonth;
+  /**
+   * Eget datum (butik och bokföring). Ersätter `month`, som då ska vara intervallets
+   * startmånad (se requestFor). Saknas = hela månaden.
+   */
+  readonly period?: Period | null;
   readonly storeId?: string | null;
   readonly greeting?: string | null;
   readonly comment?: string | null;
@@ -386,6 +399,21 @@ function assertMonth(month: string, today: string): asserts month is IsoMonth {
   }
 }
 
+/**
+ * Kontrollerar ett eget datum och ger den period rapporten räknas på (null = hela
+ * månaden). Ett intervall som är exakt en hel månad blir en vanlig månadsrapport.
+ */
+function customPeriod(req: ReportRequest, today: string): Period | null {
+  if (!req.period) return null;
+  const { start, end } = req.period;
+  const error = rangeError(start, end, today);
+  if (error) throw new ReportError(error);
+  if (isWholeMonth(req.period)) return null;
+  if (!allowsRange(req.type)) throw new ReportError("Delägarrapporten görs per månad.");
+  if (monthOf(start) !== req.month) throw new ReportError("Ogiltig period.");
+  return { start, end };
+}
+
 async function snapshotTx(
   tx: Tx,
   orgId: string,
@@ -393,7 +421,16 @@ async function snapshotTx(
   req: ReportRequest,
   now: Date,
 ): Promise<ReportSnapshot> {
-  assertMonth(req.month, businessToday(now, timeZone));
+  const today = businessToday(now, timeZone);
+  const custom = customPeriod(req, today);
+  if (!custom) assertMonth(req.month, today);
+  else {
+    try {
+      parseIsoMonth(req.month);
+    } catch {
+      throw new ReportError("Ogiltig månad.");
+    }
+  }
   if (req.type === "butik") {
     if (!req.storeId) throw new ReportError("Välj en butik.");
     const placements = await tx
@@ -404,15 +441,20 @@ async function snapshotTx(
       })
       .from(s.machinePlacements)
       .where(eq(s.machinePlacements.organizationId, orgId));
-    const period = { start: monthStart(req.month), end: monthEnd(req.month) };
+    const period = custom ?? { start: monthStart(req.month), end: monthEnd(req.month) };
     if (!storesPlacedIn(placements, period).includes(req.storeId)) {
-      throw new ReportError("Butiken hade ingen automat under månaden.");
+      throw new ReportError(
+        custom
+          ? "Butiken hade ingen automat under perioden."
+          : "Butiken hade ingen automat under månaden.",
+      );
     }
   }
   const input = await loadSnapshotInput(tx, {
     organizationId: orgId,
     type: req.type,
     month: req.month,
+    period: custom,
     storeId: req.storeId ?? null,
     greeting: req.greeting ?? null,
     comment: req.comment ?? null,
@@ -675,7 +717,7 @@ export async function sendReportFor(
   const monitored = {
     organizationId: orgId,
     reportId: report.id,
-    label: `${TYPE_LABEL[report.type].toLocaleLowerCase("sv-SE")} ${monthText(report.month)}${report.storeName ? ` · ${report.storeName}` : ""}`,
+    label: `${TYPE_LABEL[report.type].toLocaleLowerCase("sv-SE")} ${report.custom ? periodText(report.period) : monthText(report.month)}${report.storeName ? ` · ${report.storeName}` : ""}`,
     month: report.month,
   };
   const followText = req.followText?.trim() || null;

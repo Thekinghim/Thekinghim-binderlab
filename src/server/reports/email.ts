@@ -21,7 +21,7 @@ import type {
   Sender,
 } from "@/emails/report-content";
 import { formatInt, formatKronor, formatMonth, MINUS } from "@/lib/format";
-import { sie4Verifications } from "@/reports";
+import { isWholeMonth, periodText, sie4Verifications } from "@/reports";
 import type { Period as DatePeriod } from "@/lib/period";
 
 import { TYPE_LABEL } from "./kinds";
@@ -68,7 +68,9 @@ const change = (bp: number | null) => (bp === null ? undefined : { value: bp / 1
 
 /** Kort ämnesrad: "Butiksrapport oktober 2026 · Spelbutiken". */
 export function reportSubject(snapshot: ReportSnapshot): string {
-  const month = formatMonth(localDate(snapshot.period.start), { year: "always" });
+  const month = isWholeMonth(snapshot.period)
+    ? formatMonth(localDate(snapshot.period.start), { year: "always" })
+    : periodText(snapshot.period);
   const who = snapshot.type === "butik" ? snapshot.store.name : snapshot.organization.name;
   return `${TYPE_LABEL[snapshot.type]} ${month} · ${who}`;
 }
@@ -133,8 +135,10 @@ function storeEmail(s: StoreSnapshot, ctx: EmailContext): ReportEmailProps {
       unit: "count",
       note:
         r.comparison.ordersDiff === 0
-          ? "Lika många som förra månaden"
-          : `${r.comparison.ordersDiff > 0 ? "+" : MINUS}${formatInt(Math.abs(r.comparison.ordersDiff))} mot förra månaden`,
+          ? isWholeMonth(s.period)
+            ? "Lika många som förra månaden"
+            : "Lika många som perioden före"
+          : `${r.comparison.ordersDiff > 0 ? "+" : MINUS}${formatInt(Math.abs(r.comparison.ordersDiff))} ${isWholeMonth(s.period) ? "mot förra månaden" : "mot perioden före"}`,
     },
     {
       label: "Er ersättning",

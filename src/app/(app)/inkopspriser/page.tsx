@@ -17,6 +17,7 @@ import { ScrollIntoView } from "./_components/scroll-into-view";
 import { TitleTable } from "./_components/title-table";
 import { loadPricePageFor, loadTitleDetailFor } from "./_lib/data";
 import {
+  PRICE_EDITOR_ID,
   pageHeadline,
   perTitleAside,
   priceLog,
@@ -186,12 +187,16 @@ export default async function PurchasePricesPage({
 
       {selectedTitle && titleHead ? (
         <section
-          id="titel"
+          id={PRICE_EDITOR_ID}
           aria-labelledby="titel-rubrik"
           tabIndex={-1}
-          className="fade-in flex scroll-mt-28 flex-col gap-10 border-t border-line pt-12 outline-none"
+          className="fade-in flex scroll-mt-28 flex-col gap-10 border-t border-line pt-12 outline-none md:scroll-mt-44"
         >
-          <ScrollIntoView targetId="titel" titleId={selectedTitle.id} active={requested !== null} />
+          <ScrollIntoView
+            targetId={PRICE_EDITOR_ID}
+            titleId={selectedTitle.id}
+            active={requested !== null}
+          />
           <SectionHeader
             id="titel-rubrik"
             eyebrow={`Titel${selectedTitle.series ? ` · ${selectedTitle.series}` : ""}`}
@@ -200,21 +205,9 @@ export default async function PurchasePricesPage({
           />
 
           <div className="grid grid-cols-1 gap-x-8 gap-y-12 lg:grid-cols-12">
-            <div className="flex min-w-0 flex-col gap-6 lg:col-span-7">
-              <h3 className="label text-subtle">Prishistorik</h3>
-              {timeline.length === 0 ? (
-                <StateMessage
-                  kind="not-configured"
-                  compact
-                  message={`${selectedTitle.name} har inget inköpspris. Order av titeln räknas inte in i vinsten.`}
-                />
-              ) : (
-                <PriceHistory entries={timeline} today={today} />
-              )}
-            </div>
-
+            {/* Redigeraren först: ett klick på en titel rullar hit och sätter markören i priset. */}
             <div className="flex min-w-0 flex-col gap-6 lg:col-span-5">
-              <h3 className="label text-subtle">Nytt inköpspris</h3>
+              <h3 className="label text-subtle">Ändra inköpspris</h3>
               {ctx.canEdit && detail ? (
                 <PriceForm
                   key={selectedTitle.id}
@@ -230,6 +223,19 @@ export default async function PurchasePricesPage({
                 />
               ) : (
                 <StateMessage kind="denied" compact message="Gäller från datumet." />
+              )}
+            </div>
+
+            <div className="flex min-w-0 flex-col gap-6 lg:col-span-7">
+              <h3 className="label text-subtle">Prishistorik</h3>
+              {timeline.length === 0 ? (
+                <StateMessage
+                  kind="not-configured"
+                  compact
+                  message={`${selectedTitle.name} har inget inköpspris. Order av titeln räknas inte in i vinsten.`}
+                />
+              ) : (
+                <PriceHistory entries={timeline} today={today} />
               )}
             </div>
           </div>

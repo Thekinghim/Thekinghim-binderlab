@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useMemo } from "react";
 
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { StatusTag, type Status } from "@/components/ui/status-tag";
@@ -9,6 +10,7 @@ import { cn } from "@/lib/cn";
 import { MISSING, formatInt, formatKronor, formatPercent } from "@/lib/format";
 
 import {
+  PRICE_EDITOR_ID,
   STATUS_LABEL,
   STATUS_RANK,
   formatDayShort,
@@ -16,6 +18,7 @@ import {
   type TitleRow,
   type TitleStatus,
 } from "../_lib/model";
+import { revealEditor } from "./scroll-into-view";
 
 const TAG: Record<TitleStatus, Status> = {
   missing: "critical",
@@ -25,6 +28,12 @@ const TAG: Record<TitleStatus, Status> = {
   idle: "neutral",
   ok: "ok",
 };
+
+function titleHref(baseQuery: string, id: string): string {
+  const q = new URLSearchParams(baseQuery);
+  q.set("titel", id);
+  return `/inkopspriser?${q.toString()}`;
+}
 
 function money(ore: number | null): string {
   return ore === null ? MISSING : formatKronor(kr(ore));
@@ -51,6 +60,7 @@ export function TitleTable({
    */
   criticalIds: readonly string[];
 }) {
+  const router = useRouter();
   const criticalKey = criticalIds.join(",");
   const critical = useMemo(() => new Set(criticalKey.split(",").filter(Boolean)), [criticalKey]);
   const columns = useMemo<Column<TitleRow>[]>(() => {
@@ -67,13 +77,17 @@ export function TitleTable({
         hideable: false,
         render: (r) => {
           const selected = r.id === selectedId;
-          const q = new URLSearchParams(baseQuery);
-          q.set("titel", r.id);
           return (
             <span className="flex min-w-0 flex-col">
               <Link
-                href={`/inkopspriser?${q.toString()}`}
+                href={titleHref(baseQuery, r.id)}
                 scroll={false}
+                onClick={(e) => {
+                  // Redan vald: adressen ändras inte, så visa redigeraren direkt.
+                  if (!selected || e.metaKey || e.ctrlKey || e.shiftKey) return;
+                  e.preventDefault();
+                  revealEditor(PRICE_EDITOR_ID);
+                }}
                 aria-current={selected ? "true" : undefined}
                 className={cn(
                   "rounded-xs underline-offset-4 hover:underline",
@@ -204,6 +218,15 @@ export function TitleTable({
     ];
   }, [baseQuery, selectedId, today, critical]);
 
+  // Klick var som helst på raden öppnar titelns prisredigerare (namnet är länken för tangentbordet).
+  const openRow = useCallback(
+    (r: TitleRow) => {
+      if (r.id === selectedId) revealEditor(PRICE_EDITOR_ID);
+      else router.push(titleHref(baseQuery, r.id), { scroll: false });
+    },
+    [router, baseQuery, selectedId],
+  );
+
   return (
     <DataTable
       columns={columns}
@@ -217,6 +240,7 @@ export function TitleTable({
       exportFileName="inkopspriser"
       columnPicker
       toolbar
+      onRowClick={openRow}
     />
   );
 }

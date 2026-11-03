@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useState } from "react";
 
 import { cn } from "@/lib/cn";
 import { CountUp } from "./count-up";
@@ -33,6 +33,8 @@ export type KpiItem = {
   alertText?: string;
   /** Grunden för talet när den inte är självklar, t.ex. "på order med inköpspris". */
   note?: string;
+  /** Talets delar på en liten rad under det, t.ex. "Vår del 12 109 kr · Butikernas del 12 109 kr". */
+  parts?: ReadonlyArray<{ id: string; label: string; value: number }>;
 };
 
 type KpiStripProps = {
@@ -394,6 +396,24 @@ function KpiCell({
           {item.delta ? (
             <dd className="mt-1">
               <KpiDelta spec={item.delta} />
+            </dd>
+          ) : null}
+          {item.parts && item.parts.length > 0 ? (
+            <dd className="meta tnum mt-1 text-muted">
+              {item.parts.map((p, i) => (
+                <Fragment key={p.id}>
+                  {/* På smal skärm bryts raden mellan delarna (beloppet hålls ihop med etiketten). */}
+                  {i > 0 ? " · " : null}
+                  <span>
+                    {`${p.label}\u00a0`}
+                    {countUp && Number.isInteger(p.value) ? (
+                      <CountUp id={`${item.id}.${p.id}`} value={p.value} format={item.format} />
+                    ) : (
+                      item.format(p.value)
+                    )}
+                  </span>
+                </Fragment>
+              ))}
             </dd>
           ) : null}
           {item.note ? <dd className="meta mt-1 text-subtle">{item.note}</dd> : null}

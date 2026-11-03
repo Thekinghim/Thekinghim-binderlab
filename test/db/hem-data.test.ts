@@ -16,7 +16,7 @@ import {
   type Viewer,
 } from "@/server/data/core/loaders";
 import { resolveAppPeriod } from "@/server/data/core/period";
-import { keyMetrics } from "@/domain";
+import { keyMetrics, profitability } from "@/domain";
 
 import * as s from "@/db/schema";
 
@@ -232,7 +232,47 @@ describe("loadHomeWith", () => {
     const { model } = await loadHomeWith(loadersFor(owner), MARCH);
     const input = await loadDomainInputFor(owner, { period: model.period }, NOW);
     const km = keyMetrics(input.current);
-    expect(model.kpis.find((k) => k.id === "profit")?.value).toBe(km.profitOre);
+    const t = profitability(input.current, "title").totals;
+    // Nyckeltalet är hela vinsten: vår vinst + butikens provision (20 %).
+    expect(model.profitSplit).toEqual({
+      totalOre: km.profitOre + t.compensationOre,
+      ourOre: km.profitOre,
+      storesOre: t.compensationOre,
+    });
+    expect(t.compensationOre).toBe(3_360);
+    expect(model.kpis.find((k) => k.id === "profit")?.value).toBe(km.profitOre + 3_360);
     expect(model.kpis.find((k) => k.id === "margin")?.value).toBe(km.marginBp);
   });
+
+  for (const vmb of [false, true]) {
+    it(`hela vinsten = vår vinst + butikernas del, med och utan butiksfilter${vmb ? " (Med VMB)" : ""}`, async () => {
+      const loaders = loadersFor(owner);
+      loaders.domainInput = vi.fn((args: Parameters<HomeLoaders["domainInput"]>[0]) =>
+        loadDomainInputFor(owner, { ...args, vmb }, NOW),
+      );
+      const all = await loadHomeWith(loaders, MARCH);
+      const input = await loadDomainInputFor(owner, { period: all.model.period, vmb }, NOW);
+      const byStore = profitability(input.current, "store");
+      const t = byStore.totals;
+      expect(t.vmbVatOre > 0, "VMB-moms").toBe(vmb);
+      expect(all.model.profitSplit).toEqual({
+        totalOre: t.profitOre + t.compensationOre,
+        ourOre: t.profitOre,
+        storesOre: t.compensationOre,
+      });
+      const store = input.stores[0]!;
+      const row = byStore.rows.find((r) => r.key === store.id)!;
+      const one = await loadHomeWith(loaders, { ...MARCH, butik: store.id });
+      expect(one.scope).toMatchObject({ kind: "store", id: store.id });
+      expect(one.model.profitSplit).toEqual({
+        totalOre: row.profitOre + row.compensationOre,
+        ourOre: row.profitOre,
+        storesOre: row.compensationOre,
+      });
+      expect(one.model.kpis.find((k) => k.id === "profit")?.parts?.map((p) => p.label)).toEqual([
+        "Butikens del",
+        "Vår del",
+      ]);
+    });
+  }
 });

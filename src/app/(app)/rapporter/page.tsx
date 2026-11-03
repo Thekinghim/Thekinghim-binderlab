@@ -6,7 +6,7 @@ import { monthLabel, monthName, sek } from "@/app/rapport/_components/shared";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatDate, formatInt } from "@/lib/format";
-import { MISSING_PRICES_MESSAGE } from "@/reports";
+import { MISSING_PRICES_MESSAGE, periodText } from "@/reports";
 import { loadSyncInfo, requireRoute } from "@/server/data/core";
 import { TYPE_LABEL } from "@/server/reports/kinds";
 import { loadReportsPage } from "@/server/reports/page-data";
@@ -50,16 +50,20 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
     period: one(sp.period),
     butiken: one(sp.butiken),
     mottagare: one(sp.mottagare),
+    fran: one(sp.fran),
+    till: one(sp.till),
   });
   const services = serviceStatus();
   const sync = await loadSyncInfo();
   const staleDay = staleImportDay(
-    monthEnd(data.month),
+    data.range?.end ?? monthEnd(data.month),
     sync?.syncedAt,
     viewer.organization.timezone,
   );
 
   const month = monthLabel(data.month);
+  // Det som visas: månaden eller det egna datumet ("15–31 okt. 2026").
+  const shown = data.range ? periodText(data.range) : month;
   const delivered = data.expected.filter((e) => e.delivered).length;
   const monthReports = data.archive.filter((r) => r.month === data.month);
   const drafts = monthReports.filter((r) => r.status === "draft").length;
@@ -94,7 +98,7 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
   const scope =
     data.type === "butik"
       ? (data.stores.find((x) => x.id === data.storeId)?.name ?? "ingen butik")
-      : month;
+      : shown;
 
   const VIEWS = ["aktuell", "arkiv", "mottagare"] as const;
   const view = pickView(sp.vy, VIEWS);
@@ -120,7 +124,7 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
           title={title}
           aside={aside}
           meta={[
-            { label: "Månad", value: month },
+            { label: data.range ? "Period" : "Månad", value: shown },
             { label: "Utkast", value: formatInt(drafts + otherDrafts.length) },
           ]}
         />
@@ -149,7 +153,7 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
               title={`${TYPE_LABEL[data.type]}, ${scope}.`}
               aside={[
                 preview?.type === "butik"
-                  ? `Butikens ersättning ${monthName(preview.month)}: ${sek(preview.report.compensation.totalOre)}.`
+                  ? `Butikens ersättning ${data.range ? shown : monthName(preview.month)}: ${sek(preview.report.compensation.totalOre)}.`
                   : null,
                 data.current
                   ? `Senaste versionen ${when(data.current.generatedAt, viewer.organization.timezone)}.`
@@ -173,9 +177,12 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
               </p>
             ) : null}
             <ReportBuilder
-              key={`${data.type}-${data.month}-${data.storeId ?? ""}`}
+              key={`${data.type}-${data.month}-${data.range?.start ?? ""}-${data.range?.end ?? ""}-${data.storeId ?? ""}`}
               type={data.type}
               month={data.month}
+              range={data.range}
+              rangeProblem={data.rangeError}
+              today={data.today}
               months={data.months.map((m) => ({ value: m, label: monthLabel(m) }))}
               stores={data.stores}
               storeId={data.storeId}
@@ -223,7 +230,7 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
             <SectionHeader
               id="forhandsvisning"
               size="md"
-              title={preview ? `Förhandsvisning, ${month}.` : "Ingen förhandsvisning."}
+              title={preview ? `Förhandsvisning, ${shown}.` : "Ingen förhandsvisning."}
               aside={preview ? preview.report.conclusion.text : undefined}
             />
             {preview ? (

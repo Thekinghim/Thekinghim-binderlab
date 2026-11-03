@@ -64,6 +64,29 @@ export interface HomeKpi {
   readonly alertText: string | null;
   /** Grunden när den inte är hela intäkten: marginalen gäller bara order med inköpspris. */
   readonly note: string | null;
+  /** Vinstens delar under talet (bara vinsten): "Vår del · Butikernas del". Annars tom. */
+  readonly parts?: readonly HomeKpiPart[];
+}
+
+/** En del av ett nyckeltal, i samma enhet (öre). */
+export interface HomeKpiPart {
+  readonly id: "ours" | "stores";
+  readonly label: string;
+  readonly value: number;
+}
+
+/**
+ * Hela vinsten och hur den delas: vår vinst (som på Lönsamhet) plus butikernas del
+ * (butiksersättningen: vinstandel eller provision och hyra, på order med inköpspris).
+ * Med butiksfilter gäller den butiken. Efter VMB-moms med vyknappen "Med VMB".
+ */
+export interface HomeProfitSplit {
+  /** Vår vinst + butikernas del (öre). */
+  readonly totalOre: number;
+  /** Vår vinst, samma som Lönsamhetens vinst (öre). */
+  readonly ourOre: number;
+  /** Butikernas (med filter: butikens) del, samma som Lönsamhetens butiksersättning (öre). */
+  readonly storesOre: number;
 }
 
 /** Intäkt per dag för huvuddiagrammet. */
@@ -155,6 +178,8 @@ export interface HomeModel {
   /** I dag ingår i perioden och har order, men dagen pågår och visas inte i diagrammet. */
   readonly todayPartial: boolean;
   readonly kpis: HomeKpi[];
+  /** Hela vinsten och delningen, eller null när vinsten inte går att räkna (inga inköpspriser). */
+  readonly profitSplit: HomeProfitSplit | null;
   readonly daily: HomeDaily | null;
   readonly unpriced: HomeUnpriced | null;
   readonly topTitles: HomeTopTitles;
@@ -248,6 +273,14 @@ function rowsIn(rows: readonly ProfitabilityRow[], range: Period): Profitability
   return rows.filter((r) => r.key >= range.start && r.key <= range.end);
 }
 
+/**
+ * Hela vinsten för en rad: vår vinst + butiksersättningen. Liggaren drar ersättningen
+ * (och VMB-momsen) från vinsten, så summan är vinsten före butikernas del (berakningar.md).
+ */
+function totalProfit(row: Pick<ProfitabilityRow, "profitOre" | "compensationOre">): number {
+  return row.profitOre + row.compensationOre;
+}
+
 function relative(current: number | null, previous: number | null): number | null {
   if (current === null || previous === null) return null;
   const bp = changeBp(current, previous);
@@ -278,8 +311,12 @@ function todosInScope(
 function buildKpis(args: {
   km: KeyMetrics;
   prev: KeyMetrics | null;
-  /** Det finns order med inköpspris, så att vinsten går att räkna. */
-  priced: boolean;
+  /** Hela vinsten och delningen i perioden (null utan order med inköpspris). */
+  split: HomeProfitSplit | null;
+  /** Hela vinsten i jämförelseperioden. */
+  prevTotalOre: number | null;
+  /** Med butiks- eller automatfilter: delen heter "Butikens del". */
+  filtered: boolean;
   days: ProfitabilityRow[];
   prevDays: ProfitabilityRow[];
   compareDays: number;
@@ -287,7 +324,9 @@ function buildKpis(args: {
   /** Vinsten bär VMB-moms; `preliminary` när perioden inte är avslutade hela månader. */
   vmb: { readonly applies: boolean; readonly preliminary: boolean };
 }): HomeKpi[] {
-  const { km, prev, priced, days, prevDays, compareDays, unpriced, vmb } = args;
+  const { km, prev, split, prevTotalOre, filtered, days, prevDays, compareDays, unpriced, vmb } =
+    args;
+  const priced = split !== null;
   const revenueTrend = days.map(rowRevenue);
   const marginTrend = carryForward(days.map((r) => r.marginBp));
   const aovTrend = carryForward(
@@ -299,7 +338,19 @@ function buildKpis(args: {
   const hasPrev = prev !== null && compareDays > 0;
   // Dagsraderna saknar hyra som ingen order bär (raden "ej fördelad"); referensen räknas
   // därför ur jämförelseperiodens dagsrader, så att linje och referens jämför samma sak.
-  const prevDailyProfit = prevDays.reduce((n, r) => n + r.profitOre, 0);
+  const prevDailyProfit = prevDays.reduce((n, r) => n + totalProfit(r), 0);
+  const parts: HomeKpiPart[] =
+    split && (filtered || split.storesOre !== 0)
+      ? filtered
+        ? [
+            { id: "stores", label: "Butikens del", value: split.storesOre },
+            { id: "ours", label: "Vår del", value: split.ourOre },
+          ]
+        : [
+            { id: "ours", label: "Vår del", value: split.ourOre },
+            { id: "stores", label: "Butikernas del", value: split.storesOre },
+          ]
+      : [];
 
   return [
     {
@@ -317,10 +368,10 @@ function buildKpis(args: {
       id: "profit",
       label: "Vinst före fasta kostnader",
       unit: "ore",
-      value: priced ? km.profitOre : null,
-      delta: hasPrev && priced ? relative(km.profitOre, prev.profitOre) : null,
+      value: split ? split.totalOre : null,
+      delta: hasPrev && split ? relative(split.totalOre, prevTotalOre) : null,
       deltaKind: "relative",
-      trend: priced ? days.map((r) => r.profitOre) : [],
+      trend: priced ? days.map(totalProfit) : [],
       reference: hasPrev && priced ? perDay(prevDailyProfit, compareDays) : null,
       alertText:
         unpriced && unpriced.orders > 0
@@ -332,10 +383,12 @@ function buildKpis(args: {
             ? "efter VMB-moms (preliminär)"
             : "efter VMB-moms"
           : null,
+      parts,
     },
     {
       id: "margin",
-      label: "Marginal",
+      // Vår vinst / intäkt, som på Lönsamhet (inte hela vinsten ovan).
+      label: "Vår marginal",
       unit: "bp",
       value: km.marginBp,
       delta: hasPrev ? marginDelta : null,
@@ -598,10 +651,22 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
   const prevDays = previous && compare ? rowsIn(dayRows(previous), compare) : [];
   const compareDays = compare ? periodDays(compare) : 0;
 
+  // Hela vinsten = vår vinst + butikernas del, ur samma liggare som Lönsamhet och Butiker.
+  const profitSplit: HomeProfitSplit | null = priced
+    ? {
+        totalOre: totalProfit(byTitle.totals),
+        ourOre: byTitle.totals.profitOre,
+        storesOre: byTitle.totals.compensationOre,
+      }
+    : null;
+  const prevTotalOre = previous ? totalProfit(profitability(previous, "title").totals) : null;
+
   const kpis = buildKpis({
     km,
     prev: prevKm,
-    priced,
+    split: profitSplit,
+    prevTotalOre,
+    filtered: Boolean(input.scope.storeId || input.scope.machineId),
     days,
     prevDays,
     compareDays,
@@ -654,7 +719,8 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
       revenueOre: km.revenueOre,
       orders: km.orderCount,
       pricedOrders: byTitle.totals.pricedOrders,
-      profitOre: km.profitOre,
+      profitOre: profitSplit?.totalOre ?? km.profitOre,
+      ourProfitOre: profitSplit && profitSplit.storesOre !== 0 ? profitSplit.ourOre : null,
       marginBp: km.marginBp,
       unpricedShareBp: unpriced?.shareBp ?? 0,
       revenueChangeBp:
@@ -672,6 +738,7 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
     todayPending,
     todayPartial,
     kpis,
+    profitSplit,
     daily,
     unpriced,
     topTitles,

@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatInt, formatMonth } from "@/lib/format";
+import { periodText } from "@/reports/text";
 import type { ArchiveRow } from "@/server/reports/service";
 import { STATUS_LABEL } from "@/server/reports/status";
 
@@ -37,16 +38,16 @@ export function ArchiveTable({
       {
         key: "month",
         header: "Period",
-        sortValue: (r) => r.month,
+        sortValue: (r) => `${r.period.start}|${r.period.end}`,
         render: (r) => (
           <a
             href={`/rapport/${r.id}`}
             className="rounded-xs text-fg underline-offset-4 hover:underline"
           >
-            {monthOf(r.month)}
+            {r.custom ? periodText(r.period) : monthOf(r.month)}
           </a>
         ),
-        csv: (r) => r.month,
+        csv: (r) => (r.custom ? `${r.period.start}–${r.period.end}` : r.month),
         hideable: false,
       },
       {

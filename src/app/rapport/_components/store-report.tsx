@@ -26,7 +26,8 @@ import type {
 } from "@/reports";
 import type { StoreSnapshot } from "@/server/reports/snapshot";
 
-import { periodText, pctText, splitsOf } from "@/reports";
+import { isWholeMonth, periodText, pctText, splitsOf } from "@/reports";
+import { periodDays } from "@/domain";
 
 import {
   SECTION_TAG,
@@ -35,9 +36,10 @@ import {
   dayLabel,
   delta,
   kronor,
-  monthLabel,
   monthName,
   pct,
+  periodLabel,
+  periodName,
   sek,
   sekValue,
   sentence,
@@ -163,7 +165,8 @@ export function splitRows(c: StoreCompensationBreakdown): SplitRow[] {
   for (const x of splits) {
     const pre = many ? `${periodText(x.range)}: ` : "";
     const pct = pctText(x.shareBp, x.shareBp % 100 === 0 ? 0 : 1);
-    const id = x.validFrom;
+    // Avtal och dag: eget datum över ett månadsskifte ger en delning per månad och avtal.
+    const id = `${x.validFrom}-${x.range.start}`;
     rows.push({ key: `${id}-sales`, label: `${pre}Försäljning`, amountOre: x.salesInclVatOre });
     if (x.pending) {
       rows.push({ key: `${id}-share`, label: `${pre}Er andel ${pct}`, amountOre: null });
@@ -222,8 +225,10 @@ export function StoreReportDocument({
   recipient?: string;
 }) {
   const r = snapshot.report;
-  const month = monthLabel(snapshot.month);
-  const prevName = monthName(r.comparison.month);
+  const month = periodLabel(snapshot);
+  const custom = !isWholeMonth(snapshot.period);
+  const prevName = custom ? "perioden före" : monthName(r.comparison.month);
+  const name = periodName(snapshot);
   const steps = r.compensation.steps.filter((s) => s.kind !== "total");
   const total = r.compensation.steps.find((s) => s.kind === "total");
   const splitList = splitsOf(r.compensation);
@@ -302,12 +307,12 @@ export function StoreReportDocument({
           as={SECTION_TAG[level]}
           index={1}
           eyebrow="Ersättning"
-          title={`Er ersättning för ${monthName(snapshot.month)}: ${kronor(r.compensation.totalOre)}.`}
+          title={`Er ersättning för ${name}: ${kronor(r.compensation.totalOre)}.`}
           aside={split ? `Avtal: ${r.compensation.modelText}` : r.compensation.modelText}
         >
           {split ? (
             <ReportTable
-              caption={`Vinstdelningen med ${snapshot.store.name} för ${monthName(snapshot.month)}.`}
+              caption={`Vinstdelningen med ${snapshot.store.name} för ${name}.`}
               columns={splitColumns}
               rows={splitRows(r.compensation)}
               rowKey={(x) => x.key}
@@ -356,8 +361,8 @@ export function StoreReportDocument({
             />
             {r.weeks.some((w) => w.partial) ? (
               <ReportNote>
-                Veckor som bara delvis ligger i {monthName(snapshot.month)} räknas med de dagar som
-                hör till månaden.
+                Veckor som bara delvis ligger i {name} räknas med de dagar som hör till{" "}
+                {custom ? "perioden" : "månaden"}.
               </ReportNote>
             ) : null}
           </ReportSection>
@@ -391,14 +396,17 @@ export function StoreReportDocument({
           index={4}
           eyebrow="Automater"
           title={`${formatInt(r.machines.length)} ${r.machines.length === 1 ? "automat" : "automater"} i butiken.`}
-          aside={`${formatInt(r.sales.orders)} sålda pack under ${monthName(snapshot.month)}.`}
+          aside={`${formatInt(r.sales.orders)} sålda pack under ${name}.`}
         >
           <ReportTable
             caption="Butikens automater under månaden."
-            columns={machineColumns(r.compensation.daysInMonth, {
-              orders: r.sales.orders,
-              revenueOre: r.sales.revenueOre,
-            })}
+            columns={machineColumns(
+              custom ? periodDays(snapshot.period) : r.compensation.daysInMonth,
+              {
+                orders: r.sales.orders,
+                revenueOre: r.sales.revenueOre,
+              },
+            )}
             rows={r.machines}
             rowKey={(m) => m.machineId}
           />
@@ -436,8 +444,11 @@ export function StoreReportDocument({
           <ReportNote>
             Försäljningen är köp i automater som stod i {snapshot.store.name} köpdagen, exklusive
             moms
-            {r.sales.vatOre === 0 ? " (ingen moms tas ut)" : ""}. Förra månaden:{" "}
-            {sek(r.comparison.revenueOre)} på {formatInt(r.comparison.orders)} köp.
+            {r.sales.vatOre === 0 ? " (ingen moms tas ut)" : ""}.{" "}
+            {custom && r.comparison.period
+              ? `Perioden före (${periodText(r.comparison.period)})`
+              : "Förra månaden"}
+            : {sek(r.comparison.revenueOre)} på {formatInt(r.comparison.orders)} köp.
           </ReportNote>
           <ReportNote>Beräkningsversion {snapshot.calcVersion}.</ReportNote>
         </div>

@@ -12,6 +12,7 @@ import {
   formatSek,
 } from "@/lib/format";
 import type { Period as DatePeriod } from "@/lib/period";
+import { isWholeMonth, periodText } from "@/reports/text";
 
 /** 'ÅÅÅÅ-MM-DD' → lokal midnatt (samma konvention som src/lib/period). */
 export function localDate(iso: string): Date {
@@ -43,6 +44,14 @@ export const monthLabel = (month: string) => formatMonth(localDate(`${month}-01`
 /** "oktober" */
 export const monthName = (month: string) =>
   formatMonth(localDate(`${month}-01`), { year: "never" });
+/**
+ * Rapportens period för rubriker: "oktober 2026", eller för eget datum "15–31 okt. 2026".
+ */
+export const periodLabel = (s: { month: string; period: { start: string; end: string } }) =>
+  isWholeMonth(s.period) ? monthLabel(s.month) : periodText(s.period);
+/** I löptext: "oktober", eller för eget datum "15–31 okt. 2026". */
+export const periodName = (s: { month: string; period: { start: string; end: string } }) =>
+  isWholeMonth(s.period) ? monthName(s.month) : periodText(s.period);
 /** "24 okt." */
 export const dayLabel = (iso: string) => formatDate(localDate(iso), { year: "never" });
 

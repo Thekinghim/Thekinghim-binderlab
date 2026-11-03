@@ -51,6 +51,8 @@ export interface LoadArgs {
   readonly organizationId: string;
   readonly type: ReportType;
   readonly month: IsoMonth;
+  /** Eget datum (börjar i `month`). Saknas = hela månaden. */
+  readonly period?: Period | null;
   readonly storeId?: string | null;
   readonly greeting?: string | null;
   readonly comment?: string | null;
@@ -121,6 +123,16 @@ export async function queryReportOrders(
 /** Ordrarnas fönster för en rapportmånad. */
 export function orderWindow(month: IsoMonth): Period {
   return { start: monthStart(addMonths(month, -12)), end: monthEnd(addMonths(month, 1)) };
+}
+
+/**
+ * Ordrar för ett eget datum (högst ett år): från 13 månader före startmånaden (jämförelsen
+ * med lika många dagar före) till och med månaden efter slutet.
+ */
+export function rangeOrderWindow(period: Period): Period {
+  const first = period.start.slice(0, 7) as IsoMonth;
+  const last = period.end.slice(0, 7) as IsoMonth;
+  return { start: monthStart(addMonths(first, -13)), end: monthEnd(addMonths(last, 1)) };
 }
 
 async function queryOrganization(tx: Tx, orgId: string): Promise<SnapshotOrganization> {
@@ -265,6 +277,8 @@ export async function querySieNumbering(
   month: IsoMonth,
   fiscalYear: Period,
   env: Env = process.env,
+  /** Rapportens första dag (eget datum); standard månadens första dag. */
+  before: IsoDate = monthStart(month),
 ): Promise<{ series: string; firstNumber: number }> {
   const conf = sieSettingsFromEnv(env);
   const rows = await tx
@@ -282,7 +296,7 @@ export async function querySieNumbering(
         eq(s.reports.organizationId, orgId),
         eq(s.reports.kind, "accountant_statement"),
         gte(s.reports.periodStart, fiscalYear.start),
-        lt(s.reports.periodStart, monthStart(month)),
+        lt(s.reports.periodStart, before),
       ),
     )
     .orderBy(desc(s.reports.periodStart), desc(s.reports.generatedAt));
@@ -304,8 +318,8 @@ export async function querySieNumbering(
 /** Allt `buildSnapshot` behöver för en rapport. */
 export async function loadSnapshotInput(tx: Tx, args: LoadArgs): Promise<SnapshotInput> {
   const orgId = args.organizationId;
-  const window = orderWindow(args.month);
-  const period = { start: monthStart(args.month), end: monthEnd(args.month) };
+  const period = args.period ?? { start: monthStart(args.month), end: monthEnd(args.month) };
+  const window = args.period ? rangeOrderWindow(args.period) : orderWindow(args.month);
   const today = args.now.slice(0, 10);
 
   const [organization, settings, titles, placements, stores, prices, agreements, orders, refunds] =
@@ -363,6 +377,7 @@ export async function loadSnapshotInput(tx: Tx, args: LoadArgs): Promise<Snapsho
   const input: SnapshotInput = {
     type: args.type,
     month: args.month,
+    period: args.period ?? null,
     organization,
     sources,
     generatedAt: args.now,
@@ -410,7 +425,14 @@ export async function loadSnapshotInput(tx: Tx, args: LoadArgs): Promise<Snapsho
         ...input,
         ledgerAccounts,
         fiscalYearStartMonth: settings.fiscalYearStartMonth,
-        sieSeries: await querySieNumbering(tx, orgId, args.month, fiscal),
+        sieSeries: await querySieNumbering(
+          tx,
+          orgId,
+          args.month,
+          fiscal,
+          process.env,
+          period.start,
+        ),
       };
     }
     case "delagare": {

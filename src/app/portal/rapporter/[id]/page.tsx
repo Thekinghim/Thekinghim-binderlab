@@ -7,6 +7,7 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatInt } from "@/lib/format";
 import { assertStoreReportSafe, type StoreReport } from "@/reports";
+import { isWholeMonth, periodText } from "@/reports/text";
 import { loadPortalReport } from "@/server/portal/load";
 import { requirePortalContext } from "@/server/portal/session";
 
@@ -81,7 +82,11 @@ export default async function PortalReportPage({ params }: { params: Promise<{ i
             <SectionHeader
               as="h1"
               index={1}
-              eyebrow={`Månadsrapport · ${monthText(report.month)}`}
+              eyebrow={
+                isWholeMonth(report.period)
+                  ? `Månadsrapport · ${monthText(report.month)}`
+                  : `Rapport · ${periodText(report.period)}`
+              }
               title={`${kr(report.sales.revenueOre)} i försäljning.`}
               aside={report.conclusion.text}
               size="xl"

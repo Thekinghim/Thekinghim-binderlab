@@ -8,6 +8,14 @@ import { loadPortalReports } from "@/server/portal/load";
 import { requirePortalContext } from "@/server/portal/session";
 
 import { dateTimeText, monthText } from "../_components/text";
+import { isWholeMonth, periodText } from "@/reports/text";
+
+/** "Månadsrapport oktober 2026", eller för eget datum "Rapport 15–31 okt. 2026". */
+function portalReportTitle(start: string, end: string): string {
+  return isWholeMonth({ start, end })
+    ? `Månadsrapport ${monthText(start.slice(0, 7))}`
+    : `Rapport ${periodText({ start, end })}`;
+}
 
 export const metadata: Metadata = { title: "Rapporter" };
 
@@ -58,11 +66,11 @@ export default async function PortalReportsPage() {
                     href={`/portal/rapporter/${r.reportId}`}
                     className="rounded-xs text-md text-fg underline-offset-4 hover:underline"
                   >
-                    Månadsrapport {monthText(r.periodStart.slice(0, 7))}
+                    {portalReportTitle(r.periodStart, r.periodEnd)}
                   </Link>
                 ) : (
                   <span className="text-md text-fg">
-                    Månadsrapport {monthText(r.periodStart.slice(0, 7))}
+                    {portalReportTitle(r.periodStart, r.periodEnd)}
                   </span>
                 )}
                 <span className="meta text-subtle">

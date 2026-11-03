@@ -85,6 +85,11 @@ export type DataTableProps<T> = {
   /** Ytan tabellen ligger på; används för sticky rubrik, fot och första kolumn. */
   surface?: "surface" | "raised" | "bg";
   onSortChange?: (sort: ReadonlyArray<SortKey>) => void;
+  /**
+   * Klick var som helst på raden (utom på länkar, knappar och fält i den). Bara för mus och
+   * touch: raden måste ha en länk eller knapp för tangentbordet. Ska vara stabil (useCallback).
+   */
+  onRowClick?: (row: T) => void;
 };
 
 // ---------------------------------------------------------------------------
@@ -238,14 +243,32 @@ type RowProps<T> = {
   flagged: boolean;
   height: number;
   ctx: CellCtx;
+  onRowClick?: (row: T) => void;
 };
 
-function RowImpl<T>({ row, columns, ariaRowIndex, flagged, height, ctx }: RowProps<T>) {
+/** Klicket gällde en egen kontroll i raden (eller var en textmarkering), inte raden. */
+function ownControl(e: ReactMouseEvent<HTMLTableRowElement>): boolean {
+  const t = e.target as Element | null;
+  if (t?.closest("a, button, input, select, textarea, label, [role='button']")) return true;
+  return Boolean(window.getSelection()?.toString());
+}
+
+function RowImpl<T>({ row, columns, ariaRowIndex, flagged, height, ctx, onRowClick }: RowProps<T>) {
   return (
     <tr
       aria-rowindex={ariaRowIndex}
       style={ctx.fixed ? { height } : undefined}
-      className="group transition-colors duration-fast ease-instrument hover:bg-hover"
+      onClick={
+        onRowClick
+          ? (e) => {
+              if (!ownControl(e)) onRowClick(row);
+            }
+          : undefined
+      }
+      className={cn(
+        "group transition-colors duration-fast ease-instrument hover:bg-hover",
+        onRowClick && "cursor-pointer",
+      )}
     >
       {columns.map((col, ci) => (
         <td
@@ -468,6 +491,7 @@ export function DataTable<T>({
   exportFileName,
   toolbar,
   showTiming,
+  onRowClick,
   stickyFirstColumn = true,
   surface = "surface",
   onSortChange,
@@ -621,6 +645,7 @@ export function DataTable<T>({
         flagged={isFlagged?.(row) ?? false}
         height={rowH}
         ctx={ctx}
+        onRowClick={onRowClick}
       />,
     );
   }

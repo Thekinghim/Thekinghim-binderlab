@@ -4,6 +4,7 @@
  *   "79 987 kr på 30 dagar." + "12 % bättre än perioden innan."
  *   Ingress: "Vinst 18 950 kr före återbetalningar och fasta kostnader, 23,7 % marginal."
  *   Utan jämförelse: "79 987 kr sedan 13 okt." + "Vinst 21 205 kr."
+ *   Med butikernas del: "Vinst 24 218 kr, vår del 12 109 kr." (hela vinsten och vår del).
  *   Ingress: "Före återbetalningar och fasta kostnader, 23,7 % marginal på order med inköpspris."
  *
  * Ren funktion utan databas och utan React. Inga beräkningar av ekonomi: talen kommer från
@@ -32,8 +33,13 @@ export interface HomeHeadlineInput {
   readonly orders: number;
   /** Order med inköpspris (de som ingår i vinsten). */
   readonly pricedOrders: number;
-  /** Vinst för order med inköpspris (öre). */
+  /**
+   * Hela vinsten för order med inköpspris (öre): vår del + butikernas del, efter inköp och
+   * kortavgifter (och VMB-moms med vyknappen "Med VMB").
+   */
   readonly profitOre: number;
+  /** Vår del av vinsten (öre), eller null/utelämnad när butikerna inte har någon del. */
+  readonly ourProfitOre?: number | null;
   readonly marginBp: number | null;
   /** Andel av intäkten som saknar inköpspris, i bp. */
   readonly unpricedShareBp: number;
@@ -91,12 +97,19 @@ function profitParts(input: HomeHeadlineInput): { amount: string | null; rest: s
   if (pricedOrders === 0) {
     return { amount: null, rest: "Vinsten går inte att räkna förrän orderna har inköpspris." };
   }
-  const amount = profitOre < 0 ? `Förlust ${kr(-profitOre)}` : `Vinst ${kr(profitOre)}`;
+  const ours = input.ourProfitOre ?? null;
+  const amount =
+    (profitOre < 0 ? `Förlust ${kr(-profitOre)}` : `Vinst ${kr(profitOre)}`) +
+    (ours === null ? "" : `, vår del ${kr(ours)}`);
   // Marginalen gäller bara order med inköpspris (berakningar.md 6); intäkten i rubriken alla.
   // (Från 20 % säger meningen i stället att den andelen inte ingår.)
   const basis =
     unpricedShareBp > 0 && unpricedShareBp < UNPRICED_HEADLINE_BP ? " på order med inköpspris" : "";
-  const margin = marginBp === null ? "" : `, ${marginText(marginBp)} marginal${basis}`;
+  // Marginalen är vår (vår vinst / intäkt, som på Lönsamhet).
+  const margin =
+    marginBp === null
+      ? ""
+      : `, ${marginText(marginBp)} ${ours === null ? "" : "vår "}marginal${basis}`;
   const missing =
     unpricedShareBp >= UNPRICED_HEADLINE_BP
       ? `, men ${formatPercent(unpricedShareBp / 10_000, 1)} av intäkten saknar inköpspris och ingår inte`
