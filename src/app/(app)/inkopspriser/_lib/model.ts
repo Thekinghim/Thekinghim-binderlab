@@ -7,6 +7,7 @@
 
 import {
   addDays,
+  addMonths,
   daysBetween,
   monthOf,
   priceChangeImpact,
@@ -18,7 +19,7 @@ import {
   type UnpricedTitle,
 } from "@/domain";
 import { parseAmountOre } from "@/import/amount";
-import { formatDate, formatInt, formatKronor, formatMonth } from "@/lib/format";
+import { formatDate, formatInt, formatKronor, formatMonth, formatSignedKronor } from "@/lib/format";
 
 /** Högsta inköpspris per pack som tas emot (100 000 kr): ett större värde är ett skrivfel. */
 export const MAX_UNIT_COST_ORE = 10_000_000;
@@ -114,6 +115,9 @@ export const PRICE_MESSAGES = {
   titleMissing: "Titeln finns inte längre. Ladda om sidan.",
   titleMerged: "Titeln är sammanslagen med en annan. Lägg priset på den titeln i stället.",
   unchanged: "Priset är redan inlagt med samma belopp och datum.",
+  correctionUnchanged: "All försäljning har redan det priset.",
+  correctionClosed:
+    "Månaden är stängd. Välj Nytt inköpspris i stället, eller be en ägare öppna månaden.",
   closedMonthGeneric:
     "Priset skulle gälla i en stängd månad. Välj ett senare datum, eller be en ägare öppna månaden.",
   closedMonth(months: readonly string[]): string {
@@ -613,23 +617,6 @@ function unpricedDays(
 }
 
 /**
- * Förvalt "giltig från" för ett nytt pris: första dagen med order utan pris (så att de
- * räknas in i vinsten), men inte i en stängd månad; annars i dag.
- */
-export function suggestedValidFrom(
-  prices: ReadonlyArray<Pick<PriceRecord, "validFrom">>,
-  orderDays: ReadonlyArray<{ date: IsoDate; orders: number }>,
-  closedMonths: readonly string[],
-  today: IsoDate,
-): IsoDate {
-  for (const d of unpricedDays(prices, orderDays)) {
-    if (d.date > today) break;
-    if (closedMonthsHit(prices, d.date, closedMonths).length === 0) return d.date;
-  }
-  return today;
-}
-
-/**
  * Vad ett nytt pris gör med titelns order (alla tider): räknas med @/domain
  * priceChangeImpact på orderdagarna (inga belopp behövs för inköpet).
  */
@@ -701,6 +688,195 @@ function stillUnpriced(
     firstDate: days[0]!.date,
     lastDate: days[days.length - 1]!.date,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Rätta priset: det nya priset gäller all försäljning hittills
+// ---------------------------------------------------------------------------
+
+/** Ett steg i en rättelse. Raderna pekas ut med giltig från (unikt per titel). */
+export type CorrectionStep =
+  | {
+      readonly kind: "update";
+      readonly validFrom: IsoDate;
+      /** Flyttas bakåt till rättelsens första dag (titelns första order före första priset). */
+      readonly newValidFrom: IsoDate | null;
+    }
+  | { readonly kind: "insert"; readonly validFrom: IsoDate };
+
+export interface PriceCorrection {
+  /** Första dagen som får det nya priset, null = går inte (i dag ligger i en stängd månad). */
+  readonly start: IsoDate | null;
+  /** Sista dagen (dagen före ett pris som börjar senare än i dag), null = tills vidare. */
+  readonly validTo: IsoDate | null;
+  /** Den stängda månad 'ÅÅÅÅ-MM' som gör att rättelsen börjar först efter den, annars null. */
+  readonly closedUntil: string | null;
+  readonly steps: CorrectionStep[];
+  /** Order som får ett annat inköp (även de som saknade pris). */
+  readonly affectedOrders: number;
+  /** Av dem: order som saknade pris och nu räknas in i vinsten. */
+  readonly ordersGainingPrice: number;
+  /** Ändrat inköp för order som redan hade pris. */
+  readonly costDeltaOre: number;
+  /** Vinstens förändring för order som redan hade pris (= −costDeltaOre). */
+  readonly profitDeltaOre: number;
+}
+
+type DayPrice = Pick<PriceRecord, "unitCostOre" | "validFrom">;
+
+function costOnDay(sorted: readonly DayPrice[], date: IsoDate): number | null {
+  let cost: number | null = null;
+  for (const p of sorted) {
+    if (p.validFrom > date) break;
+    cost = p.unitCostOre;
+  }
+  return cost;
+}
+
+/**
+ * "Rätta priset": det nya priset ersätter titelns nuvarande pris och alla äldre, så att all
+ * försäljning hittills (från titelns första order eller första pris) räknas med det. Ett pris
+ * som börjar senare än i dag behålls. Stängda månader rörs aldrig: ligger titelns början i
+ * eller före en stängd månad börjar rättelsen dagen efter den senaste stängda månaden.
+ *
+ * Inga rader tas bort (purchase_prices raderas inte): perioderna från rättelsens början till
+ * i dag får det nya beloppet, den första flyttas vid behov bakåt till titelns första order
+ * och en ny rad läggs in bara där ett äldre pris (i en stängd månad) annars skulle gälla.
+ */
+export function planCorrection(args: {
+  readonly prices: readonly DayPrice[];
+  readonly orderDays: ReadonlyArray<{ date: IsoDate; orders: number }>;
+  readonly unitCostOre: number;
+  readonly closedMonths: readonly string[];
+  readonly today: IsoDate;
+}): PriceCorrection {
+  const { unitCostOre, today } = args;
+  const sorted = args.prices
+    .slice()
+    .sort((a, b) => (a.validFrom < b.validFrom ? -1 : a.validFrom > b.validFrom ? 1 : 0));
+  const firstOrder = args.orderDays
+    .filter((d) => d.orders > 0 && d.date <= today)
+    .map((d) => d.date)
+    .sort()[0];
+  const firstPrice = sorted.find((p) => p.validFrom <= today)?.validFrom;
+  const begin = [firstOrder, firstPrice, today].filter((d): d is IsoDate => !!d).sort()[0]!;
+
+  const latestClosed = args.closedMonths
+    .filter((m) => `${m}-01` <= today)
+    .slice()
+    .sort()
+    .at(-1);
+  const cutoff = latestClosed ? `${addMonths(latestClosed, 1)}-01` : null;
+  const start = cutoff && cutoff > begin ? cutoff : begin;
+  const closedUntil = cutoff && cutoff > begin ? latestClosed! : null;
+  const nextFuture = sorted.find((p) => p.validFrom > today)?.validFrom;
+  const validTo = nextFuture ? addDays(nextFuture, -1) : null;
+
+  const empty = {
+    validTo,
+    closedUntil,
+    steps: [] as CorrectionStep[],
+    affectedOrders: 0,
+    ordersGainingPrice: 0,
+    costDeltaOre: 0,
+    profitDeltaOre: 0,
+  };
+  if (start > today) return { ...empty, start: null };
+
+  const inRange = sorted.filter((p) => p.validFrom >= start && p.validFrom <= today);
+  const before = sorted.filter((p) => p.validFrom < start).at(-1);
+  const steps: CorrectionStep[] = [];
+  const atStart = inRange[0]?.validFrom === start;
+  // Ett äldre pris (i en stängd månad) gäller annars från rättelsens början: en ny period
+  // behövs, om inte det priset redan är det rätta.
+  const needsInsert = before ? before.unitCostOre !== unitCostOre : inRange.length === 0;
+  if (!atStart && needsInsert) {
+    steps.push({ kind: "insert", validFrom: start });
+  }
+  inRange.forEach((p, i) => {
+    const move = i === 0 && !atStart && !before ? start : null;
+    if (p.unitCostOre !== unitCostOre || move) {
+      steps.push({ kind: "update", validFrom: p.validFrom, newValidFrom: move });
+    }
+  });
+
+  let affected = 0;
+  let gaining = 0;
+  let costDelta = 0;
+  for (const d of args.orderDays) {
+    if (d.orders <= 0 || d.date < start || (validTo !== null && d.date > validTo)) continue;
+    const old = costOnDay(sorted, d.date);
+    if (old === unitCostOre) continue;
+    affected += d.orders;
+    if (old === null) gaining += d.orders;
+    else costDelta += (unitCostOre - old) * d.orders;
+  }
+  return {
+    ...empty,
+    start,
+    steps,
+    affectedOrders: affected,
+    ordersGainingPrice: gaining,
+    costDeltaOre: costDelta,
+    profitDeltaOre: costDelta === 0 ? 0 : -costDelta,
+  };
+}
+
+function cap(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** "+2 295 kr" (öre bara när de finns). */
+export function signedKr(ore: number): string {
+  return formatSignedKronor(kr(ore), { decimals: ore % 100 === 0 ? 0 : 2 });
+}
+
+/** Förhandsvisningen under knapparna: vad "Rätta priset" gör med sålda order. */
+export function correctionText(c: PriceCorrection, today: IsoDate): string[] {
+  const lines: string[] = [];
+  if (c.start === null) {
+    return [`${cap(monthName(c.closedUntil ?? monthOf(today)))} är stängd. Välj Nytt inköpspris.`];
+  }
+  if (c.closedUntil) {
+    lines.push(
+      sentence(
+        `${cap(monthName(c.closedUntil))} är stängd, rättas från ${formatDayShort(c.start, today)}`,
+      ),
+    );
+  }
+  if (c.affectedOrders === 0) {
+    lines.push("Inga sålda order får nytt inköp.");
+    return lines;
+  }
+  const priced = c.affectedOrders - c.ordersGainingPrice;
+  if (priced > 0) {
+    lines.push(
+      `${plural(c.affectedOrders, "order", "order")} får nytt inköp, vinsten ändras med ${signedKr(c.profitDeltaOre)}.`,
+    );
+  } else {
+    lines.push(`${plural(c.affectedOrders, "order", "order")} får inköpspris.`);
+  }
+  if (c.ordersGainingPrice > 0) {
+    lines.push(
+      `${plural(c.ordersGainingPrice, "order", "order")} saknade pris och räknas nu in i vinsten.`,
+    );
+  }
+  return lines;
+}
+
+/** Toasten efter "Rätta priset". */
+export function correctionToast(c: {
+  readonly profitDeltaOre: number;
+  readonly affectedOrders: number;
+  readonly ordersGainingPrice: number;
+}): string {
+  if (c.affectedOrders > c.ordersGainingPrice) {
+    return `Priset rättat – vinsten ändrades med ${signedKr(c.profitDeltaOre)}`;
+  }
+  if (c.ordersGainingPrice > 0) {
+    return `Priset rättat – ${plural(c.ordersGainingPrice, "order", "order")} räknas nu in i vinsten`;
+  }
+  return "Priset rättat";
 }
 
 /**

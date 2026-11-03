@@ -30,6 +30,7 @@ import { dbErrorMessage, pgErrorOf } from "@/server/errors";
 import {
   closedMonthsHit,
   MAX_UNIT_COST_ORE,
+  planCorrection,
   PRICE_MESSAGES,
   type PriceAuditEvent,
   type PriceRecord,
@@ -85,6 +86,24 @@ async function queryPriceRecords(tx: Tx, orgId: string): Promise<PriceRecord[]> 
     note: typeof r.note === "string" && r.note.trim() !== "" ? r.note : null,
     createdAt: iso(r.created_at),
     createdBy: typeof r.created_by === "string" ? r.created_by : null,
+  }));
+}
+
+async function queryOrderDays(
+  tx: Tx,
+  orgId: string,
+  titleId: string,
+): Promise<Array<{ date: IsoDate; orders: number }>> {
+  const result = await tx.execute(
+    sql`select o.business_date::text as day, count(*)::int as orders
+        from public.orders o
+        where o.organization_id = ${orgId}::uuid and o.title_id = ${titleId}::uuid
+        group by o.business_date
+        order by o.business_date`,
+  );
+  return (Array.from(result) as Record<string, unknown>[]).map((r) => ({
+    date: isoDay(r.day),
+    orders: Number(r.orders),
   }));
 }
 
@@ -178,7 +197,7 @@ export async function loadTitleDetailFor(
   await requireRoleFor(user, organizationId, READ_ROLES);
   if (!z.uuid().safeParse(titleId).success) return { events: [], orderDays: [] };
   return withUserDbFor(user, async (tx) => {
-    const [auditResult, dayResult] = await Promise.all([
+    const [auditResult, orderDays] = await Promise.all([
       tx.execute(
         sql`select a.id, a.row_id, a.action::text as action, a.actor_id, a.occurred_at,
                    a.before, a.after
@@ -188,13 +207,7 @@ export async function loadTitleDetailFor(
               and coalesce(a.after ->> 'title_id', a.before ->> 'title_id') = ${titleId}
             order by a.occurred_at, a.id`,
       ),
-      tx.execute(
-        sql`select o.business_date::text as day, count(*)::int as orders
-            from public.orders o
-            where o.organization_id = ${organizationId}::uuid and o.title_id = ${titleId}::uuid
-            group by o.business_date
-            order by o.business_date`,
-      ),
+      queryOrderDays(tx, organizationId, titleId),
     ]);
     const events = (Array.from(auditResult) as Record<string, unknown>[]).flatMap(
       (r): PriceAuditEvent[] => {
@@ -213,10 +226,6 @@ export async function loadTitleDetailFor(
         ];
       },
     );
-    const orderDays = (Array.from(dayResult) as Record<string, unknown>[]).map((r) => ({
-      date: isoDay(r.day),
-      orders: Number(r.orders),
-    }));
     return { events, orderDays };
   });
 }
@@ -244,6 +253,29 @@ export type AddPriceInput = z.input<typeof addInput>;
 export interface AddPriceOutcome {
   readonly mode: "inserted" | "replaced";
   readonly priceId: string;
+}
+
+async function loadWritableTitle(
+  tx: Tx,
+  organizationId: string,
+  titleId: string,
+): Promise<string | null> {
+  const title = Array.from(
+    await tx.execute(
+      sql`select t.id, t.merged_into_id from public.titles t
+          where t.organization_id = ${organizationId}::uuid and t.id = ${titleId}::uuid`,
+    ),
+  )[0] as Record<string, unknown> | undefined;
+  if (!title) return PRICE_MESSAGES.titleMissing;
+  if (title.merged_into_id) return PRICE_MESSAGES.titleMerged;
+  return null;
+}
+
+function writeError(error: unknown): { ok: false; error: string } {
+  const pg = pgErrorOf(error);
+  if (pg?.code === "BL004") return { ok: false, error: PRICE_MESSAGES.closedMonthGeneric };
+  if (pg?.code === "42501") return { ok: false, error: PRICE_MESSAGES.forbidden };
+  return { ok: false, error: dbErrorMessage(error) };
 }
 
 async function authorizeWrite(
@@ -277,15 +309,8 @@ export async function addPurchasePriceFor(
 
   try {
     return await withUserDbFor(user as SessionUser, async (tx) => {
-      const title = Array.from(
-        await tx.execute(
-          sql`select t.id, t.archived_at, t.merged_into_id from public.titles t
-              where t.organization_id = ${input.organizationId}::uuid
-                and t.id = ${input.titleId}::uuid`,
-        ),
-      )[0] as Record<string, unknown> | undefined;
-      if (!title) return { ok: false, error: PRICE_MESSAGES.titleMissing };
-      if (title.merged_into_id) return { ok: false, error: PRICE_MESSAGES.titleMerged };
+      const titleError = await loadWritableTitle(tx, input.organizationId, input.titleId);
+      if (titleError) return { ok: false, error: titleError };
 
       // Samma kontroll som databasen gör, för ett fel som säger vilken månad det gäller.
       const [prices, closed] = await Promise.all([
@@ -325,9 +350,105 @@ export async function addPurchasePriceFor(
       return { ok: true, data: { mode: "inserted", priceId: String(inserted.id) } };
     });
   } catch (error) {
-    const pg = pgErrorOf(error);
-    if (pg?.code === "BL004") return { ok: false, error: PRICE_MESSAGES.closedMonthGeneric };
-    if (pg?.code === "42501") return { ok: false, error: PRICE_MESSAGES.forbidden };
-    return { ok: false, error: dbErrorMessage(error) };
+    return writeError(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Rätta priset (all försäljning hittills)
+// ---------------------------------------------------------------------------
+
+const correctInput = addInput.omit({ validFrom: true }).extend({
+  today: z.string().refine(isIsoDate),
+});
+
+export type CorrectPriceInput = z.input<typeof correctInput>;
+
+/** Vad rättelsen gjorde med titelns sålda order. */
+export interface CorrectPriceOutcome {
+  /** Första dagen som fick det nya priset. */
+  readonly start: IsoDate;
+  readonly affectedOrders: number;
+  readonly ordersGainingPrice: number;
+  /** Vinstens förändring för order som redan hade pris. */
+  readonly profitDeltaOre: number;
+}
+
+/**
+ * "Rätta priset": det nya priset gäller titelns nuvarande prisperiod och alla äldre, så att
+ * all försäljning hittills får det (planCorrection i model.ts). Allt i en transaktion; inga
+ * rader tas bort, perioderna får nytt belopp (och den första flyttas vid behov bakåt till
+ * titelns första order). Stängda månader rörs inte: rättelsen börjar efter den senaste
+ * stängda månaden (databasvakten BL004 har sista ordet). Varje ändrad rad loggas av
+ * triggern. Bara ägare och admin.
+ */
+export async function correctPurchasePriceFor(
+  user: SessionUser | null,
+  raw: CorrectPriceInput,
+): Promise<ActionResult<CorrectPriceOutcome>> {
+  const parsed = correctInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: PRICE_MESSAGES.invalid };
+  const input = parsed.data;
+  const denied = await authorizeWrite(user, input.organizationId);
+  if (denied) return denied;
+  const org = input.organizationId;
+
+  try {
+    return await withUserDbFor(user as SessionUser, async (tx) => {
+      const titleError = await loadWritableTitle(tx, org, input.titleId);
+      if (titleError) return { ok: false, error: titleError };
+
+      const [prices, closedMonths, orderDays] = await Promise.all([
+        queryPriceRecords(tx, org),
+        queryClosedMonths(tx, org),
+        queryOrderDays(tx, org, input.titleId),
+      ]);
+      const own = prices.filter((p) => p.titleId === input.titleId);
+      const plan = planCorrection({
+        prices: own,
+        orderDays,
+        unitCostOre: input.unitCostOre,
+        closedMonths,
+        today: input.today,
+      });
+      if (plan.start === null) return { ok: false, error: PRICE_MESSAGES.correctionClosed };
+      if (plan.steps.length === 0) {
+        return { ok: false, error: PRICE_MESSAGES.correctionUnchanged };
+      }
+
+      // Anteckningen hamnar på perioden som gäller i dag (den senaste som rättas).
+      const last = plan.steps.at(-1)!;
+      for (const step of plan.steps) {
+        const note = step === last ? input.note : undefined;
+        if (step.kind === "insert") {
+          await tx.execute(
+            sql`insert into public.purchase_prices
+                  (organization_id, title_id, unit_cost_ore, valid_from, note)
+                values (${org}::uuid, ${input.titleId}::uuid, ${input.unitCostOre},
+                        ${step.validFrom}::date, ${note ?? null})`,
+          );
+          continue;
+        }
+        const row = own.find((p) => p.validFrom === step.validFrom)!;
+        await tx.execute(
+          sql`update public.purchase_prices
+              set unit_cost_ore = ${input.unitCostOre},
+                  valid_from = ${step.newValidFrom ?? step.validFrom}::date,
+                  note = ${note ?? row.note}
+              where organization_id = ${org}::uuid and id = ${row.id}::uuid`,
+        );
+      }
+      return {
+        ok: true,
+        data: {
+          start: plan.start,
+          affectedOrders: plan.affectedOrders,
+          ordersGainingPrice: plan.ordersGainingPrice,
+          profitDeltaOre: plan.profitDeltaOre,
+        },
+      };
+    });
+  } catch (error) {
+    return writeError(error);
   }
 }

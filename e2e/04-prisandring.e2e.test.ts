@@ -1,6 +1,7 @@
 /**
- * Prisändring: ägaren lägger in ett inköpspris för en titel. Vinsten på Lönsamhet och Hem
- * ändras, och ändringen syns i titelns ändringslogg med det nya priset.
+ * Prisändring: ägaren rättar inköpspriset för en titel ("Rätta priset", gäller all
+ * försäljning). Vinsten på Lönsamhet och Hem ändras, och ändringen syns i titelns
+ * ändringslogg med det nya priset.
  *
  * Hem och Lönsamhet läses för seedens fasta period (13 okt – 1 nov 2026) i adressen, inte
  * standardperioden (senaste 30 dagarna), så att testet inte beror på dagens datum.
@@ -63,7 +64,7 @@ function newPrice(): string {
 }
 
 describe("prisändring", () => {
-  it("nytt inköpspris ändrar Lönsamhet och Hem och loggas", async () => {
+  it("Rätta priset ändrar vinsten på Lönsamhet och Hem och loggas", async () => {
     const before = await figures();
     expect(before.home).toMatch(/Vinst/);
 
@@ -74,17 +75,23 @@ describe("prisändring", () => {
     const log = page.getByRole("heading", { name: /Ändringslogg/ });
     await log.waitFor();
 
+    const titleRow = page.getByRole("row").filter({ hasText: TITLE }).first();
+    const rowBefore = await titleRow.innerText();
+
     const price = newPrice();
     await form.getByLabel("Inköpspris per pack").fill(price);
-    // Från titelns första order i seeden (15 okt.), så att priset gäller alla dess order.
-    // Körs testet igen ersätts samma dags pris ("ändrat") med ett annat belopp.
-    await form.getByLabel("Giltig från").fill(PRICE_VALID_FROM);
+    // Förhandsvisningen säger vad rättelsen gör innan något sparas.
+    // (Första körningen saknar titeln pris: då får dess order inköpspris.)
+    await form.getByText(/order får (nytt inköp, vinsten ändras med|inköpspris)/).waitFor();
     await form.getByLabel("Anteckning").fill("E2E: nytt pris från leverantören");
-    await form.getByRole("button", { name: "Spara pris" }).click();
+    // "Rätta priset": priset gäller all försäljning, inte bara dagens order.
+    await form.getByRole("button", { name: /^Rätta priset/ }).click();
     await page
-      .getByText(/^Inköpspriset (sparat|ändrat)$/)
+      .getByText(/^Priset rättat – (vinsten ändrades med [+−]|\d+ order räknas nu in i vinsten)/)
       .first()
       .waitFor();
+    // Sidans egna siffror (Vad varje pack lämnar, kvar per order) ändras utan omladdning.
+    await expect.poll(() => titleRow.innerText(), { timeout: 15_000 }).not.toBe(rowBefore);
 
     // Ändringsloggen (och prishistoriken) visar det nya priset med anteckningen.
     await page
@@ -127,12 +134,11 @@ describe("prisändring", () => {
     await page.goto(url, { waitUntil: "commit" });
     const price = newPrice();
     await form.getByLabel("Inköpspris per pack").fill(price);
+    // Ett eget datum ligger under "Annat datum…". Körs testet igen ersätts samma dags pris.
+    await form.getByRole("button", { name: "Annat datum…" }).click();
     await form.getByLabel("Giltig från").fill(PRICE_VALID_FROM);
-    await form.getByRole("button", { name: "Spara pris" }).click();
-    await page
-      .getByText(/^Inköpspriset (sparat|ändrat)$/)
-      .first()
-      .waitFor();
+    await form.getByRole("button", { name: /^Spara från/ }).click();
+    await page.getByText("Nytt inköpspris sparat").first().waitFor();
     expect(page.url()).toBe(url);
   });
 });
