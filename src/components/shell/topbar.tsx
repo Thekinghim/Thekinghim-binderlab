@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AskAiButton } from "@/components/assistant/panel-context";
 import { Suspense, useId, useState } from "react";
 import { cn } from "@/lib/cn";
 import { IconButton } from "@/components/ui/button";
@@ -99,20 +100,8 @@ export function Topbar({
           </Link>
           <Crumbs crumbs={crumbs} />
           <div className="flex shrink-0 items-center gap-1">
-            {assistantHref ? (
-              <Link
-                href={assistantHref}
-                prefetch={false}
-                aria-label="Assistent"
-                className="group flex h-8 items-center gap-2 rounded-sm px-2 text-subtle transition-colors hover:text-fg"
-              >
-                <span
-                  aria-hidden
-                  className="inline-block size-1.5 rounded-full bg-current transition-transform duration-300 group-hover:scale-150"
-                />
-                <span className="hidden text-sm sm:inline">Assistent</span>
-              </Link>
-            ) : null}
+            {/* "Fråga AI" öppnar panelen (src/components/assistant); utan panel: länken. */}
+            <AskAiButton fallbackHref={assistantHref} />
             <button
               type="button"
               onClick={onOpenCommand}

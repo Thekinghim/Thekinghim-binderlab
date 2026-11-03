@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AiPageLine } from "@/components/assistant/panel-context";
 import Link from "next/link";
 import type React from "react";
 import { notFound } from "next/navigation";
@@ -115,6 +116,7 @@ export default async function StorePage({
             ) : undefined
           }
         />
+        <AiPageLine metric="butikens resultat och andel" route="butiker" className="mt-4" />
         {data.issues.length > 0 ? <Issues data={data} /> : null}
       </div>
 

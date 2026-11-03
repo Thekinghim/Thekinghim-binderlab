@@ -14,7 +14,8 @@
  *   Ett årtal följt av en enhet ("2050 kr", "2050 pack") är däremot ett tal.
  * - I underlaget räknas alla tal i resultatet: JSON-tal, tal i texter ("12 480 kr"),
  *   antal rader i listor och belopp i öre (…Ore) omräknade till kronor, baspunkter
- *   (…Bp) till procent och tusendelar (…Milli) till hela enheter.
+ *   (…Bp) till procent, tusendelar (…Milli) och tiondelar (…Tiondelar, t.ex. takt per dag)
+ *   till hela enheter.
  * - 0 och 1 godtas alltid ("1 automat").
  *
  * Ren modul utan databas och utan "server-only" (testas i verify.test.ts).
@@ -141,6 +142,9 @@ function addDerived(set: Set<string>, key: string, value: number): void {
     add(set, value / 1000);
     add(set, round(value / 100) / 10);
     add(set, round(value / 1000));
+  } else if (/(tenths|tiondelar)$/i.test(key)) {
+    add(set, value / 10);
+    add(set, round(value / 10));
   }
 }
 

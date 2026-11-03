@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 
 import { FROM_PARAM, PERIOD_PARAM, TO_PARAM } from "@/components/shell/period-state";
 import { isUuid } from "@/server/access";
+import { parsePageContext } from "@/server/assistant/page-context";
 import type { AssistantEvent } from "@/server/assistant/protocol";
 import { askAssistant, cleanQuestion } from "@/server/assistant/service";
 import { createRateLimiter } from "@/server/rate-limit";
@@ -72,7 +73,7 @@ export async function POST(request: Request): Promise<Response> {
     });
   }
 
-  let body: { question?: unknown; conversationId?: unknown; shell?: unknown };
+  let body: { question?: unknown; conversationId?: unknown; shell?: unknown; page?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -119,6 +120,8 @@ export async function POST(request: Request): Promise<Response> {
           emit,
           signal: request.signal,
           shellParams: shellParamsFrom(body.shell),
+          // AI-panelen skickar sidan frågan ställdes från (validerad här och på servern).
+          page: parsePageContext(body.page),
         });
       } catch (error) {
         console.error("[assistent] oväntat fel:", error);

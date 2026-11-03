@@ -4,7 +4,12 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { StatusTag } from "@/components/ui/status-tag";
 import { formatInt, formatRelative } from "@/lib/format";
 import { getAssistantConfig } from "@/server/assistant/config";
-import { countFor, listRecentFor, type LogRecord } from "@/server/assistant/log";
+import {
+  countFor,
+  listRecentFor,
+  loadConversationFor,
+  type LogRecord,
+} from "@/server/assistant/log";
 import { toolsForRole } from "@/server/assistant/tools";
 import { loadContext } from "@/server/data/core";
 import { requireUser } from "@/server/session";
@@ -30,6 +35,18 @@ const TOOL_ABOUT: Record<string, string> = {
   rackvidd: "Hur många dagar lagret i varje automat räcker vid nuvarande takt.",
   att_gora: "Punkterna i Att göra, mest brådskande först.",
   hitta: "Automater, butiker och titlar med namn och kod.",
+  forandring: "Varför vinsten ändrades: mot perioden före, per automat, butik eller titel.",
+  butiksandel: "Vad butikerna får enligt avtalet, per månad och i snitt.",
+  inkopspriser: "Inköpspris, vad varje order lämnar och marginal per titel.",
+  tid_monster: "Försäljning per timme och veckodag.",
+  slutsalt: "Vad slutsålda fack kostade i förlorad försäljning.",
+  vart_lager: "Vårt lager hemma: pack, räckvidd och veckans behov.",
+  besoksplan: "Veckans besök och packlistor, i ordning.",
+  automat_status: "Status per automat: i drift, tyst, fel.",
+  avtal: "Avtalen: villkor, slutdatum och uppsägning.",
+  bokforing: "Bokföringens månader: klara, skickade, siffror.",
+  synk: "Synken från Awish: status och senaste synk.",
+  foresla_knapp: "Knappar till rätt sida för nästa steg (ändrar inget).",
 };
 
 const ECONOMY_EXAMPLES = [
@@ -70,13 +87,21 @@ export default async function AssistentPage({
   ]);
   // "Fråga assistenten" från ett förslag: frågan fylls i, skickas inte.
   const prefill = typeof sp.fraga === "string" ? sp.fraga.slice(0, 2000) : "";
+  // "Öppna i Assistent" från AI-panelen: samma samtal (bara användarens egna rader, under RLS).
+  const samtal =
+    typeof sp.samtal === "string" && /^[0-9a-f-]{36}$/i.test(sp.samtal)
+      ? sp.samtal.toLowerCase()
+      : null;
   const config = getAssistantConfig();
   const tools = toolsForRole(ctx.role);
   // Bara rader som rollen får se nu (en nedgraderad användare ser inte gamla ekonomisvar).
-  const [recent, asked, advisor] = await Promise.all([
+  const [recent, asked, advisor, earlier] = await Promise.all([
     listRecentFor(user, ctx.organization.id, 10, { role: ctx.role }),
     countFor(user, ctx.organization.id, { role: ctx.role }),
     organization ? loadAdvisorStateFor({ user, organization }) : Promise.resolve(null),
+    samtal
+      ? loadConversationFor(user, ctx.organization.id, samtal, { role: ctx.role })
+      : Promise.resolve([]),
   ]);
   const ready = config.status === "ready";
   const local = ready && config.provider === "local";
@@ -128,6 +153,8 @@ export default async function AssistentPage({
           examples={ctx.canSeeEconomy ? ECONOMY_EXAMPLES : REFILLER_EXAMPLES}
           notConfigured={notConfigured}
           initialQuestion={prefill}
+          initialConversationId={earlier.length > 0 ? samtal : null}
+          initialTurns={earlier.map((e) => ({ question: e.question, answer: e.answer }))}
         />
       </section>
 

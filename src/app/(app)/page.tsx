@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AiPageLine } from "@/components/assistant/panel-context";
 import { Suspense, type CSSProperties } from "react";
 
 import { Panel } from "@/components/ui/frame";
@@ -102,6 +103,7 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
           aside={headline.aside}
           meta={headline.state === "no-data" ? undefined : meta}
         />
+        <AiPageLine metric="vinsten för perioden" route="hem" className="mt-4" />
       </div>
 
       {headline.state === "no-data" ? (

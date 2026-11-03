@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AiPageLine } from "@/components/assistant/panel-context";
 import Link from "next/link";
 import type React from "react";
 
@@ -59,6 +60,7 @@ export default async function AutomaterPage({
             ) : undefined
           }
         />
+        <AiPageLine metric="automaternas resultat" route="automater" className="mt-4" />
       </div>
 
       {rows.length === 0 ? (

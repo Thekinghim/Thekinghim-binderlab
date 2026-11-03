@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AiPageLine } from "@/components/assistant/panel-context";
 import { Suspense } from "react";
 
 import { Panel, PanelSection } from "@/components/ui/frame";
@@ -166,6 +167,7 @@ export default async function EkonomiPage({
           aside={headline.aside}
           meta={[{ label: "Period", value: when }]}
         />
+        <AiPageLine metric="ekonomin för perioden" route="ekonomi" className="mt-4" />
         {scoped ? (
           <p className="meta text-subtle">Hela organisationen · filtret gäller inte här</p>
         ) : null}

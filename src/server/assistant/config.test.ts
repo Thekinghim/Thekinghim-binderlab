@@ -19,7 +19,25 @@ describe("assistantConfigFrom", () => {
       provider: "anthropic",
       model: "claude-opus-5-5",
       apiKey: "sk-ant-test",
+      effort: "high",
     });
+  });
+
+  it("ANTHROPIC_MODEL_CHAT går före ANTHROPIC_MODEL, och insatsen kan sänkas", () => {
+    expect(
+      assistantConfigFrom({
+        ANTHROPIC_API_KEY: "k",
+        ANTHROPIC_MODEL: "claude-opus-5-5",
+        ANTHROPIC_MODEL_CHAT: "claude-sonnet-5-5",
+        ANTHROPIC_EFFORT_CHAT: "medium",
+      }),
+    ).toMatchObject({ status: "ready", model: "claude-sonnet-5-5", effort: "medium" });
+    expect(
+      assistantConfigFrom({ ANTHROPIC_API_KEY: "k", ANTHROPIC_MODEL_CHAT: "claude-x" }),
+    ).toMatchObject({ status: "invalid", variable: "ANTHROPIC_MODEL_CHAT" });
+    expect(
+      assistantConfigFrom({ ANTHROPIC_API_KEY: "k", ANTHROPIC_EFFORT_CHAT: "max" }),
+    ).toMatchObject({ status: "invalid", variable: "ANTHROPIC_EFFORT_CHAT" });
   });
 
   it("ANTHROPIC_MODEL kan vara claude-sonnet-5-5 men inget annat", () => {

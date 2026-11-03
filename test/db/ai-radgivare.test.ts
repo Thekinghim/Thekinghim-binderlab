@@ -315,6 +315,7 @@ describe("månadstaket", () => {
           provider: "anthropic",
           model: "claude-sonnet-5-5",
           apiKey: "test",
+          effort: "high",
         },
       });
       expect(res.status).toBe("error");
