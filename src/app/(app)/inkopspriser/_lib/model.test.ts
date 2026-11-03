@@ -14,7 +14,6 @@ import {
   priceTimeline,
   sentence,
   signalTitleIds,
-  suggestedValidFrom,
   timelineShares,
   titleHeadline,
   titleRows,
@@ -505,27 +504,5 @@ describe("previewPrice", () => {
       lastDate: "2026-09-30",
     });
     expect(previewPrice({ ...base, validFrom: "2026-09-30" }).stillUnpriced).toBeNull();
-  });
-});
-
-describe("suggestedValidFrom", () => {
-  const orderDays = [
-    { date: "2026-08-30", orders: 1 },
-    { date: "2026-09-02", orders: 2 },
-    { date: "2026-10-05", orders: 3 },
-  ];
-
-  it("första dagen med order utan pris, annars i dag", () => {
-    expect(suggestedValidFrom([], orderDays, [], "2026-11-02")).toBe("2026-08-30");
-    expect(suggestedValidFrom([{ validFrom: "2026-08-01" }], orderDays, [], "2026-11-02")).toBe(
-      "2026-11-02",
-    );
-  });
-
-  it("hoppar över dagar där priset skulle gälla i en stängd månad", () => {
-    expect(
-      suggestedValidFrom([{ validFrom: "2026-10-01" }], orderDays, ["2026-08"], "2026-11-02"),
-    ).toBe("2026-09-02");
-    expect(suggestedValidFrom([], orderDays, ["2026-10"], "2026-11-02")).toBe("2026-11-02");
   });
 });

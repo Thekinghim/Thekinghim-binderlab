@@ -479,6 +479,12 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [sink(c, { unitCostOre: 1, validFrom: "2025-06-01" })],
   },
+  {
+    module: "@/app/(app)/inkopspriser/actions",
+    name: "correctPurchasePrice",
+    allowed: OP,
+    args: (c) => [sink(c, { unitCostOre: 1 })],
+  },
   // Inkorg
   {
     module: "@/app/(app)/inkorg/actions",
