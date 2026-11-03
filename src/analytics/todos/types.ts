@@ -56,6 +56,13 @@ export interface StockLevelRef {
   readonly lastRestockedAt?: string | null;
 }
 
+/** Larmgräns: saldo högst `alertAtUnits` pack i automaten ger en påfyllningspunkt. */
+export interface SlotAlert {
+  readonly machineId: string;
+  readonly titleId: string;
+  readonly alertAtUnits: number;
+}
+
 /** Butik (för namn i texter). */
 export interface StoreRef {
   readonly id: string;
@@ -263,6 +270,11 @@ export interface TodoInput extends EconomicsSources {
    * ./assortment.ts) ger ingen påfyllningspunkt. Saknas = inga utgångna.
    */
   readonly slotPeriods?: readonly SlotPeriod[];
+  /**
+   * Larmgränser per automat och titel (tabellen slot_alerts). Saldo högst gränsen ger en
+   * påfyllningspunkt även när takten inte flaggar. Saknas = inga gränser.
+   */
+  readonly slotAlerts?: readonly SlotAlert[];
   /**
    * Hur långt försäljningen är importerad per automat (som `salesCoverage` i maskinhälsan,
    * ISO 8601 UTC). En tyst automats tystnad räknas fram till dit i stället för till nu,

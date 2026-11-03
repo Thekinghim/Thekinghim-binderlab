@@ -65,7 +65,7 @@ export interface AuthProvider {
    */
   completeCodeLink?(code: string): Promise<AuthSession | null>;
 
-  /** Bara Supabase: sätter lösenord för den inloggade användaren. */
+  /** Sätter lösenord för den inloggade användaren (Supabase och dev). */
   setPassword?(password: string): Promise<void>;
 }
 

@@ -10,9 +10,16 @@ import { StatusGlyph, type Status } from "@/components/ui/status-tag";
 import { cn } from "@/lib/cn";
 import { NBSP, formatInt } from "@/lib/format";
 
-import type { HomeInsight, HomeLostSales, HomeTodo, HomeTopTitles, HomeUnpriced } from "./model";
+import type {
+  HomeInsight,
+  HomeLostSales,
+  HomeStaleImport,
+  HomeTodo,
+  HomeTopTitles,
+  HomeUnpriced,
+} from "./model";
 import { shareText, unpricedShareText } from "./model";
-import { kr } from "./text";
+import { dayText, kr } from "./text";
 
 // ---------------------------------------------------------------------------
 // Gemensamt
@@ -302,22 +309,28 @@ export function TopTitles({ top, caption }: { top: HomeTopTitles; caption: strin
 // ---------------------------------------------------------------------------
 
 /**
- * En rad under nyckeltalen: titlar utan inköpspris (vinsten räknar inte med dem) och
- * förlorad försäljning, var och en med sin länk. Markeringen (signal) sitter på nyckeltalet.
+ * En rad under nyckeltalen: inaktuell import (först, eftersom den gör alla tal ofullständiga),
+ * titlar utan inköpspris (vinsten räknar inte med dem) och förlorad försäljning, var och en
+ * med sin länk. Markeringen (signal) sitter på nyckeltalet.
  */
 export function WarningLine({
   unpriced,
   lost,
+  stale = null,
+  today,
   canEdit,
 }: {
   unpriced: HomeUnpriced | null;
   lost: HomeLostSales | null;
+  stale?: HomeStaleImport | null;
+  today: string;
   canEdit: boolean;
 }) {
-  if (!unpriced && !lost) return null;
+  if (!unpriced && !lost && !stale) return null;
   const n = unpriced?.titles.length ?? 0;
   return (
     <p className="flex flex-col gap-1 text-sm text-muted sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-6">
+      {stale ? <StaleImportText stale={stale} today={today} canEdit={canEdit} /> : null}
       {unpriced ? (
         <span className="inline-flex flex-wrap items-baseline gap-x-3">
           <span>
@@ -335,6 +348,42 @@ export function WarningLine({
           <ArrowLink href={lost.href}>Förlorad försäljning</ArrowLink>
         </span>
       ) : null}
+    </p>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Inaktuell import (Hem och Lönsamhet)
+// ---------------------------------------------------------------------------
+
+function StaleImportText({
+  stale,
+  today,
+  canEdit,
+}: {
+  stale: HomeStaleImport;
+  today: string;
+  canEdit: boolean;
+}) {
+  return (
+    <span className="inline-flex flex-wrap items-baseline gap-x-3">
+      <span className="text-fg">
+        {`Senaste import ${dayText(stale.date, today)} Order efter det saknas.`}
+      </span>
+      {canEdit ? <ArrowLink href="/datakallor">Datakällor</ArrowLink> : null}
+    </span>
+  );
+}
+
+/** Varningen om inaktuell import som egen rad (Lönsamhet). */
+export function StaleImportLine(props: {
+  stale: HomeStaleImport;
+  today: string;
+  canEdit: boolean;
+}) {
+  return (
+    <p className="text-sm text-muted">
+      <StaleImportText {...props} />
     </p>
   );
 }

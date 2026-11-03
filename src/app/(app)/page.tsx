@@ -43,7 +43,8 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
 
 async function HemContent({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
-  const { model, today, scope, canEdit, lostSales, onboarding, timeZone } = await loadHome(sp);
+  const { model, today, scope, canEdit, lostSales, onboarding, staleImport, timeZone } =
+    await loadHome(sp);
   const { headline } = model;
 
   const periodText = (p: { start: string; end: string }) =>
@@ -137,7 +138,13 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
 
           <div className="rise mt-8 flex flex-col gap-4 md:mt-10" style={rise(1)}>
             <HomeKpis kpis={model.kpis} ariaLabel={comparisonLabel} />
-            <WarningLine unpriced={model.unpriced} lost={lostSales} canEdit={canEdit} />
+            <WarningLine
+              unpriced={model.unpriced}
+              lost={lostSales}
+              stale={staleImport}
+              today={today}
+              canEdit={canEdit}
+            />
           </div>
 
           {headline.state === "no-orders" ? (

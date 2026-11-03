@@ -25,6 +25,7 @@ import { ALL_ROLES, type DataScope } from "@/server/data/core/types";
 
 import { querySlotPeriods } from "@/server/data/assortment";
 import { loadMachineHealthFor } from "@/server/data/health";
+import { querySlotAlerts, SLOT_ALERT_ROLES } from "@/server/data/core/slot-alerts";
 
 import { buildLagerModel, WINDOW_DAYS } from "./model";
 import { HISTORY_LIMIT, type HistoryEntry, type HistoryKind, type LagerView } from "./types";
@@ -173,13 +174,14 @@ export async function loadLagerFor(
   // försäljning läses också men räknas inte i takten; saldot är alltid dagens.
   const salesFrom: IsoDate = addDays(today, -(WINDOW_DAYS + 1));
 
-  const [master, stock, sales, health, slotPeriods] = await Promise.all([
+  const [master, stock, sales, health, slotPeriods, slotAlerts] = await Promise.all([
     loadMasterDataFor(viewer, now),
     loadStockFor(viewer),
     loadSalesCountsFor(viewer, { period: { start: salesFrom, end: today } }),
     // Samma maskinhälsa som Drift: automater med fel får besök i dag i veckoplanen.
     loadMachineHealthFor(viewer, now),
     withUserDbFor(viewer.user, (tx) => querySlotPeriods(tx, orgId)),
+    withUserDbFor(viewer.user, (tx) => querySlotAlerts(tx, orgId)),
   ]);
 
   const model = buildLagerModel({
@@ -193,6 +195,7 @@ export async function loadLagerFor(
     hasCentral: await withUserDbFor(viewer.user, (tx) => queryHasCentral(tx, orgId)),
     health,
     slotPeriods,
+    slotAlerts,
   });
 
   const titleName = new Map(master.titles.map((t) => [t.id, t.name]));
@@ -229,6 +232,7 @@ export async function loadLagerFor(
     counts: model.counts,
     retiredTitles: model.retiredTitles,
     canRegister: (REGISTER_ROLES as readonly string[]).includes(role),
+    canSetAlert: (SLOT_ALERT_ROLES as readonly string[]).includes(role),
     packListFirst: role === "refiller" || args.scope.machineId !== null,
   };
 }

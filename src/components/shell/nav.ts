@@ -53,8 +53,11 @@ export type ShellRoute = {
   icon: IconName;
   /** main: huvudlistan. system: längst ner i sidomenyn. */
   section: "main" | "system";
-  /** more: under den hopfällbara gruppen "Mer" i sidomenyn. */
-  group?: "more";
+  /**
+   * more: under den hopfällbara gruppen "Mer" i sidomenyn.
+   * hidden: inte i sidomenyn (nås via länkar på andra sidor, ⌘K och mobilens ark).
+   */
+  group?: "more" | "hidden";
   /** false: aldrig i sidomenyn eller mobilens ark (nås via toppraden och ⌘K). */
   menu?: false;
   roles: ReadonlyArray<Role>;
@@ -145,6 +148,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
   },
   {
     id: "butiker",
+    group: "more",
     href: "/butiker",
     label: "Butiker",
     icon: "columns",
@@ -166,7 +170,6 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
   },
   {
     id: "rapporter",
-    group: "more",
     href: "/rapporter",
     label: "Rapporter",
     icon: "report",
@@ -235,7 +238,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
   },
   {
     id: "avtal",
-    group: "more",
+    group: "hidden",
     href: "/avtal",
     label: "Avtal",
     icon: "report",
@@ -257,7 +260,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
   },
   {
     id: "effekt",
-    group: "more",
+    group: "hidden",
     href: "/effekt",
     label: "Effekt",
     icon: "check",

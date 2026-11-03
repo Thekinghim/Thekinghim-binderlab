@@ -64,3 +64,34 @@ export function reportStatuses(rows: readonly StatusRow[]): Map<string, ReportSt
   }
   return out;
 }
+
+/** Sista dagen i månaden 'ÅÅÅÅ-MM'. */
+export function monthEnd(month: string): string {
+  const [y, m] = month.split("-").map(Number) as [number, number];
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${month}-${String(last).padStart(2, "0")}`;
+}
+
+/**
+ * Dagen för senaste synken ('ÅÅÅÅ-MM-DD' i organisationens tidszon) när rapportperioden
+ * slutar samma dag eller senare, så att order efter synken kan saknas i rapporten. Annars
+ * null (ingen synk än, eller synken är nyare än perioden). Blockerar inget.
+ */
+export function staleImportDay(
+  periodEnd: string,
+  syncedAt: string | null | undefined,
+  timeZone: string,
+): string | null {
+  if (!syncedAt) return null;
+  const d = new Date(syncedAt);
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  const day = `${get("year")}-${get("month")}-${get("day")}`;
+  return day <= periodEnd ? day : null;
+}

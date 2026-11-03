@@ -5,6 +5,8 @@ import {
   fiscalYearLabel,
   formatBp,
   logAside,
+  PASSWORD_MIN_LENGTH,
+  passwordFormErrors,
   parsePercentInput,
   settingsHeadline,
   settingsLog,
@@ -163,5 +165,26 @@ describe("settingsLog", () => {
       verb: "Lade till",
     });
     expect(logAside(log, () => "2 nov.")).toBe("2 ändringar, senast 2 nov. av Ägare.");
+  });
+});
+
+describe("passwordFormErrors", () => {
+  it("svenska fel per fält och samma minsta längd som servern", async () => {
+    const { MIN_PASSWORD_LENGTH } = await import("@/server/auth/password");
+    expect(PASSWORD_MIN_LENGTH).toBe(MIN_PASSWORD_LENGTH);
+    expect(passwordFormErrors({ current: "", next: "", confirm: "" })).toEqual({
+      current: "Fyll i nuvarande lösenord.",
+      next: "Fyll i nytt lösenord.",
+      confirm: "Fyll i nytt lösenord igen.",
+    });
+    expect(passwordFormErrors({ current: "x", next: "kort", confirm: "kort" })).toEqual({
+      next: "Minst 12 tecken.",
+    });
+    expect(
+      passwordFormErrors({ current: "x", next: "långt-lösenord-1", confirm: "långt-lösenord-2" }),
+    ).toEqual({ confirm: "Lösenorden är inte lika." });
+    expect(
+      passwordFormErrors({ current: "x", next: "långt-lösenord-1", confirm: "långt-lösenord-1" }),
+    ).toEqual({});
   });
 });

@@ -6,6 +6,7 @@ import { cn } from "@/lib/cn";
 import { IconButton } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Segmented } from "@/components/ui/segmented";
+import { CopyViewButton } from "./copy-view";
 import { HotkeyHint } from "./kbd";
 import { Logo } from "./logo";
 import {
@@ -210,7 +211,10 @@ function UrlContext({
           />
         ) : null}
         <div className="flex min-w-0 basis-full items-center justify-between gap-4">
-          <PeriodReadout earliest={earliest} />
+          <div className="flex min-w-0 items-center gap-1">
+            <PeriodReadout earliest={earliest} />
+            <CopyViewButton className="-my-1" />
+          </div>
           {hasScope ? (
             <button
               type="button"

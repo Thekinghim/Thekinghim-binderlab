@@ -50,6 +50,12 @@ export const MESSAGES = {
   invitationAccepted: "Inbjudan har redan använts.",
   invitationOtherEmail: "Inbjudan gäller en annan e-postadress.",
   notMember: "Du är inte medlem i organisationen.",
+  passwordMissing: "Fyll i nuvarande lösenord.",
+  passwordWrong: "Nuvarande lösenord stämmer inte.",
+  passwordMismatch: "De nya lösenorden är inte lika.",
+  passwordSame: "Välj ett annat lösenord än det nuvarande.",
+  passwordUnsupported: "Lösenordet kan inte bytas här.",
+  passwordSaveFailed: "Lösenordet kunde inte sparas. Försök igen.",
 } as const;
 
 export function tooManyAttemptsMessage(retryAfterMs: number): string {
@@ -353,5 +359,81 @@ export async function switchOrganizationFlow(
     return { ok: false, error: MESSAGES.notMember };
   }
   ctx.cookies.set(ACTIVE_ORG_COOKIE, organizationId, activeOrgCookieOptions(ctx.secureCookies));
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Byte av eget lösenord
+// ---------------------------------------------------------------------------
+
+const changePasswordInput = z.object({
+  current: z.string().max(1024),
+  next: z.string().max(1024),
+  confirm: z.string().max(1024),
+});
+
+/** Försök per användare per fönster (limiterns gräns gäller annars). */
+export const CHANGE_PASSWORD_LIMIT = 5;
+
+export interface ChangePasswordContext {
+  provider: AuthProvider;
+  user: SessionUser | null;
+  limiter: RateLimiter;
+}
+
+/**
+ * Byter den inloggades lösenord. Det nuvarande lösenordet prövas med
+ * providerns vanliga inloggning (samma konto), och det nya sätts med
+ * `provider.setPassword`. Försöket räknas innan lösenordet prövas; ett
+ * lyckat byte nollställer räknaren.
+ */
+export async function changePasswordFlow(
+  ctx: ChangePasswordContext,
+  raw: unknown,
+): Promise<ActionResult> {
+  if (!ctx.user) {
+    return { ok: false, error: MESSAGES.notLoggedIn };
+  }
+  const user = ctx.user;
+  const parsed = changePasswordInput.safeParse(raw);
+  if (!parsed.success || parsed.data.current === "") {
+    return { ok: false, error: MESSAGES.passwordMissing };
+  }
+  const { current, next, confirm } = parsed.data;
+  const invalid = validateNewPassword(next);
+  if (invalid) {
+    return { ok: false, error: invalid };
+  }
+  if (next !== confirm) {
+    return { ok: false, error: MESSAGES.passwordMismatch };
+  }
+  if (next === current) {
+    return { ok: false, error: MESSAGES.passwordSame };
+  }
+  if (!ctx.provider.setPassword) {
+    return { ok: false, error: MESSAGES.passwordUnsupported };
+  }
+  const key = `password:user:${user.userId}`;
+  const gate = ctx.limiter.consume([{ key, limit: CHANGE_PASSWORD_LIMIT }]);
+  if (!gate.allowed) {
+    return { ok: false, error: tooManyAttemptsMessage(gate.retryAfterMs) };
+  }
+  const check = await ctx.provider.signInWithPassword(user.email, current);
+  if (!check.ok) {
+    return {
+      ok: false,
+      error: check.reason === "unavailable" ? MESSAGES.loginUnavailable : MESSAGES.passwordWrong,
+    };
+  }
+  if (check.session.userId !== user.userId) {
+    // Ska inte hända (samma e-post), men byt aldrig lösenord på fel konto.
+    return { ok: false, error: MESSAGES.passwordWrong };
+  }
+  try {
+    await ctx.provider.setPassword(next);
+  } catch {
+    return { ok: false, error: MESSAGES.passwordSaveFailed };
+  }
+  ctx.limiter.reset(key);
   return { ok: true };
 }

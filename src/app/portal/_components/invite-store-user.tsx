@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/field";
+import { Input, swedishValidity } from "@/components/ui/field";
 import { inviteStoreUser } from "@/server/portal/actions";
 
 /**
@@ -33,8 +33,18 @@ export function InviteStoreUser({
   return (
     <form
       className="flex flex-col gap-3"
+      noValidate
       onSubmit={(e) => {
         e.preventDefault();
+        const input = e.currentTarget.elements.namedItem("email") as HTMLInputElement | null;
+        if (input && !input.checkValidity()) {
+          setState({
+            ok: false,
+            message: input.validity.valueMissing ? "Fyll i e-post." : swedishValidity(input),
+          });
+          input.focus();
+          return;
+        }
         startTransition(async () => {
           const res = await inviteStoreUser({ storeId, email });
           if (res.ok) router.refresh();
@@ -49,12 +59,13 @@ export function InviteStoreUser({
       <div className="flex flex-col items-start gap-3">
         <Input
           label="E-post till butiken"
+          name="email"
           type="email"
           autoComplete="off"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           error={state && !state.ok ? state.message : undefined}
-          hint={`${storeName} ser bara sin egen försäljning, ersättning och sina rapporter.`}
+          hint={`${storeName} ser bara sina egna siffror.`}
           wrapperClassName="w-full"
           required
         />

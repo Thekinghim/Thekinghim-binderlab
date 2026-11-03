@@ -71,5 +71,5 @@ export { reportDeadline } from "./reports";
 export { reviewLink } from "./report-review";
 export { todoInScope, type ScopeMachine, type TodoScope } from "./scope";
 export { missingPriceFingerprint } from "./missing-price";
-export { refillFingerprint } from "./refill";
+export { refillFingerprint, withSlotAlerts } from "./refill";
 export type * from "./types";

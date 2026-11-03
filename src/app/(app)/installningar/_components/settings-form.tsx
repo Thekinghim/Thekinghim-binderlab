@@ -89,7 +89,7 @@ export function SettingsForm({
             setError(undefined);
           }}
           error={feeError}
-          hint="Andel av det betalda beloppet, inklusive moms, som kortinlösaren tar per order."
+          hint="Av betalt belopp inkl. moms."
         />
         <Input
           label="Momssats"
@@ -105,11 +105,7 @@ export function SettingsForm({
             setError(undefined);
           }}
           error={vatError}
-          hint={
-            vatRateBp === 0
-              ? "0 gäller nu: bolaget är inte momsregistrerat, så hela det betalda beloppet är intäkt."
-              : `${formatBp(vatRateBp)} gäller nu: momsen räknas ur det betalda beloppet och intäkten är resten.`
-          }
+          hint={vatRateBp === 0 ? "0 % när bolaget inte är momsregistrerat." : undefined}
         />
       </div>
       <Select

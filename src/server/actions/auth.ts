@@ -15,6 +15,7 @@ import { getServerEnv } from "@/lib/env";
 import { getAuthProvider } from "../auth";
 import {
   acceptInviteFlow,
+  changePasswordFlow,
   createInviteFlow,
   loginFlow,
   logoutFlow,
@@ -32,6 +33,15 @@ const globalForLimiter = globalThis as typeof globalThis & {
   __binderlabLoginLimiter?: ReturnType<typeof createRateLimiter>;
 };
 const loginLimiter = (globalForLimiter.__binderlabLoginLimiter ??= createRateLimiter({
+  limit: 5,
+  windowMs: 15 * 60 * 1000,
+}));
+
+// Byte av eget lösenord: 5 försök per användare per 15 minuter (CHANGE_PASSWORD_LIMIT).
+const globalForPasswordLimiter = globalThis as typeof globalThis & {
+  __binderlabPasswordLimiter?: ReturnType<typeof createRateLimiter>;
+};
+const passwordLimiter = (globalForPasswordLimiter.__binderlabPasswordLimiter ??= createRateLimiter({
   limit: 5,
   windowMs: 15 * 60 * 1000,
 }));
@@ -90,4 +100,14 @@ export async function switchOrganization(organizationId: string): Promise<Action
     { user, cookies: await nextCookieJar(), secureCookies: secureCookies() },
     organizationId,
   );
+}
+
+export async function changePassword(input: {
+  current: string;
+  next: string;
+  confirm: string;
+}): Promise<ActionResult> {
+  const provider = await getAuthProvider();
+  const user = await getSessionUser();
+  return changePasswordFlow({ provider, user, limiter: passwordLimiter }, input);
 }

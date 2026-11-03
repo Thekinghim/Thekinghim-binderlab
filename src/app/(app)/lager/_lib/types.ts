@@ -55,6 +55,8 @@ export interface StockCell {
    * så den räknas inte som Kritisk eller Låg och står inte i rubriken. `status` är då "ok".
    */
   readonly retired: boolean;
+  /** Larmgräns (pack): saldo högst gränsen gör cellen Låg. null = ingen gräns. */
+  readonly alertAt: number | null;
 }
 
 /** En rad i centrallagret. */
@@ -170,8 +172,10 @@ export interface LagerView {
    * sidan nämner dem under den.
    */
   readonly retiredTitles: LagerTitle[];
-  /** Rättigheter: påfyllning och inventering (ägare, admin, påfyllare). */
+  /** Rättigheter: påfyllning, inventering och svinn (ägare, admin, påfyllare). */
   readonly canRegister: boolean;
+  /** Rättigheter: ändra larmgränsen (ägare, admin). */
+  readonly canSetAlert: boolean;
   /**
    * Visa påfyllningslistan först: för påfyllaren och när en automat är vald (?automat=).
    * Vid automaten är listan det man behöver, matrisen kommer efter.

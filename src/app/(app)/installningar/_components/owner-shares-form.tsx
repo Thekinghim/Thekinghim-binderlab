@@ -188,7 +188,7 @@ export function OwnerSharesForm({
           setValidFrom(e.target.value);
           setError(undefined);
         }}
-        hint="Tidigare fördelningar finns kvar och gäller fram till det här datumet."
+        hint="Gäller från datumet."
         wrapperClassName="sm:max-w-[calc(50%-8px)]"
       />
       <FormError message={error} />

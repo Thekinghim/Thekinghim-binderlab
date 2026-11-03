@@ -63,5 +63,37 @@ export const countSchema = z.discriminatedUnion(
   { error: INVALID },
 );
 
+/** Svinn i en automat: antal pack bort ur saldot, med obligatorisk anteckning (orsaken). */
+export const wasteSchema = z.object(
+  {
+    machineId: uuid,
+    titleId: uuid,
+    quantity: packs(1, "Ange antal pack, minst 1."),
+    note: z
+      .string({ error: "Skriv orsaken." })
+      .trim()
+      .min(1, "Skriv orsaken.")
+      .max(500, "Noteringen får vara högst 500 tecken."),
+  },
+  { error: INVALID },
+);
+
+/** Larmgräns för en titel i en automat. null = av. */
+export const alertSchema = z.object(
+  {
+    machineId: uuid,
+    titleId: uuid,
+    alertAtUnits: z
+      .number({ error: "Ange ett antal, 0 eller mer." })
+      .int("Ange ett heltal.")
+      .min(0, "Ange ett antal, 0 eller mer.")
+      .max(MAX_PACKS, `Högst ${formatInt(MAX_PACKS)} pack.`)
+      .nullable(),
+  },
+  { error: INVALID },
+);
+
+export type WasteInput = z.infer<typeof wasteSchema>;
+export type AlertInput = z.infer<typeof alertSchema>;
 export type RefillInput = z.infer<typeof refillSchema>;
 export type CountInput = z.infer<typeof countSchema>;

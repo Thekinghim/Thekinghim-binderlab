@@ -26,7 +26,8 @@ vi.mock("@/db/client", async () => {
   };
 });
 
-import { acceptInviteFlow, MESSAGES } from "./flows";
+import { createRateLimiter } from "../rate-limit";
+import { acceptInviteFlow, CHANGE_PASSWORD_LIMIT, changePasswordFlow, MESSAGES } from "./flows";
 import { MemoryCookieJar, type AuthProvider, type AuthSession } from "./types";
 
 const ORG = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -140,5 +141,88 @@ describe("acceptInviteFlow med mejllänk", () => {
     expect(result.ok).toBe(false);
     expect(signOut).toHaveBeenCalledOnce();
     expect(cookies.getAll()).toEqual([]);
+  });
+});
+
+describe("changePasswordFlow", () => {
+  const CURRENT = "gammalt-lösenord-1";
+  const NEXT = "nytt-lösenord-12345";
+
+  function passwordProvider(user: AuthSession = ANNA) {
+    let stored = CURRENT;
+    const signInWithPassword = vi.fn(async (email: string, password: string) =>
+      email === user.email && password === stored
+        ? ({ ok: true, session: user } as const)
+        : ({ ok: false, reason: "invalid_credentials" } as const),
+    );
+    const setPassword = vi.fn(async (password: string) => {
+      stored = password;
+    });
+    const provider = { kind: "dev", signInWithPassword, setPassword };
+    return { provider: provider as unknown as AuthProvider, signInWithPassword, setPassword };
+  }
+  const limiter = () => createRateLimiter({ limit: 5, windowMs: 60_000 });
+
+  it("byter lösenordet med rätt nuvarande lösenord", async () => {
+    const { provider, setPassword } = passwordProvider();
+    const result = await changePasswordFlow(
+      { provider, user: ANNA, limiter: limiter() },
+      { current: CURRENT, next: NEXT, confirm: NEXT },
+    );
+    expect(result).toEqual({ ok: true });
+    expect(setPassword).toHaveBeenCalledWith(NEXT);
+  });
+
+  it("fel nuvarande lösenord ger ett svenskt fel och sparar inget", async () => {
+    const { provider, setPassword } = passwordProvider();
+    const result = await changePasswordFlow(
+      { provider, user: ANNA, limiter: limiter() },
+      { current: "fel-lösenord-999", next: NEXT, confirm: NEXT },
+    );
+    expect(result).toEqual({ ok: false, error: MESSAGES.passwordWrong });
+    expect(setPassword).not.toHaveBeenCalled();
+  });
+
+  it("för kort eller olika nya lösenord prövas inte mot kontot", async () => {
+    const { provider, signInWithPassword } = passwordProvider();
+    const ctx = { provider, user: ANNA, limiter: limiter() };
+    const short = await changePasswordFlow(ctx, {
+      current: CURRENT,
+      next: "kort",
+      confirm: "kort",
+    });
+    expect(short.ok).toBe(false);
+    expect(short.error).toMatch(/minst 12 tecken/);
+    const mismatch = await changePasswordFlow(ctx, {
+      current: CURRENT,
+      next: NEXT,
+      confirm: `${NEXT}x`,
+    });
+    expect(mismatch).toEqual({ ok: false, error: MESSAGES.passwordMismatch });
+    const missing = await changePasswordFlow(ctx, { current: "", next: NEXT, confirm: NEXT });
+    expect(missing).toEqual({ ok: false, error: MESSAGES.passwordMissing });
+    expect(signInWithPassword).not.toHaveBeenCalled();
+  });
+
+  it("begränsar antalet försök per användare", async () => {
+    const { provider, signInWithPassword } = passwordProvider();
+    const ctx = { provider, user: ANNA, limiter: limiter() };
+    const wrong = { current: "fel-lösenord-999", next: NEXT, confirm: NEXT };
+    for (let i = 0; i < CHANGE_PASSWORD_LIMIT; i++) {
+      expect((await changePasswordFlow(ctx, wrong)).error).toBe(MESSAGES.passwordWrong);
+    }
+    const blocked = await changePasswordFlow(ctx, { current: CURRENT, next: NEXT, confirm: NEXT });
+    expect(blocked.ok).toBe(false);
+    expect(blocked.error).toMatch(/För många/);
+    expect(signInWithPassword).toHaveBeenCalledTimes(CHANGE_PASSWORD_LIMIT);
+  });
+
+  it("kräver inloggning", async () => {
+    const { provider } = passwordProvider();
+    const result = await changePasswordFlow(
+      { provider, user: null, limiter: limiter() },
+      { current: CURRENT, next: NEXT, confirm: NEXT },
+    );
+    expect(result).toEqual({ ok: false, error: MESSAGES.notLoggedIn });
   });
 });

@@ -1,14 +1,16 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { ReportView } from "@/app/rapport/_components/report-view";
 import { monthLabel, monthName } from "@/app/rapport/_components/shared";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
-import { formatInt } from "@/lib/format";
-import { requireRoute } from "@/server/data/core";
+import { formatDate, formatInt } from "@/lib/format";
+import { loadSyncInfo, requireRoute } from "@/server/data/core";
 import { TYPE_LABEL } from "@/server/reports/kinds";
 import { loadReportsPage } from "@/server/reports/page-data";
 import { currentReportViewer, serviceStatus } from "@/server/reports/runtime";
+import { monthEnd, staleImportDay } from "@/server/reports/status";
 
 import { ArchiveTable } from "./_components/archive-table";
 import { RecipientsPanel } from "./_components/recipients-panel";
@@ -19,6 +21,11 @@ import { pickView, ViewTabs } from "./_components/view-tabs";
 import { when } from "./_components/when";
 
 export const metadata: Metadata = { title: "Rapporter" };
+
+function dayDate(date: string): Date {
+  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
+  return new Date(y, m - 1, d, 12);
+}
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -44,6 +51,12 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
     mottagare: one(sp.mottagare),
   });
   const services = serviceStatus();
+  const sync = await loadSyncInfo();
+  const staleDay = staleImportDay(
+    monthEnd(data.month),
+    sync?.syncedAt,
+    viewer.organization.timezone,
+  );
 
   const month = monthLabel(data.month);
   const delivered = data.expected.filter((e) => e.delivered).length;
@@ -139,6 +152,20 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
                   : "Inget utkast ännu."
               }
             />
+            {staleDay ? (
+              <p role="status" className="meta text-signal-fg">
+                Senaste synk {formatDate(dayDate(staleDay), { year: "auto" })}. Order efter det
+                saknas.
+                {data.canEdit ? (
+                  <Link
+                    href="/datakallor"
+                    className="ml-2 text-fg underline-offset-4 hover:underline"
+                  >
+                    Datakällor →
+                  </Link>
+                ) : null}
+              </p>
+            ) : null}
             <ReportBuilder
               key={`${data.type}-${data.month}-${data.storeId ?? ""}`}
               type={data.type}

@@ -14,6 +14,9 @@
  * inte i takten (dagen är inte slut) men har redan dragits från lagret. En titel som har
  * gått ur sortimentet i automaten (`input.slotPeriods`, ./assortment.ts) fylls inte på och
  * flaggas inte, som på Lager och i besöksplanen.
+ *
+ * Larmgräns (`input.slotAlerts`, tabellen slot_alerts): saldo högst gränsen ger också en
+ * punkt, med eller utan försäljning. Texten börjar då med "Saldo 3, larmgräns 4."
  */
 
 import {
@@ -25,12 +28,21 @@ import {
   roundHalfUp,
   salesVelocity,
   stockoutDate,
+  type IsoDate,
 } from "@/domain";
-import { assortmentKey, retiredPairs } from "./assortment";
-import { evidence, isMachineActive, links } from "./common";
-import { HORIZON_DAYS, urgencyOf, type TodoContext } from "./context";
+import { assortmentKey, retiredPairs, type SlotPeriod } from "./assortment";
+import { evidence, isMachineActive, links, machineNames, titleNames } from "./common";
+import { HORIZON_DAYS, sortTodos, urgencyOf, type TodoContext } from "./context";
 import { day, kr, plural, ratioTenths, sentence, tenths } from "./text";
-import type { AnalyticsOrder, StockLevelRef, TodoItem, TodoLevel } from "./types";
+import type {
+  AnalyticsOrder,
+  MachineRef,
+  SlotAlert,
+  StockLevelRef,
+  TitleRef,
+  TodoItem,
+  TodoLevel,
+} from "./types";
 
 /**
  * Fingerprint för en påfyllningspunkt: nivån plus senaste påfyllning (`lastRestockedAt`).
@@ -66,6 +78,7 @@ export function refillTodos(ctx: TodoContext): TodoItem[] {
   }
 
   const retired = retiredPairs(input.slotPeriods ?? [], today);
+  const alerts = alertMap(input.slotAlerts ?? []);
   const out: TodoItem[] = [];
   for (const s of input.stock) {
     const machine = machines.get(s.machineId);
@@ -77,9 +90,19 @@ export function refillTodos(ctx: TodoContext): TodoItem[] {
       days: options.refillWindowDays,
       ...(machine.activeFrom !== null ? { activeFrom: machine.activeFrom } : {}),
     });
-    if (v.units === 0 || v.days === 0) continue;
     const onHand = Math.max(0, s.onHand);
-    if (onHand * v.days * 100 >= options.refillThresholdCentidays * v.units) continue;
+    const alertAt = alerts.get(assortmentKey(s.machineId, s.titleId));
+    const underAlert = alertAt !== undefined && onHand <= alertAt;
+    const byRate =
+      v.units > 0 &&
+      v.days > 0 &&
+      onHand * v.days * 100 < options.refillThresholdCentidays * v.units;
+    if (!byRate) {
+      if (underAlert) {
+        out.push(alertTodo(s, alertAt, ctx.titleName(s.titleId), ctx.machineName(s.machineId)));
+      }
+      continue;
+    }
 
     const windowOrders = orders.filter((o) => o.businessDate >= v.start && o.businessDate <= v.end);
     const revenueOre = revenue(windowOrders, input.settings);
@@ -97,10 +120,11 @@ export function refillTodos(ctx: TodoContext): TodoItem[] {
     // säljs dag asOf + tak(räcker). 2,3 dagar räknat från i går kväll → slut 4 nov. om i dag är 2 nov.
     const outDate = stockoutDate(asOf, onHand, v);
 
-    const detail = empty
+    const rateDetail = empty
       ? `Slut i lager. Säljer i snitt ${perDay} pack och ${revenuePerDay} per dag (${v.days} dagar t.o.m. ${day(asOf)}).`
       : `${plural(onHand, "pack", "pack")} kvar räcker ca ${tenths(daysLeftTenths)} dagar vid ${perDay} pack per dag ` +
         `(${v.days} dagar t.o.m. ${day(asOf)}). ${sentence(`Väntas ta slut ${day(outDate ?? today)}`)}`;
+    const detail = underAlert ? `${alertText(onHand, alertAt)} ${rateDetail}` : rateDetail;
 
     out.push({
       key: `refill:${s.machineId}:${s.titleId}`,
@@ -139,4 +163,105 @@ export function refillTodos(ctx: TodoContext): TodoItem[] {
     });
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Larmgräns
+// ---------------------------------------------------------------------------
+
+function alertMap(alerts: readonly SlotAlert[]): Map<string, number> {
+  return new Map(alerts.map((a) => [assortmentKey(a.machineId, a.titleId), a.alertAtUnits]));
+}
+
+/** "Saldo 3, larmgräns 4." */
+export function alertText(onHand: number, alertAt: number): string {
+  return `Saldo ${Math.max(0, onHand)}, larmgräns ${alertAt}.`;
+}
+
+/** Punkten när bara larmgränsen slår till (ingen eller för låg takt). */
+function alertTodo(
+  s: StockLevelRef,
+  alertAt: number,
+  titleName: string,
+  machineName: string,
+): TodoItem {
+  const onHand = Math.max(0, s.onHand);
+  const level: TodoLevel = onHand === 0 ? "now" : "soon";
+  return {
+    key: `refill:${s.machineId}:${s.titleId}`,
+    fingerprint: refillFingerprint(level, s),
+    kind: "refill",
+    level,
+    urgency: urgencyOf(level, 0),
+    atStakeOre: null,
+    daysLeft: null,
+    title:
+      onHand === 0
+        ? `${titleName} är slut i ${machineName}`
+        : `Fyll på ${titleName} i ${machineName}`,
+    detail: alertText(onHand, alertAt),
+    evidence: evidence({
+      rule: "Saldot är högst larmgränsen för titeln i automaten.",
+      titleIds: [s.titleId],
+      machineIds: [s.machineId],
+      figures: [
+        { key: "onHand", label: "I lager", value: onHand, unit: "packs" },
+        { key: "alertAtUnits", label: "Larmgräns", value: alertAt, unit: "packs" },
+      ],
+    }),
+    link: links.stock(s.machineId, s.titleId),
+    action: {
+      kind: "register-refill",
+      label: "Registrera påfyllning",
+      params: { machineId: s.machineId, titleId: s.titleId },
+    },
+  };
+}
+
+/**
+ * Lägger larmgränserna på punkter som redan är räknade (laddaren i @/server/data/core
+ * skickar inte med gränserna). En påfyllningspunkt som redan finns får texten
+ * "Saldo 3, larmgräns 4." först; annars blir det en ny punkt. Nycklar i `skipKeys`
+ * (t.ex. avbockade punkter) läggs inte till. Resultatet är sorterat efter brådska.
+ */
+export function withSlotAlerts(
+  items: readonly TodoItem[],
+  args: {
+    readonly alerts: readonly SlotAlert[];
+    readonly stock: readonly StockLevelRef[];
+    readonly machines: readonly MachineRef[];
+    readonly titles: readonly TitleRef[];
+    readonly today: IsoDate;
+    readonly slotPeriods?: readonly SlotPeriod[];
+    readonly skipKeys?: ReadonlySet<string>;
+  },
+): TodoItem[] {
+  if (args.alerts.length === 0) return [...items];
+  const alerts = alertMap(args.alerts);
+  const machines = new Map(args.machines.map((m) => [m.id, m]));
+  const retired = retiredPairs(args.slotPeriods ?? [], args.today);
+  const titleName = titleNames(args.titles);
+  const machineName = machineNames(args.machines);
+  const byKey = new Map(items.map((t, i) => [t.key, i]));
+  const out = [...items];
+  for (const s of args.stock) {
+    const pair = assortmentKey(s.machineId, s.titleId);
+    const alertAt = alerts.get(pair);
+    const onHand = Math.max(0, s.onHand);
+    if (alertAt === undefined || onHand > alertAt) continue;
+    const machine = machines.get(s.machineId);
+    if (!machine || !isMachineActive(machine, args.today)) continue;
+    if (retired.has(pair)) continue;
+    const key = `refill:${s.machineId}:${s.titleId}`;
+    const at = byKey.get(key);
+    if (at !== undefined) {
+      const item = out[at]!;
+      const text = alertText(onHand, alertAt);
+      if (!item.detail.startsWith(text)) out[at] = { ...item, detail: `${text} ${item.detail}` };
+      continue;
+    }
+    if (args.skipKeys?.has(key)) continue;
+    out.push(alertTodo(s, alertAt, titleName(s.titleId), machineName(s.machineId)));
+  }
+  return sortTodos(out);
 }

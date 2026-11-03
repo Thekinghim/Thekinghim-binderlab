@@ -23,9 +23,11 @@ import {
   LagerError,
   registerCountFor,
   registerRefillFor,
+  registerWasteFor,
   type RegisterResult,
 } from "./_lib/register";
-import { countSchema, refillSchema } from "./_lib/schemas";
+import { alertSchema, countSchema, refillSchema, wasteSchema } from "./_lib/schemas";
+import { setSlotAlertFor, SLOT_ALERT_ROLES } from "@/server/data/core/slot-alerts";
 
 export type LagerActionResult =
   | { ok: true; data: RegisterResult; error?: undefined }
@@ -69,6 +71,36 @@ export async function registerCount(raw: unknown): Promise<LagerActionResult> {
     const data = await registerCountFor(viewer, input);
     revalidateAppData();
     return { ok: true, data };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** Svinn i en automat (negativt antal, orsaken som anteckning). */
+export async function registerWaste(raw: unknown): Promise<LagerActionResult> {
+  try {
+    const viewer = await registrar();
+    const input = wasteSchema.parse(raw);
+    const data = await registerWasteFor(viewer, input);
+    revalidateAppData();
+    return { ok: true, data };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export type AlertActionResult =
+  { ok: true; alertAtUnits: number | null; error?: undefined } | { ok: false; error: string };
+
+/** Larmgräns för en titel i en automat (ägare, admin). null tar bort gränsen. */
+export async function setSlotAlert(raw: unknown): Promise<AlertActionResult> {
+  try {
+    await requireContextRole(SLOT_ALERT_ROLES);
+    const viewer = await currentViewer();
+    const input = alertSchema.parse(raw);
+    const alertAtUnits = await setSlotAlertFor(viewer, input);
+    revalidateAppData();
+    return { ok: true, alertAtUnits };
   } catch (error) {
     return failure(error);
   }

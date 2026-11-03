@@ -11,7 +11,7 @@
 
 import "server-only";
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import * as s from "@/db/schema";
 import type { Tx } from "@/db/client";
@@ -20,7 +20,7 @@ import { pgErrorOf } from "@/server/errors";
 import type { Viewer } from "@/server/data/core/loaders";
 
 import { REGISTER_ROLES } from "./data";
-import type { CountInput, RefillInput } from "./schemas";
+import type { CountInput, RefillInput, WasteInput } from "./schemas";
 
 /** Fel med ett svenskt meddelande som kan visas för användaren. */
 export class LagerError extends Error {
@@ -165,3 +165,52 @@ export async function registerCountFor(viewer: Viewer, input: CountInput): Promi
     };
   });
 }
+
+/**
+ * Svinn i en automat: en 'waste'-händelse med negativt antal och orsaken som anteckning.
+ * Kräver ett räknat saldo (en påfyllning eller inventering av titeln i automaten) och
+ * får inte ta saldot under 0.
+ */
+export async function registerWasteFor(viewer: Viewer, input: WasteInput): Promise<RegisterResult> {
+  await requireRoleFor(viewer.user, viewer.organization.id, REGISTER_ROLES);
+  const orgId = viewer.organization.id;
+  return withUserDbFor(viewer.user, async (tx) => {
+    await assertTitle(tx, orgId, input.titleId);
+    const location = await locationId(tx, orgId, { machineId: input.machineId });
+    if (!location) throw new LagerError("Automaten saknar lagerplats.");
+    const counted = await tx
+      .select({ id: s.stockEvents.id })
+      .from(s.stockEvents)
+      .where(
+        and(
+          eq(s.stockEvents.organizationId, orgId),
+          eq(s.stockEvents.locationId, location),
+          eq(s.stockEvents.titleId, input.titleId),
+          inArray(s.stockEvents.kind, ["refill", "count"]),
+        ),
+      )
+      .limit(1);
+    if (counted.length === 0) throw new LagerError(WASTE_NEEDS_COUNT);
+    const previous = await level(tx, orgId, location, input.titleId);
+    if (input.quantity > previous) {
+      throw new LagerError(`Saldot är ${previous} pack. Inventera om det stämmer.`);
+    }
+    await tx.insert(s.stockEvents).values({
+      organizationId: orgId,
+      locationId: location,
+      titleId: input.titleId,
+      kind: "waste",
+      quantity: -input.quantity,
+      performedBy: viewer.user.userId,
+      note: input.note,
+    });
+    return {
+      previous,
+      onHand: await level(tx, orgId, location, input.titleId),
+      warehouseOnHand: null,
+    };
+  });
+}
+
+/** Felet när svinn registreras utan räknat saldo. */
+export const WASTE_NEEDS_COUNT = "Inventera först. Svinn kräver ett räknat saldo.";

@@ -37,8 +37,9 @@ export function MobileNav(props: ShellNavProps) {
   const primary = primaryMobileRoutes(role, 4);
   const rest = routes.filter((r) => !primary.includes(r));
   // Arket: först de primära sidorna som inte fick plats, sedan "Mer"-gruppen och System.
-  const restMain = rest.filter((r) => r.section === "main" && r.group !== "more");
+  const restMain = rest.filter((r) => r.section === "main" && !r.group);
   const restMore = rest.filter((r) => r.section === "main" && r.group === "more");
+  const restHidden = rest.filter((r) => r.section === "main" && r.group === "hidden");
   const restSystem = rest.filter((r) => r.section === "system");
   const activeId = activeRouteId(props.activeHref ?? pathname);
   // "Mer" är aktiv bara när den aktiva sidan faktiskt ligger i arket.
@@ -143,7 +144,7 @@ export function MobileNav(props: ShellNavProps) {
             <WithCarriedQuery>
               {(query) => (
                 <>
-                  {[restMain, restMore, restSystem]
+                  {[restMain, restMore, restHidden, restSystem]
                     .filter((list) => list.length > 0)
                     .map((list, i) => (
                       <div key={i} className={cn(i > 0 && "mt-2 border-t border-line pt-2")}>

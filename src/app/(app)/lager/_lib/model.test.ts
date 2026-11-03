@@ -155,6 +155,36 @@ function cellOf(model: ReturnType<typeof build>, machineId: string, titleId: str
   return model.cells[i]?.[j];
 }
 
+describe("buildLagerModel: larmgräns", () => {
+  const withAlerts = (alertAtUnits: number) =>
+    buildLagerModel({
+      now: NOW,
+      timeZone: "Europe/Stockholm",
+      today: TODAY,
+      master,
+      stock,
+      sales,
+      scope: { storeId: null, machineId: null },
+      hasCentral: true,
+      slotAlerts: [{ machineId: M2, titleId: T1, alertAtUnits }],
+    });
+
+  it("saldo högst gränsen gör en OK-cell Låg och räknas i rubriken", () => {
+    const base = build();
+    expect(cellOf(base, M2, T1)).toMatchObject({ status: "ok", alertAt: null });
+    const model = withAlerts(30);
+    expect(cellOf(model, M2, T1)).toMatchObject({ status: "low", alertAt: 30 });
+    expect(model.counts.low).toBe(base.counts.low + 1);
+    expect(model.counts.ok).toBe(base.counts.ok - 1);
+  });
+
+  it("över gränsen ändrar ingenting utom alertAt", () => {
+    const model = withAlerts(29);
+    expect(cellOf(model, M2, T1)).toMatchObject({ status: "ok", alertAt: 29 });
+    expect(model.counts).toEqual(build().counts);
+  });
+});
+
 describe("salesAsOrders", () => {
   it("gör en order per sålt pack, utan belopp", () => {
     const orders = salesAsOrders([{ date: "2026-11-01", titleId: T1, machineId: M1, units: 3 }]);
@@ -293,6 +323,7 @@ function viewOf(model: ReturnType<typeof build>): LagerView {
     history: [],
     historyTotal: 0,
     canRegister: true,
+    canSetAlert: true,
     packListFirst: false,
   };
 }

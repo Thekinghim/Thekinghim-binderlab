@@ -173,4 +173,18 @@ export class DevAuthProvider implements AuthProvider {
     await this.startSession(session);
     return { ok: true, session };
   }
+
+  /** Byter lösenord för den inloggade användaren (byte under "Mitt konto"). */
+  async setPassword(password: string): Promise<void> {
+    const session = await this.getSession();
+    if (!session) {
+      throw new Error("Ingen inloggad användare.");
+    }
+    const encrypted = await hashPassword(password);
+    await this.options
+      .db()
+      .execute(
+        sql`update auth.users set encrypted_password = ${encrypted} where id = ${session.userId}::uuid`,
+      );
+  }
 }

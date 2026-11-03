@@ -9,6 +9,7 @@ import type { CarryMode, SearchHit, SearchKind } from "@/server/search/types";
 
 import { CommandDialog, type PaletteRow, type PaletteSection } from "./command-dialog";
 import { machineLabel, withCarried } from "./command-links";
+import { useCopyView } from "./copy-view";
 import {
   isInternalHref,
   purgeForeignRecent,
@@ -109,6 +110,7 @@ export function CommandMenu({
   const { key: periodKey, setPeriod } = usePeriod();
   const { butik, automat, setScope } = useScope();
   const theme = useTheme();
+  const copyView = useCopyView();
 
   const [query, setQuery] = useState("");
   const [step, setStep] = useState<Step | null>(null);
@@ -237,6 +239,19 @@ export function CommandMenu({
         run: () => go("/installningar/anvandare", "none"),
       });
     }
+    if (hasContext) {
+      out.push({
+        id: "action-copy-view",
+        group: "actions",
+        label: "Kopiera länk till vyn",
+        icon: "external",
+        keywords: ["kopiera", "länk", "dela", "url", "vy"],
+        run: () => {
+          handleOpenChange(false);
+          void copyView();
+        },
+      });
+    }
     out.push({
       id: "action-theme",
       group: "actions",
@@ -334,6 +349,7 @@ export function CommandMenu({
     setScope,
     setPeriod,
     onSignOut,
+    copyView,
   ]);
 
   const commandById = useMemo(() => new Map(commands.map((c) => [c.id, c])), [commands]);

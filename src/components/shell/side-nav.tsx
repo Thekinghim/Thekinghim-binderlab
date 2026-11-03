@@ -605,7 +605,7 @@ export function Sidebar({ className, ...props }: SidebarProps) {
   const routes = menuRoutesForRole(role);
   const numbering = numberRoutes(routes);
   const activeId = activeRouteId(props.activeHref ?? pathname);
-  const main = routes.filter((r) => r.section === "main" && r.group !== "more");
+  const main = routes.filter((r) => r.section === "main" && !r.group);
   const more = routes.filter((r) => r.section === "main" && r.group === "more");
   const system = routes.filter((r) => r.section === "system");
 

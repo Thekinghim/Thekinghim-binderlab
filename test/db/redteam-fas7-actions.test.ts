@@ -141,6 +141,8 @@ const SPECIAL = new Set([
   "@/server/actions/auth#logout",
   "@/server/actions/auth#acceptInvite",
   "@/server/actions/auth#switchOrganization",
+  // Eget lösenord (ingen organisation); testas i test/db/auth-flows.test.ts.
+  "@/server/actions/auth#changePassword",
   "@/app/logga-in/actions#signIn",
   "@/app/logga-in/actions#requestMagicLink",
   "@/app/logga-in/actions#confirmMagicLink",

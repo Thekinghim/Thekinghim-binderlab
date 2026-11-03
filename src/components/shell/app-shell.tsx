@@ -8,6 +8,7 @@ import {
   type CommandGroup,
   type CommandItem,
 } from "@/components/ui/command-palette";
+import { useCopyView } from "./copy-view";
 import { MobileNav } from "./mobile-nav";
 import { activeRouteId, homeHref, routeById, routesForRole, type Role } from "./nav";
 import type { ShellMachine, ShellStore } from "./period-bar";
@@ -21,6 +22,7 @@ import {
 } from "./side-nav";
 import { setTheme, useTheme } from "./theme-toggle";
 import { Topbar, type Period } from "./topbar";
+import { useAutoRefresh } from "./use-auto-refresh";
 import { useCarriedQuery, usePeriod, useScope } from "./use-period";
 
 export type AppShellProps = {
@@ -88,6 +90,7 @@ export function AppShell(props: AppShellProps) {
   const crumbs =
     props.crumbs ?? [orgName, route?.label ?? "Binderlab"].filter((c): c is string => !!c);
   useCommandPaletteHotkey(setPaletteOpen, { enabled: !onOpenCommand });
+  useAutoRefresh();
 
   const navProps = {
     role: props.role,
@@ -184,6 +187,7 @@ function ShellCommandPalette({
   const { key: periodKey, setPeriod } = usePeriod();
   const { butik, automat, setScope } = useScope();
   const theme = useTheme();
+  const copyView = useCopyView();
   // Period och filter följer med till sidan man går till.
   const query = useCarriedQuery();
 
@@ -259,6 +263,13 @@ function ShellCommandPalette({
           onSelect: () => setPeriod({ key }),
         });
       }
+      actions.push({
+        id: "copy-view",
+        label: "Kopiera länk till vyn",
+        icon: "external",
+        keywords: ["kopiera", "länk", "dela", "url"],
+        onSelect: () => void copyView(),
+      });
       if (butik || automat) {
         actions.push({
           id: "scope-clear",
@@ -307,6 +318,7 @@ function ShellCommandPalette({
     query,
     onSignOut,
     signOutHref,
+    copyView,
   ]);
 
   return (

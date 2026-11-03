@@ -137,6 +137,8 @@ describe("tabeller", () => {
         "report_files",
         "report_recipients",
         "reports",
+        // Lager: larmgräns per automat och titel (20261103160000_lager_larmgrans.sql).
+        "slot_alerts",
         "source_machines",
         "stock_events",
         "stock_locations",
@@ -463,6 +465,8 @@ describe("policyer", () => {
       "organizations",
       "profiles",
       "push_subscriptions",
+      // Lager: larmgränsen (antal pack, inga belopp).
+      "slot_alerts",
       "stock_events",
       "stock_locations",
       "stores",

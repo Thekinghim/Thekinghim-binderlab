@@ -27,7 +27,8 @@ import {
   type ProfitabilityInput,
   type ProfitabilityRow,
 } from "@/domain";
-import type { DataScope, MachineRecord, TitleRecord } from "@/server/data/core/types";
+import { todayIn, toIsoDate } from "@/components/shell/period-state";
+import type { DataScope, MachineRecord, SyncInfo, TitleRecord } from "@/server/data/core/types";
 import type { EconomicsSources } from "@/domain";
 import { formatPercent } from "@/lib/format";
 
@@ -725,4 +726,37 @@ export function emptyRefillsInScope(
     (t) =>
       t.kind === "refill" && (t.evidence.figures.find((f) => f.key === "onHand")?.value ?? 1) <= 0,
   ).length;
+}
+
+// ---------------------------------------------------------------------------
+// Inaktuell import
+// ---------------------------------------------------------------------------
+
+/** Timmar utan ny import innan Hem varnar (samma gräns som skalets STALE_SYNC_HOURS). */
+export const HOME_STALE_IMPORT_HOURS = 26;
+
+/** Senaste importen när den är gammal: affärsdagen den gjordes. */
+export interface HomeStaleImport {
+  /** Affärsdagen för senaste lyckade import (ÅÅÅÅ-MM-DD). */
+  readonly date: IsoDate;
+}
+
+/**
+ * Varningen om inaktuell import, eller null. Visas bara när det finns en import, den är
+ * äldre än HOME_STALE_IMPORT_HOURS och perioden slutar samma dag eller senare (en period
+ * som slutade före importen är redan komplett).
+ */
+export function homeStaleImport(
+  sync: SyncInfo | null,
+  periodEnd: IsoDate,
+  now: Date | string,
+  timeZone: string,
+): HomeStaleImport | null {
+  if (!sync?.syncedAt) return null;
+  const at = new Date(sync.syncedAt);
+  if (Number.isNaN(at.getTime())) return null;
+  if (new Date(now).getTime() - at.getTime() <= HOME_STALE_IMPORT_HOURS * 3_600_000) return null;
+  const date = toIsoDate(todayIn(at, timeZone));
+  if (periodEnd < date) return null;
+  return { date };
 }

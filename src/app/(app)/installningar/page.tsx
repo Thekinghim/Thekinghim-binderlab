@@ -95,6 +95,10 @@ export default async function SettingsPage() {
             href: "/datakallor",
             label: "Datakällor",
           },
+          {
+            href: "/installningar/konto",
+            label: "Mitt konto",
+          },
         ].map((l) => (
           <Link
             key={l.href}

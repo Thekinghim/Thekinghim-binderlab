@@ -14,6 +14,7 @@
     "db:reset": "tsx scripts/db/reset.ts",
     "db:migrate": "tsx scripts/db/migrate.ts",
     "db:seed": "tsx scripts/db/seed.ts",
+    "db:import-costs": "tsx scripts/db/import-owner-costs.ts",
     "test:db": "vitest run -c vitest.db.config.ts",
     "test:all": "npm run test && npm run test:db",
     "test:domain:tz": "for tz in UTC Europe/Stockholm Asia/Shanghai; do echo \"TZ=$tz\"; TZ=$tz vitest run -c src/domain/testing/vitest.tz.config.ts || exit 1; done",

@@ -1,0 +1,62 @@
+{
+  "validFrom": "2026-10-15",
+  "vat": "exkl",
+  "source": "Ägarens inköpskostnader per pack (GPT-panelen, user-product-costs-v3)",
+  "entries": [
+    { "name": "White Flair", "aliases": [], "unitCostOre": 15000, "status": "ok" },
+    {
+      "name": "Black Bolt",
+      "aliases": ["Black bolt"],
+      "unitCostOre": 16000,
+      "status": "ok",
+      "needsConfirmation": true
+    },
+    { "name": "Scarlet & Violet 151", "aliases": [], "unitCostOre": 35000, "status": "ok" },
+    { "name": "Prismatic Evolution", "aliases": [], "unitCostOre": 16000, "status": "ok" },
+    { "name": "Phantasmal Flames", "aliases": [], "unitCostOre": 12000, "status": "ok" },
+    {
+      "name": "Destined Rivals",
+      "aliases": ["Destin Rivals"],
+      "unitCostOre": 8000,
+      "status": "ok"
+    },
+    { "name": "Surging Sparks", "aliases": [], "unitCostOre": 9000, "status": "ok" },
+    {
+      "name": "Ascended Heroes",
+      "aliases": ["Ascended Heroes · engelska"],
+      "unitCostOre": 17400,
+      "status": "ok",
+      "needsConfirmation": true
+    },
+    { "name": "Mystery Pack", "aliases": [], "unitCostOre": 13000, "status": "ok" },
+    {
+      "name": "Mystery Pack Premium",
+      "aliases": ["Mystery pack premium"],
+      "unitCostOre": null,
+      "status": "missing"
+    },
+    {
+      "name": "Mega Evolution",
+      "aliases": [],
+      "unitCostOre": 8000,
+      "status": "ok",
+      "note": "Äldre uppgift, bekräfta"
+    },
+    {
+      "name": "30th Celebration",
+      "aliases": [],
+      "unitCostOre": 13300,
+      "status": "ok",
+      "note": "Äldre uppgift, bekräfta"
+    },
+    { "name": "Perfect Order", "aliases": [], "unitCostOre": null, "status": "missing" }
+  ],
+  "questions": [
+    "Black bolt kostar 160 kr och säljs för 149 kr. Ascended Heroes kostar 174 kr och säljs för 189 kr. Gäller kostnaden per box, eller är momsen inräknad?",
+    "Mystery Pack Premium kostar 249 kr i Awish-orderna men 299 kr i GPT-koden. Vilket stämmer? Och vad kostar den i inköp?",
+    "Är något butiksavtal en vinstdelning?",
+    "Används Nayax på alla automater?",
+    "Hämtar Awish-synken order ända från 2026-10-15? Om inte: kan du lämna JSON-exporten från GPT-panelen?",
+    "Vilken mejladress har delägaren? (för inbjudan)"
+  ]
+}

@@ -258,6 +258,7 @@ export function LagerBoard({
         warehouseOnHand={target ? (warehouseOnHand.get(target.title.id) ?? 0) : 0}
         hasWarehouse={view.hasWarehouse}
         windowDays={salesWindow.days}
+        canSetAlert={view.canSetAlert}
         onClose={close}
       />
     </>

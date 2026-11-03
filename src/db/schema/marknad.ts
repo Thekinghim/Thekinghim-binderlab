@@ -102,6 +102,16 @@ export const machineSlots = pgTable("machine_slots", {
   ...stamps(),
 });
 
+/** Larmgräns per automat och titel: saldo högst gränsen ger en påfyllningspunkt. */
+export const slotAlerts = pgTable("slot_alerts", {
+  id: id(),
+  organizationId: orgId(),
+  machineId: uuid("machine_id").notNull(),
+  titleId: uuid("title_id").notNull(),
+  alertAtUnits: integer("alert_at_units").notNull(),
+  ...stamps(),
+});
+
 /** En genomförd sortimentsrekommendation (uppföljningen räknas fram). */
 export const assortmentChanges = pgTable("assortment_changes", {
   id: id(),

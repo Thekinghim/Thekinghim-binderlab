@@ -16,6 +16,7 @@ import {
   ACTIVE_ORG_COOKIE,
   MESSAGES,
   acceptInviteFlow,
+  changePasswordFlow,
   createInviteFlow,
   loginFlow,
   logoutFlow,
@@ -178,6 +179,28 @@ describe("inloggningsflödet", () => {
     cookies.set(ACTIVE_ORG_COOKIE, crypto.randomUUID());
     expect(await logoutFlow({ provider, cookies })).toEqual({ ok: true });
     expect(cookies.getAll()).toEqual([]);
+  });
+});
+
+describe("byte av eget lösenord", () => {
+  it("dev-providern: rätt nuvarande lösenord byter, fel ger svenskt fel", async () => {
+    const user = await createUser();
+    await setPassword(user);
+    const { provider } = devProvider();
+    await provider.signInWithPassword(user.email, PASSWORD);
+    const limiter = createRateLimiter({ limit: 5, windowMs: 60_000 });
+    const ctx = { provider, user: session(user), limiter };
+    const next = "ett nytt långt lösenord";
+
+    expect(
+      await changePasswordFlow(ctx, { current: "fel lösenord!!", next, confirm: next }),
+    ).toEqual({ ok: false, error: MESSAGES.passwordWrong });
+    expect(await changePasswordFlow(ctx, { current: PASSWORD, next, confirm: next })).toEqual({
+      ok: true,
+    });
+    const fresh = devProvider().provider;
+    expect((await fresh.signInWithPassword(user.email, PASSWORD)).ok).toBe(false);
+    expect((await fresh.signInWithPassword(user.email, next)).ok).toBe(true);
   });
 });
 

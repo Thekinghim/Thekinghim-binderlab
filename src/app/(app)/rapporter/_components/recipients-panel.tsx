@@ -22,6 +22,13 @@ const KIND_LABEL: Record<RecipientRow["kind"], string> = {
  * Mottagarna av rapporterna: butikernas kontaktpersoner, bokhållaren och delägaren.
  * En pausad mottagare får inga utskick och räknas inte i Att göra.
  */
+/** "Fyll i namn." för ett tomt fält, annars feltexten från swedishValidity. */
+function fieldMessage(el: HTMLInputElement, what: string): string {
+  return el.validity.valueMissing || el.value.trim() === ""
+    ? `Fyll i ${what}.`
+    : swedishValidity(el);
+}
+
 export function RecipientsPanel({
   recipients,
   stores,
@@ -53,8 +60,8 @@ export function RecipientsPanel({
     const nameEl = form.elements.namedItem("name") as HTMLInputElement | null;
     const emailEl = form.elements.namedItem("email") as HTMLInputElement | null;
     const next = {
-      name: nameEl && !nameEl.checkValidity() ? swedishValidity(nameEl) : undefined,
-      email: emailEl && !emailEl.checkValidity() ? swedishValidity(emailEl) : undefined,
+      name: nameEl && !nameEl.checkValidity() ? fieldMessage(nameEl, "namn") : undefined,
+      email: emailEl && !emailEl.checkValidity() ? fieldMessage(emailEl, "e-post") : undefined,
     };
     setFieldErrors(next);
     if (next.name || next.email) {

@@ -1,7 +1,13 @@
 import "server-only";
 
 import type { SearchParamsInput } from "@/components/shell/period-state";
-import { loadContext, loadDomainInput, loadPeriod, requireRoute } from "@/server/data/core";
+import {
+  loadContext,
+  loadDomainInput,
+  loadPeriod,
+  loadSyncInfo,
+  requireRoute,
+} from "@/server/data/core";
 import { loadRankedTodoState } from "@/server/data/todos";
 import { optionalOnboardingStatus } from "@/server/onboarding";
 import { lostSalesSummary } from "@/server/purchasing";
@@ -24,6 +30,7 @@ export async function loadHome(searchParams: SearchParamsInput): Promise<HomeDat
       todos: async () => (await loadRankedTodoState()).items,
       lostSales: (period, scope) => lostSalesSummary(period, scope),
       onboarding: optionalOnboardingStatus,
+      sync: loadSyncInfo,
     },
     searchParams,
   );

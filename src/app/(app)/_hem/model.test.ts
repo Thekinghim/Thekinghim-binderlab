@@ -10,6 +10,7 @@ import {
   coverageOf,
   emptyRefillsInScope,
   homeLostSales,
+  homeStaleImport,
   type HomeModelInput,
 } from "./model";
 
@@ -635,5 +636,33 @@ describe("appHref", () => {
     );
     expect(carriedParams({})).toBe("");
     expect(carriedParams({ period: "7d", automat: "m1" }, {}, false)).toBe("?period=7d");
+  });
+});
+
+describe("homeStaleImport", () => {
+  const sync = (syncedAt: string | null) => ({ syncedAt, state: "ok" as const, sources: 1 });
+  const TZ = "Europe/Stockholm";
+
+  it("är null utan import eller utan synkinfo", () => {
+    expect(homeStaleImport(null, TODAY, NOW, TZ)).toBeNull();
+    expect(homeStaleImport(sync(null), TODAY, NOW, TZ)).toBeNull();
+  });
+
+  it("är null när senaste importen är färsk (inom 26 h)", () => {
+    expect(homeStaleImport(sync("2026-11-01T08:00:00Z"), TODAY, NOW, TZ)).toBeNull();
+  });
+
+  it("ger affärsdagen för en gammal import", () => {
+    // 23:30 UTC 28 okt. är 29 okt. i Stockholm (CET).
+    expect(homeStaleImport(sync("2026-10-28T23:30:00Z"), TODAY, NOW, TZ)).toEqual({
+      date: "2026-10-29",
+    });
+  });
+
+  it("är null när perioden slutade före importen (perioden är komplett)", () => {
+    expect(homeStaleImport(sync("2026-10-28T10:00:00Z"), "2026-10-27", NOW, TZ)).toBeNull();
+    expect(homeStaleImport(sync("2026-10-28T10:00:00Z"), "2026-10-28", NOW, TZ)).toEqual({
+      date: "2026-10-28",
+    });
   });
 });

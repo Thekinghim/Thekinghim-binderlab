@@ -365,3 +365,30 @@ export function logAside(
   if (!last) return "Inga ändringar ännu.";
   return `${formatInt(entries.length)} ${entries.length === 1 ? "ändring" : "ändringar"}, senast ${formatWhen(last.occurredAt)} av ${last.actor}.`;
 }
+
+// ---------------------------------------------------------------------------
+// Mitt konto: byte av lösenord
+// ---------------------------------------------------------------------------
+
+/** Samma som MIN_PASSWORD_LENGTH i src/server/auth/password.ts (som drar in node:crypto). */
+export const PASSWORD_MIN_LENGTH = 12;
+
+export interface PasswordFields {
+  current: string;
+  next: string;
+  confirm: string;
+}
+
+/** Fel per fält före anropet. Servern kontrollerar allt igen. */
+export function passwordFormErrors(
+  f: PasswordFields,
+): Partial<Record<keyof PasswordFields, string>> {
+  const errors: Partial<Record<keyof PasswordFields, string>> = {};
+  if (f.current === "") errors.current = "Fyll i nuvarande lösenord.";
+  if (f.next === "") errors.next = "Fyll i nytt lösenord.";
+  else if (f.next.length < PASSWORD_MIN_LENGTH)
+    errors.next = `Minst ${PASSWORD_MIN_LENGTH} tecken.`;
+  if (f.confirm === "") errors.confirm = "Fyll i nytt lösenord igen.";
+  else if (f.next !== "" && f.confirm !== f.next) errors.confirm = "Lösenorden är inte lika.";
+  return errors;
+}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { computeTodos } from "./index";
-import { refillFingerprint } from "./refill";
-import { daily, input, machine, NOW, order, title } from "./test-helpers";
+import { refillFingerprint, withSlotAlerts } from "./refill";
+import { daily, input, machine, NOW, order, title, TODAY } from "./test-helpers";
 import type { TodoInput } from "./types";
 
 // Fönstret: 14 dagar t.o.m. i går = 19 okt.–1 nov. 2026.
@@ -168,5 +168,108 @@ describe("påfyllning: slutdatum och avbockning", () => {
       "soon|2026-10-30T08:00:00Z",
     );
     expect(refillFingerprint("now", { onHand: 0, lastRestockedAt: null })).toBe("now|saldo:0");
+  });
+});
+
+describe("påfyllning: larmgräns", () => {
+  const alert = (alertAtUnits: number) => [{ machineId: "m1", titleId: "t1", alertAtUnits }];
+  const stockAt = (onHand: number) => [{ machineId: "m1", titleId: "t1", onHand }];
+
+  it("gränsen ensam: saldo 4 och gräns 4 utan försäljning ger en punkt", () => {
+    const [t, ...rest] = refills(base({ orders: [], stock: stockAt(4), slotAlerts: alert(4) }));
+    expect(rest).toHaveLength(0);
+    expect(t).toMatchObject({
+      key: "refill:m1:t1",
+      level: "soon",
+      detail: "Saldo 4, larmgräns 4.",
+      atStakeOre: null,
+      daysLeft: null,
+      link: "/lager?automat=m1&titel=t1",
+      title: "Fyll på Black Bolt i Automat 1",
+    });
+  });
+
+  it("gränsen ensam: över gränsen och utan takt ger ingen punkt", () => {
+    expect(refills(base({ orders: [], stock: stockAt(5), slotAlerts: alert(4) }))).toHaveLength(0);
+  });
+
+  it("gränsen slår till fast takten inte gör (40 pack, gräns 40)", () => {
+    const [t] = refills(base({ stock: stockAt(40), slotAlerts: alert(40) }));
+    expect(t?.detail).toBe("Saldo 40, larmgräns 40.");
+  });
+
+  it("båda reglerna samtidigt: en punkt, texten börjar med gränsen", () => {
+    const list = refills(base({ stock: stockAt(4), slotAlerts: alert(4) }));
+    expect(list).toHaveLength(1);
+    expect(list[0]?.detail).toMatch(/^Saldo 4, larmgräns 4\. 4.pack kvar räcker ca 2,0 dagar/);
+    expect(list[0]?.atStakeOre).toBe(49_000);
+  });
+
+  it("gräns 0 slår bara till vid tomt lager, och då är nivån 'now'", () => {
+    expect(refills(base({ orders: [], stock: stockAt(1), slotAlerts: alert(0) }))).toHaveLength(0);
+    const [t] = refills(base({ orders: [], stock: stockAt(0), slotAlerts: alert(0) }));
+    expect(t).toMatchObject({ level: "now", title: "Black Bolt är slut i Automat 1" });
+  });
+
+  it("utan gräns (null eller tom lista) är allt som förut", () => {
+    const pick = (l: ReturnType<typeof refills>) =>
+      l.map((t) => [t.key, t.level, t.detail, t.atStakeOre, t.fingerprint]);
+    const plain = pick(refills(base({ stock: stockAt(4) })));
+    expect(pick(refills(base({ stock: stockAt(4), slotAlerts: [] })))).toEqual(plain);
+    expect(refills(base({ orders: [], stock: stockAt(0), slotAlerts: [] }))).toHaveLength(0);
+  });
+
+  it("utgången titel eller automat ur drift ger ingen punkt", () => {
+    expect(
+      refills(
+        base({
+          orders: [],
+          stock: stockAt(0),
+          slotAlerts: alert(4),
+          slotPeriods: [
+            { machineId: "m1", titleId: "t1", validFrom: "2026-09-01", validTo: "2026-10-01" },
+          ],
+        }),
+      ),
+    ).toHaveLength(0);
+    expect(
+      refills(
+        base({
+          orders: [],
+          stock: stockAt(0),
+          slotAlerts: alert(4),
+          machines: [machine("m1", "Automat 1", { activeTo: "2026-10-01" })],
+        }),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("withSlotAlerts lägger till, märker befintliga och hoppar över avbockade", () => {
+    const machines = [machine("m1", "Automat 1")];
+    const titles = [title("t1", "Black Bolt"), title("t2", "Ascended")];
+    const existing = refills(base({ stock: stockAt(4) }));
+    const stock = [...stockAt(4), { machineId: "m1", titleId: "t2", onHand: 2 }];
+    const alerts = [...alert(4), { machineId: "m1", titleId: "t2", alertAtUnits: 3 }];
+    const out = withSlotAlerts(existing, { alerts, stock, machines, titles, today: TODAY });
+    expect(out.map((t) => t.key).sort()).toEqual(["refill:m1:t1", "refill:m1:t2"]);
+    expect(out.find((t) => t.key === "refill:m1:t1")?.detail).toMatch(/^Saldo 4, larmgräns 4\. /);
+    expect(out.find((t) => t.key === "refill:m1:t2")?.detail).toBe("Saldo 2, larmgräns 3.");
+    // Idempotent: texten läggs inte till två gånger.
+    const twice = withSlotAlerts(out, { alerts, stock, machines, titles, today: TODAY });
+    expect(twice.find((t) => t.key === "refill:m1:t1")?.detail).toBe(
+      out.find((t) => t.key === "refill:m1:t1")?.detail,
+    );
+    const skipped = withSlotAlerts([], {
+      alerts,
+      stock,
+      machines,
+      titles,
+      today: TODAY,
+      skipKeys: new Set(["refill:m1:t2"]),
+    });
+    expect(skipped.map((t) => t.key)).toEqual(["refill:m1:t1"]);
+    expect(withSlotAlerts(existing, { alerts: [], stock, machines, titles, today: TODAY })).toEqual(
+      existing,
+    );
   });
 });

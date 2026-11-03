@@ -5,7 +5,7 @@
  * som finns.
  *
  * Påfyllningar av titlar som gått ur sortimentet tas bort (./assortment.ts), som på Lager
- * och i Drifts besöksplan.
+ * och i Drifts besöksplan. Larmgränserna (./core/slot-alerts.ts) läggs till sist.
  *
  * Förlorad intäkt per titel och automat räknas av @/analytics/lost-sales via
  * lostSalesSummaryFor (Prognos & inköp), för de senaste 14 hela dagarna (påfyllningens
@@ -26,6 +26,7 @@ import { getActiveOrganization, withUserDb } from "@/server/session";
 
 import { loadSlotPeriodsFor, querySlotPeriods, todoStateWithoutRetired } from "./assortment";
 import { loadContext, loadTodoState } from "./core";
+import { todoStateWithSlotAlerts } from "./core/slot-alerts";
 import { businessToday, loadTodoStateFor, type TodoState, type Viewer } from "./core/loaders";
 import { canSeeEconomy } from "./core/types";
 
@@ -76,10 +77,11 @@ export async function loadRankedTodoStateFor(
     loadTodoStateFor(viewer, now),
     loadSlotPeriodsFor(viewer),
   ]);
-  const state = todoStateWithoutRetired(
-    raw,
+  const state = await todoStateWithSlotAlerts(
+    viewer,
+    todoStateWithoutRetired(raw, periods, businessToday(now, viewer.organization.timezone)),
     periods,
-    businessToday(now, viewer.organization.timezone),
+    now,
   );
   return rankTodoState(viewer, state, now, (period) => lostSalesSummaryFor(viewer, period, now));
 }
@@ -95,7 +97,12 @@ export const loadVisibleTodoState = cache(async (): Promise<TodoState> => {
     loadTodoState(),
     withUserDb((tx) => querySlotPeriods(tx, ctx.organization.id)),
   ]);
-  return todoStateWithoutRetired(state, periods, ctx.today);
+  return todoStateWithSlotAlerts(
+    await currentViewer(),
+    todoStateWithoutRetired(state, periods, ctx.today),
+    periods,
+    new Date(ctx.now),
+  );
 });
 
 /** Antalet punkter i Att göra, för menyns räknare (samma punkter som listan). */

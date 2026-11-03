@@ -846,6 +846,13 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       slots: 3,
       validFrom: "2025-01-01",
     });
+    // Lager (20261103160000_lager_larmgrans.sql): larmgräns för titeln i automaten.
+    await tx.insert(s.slotAlerts).values({
+      ...org,
+      machineId: machine!.id,
+      titleId: title!.id,
+      alertAtUnits: 0,
+    });
     await tx.insert(s.assortmentChanges).values({
       ...org,
       machineId: machine!.id,

@@ -469,6 +469,18 @@ export const ACTIONS: ActionSpec[] = [
     allowed: FIELD,
     args: (c) => [sink(c, { counted: 1, locationId: c.A.machineLocationId })],
   },
+  {
+    module: "@/app/(app)/lager/actions",
+    name: "registerWaste",
+    allowed: FIELD,
+    args: (c) => [sink(c, { quantity: 1, note: "Rödteam" })],
+  },
+  {
+    module: "@/app/(app)/lager/actions",
+    name: "setSlotAlert",
+    allowed: OP,
+    args: (c) => [sink(c, { alertAtUnits: 3 })],
+  },
   // Marknad
   {
     module: "@/app/(app)/marknad/actions",

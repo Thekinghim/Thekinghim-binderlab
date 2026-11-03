@@ -51,6 +51,8 @@ const REFILLER_ALLOWLIST = [
   "warehouse_stock",
   // Fas 3 Att göra: bara avbockningar av lagerpunkter (refill:, stale-machine:).
   "todo_dismissals",
+  // Lager: larmgränsen per automat och titel (antal pack, inga belopp).
+  "slot_alerts",
 ];
 /** Påfyllaren ser bara sin egen rad. */
 const OWN_ROW_ONLY = ["profiles", "memberships"];

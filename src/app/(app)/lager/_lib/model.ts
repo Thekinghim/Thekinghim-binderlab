@@ -16,7 +16,12 @@
 import { createTodoContext } from "@/analytics/todos/context";
 import { isMachineActive } from "@/analytics/todos/common";
 import { refillTodos } from "@/analytics/todos/refill";
-import { TODO_DEFAULTS, type AnalyticsOrder, type StockLevelRef } from "@/analytics/todos";
+import {
+  TODO_DEFAULTS,
+  type AnalyticsOrder,
+  type SlotAlert,
+  type StockLevelRef,
+} from "@/analytics/todos";
 import type { MachineHealth } from "@/analytics/health";
 import { planVisits, type VisitPlan } from "@/analytics/visits";
 import { retiredPairs } from "@/analytics/todos/assortment";
@@ -74,6 +79,11 @@ export interface LagerModelInput {
    * räknas som utgången i automaten (`StockCell.retired`). Utelämnad = inga utgångna.
    */
   readonly slotPeriods?: readonly SlotPeriod[] | null;
+  /**
+   * Larmgränser (slot_alerts). Saldo högst gränsen gör cellen Låg (Kritisk vid 0), som
+   * punkten i Att göra. Utelämnad = inga gränser.
+   */
+  readonly slotAlerts?: readonly SlotAlert[] | null;
 }
 
 export interface LagerModel {
@@ -215,9 +225,13 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
       stock: machineStock,
       reportRecipients: [],
       reportDeliveries: [],
+      ...(input.slotAlerts ? { slotAlerts: input.slotAlerts } : {}),
       options: { timeZone },
     },
     now,
+  );
+  const alertAt = new Map(
+    (input.slotAlerts ?? []).map((a) => [pairKey(a.machineId, a.titleId), a.alertAtUnits]),
   );
   const refillLevel = new Map(
     refillTodos(todoCtx).map((t) => [t.key, t.level === "now" ? "critical" : "low"] as const),
@@ -354,6 +368,7 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
       suggested: isRetired ? 0 : (suggestedByPair.get(k) ?? 0),
       lastRestockedAt: row?.lastRestockedAt ?? null,
       retired: isRetired,
+      alertAt: alertAt.get(k) ?? null,
     };
   };
 

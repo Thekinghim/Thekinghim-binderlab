@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { reportStatuses, type StatusRow } from "./status";
+import { monthEnd, reportStatuses, staleImportDay, type StatusRow } from "./status";
 
 const row = (p: Partial<StatusRow> & { id: string }): StatusRow => ({
   kind: "store_statement",
@@ -44,5 +44,23 @@ describe("reportStatuses", () => {
     ]);
     expect(statuses.get("old")).toBe("sent");
     expect(statuses.get("new")).toBe("draft");
+  });
+});
+
+describe("staleImportDay", () => {
+  const TZ = "Europe/Stockholm";
+  it("monthEnd ger sista dagen i månaden", () => {
+    expect(monthEnd("2026-10")).toBe("2026-10-31");
+    expect(monthEnd("2028-02")).toBe("2028-02-29");
+  });
+  it("varnar när perioden slutar efter senaste synken", () => {
+    expect(staleImportDay("2026-10-31", "2026-10-28T06:51:00.000Z", TZ)).toBe("2026-10-28");
+    // 23.30 UTC den 31 är 1 nov. 00.30 i Stockholm: perioden är täckt.
+    expect(staleImportDay("2026-10-31", "2026-10-31T23:30:00.000Z", TZ)).toBeNull();
+    expect(staleImportDay("2026-10-31", "2026-11-02T08:00:00.000Z", TZ)).toBeNull();
+  });
+  it("ingen synk eller ogiltig tid ger ingen varning", () => {
+    expect(staleImportDay("2026-10-31", null, TZ)).toBeNull();
+    expect(staleImportDay("2026-10-31", "inte en tid", TZ)).toBeNull();
   });
 });

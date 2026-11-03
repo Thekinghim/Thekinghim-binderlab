@@ -8,7 +8,10 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { NBSP } from "@/lib/format";
 import { loadProfitAdjustments } from "@/server/data/adjustments";
-import { loadDomainInput, loadPeriod, requireRoute } from "@/server/data/core";
+import { loadDomainInput, loadPeriod, loadSyncInfo, requireRoute } from "@/server/data/core";
+
+import { homeStaleImport } from "../_hem/model";
+import { StaleImportLine } from "../_hem/sections";
 
 import { CompensationBreakdown, UnpricedSummary } from "./_components/breakdown";
 import { LonsamhetBridge } from "./_components/bridge";
@@ -92,12 +95,14 @@ export default async function LonsamhetPage({
 
   // Efter vinsten: återbetalningar och fasta kostnader. Fördelningen av de fasta kostnaderna
   // räknas på hela organisationen även med automatfilter (annars fick automaten alla).
-  const [adjustments, organization] = await Promise.all([
+  const [adjustments, organization, sync] = await Promise.all([
     loadProfitAdjustments(p.period),
     p.scope.machineId || p.scope.storeId
       ? loadDomainInput({ period: p.period })
       : Promise.resolve(input),
+    loadSyncInfo(),
   ]);
+  const stale = homeStaleImport(sync, p.period.end, ctx.now, ctx.timeZone);
   const result = resultAfterProfit({
     current: input.current,
     organization: organization.current,
@@ -135,6 +140,9 @@ export default async function LonsamhetPage({
             label={`Nyckeltal · ${model.periodLabel}`}
             comparison={model.comparisonLabel}
           />
+        ) : null}
+        {stale ? (
+          <StaleImportLine stale={stale} today={ctx.today} canEdit={ctx.canEdit} />
         ) : null}
       </div>
 
