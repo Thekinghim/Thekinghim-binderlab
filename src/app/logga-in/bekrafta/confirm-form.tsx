@@ -9,12 +9,21 @@ import { confirmMagicLink } from "../actions";
 import { FormError } from "../form-error";
 import type { ConfirmState } from "../state";
 
-export function ConfirmForm({ tokenHash, type }: { tokenHash: string; type: string }) {
+export function ConfirmForm({
+  tokenHash,
+  code = "",
+  type,
+}: {
+  tokenHash: string;
+  code?: string;
+  type: string;
+}) {
   const [state, action, pending] = useActionState<ConfirmState, FormData>(confirmMagicLink, {});
-  const missing = tokenHash === "";
+  const missing = tokenHash === "" && code === "";
   return (
     <form action={action} className="flex flex-col gap-5">
       <input type="hidden" name="token_hash" value={tokenHash} />
+      {code ? <input type="hidden" name="code" value={code} /> : null}
       <input type="hidden" name="type" value={type} />
       <FormError
         message={missing ? "Länken är ofullständig. Kopiera hela länken från mejlet." : state.error}

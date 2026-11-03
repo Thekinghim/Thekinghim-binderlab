@@ -122,20 +122,24 @@ export async function requestMagicLink(
   return { status: SENT, email };
 }
 
-const confirmInput = z.object({
-  tokenHash: z.string().regex(/^[A-Za-z0-9_-]{1,256}$/),
-  type: z.enum(["magiclink", "email"]).catch("magiclink"),
-});
+const LINK_TOKEN = z.string().regex(/^[A-Za-z0-9_-]{1,256}$/);
+const confirmInput = z.union([
+  z.object({ code: LINK_TOKEN }),
+  z.object({
+    tokenHash: LINK_TOKEN,
+    type: z.enum(["magiclink", "email"]).catch("magiclink"),
+  }),
+]);
 
 /** Förbrukar länken från mejlet och loggar in. */
 export async function confirmMagicLink(
   _prev: ConfirmState,
   formData: FormData,
 ): Promise<ConfirmState> {
-  const parsed = confirmInput.safeParse({
-    tokenHash: field(formData, "token_hash"),
-    type: field(formData, "type"),
-  });
+  const code = field(formData, "code");
+  const parsed = confirmInput.safeParse(
+    code ? { code } : { tokenHash: field(formData, "token_hash"), type: field(formData, "type") },
+  );
   const LINK_ERROR = "Länken har gått ut eller redan använts. Begär en ny.";
   if (!parsed.success) return { error: LINK_ERROR };
   const jar = await cookies();
@@ -146,8 +150,16 @@ export async function confirmMagicLink(
     };
   }
   const provider = await getAuthProvider();
-  if (!provider.completeEmailLink) return { error: LINK_ERROR };
-  const session = await provider.completeEmailLink(parsed.data.tokenHash, "magiclink");
+  const data = parsed.data;
+  // `code`: Supabases standardmall (PKCE); `token_hash`: egen mall (docs/miljoer.md).
+  const session =
+    "code" in data
+      ? provider.completeCodeLink
+        ? await provider.completeCodeLink(data.code)
+        : null
+      : provider.completeEmailLink
+        ? await provider.completeEmailLink(data.tokenHash, "magiclink")
+        : null;
   if (!session) return { error: LINK_ERROR };
   jar.delete({ name: MAGIC_COOKIE, path: "/logga-in" });
   redirect(safeRedirectPath(pending));

@@ -59,6 +59,12 @@ export interface AuthProvider {
   /** Bara Supabase: byter token_hash från en mejllänk mot en session. */
   completeEmailLink?(tokenHash: string, type: EmailLinkType): Promise<AuthSession | null>;
 
+  /**
+   * Bara Supabase: byter `code` (PKCE) från Supabases standardmall mot en
+   * session. Kräver verifieraren i cookien från samma webbläsare.
+   */
+  completeCodeLink?(code: string): Promise<AuthSession | null>;
+
   /** Bara Supabase: sätter lösenord för den inloggade användaren. */
   setPassword?(password: string): Promise<void>;
 }

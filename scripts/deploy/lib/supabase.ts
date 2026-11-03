@@ -581,11 +581,16 @@ export function desiredAuthConfig(
     mailer_autoconfirm: false,
     external_email_enabled: true,
     uri_allow_list: list.join(","),
-    mailer_subjects_invite: INVITE_SUBJECT,
-    mailer_templates_invite_content: INVITE_TEMPLATE,
-    mailer_subjects_magic_link: MAGIC_LINK_SUBJECT,
-    mailer_templates_magic_link_content: MAGIC_LINK_TEMPLATE,
   };
+  // Supabase Free tillåter inte egna mallar med den inbyggda e-posten. Utan
+  // SMTP används standardmallen; appen tar då emot `?code=` (PKCE) i
+  // /logga-in/bekrafta.
+  if (settings.smtp) {
+    desired.mailer_subjects_invite = INVITE_SUBJECT;
+    desired.mailer_templates_invite_content = INVITE_TEMPLATE;
+    desired.mailer_subjects_magic_link = MAGIC_LINK_SUBJECT;
+    desired.mailer_templates_magic_link_content = MAGIC_LINK_TEMPLATE;
+  }
   const currentSite = typeof current.site_url === "string" ? current.site_url : "";
   if (settings.siteUrl) {
     desired.site_url = settings.siteUrl;

@@ -166,6 +166,14 @@ export class SupabaseAuthProvider implements AuthProvider {
     return this.sessionFromToken(data.session?.access_token);
   }
 
+  async completeCodeLink(code: string): Promise<AuthSession | null> {
+    const { data, error } = await this.userClient().auth.exchangeCodeForSession(code);
+    if (error) {
+      return null;
+    }
+    return this.sessionFromToken(data.session?.access_token);
+  }
+
   async setPassword(password: string): Promise<void> {
     const { error } = await this.userClient().auth.updateUser({ password });
     if (error) {

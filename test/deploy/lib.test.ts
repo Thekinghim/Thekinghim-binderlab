@@ -299,7 +299,21 @@ describe("Supabase-hjälpare", () => {
     const diff = authConfigDiff(current, desired);
     expect(diff.disable_signup).toBeUndefined();
     expect(diff.site_url).toBeUndefined();
-    expect(Object.keys(diff)).toContain("mailer_templates_invite_content");
+    // Utan SMTP (Supabase Free) rörs mallarna inte; appen tar emot standardmallens ?code=.
+    expect(Object.keys(diff)).not.toContain("mailer_templates_invite_content");
+    const withSmtp = desiredAuthConfig(current, {
+      siteUrl: "https://app.binderlab.se",
+      redirectUrls: [],
+      smtp: {
+        host: "smtp.resend.com",
+        port: 465,
+        user: "resend",
+        pass: "x",
+        adminEmail: "a@b.se",
+        senderName: "Binderlab",
+      },
+    });
+    expect(Object.keys(withSmtp)).toContain("mailer_templates_invite_content");
   });
 
   it("auth: rensar främmande *.vercel.app-poster och site_url när projektets värdar är kända", () => {
