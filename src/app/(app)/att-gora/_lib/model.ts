@@ -82,6 +82,8 @@ export interface TodoView {
   readonly action: ActionView | null;
   /** Sekundär länk ("Visa i lager"), om rollen får öppna sidan. */
   readonly link: LinkActionView | null;
+  /** Vem som gör punkten: användar-id, "" = Båda (@/analytics/team). */
+  readonly assignee: string;
 }
 
 export interface GroupView {
@@ -162,6 +164,8 @@ export interface ModelInput {
   readonly computedAt: string;
   /** Avbockade punkter som inte står i listan just nu. */
   readonly dismissed?: readonly DismissedInput[];
+  /** Vem som gör punkten (nyckel → användar-id, null = Båda). Saknas = Båda. */
+  readonly assignees?: ReadonlyMap<string, string | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -542,6 +546,7 @@ export function toView(item: TodoItem, input: ModelInput, signal: boolean): Todo
     evidence: evidenceFigures(item, input.economy),
     action: actionFor(item, input),
     link: secondaryLink(item, input.role),
+    assignee: input.assignees?.get(item.key) ?? "",
   };
 }
 
@@ -756,7 +761,7 @@ export function dismissedViews(input: ModelInput): DismissedView[] {
         key: d.key,
         eyebrow: code ? `${label} · ${unbreakable(code)}` : label,
         title: d.title ? withPeriod(d.title) : "Punkt utan sparad rubrik.",
-        meta: `Avbockad ${d.when}${d.by ? ` av ${d.by}` : ""}.`,
+        meta: `Klar ${d.when}${d.by ? ` av ${d.by}` : ""}.`,
       };
     });
 }

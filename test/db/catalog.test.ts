@@ -90,6 +90,8 @@ describe("tabeller", () => {
         "alert_subscriptions",
         "alerts",
         // AI-rådgivaren: körningar och förslag (20261104090000_ai_radgivare.sql).
+        // Morgonbriefen på Hem (20261104180000_morgonbrief.sql).
+        "ai_briefs",
         "ai_runs",
         "ai_suggestions",
         "assistant_logs",
@@ -162,6 +164,8 @@ describe("tabeller", () => {
         "sync_tokens",
         "title_aliases",
         "titles",
+        // Att göra: tilldelade punkter (20261104170000_managerpaket_ansvar.sql).
+        "todo_assignments",
         // Att göra: avbockade punkter (20261102113602_att_gora_todo_dismissals.sql).
         "todo_dismissals",
         "voucher_deliveries",
@@ -485,6 +489,8 @@ describe("policyer", () => {
       "stores",
       "title_aliases",
       "titles",
+      // Att göra: tilldelning av lagerpunkter (20261104170000_managerpaket_ansvar.sql).
+      "todo_assignments",
       // Fas 3 Att göra: bara avbockningar av lagerpunkter (refill:, stale-machine:), utan belopp.
       "todo_dismissals",
     ]);

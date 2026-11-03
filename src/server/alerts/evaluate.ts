@@ -5,8 +5,8 @@
  *   maskinhälsa (@/analytics/health) ─┐
  *   titel nära slut                   ├→ kandidater → reconcileAlerts (samma problem = en
  *   misslyckad import                 │   incident; påminnelse, skärpning, löst) → aviseringar
- *   avvikande dag (i går)            ─┘   → routeNotifications (prenumerationer, tysta timmar,
- *                                          tider) → utskick per användare och sändtid
+ *   avvikande dag (i går)             │   → routeNotifications (prenumerationer, tysta timmar,
+ *   ny automat hittad (Awish)        ─┘   tider) → utskick per användare och sändtid
  *
  * Körs som systemroll (getServiceDb) av /api/cron/larm, aldrig på uppdrag av en användare.
  * Allt läses och skrivs med organization_id i varje fråga. Två körningar samtidigt för samma
@@ -19,6 +19,7 @@ import { and, eq, gte, isNull, or, sql } from "drizzle-orm";
 
 import {
   dayAnomalyAlerts,
+  discoveredMachineAlerts,
   healthAlerts,
   importAlerts,
   lowStockAlerts,
@@ -36,6 +37,7 @@ import { businessDateAt } from "@/analytics/todos/time";
 import type { Db, Tx } from "@/db/client";
 import * as s from "@/db/schema";
 
+import { queryNewMachines } from "@/server/machines/new-machines";
 import { recordJobOutcome } from "@/server/monitoring/failures";
 
 import { alertColumns, healthOf, knownUntil, loadHealthData, loadImportData } from "./inputs";
@@ -128,6 +130,8 @@ export async function collectCandidates(
   // fil som inte laddats upp än en "dålig dag").
   const known = knownUntil(data.coverage);
   const yesterdayKnown = known === null || known.getTime() >= localDayStartMs(today, timeZone);
+  // Ny automat hittad: samma lista som Att göra (inte kopplad, inte "Inte vår").
+  const discovered = await queryNewMachines(tx, orgId);
   const candidates: AlertCandidate[] = [
     ...healthAlerts(health),
     ...lowStockAlerts(
@@ -150,6 +154,7 @@ export async function collectCandidates(
           now,
         )
       : []),
+    ...discoveredMachineAlerts(discovered),
   ];
   return { candidates, machines: data.machines.length };
 }

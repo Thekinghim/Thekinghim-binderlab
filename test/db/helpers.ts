@@ -7,7 +7,7 @@
 
 import { randomUUID } from "node:crypto";
 
-import { sql, type SQL } from "drizzle-orm";
+import { eq, sql, type SQL } from "drizzle-orm";
 
 import { getServiceDb, withRls, type Db, type Tx } from "../../src/db/client";
 import * as s from "../../src/db/schema";
@@ -906,6 +906,16 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
     });
     // Att göra (20261102113602_att_gora_todo_dismissals.sql): en avbockad lagerpunkt (som
     // påfyllaren får se) och en avbockad prispunkt (som påfyllaren inte får se).
+    // Managerpaket (20261104170000_managerpaket_ansvar.sql): en tilldelad lagerpunkt och en
+    // prispunkt (som påfyllaren inte får se), och ägaren som ansvarig för automaten.
+    await tx.insert(s.todoAssignments).values([
+      { ...org, todoKey: `refill:${machine!.id}:${title!.id}`, assignedTo: owner.id },
+      { ...org, todoKey: `missing-price:${secondTitle!.id}`, assignedTo: null },
+    ]);
+    await tx
+      .update(s.machines)
+      .set({ responsibleUserId: owner.id })
+      .where(eq(s.machines.id, machine!.id));
     await tx.insert(s.todoDismissals).values([
       {
         ...org,
@@ -989,6 +999,13 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       sql`insert into public.ai_suggestions
             (organization_id, run_id, rank, title, why, action, effect_sek_month, confidence)
           values (${orgId}, ${aiRun.id}, 1, 'Fyll på', 'Titeln har 2 pack kvar.', 'Fyll på i dag.', 100, 'high')`,
+    );
+    // Morgonbriefen (20261104180000_morgonbrief.sql): bara servern skriver.
+    await tx.execute(
+      sql`insert into public.ai_briefs
+            (organization_id, brief_date, trigger, status, model, line_yesterday, line_problem, line_today)
+          values (${orgId}, '2025-03-12', 'cron', 'ok', 'claude-sonnet-5-5',
+                  '1 240 kr på 31 köp.', 'Inget akut.', 'Fyll på BL-002.')`,
     );
     // Bokföring (20261104130000_bokforing_paket.sql): bara servern sparar månadspaketet.
     await tx.execute(

@@ -6,12 +6,16 @@
  * (migreringen 20261104090000_ai_radgivare.sql, private.ai_cron_tick). En andra körning
  * samma dag gör ingenting. Stannar när månadens AI-budget är slut.
  *
+ * Efter förslagen tas morgonbriefen på Hem fram (src/server/assistant/brief), en gång per
+ * organisation och dag. Ett fel i briefen påverkar inte svaret för förslagen.
+ *
  * Utan CRON_SECRET svarar routen 503 och gör ingenting.
  */
 
 import { getServiceDb } from "@/db/client";
 import { cronAuthorized } from "@/server/alerts/cron-auth";
 import { runAdvisorForAll } from "@/server/assistant/advisor/service";
+import { runBriefsForAll } from "@/server/assistant/brief/service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,9 +34,13 @@ export async function GET(request: Request): Promise<Response> {
     return json({ error: "Obehörig." }, 401);
   }
   const result = await runAdvisorForAll({ db: getServiceDb() });
+  const briefs = await runBriefsForAll({ db: getServiceDb() }).catch((error: unknown) => {
+    console.error("[morgonbrief] cron misslyckades:", error);
+    return { organizations: [] };
+  });
   const failed = result.organizations.filter((o) => o.status === "error").length;
   return json(
-    { ok: failed === 0, organizations: result.organizations },
+    { ok: failed === 0, organizations: result.organizations, briefs: briefs.organizations },
     failed > 0 && failed === result.organizations.length ? 500 : 200,
   );
 }

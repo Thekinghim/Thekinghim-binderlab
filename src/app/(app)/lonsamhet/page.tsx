@@ -25,7 +25,10 @@ import { LonsamhetBridge } from "./_components/bridge";
 import { LonsamhetKpis } from "./_components/kpis";
 import { ResultAfterProfitPanel } from "./_components/result";
 import { AnalysisSection } from "./_components/sections";
-import { buildLonsamhetModel, type TrendKey, type ViewKey } from "./_lib/model";
+import { RhythmSection } from "./_components/rhythm";
+import { buildLonsamhetModel, periodText, type TrendKey, type ViewKey } from "./_lib/model";
+import { buildMovers } from "./_lib/movers";
+import { salesHeatmap, machineHref } from "../automater/_lib/model";
 import { resultAfterProfit } from "./_lib/result";
 import {
   canonicalLonsamhetQuery,
@@ -49,6 +52,25 @@ function allHistoryHref(sp: SearchParams): string {
     if (typeof v === "string" && v) q.set(k, v);
   }
   return `/lonsamhet?${q.toString()}`;
+}
+
+/** Namnen för topplistan (aktiva och arkiverade, som tabellen). */
+function moverNames(input: {
+  machines: ReadonlyArray<{ id: string; name: string; code: string }>;
+  stores: ReadonlyArray<{ id: string; name: string }>;
+  titles: ReadonlyArray<{ id: string; name: string }>;
+}) {
+  const machines = new Map(input.machines.map((m) => [m.id, m]));
+  const stores = new Map(input.stores.map((x) => [x.id, x.name]));
+  const titles = new Map(input.titles.map((t) => [t.id, t.name]));
+  return {
+    machine: (id: string) => {
+      const m = machines.get(id);
+      return m ? { name: m.name, code: m.code || null } : null;
+    },
+    store: (id: string) => stores.get(id) ?? null,
+    title: (id: string) => titles.get(id) ?? null,
+  };
 }
 
 const SECTION = "flex scroll-mt-28 flex-col gap-10 border-t border-line py-12 md:gap-12 md:py-16";
@@ -209,6 +231,32 @@ export default async function LonsamhetPage({
               }}
               trend={{ initialTrend, trend: model.trend, days: model.days }}
               initialTab={sp.visa === "utveckling" ? "trend" : "table"}
+            />
+          </div>
+
+          {/* Managerpaket 6: försäljningsrytm och topplista med förändring (samma order). */}
+          <div
+            id="rytm-och-topplista"
+            className="rise scroll-mt-28 border-t border-line py-12 md:py-16"
+            style={{ "--i": 3 } as CSSProperties}
+          >
+            <RhythmSection
+              heat={salesHeatmap(input.current.orders, ctx.timeZone)}
+              days={model.days}
+              movers={buildMovers({
+                current: input.current,
+                previous: input.previous,
+                names: moverNames(input),
+                hrefs: {
+                  machine: (code) => machineHref(code, carriedQuery(sp)),
+                  store: (id) => `/butiker/${encodeURIComponent(id)}${carriedQuery(sp)}`,
+                },
+              })}
+              compareLabel={
+                input.previous && input.previous.orders.length > 0
+                  ? `mot ${periodText(input.previous.period, ctx.today)}`
+                  : null
+              }
             />
           </div>
         </>

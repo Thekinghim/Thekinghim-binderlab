@@ -21,6 +21,7 @@ import {
   bigint,
   boolean,
   date,
+  doublePrecision,
   integer,
   jsonb,
   pgEnum,
@@ -213,6 +214,9 @@ export const stores = pgTable("stores", {
   openHoursPerWeek: integer("open_hours_per_week"),
   /** Yta i m². */
   areaSqm: integer("area_sqm"),
+  /** Plats för ruttordningen (20261104170000_managerpaket_ansvar.sql). Båda eller ingen. */
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
   ...stamps(),
 });
 
@@ -270,6 +274,8 @@ export const machines = pgTable("machines", {
   activeTo: day("active_to"),
   isExample: boolean("is_example").notNull().default(false),
   archivedAt: ts("archived_at"),
+  /** Vem som fyller på (20261104170000_managerpaket_ansvar.sql). null = Båda. */
+  responsibleUserId: uuid("responsible_user_id"),
   ...stamps(),
 });
 
@@ -769,3 +775,6 @@ export * from "./schema/tillagg";
 
 // Bokföring: kontoplanen, månader markerade som skickade och kvitton.
 export * from "./schema/bokforing";
+
+// Managerpaket 5: morgonbriefen på Hem.
+export * from "./schema/brief";

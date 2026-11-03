@@ -55,6 +55,15 @@ describe("scheman", () => {
     expect(storeSchema.safeParse({ name: "ICA", phone: "046-12 34 56" }).success).toBe(true);
     expect(storeSchema.safeParse({ name: "ICA", phone: "ring mig" }).success).toBe(false);
   });
+  it("butik: kartlänk blir plats, tom tar bort, utelämnad rörs inte, ogiltig avvisas", () => {
+    expect(
+      storeSchema.parse({ name: "ICA", location: "https://www.google.com/maps/@55.7,13.19,17z" })
+        .location,
+    ).toEqual({ lat: 55.7, lng: 13.19 });
+    expect(storeSchema.parse({ name: "ICA", location: " " }).location).toBeNull();
+    expect(storeSchema.parse({ name: "ICA" }).location).toBeUndefined();
+    expect(storeSchema.safeParse({ name: "ICA", location: "Storgatan 1" }).success).toBe(false);
+  });
   it("nytt avtal: vinstdelning 50/50 är formulärets standard, hyra valfri", () => {
     const split = newAgreementSchema.parse({
       storeId: STORE,

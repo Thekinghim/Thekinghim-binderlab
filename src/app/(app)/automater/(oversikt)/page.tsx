@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { AiPageLine } from "@/components/assistant/panel-context";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import type React from "react";
+import { Suspense } from "react";
+
+import { carriedQuery } from "@/components/shell/period-state";
 
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
@@ -10,6 +14,7 @@ import { formatInt, NBSP } from "@/lib/format";
 import { MachineKpis } from "../_components/kpis";
 import { AddMachineButton } from "../_components/machine-dialogs";
 import { MachineTable } from "../_components/machine-table";
+import { ProfitRanking } from "../_components/profit-ranking";
 import { UnpricedNote } from "../_components/unpriced-note";
 import { loadOverview } from "../_lib/data";
 import { nextMachineCode, overviewKpis, spreadText } from "../_lib/model";
@@ -28,7 +33,12 @@ export default async function AutomaterPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const data = await loadOverview(await searchParams);
+  const sp = await searchParams;
+  // Underfliken Svinn (?vy=svinn) har en egen sida.
+  if (sp.vy === "svinn") {
+    redirect(`/automater/svinn${carriedQuery(sp)}`);
+  }
+  const data = await loadOverview(sp);
   const { ctx, overview, period } = data;
   const { totals, rows, headline } = overview;
   const active = rows.filter((r) => r.lifecycle === "active");
@@ -120,6 +130,13 @@ export default async function AutomaterPage({
               caption={`Automater, intäkt och vinst ${period.rangeLabel}`}
             />
           </section>
+
+          {/* Vinst per dag (samma tal som Enhetsekonomi), strömmas in efter listan. */}
+          {!period.pendingToday && active.length > 1 ? (
+            <Suspense fallback={null}>
+              <ProfitRanking searchParams={sp} query={carriedQuery(sp)} />
+            </Suspense>
+          ) : null}
         </>
       )}
     </div>

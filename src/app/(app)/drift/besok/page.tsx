@@ -1,17 +1,31 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { personOptions } from "@/analytics/team";
 import { weekdayDay } from "@/analytics/todos/text";
 import { kmText } from "@/analytics/visits";
 import { ChannelTags } from "@/components/ui/channel-tags";
 import { Panel, PanelSection } from "@/components/ui/frame";
+import { Icon } from "@/components/ui/icon";
+import { MineToggle } from "@/components/ui/mine-toggle";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
+import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
 
+import { PersonPicker } from "../../_team/person-picker";
 import { plural, sentenceEnd } from "../_lib/display";
 import { loadVisitPlan } from "../_lib/load";
+import { dayRouteView } from "../_lib/route";
+
+/** Länk som ser ut som en knapp. */
+const linkButton =
+  "inline-flex h-9 items-center justify-center gap-2 rounded-sm border px-3.5 text-base font-medium whitespace-nowrap transition-[background-color,border-color,color] duration-fast ease-instrument";
+const linkPrimary =
+  "border-inverse bg-inverse text-on-inverse hover:border-inverse-hover hover:bg-inverse-hover";
+const linkSecondary =
+  "border-line-strong bg-surface text-fg hover:border-line-control hover:bg-hover";
 
 export const metadata: Metadata = { title: "Besöksplan" };
 
@@ -20,10 +34,26 @@ export const metadata: Metadata = { title: "Besöksplan" };
  * vad som ska med och i vilken ordning. Lagret och försäljningstakten de senaste 14 dagarna
  * avgör; misstänkt fel och ur drift ger ett besök i dag.
  */
-export default async function VisitPlanPage() {
+export default async function VisitPlanPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const ctx = await requireRoute("drift");
-  const { plan, data, hasWarehouse } = await loadVisitPlan(ctx);
+  const sp = await searchParams;
+  const mine = sp.mina === "1";
+  const { plan, data, hasWarehouse, team, responsibles, places } = await loadVisitPlan(ctx, {
+    mine,
+  });
   const machineCode = new Map(data.machines.map((m) => [m.id, m.code]));
+  const me = ctx.user.id;
+  const calendarHref = (date?: string) => {
+    const q = new URLSearchParams();
+    if (date) q.set("dag", date);
+    if (mine) q.set("mina", "1");
+    const s = q.toString();
+    return `/drift/besok/kalender${s ? `?${s}` : ""}`;
+  };
   const stops = plan.days.reduce((n, d) => n + d.stops.length, 0);
   const late = plan.days.flatMap((d) => d.stops).filter((s) => s.late).length;
 
@@ -48,6 +78,24 @@ export default async function VisitPlanPage() {
           { label: "Dagar", value: formatInt(plan.days.length) },
         ]}
       />
+
+      <div
+        className="rise flex flex-wrap items-center gap-3"
+        style={{ "--i": 1 } as React.CSSProperties}
+      >
+        <MineToggle
+          mine={mine}
+          hrefMine="/drift/besok?mina=1"
+          hrefAll="/drift/besok"
+          label="Vems besök"
+        />
+        {stops > 0 ? (
+          <a href={calendarHref()} className={cn(linkButton, linkSecondary, "h-8 text-sm")}>
+            <Icon name="calendar" className="shrink-0" />
+            Veckan i kalender
+          </a>
+        ) : null}
+      </div>
 
       {!hasWarehouse ? (
         <StateMessage
@@ -86,6 +134,60 @@ export default async function VisitPlanPage() {
                 }
                 size="md"
               />
+              {(() => {
+                const route = dayRouteView(day, data.machines, places);
+                return (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-wrap gap-2">
+                      {route.mapsUrls.map((url, n) => (
+                        <a
+                          key={url}
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={cn(linkButton, n === 0 ? linkPrimary : linkSecondary)}
+                        >
+                          <Icon name="external" className="shrink-0" />
+                          {route.mapsUrls.length > 1
+                            ? `Google Maps ${n + 1}/${route.mapsUrls.length}`
+                            : "Öppna i Google Maps"}
+                        </a>
+                      ))}
+                      <a href={calendarHref(day.date)} className={cn(linkButton, linkSecondary)}>
+                        <Icon name="calendar" className="shrink-0" />
+                        Lägg i kalender
+                      </a>
+                    </div>
+                    {route.missing.length > 0 ? (
+                      <p className="text-sm text-muted">
+                        {`Adress saknas: `}
+                        {route.missing.map((m, n) => (
+                          <span key={m.storeId ?? m.name}>
+                            {n > 0 ? ", " : ""}
+                            {m.storeId && ctx.canEdit ? (
+                              <Link
+                                href={`/butiker/${m.storeId}`}
+                                className="rounded-xs text-fg underline underline-offset-2"
+                              >
+                                {m.name}
+                              </Link>
+                            ) : (
+                              m.name
+                            )}
+                          </span>
+                        ))}
+                        {ctx.canEdit ? ". Butiken → Ändra → Adress." : "."}
+                      </p>
+                    ) : route.needsLocation ? (
+                      <p className="text-sm text-muted">
+                        {ctx.canEdit
+                          ? "Ordning efter brådska. Klistra in kartlänken på butiken för kortaste väg."
+                          : "Ordning efter brådska."}
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              })()}
               <div className="grid gap-8 lg:grid-cols-12">
                 <ol className="flex flex-col gap-4 lg:col-span-8">
                   {day.stops.map((stop) => (
@@ -103,9 +205,21 @@ export default async function VisitPlanPage() {
                               {`${(machineCode.get(stop.machineId) ?? "").replace("-", "‑")} ${stop.machineName}`}
                             </Link>
                           </div>
-                          <span className="meta text-subtle">
-                            {stop.late ? "Efter beräknat slut · " : ""}
-                            {`${formatInt(stop.totalPacks)}${NBSP}pack`}
+                          <span className="flex flex-wrap items-center gap-3">
+                            <PersonPicker
+                              target={{ kind: "machine", machineId: stop.machineId }}
+                              value={responsibles.get(stop.machineId) ?? ""}
+                              options={personOptions(
+                                me,
+                                team,
+                                responsibles.get(stop.machineId) ?? null,
+                              )}
+                              editable={ctx.canEdit}
+                            />
+                            <span className="meta text-subtle">
+                              {stop.late ? "Efter beräknat slut · " : ""}
+                              {`${formatInt(stop.totalPacks)}${NBSP}pack`}
+                            </span>
                           </span>
                         </div>
                         <ul className="mt-2 flex flex-col gap-1 text-sm text-muted">

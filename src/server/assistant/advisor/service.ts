@@ -102,6 +102,13 @@ export async function monthCostOre(db: Db, now: Date, usdSek: number): Promise<n
     cache_write: string;
   }>;
   let total = Number(runs[0]?.ore ?? 0);
+  // Morgonbriefen på Hem (20261104180000_morgonbrief.sql) räknas in i samma tak.
+  const briefs = Array.from(
+    await db.execute(
+      sql`select coalesce(sum(cost_ore), 0)::bigint as ore from public.ai_briefs where created_at >= ${since.toISOString()}::timestamptz`,
+    ),
+  ) as Array<{ ore: string | number }>;
+  total += Number(briefs[0]?.ore ?? 0);
   for (const l of logs) {
     total += costOre(
       l.model,

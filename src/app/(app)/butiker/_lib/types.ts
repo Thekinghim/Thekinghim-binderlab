@@ -22,6 +22,8 @@ export interface StoreDetail {
   readonly phone: string | null;
   readonly isExample: boolean;
   readonly archived: boolean;
+  /** Plats för ruttordningen på besöksplanen, eller null (20261104170000_managerpaket_ansvar). */
+  readonly location?: { readonly lat: number; readonly lng: number } | null;
 }
 
 /** Ett avtal (store_agreements) med färdiga texter. */

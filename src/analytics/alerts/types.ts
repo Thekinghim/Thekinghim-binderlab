@@ -30,7 +30,9 @@ export type AlertKind =
   /** Ett rapportutskick eller månadsutkasten misslyckades (skrivs av src/server/monitoring). */
   | "report_failed"
   /** Ett schemalagt jobb (t.ex. larmjobbet) misslyckades (skrivs av src/server/monitoring). */
-  | "job_failed";
+  | "job_failed"
+  /** Awish har en automat som inte är kopplad till någon butik (managerpaket 8). */
+  | "machine_discovered";
 
 /**
  * Familj av larm. Typerna i en familj delar incident (t.ex. misstänkt fel som blir offline är

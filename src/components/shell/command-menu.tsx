@@ -238,6 +238,16 @@ export function CommandMenu({
         run: () => enterStep({ kind: "price-title" }),
       });
     }
+    if (routeAllowed("drift")) {
+      out.push({
+        id: "action-notices",
+        group: "actions",
+        label: "Notiser i mobilen",
+        icon: "alert",
+        keywords: ["notiser", "push", "larm", "mobil", "iphone", "telefon"],
+        run: () => go("/drift/larm", "none"),
+      });
+    }
     if (can(OPERATORS) && routeAllowed("installningar")) {
       out.push({
         id: "action-invite",

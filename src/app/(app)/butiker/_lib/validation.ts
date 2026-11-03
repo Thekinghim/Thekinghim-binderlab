@@ -15,6 +15,7 @@ import {
   type CommissionBase,
   type IsoDate,
 } from "@/domain";
+import { parseLocation } from "@/analytics/visits/links";
 import { parseAmountOre } from "@/import/amount";
 
 const uuid = z.uuid({ message: "Ogiltigt id." });
@@ -77,8 +78,33 @@ const checkbox = z
 // Butik
 // ---------------------------------------------------------------------------
 
+/**
+ * Kartlänk eller koordinater (valfritt): Google Maps-länk eller "55.70, 13.19". Utelämnad =
+ * undefined (rörs inte), tom = null (tas bort).
+ */
+const location = z
+  .string()
+  .trim()
+  .max(2000, { message: "Kartlänken är för lång." })
+  .optional()
+  .nullable()
+  .transform((v, ctx) => {
+    if (v === undefined) return undefined;
+    const p = parseLocation(v);
+    if (p === undefined) {
+      ctx.addIssue({
+        code: "custom",
+        message:
+          "Hittar ingen plats. Kopiera adressraden i Google Maps på datorn eller skriv 55.70, 13.19.",
+      });
+      return z.NEVER;
+    }
+    return p;
+  });
+
 export const storeSchema = z.object({
   name,
+  location,
   address: optionalText(300, "Adressen"),
   city: optionalText(100, "Orten"),
   contactName: optionalText(200, "Kontaktpersonen"),

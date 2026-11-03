@@ -51,6 +51,8 @@ const REFILLER_ALLOWLIST = [
   "warehouse_stock",
   // Fas 3 Att göra: bara avbockningar av lagerpunkter (refill:, stale-machine:).
   "todo_dismissals",
+  // Managerpaket: tilldelning av lagerpunkter (20261104170000_managerpaket_ansvar.sql).
+  "todo_assignments",
   // Lager: larmgränsen per automat och titel (antal pack, inga belopp).
   "slot_alerts",
   // Fyllnadsgrad: kapacitet och fack från Awish (antal pack, inga belopp).
@@ -71,6 +73,8 @@ const VIEWER_OWN_ROWS_ONLY = [
   // AI-rådgivaren: körningar och förslag syns bara för ägare och admin.
   "ai_runs",
   "ai_suggestions",
+  // Morgonbriefen: bara ägare och admin.
+  "ai_briefs",
   "assistant_logs",
   "import_upload_chunks",
   "import_uploads",
@@ -147,6 +151,17 @@ describe("påfyllaren (refiller) ser exakt tillåtlistan", () => {
       sql`select count(*)::int as n from public.todo_dismissals where organization_id = ${F.orgId}`,
     );
     expect(all[0]!.n).toBeGreaterThan(keys.length);
+  });
+
+  it("ser bara tilldelade lagerpunkter i Att göra, inte prispunkter", async () => {
+    const keys = await asUser(refiller, (tx) =>
+      rows<{ key: string }>(
+        tx,
+        sql`select todo_key as key from public.todo_assignments where organization_id = ${F.orgId}`,
+      ),
+    );
+    expect(keys.length).toBeGreaterThan(0);
+    expect(keys.every((k) => /^(refill|stale-machine):/.test(k.key))).toBe(true);
   });
 
   it("kan inte läsa order, inköpspriser eller ändringsloggen", async () => {

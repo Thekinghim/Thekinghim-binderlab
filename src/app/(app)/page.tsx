@@ -18,6 +18,8 @@ import { TodayPaceCard } from "./_hem/today-pace";
 import type { HomeDaily, HomeModel } from "./_hem/model";
 import { ArrowLink, InsightList, TodoList, TopTitles, WarningLine } from "./_hem/sections";
 import { OnboardingChecklist } from "./kom-igang/_components/onboarding-checklist";
+import { ShrinkageLine } from "./_hem/shrinkage-line";
+import { MorningBrief } from "./_hem/morning-brief";
 import { dateOf, kr, weekdayDayText } from "./_hem/text";
 
 export const metadata: Metadata = { title: "Hem" };
@@ -139,6 +141,12 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
         )
       ) : (
         <>
+          {/* Morgonbriefen (AI, en gång per dag): bara utan filter, inget alls utan AI. */}
+          {scope ? null : (
+            <Suspense fallback={null}>
+              <MorningBrief todoHref={`/att-gora${carriedParams(sp)}`} className="mt-8 md:mt-10" />
+            </Suspense>
+          )}
           {onboarding ? (
             <div className="rise mt-8 md:mt-10" style={rise(1)}>
               <OnboardingChecklist
@@ -160,6 +168,10 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
               today={today}
               canEdit={canEdit}
             />
+            {/* Svinn: en rad bara när pack saknas. */}
+            <Suspense fallback={null}>
+              <ShrinkageLine />
+            </Suspense>
           </div>
 
           {goals ? (
