@@ -69,9 +69,31 @@ export async function listScopes(ctx: Ctx): Promise<Scope[]> {
     }
   }
   // Personligt konto (äldre Hobby-konton utan team, eller token utan teamåtkomst).
-  const user = await ctx.api.get<{ user?: { username?: string } }>("/v2/user", { allow: [403] });
-  const username = user.data?.user?.username;
+  const user = await ctx.api.get<{ user?: { username?: string } }>("/v2/user", {
+    allow: [403, 404],
+  });
+  const username = user.status === 200 ? user.data?.user?.username : undefined;
   if (username) scopes.push({ teamId: undefined, slug: username });
+  if (scopes.length === 0) {
+    // Token begränsad till ett team: varken /v2/teams eller /v2/user svarar,
+    // men projektlistan gör det. Teamet tas från projektens accountId.
+    const { data: list } = await ctx.api.get<{ projects?: { accountId?: string }[] }>(
+      "/v10/projects",
+      { query: { limit: 100 }, allow: [403] },
+    );
+    const ids = new Set(
+      (list?.projects ?? []).map((p) => p.accountId).filter((a): a is string => !!a),
+    );
+    for (const id of ids) {
+      const team = await ctx.api.get<Team>(`/v2/teams/${id}`, { allow: [403, 404] });
+      const ok = team.status === 200;
+      scopes.push({
+        teamId: id,
+        slug: ok && team.data?.slug ? team.data.slug : id,
+        plan: ok ? (team.data?.billing?.plan ?? undefined) : undefined,
+      });
+    }
+  }
   return scopes;
 }
 
@@ -139,11 +161,11 @@ export async function resolveProject(
   }
   if (scopes.length === 0) throw new Error("Vercel: token ser inget team eller konto.");
   const repoName = `${opts.repo.org}/${opts.repo.repo}`;
-  const repoUrl = `https://github.com/${repoName}`;
   // Läs ALLA team först: har flera team ett kopplat projekt väljs inget i tysthet.
   const hits: { scope: Scope; project: VercelProject }[] = [];
   for (const scope of scopes) {
-    const projects = await listProjects(ctx, scope, { repoUrl });
+    // Inget repoUrl-filter: Vercel jämför det skiftlägeskänsligt; isRepoLink gör det inte.
+    const projects = await listProjects(ctx, scope);
     const linked = projects.filter((p) => isRepoLink(p, opts.repo));
     if (linked.length > 1) {
       const preferred = linked.find((p) => p.name === opts.name);

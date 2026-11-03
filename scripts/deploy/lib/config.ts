@@ -27,6 +27,8 @@ export interface DeployOptions {
   vercelTeam: string | undefined;
   /** Supabase-organisation för produktionsprojektet; standard: utvecklingsprojektets. */
   supabaseOrg: string | undefined;
+  /** Befintligt Supabase-projekt som används som produktion (inget skapas, Preview hoppas över). */
+  prodRef: string | undefined;
   /** Appens publika adress i produktion (annars Vercels domän). */
   appUrl: string | undefined;
   /** Ägarens e-post (bara om inbjudan ska göras). */
@@ -113,7 +115,14 @@ export interface ParsedArgs {
   positional: string[];
 }
 
-const VALUE_FLAGS = new Set(["--agare", "--app-url", "--vercel-team", "--supabase-org", "--miljo"]);
+const VALUE_FLAGS = new Set([
+  "--agare",
+  "--app-url",
+  "--vercel-team",
+  "--supabase-org",
+  "--miljo",
+  "--prod-ref",
+]);
 const BOOLEAN_FLAGS = new Set([
   "--dry-run",
   "--force-deploy",
@@ -181,6 +190,7 @@ export function buildOptions(
     vercelToken: blank(env.VERCEL_TOKEN),
     vercelTeam: blank(args.values.get("--vercel-team")) ?? blank(env.VERCEL_TEAM_ID),
     supabaseOrg: blank(args.values.get("--supabase-org")) ?? blank(env.SUPABASE_ORG_ID),
+    prodRef: blank(args.values.get("--prod-ref")) ?? blank(env.SUPABASE_PROD_REF),
     appUrl: parseAppUrl(args.values.get("--app-url") ?? env.BINDERLAB_APP_URL),
     ownerEmail: ownerArg === undefined ? undefined : parseEmail(ownerArg, "e-post för ägaren"),
     inviteTarget: parseInviteTarget(args.values.get("--miljo")),

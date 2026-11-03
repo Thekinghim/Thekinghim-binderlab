@@ -136,40 +136,66 @@ export async function runDeploy(options: DeployOptions, deps: Deps): Promise<Out
       "Supabase: utvecklingsprojektets organisation är okänd. Ange --supabase-org <id>.",
     );
   }
-  // Bara ett binderlab-prod i rätt organisation räknas (annars avbryts det).
-  const selection = sb.selectProdProject(projects, PROD_PROJECT_NAME, orgIds);
-  sb.assertNoForeignProd(selection, PROD_PROJECT_NAME, orgIds);
-  const prodExists = selection.match !== undefined;
-  if (!prodExists && !wantSupabase && !dryRun) {
-    throw new Error(
-      `Supabase: produktionsprojektet ${PROD_PROJECT_NAME} finns inte. Kör scripts/deploy/supabase.ts (eller all.ts) först.`,
-    );
-  }
-  const prod = await sb.ensureProdProject(sctx, projects, {
-    name: PROD_PROJECT_NAME,
-    region: PROD_REGION,
-    organization,
-    orgIds,
-    password: deps.generatePassword,
-  });
   const dev: Env = {
     label: "utveckling",
     target: "preview",
     ref: DEV_PROJECT_REF,
-    project: await sb.waitForProject(sctx, DEV_PROJECT_REF),
+    project:
+      options.prodRef === DEV_PROJECT_REF ? null : await sb.waitForProject(sctx, DEV_PROJECT_REF),
     keys: null,
     dbPassword: deps.devDbPassword,
   };
-  const prodRef = prod.project ? sb.projectRef(prod.project) : undefined;
-  const prodEnv: Env = {
-    label: "produktion",
-    target: "production",
-    ref: prodRef,
-    project: prodRef ? await sb.waitForProject(sctx, prodRef) : null,
-    keys: null,
-    dbPassword: prod.dbPassword,
-  };
-  const envs = [dev, prodEnv];
+  let prodRef: string | undefined;
+  let prodEnv: Env;
+  let envs: Env[];
+  if (options.prodRef) {
+    // Ett befintligt projekt används som produktion; inget skapas och
+    // förhandsversionerna (Preview) konfigureras inte.
+    const match = projects.find((p) => sb.projectRef(p) === options.prodRef);
+    if (!match) {
+      throw new Error(`Supabase: projektet ${options.prodRef} (--prod-ref) syns inte för token.`);
+    }
+    prodRef = options.prodRef;
+    log.ok(
+      `Produktion: befintliga projektet ${match.name} (${prodRef}); Preview konfigureras inte.`,
+    );
+    prodEnv = {
+      label: "produktion",
+      target: "production",
+      ref: prodRef,
+      project: await sb.waitForProject(sctx, prodRef),
+      keys: null,
+      dbPassword: prodRef === DEV_PROJECT_REF ? deps.devDbPassword : undefined,
+    };
+    envs = [prodEnv];
+  } else {
+    // Bara ett binderlab-prod i rätt organisation räknas (annars avbryts det).
+    const selection = sb.selectProdProject(projects, PROD_PROJECT_NAME, orgIds);
+    sb.assertNoForeignProd(selection, PROD_PROJECT_NAME, orgIds);
+    const prodExists = selection.match !== undefined;
+    if (!prodExists && !wantSupabase && !dryRun) {
+      throw new Error(
+        `Supabase: produktionsprojektet ${PROD_PROJECT_NAME} finns inte. Kör scripts/deploy/supabase.ts (eller all.ts) först.`,
+      );
+    }
+    const prod = await sb.ensureProdProject(sctx, projects, {
+      name: PROD_PROJECT_NAME,
+      region: PROD_REGION,
+      organization,
+      orgIds,
+      password: deps.generatePassword,
+    });
+    prodRef = prod.project ? sb.projectRef(prod.project) : undefined;
+    prodEnv = {
+      label: "produktion",
+      target: "production",
+      ref: prodRef,
+      project: prodRef ? await sb.waitForProject(sctx, prodRef) : null,
+      keys: null,
+      dbPassword: prod.dbPassword,
+    };
+    envs = [dev, prodEnv];
+  }
 
   log.step("Supabase: API-nycklar");
   for (const env of envs) {
