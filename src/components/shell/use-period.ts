@@ -1,13 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import {
-  startTransition,
-  useCallback,
-  useMemo,
-  useOptimistic,
-  useSyncExternalStore,
-} from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import {
   carriedQuery,
   describePeriod,
@@ -44,25 +38,23 @@ function useNow(): Date {
 }
 
 /**
- * Sökparametrarna med optimistiskt läge: valet syns direkt (knappen flyttar sig
- * vid klicket) medan servern renderar den nya vyn i en transition.
+ * Sökparametrarna och en setter som skriver tillbaka till URL:en. Den
+ * omedelbara återkopplingen (knappen flyttar sig vid klicket) sköts av
+ * PeriodControl med ett lokalt väntande val, inte av useOptimistic: ett
+ * optimistiskt värde inne i en transition gjorde att router.replace aldrig
+ * slog igenom (perioden bytte inte data).
  */
-function useOptimisticQuery(): [URLSearchParams, (next: URLSearchParams) => void] {
+function useQuery(): [URLSearchParams, (next: URLSearchParams) => void] {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
-  const current = sp.toString();
-  const [optimistic, setOptimistic] = useOptimistic(current);
-  const params = useMemo(() => new URLSearchParams(optimistic), [optimistic]);
+  const params = useMemo(() => new URLSearchParams(sp.toString()), [sp]);
   const replace = useCallback(
     (next: URLSearchParams) => {
       const q = next.toString();
-      startTransition(() => {
-        setOptimistic(q);
-        router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
-      });
+      router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
     },
-    [router, pathname, setOptimistic],
+    [router, pathname],
   );
   return [params, replace];
 }
@@ -74,7 +66,7 @@ export type UsePeriodResult = ResolvedPeriod &
 
 /** Periodvalet ur URL:en, med jämförelse och en setter som skriver tillbaka. */
 export function usePeriod(options: Omit<ParseOptions, "now"> = {}): UsePeriodResult {
-  const [sp, replace] = useOptimisticQuery();
+  const [sp, replace] = useQuery();
   const now = useNow();
   const { timeZone, earliest } = options;
   const resolved = useMemo(
@@ -90,7 +82,7 @@ export function usePeriod(options: Omit<ParseOptions, "now"> = {}): UsePeriodRes
 
 /** Globalt filter på butik och automat (?butik=, ?automat=). */
 export function useScope(): Scope & { setScope: (scope: Partial<Scope>) => void } {
-  const [sp, replace] = useOptimisticQuery();
+  const [sp, replace] = useQuery();
   const scope = useMemo(() => parseScope(sp), [sp]);
   const setScope = useCallback(
     (next: Partial<Scope>) => replace(withScope(sp, next)),

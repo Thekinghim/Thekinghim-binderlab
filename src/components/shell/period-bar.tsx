@@ -112,7 +112,8 @@ export function PeriodControl({ earliest, className }: { earliest?: Date; classN
     window.clearTimeout(timer.current);
     const byPointer = performance.now() - pointerAt.current < 1000;
     if (byPointer) {
-      setPending(null);
+      // Valet visas direkt; URL:en (och datan) följer när servern svarat.
+      setPending(key !== period.key ? { key, from: period.key } : null);
       if (key !== period.key) setPeriod({ key });
       return;
     }
