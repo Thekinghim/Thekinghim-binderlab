@@ -5,7 +5,8 @@
  *   moms        = round(belopp × moms_bp / (10 000 + moms_bp))   (beloppet inkluderar momsen)
  *   netto       = belopp − moms
  *   kortavgift  = round(belopp × kortavgift_bp / 10 000)        (på belopp inkl. moms)
- *   provision   = round(netto × provision_bp / 10 000)          (avtalet för orderns butik och dag)
+ *   provision   = round(netto × provision_bp / 10 000)          (avtalet för orderns butik och dag;
+ *                 0 för vinstdelning, som räknas per butik och månad i liggaren)
  *   inköp       = inköpspriset som gällde orderns dag, eller null om pris saknas
  *
  * Hyran räknas per butik och månad och fördelas på orderna i rent.ts/ledger.ts.
@@ -16,6 +17,7 @@ import { DomainError } from "./errors";
 import { applyBp, assertBp, assertNonNegativeInteger, mulDivRound, BP_SCALE } from "./money";
 import { AgreementIndex, PlacementIndex } from "./placements";
 import { PriceIndex } from "./prices";
+import { isProfitSplit } from "./profit-split";
 import type { EconomicsSources, IsoDate, OrderLine, Settings, StoreAgreement } from "./types";
 
 /** Största tillåtna momssats (100 %). */
@@ -126,7 +128,8 @@ export function computeOrderEconomics(order: OrderLine, ctx: EconomicsContext): 
     order.machineId === null ? null : ctx.placements.storeOn(order.machineId, order.businessDate);
   const agreement =
     storeId === null ? null : ctx.agreements.agreementOn(storeId, order.businessDate);
-  const commissionBp = agreement?.commissionBp ?? 0;
+  // Vinstdelning räknas per butik och månad i liggaren (profit-split.ts), inte per order.
+  const commissionBp = isProfitSplit(agreement) ? 0 : (agreement?.commissionBp ?? 0);
   const commission = commissionBp === 0 ? 0 : applyBp(net, commissionBp);
   return {
     grossOre: gross,

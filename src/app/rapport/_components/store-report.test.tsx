@@ -107,3 +107,54 @@ describe("butiksrapporten läcker inget", () => {
     }
   });
 });
+
+describe("butiksrapporten med vinstdelning", () => {
+  const src = sources({
+    placements: [
+      placement("m-1", "s-1", "2025-01-01", null),
+      placement("m-2", "s-2", "2025-01-01", null),
+    ],
+    orders: [
+      ord("2026-10-03", { amountOre: 19_900 }),
+      ord("2026-10-04", { amountOre: 19_900 }),
+      ord("2026-10-10", { amountOre: 77_700, machineId: "m-2" }),
+    ],
+    prices: [price("t-a", 13_000, "2026-01-01")],
+    agreements: [
+      {
+        ...agreement("s-1", "2026-10-01", null, { commissionBp: 5_000 }),
+        commissionBase: "profit_after_costs",
+      },
+      agreement("s-2", "2026-01-01", null, { monthlyRentOre: 99_900 }),
+    ],
+  });
+  const snap = buildSnapshot({
+    type: "butik",
+    month: "2026-10",
+    organization: ORG,
+    sources: src,
+    generatedAt: "2026-11-01T05:00:00.000Z",
+    storeId: "s-1",
+  });
+
+  it("visar avtalet och tabellen Försäljning → Er andel, men inget om andra butiker", () => {
+    if (snap.type !== "butik") throw new Error("fel typ");
+    // 398 kr sålt, 260 kr inköp: VMB 27,60 kr, vinst 110,40 kr, butiken 55,20 kr.
+    expect(snap.report.compensation.totalOre).toBe(5_520);
+    const text = visibleText(renderToStaticMarkup(<StoreReportDocument snapshot={snap} />));
+    expect(text).toContain("Avtal: 50 % av vinsten efter kostnader, giltigt från 1 oktober 2026.");
+    for (const label of [
+      "Försäljning",
+      "VMB-moms",
+      "Inköp",
+      "Kortavgifter",
+      "Vinst",
+      "Er andel 50 %",
+    ])
+      expect(text).toContain(label);
+    // Bara vinstdelning: ingen totalrad med samma tal en gång till.
+    expect(text).not.toContain("Andel 55,20 kr");
+    expect(text).toContain("110,40");
+    for (const re of [/Mobilia/, /777/, /999/]) expect(text, String(re)).not.toMatch(re);
+  });
+});

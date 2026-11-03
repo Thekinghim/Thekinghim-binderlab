@@ -489,7 +489,7 @@ describe("buildPageModel", () => {
     const m = buildPageModel(data([po]), now);
     const line = m.plan.lines.find((l) => l.titleId === T1)!;
     const hrefs = line.evidence.links.map((l) => l.href);
-    expect(hrefs).toContain("/lager#centrallager");
+    expect(hrefs).toContain("/prognos#vart-lager");
     expect(hrefs).toContain("#inkopsorder");
     expect(hrefs).toContain(`/order?from=2026-09-07&to=2026-11-01&titel=${T1}`);
     // Prognos per titel och per automat länkar till historiken de bygger på.

@@ -3,10 +3,10 @@
  * 'ÅÅÅÅ-MM-DD'. Allt räknas på servern (./model, @/domain); klienten formaterar bara.
  */
 
-import type { IsoDate } from "@/domain";
+import type { CommissionBase, IsoDate } from "@/domain";
 
-/** Ersättningsmodellen i ett avtal. */
-export type CompensationModel = "commission" | "rent" | "both";
+/** Ersättningsmodellen i ett avtal. split = vinstdelning (andel av vinsten efter kostnader), ev. med hyra. */
+export type CompensationModel = "split" | "commission" | "rent" | "both";
 
 /** Var ett avtal står i förhållande till i dag. */
 export type AgreementState = "current" | "upcoming" | "ended";
@@ -33,6 +33,8 @@ export interface AgreementView {
   readonly validTo: IsoDate | null;
   readonly commissionBp: number | null;
   readonly monthlyRentOre: number | null;
+  /** 'profit_after_costs' = vinstdelning: `commissionBp` är butikens andel av vinsten. */
+  readonly commissionBase: CommissionBase;
   readonly note: string | null;
   readonly model: CompensationModel;
   readonly state: AgreementState;

@@ -16,6 +16,7 @@ import {
   minDate,
   monthOf,
   monthStart,
+  type CommissionBase,
   type IsoDate,
   type Period,
   type ProfitabilityResult,
@@ -103,21 +104,34 @@ export function percentBp(bp: number): string {
 export function compensationModel(
   commissionBp: number | null,
   monthlyRentOre: number | null,
+  commissionBase: CommissionBase = "net_excl_vat",
 ): CompensationModel {
+  if (commissionBase === "profit_after_costs") return "split";
   if (commissionBp !== null && monthlyRentOre !== null) return "both";
   return monthlyRentOre !== null ? "rent" : "commission";
 }
 
 export const MODEL_LABEL: Record<CompensationModel, string> = {
+  split: "Vinstdelning",
   commission: "Provision",
   rent: "Hyra",
   both: "Provision och hyra",
 };
 
-/** "Provision 12 % · hyra 750 kr/mån". */
-export function termsLabel(commissionBp: number | null, monthlyRentOre: number | null): string {
+/** "Provision 12 % · hyra 750 kr/mån", "Vinstdelning 50 %". */
+export function termsLabel(
+  commissionBp: number | null,
+  monthlyRentOre: number | null,
+  commissionBase: CommissionBase = "net_excl_vat",
+): string {
   const parts: string[] = [];
-  if (commissionBp !== null) parts.push(`provision ${percentBp(commissionBp)}`);
+  if (commissionBase === "profit_after_costs") {
+    parts.push(
+      commissionBp === 5_000
+        ? "vinstdelning 50/50"
+        : `vinstdelning ${percentBp(commissionBp ?? 0)}`,
+    );
+  } else if (commissionBp !== null) parts.push(`provision ${percentBp(commissionBp)}`);
   if (monthlyRentOre !== null) parts.push(`hyra ${sek(monthlyRentOre)}/mån`);
   return parts.length > 0 ? sentence(parts.join(" · ")).replace(/\.$/, "") : "Ingen ersättning";
 }
@@ -146,15 +160,19 @@ export interface AgreementRecord {
   readonly validTo: IsoDate | null;
   readonly commissionBp: number | null;
   readonly monthlyRentOre: number | null;
+  /** Saknas = 'net_excl_vat' (andel av försäljningen). */
+  readonly commissionBase?: CommissionBase;
   readonly note: string | null;
 }
 
 export function toAgreementView(a: AgreementRecord, today: IsoDate): AgreementView {
+  const base = a.commissionBase ?? "net_excl_vat";
   return {
     ...a,
-    model: compensationModel(a.commissionBp, a.monthlyRentOre),
+    commissionBase: base,
+    model: compensationModel(a.commissionBp, a.monthlyRentOre, base),
     state: agreementState(a, today),
-    termsLabel: termsLabel(a.commissionBp, a.monthlyRentOre),
+    termsLabel: termsLabel(a.commissionBp, a.monthlyRentOre, base),
     periodLabel: agreementPeriodLabel(a.validFrom, a.validTo),
   };
 }
@@ -464,7 +482,11 @@ export function compensationHeadline(
     };
   }
   const parts: string[] = [];
-  if (current.commissionBp !== null) {
+  if (current.commissionBase === "profit_after_costs") {
+    parts.push(
+      `${percentBp(current.commissionBp ?? 0)} av vinsten efter kostnader ger ${sek(month.commissionOre)}`,
+    );
+  } else if (current.commissionBp !== null) {
     parts.push(
       `provision ${percentBp(current.commissionBp)} av ${sek(month.revenueOre)} ger ${sek(month.commissionOre)}`,
     );

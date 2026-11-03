@@ -34,6 +34,8 @@ import {
   queryTitles,
 } from "@/server/data/core/queries";
 
+import { queryPeriodRefunds } from "@/server/data/core/queries";
+
 import type { ReportType } from "./kinds";
 import {
   asSnapshot,
@@ -306,7 +308,7 @@ export async function loadSnapshotInput(tx: Tx, args: LoadArgs): Promise<Snapsho
   const period = { start: monthStart(args.month), end: monthEnd(args.month) };
   const today = args.now.slice(0, 10);
 
-  const [organization, settings, titles, placements, stores, prices, agreements, orders] =
+  const [organization, settings, titles, placements, stores, prices, agreements, orders, refunds] =
     await Promise.all([
       queryOrganization(tx, orgId),
       querySettings(tx, orgId),
@@ -316,6 +318,7 @@ export async function loadSnapshotInput(tx: Tx, args: LoadArgs): Promise<Snapsho
       queryPrices(tx, orgId),
       queryAgreements(tx, orgId),
       queryReportOrders(tx, orgId, window),
+      queryPeriodRefunds(tx, orgId, window),
     ]);
   const inPeriod = (o: ReportOrder) =>
     o.businessDate >= period.start && o.businessDate <= period.end;
@@ -334,6 +337,12 @@ export async function loadSnapshotInput(tx: Tx, args: LoadArgs): Promise<Snapsho
     })),
     prices,
     agreements,
+    // Vinstdelningen drar återbetalningarna från butikens försäljning.
+    refunds: refunds.map((r) => ({
+      machineId: r.machineId,
+      refundedOn: r.refundedOn,
+      amountOre: r.amountOre,
+    })),
     placements: placements.map((p) => ({
       machineId: p.machineId,
       storeId: p.storeId,

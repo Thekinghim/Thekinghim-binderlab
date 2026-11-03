@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { ReportView } from "@/app/rapport/_components/report-view";
-import { monthLabel, monthName } from "@/app/rapport/_components/shared";
+import { monthLabel, monthName, sek } from "@/app/rapport/_components/shared";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatDate, formatInt } from "@/lib/format";
+import { MISSING_PRICES_MESSAGE } from "@/reports";
 import { loadSyncInfo, requireRoute } from "@/server/data/core";
 import { TYPE_LABEL } from "@/server/reports/kinds";
 import { loadReportsPage } from "@/server/reports/page-data";
@@ -146,11 +147,16 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
               id="ny-rapport"
               size="md"
               title={`${TYPE_LABEL[data.type]}, ${scope}.`}
-              aside={
+              aside={[
+                preview?.type === "butik"
+                  ? `Butikens ersättning ${monthName(preview.month)}: ${sek(preview.report.compensation.totalOre)}.`
+                  : null,
                 data.current
                   ? `Senaste versionen ${when(data.current.generatedAt, viewer.organization.timezone)}.`
-                  : "Inget utkast ännu."
-              }
+                  : "Inget utkast ännu.",
+              ]
+                .filter(Boolean)
+                .join(" ")}
             />
             {staleDay ? (
               <p role="status" className="meta text-signal-fg">
@@ -231,7 +237,11 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
                 kind="empty"
                 compact
                 message={data.previewError ?? "Inget underlag för valet."}
-                action={{ label: "Välj en annan månad", href: "#ny-rapport" }}
+                action={
+                  data.previewError?.startsWith(MISSING_PRICES_MESSAGE)
+                    ? { label: "Lägg in inköpspriser", href: "/inkopspriser?saknar=pris" }
+                    : { label: "Välj en annan månad", href: "#ny-rapport" }
+                }
               />
             )}
           </section>

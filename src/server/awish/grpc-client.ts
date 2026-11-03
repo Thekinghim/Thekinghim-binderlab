@@ -149,6 +149,22 @@ export interface AwishMachine {
 /** Samma form som adaptern tolkar (src/import/adapters/awish-grpc.ts). */
 export type AwishOrder = AwishGrpcOrder;
 
+/**
+ * Ett fack i en automat (Products): kanalens namn ("A3"), varan och antalet.
+ * currentInventory är antalet i facket nu, inventory facket kapacitet.
+ */
+export interface AwishProduct {
+  id: string;
+  machineId: string;
+  /** Kanalens namn ("A3"), eller "" om Awish inte skickar någon kanal. */
+  channel: string;
+  /** Varans id och namn i Awish, eller null när facket inte har någon vara. */
+  goodId: string | null;
+  goodName: string | null;
+  currentInventory: number;
+  capacity: number;
+}
+
 export interface AwishPage<T> {
   items: T[];
   total: number | null;
@@ -168,6 +184,8 @@ export interface AwishApi {
     machineIds?: string[];
   }): Promise<AwishPage<AwishOrder>>;
   order(id: string): Promise<AwishOrder | null>;
+  /** Automatens fack med antal (Products, ingen sidindelning). */
+  products(machineId: string): Promise<AwishProduct[]>;
   close(): void;
 }
 
@@ -244,6 +262,28 @@ export function toOrder(raw: unknown): AwishOrder {
     }),
     totalCashAmount: optStr(o.total_cash_amount),
     changeCashAmount: optStr(o.change_cash_amount),
+  };
+}
+
+/** Heltal ≥ 0 ur ett uint64-fält (text eller tal); annat blir 0. */
+function count(value: unknown): number {
+  const n = Number(value ?? 0);
+  return Number.isSafeInteger(n) && n > 0 ? n : 0;
+}
+
+export function toProduct(raw: unknown): AwishProduct {
+  const p = obj(raw);
+  const channel = obj(p.channel);
+  const good = p.good && typeof p.good === "object" ? obj(p.good) : null;
+  const goodName = good ? optStr(good.name)?.trim() || null : null;
+  return {
+    id: str(p.id),
+    machineId: str(p.machine_id),
+    channel: str(channel.name).trim(),
+    goodId: good ? optStr(good.id) : null,
+    goodName,
+    currentInventory: count(p.current_inventory),
+    capacity: count(p.inventory),
   };
 }
 
@@ -484,6 +524,10 @@ export function createAwishClient(creds: AwishCredentials, options: AwishClientO
     async order(id) {
       const res = obj(await call("Order", { id }));
       return res.data ? toOrder(res.data) : null;
+    },
+    async products(machineId) {
+      const res = obj(await call("Products", { machine_id: machineId }));
+      return (Array.isArray(res.data) ? res.data : []).map(toProduct);
     },
     close() {
       client.close();

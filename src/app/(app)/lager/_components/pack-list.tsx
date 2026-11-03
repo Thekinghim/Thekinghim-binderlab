@@ -42,7 +42,7 @@ export function PackList({
   const title =
     list.totalPacks === 0
       ? list.missing.length > 0
-        ? `Inget att ta med till ${codeText(machine.code)}: centrallagret saknar det som behövs.`
+        ? `Inget att ta med till ${codeText(machine.code)}: vårt lager saknar det som behövs.`
         : `Inget behöver med till ${codeText(machine.code)} i dag.`
       : `Ta med ${packs(list.totalPacks)} till ${codeText(machine.code)}.`;
   const aside = packListAside(list, today);
@@ -114,9 +114,9 @@ export function PackList({
                 <StatusGlyph status="warning" />
               </span>
               <p>
-                {`Centrallagret saknar ${packs(list.shortBy)} för att fylla till målet`}
+                {`Vårt lager saknar ${packs(list.shortBy)} för att fylla till målet`}
                 {list.missing.length > 0
-                  ? `: ${list.missing.map((m) => `${formatInt(m.shortBy)}${NBSP}×${NBSP}${m.titleName} (${formatInt(m.onHand)} kvar, finns inte i centrallagret)`).join(", ")}`
+                  ? `: ${list.missing.map((m) => `${formatInt(m.shortBy)}${NBSP}×${NBSP}${m.titleName} (${formatInt(m.onHand)} kvar, finns inte i vårt lager)`).join(", ")}`
                   : ""}
                 {list.missing.length > 0 && list.lines.some((l) => l.shortBy > 0)
                   ? ", resten på raderna ovan."
@@ -157,7 +157,7 @@ function Line({
         {line.shortBy > 0 ? (
           <span className="meta text-subtle">
             {formatInt(line.shortBy)}
-            {NBSP}saknas i centrallagret
+            {NBSP}saknas i vårt lager
           </span>
         ) : null}
       </span>

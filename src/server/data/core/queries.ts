@@ -29,6 +29,7 @@ import * as s from "@/db/schema";
 import { toSafeInteger } from "@/db/types";
 import { reportStatuses, type DeliveryStatus } from "@/server/reports/status";
 import type { IsoDate, MachineInvestment, Period, PurchasePrice, StoreAgreement } from "@/domain";
+import type { Refund } from "@/domain/refunds";
 
 import type {
   DataScope,
@@ -315,6 +316,8 @@ export async function queryAgreements(tx: Tx, orgId: string): Promise<StoreAgree
       validTo: s.storeAgreements.validTo,
       commissionBp: s.storeAgreements.commissionBp,
       monthlyRentOre: s.storeAgreements.monthlyRentOre,
+      commissionBase: s.storeAgreements.commissionBase,
+      lossTreatment: s.storeAgreements.lossTreatment,
     })
     .from(s.storeAgreements)
     .where(eq(s.storeAgreements.organizationId, orgId))
@@ -480,6 +483,18 @@ export async function queryFirstSaleDate(tx: Tx, orgId: string): Promise<IsoDate
     .from(s.stockEvents)
     .where(and(eq(s.stockEvents.organizationId, orgId), eq(s.stockEvents.kind, "sale")));
   return rows[0]?.first ?? null;
+}
+
+/**
+ * Sant när radens saldo är känt: platsen har inventerats (i Binderlab eller av Awish-synken)
+ * eller fyllts på. Bara försäljning ger inget känt saldo (Lager visar "Saldo okänt"), så
+ * påfyllningsregeln, Att göra, Drift och larmen räknar inte sådana rader som tomma.
+ */
+export function isKnownStock(r: {
+  readonly lastRestockedAt: string | null;
+  readonly lastCountedAt: string | null;
+}): boolean {
+  return r.lastRestockedAt !== null || r.lastCountedAt !== null;
 }
 
 export async function queryStock(tx: Tx, orgId: string): Promise<StockRow[]> {
@@ -857,4 +872,39 @@ export async function queryOpenAlerts(tx: Tx, orgId: string): Promise<AlertRef[]
     openedAt: r.triggeredAt.toISOString(),
     acknowledged: r.acknowledgedAt !== null,
   }));
+}
+
+/** Återbetalningar till kunder (kundärenden med återbetalt belopp) med återbetalningsdag i perioden. */
+export async function queryPeriodRefunds(tx: Tx, orgId: string, period: Period): Promise<Refund[]> {
+  const rows = await tx
+    .select({
+      id: s.incidents.id,
+      machineId: s.incidents.machineId,
+      titleId: s.incidents.titleId,
+      refundedOn: s.incidents.refundedOn,
+      amountOre: s.incidents.refundedOre,
+    })
+    .from(s.incidents)
+    .where(
+      and(
+        eq(s.incidents.organizationId, orgId),
+        gte(s.incidents.refundedOn, period.start),
+        lte(s.incidents.refundedOn, period.end),
+        sql`${s.incidents.refundedOre} > 0`,
+      ),
+    )
+    .orderBy(asc(s.incidents.refundedOn), asc(s.incidents.id));
+  return rows.flatMap((r) =>
+    r.refundedOn === null
+      ? []
+      : [
+          {
+            id: r.id,
+            machineId: r.machineId,
+            titleId: r.titleId,
+            refundedOn: r.refundedOn as IsoDate,
+            amountOre: r.amountOre,
+          },
+        ],
+  );
 }

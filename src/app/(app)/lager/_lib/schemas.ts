@@ -31,7 +31,7 @@ export const refillSchema = z.object(
     machineId: uuid,
     titleId: uuid,
     quantity: packs(1, "Ange antal pack, minst 1."),
-    fromWarehouse: z.boolean({ error: "Ange om packen tas från centrallagret." }),
+    fromWarehouse: z.boolean({ error: "Ange om packen tas från vårt lager." }),
     note,
   },
   { error: INVALID },

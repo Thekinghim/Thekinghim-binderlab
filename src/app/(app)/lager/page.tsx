@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import type React from "react";
+import { Suspense } from "react";
+
+import { routeById } from "@/components/shell/nav";
 
 import { SectionHeader } from "@/components/ui/section-header";
 import { formatInt, formatPeriod } from "@/lib/format";
@@ -8,9 +12,10 @@ import { isUuid } from "@/server/access";
 import { loadPeriod, requireRoute } from "@/server/data/core";
 
 import { HistoryList } from "./_components/history-list";
+import { WarehouseRedirect } from "./_components/warehouse-redirect";
 import { LagerBoard } from "./_components/lager-board";
 import { loadLagerFor } from "./_lib/data";
-import { isoDateToDate, packs } from "./_lib/display";
+import { isoDateToDate } from "./_lib/display";
 import { headlineOf } from "./_lib/headline";
 import { currentViewer } from "./_lib/session";
 import { HISTORY_LIMIT } from "./_lib/types";
@@ -24,8 +29,10 @@ function first(v: string | string[] | undefined): string | null {
 }
 
 /**
- * Lager: matrisen titel × automat (antal kvar, dagar kvar, status), påfyllningslistan
- * per automat inför ett besök, centrallagret och historiken. Alla roller ser sidan;
+ * Lager: det som finns i automaterna. Matrisen titel × automat (antal kvar, dagar kvar,
+ * status; saldot från Awish när automaten är kopplad), påfyllningslistan per automat
+ * inför ett besök och historiken. Vårt eget lager ligger under Prognos & inköp
+ * (/prognos#vart-lager); gamla länkar hit (#centrallager, ?vy=centrallager) skickas dit. Alla roller ser sidan;
  * ägare, admin och påfyllare registrerar påfyllning och inventering. Inga belopp
  * visas eller skickas till klienten, för någon roll.
  */
@@ -51,11 +58,15 @@ export default async function LagerPage({ searchParams }: { searchParams: Promis
     start: isoDateToDate(p.period.start),
     end: isoDateToDate(p.period.end),
   });
-  const placesTotal = view.counts.critical + view.counts.low + view.counts.ok;
-  const warehouseTotal = view.warehouse.reduce((s, w) => s + Math.max(0, w.onHand), 0);
+  const placesTotal = view.counts.critical + view.counts.low + view.counts.ok + view.unknownCount;
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
+      {routeById("prognos").roles.includes(ctx.role) ? (
+        <Suspense fallback={null}>
+          <WarehouseRedirect />
+        </Suspense>
+      ) : null}
       <div className="rise" style={{ "--i": 0 } as React.CSSProperties}>
         <SectionHeader
           as="h1"
@@ -65,8 +76,20 @@ export default async function LagerPage({ searchParams }: { searchParams: Promis
           aside={headline.aside}
           meta={[
             { label: "Platser", value: formatInt(placesTotal) },
-            ...(view.hasWarehouse ? [{ label: "Centrallager", value: packs(warehouseTotal) }] : []),
+            ...(view.unknownCount > 0
+              ? [{ label: "Saldo okänt", value: formatInt(view.unknownCount) }]
+              : []),
           ]}
+          actions={
+            view.unknownCount > 0 && routeById("datakallor").roles.includes(ctx.role) ? (
+              <Link
+                href="/datakallor"
+                className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover"
+              >
+                Koppla Awish
+              </Link>
+            ) : undefined
+          }
         />
       </div>
 

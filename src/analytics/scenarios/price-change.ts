@@ -6,7 +6,11 @@
  * 1. Varje order räknas om med det nya beloppet (belopp + N) genom domänens
  *    `orderEconomics`: moms, kortavgift och provision följer det nya priset enligt samma
  *    regler som i lönsamheten. Inköpet är oförändrat.
- *    Bidrag per order = nettointäkt − inköp − avgift − provision.
+ *    Bidrag per order = nettointäkt − inköp − avgift − butikens ersättning.
+ *    Vinstdelning (avtal 'profit_after_costs'): butikens nya andel = nuvarande andel +
+ *    andel × (ny ordervinst − nuvarande ordervinst), där ordervinst = belopp − VMB-moms
+ *    (20 % av max(0, belopp − inköp)) − inköp − avgift. Uppskattning per order: månadens
+ *    förlustgolv räknas inte om.
  * 2. Volymen ändras med en antagen priselasticitet e (i hundradelar: −150 = −1,5):
  *      volymfaktor = 1 + e × N / snittpris = (100 × Σ belopp + e × N × antal) / (100 × Σ belopp)
  *    Faktorn blir aldrig negativ. Standard e = 0: lika många pack säljs.
@@ -21,11 +25,14 @@
  */
 
 import {
+  applyBp,
   BP_SCALE,
   buildLedger,
   changeBp,
   DomainError,
+  isProfitSplit,
   orderEconomics,
+  vmbVatOfMargin,
   roundHalfUp,
   type Period,
   type ProfitabilityInput,
@@ -190,6 +197,21 @@ export function priceChangeScenario(input: PriceChangeScenarioInput): PriceChang
       );
     }
     const after = orderEconomics({ ...e.order, amountOre: amount }, ledger.context);
+    let afterShare = after.commissionOre;
+    const agreement =
+      e.storeId === null
+        ? null
+        : ledger.context.agreements.agreementOn(e.storeId, e.order.businessDate);
+    if (isProfitSplit(agreement)) {
+      const orderProfit = (g: number, fee: number) =>
+        g - vmbVatOfMargin(g - e.costOre) - e.costOre - fee;
+      afterShare =
+        e.commissionOre +
+        applyBp(
+          orderProfit(after.grossOre, after.cardFeeOre) - orderProfit(e.grossOre, e.cardFeeOre),
+          agreement!.commissionBp ?? 0,
+        );
+    }
     n++;
     gross += e.grossOre;
     revenue += e.netRevenueOre;
@@ -199,7 +221,7 @@ export function priceChangeScenario(input: PriceChangeScenarioInput): PriceChang
     rent += e.rentOre;
     newGross += after.grossOre;
     newRevenue += after.netRevenueOre;
-    newContribution += after.netRevenueOre - e.costOre - after.cardFeeOre - after.commissionOre;
+    newContribution += after.netRevenueOre - e.costOre - after.cardFeeOre - afterShare;
     orderIds.push(e.order.id);
     dates.push(e.order.businessDate);
   }

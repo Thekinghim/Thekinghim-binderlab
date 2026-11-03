@@ -19,6 +19,8 @@
 
 import "server-only";
 
+import path from "node:path";
+
 import { createServerClient } from "@supabase/ssr";
 
 import {
@@ -115,6 +117,23 @@ export async function contractFileStore(
     return new LocalFileStore(config.contractFileDir);
   }
   return userBucketStore("contracts", "avtalsfiler");
+}
+
+/**
+ * FileStore för kvitton (Ekonomi → Bokföring): samma val som avtalsfilerna
+ * (CONTRACT_FILE_STORE). local: RECEIPT_FILE_DIR, standard .data/receipts. supabase: den
+ * privata bucketen 'receipts' med användarens session (storage-policyerna gäller).
+ */
+export async function receiptFileStore(
+  config: AccountingConfig = accountingConfig(),
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<FileStore> {
+  if (config.contractFileStore === "local") {
+    return new LocalFileStore(
+      path.resolve(env.RECEIPT_FILE_DIR?.trim() || path.join(process.cwd(), ".data", "receipts")),
+    );
+  }
+  return userBucketStore("receipts", "kvitton");
 }
 
 /**

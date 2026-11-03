@@ -15,9 +15,11 @@
  *    dagar i kalendermånaden (en hel oktober = 1, 15 av 30 novemberdagar = 0,5). Samma
  *    automat och period ger därför samma vinst per månad och återbetalningstid här som i
  *    `compareUnitEconomics`. Vinsten är lönsamhetsvyns vinst (efter inköp, avgifter,
- *    provision och hyra). Anges villkor för den nya platsen (`terms`) ersätts platsens
- *    provision och hyra med dem: provision = intäkt × provisionssats, hyra = månadshyra ×
- *    automatmånader. Takten per dag (belopp / automatdagar) visas också.
+ *    butikens andel och hyra). Anges villkor för den nya platsen (`terms`) ersätts platsens
+ *    ersättning med dem: vinstdelning = andel × max(0, täckningsbidrag − VMB-moms), där
+ *    VMB-moms = 20 % av max(0, intäkt − inköp) (förlust ger butiken 0); provision = intäkt
+ *    × provisionssats; hyra = månadshyra × automatmånader. Takten per dag (belopp /
+ *    automatdagar) visas också.
  * 4. Förväntat värde = snittet av platsernas takt viktat efter likhet. Intervallet är
  *    lägsta och högsta platsens takt.
  * 5. Återbetalningstid = investering / vinst per månad, i tiondels månader. Bästa fallet
@@ -28,7 +30,14 @@
  * "Uppskattning").
  */
 
-import { assertPeriod, BP_SCALE, MONTH_LCM, mulDivRound, type Period } from "@/domain";
+import {
+  assertPeriod,
+  BP_SCALE,
+  MONTH_LCM,
+  mulDivRound,
+  VMB_VAT_PERCENT,
+  type Period,
+} from "@/domain";
 import { kr, pct, periodText, plural, tenths } from "../todos/text";
 import {
   assertNonNegative,
@@ -173,7 +182,7 @@ interface SiteRates {
 
 /**
  * Platsens takt per automatdag och per automatmånad. Med villkor: vinst = täckningsbidrag
- * − intäkt × provisionssats − månadshyra × automatmånader.
+ * − butikens andel av vinsten − intäkt × provisionssats − månadshyra × automatmånader.
  */
 function siteRates(h: SiteHistory, terms: SiteTerms | null): SiteRates {
   const units = h.machineMonthUnits;
@@ -181,7 +190,15 @@ function siteRates(h: SiteHistory, terms: SiteTerms | null): SiteRates {
   if (terms) {
     const commission = new Ratio(h.revenueOre).mul(new Ratio(terms.commissionBp ?? 0, BP_SCALE));
     const rent = new Ratio(terms.monthlyRentOre ?? 0).mul(new Ratio(units, MONTH_LCM));
-    profit = new Ratio(h.contributionOre).sub(commission).sub(rent);
+    const shareBp = terms.profitShareBp ?? 0;
+    let share = new Ratio(0);
+    if (shareBp > 0) {
+      const margin = h.revenueOre - h.costOre;
+      const vmb = margin > 0 ? mulDivRound(margin, VMB_VAT_PERCENT, 100) : 0;
+      const base = h.contributionOre - vmb;
+      if (base > 0) share = new Ratio(base).mul(new Ratio(shareBp, BP_SCALE));
+    }
+    profit = new Ratio(h.contributionOre).sub(share).sub(commission).sub(rent);
   }
   return {
     revenuePerDay: new Ratio(h.revenueOre, h.machineDays),
@@ -214,6 +231,7 @@ export function estimateSite(args: SiteEstimateArgs): SiteEstimate {
   };
   if (terms) {
     if (terms.commissionBp !== null) assertRateBp(terms.commissionBp, "Provisionen");
+    if (terms.profitShareBp != null) assertRateBp(terms.profitShareBp, "Butikens andel");
     if (terms.monthlyRentOre !== null) assertNonNegative(terms.monthlyRentOre, "Hyran");
   }
   const investment = totalInvestment(args.investment);
@@ -280,7 +298,13 @@ export function estimateSite(args: SiteEstimateArgs): SiteEstimate {
     args.investment.otherOre ? `, övrigt ${kr(args.investment.otherOre)}` : ""
   })`;
   const termsText = terms
-    ? `butiksersättning enligt angivna villkor: provision ${pct(terms.commissionBp ?? 0)}, hyra ${kr(terms.monthlyRentOre ?? 0)} per månad`
+    ? `butiksersättning enligt angivna villkor: ${[
+        ...((terms.profitShareBp ?? 0) > 0
+          ? [`${pct(terms.profitShareBp!)} av vinsten efter kostnader`]
+          : []),
+        ...((terms.commissionBp ?? 0) > 0 ? [`provision ${pct(terms.commissionBp!)}`] : []),
+        `hyra ${kr(terms.monthlyRentOre ?? 0)} per månad`,
+      ].join(", ")}`
     : "butiksersättning enligt platsernas egna avtal";
   const rule =
     "Snittet per automat och månad av de mest lika befintliga butikerna, viktat efter likhet (butikstyp, ort, öppettider, yta); intervallet är lägsta och högsta platsens takt. Per månad = belopp / aktiva automatmånader (som enhetsekonomin). Återbetalningstid = investering / vinst per månad.";

@@ -11,7 +11,6 @@ import { formatInt, MISSING, NBSP } from "@/lib/format";
 import { StorePortalAccess } from "@/app/portal/_components/store-portal-access";
 
 import { AddRecipientButton } from "../_components/recipient-dialogs";
-import { NewAgreementButton } from "../_components/agreement-dialogs";
 import { StoreRevenueChart } from "../_components/charts";
 import { AgreementsTable, MachinesTable, RecipientsTable } from "../_components/detail-tables";
 import { StoreKpis } from "../_components/kpis";
@@ -19,16 +18,7 @@ import { StoreActions } from "../_components/store-dialogs";
 import { Sub } from "../_components/sub";
 import { pickTab, ViewTabs } from "../../automater/_components/view-tabs";
 import { loadStoreDetail, storeNameOf, type StoreDetailData } from "../_lib/data";
-import {
-  dayText,
-  earliestNewAgreementDay,
-  kronor,
-  MODEL_LABEL,
-  placeText,
-  plural,
-  sek,
-  sentence,
-} from "../_lib/model";
+import { dayText, kronor, MODEL_LABEL, placeText, plural, sek, sentence } from "../_lib/model";
 
 const TABS = [
   { value: "oversikt", label: "Översikt" },
@@ -122,9 +112,6 @@ export default async function StorePage({
 
       <div className="rise flex flex-col gap-3" style={rise(1)}>
         <StoreKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
-        <p className="meta text-subtle">
-          Till butiken: provision på alla order och hyra. Vinst: order med inköpspris.
-        </p>
       </div>
 
       <div className="rise -mb-6 md:-mb-10" style={rise(2)}>
@@ -247,13 +234,12 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
         aside={data.compensation.aside}
         actions={
           ctx.canEdit && !store.archived ? (
-            <NewAgreementButton
-              storeId={store.id}
-              storeName={store.name}
-              today={ctx.today}
-              current={current}
-              minFrom={earliestNewAgreementDay(data.agreements)}
-            />
+            <Link
+              href={`/avtal?skapa=store:${store.id}`}
+              className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover"
+            >
+              Skapa avtal
+            </Link>
           ) : undefined
         }
       />
@@ -269,7 +255,10 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
               value={kronor(month.revenueOre)}
               meta={plural(month.orders, "pack", "pack")}
             />
-            <Line label="Provision" value={kronor(month.commissionOre)} />
+            <Line
+              label={current?.model === "split" ? "Andel av vinsten" : "Provision"}
+              value={kronor(month.commissionOre)}
+            />
             <Line
               label="Hyra"
               value={kronor(month.rentOre)}

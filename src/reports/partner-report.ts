@@ -20,6 +20,7 @@ import {
   buildLedger,
   changeBp,
   eachMonth,
+  isProfitSplit,
   monthPeriod,
   monthStart,
   summarizeLedger,
@@ -610,8 +611,10 @@ function buildProfitSplit(
 
 function termsText(a: StoreAgreement): string {
   const parts: string[] = [];
-  if ((a.commissionBp ?? 0) > 0)
-    parts.push(`provision ${pctText(a.commissionBp!, a.commissionBp! % 100 === 0 ? 0 : 1)}`);
+  const bp = a.commissionBp ?? 0;
+  if (isProfitSplit(a))
+    parts.push(`${pctText(bp, bp % 100 === 0 ? 0 : 1)} av vinsten efter kostnader`);
+  else if (bp > 0) parts.push(`provision ${pctText(bp, bp % 100 === 0 ? 0 : 1)}`);
   if ((a.monthlyRentOre ?? 0) > 0) parts.push(`hyra ${krText(a.monthlyRentOre!)}/mån`);
   return parts.length === 0 ? "ingen ersättning" : listText(parts);
 }
@@ -695,7 +698,7 @@ function buildEvents(args: {
           scope: { period, storeId: a.storeId },
           orderCount: 0,
           figures: [
-            fig("Provision", a.commissionBp ?? 0, "bp"),
+            fig(isProfitSplit(a) ? "Andel av vinsten" : "Provision", a.commissionBp ?? 0, "bp"),
             fig("Månadshyra", a.monthlyRentOre ?? 0, "ore"),
           ],
           dates: [a.validFrom],

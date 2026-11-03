@@ -177,7 +177,6 @@ export default async function ExpansionPage({
                   lik: data.newMachine.likeStoreId ?? "",
                   inkop: data.params.purchase,
                   installation: data.params.installation,
-                  provision: data.params.commission,
                   hyra: data.params.rent,
                 }}
                 errors={errs(data.newMachine.errors)}

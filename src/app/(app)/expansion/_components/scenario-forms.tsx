@@ -38,13 +38,13 @@ export function NewMachineForm({
   placeholders,
 }: {
   stores: Option[];
-  initial: { lik: string; inkop: string; installation: string; provision: string; hyra: string };
+  initial: { lik: string; inkop: string; installation: string; hyra: string };
   errors: Record<string, string>;
   placeholders: { inkop: string; installation: string };
 }) {
   const [v, setV] = useState(initial);
   const { pending, submit } = useScenarioSubmit(
-    ["lik", "inkop", "installation", "provision", "hyra"],
+    ["lik", "inkop", "installation", "hyra"],
     "ny-automat",
   );
   const set = (k: keyof typeof v) => (e: { target: { value: string } }) =>
@@ -56,7 +56,7 @@ export function NewMachineForm({
         e.preventDefault();
         submit(v);
       }}
-      className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-6"
+      className="grid grid-cols-1 items-end gap-4 sm:grid-cols-2 lg:grid-cols-5"
       aria-label="Scenario: ny automat"
     >
       <Select
@@ -87,16 +87,6 @@ export function NewMachineForm({
         error={errors.installation}
       />
       <Input
-        label="Provision"
-        suffix="%"
-        inputMode="decimal"
-        className="tnum text-right"
-        placeholder="som platserna"
-        value={v.provision}
-        onChange={set("provision")}
-        error={errors.provision}
-      />
-      <Input
         label="Hyra per månad"
         suffix="kr"
         inputMode="decimal"
@@ -106,7 +96,7 @@ export function NewMachineForm({
         onChange={set("hyra")}
         error={errors.hyra}
       />
-      <div className="flex gap-2 sm:col-span-2 lg:col-span-6">
+      <div className="flex gap-2 sm:col-span-2 lg:col-span-5">
         <Button type="submit" variant="secondary" loading={pending}>
           Räkna
         </Button>

@@ -51,7 +51,9 @@ export default async function PortalOverviewPage({ searchParams }: { searchParam
     comparison.revenueChangeBp === null || partial
       ? ""
       : ` ${deltaText(comparison.revenueChangeBp)} mot ${prevName}.`;
-  const aside = `${kr(compensation.totalOre)} i ersättning till er.${changeClause}`;
+  const aside = compensation.pending
+    ? `Er andel står i månadsrapporten.${changeClause}`
+    : `${kr(compensation.totalOre)} i ersättning till er.${changeClause}`;
 
   const trendRevenue = trend.map((t) => t.revenueOre);
   const kpis: PortalKpi[] = [
@@ -77,13 +79,17 @@ export default async function PortalOverviewPage({ searchParams }: { searchParam
       delta: null,
       trend: [],
     },
-    {
-      id: "compensation",
-      label: "Er ersättning",
-      value: compensation.totalOre,
-      delta: null,
-      trend: trend.map((t) => t.compensationOre),
-    },
+    ...(compensation.pending
+      ? []
+      : [
+          {
+            id: "compensation" as const,
+            label: "Er ersättning",
+            value: compensation.totalOre,
+            delta: null,
+            trend: trend.map((t) => t.compensationOre),
+          },
+        ]),
   ];
 
   return (
@@ -265,6 +271,7 @@ function TrendSection({ trend, month }: { trend: readonly PortalTrendMonth[]; mo
   );
   const total = complete.reduce((s, t) => s + t.revenueOre, 0);
   const totalComp = complete.reduce((s, t) => s + t.compensationOre, 0);
+  const compKnown = complete.every((t) => !t.compensationPending);
   // Snittet räknas bara på hela månader: en pågående månad drar ned det. Med
   // färre än två hela månader finns inget snitt att jämföra med.
   const meanOfComplete = complete.length >= 2 ? total / complete.length / 100 : undefined;
@@ -288,9 +295,11 @@ function TrendSection({ trend, month }: { trend: readonly PortalTrendMonth[]; mo
         }
         aside={
           best && complete.length > 1
-            ? `Bästa månaden var ${monthText(best.month)} med ${kr(best.revenueOre)}. Ersättning till er: ${kr(totalComp)}.`
+            ? `Bästa månaden var ${monthText(best.month)} med ${kr(best.revenueOre)}.${compKnown ? ` Ersättning till er: ${kr(totalComp)}.` : ""}`
             : complete.length === 1
-              ? `Ersättning till er: ${kr(totalComp)}.`
+              ? compKnown
+                ? `Ersättning till er: ${kr(totalComp)}.`
+                : "Er andel står i månadsrapporten."
               : "Staplarna fylls på månad för månad."
         }
       />
@@ -357,7 +366,13 @@ function TrendTable({ trend }: { trend: readonly PortalTrendMonth[] }) {
               </td>
               <td className="tnum pl-3 text-right whitespace-nowrap text-fg">{kr(t.revenueOre)}</td>
               <td className="tnum pl-3 text-right whitespace-nowrap text-fg">
-                {kr(t.compensationOre)}
+                {t.compensationPending ? (
+                  <span className="text-muted" title="Står i månadsrapporten">
+                    –
+                  </span>
+                ) : (
+                  kr(t.compensationOre)
+                )}
               </td>
             </tr>
           ))}

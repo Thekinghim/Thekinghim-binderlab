@@ -13,6 +13,13 @@ import {
   type AgreementRecord,
   type ContractRecord,
 } from "@/server/accounting";
+import {
+  CONTRACT_STATUS_LABEL,
+  contractStatus,
+  loadContractSetupFor,
+  loadContractStatusesFor,
+  type ContractStatus as TemplateStatus,
+} from "@/server/contracts";
 import { requireRoute } from "@/server/data/core";
 
 import { EconomyKpis } from "../ekonomi/_components/bits";
@@ -21,9 +28,20 @@ import { isoToDate, periodText, plural, sek } from "../ekonomi/_lib/view";
 import { ContractArchive } from "./_components/contract-archive";
 import { ContractDialog } from "./_components/contract-dialog";
 import { ContractFileUpload } from "./_components/contract-file";
+import { ContractNextStep } from "./_components/contract-status";
+import { CreateContract } from "./_components/create-contract";
 import type { AgreementOption, ContractDraft } from "./_lib/types";
 
 export const metadata: Metadata = { title: "Avtal" };
+
+/** Skapa avtal skriver ut PDF:en med Chromium i server action. */
+export const maxDuration = 60;
+
+const TEMPLATE_STATUS: Record<TemplateStatus, Status> = {
+  draft: "neutral",
+  sent: "warning",
+  signed: "ok",
+};
 
 const SECTION = "flex scroll-mt-28 flex-col gap-10 border-t border-line py-12 md:gap-12 md:py-16";
 
@@ -50,7 +68,12 @@ function day(date: string): string {
 
 function termsLabel(a: AgreementRecord): string {
   const parts: string[] = [];
-  if (a.commissionBp !== null) parts.push(`provision ${formatPercent(a.commissionBp / 10_000, 1)}`);
+  if (a.commissionBp !== null)
+    parts.push(
+      a.commissionBase === "profit_after_costs"
+        ? `vinstdelning ${formatPercent(a.commissionBp / 10_000, 1)}`
+        : `provision ${formatPercent(a.commissionBp / 10_000, 1)}`,
+    );
   if (a.monthlyRentOre !== null) parts.push(`hyra ${sek(a.monthlyRentOre)}/mån`);
   const text = parts.join(" · ");
   return text.charAt(0).toLocaleUpperCase("sv-SE") + text.slice(1);
@@ -101,8 +124,20 @@ export default async function AvtalPage({
   const sp = await searchParams;
   const scoped = Boolean(sp.butik || sp.automat);
   const viewer = await currentViewer();
-  const data = await loadContractsFor(viewer, ctx.today);
   const canEdit = ctx.canEdit;
+  const [data, statuses, setup] = await Promise.all([
+    loadContractsFor(viewer, ctx.today),
+    loadContractStatusesFor(viewer),
+    canEdit ? loadContractSetupFor(viewer) : null,
+  ]);
+  // ?skapa=store:{id} | lead:{id} (ett bart id räknas som butik).
+  const skapaRaw = typeof sp.skapa === "string" ? sp.skapa : undefined;
+  const skapa = skapaRaw && !skapaRaw.includes(":") ? `store:${skapaRaw}` : skapaRaw;
+  const firstContract = ![...statuses.values()].some((st) => st.template !== null);
+  const statusOf = (id: string): TemplateStatus | null => {
+    const st = statuses.get(id);
+    return st ? contractStatus(st) : null;
+  };
   const o = data.overview;
   const storeName = new Map(data.stores.map((s) => [s.id, s.name]));
   const reminderOf = new Map<string, ContractReminder>(
@@ -147,6 +182,18 @@ export default async function AvtalPage({
             { label: "Att åtgärda", value: formatInt(due.length) },
             { label: "Butiker", value: formatInt(stores.length) },
           ]}
+          actions={
+            canEdit && setup ? (
+              <CreateContract
+                options={setup.options}
+                today={ctx.today}
+                orgNumberMissing={setup.orgNumberMissing}
+                firstContract={firstContract}
+                initialTarget={skapa}
+                autoOpen={Boolean(skapa)}
+              />
+            ) : undefined
+          }
         />
         {scoped ? <p className="meta text-subtle">Alla butiker · filtret gäller inte här</p> : null}
         {o && o.expiringShareBp !== null ? (
@@ -249,7 +296,7 @@ export default async function AvtalPage({
               <ContractDialog
                 stores={stores}
                 agreements={agreementOptions}
-                trigger={{ label: "Nytt avtal", variant: "primary" }}
+                trigger={{ label: "Registrera befintligt", variant: "ghost" }}
               />
             ) : undefined
           }
@@ -265,6 +312,7 @@ export default async function AvtalPage({
               const r = reminderOf.get(c.id);
               const terms = data.agreements.filter((a) => a.contractId === c.id);
               const st = r ? STATUS[r.status] : null;
+              const tpl = statusOf(c.id);
               return (
                 <li
                   key={c.id}
@@ -274,9 +322,14 @@ export default async function AvtalPage({
                   <div className="flex flex-col gap-1 lg:col-span-4">
                     <h3 className="text-md text-fg">{storeName.get(c.storeId) ?? "Okänd butik"}</h3>
                     <p className="text-sm text-muted">{c.title ?? "Avtal"}</p>
-                    {st ? (
-                      <div className="pt-1">
-                        <StatusTag status={st.status}>{st.label}</StatusTag>
+                    {st || tpl ? (
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {tpl ? (
+                          <StatusTag status={TEMPLATE_STATUS[tpl]}>
+                            {CONTRACT_STATUS_LABEL[tpl]}
+                          </StatusTag>
+                        ) : null}
+                        {st ? <StatusTag status={st.status}>{st.label}</StatusTag> : null}
                       </div>
                     ) : null}
                   </div>
@@ -340,12 +393,25 @@ export default async function AvtalPage({
                       >
                         {c.fileName}
                       </Link>
+                    ) : tpl ? (
+                      <Link
+                        href={`/avtal/${c.id}/mall`}
+                        prefetch={false}
+                        target="_blank"
+                        className="inline-flex h-7 items-center rounded-xs px-2.5 text-sm text-fg underline-offset-4 hover:underline"
+                      >
+                        Avtalet (skriv ut)
+                      </Link>
                     ) : (
                       <span className="meta text-subtle">Ingen fil</span>
                     )}
                     {canEdit ? (
                       <>
-                        <ContractFileUpload contractId={c.id} hasFile={c.hasFile} />
+                        {tpl && tpl !== "signed" ? (
+                          <ContractNextStep contractId={c.id} status={tpl} hasFile={c.hasFile} />
+                        ) : (
+                          <ContractFileUpload contractId={c.id} hasFile={c.hasFile} />
+                        )}
                         <ContractDialog
                           stores={stores}
                           agreements={agreementOptions}

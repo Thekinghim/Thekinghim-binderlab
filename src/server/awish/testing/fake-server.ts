@@ -19,6 +19,14 @@ export interface FakeMachine {
   machine_no: string;
 }
 
+/** Ett fack i låtsas-Awish (Products). */
+export interface FakeProduct {
+  channel: string;
+  good: string | null;
+  current: number;
+  capacity: number;
+}
+
 export interface FakeAwishState {
   appId: string;
   appSecret: string;
@@ -28,6 +36,8 @@ export interface FakeAwishState {
   order: "desc" | "asc";
   orders: AwishGrpcOrder[];
   machines: FakeMachine[];
+  /** Facken per Awish-automat (machine_id). Saknas = tom lista. */
+  products: Record<string, FakeProduct[]>;
   /** Högsta per_page som servern godtar (större ger så här många). */
   maxPerPage: number;
   /** Antal kommande anrop som svarar UNAVAILABLE. */
@@ -92,6 +102,7 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
     order: "desc",
     orders: [],
     machines: [],
+    products: {},
     maxPerPage: 20,
     failNext: 0,
     paging: "full",
@@ -205,12 +216,32 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
       const found = state.orders.find((o) => o.id === String(call.request.id));
       callback(null, { code: "0", message: "ok", data: found ? toProtoOrder(found) : undefined });
     },
+    Products(call: Call, callback: Callback): void {
+      if (!guard("Products", call, callback)) return;
+      const machineId = String(call.request.machine_id ?? "");
+      const list = state.products[machineId] ?? [];
+      callback(null, {
+        data: list.map((p, i) => ({
+          id: String(i + 1),
+          machine_id: machineId,
+          status: true,
+          current_inventory: String(p.current),
+          inventory: String(p.capacity),
+          channel: { id: String(i + 1), name: p.channel, addr: String(i + 1) },
+          ...(p.good === null
+            ? {}
+            : { good: { id: String(100 + i), name: p.good, price: "170.00", content: "" } }),
+        })),
+        request_id: "fake",
+      });
+    },
   };
   server.addService(Ctor.service, {
     Merchant: delayed(handlers.Merchant),
     Machines: delayed(handlers.Machines),
     Orders: delayed(handlers.Orders),
     Order: delayed(handlers.Order),
+    Products: delayed(handlers.Products),
   });
   const port = await new Promise<number>((resolve, reject) =>
     server.bindAsync("127.0.0.1:0", grpc.ServerCredentials.createInsecure(), (error, p) =>

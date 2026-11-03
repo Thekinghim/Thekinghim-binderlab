@@ -235,7 +235,7 @@ export function OrdersView({
       )}
       {!hasCentralWarehouse ? (
         <p className="text-sm text-muted">
-          Organisationen saknar centrallager, så leveranser kan inte tas emot.
+          Organisationen saknar eget lager, så leveranser kan inte tas emot.
         </p>
       ) : null}
 
@@ -391,7 +391,7 @@ function ReceiveDialog({ order, onClose }: { order: PurchaseOrderView; onClose: 
       if (!res.ok) return setError(res.error);
       toast({
         title: res.data.status === "received" ? "Leverans mottagen" : "Delleverans mottagen",
-        description: `${formatInt(res.data.received)} pack in i centrallagret.`,
+        description: `${formatInt(res.data.received)} pack in i vårt lager.`,
         meta: order.number,
       });
       onClose();
@@ -405,7 +405,7 @@ function ReceiveDialog({ order, onClose }: { order: PurchaseOrderView; onClose: 
       onClose={onClose}
       eyebrow={`${order.number} · ${order.supplierName}`}
       title="Ta emot leverans"
-      description="Antalen läggs in i centrallagret som inleverans."
+      description="Antalen läggs in i vårt lager som inleverans."
       footer={
         <>
           <Button onClick={onClose} disabled={pending}>

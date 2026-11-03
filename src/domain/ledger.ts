@@ -15,9 +15,15 @@
  *
  * Varje order får sin andel oavsett om den har inköpspris. Andelen på en order utan
  * pris dras ändå från vinsten, som ej fördelad hyra (se profitability.ts).
+ *
+ * Vinstdelning (avtal 'profit_after_costs'): butikens andel räknas per butik, månad och
+ * avtal på orderna MED inköpspris (profit-split.ts) och fördelas på just de orderna i
+ * proportion till beloppet inkl. moms, med största-restmetoden. Order utan pris bär ingen
+ * andel; `profitSplits` visar hur många de är, och butiksrapporten stoppas då.
+ * Återbetalningar (`refunds`) dras från försäljningen i återbetalningens månad.
  */
 
-import { assertPeriod } from "./dates";
+import { assertPeriod, eachMonth, maxDate, minDate, monthEnd, monthStart } from "./dates";
 import { DomainError } from "./errors";
 import {
   assertOrder,
@@ -26,8 +32,18 @@ import {
   type EconomicsContext,
 } from "./economics";
 import { allocateLargestRemainder, allocateLargestRemainderBig } from "./money";
+import { isProfitSplit, profitSplit, type ProfitSplitResult } from "./profit-split";
 import { rentByStoreMonth, type StoreMonthRent } from "./rent";
-import type { IsoDate, IsoMonth, OrderLine, Period, ProfitabilityInput, Settings } from "./types";
+import type {
+  IsoDate,
+  IsoMonth,
+  OrderLine,
+  Period,
+  ProfitabilityInput,
+  Settings,
+  SourceRefund,
+  StoreAgreement,
+} from "./types";
 
 /** En order i liggaren. Alla belopp i öre. */
 export interface LedgerEntry {
@@ -45,6 +61,30 @@ export interface LedgerEntry {
   readonly commissionOre: number;
   /** Orderns andel av butikens månadshyra (även för order utan pris). */
   readonly rentOre: number;
+}
+
+/** Vinstdelningen för en butik, en kalendermånad och ett avtal (inom perioden). */
+export interface StoreMonthSplit {
+  readonly storeId: string;
+  readonly month: IsoMonth;
+  /** Avtalets startdag (identifierar avtalet). */
+  readonly validFrom: IsoDate;
+  /** Dagarna i månaden, inom perioden, då avtalet gällde. */
+  readonly range: Period;
+  /**
+   * Sant när perioden bara täcker en del av avtalets dagar i månaden (t.ex. "senaste 30
+   * dagarna"). Andelen är då preliminär: förlustgolvet och avrundningen gäller hela
+   * månaden, så butiksrapporten för månaden kan visa en annan andel.
+   */
+  readonly partialMonth: boolean;
+  /** Alla butikens order under avtalet i månaden, med och utan inköpspris. */
+  readonly orders: number;
+  /** Order utan inköpspris: de ingår inte i `result`. */
+  readonly unpricedOrders: number;
+  /** Titlarna som saknar inköpspris, sorterade. */
+  readonly unpricedTitleIds: readonly string[];
+  /** Uträkningen på orderna med inköpspris. */
+  readonly result: ProfitSplitResult;
 }
 
 /** Hyra för en butik-månad som saknade order (på dagar med hyra) att fördelas på. */
@@ -76,6 +116,8 @@ export interface Ledger {
   /** Hyra per butik och månad (inom perioden), fördelad eller inte. */
   readonly storeMonthRent: readonly StoreMonthRent[];
   readonly unallocatedRent: readonly UnallocatedRent[];
+  /** Vinstdelning per butik, månad och avtal (bara avtal med vinstdelning). */
+  readonly profitSplits: readonly StoreMonthSplit[];
   readonly diagnostics: LedgerDiagnostics;
   /** Uppslagen som användes (priser, placeringar, avtal). */
   readonly context: EconomicsContext;
@@ -108,6 +150,7 @@ interface CachedLedger {
   readonly agreements: ProfitabilityInput["agreements"];
   readonly placements: ProfitabilityInput["placements"];
   readonly settings: Settings;
+  readonly refunds: ProfitabilityInput["refunds"];
   readonly ledger: Ledger;
 }
 
@@ -137,7 +180,8 @@ export function buildLedger(input: ProfitabilityInput): Ledger {
       c.prices === input.prices &&
       c.agreements === input.agreements &&
       c.placements === input.placements &&
-      c.settings === input.settings,
+      c.settings === input.settings &&
+      c.refunds === input.refunds,
   );
   if (hit) return hit.ledger;
   const ledger = computeLedger(input);
@@ -149,6 +193,7 @@ export function buildLedger(input: ProfitabilityInput): Ledger {
     agreements: input.agreements,
     placements: input.placements,
     settings: input.settings,
+    refunds: input.refunds,
     ledger,
   };
   if (cached) {
@@ -189,6 +234,7 @@ function computeLedger(input: ProfitabilityInput): Ledger {
 
   validateOrders(input.orders);
   const entries: MutableEntry[] = [];
+  const agreementOf: (StoreAgreement | null)[] = [];
   let outside = 0;
   let withoutMachine = 0;
   let withoutStore = 0;
@@ -224,6 +270,7 @@ function computeLedger(input: ProfitabilityInput): Ledger {
       commissionOre: econ.commissionOre,
       rentOre: 0,
     });
+    agreementOf.push(econ.agreement);
   }
 
   // Hyra per butik-månad och fördelning på orderna.
@@ -268,12 +315,21 @@ function computeLedger(input: ProfitabilityInput): Ledger {
     for (let i = 0; i < list.length; i++) list[i]!.rentOre = shares[i]!;
   }
 
+  const profitSplits = allocateProfitSplits(
+    context,
+    period,
+    entries,
+    agreementOf,
+    input.refunds ?? [],
+  );
+
   return {
     period,
     settings: input.settings,
     entries,
     storeMonthRent,
     unallocatedRent,
+    profitSplits,
     diagnostics: {
       ordersOutsidePeriod: outside,
       ordersWithoutMachine: withoutMachine,
@@ -284,4 +340,127 @@ function computeLedger(input: ProfitabilityInput): Ledger {
     },
     context,
   };
+}
+
+/**
+ * Vinstdelningen per butik, månad och avtal, och fördelningen av butikens andel på
+ * orderna med inköpspris (vikt = belopp inkl. moms, största-restmetoden).
+ */
+function allocateProfitSplits(
+  context: EconomicsContext,
+  period: Period,
+  entries: MutableEntry[],
+  agreementOf: readonly (StoreAgreement | null)[],
+  refunds: readonly SourceRefund[],
+): StoreMonthSplit[] {
+  const key = (storeId: string, month: IsoMonth, validFrom: IsoDate): string =>
+    `${storeId}\u0000${month}\u0000${validFrom}`;
+  const groups = new Map<
+    string,
+    {
+      agreement: StoreAgreement;
+      month: IsoMonth;
+      range: Period;
+      partialMonth: boolean;
+      list: MutableEntry[];
+      refundsOre: number;
+    }
+  >();
+  for (const a of context.agreements.all()) {
+    if (!isProfitSplit(a)) continue;
+    const start = maxDate(a.validFrom, period.start);
+    const end = a.validTo === null ? period.end : minDate(a.validTo, period.end);
+    if (end < start) continue;
+    for (const month of eachMonth(start, end)) {
+      const range = {
+        start: maxDate(start, monthStart(month)),
+        end: minDate(end, monthEnd(month)),
+      };
+      // Avtalets dagar i hela månaden (oberoende av perioden).
+      const fullStart = maxDate(a.validFrom, monthStart(month));
+      const fullEnd = a.validTo === null ? monthEnd(month) : minDate(a.validTo, monthEnd(month));
+      groups.set(key(a.storeId, month, a.validFrom), {
+        agreement: a,
+        month,
+        range,
+        partialMonth: fullStart < range.start || fullEnd > range.end,
+        list: [],
+        refundsOre: 0,
+      });
+    }
+  }
+  if (groups.size === 0) return [];
+  for (let i = 0; i < entries.length; i++) {
+    const a = agreementOf[i];
+    const e = entries[i]!;
+    if (!a || e.storeId === null || !isProfitSplit(a)) continue;
+    groups.get(key(e.storeId, e.month, a.validFrom))?.list.push(e);
+  }
+  // Återbetalningar: på butiken där automaten stod återbetalningsdagen, i avtalets dagar.
+  for (const r of refunds) {
+    if (r.machineId === null || !(r.amountOre > 0)) continue;
+    if (r.refundedOn < period.start || r.refundedOn > period.end) continue;
+    const storeId = context.placements.storeOn(r.machineId, r.refundedOn);
+    if (storeId === null) continue;
+    const a = context.agreements.agreementOn(storeId, r.refundedOn);
+    if (!a || !isProfitSplit(a)) continue;
+    const g = groups.get(key(storeId, r.refundedOn.slice(0, 7), a.validFrom));
+    if (g) g.refundsOre += r.amountOre;
+  }
+  const out: StoreMonthSplit[] = [];
+  for (const g of groups.values()) {
+    g.list.sort(compareEntries);
+    const priced = g.list.filter((e) => e.priced);
+    let sales = 0;
+    let purchases = 0;
+    let fees = 0;
+    for (const e of priced) {
+      sales += e.grossOre;
+      purchases += e.costOre;
+      fees += e.cardFeeOre;
+    }
+    const result = profitSplit({
+      salesInclVatOre: sales,
+      refundsOre: g.refundsOre,
+      purchasesOre: purchases,
+      cardFeesOre: fees,
+      shareBp: g.agreement.commissionBp ?? 0,
+      lossTreatment: g.agreement.lossTreatment ?? "zero",
+    });
+    if (priced.length > 0 && result.storeShareOre !== 0) {
+      const shares = allocateLargestRemainder(
+        result.storeShareOre,
+        priced.map((e) => e.grossOre),
+      );
+      for (let i = 0; i < priced.length; i++) priced[i]!.commissionOre = shares[i]!;
+    }
+    const unpriced = g.list.filter((e) => !e.priced);
+    out.push({
+      storeId: g.agreement.storeId,
+      month: g.month,
+      validFrom: g.agreement.validFrom,
+      range: g.range,
+      partialMonth: g.partialMonth,
+      orders: g.list.length,
+      unpricedOrders: unpriced.length,
+      unpricedTitleIds: [...new Set(unpriced.map((e) => e.order.titleId))].sort(),
+      result,
+    });
+  }
+  out.sort((x, y) =>
+    x.storeId !== y.storeId
+      ? x.storeId < y.storeId
+        ? -1
+        : 1
+      : x.month !== y.month
+        ? x.month < y.month
+          ? -1
+          : 1
+        : x.validFrom < y.validFrom
+          ? -1
+          : x.validFrom > y.validFrom
+            ? 1
+            : 0,
+  );
+  return out;
 }

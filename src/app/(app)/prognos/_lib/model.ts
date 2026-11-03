@@ -990,7 +990,7 @@ function valuationModel(data: PrognosData, names: NameLookup): ValuationModel {
         ? `Kapitalbindning minst ${approxKr(v.capitalTiedOre).replace(/^ca\s/, "ca ")}.`
         : `Kapitalbindning ${approxKr(v.capitalTiedOre)}.`;
   const parts = [
-    `Lagervärde ${approxKr(v.valueOre)} (centrallager ${approxKr(v.warehouseValueOre)}, automater ${approxKr(v.machineValueOre)}), beställt ${approxKr(v.onOrderValueOre)}.`,
+    `Lagervärde ${approxKr(v.valueOre)} (vårt lager ${approxKr(v.warehouseValueOre)}, automater ${approxKr(v.machineValueOre)}), beställt ${approxKr(v.onOrderValueOre)}.`,
   ];
   if (incomplete) {
     parts.push(

@@ -61,9 +61,11 @@ describe("pipeline", () => {
     expect(leadInvestment(lead())).toBeNull();
   });
 
-  it("med en del av villkoren eller investeringen blir resten 0 respektive null", () => {
+  it("en gammal provision räknas inte; hyra ger vinstdelning 50 % + hyra", () => {
     const a = toAnalyticsLead(lead({ commissionBp: 1200, installationOre: 150_000 }));
-    expect(a.terms).toEqual({ commissionBp: 1200, monthlyRentOre: null });
+    expect(a.terms).toBeNull();
+    const b = toAnalyticsLead(lead({ monthlyRentOre: 50_000 }));
+    expect(b.terms).toEqual({ commissionBp: null, monthlyRentOre: 50_000, profitShareBp: 5_000 });
     expect(a.investment).toEqual({ purchaseOre: 0, installationOre: 150_000 });
   });
 });

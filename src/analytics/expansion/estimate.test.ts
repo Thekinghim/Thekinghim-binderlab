@@ -218,6 +218,19 @@ describe("estimateSite", () => {
     expect(e.detail).toContain("provision 15 %, hyra 300 kr per månad");
   });
 
+  it("vinstdelning 50 %: butiken får hälften av täckningsbidraget efter VMB-moms", () => {
+    const none = estimate({ terms: { commissionBp: 0, monthlyRentOre: 0 } });
+    const split = estimate({
+      terms: { commissionBp: null, monthlyRentOre: 0, profitShareBp: 5_000 },
+    });
+    const n = none.profitPerMonthOre!.expected;
+    const p = split.profitPerMonthOre!.expected;
+    // Andelen räknas på (bidrag − VMB-moms) < bidrag, så vi behåller mer än hälften.
+    expect(p).toBeGreaterThan(Math.round(n / 2));
+    expect(p).toBeLessThan(n);
+    expect(split.detail).toMatch(/50\s%\sav vinsten efter kostnader/);
+  });
+
   it("maxSites begränsar urvalet; resten markeras", () => {
     const e = estimate({ options: { maxSites: 1 } });
     expect(e.basis.map((b) => b.storeId)).toEqual(["s-1"]);

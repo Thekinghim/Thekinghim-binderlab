@@ -96,6 +96,8 @@ export async function createAgreement(input: {
   storeId: string;
   validFrom: string;
   validTo?: string;
+  /** "split" (vinstdelning, standard i formuläret) eller "sales" (andel av försäljningen). */
+  model?: string;
   commission?: string;
   rent?: string;
   note?: string;
@@ -111,6 +113,7 @@ export async function createAgreement(input: {
 export async function updateAgreement(input: {
   agreementId: string;
   validTo?: string | null;
+  model?: string;
   commission?: string;
   rent?: string;
   note?: string;

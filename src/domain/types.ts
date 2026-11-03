@@ -53,11 +53,25 @@ export interface StoreAgreement {
   readonly storeId: string;
   readonly validFrom: IsoDate;
   readonly validTo: IsoDate | null;
-  /** Provision i bp på nettointäkten (belopp exkl. moms). */
+  /**
+   * Andel i bp. Med `commissionBase` 'net_excl_vat' (standard när fältet saknas): provision
+   * på nettointäkten per order. Med 'profit_after_costs': butikens andel av vinsten efter
+   * kostnader, räknad per butik och månad (profit-split.ts).
+   */
   readonly commissionBp: Bp | null;
   /** Månadshyra i öre. Delmånad räknas per dag. */
   readonly monthlyRentOre: Ore | null;
+  /** Vad andelen räknas på. Saknas = 'net_excl_vat'. */
+  readonly commissionBase?: CommissionBase;
+  /** Vinstdelning med förlust: 'zero' (butiken får 0, standard) eller 'proportional'. */
+  readonly lossTreatment?: LossTreatment;
 }
+
+/** Underlaget för butikens andel. */
+export type CommissionBase = "net_excl_vat" | "profit_after_costs";
+
+/** Vinstdelning när vinsten är negativ. */
+export type LossTreatment = "zero" | "proportional";
 
 /** Var en automat stod. `to` är sista dagen (inklusive), `null` = står kvar. */
 export interface Placement {
@@ -106,6 +120,19 @@ export interface EconomicsSources {
   readonly agreements: readonly StoreAgreement[];
   readonly placements: readonly Placement[];
   readonly settings: Settings;
+  /**
+   * Återbetalningar till kunder (kundärenden). Används bara av vinstdelningen: de dras från
+   * butikens försäljning i den månad de betalades tillbaka (placeringen den dagen).
+   * Saknas = inga återbetalningar.
+   */
+  readonly refunds?: readonly SourceRefund[];
+}
+
+/** En återbetalning som vinstdelningen drar från försäljningen (se refunds.ts). */
+export interface SourceRefund {
+  readonly machineId: string | null;
+  readonly refundedOn: IsoDate;
+  readonly amountOre: Ore;
 }
 
 /** Indata till lönsamhetsberäkningen. */

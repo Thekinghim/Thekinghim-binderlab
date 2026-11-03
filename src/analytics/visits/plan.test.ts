@@ -115,7 +115,7 @@ describe("planVisits", () => {
     expect(m1?.packs[0]?.shortBy).toBe(3);
     expect(m2?.packs[0]?.quantity).toBe(0);
     expect(m2?.packs[0]?.shortBy).toBe(6);
-    expect(t(m2?.reasons[1])).toBe("Centrallagret räcker inte: 6 × 30th Celebration saknas");
+    expect(t(m2?.reasons[1])).toBe("Vårt lager räcker inte: 6 × 30th Celebration saknas");
   });
 
   it("högst maxStopsPerDay: överskottet flyttas till en tidigare dag", () => {

@@ -55,10 +55,55 @@ describe("scheman", () => {
     expect(storeSchema.safeParse({ name: "ICA", phone: "046-12 34 56" }).success).toBe(true);
     expect(storeSchema.safeParse({ name: "ICA", phone: "ring mig" }).success).toBe(false);
   });
+  it("nytt avtal: vinstdelning 50/50 är formulärets standard, hyra valfri", () => {
+    const split = newAgreementSchema.parse({
+      storeId: STORE,
+      validFrom: "2026-11-01",
+      model: "split",
+    });
+    expect(split).toMatchObject({
+      commissionBp: 5_000,
+      commissionBase: "profit_after_costs",
+      monthlyRentOre: null,
+    });
+    const withRent = newAgreementSchema.parse({
+      storeId: STORE,
+      validFrom: "2026-11-01",
+      model: "split",
+      rent: "500",
+    });
+    expect(withRent).toMatchObject({ commissionBp: 5_000, monthlyRentOre: 50_000 });
+    const sales = newAgreementSchema.parse({
+      storeId: STORE,
+      validFrom: "2026-11-01",
+      model: "sales",
+      commission: "12",
+    });
+    expect(sales).toMatchObject({ commissionBp: 1_200, commissionBase: "net_excl_vat" });
+  });
+  it("byte av underlag räknar om passerade dagar", () => {
+    const impact = agreementChangeImpact(
+      {
+        validFrom: "2026-10-01",
+        validTo: null,
+        commissionBp: 5_000,
+        monthlyRentOre: null,
+        commissionBase: "net_excl_vat",
+      },
+      {
+        validTo: null,
+        commissionBp: 5_000,
+        monthlyRentOre: null,
+        commissionBase: "profit_after_costs",
+      },
+      "2026-11-03",
+    );
+    expect(impact).not.toBeNull();
+  });
   it("nytt avtal: minst provision eller hyra, slut efter start", () => {
     const none = newAgreementSchema.safeParse({ storeId: STORE, validFrom: "2026-11-01" });
     expect(none.success).toBe(false);
-    expect(none.error?.issues[0]?.message).toBe("Ange provision, hyra eller båda.");
+    expect(none.error?.issues[0]?.message).toBe("Ange andel, hyra eller båda.");
     const both = newAgreementSchema.parse({
       storeId: STORE,
       validFrom: "2026-11-01",

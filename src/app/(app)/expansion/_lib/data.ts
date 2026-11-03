@@ -37,7 +37,7 @@ import {
   type MachineUnitEconomics,
   type Period,
 } from "@/domain";
-import { unitEconomics } from "@/domain";
+import { DEFAULT_PROFIT_SHARE_BP, unitEconomics } from "@/domain";
 import { parseAmountOre } from "@/import/amount";
 import {
   loadDomainInput,
@@ -189,12 +189,11 @@ function namesOf(input: {
 // Expansion
 // ---------------------------------------------------------------------------
 
-/** Scenariernas val, ur URL:en (?lik= &inkop= &installation= &provision= &hyra= …). */
+/** Scenariernas val, ur URL:en (?lik= &inkop= &installation= &hyra= …). */
 export interface ScenarioParams {
   readonly likeStoreId: string | null;
   readonly purchase: string;
   readonly installation: string;
-  readonly commission: string;
   readonly rent: string;
   readonly titleId: string | null;
   readonly delta: string;
@@ -208,7 +207,6 @@ export function scenarioParams(sp: SearchParamsInput): ScenarioParams {
     likeStoreId: get("lik") || null,
     purchase: get("inkop"),
     installation: get("installation"),
-    commission: get("provision"),
     rent: get("hyra"),
     titleId: get("titel") || null,
     delta: get("andring"),
@@ -344,19 +342,12 @@ export async function loadExpansionPage(sp: SearchParamsInput): Promise<Expansio
     "Installation",
     leadRef?.investment?.installationOre ?? defInv?.plan.installationOre ?? null,
   );
-  let commissionBp: number | null = null;
-  if (params.commission !== "") {
-    const h = parseHundredths(params.commission);
-    if (h === null || h > 10_000) {
-      nmErrors.push({
-        field: "provision",
-        message: "Provision: ange en procentsats mellan 0 och 100.",
-      });
-    } else commissionBp = h;
-  }
   const rentOre = money(params.rent, "hyra", "Hyra", null);
+  // Alla avtal är 50/50 på vinsten efter kostnader; hyran är det enda som kan skilja.
   const terms =
-    commissionBp === null && rentOre === null ? null : { commissionBp, monthlyRentOre: rentOre };
+    rentOre === null
+      ? null
+      : { commissionBp: null, monthlyRentOre: rentOre, profitShareBp: DEFAULT_PROFIT_SHARE_BP };
   let estimate: SiteEstimate | null = null;
   if (purchase !== null && installation !== null) {
     const investment = { purchaseOre: purchase, installationOre: installation };

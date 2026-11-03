@@ -110,6 +110,7 @@ export async function loadAgreementsFor(viewer: Viewer): Promise<AgreementRecord
         validTo: s.storeAgreements.validTo,
         commissionBp: s.storeAgreements.commissionBp,
         monthlyRentOre: s.storeAgreements.monthlyRentOre,
+        commissionBase: s.storeAgreements.commissionBase,
         note: s.storeAgreements.note,
       })
       .from(s.storeAgreements)
@@ -201,7 +202,10 @@ function fail(error: unknown, context: string): { ok: false; error: string } {
     return { ok: false, error: "Avtalet skulle överlappa ett annat avtal för butiken." };
   }
   if (pg?.code === "23514" && /terms_check/.test(pg.message)) {
-    return { ok: false, error: "Ange provision, hyra eller båda." };
+    return { ok: false, error: "Ange andel, hyra eller båda." };
+  }
+  if (pg?.code === "23514" && /split_share_check/.test(pg.message)) {
+    return { ok: false, error: "Vinstdelningen behöver en andel." };
   }
   if (pg?.code === "23505" && /report_recipients_store_email/.test(pg.message)) {
     return { ok: false, error: "Adressen tar redan emot butikens rapport." };
@@ -460,6 +464,7 @@ export async function createAgreementFor(
             validTo: v.validTo,
             commissionBp: v.commissionBp,
             monthlyRentOre: v.monthlyRentOre,
+            commissionBase: v.commissionBase,
             note: v.note,
           })
           .returning({ id: s.storeAgreements.id });
@@ -497,6 +502,7 @@ export async function updateAgreementFor(
             validTo: s.storeAgreements.validTo,
             commissionBp: s.storeAgreements.commissionBp,
             monthlyRentOre: s.storeAgreements.monthlyRentOre,
+            commissionBase: s.storeAgreements.commissionBase,
           })
           .from(s.storeAgreements)
           .where(
@@ -520,8 +526,14 @@ export async function updateAgreementFor(
             validTo: isoDateOrNull(a.validTo),
             commissionBp: a.commissionBp ?? null,
             monthlyRentOre: a.monthlyRentOre === null ? null : Number(a.monthlyRentOre),
+            commissionBase: a.commissionBase,
           },
-          { validTo, commissionBp: v.commissionBp, monthlyRentOre: v.monthlyRentOre },
+          {
+            validTo,
+            commissionBp: v.commissionBp,
+            monthlyRentOre: v.monthlyRentOre,
+            commissionBase: v.commissionBase,
+          },
           ref,
         );
         if (impact && !v.confirmHistory) {
@@ -537,6 +549,7 @@ export async function updateAgreementFor(
             validTo,
             commissionBp: v.commissionBp,
             monthlyRentOre: v.monthlyRentOre,
+            commissionBase: v.commissionBase,
             note: v.note,
           })
           .where(

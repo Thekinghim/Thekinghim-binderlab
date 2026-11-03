@@ -69,6 +69,7 @@ import {
   type Sie4Verification,
 } from "@/reports";
 import { AuthorizationError, requireRoleFor, withUserDbFor } from "@/server/access";
+import { queryPeriodRefunds } from "@/server/data/core/queries";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import {
   queryAgreements,
@@ -157,15 +158,22 @@ async function economicsSources(
   tx: Tx,
   orgId: string,
 ): Promise<EconomicsSources & { settings: OrgSettings }> {
-  const [prices, agreements, placements, settings] = await Promise.all([
+  const [prices, agreements, placements, settings, refunds] = await Promise.all([
     queryPrices(tx, orgId),
     queryAgreements(tx, orgId),
     queryPlacements(tx, orgId),
     querySettings(tx, orgId),
+    queryPeriodRefunds(tx, orgId, ALL_TIME),
   ]);
   return {
     prices,
     agreements,
+    // Vinstdelningen drar återbetalningarna från butikens försäljning (få rader).
+    refunds: refunds.map((r) => ({
+      machineId: r.machineId,
+      refundedOn: r.refundedOn,
+      amountOre: r.amountOre,
+    })),
     placements: placements.map((p) => ({
       machineId: p.machineId,
       storeId: p.storeId,
@@ -177,6 +185,7 @@ async function economicsSources(
 }
 
 const NO_SCOPE = { storeId: null, machineId: null } as const;
+const ALL_TIME = { start: "2000-01-01", end: "2999-12-31" } as const;
 
 // ---------------------------------------------------------------------------
 // Avstämning

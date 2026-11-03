@@ -17,14 +17,17 @@ export type {
 
 export {
   FLAT_CHANGE_BP,
+  MISSING_PRICES_MESSAGE,
   assertStoreReportSafe,
   buildStoreReport,
+  splitsOf,
   type CompensationModel,
   type CompensationStep,
   type RentPart,
   type StoreComparison,
   type StoreCompensationBreakdown,
   type StoreMachine,
+  type StoreProfitSplit,
   type StoreReport,
   type StoreReportOptions,
   type StoreSales,

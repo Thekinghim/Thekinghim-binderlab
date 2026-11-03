@@ -179,6 +179,23 @@ function validateAgreement(a: StoreAgreement): void {
   if (a.monthlyRentOre !== null) {
     assertNonNegativeInteger(a.monthlyRentOre, `Månadshyran (butik ${a.storeId})`);
   }
+  if (
+    a.commissionBase !== undefined &&
+    a.commissionBase !== "net_excl_vat" &&
+    a.commissionBase !== "profit_after_costs"
+  ) {
+    throw new DomainError("invalid_input", `Avtalet för butik ${a.storeId} har okänt underlag.`);
+  }
+  if (
+    a.lossTreatment !== undefined &&
+    a.lossTreatment !== "zero" &&
+    a.lossTreatment !== "proportional"
+  ) {
+    throw new DomainError(
+      "invalid_input",
+      `Avtalet för butik ${a.storeId} har okänd förlusthantering.`,
+    );
+  }
 }
 
 /** Uppslag: vilket avtal gällde för butiken en viss dag? */

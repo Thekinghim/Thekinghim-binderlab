@@ -29,7 +29,8 @@ const EMPTY: ContractDraft = {
 
 /**
  * Dialogen för nytt eller ändrat avtal: butik, giltighet, uppsägningstid, förlängning,
- * villkor i text, och ersättningen (befintliga villkor att koppla, eller nya).
+ * villkor i text, och ersättningen (befintliga villkor att koppla; nya villkor sätts under
+ * Butiker eller med Skapa avtal, så att de blir vinstdelning).
  */
 export function ContractDialog({
   stores,
@@ -46,16 +47,12 @@ export function ContractDialog({
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<ContractDraft>(initial ?? EMPTY);
-  const [commission, setCommission] = useState("");
-  const [rent, setRent] = useState("");
   const [errors, setErrors] = useState<Partial<Record<keyof ContractDraft, string>>>({});
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
 
   const openDialog = () => {
     setDraft(initial ?? { ...EMPTY, storeId: stores[0]?.id ?? "" });
-    setCommission("");
-    setRent("");
     setErrors({});
     setError(undefined);
     setOpen(true);
@@ -76,11 +73,7 @@ export function ContractDialog({
     if (Object.keys(errs).length > 0) return;
     setError(undefined);
     startTransition(async () => {
-      const res = await saveContract({
-        ...draft,
-        commissionPercent: commission,
-        monthlyRent: rent,
-      });
+      const res = await saveContract(draft);
       if (!res.ok) {
         setError(res.error);
         return;
@@ -215,26 +208,9 @@ export function ContractDialog({
               </ul>
             ) : (
               <p className="text-sm text-muted">
-                Butiken har inga villkor som inte hör till ett annat avtal.
+                Inga lediga villkor. Villkoren sätts under Butiker.
               </p>
             )}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input
-                label="Ny provision"
-                inputMode="decimal"
-                suffix="%"
-                value={commission}
-                onChange={(e) => setCommission(e.target.value)}
-                hint="Skapar villkor för avtalets period."
-              />
-              <Input
-                label="Ny hyra"
-                inputMode="decimal"
-                suffix="kr/mån"
-                value={rent}
-                onChange={(e) => setRent(e.target.value)}
-              />
-            </div>
           </fieldset>
 
           <TextArea

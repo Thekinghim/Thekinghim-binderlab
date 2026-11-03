@@ -8,13 +8,18 @@ import { useToast } from "@/components/ui/toast";
 
 import { uploadContractFile } from "../actions";
 
-/** Bifoga (eller byt) avtalsfilen. Filtypen kontrolleras på servern mot innehållet. */
+/**
+ * Bifoga (eller byt) avtalsfilen. Filtypen kontrolleras på servern mot innehållet. Med
+ * `signed` är filen den signerade kopian och avtalet markeras som signerat.
+ */
 export function ContractFileUpload({
   contractId,
   hasFile,
+  signed = false,
 }: {
   contractId: string;
   hasFile: boolean;
+  signed?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -27,6 +32,7 @@ export function ContractFileUpload({
     const form = new FormData();
     form.set("contractId", contractId);
     form.set("file", file);
+    if (signed) form.set("signed", "1");
     startTransition(async () => {
       const res = await uploadContractFile(form);
       if (!res.ok) {
@@ -35,7 +41,11 @@ export function ContractFileUpload({
         return;
       }
       setError(undefined);
-      toast({ title: "Avtalsfilen bifogad", description: res.data.fileName, tone: "ok" });
+      toast({
+        title: signed ? "Avtalet signerat" : "Avtalsfilen bifogad",
+        description: res.data.fileName,
+        tone: "ok",
+      });
       router.refresh();
     });
   };
@@ -56,7 +66,7 @@ export function ContractFileUpload({
         }}
       />
       <Button size="sm" variant="ghost" loading={pending} onClick={() => input.current?.click()}>
-        {hasFile ? "Byt fil" : "Bifoga fil"}
+        {signed ? "Ladda upp signerat" : hasFile ? "Byt fil" : "Bifoga fil"}
       </Button>
       {error ? (
         <span role="alert" className="text-xs text-signal-fg">

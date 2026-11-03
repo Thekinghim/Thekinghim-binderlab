@@ -43,6 +43,7 @@ import {
 } from "@/server/access";
 import { todayIn, toIsoDate } from "@/components/shell/period-state";
 import { loadCoverage } from "@/server/alerts/inputs";
+import { queryPeriodRefunds } from "@/server/data/core/queries";
 
 import {
   DEFAULT_SETTINGS,
@@ -66,6 +67,7 @@ import {
   querySaleEventsAsOrders,
   querySalesCounts,
   querySettings,
+  isKnownStock,
   queryStock,
   queryTodoDismissals,
 } from "./queries";
@@ -333,6 +335,11 @@ function scopeSources(
       settings: all.settings,
       placements,
       agreements: all.agreements.filter((a) => storeIds.has(a.storeId)),
+      ...(all.refunds
+        ? {
+            refunds: all.refunds.filter((r) => r.machineId !== null && machineIds.has(r.machineId)),
+          }
+        : {}),
     },
     investments: investments.filter((i) => machineIds.has(i.machineId)),
   };
@@ -371,17 +378,27 @@ export async function loadDomainInputFor(
   masterP.catch(() => {});
   baseP.catch(() => {});
   return withUserDbFor(viewer.user, async (tx) => {
-    const orderResult = await queryOrders(tx, orgId, span, scope);
+    const [orderResult, refundRows] = await Promise.all([
+      queryOrders(tx, orgId, span, scope),
+      queryPeriodRefunds(tx, orgId, span),
+    ]);
     const [master, { prices, agreements, investments, settings }] = await Promise.all([
       masterP,
       baseP,
     ]);
+    // Vinstdelningen drar återbetalningarna från butikens försäljning.
+    const refunds = refundRows.map((r) => ({
+      machineId: r.machineId,
+      refundedOn: r.refundedOn,
+      amountOre: r.amountOre,
+    }));
     const scoped = scopeSources(
       {
         prices,
         agreements,
         placements: effectivePlacements(master.placements, orderResult.orders),
         settings,
+        refunds,
       },
       investments,
       scope,
@@ -457,7 +474,7 @@ export async function loadStockFor(viewer: Viewer): Promise<StockSnapshot> {
   return {
     rows,
     machineStock: rows
-      .filter((r) => r.locationKind === "machine" && r.machineId !== null)
+      .filter((r) => r.locationKind === "machine" && r.machineId !== null && isKnownStock(r))
       .map((r) => ({
         machineId: r.machineId as string,
         titleId: r.titleId,
@@ -599,7 +616,7 @@ export async function loadTodoStateFor(viewer: Viewer, now: Date = new Date()): 
     ]);
     const [master, stockRows] = await Promise.all([masterP, stockP]);
     const stock = stockRows
-      .filter((r) => r.locationKind === "machine" && r.machineId !== null)
+      .filter((r) => r.locationKind === "machine" && r.machineId !== null && isKnownStock(r))
       .map((r) => ({
         machineId: r.machineId as string,
         titleId: r.titleId,

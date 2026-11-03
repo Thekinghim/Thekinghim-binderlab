@@ -19,8 +19,10 @@ import {
   monthOf,
   monthPeriod,
   periodDays,
+  type CommissionBase,
   type IsoDate,
   type IsoMonth,
+  type LossTreatment,
   type OrderLine,
   type Period,
 } from "@/domain";
@@ -65,6 +67,9 @@ export interface PortalAgreementRow {
   readonly validTo: IsoDate | null;
   readonly commissionBp: number | null;
   readonly monthlyRentOre: number | null;
+  /** Saknas i äldre rader (före vinstdelning): 'net_excl_vat'. */
+  readonly commissionBase?: CommissionBase;
+  readonly lossTreatment?: LossTreatment;
 }
 
 /** En period då en automat stod i butiken (portal_machines). */
@@ -124,6 +129,8 @@ export function portalSources(
       validTo: a.validTo,
       commissionBp: a.commissionBp,
       monthlyRentOre: a.monthlyRentOre,
+      ...(a.commissionBase ? { commissionBase: a.commissionBase } : {}),
+      ...(a.lossTreatment ? { lossTreatment: a.lossTreatment } : {}),
     })),
     placements: machines.map((m) => ({
       machineId: m.machineId,
@@ -206,6 +213,11 @@ export interface PortalTrendMonth {
   readonly revenueOre: number;
   readonly orders: number;
   readonly compensationOre: number;
+  /**
+   * Sant när ersättningen bygger på vinstdelning: portalen ser inga inköpspriser, så
+   * andelen står i månadsrapporten och `compensationOre` är bara hyra/provision.
+   */
+  readonly compensationPending: boolean;
   /** Sant för innevarande månad (inte slut än). */
   readonly partial: boolean;
 }
@@ -241,19 +253,24 @@ export function buildPortalOverview(
   first: IsoMonth,
   today: IsoDate,
 ): PortalOverview {
-  const report = buildStoreReport(sources, storeId, month, { topTitles: 8 });
+  // Portalen ser inga inköpspriser: en vinstandel visas som "i månadsrapporten".
+  const report = buildStoreReport(sources, storeId, month, { topTitles: 8, pendingSplit: true });
   assertStoreReportSafe(report);
   const current = monthOf(today);
   const trendStart = maxMonth(first, addMonths(month, -11));
   const trend: PortalTrendMonth[] = monthsBetween(trendStart, month)
     .reverse()
     .map((m) => {
-      const r = m === month ? report : buildStoreReport(sources, storeId, m, { topTitles: 0 });
+      const r =
+        m === month
+          ? report
+          : buildStoreReport(sources, storeId, m, { topTitles: 0, pendingSplit: true });
       return {
         month: m,
         revenueOre: r.sales.revenueOre,
         orders: r.sales.orders,
         compensationOre: r.compensation.totalOre,
+        compensationPending: r.compensation.pending,
         partial: m === current,
       };
     });

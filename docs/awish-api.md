@@ -22,11 +22,18 @@ Supabase pg_cron (*/10 * * * *) → private.awish_cron_tick() → pg_net GET {AP
 /api/cron/awish → syncAllAwishSources → per datakälla awish_grpc:
   Vault (AppId/AppSecret/AppKey) → gRPC provider.Provider: Machines, Orders (sida 1, 2 …, 20 per sida)
   → adaptern (src/import/adapters/awish-grpc.ts) → samma pipeline som CSV → import (trigger 'schedule')
+  → Products(machine_id) per kopplad automat (högst var 30:e minut, alltid vid "Synka nu")
+  → src/server/awish/stock.ts → inventeringar (source 'awish'), machine_slots, stock_locations.awish_synced_at
 ```
+
+- **Saldot (Products):** efter orderna, med den tid som är kvar av körningens budget. Automaten som lästes längst
+  sedan går först; det som inte hinns med tas nästa körning. Fel för en automat stoppar inte de andra eller
+  orderna. Resultatet står i `lastRun.stock` och `stockSyncedAt` i `data_sources.cursor`. Reglerna:
+  `docs/berakningar.md`, avsnitt 8 (Saldot i automaterna).
 
 - **Server:** `AWISH_GRPC_ADDRESS` (standard `49.51.72.74:50051`), `AWISH_GRPC_TLS` (`false`, som i dokumentationen).
 - **Inloggning** (metadata på varje anrop): `appid`, `token` = MD5 av `AppSecret.AppKey` som hex (gemener) och
-  `lang` = `en-US`. Bara läsande anrop: `Merchant`, `Machines`, `Orders`, `Order`. Aldrig `CreateBanner`,
+  `lang` = `en-US`. Bara läsande anrop: `Merchant`, `Machines`, `Orders`, `Order`, `Products`. Aldrig `CreateBanner`,
   `UpdateBanner` eller `CreatePickupCode`.
 - **Tidsgräns och omförsök:** 15 s per anrop; `UNAVAILABLE` och `DEADLINE_EXCEEDED` provas högst tre gånger. Hela
   cron-körningen (alla källor) har 40 s för anropen, och varje anrops tidsgräns kortas till det som återstår, så att
@@ -128,19 +135,19 @@ databasen (migreringar ändras aldrig) men används inte; alla token är återka
 
 ## Awish svar (3 nov. 2026)
 
-| Fråga | Svar |
-| --- | --- |
-| Token | MD5 som hex med gemener |
-| `amount` | Valutaenheter ("170.00" = 170 kr), inte ören |
-| IP-begränsning | Ingen |
-| Sortering | Servern sorterar själv (synken känner av ordningen) |
-| TLS | Ingen |
-| Historik | Ungefär ett år bakåt |
-| `pay_time` | UTC som standard. Har kontot en tidszon används den, och automatens tidszon går före kontots |
-| Återbetalning | Bara QR-betalningar ändrar status; kortorder ändras inte (återbetalningar förs i Inkorg) |
-| `id` / `trade_id` | `id` = ID i panelen, `trade_id` = Order No. |
-| `per_page` | Högst 50, standard 20 (synken begär 50) |
-| Debug Mode | Rekommenderas påslaget |
+| Fråga                                             | Svar                                                                                                         |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Token                                             | MD5 som hex med gemener                                                                                      |
+| `amount`                                          | Valutaenheter ("170.00" = 170 kr), inte ören                                                                 |
+| IP-begränsning                                    | Ingen                                                                                                        |
+| Sortering                                         | Servern sorterar själv (synken känner av ordningen)                                                          |
+| TLS                                               | Ingen                                                                                                        |
+| Historik                                          | Ungefär ett år bakåt                                                                                         |
+| `pay_time`                                        | UTC som standard. Har kontot en tidszon används den, och automatens tidszon går före kontots                 |
+| Återbetalning                                     | Bara QR-betalningar ändrar status; kortorder ändras inte (återbetalningar förs i Inkorg)                     |
+| `id` / `trade_id`                                 | `id` = ID i panelen, `trade_id` = Order No.                                                                  |
+| `per_page`                                        | Högst 50, standard 20 (synken begär 50)                                                                      |
+| Debug Mode                                        | Rekommenderas påslaget                                                                                       |
 | Ny signering (HMAC-SHA256, `cleveng/hmac-signer`) | Gäller främst ändringsanrop; Binderlab läser bara. Formen är HMAC-SHA256 över `"{timestamp}.{body}"` som hex |
 
 Inställning hos beställaren: Developer Center → Advanced Settings: Debug Mode på, Time Zone Settings på med

@@ -185,6 +185,47 @@ describe("buildLagerModel: larmgräns", () => {
   });
 });
 
+describe("buildLagerModel: saldo okänt", () => {
+  // Bara försäljning (−28 pack) i M1 för T1, ingen inventering eller påfyllning.
+  const unknownStock = stock.map((r) =>
+    r.machineId === M1 && r.titleId === T1
+      ? { ...r, onHand: -28, lastRestockedAt: null, lastCountedAt: null }
+      : r,
+  );
+  const model = buildLagerModel({
+    now: NOW,
+    timeZone: "Europe/Stockholm",
+    today: TODAY,
+    master,
+    stock: unknownStock,
+    sales,
+    scope: { storeId: null, machineId: null },
+    hasCentral: true,
+    awishSyncedAt: new Map([[M2, "2026-11-02T08:00:00.000Z"]]),
+  });
+
+  it("en plats med bara försäljning är Saldo okänt, aldrig tom eller Kritisk", () => {
+    expect(cellOf(model, M1, T1)).toMatchObject({
+      stocked: true,
+      known: false,
+      onHand: 0,
+      status: "ok",
+      suggested: 0,
+    });
+    expect(model.unknownCount).toBe(1);
+    expect(model.counts.critical).toBe(build().counts.critical - 1);
+    expect(
+      model.packLists.find((p) => p.machineId === M1)?.lines.map((l) => l.titleId),
+    ).not.toContain(T1);
+  });
+
+  it("inventerad plats är känd, och automatens Awish-tid följer med", () => {
+    expect(cellOf(model, M2, T1)).toMatchObject({ known: true, onHand: 30 });
+    expect(model.machines.find((m) => m.id === M2)?.awishSyncedAt).toBe("2026-11-02T08:00:00.000Z");
+    expect(model.machines.find((m) => m.id === M1)?.awishSyncedAt).toBeNull();
+  });
+});
+
 describe("salesAsOrders", () => {
   it("gör en order per sålt pack, utan belopp", () => {
     const orders = salesAsOrders([{ date: "2026-11-01", titleId: T1, machineId: M1, units: 3 }]);
@@ -406,9 +447,9 @@ describe("headlineOf", () => {
     const view = {
       today: TODAY,
       machines: [
-        { id: M1, code: "BL-001", name: "", storeName: null },
-        { id: M2, code: "BL-002", name: "", storeName: null },
-        { id: M3, code: "BL-003", name: "", storeName: null },
+        { id: M1, code: "BL-001", name: "", storeName: null, awishSyncedAt: null },
+        { id: M2, code: "BL-002", name: "", storeName: null, awishSyncedAt: null },
+        { id: M3, code: "BL-003", name: "", storeName: null, awishSyncedAt: null },
       ],
       packLists: [
         packList(M1, { totalPacks: 20, plannedDay: "2026-11-03", needBy: "2026-11-03" }),

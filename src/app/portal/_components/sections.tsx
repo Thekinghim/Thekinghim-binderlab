@@ -1,7 +1,8 @@
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
+import { splitRows } from "@/app/rapport/_components/store-report";
 import { formatInt } from "@/lib/format";
-import type { CompensationStep, StoreReport, StoreWeek } from "@/reports";
+import { splitsOf, type CompensationStep, type StoreReport, type StoreWeek } from "@/reports";
 import { visibleSteps } from "@/server/portal/model";
 
 import { EvidenceDetails } from "./evidence";
@@ -118,6 +119,7 @@ export function WeeksBlock({ report, today }: { report: StoreReport; today?: str
 }
 
 const STEP_LABEL: Record<CompensationStep["kind"], string> = {
+  share: "Andel",
   commission: "Provision",
   no_commission: "Utan provision",
   no_agreement: "Utan avtal",
@@ -134,6 +136,7 @@ export function CompensationSection({
 }) {
   const c = report.compensation;
   const steps = visibleSteps(c.steps);
+  if (hasAgreement && splitsOf(c).length > 0) return <SplitSection report={report} />;
   return (
     <section
       className="flex flex-col gap-10 border-t border-line py-16"
@@ -198,6 +201,66 @@ export function CompensationSection({
           .
         </p>
       ) : null}
+    </section>
+  );
+}
+
+/**
+ * Vinstdelning: avtalet och en kort tabell Försäljning → Er andel. I översikten (live)
+ * finns inga inköpspriser; då står andelen i månadsrapporten.
+ */
+function SplitSection({ report }: { report: StoreReport }) {
+  const c = report.compensation;
+  const rows = splitRows(c);
+  return (
+    <section
+      className="flex flex-col gap-10 border-t border-line py-16"
+      aria-labelledby="ersattning"
+    >
+      <SectionHeader
+        id="ersattning"
+        index={4}
+        eyebrow="Er andel"
+        title={
+          c.pending
+            ? "Er andel räknas i månadsrapporten."
+            : `${krExact(c.totalOre)} till ${report.store.name}.`
+        }
+        aside={`Avtal: ${withPeriod(c.modelText)}`}
+      />
+      <table className="w-full max-w-2xl text-base">
+        <caption className="sr-only">Vinstdelningen för månaden</caption>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.key} className="h-11 border-b border-line">
+              <th
+                scope="row"
+                className={`text-left font-normal ${r.strong ? "font-medium text-fg" : "text-muted"}`}
+              >
+                {r.label}
+              </th>
+              <td className="tnum pl-3 text-right whitespace-nowrap text-fg">
+                {r.amountOre === null ? (
+                  <span className="text-muted">i månadsrapporten</span>
+                ) : (
+                  krExact(r.amountOre)
+                )}
+              </td>
+            </tr>
+          ))}
+          {c.pending ? null : (
+            <tr className="h-12">
+              <th scope="row" className="text-left font-medium text-fg">
+                Er andel
+              </th>
+              <td className="tnum pl-3 text-right text-xl font-medium whitespace-nowrap text-fg">
+                {krExact(c.totalOre)}
+              </td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      <EvidenceDetails evidence={c.evidence} summary="Så räknas er andel" />
     </section>
   );
 }

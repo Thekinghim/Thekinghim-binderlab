@@ -1,6 +1,6 @@
 # Binderlab: så räknas siffrorna
 
-Version av beräkningsreglerna: **1.1.0** (`CALC_VERSION` i `src/domain/profitability.ts`, sparas med varje rapport).
+Version av beräkningsreglerna: **1.2.0** (`CALC_VERSION` i `src/domain/profitability.ts`, sparas med varje rapport).
 
 Det här dokumentet beskriver hur panelen och rapporterna räknar fram intäkt, inköp, avgifter, butiksersättning och vinst. Det är skrivet så att en bokhållare ska kunna räkna efter för hand. Alla exempel nedan finns som automatiska tester i `src/domain/*.test.ts` och kontrolleras vid varje ändring.
 
@@ -20,13 +20,13 @@ Det här dokumentet beskriver hur panelen och rapporterna räknar fram intäkt, 
 
 För en order med betalt belopp _B_ (inklusive eventuell moms):
 
-| Post        | Formel                                      | Kommentar                                                                                             |
-| ----------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Moms        | round(_B_ × momssats / (10 000 + momssats)) | Momsen "ur" ett belopp som inkluderar moms. I dag är momssatsen 0.                                    |
-| Nettointäkt | _B_ − moms                                  | Detta är "intäkt" i panelen.                                                                          |
-| Kortavgift  | round(_B_ × kortavgift / 10 000)            | På beloppet **inklusive** moms. I dag är kortavgiften 0.                                              |
-| Provision   | round(netto × provision / 10 000)           | På beloppet **exklusive** moms, enligt det avtal som gällde i den butik där automaten stod den dagen. |
-| Inköp       | inköpspriset som gällde orderns dag         | Se avsnitt 3. Saknas pris räknas ordern inte in i vinsten (avsnitt 5).                                |
+| Post        | Formel                                      | Kommentar                                                                                                                                                                     |
+| ----------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Moms        | round(_B_ × momssats / (10 000 + momssats)) | Momsen "ur" ett belopp som inkluderar moms. I dag är momssatsen 0.                                                                                                            |
+| Nettointäkt | _B_ − moms                                  | Detta är "intäkt" i panelen.                                                                                                                                                  |
+| Kortavgift  | round(_B_ × kortavgift / 10 000)            | På beloppet **inklusive** moms. I dag är kortavgiften 0.                                                                                                                      |
+| Provision   | round(netto × provision / 10 000)           | På beloppet **exklusive** moms, enligt det avtal som gällde i den butik där automaten stod den dagen. Vid vinstdelning 0 här: andelen räknas per butik och månad (avsnitt 4). |
+| Inköp       | inköpspriset som gällde orderns dag         | Se avsnitt 3. Saknas pris räknas ordern inte in i vinsten (avsnitt 5).                                                                                                        |
 
 **Exempel** (moms 25 %, kortavgift 2,5 %, provision 10 %, order på 49,00 kr):
 
@@ -74,11 +74,65 @@ Det betyder att:
 
 Samma order med moms 25 % och kortavgift 2,5 %: intäkt 24 320, inköp 13 500, avgifter 763, provision 2 432, hyra 6 200, vinst 1 425, marginal 5,9 %.
 
-## 4. Butiksersättning: provision och hyra
+## 4. Butiksersättning: vinstdelning, provision och hyra
 
-Butiksersättning = provision + hyra.
+Butiksersättning = andel av vinsten + provision + hyra.
 
-### Provision
+Ett avtal har ett **underlag** (`store_agreements.commission_base`):
+
+| Underlag             | I formuläret (Butiker)            | Andelen (`commission_bp`) räknas på                  |
+| -------------------- | --------------------------------- | ---------------------------------------------------- |
+| `profit_after_costs` | **Vinstdelning 50/50** (standard) | vinsten efter kostnader, per butik och månad (nedan) |
+| `net_excl_vat`       | Andel av försäljning              | beloppet exkl. moms, per order (provision, nedan)    |
+
+Hyra kan läggas till båda och är tom som standard. Nya villkor skapas med **Skapa avtal** (Avtal, Butiker och Expansion): vinstdelning med 50 % (5 000 bp) och förlusthantering `zero`. "Andel av försäljning" går bara att välja när ett gammalt sådant avtal rättas under Butiker. Databasens standardvärde för underlaget är fortfarande `net_excl_vat`, så att rader som läggs in utan underlag (seed, tester, äldre kod) behåller sin betydelse.
+
+### Vinstdelning (`src/domain/profit-split.ts`)
+
+Räknas per **butik, kalendermånad och avtal** (de dagar i månaden avtalet gällde), på butikens order **med inköpspris**:
+
+| Post            | Formel                                                                           |
+| --------------- | -------------------------------------------------------------------------------- |
+| Försäljning     | Σ belopp **inklusive** moms                                                      |
+| Återbetalningar | Σ återbetalt till kunder (kundärenden) med återbetalningsdag i avtalets dagar    |
+| Inköp           | Σ inköpspris för de sålda packen (avsnitt 3)                                     |
+| VMB-moms        | 20 % av (försäljning − återbetalningar − inköp) om det är positivt, annars 0     |
+| Kortavgifter    | Σ kortavgift per order (avsnitt 2)                                               |
+| **Vinst**       | försäljning − återbetalningar − VMB-moms − inköp − kortavgifter                  |
+| Butikens andel  | round(vinst × andel / 10 000) om vinsten ≥ 0                                     |
+| Vid förlust     | `zero` (standard): 0 kr. `proportional`: round(vinst × andel / 10 000), negativt |
+| Vår andel       | vinst − butikens andel                                                           |
+
+- VMB-momsen är vinstmarginalbeskattningen: 25 % moms på marginalen inklusive moms = 20 % av marginalen (25/125). Den räknas här på butikens månad, inte på hela redovisningsperioden som i momsdeklarationen (Ekonomi → Bokföring, `src/server/bokforing/vmb.ts`, med underskott som förs vidare); ett underskott förs inte vidare mellan månaderna i butiksavräkningen.
+- Avrundning: halva öre bort från noll, **en gång** per butik, månad och avtal (inte per order).
+- Liggaren fördelar butikens andel på månadens order med inköpspris i proportion till beloppet inkl. moms, med största-restmetoden, så att alla vyer (titel, automat, dag …) summerar exakt till andelen. Order utan inköpspris bär ingen andel.
+- Byts avtalet mitt i månaden räknas en vinstdelning per avtal, var och en på sina dagar.
+- **Återbetalningar** (kundärenden med återbetalt belopp) dras från butikens försäljning i den månad pengarna gick tillbaka, på butiken där automaten stod den dagen (`refunds` i liggarens indata). Butiken får alltså inte andel av pengar som gått tillbaka till kunden. Fördelningen på orderna sker som förut på beloppet; återbetalningen ändrar bara summan som fördelas.
+- **Kortavgifterna** är den modellerade avgiften (Inställningar, `card_fee_bp`), inte de faktiska avgifterna i utbetalningsfilerna. Sätt avgiften till den verkliga effektiva satsen innan första utbetalningen till en butik.
+- **Delmånad är preliminär.** Förlustgolvet och avrundningen gäller hela månaden. En vy över en period som bara täcker en del av månaden (t.ex. "senaste 30 dagarna") räknar vinstdelningen på de dagarna och markerar den (`StoreMonthSplit.partialMonth`); den kan skilja från butiksrapporten för hela månaden, som alltid är den som gäller.
+- **Bokföringen** (`buildAccountantReport`) räknar `profitSplitUnpricedOrders`: order utan inköpspris i butiker med vinstdelning. Är det fler än 0 säger slutsatsen att butikernas andel inte är färdigräknad och inte ska bokföras förrän priserna finns.
+- **Saknat inköpspris stoppar butiksrapporten.** Har någon av butikens order i månaden inget inköpspris räknas rapporten inte (aldrig med en gissning): förhandsvisningen och "Skapa utkast" visar en rad, t.ex. "Butiksrapporten kan inte räknas: 3 order saknar inköpspris (Mystery Pack Premium). Lägg in priserna under Inköpspriser.", med länk till Inköpspriser.
+- Butiksportalen ser inga inköpspriser. Där står andelen som "i månadsrapporten" tills rapporten är godkänd; den godkända rapporten visar hela uträkningen.
+- Butiksrapporten visar avtalet ("50 % av vinsten efter kostnader, giltigt från …") och tabellen Försäljning, (Återbetalningar), VMB-moms, Inköp, Kortavgifter, Vinst, Er andel 50 %, (Hyra). Raden "Er ersättning" (andel + hyra) visas bara när det finns hyra eller provision; annars är den samma tal som "Er andel". Inköp och vinst visas bara som månadens summor för butiken, aldrig per titel eller automat.
+- Avtalsmallen (`src/reports/contract-pdf.ts`) skriver samma definition. Med `proportional` bär butiken sin andel av en förlust den månaden; förlusten förs inte vidare till kommande månader.
+- **Uppskattningar per order** (prisändring i Expansion, `price-change.ts`): butikens nya andel = nuvarande andel + andel × (ny ordervinst − nuvarande ordervinst), ordervinst = belopp − VMB-moms − inköp − avgift. Månadens förlustgolv räknas inte om.
+- **Nya platser** (Expansion, `estimate.ts`): utan erbjuden hyra används liknande platsers faktiska ersättning (som redan är vinstdelning). Med erbjuden hyra räknas villkoren som vinstdelning 50 % + hyra: andel × max(0, täckningsbidrag − VMB-moms) på platsens hela underlag. Fältet "Erbjuden provision" finns inte längre.
+
+**Exempel** (kortavgift 2 %, vinstdelning 50 %): två pack à 199,00 kr (inköp 130,00 kr) och ett à 249,00 kr (inköp 165,00 kr).
+
+| Post           | Uträkning                          | Öre       |
+| -------------- | ---------------------------------- | --------- |
+| Försäljning    | 2 × 19 900 + 24 900                | 64 700    |
+| Inköp          | 2 × 13 000 + 16 500                | 42 500    |
+| VMB-moms       | 20 % av (64 700 − 42 500 = 22 200) | 4 440     |
+| Kortavgifter   | 398 + 398 + 498                    | 1 294     |
+| Vinst          | 64 700 − 4 440 − 42 500 − 1 294    | 16 466    |
+| Butikens andel | 50 % av 16 466                     | **8 233** |
+| Vår andel      | 16 466 − 8 233                     | 8 233     |
+
+Förlust: ett pack à 100,00 kr med inköp 130,00 kr ger marginal −30,00 kr, ingen VMB-moms och vinst −30,00 kr; butiken får 0 kr (`zero`).
+
+### Provision (andel av försäljning)
 
 Räknas per order (avsnitt 2) med avtalet för orderns butik och dag. Byts avtalet mitt i månaden får order före bytet den gamla satsen och order efter bytet den nya. Avtal utan provision (bara hyra) ger provision 0.
 
@@ -216,6 +270,34 @@ Provisionen och hyran är de som faktiskt gällde för titelns order i perioden.
 - Beräknat tomt = i dag + tak(i lager / takt): dagen då sista packet väntas säljas. 10 pack och 3 pack/dag → om 4 dagar.
 - Är takten 0 visas ingen prognos.
 
+### Saldot i automaterna (Lager)
+
+Saldo per plats (titel i automat) = senaste inventeringen + alla händelser efter den (påfyllning, svinn, försäljning
+−1 per order). Varifrån inventeringen kommer:
+
+1. **Awish (facit).** Synken läser automatens fack (`Products`) högst var 30:e minut och vid "Synka nu", för varje
+   automat som är kopplad under Datakällor. Facken grupperas per vara (samma namnregel som orderimporten: NFKC,
+   blanktecken ihopslagna, gemener; titeln via alias, okänd vara blir ny titel). Antal = summan av
+   `current_inventory` i varans fack. Skiljer det sig från saldot, eller har platsen aldrig inventerats, skrivs en
+   inventering med källan Awish (`stock_events.source = 'awish'`) vid lästiden. Samma antal ger ingen ny händelse.
+   En titel med saldo på platsen som Awish inte listar inventeras till 0 och räknas som utgången (en avslutad
+   sortimentsperiod i går om den saknar period). Sortimentet (`machine_slots`) följer Awish från i dag: antal fack per
+   titel = antal kanaler; en planerad fördelning från ett senare datum och en genomförd sortimentsändring samma dag
+   lämnas orörda. En tom lista från Awish ändrar inget.
+2. **Inventering eller påfyllning i Binderlab.**
+3. **Ingen av dem: "Saldo okänt".** En plats med bara försäljning visas aldrig som tom. Den räknas inte som Kritisk,
+   Låg eller OK, ger inget påfyllningsförslag och står som "Saldo okänt" (antal platser i sidhuvudet, med
+   knappen "Koppla Awish" till Datakällor). Samma regel (`isKnownStock` i `src/server/data/core/queries.ts`)
+   gäller Att göra, Drift (besöksplanen och maskinhälsan), larmen, Automater, inköpsförslagen och assistenten:
+   bara platser med känt saldo räknas.
+
+**Exempel.** Facken A1 (3 st) och A2 (2 st) har "Surging Sparks", saldot i Binderlab är −2 (två order, aldrig
+inventerat): inventering 5 från Awish, saldot blir 5. Nästa läsning med A1 = 1: inventering 3. En order efter
+läsningen drar 1 (saldo 2) tills nästa läsning.
+
+Vårt eget lager (centrallagret) visas och inventeras under Prognos & inköp, "Vårt lager & beställ" (`/prognos#vart-lager`):
+pack hemma, hur länge det räcker vid alla automaters takt och vad veckans besök behöver (samma regler som förut).
+
 ## 9. Enhetsekonomi per automat
 
 | Post                    | Formel                                                                                                          |
@@ -247,20 +329,21 @@ Beräkningarna kontrolleras automatiskt (`npm test`, `npm run test:domain:tz`):
 - **Tidszon:** samma beräkningar ger identiska resultat när servern går i UTC, Europe/Stockholm och Asia/Shanghai.
 - **Ordning:** resultatet beror inte på i vilken ordning orderna läses in.
 
-## 12. Det som inte ingår (i version 1.1.0)
+## 12. Det som inte ingår (i version 1.2.0)
 
 - Moms på hyra och provision (butikens faktura) räknas inte. Bolaget är i dag inte momsregistrerat.
-- Kortavgiften räknas på alla order oavsett betalsätt (den är 0 i dag).
+- Kortavgiften räknas på alla order oavsett betalsätt (den är 0 i dag). Vinstdelningen använder samma modellerade avgift, inte de verkliga avgifterna från utbetalningsfilerna.
 - Svinn, lagerjusteringar och frakt ingår inte i inköpet; inköp = inköpspris × antal sålda pack.
 - Avskrivningar och investeringar ingår inte i vinsten i lönsamhetsvyerna, bara i enhetsekonomin.
 
 ## 13. Ändringar
 
-| Version | Ändring                                                                                                                                                                                                                                 |
-| ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1.1.0   | Hyran på order utan inköpspris dras från vinsten som ej fördelad hyra (tidigare låg den utanför vinsten, så att en saknad inköpspris kunde göra vinsten bättre). Totalen ändras bara när det finns order utan pris i butiker med hyra.  |
-| 1.1.0   | Hyran fördelas efter netto × den månadshyra som gällde orderns dag. Order på dagar utan hyresavtal bär ingen hyra. Hyran per butik och månad och totalen ändras inte, bara fördelningen mellan raderna när avtalet byts mitt i månaden. |
-| 1.0.0   | Första versionen.                                                                                                                                                                                                                       |
+| Version | Ändring                                                                                                                                                                                                                                                                |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.2.0   | Vinstdelning: avtal med underlaget `profit_after_costs` ger butiken en andel av vinsten efter VMB-moms, inköp och kortavgifter, per butik och månad (avsnitt 4). Förlusthantering `zero` (standard) eller `proportional`. Provision på försäljningen räknas som förut. |
+| 1.1.0   | Hyran på order utan inköpspris dras från vinsten som ej fördelad hyra (tidigare låg den utanför vinsten, så att en saknad inköpspris kunde göra vinsten bättre). Totalen ändras bara när det finns order utan pris i butiker med hyra.                                 |
+| 1.1.0   | Hyran fördelas efter netto × den månadshyra som gällde orderns dag. Order på dagar utan hyresavtal bär ingen hyra. Hyran per butik och månad och totalen ändras inte, bara fördelningen mellan raderna när avtalet byts mitt i månaden.                                |
+| 1.0.0   | Första versionen.                                                                                                                                                                                                                                                      |
 
 ## 14. Återbetalningar från kundärenden (`src/domain/refunds.ts`)
 
@@ -614,3 +697,26 @@ börjar tidigare.
 
 Utan ett utgångsläge som beställaren själv registrerat finns ingen jämförelse att lita på; se `docs/product.md`.
 Testerna: `effect.test.ts`, `test/db/expansion-service.test.ts`.
+
+## 26. Skapa avtal: placeringsavtal från mallen (`src/reports/contract-pdf.ts`, `src/server/contracts`)
+
+**Skapa avtal** (knappen överst på Avtal; från en butik eller en rad i pipelinen: `/avtal?skapa=store:{id}` eller `/avtal?skapa=lead:{id}`) tar två uppgifter, butik (eller plats i pipelinen) och startdag, och gör i en transaktion:
+
+| Steg    | Vad                                                                                                                                                                                                                                                                                         |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Butik   | Vald butik, eller en ny butik från platsens uppgifter (namn, adress, kontakt, typ, ort). Platsen kopplas till butiken och flyttas till steget Avtal.                                                                                                                                        |
+| Avtal   | `contracts`: "Placeringsavtal", gäller från startdagen tills vidare, uppsägningstid 1 månad, `template` = `placering-vinstdelning-v1`, status utkast.                                                                                                                                       |
+| Villkor | `store_agreements` från startdagen tills vidare: `profit_after_costs`, `commission_bp` 5 000, `loss_treatment` `zero`, ingen hyra (villkor som skrivs om samma dag behåller sin hyra, och avtalet skriver ut den), kopplat till avtalet. Butiksrapporten räknar med det direkt (avsnitt 4). |
+| Äldre   | Villkor som gäller tills vidare och började före startdagen avslutas dagen före. Villkor som börjar samma dag skrivs om. Villkor som börjar senare, eller har en egen slutdag efter startdagen, stoppar (ändras under Butiker).                                                             |
+| PDF     | Mallen skrivs ut med Chromium (`renderHtml`) och sparas i bucketen `contracts` som avtalsfilen. Går det inte sparas avtalet ändå och skrivs ut från `/avtal/{id}/mall`.                                                                                                                     |
+
+- **Ett avtal per butik.** Har butiken redan ett öppet avtal från mallen (inte arkiverat, inte uppsagt, tills vidare) stoppar klicket: "{butik} har redan ett avtal ({status}). Öppna det under Avtal."
+- **Förval:** listan börjar med platser i steget Avtal eller Möte, sedan butiker utan avtal; butiker med avtal står sist med "(har avtal)". Har butiken öppna villkor som är andel av försäljningen föreslås deras startdag som "Gäller från", så att ett klick ("Skapa ändå") skriver om dem till vinstdelning bakåt.
+- **Startdag före i dag** räknar om butikens ersättning bakåt och kräver ett extra klick ("Skapa ändå"). Stängda månader ändras inte (databasen stoppar).
+- **Parter:** organisationens namn och organisationsnumret från Ekonomi → Bokföring (saknas det står en tom rad). Butikens namn, adress, kontakt, e-post och telefon; tomt blir en rad att fylla i.
+- **Avtalets ersättning** står i klartext: Butiken får 50 % av vinsten, vinst = försäljning inklusive moms − VMB-moms − inköpspris för sålda varor − kort- och betalningsavgifter, per kalendermånad; negativ vinst ger 0 kr (förlusten förs inte vidare). Återbetalningar till kunder dras från försäljningen. Med `proportional` står i stället att butiken bär sin andel av förlusten den månaden (förs inte vidare). Hyra står bara med om villkoren har hyra.
+- **Övriga villkor:** vi äger och sköter automat och varor (påfyllning, lager, service, kundärenden); butiken ger plats och el; rapport och utbetalning senast den 15 i månaden efter; vi försäkrar automat och varor, butiken ansvarar för skador den vållar, ingen ansvarar för indirekta skador; tills vidare med 1 månads uppsägning, omedelbar uppsägning vid väsentligt avtalsbrott som inte rättas inom 14 dagar, automaten hämtas inom 14 dagar.
+- **Status:** utkast → skickat (`sent_at`, "Markera skickat") → signerat (`signed_at`, när den signerade kopian laddas upp eller "Signerat utan fil"). Avtal som registrerats för hand (`template` null) har ingen status.
+- **Mallen är inte juridiskt granskad.** Dialogen säger det tills första avtalet är skapat: låt Talenom läsa den en gång. En ändrad mall får ett nytt namn (`-v2`), så att varje avtal visar vilken text det skapades med.
+
+Testerna: `src/reports/contract-pdf.test.ts`, `src/server/contracts/plan.test.ts`, `test/db/avtal-mall.test.ts`.

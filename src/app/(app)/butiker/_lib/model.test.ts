@@ -106,6 +106,10 @@ describe("texter", () => {
     expect(termsLabel(1_200, null)).toBe(`Provision 12${NB}%`);
     expect(termsLabel(800, 75_000)).toBe(`Provision 8${NB}% · hyra 750${NB}kr/mån`);
     expect(termsLabel(null, 150_000)).toBe(`Hyra 1${NB}500${NB}kr/mån`);
+    expect(termsLabel(5_000, null, "profit_after_costs")).toBe("Vinstdelning 50/50");
+    expect(termsLabel(4_000, 50_000, "profit_after_costs")).toBe(
+      `Vinstdelning 40${NB}% · hyra 500${NB}kr/mån`,
+    );
     expect(percentBp(1_250)).toBe(`12,5${NB}%`);
     expect(percentBp(1_225)).toBe(`12,25${NB}%`);
   });

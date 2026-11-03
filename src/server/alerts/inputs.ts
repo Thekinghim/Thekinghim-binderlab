@@ -35,6 +35,7 @@ import {
   queryMachines,
   queryPlacements,
   querySaleEventsAsOrders,
+  isKnownStock,
   queryStock,
   queryTitles,
 } from "@/server/data/core/queries";
@@ -149,7 +150,7 @@ export async function loadHealthData(
     queryStock(tx, orgId),
   ]);
   const stock = stockRows
-    .filter((r) => r.locationKind === "machine" && r.machineId !== null)
+    .filter((r) => r.locationKind === "machine" && r.machineId !== null && isKnownStock(r))
     .map((r) => ({
       machineId: r.machineId as string,
       titleId: r.titleId,

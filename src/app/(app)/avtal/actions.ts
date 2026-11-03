@@ -10,7 +10,6 @@ import { unstable_rethrow } from "next/navigation";
 import { z, ZodError } from "zod";
 
 import { DomainError } from "@/domain";
-import { parseAmountOre } from "@/import/amount";
 import {
   AccountingError,
   archiveContractFor,
@@ -21,8 +20,16 @@ import {
   saveContractFor,
 } from "@/server/accounting";
 import { AuthorizationError } from "@/server/access";
+import {
+  ContractError,
+  createStoreContractFor,
+  setContractStatusFor,
+  type ContractStatus,
+} from "@/server/contracts";
 import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/data/core";
+import { businessToday } from "@/server/data/core/loaders";
 import { dbErrorMessage, pgErrorOf } from "@/server/errors";
+import { getPdfRenderer, pdfStatus } from "@/server/pdf/render";
 
 export type ActionResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -33,6 +40,7 @@ function failure(error: unknown): { ok: false; error: string } {
   }
   if (
     error instanceof AccountingError ||
+    error instanceof ContractError ||
     error instanceof AuthorizationError ||
     error instanceof DomainError
   ) {
@@ -97,33 +105,12 @@ const contractSchema = z
       .optional(),
     note: z.string().trim().max(2000).nullable().optional(),
     agreementIds: z.array(z.uuid()).max(50).optional(),
-    commissionPercent: z.string().trim().optional().nullable(),
-    monthlyRent: z.string().trim().optional().nullable(),
   })
   .refine((v) => v.validTo === null || v.validTo >= v.validFrom, {
     message: "Avtalet kan inte sluta före det börjar.",
   })
   .refine((v) => v.renewalMonths !== 0, { message: "Förlängningen måste vara minst 1 månad." })
-  .transform((v, ctx) => {
-    let commissionBp: number | null = null;
-    if (v.commissionPercent) {
-      const m = /^(\d{1,3})(?:[.,](\d{1,2}))?$/.exec(v.commissionPercent.replace(/\s|%/g, ""));
-      const bp = m ? Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0")) : NaN;
-      if (!m || bp > 10_000) {
-        ctx.addIssue({ code: "custom", message: "Provisionen anges i procent, 0–100." });
-        return z.NEVER;
-      }
-      commissionBp = bp;
-    }
-    let monthlyRentOre: number | null = null;
-    if (v.monthlyRent) {
-      const parsed = parseAmountOre(v.monthlyRent);
-      if (!parsed.ok) {
-        ctx.addIssue({ code: "custom", message: `Hyran: ${parsed.message}` });
-        return z.NEVER;
-      }
-      monthlyRentOre = parsed.ore;
-    }
+  .transform((v) => {
     return {
       id: v.id ?? null,
       storeId: v.storeId,
@@ -137,8 +124,8 @@ const contractSchema = z
       terms: v.terms ?? null,
       note: v.note ?? null,
       agreementIds: v.agreementIds,
-      newTerms:
-        commissionBp !== null || monthlyRentOre !== null ? { commissionBp, monthlyRentOre } : null,
+      // Nya villkor skapas bara med Skapa avtal (vinstdelning 50/50) eller under Butiker.
+      newTerms: null,
     };
   });
 
@@ -168,7 +155,60 @@ export async function archiveContract(raw: unknown): Promise<ActionResult> {
   }
 }
 
-/** Avtalsfilen: FormData med `contractId` och `file`. */
+/**
+ * Skapa avtal: butik (eller plats i pipelinen) och startdag. Sparar avtalet, villkoren
+ * (50 % av vinsten efter kostnader) och PDF:en. `needsConfirm` när startdagen ligger bakåt.
+ */
+export async function createContract(
+  raw: unknown,
+): Promise<
+  | { ok: true; data: { id: string; storeName: string; pdf: boolean } }
+  | { ok: false; error: string; needsConfirm?: boolean }
+> {
+  try {
+    const viewer = await operator();
+    const input = z
+      .object({
+        target: z.string().regex(/^(store|lead):[0-9a-f-]{36}$/i, "Välj en butik."),
+        validFrom: date,
+        confirmHistory: z.boolean().optional(),
+      })
+      .parse(raw);
+    const result = await createStoreContractFor(viewer, input, {
+      today: businessToday(new Date(), viewer.organization.timezone),
+      renderPdf: pdfStatus().configured ? (html) => getPdfRenderer().renderHtml(html) : null,
+      fileStore: () => contractFileStore(),
+    });
+    if (!result.ok) return { ok: false, error: result.message, needsConfirm: true };
+    revalidateAppData();
+    return {
+      ok: true,
+      data: { id: result.contractId, storeName: result.storeName, pdf: result.pdf },
+    };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** Avtalets status: utkast, skickat eller signerat. */
+export async function setContractStatus(raw: unknown): Promise<ActionResult> {
+  try {
+    const viewer = await operator();
+    const input = z
+      .object({ id: z.uuid(), status: z.enum(["draft", "sent", "signed"]) })
+      .parse(raw) as { id: string; status: ContractStatus };
+    await setContractStatusFor(viewer, input);
+    revalidateAppData();
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/**
+ * Avtalsfilen: FormData med `contractId` och `file`. Med `signed` = "1" är filen den
+ * signerade kopian, och avtalet markeras som signerat.
+ */
 export async function uploadContractFile(
   form: FormData,
 ): Promise<ActionResult<{ fileName: string }>> {
@@ -188,6 +228,9 @@ export async function uploadContractFile(
       { contractId, fileName: file.name, bytes },
       { fileStore: await contractFileStore() },
     );
+    if (form.get("signed") === "1") {
+      await setContractStatusFor(viewer, { id: contractId, status: "signed" });
+    }
     revalidateAppData();
     return { ok: true, data: { fileName: file.name } };
   } catch (error) {

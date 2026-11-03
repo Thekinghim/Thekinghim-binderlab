@@ -83,7 +83,7 @@ Behörigheten kontrolleras **både** i serverkoden (`requireRole()` i varje serv
 ### 2. Platser och avtal
 
 - **stores**: namn, adress, kontaktperson, e-post, telefon, `is_example`, `archived_at`
-- **store_agreements**: `store_id`, `valid_from`, `valid_to`, `commission_bp` (null), `monthly_rent_ore` (null), `commission_base = 'net_excl_vat'`, `rent_proration = 'daily'`. Minst en av provision och hyra måste vara satt, och perioderna får inte överlappa (exclusion constraint). Kopplas till `contracts` i fas 9.
+- **store_agreements**: `store_id`, `valid_from`, `valid_to`, `commission_bp` (null), `monthly_rent_ore` (null), `commission_base` (`net_excl_vat` = andel av försäljningen, `profit_after_costs` = vinstdelning, se berakningar.md avsnitt 4; databasens standard `net_excl_vat`, Butiker skapar vinstdelning 50 %), `loss_treatment` (`zero` standard, `proportional`), `rent_proration = 'daily'`. Minst en av andel och hyra måste vara satt (en vinstdelning kräver en andel), och perioderna får inte överlappa (exclusion constraint). Kopplas till `contracts` i fas 9.
 - **machines**: kod (BL-001), namn, `serial`, `active_from`, `active_to`, `is_example`
 - **machine_placements** _(ny)_: `machine_id`, `store_id`, `from`, `to`. Placeringen versioneras, så att en automat kan flytta mellan butiker utan att historiken ändras. Perioderna får inte överlappa.
 - **machine_investments**: `machine_id`, `kind` (`purchase`, `installation`, `other`), `amount_ore`, `date`, `depreciation_months` (för enhetsekonomi och återbetalningstid)

@@ -118,8 +118,11 @@ describe("loadDomainInputFor", () => {
         validTo: null,
         commissionBp: 2000,
         monthlyRentOre: null,
+        commissionBase: "net_excl_vat",
+        lossTreatment: "zero",
       },
     ]);
+    expect(input.current.refunds).toEqual([]);
     expect(input.current.placements).toHaveLength(1);
     expect(input.investments).toHaveLength(1);
     expect(input.titles.length).toBeGreaterThanOrEqual(3);

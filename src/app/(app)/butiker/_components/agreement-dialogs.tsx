@@ -1,15 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useState } from "react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
+import { Segmented } from "@/components/ui/segmented";
 import { useToast } from "@/components/ui/toast";
-import type { IsoDate } from "@/domain";
 import { formatNumber } from "@/lib/format";
 
-import { createAgreement, updateAgreement } from "../actions";
+import { updateAgreement } from "../actions";
 import type { AgreementView } from "../_lib/types";
 import { FormDialog, text } from "./form-dialog";
 
@@ -28,135 +28,61 @@ function rentField(ore: number | null): string {
   return formatNumber(ore / 100, ore % 100 === 0 ? 0 : 2).replace(/[\s\u00a0]/g, "");
 }
 
-function TermsFields({ agreement }: { agreement?: AgreementView }) {
-  return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      <Input
-        name="commission"
-        label="Provision"
-        hint="Andel av intäkten exkl. moms."
-        inputMode="decimal"
-        suffix="%"
-        defaultValue={percentField(agreement?.commissionBp ?? null)}
-        autoComplete="off"
-        className="tnum text-right"
-      />
-      <Input
-        name="rent"
-        label="Hyra per månad"
-        hint="Räknas per dag vid delmånad."
-        inputMode="decimal"
-        suffix="kr"
-        defaultValue={rentField(agreement?.monthlyRentOre ?? null)}
-        autoComplete="off"
-        className="tnum text-right"
-      />
-    </div>
-  );
-}
+type Model = "split" | "sales";
+
+const MODELS: { value: Model; label: string }[] = [
+  { value: "split", label: "Vinstdelning 50/50" },
+  { value: "sales", label: "Andel av försäljning" },
+];
 
 /**
- * Bekräftelsen när en ändring räknar om passerad ersättning. Visas först när servern
- * har sagt vilka dagar och rapporter som berörs (felet ovanför knapparna).
+ * Villkoren: vinstdelning 50/50 (hälften av vinsten efter VMB-moms, inköp och kortavgifter)
+ * och valfri hyra. Valet "Andel av försäljning" visas bara för gamla avtal med den modellen,
+ * så att de kan rättas till vinstdelning.
  */
-function ConfirmHistory() {
-  const id = useId();
+function TermsFields({ agreement }: { agreement?: AgreementView }) {
+  const legacy = agreement !== undefined && agreement.commissionBase !== "profit_after_costs";
+  const [model, setModel] = useState<Model>(legacy ? "sales" : "split");
+  // En vinstdelning med annan andel än 50 % behåller sin andel när den rättas.
+  const keptShare =
+    agreement?.commissionBase === "profit_after_costs" ? agreement.commissionBp : null;
   return (
-    <div className="flex items-start gap-3 border-t border-line pt-4">
-      <input
-        id={id}
-        type="checkbox"
-        name="confirmHistory"
-        aria-describedby={`${id}-hint`}
-        className="mt-0.5 size-4 shrink-0 accent-current"
-      />
-      <div className="flex flex-col gap-0.5">
-        <label htmlFor={id} className="text-base text-fg">
-          Räkna om ersättningen bakåt i tiden
-        </label>
-        <p id={`${id}-hint`} className="text-sm text-muted">
-          Hem, Lönsamhet och kommande rapporter visar de nya beloppen. Skickade rapporter ändras
-          inte.
-        </p>
+    <div className="flex flex-col gap-4">
+      <input type="hidden" name="model" value={model} />
+      {legacy ? (
+        <Segmented label="Ersättning" options={MODELS} value={model} onChange={setModel} />
+      ) : null}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {model === "sales" ? (
+          <Input
+            name="commission"
+            label="Andel"
+            hint="Av försäljningen exkl. moms."
+            inputMode="decimal"
+            suffix="%"
+            defaultValue={
+              agreement?.commissionBase === "profit_after_costs"
+                ? ""
+                : percentField(agreement?.commissionBp ?? null)
+            }
+            autoComplete="off"
+            className="tnum text-right"
+          />
+        ) : keptShare !== null && keptShare !== 5_000 ? (
+          <input type="hidden" name="commission" value={percentField(keptShare)} />
+        ) : null}
+        <Input
+          name="rent"
+          label="Hyra per månad"
+          hint="Valfri."
+          inputMode="decimal"
+          suffix="kr"
+          defaultValue={rentField(agreement?.monthlyRentOre ?? null)}
+          autoComplete="off"
+          className="tnum text-right"
+        />
       </div>
     </div>
-  );
-}
-
-/** Knappen "Nytt avtal" med formulär. Ägare och admin. */
-export function NewAgreementButton({
-  storeId,
-  storeName,
-  today,
-  current,
-  minFrom,
-}: {
-  storeId: string;
-  storeName: string;
-  today: IsoDate;
-  current: AgreementView | null;
-  /** Dagen efter det senaste avtalets start, om det är senare än i dag. */
-  minFrom: IsoDate | null;
-}) {
-  const [open, setOpen] = useState(false);
-  const [needsConfirm, setNeedsConfirm] = useState(false);
-  const router = useRouter();
-  const toast = useToast();
-  const from = minFrom && minFrom > today ? minFrom : today;
-  const close = () => {
-    setOpen(false);
-    setNeedsConfirm(false);
-  };
-  return (
-    <>
-      <Button variant="secondary" size="sm" iconLeft="plus" onClick={() => setOpen(true)}>
-        Nytt avtal
-      </Button>
-      <FormDialog
-        open={open}
-        onClose={close}
-        eyebrow={`Butiker / ${storeName} / Nytt avtal`}
-        title="Nytt avtal."
-        description={
-          current
-            ? `Det gällande avtalet (${current.termsLabel.toLocaleLowerCase("sv-SE")}) avslutas dagen före det nya. Historiken sparas.`
-            : "Ange provision, hyra eller båda."
-        }
-        submitLabel="Spara avtal"
-        onSubmit={async (data) => {
-          const result = await createAgreement({
-            storeId,
-            validFrom: text(data, "validFrom"),
-            validTo: text(data, "validTo"),
-            commission: text(data, "commission"),
-            rent: text(data, "rent"),
-            note: text(data, "note"),
-            confirmHistory: data.get("confirmHistory") === "on",
-          });
-          if (!result.ok) {
-            if (result.needsConfirm) setNeedsConfirm(true);
-            return result;
-          }
-          close();
-          toast({
-            title: "Avtalet är sparat",
-            description: result.data?.closedId ? "Det tidigare avtalet är avslutat." : undefined,
-            tone: "ok",
-            meta: storeName,
-          });
-          router.refresh();
-          return { ok: true };
-        }}
-      >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Input name="validFrom" label="Giltig från" type="date" defaultValue={from} required />
-          <Input name="validTo" label="Sista dag" hint="Tom = tills vidare." type="date" />
-        </div>
-        <TermsFields agreement={current ?? undefined} />
-        <Input name="note" label="Anteckning" autoComplete="off" maxLength={500} />
-        {needsConfirm ? <ConfirmHistory /> : null}
-      </FormDialog>
-    </>
   );
 }
 
@@ -194,18 +120,19 @@ export function EditAgreementButton({
         title="Ändra avtal."
         description={
           started
-            ? `Gäller ${agreement.periodLabel}. Rätta bara fel i avtalet: ändrade villkor räknar om ersättningen bakåt till avtalets start. Nya villkor från ett datum läggs in som nytt avtal.`
-            : `Gäller ${agreement.periodLabel}. Nya villkor från ett senare datum läggs in som nytt avtal.`
+            ? `Gäller ${agreement.periodLabel}. För att rätta fel; nya villkor görs med Skapa avtal.`
+            : `Gäller ${agreement.periodLabel}.`
         }
-        submitLabel="Spara"
+        submitLabel={needsConfirm ? "Spara ändå" : "Spara"}
         onSubmit={async (data) => {
           const result = await updateAgreement({
             agreementId: agreement.id,
             validTo: text(data, "validTo"),
+            model: text(data, "model"),
             commission: text(data, "commission"),
             rent: text(data, "rent"),
             note: text(data, "note"),
-            confirmHistory: data.get("confirmHistory") === "on",
+            confirmHistory: needsConfirm,
           });
           if (!result.ok) {
             if (result.needsConfirm) setNeedsConfirm(true);
@@ -233,7 +160,6 @@ export function EditAgreementButton({
           autoComplete="off"
           maxLength={500}
         />
-        {needsConfirm ? <ConfirmHistory /> : null}
       </FormDialog>
     </>
   );

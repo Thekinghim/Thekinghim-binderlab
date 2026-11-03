@@ -5,10 +5,12 @@
 
 export type {
   Bp,
+  CommissionBase,
   EconomicsSources,
   GroupBy,
   IsoDate,
   IsoMonth,
+  LossTreatment,
   MachineInvestment,
   OrderLine,
   Ore,
@@ -95,12 +97,22 @@ export {
 } from "./economics";
 
 export { rentByStoreMonth, type RentSegment, type StoreMonthRent } from "./rent";
+export {
+  DEFAULT_PROFIT_SHARE_BP,
+  VMB_VAT_PERCENT,
+  isProfitSplit,
+  profitSplit,
+  vmbVatOfMargin,
+  type ProfitSplitInput,
+  type ProfitSplitResult,
+} from "./profit-split";
 
 export {
   buildLedger,
   type Ledger,
   type LedgerDiagnostics,
   type LedgerEntry,
+  type StoreMonthSplit,
   type UnallocatedRent,
 } from "./ledger";
 

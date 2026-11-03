@@ -647,7 +647,7 @@ describe("revision 6: besöksplan", () => {
     // A: 7 − 2 = 5, mål kapacitet 20 ⇒ 15, centrallagret har 20 − 13 = 7 kvar ⇒ 8 saknas.
     expect(a?.packs[0]).toMatchObject({ projectedAtVisit: 5, target: 20, quantity: 7, shortBy: 8 });
     expect(nbsp(a?.reasons.join(" | "))).toContain(
-      "Centrallagret räcker inte: 8 × 30th Celebration saknas",
+      "Vårt lager räcker inte: 8 × 30th Celebration saknas",
     );
     expect(a?.late).toBe(false);
     expect(a?.needBy).toBe("2026-11-05");

@@ -8,6 +8,7 @@ import {
   codeText,
   daysLeftLong,
   daysLeftText,
+  formatWhen,
   packs,
   STATUS_LABEL,
   statusTone,
@@ -47,6 +48,8 @@ export function StockMatrix({
   titles,
   cells,
   windowDays,
+  timeZone,
+  now,
   canRegister,
   onSelect,
 }: {
@@ -54,6 +57,8 @@ export function StockMatrix({
   titles: LagerTitle[];
   cells: StockCell[][];
   windowDays: number;
+  timeZone: string;
+  now: string;
   canRegister: boolean;
   onSelect: (machine: LagerMachine, title: LagerTitle, cell: StockCell) => void;
 }) {
@@ -97,6 +102,11 @@ export function StockMatrix({
                 <span className="block truncate text-xs text-subtle" title={m.name}>
                   {m.storeName ?? m.name}
                 </span>
+                {m.awishSyncedAt ? (
+                  <span className="meta block truncate text-subtle">
+                    Awish {formatWhen(m.awishSyncedAt, timeZone, now)}
+                  </span>
+                ) : null}
               </th>
             ))}
           </tr>
@@ -151,11 +161,19 @@ function Cell({
 }) {
   const label = !cell.stocked
     ? `${title.name} finns inte i ${machine.code}.`
-    : cell.retired
-      ? `${title.name} i ${machine.code}: ${packs(cell.onHand)}. Utgår ur sortimentet, fylls inte på.`
-      : `${title.name} i ${machine.code}: ${packs(cell.onHand)}, ${daysLeftLong(cell, windowDays)}. Status ${STATUS_LABEL[cell.status]}.`;
+    : !cell.known
+      ? `${title.name} i ${machine.code}: saldo okänt.`
+      : cell.retired
+        ? `${title.name} i ${machine.code}: ${packs(cell.onHand)}. Utgår ur sortimentet, fylls inte på.`
+        : `${title.name} i ${machine.code}: ${packs(cell.onHand)}, ${daysLeftLong(cell, windowDays)}. Status ${STATUS_LABEL[cell.status]}.`;
   const body =
-    cell.stocked && cell.retired ? (
+    cell.stocked && !cell.known ? (
+      // Ingen inventering och inget från Awish: aldrig "tom", bara okänt.
+      <>
+        <span className="tnum text-xl leading-none font-medium text-subtle">?</span>
+        <span className="label text-subtle">Saldo okänt</span>
+      </>
+    ) : cell.stocked && cell.retired ? (
       // Utgången titel: säljs ut, ingen status och ingen signal (design.md §3).
       <>
         <span className="tnum text-xl leading-none font-medium text-muted">

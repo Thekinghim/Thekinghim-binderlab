@@ -8,7 +8,13 @@
  * Sekretess: rapporten får ALDRIG innehålla inköpskostnad, marginal, vinst eller någon
  * annan butiks siffror. Den byggs därför direkt från orderliggarens rader för butiken
  * (aldrig genom att kopiera lönsamhetsrader, som bär inköp och vinst), och
- * `assertStoreReportSafe` kontrollerar hela objektet innan det returneras.
+ * `assertStoreReportSafe` kontrollerar hela objektet innan det returneras. Undantag:
+ * med ett avtal om vinstdelning ÄR butikens månadssummor för inköp, VMB-moms och vinst
+ * underlaget för ersättningen och visas i `compensation.splits` (aldrig per titel).
+ *
+ * Vinstdelning räknas bara på kompletta underlag: saknar en order inköpspris kastas
+ * `DomainError` ('missing_price'), utom med `pendingSplit` (portalen), där andelen då
+ * visas som ej räknad.
  *
  * Vilka order hör till butiken? De order vars automat stod i butiken på orderns
  * affärsdag (placeringen avgör, se docs/berakningar.md avsnitt 2). Intäkt = belopp
@@ -33,15 +39,19 @@ import {
   ratioBp,
   roundHalfUp,
   changeBp,
+  isProfitSplit,
   weekOf,
   type IsoDate,
   type IsoMonth,
   type LedgerEntry,
+  type LossTreatment,
   type Period,
   type StoreAgreement,
+  type StoreMonthSplit,
 } from "@/domain";
 import { Catalog, evidence, fig, monthScope, sumEntries } from "./shared";
 import {
+  dateText,
   krText,
   listText,
   monthNameText,
@@ -119,7 +129,8 @@ export interface StoreMachine {
 }
 
 /** Ersättningsmodell enligt avtalen som gällde under månaden. */
-export type CompensationModel = "commission" | "rent" | "commission_and_rent" | "none";
+export type CompensationModel =
+  "profit_split" | "profit_split_and_rent" | "commission" | "rent" | "commission_and_rent" | "none";
 
 /** Ett steg i uträkningen av butikens ersättning. */
 export interface CompensationStep {
@@ -128,7 +139,7 @@ export interface CompensationStep {
    * hyra (0 kr). `no_agreement`: order på dagar utan avtal (0 kr). Stegens underlag summerar
    * därmed alltid till månadens intäkt exkl. moms.
    */
-  readonly kind: "commission" | "no_commission" | "no_agreement" | "rent" | "total";
+  readonly kind: "share" | "commission" | "no_commission" | "no_agreement" | "rent" | "total";
   /** Kort rubrik, t.ex. "Provision 10 % (1–30 nov.)". */
   readonly label: string;
   /** Uträkningen i klartext, t.ex. "10 % av 30 400 kr = 3 040 kr". */
@@ -145,6 +156,36 @@ export interface RentPart {
   readonly days: number;
 }
 
+/**
+ * Vinstdelningen under ett avtal i månaden: summorna som andelen räknas på.
+ * vinst = försäljning − VMB-moms − inköp − kortavgifter; andel = vinst × andel (0 vid förlust
+ * med förlusthantering 'zero').
+ */
+export interface StoreProfitSplit {
+  /** Avtalets startdag. */
+  readonly validFrom: IsoDate;
+  /** Dagarna i månaden då avtalet gällde. */
+  readonly range: Period;
+  readonly orders: number;
+  readonly shareBp: number;
+  readonly lossTreatment: LossTreatment;
+  /** Försäljning inkl. moms. */
+  readonly salesInclVatOre: number;
+  /** Återbetalningar till kunder (saknas i ögonblicksbilder före 1.2.0 = 0). */
+  readonly refundsOre?: number;
+  readonly vmbVatOre: number;
+  readonly purchasesOre: number;
+  readonly cardFeesOre: number;
+  readonly profitOre: number;
+  /** Butikens andel; 0 när `pending`. */
+  readonly storeShareOre: number;
+  /** Operatörens andel = vinst − butikens andel. */
+  readonly operatorShareOre: number;
+  /** Sant när underlaget saknar inköpspriser (bara portalen): andelen är inte räknad. */
+  readonly pending: boolean;
+  readonly evidence: Evidence;
+}
+
 /** Butikens ersättning, uträknad steg för steg. */
 export interface StoreCompensationBreakdown {
   readonly model: CompensationModel;
@@ -153,9 +194,16 @@ export interface StoreCompensationBreakdown {
   readonly steps: readonly CompensationStep[];
   readonly rentParts: readonly RentPart[];
   readonly daysInMonth: number;
+  /** Vinstdelning per avtal (tom utan vinstdelning). */
+  readonly splits: readonly StoreProfitSplit[];
+  /** Butikens andel av vinsten (Σ splits). */
+  readonly shareOre: number;
   readonly commissionOre: number;
   readonly rentOre: number;
+  /** Andel + provision + hyra. */
   readonly totalOre: number;
+  /** Sant när en vinstandel inte kunde räknas (saknade inköpspriser, bara portalen). */
+  readonly pending: boolean;
   readonly evidence: Evidence;
 }
 
@@ -183,7 +231,24 @@ export interface StoreReportOptions {
   readonly topTitles?: number;
   /** Hälsning till butiken. */
   readonly greeting?: string | null;
+  /**
+   * Saknade inköpspriser under vinstdelning: `false` (standard) stoppar rapporten med
+   * `DomainError('missing_price')`; `true` visar andelen som ej räknad (portalen, som inte
+   * ser inköpspriser).
+   */
+  readonly pendingSplit?: boolean;
 }
+
+/**
+ * Vinstdelningarna i en ersättning. Sparade ögonblicksbilder från före vinstdelningen
+ * (beräkningsversion 1.1.0) saknar fältet; då är listan tom.
+ */
+export function splitsOf(c: StoreCompensationBreakdown): readonly StoreProfitSplit[] {
+  return (c as Partial<StoreCompensationBreakdown>).splits ?? [];
+}
+
+/** Början på felmeddelandet när vinstdelningen saknar inköpspriser. */
+export const MISSING_PRICES_MESSAGE = "Butiksrapporten kan inte räknas:";
 
 /** Förändring under 2 % (200 bp) räknas som "i nivå med". */
 export const FLAT_CHANGE_BP = 200;
@@ -293,6 +358,19 @@ export function buildStoreReport(
   const allTitles = rankTitles(entries, revenueOre, period, storeId, catalog);
   const topTitles = allTitles.slice(0, topN);
   const machines = buildMachines(entries, period, storeId, ledger.context.placements, catalog);
+  const splits = ledger.profitSplits.filter((x) => x.storeId === storeId && x.month === month);
+  if (!options.pendingSplit) {
+    const unpriced = splits.reduce((n, x) => n + x.unpricedOrders, 0);
+    if (unpriced > 0) {
+      const titles = [...new Set(splits.flatMap((x) => x.unpricedTitleIds))].map((id) =>
+        catalog.title(id),
+      );
+      throw new DomainError(
+        "missing_price",
+        `${MISSING_PRICES_MESSAGE} ${ordersText(unpriced)} saknar inköpspris (${listText(titles)}). Lägg in priserna under Inköpspriser.`,
+      );
+    }
+  }
   const compensation = buildCompensation(
     entries,
     ledger.storeMonthRent,
@@ -300,6 +378,7 @@ export function buildStoreReport(
     month,
     period,
     ctx.agreements.agreementsFor(storeId),
+    splits,
   );
 
   const report: StoreReport = {
@@ -494,6 +573,8 @@ interface CommissionSegment {
   range: Period;
   orders: number;
   base: number;
+  /** Σ belopp inkl. moms. */
+  gross: number;
   commission: number;
   dates: IsoDate[];
 }
@@ -517,6 +598,7 @@ function buildCompensation(
   month: IsoMonth,
   period: Period,
   agreements: readonly StoreAgreement[],
+  profitSplits: readonly StoreMonthSplit[],
 ): StoreCompensationBreakdown {
   const inMonth = agreements.filter(
     (a) => intersectPeriods(period, { start: a.validFrom, end: a.validTo ?? period.end }) !== null,
@@ -530,6 +612,7 @@ function buildCompensation(
       range,
       orders: 0,
       base: 0,
+      gross: 0,
       commission: 0,
       dates: [],
     });
@@ -547,6 +630,7 @@ function buildCompensation(
         range: { start: day, end: day },
         orders: 0,
         base: 0,
+        gross: 0,
         commission: 0,
         dates: [],
       });
@@ -559,6 +643,7 @@ function buildCompensation(
       : gaps.find((g) => g.range.start <= date && date <= g.range.end)!;
     seg.orders++;
     seg.base += e.netRevenueOre;
+    seg.gross += e.grossOre;
     seg.commission += e.commissionOre;
     if (!seg.dates.includes(date)) seg.dates.push(date);
   }
@@ -567,7 +652,15 @@ function buildCompensation(
   const steps: CompensationStep[] = [];
   const byStart = (x: CommissionSegment, y: CommissionSegment): number =>
     x.range.start < y.range.start ? -1 : x.range.start > y.range.start ? 1 : 0;
+  const splits: StoreProfitSplit[] = [];
   for (const seg of [...segments.values()].sort(byStart)) {
+    if (isProfitSplit(seg.agreement)) {
+      const ms = profitSplits.find((x) => x.validFrom === seg.agreement!.validFrom);
+      const split = profitSplitRow(seg, ms ?? null, storeId);
+      splits.push(split);
+      steps.push(shareStep(split, storeId));
+      continue;
+    }
     const bp = seg.agreement!.commissionBp ?? 0;
     if (bp === 0) {
       if (seg.orders === 0) continue;
@@ -669,17 +762,32 @@ function buildCompensation(
   }
 
   const commissionOre = steps.reduce((s, x) => s + (x.kind === "commission" ? x.amountOre : 0), 0);
-  const totalOre = commissionOre + rentOre;
+  const shareOre = splits.reduce((s, x) => s + x.storeShareOre, 0);
+  const pending = splits.some((x) => x.pending);
+  const totalOre = shareOre + commissionOre + rentOre;
+  const parts = [
+    ...(splits.length > 0 ? [`andel ${krText(shareOre, "always")}`] : []),
+    ...(commissionOre !== 0 || splits.length === 0
+      ? [`provision ${krText(commissionOre, "always")}`]
+      : []),
+    ...(rentOre !== 0 || splits.length === 0 ? [`hyra ${krText(rentOre, "always")}`] : []),
+  ];
+  const capitalized = parts.join(" + ").replace(/^./, (c) => c.toUpperCase());
   steps.push({
     kind: "total",
-    label: "Ersättning totalt",
-    calculation: `Provision ${krText(commissionOre, "always")} + hyra ${krText(rentOre, "always")} = ${krText(totalOre, "always")}`,
+    label: splits.length > 0 ? "Er ersättning" : "Ersättning totalt",
+    calculation:
+      parts.length === 1 ? capitalized : `${capitalized} = ${krText(totalOre, "always")}`,
     amountOre: totalOre,
     evidence: evidence({
-      rule: "Butiksersättning = provision + hyra.",
+      rule:
+        splits.length > 0
+          ? "Butiksersättning = andel av vinsten + provision + hyra."
+          : "Butiksersättning = provision + hyra.",
       scope: { period, storeId },
       orderCount: entries.length,
       figures: [
+        ...(splits.length > 0 ? [fig("Andel", shareOre, "ore")] : []),
         fig("Provision", commissionOre, "ore"),
         fig("Hyra", rentOre, "ore"),
         fig("Ersättning", totalOre, "ore"),
@@ -687,10 +795,14 @@ function buildCompensation(
     }),
   });
 
-  const hasCommission = inMonth.some((a) => (a.commissionBp ?? 0) > 0);
+  const hasSplit = inMonth.some((a) => isProfitSplit(a));
+  const hasCommission = inMonth.some((a) => !isProfitSplit(a) && (a.commissionBp ?? 0) > 0);
   const hasRent = inMonth.some((a) => (a.monthlyRentOre ?? 0) > 0);
-  const model: CompensationModel =
-    hasCommission && hasRent
+  const model: CompensationModel = hasSplit
+    ? hasRent
+      ? "profit_split_and_rent"
+      : "profit_split"
+    : hasCommission && hasRent
       ? "commission_and_rent"
       : hasCommission
         ? "commission"
@@ -703,9 +815,12 @@ function buildCompensation(
     steps,
     rentParts,
     daysInMonth: dim,
+    splits,
+    shareOre,
     commissionOre,
     rentOre,
     totalOre,
+    pending,
     evidence: evidence({
       rule: "Ersättningen följer de avtal som gällde i butiken under månaden.",
       scope: { period, storeId },
@@ -720,6 +835,76 @@ function buildCompensation(
   };
 }
 
+/** Vinstdelningen för ett avtalssegment ur liggarens uträkning. */
+function profitSplitRow(
+  seg: CommissionSegment,
+  ms: StoreMonthSplit | null,
+  storeId: string,
+): StoreProfitSplit {
+  const a = seg.agreement!;
+  const shareBp = a.commissionBp ?? 0;
+  const lossTreatment: LossTreatment = a.lossTreatment ?? "zero";
+  const r = ms?.result;
+  const pending = (ms?.unpricedOrders ?? 0) > 0;
+  const salesInclVatOre = pending ? seg.gross : (r?.salesInclVatOre ?? 0);
+  const storeShareOre = pending ? 0 : (r?.storeShareOre ?? 0);
+  const profitOre = pending ? 0 : (r?.profitOre ?? 0);
+  return {
+    validFrom: a.validFrom,
+    range: seg.range,
+    orders: seg.orders,
+    shareBp,
+    lossTreatment,
+    salesInclVatOre,
+    refundsOre: pending ? 0 : (r?.refundsOre ?? 0),
+    vmbVatOre: pending ? 0 : (r?.vmbVatOre ?? 0),
+    purchasesOre: pending ? 0 : (r?.purchasesOre ?? 0),
+    cardFeesOre: pending ? 0 : (r?.cardFeesOre ?? 0),
+    profitOre,
+    storeShareOre,
+    operatorShareOre: profitOre - storeShareOre,
+    pending,
+    evidence: evidence({
+      rule: "Vinst = försäljning inkl. moms − återbetalningar − VMB-moms (20 % av försäljning − återbetalningar − inköp, om positiv) − inköp − kortavgifter. Butikens andel = round(vinst × andel / 10 000), 0 vid förlust om inte avtalet delar förlusten.",
+      scope: { period: seg.range, storeId },
+      orderCount: seg.orders,
+      figures: pending
+        ? [fig("Försäljning inkl. moms", salesInclVatOre, "ore"), fig("Andel", shareBp, "bp")]
+        : [
+            fig("Försäljning inkl. moms", r?.salesInclVatOre ?? 0, "ore"),
+            fig("Återbetalningar", r?.refundsOre ?? 0, "ore"),
+            fig("VMB-moms", r?.vmbVatOre ?? 0, "ore"),
+            fig("Inköp", r?.purchasesOre ?? 0, "ore"),
+            fig("Kortavgifter", r?.cardFeesOre ?? 0, "ore"),
+            fig("Vinst", profitOre, "ore"),
+            fig("Andel", shareBp, "bp"),
+            fig("Butikens andel", storeShareOre, "ore"),
+          ],
+    }),
+  };
+}
+
+/** Steget "Butikens andel 50 % av vinsten" i uträkningen. */
+function shareStep(split: StoreProfitSplit, storeId: string): CompensationStep {
+  const pct = pctText(split.shareBp, split.shareBp % 100 === 0 ? 0 : 1);
+  const calculation = split.pending
+    ? "Räknas i månadsrapporten"
+    : split.profitOre < 0 && split.storeShareOre === 0
+      ? `Ingen vinst (${krText(split.profitOre, "always")}), andelen blir 0 kr`
+      : `${pct} av ${krText(split.profitOre, "always")} = ${krText(split.storeShareOre, "always")}`;
+  return {
+    kind: "share",
+    label: `Er andel ${pct}${split.range.start.slice(8) === "01" && isMonthEnd(split.range.end) ? "" : ` (${periodText(split.range)})`}`,
+    calculation,
+    amountOre: split.storeShareOre,
+    evidence: { ...split.evidence, scope: { period: split.range, storeId } },
+  };
+}
+
+function isMonthEnd(date: IsoDate): boolean {
+  return addDays(date, 1).slice(8) === "01";
+}
+
 /** Avtalet som gällde en viss dag, eller `null` om butiken saknade avtal den dagen. */
 function agreementOn(agreements: readonly StoreAgreement[], date: IsoDate): StoreAgreement | null {
   return (
@@ -732,7 +917,10 @@ function modelText(agreements: readonly StoreAgreement[], period: Period): strin
   if (agreements.length === 0) return "Inget avtal gällde under månaden.";
   const terms = (a: StoreAgreement): string => {
     const parts: string[] = [];
-    if ((a.commissionBp ?? 0) > 0) {
+    if (isProfitSplit(a)) {
+      const bp = a.commissionBp ?? 0;
+      parts.push(`${pctText(bp, bp % 100 === 0 ? 0 : 1)} av vinsten efter kostnader`);
+    } else if ((a.commissionBp ?? 0) > 0) {
       const bp = a.commissionBp!;
       parts.push(`provision ${pctText(bp, bp % 100 === 0 ? 0 : 1)} på försäljningen exkl. moms`);
     }
@@ -745,6 +933,7 @@ function modelText(agreements: readonly StoreAgreement[], period: Period): strin
     const a = agreements[0]!;
     const range = intersectPeriods(period, { start: a.validFrom, end: a.validTo ?? period.end })!;
     const whole = range.start === period.start && range.end === period.end;
+    if (isProfitSplit(a)) return `${capital(terms(a))}, giltigt från ${dateText(a.validFrom)}.`;
     return `${capital(terms(a))}${whole ? "" : ` (${periodText(range)})`}.`;
   }
   return (
@@ -851,7 +1040,8 @@ const FORBIDDEN_TEXT = /inköp|vinst|marginal|lönsam|ägar/i;
 
 /**
  * Kontrollerar att butiksrapporten inte innehåller inköp, marginal, vinst eller andra
- * butikers data: inga förbjudna nycklar eller ord någonstans (även nästlat), och varje
+ * butikers data: inga förbjudna nycklar eller ord någonstans (även nästlat; vid
+ * vinstdelning är ersättningsdelen, `compensation`, undantagen), och varje
  * `storeId` i underlagen är butikens egen. Namn (butik, automat, titel) och hälsning skrivs
  * av människor och undantas från ordkontrollen, även där de citeras i andra texter: en titel
  * som heter "Vinsttröja" stoppar alltså inte rapporten, men ordet "vinst" utanför ett namn
@@ -877,9 +1067,14 @@ export function assertStoreReportSafe(report: StoreReport): void {
   const withoutNames = (text: string): string =>
     humanTexts.reduce((t, n) => t.split(n).join(" "), text);
 
+  // Vinstdelning: avtalet bygger på butikens månadssummor för inköp och vinst, så de får
+  // stå i ersättningsdelen (aldrig per titel, automat eller dag).
+  const openBook = splitsOf(report.compensation).length > 0;
+  const isSettlement = (path: string): boolean =>
+    openBook && (path === "rapport.compensation" || path.startsWith("rapport.compensation."));
   const walk = (value: unknown, path: string): void => {
     if (typeof value === "string") {
-      if (!isHumanText(path) && FORBIDDEN_TEXT.test(withoutNames(value))) {
+      if (!isHumanText(path) && !isSettlement(path) && FORBIDDEN_TEXT.test(withoutNames(value))) {
         throw new DomainError(
           "invalid_input",
           `Butiksrapporten innehåller otillåten text i ${path}.`,
@@ -893,7 +1088,7 @@ export function assertStoreReportSafe(report: StoreReport): void {
     }
     if (value !== null && typeof value === "object") {
       for (const [k, v] of Object.entries(value)) {
-        if (FORBIDDEN_KEY.test(k)) {
+        if (FORBIDDEN_KEY.test(k) && !isSettlement(`${path}.${k}`)) {
           throw new DomainError(
             "invalid_input",
             `Butiksrapporten innehåller otillåtet fält ${path}.${k}.`,

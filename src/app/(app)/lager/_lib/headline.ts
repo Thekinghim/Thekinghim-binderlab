@@ -104,6 +104,12 @@ export function headlineOf(view: LagerView): Headline {
       aside: "Lagret i automaterna visas när en automat är i drift.",
     };
   }
+  if (total === 0 && view.unknownCount > 0) {
+    return {
+      title: `Saldo okänt på ${count(view.unknownCount, "plats", "platser")}.`,
+      aside: "Koppla automaten under Datakällor (Awish) eller inventera.",
+    };
+  }
   if (total === 0) {
     return {
       title: "Inget lager registrerat.",

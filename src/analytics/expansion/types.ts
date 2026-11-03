@@ -84,8 +84,14 @@ export interface InvestmentPlan {
  * används de jämförda platsernas faktiska provision och hyra per automatdag.
  */
 export interface SiteTerms {
+  /** Provision på försäljningen exkl. moms (gamla avtal). null = ingen. */
   readonly commissionBp: number | null;
   readonly monthlyRentOre: number | null;
+  /**
+   * Vinstdelning: butikens andel i bp av vinsten efter kostnader (5 000 = 50 %, alla nya
+   * avtal). Uppskattas på platsens hela underlag: andel × max(0, täckningsbidrag − VMB-moms).
+   */
+  readonly profitShareBp?: number | null;
 }
 
 /** Ett intervall: lägsta, förväntat (viktat snitt) och högsta. */

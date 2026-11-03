@@ -151,6 +151,12 @@ export interface AccountantReport {
   readonly machines: readonly AccountantMachineRow[];
   readonly unpricedTitles: readonly AccountantUnpricedTitle[];
   readonly reconciliation: Reconciliation;
+  /**
+   * Order utan inköpspris i butiker med vinstdelning. > 0 betyder att butikernas andel är
+   * räknad på en del av försäljningen och inte ska bokföras förrän priserna finns.
+   * Saknas i rapporter från före beräkningsversion 1.2.0.
+   */
+  readonly profitSplitUnpricedOrders?: number;
 }
 
 const NUMERIC_ID = /^\d{1,15}$/;
@@ -359,19 +365,27 @@ export function buildAccountantReport(sources: ReportSources, period: Period): A
     machines,
   });
 
+  const profitSplitUnpricedOrders = ledger.profitSplits.reduce((n, x) => n + x.unpricedOrders, 0);
   const report: AccountantReport = {
     kind: "accountant",
     calcVersion: CALC_VERSION,
     period,
     vatRateBp: sources.settings.vatRateBp,
     cardFeeBp: sources.settings.cardFeeBp,
-    conclusion: accountantConclusion(period, totals, reconciliation, sources.settings.vatRateBp),
+    conclusion: accountantConclusion(
+      period,
+      totals,
+      reconciliation,
+      sources.settings.vatRateBp,
+      profitSplitUnpricedOrders,
+    ),
     totals,
     days,
     stores,
     machines,
     unpricedTitles,
     reconciliation,
+    profitSplitUnpricedOrders,
   };
   return report;
 }
@@ -551,6 +565,7 @@ function accountantConclusion(
   totals: AccountantTotals,
   rec: Reconciliation,
   vatRateBp: number,
+  splitUnpriced = 0,
 ): Conclusion {
   const scope = { period };
   const base = [
@@ -617,7 +632,7 @@ function accountantConclusion(
   const series = n ? `, ordernummer ${n.first}–${n.last} utan luckor` : "";
   if (totals.unpricedOrders > 0) {
     return {
-      text: `${sales}${series}, men ${ordersText(totals.unpricedOrders)} saknar inköpspris och inköpet för dem är inte med.`,
+      text: `${sales}${series}, men ${ordersText(totals.unpricedOrders)} saknar inköpspris och inköpet för dem är inte med.${splitUnpriced > 0 ? " Butikernas andel av vinsten är inte färdigräknad; lägg in inköpspriserna innan den bokförs." : ""}`,
       ruleId: "accountant.unpriced",
       evidence: evidence({
         rule: "Order utan inköpspris har inget inköp.",

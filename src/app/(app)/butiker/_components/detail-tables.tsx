@@ -64,11 +64,16 @@ function agreementColumns(
     },
     {
       key: "commission",
-      header: "Provision",
+      header: "Andel",
       numeric: true,
       hideOnMobile: true,
       sortValue: (a) => a.commissionBp ?? -1,
-      render: (a) => (a.commissionBp === null ? MISSING : percentBp(a.commissionBp)),
+      render: (a) =>
+        a.commissionBp === null
+          ? MISSING
+          : a.commissionBase === "profit_after_costs"
+            ? `${percentBp(a.commissionBp)} av vinsten`
+            : `${percentBp(a.commissionBp)} av försäljn.`,
     },
     {
       key: "rent",

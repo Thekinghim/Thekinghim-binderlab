@@ -22,6 +22,7 @@ import {
 } from "@/analytics/expansion";
 import {
   addDays,
+  DEFAULT_PROFIT_SHARE_BP,
   monthEnd,
   monthStart,
   MONTH_LCM,
@@ -115,12 +116,19 @@ export function leadInvestment(lead: LeadRecord): InvestmentPlan | null {
   return { purchaseOre: lead.purchaseOre ?? 0, installationOre: lead.installationOre ?? 0 };
 }
 
-/** Leaden i analysens form. Villkor används bara när minst ett av dem är angivet. */
+/**
+ * Leaden i analysens form. Alla avtal är 50/50 på vinsten efter kostnader: med erbjuden hyra
+ * räknas villkoren som vinstdelning + hyra, utan hyra som liknande platsers egna avtal.
+ */
 export function toAnalyticsLead(lead: LeadRecord): ExpansionLead {
   const terms =
-    lead.commissionBp === null && lead.monthlyRentOre === null
+    lead.monthlyRentOre === null
       ? null
-      : { commissionBp: lead.commissionBp, monthlyRentOre: lead.monthlyRentOre };
+      : {
+          commissionBp: null,
+          monthlyRentOre: lead.monthlyRentOre,
+          profitShareBp: DEFAULT_PROFIT_SHARE_BP,
+        };
   const investment = leadInvestment(lead);
   return {
     id: lead.id,

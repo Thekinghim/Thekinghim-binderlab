@@ -19,6 +19,8 @@ export interface LagerMachine {
   readonly name: string;
   /** Butikens namn i dag, eller null. */
   readonly storeName: string | null;
+  /** Senaste läsningen av facken från Awish (ISO 8601), eller null. */
+  readonly awishSyncedAt: string | null;
 }
 
 export interface LagerTitle {
@@ -36,6 +38,11 @@ export interface StockCell {
    * alltid som lagerförd, och ett tomt fack är alltid Kritisk.
    */
   readonly stocked: boolean;
+  /**
+   * false = "Saldo okänt": platsen har bara försäljning, ingen inventering, påfyllning
+   * eller läsning från Awish. Visas aldrig som tom; status är då "ok" och onHand 0.
+   */
+  readonly known: boolean;
   /** Pack i automaten nu (aldrig under 0 i vyn). */
   readonly onHand: number;
   /** Försäljningstakt i pack per dag, tiondelar (23 = 2,3), eller null utan försäljning. */
@@ -166,6 +173,8 @@ export interface LagerView {
   /** Antal händelser i perioden (historiken visar högst HISTORY_LIMIT). */
   readonly historyTotal: number;
   readonly counts: { readonly critical: number; readonly low: number; readonly ok: number };
+  /** Platser med okänt saldo (räknas inte i counts). */
+  readonly unknownCount: number;
   /**
    * Titlar som har gått ur sortimentet i alla automater i urvalet och inte finns kvar
    * någonstans (0 pack i automaterna och i centrallagret). De visas inte i matrisen;

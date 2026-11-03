@@ -145,7 +145,7 @@ export async function registerCountFor(viewer: Viewer, input: CountInput): Promi
       throw new LagerError(
         input.location === "machine"
           ? "Automaten saknar lagerplats."
-          : "Organisationen har inget centrallager.",
+          : "Organisationen har inget eget lager.",
       );
     }
     const previous = await level(tx, orgId, location, input.titleId);

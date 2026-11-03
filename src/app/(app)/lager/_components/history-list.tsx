@@ -43,7 +43,7 @@ export function HistoryList({
       <ol aria-label="Lagerhistorik">
         {entries.map((e) => {
           const who = e.isSelf ? "Du" : (e.performer ?? "Okänd");
-          const place = e.machineCode ? codeText(e.machineCode) : "Centrallager";
+          const place = e.machineCode ? codeText(e.machineCode) : "Vårt lager";
           const what = HISTORY_LABEL[e.kind];
           return (
             <li key={e.id} className={cn(GRID, "border-b border-line py-3 md:min-h-12 md:py-2")}>
@@ -58,7 +58,7 @@ export function HistoryList({
               <span className="col-span-2 min-w-0 truncate text-sm text-muted md:order-3 md:col-span-1">
                 {e.titleName}
                 <span className="md:hidden"> · {place}</span>
-                {e.fromWarehouse ? <span> · från centrallagret</span> : null}
+                {e.fromWarehouse ? <span> · från vårt lager</span> : null}
               </span>
               <span className="hidden text-sm text-muted md:order-4 md:block">{place}</span>
             </li>

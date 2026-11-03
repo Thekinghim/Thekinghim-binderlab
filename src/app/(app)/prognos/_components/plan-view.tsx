@@ -76,7 +76,7 @@ const proposalColumns: Column<PlanLineView>[] = [
     sortValue: (r) => r.positionPacks,
     render: (r) => (
       <span
-        title={`Centrallager ${r.warehouseOnHand}, automater ${r.machineOnHand}, beställt ${r.onOrderCounted}`}
+        title={`Vårt lager ${r.warehouseOnHand}, automater ${r.machineOnHand}, beställt ${r.onOrderCounted}`}
       >
         {formatInt(r.positionPacks)}
       </span>
@@ -167,7 +167,7 @@ const allColumns: Column<PlanLineView>[] = [
   },
   {
     key: "warehouse",
-    header: "Centrallager",
+    header: "Vårt lager",
     numeric: true,
     hideOnMobile: true,
     sortValue: (r) => r.warehouseOnHand,

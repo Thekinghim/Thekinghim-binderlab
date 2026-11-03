@@ -84,6 +84,11 @@ export interface LagerModelInput {
    * punkten i Att göra. Utelämnad = inga gränser.
    */
   readonly slotAlerts?: readonly SlotAlert[] | null;
+  /**
+   * Senaste gången Awish-synken läste automatens fack (stock_locations.awish_synced_at),
+   * per automat. Utelämnad = ingen automat läses från Awish.
+   */
+  readonly awishSyncedAt?: ReadonlyMap<string, string> | null;
 }
 
 export interface LagerModel {
@@ -96,6 +101,8 @@ export interface LagerModel {
   readonly warehouse: WarehouseRow[];
   readonly packLists: PackList[];
   readonly counts: { readonly critical: number; readonly low: number; readonly ok: number };
+  /** Platser med okänt saldo (ingen inventering, påfyllning eller Awish-läsning). */
+  readonly unknownCount: number;
   readonly retiredTitles: LagerTitle[];
 }
 
@@ -139,7 +146,7 @@ function compareText(a: string, b: string): number {
 }
 
 /** buildStop i besöksplanen lägger underskottet sist med den här inledningen. */
-const WAREHOUSE_SHORT_PREFIX = "Centrallagret räcker inte";
+const WAREHOUSE_SHORT_PREFIX = "Vårt lager räcker inte";
 
 /**
  * Centrallagrets status:
@@ -200,7 +207,11 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
   }
   const hasWarehouse = hasCentral || centralRows.size > 0;
 
-  const machineStock: StockLevelRef[] = [...machineRows.values()].map((r) => ({
+  // Ett saldo är känt när platsen har inventerats (i Binderlab eller av Awish-synken)
+  // eller fyllts på. Bara försäljning ger inget känt saldo: platsen är "Saldo okänt",
+  // inte tom, och ingår inte i påfyllningsregeln eller listan.
+  const isKnown = (r: StockRow) => r.lastRestockedAt !== null || r.lastCountedAt !== null;
+  const machineStock: StockLevelRef[] = [...machineRows.values()].filter(isKnown).map((r) => ({
     machineId: r.machineId as string,
     titleId: r.titleId,
     onHand: r.onHand,
@@ -295,8 +306,10 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
     const lines: PackListLine[] = [];
     const missing: PackListMissing[] = [];
     for (const p of stop?.packs ?? []) {
-      // En utgången titel fylls inte på (säljs ut).
+      // En utgången titel fylls inte på (säljs ut). Ett okänt saldo ger inget förslag.
       if (retired.has(pairKey(m.id, p.titleId))) continue;
+      const known = machineRows.get(pairKey(m.id, p.titleId));
+      if (!known || !isKnown(known)) continue;
       if (p.quantity > 0) {
         suggestedByPair.set(pairKey(m.id, p.titleId), p.quantity);
         lines.push({
@@ -352,20 +365,22 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
     // Då är den lagerförd, även med 0 pack och utan försäljning i fönstret (ett fack
     // som varit tomt länge säljer inget och ska ändå stå som Kritisk).
     const stocked = row !== undefined || v.units > 0;
+    const known = row !== undefined && isKnown(row);
     const level = refillLevel.get(`refill:${m.id}:${titleId}`);
     const isRetired = stocked && retired.has(k);
     const status: StockStatus =
-      !stocked || isRetired ? "ok" : onHand === 0 ? "critical" : (level ?? "ok");
+      !stocked || isRetired || !known ? "ok" : onHand === 0 ? "critical" : (level ?? "ok");
     return {
       machineId: m.id,
       titleId,
       stocked,
-      onHand,
+      known,
+      onHand: known ? onHand : 0,
       perDayTenths: perDayTenths(v),
       daysLeft: daysOfStockLeft(onHand, v),
       stockoutDate: stockoutDate(asOf, onHand, v),
       status,
-      suggested: isRetired ? 0 : (suggestedByPair.get(k) ?? 0),
+      suggested: isRetired || !known ? 0 : (suggestedByPair.get(k) ?? 0),
       lastRestockedAt: row?.lastRestockedAt ?? null,
       retired: isRetired,
       alertAt: alertAt.get(k) ?? null,
@@ -445,7 +460,14 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
     : [];
 
   const counts = { critical: 0, low: 0, ok: 0 };
-  for (const r of rows) for (const c of r.cells) if (c.stocked && !c.retired) counts[c.status] += 1;
+  let unknownCount = 0;
+  for (const r of rows) {
+    for (const c of r.cells) {
+      if (!c.stocked || c.retired) continue;
+      if (c.known) counts[c.status] += 1;
+      else unknownCount += 1;
+    }
+  }
 
   return {
     window: { start: windowStart, end: asOf, days: WINDOW_DAYS },
@@ -455,6 +477,7 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
       code: m.code,
       name: m.name,
       storeName: m.storeId ? (storeName.get(m.storeId) ?? null) : null,
+      awishSyncedAt: input.awishSyncedAt?.get(m.id) ?? null,
     })),
     titles: rows.map((r) => ({ id: r.title.id, name: r.title.name })),
     cells: rows.map((r) => r.cells),
@@ -462,6 +485,7 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
     warehouse,
     packLists,
     counts,
+    unknownCount,
     retiredTitles: retiredRows
       .map((r) => ({ id: r.title.id, name: r.title.name }))
       .sort((a, b) => compareText(a.name, b.name)),

@@ -49,6 +49,7 @@ import {
   type AwishCredentials,
 } from "./grpc-client";
 import { collectOrders, parseCursor, type SyncCursor } from "./paging";
+import { STOCK_SYNC_INTERVAL_MS, syncSourceStock, type AwishStockSummary } from "./stock";
 
 type Row = Record<string, unknown>;
 
@@ -102,6 +103,11 @@ export interface AwishSyncState {
    * tabell säger "Int, unit cent") och skulle då bli 100 gånger för mycket.
    */
   amountFormat: "decimal" | null;
+  /**
+   * Senaste gången alla kopplade automaters fack lästes (Products). Cron läser saldot
+   * högst var STOCK_SYNC_INTERVAL_MS; "Synka nu" läser alltid.
+   */
+  stockSyncedAt: string | null;
 }
 
 export interface AwishLastRun {
@@ -115,6 +121,8 @@ export interface AwishLastRun {
   trigger: "schedule" | "manual";
   /** Sidfälten som Awish skickade (total, per_page, last_page, has_more). */
   pagingFields?: string[];
+  /** Saldot från Awish i den här körningen, om det lästes. */
+  stock?: Pick<AwishStockSummary, "machines" | "read" | "counts" | "failed" | "deferred">;
 }
 
 export interface AwishSyncResult {
@@ -129,6 +137,8 @@ export interface AwishSyncResult {
   summary: ImportSummary | null;
   otherSourceDuplicates: number;
   historyDone: boolean;
+  /** Saldot från Awish (Products), om det lästes i körningen. */
+  stock?: AwishStockSummary | null;
 }
 
 export function parseState(text: unknown): AwishSyncState {
@@ -152,7 +162,23 @@ export function parseState(text: unknown): AwishSyncState {
       ? value.refundReported.filter((x): x is string => typeof x === "string")
       : [],
     amountFormat: value.amountFormat === "decimal" ? "decimal" : null,
+    stockSyncedAt: typeof value.stockSyncedAt === "string" ? value.stockSyncedAt : null,
   };
+}
+
+/**
+ * Ska saldot läsas i den här körningen? Alltid vid "Synka nu", annars när det gått
+ * STOCK_SYNC_INTERVAL_MS sedan förra gången (en minuts marginal för cron-tickens
+ * ojämna takt) eller saldot aldrig har lästs.
+ */
+export function stockDue(
+  state: Pick<AwishSyncState, "stockSyncedAt">,
+  trigger: "schedule" | "manual",
+  now: Date,
+): boolean {
+  if (trigger === "manual" || state.stockSyncedAt === null) return true;
+  const last = Date.parse(state.stockSyncedAt);
+  return !Number.isFinite(last) || now.getTime() - last >= STOCK_SYNC_INTERVAL_MS - 60_000;
 }
 
 async function query<T extends Row>(tx: Tx | Db, q: ReturnType<typeof sql>): Promise<T[]> {
@@ -371,7 +397,11 @@ export async function syncAwishSource(
     result: Omit<AwishSyncResult, "organizationId" | "dataSourceId" | "skipped">,
     paging: SyncCursor,
     refundReported: string[],
-    extra: { amountFormat?: "decimal" | null; pagingFields?: string[] } = {},
+    extra: {
+      amountFormat?: "decimal" | null;
+      pagingFields?: string[];
+      stock?: AwishStockSummary | null;
+    } = {},
   ): Promise<AwishSyncResult> => {
     const at = now();
     const lastRun: AwishLastRun = {
@@ -384,6 +414,17 @@ export async function syncAwishSource(
       durationMs: at.getTime() - started.getTime(),
       trigger,
       ...(extra.pagingFields ? { pagingFields: extra.pagingFields } : {}),
+      ...(extra.stock
+        ? {
+            stock: {
+              machines: extra.stock.machines,
+              read: extra.stock.read,
+              counts: extra.stock.counts,
+              failed: extra.stock.failed,
+              deferred: extra.stock.deferred,
+            },
+          }
+        : {}),
     };
     const state: AwishSyncState = {
       v: 1,
@@ -393,6 +434,12 @@ export async function syncAwishSource(
       lastSuccessAt: result.ok ? at.toISOString() : before.lastSuccessAt,
       refundReported: refundReported.slice(-MAX_REFUND_REPORTED),
       amountFormat: extra.amountFormat ?? before.amountFormat,
+      // Alla automater lästa: nästa läsning om STOCK_SYNC_INTERVAL_MS. Annars fortsätter
+      // nästa körning med dem som lästes längst sedan.
+      stockSyncedAt:
+        extra.stock && extra.stock.deferred === 0 && extra.stock.failed === 0
+          ? extra.stock.at
+          : before.stockSyncedAt,
     };
     try {
       // Bara om läget är det vi låste med. Har någon sparat ett nytt AppId under
@@ -510,6 +557,17 @@ export async function syncAwishSource(
       trigger,
       pages,
     });
+
+    // Saldot i automaterna (Products) efter orderna, med den tid som är kvar. Ett fel
+    // här stoppar inte synken av order: det loggas och läses om nästa gång.
+    let stock: AwishStockSummary | null = null;
+    if (stockDue(before, trigger, started)) {
+      try {
+        stock = await syncSourceStock(deps.db, api, source, { now, deadlineAt });
+      } catch (error) {
+        console.error("[awish] saldot kunde inte läsas", error);
+      }
+    }
     return finish(
       {
         ok: true,
@@ -520,10 +578,11 @@ export async function syncAwishSource(
         summary: outcome.summary,
         otherSourceDuplicates: outcome.otherSourceDuplicates,
         historyDone: collected.cursor.historyDone,
+        stock,
       },
       collected.cursor,
       outcome.refundReported,
-      { amountFormat, pagingFields: collected.pagingFields },
+      { amountFormat, pagingFields: collected.pagingFields, stock },
     );
   } catch (error) {
     if (!(error instanceof AwishApiError) && !(error instanceof AwishSyncStop)) {

@@ -7,6 +7,7 @@ export type DomainErrorCode =
   | "invalid_rate"
   | "invalid_input"
   | "duplicate_order"
+  | "missing_price"
   | "duplicate_price"
   | "overlapping_placement"
   | "overlapping_agreement"

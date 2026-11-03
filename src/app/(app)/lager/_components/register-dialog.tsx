@@ -102,7 +102,8 @@ export function RegisterDialog({
     setShownKey(targetKey);
     if (target) {
       const isMachine = target.kind === "machine";
-      setMode(isMachine ? "refill" : "count");
+      // Okänt saldo: börja med inventering (det som gör saldot känt).
+      setMode(isMachine && target.cell.known ? "refill" : "count");
       setValue(isMachine && target.cell.suggested > 0 ? String(target.cell.suggested) : "");
       setFromWarehouse(hasWarehouse && warehouseOnHand > 0);
       setError(undefined);
@@ -131,7 +132,7 @@ export function RegisterDialog({
 
   const isMachine = target.kind === "machine";
   const onHand = isMachine ? target.cell.onHand : (target.row?.onHand ?? 0);
-  const place = isMachine ? target.machine.code : "Centrallager";
+  const place = isMachine ? target.machine.code : "Vårt lager";
   const n = parseCount(value);
   const useWarehouse = isMachine && mode === "refill" && hasWarehouse && fromWarehouse;
   // Svinn kräver ett räknat saldo (påfyllning eller inventering).
@@ -152,7 +153,7 @@ export function RegisterDialog({
     if (mode === "waste" && n > onHand) return `Saldot är ${packs(onHand)}.`;
     if (n > 10_000) return `Högst ${formatInt(10_000)} pack.`;
     if (useWarehouse && n > warehouseOnHand) {
-      return `Centrallagret har ${packs(warehouseOnHand)}. Ta bort bocken för att fylla på från annat håll, eller inventera centrallagret.`;
+      return `Vårt lager har ${packs(warehouseOnHand)}. Ta bort bocken för att fylla på från annat håll, eller inventera vårt lager.`;
     }
     return undefined;
   }
@@ -239,7 +240,7 @@ export function RegisterDialog({
     <Sheet
       open
       onClose={onClose}
-      eyebrow={isMachine ? `${target.machine.code} / ${target.machine.name}` : "Centrallager"}
+      eyebrow={isMachine ? `${target.machine.code} / ${target.machine.name}` : "Vårt lager"}
       title={title}
       footer={
         result ? (
@@ -286,7 +287,7 @@ export function RegisterDialog({
                 ? "Saldot stämde med systemet."
                 : `Systemet visade ${packs(result.previous)}, ${signed(result.onHand - result.previous)}.`}
             {result.warehouseOnHand !== null
-              ? ` Centrallagret har nu ${packs(result.warehouseOnHand)}.`
+              ? ` Vårt lager har nu ${packs(result.warehouseOnHand)}.`
               : ""}
           </p>
         </div>
@@ -301,11 +302,13 @@ export function RegisterDialog({
           }}
         >
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
-            <dt className="label text-subtle">I {isMachine ? "automaten" : "centrallagret"}</dt>
+            <dt className="label text-subtle">I {isMachine ? "automaten" : "vårt lager"}</dt>
             <dt className="label text-subtle">Status</dt>
-            <dd className="tnum text-xl font-medium">{packs(onHand)}</dd>
+            <dd className="tnum text-xl font-medium">
+              {isMachine && !target.cell.known ? "Saldo okänt" : packs(onHand)}
+            </dd>
             <dd className="flex items-center">
-              {isMachine ? (
+              {isMachine && !target.cell.known ? null : isMachine ? (
                 <StatusTag status={statusTone(target.cell.status, target.cell.onHand)}>
                   {STATUS_LABEL[target.cell.status]}
                 </StatusTag>
@@ -317,7 +320,7 @@ export function RegisterDialog({
                 <StatusTag status="ok">{STATUS_LABEL.ok}</StatusTag>
               )}
             </dd>
-            {isMachine ? (
+            {isMachine && target.cell.known ? (
               <dd className="col-span-2 text-sm text-muted">
                 {capitalize(daysLeftLong(target.cell, windowDays))}
                 {target.cell.suggested > 0
@@ -406,7 +409,7 @@ export function RegisterDialog({
                 }}
               />
               <span>
-                Ta från centrallagret{" "}
+                Ta från vårt lager{" "}
                 <span className="tnum text-muted">({packs(warehouseOnHand)} där)</span>
               </span>
             </label>

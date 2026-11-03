@@ -40,7 +40,8 @@ import { citext, ore, safeBigint } from "./types";
 /** "store" är butiksportalens roll (fas 10): ingen åtkomst till appen, bara portal_*-RPC:erna. */
 export const memberRole = pgEnum("member_role", ["owner", "admin", "refiller", "viewer", "store"]);
 export const organizationPlan = pgEnum("organization_plan", ["trial", "standard", "enterprise"]);
-export const commissionBase = pgEnum("commission_base", ["net_excl_vat"]);
+export const commissionBase = pgEnum("commission_base", ["net_excl_vat", "profit_after_costs"]);
+export const lossTreatment = pgEnum("loss_treatment", ["zero", "proportional"]);
 export const rentProration = pgEnum("rent_proration", ["daily"]);
 export const machineInvestmentKind = pgEnum("machine_investment_kind", [
   "purchase",
@@ -235,6 +236,10 @@ export const contracts = pgTable("contracts", {
   fileSha256: text("file_sha256"),
   noticePeriodMonths: integer("notice_period_months"),
   terminatedOn: day("terminated_on"),
+  // 20261104120000_avtal_mall.sql: avtal skapade från mallen och deras status.
+  template: text("template"),
+  sentAt: ts("sent_at"),
+  signedAt: ts("signed_at"),
   ...stamps(),
 });
 
@@ -248,6 +253,7 @@ export const storeAgreements = pgTable("store_agreements", {
   commissionBp: integer("commission_bp"),
   monthlyRentOre: ore("monthly_rent_ore"),
   commissionBase: commissionBase("commission_base").notNull().default("net_excl_vat"),
+  lossTreatment: lossTreatment("loss_treatment").notNull().default("zero"),
   rentProration: rentProration("rent_proration").notNull().default("daily"),
   note: text("note"),
   ...stamps(),
@@ -419,6 +425,8 @@ export const stockLocations = pgTable("stock_locations", {
   name: text("name").notNull(),
   isCentral: boolean("is_central").notNull().default(false),
   archivedAt: ts("archived_at"),
+  /** Senaste gången Awish-synken läste automatens fack. Bara synken skriver. */
+  awishSyncedAt: ts("awish_synced_at"),
   ...stamps(),
 });
 
@@ -438,6 +446,8 @@ export const stockEvents = pgTable("stock_events", {
   orderId: uuid("order_id"),
   transferGroupId: uuid("transfer_group_id"),
   note: text("note"),
+  /** Inventeringens källa: null = Binderlab, "awish" = Awish-synken. */
+  source: text("source"),
   ...created(),
 });
 

@@ -2,7 +2,8 @@
  * Butiksrapporten som A4 (utskriftsläget i src/components/report). Bygger bara på
  * ögonblicksbilden (`StoreSnapshot`): försäljning, ersättning steg för steg, titlar,
  * automater och service. Innehåller ALDRIG inköp, marginal, vinst eller andra butikers
- * siffror; testet i store-report.test.tsx renderar sidan och kontrollerar det.
+ * siffror, utom månadens summor i ersättningen när avtalet är en vinstdelning (då är de
+ * underlaget för butikens andel); testet i store-report.test.tsx kontrollerar båda.
  */
 
 import {
@@ -17,8 +18,15 @@ import {
 import { ReportBarChart } from "@/components/report/report-charts";
 import { ReportDocument, ReportPage, type ReportLayout } from "@/components/report/report-document";
 import { formatInt, formatSek, formatSekAxis } from "@/lib/format";
-import type { CompensationStep, StoreMachine, StoreTopTitle } from "@/reports";
+import type {
+  CompensationStep,
+  StoreCompensationBreakdown,
+  StoreMachine,
+  StoreTopTitle,
+} from "@/reports";
 import type { StoreSnapshot } from "@/server/reports/snapshot";
+
+import { periodText, pctText, splitsOf } from "@/reports";
 
 import {
   SECTION_TAG,
@@ -137,6 +145,69 @@ const stepColumns: ReportColumn<CompensationStep>[] = [
   },
 ];
 
+interface SplitRow {
+  key: string;
+  label: string;
+  amountOre: number | null;
+  strong?: boolean;
+}
+
+/**
+ * Vinstdelningen som en kort tabell: Försäljning, (Återbetalningar), VMB-moms, Inköp,
+ * Kortavgifter, Vinst, Er andel och (Hyra). Kostnaderna visas med minustecken.
+ */
+export function splitRows(c: StoreCompensationBreakdown): SplitRow[] {
+  const splits = splitsOf(c);
+  const many = splits.length > 1;
+  const rows: SplitRow[] = [];
+  for (const x of splits) {
+    const pre = many ? `${periodText(x.range)}: ` : "";
+    const pct = pctText(x.shareBp, x.shareBp % 100 === 0 ? 0 : 1);
+    const id = x.validFrom;
+    rows.push({ key: `${id}-sales`, label: `${pre}Försäljning`, amountOre: x.salesInclVatOre });
+    if (x.pending) {
+      rows.push({ key: `${id}-share`, label: `${pre}Er andel ${pct}`, amountOre: null });
+      continue;
+    }
+    const refunds = x.refundsOre ?? 0;
+    if (refunds !== 0)
+      rows.push({ key: `${id}-refund`, label: `${pre}Återbetalningar`, amountOre: -refunds });
+    rows.push(
+      { key: `${id}-vat`, label: `${pre}VMB-moms`, amountOre: -x.vmbVatOre },
+      { key: `${id}-buy`, label: `${pre}Inköp`, amountOre: -x.purchasesOre },
+      { key: `${id}-fee`, label: `${pre}Kortavgifter`, amountOre: -x.cardFeesOre },
+      { key: `${id}-res`, label: `${pre}Vinst`, amountOre: x.profitOre, strong: true },
+      { key: `${id}-share`, label: `${pre}Er andel ${pct}`, amountOre: x.storeShareOre },
+    );
+  }
+  if (c.commissionOre !== 0)
+    rows.push({ key: "commission", label: "Provision", amountOre: c.commissionOre });
+  if (c.rentOre !== 0) rows.push({ key: "rent", label: "Hyra", amountOre: c.rentOre });
+  return rows;
+}
+
+const splitColumns: ReportColumn<SplitRow>[] = [
+  {
+    key: "label",
+    header: "Post",
+    render: (r) => (r.strong ? <span className="font-medium text-fg">{r.label}</span> : r.label),
+  },
+  {
+    key: "amount",
+    header: "Belopp",
+    numeric: true,
+    width: "30%",
+    render: (r) =>
+      r.amountOre === null ? (
+        <span className="text-muted">i månadsrapporten</span>
+      ) : r.strong ? (
+        <span className="font-medium text-fg">{kronor(r.amountOre)}</span>
+      ) : (
+        kronor(r.amountOre)
+      ),
+  },
+];
+
 export function StoreReportDocument({
   snapshot,
   layout = "stack",
@@ -154,6 +225,13 @@ export function StoreReportDocument({
   const prevName = monthName(r.comparison.month);
   const steps = r.compensation.steps.filter((s) => s.kind !== "total");
   const total = r.compensation.steps.find((s) => s.kind === "total");
+  const splitList = splitsOf(r.compensation);
+  const split = splitList.length > 0;
+  // Med bara vinstdelning är totalen samma tal som "Er andel": raden visas inte två gånger.
+  const showTotal =
+    total !== undefined &&
+    (!split || r.compensation.rentOre !== 0 || r.compensation.commissionOre !== 0);
+  const sharesLoss = splitList.some((x) => x.lossTreatment === "proportional");
   const bestWeek = [...r.weeks].sort((a, b) => b.revenueOre - a.revenueOre)[0];
   const weekData = r.weeks.map((w) => ({ label: `v. ${w.week}`, value: w.revenueOre / 100 }));
 
@@ -203,8 +281,11 @@ export function StoreReportDocument({
               label: "Er ersättning",
               value: sekValue(r.compensation.totalOre),
               unit: "kr",
-              context:
-                r.compensation.model === "commission_and_rent"
+              context: split
+                ? r.compensation.rentOre > 0
+                  ? "andel + hyra"
+                  : "andel av vinsten"
+                : r.compensation.model === "commission_and_rent"
                   ? "provision + hyra"
                   : r.compensation.model === "commission"
                     ? "provision"
@@ -220,15 +301,24 @@ export function StoreReportDocument({
           index={1}
           eyebrow="Ersättning"
           title={`Er ersättning för ${monthName(snapshot.month)}: ${kronor(r.compensation.totalOre)}.`}
-          aside={r.compensation.modelText}
+          aside={split ? `Avtal: ${r.compensation.modelText}` : r.compensation.modelText}
         >
-          <ReportTable
-            caption={`Ersättningen till ${snapshot.store.name} uträknad steg för steg.`}
-            columns={stepColumns}
-            rows={steps}
-            rowKey={(s, i) => `${s.kind}-${i}`}
-          />
-          {total ? (
+          {split ? (
+            <ReportTable
+              caption={`Vinstdelningen med ${snapshot.store.name} för ${monthName(snapshot.month)}.`}
+              columns={splitColumns}
+              rows={splitRows(r.compensation)}
+              rowKey={(x) => x.key}
+            />
+          ) : (
+            <ReportTable
+              caption={`Ersättningen till ${snapshot.store.name} uträknad steg för steg.`}
+              columns={stepColumns}
+              rows={steps}
+              rowKey={(s, i) => `${s.kind}-${i}`}
+            />
+          )}
+          {total && showTotal ? (
             <div className="flex items-baseline justify-between gap-[4mm] border-t border-line-strong pt-[2mm] text-[12px] leading-[16px]">
               <span className="font-medium text-fg">{total.label}</span>
               <span className="text-muted">{total.calculation}</span>
@@ -236,8 +326,9 @@ export function StoreReportDocument({
             </div>
           ) : null}
           <ReportNote>
-            Provisionen räknas per köp på beloppet exklusive moms, med det avtal som gällde den
-            dagen. Hyran räknas per dag när avtalet gäller en del av månaden.
+            {split
+              ? `Vinst = försäljning − VMB-moms (20 % av försäljning minus inköp) − inköp − kortavgifter. ${sharesLoss ? "Vid förlust bär ni er andel av förlusten." : "Ingen vinst ger 0 kr."}`
+              : "Provisionen räknas per köp på beloppet exklusive moms, med det avtal som gällde den dagen. Hyran räknas per dag när avtalet gäller en del av månaden."}
           </ReportNote>
         </ReportSection>
 

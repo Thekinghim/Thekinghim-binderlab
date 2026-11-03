@@ -40,7 +40,7 @@ import type { StoreMonthRent } from "./rent";
 import type { GroupBy, IsoDate, Period, ProfitabilityInput } from "./types";
 
 /** Version av beräkningsreglerna. Sparas med rapporter (`reports.calc_version`). */
-export const CALC_VERSION = "1.1.0";
+export const CALC_VERSION = "1.2.0";
 
 /** Nyckel för ej fördelad hyra. */
 export const UNALLOCATED_KEY = "unallocated";

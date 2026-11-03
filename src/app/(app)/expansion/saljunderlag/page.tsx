@@ -130,13 +130,13 @@ export default async function SalesDeckPage({
                 <ReportSection
                   index={1}
                   eyebrow="Ersättningen"
-                  title="Provision på försäljningen och hyra för platsen."
-                  aside={`Provision ${kr(deck.commissionPerMonthOre!)} och hyra ${kr(deck.rentPerMonthOre!)} per automat och månad, i snitt.`}
+                  title="Butiken får hälften av vinsten."
+                  aside={`${kr(deck.commissionPerMonthOre! + deck.rentPerMonthOre!)} till butiken per automat och månad, i snitt.`}
                 >
                   <ol className="flex flex-col">
                     {[
-                      `Provisionen räknas på varje sålt pack, på beloppet exklusive moms, enligt butikens avtal.`,
-                      `Hyran är ett fast belopp per månad enligt avtalet och betalas oavsett försäljning.`,
+                      `Vinst = försäljning − moms (VMB) − inköp av korten − kortavgifter, per månad. Butiken får 50 %.`,
+                      `Butiken står bara för plats och el. Vi står för automaten, korten, påfyllning och service. En månad utan vinst ger 0 kr, aldrig en kostnad.`,
                       `Snittet är all ersättning till butikerna delat med antalet automatmånader (${hundredthsText(deck.machineMonthsHundredths)} under perioden). En automat en hel månad räknas som 1.`,
                     ].map((t, i) => (
                       <li

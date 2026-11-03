@@ -345,7 +345,7 @@ function buildStop(
   const short = packs.filter((p) => p.shortBy > 0);
   if (short.length > 0) {
     reasons.push(
-      `Centrallagret räcker inte: ${short.map((p) => `${p.shortBy} × ${p.titleName}`).join(", ")} saknas`,
+      `Vårt lager räcker inte: ${short.map((p) => `${p.shortBy} × ${p.titleName}`).join(", ")} saknas`,
     );
   }
   const totalPacks = packs.reduce((s, p) => s + p.quantity, 0);

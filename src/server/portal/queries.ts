@@ -87,7 +87,8 @@ export async function queryPortalAgreements(
 ): Promise<PortalAgreementRow[]> {
   const result = await rows(
     tx,
-    sql`select valid_from::text as valid_from, valid_to::text as valid_to, commission_bp, monthly_rent_ore
+    sql`select valid_from::text as valid_from, valid_to::text as valid_to, commission_bp, monthly_rent_ore,
+               commission_base::text as commission_base, loss_treatment::text as loss_treatment
         from public.portal_agreements(${storeId}::uuid)`,
   );
   return result.map((r) => ({
@@ -95,6 +96,9 @@ export async function queryPortalAgreements(
     validTo: strOrNull(r.valid_to) as IsoDate | null,
     commissionBp: numOrNull(r.commission_bp),
     monthlyRentOre: numOrNull(r.monthly_rent_ore),
+    commissionBase:
+      str(r.commission_base) === "profit_after_costs" ? "profit_after_costs" : "net_excl_vat",
+    lossTreatment: str(r.loss_treatment) === "proportional" ? "proportional" : "zero",
   }));
 }
 

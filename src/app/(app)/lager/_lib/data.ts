@@ -28,7 +28,14 @@ import { loadMachineHealthFor } from "@/server/data/health";
 import { querySlotAlerts, SLOT_ALERT_ROLES } from "@/server/data/core/slot-alerts";
 
 import { buildLagerModel, WINDOW_DAYS } from "./model";
-import { HISTORY_LIMIT, type HistoryEntry, type HistoryKind, type LagerView } from "./types";
+import {
+  HISTORY_LIMIT,
+  type HistoryEntry,
+  type HistoryKind,
+  type LagerTitle,
+  type LagerView,
+  type WarehouseRow,
+} from "./types";
 
 /** Roller som får registrera påfyllning och inventering (RLS och register_refill). */
 export const REGISTER_ROLES = ["owner", "admin", "refiller"] as const;
@@ -57,6 +64,21 @@ async function queryHasCentral(tx: Tx, orgId: string): Promise<boolean> {
     )
     .limit(1);
   return rows.length > 0;
+}
+
+/** Senaste läsningen av automatens fack från Awish, per automat. */
+async function queryAwishSynced(tx: Tx, orgId: string): Promise<Map<string, string>> {
+  const rows = await tx
+    .select({ machineId: s.stockLocations.machineId, at: s.stockLocations.awishSyncedAt })
+    .from(s.stockLocations)
+    .where(
+      and(
+        eq(s.stockLocations.organizationId, orgId),
+        sql`${s.stockLocations.machineId} is not null`,
+        sql`${s.stockLocations.awishSyncedAt} is not null`,
+      ),
+    );
+  return new Map(rows.map((r) => [r.machineId as string, new Date(r.at!).toISOString()]));
 }
 
 async function queryPerformers(tx: Tx, orgId: string): Promise<Map<string, string | null>> {
@@ -157,15 +179,8 @@ async function queryHistory(
   };
 }
 
-/**
- * Allt Lager visar: matrisen, centrallagret, påfyllningslistorna och historiken.
- * Alla roller; inga belopp. `now` är tidpunkten förfrågan räknar från.
- */
-export async function loadLagerFor(
-  viewer: Viewer,
-  args: LagerArgs,
-  now: Date = new Date(),
-): Promise<LagerView> {
+/** Lagermodellen (utan historik) för vyn och för Vårt lager under Prognos & inköp. */
+async function modelFor(viewer: Viewer, scope: DataScope, now: Date) {
   const role = await requireRoleFor(viewer.user, viewer.organization.id, ALL_ROLES);
   const orgId = viewer.organization.id;
   const timeZone = viewer.organization.timezone;
@@ -174,15 +189,18 @@ export async function loadLagerFor(
   // försäljning läses också men räknas inte i takten; saldot är alltid dagens.
   const salesFrom: IsoDate = addDays(today, -(WINDOW_DAYS + 1));
 
-  const [master, stock, sales, health, slotPeriods, slotAlerts] = await Promise.all([
-    loadMasterDataFor(viewer, now),
-    loadStockFor(viewer),
-    loadSalesCountsFor(viewer, { period: { start: salesFrom, end: today } }),
-    // Samma maskinhälsa som Drift: automater med fel får besök i dag i veckoplanen.
-    loadMachineHealthFor(viewer, now),
-    withUserDbFor(viewer.user, (tx) => querySlotPeriods(tx, orgId)),
-    withUserDbFor(viewer.user, (tx) => querySlotAlerts(tx, orgId)),
-  ]);
+  const [master, stock, sales, health, slotPeriods, slotAlerts, awishSyncedAt, hasCentral] =
+    await Promise.all([
+      loadMasterDataFor(viewer, now),
+      loadStockFor(viewer),
+      loadSalesCountsFor(viewer, { period: { start: salesFrom, end: today } }),
+      // Samma maskinhälsa som Drift: automater med fel får besök i dag i veckoplanen.
+      loadMachineHealthFor(viewer, now),
+      withUserDbFor(viewer.user, (tx) => querySlotPeriods(tx, orgId)),
+      withUserDbFor(viewer.user, (tx) => querySlotAlerts(tx, orgId)),
+      withUserDbFor(viewer.user, (tx) => queryAwishSynced(tx, orgId)),
+      withUserDbFor(viewer.user, (tx) => queryHasCentral(tx, orgId)),
+    ]);
 
   const model = buildLagerModel({
     now,
@@ -191,12 +209,26 @@ export async function loadLagerFor(
     master,
     stock: stock.rows,
     sales: sales.rows,
-    scope: args.scope,
-    hasCentral: await withUserDbFor(viewer.user, (tx) => queryHasCentral(tx, orgId)),
+    scope,
+    hasCentral,
     health,
     slotPeriods,
     slotAlerts,
+    awishSyncedAt,
   });
+  return { model, master, role, orgId, timeZone, today };
+}
+
+/**
+ * Allt Lager visar: matrisen, påfyllningslistorna och historiken (och centrallagret för
+ * registreringsdialogen). Alla roller; inga belopp. `now` är tidpunkten förfrågan räknar från.
+ */
+export async function loadLagerFor(
+  viewer: Viewer,
+  args: LagerArgs,
+  now: Date = new Date(),
+): Promise<LagerView> {
+  const { model, master, role, orgId, timeZone, today } = await modelFor(viewer, args.scope, now);
 
   const titleName = new Map(master.titles.map((t) => [t.id, t.name]));
   const machineCode = new Map(master.machines.map((m) => [m.id, m.code]));
@@ -230,9 +262,45 @@ export async function loadLagerFor(
     history: history.entries,
     historyTotal: history.total,
     counts: model.counts,
+    unknownCount: model.unknownCount,
     retiredTitles: model.retiredTitles,
     canRegister: (REGISTER_ROLES as readonly string[]).includes(role),
     canSetAlert: (SLOT_ALERT_ROLES as readonly string[]).includes(role),
     packListFirst: role === "refiller" || args.scope.machineId !== null,
+  };
+}
+
+/** Vårt lager (centrallagret) för Prognos & inköp: alltid hela organisationen. */
+export interface OurStockView {
+  readonly now: string;
+  readonly timeZone: string;
+  readonly windowDays: number;
+  readonly hasWarehouse: boolean;
+  readonly rows: WarehouseRow[];
+  /** Alla aktiva titler (för att inventera en titel som inte står i listan). */
+  readonly titles: LagerTitle[];
+  readonly canRegister: boolean;
+}
+
+export async function loadOurStockFor(
+  viewer: Viewer,
+  now: Date = new Date(),
+): Promise<OurStockView> {
+  const { model, master, role, timeZone } = await modelFor(
+    viewer,
+    { storeId: null, machineId: null },
+    now,
+  );
+  return {
+    now: now.toISOString(),
+    timeZone,
+    windowDays: model.window.days,
+    hasWarehouse: model.hasWarehouse,
+    rows: model.warehouse,
+    titles: master.titles
+      .filter((t) => !t.archived)
+      .map((t) => ({ id: t.id, name: t.name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "sv", { sensitivity: "base", numeric: true })),
+    canRegister: (REGISTER_ROLES as readonly string[]).includes(role),
   };
 }

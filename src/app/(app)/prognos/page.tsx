@@ -15,24 +15,29 @@ import { AccuracyView } from "./_components/accuracy-view";
 import { ForecastView } from "./_components/forecast-view";
 import { LostSalesView } from "./_components/lost-sales-view";
 import { OrdersView } from "./_components/orders-view";
+import { OurStock } from "./_components/our-stock";
+import { ourStockAside, ourStockTitle } from "./_lib/our-stock";
 import { PlanView } from "./_components/plan-view";
 import { SuppliersView } from "./_components/suppliers-view";
 import { ValuationView } from "./_components/valuation-view";
 import { pickTab, ViewTabs } from "../automater/_components/view-tabs";
 import { HashTab } from "./_components/hash-tab";
 import { buildPageModel, type PageModel } from "./_lib/model";
+import { loadOurStockFor, type OurStockView } from "../lager/_lib/data";
 
 export const metadata: Metadata = { title: "Prognos & inköp" };
 
 const TABS = [
-  { value: "bestall", label: "Beställ" },
+  { value: "bestall", label: "Vårt lager & beställ" },
   { value: "prognos", label: "Prognos" },
   { value: "forlorad", label: "Förlorad försäljning" },
-  { value: "lager", label: "Lager och leverantörer" },
+  { value: "lager", label: "Värde & leverantörer" },
 ] as const;
 
 /** Gamla #ankare → flik. Första värdet är standardfliken. */
 const HASH_TO_TAB: Record<string, string> = {
+  "vart-lager": "bestall",
+  centrallager: "bestall",
   inkopsforslag: "bestall",
   inkopsorder: "bestall",
   prognos: "prognos",
@@ -45,7 +50,7 @@ const HASH_TO_TAB: Record<string, string> = {
 const SECTION = "flex scroll-mt-28 flex-col gap-10 md:gap-12";
 
 /**
- * Prognos & inköp: vad slutsålt kostat, vad som säljer de kommande fyra veckorna (med
+ * Prognos & inköp: vårt eget lager (centrallagret, inventering per titel), vad slutsålt kostat, vad som säljer de kommande fyra veckorna (med
  * intervall och träffsäkerhet) och vad som ska beställas till centrallagret. Ägare, admin
  * och läsare; bara ägare och admin kan ändra inköpen. Påfyllaren skickas vidare.
  */
@@ -58,9 +63,15 @@ export default async function PrognosPage({
   const sp = await searchParams;
   const p = await loadPeriod(sp);
   let m: PageModel;
+  let stock: OurStockView;
   try {
-    const data = await loadPrognosFor(await currentViewer(), { period: p.period, scope: p.scope });
+    const viewer = await currentViewer();
+    const [data, our] = await Promise.all([
+      loadPrognosFor(viewer, { period: p.period, scope: p.scope }),
+      loadOurStockFor(viewer, new Date(ctx.now)),
+    ]);
     m = buildPageModel(data, new Date(ctx.now));
+    stock = our;
   } catch (error) {
     if (!(error instanceof DomainError)) throw error;
     return (
@@ -82,7 +93,7 @@ export default async function PrognosPage({
       : (sp as Record<string, string | string[] | undefined>).vy;
   const tab = pickTab(TABS, raw);
   const meta = m.scoped
-    ? [...m.meta, { label: "Centrallager", value: "Hela organisationen" }]
+    ? [...m.meta, { label: "Vårt lager", value: "Hela organisationen" }]
     : m.meta;
   const rise = (i: number) => ({ "--i": i }) as React.CSSProperties;
 
@@ -112,10 +123,26 @@ export default async function PrognosPage({
       <div key={tab} className="flex flex-col gap-12 md:gap-16">
         {tab === "bestall" ? (
           <>
-            <section aria-labelledby="inkopsforslag" className={`rise ${SECTION}`} style={rise(1)}>
+            <section aria-labelledby="vart-lager" className={`rise ${SECTION}`} style={rise(1)}>
+              <SectionHeader
+                id="vart-lager"
+                eyebrow="Vårt lager"
+                title={ourStockTitle(stock.rows)}
+                aside={stock.rows.length > 0 ? ourStockAside(stock.rows) : undefined}
+              />
+              <OurStock
+                rows={stock.rows}
+                titles={stock.titles}
+                timeZone={stock.timeZone}
+                now={stock.now}
+                windowDays={stock.windowDays}
+                canRegister={stock.canRegister}
+              />
+            </section>
+            <section aria-labelledby="inkopsforslag" className={`rise ${SECTION}`} style={rise(2)}>
               <SectionHeader
                 id="inkopsforslag"
-                eyebrow="Inköpsförslag · centrallagret"
+                eyebrow="Inköpsförslag · vårt lager"
                 title={m.plan.heading.title}
                 aside={m.plan.heading.aside}
               />
@@ -126,7 +153,7 @@ export default async function PrognosPage({
                 today={m.today}
               />
             </section>
-            <section aria-labelledby="inkopsorder" className={`rise ${SECTION}`} style={rise(2)}>
+            <section aria-labelledby="inkopsorder" className={`rise ${SECTION}`} style={rise(3)}>
               <SectionHeader
                 id="inkopsorder"
                 eyebrow="Inköpsorder"

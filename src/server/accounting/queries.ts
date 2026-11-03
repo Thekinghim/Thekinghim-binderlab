@@ -556,6 +556,8 @@ export interface AgreementRecord {
   readonly validTo: IsoDate | null;
   readonly commissionBp: number | null;
   readonly monthlyRentOre: number | null;
+  /** 'profit_after_costs' = vinstdelning (commissionBp är butikens andel av vinsten). */
+  readonly commissionBase: "net_excl_vat" | "profit_after_costs";
   readonly note: string | null;
 }
 
@@ -569,6 +571,7 @@ export async function queryAgreementRecords(tx: Tx, orgId: string): Promise<Agre
       validTo: s.storeAgreements.validTo,
       commissionBp: s.storeAgreements.commissionBp,
       monthlyRentOre: s.storeAgreements.monthlyRentOre,
+      commissionBase: s.storeAgreements.commissionBase,
       note: s.storeAgreements.note,
     })
     .from(s.storeAgreements)

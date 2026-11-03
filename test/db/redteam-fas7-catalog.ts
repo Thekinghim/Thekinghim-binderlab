@@ -165,6 +165,20 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: id("contracts"),
   },
+  {
+    module: "@/app/(app)/avtal/actions",
+    name: "createContract",
+    allowed: OP,
+    args: (c) => [
+      sink(c, { target: `store:${c.idsA.stores}`, validFrom: "2099-01-01", confirmHistory: true }),
+    ],
+  },
+  {
+    module: "@/app/(app)/avtal/actions",
+    name: "setContractStatus",
+    allowed: OP,
+    args: (c) => [sink(c, { id: c.idsA.contracts, status: "sent" })],
+  },
   // Butiker
   {
     module: "@/app/(app)/butiker/actions",
@@ -371,6 +385,52 @@ export const ACTIONS: ActionSpec[] = [
     name: "archiveFixedCost",
     allowed: OP,
     args: id("fixed_costs"),
+  },
+  // Ekonomi → Bokföring (månadspaket, ingen automatisk bokföring)
+  {
+    module: "@/app/(app)/ekonomi/bokforing-actions",
+    name: "saveBokforingSettings",
+    allowed: OP,
+    args: (c) => [
+      sink(c, {
+        plan: {
+          settlement: "1580",
+          sales_vmb: "3211",
+          vat_vmb: "2616",
+          card_fees: "6040",
+          store_share: "6090",
+          rent: "5010",
+          store_payable: "2990",
+        },
+        series: "A",
+        orgNumber: "",
+        purchaseBasis: "cost_of_goods",
+        openingCarryOre: 0,
+      }),
+    ],
+  },
+  {
+    module: "@/app/(app)/ekonomi/bokforing-actions",
+    name: "setMonthSent",
+    allowed: OP,
+    args: (c) => [sink(c, { month: "2025-03", sent: true })],
+  },
+  {
+    module: "@/app/(app)/ekonomi/bokforing-actions",
+    name: "uploadReceipts",
+    allowed: OP,
+    args: () => {
+      const form = new FormData();
+      form.set("month", "2025-03");
+      form.append("file", new File([new TextEncoder().encode("%PDF-1.4\n")], "k.pdf"));
+      return [form];
+    },
+  },
+  {
+    module: "@/app/(app)/ekonomi/bokforing-actions",
+    name: "archiveReceipt",
+    allowed: OP,
+    args: id("bookkeeping_receipts"),
   },
   // Expansion
   {

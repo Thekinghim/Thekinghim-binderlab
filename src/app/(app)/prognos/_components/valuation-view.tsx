@@ -39,7 +39,7 @@ export function ValuationView({ model }: { model: ValuationModel }) {
       },
       {
         key: "warehouse",
-        header: "Centrallager",
+        header: "Vårt lager",
         numeric: true,
         hideOnMobile: true,
         sortValue: (r) => r.warehouseOnHand,
@@ -144,7 +144,7 @@ export function ValuationView({ model }: { model: ValuationModel }) {
             format: kr,
             primary: true,
           },
-          { id: "warehouse", label: "Centrallager", value: model.warehouseValueOre, format: kr },
+          { id: "warehouse", label: "Vårt lager", value: model.warehouseValueOre, format: kr },
           { id: "machines", label: "I automaterna", value: model.machineValueOre, format: kr },
           { id: "onOrder", label: "Beställt", value: model.onOrderValueOre, format: kr },
         ]}
@@ -152,7 +152,7 @@ export function ValuationView({ model }: { model: ValuationModel }) {
       {model.rows.length === 0 ? (
         <StateMessage
           kind="empty"
-          message="Inget lager är registrerat i centrallagret eller automaterna."
+          message="Inget lager är registrerat, varken hemma eller i automaterna."
           action={{ label: "Öppna lagret", href: "/lager" }}
         />
       ) : (

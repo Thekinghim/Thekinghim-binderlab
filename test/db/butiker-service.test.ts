@@ -227,7 +227,7 @@ describe("avtal", () => {
     const id = await newStore();
     expect(await createAgreementFor(owner, { storeId: id, validFrom: TODAY }, TODAY)).toEqual({
       ok: false,
-      error: "Ange provision, hyra eller båda.",
+      error: "Ange andel, hyra eller båda.",
     });
   });
 

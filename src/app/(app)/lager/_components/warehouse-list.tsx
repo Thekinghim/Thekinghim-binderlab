@@ -38,7 +38,7 @@ export function WarehouseList({
         <span className="label text-right text-subtle">I lager</span>
         <span className="label text-left text-subtle md:text-left">Status</span>
       </div>
-      <ul aria-label="Centrallager per titel">
+      <ul aria-label="Vårt lager per titel">
         {rows.map((r) => {
           const title = titles.get(r.titleId);
           if (!title) return null;
@@ -77,7 +77,7 @@ export function WarehouseList({
                     cls,
                     "transition-colors duration-fast ease-instrument hover:bg-hover focus-visible:-outline-offset-2",
                   )}
-                  aria-label={`${title.name} i centrallagret: ${formatInt(r.onHand)} pack, ${r.onHand <= 0 ? "slut" : `räcker ${days}`}, behov ${formatInt(r.weekNeed)} den närmaste veckan. Status ${STATUS_LABEL[r.status]}. Registrera inventering.`}
+                  aria-label={`${title.name} i vårt lager: ${formatInt(r.onHand)} pack, ${r.onHand <= 0 ? "slut" : `räcker ${days}`}, behov ${formatInt(r.weekNeed)} den närmaste veckan. Status ${STATUS_LABEL[r.status]}. Registrera inventering.`}
                   onClick={() => onSelect(title, r)}
                 >
                   {body}

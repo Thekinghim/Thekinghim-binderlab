@@ -6,7 +6,15 @@
 
 import { z } from "zod";
 
-import { addDays, isIsoDate, maxDate, minDate, type IsoDate } from "@/domain";
+import {
+  DEFAULT_PROFIT_SHARE_BP,
+  addDays,
+  isIsoDate,
+  maxDate,
+  minDate,
+  type CommissionBase,
+  type IsoDate,
+} from "@/domain";
 import { parseAmountOre } from "@/import/amount";
 
 const uuid = z.uuid({ message: "Ogiltigt id." });
@@ -112,21 +120,43 @@ export function parseRentOre(raw: string | null | undefined): Parsed<number | nu
   return { ok: true, value: r.ore };
 }
 
+/**
+ * Ersättningsmodellen i formuläret: "split" = vinstdelning (standard för nya avtal, 50 %
+ * av vinsten efter kostnader om ingen andel anges), "sales" = andel av försäljningen exkl.
+ * moms. Utelämnad = "sales" (äldre anrop som bara skickar provision).
+ */
+export const AGREEMENT_MODELS = ["split", "sales"] as const;
+export type AgreementModel = (typeof AGREEMENT_MODELS)[number];
+
 const termsShape = {
+  model: z
+    .union([z.enum(AGREEMENT_MODELS), z.literal("")], {
+      error: "Välj vinstdelning eller andel av försäljning.",
+    })
+    .optional()
+    .nullable(),
   commission: z.string().optional().nullable(),
   rent: z.string().optional().nullable(),
   note: optionalText(500, "Anteckningen"),
 };
 
-function withTerms<T extends { commission?: string | null; rent?: string | null }>(
+function withTerms<
+  T extends {
+    model?: AgreementModel | "" | null;
+    commission?: string | null;
+    rent?: string | null;
+  },
+>(
   v: T,
   ctx: z.RefinementCtx,
 ):
-  | (Omit<T, "commission" | "rent"> & {
+  | (Omit<T, "commission" | "rent" | "model"> & {
       commissionBp: number | null;
       monthlyRentOre: number | null;
+      commissionBase: CommissionBase;
     })
   | never {
+  const split = v.model === "split";
   const c = parsePercentBp(v.commission);
   if (!c.ok) {
     ctx.addIssue({ code: "custom", message: c.message, path: ["commission"] });
@@ -137,14 +167,32 @@ function withTerms<T extends { commission?: string | null; rent?: string | null 
     ctx.addIssue({ code: "custom", message: r.message, path: ["rent"] });
     return z.NEVER;
   }
+  if (split) {
+    const { commission: _c, rent: _r, model: _m, ...rest } = v;
+    void _c;
+    void _r;
+    void _m;
+    return {
+      ...rest,
+      commissionBp: c.value ?? DEFAULT_PROFIT_SHARE_BP,
+      monthlyRentOre: r.value,
+      commissionBase: "profit_after_costs" as const,
+    };
+  }
   if (c.value === null && r.value === null) {
-    ctx.addIssue({ code: "custom", message: "Ange provision, hyra eller båda." });
+    ctx.addIssue({ code: "custom", message: "Ange andel, hyra eller båda." });
     return z.NEVER;
   }
-  const { commission: _c, rent: _r, ...rest } = v;
+  const { commission: _c, rent: _r, model: _m, ...rest } = v;
   void _c;
   void _r;
-  return { ...rest, commissionBp: c.value, monthlyRentOre: r.value };
+  void _m;
+  return {
+    ...rest,
+    commissionBp: c.value,
+    monthlyRentOre: r.value,
+    commissionBase: "net_excl_vat" as const,
+  };
 }
 
 export const newAgreementSchema = z
@@ -356,18 +404,22 @@ export function agreementChangeImpact(
     readonly validTo: IsoDate | null;
     readonly commissionBp: number | null;
     readonly monthlyRentOre: number | null;
+    readonly commissionBase?: CommissionBase;
   },
   after: {
     readonly validTo: IsoDate | null;
     readonly commissionBp: number | null;
     readonly monthlyRentOre: number | null;
+    readonly commissionBase?: CommissionBase;
   },
   today: IsoDate,
 ): DayRange | null {
   const yesterday = addDays(today, -1);
   const ranges: DayRange[] = [];
   const termsChanged =
-    before.commissionBp !== after.commissionBp || before.monthlyRentOre !== after.monthlyRentOre;
+    before.commissionBp !== after.commissionBp ||
+    before.monthlyRentOre !== after.monthlyRentOre ||
+    (before.commissionBase ?? "net_excl_vat") !== (after.commissionBase ?? "net_excl_vat");
   if (termsChanged) {
     let end = yesterday;
     if (before.validTo !== null) end = minDate(end, before.validTo);

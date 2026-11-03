@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import type { LeadPotential } from "@/analytics/expansion";
@@ -10,7 +11,7 @@ import { cn } from "@/lib/cn";
 import { formatInt, MISSING } from "@/lib/format";
 
 import { deleteLead, saveLead, saveStoreProfile, setLeadArchived, setLeadStage } from "../actions";
-import { bpToInput, dateText, kr, oreToInput, paybackShort } from "../_lib/display";
+import { dateText, kr, oreToInput, paybackShort } from "../_lib/display";
 import type { Named } from "../_lib/data";
 import {
   LEAD_STAGE_LABEL,
@@ -120,13 +121,6 @@ export function PipelineView({
       { name: "contactName", label: "Kontaktperson", type: "text" },
       { name: "contactPhone", label: "Telefon", type: "tel" },
       { name: "contactEmail", label: "E-post", type: "email", span: 2 },
-      {
-        name: "commissionBp",
-        label: "Erbjuden provision",
-        type: "decimal",
-        suffix: "%",
-        hint: "Tomt = som liknande platsers avtal.",
-      },
       { name: "monthlyRentOre", label: "Erbjuden hyra per månad", type: "decimal", suffix: "kr" },
       {
         name: "purchaseOre",
@@ -166,7 +160,6 @@ export function PipelineView({
     contactName: l?.contactName ?? "",
     contactPhone: l?.contactPhone ?? "",
     contactEmail: l?.contactEmail ?? "",
-    commissionBp: bpToInput(l?.commissionBp),
     monthlyRentOre: oreToInput(l?.monthlyRentOre),
     purchaseOre: oreToInput(l?.purchaseOre),
     installationOre: oreToInput(l?.installationOre),
@@ -288,6 +281,12 @@ export function PipelineView({
                         >
                           Ändra
                         </Button>
+                        <Link
+                          href={`/avtal?skapa=${lead.storeId ? `store:${lead.storeId}` : `lead:${lead.id}`}`}
+                          className="inline-flex h-8 items-center rounded-sm border border-line-strong bg-surface px-3 text-sm font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover"
+                        >
+                          Skapa avtal
+                        </Link>
                       </>
                     ) : null}
                   </div>

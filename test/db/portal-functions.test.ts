@@ -212,14 +212,28 @@ describe("vad funktionerna lämnar ut", () => {
     }
   });
 
-  it("portal_agreements ger bara butikens villkor (provision och hyra)", async () => {
+  it("portal_agreements ger bara butikens villkor (andel, underlag och hyra)", async () => {
     const a1 = await asUser(f.storeA1, (tx) => queryPortalAgreements(tx, f.a.storeId));
     expect(a1).toEqual([
-      { validFrom: "2025-01-01", validTo: null, commissionBp: 2000, monthlyRentOre: null },
+      {
+        validFrom: "2025-01-01",
+        validTo: null,
+        commissionBp: 2000,
+        monthlyRentOre: null,
+        commissionBase: "net_excl_vat",
+        lossTreatment: "zero",
+      },
     ]);
     const a2 = await asUser(f.storeA2, (tx) => queryPortalAgreements(tx, f.a2.storeId));
     expect(a2).toEqual([
-      { validFrom: "2025-01-01", validTo: null, commissionBp: 1500, monthlyRentOre: 50000 },
+      {
+        validFrom: "2025-01-01",
+        validTo: null,
+        commissionBp: 1500,
+        monthlyRentOre: 50000,
+        commissionBase: "net_excl_vat",
+        lossTreatment: "zero",
+      },
     ]);
   });
 

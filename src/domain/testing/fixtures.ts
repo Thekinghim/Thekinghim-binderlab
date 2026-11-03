@@ -82,7 +82,12 @@ export function agreement(
   storeId: string,
   validFrom: string,
   validTo: string | null,
-  terms: { commissionBp?: number | null; monthlyRentOre?: number | null },
+  terms: {
+    commissionBp?: number | null;
+    monthlyRentOre?: number | null;
+    commissionBase?: StoreAgreement["commissionBase"];
+    lossTreatment?: StoreAgreement["lossTreatment"];
+  },
 ): StoreAgreement {
   return {
     storeId,
@@ -90,6 +95,8 @@ export function agreement(
     validTo,
     commissionBp: terms.commissionBp ?? null,
     monthlyRentOre: terms.monthlyRentOre ?? null,
+    ...(terms.commissionBase ? { commissionBase: terms.commissionBase } : {}),
+    ...(terms.lossTreatment ? { lossTreatment: terms.lossTreatment } : {}),
   };
 }
 

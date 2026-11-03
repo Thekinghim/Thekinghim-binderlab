@@ -96,6 +96,10 @@ describe("tabeller", () => {
         "assortment_changes",
         "audit_log",
         "baselines",
+        // Bokföring: kontoplan, skickade månader, kvitton (20261103210000_bokforing.sql).
+        "bookkeeping_months",
+        "bookkeeping_receipts",
+        "bookkeeping_settings",
         "contracts",
         "data_sources",
         "deviation_reviews",
