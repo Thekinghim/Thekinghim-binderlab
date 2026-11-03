@@ -8,10 +8,12 @@ import { requireRoute } from "@/server/data/core";
 import { EN_DASH, NBSP, formatDecimal, formatInt, formatPeriodShort } from "@/lib/format";
 
 import { DailyChart } from "./_hem/daily-chart";
+import { GoalsRow } from "./_hem/goals-row";
 import { HomeKpis } from "./_hem/home-kpis";
 import { carriedParams } from "./_hem/links";
 import { loadHome } from "./_hem/load";
 import { HemSkeleton } from "./_hem/skeleton";
+import { TodayPaceCard } from "./_hem/today-pace";
 import type { HomeDaily, HomeModel } from "./_hem/model";
 import { ArrowLink, InsightList, TodoList, TopTitles, WarningLine } from "./_hem/sections";
 import { OnboardingChecklist } from "./kom-igang/_components/onboarding-checklist";
@@ -43,8 +45,18 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
 
 async function HemContent({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const sp = await searchParams;
-  const { model, today, scope, canEdit, lostSales, onboarding, staleImport, timeZone } =
-    await loadHome(sp);
+  const {
+    model,
+    today,
+    scope,
+    canEdit,
+    lostSales,
+    onboarding,
+    staleImport,
+    goals,
+    pace,
+    timeZone,
+  } = await loadHome(sp);
   const { headline } = model;
 
   const periodText = (p: { start: string; end: string }) =>
@@ -137,6 +149,7 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
           ) : null}
 
           <div className="rise mt-8 flex flex-col gap-4 md:mt-10" style={rise(1)}>
+            {pace ? <TodayPaceCard pace={pace} /> : null}
             <HomeKpis kpis={model.kpis} ariaLabel={comparisonLabel} />
             <WarningLine
               unpriced={model.unpriced}
@@ -146,6 +159,18 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
               canEdit={canEdit}
             />
           </div>
+
+          {goals ? (
+            <div className="mt-6 empty:hidden md:mt-8">
+              <GoalsRow
+                goals={goals}
+                today={today}
+                canEdit={canEdit}
+                href={`/expansion${carriedParams(sp, { vy: "mal" })}`}
+                style={rise(1)}
+              />
+            </div>
+          ) : null}
 
           {headline.state === "no-orders" ? (
             <StateMessage

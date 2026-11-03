@@ -864,6 +864,18 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       titleId: title!.id,
       alertAtUnits: 0,
     });
+    // Fyllnadsgrad (20261104163000_fack_kapacitet.sql): kapacitet från Awish. Bara synken
+    // (databasägaren) skriver tabellen.
+    await tx.execute(sql`set local role postgres`);
+    await tx.insert(s.machineSlotCapacity).values({
+      ...org,
+      machineId: machine!.id,
+      titleId: title!.id,
+      capacity: 12,
+      channels: ["A1", "A2"],
+      syncedAt: new Date("2025-03-01T10:00:00Z"),
+    });
+    await tx.execute(sql`set local role authenticated`);
     await tx.insert(s.assortmentChanges).values({
       ...org,
       machineId: machine!.id,

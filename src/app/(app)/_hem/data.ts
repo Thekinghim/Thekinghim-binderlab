@@ -8,10 +8,11 @@
  * Hem, och påfyllaren får aldrig något belopp.
  */
 
+import type { GoalProgress } from "@/analytics/goals";
 import type { TodoItem } from "@/analytics/todos";
 import { routeById } from "@/components/shell/nav";
 import type { SearchParamsInput } from "@/components/shell/period-state";
-import { addDays, type IsoDate, type Period } from "@/domain";
+import { addDays, monthOf, type IsoDate, type Period } from "@/domain";
 import { AuthorizationError } from "@/server/access";
 import type {
   AppContext,
@@ -24,6 +25,8 @@ import type {
 import type { OnboardingStatus } from "@/server/onboarding/model";
 import type { LostSalesSummary } from "@/server/purchasing/types";
 
+import { homeGoals, type HomeGoal } from "./goals";
+import { PACE_WEEKS, periodIncludesToday, todayPace, type TodayPace } from "./pace";
 import {
   buildHomeModel,
   emptyRefillsInScope,
@@ -48,6 +51,8 @@ export interface HomeLoaders {
   onboarding?(orgId: string): Promise<OnboardingStatus | null>;
   /** Senaste synk (för varningen om inaktuell import). Utelämnad = ingen varning. */
   sync?(): Promise<SyncInfo | null>;
+  /** Utfall och prognos för målen i dagens månad (alla omfattningar). Utelämnad = visas inte. */
+  goals?(today: IsoDate): Promise<GoalProgress[]>;
 }
 
 /** Filtret som det visas: automatens kod och namn, eller butikens namn. */
@@ -73,6 +78,10 @@ export interface HomeData {
   readonly onboarding: OnboardingStatus | null;
   /** Senaste importen när den är gammal och perioden går förbi den, annars null. */
   readonly staleImport: HomeStaleImport | null;
+  /** Mål i dagens månad (högst tre, efter filtret); null när laddaren saknas. */
+  readonly goals: HomeGoal[] | null;
+  /** I dag hittills mot samma klockslag en vanlig veckodag; null när perioden inte har i dag. */
+  readonly pace: TodayPace | null;
   readonly timeZone: string;
 }
 
@@ -94,13 +103,24 @@ export async function loadHomeWith(
   const later =
     p.period.end < ctx.today ? { start: addDays(p.period.end, 1), end: ctx.today } : null;
 
-  const [input, laterInput, todos, lost, onboarding, sync] = await Promise.all([
+  // Dagens takt: samma veckodag de senaste veckorna och i dag, med samma filter.
+  const withPace = periodIncludesToday(p.period, ctx.today);
+
+  const [input, laterInput, paceInput, todos, lost, onboarding, sync, goals] = await Promise.all([
     loaders.domainInput({ period: p.period, compare: p.compare, ...p.scope }),
     later ? loaders.domainInput({ period: later, compare: null, ...p.scope }) : null,
+    withPace
+      ? loaders.domainInput({
+          period: { start: addDays(ctx.today, -7 * PACE_WEEKS), end: ctx.today },
+          compare: null,
+          ...p.scope,
+        })
+      : null,
     hasTodos ? loaders.todos() : Promise.resolve(null),
     loaders.lostSales ? loaders.lostSales(p.period, p.scope) : Promise.resolve(null),
     loaders.onboarding ? loaders.onboarding(ctx.organization.id) : Promise.resolve(null),
     loaders.sync ? loaders.sync() : Promise.resolve(null),
+    loaders.goals ? loaders.goals(ctx.today) : Promise.resolve(null),
   ]);
 
   const model = buildHomeModel({
@@ -154,6 +174,45 @@ export async function loadHomeWith(
     ),
     onboarding: onboarding && !onboarding.complete ? onboarding : null,
     staleImport: homeStaleImport(sync, p.period.end, ctx.now, ctx.timeZone),
+    goals: goals
+      ? homeGoals(
+          goals,
+          {
+            month: monthOf(ctx.today),
+            storeId: p.scope.storeId,
+            machineId: p.scope.machineId,
+            machineStoreId: p.scope.machineId
+              ? (input.machines.find((m) => m.id === p.scope.machineId)?.storeId ?? null)
+              : null,
+          },
+          { stores: input.stores, machines: input.machines },
+        )
+      : null,
+    pace: paceInput ? paceOf(paceInput, sync, ctx, p.dataStart) : null,
     timeZone: ctx.timeZone,
   };
+}
+
+/**
+ * Klockslaget är det tidigaste av nu och senaste lyckade synk (senare order finns inte än).
+ * Utan någon synk alls (bara manuell import) visas inget: dagens order kommer inte löpande.
+ */
+function paceOf(
+  input: DomainInput,
+  sync: SyncInfo | null,
+  ctx: AppContext,
+  dataStart: IsoDate | null,
+): TodayPace | null {
+  if (sync && !sync.syncedAt) return null;
+  const now = Date.parse(ctx.now);
+  const synced = sync?.syncedAt ? Date.parse(sync.syncedAt) : Number.NaN;
+  return todayPace({
+    orders: input.current.orders,
+    today: ctx.today,
+    cutoffMs: Number.isFinite(synced) ? Math.min(now, synced) : now,
+    timeZone: ctx.timeZone,
+    vatRateBp: input.current.settings.vatRateBp,
+    dataStart,
+    weeks: PACE_WEEKS,
+  });
 }

@@ -18,7 +18,7 @@ import {
   type UnitEconomicsComparison,
 } from "@/analytics/expansion";
 import { binderlabEffect, type EffectSeries } from "@/analytics/effect";
-import { goalProgress, type GoalProgress } from "@/analytics/goals";
+import type { GoalProgress } from "@/analytics/goals";
 import {
   newMachineScenario,
   priceChangeScenario,
@@ -27,10 +27,7 @@ import {
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { toURLSearchParams } from "@/components/shell/period-state";
 import {
-  addDays,
-  maxDate,
   minDate,
-  monthEnd,
   monthStart,
   type IsoDate,
   type IsoMonth,
@@ -47,6 +44,7 @@ import {
   type AppContext,
   type AppPeriod,
 } from "@/server/data/core";
+import { goalsProgress } from "@/server/data/goals";
 
 import {
   clipToData,
@@ -449,38 +447,6 @@ export async function loadExpansionPage(sp: SearchParamsInput): Promise<Expansio
     pipeline,
     deck: salesDeck(input.current),
   };
-}
-
-/** Utfall och prognos per mål (laddar order för målens månader och 28 dagar bakåt). */
-async function goalsProgress(
-  goals: readonly GoalRecord[],
-  today: IsoDate,
-  stores: readonly { id: string; name: string }[],
-  machines: readonly { id: string; name: string }[],
-): Promise<GoalProgress[]> {
-  if (goals.length === 0) return [];
-  let start: IsoDate = addDays(today, -27);
-  let end: IsoDate = today;
-  for (const g of goals) {
-    start = minDate(start, monthStart(g.month as IsoMonth));
-    end = maxDate(end, monthEnd(g.month as IsoMonth));
-  }
-  const input = await loadDomainInput({ period: { start, end: minDate(end, today) } });
-  return goalProgress({
-    ...input.current,
-    goals: goals.map((g) => ({
-      id: g.id,
-      month: g.month as IsoMonth,
-      metric: g.metric,
-      target: g.target,
-      scope: g.scope,
-      storeId: g.storeId,
-      machineId: g.machineId,
-    })),
-    asOf: today,
-    stores,
-    machines,
-  });
 }
 
 // ---------------------------------------------------------------------------

@@ -112,6 +112,21 @@ export const slotAlerts = pgTable("slot_alerts", {
   ...stamps(),
 });
 
+/**
+ * Kapacitet (pack) och fack per automat och titel från Awish
+ * (20261104163000_fack_kapacitet.sql). Skrivs bara av synken.
+ */
+export const machineSlotCapacity = pgTable("machine_slot_capacity", {
+  id: id(),
+  organizationId: orgId(),
+  machineId: uuid("machine_id").notNull(),
+  titleId: uuid("title_id").notNull(),
+  capacity: integer("capacity").notNull(),
+  channels: text("channels").array().notNull().default([]),
+  syncedAt: ts("synced_at").notNull(),
+  ...stamps(),
+});
+
 /** En genomförd sortimentsrekommendation (uppföljningen räknas fram). */
 export const assortmentChanges = pgTable("assortment_changes", {
   id: id(),

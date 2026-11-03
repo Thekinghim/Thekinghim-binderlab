@@ -23,7 +23,7 @@ import {
   type StockLevelRef,
 } from "@/analytics/todos";
 import type { MachineHealth } from "@/analytics/health";
-import { planVisits, type VisitPlan } from "@/analytics/visits";
+import { planVisits, type MachineCapacity, type VisitPlan } from "@/analytics/visits";
 import { retiredPairs } from "@/analytics/todos/assortment";
 import { planNow, weeklyVisitPlan } from "@/server/data/visit-plan";
 import {
@@ -89,6 +89,11 @@ export interface LagerModelInput {
    * per automat. Utelämnad = ingen automat läses från Awish.
    */
   readonly awishSyncedAt?: ReadonlyMap<string, string> | null;
+  /**
+   * Kapacitet per automat och titel från Awish (machine_slot_capacity). Finns den fylls
+   * titeln till kapaciteten i stället för 7 dagars försäljning. Utelämnad = okänd.
+   */
+  readonly capacities?: readonly MachineCapacity[] | null;
 }
 
 export interface LagerModel {
@@ -252,6 +257,9 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
   // använder den samma fönster som matrisen och Att göra (14 hela dagar t.o.m. i går)
   // och samma slutdatum (domain.stockoutDate(i går, …)). Saldot är dagens.
   const planAt = planNow(asOf, timeZone, now);
+  const capacities = (input.capacities ?? []).filter(
+    (c) => !retired.has(pairKey(c.machineId, c.titleId)),
+  );
   const planBase = {
     orders,
     titles: master.titles,
@@ -269,6 +277,7 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
     warehouseStock: hasWarehouse ? warehouseStock : null,
     health: input.health ?? null,
     slotPeriods: input.slotPeriods ?? null,
+    capacities,
     today,
     timeZone,
     now,
@@ -291,6 +300,7 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
         ...planBase,
         machines: [m],
         stock: machineStock.filter((s) => s.machineId === m.id),
+        capacities: capacities.filter((c) => c.machineId === m.id),
         extraVisits: [{ machineId: m.id, reason: "", needBy: asOf }],
         options: {
           timeZone,
@@ -319,6 +329,8 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
           onHand: p.onHandNow,
           target: p.target,
           shortBy: p.shortBy,
+          capacity: p.capacity,
+          channels: p.channels,
         });
       } else if (p.shortBy > 0) {
         missing.push({
