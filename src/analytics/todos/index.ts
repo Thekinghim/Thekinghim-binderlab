@@ -15,6 +15,7 @@ import { missingPriceTodos } from "./missing-price";
 import { refillTodos } from "./refill";
 import { reportReviewTodos } from "./report-review";
 import { reportTodos } from "./reports";
+import { silentTitleTodos } from "./silent-title";
 import { staleMachineTodos } from "./stale-machine";
 import type { TodoInput, TodoItem } from "./types";
 
@@ -27,9 +28,14 @@ export function computeTodos(input: TodoInput, now: Date | string | number): Tod
   const ctx = createTodoContext(input, now);
   const stale = staleMachineTodos(ctx);
   const staleMachines = new Set(stale.flatMap((t) => t.evidence.machineIds));
+  const refills = refillTodos(ctx);
+  const refillStake = new Map(
+    refills.map((t) => [t.key.slice("refill:".length), t.atStakeOre ?? 0] as const),
+  );
   return sortTodos([
-    ...refillTodos(ctx),
+    ...refills,
     ...stale,
+    ...silentTitleTodos(ctx, staleMachines, refillStake),
     ...alertTodos(ctx, staleMachines),
     ...reportReviewTodos(ctx),
     ...reportTodos(ctx),
@@ -72,4 +78,5 @@ export { reviewLink } from "./report-review";
 export { todoInScope, type ScopeMachine, type TodoScope } from "./scope";
 export { missingPriceFingerprint } from "./missing-price";
 export { refillFingerprint, withSlotAlerts } from "./refill";
+export { silentTitles, type SilentTitle } from "./silent-title";
 export type * from "./types";

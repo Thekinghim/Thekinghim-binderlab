@@ -561,6 +561,19 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [sink(c, { alertAtUnits: 3 })],
   },
+  // Vårt lager
+  {
+    module: "@/app/(app)/vart-lager/actions",
+    name: "setHomeCount",
+    allowed: OP,
+    args: (c) => [sink(c, { counted: 7 })],
+  },
+  {
+    module: "@/app/(app)/vart-lager/actions",
+    name: "addReceipt",
+    allowed: OP,
+    args: (c) => [sink(c, { quantity: 2 })],
+  },
   // Marknad
   {
     module: "@/app/(app)/marknad/actions",

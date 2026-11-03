@@ -25,6 +25,8 @@ export interface MachineCapacity {
   readonly machineId: string;
   readonly titleId: string;
   readonly capacity: number;
+  /** Facken (kanalerna) titeln står i, t.ex. ["A3", "A4"]. */
+  readonly channels?: readonly string[];
 }
 
 /** Besök som behövs av annan orsak än lager, t.ex. misstänkt fel från maskinhälsan. */
@@ -89,6 +91,8 @@ export interface PackLine {
   /** Mål efter påfyllning (kapacitet, eller försäljning under coverDays). */
   readonly target: number;
   readonly capacity: number | null;
+  /** Facken titeln står i (från kapaciteten), annars tom. */
+  readonly channels: readonly string[];
   /** Pack som saknas i centrallagret för att nå målet. */
   readonly shortBy: number;
   /** Beräknat slutdatum utan besök, om titeln säljer. */

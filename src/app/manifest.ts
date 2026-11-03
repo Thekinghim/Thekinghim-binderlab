@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 /**
  * Webbappsmanifest (/manifest.webmanifest): Binderlab kan installeras på hemskärmen och
- * öppnas utan webbläsarens ramar. Start i Drift, där fältsidorna (påfyllning, besöksplan)
- * fungerar utan uppkoppling (public/sw.js). Ikonen är src/app/icon.svg; PNG-ikonerna i
+ * öppnas utan webbläsarens ramar. Start i Fyll på (/fyll-pa, mobilsidan vid automaten);
+ * fältsidorna (Fyll på, påfyllning, besöksplan) fungerar utan uppkoppling (public/sw.js). Ikonen är src/app/icon.svg; PNG-ikonerna i
  * public/icons är renderade ur den (192, 512 och en maskerbar 512).
  */
 export default function manifest(): MetadataRoute.Manifest {
@@ -14,7 +14,7 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Kontrollpanel för varuautomater med samlarkort.",
     lang: "sv",
     dir: "ltr",
-    start_url: "/drift",
+    start_url: "/fyll-pa",
     scope: "/",
     display: "standalone",
     orientation: "portrait",
@@ -35,7 +35,7 @@ export default function manifest(): MetadataRoute.Manifest {
       },
     ],
     shortcuts: [
-      { name: "Registrera påfyllning", short_name: "Påfyllning", url: "/drift/pafyllning" },
+      { name: "Fyll på", short_name: "Fyll på", url: "/fyll-pa" },
       { name: "Besöksplan", short_name: "Besök", url: "/drift/besok" },
       { name: "Maskinhälsa", short_name: "Drift", url: "/drift" },
     ],

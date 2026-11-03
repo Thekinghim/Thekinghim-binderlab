@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useMemo, useState, type ReactNode } from "react";
+import { cn } from "@/lib/cn";
 import {
   CommandPalette,
   useCommandPaletteHotkey,
@@ -137,7 +138,15 @@ export function AppShell(props: AppShellProps) {
             onPeriodChange={props.onPeriodChange}
             comparison={props.comparison}
           />
-          <ShellMain className="flex-1 pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0">
+          <ShellMain
+            className={cn(
+              "flex-1 lg:pb-0",
+              // Påfyllaren har genvägen "Fyll på" ovanför bottenraden: lika mycket luft till.
+              role === "refiller"
+                ? "pb-[calc(56px+68px+env(safe-area-inset-bottom))]"
+                : "pb-[calc(56px+env(safe-area-inset-bottom))]",
+            )}
+          >
             {/* Underflikarna står still vid sidbyte, så att markeringen kan glida. */}
             <SubTabs
               role={role}

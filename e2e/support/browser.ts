@@ -94,6 +94,8 @@ export interface Browser {
   newContext(options: {
     baseURL: string;
     viewport: { width: number; height: number };
+    screen?: { width: number; height: number };
+    userAgent?: string;
     colorScheme?: "light" | "dark";
     locale?: string;
     timezoneId?: string;
@@ -104,8 +106,19 @@ export interface Browser {
   close(): Promise<void>;
 }
 
+/** En enhet ur Playwrights lista (t.ex. devices["iPhone 15"]). */
+export interface DeviceDescriptor {
+  readonly userAgent: string;
+  readonly viewport: { width: number; height: number };
+  readonly screen?: { width: number; height: number };
+  readonly deviceScaleFactor: number;
+  readonly isMobile: boolean;
+  readonly hasTouch: boolean;
+}
+
 interface Playwright {
   chromium: { launch(options: { args?: string[]; headless?: boolean }): Promise<Browser> };
+  devices: Record<string, DeviceDescriptor>;
 }
 
 let cached: Playwright | null = null;
@@ -137,6 +150,8 @@ export interface PageOptions {
   readonly viewport?: keyof typeof VIEWPORTS;
   /** Appens tema (mörkt är standard i appen); sätts som det sparade valet i webbläsaren. */
   readonly theme?: "light" | "dark";
+  /** En enhet ur Playwrights lista (t.ex. "iPhone 15"): skärm, pixeltäthet, touch, user agent. */
+  readonly device?: string;
 }
 
 /** Ny sida i ett eget sammanhang (egna cookies), svensk tid och språk. */
@@ -146,13 +161,25 @@ export async function openPage(
   options: PageOptions = {},
 ): Promise<{ page: Page; context: BrowserContext; errors: Error[] }> {
   const mobile = options.viewport === "mobile";
+  const device = options.device ? playwright().devices[options.device] : undefined;
+  if (options.device && !device) throw new Error(`Okänd enhet: ${options.device}`);
   const context = await browser.newContext({
     baseURL,
-    viewport: VIEWPORTS[options.viewport ?? "desktop"],
+    viewport: device?.viewport ?? VIEWPORTS[options.viewport ?? "desktop"],
     colorScheme: options.theme ?? "dark",
     locale: "sv-SE",
     timezoneId: "Europe/Stockholm",
-    ...(mobile ? { isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : {}),
+    ...(device
+      ? {
+          userAgent: device.userAgent,
+          screen: device.screen,
+          deviceScaleFactor: device.deviceScaleFactor,
+          isMobile: device.isMobile,
+          hasTouch: device.hasTouch,
+        }
+      : mobile
+        ? { isMobile: true, hasTouch: true, deviceScaleFactor: 2 }
+        : {}),
   });
   // Temat renderas på servern ur cookien (src/lib/theme.ts, THEME_COOKIE), och samma
   // nyckel i localStorage (THEME_STORAGE_KEY).

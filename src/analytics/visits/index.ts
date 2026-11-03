@@ -7,3 +7,12 @@
 export { kmText, planVisits, VISIT_DEFAULTS } from "./plan";
 export { distanceMeters, EARTH_RADIUS_M, planRoute, type Route, type RoutePoint } from "./route";
 export type * from "./types";
+export {
+  channelText,
+  compareChannels,
+  fillLevelOf,
+  fillLevels,
+  fillPercent,
+  fillTone,
+  type FillLevel,
+} from "./fill";

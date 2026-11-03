@@ -185,6 +185,7 @@ export type TodoKind =
   | "missing-price"
   | "duplicate-title"
   | "stale-machine"
+  | "silent-title"
   | "report-due"
   | "report-review"
   | "contract"
@@ -202,7 +203,8 @@ export interface TodoAction {
     | "send-report"
     | "review-report"
     | "open-contract"
-    | "open-alert";
+    | "open-alert"
+    | "open-machine";
   /** Knapptext, verbet först. */
   readonly label: string;
   readonly params: Readonly<Record<string, string>>;

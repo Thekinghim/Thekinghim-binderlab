@@ -53,6 +53,8 @@ const REFILLER_ALLOWLIST = [
   "todo_dismissals",
   // Lager: larmgränsen per automat och titel (antal pack, inga belopp).
   "slot_alerts",
+  // Fyllnadsgrad: kapacitet och fack från Awish (antal pack, inga belopp).
+  "machine_slot_capacity",
 ];
 /** Påfyllaren ser bara sin egen rad. */
 const OWN_ROW_ONLY = ["profiles", "memberships"];

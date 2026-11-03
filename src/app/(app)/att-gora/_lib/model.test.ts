@@ -520,3 +520,59 @@ describe("integrationens punkter: avtal, rapportutkast, larm och förlorad förs
     for (const v of page.groups.flatMap((g) => g.items)) expect(v.action).toBeNull();
   });
 });
+
+describe("tyst titel", () => {
+  const silentTitle = item({
+    key: `silent-title:${M1}:${T1}`,
+    kind: "silent-title",
+    level: "now",
+    atStakeOre: 34_300,
+    title: "Titel 1 i Automat 1 har inte sålt på 3 dygn",
+    link: `/drift/automat/${M1}`,
+    evidence: {
+      rule: "Tyst titel.",
+      period: null,
+      orderIds: [],
+      dates: [],
+      titleIds: [T1],
+      machineIds: [M1],
+      storeIds: [],
+      recipientIds: [],
+      figures: [
+        { key: "silentHours", label: "Timmar utan försäljning", value: 72, unit: "hours" },
+        { key: "onHand", label: "Pack i facket", value: 5, unit: "packs" },
+      ],
+    },
+    action: { kind: "open-machine", label: "Öppna automaten", params: { machineId: M1 } },
+  });
+
+  it("har etikett, mått, knapp och räknas som intäkt i risk", () => {
+    const page = buildPage(input([silentTitle]));
+    const view = page.groups[0]!.items[0]!;
+    expect(view.eyebrow).toBe(`Tyst titel · BL${"‑"}001`);
+    expect(view.figures).toEqual([
+      { label: "Tyst", value: `72${NBSP}h` },
+      { label: "I facket", value: `5${NBSP}pack` },
+      { label: "I risk 7 d", value: `343${NBSP}kr` },
+    ]);
+    expect(view.action).toEqual({
+      kind: "link",
+      label: "Öppna automaten",
+      href: `/drift/automat/${M1}`,
+    });
+    expect(stakeOf([silentTitle])).toBe(34_300);
+    expect(kindSummary([silentTitle])).toBe(`1${NBSP}tyst titel`);
+  });
+
+  it("påfyllaren ser punkten utan belopp och avbockningen följer automatfiltret", () => {
+    const page = buildPage(input([silentTitle], { role: "refiller", economy: false }));
+    expect(page.groups[0]!.items[0]!.figures.map((f) => f.label)).toEqual(["Tyst", "I facket"]);
+    const dismissed = dismissedViews(
+      input([], {
+        scope: { storeId: null, machineId: M2 },
+        dismissed: [{ key: silentTitle.key, title: "X", when: "i dag", by: null }],
+      }),
+    );
+    expect(dismissed).toEqual([]);
+  });
+});

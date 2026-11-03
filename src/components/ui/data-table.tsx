@@ -27,6 +27,8 @@ import { Icon } from "./icon";
 export type Column<T> = {
   key: string;
   header: string;
+  /** Förklaring när pekaren vilar på rubriken (title-attributet). */
+  headerTitle?: string;
   /** Tal: högerställt, Geist med tabulära siffror. Sorteras fallande först. */
   numeric?: boolean;
   /** Värde att sortera på. Utan detta går kolumnen inte att sortera. */
@@ -789,6 +791,7 @@ export function DataTable<T>({
                     key={col.key}
                     scope="col"
                     aria-sort={ariaSort}
+                    title={col.headerTitle}
                     className={cn(
                       "h-9 border-b border-line-strong px-3 font-normal whitespace-nowrap",
                       height !== undefined && "sticky top-0 z-[2] bg-[var(--dt-bg)]",

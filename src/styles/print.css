@@ -60,6 +60,8 @@
   --bl-signal-fg: #111111;
   --bl-signal-soft: rgb(17 17 17 / 0.07);
   --bl-on-signal: #ffffff;
+  --bl-up: #111111;
+  --bl-up-line: rgb(17 17 17 / 0.6);
 
   --bl-inverse-bg: #111111;
   --bl-inverse-fg: #ffffff;

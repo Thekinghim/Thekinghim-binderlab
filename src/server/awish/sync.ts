@@ -122,7 +122,10 @@ export interface AwishLastRun {
   /** Sidfälten som Awish skickade (total, per_page, last_page, has_more). */
   pagingFields?: string[];
   /** Saldot från Awish i den här körningen, om det lästes. */
-  stock?: Pick<AwishStockSummary, "machines" | "read" | "counts" | "failed" | "deferred">;
+  stock?: Pick<
+    AwishStockSummary,
+    "machines" | "read" | "counts" | "warehouseOut" | "failed" | "deferred"
+  >;
 }
 
 export interface AwishSyncResult {
@@ -420,6 +423,7 @@ export async function syncAwishSource(
               machines: extra.stock.machines,
               read: extra.stock.read,
               counts: extra.stock.counts,
+              warehouseOut: extra.stock.warehouseOut ?? 0,
               failed: extra.stock.failed,
               deferred: extra.stock.deferred,
             },

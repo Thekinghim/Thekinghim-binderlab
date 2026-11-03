@@ -1,7 +1,7 @@
 import { KpiSkeleton, Skeleton } from "@/components/ui/skeleton";
 
 /**
- * Hem medan siffrorna räknas: rubriken, nyckeltalen, diagrammet med Att göra bredvid och
+ * Hem medan siffrorna räknas: rubriken, i dag hittills, nyckeltalen, diagrammet med Att göra bredvid och
  * topplistan, i samma rutnät som sidan så att inget hoppar när innehållet kommer.
  */
 export function HemSkeleton() {
@@ -22,9 +22,11 @@ export function HemSkeleton() {
           <Skeleton className="h-4 w-full" />
         </div>
       </div>
-      <div className="mt-8 md:mt-10">
+      <div className="mt-8 flex flex-col gap-4 md:mt-10">
+        <Skeleton className="h-24 w-full" />
         <KpiSkeleton />
       </div>
+      <Skeleton className="mt-6 h-24 w-full" />
       <div className="mt-10 grid grid-cols-1 gap-x-10 gap-y-16 border-t border-line pt-10 md:mt-12 md:pt-12 lg:grid-cols-12">
         <div className="flex flex-col gap-4 lg:col-span-8">
           <Skeleton className="h-6 w-1/2" />

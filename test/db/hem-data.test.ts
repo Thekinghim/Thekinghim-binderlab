@@ -276,3 +276,88 @@ describe("loadHomeWith", () => {
     });
   }
 });
+
+describe("loadHomeWith: i dag hittills", () => {
+  /** En organisation med order kl. 09 tre onsdagar bakåt och kl. 09.30 i dag (onsdag 12 mars). */
+  async function seedPaceFixture(): Promise<Viewer> {
+    const u = await createUser(`takt-${uniqueSuffix()}@test.binderlab.se`);
+    const orgId = await createOrg(u, `Takt ${uniqueSuffix()}`);
+    await asUser(u, async (tx) => {
+      const org = { organizationId: orgId };
+      const [machine] = await tx
+        .insert(s.machines)
+        .values({ ...org, code: "BL-001", name: "Automat 1", activeFrom: "2025-01-01" })
+        .returning();
+      const [title] = await tx
+        .insert(s.titles)
+        .values({ ...org, name: "Pokémon 151 Booster" })
+        .returning();
+      const [source] = await tx
+        .insert(s.dataSources)
+        .values({ ...org, provider: "awish_csv", name: "Awish CSV" })
+        .returning();
+      const at = [
+        "2025-02-19T08:00:00Z",
+        "2025-02-26T08:00:00Z",
+        "2025-02-26T15:00:00Z",
+        "2025-03-05T08:00:00Z",
+        "2025-03-12T08:30:00Z",
+      ];
+      await tx.insert(s.orders).values(
+        at.map((t, i) => ({
+          ...org,
+          dataSourceId: source!.id,
+          machineId: machine!.id,
+          paymentMethod: "card",
+          externalId: String(i + 1),
+          rawTitle: "Pokemon 151",
+          titleId: title!.id,
+          orderedAt: new Date(t),
+          amountOre: 10_000,
+          sourceHash: `t${i}`,
+        })),
+      );
+    });
+    return viewerFor(u, orgId);
+  }
+
+  it("jämför dagens intäkt med samma klockslag samma veckodag, med samma filter", async () => {
+    const viewer = await seedPaceFixture();
+    const loaders = loadersFor(viewer);
+    const { pace } = await loadHomeWith(loaders, MARCH);
+    expect(loaders.domainInput).toHaveBeenCalledWith(
+      expect.objectContaining({ period: { start: "2025-01-15", end: "2025-03-12" } }),
+    );
+    const today = await loadDomainInputFor(
+      viewer,
+      { period: { start: "2025-03-12", end: "2025-03-12" } },
+      NOW,
+    );
+    const revenueToday = keyMetrics(today.current).revenueOre;
+    expect(pace).not.toBeNull();
+    expect(pace!.clock).toBe("10:00");
+    expect(pace!.comparisonDays).toBe(3);
+    expect(pace!.soFarOre).toBe(revenueToday);
+    // Hittills: en order per dag, samma belopp som i dag.
+    expect(pace!.baselineSoFarOre).toBe(revenueToday);
+    expect(pace!.deltaBp).toBe(0);
+    // Hela dagar: 4 order på 3 dagar.
+    expect(pace!.baselineFullOre).toBe(Math.round((4 * revenueToday) / 3));
+    expect(JSON.parse(JSON.stringify(pace))).toEqual(pace);
+  });
+
+  it("visas inte när perioden ligger helt bakåt i tiden", async () => {
+    const viewer = await seedPaceFixture();
+    const loaders = loadersFor(viewer);
+    const { pace } = await loadHomeWith(loaders, { from: "2025-02-01", to: "2025-02-28" });
+    expect(pace).toBeNull();
+    expect(loaders.domainInput).not.toHaveBeenCalledWith(
+      expect.objectContaining({ period: { start: "2025-01-15", end: "2025-03-12" } }),
+    );
+  });
+
+  it("har inget att jämföra med för en organisation med två dagars data", async () => {
+    const { pace } = await loadHomeWith(loadersFor(owner), MARCH);
+    expect(pace).toBeNull();
+  });
+});

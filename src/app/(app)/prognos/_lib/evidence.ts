@@ -129,7 +129,7 @@ export function evidenceView(
     });
   }
   if (options.centralStock) {
-    links.push({ label: "Visa vårt lager", href: "/prognos#vart-lager" });
+    links.push({ label: "Visa vårt lager", href: "/vart-lager" });
   }
   const poCount = e.purchaseOrderIds?.length ?? 0;
   if (options.purchaseOrdersHref && poCount > 0) {

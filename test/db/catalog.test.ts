@@ -121,6 +121,8 @@ describe("tabeller", () => {
         "ledger_accounts",
         "machine_investments",
         "machine_placements",
+        // Fyllnadsgrad: kapacitet per automat och titel från Awish (20261104163000_fack_kapacitet.sql).
+        "machine_slot_capacity",
         "machine_slots",
         "machines",
         "memberships",
@@ -470,6 +472,8 @@ describe("policyer", () => {
       "assistant_logs",
       "field_submissions",
       "machine_placements",
+      // Fyllnadsgrad: kapacitet och fack från Awish (antal pack, inga belopp).
+      "machine_slot_capacity",
       "machines",
       "organizations",
       "profiles",

@@ -38,6 +38,10 @@
   --color-signal-line: var(--bl-signal-line);
   --color-signal-hover: var(--bl-signal-hover);
   --color-on-signal: var(--bl-on-signal);
+  --color-up: var(--bl-up);
+  --color-up-line: var(--bl-up-line);
+  --color-fill-mid: var(--bl-fill-mid);
+  --color-fill-ok: var(--bl-fill-ok);
   --color-inverse: var(--bl-inverse-bg);
   --color-on-inverse: var(--bl-inverse-fg);
   --color-inverse-hover: var(--bl-inverse-hover);
@@ -229,6 +233,12 @@
     animation: bl-grow-y 520ms var(--bl-ease) both;
     animation-delay: calc(var(--i, 0) * 18ms);
   }
+  /* Förloppsstaplar fylls från vänster */
+  .grow-x {
+    transform-origin: left;
+    animation: bl-grow-x 700ms var(--bl-ease) both;
+    animation-delay: calc(120ms + var(--i, 0) * 70ms);
+  }
   .draw {
     stroke-dasharray: var(--len, 2000);
     stroke-dashoffset: var(--len, 2000);
@@ -409,6 +419,14 @@ dialog::backdrop {
   }
   to {
     transform: scaleY(1);
+  }
+}
+@keyframes bl-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
   }
 }
 @keyframes bl-draw {

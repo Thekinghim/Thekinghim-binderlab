@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { milliToTenths, probabilityText } from "@/analytics/health";
+import { fillLevels } from "@/analytics/visits";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatInt, MINUS, NBSP } from "@/lib/format";
@@ -50,6 +51,7 @@ export default async function DriftPage() {
     : machinesHeadline;
 
   const machineById = new Map(data.machines.map((m) => [m.id, m]));
+  const fill = fillLevels(overview.capacities, data.stock);
   const lastSale = new Map<string, string>();
   for (const o of data.orders) {
     if (!o.machineId || !o.orderedAt) continue;
@@ -80,6 +82,7 @@ export default async function DriftPage() {
         ? `${probabilityText(h.silence.zeroProbabilityBp)} för noll försäljning`
         : "",
       rank: healthRank(h.status),
+      fillBp: fill.get(h.machineId)?.bp ?? null,
     };
   });
 

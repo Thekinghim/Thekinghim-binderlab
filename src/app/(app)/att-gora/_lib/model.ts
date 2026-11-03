@@ -200,6 +200,7 @@ export function unbreakable(code: string): string {
 const KIND_NOUN: Record<TodoKind, [string, string]> = {
   refill: ["påfyllning", "påfyllningar"],
   "stale-machine": ["tyst automat", "tysta automater"],
+  "silent-title": ["tyst titel", "tysta titlar"],
   "report-due": ["rapport att skicka", "rapporter att skicka"],
   "report-review": ["utkast att granska", "utkast att granska"],
   contract: ["avtal att se över", "avtal att se över"],
@@ -211,6 +212,7 @@ const KIND_NOUN: Record<TodoKind, [string, string]> = {
 const KIND_LABEL: Record<TodoKind, string> = {
   refill: "Påfyllning",
   "stale-machine": "Ingen försäljning",
+  "silent-title": "Tyst titel",
   "report-due": "Rapport",
   "report-review": "Rapportutkast",
   contract: "Avtal",
@@ -222,6 +224,7 @@ const KIND_LABEL: Record<TodoKind, string> = {
 const KIND_ORDER: readonly TodoKind[] = [
   "refill",
   "stale-machine",
+  "silent-title",
   "alert",
   "report-review",
   "report-due",
@@ -317,6 +320,15 @@ export function primaryFigures(item: TodoItem, economy: boolean): FigureView[] {
     case "stale-machine": {
       const hours = figureValue(item, "silentHours");
       if (hours !== null) out.push({ label: "Tyst", value: `${formatInt(hours)}${NBSP}h` });
+      stake();
+      break;
+    }
+    case "silent-title": {
+      const hours = figureValue(item, "silentHours");
+      const onHand = figureValue(item, "onHand");
+      if (hours !== null) out.push({ label: "Tyst", value: `${formatInt(hours)}${NBSP}h` });
+      if (onHand !== null)
+        out.push({ label: "I facket", value: formatFigure({ value: onHand, unit: "packs" }) });
       stake();
       break;
     }
@@ -467,6 +479,10 @@ function actionFor(item: TodoItem, input: ModelInput): ActionView | null {
       return canOpen(input.role, item.link.startsWith("/datakallor") ? "datakallor" : "drift")
         ? { kind: "link", label: a.label, href: item.link }
         : null;
+    case "open-machine":
+      return canOpen(input.role, "drift")
+        ? { kind: "link", label: a.label, href: item.link }
+        : null;
   }
 }
 
@@ -557,7 +573,7 @@ export function inScope(item: TodoItem, input: Pick<ModelInput, "scope" | "machi
  * som slutat sälja. En titel utan inköpspris säljer som vanligt (bara vinsten blir
  * ofullständig) och en dubblett är datakvalitet, så deras belopp räknas inte hit.
  */
-const RISK_KINDS: ReadonlySet<TodoKind> = new Set(["refill", "stale-machine"]);
+const RISK_KINDS: ReadonlySet<TodoKind> = new Set(["refill", "stale-machine", "silent-title"]);
 
 /** Intäkt i risk de närmaste 7 dagarna (öre), bara för RISK_KINDS. */
 /**
@@ -678,7 +694,7 @@ function headerView(
               ? `Den står för ${kr(leadStake)} av ${kr(stake)} i intäkt i risk de närmaste 7 dagarna.`
               : `Totalt ${kr(stake)} i intäkt i risk de närmaste 7 dagarna.`
           : `${
-              visible.some((i) => i.kind === "stale-machine")
+              visible.some((i) => i.kind === "stale-machine" || i.kind === "silent-title")
                 ? "Påfyllningar och tysta automater"
                 : "Påfyllningarna"
             }: ${kr(stake)} i intäkt i risk de närmaste 7 dagarna.`,
@@ -701,15 +717,21 @@ function headerView(
   return { title, aside, description: parts.join(" "), meta };
 }
 
-/** Nyckelns automat ('refill:<automat>:<titel>', 'stale-machine:<automat>'), annars null. */
+/**
+ * Nyckelns automat ('refill:<automat>:<titel>', 'stale-machine:<automat>',
+ * 'silent-title:<automat>:<titel>'), annars null.
+ */
 function machineOfKey(key: string): string | null {
   const [kind, id] = key.split(":");
-  return (kind === "refill" || kind === "stale-machine") && id ? id : null;
+  return (kind === "refill" || kind === "stale-machine" || kind === "silent-title") && id
+    ? id
+    : null;
 }
 
 const KIND_BY_PREFIX: Record<string, TodoKind> = {
   refill: "refill",
   "stale-machine": "stale-machine",
+  "silent-title": "silent-title",
   "report-due": "report-due",
   "report-review": "report-review",
   contract: "contract",

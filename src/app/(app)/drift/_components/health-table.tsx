@@ -3,7 +3,9 @@
 import Link from "next/link";
 
 import type { HealthStatus } from "@/analytics/health";
+import { fillPercent } from "@/analytics/visits/fill";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { FillBar, FillValue } from "@/components/ui/fill-bar";
 import { StatusTag } from "@/components/ui/status-tag";
 
 import { HEALTH_TAG } from "../_lib/display";
@@ -22,7 +24,12 @@ export interface HealthRow {
   readonly probability: string;
   /** Sorteringsvärde: allvarligast först. */
   readonly rank: number;
+  /** Fyllnadsgrad i bp (Awish-kapaciteten), eller null när den saknas. */
+  readonly fillBp: number | null;
 }
+
+/** Från Awish-synken; samma text som rubrikens title. */
+const FILL_SOURCE = "Från Awish, uppdateras var 10:e minut";
 
 const columns: Column<HealthRow>[] = [
   {
@@ -36,6 +43,7 @@ const columns: Column<HealthRow>[] = [
       >
         <span className="meta text-fg">{r.code.replace("-", "‑")}</span>
         <span className="truncate text-sm text-muted">{r.name}</span>
+        {r.fillBp !== null ? <FillBar bp={r.fillBp} className="mt-1.5 w-24 md:hidden" /> : null}
       </Link>
     ),
     csv: (r) => `${r.code} ${r.name}`,
@@ -48,6 +56,16 @@ const columns: Column<HealthRow>[] = [
       <StatusTag status={HEALTH_TAG[r.status].status}>{HEALTH_TAG[r.status].label}</StatusTag>
     ),
     csv: (r) => HEALTH_TAG[r.status].label,
+  },
+  {
+    key: "fill",
+    header: "Fyllnad",
+    headerTitle: FILL_SOURCE,
+    // Utan kapacitet sist.
+    sortValue: (r) => r.fillBp ?? 10_001,
+    render: (r) => <FillValue bp={r.fillBp} />,
+    csv: (r) => (r.fillBp === null ? "" : fillPercent(r.fillBp)),
+    hideOnMobile: true,
   },
   {
     key: "since",
@@ -98,7 +116,10 @@ export function HealthTable({ rows }: { rows: HealthRow[] }) {
       rows={rows}
       rowKey={(r) => r.machineId}
       caption="Status per automat"
-      defaultSort={{ key: "status", dir: "asc" }}
+      defaultSort={[
+        { key: "status", dir: "asc" },
+        { key: "fill", dir: "asc" },
+      ]}
       exportFileName="maskinhalsa"
     />
   );

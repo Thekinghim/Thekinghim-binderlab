@@ -43,6 +43,14 @@
   --bl-signal-line: rgb(255 90 31 / 0.7); /* kant för kritisk kontroll, ≥3:1 */
   --bl-on-signal: #0a0a0b;
 
+  /* Uppåt: bara för "bättre än vanligt" (dagens takt på Hem), aldrig för status */
+  --bl-up: #6fcf8f;
+  --bl-up-line: rgb(111 207 143 / 0.6);
+
+  /* Fyllnadsgrad (Drift): stapelns ton. Låg = signal, mellan = bärnsten, hög = grön */
+  --bl-fill-mid: #e0a43a;
+  --bl-fill-ok: #6fcf8f;
+
   /* Inverterad (primärknapp) */
   --bl-inverse-bg: #edeae4;
   --bl-inverse-fg: #0a0a0b;
@@ -87,6 +95,12 @@
   --bl-signal-soft: rgb(240 82 26 / 0.1);
   --bl-signal-line: rgb(181 62 14 / 0.7);
   --bl-on-signal: #151514;
+
+  --bl-up: #1d7a45;
+  --bl-up-line: rgb(29 122 69 / 0.6);
+
+  --bl-fill-mid: #a86a00;
+  --bl-fill-ok: #1d7a45;
 
   --bl-inverse-bg: #151514;
   --bl-inverse-fg: #f4f3ef;
