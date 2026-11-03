@@ -245,24 +245,27 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [sink(c)],
   },
-  // Datakällor → Automatisk synk (Chrome-tillägg), src/server/ingest/actions.ts
+  // Datakällor → Awish (gRPC-API): uppgifterna i Vault, test och synk.
   {
-    module: "@/server/ingest/actions",
-    name: "createExtensionSource",
+    module: "@/app/(app)/datakallor/actions",
+    name: "saveAwishCredentials",
     allowed: OP,
-    args: (c) => [sink(c, { name: "Rödteam-tillägg", sourceTimezone: "Asia/Shanghai" })],
+    args: (c) => [
+      sink(c, { appId: "rodteam-app", appSecret: "rodteam-secret", appKey: "rodteam-key" }),
+    ],
   },
   {
-    module: "@/server/ingest/actions",
-    name: "createSyncToken",
+    module: "@/app/(app)/datakallor/actions",
+    name: "testAwishConnection",
     allowed: OP,
-    args: (c) => [sink(c, { name: "Rödteam-dator" })],
+    readOnly: true,
+    args: (c) => [sink(c)],
   },
   {
-    module: "@/server/ingest/actions",
-    name: "revokeSyncToken",
+    module: "@/app/(app)/datakallor/actions",
+    name: "syncAwishNow",
     allowed: OP,
-    args: (c) => [sink(c, { id: c.idsA.sync_tokens })],
+    args: (c) => [sink(c)],
   },
   // Drift
   {

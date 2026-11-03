@@ -13,8 +13,7 @@ describe("öppna sökvägar", () => {
     "/sw.js",
     "/manifest.webmanifest",
     "/api/cron/larm",
-    "/api/ingest/awish",
-    "/api/ingest/awish/status",
+    "/api/cron/awish",
   ])("%s är öppen", (path) => {
     expect(isPublicPath(path)).toBe(true);
   });
@@ -39,6 +38,9 @@ describe("öppna sökvägar", () => {
     "/api/cron",
     "/api/cronjobb",
     "/api/ingest",
+    // Chrome-tilläggets ingest-API är borttaget (ersatt av Awish gRPC-API).
+    "/api/ingest/awish",
+    "/api/ingest/awish/status",
     "/api/ingestx/awish",
     "/downloads/binderlab-awish-sync.zip",
   ])("%s kräver inloggning", (path) => {

@@ -14,6 +14,15 @@ import { unstable_rethrow } from "next/navigation";
 import { ZodError } from "zod";
 
 import { ImportError } from "@/import/errors";
+import { AwishApiError } from "@/server/awish/grpc-client";
+import {
+  AwishSetupError,
+  saveAwishCredentialsFor,
+  saveCredentialsSchema,
+  syncAwishNowFor,
+  testAwishConnectionFor,
+} from "@/server/awish/manage";
+import type { AwishConnectionTest } from "@/server/awish/sync";
 import { dbErrorMessage } from "@/server/errors";
 import { AuthorizationError } from "@/server/access";
 import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/data/core";
@@ -48,7 +57,12 @@ function failure(error: unknown): { ok: false; error: string } {
   if (error instanceof ZodError) {
     return { ok: false, error: error.issues[0]?.message ?? "Ogiltiga uppgifter." };
   }
-  if (error instanceof ImportError || error instanceof AuthorizationError) {
+  if (
+    error instanceof ImportError ||
+    error instanceof AuthorizationError ||
+    error instanceof AwishSetupError ||
+    error instanceof AwishApiError
+  ) {
     return { ok: false, error: error.message };
   }
   console.error("[datakallor]", error);
@@ -176,6 +190,56 @@ export async function discardUpload(raw: unknown): Promise<ActionResult> {
     const input = discardSchema.parse(raw);
     await discardUploadFor(viewer, deps(), input.uploadId);
     return { ok: true, data: undefined };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Awish (gRPC-API): uppgifterna sparas i Vault och lämnar aldrig servern.
+// ---------------------------------------------------------------------------
+
+/** Sparar AppId, AppSecret och AppKey (tomt fält = behåll det sparade). */
+export async function saveAwishCredentials(raw: unknown): Promise<ActionResult> {
+  try {
+    const viewer = await operator();
+    const input = saveCredentialsSchema.parse(raw);
+    await saveAwishCredentialsFor(viewer, input);
+    revalidateAppData();
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** Testa anslutningen: Merchant, Machines och Orders (en order). Importerar inget. */
+export async function testAwishConnection(): Promise<ActionResult<AwishConnectionTest>> {
+  try {
+    const viewer = await operator();
+    return { ok: true, data: await testAwishConnectionFor(viewer) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** Synka nu: samma synk som det schemalagda jobbet. */
+export async function syncAwishNow(): Promise<
+  ActionResult<{ newOrders: number; fetched: number; historyDone: boolean; message: string | null }>
+> {
+  try {
+    const viewer = await operator();
+    const r = await syncAwishNowFor(viewer);
+    revalidateAppData();
+    if (!r.ok) return { ok: false, error: r.message ?? "Synken misslyckades." };
+    return {
+      ok: true,
+      data: {
+        newOrders: r.summary?.new ?? 0,
+        fetched: r.fetched,
+        historyDone: r.historyDone,
+        message: r.message,
+      },
+    };
   } catch (error) {
     return failure(error);
   }

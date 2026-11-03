@@ -174,9 +174,6 @@ export async function loadHealthData(
  */
 export function expectedInterval(provider: string): number | null {
   if (provider === "awish_grpc") return 10;
-  // Chrome-tillägget synkar var 10:e minut; 3 × 40 minuter = larm efter två timmars tystnad
-  // (docs/awish-tillagg.md, SILENCE_ALERT_MINUTES i src/server/ingest/limits.ts).
-  if (provider === "awish_extension") return 40;
   if (provider === "awish_csv") return 36 * 60;
   return null;
 }

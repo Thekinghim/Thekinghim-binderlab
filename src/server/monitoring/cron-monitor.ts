@@ -18,7 +18,7 @@ import { sentryEnabled } from "./sentry";
 export interface CronJob {
   /** Monitorns namn i Sentry, t.ex. 'binderlab-larm'. */
   readonly slug: string;
-  /** Samma schema som i vercel.json (UTC). */
+  /** Samma schema som i vercel.json eller pg_cron (UTC). */
   readonly schedule: string;
   /** Minuter efter utsatt tid innan en utebliven körning räknas som missad. */
   readonly checkinMarginMinutes: number;
@@ -32,6 +32,13 @@ export const CRON_JOBS = {
     schedule: "7 5 * * *",
     checkinMarginMinutes: 5,
     maxRuntimeMinutes: 5,
+  },
+  // Schemat sätts av pg_cron i Supabase (20261103090000_awish_api.sql), inte i vercel.json.
+  awish: {
+    slug: "binderlab-awish",
+    schedule: "*/10 * * * *",
+    checkinMarginMinutes: 10,
+    maxRuntimeMinutes: 2,
   },
   rapporter: {
     slug: "binderlab-rapporter",

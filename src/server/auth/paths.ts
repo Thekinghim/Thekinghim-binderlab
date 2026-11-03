@@ -1,7 +1,6 @@
 /**
  * Vilka sökvägar som är öppna utan inloggning, och säkra omdirigeringar.
- * Används av src/proxy.ts. /api/cron/* (CRON_SECRET) och /api/ingest/* (synk-token)
- * är öppna. /design och /datamodell kräver inloggning: de visar hela schemat och roll-/RLS-modellen. Proxyn är bara en bekvämlighet: behörigheten
+ * Används av src/proxy.ts. /api/cron/* (CRON_SECRET) är öppet. /design och /datamodell kräver inloggning: de visar hela schemat och roll-/RLS-modellen. Proxyn är bara en bekvämlighet: behörigheten
  * kontrolleras alltid i serverkoden (requireUser/requireRole) och i RLS.
  */
 
@@ -29,9 +28,6 @@ export function isPublicPath(pathname: string): boolean {
     pathname.startsWith("/_next/") ||
     // Schemalagda jobb (Vercel Cron) har ingen session; varje route kräver CRON_SECRET.
     pathname.startsWith("/api/cron/") ||
-    // Awish Chrome-tillägget har ingen session; varje route kräver en synk-token
-    // (src/server/ingest, docs/awish-tillagg.md).
-    pathname.startsWith("/api/ingest/") ||
     STATIC_FILE.test(pathname)
   );
 }

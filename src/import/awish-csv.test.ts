@@ -4,10 +4,10 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { AdapterContext } from "./adapter";
-import { awishGrpcAdapter, AWISH_GRPC_MISSING } from "./adapters/awish-grpc";
+import { assertSecretRefInNamespace } from "./adapters/awish-grpc";
 import { parseAwishCsv, type AwishCsvInput } from "./adapters/awish-csv";
 import { decodeFile, parseCsvTable, scanUtf8 } from "./csv-table";
-import { ImportValidationError, MappingError, NotConfiguredError } from "./errors";
+import { ImportValidationError, MappingError } from "./errors";
 import { sourceHash } from "./hash";
 
 const ORG = "11111111-1111-4111-8111-111111111111";
@@ -257,23 +257,10 @@ describe("parseAwishCsv", () => {
   });
 });
 
-describe("awish_grpc", () => {
-  it("kastar NotConfiguredError med listan över vad som saknas", async () => {
-    await expect(awishGrpcAdapter.fetch({ context })).rejects.toBeInstanceOf(NotConfiguredError);
-    await expect(awishGrpcAdapter.fetch({ context })).rejects.toMatchObject({
-      missing: AWISH_GRPC_MISSING,
-    });
-    expect(AWISH_GRPC_MISSING.join(" ")).toMatch(
-      /proto.*token.*TLS.*metadata.*Webhook.*Exempelpayload/is,
-    );
-  });
-
-  it("nekar en hemlighet utanför organisationens namnrymd innan något annat", async () => {
-    await expect(
-      awishGrpcAdapter.fetch({ context: { ...context, secretRef: "annan-org/awish" } }),
-    ).rejects.toBeInstanceOf(ImportValidationError);
-    await expect(
-      awishGrpcAdapter.fetch({ context: { ...context, secretRef: `${ORG}/awish-token` } }),
-    ).rejects.toBeInstanceOf(NotConfiguredError);
+describe("awish_grpc: hemlighetens namnrymd", () => {
+  it("nekar en hemlighet utanför organisationens namnrymd", () => {
+    expect(() => assertSecretRefInNamespace(ORG, "annan-org/awish")).toThrow(ImportValidationError);
+    expect(() => assertSecretRefInNamespace(ORG, null)).toThrow(ImportValidationError);
+    expect(assertSecretRefInNamespace(ORG, `${ORG}/awish-token`)).toBe(`${ORG}/awish-token`);
   });
 });

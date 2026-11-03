@@ -42,6 +42,8 @@ const APPEND_ONLY = [
 const RPCS = [
   "accept_invitation",
   "attach_contract_file",
+  // Datakällor: Awish gRPC-uppgifter till Vault (ägare, admin), returnerar aldrig hemligheten.
+  "awish_save_credentials",
   "close_period",
   // Kom igång: första organisationen, med lås och medlemskapskontroll i databasen.
   "create_first_organization",
@@ -143,7 +145,7 @@ describe("tabeller", () => {
         "supplier_items",
         "supplier_price_quotes",
         "suppliers",
-        // Awish Chrome-tillägget: synk-tokens (20261102235600_tillagg_sync_tokens.sql).
+        // Awish Chrome-tillägget (borttaget): synk-tokens, tabellen ligger kvar oanvänd.
         "sync_tokens",
         "title_aliases",
         "titles",
@@ -495,6 +497,7 @@ describe("anon", () => {
     const args: Record<string, ReturnType<typeof sql>> = {
       accept_invitation: sql`'x'`,
       attach_contract_file: sql`gen_random_uuid(), gen_random_uuid(), 'x', 'x', 'application/pdf', 1::bigint, 'x'`,
+      awish_save_credentials: sql`gen_random_uuid(), gen_random_uuid(), 'x', 'y', 'z'`,
       close_period: sql`gen_random_uuid(), '2025-01-01'::date`,
       create_first_organization: sql`'x', 'x'`,
       create_invitation: sql`gen_random_uuid(), 'a@b.se', 'viewer'`,

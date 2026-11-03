@@ -45,6 +45,10 @@ export interface FakeState {
     buckets: Record<string, { id: string; public: boolean }[]>;
     users: Record<string, { id: string; email: string; email_confirmed_at: string | null }[]>;
     dbPasswords: Record<string, string>;
+    /** Supabase Vault per projekt: namn → värde. */
+    vault: Record<string, Record<string, string>>;
+    /** pg_cron och pg_net påslagna och jobbet schemalagt (standard: ja). */
+    awishCron?: Record<string, boolean>;
     /** Gör att signing-keys-API:t svarar 404 (äldre API). */
     noSigningKeysApi?: boolean;
   };
@@ -132,6 +136,7 @@ export function initialState(): FakeState {
       buckets: { [DEV_REF]: [] },
       users: { [DEV_REF]: [] },
       dbPasswords: {},
+      vault: {},
     },
     vercel: {
       teams: [{ ...TEAM, billing: { plan: "pro" } }],
@@ -320,6 +325,35 @@ export function createFakeFetch(state: FakeState) {
         const query = (body as { query: string }).query;
         const hadTable = sb.migrations[ref] !== undefined;
         const done = (sb.migrations[ref] ??= new Map());
+        const unq = (v: string) => v.replace(/''/g, "'");
+        const vault = (sb.vault[ref] ??= {});
+        if (/binderlab:vault-read \*\//.test(query)) {
+          const name = /name = '((?:[^']|'')*)';$/.exec(query)?.[1];
+          const value = name === undefined ? undefined : vault[unq(name)];
+          return json(201, value === undefined ? [] : [{ value }]);
+        }
+        if (/binderlab:vault-write \*\/ vault\.create_secret/.test(query)) {
+          const v = /create_secret\('((?:[^']|'')*)', '((?:[^']|'')*)', '(?:[^']|'')*'\);$/.exec(
+            query,
+          );
+          if (!v) return json(400, { message: "syntax error" });
+          if (vault[unq(v[2]!)] !== undefined)
+            return json(400, { message: "duplicate key value violates unique constraint" });
+          vault[unq(v[2]!)] = unq(v[1]!);
+          return json(201, [{ create_secret: "id" }]);
+        }
+        if (/binderlab:vault-write \*\/ vault\.update_secret/.test(query)) {
+          const v = /where name = '((?:[^']|'')*)'\), '((?:[^']|'')*)'\);$/.exec(query);
+          if (!v || vault[unq(v[1]!)] === undefined) return json(400, { message: "syntax error" });
+          vault[unq(v[1]!)] = unq(v[2]!);
+          return json(201, [{ update_secret: "" }]);
+        }
+        if (/binderlab:awish-cron \*\//.test(query)) {
+          return json(201, [{ ok: sb.awishCron?.[ref] !== false }]);
+        }
+        if (/binderlab:awish-cron-job \*\//.test(query)) {
+          return json(201, [{ n: sb.awishCron?.[ref] === false ? 0 : 1 }]);
+        }
         if (BOOKKEEPING.test(query)) {
           return json(
             201,

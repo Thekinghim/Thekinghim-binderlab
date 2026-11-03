@@ -25,6 +25,10 @@ export {
 } from "./adapters/awish-csv";
 export {
   awishGrpcAdapter,
-  AWISH_GRPC_MISSING,
   assertSecretRefInNamespace,
+  mapAwishOrders,
+  AWISH_GRPC_PARSER_VERSION,
+  type AwishGrpcInput,
+  type AwishGrpcOrder,
+  type AwishGrpcMachine,
 } from "./adapters/awish-grpc";

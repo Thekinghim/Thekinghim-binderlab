@@ -902,7 +902,8 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       chunkIndex: 0,
       data: Buffer.from("abc"),
     });
-    // Awish Chrome-tillägget (20261102235600_tillagg_sync_tokens.sql): en datakälla av typen
+    // Awish Chrome-tillägget (borttaget; tabellen från 20261102235600_tillagg_sync_tokens.sql
+    // ligger kvar och skyddas fortfarande av RLS): en datakälla av typen
     // awish_extension med en synk-token (bara hashen sparas). Källan arkiveras efteråt, så att
     // den inte räknas som en källa eller ger larm om utebliven hämtning i andra tester.
     const [extensionSource] = await tx

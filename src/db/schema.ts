@@ -748,5 +748,5 @@ export * from "./schema/datakallor";
 // Fas 3 Att göra: avbockade punkter.
 export * from "./schema/att-gora";
 
-// Awish Chrome-tillägget: synk-tokens (docs/awish-tillagg.md).
+// Awish Chrome-tillägget (borttaget): synk-tokens, tabellen ligger kvar oanvänd.
 export * from "./schema/tillagg";

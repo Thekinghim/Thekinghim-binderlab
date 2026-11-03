@@ -968,3 +968,77 @@ export async function ensureBuckets(
   if (created.length === 0) ctx.log.ok(`Buckets i ${ref}: ${names.join(", ")} finns.`);
   return created;
 }
+
+// ---------------------------------------------------------------------------
+// Vault: adressen och CRON_SECRET för Awish-synken (pg_cron → /api/cron/awish)
+// ---------------------------------------------------------------------------
+
+/** Namnen som migreringen 20261103090000_awish_api.sql (private.awish_cron_tick) läser. */
+export const VAULT_APP_URL = "binderlab_app_url";
+export const VAULT_CRON_SECRET = "binderlab_cron_secret";
+export const AWISH_CRON_JOB = "binderlab-awish-sync";
+
+const VAULT_NAMES = new Set([VAULT_APP_URL, VAULT_CRON_SECRET]);
+
+function sqlLiteral(value: string): string {
+  if (/[\u0000]/.test(value)) throw new Error("Ogiltigt tecken i värdet.");
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function assertVaultName(name: string): void {
+  if (!VAULT_NAMES.has(name)) throw new Error(`Okänt Vault-namn: ${name}`);
+}
+
+/** Läser en hemlighet ur Vault (undefined = finns inte). Värdet skrivs aldrig ut. */
+export async function readVaultSecret(
+  ctx: Ctx,
+  ref: string,
+  name: string,
+): Promise<string | undefined> {
+  assertVaultName(name);
+  const query = `select /* binderlab:vault-read */ decrypted_secret as value from vault.decrypted_secrets where name = ${sqlLiteral(name)};`;
+  const rows = await runQueryReadOnly<{ value: string | null }>(ctx, ref, query);
+  const value = rows[0]?.value ?? undefined;
+  if (value) ctx.log.secret(value);
+  return value || undefined;
+}
+
+/**
+ * Skapar eller uppdaterar en hemlighet i Vault (idempotent: samma värde gör
+ * ingenting). Returnerar vad som gjordes.
+ */
+export async function upsertVaultSecret(
+  ctx: Ctx,
+  ref: string,
+  name: string,
+  value: string,
+): Promise<"created" | "updated" | "unchanged"> {
+  assertVaultName(name);
+  ctx.log.secret(name === VAULT_CRON_SECRET ? value : undefined);
+  const current = await readVaultSecret(ctx, ref, name);
+  if (current === value) {
+    ctx.log.ok(`Vault (${ref}): ${name} är redan satt.`);
+    return "unchanged";
+  }
+  if (ctx.dryRun) {
+    ctx.log.plan(`${current === undefined ? "skapa" : "uppdatera"} ${name} i Vault (${ref})`);
+    return current === undefined ? "created" : "updated";
+  }
+  const query =
+    current === undefined
+      ? `select /* binderlab:vault-write */ vault.create_secret(${sqlLiteral(value)}, ${sqlLiteral(name)}, ${sqlLiteral("Binderlab: Awish-synken (pg_cron)")});`
+      : `select /* binderlab:vault-write */ vault.update_secret((select id from vault.secrets where name = ${sqlLiteral(name)}), ${sqlLiteral(value)});`;
+  await runQuery(ctx, ref, query);
+  ctx.log.ok(`Vault (${ref}): ${name} ${current === undefined ? "skapad" : "uppdaterad"}.`);
+  return current === undefined ? "created" : "updated";
+}
+
+/** Finns pg_cron-jobbet för Awish-synken? */
+export async function hasAwishCronJob(ctx: Ctx, ref: string): Promise<boolean> {
+  const ext = `select /* binderlab:awish-cron */ exists (select 1 from pg_catalog.pg_extension where extname = 'pg_cron') and exists (select 1 from pg_catalog.pg_extension where extname = 'pg_net') as ok;`;
+  const rows = await runQueryReadOnly<{ ok: boolean }>(ctx, ref, ext);
+  if (rows[0]?.ok !== true) return false;
+  const job = `select /* binderlab:awish-cron-job */ count(*)::int as n from cron.job where jobname = ${sqlLiteral(AWISH_CRON_JOB)};`;
+  const jobs = await runQueryReadOnly<{ n: number }>(ctx, ref, job);
+  return Number(jobs[0]?.n ?? 0) > 0;
+}

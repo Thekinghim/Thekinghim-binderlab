@@ -389,6 +389,12 @@ export async function runDeploy(options: DeployOptions, deps: Deps): Promise<Out
       pendingBefore: false,
     };
     if (project) {
+      // Produktionens CRON_SECRET finns också i Vault (pg_cron anropar /api/cron/awish med
+      // den). Vault är källan: finns den där används samma värde i Vercel, annars skapas en
+      // ny och skrivs först till Vault och sedan till Vercel.
+      const prodCronSecret = prodEnv.ref
+        ? await ensureVaultCronSecret(sctx, prodEnv.ref, deps)
+        : undefined;
       const desired: vc.DesiredVar[] = [];
       for (const env of envs) {
         desired.push(
@@ -398,6 +404,7 @@ export async function runDeploy(options: DeployOptions, deps: Deps): Promise<Out
             options,
             appUrl,
             has: (key) => vc.hasEnv(envEntries, key, env.target),
+            cronSecret: env.target === "production" ? prodCronSecret : undefined,
           })),
         );
       }
@@ -499,6 +506,25 @@ export async function runDeploy(options: DeployOptions, deps: Deps): Promise<Out
       log.plan(`sätta Site URL och Redirect URLs i ${prodEnv.ref} efter första driftsättningen`);
     }
 
+    // Awish-synken: pg_cron läser appens adress ur Vault (bara en adress som Vercel bekräftat).
+    if (project && prodEnv.ref) {
+      log.step("Supabase: Awish-synken (pg_cron)");
+      if (appUrl && !appUrlAssumed) {
+        await sb.upsertVaultSecret(sctx, prodEnv.ref, sb.VAULT_APP_URL, appUrl);
+      } else {
+        log.manual(
+          `${prodEnv.ref}: ${sb.VAULT_APP_URL} sattes inte i Vault (adressen är inte bekräftad). Kör scripts/deploy/vercel.ts igen efter en lyckad driftsättning.`,
+        );
+      }
+      if (!(await sb.hasAwishCronJob(sctx, prodEnv.ref))) {
+        log.manual(
+          `${prodEnv.ref}: pg_cron-jobbet ${sb.AWISH_CRON_JOB} saknas (pg_cron eller pg_net är inte påslaget). Slå på båda under Database → Extensions och kör migreringen 20261103090000_awish_api.sql igen, eller anropa /api/cron/awish från en annan schemaläggare var tionde minut.`,
+        );
+      } else {
+        log.ok(`${prodEnv.ref}: Awish-synken körs var tionde minut (pg_cron).`);
+      }
+    }
+
     if (project && !options.skipDeploy && !dryRun && appUrl) {
       const check = await vc.checkSite(vctx, appUrl);
       siteOk = check.ok;
@@ -582,6 +608,8 @@ async function desiredVars(
     options: DeployOptions;
     appUrl: string | undefined;
     has: (key: string) => boolean;
+    /** Känt CRON_SECRET (produktionen, ur Vault). Annars genereras det om det saknas. */
+    cronSecret?: string;
   },
 ): Promise<vc.DesiredVar[]> {
   const t = env.target;
@@ -677,7 +705,11 @@ async function desiredVars(
       });
     }
   }
-  out.push({ key: "CRON_SECRET", target: t, sensitive: true, generate: c.deps.generateCronSecret });
+  out.push(
+    c.cronSecret
+      ? { key: "CRON_SECRET", target: t, sensitive: true, value: c.cronSecret }
+      : { key: "CRON_SECRET", target: t, sensitive: true, generate: c.deps.generateCronSecret },
+  );
 
   // Valfria värden från sessionens miljö.
   for (const { key, sensitive } of PASSTHROUGH_VARS) {
@@ -732,4 +764,25 @@ function remainingManual(log: Logger, options: DeployOptions): void {
       "Assistenten: kör igen med ANTHROPIC_API_KEY (valfritt; läs docs/operations.md om biträden först).",
     );
   }
+}
+
+/**
+ * CRON_SECRET för produktionen ur Vault (binderlab_cron_secret), eller ett nytt som
+ * skrivs dit. Vercel-värdet sätts sedan till samma (känsliga variabler går inte att
+ * läsa tillbaka ur Vercel, så Vault är det enda stället där värdet kan läsas).
+ */
+async function ensureVaultCronSecret(
+  sctx: sb.Ctx,
+  ref: string,
+  deps: Deps,
+): Promise<string | undefined> {
+  sctx.log.step("Supabase: CRON_SECRET i Vault");
+  const existing = await sb.readVaultSecret(sctx, ref, sb.VAULT_CRON_SECRET);
+  if (existing && existing.length >= 16) {
+    sctx.log.ok(`${ref}: ${sb.VAULT_CRON_SECRET} finns i Vault; samma värde används i Vercel.`);
+    return existing;
+  }
+  const fresh = sctx.log.secret(deps.generateCronSecret());
+  await sb.upsertVaultSecret(sctx, ref, sb.VAULT_CRON_SECRET, fresh);
+  return sctx.dryRun ? undefined : fresh;
 }

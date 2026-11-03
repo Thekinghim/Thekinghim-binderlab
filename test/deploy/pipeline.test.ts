@@ -796,3 +796,65 @@ describe("ägaren", () => {
     );
   });
 });
+
+describe("Awish-synken: Vault för pg_cron", () => {
+  it("skriver appens adress och samma CRON_SECRET som Vercel till produktionens Vault", async () => {
+    const state = initialState();
+    const { outcome, output } = await run(state, ["--agare", OWNER]);
+    expect(outcome.ok).toBe(true);
+    const ref = prodRef(state);
+    const vault = state.supabase.vault[ref]!;
+    expect(vault.binderlab_app_url).toBe(outcome.appUrl);
+    expect(vault.binderlab_cron_secret).toBe(envOf(state, "production").CRON_SECRET!.value);
+    expect(vault.binderlab_cron_secret!.length).toBeGreaterThanOrEqual(16);
+    // Hemligheten skrivs aldrig ut.
+    expect(output).not.toContain(vault.binderlab_cron_secret!);
+    expect(output).toContain("Awish-synken körs var tionde minut");
+  });
+
+  it("ett CRON_SECRET som redan finns i Vault används i Vercel (Vault är källan)", async () => {
+    const state = initialState();
+    await run(state, ["--agare", OWNER]);
+    const ref = prodRef(state);
+    state.supabase.vault[ref]!.binderlab_cron_secret = "BEFINTLIG_VAULT_HEMLIGHET_123456789";
+    const { output } = await run(state, ["--agare", OWNER]);
+    expect(envOf(state, "production").CRON_SECRET!.value).toBe(
+      "BEFINTLIG_VAULT_HEMLIGHET_123456789",
+    );
+    expect(output).not.toContain("BEFINTLIG_VAULT_HEMLIGHET_123456789");
+    // Preview har sitt eget värde.
+    expect(envOf(state, "preview").CRON_SECRET!.value).not.toBe(
+      "BEFINTLIG_VAULT_HEMLIGHET_123456789",
+    );
+  });
+
+  it("idempotent: en tredje körning skriver inget till Vault", async () => {
+    const state = initialState();
+    await run(state, ["--agare", OWNER]);
+    await run(state, ["--agare", OWNER]);
+    const before = state.calls.length;
+    await run(state, ["--agare", OWNER]);
+    const writes = state.calls
+      .slice(before)
+      .filter((c) => /binderlab:vault-write/.test(JSON.stringify(c.body ?? "")));
+    expect(writes).toEqual([]);
+  });
+
+  it("saknas pg_cron/pg_net blir det ett manuellt steg", async () => {
+    const state = initialState();
+    await run(state, ["--agare", OWNER]);
+    state.supabase.awishCron = { [prodRef(state)]: false };
+    const { output } = await run(state, ["--agare", OWNER]);
+    expect(output).toMatch(/pg_cron-jobbet binderlab-awish-sync saknas/);
+  });
+
+  it("dry-run skriver inget till Vault", async () => {
+    const state = initialState();
+    await run(state, ["--agare", OWNER]);
+    const ref = prodRef(state);
+    delete state.supabase.vault[ref]!.binderlab_cron_secret;
+    const before = JSON.stringify(state.supabase.vault);
+    await run(state, ["--agare", OWNER, "--dry-run"]);
+    expect(JSON.stringify(state.supabase.vault)).toBe(before);
+  });
+});

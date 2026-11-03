@@ -2,9 +2,9 @@
  * Drizzle-schema för Awish Chrome-tillägget (migreringarna 20261102235500_tillagg_enums.sql
  * och 20261102235600_tillagg_sync_tokens.sql). Re-exporteras från src/db/schema.ts.
  *
- * Koden i src/server/ingest läser och skriver tabellen med SQL (ägare/admin under RLS,
- * kontaktfälten som systemroll från ingest-API:t); schemat finns för katalogtesterna,
- * testfixturen och typerna. Se docs/awish-tillagg.md.
+ * Tillägget är borttaget (ersatt av Awish gRPC-API, docs/awish-api.md). Tabellen ligger
+ * kvar (migreringar ändras aldrig) men används inte av appen; schemat finns för
+ * katalogtesterna och testfixturen.
  */
 
 import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";

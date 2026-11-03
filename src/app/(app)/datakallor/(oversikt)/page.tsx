@@ -4,7 +4,7 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { formatInt } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
 
-import { ExtensionSection } from "../_components/extension-section";
+import { AwishCard } from "../_components/awish-card";
 import { ImportLog } from "../_components/import-log";
 import { MachineQueue } from "../_components/machine-queue";
 import { SourceList } from "../_components/source-list";
@@ -13,17 +13,20 @@ import { formatWhen, plural } from "../_lib/display";
 import { headlineOf } from "../_lib/headline";
 import { loadDatakallorFor } from "../_lib/service";
 import { currentViewer } from "../_lib/session";
+import { loadAwishPanelFor } from "@/server/awish/manage";
 
 export const metadata: Metadata = { title: "Datakällor" };
 
 /**
- * Datakällor: varifrån orderna kommer, hur färska de är, automatisk synk med
- * Chrome-tillägget, uppladdning av Awish orderlista (förhandsvisning och import),
- * kön för okända automater och loggen över alla importer. Bara ägare och admin (requireRoute skickar andra vidare).
+ * Datakällor: Awish (gRPC-API, hämtas automatiskt var tionde minut), varifrån orderna
+ * kommer, uppladdning av en orderlista som reserv (ihopfälld), kön för okända
+ * automater och loggen över alla importer. Bara ägare och admin (requireRoute skickar
+ * andra vidare).
  */
 export default async function DatakallorPage() {
   await requireRoute("datakallor");
-  const data = await loadDatakallorFor(await currentViewer());
+  const viewer = await currentViewer();
+  const [data, awish] = await Promise.all([loadDatakallorFor(viewer), loadAwishPanelFor(viewer)]);
   const headline = headlineOf(data);
   const fileSources = data.sources.filter((s) => s.acceptsFiles && !s.archived);
   const queuedOrders = data.queue.reduce((sum, q) => sum + q.pendingOrders, 0);
@@ -46,10 +49,15 @@ export default async function DatakallorPage() {
         ]}
       />
 
+      <section aria-labelledby="awish" className="flex flex-col gap-6">
+        <SectionHeader id="awish" index={1} eyebrow="Awish" title="Hämtas automatiskt." />
+        <AwishCard source={awish.source} timeZone={data.timeZone} now={data.now} />
+      </section>
+
       <section aria-labelledby="kallor" className="flex flex-col gap-6">
         <SectionHeader
           id="kallor"
-          index={1}
+          index={2}
           eyebrow="Källor"
           title="Varifrån orderna kommer."
           aside={
@@ -59,31 +67,23 @@ export default async function DatakallorPage() {
           }
         />
         <SourceList sources={data.sources} timeZone={data.timeZone} now={data.now} />
-      </section>
-
-      {/* Awish Chrome-tillägget: automatisk synk utan nedladdning (docs/awish-tillagg.md). */}
-      <ExtensionSection index={2} />
-
-      <section aria-labelledby="ladda-upp" className="flex flex-col gap-6">
-        <SectionHeader
-          id="ladda-upp"
-          index={3}
-          eyebrow="Ladda upp"
-          title="Importera orderlistan."
-          aside={
-            lastFile
-              ? `Senaste fil ${formatWhen(lastFile.finishedAt ?? lastFile.createdAt, data.timeZone, nowDate)}: ${formatInt(lastFile.rowsNew)} nya av ${plural(lastFile.rowsTotal, "rad", "rader")}.`
-              : "Ingen fil uppladdad ännu."
-          }
-          description="Exportera orderlistan i Awish som CSV. Hela historiken går bra (upp till 50 MB): order som redan finns räknas som dubbletter och ändras aldrig. Inget sparas förrän du bekräftat förhandsvisningen."
-        />
-        <UploadPanel sources={fileSources} timeZone={data.timeZone} />
+        <details className="group">
+          <summary className="cursor-pointer text-sm text-muted hover:text-fg">
+            Ladda upp fil
+            {lastFile
+              ? ` · senaste ${formatWhen(lastFile.finishedAt ?? lastFile.createdAt, data.timeZone, nowDate)}, ${formatInt(lastFile.rowsNew)} nya av ${plural(lastFile.rowsTotal, "rad", "rader")}`
+              : ""}
+          </summary>
+          <div className="mt-4">
+            <UploadPanel sources={fileSources} timeZone={data.timeZone} />
+          </div>
+        </details>
       </section>
 
       <section aria-labelledby="okanda-automater" className="flex flex-col gap-6">
         <SectionHeader
           id="okanda-automater"
-          index={4}
+          index={3}
           eyebrow="Okända automater"
           title={
             data.queue.length === 0
@@ -110,7 +110,7 @@ export default async function DatakallorPage() {
       <section aria-labelledby="importlogg" className="flex flex-col gap-6">
         <SectionHeader
           id="importlogg"
-          index={5}
+          index={4}
           eyebrow="Importlogg"
           title="Alla importer."
           aside={
