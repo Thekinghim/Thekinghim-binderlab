@@ -8,7 +8,13 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { NBSP } from "@/lib/format";
 import { loadProfitAdjustments } from "@/server/data/adjustments";
-import { loadDomainInput, loadPeriod, loadSyncInfo, requireRoute } from "@/server/data/core";
+import {
+  loadDomainInput,
+  loadLastOrderDate,
+  loadPeriod,
+  loadSyncInfo,
+  requireRoute,
+} from "@/server/data/core";
 
 import { homeStaleImport } from "../_hem/model";
 import { StaleImportLine } from "../_hem/sections";
@@ -60,26 +66,29 @@ export default async function LonsamhetPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const ctx = await requireRoute("lonsamhet");
-  const sp = await searchParams;
+  const [ctx, sp] = await Promise.all([requireRoute("lonsamhet"), searchParams]);
   // Länkar med äldre namn (?grupp=, ?fran=, ?till=) skrivs om till sidans och skalets.
   const canonical = canonicalLonsamhetQuery(sp);
   if (canonical !== null) redirect(`/lonsamhet${canonical}`);
 
   const p = await loadPeriod(sp);
-  const input = await loadDomainInput({ period: p.period, compare: p.compare, ...p.scope });
+  // Allt läses parallellt. Efter vinsten: återbetalningar och fasta kostnader. Fördelningen
+  // av de fasta kostnaderna räknas på hela organisationen även med filter (annars fick
+  // automaten alla), så med filter läses också organisationens indata.
+  const filtered = Boolean(p.scope.machineId || p.scope.storeId);
+  const [input, adjustments, organizationInput, sync] = await Promise.all([
+    loadDomainInput({ period: p.period, compare: p.compare, ...p.scope }),
+    loadProfitAdjustments(p.period),
+    filtered ? loadDomainInput({ period: p.period }) : null,
+    loadSyncInfo(),
+  ]);
+  const organization = organizationInput ?? input;
 
   // Tomt läge: senaste ordern i urvalet (samma filter), för att säga när det såldes senast.
-  let lastOrderDate: string | null = null;
-  if (input.current.orders.length === 0 && p.dataStart && p.dataStart <= ctx.today) {
-    const history = await loadDomainInput({
-      period: { start: p.dataStart, end: ctx.today },
-      ...p.scope,
-    });
-    for (const o of history.current.orders) {
-      if (lastOrderDate === null || o.businessDate > lastOrderDate) lastOrderDate = o.businessDate;
-    }
-  }
+  const lastOrderDate =
+    input.current.orders.length === 0 && p.dataStart && p.dataStart <= ctx.today
+      ? await loadLastOrderDate({ period: { start: p.dataStart, end: ctx.today }, ...p.scope })
+      : null;
 
   const model = buildLonsamhetModel(
     {
@@ -93,15 +102,6 @@ export default async function LonsamhetPage({
     { today: ctx.today, carry: carriedQuery(sp).replace(/^\?/, ""), lastOrderDate },
   );
 
-  // Efter vinsten: återbetalningar och fasta kostnader. Fördelningen av de fasta kostnaderna
-  // räknas på hela organisationen även med automatfilter (annars fick automaten alla).
-  const [adjustments, organization, sync] = await Promise.all([
-    loadProfitAdjustments(p.period),
-    p.scope.machineId || p.scope.storeId
-      ? loadDomainInput({ period: p.period })
-      : Promise.resolve(input),
-    loadSyncInfo(),
-  ]);
   const stale = homeStaleImport(sync, p.period.end, ctx.now, ctx.timeZone);
   const result = resultAfterProfit({
     current: input.current,
@@ -141,9 +141,7 @@ export default async function LonsamhetPage({
             comparison={model.comparisonLabel}
           />
         ) : null}
-        {stale ? (
-          <StaleImportLine stale={stale} today={ctx.today} canEdit={ctx.canEdit} />
-        ) : null}
+        {stale ? <StaleImportLine stale={stale} today={ctx.today} canEdit={ctx.canEdit} /> : null}
       </div>
 
       {model.orders === 0 ? (

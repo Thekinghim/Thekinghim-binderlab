@@ -36,7 +36,18 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const config = getConfigStatus();
   if (!config.ok) return <ConfigMissing issues={config.issues} />;
   const user = await requireUser();
-  const ctx = await loadOptionalContext();
+  // Allt skalet behöver läses parallellt (varje laddare är minst en rundresa till
+  // databasen). Stamdata m.m. kräver en organisation: utan den avvisas de, och felet
+  // fångas här eftersom layouten då visar NoOrganization i stället.
+  const ctxP = loadOptionalContext();
+  const shellP = Promise.all([
+    loadMasterData(),
+    loadSyncInfo(),
+    loadDataStart(),
+    loadMachineCounts(),
+  ]);
+  shellP.catch(() => {});
+  const ctx = await ctxP;
   if (!ctx) {
     // En butiksanvändare (rollen store, fas 10) har ingen approll: till /portal.
     await redirectStoreUserToPortal();
@@ -47,12 +58,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // Räknaren i menyn väntas inte in: den skickas som ett löfte och strömmar in när
   // punkterna är räknade (Att göra läser order och lager och tar längst tid i skalet).
   const todoCount = hasTodos ? countTodos() : undefined;
-  const [master, sync, dataStart, machineCounts] = await Promise.all([
-    loadMasterData(),
-    loadSyncInfo(),
-    loadDataStart(),
-    loadMachineCounts(),
-  ]);
+  const [master, sync, dataStart, machineCounts] = await shellP;
 
   const stores: ShellStore[] = master.stores
     .filter((s) => !s.archived)

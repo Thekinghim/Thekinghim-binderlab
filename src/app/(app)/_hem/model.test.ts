@@ -606,14 +606,14 @@ describe("homeHeadline", () => {
 describe("appHref", () => {
   it("översätter analysens länkar till panelens rutter och parametrar", () => {
     expect(appHref("/forsaljning?fran=2026-10-26&till=2026-10-26")).toBe(
-      "/lonsamhet?from=2026-10-26&to=2026-10-26&grupp=dag",
+      "/lonsamhet?from=2026-10-26&to=2026-10-26&per=dag",
     );
     expect(appHref("/forsaljning?fran=2026-10-13&till=2026-11-01&vy=veckodag")).toBe(
-      "/lonsamhet?from=2026-10-13&to=2026-11-01&grupp=veckodag",
+      "/lonsamhet?from=2026-10-13&to=2026-11-01&per=dag",
     );
     expect(
       appHref("/titlar/t1?fran=2026-10-13&till=2026-11-01", { storeId: "s1", machineId: null }),
-    ).toBe("/lonsamhet?from=2026-10-13&to=2026-11-01&grupp=titel&titel=t1&butik=s1");
+    ).toBe("/lonsamhet?from=2026-10-13&to=2026-11-01&titel=t1&butik=s1&vy=titel");
     expect(appHref("/automater/m1?fran=2026-10-13&till=2026-11-01")).toBe(
       "/automater/m1?from=2026-10-13&to=2026-11-01",
     );
@@ -621,7 +621,7 @@ describe("appHref", () => {
   it("lägger till titeln på länkar till Lönsamhet", () => {
     expect(
       appHref("/lonsamhet?grupp=titel&fran=2026-10-13&till=2026-11-01", null, { titel: "t1" }),
-    ).toBe("/lonsamhet?grupp=titel&from=2026-10-13&to=2026-11-01&titel=t1");
+    ).toBe("/lonsamhet?from=2026-10-13&to=2026-11-01&titel=t1&vy=titel");
   });
   it("skickar sammanslagning av titlar till Att göra", () => {
     expect(appHref("/titlar?slaihop=a&med=b")).toBe("/att-gora");

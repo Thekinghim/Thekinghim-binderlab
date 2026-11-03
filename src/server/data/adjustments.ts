@@ -15,10 +15,10 @@ import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
 import type { IsoDate, Period } from "@/domain";
 import type { Refund } from "@/domain/refunds";
-import { requireRoleFor, withUserDbFor } from "@/server/access";
-import { currentViewer } from "@/server/purchasing/session";
+import { withUserDbFor } from "@/server/access";
 
-import type { Viewer } from "./core/loaders";
+import { requireViewer } from "./core";
+import { requireViewerRole, type Viewer } from "./core/loaders";
 import { ECONOMY_ROLES } from "./core/types";
 
 export interface ProfitAdjustments {
@@ -85,7 +85,7 @@ export async function loadProfitAdjustmentsFor(
   period: Period,
 ): Promise<ProfitAdjustments> {
   const orgId = viewer.organization.id;
-  await requireRoleFor(viewer.user, orgId, ECONOMY_ROLES);
+  await requireViewerRole(viewer, ECONOMY_ROLES);
   return withUserDbFor(viewer.user, async (tx) => {
     const [refunds, fixedCosts] = await Promise.all([
       queryPeriodRefunds(tx, orgId, period),
@@ -96,7 +96,7 @@ export async function loadProfitAdjustmentsFor(
 }
 
 const cached = cache(async (start: IsoDate, end: IsoDate): Promise<ProfitAdjustments> =>
-  loadProfitAdjustmentsFor(await currentViewer(), { start, end }),
+  loadProfitAdjustmentsFor(await requireViewer(), { start, end }),
 );
 
 /** För serverkomponenter: som loadProfitAdjustmentsFor, som den inloggade, memoiserad. */

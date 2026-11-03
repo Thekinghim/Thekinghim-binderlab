@@ -18,23 +18,34 @@ import { cache } from "react";
 
 import { prioritizeByLostSales, TODO_DEFAULTS } from "@/analytics/todos";
 import { addDays, DomainError, type Period } from "@/domain";
-import { getRoleFor } from "@/server/access";
-import { lostSalesSummary, lostSalesSummaryFor } from "@/server/purchasing/lost-sales-summary";
+import { AuthorizationError } from "@/server/access";
+import { lostSalesSummaryFor } from "@/server/purchasing/lost-sales-summary";
 import type { LostSalesSummary } from "@/server/purchasing/types";
-import { currentViewer } from "@/server/purchasing/session";
-import { getActiveOrganization, withUserDb } from "@/server/session";
+import { withUserDb } from "@/server/session";
 
 import { loadSlotPeriodsFor, querySlotPeriods, todoStateWithoutRetired } from "./assortment";
-import { loadContext, loadTodoState } from "./core";
-import { todoStateWithSlotAlerts } from "./core/slot-alerts";
-import { businessToday, loadTodoStateFor, type TodoState, type Viewer } from "./core/loaders";
-import { canSeeEconomy } from "./core/types";
+import { cachedForViewer, loadOptionalContext, loadTodoState, requireViewer } from "./core";
+import { applySlotAlerts, loadSlotAlertDataFor, todoStateWithSlotAlerts } from "./core/slot-alerts";
+import {
+  businessToday,
+  loadTodoStateFor,
+  requireViewerRole,
+  type TodoState,
+  type Viewer,
+} from "./core/loaders";
+import { ALL_ROLES, canSeeEconomy } from "./core/types";
 
 /** Fönstret för förlorad försäljning i prioriteringen (dagar t.o.m. i går). */
 export const LOST_SALES_WINDOW_DAYS = TODO_DEFAULTS.refillWindowDays;
 
 /** Förlorad försäljning för en period, eller null när den inte ska visas (ingen ekonomi). */
 type LostSalesFor = (period: Period) => Promise<LostSalesSummary | null>;
+
+/** De senaste LOST_SALES_WINDOW_DAYS hela dagarna (t.o.m. i går). */
+function lostSalesWindow(viewer: Viewer, now: Date): Period {
+  const today = businessToday(now, viewer.organization.timezone);
+  return { start: addDays(today, -LOST_SALES_WINDOW_DAYS), end: addDays(today, -1) };
+}
 
 /**
  * Ordnar punkterna efter förlorad försäljning (påfyllningar där slutsålt redan kostat
@@ -48,12 +59,14 @@ async function rankTodoState(
   lostFor: LostSalesFor,
 ): Promise<TodoState> {
   if (!state.items.some((t) => t.kind === "refill")) return state;
-  const role = await getRoleFor(viewer.user, viewer.organization.id);
+  // Rollen läses högst en gång per förfrågan (requireViewerRole).
+  const role = await requireViewerRole(viewer, ALL_ROLES).catch((error: unknown) => {
+    if (error instanceof AuthorizationError) return null;
+    throw error;
+  });
   if (role === null || !canSeeEconomy(role)) return state;
-  const today = businessToday(now, viewer.organization.timezone);
-  const period = { start: addDays(today, -LOST_SALES_WINDOW_DAYS), end: addDays(today, -1) };
   try {
-    const lost = await lostFor(period);
+    const lost = await lostFor(lostSalesWindow(viewer, now));
     if (!lost) return state;
     return {
       items: prioritizeByLostSales(state.items, lost.series, LOST_SALES_WINDOW_DAYS),
@@ -91,38 +104,58 @@ export async function loadRankedTodoStateFor(
  * laddarens ordning. Memoiserad per förfrågan: menyns räknare och listan delar den.
  */
 export const loadVisibleTodoState = cache(async (): Promise<TodoState> => {
-  if (!(await getActiveOrganization())) return { items: [], dismissed: [] };
-  const ctx = await loadContext();
-  const [state, periods] = await Promise.all([
+  const ctx = await loadOptionalContext();
+  if (!ctx) return { items: [], dismissed: [] };
+  const viewer = await requireViewer();
+  // Punkterna, sortimentet och larmgränserna läses parallellt.
+  const [state, periods, alerts] = await Promise.all([
     loadTodoState(),
     withUserDb((tx) => querySlotPeriods(tx, ctx.organization.id)),
+    loadSlotAlertDataFor(viewer, new Date(ctx.now)),
   ]);
-  return todoStateWithSlotAlerts(
-    await currentViewer(),
-    todoStateWithoutRetired(state, periods, ctx.today),
-    periods,
-    new Date(ctx.now),
-  );
+  return applySlotAlerts(todoStateWithoutRetired(state, periods, ctx.today), alerts, periods);
 });
 
-/** Antalet punkter i Att göra, för menyns räknare (samma punkter som listan). */
+/** Sekunder som menyns räknare får vara gammal (den räknas annars vid varje sidladdning). */
+const TODO_COUNT_SECONDS = 60;
+
+/**
+ * Antalet punkter i Att göra, för menyns räknare (samma punkter som listan). Sparas en
+ * minut per användare och organisation (cachedForViewer), så att räknaren, som läser
+ * order, lager och larm, inte tar databasanslutningar från sidan vid varje sidladdning.
+ * Ändringar i appen (revalidateAppData) rensar den direkt.
+ */
 export async function loadTodoCount(): Promise<number> {
-  return (await loadVisibleTodoState()).items.length;
+  return cachedForViewer(
+    "todo-count",
+    TODO_COUNT_SECONDS,
+    async () => (await loadVisibleTodoState()).items.length,
+  );
 }
 
 /**
  * För serverkomponenter: Att göra prioriterad efter förlorad försäljning, som den
- * inloggade, memoiserad per förfrågan. Punkterna (loadTodoState) och förlorad försäljning
- * (lostSalesSummary) är också memoiserade, så menyns räknare, Hem och Att göra delar dem
- * inom samma sidladdning. Tom för den utan organisation.
+ * inloggade, memoiserad per förfrågan. Punkterna (loadTodoState) är också memoiserade, så
+ * menyns räknare, Hem och Att göra delar dem inom samma sidladdning; förlorad försäljning
+ * räknas parallellt med dem. Tom för den utan organisation.
  */
 export const loadRankedTodoState = cache(async (): Promise<TodoState> => {
-  if (!(await getActiveOrganization())) return { items: [], dismissed: [] };
-  const ctx = await loadContext();
+  const ctx = await loadOptionalContext();
+  if (!ctx) return { items: [], dismissed: [] };
+  const viewer = await requireViewer();
+  const now = new Date(ctx.now);
+  // Förlorad försäljning räknas parallellt med punkterna (inte efter), när rollen ser
+  // ekonomi; den används bara om det finns påfyllningar att ordna.
+  // Med viewern direkt (lostSalesSummaryFor) läses varken organisationen eller rollen en
+  // gång till.
+  const lost = ctx.canSeeEconomy
+    ? lostSalesSummaryFor(viewer, lostSalesWindow(viewer, now), now)
+    : null;
+  lost?.catch(() => {});
   return rankTodoState(
-    await currentViewer(),
+    viewer,
     await loadVisibleTodoState(),
-    new Date(ctx.now),
-    (period) => lostSalesSummary(period),
+    now,
+    (period) => lost ?? lostSalesSummaryFor(viewer, period, now),
   );
 });

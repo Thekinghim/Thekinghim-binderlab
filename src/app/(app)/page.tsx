@@ -171,7 +171,7 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
                 title="Mest sålda titlar."
                 size="md"
                 actions={
-                  <ArrowLink href={`/lonsamhet${carriedParams(sp, { grupp: "titel" })}`}>
+                  <ArrowLink href={`/lonsamhet${carriedParams(sp, { vy: "titel" })}`}>
                     Alla titlar i Lönsamhet
                   </ArrowLink>
                 }
@@ -300,7 +300,7 @@ function DailySection({
         aside={aside}
         size="md"
         actions={
-          <ArrowLink href={`/lonsamhet${carriedParams(sp, { grupp: "dag" })}`}>
+          <ArrowLink href={`/lonsamhet${carriedParams(sp, { per: "dag", visa: "utveckling" })}`}>
             Lönsamhet per dag
           </ArrowLink>
         }

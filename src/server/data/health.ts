@@ -14,20 +14,19 @@ import "server-only";
 import { cache } from "react";
 
 import type { MachineHealth } from "@/analytics/health";
-import { requireRoleFor, withUserDbFor } from "@/server/access";
+import { withUserDbFor } from "@/server/access";
 import { healthOf, loadHealthData } from "@/server/alerts/inputs";
 
-import { loadContext } from "./core";
-import { businessToday, type Viewer } from "./core/loaders";
+import { loadContext, requireViewer } from "./core";
+import { businessToday, requireViewerRole, type Viewer } from "./core/loaders";
 import { ALL_ROLES } from "./core/types";
-import { currentViewer } from "@/server/purchasing/session";
 
 /** Hälsa per automat (inte arkiverade), som på Drift. */
 export async function loadMachineHealthFor(
   viewer: Viewer,
   now: Date = new Date(),
 ): Promise<MachineHealth[]> {
-  await requireRoleFor(viewer.user, viewer.organization.id, ALL_ROLES);
+  await requireViewerRole(viewer, ALL_ROLES);
   const timeZone = viewer.organization.timezone;
   const today = businessToday(now, timeZone);
   const data = await withUserDbFor(viewer.user, (tx) =>
@@ -39,5 +38,5 @@ export async function loadMachineHealthFor(
 /** För serverkomponenter: hälsan som den inloggade, memoiserad per förfrågan. */
 export const loadMachineHealth = cache(async (): Promise<MachineHealth[]> => {
   const ctx = await loadContext();
-  return loadMachineHealthFor(await currentViewer(), new Date(ctx.now));
+  return loadMachineHealthFor(await requireViewer(), new Date(ctx.now));
 });

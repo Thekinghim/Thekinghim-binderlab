@@ -51,15 +51,33 @@ function iso(d: Date | null): string | null {
   return d ? d.toISOString() : null;
 }
 
-/** Placeringen som gällde automaten på dagen `dateColumn` ligger i butiken. */
+/**
+ * Automaten stod i butiken på dagen `dateColumn`: placeringen som gällde den dagen ligger
+ * i butiken, eller dagen är före automatens första placering och den ligger i butiken.
+ *
+ * Det senare är vanligt: automaten läggs upp (och placeras) samma dag som den kopplas
+ * till Binderlab, medan försäljningen som importeras från automatleverantören går
+ * längre tillbaka. Den försäljningen hör till butiken där automaten först ställdes
+ * (samma regel som effectivePlacements i ./placements.ts). Utan den visade butiksfiltret
+ * ingenting för en ny automat.
+ */
 function placedInStore(machineColumn: SQL, dateColumn: SQL, orgId: string, storeId: string): SQL {
   return sql`exists (
     select 1 from public.machine_placements mp
     where mp.organization_id = ${orgId}::uuid
       and mp.store_id = ${storeId}::uuid
       and mp.machine_id = ${machineColumn}
-      and mp.valid_from <= ${dateColumn}
-      and (mp.valid_to is null or mp.valid_to >= ${dateColumn})
+      and (
+        (mp.valid_from <= ${dateColumn}
+          and (mp.valid_to is null or mp.valid_to >= ${dateColumn}))
+        or (${dateColumn} < mp.valid_from
+          and not exists (
+            select 1 from public.machine_placements earlier
+            where earlier.organization_id = mp.organization_id
+              and earlier.machine_id = mp.machine_id
+              and earlier.valid_from < mp.valid_from
+          ))
+      )
   )`;
 }
 
@@ -211,6 +229,68 @@ export async function queryStores(tx: Tx, orgId: string): Promise<StoreRecord[]>
   return rows.map(({ archivedAt, ...r }) => ({ ...r, archived: archivedAt !== null }));
 }
 
+interface MasterRow {
+  readonly titles: TitleRecord[];
+  readonly placements: PlacementRecord[];
+  readonly stores: StoreRecord[];
+  readonly machines: Array<Omit<MachineRecord, "storeId">>;
+}
+
+/**
+ * Titlar, placeringar, butiker och automater (med butiken de står i `today`) i EN fråga,
+ * med samma fält och ordning som queryTitles, queryPlacements, queryStores och
+ * queryMachines. Varje fråga kostar två rundresor mot databasen genom
+ * transaktionspoolern (prepare: false), så fyra frågor blev åtta.
+ */
+export async function queryMasterData(
+  tx: Tx,
+  orgId: string,
+  today: IsoDate,
+): Promise<{
+  titles: TitleRecord[];
+  placements: PlacementRecord[];
+  stores: StoreRecord[];
+  machines: MachineRecord[];
+}> {
+  const rows = (await tx.execute(sql`
+    select
+      (select coalesce(json_agg(json_build_object(
+          'id', t.id, 'name', t.name, 'series', t.series, 'mergedIntoId', t.merged_into_id,
+          'archived', t.archived_at is not null or t.merged_into_id is not null
+        ) order by t.name, t.id), '[]'::json)
+        from public.titles t where t.organization_id = ${orgId}::uuid) as titles,
+      (select coalesce(json_agg(json_build_object(
+          'id', p.id, 'machineId', p.machine_id, 'storeId', p.store_id,
+          'from', p.valid_from, 'to', p.valid_to
+        ) order by p.machine_id, p.valid_from), '[]'::json)
+        from public.machine_placements p where p.organization_id = ${orgId}::uuid) as placements,
+      (select coalesce(json_agg(json_build_object(
+          'id', st.id, 'name', st.name, 'address', st.address, 'contactName', st.contact_name,
+          'email', st.email, 'phone', st.phone, 'isExample', st.is_example,
+          'archived', st.archived_at is not null
+        ) order by st.name, st.id), '[]'::json)
+        from public.stores st where st.organization_id = ${orgId}::uuid) as stores,
+      (select coalesce(json_agg(json_build_object(
+          'id', m.id, 'code', m.code, 'name', m.name, 'serial', m.serial,
+          'activeFrom', m.active_from, 'activeTo', m.active_to, 'isExample', m.is_example,
+          'archived', m.archived_at is not null
+        ) order by m.code, m.id), '[]'::json)
+        from public.machines m where m.organization_id = ${orgId}::uuid) as machines
+  `)) as unknown as Iterable<MasterRow>;
+  const row = [...rows][0];
+  const placements = row?.placements ?? [];
+  const current = new Map<string, string>();
+  for (const p of placements) {
+    if (p.from <= today && (p.to === null || p.to >= today)) current.set(p.machineId, p.storeId);
+  }
+  return {
+    titles: row?.titles ?? [],
+    placements,
+    stores: row?.stores ?? [],
+    machines: (row?.machines ?? []).map((m) => ({ ...m, storeId: current.get(m.id) ?? null })),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Ekonomi (bara ägare, admin och läsare; RLS ger påfyllaren tomma resultat)
 // ---------------------------------------------------------------------------
@@ -261,6 +341,73 @@ export interface OrderQueryResult {
   readonly withoutTitle: number;
 }
 
+/** Villkoren för order (alias o) i [start, end] med filtret (butik eller automat). */
+function orderConditions(orgId: string, range: Period, scope: DataScope): SQL[] {
+  const conditions: SQL[] = [
+    sql`o.organization_id = ${orgId}::uuid`,
+    sql`o.business_date >= ${range.start}::date`,
+    sql`o.business_date <= ${range.end}::date`,
+  ];
+  if (scope.machineId) conditions.push(sql`o.machine_id = ${scope.machineId}::uuid`);
+  if (scope.storeId) {
+    conditions.push(placedInStore(sql`o.machine_id`, sql`o.business_date`, orgId, scope.storeId));
+  }
+  return conditions;
+}
+
+/**
+ * Senaste affärsdagen med en order (med titel) i [start, end] och filtret, eller null.
+ * En fråga i stället för att läsa alla order (Lönsamhetens tomma läge).
+ */
+export async function queryLastOrderDate(
+  tx: Tx,
+  orgId: string,
+  range: Period,
+  scope: DataScope,
+): Promise<IsoDate | null> {
+  const conditions = [...orderConditions(orgId, range, scope), sql`o.title_id is not null`];
+  const rows = (await tx.execute(sql`
+    select max(o.business_date)::text as last
+    from public.orders o
+    where ${sql.join(conditions, sql` and `)}
+  `)) as unknown as Iterable<{ last: string | null }>;
+  return [...rows][0]?.last ?? null;
+}
+
+/** Organisationerna där användaren är medlem, med antal aktiva automater. */
+export interface OrganizationWithMachines {
+  readonly id: string;
+  readonly name: string;
+  readonly slug: string;
+  readonly timezone: string;
+  readonly role: string;
+  readonly machines: number;
+}
+
+/**
+ * Som listOrganizationsFor (@/server/access) och queryMachineCountsByOrg i EN fråga:
+ * organisationsväxlaren behöver båda vid varje sidladdning.
+ */
+export async function queryOrganizationsWithMachines(tx: Tx): Promise<OrganizationWithMachines[]> {
+  const rows = (await tx.execute(sql`
+    select o.id, o.name, o.slug::text as slug, o.timezone, m.role::text as role,
+           (select count(*)::int from public.machines ma
+             where ma.organization_id = o.id and ma.archived_at is null) as machines
+    from public.memberships m
+    join public.organizations o on o.id = m.organization_id
+    where m.user_id = (select auth.uid()) and o.archived_at is null
+    order by m.created_at, o.name
+  `)) as unknown as Iterable<Record<string, unknown>>;
+  return [...rows].map((r) => ({
+    id: String(r.id),
+    name: String(r.name),
+    slug: String(r.slug),
+    timezone: String(r.timezone),
+    role: String(r.role),
+    machines: Number(r.machines ?? 0),
+  }));
+}
+
 /**
  * Order med affärsdatum i [start, end], filtrerade på butik (automatens placering den
  * dagen) eller automat. Order utan titel räknas men tas inte med (de kan inte prissättas).
@@ -271,15 +418,7 @@ export async function queryOrders(
   range: Period,
   scope: DataScope,
 ): Promise<OrderQueryResult> {
-  const conditions: SQL[] = [
-    sql`o.organization_id = ${orgId}::uuid`,
-    sql`o.business_date >= ${range.start}::date`,
-    sql`o.business_date <= ${range.end}::date`,
-  ];
-  if (scope.machineId) conditions.push(sql`o.machine_id = ${scope.machineId}::uuid`);
-  if (scope.storeId) {
-    conditions.push(placedInStore(sql`o.machine_id`, sql`o.business_date`, orgId, scope.storeId));
-  }
+  const conditions = orderConditions(orgId, range, scope);
   // Rå SQL i stället för Drizzles select: med 100 000 order är det radernas omvandling
   // som tar tid. Tidpunkten formateras i databasen precis som Date.toISOString()
   // (UTC, millisekunder, "Z"), och beloppet kontrolleras som säkert heltal som i schemat.

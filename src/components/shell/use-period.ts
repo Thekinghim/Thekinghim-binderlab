@@ -15,6 +15,7 @@ import {
   type ResolvedPeriod,
   type Scope,
 } from "./period-state";
+import { useShellNavigation } from "./shell-navigation";
 
 /**
  * Klienthooks för skalets URL-tillstånd. Alla läser useSearchParams, så en
@@ -38,23 +39,35 @@ function useNow(): Date {
 }
 
 /**
- * Sökparametrarna och en setter som skriver tillbaka till URL:en. Den
- * omedelbara återkopplingen (knappen flyttar sig vid klicket) sköts av
- * PeriodControl med ett lokalt väntande val, inte av useOptimistic: ett
- * optimistiskt värde inne i en transition gjorde att router.replace aldrig
- * slog igenom (perioden bytte inte data).
+ * Sökparametrarna och en setter som skriver tillbaka till URL:en.
+ *
+ * Inne i AppShell går skrivningen via skalets navigering (./shell-navigation): medan
+ * servern räknar är det den väntande adressen som gäller här, så att knappen,
+ * periodraden och filtren visar valet direkt, och ett nytt val alltid utgår från det
+ * senaste (inte från URL:en som ännu inte bytts).
  */
 function useQuery(): [URLSearchParams, (next: URLSearchParams) => void] {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
-  const params = useMemo(() => new URLSearchParams(sp.toString()), [sp]);
+  const nav = useShellNavigation();
+  const target = nav?.target ?? null;
+  const params = useMemo(() => {
+    if (target) {
+      const url = new URL(target, "http://x");
+      if (url.pathname === pathname) return new URLSearchParams(url.search);
+    }
+    return new URLSearchParams(sp.toString());
+  }, [sp, target, pathname]);
+  const navReplace = nav?.replace;
   const replace = useCallback(
     (next: URLSearchParams) => {
       const q = next.toString();
-      router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
+      const href = q ? `${pathname}?${q}` : pathname;
+      if (navReplace) navReplace(href);
+      else router.replace(href, { scroll: false });
     },
-    [router, pathname],
+    [router, pathname, navReplace],
   );
   return [params, replace];
 }
@@ -93,6 +106,6 @@ export function useScope(): Scope & { setScope: (scope: Partial<Scope>) => void 
 
 /** "?period=7d&butik=s1" att hänga på interna länkar så att vyn följer med. */
 export function useCarriedQuery(): string {
-  const sp = useSearchParams();
+  const [sp] = useQuery();
   return useMemo(() => carriedQuery(sp), [sp]);
 }

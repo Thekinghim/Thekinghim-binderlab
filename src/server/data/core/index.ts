@@ -16,7 +16,7 @@
 
 import "server-only";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, unstable_cache } from "next/cache";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 
@@ -25,20 +25,17 @@ import { deniedHref, routeById, type RouteId } from "@/components/shell/nav";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import type { MemberRole } from "@/db/schema";
 import type { IsoDate, Period } from "@/domain";
-import { listOrganizationsFor } from "@/server/access";
-import {
-  AuthorizationError,
-  getActiveOrganization,
-  requireUser,
-  type OrganizationMembership,
-} from "@/server/session";
+import { ACTIVE_ORG_COOKIE } from "@/server/auth/flows";
+import { nextCookieJar } from "@/server/auth/next-cookies";
+import { AuthorizationError, requireUser, type OrganizationMembership } from "@/server/session";
 
 import {
   loadContextFor,
   loadDataStartFor,
   loadDomainInputFor,
-  loadMachineCountsFor,
+  loadLastOrderDateFor,
   loadMasterDataFor,
+  loadOrganizationsFor,
   loadSalesCountsFor,
   loadStockFor,
   loadSyncInfoFor,
@@ -47,6 +44,7 @@ import {
   type SalesCountsArgs,
   type TodoState,
   type Viewer,
+  verifiedViewer,
 } from "./loaders";
 import { resolveAppPeriod } from "./period";
 import type {
@@ -66,22 +64,38 @@ export { STALE_SYNC_HOURS, type DomainInputArgs, type SalesCountsArgs } from "./
 /** Tidpunkten förfrågan räknar från (samma i alla laddare under en förfrågan). */
 const requestNow = cache((): Date => new Date());
 
-const loadOrganizations = cache(async (): Promise<OrganizationMembership[]> => {
-  const user = await requireUser();
-  return listOrganizationsFor(user);
-});
+/** Organisationerna (organisationsväxlaren) och antal automater i var och en, i en transaktion. */
+const loadOrganizationsAndCounts = cache(async () => loadOrganizationsFor(await requireUser()));
+
+const loadOrganizations = cache(
+  async (): Promise<OrganizationMembership[]> => (await loadOrganizationsAndCounts()).organizations,
+);
 
 /**
  * Användaren och den aktiva organisationen, eller null om användaren inte är medlem
  * någonstans. Skickar till /logga-in om ingen är inloggad.
+ *
+ * Samma val som getActiveOrganization (cookien om användaren är medlem där, annars den
+ * första), men ur organisationslistan som skalet ändå läser, så att listan inte läses
+ * två gånger efter varandra. Rollen är läst ur databasen (under RLS), så laddarna läser
+ * den inte en gång till (verifiedViewer).
  */
 const loadViewer = cache(async (): Promise<Viewer | null> => {
   const user = await requireUser();
-  const organization = await getActiveOrganization();
-  return organization ? { user, organization } : null;
+  const [{ organizations }, jar] = await Promise.all([
+    loadOrganizationsAndCounts(),
+    nextCookieJar(),
+  ]);
+  const preferred = jar.get(ACTIVE_ORG_COOKIE)?.toLowerCase();
+  const organization = organizations.find((o) => o.id === preferred) ?? organizations[0] ?? null;
+  return organization ? verifiedViewer({ user, organization }) : null;
 });
 
-async function requireViewer(): Promise<Viewer> {
+/**
+ * Den inloggade som Viewer för laddarna i ./loaders (rollen redan läst i förfrågan).
+ * Kastar AuthorizationError om användaren saknar organisation.
+ */
+export async function requireViewer(): Promise<Viewer> {
   const viewer = await loadViewer();
   if (!viewer) {
     throw new AuthorizationError("forbidden", "Du är inte medlem i någon organisation.");
@@ -96,6 +110,9 @@ async function requireViewer(): Promise<Viewer> {
 export const loadOptionalContext = cache(async (): Promise<AppContext | null> => {
   const viewer = await loadViewer();
   if (!viewer) return null;
+  // Nästan varje sida läser perioden (loadPeriod), som behöver första dagen med data:
+  // den läses redan nu, parallellt med kontexten, i stället för efter den.
+  loadDataStart().catch(() => {});
   return loadContextFor(viewer, await loadOrganizations(), requestNow());
 });
 
@@ -236,10 +253,61 @@ export const loadTodoState = cache(async (): Promise<TodoState> =>
 );
 
 /** Antal automater per organisation (organisationsväxlarens detaljrad). */
-export const loadMachineCounts = cache(async (): Promise<Map<string, number>> => {
-  const user = await requireUser();
-  return loadMachineCountsFor(user, await loadOrganizations());
-});
+export const loadMachineCounts = cache(
+  async (): Promise<Map<string, number>> => (await loadOrganizationsAndCounts()).machineCounts,
+);
+
+const loadLastOrderDateCached = cache(
+  async (
+    start: IsoDate,
+    end: IsoDate,
+    storeId: string | null,
+    machineId: string | null,
+  ): Promise<IsoDate | null> =>
+    loadLastOrderDateFor(await requireViewer(), { period: { start, end }, storeId, machineId }),
+);
+
+/**
+ * Senaste affärsdagen med en order i perioden och filtret, eller null (en fråga, för
+ * tomma lägen: "senast såld …"). Bara ägare, admin och läsare.
+ */
+export function loadLastOrderDate(args: {
+  period: Period;
+  storeId?: string | null;
+  machineId?: string | null;
+}): Promise<IsoDate | null> {
+  return loadLastOrderDateCached(
+    args.period.start,
+    args.period.end,
+    args.storeId ?? null,
+    args.machineId ?? null,
+  );
+}
+
+/** Taggen för allt som cachas mellan förfrågningar för organisationen (unstable_cache). */
+export function appDataTag(organizationId: string): string {
+  return `app-data:${organizationId}`;
+}
+
+/**
+ * Kör fn högst en gång per `seconds` för användaren i organisationen (mellan förfrågningar,
+ * Next:s datacache). Bara för sådant där några sekunders fördröjning är ofarlig, som
+ * menyns räknare. Nyckeln är användaren, organisationen och rollen, så inget delas
+ * mellan användare. Rensas av revalidateAppData och av revalidateTag(appDataTag(org)).
+ */
+export async function cachedForViewer<T>(
+  name: string,
+  seconds: number,
+  fn: (viewer: Viewer) => Promise<T>,
+): Promise<T> {
+  const viewer = await requireViewer();
+  const { userId } = viewer.user;
+  const { id: orgId, role } = viewer.organization;
+  return unstable_cache(() => fn(viewer), [name, userId, orgId, role], {
+    revalidate: seconds,
+    tags: [appDataTag(orgId)],
+  })();
+}
 
 /**
  * Efter en ändring som påverkar siffror (priser, inställningar, lager, avtal …): alla
@@ -247,5 +315,6 @@ export const loadMachineCounts = cache(async (): Promise<Map<string, number>> =>
  * göra och synkstatus. Anropa sist i server actions, efter att ändringen sparats.
  */
 export function revalidateAppData(): void {
+  // Rensar också det som cachedForViewer sparat under sidorna (Next:s implicita taggar).
   revalidatePath("/", "layout");
 }

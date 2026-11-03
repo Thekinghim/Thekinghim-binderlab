@@ -18,16 +18,20 @@ import {
 } from "@/analytics/todos";
 import * as s from "@/db/schema";
 import type { Tx } from "@/db/client";
-import { getRoleFor, requireRoleFor, withUserDbFor } from "@/server/access";
+import { AuthorizationError, withUserDbFor } from "@/server/access";
 
-import { businessToday, type TodoState, type Viewer } from "./loaders";
+import type { IsoDate } from "@/domain";
+
 import {
-  queryMachines,
-  queryPlacements,
-  queryStock,
-  queryTitles,
-  queryTodoDismissals,
-} from "./queries";
+  businessToday,
+  loadMasterDataFor,
+  requireViewerRole,
+  stockRowsInRequest,
+  type TodoState,
+  type Viewer,
+} from "./loaders";
+import { queryTodoDismissals } from "./queries";
+import { ALL_ROLES, type MasterData } from "./types";
 
 /** Roller som får ändra larmgränsen. */
 export const SLOT_ALERT_ROLES = ["owner", "admin"] as const;
@@ -61,7 +65,7 @@ export async function setSlotAlertFor(
   viewer: Viewer,
   input: { machineId: string; titleId: string; alertAtUnits: number | null },
 ): Promise<number | null> {
-  await requireRoleFor(viewer.user, viewer.organization.id, SLOT_ALERT_ROLES);
+  await requireViewerRole(viewer, SLOT_ALERT_ROLES);
   const orgId = viewer.organization.id;
   const units = input.alertAtUnits;
   if (units !== null && (!Number.isSafeInteger(units) || units < 0 || units > MAX_ALERT_UNITS)) {
@@ -93,6 +97,79 @@ export async function setSlotAlertFor(
   });
 }
 
+/** Det larmgränserna på Att göra behöver (loadSlotAlertDataFor). */
+export interface SlotAlertData {
+  readonly alerts: SlotAlert[];
+  readonly stock: Array<{
+    machineId: string;
+    titleId: string;
+    onHand: number;
+    lastRestockedAt: string | null;
+  }>;
+  readonly machines: MasterData["machines"];
+  readonly titles: MasterData["titles"];
+  readonly dismissals: Awaited<ReturnType<typeof queryTodoDismissals>>;
+  readonly today: IsoDate;
+}
+
+/**
+ * Larmgränserna med lager, automater, titlar och avbockningar, eller null när det inte
+ * finns några gränser (eller rollen är läsare). Kan läsas parallellt med Att göra.
+ */
+export async function loadSlotAlertDataFor(
+  viewer: Viewer,
+  now: Date,
+): Promise<SlotAlertData | null> {
+  const orgId = viewer.organization.id;
+  const today = businessToday(now, viewer.organization.timezone);
+  // Läsaren får inga punkter alls (laddaren), och ska inte få dem härifrån heller.
+  const role = await requireViewerRole(viewer, ALL_ROLES).catch((error: unknown) => {
+    if (error instanceof AuthorizationError) return null;
+    throw error;
+  });
+  if (role === null || role === "viewer") return null;
+  const found = await withUserDbFor(viewer.user, async (tx) => {
+    const alerts = await querySlotAlerts(tx, orgId);
+    if (alerts.length === 0) return null;
+    return { alerts, dismissals: await queryTodoDismissals(tx, orgId) };
+  });
+  if (!found) return null;
+  // Stamdata och lager delas med resten av förfrågan (React cache i ./loaders).
+  const [{ titles, machines }, stockRows] = await Promise.all([
+    loadMasterDataFor(viewer, now),
+    stockRowsInRequest(viewer),
+  ]);
+  const stock = stockRows
+    .filter((r) => r.locationKind === "machine" && r.machineId !== null)
+    .map((r) => ({
+      machineId: r.machineId as string,
+      titleId: r.titleId,
+      onHand: r.onHand,
+      lastRestockedAt: r.lastRestockedAt,
+    }));
+  return { ...found, stock, machines, titles, today };
+}
+
+/** Lägger larmgränserna på punkterna. Avbockningar gäller som för andra punkter. */
+export function applySlotAlerts(
+  state: TodoState,
+  data: SlotAlertData | null,
+  periods: readonly SlotPeriod[],
+): TodoState {
+  if (!data) return state;
+  const merged = withSlotAlerts([...state.items, ...state.dismissed], {
+    alerts: data.alerts,
+    stock: data.stock,
+    machines: data.machines,
+    titles: data.titles,
+    today: data.today,
+    slotPeriods: periods,
+  });
+  const items = applyDismissals(merged, data.dismissals);
+  const shown = new Set(items.map((t) => t.key));
+  return { items, dismissed: merged.filter((t) => !shown.has(t.key)) };
+}
+
 /**
  * Lägger larmgränserna på Att göra (laddaren i ./loaders räknar utan dem). Läsaren har
  * inga punkter. Avbockningar gäller som för andra punkter (nyckel och fingerprint).
@@ -103,39 +180,5 @@ export async function todoStateWithSlotAlerts(
   periods: readonly SlotPeriod[],
   now: Date,
 ): Promise<TodoState> {
-  const orgId = viewer.organization.id;
-  const today = businessToday(now, viewer.organization.timezone);
-  // Läsaren får inga punkter alls (laddaren), och ska inte få dem härifrån heller.
-  const role = await getRoleFor(viewer.user, orgId);
-  if (role === null || role === "viewer") return state;
-  return withUserDbFor(viewer.user, async (tx) => {
-    const alerts = await querySlotAlerts(tx, orgId);
-    if (alerts.length === 0) return state;
-    const [stockRows, titles, placements, dismissals] = await Promise.all([
-      queryStock(tx, orgId),
-      queryTitles(tx, orgId),
-      queryPlacements(tx, orgId),
-      queryTodoDismissals(tx, orgId),
-    ]);
-    const machines = await queryMachines(tx, orgId, placements, today);
-    const stock = stockRows
-      .filter((r) => r.locationKind === "machine" && r.machineId !== null)
-      .map((r) => ({
-        machineId: r.machineId as string,
-        titleId: r.titleId,
-        onHand: r.onHand,
-        lastRestockedAt: r.lastRestockedAt,
-      }));
-    const merged = withSlotAlerts([...state.items, ...state.dismissed], {
-      alerts,
-      stock,
-      machines,
-      titles,
-      today,
-      slotPeriods: periods,
-    });
-    const items = applyDismissals(merged, dismissals);
-    const shown = new Set(items.map((t) => t.key));
-    return { items, dismissed: merged.filter((t) => !shown.has(t.key)) };
-  });
+  return applySlotAlerts(state, await loadSlotAlertDataFor(viewer, now), periods);
 }

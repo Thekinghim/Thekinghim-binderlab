@@ -7,10 +7,11 @@ import {
   loadPeriod,
   loadSyncInfo,
   requireRoute,
+  requireViewer,
 } from "@/server/data/core";
 import { loadRankedTodoState } from "@/server/data/todos";
 import { optionalOnboardingStatus } from "@/server/onboarding";
-import { lostSalesSummary } from "@/server/purchasing";
+import { lostSalesSummaryFor } from "@/server/purchasing";
 
 import { loadHomeWith, type HomeData } from "./data";
 
@@ -28,7 +29,11 @@ export async function loadHome(searchParams: SearchParamsInput): Promise<HomeDat
       period: loadPeriod,
       domainInput: loadDomainInput,
       todos: async () => (await loadRankedTodoState()).items,
-      lostSales: (period, scope) => lostSalesSummary(period, scope),
+      // Med viewern direkt: organisationen och rollen är redan lästa i förfrågan.
+      lostSales: async (period, scope) => {
+        const [viewer, ctx] = await Promise.all([requireViewer(), loadContext()]);
+        return lostSalesSummaryFor(viewer, period, new Date(ctx.now), scope);
+      },
       onboarding: optionalOnboardingStatus,
       sync: loadSyncInfo,
     },

@@ -20,6 +20,7 @@ import {
   type SyncState,
   type TodoCountSource,
 } from "./side-nav";
+import { NavigationProgress, ShellMain, ShellNavigationProvider } from "./shell-navigation";
 import { setTheme, useTheme } from "./theme-toggle";
 import { Topbar, type Period } from "./topbar";
 import { useAutoRefresh } from "./use-auto-refresh";
@@ -108,53 +109,56 @@ export function AppShell(props: AppShellProps) {
   const legacyPeriod = props.period !== undefined && props.onPeriodChange !== undefined;
 
   return (
-    <div className="flex min-h-dvh">
-      <a
-        href="#main"
-        className="sr-only-focusable label fixed top-2 left-2 z-50 rounded-sm bg-inverse px-3 py-2 text-on-inverse"
-      >
-        Hoppa till innehåll
-      </a>
-      <Sidebar {...navProps} />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar
-          crumbs={crumbs}
-          homeHref={homeHref(role)}
-          onOpenCommand={onOpenCommand ?? (() => setPaletteOpen(true))}
-          assistantHref={routesForRole(role).find((r) => r.id === "assistent")?.href}
-          showContext={showContext}
-          stores={props.stores}
-          machines={props.machines}
-          earliest={props.earliest}
-          period={props.period}
-          onPeriodChange={props.onPeriodChange}
-          comparison={props.comparison}
-        />
-        <main id="main" className="flex-1 pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0">
-          {/* Mjuk övergång vid sidbyte: nyckeln är sökvägen, så periodbyten animeras inte. */}
-          <div key={pathname} className="fade-in">
-            {children}
-          </div>
-        </main>
-      </div>
-      <MobileNav {...navProps} />
-      {onOpenCommand ? null : (
-        <Suspense fallback={null}>
-          <ShellCommandPalette
-            open={paletteOpen}
-            onOpenChange={setPaletteOpen}
-            role={role}
-            stores={props.stores ?? []}
-            machines={props.machines ?? []}
-            machineHref={props.machineHref}
-            commands={props.commands}
-            withPeriod={!legacyPeriod && showContext}
-            onSignOut={props.onSignOut}
-            signOutHref={props.signOutHref}
+    <ShellNavigationProvider>
+      <div className="flex min-h-dvh">
+        <NavigationProgress />
+        <a
+          href="#main"
+          className="sr-only-focusable label fixed top-2 left-2 z-50 rounded-sm bg-inverse px-3 py-2 text-on-inverse"
+        >
+          Hoppa till innehåll
+        </a>
+        <Sidebar {...navProps} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Topbar
+            crumbs={crumbs}
+            homeHref={homeHref(role)}
+            onOpenCommand={onOpenCommand ?? (() => setPaletteOpen(true))}
+            assistantHref={routesForRole(role).find((r) => r.id === "assistent")?.href}
+            showContext={showContext}
+            stores={props.stores}
+            machines={props.machines}
+            earliest={props.earliest}
+            period={props.period}
+            onPeriodChange={props.onPeriodChange}
+            comparison={props.comparison}
           />
-        </Suspense>
-      )}
-    </div>
+          <ShellMain className="flex-1 pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0">
+            {/* Mjuk övergång vid sidbyte: nyckeln är sökvägen, så periodbyten animeras inte. */}
+            <div key={pathname} className="fade-in">
+              {children}
+            </div>
+          </ShellMain>
+        </div>
+        <MobileNav {...navProps} />
+        {onOpenCommand ? null : (
+          <Suspense fallback={null}>
+            <ShellCommandPalette
+              open={paletteOpen}
+              onOpenChange={setPaletteOpen}
+              role={role}
+              stores={props.stores ?? []}
+              machines={props.machines ?? []}
+              machineHref={props.machineHref}
+              commands={props.commands}
+              withPeriod={!legacyPeriod && showContext}
+              onSignOut={props.onSignOut}
+              signOutHref={props.signOutHref}
+            />
+          </Suspense>
+        )}
+      </div>
+    </ShellNavigationProvider>
   );
 }
 

@@ -9,6 +9,8 @@
 
 import type { DataScope } from "@/server/data/core/types";
 
+import { parseTrendParam, parseViewParam, TREND_PARAM, VIEW_PARAM } from "../lonsamhet/_lib/params";
+
 const BASE = "http://binderlab.invalid";
 
 /** Lägger till skalets filter (butik/automat) om länken inte redan har ett eget. */
@@ -31,7 +33,23 @@ function renamePeriodParams(params: URLSearchParams): void {
   }
 }
 
+/**
+ * ?grupp= → Lönsamhetens ?vy= (titel, automat, butik) eller ?per= (dag, vecka, månad),
+ * som canonicalLonsamhetQuery: utan det skickade sidan länken vidare med en extra
+ * omdirigering (en serverrendering till).
+ */
+function renameGroupParam(params: URLSearchParams): void {
+  const grupp = params.get("grupp");
+  if (grupp === null) return;
+  params.delete("grupp");
+  const view = parseViewParam(grupp);
+  if (view && !params.has("vy")) params.set("vy", VIEW_PARAM[view]);
+  const trend = parseTrendParam(grupp);
+  if (trend && !params.has("per")) params.set("per", TREND_PARAM[trend]);
+}
+
 function build(path: string, params: URLSearchParams): string {
+  if (path === "/lonsamhet") renameGroupParam(params);
   const q = params.toString();
   return q ? `${path}?${q}` : path;
 }

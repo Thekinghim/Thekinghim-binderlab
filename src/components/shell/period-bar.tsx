@@ -66,12 +66,17 @@ export function PeriodControl({ earliest, className }: { earliest?: Date; classN
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
 
-  // Ett pilval som ännu inte skrivits. Gäller bara så länge URL:en står kvar
-  // på värdet det gjordes från; när URL:en ändras visas URL:ens värde.
-  const [pending, setPending] = useState<{ key: PresetKey; from: PeriodKey } | null>(null);
-  const shown = pending && pending.from === period.key ? pending.key : period.key;
+  // Ett pilval som ännu inte skrivits (klick skrivs direkt). period.key är redan det
+  // senast valda även medan servern räknar (skalets väntande adress, ./use-period).
+  const [arrowKey, setArrowKey] = useState<PresetKey | null>(null);
+  const shown = arrowKey ?? period.key;
   const timer = useRef<number | undefined>(undefined);
   const pointerAt = useRef(Number.NEGATIVE_INFINITY);
+  // Timern läser det senaste valet, inte värdet när tangenten trycktes.
+  const latest = useRef({ key: period.key, setPeriod });
+  useEffect(() => {
+    latest.current = { key: period.key, setPeriod };
+  });
   useEffect(() => () => window.clearTimeout(timer.current), []);
 
   const close = (focusTrigger: boolean) => {
@@ -112,14 +117,16 @@ export function PeriodControl({ earliest, className }: { earliest?: Date; classN
     window.clearTimeout(timer.current);
     const byPointer = performance.now() - pointerAt.current < 1000;
     if (byPointer) {
-      // Valet visas direkt; URL:en (och datan) följer när servern svarat.
-      setPending(key !== period.key ? { key, from: period.key } : null);
+      // Jämför med det senaste valet: ett klick tillbaka medan ett annat val väntar
+      // skrivs också, och ersätter då det väntande (sista klicket vinner).
+      setArrowKey(null);
       if (key !== period.key) setPeriod({ key });
       return;
     }
-    setPending({ key, from: period.key });
+    setArrowKey(key);
     timer.current = window.setTimeout(() => {
-      if (key !== period.key) setPeriod({ key });
+      setArrowKey(null);
+      if (key !== latest.current.key) latest.current.setPeriod({ key });
     }, KEYBOARD_COMMIT_MS);
   };
 
@@ -189,7 +196,7 @@ export function PeriodControl({ earliest, className }: { earliest?: Date; classN
             onCancel={() => close(true)}
             onApply={(range) => {
               close(true);
-              setPending(null);
+              setArrowKey(null);
               setPeriod({ key: "eget", range });
             }}
           />
@@ -293,7 +300,7 @@ function CompactSelect({
 
 /**
  * Globalt filter på butik och automat. Val av butik begränsar
- * automatlistan; val av automat sätter dess butik.
+ * automatlistan; val av automat visar dess butik (utan att filtrera på den).
  */
 export function ScopeFilter({
   stores,
@@ -309,17 +316,13 @@ export function ScopeFilter({
 }) {
   const scope = useScope();
   const { setScope } = scope;
-  // En djuplänk med bara ?automat= visar automatens butik som vald och
-  // skriver in den i URL:en, så att servern läser samma filter.
+  // Med bara ?automat= visas automatens nuvarande butik som vald, men den skrivs inte in
+  // i URL:en: automatfiltret gäller automatens hela försäljning, även den före
+  // placeringen i butiken eller från en tidigare butik.
   const impliedStore = scope.automat
     ? (machines.find((m) => m.id === scope.automat)?.storeId ?? null)
     : null;
   const butik = scope.butik ?? impliedStore;
-  useEffect(() => {
-    if (!scope.butik && impliedStore && scope.automat) {
-      setScope({ butik: impliedStore, automat: scope.automat });
-    }
-  }, [scope.butik, scope.automat, impliedStore, setScope]);
 
   const visibleMachines = butik ? machines.filter((m) => m.storeId === butik) : machines;
   return (
@@ -349,8 +352,10 @@ export function ScopeFilter({
             label: m.code ? `${m.code} ${m.name}` : m.name,
           }))}
           onChange={(automat) => {
+            // Ett uttryckligt butiksval står kvar om automaten står där; annars bara automaten.
             const storeId = machines.find((m) => m.id === automat)?.storeId;
-            setScope(automat && storeId ? { automat, butik: storeId } : { automat });
+            const keep = automat && scope.butik && storeId === scope.butik;
+            setScope({ automat, butik: keep ? scope.butik : null });
           }}
           className="sm:max-w-[220px]"
         />
