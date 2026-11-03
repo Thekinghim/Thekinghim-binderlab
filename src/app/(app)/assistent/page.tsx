@@ -9,7 +9,11 @@ import { toolsForRole } from "@/server/assistant/tools";
 import { loadContext } from "@/server/data/core";
 import { requireUser } from "@/server/session";
 
+import { loadAdvisorStateFor } from "@/server/assistant/advisor/service";
+import { getActiveOrganization } from "@/server/session";
+
 import { AssistantChat } from "./_components/assistant-chat";
+import { Suggestions } from "./_components/suggestions";
 import { AnswerText, Evidence, VerificationLine } from "./_components/evidence";
 
 export const metadata: Metadata = { title: "Assistent" };
@@ -53,14 +57,26 @@ const STATUS_LABEL: Record<LogRecord["status"], { status: "ok" | "warning"; text
  * (aldrig fri SQL), med underlag och kontroll av talen. Alla roller; påfyllaren får bara
  * lagerverktyg (urvalet görs på servern, i src/server/assistant).
  */
-export default async function AssistentPage() {
-  const [ctx, user] = await Promise.all([loadContext(), requireUser()]);
+export default async function AssistentPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const [ctx, user, organization, sp] = await Promise.all([
+    loadContext(),
+    requireUser(),
+    getActiveOrganization(),
+    searchParams,
+  ]);
+  // "Fråga assistenten" från ett förslag: frågan fylls i, skickas inte.
+  const prefill = typeof sp.fraga === "string" ? sp.fraga.slice(0, 2000) : "";
   const config = getAssistantConfig();
   const tools = toolsForRole(ctx.role);
   // Bara rader som rollen får se nu (en nedgraderad användare ser inte gamla ekonomisvar).
-  const [recent, asked] = await Promise.all([
+  const [recent, asked, advisor] = await Promise.all([
     listRecentFor(user, ctx.organization.id, 10, { role: ctx.role }),
     countFor(user, ctx.organization.id, { role: ctx.role }),
+    organization ? loadAdvisorStateFor({ user, organization }) : Promise.resolve(null),
   ]);
   const ready = config.status === "ready";
   const local = ready && config.provider === "local";
@@ -111,12 +127,38 @@ export default async function AssistentPage() {
           modelLabel={modelLabel}
           examples={ctx.canSeeEconomy ? ECONOMY_EXAMPLES : REFILLER_EXAMPLES}
           notConfigured={notConfigured}
+          initialQuestion={prefill}
         />
       </section>
 
+      {advisor ? (
+        <section
+          aria-labelledby="forslag"
+          className="rise flex flex-col gap-4"
+          style={{ "--i": 2 } as React.CSSProperties}
+        >
+          <SectionHeader
+            id="forslag"
+            size="sm"
+            title="Förslag."
+            aside={
+              advisor.lastRun
+                ? `Senaste körning ${formatRelative(new Date(advisor.lastRun.createdAt))}.`
+                : "Tas fram varje morgon."
+            }
+          />
+          <Suggestions
+            items={advisor.suggestions}
+            manualLeft={advisor.manualLeft}
+            canGenerate={ready && !local}
+            emptyText="Inga öppna förslag. Nya tas fram varje morgon."
+          />
+        </section>
+      ) : null}
+
       <details
         className="rise rounded-md border border-line bg-surface p-4 md:p-5"
-        style={{ "--i": 2 } as React.CSSProperties}
+        style={{ "--i": 3 } as React.CSSProperties}
       >
         <summary className="flex cursor-pointer list-none items-baseline justify-between gap-4">
           <h2 className="text-md font-medium text-fg">Om assistenten</h2>

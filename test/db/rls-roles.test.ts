@@ -66,6 +66,9 @@ const OWN_ROW_ONLY = ["profiles", "memberships"];
 const VIEWER_OWN_ROWS_ONLY = [
   "alert_deliveries",
   "alert_subscriptions",
+  // AI-rådgivaren: körningar och förslag syns bara för ägare och admin.
+  "ai_runs",
+  "ai_suggestions",
   "assistant_logs",
   "import_upload_chunks",
   "import_uploads",

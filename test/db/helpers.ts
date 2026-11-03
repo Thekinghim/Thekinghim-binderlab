@@ -954,6 +954,20 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       sql`select public.create_invitation(${orgId}, ${`invited-${uniqueSuffix()}@test.binderlab.se`}, 'viewer') as token`,
     );
     await tx.execute(sql`select public.close_period(${orgId}, '2024-12-01'::date)`);
+    // AI-rådgivaren (20261104090000_ai_radgivare.sql): bara servern skriver körningar och
+    // förslag, så raderna skrivs som databasägaren i samma transaktion.
+    await tx.execute(sql`reset role`);
+    const aiRun = await one<{ id: string }>(
+      tx,
+      sql`insert into public.ai_runs (organization_id, trigger, status, model, accepted)
+          values (${orgId}, 'cron', 'ok', 'claude-sonnet-5-5', 1) returning id`,
+    );
+    await tx.execute(
+      sql`insert into public.ai_suggestions
+            (organization_id, run_id, rank, title, why, action, effect_sek_month, confidence)
+          values (${orgId}, ${aiRun.id}, 1, 'Fyll på', 'Titeln har 2 pack kvar.', 'Fyll på i dag.', 100, 'high')`,
+    );
+    await tx.execute(sql`set local role authenticated`);
 
     return {
       orgId,

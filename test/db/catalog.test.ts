@@ -89,6 +89,9 @@ describe("tabeller", () => {
         "alert_runs",
         "alert_subscriptions",
         "alerts",
+        // AI-rådgivaren: körningar och förslag (20261104090000_ai_radgivare.sql).
+        "ai_runs",
+        "ai_suggestions",
         "assistant_logs",
         "assortment_changes",
         "audit_log",

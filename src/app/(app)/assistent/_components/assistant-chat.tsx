@@ -67,6 +67,8 @@ export type AssistantChatProps = {
   examples: readonly string[];
   /** När assistenten inte är konfigurerad: meningen och vad som behövs. */
   notConfigured: { message: string; detail: string } | null;
+  /** Ifylld fråga (från "Fråga assistenten" på ett förslag). Skickas inte automatiskt. */
+  initialQuestion?: string;
 };
 
 const STATUS_TEXT: Partial<Record<AssistantStatus, string>> = {
@@ -83,9 +85,10 @@ export function AssistantChat({
   local,
   examples,
   notConfigured,
+  initialQuestion = "",
 }: AssistantChatProps) {
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [question, setQuestion] = useState("");
+  const [question, setQuestion] = useState(initialQuestion);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [announcement, setAnnouncement] = useState("");
@@ -96,6 +99,9 @@ export function AssistantChat({
   const hintId = useId();
 
   useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(() => {
+    if (initialQuestion) inputRef.current?.focus();
+  }, [initialQuestion]);
 
   const update = useCallback((key: string, fn: (t: Turn) => Turn) => {
     setTurns((all) => all.map((t) => (t.key === key ? fn(t) : t)));

@@ -10,6 +10,9 @@ import { loadMasterData, loadStock, requireRoute, scopeFromSearchParams } from "
 import { loadRankedTodoState } from "@/server/data/todos";
 import { getActiveOrganization, requireUser } from "@/server/session";
 
+import { Suggestions } from "@/app/(app)/assistent/_components/suggestions";
+import { loadAdvisorStateFor } from "@/server/assistant/advisor/service";
+
 import { HeaderMeta } from "./_components/header-meta";
 import { TodoBoard } from "./_components/todo-board";
 import { buildPage } from "./_lib/model";
@@ -53,6 +56,8 @@ export default async function TodoPage({
       )
     : [];
   const wall = (d: Date) => wallClockIn(d, ctx.timeZone);
+  // Rådgivarens öppna förslag (ägare och admin; null för andra roller).
+  const advisor = organization ? await loadAdvisorStateFor({ user, organization }, now) : null;
 
   const central = stock.warehouse.filter((r) => r.isCentral);
   const warehouse =
@@ -93,6 +98,21 @@ export default async function TodoPage({
           className="pb-12 md:pb-16"
         />
       </div>
+      {advisor && advisor.suggestions.length > 0 ? (
+        <section
+          aria-labelledby="forslag-rubrik"
+          className="rise flex flex-col gap-4 pb-10"
+          style={{ "--i": 1 } as React.CSSProperties}
+        >
+          <SectionHeader
+            id="forslag-rubrik"
+            size="sm"
+            title="Förslag."
+            aside="Från AI. Talen kontrollerade, effekten uppskattad."
+          />
+          <Suggestions items={advisor.suggestions} manualLeft={null} canGenerate={false} />
+        </section>
+      ) : null}
       {view.total === 0 ? (
         <div className="fade-in border-t border-line pt-10 pb-12">
           <StateMessage

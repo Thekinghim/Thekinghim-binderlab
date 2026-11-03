@@ -176,7 +176,13 @@ export async function runAssistant(args: RunArgs): Promise<RunResult> {
   messages.push({ role: "user", content: args.question });
 
   const toolCalls: ToolCallRecord[] = [];
-  const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, turns: 0 };
+  const usage = {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    turns: 0,
+  };
   let status: AssistantStatus | null = null;
   let answer = "";
   let jsonRetries = 0;
@@ -207,6 +213,7 @@ export async function runAssistant(args: RunArgs): Promise<RunResult> {
     usage.inputTokens += message.usage.input_tokens;
     usage.outputTokens += message.usage.output_tokens;
     usage.cacheReadTokens += message.usage.cache_read_input_tokens ?? 0;
+    usage.cacheWriteTokens += message.usage.cache_creation_input_tokens ?? 0;
 
     const toolUses = message.content.filter(
       (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use",

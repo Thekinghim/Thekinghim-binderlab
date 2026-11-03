@@ -24,6 +24,7 @@ import {
 import { resolveAppPeriod } from "@/server/data/core/period";
 import { ALL_ROLES, type MasterData } from "@/server/data/core/types";
 
+import { budgetState, isDemoBlocked } from "./advisor/service";
 import { getAssistantConfig, type AssistantConfig } from "./config";
 import { createLocalModelClient } from "./local-model";
 import { insertLogFor, loadConversationFor } from "./log";
@@ -44,6 +45,8 @@ export interface AskArgs {
   readonly config?: AssistantConfig;
   /** För tester: klient i stället för den som inställningarna anger. */
   readonly client?: ModelClient;
+  /** För tester: hoppa över månadstaket (AI_MONTHLY_BUDGET_SEK). */
+  readonly skipBudget?: boolean;
   /**
    * Skalets periodval ur sidans URL (period, from, to). Ger modellen perioden som är vald
    * i panelen, som gäller när frågan inte anger någon. Utelämnad: ingen vald period.
@@ -146,6 +149,31 @@ export async function askAssistant(args: AskArgs): Promise<AskResult> {
       return { logId: null, status: "error" };
     }
     throw error;
+  }
+
+  // Månadstaket gäller bara Claude API (inte den lokala testmodellen eller testklienter).
+  if (config.provider === "anthropic" && !args.client && !args.skipBudget) {
+    // Kan taket inte läsas skickas inget till Claude.
+    let exceeded = true;
+    if (isDemoBlocked(viewer.organization.slug, process.env)) {
+      console.warn("[assistent] demoorganisationen anropar inte Claude i produktion.");
+    } else {
+      try {
+        const budget = await budgetState(undefined, now);
+        exceeded = budget.exceeded;
+        if (exceeded) {
+          console.warn(
+            `[assistent] månadens AI-budget (${Math.round(budget.budgetOre / 100)} kr) är slut; höj AI_MONTHLY_BUDGET_SEK.`,
+          );
+        }
+      } catch (error) {
+        console.error("[assistent] AI-budgeten kunde inte läsas:", error);
+      }
+    }
+    if (exceeded) {
+      emit({ type: "error", code: "budget", message: "Månadens AI-budget är slut." });
+      return { logId: null, status: "error" };
+    }
   }
 
   const ctx = toolContextFor(viewer, role, now);

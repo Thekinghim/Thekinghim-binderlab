@@ -107,6 +107,19 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [sink(c)],
   },
+  // Assistent: rådgivarens förslag (ägare och admin)
+  {
+    module: "@/app/(app)/assistent/actions",
+    name: "setSuggestionStatus",
+    allowed: OP,
+    args: (c) => [sink(c, { id: "00000000-0000-4000-8000-000000000000", status: "done" })],
+  },
+  {
+    module: "@/app/(app)/assistent/actions",
+    name: "generateSuggestions",
+    allowed: OP,
+    args: () => [],
+  },
   // Automater
   {
     module: "@/app/(app)/automater/actions",

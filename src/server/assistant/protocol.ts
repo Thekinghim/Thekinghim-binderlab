@@ -47,6 +47,8 @@ export interface AssistantUsage {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly cacheReadTokens: number;
+  /** Tokens som skrevs till cachen (räknas i månadens kostnad). Saknas i äldre loggar. */
+  readonly cacheWriteTokens?: number;
   readonly turns: number;
 }
 
@@ -81,7 +83,8 @@ export type AssistantEvent =
     }
   | {
       readonly type: "error";
-      readonly code: "not-configured" | "forbidden" | "invalid" | "upstream" | "internal";
+      readonly code:
+        "not-configured" | "forbidden" | "invalid" | "upstream" | "internal" | "budget";
       readonly message: string;
       readonly logId?: string | null;
     };
