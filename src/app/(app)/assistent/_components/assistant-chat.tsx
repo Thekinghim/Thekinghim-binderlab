@@ -262,7 +262,6 @@ export function AssistantChat({
           kind="not-configured"
           message={notConfigured.message}
           detail={notConfigured.detail}
-          action={{ label: "Visa inställningen", href: "#installning" }}
         />
       ) : null}
 
@@ -352,7 +351,12 @@ export function AssistantChat({
       ) : null}
       <div ref={endRef} />
 
-      <form onSubmit={onSubmit} className="flex min-w-0 flex-col gap-3" aria-label="Ställ en fråga">
+      <form
+        noValidate
+        onSubmit={onSubmit}
+        className="flex min-w-0 flex-col gap-3"
+        aria-label="Ställ en fråga"
+      >
         <div className="flex items-baseline justify-between gap-4">
           <label htmlFor={inputId} className="label text-muted">
             {turns.length > 0 ? "Följdfråga" : "Fråga"}
@@ -384,7 +388,7 @@ export function AssistantChat({
           <p id={hintId} className={cn("meta", tooLong ? "text-signal-fg" : "text-subtle")}>
             {tooLong
               ? `${formatInt(question.length)} av högst ${formatInt(QUESTION_MAX_LENGTH)} tecken.`
-              : "Enter skickar, Skift+Enter ny rad. Varje tal i svaret kontrolleras mot underlaget."}
+              : "Enter skickar."}
           </p>
           <div className="flex items-center gap-2">
             {turns.length > 0 ? (

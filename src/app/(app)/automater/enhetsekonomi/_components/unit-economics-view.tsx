@@ -380,11 +380,7 @@ export function InvestmentsSection({
         </div>
       ) : null}
       {investments.length === 0 ? (
-        <StateMessage
-          kind="empty"
-          message="Ingen investering är registrerad, så återbetalningstiden kan inte räknas."
-          detail="Lägg in inköp och installation per automat."
-        />
+        <StateMessage kind="empty" message="Ingen investering registrerad." />
       ) : (
         <DataTable
           surface="bg"

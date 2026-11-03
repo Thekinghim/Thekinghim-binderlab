@@ -87,27 +87,26 @@ export default async function EffektPage({
           eyebrow="Effekt"
           title={title}
           aside={aside}
-          meta={[
-            { label: "Månader", value: monthsText },
-            { label: "Utgångslägen", value: formatInt(data.baselines.length) },
-            { label: "Mätvärden", value: formatInt(data.measurements.length) },
-          ]}
+          meta={[{ label: "Månader", value: monthsText }]}
         />
         {data.dataStartInMonth ? (
-          <p className="text-sm break-words text-subtle">
-            Vinst per automat i {monthLabel(monthOfDate(data.dataStartInMonth))} räknas från första
-            ordern ({day(data.dataStartInMonth)}); dagar utan data räknas inte som automatdagar.
+          <p className="meta break-words text-subtle">
+            Vinst per automat i {monthLabel(monthOfDate(data.dataStartInMonth))} från{" "}
+            {day(data.dataStartInMonth)}.
           </p>
         ) : null}
       </div>
 
-      <section aria-labelledby="forbattring" className="flex flex-col gap-8">
+      <section
+        aria-labelledby="forbattring"
+        className="rise flex flex-col gap-8"
+        style={{ "--i": 1 } as React.CSSProperties}
+      >
         <SectionHeader
           id="forbattring"
-          index={1}
           eyebrow="Förbättring"
           title="Mot läget före Binderlab."
-          aside={`Per månad, ${monthsText}. En pågående månad jämförs med lika många dagar av utgångsläget.`}
+          aside={`Per månad, ${monthsText}.`}
           actions={
             data.period.key !== "allt" ? (
               <Link
@@ -120,9 +119,7 @@ export default async function EffektPage({
           }
         />
         {data.series.length === 0 ? (
-          <p className="text-sm text-muted">
-            Inget utgångsläge ännu. Lägg in det nedan, så räknas förbättringen per månad.
-          </p>
+          <p className="text-sm text-muted">Lägg in utgångsläget.</p>
         ) : (
           <div className="flex flex-col gap-10">
             {data.series.map((s) => (
@@ -137,10 +134,13 @@ export default async function EffektPage({
         )}
       </section>
 
-      <section aria-labelledby="utgangslage" className="flex flex-col gap-8">
+      <section
+        aria-labelledby="utgangslage"
+        className="rise flex flex-col gap-8"
+        style={{ "--i": 2 } as React.CSSProperties}
+      >
         <SectionHeader
           id="utgangslage"
-          index={2}
           eyebrow="Utgångsläge"
           title={
             data.baselines.length === 0
@@ -159,13 +159,15 @@ export default async function EffektPage({
         />
       </section>
 
-      <section aria-labelledby="matvarden" className="flex flex-col gap-8">
+      <section
+        aria-labelledby="matvarden"
+        className="rise flex flex-col gap-8"
+        style={{ "--i": 3 } as React.CSSProperties}
+      >
         <SectionHeader
           id="matvarden"
-          index={3}
           eyebrow="Mätvärden"
           title="Slutsålda dagar och tid per månad."
-          aside="Vinst per automat räknas ur orderna; resten mäts och läggs in här."
         />
         <MeasurementsSection
           measurements={data.measurements}

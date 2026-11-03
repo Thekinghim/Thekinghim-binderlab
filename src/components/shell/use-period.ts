@@ -1,7 +1,13 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import {
+  startTransition,
+  useCallback,
+  useMemo,
+  useOptimistic,
+  useSyncExternalStore,
+} from "react";
 import {
   carriedQuery,
   describePeriod,
@@ -37,16 +43,28 @@ function useNow(): Date {
   return useMemo(() => new Date(ms), [ms]);
 }
 
-function useReplaceQuery() {
+/**
+ * Sökparametrarna med optimistiskt läge: valet syns direkt (knappen flyttar sig
+ * vid klicket) medan servern renderar den nya vyn i en transition.
+ */
+function useOptimisticQuery(): [URLSearchParams, (next: URLSearchParams) => void] {
   const router = useRouter();
   const pathname = usePathname();
-  return useCallback(
+  const sp = useSearchParams();
+  const current = sp.toString();
+  const [optimistic, setOptimistic] = useOptimistic(current);
+  const params = useMemo(() => new URLSearchParams(optimistic), [optimistic]);
+  const replace = useCallback(
     (next: URLSearchParams) => {
       const q = next.toString();
-      router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
+      startTransition(() => {
+        setOptimistic(q);
+        router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
+      });
     },
-    [router, pathname],
+    [router, pathname, setOptimistic],
   );
+  return [params, replace];
 }
 
 export type UsePeriodResult = ResolvedPeriod &
@@ -56,9 +74,8 @@ export type UsePeriodResult = ResolvedPeriod &
 
 /** Periodvalet ur URL:en, med jämförelse och en setter som skriver tillbaka. */
 export function usePeriod(options: Omit<ParseOptions, "now"> = {}): UsePeriodResult {
-  const sp = useSearchParams();
+  const [sp, replace] = useOptimisticQuery();
   const now = useNow();
-  const replace = useReplaceQuery();
   const { timeZone, earliest } = options;
   const resolved = useMemo(
     () => parsePeriod(sp, { now, timeZone, earliest }),
@@ -73,8 +90,7 @@ export function usePeriod(options: Omit<ParseOptions, "now"> = {}): UsePeriodRes
 
 /** Globalt filter på butik och automat (?butik=, ?automat=). */
 export function useScope(): Scope & { setScope: (scope: Partial<Scope>) => void } {
-  const sp = useSearchParams();
-  const replace = useReplaceQuery();
+  const [sp, replace] = useOptimisticQuery();
   const scope = useMemo(() => parseScope(sp), [sp]);
   const setScope = useCallback(
     (next: Partial<Scope>) => replace(withScope(sp, next)),

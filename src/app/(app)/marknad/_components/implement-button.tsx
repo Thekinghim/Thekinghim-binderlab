@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/field";
+import { Input, formError } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { dayText } from "@/server/market/display";
@@ -97,13 +97,16 @@ export function ImplementButton({
         onClose={() => setOpen(false)}
         eyebrow={`Sortiment / ${machineCode}`}
         title="Markera som genomförd"
-        description={`${summary} Väntad effekt ${effectText}. Fackfördelningen uppdateras från och med dagen nedan och utfallet följs upp mot effekten.`}
+        description={`${summary} Väntad effekt ${effectText}.`}
         size="sm"
       >
         <form
           className="flex flex-col gap-4"
+          noValidate
           onSubmit={(e) => {
             e.preventDefault();
+            const invalid = formError(e.currentTarget);
+            if (invalid) return setError(invalid);
             submit();
           }}
         >
@@ -115,7 +118,7 @@ export function ImplementButton({
             min={minDay}
             max={shiftDay(today, 30)}
             required
-            hint={`Från ${dayText(minDay, today)} till ${dayText(shiftDay(today, 30), today)}: efter mätperioden och högst 7 dagar bakåt.`}
+            hint={`${dayText(minDay, today)} till ${dayText(shiftDay(today, 30), today)}.`}
           />
           {replaced.length > 0 ? (
             <p className="text-sm text-fg" role="status">

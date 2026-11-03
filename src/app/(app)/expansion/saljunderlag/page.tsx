@@ -61,7 +61,7 @@ export default async function SalesDeckPage({
       <div data-print="hide" className="border-b border-line bg-bg">
         <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-8">
           <nav aria-label="Sökväg" className="label flex min-w-0 items-center gap-2 text-subtle">
-            <Link href="/expansion#saljunderlag" className="rounded-xs text-muted hover:text-fg">
+            <Link href="/expansion" className="rounded-xs text-muted hover:text-fg">
               Expansion
             </Link>
             <span aria-hidden className="text-faint">

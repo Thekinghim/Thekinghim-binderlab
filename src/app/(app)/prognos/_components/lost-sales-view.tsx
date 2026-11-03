@@ -201,13 +201,16 @@ export function LostSalesView({ model }: { model: LostModel }) {
         exportFileName={`forlorad-forsaljning-${model.period.start}-${model.period.end}`}
       />
 
-      <p className="text-sm text-muted">
-        En titeldag är en titel slutsåld i en automat en dag; samma titel slutsåld i två automater
-        samma dag är två titeldagar. Påfyllningsdagen räknas som en halv dag.
-        {model.hiddenWithoutCost > 0
-          ? ` ${formatInt(model.hiddenWithoutCost)} ${model.hiddenWithoutCost === 1 ? "period" : "perioder"} för titlar som togs ur sortimentet före ${model.periodText} kostar inget och visas inte.`
-          : ""}
-      </p>
+      <details className="text-sm text-muted">
+        <summary className="label cursor-pointer text-subtle hover:text-fg">Så räknas det</summary>
+        <p className="mt-2 max-w-prose">
+          En titeldag är en titel slutsåld i en automat en dag; samma titel slutsåld i två automater
+          samma dag är två titeldagar. Påfyllningsdagen räknas som en halv dag.
+          {model.hiddenWithoutCost > 0
+            ? ` ${formatInt(model.hiddenWithoutCost)} ${model.hiddenWithoutCost === 1 ? "period" : "perioder"} för titlar som togs ur sortimentet före ${model.periodText} kostar inget och visas inte.`
+            : ""}
+        </p>
+      </details>
 
       {model.months.length > 1 ? (
         <ul className="flex flex-col">

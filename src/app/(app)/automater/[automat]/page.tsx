@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import type React from "react";
 import { notFound, redirect } from "next/navigation";
 
 import { carriedQuery, parseIsoDate, wallClockIn } from "@/components/shell/period-state";
@@ -24,6 +25,7 @@ import { MachineKpis } from "../_components/kpis";
 import { MachineActions } from "../_components/machine-dialogs";
 import { Sub } from "../_components/sub";
 import { UnpricedNote } from "../_components/unpriced-note";
+import { pickTab, ViewTabs } from "../_components/view-tabs";
 import {
   isMachineId,
   loadMachineDetail,
@@ -31,6 +33,13 @@ import {
   type MachineDetailData,
 } from "../_lib/data";
 import { dayText, hourRange, sentence, unitEconomicsKpis } from "../_lib/model";
+
+const TABS = [
+  { value: "forsaljning", label: "Försäljning" },
+  { value: "lager", label: "Lager" },
+  { value: "order", label: "Order" },
+  { value: "ekonomi", label: "Placering och ekonomi" },
+] as const;
 
 type Params = Promise<{ automat: string }>;
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -96,10 +105,12 @@ export default async function MachinePage({
   const comparison = period.comparisonLabel ? `Jämfört med ${period.comparisonLabel}` : undefined;
   const today = parseIsoDate(ctx.today) ?? new Date();
   const listHref = `/automater${data.query}`;
+  const tab = pickTab(TABS, sp.vy);
+  const rise = (i: number) => ({ "--i": i }) as React.CSSProperties;
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-6 pb-16 md:gap-16 md:px-8 md:pt-10">
-      <div className="flex flex-col gap-6">
+      <div className="rise flex flex-col gap-6">
         <nav aria-label="Brödsmulor">
           <Link
             href={listHref}
@@ -122,17 +133,23 @@ export default async function MachinePage({
           meta={[
             {
               label: "Status",
-              value: <StatusTag status={status.status}>{status.label}</StatusTag>,
+              value:
+                status.status === "ok" ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="live-dot inline-block size-1.5 rounded-full bg-current text-muted" />
+                    {status.label}
+                  </span>
+                ) : (
+                  <StatusTag status={status.status}>{status.label}</StatusTag>
+                ),
             },
             { label: "Butik", value: store?.name ?? MISSING },
-            {
-              label: "Driftstart",
-              value: machine.activeFrom ? dayText(machine.activeFrom, ctx.today) : MISSING,
-            },
-            ...(machine.activeTo
-              ? [{ label: "Sista dag", value: dayText(machine.activeTo, ctx.today) }]
-              : []),
-            { label: "Serienummer", value: machine.serial ?? MISSING },
+            machine.activeTo
+              ? { label: "Sista dag", value: dayText(machine.activeTo, ctx.today) }
+              : {
+                  label: "Driftstart",
+                  value: machine.activeFrom ? dayText(machine.activeFrom, ctx.today) : MISSING,
+                },
           ]}
           actions={
             ctx.canEdit ? (
@@ -148,24 +165,40 @@ export default async function MachinePage({
       </div>
 
       {period.pendingToday ? (
-        <StateMessage
-          kind="empty"
-          message={`Inga order har kommit in från ${machine.code} i dag ännu.`}
-          detail="Intäkt och vinst för i dag visas när dagens order har importerats. Välj 7 dagar eller 30 dagar i periodraden för hela dagar."
-        />
+        <StateMessage kind="empty" message={`Inga order från ${machine.code} i dag än.`} />
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="rise flex flex-col gap-4" style={rise(1)}>
           <MachineKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
           {data.unpriced ? <UnpricedNote unpriced={data.unpriced} canEdit={ctx.canEdit} /> : null}
         </div>
       )}
 
-      <SalesSection data={data} days={days} today={today} />
-      <TitlesAndHours data={data} days={days} />
-      <StockSection data={data} />
-      <OrdersSection data={data} />
-      <PlacementSection data={data} />
-      <UnitEconomicsSection data={data} />
+      <div className="rise -mb-6 md:-mb-10" style={rise(2)}>
+        <ViewTabs
+          tabs={TABS}
+          value={tab}
+          basePath={`/automater/${encodeURIComponent(machine.code.toLowerCase())}`}
+          query={data.query}
+          label="Visa"
+        />
+      </div>
+
+      <div key={tab} className="fade-in flex flex-col gap-12 md:gap-16">
+        {tab === "forsaljning" ? (
+          <>
+            <SalesSection data={data} days={days} today={today} />
+            <TitlesAndHours data={data} days={days} />
+          </>
+        ) : null}
+        {tab === "lager" ? <StockSection data={data} /> : null}
+        {tab === "order" ? <OrdersSection data={data} /> : null}
+        {tab === "ekonomi" ? (
+          <>
+            <PlacementSection data={data} />
+            <UnitEconomicsSection data={data} />
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -198,7 +231,6 @@ function SalesSection({
     >
       <SectionHeader
         id="forsaljning"
-        index={1}
         eyebrow={`Intäkt per dag · ${days}`}
         title="Försäljning per dag."
         aside={
@@ -241,7 +273,6 @@ function TitlesAndHours({ data, days }: { data: MachineDetailData; days: string 
     >
       <SectionHeader
         id="vad-som-saljer"
-        index={2}
         eyebrow={`Titlar och tider · ${days}`}
         title={top ? sentence(`${top.name} säljer mest`) : "Inga titlar sålda i perioden."}
         aside={
@@ -259,7 +290,6 @@ function TitlesAndHours({ data, days }: { data: MachineDetailData; days: string 
       {top ? (
         <div className="grid grid-cols-1 gap-x-8 gap-y-12 lg:grid-cols-12">
           <Sub
-            index="02.1"
             label={`Bästa titlar · ${days}`}
             meta={`${formatInt(titles.length)} titlar`}
             title={`${formatInt(titles.length)} ${titles.length === 1 ? "titel" : "titlar"} såldes.`}
@@ -268,7 +298,6 @@ function TitlesAndHours({ data, days }: { data: MachineDetailData; days: string 
             <TitleBars titles={titles} />
           </Sub>
           <Sub
-            index="02.2"
             label={`Köp per veckodag och timme · ${days}`}
             meta={`${formatInt(heat.total)}${NBSP}köp`}
             title={
@@ -322,7 +351,6 @@ function StockSection({ data }: { data: MachineDetailData }) {
     <section aria-labelledby="lager" className="flex flex-col gap-8 border-t border-line pt-8">
       <SectionHeader
         id="lager"
-        index={3}
         eyebrow="Lager · nu"
         title={title}
         aside={sentence(
@@ -335,7 +363,6 @@ function StockSection({ data }: { data: MachineDetailData }) {
         <StateMessage
           kind="empty"
           message={`Inget lager registrerat i ${data.machine.code}.`}
-          detail="Påfyllningar registreras under Lager."
           action={{ label: "Öppna Lager", href: "/lager" }}
         />
       )}
@@ -354,7 +381,6 @@ function OrdersSection({ data }: { data: MachineDetailData }) {
     >
       <SectionHeader
         id="senaste-order"
-        index={4}
         eyebrow="Senaste order"
         title={
           latest
@@ -377,7 +403,6 @@ function OrdersSection({ data }: { data: MachineDetailData }) {
         <StateMessage
           kind="empty"
           message={`Inga order är kopplade till ${data.machine.code}.`}
-          detail="Order från Awish kopplas till automaten under Datakällor."
           action={{ label: "Öppna Datakällor", href: "/datakallor" }}
         />
       )}
@@ -393,7 +418,6 @@ function PlacementSection({ data }: { data: MachineDetailData }) {
     <section aria-labelledby="placering" className="flex flex-col gap-8 border-t border-line pt-8">
       <SectionHeader
         id="placering"
-        index={5}
         eyebrow="Placering"
         title={
           store
@@ -401,9 +425,14 @@ function PlacementSection({ data }: { data: MachineDetailData }) {
             : "Står inte i någon butik."
         }
         aside={
-          placements.length > 0
-            ? `${formatInt(placements.length)} ${placements.length === 1 ? "placering" : "placeringar"} i ${formatInt(stores)} ${stores === 1 ? "butik" : "butiker"}.`
-            : undefined
+          [
+            placements.length > 0
+              ? `${formatInt(placements.length)} ${placements.length === 1 ? "placering" : "placeringar"} i ${formatInt(stores)} ${stores === 1 ? "butik" : "butiker"}.`
+              : null,
+            data.machine.serial ? `Serienummer ${data.machine.serial}.` : null,
+          ]
+            .filter(Boolean)
+            .join(" ") || undefined
         }
       />
       {placements.length > 0 ? (
@@ -412,11 +441,6 @@ function PlacementSection({ data }: { data: MachineDetailData }) {
         <StateMessage
           kind="empty"
           message={`${data.machine.code} har aldrig stått i någon butik.`}
-          detail={
-            data.ctx.canEdit
-              ? "Placera den i en butik så räknas hyra och provision."
-              : "Ägare och admin placerar automater i butiker."
-          }
         />
       )}
     </section>
@@ -436,7 +460,6 @@ function UnitEconomicsSection({ data }: { data: MachineDetailData }) {
     >
       <SectionHeader
         id="enhetsekonomi"
-        index={6}
         eyebrow="Enhetsekonomi"
         title={
           u
@@ -466,21 +489,15 @@ function UnitEconomicsSection({ data }: { data: MachineDetailData }) {
             label="Enhetsekonomi · till periodens slut"
             headingLevel={3}
           />
-          {/* Två vinsttal på sidan: förklara sambandet (nyckeltalen överst gäller perioden). */}
-          <p className="max-w-[68ch] text-sm text-muted">
-            Vinst per månad räknas på de {formatInt(u.activeDays)}
-            {NBSP}dagar automaten stått i butik fram till periodens slut, omräknat till en hel
-            månad. Vinsten bland nyckeltalen överst gäller bara perioden (
-            {formatInt(data.period.span.days)}
-            {NBSP}dagar). Efter avskrivning dras {formatSek(u.monthlyDepreciationOre / 100)} per
-            månad av.
+          <p className="meta text-subtle">
+            Vinst/mån på {formatInt(u.activeDays)}
+            {NBSP}d i butik · avskrivning {formatSek(u.monthlyDepreciationOre / 100)}/mån
           </p>
         </div>
       ) : (
         <StateMessage
           kind="not-configured"
           message={`Inköp och installation av ${data.machine.code} saknas.`}
-          detail="Återbetalningstid, bokfört värde och vinst efter avskrivning visas när investeringen är registrerad."
           action={data.ctx.canEdit ? { label: "Registrera investering", href } : undefined}
         />
       )}

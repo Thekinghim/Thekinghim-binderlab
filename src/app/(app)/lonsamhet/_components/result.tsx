@@ -60,13 +60,9 @@ export function ResultAfterProfitPanel({ result }: { result: ResultAfterProfit }
       ? undefined
       : `${formatPercent(r.resultMarginBp / 10_000)} av intäkten med inköpspris`;
   return (
-    <PanelSection label="Efter vinsten" meta="Återbetalningar och fasta kostnader">
+    <PanelSection label="Efter vinsten">
       <dl className="flex flex-col">
-        <Line
-          label="Vinst"
-          value={kr(r.profitOre)}
-          detail="Samma som vattenfallet ovan och som vinsten på Hem."
-        />
+        <Line label="Vinst" value={kr(r.profitOre)} />
         <Line
           label="Återbetalningar till kunder"
           value={minus(r.refundOre)}
@@ -108,7 +104,7 @@ export function ResultAfterProfitPanel({ result }: { result: ResultAfterProfit }
             →
           </span>
         </Link>
-        <Link href="/ekonomi#fasta-kostnader" className={LINK}>
+        <Link href="/ekonomi?vy=fasta" className={LINK}>
           <span>Fasta kostnader i Ekonomi</span>
           <span aria-hidden className="text-subtle">
             →

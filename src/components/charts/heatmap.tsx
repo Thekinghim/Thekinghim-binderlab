@@ -184,7 +184,10 @@ export function Heatmap({
                     y={(g.y(r) ?? 0) + 0.5}
                     width={g.x.bandwidth() - 1}
                     height={g.y.bandwidth() - 1}
+                    strokeWidth={1}
+                    className="fade-in"
                     style={{
+                      animationDelay: `${(r + c) * 14}ms`,
                       fill: empty ? "transparent" : fillFor(v),
                       stroke: isActive
                         ? "var(--bl-fg)"
@@ -192,7 +195,6 @@ export function Heatmap({
                           ? "var(--bl-line-strong)"
                           : "transparent",
                     }}
-                    strokeWidth={1}
                     onPointerEnter={() => setActive([r, c])}
                     onPointerDown={() => setActive([r, c])}
                   />

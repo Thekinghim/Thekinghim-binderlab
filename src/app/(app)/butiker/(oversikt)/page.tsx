@@ -3,12 +3,13 @@ import type { Metadata } from "next";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatInt, NBSP, SPACED_RANGE_DASH } from "@/lib/format";
+import type React from "react";
 
 import { StoreKpis } from "../_components/kpis";
 import { AddStoreButton } from "../_components/store-dialogs";
 import { StoreTable } from "../_components/store-table";
 import { loadStoreList, periodQuery } from "../_lib/data";
-import { dayText, plural, sek, sentence } from "../_lib/model";
+import { dayText, plural, sek } from "../_lib/model";
 
 export const metadata: Metadata = { title: "Butiker" };
 
@@ -27,7 +28,6 @@ export default async function ButikerPage({
   const data = await loadStoreList(sp);
   const { ctx, rows, period, headline } = data;
   const active = rows.filter((r) => !r.archived);
-  const archived = rows.length - active.length;
   const days = `${formatInt(period.days)}${NBSP}d`;
   const comparison = period.comparisonLabel ? `Jämfört med ${period.comparisonLabel}` : undefined;
   const earned = active.reduce((n, r) => n + r.earnedMonthOre, 0);
@@ -42,36 +42,27 @@ export default async function ButikerPage({
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
-      <SectionHeader
-        as="h1"
-        size="xl"
-        eyebrow={data.scopeLabel ? `Butiker · ${data.scopeLabel}` : "Butiker"}
-        title={headline.title}
-        aside={headline.aside}
-        meta={[
-          { label: "Period", value: period.rangeLabel },
-          ...(dataRange ? [{ label: "Med data", value: dataRange }] : []),
-          { label: "Butiker", value: formatInt(active.length) },
-          ...(data.examples > 0 ? [{ label: "Exempel", value: formatInt(data.examples) }] : []),
-          ...(archived > 0 ? [{ label: "Arkiverade", value: formatInt(archived) }] : []),
-          { label: "Kräver åtgärd", value: formatInt(data.flagged) },
-        ]}
-        actions={ctx.canEdit ? <AddStoreButton query={periodQuery(sp)} /> : undefined}
-      />
+      <div className="rise">
+        <SectionHeader
+          as="h1"
+          size="xl"
+          eyebrow={data.scopeLabel ? `Butiker · ${data.scopeLabel}` : "Butiker"}
+          title={headline.title}
+          aside={headline.aside}
+          meta={[
+            { label: "Period", value: period.rangeLabel },
+            ...(dataRange ? [{ label: "Med data", value: dataRange }] : []),
+            { label: "Kräver åtgärd", value: formatInt(data.flagged) },
+          ]}
+          actions={ctx.canEdit ? <AddStoreButton query={periodQuery(sp)} /> : undefined}
+        />
+      </div>
 
       {rows.length === 0 ? (
-        <StateMessage
-          kind="empty"
-          message="Det finns inga butiker i organisationen ännu."
-          detail={
-            ctx.canEdit
-              ? "Lägg till den första butiken. Automater placeras i butiker under Automater."
-              : "Ägare och admin lägger till butiker."
-          }
-        />
+        <StateMessage kind="empty" message="Inga butiker ännu." />
       ) : (
         <>
-          <div className="flex flex-col gap-3">
+          <div className="rise flex flex-col gap-3" style={{ "--i": 1 } as React.CSSProperties}>
             {data.ignoredMachine ? (
               <p className="text-sm text-muted">
                 {data.scopeLabel
@@ -80,19 +71,18 @@ export default async function ButikerPage({
               </p>
             ) : null}
             <StoreKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
-            <p className="max-w-[72ch] text-sm text-muted">
-              {sentence(
-                `Till ${rows.length === 1 ? "butiken" : "butikerna"} är det som ska betalas ut: provision på alla order och hyra för hela perioden ${period.rangeLabel}`,
-              )}{" "}
-              Lönsamhet räknar butiksersättningen bara på order med inköpspris och visar därför ett
-              lägre belopp.
+            <p className="meta text-subtle">
+              Till butikerna: provision på alla order och hyra, inkl. order utan inköpspris.
             </p>
           </div>
 
-          <section aria-labelledby="alla-butiker" className="flex flex-col gap-6">
+          <section
+            aria-labelledby="alla-butiker"
+            className="rise flex flex-col gap-6"
+            style={{ "--i": 2 } as React.CSSProperties}
+          >
             <SectionHeader
               id="alla-butiker"
-              index={1}
               eyebrow={`Per butik · ${days}`}
               title={`${sek(earned)} intjänat av ${active.length === 1 ? "butiken" : "butikerna"} hittills i ${data.monthLabel}.`}
               aside={

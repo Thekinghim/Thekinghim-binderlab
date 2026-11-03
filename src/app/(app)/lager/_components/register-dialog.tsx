@@ -331,9 +331,7 @@ export function RegisterDialog({
           {mode === "count" ? (
             <p className="flex items-start gap-2 text-sm text-muted">
               <Icon name="info" size={14} className="mt-0.5 shrink-0" />
-              <span>
-                Räknat antal ersätter saldot. Försäljning efter räkningen dras som vanligt.
-              </span>
+              <span>Räknat antal blir nytt saldo.</span>
             </p>
           ) : null}
         </form>

@@ -398,12 +398,12 @@ export function ReleasesSection({
   return (
     <section
       aria-labelledby="releaser-rubrik"
-      className="flex scroll-mt-28 flex-col gap-8"
+      className="rise flex scroll-mt-28 flex-col gap-8"
       id="releaser"
+      style={{ "--i": 1 } as React.CSSProperties}
     >
       <SectionHeader
         id="releaser-rubrik"
-        index={1}
         eyebrow="Releasekalender"
         title={title}
         aside={aside}
@@ -419,10 +419,7 @@ export function ReleasesSection({
         }
       />
       {visible.length === 0 ? (
-        <StateMessage
-          kind="empty"
-          message="Ingen release är inlagd. Med släppdag och serie räknas förslag på inköp och fördelning per automat fram från tidigare släpp."
-        />
+        <StateMessage kind="empty" message="Ingen release inlagd." />
       ) : (
         <div className="flex flex-col gap-6">
           {visible.map((v) => (

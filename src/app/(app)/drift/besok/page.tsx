@@ -27,18 +27,19 @@ export default async function VisitPlanPage() {
   const late = plan.days.flatMap((d) => d.stops).filter((s) => s.late).length;
 
   return (
-    <div className="flex flex-col gap-12">
+    <div className="flex flex-col gap-10">
       <SectionHeader
+        className="rise"
         as="h1"
         size="xl"
         eyebrow="Besöksplan"
         title={stops === 0 ? "Inga besök behövs i veckan." : sentenceEnd(plan.summary)}
         aside={
           stops === 0
-            ? "Lagret räcker i alla automater de närmaste 7 dagarna vid nuvarande takt."
+            ? "Lagret räcker 7 dagar."
             : late > 0
               ? `${plural(late, "besök hamnar", "besök hamnar")} efter beräknat slut: ingen besöksdag fanns i tid.`
-              : "Varje besök är lagt så sent som möjligt före beräknat slut."
+              : undefined
         }
         meta={[
           { label: "Besök", value: formatInt(stops) },
@@ -65,28 +66,22 @@ export default async function VisitPlanPage() {
       ) : null}
 
       {plan.days.length === 0 ? (
-        <StateMessage
-          kind="empty"
-          message="Ingen automat behöver besök de närmaste 7 dagarna."
-          detail={plan.evidence.rule}
-        />
+        <StateMessage kind="empty" compact message="Inga besök behövs de närmaste 7 dagarna." />
       ) : (
         <div className="flex flex-col gap-12">
           {plan.days.map((day, i) => (
             <section
               key={day.date}
               aria-labelledby={`dag-${day.date}`}
-              className="flex flex-col gap-6"
+              className="rise flex flex-col gap-6"
+              style={{ "--i": i + 1 } as React.CSSProperties}
             >
               <SectionHeader
                 id={`dag-${day.date}`}
-                index={i + 1}
-                eyebrow={`Besöksdag · ${day.routeMethod === "distance" ? "ordnad efter avstånd" : "ordnad efter brådska"}`}
+                eyebrow={day.routeMethod === "distance" ? "Efter avstånd" : "Efter brådska"}
                 title={sentenceEnd(day.title)}
                 aside={
-                  day.totalMeters !== null
-                    ? `${kmText(day.totalMeters)} med återresa.`
-                    : "Automaterna saknar koordinater, så ordningen följer brådskan."
+                  day.totalMeters !== null ? `${kmText(day.totalMeters)} med återresa.` : undefined
                 }
                 size="md"
               />
@@ -94,7 +89,7 @@ export default async function VisitPlanPage() {
                 <ol className="flex flex-col gap-4 lg:col-span-8">
                   {day.stops.map((stop) => (
                     <li key={stop.machineId}>
-                      <Panel>
+                      <Panel className="lift">
                         <div className="flex flex-wrap items-baseline justify-between gap-3">
                           <div className="flex items-baseline gap-3">
                             <span className="meta tnum text-subtle">

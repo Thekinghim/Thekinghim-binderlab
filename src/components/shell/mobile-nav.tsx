@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
 import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/button";
 import { StatusGlyph } from "@/components/ui/status-tag";
-import { activeRouteId, primaryMobileRoutes, routesForRole } from "./nav";
+import { activeRouteId, menuRoutesForRole, primaryMobileRoutes } from "./nav";
 import {
   NavList,
   numberRoutes,
@@ -32,10 +32,14 @@ export function MobileNav(props: ShellNavProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const role = props.role ?? "owner";
-  const routes = routesForRole(role);
+  const routes = menuRoutesForRole(role);
   const numbering = numberRoutes(routes);
   const primary = primaryMobileRoutes(role, 4);
   const rest = routes.filter((r) => !primary.includes(r));
+  // Arket: först de primära sidorna som inte fick plats, sedan "Mer"-gruppen och System.
+  const restMain = rest.filter((r) => r.section === "main" && r.group !== "more");
+  const restMore = rest.filter((r) => r.section === "main" && r.group === "more");
+  const restSystem = rest.filter((r) => r.section === "system");
   const activeId = activeRouteId(props.activeHref ?? pathname);
   // "Mer" är aktiv bara när den aktiva sidan faktiskt ligger i arket.
   const moreActive = rest.some((r) => r.id === activeId);
@@ -68,6 +72,7 @@ export function MobileNav(props: ShellNavProps) {
                     ) : null}
                     <Link
                       href={`${r.href}${query}`}
+                      prefetch={false}
                       aria-current={active ? "page" : undefined}
                       className={cn(
                         "flex h-14 flex-col items-center justify-center gap-1 transition-colors focus-visible:-outline-offset-2",
@@ -80,7 +85,14 @@ export function MobileNav(props: ShellNavProps) {
                           <TodoCountSlot count={props.todoCount} hideZero />
                         ) : null}
                       </span>
-                      <span className={cn("text-xs", active && "font-medium")}>{r.label}</span>
+                      <span
+                        className={cn(
+                          "text-xs transition-transform duration-200",
+                          active && "-translate-y-px font-medium",
+                        )}
+                      >
+                        {r.label}
+                      </span>
                     </Link>
                   </li>
                 );
@@ -130,15 +142,22 @@ export function MobileNav(props: ShellNavProps) {
           <nav aria-label="Fler sidor" className="border-b border-line py-2">
             <WithCarriedQuery>
               {(query) => (
-                <NavList
-                  routes={rest}
-                  numbering={numbering}
-                  activeId={activeId}
-                  query={query}
-                  todoCount={props.todoCount}
-                  onNavigate={() => setOpen(false)}
-                  numbered={false}
-                />
+                <>
+                  {[restMain, restMore, restSystem]
+                    .filter((list) => list.length > 0)
+                    .map((list, i) => (
+                      <div key={i} className={cn(i > 0 && "mt-2 border-t border-line pt-2")}>
+                        <NavList
+                          routes={list}
+                          numbering={numbering}
+                          activeId={activeId}
+                          query={query}
+                          todoCount={props.todoCount}
+                          onNavigate={() => setOpen(false)}
+                        />
+                      </div>
+                    ))}
+                </>
               )}
             </WithCarriedQuery>
           </nav>

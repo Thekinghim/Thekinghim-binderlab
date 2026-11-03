@@ -197,8 +197,9 @@ export default async function InboxPage({
   const oldestOpen = [...open].sort((a, b) => (a.startedAt < b.startedAt ? -1 : 1))[0];
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
       <SectionHeader
+        className="rise"
         as="h1"
         size="xl"
         eyebrow="Inkorg"
@@ -208,11 +209,9 @@ export default async function InboxPage({
             : `${plural(open.length, "öppet ärende", "öppna ärenden")}.`
         }
         aside={
-          total.amountOre > 0
-            ? `${kronorOfOre(total.amountOre)} återbetalt ${periodLabel}, ${plural(total.count, "ärende", "ärenden")}.`
-            : oldestOpen
-              ? `Äldsta öppna sedan ${formatWhen(oldestOpen.startedAt, ctx.timeZone, now)}.`
-              : `Inga återbetalningar ${periodLabel}.`
+          oldestOpen
+            ? `Äldsta sedan ${formatWhen(oldestOpen.startedAt, ctx.timeZone, now)}.`
+            : undefined
         }
         actions={
           ctx.canEdit ? (
@@ -226,48 +225,54 @@ export default async function InboxPage({
         }
       />
 
-      <InboxKpis
-        open={open.length}
-        created={createdIn.length}
-        resolved={resolvedIn.length}
-        refundedOre={total.amountOre}
-        refundCount={total.count}
-        period={periodLabel}
-      />
+      <div className="rise" style={{ "--i": 1 } as React.CSSProperties}>
+        <InboxKpis
+          open={open.length}
+          created={createdIn.length}
+          resolved={resolvedIn.length}
+          refundedOre={total.amountOre}
+          refundCount={total.count}
+          period={periodLabel}
+        />
+      </div>
 
-      <section aria-labelledby="arenden" className="flex flex-col gap-6">
+      <section
+        aria-labelledby="arenden"
+        className="rise flex flex-col gap-6"
+        style={{ "--i": 2 } as React.CSSProperties}
+      >
         <SectionHeader
           id="arenden"
-          index={1}
-          eyebrow="Ärenden"
+          size="md"
           title={
             rows.length === 0
               ? "Inga ärenden i perioden."
               : `${plural(rows.length, "ärende", "ärenden")}.`
           }
-          aside="Öppna ärenden visas alltid, lösta när de rör perioden."
         />
         {rows.length === 0 ? (
-          <StateMessage kind="empty" message={`Inga kundärenden ${periodLabel} och inga öppna.`} />
+          <StateMessage compact kind="empty" message={`Inga ärenden ${periodLabel}.`} />
         ) : (
           <IncidentTable rows={rows} />
         )}
       </section>
 
-      <section aria-labelledby="statistik" className="flex flex-col gap-6">
-        <SectionHeader
-          id="statistik"
-          index={2}
-          eyebrow={`Per automat och titel · ${periodLabel}`}
-          title={top ? `Flest ärenden i ${top.label}.` : "Inga ärenden att räkna på."}
-          aside={
-            top
-              ? `${plural(top.count, "ärende", "ärenden")}${top.refundedOre > 0 ? `, ${kronorOfOre(top.refundedOre)} återbetalt` : ""}.`
-              : "Statistiken räknas på ärenden som startade i perioden."
-          }
-        />
-        {byMachine.length > 0 ? (
-          <div className="grid gap-10 lg:grid-cols-12 lg:gap-8">
+      {byMachine.length > 0 ? (
+        <details
+          className="rise rounded-md border border-line bg-surface p-4 md:p-5"
+          style={{ "--i": 3 } as React.CSSProperties}
+        >
+          <summary className="flex cursor-pointer list-none flex-wrap items-baseline justify-between gap-3">
+            <h2 id="statistik" className="text-md font-medium text-fg">
+              {top ? `Flest ärenden i ${top.label}.` : "Per automat och titel."}
+            </h2>
+            {top ? (
+              <span className="meta text-subtle">
+                {`${plural(top.count, "ärende", "ärenden")}${top.refundedOre > 0 ? `, ${kronorOfOre(top.refundedOre)}` : ""}`}
+              </span>
+            ) : null}
+          </summary>
+          <div className="mt-6 grid gap-10 lg:grid-cols-12 lg:gap-8">
             <div className="lg:col-span-6">
               <StatTable caption="Ärenden per automat" rows={byMachine} first="Automat" />
             </div>
@@ -275,19 +280,13 @@ export default async function InboxPage({
               <StatTable caption="Ärenden per titel" rows={byTitle} first="Titel" />
             </div>
           </div>
-        ) : null}
-        <p className="text-sm text-muted">
-          Återbetalningarna räknas på återbetalningsdagen, automaten och titeln. Lönsamhet drar dem
-          från vinsten som en egen rad (vinst efter återbetalningar). Intäkt, inköp och
-          butiksersättning ändras inte.
-        </p>
-        {data.truncated ? (
-          <p className="text-sm text-muted">
-            Fler än {formatInt(data.limit)} ärenden rör perioden: välj en kortare period för
-            fullständig statistik.
-          </p>
-        ) : null}
-      </section>
+          {data.truncated ? (
+            <p className="mt-4 text-sm text-muted">
+              Fler än {formatInt(data.limit)} ärenden. Välj en kortare period.
+            </p>
+          ) : null}
+        </details>
+      ) : null}
     </div>
   );
 }

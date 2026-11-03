@@ -373,6 +373,12 @@ export async function loadSyncInfoFor(
   if (!canSeeEconomy(viewer.organization.role)) return null;
   return asViewer(viewer, ECONOMY_ROLES, async (tx) => {
     const ds = await queryDataSources(tx, viewer.organization.id);
+    const firstOrder = await queryFirstOrderDate(tx, viewer.organization.id);
+    // Ett hjärtslag eller en lyckad synk utan rader sätter last_synced_at. Utan en enda
+    // importerad order finns ingen synk att visa: skalet skriver "Ingen synk än".
+    if (firstOrder === null) {
+      return { syncedAt: null, state: ds.failing > 0 ? "failed" : "ok", sources: ds.sources };
+    }
     const stale =
       ds.lastSyncedAt === null ||
       now.getTime() - ds.lastSyncedAt.getTime() > STALE_SYNC_HOURS * 3_600_000;

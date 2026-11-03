@@ -20,7 +20,6 @@ export function HemSkeleton() {
         <div className="hidden flex-col gap-3 lg:col-span-4 lg:flex">
           <Skeleton className="h-4 w-full" />
           <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-full" />
         </div>
       </div>
       <div className="mt-8 md:mt-10">

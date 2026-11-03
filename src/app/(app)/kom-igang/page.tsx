@@ -42,16 +42,16 @@ export default async function KomIgangPage() {
     : `${formatInt(status.requiredDone)} av ${formatInt(status.requiredTotal)} nödvändiga steg klara.`;
   const aside = status.complete
     ? status.loadedAtOnce
-      ? `Alla ${formatInt(status.requiredTotal)} nödvändiga steg är gjorda. Datan lades in på en gång, så ingen tid mäts.`
+      ? `Alla ${formatInt(status.requiredTotal)} nödvändiga steg är gjorda.`
       : `Alla ${formatInt(status.requiredTotal)} nödvändiga steg är gjorda.`
     : `${formatInt(remaining)} kvar, ${formatDuration(status.elapsedMs)} sedan start.`;
   const nextTitle = status.next?.title.replace(/\.$/, "");
   const description = status.complete
-    ? "Panelen har butiker, automater, order och inköpspriser, så nyckeltal och vinst räknas på riktiga siffror."
+    ? undefined
     : status.next
       ? ctx.canEdit
         ? `Nästa: ${nextTitle}. ${status.next.why}`
-        : `Väntar på att en ägare eller administratör gör steg ${status.next.number}: ${nextTitle?.toLowerCase()}. ${status.next.why}`
+        : `Väntar på steg ${status.next.number}: ${nextTitle?.toLowerCase()}.`
       : undefined;
 
   const meta: SectionMeta[] = [
@@ -71,8 +71,9 @@ export default async function KomIgangPage() {
   const stepsDone = status.steps.filter((s) => s.state === "done").length;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
       <SectionHeader
+        className="rise"
         as="h1"
         size="xl"
         eyebrow={`Kom igång · ${ctx.organization.name}`}
@@ -82,18 +83,16 @@ export default async function KomIgangPage() {
         meta={meta}
       />
 
-      <section aria-labelledby="steg" className="flex flex-col gap-8">
+      <section
+        aria-labelledby="steg"
+        className="rise flex flex-col gap-8"
+        style={{ "--i": 1 } as React.CSSProperties}
+      >
         <SectionHeader
           id="steg"
-          index={1}
-          eyebrow={`Steg · ${formatInt(status.steps.length)} st`}
-          title="Det panelen behöver."
-          aside={`${formatInt(stepsDone)} av ${formatInt(status.steps.length)} klara, rekommenderade inräknade.`}
-          description={
-            ctx.canEdit
-              ? undefined
-              : "Ägare och administratörer lägger till butiker, automater, datakällor och priser."
-          }
+          size="md"
+          title="Steg."
+          aside={`${formatInt(stepsDone)} av ${formatInt(status.steps.length)} klara.`}
           actions={
             status.complete ? (
               <Link

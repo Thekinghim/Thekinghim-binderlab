@@ -15,14 +15,12 @@ import { SettingsForm, type KindOption } from "./settings-form";
 export const metadata: Metadata = { title: "Larminställningar" };
 
 const KIND_HINT: Record<string, string> = {
-  machine_offline:
-    "Ingen försäljning på mycket längre tid än normalt, eller automaten rapporterar ur drift.",
-  machine_fault: "Automaten rapporterar ett fel (kräver leverantörens maskindata).",
-  machine_suspected_fault:
-    "Tystnaden i försäljningen är osannolik jämfört med samma veckodag och timme.",
-  low_stock: "En titel räcker högst 2 dagar vid takten de senaste 14 dagarna, eller är slut.",
-  import_failed: "Importen misslyckades, hängde sig eller hade rader med fel.",
-  day_anomaly: "Gårdagens försäljning avviker minst 30 % från samma veckodag tidigare veckor.",
+  machine_offline: "Ovanligt lång tystnad.",
+  machine_fault: "Felkod från automaten.",
+  machine_suspected_fault: "Osannolik tystnad.",
+  low_stock: "Räcker högst 2 dagar.",
+  import_failed: "Import misslyckad.",
+  day_anomaly: "Gårdagen avvek minst 30 %.",
 };
 
 const DELIVERY_STATUS: Record<
@@ -118,35 +116,33 @@ export default async function AlertSettingsPage() {
   }));
 
   return (
-    <div className="flex flex-col gap-12">
-      <SectionHeader
-        as="h1"
-        size="xl"
-        eyebrow="Larminställningar"
-        title={
-          !settings.saved
-            ? "Du får inga larm ännu."
-            : !sub.active
-              ? "Larmen är avstängda för dig."
-              : `Du får ${plural(activeKinds, "typ av larm", "typer av larm")}${sub.machineIds === null ? " för alla automater" : ` för ${plural(sub.machineIds.length, "automat", "automater")}`}.`
-        }
-        aside={
-          !settings.saved
-            ? "Spara inställningarna nedan för att börja få larm."
-            : `Via ${sub.channels.map((c) => (c === "push" ? "push" : c === "email" ? "e-post" : "sms")).join(" och ")}${sub.quietStart ? `, tyst ${sub.quietStart}–${sub.quietEnd}` : ""}.`
-        }
-      />
+    <div className="flex flex-col gap-10">
+      <div className="rise" style={{ "--i": 0 } as React.CSSProperties}>
+        <SectionHeader
+          as="h1"
+          size="xl"
+          eyebrow="Larminställningar"
+          title={
+            !settings.saved
+              ? "Du får inga larm ännu."
+              : !sub.active
+                ? "Larmen är avstängda för dig."
+                : `Du får ${plural(activeKinds, "typ av larm", "typer av larm")}${sub.machineIds === null ? " för alla automater" : ` för ${plural(sub.machineIds.length, "automat", "automater")}`}.`
+          }
+          aside={
+            !settings.saved
+              ? "Spara för att börja få larm."
+              : `Via ${sub.channels.map((c) => (c === "push" ? "push" : c === "email" ? "e-post" : "sms")).join(" och ")}${sub.quietStart ? `, tyst ${sub.quietStart}–${sub.quietEnd}` : ""}.`
+          }
+        />
+      </div>
 
-      <div className="grid gap-12 lg:grid-cols-12 lg:gap-8">
+      <div
+        className="rise grid gap-12 lg:grid-cols-12 lg:gap-8"
+        style={{ "--i": 1 } as React.CSSProperties}
+      >
         <section aria-labelledby="installningar" className="flex flex-col gap-6 lg:col-span-7">
-          <SectionHeader
-            id="installningar"
-            index={1}
-            eyebrow="Vad och när"
-            title="Dina larm."
-            size="md"
-            aside="Gäller bara dig."
-          />
+          <SectionHeader id="installningar" title="Dina larm." size="md" aside="Gäller bara dig." />
           <SettingsForm
             initial={sub}
             kinds={kinds}
@@ -159,10 +155,7 @@ export default async function AlertSettingsPage() {
           <section aria-labelledby="enheter" className="flex flex-col gap-6">
             <SectionHeader
               id="enheter"
-              index={2}
-              eyebrow="Push"
               title={`${plural(settings.devices.filter((d) => !d.disabledAt).length, "enhet", "enheter")} med push.`}
-              aside="Lägg till Binderlab på hemskärmen för push på iPhone."
               size="md"
             />
             <PushDevices
@@ -175,14 +168,11 @@ export default async function AlertSettingsPage() {
           <section aria-labelledby="utskick" className="flex flex-col gap-6">
             <SectionHeader
               id="utskick"
-              index={3}
-              eyebrow="Utskick"
               title={
                 settings.deliveries.length === 0
                   ? "Inga larm skickade till dig."
                   : `${plural(settings.deliveries.length, "utskick", "utskick")} senast.`
               }
-              aside="Flera larm samtidigt blir ett utskick."
               size="md"
             />
             {settings.deliveries.length > 0 ? (

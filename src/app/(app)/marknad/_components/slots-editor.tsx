@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { Button, IconButton } from "@/components/ui/button";
-import { Input, Select } from "@/components/ui/field";
+import { Input, Select, formError } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { formatInt } from "@/lib/format";
@@ -115,8 +115,11 @@ export function SlotsEditorButton({
       >
         <form
           className="flex flex-col gap-4"
+          noValidate
           onSubmit={(e) => {
             e.preventDefault();
+            const invalid = formError(e.currentTarget);
+            if (invalid) return setError(invalid);
             submit();
           }}
         >

@@ -107,7 +107,11 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
         readOnly={!ctx.canEdit}
       />
       {data.history.length > 0 ? (
-        <section aria-labelledby="historik" className="flex flex-col gap-4">
+        <section
+          aria-labelledby="historik"
+          className="rise flex flex-col gap-4"
+          style={{ "--i": 1 } as React.CSSProperties}
+        >
           <SectionHeader
             id="historik"
             eyebrow="Historik"

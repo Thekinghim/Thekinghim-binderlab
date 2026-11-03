@@ -113,7 +113,7 @@ export function ContractDialog({
         onClose={() => setOpen(false)}
         eyebrow="Avtal"
         title={draft.id ? "Ändra avtal" : "Nytt avtal"}
-        description="Sista uppsägningsdag räknas från avtalets slut minus uppsägningstiden. Påminnelsen kommer 90 dagar före."
+        description="Påminnelse 90 d före sista uppsägningsdag."
       >
         <form onSubmit={submit} noValidate className="flex flex-col gap-5">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

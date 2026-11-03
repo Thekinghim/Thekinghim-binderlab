@@ -7,7 +7,10 @@ export type SectionHeaderSize = "xl" | "lg" | "md" | "sm";
 export type SectionMeta = { label: string; value: ReactNode };
 
 type SectionHeaderProps = {
-  /** Sektionsnummer, t.ex. 1 → "01", eller "06.1" för undersektion. Utelämnas för mindre rubriker. */
+  /**
+   * @deprecated Sektionsnummer ("01 / …") visas inte längre: de gjorde sidorna
+   * tyngre utan att hjälpa. Propen finns kvar så att äldre anrop kompilerar.
+   */
   index?: number | string;
   /** Kategori i versaler, t.ex. "Försäljning" */
   eyebrow?: string;
@@ -41,7 +44,7 @@ function isMetaList(meta: SectionHeaderProps["meta"]): meta is ReadonlyArray<Sec
 }
 
 /**
- * "01 / FÖRSÄLJNING" följt av tvådelad rubrik: "Intäkt per dag. Bästa dagen var 26 okt."
+ * "FÖRSÄLJNING" följt av tvådelad rubrik: "Intäkt per dag. Bästa dagen var 26 okt."
  * Från lg ligger rubriken i kolumn 1–8 och metadata/åtgärder i kolumn 9–12.
  * Metadatablocket toppställs mot etiketten; åtgärderna står alltid sist.
  */
@@ -58,7 +61,8 @@ export function SectionHeader({
   className,
   id,
 }: SectionHeaderProps) {
-  const hasEyebrow = index !== undefined || Boolean(eyebrow);
+  void index;
+  const hasEyebrow = Boolean(eyebrow);
   const hasSide = Boolean(meta) || Boolean(actions);
   const small = size === "md" || size === "sm";
 
@@ -68,7 +72,7 @@ export function SectionHeader({
         "grid min-w-0 grid-cols-1 gap-x-8",
         small ? "gap-y-3" : "gap-y-4",
         hasSide && "lg:grid-cols-12",
-        // Med metadata linjerar blockets första linje med etiketten "05 / …";
+        // Med metadata linjerar blockets första linje med etiketten;
         // med bara åtgärder står knapparna i höjd med rubrikens nederkant.
         hasSide && (meta ? "lg:items-start" : "lg:items-end"),
         className,
@@ -83,17 +87,7 @@ export function SectionHeader({
       >
         {hasEyebrow ? (
           <p className="label flex items-center gap-2 text-subtle">
-            {index !== undefined ? (
-              <span className="tnum text-fg">
-                {typeof index === "number" ? String(index).padStart(2, "0") : index}
-              </span>
-            ) : null}
-            {index !== undefined && eyebrow ? (
-              <span aria-hidden className="text-faint">
-                /
-              </span>
-            ) : null}
-            {eyebrow ? <span>{eyebrow}</span> : null}
+            <span>{eyebrow}</span>
           </p>
         ) : null}
         <Tag id={id} className={cn("font-medium text-balance hyphens-none", titleSize[size])}>
@@ -101,7 +95,7 @@ export function SectionHeader({
           {aside ? <span className="text-subtle"> {aside}</span> : null}
         </Tag>
         {description ? (
-          <p className={cn("max-w-xl text-muted", small ? "text-sm" : "text-base")}>
+          <p className={cn("line-clamp-2 max-w-xl text-muted", small ? "text-sm" : "text-base")}>
             {description}
           </p>
         ) : null}

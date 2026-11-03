@@ -23,11 +23,10 @@ export function PackList({
   machineId,
   onMachine,
   today,
-  index,
   canRegister,
   onSelect,
 }: {
-  index: number;
+  index?: number;
   machines: LagerMachine[];
   lists: PackListData[];
   machineId: string;
@@ -52,7 +51,6 @@ export function PackList({
     <div className="flex flex-col gap-6">
       <SectionHeader
         id="pafyllningslista"
-        index={index}
         eyebrow="Påfyllningslista · besök i dag"
         title={title}
         aside={aside}

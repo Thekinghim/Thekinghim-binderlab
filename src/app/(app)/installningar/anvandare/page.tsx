@@ -111,10 +111,13 @@ export default async function UsersPage() {
         invitationsAside={invitationsAside(firstExpiry ? date(firstExpiry) : null)}
       />
 
-      <section aria-labelledby="roller" className="mt-14 border-t border-line pt-6">
+      <section
+        aria-labelledby="roller"
+        className="rise mt-14 border-t border-line pt-6"
+        style={{ "--i": 1 } as React.CSSProperties}
+      >
         <SectionHeader
           id="roller"
-          index={3}
           eyebrow="Roller"
           title="Vem ser vad."
           aside="Påfyllare ser aldrig belopp."

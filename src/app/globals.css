@@ -188,6 +188,53 @@
 }
 
 @layer utilities {
+  /*
+   * Rörelse med liv: block glider upp i tur och ordning när sidan visas.
+   * Användning: className="rise" och style={{"--i": n}} för fördröjning.
+   * Respekterar prefers-reduced-motion (se ovan).
+   */
+  .rise {
+    animation: bl-rise 420ms var(--bl-ease) both;
+    animation-delay: calc(var(--i, 0) * 55ms);
+  }
+  .fade-in {
+    animation: bl-fade 320ms var(--bl-ease) both;
+  }
+  /* Kort och rader som lyfter lätt vid hover */
+  .lift {
+    transition:
+      transform var(--bl-dur-slow) var(--bl-ease),
+      border-color var(--bl-dur-slow) var(--bl-ease),
+      box-shadow var(--bl-dur-slow) var(--bl-ease);
+  }
+  .lift:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -12px rgb(0 0 0 / 0.45);
+  }
+  /* Levande statusprick (synk pågår, automat online) */
+  .live-dot {
+    position: relative;
+  }
+  .live-dot::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 9999px;
+    border: 1px solid currentColor;
+    animation: bl-ping 1800ms var(--bl-ease) infinite;
+  }
+  /* Staplar och linjer i diagram ritas fram */
+  .grow-y {
+    transform-origin: bottom;
+    animation: bl-grow-y 520ms var(--bl-ease) both;
+    animation-delay: calc(var(--i, 0) * 18ms);
+  }
+  .draw {
+    stroke-dasharray: var(--len, 2000);
+    stroke-dashoffset: var(--len, 2000);
+    animation: bl-draw 900ms var(--bl-ease) 120ms forwards;
+  }
+
   /* Monospace-etikett: VERSALER, liten, bred spärrning. Läser typskalan. */
   .label {
     font-family: var(--bl-font-mono);
@@ -325,4 +372,24 @@ dialog::backdrop {
   33.333% {
     opacity: 0.3;
   }
+}
+
+@keyframes bl-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes bl-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes bl-ping {
+  0% { opacity: 0.7; transform: scale(0.8); }
+  80%, 100% { opacity: 0; transform: scale(2.2); }
+}
+@keyframes bl-grow-y {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+@keyframes bl-draw {
+  to { stroke-dashoffset: 0; }
 }

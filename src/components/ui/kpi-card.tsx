@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/cn";
+import { CountUp } from "./count-up";
 import { KpiTrace } from "./kpi-trace";
 import {
   KpiAlert,
@@ -38,7 +39,7 @@ type KpiCardProps = {
    * Inuti en Panel släpps kanten automatiskt. Flera nyckeltal i rad: använd KpiStrip.
    */
   variant?: "panel" | "bare";
-  /** Visning vid värdebyte. Standard: tona, inte räkna. */
+  /** Visning vid värdebyte. Standard: räkna upp (heltal från 0 vid visning). */
   motion?: KpiMotion;
   className?: string;
 };
@@ -58,10 +59,12 @@ export function KpiCard({
   alertText,
   invert,
   variant = "panel",
-  motion = "fade",
+  motion = "count",
   className,
 }: KpiCardProps) {
-  const shown = useKpiValue(value, motion);
+  // Heltal räknas upp från 0 när kortet visas; övriga från föregående värde.
+  const countUp = motion === "count" && Number.isInteger(value);
+  const shown = useKpiValue(value, countUp ? "none" : motion);
   const ref = useValueFade<HTMLParagraphElement>(format(value), motion === "fade");
 
   return (
@@ -69,7 +72,7 @@ export function KpiCard({
       className={cn(
         "relative flex min-w-0 flex-col gap-4",
         variant === "panel" &&
-          "rounded-md border border-line bg-surface p-4 in-data-[frame=panel]:rounded-none in-data-[frame=panel]:border-0 in-data-[frame=panel]:bg-transparent in-data-[frame=panel]:p-0 md:p-5 md:in-data-[frame=panel]:p-0",
+          "lift rounded-md border border-line bg-surface p-4 in-data-[frame=panel]:rounded-none in-data-[frame=panel]:border-0 in-data-[frame=panel]:bg-transparent in-data-[frame=panel]:p-0 md:p-5 md:in-data-[frame=panel]:p-0",
         className,
       )}
     >
@@ -77,7 +80,7 @@ export function KpiCard({
 
       <div className="flex flex-col gap-1">
         <p ref={ref} className="tnum truncate text-xl font-medium sm:text-2xl">
-          {format(shown)}
+          {countUp ? <CountUp value={value} format={format} /> : format(shown)}
         </p>
         {delta !== undefined ? (
           <KpiDelta

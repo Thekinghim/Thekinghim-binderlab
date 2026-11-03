@@ -124,8 +124,7 @@ export function SettingsForm({
         wrapperClassName="sm:max-w-[calc(50%-8px)]"
       />
       <p className="border-t border-line pt-4 text-sm text-muted">
-        Satserna gäller alla perioder, även bakåt i tiden. Stängda månader behåller sina sparade
-        siffror.
+        Gäller bakåt. Stängda månader ändras inte.
       </p>
       <FormError message={error} />
       <div className="flex justify-end">

@@ -194,9 +194,7 @@ export function OrderDetailView({
         <Row label="Originaltitel">
           <span className="font-mono text-sm">{detail.rawTitle}</span>
           {sameTitle ? null : detail.title ? (
-            <span className="block pt-1 text-xs text-subtle">
-              Stavningen i källan ändras aldrig. Den tolkas som titeln ovan.
-            </span>
+            <span className="block pt-1 text-xs text-subtle">Originaltitel i Awish.</span>
           ) : null}
         </Row>
       </Group>
@@ -269,7 +267,7 @@ export function OrderDetailView({
           <span className="tnum">{at(detail.createdAt, timeZone)}</span>
           {detail.lateInClosedPeriod ? (
             <span className="block pt-1 text-sm text-muted">
-              Importerad efter att månaden stängts. Den syns i nästa rapport.
+              Kom efter månadsstängning, ingår i nästa rapport.
             </span>
           ) : null}
         </Row>

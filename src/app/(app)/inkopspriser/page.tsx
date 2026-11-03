@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type React from "react";
 import Link from "next/link";
 
 import { describePeriod, toURLSearchParams, wallClockIn } from "@/components/shell/period-state";
@@ -110,34 +111,39 @@ export default async function PurchasePricesPage({
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
-      <SectionHeader
-        as="h1"
-        size="xl"
-        eyebrow="Inköpspriser"
-        title={headline.title}
-        aside={headline.aside}
-        meta={[
-          { label: "Period", value: periodLabel },
-          {
-            label: "Med inköpspris",
-            value: `${formatInt(pricedCount)} av ${formatInt(allRows.length)}`,
-          },
-          {
-            label: "Senaste prisändring",
-            value: data.lastChangeAt
-              ? formatDate(wallClockIn(new Date(data.lastChangeAt), ctx.timeZone), {
-                  year: "auto",
-                  now: wallClockIn(new Date(ctx.now), ctx.timeZone),
-                })
-              : "Aldrig",
-          },
-        ]}
-      />
+      <div className="rise">
+        <SectionHeader
+          as="h1"
+          size="xl"
+          eyebrow="Inköpspriser"
+          title={headline.title}
+          aside={headline.aside}
+          meta={[
+            { label: "Period", value: periodLabel },
+            {
+              label: "Med inköpspris",
+              value: `${formatInt(pricedCount)} av ${formatInt(allRows.length)}`,
+            },
+            {
+              label: "Senaste prisändring",
+              value: data.lastChangeAt
+                ? formatDate(wallClockIn(new Date(data.lastChangeAt), ctx.timeZone), {
+                    year: "auto",
+                    now: wallClockIn(new Date(ctx.now), ctx.timeZone),
+                  })
+                : "Aldrig",
+            },
+          ]}
+        />
+      </div>
 
-      <section aria-labelledby="per-titel" className="flex flex-col gap-6">
+      <section
+        aria-labelledby="per-titel"
+        className="rise flex flex-col gap-6"
+        style={{ "--i": 1 } as React.CSSProperties}
+      >
         <SectionHeader
           id="per-titel"
-          index={1}
           eyebrow={`Per titel · ${periodLabel}`}
           title="Vad varje pack lämnar."
           aside={perTitleAside(rows, dates)}
@@ -183,12 +189,11 @@ export default async function PurchasePricesPage({
           id="titel"
           aria-labelledby="titel-rubrik"
           tabIndex={-1}
-          className="flex scroll-mt-28 flex-col gap-10 border-t border-line pt-12 outline-none"
+          className="fade-in flex scroll-mt-28 flex-col gap-10 border-t border-line pt-12 outline-none"
         >
           <ScrollIntoView targetId="titel" titleId={selectedTitle.id} active={requested !== null} />
           <SectionHeader
             id="titel-rubrik"
-            index={2}
             eyebrow={`Titel${selectedTitle.series ? ` · ${selectedTitle.series}` : ""}`}
             title={titleHead.title}
             aside={titleHead.aside}
@@ -196,13 +201,7 @@ export default async function PurchasePricesPage({
 
           <div className="grid grid-cols-1 gap-x-8 gap-y-12 lg:grid-cols-12">
             <div className="flex min-w-0 flex-col gap-6 lg:col-span-7">
-              <h3 className="label flex items-center gap-2 text-subtle">
-                <span className="tnum text-fg">02.1</span>
-                <span aria-hidden className="text-faint">
-                  /
-                </span>
-                <span>Prishistorik</span>
-              </h3>
+              <h3 className="label text-subtle">Prishistorik</h3>
               {timeline.length === 0 ? (
                 <StateMessage
                   kind="not-configured"
@@ -215,13 +214,7 @@ export default async function PurchasePricesPage({
             </div>
 
             <div className="flex min-w-0 flex-col gap-6 lg:col-span-5">
-              <h3 className="label flex items-center gap-2 text-subtle">
-                <span className="tnum text-fg">02.2</span>
-                <span aria-hidden className="text-faint">
-                  /
-                </span>
-                <span>Nytt inköpspris</span>
-              </h3>
+              <h3 className="label text-subtle">Nytt inköpspris</h3>
               {ctx.canEdit && detail ? (
                 <PriceForm
                   key={selectedTitle.id}
@@ -236,24 +229,13 @@ export default async function PurchasePricesPage({
                   today={today}
                 />
               ) : (
-                <StateMessage
-                  kind="denied"
-                  compact
-                  message="Bara ägare och admin lägger in inköpspriser."
-                  detail="Ett nytt pris gäller från sitt datum. Äldre order räknas med priset som gällde då."
-                />
+                <StateMessage kind="denied" compact message="Gäller från datumet." />
               )}
             </div>
           </div>
 
           <div className="flex flex-col gap-6">
-            <h3 className="label flex items-center gap-2 text-subtle">
-              <span className="tnum text-fg">02.3</span>
-              <span aria-hidden className="text-faint">
-                /
-              </span>
-              <span>Ändringslogg</span>
-            </h3>
+            <h3 className="label text-subtle">Ändringslogg</h3>
             {log.length === 0 ? (
               <StateMessage
                 kind="empty"

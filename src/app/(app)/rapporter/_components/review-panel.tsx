@@ -224,7 +224,7 @@ export function ReviewPanel({
               kind="empty"
               compact
               message="Ingen aktiv mottagare kan få den här rapporten."
-              action={{ label: "Lägg till mottagare →", href: "#mottagare" }}
+              action={{ label: "Lägg till mottagare →", href: "/rapporter?vy=mottagare" }}
             />
           ) : (
             <fieldset className="flex flex-col gap-4 border-t border-line pt-4">

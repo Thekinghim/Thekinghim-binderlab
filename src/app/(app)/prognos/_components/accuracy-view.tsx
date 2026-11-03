@@ -69,7 +69,7 @@ export function AccuracyView({ model }: { model: AccuracyModel }) {
     return (
       <StateMessage
         kind="empty"
-        message="Det finns ännu ingen vecka att jämföra: backtesten behöver minst två veckor historik före en testvecka."
+        message="För lite historik för träffsäkerhet."
         detail={model.text}
       />
     );

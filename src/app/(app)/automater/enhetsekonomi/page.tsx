@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type React from "react";
 
 import { SectionHeader } from "@/components/ui/section-header";
 import type { SearchParamsInput } from "@/components/shell/period-state";
@@ -29,7 +30,15 @@ export default async function EnhetsekonomiPage({
 }: {
   searchParams: Promise<SearchParamsInput>;
 }) {
-  const data = await loadUnitEconomicsPage(await searchParams);
+  const sp = await searchParams;
+  const data = await loadUnitEconomicsPage(sp);
+  // Länken "Registrera investering" från en automat (?automat=) öppnar investeringarna.
+  const openInvestments =
+    Boolean(
+      "get" in sp && typeof sp.get === "function"
+        ? sp.get("automat")
+        : (sp as Record<string, unknown>).automat,
+    ) || data.investments.length === 0;
   const { comparison, period } = data;
   const codes = Object.fromEntries(data.names.machines.map((m) => [m.id, m.code ?? m.name]));
   const names = {
@@ -52,7 +61,7 @@ export default async function EnhetsekonomiPage({
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
-      <div className="flex flex-col gap-4">
+      <div className="rise flex flex-col gap-4">
         <SectionHeader
           as="h1"
           size="xl"
@@ -77,18 +86,23 @@ export default async function EnhetsekonomiPage({
         />
       </div>
 
-      <UnitEconomicsKpis
-        averageProfitPerDayOre={comparison.averageProfitPerDayOre}
-        averageRevenuePerDayOre={comparison.averageRevenuePerDayOre}
-        investmentOre={investmentOre}
-        bookValueOre={bookValueOre}
-        comparison={`${periodText(period.period)}, ${formatInt(period.days)} dagar`}
-      />
+      <div className="rise" style={{ "--i": 1 } as React.CSSProperties}>
+        <UnitEconomicsKpis
+          averageProfitPerDayOre={comparison.averageProfitPerDayOre}
+          averageRevenuePerDayOre={comparison.averageRevenuePerDayOre}
+          investmentOre={investmentOre}
+          bookValueOre={bookValueOre}
+          comparison={`${periodText(period.period)}, ${formatInt(period.days)} dagar`}
+        />
+      </div>
 
-      <section aria-labelledby="per-dag" className="flex flex-col gap-8">
+      <section
+        aria-labelledby="per-dag"
+        className="rise flex flex-col gap-8"
+        style={{ "--i": 2 } as React.CSSProperties}
+      >
         <SectionHeader
           id="per-dag"
-          index={1}
           eyebrow="Vinst per dag"
           title={best ? `${best.name} leder.` : "Vinst per automat och dag."}
           aside={
@@ -100,10 +114,13 @@ export default async function EnhetsekonomiPage({
         <ProfitPerDayChart rows={comparison.rows} codes={codes} />
       </section>
 
-      <section aria-labelledby="sida-vid-sida" className="flex flex-col gap-8">
+      <section
+        aria-labelledby="sida-vid-sida"
+        className="rise flex flex-col gap-8"
+        style={{ "--i": 3 } as React.CSSProperties}
+      >
         <SectionHeader
           id="sida-vid-sida"
-          index={2}
           eyebrow="Sida vid sida"
           title="Investering, vinst och återbetalning."
           aside={
@@ -113,7 +130,6 @@ export default async function EnhetsekonomiPage({
                 ? "Ingen investering registrerad."
                 : "Ingen automat återbetalas med nuvarande vinst."
           }
-          description="Vinst före avskrivning efter inköp, avgifter, provision och hyra. Återbetalningstid = investering / vinst per månad. Avkastning per år = vinst per månad × 12 / investering."
         />
         <ComparisonTable
           rows={comparison.rows}
@@ -121,8 +137,10 @@ export default async function EnhetsekonomiPage({
           codes={codes}
           period={period.period}
         />
-        <div className="flex flex-col gap-3">
-          <p className="label text-subtle">Underlag per automat</p>
+        <details className="flex flex-col gap-3">
+          <summary className="label cursor-pointer text-subtle hover:text-fg">
+            Underlag per automat
+          </summary>
           <ul className="flex flex-col">
             {comparison.rows.map((r) => (
               <li key={r.machineId} className="flex flex-col gap-2 border-t border-line py-3">
@@ -131,29 +149,33 @@ export default async function EnhetsekonomiPage({
               </li>
             ))}
           </ul>
-        </div>
+        </details>
       </section>
 
-      <section aria-labelledby="investeringar" className="flex flex-col gap-8">
-        <SectionHeader
-          id="investeringar"
-          index={3}
-          eyebrow="Investeringar"
-          title={`${kr(investmentOre)} investerat.`}
-          aside={`${formatInt(data.investments.length)} poster, bokfört värde ${kr(bookValueOre)}.`}
-          description={
-            data.ctx.canEdit
-              ? "Inköp och installation per automat. Avskrivningen är linjär."
-              : "Inköp och installation per automat. Bara ägare och administratörer kan ändra."
-          }
-        />
-        <InvestmentsSection
-          investments={data.investments}
-          machines={data.names.machines}
-          canEdit={data.ctx.canEdit}
-          today={data.ctx.today}
-        />
-      </section>
+      <details
+        open={openInvestments}
+        className="group rise rounded-sm border border-line p-4 md:p-6"
+        style={{ "--i": 4 } as React.CSSProperties}
+      >
+        <summary className="cursor-pointer text-sm font-medium text-fg">
+          Investeringar · {kr(investmentOre)}
+        </summary>
+        <section aria-labelledby="investeringar" className="mt-6 flex flex-col gap-8">
+          <SectionHeader
+            id="investeringar"
+            eyebrow="Investeringar"
+            title={`${kr(investmentOre)} investerat.`}
+            aside={`${formatInt(data.investments.length)} poster, bokfört värde ${kr(bookValueOre)}.`}
+            description="Inköp och installation per automat."
+          />
+          <InvestmentsSection
+            investments={data.investments}
+            machines={data.names.machines}
+            canEdit={data.ctx.canEdit}
+            today={data.ctx.today}
+          />
+        </section>
+      </details>
     </div>
   );
 }

@@ -146,21 +146,13 @@ export function SettingsForm({
       className="flex flex-col gap-8"
       aria-label="Larminställningar"
     >
-      <Check
-        checked={v.active}
-        onChange={(x) => set("active", x)}
-        hint="Avstängd: inga larm alls, men inställningarna sparas."
-      >
+      <Check checked={v.active} onChange={(x) => set("active", x)}>
         Ta emot larm
       </Check>
 
       <div className="flex flex-col gap-8">
         <Group legend="Larm" error={errors.kinds}>
-          <Check
-            checked={v.allKinds}
-            onChange={(x) => set("allKinds", x)}
-            hint="Även typer som läggs till senare."
-          >
+          <Check checked={v.allKinds} onChange={(x) => set("allKinds", x)}>
             Alla typer jag får se
           </Check>
           {!v.allKinds ? (
@@ -192,11 +184,7 @@ export function SettingsForm({
         </Group>
 
         <Group legend="Automater" error={errors.machineIds}>
-          <Check
-            checked={v.allMachines}
-            onChange={(x) => set("allMachines", x)}
-            hint="Även automater som läggs till senare."
-          >
+          <Check checked={v.allMachines} onChange={(x) => set("allMachines", x)}>
             Alla automater
           </Check>
           {!v.allMachines ? (
@@ -212,9 +200,6 @@ export function SettingsForm({
               ))}
             </div>
           ) : null}
-          <p className="text-xs text-subtle">
-            Larm som inte gäller en automat (import, hela organisationen) kommer oavsett.
-          </p>
         </Group>
 
         <Group legend="Kanaler" error={errors.channels}>
@@ -247,7 +232,7 @@ export function SettingsForm({
           <Check
             checked={v.quiet}
             onChange={(x) => set("quiet", x)}
-            hint="Larm under de tysta timmarna skickas när de är slut."
+            hint="Skickas när tiden är slut."
           >
             Tysta timmar
           </Check>
@@ -270,7 +255,7 @@ export function SettingsForm({
           <Check
             checked={v.window}
             onChange={(x) => set("window", x)}
-            hint="Utanför tiderna skjuts larmet upp till nästa gång tiden börjar."
+            hint="Skjuts upp utanför tiderna."
           >
             Bara vissa dagar och tider
           </Check>
@@ -306,7 +291,7 @@ export function SettingsForm({
           <Check
             checked={v.criticalDuringQuiet}
             onChange={(x) => set("criticalDuringQuiet", x)}
-            hint="Ur drift, fel och slut i automaten kommer direkt, även på natten."
+            hint="Ur drift, fel och slut kommer direkt."
           >
             Kritiska larm alltid direkt
           </Check>
@@ -316,7 +301,7 @@ export function SettingsForm({
           <Check
             checked={v.reminders}
             onChange={(x) => set("reminders", x)}
-            hint="Kritiska efter 4 timmar, varningar efter 24 timmar, tills någon kvitterar."
+            hint="Kritiska efter 4 h, varningar efter 24 h."
           >
             Påminnelser om olösta larm
           </Check>

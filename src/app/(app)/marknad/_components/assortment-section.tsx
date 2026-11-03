@@ -283,12 +283,12 @@ export function AssortmentSection({
   return (
     <section
       aria-labelledby="sortiment-rubrik"
-      className="flex scroll-mt-28 flex-col gap-8"
+      className="rise flex scroll-mt-28 flex-col gap-8"
       id="sortiment"
+      style={{ "--i": 1 } as React.CSSProperties}
     >
       <SectionHeader
         id="sortiment-rubrik"
-        index={3}
         eyebrow="Sortiment"
         title={title}
         aside={asideParts.join(" ")}

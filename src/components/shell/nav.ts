@@ -53,6 +53,10 @@ export type ShellRoute = {
   icon: IconName;
   /** main: huvudlistan. system: längst ner i sidomenyn. */
   section: "main" | "system";
+  /** more: under den hopfällbara gruppen "Mer" i sidomenyn. */
+  group?: "more";
+  /** false: aldrig i sidomenyn eller mobilens ark (nås via toppraden och ⌘K). */
+  menu?: false;
   roles: ReadonlyArray<Role>;
   /** Lägre tal = viktigare på mobil. Saknas = aldrig i bottenraden. */
   mobileRank?: number;
@@ -151,6 +155,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
   },
   {
     id: "inkopspriser",
+    group: "more",
     href: "/inkopspriser",
     label: "Inköpspriser",
     icon: "filter",
@@ -161,6 +166,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
   },
   {
     id: "rapporter",
+    group: "more",
     href: "/rapporter",
     label: "Rapporter",
     icon: "report",
@@ -174,6 +180,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
   },
   {
     id: "prognos",
+    group: "more",
     href: "/prognos",
     label: "Prognos & inköp",
     icon: "sales",
@@ -184,6 +191,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
   },
   {
     id: "expansion",
+    group: "more",
     href: "/expansion",
     label: "Expansion",
     icon: "arrowUpRight",
@@ -194,6 +202,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
   },
   {
     id: "drift",
+    group: "more",
     href: "/drift",
     label: "Drift",
     icon: "machine",
@@ -204,6 +213,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
   },
   {
     id: "inkorg",
+    group: "more",
     href: "/inkorg",
     label: "Inkorg",
     icon: "info",
@@ -214,6 +224,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
   },
   {
     id: "ekonomi",
+    group: "more",
     href: "/ekonomi",
     label: "Ekonomi",
     icon: "margin",
@@ -224,6 +235,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
   },
   {
     id: "avtal",
+    group: "more",
     href: "/avtal",
     label: "Avtal",
     icon: "report",
@@ -234,6 +246,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
   },
   {
     id: "marknad",
+    group: "more",
     href: "/marknad",
     label: "Marknad",
     icon: "overview",
@@ -244,6 +257,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
   },
   {
     id: "effekt",
+    group: "more",
     href: "/effekt",
     label: "Effekt",
     icon: "check",
@@ -254,6 +268,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
   },
   {
     id: "assistent",
+    menu: false,
     href: "/assistent",
     label: "Assistent",
     icon: "search",
@@ -289,6 +304,11 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
 /** Rutterna en roll ser, i menyordning. */
 export function routesForRole(role: Role): ShellRoute[] {
   return shellRoutes.filter((r) => r.roles.includes(role));
+}
+
+/** Rutterna som syns i menyerna (sidomenyn och mobilens ark). */
+export function menuRoutesForRole(role: Role): ShellRoute[] {
+  return routesForRole(role).filter((r) => r.menu !== false);
 }
 
 /** Rollens startsida: första rutten den får se (Hem, eller Att göra för påfyllare). */

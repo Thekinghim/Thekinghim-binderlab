@@ -220,16 +220,11 @@ export function PricingSection({
   return (
     <section
       aria-labelledby="prissattning-rubrik"
-      className="flex scroll-mt-28 flex-col gap-8"
+      className="rise flex scroll-mt-28 flex-col gap-8"
       id="prissattning"
+      style={{ "--i": 1 } as React.CSSProperties}
     >
-      <SectionHeader
-        id="prissattning-rubrik"
-        index={4}
-        eyebrow="Prissättning"
-        title={title}
-        aside={aside}
-      />
+      <SectionHeader id="prissattning-rubrik" eyebrow="Prissättning" title={title} aside={aside} />
 
       {!pricing.changes.ok ? <StateMessage kind="error" message={pricing.changes.message} /> : null}
 
@@ -286,7 +281,7 @@ export function PricingSection({
             kind="empty"
             compact
             code="0 förslag"
-            message="Ingen titel uppfyller villkoren för ett pristest: minst två automater, känt bidrag, tillräcklig volym och inget nytt pris de senaste 90 dagarna."
+            message="Ingen titel passar för pristest just nu."
           />
         ) : (
           <ul className="flex flex-col gap-6">

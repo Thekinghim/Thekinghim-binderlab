@@ -19,17 +19,14 @@ function listNames(names: readonly string[], max = 3): string {
  * vinst (ej fördelad hyra) och inte från automatens.
  */
 export function UnpricedNote({ unpriced, canEdit }: { unpriced: UnpricedView; canEdit: boolean }) {
-  const rent =
-    unpriced.rentOre > 0
-      ? ` Butikshyran på dem, ${formatSek(unpriced.rentOre / 100)}, dras från organisationens vinst, inte från automatens.`
-      : "";
   return (
-    <p className="flex flex-col gap-1 text-sm text-muted sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-3">
-      <span>
-        Vinst och marginal räknar inte med {formatInt(unpriced.orders)}
-        {NBSP}order ({formatPercent(unpriced.shareBp / 10_000, 1)} av intäkten,{" "}
-        {formatSek(unpriced.revenueOre / 100)}) som saknar inköpspris: {listNames(unpriced.titles)}.
-        {rent}
+    <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm text-muted">
+      <span
+        title={`${listNames(unpriced.titles)}${unpriced.rentOre > 0 ? ` · butikshyra ${formatSek(unpriced.rentOre / 100)} dras från organisationen` : ""}`}
+      >
+        {formatInt(unpriced.orders)}
+        {NBSP}order utan inköpspris ({formatPercent(unpriced.shareBp / 10_000, 1)},{" "}
+        {formatSek(unpriced.revenueOre / 100)}) ingår inte i vinsten.
       </span>
       <Link
         href={unpriced.href}

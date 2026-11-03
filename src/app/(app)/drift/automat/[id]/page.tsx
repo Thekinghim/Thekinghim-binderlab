@@ -109,10 +109,13 @@ export default async function MachineTimelinePage({
       </nav>
 
       {alertItems.length > 0 ? (
-        <section aria-labelledby="automat-larm" className="flex flex-col gap-6">
+        <section
+          aria-labelledby="automat-larm"
+          className="rise flex flex-col gap-6"
+          style={{ "--i": 1 } as React.CSSProperties}
+        >
           <SectionHeader
             id="automat-larm"
-            index={1}
             eyebrow="Larm"
             title={`${plural(alertItems.length, "larm", "larm")} de senaste 7 dagarna.`}
             aside={`${formatInt(alertItems.filter((a) => a.open).length)} öppna.`}
@@ -122,10 +125,13 @@ export default async function MachineTimelinePage({
         </section>
       ) : null}
 
-      <section aria-labelledby="handelser" className="flex flex-col gap-6">
+      <section
+        aria-labelledby="handelser"
+        className="rise flex flex-col gap-6"
+        style={{ "--i": 2 } as React.CSSProperties}
+      >
         <SectionHeader
           id="handelser"
-          index={alertItems.length > 0 ? 2 : 1}
           eyebrow="Händelser"
           title={
             data.entries.length === 0

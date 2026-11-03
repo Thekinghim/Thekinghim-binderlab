@@ -156,7 +156,6 @@ export function MembersView({
       <section aria-labelledby="medlemmar" className="mt-12">
         <SectionHeader
           id="medlemmar"
-          index={1}
           eyebrow="Medlemmar"
           title="Med tillgång nu."
           aside={membersAside}
@@ -232,7 +231,6 @@ export function MembersView({
       <section aria-labelledby="inbjudningar" className="mt-14">
         <SectionHeader
           id="inbjudningar"
-          index={2}
           eyebrow="Inbjudningar"
           title="Väntar på svar."
           aside={invitationsAside}
@@ -300,6 +298,7 @@ export function MembersView({
       >
         {dialog?.kind === "role" ? (
           <form
+            noValidate
             className="flex flex-col gap-5"
             onSubmit={(e) => {
               e.preventDefault();

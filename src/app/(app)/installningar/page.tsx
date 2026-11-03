@@ -30,16 +30,8 @@ function dayDate(date: string): Date {
   return new Date(y, m - 1, d, 12);
 }
 
-function SubLabel({ index, children }: { index: string; children: string }) {
-  return (
-    <h3 className="label flex items-center gap-2 text-subtle">
-      <span className="tnum text-fg">{index}</span>
-      <span aria-hidden className="text-faint">
-        /
-      </span>
-      <span>{children}</span>
-    </h3>
-  );
+function SubLabel({ children }: { children: string }) {
+  return <h3 className="label text-subtle">{children}</h3>;
 }
 
 /**
@@ -69,8 +61,9 @@ export default async function SettingsPage() {
   const isOwner = data.role === "owner";
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
       <SectionHeader
+        className="rise"
         as="h1"
         size="xl"
         eyebrow="Inställningar"
@@ -90,41 +83,40 @@ export default async function SettingsPage() {
 
       <nav
         aria-label="Fler inställningar"
-        className="grid grid-cols-1 gap-x-8 sm:grid-cols-2 lg:grid-cols-12"
+        className="rise flex flex-wrap gap-2"
+        style={{ "--i": 1 } as React.CSSProperties}
       >
         {[
           {
             href: "/installningar/anvandare",
             label: "Användare",
-            text: "Vem som har tillgång och med vilken roll. Bjud in delägare och påfyllare.",
           },
           {
             href: "/datakallor",
             label: "Datakällor",
-            text: "Varifrån orderna kommer, import av Awish orderlista och koppling av automater.",
           },
         ].map((l) => (
           <Link
             key={l.href}
             href={l.href}
-            className="group flex flex-col gap-1.5 border-t border-line py-4 lg:col-span-4"
+            className="lift group inline-flex h-9 items-center gap-3 rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg hover:bg-hover"
           >
-            <span className="flex items-center justify-between gap-3 text-md text-fg">
-              {l.label}
-              <span aria-hidden className="text-faint transition-colors group-hover:text-fg">
-                →
-              </span>
+            {l.label}
+            <span aria-hidden className="text-faint transition-colors group-hover:text-fg">
+              →
             </span>
-            <span className="text-sm text-muted">{l.text}</span>
           </Link>
         ))}
       </nav>
 
-      <section aria-labelledby="avgifter" className="flex flex-col gap-8">
+      <section
+        aria-labelledby="avgifter"
+        className="rise flex flex-col gap-8"
+        style={{ "--i": 2 } as React.CSSProperties}
+      >
         <SectionHeader
           id="avgifter"
-          index={1}
-          eyebrow="Avgifter och moms"
+          size="md"
           title="Det som dras från varje order."
           aside={
             settings.vatRateBp === 0
@@ -143,15 +135,9 @@ export default async function SettingsPage() {
           </div>
           <dl className="flex flex-col text-sm lg:col-span-5">
             {[
-              [
-                "Intäkt",
-                "Betalt belopp minus moms. Med moms 0 är intäkten hela det betalda beloppet.",
-              ],
-              [
-                "Kortavgift",
-                "Räknas per order på beloppet inklusive moms och avrundas till hela öre.",
-              ],
-              ["Provision", "Räknas alltid på beloppet exklusive moms, enligt butikens avtal."],
+              ["Intäkt", "Betalt minus moms."],
+              ["Kortavgift", "På belopp inkl. moms."],
+              ["Provision", "På belopp exkl. moms."],
             ].map(([term, text]) => (
               <div
                 key={term}
@@ -165,21 +151,24 @@ export default async function SettingsPage() {
         </div>
       </section>
 
-      <section aria-labelledby="agarandelar" className="flex flex-col gap-8">
+      <section
+        aria-labelledby="agarandelar"
+        className="rise flex flex-col gap-8"
+        style={{ "--i": 3 } as React.CSSProperties}
+      >
         <SectionHeader
           id="agarandelar"
-          index={2}
-          eyebrow="Ägarandelar"
+          size="md"
           title={currentGroup ? shareSummary(currentGroup) : "Inga ägarandelar inlagda."}
           aside={
             currentGroup
-              ? `Gäller sedan ${day(currentGroup.validFrom)}. Vinsten fördelas efter andelarna i delägarrapporten.`
-              : "Vinsten kan inte fördelas i delägarrapporten förrän andelarna finns."
+              ? `Gäller sedan ${day(currentGroup.validFrom)}.`
+              : "Behövs för delägarrapporten."
           }
         />
         <div className="grid grid-cols-1 gap-x-8 gap-y-10 lg:grid-cols-12">
           <div className="flex min-w-0 flex-col gap-4 lg:col-span-7">
-            <SubLabel index="02.1">Fördelningar</SubLabel>
+            <SubLabel>Fördelningar</SubLabel>
             {groups.length === 0 ? (
               <StateMessage
                 kind="empty"
@@ -216,7 +205,7 @@ export default async function SettingsPage() {
             )}
           </div>
           <div className="flex min-w-0 flex-col gap-4 lg:col-span-5">
-            <SubLabel index="02.2">Ny fördelning</SubLabel>
+            <SubLabel>Ny fördelning</SubLabel>
             {isOwner ? (
               <OwnerSharesForm
                 initial={(currentGroup?.shares ?? []).map((s) => ({
@@ -232,78 +221,85 @@ export default async function SettingsPage() {
                 today={today}
               />
             ) : (
-              <StateMessage
-                kind="denied"
-                compact
-                message="Bara ägaren ändrar ägarandelarna."
-                detail="Admin kan se fördelningen men inte ändra den."
-              />
+              <StateMessage kind="denied" compact message="Bara ägaren ändrar ägarandelarna." />
             )}
           </div>
         </div>
       </section>
 
-      <section aria-labelledby="konton" className="flex flex-col gap-8">
-        <SectionHeader
-          id="konton"
-          index={3}
-          eyebrow="Bokföringskonton"
-          title={`${formatInt(data.accounts.length)} konton enligt BAS.`}
-          aside="Används i bokföringsunderlaget och SIE-filen till revisorn."
-        />
-        {data.accounts.length === 0 ? (
-          <StateMessage kind="empty" compact message="Inga bokföringskonton är inlagda." />
-        ) : (
-          <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
-            <table className="w-full border-collapse text-base">
-              <caption className="sr-only">Bokföringskonton</caption>
-              <thead>
-                <tr className="border-b border-line-strong">
-                  <th scope="col" className="label h-9 pr-3 text-left font-normal text-subtle">
-                    Konto
-                  </th>
-                  <th scope="col" className="label h-9 px-3 text-left font-normal text-subtle">
-                    Används för
-                  </th>
-                  <th
-                    scope="col"
-                    className="label hidden h-9 px-3 text-left font-normal text-subtle md:table-cell"
-                  >
-                    Namn i BAS
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.accounts.map((a) => (
-                  <tr key={a.id} className="border-b border-line">
-                    <td className="tnum py-2.5 pr-3 text-fg">{a.basAccount}</td>
-                    <td className="px-3 py-2.5 text-fg">
-                      {accountUse(a.key)}
-                      <span className="block text-sm text-subtle md:hidden">{a.name}</span>
-                    </td>
-                    <td className="hidden px-3 py-2.5 text-muted md:table-cell">{a.name}</td>
+      <details
+        className="rise rounded-md border border-line bg-surface p-4 md:p-5"
+        style={{ "--i": 4 } as React.CSSProperties}
+      >
+        <summary className="cursor-pointer list-none">
+          <SectionHeader
+            id="konton"
+            size="md"
+            title="Bokföringskonton."
+            aside={`${formatInt(data.accounts.length)} konton enligt BAS.`}
+          />
+        </summary>
+        <div className="mt-6">
+          {data.accounts.length === 0 ? (
+            <StateMessage kind="empty" compact message="Inga bokföringskonton är inlagda." />
+          ) : (
+            <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
+              <table className="w-full border-collapse text-base">
+                <caption className="sr-only">Bokföringskonton</caption>
+                <thead>
+                  <tr className="border-b border-line-strong">
+                    <th scope="col" className="label h-9 pr-3 text-left font-normal text-subtle">
+                      Konto
+                    </th>
+                    <th scope="col" className="label h-9 px-3 text-left font-normal text-subtle">
+                      Används för
+                    </th>
+                    <th
+                      scope="col"
+                      className="label hidden h-9 px-3 text-left font-normal text-subtle md:table-cell"
+                    >
+                      Namn i BAS
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                </thead>
+                <tbody>
+                  {data.accounts.map((a) => (
+                    <tr key={a.id} className="border-b border-line">
+                      <td className="tnum py-2.5 pr-3 text-fg">{a.basAccount}</td>
+                      <td className="px-3 py-2.5 text-fg">
+                        {accountUse(a.key)}
+                        <span className="block text-sm text-subtle md:hidden">{a.name}</span>
+                      </td>
+                      <td className="hidden px-3 py-2.5 text-muted md:table-cell">{a.name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </details>
 
-      <section aria-labelledby="andringslogg" className="flex flex-col gap-8">
-        <SectionHeader
-          id="andringslogg"
-          index={4}
-          eyebrow="Ändringslogg"
-          title="Vem ändrade vad."
-          aside={logAside(log, when)}
-        />
-        {log.length === 0 ? (
-          <StateMessage kind="empty" compact message="Inga ändringar av inställningarna ännu." />
-        ) : (
-          <SettingsLog entries={log} timeZone={tz} now={ctx.now} />
-        )}
-      </section>
+      <details
+        className="rise rounded-md border border-line bg-surface p-4 md:p-5"
+        style={{ "--i": 5 } as React.CSSProperties}
+      >
+        <summary className="cursor-pointer list-none">
+          <SectionHeader
+            id="andringslogg"
+            size="md"
+            title="Ändringslogg."
+            aside={logAside(log, when)}
+          />
+        </summary>
+        <div className="mt-6">
+          {log.length === 0 ? (
+            <StateMessage kind="empty" compact message="Inga ändringar av inställningarna ännu." />
+          ) : (
+            <SettingsLog entries={log} timeZone={tz} now={ctx.now} />
+          )}
+        </div>
+      </details>
     </div>
   );
 }

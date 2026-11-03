@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 
 import { SectionHeader } from "@/components/ui/section-header";
+
+import { pickView, ViewTabs } from "../rapporter/_components/view-tabs";
 import { minDate } from "@/domain";
-import { formatInt } from "@/lib/format";
 import { loadPeriod, requireRoute } from "@/server/data/core";
 import { loadMarket, loadMarketReferences } from "@/server/market";
 import { periodLabel } from "@/server/market/display";
@@ -29,12 +30,7 @@ function first(v: string | string[] | undefined): string | null {
   return (Array.isArray(v) ? v[0] : v) ?? null;
 }
 
-const SECTIONS = [
-  { id: "releaser", label: "Releaser" },
-  { id: "priser", label: "Priser" },
-  { id: "sortiment", label: "Sortiment" },
-  { id: "prissattning", label: "Prissättning" },
-] as const;
+const VIEWS = ["releaser", "priser", "sortiment"] as const;
 
 /**
  * Marknad (fas 11): releasekalender med förslag och utfall, leverantörspriser över tid
@@ -103,7 +99,7 @@ export default async function MarknadPage({
     ),
   };
   const query: Record<string, string> = {};
-  for (const key of ["period", "from", "to"]) {
+  for (const key of ["period", "from", "to", "vy"]) {
     const v = first(sp[key]);
     if (v) query[key] = v;
   }
@@ -146,55 +142,65 @@ export default async function MarknadPage({
     }),
   );
 
+  const view = pickView(sp.vy, VIEWS);
+  const hrefFor = (v: (typeof VIEWS)[number]) => {
+    const q = new URLSearchParams(query);
+    q.delete("pristitel");
+    if (v === "releaser") q.delete("vy");
+    else q.set("vy", v);
+    const qs = q.toString();
+    return qs ? `/marknad?${qs}` : "/marknad";
+  };
   const upcoming = model.releases.filter((r) => r.status === "upcoming").length;
   const machinesWithSlots = model.assortment.machines.ok
     ? model.assortment.machines.value.length
     : 0;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
-      <div className="flex flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
+      <div className="rise flex flex-col gap-6" style={{ "--i": 0 } as React.CSSProperties}>
         <SectionHeader
           as="h1"
           size="xl"
           eyebrow={`Marknad · ${periodLabel(period)}`}
           title={model.headline.title}
           aside={model.headline.aside}
-          meta={[
-            { label: "Kommande släpp", value: formatInt(upcoming) },
-            { label: "Registrerade priser", value: formatInt(data.quotes.length) },
-            { label: "Automater med fack", value: formatInt(machinesWithSlots) },
-            { label: "Pristester", value: formatInt(data.experiments.length) },
+        />
+        <ViewTabs
+          label="Vy"
+          value={view}
+          hrefFor={hrefFor}
+          tabs={[
+            { value: "releaser", label: "Releaser", count: upcoming },
+            { value: "priser", label: "Priser", count: data.quotes.length },
+            { value: "sortiment", label: "Sortiment", count: machinesWithSlots },
           ]}
         />
-        <nav aria-label="Sektioner på sidan" className="flex flex-wrap gap-x-6 gap-y-2">
-          {SECTIONS.map((s, i) => (
-            <a key={s.id} href={`#${s.id}`} className="label rounded-xs text-subtle hover:text-fg">
-              <span className="tnum text-fg">{String(i + 1).padStart(2, "0")}</span>
-              <span aria-hidden className="mx-1.5 text-faint">
-                /
-              </span>
-              {s.label}
-            </a>
-          ))}
-        </nav>
       </div>
 
-      <ReleasesSection releases={model.releases} ctx={ctx} />
-      <PricesSection
-        prices={model.prices}
-        source={source}
-        selectedTitleId={first(sp.pristitel)}
-        period={period}
-        ctx={ctx}
-      />
-      <AssortmentSection
-        assortment={model.assortment}
-        slots={slots}
-        ctx={ctx}
-        capacity={SLOTS_PER_MACHINE}
-      />
-      <PricingSection pricing={model.pricing} period={period} ctx={ctx} />
+      <div className="rise flex flex-col gap-12" style={{ "--i": 1 } as React.CSSProperties}>
+        {view === "releaser" ? <ReleasesSection releases={model.releases} ctx={ctx} /> : null}
+        {view === "priser" ? (
+          <>
+            <PricesSection
+              prices={model.prices}
+              source={source}
+              selectedTitleId={first(sp.pristitel)}
+              period={period}
+              ctx={ctx}
+            />
+            <PricingSection pricing={model.pricing} period={period} ctx={ctx} />
+          </>
+        ) : null}
+        {view === "sortiment" ? (
+          <AssortmentSection
+            assortment={model.assortment}
+            slots={slots}
+            ctx={ctx}
+            capacity={SLOTS_PER_MACHINE}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }

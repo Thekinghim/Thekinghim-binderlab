@@ -4,7 +4,7 @@
  */
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { StatusGlyph, type Status } from "@/components/ui/status-tag";
 import { cn } from "@/lib/cn";
@@ -72,10 +72,14 @@ export function TodoList({ todos }: { todos: HomeTodo[] }) {
               ? "warning"
               : "neutral";
         return (
-          <li key={t.key} className="border-b border-line">
+          <li
+            key={t.key}
+            className="rise border-b border-line"
+            style={{ "--i": i + 4 } as CSSProperties}
+          >
             <Link
               href={t.href}
-              className="group grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-xs py-4 transition-colors hover:bg-hover sm:grid-cols-[4.5rem_minmax(0,1fr)_auto]"
+              className="group lift grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-xs py-3 hover:bg-hover sm:grid-cols-[4.5rem_minmax(0,1fr)_auto]"
             >
               <span className="label row-span-2 flex items-start gap-1.5 pt-1 text-fg">
                 <span className="inline-flex h-4 w-2 items-center">
@@ -137,11 +141,15 @@ const TONE_TEXT: Record<HomeInsight["tone"], string> = {
 export function InsightList({ insights }: { insights: HomeInsight[] }) {
   return (
     <ul className="flex flex-col border-t border-line">
-      {insights.map((n) => (
-        <li key={n.key} className="border-b border-line">
+      {insights.map((n, i) => (
+        <li
+          key={n.key}
+          className="rise border-b border-line"
+          style={{ "--i": i + 6 } as CSSProperties}
+        >
           <Link
             href={n.href}
-            className="group grid grid-cols-[1rem_minmax(0,1fr)] gap-x-2 gap-y-1 rounded-xs py-4 transition-colors hover:bg-hover"
+            className="group lift grid grid-cols-[1rem_minmax(0,1fr)] gap-x-2 gap-y-1 rounded-xs py-3 hover:bg-hover"
           >
             <span className="flex h-6 items-center text-fg">
               <ToneGlyph tone={n.tone} />
@@ -150,9 +158,11 @@ export function InsightList({ insights }: { insights: HomeInsight[] }) {
               <span className="sr-only">{TONE_TEXT[n.tone]}</span>
               {sentenceOf(n.text)}
             </span>
-            <span className="col-start-2 text-sm text-muted">{n.detail}</span>
-            <span className="meta col-start-2 mt-1 inline-flex items-center gap-1.5 text-subtle transition-colors group-hover:text-fg">
-              Visa underlaget <span aria-hidden>→</span>
+            <span className="col-start-2 text-sm text-muted">
+              {n.detail}{" "}
+              <span aria-hidden className="text-subtle transition-colors group-hover:text-fg">
+                →
+              </span>
             </span>
           </Link>
         </li>
@@ -288,52 +298,43 @@ export function TopTitles({ top, caption }: { top: HomeTopTitles; caption: strin
 }
 
 // ---------------------------------------------------------------------------
-// Order utan inköpspris
+// Varningsraden under nyckeltalen
 // ---------------------------------------------------------------------------
 
-function listNames(names: string[], max = 3): string {
-  const shown = names.slice(0, max);
-  const rest = names.length - shown.length;
-  if (rest > 0) return `${shown.join(", ")} och ${formatInt(rest)} till`;
-  if (shown.length <= 1) return shown.join("");
-  return `${shown.slice(0, -1).join(", ")} och ${shown[shown.length - 1]}`;
-}
-
 /**
- * Raden under nyckeltalen: vinsten räknar inte med order utan inköpspris. Andel, antal,
- * vilka titlar och länken dit priset läggs in. Markeringen (signal) sitter på nyckeltalet.
+ * En rad under nyckeltalen: titlar utan inköpspris (vinsten räknar inte med dem) och
+ * förlorad försäljning, var och en med sin länk. Markeringen (signal) sitter på nyckeltalet.
  */
-export function UnpricedNote({ unpriced, canEdit }: { unpriced: HomeUnpriced; canEdit: boolean }) {
-  const titles = listNames(unpriced.titles.map((t) => t.name));
+export function WarningLine({
+  unpriced,
+  lost,
+  canEdit,
+}: {
+  unpriced: HomeUnpriced | null;
+  lost: HomeLostSales | null;
+  canEdit: boolean;
+}) {
+  if (!unpriced && !lost) return null;
+  const n = unpriced?.titles.length ?? 0;
   return (
-    <p className="flex flex-col gap-1 text-sm text-muted sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-3">
-      <span>
-        Vinsten räknar inte med {formatInt(unpriced.orders)}
-        {NBSP}
-        order ({unpricedShareText(unpriced.shareBp)} av intäkten, {kr(unpriced.revenueOre)}) som
-        saknar inköpspris: {titles}.
-      </span>
-      <ArrowLink href={unpriced.href}>
-        {canEdit ? "Lägg in inköpspris" : "Visa inköpspriser"}
-      </ArrowLink>
-    </p>
-  );
-}
-
-/**
- * Förlorad försäljning i perioden (Prognos & inköp): "Slutsålt kostade ca 3 200 kr i
- * oktober." med hur många titlar som är slut just nu och länken till underlaget.
- */
-export function LostSalesNote({ lost }: { lost: HomeLostSales }) {
-  return (
-    <p className="flex flex-col gap-1 text-sm text-muted sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-3">
-      <span>
-        <span className="text-fg">{lost.text}</span>
-        {lost.ongoing > 0
-          ? ` ${formatInt(lost.ongoing)}${NBSP}${lost.ongoing === 1 ? "titel är" : "titlar är"} slut i en automat just nu.`
-          : null}
-      </span>
-      <ArrowLink href={lost.href}>Förlorad försäljning</ArrowLink>
+    <p className="flex flex-col gap-1 text-sm text-muted sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-6">
+      {unpriced ? (
+        <span className="inline-flex flex-wrap items-baseline gap-x-3">
+          <span>
+            {formatInt(n)}
+            {NBSP}
+            {n === 1 ? "titel saknar" : "titlar saknar"} inköpspris,{" "}
+            {unpricedShareText(unpriced.shareBp)} av intäkten.
+          </span>
+          <ArrowLink href={unpriced.href}>{canEdit ? "Lägg in pris" : "Visa priser"}</ArrowLink>
+        </span>
+      ) : null}
+      {lost ? (
+        <span className="inline-flex flex-wrap items-baseline gap-x-3">
+          <span className="text-fg">{lost.text}</span>
+          <ArrowLink href={lost.href}>Förlorad försäljning</ArrowLink>
+        </span>
+      ) : null}
     </p>
   );
 }

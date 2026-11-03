@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
+import type { CSSProperties } from "react";
 import { redirect } from "next/navigation";
 
 import { carriedQuery } from "@/components/shell/period-state";
 import { Panel } from "@/components/ui/frame";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
-import { formatInt, formatPercent, formatSek, NBSP } from "@/lib/format";
+import { NBSP } from "@/lib/format";
 import { loadProfitAdjustments } from "@/server/data/adjustments";
 import { loadDomainInput, loadPeriod, requireRoute } from "@/server/data/core";
 
@@ -13,7 +14,7 @@ import { CompensationBreakdown, UnpricedSummary } from "./_components/breakdown"
 import { LonsamhetBridge } from "./_components/bridge";
 import { LonsamhetKpis } from "./_components/kpis";
 import { ResultAfterProfitPanel } from "./_components/result";
-import { TableSection, TrendSection } from "./_components/sections";
+import { AnalysisSection } from "./_components/sections";
 import { buildLonsamhetModel, type TrendKey, type ViewKey } from "./_lib/model";
 import { resultAfterProfit } from "./_lib/result";
 import {
@@ -114,13 +115,12 @@ export default async function LonsamhetPage({
 
   const meta = [
     { label: "Period", value: model.periodLabel },
-    { label: "Order", value: formatInt(model.orders) },
     ...(model.scopeLabel ? [{ label: "Filter", value: model.scopeLabel }] : []),
   ];
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col px-4 pt-8 md:px-8 md:pt-12">
-      <div className="flex flex-col gap-10 pb-12 md:gap-12 md:pb-16">
+      <div className="rise flex flex-col gap-10 pb-12 md:gap-12 md:pb-16">
         <SectionHeader
           as="h1"
           size="xl"
@@ -147,7 +147,6 @@ export default async function LonsamhetPage({
                 ? `Ingen försäljning för ${model.scopeLabel} i perioden.`
                 : "Ingen försäljning i perioden."
             }
-            detail="Vinst, marginal och fördelning visas när perioden har order."
             action={
               p.dataStart
                 ? { label: "Visa hela historiken", href: allHistoryHref(sp) }
@@ -157,52 +156,45 @@ export default async function LonsamhetPage({
         </section>
       ) : (
         <>
-          <section aria-labelledby="till-vinst" className={SECTION}>
+          <section
+            aria-labelledby="till-vinst"
+            className={`rise ${SECTION}`}
+            style={{ "--i": 1 } as CSSProperties}
+          >
             <SectionHeader
               id="till-vinst"
-              index={1}
               eyebrow={`Intäkt till vinst · ${model.days}${NBSP}d`}
               title="Från intäkt till vinst."
-              aside={
-                b.revenueOre > 0
-                  ? `${b.unpricedRevenueOre > 0 ? "Intäkten med inköpspris, " : ""}${formatSek(b.revenueOre / 100)}${b.unpricedRevenueOre > 0 ? "," : ""} blev ${formatSek(b.profitOre / 100)} efter ${b.feesOre !== 0 ? "inköp, avgifter och" : "inköp och"} butiksersättning${
-                      b.marginBp === null ? "" : ` (${formatPercent(b.marginBp / 10_000)})`
-                    }.`
-                  : "Ingen order med inköpspris i perioden."
-              }
             />
             <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
               <Panel grid marks className="lg:col-span-7 lg:self-start">
                 <LonsamhetBridge bridge={b} />
               </Panel>
               <Panel className="flex flex-col lg:col-span-5">
-                <UnpricedSummary unpriced={model.unpriced} />
-                <CompensationBreakdown bridge={b} />
                 <ResultAfterProfitPanel result={result} />
+                <CompensationBreakdown bridge={b} />
+                <UnpricedSummary unpriced={model.unpriced} />
               </Panel>
             </div>
           </section>
 
-          <div className="border-t border-line py-12 md:py-16">
-            <TableSection
-              index={2}
-              initialView={initialView}
-              views={model.views}
-              titles={model.viewTitles}
-              totals={model.totals}
-              periodLabel={model.periodLabel}
-              days={model.days}
-              fileStem={fileStem}
-              selectedTitle={selectedTitle}
-            />
-          </div>
-
-          <div className="border-t border-line py-12 md:py-16">
-            <TrendSection
-              index={3}
-              initialTrend={initialTrend}
-              trend={model.trend}
-              days={model.days}
+          <div
+            className="rise border-t border-line py-12 md:py-16"
+            style={{ "--i": 2 } as CSSProperties}
+          >
+            <AnalysisSection
+              table={{
+                initialView,
+                views: model.views,
+                titles: model.viewTitles,
+                totals: model.totals,
+                periodLabel: model.periodLabel,
+                days: model.days,
+                fileStem,
+                selectedTitle,
+              }}
+              trend={{ initialTrend, trend: model.trend, days: model.days }}
+              initialTab={sp.visa === "utveckling" ? "trend" : "table"}
             />
           </div>
         </>

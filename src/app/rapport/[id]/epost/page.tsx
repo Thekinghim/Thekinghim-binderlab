@@ -131,7 +131,7 @@ export default async function EmailPage({
           <StateMessage
             kind="empty"
             message="Ingen aktiv mottagare kan få den här rapporten."
-            action={{ label: "Lägg till mottagare", href: "/rapporter#mottagare" }}
+            action={{ label: "Lägg till mottagare", href: "/rapporter?vy=mottagare" }}
             className="rounded-md border border-line bg-surface"
           />
         ) : (

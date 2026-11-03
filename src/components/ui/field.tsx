@@ -150,3 +150,47 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
     </FieldShell>
   );
 });
+
+type Validatable = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+
+function fieldLabel(el: Validatable): string {
+  const text = el.labels?.[0]?.textContent?.trim();
+  return text || el.getAttribute("aria-label") || el.name || "Fältet";
+}
+
+/** Webbläsarens valideringsfel som en svensk mening. */
+export function swedishValidity(el: Validatable): string {
+  const v = el.validity;
+  const label = fieldLabel(el);
+  if (v.valueMissing) return `${label}: fyll i fältet.`;
+  if (v.typeMismatch && el.type === "email") return `${label}: ange en giltig e-postadress.`;
+  if (v.typeMismatch) return `${label}: ogiltigt format.`;
+  if (v.badInput) return `${label}: ange ett giltigt värde.`;
+  if (v.rangeUnderflow) return `${label}: minst ${(el as HTMLInputElement).min}.`;
+  if (v.rangeOverflow) return `${label}: högst ${(el as HTMLInputElement).max}.`;
+  if (v.tooLong) return `${label}: högst ${(el as HTMLInputElement).maxLength} tecken.`;
+  if (v.tooShort) return `${label}: minst ${(el as HTMLInputElement).minLength} tecken.`;
+  if (v.stepMismatch) return `${label}: ogiltigt steg.`;
+  if (v.patternMismatch) return `${label}: ogiltigt format.`;
+  return `${label}: kontrollera värdet.`;
+}
+
+/**
+ * För formulär med noValidate: hittar första ogiltiga fältet, flyttar
+ * fokus dit och returnerar ett svenskt fel. null när allt stämmer.
+ */
+export function formError(form: HTMLFormElement): string | null {
+  for (const el of Array.from(form.elements)) {
+    if (
+      (el instanceof HTMLInputElement ||
+        el instanceof HTMLSelectElement ||
+        el instanceof HTMLTextAreaElement) &&
+      el.willValidate &&
+      !el.checkValidity()
+    ) {
+      el.focus();
+      return swedishValidity(el);
+    }
+  }
+  return null;
+}

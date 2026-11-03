@@ -496,7 +496,11 @@ export function LineChart({
             ) : null}
 
             {showArea ? (
-              <path d={geo.areaPath} style={{ fill: "var(--bl-fg)", opacity: 0.045 }} />
+              <path
+                d={geo.areaPath}
+                className="fade-in"
+                style={{ fill: "var(--bl-fg)", opacity: 0.045 }}
+              />
             ) : null}
             {geo.cmpPath ? (
               <path
@@ -508,9 +512,12 @@ export function LineChart({
               />
             ) : null}
             <path
+              key={geo.linePath}
               d={geo.linePath}
               fill="none"
-              style={{ stroke: "var(--bl-data-1)" }}
+              pathLength={1}
+              className="draw"
+              style={{ stroke: "var(--bl-data-1)", ["--len" as string]: 1 }}
               strokeWidth={1.5}
               strokeLinejoin="round"
             />

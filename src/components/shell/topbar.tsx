@@ -39,6 +39,8 @@ export type TopbarProps = {
   homeHref?: string;
   /** Öppnar kommandopaletten. */
   onOpenCommand?: () => void;
+  /** Assistentens sida, om rollen får se den (knapp i toppraden i stället för menypost). */
+  assistantHref?: string;
   /** Visa periodval och filter (URL-styrt). Standard true. */
   showContext?: boolean;
   stores?: ShellStore[];
@@ -64,6 +66,7 @@ export function Topbar({
   crumbs,
   homeHref = "/",
   onOpenCommand,
+  assistantHref,
   showContext = true,
   stores = [],
   machines = [],
@@ -88,6 +91,20 @@ export function Topbar({
           </Link>
           <Crumbs crumbs={crumbs} />
           <div className="flex shrink-0 items-center gap-1">
+            {assistantHref ? (
+              <Link
+                href={assistantHref}
+                prefetch={false}
+                aria-label="Assistent"
+                className="group flex h-8 items-center gap-2 rounded-sm px-2 text-subtle transition-colors hover:text-fg"
+              >
+                <span
+                  aria-hidden
+                  className="inline-block size-1.5 rounded-full bg-current transition-transform duration-300 group-hover:scale-150"
+                />
+                <span className="hidden text-sm sm:inline">Assistent</span>
+              </Link>
+            ) : null}
             <button
               type="button"
               onClick={onOpenCommand}

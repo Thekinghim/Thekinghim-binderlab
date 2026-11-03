@@ -72,7 +72,9 @@ export function Sparkline({
         <path
           d={linePath}
           fill="none"
-          style={{ stroke: "var(--bl-data-2)" }}
+          pathLength={1}
+          className="draw"
+          style={{ stroke: "var(--bl-data-2)", ["--len" as string]: 1 }}
           strokeWidth={1.25}
           vectorEffect="non-scaling-stroke"
         />

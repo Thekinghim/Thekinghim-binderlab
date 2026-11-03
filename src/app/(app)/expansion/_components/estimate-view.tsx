@@ -73,7 +73,11 @@ export function SiteEstimateView({
               ? "Automatdagar räknas från första ordern, inte från när automaten ställdes ut. Uppskattningen räknas när en butik har 28 dagar."
               : estimate.detail
           }
-          action={onlyShort ? undefined : { label: "Fyll i platsprofiler", href: "#platsprofiler" }}
+          action={
+            onlyShort
+              ? undefined
+              : { label: "Fyll i platsprofiler", href: "/expansion#platsprofiler" }
+          }
         />
         {estimate.excluded.length > 0 ? <Excluded estimate={estimate} /> : null}
       </div>

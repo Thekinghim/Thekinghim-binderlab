@@ -72,7 +72,9 @@ export function reviewLink(month: IsoMonth, drafts: readonly ReportDraftRef[] = 
   )[0];
   const type = first ? URL_TYPE[first.reportKind] : undefined;
   if (!first || !type) {
-    return `/rapporter?${new URLSearchParams({ manad: month }).toString()}${first ? "#arkiv" : "#granska"}`;
+    return first
+      ? `/rapporter?${new URLSearchParams({ manad: month, vy: "arkiv" }).toString()}`
+      : `/rapporter?${new URLSearchParams({ manad: month }).toString()}#granska`;
   }
   const params = new URLSearchParams({ typ: type, manad: month });
   if (type === "butik" && first.storeId) params.set("butiken", first.storeId);

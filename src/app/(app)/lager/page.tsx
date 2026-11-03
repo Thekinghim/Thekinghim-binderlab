@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import type React from "react";
+
 import { SectionHeader } from "@/components/ui/section-header";
 import { formatInt, formatPeriod } from "@/lib/format";
 import { isUuid } from "@/server/access";
@@ -8,8 +10,8 @@ import { loadPeriod, requireRoute } from "@/server/data/core";
 import { HistoryList } from "./_components/history-list";
 import { LagerBoard } from "./_components/lager-board";
 import { loadLagerFor } from "./_lib/data";
-import { formatIsoDate, isoDateToDate, packs } from "./_lib/display";
-import { headlineOf, visitsTodayShort } from "./_lib/headline";
+import { isoDateToDate, packs } from "./_lib/display";
+import { headlineOf } from "./_lib/headline";
 import { currentViewer } from "./_lib/session";
 import { HISTORY_LIMIT } from "./_lib/types";
 
@@ -54,48 +56,42 @@ export default async function LagerPage({ searchParams }: { searchParams: Promis
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
-      <SectionHeader
-        as="h1"
-        size="xl"
-        eyebrow="Lager"
-        title={headline.title}
-        aside={headline.aside}
-        // Bara det rubriken inte säger (design.md §5.5): urvalet, takten och centrallagret.
-        meta={[
-          { label: "Platser", value: formatInt(placesTotal) },
-          // Dagens besök: rubriken har bara läget och den mest brådskande platsen.
-          ...(view.machines.length > 0
-            ? [{ label: "Besök i dag", value: visitsTodayShort(view) ?? "Inget" }]
-            : []),
-          {
-            label: "Takt",
-            value: `${formatInt(view.window.days)} d t.o.m. ${formatIsoDate(view.window.end, view.today)}`,
-          },
-          ...(view.hasWarehouse ? [{ label: "Centrallager", value: packs(warehouseTotal) }] : []),
-        ]}
-      />
+      <div className="rise" style={{ "--i": 0 } as React.CSSProperties}>
+        <SectionHeader
+          as="h1"
+          size="xl"
+          eyebrow="Lager"
+          title={headline.title}
+          aside={headline.aside}
+          meta={[
+            { label: "Platser", value: formatInt(placesTotal) },
+            ...(view.hasWarehouse ? [{ label: "Centrallager", value: packs(warehouseTotal) }] : []),
+          ]}
+        />
+      </div>
 
       <LagerBoard view={view} focus={focus} />
 
-      <section aria-labelledby="historik" className="flex flex-col gap-6 md:gap-10">
-        <SectionHeader
-          id="historik"
-          index={(view.hasWarehouse ? 4 : 3) - (view.machines.length > 0 ? 0 : 1)}
-          eyebrow="Historik"
-          title="Vem, när och hur mycket."
-          aside={
-            view.historyTotal === 0
-              ? `Inget registrerat, ${periodText}.`
-              : `${formatInt(view.historyTotal)} ${view.historyTotal === 1 ? "händelse" : "händelser"}, ${periodText}${view.historyTotal > HISTORY_LIMIT ? `, de ${formatInt(HISTORY_LIMIT)} senaste visas` : ""}.`
-          }
-        />
-        <HistoryList
-          entries={view.history}
-          timeZone={view.timeZone}
-          now={view.now}
-          periodText={periodText}
-        />
-      </section>
+      <details
+        className="group rise rounded-sm border border-line"
+        style={{ "--i": 4 } as React.CSSProperties}
+      >
+        <summary className="flex cursor-pointer items-baseline justify-between gap-4 px-4 py-3 text-sm font-medium">
+          <h2 id="historik">Historik ({formatInt(view.historyTotal)})</h2>
+          <span className="text-xs text-muted">
+            {periodText}
+            {view.historyTotal > HISTORY_LIMIT ? ` · ${formatInt(HISTORY_LIMIT)} senaste` : ""}
+          </span>
+        </summary>
+        <div className="border-t border-line p-4">
+          <HistoryList
+            entries={view.history}
+            timeZone={view.timeZone}
+            now={view.now}
+            periodText={periodText}
+          />
+        </div>
+      </details>
     </div>
   );
 }

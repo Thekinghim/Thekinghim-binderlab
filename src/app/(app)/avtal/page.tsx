@@ -135,7 +135,7 @@ export default async function AvtalPage({
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col px-4 pt-8 md:px-8 md:pt-12">
-      <div className="flex flex-col gap-10 pb-12 md:gap-12 md:pb-16">
+      <div className="rise flex flex-col gap-10 pb-12 md:gap-12 md:pb-16">
         <SectionHeader
           as="h1"
           size="xl"
@@ -148,15 +148,7 @@ export default async function AvtalPage({
             { label: "Butiker", value: formatInt(stores.length) },
           ]}
         />
-        {scoped ? (
-          <StateMessage
-            compact
-            kind="no-results"
-            code="Alla butiker"
-            message="Filtret på butik och automat gäller inte Avtal."
-            detail="Avtalen och andelen av intäkten avser alltid hela organisationen."
-          />
-        ) : null}
+        {scoped ? <p className="meta text-subtle">Alla butiker · filtret gäller inte här</p> : null}
         {o && o.expiringShareBp !== null ? (
           <EconomyKpis
             headingLevel={2}
@@ -187,11 +179,14 @@ export default async function AvtalPage({
       {data.overviewError ? <StateMessage kind="error" message={data.overviewError} /> : null}
 
       {/* 01 Att åtgärda */}
-      <section aria-labelledby="att-atgarda" className={SECTION}>
+      <section
+        aria-labelledby="att-atgarda"
+        className={`rise ${SECTION}`}
+        style={{ "--i": 1 } as React.CSSProperties}
+      >
         <SectionHeader
           id="att-atgarda"
-          index={1}
-          eyebrow="Påminnelser · 90 d före sista uppsägningsdag"
+          eyebrow="Påminnelser"
           title={
             due.length === 0
               ? "Inget avtal behöver sägas upp eller förhandlas nu."
@@ -228,11 +223,13 @@ export default async function AvtalPage({
       </section>
 
       {/* 02 Avtalen */}
-      <section aria-labelledby="avtalen" className={SECTION}>
+      <section
+        aria-labelledby="avtalen"
+        className={`rise ${SECTION}`}
+        style={{ "--i": 2 } as React.CSSProperties}
+      >
         <SectionHeader
           id="avtalen"
-          index={2}
-          eyebrow="Avtal per butik"
           title={
             active.length === 0
               ? "Inga avtal registrerade."
@@ -261,11 +258,7 @@ export default async function AvtalPage({
           <StateMessage compact kind="not-configured" message={data.fileStore.detail} />
         ) : null}
         {active.length === 0 ? (
-          <StateMessage
-            kind="empty"
-            message="Inga butiksavtal är registrerade."
-            detail="Villkoren för provision och hyra finns per butik; ett avtal samlar dem med giltighet, uppsägningstid och avtalsfilen."
-          />
+          <StateMessage kind="empty" compact message="Inga avtal ännu." />
         ) : (
           <ul className="flex flex-col">
             {active.map((c) => {
@@ -404,10 +397,13 @@ export default async function AvtalPage({
 
       {/* 03 Intäkt per butik */}
       {o ? (
-        <section aria-labelledby="intakt-per-butik" className={SECTION}>
+        <section
+          aria-labelledby="intakt-per-butik"
+          className={`rise ${SECTION}`}
+          style={{ "--i": 3 } as React.CSSProperties}
+        >
           <SectionHeader
             id="intakt-per-butik"
-            index={3}
             eyebrow={`Intäkt per butik · ${periodText(o.window)}`}
             title={`${sek(o.totalRevenueOre)} i intäkt, ${sek(o.expiringRevenueOre)} på avtal som löper ut.`}
             aside={

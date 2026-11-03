@@ -43,6 +43,7 @@ export default async function RefillPage() {
   return (
     <div className="flex flex-col gap-10">
       <SectionHeader
+        className="rise"
         as="h1"
         size="xl"
         eyebrow="Påfyllning"
@@ -53,8 +54,8 @@ export default async function RefillPage() {
         }
         aside={
           last
-            ? `Senast ${formatWhen(last.occurredAt, ctx.timeZone, now)}. Fungerar utan uppkoppling.`
-            : "Fungerar utan uppkoppling: påfyllningen skickas när nätet kommer tillbaka."
+            ? `Senast ${formatWhen(last.occurredAt, ctx.timeZone, now)}.`
+            : "Fungerar utan uppkoppling."
         }
       />
       {data.machines.length === 0 ? (

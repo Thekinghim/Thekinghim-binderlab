@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
+import { Suspense, type CSSProperties } from "react";
 
 import { Panel } from "@/components/ui/frame";
 import { SectionHeader, type SectionMeta } from "@/components/ui/section-header";
@@ -12,26 +12,19 @@ import { HomeKpis } from "./_hem/home-kpis";
 import { carriedParams } from "./_hem/links";
 import { loadHome } from "./_hem/load";
 import { HemSkeleton } from "./_hem/skeleton";
-import { shareText, type HomeDaily, type HomeModel } from "./_hem/model";
-import {
-  ArrowLink,
-  InsightList,
-  LostSalesNote,
-  TodoList,
-  TopTitles,
-  UnpricedNote,
-} from "./_hem/sections";
+import type { HomeDaily, HomeModel } from "./_hem/model";
+import { ArrowLink, InsightList, TodoList, TopTitles, WarningLine } from "./_hem/sections";
 import { OnboardingChecklist } from "./kom-igang/_components/onboarding-checklist";
-import { dateOf, kr, sentence, weekdayDayText } from "./_hem/text";
+import { dateOf, kr, weekdayDayText } from "./_hem/text";
 
 export const metadata: Metadata = { title: "Hem" };
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
 /**
- * Hem: "Hur går det?", "Vad behöver jag göra?" och "Vad tjänar vi?" på en sida.
- * Rubriken sammanfattar läget med siffror, sedan nyckeltalen, intäkt per dag, de
- * viktigaste punkterna i Att göra, Värt att veta och topplistan över titlar.
+ * Hem: "Hur går det?", "Vad behöver jag göra?" och "Vad tjänar vi?" i fyra block:
+ * rubriken, nyckeltalen med en varningsrad, [intäkt per dag | Att göra + Värt att veta]
+ * och de fem mest sålda titlarna. Blocken glider upp i tur och ordning.
  *
  * Bara ägare, admin och läsare (requireRoute i loadHome skickar påfyllaren till Att
  * göra). Allt räknas i @/domain och @/analytics via modellen i _hem/model.ts.
@@ -55,7 +48,6 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
 
   const periodText = (p: { start: string; end: string }) =>
     formatPeriodShort({ start: dateOf(p.start), end: dateOf(p.end) }, dateOf(today));
-  const dayOnly = (d: string) => periodText({ start: d, end: d });
   const scopeText = scope
     ? scope.kind === "machine"
       ? `${scope.code ? `${scope.code.replace("-", "‑")} ` : ""}${scope.name}`
@@ -72,10 +64,11 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
           size="xl"
           eyebrow="Hem"
           title={`${noun} finns inte.`}
-          aside="Filtret i adressen pekar på något som inte finns i organisationen."
+          aside="Filtret pekar på något som inte finns."
+          className="rise"
         />
         <StateMessage
-          className="mt-12"
+          className="rise mt-12"
           kind="empty"
           code="0 träffar"
           message={`${noun} i filtret finns inte, eller så har du inte tillgång till den.`}
@@ -85,25 +78,12 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
     );
   }
 
-  // Perioden är skalets; nyckeltalen gäller hela den. Börjar datan inne i perioden står
-  // det som en egen rad, så att perioden och jämförelsen är desamma som i skalet.
-  const dataFrom =
-    model.dataStart && model.dataStart > model.period.start && model.dataStart <= model.period.end
-      ? model.dataStart
-      : null;
-  const meta: SectionMeta[] = [{ label: "Period", value: periodText(model.period) }];
-  if (dataFrom) meta.push({ label: "Första order", value: dayOnly(dataFrom) });
-  meta.push(
-    {
-      label: "Jämfört med",
-      value: model.compare ? periodText(model.compare) : EN_DASH,
-    },
-    { label: "Order", value: formatInt(model.kpis.find((k) => k.id === "orders")?.value ?? 0) },
-  );
-  if (scopeText)
-    meta.unshift({ label: scope?.kind === "machine" ? "Automat" : "Butik", value: scopeText });
+  // Två metarader: perioden och jämförelsen (antal order står i remsan).
+  const meta: SectionMeta[] = [
+    { label: "Period", value: periodText(model.period) },
+    { label: "Jämfört med", value: model.compare ? periodText(model.compare) : EN_DASH },
+  ];
 
-  // Perioden och jämförelsen står i metablocket bredvid rubriken; remsan upprepar dem inte.
   const comparisonLabel = model.compare
     ? `Nyckeltal jämfört med ${periodText(model.compare)}`
     : "Nyckeltal utan jämförelse";
@@ -112,81 +92,92 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col px-4 pt-8 pb-16 md:px-8 md:pt-12">
-      <SectionHeader
-        as="h1"
-        size="xl"
-        eyebrow={scopeText ? `Hem · ${scopeText}` : "Hem"}
-        title={headline.title}
-        aside={headline.aside}
-        description={headline.lead.join(" ") || undefined}
-        meta={meta}
-      />
-
-      {onboarding ? (
-        <OnboardingChecklist
-          status={onboarding}
-          canEdit={canEdit}
-          timeZone={timeZone}
-          variant="compact"
-          className="mt-8 md:mt-10"
+      <div className="rise" style={rise(0)}>
+        <SectionHeader
+          as="h1"
+          size="xl"
+          eyebrow={scopeText ? `Hem · ${scopeText}` : "Hem"}
+          title={headline.title}
+          aside={headline.aside}
+          meta={headline.state === "no-data" ? undefined : meta}
         />
-      ) : null}
+      </div>
 
       {headline.state === "no-data" ? (
-        <StateMessage
-          className="mt-12"
-          kind="not-configured"
-          message="Inga order har importerats ännu."
-          detail="Nyckeltal, intäkt per dag och topplistan räknas fram ur orderna."
-          action={canEdit ? { label: "Lägg till datakälla", href: "/datakallor" } : undefined}
-        />
+        // Ett enda kort när inget är importerat: checklistan om den finns, annars en rad.
+        onboarding ? (
+          <div className="rise mt-8 md:mt-10" style={rise(1)}>
+            <OnboardingChecklist
+              status={onboarding}
+              canEdit={canEdit}
+              timeZone={timeZone}
+              variant="compact"
+            />
+          </div>
+        ) : (
+          <StateMessage
+            className="rise mt-12"
+            kind="not-configured"
+            message="Inga order har importerats ännu."
+            action={canEdit ? { label: "Lägg till datakälla", href: "/datakallor" } : undefined}
+          />
+        )
       ) : (
         <>
-          <div className="mt-8 flex flex-col gap-4 md:mt-10">
+          {onboarding ? (
+            <div className="rise mt-8 md:mt-10" style={rise(1)}>
+              <OnboardingChecklist
+                status={onboarding}
+                canEdit={canEdit}
+                timeZone={timeZone}
+                variant="compact"
+              />
+            </div>
+          ) : null}
+
+          <div className="rise mt-8 flex flex-col gap-4 md:mt-10" style={rise(1)}>
             <HomeKpis kpis={model.kpis} ariaLabel={comparisonLabel} />
-            {model.unpriced ? <UnpricedNote unpriced={model.unpriced} canEdit={canEdit} /> : null}
-            {lostSales ? <LostSalesNote lost={lostSales} /> : null}
+            <WarningLine unpriced={model.unpriced} lost={lostSales} canEdit={canEdit} />
           </div>
 
           {headline.state === "no-orders" ? (
             <StateMessage
-              className="mt-12"
+              className="rise mt-12"
               kind="empty"
               code="0 order"
-              message="Diagrammet och topplistan visas när perioden har order."
+              message="Inga order i perioden."
               action={{ label: "Visa allt", href: `/${carriedParams(sp, { period: "allt" })}` }}
             />
           ) : null}
 
           <DailyAndTodos model={model} today={today} sp={sp} revenue={revenue} />
 
-          <Insights model={model} />
-
           {model.topTitles.rows.length > 0 ? (
             <section
               aria-labelledby="titlar"
-              className="mt-12 scroll-mt-28 border-t border-line pt-12 md:mt-16 md:pt-16"
+              className="rise mt-12 scroll-mt-28 border-t border-line pt-10 md:mt-14 md:pt-12"
+              style={rise(4)}
             >
               <SectionHeader
                 id="titlar"
-                index={sectionIndex(model, "titles")}
-                eyebrow={`Titlar · ${formatInt(model.topTitles.totalTitles)} st`}
+                eyebrow={`Titlar · topp ${formatInt(Math.min(TOP_N, model.topTitles.rows.length))}`}
                 title="Mest sålda titlar."
-                aside={topTitlesAside(model)}
+                size="md"
                 actions={
                   <ArrowLink href={`/lonsamhet${carriedParams(sp, { grupp: "titel" })}`}>
-                    Lönsamhet per titel
+                    Alla titlar i Lönsamhet
                   </ArrowLink>
                 }
               />
-              <div className="mt-10 grid grid-cols-1 gap-x-8 gap-y-8 md:mt-12 lg:grid-cols-12">
-                <div className="min-w-0 lg:col-span-8">
-                  <TopTitles
-                    top={model.topTitles}
-                    caption={`Titlar efter intäkt ${periodText(model.period)}, med andel av intäkten.`}
-                  />
-                </div>
-                <TitlesAside model={model} />
+              <div className="mt-6 lg:max-w-[66%]">
+                <TopTitles
+                  top={{
+                    ...model.topTitles,
+                    rows: model.topTitles.rows.slice(0, TOP_N),
+                    rest: null,
+                  }}
+                  caption={`De ${formatInt(TOP_N)} titlarna med högst intäkt ${periodText(model.period)}, med andel av intäkten.`}
+                />
               </div>
             </section>
           ) : null}
@@ -196,15 +187,12 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
   );
 }
 
-/** Sektionernas nummer: diagrammet, Att göra (bara för roller som har den), Värt att veta, titlar. */
-function sectionIndex(model: HomeModel, id: "daily" | "todos" | "insights" | "titles"): number {
-  const order = [
-    model.daily ? "daily" : null,
-    model.todos ? "todos" : null,
-    "insights",
-    "titles",
-  ].filter(Boolean);
-  return order.indexOf(id) + 1;
+/** Topplistan på Hem: de fem största; resten finns i Lönsamhet per titel. */
+const TOP_N = 5;
+
+/** Fördröjning för blockens uppglidning (globals.css .rise). */
+function rise(i: number): CSSProperties {
+  return { "--i": i } as CSSProperties;
 }
 
 // ---------------------------------------------------------------------------
@@ -220,11 +208,16 @@ function DailyAndTodos({
   sp: SearchParams;
   revenue: number;
 }) {
-  if (!model.daily && !model.todos) return null;
-  // Diagrammet och Att göra står bredvid varandra på dator, så att "Vad behöver jag göra?"
-  // syns på första skärmen; på mobil kommer Att göra direkt under diagrammet.
+  const showInsights = model.headline.state === "ok" && model.insights.length > 0;
+  const side = Boolean(model.todos) || showInsights;
+  if (!model.daily && !side) return null;
+  // Diagrammet och Att göra + Värt att veta står bredvid varandra på dator, så att
+  // "Vad behöver jag göra?" syns på första skärmen; på mobil kommer de under diagrammet.
   return (
-    <div className="mt-10 grid grid-cols-1 gap-x-10 gap-y-16 border-t border-line pt-10 md:mt-12 md:pt-12 lg:grid-cols-12">
+    <div
+      className="rise mt-10 grid grid-cols-1 gap-x-10 gap-y-12 border-t border-line pt-10 md:mt-12 md:pt-12 lg:grid-cols-12"
+      style={rise(2)}
+    >
       {model.daily ? (
         <DailySection
           daily={model.daily}
@@ -233,17 +226,16 @@ function DailyAndTodos({
           today={today}
           sp={sp}
           revenue={revenue}
-          index={sectionIndex(model, "daily")}
-          className={model.todos ? "lg:col-span-8" : "lg:col-span-12"}
+          className={side ? "lg:col-span-8" : "lg:col-span-12"}
         />
       ) : null}
-      {model.todos ? (
-        <TodoSection
-          model={model}
-          sp={sp}
-          index={sectionIndex(model, "todos")}
-          className={model.daily ? "lg:col-span-4" : "lg:col-span-6"}
-        />
+      {side ? (
+        <div
+          className={`flex min-w-0 flex-col gap-10 ${model.daily ? "lg:col-span-4" : "lg:col-span-6"}`}
+        >
+          {model.todos ? <TodoSection model={model} sp={sp} /> : null}
+          {showInsights ? <Insights model={model} /> : null}
+        </div>
       ) : null}
     </div>
   );
@@ -256,7 +248,6 @@ function DailySection({
   today,
   sp,
   revenue,
-  index,
   className,
 }: {
   daily: HomeDaily;
@@ -265,7 +256,6 @@ function DailySection({
   today: string;
   sp: SearchParams;
   revenue: number;
-  index: number;
   className?: string;
 }) {
   const peakDate = daily.peakIndex !== null ? daily.dates[daily.peakIndex] : undefined;
@@ -288,9 +278,8 @@ function DailySection({
       : ".",
   ].join("");
   const aside = [
-    sentence(`Snitt ${kr(daily.averageOre)} per dag${peakText ? `, ${peakText}` : ""}`),
-    todayPending ? "I dag är inte med: inga order än." : "",
-    todayPartial ? "I dag är inte med: dagen pågår." : "",
+    `Snitt ${kr(daily.averageOre)}/dag${peakDate ? `, bäst ${weekdayDayText(peakDate, today)}` : ""}.`,
+    todayPending || todayPartial ? "I dag ej med." : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -299,7 +288,6 @@ function DailySection({
     <section aria-labelledby="intakt-per-dag" className={`min-w-0 scroll-mt-28 ${className ?? ""}`}>
       <SectionHeader
         id="intakt-per-dag"
-        index={index}
         eyebrow={`Intäkt per dag · ${formatInt(days)} d`}
         title="Intäkt per dag."
         aside={aside}
@@ -310,7 +298,7 @@ function DailySection({
           </ArrowLink>
         }
       />
-      <Panel grid marks className="mt-8">
+      <Panel grid marks className="fade-in mt-6">
         <DailyChart
           dates={daily.dates}
           revenueOre={daily.revenueOre}
@@ -327,120 +315,44 @@ function DailySection({
   );
 }
 
-function TodoSection({
-  model,
-  sp,
-  index,
-  className,
-}: {
-  model: HomeModel;
-  sp: SearchParams;
-  index: number;
-  className?: string;
-}) {
+function TodoSection({ model, sp }: { model: HomeModel; sp: SearchParams }) {
   if (!model.todos) return null;
+  const href = `/att-gora${carriedParams(sp)}`;
   return (
-    <section aria-labelledby="att-gora" className={`min-w-0 scroll-mt-28 ${className ?? ""}`}>
-      <SectionHeader
-        id="att-gora"
-        index={index}
-        eyebrow={`Att göra · ${formatInt(model.todoCount)} st`}
-        title="Att göra."
-        aside={todoAside(model)}
-        size="md"
-      />
-      <div className="mt-6 flex flex-col gap-4">
+    <section aria-labelledby="att-gora" className="min-w-0 scroll-mt-28">
+      <div className="flex items-baseline justify-between gap-4">
+        <h2 id="att-gora" className="label text-muted">
+          {`Att göra · ${formatInt(model.todoCount)}`}
+          {model.todoNowCount > 0 ? (
+            <span className="text-signal-fg">{` · ${formatInt(model.todoNowCount)} nu`}</span>
+          ) : null}
+        </h2>
+        {model.todoCount > 0 ? (
+          <ArrowLink href={href}>
+            {model.todoCount > model.todos.length ? `Alla ${formatInt(model.todoCount)}` : "Öppna"}
+          </ArrowLink>
+        ) : null}
+      </div>
+      <div className="mt-3">
         {model.todos.length > 0 ? (
           <TodoList todos={model.todos} />
         ) : (
           <StateMessage compact kind="empty" code="0 punkter" message="Inget att göra just nu." />
         )}
-        {model.todoCount > model.todos.length ? (
-          <ArrowLink href={`/att-gora${carriedParams(sp)}`}>
-            {`Visa alla ${formatInt(model.todoCount)} i Att göra`}
-          </ArrowLink>
-        ) : model.todoCount > 0 ? (
-          <ArrowLink href={`/att-gora${carriedParams(sp)}`}>Öppna Att göra</ArrowLink>
-        ) : null}
       </div>
     </section>
   );
 }
 
 function Insights({ model }: { model: HomeModel }) {
-  if (model.headline.state !== "ok") return null;
-  const n = model.insights.length;
   return (
-    <section
-      aria-labelledby="vart-att-veta"
-      className="mt-12 min-w-0 scroll-mt-28 border-t border-line pt-12 md:mt-16 md:pt-16"
-    >
-      <SectionHeader
-        id="vart-att-veta"
-        index={sectionIndex(model, "insights")}
-        eyebrow={`Värt att veta · ${formatInt(n)} st`}
-        title="Värt att veta."
-        aside={
-          n === 0
-            ? "Inget utöver det som står ovan sticker ut i perioden."
-            : n === 1
-              ? "En iakttagelse ur perioden, med underlaget."
-              : `${formatInt(n)} iakttagelser ur perioden, var och en med underlaget.`
-        }
-        size="md"
-      />
-      {n > 0 ? (
-        <div className="mt-8">
-          <InsightList insights={model.insights} />
-        </div>
-      ) : null}
+    <section aria-labelledby="vart-att-veta" className="min-w-0 scroll-mt-28">
+      <h2 id="vart-att-veta" className="label text-muted">
+        {`Värt att veta · ${formatInt(model.insights.length)}`}
+      </h2>
+      <div className="mt-3">
+        <InsightList insights={model.insights} />
+      </div>
     </section>
-  );
-}
-
-function todoAside(model: HomeModel): string {
-  if (model.todoCount === 0) return "Inget väntar.";
-  const now = model.todoNowCount;
-  const total = `${formatInt(model.todoCount)} ${model.todoCount === 1 ? "punkt" : "punkter"}`;
-  if (now === 0) return `${total}, ingen brådskar.`;
-  return `${total}, ${formatInt(now)} gäller nu.`;
-}
-
-/** Topplistans rubrik: hur spridd intäkten är (den största titeln står i listan och i Värt att veta). */
-function topTitlesAside(model: HomeModel): string {
-  const t = model.topTitles;
-  const sold = `${formatInt(t.totalTitles)} ${t.totalTitles === 1 ? "titel" : "titlar"} sålde`;
-  if (t.rows.length < 3 || t.totalTitles <= 3) return `${sold}.`;
-  const top3 = t.rows.slice(0, 3).reduce((n, r) => n + r.shareBp, 0);
-  return `${sold}, de tre största står för ${shareText(top3)} av intäkten.`;
-}
-
-function TitlesAside({ model }: { model: HomeModel }) {
-  const t = model.topTitles;
-  const items: { label: string; value: string }[] = [
-    { label: "Titlar som sålt", value: formatInt(t.totalTitles) },
-    {
-      label: "Order",
-      value: formatInt(t.rows.reduce((n, r) => n + r.orders, 0) + (t.rest?.orders ?? 0)),
-    },
-  ];
-  if (model.unpriced) {
-    items.push({
-      label: "Utan inköpspris",
-      value: `${formatInt(model.unpriced.titles.length)} ${model.unpriced.titles.length === 1 ? "titel" : "titlar"}`,
-    });
-  }
-  return (
-    <dl className="flex flex-col self-start lg:col-span-4">
-      {items.map((i) => (
-        <div
-          key={i.label}
-          className="flex items-baseline justify-between gap-4 border-t border-line py-2 last:border-b"
-        >
-          <dt className="label text-subtle">{i.label}</dt>
-          <dd className="tnum text-sm text-fg">{i.value}</dd>
-        </div>
-      ))}
-    </dl>
   );
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import type React from "react";
 import { notFound } from "next/navigation";
 
 import { Panel } from "@/components/ui/frame";
@@ -16,6 +17,7 @@ import { AgreementsTable, MachinesTable, RecipientsTable } from "../_components/
 import { StoreKpis } from "../_components/kpis";
 import { StoreActions } from "../_components/store-dialogs";
 import { Sub } from "../_components/sub";
+import { pickTab, ViewTabs } from "../../automater/_components/view-tabs";
 import { loadStoreDetail, storeNameOf, type StoreDetailData } from "../_lib/data";
 import {
   dayText,
@@ -27,6 +29,12 @@ import {
   sek,
   sentence,
 } from "../_lib/model";
+
+const TABS = [
+  { value: "oversikt", label: "Översikt" },
+  { value: "avtal", label: "Avtal" },
+  { value: "kontakt", label: "Kontakt och rapport" },
+] as const;
 
 type Params = Promise<{ butik: string }>;
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -50,16 +58,19 @@ export default async function StorePage({
   searchParams: SearchParams;
 }) {
   const { butik } = await params;
-  const data = await loadStoreDetail(decodeURIComponent(butik), await searchParams);
+  const sp = await searchParams;
+  const data = await loadStoreDetail(decodeURIComponent(butik), sp);
   if (!data) notFound();
   const { ctx, store, period, headline, current } = data;
   const days = `${formatInt(period.days)}${NBSP}d`;
   const comparison = period.comparisonLabel ? `Jämfört med ${period.comparisonLabel}` : undefined;
   const placed = data.machines.filter((m) => m.current);
+  const tab = pickTab(TABS, sp.vy);
+  const rise = (i: number) => ({ "--i": i }) as React.CSSProperties;
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-6 pb-16 md:gap-16 md:px-8 md:pt-10">
-      <div className="flex flex-col gap-6">
+      <div className="rise flex flex-col gap-6">
         <nav aria-label="Brödsmulor">
           <Link
             href={`/butiker${data.query}`}
@@ -81,7 +92,7 @@ export default async function StorePage({
             store.archived
               ? "Butiken är arkiverad. Historiken finns kvar."
               : store.isExample
-                ? "Exempelbutik. Den visas som exempel i listor och rapporter."
+                ? "Exempelbutik."
                 : undefined
           }
           meta={[
@@ -97,10 +108,6 @@ export default async function StorePage({
                 </StatusTag>
               ),
             },
-            ...(store.isExample
-              ? [{ label: "Typ", value: <StatusTag status="neutral">Exempel</StatusTag> }]
-              : []),
-            { label: "Period", value: period.rangeLabel },
             { label: "Automater", value: formatInt(placed.length) },
             { label: "Modell", value: current ? MODEL_LABEL[current.model] : MISSING },
           ]}
@@ -113,30 +120,46 @@ export default async function StorePage({
         {data.issues.length > 0 ? <Issues data={data} /> : null}
       </div>
 
-      <div className="flex flex-col gap-3">
+      <div className="rise flex flex-col gap-3" style={rise(1)}>
         <StoreKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
-        <p className="max-w-[72ch] text-sm text-muted">
-          {sentence(
-            `Till butiken är provision på alla order och hyra för hela perioden ${period.rangeLabel}`,
-          )}{" "}
-          Vinsten gäller order med inköpspris, som på Lönsamhet.
+        <p className="meta text-subtle">
+          Till butiken: provision på alla order och hyra. Vinst: order med inköpspris.
         </p>
       </div>
 
-      <SalesSection data={data} days={days} />
-      <CompensationSection data={data} />
-      <MachinesSection data={data} days={days} />
-      <ContactSection data={data} />
-      {/* Butiksportalen (fas 10): vem i butiken som har tillgång. Bara ägare och admin. */}
-      {ctx.canEdit && !store.archived ? (
-        <StorePortalAccess
-          index={5}
-          storeId={store.id}
-          storeName={store.name}
-          defaultEmail={store.email}
-          timeZone={ctx.timeZone}
+      <div className="rise -mb-6 md:-mb-10" style={rise(2)}>
+        <ViewTabs
+          tabs={TABS}
+          value={tab}
+          basePath={`/butiker/${encodeURIComponent(butik)}`}
+          query={data.query}
+          label="Visa"
         />
-      ) : null}
+      </div>
+
+      <div key={tab} className="fade-in flex flex-col gap-12 md:gap-16">
+        {tab === "oversikt" ? (
+          <>
+            <SalesSection data={data} days={days} />
+            <MachinesSection data={data} days={days} />
+          </>
+        ) : null}
+        {tab === "avtal" ? <CompensationSection data={data} /> : null}
+        {tab === "kontakt" ? (
+          <>
+            <ContactSection data={data} />
+            {/* Butiksportalen (fas 10): vem i butiken som har tillgång. Bara ägare och admin. */}
+            {ctx.canEdit && !store.archived ? (
+              <StorePortalAccess
+                storeId={store.id}
+                storeName={store.name}
+                defaultEmail={store.email}
+                timeZone={ctx.timeZone}
+              />
+            ) : null}
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -181,7 +204,6 @@ function SalesSection({ data, days }: { data: StoreDetailData; days: string }) {
     >
       <SectionHeader
         id="forsaljning"
-        index={1}
         eyebrow={`Intäkt per dag · ${days}`}
         title="Försäljning per dag."
         aside={
@@ -203,10 +225,10 @@ function SalesSection({ data, days }: { data: StoreDetailData; days: string }) {
         <StateMessage
           kind="empty"
           message={sentence(`Inga order i ${data.store.name} ${data.period.rangeLabel}`)}
-          detail={
-            data.machines.length === 0
-              ? "Ingen automat har stått i butiken. Placera en automat under Automater."
-              : "Välj en längre period i periodraden."
+          action={
+            data.machines.length === 0 && data.ctx.canEdit
+              ? { label: "Placera automat", href: "/automater" }
+              : undefined
           }
         />
       )}
@@ -220,7 +242,6 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
     <section aria-labelledby="ersattning" className="flex flex-col gap-8 border-t border-line pt-8">
       <SectionHeader
         id="ersattning"
-        index={2}
         eyebrow={`Ersättning · ${month.monthLabel} hittills`}
         title={data.compensation.title}
         aside={data.compensation.aside}
@@ -238,7 +259,6 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
       />
       <div className="grid grid-cols-1 gap-x-8 gap-y-12 lg:grid-cols-12">
         <Sub
-          index="02.1"
           label={`Intjänat · ${formatInt(month.days)} av ${formatInt(month.daysInMonth)} d`}
           title={current ? sentence(current.termsLabel) : "Inget avtal gäller i dag."}
           className="lg:col-span-5"
@@ -259,7 +279,6 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
           </dl>
         </Sub>
         <Sub
-          index="02.2"
           label="Avtalshistorik"
           meta={plural(data.agreements.length, "avtal", "avtal")}
           title={
@@ -283,16 +302,11 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
               kind="not-configured"
               compact
               message={`${store.name} har inget avtal.`}
-              detail={
-                ctx.canEdit
-                  ? "Lägg in provision, hyra eller båda med Nytt avtal."
-                  : "Ägare och admin lägger in avtal."
-              }
             />
           )}
           <p className="mt-4 text-sm text-muted">
             <Link href="/avtal" className="rounded-xs hover:text-fg">
-              Avtalsfiler och uppsägningstider under Avtal{NBSP}→
+              Avtalsfiler och uppsägning{NBSP}→
             </Link>
           </p>
         </Sub>
@@ -334,7 +348,6 @@ function MachinesSection({ data, days }: { data: StoreDetailData; days: string }
     <section aria-labelledby="automater" className="flex flex-col gap-8 border-t border-line pt-8">
       <SectionHeader
         id="automater"
-        index={3}
         eyebrow={`Automater · ${days}`}
         title={
           placed.length === 0
@@ -359,11 +372,6 @@ function MachinesSection({ data, days }: { data: StoreDetailData; days: string }
         <StateMessage
           kind="empty"
           message={`Ingen automat har stått i ${data.store.name}.`}
-          detail={
-            data.ctx.canEdit
-              ? "Automater placeras i butiker på automatens sida."
-              : "Ägare och admin placerar automater."
-          }
           action={data.ctx.canEdit ? { label: "Öppna Automater", href: "/automater" } : undefined}
         />
       )}
@@ -396,7 +404,6 @@ function ContactSection({ data }: { data: StoreDetailData }) {
     <section aria-labelledby="kontakt" className="flex flex-col gap-8 border-t border-line pt-8">
       <SectionHeader
         id="kontakt"
-        index={4}
         eyebrow="Kontakt och rapport"
         title={
           active.length === 0
@@ -408,7 +415,7 @@ function ContactSection({ data }: { data: StoreDetailData }) {
         }
       />
       <div className="grid grid-cols-1 gap-x-8 gap-y-12 lg:grid-cols-12">
-        <Sub index="04.1" label="Kontaktuppgifter" className="lg:col-span-4">
+        <Sub label="Kontaktuppgifter" className="lg:col-span-4">
           <dl className="flex flex-col">
             {contact.map((c) => (
               <div
@@ -434,7 +441,6 @@ function ContactSection({ data }: { data: StoreDetailData }) {
           </dl>
         </Sub>
         <Sub
-          index="04.2"
           label="Rapportmottagare"
           meta={plural(recipients.length, "mottagare", "mottagare")}
           className="lg:col-span-8"
@@ -449,12 +455,7 @@ function ContactSection({ data }: { data: StoreDetailData }) {
                 caption={`Mottagare av månadsrapporten för ${store.name}`}
               />
             ) : (
-              <StateMessage
-                kind="empty"
-                compact
-                message={`Ingen mottagare för ${store.name}.`}
-                detail="Månadsrapporten skickas till butikens mottagare när den godkänts under Rapporter."
-              />
+              <StateMessage kind="empty" compact message={`Ingen mottagare för ${store.name}.`} />
             )}
             {ctx.canEdit && !store.archived ? (
               <div>

@@ -479,8 +479,9 @@ function VerticalBars({
                     width={bw}
                     height={h}
                     pointerEvents="none"
-                    className="transition-[fill] duration-fast"
+                    className="grow-y transition-[fill] duration-fast [transform-box:fill-box]"
                     style={{
+                      ["--i" as string]: i,
                       fill: isAlert
                         ? `url(#${hatchId})`
                         : isPeak

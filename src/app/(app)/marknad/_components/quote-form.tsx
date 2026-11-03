@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Input, Select } from "@/components/ui/field";
+import { Input, Select, formError } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 
@@ -82,12 +82,15 @@ export function QuoteFormButton({
         onClose={() => setOpen(false)}
         eyebrow="Leverantörspris"
         title="Registrera inköpspris"
-        description="Pris per pack från en leverantör: en offert, en prislista eller ett inköp som inte gick via en inköpsorder."
+        description="Offert, prislista eller inköp."
       >
         <form
           className="flex flex-col gap-4"
+          noValidate
           onSubmit={(e) => {
             e.preventDefault();
+            const invalid = formError(e.currentTarget);
+            if (invalid) return setError(invalid);
             submit();
           }}
         >

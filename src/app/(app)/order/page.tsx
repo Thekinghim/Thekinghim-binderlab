@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { CSSProperties } from "react";
 
 import { routeById } from "@/components/shell/nav";
 import { toURLSearchParams } from "@/components/shell/period-state";
@@ -8,7 +9,7 @@ import { formatKronor, formatPeriodShort, MISSING } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
 
 import { OrderBrowser } from "./_components/order-browser";
-import { formatAt, isoToLocalDate, orderHeadline, sentence } from "./_lib/headline";
+import { isoToLocalDate, orderHeadline, sentence } from "./_lib/headline";
 import { hasPageFilter, listSignature, lockedListQuery, withOrderParams } from "./_lib/params";
 import { titleChoices } from "./_lib/refs";
 import { loadOrderDetailFor, loadOrderListFor } from "./_lib/service";
@@ -65,7 +66,6 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
       <StateMessage
         kind="empty"
         message="Inga order är importerade ännu."
-        detail="Orderna kommer från Awish via Datakällor."
         action={canOpenImport ? { label: "Importera orderlistan", href: "/datakallor" } : undefined}
       />
     );
@@ -81,11 +81,6 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
           message={`Ingen order ${periodText} matchar ${
             params.q ? `”${params.q}”` : "filtret"
           }${scoped ? " i vald butik eller automat" : ""}.`}
-          detail={
-            params.q
-              ? "Sökningen gäller ordernummer, tolkad titel, originaltitel, automat och butik."
-              : undefined
-          }
           action={
             pageFiltered
               ? {
@@ -117,24 +112,25 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
                 ? MISSING
                 : formatKronor(list.averageOrderValueOre / 100),
           },
-          {
-            label: "Senaste order",
-            value: formatAt(list.latestOrderAt, ctx.timeZone, now),
-          },
         ];
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-8 px-4 pt-8 pb-16 md:px-8 md:pt-10">
       <SectionHeader
+        className="rise"
         as="h1"
-        size="xl"
+        size="lg"
         eyebrow="Order"
         title={headline.title}
         aside={headline.aside}
         meta={meta}
       />
 
-      <section aria-label="Orderlista" className="flex min-w-0 flex-col">
+      <section
+        aria-label="Orderlista"
+        className="rise flex min-w-0 flex-col"
+        style={{ "--i": 1 } as CSSProperties}
+      >
         <OrderBrowser
           query={listSignature(sp)}
           pageQuery={lockedListQuery(sp, list.period)}

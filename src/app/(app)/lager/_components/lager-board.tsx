@@ -3,12 +3,15 @@
 import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
+import type React from "react";
+
 import { SectionHeader } from "@/components/ui/section-header";
+import { Segmented } from "@/components/ui/segmented";
 import { StateMessage } from "@/components/ui/state-message";
 
 import { formatInt } from "@/lib/format";
 
-import { formatIsoDate, packs, plural, tenthsText } from "../_lib/display";
+import { packs, plural, tenthsText } from "../_lib/display";
 import { WAREHOUSE_LOW_DAYS, type LagerView } from "../_lib/types";
 import { PackList } from "./pack-list";
 import { RegisterDialog, type RegisterTarget } from "./register-dialog";
@@ -70,6 +73,7 @@ export function LagerBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- bara vid första visningen
   }, []);
   const [selection, setSelection] = useState<Selection | null>(initial);
+  const [tab, setTab] = useState<"automater" | "centrallager">("automater");
   const [packMachine, setPackMachine] = useState<string>(
     focus?.machineId && view.machines.some((m) => m.id === focus.machineId)
       ? focus.machineId
@@ -123,10 +127,6 @@ export function LagerBoard({
   const { counts, window: salesWindow } = view;
   const hasMachines = view.machines.length > 0;
   const packFirst = view.packListFirst && hasMachines;
-  // Numreringen följer sektionerna som visas: utan automat finns ingen påfyllningslista.
-  const matrixIndex = packFirst ? 2 : 1;
-  const packIndex = packFirst ? 1 : 2;
-  const warehouseIndex = hasMachines ? 3 : 2;
   const cellsTotal = counts.critical + counts.low + counts.ok;
   const warehouseTotal = view.warehouse.reduce((s, w) => s + Math.max(0, w.onHand), 0);
   const warehouseShort = view.warehouse.filter((w) => w.shortBy > 0);
@@ -134,14 +134,17 @@ export function LagerBoard({
 
   const packSection =
     view.machines.length > 0 ? (
-      <section aria-labelledby="pafyllningslista">
+      <section
+        aria-labelledby="pafyllningslista"
+        className="rise"
+        style={{ "--i": packFirst ? 1 : 3 } as React.CSSProperties}
+      >
         <PackList
           machines={view.machines}
           lists={view.packLists}
           machineId={packMachine}
           onMachine={setPackMachine}
           today={view.today}
-          index={packIndex}
           canRegister={view.canRegister}
           onSelect={(m, line) =>
             setSelection({ kind: "machine", machineId: m.id, titleId: line.titleId })
@@ -154,60 +157,78 @@ export function LagerBoard({
     <>
       {packFirst ? packSection : null}
 
-      <section aria-labelledby="matris" className="flex flex-col gap-6 md:gap-10">
-        <SectionHeader
-          id="matris"
-          index={matrixIndex}
-          eyebrow={`Lager per automat · ${salesWindow.days} d`}
-          title={
-            hasMachines
-              ? `${plural(cellsTotal, "plats", "platser")} i ${plural(view.machines.length, "automat", "automater")}.`
-              : "Ingen automat i urvalet."
-          }
-          aside={
-            hasMachines
-              ? `En plats är en titel i en automat. Dagar kvar vid takten ${formatIsoDate(salesWindow.start, view.today)} – ${formatIsoDate(salesWindow.end, view.today)}, låg under ${tenthsText(view.lowThresholdTenths)} dagar.`
-              : undefined
-          }
-        />
-        {view.machines.length === 0 || view.titles.length === 0 ? (
-          <StateMessage
-            kind="empty"
-            message={
-              view.machines.length === 0
-                ? "Ingen automat i drift i urvalet."
-                : "Inget lager registrerat i automaterna."
+      {view.hasWarehouse ? (
+        <div className="rise -mb-6 md:-mb-10" style={{ "--i": 2 } as React.CSSProperties}>
+          <Segmented
+            label="Visa lager"
+            value={tab}
+            onChange={setTab}
+            options={[
+              { value: "automater", label: "Automater" },
+              { value: "centrallager", label: "Centrallager" },
+            ]}
+          />
+        </div>
+      ) : null}
+
+      {tab === "automater" || !view.hasWarehouse ? (
+        <section
+          aria-labelledby="matris"
+          className="rise flex flex-col gap-6 md:gap-10"
+          style={{ "--i": 2 } as React.CSSProperties}
+        >
+          <SectionHeader
+            id="matris"
+            eyebrow={`Lager per automat · ${salesWindow.days} d`}
+            title={
+              hasMachines
+                ? `${plural(cellsTotal, "plats", "platser")} i ${plural(view.machines.length, "automat", "automater")}.`
+                : "Ingen automat i urvalet."
             }
-            detail={
-              view.machines.length === 0
-                ? "En automat räknas när den är placerad i en butik under Automater."
+            aside={
+              hasMachines
+                ? `Dagar kvar vid takten senaste ${formatInt(salesWindow.days)} d. Låg < ${tenthsText(view.lowThresholdTenths)} d.`
                 : undefined
             }
           />
-        ) : (
-          <StockMatrix
-            machines={view.machines}
-            titles={view.titles}
-            cells={view.cells}
-            windowDays={salesWindow.days}
-            canRegister={view.canRegister}
-            onSelect={(m, t) => setSelection({ kind: "machine", machineId: m.id, titleId: t.id })}
-          />
-        )}
-        {hasMachines && view.retiredTitles.length > 0 ? (
-          <p className="max-w-prose text-sm text-muted">
-            {retiredText(view.retiredTitles.map((t) => t.name))}
-          </p>
-        ) : null}
-      </section>
+          {view.machines.length === 0 || view.titles.length === 0 ? (
+            <StateMessage
+              kind="empty"
+              message={
+                view.machines.length === 0
+                  ? "Ingen automat i drift i urvalet."
+                  : "Inget lager registrerat i automaterna."
+              }
+              action={
+                view.machines.length === 0
+                  ? { label: "Placera automat", href: "/automater" }
+                  : undefined
+              }
+            />
+          ) : (
+            <StockMatrix
+              machines={view.machines}
+              titles={view.titles}
+              cells={view.cells}
+              windowDays={salesWindow.days}
+              canRegister={view.canRegister}
+              onSelect={(m, t) => setSelection({ kind: "machine", machineId: m.id, titleId: t.id })}
+            />
+          )}
+          {hasMachines && view.retiredTitles.length > 0 ? (
+            <p className="max-w-prose text-sm text-muted">
+              {retiredText(view.retiredTitles.map((t) => t.name))}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       {packFirst ? null : packSection}
 
-      {view.hasWarehouse ? (
-        <section aria-labelledby="centrallager" className="flex flex-col gap-6 md:gap-10">
+      {view.hasWarehouse && tab === "centrallager" ? (
+        <section aria-labelledby="centrallager" className="fade-in flex flex-col gap-6 md:gap-10">
           <SectionHeader
             id="centrallager"
-            index={warehouseIndex}
             eyebrow="Centrallager"
             title={`${packs(warehouseTotal)} i centrallagret.`}
             // Tomt centrallager: tomläget nedan säger det, rubriken upprepar det inte.

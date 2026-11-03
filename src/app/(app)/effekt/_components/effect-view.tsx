@@ -299,11 +299,7 @@ export function BaselinesSection({
         </div>
       ) : null}
       {baselines.length === 0 ? (
-        <StateMessage
-          kind="empty"
-          message="Utgångsläget är inte registrerat."
-          detail="Ange hur det var före Binderlab: vinst per automat och månad, slutsålda dagar och tid för påfyllning och administration per månad."
-        />
+        <StateMessage kind="empty" compact message="Inget utgångsläge registrerat." />
       ) : (
         <ul className="flex flex-col">
           {baselines.map((r) => (
@@ -346,7 +342,7 @@ export function BaselinesSection({
         onClose={() => setEditing(null)}
         title={editing === "new" ? "Nytt utgångsläge" : "Ändra utgångsläge"}
         eyebrow="Före Binderlab"
-        description="Ett värde per mått och omfattning. Tid anges i timmar per månad."
+        description="Tid i timmar per månad."
         fields={fields}
         initial={initial}
         fixed={{ id: b?.id ?? null }}
@@ -488,7 +484,7 @@ export function MeasurementsSection({
         onClose={() => setEditing(null)}
         title={editing === "new" ? "Nytt mätvärde" : "Ändra mätvärde"}
         eyebrow="Effekt"
-        description="Ett värde per månad, mått och omfattning. Tid i timmar."
+        description="Tid i timmar."
         fields={fields}
         initial={initial}
         fixed={{ id: m?.id ?? null }}
@@ -500,7 +496,7 @@ export function MeasurementsSection({
         onClose={() => setSettingsOpen(false)}
         title="Timkostnad och värde per slutsåld dag"
         eyebrow="Effekt"
-        description="Används för att räkna tid och slutsålda dagar i kronor. Tomt = visas bara i tid, respektive värderas med vinst per automat och dag."
+        description="Värderar tid och slutsålda dagar i kronor."
         fields={[
           { name: "hourlyCostOre", label: "Timkostnad", type: "decimal", suffix: "kr/h" },
           {

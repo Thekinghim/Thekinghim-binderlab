@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type React from "react";
 
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { wallClockIn } from "@/components/shell/period-state";
@@ -79,19 +80,21 @@ export default async function TodoPage({
 
   return (
     <div className="mx-auto w-full max-w-[1280px] px-4 pt-8 pb-16 md:px-8 md:pt-12">
-      <SectionHeader
-        as="h1"
-        size="xl"
-        id="att-gora-rubrik"
-        eyebrow="Att göra"
-        title={view.header.title}
-        aside={view.header.aside}
-        description={view.header.description || undefined}
-        meta={<HeaderMeta items={view.header.meta} />}
-        className="pb-12 md:pb-16"
-      />
+      <div className="rise">
+        <SectionHeader
+          as="h1"
+          size="xl"
+          id="att-gora-rubrik"
+          eyebrow="Att göra"
+          title={view.header.title}
+          aside={view.header.aside}
+          description={view.header.description || undefined}
+          meta={<HeaderMeta items={view.header.meta} />}
+          className="pb-12 md:pb-16"
+        />
+      </div>
       {view.total === 0 ? (
-        <div className="border-t border-line pt-10 pb-12">
+        <div className="fade-in border-t border-line pt-10 pb-12">
           <StateMessage
             kind="empty"
             message={
@@ -99,16 +102,13 @@ export default async function TodoPage({
                 ? "Inget att göra för filtret."
                 : "Inget kräver åtgärd just nu."
             }
-            detail={
-              ctx.role === "refiller"
-                ? "Listan räknas om vid varje försäljning och påfyllning. Nya punkter dyker upp här av sig själva."
-                : "Listan räknas om vid varje synk, påfyllning och prisändring. Nya punkter dyker upp här av sig själva."
-            }
             action={{ label: "Visa lagret", href: "/lager" }}
           />
         </div>
       ) : null}
-      <TodoBoard groups={view.groups} dismissed={view.dismissed} canDismiss />
+      <div className="rise" style={{ "--i": 1 } as React.CSSProperties}>
+        <TodoBoard groups={view.groups} dismissed={view.dismissed} canDismiss />
+      </div>
     </div>
   );
 }

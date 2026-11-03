@@ -1,7 +1,5 @@
 import Link from "next/link";
 
-import { PanelSection } from "@/components/ui/frame";
-import { StatusTag } from "@/components/ui/status-tag";
 import { formatInt, formatPercent, formatSek, NBSP } from "@/lib/format";
 
 import type { Bridge, UnpricedBlock } from "../_lib/model";
@@ -20,51 +18,47 @@ function Row({ label, value, sub }: { label: string; value: string; sub?: boolea
 /** Butiksersättningen uppdelad i provision och hyra. */
 export function CompensationBreakdown({ bridge }: { bridge: Bridge }) {
   return (
-    <PanelSection label="Butiksersättning" meta={kr(bridge.compensationOre)}>
-      <dl className="flex flex-col">
+    <details className="group border-t border-line pt-4">
+      <summary className={SUMMARY}>
+        <span className="label text-muted">Butiksersättning</span>
+        <span className="label tnum text-subtle">{kr(bridge.compensationOre)}</span>
+      </summary>
+      <dl className="fade-in mt-3 flex flex-col">
         <Row label="Provision" value={kr(bridge.commissionOre)} />
         <Row label="Hyra" value={kr(bridge.rentOre)} />
         {bridge.unallocatedRentOre > 0 ? (
-          <Row
-            label="varav hyra som ingen order med inköpspris bär"
-            value={kr(bridge.unallocatedRentOre)}
-            sub
-          />
+          <Row label="varav hyra utan prissatta order" value={kr(bridge.unallocatedRentOre)} sub />
         ) : null}
       </dl>
-    </PanelSection>
+    </details>
   );
 }
+
+const SUMMARY =
+  "flex min-h-9 cursor-pointer list-none items-center justify-between gap-3 rounded-xs transition-colors hover:text-fg [&::-webkit-details-marker]:hidden";
 
 /**
  * Hur stor del av intäkten som saknar inköpspris, per titel med länk till priset.
  * Den enda signalmarkeringen i sektionen: order utan pris gör vinsten ofullständig.
  */
 export function UnpricedSummary({ unpriced }: { unpriced: UnpricedBlock }) {
-  if (unpriced.orders === 0) {
-    return (
-      <PanelSection label="Inköpspriser">
-        <p className="flex flex-wrap items-center gap-3 text-muted">
-          <StatusTag status="ok">Komplett</StatusTag>
-          <span>Alla order i perioden har inköpspris.</span>
-        </p>
-      </PanelSection>
-    );
-  }
+  if (unpriced.orders === 0) return null;
 
   const share = formatPercent(unpriced.shareBp / 10_000);
   return (
-    <PanelSection label="Utan inköpspris" meta={`${formatInt(unpriced.titles.length)} st`}>
-      <div className="flex flex-col gap-2">
-        <p className="flex items-baseline gap-2 text-xl font-medium md:text-2xl">
-          <span aria-hidden className="size-2 shrink-0 translate-y-[-0.2em] bg-signal" />
+    <details className="group border-t border-line pt-4">
+      <summary className={SUMMARY}>
+        <span className="label flex items-center gap-2 text-muted">
+          <span aria-hidden className="size-2 shrink-0 bg-signal" />
           <span className="sr-only">Kräver åtgärd: </span>
-          <span className="tnum text-fg">{share}</span>
-          <span className="text-base font-normal text-muted">av intäkten saknar inköpspris.</span>
-        </p>
+          Utan inköpspris · {share}
+        </span>
+        <span className="label tnum text-subtle">{formatInt(unpriced.titles.length)} st</span>
+      </summary>
+      <div className="fade-in mt-3 flex flex-col gap-2">
         <p className="text-sm text-muted">
           {kr(unpriced.revenueOre)} från {formatInt(unpriced.orders)}
-          {NBSP}order räknas inte in i vinsten förrän priset finns.
+          {NBSP}order räknas inte i vinsten.
         </p>
       </div>
       <ul className="flex flex-col">
@@ -90,6 +84,6 @@ export function UnpricedSummary({ unpriced }: { unpriced: UnpricedBlock }) {
           </li>
         ))}
       </ul>
-    </PanelSection>
+    </details>
   );
 }

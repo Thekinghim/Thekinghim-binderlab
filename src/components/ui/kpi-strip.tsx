@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 
 import { cn } from "@/lib/cn";
+import { CountUp } from "./count-up";
 import { Skeleton } from "./skeleton";
 import { KpiTrace } from "./kpi-trace";
 import {
@@ -185,7 +186,7 @@ export function KpiStrip({
   headingLevel = 3,
   comparison,
   loading,
-  motion = "fade",
+  motion = "count",
   className,
   ariaLabel,
 }: KpiStripProps) {
@@ -346,7 +347,9 @@ function KpiCell({
   /** Rapporterar steget cellen själv behöver, så att raden kan dela det. */
   onStep?: (id: string, step: number) => void;
 }) {
-  const shown = useKpiValue(item.value, motion);
+  // Heltal (öre, bp, antal) räknas upp från 0 när remsan visas; övriga från föregående värde.
+  const countUp = motion === "count" && Number.isInteger(item.value);
+  const shown = useKpiValue(item.value, countUp ? "none" : motion);
   const text = item.format(shown);
   const finalText = item.format(item.value);
   const ref = useValueFade<HTMLElement>(finalText, motion === "fade");
@@ -362,7 +365,7 @@ function KpiCell({
   return (
     <div
       className={cn(
-        "-mt-px -ml-px flex min-w-0 flex-col border-t border-l border-line py-4 pr-4 @4xl:pr-5",
+        "group/kpi -mt-px -ml-px flex min-w-0 flex-col border-t border-l border-line py-4 pr-4 transition-colors duration-300 hover:bg-hover/40 @4xl:pr-5",
         span,
       )}
     >
@@ -374,8 +377,14 @@ function KpiCell({
         </dd>
       ) : (
         <>
-          <dd ref={ref} className={cn("tnum mt-3 truncate font-medium", sizes[step])}>
-            {text}
+          <dd
+            ref={ref}
+            className={cn(
+              "tnum mt-3 truncate font-medium transition-transform duration-300 group-hover/kpi:-translate-y-0.5",
+              sizes[step],
+            )}
+          >
+            {countUp ? <CountUp value={item.value} format={item.format} /> : text}
           </dd>
           {item.delta ? (
             <dd className="mt-1">

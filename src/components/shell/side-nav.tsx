@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Suspense,
   use,
+  useCallback,
   useEffect,
   useId,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -20,6 +22,7 @@ import { Logo } from "./logo";
 import {
   activeRouteId,
   homeHref,
+  menuRoutesForRole,
   roleLabel,
   routesForRole,
   type Role,
@@ -149,7 +152,7 @@ export function NavRow({
   todoCount,
   onNavigate,
   dense = false,
-  numbered = true,
+  numbered = false,
 }: {
   route: ShellRoute;
   number: number;
@@ -161,17 +164,25 @@ export function NavRow({
   /** Visa löpnumret. Av i "Mer"-arket, där urvalet ger luckor i numreringen. */
   numbered?: boolean;
 }) {
+  const router = useRouter();
+  const href = `${route.href}${query}`;
   return (
     <li className="relative">
-      {active ? <span aria-hidden className="absolute inset-y-0 left-0 w-px bg-fg" /> : null}
+      {active ? (
+        <span aria-hidden className="fade-in absolute inset-y-0 left-0 w-px bg-fg" />
+      ) : null}
       <Link
-        href={`${route.href}${query}`}
+        href={href}
+        // Länken bär perioden i sin href: förhämta bara vid hover, inte varje gång perioden byts.
+        prefetch={false}
+        onMouseEnter={() => router.prefetch(href)}
+        onFocus={() => router.prefetch(href)}
         onClick={onNavigate}
         aria-current={active ? "page" : undefined}
         className={cn(
-          "flex items-center gap-3 px-4 text-base transition-colors focus-visible:-outline-offset-2",
+          "flex items-center gap-3 px-4 text-base transition-[color,padding] duration-200 focus-visible:-outline-offset-2",
           dense ? "h-8" : "h-11",
-          active ? "text-fg" : "text-muted hover:text-fg",
+          active ? "text-fg" : "text-muted hover:pl-5 hover:text-fg",
         )}
       >
         {numbered ? (
@@ -347,6 +358,13 @@ export function OrgSwitcher({
   );
 }
 
+/** Synkad inom 15 minuter: synkraden får en levande prick. */
+const LIVE_MS = 15 * 60_000;
+function isRecent(d: Date): boolean {
+  const age = Date.now() - d.getTime();
+  return age >= 0 && age < LIVE_MS;
+}
+
 function toDate(v: Date | string): Date | null {
   const d = v instanceof Date ? v : new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
@@ -367,7 +385,6 @@ export function SyncStatus({
   href?: string;
   className?: string;
 }) {
-  if (!syncedAt && syncState === "ok") return null;
   const d = syncedAt ? toDate(syncedAt) : null;
   const when = d
     ? formatDateTime(wallClockIn(d, timeZone), { now: wallClockIn(new Date(), timeZone) })
@@ -377,13 +394,18 @@ export function SyncStatus({
       ? `Synk misslyckades${when ? ` · senast ${when}` : ""}`
       : syncState === "stale"
         ? `Inaktuell · synkad ${when ?? "–"}`
-        : `Synkad ${when ?? "–"}`;
+        : when
+          ? `Synkad ${when}`
+          : "Ingen synk än";
   const problem = syncState !== "ok";
+  const live = !problem && d !== null && isRecent(d);
   const body = (
     <>
       <span className="inline-flex w-4 shrink-0 justify-center">
         {problem ? (
           <StatusGlyph status={syncState === "failed" ? "critical" : "warning"} size={6} />
+        ) : live ? (
+          <span aria-hidden className="live-dot inline-block size-1.5 rounded-full bg-fg" />
         ) : null}
       </span>
       <span className="min-w-0 flex-1">
@@ -480,6 +502,97 @@ export function UserMenu({
 }
 
 /* ------------------------------------------------------------------ */
+/* "Mer" i sidomenyn                                                   */
+/* ------------------------------------------------------------------ */
+
+const MORE_KEY = "bl:nav-more-open";
+const MORE_EVENT = "bl:nav-more";
+
+function readMoreOpen(): boolean {
+  try {
+    return window.localStorage.getItem(MORE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function subscribeMore(cb: () => void) {
+  window.addEventListener(MORE_EVENT, cb);
+  window.addEventListener("storage", cb);
+  return () => {
+    window.removeEventListener(MORE_EVENT, cb);
+    window.removeEventListener("storage", cb);
+  };
+}
+
+/** Om "Mer" är utfälld, sparat per webbläsare (localStorage; faller tillbaka på stängd). */
+function useMoreOpen(): [boolean, (open: boolean) => void] {
+  const open = useSyncExternalStore(subscribeMore, readMoreOpen, () => false);
+  const set = useCallback((next: boolean) => {
+    try {
+      window.localStorage.setItem(MORE_KEY, next ? "1" : "0");
+    } catch {
+      // Privat läge eller blockerad lagring: läget gäller bara tills sidan laddas om.
+    }
+    window.dispatchEvent(new Event(MORE_EVENT));
+  }, []);
+  return [open, set];
+}
+
+/** Hopfällbar grupp med de mindre använda sidorna. Alltid öppen när en av dem är aktiv. */
+function MoreGroup({
+  routes,
+  numbering,
+  activeId,
+  query,
+  todoCount,
+}: {
+  routes: ShellRoute[];
+  numbering: Map<RouteId, number>;
+  activeId: RouteId | null;
+  query: string;
+  todoCount?: TodoCountSource;
+}) {
+  const [stored, setStored] = useMoreOpen();
+  const listId = useId();
+  const holdsActive = routes.some((r) => r.id === activeId);
+  const open = stored || holdsActive;
+  return (
+    <div className="mt-3 border-t border-line pt-3">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={() => setStored(!open)}
+        className="group flex h-8 w-full items-center gap-3 px-4 text-left text-base text-muted transition-colors hover:text-fg focus-visible:-outline-offset-2"
+      >
+        <span className="flex-1">Mer</span>
+        <Icon
+          name="chevronDown"
+          size={12}
+          className={cn(
+            "shrink-0 text-subtle transition-transform duration-200 group-hover:text-fg",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+      {open ? (
+        <div id={listId} className="fade-in">
+          <NavList
+            routes={routes}
+            numbering={numbering}
+            activeId={activeId}
+            query={query}
+            todoCount={todoCount}
+            dense
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Sidomeny                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -489,10 +602,11 @@ export type SidebarProps = ShellNavProps & { className?: string };
 export function Sidebar({ className, ...props }: SidebarProps) {
   const pathname = usePathname();
   const role = props.role ?? "owner";
-  const routes = routesForRole(role);
+  const routes = menuRoutesForRole(role);
   const numbering = numberRoutes(routes);
   const activeId = activeRouteId(props.activeHref ?? pathname);
-  const main = routes.filter((r) => r.section === "main");
+  const main = routes.filter((r) => r.section === "main" && r.group !== "more");
+  const more = routes.filter((r) => r.section === "main" && r.group === "more");
   const system = routes.filter((r) => r.section === "system");
 
   return (
@@ -530,6 +644,15 @@ export function Sidebar({ className, ...props }: SidebarProps) {
                 todoCount={props.todoCount}
                 dense
               />
+              {more.length ? (
+                <MoreGroup
+                  routes={more}
+                  numbering={numbering}
+                  activeId={activeId}
+                  query={query}
+                  todoCount={props.todoCount}
+                />
+              ) : null}
             </nav>
             {system.length ? (
               <nav aria-label="System" className="shrink-0 border-t border-line py-2">

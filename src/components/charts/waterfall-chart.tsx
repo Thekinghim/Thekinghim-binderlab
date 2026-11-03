@@ -335,8 +335,8 @@ export function WaterfallChart({
                     width={Math.max(0, bw - sw)}
                     height={Math.max(0, h - sw)}
                     strokeWidth={sw}
-                    style={{ fill, stroke }}
-                    className="transition-[stroke] duration-fast"
+                    style={{ fill, stroke, ["--i" as string]: i * 4 }}
+                    className="grow-y transition-[stroke] duration-fast [transform-box:fill-box]"
                   />
                   {next && i !== lastIdx ? (
                     <line

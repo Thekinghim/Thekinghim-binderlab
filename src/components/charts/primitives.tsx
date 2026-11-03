@@ -252,7 +252,7 @@ export function Readout({
   return (
     <div
       aria-hidden
-      className="pointer-events-none absolute z-10 flex flex-col gap-1 rounded-sm border border-line-strong bg-raised px-2.5 py-2"
+      className="fade-in pointer-events-none absolute z-10 flex flex-col gap-1 rounded-sm border border-line-strong bg-raised px-2.5 py-2 transition-[left,top] duration-fast"
       style={{ left, top: y, width: w }}
     >
       <span className="label text-subtle">{label}</span>

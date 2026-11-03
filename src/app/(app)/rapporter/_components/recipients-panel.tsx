@@ -1,11 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Input, Select } from "@/components/ui/field";
+import { Input, Select, swedishValidity } from "@/components/ui/field";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
@@ -39,6 +38,7 @@ export function RecipientsPanel({
   const [pending, start] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; email?: string }>({});
   const [kind, setKind] = useState<RecipientRow["kind"]>("store");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -46,9 +46,21 @@ export function RecipientsPanel({
   const storeName = new Map(stores.map((s) => [s.id, s.name]));
   const delivered = new Map(expected.map((e) => [e.id, e.delivered]));
 
-  function add(e: React.FormEvent) {
+  function add(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+    const form = e.currentTarget;
+    const nameEl = form.elements.namedItem("name") as HTMLInputElement | null;
+    const emailEl = form.elements.namedItem("email") as HTMLInputElement | null;
+    const next = {
+      name: nameEl && !nameEl.checkValidity() ? swedishValidity(nameEl) : undefined,
+      email: emailEl && !emailEl.checkValidity() ? swedishValidity(emailEl) : undefined,
+    };
+    setFieldErrors(next);
+    if (next.name || next.email) {
+      (next.name ? nameEl : emailEl)?.focus();
+      return;
+    }
     start(async () => {
       const result = await createRecipient({
         name,
@@ -79,11 +91,7 @@ export function RecipientsPanel({
     <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
       <div className="min-w-0 lg:col-span-7">
         {recipients.length === 0 ? (
-          <StateMessage
-            kind="empty"
-            message="Inga mottagare är inlagda."
-            detail="Lägg till butikernas kontaktpersoner, bokhållaren och delägaren."
-          />
+          <StateMessage kind="empty" compact message="Inga mottagare ännu." />
         ) : (
           <ul className="flex flex-col divide-y divide-line border-y border-line">
             {recipients.map((r) => (
@@ -125,19 +133,10 @@ export function RecipientsPanel({
             ))}
           </ul>
         )}
-        <p className="mt-4 text-sm text-muted">
-          Delägaren kan också läsa panelen och rapporterna själv med läsroll.{" "}
-          <Link
-            href="/installningar/anvandare"
-            className="rounded-xs text-fg underline underline-offset-4"
-          >
-            Bjud in under Inställningar → Användare
-          </Link>
-        </p>
       </div>
 
       {canEdit ? (
-        <form onSubmit={add} className="flex min-w-0 flex-col gap-4 lg:col-span-5">
+        <form onSubmit={add} noValidate className="flex min-w-0 flex-col gap-4 lg:col-span-5">
           <h3 className="label text-muted">Ny mottagare</h3>
           <Select
             label="Typ"
@@ -159,6 +158,8 @@ export function RecipientsPanel({
           ) : null}
           <Input
             label="Namn"
+            name="name"
+            error={fieldErrors.name}
             value={name}
             onChange={(e) => setName(e.target.value)}
             autoComplete="name"
@@ -168,6 +169,8 @@ export function RecipientsPanel({
           <Input
             label="E-post"
             type="email"
+            name="email"
+            error={fieldErrors.email}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             autoComplete="email"

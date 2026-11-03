@@ -75,7 +75,7 @@ afterAll(async () => {
 
 describe("rapportutskick", () => {
   it("lägger till butikens mottagare", async () => {
-    await page.goto("/rapporter");
+    await page.goto("/rapporter?vy=mottagare");
     const form = page
       .locator("form")
       .filter({ has: page.getByRole("button", { name: "Lägg till", exact: true }) });
@@ -136,7 +136,7 @@ describe("rapportutskick", () => {
   });
 
   it("mottagaren pausas efteråt", async () => {
-    await page.goto("/rapporter");
+    await page.goto("/rapporter?vy=mottagare");
     const row = page.getByRole("listitem").filter({ hasText: recipient.email });
     await row.getByRole("button", { name: "Pausa", exact: true }).click();
     await row.getByText("Pausad", { exact: true }).waitFor();

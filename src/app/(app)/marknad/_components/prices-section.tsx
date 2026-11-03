@@ -211,7 +211,6 @@ export function PricesSection({
     >
       <SectionHeader
         id="priser-rubrik"
-        index={2}
         eyebrow="Marknadspriser"
         title={title}
         aside={aside}

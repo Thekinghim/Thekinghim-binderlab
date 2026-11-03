@@ -65,7 +65,7 @@ export function ContractArchive({
         onClose={() => setOpen(false)}
         eyebrow="Avtal"
         title="Arkivera avtalet"
-        description={`${label}. Avtalet ger inga fler påminnelser och räknas inte i översikten. Det raderas inte och kan återställas.`}
+        description={`${label}. Inga fler påminnelser. Kan återställas.`}
       >
         <DialogButtons>
           <Button type="button" onClick={() => setOpen(false)}>

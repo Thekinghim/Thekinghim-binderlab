@@ -272,7 +272,7 @@ export function StateMessage({
     // En radmall för alla lägen: prefix i mono på första raden, meningen i
     // sans under, och åtgärderna högerställda på meningens baslinje.
     return (
-      <div role={spec.role} className={cn("flex flex-col gap-2 px-3 py-2.5", className)}>
+      <div role={spec.role} className={cn("fade-in flex flex-col gap-2 px-3 py-2.5", className)}>
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-x-3 gap-y-1">
           <Prefix kind={kind} code={code} />
           <p className="col-start-1 min-w-0 text-sm text-fg">
@@ -297,7 +297,7 @@ export function StateMessage({
   return (
     <div
       role={spec.role}
-      className={cn("flex flex-col items-start px-5 pt-14 pb-6 md:px-6 md:pt-20", className)}
+      className={cn("fade-in flex flex-col items-start px-5 pt-8 pb-6 md:px-6 md:pt-10", className)}
     >
       <Prefix kind={kind} code={code} />
       <p className="mt-3 max-w-xl text-md text-pretty text-fg">{message}</p>

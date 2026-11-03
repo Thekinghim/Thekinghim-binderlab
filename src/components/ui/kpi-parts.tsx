@@ -7,9 +7,9 @@ import { motion } from "@/lib/tokens";
 
 /**
  * Hur ett nytt värde visas vid periodbyte.
- * - "fade": värdet byts direkt och tonar 0,4 → 1 på 150 ms (standard).
+ * - "fade": värdet byts direkt och tonar 0,4 → 1 på 150 ms.
  *   Siffran är aldrig fel, inte ens under övergången.
- * - "count": räknar från föregående värde (420 ms).
+ * - "count": räknar upp (standard i KpiStrip och KpiCard; heltal från 0 när de visas).
  * - "none": byts direkt.
  * Ingen rörelse alls vid prefers-reduced-motion.
  */

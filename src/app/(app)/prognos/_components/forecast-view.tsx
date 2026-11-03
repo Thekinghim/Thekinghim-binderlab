@@ -156,8 +156,7 @@ export function ForecastView({ model }: { model: ForecastModel }) {
     return (
       <StateMessage
         kind="empty"
-        message="Ingen titel har sålt i en automat i drift de senaste 8 veckorna, så det finns inget att räkna fram."
-        detail="Prognosen börjar när order finns i Datakällor."
+        message="Ingen försäljning de senaste 8 veckorna."
         action={{ label: "Öppna Datakällor", href: "/datakallor" }}
       />
     );

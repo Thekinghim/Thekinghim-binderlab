@@ -5,7 +5,20 @@ import { useMemo, type ReactNode } from "react";
 
 import { wallClockIn } from "@/components/shell/period-state";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { StatusTag } from "@/components/ui/status-tag";
+import { StatusGlyph, StatusTag, type Status } from "@/components/ui/status-tag";
+
+/** Status med pulserande ring när automaten är i drift. */
+function MachineStatus({ status, label }: { status: Status; label: string }) {
+  if (status !== "ok") return <StatusTag status={status}>{label}</StatusTag>;
+  return (
+    <span className="label inline-flex h-6 items-center gap-1.5 rounded-xs border border-transparent px-1.5 whitespace-nowrap text-muted">
+      <span className="live-dot inline-flex w-2 justify-center rounded-full text-subtle">
+        <StatusGlyph status="ok" size={6} />
+      </span>
+      {label}
+    </span>
+  );
+}
 import {
   formatDelta,
   formatInt,
@@ -78,7 +91,7 @@ function columns(
           </Link>
           {/* Under md står statusen här, under namnet (design.md 5.1). */}
           <span className="md:hidden">
-            <StatusTag status={r.status.status}>{r.status.label}</StatusTag>
+            <MachineStatus status={r.status.status} label={r.status.label} />
           </span>
         </span>
       ),
@@ -92,7 +105,7 @@ function columns(
       hideOnMobile: true,
       render: (r) => (
         <span className="flex flex-col items-start gap-1">
-          <StatusTag status={r.status.status}>{r.status.label}</StatusTag>
+          <MachineStatus status={r.status.status} label={r.status.label} />
           {r.status.flagged ? (
             <span className="sr-only">Kräver åtgärd: {r.status.reason}</span>
           ) : null}

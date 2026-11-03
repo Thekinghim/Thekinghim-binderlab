@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 
 import { Panel } from "@/components/ui/frame";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -28,7 +28,7 @@ function replaceParam(name: string, value: string) {
 // ---------------------------------------------------------------------------
 
 export function TableSection({
-  index,
+  tabs,
   initialView,
   views,
   titles,
@@ -38,7 +38,7 @@ export function TableSection({
   fileStem,
   selectedTitle,
 }: {
-  index: number;
+  tabs?: ReactNode;
   initialView: ViewKey;
   views: Record<ViewKey, ProfitLine[]>;
   titles: Record<ViewKey, SectionTitle>;
@@ -80,18 +80,20 @@ export function TableSection({
     >
       <SectionHeader
         id="per-post"
-        index={index}
         eyebrow={`Lönsamhet per ${VIEW_NOUN[view]} · ${days}${NBSP}d`}
         title={heading.title}
         aside={heading.aside}
         actions={
-          <ExportButton
-            view={view}
-            rows={rows}
-            totals={totals}
-            sort={sort}
-            fileName={`${fileStem}-per-${VIEW_PARAM[view]}`}
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            {tabs}
+            <ExportButton
+              view={view}
+              rows={rows}
+              totals={totals}
+              sort={sort}
+              fileName={`${fileStem}-per-${VIEW_PARAM[view]}`}
+            />
+          </div>
         }
       />
       {view === "title" && selectedTitle ? (
@@ -168,12 +170,12 @@ const UNIT: Record<TrendKey, { noun: string; one: string; plural: string }> = {
 };
 
 export function TrendSection({
-  index,
+  tabs,
   initialTrend,
   trend,
   days,
 }: {
-  index: number;
+  tabs?: ReactNode;
   initialTrend: TrendKey;
   trend: Record<TrendKey, TrendSeries>;
   days: number;
@@ -196,7 +198,7 @@ export function TrendSection({
   }
   if (series.unallocatedProfitOre !== 0) {
     notes.push(
-      `Ej fördelad hyra ${formatSek(Math.abs(series.unallocatedProfitOre) / 100)} ingår i totalen men inte i någon ${unit.noun}.`,
+      `* Ej fördelad hyra ${formatSek(Math.abs(series.unallocatedProfitOre) / 100)} ingår bara i totalen.`,
     );
   }
 
@@ -204,18 +206,20 @@ export function TrendSection({
     <section aria-labelledby="utveckling" className="flex scroll-mt-28 flex-col gap-10 md:gap-12">
       <SectionHeader
         id="utveckling"
-        index={index}
         eyebrow={`Utveckling · ${days}${NBSP}d`}
         title={series.heading.title}
         aside={series.heading.aside}
         actions={
-          <Segmented
-            options={TREND_OPTIONS}
-            value={key}
-            onChange={change}
-            label="Upplösning"
-            size="sm"
-          />
+          <div className="flex flex-wrap items-center gap-3">
+            {tabs}
+            <Segmented
+              options={TREND_OPTIONS}
+              value={key}
+              onChange={change}
+              label="Upplösning"
+              size="sm"
+            />
+          </div>
         }
       />
       <Panel>
@@ -231,5 +235,46 @@ export function TrendSection({
         {notes.length > 0 ? <p className="mt-4 text-xs text-subtle">{notes.join(" ")}</p> : null}
       </Panel>
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tabell · Utveckling i en sektion
+// ---------------------------------------------------------------------------
+
+type AnalysisTab = "table" | "trend";
+
+const ANALYSIS_OPTIONS: ReadonlyArray<{ value: AnalysisTab; label: string }> = [
+  { value: "table", label: "Tabell" },
+  { value: "trend", label: "Utveckling" },
+];
+
+/** Tabellen per titel/automat/butik och utvecklingen, bakom en växlare (?visa=). */
+export function AnalysisSection({
+  table,
+  trend,
+  initialTab,
+}: {
+  table: Omit<ComponentProps<typeof TableSection>, "tabs">;
+  trend: Omit<ComponentProps<typeof TrendSection>, "tabs">;
+  initialTab: AnalysisTab;
+}) {
+  // Kom man in med ?titel= gäller tabellen.
+  const [tab, setTab] = useState<AnalysisTab>(table.selectedTitle ? "table" : initialTab);
+  const change = (t: AnalysisTab) => {
+    setTab(t);
+    replaceParam("visa", t === "trend" ? "utveckling" : "tabell");
+  };
+  const tabs = (
+    <Segmented options={ANALYSIS_OPTIONS} value={tab} onChange={change} label="Visa" size="sm" />
+  );
+  return (
+    <div key={tab} className="fade-in">
+      {tab === "table" ? (
+        <TableSection {...table} tabs={tabs} />
+      ) : (
+        <TrendSection {...trend} tabs={tabs} />
+      )}
+    </div>
   );
 }

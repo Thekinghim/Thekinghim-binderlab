@@ -26,6 +26,7 @@ import { FixedCosts, type FixedCostRow } from "./_components/fixed-costs";
 import { PayoutUpload } from "./_components/payout-upload";
 import { ReconciliationList } from "./_components/reconciliation";
 import { AccountTable, CashflowTable, VerificationTable } from "./_components/tables";
+import { pickView, ViewTabs } from "../rapporter/_components/view-tabs";
 import { economyHeadline } from "./_lib/headline";
 import {
   isoToDate,
@@ -49,7 +50,7 @@ const PROVIDER_LABEL: Record<"local" | "fortnox" | "visma_enet" | "bokio", strin
   bokio: "Bokio",
 };
 
-const SECTION = "flex scroll-mt-28 flex-col gap-10 border-t border-line py-12 md:gap-12 md:py-16";
+const SECTION = "rise flex scroll-mt-28 flex-col gap-8 pb-12 md:gap-10 md:pb-16";
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 /**
@@ -83,10 +84,22 @@ export default async function EkonomiPage({
 
   // Bokföringen (verifikationer för räkenskapsårets månader) är den tyngsta delen och
   // behövs inte för rubriken: den startas här och strömmar in i sin sektion (Suspense).
-  const books = loadBookkeepingFor(viewer, month, ctx.today);
+  const VIEWS = ["avstamning", "kassaflode", "fasta", "bokforing"] as const;
+  const view = pickView(sp.vy, VIEWS);
+  const hrefFor = (v: (typeof VIEWS)[number]) => {
+    const q = new URLSearchParams();
+    for (const [k, val] of Object.entries(sp)) {
+      const x = Array.isArray(val) ? val[0] : val;
+      if (x && k !== "vy") q.set(k, x);
+    }
+    if (v !== "avstamning") q.set("vy", v);
+    const qs = q.toString();
+    return qs ? `/ekonomi?${qs}` : "/ekonomi";
+  };
+  const books = view === "bokforing" ? loadBookkeepingFor(viewer, month, ctx.today) : null;
   // Avvisas löftet innan sektionen väntar på det ska det inte räknas som ohanterat;
   // sektionen får felet ändå (sidans error.tsx).
-  books.catch(() => undefined);
+  books?.catch(() => undefined);
   const [rec, cash, fixed] = await Promise.all([
     loadReconciliationFor(viewer, p.period),
     loadCashflowFor(viewer, ctx.today, p.dataStart),
@@ -152,15 +165,12 @@ export default async function EkonomiPage({
   const rep = cash.replenishment;
   const added = rep ? rep.months.reduce((sum, m) => sum + m.addedOre, 0) : 0;
   const replenishmentNote = rep
-    ? `Inköp framåt: utöver lagda inköpsorder fylls lagret på i takt med försäljningen. Inköpsvärdet för sålda pack ${periodShort(
-        rep.window,
-        ctx.today,
-      )} var ${sek(rep.windowCostOre)} (${plural(rep.windowDays, "dag", "dagar")}); samma takt per dag ger ${sek(added)} i påfyllnad till och med ${monthText(rep.months[rep.months.length - 1]?.month ?? thisMonth)}, utöver inköpsorder som redan är planerade samma månad.${
+    ? `Inköp framåt: samma takt som ${periodShort(rep.window, ctx.today)} ger ${sek(added)} i påfyllnad utöver lagda inköpsorder.${
         rep.coverageBp !== null && rep.coverageBp < 10_000
-          ? ` Order utan inköpspris saknar inköpsvärde (${Math.round(rep.coverageBp / 100)} % av orderna har pris).`
+          ? ` ${Math.round(rep.coverageBp / 100)} % av orderna har inköpspris.`
           : ""
       }`
-    : "Inköp framåt: ingen försäljning att bygga påfyllnaden på, så bara lagda inköpsorder räknas.";
+    : null;
 
   // Fasta kostnader
   const accrued = new Map(
@@ -185,7 +195,10 @@ export default async function EkonomiPage({
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col px-4 pt-8 md:px-8 md:pt-12">
-      <div className="flex flex-col gap-10 pb-12 md:gap-12 md:pb-16">
+      <div
+        className="rise flex flex-col gap-6 pb-10 md:pb-12"
+        style={{ "--i": 0 } as React.CSSProperties}
+      >
         <SectionHeader
           as="h1"
           size="xl"
@@ -194,8 +207,6 @@ export default async function EkonomiPage({
           aside={headline.aside}
           meta={[
             { label: "Period", value: when },
-            { label: "Utbetalningar", value: formatInt(rec.payouts.length) },
-            { label: "Att utreda", value: formatInt(result?.totals.openDeviations ?? 0) },
             {
               label: "Bokföring",
               value: bookkeepingStatus.configured ? bookkeepingStatus.label : "Ej kopplad",
@@ -203,244 +214,258 @@ export default async function EkonomiPage({
           ]}
         />
         {scoped ? (
-          <StateMessage
-            compact
-            kind="no-results"
-            code="Hela organisationen"
-            message="Filtret på butik och automat gäller inte Ekonomi."
-            detail="Utbetalningar, verifikationer och kassaflöde avser alltid hela organisationen."
-          />
+          <p className="meta text-subtle">Hela organisationen · filtret gäller inte här</p>
         ) : null}
-        {result ? (
-          <EconomyKpis items={kpis} label={`Avstämning · ${when}`} headingLevel={2} />
-        ) : null}
+        <ViewTabs
+          label="Vy"
+          value={view}
+          hrefFor={hrefFor}
+          tabs={[
+            { value: "avstamning", label: "Avstämning" },
+            { value: "kassaflode", label: "Kassaflöde" },
+            { value: "fasta", label: "Fasta kostnader" },
+            { value: "bokforing", label: "Bokföring" },
+          ]}
+        />
       </div>
 
-      {/* 01 Avstämning */}
-      <section aria-labelledby="avstamning" className={SECTION}>
-        <SectionHeader
-          id="avstamning"
-          index={1}
-          eyebrow={`Avstämning · ${when}`}
-          title="Utbetalningar mot försäljningen."
-          aside={
-            result
-              ? reconciliationFact(result)
-              : `${sentence(`Ingen utbetalning med period i ${when}`)} Väntad utbetalning = försäljning − avgifter − återbetalningar.`
-          }
-        />
-        <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
-          <div className="min-w-0 lg:col-span-8">
-            {result ? (
-              <ReconciliationList
-                result={result}
-                today={ctx.today}
-                canEdit={canEdit}
-                period={p.period}
-                payoutIds={payoutIds}
-              />
-            ) : (
-              <StateMessage
-                kind="empty"
-                message={sentence(`Ingen utbetalning från Awish med period i ${when}`)}
-                detail={
-                  rec.imports[0]
-                    ? `Senaste uppladdningen: ${rec.imports[0].fileName}, ${formatDateTime(
-                        new Date(rec.imports[0].createdAt),
-                      )}.`
-                    : "Ingen utbetalningsfil är uppladdad ännu."
-                }
-                action={
-                  canEdit
-                    ? { label: "Ladda upp utbetalningar", href: "#ladda-upp-utbetalningar" }
-                    : undefined
-                }
-              />
-            )}
-            {rec.ordersWithoutTitle > 0 ? (
-              <StateMessage
-                compact
-                kind="no-results"
-                code={`${formatInt(rec.ordersWithoutTitle)} order`}
-                message="Order utan titel ingår inte i avstämningen."
-              />
-            ) : null}
-          </div>
-          <div className="flex min-w-0 flex-col gap-8 lg:col-span-4">
-            {canEdit ? (
-              <Panel>
-                <PanelSection label="Ladda upp utbetalningar">
-                  <div id="ladda-upp-utbetalningar" className="scroll-mt-28">
-                    <PayoutUpload
-                      columns={{
-                        payouts: PAYOUT_FILE_COLUMNS.payouts.join(", "),
-                        lines: PAYOUT_FILE_COLUMNS.lines.join(", "),
-                      }}
-                    />
-                  </div>
-                  <p className="mt-3 text-xs text-subtle">{rec.source.detail}</p>
-                </PanelSection>
-              </Panel>
-            ) : null}
-            <Panel>
-              <PanelSection label="Logg" meta={formatInt(rec.reviews.length)}>
-                {rec.reviews.length === 0 ? (
-                  <p className="text-sm text-muted">Ingen avvikelse har utretts ännu.</p>
-                ) : (
-                  <ol className="flex flex-col gap-3">
-                    {rec.reviews.slice(0, 12).map((r) => (
-                      <li key={r.id} className="flex flex-col gap-0.5 text-sm">
-                        <span className="meta text-subtle">
-                          {formatDateTime(new Date(r.createdAt))} · {r.actor ?? "System"}
-                        </span>
-                        <span className="text-fg">
-                          {r.action === "investigated" ? "Utredd" : "Öppnad igen"}:{" "}
-                          <span className="text-muted">
-                            {deviationTitle.get(r.deviationKey) ??
-                              deviationFallback(r.deviationKey)}
-                          </span>
-                        </span>
-                        {r.note ? <span className="text-muted">{r.note}</span> : null}
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </PanelSection>
-              <PanelSection label="Uppladdade filer" meta={formatInt(rec.imports.length)}>
-                {rec.imports.length === 0 ? (
-                  <p className="text-sm text-muted">Ingen fil ännu.</p>
-                ) : (
-                  <ol className="flex flex-col gap-3">
-                    {rec.imports.slice(0, 6).map((i) => (
-                      <li key={i.id} className="flex flex-col gap-0.5 text-sm">
-                        <span className="truncate text-fg">{i.fileName}</span>
-                        <span className="meta text-subtle">
-                          {formatDateTime(new Date(i.createdAt))} · {formatInt(i.rowsNew)} nya ·{" "}
-                          {i.rowsDuplicate === 1
-                            ? "1 dubblett"
-                            : `${formatInt(i.rowsDuplicate)} dubbletter`}{" "}
-                          · {formatInt(i.rowsConflict + i.rowsError)} fel
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </PanelSection>
-            </Panel>
-          </div>
-        </div>
-      </section>
-
-      {/* 02 Bokföring */}
-      <Suspense fallback={<BookkeepingSkeleton month={month} />}>
-        <BookkeepingSection books={books} month={month} months={months} canEdit={canEdit} />
-      </Suspense>
-
-      {/* 03 Kassaflöde */}
-      <section aria-labelledby="kassaflode" className={SECTION}>
-        <SectionHeader
-          id="kassaflode"
-          index={3}
-          eyebrow="Kassaflöde · per månad"
-          title={
-            cash.result
-              ? sentence(
-                  `Netto ${signedSek(cash.result.totals.total.netOre)} för ${periodShort(cash.result.range, ctx.today)}`,
-                )
-              : "Kassaflöde per månad."
-          }
-          aside={
-            cash.result
-              ? cash.result.totals.forecast.netOre !== 0
-                ? `Varav prognos efter i dag: ${signedSek(cash.result.totals.forecast.netOre)}.`
-                : `In ${sek(cash.result.totals.total.inOre)}, ut ${sek(cash.result.totals.total.outOre)}.`
-              : (cash.error ?? undefined)
-          }
-        />
-        {cash.result ? (
+      {view === "avstamning" ? (
+        <section
+          aria-labelledby="avstamning"
+          className={SECTION}
+          style={{ "--i": 1 } as React.CSSProperties}
+        >
+          {result ? (
+            <EconomyKpis items={kpis} label={`Avstämning · ${when}`} headingLevel={2} />
+          ) : null}
+          <SectionHeader
+            id="avstamning"
+            size="md"
+            title="Utbetalningar mot försäljningen."
+            aside={result ? reconciliationFact(result) : undefined}
+          />
           <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
             <div className="min-w-0 lg:col-span-8">
-              <CashflowTable rows={cashRows} />
+              {result ? (
+                <ReconciliationList
+                  result={result}
+                  today={ctx.today}
+                  canEdit={canEdit}
+                  period={p.period}
+                  payoutIds={payoutIds}
+                />
+              ) : (
+                <StateMessage
+                  kind="empty"
+                  message={sentence(`Ingen utbetalning med period i ${when}`)}
+                  action={
+                    canEdit
+                      ? { label: "Ladda upp utbetalningar", href: "#ladda-upp-utbetalningar" }
+                      : undefined
+                  }
+                />
+              )}
+              {rec.ordersWithoutTitle > 0 ? (
+                <StateMessage
+                  compact
+                  kind="no-results"
+                  code={`${formatInt(rec.ordersWithoutTitle)} order`}
+                  message="Order utan titel ingår inte i avstämningen."
+                />
+              ) : null}
             </div>
-            <Panel className="lg:col-span-4">
-              <PanelSection label="Så räknas prognosen">
-                <ul className="flex list-none flex-col gap-2 text-sm text-muted">
+            <div className="flex min-w-0 flex-col gap-8 lg:col-span-4">
+              {canEdit ? (
+                <Panel>
+                  <PanelSection label="Ladda upp utbetalningar">
+                    <div id="ladda-upp-utbetalningar" className="scroll-mt-28">
+                      <PayoutUpload
+                        columns={{
+                          payouts: PAYOUT_FILE_COLUMNS.payouts.join(", "),
+                          lines: PAYOUT_FILE_COLUMNS.lines.join(", "),
+                        }}
+                      />
+                    </div>
+                  </PanelSection>
+                </Panel>
+              ) : null}
+              <details className="group rounded-md border border-line bg-surface">
+                <summary className="label flex h-10 cursor-pointer list-none items-center justify-between px-4 text-muted hover:text-fg">
+                  <span>Logg och filer</span>
+                  <span className="tnum text-subtle">
+                    {formatInt(rec.reviews.length)} · {formatInt(rec.imports.length)}
+                  </span>
+                </summary>
+                <Panel className="border-0 border-t">
+                  <PanelSection label="Logg" meta={formatInt(rec.reviews.length)}>
+                    {rec.reviews.length === 0 ? (
+                      <p className="text-sm text-muted">Inget utrett ännu.</p>
+                    ) : (
+                      <ol className="flex flex-col gap-3">
+                        {rec.reviews.slice(0, 12).map((r) => (
+                          <li key={r.id} className="flex flex-col gap-0.5 text-sm">
+                            <span className="meta text-subtle">
+                              {formatDateTime(new Date(r.createdAt))} · {r.actor ?? "System"}
+                            </span>
+                            <span className="text-fg">
+                              {r.action === "investigated" ? "Utredd" : "Öppnad igen"}:{" "}
+                              <span className="text-muted">
+                                {deviationTitle.get(r.deviationKey) ??
+                                  deviationFallback(r.deviationKey)}
+                              </span>
+                            </span>
+                            {r.note ? <span className="text-muted">{r.note}</span> : null}
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </PanelSection>
+                  <PanelSection label="Uppladdade filer" meta={formatInt(rec.imports.length)}>
+                    {rec.imports.length === 0 ? (
+                      <p className="text-sm text-muted">Ingen fil ännu.</p>
+                    ) : (
+                      <ol className="flex flex-col gap-3">
+                        {rec.imports.slice(0, 6).map((i) => (
+                          <li key={i.id} className="flex flex-col gap-0.5 text-sm">
+                            <span className="truncate text-fg">{i.fileName}</span>
+                            <span className="meta text-subtle">
+                              {formatDateTime(new Date(i.createdAt))} · {formatInt(i.rowsNew)} nya ·{" "}
+                              {i.rowsDuplicate === 1
+                                ? "1 dubblett"
+                                : `${formatInt(i.rowsDuplicate)} dubbletter`}{" "}
+                              · {formatInt(i.rowsConflict + i.rowsError)} fel
+                            </span>
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </PanelSection>
+                </Panel>
+              </details>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {books ? (
+        <Suspense fallback={<BookkeepingSkeleton month={month} />}>
+          <BookkeepingSection books={books} month={month} months={months} canEdit={canEdit} />
+        </Suspense>
+      ) : null}
+
+      {view === "kassaflode" ? (
+        <section
+          aria-labelledby="kassaflode"
+          className={SECTION}
+          style={{ "--i": 1 } as React.CSSProperties}
+        >
+          <SectionHeader
+            id="kassaflode"
+            size="md"
+            title={
+              cash.result
+                ? sentence(
+                    `Netto ${signedSek(cash.result.totals.total.netOre)} för ${periodShort(cash.result.range, ctx.today)}`,
+                  )
+                : "Kassaflöde per månad."
+            }
+            aside={
+              cash.result
+                ? cash.result.totals.forecast.netOre !== 0
+                  ? `Varav prognos efter i dag: ${signedSek(cash.result.totals.forecast.netOre)}.`
+                  : `In ${sek(cash.result.totals.total.inOre)}, ut ${sek(cash.result.totals.total.outOre)}.`
+                : (cash.error ?? undefined)
+            }
+          />
+          {cash.result ? (
+            <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
+              <div className="min-w-0 lg:col-span-8">
+                <CashflowTable rows={cashRows} />
+              </div>
+              <details className="rounded-md border border-line bg-surface p-4 lg:col-span-4 lg:self-start">
+                <summary className="label cursor-pointer text-muted hover:text-fg">
+                  Så räknas prognosen
+                </summary>
+                <ul className="mt-3 flex list-none flex-col gap-2 text-sm text-muted">
                   <li>{cash.payoutCycleNote}</li>
                   {replenishmentNote ? <li>{replenishmentNote}</li> : null}
                   {cash.result.assumptions.map((a) => (
                     <li key={a}>{a}</li>
                   ))}
                 </ul>
-              </PanelSection>
-            </Panel>
-          </div>
-        ) : (
-          <StateMessage
-            kind="error"
-            message={cash.error ?? "Kassaflödet kunde inte räknas fram."}
-          />
-        )}
-      </section>
+              </details>
+            </div>
+          ) : (
+            <StateMessage
+              kind="error"
+              message={cash.error ?? "Kassaflödet kunde inte räknas fram."}
+            />
+          )}
+        </section>
+      ) : null}
 
-      {/* 04 Fasta kostnader */}
-      <section aria-labelledby="fasta-kostnader" className={SECTION}>
-        <SectionHeader
-          id="fasta-kostnader"
-          index={4}
-          eyebrow={`Fasta kostnader · ${when}`}
-          title={
-            at && at.fixedCostOre > 0
-              ? `Vinst ${sek(at.profitAfterFixedOre)} efter fasta kostnader på ${sek(at.fixedCostOre)}.`
-              : at
-                ? `Vinst ${sek(at.profitOre)}, inga fasta kostnader i perioden.`
-                : "Fasta kostnader."
-          }
-          aside={
-            at && at.fixedCostOre > 0
-              ? allocationFact(fixed.allocation!, machineCode)
-              : (fixed.error ??
-                "Försäkring, programvara och transport dras från vinsten de dagar de gäller.")
-          }
-        />
-        {at && at.fixedCostOre > 0 ? (
-          <EconomyKpis
-            label={`Lönsamhet · ${when}`}
-            items={[
-              {
-                id: "after",
-                label: "Vinst efter fasta",
-                value: at.profitAfterFixedOre,
-                unit: "ore",
-                primary: true,
-              },
-              { id: "before", label: "Vinst före fasta", value: at.profitOre, unit: "ore" },
-              { id: "fixed", label: "Fasta kostnader", value: at.fixedCostOre, unit: "ore" },
-              {
-                id: "margin",
-                label: "Marginal efter fasta",
-                value: at.marginAfterFixedBp,
-                unit: "bp",
-              },
-            ]}
+      {view === "fasta" ? (
+        <section
+          aria-labelledby="fasta-kostnader"
+          className={SECTION}
+          style={{ "--i": 1 } as React.CSSProperties}
+        >
+          <SectionHeader
+            id="fasta-kostnader"
+            size="md"
+            title={
+              at && at.fixedCostOre > 0
+                ? `Vinst ${sek(at.profitAfterFixedOre)} efter fasta kostnader på ${sek(at.fixedCostOre)}.`
+                : at
+                  ? `Vinst ${sek(at.profitOre)}, inga fasta kostnader i perioden.`
+                  : "Fasta kostnader."
+            }
+            aside={
+              at && at.fixedCostOre > 0
+                ? allocationFact(fixed.allocation!, machineCode)
+                : (fixed.error ?? undefined)
+            }
           />
-        ) : null}
-        <FixedCosts
-          rows={fixedRows}
-          machines={fixed.machines
-            .filter((m) => !m.archived)
-            .map((m) => ({ id: m.id, code: m.code, name: m.name }))}
-          canEdit={canEdit}
-          today={ctx.today}
-          periodLabel={when}
-        />
-        {fixedRows.length === 0 ? (
-          <StateMessage
-            kind="empty"
-            message="Inga fasta kostnader är registrerade."
-            detail="Försäkring, programvara och transport dras från vinsten per dag de gäller."
+          {at && at.fixedCostOre > 0 ? (
+            <EconomyKpis
+              label={`Lönsamhet · ${when}`}
+              items={[
+                {
+                  id: "after",
+                  label: "Vinst efter fasta",
+                  value: at.profitAfterFixedOre,
+                  unit: "ore",
+                  primary: true,
+                },
+                { id: "before", label: "Vinst före fasta", value: at.profitOre, unit: "ore" },
+                { id: "fixed", label: "Fasta kostnader", value: at.fixedCostOre, unit: "ore" },
+                {
+                  id: "margin",
+                  label: "Marginal efter fasta",
+                  value: at.marginAfterFixedBp,
+                  unit: "bp",
+                },
+              ]}
+            />
+          ) : null}
+          <FixedCosts
+            rows={fixedRows}
+            machines={fixed.machines
+              .filter((m) => !m.archived)
+              .map((m) => ({ id: m.id, code: m.code, name: m.name }))}
+            canEdit={canEdit}
+            today={ctx.today}
+            periodLabel={when}
           />
-        ) : null}
-      </section>
+          {fixedRows.length === 0 ? (
+            <StateMessage
+              kind="empty"
+              compact
+              message="Inga fasta kostnader. Dras från vinsten per dag."
+            />
+          ) : null}
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -490,18 +515,22 @@ async function BookkeepingSection({
   const lastNo = books.verifications[books.verifications.length - 1]?.number;
 
   return (
-    <section id="bokforing" aria-labelledby="bokforing-rubrik" className={SECTION}>
+    <section
+      id="bokforing"
+      aria-labelledby="bokforing-rubrik"
+      className={SECTION}
+      style={{ "--i": 1 } as React.CSSProperties}
+    >
       <SectionHeader
         id="bokforing-rubrik"
-        index={2}
-        eyebrow={`Bokföring · ${monthText(month)}`}
+        size="md"
         title={`Verifikationer för ${monthText(month)}.`}
         aside={
           books.error
             ? books.error
             : books.verifications.length === 0
-              ? "Ingen försäljning, utbetalning, butiksersättning eller inköp att bokföra."
-              : `${plural(books.verifications.length, "verifikation", "verifikationer")} (BL ${firstNo}–${lastNo}, numrerade i följd över räkenskapsåret), debet ${kr(
+              ? "Inget att bokföra."
+              : `${plural(books.verifications.length, "verifikation", "verifikationer")} (BL ${firstNo}–${lastNo}), debet ${kr(
                   accountTotals.debitOre,
                 )} = kredit ${kr(accountTotals.creditOre)}.`
         }
@@ -529,7 +558,7 @@ async function BookkeepingSection({
           message={sentence(
             `${monthText(month)} pågår, så verifikationerna är ett preliminärt förslag`,
           )}
-          detail="Butiksersättning och inköpsvärde bokförs på månadens sista dag. SIE-filen och leveransen till bokföringsprogrammet öppnas när månaden är slut."
+          detail="SIE-filen öppnas när månaden är slut."
         />
       ) : null}
       {books.delivery ? (
@@ -542,8 +571,8 @@ async function BookkeepingSection({
           )}${books.delivery.actor ? ` av ${books.delivery.actor}` : ""}.`}
           detail={
             books.changedSinceDelivery
-              ? "Verifikationerna har ändrats sedan de skickades (t.ex. sent importerade order eller utbetalningar). Bokför skillnaden för hand i bokföringsprogrammet; månaden skickas inte två gånger."
-              : "Månaden skickas inte igen. Numren ligger fast och nästa månad fortsätter efter dem."
+              ? "Ändrad sedan den skickades. Bokför skillnaden för hand."
+              : undefined
           }
         />
       ) : books.laterDelivery && closedMonth && books.verifications.length > 0 ? (
@@ -563,7 +592,6 @@ async function BookkeepingSection({
           kind="not-configured"
           code="1930"
           message="Kontoplanen saknar bankkonto (nyckeln bank), så utbetalningarna bokförs på BAS 1930."
-          detail="Lägg till bankkontot i kontoplanen om bolaget använder ett annat konto."
           action={{ label: "Öppna inställningar", href: "/installningar" }}
         />
       ) : null}
@@ -579,7 +607,6 @@ async function BookkeepingSection({
         <StateMessage
           kind="error"
           message={books.error}
-          detail="Kontoplanen finns under Inställningar."
           action={{ label: "Öppna inställningar", href: "/installningar" }}
         />
       ) : books.verifications.length > 0 ? (
@@ -591,11 +618,8 @@ async function BookkeepingSection({
             <AccountTable rows={books.accountTotals} month={month} totals={accountTotals} />
             <p className="text-sm text-muted">
               {books.payoutsBooked > 0
-                ? `${plural(books.payoutsBooked, "utbetalning", "utbetalningar")} från leverantören bokförs på dagen pengarna kom in: bank och faktiska avgifter mot fordran på kortinlösen. Det som står kvar på fordran är order som leverantören inte har betalat ut (avvikelserna i avstämningen).`
-                : "Ingen utbetalning kom in under månaden. Försäljningen står som fordran på kortinlösen tills utbetalningen kommer."}
-              {books.daysWithActualFees > 0
-                ? ` ${plural(books.daysWithActualFees, "dag", "dagar")} bokförs utan uppskattad kortavgift, eftersom utbetalningens faktiska avgifter bokförs i stället.`
-                : ""}
+                ? `${plural(books.payoutsBooked, "utbetalning", "utbetalningar")} bokförda på betalningsdagen.`
+                : "Ingen utbetalning i månaden."}
             </p>
             {books.totals ? (
               <p className="text-sm text-muted">

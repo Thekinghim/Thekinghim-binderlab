@@ -332,7 +332,7 @@ function OrderFilters({
       role="search"
       aria-label="Filtrera order"
       aria-busy={pending || undefined}
-      className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,16rem)] sm:items-end lg:grid-cols-[minmax(0,28rem)_minmax(0,16rem)_auto]"
+      className="fade-in grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)_auto] sm:items-end"
       onSubmit={(e) => {
         e.preventDefault();
         const clean = cleanQuery(text);
@@ -348,7 +348,7 @@ function OrderFilters({
         value={text}
         autoComplete="off"
         spellCheck={false}
-        placeholder="Ordernummer, titel, automat eller butik"
+        placeholder="Ordernr, titel, automat eller butik"
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Escape" && text) {
@@ -365,7 +365,7 @@ function OrderFilters({
         onChange={(e) => onChange({ titleId: e.target.value || null })}
       />
       {active ? (
-        <div className="flex sm:col-span-2 lg:col-span-1">
+        <div className="flex">
           <Button
             type="button"
             variant="ghost"
@@ -376,7 +376,7 @@ function OrderFilters({
               onChange({ q: "", titleId: null });
             }}
           >
-            Rensa sökning och titel
+            Rensa
           </Button>
         </div>
       ) : null}

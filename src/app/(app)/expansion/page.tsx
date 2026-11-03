@@ -7,15 +7,16 @@ import { SectionHeader } from "@/components/ui/section-header";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { formatInt } from "@/lib/format";
 
-import { DataStartNote, EstimateTag } from "./_components/evidence";
+import { DataStartNote } from "./_components/evidence";
 import { PriceChangeView, SiteEstimateView } from "./_components/estimate-view";
 import { GoalsView } from "./_components/goals-view";
 import { PipelineView, StoreProfilesView } from "./_components/pipeline-view";
 import { NewMachineForm, PriceChangeForm } from "./_components/scenario-forms";
 import { LEAD_PREFIX, loadExpansionPage, type Names } from "./_lib/data";
-import { kr, monthLabel, oreToInput, paybackShort, pct } from "./_lib/display";
+import { kr, monthLabel, oreToInput, paybackShort } from "./_lib/display";
 import { evidenceLinks, LEAD_STAGE_LABEL, monthOfDate, OPEN_STAGES } from "./_lib/model";
 import { withOrderCounts } from "./_lib/slim";
+import { pickView, ViewTabs } from "../rapporter/_components/view-tabs";
 
 export const metadata: Metadata = { title: "Expansion" };
 
@@ -98,226 +99,231 @@ export default async function ExpansionPage({
   const errs = (list: { field: string; message: string }[]) =>
     Object.fromEntries(list.map((e) => [e.field, e.message]));
   const goalsBehind = data.goals.progress.filter((g) => g.status === "behind").length;
+  const VIEWS = ["pipeline", "scenarier", "mal"] as const;
+  const entries: [string, string][] =
+    sp instanceof URLSearchParams
+      ? [...sp.entries()]
+      : Object.entries(sp).flatMap(([k, val]) => {
+          const x = Array.isArray(val) ? val[0] : val;
+          return typeof x === "string" ? [[k, x] as [string, string]] : [];
+        });
+  const view = pickView(entries.find(([k]) => k === "vy")?.[1], VIEWS);
+  const hrefFor = (v: (typeof VIEWS)[number]) => {
+    const q = new URLSearchParams();
+    for (const [k, x] of entries) if (x && k !== "vy") q.set(k, x);
+    if (v !== "pipeline") q.set("vy", v);
+    const qs = q.toString();
+    return qs ? `/expansion?${qs}` : "/expansion";
+  };
+  const rise = (i: number) => ({ "--i": i }) as React.CSSProperties;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
-      <div className="flex flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
+      <div className="rise flex flex-col gap-6" style={rise(0)}>
         <SectionHeader
           as="h1"
           size="xl"
           eyebrow="Expansion"
           title={title}
           aside={aside}
-          meta={[
-            { label: "Underlag", value: periodLabel },
-            { label: "Öppna platser", value: formatInt(openLeads) },
-            { label: "Mål som ligger efter", value: formatInt(goalsBehind) },
-          ]}
-        />
-        <DataStartNote clippedFrom={data.period.clippedFrom} requested={data.period.requested} />
-      </div>
-
-      <section
-        id="ny-automat"
-        aria-labelledby="ny-automat-h"
-        className="flex scroll-mt-28 flex-col gap-8"
-      >
-        <SectionHeader
-          id="ny-automat-h"
-          index={1}
-          eyebrow="Scenario · ny automat"
-          title="Vad ger en ny automat på en ny plats?"
-          aside={
-            data.newMachine.lead
-              ? endSentence(
-                  `${data.newMachine.lead.name} i pipelinen, räknat på liknande butiker ${periodLabel}`,
-                )
-              : `Räknat på ${periodLabel}, hela flottan.`
-          }
-          description={`Platserna jämförs på butikstyp, ort, öppettider och yta. "En till som" en befintlig butik bygger på butiken själv och butiker som liknar den. Tomma investeringsfält = ${invText}.`}
-        />
-        <Suspense>
-          <NewMachineForm
-            stores={storeOptions}
-            initial={{
-              lik: data.newMachine.likeStoreId ?? "",
-              inkop: data.params.purchase,
-              installation: data.params.installation,
-              provision: data.params.commission,
-              hyra: data.params.rent,
-            }}
-            errors={errs(data.newMachine.errors)}
-            placeholders={{
-              inkop: inv ? oreToInput(inv.plan.purchaseOre) : "",
-              installation: inv ? oreToInput(inv.plan.installationOre) : "",
-            }}
-          />
-        </Suspense>
-        {estimate ? (
-          <SiteEstimateView
-            estimate={estimate}
-            links={evidenceLinks(estimate.evidence, names)}
-            investmentNote={
-              estimate.investmentOre === 0
-                ? "Ingen investering är angiven, så återbetalningstiden kan inte räknas."
-                : undefined
-            }
-          />
-        ) : (
-          <p className="text-sm text-muted">
-            Ange investeringen (eller registrera investeringar under{" "}
-            <Link className="underline" href="/automater/enhetsekonomi">
-              Enhetsekonomi
-            </Link>
-            ) för att räkna återbetalningstiden.
-          </p>
-        )}
-      </section>
-
-      <section
-        id="prisandring"
-        aria-labelledby="prisandring-h"
-        className="flex scroll-mt-28 flex-col gap-8"
-      >
-        <SectionHeader
-          id="prisandring-h"
-          index={2}
-          eyebrow="Scenario · prisändring"
-          title="Vad händer med vinsten om priset ändras?"
-          aside="Känslighetsanalys på periodens sålda pack."
-          description="Moms, kortavgift och provision följer det nya priset; inköp och hyra är oförändrade. Elasticiteten är ett antagande, därför visas flera."
-        />
-        <Suspense>
-          <PriceChangeForm
-            titles={titleOptions}
-            initial={{
-              titel: data.price.titleId ?? "",
-              andring: data.params.delta || oreToInput(data.price.deltaOre),
-              elasticitet: data.params.elasticity || "0",
-            }}
-            errors={errs(data.price.errors)}
-          />
-        </Suspense>
-        {data.price.scenario ? (
-          <PriceChangeView
-            scenario={data.price.scenario}
-            links={evidenceLinks(data.price.scenario.evidence, names)}
-          />
-        ) : (
-          <p className="text-sm text-muted">Inga titlar har sålts under perioden.</p>
-        )}
-      </section>
-
-      <section id="mal" aria-labelledby="mal-h" className="flex scroll-mt-28 flex-col gap-8">
-        <SectionHeader
-          id="mal-h"
-          index={3}
-          eyebrow="Mål per månad"
-          title={
-            data.goals.progress.length === 0
-              ? "Inga mål satta."
-              : goalsBehind === 0
-                ? "Alla mål är i fas eller nådda."
-                : `${formatInt(goalsBehind)} ${goalsBehind === 1 ? "mål ligger" : "mål ligger"} efter.`
-          }
-          aside={goalsFact(data.goals.progress, monthOfDate(data.ctx.today))}
-        />
-        <GoalsView
-          goals={data.goals.records}
-          progress={withOrderCounts(data.goals.progress)}
-          links={goalLinks}
-          stores={data.names.stores}
-          machines={data.names.machines}
-          canEdit={data.ctx.canEdit}
-          defaultMonth={monthOfDate(data.ctx.today)}
-        />
-      </section>
-
-      <section
-        id="pipeline"
-        aria-labelledby="pipeline-h"
-        className="flex scroll-mt-28 flex-col gap-8"
-      >
-        <SectionHeader
-          id="pipeline-h"
-          index={4}
-          eyebrow="Expansionspipeline"
-          title={
-            openLeads === 0
-              ? "Pipelinen är tom."
-              : `${formatInt(openLeads)} ${openLeads === 1 ? "öppen plats" : "öppna platser"}.`
-          }
-          aside={pipelineFact(
-            data.leads,
-            top ? { name: top.name, payback: top.estimate.paybackTenths?.expected } : null,
-          )}
-        />
-        <PipelineView
-          leads={data.leads}
-          pipeline={withOrderCounts(data.pipeline)}
-          links={leadLinks}
-          stores={data.names.stores}
-          canEdit={data.ctx.canEdit}
-          today={data.ctx.today}
-          defaultInvestmentText={invText}
-        />
-      </section>
-
-      <section
-        id="platsprofiler"
-        aria-labelledby="platsprofiler-h"
-        className="flex scroll-mt-28 flex-col gap-8"
-      >
-        <SectionHeader
-          id="platsprofiler-h"
-          index={5}
-          eyebrow="Platsprofiler"
-          title="Det jämförelsen bygger på."
-          aside={
-            missingProfiles === 0
-              ? "Alla butiker har typ och ort."
-              : `${formatInt(missingProfiles)} ${missingProfiles === 1 ? "butik saknar" : "butiker saknar"} typ eller ort och liknar därför inget.`
-          }
-        />
-        <StoreProfilesView profiles={data.profiles} canEdit={data.ctx.canEdit} />
-      </section>
-
-      <section
-        id="saljunderlag"
-        aria-labelledby="saljunderlag-h"
-        className="flex scroll-mt-28 flex-col gap-8"
-      >
-        <SectionHeader
-          id="saljunderlag-h"
-          index={6}
-          eyebrow="Säljunderlag"
-          title={
-            data.deck.status === "ok"
-              ? `Partnerbutiker tjänar ${kr(data.deck.compensationPerMonthOre!)} per automat och månad.`
-              : "Säljunderlaget kräver minst tre butiker."
-          }
-          aside={
-            data.deck.status === "ok"
-              ? `Snitt av ${data.deck.stores} butiker, anonymiserat, ${pct(data.deck.compensationShareBp ?? 0)} av försäljningen.`
-              : `Underlaget har ${data.deck.stores} ${data.deck.stores === 1 ? "butik" : "butiker"}; med färre än tre går en enskild butiks ersättning att räkna ut.`
-          }
+          meta={[{ label: "Underlag", value: periodLabel }]}
           actions={
             <Link
               href={`/expansion/saljunderlag?from=${data.period.period.start}&to=${data.period.period.end}`}
               className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover"
             >
-              Öppna säljunderlaget (PDF)
+              Säljunderlag (PDF)
             </Link>
           }
         />
-        <div className="flex items-center gap-3">
-          <EstimateTag>Historiskt snitt</EstimateTag>
-          <p className="text-sm text-muted">
-            Provision och hyra enligt avtalen under {periodLabel}, delat på automatmånader. Inga
-            butiksnamn och inga enskilda belopp.
-          </p>
-        </div>
-      </section>
+        <DataStartNote clippedFrom={data.period.clippedFrom} requested={data.period.requested} />
+        <ViewTabs
+          label="Vy"
+          value={view}
+          hrefFor={hrefFor}
+          tabs={[
+            { value: "pipeline", label: "Pipeline", count: openLeads },
+            { value: "scenarier", label: "Scenarier" },
+            { value: "mal", label: "Mål", count: data.goals.progress.length },
+          ]}
+        />
+      </div>
+
+      {view === "scenarier" ? (
+        <>
+          <section
+            id="ny-automat"
+            aria-labelledby="ny-automat-h"
+            className="rise flex scroll-mt-28 flex-col gap-6"
+            style={rise(1)}
+          >
+            <SectionHeader
+              id="ny-automat-h"
+              size="md"
+              title="Ny automat på ny plats."
+              aside={
+                data.newMachine.lead
+                  ? endSentence(
+                      `${data.newMachine.lead.name} i pipelinen, räknat på liknande butiker ${periodLabel}`,
+                    )
+                  : `Räknat på ${periodLabel}, hela flottan.`
+              }
+              description={`Tomma investeringsfält = ${invText}.`}
+            />
+            <Suspense>
+              <NewMachineForm
+                stores={storeOptions}
+                initial={{
+                  lik: data.newMachine.likeStoreId ?? "",
+                  inkop: data.params.purchase,
+                  installation: data.params.installation,
+                  provision: data.params.commission,
+                  hyra: data.params.rent,
+                }}
+                errors={errs(data.newMachine.errors)}
+                placeholders={{
+                  inkop: inv ? oreToInput(inv.plan.purchaseOre) : "",
+                  installation: inv ? oreToInput(inv.plan.installationOre) : "",
+                }}
+              />
+            </Suspense>
+            {estimate ? (
+              <SiteEstimateView
+                estimate={estimate}
+                links={evidenceLinks(estimate.evidence, names)}
+                investmentNote={
+                  estimate.investmentOre === 0
+                    ? "Ange investeringen för återbetalningstid."
+                    : undefined
+                }
+              />
+            ) : (
+              <p className="text-sm text-muted">
+                Ange investeringen.{" "}
+                <Link className="underline underline-offset-4" href="/automater/enhetsekonomi">
+                  Enhetsekonomi →
+                </Link>
+              </p>
+            )}
+          </section>
+
+          <section
+            id="prisandring"
+            aria-labelledby="prisandring-h"
+            className="rise flex scroll-mt-28 flex-col gap-6"
+            style={rise(2)}
+          >
+            <SectionHeader
+              id="prisandring-h"
+              size="md"
+              title="Prisändring."
+              aside="På periodens sålda pack."
+            />
+            <Suspense>
+              <PriceChangeForm
+                titles={titleOptions}
+                initial={{
+                  titel: data.price.titleId ?? "",
+                  andring: data.params.delta || oreToInput(data.price.deltaOre),
+                  elasticitet: data.params.elasticity || "0",
+                }}
+                errors={errs(data.price.errors)}
+              />
+            </Suspense>
+            {data.price.scenario ? (
+              <PriceChangeView
+                scenario={data.price.scenario}
+                links={evidenceLinks(data.price.scenario.evidence, names)}
+              />
+            ) : (
+              <p className="text-sm text-muted">Ingen försäljning i perioden.</p>
+            )}
+          </section>
+        </>
+      ) : null}
+
+      {view === "mal" ? (
+        <section
+          id="mal"
+          aria-labelledby="mal-h"
+          className="rise flex scroll-mt-28 flex-col gap-6"
+          style={rise(1)}
+        >
+          <SectionHeader
+            id="mal-h"
+            size="md"
+            title={
+              data.goals.progress.length === 0
+                ? "Inga mål satta."
+                : goalsBehind === 0
+                  ? "Alla mål är i fas eller nådda."
+                  : `${formatInt(goalsBehind)} ${goalsBehind === 1 ? "mål ligger" : "mål ligger"} efter.`
+            }
+            aside={goalsFact(data.goals.progress, monthOfDate(data.ctx.today))}
+          />
+          <GoalsView
+            goals={data.goals.records}
+            progress={withOrderCounts(data.goals.progress)}
+            links={goalLinks}
+            stores={data.names.stores}
+            machines={data.names.machines}
+            canEdit={data.ctx.canEdit}
+            defaultMonth={monthOfDate(data.ctx.today)}
+          />
+        </section>
+      ) : null}
+
+      {view === "pipeline" ? (
+        <>
+          <section
+            id="pipeline"
+            aria-labelledby="pipeline-h"
+            className="rise flex scroll-mt-28 flex-col gap-6"
+            style={rise(1)}
+          >
+            <SectionHeader
+              id="pipeline-h"
+              size="md"
+              title={
+                openLeads === 0
+                  ? "Pipelinen är tom."
+                  : `${formatInt(openLeads)} ${openLeads === 1 ? "öppen plats" : "öppna platser"}.`
+              }
+              aside={pipelineFact(
+                data.leads,
+                top ? { name: top.name, payback: top.estimate.paybackTenths?.expected } : null,
+              )}
+            />
+            <PipelineView
+              leads={data.leads}
+              pipeline={withOrderCounts(data.pipeline)}
+              links={leadLinks}
+              stores={data.names.stores}
+              canEdit={data.ctx.canEdit}
+              today={data.ctx.today}
+              defaultInvestmentText={invText}
+            />
+          </section>
+
+          <details
+            id="platsprofiler"
+            className="rise group flex scroll-mt-28 flex-col gap-6 rounded-md border border-line bg-surface p-4 md:p-5"
+            style={rise(2)}
+          >
+            <summary className="flex cursor-pointer list-none items-baseline justify-between gap-4">
+              <h2 className="text-md font-medium text-fg">Platsprofiler</h2>
+              <span className="meta text-subtle">
+                {missingProfiles === 0
+                  ? "Alla har typ och ort"
+                  : `${formatInt(missingProfiles)} saknar typ eller ort`}
+              </span>
+            </summary>
+            <div className="mt-6">
+              <StoreProfilesView profiles={data.profiles} canEdit={data.ctx.canEdit} />
+            </div>
+          </details>
+        </>
+      ) : null}
     </div>
   );
 }

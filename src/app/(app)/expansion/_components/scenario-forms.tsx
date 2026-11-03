@@ -51,6 +51,7 @@ export function NewMachineForm({
     setV((p) => ({ ...p, [k]: e.target.value }));
   return (
     <form
+      noValidate
       onSubmit={(e: FormEvent) => {
         e.preventDefault();
         submit(v);
@@ -129,6 +130,7 @@ export function PriceChangeForm({
     setV((p) => ({ ...p, [k]: e.target.value }));
   return (
     <form
+      noValidate
       onSubmit={(e: FormEvent) => {
         e.preventDefault();
         submit(v);

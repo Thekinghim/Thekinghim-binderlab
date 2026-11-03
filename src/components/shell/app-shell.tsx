@@ -118,6 +118,7 @@ export function AppShell(props: AppShellProps) {
           crumbs={crumbs}
           homeHref={homeHref(role)}
           onOpenCommand={onOpenCommand ?? (() => setPaletteOpen(true))}
+          assistantHref={routesForRole(role).find((r) => r.id === "assistent")?.href}
           showContext={showContext}
           stores={props.stores}
           machines={props.machines}
@@ -127,7 +128,10 @@ export function AppShell(props: AppShellProps) {
           comparison={props.comparison}
         />
         <main id="main" className="flex-1 pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0">
-          {children}
+          {/* Mjuk övergång vid sidbyte: nyckeln är sökvägen, så periodbyten animeras inte. */}
+          <div key={pathname} className="fade-in">
+            {children}
+          </div>
         </main>
       </div>
       <MobileNav {...navProps} />
