@@ -29,6 +29,7 @@ export type RouteId =
   | "lonsamhet"
   | "order"
   | "lager"
+  | "vart-lager"
   | "automater"
   | "butiker"
   | "inkopspriser"
@@ -134,6 +135,18 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     mobileRank: 4,
     phase: 5,
     lead: "Per artikel och automat.",
+  },
+  {
+    id: "vart-lager",
+    href: "/vart-lager",
+    label: "Vårt lager",
+    icon: "inventory",
+    section: "main",
+    // Samma roller som Prognos & inköp (sidan visar värdet till inköpspris).
+    roles: READERS,
+    phase: 6,
+    lead: "Pack hemma, per titel.",
+    context: false,
   },
   {
     id: "automater",
@@ -386,4 +399,149 @@ export function activeRouteId(pathname: string | null | undefined): RouteId | nu
     if (hit && (!best || r.href.length > best.href.length)) best = r;
   }
   return best?.id ?? null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Huvudflikar och underflikar                                          */
+/* ------------------------------------------------------------------ */
+
+/** De sex huvudflikarna i sidomenyn och mobilens bottenrad. */
+export type SectionId = "hem" | "automater" | "vart-lager" | "butiker" | "pengar" | "mer";
+
+/** En underflik: en rutt (som ger behörigheten) och eventuellt en vy på sidan (?vy=). */
+export type SubTab = {
+  /** Unik nyckel (rutt-id, eller rutt-id och vy). */
+  key: string;
+  label: string;
+  route: RouteId;
+  /** Sidans vy (?vy=…). Ges den räknas också /<rutt>/<vy>/… hit. */
+  view?: string;
+};
+
+export type NavSection = {
+  id: SectionId;
+  label: string;
+  icon: IconName;
+  tabs: ReadonlyArray<SubTab>;
+};
+
+const tab = (route: RouteId, label: string, view?: string): SubTab => ({
+  key: view ? `${route}:${view}` : route,
+  label,
+  route,
+  view,
+});
+
+export const navSections: ReadonlyArray<NavSection> = [
+  {
+    id: "hem",
+    label: "Hem",
+    icon: "overview",
+    tabs: [tab("hem", "Översikt"), tab("att-gora", "Att göra")],
+  },
+  {
+    id: "automater",
+    label: "Automater",
+    icon: "machine",
+    tabs: [
+      tab("automater", "Automater"),
+      tab("drift", "Drift"),
+      tab("lager", "Lager i automaterna"),
+      tab("order", "Order"),
+      tab("inkorg", "Inkorg"),
+    ],
+  },
+  {
+    id: "vart-lager",
+    label: "Vårt lager",
+    icon: "inventory",
+    tabs: [
+      tab("vart-lager", "Vårt lager"),
+      tab("prognos", "Prognos & inköp"),
+      tab("inkopspriser", "Inköpspriser"),
+    ],
+  },
+  {
+    id: "butiker",
+    label: "Butiker",
+    icon: "columns",
+    tabs: [tab("butiker", "Butiker"), tab("avtal", "Avtal"), tab("expansion", "Expansion")],
+  },
+  {
+    id: "pengar",
+    label: "Pengar",
+    icon: "margin",
+    tabs: [
+      tab("lonsamhet", "Lönsamhet"),
+      tab("ekonomi", "Ekonomi"),
+      tab("ekonomi", "Bokföring", "bokforing"),
+      tab("rapporter", "Rapporter"),
+    ],
+  },
+  {
+    id: "mer",
+    label: "Mer",
+    icon: "more",
+    tabs: [
+      tab("installningar", "Inställningar"),
+      tab("datakallor", "Datakällor"),
+      tab("assistent", "Assistent"),
+      tab("marknad", "Marknad"),
+      tab("effekt", "Effekt"),
+    ],
+  },
+];
+
+/** Underflikens adress (utan period och filter). */
+export function subTabHref(t: SubTab): string {
+  const href = routeById(t.route).href;
+  return t.view ? `${href}?vy=${encodeURIComponent(t.view)}` : href;
+}
+
+/** Huvudflikarna en roll ser, med bara de underflikar rollen får se. Tomma flikar döljs. */
+export function sectionsForRole(role: Role): NavSection[] {
+  return navSections
+    .map((s) => ({ ...s, tabs: s.tabs.filter((t) => routeById(t.route).roles.includes(role)) }))
+    .filter((s) => s.tabs.length > 0);
+}
+
+/** Huvudflikens adress: första underfliken rollen får se. */
+export function sectionHref(section: NavSection): string {
+  const first = section.tabs[0];
+  return first ? subTabHref(first) : "/";
+}
+
+/** Huvudfliken som innehåller rutten. */
+export function sectionOfRoute(id: RouteId): NavSection | null {
+  return navSections.find((s) => s.tabs.some((t) => t.route === id)) ?? null;
+}
+
+/** Huvudflik för en sökväg (även undersidor, t.ex. /drift/pafyllning → Automater). */
+export function activeSectionId(pathname: string | null | undefined): SectionId | null {
+  const id = activeRouteId(pathname);
+  return id ? (sectionOfRoute(id)?.id ?? null) : null;
+}
+
+/**
+ * Aktiv underflik för en sökväg och vy (?vy=). Flera flikar på samma rutt (Ekonomi och
+ * Bokföring) skiljs åt av vyn: fliken med vyn vinner när vyn eller /<rutt>/<vy>/… matchar.
+ */
+export function activeSubTab(
+  pathname: string | null | undefined,
+  view?: string | null,
+): { section: NavSection; tab: SubTab } | null {
+  const id = activeRouteId(pathname);
+  if (!id) return null;
+  const section = sectionOfRoute(id);
+  if (!section) return null;
+  const candidates = section.tabs.filter((t) => t.route === id);
+  const base = routeById(id).href;
+  const path = pathname ?? "";
+  const viewed = candidates.find(
+    (t) =>
+      t.view !== undefined &&
+      (t.view === view || path === `${base}/${t.view}` || path.startsWith(`${base}/${t.view}/`)),
+  );
+  const tab = viewed ?? candidates.find((t) => t.view === undefined) ?? candidates[0];
+  return tab ? { section, tab } : null;
 }

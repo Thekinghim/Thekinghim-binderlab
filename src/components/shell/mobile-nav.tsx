@@ -1,22 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/button";
 import { StatusGlyph } from "@/components/ui/status-tag";
-import { activeRouteId, menuRoutesForRole, primaryMobileRoutes } from "./nav";
 import {
-  NavList,
-  numberRoutes,
+  activeRouteId,
+  activeSectionId,
+  sectionHref,
+  sectionsForRole,
+  subTabHref,
+  type SectionId,
+} from "./nav";
+import {
   OrgSwitcher,
   SyncStatus,
   syncHref,
   TodoCountSlot,
   UserMenu,
   WithCarriedQuery,
+  withQuery,
   type ShellNavProps,
 } from "./side-nav";
 
@@ -24,32 +30,32 @@ import {
 export const MOBILE_NAV_HEIGHT = 56;
 
 /**
- * Mobil navigering för tummen: en fast bottenrad med de viktigaste
- * rutterna för rollen och "Mer", som öppnar ett ark nedifrån med
- * resten, organisation, synkstatus och kontot. Döljs från lg.
+ * Mobil navigering för tummen: en fast bottenrad med huvudflikarna och "Mer",
+ * som öppnar ett ark nedifrån med Mer-flikens sidor, organisation, synkstatus
+ * och kontot. Underflikarna visas ovanför sidan (SubTabs). Döljs från lg.
  */
 export function MobileNav(props: ShellNavProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const role = props.role ?? "owner";
-  const routes = menuRoutesForRole(role);
-  const numbering = numberRoutes(routes);
-  const primary = primaryMobileRoutes(role, 4);
-  const rest = routes.filter((r) => !primary.includes(r));
-  // Arket: först de primära sidorna som inte fick plats, sedan "Mer"-gruppen och System.
-  const restMain = rest.filter((r) => r.section === "main" && !r.group);
-  const restMore = rest.filter((r) => r.section === "main" && r.group === "more");
-  const restHidden = rest.filter((r) => r.section === "main" && r.group === "hidden");
-  const restSystem = rest.filter((r) => r.section === "system");
-  const activeId = activeRouteId(props.activeHref ?? pathname);
-  // "Mer" är aktiv bara när den aktiva sidan faktiskt ligger i arket.
-  const moreActive = rest.some((r) => r.id === activeId);
+  const sections = sectionsForRole(role);
+  // Bottenraden: huvudflikarna utom Mer (högst fem), sedan Mer som öppnar arket.
+  const primary = sections.filter((s) => s.id !== "mer").slice(0, 5);
+  const mer = sections.find((s) => s.id === "mer");
+  const activeId = activeSectionId(props.activeHref ?? pathname);
+  const routeId = activeRouteId(props.activeHref ?? pathname);
+  const moreActive = activeId === "mer";
+  const [clicked, setClicked] = useState<{ id: SectionId; from: string } | null>(null);
+  const current = clicked && clicked.from === pathname ? clicked.id : activeId;
 
   // Stäng arket vid sidbyte.
   const [lastPath, setLastPath] = useState(pathname);
   if (pathname !== lastPath) {
     setLastPath(pathname);
     if (open) setOpen(false);
+    // Släpp klicket, annars tänds fliken igen när man backar tillbaka.
+    setClicked(null);
   }
 
   return (
@@ -64,44 +70,61 @@ export function MobileNav(props: ShellNavProps) {
               className="grid"
               style={{ gridTemplateColumns: `repeat(${primary.length + 1}, minmax(0, 1fr))` }}
             >
-              {primary.map((r) => {
-                const active = r.id === activeId;
+              {primary.map((s) => {
+                const active = s.id === current;
+                const href = withQuery(sectionHref(s), query);
                 return (
-                  <li key={r.id} className="relative">
-                    {active ? (
-                      <span aria-hidden className="absolute inset-x-3 top-0 h-px bg-fg" />
-                    ) : null}
+                  <li key={s.id} className="relative">
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "absolute inset-x-3 top-0 h-0.5 origin-center bg-fg transition-transform duration-300 motion-reduce:transition-none",
+                        active ? "scale-x-100" : "scale-x-0",
+                      )}
+                    />
                     <Link
-                      href={`${r.href}${query}`}
+                      href={href}
                       prefetch={false}
-                      aria-current={active ? "page" : undefined}
+                      onTouchStart={() => router.prefetch(href)}
+                      onClick={() => setClicked({ id: s.id, from: pathname })}
+                      aria-current={s.id === activeId ? "page" : undefined}
                       className={cn(
                         "flex h-14 flex-col items-center justify-center gap-1 transition-colors focus-visible:-outline-offset-2",
                         active ? "text-fg" : "text-muted hover:text-fg",
                       )}
                     >
                       <span className="flex h-4 items-center gap-1">
-                        <Icon name={r.icon} />
-                        {r.counter === "todo" ? (
+                        <Icon
+                          name={s.icon}
+                          className={cn(
+                            "transition-transform duration-200",
+                            active && "-translate-y-0.5 scale-110",
+                          )}
+                        />
+                        {s.tabs.some((t) => t.route === "att-gora") ? (
                           <TodoCountSlot count={props.todoCount} hideZero />
                         ) : null}
                       </span>
                       <span
                         className={cn(
-                          "text-xs transition-transform duration-200",
-                          active && "-translate-y-px font-medium",
+                          "max-w-full truncate px-0.5 text-[11px] leading-none",
+                          active && "font-medium",
                         )}
                       >
-                        {r.label}
+                        {s.label}
                       </span>
                     </Link>
                   </li>
                 );
               })}
               <li className="relative">
-                {moreActive ? (
-                  <span aria-hidden className="absolute inset-x-3 top-0 h-px bg-fg" />
-                ) : null}
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute inset-x-3 top-0 h-0.5 origin-center bg-fg transition-transform duration-300 motion-reduce:transition-none",
+                    moreActive ? "scale-x-100" : "scale-x-0",
+                  )}
+                />
                 <button
                   type="button"
                   aria-haspopup="dialog"
@@ -121,7 +144,9 @@ export function MobileNav(props: ShellNavProps) {
                       </>
                     ) : null}
                   </span>
-                  <span className={cn("text-xs", moreActive && "font-medium")}>Mer</span>
+                  <span className={cn("text-[11px] leading-none", moreActive && "font-medium")}>
+                    Mer
+                  </span>
                 </button>
               </li>
             </ul>
@@ -139,26 +164,38 @@ export function MobileNav(props: ShellNavProps) {
             />
           </div>
         ) : null}
-        {rest.length ? (
+        {mer ? (
           <nav aria-label="Fler sidor" className="border-b border-line py-2">
             <WithCarriedQuery>
               {(query) => (
-                <>
-                  {[restMain, restMore, restHidden, restSystem]
-                    .filter((list) => list.length > 0)
-                    .map((list, i) => (
-                      <div key={i} className={cn(i > 0 && "mt-2 border-t border-line pt-2")}>
-                        <NavList
-                          routes={list}
-                          numbering={numbering}
-                          activeId={activeId}
-                          query={query}
-                          todoCount={props.todoCount}
-                          onNavigate={() => setOpen(false)}
-                        />
-                      </div>
-                    ))}
-                </>
+                <ul className="flex flex-col">
+                  {mer.tabs.map((t, i) => {
+                    const active = t.route === routeId;
+                    return (
+                      <li
+                        key={t.key}
+                        className="rise relative"
+                        style={{ "--i": i } as React.CSSProperties}
+                      >
+                        {active ? (
+                          <span aria-hidden className="absolute inset-y-0 left-0 w-0.5 bg-fg" />
+                        ) : null}
+                        <Link
+                          href={withQuery(subTabHref(t), query)}
+                          prefetch={false}
+                          onClick={() => setOpen(false)}
+                          aria-current={active ? "page" : undefined}
+                          className={cn(
+                            "flex h-11 items-center gap-3 px-4 text-base transition-colors focus-visible:-outline-offset-2",
+                            active ? "font-medium text-fg" : "text-muted hover:text-fg",
+                          )}
+                        >
+                          {t.label}
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </WithCarriedQuery>
           </nav>

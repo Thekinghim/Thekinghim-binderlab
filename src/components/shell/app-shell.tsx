@@ -21,6 +21,7 @@ import {
   type TodoCountSource,
 } from "./side-nav";
 import { NavigationProgress, ShellMain, ShellNavigationProvider } from "./shell-navigation";
+import { SubTabs } from "./sub-tabs";
 import { setTheme, useTheme } from "./theme-toggle";
 import { Topbar, type Period } from "./topbar";
 import { useAutoRefresh } from "./use-auto-refresh";
@@ -134,6 +135,13 @@ export function AppShell(props: AppShellProps) {
             comparison={props.comparison}
           />
           <ShellMain className="flex-1 pb-[calc(56px+env(safe-area-inset-bottom))] lg:pb-0">
+            {/* Underflikarna står still vid sidbyte, så att markeringen kan glida. */}
+            <SubTabs
+              role={role}
+              activeHref={props.activeHref}
+              todoCount={props.todoCount}
+              className="mx-auto w-full max-w-[1280px] px-4 pt-3 md:px-8 md:pt-5"
+            />
             {/* Mjuk övergång vid sidbyte: nyckeln är sökvägen, så periodbyten animeras inte. */}
             <div key={pathname} className="fade-in">
               {children}

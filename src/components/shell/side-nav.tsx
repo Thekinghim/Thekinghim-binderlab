@@ -5,12 +5,10 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   Suspense,
   use,
-  useCallback,
   useEffect,
   useId,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -20,13 +18,16 @@ import { Icon } from "@/components/ui/icon";
 import { StatusGlyph } from "@/components/ui/status-tag";
 import { Logo } from "./logo";
 import {
-  activeRouteId,
+  activeSectionId,
   homeHref,
-  menuRoutesForRole,
   roleLabel,
   routesForRole,
+  sectionHref,
+  sectionsForRole,
+  type NavSection,
   type Role,
   type RouteId,
+  type SectionId,
   type ShellRoute,
 } from "./nav";
 import { wallClockIn } from "./period-state";
@@ -510,94 +511,86 @@ export function UserMenu({
 }
 
 /* ------------------------------------------------------------------ */
-/* "Mer" i sidomenyn                                                   */
+/* Huvudflikarna                                                       */
 /* ------------------------------------------------------------------ */
 
-const MORE_KEY = "bl:nav-more-open";
-const MORE_EVENT = "bl:nav-more";
-
-function readMoreOpen(): boolean {
-  try {
-    return window.localStorage.getItem(MORE_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function subscribeMore(cb: () => void) {
-  window.addEventListener(MORE_EVENT, cb);
-  window.addEventListener("storage", cb);
-  return () => {
-    window.removeEventListener(MORE_EVENT, cb);
-    window.removeEventListener("storage", cb);
-  };
-}
-
-/** Om "Mer" är utfälld, sparat per webbläsare (localStorage; faller tillbaka på stängd). */
-function useMoreOpen(): [boolean, (open: boolean) => void] {
-  const open = useSyncExternalStore(subscribeMore, readMoreOpen, () => false);
-  const set = useCallback((next: boolean) => {
-    try {
-      window.localStorage.setItem(MORE_KEY, next ? "1" : "0");
-    } catch {
-      // Privat läge eller blockerad lagring: läget gäller bara tills sidan laddas om.
-    }
-    window.dispatchEvent(new Event(MORE_EVENT));
-  }, []);
-  return [open, set];
-}
-
-/** Hopfällbar grupp med de mindre använda sidorna. Alltid öppen när en av dem är aktiv. */
-function MoreGroup({
-  routes,
-  numbering,
+/**
+ * De sex huvudflikarna med ikon. Aktiv flik: förgrundsfärg och en linje vid x=0 som glider
+ * mellan raderna (transform). Hem bär räknaren för Att göra.
+ */
+export function SectionList({
+  sections,
   activeId,
   query,
   todoCount,
 }: {
-  routes: ShellRoute[];
-  numbering: Map<RouteId, number>;
-  activeId: RouteId | null;
+  sections: NavSection[];
+  activeId: SectionId | null;
   query: string;
   todoCount?: TodoCountSource;
 }) {
-  const [stored, setStored] = useMoreOpen();
-  const listId = useId();
-  const holdsActive = routes.some((r) => r.id === activeId);
-  const open = stored || holdsActive;
+  const router = useRouter();
+  const [clicked, setClicked] = useState<{ id: SectionId; from: SectionId | null } | null>(null);
+  // Släpp klicket när fliken byts, annars tänds den igen när man backar tillbaka.
+  const [lastActive, setLastActive] = useState(activeId);
+  if (lastActive !== activeId) {
+    setLastActive(activeId);
+    setClicked(null);
+  }
+  const current = clicked && clicked.from === activeId ? clicked.id : activeId;
+  const index = sections.findIndex((s) => s.id === current);
   return (
-    <div className="mt-3 border-t border-line pt-3">
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={listId}
-        onClick={() => setStored(!open)}
-        className="group flex h-8 w-full items-center gap-3 px-4 text-left text-base text-muted transition-colors hover:text-fg focus-visible:-outline-offset-2"
-      >
-        <span className="flex-1">Mer</span>
-        <Icon
-          name="chevronDown"
-          size={12}
-          className={cn(
-            "shrink-0 text-subtle transition-transform duration-200 group-hover:text-fg",
-            open && "rotate-180",
-          )}
+    <ul className="relative flex flex-col">
+      {index >= 0 ? (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute top-0 left-0 h-10 w-0.5 bg-fg transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none"
+          style={{ transform: `translateY(${index * 40}px)` }}
         />
-      </button>
-      {open ? (
-        <div id={listId} className="fade-in">
-          <NavList
-            routes={routes}
-            numbering={numbering}
-            activeId={activeId}
-            query={query}
-            todoCount={todoCount}
-            dense
-          />
-        </div>
       ) : null}
-    </div>
+      {sections.map((s) => {
+        const active = s.id === current;
+        const href = withQuery(sectionHref(s), query);
+        return (
+          <li key={s.id}>
+            <Link
+              href={href}
+              prefetch={false}
+              onMouseEnter={() => router.prefetch(href)}
+              onFocus={() => router.prefetch(href)}
+              onClick={(e) => {
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+                setClicked({ id: s.id, from: activeId });
+              }}
+              aria-current={s.id === activeId ? "page" : undefined}
+              className={cn(
+                "group flex h-10 items-center gap-3 px-4 text-base transition-[color,padding] duration-200 focus-visible:-outline-offset-2",
+                active ? "text-fg" : "text-muted hover:pl-5 hover:text-fg",
+              )}
+            >
+              <Icon
+                name={s.icon}
+                className={cn(
+                  "shrink-0 transition-transform duration-200",
+                  active ? "scale-110" : "group-hover:scale-110",
+                )}
+              />
+              <span className={cn("flex-1 truncate", active && "font-medium")}>{s.label}</span>
+              {s.tabs.some((t) => t.route === "att-gora") ? (
+                <TodoCountSlot count={todoCount} hideZero />
+              ) : null}
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
+}
+
+/** Lägger period och filter (`?period=…`) till en adress som kanske redan har en sökdel. */
+export function withQuery(href: string, query: string): string {
+  if (!query) return href;
+  return href.includes("?") ? `${href}&${query.replace(/^\?/, "")}` : `${href}${query}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -610,12 +603,8 @@ export type SidebarProps = ShellNavProps & { className?: string };
 export function Sidebar({ className, ...props }: SidebarProps) {
   const pathname = usePathname();
   const role = props.role ?? "owner";
-  const routes = menuRoutesForRole(role);
-  const numbering = numberRoutes(routes);
-  const activeId = activeRouteId(props.activeHref ?? pathname);
-  const main = routes.filter((r) => r.section === "main" && !r.group);
-  const more = routes.filter((r) => r.section === "main" && r.group === "more");
-  const system = routes.filter((r) => r.section === "system");
+  const sections = sectionsForRole(role);
+  const activeSection = activeSectionId(props.activeHref ?? pathname);
 
   return (
     <aside
@@ -642,38 +631,14 @@ export function Sidebar({ className, ...props }: SidebarProps) {
 
       <WithCarriedQuery>
         {(query) => (
-          <>
-            <nav aria-label="Huvudmeny" className="min-h-0 flex-1 overflow-y-auto py-4">
-              <NavList
-                routes={main}
-                numbering={numbering}
-                activeId={activeId}
-                query={query}
-                todoCount={props.todoCount}
-                dense
-              />
-              {more.length ? (
-                <MoreGroup
-                  routes={more}
-                  numbering={numbering}
-                  activeId={activeId}
-                  query={query}
-                  todoCount={props.todoCount}
-                />
-              ) : null}
-            </nav>
-            {system.length ? (
-              <nav aria-label="System" className="shrink-0 border-t border-line py-2">
-                <NavList
-                  routes={system}
-                  numbering={numbering}
-                  activeId={activeId}
-                  query={query}
-                  dense
-                />
-              </nav>
-            ) : null}
-          </>
+          <nav aria-label="Huvudmeny" className="min-h-0 flex-1 overflow-y-auto py-4">
+            <SectionList
+              sections={sections}
+              activeId={activeSection}
+              query={query}
+              todoCount={props.todoCount}
+            />
+          </nav>
         )}
       </WithCarriedQuery>
 
