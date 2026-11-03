@@ -977,6 +977,8 @@ export async function ensureBuckets(
 export const VAULT_APP_URL = "binderlab_app_url";
 export const VAULT_CRON_SECRET = "binderlab_cron_secret";
 export const AWISH_CRON_JOB = "binderlab-awish-sync";
+/** Rensar pg_cron:s körlogg (migreringen 20261103120000_awish_api_granskning.sql). */
+export const CRON_CLEANUP_JOB = "binderlab-cron-cleanup";
 
 const VAULT_NAMES = new Set([VAULT_APP_URL, VAULT_CRON_SECRET]);
 
@@ -1033,12 +1035,70 @@ export async function upsertVaultSecret(
   return current === undefined ? "created" : "updated";
 }
 
-/** Finns pg_cron-jobbet för Awish-synken? */
-export async function hasAwishCronJob(ctx: Ctx, ref: string): Promise<boolean> {
+/**
+ * Skapar (eller ersätter) CRON_SECRET i Vault inne i databasen, så att värdet aldrig
+ * står i SQL-texten som skickas (frågeloggar). Läses sedan tillbaka med
+ * readVaultSecret. 64 hex-tecken ur två gen_random_uuid() (inbyggd i Postgres 13+).
+ */
+export async function generateVaultCronSecret(ctx: Ctx, ref: string): Promise<void> {
+  if (ctx.dryRun) {
+    ctx.log.plan(`skapa ${VAULT_CRON_SECRET} i Vault (${ref}), slumpat i databasen`);
+    return;
+  }
+  const name = sqlLiteral(VAULT_CRON_SECRET);
+  const fresh = "replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '')";
+  const query = [
+    `/* binderlab:vault-generate */ do $gen$`,
+    `begin`,
+    `  if exists (select 1 from vault.secrets where name = ${name}) then`,
+    `    perform vault.update_secret((select id from vault.secrets where name = ${name}), ${fresh});`,
+    `  else`,
+    `    perform vault.create_secret(${fresh}, ${name}, ${sqlLiteral("Binderlab: Awish-synken (pg_cron)")});`,
+    `  end if;`,
+    `end`,
+    `$gen$;`,
+  ].join("\n");
+  await runQuery(ctx, ref, query);
+  ctx.log.ok(`Vault (${ref}): ${VAULT_CRON_SECRET} slumpad i databasen.`);
+}
+
+export interface AwishCronStatus {
+  /** pg_cron och pg_net är påslagna. */
+  extensions: boolean;
+  /** Jobbet binderlab-awish-sync finns. */
+  job: boolean;
+}
+
+/** Är pg_cron och pg_net påslagna, och finns jobbet för Awish-synken? */
+export async function awishCronStatus(ctx: Ctx, ref: string): Promise<AwishCronStatus> {
   const ext = `select /* binderlab:awish-cron */ exists (select 1 from pg_catalog.pg_extension where extname = 'pg_cron') and exists (select 1 from pg_catalog.pg_extension where extname = 'pg_net') as ok;`;
   const rows = await runQueryReadOnly<{ ok: boolean }>(ctx, ref, ext);
-  if (rows[0]?.ok !== true) return false;
+  if (rows[0]?.ok !== true) return { extensions: false, job: false };
   const job = `select /* binderlab:awish-cron-job */ count(*)::int as n from cron.job where jobname = ${sqlLiteral(AWISH_CRON_JOB)};`;
   const jobs = await runQueryReadOnly<{ n: number }>(ctx, ref, job);
-  return Number(jobs[0]?.n ?? 0) > 0;
+  return { extensions: true, job: Number(jobs[0]?.n ?? 0) > 0 };
+}
+
+/** Finns pg_cron-jobbet för Awish-synken? */
+export async function hasAwishCronJob(ctx: Ctx, ref: string): Promise<boolean> {
+  return (await awishCronStatus(ctx, ref)).job;
+}
+
+/**
+ * SQL som schemalägger Awish-synken (var tionde minut) och rensningen av
+ * cron.job_run_details. cron.schedule med namn är idempotent (samma jobb skrivs över).
+ */
+export const AWISH_CRON_SCHEDULE_SQL = [
+  `select cron.schedule('${AWISH_CRON_JOB}', '*/10 * * * *', 'select private.awish_cron_tick()');`,
+  `select cron.schedule('${CRON_CLEANUP_JOB}', '23 3 * * *', $job$delete from cron.job_run_details where end_time < now() - interval '7 days'$job$);`,
+].join("\n");
+
+/** Schemalägger jobben (när pg_cron och pg_net är påslagna men jobbet saknas). */
+export async function scheduleAwishCronJob(ctx: Ctx, ref: string): Promise<void> {
+  if (ctx.dryRun) {
+    ctx.log.plan(`schemalägga ${AWISH_CRON_JOB} och ${CRON_CLEANUP_JOB} i pg_cron (${ref})`);
+    return;
+  }
+  await runQuery(ctx, ref, `/* binderlab:awish-cron-schedule */ ${AWISH_CRON_SCHEDULE_SQL}`);
+  ctx.log.ok(`${ref}: ${AWISH_CRON_JOB} och ${CRON_CLEANUP_JOB} schemalagda i pg_cron.`);
 }

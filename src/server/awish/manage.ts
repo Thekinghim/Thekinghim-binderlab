@@ -13,6 +13,7 @@ import { z } from "zod";
 
 import { getServiceDb, type Db, type Tx } from "@/db/client";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
+import { pgErrorOf } from "@/server/errors";
 import type { Viewer } from "@/server/data/core/loaders";
 import { OPERATOR_ROLES } from "@/server/data/core/types";
 
@@ -137,23 +138,49 @@ export async function loadAwishPanelFor(viewer: Viewer): Promise<AwishPanelData>
   });
 }
 
-function rpcError(error: unknown): never {
-  const e = error as {
-    code?: unknown;
-    message?: unknown;
-    cause?: { code?: unknown; message?: unknown };
-  };
-  const code = e.code ?? e.cause?.code;
-  const message = String(e.cause?.message ?? e.message ?? "");
-  if (code === "22023" || code === "42501" || code === "P0002") {
-    throw new AwishSetupError(message);
+/**
+ * Fel från awish_save_credentials. Kastar aldrig vidare det ursprungliga felet:
+ * drizzles DrizzleQueryError har frågans parametrar (AppSecret, AppKey) i
+ * meddelandet och skulle hamna i loggen. Bara SQLSTATE och Postgres meddelande går
+ * vidare (Postgres meddelanden innehåller inte parametrarna).
+ */
+export function rpcError(error: unknown): never {
+  const pg = pgErrorOf(error);
+  if (pg && (pg.code === "22023" || pg.code === "42501" || pg.code === "P0002") && pg.message) {
+    // Funktionens egna svenska meddelanden.
+    throw new AwishSetupError(pg.message);
   }
-  throw error;
+  // Bara SQLSTATE följer med (dbErrorMessage ger ett svenskt meddelande av den).
+  const sanitized = Object.assign(
+    new Error(`awish_save_credentials misslyckades${pg ? ` (SQLSTATE ${pg.code})` : ""}.`),
+    pg ? { code: pg.code, severity: "ERROR" } : {},
+  );
+  throw sanitized;
+}
+
+/**
+ * Tidszon för en ny Awish API-källa: samma som organisationens senaste aktiva
+ * Awish-källa (t.ex. den uppladdade CSV:n, som ägaren kan ha rättat efter
+ * kontrollen i docs/awish.md), annars Asia/Shanghai. Samma tidszon behövs för att
+ * samma försäljning i båda källorna ska få samma betaltid (dubblettkontrollen).
+ */
+async function defaultSourceTimezone(tx: Tx, orgId: string): Promise<string> {
+  const [row] = await query<{ source_timezone: string }>(
+    tx,
+    sql`select ds.source_timezone from public.data_sources ds
+        where ds.organization_id = ${orgId}::uuid
+          and ds.provider in ('awish_csv', 'awish_web', 'awish_extension')
+          and ds.archived_at is null
+        order by ds.created_at desc
+        limit 1`,
+  );
+  return row?.source_timezone ?? "Asia/Shanghai";
 }
 
 /**
  * Sparar uppgifterna (tomt fält = behåll det sparade). Skapar datakällan "Awish API"
- * (källans tidszon Asia/Shanghai) om organisationen inte har någon.
+ * om organisationen inte har någon, med samma tidszon som organisationens senaste
+ * Awish-källa (annars Asia/Shanghai).
  */
 export async function saveAwishCredentialsFor(
   viewer: Viewer,
@@ -176,10 +203,11 @@ export async function saveAwishCredentialsFor(
       );
       let name = "Awish API";
       for (let i = 2; names.has(name.toLowerCase()); i += 1) name = `Awish API (${i})`;
+      const timezone = await defaultSourceTimezone(tx, orgId);
       const [created] = await query<{ id: string }>(
         tx,
         sql`insert into public.data_sources (organization_id, provider, name, source_timezone)
-            values (${orgId}::uuid, 'awish_grpc', ${name}, 'Asia/Shanghai')
+            values (${orgId}::uuid, 'awish_grpc', ${name}, ${timezone})
             returning id`,
       );
       id = created?.id;

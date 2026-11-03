@@ -846,6 +846,57 @@ describe("Awish-synken: Vault för pg_cron", () => {
     state.supabase.awishCron = { [prodRef(state)]: false };
     const { output } = await run(state, ["--agare", OWNER]);
     expect(output).toMatch(/pg_cron-jobbet binderlab-awish-sync saknas/);
+    // SQL:en att köra för hand skrivs ut (det går inte att köra om migreringen).
+    expect(output).toContain("select cron.schedule('binderlab-awish-sync'");
+    expect(output).not.toMatch(/kör migreringen .* igen/);
+  });
+
+  it("CRON_SECRET slumpas i databasen och står aldrig i SQL-texten", async () => {
+    const state = initialState();
+    await run(state, ["--agare", OWNER]);
+    const ref = prodRef(state);
+    const secret = state.supabase.vault[ref]!.binderlab_cron_secret!;
+    expect(secret).toMatch(/^[0-9a-f]{64}$/);
+    const sqlText = state.calls
+      .map((c) => JSON.stringify(c.body ?? ""))
+      .filter((b) => /database\/query|query/.test(b))
+      .join("\n");
+    expect(sqlText).not.toContain(secret);
+    expect(sqlText).toMatch(/binderlab:vault-generate/);
+  });
+
+  it("ett för kort CRON_SECRET i Vault ersätts med ett slumpat", async () => {
+    const state = initialState();
+    await run(state, ["--agare", OWNER]);
+    const ref = prodRef(state);
+    state.supabase.vault[ref]!.binderlab_cron_secret = "kort";
+    await run(state, ["--agare", OWNER]);
+    const secret = state.supabase.vault[ref]!.binderlab_cron_secret!;
+    expect(secret).toMatch(/^[0-9a-f]{64}$/);
+    expect(envOf(state, "production").CRON_SECRET!.value).toBe(secret);
+  });
+
+  it("pg_cron påslaget men jobbet saknas: deploy schemalägger synken och rensningen", async () => {
+    const state = initialState();
+    await run(state, ["--agare", OWNER]);
+    const ref = prodRef(state);
+    state.supabase.awishCron = { [ref]: "nojob" };
+    const { output } = await run(state, ["--agare", OWNER]);
+    expect(state.supabase.cronScheduled?.[ref]).toEqual([
+      "binderlab-awish-sync",
+      "binderlab-cron-cleanup",
+    ]);
+    expect(output).toContain("Awish-synken körs var tionde minut");
+    expect(output).not.toMatch(/pg_cron-jobbet binderlab-awish-sync saknas/);
+  });
+
+  it("dry-run schemalägger inget i pg_cron", async () => {
+    const state = initialState();
+    await run(state, ["--agare", OWNER]);
+    const ref = prodRef(state);
+    state.supabase.awishCron = { [ref]: "nojob" };
+    await run(state, ["--agare", OWNER, "--dry-run"]);
+    expect(state.supabase.cronScheduled?.[ref]).toBeUndefined();
   });
 
   it("dry-run skriver inget till Vault", async () => {

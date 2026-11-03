@@ -95,7 +95,8 @@ describe("Vault: inloggningsuppgifterna", () => {
     expect(text).not.toContain("app-1234");
     expect(ds.config).toMatchObject({
       awishGrpc: {
-        credentials: { appIdLast4: "1234", appSecretLast4: "ABCD", appKeyLast4: "WXYZ" },
+        // Kortare än 12 tecken: inga tecken av hemligheten i config (Läsare kan läsa den).
+        credentials: { appIdLast4: "1234", appSecretLast4: "", appKeyLast4: "" },
       },
     });
     const vault = await one<{ secret: string }>(
@@ -123,7 +124,7 @@ describe("Vault: inloggningsuppgifterna", () => {
       ),
     );
     expect(JSON.stringify(r.r)).not.toContain("nytt-secret");
-    expect(r.r).toMatchObject({ appSecretLast4: "9876", appKeyLast4: "WXYZ" });
+    expect(r.r).toMatchObject({ appSecretLast4: "9876", appKeyLast4: "" });
     const v = await one<{ s: string }>(
       db(),
       sql`select decrypted_secret as s from vault.decrypted_secrets where name = ${`${orgId}/awish_grpc:${sourceId}`}`,
@@ -495,3 +496,138 @@ class Rollback extends Error {}
 function shanghai(ms: number): string {
   return new Date(ms + 8 * 3_600_000).toISOString().slice(0, 19).replace("T", " ");
 }
+
+describe("granskningen: tidszon, belopp utan decimaler, läget vid nytt AppId", () => {
+  it("en ny API-källa får samma tidszon som organisationens Awish CSV-källa", async () => {
+    const owner = await createUser();
+    const orgId = await createOrg(owner);
+    await asPostgres((tx) =>
+      tx.execute(
+        sql`insert into public.data_sources (organization_id, provider, name, source_timezone)
+            values (${orgId}::uuid, 'awish_csv', 'Awish CSV', 'Europe/Stockholm')`,
+      ),
+    );
+    const { dataSourceId } = await saveAwishCredentialsFor(await viewerFor(owner, orgId), {
+      appId: fake.state.appId,
+      appSecret: fake.state.appSecret,
+      appKey: fake.state.appKey,
+    });
+    const ds = await one<{ tz: string }>(
+      db(),
+      sql`select source_timezone as tz from public.data_sources where id = ${dataSourceId}::uuid`,
+    );
+    expect(ds.tz).toBe("Europe/Stockholm");
+  });
+
+  it("ett betalt belopp utan decimaler stoppar körningen tills formatet är känt", async () => {
+    const owner = await createUser();
+    const orgId = await createOrg(owner);
+    const { dataSourceId } = await saveAwishCredentialsFor(await viewerFor(owner, orgId), {
+      appId: fake.state.appId,
+      appSecret: fake.state.appSecret,
+      appKey: fake.state.appKey,
+    });
+    const now = () => new Date("2026-11-02T00:00:00Z");
+    fake.state.orders = [fakeOrder(5001, { payTime: "2026-11-02 07:00:00", amount: "400" })];
+    const stopped = await syncAwishSource({ db: db(), connect, now }, { dataSourceId });
+    expect(stopped.ok).toBe(false);
+    expect(stopped.message).toMatch(/utan decimaler/);
+    const count = async () =>
+      (
+        await one<{ n: number }>(
+          db(),
+          sql`select count(*)::int as n from public.orders where data_source_id = ${dataSourceId}::uuid`,
+        )
+      ).n;
+    expect(await count()).toBe(0);
+    // När ett belopp med decimalpunkt har setts tolkas heltal som kronor.
+    fake.state.orders.push(fakeOrder(5002, { payTime: "2026-11-02 07:05:00", amount: "4.00" }));
+    const ok = await syncAwishSource({ db: db(), connect, now }, { dataSourceId });
+    expect(ok.ok).toBe(true);
+    expect(await count()).toBe(2);
+    const amounts = await rows<{ external_id: string; amount_ore: string }>(
+      db(),
+      sql`select external_id, amount_ore::text from public.orders
+          where data_source_id = ${dataSourceId}::uuid order by external_id`,
+    );
+    expect(amounts).toEqual([
+      { external_id: "5001", amount_ore: "40000" },
+      { external_id: "5002", amount_ore: "400" },
+    ]);
+  });
+
+  it("obetalda order loggas inte i varje import", async () => {
+    const owner = await createUser();
+    const orgId = await createOrg(owner);
+    const { dataSourceId } = await saveAwishCredentialsFor(await viewerFor(owner, orgId), {
+      appId: fake.state.appId,
+      appSecret: fake.state.appSecret,
+      appKey: fake.state.appKey,
+    });
+    const now = () => new Date("2026-11-02T00:00:00Z");
+    fake.state.orders = [
+      fakeOrder(6001, { payTime: "2026-11-02 07:00:00" }),
+      fakeOrder(6002, { status: "PAY_NOTPAY", payTime: null }),
+    ];
+    const first = await syncAwishSource({ db: db(), connect, now }, { dataSourceId });
+    fake.state.orders.push(fakeOrder(6003, { payTime: "2026-11-02 07:10:00" }));
+    const second = await syncAwishSource({ db: db(), connect, now }, { dataSourceId });
+    expect(first.summary?.new).toBe(1);
+    expect(second.summary?.new).toBe(1);
+    const logged = await rows<{ n: number }>(
+      db(),
+      sql`select count(*)::int as n from public.import_rows ir
+          join public.imports i on i.organization_id = ir.organization_id and i.id = ir.import_id
+          where i.data_source_id = ${dataSourceId}::uuid and ir.raw ->> 'id' = '6002'`,
+    );
+    expect(logged[0]?.n).toBe(0);
+  });
+
+  it("sparas ett nytt AppId under en körning skrivs det gamla kontots läge inte tillbaka", async () => {
+    const owner = await createUser();
+    const orgId = await createOrg(owner);
+    const viewer = await viewerFor(owner, orgId);
+    const { dataSourceId } = await saveAwishCredentialsFor(viewer, {
+      appId: fake.state.appId,
+      appSecret: fake.state.appSecret,
+      appKey: fake.state.appKey,
+    });
+    fake.state.orders = [fakeOrder(7001, { payTime: "2026-11-02 07:00:00" })];
+    let saved = false;
+    const racing = (creds: { appId: string; appSecret: string; appKey: string }) => {
+      const api = connect(creds);
+      return {
+        ...api,
+        async orders(page: Parameters<typeof api.orders>[0]) {
+          const res = await api.orders(page);
+          if (!saved) {
+            saved = true;
+            await saveAwishCredentialsFor(viewer, {
+              appId: "annat-konto",
+              appSecret: "",
+              appKey: "",
+            });
+          }
+          return res;
+        },
+      };
+    };
+    const r = await syncAwishSource(
+      { db: db(), connect: racing, now: () => new Date("2026-11-02T00:00:00Z") },
+      { dataSourceId },
+    );
+    expect(r.ok).toBe(true);
+    const state = await one<{ cursor: string }>(
+      db(),
+      sql`select cursor from public.data_sources where id = ${dataSourceId}::uuid`,
+    );
+    const parsed = JSON.parse(state.cursor) as {
+      paging: { historyDone: boolean } | undefined;
+      leaseUntil: unknown;
+      lastRun: { ok: boolean } | null;
+    };
+    expect(parsed.paging?.historyDone ?? false).toBe(false);
+    expect(parsed.leaseUntil).toBeNull();
+    expect(parsed.lastRun?.ok).toBe(true);
+  });
+});

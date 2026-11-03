@@ -44,7 +44,9 @@ function statusLine(
   };
 }
 
-const masked = (last4: string | undefined) => (last4 ? `••••${last4}` : "");
+/** Sparat värde: de sista tecknen om de finns (bara för långa värden), annars bara punkter. */
+const masked = (last4: string | undefined, saved: boolean) =>
+  last4 ? `••••${last4}` : saved ? "••••••••" : "";
 
 export function AwishCard({
   source,
@@ -148,7 +150,7 @@ export function AwishCard({
           autoComplete="off"
           spellCheck={false}
           value={appId}
-          placeholder={masked(saved?.appIdLast4)}
+          placeholder={masked(saved?.appIdLast4, saved !== null)}
           onChange={(e) => setAppId(e.target.value)}
         />
         <Input
@@ -157,16 +159,17 @@ export function AwishCard({
           type="password"
           autoComplete="new-password"
           value={appSecret}
-          placeholder={masked(saved?.appSecretLast4)}
+          placeholder={masked(saved?.appSecretLast4, saved !== null)}
           onChange={(e) => setAppSecret(e.target.value)}
         />
         <Input
           label="AppKey"
           name="appKey"
-          autoComplete="off"
+          type="password"
+          autoComplete="new-password"
           spellCheck={false}
           value={appKey}
-          placeholder={masked(saved?.appKeyLast4)}
+          placeholder={masked(saved?.appKeyLast4, saved !== null)}
           onChange={(e) => setAppKey(e.target.value)}
         />
         <p className="text-xs text-subtle md:col-span-3">

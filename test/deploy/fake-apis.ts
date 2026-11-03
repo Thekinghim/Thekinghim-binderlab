@@ -5,6 +5,8 @@
  * API:erna (enligt deras dokumentation). Varje anrop loggas i `calls`.
  */
 
+import { randomBytes } from "node:crypto";
+
 import { md5 } from "../../scripts/deploy/lib/supabase";
 
 export interface Call {
@@ -47,8 +49,13 @@ export interface FakeState {
     dbPasswords: Record<string, string>;
     /** Supabase Vault per projekt: namn → värde. */
     vault: Record<string, Record<string, string>>;
-    /** pg_cron och pg_net påslagna och jobbet schemalagt (standard: ja). */
-    awishCron?: Record<string, boolean>;
+    /**
+     * pg_cron/pg_net och jobbet per projekt: true (påslagna, jobbet finns; standard),
+     * "nojob" (påslagna men jobbet saknas) eller false (inte påslagna).
+     */
+    awishCron?: Record<string, boolean | "nojob">;
+    /** Jobb som schemalagts via deploy (namn). */
+    cronScheduled?: Record<string, string[]>;
     /** Gör att signing-keys-API:t svarar 404 (äldre API). */
     noSigningKeysApi?: boolean;
   };
@@ -348,11 +355,27 @@ export function createFakeFetch(state: FakeState) {
           vault[unq(v[1]!)] = unq(v[2]!);
           return json(201, [{ update_secret: "" }]);
         }
+        if (/binderlab:vault-generate \*\//.test(query)) {
+          const name = /where name = '((?:[^']|'')*)'\) then/.exec(query)?.[1];
+          if (!name || !/gen_random_uuid\(\)/.test(query))
+            return json(400, { message: "syntax error" });
+          vault[unq(name)] = randomBytes(32).toString("hex");
+          return json(201, []);
+        }
         if (/binderlab:awish-cron \*\//.test(query)) {
           return json(201, [{ ok: sb.awishCron?.[ref] !== false }]);
         }
         if (/binderlab:awish-cron-job \*\//.test(query)) {
-          return json(201, [{ n: sb.awishCron?.[ref] === false ? 0 : 1 }]);
+          const c = sb.awishCron?.[ref];
+          return json(201, [{ n: c === false || c === "nojob" ? 0 : 1 }]);
+        }
+        if (/binderlab:awish-cron-schedule \*\//.test(query)) {
+          if (sb.awishCron?.[ref] === false)
+            return json(400, { message: 'schema "cron" does not exist' });
+          const names = [...query.matchAll(/cron\.schedule\('([a-z-]+)'/g)].map((m) => m[1]!);
+          (sb.cronScheduled ??= {})[ref] = names;
+          (sb.awishCron ??= {})[ref] = true;
+          return json(201, []);
         }
         if (BOOKKEEPING.test(query)) {
           return json(

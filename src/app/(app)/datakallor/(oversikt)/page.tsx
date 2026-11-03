@@ -16,6 +16,8 @@ import { currentViewer } from "../_lib/session";
 import { loadAwishPanelFor } from "@/server/awish/manage";
 
 export const metadata: Metadata = { title: "Datakällor" };
+/** "Synka nu" och "Testa anslutningen" (server actions på sidan) anropar Awish. */
+export const maxDuration = 60;
 
 /**
  * Datakällor: Awish (gRPC-API, hämtas automatiskt var tionde minut), varifrån orderna

@@ -10,7 +10,9 @@
  * - Belopp: Order.amount är text i valutaenheter, t.ex. "4.00" (tabellen i
  *   dokumentationen säger "Int, unit cent", men alla exempel är decimaltext).
  *   Tolkas exakt med heltal: högst två decimaler, inga tusentalsavgränsare. Utan
- *   decimalpunkt ("170") tolkas det som kronor och raden får en anmärkning.
+ *   decimalpunkt ("170") tolkas det som kronor och raden får en anmärkning. Synken
+ *   (src/server/awish/sync.ts) stoppar dock körningen på ett sådant belopp tills
+ *   källan har gett minst ett belopp med decimalpunkt (det kan vara öre).
  * - Betald = status PAY_SUCCESS och inte is_free. Gratisorder (is_free),
  *   testorder (PAY_TEST), hämtkoder (PAY_PICK_UP_CODE), återbetalda
  *   (PAY_REFUND, PAY_REFUNDING, PAY_REFUNDED) och obetalda räknas som "ej

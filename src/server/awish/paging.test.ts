@@ -154,14 +154,14 @@ for (const order of ["desc", "asc"] as const) {
       });
       expect(first.headComplete).toBe(false);
       expect(first.budgetExhausted).toBe(true);
-      expect(first.cursor.gap?.stopAtId).toBe("10");
+      expect(first.cursor.gaps[0]?.stopAtId).toBe("10");
       const seen = new Set(first.orders.map((o) => Number(o.id)));
       // Fem nya order kommer innan nästa körning.
       all = makeOrders(105);
       let cursor = first.cursor;
       // Huvudet (det senaste dygnet, och i "asc" även sida 1 för sidantalet) tar några sidor
       // per körning; resten går till glappet.
-      for (let run = 0; run < 10 && cursor.gap; run += 1) {
+      for (let run = 0; run < 10 && cursor.gaps.length > 0; run += 1) {
         const r = await collectOrders({
           fetchPage: src.fetchPage,
           cursor,
@@ -173,7 +173,7 @@ for (const order of ["desc", "asc"] as const) {
         r.orders.forEach((o) => seen.add(Number(o.id)));
         cursor = r.cursor;
       }
-      expect(cursor.gap).toBeNull();
+      expect(cursor.gaps).toEqual([]);
       for (const id of range(10, 105)) expect(seen.has(id), String(id)).toBe(true);
     });
   });

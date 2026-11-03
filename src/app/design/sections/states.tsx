@@ -47,7 +47,7 @@ export const STATE_COUNT = modes.length;
 const diagnostics = [
   { label: "Begärans id", value: "req_7f3a91c2e04b" },
   { label: "Tid", value: "2 nov. 14:19:04" },
-  { label: "Tjänst", value: "awish-sync · eu-north-1" },
+  { label: "Tjänst", value: "awish-api · eu-north-1" },
   { label: "Svar", value: "503, tjänsten svarar inte" },
 ];
 

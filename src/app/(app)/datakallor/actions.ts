@@ -23,7 +23,7 @@ import {
   testAwishConnectionFor,
 } from "@/server/awish/manage";
 import type { AwishConnectionTest } from "@/server/awish/sync";
-import { dbErrorMessage } from "@/server/errors";
+import { dbErrorMessage, safeErrorForLog } from "@/server/errors";
 import { AuthorizationError } from "@/server/access";
 import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/data/core";
 
@@ -65,7 +65,8 @@ function failure(error: unknown): { ok: false; error: string } {
   ) {
     return { ok: false, error: error.message };
   }
-  console.error("[datakallor]", error);
+  // Aldrig hela felet: en misslyckad fråga har parametrarna (t.ex. AppSecret) i meddelandet.
+  console.error("[datakallor]", safeErrorForLog(error));
   return { ok: false, error: dbErrorMessage(error) };
 }
 

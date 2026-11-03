@@ -122,3 +122,10 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
   enum-värdena ligger kvar oanvända.
 - Inte provat mot Awish riktiga server (byggmiljön når inte `49.51.72.74:50051`); provat mot en låtsasserver med samma
   proto. Kvar att kontrollera i drift: token med gemener, tidszonen (order 42780), beloppsformatet och ordningen.
+- Granskning (tre granskare) och rättelser: sidantal utan `last_page`/`total` (has_more eller kort sida), flera glapp
+  efter flera avbrott, en gemensam tidsgräns för hela cron-körningen (anropens tidsgräns kortas), transportfel efter
+  gRPC-kod, belopp utan decimaler stoppar synken tills formatet är känt, API-källan ärver CSV-källans tidszon,
+  obetalda loggas inte i varje import, läget skrivs inte över efter ett nytt AppId, inga parametrar (AppSecret) i
+  loggen vid databasfel, CRON_SECRET slumpas i databasen, deploy schemalägger pg_cron-jobbet och rensningen,
+  AppKey som lösenordsfält, ledtrådar bara för långa hemligheter, synk-token återkallade
+  (`20261103120000_awish_api_granskning.sql`). Ny risk dokumenterad: gRPC utan TLS (`docs/awish-api.md`).

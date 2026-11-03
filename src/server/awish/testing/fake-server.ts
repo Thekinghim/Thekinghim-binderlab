@@ -32,6 +32,13 @@ export interface FakeAwishState {
   maxPerPage: number;
   /** Antal kommande anrop som svarar UNAVAILABLE. */
   failNext: number;
+  /**
+   * Vilka sidfält som skickas: "full" (total, per_page, last_page), "none" (inga,
+   * de är valfria i proto-filen) eller "has_more" (bara has_more).
+   */
+  paging: "full" | "none" | "has_more";
+  /** Väntan (ms) innan varje svar. */
+  delayMs: number;
   /** Alla anrop: metod och begäran. */
   calls: Array<{ method: string; request: Record<string, unknown>; token: string | null }>;
 }
@@ -87,6 +94,8 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
     machines: [],
     maxPerPage: 20,
     failNext: 0,
+    paging: "full",
+    delayMs: 0,
     calls: [],
     ...initial,
   };
@@ -127,6 +136,13 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
     const perPage = Math.min(Number(request.per_page ?? 15) || 15, state.maxPerPage);
     const currentPage = Math.max(1, Number(request.current_page ?? 1) || 1);
     const start = (currentPage - 1) * perPage;
+    if (state.paging !== "full") {
+      return {
+        data: items.slice(start, start + perPage),
+        ...(state.paging === "has_more" ? { has_more: start + perPage < items.length } : {}),
+        request_id: "fake",
+      };
+    }
     return {
       data: items.slice(start, start + perPage),
       total: String(items.length),
@@ -146,8 +162,14 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
 
   const server = new grpc.Server();
   const Ctor = awishServiceConstructor();
-  server.addService(Ctor.service, {
-    Merchant(call: Call, callback: Callback) {
+  const delayed =
+    <A extends unknown[]>(fn: (...args: A) => void) =>
+    (...args: A) => {
+      if (state.delayMs > 0) setTimeout(() => fn(...args), state.delayMs);
+      else fn(...args);
+    };
+  const handlers = {
+    Merchant(call: Call, callback: Callback): void {
       if (!guard("Merchant", call, callback)) return;
       callback(null, {
         data: {
@@ -161,7 +183,7 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
         request_id: "fake",
       });
     },
-    Machines(call: Call, callback: Callback) {
+    Machines(call: Call, callback: Callback): void {
       if (!guard("Machines", call, callback)) return;
       const page = paged(state.machines, call.request);
       callback(null, {
@@ -169,7 +191,7 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
         data: page.data.map((m) => ({ ...m, status: "1", is_online: true })),
       });
     },
-    Orders(call: Call, callback: Callback) {
+    Orders(call: Call, callback: Callback): void {
       if (!guard("Orders", call, callback)) return;
       const ids = Array.isArray(call.request.machine_ids)
         ? (call.request.machine_ids as unknown[]).map(String)
@@ -178,11 +200,17 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
       const page = paged(list, call.request);
       callback(null, { ...page, data: page.data.map(toProtoOrder) });
     },
-    Order(call: Call, callback: Callback) {
+    Order(call: Call, callback: Callback): void {
       if (!guard("Order", call, callback)) return;
       const found = state.orders.find((o) => o.id === String(call.request.id));
       callback(null, { code: "0", message: "ok", data: found ? toProtoOrder(found) : undefined });
     },
+  };
+  server.addService(Ctor.service, {
+    Merchant: delayed(handlers.Merchant),
+    Machines: delayed(handlers.Machines),
+    Orders: delayed(handlers.Orders),
+    Order: delayed(handlers.Order),
   });
   const port = await new Promise<number>((resolve, reject) =>
     server.bindAsync("127.0.0.1:0", grpc.ServerCredentials.createInsecure(), (error, p) =>

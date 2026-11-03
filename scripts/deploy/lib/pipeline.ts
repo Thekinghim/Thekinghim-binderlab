@@ -393,7 +393,7 @@ export async function runDeploy(options: DeployOptions, deps: Deps): Promise<Out
       // den). Vault är källan: finns den där används samma värde i Vercel, annars skapas en
       // ny och skrivs först till Vault och sedan till Vercel.
       const prodCronSecret = prodEnv.ref
-        ? await ensureVaultCronSecret(sctx, prodEnv.ref, deps)
+        ? await ensureVaultCronSecret(sctx, prodEnv.ref)
         : undefined;
       const desired: vc.DesiredVar[] = [];
       for (const env of envs) {
@@ -516,10 +516,14 @@ export async function runDeploy(options: DeployOptions, deps: Deps): Promise<Out
           `${prodEnv.ref}: ${sb.VAULT_APP_URL} sattes inte i Vault (adressen är inte bekräftad). Kör scripts/deploy/vercel.ts igen efter en lyckad driftsättning.`,
         );
       }
-      if (!(await sb.hasAwishCronJob(sctx, prodEnv.ref))) {
+      const cron = await sb.awishCronStatus(sctx, prodEnv.ref);
+      if (!cron.extensions) {
         log.manual(
-          `${prodEnv.ref}: pg_cron-jobbet ${sb.AWISH_CRON_JOB} saknas (pg_cron eller pg_net är inte påslaget). Slå på båda under Database → Extensions och kör migreringen 20261103090000_awish_api.sql igen, eller anropa /api/cron/awish från en annan schemaläggare var tionde minut.`,
+          `${prodEnv.ref}: pg_cron-jobbet ${sb.AWISH_CRON_JOB} saknas (pg_cron eller pg_net är inte påslaget). Slå på båda under Database → Extensions och kör scripts/deploy igen (det schemalägger jobbet), eller kör i SQL-redigeraren:\n${sb.AWISH_CRON_SCHEDULE_SQL}`,
         );
+      } else if (!cron.job) {
+        await sb.scheduleAwishCronJob(sctx, prodEnv.ref);
+        if (!dryRun) log.ok(`${prodEnv.ref}: Awish-synken körs var tionde minut (pg_cron).`);
       } else {
         log.ok(`${prodEnv.ref}: Awish-synken körs var tionde minut (pg_cron).`);
       }
@@ -771,18 +775,20 @@ function remainingManual(log: Logger, options: DeployOptions): void {
  * skrivs dit. Vercel-värdet sätts sedan till samma (känsliga variabler går inte att
  * läsa tillbaka ur Vercel, så Vault är det enda stället där värdet kan läsas).
  */
-async function ensureVaultCronSecret(
-  sctx: sb.Ctx,
-  ref: string,
-  deps: Deps,
-): Promise<string | undefined> {
+async function ensureVaultCronSecret(sctx: sb.Ctx, ref: string): Promise<string | undefined> {
   sctx.log.step("Supabase: CRON_SECRET i Vault");
   const existing = await sb.readVaultSecret(sctx, ref, sb.VAULT_CRON_SECRET);
   if (existing && existing.length >= 16) {
     sctx.log.ok(`${ref}: ${sb.VAULT_CRON_SECRET} finns i Vault; samma värde används i Vercel.`);
     return existing;
   }
-  const fresh = sctx.log.secret(deps.generateCronSecret());
-  await sb.upsertVaultSecret(sctx, ref, sb.VAULT_CRON_SECRET, fresh);
-  return sctx.dryRun ? undefined : fresh;
+  // Värdet slumpas i databasen och läses tillbaka, så att det aldrig står i SQL-texten.
+  // Ett för kort värde (handskrivet?) ersätts på samma sätt.
+  await sb.generateVaultCronSecret(sctx, ref);
+  if (sctx.dryRun) return undefined;
+  const created = await sb.readVaultSecret(sctx, ref, sb.VAULT_CRON_SECRET);
+  if (!created || created.length < 16) {
+    throw new Error(`${ref}: ${sb.VAULT_CRON_SECRET} kunde inte skapas i Vault.`);
+  }
+  return created;
 }

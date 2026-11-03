@@ -11,11 +11,11 @@
  * 1. Huvudet: från den nya änden tills både (a) en order med id ≤ det högsta
  *    redan importerade id:t har setts och (b) en order som är äldre än ett dygn
  *    har setts. (b) gör att obetalda order från det senaste dygnet läses om
- *    varje gång, så att en sen betalning inte missas (samma regel som det gamla
- *    Chrome-tillägget). Är källan tom gäller bara (b).
- * 2. Ett glapp: tog sidbudgeten slut innan huvudet nådde redan importerade order
+ *    varje gång, så att en sen betalning inte missas. Är källan tom gäller bara (b).
+ * 2. Glapp: tog sidbudgeten slut innan huvudet nådde redan importerade order
  *    (lång driftpaus) sparas var läsningen slutade, och nästa körning fortsätter
- *    där tills den når det id som var högst när glappet uppstod.
+ *    där tills den når det id som var högst när glappet uppstod. Flera glapp i
+ *    rad (två långa pauser) sparas var för sig, nyast först.
  * 3. Historiken: första gången läses hela listan bakåt till den äldsta ordern,
  *    högst `maxPages` sidor per körning, och läget sparas så att nästa körning
  *    fortsätter.
@@ -23,6 +23,11 @@
  * I "desc" flyttas äldre order till högre sidnummer när nya kommer till. En
  * sparad sida läses då om med några redan sedda order först, men inget hoppas
  * över. I "asc" ligger gamla order kvar på samma sida.
+ *
+ * Antalet sidor: last_page, annars total / per_page. Alla dessa fält är valfria i
+ * proto-filen. Skickar servern inget av dem (eller 0) gäller has_more, och annars
+ * att en sida som inte är full (eller tom) är den sista. I "asc" behövs sista
+ * sidan; den letas då upp med en sökning (dubblering, sedan halvering).
  */
 
 import { latestInstantOf, type AwishGrpcOrder } from "@/import/adapters/awish-grpc";
@@ -34,14 +39,24 @@ export interface OrdersPage {
   total: number | null;
   perPage: number | null;
   lastPage: number | null;
+  /** has_more om servern skickar det. */
+  hasMore?: boolean | null;
 }
+
+export interface SyncGap {
+  page: number;
+  stopAtId: string;
+}
+
+/** Högst så många glapp sparas; fler slås ihop (det äldsta stoppet behålls). */
+export const MAX_GAPS = 10;
 
 export interface SyncCursor {
   v: 1;
   /** Senast upptäckta ordning. */
   order: PageOrder | null;
-  /** Glapp efter en lång paus: sida att fortsätta på och id att stanna vid. */
-  gap: { page: number; stopAtId: string } | null;
+  /** Glapp efter långa pauser, nyast först: sida att fortsätta på och id att stanna vid. */
+  gaps: SyncGap[];
   /** Hela historiken: sida att fortsätta på (null = inte påbörjad). */
   history: { page: number } | null;
   historyDone: boolean;
@@ -50,7 +65,7 @@ export interface SyncCursor {
 export const EMPTY_CURSOR: SyncCursor = {
   v: 1,
   order: null,
-  gap: null,
+  gaps: [],
   history: null,
   historyDone: false,
 };
@@ -62,21 +77,26 @@ export function parseCursor(value: unknown): SyncCursor {
   const order = v.order === "desc" || v.order === "asc" ? v.order : null;
   const pageOf = (x: unknown): number | null =>
     typeof x === "number" && Number.isSafeInteger(x) && x >= 1 ? x : null;
-  const gapRaw = (v.gap ?? null) as Record<string, unknown> | null;
-  const gapPage = gapRaw ? pageOf(gapRaw.page) : null;
-  const gap =
-    gapRaw &&
-    gapPage !== null &&
-    typeof gapRaw.stopAtId === "string" &&
-    /^\d+$/.test(gapRaw.stopAtId)
-      ? { page: gapPage, stopAtId: gapRaw.stopAtId }
+  const gapOf = (x: unknown): SyncGap | null => {
+    if (!x || typeof x !== "object") return null;
+    const g = x as Record<string, unknown>;
+    const page = pageOf(g.page);
+    return page !== null && typeof g.stopAtId === "string" && /^\d{1,30}$/.test(g.stopAtId)
+      ? { page, stopAtId: g.stopAtId }
       : null;
+  };
+  // Äldre läge hade ett enda glapp (`gap`).
+  const gapList = Array.isArray(v.gaps) ? v.gaps : v.gap ? [v.gap] : [];
+  const gaps = gapList
+    .map(gapOf)
+    .filter((g): g is SyncGap => g !== null)
+    .slice(0, MAX_GAPS);
   const histRaw = (v.history ?? null) as Record<string, unknown> | null;
   const histPage = histRaw ? pageOf(histRaw.page) : null;
   return {
     v: 1,
     order,
-    gap,
+    gaps,
     history: histPage === null ? null : { page: histPage },
     historyDone: v.historyDone === true,
   };
@@ -109,6 +129,8 @@ export interface CollectOptions {
   /** Klockslag (ms) då inga fler sidor hämtas. */
   deadlineAt?: number;
   clock?: () => number;
+  /** Fel från fetchPage som betyder "tiden är slut" (stoppar som budgeten, inte som fel). */
+  isOutOfTime?: (error: unknown) => boolean;
 }
 
 export interface CollectResult {
@@ -121,6 +143,8 @@ export interface CollectResult {
   headComplete: boolean;
   /** Stoppades av sidbudgeten eller tidsgränsen. */
   budgetExhausted: boolean;
+  /** Vilka sidfält servern skickade på sida 1 (för felsökning, sparas i läget). */
+  pagingFields: string[];
 }
 
 export const DAY_MS = 86_400_000;
@@ -152,7 +176,16 @@ export async function collectOrders(opts: CollectOptions): Promise<CollectResult
       return null;
     }
     fetched += 1;
-    const res = await opts.fetchPage(page);
+    let res: OrdersPage;
+    try {
+      res = await opts.fetchPage(page);
+    } catch (error) {
+      if (opts.isOutOfTime?.(error)) {
+        exhausted = true;
+        return null;
+      }
+      throw error;
+    }
     cache.set(page, res);
     for (const o of res.items) seen.set(o.id, o);
     return res;
@@ -168,35 +201,93 @@ export async function collectOrders(opts: CollectOptions): Promise<CollectResult
       total: null,
       headComplete: false,
       budgetExhausted: true,
+      pagingFields: [],
     };
   }
+  const pagingFields = [
+    first.total !== null ? "total" : null,
+    first.perPage !== null ? "per_page" : null,
+    first.lastPage !== null ? "last_page" : null,
+    first.hasMore !== undefined && first.hasMore !== null ? "has_more" : null,
+  ].filter((f): f is string => f !== null);
   const perPage = first.perPage && first.perPage > 0 ? first.perPage : first.items.length || 1;
-  const lastPage = Math.max(
-    1,
-    first.lastPage ?? (first.total !== null ? Math.ceil(first.total / perPage) : 1),
-  );
+  /** Sista sidan enligt last_page eller total; null = servern skickade inget användbart. */
+  const declared =
+    first.lastPage !== null && first.lastPage > 0
+      ? first.lastPage
+      : first.total !== null && first.total > 0
+        ? Math.ceil(first.total / perPage)
+        : null;
+  /** Är sidan den sista (bara när servern inte talar om antalet sidor)? */
+  const endsHere = (res: OrdersPage): boolean =>
+    declared === null &&
+    (res.items.length === 0 || res.hasMore === false || res.items.length < perPage);
+
+  let lastPage: number | null = declared ?? (endsHere(first) ? 1 : null);
+
+  /** Sista sidan när servern inte anger den: dubblera tills slutet, halvera sedan. */
+  const findLastPage = async (): Promise<number | null> => {
+    let lo = 1;
+    let hi: number | null = null;
+    for (let probe = 2; hi === null; probe *= 2) {
+      const res = await get(probe);
+      if (!res) return null;
+      if (res.items.length === 0) hi = probe;
+      else if (endsHere(res)) return probe;
+      else lo = probe;
+    }
+    while (hi - lo > 1) {
+      const mid = Math.floor((lo + hi) / 2);
+      const res = await get(mid);
+      if (!res) return null;
+      if (res.items.length === 0) hi = mid;
+      else if (endsHere(res)) return mid;
+      else lo = mid;
+    }
+    return lo;
+  };
 
   // Ordningen: sida 1, annars sida 1 mot sista sidan, annars det sparade.
   let order = detectOrder(first.items);
-  if (order === null && lastPage > 1) {
+  if (order === null && lastPage !== null && lastPage > 1) {
     const tail = await get(lastPage);
     const a = idOf(first.items[0]?.id ?? "");
     const b = idOf(tail?.items[0]?.id ?? "");
     if (a !== null && b !== null && a !== b) order = a > b ? "desc" : "asc";
   }
   order = order ?? opts.cursor.order ?? "desc";
-  const cursor: SyncCursor = { ...opts.cursor, order };
+  const cursor: SyncCursor = { ...opts.cursor, order, gaps: [...opts.cursor.gaps] };
   if (opts.cursor.order !== null && opts.cursor.order !== order) {
     // Ordningen har bytts: sparade sidnummer gäller inte längre.
-    cursor.gap = null;
+    cursor.gaps = [];
     cursor.history = null;
   }
+  if (order === "asc" && lastPage === null) {
+    lastPage = await findLastPage();
+    if (lastPage === null) {
+      // Tiden eller budgeten tog slut under sökningen: inget läge ändras.
+      return {
+        orders: [...seen.values()],
+        pages: fetched,
+        cursor: { ...opts.cursor, order },
+        order,
+        total: first.total,
+        headComplete: false,
+        budgetExhausted: true,
+        pagingFields,
+      };
+    }
+  }
+  const last = lastPage;
 
   /** Sida nummer i från den nya änden → absolut sidnummer. */
-  const absolute = (i: number): number => (order === "desc" ? i : lastPage - i + 1);
+  const absolute = (i: number): number => (order === "desc" || last === null ? i : last - i + 1);
   /** Ett steg mot den gamla änden. */
   const older = (page: number): number => (order === "desc" ? page + 1 : page - 1);
-  const inRange = (page: number): boolean => page >= 1 && page <= lastPage;
+  const inRange = (page: number): boolean => page >= 1 && (last === null || page <= last);
+  /** Är `page` (med svaret `res`) den äldsta änden av listan? */
+  const atOldEnd = (page: number, res: OrdersPage): boolean =>
+    order === "desc" ? endsHere(res) || !inRange(page + 1) : page <= 1;
 
   const isKnown = (o: AwishGrpcOrder): boolean => {
     if (maxKnown === null) return true;
@@ -209,7 +300,7 @@ export async function collectOrders(opts: CollectOptions): Promise<CollectResult
   };
 
   // 1. Huvudet.
-  const pending = cursor.gap !== null || !cursor.historyDone;
+  const pending = cursor.gaps.length > 0 || !cursor.historyDone;
   const headCap = pending
     ? Math.max(1, opts.maxPages - Math.ceil(opts.maxPages / 5))
     : opts.maxPages;
@@ -246,19 +337,25 @@ export async function collectOrders(opts: CollectOptions): Promise<CollectResult
       }
       if (reachedKnown && reachedOld) {
         headComplete = true;
-        headNext = inRange(older(page)) ? older(page) : null;
+        headNext = atOldEnd(page, res) ? null : older(page);
+        break;
+      }
+      if (atOldEnd(page, res)) {
+        headComplete = true;
         break;
       }
     }
   }
-  if (
-    !headComplete &&
-    !reachedKnown &&
-    headNext !== null &&
-    opts.maxKnownId !== null &&
-    cursor.gap === null
-  ) {
-    cursor.gap = { page: headNext, stopAtId: opts.maxKnownId };
+  if (!headComplete && !reachedKnown && headNext !== null && opts.maxKnownId !== null) {
+    // Nytt glapp: från där huvudet slutade ned till det högsta id som fanns före
+    // pausen. Ett äldre glapp ligger kvar (det täcker id under det här stoppet).
+    cursor.gaps = [{ page: headNext, stopAtId: opts.maxKnownId }, ...cursor.gaps];
+    while (cursor.gaps.length > MAX_GAPS) {
+      // Slå ihop de två äldsta: börja på det nyares sida, stanna vid det äldres stopp.
+      const older2 = cursor.gaps.pop()!;
+      const newer = cursor.gaps.pop()!;
+      cursor.gaps.push({ page: newer.page, stopAtId: older2.stopAtId });
+    }
   }
 
   // 2. Glappet, 3. historiken.
@@ -273,18 +370,25 @@ export async function collectOrders(opts: CollectOptions): Promise<CollectResult
       if (!res) return { done: false, next: page };
       if (res.items.length === 0) return { done: true, next: page };
       if (res.items.some(stop)) return { done: true, next: page };
+      if (atOldEnd(page, res)) return { done: true, next: page };
       page = older(page);
     }
   };
 
-  if (cursor.gap && !exhausted) {
-    const stopAt = idOf(cursor.gap.stopAtId);
-    const r = await walk(cursor.gap.page, (o) => {
+  const gaps: SyncGap[] = [];
+  for (const gap of cursor.gaps) {
+    if (exhausted) {
+      gaps.push(gap);
+      continue;
+    }
+    const stopAt = idOf(gap.stopAtId);
+    const r = await walk(gap.page, (o) => {
       const id = idOf(o.id);
       return stopAt !== null && id !== null && id <= stopAt;
     });
-    cursor.gap = r.done ? null : { ...cursor.gap, page: r.next };
+    if (!r.done) gaps.push({ ...gap, page: r.next });
   }
+  cursor.gaps = gaps;
   if (!cursor.historyDone && !exhausted) {
     const start = cursor.history?.page ?? headNext ?? (headComplete ? null : absolute(1));
     if (start === null) {
@@ -309,5 +413,6 @@ export async function collectOrders(opts: CollectOptions): Promise<CollectResult
     total: first.total,
     headComplete,
     budgetExhausted: exhausted,
+    pagingFields,
   };
 }

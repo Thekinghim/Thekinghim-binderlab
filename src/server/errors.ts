@@ -48,3 +48,18 @@ export function dbErrorMessage(error: unknown, fallback = "Något gick fel. För
   }
   return GENERIC[pg.code] ?? fallback;
 }
+
+/**
+ * Ett fel i en form som går att logga utan frågans parametrar. drizzles
+ * DrizzleQueryError har "Failed query: ...\nparams: ..." i meddelandet, och
+ * parametrarna kan vara hemligheter (t.ex. AppSecret till Vault). Bara namnet,
+ * meddelandet fram till "params:" och Postgres felkod följer med.
+ */
+export function safeErrorForLog(error: unknown): { name: string; message: string; code?: string } {
+  const pg = pgErrorOf(error);
+  const name = error instanceof Error ? error.name : typeof error;
+  const raw = error instanceof Error ? error.message : String(error);
+  const cut = raw.search(/\n?params:/i);
+  const message = (cut >= 0 ? raw.slice(0, cut) : raw).slice(0, 500);
+  return pg ? { name, message, code: pg.code } : { name, message };
+}

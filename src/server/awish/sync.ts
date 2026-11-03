@@ -45,6 +45,7 @@ import {
   awishClientConfigFromEnv,
   createAwishClient,
   type AwishApi,
+  type AwishClientOptions,
   type AwishCredentials,
 } from "./grpc-client";
 import { collectOrders, parseCursor, type SyncCursor } from "./paging";
@@ -55,8 +56,17 @@ type Row = Record<string, unknown>;
 export const MAX_ORDER_PAGES = 50;
 /** Högst så många sidor med automater. */
 export const MAX_MACHINE_PAGES = 10;
-/** Läsningen avbryts efter så här lång tid och fortsätter nästa körning. */
+/**
+ * Hela körningen (alla källor i en cron-körning) får så här lång tid för anropen
+ * till Awish. Varje anrops tidsgräns kortas till det som återstår, så att importen
+ * hinner sparas långt innan funktionens maxDuration (60 s). Det som inte hanns med
+ * fortsätter nästa körning.
+ */
 export const TIME_BUDGET_MS = 40_000;
+/** En källa påbörjas inte med mindre tid kvar än så här (den tas nästa körning). */
+export const MIN_SOURCE_MS = 8_000;
+/** "Testa anslutningen": kort tidsgräns och inga nya försök, så att svaret kommer snabbt. */
+export const TEST_DEADLINE_MS = 8_000;
 /** Låset på en källa (om en körning dör släpps det efter så här lång tid). */
 export const LEASE_MS = 3 * 60_000;
 /** Så många order som redan loggats (återbetald efter import, eller fel) kommer vi ihåg. */
@@ -66,10 +76,16 @@ export interface AwishSyncDeps {
   db: Db;
   now?: () => Date;
   /** Skapar klienten (testerna ger en låtsasserver). */
-  connect?: (creds: AwishCredentials) => AwishApi;
+  connect?: (creds: AwishCredentials, options?: AwishConnectOptions) => AwishApi;
   maxPages?: number;
   timeBudgetMs?: number;
 }
+
+/** Tidsgränser som synken ger klienten (se grpc-client.ts). */
+export type AwishConnectOptions = Pick<
+  AwishClientOptions,
+  "deadlineAt" | "clock" | "deadlineMs" | "maxAttempts"
+>;
 
 /** Synkens läge i data_sources.cursor (JSON-text; inga hemligheter). */
 export interface AwishSyncState {
@@ -79,6 +95,13 @@ export interface AwishSyncState {
   lastRun: AwishLastRun | null;
   lastSuccessAt: string | null;
   refundReported: string[];
+  /**
+   * Beloppsformatet som setts i källan: "decimal" när minst ett belopp med
+   * decimalpunkt ("4.00") har kommit. Innan dess stoppas en körning som får ett
+   * betalt belopp utan decimaler ("400"): det kan vara öre (dokumentationens
+   * tabell säger "Int, unit cent") och skulle då bli 100 gånger för mycket.
+   */
+  amountFormat: "decimal" | null;
 }
 
 export interface AwishLastRun {
@@ -90,13 +113,15 @@ export interface AwishLastRun {
   imported: number;
   durationMs: number;
   trigger: "schedule" | "manual";
+  /** Sidfälten som Awish skickade (total, per_page, last_page, has_more). */
+  pagingFields?: string[];
 }
 
 export interface AwishSyncResult {
   organizationId: string;
   dataSourceId: string;
   ok: boolean;
-  skipped: "locked" | "paused" | "archived" | "no_credentials" | null;
+  skipped: "locked" | "paused" | "archived" | "no_credentials" | "deferred" | null;
   message: string | null;
   importId: string | null;
   pages: number;
@@ -126,6 +151,7 @@ export function parseState(text: unknown): AwishSyncState {
     refundReported: Array.isArray(value.refundReported)
       ? value.refundReported.filter((x): x is string => typeof x === "string")
       : [],
+    amountFormat: value.amountFormat === "decimal" ? "decimal" : null,
   };
 }
 
@@ -182,8 +208,8 @@ export async function readCredentials(
   return { appId: c.appId, appSecret: c.appSecret, appKey: c.appKey };
 }
 
-function defaultConnect(creds: AwishCredentials): AwishApi {
-  return createAwishClient(creds, awishClientConfigFromEnv());
+function defaultConnect(creds: AwishCredentials, options: AwishConnectOptions = {}): AwishApi {
+  return createAwishClient(creds, { ...awishClientConfigFromEnv(), ...options });
 }
 
 /** Skriver läget om det inte har ändrats av någon annan sedan `expected` lästes. */
@@ -221,18 +247,50 @@ async function maxKnownId(tx: Db, source: SourceRow): Promise<string | null> {
   return row?.max ?? null;
 }
 
-async function fetchMachines(api: AwishApi): Promise<AwishGrpcMachine[]> {
+/**
+ * Alla automater (högst MAX_MACHINE_PAGES sidor). Antalet sidor som i paging.ts:
+ * last_page, annars total, annars has_more, annars tills en sida inte är full.
+ */
+export async function fetchMachines(api: AwishApi): Promise<AwishGrpcMachine[]> {
   const all: AwishGrpcMachine[] = [];
+  let perPage: number | null = null;
   for (let page = 1; page <= MAX_MACHINE_PAGES; page += 1) {
     const res = await api.machines({ currentPage: page, perPage: AWISH_PER_PAGE });
     all.push(...res.items.map((m) => ({ id: m.id, name: m.name, machineNo: m.machineNo })));
-    const last = res.lastPage ?? (res.total !== null ? Math.ceil(res.total / AWISH_PER_PAGE) : 1);
-    if (res.items.length === 0 || page >= last) break;
+    if (res.items.length === 0) break;
+    perPage ??= res.perPage && res.perPage > 0 ? res.perPage : res.items.length;
+    const last =
+      res.lastPage !== null && res.lastPage > 0
+        ? res.lastPage
+        : res.total !== null && res.total > 0
+          ? Math.ceil(res.total / perPage)
+          : null;
+    if (last !== null) {
+      if (page >= last) break;
+    } else if (res.hasMore === false || res.items.length < perPage) {
+      break;
+    }
   }
   return all;
 }
 
+/** Belopp utan decimalpunkt ("400") på en betald order. */
+function integerPaidAmount(orders: readonly AwishGrpcOrder[]): AwishGrpcOrder | undefined {
+  return orders.find(
+    (o) => statusKind(o.status) === "paid" && !o.isFree && /^\s*\d+\s*$/.test(o.amount),
+  );
+}
+
+/** Fel som stoppar en körning med ett eget meddelande (läget sparas inte). */
+class AwishSyncStop extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AwishSyncStop";
+  }
+}
+
 function errorMessage(error: unknown): string {
+  if (error instanceof AwishSyncStop) return error.message;
   if (error instanceof AwishApiError) return error.message;
   if (error instanceof Error && error.name === "ImportValidationError") return error.message;
   return "Binderlab kunde inte spara orderna från Awish. Synken försöker igen om tio minuter.";
@@ -244,10 +302,17 @@ function errorMessage(error: unknown): string {
  */
 export async function syncAwishSource(
   deps: AwishSyncDeps,
-  input: { dataSourceId: string; trigger?: "schedule" | "manual"; actorUserId?: string | null },
+  input: {
+    dataSourceId: string;
+    trigger?: "schedule" | "manual";
+    actorUserId?: string | null;
+    /** Absolut tidpunkt (ms) då anropen till Awish måste vara klara (syncAllAwishSources). */
+    deadlineAt?: number;
+  },
 ): Promise<AwishSyncResult> {
   const now = deps.now ?? (() => new Date());
   const started = now();
+  const deadlineAt = input.deadlineAt ?? started.getTime() + (deps.timeBudgetMs ?? TIME_BUDGET_MS);
   const trigger = input.trigger ?? "schedule";
   const source = await loadSource(deps.db, input.dataSourceId);
   const base = {
@@ -291,6 +356,7 @@ export async function syncAwishSource(
     ...before,
     leaseUntil: new Date(started.getTime() + LEASE_MS).toISOString(),
   };
+  const leasedText = JSON.stringify(leased);
   if (!(await writeState(deps.db, source, leased, source.cursor))) {
     return {
       ...base,
@@ -305,27 +371,53 @@ export async function syncAwishSource(
     result: Omit<AwishSyncResult, "organizationId" | "dataSourceId" | "skipped">,
     paging: SyncCursor,
     refundReported: string[],
+    extra: { amountFormat?: "decimal" | null; pagingFields?: string[] } = {},
   ): Promise<AwishSyncResult> => {
     const at = now();
+    const lastRun: AwishLastRun = {
+      at: at.toISOString(),
+      ok: result.ok,
+      message: result.message,
+      pages: result.pages,
+      fetched: result.fetched,
+      imported: result.summary?.new ?? 0,
+      durationMs: at.getTime() - started.getTime(),
+      trigger,
+      ...(extra.pagingFields ? { pagingFields: extra.pagingFields } : {}),
+    };
     const state: AwishSyncState = {
       v: 1,
       paging,
       leaseUntil: null,
-      lastRun: {
-        at: at.toISOString(),
-        ok: result.ok,
-        message: result.message,
-        pages: result.pages,
-        fetched: result.fetched,
-        imported: result.summary?.new ?? 0,
-        durationMs: at.getTime() - started.getTime(),
-        trigger,
-      },
+      lastRun,
       lastSuccessAt: result.ok ? at.toISOString() : before.lastSuccessAt,
       refundReported: refundReported.slice(-MAX_REFUND_REPORTED),
+      amountFormat: extra.amountFormat ?? before.amountFormat,
     };
     try {
-      await writeState(deps.db, source, state);
+      // Bara om läget är det vi låste med. Har någon sparat ett nytt AppId under
+      // körningen (läget nollställt) skrivs inte det gamla kontots sidor tillbaka;
+      // då sparas bara senaste körningen ovanpå det nya läget.
+      if (!(await writeState(deps.db, source, state, leasedText))) {
+        const [current] = await query<{ cursor: string | null }>(
+          deps.db,
+          sql`select cursor from public.data_sources
+              where organization_id = ${source.organization_id}::uuid and id = ${source.id}::uuid`,
+        );
+        const fresh = parseState(current?.cursor ?? null);
+        await writeState(
+          deps.db,
+          source,
+          { ...fresh, leaseUntil: null, lastRun },
+          current?.cursor ?? null,
+        );
+        return {
+          ...result,
+          organizationId: source.organization_id,
+          dataSourceId: source.id,
+          skipped: null,
+        };
+      }
       if (result.ok) {
         await deps.db.execute(
           sql`update public.data_sources set last_synced_at = now()
@@ -367,7 +459,8 @@ export async function syncAwishSource(
     return { ...r, skipped: "no_credentials" };
   }
 
-  const api = (deps.connect ?? defaultConnect)(creds);
+  const clock = () => now().getTime();
+  const api = (deps.connect ?? defaultConnect)(creds, { deadlineAt, clock });
   let pages = 0;
   let fetched = 0;
   try {
@@ -381,6 +474,7 @@ export async function syncAwishSource(
           total: res.total,
           perPage: res.perPage,
           lastPage: res.lastPage,
+          hasMore: res.hasMore,
         };
       },
       cursor: before.paging,
@@ -388,11 +482,25 @@ export async function syncAwishSource(
       now: started,
       sourceTimezone: source.source_timezone,
       maxPages: deps.maxPages ?? MAX_ORDER_PAGES,
-      deadlineAt: started.getTime() + (deps.timeBudgetMs ?? TIME_BUDGET_MS),
-      clock: () => now().getTime(),
+      deadlineAt,
+      clock,
+      isOutOfTime: (e) => e instanceof AwishApiError && e.kind === "budget",
     });
     pages = collected.pages;
     fetched = collected.orders.length;
+
+    // Beloppsformatet: så länge inget belopp med decimalpunkt har setts i källan
+    // stoppas körningen på ett betalt heltalsbelopp (kan vara öre, se AwishSyncState).
+    const amountFormat =
+      before.amountFormat ??
+      (collected.orders.some((o) => /^\s*\d+\.\d+\s*$/.test(o.amount)) ? "decimal" : null);
+    const integer = amountFormat === null ? integerPaidAmount(collected.orders) : undefined;
+    if (integer) {
+      throw new AwishSyncStop(
+        `Awish skickade beloppet "${integer.amount.trim().slice(0, 20)}" utan decimaler (order ${integer.id}). ` +
+          "Det är inte bekräftat om det är kronor eller öre, så inget importerades. Se docs/awish-api.md (Belopp).",
+      );
+    }
 
     const outcome = await importOrders(deps.db, source, {
       orders: collected.orders,
@@ -415,9 +523,12 @@ export async function syncAwishSource(
       },
       collected.cursor,
       outcome.refundReported,
+      { amountFormat, pagingFields: collected.pagingFields },
     );
   } catch (error) {
-    if (!(error instanceof AwishApiError)) console.error("[awish] synken misslyckades", error);
+    if (!(error instanceof AwishApiError) && !(error instanceof AwishSyncStop)) {
+      console.error("[awish] synken misslyckades", error);
+    }
     return finish(
       {
         ...base,
@@ -500,10 +611,16 @@ async function importOrders(
     const reported = new Set(input.refundReported);
     const newlyReported: string[] = [];
     let storedDuplicates = 0;
+    let skippedUnpaid = 0;
     const batch: AwishGrpcOrder[] = [];
     for (const o of input.orders) {
+      const paid = statusKind(o.status) === "paid" && !o.isFree;
       if (!stored.has(o.id)) {
-        batch.push(o);
+        // Obetalda, gratis-, test- och återbetalda order som inte finns i källan
+        // importeras aldrig. De läses om varje körning (sena betalningar) och skulle
+        // annars loggas som "ej betald" i varje import; de räknas bara.
+        if (paid) batch.push(o);
+        else skippedUnpaid += 1;
       } else if (statusKind(o.status) === "refund" && !reported.has(o.id)) {
         batch.push(o);
         newlyReported.push(o.id);
@@ -560,7 +677,7 @@ async function importOrders(
             ${`Awish API · ${newCount} ${newCount === 1 ? "ny order" : "nya order"}${input.trigger === "manual" ? " · Synka nu" : ""}`},
             ${sha256}, ${`${org}/${source.id}/awish-grpc-${sha256}.json`},
             ${`${fetched.parserVersion}+${IMPORT_PIPELINE_VERSION}`},
-            ${JSON.stringify({ ...(fetched.mapping ?? {}), pages: input.pages, fetched: input.orders.length, storedDuplicates, otherSourceDuplicates })}::jsonb,
+            ${JSON.stringify({ ...(fetched.mapping ?? {}), pages: input.pages, fetched: input.orders.length, storedDuplicates, otherSourceDuplicates, skippedUnpaid })}::jsonb,
             'running', clock_timestamp(), ${input.actorUserId}::uuid
           )
           returning id`,
@@ -623,12 +740,41 @@ export async function syncAllAwishSources(
         join public.organizations o on o.id = ds.organization_id
         where ds.provider = 'awish_grpc' and ds.archived_at is null and o.archived_at is null
           and ds.status <> 'paused' and ds.secret_ref is not null
-        order by ds.created_at`,
+        order by ds.last_synced_at asc nulls first, ds.created_at`,
   );
+  // En gemensam tidsgräns för hela körningen; varje källa får en lika stor del av det
+  // som återstår. En källa som inte hinner börja tas nästa körning (den som synkades
+  // längst sedan går först).
+  const now = deps.now ?? (() => new Date());
+  const deadlineAt = now().getTime() + (deps.timeBudgetMs ?? TIME_BUDGET_MS);
   const results: AwishSyncResult[] = [];
-  for (const s of sources) {
+  for (const [index, s] of sources.entries()) {
+    const left = deadlineAt - now().getTime();
+    if (left < MIN_SOURCE_MS) {
+      results.push({
+        organizationId: "",
+        dataSourceId: s.id,
+        ok: true,
+        skipped: "deferred",
+        message: "Ingen tid kvar i den här körningen; källan synkas nästa gång.",
+        importId: null,
+        pages: 0,
+        fetched: 0,
+        summary: null,
+        otherSourceDuplicates: 0,
+        historyDone: false,
+      });
+      continue;
+    }
+    const share = Math.max(MIN_SOURCE_MS, Math.floor(left / (sources.length - index)));
     try {
-      results.push(await syncAwishSource(deps, { dataSourceId: s.id, trigger: "schedule" }));
+      results.push(
+        await syncAwishSource(deps, {
+          dataSourceId: s.id,
+          trigger: "schedule",
+          deadlineAt: Math.min(deadlineAt, now().getTime() + share),
+        }),
+      );
     } catch (error) {
       console.error("[awish] källan kunde inte synkas", error);
       results.push({
@@ -662,7 +808,7 @@ export interface AwishConnectionTest {
  * importera något. Kastar AwishApiError med svenskt meddelande.
  */
 export async function testAwishConnection(
-  deps: Pick<AwishSyncDeps, "db" | "connect">,
+  deps: Pick<AwishSyncDeps, "db" | "connect" | "now">,
   dataSourceId: string,
 ): Promise<AwishConnectionTest> {
   const source = await loadSource(deps.db, dataSourceId);
@@ -674,17 +820,26 @@ export async function testAwishConnection(
       "AppId, AppSecret och AppKey är inte sparade. Spara dem först.",
     );
   }
-  const api = (deps.connect ?? defaultConnect)(creds);
+  const api = (deps.connect ?? defaultConnect)(creds, {
+    deadlineMs: TEST_DEADLINE_MS,
+    maxAttempts: 1,
+  });
+  const idOf = (text: string | undefined): bigint | null =>
+    text !== undefined && /^\d{1,30}$/.test(text) ? BigInt(text) : null;
   try {
     const merchant = await api.merchant();
     const machines = await api.machines({ currentPage: 1, perPage: AWISH_PER_PAGE });
     const first = await api.orders({ currentPage: 1, perPage: 1 });
     let newest = first.items[0] ?? null;
-    // Ordningen är okänd: är listan äldst först ligger den nyaste på sista sidan.
-    if (first.total !== null && first.total > 1) {
+    // Ordningen är okänd tills synken har sett den: är listan äldst först ligger den
+    // nyaste på sista sidan. Vet synken att den är nyast först behövs inget mer anrop.
+    const knownOrder = parseState(source.cursor).paging.order;
+    if (knownOrder !== "desc" && first.total !== null && first.total > 1) {
       const last = await api.orders({ currentPage: first.total, perPage: 1 });
       const candidate = last.items[0];
-      if (candidate && newest && BigInt(candidate.id) > BigInt(newest.id)) newest = candidate;
+      const a = idOf(candidate?.id);
+      const b = idOf(newest?.id);
+      if (candidate && (b === null || (a !== null && a > b))) newest = candidate;
     }
     return {
       merchantTitle: merchant.title,

@@ -49,7 +49,17 @@ export interface AwishClientOptions {
   deadlineMs?: number;
   maxAttempts?: number;
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Absolut tidpunkt (ms) då körningen måste vara klar. Varje anrops tidsgräns
+   * kortas till den tid som återstår, och inget nytt försök görs om det inte hinner.
+   * Är tiden slut kastas AwishApiError med kind "budget" (inget anrop görs).
+   */
+  deadlineAt?: number;
+  clock?: () => number;
 }
+
+/** Ett anrop påbörjas inte med mindre tid kvar än så här. */
+export const AWISH_MIN_CALL_MS = 1_000;
 
 /** Adress och TLS ur miljön (AWISH_GRPC_ADDRESS, AWISH_GRPC_TLS). */
 export function awishClientConfigFromEnv(
@@ -145,6 +155,8 @@ export interface AwishPage<T> {
   currentPage: number | null;
   perPage: number | null;
   lastPage: number | null;
+  /** has_more (valfritt i proto-filen); null = skickades inte. */
+  hasMore: boolean | null;
 }
 
 export interface AwishApi {
@@ -244,6 +256,7 @@ function pageOf<T>(raw: unknown, map: (item: unknown) => T): AwishPage<T> {
     currentPage: optInt(r.current_page),
     perPage: optInt(r.per_page),
     lastPage: optInt(r.last_page),
+    hasMore: typeof r.has_more === "boolean" ? r.has_more : null,
   };
 }
 
@@ -252,7 +265,14 @@ function pageOf<T>(raw: unknown, map: (item: unknown) => T): AwishPage<T> {
 // ---------------------------------------------------------------------------
 
 export type AwishErrorKind =
-  "auth" | "not_found" | "unavailable" | "timeout" | "invalid_response" | "server";
+  | "auth"
+  | "not_found"
+  | "unavailable"
+  | "timeout"
+  | "invalid_response"
+  | "server"
+  /** Körningens tidsgräns (deadlineAt) nåddes; fortsätter nästa körning. */
+  | "budget";
 
 export class AwishApiError extends Error {
   readonly kind: AwishErrorKind;
@@ -288,12 +308,13 @@ const KNOWN_MESSAGES: Array<{ match: RegExp; kind: AwishErrorKind; text: string 
     text: "Awish fick ingen token. Spara AppSecret och AppKey under Datakällor igen.",
   },
   {
-    match: /expired/i,
+    // Bara mellanprogrammets text om kontot, inte t.ex. "certificate has expired".
+    match: /merchant (has |is )?expired|account (has |is )?expired/i,
     kind: "auth",
     text: "Awish-kontot har gått ut. Förläng det hos Awish (Merchant → Merchant Detail).",
   },
   {
-    match: /permission denied|invalid token|token (is )?invalid|signature|unauthori[sz]ed/i,
+    match: /permission denied|invalid token|token (is )?invalid|invalid signature|unauthori[sz]ed/i,
     kind: "auth",
     text: "Awish nekade anropet. AppSecret eller AppKey stämmer inte. Kontrollera dem under Merchant → Developer Center.",
   },
@@ -305,22 +326,26 @@ export function mapGrpcError(error: unknown, address: string): AwishApiError {
   const e = obj(error);
   const code = typeof e.code === "number" ? e.code : null;
   const details = typeof e.details === "string" ? e.details : String(e.message ?? "");
+  // Transportfel avgörs av koden, inte av texten (t.ex. "certificate has expired" vid
+  // TLS är UNAVAILABLE och ska provas igen, inte bli ett inloggningsfel).
+  if (code === grpc.status.UNAVAILABLE) {
+    return new AwishApiError(
+      "unavailable",
+      `Awish svarar inte (${address}). Synken försöker igen om tio minuter.`,
+      code,
+    );
+  }
+  if (code === grpc.status.DEADLINE_EXCEEDED) {
+    return new AwishApiError(
+      "timeout",
+      `Awish svarade inte inom ${AWISH_DEADLINE_MS / 1000} sekunder.`,
+      code,
+    );
+  }
   for (const known of KNOWN_MESSAGES) {
     if (known.match.test(details)) return new AwishApiError(known.kind, known.text, code);
   }
   switch (code) {
-    case grpc.status.UNAVAILABLE:
-      return new AwishApiError(
-        "unavailable",
-        `Awish svarar inte (${address}). Synken försöker igen om tio minuter.`,
-        code,
-      );
-    case grpc.status.DEADLINE_EXCEEDED:
-      return new AwishApiError(
-        "timeout",
-        `Awish svarade inte inom ${AWISH_DEADLINE_MS / 1000} sekunder.`,
-        code,
-      );
     case grpc.status.UNAUTHENTICATED:
     case grpc.status.PERMISSION_DENIED:
       return new AwishApiError(
@@ -354,6 +379,33 @@ export function mapGrpcError(error: unknown, address: string): AwishApiError {
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const BACKOFF_MS = [500, 1500];
 
+/** Fel när körningens tidsgräns nås: inget mer hämtas, nästa körning fortsätter. */
+export function budgetError(): AwishApiError {
+  return new AwishApiError(
+    "budget",
+    "Körningens tidsgräns nåddes innan Awish hann svara. Synken fortsätter nästa gång.",
+  );
+}
+
+function isLoopback(address: string): boolean {
+  const host = address
+    .replace(/:\d+$/, "")
+    .replace(/^\[|\]$/g, "")
+    .toLowerCase();
+  return host === "localhost" || host === "::1" || /^127\./.test(host);
+}
+
+let warnedPlaintext = false;
+
+/** En varning per process: utan TLS går token (MD5 av AppSecret.AppKey) i klartext. */
+function warnPlaintextOnce(address: string): void {
+  if (warnedPlaintext || isLoopback(address)) return;
+  warnedPlaintext = true;
+  console.warn(
+    `[awish] gRPC till ${address} utan TLS: appid och token skickas okrypterat (AWISH_GRPC_TLS=false). Se docs/awish-api.md, Säkerhet.`,
+  );
+}
+
 type Unary = (
   request: Obj,
   metadata: grpc.Metadata,
@@ -363,6 +415,7 @@ type Unary = (
 
 export function createAwishClient(creds: AwishCredentials, options: AwishClientOptions): AwishApi {
   const Ctor = awishServiceConstructor();
+  if (!options.tls) warnPlaintextOnce(options.address);
   const credentials = options.tls
     ? grpc.credentials.createSsl()
     : grpc.credentials.createInsecure();
@@ -372,8 +425,11 @@ export function createAwishClient(creds: AwishCredentials, options: AwishClientO
   const deadlineMs = options.deadlineMs ?? AWISH_DEADLINE_MS;
   const maxAttempts = Math.max(1, options.maxAttempts ?? AWISH_MAX_ATTEMPTS);
   const sleep = options.sleep ?? defaultSleep;
+  const clock = options.clock ?? Date.now;
+  const remaining = (): number =>
+    options.deadlineAt === undefined ? Number.POSITIVE_INFINITY : options.deadlineAt - clock();
 
-  const once = (method: string, request: Obj): Promise<unknown> =>
+  const once = (method: string, request: Obj, timeoutMs: number): Promise<unknown> =>
     new Promise((resolve, reject) => {
       const fn = (client as unknown as Record<string, Unary>)[method];
       if (typeof fn !== "function") {
@@ -384,19 +440,27 @@ export function createAwishClient(creds: AwishCredentials, options: AwishClientO
         client,
         request,
         awishMetadata(creds),
-        { deadline: new Date(Date.now() + deadlineMs) },
+        { deadline: new Date(Date.now() + timeoutMs) },
         (error, response) => (error ? reject(error) : resolve(response)),
       );
     });
 
   const call = async (method: string, request: Obj): Promise<unknown> => {
     for (let attempt = 1; ; attempt += 1) {
+      const left = remaining();
+      if (left < AWISH_MIN_CALL_MS) throw budgetError();
+      const timeoutMs = Math.min(deadlineMs, Math.floor(left));
       try {
-        return await once(method, request);
+        return await once(method, request, timeoutMs);
       } catch (error) {
         const mapped = mapGrpcError(error, options.address);
+        // Tidsgränsen kortades av körningens budget: det är budgeten som tog slut.
+        if (mapped.kind === "timeout" && timeoutMs < deadlineMs) throw budgetError();
         if (!mapped.retryable || attempt >= maxAttempts) throw mapped;
-        await sleep(BACKOFF_MS[attempt - 1] ?? 1500);
+        const backoff = BACKOFF_MS[attempt - 1] ?? 1500;
+        // Hinner nästa försök inte med, ges felet direkt.
+        if (remaining() - backoff < AWISH_MIN_CALL_MS) throw mapped;
+        await sleep(backoff);
       }
     }
   };
