@@ -21,6 +21,11 @@ Inget behöver göras för hand. Det som körs av sig självt:
 | --------------------- | ------------ | ------------------------------------------------------- | ------------------------------------- |
 | `/api/cron/larm`      | `7 5 * * *`  | Maskinhälsa, lager, importer, avvikande dag; utskick    | Larm `job:larm` + Sentry, se nedan    |
 | `/api/cron/rapporter` | `17 5 1 * *` | Utkast för förra månadens rapporter (ingenting skickas) | Larm `report_drafts:<månad>` + Sentry |
+| `/api/cron/bokforing` | `37 3 * * *` | Förra månadens bokföringspaket sparas (pg_cron)         | Nedladdningen tar fram paketet direkt |
+
+`/api/cron/bokforing` schemaläggs av pg_cron i Supabase (`binderlab-bokforing`, migreringen
+`20261104130000_bokforing_paket.sql`). Paketet sparas i bucketen `bookkeeping`; ändras underlaget
+blir det en ny version. Preliminärt när en butik med vinstdelning har order utan inköpspris.
 
 Kontrollera en gång i veckan (fem minuter):
 
@@ -332,20 +337,20 @@ Orderna från Awish innehåller inga uppgifter om köparen (tid, belopp, betals�
 | Tjänst                                       | Får                                                                                                                                                                                                          | Region och att göra                                                                                                                                           |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Supabase (Postgres, Auth, Storage)           | Allt ovan                                                                                                                                                                                                    | Projekt i en EU-region (`docs/miljoer.md`). Teckna Supabases DPA.                                                                                             |
-| Vercel (webb och cron)                       | Allt som passerar en förfrågan, loggar                                                                                                                                                                       | Funktionerna (sidor, server actions, API och cron) körs i Stockholm: `"regions": ["arn1"]` i `vercel.json` (se nedan). Teckna Vercels DPA.                    |
+| Vercel (webb och cron)                       | Allt som passerar en förfrågan, loggar                                                                                                                                                                       | Funktionerna (sidor, server actions, API och cron) körs i London: `"regions": ["lhr1"]` i `vercel.json` (se nedan). Teckna Vercels DPA.                       |
 | Anthropic (Claude API)                       | Assistentens frågor i fritext, organisationens namn, frågarens roll och verktygens resultat (titlar, automater, butiksnamn och belopp; inga e-postadresser eller telefonnummer)                              | Behandlas utanför EU. Teckna Anthropics DPA (ingår i de kommersiella villkoren), informera användarna, och sätt inte `ANTHROPIC_API_KEY` förrän det är klart. |
 | Resend (e-post)                              | Mottagarens adress och mejlets innehåll (rapporter, larm)                                                                                                                                                    | Välj EU-region för avsändardomänen. Teckna Resends DPA.                                                                                                       |
 | Sentry (fel)                                 | Felhändelser utan e-postadresser, cookies, Authorization-rubriker och inbjudningstoken (`sendDefaultPii = false` och `scrubEvent` i `src/server/observability/sentry-options.ts`); användarens id finns kvar | Använd EU-regionen (`ingest.de.sentry.io`, som i `.env.example`). Teckna Sentrys DPA.                                                                         |
 | Web Push (Google, Mozilla, Apple, Microsoft) | Krypterade aviseringar till användarens enhet                                                                                                                                                                | Innehållet är krypterat från servern till enheten.                                                                                                            |
 
-**Region för Vercels funktioner.** `vercel.json` sätter `"regions": ["arn1"]` (Stockholm, eu-north-1). Alla serverfunktioner, alltså
+**Region för Vercels funktioner.** `vercel.json` sätter `"regions": ["lhr1"]` (London, eu-west-2). Alla serverfunktioner, alltså
 sidorna, server actions, API-routerna och cron-jobben, körs där. Utan inställningen kör Vercel
 funktionerna i USA (`iad1`), och då skulle varje förfrågan med personuppgifter (användare,
 butikskontakter, kundärenden) behandlas utanför EU. Inställningen i filen gäller före den i Project
 Settings → Functions, så den följer med varje driftsättning och varje Preview.
 
-- Lägg produktionens Supabase-projekt i samma region (eu-north-1, Stockholm) eller nära
-  (eu-central-1, Frankfurt), så att varje fråga mot databasen inte går över kontinenten.
+- Funktionerna ligger i samma region som produktionens Supabase-projekt (eu-west-2, London), så
+  att varje fråga mot databasen stannar i regionen. Flyttas databasen ska funktionerna följa med.
 - Byt inte region utan att uppdatera tabellen ovan och `docs/decisions.md` (ADR 26). Testet
   `src/app/api/cron/vercel-cron.test.ts` kontrollerar att regionen ligger i EU.
 - Vercels CDN serverar statiska filer från närmaste kant (globalt); de innehåller inga

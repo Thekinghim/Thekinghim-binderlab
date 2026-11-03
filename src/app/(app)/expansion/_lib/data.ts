@@ -40,6 +40,7 @@ import {
 import { DEFAULT_PROFIT_SHARE_BP, unitEconomics } from "@/domain";
 import { parseAmountOre } from "@/import/amount";
 import {
+  dataCoverage,
   loadDomainInput,
   loadPeriod,
   requireRoute,
@@ -153,9 +154,17 @@ export async function loadUnitEconomicsPage(sp: SearchParamsInput): Promise<Unit
   }
   const machineIds = [...inScope].sort();
   const ueInput = { ...input.current, investments: input.investments, machineIds };
+  // Sista dagen med data: i går när dagens order inte kommit (samma regel som övriga sidor).
+  const covered = dataCoverage(
+    dp.period,
+    p.dataStart,
+    ctx.today,
+    input.current.orders.some((o) => o.businessDate === ctx.today),
+  );
   const comparison = compareUnitEconomics(
     ueInput,
     input.machines.map((m) => ({ id: m.id, name: m.name })),
+    covered ? { lastDataDay: covered.end } : {},
   );
   return {
     ctx: { canEdit: ctx.canEdit, today: ctx.today },

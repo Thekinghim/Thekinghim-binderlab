@@ -19,9 +19,9 @@ describe("vercel.json: cron", () => {
     );
   });
 
-  it("kör funktionerna i Stockholm (EU), inte i Vercels standardregion i USA", () => {
-    // docs/operations.md, Personuppgifter och biträden: personuppgifter behandlas i EU.
-    expect((config as { regions?: string[] }).regions).toEqual(["arn1"]);
+  it("kör funktionerna i London, där databasen finns, inte i Vercels standardregion i USA", () => {
+    // docs/operations.md, Personuppgifter och biträden: Supabase ligger i eu-west-2 (London).
+    expect((config as { regions?: string[] }).regions).toEqual(["lhr1"]);
   });
 
   it("varje cron pekar på en route som kräver CRON_SECRET", () => {

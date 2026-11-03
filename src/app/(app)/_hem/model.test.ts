@@ -288,7 +288,8 @@ describe("buildHomeModel", () => {
     );
     expect(m.daily?.dates).toHaveLength(6);
     expect(m.daily?.compareOre).toHaveLength(6);
-    expect(plain(m.headline.title)).toBe("1 200 kr på 7 dagar.");
+    // Samma dagar som diagrammet och övriga sidor: i dag räknas inte utan order.
+    expect(plain(m.headline.title)).toBe("1 200 kr på 6 dagar.");
   });
 
   it("säger att det saknas order när datan saknas helt", () => {
@@ -559,6 +560,13 @@ describe("homeHeadline", () => {
     const h = homeHeadline({ ...base, profitOre: -50_000, marginBp: -500, revenueChangeBp: -450 });
     expect(h.aside).toBe("4,5 % sämre än perioden innan.");
     expect(h.lead[0]).toMatch(/^Förlust 500 kr/);
+  });
+  it("räknar dagarna som övriga sidor: i dag bara med order i dag", () => {
+    const week = { start: "2026-10-27", end: TODAY };
+    expect(plain(homeHeadline({ ...base, period: week }).title)).toBe("79 987 kr på 6 dagar.");
+    expect(plain(homeHeadline({ ...base, period: week, hasOrdersToday: true }).title)).toBe(
+      "79 987 kr på 7 dagar.",
+    );
   });
   it("säger i dag och i går för en enda dag", () => {
     expect(homeHeadline({ ...base, period: { start: TODAY, end: TODAY } }).title).toMatch(

@@ -4,7 +4,7 @@
  * src/db/schema.ts. Ingen koppling till Fortnox: underlaget laddas ned och skickas in.
  */
 
-import { date, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, date, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 import { ore } from "../types";
 
@@ -51,5 +51,24 @@ export const bookkeepingReceipts = pgTable("bookkeeping_receipts", {
   sizeBytes: integer("size_bytes").notNull(),
   fileSha256: text("file_sha256").notNull(),
   archivedAt: ts("archived_at"),
+  ...stamps(),
+});
+
+export type PackageStatus = "final" | "preliminary";
+
+/** Sparade månadspaket (20261104130000_bokforing_paket.sql). Bara servern skriver. */
+export const bookkeepingPackages = pgTable("bookkeeping_packages", {
+  id: id(),
+  organizationId: orgId(),
+  month: day("month").notNull(),
+  version: integer("version").notNull(),
+  status: text("status").$type<PackageStatus>().notNull(),
+  reason: text("reason"),
+  fingerprint: text("fingerprint").notNull(),
+  storagePath: text("storage_path").notNull(),
+  fileName: text("file_name").notNull(),
+  sizeBytes: bigint("size_bytes", { mode: "number" }).notNull(),
+  fileSha256: text("file_sha256").notNull(),
+  generatedAt: ts("generated_at").notNull().defaultNow(),
   ...stamps(),
 });

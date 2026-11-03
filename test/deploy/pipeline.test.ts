@@ -199,10 +199,10 @@ describe("all.ts från noll", () => {
       ]);
     }
 
-    // Vercel: projektet kopplat till repot, arn1, variabler.
+    // Vercel: projektet kopplat till repot, lhr1, variabler.
     const project = state.vercel.projects[0]!;
     expect(project.link).toMatchObject({ org: "Thekinghim", repo: "thekinghim-binderlab" });
-    expect(project.serverlessFunctionRegion).toBe("arn1");
+    expect(project.serverlessFunctionRegion).toBe("lhr1");
     const prod = envOf(state, "production");
     const preview = envOf(state, "preview");
     expect(prod.APP_ENV!.value).toBe("production");
@@ -210,7 +210,7 @@ describe("all.ts från noll", () => {
     expect(prod.AUTH_PROVIDER!.value).toBe("supabase");
     expect(prod.APP_URL!.value).toBe("https://binderlab.vercel.app");
     expect(preview.APP_URL).toBeUndefined();
-    expect(prod.DATABASE_POOL_MAX!.value).toBe("3");
+    expect(prod.DATABASE_POOL_MAX!.value).toBe("10");
     expect(prod.SUPABASE_URL!.value).toBe(`https://${ref}.supabase.co`);
     expect(preview.SUPABASE_URL!.value).toBe(`https://${DEV_REF}.supabase.co`);
     expect(prod.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!.value).toMatch(/^sb_publishable_/);

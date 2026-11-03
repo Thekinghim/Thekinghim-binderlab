@@ -2,15 +2,20 @@
  * GET /ekonomi/bokforing/paket?manad=ÅÅÅÅ-MM → månadspaketet (ZIP): SIE 4, sammanfattning
  * (PDF, eller HTML om PDF inte kan skapas här), Excel och månadens kvitton.
  *
- * Ägare, admin och läsare (kontrolleras mot databasen i monthPackageFor); allt läses som
- * användaren med RLS. Påfyllaren får 403. En pågående månad ger 422.
+ * Det sparade paketet (src/server/bokforing/stored.ts) skickas. Saknas det, eller har
+ * underlaget ändrats, sparas ett nytt först. Går lagringen inte att nå räknas paketet
+ * direkt som användaren (RLS) i stället.
+ *
+ * Ägare, admin och läsare (kontrolleras mot databasen). Påfyllaren får 403. En pågående
+ * månad ger 422.
  */
 
 import type { NextRequest } from "next/server";
 
 import { AccountingError, currentViewer } from "@/server/accounting";
 import { AuthorizationError } from "@/server/access";
-import { monthPackageFor } from "@/server/bokforing/service";
+import { BokforingError, monthPackageFor } from "@/server/bokforing/service";
+import { storedPackageFor } from "@/server/bokforing/stored";
 import { businessToday } from "@/server/data/core/loaders";
 import { getPdfRenderer, pdfStatus } from "@/server/pdf/render";
 
@@ -34,7 +39,14 @@ export async function GET(request: NextRequest): Promise<Response> {
     const renderPdf = pdfStatus().configured
       ? (html: string) => getPdfRenderer().renderHtml(html)
       : null;
-    const pkg = await monthPackageFor(viewer, month, today, { renderPdf });
+    let pkg: { fileName: string; bytes: Uint8Array };
+    try {
+      pkg = await storedPackageFor(viewer, month, today, { renderPdf });
+    } catch (error) {
+      if (error instanceof AuthorizationError || error instanceof BokforingError) throw error;
+      console.error("bokforing: sparat paket gick inte att använda, räknar direkt", error);
+      pkg = await monthPackageFor(viewer, month, today, { renderPdf });
+    }
     // Strömmas i bitar: ett paket med kvitton blir lätt större än 4,5 MB, som är taket
     // för ett icke-strömmat svar från en Vercel Function.
     const bytes = pkg.bytes;

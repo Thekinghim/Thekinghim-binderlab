@@ -13,7 +13,8 @@ export const PROD_REGION = "eu-north-1";
 export const GITHUB_REPO = { org: "Thekinghim", repo: "thekinghim-binderlab" } as const;
 export const PRODUCTION_BRANCH = "main";
 export const VERCEL_PROJECT_NAME = "binderlab";
-export const VERCEL_FUNCTION_REGION = "arn1";
+/** London (eu-west-2), samma region som databasen. */
+export const VERCEL_FUNCTION_REGION = "lhr1";
 export const STORAGE_BUCKETS = ["imports", "reports", "contracts"] as const;
 
 export type Phase = "supabase" | "vercel" | "invite";

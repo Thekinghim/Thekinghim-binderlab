@@ -256,7 +256,7 @@ export function purchasePlan(input: PurchasingInput): PurchasePlan {
         fig("demandProtectionMilli", "Efterfrågan under ledtid + intervall", dP, "milli"),
         fig("safetyStockMilli", "Säkerhetslager", ss, "milli"),
         fig("targetMilli", "Beställningsnivå", target, "milli"),
-        fig("warehouseOnHand", "Centrallager", st.warehouse, "packs"),
+        fig("warehouseOnHand", "Vårt lager", st.warehouse, "packs"),
         fig("machineOnHand", "I automater", st.machines, "packs"),
         fig("onOrderCounted", "Beställt (räknas)", counted, "packs"),
         fig("onOrderLater", "Beställt (kommer senare, räknas inte)", later, "packs"),

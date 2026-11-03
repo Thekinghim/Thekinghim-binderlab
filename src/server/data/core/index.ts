@@ -58,8 +58,15 @@ import type {
 } from "./types";
 
 export * from "./types";
-export { isoDateToShellDate, resolveAppPeriod, scopeFromSearchParams } from "./period";
+export {
+  coverageDays,
+  dataCoverage,
+  isoDateToShellDate,
+  resolveAppPeriod,
+  scopeFromSearchParams,
+} from "./period";
 export { STALE_SYNC_HOURS, type DomainInputArgs, type SalesCountsArgs } from "./loaders";
+export { isKnownStock } from "./queries";
 
 /** Tidpunkten förfrågan räknar från (samma i alla laddare under en förfrågan). */
 const requestNow = cache((): Date => new Date());

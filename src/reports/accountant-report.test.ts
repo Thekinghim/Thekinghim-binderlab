@@ -143,12 +143,14 @@ describe("avstämning mot källan", () => {
     ]);
     expect(n.missing).toBe(5);
     expect(n.outsidePeriod).toEqual(["105"]);
-    expect(r.reconciliation.ok).toBe(false);
-    expect(r.conclusion.ruleId).toBe("accountant.gaps");
+    // Awish numrerar över alla sina automater: luckor är normala och ingen avvikelse.
+    expect(r.reconciliation.ok).toBe(true);
+    expect(r.conclusion.ruleId).toBe("accountant.ok");
     expect(plain(r.conclusion.text)).toBe(
-      "Försäljningen november 2026 var 245 kr (ingen moms) på 5 order; 5 ordernummer saknas i serien 101–111 (103, 106 och 108–110) och behöver kontrolleras i källan.",
+      "Försäljningen november 2026 var 245 kr (ingen moms) på 5 order, ordernummer 101–111.",
     );
-    expect(r.conclusion.evidence.externalIds).toEqual(["103", "106", "108", "109", "110"]);
+    expect(r.conclusion.text).not.toContain("saknas");
+    expect(r.reconciliation.evidence.externalIds).toEqual(["103", "106", "108", "109", "110"]);
   });
 
   it("dubbletter av ordernummer och ordernummer som inte är tal", () => {
@@ -180,11 +182,11 @@ describe("avstämning mot källan", () => {
     );
   });
 
-  it("order utan inköpspris nämns i slutsatsen när serien är hel", () => {
+  it("order utan inköpspris nämns i slutsatsen", () => {
     const r = buildAccountantReport(scenario(), NOV);
     expect(r.conclusion.ruleId).toBe("accountant.unpriced");
     expect(plain(r.conclusion.text)).toContain(
-      "ordernummer 101–105 utan luckor, men 1 order saknar inköpspris",
+      "ordernummer 101–105, men 1 order saknar inköpspris",
     );
   });
 
@@ -196,7 +198,7 @@ describe("avstämning mot källan", () => {
     const r = buildAccountantReport(src, { start: "2026-11-01", end: "2026-11-15" });
     expect(r.conclusion.ruleId).toBe("accountant.ok");
     expect(plain(r.conclusion.text)).toBe(
-      "Försäljningen 1–15 nov. 2026 var 98 kr (ingen moms) på 2 order, ordernummer 1–2 utan luckor.",
+      "Försäljningen 1–15 nov. 2026 var 98 kr (ingen moms) på 2 order, ordernummer 1–2.",
     );
   });
 });

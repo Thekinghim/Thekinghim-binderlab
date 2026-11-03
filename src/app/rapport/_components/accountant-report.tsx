@@ -7,7 +7,6 @@
 import {
   ReportFact,
   ReportKpiRow,
-  ReportMark,
   ReportNote,
   ReportSection,
   ReportTable,
@@ -18,7 +17,6 @@ import {
 import { ReportDocument, ReportPage, type ReportLayout } from "@/components/report/report-document";
 import { formatInt, formatPeriod, formatWeekdayDay } from "@/lib/format";
 import {
-  gapsText,
   type AccountantDay,
   type AccountantMachineRow,
   type AccountantStoreRow,
@@ -306,7 +304,7 @@ export function AccountantReportDocument({
               ? "Nummerserien kan inte stämmas av."
               : n.gaps.length === 0
                 ? "Serien är komplett, inga luckor."
-                : `${formatInt(n.missing)} nummer saknas: ${gapsText(n.gaps.slice(0, 8))}${n.gaps.length > 8 ? " m.fl." : ""}.`
+                : "Awish numrerar order över alla sina automater, så luckor är normala."
           }
         >
           <div className="grid grid-cols-5 gap-[6mm] border-t border-line pt-[3mm]">
@@ -322,7 +320,6 @@ export function AccountantReportDocument({
             </ReportFact>
             <ReportFact label="Luckor">
               <span className="flex items-center gap-1.5">
-                {n && n.gaps.length > 0 ? <ReportMark label="Kräver kontroll" /> : null}
                 {n ? formatInt(n.gaps.length) : "–"}
               </span>
             </ReportFact>
@@ -335,9 +332,6 @@ export function AccountantReportDocument({
             isMarked={(c) => !c.ok}
           />
           <ReportNote>
-            {n && n.gaps.length > 0
-              ? "En lucka kan vara en obetald order i Awish (bara betalda order importeras). Kontrollera numren i Awish orderlista. "
-              : ""}
             {n && n.outsidePeriod.length > 0
               ? `${formatInt(n.outsidePeriod.length)} nummer i intervallet har affärsdatum utanför månaden och är inte luckor. `
               : ""}

@@ -157,3 +157,28 @@ describe("compareUnitEconomics: underlag", () => {
     expect(res.evidence.orderIds).toHaveLength(106);
   });
 });
+
+describe("compareUnitEconomics: placering registrerad efter första ordern", () => {
+  const late: UnitEconomicsInput = {
+    ...input,
+    orders: dailyOrders("m-2", "2026-11-16", 15, 1, 5900),
+    placements: [placement("m-2", "s-1", "2026-11-30", null)],
+    investments: [],
+    machineIds: [],
+  };
+
+  it("räknar dagarna från första ordern, inte från placeringen", () => {
+    const r = compareUnitEconomics(late).rows.find((x) => x.machineId === "m-2")!;
+    expect(r.activeDays).toBe(15);
+    expect(r.profitPerDayOre).toBe(3900);
+    expect(r.profitPerMonthOre).not.toBeNull();
+    expect(r.profitPerMonthOre!).toBeLessThan(3900 * 31);
+  });
+
+  it("slutar vid sista dagen med data", () => {
+    const r = compareUnitEconomics(late, [], { lastDataDay: "2026-11-29" }).rows.find(
+      (x) => x.machineId === "m-2",
+    )!;
+    expect(r.activeDays).toBe(14);
+  });
+});

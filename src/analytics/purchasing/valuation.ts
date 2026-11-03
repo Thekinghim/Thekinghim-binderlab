@@ -139,7 +139,7 @@ export function inventoryValuation(input: PurchasingInput): InventoryValuation {
           purchaseOrderIds: orderIds,
           supplierIds,
           figures: [
-            fig("warehouseOnHand", "Centrallager", r.warehouseOnHand, "packs"),
+            fig("warehouseOnHand", "Vårt lager", r.warehouseOnHand, "packs"),
             fig("machineOnHand", "I automater", r.machineOnHand, "packs"),
             fig("unitCostOre", "Inköpspris per pack", r.unitCostOre ?? 0, "ore"),
             fig("valueOre", "Lagervärde", r.valueOre, "ore"),

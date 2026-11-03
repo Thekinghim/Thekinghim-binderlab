@@ -213,7 +213,7 @@ describe("changePasswordFlow", () => {
     }
     const blocked = await changePasswordFlow(ctx, { current: CURRENT, next: NEXT, confirm: NEXT });
     expect(blocked.ok).toBe(false);
-    expect(blocked.error).toMatch(/För många/);
+    expect(blocked.error).toMatch(/^För många försök att byta lösenord\./);
     expect(signInWithPassword).toHaveBeenCalledTimes(CHANGE_PASSWORD_LIMIT);
   });
 

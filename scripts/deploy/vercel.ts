@@ -1,6 +1,6 @@
 /**
  * Vercel: projektet kopplat till Thekinghim/thekinghim-binderlab,
- * funktionsregion arn1, miljövariabler för Production och Preview,
+ * funktionsregion lhr1, miljövariabler för Production och Preview,
  * driftsättning från main och kontroll av /logga-in. Läser nycklarna från
  * Supabase (kräver att supabase.ts körts).
  *

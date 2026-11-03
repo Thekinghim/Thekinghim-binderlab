@@ -58,9 +58,14 @@ export const MESSAGES = {
   passwordSaveFailed: "Lösenordet kunde inte sparas. Försök igen.",
 } as const;
 
-export function tooManyAttemptsMessage(retryAfterMs: number): string {
+export function tooManyAttemptsMessage(
+  retryAfterMs: number,
+  what: "login" | "password" = "login",
+): string {
   const minutes = Math.max(1, Math.ceil(retryAfterMs / 60_000));
-  return `För många inloggningsförsök. Vänta ${minutes} ${minutes === 1 ? "minut" : "minuter"} och försök igen.`;
+  const head =
+    what === "password" ? "För många försök att byta lösenord" : "För många inloggningsförsök";
+  return `${head}. Vänta ${minutes} ${minutes === 1 ? "minut" : "minuter"} och försök igen.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -416,7 +421,7 @@ export async function changePasswordFlow(
   const key = `password:user:${user.userId}`;
   const gate = ctx.limiter.consume([{ key, limit: CHANGE_PASSWORD_LIMIT }]);
   if (!gate.allowed) {
-    return { ok: false, error: tooManyAttemptsMessage(gate.retryAfterMs) };
+    return { ok: false, error: tooManyAttemptsMessage(gate.retryAfterMs, "password") };
   }
   const check = await ctx.provider.signInWithPassword(user.email, current);
   if (!check.ok) {

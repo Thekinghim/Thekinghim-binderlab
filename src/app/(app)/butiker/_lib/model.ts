@@ -7,13 +7,12 @@
 
 import { CONTRACT_DEFAULTS } from "@/analytics/contracts";
 import { parseIsoDate } from "@/components/shell/period-state";
+import { dataCoverage } from "@/server/data/core/period";
 import {
   addDays,
   changeBp,
   daysBetween,
   daysInMonth,
-  maxDate,
-  minDate,
   monthOf,
   monthStart,
   type CommissionBase,
@@ -197,18 +196,7 @@ export function agreementsOf(
  * null om inga dagar återstår. Rubrikernas antal dagar, snittet per dag och
  * dagsdiagrammet räknas på dessa dagar; beloppen gäller hela perioden.
  */
-export function dataCoverage(
-  period: Period,
-  dataStart: IsoDate | null,
-  today: IsoDate,
-  hasOrdersToday: boolean,
-): Period | null {
-  if (dataStart === null) return null;
-  const start = maxDate(period.start, dataStart);
-  let end = period.end;
-  if (end >= today && !hasOrdersToday) end = minDate(end, addDays(today, -1));
-  return start <= end ? { start, end } : null;
-}
+export { dataCoverage };
 
 /** "på 20 dagar", "i dag", "i går" eller "den 31 okt." för rubrikerna. */
 export function spanText(range: Period | null, today: IsoDate): { days: number; text: string } {

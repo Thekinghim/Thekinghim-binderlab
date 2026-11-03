@@ -121,6 +121,8 @@ export interface PageView {
   /** Punkter som döljs av filtret (butik/automat). */
   readonly hiddenByScope: number;
   readonly economy: boolean;
+  /** Automater inom filtret med okänt saldo (se ModelInput.unknownStockMachineIds). */
+  readonly unknownStock: number;
   /** Avbockade punkter (inom filtret), nyast först. */
   readonly dismissed: DismissedView[];
 }
@@ -150,6 +152,11 @@ export interface ModelInput {
   readonly machineStock: ReadonlyArray<{ machineId: string; titleId: string; onHand: number }>;
   /** Saldo i centrallagret per titel, eller null om det saknas ett centrallager. */
   readonly warehouse: ReadonlyMap<string, number> | null;
+  /**
+   * Automater med platser vars saldo är okänt (bara försäljning, ingen inventering).
+   * Påfyllningsregeln hoppar över dem, så sidan får inte påstå att lagret räcker.
+   */
+  readonly unknownStockMachineIds?: readonly string[];
   readonly scope: { readonly storeId: string | null; readonly machineId: string | null };
   /** Klockslaget punkterna räknades, t.ex. "09:42". */
   readonly computedAt: string;
@@ -608,11 +615,29 @@ function hiddenText(hidden: number, scope: ModelInput["scope"]): string {
   return `Filtret döljer ${plural(hidden, "punkt", "punkter")} för ${where}.`;
 }
 
+/** Automater inom filtret vars saldo är okänt. */
+export function unknownStockInScope(input: ModelInput): number {
+  const ids = new Set(input.unknownStockMachineIds ?? []);
+  if (ids.size === 0) return 0;
+  const { storeId, machineId } = input.scope;
+  return input.machines.filter(
+    (m) =>
+      ids.has(m.id) &&
+      (machineId === null || m.id === machineId) &&
+      (storeId === null || m.storeId === storeId),
+  ).length;
+}
+
+function unknownText(n: number): string {
+  return `Saldo okänt i ${plural(n, "automat", "automater")}.`;
+}
+
 function headerView(
   visible: readonly TodoItem[],
   lead: TodoItem | null,
   hidden: number,
   input: ModelInput,
+  unknown: number,
 ): HeaderView {
   const count = (l: TodoLevel) => visible.filter((i) => i.level === l).length;
   const now = count("now");
@@ -622,7 +647,11 @@ function headerView(
   let title: string;
   let aside: string;
   const parts: string[] = [];
-  if (visible.length === 0) {
+  if (visible.length === 0 && unknown > 0) {
+    // Påfyllningar räknas bara på inräknat saldo: inget "lagret räcker" utan underlag.
+    title = unknownText(unknown);
+    aside = "Räkna in lagret, så räknas påfyllningarna fram.";
+  } else if (visible.length === 0) {
     title = "Inget att göra.";
     aside =
       input.role === "refiller"
@@ -656,6 +685,7 @@ function headerView(
       );
     }
   }
+  if (visible.length > 0 && unknown > 0) parts.push(unknownText(unknown));
   if (hidden > 0) parts.push(hiddenText(hidden, input.scope));
 
   const meta: { label: string; value: string }[] = [];
@@ -666,6 +696,7 @@ function headerView(
   if (input.economy && stake > 0) meta.push({ label: "I risk 7 d", value: kr(stake) });
   // Intäkt utan inköpspris är inte i risk (bara vinsten blir ofullständig): eget mått.
   if (unpriced > 0) meta.push({ label: "Utan inköpspris", value: kr(unpriced) });
+  if (unknown > 0) meta.push({ label: "Saldo okänt", value: formatInt(unknown) });
   meta.push({ label: "Beräknat", value: input.computedAt });
   return { title, aside, description: parts.join(" "), meta };
 }
@@ -734,12 +765,14 @@ export function buildPage(input: ModelInput): PageView {
   }
   // Punkterna är sorterade efter brådska: den första är den mest brådskande.
   const lead = visible[0] ?? null;
+  const unknown = unknownStockInScope(input);
   return {
-    header: headerView(visible, lead, hidden, input),
+    header: headerView(visible, lead, hidden, input, unknown),
     groups,
     total: visible.length,
     hiddenByScope: hidden,
     economy: input.economy,
+    unknownStock: unknown,
     dismissed: dismissedViews(input),
   };
 }

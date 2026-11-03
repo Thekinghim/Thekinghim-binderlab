@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { effectivePlacements } from "./placements";
+import { backdateFirstPlacements, EARLIEST_DATE, effectivePlacements } from "./placements";
 import type { PlacementRecord } from "./types";
 
 const p = (
@@ -46,5 +46,20 @@ describe("effectivePlacements", () => {
     const out = effectivePlacements(placements, [{ machineId: "m2", businessDate: "2026-10-30" }]);
     expect(out[0]).toBe(placements[0]);
     expect(out[1]).toEqual({ ...placements[1], from: "2026-10-30" });
+  });
+});
+
+describe("backdateFirstPlacements", () => {
+  it("låter bara automatens första placering gälla bakåt", () => {
+    const placements = [
+      p("b", "m1", "2026-12-01"),
+      p("a", "m1", "2026-11-03", "2026-11-30"),
+      p("c", "m2", "2026-10-01"),
+    ];
+    expect(backdateFirstPlacements(placements).map((x) => x.from)).toEqual([
+      "2026-12-01",
+      EARLIEST_DATE,
+      EARLIEST_DATE,
+    ]);
   });
 });

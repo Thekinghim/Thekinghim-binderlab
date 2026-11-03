@@ -578,7 +578,7 @@ VAPID-nycklarna (push) särskilt vid första driftsättningen.
    - Preview: `APP_ENV=preview` och nycklarna från utvecklingsprojektet.
    - Production: `APP_ENV=production`, `APP_URL` och nycklarna från
      produktionsprojektet.
-   - `DATABASE_URL`: poolern på port 6543. Sätt också `DATABASE_POOL_MAX=3`.
+   - `DATABASE_URL`: poolern på port 6543. Sätt också `DATABASE_POOL_MAX=10` (scripts/deploy gör det).
 3. **GitHub.** Skapa två environments:
    - `development`, med hemligheten `DATABASE_URL`.
    - `production`, med hemligheten `DATABASE_URL`, Required reviewers och

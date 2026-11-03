@@ -12,7 +12,7 @@ import {
   toIsoDate,
   type SearchParamsInput,
 } from "@/components/shell/period-state";
-import { isIsoDate, periodDays, type IsoDate, type Period } from "@/domain";
+import { addDays as addIsoDays, isIsoDate, periodDays, type IsoDate, type Period } from "@/domain";
 
 import type { AppPeriod, DataScope } from "./types";
 
@@ -83,4 +83,37 @@ export function resolveAppPeriod(
 export function isoDateToShellDate(date: IsoDate): Date {
   const [y, m, d] = date.split("-").map(Number) as [number, number, number];
   return new Date(y, m - 1, d, 12);
+}
+
+/**
+ * Dagarna med data i perioden, samma regel på alla sidor: från organisationens första
+ * order och, när perioden slutar i dag utan någon order i dag, bara till och med i går.
+ * null om inga dagar återstår. Rubrikernas antal dagar och snitten per dag räknas på
+ * dessa dagar; beloppen gäller hela perioden.
+ */
+export function dataCoverage(
+  period: Period,
+  dataStart: IsoDate | null,
+  today: IsoDate,
+  hasOrdersToday: boolean,
+): Period | null {
+  if (dataStart === null) return null;
+  const start = period.start > dataStart ? period.start : dataStart;
+  let end = period.end;
+  if (end >= today && !hasOrdersToday) {
+    const yesterday = addIsoDays(today, -1);
+    if (yesterday < end) end = yesterday;
+  }
+  return start <= end ? { start, end } : null;
+}
+
+/** Antal dagar med data (dataCoverage); 0 utan data. */
+export function coverageDays(
+  period: Period,
+  dataStart: IsoDate | null,
+  today: IsoDate,
+  hasOrdersToday: boolean,
+): number {
+  const c = dataCoverage(period, dataStart, today, hasOrdersToday);
+  return c ? periodDays(c) : 0;
 }

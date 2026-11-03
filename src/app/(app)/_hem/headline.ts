@@ -12,6 +12,7 @@
 
 import { addDays, maxDate, periodDays, type IsoDate, type Period } from "@/domain";
 import { NBSP, formatInt, formatPercent, formatPeriodShort } from "@/lib/format";
+import { dataCoverage } from "@/server/data/core/period";
 
 import { dateOf, dayText, kr, marginText, sentence } from "./text";
 
@@ -42,6 +43,8 @@ export interface HomeHeadlineInput {
   readonly period: Period;
   readonly today: IsoDate;
   readonly dataStart: IsoDate | null;
+  /** Om det finns order i dag (dagen räknas då med, som på övriga sidor). */
+  readonly hasOrdersToday?: boolean;
 }
 
 /** Förändring i bp som "12 %" (utan tecken), en decimal under 10 %. */
@@ -57,14 +60,21 @@ export const UNPRICED_HEADLINE_BP = 2_000;
  * Hur länge intäkten gäller: "på 30 dagar", "i dag", "i går", "den 31 okt.", och när datan
  * börjar inne i perioden "sedan 13 okt." (eller "13–19 okt." för en period som slutat).
  */
-function spanText(period: Period, dataStart: IsoDate, today: IsoDate): string {
+function spanText(
+  period: Period,
+  dataStart: IsoDate,
+  today: IsoDate,
+  hasOrdersToday: boolean,
+): string {
   const start = maxDate(period.start, dataStart);
   const yesterday = addDays(today, -1);
   if (start > period.start && start < period.end) {
     if (period.end >= yesterday) return `sedan ${dayText(start, today)}`;
     return formatPeriodShort({ start: dateOf(start), end: dateOf(period.end) }, dateOf(today));
   }
-  const days = periodDays({ start, end: period.end });
+  // Samma dagräkning som övriga sidor (dataCoverage): i dag räknas bara med order i dag.
+  const covered = dataCoverage(period, dataStart, today, hasOrdersToday);
+  const days = covered ? periodDays(covered) : periodDays({ start, end: period.end });
   if (days > 1) return `på ${formatInt(days)}${NBSP}dagar`;
   if (start === today) return "i dag";
   if (start === yesterday) return "i går";
@@ -129,7 +139,9 @@ export function homeHeadline(input: HomeHeadlineInput): HomeHeadline {
     };
   }
 
-  const title = sentence(`${kr(input.revenueOre)} ${spanText(input.period, dataStart, today)}`);
+  const title = sentence(
+    `${kr(input.revenueOre)} ${spanText(input.period, dataStart, today, input.hasOrdersToday ?? false)}`,
+  );
 
   let aside: string;
   const lead: string[] = [];

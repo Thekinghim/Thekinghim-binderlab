@@ -46,7 +46,8 @@ export type ShellOrganization = {
 };
 
 /** ok: synkad. stale: data äldre än väntat. failed: senaste synk misslyckades (kräver åtgärd). */
-export type SyncState = "ok" | "stale" | "failed";
+/** "no-orders": källan är ansluten och synkar, men ingen order har kommit än. */
+export type SyncState = "ok" | "stale" | "failed" | "no-orders";
 
 export type ShellNavProps = {
   role?: Role;
@@ -394,10 +395,12 @@ export function SyncStatus({
       ? `Synk misslyckades${when ? ` · senast ${when}` : ""}`
       : syncState === "stale"
         ? `Inaktuell · synkad ${when ?? "–"}`
-        : when
-          ? `Synkad ${when}`
-          : "Ingen synk än";
-  const problem = syncState !== "ok";
+        : syncState === "no-orders"
+          ? "Ansluten · inga order än"
+          : when
+            ? `Synkad ${when}`
+            : "Ingen synk än";
+  const problem = syncState === "failed" || syncState === "stale";
   const live = !problem && d !== null && isRecent(d);
   const body = (
     <>
@@ -462,6 +465,11 @@ export function UserMenu({
           {user.email ? (
             <p className="meta truncate px-4 pb-2 pl-11 text-subtle">{user.email}</p>
           ) : null}
+          {/* Alla roller: påfyllare och läsare har ingen annan väg till sitt konto. */}
+          <Link href="/installningar/konto" onClick={() => setOpen(false)} className={rowCls}>
+            <Icon name="settings" className="w-4 shrink-0" />
+            Mitt konto
+          </Link>
           {onSignOut ? (
             <button type="button" onClick={onSignOut} className={rowCls}>
               <Icon name="logout" className="w-4 shrink-0" />

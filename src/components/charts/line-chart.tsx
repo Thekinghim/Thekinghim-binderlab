@@ -499,7 +499,8 @@ export function LineChart({
               <path
                 d={geo.areaPath}
                 className="fade-in"
-                style={{ fill: "var(--bl-fg)", opacity: 0.045 }}
+                // fillOpacity, inte opacity: .fade-in animerar opacity till 1 och vann annars.
+                style={{ fill: "var(--bl-fg)", fillOpacity: 0.045 }}
               />
             ) : null}
             {geo.cmpPath ? (

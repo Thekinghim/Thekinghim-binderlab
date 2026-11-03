@@ -96,6 +96,12 @@ export interface MonthRow {
   readonly hasVoucher: boolean;
   readonly book: MonthBook;
   readonly receipts: readonly ReceiptRow[];
+  /** Det sparade paketet (version och status), eller null. */
+  readonly stored: {
+    readonly version: number;
+    readonly status: "final" | "preliminary";
+    readonly reason: string | null;
+  } | null;
 }
 
 export interface BokforingView {
@@ -195,15 +201,22 @@ interface Built {
   readonly sent: Map<string, { sentAt: string; snapshot: MonthSnapshot | null }>;
 }
 
+/** Organisationen som paketet gäller (inloggad användare eller det schemalagda jobbet). */
+export interface OrgRef {
+  readonly id: string;
+  readonly name: string;
+  readonly timezone: string;
+}
+
 /** Alla månader från den första med order till och med `until`, med VMB-kedjan. */
-async function build(tx: Tx, viewer: Viewer, today: IsoDate, until: string): Promise<Built> {
-  const orgId = viewer.organization.id;
+async function build(tx: Tx, org: OrgRef, today: IsoDate, until: string): Promise<Built> {
+  const orgId = org.id;
   const [settings, first, sentRows] = await Promise.all([
     readSettings(tx, orgId),
-    firstMonth(tx, orgId, viewer.organization.timezone, today),
+    firstMonth(tx, orgId, org.timezone, today),
     tx.select().from(s.bookkeepingMonths).where(eq(s.bookkeepingMonths.organizationId, orgId)),
   ]);
-  const months = eachMonth(`${first}-01`, `${until}-01`);
+  const months = first <= until ? eachMonth(`${first}-01`, `${until}-01`) : [];
   const reports = await monthReportsIn(tx, orgId, months);
   const figures = months.map((m) => {
     const r = reports.get(m)!;
@@ -258,8 +271,15 @@ async function receiptsIn(tx: Tx, orgId: string, month?: string) {
 export async function loadBokforingFor(viewer: Viewer, today: IsoDate): Promise<BokforingView> {
   return asRole(viewer, ECONOMY_ROLES, async (tx) => {
     const thisMonth = today.slice(0, 7);
-    const built = await build(tx, viewer, today, thisMonth);
-    const receipts = await receiptsIn(tx, viewer.organization.id);
+    const built = await build(tx, viewer.organization, today, thisMonth);
+    const [receipts, packages] = await Promise.all([
+      receiptsIn(tx, viewer.organization.id),
+      tx
+        .select()
+        .from(s.bookkeepingPackages)
+        .where(eq(s.bookkeepingPackages.organizationId, viewer.organization.id)),
+    ]);
+    const storedBy = new Map(packages.map((p) => [p.month.slice(0, 7), p]));
     const byMonth = new Map<string, ReceiptRow[]>();
     for (const r of receipts) {
       const m = r.month.slice(0, 7);
@@ -285,6 +305,10 @@ export async function loadBokforingFor(viewer: Viewer, today: IsoDate): Promise<
             monthVerification(b, built.settings.plan, built.settings.series, 1).rows.length > 0,
           book: b,
           receipts: byMonth.get(b.month) ?? [],
+          stored: (() => {
+            const p = storedBy.get(b.month);
+            return p ? { version: p.version, status: p.status, reason: p.reason } : null;
+          })(),
         };
       })
       .reverse();
@@ -359,7 +383,7 @@ export async function markMonthSentFor(
   const orgId = viewer.organization.id;
   return asRole(viewer, OPERATOR_ROLES, async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`bokforing:${orgId}`}))`);
-    const built = await build(tx, viewer, today, month);
+    const built = await build(tx, viewer.organization, today, month);
     const book = built.books.find((b) => b.month === month);
     if (!book) throw new BokforingError("Månaden saknas.");
     if (book.profitSplitUnpricedOrders > 0) {
@@ -488,6 +512,112 @@ export async function readReceiptFor(
 // Månadspaketet
 // ---------------------------------------------------------------------------
 
+/** Underlaget för en avslutad månads paket. null = månaden saknas (inga order än). */
+export interface PackageSource {
+  readonly book: MonthBook;
+  readonly settings: BokforingSettings;
+  /** Verifikationsnumret (månadens ordning i räkenskapsåret). */
+  readonly number: number;
+  readonly fiscalYear: { readonly start: string; readonly end: string };
+  readonly sentAt: string | null;
+  readonly receipts: readonly (typeof s.bookkeepingReceipts.$inferSelect)[];
+}
+
+export async function packageSource(
+  tx: Tx,
+  org: OrgRef,
+  month: string,
+  today: IsoDate,
+): Promise<PackageSource | null> {
+  const built = await build(tx, org, today, month);
+  const book = built.books.find((b) => b.month === month);
+  if (!book) return null;
+  const [settings, receipts] = await Promise.all([
+    querySettings(tx, org.id),
+    receiptsIn(tx, org.id, month),
+  ]);
+  const fiscalYear = fiscalYearOf(month, settings.fiscalYearStartMonth);
+  return {
+    book,
+    settings: built.settings,
+    number: eachMonth(fiscalYear.start, `${month}-01`).length,
+    fiscalYear,
+    sentAt: built.sent.get(month)?.sentAt ?? null,
+    receipts,
+  };
+}
+
+/** Något att bokföra: en verifikation med rader eller minst ett kvitto. */
+export function hasContent(src: PackageSource): boolean {
+  return (
+    src.receipts.length > 0 ||
+    monthVerification(src.book, src.settings.plan, src.settings.series, 1).rows.length > 0
+  );
+}
+
+/** Varför paketet bara är preliminärt, eller null. En rad. */
+export function preliminaryReason(book: MonthBook): string | null {
+  const n = book.profitSplitUnpricedOrders;
+  return n > 0
+    ? `${plural(n, "order", "order")} saknar inköpspris, så butikens andel är inte klar.`
+    : null;
+}
+
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+export async function renderPackage(
+  org: OrgRef,
+  src: PackageSource,
+  today: IsoDate,
+  opts: {
+    readonly store: FileStore | null;
+    readonly renderPdf: ((html: string) => Promise<Uint8Array>) | null;
+    readonly sentOn?: string | null;
+    readonly preliminary?: string | null;
+  },
+): Promise<MonthPackage> {
+  const receipts = [];
+  for (const r of src.receipts) {
+    if (!opts.store) throw new Error("Lagringen för kvitton saknas.");
+    const bytes = await opts.store.get(r.storagePath);
+    if (sha256Hex(bytes) !== r.fileSha256) throw new BokforingError("Ett kvittos fil är ändrad.");
+    receipts.push({
+      fileName: r.fileName,
+      contentType: r.contentType,
+      sizeBytes: r.sizeBytes,
+      sha256: r.fileSha256,
+      uploadedOn: businessToday(r.createdAt, org.timezone),
+      data: bytes,
+    });
+  }
+  return buildMonthPackage({
+    company: org.name,
+    orgNumber: src.settings.orgNumber,
+    book: src.book,
+    plan: src.settings.plan,
+    series: src.settings.series,
+    number: src.number,
+    fiscalYear: src.fiscalYear,
+    generatedOn: today,
+    sentOn: opts.sentOn ?? null,
+    receipts,
+    renderPdf: opts.renderPdf,
+    preliminary: opts.preliminary ?? null,
+  });
+}
+
+export function assertEndedMonth(month: string, today: IsoDate): void {
+  assertMonth(month);
+  if (month >= today.slice(0, 7)) {
+    throw new BokforingError(
+      `${capital(monthText(month))} pågår. Paketet kan laddas ned när månaden är slut.`,
+    );
+  }
+}
+
+/** Paketet räknat direkt (utan att sparas), som användaren. */
 export async function monthPackageFor(
   viewer: Viewer,
   month: string,
@@ -497,50 +627,16 @@ export async function monthPackageFor(
     readonly renderPdf?: ((html: string) => Promise<Uint8Array>) | null;
   } = {},
 ): Promise<MonthPackage> {
-  assertMonth(month);
-  if (month >= today.slice(0, 7)) {
-    throw new BokforingError(
-      `${capital(monthText(month))} pågår. Paketet kan laddas ned när månaden är slut.`,
-    );
-  }
-  const orgId = viewer.organization.id;
-  const data = await asRole(viewer, ECONOMY_ROLES, async (tx) => {
-    const built = await build(tx, viewer, today, month);
-    const [settings, receipts] = await Promise.all([
-      querySettings(tx, orgId),
-      receiptsIn(tx, orgId, month),
-    ]);
-    return { built, fiscalStart: settings.fiscalYearStartMonth, receipts };
-  });
-  const book = data.built.books.find((b) => b.month === month);
-  if (!book) throw new BokforingError("Månaden saknas.");
-  const fiscalYear = fiscalYearOf(month, data.fiscalStart);
-  const ordinal = eachMonth(fiscalYear.start, `${month}-01`).length;
-  const files = data.receipts.length > 0 ? (opts.store ?? (await receiptFileStore())) : null;
-  const receipts = [];
-  for (const r of data.receipts) {
-    const bytes = await files!.get(r.storagePath);
-    receipts.push({
-      fileName: r.fileName,
-      contentType: r.contentType,
-      sizeBytes: r.sizeBytes,
-      sha256: r.fileSha256,
-      uploadedOn: businessToday(r.createdAt, viewer.organization.timezone),
-      data: bytes,
-    });
-  }
-  const sent = data.built.sent.get(month);
-  return buildMonthPackage({
-    company: viewer.organization.name,
-    orgNumber: data.built.settings.orgNumber,
-    book,
-    plan: data.built.settings.plan,
-    series: data.built.settings.series,
-    number: ordinal,
-    fiscalYear,
-    generatedOn: today,
-    sentOn: sent ? businessToday(new Date(sent.sentAt), viewer.organization.timezone) : null,
-    receipts,
+  assertEndedMonth(month, today);
+  const src = await asRole(viewer, ECONOMY_ROLES, (tx) =>
+    packageSource(tx, viewer.organization, month, today),
+  );
+  if (!src) throw new BokforingError("Månaden saknas.");
+  const store = src.receipts.length > 0 ? (opts.store ?? (await receiptFileStore())) : null;
+  return renderPackage(viewer.organization, src, today, {
+    store,
     renderPdf: opts.renderPdf ?? null,
+    sentOn: src.sentAt ? businessToday(new Date(src.sentAt), viewer.organization.timezone) : null,
+    preliminary: preliminaryReason(src.book),
   });
 }

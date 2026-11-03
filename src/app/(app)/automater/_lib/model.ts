@@ -36,7 +36,9 @@ import {
   type ProfitabilityResult,
   type ProfitabilityRow,
 } from "@/domain";
+import { sellingSpan, withSellingDays } from "@/analytics/expansion/unit-economics-compare";
 import { parseIsoDate } from "@/components/shell/period-state";
+import { dataCoverage } from "@/server/data/core/period";
 import {
   formatDate,
   formatDecimal,
@@ -127,17 +129,22 @@ export function sentence(text: string): string {
  * dagar återstår. Rubriker, snitt per dag och dagsdiagrammet räknas på dessa dagar;
  * beloppen gäller hela perioden (dagarna utanför har ingen försäljning).
  */
-export function coverageOf(
-  period: Period,
-  dataStart: IsoDate | null,
-  today: IsoDate,
-  hasOrdersToday: boolean,
-): Period | null {
-  if (dataStart === null) return null;
-  const start = maxDate(period.start, dataStart);
-  let end = period.end;
-  if (end >= today && !hasOrdersToday) end = minDate(end, addDays(today, -1));
-  return start <= end ? { start, end } : null;
+export const coverageOf = dataCoverage;
+
+/**
+ * Automatens faktiska driftstart: den tidigaste av registrerad driftstart, första
+ * placeringen och första ordern. En automat som kopplas in i efterhand har order från
+ * före den dag den lades upp; de dagarna räknas (samma regel som placedInStore).
+ */
+export function startedOn(
+  activeFrom: IsoDate | null,
+  firstPlacementFrom: IsoDate | null,
+  firstOrderDate: IsoDate | null,
+): IsoDate | null {
+  const dates = [activeFrom, firstPlacementFrom, firstOrderDate].filter(
+    (d): d is IsoDate => d !== null,
+  );
+  return dates.length === 0 ? null : dates.reduce((a, b) => (b < a ? b : a));
 }
 
 /** Den del av `range` som automaten var i drift (driftstart till sista dag), eller null. */
@@ -412,7 +419,13 @@ export function machineDaysIn(
     investments: [],
     machineIds: ids,
   });
-  return result.filter((u) => wanted.has(u.machineId)).reduce((n, u) => n + u.activeDays, 0);
+  // Minst dagarna sedan automatens första order (som Enhetsekonomi).
+  return result
+    .filter((u) => wanted.has(u.machineId))
+    .reduce(
+      (n, u) => n + Math.max(u.activeDays, sellingSpan(input.orders, u.machineId, range).days),
+      0,
+    );
 }
 
 const OTHER_LABEL: Partial<Record<ProfitabilityRow["kind"], string>> = {
@@ -953,12 +966,17 @@ export function machineUnitEconomics(
   input: DomainInput,
   machineId: string,
 ): UnitEconomicsView | null {
-  const u = unitEconomics({
+  const raw = unitEconomics({
     ...input.current,
     investments: input.investments,
     machineIds: [machineId],
   }).find((x) => x.machineId === machineId);
-  if (!u || u.investmentOre === 0) return null;
+  if (!raw || raw.investmentOre === 0) return null;
+  // Minst dagarna sedan första ordern (som Enhetsekonomi), om placeringen är sent inlagd.
+  const u = withSellingDays(
+    raw,
+    sellingSpan(input.current.orders, machineId, input.current.period),
+  );
   return {
     investmentOre: u.investmentOre,
     bookValueOre: u.bookValueOre,

@@ -90,7 +90,13 @@ describe("migreringsfrågorna mot Postgres", () => {
     expect(listed.map((r) => r.hash)).toEqual(migrations.map((m) => md5(m.sql)));
     // Buckets skapas av migreringarna.
     const buckets = await sql`select id from storage.buckets order by id`;
-    expect(buckets.map((b) => b.id)).toEqual(["contracts", "imports", "reports"]);
+    expect(buckets.map((b) => b.id)).toEqual([
+      "bookkeeping",
+      "contracts",
+      "imports",
+      "receipts",
+      "reports",
+    ]);
   }, 120_000);
 
   it("en redan körd migrering körs inte igen", async () => {

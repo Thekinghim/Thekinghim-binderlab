@@ -5,6 +5,7 @@ import type React from "react";
 import { Suspense } from "react";
 
 import { carriedQuery, type SearchParamsInput } from "@/components/shell/period-state";
+import { HashTab } from "@/components/ui/hash-tab";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { DomainError } from "@/domain";
@@ -21,7 +22,6 @@ import { PlanView } from "./_components/plan-view";
 import { SuppliersView } from "./_components/suppliers-view";
 import { ValuationView } from "./_components/valuation-view";
 import { pickTab, ViewTabs } from "../automater/_components/view-tabs";
-import { HashTab } from "./_components/hash-tab";
 import { buildPageModel, type PageModel } from "./_lib/model";
 import { loadOurStockFor, type OurStockView } from "../lager/_lib/data";
 
@@ -100,7 +100,7 @@ export default async function PrognosPage({
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
       <Suspense fallback={null}>
-        <HashTab map={HASH_TO_TAB} />
+        <HashTab map={HASH_TO_TAB} defaultTab={TABS[0].value} />
       </Suspense>
       <div className="rise flex flex-col gap-8">
         <SectionHeader

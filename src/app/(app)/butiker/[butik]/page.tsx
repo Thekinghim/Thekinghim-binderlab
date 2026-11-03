@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type React from "react";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 
 import { Panel } from "@/components/ui/frame";
+import { HashTab } from "@/components/ui/hash-tab";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusGlyph, StatusTag } from "@/components/ui/status-tag";
@@ -25,6 +27,9 @@ const TABS = [
   { value: "avtal", label: "Avtal" },
   { value: "kontakt", label: "Kontakt och rapport" },
 ] as const;
+
+/** Ankare → flik (t.ex. /butiker/<id>#ersattning från kom-igång-listan). */
+const HASH_TO_TAB: Record<string, string> = { ersattning: "avtal" };
 
 type Params = Promise<{ butik: string }>;
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -60,6 +65,9 @@ export default async function StorePage({
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-6 pb-16 md:gap-16 md:px-8 md:pt-10">
+      <Suspense fallback={null}>
+        <HashTab map={HASH_TO_TAB} defaultTab={TABS[0].value} />
+      </Suspense>
       <div className="rise flex flex-col gap-6">
         <nav aria-label="Brödsmulor">
           <Link

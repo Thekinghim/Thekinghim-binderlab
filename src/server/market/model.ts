@@ -342,6 +342,11 @@ export interface PricesView {
   readonly anomalies: Computed<PurchaseAnomaly[]>;
   readonly quoteCount: number;
   readonly orderLineCount: number;
+  /**
+   * Inlagda inköpspriser (Inställningar/Lönsamhet), gällande pris per titel i dag.
+   * De saknar leverantör och ingår därför inte i prisutvecklingen.
+   */
+  readonly entered: readonly EnteredPrice[];
 }
 
 /**
@@ -380,6 +385,27 @@ export function purchaseSources(data: MarketData): PurchaseSource[] {
   ];
 }
 
+export interface EnteredPrice {
+  readonly titleId: string;
+  readonly unitCostOre: number;
+  readonly validFrom: IsoDate;
+}
+
+/** Gällande inlagt inköpspris per titel (senaste validFrom till och med i dag). */
+export function enteredPrices(data: Pick<MarketData, "sources" | "today">): EnteredPrice[] {
+  const byTitle = new Map<string, EnteredPrice>();
+  for (const p of data.sources.prices) {
+    if (p.validFrom > data.today) continue;
+    const cur = byTitle.get(p.titleId);
+    if (!cur || p.validFrom > cur.validFrom) byTitle.set(p.titleId, p);
+  }
+  return [...byTitle.values()].map((p) => ({
+    titleId: p.titleId,
+    unitCostOre: p.unitCostOre,
+    validFrom: p.validFrom,
+  }));
+}
+
 export function pricesView(data: MarketData, period: Period): PricesView {
   const purchases = purchaseSources(data);
   const record = (p: PurchaseSource): PurchaseRecord => ({
@@ -400,6 +426,7 @@ export function pricesView(data: MarketData, period: Period): PricesView {
     ),
     quoteCount: purchases.filter((p) => p.origin === "quote").length,
     orderLineCount: purchases.filter((p) => p.origin === "purchase-order").length,
+    entered: enteredPrices(data),
   };
 }
 
@@ -845,7 +872,9 @@ export function marketHeadline(
   if (facts.length === 0) {
     facts.push(
       data.quotes.length === 0 && data.purchaseLines.length === 0
-        ? "Inga inköpspriser registrerade ännu."
+        ? prices.entered.length > 0
+          ? `Inköpspris inlagt för ${prices.entered.length} ${prices.entered.length === 1 ? "titel" : "titlar"}.`
+          : "Inga inköpspriser registrerade ännu."
         : "Inga avvikelser i inköpspriserna.",
     );
   }

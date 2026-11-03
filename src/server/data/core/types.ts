@@ -222,7 +222,8 @@ export interface SalesCounts {
 export interface SyncInfo {
   /** Senaste lyckade synk över alla datakällor (ISO 8601), eller null. */
   readonly syncedAt: string | null;
-  readonly state: "ok" | "stale" | "failed";
+  /** "no-orders": ansluten och synkad, men ingen order importerad än. */
+  readonly state: "ok" | "stale" | "failed" | "no-orders";
   /** Antal aktiva (ej arkiverade) datakällor. */
   readonly sources: number;
 }

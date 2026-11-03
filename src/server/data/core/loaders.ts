@@ -527,9 +527,14 @@ export async function loadSyncInfoFor(
       queryFirstOrderDate(tx, viewer.organization.id),
     ]);
     // Ett hjärtslag eller en lyckad synk utan rader sätter last_synced_at. Utan en enda
-    // importerad order finns ingen synk att visa: skalet skriver "Ingen synk än".
+    // importerad order: "Ansluten · inga order än" när en källa har synkat, annars
+    // "Ingen synk än".
     if (firstOrder === null) {
-      return { syncedAt: null, state: ds.failing > 0 ? "failed" : "ok", sources: ds.sources };
+      return {
+        syncedAt: null,
+        state: ds.failing > 0 ? "failed" : ds.lastSyncedAt !== null ? "no-orders" : "ok",
+        sources: ds.sources,
+      };
     }
     const stale =
       ds.lastSyncedAt === null ||

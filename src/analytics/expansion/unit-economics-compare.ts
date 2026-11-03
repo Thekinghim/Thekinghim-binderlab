@@ -13,14 +13,23 @@
  * - jämförelse mot flottans snitt: snittet är Σ vinst / Σ aktiva dagar (viktat efter
  *   automatdagar), och avvikelsen är round((automatens − snittet) × 10 000 / |snittet|) bp
  * - rang efter vinst per dag (1 = bäst; lika → lägst id). Automater utan aktiva dagar får ingen rang.
+ * - aktiva dagar räknas aldrig kortare än dagarna sedan automatens första order i perioden
+ *   (t.o.m. sista dagen med data): en placering som registrerats för sent ska inte göra
+ *   hela periodens vinst till "vinst per dag" (sellingSpan). Vinst per månad och
+ *   återbetalningstid räknas då om på samma dagar.
  */
 
 import {
   buildLedger,
   changeBp,
+  daysInMonth,
+  eachDay,
+  MONTH_LCM,
   roundHalfUp,
   unitEconomics,
+  type IsoDate,
   type MachineUnitEconomics,
+  type OrderLine,
   type Period,
   type UnitEconomicsInput,
 } from "@/domain";
@@ -83,6 +92,65 @@ function perDay(total: number, days: number): number | null {
   return days === 0 ? null : roundHalfUp(total, days);
 }
 
+/** Dagar och månadsenheter (över MONTH_LCM) från automatens första order till `end`. */
+export function sellingSpan(
+  orders: readonly Pick<OrderLine, "machineId" | "businessDate">[],
+  machineId: string,
+  period: Period,
+  lastDataDay?: IsoDate,
+): { days: number; monthUnits: number } {
+  let first: IsoDate | null = null;
+  for (const o of orders) {
+    if (o.machineId !== machineId) continue;
+    if (o.businessDate < period.start || o.businessDate > period.end) continue;
+    if (first === null || o.businessDate < first) first = o.businessDate;
+  }
+  const end = lastDataDay !== undefined && lastDataDay < period.end ? lastDataDay : period.end;
+  if (first === null || first > end) return { days: 0, monthUnits: 0 };
+  let days = 0;
+  let monthUnits = 0;
+  for (const d of eachDay(first, end)) {
+    days++;
+    monthUnits += MONTH_LCM / daysInMonth(d);
+  }
+  return { days, monthUnits };
+}
+
+/**
+ * Domänens enhetsekonomi med aktiva dagar minst sellingSpan: vinst per månad,
+ * efter avskrivning och återbetalningstid räknas om på de dagarna.
+ */
+export function withSellingDays(
+  u: MachineUnitEconomics,
+  span: { days: number; monthUnits: number },
+): MachineUnitEconomics {
+  if (span.days <= u.activeDays) return u;
+  const perMonth = roundHalfUp(BigInt(u.profitOre) * BigInt(MONTH_LCM), BigInt(span.monthUnits));
+  let payback: number | null;
+  if (u.investmentOre === 0) payback = 0;
+  else if (u.profitOre <= 0) payback = null;
+  else
+    payback =
+      roundHalfUp(
+        BigInt(u.investmentOre) * 10n * BigInt(span.monthUnits),
+        BigInt(u.profitOre) * BigInt(MONTH_LCM),
+      ) / 10;
+  return {
+    ...u,
+    activeDays: span.days,
+    activeMonths: Math.round((span.monthUnits * 100) / MONTH_LCM) / 100,
+    profitPerMonthOre: perMonth,
+    profitPerMonthAfterDepreciationOre: perMonth - u.monthlyDepreciationOre,
+    paybackMonths: payback,
+  };
+}
+
+/** Tillval för jämförelsen. */
+export interface CompareUnitEconomicsOptions {
+  /** Sista dagen med data (t.ex. i går när dagens order inte kommit). Standard: periodens slut. */
+  readonly lastDataDay?: IsoDate;
+}
+
 function paybackTenthsOf(u: MachineUnitEconomics): number | null {
   if (u.investmentOre === 0 || u.paybackMonths === null) return null;
   // Domänen ger månader med en decimal (t.ex. 7.2); tillbaka till heltal tiondelar.
@@ -96,8 +164,11 @@ function paybackTenthsOf(u: MachineUnitEconomics): number | null {
 export function compareUnitEconomics(
   input: UnitEconomicsInput,
   machines: readonly { id: string; name: string }[] = [],
+  options: CompareUnitEconomicsOptions = {},
 ): UnitEconomicsComparison {
-  const units = unitEconomics(input);
+  const units = unitEconomics(input).map((u) =>
+    withSellingDays(u, sellingSpan(input.orders, u.machineId, input.period, options.lastDataDay)),
+  );
   const entries = buildLedger(input).entries;
   const nameOf = nameLookup(machines);
 
@@ -164,7 +235,7 @@ export function compareUnitEconomics(
       rank: rankOf.get(u.machineId) ?? null,
       text,
       evidence: scenarioEvidence({
-        rule: "Vinst före avskrivning (prissatta order, efter inköp, avgifter, provision och hyra) delat med dagar då automaten var placerad. Återbetalningstid = investering / vinst per månad.",
+        rule: "Vinst före avskrivning (prissatta order, efter inköp, avgifter, provision och hyra) delat med dagar då automaten var placerad, minst dagarna sedan första ordern. Återbetalningstid = investering / vinst per månad.",
         period: input.period,
         machineIds: [u.machineId],
         ...orderTrail(entries, { machineId: u.machineId }),

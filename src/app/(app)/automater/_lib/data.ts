@@ -34,6 +34,7 @@ import {
   machineKpis,
   machineSignals,
   machineSpan,
+  startedOn,
   machineUnitEconomics,
   placementLines,
   recentWindow,
@@ -232,6 +233,8 @@ export interface MachineDetailData {
   readonly headline: { readonly title: string; readonly aside: string };
   readonly status: MachineStatusView;
   readonly store: { readonly id: string; readonly name: string; readonly since: IsoDate } | null;
+  /** Faktisk driftstart: registrerad driftstart, första placering eller första order (tidigast). */
+  readonly startedOn: IsoDate | null;
   readonly kpis: KpiView[];
   readonly daily: DailyPoint[];
   readonly dailyCompare: number[] | null;
@@ -291,10 +294,17 @@ export async function loadMachineDetail(
   const today = ctx.today;
   const lifecycle = lifecycleOf(machine, today);
   const figures = machineFigures(input.current, machine.id);
+  const placements = placementLines(master, machine.id, today);
+  const firstPlacement = placements.at(-1) ?? null;
+  const started = startedOn(
+    machine.activeFrom,
+    firstPlacement?.from ?? null,
+    orders.firstOrderDate,
+  );
   // Jämförelse bara när jämförelseperioden ligger inom datan och automatens drift, och
   // automaten sålde något då.
   const prevFigures =
-    input.previous && comparable(p, input.previous, machine.activeFrom)
+    input.previous && comparable(p, input.previous, started)
       ? machineFigures(input.previous, machine.id)
       : null;
   const previous = prevFigures && prevFigures.orders > 0 ? prevFigures : null;
@@ -302,7 +312,7 @@ export async function loadMachineDetail(
   // dagen i drift, och t.o.m. i går om dagens order inte kommit.
   const coverage = machineSpan(
     coverageOf(p.period, p.dataStart, today, hasOrdersOn(input.current.orders, today)),
-    machine.activeFrom,
+    started,
     machine.activeTo,
   );
   const period = periodInfo(p, today, coverage, previous !== null);
@@ -317,13 +327,16 @@ export async function loadMachineDetail(
           .map((d) => d.value)
           .slice(skip, skip + daily.length)
       : null;
-  const placements = placementLines(master, machine.id, today);
   const currentPlacement = placements.find((x) => x.current) ?? null;
+  // Första placeringen gäller också försäljningen före den (placedInStore).
   const store = currentPlacement
     ? {
         id: currentPlacement.storeId,
         name: currentPlacement.storeName,
-        since: currentPlacement.from,
+        since:
+          currentPlacement === firstPlacement && started !== null && started < currentPlacement.from
+            ? started
+            : currentPlacement.from,
       }
     : null;
   const refill = base.signals.refill.get(machine.id) ?? [];
@@ -376,6 +389,7 @@ export async function loadMachineDetail(
       refill,
     }),
     store,
+    startedOn: started,
     kpis: machineKpis(figures, previous, daily),
     daily,
     dailyCompare,

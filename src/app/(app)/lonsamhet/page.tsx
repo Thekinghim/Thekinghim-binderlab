@@ -99,7 +99,13 @@ export default async function LonsamhetPage({
       stores: input.stores,
       scope: input.scope,
     },
-    { today: ctx.today, carry: carriedQuery(sp).replace(/^\?/, ""), lastOrderDate },
+    {
+      today: ctx.today,
+      carry: carriedQuery(sp).replace(/^\?/, ""),
+      lastOrderDate,
+      dataStart: p.dataStart,
+      hasOrdersToday: organization.current.orders.some((o) => o.businessDate === ctx.today),
+    },
   );
 
   const stale = homeStaleImport(sync, p.period.end, ctx.now, ctx.timeZone);

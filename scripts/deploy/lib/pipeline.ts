@@ -622,7 +622,7 @@ async function desiredVars(
     { key: "APP_ENV", target: t, sensitive: false, value: appEnv },
     { key: "NEXT_PUBLIC_APP_ENV", target: t, sensitive: false, value: appEnv },
     { key: "AUTH_PROVIDER", target: t, sensitive: false, value: "supabase" },
-    { key: "DATABASE_POOL_MAX", target: t, sensitive: false, value: "3" },
+    { key: "DATABASE_POOL_MAX", target: t, sensitive: false, value: "10" },
   ];
   if (t === "production" && c.appUrl) {
     out.push({ key: "APP_URL", target: t, sensitive: false, value: c.appUrl });

@@ -73,10 +73,11 @@ export function useKpiValue(value: number, mode: KpiMotion): number {
       frame = requestAnimationFrame(() => setShown(value));
       return () => cancelAnimationFrame(frame);
     }
-    const t0 = performance.now();
+    let t0: number | undefined;
     const tick = (now: number) => {
-      const t = Math.min(1, (now - t0) / motion.count);
-      const next = start + (value - start) * (1 - Math.pow(1 - t, 3));
+      t0 ??= now;
+      const t = Math.min(1, Math.max(0, (now - t0) / motion.count));
+      const next = t === 1 ? value : start + (value - start) * (1 - Math.pow(1 - t, 3));
       from.current = next;
       setShown(next);
       if (t < 1) frame = requestAnimationFrame(tick);

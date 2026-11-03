@@ -47,6 +47,8 @@ export interface MonthPackageInput {
   readonly receipts: readonly PackageReceipt[];
   /** HTML → PDF. null = PDF kan inte skapas här (sammanfattningen läggs som HTML). */
   readonly renderPdf: ((html: string) => Promise<Uint8Array>) | null;
+  /** Varför paketet bara är preliminärt (en rad), eller null när det är klart. */
+  readonly preliminary?: string | null;
 }
 
 export interface MonthPackage {
@@ -135,8 +137,10 @@ export async function buildMonthPackage(input: MonthPackageInput): Promise<Month
 
   const sieName = `verifikation-${m}.si`;
   const hasVoucher = verification.rows.length > 0;
+  const preliminary = input.preliminary ?? null;
   const readme = [
     `Bokföring ${monthText(m)} – ${input.company}`,
+    ...(preliminary ? [`PRELIMINÄR: ${preliminary} Bokför inte förrän ett nytt paket finns.`] : []),
     "",
     hasVoucher
       ? `${sieName}: importera i Fortnox under Bokföring → Importera SIE. Filen har kontonamn ` +
@@ -162,7 +166,7 @@ export async function buildMonthPackage(input: MonthPackageInput): Promise<Month
   ];
   const bytes = buildZip(entries, new Date(`${monthEnd(m)}T12:00:00Z`));
   return {
-    fileName: `bokforing-${m}.zip`,
+    fileName: preliminary ? `bokforing-${m}-preliminar.zip` : `bokforing-${m}.zip`,
     bytes,
     entries: entries.map((e) => e.name),
     verification,

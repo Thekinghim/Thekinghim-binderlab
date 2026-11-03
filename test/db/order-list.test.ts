@@ -627,3 +627,26 @@ describe("behörighet", () => {
     );
   });
 });
+
+describe("butiksfiltret och en sent inlagd placering", () => {
+  it("räknar order före första placeringen till butiken, som Lönsamhet (placedInStore)", async () => {
+    const late = await seedOrderFixture();
+    // Automaten lades upp och placerades efter försäljningen (som BL-001 i drift).
+    await asUser(late.owner, (tx) =>
+      tx
+        .update(s.machinePlacements)
+        .set({ validFrom: "2025-03-20" })
+        .where(eq(s.machinePlacements.organizationId, late.orgId)),
+    );
+    const viewer = await viewerFor(late.owner, late.orgId);
+    const list = await loadOrderListFor(
+      viewer,
+      args({ scope: { storeId: late.storeId, machineId: null } }),
+      NOW,
+    );
+    expect(list.totals.count).toBe(2);
+    expect(list.rows.every((r) => r.storeId === late.storeId)).toBe(true);
+    const detail = await loadOrderDetailFor(viewer, late.orderIds[0]!);
+    expect(detail?.store?.id).toBe(late.storeId);
+  });
+});

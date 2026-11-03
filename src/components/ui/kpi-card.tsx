@@ -62,7 +62,7 @@ export function KpiCard({
   motion = "count",
   className,
 }: KpiCardProps) {
-  // Heltal räknas upp från 0 när kortet visas; övriga från föregående värde.
+  // Heltal räknas vid första visningen och när värdet ändras; övriga från föregående värde.
   const countUp = motion === "count" && Number.isInteger(value);
   const shown = useKpiValue(value, countUp ? "none" : motion);
   const ref = useValueFade<HTMLParagraphElement>(format(value), motion === "fade");
@@ -80,7 +80,7 @@ export function KpiCard({
 
       <div className="flex flex-col gap-1">
         <p ref={ref} className="tnum truncate text-xl font-medium sm:text-2xl">
-          {countUp ? <CountUp value={value} format={format} /> : format(shown)}
+          {countUp ? <CountUp id={label} value={value} format={format} /> : format(shown)}
         </p>
         {delta !== undefined ? (
           <KpiDelta

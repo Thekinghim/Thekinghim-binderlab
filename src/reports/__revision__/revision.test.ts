@@ -526,7 +526,7 @@ describe("Revision scenario 4: bokföringsrapport med moms, avgifter, luckor och
       { from: 107, to: 109, count: 3 },
     ]);
     expect(n.outsidePeriod).toEqual(["105"]);
-    expect(r.reconciliation.ok).toBe(false);
+    expect(r.reconciliation.ok).toBe(true);
     expect(r.reconciliation.checks.every((c) => c.ok)).toBe(true);
     expect(r.reconciliation.evidence.externalIds).toEqual(["103", "107", "108", "109"]);
     expect(r.unpricedTitles.map((u) => [u.titleId, u.orders, u.netOre])).toEqual([
@@ -534,10 +534,10 @@ describe("Revision scenario 4: bokföringsrapport med moms, avgifter, luckor och
     ]);
   });
 
-  it("slutsats: luckorna nämns med siffror", () => {
-    expect(r.conclusion.ruleId).toBe("accountant.gaps");
+  it("slutsats: luckorna nämns inte (Awish numrerar över alla automater)", () => {
+    expect(r.conclusion.ruleId).toBe("accountant.unpriced");
     expect(r.conclusion.text).toBe(
-      `Försäljningen november 2026 var 335${N}kr inkl. moms (268${N}kr exkl. moms, moms 25${N}%) på 5${N}order; 4 ordernummer saknas i serien 101–110 (103 och 107–109) och behöver kontrolleras i källan.`,
+      `Försäljningen november 2026 var 335${N}kr inkl. moms (268${N}kr exkl. moms, moms 25${N}%) på 5${N}order, ordernummer 101–110, men 1${N}order saknar inköpspris och inköpet för dem är inte med.`,
     );
   });
 

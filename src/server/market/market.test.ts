@@ -348,6 +348,25 @@ describe("modellen", () => {
     expect(empty.headline.title).toBe("Inget släpp inlagt.");
     expect(empty.headline.aside).toMatch(/Inga inköpspriser registrerade/);
 
+    const base = data();
+    const entered = buildMarketModel(
+      data({
+        sources: {
+          ...base.sources,
+          prices: [
+            { titleId: "t1", unitCostOre: 5000, validFrom: "2026-01-01" },
+            { titleId: "t1", unitCostOre: 6000, validFrom: "2026-10-01" },
+            { titleId: "t2", unitCostOre: 7000, validFrom: "2099-01-01" },
+          ],
+        },
+      }),
+      { start: "2026-10-04", end: TODAY },
+    );
+    expect(entered.headline.aside).toMatch(/Inköpspris inlagt för 1 titel\./);
+    expect(entered.prices.entered).toEqual([
+      { titleId: "t1", unitCostOre: 6000, validFrom: "2026-10-01" },
+    ]);
+
     const withRelease = buildMarketModel(
       data({ releases: [release({ name: "Nova", series: "SV", releaseDate: "2026-11-14" })] }),
       { start: "2026-10-04", end: TODAY },

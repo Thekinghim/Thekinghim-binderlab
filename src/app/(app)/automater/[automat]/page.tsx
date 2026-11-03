@@ -148,7 +148,7 @@ export default async function MachinePage({
               ? { label: "Sista dag", value: dayText(machine.activeTo, ctx.today) }
               : {
                   label: "Driftstart",
-                  value: machine.activeFrom ? dayText(machine.activeFrom, ctx.today) : MISSING,
+                  value: data.startedOn ? dayText(data.startedOn, ctx.today) : MISSING,
                 },
           ]}
           actions={

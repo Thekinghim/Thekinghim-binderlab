@@ -62,6 +62,16 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
+// Den aktiva organisationen läses ur cookien (loadViewer): den inloggades organisation.
+vi.mock("@/server/auth/next-cookies", () => ({
+  nextCookieJar: async () => ({
+    get: () => session.current?.organization.id,
+    getAll: () => [],
+    set: () => {},
+    delete: () => {},
+  }),
+}));
+
 vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
   revalidateTag: vi.fn(),

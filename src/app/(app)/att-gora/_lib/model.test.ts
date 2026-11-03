@@ -236,6 +236,27 @@ describe("buildPage", () => {
     expect(page.header.title).toBe("Inget att göra.");
   });
 
+  it("påstår inte att lagret räcker när saldot är okänt", () => {
+    const page = buildPage(input([], { unknownStockMachineIds: [M1] }));
+    expect(page.unknownStock).toBe(1);
+    expect(page.header.title).toBe(`Saldo okänt i 1${NBSP}automat.`);
+    expect(page.header.aside).not.toMatch(/räcker/);
+    expect(page.header.meta.map((m) => m.label)).toContain("Saldo okänt");
+  });
+
+  it("räknar okänt saldo bara inom filtret", () => {
+    const page = buildPage(
+      input([], { unknownStockMachineIds: [M1], scope: { storeId: null, machineId: M2 } }),
+    );
+    expect(page.unknownStock).toBe(0);
+    expect(page.header.title).toBe("Inget att göra.");
+  });
+
+  it("nämner okänt saldo bredvid andra punkter", () => {
+    const page = buildPage(input([refill(M2, "now", 1)], { unknownStockMachineIds: [M1] }));
+    expect(page.header.description).toContain(`Saldo okänt i 1${NBSP}automat.`);
+  });
+
   it("ger påfyllningen ett förslag och centrallagrets saldo", () => {
     const action = buildPage(input([refill(M1, "now", 1)])).groups[0]!.items[0]!.action;
     expect(action).toMatchObject({

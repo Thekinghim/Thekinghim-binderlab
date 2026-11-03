@@ -652,6 +652,7 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
       period,
       today,
       dataStart,
+      hasOrdersToday,
     }),
     period,
     compare,

@@ -506,10 +506,9 @@ function reconcile(args: {
     ),
   ];
 
-  const ok =
-    checks.every((c) => c.ok) &&
-    duplicateExternalIds.length === 0 &&
-    (numbers === null || numbers.missing === 0);
+  // Luckor i nummerserien är ingen avvikelse: Awish numrerar order över alla sina automater
+  // (hela flottan), så en automat får alltid luckor. De visas bara som upplysning.
+  const ok = checks.every((c) => c.ok) && duplicateExternalIds.length === 0;
   const gapNumbers =
     numbers?.gaps.flatMap((g) =>
       g.count <= 20 ? range(g.from, g.to).map(String) : [String(g.from), String(g.to)],
@@ -522,7 +521,7 @@ function reconcile(args: {
     checks,
     ok,
     evidence: evidence({
-      rule: "Luckor = ordernummer mellan periodens lägsta och högsta som saknas i källan. Kontrollsummor räknas två vägar och ska vara lika.",
+      rule: "Luckor = ordernummer mellan periodens lägsta och högsta som saknas i källan (normalt: Awish numrerar över alla sina automater). Kontrollsummor räknas två vägar och ska vara lika.",
       scope: { period },
       orderCount: totals.orders,
       figures: [
@@ -555,10 +554,11 @@ export function gapsText(gaps: readonly OrderNumberGap[]): string {
  * Slutsatsen överst i bokföringsrapporten, en mening. Reglerna i ordning:
  * 1. Inga order → "Ingen försäljning under …" (+ butiksersättning att bokföra om > 0).
  * 2. Kontrollsumma som inte stämmer → det felet.
- * 3. Luckor i nummerserien → antal och vilka (högst fem luckor räknas upp).
- * 4. Dubbletter av ordernummer.
- * 5. Order utan inköpspris → antal.
- * 6. Annars: försäljningen och att serien är komplett.
+ * 3. Dubbletter av ordernummer.
+ * 4. Order utan inköpspris → antal.
+ * 5. Annars: försäljningen och nummerserien.
+ *
+ * Luckor i nummerserien nämns inte: Awish numrerar order över alla sina automater.
  */
 function accountantConclusion(
   period: Period,
@@ -612,16 +612,6 @@ function accountantConclusion(
     };
   }
   const n = rec.numbers;
-  if (n && n.missing > 0) {
-    const shown = n.gaps.slice(0, 5);
-    const more = n.gaps.length > shown.length ? ` m.fl.` : "";
-    const what = n.missing === 1 ? "1 ordernummer saknas" : `${n.missing} ordernummer saknas`;
-    return {
-      text: `${sales}; ${what} i serien ${n.first}–${n.last} (${gapsText(shown)}${more}) och behöver kontrolleras i källan.`,
-      ruleId: "accountant.gaps",
-      evidence: rec.evidence,
-    };
-  }
   if (rec.duplicateExternalIds.length > 0) {
     return {
       text: `${sales}; ordernummer ${listText(rec.duplicateExternalIds.slice(0, 5))} förekommer på flera order och behöver kontrolleras.`,
@@ -629,7 +619,7 @@ function accountantConclusion(
       evidence: rec.evidence,
     };
   }
-  const series = n ? `, ordernummer ${n.first}–${n.last} utan luckor` : "";
+  const series = n ? `, ordernummer ${n.first}–${n.last}` : "";
   if (totals.unpricedOrders > 0) {
     return {
       text: `${sales}${series}, men ${ordersText(totals.unpricedOrders)} saknar inköpspris och inköpet för dem är inte med.${splitUnpriced > 0 ? " Butikernas andel av vinsten är inte färdigräknad; lägg in inköpspriserna innan den bokförs." : ""}`,
@@ -646,7 +636,7 @@ function accountantConclusion(
     text: `${sales}${series}.`,
     ruleId: "accountant.ok",
     evidence: evidence({
-      rule: "Alla kontroller stämmer och nummerserien är komplett.",
+      rule: "Alla kontroller stämmer.",
       scope,
       orderCount: totals.orders,
       figures: base,

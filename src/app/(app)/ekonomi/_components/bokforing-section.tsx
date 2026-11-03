@@ -132,16 +132,21 @@ function MonthItem({ row, canEdit, today }: { row: MonthRow; canEdit: boolean; t
     ["Butikernas andel", b.storeShareOre],
     ["Resultat", b.resultOre],
   ];
+  const version = row.stored && row.stored.version > 1 ? ` · v${row.stored.version}` : "";
   const statusText =
     row.status === "sent" && row.sentAt
       ? `skickad ${formatDate(new Date(row.sentAt), { year: "auto", now: isoToDate(today) })}`
-      : STATUS_LABEL[row.status];
+      : row.status === "closed" && row.stored
+        ? `${row.stored.status === "final" ? "klar att ladda ner" : "preliminär"}${version}`
+        : STATUS_LABEL[row.status];
+  const tag: Status =
+    row.status === "closed" && row.stored?.status === "final" ? "ok" : TAG[row.status];
   return (
     <li className="rounded-md border border-line bg-surface">
       <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:gap-6">
         <div className="flex min-w-40 items-center justify-between gap-3 lg:flex-col lg:items-start lg:gap-1">
           <h3 className="text-base font-medium text-fg">{capitalize(monthText(row.month))}</h3>
-          <StatusTag status={TAG[row.status]}>{statusText}</StatusTag>
+          <StatusTag status={tag}>{statusText}</StatusTag>
         </div>
         <dl className="grid flex-1 grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-5">
           {figures.map(([label, v]) => (

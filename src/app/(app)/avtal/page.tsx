@@ -58,7 +58,7 @@ const STATUS: Record<ContractStatus, { status: Status; label: string }> = {
 const CATEGORY: Record<ExpiringCategory, string> = {
   expiring: "Löper ut inom 12 mån",
   secure: "Längre eller tills vidare",
-  "no-contract": "Inget gällande avtal",
+  "no-contract": "Inget avtalsdokument",
 };
 
 /** Avtalsdatum skrivs alltid med år (ett avtal löper ofta över årsskiftet). */
@@ -154,6 +154,14 @@ export default async function AvtalPage({
     period: agreementPeriod(a),
   }));
   const due = data.reminders.due;
+  // Villkor (provision, vinstdelning, hyra) gäller även utan uppladdat avtalsdokument.
+  const currentTerms = data.agreements.filter(
+    (a) => a.validFrom <= ctx.today && (a.validTo === null || a.validTo >= ctx.today),
+  );
+  const termStores = new Set(currentTerms.map((a) => a.storeId));
+  const looseTerms = currentTerms.filter((a) => a.contractId === null);
+  const coveredStores = new Set([...termStores, ...active.map((c) => c.storeId)]);
+  const withoutAny = stores.filter((st) => !coveredStores.has(st.id)).length;
 
   const title = o
     ? o.expiringShareBp === null
@@ -163,7 +171,7 @@ export default async function AvtalPage({
   const aside = o
     ? `${sek(o.expiringRevenueOre)} av ${sek(o.totalRevenueOre)} ${periodText(o.window)}${
         o.noContractRevenueOre > 0
-          ? `; ${sek(o.noContractRevenueOre)} kommer från butiker utan gällande avtal`
+          ? `; ${sek(o.noContractRevenueOre)} kommer från butiker utan avtalsdokument`
           : ""
       }.`
     : (data.overviewError ?? undefined);
@@ -209,7 +217,12 @@ export default async function AvtalPage({
                 primary: true,
               },
               { id: "expiring", label: "Intäkt på dem", value: o.expiringRevenueOre, unit: "ore" },
-              { id: "none", label: "Utan avtal", value: o.noContractShareBp, unit: "bp" },
+              {
+                id: "none",
+                label: "Utan avtalsdokument",
+                value: o.noContractShareBp,
+                unit: "bp",
+              },
               {
                 id: "due",
                 label: "Att åtgärda",
@@ -279,7 +292,9 @@ export default async function AvtalPage({
           id="avtalen"
           title={
             active.length === 0
-              ? "Inga avtal registrerade."
+              ? currentTerms.length === 0
+                ? "Inga avtal registrerade."
+                : `${plural(termStores.size, "butik", "butiker")} med villkor, inget avtalsdokument.`
               : `${plural(active.length, "avtal", "avtal")}, ${plural(
                   active.filter((c) => c.hasFile).length,
                   "med fil",
@@ -287,9 +302,11 @@ export default async function AvtalPage({
                 )}.`
           }
           aside={
-            active.length === 0
-              ? `${plural(stores.length, "butik", "butiker")} saknar avtal i Binderlab.`
-              : `${plural(active.filter((c) => !c.hasFile).length, "saknar", "saknar")} avtalsfil.`
+            withoutAny > 0
+              ? `${plural(withoutAny, "butik", "butiker")} saknar avtal i Binderlab.`
+              : active.length === 0
+                ? "Skapa avtalsdokumentet från villkoren."
+                : `${plural(active.filter((c) => !c.hasFile).length, "saknar", "saknar")} avtalsfil.`
           }
           actions={
             canEdit && stores.length > 0 ? (
@@ -304,8 +321,39 @@ export default async function AvtalPage({
         {!data.fileStore.configured ? (
           <StateMessage compact kind="not-configured" message={data.fileStore.detail} />
         ) : null}
+        {looseTerms.length > 0 ? (
+          <ul className="flex flex-col" aria-label="Villkor utan avtalsdokument">
+            {looseTerms.map((a) => (
+              <li
+                key={a.id}
+                className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-line py-4 first:border-t-0 first:pt-0"
+              >
+                <span className="min-w-0">
+                  <span className="block text-md text-fg">
+                    {storeName.get(a.storeId) ?? "Okänd butik"}
+                  </span>
+                  <span className="text-sm text-muted">
+                    {termsLabel(a)} · {agreementPeriod(a)}
+                  </span>
+                </span>
+                {canEdit ? (
+                  <Link
+                    href={`/avtal?skapa=store:${a.storeId}`}
+                    className="rounded-xs text-sm text-fg underline-offset-4 hover:underline"
+                  >
+                    Skapa avtal{"\u00a0"}→
+                  </Link>
+                ) : (
+                  <span className="meta text-subtle">Inget avtalsdokument</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {active.length === 0 ? (
-          <StateMessage kind="empty" compact message="Inga avtal ännu." />
+          looseTerms.length > 0 ? null : (
+            <StateMessage kind="empty" compact message="Inga avtal ännu." />
+          )
         ) : (
           <ul className="flex flex-col">
             {active.map((c) => {
@@ -492,7 +540,9 @@ export default async function AvtalPage({
                       {storeName.get(row.storeId) ?? "Okänd butik"}
                     </span>
                     <span className="meta text-subtle sm:order-none">
-                      {CATEGORY[row.category]}
+                      {row.category === "no-contract" && termStores.has(row.storeId)
+                        ? "Villkor, inget avtalsdokument"
+                        : CATEGORY[row.category]}
                       {row.currentEnd ? ` · ${day(row.currentEnd)}` : ""}
                     </span>
                     <span className="tnum text-right text-fg">{sek(row.revenueOre)}</span>

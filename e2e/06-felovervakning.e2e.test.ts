@@ -193,7 +193,7 @@ describe("felövervakning", () => {
     await breakImport();
     const { page, context, errors } = await openPage(browser, e2e().baseUrl, { theme: "light" });
     await login(page, e2e().users.owner);
-    await page.goto("/datakallor");
+    await page.goto("/datakallor#ladda-upp");
     await page.getByLabel("Datakälla").selectOption({ label: e2e().failingSource.name });
     await page.locator('input[type="file"]').setInputFiles(e2e().failingCsv.file);
     const confirm = page.getByRole("button", {

@@ -188,9 +188,12 @@ export function PricesSection({
   const selected =
     trends.find((t) => t.titleId === selectedTitleId) ??
     [...trends].sort((a, b) => b.purchases - a.purchases || a.titleId.localeCompare(b.titleId))[0];
+  const entered = trends.length === 0 ? prices.entered : [];
   const title =
     trends.length === 0
-      ? "Inga inköpspriser registrerade."
+      ? entered.length > 0
+        ? `Inköpspris inlagt för ${formatInt(entered.length)} ${entered.length === 1 ? "titel" : "titlar"}.`
+        : "Inga inköpspriser registrerade."
       : `Inköpspris för ${formatInt(trends.length)} ${trends.length === 1 ? "titel" : "titlar"} från ${formatInt(supplierCount)} ${supplierCount === 1 ? "leverantör" : "leverantörer"}.`;
   const aside =
     trends.length === 0
@@ -300,6 +303,32 @@ export function PricesSection({
                 </Row>
               );
             })}
+          </Table>
+        </PanelSection>
+      ) : null}
+
+      {entered.length > 0 ? (
+        <PanelSection label={`Inlagda inköpspriser · ${formatInt(entered.length)}`}>
+          <Table
+            caption="Inlagda inköpspriser per titel"
+            head={[{ label: "Titel" }, { label: "Gäller från" }, { label: "Pris", numeric: true }]}
+          >
+            {[...entered]
+              .sort((a, b) =>
+                (ctx.names.title[a.titleId] ?? a.titleId).localeCompare(
+                  ctx.names.title[b.titleId] ?? b.titleId,
+                  "sv",
+                ),
+              )
+              .map((e) => (
+                <Row key={e.titleId}>
+                  <Cell header>{ctx.names.title[e.titleId] ?? e.titleId}</Cell>
+                  <Cell className="meta whitespace-nowrap text-muted">
+                    {dayText(e.validFrom, ctx.today)}
+                  </Cell>
+                  <Cell numeric>{kronor(e.unitCostOre)}</Cell>
+                </Row>
+              ))}
           </Table>
         </PanelSection>
       ) : null}

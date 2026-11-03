@@ -554,6 +554,40 @@ describe("månadspaketet", () => {
   });
 });
 
+describe("preliminärt paket", () => {
+  it("har en rad om varför i läs mig och preliminar i filnamnet", async () => {
+    const [book] = bookMonths([figures("2026-10")], 0);
+    const base = {
+      company: "Binderlab AB",
+      orgNumber: null,
+      book: book!,
+      plan: DEFAULT_PLAN,
+      series: "A",
+      number: 10,
+      fiscalYear: { start: "2026-01-01", end: "2026-12-31" },
+      generatedOn: "2026-11-03",
+      sentOn: null,
+      receipts: [],
+      renderPdf: null,
+    };
+    const final = await buildMonthPackage(base);
+    const prel = await buildMonthPackage({
+      ...base,
+      preliminary: "3 order saknar inköpspris, så butikens andel är inte klar.",
+    });
+    expect(final.fileName).toBe("bokforing-2026-10.zip");
+    expect(prel.fileName).toBe("bokforing-2026-10-preliminar.zip");
+    const readme = (p: typeof prel) =>
+      readZip(p.bytes)
+        .find((f) => f.name === "LAS-MIG.txt")!
+        .data.toString("utf8");
+    expect(readme(final)).not.toContain("PRELIMINÄR");
+    expect(readme(prel).split("\r\n")[1]).toBe(
+      "PRELIMINÄR: 3 order saknar inköpspris, så butikens andel är inte klar. Bokför inte förrän ett nytt paket finns.",
+    );
+  });
+});
+
 describe("sammanfattningen", () => {
   it("visar VMB steg för steg, butikerna och verifikationen, och skyddar texten", () => {
     const [b] = bookMonths([figures("2026-10")], 2_500);

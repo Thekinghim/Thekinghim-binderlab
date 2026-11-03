@@ -32,7 +32,7 @@ import {
 } from "@/domain";
 import { formatDay, formatMonth, formatPeriodShort, formatWeekdayDay } from "@/lib/format";
 import type { DataScope, MachineRecord, StoreRecord, TitleRecord } from "@/server/data/core/types";
-import { isoDateToShellDate } from "@/server/data/core/period";
+import { coverageDays, isoDateToShellDate } from "@/server/data/core/period";
 
 import {
   lonsamhetHeadline,
@@ -206,6 +206,10 @@ export interface LonsamhetOptions {
   readonly carry?: string;
   /** Senaste orderns affärsdatum i urvalet (för tomt läge), eller null utan order alls. */
   readonly lastOrderDate?: IsoDate | null;
+  /** Första dagen med data (organisationen). Med den räknas dagarna som på övriga sidor. */
+  readonly dataStart?: IsoDate | null;
+  /** Om organisationen har order i dag (dagen räknas då med). */
+  readonly hasOrdersToday?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -477,8 +481,14 @@ export function buildLonsamhetModel(
     : null;
 
   const lastOrderDate = options.lastOrderDate ?? null;
+  // Samma dagräkning som Hem, Butiker och Automater: dagarna med data (dataCoverage).
+  const days =
+    options.dataStart !== undefined
+      ? coverageDays(period, options.dataStart, today, options.hasOrdersToday ?? false) ||
+        periodDays(period)
+      : periodDays(period);
   const headline = lonsamhetHeadline({
-    days: periodDays(period),
+    days,
     periodLabel: periodText(period, today),
     lastOrderLabel: lastOrderDate
       ? periodText({ start: lastOrderDate, end: lastOrderDate }, today)
@@ -607,7 +617,7 @@ export function buildLonsamhetModel(
       prevTotals && input.previous
         ? `Jämfört med ${periodText(input.previous.period, today)}`
         : null,
-    days: periodDays(period),
+    days,
     scope: input.scope,
     scopeLabel: scopeLabel(input),
     orders: totalsRow.orders,

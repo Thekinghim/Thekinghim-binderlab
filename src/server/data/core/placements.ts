@@ -37,3 +37,22 @@ export function effectivePlacements(
       : p;
   });
 }
+
+/** Första möjliga dag: en placering från den gäller alla tidigare dagar. */
+export const EARLIEST_DATE: IsoDate = "0001-01-01";
+
+/**
+ * Samma regel som placedInStore, utan orderna: automatens första placering gäller också
+ * alla dagar före den. För orderlistans butiksfilter, sökning och butikskolumn, så att
+ * de visar samma order som Lönsamhet och Hem för butiken.
+ */
+export function backdateFirstPlacements<
+  T extends { readonly machineId: string; readonly from: IsoDate },
+>(placements: readonly T[]): T[] {
+  const first = new Map<string, T>();
+  for (const p of placements) {
+    const seen = first.get(p.machineId);
+    if (seen === undefined || p.from < seen.from) first.set(p.machineId, p);
+  }
+  return placements.map((p) => (first.get(p.machineId) === p ? { ...p, from: EARLIEST_DATE } : p));
+}

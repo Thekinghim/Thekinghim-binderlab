@@ -675,6 +675,17 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       verificationCount: 31,
       fileSha256: "e".repeat(64),
     });
+    // Bokföring (20261103210000_bokforing.sql): kontoplan, skickad månad och ett kvitto.
+    await tx.execute(
+      sql`insert into public.bookkeeping_settings (organization_id, account_plan) values (${orgId}::uuid, '{}'::jsonb)`,
+    );
+    await tx.execute(
+      sql`insert into public.bookkeeping_months (organization_id, month, sent_at, snapshot) values (${orgId}::uuid, '2025-03-01', now(), '{}'::jsonb)`,
+    );
+    await tx.execute(
+      sql`insert into public.bookkeeping_receipts (organization_id, month, storage_path, file_name, content_type, size_bytes, file_sha256)
+          values (${orgId}::uuid, '2025-03-01', ${`${orgId}/2025-03/${"d".repeat(64)}.pdf`}, 'kvitto.pdf', 'application/pdf', 100, ${"d".repeat(64)})`,
+    );
     await tx.insert(s.fixedCosts).values({
       ...org,
       name: "Försäkring",
@@ -966,6 +977,15 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       sql`insert into public.ai_suggestions
             (organization_id, run_id, rank, title, why, action, effect_sek_month, confidence)
           values (${orgId}, ${aiRun.id}, 1, 'Fyll på', 'Titeln har 2 pack kvar.', 'Fyll på i dag.', 100, 'high')`,
+    );
+    // Bokföring (20261104130000_bokforing_paket.sql): bara servern sparar månadspaketet.
+    await tx.execute(
+      sql`insert into public.bookkeeping_packages
+            (organization_id, month, version, status, fingerprint, storage_path, file_name,
+             size_bytes, file_sha256)
+          values (${orgId}, '2025-03-01', 1, 'final', ${"a".repeat(64)},
+                  ${`${orgId}/2025-03/v1-${"b".repeat(64)}.zip`}, 'bokforing-2025-03.zip', 100,
+                  ${"b".repeat(64)})`,
     );
     await tx.execute(sql`set local role authenticated`);
 

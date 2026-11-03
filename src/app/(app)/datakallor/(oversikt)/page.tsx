@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { OpenOnHash } from "@/components/ui/open-on-hash";
 import { SectionHeader } from "@/components/ui/section-header";
 import { formatInt } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
@@ -69,7 +70,8 @@ export default async function DatakallorPage() {
           }
         />
         <SourceList sources={data.sources} timeZone={data.timeZone} now={data.now} />
-        <details className="group">
+        <OpenOnHash id="ladda-upp" />
+        <details id="ladda-upp" className="group scroll-mt-28">
           <summary className="cursor-pointer text-sm text-muted hover:text-fg">
             Ladda upp fil
             {lastFile

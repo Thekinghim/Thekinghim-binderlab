@@ -6,11 +6,18 @@ import { wallClockIn } from "@/components/shell/period-state";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatRelative, formatTime } from "@/lib/format";
-import { loadMasterData, loadStock, requireRoute, scopeFromSearchParams } from "@/server/data/core";
+import {
+  isKnownStock,
+  loadMasterData,
+  loadStock,
+  requireRoute,
+  scopeFromSearchParams,
+} from "@/server/data/core";
 import { loadRankedTodoState } from "@/server/data/todos";
 import { getActiveOrganization, requireUser } from "@/server/session";
 
 import { Suggestions } from "@/app/(app)/assistent/_components/suggestions";
+import { BokforingReady } from "@/app/(app)/ekonomi/_components/bokforing-ready";
 import { loadAdvisorStateFor } from "@/server/assistant/advisor/service";
 
 import { HeaderMeta } from "./_components/header-meta";
@@ -73,6 +80,13 @@ export default async function TodoPage({
     machines: master.machines,
     machineStock: stock.machineStock,
     warehouse,
+    unknownStockMachineIds: [
+      ...new Set(
+        stock.rows
+          .filter((r) => r.locationKind === "machine" && r.machineId !== null && !isKnownStock(r))
+          .map((r) => r.machineId as string),
+      ),
+    ],
     scope: scopeFromSearchParams(sp),
     computedAt: formatTime(wall(now)),
     dismissed: dismissed.map((d) => ({
@@ -98,6 +112,7 @@ export default async function TodoPage({
           className="pb-12 md:pb-16"
         />
       </div>
+      {organization ? <BokforingReady viewer={{ user, organization }} /> : null}
       {advisor && advisor.suggestions.length > 0 ? (
         <section
           aria-labelledby="forslag-rubrik"
@@ -118,11 +133,16 @@ export default async function TodoPage({
           <StateMessage
             kind="empty"
             message={
-              view.hiddenByScope > 0
-                ? "Inget att göra för filtret."
-                : "Inget kräver åtgärd just nu."
+              view.unknownStock > 0
+                ? "Påfyllningar räknas när lagret är inräknat."
+                : view.hiddenByScope > 0
+                  ? "Inget att göra för filtret."
+                  : "Inget kräver åtgärd just nu."
             }
-            action={{ label: "Visa lagret", href: "/lager" }}
+            action={{
+              label: view.unknownStock > 0 ? "Räkna in lagret" : "Visa lagret",
+              href: "/lager",
+            }}
           />
         </div>
       ) : null}

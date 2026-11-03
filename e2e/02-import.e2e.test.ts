@@ -38,7 +38,7 @@ afterAll(async () => {
 
 /** Väljer källan, laddar upp körningens CSV och väntar på förhandsvisningen. */
 async function uploadRunCsv(): Promise<void> {
-  await page.goto("/datakallor");
+  await page.goto("/datakallor#ladda-upp");
   await page.getByLabel("Datakälla").selectOption({ label: e2e().importSource.name });
   await page.locator('input[type="file"]').setInputFiles(e2e().importCsv.file);
   await page.getByText("Förhandsvisning · inget är sparat ännu").waitFor();

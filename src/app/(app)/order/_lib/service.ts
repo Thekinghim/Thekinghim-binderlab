@@ -20,6 +20,7 @@ import {
 } from "@/domain";
 import { requireRoleFor, withUserDbFor, isUuid } from "@/server/access";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
+import { backdateFirstPlacements } from "@/server/data/core/placements";
 import {
   queryMachines,
   queryPlacements,
@@ -85,8 +86,10 @@ async function context(
   const orgId = viewer.organization.id;
   const today = businessToday(now, viewer.organization.timezone);
   const titles = await queryTitles(tx, orgId);
-  const placements = await queryPlacements(tx, orgId);
-  const machines = await queryMachines(tx, orgId, placements, today);
+  const stored = await queryPlacements(tx, orgId);
+  const machines = await queryMachines(tx, orgId, stored, today);
+  // Samma butiksregel som Lönsamhet (placedInStore): första placeringen gäller bakåt.
+  const placements = backdateFirstPlacements(stored);
   const stores = await queryStores(tx, orgId);
   const refs = buildRefs({ titles, machines, stores });
   const filter: OrderQueryFilter = {
@@ -302,7 +305,9 @@ export async function loadOrderDetailFor(
     if (!r) return null;
     let store: OrderDetail["store"] = null;
     if (r.machineId) {
-      const placements = new PlacementIndex(await queryPlacements(tx, orgId));
+      const placements = new PlacementIndex(
+        backdateFirstPlacements(await queryPlacements(tx, orgId)),
+      );
       const storeId = placements.storeOn(r.machineId, r.businessDate);
       if (storeId) {
         const found = (await queryStores(tx, orgId)).find((s) => s.id === storeId);

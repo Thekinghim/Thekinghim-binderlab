@@ -5,6 +5,7 @@ import type { AnalyticsOrder, TodoItem } from "@/analytics/todos";
 import type { DomainInput, MasterData, StockSnapshot } from "@/server/data/core/types";
 
 import {
+  startedOn,
   buildOverview,
   coverageOf,
   heatThresholds,
@@ -697,5 +698,13 @@ describe("machineSignals: samma status som Drift", () => {
       ["m1", "ok"],
       ["m2", "offline"],
     ]);
+  });
+});
+
+describe("startedOn", () => {
+  it("tar den tidigaste av driftstart, första placering och första order", () => {
+    expect(startedOn("2026-11-03", "2026-11-03", "2026-10-14")).toBe("2026-10-14");
+    expect(startedOn("2026-10-01", "2026-11-03", null)).toBe("2026-10-01");
+    expect(startedOn(null, null, null)).toBeNull();
   });
 });

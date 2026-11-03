@@ -228,6 +228,7 @@ export function KpiStrip({
             <KpiCell
               key={item.id}
               item={item}
+              index={i}
               loading={loading}
               motion={motion}
               minStep={item.primary ? 0 : sharedStep}
@@ -332,6 +333,7 @@ function useFitStep(
 
 function KpiCell({
   item,
+  index = 0,
   loading,
   motion,
   span,
@@ -339,6 +341,8 @@ function KpiCell({
   onStep,
 }: {
   item: KpiItem;
+  /** Plats i remsan: cellerna glider upp i tur och ordning. */
+  index?: number;
   loading?: boolean;
   motion: KpiMotion;
   span?: string;
@@ -347,7 +351,7 @@ function KpiCell({
   /** Rapporterar steget cellen själv behöver, så att raden kan dela det. */
   onStep?: (id: string, step: number) => void;
 }) {
-  // Heltal (öre, bp, antal) räknas upp från 0 när remsan visas; övriga från föregående värde.
+  // Heltal (öre, bp, antal) räknas vid första visningen och när värdet ändras.
   const countUp = motion === "count" && Number.isInteger(item.value);
   const shown = useKpiValue(item.value, countUp ? "none" : motion);
   const text = item.format(shown);
@@ -365,9 +369,10 @@ function KpiCell({
   return (
     <div
       className={cn(
-        "group/kpi -mt-px -ml-px flex min-w-0 flex-col border-t border-l border-line py-4 pr-4 transition-colors duration-300 hover:bg-hover/40 @4xl:pr-5",
+        "group/kpi rise -mt-px -ml-px flex min-w-0 flex-col border-t border-l border-line py-4 pr-4 transition-colors duration-300 hover:bg-hover/40 @4xl:pr-5",
         span,
       )}
+      style={{ "--i": Math.min(index, 6) } as React.CSSProperties}
     >
       <dt className="label truncate text-muted">{item.label}</dt>
       {loading ? (
@@ -384,7 +389,7 @@ function KpiCell({
               sizes[step],
             )}
           >
-            {countUp ? <CountUp value={item.value} format={item.format} /> : text}
+            {countUp ? <CountUp id={item.id} value={item.value} format={item.format} /> : text}
           </dd>
           {item.delta ? (
             <dd className="mt-1">
