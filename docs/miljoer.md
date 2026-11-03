@@ -400,6 +400,16 @@ Schemaläggning i drift (Vercel): båda jobben står i `vercel.json`.
 | `/api/cron/larm`      | `7 5 * * *`  | Larmjobbet (dagligen, Hobby)                           |
 | `/api/cron/rapporter` | `17 5 1 * *` | Månadsutkast för förra månaden (den 1:a kl. 05:17 UTC) |
 
+Awish-synken (`/api/cron/awish`, var tionde minut) schemaläggs inte i Vercel (Hobby tillåter bara en gång om dagen)
+utan med pg_cron i Supabase: `private.awish_cron_tick()` anropar routen med pg_net och läser adressen och
+hemligheten ur Vault (`binderlab_app_url`, `binderlab_cron_secret`, skrivs av `scripts/deploy`). Se
+[awish-api.md](awish-api.md).
+
+| Variabel             | Värde                                                 | Standard            |
+| -------------------- | ----------------------------------------------------- | ------------------- |
+| `AWISH_GRPC_ADDRESS` | Awish gRPC-server `värd:port`                         | `49.51.72.74:50051` |
+| `AWISH_GRPC_TLS`     | `true` om servern kräver TLS (dokumentationen: ingen) | `false`             |
+
 Sätt `CRON_SECRET` (minst 16 tecken) i projektets miljövariabler för Production. Vercel
 skickar den som `Authorization: Bearer <CRON_SECRET>` till varje cron-route; utan den svarar
 båda routerna 503 och gör ingenting, och fel hemlighet ger 401. Vercel kör cron bara i

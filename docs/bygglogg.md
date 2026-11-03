@@ -111,3 +111,14 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
   (larmjobbet en gång om dagen kl. 05:07 UTC i stället för var 10:e minut).
 - Kvar, valfritt: Resend (mejl till andra än Supabase-organisationens medlemmar, rapportutskick), Sentry,
   ANTHROPIC_API_KEY. De två API-nycklarna från chatten ska bytas.
+
+## 3 nov. – Awish officiella gRPC-API ersätter Chrome-tillägget
+
+- Beställaren lämnade Awish dokumentation (AW-DOC-110) och `provider.proto`. Byggt: gRPC-klient (`src/server/awish`),
+  adaptern `awish_grpc`, synk var tionde minut (pg_cron i Supabase → `/api/cron/awish`, eftersom Vercel Hobby bara kör
+  cron en gång om dagen), AppId/AppSecret/AppKey i Supabase Vault, kortet Awish i Datakällor (Spara, Testa
+  anslutningen, Synka nu) och Vault-hemligheterna i `scripts/deploy`. Se `docs/awish-api.md`.
+- Chrome-tillägget, ingest-API:t, zip-filen och `docs/awish-tillagg.md` är borttagna. Tabellen `sync_tokens` och
+  enum-värdena ligger kvar oanvända.
+- Inte provat mot Awish riktiga server (byggmiljön når inte `49.51.72.74:50051`); provat mot en låtsasserver med samma
+  proto. Kvar att kontrollera i drift: token med gemener, tidszonen (order 42780), beloppsformatet och ordningen.

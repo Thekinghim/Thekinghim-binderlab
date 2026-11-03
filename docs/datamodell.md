@@ -309,11 +309,9 @@ Alla marknadstabeller: läs Ä/A/L, skriv Ä/A, påfyllaren ser inget. Inget är
 
 Adaptergränssnittet: `SourceAdapter.fetch(cursor) → { orders: RawOrder[], machines: RawMachine[], nextCursor }`. Allt efter adaptern är gemensamt: koppling av automater och titlar, deduplicering, logg och lagerhändelser. Så blir de olika källorna:
 
-1. **`awish_grpc` (målet).** Awish erbjuder ett gRPC-API med läsbehörighet via app-ID.
-   - Det körs som ett schemalagt jobb på servern var 10:e minut, utan webbläsare och utan tillägg.
-   - Det kräver följande från Awish: .proto-filerna, hur token beräknas, TLS-inställningar, det tredje metadatafältet och webhook-dokumentation.
-   - När webhooks finns läggs `trigger = 'webhook'` till för hämtning i realtid.
-2. **`awish_csv` (nu).** Uppladdning på sidan Datakällor, med förhandsvisning, kolumnmappning, kontroll av dubbletter och logg.
+1. **`awish_grpc` (i bruk).** Awish officiella gRPC-API med AppId, AppSecret och AppKey (i Vault, `secret_ref`).
+   - Körs på servern var 10:e minut (pg_cron → `/api/cron/awish`), utan webbläsare och utan tillägg. Läget (sidor, senaste körning) ligger i `cursor` som JSON. Se `docs/awish-api.md`.
+2. **`awish_csv` (reserv).** Uppladdning på sidan Datakällor, med förhandsvisning, kolumnmappning, kontroll av dubbletter och logg.
    - Kolumnerna mappas från Awish orderlista: Order No. → `external_id`, Name → titel, Order Machine → automat, Order Amount → belopp, Payment Time → tid, Is Paid → filter.
 3. **`awish_web` (reserv, inte beslutad).** Serverhämtning av samma orderlista som panelen visar. Tas bara fram om gRPC dröjer, eftersom det är skörare.
 
@@ -340,7 +338,7 @@ fyra av analysmapparna (`forecast`, `reconciliation`, `expansion`, `pricing`).
 
 ## Öppna punkter som inte stoppar migreringarna
 
-1. **Awish:** gRPC-specifikation och token-beräkning. Tills dess körs CSV.
+1. **Awish:** gRPC-API:t är byggt men inte provat mot Awish riktiga server (token med gemener, tidszon, beloppsformat; `docs/awish-api.md`).
 2. **Källans tidszon:** Asia/Shanghai verifieras mot order 42780 vid första riktiga importen.
 
 ## Förfiningar i migreringarna (2 nov. 2026)

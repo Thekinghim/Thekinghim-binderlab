@@ -1,6 +1,6 @@
 # Awish: import av order
 
-Koden finns i `src/import/`. Adaptern (`awish_csv` nu, `awish_grpc` senare) tolkar källan till `RawOrder`. Allt efter adaptern är gemensamt (`pipeline.ts`): koppling av titlar och automater, dubbletter, konflikter, importlogg och lagerhändelser.
+Koden finns i `src/import/`. Adaptern (`awish_grpc` automatiskt via Awish API, se [awish-api.md](awish-api.md), och `awish_csv` för uppladdade filer) tolkar källan till `RawOrder`. Allt efter adaptern är gemensamt (`pipeline.ts`): koppling av titlar och automater, dubbletter, konflikter, importlogg och lagerhändelser.
 
 ## Kolumnmappning (orderlistan som CSV)
 
@@ -22,7 +22,7 @@ Koden finns i `src/import/`. Adaptern (`awish_csv` nu, `awish_grpc` senare) tolk
 - Radnummer i importloggen är filens radnummer, där rubriken är rad 1.
 - Dubblett eller konflikt avgörs av fälten (belopp, tid, titel, automat, betalmetod) efter NFKC-normalisering och ihopslagna mellanslag, alltid först mot den sparade ordern och sedan mot samma ordernummer längre upp i filen. `orders.source_hash` (version `sh2`, NFKC) sparas som spårbarhet.
 - En automat som döps om i Awish blir en ny, okopplad källautomat, och redan importerade order med det gamla namnet blir konflikter om de importeras igen. CSV-filen saknar automat-id, så det går inte att följa ett namnbyte.
-- Samma Awish-konto som två datakällor (t.ex. CSV och senare gRPC) ger dubbla order, eftersom ordernumret är unikt per datakälla.
+- Samma Awish-konto som två datakällor: ordernumret är unikt per datakälla. Synken från Awish API hoppar över en betald order vars betaltid och belopp redan finns i en annan Awish-källa ([awish-api.md](awish-api.md)), men CSV-importen jämför bara mot sin egen källa. Ladda inte upp fler orderlistor när API:t är kopplat.
 - Det finns ingen kolumn för antal (alltid 1 pack per order), utmatning eller återbetalning.
 
 ## Tidszon: verifiering mot order 42780
@@ -44,15 +44,7 @@ Gör så här vid första riktiga importen:
 
 Shanghai har ingen sommartid. Om källan någon gång ligger i en zon med sommartid gäller två regler. En tid som förekommer två gånger (25 okt. 2026 02:00–02:59 i Stockholm) tolkas som den tidigaste och loggas på raden. En tid som inte finns (29 mars 2026 02:00–02:59) flyttas fram en timme och loggas.
 
-## Vad vi behöver från Awish för gRPC
+## Awish API (gRPC)
 
-`awish_grpc` kastar `NotConfiguredError` tills följande finns (`AWISH_GRPC_MISSING` i koden):
-
-1. **.proto-filerna** för order- och automattjänsterna: meddelanden, metoder och paginering eller markör, så att vi kan hämta "allt efter senaste".
-2. **Token-beräkningen** för app-ID: algoritm, vilka fält som ingår och i vilken ordning, giltighetstid, och ett exempel med kända in- och utvärden.
-3. **TLS**: värdnamn och port, om klientcertifikat krävs, och CA-kedjan.
-4. **Det tredje metadatafältet** i anropen: namn, format och hur värdet tas fram.
-5. **Webhook-dokumentation**: händelsetyper, hur anropen signeras och verifieras, och hur omförsök fungerar.
-6. **Exempelpayload** för en betald order, både gRPC-svar och webhook, med tidszon och beloppsformat (öre eller kronor, valuta).
-
-Hemligheten (token eller nyckel) läggs i Supabase Vault under `{organization_id}/namn` och refereras från `data_sources.secret_ref`. Adaptern kontrollerar namnrymden innan Vault läses.
+Den automatiska hämtningen beskrivs i [awish-api.md](awish-api.md). Kontrollen mot order 42780 ovan görs på samma
+sätt för API:t: `pay_time` tolkas i datakällans `source_timezone`.

@@ -128,7 +128,7 @@ src/domain/         Rena beräkningar: öre, baspunkter, datum, priser, hyra, pr
 src/analytics/      Rena analyser: Att göra, maskinhälsa, larm, prognos, förlorad försäljning, inköp, avstämning,
                     kassaflöde, avtal, expansion, effekt, marknad, besöksplan
 src/reports/        Rapportmodeller, SIE 4 och Excel
-src/import/         Importen: adaptergränssnitt, Awish-CSV och den gemensamma pipelinen
+src/import/         Importen: adaptergränssnitt, Awish (API och CSV) och den gemensamma pipelinen
 src/db/             Drizzle-schema, anslutning (withRls, getServiceDb) och migreringskörare
 src/components/     ui/, charts/ (egna SVG-diagram), shell/ (sidomeny och period), report/, pwa/
 src/seed/           Seed (riktig försäljning) och demo/
@@ -141,19 +141,19 @@ docs/               Dokumentationen (nedan)
 
 ## Dokumentation
 
-| Fil                                                                              | Innehåll                                                               |
-| -------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| [docs/product.md](docs/product.md)                                               | Vad Binderlab löser, för vem, siffror ur panelen och hur effekten mäts |
-| [docs/architecture.md](docs/architecture.md)                                     | Lager, adaptrar, jobb, dataflöden, säkerhetsmodell, tider och pengar   |
-| [docs/decisions.md](docs/decisions.md)                                           | Tekniska beslut (ADR) och varför                                       |
-| [docs/datamodell.md](docs/datamodell.md)                                         | Tabeller, roller, RLS och alla funktioner, per område                  |
-| [docs/berakningar.md](docs/berakningar.md)                                       | Hur varje siffra räknas, med exempel som också är tester               |
-| [docs/miljoer.md](docs/miljoer.md)                                               | Miljöer, variabler, inloggning, adaptrar och beställarens steg         |
-| [docs/operations.md](docs/operations.md)                                         | Drift, övervakning, säkerhetskopior, återställning, incidenter, e2e    |
-| [docs/design.md](docs/design.md)                                                 | Designsystemet: tokens, komponenter, regler                            |
-| [docs/demo.md](docs/demo.md)                                                     | Demoorganisationen                                                     |
-| [docs/awish.md](docs/awish.md), [docs/marknadskallor.md](docs/marknadskallor.md) | Vad som behövs från Awish; underlag för val av marknadspriskälla       |
-| [docs/bygglogg.md](docs/bygglogg.md)                                             | Byggets logg och läge per fas                                          |
+| Fil                                                                                                                      | Innehåll                                                               |
+| ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| [docs/product.md](docs/product.md)                                                                                       | Vad Binderlab löser, för vem, siffror ur panelen och hur effekten mäts |
+| [docs/architecture.md](docs/architecture.md)                                                                             | Lager, adaptrar, jobb, dataflöden, säkerhetsmodell, tider och pengar   |
+| [docs/decisions.md](docs/decisions.md)                                                                                   | Tekniska beslut (ADR) och varför                                       |
+| [docs/datamodell.md](docs/datamodell.md)                                                                                 | Tabeller, roller, RLS och alla funktioner, per område                  |
+| [docs/berakningar.md](docs/berakningar.md)                                                                               | Hur varje siffra räknas, med exempel som också är tester               |
+| [docs/miljoer.md](docs/miljoer.md)                                                                                       | Miljöer, variabler, inloggning, adaptrar och beställarens steg         |
+| [docs/operations.md](docs/operations.md)                                                                                 | Drift, övervakning, säkerhetskopior, återställning, incidenter, e2e    |
+| [docs/design.md](docs/design.md)                                                                                         | Designsystemet: tokens, komponenter, regler                            |
+| [docs/demo.md](docs/demo.md)                                                                                             | Demoorganisationen                                                     |
+| [docs/awish-api.md](docs/awish-api.md), [docs/awish.md](docs/awish.md), [docs/marknadskallor.md](docs/marknadskallor.md) | Awish API och CSV-importen; underlag för val av marknadspriskälla      |
+| [docs/bygglogg.md](docs/bygglogg.md)                                                                                     | Byggets logg och läge per fas                                          |
 
 ## Läge och kvarstående
 
@@ -182,9 +182,9 @@ Läget 2 nov. 2026, efter fas 7:s sista rättningar. Sammanfattning av fas 7 med
 - **Inte provat mot riktiga tjänster** (byggmiljön hade inget nät): Supabase-lägena (PostgREST, storage-policyer,
   JWKS, inbjudningsmejl), Resend, Sentry, Vercel Cron, Web Push, PDF-visning i en vanlig Chrome och CI-jobbet för e2e
   på GitHub. Allt har lokala ersättare och tester, men ingen extern integration har körts en enda gång.
-- **Awish:** orderlistan laddas upp för hand (CSV). Den schemalagda hämtningen (`awish_grpc`), utbetalningarnas API
-  och maskindata kräver dokumentation från Awish (`docs/awish.md`). Maskinhälsan härleds ur försäljningen, och en enda
-  automat i en CSV-källa kan inte skiljas från en fil utan ny försäljning (datalarm efter 36 timmar).
+- **Awish:** orderna hämtas från Awish officiella gRPC-API var tionde minut (`docs/awish-api.md`), men det är bara
+  provat mot en låtsasserver; byggmiljön når inte Awish. Uppladdning av orderlistan (CSV) finns kvar som reserv.
+  Utbetalningarnas API och maskindata kräver dokumentation från Awish. Maskinhälsan härleds ur försäljningen.
 - **Säkerhet:** CSP:n tillåter `'unsafe-inline'` för skript (nonce-CSP kräver dynamisk rendering), HSTS saknar
   `includeSubDomains`, det finns ingen gräns för hur ofta inbjudningar och rapporter kan skickas, och gränserna för
   inloggning, assistent, sökning, provlarm och felanmälan räknas per serverinstans (`docs/architecture.md`).
@@ -228,8 +228,8 @@ släpps in behövs:
 3. **Avtal.** Personuppgiftsbiträdesavtal med Supabase, Vercel, Resend, Sentry och Anthropic; lagringstider och
    gallring (i dag gallras inget efter 7 år eller 24 månader); ett standardavtal med operatörerna (personuppgifts-
    ansvar, villkor); avtal med Awish om API-åtkomst; och vid en försäljning köpeavtal och LICENSE-fil.
-4. **Awish-integrationen** (`awish_grpc`), så att importen sker automatiskt i stället för med fil, och maskindata
-   när Awish kan leverera den.
+4. **Awish-integrationen** (`awish_grpc`): kontrollera den mot Awish riktiga server enligt
+   `docs/awish-api.md` (token, tidszon, belopp, ordning), och maskindata när Awish kan leverera den.
 5. **Gränser för utskick** (inbjudningar, rapporter) och gemensamma gränser för inloggning och assistent för alla
    serverinstanser (till exempel i databasen).
 6. **Leverantörer per operatör:** bokföringsprogram och sms-leverantör, eller stäng av funktionerna för operatörer
@@ -251,15 +251,16 @@ utvecklingsberoenden, inklusive plattformsbinärer som bara installeras på sin 
 och resten BSD, 0BSD, BlueOak-1.0.0, Unlicense, MIT-0 och liknande tillåtande licenser. Det här behöver en köpare titta
 på:
 
-| Paket                                                 | Licens                      | Varifrån och vad det betyder                                                                                          |
-| ----------------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `@img/sharp-libvips-*`, `@img/sharp-win32-*` (0.35.5) | LGPL-3.0-or-later (libvips) | Bildbehandlingen `sharp` som Next.js använder. Dynamiskt länkat bibliotek; LGPL-villkoren gäller om det distribueras. |
-| `web-push` (3.6.7)                                    | MPL-2.0                     | Web Push. Ändringar i paketets egna filer ska delas; resten av koden påverkas inte.                                   |
-| `sentry` (0.45.0, Sentry CLI)                         | FSL-1.1-Apache-2.0          | Via `@sentry/nextjs` vid bygget (källkartor). Fri att använda men inte för en konkurrerande tjänst.                   |
-| `jszip` (3.10.2)                                      | MIT eller GPL-3.0-or-later  | Via `exceljs`. Välj MIT.                                                                                              |
-| `buffers` (0.1.1)                                     | anges inte i paketet        | Se nedan. Kan tas bort med en `overrides` i `package.json`.                                                           |
-| `caniuse-lite`                                        | CC-BY-4.0                   | Webbläsardata vid bygget.                                                                                             |
-| `geist`                                               | SIL Open Font License       | Typsnitten; får bäddas in men inte säljas separat.                                                                    |
+| Paket                                                                        | Licens                               | Varifrån och vad det betyder                                                                                          |
+| ---------------------------------------------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `@img/sharp-libvips-*`, `@img/sharp-win32-*` (0.35.5)                        | LGPL-3.0-or-later (libvips)          | Bildbehandlingen `sharp` som Next.js använder. Dynamiskt länkat bibliotek; LGPL-villkoren gäller om det distribueras. |
+| `web-push` (3.6.7)                                                           | MPL-2.0                              | Web Push. Ändringar i paketets egna filer ska delas; resten av koden påverkas inte.                                   |
+| `sentry` (0.45.0, Sentry CLI)                                                | FSL-1.1-Apache-2.0                   | Via `@sentry/nextjs` vid bygget (källkartor). Fri att använda men inte för en konkurrerande tjänst.                   |
+| `jszip` (3.10.2)                                                             | MIT eller GPL-3.0-or-later           | Via `exceljs`. Välj MIT.                                                                                              |
+| `@grpc/grpc-js` (1.14.6), `@grpc/proto-loader` (0.8.1), `protobufjs` (7.6.6) | Apache-2.0, Apache-2.0, BSD-3-Clause | Awish gRPC-API (3 nov. 2026). Tillåtande; Apache-2.0 kräver att licens- och NOTICE-texten följer med vid spridning.   |
+| `buffers` (0.1.1)                                                            | anges inte i paketet                 | Se nedan. Kan tas bort med en `overrides` i `package.json`.                                                           |
+| `caniuse-lite`                                                               | CC-BY-4.0                            | Webbläsardata vid bygget.                                                                                             |
+| `geist`                                                                      | SIL Open Font License                | Typsnitten; får bäddas in men inte säljas separat.                                                                    |
 
 **`buffers`.** `npm ls buffers` ger `exceljs@4.4.0 → unzipper@0.10.14 → binary@0.3.0 → buffers@0.1.1`.
 Paketet (James Halliday, 2011) saknar både `license` i `package.json` och licenstext, så det är formellt "alla
