@@ -1,10 +1,10 @@
 /**
- * Brödsmulorna i toppbaren för appens sidor: organisationen, menyns sida och, för
- * undersidor, undersidans namn ("Binderlab / Inställningar / Användare"). Skalet visar
- * annars bara organisationen och menyns sida. Ren funktion, testas i crumbs.test.ts.
+ * Brödsmulorna i toppbaren för appens sidor: organisationen, huvudfliken, underfliken och,
+ * för undersidor, undersidans namn ("Binderlab / Automater / Drift / Påfyllning"). Heter
+ * underfliken som huvudfliken skrivs den en gång. Ren funktion, testas i crumbs.test.ts.
  */
 
-import { activeRouteId, routeById } from "@/components/shell/nav";
+import { activeSubTab } from "@/components/shell/nav";
 
 /** Undersidor med eget namn. Dynamiska delar ([id]) skrivs som `*`. */
 const SUBPAGES: ReadonlyArray<readonly [pattern: string, label: string]> = [
@@ -40,11 +40,20 @@ export function subpageLabel(pathname: string): string | null {
   return SUBPAGES.find(([pattern]) => matches(pattern, path))?.[1] ?? null;
 }
 
-/** Hela raden: organisationen, sidan och undersidan. */
-export function crumbsFor(pathname: string | null, orgName: string | undefined): string[] {
+/** Hela raden: organisationen, huvudfliken, underfliken och undersidan. `view`: sidans ?vy=. */
+export function crumbsFor(
+  pathname: string | null,
+  orgName: string | undefined,
+  view?: string | null,
+): string[] {
   const path = pathname ?? "/";
-  const id = activeRouteId(path);
-  const page = id ? routeById(id).label : (STANDALONE[path.replace(/\/+$/, "")] ?? "Binderlab");
-  const sub = id ? subpageLabel(path) : null;
-  return [orgName, page, sub].filter((c): c is string => !!c);
+  const hit = activeSubTab(path, view);
+  if (!hit) {
+    const page = STANDALONE[path.replace(/\/+$/, "")] ?? "Binderlab";
+    return [orgName, page].filter((c): c is string => !!c);
+  }
+  const main = hit.section.label;
+  const tab = hit.tab.label === main ? null : hit.tab.label;
+  const sub = subpageLabel(path);
+  return [orgName, main, tab, sub].filter((c): c is string => !!c);
 }

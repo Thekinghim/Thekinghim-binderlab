@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useState, useTransition, type ReactNode } from "react";
 import { AppShell } from "@/components/shell/app-shell";
 import { CommandMenu } from "@/components/shell/command-menu";
@@ -59,13 +59,14 @@ export function AppFrame({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const view = useSearchParams().get("vy");
   const toast = useToast();
   const orgName = (organizations.find((o) => o.id === activeOrganizationId) ?? organizations[0])
     ?.name;
   const [, startTransition] = useTransition();
   const [paletteOpen, setPaletteOpen] = useState(false);
   useCommandPaletteHotkey(setPaletteOpen);
-  const openPalette = useCallback(() => setPaletteOpen(true), []);
+  const openPalette = useCallback(() => setPaletteOpen(true), [setPaletteOpen]);
 
   const signOut = useCallback(
     () =>
@@ -77,7 +78,7 @@ export function AppFrame({
         if (result.ok) router.replace("/logga-in");
         else toast({ title: "Kunde inte logga ut", description: result.error, tone: "critical" });
       }),
-    [router, toast],
+    [router, toast, startTransition],
   );
 
   return (
@@ -94,7 +95,7 @@ export function AppFrame({
         machines={machines}
         earliest={earliest}
         vmbUserKey={vmbUserKey}
-        crumbs={crumbsFor(pathname, orgName)}
+        crumbs={crumbsFor(pathname, orgName, view)}
         onOrganizationChange={(id) =>
           startTransition(async () => {
             const result = await switchOrganization(id);

@@ -1,66 +1,125 @@
 import { describe, expect, it } from "vitest";
-import { menuRoutesForRole, shellRoutes, type Role } from "./nav";
+import {
+  activeSectionId,
+  activeSubTab,
+  navSections,
+  sectionHref,
+  sectionsForRole,
+  shellRoutes,
+  subTabHref,
+  type Role,
+} from "./nav";
+import { withQuery } from "./side-nav";
 
-const sidebar = (role: Role) => {
-  const routes = menuRoutesForRole(role);
-  return {
-    main: routes.filter((r) => r.section === "main" && !r.group).map((r) => r.id),
-    more: routes.filter((r) => r.section === "main" && r.group === "more").map((r) => r.id),
-    system: routes.filter((r) => r.section === "system").map((r) => r.id),
-  };
-};
+const tree = (role: Role) =>
+  Object.fromEntries(sectionsForRole(role).map((s) => [s.id, s.tabs.map((t) => t.label)]));
 
-describe("menyns grupper", () => {
-  it("ägaren ser 7 primära, 8 under Mer och 2 under System", () => {
-    const s = sidebar("owner");
-    expect(s.main).toEqual([
-      "hem",
-      "att-gora",
-      "lonsamhet",
-      "order",
-      "lager",
-      "automater",
-      "rapporter",
+describe("huvudflikar", () => {
+  it("exakt sex huvudflikar i rätt ordning", () => {
+    expect(navSections.map((s) => s.label)).toEqual([
+      "Hem",
+      "Automater",
+      "Vårt lager",
+      "Butiker",
+      "Pengar",
+      "Mer",
     ]);
-    expect(s.more).toHaveLength(8);
-    expect(s.more).toContain("butiker");
-    expect(s.system).toEqual(["datakallor", "installningar"]);
   });
 
-  it("Avtal och Effekt syns inte i sidomenyn men finns kvar som rutter", () => {
-    const s = sidebar("owner");
-    for (const id of ["avtal", "effekt", "assistent"] as const) {
-      expect([...s.main, ...s.more, ...s.system]).not.toContain(id);
-      expect(shellRoutes.some((r) => r.id === id)).toBe(true);
-    }
-  });
-
-  it("högst 7 primära och 8 under Mer för varje roll", () => {
-    for (const role of ["owner", "admin", "viewer", "refiller"] as const) {
-      const s = sidebar(role);
-      expect(s.main.length).toBeLessThanOrEqual(7);
-      expect(s.more.length).toBeLessThanOrEqual(8);
-    }
-  });
-
-  it("varje rutt ligger i exakt en grupp", () => {
-    const ids = shellRoutes.map((r) => r.id);
-    expect(new Set(ids).size).toBe(ids.length);
+  it("varje rutt ligger under exakt en huvudflik", () => {
     for (const r of shellRoutes) {
-      const groups = [
-        r.section === "system",
-        r.section === "main" && !r.group && r.menu !== false,
-        r.group === "more",
-        r.group === "hidden" || r.menu === false,
-      ].filter(Boolean);
-      expect(groups, r.id).toHaveLength(1);
+      const owners = navSections.filter((s) => s.tabs.some((t) => t.route === r.id));
+      expect(owners, r.id).toHaveLength(1);
     }
+    const keys = navSections.flatMap((s) => s.tabs.map((t) => t.key));
+    expect(new Set(keys).size).toBe(keys.length);
   });
 
-  it("påfyllaren ser varken Lönsamhet, Ekonomi, Inköpspriser eller Rapporter", () => {
-    const ids = menuRoutesForRole("refiller").map((r) => r.id);
-    for (const id of ["lonsamhet", "ekonomi", "inkopspriser", "rapporter"]) {
-      expect(ids).not.toContain(id);
-    }
+  it("ägaren ser alla sex med alla underflikar", () => {
+    expect(tree("owner")).toEqual({
+      hem: ["Översikt", "Att göra"],
+      automater: ["Automater", "Drift", "Lager i automaterna", "Order", "Inkorg"],
+      "vart-lager": ["Vårt lager", "Prognos & inköp", "Inköpspriser"],
+      butiker: ["Butiker", "Avtal", "Expansion"],
+      pengar: ["Lönsamhet", "Ekonomi", "Bokföring", "Rapporter"],
+      mer: ["Inställningar", "Datakällor", "Assistent", "Marknad", "Effekt"],
+    });
+  });
+
+  it("läsaren saknar Att göra, Inställningar och Datakällor", () => {
+    const t = tree("viewer");
+    expect(Object.keys(t)).toHaveLength(6);
+    expect(t.hem).toEqual(["Översikt"]);
+    expect(t.mer).toEqual(["Assistent", "Marknad", "Effekt"]);
+  });
+
+  it("påfyllaren ser bara det den får; tomma huvudflikar döljs", () => {
+    expect(tree("refiller")).toEqual({
+      hem: ["Att göra"],
+      automater: ["Drift", "Lager i automaterna", "Inkorg"],
+      mer: ["Assistent"],
+    });
+    const hem = sectionsForRole("refiller").find((s) => s.id === "hem");
+    expect(hem && sectionHref(hem)).toBe("/att-gora");
+  });
+
+  it("butiksrollen ser ingenting i appen", () => {
+    expect(sectionsForRole("store")).toEqual([]);
+  });
+
+  it("huvudflikens adress är första tillåtna underfliken", () => {
+    const hrefs = Object.fromEntries(sectionsForRole("owner").map((s) => [s.id, sectionHref(s)]));
+    expect(hrefs).toEqual({
+      hem: "/",
+      automater: "/automater",
+      "vart-lager": "/vart-lager",
+      butiker: "/butiker",
+      pengar: "/lonsamhet",
+      mer: "/installningar",
+    });
+  });
+});
+
+describe("aktiv flik", () => {
+  it("huvudfliken lyser för alla underflikar och undersidor", () => {
+    const cases: Array<[string, string | null]> = [
+      ["/", "hem"],
+      ["/att-gora", "hem"],
+      ["/automater", "automater"],
+      ["/automater/bl-003", "automater"],
+      ["/drift/pafyllning", "automater"],
+      ["/lager", "automater"],
+      ["/inkorg/0b5c", "automater"],
+      ["/vart-lager", "vart-lager"],
+      ["/prognos", "vart-lager"],
+      ["/butiker/abc", "butiker"],
+      ["/avtal", "butiker"],
+      ["/expansion/saljunderlag", "butiker"],
+      ["/ekonomi", "pengar"],
+      ["/rapporter", "pengar"],
+      ["/installningar/anvandare", "mer"],
+      ["/datakallor/importer/1", "mer"],
+      ["/assistent", "mer"],
+      ["/kom-igang", null],
+      ["/sok", null],
+    ];
+    for (const [path, id] of cases) expect(activeSectionId(path), path).toBe(id);
+  });
+
+  it("Ekonomi och Bokföring skiljs åt av vyn", () => {
+    expect(activeSubTab("/ekonomi")?.tab.label).toBe("Ekonomi");
+    expect(activeSubTab("/ekonomi", "kassaflode")?.tab.label).toBe("Ekonomi");
+    expect(activeSubTab("/ekonomi", "bokforing")?.tab.label).toBe("Bokföring");
+    expect(activeSubTab("/ekonomi/bokforing/kvitto/1")?.tab.label).toBe("Bokföring");
+  });
+
+  it("underflikens adress bär vyn och perioden", () => {
+    const bok = navSections.flatMap((s) => s.tabs).find((t) => t.view === "bokforing");
+    expect(bok && subTabHref(bok)).toBe("/ekonomi?vy=bokforing");
+    expect(withQuery("/ekonomi?vy=bokforing", "?period=7d")).toBe(
+      "/ekonomi?vy=bokforing&period=7d",
+    );
+    expect(withQuery("/lager", "?period=7d")).toBe("/lager?period=7d");
+    expect(withQuery("/lager", "")).toBe("/lager");
   });
 });

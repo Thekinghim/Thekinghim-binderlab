@@ -20,7 +20,16 @@ import {
   type RecentEntry,
 } from "./command-recent";
 import { remoteData, searchKey, usePickList, useRemoteSearch } from "./command-search";
-import { activeRouteId, homeHref, routeById, routesForRole, type Role, type RouteId } from "./nav";
+import {
+  activeRouteId,
+  homeHref,
+  routeById,
+  routesForRole,
+  sectionsForRole,
+  subTabHref,
+  type Role,
+  type RouteId,
+} from "./nav";
 import type { ShellMachine, ShellStore } from "./period-bar";
 import { PERIOD_PARAM, type PeriodKey } from "./period-state";
 import { setTheme, useTheme } from "./theme-toggle";
@@ -296,6 +305,22 @@ export function CommandMenu({
         keywords: [r.lead].filter((k): k is string => !!k),
         run: () => go(r.href, r.context === false ? "none" : "all"),
       });
+    }
+
+    // Underflikar som är en vy på en sida (Bokföring på Ekonomi) är egna mål i paletten.
+    for (const section of sectionsForRole(role)) {
+      for (const t of section.tabs) {
+        if (!t.view) continue;
+        const r = routeById(t.route);
+        out.push({
+          id: `nav-${t.key}`,
+          group: "navigate",
+          label: t.label,
+          icon: r.icon,
+          keywords: [section.label, r.label],
+          run: () => go(subTabHref(t), r.context === false ? "none" : "all"),
+        });
+      }
     }
 
     for (const [key, label] of Object.entries(PERIOD_LABEL) as [PeriodKey, string][]) {
