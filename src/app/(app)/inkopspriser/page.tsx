@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AiPageLine } from "@/components/assistant/panel-context";
 import type React from "react";
 import Link from "next/link";
 
@@ -136,6 +137,7 @@ export default async function PurchasePricesPage({
             },
           ]}
         />
+        <AiPageLine metric="marginalen per titel" route="inkopspriser" className="mt-4" />
       </div>
 
       <section

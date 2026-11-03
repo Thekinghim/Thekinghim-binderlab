@@ -28,6 +28,11 @@ export interface ToolContext {
   /** Dagens affärsdatum i organisationens tidszon. */
   readonly today: IsoDate;
   readonly timeZone: string;
+  /**
+   * Vyknappen "Med VMB" på sidan där frågan ställdes (standard av). Vinst och marginal
+   * räknas då efter VMB-moms, som på sidan.
+   */
+  readonly vmb: boolean;
   /** Stamdata (titlar, automater, butiker, placeringar), läst en gång per fråga. */
   master(): Promise<MasterData>;
 }
@@ -40,6 +45,11 @@ export interface ToolOutput {
   readonly data: unknown;
   readonly figures: readonly ToolFigure[];
   readonly links: readonly ToolLink[];
+  /**
+   * Knappar som assistenten föreslår (verktyget foresla_knapp). Bara navigering: ingen
+   * knapp skriver data, användaren klickar själv.
+   */
+  readonly actions?: readonly ToolLink[];
 }
 
 /** Ett fel som modellen ska få tillbaka som verktygsfel (fel parameter, okänt namn …). */

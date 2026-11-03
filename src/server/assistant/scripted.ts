@@ -76,11 +76,22 @@ export function lastToolResults(
   );
 }
 
-/** Den senaste frågan i klartext. */
+/** Den senaste frågan i klartext (sista textblocket när frågan har data före sig). */
 export function lastQuestion(messages: readonly ModelMessageParam[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]!;
-    if (m.role === "user" && typeof m.content === "string") return m.content;
+    if (m.role !== "user") continue;
+    if (typeof m.content === "string") return m.content;
+    if (m.content.some((b) => b.type === "tool_result")) continue;
+    const texts = m.content.flatMap((b) => (b.type === "text" ? [b.text] : []));
+    if (texts.length > 0) return texts[texts.length - 1]!;
   }
   return "";
+}
+
+/** Sant om meddelandet är en fråga (text), inte verktygsresultat. */
+export function isQuestion(m: ModelMessageParam): boolean {
+  if (m.role !== "user") return false;
+  if (typeof m.content === "string") return true;
+  return !m.content.some((b) => b.type === "tool_result");
 }

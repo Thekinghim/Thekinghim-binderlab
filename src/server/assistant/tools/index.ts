@@ -14,6 +14,20 @@ import type { MemberRole } from "@/db/schema";
 import type { ModelTool } from "../model-client";
 import type { AssistantTool } from "./common";
 import { insightsTool, keyMetricsTool, profitabilityTool } from "./economy";
+import { actionsTool } from "./actions";
+import {
+  bookkeepingTool,
+  changeTool,
+  contractsTool,
+  lostSalesTool,
+  machineStatusTool,
+  ourStockTool,
+  patternTool,
+  pricesTool,
+  storeShareTool,
+  syncTool,
+  visitPlanTool,
+} from "./business";
 import { forecastTool, purchasingTool } from "./purchasing";
 import { coverageTool, lookupTool, salesTool, stockTool, todosTool } from "./stock";
 
@@ -32,6 +46,18 @@ export const ALL_TOOLS: readonly AssistantTool<never>[] = [
   coverageTool,
   todosTool,
   lookupTool,
+  changeTool,
+  storeShareTool,
+  pricesTool,
+  patternTool,
+  lostSalesTool,
+  ourStockTool,
+  visitPlanTool,
+  machineStatusTool,
+  contractsTool,
+  bookkeepingTool,
+  syncTool,
+  actionsTool,
 ] as unknown as readonly AssistantTool<never>[];
 
 /** Verktygen som rollen får. */

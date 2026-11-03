@@ -102,7 +102,7 @@ export const keyMetricsTool = defineTool({
     const compare = input.jamfor === false ? null : periodBefore(period);
     const data = await loadDomainInputFor(
       ctx.viewer,
-      { period, compare, ...scopeIds(scope) },
+      { period, compare, ...scopeIds(scope), vmb: ctx.vmb },
       ctx.now,
     );
     const current = keyMetrics(data.current);
@@ -229,7 +229,7 @@ export const profitabilityTool = defineTool({
   title: "Lönsamhet",
   label: (input) => `Lönsamhet per ${GROUP_LABEL[input.per]}`,
   description:
-    "Lönsamhet uppdelad per automat, butik, titel, månad, vecka eller dag för en period: intäkt, inköp, VMB-moms, butiksersättning, vinst, marginal och order per rad, sorterad. Använd för 'vilken automat tjänade mest', 'sämsta titlarna', 'vinst per månad'. Vinst = intäkt − inköp − avgifter − butiksersättning (vinstandel/provision + hyra); utan VMB som standard (VMB-moms 0), med VMB-moms dragen bara när vyknappen \"Med VMB\" är på.",
+    "Lönsamhet uppdelad per automat, butik, titel, månad, vecka eller dag för en period: intäkt, inköp, VMB-moms, butiksersättning, vinst, marginal och order per rad, sorterad. Använd för 'vilken automat tjänade mest', 'sämsta titlarna', 'vinst per månad'. Vinst = intäkt − inköp − avgifter − butiksersättning (vinstandel/provision + hyra); utan VMB som standard (VMB-moms 0), med VMB-moms dragen bara när vyknappen \"Med VMB\" är på (följer sidan där frågan ställdes).",
   roles: ECONOMY_ROLES,
   input: profitabilityInput,
   async run(ctx: ToolContext, input) {
@@ -237,7 +237,7 @@ export const profitabilityTool = defineTool({
     const scope = await resolveScope(ctx, input);
     const data = await loadDomainInputFor(
       ctx.viewer,
-      { period, compare: null, ...scopeIds(scope) },
+      { period, compare: null, ...scopeIds(scope), vmb: ctx.vmb },
       ctx.now,
     );
     const groupBy = GROUPS[input.per];
@@ -373,7 +373,7 @@ export const insightsTool = defineTool({
   async run(ctx: ToolContext, input) {
     const period = periodFrom(ctx, input);
     const compare = periodBefore(period);
-    const data = await loadDomainInputFor(ctx.viewer, { period, compare }, ctx.now);
+    const data = await loadDomainInputFor(ctx.viewer, { period, compare, vmb: ctx.vmb }, ctx.now);
     const insights = computeInsights(
       {
         ...data.sources,

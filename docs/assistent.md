@@ -42,17 +42,40 @@ så att de inte delar taket med verksamheten. Lokalt fungerar knappen även i de
 
 ### Kostnad och tak
 
-| Variabel                | Standard            | Betydelse                                          |
-| ----------------------- | ------------------- | -------------------------------------------------- |
-| `ANTHROPIC_API_KEY`     | –                   | Krävs.                                             |
-| `ANTHROPIC_MODEL`       | `claude-opus-5-5`   | Assistentens frågor (`claude-sonnet-5-5` i drift). |
-| `AI_ADVISOR_MODEL`      | `claude-sonnet-5-5` | Förslagen.                                         |
-| `AI_MONTHLY_BUDGET_SEK` | `300`               | Tak per kalendermånad för förslag och frågor.      |
-| `AI_USD_SEK`            | `11`                | Växelkurs för listpriset.                          |
+| Variabel                | Standard            | Betydelse                                               |
+| ----------------------- | ------------------- | ------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`     | –                   | Krävs.                                                  |
+| `ANTHROPIC_MODEL_CHAT`  | `claude-opus-5-5`   | Assistentens frågor (`ANTHROPIC_MODEL` som äldre namn). |
+| `ANTHROPIC_EFFORT_CHAT` | `high`              | Tänkandets djup: `high`, `medium` eller `low`.          |
+| `AI_ADVISOR_MODEL`      | `claude-sonnet-5-5` | Förslagen.                                              |
+| `AI_MONTHLY_BUDGET_SEK` | `300`               | Tak per kalendermånad för förslag och frågor.           |
+| `AI_USD_SEK`            | `11`                | Växelkurs för listpriset.                               |
 
 Månadens kostnad = `ai_runs.cost_ore` + tokens i `assistant_logs.usage`, räknat med listpriset. När taket är nått
 görs inga fler anrop: förslagen får status `budget` och assistenten svarar att budgeten är slut. En körning
-kostar ungefär 0,30 kr, en fråga till assistenten 0,10–0,30 kr. Kan taket inte läsas skickas inget till Claude.
+kostar ungefär 0,30 kr. En fråga med Opus 5.5 på hög insats kostar ungefär 1,5–2 kr (listpris $4/$20 per miljon
+tokens in/ut, cacheläsning $0,20, cacheskrivning $5): verktygen och första systemblocket (ca 7 000 tokens) läses ur
+cachen, tänkandet och svaret (några tusen tokens ut) är det mesta av kostnaden. 300 kr räcker då till ungefär
+150 frågor i månaden plus förslagen (ca 9 kr). `ANTHROPIC_EFFORT_CHAT=medium` ungefär halverar kostnaden per fråga.
+AI-panelen visar en rad när mindre än 20 % av budgeten är kvar. Kan taket inte läsas skickas inget till Claude.
+
+### AI-panelen (Fråga AI)
+
+Knappen "Fråga AI" i toppraden (⌘J / Ctrl J, på telefon en flytande knapp ovanför bottenraden) öppnar en
+sidopanel med samma samtal på alla sidor (`src/components/assistant`, monterad i `app-frame.tsx`). Frågan går till
+samma route som sidan Assistent och skickar med sidan (rutt, period, filter, Med VMB, detaljsida;
+`src/server/assistant/page-context.ts`). Servern kör sidans verktyg i förväg (t.ex. `nyckeltal` på Lönsamhet,
+`inkopspriser` på Inköpspriser, `butiksandel` på en butik) och ger modellen sammanfattningen; den räknas som
+underlag i kontrollen av talen. Varje sida har 2–3 förslag (chips). Gnistan "Förklara …" under rubriken på Hem,
+Lönsamhet, Automater, Butik, Inköpspriser och Ekonomi fyller i frågan; rådgivarens förslag visas som en tipsrad
+på sidan de hör till (`page-tips.ts`, annars på Hem) och kan döljas. Assistenten kan föreslå knappar
+(`foresla_knapp`): bara navigering till sidor rollen ser, aldrig skrivningar.
+
+### Utvärdering
+
+`src/server/assistant/eval/cases.ts` har 24 frågor om seedens data. `test/db/assistent-eval.test.ts` kör dem med
+den lokala testmodellen (verktyg, parametrar, kontrollen av talen, knappar och några exakta tal). Mot Claude API:
+`npx tsx scripts/assistant-eval.ts --live --antal 3` (högst 8 frågor, kostar pengar, loggas och räknas mot taket).
 
 Kända gränser: en körning som misslyckas (tidsgräns, avbruten vid `maxDuration`) räknas som 0 kr fast den kan
 debiteras, och månadssumman läses utanför låset per organisation. Överskridandet blir högst några kronor.

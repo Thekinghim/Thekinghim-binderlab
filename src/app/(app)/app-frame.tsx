@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useState, useTransition, type ReactNode } from "react";
+import { AssistantPanelProvider } from "@/components/assistant/assistant-panel";
 import { AppShell } from "@/components/shell/app-shell";
 import { CommandMenu } from "@/components/shell/command-menu";
 import { DeniedNotice } from "@/components/shell/denied-notice";
@@ -82,7 +83,8 @@ export function AppFrame({
   );
 
   return (
-    <>
+    // AI-panelen ligger utanför sidorna: samtalet finns kvar när man byter sida.
+    <AssistantPanelProvider role={role} stores={stores}>
       <AppShell
         role={role}
         user={user}
@@ -128,6 +130,6 @@ export function AppFrame({
           onSignOut={signOut}
         />
       </Suspense>
-    </>
+    </AssistantPanelProvider>
   );
 }

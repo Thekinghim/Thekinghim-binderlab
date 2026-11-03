@@ -171,11 +171,12 @@ Assistenten (`/assistent`) svarar på frågor på svenska med Claude API och ver
 anropar beräkningslagret (`src/server/assistant`). Modellen kör aldrig SQL: varje verktyg
 läser via serverladdarna som användaren (RLS) och räknar med `@/domain` och `@/analytics`.
 
-| Variabel             | Värde                                                                       |
-| -------------------- | --------------------------------------------------------------------------- |
-| `ASSISTANT_PROVIDER` | `anthropic` (standard) eller `local` (lokal testmodell, bara lokalt)        |
-| `ANTHROPIC_API_KEY`  | Nyckeln till Claude API. HEMLIG, bara på servern.                           |
-| `ANTHROPIC_MODEL`    | `claude-opus-5-5` (standard) eller `claude-sonnet-5-5`. Inget annat godtas. |
+| Variabel                | Värde                                                                                                                |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `ASSISTANT_PROVIDER`    | `anthropic` (standard) eller `local` (lokal testmodell, bara lokalt)                                                 |
+| `ANTHROPIC_API_KEY`     | Nyckeln till Claude API. HEMLIG, bara på servern.                                                                    |
+| `ANTHROPIC_MODEL_CHAT`  | `claude-opus-5-5` (standard) eller `claude-sonnet-5-5`. Inget annat godtas. `ANTHROPIC_MODEL` gäller som äldre namn. |
+| `ANTHROPIC_EFFORT_CHAT` | `high` (standard), `medium` eller `low`.                                                                             |
 
 - **Utan nyckel** visar sidan "Assistenten kräver ANTHROPIC_API_KEY", frågefältet är
   avstängt och inget skickas någonstans.

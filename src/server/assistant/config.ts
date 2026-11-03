@@ -4,7 +4,9 @@
  *
  *   ASSISTANT_PROVIDER  anthropic (standard) | local
  *   ANTHROPIC_API_KEY   nyckeln till Claude API (krävs för anthropic)
- *   ANTHROPIC_MODEL     claude-opus-5-5 (standard) | claude-sonnet-5-5
+ *   ANTHROPIC_MODEL_CHAT   modellen för frågorna: claude-opus-5-5 (standard) | claude-sonnet-5-5
+ *                          (ANTHROPIC_MODEL gäller som äldre namn när _CHAT saknas)
+ *   ANTHROPIC_EFFORT_CHAT  hur noga modellen tänker: low | medium | high (standard)
  *
  * `local` är en lokal testmodell utan AI (src/server/assistant/local-model.ts) som bara
  * får användas i development och i tester: den kör samma verktyg mot riktig data men
@@ -16,6 +18,13 @@
 export const ASSISTANT_MODELS = ["claude-opus-5-5", "claude-sonnet-5-5"] as const;
 export type AssistantModel = (typeof ASSISTANT_MODELS)[number];
 export const DEFAULT_ASSISTANT_MODEL: AssistantModel = "claude-opus-5-5";
+/**
+ * Insatsen (output_config.effort). Hög som standard: frågorna kräver ofta flera verktyg och
+ * jämförelser. Tänkandet är adaptivt (det enda läget på Opus 5.5); insatsen styr djupet.
+ */
+export const ASSISTANT_EFFORTS = ["low", "medium", "high"] as const;
+export type AssistantEffort = (typeof ASSISTANT_EFFORTS)[number];
+export const DEFAULT_ASSISTANT_EFFORT: AssistantEffort = "high";
 /** Namnet som den lokala testmodellen loggas med. */
 export const LOCAL_MODEL_NAME = "lokal-testmodell";
 
@@ -25,6 +34,7 @@ export type AssistantConfig =
       readonly provider: "anthropic";
       readonly model: AssistantModel;
       readonly apiKey: string;
+      readonly effort: AssistantEffort;
     }
   | {
       readonly status: "ready";
@@ -81,12 +91,23 @@ export function assistantConfigFrom(env: Env): AssistantConfig {
     };
   }
 
-  const model = read(env, "ANTHROPIC_MODEL") ?? DEFAULT_ASSISTANT_MODEL;
+  const modelVariable = read(env, "ANTHROPIC_MODEL_CHAT")
+    ? "ANTHROPIC_MODEL_CHAT"
+    : "ANTHROPIC_MODEL";
+  const model = read(env, modelVariable) ?? DEFAULT_ASSISTANT_MODEL;
   if (!isAssistantModel(model)) {
     return {
       status: "invalid",
-      variable: "ANTHROPIC_MODEL",
-      message: `ANTHROPIC_MODEL måste vara ${ASSISTANT_MODELS.join(" eller ")}, inte "${model.slice(0, 60)}".`,
+      variable: modelVariable,
+      message: `${modelVariable} måste vara ${ASSISTANT_MODELS.join(" eller ")}, inte "${model.slice(0, 60)}".`,
+    };
+  }
+  const effort = read(env, "ANTHROPIC_EFFORT_CHAT") ?? DEFAULT_ASSISTANT_EFFORT;
+  if (!(ASSISTANT_EFFORTS as readonly string[]).includes(effort)) {
+    return {
+      status: "invalid",
+      variable: "ANTHROPIC_EFFORT_CHAT",
+      message: `ANTHROPIC_EFFORT_CHAT måste vara ${ASSISTANT_EFFORTS.join(", ")}, inte "${effort.slice(0, 20)}".`,
     };
   }
 
@@ -98,7 +119,13 @@ export function assistantConfigFrom(env: Env): AssistantConfig {
       missing: ["ANTHROPIC_API_KEY"],
     };
   }
-  return { status: "ready", provider: "anthropic", model, apiKey };
+  return {
+    status: "ready",
+    provider: "anthropic",
+    model,
+    apiKey,
+    effort: effort as AssistantEffort,
+  };
 }
 
 /** Inställningarna för den här processen. */

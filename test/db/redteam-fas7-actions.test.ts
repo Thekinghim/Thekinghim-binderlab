@@ -149,6 +149,9 @@ const SPECIAL = new Set([
   "@/app/inbjudan/[token]/actions#acceptInvitation",
   // Ägs av fas 7 del 1 (onboarding); testas i test/db/redteam-onboarding.test.ts.
   "@/server/onboarding/actions#createOrganization",
+  // AI-panelens läsningar svarar mjukt (status/tomt) i stället för att neka; eget block nedan.
+  "@/app/(app)/assistent/panel-actions#assistantPanelState",
+  "@/app/(app)/assistent/panel-actions#pageTips",
 ]);
 
 describe("katalogen", () => {
@@ -728,4 +731,41 @@ describe("påfyllarens svar bär inga belopp", () => {
       expect([...keysDeep(outcome)].filter((k) => MONEY_KEY.test(k))).toEqual([]);
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+// AI-panelen i skalet: bara läsning, mjukt nej, inget från A läcker
+// ---------------------------------------------------------------------------
+
+describe("AI-panelens läsningar", () => {
+  const MODULE = "@/app/(app)/assistent/panel-actions";
+
+  it("personer utan assistent får status forbidden och inga förslag; inget ändras", async () => {
+    const state = await load({ module: MODULE, name: "assistantPanelState" });
+    const tips = await load({ module: MODULE, name: "pageTips" });
+    const problems: string[] = [];
+    for (const p of ALL_PERSONAS) {
+      const before = await fingerprint(cast.A.orgId);
+      await loginAs(req, cast.personas[p]);
+      const s = await call(() => state());
+      const t = await call(() => tips());
+      const changed = changedTables(before, await fingerprint(cast.A.orgId));
+      if (changed.length > 0) problems.push(`${p}: ändrade ${changed.join(", ")} i A`);
+      for (const outcome of IN_ORG.includes(p) ? [] : [s, t]) {
+        const leaked = leakedIdsOfA([], outcome);
+        if (leaked.length > 0) problems.push(`${p}: svaret innehåller A:s id ${leaked[0]}`);
+      }
+      if (p === "store" || p === "stranger" || p === "anon") {
+        const status = s.kind === "ok" ? (s.value as { status?: string }).status : "nekad";
+        if (status !== "forbidden" && status !== "nekad") problems.push(`${p}: status ${status}`);
+        if (t.kind === "ok" && Object.keys(t.value as object).length > 0) {
+          problems.push(`${p}: fick förslag`);
+        }
+      }
+      if ((p === "viewer" || p === "refiller") && t.kind === "ok") {
+        if (Object.keys(t.value as object).length > 0) problems.push(`${p}: fick förslag`);
+      }
+    }
+    expect(problems).toEqual([]);
+  }, 120_000);
 });

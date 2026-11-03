@@ -53,6 +53,10 @@ describe("urval per roll", () => {
       "rackvidd",
       "att_gora",
       "hitta",
+      "vart_lager",
+      "besoksplan",
+      "automat_status",
+      "foresla_knapp",
     ]);
   });
 

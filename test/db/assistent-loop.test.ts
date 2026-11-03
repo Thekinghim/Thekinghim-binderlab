@@ -17,6 +17,9 @@ import {
   toolUseBlock,
 } from "@/server/assistant/scripted";
 import { getLogFor } from "@/server/assistant/log";
+import { MAX_OUTPUT_TOKENS_PER_QUESTION, MAX_TURNS } from "@/server/assistant/loop";
+import { getServiceDb } from "@/db/client";
+import { sql } from "drizzle-orm";
 import { askAssistant } from "@/server/assistant/service";
 import { chooseTool, createLocalModelClient } from "@/server/assistant/local-model";
 import type { Viewer } from "@/server/data/core/loaders";
@@ -188,7 +191,17 @@ describe("askAssistant med mockad klient", () => {
       client,
     });
     expect(client.requests[0]!.tools.map((t) => t.name).sort()).toEqual(
-      ["att_gora", "hitta", "lager", "rackvidd", "salda_pack"].sort(),
+      [
+        "att_gora",
+        "automat_status",
+        "besoksplan",
+        "foresla_knapp",
+        "hitta",
+        "lager",
+        "rackvidd",
+        "salda_pack",
+        "vart_lager",
+      ].sort(),
     );
     const result = events.find((e) => e.type === "tool_result") as Extract<
       AssistantEvent,
@@ -261,7 +274,7 @@ describe("askAssistant med mockad klient", () => {
     ]);
   });
 
-  it("stannar efter högst åtta varv", async () => {
+  it("stannar efter högst MAX_TURNS varv", async () => {
     const client = mockClient(() =>
       scriptedMessage("claude-opus-5-5", [toolUseBlock("hitta", { typ: "automater" })]),
     );
@@ -273,7 +286,57 @@ describe("askAssistant med mockad klient", () => {
       config: READY,
       client,
     });
-    expect(client.requests).toHaveLength(8);
+    expect(client.requests).toHaveLength(MAX_TURNS);
+    expect((events.at(-1) as Extract<AssistantEvent, { type: "done" }>).status).toBe("limit");
+  });
+
+  it("en fråga som avbryts mitt i loggas med det den kostade (räknas mot taket)", async () => {
+    let turns = 0;
+    const client: ModelClient = {
+      provider: "anthropic",
+      model: "claude-opus-5-5",
+      async turn() {
+        turns += 1;
+        if (turns > 1) throw new Error("avbruten");
+        const m = scriptedMessage("claude-opus-5-5", [toolUseBlock("hitta", { typ: "automater" })]);
+        return { ...m, usage: { ...m.usage, input_tokens: 1200, output_tokens: 3400 } };
+      },
+    };
+    const { events } = await collect({
+      viewer: owner,
+      question: "Avbryt mig",
+      conversationId: randomUUID(),
+      now: NOW,
+      config: READY,
+      client,
+    });
+    const error = events.at(-1) as Extract<AssistantEvent, { type: "error" }>;
+    expect(error.type).toBe("error");
+    const [row] = Array.from(
+      await getServiceDb().execute(
+        sql`select usage from public.assistant_logs where id = ${error.logId!}::uuid`,
+      ),
+    ) as Array<{ usage: { inputTokens: number; outputTokens: number; turns: number } }>;
+    expect(row?.usage).toMatchObject({ inputTokens: 1200, outputTokens: 3400, turns: 1 });
+  });
+
+  it("stannar när en fråga har använt utdatataket, även före MAX_TURNS", async () => {
+    const client = mockClient(() => {
+      const m = scriptedMessage("claude-opus-5-5", [toolUseBlock("hitta", { typ: "automater" })]);
+      return {
+        ...m,
+        usage: { ...m.usage, output_tokens: Math.ceil(MAX_OUTPUT_TOKENS_PER_QUESTION / 2) },
+      };
+    });
+    const { events } = await collect({
+      viewer: owner,
+      question: "Tänk länge",
+      conversationId: randomUUID(),
+      now: NOW,
+      config: READY,
+      client,
+    });
+    expect(client.requests).toHaveLength(2);
     expect((events.at(-1) as Extract<AssistantEvent, { type: "done" }>).status).toBe("limit");
   });
 

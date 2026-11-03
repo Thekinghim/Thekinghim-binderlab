@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AiPageLine } from "@/components/assistant/panel-context";
 import type { CSSProperties } from "react";
 import { redirect } from "next/navigation";
 
@@ -140,6 +141,7 @@ export default async function LonsamhetPage({
           aside={model.headline.aside}
           meta={meta}
         />
+        <AiPageLine metric="vinsten" route="lonsamhet" className="mt-4" />
         {model.orders > 0 ? (
           <LonsamhetKpis
             kpis={model.kpis}

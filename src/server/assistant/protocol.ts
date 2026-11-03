@@ -31,6 +31,10 @@ export interface ToolCallRecord {
   readonly summary: string;
   readonly figures: readonly ToolFigure[];
   readonly links: readonly ToolLink[];
+  /** Knappar som assistenten föreslår (foresla_knapp). Bara navigering. */
+  readonly actions?: readonly ToolLink[];
+  /** Hämtat i förväg som sidans sammanfattning (inte ett anrop från modellen). */
+  readonly prefetched?: boolean;
   /** Resultatet som modellen fick (JSON). */
   readonly result: unknown;
   readonly durationMs: number;
@@ -80,6 +84,10 @@ export type AssistantEvent =
       readonly verification: Verification;
       readonly usage: AssistantUsage;
       readonly durationMs: number;
+      /** Knappar som användaren kan klicka på (bara navigering, ingen data ändras). */
+      readonly actions?: readonly ToolLink[];
+      /** Andel av månadens AI-budget kvar (0–1), bara när mindre än 20 % är kvar. */
+      readonly budgetLeft?: number | null;
     }
   | {
       readonly type: "error";

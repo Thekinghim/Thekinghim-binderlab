@@ -129,3 +129,31 @@ describe("verifyNumbers", () => {
     expect(result.unverified).toEqual([]);
   });
 });
+
+describe("verifyNumbers: de nya verktygens fält", () => {
+  it("räknar om tiondelar (takt per dag) och godtar förändringar med tecken", () => {
+    const sources = [
+      {
+        rader: [{ titel: "Perfect Order", taktPerDagTiondelar: 25, dagarKvar: 4 }],
+        vinstForandring: `−1${NB}240${NB}kr`,
+        vinstForandringOre: -124_000,
+        forandringPerDel: { intakt: `+3${NB}100${NB}kr`, intaktOre: 310_000 },
+      },
+    ];
+    expect(
+      verifyNumbers(
+        `Perfect Order säljer 2,5 pack per dag och räcker 4 dagar. Vinsten ändrades −1${NB}240 kr, intäkten +3${NB}100 kr.`,
+        sources,
+      ).unverified,
+    ).toEqual([]);
+    expect(verifyNumbers("Takten är 3,5 pack per dag.", sources).unverified).toEqual(["3,5"]);
+  });
+
+  it("räknar sidans sammanfattning (förhämtad) som underlag", () => {
+    const page = {
+      sammanfattning: `oktober 2026: vinst 7${NB}964${NB}kr`,
+      data: { vinstOre: 796_400 },
+    };
+    expect(verifyNumbers(`Vinsten var 7${NB}964 kr.`, [page]).unverified).toEqual([]);
+  });
+});

@@ -27,13 +27,23 @@ import type {
   AssistantStatus,
   AssistantUsage,
   ToolCallRecord,
+  ToolLink,
   Verification,
 } from "./protocol";
 import { ToolInputError, type AssistantTool, type ToolContext } from "./tools/common";
 import { verifyNumbers } from "./verify";
 
-/** Högst så många varv (anrop till modellen) per fråga. */
-export const MAX_TURNS = 8;
+/**
+ * Högst så många varv (anrop till modellen) per fråga. Räcker för flerstegsfrågor
+ * ("varför gick vinsten ner, och vad ska jag göra?": förändring → lönsamhet → räckvidd →
+ * knappar) men är ett hårt tak mot kostnad och loopar.
+ */
+export const MAX_TURNS = 12;
+/**
+ * Högst så många utdatatokens (tänkande + text) per fråga, över alla varv. Månadstaket
+ * kontrolleras före frågan; det här taket hindrar att en enda fråga drar iväg.
+ */
+export const MAX_OUTPUT_TOKENS_PER_QUESTION = 80_000;
 /** Högst så många försök med ett varv vars verktygsparametrar inte gick att tolka. */
 const MAX_JSON_RETRIES = 2;
 
@@ -57,6 +67,30 @@ export interface RunArgs {
   readonly maxTurns?: number;
   /** Anropas för varje kört verktyg (så att anroparen kan logga dem även om loopen avbryts). */
   readonly onToolCall?: (record: ToolCallRecord) => void;
+  /**
+   * Verktygsresultat som hämtats i förväg (sidans sammanfattning, som modellen fick i
+   * systemprompten). Räknas som underlag i kontrollen och visas i underlaget.
+   */
+  readonly prefetched?: readonly ToolCallRecord[];
+  /** Data före frågan i användarens meddelande (sidans sammanfattning), eller utelämnad. */
+  readonly questionNote?: string | null;
+  /**
+   * Förbrukningen räknas upp här under loopen, så att anroparen kan logga den (och räkna
+   * den mot månadstaket) även när frågan avbryts eller API:t felar mitt i.
+   */
+  readonly usage?: MutableUsage;
+}
+
+export interface MutableUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  turns: number;
+}
+
+export function emptyUsage(): MutableUsage {
+  return { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, turns: 0 };
 }
 
 export interface RunResult {
@@ -65,6 +99,8 @@ export interface RunResult {
   readonly toolCalls: ToolCallRecord[];
   readonly verification: Verification;
   readonly usage: AssistantUsage;
+  /** Knapparna som modellen föreslog (foresla_knapp), högst 3. */
+  readonly actions: ToolLink[];
   /**
    * Modellen som svarade i sista varvet (message.model). Kan skilja sig från den
    * konfigurerade när API:t använder en reservmodell. null om inget varv blev klart.
@@ -98,7 +134,7 @@ function errorText(error: unknown): string {
 /** Kör ett verktyg. Fel blir ett verktygsfel som modellen får se, aldrig ett avbrott. */
 async function runTool(
   block: Anthropic.Beta.BetaToolUseBlock,
-  args: RunArgs,
+  args: Pick<RunArgs, "tools" | "ctx">,
 ): Promise<{ record: ToolCallRecord; content: string; isError: boolean }> {
   const started = Date.now();
   const tool = args.tools.find((t) => t.name === block.name);
@@ -151,6 +187,7 @@ async function runTool(
         summary: output.summary,
         figures: output.figures,
         links: output.links,
+        ...(output.actions ? { actions: output.actions } : {}),
         result,
         durationMs: Date.now() - started,
       },
@@ -165,6 +202,23 @@ async function runTool(
   }
 }
 
+/**
+ * Kör ett verktyg utan modellen (sidans sammanfattning i panelen), med samma validering och
+ * rollkontroll som i loopen. Fel blir ett record med ok = false.
+ */
+export async function runToolDirect(
+  args: Pick<RunArgs, "tools" | "ctx">,
+  name: string,
+  input: Record<string, unknown>,
+  id: string,
+): Promise<ToolCallRecord> {
+  const { record } = await runTool(
+    { type: "tool_use", id, name, input } as Anthropic.Beta.BetaToolUseBlock,
+    args,
+  );
+  return { ...record, prefetched: true };
+}
+
 /** Kör loopen till ett svar. API-fel och avbrott kastas vidare (anroparen loggar dem). */
 export async function runAssistant(args: RunArgs): Promise<RunResult> {
   const maxTurns = args.maxTurns ?? MAX_TURNS;
@@ -173,16 +227,20 @@ export async function runAssistant(args: RunArgs): Promise<RunResult> {
     messages.push({ role: "user", content: h.question });
     messages.push({ role: "assistant", content: h.answer });
   }
-  messages.push({ role: "user", content: args.question });
+  messages.push(
+    args.questionNote
+      ? {
+          role: "user",
+          content: [
+            { type: "text", text: args.questionNote },
+            { type: "text", text: args.question },
+          ],
+        }
+      : { role: "user", content: args.question },
+  );
 
   const toolCalls: ToolCallRecord[] = [];
-  const usage = {
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    turns: 0,
-  };
+  const usage = args.usage ?? emptyUsage();
   let status: AssistantStatus | null = null;
   let answer = "";
   let jsonRetries = 0;
@@ -239,6 +297,14 @@ export async function runAssistant(args: RunArgs): Promise<RunResult> {
       answer = textOf(message);
       break;
     }
+    if (usage.outputTokens >= MAX_OUTPUT_TOKENS_PER_QUESTION) {
+      // Kostnadsspärr: inga fler varv för den här frågan.
+      status = "limit";
+      answer =
+        textOf(message) ||
+        "Frågan krävde fler steg än assistenten tillåter. Dela upp den i mindre frågor.";
+      break;
+    }
 
     messages.push({ role: "assistant", content: message.content });
     for (const block of toolUses) {
@@ -277,8 +343,10 @@ export async function runAssistant(args: RunArgs): Promise<RunResult> {
       answer || "Frågan krävde fler steg än assistenten tillåter. Dela upp den i mindre frågor.";
   }
 
+  const prefetched = args.prefetched ?? [];
   const sources: unknown[] = [
     args.question,
+    ...prefetched.filter((c) => c.ok).map((c) => c.result),
     ...toolCalls.filter((c) => c.ok).map((c) => c.result),
     ...args.history.flatMap((h) => [h.question, ...h.sources]),
   ];
@@ -288,5 +356,21 @@ export async function runAssistant(args: RunArgs): Promise<RunResult> {
       : { checked: 0, unverified: [] };
   if (status === "answered" && verification.unverified.length > 0) status = "unverified";
 
-  return { status, answer, toolCalls, verification, usage, model };
+  const actions: ToolLink[] = [];
+  for (const call of toolCalls) {
+    for (const a of call.ok ? (call.actions ?? []) : []) {
+      if (actions.length < 3 && !actions.some((x) => x.href === a.href)) actions.push(a);
+    }
+  }
+  if (status === "refused") actions.length = 0;
+
+  return {
+    status,
+    answer,
+    toolCalls: [...prefetched, ...toolCalls],
+    verification,
+    usage,
+    actions,
+    model,
+  };
 }

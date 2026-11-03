@@ -69,6 +69,10 @@ export type AssistantChatProps = {
   notConfigured: { message: string; detail: string } | null;
   /** Ifylld fråga (från "Fråga assistenten" på ett förslag). Skickas inte automatiskt. */
   initialQuestion?: string;
+  /** Samtalet från AI-panelen ("Öppna i Assistent"): fortsätter i samma samtal. */
+  initialConversationId?: string | null;
+  /** Tidigare frågor och svar i samtalet (visas som klara). */
+  initialTurns?: ReadonlyArray<{ question: string; answer: string }>;
 };
 
 const STATUS_TEXT: Partial<Record<AssistantStatus, string>> = {
@@ -86,10 +90,25 @@ export function AssistantChat({
   examples,
   notConfigured,
   initialQuestion = "",
+  initialConversationId = null,
+  initialTurns = [],
 }: AssistantChatProps) {
-  const [turns, setTurns] = useState<Turn[]>([]);
+  const [turns, setTurns] = useState<Turn[]>(() =>
+    initialTurns.map((t) => ({
+      key: `t${++turnCounter}`,
+      question: t.question,
+      draft: "",
+      answer: t.answer,
+      calls: [],
+      state: "done" as const,
+      status: null,
+      verification: null,
+      error: null,
+      durationMs: null,
+    })),
+  );
   const [question, setQuestion] = useState(initialQuestion);
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string | null>(initialConversationId);
   const [busy, setBusy] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const abortRef = useRef<AbortController | null>(null);

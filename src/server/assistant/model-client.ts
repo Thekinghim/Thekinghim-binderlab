@@ -12,7 +12,7 @@ import "server-only";
 
 import Anthropic from "@anthropic-ai/sdk";
 
-import type { AssistantModel } from "./config";
+import { DEFAULT_ASSISTANT_EFFORT, type AssistantEffort, type AssistantModel } from "./config";
 
 export type ModelMessage = Anthropic.Beta.BetaMessage;
 export type ModelMessageParam = Anthropic.Beta.BetaMessageParam;
@@ -33,13 +33,11 @@ export interface ModelClient {
   turn(request: ModelTurnRequest, onText: (delta: string) => void): Promise<ModelMessage>;
 }
 
-/** Svarets längd per varv. Strömmat, så taket orsakar inga tidsgränser i SDK:n. */
-const MAX_TOKENS = 16_000;
 /**
- * Insats: medel räcker för att välja verktyg och sammanfatta tal. Opus 5.5 har medel som
- * standard men det sätts uttryckligen så att Sonnet 5.5 (standard hög) beter sig likadant.
+ * Svarets längd per varv (tänkande + text + verktygsanrop). Strömmat, så taket orsakar inga
+ * tidsgränser i SDK:n; svaren är korta, men tänkandet på hög insats behöver utrymme.
  */
-const EFFORT = "medium" as const;
+const MAX_TOKENS = 32_000;
 /** Serverstyrd reserv om modellen avböjer av policyskäl (samma anrop, annan modell). */
 const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 
@@ -51,6 +49,11 @@ const FALLBACK_BETA = "server-side-fallback-2026-07-01";
 export function createAnthropicClient(options: {
   apiKey: string;
   model: AssistantModel;
+  /**
+   * Insatsen (ANTHROPIC_EFFORT_CHAT, standard hög). Sätts alltid uttryckligen: Opus 5.5 har
+   * medel som standard och Sonnet 5.5 hög.
+   */
+  effort?: AssistantEffort;
   /** För tester: egen klient. */
   client?: Anthropic;
 }): ModelClient {
@@ -63,10 +66,14 @@ export function createAnthropicClient(options: {
         {
           model: options.model,
           max_tokens: MAX_TOKENS,
+          // Adaptivt tänkande är det enda läget på Opus 5.5 (disabled och budget_tokens ger 400).
           thinking: { type: "adaptive" },
-          output_config: { effort: EFFORT },
+          output_config: { effort: options.effort ?? DEFAULT_ASSISTANT_EFFORT },
           betas: [FALLBACK_BETA],
           fallbacks: "default",
+          // Automatisk brytpunkt sist i samtalet (verktygsvarven läses ur cachen). Verktygen och
+          // första systemblocket har en egen brytpunkt (prompt.ts), så att de läses ur cachen
+          // även när sidans sammanhang i andra blocket byts.
           cache_control: { type: "ephemeral" },
           system: [...request.system],
           tools: [...request.tools],
