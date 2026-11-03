@@ -6,6 +6,7 @@
  * tjänsten mot databasen, allt skrivs som användaren med RLS.
  */
 
+import { headers } from "next/headers";
 import { unstable_rethrow } from "next/navigation";
 import { z, ZodError } from "zod";
 
@@ -22,6 +23,7 @@ import {
 import { AuthorizationError } from "@/server/access";
 import {
   ContractError,
+  createSigningLinkFor,
   createStoreContractFor,
   setContractStatusFor,
   type ContractStatus,
@@ -30,6 +32,8 @@ import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/
 import { businessToday } from "@/server/data/core/loaders";
 import { dbErrorMessage, pgErrorOf } from "@/server/errors";
 import { getPdfRenderer, pdfStatus } from "@/server/pdf/render";
+import { getServerEnv } from "@/lib/env";
+import { resolveAppBaseUrl } from "@/server/request-info";
 
 export type ActionResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -234,6 +238,31 @@ export async function uploadContractFile(
     }
     revalidateAppData();
     return { ok: true, data: { fileName: file.name } };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/**
+ * Signera på plats: en engångslänk (7 dagar) till avtalets PDF som butiksägaren öppnar på
+ * sin mobil. Länken visas en gång; en ny länk ersätter den förra.
+ */
+export async function createSigningLink(
+  raw: unknown,
+): Promise<ActionResult<{ url: string; expiresAt: string }>> {
+  try {
+    const viewer = await operator();
+    const id = z.uuid().parse(raw);
+    const { token, expiresAt } = await createSigningLinkFor(viewer, id, {
+      renderPdf: pdfStatus().configured ? (html) => getPdfRenderer().renderHtml(html) : null,
+      fileStore: await contractFileStore(),
+    });
+    const base = resolveAppBaseUrl(getServerEnv(), await headers());
+    revalidateAppData();
+    return {
+      ok: true,
+      data: { url: `${base}/signera/${token}`, expiresAt: expiresAt.toISOString() },
+    };
   } catch (error) {
     return failure(error);
   }

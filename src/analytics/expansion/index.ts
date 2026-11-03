@@ -60,3 +60,17 @@ export {
   type LeadStage,
 } from "./pipeline";
 export type * from "./types";
+export {
+  defaultPerMonth,
+  growthPlan,
+  GROWTH_PLAN_DEFAULTS,
+  GROWTH_PLAN_MAX_MONTHS,
+  helpFromCount,
+  paybackTenthsOf,
+  refillMinutesFromMonthly,
+  type GrowthMachine,
+  type GrowthPlan,
+  type GrowthPlanInput,
+  type GrowthPlanMonth,
+  type GrowthPlanSettings,
+} from "./growth-plan";

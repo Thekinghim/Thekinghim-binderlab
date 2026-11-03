@@ -50,7 +50,8 @@ function Line({
 }
 
 /**
- * Efter vinsten: återbetalningar och fasta kostnader som egna rader under vattenfallet.
+ * Efter vinsten: återbetalningar, gratis-pack och fasta kostnader som egna rader under
+ * vattenfallet.
  * Vinsten är densamma som vattenfallets; inget ovanför ändras.
  */
 export function ResultAfterProfitPanel({ result }: { result: ResultAfterProfit }) {
@@ -72,7 +73,22 @@ export function ResultAfterProfitPanel({ result }: { result: ResultAfterProfit }
               : "Inga återbetalningar i perioden."
           }
         />
-        <Line label="Vinst efter återbetalningar" value={kr(r.profitAfterRefundsOre)} total />
+        {r.freePackCount > 0 ? (
+          <Line
+            label="Gratis-pack"
+            value={minus(r.freePackOre)}
+            detail={`${formatInt(r.freePackCount)}${NBSP}pack till inköpspris.`}
+          />
+        ) : null}
+        <Line
+          label={
+            r.freePackCount > 0
+              ? "Vinst efter återbetalningar och gratis-pack"
+              : "Vinst efter återbetalningar"
+          }
+          value={kr(r.profitAfterGiveawaysOre)}
+          total
+        />
         {r.fixedCostOre === null ? (
           <Line label="Fasta kostnader" value="–" detail={r.fixedNote ?? undefined} />
         ) : (
@@ -104,6 +120,14 @@ export function ResultAfterProfitPanel({ result }: { result: ResultAfterProfit }
             →
           </span>
         </Link>
+        {r.freePackCount > 0 ? (
+          <Link href="/kampanjer?vy=gratis-pack" className={LINK}>
+            <span>Gratis-pack</span>
+            <span aria-hidden className="text-subtle">
+              →
+            </span>
+          </Link>
+        ) : null}
         <Link href="/ekonomi?vy=fasta" className={LINK}>
           <span>Fasta kostnader i Ekonomi</span>
           <span aria-hidden className="text-subtle">

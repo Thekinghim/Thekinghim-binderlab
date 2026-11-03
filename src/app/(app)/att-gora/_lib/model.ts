@@ -204,6 +204,7 @@ const KIND_NOUN: Record<TodoKind, [string, string]> = {
   "report-review": ["utkast att granska", "utkast att granska"],
   contract: ["avtal att se över", "avtal att se över"],
   alert: ["larm", "larm"],
+  settlement: ["utbetalning till butik", "utbetalningar till butiker"],
   "missing-price": ["titel utan inköpspris", "titlar utan inköpspris"],
   "duplicate-title": ["möjlig dubblett", "möjliga dubbletter"],
 };
@@ -215,6 +216,7 @@ const KIND_LABEL: Record<TodoKind, string> = {
   "report-review": "Rapportutkast",
   contract: "Avtal",
   alert: "Larm",
+  settlement: "Utbetalning",
   "missing-price": "Inköpspris",
   "duplicate-title": "Datakvalitet",
 };
@@ -225,6 +227,7 @@ const KIND_ORDER: readonly TodoKind[] = [
   "alert",
   "report-review",
   "report-due",
+  "settlement",
   "contract",
   "missing-price",
   "duplicate-title",
@@ -325,6 +328,12 @@ export function primaryFigures(item: TodoItem, economy: boolean): FigureView[] {
       const failed = figureValue(item, "failedDeliveries");
       if (failed !== null && failed > 0)
         out.push({ label: "Misslyckade", value: formatInt(failed) });
+      break;
+    }
+    case "settlement": {
+      const total = figureValue(item, "totalOre");
+      if (economy && total !== null) out.push({ label: "Att betala", value: kr(total) });
+      deadline();
       break;
     }
     case "report-review": {
@@ -714,6 +723,7 @@ const KIND_BY_PREFIX: Record<string, TodoKind> = {
   "report-review": "report-review",
   contract: "contract",
   alert: "alert",
+  settlement: "settlement",
   "missing-price": "missing-price",
   "duplicate-title": "duplicate-title",
 };

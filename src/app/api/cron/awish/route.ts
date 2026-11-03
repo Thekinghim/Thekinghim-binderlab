@@ -14,6 +14,7 @@
 import { getServiceDb } from "@/db/client";
 import { cronAuthorized } from "@/server/alerts/cron-auth";
 import { syncAllAwishSources } from "@/server/awish/sync";
+import { publishAllDueCampaigns } from "@/server/campaigns/service";
 import { CRON_JOBS, withCronMonitor } from "@/server/monitoring/cron-monitor";
 
 export const runtime = "nodejs";
@@ -42,6 +43,12 @@ export async function GET(request: Request): Promise<Response> {
     () => syncAllAwishSources({ db: getServiceDb() }),
     (r) => !allFailed(r),
   );
+  // Kampanjer med en senare start som användaren redan har bekräftat (Kampanjer): de vars
+  // starttid har passerat skickas till Awish nu. Ett fel här stoppar inte synken.
+  const campaigns = await publishAllDueCampaigns({ db: getServiceDb() }).catch((error: unknown) => {
+    console.error("[kampanjer] schemalagda kampanjer", error instanceof Error ? error.name : "fel");
+    return null;
+  });
   // Inga hemligheter och inga order i svaret, bara räknare och felmeddelanden.
   return json(
     {
@@ -56,6 +63,7 @@ export async function GET(request: Request): Promise<Response> {
         new: s.summary?.new ?? 0,
         historyDone: s.historyDone,
       })),
+      campaigns: campaigns ? { shown: campaigns.shown, failed: campaigns.failed } : null,
     },
     allFailed(result) ? 500 : 200,
   );

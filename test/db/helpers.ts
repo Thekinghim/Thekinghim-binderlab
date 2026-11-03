@@ -987,6 +987,69 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
                   ${`${orgId}/2025-03/v1-${"b".repeat(64)}.zip`}, 'bokforing-2025-03.zip', 100,
                   ${"b".repeat(64)})`,
     );
+    // Kampanjer och gratis-pack (20261104233100_kampanjer_gratis_pack.sql): bara servern skriver.
+    const campaign = await one<{ id: string }>(
+      tx,
+      sql`insert into public.campaigns
+            (organization_id, title, title_id, image_path, image_url, image_type, image_bytes, starts_at, ends_at)
+          values (${orgId}, 'Nytt', ${title!.id}, ${`${orgId}/${"c".repeat(64)}.png`}, 'https://example.test/k.png',
+                  'image/png', 100, '2025-03-01T00:00:00Z', '2025-03-15T00:00:00Z')
+          returning id`,
+    );
+    await tx.execute(
+      sql`insert into public.campaign_machines
+            (organization_id, campaign_id, machine_id, awish_machine_id, awish_banner_id, status)
+          values (${orgId}, ${campaign.id}, ${machine!.id}, '2', '7', 'shown')`,
+    );
+    const freePack = await one<{ id: string }>(
+      tx,
+      sql`insert into public.free_pack_batches
+            (organization_id, machine_id, title_id, good_name, awish_machine_id, awish_product_id,
+             quantity, reason, unit_cost_ore, cost_ore, business_date, expires_at, status)
+          values (${orgId}, ${machine!.id}, ${title!.id}, 'Testtitel', '2', '1', 1, 'giveaway',
+                  4500, 4500, '2025-03-02', '2025-03-16T00:00:00Z', 'created')
+          returning id`,
+    );
+    await tx.execute(
+      sql`insert into public.free_pack_codes (organization_id, batch_id, code, awish_code_id)
+          values (${orgId}, ${freePack.id}, 'K7Q2M9XA', '901')`,
+    );
+    // Signering på plats (20261104233200_avtal_signering.sql): bara servern skriver. Ett eget
+    // avtal, så att huvudavtalet går att ändra (ett signerat avtal byter inte fil).
+    const [signedContract] = await tx
+      .insert(s.contracts)
+      .values({ ...org, storeId: store!.id, validFrom: "2025-01-01", title: "Signerat" })
+      .returning();
+    const signingLink = await one<{ id: string }>(
+      tx,
+      sql`insert into public.contract_signing_links
+            (organization_id, contract_id, token_hash, document_sha256, expires_at, used_at)
+          values (${orgId}, ${signedContract!.id}, ${randomUUID().replace(/-/g, "").repeat(2)},
+                  ${"d".repeat(64)}, now() + interval '7 days', now())
+          returning id`,
+    );
+    await tx.execute(
+      sql`insert into public.contract_signatures
+            (organization_id, contract_id, link_id, signer_name, signature_png, document_sha256,
+             ip, user_agent)
+          values (${orgId}, ${signedContract!.id}, ${signingLink.id}, 'Anna Testsson',
+                  decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'),
+                  ${"d".repeat(64)}, '127.0.0.1', 'vitest')`,
+    );
+    // Månadsavräkning per butik (20261104233400_butik_avrakning.sql).
+    await tx.execute(
+      sql`insert into public.store_settlements
+            (organization_id, store_id, month, amount_ore, statement, calc_version)
+          values (${orgId}, ${store!.id}, '2025-03-01', 3360,
+                  '{"version":1,"storeName":"Testbutik","month":"2025-03","modelText":"Provision","steps":[],"salesInclVatOre":16800,"orders":2,"totalOre":3360}'::jsonb,
+                  'calc@1')`,
+    );
+    // Plan för fler automater (20261104233300_tillvaxt_plan.sql).
+    await tx.execute(
+      sql`insert into public.growth_plans
+            (organization_id, target_machines, machine_price_ore, people, hours_per_person_week)
+          values (${orgId}, 20, 3000000, 2, 10)`,
+    );
     await tx.execute(sql`set local role authenticated`);
 
     return {

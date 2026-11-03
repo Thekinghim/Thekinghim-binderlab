@@ -6,6 +6,8 @@
  *   − återbetalningar             = @/domain/refunds (applyRefunds): på återbetalningsdagen,
  *                                   automaten och butiken där automaten stod den dagen
  *   = vinst efter återbetalningar
+ *   − gratis-pack                 = koder i Awish (free_pack_batches): inköpspris × antal på
+ *                                   skapelsedagen, automaten och butiken den dagen
  *   − fasta kostnader             = @/analytics/cashflow (profitabilityWithFixedCosts):
  *                                   periodiserade, gemensamma fördelade efter nettointäkt
  *   = resultat
@@ -24,14 +26,46 @@ import {
   type FixedCost,
   type FixedCostAllocation,
 } from "@/analytics/cashflow";
-import { DomainError, profitability, ratioBp, sumOre, type ProfitabilityInput } from "@/domain";
+import {
+  DomainError,
+  profitability,
+  ratioBp,
+  sumOre,
+  type IsoDate,
+  type ProfitabilityInput,
+} from "@/domain";
 import { applyRefunds, summarizeRefunds, type Refund } from "@/domain/refunds";
+
+/** Gratis-pack i samma form som en återbetalning (samma fördelning per automat och butik). */
+function asRefunds(packs: readonly FreePackCost[]): Refund[] {
+  return packs.map((p) => ({
+    id: p.id,
+    machineId: p.machineId,
+    titleId: p.titleId,
+    refundedOn: p.day,
+    amountOre: p.costOre,
+  }));
+}
+
+/** Gratis-pack som kostnad (free_pack_batches med status created och pris). */
+export interface FreePackCost {
+  readonly id: string;
+  readonly machineId: string;
+  readonly titleId: string | null;
+  /** Skapelsedagen (affärsdatum). */
+  readonly day: IsoDate;
+  /** Inköpspris × antal, öre. */
+  readonly costOre: number;
+  /** Antal pack. */
+  readonly packs: number;
+}
 
 export interface ResultMachineRow {
   /** Automatens id, eller 'none' / 'unallocated' / 'no-machine' för rader utan automat. */
   readonly key: string;
   readonly profitOre: number;
   readonly refundOre: number;
+  readonly freePackOre: number;
   readonly fixedCostOre: number;
   readonly resultOre: number;
 }
@@ -41,12 +75,17 @@ export interface ResultAfterProfit {
   readonly refundOre: number;
   readonly refundCount: number;
   readonly profitAfterRefundsOre: number;
+  /** Gratis-pack (inköpspris) i urvalet och antal pack. */
+  readonly freePackOre: number;
+  readonly freePackCount: number;
+  /** Vinst − återbetalningar − gratis-pack. */
+  readonly profitAfterGiveawaysOre: number;
   /** Periodens fasta kostnader i urvalet, eller null med butiksfilter / när de inte gick att räkna. */
   readonly fixedCostOre: number | null;
   /** Varav gemensamma (fördelade) respektive direkt på automaten. */
   readonly sharedFixedOre: number | null;
   readonly directFixedOre: number | null;
-  /** Vinst − återbetalningar − fasta kostnader (fasta = 0 när de inte visas). */
+  /** Vinst − återbetalningar − gratis-pack − fasta kostnader (fasta = 0 när de inte visas). */
   readonly resultOre: number;
   /** Resultatet på intäkten med inköpspris (som vinstmarginalen), bp. */
   readonly resultMarginBp: number | null;
@@ -65,6 +104,8 @@ export interface ResultInput {
   readonly organization: ProfitabilityInput;
   readonly refunds: readonly Refund[];
   readonly fixedCosts: readonly FixedCost[];
+  /** Gratis-pack i perioden (saknas = inga). */
+  readonly freePacks?: readonly FreePackCost[];
   readonly scope: { readonly storeId: string | null; readonly machineId: string | null };
   readonly machines?: readonly { readonly id: string; readonly name: string }[];
 }
@@ -112,6 +153,35 @@ export function resultAfterProfit(input: ResultInput): ResultAfterProfit {
     : refundRows.reduce((n, r) => n + r.refundCount, 0);
   const profitAfterRefundsOre = sumOre([profitOre, -refundOre]);
 
+  // Gratis-pack: samma regler som återbetalningarna (automat, eller butiken den dagen).
+  const packs = input.freePacks ?? [];
+  const packRows = scope.storeId
+    ? []
+    : applyRefunds(
+        lines,
+        asRefunds(scope.machineId ? packs.filter((p) => p.machineId === scope.machineId) : packs),
+        period,
+        "machine",
+      );
+  const storePacks = scope.storeId
+    ? summarizeRefunds(asRefunds(packs), period, "store", input.organization.placements).rows.find(
+        (r) => r.key === scope.storeId,
+      )
+    : undefined;
+  const freePackOre = scope.storeId
+    ? (storePacks?.amountOre ?? 0)
+    : sumOre(packRows.map((r) => r.refundOre));
+  const storePackIds = new Set(storePacks?.refundIds ?? []);
+  const freePackCount = packs
+    .filter((p) => p.day >= period.start && p.day <= period.end && p.costOre > 0)
+    .filter((p) =>
+      scope.storeId
+        ? storePackIds.has(p.id)
+        : scope.machineId === null || p.machineId === scope.machineId,
+    )
+    .reduce((n, p) => n + p.packs, 0);
+  const profitAfterGiveawaysOre = sumOre([profitAfterRefundsOre, -freePackOre]);
+
   let allocation: FixedCostAllocation | null = null;
   let fixedNote: string | null = null;
   if (scope.storeId) {
@@ -137,24 +207,31 @@ export function resultAfterProfit(input: ResultInput): ResultAfterProfit {
   const fixedCostOre = allocation ? sumOre(fixedRows.map((r) => r.fixedCostOre)) : null;
   const sharedFixedOre = allocation ? sumOre(fixedRows.map((r) => r.sharedFixedOre)) : null;
   const directFixedOre = allocation ? sumOre(fixedRows.map((r) => r.directFixedOre)) : null;
-  const resultOre = sumOre([profitAfterRefundsOre, -(fixedCostOre ?? 0)]);
+  const resultOre = sumOre([profitAfterGiveawaysOre, -(fixedCostOre ?? 0)]);
 
   // Per automat (inte med butiksfilter): vinst, återbetalt, fasta och resultat.
   const machines: ResultMachineRow[] = [];
   if (!scope.storeId) {
-    const keys = new Set<string>([...refundRows.map((r) => r.key), ...fixedRows.map((r) => r.key)]);
+    const keys = new Set<string>([
+      ...refundRows.map((r) => r.key),
+      ...packRows.map((r) => r.key),
+      ...fixedRows.map((r) => r.key),
+    ]);
     const refundBy = new Map(refundRows.map((r) => [r.key, r]));
+    const packBy = new Map(packRows.map((r) => [r.key, r]));
     const fixedBy = new Map(fixedRows.map((r) => [r.key, r]));
     for (const key of [...keys].sort()) {
-      const p = refundBy.get(key)?.profitOre ?? 0;
+      const p = refundBy.get(key)?.profitOre ?? packBy.get(key)?.profitOre ?? 0;
       const refund = refundBy.get(key)?.refundOre ?? 0;
+      const pack = packBy.get(key)?.refundOre ?? 0;
       const fixed = fixedBy.get(key)?.fixedCostOre ?? 0;
       machines.push({
         key,
         profitOre: p,
         refundOre: refund,
+        freePackOre: pack,
         fixedCostOre: fixed,
-        resultOre: sumOre([p, -refund, -fixed]),
+        resultOre: sumOre([p, -refund, -pack, -fixed]),
       });
     }
   }
@@ -164,6 +241,9 @@ export function resultAfterProfit(input: ResultInput): ResultAfterProfit {
     refundOre,
     refundCount,
     profitAfterRefundsOre,
+    freePackOre,
+    freePackCount,
+    profitAfterGiveawaysOre,
     fixedCostOre,
     sharedFixedOre,
     directFixedOre,

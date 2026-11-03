@@ -1,7 +1,10 @@
 /**
  * Klient för Awish officiella gRPC-API (tjänsten provider.Provider, se
- * provider-proto.ts och docs/awish-api.md). Bara läsande anrop: Merchant,
- * Machines, Orders och Order.
+ * provider-proto.ts och docs/awish-api.md). Läsande anrop: Merchant, Machines,
+ * Orders, Order, Products, Banners och PickupCodes. Skrivande anrop (CreateBanner,
+ * UpdateBanner, CreatePickupCode) finns bara i AwishMarketingApi och görs bara efter en
+ * bekräftelse i appen (Automater → Kampanjer och Gratis-pack). De provas aldrig igen
+ * automatiskt: ett nytt försök efter ett avbrutet svar kunde skapa dubbletter.
  *
  * Inloggningen är metadata på varje anrop (leverantörens dokumentation, avsnitt
  * 8.1): `appid` = AppId, `token` = MD5 av `${AppSecret}.${AppKey}` som hex, och
@@ -189,6 +192,72 @@ export interface AwishApi {
   close(): void;
 }
 
+/** En kampanjbild på automatens skärm (Banner). Tider i sekunder sedan 1970 (Unix). */
+export interface AwishBanner {
+  id: string;
+  isVisible: boolean;
+  /** Utgångstid (Unix-sekunder), eller null. */
+  expiredAt: number | null;
+  coverImage: string | null;
+  title: string;
+  hitCount: number;
+  viewsCount: number;
+  mediaType: number;
+}
+
+/** En hämtkod (PickupCode): ger varan i facket product_id gratis. */
+export interface AwishPickupCode {
+  id: string;
+  machineId: string;
+  productId: string;
+  code: string;
+  quantity: number;
+  /** Utgångstid i millisekunder, eller null. */
+  expiredAtMillis: number | null;
+  /** Utgångsdag ("ÅÅÅÅ-MM-DD"), eller null. */
+  expiredAt: string | null;
+  active: boolean;
+}
+
+/** SuccessResponse från ett skrivande anrop. */
+export interface AwishWriteResult {
+  code: number;
+  message: string;
+}
+
+/**
+ * Banner.media_type för en bild. Proto-filen anger inte värdena ("image, video, text");
+ * 1 = bild är leverantörens vanliga ordning och används tills Awish säger annat.
+ */
+export const AWISH_MEDIA_IMAGE = 1;
+
+export interface AwishBannerInput {
+  machineId: string;
+  coverImage: string;
+  title: string;
+  /** Utgångstid, Unix-sekunder. */
+  expiredAt: number;
+}
+
+/** Läsande och skrivande anrop för kampanjer och hämtkoder. */
+export interface AwishMarketingApi {
+  /** Automatens fack (samma som AwishApi.products), för att välja facket för en kod. */
+  products(machineId: string): Promise<AwishProduct[]>;
+  banners(machineId: string): Promise<AwishBanner[]>;
+  createBanner(input: AwishBannerInput): Promise<AwishWriteResult>;
+  updateBanner(input: AwishBannerInput & { id: string }): Promise<AwishWriteResult>;
+  pickupCodes(machineId: string): Promise<AwishPickupCode[]>;
+  createPickupCodes(input: {
+    machineId: string;
+    productId: string;
+    /** Antal koder. */
+    quantity: number;
+    /** Utgångstid, Unix-sekunder. */
+    expiredAt: number;
+  }): Promise<AwishWriteResult>;
+  close(): void;
+}
+
 type Obj = Record<string, unknown>;
 
 function str(value: unknown): string {
@@ -285,6 +354,52 @@ export function toProduct(raw: unknown): AwishProduct {
     currentInventory: count(p.current_inventory),
     capacity: count(p.inventory),
   };
+}
+
+export function toBanner(raw: unknown): AwishBanner {
+  const b = obj(raw);
+  return {
+    id: str(b.id),
+    isVisible: b.is_visible === true,
+    expiredAt: optInt(b.expired_at),
+    coverImage: optStr(b.cover_image),
+    title: str(b.title),
+    hitCount: count(b.hit_count),
+    viewsCount: count(b.views_count),
+    mediaType: count(b.media_type),
+  };
+}
+
+export function toPickupCode(raw: unknown): AwishPickupCode {
+  const c = obj(raw);
+  return {
+    id: str(c.id),
+    machineId: str(c.machine_id),
+    productId: str(c.product_id),
+    code: str(c.code).trim(),
+    quantity: count(c.quantity),
+    expiredAtMillis: optInt(c.expired_at_millis),
+    expiredAt: optStr(c.expired_at),
+    active: c.status === true,
+  };
+}
+
+/**
+ * SuccessResponse: code 0 eller 200–299 är lyckat (proto-filen: "HTTP status code or
+ * internal success code"). Annat blir AwishApiError med Awish meddelande (kortat).
+ */
+export function toWriteResult(raw: unknown): AwishWriteResult {
+  const r = obj(raw);
+  const code = Number(r.code ?? 0);
+  const message = str(r.message).replace(/\s+/g, " ").trim().slice(0, 200);
+  const ok = Number.isFinite(code) && (code === 0 || (code >= 200 && code < 300));
+  if (!ok) {
+    throw new AwishApiError(
+      "server",
+      `Awish sa nej${Number.isFinite(code) ? ` (kod ${code})` : ""}${message ? `: ${message}` : ""}.`,
+    );
+  }
+  return { code, message };
 }
 
 function pageOf<T>(raw: unknown, map: (item: unknown) => T): AwishPage<T> {
@@ -453,7 +568,10 @@ type Unary = (
   callback: (error: grpc.ServiceError | null, response: unknown) => void,
 ) => void;
 
-export function createAwishClient(creds: AwishCredentials, options: AwishClientOptions): AwishApi {
+export function createAwishClient(
+  creds: AwishCredentials,
+  options: AwishClientOptions,
+): AwishApi & AwishMarketingApi {
   const Ctor = awishServiceConstructor();
   if (!options.tls) warnPlaintextOnce(options.address);
   const credentials = options.tls
@@ -485,7 +603,7 @@ export function createAwishClient(creds: AwishCredentials, options: AwishClientO
       );
     });
 
-  const call = async (method: string, request: Obj): Promise<unknown> => {
+  const call = async (method: string, request: Obj, retry: boolean = true): Promise<unknown> => {
     for (let attempt = 1; ; attempt += 1) {
       const left = remaining();
       if (left < AWISH_MIN_CALL_MS) throw budgetError();
@@ -496,7 +614,7 @@ export function createAwishClient(creds: AwishCredentials, options: AwishClientO
         const mapped = mapGrpcError(error, options.address);
         // Tidsgränsen kortades av körningens budget: det är budgeten som tog slut.
         if (mapped.kind === "timeout" && timeoutMs < deadlineMs) throw budgetError();
-        if (!mapped.retryable || attempt >= maxAttempts) throw mapped;
+        if (!retry || !mapped.retryable || attempt >= maxAttempts) throw mapped;
         const backoff = BACKOFF_MS[attempt - 1] ?? 1500;
         // Hinner nästa försök inte med, ges felet direkt.
         if (remaining() - backoff < AWISH_MIN_CALL_MS) throw mapped;
@@ -528,6 +646,61 @@ export function createAwishClient(creds: AwishCredentials, options: AwishClientO
     async products(machineId) {
       const res = obj(await call("Products", { machine_id: machineId }));
       return (Array.isArray(res.data) ? res.data : []).map(toProduct);
+    },
+    async banners(machineId) {
+      const res = obj(await call("Banners", { machine_id: machineId }));
+      return (Array.isArray(res.data) ? res.data : []).map(toBanner);
+    },
+    async createBanner(input) {
+      return toWriteResult(
+        await call(
+          "CreateBanner",
+          {
+            machine_id: input.machineId,
+            cover_image: input.coverImage,
+            title: input.title,
+            expired_at: input.expiredAt,
+            media_type: AWISH_MEDIA_IMAGE,
+            is_link: false,
+          },
+          false,
+        ),
+      );
+    },
+    async updateBanner(input) {
+      return toWriteResult(
+        await call(
+          "UpdateBanner",
+          {
+            id: input.id,
+            machine_id: input.machineId,
+            cover_image: input.coverImage,
+            title: input.title,
+            expired_at: input.expiredAt,
+            media_type: AWISH_MEDIA_IMAGE,
+          },
+          false,
+        ),
+      );
+    },
+    async pickupCodes(machineId) {
+      const res = obj(await call("PickupCodes", { machine_id: machineId }));
+      return (Array.isArray(res.data) ? res.data : []).map(toPickupCode);
+    },
+    async createPickupCodes(input) {
+      return toWriteResult(
+        await call(
+          "CreatePickupCode",
+          {
+            machine_id: input.machineId,
+            product_id: input.productId,
+            quantity: input.quantity,
+            expired_at: input.expiredAt,
+            status: true,
+          },
+          false,
+        ),
+      );
     },
     close() {
       client.close();

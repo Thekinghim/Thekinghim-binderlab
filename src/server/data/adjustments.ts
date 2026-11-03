@@ -1,7 +1,7 @@
 /**
  * Det som dras från vinsten efter profitability(): återbetalningar till kunder (kundärenden
- * med återbetalt belopp, @/domain/refunds) och fasta kostnader (fixed_costs,
- * @/analytics/cashflow). Läses som användaren (RLS) efter rollkontroll mot databasen:
+ * med återbetalt belopp, @/domain/refunds), gratis-pack (koder i Awish, inköpspris × antal)
+ * och fasta kostnader (fixed_costs, @/analytics/cashflow). Läses som användaren (RLS) efter rollkontroll mot databasen:
  * bara ägare, admin och läsare. Påfyllaren ser aldrig belopp.
  */
 
@@ -15,6 +15,7 @@ import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
 import type { IsoDate, Period } from "@/domain";
 import type { Refund } from "@/domain/refunds";
+import type { FreePackCost } from "@/app/(app)/lonsamhet/_lib/result";
 import { withUserDbFor } from "@/server/access";
 
 import { requireViewer } from "./core";
@@ -26,6 +27,44 @@ export interface ProfitAdjustments {
   readonly refunds: Refund[];
   /** Fasta kostnader som inte är arkiverade (periodiseras av @/analytics/cashflow). */
   readonly fixedCosts: FixedCost[];
+  /** Gratis-pack (koder i Awish) med inköpspris, skapade i perioden. */
+  readonly freePacks: FreePackCost[];
+}
+
+/** Gratis-pack som kostnad: skapade koder med inköpspris, på skapelsedagen. */
+export async function queryPeriodFreePacks(
+  tx: Tx,
+  orgId: string,
+  period: Period,
+): Promise<FreePackCost[]> {
+  const rows = await tx
+    .select({
+      id: s.freePackBatches.id,
+      machineId: s.freePackBatches.machineId,
+      titleId: s.freePackBatches.titleId,
+      day: s.freePackBatches.businessDate,
+      costOre: s.freePackBatches.costOre,
+      packs: s.freePackBatches.quantity,
+    })
+    .from(s.freePackBatches)
+    .where(
+      and(
+        eq(s.freePackBatches.organizationId, orgId),
+        eq(s.freePackBatches.status, "created"),
+        gte(s.freePackBatches.businessDate, period.start),
+        lte(s.freePackBatches.businessDate, period.end),
+        sql`${s.freePackBatches.costOre} is not null`,
+      ),
+    )
+    .orderBy(asc(s.freePackBatches.businessDate), asc(s.freePackBatches.id));
+  return rows.map((r) => ({
+    id: r.id,
+    machineId: r.machineId,
+    titleId: r.titleId,
+    day: r.day as IsoDate,
+    costOre: r.costOre ?? 0,
+    packs: r.packs,
+  }));
 }
 
 export async function queryPeriodRefunds(tx: Tx, orgId: string, period: Period): Promise<Refund[]> {
@@ -87,11 +126,12 @@ export async function loadProfitAdjustmentsFor(
   const orgId = viewer.organization.id;
   await requireViewerRole(viewer, ECONOMY_ROLES);
   return withUserDbFor(viewer.user, async (tx) => {
-    const [refunds, fixedCosts] = await Promise.all([
+    const [refunds, fixedCosts, freePacks] = await Promise.all([
       queryPeriodRefunds(tx, orgId, period),
       queryActiveFixedCosts(tx, orgId),
+      queryPeriodFreePacks(tx, orgId, period),
     ]);
-    return { refunds, fixedCosts };
+    return { refunds, fixedCosts, freePacks };
   });
 }
 

@@ -471,6 +471,12 @@ export const ACTIONS: ActionSpec[] = [
     args: id("expansion_leads"),
   },
   { module: "@/app/(app)/expansion/actions", name: "saveGoal", allowed: OP, args: id("goals") },
+  {
+    module: "@/app/(app)/expansion/actions",
+    name: "saveGrowthPlan",
+    allowed: OP,
+    args: () => [{ targetMachines: "25", people: "2", hoursPerPersonWeek: "10" }],
+  },
   { module: "@/app/(app)/expansion/actions", name: "deleteGoal", allowed: OP, args: id("goals") },
   // Inköpspriser
   {
@@ -753,6 +759,88 @@ export const ACTIONS: ActionSpec[] = [
     name: "revokeStoreInvitation",
     allowed: OP,
     args: (c) => [sink(c)],
+  },
+  // Kampanjer och gratis-pack (skriver till Awish efter bekräftelse; bara ägare och admin)
+  {
+    module: "@/app/(app)/kampanjer/actions",
+    name: "createCampaign",
+    allowed: OP,
+    args: () => {
+      const form = new FormData();
+      form.set(
+        "input",
+        JSON.stringify({
+          title: "Rödteam",
+          machineIds: [],
+          startsOn: null,
+          endsOn: TODAY,
+          titleId: null,
+          reuseImageFrom: null,
+        }),
+      );
+      return [form];
+    },
+  },
+  {
+    module: "@/app/(app)/kampanjer/actions",
+    name: "stopCampaign",
+    allowed: OP,
+    args: (c) => [c.idsA.campaigns],
+  },
+  {
+    module: "@/app/(app)/kampanjer/actions",
+    name: "retryCampaign",
+    allowed: OP,
+    args: (c) => [c.idsA.campaigns],
+  },
+  {
+    module: "@/app/(app)/kampanjer/actions",
+    name: "loadFreePackChoices",
+    allowed: OP,
+    readOnly: true,
+    args: (c) => [c.A.machineId],
+  },
+  {
+    module: "@/app/(app)/kampanjer/actions",
+    name: "createFreePacks",
+    allowed: OP,
+    args: (c) => [
+      {
+        machineId: c.A.machineId,
+        productId: "1",
+        quantity: 1,
+        days: 7,
+        reason: "giveaway",
+        recipient: null,
+        note: null,
+      },
+    ],
+  },
+  // Månadsavräkning per butik (Butiker → Butiksportal; bara ägare och admin)
+  {
+    module: "@/app/(app)/butiker/settlement-actions",
+    name: "markSettlementPaid",
+    allowed: OP,
+    args: (c) => [c.idsA.store_settlements, TODAY],
+  },
+  {
+    module: "@/app/(app)/butiker/settlement-actions",
+    name: "undoSettlementPaid",
+    allowed: OP,
+    args: (c) => [c.idsA.store_settlements],
+  },
+  {
+    module: "@/app/(app)/butiker/settlement-actions",
+    name: "recomputeSettlement",
+    allowed: OP,
+    args: (c) => [c.idsA.store_settlements],
+  },
+  // Signering på plats: engångslänk till avtalets PDF (bara ägare och admin)
+  {
+    module: "@/app/(app)/avtal/actions",
+    name: "createSigningLink",
+    allowed: OP,
+    args: (c) => [c.idsA.contracts],
   },
   // Inbjudan (auth)
   {

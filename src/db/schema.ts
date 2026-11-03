@@ -764,3 +764,6 @@ export * from "./schema/tillagg";
 
 // Bokföring: kontoplanen, månader markerade som skickade och kvitton.
 export * from "./schema/bokforing";
+
+// Tillväxt: kampanjer på automaternas skärm och gratis-pack-koder.
+export * from "./schema/tillvaxt";

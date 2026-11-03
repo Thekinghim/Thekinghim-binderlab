@@ -435,3 +435,38 @@ export const effectSettingsSchema = z.object({
   stockoutDayValueOre: optionalKronor("Värde per slutsåld dag"),
 });
 export type EffectSettingsInput = z.infer<typeof effectSettingsSchema>;
+
+// ---------------------------------------------------------------------------
+// Plan för fler automater
+// ---------------------------------------------------------------------------
+
+/** Heltal som måste anges, inom gränser. */
+const requiredInt = (label: string, min: number, max: number) =>
+  optionalInt(label, min, max).transform((v, ctx) => {
+    if (v === null) {
+      ctx.addIssue({
+        code: "custom",
+        message: `${label}: ange ett heltal mellan ${min} och ${max}.`,
+      });
+      return z.NEVER;
+    }
+    return v;
+  });
+
+/** Valfritt belopp högst 1 000 000 kr. */
+const optionalPlanKronor = (label: string) =>
+  optionalKronor(label).refine((v) => v === null || v <= 100_000_000, {
+    message: `${label}: högst 1 000 000 kr.`,
+  });
+
+/** Planens förval. Tomt fält = standard (null). */
+export const growthPlanSchema = z.object({
+  targetMachines: requiredInt("Mål", 1, 1000),
+  machinePriceOre: optionalPlanKronor("Automat"),
+  startStockOre: optionalPlanKronor("Startlager"),
+  machinesPerMonth: optionalInt("Nya per månad", 1, 50),
+  refillMinutesPerMachineWeek: optionalInt("Påfyllning", 1, 1000),
+  people: requiredInt("Personer", 1, 100),
+  hoursPerPersonWeek: requiredInt("Timmar", 1, 80),
+});
+export type GrowthPlanInput = z.infer<typeof growthPlanSchema>;

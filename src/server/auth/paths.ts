@@ -24,6 +24,8 @@ export function isPublicPath(pathname: string): boolean {
   return (
     isPathOrBelow(pathname, LOGIN_PATH) ||
     pathname.startsWith("/inbjudan/") ||
+    // Signering av avtal på plats: token i adressen är beviset (src/server/contracts/signing.ts).
+    pathname.startsWith("/signera/") ||
     pathname.startsWith("/rapport/") ||
     pathname.startsWith("/_next/") ||
     // Schemalagda jobb (Vercel Cron) har ingen session; varje route kräver CRON_SECRET.

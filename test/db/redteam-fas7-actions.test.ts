@@ -147,6 +147,8 @@ const SPECIAL = new Set([
   "@/app/logga-in/actions#requestMagicLink",
   "@/app/logga-in/actions#confirmMagicLink",
   "@/app/inbjudan/[token]/actions#acceptInvitation",
+  // Signering på plats utan inloggning (token är beviset); testas i test/db/avtal-signering.test.ts.
+  "@/app/signera/[token]/actions#signContract",
   // Ägs av fas 7 del 1 (onboarding); testas i test/db/redteam-onboarding.test.ts.
   "@/server/onboarding/actions#createOrganization",
 ]);

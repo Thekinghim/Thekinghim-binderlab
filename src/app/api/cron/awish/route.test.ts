@@ -20,6 +20,8 @@ const sync = vi.fn(async () => ({
   ],
 }));
 vi.mock("@/server/awish/sync", () => ({ syncAllAwishSources: sync }));
+const campaigns = vi.fn(async () => ({ organizations: 1, shown: 2, failed: 0 }));
+vi.mock("@/server/campaigns/service", () => ({ publishAllDueCampaigns: campaigns }));
 
 const { GET } = await import("./route");
 
@@ -33,12 +35,14 @@ describe("/api/cron/awish", () => {
   afterEach(() => {
     delete process.env.CRON_SECRET;
     sync.mockClear();
+    campaigns.mockClear();
   });
 
   it("utan CRON_SECRET: 503 och ingen synk", async () => {
     const res = await GET(req(`Bearer ${SECRET}`));
     expect(res.status).toBe(503);
     expect(sync).not.toHaveBeenCalled();
+    expect(campaigns).not.toHaveBeenCalled();
   });
 
   it("fel hemlighet: 401 och ingen synk", async () => {
@@ -46,6 +50,7 @@ describe("/api/cron/awish", () => {
     expect((await GET(req("Bearer fel-hemlighet-1234567890"))).status).toBe(401);
     expect((await GET(req())).status).toBe(401);
     expect(sync).not.toHaveBeenCalled();
+    expect(campaigns).not.toHaveBeenCalled();
   });
 
   it("rätt hemlighet: synkar och svarar bara med räknare", async () => {
@@ -53,6 +58,8 @@ describe("/api/cron/awish", () => {
     const res = await GET(req(`Bearer ${SECRET}`));
     expect(res.status).toBe(200);
     expect(sync).toHaveBeenCalledTimes(1);
+    // Planerade kampanjer (redan bekräftade i appen) skickas efter synken.
+    expect(campaigns).toHaveBeenCalledTimes(1);
     expect(await res.json()).toEqual({
       ok: true,
       sources: [
@@ -67,6 +74,15 @@ describe("/api/cron/awish", () => {
           historyDone: true,
         },
       ],
+      campaigns: { shown: 2, failed: 0 },
     });
+  });
+
+  it("ett fel i kampanjerna stoppar inte synkens svar", async () => {
+    process.env.CRON_SECRET = SECRET;
+    campaigns.mockRejectedValueOnce(new Error("nere"));
+    const res = await GET(req(`Bearer ${SECRET}`));
+    expect(res.status).toBe(200);
+    expect((await res.json()).campaigns).toBeNull();
   });
 });

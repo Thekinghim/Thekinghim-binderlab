@@ -45,6 +45,8 @@ const RPCS = [
   // Datakällor: Awish gRPC-uppgifter till Vault (ägare, admin), returnerar aldrig hemligheten.
   "awish_save_credentials",
   "close_period",
+  // Signering på plats: engångslänk till avtalets PDF (ägare, admin).
+  "create_contract_signing_link",
   // Kom igång: första organisationen, med lås och medlemskapskontroll i databasen.
   "create_first_organization",
   "create_invitation",
@@ -57,12 +59,17 @@ const RPCS = [
   "list_members",
   "merge_titles",
   "portal_agreements",
+  // Butiksportalen: butikens avtal och avtalsfil (20261104233400_butik_avrakning.sql).
+  "portal_contract_file",
+  "portal_contracts",
   "portal_faults",
   "portal_machines",
   "portal_report",
   "portal_report_fault",
   "portal_reports",
   "portal_sales",
+  // Butiksportalen: butikens månadsavräkningar.
+  "portal_settlements",
   "portal_stores",
   // Att göra (fas 3): påfyllning med uttag från centrallagret (ägare, admin, påfyllare).
   "register_refill",
@@ -102,6 +109,12 @@ describe("tabeller", () => {
         "bookkeeping_packages",
         "bookkeeping_receipts",
         "bookkeeping_settings",
+        // Kampanjer och gratis-pack (20261104233100_kampanjer_gratis_pack.sql).
+        "campaign_machines",
+        "campaigns",
+        // Signering på plats (20261104233200_avtal_signering.sql).
+        "contract_signatures",
+        "contract_signing_links",
         "contracts",
         "data_sources",
         "deviation_reviews",
@@ -110,7 +123,11 @@ describe("tabeller", () => {
         "expansion_leads",
         "field_submissions",
         "fixed_costs",
+        "free_pack_batches",
+        "free_pack_codes",
         "goals",
+        // Plan för fler automater (20261104233300_tillvaxt_plan.sql).
+        "growth_plans",
         "import_rows",
         // Datakällor: mellanlagring av uppladdningar (tillfälliga rader).
         "import_upload_chunks",
@@ -152,6 +169,8 @@ describe("tabeller", () => {
         "stock_events",
         "stock_locations",
         "store_agreements",
+        // Månadsavräkning per butik (20261104233400_butik_avrakning.sql).
+        "store_settlements",
         "stores",
         "supplier_items",
         "supplier_price_quotes",
@@ -513,6 +532,7 @@ describe("anon", () => {
       awish_save_credentials: sql`gen_random_uuid(), gen_random_uuid(), 'x', 'y', 'z'`,
       close_period: sql`gen_random_uuid(), '2025-01-01'::date`,
       create_first_organization: sql`'x', 'x'`,
+      create_contract_signing_link: sql`gen_random_uuid(), gen_random_uuid(), 'x', 'x', null, 7`,
       create_invitation: sql`gen_random_uuid(), 'a@b.se', 'viewer'`,
       create_organization: sql`'x', 'x'`,
       create_store_invitation: sql`gen_random_uuid(), gen_random_uuid(), 'a@b.se'`,
@@ -521,12 +541,15 @@ describe("anon", () => {
       list_members: sql`gen_random_uuid()`,
       merge_titles: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid()`,
       portal_agreements: sql`gen_random_uuid()`,
+      portal_contract_file: sql`gen_random_uuid(), gen_random_uuid()`,
+      portal_contracts: sql`gen_random_uuid()`,
       portal_faults: sql`gen_random_uuid()`,
       portal_machines: sql`gen_random_uuid()`,
       portal_report: sql`gen_random_uuid(), gen_random_uuid()`,
       portal_report_fault: sql`gen_random_uuid(), gen_random_uuid(), 'store_other', 'x'`,
       portal_reports: sql`gen_random_uuid()`,
       portal_sales: sql`gen_random_uuid(), '2025-01-01'::date, '2025-01-31'::date`,
+      portal_settlements: sql`gen_random_uuid()`,
       portal_stores: sql``,
       register_refill: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
       register_refill_once: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,

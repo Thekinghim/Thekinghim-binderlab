@@ -70,6 +70,8 @@ const VIEWER_OWN_ROWS_ONLY = [
   "ai_runs",
   "ai_suggestions",
   "assistant_logs",
+  // Gratis-pack: koderna (värda ett pack var) syns bara för ägare och admin.
+  "free_pack_codes",
   "import_upload_chunks",
   "import_uploads",
   "push_subscriptions",
