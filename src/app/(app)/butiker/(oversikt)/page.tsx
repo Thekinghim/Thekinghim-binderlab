@@ -6,7 +6,10 @@ import { StateMessage } from "@/components/ui/state-message";
 import { formatInt, NBSP, SPACED_RANGE_DASH } from "@/lib/format";
 import type React from "react";
 
+import { requireRoute, requireViewer } from "@/server/data/core";
+
 import { StoreKpis } from "../_components/kpis";
+import { SettlementsView } from "../_components/settlements-view";
 import { StoreTable } from "../_components/store-table";
 import { loadStoreList } from "../_lib/data";
 import { dayText, plural, sek } from "../_lib/model";
@@ -25,6 +28,11 @@ export default async function ButikerPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
+  // Butiker → Butiksportal: avräkningar och inbjudningar (?vy=portal).
+  if (sp.vy === "portal") {
+    const ctx = await requireRoute("butiker");
+    return <SettlementsView viewer={await requireViewer()} today={ctx.today} />;
+  }
   const data = await loadStoreList(sp);
   const { ctx, rows, period, headline } = data;
   const active = rows.filter((r) => !r.archived);

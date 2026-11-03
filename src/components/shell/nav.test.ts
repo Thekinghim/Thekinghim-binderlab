@@ -38,9 +38,18 @@ describe("huvudflikar", () => {
   it("ägaren ser alla sex med alla underflikar", () => {
     expect(tree("owner")).toEqual({
       hem: ["Översikt", "Att göra"],
-      automater: ["Automater", "Drift", "Lager i automaterna", "Order", "Svinn", "Inkorg"],
+      automater: [
+        "Automater",
+        "Drift",
+        "Lager i automaterna",
+        "Order",
+        "Svinn",
+        "Inkorg",
+        "Kampanjer",
+        "Gratis-pack",
+      ],
       "vart-lager": ["Vårt lager", "Prognos & inköp", "Inköpspriser"],
-      butiker: ["Butiker", "Avtal", "Expansion"],
+      butiker: ["Butiker", "Avtal", "Expansion", "Butiksportal"],
       pengar: ["Lönsamhet", "Ekonomi", "Bokföring", "Rapporter"],
       mer: ["Inställningar", "Datakällor", "Assistent", "Marknad", "Effekt"],
     });

@@ -63,6 +63,10 @@ export const INLINE_FILE_ROUTES = [
   "/avtal/:id/fil",
   "/rapport/:id/fil/:typ",
   "/portal/rapporter/:id/pdf",
+  // Signering på plats: avtalet och den signerade PDF:en.
+  "/signera/:token/avtal",
+  "/signera/:token/signerad",
+  "/avtal/:id/signerad",
 ] as const;
 
 export function securityHeaderRules(options: SecurityHeaderOptions): HeaderRule[] {

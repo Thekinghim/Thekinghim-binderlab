@@ -16,7 +16,7 @@ import type { FixedCost } from "@/analytics/cashflow";
 import { profitability, type OrderLine, type ProfitabilityInput } from "@/domain";
 import type { Refund } from "@/domain/refunds";
 
-import { resultAfterProfit } from "./result";
+import { resultAfterProfit, type FreePackCost } from "./result";
 
 const OCT = { start: "2026-10-01", end: "2026-10-31" };
 
@@ -218,5 +218,69 @@ describe("resultAfterProfit", () => {
     });
     expect(r.resultOre).toBe(r.profitOre);
     expect(r.fixedSummary).toBeNull();
+  });
+
+  describe("gratis-pack", () => {
+    // 2 pack à 60 kr på m1 (3 okt.), 1 pack på m2 (4 okt.), 1 pack i november (utanför).
+    const PACKS: FreePackCost[] = [
+      { id: "g1", machineId: "m1", titleId: "t1", day: "2026-10-03", costOre: 12_000, packs: 2 },
+      { id: "g2", machineId: "m2", titleId: "t1", day: "2026-10-04", costOre: 6_000, packs: 1 },
+      { id: "g3", machineId: "m2", titleId: "t1", day: "2026-11-01", costOre: 6_000, packs: 1 },
+    ];
+
+    it("egen rad efter återbetalningarna, före fasta kostnader; vinsten ändras inte", () => {
+      const r = resultAfterProfit({
+        current: ORG,
+        organization: ORG,
+        refunds: REFUNDS,
+        fixedCosts: COSTS,
+        freePacks: PACKS,
+        scope: NO_SCOPE,
+      });
+      expect(r.profitOre).toBe(45_000);
+      expect(r.profitAfterRefundsOre).toBe(38_500);
+      expect(r.freePackOre).toBe(18_000);
+      expect(r.freePackCount).toBe(3);
+      expect(r.profitAfterGiveawaysOre).toBe(20_500);
+      expect(r.resultOre).toBe(20_500 - 39_000);
+      const sum = (k: "freePackOre" | "resultOre") => r.machines.reduce((n, m) => n + m[k], 0);
+      expect(sum("freePackOre")).toBe(r.freePackOre);
+      expect(sum("resultOre")).toBe(r.resultOre);
+      expect(r.machines.find((m) => m.key === "m1")!.freePackOre).toBe(12_000);
+    });
+
+    it("automatfilter och butiksfilter", () => {
+      const m2 = resultAfterProfit({
+        current: { ...ORG, orders: ORG.orders.filter((o) => o.machineId === "m2") },
+        organization: ORG,
+        refunds: [],
+        fixedCosts: [],
+        freePacks: PACKS,
+        scope: { storeId: null, machineId: "m2" },
+      });
+      expect([m2.freePackOre, m2.freePackCount]).toEqual([6_000, 1]);
+      const s1 = resultAfterProfit({
+        current: { ...ORG, orders: ORG.orders.filter((o) => o.machineId === "m1") },
+        organization: ORG,
+        refunds: [],
+        fixedCosts: [],
+        freePacks: PACKS,
+        scope: { storeId: "s1", machineId: null },
+      });
+      expect([s1.freePackOre, s1.freePackCount]).toEqual([12_000, 2]);
+      expect(s1.resultOre).toBe(s1.profitOre - 12_000);
+    });
+
+    it("utan gratis-pack är raden 0", () => {
+      const r = resultAfterProfit({
+        current: ORG,
+        organization: ORG,
+        refunds: [],
+        fixedCosts: [],
+        scope: NO_SCOPE,
+      });
+      expect([r.freePackOre, r.freePackCount]).toEqual([0, 0]);
+      expect(r.profitAfterGiveawaysOre).toBe(r.profitOre);
+    });
   });
 });

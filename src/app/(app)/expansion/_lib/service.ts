@@ -24,6 +24,7 @@ import type {
   BaselineInput,
   EffectSettingsInput,
   GoalInput,
+  GrowthPlanInput,
   InvestmentInput,
   LeadInput,
   MeasurementInput,
@@ -528,3 +529,57 @@ export function saveEffectSettingsFor(viewer: Viewer, input: EffectSettingsInput
 }
 
 export { AuthorizationError };
+
+// ---------------------------------------------------------------------------
+// Plan för fler automater
+// ---------------------------------------------------------------------------
+
+export interface GrowthPlanRecord {
+  readonly targetMachines: number;
+  readonly machinePriceOre: number | null;
+  readonly startStockOre: number | null;
+  readonly machinesPerMonth: number | null;
+  readonly refillMinutesPerMachineWeek: number | null;
+  readonly people: number;
+  readonly hoursPerPersonWeek: number;
+  /** Sparad av någon (annars standardvalen). */
+  readonly saved: boolean;
+}
+
+export const GROWTH_PLAN_EMPTY: GrowthPlanRecord = {
+  targetMachines: 20,
+  machinePriceOre: null,
+  startStockOre: null,
+  machinesPerMonth: null,
+  refillMinutesPerMachineWeek: null,
+  people: 2,
+  hoursPerPersonWeek: 10,
+  saved: false,
+};
+
+export function loadGrowthPlanFor(viewer: Viewer): Promise<GrowthPlanRecord> {
+  return read(viewer, async (tx, orgId) => {
+    const [row] = await tx
+      .select({
+        targetMachines: s.growthPlans.targetMachines,
+        machinePriceOre: s.growthPlans.machinePriceOre,
+        startStockOre: s.growthPlans.startStockOre,
+        machinesPerMonth: s.growthPlans.machinesPerMonth,
+        refillMinutesPerMachineWeek: s.growthPlans.refillMinutesPerMachineWeek,
+        people: s.growthPlans.people,
+        hoursPerPersonWeek: s.growthPlans.hoursPerPersonWeek,
+      })
+      .from(s.growthPlans)
+      .where(eq(s.growthPlans.organizationId, orgId));
+    return row ? { ...row, saved: true } : GROWTH_PLAN_EMPTY;
+  });
+}
+
+export function saveGrowthPlanFor(viewer: Viewer, input: GrowthPlanInput): Promise<void> {
+  return write(viewer, async (tx, orgId) => {
+    await tx
+      .insert(s.growthPlans)
+      .values({ organizationId: orgId, ...input })
+      .onConflictDoUpdate({ target: s.growthPlans.organizationId, set: { ...input } });
+  });
+}

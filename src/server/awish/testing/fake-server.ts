@@ -27,6 +27,26 @@ export interface FakeProduct {
   capacity: number;
 }
 
+/** En kampanjbild i låtsas-Awish (Banners). */
+export interface FakeBanner {
+  id: string;
+  title: string;
+  cover_image: string;
+  expired_at: number | null;
+  is_visible: boolean;
+  views_count: number;
+  hit_count: number;
+}
+
+/** En hämtkod i låtsas-Awish (PickupCodes). */
+export interface FakePickupCode {
+  id: string;
+  product_id: string;
+  code: string;
+  expired_at: number | null;
+  status: boolean;
+}
+
 export interface FakeAwishState {
   appId: string;
   appSecret: string;
@@ -49,6 +69,14 @@ export interface FakeAwishState {
   paging: "full" | "none" | "has_more";
   /** Väntan (ms) innan varje svar. */
   delayMs: number;
+  /** Kampanjbilder per Awish-automat. */
+  banners: Record<string, FakeBanner[]>;
+  /** Hämtkoder per Awish-automat. */
+  pickupCodes: Record<string, FakePickupCode[]>;
+  /** SuccessResponse.code för nästa skrivande anrop (t.ex. 500 = Awish säger nej). */
+  writeCode: number;
+  /** Skapade koder syns inte i PickupCodes (för att prova att koderna inte går att läsa). */
+  hideNewCodes: boolean;
   /** Alla anrop: metod och begäran. */
   calls: Array<{ method: string; request: Record<string, unknown>; token: string | null }>;
 }
@@ -107,8 +135,29 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
     failNext: 0,
     paging: "full",
     delayMs: 0,
+    banners: {},
+    pickupCodes: {},
+    writeCode: 0,
+    hideNewCodes: false,
     calls: [],
     ...initial,
+  };
+  let nextId = 900;
+  const newId = () => String((nextId += 1));
+  const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const newCode = (n: number): string => {
+    let x = n * 7919 + 104729;
+    let out = "";
+    for (let i = 0; i < 8; i++) {
+      out += CODE_CHARS[x % CODE_CHARS.length];
+      x = Math.floor(x / CODE_CHARS.length) + i * 31 + 17;
+    }
+    return out;
+  };
+  const writeReply = (callback: Callback) => {
+    const code = state.writeCode;
+    state.writeCode = 0;
+    callback(null, { code: String(code), message: code === 0 ? "success" : "fake error" });
   };
 
   const guard = (method: string, call: Call, callback: Callback): boolean => {
@@ -235,6 +284,99 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
         request_id: "fake",
       });
     },
+    Banners(call: Call, callback: Callback): void {
+      if (!guard("Banners", call, callback)) return;
+      const list = state.banners[String(call.request.machine_id ?? "")] ?? [];
+      callback(null, {
+        data: list.map((b) => ({
+          id: b.id,
+          is_visible: b.is_visible,
+          ...(b.expired_at === null ? {} : { expired_at: String(b.expired_at) }),
+          cover_image: b.cover_image,
+          sort_id: "0",
+          hit_count: String(b.hit_count),
+          views_count: String(b.views_count),
+          title: b.title,
+          view_type: "0",
+          media_type: 1,
+        })),
+        request_id: "fake",
+      });
+    },
+    CreateBanner(call: Call, callback: Callback): void {
+      if (!guard("CreateBanner", call, callback)) return;
+      if (state.writeCode !== 0) return writeReply(callback);
+      const machineId = String(call.request.machine_id ?? "");
+      const list = (state.banners[machineId] ??= []);
+      list.push({
+        id: newId(),
+        title: String(call.request.title ?? ""),
+        cover_image: String(call.request.cover_image ?? ""),
+        expired_at: call.request.expired_at == null ? null : Number(call.request.expired_at),
+        is_visible: true,
+        views_count: 0,
+        hit_count: 0,
+      });
+      writeReply(callback);
+    },
+    UpdateBanner(call: Call, callback: Callback): void {
+      if (!guard("UpdateBanner", call, callback)) return;
+      if (state.writeCode !== 0) return writeReply(callback);
+      const machineId = String(call.request.machine_id ?? "");
+      const banner = (state.banners[machineId] ?? []).find((b) => b.id === String(call.request.id));
+      if (!banner) {
+        callback({ code: grpc.status.NOT_FOUND, details: "banner not found" });
+        return;
+      }
+      if (call.request.title != null) banner.title = String(call.request.title);
+      if (call.request.cover_image != null) banner.cover_image = String(call.request.cover_image);
+      if (call.request.expired_at != null) banner.expired_at = Number(call.request.expired_at);
+      writeReply(callback);
+    },
+    PickupCodes(call: Call, callback: Callback): void {
+      if (!guard("PickupCodes", call, callback)) return;
+      const machineId = String(call.request.machine_id ?? "");
+      const list = state.pickupCodes[machineId] ?? [];
+      callback(null, {
+        data: list.map((c) => ({
+          id: c.id,
+          machine_id: machineId,
+          ...(c.expired_at === null ? {} : { expired_at_millis: String(c.expired_at * 1000) }),
+          product_id: c.product_id,
+          code: c.code,
+          quantity: "1",
+          status: c.status,
+        })),
+        request_id: "fake",
+      });
+    },
+    CreatePickupCode(call: Call, callback: Callback): void {
+      if (!guard("CreatePickupCode", call, callback)) return;
+      if (state.writeCode !== 0) return writeReply(callback);
+      const machineId = String(call.request.machine_id ?? "");
+      const productId = String(call.request.product_id ?? "");
+      const slots = state.products[machineId] ?? [];
+      // Facket (Products.id) är plats + 1 i listan, som Products-svaret ovan.
+      if (!slots[Number(productId) - 1]) {
+        callback({ code: grpc.status.NOT_FOUND, details: "product not found" });
+        return;
+      }
+      const quantity = Math.max(1, Number(call.request.quantity ?? 1) || 1);
+      if (!state.hideNewCodes) {
+        const list = (state.pickupCodes[machineId] ??= []);
+        for (let i = 0; i < quantity; i++) {
+          const id = newId();
+          list.push({
+            id,
+            product_id: productId,
+            code: newCode(Number(id)),
+            expired_at: call.request.expired_at == null ? null : Number(call.request.expired_at),
+            status: true,
+          });
+        }
+      }
+      writeReply(callback);
+    },
   };
   server.addService(Ctor.service, {
     Merchant: delayed(handlers.Merchant),
@@ -242,6 +384,11 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
     Orders: delayed(handlers.Orders),
     Order: delayed(handlers.Order),
     Products: delayed(handlers.Products),
+    Banners: delayed(handlers.Banners),
+    CreateBanner: delayed(handlers.CreateBanner),
+    UpdateBanner: delayed(handlers.UpdateBanner),
+    PickupCodes: delayed(handlers.PickupCodes),
+    CreatePickupCode: delayed(handlers.CreatePickupCode),
   });
   const port = await new Promise<number>((resolve, reject) =>
     server.bindAsync("127.0.0.1:0", grpc.ServerCredentials.createInsecure(), (error, p) =>

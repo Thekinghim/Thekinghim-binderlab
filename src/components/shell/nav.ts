@@ -31,6 +31,7 @@ export type RouteId =
   | "lager"
   | "vart-lager"
   | "automater"
+  | "kampanjer"
   | "butiker"
   | "inkopspriser"
   | "rapporter"
@@ -160,6 +161,19 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     mobileRank: 5,
     phase: 5,
     lead: "Status, försäljning och påfyllning.",
+  },
+  {
+    id: "kampanjer",
+    group: "hidden",
+    href: "/kampanjer",
+    label: "Kampanjer",
+    icon: "sales",
+    section: "main",
+    roles: READERS,
+    phase: 12,
+    lead: "Kampanjer på skärmen och gratis-pack.",
+    context: false,
+    vmb: false,
   },
   {
     id: "butiker",
@@ -454,6 +468,8 @@ export const navSections: ReadonlyArray<NavSection> = [
       tab("order", "Order"),
       tab("automater", "Svinn", "svinn"),
       tab("inkorg", "Inkorg"),
+      tab("kampanjer", "Kampanjer"),
+      tab("kampanjer", "Gratis-pack", "gratis-pack"),
     ],
   },
   {
@@ -470,7 +486,12 @@ export const navSections: ReadonlyArray<NavSection> = [
     id: "butiker",
     label: "Butiker",
     icon: "columns",
-    tabs: [tab("butiker", "Butiker"), tab("avtal", "Avtal"), tab("expansion", "Expansion")],
+    tabs: [
+      tab("butiker", "Butiker"),
+      tab("avtal", "Avtal"),
+      tab("expansion", "Expansion"),
+      tab("butiker", "Butiksportal", "portal"),
+    ],
   },
   {
     id: "pengar",

@@ -102,3 +102,9 @@ export const BASELINE_METRIC_LABEL = {
   refill_hours_month: "Tid för påfyllning per månad",
   admin_hours_month: "Tid för administration per månad",
 } as const;
+
+/** Minuter → "~3 h" (eller "40 min" under en timme). */
+export function hoursText(minutes: number): string {
+  if (minutes < 60) return `${formatInt(minutes)}${NBSP}min`;
+  return `~${formatInt(Math.round(minutes / 60))}${NBSP}h`;
+}

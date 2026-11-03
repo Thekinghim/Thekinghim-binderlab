@@ -17,6 +17,7 @@ import {
   CONTRACT_STATUS_LABEL,
   contractStatus,
   loadContractSetupFor,
+  loadContractSignaturesFor,
   loadContractStatusesFor,
   type ContractStatus as TemplateStatus,
 } from "@/server/contracts";
@@ -30,6 +31,7 @@ import { ContractDialog } from "./_components/contract-dialog";
 import { ContractFileUpload } from "./_components/contract-file";
 import { ContractNextStep } from "./_components/contract-status";
 import { CreateContract } from "./_components/create-contract";
+import { SignOnSite } from "./_components/sign-on-site";
 import type { AgreementOption, ContractDraft } from "./_lib/types";
 
 export const metadata: Metadata = { title: "Avtal" };
@@ -125,10 +127,11 @@ export default async function AvtalPage({
   const scoped = Boolean(sp.butik || sp.automat);
   const viewer = await currentViewer();
   const canEdit = ctx.canEdit;
-  const [data, statuses, setup] = await Promise.all([
+  const [data, statuses, setup, signatures] = await Promise.all([
     loadContractsFor(viewer, ctx.today),
     loadContractStatusesFor(viewer),
     canEdit ? loadContractSetupFor(viewer) : null,
+    loadContractSignaturesFor(viewer),
   ]);
   // ?skapa=store:{id} | lead:{id} (ett bart id räknas som butik).
   const skapaRaw = typeof sp.skapa === "string" ? sp.skapa : undefined;
@@ -380,6 +383,12 @@ export default async function AvtalPage({
                         {st ? <StatusTag status={st.status}>{st.label}</StatusTag> : null}
                       </div>
                     ) : null}
+                    {signatures.get(c.id) ? (
+                      <p className="meta pt-1 text-subtle">
+                        Signerat av {signatures.get(c.id)!.signerName}{" "}
+                        {formatDate(signatures.get(c.id)!.signedAt)}
+                      </p>
+                    ) : null}
                   </div>
                   <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm lg:col-span-6">
                     <div className="flex flex-col gap-0.5">
@@ -453,6 +462,24 @@ export default async function AvtalPage({
                     ) : (
                       <span className="meta text-subtle">Ingen fil</span>
                     )}
+                    {signatures.get(c.id) ? (
+                      <Link
+                        href={`/avtal/${c.id}/signerad`}
+                        prefetch={false}
+                        className="inline-flex h-7 items-center rounded-xs px-2.5 text-sm text-fg underline-offset-4 hover:underline"
+                      >
+                        Signerat avtal (PDF)
+                      </Link>
+                    ) : null}
+                    {canEdit &&
+                    !statuses.get(c.id)?.signedAt &&
+                    !c.terminatedOn &&
+                    (tpl || c.fileContentType === "application/pdf") ? (
+                      <SignOnSite
+                        contractId={c.id}
+                        storeName={storeName.get(c.storeId) ?? "butiken"}
+                      />
+                    ) : null}
                     {canEdit ? (
                       <>
                         {tpl && tpl !== "signed" ? (

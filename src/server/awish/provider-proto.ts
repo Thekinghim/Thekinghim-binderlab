@@ -4,8 +4,9 @@
  * (Vercel paketerar inte lösa filer). Ändrad bara så här: kommentarerna och
  * `option (google.api.http)` (REST-mappningen) är borttagna, och därmed importen av
  * google/api/annotations.proto. Fältnummer, typer och tjänsten är oförändrade.
- * Binderlab anropar bara Merchant, Machines, Orders och Order (läsning); aldrig
- * CreateBanner, UpdateBanner eller CreatePickupCode.
+ * Binderlab läser Merchant, Machines, Orders, Order, Products, Banners och PickupCodes.
+ * CreateBanner, UpdateBanner och CreatePickupCode anropas bara efter en bekräftelse i
+ * appen (Kampanjer och Gratis-pack, grpc-client.ts AwishMarketingApi).
  */
 
 export const AWISH_PROVIDER_PROTO = `syntax = "proto3";

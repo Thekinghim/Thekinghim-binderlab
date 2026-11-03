@@ -17,6 +17,7 @@ export type PortalNavItem = { href: string; label: string };
 
 export const PORTAL_NAV: readonly PortalNavItem[] = [
   { href: "/portal", label: "Översikt" },
+  { href: "/portal/pengar", label: "Avräkning" },
   { href: "/portal/rapporter", label: "Rapporter" },
   { href: "/portal/felanmalan", label: "Felanmälan" },
 ];

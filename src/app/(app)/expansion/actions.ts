@@ -11,6 +11,7 @@ import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/
 import { failure, type ActionResult } from "./_lib/action-result";
 import {
   goalSchema,
+  growthPlanSchema,
   idSchema,
   leadArchiveSchema,
   leadSchema,
@@ -21,6 +22,7 @@ import {
   deleteGoalFor,
   deleteLeadFor,
   saveGoalFor,
+  saveGrowthPlanFor,
   saveLeadFor,
   saveStoreProfileFor,
   setLeadArchivedFor,
@@ -103,6 +105,18 @@ export async function deleteGoal(raw: unknown): Promise<ActionResult> {
   try {
     const viewer = await operator();
     await deleteGoalFor(viewer, idSchema.parse(raw).id);
+    revalidateAppData();
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return failure(error, "expansion");
+  }
+}
+
+/** Planen för fler automater: målet och förvalen (tomt fält = standard). */
+export async function saveGrowthPlan(raw: unknown): Promise<ActionResult> {
+  try {
+    const viewer = await operator();
+    await saveGrowthPlanFor(viewer, growthPlanSchema.parse(raw));
     revalidateAppData();
     return { ok: true, data: undefined };
   } catch (error) {

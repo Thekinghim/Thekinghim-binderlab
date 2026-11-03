@@ -10,10 +10,12 @@ import { formatInt } from "@/lib/format";
 import { DataStartNote } from "./_components/evidence";
 import { PriceChangeView, SiteEstimateView } from "./_components/estimate-view";
 import { GoalsView } from "./_components/goals-view";
+import { PlanView } from "./_components/plan-view";
 import { PipelineView, StoreProfilesView } from "./_components/pipeline-view";
 import { NewMachineForm, PriceChangeForm } from "./_components/scenario-forms";
 import { LEAD_PREFIX, loadExpansionPage, type Names } from "./_lib/data";
-import { kr, monthLabel, oreToInput, paybackShort } from "./_lib/display";
+import { hoursText, kr, monthLabel, oreToInput, paybackShort } from "./_lib/display";
+import { loadGrowthPlanPage } from "./_lib/plan-data";
 import { evidenceLinks, LEAD_STAGE_LABEL, monthOfDate, OPEN_STAGES } from "./_lib/model";
 import { withOrderCounts } from "./_lib/slim";
 import { pickView, ViewTabs } from "../rapporter/_components/view-tabs";
@@ -47,7 +49,7 @@ export default async function ExpansionPage({
   searchParams: Promise<SearchParamsInput>;
 }) {
   const sp = await searchParams;
-  const data = await loadExpansionPage(sp);
+  const [data, growth] = await Promise.all([loadExpansionPage(sp), loadGrowthPlanPage()]);
   const names = lookups(data.names);
   const { estimate } = data.newMachine;
   const top = data.pipeline.find((p) => p.estimate.status === "ok" && p.estimate.investmentOre > 0);
@@ -99,7 +101,7 @@ export default async function ExpansionPage({
   const errs = (list: { field: string; message: string }[]) =>
     Object.fromEntries(list.map((e) => [e.field, e.message]));
   const goalsBehind = data.goals.progress.filter((g) => g.status === "behind").length;
-  const VIEWS = ["pipeline", "scenarier", "mal"] as const;
+  const VIEWS = ["plan", "pipeline", "scenarier", "mal"] as const;
   const entries: [string, string][] =
     sp instanceof URLSearchParams
       ? [...sp.entries()]
@@ -111,11 +113,34 @@ export default async function ExpansionPage({
   const hrefFor = (v: (typeof VIEWS)[number]) => {
     const q = new URLSearchParams();
     for (const [k, x] of entries) if (x && k !== "vy") q.set(k, x);
-    if (v !== "pipeline") q.set("vy", v);
+    if (v !== "plan") q.set("vy", v);
     const qs = q.toString();
     return qs ? `/expansion?${qs}` : "/expansion";
   };
   const rise = (i: number) => ({ "--i": i }) as React.CSSProperties;
+
+  // Planvyn: målet och när det nås är rubriken (en stor siffra, ett faktum).
+  const g = growth.plan;
+  if (view === "plan") {
+    title =
+      g.toAdd === 0
+        ? `Målet är nått: ${formatInt(g.machinesNow)} automater.`
+        : g.targetMonth
+          ? `${formatInt(g.target)} automater ${monthLabel(g.targetMonth)}.`
+          : `Plan för ${formatInt(g.target)} automater.`;
+    aside =
+      g.toAdd === 0
+        ? "Höj målet."
+        : `Ni har ${formatInt(g.machinesNow)}. ${formatInt(g.perMonth)} ${g.perMonth === 1 ? "ny" : "nya"} i månaden. Vid ${formatInt(g.atTarget.machines)}: ${hoursText(g.atTarget.minutesPerPersonWeek)}/vecka var.`;
+  }
+  const planLeads = data.leads
+    .filter((l) => !l.archived && OPEN_STAGES.includes(l.stage) && l.storeId === null)
+    .map((l) => ({
+      id: l.id,
+      name: l.name,
+      stageLabel: LEAD_STAGE_LABEL[l.stage],
+      ready: l.stage === "agreement" || l.stage === "meeting",
+    }));
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
@@ -126,7 +151,17 @@ export default async function ExpansionPage({
           eyebrow="Expansion"
           title={title}
           aside={aside}
-          meta={[{ label: "Underlag", value: periodLabel }]}
+          meta={[
+            {
+              label: "Underlag",
+              value:
+                view === "plan"
+                  ? growth.basisPeriod
+                    ? periodText(growth.basisPeriod)
+                    : "Ingen data"
+                  : periodLabel,
+            },
+          ]}
           actions={
             <Link
               href={`/expansion/saljunderlag?from=${data.period.period.start}&to=${data.period.period.end}`}
@@ -136,18 +171,34 @@ export default async function ExpansionPage({
             </Link>
           }
         />
-        <DataStartNote clippedFrom={data.period.clippedFrom} requested={data.period.requested} />
+        {view === "plan" ? null : (
+          <DataStartNote clippedFrom={data.period.clippedFrom} requested={data.period.requested} />
+        )}
         <ViewTabs
           label="Vy"
           value={view}
           hrefFor={hrefFor}
           tabs={[
+            { value: "plan", label: "Plan" },
             { value: "pipeline", label: "Pipeline", count: openLeads },
             { value: "scenarier", label: "Scenarier" },
             { value: "mal", label: "Mål", count: data.goals.progress.length },
           ]}
         />
       </div>
+
+      {view === "plan" ? (
+        <section aria-label="Plan" className="flex flex-col gap-6">
+          <PlanView
+            plan={g}
+            saved={growth.saved}
+            canEdit={growth.canEdit}
+            leads={planLeads}
+            openLeads={openLeads}
+            pipelineHref={hrefFor("pipeline")}
+          />
+        </section>
+      ) : null}
 
       {view === "scenarier" ? (
         <>

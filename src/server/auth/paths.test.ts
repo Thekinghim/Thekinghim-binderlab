@@ -6,6 +6,8 @@ describe("öppna sökvägar", () => {
   it.each([
     "/logga-in",
     "/inbjudan/abc123",
+    "/signera/abc123",
+    "/signera/abc123/avtal",
     "/rapport/2026-10/butik",
     "/_next/static/chunk.js",
     "/favicon.ico",
@@ -23,6 +25,9 @@ describe("öppna sökvägar", () => {
     "/lonsamhet",
     "/installningar",
     "/inbjudan",
+    "/signera",
+    "/signerad/x",
+    "/avtal/x/signerad",
     "/rapport",
     "/rapporter",
     "/design",

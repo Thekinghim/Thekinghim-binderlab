@@ -110,6 +110,16 @@ export interface ReportDraftRef {
   readonly generatedAt: string;
 }
 
+/** En månadsavräkning till en butik som inte är markerad som betald (store_settlements). */
+export interface SettlementRef {
+  readonly id: string;
+  readonly storeId: string;
+  /** Månadens första dag. */
+  readonly month: IsoDate;
+  /** Att betala ut, öre. Högst 0 = inget att betala (ingen punkt). */
+  readonly amountOre: number;
+}
+
 /** Allvar för ett larm (enum alert_severity). */
 export type AlertSeverityRef = "info" | "warning" | "critical";
 
@@ -189,7 +199,8 @@ export type TodoKind =
   | "report-due"
   | "report-review"
   | "contract"
-  | "alert";
+  | "alert"
+  | "settlement";
 
 /** Brådskenivå: 'now' (gör i dag), 'soon' (de närmaste dagarna), 'later' (när tid finns). */
 export type TodoLevel = "now" | "soon" | "later";
@@ -265,6 +276,8 @@ export interface TodoInput extends EconomicsSources {
   readonly reportDrafts?: readonly ReportDraftRef[];
   /** Butiksavtal (inte arkiverade), för påminnelsen före sista uppsägningsdag. */
   readonly contracts?: readonly Contract[];
+  /** Obetalda månadsavräkningar till butikerna. Saknas = inga. */
+  readonly unpaidSettlements?: readonly SettlementRef[];
   /** Öppna larm. Bara okvitterade larm om automater och importer blir punkter. */
   readonly alerts?: readonly AlertRef[];
   /**

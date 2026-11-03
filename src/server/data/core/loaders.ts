@@ -73,6 +73,8 @@ import {
   queryStock,
   queryTodoDismissals,
 } from "./queries";
+import { queryUnpaidSettlements } from "@/server/settlements/queries";
+
 import { effectivePlacements } from "./placements";
 import {
   ALL_ROLES,
@@ -673,14 +675,17 @@ export async function loadTodoStateFor(viewer: Viewer, now: Date = new Date()): 
     let input: TodoInput;
     if (baseP) {
       const reportSince = addDays(today, -TODO_REPORT_LOOKBACK_DAYS);
-      const [orders, recipients, deliveries, drafts, contracts, alerts] = await Promise.all([
-        queryOrders(tx, orgId, range, NO_SCOPE),
-        queryReportRecipients(tx, orgId),
-        queryReportDeliveries(tx, orgId, reportSince),
-        queryReportDrafts(tx, orgId, reportSince),
-        queryActiveContracts(tx, orgId),
-        queryOpenAlerts(tx, orgId),
-      ]);
+      const [orders, recipients, deliveries, drafts, contracts, alerts, unpaidSettlements] =
+        await Promise.all([
+          queryOrders(tx, orgId, range, NO_SCOPE),
+          queryReportRecipients(tx, orgId),
+          queryReportDeliveries(tx, orgId, reportSince),
+          queryReportDrafts(tx, orgId, reportSince),
+          queryActiveContracts(tx, orgId),
+          queryOpenAlerts(tx, orgId),
+          // Månadsavräkningar som inte är betalda (Butiker → Butiksportal).
+          queryUnpaidSettlements(tx, orgId),
+        ]);
       const { prices, agreements, settings } = await baseP;
       input = {
         orders: orders.orders,
@@ -695,6 +700,7 @@ export async function loadTodoStateFor(viewer: Viewer, now: Date = new Date()): 
         reportRecipients: recipients,
         reportDeliveries: deliveries,
         reportDrafts: drafts,
+        unpaidSettlements,
         contracts,
         alerts,
         salesDataUntil,

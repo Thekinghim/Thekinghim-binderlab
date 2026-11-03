@@ -16,6 +16,7 @@ import { refillTodos } from "./refill";
 import { reportReviewTodos } from "./report-review";
 import { reportTodos } from "./reports";
 import { silentTitleTodos } from "./silent-title";
+import { settlementTodos } from "./settlements";
 import { staleMachineTodos } from "./stale-machine";
 import type { TodoInput, TodoItem } from "./types";
 
@@ -39,6 +40,7 @@ export function computeTodos(input: TodoInput, now: Date | string | number): Tod
     ...alertTodos(ctx, staleMachines),
     ...reportReviewTodos(ctx),
     ...reportTodos(ctx),
+    ...settlementTodos(ctx),
     ...contractTodos(ctx),
     ...missingPriceTodos(ctx),
     ...duplicateTitleTodos(ctx),
@@ -75,6 +77,7 @@ export { contractLink, CONTRACT_NOW_DAYS, CONTRACT_SOON_DAYS } from "./contracts
 export { LOST_REVENUE_FIGURE, prioritizeByLostSales } from "./lost-sales";
 export { reportDeadline } from "./reports";
 export { reviewLink } from "./report-review";
+export { settlementDue, settlementLink, SETTLEMENT_DUE_DAY } from "./settlements";
 export { todoInScope, type ScopeMachine, type TodoScope } from "./scope";
 export { missingPriceFingerprint } from "./missing-price";
 export { refillFingerprint, withSlotAlerts } from "./refill";

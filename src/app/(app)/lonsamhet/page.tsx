@@ -137,6 +137,7 @@ export default async function LonsamhetPage({
     organization: organization.current,
     refunds: adjustments.refunds,
     fixedCosts: adjustments.fixedCosts,
+    freePacks: adjustments.freePacks,
     scope: p.scope,
     machines: input.machines.map((m) => ({ id: m.id, name: m.code || m.name })),
   });

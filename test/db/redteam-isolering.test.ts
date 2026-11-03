@@ -352,7 +352,9 @@ describe("STOD EMOT: storage_path måste börja med den egna organisationens id"
       sql`update ${rel(table)} set storage_path = ${`${B.orgId}/reports/2025-03.pdf`}
           where id = ${row!.id as string}`,
     );
-    expect(outcome.code).toBe("23514");
+    // 23514: kontrollen av sökvägen. BL076: ett digitalt signerat avtal byter inte fil
+    // (20261104233500_tillvaxt_granskning.sql), som stoppar ändringen ännu tidigare.
+    expect(["23514", "BL076"]).toContain(outcome.code);
   });
 });
 

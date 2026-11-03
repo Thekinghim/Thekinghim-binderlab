@@ -781,3 +781,5 @@ export * from "./schema/bokforing";
 
 // Managerpaket 5: morgonbriefen på Hem.
 export * from "./schema/brief";
+// Tillväxt: kampanjer på automaternas skärm och gratis-pack-koder.
+export * from "./schema/tillvaxt";

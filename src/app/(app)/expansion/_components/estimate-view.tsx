@@ -76,7 +76,7 @@ export function SiteEstimateView({
           action={
             onlyShort
               ? undefined
-              : { label: "Fyll i platsprofiler", href: "/expansion#platsprofiler" }
+              : { label: "Fyll i platsprofiler", href: "/expansion?vy=pipeline#platsprofiler" }
           }
         />
         {estimate.excluded.length > 0 ? <Excluded estimate={estimate} /> : null}
