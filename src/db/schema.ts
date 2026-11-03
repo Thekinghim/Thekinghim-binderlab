@@ -750,3 +750,6 @@ export * from "./schema/att-gora";
 
 // Awish Chrome-tillägget (borttaget): synk-tokens, tabellen ligger kvar oanvänd.
 export * from "./schema/tillagg";
+
+// Bokföring: kontoplanen, månader markerade som skickade och kvitton.
+export * from "./schema/bokforing";

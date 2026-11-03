@@ -117,13 +117,15 @@ describe("exporter och filer", () => {
     expect(lines.length).toBeLessThanOrEqual(1);
   });
 
-  it("GET /ekonomi/sie: påfyllaren, butiken, en icke-medlem och en utloggad nekas", async () => {
-    const { GET } = await import("@/app/(app)/ekonomi/sie/route");
+  it("GET /ekonomi/bokforing/paket: påfyllaren, butiken, en icke-medlem och en utloggad nekas", async () => {
+    const { GET } = await import("@/app/(app)/ekonomi/bokforing/paket/route");
     for (const p of NOT_ECONOMY) {
       await loginAs(req, cast.personas[p]);
-      const r = await respond(() => GET(new NextRequest(`${BASE}/ekonomi/sie?manad=2025-03`)));
+      const r = await respond(() =>
+        GET(new NextRequest(`${BASE}/ekonomi/bokforing/paket?manad=2025-03`)),
+      );
       expect([401, 403, 307], p).toContain(r.status);
-      expect(r.body, p).not.toContain("#VER");
+      expect(r.body, p).not.toContain("PK");
     }
   });
 

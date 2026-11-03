@@ -43,6 +43,8 @@ export interface PdfRenderer {
    * Server Components).
    */
   extract<T>(request: PdfRequest, globalName: string): Promise<T>;
+  /** Skriver ut fristående HTML (utan nätverk, t.ex. bokföringens sammanfattning) som A4-PDF. */
+  renderHtml(html: string): Promise<Uint8Array>;
 }
 
 export class PdfError extends Error {
@@ -197,6 +199,25 @@ async function extractJson<T>(launch: Launch, request: PdfRequest, globalName: s
   });
 }
 
+async function printHtml(launch: Launch, html: string): Promise<Uint8Array> {
+  const browser = await launch();
+  try {
+    const page = await browser.newPage();
+    page.setDefaultTimeout(60_000);
+    // Sammanfattningen behöver inget skript; organisationens och butikernas namn är data.
+    await page.setJavaScriptEnabled(false);
+    // Ingen extern resurs: allt finns i dokumentet.
+    await page.setRequestInterception(true);
+    page.on("request", (r) => (r.url().startsWith("data:") ? r.continue() : r.abort()));
+    await page.setContent(html, { waitUntil: "load" });
+    await page.emulateMediaType("print");
+    const pdf = await page.pdf({ format: "A4", printBackground: true, preferCSSPageSize: true });
+    return new Uint8Array(pdf);
+  } finally {
+    await browser.close();
+  }
+}
+
 /** Lokal Chromium (utveckling och tester). */
 export class LocalPdfRenderer implements PdfRenderer {
   readonly kind = "local" as const;
@@ -223,6 +244,10 @@ export class LocalPdfRenderer implements PdfRenderer {
   extract<T>(request: PdfRequest, globalName: string): Promise<T> {
     return extractJson<T>(this.launch, request, globalName);
   }
+
+  renderHtml(html: string): Promise<Uint8Array> {
+    return printHtml(this.launch, html);
+  }
 }
 
 /** @sparticuz/chromium (Vercel och andra serverlösa miljöer). */
@@ -247,6 +272,10 @@ export class SparticuzPdfRenderer implements PdfRenderer {
 
   extract<T>(request: PdfRequest, globalName: string): Promise<T> {
     return extractJson<T>(this.launch, request, globalName);
+  }
+
+  renderHtml(html: string): Promise<Uint8Array> {
+    return printHtml(this.launch, html);
   }
 }
 

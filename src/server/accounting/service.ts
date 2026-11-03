@@ -63,6 +63,7 @@ import {
   buildAccountantReport,
   monthText as reportMonthText,
   dateText,
+  type AccountantReport,
   type AccountantTotals,
   type LedgerAccount,
   type Sie4Verification,
@@ -1597,3 +1598,80 @@ export async function readContractFileFor(
 }
 
 export { ImportError };
+
+// ---------------------------------------------------------------------------
+// Månadsrapporter för Bokföring (src/server/bokforing)
+// ---------------------------------------------------------------------------
+
+/** En månads bokföringsrapport och mottagna inköp, för månadspaketet. */
+export interface MonthReport {
+  readonly month: string;
+  readonly report: AccountantReport;
+  /** Mottagna inköp (mottaget antal × pris) med mottagningsdag i månaden. */
+  readonly receivedPurchasesOre: number;
+  /** Återbetalningar till kunder med återbetalningsdag i månaden. */
+  readonly refundsOre: number;
+}
+
+/**
+ * Bokföringsrapporten per månad ('ÅÅÅÅ-MM') i användarens transaktion `tx` (RLS), från samma
+ * beräkning som resten av Ekonomi. Organisationen ges uttryckligen; inget läses utanför den.
+ */
+export async function monthReportsIn(
+  tx: Tx,
+  orgId: string,
+  months: readonly string[],
+): Promise<Map<string, MonthReport>> {
+  const out = new Map<string, MonthReport>();
+  if (months.length === 0) return out;
+  const sorted = [...months].sort();
+  const range = { start: monthPeriod(sorted[0]!).start, end: monthPeriod(sorted.at(-1)!).end };
+  const [sources, stores, titles, placements, received, refunds] = await Promise.all([
+    economicsSources(tx, orgId),
+    queryStores(tx, orgId),
+    queryTitles(tx, orgId),
+    queryPlacements(tx, orgId),
+    // Mottaget antal (högst beställt) × pris, per mottagningsdag. Även för en order med status
+    // 'received' räknas bara det som faktiskt kom.
+    tx.execute(sql`
+      select coalesce(po.received_on, po.ordered_on)::text as date,
+             coalesce(sum(least(l.received_quantity, l.quantity)::bigint * l.unit_cost_ore), 0)::bigint
+               as ore
+      from public.purchase_orders po
+      join public.purchase_order_lines l
+        on l.organization_id = po.organization_id and l.purchase_order_id = po.id
+      where po.organization_id = ${orgId}::uuid
+        and po.status::text in ('received', 'partially_received')
+        and coalesce(po.received_on, po.ordered_on) between ${range.start}::date and ${range.end}::date
+      group by 1`),
+    queryRefunds(tx, orgId, range),
+  ]);
+  const receivedByDate = Array.from(received).map((row) => {
+    const r = row as { date: string; ore: string | number };
+    return { date: r.date, ore: Number(r.ore) };
+  });
+  const [machines, orders] = await Promise.all([
+    queryMachines(tx, orgId, placements, range.end),
+    queryOrders(tx, orgId, range, NO_SCOPE),
+  ]);
+  for (const m of sorted) {
+    const mp = monthPeriod(m);
+    const report = buildAccountantReport(
+      {
+        ...sources,
+        orders: orders.orders.filter((o) => o.businessDate >= mp.start && o.businessDate <= mp.end),
+        stores: stores.map((x) => ({ id: x.id, name: x.name })),
+        machines: machines.map((x) => ({ id: x.id, name: x.name, code: x.code })),
+        titles: titles.map((x) => ({ id: x.id, name: x.name })),
+      },
+      mp,
+    );
+    const inMonth = (d: string) => d >= mp.start && d <= mp.end;
+    const receivedPurchasesOre = receivedByDate
+      .filter((p) => inMonth(p.date))
+      .reduce((s, p) => s + p.ore, 0);
+    const refundsOre = refunds.filter((r) => inMonth(r.date)).reduce((s, r) => s + r.amountOre, 0);
+    out.set(m, { month: m, report, receivedPurchasesOre, refundsOre });
+  }
+  return out;
+}

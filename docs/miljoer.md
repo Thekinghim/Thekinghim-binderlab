@@ -309,9 +309,10 @@ finns i `src/server/accounting` (tjänster, adaptrar, frågor) och beräkningarn
   uppskattad kortavgift (ingen dubbelbokning). Saknar kontoplanen `bank` används BAS 1930
   och sidan säger det; migreringen `20261102142000` lägger in `bank` i befintliga
   organisationer (seeden, som ägs av annan, bör lägga till den i `SEED_LEDGER_ACCOUNTS`).
-  Numren (serie BL) löper fortlöpande över räkenskapsåret. `GET /ekonomi/sie?manad=ÅÅÅÅ-MM`
-  ger SIE 4-filen (CP437, `#GEN` = dagens datum) för en avslutad månad; pågående och
-  framtida månader ger 422. Leverans till bokföringsprogrammet: bara avslutade månader,
+  Numren (serie BL) löper fortlöpande över räkenskapsåret. SIE-filen att
+  importera laddas ned som en del av månadspaketet under Ekonomi → Bokföring
+  (`GET /ekonomi/bokforing/paket?manad=ÅÅÅÅ-MM`, se `src/server/bokforing`); den äldre
+  `/ekonomi/sie` är borttagen så att samma månad inte kan importeras två gånger. Leverans till bokföringsprogrammet: bara avslutade månader,
   en gång per månad och i ordning, loggad i `voucher_deliveries` (append-only, audit).
   En skickad månad behåller sina nummer; ändras den efteråt visar sidan det. Med
   `ACCOUNTING_PROVIDER=none` visar sidan "Ej konfigurerad" och SIE-filen. `local` skriver

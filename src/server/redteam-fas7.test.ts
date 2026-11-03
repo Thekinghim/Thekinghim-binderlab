@@ -189,7 +189,7 @@ describe("proxyn", () => {
     "/api/cron",
     "/api/other",
     "/order/export",
-    "/ekonomi/sie",
+    "/ekonomi/bokforing/paket",
     "/portal",
     "/assistent/fraga",
   ])("%s kräver inloggning i proxyn", (path) => {

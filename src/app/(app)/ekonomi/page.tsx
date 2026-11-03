@@ -5,53 +5,31 @@ import { Panel, PanelSection } from "@/components/ui/frame";
 import { Skeleton, TableSkeleton } from "@/components/ui/skeleton";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
-import { addMonths, eachMonth } from "@/domain";
 import { formatDate, formatDateTime, formatInt, NBSP } from "@/lib/format";
 import {
   currentViewer,
-  loadBookkeepingFor,
   loadCashflowFor,
   loadFixedCostsFor,
   loadReconciliationFor,
   PAYOUT_FILE_COLUMNS,
-  type BookkeepingView,
 } from "@/server/accounting";
-import { bookkeepingAdapter } from "@/server/accounting/bookkeeping";
 import { loadPeriod, requireRoute } from "@/server/data/core";
 
 import { EconomyKpis, type EconomyKpi } from "./_components/bits";
-import { DeliverButton, MonthPicker } from "./_components/bookkeeping-controls";
-import { EvidenceDetails } from "./_components/evidence";
+import { BokforingSection } from "./_components/bokforing-section";
 import { FixedCosts, type FixedCostRow } from "./_components/fixed-costs";
 import { PayoutUpload } from "./_components/payout-upload";
 import { ReconciliationList } from "./_components/reconciliation";
-import { AccountTable, CashflowTable, VerificationTable } from "./_components/tables";
+import { CashflowTable } from "./_components/tables";
 import { pickView, ViewTabs } from "../rapporter/_components/view-tabs";
 import { economyHeadline } from "./_lib/headline";
-import {
-  isoToDate,
-  kr,
-  monthText,
-  periodShort,
-  plural,
-  sek,
-  sentence,
-  signedSek,
-} from "./_lib/view";
+import { isoToDate, periodShort, plural, sek, sentence, signedSek } from "./_lib/view";
 
 export const metadata: Metadata = { title: "Ekonomi" };
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
-const PROVIDER_LABEL: Record<"local" | "fortnox" | "visma_enet" | "bokio", string> = {
-  local: "lokala utkorgen",
-  fortnox: "Fortnox",
-  visma_enet: "Visma eEkonomi",
-  bokio: "Bokio",
-};
-
 const SECTION = "rise flex scroll-mt-28 flex-col gap-8 pb-12 md:gap-10 md:pb-16";
-const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 /**
  * Ekonomi: varje krona från automat till bankkonto. Avstämning av leverantörens
@@ -69,21 +47,7 @@ export default async function EkonomiPage({
   const p = await loadPeriod(sp);
   const viewer = await currentViewer();
 
-  const thisMonth = ctx.today.slice(0, 7);
-  const firstMonth = p.dataStart ? p.dataStart.slice(0, 7) : thisMonth;
-  const months = eachMonth(`${firstMonth}-01`, ctx.today).reverse();
-  const lastFull = addMonths(thisMonth, -1);
-  const rawMonth = typeof sp.manad === "string" ? sp.manad : "";
-  const month =
-    MONTH.test(rawMonth) && months.includes(rawMonth)
-      ? rawMonth
-      : months.includes(lastFull)
-        ? lastFull
-        : thisMonth;
-  if (!months.includes(month)) months.unshift(month);
-
-  // Bokföringen (verifikationer för räkenskapsårets månader) är den tyngsta delen och
-  // behövs inte för rubriken: den startas här och strömmar in i sin sektion (Suspense).
+  // Bokföringen (en rad per månad med månadspaketet) strömmar in i sin sektion (Suspense).
   const VIEWS = ["avstamning", "kassaflode", "fasta", "bokforing"] as const;
   const view = pickView(sp.vy, VIEWS);
   const hrefFor = (v: (typeof VIEWS)[number]) => {
@@ -96,10 +60,6 @@ export default async function EkonomiPage({
     const qs = q.toString();
     return qs ? `/ekonomi?${qs}` : "/ekonomi";
   };
-  const books = view === "bokforing" ? loadBookkeepingFor(viewer, month, ctx.today) : null;
-  // Avvisas löftet innan sektionen väntar på det ska det inte räknas som ohanterat;
-  // sektionen får felet ändå (sidans error.tsx).
-  books?.catch(() => undefined);
   const [rec, cash, fixed] = await Promise.all([
     loadReconciliationFor(viewer, p.period),
     loadCashflowFor(viewer, ctx.today, p.dataStart),
@@ -134,7 +94,6 @@ export default async function EkonomiPage({
     : [];
 
   const scoped = Boolean(p.scope.storeId || p.scope.machineId);
-  const bookkeepingStatus = bookkeepingAdapter().status();
   const payoutIds = Object.fromEntries(rec.payouts.map((x) => [x.reference, x.id]));
 
   // Loggen visar avvikelsens rubrik, inte den interna nyckeln
@@ -205,13 +164,7 @@ export default async function EkonomiPage({
           eyebrow={`Ekonomi · ${p.days}${NBSP}d`}
           title={headline.title}
           aside={headline.aside}
-          meta={[
-            { label: "Period", value: when },
-            {
-              label: "Bokföring",
-              value: bookkeepingStatus.configured ? bookkeepingStatus.label : "Ej kopplad",
-            },
-          ]}
+          meta={[{ label: "Period", value: when }]}
         />
         {scoped ? (
           <p className="meta text-subtle">Hela organisationen · filtret gäller inte här</p>
@@ -347,9 +300,9 @@ export default async function EkonomiPage({
         </section>
       ) : null}
 
-      {books ? (
-        <Suspense fallback={<BookkeepingSkeleton month={month} />}>
-          <BookkeepingSection books={books} month={month} months={months} canEdit={canEdit} />
+      {view === "bokforing" ? (
+        <Suspense fallback={<BookkeepingSkeleton />}>
+          <BokforingSection viewer={viewer} today={ctx.today} canEdit={canEdit} />
         </Suspense>
       ) : null}
 
@@ -470,187 +423,10 @@ export default async function EkonomiPage({
   );
 }
 
-/** Bokföringen: verifikationer för månaden, SIE-fil och leverans. Strömmar in (Suspense). */
-async function BookkeepingSection({
-  books: booksPromise,
-  month,
-  months,
-  canEdit,
-}: {
-  books: Promise<BookkeepingView>;
-  month: string;
-  months: string[];
-  canEdit: boolean;
-}) {
-  const books = await booksPromise;
-  const verificationRows = books.verifications.map((v) => {
-    const debit = v.transactions
-      .filter((t) => t.amountOre > 0)
-      .reduce((s, t) => s + t.amountOre, 0);
-    return {
-      key: `${v.series}-${v.number}`,
-      number: v.number,
-      date: v.date,
-      text: v.text,
-      amountOre: debit,
-      rows: v.transactions
-        .map((t) => `${t.account} ${t.amountOre >= 0 ? "D" : "K"} ${kr(Math.abs(t.amountOre))}`)
-        .join(" · "),
-    };
-  });
-  const accountTotals = books.accountTotals.reduce(
-    (s, a) => ({ debitOre: s.debitOre + a.debitOre, creditOre: s.creditOre + a.creditOre }),
-    { debitOre: 0, creditOre: 0 },
-  );
-  const sieHref = `/ekonomi/sie?manad=${month}`;
-  const closedMonth = books.state === "closed";
-  const canDownload = closedMonth && !books.error && books.verifications.length > 0;
-  const canDeliver =
-    canEdit &&
-    canDownload &&
-    books.status.configured &&
-    books.delivery === null &&
-    books.laterDelivery === null;
-  const firstNo = books.verifications[0]?.number;
-  const lastNo = books.verifications[books.verifications.length - 1]?.number;
-
-  return (
-    <section
-      id="bokforing"
-      aria-labelledby="bokforing-rubrik"
-      className={SECTION}
-      style={{ "--i": 1 } as React.CSSProperties}
-    >
-      <SectionHeader
-        id="bokforing-rubrik"
-        size="md"
-        title={`Verifikationer för ${monthText(month)}.`}
-        aside={
-          books.error
-            ? books.error
-            : books.verifications.length === 0
-              ? "Inget att bokföra."
-              : `${plural(books.verifications.length, "verifikation", "verifikationer")} (BL ${firstNo}–${lastNo}), debet ${kr(
-                  accountTotals.debitOre,
-                )} = kredit ${kr(accountTotals.creditOre)}.`
-        }
-      />
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <MonthPicker months={months} value={month} />
-        <div className="flex flex-wrap gap-2">
-          {canDownload ? (
-            <a
-              href={sieHref}
-              download
-              className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg transition-colors hover:border-line-control hover:bg-hover"
-            >
-              Ladda ned SIE-fil
-            </a>
-          ) : null}
-          {canDeliver ? <DeliverButton month={month} label={books.status.label} /> : null}
-        </div>
-      </div>
-      {!closedMonth ? (
-        <StateMessage
-          compact
-          kind="no-results"
-          code="Pågår"
-          message={sentence(
-            `${monthText(month)} pågår, så verifikationerna är ett preliminärt förslag`,
-          )}
-          detail="SIE-filen öppnas när månaden är slut."
-        />
-      ) : null}
-      {books.delivery ? (
-        <StateMessage
-          compact
-          kind={books.changedSinceDelivery ? "error" : "no-results"}
-          code={`BL ${books.delivery.firstNumber}–${books.delivery.lastNumber}`}
-          message={`Skickad till ${PROVIDER_LABEL[books.delivery.provider]} ${formatDateTime(
-            new Date(books.delivery.createdAt),
-          )}${books.delivery.actor ? ` av ${books.delivery.actor}` : ""}.`}
-          detail={
-            books.changedSinceDelivery
-              ? "Ändrad sedan den skickades. Bokför skillnaden för hand."
-              : undefined
-          }
-        />
-      ) : books.laterDelivery && closedMonth && books.verifications.length > 0 ? (
-        <StateMessage
-          compact
-          kind="no-results"
-          code="Ej skickad"
-          message={sentence(
-            `${monthText(books.laterDelivery.month)} är redan skickad, och månaderna skickas i ordning`,
-          )}
-          detail="Bokför den här månaden med SIE-filen eller för hand."
-        />
-      ) : null}
-      {books.bankFallback ? (
-        <StateMessage
-          compact
-          kind="not-configured"
-          code="1930"
-          message="Kontoplanen saknar bankkonto (nyckeln bank), så utbetalningarna bokförs på BAS 1930."
-          action={{ label: "Öppna inställningar", href: "/installningar" }}
-        />
-      ) : null}
-      {!books.status.configured ? (
-        <StateMessage
-          compact
-          kind="not-configured"
-          message={books.status.detail}
-          action={canDownload ? { label: "Ladda ned SIE-fil", href: sieHref } : undefined}
-        />
-      ) : null}
-      {books.error ? (
-        <StateMessage
-          kind="error"
-          message={books.error}
-          action={{ label: "Öppna inställningar", href: "/installningar" }}
-        />
-      ) : books.verifications.length > 0 ? (
-        <div className="grid grid-cols-1 gap-x-8 gap-y-10 lg:grid-cols-12">
-          <div className="min-w-0 lg:col-span-7">
-            <VerificationTable rows={verificationRows} month={month} />
-          </div>
-          <div className="flex min-w-0 flex-col gap-4 lg:col-span-5">
-            <AccountTable rows={books.accountTotals} month={month} totals={accountTotals} />
-            <p className="text-sm text-muted">
-              {books.payoutsBooked > 0
-                ? `${plural(books.payoutsBooked, "utbetalning", "utbetalningar")} bokförda på betalningsdagen.`
-                : "Ingen utbetalning i månaden."}
-            </p>
-            {books.totals ? (
-              <p className="text-sm text-muted">
-                Försäljning {kr(books.totals.grossOre)} (
-                {plural(books.totals.orders, "order", "order")}), butiksersättning{" "}
-                {kr(books.totals.compensationOre)}, inköpsvärde sålda pack{" "}
-                {kr(books.totals.costOre)}
-                {books.totals.unpricedOrders > 0
-                  ? `; ${plural(books.totals.unpricedOrders, "order", "order")} saknar inköpspris och har inget inköpsvärde`
-                  : ""}
-                .
-              </p>
-            ) : null}
-            {books.totals ? (
-              <EvidenceDetails evidence={{ ...toFinanceEvidence(books.totals.evidence) }} />
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
 /** Platshållaren medan bokföringen räknas. */
-function BookkeepingSkeleton({ month }: { month: string }) {
+function BookkeepingSkeleton() {
   return (
-    <section
-      aria-busy="true"
-      aria-label={`Laddar bokföringen för ${monthText(month)}`}
-      className={SECTION}
-    >
+    <section aria-busy="true" aria-label="Laddar bokföringen" className={SECTION}>
       <div className="flex flex-col gap-3">
         <Skeleton className="h-3 w-40" />
         <Skeleton className="h-8 w-full max-w-xl" />
@@ -666,35 +442,6 @@ function BookkeepingSkeleton({ month }: { month: string }) {
       </div>
     </section>
   );
-}
-
-/** Rapportens underlag (@/reports) i samma form som ekonomins underlag, för visningen. */
-function toFinanceEvidence(e: {
-  rule: string;
-  scope: { period: { start: string; end: string } };
-  orderCount: number;
-  figures: readonly { label: string; value: number; unit: "ore" | "bp" | "count" | "days" }[];
-}) {
-  return {
-    rule: e.rule,
-    period: e.scope.period,
-    orderIds: [] as string[],
-    dates: [] as string[],
-    titleIds: [] as string[],
-    machineIds: [] as string[],
-    storeIds: [] as string[],
-    recipientIds: [] as string[],
-    payoutReferences: [] as string[],
-    contractIds: [] as string[],
-    fixedCostIds: [] as string[],
-    purchaseIds: [] as string[],
-    figures: e.figures.map((f, i) => ({
-      key: `f${i}`,
-      label: f.label,
-      value: f.value,
-      unit: f.unit,
-    })),
-  };
 }
 
 /** En mening om utbetalningarna som rubriken inte redan säger. */
