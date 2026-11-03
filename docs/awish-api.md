@@ -125,3 +125,23 @@ Supabase pg_cron (*/10 * * * *) → private.awish_cron_tick() → pg_net GET {AP
 
 Chrome-tillägget är borttaget. Enum-värdena `awish_extension` och `extension` och tabellen `sync_tokens` finns kvar i
 databasen (migreringar ändras aldrig) men används inte; alla token är återkallade.
+
+## Awish svar (3 nov. 2026)
+
+| Fråga | Svar |
+| --- | --- |
+| Token | MD5 som hex med gemener |
+| `amount` | Valutaenheter ("170.00" = 170 kr), inte ören |
+| IP-begränsning | Ingen |
+| Sortering | Servern sorterar själv (synken känner av ordningen) |
+| TLS | Ingen |
+| Historik | Ungefär ett år bakåt |
+| `pay_time` | UTC som standard. Har kontot en tidszon används den, och automatens tidszon går före kontots |
+| Återbetalning | Bara QR-betalningar ändrar status; kortorder ändras inte (återbetalningar förs i Inkorg) |
+| `id` / `trade_id` | `id` = ID i panelen, `trade_id` = Order No. |
+| `per_page` | Högst 50, standard 20 (synken begär 50) |
+| Debug Mode | Rekommenderas påslaget |
+| Ny signering (HMAC-SHA256, `cleveng/hmac-signer`) | Gäller främst ändringsanrop; Binderlab läser bara. Formen är HMAC-SHA256 över `"{timestamp}.{body}"` som hex |
+
+Inställning hos beställaren: Developer Center → Advanced Settings: Debug Mode på, Time Zone Settings på med
+Europe/Stockholm (och samma tidszon på automaterna). Datakällans tidszon i Binderlab ska då vara Europe/Stockholm.

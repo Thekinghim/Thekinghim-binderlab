@@ -6,8 +6,8 @@
  * Inloggningen är metadata på varje anrop (leverantörens dokumentation, avsnitt
  * 8.1): `appid` = AppId, `token` = MD5 av `${AppSecret}.${AppKey}` som hex, och
  * `lang` = "en-US" (felmeddelandenas språk). Dokumentationens exempel (Rust,
- * `generate_md5`) ger gemener; det är OVERIFIERAT mot riktiga servern och ligger i
- * konstanten TOKEN_HEX_CASE så att det är lätt att byta.
+ * `generate_md5`) ger gemener, och Awish har bekräftat det (3 nov. 2026). Det ligger i
+ * konstanten TOKEN_HEX_CASE.
  *
  * Varje anrop har en tidsgräns (15 s). UNAVAILABLE och DEADLINE_EXCEEDED provas
  * igen (högst 3 försök, 0,5 s och 1,5 s väntan); andra fel aldrig. Fel blir
@@ -29,13 +29,13 @@ import { AWISH_PROVIDER_PROTO } from "./provider-proto";
 
 /** Leverantörens server enligt dokumentationen (ingen TLS i exemplet). */
 export const DEFAULT_AWISH_GRPC_ADDRESS = "49.51.72.74:50051";
-/** OVERIFIERAT: dokumentationens exempel ger gemener. Byt till "upper" om servern nekar. */
+/** Gemener: bekräftat av Awish 3 nov. 2026. */
 export const TOKEN_HEX_CASE: "lower" | "upper" = "lower";
 export const AWISH_LANG = "en-US";
 export const AWISH_DEADLINE_MS = 15_000;
 export const AWISH_MAX_ATTEMPTS = 3;
-/** Dokumentationen (kinesiska varianten) anger högst 20 per sida. */
-export const AWISH_PER_PAGE = 20;
+/** Awish (3 nov. 2026): högst 50 per sida, standard 20. */
+export const AWISH_PER_PAGE = 50;
 
 export interface AwishCredentials {
   appId: string;
