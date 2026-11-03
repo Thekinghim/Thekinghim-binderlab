@@ -98,3 +98,16 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
 - Timkontrollen (schemalagd uppgift) borttagen.
 - Väntar på beställaren: nätverksåtkomst till api.supabase.com, *.supabase.co och api.vercel.com för driftsättning;
   ägare bjuds in som wille1452@live.se. De två API-nycklarna som klistrades in i chatten ska bytas efter driftsättningen.
+
+## 3 nov. – driftsatt
+
+- Live på https://thekinghim-binderlab.vercel.app (Vercel, team-projektet `thekinghim-binderlab`, region arn1).
+- Supabase: befintliga projektet `ukuuwokxbtwhqfnttzwr` används som produktion (`--prod-ref`), eftersom token bara
+  gäller det projektet och inte får skapa nya. 53 migreringar körda, buckets skapade, ES256-signering. Preview har
+  ingen egen databas.
+- Ägarens konto `wille1452@live.se` skapat (inloggning med länk, inget lösenord).
+- Ändringar för att det skulle gå: team-begränsad Vercel-token, skiftlägesoberoende repokoppling, lösenordsbyte via
+  Management API, Supabase Free (inga egna mejlmallar: appen tar emot standardlänkens `?code=`, PKCE), Vercel Hobby
+  (larmjobbet en gång om dagen kl. 05:07 UTC i stället för var 10:e minut).
+- Kvar, valfritt: Resend (mejl till andra än Supabase-organisationens medlemmar, rapportutskick), Sentry,
+  ANTHROPIC_API_KEY. De två API-nycklarna från chatten ska bytas.
