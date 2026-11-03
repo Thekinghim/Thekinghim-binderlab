@@ -29,3 +29,20 @@ export const todoDismissals = pgTable("todo_dismissals", {
   createdBy: uuid("created_by"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 });
+
+/**
+ * En punkt i Att göra tilldelad en person (20261104170000_managerpaket_ansvar.sql).
+ * assigned_to null = uttryckligen Båda; ingen rad = automatens ansvariga. assigned_by och
+ * assigned_at sätts av databasen.
+ */
+export const todoAssignments = pgTable("todo_assignments", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  organizationId: uuid("organization_id").notNull(),
+  todoKey: text("todo_key").notNull(),
+  assignedTo: uuid("assigned_to"),
+  assignedBy: uuid("assigned_by"),
+  assignedAt: ts("assigned_at").notNull().defaultNow(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  createdBy: uuid("created_by"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});

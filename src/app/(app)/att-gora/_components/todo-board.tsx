@@ -14,6 +14,9 @@ import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
 
+import type { PersonOption } from "@/analytics/team";
+
+import { PersonPicker } from "../../_team/person-picker";
 import { dismissTodo, mergeTitles, registerRefill, undoDismissTodo } from "../actions";
 import type {
   DismissedView,
@@ -68,10 +71,13 @@ export function TodoBoard({
   groups,
   dismissed,
   canDismiss,
+  people = [],
 }: {
   groups: GroupView[];
   dismissed: DismissedView[];
   canDismiss: boolean;
+  /** Valen för "Vem" (Jag, Delägaren, Båda). Tom = inget val visas. */
+  people?: readonly PersonOption[];
 }) {
   const toast = useToast();
   /** Avbockade i den här vyn innan servern hunnit räkna om (nyckel + fingerprint). */
@@ -138,8 +144,8 @@ export function TodoBoard({
         return;
       }
       toast({
-        title: "Avbockad",
-        description: `${item.title} Den kommer tillbaka om läget ändras. Ångra här eller under Avbockade.`,
+        title: "Klar",
+        description: `${item.title} Kommer tillbaka om läget ändras.`,
         tone: "ok",
         duration: UNDO_TOAST_MS,
         action: { label: "Ångra", onClick: () => undo(item.key, item.title) },
@@ -156,7 +162,7 @@ export function TodoBoard({
         key: t.key,
         eyebrow: t.eyebrow,
         title: t.title,
-        meta: "Avbockad nyss av dig.",
+        meta: "Klar nyss av dig.",
       })),
     ...dismissed,
   ].filter((d) => !undone.has(d.key));
@@ -187,6 +193,7 @@ export function TodoBoard({
                   item={item}
                   canDismiss={canDismiss}
                   onDismiss={() => dismiss(item)}
+                  people={people}
                 />
               ))}
             </ol>
@@ -213,7 +220,7 @@ function DismissedList({
   return (
     <section aria-labelledby={`${listId}-rubrik`} className="border-t border-line pt-6 pb-4">
       <h2 id={`${listId}-rubrik`} className="sr-only">
-        Avbockade punkter
+        Klara punkter
       </h2>
       <button
         type="button"
@@ -228,14 +235,11 @@ function DismissedList({
           className={cn("shrink-0 transition-transform duration-fast", open && "rotate-90")}
         />
         <span>
-          {open ? "Dölj avbockade" : "Visa avbockade"} ({formatInt(items.length)})
+          {open ? "Dölj klara" : "Visa klara"} ({formatInt(items.length)})
         </span>
       </button>
       <div id={listId} hidden={!open} className="mt-4">
-        <p className="max-w-2xl text-sm text-muted">
-          Punkter som bockats av de senaste 14 dagarna. De visas i listan igen av sig själva om
-          läget ändras. Ångra visar punkten direkt om orsaken finns kvar.
-        </p>
+        <p className="max-w-2xl text-sm text-muted">Klart de senaste 14 dagarna, och av vem.</p>
         <ul className="mt-4 flex flex-col">
           {items.map((d) => (
             <li
@@ -251,7 +255,7 @@ function DismissedList({
                 size="sm"
                 variant="secondary"
                 onClick={() => onUndo(d)}
-                aria-label={`Ångra avbockning: ${d.title}`}
+                aria-label={`Ångra klar: ${d.title}`}
                 className="self-start"
               >
                 Ångra
@@ -268,10 +272,12 @@ function TodoRow({
   item,
   canDismiss,
   onDismiss,
+  people,
 }: {
   item: TodoView;
   canDismiss: boolean;
   onDismiss: () => void;
+  people: readonly PersonOption[];
 }) {
   const titleId = useId();
   return (
@@ -345,17 +351,30 @@ function TodoRow({
         ) : item.action?.kind === "link" ? (
           <ActionLink action={item.action} />
         ) : null}
-        <div className="flex flex-wrap gap-2 lg:justify-end">
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           {item.link ? <ActionLink action={item.link} variant="ghost" /> : null}
+          {people.length > 0 ? (
+            <PersonPicker
+              target={{ kind: "todo", key: item.key }}
+              value={item.assignee}
+              options={
+                people.some((p) => p.value === item.assignee)
+                  ? people
+                  : [...people, { value: item.assignee, label: "Delägaren" }]
+              }
+              label="Vem"
+              editable={canDismiss}
+            />
+          ) : null}
           {canDismiss ? (
             <Button
               size="sm"
-              variant="ghost"
+              variant="secondary"
               iconLeft="check"
               onClick={onDismiss}
-              aria-label={`Bocka av: ${item.title}`}
+              aria-label={`Klar: ${item.title}`}
             >
-              Bocka av
+              Klar
             </Button>
           ) : null}
         </div>

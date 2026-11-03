@@ -43,6 +43,16 @@ function StoreFields({ store }: { store?: StoreDetail }) {
         />
       </div>
       <Input
+        name="location"
+        label="Kartlänk (valfritt)"
+        defaultValue={store?.location ? `${store.location.lat}, ${store.location.lng}` : ""}
+        placeholder="Klistra in länk från Google Maps"
+        hint="Ger kortaste vägen på besöksplanen."
+        autoComplete="off"
+        inputMode="url"
+        maxLength={2000}
+      />
+      <Input
         name="contactName"
         label="Kontaktperson"
         defaultValue={store?.contactName ?? ""}
@@ -98,6 +108,7 @@ function storeInput(data: FormData) {
     email: text(data, "email"),
     phone: text(data, "phone"),
     isExample: data.get("isExample") === "on",
+    location: text(data, "location"),
   };
 }
 

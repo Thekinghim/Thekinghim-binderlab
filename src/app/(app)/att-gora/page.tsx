@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type React from "react";
 
+import { isMine, personOptions, todoAssignee } from "@/analytics/team";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { wallClockIn } from "@/components/shell/period-state";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -13,11 +14,14 @@ import {
   requireRoute,
   scopeFromSearchParams,
 } from "@/server/data/core";
+import { MineToggle } from "@/components/ui/mine-toggle";
+import { loadTeamStateFor } from "@/server/data/team";
 import { loadRankedTodoState } from "@/server/data/todos";
 import { getActiveOrganization, requireUser } from "@/server/session";
 
 import { Suggestions } from "@/app/(app)/assistent/_components/suggestions";
 import { BokforingReady } from "@/app/(app)/ekonomi/_components/bokforing-ready";
+import { NewMachinesFound } from "@/app/(app)/_nya-automater/new-machines";
 import { loadAdvisorStateFor } from "@/server/assistant/advisor/service";
 
 import { HeaderMeta } from "./_components/header-meta";
@@ -51,7 +55,21 @@ export default async function TodoPage({
     getActiveOrganization(),
   ]);
   const now = new Date(ctx.now);
-  const todos = state.items;
+  // Vem gör vad: uttrycklig tilldelning, annars automatens ansvariga, annars Båda.
+  const teamState = await loadTeamStateFor(user, ctx.organization.id);
+  const me = ctx.user.id;
+  const assignees = new Map(
+    state.items.map((t) => [
+      t.key,
+      todoAssignee(
+        { key: t.key, machineIds: t.evidence.machineIds },
+        teamState.assignments,
+        teamState.responsibles,
+      ).userId,
+    ]),
+  );
+  const mine = readParam(sp, "mina") === "1";
+  const todos = mine ? state.items.filter((t) => isMine(assignees.get(t.key), me)) : state.items;
   // Avbockade punkter vars orsak finns kvar (RLS: påfyllaren bara lagerpunkter). En
   // avbockning vars orsak redan är löst döljer inget och visas inte.
   const dismissed = organization
@@ -89,6 +107,7 @@ export default async function TodoPage({
     ],
     scope: scopeFromSearchParams(sp),
     computedAt: formatTime(wall(now)),
+    assignees,
     dismissed: dismissed.map((d) => ({
       key: d.key,
       title: d.title,
@@ -112,6 +131,18 @@ export default async function TodoPage({
           className="pb-12 md:pb-16"
         />
       </div>
+      <div
+        className="rise flex flex-wrap items-center gap-3 pb-8"
+        style={{ "--i": 1 } as React.CSSProperties}
+      >
+        <MineToggle
+          mine={mine}
+          hrefMine={withMine(sp, true)}
+          hrefAll={withMine(sp, false)}
+          label="Vems punkter"
+        />
+      </div>
+      {organization ? <NewMachinesFound viewer={{ user, organization }} /> : null}
       {organization ? <BokforingReady viewer={{ user, organization }} /> : null}
       {advisor && advisor.suggestions.length > 0 ? (
         <section
@@ -147,8 +178,38 @@ export default async function TodoPage({
         </div>
       ) : null}
       <div className="rise" style={{ "--i": 1 } as React.CSSProperties}>
-        <TodoBoard groups={view.groups} dismissed={view.dismissed} canDismiss />
+        <TodoBoard
+          groups={view.groups}
+          dismissed={view.dismissed}
+          canDismiss
+          people={personOptions(me, teamState.team)}
+        />
       </div>
     </div>
   );
+}
+
+function readParam(sp: SearchParamsInput, name: string): string | null {
+  if ("get" in sp && typeof sp.get === "function") return sp.get(name);
+  const v = (sp as Record<string, string | string[] | undefined>)[name];
+  return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
+}
+
+/** Samma adress med eller utan ?mina=1 (filtret ?butik/?automat behålls). */
+function withMine(sp: SearchParamsInput, mine: boolean): string {
+  const q = new URLSearchParams();
+  const entries: [string, string][] =
+    sp instanceof URLSearchParams
+      ? [...sp.entries()]
+      : "get" in sp && typeof sp.get === "function"
+        ? []
+        : Object.entries(sp as Record<string, string | string[] | undefined>).flatMap(([k, v]) =>
+            v === undefined
+              ? []
+              : (Array.isArray(v) ? v : [v]).map((x): [string, string] => [k, x]),
+          );
+  for (const [k, v] of entries) if (k !== "mina") q.append(k, v);
+  if (mine) q.set("mina", "1");
+  const s = q.toString();
+  return `/att-gora${s ? `?${s}` : ""}`;
 }

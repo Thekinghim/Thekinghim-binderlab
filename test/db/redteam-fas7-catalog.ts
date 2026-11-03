@@ -107,6 +107,46 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [sink(c)],
   },
+  // Vem gör vad (managerpaket): ansvarig per automat och tilldelning i Att göra
+  {
+    module: "@/app/(app)/_team/actions",
+    name: "setMachineResponsible",
+    allowed: OP,
+    args: (c) => [sink(c, { userId: "" })],
+  },
+  {
+    module: "@/app/(app)/_team/actions",
+    name: "assignTodo",
+    allowed: FIELD,
+    args: (c) => [sink(c, { key: `refill:${c.A.machineId}:${c.A.titleId}`, userId: "" })],
+  },
+  // Nya automater från Awish och guiden "Ny butik" (managerpaket 7): ägare och admin
+  {
+    module: "@/app/(app)/_nya-automater/actions",
+    name: "connectNewMachine",
+    allowed: OP,
+    args: (c) => [sink(c)],
+  },
+  {
+    module: "@/app/(app)/_nya-automater/actions",
+    name: "ignoreNewMachine",
+    allowed: OP,
+    args: (c) => [sink(c)],
+  },
+  {
+    module: "@/app/(app)/_nya-automater/actions",
+    name: "unignoreNewMachine",
+    allowed: OP,
+    args: (c) => [sink(c)],
+  },
+  {
+    module: "@/app/(app)/_nya-automater/actions",
+    name: "createStoreGuide",
+    allowed: OP,
+    args: () => [
+      { store: { name: "Rödteam" }, terms: { preset: "split" }, machine: { kind: "new" } },
+    ],
+  },
   // Assistent: rådgivarens förslag (ägare och admin)
   {
     module: "@/app/(app)/assistent/actions",
@@ -300,6 +340,19 @@ export const ACTIONS: ActionSpec[] = [
     name: "acknowledgeAlert",
     allowed: OP,
     args: (c) => [c.idsA.alerts],
+  },
+  // Notiser i mobilen (managerpaket 8): var och en sin egen rad
+  {
+    module: "@/app/(app)/drift/larm/notice-actions",
+    name: "saveNotices",
+    allowed: MEMBERS,
+    args: () => [{ on: true }],
+  },
+  {
+    module: "@/app/(app)/drift/larm/notice-actions",
+    name: "sendTestNotice",
+    allowed: MEMBERS,
+    args: () => [],
   },
   {
     module: "@/app/(app)/drift/actions",

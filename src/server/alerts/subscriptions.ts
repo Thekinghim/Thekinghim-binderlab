@@ -21,6 +21,7 @@ export const ALERT_KINDS: readonly AlertKind[] = [
   "low_stock",
   "import_failed",
   "day_anomaly",
+  "machine_discovered",
 ];
 
 /** Larmtyper som rör automater och lager: det påfyllaren får. */
@@ -40,6 +41,7 @@ export const KIND_LABEL: Record<AlertKind, string> = {
   day_anomaly: "Avvikande dag",
   report_failed: "Misslyckad rapport",
   job_failed: "Misslyckat schemalagt jobb",
+  machine_discovered: "Ny automat hittad",
 };
 
 export const SEVERITY_LABEL: Record<AlertSeverity, string> = {

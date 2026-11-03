@@ -49,6 +49,8 @@ export const ALERT_GROUP: Record<AlertKind, AlertGroup> = {
   day_anomaly: "sales",
   report_failed: "system",
   job_failed: "system",
+  // Kommer från Awish-synken, som importerna.
+  machine_discovered: "import",
 };
 
 /** Rang för allvar: högre är allvarligare. */
@@ -64,6 +66,7 @@ const KIND_RANK: Record<AlertKind, number> = {
   day_anomaly: 0,
   report_failed: 0,
   job_failed: 0,
+  machine_discovered: 0,
 };
 
 const MINUTE_MS = 60_000;
@@ -613,6 +616,47 @@ export function dayAnomalyAlerts(
 // ---------------------------------------------------------------------------
 // Deduplicering och gruppering av kandidater
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Ny automat hittad
+// ---------------------------------------------------------------------------
+
+/** En automat i Awish som inte är kopplad (samma lista som "Ny automat hittad" på Att göra). */
+export interface DiscoveredMachineRef {
+  /** source_machines.id */
+  readonly id: string;
+  readonly name: string;
+  /** Köp som väntar på automaten. */
+  readonly orders: number;
+}
+
+/** Incidentnyckel för en hittad automat. */
+export function discoveredMachineKey(sourceMachineId: string): string {
+  return `machine_discovered:${sourceMachineId}`;
+}
+
+/**
+ * Ny automat hittad: en kandidat per automat som Awish har men som inte är kopplad till en
+ * butik (och inte markerad "Inte vår"). Varning, så att standardprenumerationen (lägst varning)
+ * får den. Incidenten stängs av sig själv när automaten kopplas eller markeras "Inte vår".
+ * Nyckel: 'machine_discovered:<källautomat>'.
+ */
+export function discoveredMachineAlerts(found: readonly DiscoveredMachineRef[]): AlertCandidate[] {
+  return found.map((m) => ({
+    key: discoveredMachineKey(m.id),
+    kind: "machine_discovered" as const,
+    severity: "warning" as const,
+    machineId: null,
+    titleId: null,
+    title: `Ny automat hittad: ${m.name.trim() || "utan namn"}`,
+    detail: m.orders > 0 ? `${plural(m.orders, "köp", "köp")} väntar. Välj butik.` : "Välj butik.",
+    evidence: evidence({
+      rule: "Larm när Awish har en automat som inte är kopplad till någon butik.",
+      figures: [{ key: "orders", label: "Köp som väntar", value: m.orders, unit: "count" }],
+    }),
+    link: "/att-gora",
+  }));
+}
 
 /**
  * Slår ihop kandidater med samma nyckel: den allvarligaste (allvar, sedan typ inom familjen

@@ -452,6 +452,7 @@ export const navSections: ReadonlyArray<NavSection> = [
       tab("drift", "Drift"),
       tab("lager", "Lager i automaterna"),
       tab("order", "Order"),
+      tab("automater", "Svinn", "svinn"),
       tab("inkorg", "Inkorg"),
     ],
   },

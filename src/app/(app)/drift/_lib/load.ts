@@ -29,6 +29,13 @@ import { queryStock } from "@/server/data/core/queries";
 import type { AppContext } from "@/server/data/core";
 import { querySlotPeriods, type SlotPeriod } from "@/server/data/assortment";
 import { weeklyVisitPlan } from "@/server/data/visit-plan";
+import { isMine, type TeamMember } from "@/analytics/team";
+import {
+  queryResponsibles,
+  queryStorePlaces,
+  queryTeam,
+  type StorePlace,
+} from "@/server/data/team";
 import { withUserDb } from "@/server/session";
 
 /** Senaste körningen av larmjobbet. */
@@ -120,17 +127,28 @@ async function loadLastRun(tx: Tx, orgId: string): Promise<AlertRunInfo | null> 
   return row ? { ...row, ranAt: row.ranAt.toISOString() } : null;
 }
 
-/** Veckans besöksplan: samma funktion, samma takt (gårdagens) och samma sortiment som Lager. */
+/**
+ * Veckans besöksplan: samma funktion, samma takt (gårdagens) och samma sortiment som Lager.
+ * Med `places` ordnas varje dag efter avstånd när alla dagens butiker har plats (påverkar bara
+ * ordningen inom dagen). Med `only` planeras bara de automaterna ("Mina").
+ */
 function buildPlan(
   data: HealthData,
   health: readonly MachineHealth[],
   warehouse: { titleId: string; onHand: number }[] | null,
   slotPeriods: readonly SlotPeriod[],
   ctx: AppContext,
+  places?: ReadonlyMap<string, StorePlace>,
+  only?: ReadonlySet<string>,
 ): VisitPlan {
   return weeklyVisitPlan({
     orders: data.orders,
-    machines: data.machines.filter((m) => !m.archived),
+    machines: data.machines
+      .filter((m) => !m.archived && (!only || only.has(m.id)))
+      .map((m) => ({
+        ...m,
+        location: (m.storeId ? places?.get(m.storeId)?.location : null) ?? null,
+      })),
     titles: data.titles,
     stock: data.stock,
     warehouseStock: warehouse,
@@ -161,10 +179,30 @@ export async function loadDriftOverview(ctx: AppContext): Promise<DriftOverview>
   });
 }
 
-/** Besöksplanen (/drift/besok) med hälsan som skäl till extra besök. */
+/** Besöksplanen med det sidan och kalendern behöver om vem och var. */
+export interface VisitPlanData {
+  readonly data: HealthData;
+  readonly health: MachineHealth[];
+  readonly plan: VisitPlan;
+  readonly hasWarehouse: boolean;
+  /** Personerna som fyller på. */
+  readonly team: TeamMember[];
+  /** Ansvarig per automat (null = Båda). */
+  readonly responsibles: Map<string, string | null>;
+  /** Butikernas adress och plats. */
+  readonly places: Map<string, StorePlace>;
+  /** Sant när planen bara gäller den inloggades automater ("Mina"). */
+  readonly mine: boolean;
+}
+
+/**
+ * Besöksplanen (/drift/besok och kalendern) med hälsan som skäl till extra besök. Med
+ * `mine` planeras bara automaterna där användaren är ansvarig eller där ingen är vald.
+ */
 export async function loadVisitPlan(
   ctx: AppContext,
-): Promise<{ data: HealthData; health: MachineHealth[]; plan: VisitPlan; hasWarehouse: boolean }> {
+  options: { mine?: boolean } = {},
+): Promise<VisitPlanData> {
   const now = new Date(ctx.now);
   return withUserDb(async (tx) => {
     const orgId = ctx.organization.id;
@@ -175,8 +213,36 @@ export async function loadVisitPlan(
       .filter((r) => r.isCentral)
       .map((r) => ({ titleId: r.titleId, onHand: r.onHand }));
     const slotPeriods = await querySlotPeriods(tx, orgId);
-    const plan = buildPlan(data, health, warehouse.length > 0 ? warehouse : null, slotPeriods, ctx);
-    return { data, health, plan, hasWarehouse: warehouse.length > 0 };
+    const [team, responsibles, places] = await Promise.all([
+      queryTeam(tx, orgId),
+      queryResponsibles(tx, orgId),
+      queryStorePlaces(tx, orgId),
+    ]);
+    const mine = options.mine === true;
+    const only = mine
+      ? new Set(
+          data.machines.filter((m) => isMine(responsibles.get(m.id), ctx.user.id)).map((m) => m.id),
+        )
+      : undefined;
+    const plan = buildPlan(
+      data,
+      health,
+      warehouse.length > 0 ? warehouse : null,
+      slotPeriods,
+      ctx,
+      places,
+      only,
+    );
+    return {
+      data,
+      health,
+      plan,
+      hasWarehouse: warehouse.length > 0,
+      team,
+      responsibles,
+      places,
+      mine,
+    };
   });
 }
 
@@ -434,11 +500,15 @@ export async function loadAlertSettings(ctx: AppContext): Promise<AlertSettings>
   });
 }
 
-/** Stamdata och lager för påfyllningsformuläret (alla roller som fyller på). */
+/**
+ * Stamdata och lager för påfyllningsformuläret (alla roller som fyller på). Mina automater
+ * (ansvarig jag eller Båda) först, så att formuläret börjar på en av dem.
+ */
 export async function loadRefillData(ctx: AppContext) {
   return withUserDb(async (tx) => {
     const orgId = ctx.organization.id;
     const data = await loadHealthData(tx, orgId, ctx.today, new Date(ctx.now));
+    const responsibles = await queryResponsibles(tx, orgId);
     const stockRows = await queryStock(tx, orgId);
     const since = addDays(ctx.today, -14);
     const recent = await tx
@@ -463,7 +533,13 @@ export async function loadRefillData(ctx: AppContext) {
     return {
       machines: data.machines
         .filter((m) => !m.archived)
-        .map((m) => ({ id: m.id, code: m.code, name: m.name })),
+        .map((m) => ({
+          id: m.id,
+          code: m.code,
+          name: m.name,
+          mine: isMine(responsibles.get(m.id), ctx.user.id),
+        }))
+        .sort((a, b) => Number(b.mine) - Number(a.mine)),
       titles: data.titles.filter((t) => !t.archived).map((t) => ({ id: t.id, name: t.name })),
       stock: stockRows
         .filter((r) => r.locationKind === "machine" && r.machineId !== null)

@@ -7,3 +7,16 @@
 export { kmText, planVisits, VISIT_DEFAULTS } from "./plan";
 export { distanceMeters, EARTH_RADIUS_M, planRoute, type Route, type RoutePoint } from "./route";
 export type * from "./types";
+export {
+  dayDescription,
+  foldLine,
+  googleMapsUrls,
+  icsText,
+  mapsQuery,
+  MAX_WAYPOINTS,
+  parseLocation,
+  stopsWithoutPlace,
+  visitIcs,
+  type CalendarDay,
+  type RouteStop,
+} from "./links";

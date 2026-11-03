@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
@@ -6,9 +7,8 @@ import { formatInt, NBSP, SPACED_RANGE_DASH } from "@/lib/format";
 import type React from "react";
 
 import { StoreKpis } from "../_components/kpis";
-import { AddStoreButton } from "../_components/store-dialogs";
 import { StoreTable } from "../_components/store-table";
-import { loadStoreList, periodQuery } from "../_lib/data";
+import { loadStoreList } from "../_lib/data";
 import { dayText, plural, sek } from "../_lib/model";
 
 export const metadata: Metadata = { title: "Butiker" };
@@ -54,7 +54,18 @@ export default async function ButikerPage({
             ...(dataRange ? [{ label: "Med data", value: dataRange }] : []),
             { label: "Kräver åtgärd", value: formatInt(data.flagged) },
           ]}
-          actions={ctx.canEdit ? <AddStoreButton query={periodQuery(sp)} /> : undefined}
+          actions={
+            ctx.canEdit ? (
+              // Guiden: butik, villkor och automat på en minut.
+              <Link
+                href="/butiker/ny"
+                className="inline-flex h-9 items-center gap-2 rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse transition-colors hover:bg-inverse-hover"
+              >
+                <span aria-hidden>+</span>
+                Ny butik
+              </Link>
+            ) : undefined
+          }
         />
       </div>
 

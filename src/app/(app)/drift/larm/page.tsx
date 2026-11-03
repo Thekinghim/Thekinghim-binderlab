@@ -4,11 +4,13 @@ import { Panel, PanelSection } from "@/components/ui/frame";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StatusTag } from "@/components/ui/status-tag";
 import { formatInt } from "@/lib/format";
+import { noticeState, noticeTypesFor } from "@/server/alerts/notices";
 import { FIELD_KINDS, KIND_LABEL, ALERT_KINDS } from "@/server/alerts/subscriptions";
 import { requireRoute } from "@/server/data/core";
 
 import { formatWhen, plural } from "../_lib/display";
 import { loadAlertSettings } from "../_lib/load";
+import { NoticesCard } from "./notices-card";
 import { PushDevices, type DeviceRow } from "./push-devices";
 import { SettingsForm, type KindOption } from "./settings-form";
 
@@ -21,6 +23,7 @@ const KIND_HINT: Record<string, string> = {
   low_stock: "Räcker högst 2 dagar.",
   import_failed: "Import misslyckad.",
   day_anomaly: "Gårdagen avvek minst 30 %.",
+  machine_discovered: "Awish har en automat utan butik.",
 };
 
 const DELIVERY_STATUS: Record<
@@ -80,7 +83,7 @@ export default async function AlertSettingsPage() {
       value: "push" as const,
       label: "Push",
       hint: !ch.push.configured
-        ? "Inte konfigurerad i den här miljön."
+        ? "Inte påslaget än."
         : ch.push.kind === "outbox"
           ? "Lokalt läge: skrivs till disk, skickas inte."
           : `${plural(settings.devices.filter((d) => !d.disabledAt).length, "enhet", "enheter")} påslagna.`,
@@ -115,6 +118,10 @@ export default async function AlertSettingsPage() {
     disabled: d.disabledAt !== null,
   }));
 
+  // Notiser i mobilen: bara när push fungerar i miljön (annars syns inget om push).
+  const pushReady = ch.push.configured && ch.push.publicKey !== null;
+  const notices = noticeState(settings.saved ? sub : null, ctx.role);
+
   return (
     <div className="flex flex-col gap-10">
       <div className="rise" style={{ "--i": 0 } as React.CSSProperties}>
@@ -136,79 +143,115 @@ export default async function AlertSettingsPage() {
           }
         />
       </div>
-
-      <div
-        className="rise grid gap-12 lg:grid-cols-12 lg:gap-8"
-        style={{ "--i": 1 } as React.CSSProperties}
-      >
-        <section aria-labelledby="installningar" className="flex flex-col gap-6 lg:col-span-7">
-          <SectionHeader id="installningar" title="Dina larm." size="md" aside="Gäller bara dig." />
-          <SettingsForm
-            initial={sub}
-            kinds={kinds}
-            machines={settings.machines.map((m) => ({ id: m.id, label: `${m.code} ${m.name}` }))}
-            channels={channelOptions}
+      {pushReady ? (
+        <div className="rise" style={{ "--i": 1 } as React.CSSProperties}>
+          <NoticesCard
+            publicKey={ch.push.publicKey}
+            initialOn={notices.on}
+            initialTypes={notices.types}
+            types={noticeTypesFor(ctx.role).map((t) => ({ value: t.value, label: t.label }))}
+            endpoints={settings.devices.filter((d) => !d.disabledAt).map((d) => d.endpoint)}
           />
-        </section>
-
-        <div className="flex flex-col gap-12 lg:col-span-5">
-          <section aria-labelledby="enheter" className="flex flex-col gap-6">
-            <SectionHeader
-              id="enheter"
-              title={`${plural(settings.devices.filter((d) => !d.disabledAt).length, "enhet", "enheter")} med push.`}
-              size="md"
-            />
-            <PushDevices
-              publicKey={ch.push.publicKey}
-              pushConfigured={ch.push.configured}
-              devices={devices}
-            />
-          </section>
-
-          <section aria-labelledby="utskick" className="flex flex-col gap-6">
-            <SectionHeader
-              id="utskick"
-              title={
-                settings.deliveries.length === 0
-                  ? "Inga larm skickade till dig."
-                  : `${plural(settings.deliveries.length, "utskick", "utskick")} senast.`
-              }
-              size="md"
-            />
-            {settings.deliveries.length > 0 ? (
-              <Panel>
-                <PanelSection label="Senaste" meta={formatInt(settings.deliveries.length)}>
-                  <ul className="flex flex-col divide-y divide-line">
-                    {settings.deliveries.map((d) => (
-                      <li key={d.id} className="flex flex-col gap-1 py-3">
-                        <div className="flex items-baseline justify-between gap-3">
-                          <span className="text-sm text-fg">{d.subject}</span>
-                          <StatusTag status={DELIVERY_STATUS[d.status]?.status ?? "neutral"}>
-                            {DELIVERY_STATUS[d.status]?.label ?? d.status}
-                          </StatusTag>
-                        </div>
-                        <span className="meta text-subtle">
-                          {`${formatWhen(d.sendAt, ctx.timeZone, now)} · ${plural(d.items, "larm", "larm")}`}
-                        </span>
-                        {d.results.length > 0 ? (
-                          <span className="text-xs text-muted">
-                            {d.results
-                              .map(
-                                (r) =>
-                                  `${r.channel === "push" ? "Push" : r.channel === "email" ? "E-post" : r.channel === "sms" ? "Sms" : r.channel}: ${r.detail}`,
-                              )
-                              .join(" · ")}
-                          </span>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                </PanelSection>
-              </Panel>
-            ) : null}
-          </section>
         </div>
-      </div>
+      ) : null}
+
+      <details className="group flex flex-col gap-10" open={!pushReady}>
+        <summary className="label w-fit cursor-pointer list-none text-muted transition-colors duration-fast ease-instrument hover:text-fg">
+          <span
+            aria-hidden
+            className="mr-1 inline-block transition-transform duration-fast ease-instrument group-open:rotate-90"
+          >
+            ›
+          </span>
+          Fler val
+        </summary>
+        <div className="mt-6 flex flex-col gap-10">
+          <div
+            className="rise grid gap-12 lg:grid-cols-12 lg:gap-8"
+            style={{ "--i": 1 } as React.CSSProperties}
+          >
+            <section aria-labelledby="installningar" className="flex flex-col gap-6 lg:col-span-7">
+              <SectionHeader
+                id="installningar"
+                title="Dina larm."
+                size="md"
+                aside="Gäller bara dig."
+              />
+              <SettingsForm
+                // Ny rad (t.ex. efter Notiser på/av) ger formuläret nya startvärden.
+                key={JSON.stringify(sub)}
+                initial={sub}
+                kinds={kinds}
+                machines={settings.machines.map((m) => ({
+                  id: m.id,
+                  label: `${m.code} ${m.name}`,
+                }))}
+                channels={channelOptions}
+              />
+            </section>
+
+            <div className="flex flex-col gap-12 lg:col-span-5">
+              {pushReady ? (
+                <section aria-labelledby="enheter" className="flex flex-col gap-6">
+                  <SectionHeader
+                    id="enheter"
+                    title={`${plural(settings.devices.filter((d) => !d.disabledAt).length, "enhet", "enheter")} med push.`}
+                    size="md"
+                  />
+                  <PushDevices
+                    publicKey={ch.push.publicKey}
+                    pushConfigured={ch.push.configured}
+                    devices={devices}
+                  />
+                </section>
+              ) : null}
+
+              <section aria-labelledby="utskick" className="flex flex-col gap-6">
+                <SectionHeader
+                  id="utskick"
+                  title={
+                    settings.deliveries.length === 0
+                      ? "Inga larm skickade till dig."
+                      : `${plural(settings.deliveries.length, "utskick", "utskick")} senast.`
+                  }
+                  size="md"
+                />
+                {settings.deliveries.length > 0 ? (
+                  <Panel>
+                    <PanelSection label="Senaste" meta={formatInt(settings.deliveries.length)}>
+                      <ul className="flex flex-col divide-y divide-line">
+                        {settings.deliveries.map((d) => (
+                          <li key={d.id} className="flex flex-col gap-1 py-3">
+                            <div className="flex items-baseline justify-between gap-3">
+                              <span className="text-sm text-fg">{d.subject}</span>
+                              <StatusTag status={DELIVERY_STATUS[d.status]?.status ?? "neutral"}>
+                                {DELIVERY_STATUS[d.status]?.label ?? d.status}
+                              </StatusTag>
+                            </div>
+                            <span className="meta text-subtle">
+                              {`${formatWhen(d.sendAt, ctx.timeZone, now)} · ${plural(d.items, "larm", "larm")}`}
+                            </span>
+                            {d.results.length > 0 ? (
+                              <span className="text-xs text-muted">
+                                {d.results
+                                  .map(
+                                    (r) =>
+                                      `${r.channel === "push" ? "Push" : r.channel === "email" ? "E-post" : r.channel === "sms" ? "Sms" : r.channel}: ${r.detail}`,
+                                  )
+                                  .join(" · ")}
+                              </span>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </PanelSection>
+                  </Panel>
+                ) : null}
+              </section>
+            </div>
+          </div>
+        </div>
+      </details>
     </div>
   );
 }

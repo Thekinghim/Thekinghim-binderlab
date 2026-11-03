@@ -22,6 +22,10 @@ import {
 import { RevenueChart, SalesHeatmap, TitleBars } from "../_components/charts";
 import { PlacementsTable, RecentOrdersTable, StockTable } from "../_components/detail-tables";
 import { MachineKpis } from "../_components/kpis";
+import { personOptions } from "@/analytics/team";
+import { loadTeamStateFor } from "@/server/data/team";
+
+import { PersonPicker } from "../../_team/person-picker";
 import { MachineActions } from "../_components/machine-dialogs";
 import { Sub } from "../_components/sub";
 import { UnpricedNote } from "../_components/unpriced-note";
@@ -107,6 +111,11 @@ export default async function MachinePage({
   const listHref = `/automater${data.query}`;
   const tab = pickTab(TABS, sp.vy);
   const rise = (i: number) => ({ "--i": i }) as React.CSSProperties;
+  const team = await loadTeamStateFor(
+    { userId: ctx.user.id, email: ctx.user.email },
+    ctx.organization.id,
+  );
+  const responsible = team.responsibles.get(machine.id) ?? null;
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-6 pb-16 md:gap-16 md:px-8 md:pt-10">
@@ -144,6 +153,19 @@ export default async function MachinePage({
                 ),
             },
             { label: "Butik", value: store?.name ?? MISSING },
+            {
+              label: "Ansvarig",
+              value: (
+                <PersonPicker
+                  target={{ kind: "machine", machineId: machine.id }}
+                  value={responsible ?? ""}
+                  options={personOptions(ctx.user.id, team.team, responsible)}
+                  label="Ansvarig"
+                  hideLabel
+                  editable={ctx.canEdit}
+                />
+              ),
+            },
             machine.activeTo
               ? { label: "Sista dag", value: dayText(machine.activeTo, ctx.today) }
               : {

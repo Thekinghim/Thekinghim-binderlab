@@ -38,7 +38,7 @@ describe("huvudflikar", () => {
   it("ägaren ser alla sex med alla underflikar", () => {
     expect(tree("owner")).toEqual({
       hem: ["Översikt", "Att göra"],
-      automater: ["Automater", "Drift", "Lager i automaterna", "Order", "Inkorg"],
+      automater: ["Automater", "Drift", "Lager i automaterna", "Order", "Svinn", "Inkorg"],
       "vart-lager": ["Vårt lager", "Prognos & inköp", "Inköpspriser"],
       butiker: ["Butiker", "Avtal", "Expansion"],
       pengar: ["Lönsamhet", "Ekonomi", "Bokföring", "Rapporter"],
@@ -108,6 +108,8 @@ describe("aktiv flik", () => {
 
   it("Ekonomi och Bokföring skiljs åt av vyn", () => {
     expect(activeSubTab("/ekonomi")?.tab.label).toBe("Ekonomi");
+    expect(activeSubTab("/automater/svinn")?.tab.label).toBe("Svinn");
+    expect(activeSubTab("/automater/bl-001")?.tab.label).toBe("Automater");
     expect(activeSubTab("/ekonomi", "kassaflode")?.tab.label).toBe("Ekonomi");
     expect(activeSubTab("/ekonomi", "bokforing")?.tab.label).toBe("Bokföring");
     expect(activeSubTab("/ekonomi/bokforing/kvitto/1")?.tab.label).toBe("Bokföring");

@@ -60,6 +60,7 @@ export async function createStore(input: {
   email?: string;
   phone?: string;
   isExample?: boolean;
+  location?: string;
 }): Promise<ActionResult<{ id: string }>> {
   return run((v) => createStoreFor(v, input));
 }
@@ -74,6 +75,7 @@ export async function updateStore(input: {
   email?: string;
   phone?: string;
   isExample?: boolean;
+  location?: string;
 }): Promise<ActionResult> {
   return run((v) => updateStoreFor(v, input));
 }

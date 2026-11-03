@@ -312,6 +312,17 @@ describe("filter", () => {
   });
 });
 
+describe("vem", () => {
+  it("punkten får sin tilldelade person, annars Båda", () => {
+    const a = refill(M1, "now", 1);
+    const b = refill(M2, "now", 1);
+    const page = buildPage(input([a, b], { assignees: new Map([[a.key, "u-co"]]) }));
+    const items = page.groups.flatMap((g) => g.items);
+    expect(items.find((x) => x.key === a.key)!.assignee).toBe("u-co");
+    expect(items.find((x) => x.key === b.key)!.assignee).toBe("");
+  });
+});
+
 describe("avbockade", () => {
   it("visar avbockade inom filtret med etikett och vem som bockade av", () => {
     const dismissed = [
@@ -330,9 +341,9 @@ describe("avbockade", () => {
       "Påfyllning · BL\u2011002",
       "Inköpspris",
     ]);
-    expect(all[0]!.meta).toBe("Avbockad nyss av dig.");
+    expect(all[0]!.meta).toBe("Klar nyss av dig.");
     expect(all[1]!.title).toBe("Punkt utan sparad rubrik.");
-    expect(all[1]!.meta).toBe("Avbockad igår 17:17.");
+    expect(all[1]!.meta).toBe("Klar igår 17:17.");
     const scoped = dismissedViews(
       input([], { dismissed, scope: { storeId: null, machineId: M2 } }),
     );

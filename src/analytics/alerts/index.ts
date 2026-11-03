@@ -10,6 +10,8 @@ export {
   dayAnomalyAlerts,
   dayAnomalyDate,
   dedupeCandidates,
+  discoveredMachineAlerts,
+  discoveredMachineKey,
   healthAlerts,
   importAlerts,
   lowStockAlerts,
@@ -17,6 +19,7 @@ export {
   SEVERITY_RANK,
   suppressRelated,
   type DayAnomalyInput,
+  type DiscoveredMachineRef,
   type ImportAlertInput,
   type LowStockInput,
 } from "./rules";

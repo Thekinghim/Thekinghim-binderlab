@@ -416,3 +416,18 @@ dialog::backdrop {
     stroke-dashoffset: 0;
   }
 }
+
+/* Liggande staplar växer fram från vänster (Rangordning, Svinn). */
+@keyframes bl-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.grow-x {
+  transform-origin: left;
+  animation: bl-grow-x 600ms var(--bl-ease) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}

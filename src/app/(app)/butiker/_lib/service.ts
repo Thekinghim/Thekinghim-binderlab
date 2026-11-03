@@ -88,11 +88,17 @@ export async function loadStoresFor(viewer: Viewer): Promise<StoreDetail[]> {
         phone: s.stores.phone,
         isExample: s.stores.isExample,
         archivedAt: s.stores.archivedAt,
+        lat: s.stores.latitude,
+        lng: s.stores.longitude,
       })
       .from(s.stores)
       .where(eq(s.stores.organizationId, orgId))
       .orderBy(asc(s.stores.name));
-    return rows.map(({ archivedAt, ...r }) => ({ ...r, archived: archivedAt !== null }));
+    return rows.map(({ archivedAt, lat, lng, ...r }) => ({
+      ...r,
+      archived: archivedAt !== null,
+      location: lat !== null && lng !== null ? { lat, lng } : null,
+    }));
   });
 }
 
@@ -303,6 +309,8 @@ export async function createStoreFor(
           email: v.email,
           phone: v.phone,
           isExample: v.isExample,
+          latitude: v.location?.lat ?? null,
+          longitude: v.location?.lng ?? null,
         })
         .returning({ id: s.stores.id });
       return row!.id;
@@ -332,6 +340,10 @@ export async function updateStoreFor(viewer: Viewer, raw: unknown): Promise<Acti
           email: v.email,
           phone: v.phone,
           isExample: v.isExample,
+          // Utelämnad plats (undefined) lämnas orörd; tom ruta tar bort den.
+          ...(v.location === undefined
+            ? {}
+            : { latitude: v.location?.lat ?? null, longitude: v.location?.lng ?? null }),
         })
         .where(and(eq(s.stores.organizationId, viewer.organization.id), eq(s.stores.id, v.storeId)))
         .returning({ id: s.stores.id });
