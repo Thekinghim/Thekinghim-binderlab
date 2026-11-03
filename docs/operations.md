@@ -17,10 +17,10 @@ efteråt.
 
 Inget behöver göras för hand. Det som körs av sig självt:
 
-| Jobb                  | Schema (UTC)   | Vad                                                     | Om det misslyckas                     |
-| --------------------- | -------------- | ------------------------------------------------------- | ------------------------------------- |
-| `/api/cron/larm`      | `*/10 * * * *` | Maskinhälsa, lager, importer, avvikande dag; utskick    | Larm `job:larm` + Sentry, se nedan    |
-| `/api/cron/rapporter` | `17 5 1 * *`   | Utkast för förra månadens rapporter (ingenting skickas) | Larm `report_drafts:<månad>` + Sentry |
+| Jobb                  | Schema (UTC) | Vad                                                     | Om det misslyckas                     |
+| --------------------- | ------------ | ------------------------------------------------------- | ------------------------------------- |
+| `/api/cron/larm`      | `7 5 * * *`  | Maskinhälsa, lager, importer, avvikande dag; utskick    | Larm `job:larm` + Sentry, se nedan    |
+| `/api/cron/rapporter` | `17 5 1 * *` | Utkast för förra månadens rapporter (ingenting skickas) | Larm `report_drafts:<månad>` + Sentry |
 
 Kontrollera en gång i veckan (fem minuter):
 

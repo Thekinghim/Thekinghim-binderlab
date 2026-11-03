@@ -29,7 +29,7 @@ export interface CronJob {
 export const CRON_JOBS = {
   larm: {
     slug: "binderlab-larm",
-    schedule: "*/10 * * * *",
+    schedule: "7 5 * * *",
     checkinMarginMinutes: 5,
     maxRuntimeMinutes: 5,
   },

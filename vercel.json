@@ -3,6 +3,6 @@
   "regions": ["arn1"],
   "crons": [
     { "path": "/api/cron/rapporter", "schedule": "17 5 1 * *" },
-    { "path": "/api/cron/larm", "schedule": "*/10 * * * *" }
+    { "path": "/api/cron/larm", "schedule": "7 5 * * *" }
   ]
 }

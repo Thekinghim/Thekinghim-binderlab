@@ -10,11 +10,11 @@ describe("vercel.json: cron", () => {
     crons: { path: string; schedule: string }[];
   };
 
-  it("har rapporterna en gång i månaden och larmen var 10:e minut", () => {
+  it("har rapporterna en gång i månaden och larmen en gång om dagen (Vercel Hobby)", () => {
     expect(config.crons).toEqual(
       expect.arrayContaining([
         { path: "/api/cron/rapporter", schedule: "17 5 1 * *" },
-        { path: "/api/cron/larm", schedule: "*/10 * * * *" },
+        { path: "/api/cron/larm", schedule: "7 5 * * *" },
       ]),
     );
   });

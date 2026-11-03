@@ -395,10 +395,10 @@ curl -H "Authorization: Bearer lokal-hemlighet-1234" http://localhost:3200/api/c
 
 Schemaläggning i drift (Vercel): båda jobben står i `vercel.json`.
 
-| Route                 | Schema (UTC)   | Vad                                                    |
-| --------------------- | -------------- | ------------------------------------------------------ |
-| `/api/cron/larm`      | `*/10 * * * *` | Larmjobbet (var 10:e minut)                            |
-| `/api/cron/rapporter` | `17 5 1 * *`   | Månadsutkast för förra månaden (den 1:a kl. 05:17 UTC) |
+| Route                 | Schema (UTC) | Vad                                                    |
+| --------------------- | ------------ | ------------------------------------------------------ |
+| `/api/cron/larm`      | `7 5 * * *`  | Larmjobbet (dagligen, Hobby)                           |
+| `/api/cron/rapporter` | `17 5 1 * *` | Månadsutkast för förra månaden (den 1:a kl. 05:17 UTC) |
 
 Sätt `CRON_SECRET` (minst 16 tecken) i projektets miljövariabler för Production. Vercel
 skickar den som `Authorization: Bearer <CRON_SECRET>` till varje cron-route; utan den svarar

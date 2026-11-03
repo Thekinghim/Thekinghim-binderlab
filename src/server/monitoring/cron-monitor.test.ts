@@ -37,7 +37,7 @@ describe("withCronMonitor (Sentry Cron Monitors)", () => {
     expect(checkIns[0]).toEqual({
       checkIn: { monitorSlug: "binderlab-larm", status: "in_progress" },
       config: {
-        schedule: { type: "crontab", value: "*/10 * * * *" },
+        schedule: { type: "crontab", value: "7 5 * * *" },
         checkinMargin: 5,
         maxRuntime: 5,
         timezone: "Etc/UTC",

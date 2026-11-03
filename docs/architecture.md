@@ -136,7 +136,7 @@ ANTHROPIC_API_KEY", "Ej konfigurerad" för bokföringen, `ConfigMissing` för in
 
 | Route                 | Schema (UTC, `vercel.json`) | Gör                                                                                                     | Kör som                     |
 | --------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------- |
-| `/api/cron/larm`      | `*/10 * * * *`              | Maskinhälsa, titel nära slut, misslyckade importer, gårdagens försäljning; sparar larm; skickar utskick | systemroll (`getServiceDb`) |
+| `/api/cron/larm`      | `7 5 * * *`                 | Maskinhälsa, titel nära slut, misslyckade importer, gårdagens försäljning; sparar larm; skickar utskick | systemroll (`getServiceDb`) |
 | `/api/cron/rapporter` | `17 5 1 * *`                | Utkast för förra månadens butiks-, bokförings- och delägarrapporter (skickar ingenting)                 | systemroll                  |
 
 Båda kräver `Authorization: Bearer <CRON_SECRET>` (minst 16 tecken; utan den svarar de 503, fel hemlighet ger 401),

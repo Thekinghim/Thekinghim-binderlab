@@ -459,6 +459,16 @@ export async function setDatabasePassword(ctx: Ctx, ref: string, password: strin
     ctx.log.plan(`byta databaslösenordet för postgres i ${ref} (okänt sedan tidigare)`);
     return;
   }
+  // Management API:t byter lösenordet som superanvändare; `alter role` som
+  // postgres nekas i nyare projekt ("Only superusers can alter privileged roles").
+  const viaApi = await ctx.api.request("PATCH", `/v1/projects/${ref}/database/password`, {
+    body: { password },
+    allow: [404, 405],
+  });
+  if (viaApi.status >= 200 && viaApi.status < 300) {
+    ctx.log.ok(`Nytt databaslösenord satt i ${ref} (via Management API).`);
+    return;
+  }
   const verifier = scramSha256Verifier(password);
   await runQuery(ctx, ref, `alter role postgres with password '${verifier}';`);
   ctx.log.ok(
