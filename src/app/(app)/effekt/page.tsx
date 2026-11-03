@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { MerHead } from "@/app/(app)/installningar/_components/mer-head";
 import { SectionHeader } from "@/components/ui/section-header";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { daysInMonth } from "@/domain";
@@ -69,30 +70,30 @@ export default async function EffektPage({
       ? `${BASELINE_METRIC_LABEL[lead.metric]}: ${monthLabel(point!.month)}.`
       : `${BASELINE_METRIC_LABEL[lead.metric]} ${signedPct(pointBp)} mot före Binderlab ${when}.`
     : data.baselines.length === 0
-      ? "Utgångsläget före Binderlab är inte registrerat."
+      ? "Inget utgångsläge ännu."
       : "Inga värden att jämföra ännu.";
   const aside = lead
     ? lead.detail ||
       `${withValues.length} av ${data.series.length} mått har värden för ${monthsText}.`
     : data.baselines.length === 0
-      ? "Ange hur det var före: vinst per automat, slutsålda dagar och tid, så visas förbättringen per månad."
-      : "Lägg in mätvärden per månad för slutsålda dagar och tid.";
+      ? "Lägg in hur det var före."
+      : "Lägg in mätvärden per månad.";
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
       <div className="flex flex-col gap-4">
-        <SectionHeader
-          as="h1"
-          size="xl"
+        <MerHead
           eyebrow="Effekt"
           title={title}
-          aside={aside}
+          line={aside}
+          count={false}
+          tone={pointBp !== null && pointBp > 0 ? "good" : undefined}
           meta={[{ label: "Månader", value: monthsText }]}
         />
         {data.dataStartInMonth ? (
           <p className="meta break-words text-subtle">
-            Vinst per automat i {monthLabel(monthOfDate(data.dataStartInMonth))} från{" "}
-            {day(data.dataStartInMonth)}.
+            {/* day() slutar med punkt ("13 okt.") */}
+            Data från {day(data.dataStartInMonth)}
           </p>
         ) : null}
       </div>
@@ -104,8 +105,7 @@ export default async function EffektPage({
       >
         <SectionHeader
           id="forbattring"
-          eyebrow="Förbättring"
-          title="Mot läget före Binderlab."
+          title="Förbättring."
           aside={`Per månad, ${monthsText}.`}
           actions={
             data.period.key !== "allt" ? (
@@ -141,15 +141,11 @@ export default async function EffektPage({
       >
         <SectionHeader
           id="utgangslage"
-          eyebrow="Utgångsläge"
           title={
             data.baselines.length === 0
-              ? "Inget registrerat."
-              : `${formatInt(data.baselines.length)} ${data.baselines.length === 1 ? "mått" : "mått"} före Binderlab.`
+              ? "Utgångsläge."
+              : `Utgångsläge: ${formatInt(data.baselines.length)} mått.`
           }
-          aside={`Mått: ${Object.values(BASELINE_METRIC_LABEL)
-            .map((l) => l.toLowerCase())
-            .join(", ")}.`}
         />
         <BaselinesSection
           baselines={data.baselines}
@@ -164,11 +160,7 @@ export default async function EffektPage({
         className="rise flex flex-col gap-8"
         style={{ "--i": 3 } as React.CSSProperties}
       >
-        <SectionHeader
-          id="matvarden"
-          eyebrow="Mätvärden"
-          title="Slutsålda dagar och tid per månad."
-        />
+        <SectionHeader id="matvarden" title="Mätvärden." aside="Per månad." />
         <MeasurementsSection
           measurements={data.measurements}
           settings={data.settings}

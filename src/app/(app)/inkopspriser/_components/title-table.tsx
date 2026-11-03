@@ -96,9 +96,11 @@ export function TitleTable({
               >
                 {r.name}
               </Link>
-              {r.series || r.archived ? (
+              {r.own || r.series || r.archived ? (
                 <span className="text-xs text-subtle">
-                  {[r.series, r.archived ? "Arkiverad" : null].filter(Boolean).join(" · ")}
+                  {[r.own ? "Egen produkt" : null, r.series, r.archived ? "Arkiverad" : null]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </span>
               ) : null}
               {r.unpricedOrders > 0 && r.status !== "missing" ? (

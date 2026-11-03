@@ -225,6 +225,8 @@ describe("lostSales", () => {
     expect(p.lostRevenueOre).toBe(34_300);
     expect(plain(r.months[0]!.text)).toBe("Slutsålt kostade ca 340 kr i oktober (5–20 okt.).");
     expect(r.months[0]!.partial).toBe(true);
+    // Totalen är kort och får ingen dubbelpunkt efter "okt.".
+    expect(plain(r.total.text)).toBe("Slutsålt kostade ca 340 kr 5–20 okt.");
   });
 
   it("automat ur drift räknas inte som slutsåld", () => {

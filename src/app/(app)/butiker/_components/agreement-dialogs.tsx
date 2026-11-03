@@ -9,7 +9,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { useToast } from "@/components/ui/toast";
 import { formatNumber } from "@/lib/format";
 
-import { VmbBeforeSplitCheckbox } from "../../avtal/_components/vmb-before-split";
+import { VmbBeforeSplitMore } from "../../avtal/_components/vmb-before-split";
 import { updateAgreement } from "../actions";
 import type { AgreementView } from "../_lib/types";
 import { FormDialog, text } from "./form-dialog";
@@ -84,7 +84,7 @@ function TermsFields({ agreement }: { agreement?: AgreementView }) {
         />
       </div>
       {model === "split" ? (
-        <VmbBeforeSplitCheckbox
+        <VmbBeforeSplitMore
           id={`avtal-${agreement?.id ?? "nytt"}-vmb`}
           name="vmbBeforeSplit"
           checked={agreement?.vmbBeforeSplit ?? false}

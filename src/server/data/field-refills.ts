@@ -49,7 +49,9 @@ function pgMessage(error: unknown): string | null {
   };
   const code = e?.code ?? e?.cause?.code;
   const message = e?.cause?.message ?? e?.message;
-  if (code === "22023" || code === "BL004" || code === "BL020") return message ?? null;
+  if (code === "22023" || code === "42501" || code === "BL004" || code === "BL020") {
+    return message ?? null;
+  }
   return null;
 }
 
@@ -92,4 +94,30 @@ export async function syncRefillsFor(
     }
   }
   return { ok: true, results };
+}
+
+/**
+ * Ångra efter Klar i Fyll på: motbokar påfyllningarna (klient-id) som användaren själv
+ * sparat de senaste 30 minuterna (public.undo_field_refills). Svarar med antal ångrade pack,
+ * eller ett svenskt fel ("För sent att ångra …").
+ */
+export async function undoRefillsFor(
+  viewer: Viewer,
+  clientIds: unknown,
+): Promise<{ ok: true; packs: number } | { ok: false; error: string }> {
+  await requireRoleFor(viewer.user, viewer.organization.id, FIELD_REFILL_ROLES);
+  const ids = z.array(uuid).min(1).max(200).safeParse(clientIds);
+  if (!ids.success) return { ok: false, error: "Inget att ångra." };
+  const orgId = viewer.organization.id;
+  try {
+    const rows = await withUserDbFor(viewer.user, (tx) =>
+      tx.execute(
+        sql`select public.undo_field_refills(${orgId}::uuid, ${`{${ids.data.join(",")}}`}::uuid[]) as packs`,
+      ),
+    );
+    const row = Array.from(rows)[0] as { packs?: number | string } | undefined;
+    return { ok: true, packs: Number(row?.packs ?? 0) };
+  } catch (error) {
+    return { ok: false, error: pgMessage(error) ?? "Kunde inte ångra. Försök igen." };
+  }
 }

@@ -97,7 +97,7 @@ export const PAGE_INFO: Partial<Record<RouteId, PageInfo>> = {
     ],
   },
   prognos: {
-    name: "Prognos & inköp",
+    name: "Inköp",
     about: "försäljningsprognos, inköpsförslag, vårt lager och förlorad försäljning",
     chips: [
       "Vad ska jag beställa?",
@@ -121,9 +121,9 @@ export const PAGE_INFO: Partial<Record<RouteId, PageInfo>> = {
     ],
   },
   avtal: {
-    name: "Avtal",
-    about: "butiksavtalen, villkor och när de går ut",
-    chips: ["Vilka avtal går ut snart?", "Vilka villkor har butikerna?"],
+    name: "Kontrakt",
+    about: "butikernas kontrakt, villkor och när de går ut",
+    chips: ["Vilka kontrakt går ut snart?", "Vilka butiker saknar kontrakt?"],
   },
   rapporter: {
     name: "Rapporter",

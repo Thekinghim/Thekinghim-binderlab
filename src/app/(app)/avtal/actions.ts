@@ -33,6 +33,7 @@ import { businessToday } from "@/server/data/core/loaders";
 import { dbErrorMessage, pgErrorOf } from "@/server/errors";
 import { getPdfRenderer, pdfStatus } from "@/server/pdf/render";
 import { getServerEnv } from "@/lib/env";
+import { contractTermsSchema } from "../butiker/_lib/validation";
 import { resolveAppBaseUrl } from "@/server/request-info";
 
 export type ActionResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
@@ -160,8 +161,9 @@ export async function archiveContract(raw: unknown): Promise<ActionResult> {
 }
 
 /**
- * Skapa avtal: butik (eller plats i pipelinen) och startdag. Sparar avtalet, villkoren
- * (50 % av vinsten efter kostnader) och PDF:en. `needsConfirm` när startdagen ligger bakåt.
+ * Skapa kontrakt: butik (eller plats i pipelinen), startdag och villkoren ägaren valt
+ * (`terms`, se contractTermsSchema; utan dem 50 % av vinsten efter kostnader). Sparar
+ * kontraktet, villkoren och PDF:en. `needsConfirm` när startdagen ligger bakåt.
  */
 export async function createContract(
   raw: unknown,
@@ -171,14 +173,37 @@ export async function createContract(
 > {
   try {
     const viewer = await operator();
-    const input = z
+    const base = z
       .object({
         target: z.string().regex(/^(store|lead):[0-9a-f-]{36}$/i, "Välj en butik."),
         validFrom: date,
         confirmHistory: z.boolean().optional(),
         vmbBeforeSplit: z.boolean().optional(),
+        fromOpenTerms: z.boolean().optional(),
+        terms: z.unknown().optional(),
       })
       .parse(raw);
+    // Villkoren ägaren valt (samma regler som Butiker); utan dem 50/50 av vinsten.
+    const terms = base.terms === undefined ? null : contractTermsSchema.parse(base.terms);
+    const input = {
+      target: base.target,
+      validFrom: base.validFrom,
+      confirmHistory: base.confirmHistory,
+      vmbBeforeSplit: base.vmbBeforeSplit,
+      fromOpenTerms: base.fromOpenTerms,
+      ...(terms
+        ? {
+            terms: {
+              shareBp: terms.shareBp,
+              base: terms.base,
+              lossTreatment: terms.lossTreatment,
+              vmbBeforeSplit: terms.vmbBeforeSplit,
+              monthlyRentOre: terms.monthlyRentOre,
+            },
+            specialTerms: terms.specialTerms,
+          }
+        : {}),
+    };
     const result = await createStoreContractFor(viewer, input, {
       today: businessToday(new Date(), viewer.organization.timezone),
       renderPdf: pdfStatus().configured ? (html) => getPdfRenderer().renderHtml(html) : null,

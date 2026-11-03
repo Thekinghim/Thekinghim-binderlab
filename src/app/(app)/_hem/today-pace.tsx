@@ -23,7 +23,7 @@ function deltaText(bp: number): string {
 }
 
 /**
- * I dag hittills: dagens intäkt fram till senaste synk, ±% mot samma klockslag en vanlig
+ * I dag hittills: dagens intäkt fram till senaste hämtningen från Awish (levande prick), ±% mot samma klockslag en vanlig
  * {veckodag} och en liten kurva (i dag mot en vanlig dag). Visas bara när modellen har ett
  * värde (perioden innehåller i dag och det finns minst tre jämförelsedagar).
  */
@@ -35,8 +35,10 @@ export function TodayPaceCard({ pace }: { pace: TodayPace }) {
       className="flex flex-col gap-4 rounded-sm border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between md:px-5"
     >
       <div className="flex min-w-0 flex-col gap-1.5">
-        <h2 id="i-dag-hittills" className="label text-muted">
-          {`I dag hittills · kl. ${pace.clock}`}
+        <h2 id="i-dag-hittills" className="label flex items-center gap-2 text-muted">
+          {/* Levande prick: talet kommer direkt från Awish. */}
+          <span aria-hidden className="live-dot inline-block size-1.5 rounded-full bg-up text-up" />
+          {`I dag · kl. ${pace.clock}`}
         </h2>
         <p className="tnum flex flex-wrap items-center gap-x-3 gap-y-1">
           <CountUp
@@ -53,10 +55,10 @@ export function TodayPaceCard({ pace }: { pace: TodayPace }) {
           >
             {deltaText(pace.deltaBp)}
           </span>
-          <span className="meta text-subtle">{`mot en vanlig ${weekday}`}</span>
+          <span className="meta text-subtle">{`mot vanlig ${weekday}`}</span>
         </p>
         <p className="meta tnum text-subtle">
-          {`Prognos i dag ${kr(pace.projectionOre)} · vanlig dag ${kr(pace.baselineFullOre)}`}
+          {`Prognos ${kr(pace.projectionOre)} · vanlig dag ${kr(pace.baselineFullOre)}`}
         </p>
       </div>
       <PaceSpark pace={pace} weekday={weekday} />

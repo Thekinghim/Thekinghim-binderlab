@@ -6,6 +6,8 @@ import {
   buildVartLagerModel,
   describeChange,
   lastsText,
+  needQtyOf,
+  stockTodos,
   whenText,
   type VartLagerInput,
   type WarehouseEvent,
@@ -145,12 +147,73 @@ describe("buildVartLagerModel", () => {
   });
 
   it("rubrik: titlar som tar slut, annars att det räcker", () => {
-    expect(sp(headingOf(buildVartLagerModel(input())).aside)).toBe(
-      "1 titel tar slut inom 7 dagar.",
-    );
+    expect(sp(headingOf(buildVartLagerModel(input())).aside)).toBe("1 titel tar slut: beställ 1.");
     expect(
-      headingOf(buildVartLagerModel(input({ warehouse: [wr("a", 40)], sold7: new Map() }))).aside,
-    ).toBe("Allt räcker en vecka till.");
+      sp(
+        headingOf(buildVartLagerModel(input({ warehouse: [wr("a", 40)], sold7: new Map() }))).aside,
+      ),
+    ).toBe("Allt räcker 7 dagar.");
+  });
+});
+
+describe("egna produkter och Att göra", () => {
+  it("behovet: minst veckans brist, annars två veckors takt minus lagret, aldrig under 1", () => {
+    expect(needQtyOf(3, false, wr("x", 3))).toBe(0);
+    // 1 pack/dag i 14 dagar − 3 hemma = 11.
+    expect(needQtyOf(3, true, wr("x", 3))).toBe(11);
+    expect(needQtyOf(3, true, wr("x", 3, { shortBy: 20 }))).toBe(20);
+    // 2,5 pack/dag → 35 för 14 dagar; under 0 räknas som 0.
+    expect(needQtyOf(-4, true, wr("x", -4, { perDayTenths: 25 }))).toBe(35);
+    expect(needQtyOf(50, true, wr("x", 50))).toBe(1);
+    expect(needQtyOf(0, true, undefined)).toBe(1);
+  });
+
+  it("egen produkt packas, övriga beställs; under 0 räknas om först", () => {
+    const m = buildVartLagerModel(
+      input({
+        titles: [
+          { id: "b", name: "Mystery Pack", ownProduct: true },
+          { id: "a", name: "Black Bolt" },
+          { id: "c", name: "Paradox Rift" },
+        ],
+        warehouse: [
+          wr("a", -2, { status: "critical", daysLeft: 0 }),
+          wr("b", 3, { daysLeft: 2, status: "low" }),
+          wr("c", 0, { daysLeft: 0, status: "critical", perDayTenths: 5 }),
+        ],
+        home: new Map([
+          ["a", -2],
+          ["b", 3],
+          ["c", 0],
+        ]),
+      }),
+    );
+    const b = m.rows.find((r) => r.titleId === "b")!;
+    expect(b).toMatchObject({ own: true, runsOut: true, needQty: 11 });
+    expect(m.rows.find((r) => r.titleId === "c")).toMatchObject({ own: false, needQty: 7 });
+    expect(stockTodos(m.rows)).toEqual([
+      { titleId: "a", verb: "Räkna om", title: "Black Bolt", qty: null, tone: "critical" },
+      { titleId: "c", verb: "Beställ", title: "Paradox Rift", qty: 7, tone: "critical" },
+      { titleId: "b", verb: "Packa", title: "Mystery Pack", qty: 11, tone: "warning" },
+    ]);
+    const noNegative = buildVartLagerModel(
+      input({
+        titles: [
+          { id: "b", name: "Mystery Pack", ownProduct: true },
+          { id: "c", name: "Paradox Rift" },
+        ],
+        warehouse: [
+          wr("b", 3, { daysLeft: 2, status: "low" }),
+          wr("c", 0, { daysLeft: 0, status: "critical" }),
+        ],
+      }),
+    );
+    expect(sp(headingOf(noNegative).aside)).toBe("2 titlar tar slut: packa 1, beställ 1.");
+  });
+
+  it("allt räcker: inget att göra", () => {
+    const m = buildVartLagerModel(input({ warehouse: [wr("a", 40)], sold7: new Map() }));
+    expect(stockTodos(m.rows)).toEqual([]);
   });
 });
 

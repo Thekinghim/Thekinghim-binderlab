@@ -101,7 +101,7 @@ export interface HeaderView {
   readonly title: string;
   /** Rubrikens andra del: hur många som måste göras i dag. */
   readonly aside: string;
-  /** Raden under rubriken: det mest brådskande, intäkten i risk och filtret. */
+  /** Raden under rubriken: det mest brådskande, okänt saldo och filtret. */
   readonly description: string;
   readonly meta: { label: string; value: string }[];
 }
@@ -119,6 +119,7 @@ export interface DismissedView {
 export interface PageView {
   readonly header: HeaderView;
   readonly groups: GroupView[];
+  /** Alla punkter på sidan: reglernas inom filtret plus extras. */
   readonly total: number;
   /** Punkter som döljs av filtret (butik/automat). */
   readonly hiddenByScope: number;
@@ -136,6 +137,47 @@ export interface DismissedInput {
   /** Relativ tid i organisationens tidszon, t.ex. "för 4 min sedan". */
   readonly when: string;
   readonly by: string | null;
+}
+
+/**
+ * En punkt som inte kommer ur reglerna men står på sidan (bokföringen att ladda ner, en ny
+ * automat att koppla). Den räknas i rubriken, så att rubriken aldrig säger "Inget att göra"
+ * när sidan visar något att göra.
+ */
+export interface ExtraTodo {
+  readonly key: string;
+  /** Kort åtgärd utan punkt: "Ladda ner bokföringen för oktober 2026". */
+  readonly title: string;
+  readonly level: TodoLevel;
+}
+
+/**
+ * Raderna överst på Att göra som inte kommer ur reglerna: nya automater att koppla och
+ * månadens bokföring att ladda ner (månaden som text, "oktober 2026", eller null).
+ */
+export function extraTodos(input: {
+  readonly bokforingMonth: string | null;
+  readonly newMachines: number;
+}): ExtraTodo[] {
+  const out: ExtraTodo[] = [];
+  if (input.newMachines > 0) {
+    out.push({
+      key: "new-machines",
+      title:
+        input.newMachines === 1
+          ? "Välj butik för den nya automaten"
+          : `Välj butik för ${plural(input.newMachines, "ny automat", "nya automater")}`,
+      level: "now",
+    });
+  }
+  if (input.bokforingMonth) {
+    out.push({
+      key: "bokforing",
+      title: `Ladda ner bokföringen för ${input.bokforingMonth}`,
+      level: "soon",
+    });
+  }
+  return out;
 }
 
 /** Det sidan behöver veta om stamdata och lager. */
@@ -166,6 +208,8 @@ export interface ModelInput {
   readonly dismissed?: readonly DismissedInput[];
   /** Vem som gör punkten (nyckel → användar-id, null = Båda). Saknas = Båda. */
   readonly assignees?: ReadonlyMap<string, string | null>;
+  /** Punkter utanför reglerna som sidan visar (räknas i rubriken). */
+  readonly extras?: readonly ExtraTodo[];
 }
 
 // ---------------------------------------------------------------------------
@@ -207,7 +251,7 @@ const KIND_NOUN: Record<TodoKind, [string, string]> = {
   "silent-title": ["tyst titel", "tysta titlar"],
   "report-due": ["rapport att skicka", "rapporter att skicka"],
   "report-review": ["utkast att granska", "utkast att granska"],
-  contract: ["avtal att se över", "avtal att se över"],
+  contract: ["kontrakt att ordna", "kontrakt att ordna"],
   alert: ["larm", "larm"],
   settlement: ["utbetalning till butik", "utbetalningar till butiker"],
   "missing-price": ["titel utan inköpspris", "titlar utan inköpspris"],
@@ -220,7 +264,7 @@ const KIND_LABEL: Record<TodoKind, string> = {
   "silent-title": "Tyst titel",
   "report-due": "Rapport",
   "report-review": "Rapportutkast",
-  contract: "Avtal",
+  contract: "Kontrakt",
   alert: "Larm",
   settlement: "Utbetalning",
   "missing-price": "Inköpspris",
@@ -335,7 +379,7 @@ export function primaryFigures(item: TodoItem, economy: boolean): FigureView[] {
       const onHand = figureValue(item, "onHand");
       if (hours !== null) out.push({ label: "Tyst", value: `${formatInt(hours)}${NBSP}h` });
       if (onHand !== null)
-        out.push({ label: "I facket", value: formatFigure({ value: onHand, unit: "packs" }) });
+        out.push({ label: "I automaten", value: formatFigure({ value: onHand, unit: "packs" }) });
       stake();
       break;
     }
@@ -400,7 +444,12 @@ export function primaryFigures(item: TodoItem, economy: boolean): FigureView[] {
 export function evidenceFigures(item: TodoItem, economy: boolean): FigureView[] {
   return item.evidence.figures
     .filter((f) => economy || f.unit !== "ore")
-    .map((f) => ({ label: f.label, value: formatFigure(f) }));
+    .map((f) => ({ label: plainWords(f.label), value: formatFigure(f) }));
+}
+
+/** Inga facktermer för delägaren: "i facket" heter "i automaten" på sidan. */
+export function plainWords(text: string): string {
+  return text.replace(/\b([Ii]) facket\b/g, "$1 automaten");
 }
 
 // ---------------------------------------------------------------------------
@@ -451,7 +500,8 @@ function actionFor(item: TodoItem, input: ModelInput): ActionView | null {
       const unitsInWindow = figureValue(item, "unitsInWindow");
       return {
         kind: "register-refill",
-        label: a.label,
+        // Ett ord för delägaren: knappen betyder "jag har fyllt på".
+        label: "Fyllt på",
         machineId,
         titleId,
         machineName: machine?.name ?? machineId,
@@ -516,9 +566,9 @@ export const SIGNAL_BUDGET = 3;
 const LEVEL_TEXT: Record<TodoLevel, string> = { now: "I dag", soon: "Snart", later: "Senare" };
 
 const GROUP_META: Record<TodoLevel, { id: string; eyebrow: string; title: string }> = {
-  now: { id: "i-dag", eyebrow: "I dag", title: "Gör i dag." },
-  soon: { id: "snart", eyebrow: "De närmaste dagarna", title: "Gör de närmaste dagarna." },
-  later: { id: "senare", eyebrow: "När tid finns", title: "Gör när tid finns." },
+  now: { id: "i-dag", eyebrow: "I dag", title: "I dag." },
+  soon: { id: "snart", eyebrow: "Snart", title: "Snart." },
+  later: { id: "senare", eyebrow: "Senare", title: "Senare." },
 };
 
 const LEVELS: readonly TodoLevel[] = ["now", "soon", "later"];
@@ -549,7 +599,7 @@ export function toView(item: TodoItem, input: ModelInput, signal: boolean): Todo
     status,
     statusText: LEVEL_TEXT[item.level],
     title: withPeriod(item.title),
-    detail: item.detail,
+    detail: plainWords(item.detail),
     figures: primaryFigures(item, input.economy),
     rule: item.evidence.rule,
     evidence: evidenceFigures(item, input.economy),
@@ -616,11 +666,11 @@ export function unpricedOf(items: readonly TodoItem[]): number {
 function groupAside(items: readonly TodoItem[], economy: boolean): string {
   const parts = [capitalize(kindSummary(items))];
   const stake = economy ? stakeOf(items) : 0;
-  if (stake > 0) parts.push(`${kr(stake)} i intäkt i risk de närmaste 7 dagarna`);
+  if (stake > 0) parts.push(`${kr(stake)} i risk`);
   const unpriced = economy ? unpricedOf(items) : 0;
   // "titlar utan inköpspris" står redan i första delen; beloppet säger vad det betyder.
-  if (unpriced > 0) parts.push(`${kr(unpriced)} i intäkt räknas inte in i vinsten`);
-  return withPeriod(parts.join(", "));
+  if (unpriced > 0) parts.push(`${kr(unpriced)} ej i vinsten`);
+  return withPeriod(parts.join(" · "));
 }
 
 function stripPeriod(s: string): string {
@@ -662,14 +712,18 @@ function unknownText(n: number): string {
   return `Saldo okänt i ${plural(n, "automat", "automater")}.`;
 }
 
+const LEVEL_RANK: Record<TodoLevel, number> = { now: 0, soon: 1, later: 2 };
+
 function headerView(
   visible: readonly TodoItem[],
-  lead: TodoItem | null,
+  extras: readonly ExtraTodo[],
   hidden: number,
   input: ModelInput,
   unknown: number,
 ): HeaderView {
-  const count = (l: TodoLevel) => visible.filter((i) => i.level === l).length;
+  const count = (l: TodoLevel) =>
+    visible.filter((i) => i.level === l).length + extras.filter((e) => e.level === l).length;
+  const total = visible.length + extras.length;
   const now = count("now");
   const stake = input.economy ? stakeOf(visible) : 0;
   const unpriced = input.economy ? unpricedOf(visible) : 0;
@@ -677,45 +731,29 @@ function headerView(
   let title: string;
   let aside: string;
   const parts: string[] = [];
-  if (visible.length === 0 && unknown > 0) {
+  if (total === 0 && unknown > 0) {
     // Påfyllningar räknas bara på inräknat saldo: inget "lagret räcker" utan underlag.
     title = unknownText(unknown);
-    aside = "Räkna in lagret, så räknas påfyllningarna fram.";
-  } else if (visible.length === 0) {
+    aside = "Räkna in lagret.";
+  } else if (total === 0) {
     title = "Inget att göra.";
-    aside =
-      input.role === "refiller"
-        ? "Lagret räcker minst 2,5 dagar i alla automater, och alla har sålt de senaste 48 timmarna."
-        : "Lagret räcker, automaterna säljer, alla titlar har inköpspris, rapporterna är skickade och inget larm eller avtal väntar.";
+    aside = "Allt ser bra ut.";
   } else {
-    const onlyRefills = visible.every((i) => i.kind === "refill");
+    const onlyRefills = extras.length === 0 && visible.every((i) => i.kind === "refill");
     title = onlyRefills
-      ? `${plural(visible.length, "påfyllning", "påfyllningar")} att göra.`
-      : `${plural(visible.length, "sak", "saker")} att göra.`;
-    aside = now > 0 ? `${formatInt(now)} måste göras i dag.` : "Inget måste göras i dag.";
-    if (lead) parts.push(leadText(lead));
-    if (stake > 0) {
-      // Beloppet gäller påfyllningar och tysta automater; när den första punkten är något
-      // annat (utkast, avtal, larm) sägs det, så att beloppet inte kopplas till den.
-      // Rubrikens belopp är summan för alla punkter; den första punktens egen andel sägs
-      // för sig, så att summan inte läses som den automatens belopp.
-      const leadStake = lead && RISK_KINDS.has(lead.kind) ? wholeKronor(lead.atStakeOre ?? 0) : 0;
-      parts.push(
-        lead && RISK_KINDS.has(lead.kind)
-          ? leadStake >= stake
-            ? `${kr(stake)} i intäkt står på spel de närmaste 7 dagarna.`
-            : leadStake > 0
-              ? `Den står för ${kr(leadStake)} av ${kr(stake)} i intäkt i risk de närmaste 7 dagarna.`
-              : `Totalt ${kr(stake)} i intäkt i risk de närmaste 7 dagarna.`
-          : `${
-              visible.some((i) => i.kind === "stale-machine" || i.kind === "silent-title")
-                ? "Påfyllningar och tysta automater"
-                : "Påfyllningarna"
-            }: ${kr(stake)} i intäkt i risk de närmaste 7 dagarna.`,
-      );
+      ? `${plural(total, "påfyllning", "påfyllningar")} att göra.`
+      : `${plural(total, "sak", "saker")} att göra.`;
+    aside = now > 0 ? `${formatInt(now)} i dag.` : "Inget i dag.";
+    // Den mest brådskande: reglernas första punkt, eller en extra punkt om den är brådskare.
+    const first = visible[0] ?? null;
+    const extra = extras[0] ?? null;
+    if (first && (!extra || LEVEL_RANK[first.level] <= LEVEL_RANK[extra.level])) {
+      parts.push(leadText(first));
+    } else if (extra) {
+      parts.push(`Först: ${stripPeriod(extra.title)}.`);
     }
   }
-  if (visible.length > 0 && unknown > 0) parts.push(unknownText(unknown));
+  if (total > 0 && unknown > 0) parts.push(unknownText(unknown));
   if (hidden > 0) parts.push(hiddenText(hidden, input.scope));
 
   const meta: { label: string; value: string }[] = [];
@@ -801,12 +839,12 @@ export function buildPage(input: ModelInput): PageView {
     });
   }
   // Punkterna är sorterade efter brådska: den första är den mest brådskande.
-  const lead = visible[0] ?? null;
+  const extras = input.extras ?? [];
   const unknown = unknownStockInScope(input);
   return {
-    header: headerView(visible, lead, hidden, input, unknown),
+    header: headerView(visible, extras, hidden, input, unknown),
     groups,
-    total: visible.length,
+    total: visible.length + extras.length,
     hiddenByScope: hidden,
     economy: input.economy,
     unknownStock: unknown,

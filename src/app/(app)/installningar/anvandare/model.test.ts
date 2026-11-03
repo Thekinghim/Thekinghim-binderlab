@@ -80,9 +80,9 @@ describe("canRevokeInvitation", () => {
 
 describe("rubrik och räknare", () => {
   it("tvådelad rubrik med antal och väntande inbjudningar", () => {
-    expect(headline(1, 0)).toBe("1 person har tillgång. Inga inbjudningar väntar.");
-    expect(headline(5, 1)).toBe("5 personer har tillgång. 1 inbjudan väntar på svar.");
-    expect(headline(12, 3)).toBe("12 personer har tillgång. 3 inbjudningar väntar på svar.");
+    expect(headline(1, 0)).toBe("1 person har tillgång.");
+    expect(headline(5, 1)).toBe("1 inbjudan väntar.");
+    expect(headline(12, 3)).toBe("3 inbjudningar väntar.");
   });
 
   it("räknar per roll, även nollor, i rollordning", () => {
@@ -122,7 +122,7 @@ describe("sektionsrubriker", () => {
 
   it("inbjudningar: första länken som går ut, annars regeln", () => {
     expect(invitationsAside("9 nov.")).toBe("Första länken går ut 9 nov.");
-    expect(invitationsAside(null)).toBe("En länk gäller i 7 dagar och kan användas en gång.");
+    expect(invitationsAside(null)).toBe("Länken gäller 7 dagar.");
   });
 });
 

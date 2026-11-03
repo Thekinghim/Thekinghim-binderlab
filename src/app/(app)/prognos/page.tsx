@@ -4,8 +4,11 @@ import Link from "next/link";
 import type React from "react";
 import { Suspense } from "react";
 
-import { carriedQuery, type SearchParamsInput } from "@/components/shell/period-state";
+import { redirect } from "next/navigation";
+
+import { type SearchParamsInput } from "@/components/shell/period-state";
 import { HashTab } from "@/components/ui/hash-tab";
+import { OpenOnHash } from "@/components/ui/open-on-hash";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { DomainError } from "@/domain";
@@ -17,42 +20,58 @@ import { ForecastView } from "./_components/forecast-view";
 import { LostSalesView } from "./_components/lost-sales-view";
 import { OrdersView } from "./_components/orders-view";
 import { OurStock } from "./_components/our-stock";
-import { ourStockAside, ourStockTitle } from "./_lib/our-stock";
+import { ourStockTitle } from "./_lib/our-stock";
 import { PlanView } from "./_components/plan-view";
 import { SuppliersView } from "./_components/suppliers-view";
 import { ValuationView } from "./_components/valuation-view";
-import { pickTab, ViewTabs } from "../automater/_components/view-tabs";
+import { PageHead } from "../vart-lager/_components/page-head";
+import { TodoList } from "../vart-lager/_components/todo-list";
+import { needQtyOf } from "../vart-lager/_lib/model";
 import { buildPageModel, type PageModel } from "./_lib/model";
 import { loadOurStockFor, type OurStockView } from "../lager/_lib/data";
 
-export const metadata: Metadata = { title: "Prognos & inköp" };
+export const metadata: Metadata = { title: "Inköp och prognos" };
 
-const TABS = [
-  { value: "bestall", label: "Vårt lager & beställ" },
-  { value: "prognos", label: "Prognos" },
-  { value: "forlorad", label: "Förlorad försäljning" },
-  { value: "lager", label: "Värde & leverantörer" },
-] as const;
+/** Vyerna: Inköp (standard) och Prognos, båda underflikar i menyn. */
+type Tab = "bestall" | "prognos";
 
-/** Gamla #ankare → flik. Första värdet är standardfliken. */
-const HASH_TO_TAB: Record<string, string> = {
+/** Gamla #ankare → vy. Avsnitten under "Mer" öppnas av OpenOnHash. */
+const HASH_TO_TAB: Record<string, Tab> = {
   "vart-lager": "bestall",
   centrallager: "bestall",
+  "att-packa": "bestall",
   inkopsforslag: "bestall",
   inkopsorder: "bestall",
+  lagervarde: "bestall",
+  leverantorer: "bestall",
   prognos: "prognos",
   traffsakerhet: "prognos",
-  "forlorad-forsaljning": "forlorad",
-  lagervarde: "lager",
-  leverantorer: "lager",
+  "forlorad-forsaljning": "prognos",
 };
 
-const SECTION = "flex scroll-mt-28 flex-col gap-10 md:gap-12";
+/** Gamla vyer (?vy=forlorad, ?vy=lager) ligger nu under "Mer" i Prognos respektive Inköp. */
+const OLD_VIEWS: Record<string, { tab: Tab; hash: string }> = {
+  forlorad: { tab: "prognos", hash: "forlorad-forsaljning" },
+  lager: { tab: "bestall", hash: "leverantorer" },
+};
+
+const SECTION = "flex scroll-mt-28 flex-col gap-8";
+const MORE =
+  "group scroll-mt-28 rounded-sm border border-line [&>summary]:flex [&>summary]:cursor-pointer [&>summary]:items-baseline [&>summary]:justify-between [&>summary]:gap-4 [&>summary]:px-4 [&>summary]:py-3";
+
+function viewParam(sp: SearchParamsInput): string | undefined {
+  return sp instanceof URLSearchParams || "get" in sp
+    ? ((sp as { get(n: string): string | null }).get("vy") ?? undefined)
+    : ((v) => (Array.isArray(v) ? v[0] : v))(
+        (sp as Record<string, string | string[] | undefined>).vy,
+      );
+}
 
 /**
- * Prognos & inköp: vårt eget lager (centrallagret, inventering per titel), vad slutsålt kostat, vad som säljer de kommande fyra veckorna (med
- * intervall och träffsäkerhet) och vad som ska beställas till centrallagret. Ägare, admin
- * och läsare; bara ägare och admin kan ändra inköpen. Påfyllaren skickas vidare.
+ * Inköp och Prognos (två underflikar under Vårt lager). Inköp: vad som ska packas (egna
+ * produkter) och beställas, inköpsorder, och under "Mer" lager, leverantörer och värde.
+ * Prognos: vad som säljer de kommande fyra veckorna, och under "Mer" träffsäkerhet och
+ * förlorad försäljning. Ägare, admin och läsare; bara ägare och admin ändrar inköpen.
  */
 export default async function PrognosPage({
   searchParams,
@@ -61,6 +80,20 @@ export default async function PrognosPage({
 }) {
   const ctx = await requireRoute("prognos");
   const sp = await searchParams;
+  const raw = viewParam(sp);
+  const old = raw ? OLD_VIEWS[raw] : undefined;
+  if (old) {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp as Record<string, string | string[] | undefined>)) {
+      if (k === "vy" || v === undefined) continue;
+      for (const one of Array.isArray(v) ? v : [v]) q.append(k, one);
+    }
+    if (old.tab !== "bestall") q.set("vy", old.tab);
+    const qs = q.toString();
+    redirect(`/prognos${qs ? `?${qs}` : ""}#${old.hash}`);
+  }
+  const tab: Tab = raw === "prognos" ? "prognos" : "bestall";
+
   const p = await loadPeriod(sp);
   let m: PageModel;
   let stock: OurStockView;
@@ -70,7 +103,13 @@ export default async function PrognosPage({
       loadPrognosFor(viewer, { period: p.period, scope: p.scope }),
       loadOurStockFor(viewer, new Date(ctx.now)),
     ]);
-    m = buildPageModel(data, new Date(ctx.now));
+    // Egna produkter: "Packa X st" med samma antal som Vårt lager.
+    const packNeed = new Map(
+      our.rows
+        .filter((r) => r.status !== "ok")
+        .map((r) => [r.titleId, needQtyOf(r.onHand, true, r)] as const),
+    );
+    m = buildPageModel(data, new Date(ctx.now), { packNeed });
     stock = our;
   } catch (error) {
     if (!(error instanceof DomainError)) throw error;
@@ -78,7 +117,7 @@ export default async function PrognosPage({
       <div className="mx-auto w-full max-w-[1280px] px-4 pt-8 pb-16 md:px-8 md:pt-12">
         <StateMessage
           kind="loading-failed"
-          message="Prognosen kunde inte räknas fram ur datan."
+          message="Prognosen kunde inte räknas fram."
           detail={error.message}
           action={{ label: "Öppna Datakällor", href: "/datakallor" }}
           diagnostics={[{ label: "Kod", value: error.code }]}
@@ -87,174 +126,187 @@ export default async function PrognosPage({
     );
   }
 
-  const raw =
-    sp instanceof URLSearchParams || "get" in sp
-      ? ((sp as { get(n: string): string | null }).get("vy") ?? undefined)
-      : (sp as Record<string, string | string[] | undefined>).vy;
-  const tab = pickTab(TABS, raw);
-  const meta = m.scoped
-    ? [...m.meta, { label: "Vårt lager", value: "Hela organisationen" }]
-    : m.meta;
   const rise = (i: number) => ({ "--i": i }) as React.CSSProperties;
+  // Öppna inköpsorder står i huvudvyn; utan öppna ligger listan under "Mer".
+  const ordersMain = m.orders.open.length > 0;
+  const orders = (
+    <OrdersView
+      model={m.orders}
+      suppliers={m.suppliers.suppliers}
+      canEdit={m.canEdit}
+      today={m.today}
+      hasCentralWarehouse={m.hasCentralWarehouse}
+    />
+  );
+  const forecastMeta = m.meta.filter(
+    (x) => x.label !== "Att beställa" && x.label !== "Kapitalbindning",
+  );
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-14 md:px-8 md:pt-12">
       <Suspense fallback={null}>
-        <HashTab map={HASH_TO_TAB} defaultTab={TABS[0].value} />
+        <HashTab map={HASH_TO_TAB} defaultTab="bestall" />
       </Suspense>
-      <div className="rise flex flex-col gap-8">
-        <SectionHeader
-          as="h1"
-          size="xl"
-          eyebrow="Prognos & inköp"
-          title={m.heading.title}
-          aside={m.heading.aside}
-          meta={meta}
-        />
-        <ViewTabs
-          tabs={TABS}
-          value={tab}
-          basePath="/prognos"
-          query={carriedQuery(sp)}
-          label="Avsnitt"
-        />
-      </div>
 
-      <div key={tab} className="flex flex-col gap-12 md:gap-16">
-        {tab === "bestall" ? (
-          <>
-            <section aria-labelledby="vart-lager" className={`rise ${SECTION}`} style={rise(1)}>
-              <SectionHeader
-                id="vart-lager"
-                eyebrow="Vårt lager"
-                title={ourStockTitle(stock.rows, stock.places.length)}
-                aside={stock.rows.length > 0 ? ourStockAside(stock.rows) : undefined}
-                actions={
-                  <Link
-                    href="/vart-lager"
-                    className="meta inline-flex min-h-7 items-center rounded-xs text-muted hover:text-fg"
-                  >
-                    Öppna Vårt lager{"\u00a0"}→
-                  </Link>
-                }
-              />
-              <OurStock
-                rows={stock.rows}
-                titles={stock.titles}
-                timeZone={stock.timeZone}
-                now={stock.now}
-                windowDays={stock.windowDays}
-                // Flera lager: antalet räknas per lager på Vårt lager (här vore det oklart vilket).
-                canRegister={stock.canRegister && stock.places.length <= 1}
-              />
-            </section>
-            <section aria-labelledby="inkopsforslag" className={`rise ${SECTION}`} style={rise(2)}>
-              <SectionHeader
-                id="inkopsforslag"
-                eyebrow="Inköpsförslag · vårt lager"
-                title={m.plan.heading.title}
-                aside={m.plan.heading.aside}
-              />
-              <PlanView
-                model={m.plan}
-                suppliers={m.suppliers.suppliers}
-                canEdit={m.canEdit}
-                today={m.today}
+      {tab === "bestall" ? (
+        <div key="bestall" className="fade-in flex flex-col gap-12 md:gap-14">
+          <PageHead
+            eyebrow={m.scoped ? "Inköp · hela organisationen" : "Inköp"}
+            title={m.plan.heading.title}
+            aside={m.plan.heading.aside}
+          />
+
+          {m.plan.packLines.length > 0 ? (
+            <section id="att-packa" aria-labelledby="att-packa-rubrik" className={SECTION}>
+              <h2 id="att-packa-rubrik" className="label text-subtle">
+                Att packa
+              </h2>
+              <TodoList
+                label="Att packa"
+                done=""
+                max={12}
+                items={m.plan.packLines.map((l) => ({
+                  key: l.titleId,
+                  verb: "Packa",
+                  title: l.title,
+                  qty: l.packQty,
+                  tone: l.late ? "critical" : "warning",
+                  href: `/vart-lager#rad-${l.titleId}`,
+                }))}
               />
             </section>
+          ) : null}
+
+          <section aria-labelledby="inkopsforslag" className={`rise ${SECTION}`} style={rise(2)}>
+            <h2 id="inkopsforslag" className="label text-subtle">
+              Att beställa
+            </h2>
+            <PlanView
+              model={m.plan}
+              suppliers={m.suppliers.suppliers}
+              canEdit={m.canEdit}
+              today={m.today}
+            />
+          </section>
+
+          {ordersMain ? (
             <section aria-labelledby="inkopsorder" className={`rise ${SECTION}`} style={rise(3)}>
               <SectionHeader
                 id="inkopsorder"
+                size="md"
                 eyebrow="Inköpsorder"
                 title={m.orders.heading.title}
-                aside={m.orders.heading.aside}
               />
-              <OrdersView
-                model={m.orders}
-                suppliers={m.suppliers.suppliers}
-                canEdit={m.canEdit}
-                today={m.today}
-                hasCentralWarehouse={m.hasCentralWarehouse}
-              />
+              {orders}
             </section>
-          </>
-        ) : null}
+          ) : null}
 
-        {tab === "prognos" ? (
-          <>
-            <section aria-labelledby="prognos" className={`rise ${SECTION}`} style={rise(1)}>
-              <SectionHeader
-                id="prognos"
-                eyebrow="Prognos · kommande 4 veckor"
-                title={m.forecast.heading.title}
-                aside={m.forecast.heading.aside}
-              />
-              <ForecastView model={m.forecast} />
-            </section>
-            <details className={`rise rounded-sm border border-line p-4 md:p-6`} style={rise(2)}>
-              <summary className="cursor-pointer text-sm font-medium text-fg">
-                Träffsäkerhet · {m.accuracy.heading.title}
+          <div className="rise flex flex-col gap-3" style={rise(4)}>
+            <p className="label text-subtle">Mer</p>
+            {!ordersMain ? (
+              <details id="inkopsorder" className={MORE}>
+                <summary>
+                  <span className="text-sm font-medium text-fg">Inköpsorder</span>
+                  <span className="meta text-muted">{m.orders.heading.title}</span>
+                </summary>
+                <div className="border-t border-line p-4">{orders}</div>
+              </details>
+            ) : null}
+            <details id="vart-lager" className={MORE}>
+              <summary>
+                <span className="text-sm font-medium text-fg">Lager per titel</span>
+                <span className="meta text-muted">
+                  {ourStockTitle(stock.rows, stock.places.length)}
+                </span>
               </summary>
-              <section aria-labelledby="traffsakerhet" className={`mt-6 ${SECTION}`}>
-                <SectionHeader
-                  id="traffsakerhet"
-                  eyebrow="Träffsäkerhet · prövad bakåt"
-                  title={m.accuracy.heading.title}
-                  aside={m.accuracy.heading.aside}
+              <div className="flex flex-col gap-4 border-t border-line p-4">
+                <OurStock
+                  rows={stock.rows}
+                  titles={stock.titles}
+                  timeZone={stock.timeZone}
+                  now={stock.now}
+                  windowDays={stock.windowDays}
+                  // Flera lager: antalet räknas per lager på Vårt lager (här vore det oklart vilket).
+                  canRegister={stock.canRegister && stock.places.length <= 1}
                 />
-                <AccuracyView model={m.accuracy} />
-              </section>
+                <Link href="/vart-lager" className="meta w-fit text-muted hover:text-fg">
+                  Vårt lager{"\u00a0"}→
+                </Link>
+              </div>
             </details>
-          </>
-        ) : null}
-
-        {tab === "forlorad" ? (
-          <section
-            aria-labelledby="forlorad-forsaljning"
-            className={`rise ${SECTION}`}
-            style={rise(1)}
-          >
-            <SectionHeader
-              id="forlorad-forsaljning"
-              eyebrow={`Förlorad försäljning · ${m.lost.periodText}`}
-              title={m.lost.heading.title}
-              aside={m.lost.heading.aside}
-            />
-            <LostSalesView model={m.lost} />
+            <details id="leverantorer" className={MORE}>
+              <summary>
+                <span className="text-sm font-medium text-fg">Leverantörer</span>
+                <span className="meta text-muted">{m.suppliers.heading.title}</span>
+              </summary>
+              <div className="flex flex-col gap-4 border-t border-line p-4">
+                <p className="text-sm text-muted">{m.suppliers.heading.aside}</p>
+                <SuppliersView model={m.suppliers} titles={m.titles} canEdit={m.canEdit} />
+                <Link href="/inkopspriser" className="meta w-fit text-muted hover:text-fg">
+                  Inköpspriser{"\u00a0"}→
+                </Link>
+              </div>
+            </details>
+            <details id="lagervarde" className={MORE}>
+              <summary>
+                <span className="text-sm font-medium text-fg">Lagervärde</span>
+                <span className="meta text-muted">{m.valuation.heading.title}</span>
+              </summary>
+              <div className="border-t border-line p-4">
+                <ValuationView model={m.valuation} />
+              </div>
+            </details>
+            <OpenOnHash id="inkopsorder" />
+            <OpenOnHash id="vart-lager" />
+            <OpenOnHash id="leverantorer" />
+            <OpenOnHash id="lagervarde" />
+          </div>
+        </div>
+      ) : (
+        <div key="prognos" className="fade-in flex flex-col gap-12 md:gap-14">
+          <PageHead eyebrow="Prognos · 4 veckor" title={m.heading.title} aside={m.heading.aside} />
+          <section aria-labelledby="prognos" className={`rise ${SECTION}`} style={rise(1)}>
+            <h2 id="prognos" className="sr-only">
+              Prognos
+            </h2>
+            <dl className="flex flex-wrap gap-x-8 gap-y-2">
+              {forecastMeta.map((x) => (
+                <div key={x.label} className="flex flex-col">
+                  <dt className="label text-subtle">{x.label}</dt>
+                  <dd className="tnum text-base text-fg">{x.value}</dd>
+                </div>
+              ))}
+            </dl>
+            <ForecastView model={m.forecast} />
           </section>
-        ) : null}
 
-        {tab === "lager" ? (
-          <>
-            <section aria-labelledby="lagervarde" className={`rise ${SECTION}`} style={rise(1)}>
-              <SectionHeader
-                id="lagervarde"
-                eyebrow="Lagervärde och kapitalbindning"
-                title={m.valuation.heading.title}
-                aside={m.valuation.heading.aside}
-              />
-              <ValuationView model={m.valuation} />
-            </section>
-            <section aria-labelledby="leverantorer" className={`rise ${SECTION}`} style={rise(2)}>
-              <SectionHeader
-                id="leverantorer"
-                eyebrow="Leverantörer"
-                title={m.suppliers.heading.title}
-                aside={m.suppliers.heading.aside}
-                actions={
-                  <Link
-                    href="/inkopspriser"
-                    className="meta inline-flex min-h-7 items-center rounded-xs text-muted hover:text-fg"
-                  >
-                    Inköpspriser{"\u00a0"}→
-                  </Link>
-                }
-              />
-              <SuppliersView model={m.suppliers} titles={m.titles} canEdit={m.canEdit} />
-            </section>
-          </>
-        ) : null}
-      </div>
+          <div className="rise flex flex-col gap-3" style={rise(2)}>
+            <p className="label text-subtle">Mer</p>
+            <details id="forlorad-forsaljning" className={MORE}>
+              <summary>
+                <span className="text-sm font-medium text-fg">Förlorad försäljning</span>
+                <span className="meta text-muted">{m.lost.heading.title}</span>
+              </summary>
+              <div className="flex flex-col gap-6 border-t border-line p-4">
+                <p className="text-sm text-muted">{m.lost.periodText}</p>
+                <LostSalesView model={m.lost} />
+              </div>
+            </details>
+            <details id="traffsakerhet" className={MORE}>
+              <summary>
+                <span className="text-sm font-medium text-fg">Träffsäkerhet</span>
+                <span className="meta text-muted">{m.accuracy.heading.title}</span>
+              </summary>
+              <div className="flex flex-col gap-6 border-t border-line p-4">
+                <p className="text-sm text-muted">{m.accuracy.heading.aside}</p>
+                <AccuracyView model={m.accuracy} />
+              </div>
+            </details>
+            <OpenOnHash id="forlorad-forsaljning" />
+            <OpenOnHash id="traffsakerhet" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { useToast } from "@/components/ui/toast";
 
 import { inviteMember } from "./actions";
 import { FormError } from "@/app/logga-in/form-error";
+import { PASSWORD_MIN_LENGTH } from "../_lib/model";
 import { ROLE_LABEL } from "./model";
 import { RoleChoice } from "./role-choice";
 
@@ -31,6 +32,8 @@ export function InviteDialog({
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string>();
   const defaultRole: MemberRole = roles.includes("viewer") ? "viewer" : roles[0]!;
   const [role, setRole] = useState<MemberRole>(defaultRole);
   const [emailError, setEmailError] = useState<string>();
@@ -50,6 +53,8 @@ export function InviteDialog({
   const close = () => {
     setOpen(false);
     setEmail("");
+    setPassword("");
+    setPasswordError(undefined);
     setRole(defaultRole);
     setEmailError(undefined);
     setError(undefined);
@@ -63,18 +68,29 @@ export function InviteDialog({
       return;
     }
     setEmailError(undefined);
+    if (password !== "" && password.length < PASSWORD_MIN_LENGTH) {
+      setPasswordError(`Minst ${PASSWORD_MIN_LENGTH} tecken.`);
+      return;
+    }
+    setPasswordError(undefined);
     setError(undefined);
     startTransition(async () => {
-      const result = await inviteMember({ email: address, role });
+      const result = await inviteMember({
+        email: address,
+        role,
+        password: password === "" ? undefined : password,
+      });
       if (!result.ok) {
         setError(result.error);
         return;
       }
       toast({
         title: `Inbjudan skickad till ${address}`,
-        description: devMailbox
-          ? `${ROLE_LABEL[role]}. Lokalt sparas mejlet i .data/mail.`
-          : `${ROLE_LABEL[role]}. Länken gäller i 7 dagar.`,
+        description: password
+          ? `${ROLE_LABEL[role]}. Lösenordet är satt.`
+          : devMailbox
+            ? `${ROLE_LABEL[role]}. Lokalt sparas mejlet i .data/mail.`
+            : `${ROLE_LABEL[role]}. Länken gäller i 7 dagar.`,
         tone: "ok",
       });
       close();
@@ -87,13 +103,7 @@ export function InviteDialog({
       <Button variant="primary" iconLeft="plus" onClick={() => setOpen(true)}>
         Bjud in
       </Button>
-      <Modal
-        open={open}
-        onClose={close}
-        eyebrow={organizationName}
-        title="Bjud in en person"
-        description="Personen får ett mejl med en länk som gäller i 7 dagar och kan användas en gång."
-      >
+      <Modal open={open} onClose={close} eyebrow={organizationName} title="Bjud in">
         <form id="invite-form" onSubmit={submit} noValidate className="flex flex-col gap-5">
           <Input
             label="E-postadress"
@@ -109,6 +119,27 @@ export function InviteDialog({
             ref={emailRef}
           />
           <RoleChoice roles={roles} value={role} onChange={setRole} />
+          <details className="group" open={passwordError !== undefined || undefined}>
+            <summary className="cursor-pointer text-sm text-muted hover:text-fg">
+              Sätt lösenord (valfritt)
+            </summary>
+            <div className="mt-4">
+              <Input
+                label="Lösenord"
+                type="text"
+                name="invite-password"
+                autoComplete="off"
+                spellCheck={false}
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setPasswordError(undefined);
+                }}
+                hint={`Ge det till personen. Minst ${PASSWORD_MIN_LENGTH} tecken.`}
+                error={passwordError}
+              />
+            </div>
+          </details>
           <FormError message={error} />
           <div className="flex flex-col-reverse gap-2 border-t border-line pt-4 sm:flex-row sm:justify-end">
             <Button type="button" onClick={close}>

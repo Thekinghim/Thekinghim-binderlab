@@ -37,10 +37,13 @@ import {
   contractHtml,
   contractTermsSummary,
   type ContractTemplateInput,
+  type ContractTerms,
 } from "@/reports/contract-pdf";
 import { dateText } from "@/reports/text";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
 import { attachContractFileFor } from "@/server/accounting/service";
+import { queryActiveContracts } from "@/server/data/core/queries";
+import type { SignableContract } from "@/analytics/contracts/signed";
 import type { Viewer } from "@/server/data/core/loaders";
 import { ECONOMY_ROLES, OPERATOR_ROLES } from "@/server/data/core/types";
 
@@ -65,12 +68,22 @@ export interface ContractTargetOption {
    * (fel modell). Ett avtal från den dagen skriver om dem till vinstdelning bakåt.
    */
   readonly suggestedFrom: IsoDate | null;
+  /** Butikens uppgifter som står i kontraktet (för förhandsvisningen). */
+  readonly party: {
+    readonly name: string;
+    readonly address: string | null;
+    readonly contactName: string | null;
+    readonly email: string | null;
+    readonly phone: string | null;
+  };
 }
 
 export interface ContractSetup {
   readonly options: ContractTargetOption[];
   /** Organisationsnumret saknas (Ekonomi → Bokföring); avtalet får en tom rad. */
   readonly orgNumberMissing: boolean;
+  /** Vi i kontraktet (för förhandsvisningen). */
+  readonly operator: { readonly name: string; readonly orgNumber: string | null };
 }
 
 /** Butikerna och platserna i pipelinen som kan få ett avtal. */
@@ -80,7 +93,14 @@ export async function loadContractSetupFor(viewer: Viewer): Promise<ContractSetu
   return withUserDbFor(viewer.user, async (tx) => {
     const [stores, leads, orgNumber, contracts, openTerms] = await Promise.all([
       tx
-        .select({ id: s.stores.id, name: s.stores.name })
+        .select({
+          id: s.stores.id,
+          name: s.stores.name,
+          address: s.stores.address,
+          contactName: s.stores.contactName,
+          email: s.stores.email,
+          phone: s.stores.phone,
+        })
         .from(s.stores)
         .where(and(eq(s.stores.organizationId, orgId), isNull(s.stores.archivedAt)))
         .orderBy(asc(s.stores.name)),
@@ -89,6 +109,10 @@ export async function loadContractSetupFor(viewer: Viewer): Promise<ContractSetu
           id: s.expansionLeads.id,
           name: s.expansionLeads.name,
           stage: s.expansionLeads.stage,
+          address: s.expansionLeads.address,
+          contactName: s.expansionLeads.contactName,
+          email: s.expansionLeads.contactEmail,
+          phone: s.expansionLeads.contactPhone,
         })
         .from(s.expansionLeads)
         .where(
@@ -131,15 +155,32 @@ export async function loadContractSetupFor(viewer: Viewer): Promise<ContractSetu
     // utan avtal, övriga platser och sist butiker som redan har ett avtal.
     const waiting = leads.filter((x) => x.stage === "agreement" || x.stage === "meeting");
     const later = leads.filter((x) => x.stage !== "agreement" && x.stage !== "meeting");
-    const leadOption = (x: { id: string; name: string }): ContractTargetOption => ({
+    type Row = {
+      id: string;
+      name: string;
+      address: string | null;
+      contactName: string | null;
+      email: string | null;
+      phone: string | null;
+    };
+    const party = (x: Row) => ({
+      name: x.name,
+      address: x.address,
+      contactName: x.contactName,
+      email: x.email,
+      phone: x.phone,
+    });
+    const leadOption = (x: Row): ContractTargetOption => ({
       value: `lead:${x.id}`,
       label: `${x.name} (ny från pipelinen)`,
       suggestedFrom: null,
+      party: party(x),
     });
-    const storeOption = (x: { id: string; name: string }): ContractTargetOption => ({
+    const storeOption = (x: Row): ContractTargetOption => ({
       value: `store:${x.id}`,
-      label: withContract.has(x.id) ? `${x.name} (har avtal)` : x.name,
+      label: withContract.has(x.id) ? `${x.name} (har kontrakt)` : x.name,
       suggestedFrom: wrongModel.get(x.id) ?? null,
+      party: party(x),
     });
     return {
       options: [
@@ -149,6 +190,7 @@ export async function loadContractSetupFor(viewer: Viewer): Promise<ContractSetu
         ...stores.filter((x) => withContract.has(x.id)).map(storeOption),
       ],
       orgNumberMissing: orgNumber === null,
+      operator: { name: viewer.organization.name, orgNumber },
     };
   });
 }
@@ -175,8 +217,21 @@ export interface CreateContractInput {
   readonly target: string;
   readonly validFrom: IsoDate;
   readonly confirmHistory?: boolean;
-  /** Dra av VMB-moms från vinsten före delningen. Standard falskt. */
+  /** Dra av VMB-moms från vinsten före delningen. Standard falskt (utan `terms`). */
   readonly vmbBeforeSplit?: boolean;
+  /**
+   * Villkoren ägaren valt (Skapa kontrakt, Ny butik). Utelämnat = 50 % av vinsten efter
+   * kostnader, förlust ger 0, och butikens hyra behålls om villkoren skrivs om samma dag.
+   */
+  readonly terms?: ContractTerms;
+  /** Särskilda villkor (fritext) i PDF:en. */
+  readonly specialTerms?: string | null;
+  /**
+   * Ny butik: kontraktet börjar samma dag som butikens öppna villkor (som guiden just lagt
+   * in) och skriver om dem. Bakåtdateringen är redan vald i guiden och kräver ingen ny
+   * bekräftelse.
+   */
+  readonly fromOpenTerms?: boolean;
 }
 
 export type CreateContractResult =
@@ -252,12 +307,12 @@ export async function createStoreContractFor(
 ): Promise<CreateContractResult> {
   const orgId = viewer.organization.id;
   await requireRoleFor(viewer.user, orgId, OPERATOR_ROLES);
-  const back = backdatedFrom(input.validFrom, deps.today);
+  const back = input.fromOpenTerms ? null : backdatedFrom(input.validFrom, deps.today);
   if (back && !input.confirmHistory) {
     return {
       ok: false,
       needsConfirm: true,
-      message: `Avtalet börjar ${dateText(back)}. Butikens ersättning räknas om från den dagen. Stängda månader ändras inte.`,
+      message: `Kontraktet börjar ${dateText(back)}. Butikens ersättning räknas om från den dagen. Stängda månader ändras inte.`,
     };
   }
 
@@ -290,7 +345,7 @@ export async function createStoreContractFor(
     if (open) {
       const status = open.signedAt ? "signerat" : open.sentAt ? "skickat" : "utkast";
       throw new ContractError(
-        `${store.name} har redan ett avtal (${status}). Öppna det under Avtal.`,
+        `${store.name} har redan ett kontrakt (${status}). Öppna det under Kontrakt.`,
       );
     }
 
@@ -305,7 +360,13 @@ export async function createStoreContractFor(
       .where(
         and(eq(s.storeAgreements.organizationId, orgId), eq(s.storeAgreements.storeId, storeId)),
       );
-    const plan = planContractAgreement(existing, input.validFrom);
+    const openTerms = input.fromOpenTerms
+      ? existing
+          .filter((a) => a.validTo === null)
+          .sort((a, b) => (a.validFrom < b.validFrom ? 1 : -1))[0]
+      : undefined;
+    const validFrom: IsoDate = (openTerms?.validFrom as IsoDate | undefined) ?? input.validFrom;
+    const plan = planContractAgreement(existing, validFrom);
     if (plan.kind === "conflict") {
       throw new ContractError(
         `Butiken har villkor från ${dateText(plan.validFrom)} som krockar. Välj en startdag efter dem eller ändra dem under Butiker.`,
@@ -318,33 +379,50 @@ export async function createStoreContractFor(
       plan.kind === "update"
         ? (existing.find((a) => a.id === plan.id)?.monthlyRentOre ?? null)
         : null;
-    const monthlyRentOre = keptRent !== null && keptRent > 0 ? keptRent : null;
-    const terms = {
-      shareBp: DEFAULT_PROFIT_SHARE_BP,
-      lossTreatment: "zero" as const,
-      vmbBeforeSplit: input.vmbBeforeSplit === true,
-      monthlyRentOre,
-    };
+    const terms: Required<ContractTerms> = input.terms
+      ? {
+          shareBp: input.terms.shareBp,
+          base:
+            input.terms.shareBp === null
+              ? "net_excl_vat"
+              : (input.terms.base ?? "profit_after_costs"),
+          lossTreatment: input.terms.lossTreatment,
+          vmbBeforeSplit: input.terms.vmbBeforeSplit === true,
+          monthlyRentOre: input.terms.monthlyRentOre,
+        }
+      : {
+          shareBp: DEFAULT_PROFIT_SHARE_BP,
+          base: "profit_after_costs",
+          lossTreatment: "zero",
+          vmbBeforeSplit: input.vmbBeforeSplit === true,
+          monthlyRentOre: keptRent !== null && keptRent > 0 ? keptRent : null,
+        };
+    if (terms.shareBp === null && (terms.monthlyRentOre ?? 0) <= 0) {
+      throw new ContractError("Ange andel, hyra eller båda.");
+    }
+    const monthlyRentOre = terms.monthlyRentOre;
+    const specialTerms = input.specialTerms?.trim() ? input.specialTerms.trim() : null;
     await tx.insert(s.contracts).values({
       id: contractId,
       organizationId: orgId,
       storeId,
       title: "Placeringsavtal",
-      validFrom: input.validFrom,
+      validFrom,
       validTo: null,
       noticePeriodMonths: CONTRACT_NOTICE_MONTHS,
       terms: contractTermsSummary(terms),
       template: CONTRACT_TEMPLATE,
+      specialTerms,
     });
 
     const agreement = {
       commissionBp: terms.shareBp,
-      commissionBase: "profit_after_costs" as const,
+      commissionBase: terms.base,
       lossTreatment: terms.lossTreatment,
       vmbBeforeSplit: terms.vmbBeforeSplit,
       monthlyRentOre,
       contractId,
-      note: "Enligt placeringsavtal (mall)",
+      note: "Enligt kontraktet",
     };
     if (plan.kind === "update") {
       await tx
@@ -366,7 +444,7 @@ export async function createStoreContractFor(
       await tx.insert(s.storeAgreements).values({
         organizationId: orgId,
         storeId,
-        validFrom: input.validFrom,
+        validFrom,
         validTo: null,
         ...agreement,
       });
@@ -385,11 +463,13 @@ export async function createStoreContractFor(
           email: store.email,
           phone: store.phone,
         },
-        validFrom: input.validFrom,
+        validFrom,
         shareBp: terms.shareBp,
+        base: terms.base,
         lossTreatment: terms.lossTreatment,
         vmbBeforeSplit: terms.vmbBeforeSplit,
         monthlyRentOre,
+        specialTerms,
         reference: contractId.slice(0, 8).toUpperCase(),
       },
     };
@@ -436,6 +516,7 @@ export async function contractTemplateHtmlFor(viewer: Viewer, contractId: string
         storeId: s.contracts.storeId,
         validFrom: s.contracts.validFrom,
         template: s.contracts.template,
+        specialTerms: s.contracts.specialTerms,
       })
       .from(s.contracts)
       .where(and(eq(s.contracts.organizationId, orgId), eq(s.contracts.id, contractId)));
@@ -448,17 +529,14 @@ export async function contractTemplateHtmlFor(viewer: Viewer, contractId: string
       tx
         .select({
           commissionBp: s.storeAgreements.commissionBp,
+          commissionBase: s.storeAgreements.commissionBase,
           lossTreatment: s.storeAgreements.lossTreatment,
           vmbBeforeSplit: s.storeAgreements.vmbBeforeSplit,
           monthlyRentOre: s.storeAgreements.monthlyRentOre,
         })
         .from(s.storeAgreements)
         .where(
-          and(
-            eq(s.storeAgreements.organizationId, orgId),
-            eq(s.storeAgreements.contractId, c.id),
-            eq(s.storeAgreements.commissionBase, "profit_after_costs"),
-          ),
+          and(eq(s.storeAgreements.organizationId, orgId), eq(s.storeAgreements.contractId, c.id)),
         )
         .orderBy(asc(s.storeAgreements.validFrom))
         .limit(1),
@@ -469,10 +547,13 @@ export async function contractTemplateHtmlFor(viewer: Viewer, contractId: string
       operator: { name: viewer.organization.name, orgNumber },
       store,
       validFrom: c.validFrom,
-      shareBp: terms?.commissionBp ?? DEFAULT_PROFIT_SHARE_BP,
+      // Utan kopplade villkor: mallens standard (50 % av vinsten efter kostnader).
+      shareBp: terms ? terms.commissionBp : DEFAULT_PROFIT_SHARE_BP,
+      base: terms?.commissionBase ?? "profit_after_costs",
       lossTreatment: terms?.lossTreatment ?? "zero",
       vmbBeforeSplit: terms?.vmbBeforeSplit ?? false,
       monthlyRentOre: terms?.monthlyRentOre === undefined ? null : terms.monthlyRentOre,
+      specialTerms: c.specialTerms,
       reference: c.id.slice(0, 8).toUpperCase(),
     });
   });
@@ -522,4 +603,14 @@ export async function setContractStatusFor(
       .returning({ id: s.contracts.id }),
   );
   if (rows.length === 0) throw new ContractError("Avtalet finns inte.");
+}
+
+/**
+ * Kontrakten som inte är arkiverade, med mall och signering: underlaget för "har butiken
+ * ett signerat kontrakt?" (@/analytics/contracts/signed). Ägare, admin och läsare.
+ */
+export async function loadSignableContractsFor(viewer: Viewer): Promise<SignableContract[]> {
+  const orgId = viewer.organization.id;
+  await requireRoleFor(viewer.user, orgId, ECONOMY_ROLES);
+  return withUserDbFor(viewer.user, (tx) => queryActiveContracts(tx, orgId));
 }

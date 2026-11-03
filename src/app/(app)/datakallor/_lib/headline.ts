@@ -1,8 +1,8 @@
 /**
- * Svaret högst upp på Datakällor: en tvådelad rubrik med fakta. Första delen
- * säger hur ny datan är (den senaste orderns tid, inte när någon senast laddade
- * upp: en gammal export ska inte se färsk ut), andra delen det viktigaste att
- * göra (eller att allt är i ordning). Ren funktion.
+ * Svaret högst upp på Datakällor: EN kort mening. Det som behöver göras går
+ * först (automater att koppla, hämtning som stoppat); annars hur ny datan är
+ * (den senaste orderns tid, inte när någon senast laddade upp: en gammal export
+ * ska inte se färsk ut). `aside` är en kort grå rad under. Ren funktion.
  */
 
 import { formatInt, NBSP } from "@/lib/format";
@@ -43,34 +43,35 @@ export function headlineOf(data: DatakallorData): Headline {
   const now = new Date(data.now);
   const active = data.sources.filter((s) => !s.archived);
   if (active.length === 0) {
-    return {
-      title: "Ingen datakälla ännu.",
-      aside: "Lägg till Awish-orderlistan och ladda upp den första filen.",
-      tone: "neutral",
-    };
+    return { title: "Ingen datakälla ännu.", aside: "Koppla Awish nedan.", tone: "neutral" };
   }
 
   const latest = latestOrderOf(active);
   const failing = active.some((s) => s.status === "error");
   const stale = isStale(latest, now);
-  const title = latest
-    ? `${failing ? "Synken misslyckades. Data till" : "Data till"} ${formatWhen(latest, data.timeZone, now)}.`
-    : "Inga order ännu.";
+  const dataUntil = latest ? `Data till ${formatWhen(latest, data.timeZone, now)}.` : null;
 
   const queuedOrders = data.queue.reduce((sum, q) => sum + q.pendingOrders, 0);
   if (data.queue.length > 0) {
     return {
-      title,
+      title: `${plural(data.queue.length, "automat", "automater")} att koppla.`,
       aside:
-        `${plural(data.queue.length, "automat", "automater")} väntar på koppling` +
-        (queuedOrders > 0 ? `, ${plural(queuedOrders, "order", "order")} saknar automat.` : "."),
+        queuedOrders > 0
+          ? `${plural(queuedOrders, "order", "order")} saknar automat.`
+          : (dataUntil ?? ""),
       tone: "warning",
     };
+  }
+  if (failing) {
+    return { title: "Hämtningen stoppade.", aside: dataUntil ?? "", tone: "critical" };
   }
 
   const last = data.imports[0];
   if (last && last.status === "failed") {
-    return { title, aside: "Senaste importen misslyckades.", tone: "critical" };
+    return { title: "Senaste importen misslyckades.", aside: dataUntil ?? "", tone: "critical" };
+  }
+  if (!dataUntil) {
+    return { title: "Inga order ännu.", aside: "Koppla Awish nedan.", tone: "neutral" };
   }
   if (last && (last.rowsConflict > 0 || last.rowsError > 0)) {
     const parts = [
@@ -78,29 +79,11 @@ export function headlineOf(data: DatakallorData): Headline {
       last.rowsConflict > 0 ? plural(last.rowsConflict, "konflikt", "konflikter") : null,
       last.rowsError > 0 ? `${formatInt(last.rowsError)}${NBSP}fel` : null,
     ].filter(Boolean);
-    return { title, aside: `Senaste importen: ${parts.join(", ")}.`, tone: "warning" };
-  }
-  if (!latest) {
-    return { title, aside: "Ladda upp orderlistan från Awish.", tone: "neutral" };
+    return { title: dataUntil, aside: `Senaste importen: ${parts.join(", ")}.`, tone: "warning" };
   }
   if (stale) {
-    const synced = active
-      .map((s) => s.lastSyncedAt)
-      .filter((t): t is string => t !== null)
-      .sort()
-      .at(-1);
-    return {
-      title,
-      aside: synced
-        ? `Senaste uppladdningen ${formatWhen(synced, data.timeZone, now)} hade inget nyare. Exportera en ny orderlista från Awish.`
-        : "Mer än ett dygn gammal. Ladda upp en ny orderlista.",
-      tone: "warning",
-    };
+    return { title: dataUntil, aside: "Mer än ett dygn gammal.", tone: "warning" };
   }
   const orders = active.reduce((sum, s) => sum + s.orders, 0);
-  return {
-    title,
-    aside: `${plural(orders, "order", "order")} importerade, alla automater kopplade.`,
-    tone: "ok",
-  };
+  return { title: dataUntil, aside: `${plural(orders, "order", "order")}.`, tone: "ok" };
 }

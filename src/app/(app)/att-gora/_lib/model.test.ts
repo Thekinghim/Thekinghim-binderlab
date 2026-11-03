@@ -5,6 +5,8 @@ import { NBSP } from "@/lib/format";
 
 import {
   buildPage,
+  extraTodos,
+  plainWords,
   dismissedViews,
   formatFigure,
   inScope,
@@ -140,6 +142,13 @@ describe("text", () => {
     );
   });
 
+  it("byter facktermer mot vanliga ord", () => {
+    expect(plainWords(`5${NBSP}pack i facket · brukar sälja`)).toBe(
+      `5${NBSP}pack i automaten · brukar sälja`,
+    );
+    expect(plainWords("Pack i facket")).toBe("Pack i automaten");
+  });
+
   it("formaterar underlagets enheter", () => {
     expect(formatFigure({ value: 294_667, unit: "ore" })).toBe(`2${NBSP}947${NBSP}kr`);
     expect(formatFigure({ value: 3, unit: "tenths" })).toBe("0,3");
@@ -156,11 +165,9 @@ describe("buildPage", () => {
     expect(page.groups.map((g) => g.level)).toEqual(["now", "soon", "later"]);
     expect(page.groups.map((g) => g.index)).toEqual([1, 2, 3]);
     expect(page.header.title).toBe(`3${NBSP}saker att göra.`);
-    expect(page.header.aside).toBe("1 måste göras i dag.");
-    expect(page.header.description).toBe(
-      `Först: Fyll på Titel 1 i Automat, räcker 0,3${NBSP}d. ` +
-        `Den står för 2${NBSP}947${NBSP}kr av 3${NBSP}947${NBSP}kr i intäkt i risk de närmaste 7 dagarna.`,
-    );
+    expect(page.header.aside).toBe("1 i dag.");
+    // Bara det första; beloppet i risk står i metablocket.
+    expect(page.header.description).toBe(`Först: Fyll på Titel 1 i Automat, räcker 0,3${NBSP}d.`);
     expect(page.header.meta.find((m) => m.label === "I risk 7 d")?.value).toBe(
       `3${NBSP}947${NBSP}kr`,
     );
@@ -186,9 +193,7 @@ describe("buildPage", () => {
     expect(stakeOf([refill(M1, "now", 100_000), stale, missingPrice, dup])).toBe(150_000);
     expect(unpricedOf([missingPrice, refill(M1, "now", 1)])).toBe(223_500);
     const later = buildPage(input([missingPrice])).groups[0]!;
-    expect(later.aside).toBe(
-      `1${NBSP}titel utan inköpspris, 2${NBSP}235${NBSP}kr i intäkt räknas inte in i vinsten.`,
-    );
+    expect(later.aside).toBe(`1${NBSP}titel utan inköpspris · 2${NBSP}235${NBSP}kr ej i vinsten.`);
     expect(later.aside).not.toContain("i risk");
   });
 
@@ -197,7 +202,7 @@ describe("buildPage", () => {
       input([refill(M1, "soon", 1), refill(M2, "soon", 1)], { role: "refiller", economy: false }),
     );
     expect(page.header.title).toBe(`2${NBSP}påfyllningar att göra.`);
-    expect(page.header.aside).toBe("Inget måste göras i dag.");
+    expect(page.header.aside).toBe("Inget i dag.");
     expect(page.header.description.startsWith("Först: Fyll på")).toBe(true);
     expect(page.header.meta.map((m) => m.label)).toEqual(["Snart", "Beräknat"]);
   });
@@ -234,6 +239,39 @@ describe("buildPage", () => {
     const page = buildPage(input([]));
     expect(page.total).toBe(0);
     expect(page.header.title).toBe("Inget att göra.");
+  });
+
+  it("räknar raderna överst (bokföring, ny automat) i rubriken: aldrig 'Inget att göra' bredvid dem", () => {
+    const extras = extraTodos({ bokforingMonth: "oktober 2026", newMachines: 0 });
+    const page = buildPage(input([], { extras }));
+    expect(page.total).toBe(1);
+    expect(page.header.title).toBe(`1${NBSP}sak att göra.`);
+    expect(page.header.title).not.toMatch(/Inget/);
+    expect(page.header.aside).toBe("Inget i dag.");
+    expect(page.header.description).toBe("Först: Ladda ner bokföringen för oktober 2026.");
+    expect(page.header.meta.find((m) => m.label === "Snart")?.value).toBe("1");
+  });
+
+  it("räknar extra rader tillsammans med reglernas punkter", () => {
+    const extras = extraTodos({ bokforingMonth: "oktober 2026", newMachines: 2 });
+    expect(extras.map((e) => e.title)).toEqual([
+      `Välj butik för 2${NBSP}nya automater`,
+      "Ladda ner bokföringen för oktober 2026",
+    ]);
+    const page = buildPage(input([refill(M1, "soon", 1)], { extras }));
+    expect(page.total).toBe(3);
+    // Inte "påfyllningar": det finns annat än påfyllningar.
+    expect(page.header.title).toBe(`3${NBSP}saker att göra.`);
+    expect(page.header.aside).toBe("1 i dag.");
+    // Den nya automaten (i dag) går före påfyllningen (snart).
+    expect(page.header.description).toBe("Först: Välj butik för 2\u00a0nya automater.");
+  });
+
+  it("utan extra rader blir inget kvar", () => {
+    expect(extraTodos({ bokforingMonth: null, newMachines: 0 })).toEqual([]);
+    expect(extraTodos({ bokforingMonth: null, newMachines: 1 })[0]?.title).toBe(
+      "Välj butik för den nya automaten",
+    );
   });
 
   it("påstår inte att lagret räcker när saldot är okänt", () => {
@@ -439,7 +477,7 @@ describe("integrationens punkter: avtal, rapportutkast, larm och förlorad förs
     const page = buildPage(input([alert, contract, review]));
     const views = page.groups.flatMap((g) => g.items);
     const byKey = new Map(views.map((v) => [v.key, v]));
-    expect(byKey.get(contract.key)?.eyebrow).toBe("Avtal");
+    expect(byKey.get(contract.key)?.eyebrow).toBe("Kontrakt");
     expect(byKey.get(contract.key)?.figures).toEqual([
       { label: "Säg upp inom", value: `28${NBSP}dagar` },
       { label: "Slutar om", value: `118${NBSP}dagar` },
@@ -456,7 +494,7 @@ describe("integrationens punkter: avtal, rapportutkast, larm och förlorad förs
     expect(byKey.get(alert.key)?.eyebrow).toBe(`Larm · BL${"‑"}002`);
     expect(byKey.get(alert.key)?.figures).toEqual([{ label: "Öppet", value: `3${NBSP}h` }]);
     expect(kindSummary([alert, contract, review])).toBe(
-      `1${NBSP}larm, 1${NBSP}utkast att granska och 1${NBSP}avtal att se över`,
+      `1${NBSP}larm, 1${NBSP}utkast att granska och 1${NBSP}kontrakt att ordna`,
     );
   });
 
@@ -478,9 +516,9 @@ describe("integrationens punkter: avtal, rapportutkast, larm och förlorad förs
   it("beloppet i risk kopplas inte till ett utkast som står först", () => {
     const first = { ...review, level: "now" as const, urgency: 1e12 };
     const page = buildPage(input([first, refill(M1, "soon", 294_667)]));
-    expect(page.header.description).toBe(
-      "Först: Granska 3 rapportutkast för oktober. " +
-        `Påfyllningarna: 2${NBSP}947${NBSP}kr i intäkt i risk de närmaste 7 dagarna.`,
+    expect(page.header.description).toBe("Först: Granska 3 rapportutkast för oktober.");
+    expect(page.header.meta.find((m) => m.label === "I risk 7 d")?.value).toBe(
+      `2${NBSP}947${NBSP}kr`,
     );
   });
 
@@ -563,7 +601,7 @@ describe("tyst titel", () => {
     expect(view.eyebrow).toBe(`Tyst titel · BL${"‑"}001`);
     expect(view.figures).toEqual([
       { label: "Tyst", value: `72${NBSP}h` },
-      { label: "I facket", value: `5${NBSP}pack` },
+      { label: "I automaten", value: `5${NBSP}pack` },
       { label: "I risk 7 d", value: `343${NBSP}kr` },
     ]);
     expect(view.action).toEqual({
@@ -577,7 +615,7 @@ describe("tyst titel", () => {
 
   it("påfyllaren ser punkten utan belopp och avbockningen följer automatfiltret", () => {
     const page = buildPage(input([silentTitle], { role: "refiller", economy: false }));
-    expect(page.groups[0]!.items[0]!.figures.map((f) => f.label)).toEqual(["Tyst", "I facket"]);
+    expect(page.groups[0]!.items[0]!.figures.map((f) => f.label)).toEqual(["Tyst", "I automaten"]);
     const dismissed = dismissedViews(
       input([], {
         scope: { storeId: null, machineId: M2 },

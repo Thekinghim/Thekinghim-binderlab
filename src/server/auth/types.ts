@@ -34,6 +34,19 @@ export type SignInResult =
 /** Typer av e-postlänkar som Supabase kan skicka (token_hash i länken). */
 export type EmailLinkType = "invite" | "magiclink";
 
+/**
+ * Sessionen som Supabases standardmall lämnar i länkens fragment
+ * (`#access_token=…&refresh_token=…`). Fungerar i vilken webbläsare som helst:
+ * ingen PKCE-verifierare behövs.
+ */
+export interface LinkTokens {
+  accessToken: string;
+  refreshToken: string;
+}
+
+/** Resultat när ägaren skapar ett konto med lösenord åt en inbjuden. */
+export type CreateAccountResult = "created" | "exists";
+
 export interface AuthProvider {
   readonly kind: "supabase" | "dev";
 
@@ -64,6 +77,21 @@ export interface AuthProvider {
    * session. Kräver verifieraren i cookien från samma webbläsare.
    */
   completeCodeLink?(code: string): Promise<AuthSession | null>;
+
+  /**
+   * Bara Supabase: tar emot sessionen från länkens fragment (standardmallen,
+   * implicit flöde). Åtkomsttoken verifieras lokalt innan den sparas.
+   */
+  completeTokenLink?(tokens: LinkTokens): Promise<AuthSession | null>;
+
+  /** Bara Supabase: skickar en länk för att välja nytt lösenord. */
+  sendPasswordReset?(email: string, redirectTo: string): Promise<{ ok: boolean }>;
+
+  /**
+   * Skapar ett konto med lösenord åt en inbjuden (ägaren sätter lösenordet).
+   * Ett befintligt konto ändras ALDRIG: svaret är då "exists".
+   */
+  createAccountWithPassword?(email: string, password: string): Promise<CreateAccountResult>;
 
   /** Sätter lösenord för den inloggade användaren (Supabase och dev). */
   setPassword?(password: string): Promise<void>;

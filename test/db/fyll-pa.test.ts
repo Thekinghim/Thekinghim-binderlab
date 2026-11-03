@@ -8,6 +8,8 @@
  *   vårt lager direkt, och nästa Awish-synk drar inget en gång till (delta 0),
  * - samma klient-id igen blir "duplicate" (kön kan skicka om utan att det blir dubbelt),
  * - fler pack än hemma: resten registreras utan uttag, och Awish drar inte heller dem,
+ * - Ångra efter Klar motbokar automaten och vårt lager (en gång), bara egna och inom 30 min,
+ * - laddaren ger sålt de senaste 14 dagarna per titel och "Mina" (ansvarig per automat),
  * - läsaren får varken läsa Fyll på eller registrera.
  */
 
@@ -23,7 +25,7 @@ import { saveAwishCredentialsFor } from "../../src/server/awish/manage";
 import { syncAwishSource } from "../../src/server/awish/sync";
 import { startFakeAwish, type FakeAwish } from "../../src/server/awish/testing/fake-server";
 import type { Viewer } from "../../src/server/data/core/loaders";
-import { syncRefillsFor } from "../../src/server/data/field-refills";
+import { syncRefillsFor, undoRefillsFor } from "../../src/server/data/field-refills";
 import { loadFillDataFor } from "../../src/app/fyll-pa/_lib/data";
 import { setHomeCountFor } from "../../src/app/(app)/vart-lager/_lib/register";
 
@@ -266,6 +268,94 @@ describe("Fyll på: påfyllning vid automaten", () => {
     const rejected = await syncRefillsFor(rv, [item(black, 1, true)]);
     expect(rejected.results[0]).toMatchObject({ status: "rejected" });
     expect(rejected.results[0]?.error).toMatch(/bara 0 pack/);
+  });
+
+  it("Ångra motbokar automaten och vårt lager, en gång, bara egna", async () => {
+    const rv = await viewerFor(refiller, orgId);
+    const loc = await machineLocation();
+    const homeBefore = await level(centralId, surging);
+    const machineBefore = await level(loc, surging);
+    const a = item(surging, 3, true);
+    const b = item(surging, 2, false);
+    expect((await syncRefillsFor(rv, [a, b])).results.map((r) => r.status)).toEqual([
+      "saved",
+      "saved",
+    ]);
+    expect(await level(centralId, surging)).toBe(homeBefore - 3);
+    expect(await level(loc, surging)).toBe(machineBefore + 5);
+
+    // Någon annan får inte ångra påfyllarens påfyllning.
+    const other = await undoRefillsFor(await viewerFor(owner, orgId), [a.clientId]);
+    expect(other).toMatchObject({ ok: false });
+    expect(await level(loc, surging)).toBe(machineBefore + 5);
+
+    expect(await undoRefillsFor(rv, [a.clientId, b.clientId])).toEqual({ ok: true, packs: 5 });
+    expect(await level(centralId, surging)).toBe(homeBefore);
+    expect(await level(loc, surging)).toBe(machineBefore);
+    // Två gånger: inget mer.
+    expect(await undoRefillsFor(rv, [a.clientId, b.clientId])).toEqual({ ok: true, packs: 0 });
+    expect(await level(centralId, surging)).toBe(homeBefore);
+    expect(await level(loc, surging)).toBe(machineBefore);
+    const { undone } = await one<{ undone: number }>(
+      db(),
+      sql`select count(*)::int as undone from public.field_submissions
+          where client_id in (${a.clientId}::uuid, ${b.clientId}::uuid) and undone_at is not null`,
+    );
+    expect(undone).toBe(2);
+
+    // Efter 30 minuter: för sent.
+    const late = item(surging, 1, true);
+    await syncRefillsFor(rv, [late]);
+    await db().execute(
+      sql`update public.field_submissions set received_at = now() - interval '31 minutes'
+          where client_id = ${late.clientId}::uuid`,
+    );
+    const res = await undoRefillsFor(rv, [late.clientId]);
+    expect(res).toMatchObject({ ok: false });
+    expect(res.ok ? "" : res.error).toMatch(/För sent/);
+    expect(await undoRefillsFor(rv, ["inte-ett-id"])).toMatchObject({ ok: false });
+    // Inom tiden igen: ångras (lagret som före testet).
+    await db().execute(
+      sql`update public.field_submissions set received_at = now()
+          where client_id = ${late.clientId}::uuid`,
+    );
+    expect(await undoRefillsFor(rv, [late.clientId])).toEqual({ ok: true, packs: 1 });
+    expect(await level(centralId, surging)).toBe(homeBefore);
+  });
+
+  it("sålt de senaste 14 dagarna och Mina syns för påfyllaren", async () => {
+    const at = new Date(Date.now() - 30 * 3_600_000);
+    await asUser(owner, (tx) =>
+      tx.insert(s.orders).values(
+        [1, 2, 3, 4].map((i) => ({
+          organizationId: orgId,
+          dataSourceId: sourceId,
+          externalId: `fyll-${i}`,
+          rawTitle: "Surging Sparks",
+          titleId: surging,
+          orderedAt: at,
+          amountOre: 7900,
+          machineId,
+          sourceHash: `fyll-${i}`,
+        })),
+      ),
+    );
+    const rv = await viewerFor(refiller, orgId);
+    let data = await loadFillDataFor(rv);
+    const row = data.machines[0]!.rows.find((r) => r.titleId === surging)!;
+    expect(row.sold).toBe(4);
+    expect(data.machines[0]!.mine).toBe(true);
+    expect(data.hasOthers).toBe(false);
+
+    await db().execute(
+      sql`update public.machines set responsible_user_id = ${owner.id}::uuid
+          where id = ${machineId}::uuid`,
+    );
+    data = await loadFillDataFor(rv);
+    expect(data.machines[0]!.mine).toBe(false);
+    expect(data.hasOthers).toBe(true);
+    data = await loadFillDataFor(await viewerFor(owner, orgId));
+    expect(data.machines[0]!.mine).toBe(true);
   });
 
   it("läsaren får inte läsa Fyll på eller registrera", async () => {

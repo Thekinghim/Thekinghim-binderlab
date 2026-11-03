@@ -9,6 +9,7 @@
  * - savePushDevice / removePushDevice: den här webbläsarens push-prenumeration.
  * - sendTestAlert: ett provlarm till sig själv i de valda kanalerna.
  * - syncRefills: påfyllningar som sparats offline, idempotent per klient-id.
+ * - undoRefills: Ångra efter Klar i Fyll på (egna, 30 minuter).
  */
 
 import { revalidatePath } from "next/cache";
@@ -32,6 +33,7 @@ import { resolveAppBaseUrl } from "@/server/request-info";
 import {
   FIELD_REFILL_ROLES,
   syncRefillsFor,
+  undoRefillsFor,
   type RefillSyncResult,
 } from "@/server/data/field-refills";
 import { withUserDb } from "@/server/session";
@@ -331,5 +333,15 @@ export async function syncRefills(
   if (result.results.some((r) => r.status === "saved")) {
     revalidatePath("/", "layout");
   }
+  return result;
+}
+
+/** Ångra efter Klar i Fyll på: motbokar egna påfyllningar (klient-id) från de senaste 30 minuterna. */
+export async function undoRefills(
+  clientIds: unknown,
+): Promise<{ ok: true; packs: number } | { ok: false; error: string }> {
+  await requireContextRole(FIELD_REFILL_ROLES);
+  const result = await undoRefillsFor(await currentViewer(), clientIds);
+  if (result.ok && result.packs > 0) revalidatePath("/", "layout");
   return result;
 }

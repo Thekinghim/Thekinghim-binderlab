@@ -215,9 +215,9 @@ export function OrdersView({
           message={
             model.closed.length === 0
               ? hasSupplier
-                ? "Ingen inköpsorder är skapad. Skapa en från förslaget ovan eller med Ny inköpsorder."
-                : "Ingen inköpsorder är skapad. Lägg till en leverantör med artiklar först."
-              : "Alla inköpsorder är mottagna eller avbrutna."
+                ? "Ingen order än."
+                : "Ingen order än. Lägg till leverantör först."
+              : "Allt är mottaget."
           }
           compact
         />
@@ -234,9 +234,7 @@ export function OrdersView({
         />
       )}
       {!hasCentralWarehouse ? (
-        <p className="text-sm text-muted">
-          Organisationen saknar eget lager, så leveranser kan inte tas emot.
-        </p>
+        <p className="text-sm text-muted">Inget eget lager: leveranser kan inte tas emot.</p>
       ) : null}
 
       {model.closed.length > 0 ? (

@@ -14,6 +14,15 @@ export {
   noticeDeadline,
   CONTRACT_DEFAULTS,
 } from "./contracts";
+export {
+  contractInForce,
+  isSigned,
+  signedCount,
+  storeContractState,
+  storeContractStates,
+  type SignableContract,
+  type StoreContractState,
+} from "./signed";
 export type {
   Contract,
   ContractReminder,

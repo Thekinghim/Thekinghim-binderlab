@@ -66,6 +66,7 @@ export {
   GROWTH_PLAN_DEFAULTS,
   GROWTH_PLAN_MAX_MONTHS,
   helpFromCount,
+  MAX_REFILL_MINUTES_PER_MACHINE_WEEK,
   paybackTenthsOf,
   refillMinutesFromMonthly,
   type GrowthMachine,

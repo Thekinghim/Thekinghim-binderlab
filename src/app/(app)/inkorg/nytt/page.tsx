@@ -30,8 +30,8 @@ export default async function NewIncidentPage({
         as="h1"
         size="xl"
         eyebrow="Inkorg / Nytt ärende"
-        title="Registrera ett kundärende."
-        aside="Koppla det till automat, tidpunkt och helst ordern, så att det går att följa upp."
+        title="Nytt ärende."
+        aside="Välj automat och helst ordern."
       />
       <IncidentForm
         initial={{

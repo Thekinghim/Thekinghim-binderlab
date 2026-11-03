@@ -1,30 +1,51 @@
 /**
- * Hems rubrik: läget i en mening, räknat ur nyckeltalen.
+ * Hems rubrik: vinsten som en stor siffra, delningen bredvid och en kort rad under.
  *
- *   "79 987 kr på 30 dagar." + "12 % bättre än perioden innan."
- *   Ingress: "Vinst 18 950 kr före återbetalningar och fasta kostnader, 23,7 % marginal."
- *   Utan jämförelse: "79 987 kr sedan 13 okt." + "Vinst 21 205 kr."
- *   Med butikernas del: "Vinst 24 218 kr, vår del 12 109 kr." (hela vinsten och vår del).
- *   Ingress: "Före återbetalningar och fasta kostnader, 23,7 % marginal på order med inköpspris."
+ *   "Vinst 28 948 kr på 30 dagar." + "Vår del 21 203 kr · butikerna 7 745 kr."
+ *   Rad under: "Före fasta kostnader."
  *
  * Ren funktion utan databas och utan React. Inga beräkningar av ekonomi: talen kommer från
  * keyMetrics/changeBp i @/domain; här väljs bara formuleringen.
  */
 
 import { addDays, maxDate, periodDays, type IsoDate, type Period } from "@/domain";
-import { NBSP, formatInt, formatPercent, formatPeriodShort } from "@/lib/format";
+import { MINUS, NBSP, formatInt, formatPercent, formatPeriodShort } from "@/lib/format";
 import { dataCoverage } from "@/server/data/core/period";
 
-import { dateOf, dayText, kr, marginText, sentence } from "./text";
+import { dateOf, dayText, kr, sentence } from "./text";
 
-/** Rubriken i två delar (första i fg, andra i grått) och en ingress med fler fakta. */
+/** Det stora talet i rubriken (räknas upp på sidan): "Vinst" + belopp + "på 30 dagar." */
+export interface HomeHeadlineFigure {
+  /** "Vinst", "Förlust" eller "Intäkt". */
+  readonly label: string;
+  /** Beloppet i öre (alltid ≥ 0; förlust står i `label`). */
+  readonly valueOre: number;
+  /** Resten av meningen: "på 30 dagar." */
+  readonly tail: string;
+  /** "good" = vinst, "bad" = förlust, "neutral" = intäkt utan vinst. */
+  readonly tone: "good" | "bad" | "neutral";
+}
+
+/** En del av delningsraden ("Vår del 21 203 kr"), räknas upp på sidan. */
+export interface HomeHeadlineSplitPart {
+  readonly label: string;
+  readonly valueOre: number;
+}
+
+/** Rubriken i två delar (första i fg, andra i grått) och en kort rad under. */
 export interface HomeHeadline {
+  /** Hela rubriken som text (skärmläsare, tester): "Vinst 28 948 kr på 30 dagar." */
   readonly title: string;
+  /** Andra delen: delningen ("Vår del 21 203 kr · butikerna 7 745 kr."), annars intäkten. */
   readonly aside: string;
-  /** Meningar under rubriken (vinsten, när rubriken bär jämförelsen). Kan vara tom. */
+  /** En kort rad som hindrar misstag ("Före fasta kostnader."). Kan vara tom. */
   readonly lead: string[];
   /** Läget: avgör vad sidan visar under rubriken. */
   readonly state: "no-data" | "no-orders" | "ok";
+  /** Det stora talet, null utan order. */
+  readonly figure: HomeHeadlineFigure | null;
+  /** Delningen vår del / butikernas del, tom när butikerna inte har någon del. */
+  readonly split: HomeHeadlineSplitPart[];
 }
 
 export interface HomeHeadlineInput {
@@ -40,6 +61,10 @@ export interface HomeHeadlineInput {
   readonly profitOre: number;
   /** Vår del av vinsten (öre), eller null/utelämnad när butikerna inte har någon del. */
   readonly ourProfitOre?: number | null;
+  /** Butikernas del (öre); räknas som hela vinsten − vår del när den utelämnas. */
+  readonly storesProfitOre?: number | null;
+  /** Butiks- eller automatfilter: delen heter "Butikens del" och står först. */
+  readonly filtered?: boolean;
   readonly marginBp: number | null;
   /** Andel av intäkten som saknar inköpspris, i bp. */
   readonly unpricedShareBp: number;
@@ -53,17 +78,18 @@ export interface HomeHeadlineInput {
   readonly hasOrdersToday?: boolean;
 }
 
-/** Förändring i bp som "12 %" (utan tecken), en decimal under 10 %. */
+/** Förändring i bp som "+12 %" / "−4,2 %" (en decimal under 10 %). */
 function changeText(bp: number): string {
   const share = Math.abs(bp) / 10_000;
-  return formatPercent(share, share < 0.1 ? 1 : 0);
+  const sign = bp > 0 ? "+" : bp < 0 ? MINUS : "±";
+  return `${sign}${formatPercent(share, share < 0.1 ? 1 : 0)}`;
 }
 
-/** Från den andel utan inköpspris rubriken säger det (20 %). */
+/** Från den andel utan inköpspris raden under rubriken säger det (20 %). */
 export const UNPRICED_HEADLINE_BP = 2_000;
 
 /**
- * Hur länge intäkten gäller: "på 30 dagar", "i dag", "i går", "den 31 okt.", och när datan
+ * Hur länge talet gäller: "på 30 dagar", "i dag", "i går", "den 31 okt.", och när datan
  * börjar inne i perioden "sedan 13 okt." (eller "13–19 okt." för en period som slutat).
  */
 function spanText(
@@ -87,52 +113,41 @@ function spanText(
   return `den ${dayText(start, today)}`;
 }
 
-/**
- * Vinsten i två delar: beloppet ("Vinst 18 950 kr") och resten av meningen ("före
- * återbetalningar och fasta kostnader, 23,7 % marginal …"). `amount` är null när vinsten inte
- * går att räkna; `rest` säger då varför.
- */
-function profitParts(input: HomeHeadlineInput): { amount: string | null; rest: string } {
-  const { profitOre, marginBp, pricedOrders, unpricedShareBp } = input;
-  if (pricedOrders === 0) {
-    return { amount: null, rest: "Vinsten går inte att räkna förrän orderna har inköpspris." };
-  }
+/** Delningen: "Vår del" + "Butikerna" (utan filter) eller "Butikens del" + "Vår del". */
+function splitParts(input: HomeHeadlineInput): HomeHeadlineSplitPart[] {
   const ours = input.ourProfitOre ?? null;
-  const amount =
-    (profitOre < 0 ? `Förlust ${kr(-profitOre)}` : `Vinst ${kr(profitOre)}`) +
-    (ours === null ? "" : `, vår del ${kr(ours)}`);
-  // Marginalen gäller bara order med inköpspris (berakningar.md 6); intäkten i rubriken alla.
-  // (Från 20 % säger meningen i stället att den andelen inte ingår.)
-  const basis =
-    unpricedShareBp > 0 && unpricedShareBp < UNPRICED_HEADLINE_BP ? " på order med inköpspris" : "";
-  // Marginalen är vår (vår vinst / intäkt, som på Lönsamhet).
-  const margin =
-    marginBp === null
-      ? ""
-      : `, ${marginText(marginBp)} ${ours === null ? "" : "vår "}marginal${basis}`;
-  const missing =
-    unpricedShareBp >= UNPRICED_HEADLINE_BP
-      ? `, men ${formatPercent(unpricedShareBp / 10_000, 1)} av intäkten saknar inköpspris och ingår inte`
-      : "";
-  return { amount, rest: `före återbetalningar och fasta kostnader${margin}${missing}.` };
+  if (ours === null || input.pricedOrders === 0) return [];
+  const stores = input.storesProfitOre ?? input.profitOre - ours;
+  return input.filtered
+    ? [
+        { label: "Butikens del", valueOre: stores },
+        { label: "vår del", valueOre: ours },
+      ]
+    : [
+        { label: "Vår del", valueOre: ours },
+        { label: "butikerna", valueOre: stores },
+      ];
 }
 
-/** Vinsten i en mening; säger när den inte går att räkna eller när en stor del saknar pris. */
-function profitSentence(input: HomeHeadlineInput): string {
-  const { amount, rest } = profitParts(input);
-  return amount === null ? rest : `${amount} ${rest}`;
-}
-
-/** Rubriken för Hem. */
+/**
+ * Rubriken för Hem: vinsten som det stora talet, delningen som andra del och en kort rad
+ * som hindrar misstag (vinsten är före fasta kostnader; stor del utan inköpspris).
+ *
+ *   "Vinst 28 948 kr på 30 dagar." + "Vår del 21 203 kr · butikerna 7 745 kr."
+ *   Utan delning: "Vinst 2 070 kr på 10 dagar." + "Intäkt 4 450 kr, +23 %."
+ *   Utan inköpspris: "Intäkt 4 450 kr på 10 dagar." + "Lägg in inköpspris för vinsten."
+ */
 export function homeHeadline(input: HomeHeadlineInput): HomeHeadline {
   const { today, dataStart, revenueChangeBp } = input;
 
   if (dataStart === null) {
     return {
       title: "Inga order än.",
-      aside: "Intäkt och vinst visas här när den första ordern har importerats.",
+      aside: "Vinsten syns här efter första köpet.",
       lead: [],
       state: "no-data",
+      figure: null,
+      split: [],
     };
   }
 
@@ -144,37 +159,43 @@ export function homeHeadline(input: HomeHeadlineInput): HomeHeadline {
         : "i perioden";
     return {
       title: `Inga order ${when}.`,
-      aside: before
-        ? sentence(`Första ordern kom ${dayText(dataStart, today)}`)
-        : "Inga betalda order har importerats för perioden.",
+      aside: before ? sentence(`Första ordern kom ${dayText(dataStart, today)}`) : "",
       lead: [],
       state: "no-orders",
+      figure: null,
+      split: [],
     };
   }
 
-  const title = sentence(
-    `${kr(input.revenueOre)} ${spanText(input.period, dataStart, today, input.hasOrdersToday ?? false)}`,
-  );
+  const span = sentence(spanText(input.period, dataStart, today, input.hasOrdersToday ?? false));
+  const priced = input.pricedOrders > 0;
+  const loss = priced && input.profitOre < 0;
+  const figure: HomeHeadlineFigure = priced
+    ? {
+        label: loss ? "Förlust" : "Vinst",
+        valueOre: Math.abs(input.profitOre),
+        tail: span,
+        tone: loss ? "bad" : "good",
+      }
+    : { label: "Intäkt", valueOre: input.revenueOre, tail: span, tone: "neutral" };
+  const title = `${figure.label} ${kr(figure.valueOre)} ${figure.tail}`;
 
-  let aside: string;
+  const split = splitParts(input);
+  const change = revenueChangeBp === null ? "" : `, ${changeText(revenueChangeBp)}`;
+  const aside = !priced
+    ? "Lägg in inköpspris för vinsten."
+    : split.length > 0
+      ? sentence(split.map((p) => `${p.label} ${kr(p.valueOre)}`).join(" · "))
+      : `Intäkt ${kr(input.revenueOre)}${change}.`;
+
   const lead: string[] = [];
-  if (revenueChangeBp !== null) {
-    aside =
-      revenueChangeBp === 0
-        ? "Samma som perioden innan."
-        : `${changeText(revenueChangeBp)} ${revenueChangeBp > 0 ? "bättre" : "sämre"} än perioden innan.`;
-    lead.push(profitSentence(input));
-  } else {
-    // Utan jämförelse bär vinstbeloppet rubrikens andra del och resten står i ingressen,
-    // så att rubriken inte blir sex rader på en smal skärm.
-    const { amount, rest } = profitParts(input);
-    if (amount === null) {
-      aside = rest;
-    } else {
-      aside = `${amount}.`;
-      lead.push(rest.charAt(0).toLocaleUpperCase("sv-SE") + rest.slice(1));
-    }
+  if (priced) {
+    lead.push(
+      input.unpricedShareBp >= UNPRICED_HEADLINE_BP
+        ? `Före fasta kostnader. ${formatPercent(input.unpricedShareBp / 10_000, 1)} saknar inköpspris.`
+        : "Före fasta kostnader.",
+    );
   }
 
-  return { title, aside, lead, state: "ok" };
+  return { title, aside, lead, state: "ok", figure, split };
 }

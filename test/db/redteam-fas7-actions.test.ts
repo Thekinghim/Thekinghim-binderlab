@@ -146,6 +146,12 @@ const SPECIAL = new Set([
   "@/app/logga-in/actions#signIn",
   "@/app/logga-in/actions#requestMagicLink",
   "@/app/logga-in/actions#confirmMagicLink",
+  // Inloggning utan organisation (egen inbjudan, eget lösenord via länk); testas i
+  // test/db/auth-flows.test.ts, src/server/auth/flows.test.ts och supabase-link.test.ts.
+  "@/server/actions/auth#acceptMyInvitation",
+  "@/server/actions/auth#sendOwnPasswordLink",
+  "@/app/logga-in/actions#requestPasswordReset",
+  "@/app/logga-in/actions#setNewPassword",
   "@/app/inbjudan/[token]/actions#acceptInvitation",
   // Signering på plats utan inloggning (token är beviset); testas i test/db/avtal-signering.test.ts.
   "@/app/signera/[token]/actions#signContract",

@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import type { CSSProperties } from "react";
 
 import { OpenOnHash } from "@/components/ui/open-on-hash";
 import { SectionHeader } from "@/components/ui/section-header";
 import { formatInt } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
+
+import { MerHead } from "@/app/(app)/installningar/_components/mer-head";
 
 import { AwishCard } from "../_components/awish-card";
 import { ImportLog } from "../_components/import-log";
@@ -37,94 +40,88 @@ export default async function DatakallorPage() {
   const nowDate = new Date(data.now);
   const lastFile = data.imports.find((i) => i.trigger === "upload" && i.status === "succeeded");
 
+  const tone = headline.tone === "ok" ? "good" : headline.tone === "neutral" ? undefined : "bad";
+  const awishLive = Boolean(awish.source?.credentials) && headline.tone === "ok";
+
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
-      <SectionHeader
-        as="h1"
-        size="xl"
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-14 md:px-8 md:pt-12">
+      <MerHead
         eyebrow="Datakällor"
         title={headline.title}
-        aside={headline.aside}
+        line={headline.aside || undefined}
+        tone={tone}
+        live={awishLive}
+        count={data.queue.length > 0}
         meta={[
-          { label: "Källor", value: formatInt(data.sources.filter((s) => !s.archived).length) },
-          { label: "Importer", value: formatInt(data.imports.length) },
-          { label: "Väntar på koppling", value: formatInt(data.queue.length) },
+          { label: "Order", value: formatInt(data.sources.reduce((n, s) => n + s.orders, 0)) },
+          { label: "Att koppla", value: formatInt(data.queue.length) },
         ]}
       />
 
-      <section aria-labelledby="awish" className="flex flex-col gap-6">
-        <SectionHeader id="awish" index={1} eyebrow="Awish" title="Hämtas automatiskt." />
+      {data.queue.length > 0 ? (
+        <section
+          aria-labelledby="okanda-automater"
+          className="rise flex flex-col gap-6"
+          style={{ "--i": 1 } as CSSProperties}
+        >
+          <SectionHeader
+            id="okanda-automater"
+            title="Koppla automater."
+            aside={queuedOrders > 0 ? `${formatInt(queuedOrders)} order väntar.` : undefined}
+          />
+          <MachineQueue queue={data.queue} machines={data.machines} timeZone={data.timeZone} />
+        </section>
+      ) : null}
+
+      <section
+        aria-labelledby="awish"
+        className="rise flex flex-col gap-6"
+        style={{ "--i": 2 } as CSSProperties}
+      >
+        <SectionHeader id="awish" title="Awish." aside="Hämtas automatiskt." />
         <AwishCard source={awish.source} timeZone={data.timeZone} now={data.now} />
       </section>
 
-      <section aria-labelledby="kallor" className="flex flex-col gap-6">
-        <SectionHeader
-          id="kallor"
-          index={2}
-          eyebrow="Källor"
-          title="Varifrån orderna kommer."
-          aside={
-            data.sources.length === 0
-              ? "Ingen källa ännu."
-              : `${formatInt(data.sources.reduce((n, s) => n + s.orders, 0))} order totalt.`
-          }
-        />
-        <SourceList sources={data.sources} timeZone={data.timeZone} now={data.now} />
-        <OpenOnHash id="ladda-upp" />
-        <details id="ladda-upp" className="group scroll-mt-28">
-          <summary className="cursor-pointer text-sm text-muted hover:text-fg">
-            Ladda upp fil
-            {lastFile
-              ? ` · senaste ${formatWhen(lastFile.finishedAt ?? lastFile.createdAt, data.timeZone, nowDate)}, ${formatInt(lastFile.rowsNew)} nya av ${plural(lastFile.rowsTotal, "rad", "rader")}`
-              : ""}
-          </summary>
-          <div className="mt-4">
+      <OpenOnHash id="ladda-upp" />
+      <details
+        id="ladda-upp"
+        className="rise scroll-mt-28 rounded-md border border-line bg-surface p-4 md:p-5"
+        style={{ "--i": 3 } as CSSProperties}
+      >
+        <summary className="cursor-pointer list-none">
+          <SectionHeader
+            id="kallor"
+            size="md"
+            title="Mer."
+            aside={`Källor, fil, importer${lastImport ? ` · senast ${formatWhen(lastImport.finishedAt ?? lastImport.createdAt, data.timeZone, nowDate)}` : ""}.`}
+          />
+        </summary>
+        <div className="mt-6 flex flex-col gap-10">
+          <section aria-label="Källor" className="flex flex-col gap-4">
+            <h3 className="label text-subtle">Källor</h3>
+            <SourceList sources={data.sources} timeZone={data.timeZone} now={data.now} />
+          </section>
+          <section aria-label="Ladda upp fil" className="flex flex-col gap-4">
+            <h3 className="label text-subtle">
+              Ladda upp fil
+              {lastFile
+                ? ` · senaste ${formatWhen(lastFile.finishedAt ?? lastFile.createdAt, data.timeZone, nowDate)}, ${formatInt(lastFile.rowsNew)} nya av ${plural(lastFile.rowsTotal, "rad", "rader")}`
+                : ""}
+            </h3>
             <UploadPanel sources={fileSources} timeZone={data.timeZone} />
-          </div>
-        </details>
-      </section>
-
-      <section aria-labelledby="okanda-automater" className="flex flex-col gap-6">
-        <SectionHeader
-          id="okanda-automater"
-          index={3}
-          eyebrow="Okända automater"
-          title={
-            data.queue.length === 0
-              ? "Alla automater är kopplade."
-              : `${formatInt(data.queue.length)} ${data.queue.length === 1 ? "automat" : "automater"} att koppla.`
-          }
-          aside={
-            data.queue.length === 0
-              ? data.lastMapped
-                ? `Senast kopplad ${data.lastMapped.machineCode}${
-                    data.lastMapped.at
-                      ? ` ${formatWhen(data.lastMapped.at, data.timeZone, nowDate)}`
-                      : ""
-                  }.`
-                : "Inga okända namn i orderna."
-              : queuedOrders === 0
-                ? `Inga order väntar på ${data.queue.length === 1 ? "den" : "dem"} ännu.`
-                : `${formatInt(queuedOrders)} order räknas inte på någon automat förrän de kopplas.`
-          }
-        />
-        <MachineQueue queue={data.queue} machines={data.machines} timeZone={data.timeZone} />
-      </section>
-
-      <section aria-labelledby="importlogg" className="flex flex-col gap-6">
-        <SectionHeader
-          id="importlogg"
-          index={4}
-          eyebrow="Importlogg"
-          title="Alla importer."
-          aside={
-            lastImport
-              ? `Senast ${formatWhen(lastImport.finishedAt ?? lastImport.createdAt, data.timeZone, nowDate)}${lastImport.createdBy ? ` av ${lastImport.createdBy}` : ""}.`
-              : "Ingen import ännu."
-          }
-        />
-        <ImportLog imports={data.imports} timeZone={data.timeZone} now={data.now} />
-      </section>
+          </section>
+          {data.queue.length === 0 ? (
+            <p className="text-sm text-muted">
+              Alla automater kopplade
+              {data.lastMapped ? ` · senast ${data.lastMapped.machineCode}` : ""}.
+            </p>
+          ) : null}
+          <section aria-label="Importer" className="flex flex-col gap-4">
+            <h3 className="label text-subtle">Importer</h3>
+            <ImportLog imports={data.imports} timeZone={data.timeZone} now={data.now} />
+          </section>
+        </div>
+      </details>
     </div>
   );
 }

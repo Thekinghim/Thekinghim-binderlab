@@ -1175,3 +1175,54 @@ export function unitEconomicsKpis(u: UnitEconomicsView): KpiView[] {
     },
   ];
 }
+
+// ---------------------------------------------------------------------------
+// Överst: vad som behöver göras
+// ---------------------------------------------------------------------------
+
+/** En automat i listan överst: vad som är fel och vart knappen går. */
+export interface MachineNeed {
+  readonly id: string;
+  readonly place: string;
+  readonly code: string;
+  readonly label: string;
+  readonly reason: string | null;
+  readonly status: MachineStatusView["status"];
+  /** "Fyll på" (till Fyll på-appen) eller "Öppna" (automatens sida). */
+  readonly action: { readonly label: string; readonly href: string };
+}
+
+/**
+ * Automaterna som behöver något, värst först: fel/tom/ur drift och "Fyll på nu" (signal),
+ * sedan "Fyll på snart" och "Misstänkt fel". Påfyllning går till Fyll på-appen.
+ */
+export function machineNeeds(rows: readonly MachineListRow[]): MachineNeed[] {
+  const rank = (r: MachineListRow) =>
+    r.status.flagged ? 0 : r.status.status === "warning" ? 1 : 2;
+  return rows
+    .filter((r) => r.lifecycle === "active" && rank(r) < 2)
+    .sort((a, b) => rank(a) - rank(b) || a.code.localeCompare(b.code, "sv", { numeric: true }))
+    .map((r) => {
+      const refill = r.refillNow + r.refillSoon > 0 || r.status.health === "empty";
+      return {
+        id: r.id,
+        place: r.storeName ?? r.name,
+        code: r.code,
+        label: r.status.label,
+        reason: r.status.reason,
+        status: r.status.status,
+        action: refill
+          ? { label: "Fyll på", href: `/fyll-pa/${r.id}` }
+          : { label: "Öppna", href: r.href },
+      };
+    });
+}
+
+/** Sidans rubrik: hur många automater som behöver något (max ~8 ord). */
+export function needsHeadline(needs: readonly MachineNeed[], machines: number): string {
+  if (machines === 0) return "Inga automater ännu.";
+  const urgent = needs.filter((n) => n.status === "critical").length;
+  if (needs.length === 0) return "Alla automater rullar.";
+  if (urgent > 0) return `${plural(urgent, "automat", "automater")} behöver dig nu.`;
+  return `${plural(needs.length, "automat", "automater")} behöver dig snart.`;
+}

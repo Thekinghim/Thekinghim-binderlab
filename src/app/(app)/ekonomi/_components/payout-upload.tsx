@@ -62,7 +62,7 @@ export function PayoutUpload({ columns }: { columns: { payouts: string; lines: s
       <form onSubmit={submit} className="flex flex-col gap-3 sm:flex-row sm:items-end" noValidate>
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <span id="payout-file-label" className="label text-muted">
-            Utbetalningsfil (CSV)
+            Fil från Awish (CSV)
           </span>
           {/* Webbläsarens filväljare visar text på webbläsarens språk; knappen är på svenska. */}
           <input
@@ -93,9 +93,12 @@ export function PayoutUpload({ columns }: { columns: { payouts: string; lines: s
               {fileName ?? "Ingen fil vald"}
             </span>
           </div>
-          <p id="payout-file-hint" className="text-xs text-subtle">
-            Utbetalningar: {columns.payouts}. Specifikation per order: {columns.lines}.
-          </p>
+          <details className="text-xs text-subtle">
+            <summary className="w-fit cursor-pointer hover:text-muted">Kolumner</summary>
+            <p id="payout-file-hint" className="mt-1">
+              Utbetalningar: {columns.payouts}. Per order: {columns.lines}.
+            </p>
+          </details>
         </div>
         <Button type="submit" variant="primary" loading={pending}>
           Importera

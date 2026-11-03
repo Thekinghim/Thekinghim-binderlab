@@ -283,7 +283,7 @@ export async function loadPrognosFor(
     lostPeriod,
     scope,
     canEdit: (OPERATOR_ROLES as readonly MemberRole[]).includes(role),
-    titles: all.titles.map((t) => ({ id: t.id, name: t.name })),
+    titles: all.titles.map((t) => ({ id: t.id, name: t.name, ownProduct: t.ownProduct === true })),
     machines: all.machines.map((m) => ({ id: m.id, name: m.name, code: m.code })),
     lostSales: lost,
     forecast,

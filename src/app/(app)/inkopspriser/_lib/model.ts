@@ -81,6 +81,8 @@ export interface TitleRow {
   /** Första affärsdag med order utan pris i perioden. */
   readonly unpricedFirstDate: IsoDate | null;
   readonly status: TitleStatus;
+  /** Egen produkt (vi packar den själva): priset är kostnaden för innehållet. */
+  readonly own: boolean;
 }
 
 export interface TitleInfo {
@@ -88,6 +90,12 @@ export interface TitleInfo {
   readonly name: string;
   readonly series: string | null;
   readonly archived: boolean;
+  readonly ownProduct?: boolean;
+}
+
+/** Etiketten för priset: inköpspris, eller kostnaden för innehållet för en egen produkt. */
+export function costLabel(own: boolean): string {
+  return own ? "Kostnad per pack (innehåll)" : "Inköpspris per pack";
 }
 
 export const STATUS_LABEL: Record<TitleStatus, string> = {
@@ -245,6 +253,7 @@ export function titleRows(
         unpricedRevenueOre: u?.revenueOre ?? 0,
         unpricedFirstDate: u?.firstDate ?? null,
         status: statusOf(e),
+        own: t.ownProduct === true,
       },
     ];
   });
@@ -900,3 +909,46 @@ export function signalTitleIds(rows: readonly TitleRow[], max = 3): string[] {
 
 /** Titelns sektion (rubrik och prisredigerare): tabellen rullar dit och sätter markören i priset. */
 export const PRICE_EDITOR_ID = "titel";
+
+/** En sak att göra på Inköpspriser: sätta pris eller se över en titel som går med förlust. */
+export interface PriceTodo {
+  readonly id: string;
+  readonly verb: "Sätt pris" | "Sätt kostnad" | "Förlust";
+  readonly title: string;
+  /** Order utan pris (Sätt pris) eller i perioden (Förlust). */
+  readonly orders: number;
+  readonly tone: "critical" | "warning";
+}
+
+/**
+ * Listan överst: titlar som säljer utan pris (flest order först), sedan titlar med förlust.
+ * Arkiverade titlar utan order hoppas över. Ren.
+ */
+export function priceTodos(rows: readonly TitleRow[]): PriceTodo[] {
+  const active = rows.filter((r) => !r.archived || r.orders > 0);
+  const missing = active
+    .filter((r) => r.unpricedOrders > 0 || (r.status === "missing" && !r.archived))
+    .sort(
+      (a, b) =>
+        b.unpricedOrders - a.unpricedOrders ||
+        a.name.localeCompare(b.name, "sv", { sensitivity: "base" }),
+    )
+    .map((r): PriceTodo => ({
+      id: r.id,
+      verb: r.own ? "Sätt kostnad" : "Sätt pris",
+      title: r.name,
+      orders: r.unpricedOrders,
+      tone: r.unpricedOrders > 0 ? "critical" : "warning",
+    }));
+  const loss = active
+    .filter((r) => r.status === "loss")
+    .sort((a, b) => (a.leftOre ?? 0) - (b.leftOre ?? 0))
+    .map((r): PriceTodo => ({
+      id: r.id,
+      verb: "Förlust",
+      title: r.name,
+      orders: r.orders,
+      tone: "critical",
+    }));
+  return [...missing, ...loss];
+}

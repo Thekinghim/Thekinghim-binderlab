@@ -29,13 +29,13 @@ function statusLine(
 ): { status: Status; text: string } {
   if (!source?.credentials) return { status: "neutral", text: "Inte kopplad." };
   const synced = source.lastSyncedAt
-    ? `Senast synkad ${formatWhen(source.lastSyncedAt, timeZone, now)}`
-    : "Inte synkad än";
+    ? `Hämtat ${formatWhen(source.lastSyncedAt, timeZone, now)}`
+    : "Inte hämtat än";
   const orders = `${formatInt(source.orders)} order`;
   if (source.lastRun && !source.lastRun.ok) {
     return {
       status: "critical",
-      text: `${source.lastRun.message ?? "Synken misslyckades."} ${synced}.`,
+      text: `${source.lastRun.message ?? "Hämtningen misslyckades."} ${synced}.`,
     };
   }
   return {
@@ -122,7 +122,7 @@ export function AwishCard({
       setResult(
         r.data.message ??
           `${formatInt(r.data.newOrders)} nya order av ${formatInt(r.data.fetched)} lästa.${
-            r.data.historyDone ? "" : " Historiken läses klart vid nästa synk."
+            r.data.historyDone ? "" : " Resten hämtas strax."
           }`,
       );
       router.refresh();
@@ -133,72 +133,88 @@ export function AwishCard({
       <div className="flex flex-col gap-1">
         <h3 className="text-lg font-medium">Awish</h3>
         <p className="flex items-center gap-2 text-sm text-muted">
-          <StatusGlyph status={line.status} />
+          {line.status === "ok" ? (
+            <span
+              aria-hidden
+              className="live-dot inline-block size-2 shrink-0 rounded-full bg-up text-up"
+            />
+          ) : (
+            <StatusGlyph status={line.status} />
+          )}
           <span>{line.text}</span>
         </p>
       </div>
-      <form
-        className="grid gap-3 md:grid-cols-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          save();
-        }}
-      >
-        <Input
-          label="AppId"
-          name="appId"
-          autoComplete="off"
-          spellCheck={false}
-          value={appId}
-          placeholder={masked(saved?.appIdLast4, saved !== null)}
-          onChange={(e) => setAppId(e.target.value)}
-        />
-        <Input
-          label="AppSecret"
-          name="appSecret"
-          type="password"
-          autoComplete="new-password"
-          value={appSecret}
-          placeholder={masked(saved?.appSecretLast4, saved !== null)}
-          onChange={(e) => setAppSecret(e.target.value)}
-        />
-        <Input
-          label="AppKey"
-          name="appKey"
-          type="password"
-          autoComplete="new-password"
-          spellCheck={false}
-          value={appKey}
-          placeholder={masked(saved?.appKeyLast4, saved !== null)}
-          onChange={(e) => setAppKey(e.target.value)}
-        />
-        <p className="text-xs text-subtle md:col-span-3">
-          Finns i Awish under Merchant → Developer Center.
-        </p>
-        <div className="flex flex-wrap gap-2 md:col-span-3">
-          <Button type="submit" variant="primary" loading={busy === "save"} disabled={pending}>
-            Spara
+      {saved ? (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="primary"
+            loading={busy === "sync"}
+            disabled={pending}
+            onClick={sync}
+          >
+            Hämta nu
           </Button>
           <Button
             type="button"
             variant="secondary"
             loading={busy === "test"}
-            disabled={pending || !saved}
+            disabled={pending}
             onClick={test}
           >
-            Testa anslutningen
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            loading={busy === "sync"}
-            disabled={pending || !saved}
-            onClick={sync}
-          >
-            Synka nu
+            Testa
           </Button>
         </div>
-      </form>
+      ) : null}
+      <details className="group" open={saved ? undefined : true}>
+        <summary className={saved ? "cursor-pointer text-sm text-muted hover:text-fg" : "sr-only"}>
+          Ändra nycklar
+        </summary>
+        <form
+          className="mt-3 grid gap-3 md:grid-cols-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save();
+          }}
+        >
+          <Input
+            label="AppId"
+            name="appId"
+            autoComplete="off"
+            spellCheck={false}
+            value={appId}
+            placeholder={masked(saved?.appIdLast4, saved !== null)}
+            onChange={(e) => setAppId(e.target.value)}
+          />
+          <Input
+            label="AppSecret"
+            name="appSecret"
+            type="password"
+            autoComplete="new-password"
+            value={appSecret}
+            placeholder={masked(saved?.appSecretLast4, saved !== null)}
+            onChange={(e) => setAppSecret(e.target.value)}
+          />
+          <Input
+            label="AppKey"
+            name="appKey"
+            type="password"
+            autoComplete="new-password"
+            spellCheck={false}
+            value={appKey}
+            placeholder={masked(saved?.appKeyLast4, saved !== null)}
+            onChange={(e) => setAppKey(e.target.value)}
+          />
+          <p className="text-xs text-subtle md:col-span-3">
+            Finns i Awish under Merchant → Developer Center.
+          </p>
+          <div className="flex flex-wrap gap-2 md:col-span-3">
+            <Button type="submit" variant="primary" loading={busy === "save"} disabled={pending}>
+              Spara
+            </Button>
+          </div>
+        </form>
+      </details>
       {result ? (
         <p role="status" className="text-sm text-muted">
           {result}

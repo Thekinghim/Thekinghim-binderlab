@@ -1,15 +1,18 @@
 "use client";
 
-import { useActionState, useState, type FormEvent } from "react";
+import { useActionState, useEffect, useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
+import { Icon } from "@/components/ui/icon";
 
-import { requestMagicLink, signIn } from "./actions";
+import { requestMagicLink, requestPasswordReset, signIn } from "./actions";
 import { FormError } from "./form-error";
 import type { LoginState, MagicLinkState } from "./state";
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+export type LoginMode = "password" | "magic-link" | "forgot";
 
 type FieldErrors = { email?: string; password?: string };
 
@@ -25,37 +28,89 @@ function value(form: HTMLFormElement, name: string): string {
 }
 
 /** Fältkontroller före anropet, med svenska texter i stället för webbläsarens. */
-function emailProblem(email: string): string | undefined {
-  if (email.trim() === "") return "Skriv din e-postadress.";
-  if (!EMAIL.test(email.trim())) return "Det ser inte ut som en e-postadress.";
+export function emailProblem(email: string): string | undefined {
+  if (email.trim() === "") return "Skriv din e-post.";
+  if (!EMAIL.test(email.trim())) return "Det ser inte ut som en e-post.";
   return undefined;
 }
 
+const LINK = "text-fg underline decoration-line-strong underline-offset-4 hover:decoration-fg";
+const BIG = "h-12 w-full text-lg";
+
 /**
- * Formuläret på /logga-in. Fungerar utan JavaScript (form action). Felen är
- * desamma för okänd adress och fel lösenord, och länkläget svarar likadant
- * oavsett om adressen har ett konto.
+ * Formuläret på /logga-in: länk i mejlet (Supabase), lösenord och "Glömt
+ * lösenord?". Fungerar utan JavaScript (form action). Felen är desamma för
+ * okänd adress och fel lösenord, och länkarna svarar likadant oavsett om
+ * adressen har ett konto.
  */
 export function LoginForm({
   next,
   initialMode,
+  canUseLinks,
   notice,
 }: {
   /** Lokal sökväg efter inloggning ("" = startsidan). Redan kontrollerad på servern. */
   next: string;
-  initialMode: "password" | "magic-link";
-  /** Meddelande från ?fel=, t.ex. en länk som gått ut. */
+  initialMode: LoginMode;
+  /** Supabase: länk i mejlet och "Glömt lösenord?" finns. */
+  canUseLinks: boolean;
+  /** Meddelande från ?fel=, t.ex. en länk som inte gick. */
   notice?: string;
 }) {
-  const [mode, setMode] = useState(initialMode);
-  const canUseMagicLink = initialMode === "magic-link";
-  return mode === "magic-link" ? (
-    <MagicLinkForm next={next} notice={notice} onUsePassword={() => setMode("password")} />
-  ) : (
+  const [mode, setMode] = useState<LoginMode>(canUseLinks ? initialMode : "password");
+
+  // Skickade Supabase hit en länk (t.ex. till sajtens adress i stället för
+  // /logga-in/bekrafta) tas den emot där, med fragmentet kvar.
+  useEffect(() => {
+    const { hash } = window.location;
+    if (/(^#|&)(access_token|error_code)=/.test(hash)) {
+      window.location.replace(`/logga-in/bekrafta${hash}`);
+    }
+  }, []);
+
+  if (mode === "magic-link") {
+    return (
+      <LinkForm
+        kind="login"
+        next={next}
+        notice={notice}
+        footer={
+          <button type="button" onClick={() => setMode("password")} className={LINK}>
+            Logga in med lösenord
+          </button>
+        }
+      />
+    );
+  }
+  if (mode === "forgot") {
+    return (
+      <LinkForm
+        kind="reset"
+        next={next}
+        footer={
+          <button type="button" onClick={() => setMode("password")} className={LINK}>
+            Tillbaka
+          </button>
+        }
+      />
+    );
+  }
+  return (
     <PasswordForm
       next={next}
       notice={notice}
-      onUseMagicLink={canUseMagicLink ? () => setMode("magic-link") : undefined}
+      footer={
+        canUseLinks ? (
+          <>
+            <button type="button" onClick={() => setMode("forgot")} className={LINK}>
+              Glömt lösenord?
+            </button>
+            <button type="button" onClick={() => setMode("magic-link")} className={LINK}>
+              Få länk i mejlet
+            </button>
+          </>
+        ) : null
+      }
     />
   );
 }
@@ -63,11 +118,11 @@ export function LoginForm({
 function PasswordForm({
   next,
   notice,
-  onUseMagicLink,
+  footer,
 }: {
   next: string;
   notice?: string;
-  onUseMagicLink?: () => void;
+  footer: React.ReactNode;
 }) {
   const [state, action, pending] = useActionState<LoginState, FormData>(signIn, {});
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -85,10 +140,10 @@ function PasswordForm({
     }
   };
   return (
-    <form action={action} onSubmit={check} noValidate className="flex flex-col gap-5">
+    <form action={action} onSubmit={check} noValidate className="fade-in flex flex-col gap-5">
       <input type="hidden" name="next" value={next} />
       <Input
-        label="E-postadress"
+        label="E-post"
         name="email"
         type="email"
         autoComplete="username"
@@ -108,42 +163,43 @@ function PasswordForm({
         required
       />
       <FormError message={fieldErrors.email || fieldErrors.password ? undefined : error} />
-      <Button type="submit" variant="primary" loading={pending} className="w-full">
+      <Button type="submit" variant="primary" loading={pending} className={BIG}>
         Logga in
       </Button>
-      {onUseMagicLink ? (
-        <p className="text-sm text-muted">
-          Glömt lösenordet?{" "}
-          <button
-            type="button"
-            onClick={onUseMagicLink}
-            className="text-fg underline decoration-line-strong underline-offset-4 hover:decoration-fg"
-          >
-            Få en inloggningslänk
-          </button>
-        </p>
+      {footer ? (
+        <p className="flex flex-wrap justify-between gap-x-6 gap-y-2 text-sm">{footer}</p>
       ) : null}
     </form>
   );
 }
 
-function MagicLinkForm({
+/** "Skicka länk" (inloggning) och "Glömt lösenord?" (länk för nytt lösenord). */
+function LinkForm({
+  kind,
   next,
   notice,
-  onUsePassword,
+  footer,
 }: {
+  kind: "login" | "reset";
   next: string;
   notice?: string;
-  onUsePassword: () => void;
+  footer: React.ReactNode;
 }) {
-  const [state, action, pending] = useActionState<MagicLinkState, FormData>(requestMagicLink, {
-    status: "idle",
-  });
+  const [state, action, pending] = useActionState<MagicLinkState, FormData>(
+    kind === "login" ? requestMagicLink : requestPasswordReset,
+    { status: "idle" },
+  );
   const [emailError, setEmailError] = useState<string>();
 
   if (state.status === "sent") {
     return (
-      <div className="flex flex-col gap-5" role="status">
+      <div className="fade-in flex flex-col gap-5" role="status">
+        <p className="flex items-center gap-3 text-lg text-fg">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-up/15 text-up">
+            <Icon name="check" size={16} />
+          </span>
+          Kolla mejlen.
+        </p>
         <dl className="flex flex-col border-y border-line">
           <div className="flex items-baseline justify-between gap-4 py-2">
             <dt className="label text-subtle">Till</dt>
@@ -151,13 +207,9 @@ function MagicLinkForm({
           </div>
           <div className="flex items-baseline justify-between gap-4 border-t border-line py-2">
             <dt className="label text-subtle">Gäller</dt>
-            <dd className="meta text-fg">1 timme, en gång</dd>
+            <dd className="meta text-fg">1 timme</dd>
           </div>
         </dl>
-        <p className="text-base text-muted">
-          Om adressen har ett konto har vi skickat en länk. Öppna den i den här webbläsaren. Kommer
-          inget inom några minuter: kontrollera adressen eller skräpposten.
-        </p>
         <form action={action}>
           <input type="hidden" name="next" value={next} />
           <input type="hidden" name="email" value={state.email ?? ""} />
@@ -165,6 +217,7 @@ function MagicLinkForm({
             Skicka igen
           </Button>
         </form>
+        <p className="text-sm">{footer}</p>
       </div>
     );
   }
@@ -179,10 +232,10 @@ function MagicLinkForm({
     }
   };
   return (
-    <form action={action} onSubmit={check} noValidate className="flex flex-col gap-5">
+    <form action={action} onSubmit={check} noValidate className="fade-in flex flex-col gap-5">
       <input type="hidden" name="next" value={next} />
       <Input
-        label="E-postadress"
+        label="E-post"
         name="email"
         type="email"
         autoComplete="email"
@@ -190,24 +243,14 @@ function MagicLinkForm({
         inputMode="email"
         spellCheck={false}
         defaultValue={state.email}
-        hint="Vi skickar en länk som loggar in dig. Inget lösenord behövs."
         required
         autoFocus
       />
       <FormError message={emailError ? undefined : error} />
-      <Button type="submit" variant="primary" loading={pending} className="w-full">
-        Skicka inloggningslänk
+      <Button type="submit" variant="primary" loading={pending} className={BIG}>
+        {kind === "login" ? "Skicka länk" : "Skicka länk för nytt lösenord"}
       </Button>
-      <p className="text-sm text-muted">
-        Har du ett lösenord?{" "}
-        <button
-          type="button"
-          onClick={onUsePassword}
-          className="text-fg underline decoration-line-strong underline-offset-4 hover:decoration-fg"
-        >
-          Logga in med lösenord
-        </button>
-      </p>
+      <p className="text-sm">{footer}</p>
     </form>
   );
 }

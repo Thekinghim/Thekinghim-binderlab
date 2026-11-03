@@ -151,11 +151,11 @@ describe("buildHomeModel", () => {
     expect(revenue?.value).toBe(20 * 20_000 + 3 * 15_000);
     expect(revenue?.delta).toBeNull();
     expect(revenue?.trend).toHaveLength(20);
-    expect(plain(m.headline.title)).toBe("4 450 kr sedan 13 okt.");
-    // Hela vinsten och vår del (butiken har 10 % provision).
-    expect(plain(m.headline.aside)).toBe("Vinst 2 070 kr, vår del 1 725 kr.");
-    expect(m.headline.lead.join(" ")).toMatch(
-      /^Före återbetalningar och fasta kostnader, .* vår marginal, men .* saknar inköpspris och ingår inte\.$/,
+    // Hela vinsten som stort tal, delningen bredvid (butiken har 10 % provision).
+    expect(plain(m.headline.title)).toBe("Vinst 2 070 kr sedan 13 okt.");
+    expect(plain(m.headline.aside)).toBe("Vår del 1 725 kr · butikerna 345 kr.");
+    expect(plain(m.headline.lead.join(" "))).toBe(
+      "Före fasta kostnader. 22,5 % saknar inköpspris.",
     );
   });
 
@@ -214,7 +214,7 @@ describe("buildHomeModel", () => {
     });
     expect(m.kpis.find((k) => k.id === "profit")?.value).toBeNull();
     expect(m.kpis.find((k) => k.id === "margin")?.value).toBeNull();
-    expect(m.headline.aside).toBe("Vinsten går inte att räkna förrän orderna har inköpspris.");
+    expect(m.headline.aside).toBe("Lägg in inköpspris för vinsten.");
   });
 
   it("markerar titlar utan inköpspris även när de slagits ihop till övriga", () => {
@@ -258,9 +258,8 @@ describe("buildHomeModel", () => {
     expect(revenue?.delta).toBeCloseTo(0.225, 4);
     expect(m.kpis.find((k) => k.id === "margin")?.deltaKind).toBe("absolute");
     expect(m.daily?.compareOre).toHaveLength(10);
-    expect(plain(m.headline.title)).toBe("2 450 kr på 10 dagar.");
-    expect(plain(m.headline.aside)).toBe("23 % bättre än perioden innan.");
-    expect(m.headline.lead[0]).toMatch(/^Vinst /);
+    expect(plain(m.headline.title)).toMatch(/^Vinst .* på 10 dagar\.$/);
+    expect(plain(m.headline.aside)).toMatch(/(\+23 %|butikerna)/);
   });
 
   it("ritar inte dagen som pågår, men räknar den i nyckeltalen", () => {
@@ -303,7 +302,7 @@ describe("buildHomeModel", () => {
     expect(m.daily?.dates).toHaveLength(6);
     expect(m.daily?.compareOre).toHaveLength(6);
     // Samma dagar som diagrammet och övriga sidor: i dag räknas inte utan order.
-    expect(plain(m.headline.title)).toBe("1 200 kr på 6 dagar.");
+    expect(plain(m.headline.title)).toMatch(/^Vinst .* på 6 dagar\.$/);
   });
 
   it("säger att det saknas order när datan saknas helt", () => {
@@ -557,29 +556,46 @@ describe("homeHeadline", () => {
     today: TODAY,
     dataStart: DATA_START,
   };
-  it("skriver intäkten, dagarna och förändringen", () => {
+  it("skriver vinsten som det stora talet, med intäkten och förändringen bredvid", () => {
     const h = homeHeadline(base);
-    expect(h.title).toBe("79 987 kr på 20 dagar.");
-    expect(h.aside).toBe("12 % bättre än perioden innan.");
-    expect(h.lead).toEqual([
-      "Vinst 21 933 kr före återbetalningar och fasta kostnader, 28,8 % marginal på order med inköpspris.",
-    ]);
+    expect(plain(h.title)).toBe("Vinst 21 933 kr på 20 dagar.");
+    expect(h.figure).toMatchObject({ label: "Vinst", valueOre: 2_193_300, tone: "good" });
+    expect(plain(h.aside)).toBe("Intäkt 79 987 kr, +12 %.");
+    expect(h.lead).toEqual(["Före fasta kostnader."]);
+    expect(h.split).toEqual([]);
   });
-  it("säger inte grunden för marginalen när alla order har inköpspris", () => {
-    expect(homeHeadline({ ...base, unpricedShareBp: 0 }).lead).toEqual([
-      "Vinst 21 933 kr före återbetalningar och fasta kostnader, 28,8 % marginal.",
-    ]);
+  it("rubriken är högst åtta ord", () => {
+    const h = homeHeadline({ ...base, ourProfitOre: 1_500_000 });
+    expect((plain(h.title) ?? "").split(" ").length).toBeLessThanOrEqual(8);
   });
-  it("skriver förlust och sämre utan minustecken i ord", () => {
+  it("delningen står som andra del: vår del och butikerna", () => {
+    const h = homeHeadline({ ...base, ourProfitOre: 1_500_000 });
+    expect(plain(h.aside)).toBe("Vår del 15 000 kr · butikerna 6 933 kr.");
+    expect(h.split).toEqual([
+      { label: "Vår del", valueOre: 1_500_000 },
+      { label: "butikerna", valueOre: 693_300 },
+    ]);
+    const store = homeHeadline({
+      ...base,
+      ourProfitOre: 1_500_000,
+      storesProfitOre: 693_300,
+      filtered: true,
+    });
+    expect(plain(store.aside)).toBe("Butikens del 6 933 kr · vår del 15 000 kr.");
+  });
+  it("skriver förlust i rött och sämre med minustecken", () => {
     const h = homeHeadline({ ...base, profitOre: -50_000, marginBp: -500, revenueChangeBp: -450 });
-    expect(h.aside).toBe("4,5 % sämre än perioden innan.");
-    expect(h.lead[0]).toMatch(/^Förlust 500 kr/);
+    expect(plain(h.title)).toBe("Förlust 500 kr på 20 dagar.");
+    expect(h.figure).toMatchObject({ valueOre: 50_000, tone: "bad" });
+    expect(plain(h.aside)).toBe("Intäkt 79 987 kr, \u22124,5 %.");
   });
   it("räknar dagarna som övriga sidor: i dag bara med order i dag", () => {
     const week = { start: "2026-10-27", end: TODAY };
-    expect(plain(homeHeadline({ ...base, period: week }).title)).toBe("79 987 kr på 6 dagar.");
+    expect(plain(homeHeadline({ ...base, period: week }).title)).toBe(
+      "Vinst 21 933 kr på 6 dagar.",
+    );
     expect(plain(homeHeadline({ ...base, period: week, hasOrdersToday: true }).title)).toBe(
-      "79 987 kr på 7 dagar.",
+      "Vinst 21 933 kr på 7 dagar.",
     );
   });
   it("säger i dag och i går för en enda dag", () => {
@@ -592,13 +608,13 @@ describe("homeHeadline", () => {
   });
   it("säger sedan första ordern när datan börjar inne i perioden", () => {
     expect(plain(homeHeadline({ ...base, period: THIRTY, revenueChangeBp: null }).title)).toBe(
-      "79 987 kr sedan 13 okt.",
+      "Vinst 21 933 kr sedan 13 okt.",
     );
     expect(
       plain(homeHeadline({ ...base, period: { start: "2026-10-01", end: "2026-10-19" } }).title),
-    ).toBe("79 987 kr 13–\u206019 okt.");
+    ).toBe("Vinst 21 933 kr 13–\u206019 okt.");
   });
-  it("säger att vinsten inte går att räkna utan inköpspris och nämner en stor andel utan", () => {
+  it("visar intäkten när vinsten inte går att räkna, och nämner en stor andel utan pris", () => {
     const none = homeHeadline({
       ...base,
       pricedOrders: 0,
@@ -606,13 +622,13 @@ describe("homeHeadline", () => {
       marginBp: null,
       revenueChangeBp: null,
     });
-    expect(none.aside).toBe("Vinsten går inte att räkna förrän orderna har inköpspris.");
-    expect(none.aside).not.toMatch(/0 kr/);
+    expect(plain(none.title)).toBe("Intäkt 79 987 kr på 20 dagar.");
+    expect(none.figure?.tone).toBe("neutral");
+    expect(none.aside).toBe("Lägg in inköpspris för vinsten.");
+    expect(none.lead).toEqual([]);
     const many = homeHeadline({ ...base, unpricedShareBp: 3_500, revenueChangeBp: null });
-    expect(plain(many.aside)).toBe("Vinst 21 933 kr.");
-    expect(plain(many.lead.join(" "))).toBe(
-      "Före återbetalningar och fasta kostnader, 28,8 % marginal, men 35,0 % av intäkten saknar inköpspris och ingår inte.",
-    );
+    expect(plain(many.aside)).toBe("Intäkt 79 987 kr.");
+    expect(plain(many.lead.join(" "))).toBe("Före fasta kostnader. 35,0 % saknar inköpspris.");
   });
   it("säger när perioden ligger före första ordern", () => {
     const h = homeHeadline({
@@ -837,8 +853,9 @@ describe("hela vinsten på Hem", () => {
   it("rubriken säger hela vinsten och vår del", () => {
     const { m } = home(false, null);
     const s = m.profitSplit!;
+    expect(plain(m.headline.title)).toMatch(new RegExp(`^Vinst ${plain(kr(s.totalOre))} `));
     expect(plain(m.headline.aside)).toBe(
-      plain(`Vinst ${kr(s.totalOre)}, vår del ${kr(s.ourOre)}.`),
+      plain(`Vår del ${kr(s.ourOre)} · butikerna ${kr(s.storesOre)}.`),
     );
   });
 });

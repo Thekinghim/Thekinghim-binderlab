@@ -10,8 +10,9 @@ import { formatDate, formatDateTime, formatInt, MINUS, MISSING, NBSP } from "@/l
 import type { HistoryKind, StockCell, StockStatus } from "./types";
 
 export const STATUS_LABEL: Record<StockStatus, string> = {
-  critical: "Kritisk",
-  low: "Låg",
+  // Vardagsord (inte "Kritisk"/"Låg"); "Snart slut" som i Fyll på.
+  critical: "Akut",
+  low: "Snart slut",
   ok: "OK",
 };
 

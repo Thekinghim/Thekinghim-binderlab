@@ -187,7 +187,7 @@ export function ReconciliationList({
           compact
           kind="no-results"
           code={`${result.staleResolutions.length} ändrade`}
-          message="Avvikelser som utretts har ändrats sedan dess och visas som öppna igen."
+          message="Utredda avvikelser har ändrats och är öppna igen."
           detail={result.staleResolutions.map((r) => r.note).join(" · ")}
         />
       ) : null}

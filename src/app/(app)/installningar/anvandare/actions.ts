@@ -37,7 +37,11 @@ async function activeOrganizationId(): Promise<string | null> {
   return (await getActiveOrganization())?.id ?? null;
 }
 
-async function sendInvite(email: string, role: MemberRole): Promise<ActionResult> {
+async function sendInvite(
+  email: string,
+  role: MemberRole,
+  password?: string,
+): Promise<ActionResult> {
   const organizationId = await activeOrganizationId();
   if (!organizationId) return { ok: false, error: MEMBER_MESSAGES.forbidden };
   let baseUrl: string;
@@ -48,19 +52,25 @@ async function sendInvite(email: string, role: MemberRole): Promise<ActionResult
   }
   const result = await createInviteFlow(
     { provider: await getAuthProvider(), user: await getSessionUser(), baseUrl },
-    { organizationId, email, role },
+    { organizationId, email, role, password },
   );
   return result.ok
     ? result
     : { ok: false, error: inviteErrorFor(role, result.error, FORBIDDEN_DB) };
 }
 
-/** Bjuder in en person (mejl med länk till /inbjudan/[token], gäller 7 dagar). */
+/**
+ * Bjuder in en person (mejl med länk till /inbjudan/[token], gäller 7 dagar).
+ * Med `password` skapas kontot direkt med det lösenordet (t.ex. åt delägaren),
+ * så att personen kan logga in utan mejlet och gå med på ett tryck.
+ */
 export async function inviteMember(input: {
   email: string;
   role: MemberRole;
+  password?: string;
 }): Promise<ActionResult> {
-  const result = await sendInvite(String(input?.email ?? ""), input?.role);
+  const password = typeof input?.password === "string" ? input.password : undefined;
+  const result = await sendInvite(String(input?.email ?? ""), input?.role, password);
   if (result.ok) revalidatePath(PAGE);
   return result;
 }

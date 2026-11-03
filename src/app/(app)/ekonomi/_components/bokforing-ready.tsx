@@ -7,12 +7,19 @@
 import Link from "next/link";
 
 import type { Viewer } from "@/server/data/core/loaders";
-import { readyPackageFor } from "@/server/bokforing/stored";
+import { readyPackageFor, type ReadyLine } from "@/server/bokforing/stored";
 
 import { monthText } from "../_lib/view";
 
-export async function BokforingReady({ viewer }: { viewer: Viewer }) {
-  const ready = await readyPackageFor(viewer);
+export async function BokforingReady({
+  viewer,
+  preloaded,
+}: {
+  viewer: Viewer;
+  /** Redan läst av sidan (Att göra räknar raden i rubriken); utelämnad = läs här. */
+  preloaded?: ReadyLine | null;
+}) {
+  const ready = preloaded !== undefined ? preloaded : await readyPackageFor(viewer);
   if (!ready) return null;
   const month = monthText(ready.month);
   const final = ready.status === "final";

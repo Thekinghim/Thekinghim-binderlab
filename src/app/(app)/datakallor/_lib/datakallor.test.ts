@@ -172,7 +172,7 @@ describe("headlineOf", () => {
   it("rubriken bygger på den senaste ordern, inte på senaste uppladdningen", () => {
     const h = headlineOf(base);
     expect(sp(h.title)).toBe("Data till 1 nov. 17:17.");
-    expect(sp(h.aside)).toBe("460 order importerade, alla automater kopplade.");
+    expect(sp(h.aside)).toBe("460 order.");
     expect(h.tone).toBe("ok");
   });
 
@@ -193,16 +193,15 @@ describe("headlineOf", () => {
         },
       ],
     });
-    expect(sp(h.aside)).toBe("1 automat väntar på koppling, 12 order saknar automat.");
+    expect(sp(h.title)).toBe("1 automat att koppla.");
+    expect(sp(h.aside)).toBe("12 order saknar automat.");
     expect(h.tone).toBe("warning");
   });
 
   it("inaktuell när den senaste ordern är mer än ett dygn gammal", () => {
     const h = headlineOf({ ...base, now: "2026-11-02T19:00:00Z" });
     expect(h.tone).toBe("warning");
-    expect(sp(h.aside)).toBe(
-      "Senaste uppladdningen 1 nov. 21:23 hade inget nyare. Exportera en ny orderlista från Awish.",
-    );
+    expect(sp(h.aside)).toBe("Mer än ett dygn gammal.");
   });
 
   it("en ny uppladdning utan nyare order gör inte datan färsk", () => {

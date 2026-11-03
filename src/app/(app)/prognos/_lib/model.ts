@@ -205,6 +205,10 @@ export interface PlanLineView {
   } | null;
   /** Öppna utkast med titeln (räknas inte som beställt). */
   readonly drafts: readonly { readonly number: string; readonly quantity: number }[];
+  /** Egen produkt: vi packar den själva ("Packa" i stället för "Beställ"). */
+  readonly own: boolean;
+  /** Egen produkt: pack att packa (0 = inget). */
+  readonly packQty: number;
   readonly text: string;
   readonly evidence: EvidenceView;
 }
@@ -228,11 +232,15 @@ export interface ProposalView {
 
 export interface PlanModel {
   readonly heading: Heading;
+  /** Att beställa hos leverantörer (egna produkter räknas inte). */
   readonly totalOre: number;
   readonly proposals: readonly ProposalView[];
   readonly lines: readonly PlanLineView[];
+  /** Antal per status, utan egna produkter som ska packas (de står i `packLines`). */
   readonly counts: Readonly<Record<PurchaseLineStatus, number>>;
   readonly lateCount: number;
+  /** Egna produkter att packa, flest pack först. */
+  readonly packLines: readonly PlanLineView[];
 }
 
 export interface PurchaseOrderView {
@@ -441,7 +449,24 @@ export function purchaseOrderStatusLabel(status: PurchaseOrderStatus): string {
   return PO_STATUS[status].label;
 }
 
-function planStatus(line: PurchaseLine): { label: string; tone: Tone } {
+/** Egen produkt som behöver fyllas på: pack att packa (beställningsförslaget, annars behovet). */
+export function packQtyOf(line: Pick<PurchaseLine, "status" | "orderQty" | "rawQty">): number {
+  if (line.status === "order") return Math.max(line.orderQty, line.rawQty);
+  if (line.status === "no-supplier") return line.rawQty;
+  return 0;
+}
+
+function planStatus(
+  line: PurchaseLine,
+  packQty: number | null = null,
+): { label: string; tone: Tone } {
+  // Egen produkt (packQty satt): Packa eller Räcker, aldrig Beställ eller Leverantör saknas.
+  if (packQty !== null) {
+    if (packQty > 0) return { label: "Packa", tone: line.late ? "critical" : "warning" };
+    if (line.status === "order" || line.status === "no-supplier") {
+      return { label: "Räcker", tone: "ok" };
+    }
+  }
   switch (line.status) {
     case "order":
       return line.late ? { label: "Sen", tone: "critical" } : { label: "Beställ", tone: "warning" };
@@ -715,8 +740,16 @@ function accuracyAside(m: AccuracyMetrics, weeks: number, fallback: string): str
   return parts.join(" ");
 }
 
-function planModel(data: PrognosData, names: ReturnType<typeof lookup>): PlanModel {
+function planModel(
+  data: PrognosData,
+  names: ReturnType<typeof lookup>,
+  packNeed?: ReadonlyMap<string, number>,
+): PlanModel {
   const p = data.plan;
+  const ownIds = new Set(data.titles.filter((t) => t.ownProduct).map((t) => t.id));
+  // Egna produkter: samma antal som Vårt lager ("Packa X st") när det skickas in, annars planens.
+  const packQtyFor = (l: PurchaseLine): number | null =>
+    ownIds.has(l.titleId) ? (packNeed ? (packNeed.get(l.titleId) ?? 0) : packQtyOf(l)) : null;
   const basis = new Map(data.demandBasis.map((b) => [b.titleId, b]));
   // Öppna utkast per titel och per leverantör (räknas inte som beställt i planen).
   const draftOrders = data.purchaseOrders.filter((po) => po.status === "draft");
@@ -729,7 +762,9 @@ function planModel(data: PrognosData, names: ReturnType<typeof lookup>): PlanMod
     }
   }
   const lineView = (l: PurchaseLine): PlanLineView => {
-    const st = planStatus(l);
+    const packQty = packQtyFor(l);
+    const own = packQty !== null;
+    const st = planStatus(l, packQty);
     const b = basis.get(l.titleId);
     const lowData =
       b && b.lowDataSeries > 0
@@ -787,6 +822,8 @@ function planModel(data: PrognosData, names: ReturnType<typeof lookup>): PlanMod
       orderBy: l.orderBy,
       lowData,
       drafts,
+      own,
+      packQty: packQty ?? 0,
       text: tidy(l.text),
       evidence: extra.length > 0 ? { ...ev, figures: [...ev.figures, ...extra] } : ev,
     };
@@ -798,9 +835,34 @@ function planModel(data: PrognosData, names: ReturnType<typeof lookup>): PlanMod
     "no-supplier": 0,
     "no-demand": 0,
   };
-  for (const l of p.lines) counts[l.status] += 1;
-  const lateCount = p.lines.filter((l) => l.status === "order" && l.late).length;
-  const proposals: ProposalView[] = p.orders.map((o) => ({
+  const own = (l: PurchaseLine) => ownIds.has(l.titleId);
+  for (const l of p.lines) {
+    const q = packQtyFor(l);
+    if (q === null) counts[l.status] += 1;
+    else if (q === 0) {
+      counts[l.status === "order" || l.status === "no-supplier" ? "ok" : l.status] += 1;
+    }
+  }
+  const lateCount = p.lines.filter((l) => l.status === "order" && l.late && !own(l)).length;
+  const packLines = lines
+    .filter((l) => l.packQty > 0)
+    .sort((a, b) => b.packQty - a.packQty || a.title.localeCompare(b.title, "sv"));
+  // Egna produkter beställs inte: de tas ur leverantörernas förslag (summorna räknas om).
+  const supplierOrders = p.orders
+    .map((o) => {
+      const kept = o.lines.filter((l) => !own(l));
+      return kept.length === o.lines.length
+        ? o
+        : {
+            ...o,
+            lines: kept,
+            totalPacks: kept.reduce((sum, l) => sum + l.orderQty, 0),
+            totalOre: kept.reduce((sum, l) => sum + l.orderValueOre, 0),
+          };
+    })
+    .filter((o) => o.lines.length > 0);
+  const totalOre = supplierOrders.reduce((sum, o) => sum + o.totalOre, 0);
+  const proposals: ProposalView[] = supplierOrders.map((o) => ({
     supplierId: o.supplierId,
     supplierName: names.supplier(o.supplierId),
     totalPacks: o.totalPacks,
@@ -818,53 +880,80 @@ function planModel(data: PrognosData, names: ReturnType<typeof lookup>): PlanMod
     evidence: evidenceView(o.evidence, names, STOCK_EVIDENCE),
   }));
 
-  let title: string;
-  if (counts.order > 0) {
-    title = `${plural(counts.order, "titel", "titlar")} att beställa för ${approxKr(p.totalOre)}.`;
-  } else if (counts["no-supplier"] > 0) {
-    title = `${plural(counts["no-supplier"], "titel behöver", "titlar behöver")} beställas men saknar leverantör.`;
-  } else if (lines.length === 0) {
-    title = "Inget att planera ännu.";
-  } else {
-    title = "Lagret räcker till nästa beställningstillfälle.";
-  }
-  const asideParts: string[] = [];
-  if (lateCount > 0) {
-    asideParts.push(
-      `${plural(lateCount, "titel", "titlar")} hinner ta slut innan leveransen även om du beställer i dag.`,
-    );
-  }
-  if (counts.order > 0 && counts["no-supplier"] > 0) {
-    asideParts.push(`${plural(counts["no-supplier"], "titel", "titlar")} till saknar leverantör.`);
-  }
-  const lowDataOrder = lines.filter((l) => l.status === "order" && l.lowData).length;
-  if (lowDataOrder > 0) {
-    asideParts.push(
-      `${plural(lowDataOrder, "förslag bygger", "förslag bygger")} delvis på automater med lite data: kontrollera antalet.`,
-    );
-  }
-  const draftTitles = lines.filter((l) => l.status === "order" && l.drafts.length > 0).length;
-  if (draftTitles > 0) {
-    asideParts.push(
-      `${plural(draftTitles, "titel", "titlar")} finns redan i ett utkast som inte är beställt.`,
-    );
-  }
-  if (asideParts.length === 0) {
-    if (counts.order === 0 && counts["no-supplier"] > 0) {
-      asideParts.push(
-        `Lägg upp leverantör och artikel för dem; ${plural(counts.ok, "titel räcker", "titlar räcker")} till nästa beställningstillfälle.`,
-      );
-    } else asideParts.push(tidy(p.text));
-  }
+  const { title, aside } = planHeading({
+    order: counts.order,
+    noSupplier: counts["no-supplier"],
+    totalOre,
+    lateCount,
+    packLines,
+    lowDataOrder: lines.filter((l) => l.status === "order" && !l.own && l.lowData).length,
+    draftTitles: lines.filter((l) => l.status === "order" && !l.own && l.drafts.length > 0).length,
+    empty: lines.length === 0,
+  });
 
   return {
-    heading: { title, aside: asideParts.join(" ") },
-    totalOre: p.totalOre,
+    heading: { title, aside },
+    totalOre,
     proposals,
     lines,
     counts,
     lateCount,
+    packLines,
   };
+}
+
+/**
+ * Inköpets rubrik: kort, det som ska göras först. "Beställ 2 titlar för ca 1 100 kr." ·
+ * "Packa 24 st Mystery Pack." · "Inget att beställa." Den grå delen är en kort rad.
+ */
+export function planHeading(x: {
+  order: number;
+  noSupplier: number;
+  totalOre: number;
+  lateCount: number;
+  packLines: readonly Pick<PlanLineView, "title" | "packQty">[];
+  lowDataOrder: number;
+  draftTitles: number;
+  empty: boolean;
+}): Heading {
+  const pack = x.packLines;
+  const packOne = pack.length === 1 ? pack[0]! : null;
+  const packText = packOne
+    ? `packa ${formatInt(packOne.packQty)}${NBSP}st ${packOne.title}`
+    : `packa ${plural(pack.length, "titel", "titlar")}`;
+  const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+  let title: string;
+  if (x.order > 0) {
+    title = `Beställ ${plural(x.order, "titel", "titlar")} för ${approxKr(x.totalOre)}.`;
+  } else if (pack.length > 0) {
+    title = `${cap(packText)}.`;
+  } else if (x.noSupplier > 0) {
+    title = `${plural(x.noSupplier, "titel", "titlar")} saknar leverantör.`;
+  } else if (x.empty) {
+    title = "Inget att planera ännu.";
+  } else {
+    title = "Inget att beställa.";
+  }
+  const parts: string[] = [];
+  if (x.order > 0 && pack.length > 0) parts.push(`${cap(packText)}.`);
+  if (x.lateCount > 0) {
+    parts.push(`${plural(x.lateCount, "titel hinner", "titlar hinner")} ta slut före leverans.`);
+  }
+  if ((x.order > 0 || pack.length > 0) && x.noSupplier > 0) {
+    parts.push(`${plural(x.noSupplier, "titel", "titlar")} utan leverantör.`);
+  }
+  if (x.lowDataOrder > 0) parts.push("Lite data: kolla antalet.");
+  if (x.draftTitles > 0) parts.push(`${plural(x.draftTitles, "titel", "titlar")} i utkast.`);
+  if (parts.length === 0) {
+    parts.push(
+      x.noSupplier > 0 && x.order === 0 && pack.length === 0
+        ? "Lägg till leverantör."
+        : x.empty
+          ? "Ingen försäljning än."
+          : "Lagret räcker.",
+    );
+  }
+  return { title, aside: parts.join(" ") };
 }
 
 function orderView(
@@ -1052,11 +1141,18 @@ function suppliersModel(data: PrognosData, names: NameLookup): SuppliersModel {
 // ---------------------------------------------------------------------------
 
 /** Vy-modellen för sidan. `now` styr bara datumtexter (år utelämnas för innevarande år). */
-export function buildPageModel(data: PrognosData, now: Date = new Date()): PageModel {
+export function buildPageModel(
+  data: PrognosData,
+  now: Date = new Date(),
+  opts: {
+    /** Pack att packa per egen produkt (samma regel som Vårt lager), annars planens antal. */
+    readonly packNeed?: ReadonlyMap<string, number>;
+  } = {},
+): PageModel {
   const names = lookup(data);
   const lost = lostModel(data, names, now);
   const { forecast, accuracy } = forecastModel(data, names);
-  const plan = planModel(data, names);
+  const plan = planModel(data, names, opts.packNeed);
   const orders = ordersModel(data, names, now);
   const valuation = valuationModel(data, names);
   const suppliers = suppliersModel(data, names);
@@ -1070,17 +1166,6 @@ export function buildPageModel(data: PrognosData, now: Date = new Date()): PageM
     );
   }
   const scoped = Boolean(data.scope.storeId || data.scope.machineId);
-  // Inköpen gäller alltid hela organisationen (centrallagret är gemensamt).
-  const orgNote = scoped ? " i hela organisationen" : "";
-  if (plan.counts.order > 0) {
-    answerParts.push(
-      `${plural(plan.counts.order, "titel", "titlar")}${orgNote} bör beställas för ${approxKr(plan.totalOre)}.`,
-    );
-  } else if (plan.counts["no-supplier"] > 0) {
-    answerParts.push(
-      `${plural(plan.counts["no-supplier"], "titel", "titlar")}${orgNote} behöver en leverantör.`,
-    );
-  }
 
   return {
     heading: {
@@ -1098,13 +1183,14 @@ export function buildPageModel(data: PrognosData, now: Date = new Date()): PageM
         ? []
         : [
             {
-              label: `${forecast.coverage}-intervall`,
+              // Vardagsord i stället för "80 %-intervall"; procenten står i underlaget.
+              label: "Troligt spann",
               value: krRangeText(forecast.total.revenueLowOre, forecast.total.revenueHighOre),
             },
           ]),
       {
         // Felet, inte träffsäkerheten: etikett och värde ska peka åt samma håll.
-        label: "Prognosfel",
+        label: "Brukar slå fel",
         value:
           accuracy.total.wapeBp === null
             ? "–"

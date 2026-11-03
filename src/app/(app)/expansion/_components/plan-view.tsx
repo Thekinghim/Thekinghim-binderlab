@@ -84,9 +84,10 @@ const PLAN_FIELDS: FieldSpec[] = [
   { name: "startStockOre", label: "Startlager", type: "decimal", suffix: "kr" },
   {
     name: "refillMinutesPerMachineWeek",
-    label: "Påfyllning per automat",
+    label: "Påfyllning per automat och vecka",
     type: "integer",
-    suffix: "min/vecka",
+    suffix: "min",
+    hint: "Med resa. T.ex. 45.",
   },
   { name: "people", label: "Personer", type: "integer", suffix: "st", required: true },
   {
@@ -98,8 +99,17 @@ const PLAN_FIELDS: FieldSpec[] = [
   },
 ];
 
-function PlanSettings({ saved, plan }: { saved: GrowthPlanRecord; plan: GrowthPlan }) {
-  const [open, setOpen] = useState(false);
+function PlanSettings({
+  saved,
+  plan,
+  open,
+  setOpen,
+}: {
+  saved: GrowthPlanRecord;
+  plan: GrowthPlan;
+  open: boolean;
+  setOpen: (open: boolean) => void;
+}) {
   const opt = (v: number | null) => (v === null ? "" : String(v));
   const fields = PLAN_FIELDS.map((f) => {
     const placeholder =
@@ -160,6 +170,7 @@ export function PlanView({
   openLeads: number;
   pipelineHref: string;
 }) {
+  const [editing, setEditing] = useState(false);
   const p = plan.profitPerMonthOre;
   const krN = (ore: number | null) => (ore === null ? null : roundHalfUp(ore, 100));
   const maxMachines = Math.max(plan.target, plan.machinesNow, 1);
@@ -180,7 +191,7 @@ export function PlanView({
       key: "leads",
       text: `Hitta ${formatInt(missingLeads)} ${missingLeads === 1 ? "plats" : "platser"} till.`,
       href: pipelineHref,
-      cta: "Pipeline",
+      cta: "Nya platser",
     });
   }
   if (plan.helpFrom !== null && plan.helpFrom <= plan.machinesNow + plan.perMonth * 3) {
@@ -193,7 +204,14 @@ export function PlanView({
   if (plan.capitalPerMachineOre === null) {
     steps.push({ key: "price", text: "Ange vad en automat kostar." });
   }
-  if (plan.refillSource === "default") {
+  if (plan.refillIgnored) {
+    steps.push({
+      key: "refill-high",
+      text: "Påfyllningstiden verkar hög – kolla värdet.",
+      ...(plan.refillIgnored.source === "data" ? { href: "/effekt", cta: "Mätningen" } : {}),
+      signal: true,
+    });
+  } else if (plan.refillSource === "default") {
     steps.push({
       key: "refill",
       text: "Mät påfyllningstiden en månad.",
@@ -207,7 +225,9 @@ export function PlanView({
       <section aria-label="Per ny automat" className="flex flex-col gap-4">
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <h2 className="text-md font-medium text-fg">Per ny automat</h2>
-          {canEdit ? <PlanSettings saved={saved} plan={plan} /> : null}
+          {canEdit ? (
+            <PlanSettings saved={saved} plan={plan} open={editing} setOpen={setEditing} />
+          ) : null}
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Stat
@@ -371,17 +391,43 @@ export function PlanView({
               : `${formatInt(plan.packsPerMonth)} pack per automat.`
           }
         />
-        <Fact
-          label="Påfyllning"
-          text={`${hoursText(plan.refillMinutesPerMachineWeek)} per automat och vecka.`}
-          sub={
-            plan.refillSource === "data"
-              ? "Från er mätning."
-              : plan.refillSource === "saved"
-                ? "Ert värde."
-                : "Förval."
-          }
-        />
+        <li className="lift flex list-none flex-col gap-1.5 rounded-md border border-line bg-surface p-4">
+          <span className="label text-muted">Antagande</span>
+          <span className="flex flex-wrap items-baseline justify-between gap-2">
+            <span className="text-base font-medium text-fg">
+              {formatInt(plan.refillMinutesPerMachineWeek)}
+              {NBSP}min per automat och vecka
+            </span>
+            {canEdit ? (
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="rounded-xs text-sm text-fg underline underline-offset-4 hover:text-muted"
+              >
+                Ändra
+              </button>
+            ) : null}
+          </span>
+          {plan.refillIgnored ? (
+            <span className="text-sm text-signal-fg">
+              Tiden verkar hög – kolla värdet ({hoursText(plan.refillIgnored.minutes)}
+              /vecka).{" "}
+              {plan.refillIgnored.source === "data" ? (
+                <Link href="/effekt" className="underline underline-offset-4">
+                  Mätningen{NBSP}→
+                </Link>
+              ) : null}
+            </span>
+          ) : (
+            <span className="text-sm text-muted">
+              {plan.refillSource === "data"
+                ? "Från er mätning."
+                : plan.refillSource === "saved"
+                  ? "Ert värde."
+                  : "Förval."}
+            </span>
+          )}
+        </li>
       </ul>
 
       {steps.length > 0 ? (

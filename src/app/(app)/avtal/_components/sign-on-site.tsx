@@ -11,11 +11,20 @@ import { useToast } from "@/components/ui/toast";
 import { createSigningLink } from "../actions";
 
 /**
- * Signera på plats: skapar en engångslänk till avtalets PDF och visar den som stor QR-kod.
+ * Signera på plats: skapar en engångslänk till kontraktets PDF och visar den som stor QR-kod.
  * Butiksägaren skannar med sin mobil, läser, skriver namn och ritar sin signatur. En ny
  * länk ersätter den förra; länken visas bara här.
  */
-export function SignOnSite({ contractId, storeName }: { contractId: string; storeName: string }) {
+export function SignOnSite({
+  contractId,
+  storeName,
+  large = false,
+}: {
+  contractId: string;
+  storeName: string;
+  /** Stor knapp (sista steget i Skapa kontrakt). */
+  large?: boolean;
+}) {
   const router = useRouter();
   const toast = useToast();
   const [open, setOpen] = useState(false);
@@ -51,14 +60,20 @@ export function SignOnSite({ contractId, storeName }: { contractId: string; stor
 
   return (
     <>
-      <Button size="sm" variant="primary" loading={pending} onClick={create}>
+      <Button
+        size={large ? "md" : "sm"}
+        variant="primary"
+        loading={pending}
+        onClick={create}
+        className={large ? "h-11 px-5 text-base" : undefined}
+      >
         Signera på plats
       </Button>
       <Modal
         open={open}
         onClose={close}
         size="sm"
-        eyebrow="AVTAL / SIGNERA"
+        eyebrow="KONTRAKT / SIGNERA"
         title={error ? "Länken skapades inte" : `Signera med ${storeName}`}
         footer={
           link ? (
@@ -96,7 +111,7 @@ export function SignOnSite({ contractId, storeName }: { contractId: string; stor
           <div className="fade-in flex flex-col items-center gap-4">
             <QrCode
               value={link.url}
-              label={`QR-kod för att signera avtalet med ${storeName}`}
+              label={`QR-kod för att signera kontraktet med ${storeName}`}
               className="w-full max-w-[280px]"
             />
             <p className="text-center text-base text-fg">Skanna med mobilen.</p>

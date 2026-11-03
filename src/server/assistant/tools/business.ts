@@ -216,7 +216,7 @@ export const storeShareTool = defineTool({
         ],
         links: [
           { label: store.name, href: pageHref(`/butiker/${store.id}`, period) },
-          { label: "Avtal", href: "/avtal" },
+          { label: "Kontrakt", href: "/avtal" },
         ],
       };
     }
@@ -253,7 +253,7 @@ export const storeShareTool = defineTool({
       })),
       links: [
         { label: "Butiker", href: pageHref("/butiker", period) },
-        { label: "Avtal", href: "/avtal" },
+        { label: "Kontrakt", href: "/avtal" },
       ],
     };
   },
@@ -891,7 +891,7 @@ export const visitPlanTool = defineTool({
         value: `${count(s.totalPacks)} pack`,
       })),
       links: [
-        { label: "Besöksplan", href: "/drift/besok" },
+        { label: "Besök", href: "/drift/besok" },
         ...(first
           ? [
               {
@@ -1021,7 +1021,7 @@ export const contractsTool = defineTool({
         { label: "Kräver åtgärd", value: count(due.length) },
         ...reminders.slice(0, 3).map((r) => ({ label: r.butik, value: r.status })),
       ],
-      links: [{ label: "Avtal", href: "/avtal" }],
+      links: [{ label: "Kontrakt", href: "/avtal" }],
     };
   },
 });
@@ -1106,8 +1106,8 @@ const SYNC_STATE: Record<string, string> = {
 
 export const syncTool = defineTool({
   name: "synk",
-  title: "Synk från Awish",
-  label: () => "Synk från Awish",
+  title: "Hämtning från Awish",
+  label: () => "Hämtning från Awish",
   description:
     "Hur synken från Awish mår: status (fungerar, inaktuell, misslyckas), senaste lyckade synk och hur många minuter sedan, antal datakällor. Order och automaternas lager synkas var 10:e minut. Använd för 'fungerar synken', 'varför syns inte dagens order'.",
   roles: ECONOMY_ROLES,

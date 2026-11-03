@@ -14,6 +14,7 @@ import {
 } from "@/server/data/core";
 import { redirectStoreUserToPortal } from "@/server/portal/session";
 import { loadTodoCount } from "@/server/data/todos";
+import { myInvitationsFlow } from "@/server/auth/flows";
 import { requireUser } from "@/server/session";
 import { AppFrame } from "./app-frame";
 import { NoOrganization } from "./no-organization";
@@ -51,7 +52,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   if (!ctx) {
     // En butiksanvändare (rollen store, fas 10) har ingen approll: till /portal.
     await redirectStoreUserToPortal();
-    return <NoOrganization email={user.email} />;
+    const invitations = await myInvitationsFlow(user).catch(() => []);
+    return <NoOrganization email={user.email} invitations={invitations} />;
   }
 
   const hasTodos = routeById("att-gora").roles.includes(ctx.role);

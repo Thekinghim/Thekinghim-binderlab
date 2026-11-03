@@ -22,7 +22,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 
-import type { Contract } from "@/analytics/contracts";
+import type { SignableContract } from "@/analytics/contracts";
 import type { AlertRef, AnalyticsOrder, ReportDraftRef } from "@/analytics/todos";
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
@@ -146,6 +146,7 @@ export async function queryTitles(tx: Tx, orgId: string): Promise<TitleRecord[]>
       series: s.titles.series,
       mergedIntoId: s.titles.mergedIntoId,
       archivedAt: s.titles.archivedAt,
+      ownProduct: s.titles.ownProduct,
     })
     .from(s.titles)
     .where(eq(s.titles.organizationId, orgId))
@@ -156,6 +157,7 @@ export async function queryTitles(tx: Tx, orgId: string): Promise<TitleRecord[]>
     series: r.series,
     mergedIntoId: r.mergedIntoId,
     archived: r.archivedAt !== null || r.mergedIntoId !== null,
+    ownProduct: r.ownProduct,
   }));
 }
 
@@ -257,7 +259,8 @@ export async function queryMasterData(
     select
       (select coalesce(json_agg(json_build_object(
           'id', t.id, 'name', t.name, 'series', t.series, 'mergedIntoId', t.merged_into_id,
-          'archived', t.archived_at is not null or t.merged_into_id is not null
+          'archived', t.archived_at is not null or t.merged_into_id is not null,
+          'ownProduct', t.own_product
         ) order by t.name, t.id), '[]'::json)
         from public.titles t where t.organization_id = ${orgId}::uuid) as titles,
       (select coalesce(json_agg(json_build_object(
@@ -745,7 +748,7 @@ export async function queryTodoDismissals(
 // ---------------------------------------------------------------------------
 
 /** Butiksavtalen som inte är arkiverade, i den form @/analytics/contracts vill ha. */
-export async function queryActiveContracts(tx: Tx, orgId: string): Promise<Contract[]> {
+export async function queryActiveContracts(tx: Tx, orgId: string): Promise<SignableContract[]> {
   const rows = await tx
     .select({
       id: s.contracts.id,
@@ -757,6 +760,10 @@ export async function queryActiveContracts(tx: Tx, orgId: string): Promise<Contr
       noticeDays: s.contracts.noticePeriodDays,
       renewalMonths: s.contracts.renewalMonths,
       terminatedOn: s.contracts.terminatedOn,
+      // Kontrakt per butik (Att göra: butik med automat utan signerat kontrakt).
+      template: s.contracts.template,
+      sentAt: s.contracts.sentAt,
+      signedAt: s.contracts.signedAt,
     })
     .from(s.contracts)
     .where(and(eq(s.contracts.organizationId, orgId), isNull(s.contracts.archivedAt)))

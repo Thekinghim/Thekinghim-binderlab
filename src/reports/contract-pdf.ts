@@ -12,7 +12,20 @@
 
 import type { IsoDate } from "@/domain";
 
-import { dateText, krText, pctText } from "./text";
+import { NBSP } from "@/lib/format";
+
+import { dateText, krText } from "./text";
+
+/**
+ * Andelen exakt, som den skrevs: 5 000 → "50 %", 1 250 → "12,5 %", 1 225 → "12,25 %".
+ * Ett kontrakt får aldrig avrunda butikens andel.
+ */
+export function shareText(bp: number): string {
+  const whole = Math.trunc(bp / 100);
+  const rest = Math.abs(bp % 100);
+  const decimals = rest === 0 ? "" : `,${String(rest).padStart(2, "0").replace(/0$/, "")}`;
+  return `${whole}${decimals}${NBSP}%`;
+}
 
 /** Mallens namn och version (sparas på avtalet, contracts.template). */
 export const CONTRACT_TEMPLATE = "placering-vinstdelning-v1";
@@ -32,21 +45,122 @@ export interface ContractParty {
   readonly phone?: string | null;
 }
 
-export interface ContractTemplateInput {
+/** Vad butikens andel räknas på: vinsten efter kostnader (standard) eller omsättningen exkl. moms. */
+export type ContractShareBase = "profit_after_costs" | "net_excl_vat";
+
+/**
+ * Kontraktets ersättning, som ägaren väljer i Skapa kontrakt och Ny butik. Samma värden
+ * sparas i store_agreements (commission_bp, commission_base, loss_treatment,
+ * vmb_before_split, monthly_rent_ore), så PDF:en och butiksrapporten räknar lika.
+ */
+export interface ContractTerms {
+  /** Butikens andel i bp (5 000 = 50 %). null = ingen andel (bara hyra). */
+  readonly shareBp: number | null;
+  /** Vad andelen räknas på. Saknas = vinsten efter kostnader. */
+  readonly base?: ContractShareBase;
+  /** Vid förlust (bara vinstdelning). */
+  readonly lossTreatment: "zero" | "proportional";
+  /** Dra av VMB-moms från vinsten före delningen (bara vinstdelning). Saknas = falskt. */
+  readonly vmbBeforeSplit?: boolean;
+  /** Fast hyra per månad (öre), null = ingen. */
+  readonly monthlyRentOre: number | null;
+}
+
+export interface ContractTemplateInput extends ContractTerms {
   /** Vi (operatören): organisationens namn och organisationsnummer. */
   readonly operator: ContractParty;
   /** Butiken. */
   readonly store: ContractParty;
   readonly validFrom: IsoDate;
-  /** Butikens andel i bp (5 000 = 50 %). */
-  readonly shareBp: number;
-  readonly lossTreatment: "zero" | "proportional";
-  /** Dra av VMB-moms från vinsten före delningen. Saknas = falskt (ingen VMB). */
-  readonly vmbBeforeSplit?: boolean;
-  /** Fast hyra per månad (öre), null = ingen. */
-  readonly monthlyRentOre: number | null;
+  /** Särskilda villkor (fritext), ett eget avsnitt i avtalet. null/tomt = inget avsnitt. */
+  readonly specialTerms?: string | null;
   /** Kort referens som står på avtalet (avtalets id, första 8 tecknen). */
   readonly reference: string;
+}
+
+/** Snabbvalen i Skapa kontrakt och Ny butik. */
+export type ContractPreset = "split" | "rent" | "sales";
+
+export const CONTRACT_PRESETS: Readonly<
+  Record<ContractPreset, { readonly label: string; readonly terms: ContractTerms }>
+> = {
+  split: {
+    label: "50/50 vinst",
+    terms: {
+      shareBp: 5_000,
+      base: "profit_after_costs",
+      lossTreatment: "zero",
+      vmbBeforeSplit: false,
+      monthlyRentOre: null,
+    },
+  },
+  rent: {
+    label: "Fast hyra",
+    terms: {
+      shareBp: null,
+      base: "net_excl_vat",
+      lossTreatment: "zero",
+      vmbBeforeSplit: false,
+      monthlyRentOre: null,
+    },
+  },
+  sales: {
+    label: "Procent av omsättning",
+    terms: {
+      shareBp: null,
+      base: "net_excl_vat",
+      lossTreatment: "zero",
+      vmbBeforeSplit: false,
+      monthlyRentOre: null,
+    },
+  },
+};
+
+function hasShare(t: ContractTerms): t is ContractTerms & { shareBp: number } {
+  return t.shareBp !== null && t.shareBp > 0;
+}
+
+function hasRent(t: ContractTerms): t is ContractTerms & { monthlyRentOre: number } {
+  return t.monthlyRentOre !== null && t.monthlyRentOre > 0;
+}
+
+function isSplit(t: ContractTerms): boolean {
+  return (t.base ?? "profit_after_costs") === "profit_after_costs" && hasShare(t);
+}
+
+/**
+ * Villkoren i klartext för listan: "50 % av vinsten efter kostnader",
+ * "10 % av omsättningen exkl. moms", "Fast hyra 1 500 kr/mån", eller båda med "+".
+ */
+export function contractTermsPlain(t: ContractTerms): string {
+  const parts: string[] = [];
+  if (hasShare(t)) {
+    parts.push(
+      isSplit(t)
+        ? `${shareText(t.shareBp)} av vinsten efter kostnader`
+        : `${shareText(t.shareBp)} av omsättningen exkl. moms`,
+    );
+  }
+  if (hasRent(t)) {
+    parts.push(
+      parts.length > 0
+        ? `${krText(t.monthlyRentOre)}/mån`
+        : `Fast hyra ${krText(t.monthlyRentOre)}/mån`,
+    );
+  }
+  if (parts.length === 0) return "Inga villkor";
+  const extra: string[] = [];
+  if (isSplit(t) && t.lossTreatment === "proportional") extra.push("delar förlust");
+  if (isSplit(t) && t.vmbBeforeSplit === true) extra.push("VMB dras först");
+  return parts.join(" + ") + (extra.length > 0 ? ` (${extra.join(", ")})` : "");
+}
+
+/** Särskilda villkor som stycken (en rad = ett stycke), utan tomma rader. */
+export function specialTermsParagraphs(text: string | null | undefined): string[] {
+  return (text ?? "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l !== "");
 }
 
 export interface ContractSection {
@@ -73,29 +187,68 @@ export function profitDefinition(vmbBeforeSplit: boolean | undefined = false): s
 function lossText(lossTreatment: ContractTemplateInput["lossTreatment"], shareBp: number): string {
   return lossTreatment === "zero"
     ? "Är vinsten negativ en månad får Butiken 0 kr för den månaden. Förlusten förs inte vidare."
-    : `Är vinsten negativ en månad bär Butiken ${pctText(shareBp)} av förlusten den månaden. Förlusten förs inte vidare till kommande månader.`;
+    : `Är vinsten negativ en månad bär Butiken ${shareText(shareBp)} av förlusten den månaden. Förlusten förs inte vidare till kommande månader.`;
+}
+
+/** Försäljningen som andelen räknas på när den gäller omsättningen. */
+export const SALES_DEFINITION =
+  "Omsättning = automatens försäljning exklusive moms, minus återbetalningar till kunder. Den räknas per kalendermånad.";
+
+/** Avsnitt 4: ersättningen enligt villkoren. */
+function paymentParagraphs(input: ContractTerms): string[] {
+  const out: string[] = [];
+  if (hasShare(input) && isSplit(input)) {
+    out.push(
+      `Butiken får ${shareText(input.shareBp)} av vinsten från automaten. Operatören behåller ${shareText(10_000 - input.shareBp)}.`,
+      profitDefinition(input.vmbBeforeSplit),
+      lossText(input.lossTreatment, input.shareBp),
+    );
+  } else if (hasShare(input)) {
+    out.push(`Butiken får ${shareText(input.shareBp)} av automatens omsättning.`, SALES_DEFINITION);
+  }
+  if (hasRent(input)) {
+    out.push(
+      out.length > 0
+        ? `Utöver andelen betalar Operatören en fast hyra på ${krText(input.monthlyRentOre)} per månad (exklusive moms).`
+        : `Operatören betalar Butiken en fast hyra på ${krText(input.monthlyRentOre)} per månad (exklusive moms) för platsen.`,
+    );
+  }
+  return out;
+}
+
+function purposeText(input: ContractTerms): string {
+  const base =
+    "Operatören placerar en varuautomat för samlarkort (till exempel Pokémon) i Butikens lokal. Butiken upplåter plats och el.";
+  if (hasShare(input) && isSplit(input)) return `${base} Parterna delar på vinsten från automaten.`;
+  if (hasShare(input)) return `${base} Butiken får en andel av försäljningen.`;
+  return `${base} Operatören betalar hyra för platsen.`;
+}
+
+function reportText(input: ContractTerms): string {
+  const contents =
+    hasShare(input) && isSplit(input)
+      ? `försäljning, ${input.vmbBeforeSplit === true ? "VMB-moms, " : ""}inköp, avgifter, vinst och Butikens andel`
+      : hasShare(input)
+        ? "försäljning, återbetalningar och Butikens andel"
+        : "hyran";
+  return `Operatören skickar en rapport för varje månad och betalar ut Butikens ersättning senast den ${CONTRACT_PAYOUT_DAY} i månaden efter. Rapporten visar ${contents}.`;
 }
 
 /** Avtalets avsnitt i ordning. */
 export function contractSections(input: ContractTemplateInput): ContractSection[] {
-  const share = pctText(input.shareBp);
-  const ours = pctText(10_000 - input.shareBp);
-  const payment: string[] = [
-    `Butiken får ${share} av vinsten från automaten. Operatören behåller ${ours}.`,
-    profitDefinition(input.vmbBeforeSplit),
-    lossText(input.lossTreatment, input.shareBp),
-  ];
-  if (input.monthlyRentOre !== null && input.monthlyRentOre > 0) {
-    payment.push(
-      `Utöver vinstdelningen betalar Operatören en fast hyra på ${krText(input.monthlyRentOre)} per månad (exklusive moms).`,
-    );
-  }
+  const payment = paymentParagraphs(input);
+  const special = specialTermsParagraphs(input.specialTerms);
+  const tail: ContractSection[] =
+    special.length > 0
+      ? [
+          { heading: "8. Särskilda villkor", paragraphs: special },
+          { heading: "9. Övrigt", paragraphs: [OTHER_TEXT] },
+        ]
+      : [{ heading: "8. Övrigt", paragraphs: [OTHER_TEXT] }];
   return [
     {
       heading: "1. Vad avtalet gäller",
-      paragraphs: [
-        "Operatören placerar en varuautomat för samlarkort (till exempel Pokémon) i Butikens lokal. Butiken upplåter plats och el. Parterna delar på vinsten från automaten.",
-      ],
+      paragraphs: [purposeText(input)],
     },
     {
       heading: "2. Operatörens ansvar",
@@ -114,7 +267,7 @@ export function contractSections(input: ContractTemplateInput): ContractSection[
     {
       heading: "5. Rapport och utbetalning",
       paragraphs: [
-        `Operatören skickar en rapport för varje månad och betalar ut Butikens andel senast den ${CONTRACT_PAYOUT_DAY} i månaden efter. Rapporten visar försäljning, ${input.vmbBeforeSplit === true ? "VMB-moms, " : ""}inköp, avgifter, vinst och Butikens andel.`,
+        reportText(input),
         "Butiken anger det konto utbetalningen ska gå till. Butiken får på begäran se underlaget för rapporten.",
       ],
     },
@@ -132,14 +285,12 @@ export function contractSections(input: ContractTemplateInput): ContractSection[
         "När avtalet upphör hämtar Operatören automaten inom 14 dagar. Butikens andel för den sista perioden betalas ut med den sista rapporten.",
       ],
     },
-    {
-      heading: "8. Övrigt",
-      paragraphs: [
-        "Ändringar i avtalet ska vara skriftliga och godkända av båda parter. Svensk lag gäller. Avtalet är upprättat i två likalydande exemplar, ett till vardera parten, eller signeras digitalt.",
-      ],
-    },
+    ...tail,
   ];
 }
+
+const OTHER_TEXT =
+  "Ändringar i avtalet ska vara skriftliga och godkända av båda parter. Svensk lag gäller. Avtalet är upprättat i två likalydande exemplar, ett till vardera parten, eller signeras digitalt.";
 
 const ESCAPES: Record<string, string> = {
   "&": "&amp;",
@@ -232,18 +383,26 @@ ${signatureHtml(input.store)}
 
 /** Kort sammanfattning som sparas i avtalets villkor (contracts.terms) och visas i listan. */
 export function contractTermsSummary(input: {
-  readonly shareBp: number;
+  readonly shareBp: number | null;
+  readonly base?: ContractShareBase;
   readonly lossTreatment: ContractTemplateInput["lossTreatment"];
   readonly vmbBeforeSplit?: boolean;
   readonly monthlyRentOre?: number | null;
 }): string {
-  return [
-    `Vinstdelning: butiken får ${pctText(input.shareBp)} av vinsten efter kostnader.`,
-    profitDefinition(input.vmbBeforeSplit),
-    lossText(input.lossTreatment, input.shareBp),
-    ...(input.monthlyRentOre != null && input.monthlyRentOre > 0
-      ? [`Fast hyra ${krText(input.monthlyRentOre)} per månad.`]
-      : []),
+  const t: ContractTerms = { ...input, monthlyRentOre: input.monthlyRentOre ?? null };
+  const lines: string[] = [];
+  if (hasShare(t) && isSplit(t)) {
+    lines.push(
+      `Vinstdelning: butiken får ${shareText(t.shareBp)} av vinsten efter kostnader.`,
+      profitDefinition(t.vmbBeforeSplit),
+      lossText(t.lossTreatment, t.shareBp),
+    );
+  } else if (hasShare(t)) {
+    lines.push(`Andel av omsättningen: butiken får ${shareText(t.shareBp)}.`, SALES_DEFINITION);
+  }
+  if (hasRent(t)) lines.push(`Fast hyra ${krText(t.monthlyRentOre)} per månad.`);
+  lines.push(
     `Rapport och utbetalning senast den ${CONTRACT_PAYOUT_DAY} i månaden efter. Uppsägningstid ${CONTRACT_NOTICE_MONTHS} månad.`,
-  ].join("\n");
+  );
+  return lines.join("\n");
 }

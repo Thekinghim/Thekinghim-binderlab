@@ -188,7 +188,7 @@ describe("Skapa avtal", () => {
     const target = { target: `store:${storeId}`, validFrom: TODAY };
     expect((await createStoreContractFor(viewer, target, deps())).ok).toBe(true);
     await expect(createStoreContractFor(viewer, target, deps())).rejects.toThrow(
-      "Dubbelklick har redan ett avtal (utkast). Öppna det under Avtal.",
+      "Dubbelklick har redan ett kontrakt (utkast). Öppna det under Kontrakt.",
     );
     const n = await asUser(owner, (tx) =>
       tx.select().from(s.contracts).where(eq(s.contracts.storeId, storeId)),

@@ -56,6 +56,9 @@ export const MESSAGES = {
   passwordSame: "Välj ett annat lösenord än det nuvarande.",
   passwordUnsupported: "Lösenordet kan inte bytas här.",
   passwordSaveFailed: "Lösenordet kunde inte sparas. Försök igen.",
+  inviteAccountExists: "Kontot finns redan. Bjud in utan lösenord.",
+  invitePasswordUnsupported: "Lösenord kan inte sättas här. Bjud in utan lösenord.",
+  linkFailed: "Länken gick inte att öppna.",
 } as const;
 
 export function tooManyAttemptsMessage(
@@ -151,6 +154,8 @@ const inviteInput = z.object({
   email: z.email().trim().toLowerCase().max(320),
   role: z.enum(MEMBER_ROLES),
   validDays: z.number().int().min(1).max(30).optional(),
+  /** Valfritt: ägaren sätter lösenordet åt den inbjudna (t.ex. delägaren). */
+  password: z.string().max(1024).optional(),
 });
 
 export interface InviteContext {
@@ -174,10 +179,30 @@ export async function createInviteFlow(ctx: InviteContext, raw: unknown): Promis
     return { ok: false, error: MESSAGES.inviteInvalidInput };
   }
   const { organizationId, email, role, validDays } = parsed.data;
+  const password = parsed.data.password === "" ? undefined : parsed.data.password;
   try {
     await requireRoleFor(user, organizationId, ["owner", "admin"]);
   } catch {
     return { ok: false, error: MESSAGES.inviteForbidden };
+  }
+  if (password !== undefined) {
+    const invalid = validateNewPassword(password);
+    if (invalid) {
+      return { ok: false, error: invalid };
+    }
+    if (!ctx.provider.createAccountWithPassword) {
+      return { ok: false, error: MESSAGES.invitePasswordUnsupported };
+    }
+    // Ett befintligt konto får aldrig nytt lösenord av någon annan.
+    let created: Awaited<ReturnType<NonNullable<AuthProvider["createAccountWithPassword"]>>>;
+    try {
+      created = await ctx.provider.createAccountWithPassword(email, password);
+    } catch {
+      return { ok: false, error: MESSAGES.inviteSendFailed };
+    }
+    if (created === "exists") {
+      return { ok: false, error: MESSAGES.inviteAccountExists };
+    }
   }
   try {
     await withUserDbFor(user, async (tx) => {
@@ -201,6 +226,16 @@ export async function createInviteFlow(ctx: InviteContext, raw: unknown): Promis
   }
 }
 
+/** Åtkomsttoken (JWT) och förnyelsetoken från länkens fragment: bara säkra tecken. */
+export const LINK_JWT = z
+  .string()
+  .max(8192)
+  .regex(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+export const LINK_REFRESH = z
+  .string()
+  .max(1024)
+  .regex(/^[A-Za-z0-9_.-]+$/);
+
 const acceptInput = z.object({
   token: z.string().regex(/^[0-9a-f]{64}$/),
   password: z.string().max(1024).optional(),
@@ -209,6 +244,8 @@ const acceptInput = z.object({
     .regex(/^[A-Za-z0-9_-]{1,256}$/)
     .optional(),
   emailLinkType: z.enum(["invite", "magiclink"]).optional(),
+  /** Sessionen från länkens fragment (Supabases standardmall). */
+  emailTokens: z.object({ accessToken: LINK_JWT, refreshToken: LINK_REFRESH }).optional(),
 });
 
 export interface AcceptContext {
@@ -236,7 +273,8 @@ function lookupMessage(lookup: InvitationLookup): string | null {
  * Tar emot en inbjudan (RPC accept_invitation, som användaren).
  *
  * - Inloggad: accepteras direkt (e-posten måste stämma, kontrolleras i RPC:n).
- * - Supabase: `emailTokenHash` från mejllänken byts mot en session; ny
+ * - Supabase: sessionen från länkens fragment (`emailTokens`, standardmallen)
+ *   eller `emailTokenHash` (egen mall) byts mot en session; ny
  *   användare kan samtidigt sätta lösenord.
  * - Dev: en ny användare väljer lösenord; kontot skapas för inbjudans adress.
  */
@@ -248,13 +286,20 @@ export async function acceptInviteFlow(
   if (!parsed.success) {
     return { ok: false, error: MESSAGES.invitationMissing };
   }
-  const { token, password, emailTokenHash, emailLinkType } = parsed.data;
+  const { token, password, emailTokenHash, emailLinkType, emailTokens } = parsed.data;
   const describe = ctx.describe ?? ((t: string) => describeInvitation(t));
 
   let user = ctx.user;
   let cameFromEmailLink = false;
 
-  if (!user && emailTokenHash && ctx.provider.completeEmailLink) {
+  const completeLink =
+    emailTokens && ctx.provider.completeTokenLink
+      ? () => ctx.provider.completeTokenLink!(emailTokens)
+      : emailTokenHash && ctx.provider.completeEmailLink
+        ? () => ctx.provider.completeEmailLink!(emailTokenHash, emailLinkType ?? "invite")
+        : null;
+
+  if (!user && completeLink) {
     // Skydd mot inloggnings-CSRF: mejllänken byts mot en session bara för en
     // giltig inbjudan, och bara om sessionen gäller inbjudans e-postadress.
     // Annars kan en länk med angriparens egen token_hash logga in offret som
@@ -269,7 +314,7 @@ export async function acceptInviteFlow(
     if (earlyPasswordError) {
       return { ok: false, error: earlyPasswordError };
     }
-    user = await ctx.provider.completeEmailLink(emailTokenHash, emailLinkType ?? "invite");
+    user = await completeLink();
     cameFromEmailLink = user !== null;
     if (user && !sameEmail(user.email, lookup.email)) {
       await signOutQuietly(ctx);
@@ -441,4 +486,110 @@ export async function changePasswordFlow(
   }
   ctx.limiter.reset(key);
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Nytt lösenord via länk (Glömt lösenord?)
+// ---------------------------------------------------------------------------
+
+const linkPasswordInput = z.object({
+  accessToken: LINK_JWT,
+  refreshToken: LINK_REFRESH,
+  password: z.string().max(1024),
+  confirm: z.string().max(1024),
+});
+
+/**
+ * Väljer nytt lösenord från länken i mejlet ("Glömt lösenord?"). Länkens
+ * session (fragmentet) tas emot först, sedan sätts lösenordet för just den
+ * användaren. Lösenordet kontrolleras innan sessionen tas emot.
+ */
+export async function setPasswordFromLinkFlow(
+  ctx: { provider: AuthProvider },
+  raw: unknown,
+): Promise<ActionResult> {
+  const parsed = linkPasswordInput.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: MESSAGES.linkFailed };
+  }
+  const { accessToken, refreshToken, password, confirm } = parsed.data;
+  const invalid = validateNewPassword(password);
+  if (invalid) {
+    return { ok: false, error: invalid };
+  }
+  if (password !== confirm) {
+    return { ok: false, error: MESSAGES.passwordMismatch };
+  }
+  if (!ctx.provider.completeTokenLink || !ctx.provider.setPassword) {
+    return { ok: false, error: MESSAGES.passwordUnsupported };
+  }
+  const session = await ctx.provider.completeTokenLink({ accessToken, refreshToken });
+  if (!session) {
+    return { ok: false, error: MESSAGES.linkFailed };
+  }
+  try {
+    await ctx.provider.setPassword(password);
+  } catch {
+    return { ok: false, error: MESSAGES.passwordSaveFailed };
+  }
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Mina inbjudningar (inloggad utan medlemskap, t.ex. lösenord satt av ägaren)
+// ---------------------------------------------------------------------------
+
+export interface MyInvitation {
+  id: string;
+  organizationName: string;
+  role: (typeof MEMBER_ROLES)[number] | "store";
+  storeName: string | null;
+  expiresAt: string;
+}
+
+/** Den inloggades egna obesvarade inbjudningar (RPC my_invitations, som användaren). */
+export async function myInvitationsFlow(user: SessionUser | null): Promise<MyInvitation[]> {
+  if (!user) return [];
+  const result = await withUserDbFor(user, (tx) =>
+    tx.execute(
+      sql`select id, organization_name, role::text as role, store_name, expires_at
+          from public.my_invitations()`,
+    ),
+  );
+  return (Array.from(result) as Record<string, unknown>[]).map((r) => ({
+    id: String(r.id),
+    organizationName: String(r.organization_name),
+    role: String(r.role) as MyInvitation["role"],
+    storeName: r.store_name == null ? null : String(r.store_name),
+    expiresAt: r.expires_at instanceof Date ? r.expires_at.toISOString() : String(r.expires_at),
+  }));
+}
+
+/** Tar emot en egen inbjudan (RPC accept_my_invitation) och gör organisationen aktiv. */
+export async function acceptMyInvitationFlow(
+  ctx: { user: SessionUser | null; cookies: CookieJar; secureCookies: boolean },
+  raw: unknown,
+): Promise<ActionResult<{ organizationId: string }>> {
+  if (!ctx.user) {
+    return { ok: false, error: MESSAGES.notLoggedIn };
+  }
+  const parsed = z.uuid().safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, error: MESSAGES.invitationMissing };
+  }
+  try {
+    const organizationId = await withUserDbFor(ctx.user, async (tx) => {
+      const result = await tx.execute(
+        sql`select public.accept_my_invitation(${parsed.data}::uuid) as id`,
+      );
+      return (Array.from(result)[0] as { id?: unknown } | undefined)?.id;
+    });
+    if (typeof organizationId !== "string") {
+      return { ok: false, error: MESSAGES.invitationMissing };
+    }
+    ctx.cookies.set(ACTIVE_ORG_COOKIE, organizationId, activeOrgCookieOptions(ctx.secureCookies));
+    return { ok: true, data: { organizationId } };
+  } catch (error) {
+    return { ok: false, error: dbErrorMessage(error) };
+  }
 }

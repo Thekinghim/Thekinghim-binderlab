@@ -244,6 +244,8 @@ export const contracts = pgTable("contracts", {
   template: text("template"),
   sentAt: ts("sent_at"),
   signedAt: ts("signed_at"),
+  // 20261105040000_kontrakt_sarskilda_villkor.sql: fritext som skrivs in i PDF:en.
+  specialTerms: text("special_terms"),
   ...stamps(),
 });
 
@@ -314,6 +316,8 @@ export const titles = pgTable("titles", {
   mergedIntoId: uuid("merged_into_id"),
   archivedAt: ts("archived_at"),
   ...stamps(),
+  /** Egen produkt: vi packar den själva (Packa i stället för Beställ). */
+  ownProduct: boolean("own_product").notNull().default(false),
 });
 
 export const titleAliases = pgTable("title_aliases", {

@@ -122,7 +122,7 @@ export async function loadVartLagerFor(
     today,
     titles: master.titles
       .filter((t) => !t.archived && t.mergedIntoId === null)
-      .map((t) => ({ id: t.id, name: t.name })),
+      .map((t) => ({ id: t.id, name: t.name, ownProduct: t.ownProduct === true })),
     warehouse: our.rows,
     home,
     places: our.places,

@@ -66,7 +66,7 @@ export function PayoutArchive({ id, reference }: { id: string; reference: string
         onClose={close}
         eyebrow="Avstämning"
         title={`Arkivera utbetalning ${reference}`}
-        description="Utbetalningen räknas inte längre och en rättad rad med samma referens kan importeras. Den raderas inte."
+        description="Räknas inte längre. Importera den rättade raden. Inget raderas."
       >
         <form onSubmit={submit} noValidate className="flex flex-col gap-5">
           <TextArea
@@ -76,7 +76,7 @@ export function PayoutArchive({ id, reference }: { id: string; reference: string
             maxLength={2000}
             onChange={(e) => setNote(e.target.value)}
             error={noteError}
-            hint="Sparas med utbetalningen och i ändringsloggen."
+            hint="Sparas i loggen."
             autoFocus
           />
           <FormError message={error} />

@@ -144,7 +144,7 @@ export function ArchiveTable({
       <StateMessage
         kind="empty"
         message="Ingen rapport är skapad ännu."
-        detail="Utkast skapas den 1:a varje månad, eller när du skapar ett ovan."
+        detail="Utkast skapas den 1:a varje månad."
         action={{ label: "Skapa ett utkast", href: "#ny-rapport" }}
       />
     );

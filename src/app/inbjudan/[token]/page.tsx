@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { ROLE_LABEL, ROLE_SUMMARY } from "@/app/(app)/installningar/anvandare/model";
+import { ROLE_LABEL } from "@/app/(app)/installningar/anvandare/model";
 import { AuthFrame } from "@/app/logga-in/auth-frame";
 import { getServerEnv } from "@/lib/env";
 import { describeInvitation } from "@/server/invitations";
@@ -10,6 +10,7 @@ import { getSessionUser } from "@/server/session";
 
 import { AcceptForm, SwitchAccount } from "./accept-form";
 import { devAccountExists } from "./account";
+import { InviteLink } from "./invite-link";
 
 export const metadata: Metadata = { title: "Inbjudan" };
 
@@ -24,15 +25,15 @@ const INVALID: Record<"missing" | "expired" | "accepted", { aside: string; body:
   // Sidan kan inte skilja dem åt utan att avslöja mer, så texten är neutral.
   missing: {
     aside: "Länken känns inte igen.",
-    body: "Den kan ha återkallats eller ersatts av en nyare länk. Be den som bjöd in dig om en ny, eller kontrollera att hela länken kom med från mejlet.",
+    body: "Be om en ny inbjudan.",
   },
   expired: {
     aside: "Den har gått ut.",
-    body: "En inbjudan gäller i 7 dagar. Be den som bjöd in dig om en ny.",
+    body: "Be om en ny inbjudan.",
   },
   accepted: {
     aside: "Den har redan använts.",
-    body: "Har du redan gått med loggar du in som vanligt.",
+    body: "Logga in som vanligt.",
   },
 };
 
@@ -120,10 +121,7 @@ export default async function InvitationPage({
   } else if (provider === "dev" && (await devAccountExists(lookup.email))) {
     body = (
       <div className="flex flex-col gap-5">
-        <p className="text-base text-muted">
-          Det finns redan ett konto för {lookup.email}. Logga in, så kommer du tillbaka hit. Sedan
-          räcker ett klick för att gå med.
-        </p>
+        <p className="text-base text-muted">Kontot finns redan.</p>
         <Link
           href={loginHref}
           className="inline-flex h-9 w-full items-center justify-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse hover:bg-inverse-hover"
@@ -154,17 +152,12 @@ export default async function InvitationPage({
     );
   } else {
     body = (
-      <div className="flex flex-col gap-5">
-        <p className="text-base text-muted">
-          Logga in med {lookup.email} för att gå med, eller öppna länken direkt från mejlet.
-        </p>
-        <Link
-          href={loginHref}
-          className="inline-flex h-9 w-full items-center justify-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse hover:bg-inverse-hover"
-        >
-          Logga in
-        </Link>
-      </div>
+      <InviteLink
+        token={token}
+        organizationName={lookup.organizationName}
+        email={lookup.email}
+        loginHref={loginHref}
+      />
     );
   }
 
@@ -174,8 +167,8 @@ export default async function InvitationPage({
       title="Du är inbjuden."
       aside={
         lookup.storeName
-          ? `${lookup.organizationName} har öppnat butiksportalen för ${lookup.storeName}.`
-          : `Gå med i ${lookup.organizationName} som ${ROLE_LABEL[lookup.role].toLowerCase()}.`
+          ? `Butiksportalen för ${lookup.storeName}.`
+          : `Gå med i ${lookup.organizationName}.`
       }
       systemStatus={false}
     >
@@ -189,7 +182,6 @@ export default async function InvitationPage({
               { label: "E-post", value: lookup.email },
             ]}
           />
-          <p className="text-sm text-muted">{ROLE_SUMMARY[lookup.role]}</p>
         </div>
         {body}
       </div>

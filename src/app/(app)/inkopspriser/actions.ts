@@ -14,6 +14,7 @@ import { getActiveOrganization, getSessionUser } from "@/server/session";
 import {
   addPurchasePriceFor,
   correctPurchasePriceFor,
+  setOwnProductFor,
   type AddPriceOutcome,
   type CorrectPriceOutcome,
 } from "./_lib/data";
@@ -56,6 +57,22 @@ export async function correctPurchasePrice(input: {
     unitCostOre: Number(input?.unitCostOre),
     note: typeof input?.note === "string" ? input.note : undefined,
     today: ctx.today,
+  });
+  if (result.ok) revalidateAppData();
+  return result;
+}
+
+/** "Egen produkt" på eller av för en titel (vi packar den själva). Ägare och admin. */
+export async function setOwnProduct(input: {
+  titleId: string;
+  ownProduct: boolean;
+}): Promise<ActionResult<{ ownProduct: boolean }>> {
+  const organization = await getActiveOrganization();
+  if (!organization) return { ok: false, error: PRICE_MESSAGES.forbidden };
+  const result = await setOwnProductFor(await getSessionUser(), {
+    organizationId: organization.id,
+    titleId: String(input?.titleId ?? ""),
+    ownProduct: input?.ownProduct === true,
   });
   if (result.ok) revalidateAppData();
   return result;

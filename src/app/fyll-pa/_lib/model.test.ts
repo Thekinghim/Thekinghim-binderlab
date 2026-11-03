@@ -3,10 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   applyAdjustments,
   doneMessage,
+  fillHeadline,
   fillMachines,
   machineOrder,
   maxFill,
+  needLabel,
   pairKey,
+  rowStatus,
   splitRefill,
   suggestFill,
   type FillInput,
@@ -119,6 +122,8 @@ describe("fillMachines", () => {
         home: 61,
         suggested: 9,
         emptySlots: 1,
+        sold: 0,
+        status: null,
       },
       {
         titleId: T2,
@@ -128,6 +133,8 @@ describe("fillMachines", () => {
         home: 4,
         suggested: 0,
         emptySlots: 0,
+        sold: 0,
+        status: null,
       },
     ]);
   });
@@ -288,5 +295,135 @@ describe("applyAdjustments", () => {
     expect(next.machines.find((m) => m.id === "B")!.rows[0]).toMatchObject({ now: 11, home: 20 });
     // Indata ändras inte.
     expect(stock.K[T1]).toBe(3);
+  });
+});
+
+describe("utan kapacitet (Awish har inte läst facken): sålt och slut styr", () => {
+  it("rowStatus: 0 pack = slut, räcker under 2,5 dagar = snart slut (som Att göra)", () => {
+    expect(rowStatus(0, 0)).toBe("empty");
+    expect(rowStatus(-1, 5)).toBe("empty");
+    // 4 pack, 28 sålda på 14 dagar = 2 per dag: räcker 2 dagar.
+    expect(rowStatus(4, 28)).toBe("low");
+    // 5 pack vid 2 per dag = 2,5 dagar: inte under gränsen.
+    expect(rowStatus(5, 28)).toBeNull();
+    expect(rowStatus(3, 0)).toBeNull();
+  });
+
+  it("förslaget: en veckas försäljning − nu för slut/snart slut, högst hemma", () => {
+    expect(suggestFill(4, null, 100, 28)).toBe(10); // 14 − 4
+    expect(suggestFill(0, null, 100, 7)).toBe(4); // tak(3,5)
+    expect(suggestFill(0, null, 2, 28)).toBe(2);
+    expect(suggestFill(8, null, 100, 28)).toBe(0); // räcker 4 dagar: inget
+    expect(suggestFill(0, null, 100, 0)).toBe(0); // slut men ingen takt: välj själv
+    // Känd kapacitet går före takten.
+    expect(suggestFill(4, 12, 100, 28)).toBe(8);
+  });
+
+  it("automaten behöver påfyllning och sägs aldrig vara full", () => {
+    const machines = fillMachines(
+      input({
+        machines: [machine("A", "BL-001", null, "Sega gubben"), machine("B", "BL-002", null)],
+        machineStock: new Map([
+          [pairKey("A", T1), 4],
+          [pairKey("A", T2), 9],
+          [pairKey("B", T2), 9],
+        ]),
+        home: new Map([
+          [T1, 50],
+          [T2, 50],
+        ]),
+        sold: new Map([
+          [pairKey("A", T1), 28],
+          [pairKey("A", T2), 2],
+          [pairKey("B", T2), 2],
+        ]),
+      }),
+    );
+    const [a, b] = machines;
+    expect(a).toMatchObject({
+      id: "A",
+      fillPct: null,
+      low: 1,
+      empty: 0,
+      needs: true,
+      suggested: 10,
+    });
+    expect(a!.rows[0]).toMatchObject({ name: "Surging Sparks", status: "low", suggested: 10 });
+    expect(b).toMatchObject({ id: "B", fillPct: null, needs: false, suggested: 0 });
+    expect(needLabel(a!)).toBe("1 snart slut");
+    expect(needLabel(b!)).toBeNull();
+    expect(fillHeadline(machines)).toBe("Fyll på 1 automat.");
+    expect(fillHeadline([b!])).toBe("Inget är slut just nu.");
+  });
+
+  it("rubriken: fulla bara när kapaciteten är känd", () => {
+    const full = { title_id: T1, units: 10, capacity: 10, channels: 1, empty: 0 };
+    const known = fillMachines(
+      input({
+        machines: [machine("F", "BL-004", [full]), machine("G", "BL-005", [full])],
+        machineStock: new Map([
+          [pairKey("F", T1), 10],
+          [pairKey("G", T1), 10],
+        ]),
+      }),
+    );
+    expect(fillHeadline(known)).toBe("Alla automater är fulla.");
+    expect(fillHeadline(known.slice(0, 1))).toBe("Automaten är full.");
+    expect(needLabel(known[0]!)).toBe("fullt");
+    expect(fillHeadline([])).toBe("Inga automater.");
+  });
+
+  it("ordning: slut först, sedan snart slut, sedan fyllnadsgrad", () => {
+    const a = { emptySlots: 0, empty: 0, low: 1, fillPct: null, code: "BL-1" };
+    const b = { emptySlots: 0, empty: 2, low: 0, fillPct: null, code: "BL-2" };
+    const c = { emptySlots: 0, empty: 0, low: 0, fillPct: 40, code: "BL-3" };
+    expect([c, a, b].sort(machineOrder).map((m) => m.code)).toEqual(["BL-2", "BL-1", "BL-3"]);
+  });
+
+  it("Mina: automaten bär sitt ansvar (utelämnat = min)", () => {
+    const [m, n] = fillMachines(
+      input({
+        machines: [{ ...machine("A", "BL-001", null), mine: false }, machine("B", "BL-002", null)],
+      }),
+    );
+    expect([m!.id, m!.mine, n!.id, n!.mine]).toEqual(["A", false, "B", true]);
+  });
+
+  it("såld nyligen och nu 0 pack: slut, även utan fack eller sortiment (som Att göra)", () => {
+    const [a] = fillMachines(
+      input({
+        machines: [machine("A", "BL-001", null)],
+        machineStock: new Map([
+          [pairKey("A", T1), 0],
+          [pairKey("A", T2), 5],
+        ]),
+        home: new Map([[T1, 20]]),
+        sold: new Map([
+          [pairKey("A", T1), 14],
+          [pairKey("A", T2), 1],
+        ]),
+      }),
+    );
+    expect(a).toMatchObject({ empty: 1, needs: true });
+    expect(a!.rows[0]).toMatchObject({ name: "Surging Sparks", status: "empty", suggested: 7 });
+    expect(needLabel(a!)).toBe("1 slut");
+  });
+
+  it("påfyllning utan kapacitet: läget räknas om", () => {
+    const machines = fillMachines(
+      input({
+        machines: [machine("A", "BL-001", null)],
+        machineStock: new Map([[pairKey("A", T1), 0]]),
+        current: new Set([pairKey("A", T1)]),
+        home: new Map([[T1, 20]]),
+        sold: new Map([[pairKey("A", T1), 14]]),
+      }),
+    );
+    expect(machines[0]).toMatchObject({ empty: 1, suggested: 7, needs: true });
+    const out = applyAdjustments(machines, {}, [
+      { machineId: "A", titleId: T1, quantity: 7, fromWarehouse: false },
+    ]);
+    expect(out.machines[0]).toMatchObject({ empty: 0, low: 0, suggested: 0, needs: false });
+    expect(out.machines[0]!.rows[0]).toMatchObject({ now: 7, status: null });
   });
 });

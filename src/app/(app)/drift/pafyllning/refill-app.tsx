@@ -289,7 +289,7 @@ export function RefillApp({ scope, machines, titles, stock, warehouse, sources }
           </StatusTag>
           <span className="meta text-subtle">
             {queued === 0
-              ? "Kön är tom."
+              ? "Allt skickat."
               : `${formatInt(queued)} ${queued === 1 ? "påfyllning väntar" : "påfyllningar väntar"}${net === "offline" ? ", skickas när nätet kommer tillbaka" : ""}.`}
           </span>
         </div>
@@ -402,10 +402,10 @@ export function RefillApp({ scope, machines, titles, stock, warehouse, sources }
 
       <section aria-labelledby="ko" className="flex flex-col gap-4 lg:col-span-6">
         <h2 id="ko" className="label text-muted">
-          {`Kö i den här webbläsaren · ${formatInt(queue.length)}`}
+          {`Väntar på nät · ${formatInt(queue.length)}`}
         </h2>
         {queue.length === 0 ? (
-          <p className="text-sm text-muted">Allt är skickat.</p>
+          <p className="text-sm text-muted">Inget väntar.</p>
         ) : (
           <ul className="flex flex-col divide-y divide-line border-y border-line">
             {queue.map((q) => (

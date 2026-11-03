@@ -8,7 +8,7 @@ import { safeRedirectPath } from "@/server/auth/paths";
 import { getSessionUser } from "@/server/session";
 
 import { AuthFrame } from "./auth-frame";
-import { LoginForm } from "./login-form";
+import { LoginForm, type LoginMode } from "./login-form";
 import { LOGIN_NOTICES } from "./state";
 
 export const metadata: Metadata = { title: "Logga in" };
@@ -22,7 +22,7 @@ function first(value: string | string[] | undefined): string | undefined {
 /**
  * Inloggning. Lokalt (AUTH_PROVIDER=dev) med e-post och lösenord; med
  * Supabase i första hand med en länk i mejlet, och lösenord som alternativ
- * (för den som valt ett när inbjudan togs emot).
+ * (`?vy=losenord`), samt "Glömt lösenord?" (`?vy=glomt`).
  *
  * `?next=` tas bara emot som lokal sökväg (safeRedirectPath). Den som redan
  * är inloggad skickas dit direkt.
@@ -39,28 +39,24 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     redirect(next);
   }
   const notice = LOGIN_NOTICES[first(params.fel) ?? ""];
-  let mode: "password" | "magic-link" = "password";
+  let canUseLinks = false;
   try {
-    mode = getServerEnv().AUTH_PROVIDER === "supabase" ? "magic-link" : "password";
+    canUseLinks = getServerEnv().AUTH_PROVIDER === "supabase";
   } catch {
     // Felkonfigurerad miljö: formuläret visas, och inloggningen svarar med ett fel.
   }
+  const view = first(params.vy);
+  const mode: LoginMode =
+    view === "losenord" ? "password" : view === "glomt" ? "forgot" : "magic-link";
 
   return (
-    <AuthFrame
-      eyebrow={
-        <>
-          <span className="tnum text-fg">01</span>
-          <span aria-hidden className="text-faint">
-            /
-          </span>
-          <span>Inloggning</span>
-        </>
-      }
-      title="Logga in."
-      aside="Försäljning, lager och lönsamhet för varje automat."
-    >
-      <LoginForm next={next === "/" ? "" : next} initialMode={mode} notice={notice} />
+    <AuthFrame eyebrow={<span>Binderlab</span>} title="Logga in.">
+      <LoginForm
+        next={next === "/" ? "" : next}
+        initialMode={mode}
+        canUseLinks={canUseLinks}
+        notice={notice}
+      />
     </AuthFrame>
   );
 }

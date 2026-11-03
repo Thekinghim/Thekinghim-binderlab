@@ -27,7 +27,13 @@ vi.mock("@/db/client", async () => {
 });
 
 import { createRateLimiter } from "../rate-limit";
-import { acceptInviteFlow, CHANGE_PASSWORD_LIMIT, changePasswordFlow, MESSAGES } from "./flows";
+import {
+  acceptInviteFlow,
+  CHANGE_PASSWORD_LIMIT,
+  changePasswordFlow,
+  MESSAGES,
+  setPasswordFromLinkFlow,
+} from "./flows";
 import { MemoryCookieJar, type AuthProvider, type AuthSession } from "./types";
 
 const ORG = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -224,5 +230,101 @@ describe("changePasswordFlow", () => {
       { current: CURRENT, next: NEXT, confirm: NEXT },
     );
     expect(result).toEqual({ ok: false, error: MESSAGES.notLoggedIn });
+  });
+});
+
+// Sessionen från länkens fragment (Supabases standardmall): samma skydd som token_hash.
+const JWT = "aaa.bbb.ccc";
+const REFRESH = "r3fr3sh";
+
+function tokenLinkProvider(session: AuthSession | null, cookies: MemoryCookieJar) {
+  const completeTokenLink = vi.fn(async () => {
+    if (session) cookies.set("sb-x-auth-token", `session-${session.userId}`);
+    return session;
+  });
+  const signOut = vi.fn(async () => {
+    cookies.delete("sb-x-auth-token");
+  });
+  const setPassword = vi.fn(async () => {});
+  const provider = { kind: "supabase", completeTokenLink, signOut, setPassword };
+  return { provider: provider as unknown as AuthProvider, completeTokenLink, signOut, setPassword };
+}
+
+describe("acceptInviteFlow med sessionen i fragmentet", () => {
+  it("rätt adress: tar emot inbjudan", async () => {
+    const cookies = new MemoryCookieJar();
+    const { provider, completeTokenLink } = tokenLinkProvider(ANNA, cookies);
+    const result = await acceptInviteFlow(
+      { provider, user: null, cookies, secureCookies: true, describe: validLookup },
+      { token: TOKEN, emailTokens: { accessToken: JWT, refreshToken: REFRESH } },
+    );
+    expect(result).toEqual({ ok: true, data: { organizationId: ORG } });
+    expect(completeTokenLink).toHaveBeenCalledWith({ accessToken: JWT, refreshToken: REFRESH });
+  });
+
+  it("annan adress (inloggnings-CSRF): loggas ut och inget accepteras", async () => {
+    const cookies = new MemoryCookieJar();
+    const { provider, signOut } = tokenLinkProvider(EVE, cookies);
+    const result = await acceptInviteFlow(
+      { provider, user: null, cookies, secureCookies: true, describe: validLookup },
+      { token: TOKEN, emailTokens: { accessToken: JWT, refreshToken: REFRESH } },
+    );
+    expect(result).toEqual({ ok: false, error: MESSAGES.invitationOtherEmail });
+    expect(signOut).toHaveBeenCalledOnce();
+    expect(cookies.getAll()).toEqual([]);
+    expect(fakeDb.queries.some((q) => q.includes("accept_invitation"))).toBe(false);
+  });
+
+  it("tokens med otillåtna tecken avvisas innan något görs", async () => {
+    const cookies = new MemoryCookieJar();
+    const { provider, completeTokenLink } = tokenLinkProvider(ANNA, cookies);
+    const result = await acceptInviteFlow(
+      { provider, user: null, cookies, secureCookies: true, describe: validLookup },
+      { token: TOKEN, emailTokens: { accessToken: "<script>", refreshToken: REFRESH } },
+    );
+    expect(result.ok).toBe(false);
+    expect(completeTokenLink).not.toHaveBeenCalled();
+  });
+});
+
+describe("setPasswordFromLinkFlow (Glömt lösenord?)", () => {
+  const input = (password: string, confirm = password) => ({
+    accessToken: JWT,
+    refreshToken: REFRESH,
+    password,
+    confirm,
+  });
+
+  it("sätter lösenordet efter att länkens session tagits emot", async () => {
+    const cookies = new MemoryCookieJar();
+    const { provider, completeTokenLink, setPassword } = tokenLinkProvider(ANNA, cookies);
+    expect(await setPasswordFromLinkFlow({ provider }, input("ett långt nytt lösenord"))).toEqual({
+      ok: true,
+    });
+    expect(completeTokenLink).toHaveBeenCalledOnce();
+    expect(setPassword).toHaveBeenCalledWith("ett långt nytt lösenord");
+  });
+
+  it("kontrollerar lösenordet innan länken används", async () => {
+    const cookies = new MemoryCookieJar();
+    const { provider, completeTokenLink } = tokenLinkProvider(ANNA, cookies);
+    const short = await setPasswordFromLinkFlow({ provider }, input("kort"));
+    expect(short.ok).toBe(false);
+    const mismatch = await setPasswordFromLinkFlow(
+      { provider },
+      input("ett långt nytt lösenord", "ett annat långt lösenord"),
+    );
+    expect(mismatch).toEqual({ ok: false, error: MESSAGES.passwordMismatch });
+    expect(completeTokenLink).not.toHaveBeenCalled();
+  });
+
+  it("en länk som inte går ger 'Länken gick inte att öppna.' och sätter inget", async () => {
+    const cookies = new MemoryCookieJar();
+    const { provider, setPassword } = tokenLinkProvider(null, cookies);
+    expect(await setPasswordFromLinkFlow({ provider }, input("ett långt nytt lösenord"))).toEqual({
+      ok: false,
+      error: MESSAGES.linkFailed,
+    });
+    expect(setPassword).not.toHaveBeenCalled();
   });
 });

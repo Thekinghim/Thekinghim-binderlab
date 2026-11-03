@@ -48,8 +48,8 @@ describe("huvudflikar", () => {
         "Kampanjer",
         "Gratis-pack",
       ],
-      "vart-lager": ["Vårt lager", "Prognos & inköp", "Inköpspriser"],
-      butiker: ["Butiker", "Avtal", "Expansion", "Butiksportal"],
+      "vart-lager": ["Vårt lager", "Inköp", "Prognos", "Inköpspriser"],
+      butiker: ["Butiker", "Kontrakt", "Expansion", "Butiksportal"],
       pengar: ["Lönsamhet", "Ekonomi", "Bokföring", "Rapporter"],
       mer: ["Inställningar", "Datakällor", "Assistent", "Marknad", "Effekt"],
     });

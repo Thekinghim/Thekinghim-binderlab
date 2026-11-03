@@ -7,8 +7,11 @@ import { FormError } from "@/app/logga-in/form-error";
 import { Logo } from "@/components/shell/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
-import { logout } from "@/server/actions/auth";
+import { acceptMyInvitation, logout } from "@/server/actions/auth";
+import type { MyInvitation } from "@/server/auth/flows";
 import { createOrganization } from "@/server/onboarding/actions";
+
+import { ROLE_LABEL } from "./installningar/anvandare/model";
 
 /**
  * Visas i stället för appen när den inloggade användaren inte är medlem i någon
@@ -18,8 +21,93 @@ import { createOrganization } from "@/server/onboarding/actions";
  * som ägare) och kommer sedan till Kom igång. Den som ska in i en befintlig organisation
  * behöver en inbjudan från dess ägare. Fungerar med tangentbord: namnfältet har fokus,
  * Enter skapar.
+ *
+ * Har personen en egen inbjudan (t.ex. delägaren som fick lösenord av ägaren och
+ * loggade in utan mejlet) visas den först: ett tryck och man är med.
  */
-export function NoOrganization({ email }: { email: string }) {
+export function NoOrganization({
+  email,
+  invitations = [],
+}: {
+  email: string;
+  invitations?: readonly MyInvitation[];
+}) {
+  if (invitations.length > 0) {
+    return <Invited email={email} invitations={invitations} />;
+  }
+  return <CreateOrganization email={email} />;
+}
+
+function Invited({ email, invitations }: { email: string; invitations: readonly MyInvitation[] }) {
+  const router = useRouter();
+  const [pending, startJoin] = useTransition();
+  const [joining, setJoining] = useState<string>();
+  const [error, setError] = useState<string>();
+  const [leaving, startLeave] = useTransition();
+  const join = (id: string) => {
+    setError(undefined);
+    setJoining(id);
+    startJoin(async () => {
+      const result = await acceptMyInvitation(id);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      router.replace("/");
+      router.refresh();
+    });
+  };
+  return (
+    <main
+      id="main"
+      className="mx-auto flex min-h-dvh w-full max-w-[520px] flex-col justify-center gap-8 px-4 py-16"
+    >
+      <Logo />
+      <h1 className="rise text-3xl font-medium text-balance text-fg">Du är inbjuden.</h1>
+      <ul className="flex flex-col gap-3">
+        {invitations.map((inv, i) => (
+          <li
+            key={inv.id}
+            className="rise flex flex-col gap-3 rounded-md border border-line bg-surface p-4"
+            style={{ "--i": i + 1 } as React.CSSProperties}
+          >
+            <p className="flex items-baseline justify-between gap-3">
+              <span className="text-lg font-medium text-fg">{inv.organizationName}</span>
+              <span className="label text-subtle">{inv.storeName ?? ROLE_LABEL[inv.role]}</span>
+            </p>
+            <Button
+              variant="primary"
+              className="h-12 w-full text-lg"
+              loading={pending && joining === inv.id}
+              onClick={() => join(inv.id)}
+            >
+              Gå med
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <FormError message={error} />
+      <p className="meta wrap-anywhere text-subtle">
+        {unbreakable(email)} ·{" "}
+        <button
+          type="button"
+          disabled={leaving}
+          className="underline decoration-line-strong underline-offset-4 hover:text-fg"
+          onClick={() =>
+            startLeave(async () => {
+              await logout();
+              router.replace("/logga-in");
+            })
+          }
+        >
+          Logga ut
+        </button>
+      </p>
+    </main>
+  );
+}
+
+function CreateOrganization({ email }: { email: string }) {
   const router = useRouter();
   const [creating, startCreate] = useTransition();
   const [leaving, startLeave] = useTransition();

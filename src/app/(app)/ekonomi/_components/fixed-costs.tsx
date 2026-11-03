@@ -265,7 +265,7 @@ export function FixedCosts({
         onClose={close}
         eyebrow="Fasta kostnader"
         title={draft?.id ? "Ändra fast kostnad" : "Ny fast kostnad"}
-        description="Betalas i förskott på startdagen och sedan varje månad, kvartal eller år på samma dag."
+        description="Dras från startdagen, sedan varje period."
       >
         {draft ? (
           <form onSubmit={submit} noValidate className="flex flex-col gap-5">

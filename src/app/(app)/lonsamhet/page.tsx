@@ -32,6 +32,7 @@ import { salesHeatmap, machineHref } from "../automater/_lib/model";
 import { resultAfterProfit } from "./_lib/result";
 import {
   canonicalLonsamhetQuery,
+  parseAnalysisTab,
   parseTitleParam,
   parseTrendParam,
   parseViewParam,
@@ -231,32 +232,27 @@ export default async function LonsamhetPage({
                 selectedTitle,
               }}
               trend={{ initialTrend, trend: model.trend, days: model.days }}
-              initialTab={sp.visa === "utveckling" ? "trend" : "table"}
-            />
-          </div>
-
-          {/* Managerpaket 6: försäljningsrytm och topplista med förändring (samma order). */}
-          <div
-            id="rytm-och-topplista"
-            className="rise scroll-mt-28 border-t border-line py-12 md:py-16"
-            style={{ "--i": 3 } as CSSProperties}
-          >
-            <RhythmSection
-              heat={salesHeatmap(input.current.orders, ctx.timeZone)}
-              days={model.days}
-              movers={buildMovers({
-                current: input.current,
-                previous: input.previous,
-                names: moverNames(input),
-                hrefs: {
-                  machine: (code) => machineHref(code, carriedQuery(sp)),
-                  store: (id) => `/butiker/${encodeURIComponent(id)}${carriedQuery(sp)}`,
-                },
-              })}
-              compareLabel={
-                input.previous && input.previous.orders.length > 0
-                  ? `mot ${periodText(input.previous.period, ctx.today)}`
-                  : null
+              initialTab={parseAnalysisTab(sp.visa)}
+              rhythm={
+                // Managerpaket 6: försäljningsrytm och topplista med förändring (samma order).
+                <RhythmSection
+                  heat={salesHeatmap(input.current.orders, ctx.timeZone)}
+                  days={model.days}
+                  movers={buildMovers({
+                    current: input.current,
+                    previous: input.previous,
+                    names: moverNames(input),
+                    hrefs: {
+                      machine: (code) => machineHref(code, carriedQuery(sp)),
+                      store: (id) => `/butiker/${encodeURIComponent(id)}${carriedQuery(sp)}`,
+                    },
+                  })}
+                  compareLabel={
+                    input.previous && input.previous.orders.length > 0
+                      ? `mot ${periodText(input.previous.period, ctx.today)}`
+                      : null
+                  }
+                />
               }
             />
           </div>

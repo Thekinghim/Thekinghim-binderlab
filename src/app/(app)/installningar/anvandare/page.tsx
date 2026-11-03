@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 
 import { wallClockIn } from "@/components/shell/period-state";
 import { SectionHeader } from "@/components/ui/section-header";
+
+import { MerHead } from "../_components/mer-head";
 import { getServerEnv } from "@/lib/env";
 import { formatDate } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
@@ -83,12 +85,9 @@ export default async function UsersPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1280px] px-4 pt-8 pb-16 md:px-8 md:pt-12">
-      <SectionHeader
-        as="h1"
-        size="xl"
-        eyebrow="Inställningar · Användare"
-        title="Användare."
-        aside={headline(members.length, invitations.length)}
+      <MerHead
+        eyebrow="Användare"
+        title={headline(members.length, invitations.length)}
         meta={roleMeta(data.members)}
         actions={
           <InviteDialog
@@ -111,18 +110,13 @@ export default async function UsersPage() {
         invitationsAside={invitationsAside(firstExpiry ? date(firstExpiry) : null)}
       />
 
-      <section
-        aria-labelledby="roller"
+      <details
         className="rise mt-14 border-t border-line pt-6"
-        style={{ "--i": 1 } as React.CSSProperties}
+        style={{ "--i": 3 } as React.CSSProperties}
       >
-        <SectionHeader
-          id="roller"
-          eyebrow="Roller"
-          title="Vem ser vad."
-          aside="Påfyllare ser aldrig belopp."
-          size="md"
-        />
+        <summary className="cursor-pointer list-none">
+          <SectionHeader id="roller" title="Roller." aside="Vem ser vad." size="md" />
+        </summary>
         <dl className="mt-6 grid grid-cols-1 gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
           {ROLE_ORDER.map((role) => (
             <div key={role} className="flex flex-col gap-1.5 border-t border-line pt-3">
@@ -131,7 +125,7 @@ export default async function UsersPage() {
             </div>
           ))}
         </dl>
-      </section>
+      </details>
     </div>
   );
 }

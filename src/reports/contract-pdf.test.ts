@@ -4,8 +4,11 @@ import {
   CONTRACT_TEMPLATE,
   contractHtml,
   contractSections,
+  contractTermsPlain,
   contractTermsSummary,
   escapeHtml,
+  shareText,
+  specialTermsParagraphs,
   type ContractTemplateInput,
 } from "./contract-pdf";
 
@@ -80,5 +83,56 @@ describe("placeringsavtalet", () => {
       "butiken får 50 % av vinsten efter kostnader",
     );
     expect(CONTRACT_TEMPLATE).toMatch(/^[a-z0-9-]{1,60}$/);
+  });
+
+  it("procent av omsättningen: ingen vinstdefinition, omsättningen definieras", () => {
+    const t = text({ ...INPUT, shareBp: 1_250, base: "net_excl_vat" }).replace(/\s/g, " ");
+    expect(t).toContain("Butiken får 12,5 % av automatens omsättning.");
+    expect(t).toContain("Omsättning = automatens försäljning exklusive moms");
+    expect(t).not.toContain("Vinst =");
+    expect(t).not.toContain("förlust");
+    expect(t).toContain("Butiken får en andel av försäljningen.");
+  });
+
+  it("fast hyra utan andel: bara hyran", () => {
+    const t = text({ ...INPUT, shareBp: null, base: "net_excl_vat", monthlyRentOre: 150_000 });
+    expect(t.replace(/\s/g, " ")).toContain(
+      "Operatören betalar Butiken en fast hyra på 1 500 kr per månad (exklusive moms) för platsen.",
+    );
+    expect(t).not.toContain("av vinsten");
+    expect(t).toContain("Rapporten visar hyran.");
+  });
+
+  it("särskilda villkor blir ett eget avsnitt före Övrigt, escapat i HTML", () => {
+    const special = "Automaten står vid kassan.\n\n<b>El</b> ingår.";
+    const sections = contractSections({ ...INPUT, specialTerms: special });
+    expect(sections.map((x) => x.heading).slice(-2)).toEqual(["8. Särskilda villkor", "9. Övrigt"]);
+    expect(sections.at(-2)!.paragraphs).toEqual(["Automaten står vid kassan.", "<b>El</b> ingår."]);
+    const html = contractHtml({ ...INPUT, specialTerms: special });
+    expect(html).toContain("&lt;b&gt;El&lt;/b&gt; ingår.");
+    expect(html).not.toContain("<b>El</b>");
+    expect(contractSections(INPUT).at(-1)!.heading).toBe("8. Övrigt");
+    expect(specialTermsParagraphs("  \n ")).toEqual([]);
+  });
+
+  it("villkoren i klartext och andelen exakt", () => {
+    const plain = (x: Parameters<typeof contractTermsPlain>[0]) =>
+      contractTermsPlain(x).replace(/\s/g, " ");
+    expect(plain(INPUT)).toBe("50 % av vinsten efter kostnader");
+    expect(plain({ ...INPUT, shareBp: 1_000, base: "net_excl_vat" })).toBe(
+      "10 % av omsättningen exkl. moms",
+    );
+    expect(plain({ ...INPUT, shareBp: null, monthlyRentOre: 150_000 })).toBe(
+      "Fast hyra 1 500 kr/mån",
+    );
+    expect(plain({ ...INPUT, monthlyRentOre: 50_000, lossTreatment: "proportional" })).toBe(
+      "50 % av vinsten efter kostnader + 500 kr/mån (delar förlust)",
+    );
+    expect(plain({ ...INPUT, shareBp: null, monthlyRentOre: null })).toBe("Inga villkor");
+    expect(shareText(1_225).replace(/\s/g, " ")).toBe("12,25 %");
+    expect(shareText(1_250).replace(/\s/g, " ")).toBe("12,5 %");
+    expect(
+      contractTermsSummary({ shareBp: 1_000, base: "net_excl_vat", lossTreatment: "zero" }),
+    ).toContain("Andel av omsättningen");
   });
 });

@@ -393,14 +393,14 @@ export function SyncStatus({
     : null;
   const text =
     syncState === "failed"
-      ? `Synk misslyckades${when ? ` · senast ${when}` : ""}`
+      ? `Awish svarar inte${when ? ` · senast ${when}` : ""}`
       : syncState === "stale"
-        ? `Inaktuell · synkad ${when ?? "–"}`
+        ? `Gammal data · hämtat ${when ?? "–"}`
         : syncState === "no-orders"
           ? "Ansluten · inga order än"
           : when
-            ? `Synkad ${when}`
-            : "Ingen synk än";
+            ? `Hämtat ${when}`
+            : "Inget hämtat än";
   const problem = syncState === "failed" || syncState === "stale";
   const live = !problem && d !== null && isRecent(d);
   const body = (

@@ -54,7 +54,7 @@ const kinds: Record<StateKind, KindSpec> = {
   offline: { prefix: "Ur drift", glyph: "offline", appendCode: true, role: "status" },
   denied: { prefix: "Saknar behörighet", glyph: "warning", appendCode: true, role: "status" },
   "not-configured": {
-    prefix: "Ej konfigurerad",
+    prefix: "Av",
     glyph: "offline",
     appendCode: false,
     role: "status",

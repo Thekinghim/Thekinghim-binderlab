@@ -43,11 +43,40 @@ export function VmbBeforeSplitCheckbox({
           {VMB_BEFORE_SPLIT_LABEL}
         </label>
         <p id={`${id}-hint`} className="text-sm text-muted">
-          {on
-            ? "Butikens andel räknas på vinsten efter VMB-moms."
-            : "Butikens andel räknas på vinsten före VMB-moms."}
+          {on ? "Andelen räknas efter VMB-moms." : "Andelen räknas före VMB-moms."}
         </p>
       </div>
     </div>
+  );
+}
+
+/**
+ * Samma val bakom en stängd "Fler val" (sällan ändrat). Öppen från början när valet är på,
+ * så att ett avvikande avtal syns. Fältet skickas med formuläret även när rutan är stängd.
+ */
+export function VmbBeforeSplitMore({
+  id,
+  checked,
+  name,
+}: {
+  id: string;
+  checked?: boolean;
+  name: string;
+}) {
+  return (
+    <details open={checked ? true : undefined} className="group">
+      <summary className="label inline-flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-xs text-subtle hover:text-fg [&::-webkit-details-marker]:hidden">
+        <span
+          aria-hidden
+          className="inline-block transition-transform duration-fast group-open:rotate-90"
+        >
+          ›
+        </span>
+        Fler val
+      </summary>
+      <div className="fade-in mt-3">
+        <VmbBeforeSplitCheckbox id={id} name={name} checked={checked} />
+      </div>
+    </details>
   );
 }

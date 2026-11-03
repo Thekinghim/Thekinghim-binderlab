@@ -95,7 +95,12 @@ export interface PrognosData {
   readonly lostPeriod: Period;
   readonly scope: DataScope;
   readonly canEdit: boolean;
-  readonly titles: readonly { readonly id: string; readonly name: string }[];
+  readonly titles: readonly {
+    readonly id: string;
+    readonly name: string;
+    /** Egen produkt: vi packar den själva ("Att packa" i stället för "Beställ"). */
+    readonly ownProduct?: boolean;
+  }[];
   readonly machines: readonly {
     readonly id: string;
     readonly name: string;

@@ -44,11 +44,13 @@ export function AuthFrame({
         <main id="main" className="flex flex-1 flex-col pt-16 pb-16 md:pt-32">
           <div className="w-full max-w-sm md:ml-16">
             <p className="label flex items-center gap-2 text-subtle">{eyebrow}</p>
-            <h1 className="mt-3 text-2xl font-medium text-balance">
+            <h1 className="rise mt-3 text-3xl font-medium text-balance">
               <span className="text-fg">{title}</span>
               {aside ? <span className="text-subtle"> {aside}</span> : null}
             </h1>
-            <div className="mt-8">{children}</div>
+            <div className="rise mt-8" style={{ "--i": 1 } as React.CSSProperties}>
+              {children}
+            </div>
           </div>
         </main>
 

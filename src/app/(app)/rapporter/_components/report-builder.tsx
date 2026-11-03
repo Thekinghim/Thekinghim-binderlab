@@ -6,6 +6,7 @@ import { useId, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/field";
 import { Segmented } from "@/components/ui/segmented";
+import { cn } from "@/lib/cn";
 import { StateMessage } from "@/components/ui/state-message";
 import { useToast } from "@/components/ui/toast";
 import type { IsoMonth } from "@/domain";
@@ -19,11 +20,6 @@ const TYPES: { value: ReportType; label: string }[] = [
   { value: "butik", label: "Butik" },
   { value: "bokforing", label: "Bokföring" },
   { value: "delagare", label: "Delägare" },
-];
-
-const MODES = [
-  { value: "month" as const, label: "Månad" },
-  { value: "range" as const, label: "Eget datum" },
 ];
 
 /**
@@ -43,6 +39,7 @@ export function ReportBuilder({
   canEdit,
   canCreate,
   currentId,
+  overlap = null,
 }: {
   type: ReportType;
   month: string;
@@ -58,6 +55,8 @@ export function ReportBuilder({
   canEdit: boolean;
   canCreate: boolean;
   currentId: string | null;
+  /** Kort varning när underlaget överlappar ett annat (bokföring med eget datum). */
+  overlap?: string | null;
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -127,7 +126,7 @@ export function ReportBuilder({
       setText("");
       toast({
         title: currentId ? "Ny version skapad" : "Utkast skapat",
-        description: "Granska och godkänn det innan det skickas.",
+        description: "Granska och godkänn.",
         tone: "ok",
       });
       router.refresh();
@@ -154,20 +153,6 @@ export function ReportBuilder({
             onChange={(v) => go({ typ: v, butiken: v === "butik" ? storeId : null })}
           />
         </div>
-        {canRange ? (
-          <div className="flex flex-col gap-1.5">
-            <span className="label text-muted">Period</span>
-            <Segmented
-              label="Period"
-              options={MODES}
-              value={mode}
-              onChange={(v) => {
-                setMode(v);
-                if (v === "month" && (range || rangeProblem)) go({ fran: null, till: null });
-              }}
-            />
-          </div>
-        ) : null}
         {mode === "month" || !canRange ? (
           <Select
             label="Månad"
@@ -211,6 +196,41 @@ export function ReportBuilder({
             </div>
           </form>
         )}
+        {canRange ? (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={mode === "range"}
+            onClick={() => {
+              const next = mode === "range" ? "month" : "range";
+              setMode(next);
+              if (next === "month" && (range || rangeProblem)) go({ fran: null, till: null });
+            }}
+            className="label inline-flex h-8 w-fit items-center gap-2 rounded-sm text-muted transition-colors duration-fast ease-instrument hover:text-fg"
+          >
+            <span
+              aria-hidden
+              className={cn(
+                "relative inline-flex h-4 w-7 shrink-0 items-center rounded-full border border-line-strong transition-colors duration-fast",
+                mode === "range" ? "bg-fg" : "bg-transparent",
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute size-2.5 rounded-full transition-transform duration-fast ease-instrument",
+                  mode === "range" ? "translate-x-3.5 bg-bg" : "translate-x-0.5 bg-muted",
+                )}
+              />
+            </span>
+            Eget datum
+          </button>
+        ) : null}
+        {overlap ? (
+          <p role="status" className="flex items-center gap-2 text-sm text-signal-fg">
+            <span aria-hidden className="size-2 shrink-0 bg-signal" />
+            {overlap}
+          </p>
+        ) : null}
         {type === "butik" ? (
           stores.length > 0 ? (
             <Select
@@ -232,11 +252,7 @@ export function ReportBuilder({
           <TextArea
             id={textId}
             label={textLabel}
-            hint={
-              type === "butik"
-                ? "Står under rubriken i rapporten och som inledning i mejlet. Visas för butiken."
-                : "Står under rubriken i delägarrapporten. Varje rad blir en punkt i mejlets plan."
-            }
+            hint={type === "butik" ? "Visas för butiken." : "En rad = en punkt."}
             value={text}
             maxLength={type === "butik" ? 1000 : 2000}
             rows={4}
@@ -244,9 +260,7 @@ export function ReportBuilder({
           />
         ) : null}
         {type === "bokforing" ? (
-          <p className="text-sm text-muted">
-            Bokföringsunderlaget skapas som PDF, Excel och SIE 4 ur samma underlag.
-          </p>
+          <p className="text-sm text-muted">PDF, Excel och fil till Fortnox.</p>
         ) : null}
         {canEdit ? (
           <div className="flex flex-wrap items-center gap-3">
@@ -276,9 +290,7 @@ export function ReportBuilder({
             Öppna rapporten →
           </a>
         ) : (
-          <p className="text-sm text-muted">
-            Ägaren eller en admin skapar och skickar rapporterna.
-          </p>
+          <p className="text-sm text-muted">Ägaren skapar och skickar.</p>
         )}
         {error ? <StateMessage kind="error" compact message={error} className="px-0" /> : null}
       </div>

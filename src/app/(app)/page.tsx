@@ -3,13 +3,14 @@ import { AiPageLine } from "@/components/assistant/panel-context";
 import { Suspense, type CSSProperties } from "react";
 
 import { Panel } from "@/components/ui/frame";
-import { SectionHeader, type SectionMeta } from "@/components/ui/section-header";
+import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { requireRoute } from "@/server/data/core";
-import { EN_DASH, NBSP, formatDecimal, formatInt, formatPeriodShort } from "@/lib/format";
+import { NBSP, formatDecimal, formatInt, formatPeriodShort } from "@/lib/format";
 
 import { DailyChart } from "./_hem/daily-chart";
 import { GoalsRow } from "./_hem/goals-row";
+import { HemHero } from "./_hem/hero";
 import { HomeKpis } from "./_hem/home-kpis";
 import { carriedParams } from "./_hem/links";
 import { loadHome } from "./_hem/load";
@@ -27,9 +28,9 @@ export const metadata: Metadata = { title: "Hem" };
 type SearchParams = Record<string, string | string[] | undefined>;
 
 /**
- * Hem: "Hur går det?", "Vad behöver jag göra?" och "Vad tjänar vi?" i fyra block:
- * rubriken, nyckeltalen med en varningsrad, [intäkt per dag | Att göra + Värt att veta]
- * och de fem mest sålda titlarna. Blocken glider upp i tur och ordning.
+ * Hem: vinsten som en stor siffra med delningen, i dag hittills, målen och morgonbriefen
+ * överst (i den ordningen); under dem det som behöver göras, nyckeltalen, intäkt per dag
+ * och de mest sålda titlarna. Blocken glider upp i tur och ordning.
  *
  * Bara ägare, admin och läsare (requireRoute i loadHome skickar påfyllaren till Att
  * göra). Allt räknas i @/domain och @/analytics via modellen i _hem/model.ts.
@@ -80,44 +81,33 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
           size="xl"
           eyebrow="Hem"
           title={`${noun} finns inte.`}
-          aside="Filtret pekar på något som inte finns."
           className="rise"
         />
         <StateMessage
           className="rise mt-12"
           kind="empty"
           code="0 träffar"
-          message={`${noun} i filtret finns inte, eller så har du inte tillgång till den.`}
-          action={{ label: "Visa hela organisationen", href: `/${carriedParams(sp, {}, false)}` }}
+          message={`${noun} finns inte eller är dold för dig.`}
+          action={{ label: "Visa allt", href: `/${carriedParams(sp, {}, false)}` }}
         />
       </div>
     );
   }
 
-  // Två metarader: perioden och jämförelsen (antal order står i remsan).
-  const meta: SectionMeta[] = [
-    { label: "Period", value: periodText(model.period) },
-    { label: "Jämfört med", value: model.compare ? periodText(model.compare) : EN_DASH },
-  ];
-
+  const revenue = model.kpis.find((k) => k.id === "revenue")?.value ?? 0;
   const comparisonLabel = model.compare
     ? `Nyckeltal jämfört med ${periodText(model.compare)}`
-    : "Nyckeltal utan jämförelse";
+    : "Nyckeltal";
+  const eyebrow = scopeText ? `Hem · ${scopeText}` : "Hem";
 
-  const revenue = model.kpis.find((k) => k.id === "revenue")?.value ?? 0;
-
+  // Ordning efter vikt: vinsten (stort tal + delning), i dag, målen, morgonbriefen. Allt
+  // annat (att göra, nyckeltal, diagram, titlar) står under.
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col px-4 pt-8 pb-16 md:px-8 md:pt-12">
       <div className="rise" style={rise(0)}>
-        <SectionHeader
-          as="h1"
-          size="xl"
-          eyebrow={scopeText ? `Hem · ${scopeText}` : "Hem"}
-          title={headline.title}
-          aside={headline.aside}
-          meta={headline.state === "no-data" ? undefined : meta}
-        />
-        <AiPageLine metric="vinsten för perioden" route="hem" className="mt-4" />
+        <HemHero headline={headline} eyebrow={eyebrow}>
+          <AiPageLine metric="vinsten för perioden" route="hem" className="mt-1" />
+        </HemHero>
       </div>
 
       {headline.state === "no-data" ? (
@@ -135,53 +125,44 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
           <StateMessage
             className="rise mt-12"
             kind="not-configured"
-            message="Inga order har importerats ännu."
-            action={canEdit ? { label: "Lägg till datakälla", href: "/datakallor" } : undefined}
+            message="Inga order än."
+            action={canEdit ? { label: "Koppla Awish", href: "/datakallor" } : undefined}
           />
         )
       ) : (
         <>
-          {/* Morgonbriefen (AI, en gång per dag): bara utan filter, inget alls utan AI. */}
-          {scope ? null : (
-            <Suspense fallback={null}>
-              <MorningBrief todoHref={`/att-gora${carriedParams(sp)}`} className="mt-8 md:mt-10" />
-            </Suspense>
-          )}
-          {onboarding ? (
+          {pace ? (
             <div className="rise mt-8 md:mt-10" style={rise(1)}>
-              <OnboardingChecklist
-                status={onboarding}
-                canEdit={canEdit}
-                timeZone={timeZone}
-                variant="compact"
-              />
+              <TodayPaceCard pace={pace} />
             </div>
           ) : null}
 
-          <div className="rise mt-8 flex flex-col gap-4 md:mt-10" style={rise(1)}>
-            {pace ? <TodayPaceCard pace={pace} /> : null}
-            <HomeKpis kpis={model.kpis} ariaLabel={comparisonLabel} />
-            <WarningLine
-              unpriced={model.unpriced}
-              lost={lostSales}
-              stale={staleImport}
-              today={today}
-              canEdit={canEdit}
-            />
-            {/* Svinn: en rad bara när pack saknas. */}
-            <Suspense fallback={null}>
-              <ShrinkageLine />
-            </Suspense>
-          </div>
-
           {goals ? (
-            <div className="mt-6 empty:hidden md:mt-8">
+            <div className="mt-6 empty:hidden">
               <GoalsRow
                 goals={goals}
                 today={today}
                 canEdit={canEdit}
                 href={`/expansion${carriedParams(sp, { vy: "mal" })}`}
-                style={rise(1)}
+                style={rise(2)}
+              />
+            </div>
+          ) : null}
+
+          {/* Morgonbriefen (AI, en gång per dag): bara utan filter, inget alls utan AI. */}
+          {scope ? null : (
+            <Suspense fallback={null}>
+              <MorningBrief todoHref={`/att-gora${carriedParams(sp)}`} className="mt-6" />
+            </Suspense>
+          )}
+
+          {onboarding ? (
+            <div className="rise mt-8 md:mt-10" style={rise(3)}>
+              <OnboardingChecklist
+                status={onboarding}
+                canEdit={canEdit}
+                timeZone={timeZone}
+                variant="compact"
               />
             </div>
           ) : null}
@@ -196,22 +177,46 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
             />
           ) : null}
 
-          <DailyAndTodos model={model} today={today} sp={sp} revenue={revenue} />
+          {/* Det som behöver göras: punkterna, varningarna och svinnet. */}
+          <div
+            className="rise mt-10 flex flex-col gap-4 border-t border-line pt-8 empty:hidden md:mt-12"
+            style={rise(4)}
+          >
+            {model.todos ? <TodoSection model={model} sp={sp} /> : null}
+            <WarningLine
+              unpriced={model.unpriced}
+              lost={lostSales}
+              stale={staleImport}
+              today={today}
+              canEdit={canEdit}
+            />
+            {/* Svinn: en rad bara när pack saknas. */}
+            <Suspense fallback={null}>
+              <ShrinkageLine />
+            </Suspense>
+          </div>
+
+          {headline.state === "ok" ? (
+            <div className="rise mt-10 md:mt-12" style={rise(5)}>
+              <HomeKpis kpis={model.kpis} ariaLabel={comparisonLabel} />
+            </div>
+          ) : null}
+
+          <DailyAndInsights model={model} today={today} sp={sp} revenue={revenue} />
 
           {model.topTitles.rows.length > 0 ? (
             <section
               aria-labelledby="titlar"
               className="rise mt-12 scroll-mt-28 border-t border-line pt-10 md:mt-14 md:pt-12"
-              style={rise(4)}
+              style={rise(7)}
             >
               <SectionHeader
                 id="titlar"
-                eyebrow={`Titlar · topp ${formatInt(Math.min(TOP_N, model.topTitles.rows.length))}`}
-                title="Mest sålda titlar."
+                title="Mest sålda."
                 size="md"
                 actions={
                   <ArrowLink href={`/lonsamhet${carriedParams(sp, { vy: "titel" })}`}>
-                    Alla titlar i Lönsamhet
+                    Alla titlar
                   </ArrowLink>
                 }
               />
@@ -243,7 +248,7 @@ function rise(i: number): CSSProperties {
 
 // ---------------------------------------------------------------------------
 
-function DailyAndTodos({
+function DailyAndInsights({
   model,
   today,
   sp,
@@ -255,14 +260,11 @@ function DailyAndTodos({
   revenue: number;
 }) {
   const showInsights = model.headline.state === "ok" && model.insights.length > 0;
-  const side = Boolean(model.todos) || showInsights;
-  if (!model.daily && !side) return null;
-  // Diagrammet och Att göra + Värt att veta står bredvid varandra på dator, så att
-  // "Vad behöver jag göra?" syns på första skärmen; på mobil kommer de under diagrammet.
+  if (!model.daily && !showInsights) return null;
   return (
     <div
       className="rise mt-10 grid grid-cols-1 gap-x-10 gap-y-12 border-t border-line pt-10 md:mt-12 md:pt-12 lg:grid-cols-12"
-      style={rise(2)}
+      style={rise(6)}
     >
       {model.daily ? (
         <DailySection
@@ -272,15 +274,12 @@ function DailyAndTodos({
           today={today}
           sp={sp}
           revenue={revenue}
-          className={side ? "lg:col-span-8" : "lg:col-span-12"}
+          className={showInsights ? "lg:col-span-8" : "lg:col-span-12"}
         />
       ) : null}
-      {side ? (
-        <div
-          className={`flex min-w-0 flex-col gap-10 ${model.daily ? "lg:col-span-4" : "lg:col-span-6"}`}
-        >
-          {model.todos ? <TodoSection model={model} sp={sp} /> : null}
-          {showInsights ? <Insights model={model} /> : null}
+      {showInsights ? (
+        <div className={`min-w-0 ${model.daily ? "lg:col-span-4" : "lg:col-span-6"}`}>
+          <Insights model={model} />
         </div>
       ) : null}
     </div>
@@ -324,7 +323,7 @@ function DailySection({
       : ".",
   ].join("");
   const aside = [
-    `Snitt ${kr(daily.averageOre)}/dag${peakDate ? `, bäst ${weekdayDayText(peakDate, today)}` : ""}.`,
+    `Snitt ${kr(daily.averageOre)}/dag.`,
     todayPending || todayPartial ? "I dag ej med." : "",
   ]
     .filter(Boolean)
@@ -334,13 +333,12 @@ function DailySection({
     <section aria-labelledby="intakt-per-dag" className={`min-w-0 scroll-mt-28 ${className ?? ""}`}>
       <SectionHeader
         id="intakt-per-dag"
-        eyebrow={`Intäkt per dag · ${formatInt(days)} d`}
         title="Intäkt per dag."
         aside={aside}
         size="md"
         actions={
           <ArrowLink href={`/lonsamhet${carriedParams(sp, { per: "dag", visa: "utveckling" })}`}>
-            Lönsamhet per dag
+            Mer
           </ArrowLink>
         }
       />

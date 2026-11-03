@@ -153,36 +153,40 @@ export default async function EkonomiPage({
   }));
   const at = fixed.allocation?.totals;
 
+  // Bokföring är en egen underflik i menyn: egen rubrik, inga Ekonomi-flikar ovanför.
+  const bookkeeping = view === "bokforing";
+
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col px-4 pt-8 md:px-8 md:pt-12">
-      <div
-        className="rise flex flex-col gap-6 pb-10 md:pb-12"
-        style={{ "--i": 0 } as React.CSSProperties}
-      >
-        <SectionHeader
-          as="h1"
-          size="xl"
-          eyebrow={`Ekonomi · ${p.days}${NBSP}d`}
-          title={headline.title}
-          aside={headline.aside}
-          meta={[{ label: "Period", value: when }]}
-        />
-        <AiPageLine metric="ekonomin för perioden" route="ekonomi" className="mt-4" />
-        {scoped ? (
-          <p className="meta text-subtle">Hela organisationen · filtret gäller inte här</p>
-        ) : null}
-        <ViewTabs
-          label="Vy"
-          value={view}
-          hrefFor={hrefFor}
-          tabs={[
-            { value: "avstamning", label: "Avstämning" },
-            { value: "kassaflode", label: "Kassaflöde" },
-            { value: "fasta", label: "Fasta kostnader" },
-            { value: "bokforing", label: "Bokföring" },
-          ]}
-        />
-      </div>
+      {bookkeeping ? null : (
+        <div
+          className="rise flex flex-col gap-6 pb-10 md:pb-12"
+          style={{ "--i": 0 } as React.CSSProperties}
+        >
+          <SectionHeader
+            as="h1"
+            size="xl"
+            eyebrow={`Ekonomi · ${p.days}${NBSP}d`}
+            title={headline.title}
+            aside={headline.aside}
+            meta={[{ label: "Period", value: when }]}
+          />
+          <AiPageLine metric="ekonomin för perioden" route="ekonomi" className="mt-4" />
+          {scoped ? (
+            <p className="meta text-subtle">Alla butiker · filtret gäller inte här</p>
+          ) : null}
+          <ViewTabs
+            label="Vy"
+            value={view}
+            hrefFor={hrefFor}
+            tabs={[
+              { value: "avstamning", label: "Avstämning" },
+              { value: "kassaflode", label: "Kassaflöde" },
+              { value: "fasta", label: "Fasta kostnader" },
+            ]}
+          />
+        </div>
+      )}
 
       {view === "avstamning" ? (
         <section
@@ -196,7 +200,7 @@ export default async function EkonomiPage({
           <SectionHeader
             id="avstamning"
             size="md"
-            title="Utbetalningar mot försäljningen."
+            title="Utbetalningar."
             aside={result ? reconciliationFact(result) : undefined}
           />
           <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
@@ -212,7 +216,7 @@ export default async function EkonomiPage({
               ) : (
                 <StateMessage
                   kind="empty"
-                  message={sentence(`Ingen utbetalning med period i ${when}`)}
+                  message="Ingen utbetalning i perioden."
                   action={
                     canEdit
                       ? { label: "Ladda upp utbetalningar", href: "#ladda-upp-utbetalningar" }
@@ -304,7 +308,7 @@ export default async function EkonomiPage({
 
       {view === "bokforing" ? (
         <Suspense fallback={<BookkeepingSkeleton />}>
-          <BokforingSection viewer={viewer} today={ctx.today} canEdit={canEdit} />
+          <BokforingSection viewer={viewer} today={ctx.today} canEdit={canEdit} asPage />
         </Suspense>
       ) : null}
 
@@ -327,7 +331,7 @@ export default async function EkonomiPage({
             aside={
               cash.result
                 ? cash.result.totals.forecast.netOre !== 0
-                  ? `Varav prognos efter i dag: ${signedSek(cash.result.totals.forecast.netOre)}.`
+                  ? `Varav prognos: ${signedSek(cash.result.totals.forecast.netOre)}.`
                   : `In ${sek(cash.result.totals.total.inOre)}, ut ${sek(cash.result.totals.total.outOre)}.`
                 : (cash.error ?? undefined)
             }
@@ -413,11 +417,7 @@ export default async function EkonomiPage({
             periodLabel={when}
           />
           {fixedRows.length === 0 ? (
-            <StateMessage
-              kind="empty"
-              compact
-              message="Inga fasta kostnader. Dras från vinsten per dag."
-            />
+            <StateMessage kind="empty" compact message="Inga fasta kostnader." />
           ) : null}
         </section>
       ) : null}
@@ -452,11 +452,11 @@ function reconciliationFact(result: {
 }): string {
   const orders = result.payouts.reduce((s, x) => s + x.expected.orders, 0);
   const last = [...result.payouts].sort((a, b) => (a.paidOn < b.paidOn ? 1 : -1))[0];
-  return `${plural(result.payouts.length, "utbetalning", "utbetalningar")} täcker ${plural(
+  return `${plural(result.payouts.length, "utbetalning", "utbetalningar")} · ${plural(
     orders,
     "order",
     "order",
-  )}${last ? `; senast ${last.reference}` : ""}.`;
+  )}${last ? ` · senast ${last.reference}` : ""}.`;
 }
 
 /** Fördelningen av gemensamma kostnader i en mening. */
@@ -467,16 +467,13 @@ function allocationFact(
   },
   codes: ReadonlyMap<string, string>,
 ): string {
-  const how =
-    allocation.method === "revenue"
-      ? "Gemensamma kostnader fördelas efter nettointäkt"
-      : "Gemensamma kostnader fördelas lika per automat";
+  const how = allocation.method === "revenue" ? "Delas efter intäkt" : "Delas lika per automat";
   const top = allocation.rows
     .filter((r) => r.kind === "machine" && r.sharedFixedOre > 0)
     .sort((a, b) => b.sharedFixedOre - a.sharedFixedOre)[0];
   if (!top) return `${how}.`;
   const share = top.shareBp === null ? "" : ` (${Math.round(top.shareBp / 100)}${NBSP}%)`;
-  return `${how}: ${codes.get(top.key) ?? "en automat"} bär mest, ${sek(top.sharedFixedOre)}${share}.`;
+  return `${how}. Mest: ${codes.get(top.key) ?? "en automat"}, ${sek(top.sharedFixedOre)}${share}.`;
 }
 
 /** Den interna nyckeln ('AW-2026-10:missing-in-payout') som läsbar text, om rubriken saknas. */

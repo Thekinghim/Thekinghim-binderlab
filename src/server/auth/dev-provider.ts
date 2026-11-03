@@ -29,7 +29,13 @@ import {
   signDevSession,
   verifyDevSession,
 } from "./session-token";
-import type { AuthProvider, AuthSession, CookieJar, SignInResult } from "./types";
+import type {
+  AuthProvider,
+  AuthSession,
+  CookieJar,
+  CreateAccountResult,
+  SignInResult,
+} from "./types";
 
 export interface DevAuthProviderOptions {
   env: {
@@ -172,6 +178,25 @@ export class DevAuthProvider implements AuthProvider {
     const session = { userId, email: normalized };
     await this.startSession(session);
     return { ok: true, session };
+  }
+
+  /**
+   * Ägaren sätter lösenord åt en inbjuden: skapar kontot. Ett befintligt konto
+   * (med eller utan lösenord) ändras aldrig, så att ingen kan ta över någon
+   * annans konto genom att bjuda in adressen.
+   */
+  async createAccountWithPassword(email: string, password: string): Promise<CreateAccountResult> {
+    const encrypted = await hashPassword(password);
+    const normalized = email.trim().toLowerCase();
+    const inserted = Array.from(
+      await this.options.db().execute(
+        sql`insert into auth.users (email, encrypted_password)
+            select ${normalized}, ${encrypted}
+            where not exists (select 1 from auth.users where lower(email::text) = ${normalized})
+            returning id`,
+      ),
+    );
+    return inserted.length > 0 ? "created" : "exists";
   }
 
   /** Byter lösenord för den inloggade användaren (byte under "Mitt konto"). */

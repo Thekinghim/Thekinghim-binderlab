@@ -14,10 +14,17 @@ import { formatInt, NBSP } from "@/lib/format";
 import { MachineKpis } from "../_components/kpis";
 import { AddMachineButton } from "../_components/machine-dialogs";
 import { MachineTable } from "../_components/machine-table";
+import { NeedList } from "../_components/need-list";
 import { ProfitRanking } from "../_components/profit-ranking";
 import { UnpricedNote } from "../_components/unpriced-note";
 import { loadOverview } from "../_lib/data";
-import { nextMachineCode, overviewKpis, spreadText } from "../_lib/model";
+import {
+  machineNeeds,
+  needsHeadline,
+  nextMachineCode,
+  overviewKpis,
+  spreadText,
+} from "../_lib/model";
 
 export const metadata: Metadata = { title: "Automater" };
 
@@ -46,6 +53,8 @@ export default async function AutomaterPage({
   const offline = totals.offlineMachines ?? 0;
   const comparison = period.comparisonLabel ? `Jämfört med ${period.comparisonLabel}` : undefined;
   const daysLabel = `${formatInt(period.span.days)}${NBSP}d`;
+  // Överst: vad som behöver göras (managerfrågan), pengarna som andra rad.
+  const needs = machineNeeds(rows);
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
@@ -54,12 +63,8 @@ export default async function AutomaterPage({
           as="h1"
           size="xl"
           eyebrow={data.scopeLabel ? `Automater · ${data.scopeLabel}` : "Automater"}
-          title={headline.title}
-          aside={headline.aside}
-          meta={[
-            { label: "Period", value: period.rangeLabel },
-            { label: "Kräver åtgärd", value: formatInt(overview.flagged) },
-          ]}
+          title={needsHeadline(needs, rows.length)}
+          aside={rows.length === 0 ? headline.aside : headline.title}
           actions={
             ctx.canEdit ? (
               <AddMachineButton
@@ -71,6 +76,11 @@ export default async function AutomaterPage({
           }
         />
         <AiPageLine metric="automaternas resultat" route="automater" className="mt-4" />
+        {needs.length > 0 ? (
+          <div className="mt-8">
+            <NeedList needs={needs} />
+          </div>
+        ) : null}
       </div>
 
       {rows.length === 0 ? (

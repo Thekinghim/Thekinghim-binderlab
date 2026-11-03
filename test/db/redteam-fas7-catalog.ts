@@ -220,6 +220,19 @@ export const ACTIONS: ActionSpec[] = [
     args: (c) => [sink(c, { id: c.idsA.contracts, status: "sent" })],
   },
   // Butiker
+  // Ny butik, sista steget: kontraktet (städrundan)
+  {
+    module: "@/app/(app)/butiker/ny/actions",
+    name: "finishStoreGuide",
+    allowed: OP,
+    args: (c) => [
+      {
+        storeId: c.A.storeId,
+        leadId: null,
+        terms: { share: "50", base: "profit_after_costs", loss: "zero", vmbBeforeSplit: false },
+      },
+    ],
+  },
   {
     module: "@/app/(app)/butiker/actions",
     name: "createStore",
@@ -353,6 +366,13 @@ export const ACTIONS: ActionSpec[] = [
     name: "sendTestNotice",
     allowed: MEMBERS,
     args: () => [],
+  },
+  // Ångra en påfyllning (städrundan): bara egna, inom 30 minuter
+  {
+    module: "@/app/(app)/drift/actions",
+    name: "undoRefills",
+    allowed: FIELD,
+    args: () => [[crypto.randomUUID()]],
   },
   {
     module: "@/app/(app)/drift/actions",
@@ -543,6 +563,13 @@ export const ACTIONS: ActionSpec[] = [
     name: "correctPurchasePrice",
     allowed: OP,
     args: (c) => [sink(c, { unitCostOre: 1 })],
+  },
+  // Egen produkt (städrundan)
+  {
+    module: "@/app/(app)/inkopspriser/actions",
+    name: "setOwnProduct",
+    allowed: OP,
+    args: (c) => [{ titleId: c.A.titleId, ownProduct: true }],
   },
   // Inkorg
   {

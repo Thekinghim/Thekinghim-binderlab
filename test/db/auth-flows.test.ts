@@ -16,10 +16,12 @@ import {
   ACTIVE_ORG_COOKIE,
   MESSAGES,
   acceptInviteFlow,
+  acceptMyInvitationFlow,
   changePasswordFlow,
   createInviteFlow,
   loginFlow,
   logoutFlow,
+  myInvitationsFlow,
   switchOrganizationFlow,
 } from "../../src/server/auth/flows";
 import { hashPassword } from "../../src/server/auth/password";
@@ -443,5 +445,131 @@ describe("byte av organisation", () => {
       ok: false,
       error: MESSAGES.notLoggedIn,
     });
+  });
+});
+
+describe("lösenord som ägaren sätter vid inbjudan", () => {
+  it("delägaren loggar in med lösenordet och går med på ett tryck, utan mejlet", async () => {
+    const owner = await createUser();
+    const org = await createOrg(owner, "Delägarbolaget");
+    const invitee = `delagare-${uniqueSuffix()}@test.binderlab.se`;
+    const { provider } = devProvider();
+    expect(
+      await createInviteFlow(
+        { provider, user: session(owner), baseUrl: BASE_URL },
+        { organizationId: org, email: invitee, role: "admin", password: "delägarens lösenord" },
+      ),
+    ).toEqual({ ok: true });
+
+    // Inloggning med lösenordet, i en ny webbläsare.
+    const cookies = new MemoryCookieJar();
+    const invited = devProvider(cookies);
+    const login = await invited.provider.signInWithPassword(invitee, "delägarens lösenord");
+    expect(login.ok).toBe(true);
+    const user = login.ok ? login.session : null;
+
+    const mine = await myInvitationsFlow(user);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ organizationName: "Delägarbolaget", role: "admin" });
+    expect(Object.keys(mine[0]!).sort()).toEqual(
+      ["expiresAt", "id", "organizationName", "role", "storeName"].sort(),
+    );
+
+    const accepted = await acceptMyInvitationFlow(
+      { user, cookies, secureCookies: false },
+      mine[0]!.id,
+    );
+    expect(accepted).toEqual({ ok: true, data: { organizationId: org } });
+    expect(cookies.get(ACTIVE_ORG_COOKIE)).toBe(org);
+    const member = await one<{ role: string }>(
+      getServiceDb(),
+      sql`select role::text as role from public.memberships
+          where organization_id = ${org} and user_id = ${user!.userId}`,
+    );
+    expect(member.role).toBe("admin");
+    // Inbjudan är använd: syns inte längre och kan inte tas emot igen.
+    expect(await myInvitationsFlow(user)).toEqual([]);
+    expect(
+      await acceptMyInvitationFlow({ user, cookies, secureCookies: false }, mine[0]!.id),
+    ).toEqual({ ok: false, error: "Inbjudan har redan använts." });
+  });
+
+  it("ett befintligt konto får aldrig nytt lösenord, och ingen inbjudan skapas", async () => {
+    const owner = await createUser();
+    const org = await createOrg(owner);
+    const existing = await createUser();
+    await setPassword(existing, "existerande lösenord");
+    const { provider } = devProvider();
+    expect(
+      await createInviteFlow(
+        { provider, user: session(owner), baseUrl: BASE_URL },
+        {
+          organizationId: org,
+          email: existing.email,
+          role: "viewer",
+          password: "kapat lösenord!!",
+        },
+      ),
+    ).toEqual({ ok: false, error: MESSAGES.inviteAccountExists });
+    expect((await provider.signInWithPassword(existing.email, "existerande lösenord")).ok).toBe(
+      true,
+    );
+    const count = await one<{ n: number }>(
+      getServiceDb(),
+      sql`select count(*)::int as n from public.invitations where organization_id = ${org}`,
+    );
+    expect(count.n).toBe(0);
+  });
+
+  it("för kort lösenord avvisas innan kontot skapas", async () => {
+    const owner = await createUser();
+    const org = await createOrg(owner);
+    const email = `kort-${uniqueSuffix()}@test.binderlab.se`;
+    const { provider } = devProvider();
+    const result = await createInviteFlow(
+      { provider, user: session(owner), baseUrl: BASE_URL },
+      { organizationId: org, email, role: "viewer", password: "kort" },
+    );
+    expect(result.ok).toBe(false);
+    const users = await one<{ n: number }>(
+      getServiceDb(),
+      sql`select count(*)::int as n from auth.users where lower(email::text) = ${email}`,
+    );
+    expect(users.n).toBe(0);
+  });
+
+  it("my_invitations och accept_my_invitation visar och tar bara egna inbjudningar", async () => {
+    const owner = await createUser();
+    const org = await createOrg(owner, "Annans bolag");
+    const anna = await createUser();
+    const eve = await createUser();
+    const { provider } = devProvider();
+    await createInviteFlow(
+      { provider, user: session(owner), baseUrl: BASE_URL },
+      { organizationId: org, email: anna.email, role: "viewer" },
+    );
+    const annas = await myInvitationsFlow(session(anna));
+    expect(annas).toHaveLength(1);
+    expect(await myInvitationsFlow(session(eve))).toEqual([]);
+    // Eve kan inte ta Annas inbjudan med id:t: samma svar som för en okänd.
+    expect(
+      await acceptMyInvitationFlow(
+        { user: session(eve), cookies: new MemoryCookieJar(), secureCookies: false },
+        annas[0]!.id,
+      ),
+    ).toEqual({ ok: false, error: "Inbjudan finns inte." });
+    // Utgången inbjudan syns inte och kan inte tas emot.
+    await asPostgres((tx) =>
+      tx.execute(
+        sql`update public.invitations set expires_at = now() - interval '1 minute' where id = ${annas[0]!.id}`,
+      ),
+    );
+    expect(await myInvitationsFlow(session(anna))).toEqual([]);
+    expect(
+      await acceptMyInvitationFlow(
+        { user: session(anna), cookies: new MemoryCookieJar(), secureCookies: false },
+        annas[0]!.id,
+      ),
+    ).toEqual({ ok: false, error: "Inbjudan har gått ut." });
   });
 });

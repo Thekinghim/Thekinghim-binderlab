@@ -8,8 +8,6 @@ import type React from "react";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 
-import { formatInt } from "@/lib/format";
-
 import { plural, tenthsText } from "../_lib/display";
 import type { LagerView } from "../_lib/types";
 import { PackList } from "./pack-list";
@@ -142,7 +140,7 @@ export function LagerBoard({
           }
           aside={
             hasMachines
-              ? `Dagar kvar vid takten senaste ${formatInt(salesWindow.days)} d. Låg < ${tenthsText(view.lowThresholdTenths)} d.`
+              ? `Dagar kvar. Snart slut under ${tenthsText(view.lowThresholdTenths)} d.`
               : undefined
           }
         />

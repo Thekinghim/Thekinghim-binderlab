@@ -20,12 +20,7 @@ export default async function RefillPage() {
   if (ctx.role === "viewer") {
     return (
       <div className="flex flex-col gap-8">
-        <SectionHeader
-          as="h1"
-          size="xl"
-          eyebrow="Påfyllning"
-          title="Påfyllning registreras av ägare, admin och påfyllare."
-        />
+        <SectionHeader as="h1" size="xl" eyebrow="Påfyllning" title="Bara för dem som fyller på." />
         <StateMessage
           kind="denied"
           message="Läsare kan se lagret men inte registrera påfyllningar."
@@ -49,14 +44,10 @@ export default async function RefillPage() {
         eyebrow="Påfyllning"
         title={
           today.length === 0
-            ? "Ingen påfyllning registrerad i dag."
+            ? "Inget påfyllt i dag."
             : `${formatInt(packsToday)}${NBSP}pack påfyllda i dag.`
         }
-        aside={
-          last
-            ? `Senast ${formatWhen(last.occurredAt, ctx.timeZone, now)}.`
-            : "Fungerar utan uppkoppling."
-        }
+        aside={last ? `Senast ${formatWhen(last.occurredAt, ctx.timeZone, now)}.` : undefined}
       />
       {data.machines.length === 0 ? (
         <StateMessage kind="empty" message="Inga automater att fylla på." />

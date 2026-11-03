@@ -64,12 +64,14 @@ export function driftHeadline(health: readonly MachineHealth[]): { title: string
     return {
       title:
         ok === active.length
-          ? `Alla ${formatInt(active.length)} automater är i drift.`
+          ? active.length === 1
+            ? "Automaten är i drift."
+            : `Alla ${formatInt(active.length)} automater är i drift.`
           : `${formatInt(ok)} av ${plural(active.length, "automat", "automater")} i drift.`,
       aside:
         unknown > 0
-          ? `${plural(unknown, "automat har", "automater har")} för lite historik för att bedömas.`
-          : "Ingen avvikande tystnad i försäljningen.",
+          ? `${plural(unknown, "automat", "automater")} för ny att bedöma.`
+          : "Alla säljer som vanligt.",
     };
   }
   const first = problems[0]!;

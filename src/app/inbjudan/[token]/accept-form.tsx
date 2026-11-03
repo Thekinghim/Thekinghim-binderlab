@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useActionState, useState, useTransition, type FormEvent } from "react";
+import { useActionState, useState, useTransition, type FormEvent, type ReactNode } from "react";
 
 import { FormError } from "@/app/logga-in/form-error";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,8 @@ const MIN_PASSWORD = 12;
 /**
  * - accept: inloggad med inbjudans adress, ett klick.
  * - create: lokalt utan konto, välj lösenord (kontot skapas för inbjudans adress).
- * - link: Supabase-länk (token_hash); lösenord är valfritt för en ny användare.
+ * - link: Supabase-länk (sessionen i fragmentet eller token_hash); lösenord är
+ *   valfritt och ligger under "Välj lösenord".
  */
 export function AcceptForm({
   token,
@@ -26,6 +27,7 @@ export function AcceptForm({
   organizationName,
   tokenHash,
   linkType,
+  linkTokens,
   loginHref,
 }: {
   token: string;
@@ -33,6 +35,8 @@ export function AcceptForm({
   organizationName: string;
   tokenHash?: string;
   linkType?: string;
+  /** Sessionen från länkens fragment (Supabases standardmall). */
+  linkTokens?: { accessToken: string; refreshToken: string };
   loginHref?: string;
 }) {
   const [state, action, pending] = useActionState<AcceptState, FormData>(acceptInvitation, {});
@@ -61,23 +65,25 @@ export function AcceptForm({
       <input type="hidden" name="token" value={token} />
       {tokenHash ? <input type="hidden" name="token_hash" value={tokenHash} /> : null}
       {linkType ? <input type="hidden" name="type" value={linkType} /> : null}
-      {asksPassword ? (
+      {linkTokens ? (
         <>
+          <input type="hidden" name="access_token" value={linkTokens.accessToken} />
+          <input type="hidden" name="refresh_token" value={linkTokens.refreshToken} />
+        </>
+      ) : null}
+      {asksPassword ? (
+        <PasswordFields optional={!passwordRequired}>
           <Input
-            label={passwordRequired ? "Välj lösenord" : "Välj lösenord (valfritt)"}
+            label="Välj lösenord"
             name="password"
             type="password"
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required={passwordRequired}
-            hint={
-              passwordRequired
-                ? `Minst ${MIN_PASSWORD} tecken.`
-                : `Minst ${MIN_PASSWORD} tecken. Utan lösenord loggar du in med länk i mejlet.`
-            }
+            hint={`Minst ${MIN_PASSWORD} tecken.`}
             error={shown.field === "password" ? shown.error : undefined}
-            autoFocus
+            autoFocus={passwordRequired}
           />
           <Input
             label="Upprepa lösenord"
@@ -89,10 +95,10 @@ export function AcceptForm({
             required={passwordRequired}
             error={shown.field === "confirm" ? shown.error : undefined}
           />
-        </>
+        </PasswordFields>
       ) : null}
       <FormError message={shown.field ? undefined : shown.error} />
-      <Button type="submit" variant="primary" loading={pending} className="w-full">
+      <Button type="submit" variant="primary" loading={pending} className="h-12 w-full text-lg">
         {mode === "create" ? "Skapa konto och gå med" : `Gå med i ${organizationName}`}
       </Button>
       {loginHref ? (
@@ -107,6 +113,19 @@ export function AcceptForm({
         </p>
       ) : null}
     </form>
+  );
+}
+
+/** Valfritt lösenord ligger hopfällt: ett steg, en knapp. Krävs det visas fälten direkt. */
+function PasswordFields({ optional, children }: { optional: boolean; children: ReactNode }) {
+  if (!optional) return <>{children}</>;
+  return (
+    <details className="group flex flex-col">
+      <summary className="cursor-pointer text-sm text-muted hover:text-fg">
+        Välj lösenord (valfritt)
+      </summary>
+      <div className="mt-4 flex flex-col gap-5">{children}</div>
+    </details>
   );
 }
 
@@ -138,8 +157,8 @@ export function SwitchAccount({
   return (
     <div className="flex flex-col gap-5">
       <p className="text-base text-muted">
-        Du är inloggad som <span className="text-fg">{currentEmail}</span>. Inbjudan gäller{" "}
-        <span className="text-fg">{invitedEmail}</span>. Logga ut och fortsätt med den adressen.
+        Inloggad som <span className="text-fg">{currentEmail}</span>. Inbjudan gäller{" "}
+        <span className="text-fg">{invitedEmail}</span>.
       </p>
       <Button
         variant="primary"

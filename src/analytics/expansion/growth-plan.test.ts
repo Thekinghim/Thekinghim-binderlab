@@ -6,8 +6,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   defaultPerMonth,
+  GROWTH_PLAN_DEFAULTS,
   growthPlan,
   helpFromCount,
+  MAX_REFILL_MINUTES_PER_MACHINE_WEEK,
   paybackTenthsOf,
   refillMinutesFromMonthly,
   type GrowthMachine,
@@ -195,5 +197,36 @@ describe("hjälpfunktioner", () => {
     // 600 min/mån, 3 automater: 600 × 12 / 156 = 46,15 → 46.
     expect(refillMinutesFromMonthly(600, 3)).toBe(46);
     expect(refillMinutesFromMonthly(600, 0)).toBeNull();
+  });
+  it("rimlighetskontroll: över 10 h per automat och vecka används inte (250 h/mån, 1 automat)", () => {
+    // Ägarens inmatning: 250 h = 15 000 min i månaden för 1 automat → 3 462 min/vecka.
+    const measured = refillMinutesFromMonthly(15_000, 1)!;
+    expect(measured).toBe(3_462);
+    const p = plan({
+      settings: { ...SETTINGS, refillMinutesPerMachineWeek: null },
+      fallbacks: { machinePriceOre: null, refillMinutesPerMachineWeek: measured },
+    });
+    expect(p.refillIgnored).toEqual({ minutes: 3_462, source: "data" });
+    expect(p.refillSource).toBe("default");
+    expect(p.refillMinutesPerMachineWeek).toBe(GROWTH_PLAN_DEFAULTS.refillMinutesPerMachineWeek);
+    // Vid målet 5 automater × 45 min / 2 personer = 113 min, inte ~577 h.
+    expect(p.atTarget.minutesPerPersonWeek).toBe(113);
+  });
+  it("rimlighetskontroll: ett sparat orimligt värde ger mätningen eller förvalet", () => {
+    const p = plan({
+      settings: {
+        ...SETTINGS,
+        refillMinutesPerMachineWeek: MAX_REFILL_MINUTES_PER_MACHINE_WEEK + 1,
+      },
+      fallbacks: { machinePriceOre: null, refillMinutesPerMachineWeek: 30 },
+    });
+    expect(p.refillIgnored).toEqual({ minutes: 601, source: "saved" });
+    expect(p.refillSource).toBe("data");
+    expect(p.refillMinutesPerMachineWeek).toBe(30);
+    const ok = plan({
+      settings: { ...SETTINGS, refillMinutesPerMachineWeek: MAX_REFILL_MINUTES_PER_MACHINE_WEEK },
+    });
+    expect(ok.refillIgnored).toBeNull();
+    expect(ok.refillMinutesPerMachineWeek).toBe(600);
   });
 });

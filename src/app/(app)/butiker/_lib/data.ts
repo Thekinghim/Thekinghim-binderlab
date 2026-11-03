@@ -20,7 +20,9 @@ import {
   type Period,
   type ProfitabilityInput,
 } from "@/domain";
+import { storeContractState, storeContractStates } from "@/analytics/contracts/signed";
 import { isUuid } from "@/server/access";
+import { loadSignableContractsFor } from "@/server/contracts";
 import {
   loadDomainInput,
   loadMasterData,
@@ -161,6 +163,8 @@ export interface StoreListData {
   readonly ignoredMachine: string | null;
   readonly flagged: number;
   readonly examples: number;
+  /** Butiker (inte arkiverade) med signerat kontrakt. */
+  readonly signed: number;
 }
 
 export async function loadStoreList(searchParams: SearchParamsInput): Promise<StoreListData> {
@@ -168,13 +172,14 @@ export async function loadStoreList(searchParams: SearchParamsInput): Promise<St
   const p = await loadPeriod(searchParams);
   const viewer = await currentViewer();
   const month = monthToDate(ctx.today);
-  const [input, monthInput, master, stores, agreements, recipients] = await Promise.all([
+  const [input, monthInput, master, stores, agreements, recipients, contracts] = await Promise.all([
     loadDomainInput({ period: p.period, compare: p.compare }),
     loadDomainInput({ period: month }),
     loadMasterData(),
     loadStores(),
     loadAgreementsFor(viewer),
     loadAllRecipientsFor(viewer),
+    loadSignableContractsFor(viewer),
   ]);
   const previousInput = comparable(p, input.previous);
   const current = profitability(input.current, "store");
@@ -194,6 +199,11 @@ export async function loadStoreList(searchParams: SearchParamsInput): Promise<St
     previous,
     earnedMonth: earned,
     recipients,
+    contracts: storeContractStates(
+      contracts,
+      shown.map((s) => s.id),
+      ctx.today,
+    ),
     today: ctx.today,
     query: periodQuery(searchParams),
   });
@@ -213,6 +223,7 @@ export async function loadStoreList(searchParams: SearchParamsInput): Promise<St
       : null,
     flagged: rows.filter((r) => r.issue !== null).length,
     examples: rows.filter((r) => r.isExample && !r.archived).length,
+    signed: rows.filter((r) => !r.archived && r.contract === "signed").length,
   };
 }
 
@@ -235,6 +246,8 @@ export interface StoreDetailData {
   readonly machines: StoreMachineRow[];
   readonly recipients: RecipientView[];
   readonly issues: StoreIssue[];
+  /** Kontraktet: signerat, osignerat eller saknas. */
+  readonly contract: "signed" | "unsigned" | "missing";
   /** Periodens query-sträng för länkar. */
   readonly query: string;
 }
@@ -252,15 +265,18 @@ export async function loadStoreDetail(
 
   const p = await loadPeriod(searchParams);
   const month = monthToDate(ctx.today);
-  const [input, orgInput, monthInput, master, agreements, recipients] = await Promise.all([
-    loadDomainInput({ period: p.period, compare: p.compare, storeId }),
-    // Organisationens order (cachat per förfrågan): bara för dagarna med data.
-    loadDomainInput({ period: p.period }),
-    loadDomainInput({ period: month, storeId }),
-    loadMasterData(),
-    loadAgreementsFor(viewer),
-    loadRecipientsFor(viewer, storeId),
-  ]);
+  const [input, orgInput, monthInput, master, agreements, recipients, contracts] =
+    await Promise.all([
+      loadDomainInput({ period: p.period, compare: p.compare, storeId }),
+      // Organisationens order (cachat per förfrågan): bara för dagarna med data.
+      loadDomainInput({ period: p.period }),
+      loadDomainInput({ period: month, storeId }),
+      loadMasterData(),
+      loadAgreementsFor(viewer),
+      loadRecipientsFor(viewer, storeId),
+      loadSignableContractsFor(viewer),
+    ]);
+  const contract = storeContractState(contracts, storeId, ctx.today);
   const previousInput = comparable(p, input.previous);
   const byStore = profitability(input.current, "store");
   const prevByStore = previousInput ? profitability(previousInput, "store") : null;
@@ -359,7 +375,9 @@ export async function loadStoreDetail(
       recipients,
       archived: store.archived,
       today: ctx.today,
+      contract,
     }),
+    contract,
     query,
   };
 }

@@ -7,7 +7,7 @@
  * ('2026-11-01T16:17:00Z' eller '…+01:00'), aldrig lokal tid utan zon.
  */
 
-import type { Contract } from "@/analytics/contracts/types";
+import type { SignableContract } from "@/analytics/contracts/signed";
 import type { EconomicsSources, IsoDate, OrderLine, Period } from "@/domain";
 import type { SlotPeriod } from "./assortment";
 
@@ -274,8 +274,11 @@ export interface TodoInput extends EconomicsSources {
   readonly reportDeliveries: readonly ReportDeliveryRef[];
   /** Rapportutkast som inte godkänts (senaste versionen). Saknas = inga. */
   readonly reportDrafts?: readonly ReportDraftRef[];
-  /** Butiksavtal (inte arkiverade), för påminnelsen före sista uppsägningsdag. */
-  readonly contracts?: readonly Contract[];
+  /**
+   * Butiksavtal (inte arkiverade), för påminnelsen före sista uppsägningsdag och för
+   * butiker med automat utan signerat kontrakt (mall och signering, se signed.ts).
+   */
+  readonly contracts?: readonly SignableContract[];
   /** Obetalda månadsavräkningar till butikerna. Saknas = inga. */
   readonly unpaidSettlements?: readonly SettlementRef[];
   /** Öppna larm. Bara okvitterade larm om automater och importer blir punkter. */

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useId, useRef, useState, useTransition, type FormEvent } from "react";
+import { useId, useRef, useState, useTransition, type CSSProperties, type FormEvent } from "react";
 
 import { FormError } from "@/app/logga-in/form-error";
 import { Button } from "@/components/ui/button";
@@ -117,7 +117,7 @@ export function TodoBoard({
       setUndone((prev) => new Set(prev).add(key));
       toast({
         title: "Ångrad",
-        description: `${title} Punkten visas igen om orsaken finns kvar.`,
+        description: title,
         tone: "ok",
       });
     });
@@ -145,7 +145,7 @@ export function TodoBoard({
       }
       toast({
         title: "Klar",
-        description: `${item.title} Kommer tillbaka om läget ändras.`,
+        description: item.title,
         tone: "ok",
         duration: UNDO_TOAST_MS,
         action: { label: "Ångra", onClick: () => undo(item.key, item.title) },
@@ -176,20 +176,14 @@ export function TodoBoard({
           <section
             key={g.level}
             aria-labelledby={`${g.id}-rubrik`}
-            className="scroll-mt-28 border-t border-line pt-10 pb-12 md:pt-12"
+            className="scroll-mt-28 border-t border-line pt-8 pb-10 md:pt-10"
           >
-            <SectionHeader
-              id={`${g.id}-rubrik`}
-              index={g.index}
-              eyebrow={g.eyebrow}
-              title={g.title}
-              aside={g.aside}
-              meta={[{ label: "Punkter", value: formatInt(items.length) }]}
-            />
-            <ol className="mt-8 flex flex-col md:mt-10">
-              {items.map((item) => (
+            <SectionHeader id={`${g.id}-rubrik`} title={g.title} aside={g.aside} />
+            <ol className="mt-6 flex flex-col md:mt-8">
+              {items.map((item, i) => (
                 <TodoRow
                   key={item.key}
+                  index={i}
                   item={item}
                   canDismiss={canDismiss}
                   onDismiss={() => dismiss(item)}
@@ -239,8 +233,7 @@ function DismissedList({
         </span>
       </button>
       <div id={listId} hidden={!open} className="mt-4">
-        <p className="max-w-2xl text-sm text-muted">Klart de senaste 14 dagarna, och av vem.</p>
-        <ul className="mt-4 flex flex-col">
+        <ul className="flex flex-col">
           {items.map((d) => (
             <li
               key={d.key}
@@ -270,11 +263,14 @@ function DismissedList({
 
 function TodoRow({
   item,
+  index,
   canDismiss,
   onDismiss,
   people,
 }: {
   item: TodoView;
+  /** Plats i gruppen: raderna glider in i tur och ordning. */
+  index: number;
   canDismiss: boolean;
   onDismiss: () => void;
   people: readonly PersonOption[];
@@ -285,7 +281,8 @@ function TodoRow({
       id={rowId(item.key)}
       tabIndex={-1}
       aria-labelledby={titleId}
-      className="grid min-w-0 grid-cols-1 gap-x-8 gap-y-4 border-t border-line py-5 outline-offset-2 first:border-t-0 lg:grid-cols-12"
+      style={{ "--i": Math.min(index, 8) + 2 } as CSSProperties}
+      className="rise grid min-w-0 grid-cols-1 gap-x-8 gap-y-4 border-t border-line py-5 outline-offset-2 first:border-t-0 lg:grid-cols-12"
     >
       <div className="flex min-w-0 flex-col gap-2 lg:col-span-6">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -295,10 +292,9 @@ function TodoRow({
         <h3 id={titleId} className="text-md font-medium text-balance hyphens-none text-fg">
           {item.title}
         </h3>
-        <p className="max-w-2xl text-sm text-muted">{item.detail}</p>
-        <details className="group mt-1 max-w-2xl">
+        <details className="group max-w-2xl">
           <summary
-            aria-label={`Underlag: ${item.title}`}
+            aria-label={`Varför: ${item.title}`}
             className="meta inline-flex cursor-pointer list-none items-center gap-1 rounded-xs text-subtle hover:text-fg [&::-webkit-details-marker]:hidden"
           >
             <Icon
@@ -306,10 +302,11 @@ function TodoRow({
               size={12}
               className="shrink-0 transition-transform duration-fast group-open:rotate-90"
             />
-            Underlag
+            Varför
           </summary>
           <div className="mt-3 flex flex-col gap-3 border-t border-line pt-3">
-            <p className="text-sm text-muted">{item.rule}</p>
+            {item.detail ? <p className="text-sm text-muted">{item.detail}</p> : null}
+            <p className="text-sm text-subtle">{item.rule}</p>
             {item.evidence.length > 0 ? (
               <dl className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
                 {item.evidence.map((f) => (
@@ -446,8 +443,8 @@ function RefillDialog({ action }: { action: RefillActionView }) {
         return;
       }
       toast({
-        title: "Påfyllning registrerad",
-        description: `${formatInt(n)}${NBSP}pack ${action.titleName} i ${action.machineName}.`,
+        title: `Klart! ${formatInt(n)}${NBSP}pack påfyllda`,
+        description: `${action.titleName} i ${action.machineName}.`,
         tone: "ok",
       });
       close();
@@ -486,7 +483,7 @@ function RefillDialog({ action }: { action: RefillActionView }) {
             error={quantityError}
             hint={
               action.unitsInWindow !== null && action.windowDays !== null
-                ? `Sålt de senaste ${formatInt(action.windowDays)} dagarna: ${formatInt(action.unitsInWindow)}${NBSP}pack.${capped ? " Förslaget är begränsat av vårt lager." : ""}${after !== null && after > 0 ? ` Efter påfyllningen: ${formatInt(after)}${NBSP}pack i automaten.` : ""}`
+                ? `Sålt ${formatInt(action.windowDays)}${NBSP}d: ${formatInt(action.unitsInWindow)}${NBSP}pack.${capped ? " Mer finns inte i lagret." : ""}${after !== null && after > 0 ? ` Efter: ${formatInt(after)}${NBSP}pack.` : ""}`
                 : undefined
             }
             required
@@ -511,8 +508,8 @@ function RefillDialog({ action }: { action: RefillActionView }) {
               <span className="text-base text-fg">Ta packen från vårt lager</span>
               <span className="text-sm text-muted">
                 {hasWarehouse
-                  ? `${formatInt(action.warehouseOnHand ?? 0)}${NBSP}pack ${action.titleName} i vårt lager. Lika många dras ur automatens lager.`
-                  : "Organisationen har inget eget lager."}
+                  ? `${formatInt(action.warehouseOnHand ?? 0)}${NBSP}pack kvar hemma.`
+                  : "Inget eget lager."}
               </span>
             </span>
           </label>
@@ -522,7 +519,7 @@ function RefillDialog({ action }: { action: RefillActionView }) {
               Avbryt
             </Button>
             <Button type="submit" variant="primary" loading={pending}>
-              Registrera påfyllning
+              Spara
             </Button>
           </div>
         </form>

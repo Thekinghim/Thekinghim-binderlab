@@ -19,6 +19,8 @@
  *   köps en månad ger vinst från månaden efter. Kassan börjar på 0 och är Σ vinst
  *   − Σ köp; största minus är vad som behöver lånas eller skjutas till.
  * - Med vinsten (utan lån): varje månad köps så många automater som kassan räcker till.
+ * - Påfyllningstid över 10 h per automat och vecka (sparad eller mätt) används inte
+ *   (`refillIgnored`); då gäller nästa källa eller förvalet 45 min.
  * - Arbetstid = automater × minuter per automat och vecka, delat på personerna. Hjälp
  *   behövs från den automat där tiden per person blir mer än personernas tid.
  */
@@ -28,6 +30,9 @@ import { addMonths, roundHalfUp, type IsoMonth } from "@/domain";
 /** Snittmånadens dagar som bråk: 365,25 / 12 = 1461 / 48. */
 const MONTH_DAYS_NUM = 1461;
 const MONTH_DAYS_DEN = 48;
+
+/** Över så många minuter påfyllning per automat och vecka (10 h) används värdet inte. */
+export const MAX_REFILL_MINUTES_PER_MACHINE_WEEK = 600;
 
 /** Längsta plan (månader) innan vi ger upp om målet. */
 export const GROWTH_PLAN_MAX_MONTHS = 120;
@@ -137,6 +142,11 @@ export interface GrowthPlan {
   readonly perMonthSource: Source;
   readonly refillMinutesPerMachineWeek: number;
   readonly refillSource: Source;
+  /**
+   * Ett värde för påfyllningen som inte användes för att det är orimligt högt (över
+   * MAX_REFILL_MINUTES_PER_MACHINE_WEEK): det sparade valet eller mätningen. null = inget.
+   */
+  readonly refillIgnored: { readonly minutes: number; readonly source: "saved" | "data" } | null;
   readonly people: number;
   readonly hoursPerPersonWeek: number;
   /** Vid målet. */
@@ -249,16 +259,23 @@ export function growthPlan(input: GrowthPlanInput): GrowthPlan {
     1,
     s.perMonth ?? defaultPerMonth(toAdd, GROWTH_PLAN_DEFAULTS.monthsToTarget),
   );
+  // Rimlighetskontroll: mer än 10 h per automat och vecka är nästan alltid ett felinmatat
+  // värde (t.ex. minuter i stället för timmar). Det används inte; planen säger till.
+  const plausible = (v: number | null) =>
+    v !== null && v > 0 && v <= MAX_REFILL_MINUTES_PER_MACHINE_WEEK ? v : null;
+  const savedRefill = plausible(s.refillMinutesPerMachineWeek);
+  const dataRefill = plausible(input.fallbacks.refillMinutesPerMachineWeek);
+  const refillIgnored: GrowthPlan["refillIgnored"] =
+    s.refillMinutesPerMachineWeek !== null && savedRefill === null
+      ? { minutes: s.refillMinutesPerMachineWeek, source: "saved" }
+      : savedRefill === null &&
+          input.fallbacks.refillMinutesPerMachineWeek !== null &&
+          dataRefill === null
+        ? { minutes: input.fallbacks.refillMinutesPerMachineWeek, source: "data" }
+        : null;
   const refillSource: Source =
-    s.refillMinutesPerMachineWeek !== null
-      ? "saved"
-      : input.fallbacks.refillMinutesPerMachineWeek !== null
-        ? "data"
-        : "default";
-  const refill =
-    s.refillMinutesPerMachineWeek ??
-    input.fallbacks.refillMinutesPerMachineWeek ??
-    GROWTH_PLAN_DEFAULTS.refillMinutesPerMachineWeek;
+    savedRefill !== null ? "saved" : dataRefill !== null ? "data" : "default";
+  const refill = savedRefill ?? dataRefill ?? GROWTH_PLAN_DEFAULTS.refillMinutesPerMachineWeek;
   const people = Math.max(1, s.people);
   const hours = Math.max(1, s.hoursPerPersonWeek);
   const capacity = people * hours * 60;
@@ -351,6 +368,7 @@ export function growthPlan(input: GrowthPlanInput): GrowthPlan {
     perMonthSource,
     refillMinutesPerMachineWeek: refill,
     refillSource,
+    refillIgnored,
     people,
     hoursPerPersonWeek: hours,
     atTarget: {

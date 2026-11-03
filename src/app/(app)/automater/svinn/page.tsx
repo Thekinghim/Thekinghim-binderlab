@@ -100,7 +100,7 @@ export default async function SvinnPage({
               <span aria-hidden className="transition-transform group-open:rotate-90">
                 ›
               </span>
-              Stämmer ({formatInt(report.ok.length)})
+              {report.ok.some(compared) ? "Stämmer" : "Ej jämfört"} ({formatInt(report.ok.length)})
             </summary>
             <div className="mt-6 flex flex-col gap-6">
               {report.ok.map((m, i) => (
@@ -158,8 +158,11 @@ function MachineCard({
             </StatusTag>
             {value ? <span className="tnum text-base text-fg">{value}</span> : null}
           </span>
-        ) : (
+        ) : compared(machine) ? (
           <StatusTag status="ok">Stämmer</StatusTag>
+        ) : (
+          // Inget saldo från Awish att jämföra med: påstå inte att det stämmer.
+          <StatusTag status="neutral">Ej jämfört</StatusTag>
         )}
       </header>
       <div className="overflow-x-auto">
@@ -192,6 +195,11 @@ function MachineCard({
       </div>
     </article>
   );
+}
+
+/** Minst en rad har ett saldo att jämföra med. */
+function compared(m: ShrinkageMachine): boolean {
+  return m.lines.some((l) => l.state !== "unknown");
 }
 
 function missingText(l: ShrinkageLine): string {

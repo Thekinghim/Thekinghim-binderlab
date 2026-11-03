@@ -292,8 +292,7 @@ async function FreePacksView({
         </h1>
         <p className="text-base text-muted">
           {kr(data.month.costOre)} till inköpspris
-          {data.month.unpriced > 0 ? ` · ${formatInt(data.month.unpriced)} utan pris` : ""}. Räknas
-          i Lönsamhet.
+          {data.month.unpriced > 0 ? ` · ${formatInt(data.month.unpriced)} utan pris` : ""}.
         </p>
         {!data.connected ? <NotConnected /> : null}
         {data.canCreate && data.connected ? (

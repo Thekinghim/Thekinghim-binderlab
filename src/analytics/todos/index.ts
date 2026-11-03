@@ -11,6 +11,7 @@ import { alertTodos } from "./alerts";
 import { createTodoContext, sortTodos } from "./context";
 import { contractTodos } from "./contracts";
 import { duplicateTitleTodos } from "./duplicates";
+import { missingContractTodos } from "./missing-contract";
 import { missingPriceTodos } from "./missing-price";
 import { refillTodos } from "./refill";
 import { reportReviewTodos } from "./report-review";
@@ -42,6 +43,7 @@ export function computeTodos(input: TodoInput, now: Date | string | number): Tod
     ...reportTodos(ctx),
     ...settlementTodos(ctx),
     ...contractTodos(ctx),
+    ...missingContractTodos(ctx),
     ...missingPriceTodos(ctx),
     ...duplicateTitleTodos(ctx),
   ]);
@@ -74,6 +76,7 @@ export {
 export { mergeProposals } from "./duplicates";
 export { ACTION_ALERT_KINDS, alertLink } from "./alerts";
 export { contractLink, CONTRACT_NOW_DAYS, CONTRACT_SOON_DAYS } from "./contracts";
+export { createContractLink, storeContractLink } from "./missing-contract";
 export { LOST_REVENUE_FIGURE, prioritizeByLostSales } from "./lost-sales";
 export { reportDeadline } from "./reports";
 export { reviewLink } from "./report-review";

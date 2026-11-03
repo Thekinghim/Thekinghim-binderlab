@@ -10,6 +10,8 @@ import type { PrognosData, PurchaseOrderRecord } from "@/server/purchasing/types
 
 import { evidenceView, figureText } from "./evidence";
 import {
+  packQtyOf,
+  planHeading,
   buildPageModel,
   codesUnbroken,
   krRangeText,
@@ -399,7 +401,7 @@ describe("buildPageModel", () => {
     expect(line.orderQty).toBeGreaterThanOrEqual(24);
     // T2 säljer men saknar leverantör.
     expect(m.plan.counts["no-supplier"]).toBe(1);
-    expect(m.plan.heading.title).toMatch(/^1 titel att beställa/);
+    expect(m.plan.heading.title).toMatch(/^Beställ 1\u00a0titel för ca/);
     expect(m.suppliers.heading.aside).toMatch(/saknar leverantör/);
   });
 
@@ -467,7 +469,7 @@ describe("buildPageModel", () => {
     expect(p.drafts).toEqual([{ id: draft.id, number: "IO‑DDDDDD", packs: 24 }]);
     expect(p.lines[0]!.drafts).toEqual([{ number: "IO‑DDDDDD", quantity: 24 }]);
     expect(p.lines[0]!.evidence.figures.some((f) => f.key === "draftPacks")).toBe(true);
-    expect(m.plan.heading.aside).toMatch(/redan i ett utkast/);
+    expect(m.plan.heading.aside).toMatch(/i utkast/);
     // Utkastet är äldre än 7 dagar.
     const o = m.orders.open.find((x) => x.id === draft.id)!;
     expect(o.staleDraft).toBe(true);
@@ -554,6 +556,105 @@ describe("buildPageModel", () => {
     expect(line.lowData?.lowDataSeries).toBe(1);
     expect(line.lowData?.series).toBe(2);
     expect(Math.abs((line.lowData?.shareBp ?? 0) - 5_000)).toBeLessThanOrEqual(1);
-    expect(m.plan.heading.aside).toMatch(/lite data/);
+    expect(m.plan.heading.aside).toMatch(/Lite data/);
+  });
+
+  it("egna produkter packas: ur leverantörens förslag, under Att packa", () => {
+    const d = data();
+    const own: PrognosData = {
+      ...d,
+      titles: d.titles.map((t) => (t.id === T1 ? { ...t, ownProduct: true } : t)),
+    };
+    const base = buildPageModel(d, now);
+    const m = buildPageModel(own, now);
+    const line = m.plan.lines.find((l) => l.titleId === T1)!;
+    expect(line.own).toBe(true);
+    expect(line.statusLabel).toBe("Packa");
+    expect(line.packQty).toBe(base.plan.lines.find((l) => l.titleId === T1)!.orderQty);
+    expect(m.plan.packLines.map((l) => l.titleId)).toEqual([T1]);
+    // T1 var enda raden hos Grossisten: inget förslag kvar, inget att beställa.
+    expect(m.plan.proposals).toHaveLength(0);
+    expect(m.plan.totalOre).toBe(0);
+    expect(m.plan.counts.order).toBe(0);
+    expect(m.plan.heading.title.replace(/\u00a0/g, " ")).toBe(
+      `Packa ${line.packQty} st Pokémon 151.`,
+    );
+    expect(m.plan.heading.aside).toMatch(/utan leverantör/);
+  });
+
+  it("egen produkt utan leverantör packas efter behovet", () => {
+    const d = data([], { noItems: true });
+    const m = buildPageModel(
+      { ...d, titles: d.titles.map((t) => ({ ...t, ownProduct: true })) },
+      now,
+    );
+    expect(m.plan.counts["no-supplier"]).toBe(0);
+    expect(m.plan.packLines).toHaveLength(2);
+    for (const l of m.plan.packLines) expect(l.packQty).toBeGreaterThan(0);
+    expect(m.plan.heading.title.replace(/\u00a0/g, " ")).toBe("Packa 2 titlar.");
+  });
+});
+
+describe("egna produkter med Vårt lagers antal", () => {
+  it("packNeed styr antalet; utan behov räcker titeln och beställs aldrig", () => {
+    const d = data();
+    const own: PrognosData = { ...d, titles: d.titles.map((t) => ({ ...t, ownProduct: true })) };
+    const m = buildPageModel(own, new Date("2026-11-02T09:00:00Z"), {
+      packNeed: new Map([[T1, 29]]),
+    });
+    expect(m.plan.packLines.map((l) => [l.titleId, l.packQty])).toEqual([[T1, 29]]);
+    const t2 = m.plan.lines.find((l) => l.titleId === T2)!;
+    expect(t2).toMatchObject({ own: true, packQty: 0, statusLabel: "Räcker" });
+    expect(m.plan.counts).toMatchObject({ order: 0, "no-supplier": 0 });
+    expect(m.plan.proposals).toHaveLength(0);
+  });
+});
+
+describe("planHeading", () => {
+  const base = {
+    order: 0,
+    noSupplier: 0,
+    totalOre: 0,
+    lateCount: 0,
+    packLines: [] as { title: string; packQty: number }[],
+    lowDataOrder: 0,
+    draftTitles: 0,
+    empty: false,
+  };
+  const sp = (h: { title: string; aside: string }) => ({
+    title: h.title.replace(/\u00a0/g, " "),
+    aside: h.aside.replace(/\u00a0/g, " "),
+  });
+  it("beställ och packa i samma rubrik, kort", () => {
+    expect(
+      sp(
+        planHeading({
+          ...base,
+          order: 2,
+          totalOre: 110_000,
+          packLines: [{ title: "Mystery Pack", packQty: 24 }],
+          lateCount: 1,
+        }),
+      ),
+    ).toEqual({
+      title: "Beställ 2 titlar för ca 1 100 kr.",
+      aside: "Packa 24 st Mystery Pack. 1 titel hinner ta slut före leverans.",
+    });
+  });
+  it("inget att göra", () => {
+    expect(sp(planHeading(base))).toEqual({
+      title: "Inget att beställa.",
+      aside: "Lagret räcker.",
+    });
+    expect(sp(planHeading({ ...base, noSupplier: 3 }))).toEqual({
+      title: "3 titlar saknar leverantör.",
+      aside: "Lägg till leverantör.",
+    });
+    expect(sp(planHeading({ ...base, empty: true })).title).toBe("Inget att planera ännu.");
+  });
+  it("packQtyOf: förslaget, annars behovet", () => {
+    expect(packQtyOf({ status: "order", orderQty: 24, rawQty: 17 })).toBe(24);
+    expect(packQtyOf({ status: "no-supplier", orderQty: 0, rawQty: 17 })).toBe(17);
+    expect(packQtyOf({ status: "ok", orderQty: 0, rawQty: 0 })).toBe(0);
   });
 });

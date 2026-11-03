@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import type React from "react";
 
 import type { ContractReminder, ContractStatus, ExpiringCategory } from "@/analytics/contracts";
 import { Panel, PanelSection } from "@/components/ui/frame";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag, type Status } from "@/components/ui/status-tag";
+import { cn } from "@/lib/cn";
 import { formatDate, formatInt, formatPercent } from "@/lib/format";
 import {
   currentViewer,
@@ -14,16 +16,16 @@ import {
   type ContractRecord,
 } from "@/server/accounting";
 import {
-  CONTRACT_STATUS_LABEL,
   contractStatus,
   loadContractSetupFor,
   loadContractSignaturesFor,
   loadContractStatusesFor,
   type ContractStatus as TemplateStatus,
 } from "@/server/contracts";
-import { requireRoute } from "@/server/data/core";
+import { loadMasterData, requireRoute } from "@/server/data/core";
 
-import { EconomyKpis } from "../ekonomi/_components/bits";
+import { pickTab, ViewTabs } from "../automater/_components/view-tabs";
+import { PageHead } from "../butiker/_components/page-head";
 import { EvidenceDetails } from "../ekonomi/_components/evidence";
 import { isoToDate, periodText, plural, sek } from "../ekonomi/_lib/view";
 import { ContractArchive } from "./_components/contract-archive";
@@ -32,22 +34,22 @@ import { ContractFileUpload } from "./_components/contract-file";
 import { ContractNextStep } from "./_components/contract-status";
 import { CreateContract } from "./_components/create-contract";
 import { SignOnSite } from "./_components/sign-on-site";
+import { buildContractRows, contractHeadline, ROW_STATUS, type ContractRow } from "./_lib/model";
 import type { AgreementOption, ContractDraft } from "./_lib/types";
 
-export const metadata: Metadata = { title: "Avtal" };
+export const metadata: Metadata = { title: "Kontrakt" };
 
-/** Skapa avtal skriver ut PDF:en med Chromium i server action. */
+/** Skapa kontrakt skriver ut PDF:en med Chromium i server action. */
 export const maxDuration = 60;
 
-const TEMPLATE_STATUS: Record<TemplateStatus, Status> = {
-  draft: "neutral",
-  sent: "warning",
-  signed: "ok",
-};
+const TABS = [
+  { value: "lista", label: "Kontrakt" },
+  { value: "uppsagning", label: "Uppsägning" },
+  { value: "intakt", label: "Intäkt" },
+  { value: "arkiv", label: "Arkiv" },
+] as const;
 
-const SECTION = "flex scroll-mt-28 flex-col gap-10 border-t border-line py-12 md:gap-12 md:py-16";
-
-const STATUS: Record<ContractStatus, { status: Status; label: string }> = {
+const REMINDER: Record<ContractStatus, { status: Status; label: string }> = {
   "not-started": { status: "neutral", label: "Ej påbörjat" },
   "open-ended": { status: "ok", label: "Tills vidare" },
   scheduled: { status: "ok", label: "Gäller" },
@@ -60,10 +62,20 @@ const STATUS: Record<ContractStatus, { status: Status; label: string }> = {
 const CATEGORY: Record<ExpiringCategory, string> = {
   expiring: "Löper ut inom 12 mån",
   secure: "Längre eller tills vidare",
-  "no-contract": "Inget avtalsdokument",
+  "no-contract": "Inget kontrakt",
 };
 
-/** Avtalsdatum skrivs alltid med år (ett avtal löper ofta över årsskiftet). */
+const TONE: Record<ContractRow["status"], string> = {
+  missing: "border-signal-line text-signal-fg",
+  draft: "border-line-control text-fg",
+  sent: "border-line-control text-fg",
+  due: "border-line-control text-fg",
+  terminated: "border-dashed border-line-control text-muted",
+  upcoming: "border-up-line text-up",
+  signed: "border-up-line text-up",
+};
+
+/** Kontraktsdatum skrivs alltid med år (ett kontrakt löper ofta över årsskiftet). */
 function day(date: string): string {
   return formatDate(isoToDate(date), { year: "always" });
 }
@@ -112,27 +124,32 @@ function noticeText(c: ContractRecord): string {
   return parts.length > 0 ? parts.join(" och ") : "Ingen";
 }
 
+const link =
+  "inline-flex h-9 items-center gap-1.5 rounded-sm px-2.5 text-sm text-fg underline-offset-4 hover:underline";
+
 /**
- * Avtal: butiksavtal med villkor, ersättning, giltighet, uppsägningstid och avtalsfil.
- * Svarar först på hur mycket av intäkten som ligger på avtal som löper ut inom 12 månader.
- * Ägare, admin och läsare; ägare och admin ändrar.
+ * Kontrakt: "X av Y butiker har signerat kontrakt", stor knapp Skapa kontrakt och en lista
+ * Butik · villkor i klartext · status · PDF. Butik med automat utan signerat kontrakt är
+ * röd. Uppsägning, intäkt och arkiv ligger under egna flikar. Ägare, admin och läsare;
+ * ägare och admin ändrar.
  */
-export default async function AvtalPage({
+export default async function KontraktPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const ctx = await requireRoute("avtal");
   const sp = await searchParams;
-  const scoped = Boolean(sp.butik || sp.automat);
   const viewer = await currentViewer();
   const canEdit = ctx.canEdit;
-  const [data, statuses, setup, signatures] = await Promise.all([
+  const [data, statuses, setup, signatures, master] = await Promise.all([
     loadContractsFor(viewer, ctx.today),
     loadContractStatusesFor(viewer),
     canEdit ? loadContractSetupFor(viewer) : null,
     loadContractSignaturesFor(viewer),
+    loadMasterData(),
   ]);
+  const tab = pickTab(TABS, sp.vy);
   // ?skapa=store:{id} | lead:{id} (ett bart id räknas som butik).
   const skapaRaw = typeof sp.skapa === "string" ? sp.skapa : undefined;
   const skapa = skapaRaw && !skapaRaw.includes(":") ? `store:${skapaRaw}` : skapaRaw;
@@ -143,10 +160,10 @@ export default async function AvtalPage({
   };
   const o = data.overview;
   const storeName = new Map(data.stores.map((s) => [s.id, s.name]));
+  const contractById = new Map(data.contracts.map((c) => [c.id, c]));
   const reminderOf = new Map<string, ContractReminder>(
     data.reminders.reminders.map((r) => [r.contractId, r]),
   );
-  const active = data.contracts.filter((c) => !c.archived);
   const archivedContracts = data.contracts.filter((c) => c.archived);
   const stores = data.stores.filter((s) => !s.archived).map((s) => ({ id: s.id, name: s.name }));
   const agreementOptions: AgreementOption[] = data.agreements.map((a) => ({
@@ -157,435 +174,411 @@ export default async function AvtalPage({
     period: agreementPeriod(a),
   }));
   const due = data.reminders.due;
-  // Villkor (provision, vinstdelning, hyra) gäller även utan uppladdat avtalsdokument.
-  const currentTerms = data.agreements.filter(
-    (a) => a.validFrom <= ctx.today && (a.validTo === null || a.validTo >= ctx.today),
+  const withMachine = new Set(
+    master.machines.filter((m) => !m.archived && m.storeId).map((m) => m.storeId as string),
   );
-  const termStores = new Set(currentTerms.map((a) => a.storeId));
-  const looseTerms = currentTerms.filter((a) => a.contractId === null);
-  const coveredStores = new Set([...termStores, ...active.map((c) => c.storeId)]);
-  const withoutAny = stores.filter((st) => !coveredStores.has(st.id)).length;
-
-  const title = o
-    ? o.expiringShareBp === null
-      ? "Ingen intäkt de senaste 12 månaderna."
-      : `${formatPercent(o.expiringShareBp / 10_000)} av intäkten ligger på avtal som löper ut inom 12 månader.`
-    : "Avtalen kunde inte vägas mot intäkten.";
-  const aside = o
-    ? `${sek(o.expiringRevenueOre)} av ${sek(o.totalRevenueOre)} ${periodText(o.window)}${
-        o.noContractRevenueOre > 0
-          ? `; ${sek(o.noContractRevenueOre)} kommer från butiker utan avtalsdokument`
-          : ""
-      }.`
-    : (data.overviewError ?? undefined);
+  const list = buildContractRows({
+    stores,
+    contracts: data.contracts.map((c) => ({
+      id: c.id,
+      storeId: c.storeId,
+      validFrom: c.validFrom,
+      validTo: c.validTo,
+      noticeMonths: c.noticePeriodMonths,
+      noticeDays: c.noticePeriodDays,
+      renewalMonths: c.renewalMonths,
+      terminatedOn: c.terminatedOn,
+      template: statuses.get(c.id)?.template ?? null,
+      sentAt: statuses.get(c.id)?.sentAt ?? null,
+      signedAt: statuses.get(c.id)?.signedAt ?? null,
+      hasFile: c.hasFile,
+      archived: c.archived,
+    })),
+    agreements: data.agreements,
+    reminders: new Map(data.reminders.reminders.map((r) => [r.contractId, r.status])),
+    due: new Set(due.map((r) => r.contractId)),
+    withMachine,
+    today: ctx.today,
+  });
+  const missing = list.total - list.signed;
+  // Andra raden: nästa åtgärd (listan står redan med röda först), inte samma tal igen.
+  const firstAlert = missing > 0 ? (list.rows.find((r) => r.alert) ?? null) : null;
+  const firstOfStore = new Set<string>();
+  const rise = (i: number) => ({ "--i": i }) as React.CSSProperties;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col px-4 pt-8 md:px-8 md:pt-12">
-      <div className="rise flex flex-col gap-10 pb-12 md:gap-12 md:pb-16">
-        <SectionHeader
-          as="h1"
-          size="xl"
-          eyebrow="Avtal · 12 mån"
-          title={title}
-          aside={aside}
-          meta={[
-            { label: "Avtal", value: formatInt(active.length) },
-            { label: "Att åtgärda", value: formatInt(due.length) },
-            { label: "Butiker", value: formatInt(stores.length) },
-          ]}
-          actions={
-            canEdit && setup ? (
-              <CreateContract
-                options={setup.options}
-                today={ctx.today}
-                orgNumberMissing={setup.orgNumberMissing}
-                firstContract={firstContract}
-                initialTarget={skapa}
-                autoOpen={Boolean(skapa)}
-              />
-            ) : undefined
-          }
-        />
-        {scoped ? <p className="meta text-subtle">Alla butiker · filtret gäller inte här</p> : null}
-        {o && o.expiringShareBp !== null ? (
-          <EconomyKpis
-            headingLevel={2}
-            label={`Intäkt ${periodText(o.window)}`}
-            items={[
-              {
-                id: "share",
-                label: "Löper ut inom 12 mån",
-                value: o.expiringShareBp,
-                unit: "bp",
-                primary: true,
-              },
-              { id: "expiring", label: "Intäkt på dem", value: o.expiringRevenueOre, unit: "ore" },
-              {
-                id: "none",
-                label: "Utan avtalsdokument",
-                value: o.noContractShareBp,
-                unit: "bp",
-              },
-              {
-                id: "due",
-                label: "Att åtgärda",
-                value: due.length,
-                unit: "count",
-                alert: due.length > 0,
-                alertText: due.length > 0 ? "Säg upp eller förläng" : undefined,
-              },
-            ]}
-          />
-        ) : null}
+    <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-8 px-4 pt-8 pb-16 md:gap-10 md:px-8 md:pt-12">
+      <PageHead
+        eyebrow="Kontrakt"
+        title={contractHeadline(list.signed, list.total)}
+        tone={list.total === 0 ? undefined : missing === 0 ? "good" : "bad"}
+        aside={firstAlert ? `Först: ${firstAlert.storeName}.` : undefined}
+        actions={
+          canEdit && setup ? (
+            <CreateContract
+              key={skapa ?? "ny"}
+              options={setup.options}
+              operator={setup.operator}
+              today={ctx.today}
+              orgNumberMissing={setup.orgNumberMissing}
+              firstContract={firstContract}
+              initialTarget={skapa}
+              autoOpen={Boolean(skapa)}
+              large
+            />
+          ) : undefined
+        }
+      />
+
+      <div className="rise" style={rise(1)}>
+        <ViewTabs tabs={TABS} value={tab} basePath="/avtal" query="" label="Visa" />
       </div>
 
-      {data.overviewError ? <StateMessage kind="error" message={data.overviewError} /> : null}
-
-      {/* 01 Att åtgärda */}
-      <section
-        aria-labelledby="att-atgarda"
-        className={`rise ${SECTION}`}
-        style={{ "--i": 1 } as React.CSSProperties}
-      >
-        <SectionHeader
-          id="att-atgarda"
-          eyebrow="Påminnelser"
-          title={
-            due.length === 0
-              ? "Inget avtal behöver sägas upp eller förhandlas nu."
-              : `${plural(due.length, "avtal", "avtal")} behöver beslut före sista uppsägningsdag.`
-          }
-          aside={
-            due[0]?.term.noticeDeadline
-              ? `Närmast: ${storeName.get(due[0].storeId) ?? "butiken"}, sista dag ${day(due[0].term.noticeDeadline)}.`
-              : `${plural(active.length, "avtal", "avtal")} bevakas, påminnelse 90 dagar före sista uppsägningsdag.`
-          }
-        />
-        {due.length > 0 ? (
-          <ol className="flex flex-col">
-            {due.map((r) => (
-              <li
-                key={r.key}
-                className="flex flex-col gap-2 border-t border-line py-4 first:border-t-0 first:pt-0"
-              >
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <a
-                    href={`#avtal-${r.contractId}`}
-                    className="rounded-xs text-base text-fg hover:underline"
-                  >
-                    {r.title}
-                  </a>
-                  <StatusTag status={STATUS[r.status].status}>{STATUS[r.status].label}</StatusTag>
-                </div>
-                <p className="text-sm text-muted">{r.detail}</p>
-                <EvidenceDetails evidence={r.evidence} />
-              </li>
-            ))}
-          </ol>
+      <div key={tab} className="fade-in flex flex-col gap-8">
+        {tab === "lista" ? (
+          list.rows.length === 0 ? (
+            <StateMessage kind="empty" message="Inga butiker än." />
+          ) : (
+            <ul aria-label="Kontrakt per butik" className="flex flex-col gap-2">
+              {list.rows.map((row, i) => {
+                const anchor = !firstOfStore.has(row.storeId);
+                firstOfStore.add(row.storeId);
+                const c = row.contractId ? contractById.get(row.contractId) : undefined;
+                return (
+                  <ContractItem
+                    key={row.key}
+                    i={i}
+                    row={row}
+                    contract={c}
+                    anchor={anchor}
+                    canEdit={canEdit}
+                    template={c ? statusOf(c.id) : null}
+                    signedAt={c ? (statuses.get(c.id)?.signedAt ?? null) : null}
+                    signature={c ? (signatures.get(c.id) ?? null) : null}
+                    reminder={c ? (reminderOf.get(c.id) ?? null) : null}
+                    stores={stores}
+                    agreementOptions={agreementOptions}
+                    agreements={data.agreements}
+                  />
+                );
+              })}
+            </ul>
+          )
         ) : null}
-      </section>
 
-      {/* 02 Avtalen */}
-      <section
-        aria-labelledby="avtalen"
-        className={`rise ${SECTION}`}
-        style={{ "--i": 2 } as React.CSSProperties}
-      >
-        <SectionHeader
-          id="avtalen"
-          title={
-            active.length === 0
-              ? currentTerms.length === 0
-                ? "Inga avtal registrerade."
-                : `${plural(termStores.size, "butik", "butiker")} med villkor, inget avtalsdokument.`
-              : `${plural(active.length, "avtal", "avtal")}, ${plural(
-                  active.filter((c) => c.hasFile).length,
-                  "med fil",
-                  "med fil",
-                )}.`
-          }
-          aside={
-            withoutAny > 0
-              ? `${plural(withoutAny, "butik", "butiker")} saknar avtal i Binderlab.`
-              : active.length === 0
-                ? "Skapa avtalsdokumentet från villkoren."
-                : `${plural(active.filter((c) => !c.hasFile).length, "saknar", "saknar")} avtalsfil.`
-          }
-          actions={
-            canEdit && stores.length > 0 ? (
-              <ContractDialog
-                stores={stores}
-                agreements={agreementOptions}
-                trigger={{ label: "Registrera befintligt", variant: "ghost" }}
-              />
-            ) : undefined
-          }
-        />
-        {!data.fileStore.configured ? (
+        {tab === "lista" && canEdit && stores.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <ContractDialog
+              stores={stores}
+              agreements={agreementOptions}
+              trigger={{ label: "Registrera befintligt", variant: "ghost", size: "sm" }}
+            />
+          </div>
+        ) : null}
+        {tab === "lista" && !data.fileStore.configured ? (
           <StateMessage compact kind="not-configured" message={data.fileStore.detail} />
         ) : null}
-        {looseTerms.length > 0 ? (
-          <ul className="flex flex-col" aria-label="Villkor utan avtalsdokument">
-            {looseTerms.map((a) => (
-              <li
-                key={a.id}
-                className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-line py-4 first:border-t-0 first:pt-0"
-              >
-                <span className="min-w-0">
-                  <span className="block text-md text-fg">
-                    {storeName.get(a.storeId) ?? "Okänd butik"}
-                  </span>
-                  <span className="text-sm text-muted">
-                    {termsLabel(a)} · {agreementPeriod(a)}
-                  </span>
-                </span>
-                {canEdit ? (
-                  <Link
-                    href={`/avtal?skapa=store:${a.storeId}`}
-                    className="rounded-xs text-sm text-fg underline-offset-4 hover:underline"
+
+        {tab === "uppsagning" ? (
+          <section aria-labelledby="att-atgarda" className="flex flex-col gap-6">
+            <SectionHeader
+              id="att-atgarda"
+              size="md"
+              title={
+                due.length === 0
+                  ? "Inget att säga upp nu."
+                  : `${plural(due.length, "kontrakt", "kontrakt")} behöver beslut.`
+              }
+              aside={
+                due[0]?.term.noticeDeadline
+                  ? `Närmast: ${storeName.get(due[0].storeId) ?? "butiken"}, ${day(due[0].term.noticeDeadline)}.`
+                  : "Påminnelse 90 dagar innan."
+              }
+            />
+            {due.length > 0 ? (
+              <ol className="flex flex-col">
+                {due.map((r) => (
+                  <li
+                    key={r.key}
+                    className="flex flex-col gap-2 border-t border-line py-4 first:border-t-0 first:pt-0"
                   >
-                    Skapa avtal{"\u00a0"}→
-                  </Link>
-                ) : (
-                  <span className="meta text-subtle">Inget avtalsdokument</span>
-                )}
-              </li>
-            ))}
-          </ul>
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <a
+                        href={`/avtal#avtal-${r.contractId}`}
+                        className="rounded-xs text-base text-fg hover:underline"
+                      >
+                        {r.title}
+                      </a>
+                      <StatusTag status={REMINDER[r.status].status}>
+                        {REMINDER[r.status].label}
+                      </StatusTag>
+                    </div>
+                    <p className="text-sm text-muted">{r.detail}</p>
+                    <EvidenceDetails evidence={r.evidence} />
+                  </li>
+                ))}
+              </ol>
+            ) : null}
+          </section>
         ) : null}
-        {active.length === 0 ? (
-          looseTerms.length > 0 ? null : (
-            <StateMessage kind="empty" compact message="Inga avtal ännu." />
+
+        {tab === "intakt" ? (
+          o ? (
+            <section aria-labelledby="intakt-per-butik" className="flex flex-col gap-6">
+              <SectionHeader
+                id="intakt-per-butik"
+                size="md"
+                eyebrow={periodText(o.window)}
+                title={
+                  o.expiringShareBp === null
+                    ? "Ingen intäkt de senaste 12 månaderna."
+                    : `${formatPercent(o.expiringShareBp / 10_000)} av intäkten löper ut inom 12 mån.`
+                }
+                aside={`${sek(o.expiringRevenueOre)} av ${sek(o.totalRevenueOre)}.`}
+              />
+              <Panel>
+                <PanelSection label="Butiker" meta={formatInt(o.stores.length)}>
+                  <ul className="flex flex-col">
+                    {o.stores.map((row) => (
+                      <li
+                        key={row.storeId}
+                        className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 border-t border-line py-3 first:border-t-0 first:pt-0 sm:grid-cols-[minmax(0,1fr)_10rem_7rem_6rem]"
+                      >
+                        <span className="min-w-0 truncate text-fg">
+                          {storeName.get(row.storeId) ?? "Okänd butik"}
+                        </span>
+                        <span className="meta text-subtle sm:order-none">
+                          {CATEGORY[row.category]}
+                          {row.currentEnd ? ` · ${day(row.currentEnd)}` : ""}
+                        </span>
+                        <span className="tnum text-right text-fg">{sek(row.revenueOre)}</span>
+                        <span className="tnum text-right text-muted">
+                          {row.shareBp === null ? "–" : formatPercent(row.shareBp / 10_000)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </PanelSection>
+                <PanelSection label="Underlag">
+                  <EvidenceDetails evidence={o.evidence} />
+                </PanelSection>
+              </Panel>
+            </section>
+          ) : (
+            <StateMessage
+              kind="error"
+              message={data.overviewError ?? "Intäkten kunde inte räknas."}
+            />
           )
-        ) : (
-          <ul className="flex flex-col">
-            {active.map((c) => {
-              const r = reminderOf.get(c.id);
-              const terms = data.agreements.filter((a) => a.contractId === c.id);
-              const st = r ? STATUS[r.status] : null;
-              const tpl = statusOf(c.id);
-              return (
+        ) : null}
+
+        {tab === "arkiv" ? (
+          archivedContracts.length === 0 ? (
+            <StateMessage kind="empty" compact message="Inget arkiv." />
+          ) : (
+            <ul className="flex flex-col">
+              {archivedContracts.map((c) => (
                 <li
                   key={c.id}
-                  id={`avtal-${c.id}`}
-                  className="grid scroll-mt-28 grid-cols-1 gap-4 border-t border-line py-6 first:border-t-0 first:pt-0 lg:grid-cols-12"
+                  className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-line py-3 first:border-t-0 first:pt-0"
                 >
-                  <div className="flex flex-col gap-1 lg:col-span-4">
-                    <h3 className="text-md text-fg">{storeName.get(c.storeId) ?? "Okänd butik"}</h3>
-                    <p className="text-sm text-muted">{c.title ?? "Avtal"}</p>
-                    {st || tpl ? (
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        {tpl ? (
-                          <StatusTag status={TEMPLATE_STATUS[tpl]}>
-                            {CONTRACT_STATUS_LABEL[tpl]}
-                          </StatusTag>
-                        ) : null}
-                        {st ? <StatusTag status={st.status}>{st.label}</StatusTag> : null}
-                      </div>
-                    ) : null}
-                    {signatures.get(c.id) ? (
-                      <p className="meta pt-1 text-subtle">
-                        Signerat av {signatures.get(c.id)!.signerName}{" "}
-                        {formatDate(signatures.get(c.id)!.signedAt)}
-                      </p>
-                    ) : null}
-                  </div>
-                  <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm lg:col-span-6">
-                    <div className="flex flex-col gap-0.5">
-                      <dt className="label text-subtle">Gäller</dt>
-                      <dd className="text-fg">
-                        {day(c.validFrom)} –{" "}
-                        {r?.term.currentEnd ? day(r.term.currentEnd) : "tills vidare"}
-                      </dd>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <dt className="label text-subtle">Sista uppsägning</dt>
-                      <dd className="text-fg">
-                        {r?.term.noticeDeadline ? day(r.term.noticeDeadline) : "–"}
-                        <span className="meta block text-subtle">
-                          Uppsägningstid {noticeText(c).toLowerCase()}
-                        </span>
-                      </dd>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <dt className="label text-subtle">Förlängning</dt>
-                      <dd className="text-fg">
-                        {c.renewalMonths
-                          ? `${plural(c.renewalMonths, "månad", "månader")} i taget`
-                          : "Ingen"}
-                        {c.terminatedOn ? (
-                          <span className="meta block text-subtle">
-                            Uppsagt {day(c.terminatedOn)}
-                          </span>
-                        ) : null}
-                      </dd>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <dt className="label text-subtle">Ersättning</dt>
-                      <dd className="text-fg">
-                        {terms.length === 0
-                          ? "Inga villkor kopplade"
-                          : terms.map((a) => (
-                              <span key={a.id} className="block">
-                                {termsLabel(a)}
-                                <span className="meta block text-subtle">{agreementPeriod(a)}</span>
-                              </span>
-                            ))}
-                      </dd>
-                    </div>
-                    {c.terms ? (
-                      <div className="col-span-2 flex flex-col gap-0.5">
-                        <dt className="label text-subtle">Villkor</dt>
-                        <dd className="whitespace-pre-line text-muted">{c.terms}</dd>
-                      </div>
-                    ) : null}
-                  </dl>
-                  <div className="flex flex-wrap items-start gap-2 lg:col-span-2 lg:flex-col lg:items-end">
-                    {c.hasFile && c.fileName ? (
-                      <Link
-                        href={`/avtal/${c.id}/fil`}
-                        prefetch={false}
-                        className="inline-flex h-7 max-w-full items-center truncate rounded-xs px-2.5 text-sm text-fg underline-offset-4 hover:underline"
-                        title={c.fileName}
-                      >
-                        {c.fileName}
-                      </Link>
-                    ) : tpl ? (
-                      <Link
-                        href={`/avtal/${c.id}/mall`}
-                        prefetch={false}
-                        target="_blank"
-                        className="inline-flex h-7 items-center rounded-xs px-2.5 text-sm text-fg underline-offset-4 hover:underline"
-                      >
-                        Avtalet (skriv ut)
-                      </Link>
-                    ) : (
-                      <span className="meta text-subtle">Ingen fil</span>
-                    )}
-                    {signatures.get(c.id) ? (
-                      <Link
-                        href={`/avtal/${c.id}/signerad`}
-                        prefetch={false}
-                        className="inline-flex h-7 items-center rounded-xs px-2.5 text-sm text-fg underline-offset-4 hover:underline"
-                      >
-                        Signerat avtal (PDF)
-                      </Link>
-                    ) : null}
-                    {canEdit &&
-                    !statuses.get(c.id)?.signedAt &&
-                    !c.terminatedOn &&
-                    (tpl || c.fileContentType === "application/pdf") ? (
-                      <SignOnSite
-                        contractId={c.id}
-                        storeName={storeName.get(c.storeId) ?? "butiken"}
-                      />
-                    ) : null}
-                    {canEdit ? (
-                      <>
-                        {tpl && tpl !== "signed" ? (
-                          <ContractNextStep contractId={c.id} status={tpl} hasFile={c.hasFile} />
-                        ) : (
-                          <ContractFileUpload contractId={c.id} hasFile={c.hasFile} />
-                        )}
-                        <ContractDialog
-                          stores={stores}
-                          agreements={agreementOptions}
-                          initial={draftOf(c, data.agreements)}
-                          trigger={{ label: "Ändra", variant: "ghost", size: "sm" }}
-                        />
-                        <ContractArchive
-                          id={c.id}
-                          archived={false}
-                          label={`${storeName.get(c.storeId) ?? "Okänd butik"}: ${c.title ?? "Avtal"}`}
-                        />
-                      </>
-                    ) : null}
-                  </div>
+                  <span className="min-w-0 text-sm text-muted">
+                    <span className="text-fg">{storeName.get(c.storeId) ?? "Okänd butik"}</span>
+                    {" · "}
+                    {day(c.validFrom)} – {c.validTo ? day(c.validTo) : "tills vidare"}
+                  </span>
+                  {canEdit ? (
+                    <ContractArchive
+                      id={c.id}
+                      archived
+                      label={`${storeName.get(c.storeId) ?? "Okänd butik"}: ${c.title ?? "Kontrakt"}`}
+                    />
+                  ) : null}
                 </li>
-              );
-            })}
-          </ul>
-        )}
-        {archivedContracts.length > 0 ? (
-          <Panel>
-            <PanelSection label="Arkiverade avtal" meta={formatInt(archivedContracts.length)}>
-              <ul className="flex flex-col">
-                {archivedContracts.map((c) => (
-                  <li
-                    key={c.id}
-                    className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-line py-3 first:border-t-0 first:pt-0"
-                  >
-                    <span className="min-w-0 text-sm text-muted">
-                      <span className="text-fg">{storeName.get(c.storeId) ?? "Okänd butik"}</span>
-                      {" · "}
-                      {c.title ?? "Avtal"} · {day(c.validFrom)} –{" "}
-                      {c.validTo ? day(c.validTo) : "tills vidare"}
-                    </span>
-                    {canEdit ? (
-                      <ContractArchive
-                        id={c.id}
-                        archived
-                        label={`${storeName.get(c.storeId) ?? "Okänd butik"}: ${c.title ?? "Avtal"}`}
-                      />
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </PanelSection>
-          </Panel>
+              ))}
+            </ul>
+          )
         ) : null}
-      </section>
-
-      {/* 03 Intäkt per butik */}
-      {o ? (
-        <section
-          aria-labelledby="intakt-per-butik"
-          className={`rise ${SECTION}`}
-          style={{ "--i": 3 } as React.CSSProperties}
-        >
-          <SectionHeader
-            id="intakt-per-butik"
-            eyebrow={`Intäkt per butik · ${periodText(o.window)}`}
-            title={`${sek(o.totalRevenueOre)} i intäkt, ${sek(o.expiringRevenueOre)} på avtal som löper ut.`}
-            aside={
-              o.noContractShareBp !== null && o.noContractShareBp > 0
-                ? `${formatPercent(o.noContractShareBp / 10_000, 0)} kommer från butiker utan gällande avtal.`
-                : undefined
-            }
-          />
-          {/* Hela förklaringen står under rubriken; den grå delen av rubriken är ett kort faktum. */}
-          <p className="max-w-3xl text-base text-pretty text-muted">{o.summary}</p>
-          <Panel>
-            <PanelSection label="Butiker" meta={formatInt(o.stores.length)}>
-              <ul className="flex flex-col">
-                {o.stores.map((row) => (
-                  <li
-                    key={row.storeId}
-                    className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 border-t border-line py-3 first:border-t-0 first:pt-0 sm:grid-cols-[minmax(0,1fr)_10rem_7rem_6rem]"
-                  >
-                    <span className="min-w-0 truncate text-fg">
-                      {storeName.get(row.storeId) ?? "Okänd butik"}
-                    </span>
-                    <span className="meta text-subtle sm:order-none">
-                      {row.category === "no-contract" && termStores.has(row.storeId)
-                        ? "Villkor, inget avtalsdokument"
-                        : CATEGORY[row.category]}
-                      {row.currentEnd ? ` · ${day(row.currentEnd)}` : ""}
-                    </span>
-                    <span className="tnum text-right text-fg">{sek(row.revenueOre)}</span>
-                    <span className="tnum text-right text-muted">
-                      {row.shareBp === null ? "–" : formatPercent(row.shareBp / 10_000)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </PanelSection>
-            <PanelSection label="Underlag">
-              <EvidenceDetails evidence={o.evidence} />
-            </PanelSection>
-          </Panel>
-        </section>
-      ) : null}
+      </div>
     </div>
+  );
+}
+
+/** En rad: butik, villkor, status, PDF och nästa steg. Resten under "Mer". */
+function ContractItem({
+  i,
+  row,
+  contract: c,
+  anchor,
+  canEdit,
+  template,
+  signedAt,
+  signature,
+  reminder: r,
+  stores,
+  agreementOptions,
+  agreements,
+}: {
+  i: number;
+  row: ContractRow;
+  contract: ContractRecord | undefined;
+  anchor: boolean;
+  canEdit: boolean;
+  template: TemplateStatus | null;
+  signedAt: Date | null;
+  signature: { signerName: string; signedAt: Date | string } | null;
+  reminder: ContractReminder | null;
+  stores: { id: string; name: string }[];
+  agreementOptions: AgreementOption[];
+  agreements: AgreementRecord[];
+}) {
+  const st = ROW_STATUS[row.status];
+  const id = c ? `avtal-${c.id}` : undefined;
+  const pdf = c
+    ? signature
+      ? { href: `/avtal/${c.id}/signerad`, label: "PDF" }
+      : c.hasFile && c.fileName
+        ? { href: `/avtal/${c.id}/fil`, label: "PDF" }
+        : template
+          ? { href: `/avtal/${c.id}/mall`, label: "PDF" }
+          : null
+    : null;
+  const canSign =
+    canEdit &&
+    c &&
+    !signedAt &&
+    !c.terminatedOn &&
+    (template !== null || c.fileContentType === "application/pdf");
+  return (
+    <li
+      id={id}
+      className={cn(
+        "rise lift scroll-mt-28 rounded-md border bg-surface p-4",
+        row.alert ? "border-signal-line" : "border-line",
+      )}
+      style={{ "--i": Math.min(i, 12) } as React.CSSProperties}
+    >
+      {anchor ? <span id={`butik-${row.storeId}`} className="block scroll-mt-28" /> : null}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 flex-col gap-1">
+          <Link
+            href={`/butiker/${row.storeId}`}
+            className="truncate rounded-xs text-md font-medium text-fg hover:underline"
+          >
+            {row.storeName}
+          </Link>
+          <span className={cn("text-sm", row.terms ? "text-muted" : "text-subtle")}>
+            {row.terms ?? "Inga villkor"}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={cn(
+              "label inline-flex h-7 items-center gap-1.5 rounded-xs border px-2",
+              TONE[row.status],
+            )}
+          >
+            <span
+              aria-hidden
+              className={cn(
+                "size-1.5 rounded-full",
+                st.tone === "ok" ? "bg-up" : st.tone === "critical" ? "bg-signal" : "bg-current",
+              )}
+            />
+            {st.label}
+          </span>
+          {pdf ? (
+            <Link href={pdf.href} prefetch={false} target="_blank" className={link}>
+              {pdf.label}
+            </Link>
+          ) : null}
+          {canEdit && row.status === "missing" ? (
+            <Link
+              href={`/avtal?skapa=${encodeURIComponent(`store:${row.storeId}`)}`}
+              scroll={false}
+              className="inline-flex h-9 items-center rounded-sm border border-inverse bg-inverse px-3.5 text-sm font-medium text-on-inverse hover:bg-inverse-hover"
+            >
+              Skapa kontrakt
+            </Link>
+          ) : null}
+          {canSign && c ? <SignOnSite contractId={c.id} storeName={row.storeName} /> : null}
+        </div>
+      </div>
+      {c ? (
+        <details className="group mt-3">
+          <summary className="label w-fit cursor-pointer list-none text-subtle hover:text-fg">
+            <span
+              aria-hidden
+              className="mr-1 inline-block transition-transform duration-fast group-open:rotate-90"
+            >
+              ›
+            </span>
+            Mer
+          </summary>
+          <div className="fade-in mt-4 flex flex-col gap-4">
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
+              <div className="flex flex-col gap-0.5">
+                <dt className="label text-subtle">Gäller</dt>
+                <dd className="text-fg">
+                  {day(c.validFrom)} –{" "}
+                  {r?.term.currentEnd ? day(r.term.currentEnd) : "tills vidare"}
+                </dd>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <dt className="label text-subtle">Uppsägning</dt>
+                <dd className="text-fg">
+                  {noticeText(c)}
+                  {r?.term.noticeDeadline ? (
+                    <span className="meta block text-subtle">
+                      Senast {day(r.term.noticeDeadline)}
+                    </span>
+                  ) : null}
+                </dd>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <dt className="label text-subtle">Förlängning</dt>
+                <dd className="text-fg">
+                  {c.renewalMonths ? plural(c.renewalMonths, "månad", "månader") : "Ingen"}
+                  {c.terminatedOn ? (
+                    <span className="meta block text-subtle">Uppsagt {day(c.terminatedOn)}</span>
+                  ) : null}
+                </dd>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <dt className="label text-subtle">Status</dt>
+                <dd className="text-fg">
+                  {r ? REMINDER[r.status].label : "–"}
+                  {signature ? (
+                    <span className="meta block text-subtle">
+                      {signature.signerName} {formatDate(new Date(signature.signedAt))}
+                    </span>
+                  ) : null}
+                </dd>
+              </div>
+            </dl>
+            {canEdit ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {template && template !== "signed" ? (
+                  <ContractNextStep contractId={c.id} status={template} hasFile={c.hasFile} />
+                ) : (
+                  <ContractFileUpload contractId={c.id} hasFile={c.hasFile} />
+                )}
+                <ContractDialog
+                  stores={stores}
+                  agreements={agreementOptions}
+                  initial={draftOf(c, agreements)}
+                  trigger={{ label: "Ändra", variant: "ghost", size: "sm" }}
+                />
+                <ContractArchive
+                  id={c.id}
+                  archived={false}
+                  label={`${row.storeName}: ${c.title ?? "Kontrakt"}`}
+                />
+              </div>
+            ) : null}
+          </div>
+        </details>
+      ) : null}
+    </li>
   );
 }

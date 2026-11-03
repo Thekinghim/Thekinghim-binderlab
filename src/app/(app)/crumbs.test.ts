@@ -16,7 +16,7 @@ describe("brödsmulor", () => {
   it("undersidor och dynamiska sidor", () => {
     expect(subpageLabel("/automater/enhetsekonomi")).toBe("Enhetsekonomi");
     expect(subpageLabel("/automater/bl-003")).toBe("Automat");
-    expect(subpageLabel("/drift/besok/")).toBe("Besöksplan");
+    expect(subpageLabel("/drift/besok/")).toBe("Besök");
     expect(subpageLabel("/inkorg/nytt")).toBe("Nytt ärende");
     expect(subpageLabel("/inkorg/0b5c")).toBe("Ärende");
     expect(subpageLabel("/lonsamhet")).toBeNull();
@@ -33,6 +33,7 @@ describe("brödsmulor", () => {
     expect(crumbsFor("/drift/pafyllning", "B")).toEqual(["B", "Automater", "Drift", "Påfyllning"]);
     expect(crumbsFor("/butiker/x1", "B")).toEqual(["B", "Butiker", "Butik"]);
     expect(crumbsFor("/ekonomi", "B", "bokforing")).toEqual(["B", "Pengar", "Bokföring"]);
-    expect(crumbsFor("/prognos", "B")).toEqual(["B", "Vårt lager", "Prognos & inköp"]);
+    expect(crumbsFor("/prognos", "B")).toEqual(["B", "Vårt lager", "Inköp"]);
+    expect(crumbsFor("/prognos", "B", "prognos")).toEqual(["B", "Vårt lager", "Prognos"]);
   });
 });

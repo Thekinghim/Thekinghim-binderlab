@@ -22,12 +22,14 @@ import { getActiveOrganization, requireUser } from "@/server/session";
 
 import { Suggestions } from "@/app/(app)/assistent/_components/suggestions";
 import { BokforingReady } from "@/app/(app)/ekonomi/_components/bokforing-ready";
-import { NewMachinesFound } from "@/app/(app)/_nya-automater/new-machines";
+import { monthText } from "@/app/(app)/ekonomi/_lib/view";
+import { NewMachinesFound, loadNewMachinesSafe } from "@/app/(app)/_nya-automater/new-machines";
+import { readyPackageFor } from "@/server/bokforing/stored";
 import { loadAdvisorStateFor } from "@/server/assistant/advisor/service";
 
 import { HeaderMeta } from "./_components/header-meta";
 import { TodoBoard } from "./_components/todo-board";
-import { buildPage } from "./_lib/model";
+import { buildPage, extraTodos } from "./_lib/model";
 import { loadDismissedFor } from "./_lib/service";
 
 export const metadata: Metadata = { title: "Att göra" };
@@ -82,8 +84,19 @@ export default async function TodoPage({
       )
     : [];
   const wall = (d: Date) => wallClockIn(d, ctx.timeZone);
-  // Rådgivarens öppna förslag (ägare och admin; null för andra roller).
-  const advisor = organization ? await loadAdvisorStateFor({ user, organization }, now) : null;
+  // Rådgivarens förslag, bokföringen att ladda ner och nya automater (ägare och admin; tomt
+  // för andra roller). Läses här en gång, så att rubriken räknar med raderna som visas.
+  const viewer = organization ? { user, organization } : null;
+  const [advisor, ready, newMachines] = viewer
+    ? await Promise.all([
+        loadAdvisorStateFor(viewer, now),
+        readyPackageFor(viewer).catch((error: unknown) => {
+          console.error("[att-gora] Bokföringen kunde inte läsas:", error);
+          return null;
+        }),
+        loadNewMachinesSafe(viewer),
+      ])
+    : [null, null, null];
 
   // Vårt lager: summan av alla egna lager per titel.
   const warehouse = hasOwnStockRows(stock.rows)
@@ -108,6 +121,10 @@ export default async function TodoPage({
     scope: scopeFromSearchParams(sp),
     computedAt: formatTime(wall(now)),
     assignees,
+    extras: extraTodos({
+      bokforingMonth: ready ? monthText(ready.month) : null,
+      newMachines: newMachines?.machines.length ?? 0,
+    }),
     dismissed: dismissed.map((d) => ({
       key: d.key,
       title: d.title,
@@ -128,11 +145,11 @@ export default async function TodoPage({
           aside={view.header.aside}
           description={view.header.description || undefined}
           meta={<HeaderMeta items={view.header.meta} />}
-          className="pb-12 md:pb-16"
+          className="pb-6 md:pb-8"
         />
       </div>
       <div
-        className="rise flex flex-wrap items-center gap-3 pb-8"
+        className="rise flex flex-wrap items-center gap-3 pb-6"
         style={{ "--i": 1 } as React.CSSProperties}
       >
         <MineToggle
@@ -142,20 +159,15 @@ export default async function TodoPage({
           label="Vems punkter"
         />
       </div>
-      {organization ? <NewMachinesFound viewer={{ user, organization }} /> : null}
-      {organization ? <BokforingReady viewer={{ user, organization }} /> : null}
+      {viewer ? <NewMachinesFound viewer={viewer} preloaded={newMachines} /> : null}
+      {viewer ? <BokforingReady viewer={viewer} preloaded={ready} /> : null}
       {advisor && advisor.suggestions.length > 0 ? (
         <section
           aria-labelledby="forslag-rubrik"
           className="rise flex flex-col gap-4 pb-10"
           style={{ "--i": 1 } as React.CSSProperties}
         >
-          <SectionHeader
-            id="forslag-rubrik"
-            size="sm"
-            title="Förslag."
-            aside="Från AI. Talen kontrollerade, effekten uppskattad."
-          />
+          <SectionHeader id="forslag-rubrik" size="sm" title="Förslag." aside="Från AI." />
           <Suggestions items={advisor.suggestions} manualLeft={null} canGenerate={false} />
         </section>
       ) : null}
@@ -165,10 +177,10 @@ export default async function TodoPage({
             kind="empty"
             message={
               view.unknownStock > 0
-                ? "Påfyllningar räknas när lagret är inräknat."
+                ? "Räkna in lagret först."
                 : view.hiddenByScope > 0
-                  ? "Inget att göra för filtret."
-                  : "Inget kräver åtgärd just nu."
+                  ? "Inget för filtret."
+                  : "Allt klart."
             }
             action={{
               label: view.unknownStock > 0 ? "Räkna in lagret" : "Visa lagret",

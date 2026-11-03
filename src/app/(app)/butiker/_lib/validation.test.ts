@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   agreementChangeImpact,
   checkAgreementEnd,
+  contractTermsSchema,
   newAgreementImpact,
   newAgreementSchema,
   parsePercentBp,
@@ -263,5 +264,54 @@ describe("ändringar bakåt i tiden", () => {
     expect(
       agreementChangeImpact(upcoming, { ...upcoming, monthlyRentOre: 50_000 }, TODAY),
     ).toBeNull();
+  });
+});
+
+describe("contractTermsSchema (Skapa kontrakt och Ny butik)", () => {
+  it("50/50 vinst med förval", () => {
+    expect(contractTermsSchema.parse({ share: "50" })).toEqual({
+      shareBp: 5_000,
+      base: "profit_after_costs",
+      lossTreatment: "zero",
+      vmbBeforeSplit: false,
+      monthlyRentOre: null,
+      specialTerms: null,
+    });
+  });
+
+  it("omsättning: vid förlust och VMB gäller inte", () => {
+    expect(
+      contractTermsSchema.parse({
+        share: "10",
+        base: "net_excl_vat",
+        loss: "proportional",
+        vmbBeforeSplit: true,
+      }),
+    ).toMatchObject({ shareBp: 1_000, lossTreatment: "zero", vmbBeforeSplit: false });
+  });
+
+  it("bara hyra sparas som omsättning utan andel; 0 räknas som ingen", () => {
+    expect(
+      contractTermsSchema.parse({ share: "0", rent: "1 500", base: "profit_after_costs" }),
+    ).toMatchObject({
+      shareBp: null,
+      base: "net_excl_vat",
+      monthlyRentOre: 150_000,
+    });
+  });
+
+  it("kräver andel eller hyra; särskilda villkor trimmas och har en gräns", () => {
+    expect(contractTermsSchema.safeParse({ share: "", rent: "" }).error?.issues[0]?.message).toBe(
+      "Ange andel, hyra eller båda.",
+    );
+    expect(contractTermsSchema.safeParse({ share: "abc" }).error?.issues[0]?.message).toContain(
+      "Andelen",
+    );
+    expect(
+      contractTermsSchema.parse({ share: "50", specialTerms: "  El ingår.  " }).specialTerms,
+    ).toBe("El ingår.");
+    expect(
+      contractTermsSchema.safeParse({ share: "50", specialTerms: "x".repeat(2001) }).success,
+    ).toBe(false);
   });
 });

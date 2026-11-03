@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/ui/data-table";
-import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
 import { formatInt, MISSING } from "@/lib/format";
 
@@ -247,20 +246,17 @@ export function PlanView({
   return (
     <div className="flex flex-col gap-12">
       {model.proposals.length === 0 ? (
-        <StateMessage
-          kind="empty"
-          code="0 förslag"
-          message={
-            model.counts["no-supplier"] > 0
-              ? "Inget kan föreslås: titlarna som behöver beställas saknar leverantör."
-              : "Inget behöver beställas: lagret och det som redan är beställt räcker till nästa beställningstillfälle."
-          }
-          action={
-            model.counts["no-supplier"] > 0 && canEdit
-              ? { label: "Lägg till leverantör", href: "#leverantorer" }
-              : undefined
-          }
-        />
+        // Rubriken säger redan läget; här bara nästa steg.
+        model.counts["no-supplier"] > 0 && canEdit ? (
+          <div>
+            <a
+              href="#leverantorer"
+              className="inline-flex h-11 items-center rounded-sm border border-inverse bg-inverse px-4 text-base font-medium text-on-inverse transition-colors duration-fast ease-instrument hover:bg-inverse-hover"
+            >
+              Lägg till leverantör
+            </a>
+          </div>
+        ) : null
       ) : (
         model.proposals.map((p) => (
           <section
@@ -270,20 +266,19 @@ export function PlanView({
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div className="flex min-w-0 flex-col gap-1">
-                <p className="label text-subtle">Förslag · {p.supplierName}</p>
+                <p className="label text-subtle">{p.supplierName}</p>
                 <p className="text-md text-fg">
-                  {formatInt(p.totalPacks)} pack för {kr(p.totalOre)}, leverans{" "}
-                  {dateText(p.expectedArrival)} om beställt i dag.
+                  {formatInt(p.totalPacks)} pack för {kr(p.totalOre)}, framme{" "}
+                  {dateText(p.expectedArrival)}.
                 </p>
                 {p.drafts.length > 0 ? (
                   <p className="text-sm text-muted">
-                    Utkast till {p.supplierName} finns redan:{" "}
-                    {p.drafts.map((d) => `${d.number} (${formatInt(d.packs)} pack)`).join(", ")}.
-                    Utkast räknas inte som beställt.{" "}
+                    Utkast finns:{" "}
+                    {p.drafts.map((d) => `${d.number} (${formatInt(d.packs)} pack)`).join(", ")}.{" "}
                     <a href="#inkopsorder" className="text-fg underline underline-offset-2">
-                      Beställ eller avbryt utkastet
-                    </a>{" "}
-                    i stället för att skapa en ny order.
+                      Beställ det
+                    </a>
+                    .
                   </p>
                 ) : null}
               </div>
@@ -320,38 +315,45 @@ export function PlanView({
         ))
       )}
 
+      {canEdit && hasSupplier ? (
+        <div>
+          <Button variant="secondary" size="sm" iconLeft="plus" onClick={() => openDraft(null)}>
+            Ny inköpsorder
+          </Button>
+        </div>
+      ) : null}
+
       {others.length > 0 ? (
-        <section aria-labelledby="alla-titlar" className="flex flex-col gap-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div className="flex flex-col gap-1">
-              <h3 id="alla-titlar" className="label text-subtle">
-                Alla titlar som säljer · {others.length}
-              </h3>
-              <p className="text-md text-fg">
-                {formatInt(model.counts.ok)} räcker, {formatInt(model.counts.order)} att beställa
-                {model.counts["no-supplier"] > 0
-                  ? `, ${formatInt(model.counts["no-supplier"])} utan leverantör`
-                  : ""}
-                .
-              </p>
-            </div>
-            {canEdit && hasSupplier ? (
-              <Button variant="secondary" size="sm" iconLeft="plus" onClick={() => openDraft(null)}>
-                Ny inköpsorder
-              </Button>
-            ) : null}
+        <details
+          aria-labelledby="alla-titlar"
+          className="group flex flex-col gap-4 rounded-sm border border-line"
+        >
+          <summary className="flex cursor-pointer items-baseline justify-between gap-4 px-4 py-3">
+            <h3 id="alla-titlar" className="text-sm font-medium text-fg">
+              Alla titlar ({formatInt(others.length)})
+            </h3>
+            <span className="meta text-muted">
+              {formatInt(model.counts.ok)} räcker
+              {model.counts.order > 0 ? ` · ${formatInt(model.counts.order)} beställ` : ""}
+              {model.packLines.length > 0 ? ` · ${formatInt(model.packLines.length)} packa` : ""}
+              {model.counts["no-supplier"] > 0
+                ? ` · ${formatInt(model.counts["no-supplier"])} utan leverantör`
+                : ""}
+            </span>
+          </summary>
+          <div className="border-t border-line p-4">
+            <DataTable
+              surface="bg"
+              columns={allColumns}
+              rows={others}
+              rowKey={(r) => r.titleId}
+              caption="Lagerposition och täckning per titel"
+              defaultSort={{ key: "cover", dir: "asc" }}
+              dense
+              exportFileName={`inkopsplan-${today}`}
+            />
           </div>
-          <DataTable
-            surface="bg"
-            columns={allColumns}
-            rows={others}
-            rowKey={(r) => r.titleId}
-            caption="Lagerposition och täckning per titel"
-            defaultSort={{ key: "cover", dir: "asc" }}
-            dense
-            exportFileName={`inkopsplan-${today}`}
-          />
-        </section>
+        </details>
       ) : null}
 
       {canEdit && openCount > 0 ? (

@@ -35,15 +35,15 @@ export function nextExpectedPayout(
     : null;
 }
 
-/** "Nästa väntade utbetalning 74 625 kr, 3 nov." eller, försenad, "… väntades 2 nov. och har inte kommit". */
+/** "Nästa utbetalning 74 625 kr, 3 nov." eller, försenad, "74 625 kr väntades 2 nov. Har inte kommit." */
 export function nextPayoutText(
   next: { date: string; amountOre: number; overdue: boolean },
   today: string,
 ): string {
   const day = formatDate(isoToDate(next.date), { year: "auto", now: isoToDate(today) });
   return next.overdue
-    ? `Utbetalningen på ${sek(next.amountOre)} som väntades ${day} har inte kommit.`
-    : `Nästa väntade utbetalning ${sek(next.amountOre)}, ${day}.`;
+    ? `${sentence(`${sek(next.amountOre)} väntades ${day}`)} Har inte kommit.`
+    : sentence(`Nästa utbetalning ${sek(next.amountOre)}, ${day}`);
 }
 
 /** "i oktober 2026" för en hel kalendermånad, annars "4 okt. – 2 nov.". */
@@ -69,8 +69,7 @@ export function payoutSpan(result: ReconciliationResult): IsoPeriod {
 }
 
 /** Utan källa för utbetalningar: en neutral rad, inga väntade eller saknade utbetalningar. */
-export const NO_PAYOUT_SOURCE_TEXT =
-  "Utbetalningarna från Awish är inte inlästa. Ladda upp dem som CSV för att stämma av.";
+export const NO_PAYOUT_SOURCE_TEXT = "Ladda upp filen från Awish.";
 
 /**
  * `payoutsTracked` = det finns en källa för utbetalningar (en inläst utbetalning eller fil).
@@ -86,12 +85,12 @@ export function economyHeadline(
   const when = periodShort(period, today);
   if (!result || result.payouts.length === 0) {
     if (!payoutsTracked) {
-      return { title: "Inga utbetalningar är inlästa.", aside: NO_PAYOUT_SOURCE_TEXT };
+      return { title: "Inga utbetalningar inlästa.", aside: NO_PAYOUT_SOURCE_TEXT };
     }
     const next = nextExpectedPayout(cash);
     return {
       title: sentence(`Ingen utbetalning för ${when}`),
-      aside: next ? nextPayoutText(next, today) : "Utbetalningarna laddas upp som CSV från Awish.",
+      aside: next ? nextPayoutText(next, today) : NO_PAYOUT_SOURCE_TEXT,
     };
   }
   const t = result.totals;
@@ -99,17 +98,27 @@ export function economyHeadline(
   // utbetalningen för oktober kan komma in 2 nov. och räknas då till "30 d" fast den gäller
   // en annan period än Hem visar för samma 30 dagar.
   const covered = payoutSpan(result);
-  const facts = `Utbetalt ${sek(t.actualOre)} mot väntade ${sek(t.expectedOre)} för försäljningen ${coveredText(
-    covered,
-    today,
-  )} (${plural(result.payouts.length, "utbetalning", "utbetalningar")}), skillnad ${signedSek(
-    t.differenceOre,
-  )}.`;
+  const diff = t.differenceOre === 0 ? "" : ` Skillnad ${signedSek(t.differenceOre)}.`;
+  const facts = `${sentence(
+    `Utbetalt ${sek(t.actualOre)} av ${sek(t.expectedOre)} för ${coveredText(covered, today).replace(/^i /, "")}`,
+  )}${diff}`;
   if (t.openDeviations > 0) {
     return {
-      title: `${plural(t.openDeviations, "avvikelse", "avvikelser")} att utreda i utbetalningarna.`,
+      title: `${plural(t.openDeviations, "avvikelse", "avvikelser")} att utreda.`,
       aside: facts,
     };
   }
-  return { title: "Utbetalningarna stämmer mot försäljningen.", aside: facts };
+  return { title: "Utbetalningarna stämmer.", aside: facts };
+}
+
+/**
+ * Rubriken på Bokföring: nästa månad att skicka ("Oktober 2026 klar att skicka."), annars
+ * läget. `nextName` är månadens namn med stor bokstav.
+ */
+export function bookkeepingTitle(
+  months: readonly { readonly status: "open" | "closed" | "sent" }[],
+  nextName: string,
+): string {
+  if (months.some((m) => m.status === "closed")) return `${nextName} klar att skicka.`;
+  return months.some((m) => m.status === "sent") ? "Allt är skickat." : "Inget att skicka ännu.";
 }

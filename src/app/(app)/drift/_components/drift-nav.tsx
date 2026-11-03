@@ -6,10 +6,10 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 
 const ITEMS = [
-  { href: "/drift", label: "Maskinhälsa" },
-  { href: "/drift/besok", label: "Besöksplan" },
+  { href: "/drift", label: "Status" },
+  { href: "/drift/besok", label: "Besök" },
   { href: "/drift/pafyllning", label: "Påfyllning" },
-  { href: "/drift/larm", label: "Larminställningar" },
+  { href: "/drift/larm", label: "Larm" },
 ] as const;
 
 /**

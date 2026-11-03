@@ -2,7 +2,7 @@
 
 import { scaleBand, scaleLinear } from "d3-scale";
 import { curveLinear, line } from "d3-shape";
-import { useId, useMemo, useState, type KeyboardEvent } from "react";
+import { useId, useMemo, useState, type CSSProperties, type KeyboardEvent } from "react";
 
 import { axisScale } from "@/components/charts/axis";
 import {
@@ -286,8 +286,9 @@ export function ProfitTrendChart({ data, format, summary, height = 320 }: Props)
                     width={bw}
                     height={Math.max(h, d.orders > 0 ? 1 : 0)}
                     pointerEvents="none"
-                    className="transition-[fill] duration-fast"
+                    className="grow-y transition-[fill] duration-fast [transform-box:fill-box]"
                     style={{
+                      ...({ "--i": Math.min(i, 30) } as CSSProperties),
                       fill: isWorst
                         ? `url(#${alertId})`
                         : loss

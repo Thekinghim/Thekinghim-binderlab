@@ -10,6 +10,7 @@ import {
   parseTitleParam,
   parseTrendParam,
   parseViewParam,
+  parseAnalysisTab,
 } from "./params";
 
 const NBSP = " ";
@@ -174,18 +175,22 @@ describe("lonsamhetHeadline", () => {
     previous: null,
   };
 
-  it("svarar med andel kvar och största bidragsgivaren", () => {
+  it("svarar med vinsten som stor siffra och största bidragsgivaren", () => {
     expect(lonsamhetHeadline(base)).toEqual({
       kind: "profit",
-      title: `Ni behöll 31,4${NBSP}% av intäkten.`,
-      aside: "Automat 1 står för nästan hälften av vinsten.",
+      title: `Vår vinst 314${NBSP}kr på 30${NBSP}dagar.`,
+      aside: "Automat 1: nästan hälften av vinsten.",
     });
   });
 
-  it("säger 'med inköpspris' när en del av intäkten saknar pris", () => {
-    expect(lonsamhetHeadline({ ...base, unpricedShareBp: 480 }).title).toBe(
-      `Ni behöll 31,4${NBSP}% av intäkten med inköpspris.`,
-    );
+  it("rubriken är kort: högst åtta ord, ingen fackterm", () => {
+    const t = lonsamhetHeadline({ ...base, unpricedShareBp: 480 }).title;
+    expect(t.split(/\s+/).length).toBeLessThanOrEqual(8);
+    expect(t).not.toMatch(/inköpspris|behöll/);
+  });
+
+  it("utan bidragsgivare och jämförelse: marginalen", () => {
+    expect(lonsamhetHeadline({ ...base, top: null }).aside).toBe(`Marginal 31,4${NBSP}%.`);
   });
 
   it("jämför med perioden innan när ingen bidragsgivare finns", () => {
@@ -194,7 +199,7 @@ describe("lonsamhetHeadline", () => {
       top: null,
       previous: { profitOre: 28_000, marginBp: 3000 },
     });
-    expect(h.aside).toBe(`Vinsten är 12${NBSP}% högre än perioden innan.`);
+    expect(h.aside).toBe(`Upp 12${NBSP}% mot perioden innan.`);
   });
 
   it("namnger förlusten och den största kostnaden", () => {
@@ -230,7 +235,15 @@ describe("viewTitle och trendTitle", () => {
       losses: 2,
     });
     expect(t.title).toBe("Black Bolt gav mest vinst.");
-    expect(t.aside).toBe(`7${NBSP}719${NBSP}kr, 29,2${NBSP}% marginal. 2 titlar gick med förlust.`);
+    expect(t.aside).toBe(`7${NBSP}719${NBSP}kr · 29,2${NBSP}%. 2 titlar med förlust.`);
+    expect(
+      viewTitle({
+        ...{ noun: "titel", plural: "titlar", definite: "titeln" },
+        items: 2,
+        top: { name: "A", profitOre: 100, marginBp: null },
+        losses: 0,
+      }).aside,
+    ).toBe(`1${NBSP}kr.`);
   });
 
   it("ger bästa och senaste hela veckan, utan snitt", () => {
@@ -242,7 +255,7 @@ describe("viewTitle och trendTitle", () => {
       losses: 1,
     });
     expect(t.aside).toBe(
-      `Bäst var vecka 44 med 9${NBSP}495${NBSP}kr. Senaste hela veckan gav 7${NBSP}100${NBSP}kr. 1 vecka med förlust.`,
+      `Bäst: vecka 44, 9${NBSP}495${NBSP}kr. Senaste hela veckan: 7${NBSP}100${NBSP}kr. 1 vecka med förlust.`,
     );
     const m = trendTitle({
       unit: "månad",
@@ -251,7 +264,7 @@ describe("viewTitle och trendTitle", () => {
       latestFull: null,
       losses: 2,
     });
-    expect(m.aside).toBe(`Bäst var oktober med 1${NBSP}000${NBSP}kr. 2 månader med förlust.`);
+    expect(m.aside).toBe(`Bäst: oktober, 1${NBSP}000${NBSP}kr. 2 månader med förlust.`);
   });
 });
 
@@ -289,8 +302,8 @@ describe("buildLonsamhetModel", () => {
     const m = buildLonsamhetModel(twoMachines(true), { today: "2026-11-02" });
     expect(m.headline).toEqual({
       kind: "profit",
-      title: `Ni behöll 49,2${NBSP}% av intäkten.`,
-      aside: "Automat 2 står för drygt hälften av vinsten.",
+      title: expect.stringMatching(/^Vår vinst .+ på 20\sdagar\.$/),
+      aside: "Automat 2: drygt hälften av vinsten.",
     });
     expect(m.viewTitles.machine.title).toBe("Automat 2 gav mest vinst.");
     expect(m.comparisonLabel).toBe(`Jämfört med 23${NBSP}sep.${NBSP}–\u2060${NBSP}12${NBSP}okt.`);
@@ -313,10 +326,10 @@ describe("buildLonsamhetModel", () => {
     expect(months.map((b) => b.shortName)).toEqual(["oktober", "november"]);
     expect(months.reduce((s, b) => s + b.profitOre, 0)).toBe(m.totals.profitOre);
     expect(m.defaultTrend).toBe("week");
-    expect(m.trend.week.heading.title).toBe("Vinst och marginal per vecka.");
+    expect(m.trend.week.heading.title).toBe("Vinst per vecka.");
     // Ingen "Snitt": delvisa veckor skulle dra ned det.
     expect(m.trend.week.heading.aside).not.toMatch(/Snitt/);
-    expect(m.trend.week.heading.aside).toMatch(/^Bäst var vecka \d+ med /);
+    expect(m.trend.week.heading.aside).toMatch(/^Bäst: vecka \d+, /);
 
     // Per dag: en stapel per dag i perioden, och summan går ihop med ej fördelad hyra.
     const days = m.trend.day.buckets;
@@ -422,5 +435,15 @@ describe("VMB-moms i Lönsamhet", () => {
     const plain = buildLonsamhetModel(docExample(), { today: "2026-11-30" });
     expect(plain.bridge.vmbVatOre).toBeNull();
     expect(plain.bridge.vmbPreliminary).toBe(false);
+  });
+});
+
+describe("parseAnalysisTab", () => {
+  it("tabell är förval, utveckling och rytm via ?visa=", () => {
+    expect(parseAnalysisTab(undefined)).toBe("table");
+    expect(parseAnalysisTab("okänt")).toBe("table");
+    expect(parseAnalysisTab("utveckling")).toBe("trend");
+    expect(parseAnalysisTab(["rytm"])).toBe("rhythm");
+    expect(parseAnalysisTab("RYTM")).toBe("rhythm");
   });
 });

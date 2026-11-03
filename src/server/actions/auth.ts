@@ -15,6 +15,7 @@ import { getServerEnv } from "@/lib/env";
 import { getAuthProvider } from "../auth";
 import {
   acceptInviteFlow,
+  acceptMyInvitationFlow,
   changePasswordFlow,
   createInviteFlow,
   loginFlow,
@@ -64,6 +65,8 @@ export async function createInvite(input: {
   email: string;
   role: "owner" | "admin" | "refiller" | "viewer";
   validDays?: number;
+  /** Valfritt: lösenord som ägaren sätter åt den inbjudna. */
+  password?: string;
 }): Promise<ActionResult> {
   const provider = await getAuthProvider();
   const user = await getSessionUser();
@@ -84,6 +87,8 @@ export async function acceptInvite(
     /** Supabase: token_hash från mejllänken (?token_hash=…&type=…). */
     emailTokenHash?: string;
     emailLinkType?: "invite" | "magiclink";
+    /** Supabase standardmall: sessionen från länkens fragment. */
+    emailTokens?: { accessToken: string; refreshToken: string };
   } = {},
 ): Promise<ActionResult<{ organizationId: string }>> {
   const provider = await getAuthProvider();
@@ -110,4 +115,42 @@ export async function changePassword(input: {
   const provider = await getAuthProvider();
   const user = await getSessionUser();
   return changePasswordFlow({ provider, user, limiter: passwordLimiter }, input);
+}
+
+/** Går med via en egen inbjudan, utan länken i mejlet. */
+export async function acceptMyInvitation(
+  invitationId: string,
+): Promise<ActionResult<{ organizationId: string }>> {
+  return acceptMyInvitationFlow(
+    {
+      user: await getSessionUser(),
+      cookies: await nextCookieJar(),
+      secureCookies: secureCookies(),
+    },
+    invitationId,
+  );
+}
+
+/**
+ * Mitt konto: skickar en länk för att välja lösenord till den inloggades egen
+ * adress (för den som bara loggat in med länk och inte har något lösenord).
+ */
+export async function sendOwnPasswordLink(): Promise<ActionResult> {
+  const user = await getSessionUser();
+  if (!user) return { ok: false, error: "Du är inte inloggad." };
+  const provider = await getAuthProvider();
+  if (!provider.sendPasswordReset) return { ok: false, error: "Finns inte här." };
+  const gate = passwordLimiter.consume([{ key: `password-link:user:${user.userId}`, limit: 3 }]);
+  if (!gate.allowed) {
+    const minutes = Math.max(1, Math.ceil(gate.retryAfterMs / 60_000));
+    return { ok: false, error: `Vänta ${minutes} ${minutes === 1 ? "minut" : "minuter"}.` };
+  }
+  let baseUrl: string;
+  try {
+    baseUrl = resolveAppBaseUrl(getServerEnv(), await headers());
+  } catch {
+    return { ok: false, error: "Försök igen om en stund." };
+  }
+  const sent = await provider.sendPasswordReset(user.email, `${baseUrl}/logga-in/nytt-losenord`);
+  return sent.ok ? { ok: true } : { ok: false, error: "Länken kunde inte skickas. Försök igen." };
 }

@@ -211,9 +211,12 @@ beforeAll(async () => {
 });
 
 describe("listan per roll", () => {
-  it("ägaren ser påfyllning, tyst automat och dubblett", async () => {
-    const kinds = (await loadTodosFor(owner, NOW)).map((t) => t.kind).sort();
-    expect(kinds).toEqual(["duplicate-title", "refill", "stale-machine"]);
+  it("ägaren ser påfyllning, tyst automat, dubblett och butiken utan kontrakt", async () => {
+    const todos = await loadTodosFor(owner, NOW);
+    const kinds = todos.map((t) => t.kind).sort();
+    expect(kinds).toEqual(["contract", "duplicate-title", "refill", "stale-machine"]);
+    // Butiken med automat har inget kontrakt (Kontrakt → Skapa kontrakt).
+    expect(todos.find((t) => t.kind === "contract")?.action?.label).toBe("Skapa kontrakt");
   });
 
   it("påfyllaren ser bara lagerpunkter, utan belopp", async () => {

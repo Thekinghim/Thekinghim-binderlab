@@ -9,6 +9,7 @@ import type React from "react";
 import { requireRoute, requireViewer } from "@/server/data/core";
 
 import { StoreKpis } from "../_components/kpis";
+import { PageHead } from "../_components/page-head";
 import { SettlementsView } from "../_components/settlements-view";
 import { StoreTable } from "../_components/store-table";
 import { loadStoreList } from "../_lib/data";
@@ -39,7 +40,8 @@ export default async function ButikerPage({
   const days = `${formatInt(period.days)}${NBSP}d`;
   const comparison = period.comparisonLabel ? `Jämfört med ${period.comparisonLabel}` : undefined;
   const earned = active.reduce((n, r) => n + r.earnedMonthOre, 0);
-  const withAgreement = active.filter((r) => r.current !== null).length;
+  // Butiker med automat utan signerat kontrakt (röd rad, samma regel som Att göra).
+  const unsigned = active.filter((r) => r.issue?.id === "no-contract").length;
   const cov = period.coverage;
   const dataRange =
     cov && period.partial
@@ -49,33 +51,24 @@ export default async function ButikerPage({
       : null;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
-      <div className="rise">
-        <SectionHeader
-          as="h1"
-          size="xl"
-          eyebrow={data.scopeLabel ? `Butiker · ${data.scopeLabel}` : "Butiker"}
-          title={headline.title}
-          aside={headline.aside}
-          meta={[
-            { label: "Period", value: period.rangeLabel },
-            ...(dataRange ? [{ label: "Med data", value: dataRange }] : []),
-            { label: "Kräver åtgärd", value: formatInt(data.flagged) },
-          ]}
-          actions={
-            ctx.canEdit ? (
-              // Guiden: butik, villkor och automat på en minut.
-              <Link
-                href="/butiker/ny"
-                className="inline-flex h-9 items-center gap-2 rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse transition-colors hover:bg-inverse-hover"
-              >
-                <span aria-hidden>+</span>
-                Ny butik
-              </Link>
-            ) : undefined
-          }
-        />
-      </div>
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
+      <PageHead
+        eyebrow={data.scopeLabel ? `Butiker · ${data.scopeLabel}` : "Butiker"}
+        title={headline.title}
+        aside={headline.aside}
+        actions={
+          ctx.canEdit ? (
+            // Guiden: butik, villkor, automat och kontrakt på en minut.
+            <Link
+              href="/butiker/ny"
+              className="inline-flex h-11 items-center gap-2 rounded-sm border border-inverse bg-inverse px-5 text-base font-medium text-on-inverse transition-colors hover:bg-inverse-hover"
+            >
+              <span aria-hidden>+</span>
+              Ny butik
+            </Link>
+          ) : undefined
+        }
+      />
 
       {rows.length === 0 ? (
         <StateMessage kind="empty" message="Inga butiker ännu." />
@@ -83,32 +76,39 @@ export default async function ButikerPage({
         <>
           <div className="rise flex flex-col gap-3" style={{ "--i": 1 } as React.CSSProperties}>
             {data.ignoredMachine ? (
-              <p className="text-sm text-muted">
-                {data.scopeLabel
-                  ? `Siffrorna gäller hela ${data.scopeLabel}, inte bara ${data.ignoredMachine}. Automatens egna siffror finns under Automater.`
-                  : `Automatfiltret (${data.ignoredMachine}) gäller inte här. Butiker visar hela butikerna.`}
-              </p>
+              <p className="meta text-subtle">Automatfiltret gäller inte här.</p>
             ) : null}
             <StoreKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
-            <p className="meta text-subtle">
-              Till butikerna: provision på alla order och hyra, inkl. order utan inköpspris.
-            </p>
+            {dataRange ? <p className="meta text-subtle">Data {dataRange}</p> : null}
           </div>
+
+          {unsigned > 0 ? (
+            <Link
+              href="/avtal"
+              className="rise lift flex items-center justify-between gap-3 rounded-md border border-signal-line bg-surface px-4 py-3"
+              style={{ "--i": 2 } as React.CSSProperties}
+            >
+              <span className="flex items-center gap-2 text-base text-fg">
+                <span aria-hidden className="size-2 rounded-full bg-signal" />
+                {unsigned === 1
+                  ? "1 butik saknar signerat kontrakt."
+                  : `${formatInt(unsigned)} butiker saknar signerat kontrakt.`}
+              </span>
+              <span className="text-sm font-medium text-fg">Kontrakt{NBSP}→</span>
+            </Link>
+          ) : null}
 
           <section
             aria-labelledby="alla-butiker"
             className="rise flex flex-col gap-6"
-            style={{ "--i": 2 } as React.CSSProperties}
+            style={{ "--i": 3 } as React.CSSProperties}
           >
             <SectionHeader
               id="alla-butiker"
+              size="md"
               eyebrow={`Per butik · ${days}`}
-              title={`${sek(earned)} intjänat av ${active.length === 1 ? "butiken" : "butikerna"} hittills i ${data.monthLabel}.`}
-              aside={
-                withAgreement === active.length
-                  ? `${plural(withAgreement, "butik", "butiker")} med gällande avtal.`
-                  : `${formatInt(withAgreement)} av ${plural(active.length, "butik", "butiker")} har gällande avtal.`
-              }
+              title={`${sek(earned)} intjänat i ${data.monthLabel}.`}
+              aside={`${formatInt(data.signed)} av ${plural(active.length, "butik", "butiker")} har signerat kontrakt.`}
             />
             <StoreTable
               rows={rows}

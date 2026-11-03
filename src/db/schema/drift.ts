@@ -111,6 +111,8 @@ export const fieldSubmissions = pgTable("field_submissions", {
   receivedAt: ts("received_at").notNull().defaultNow(),
   /** Lagret packen togs från (null = automatens "Fylls på från" eller standardlagret). */
   fromLocationId: uuid("from_location_id"),
+  /** När påfyllningen ångrades i Fyll på (null = gäller). */
+  undoneAt: ts("undone_at"),
   ...stamps(),
 });
 

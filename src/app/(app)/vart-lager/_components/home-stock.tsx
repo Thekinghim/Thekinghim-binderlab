@@ -19,7 +19,10 @@ import { lastsText, type Place, type VartLagerModel, type VartLagerRow } from ".
 import { PlaceBar } from "./place-bar";
 
 const GRID =
-  "grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-1 md:grid-cols-[minmax(0,1fr)_88px_80px_72px_132px_auto]";
+  "grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-1 md:grid-cols-[minmax(0,1fr)_88px_80px_72px_132px_var(--act,auto)]";
+/** Knappkolumnens bredd: samma på alla rader (Inköp/Packat, och Flytta med flera lager). */
+const actWidth = (multi: boolean, canEdit: boolean) =>
+  ({ "--act": canEdit ? (multi ? "184px" : "104px") : "0px" }) as React.CSSProperties;
 
 /** Värdet "alla lager" i platsväljaren. */
 const ALL = "alla";
@@ -55,8 +58,9 @@ export function HomeStock({ model, scope }: { model: VartLagerModel; scope: stri
   const [moveRow, setMoveRow] = useState<VartLagerRow | null>(null);
 
   const t = model.totals;
-  const shown = place && multi ? (t.byPlace[place.id] ?? 0) : t.home;
   const countHeader = place && multi ? place.name : multi ? "Alla lager" : "Antal";
+  const out = model.rows.filter((r) => r.runsOut && !r.negative);
+  const packOnly = out.length > 0 && out.every((r) => r.own);
 
   return (
     <div className="flex flex-col gap-8">
@@ -64,13 +68,18 @@ export function HomeStock({ model, scope }: { model: VartLagerModel; scope: stri
         <KpiStrip
           ariaLabel="Vårt lager i siffror"
           items={[
-            {
-              id: "home",
-              label: place && multi ? `Pack ${inPlace(place.name)}` : "Pack i lager",
-              value: shown,
-              format: formatInt,
-              primary: true,
-            },
+            // Totalen står i sidans rubrik; här bara valt lager.
+            ...(place && multi
+              ? [
+                  {
+                    id: "home",
+                    label: `Pack ${inPlace(place.name)}`,
+                    value: t.byPlace[place.id] ?? 0,
+                    format: formatInt,
+                    primary: true,
+                  },
+                ]
+              : []),
             {
               id: "value",
               label: "Värde, inköpspris",
@@ -83,7 +92,7 @@ export function HomeStock({ model, scope }: { model: VartLagerModel; scope: stri
               label: `Tar slut inom ${formatInt(model.lowDays)} d`,
               value: t.runsOut,
               format: (v) => `${formatInt(v)}${NBSP}titlar`,
-              ...(t.runsOut > 0 ? { alert: true, alertText: "Beställ" } : {}),
+              ...(t.runsOut > 0 ? { alert: true, alertText: packOnly ? "Packa" : "Beställ" } : {}),
             },
             {
               id: "machines",
@@ -104,7 +113,10 @@ export function HomeStock({ model, scope }: { model: VartLagerModel; scope: stri
       />
 
       <div className="rise flex flex-col" style={{ "--i": 2 } as React.CSSProperties}>
-        <div className={cn(GRID, "border-b border-line-strong pb-2")}>
+        <div
+          className={cn(GRID, "border-b border-line-strong pb-2")}
+          style={actWidth(multi, model.canEdit)}
+        >
           <span className="label text-subtle">Titel</span>
           <span className="label hidden text-right text-subtle md:block">I automater</span>
           <span className="label hidden text-right text-subtle md:block">Sålt 7 d</span>
@@ -275,7 +287,7 @@ function StockRow({
       setBuyOpen(false);
       setSaved((k) => k + 1);
       toast({
-        title: `+${formatInt(n)} ${row.name}`,
+        title: `Klart! +${formatInt(n)} ${row.name}`,
         description: `${formatInt(res.data.onHand)} pack ${inPlace(res.data.placeName ?? "hemma")}.`,
         tone: "ok",
       });
@@ -287,18 +299,21 @@ function StockRow({
   const negativeHere = count < 0;
   return (
     <li
-      className="rise border-b border-line"
+      id={`rad-${row.titleId}`}
+      className="rise scroll-mt-32 border-b border-line target:bg-hover"
       style={{ "--i": Math.min(index, 16) + 3 } as React.CSSProperties}
       data-title={row.name}
     >
-      <div className={cn(GRID, "min-h-16 py-2.5")}>
+      <div className={cn(GRID, "min-h-16 py-2.5")} style={actWidth(multi, canEdit)}>
         <span className="flex min-w-0 flex-col">
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate text-base text-fg">{row.name}</span>
             {row.negative || negativeHere ? (
               <StatusTag status="critical">Räkna om</StatusTag>
             ) : row.runsOut ? (
-              <StatusTag status={tone}>{row.home <= 0 ? "Slut" : "Tar slut"}</StatusTag>
+              <StatusTag status={tone}>
+                {row.own ? "Packa" : row.home <= 0 ? "Slut" : "Tar slut"}
+              </StatusTag>
             ) : null}
           </span>
           <span className="meta truncate text-subtle">
@@ -412,7 +427,7 @@ function StockRow({
                   <div className="w-64 max-w-full">
                     <PlaceButtons
                       compact
-                      label={`Inköp till, ${row.name}`}
+                      label={`${row.own ? "Packat till" : "Inköp till"}, ${row.name}`}
                       places={places.map((p) => ({ id: p.id, name: p.name }))}
                       value={buyTo}
                       onChange={setBuyPlace}
@@ -425,7 +440,7 @@ function StockRow({
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
-                    aria-label={`Antal köpta pack, ${row.name}`}
+                    aria-label={`Antal ${row.own ? "packade" : "köpta"} pack, ${row.name}`}
                     placeholder="+"
                     className="tnum h-11 w-16 rounded-sm border border-line-control bg-bg px-2 text-right text-base text-fg"
                     value={buy}
@@ -441,7 +456,7 @@ function StockRow({
                   <button
                     type="submit"
                     disabled={pending}
-                    aria-label={`Lägg till inköp, ${row.name}`}
+                    aria-label={`Lägg till ${row.own ? "packade" : "inköp"}, ${row.name}`}
                     className="inline-flex size-11 items-center justify-center rounded-sm border border-inverse bg-inverse text-on-inverse hover:bg-inverse-hover"
                   >
                     <Icon name="check" size={14} />
@@ -464,11 +479,11 @@ function StockRow({
                 <button
                   type="button"
                   onClick={() => setBuyOpen(true)}
-                  aria-label={`Inköp, ${row.name}`}
+                  aria-label={`${row.own ? "Packat" : "Inköp"}, ${row.name}`}
                   className="inline-flex h-11 items-center gap-1 rounded-sm px-2 text-sm text-muted transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg"
                 >
                   <Icon name="plus" size={12} />
-                  <span>Inköp</span>
+                  <span>{row.own ? "Packat" : "Inköp"}</span>
                 </button>
               </>
             )}

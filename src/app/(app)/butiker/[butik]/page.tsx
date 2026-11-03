@@ -25,7 +25,7 @@ import { dayText, kronor, MODEL_LABEL, placeText, plural, sek, sentence } from "
 
 const TABS = [
   { value: "oversikt", label: "Översikt" },
-  { value: "avtal", label: "Avtal" },
+  { value: "avtal", label: "Villkor" },
   { value: "kontakt", label: "Kontakt och rapport" },
 ] as const;
 
@@ -96,14 +96,20 @@ export default async function StorePage({
           }
           meta={[
             {
-              label: "Status",
+              label: "Kontrakt",
               value: store.archived ? (
                 <StatusTag status="offline">Arkiverad</StatusTag>
-              ) : current ? (
-                <StatusTag status="ok">Avtal gäller</StatusTag>
+              ) : data.contract === "signed" ? (
+                <span className="label inline-flex h-6 items-center gap-1.5 text-up">
+                  <span aria-hidden className="size-1.5 rounded-full bg-up" />
+                  Signerat
+                </span>
               ) : (
-                <StatusTag status={placed.length > 0 ? "critical" : "neutral"}>
-                  Inget avtal
+                <StatusTag
+                  status={placed.length > 0 ? "critical" : "neutral"}
+                  className={placed.length > 0 ? "text-signal-fg" : undefined}
+                >
+                  {data.contract === "unsigned" ? "Ej signerat" : "Saknas"}
                 </StatusTag>
               ),
             },
@@ -116,8 +122,34 @@ export default async function StorePage({
             ) : undefined
           }
         />
+        {!store.archived && data.contract !== "signed" ? (
+          <div
+            className={`flex flex-col gap-3 rounded-md border bg-surface px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${placed.length > 0 ? "border-signal-line" : "border-line"}`}
+          >
+            <span className="flex items-center gap-2 text-base text-fg">
+              <span
+                aria-hidden
+                className={`size-2 rounded-full ${placed.length > 0 ? "bg-signal" : "bg-line-strong"}`}
+              />
+              {data.contract === "unsigned" ? "Kontraktet är inte signerat." : "Kontrakt saknas."}
+            </span>
+            {ctx.canEdit ? (
+              <Link
+                href={
+                  data.contract === "unsigned"
+                    ? `/avtal#butik-${store.id}`
+                    : `/avtal?skapa=${encodeURIComponent(`store:${store.id}`)}`
+                }
+                className="inline-flex h-11 items-center justify-center rounded-sm border border-inverse bg-inverse px-5 text-base font-medium text-on-inverse hover:bg-inverse-hover"
+              >
+                {data.contract === "unsigned" ? "Signera" : "Skapa kontrakt"}
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
         <AiPageLine metric="butikens resultat och andel" route="butiker" className="mt-4" />
-        {data.issues.length > 0 ? <Issues data={data} /> : null}
+        {/* Kontraktet står i rutan ovan; här resten. */}
+        {data.issues.some((i) => i.id !== "no-contract") ? <Issues data={data} /> : null}
       </div>
 
       <div className="rise flex flex-col gap-3" style={rise(1)}>
@@ -170,17 +202,19 @@ function Issues({ data }: { data: StoreDetailData }) {
     <section aria-label="Att göra för butiken" className="border-t border-line pt-4">
       <p className="label text-subtle">Att göra</p>
       <ul className="mt-3 flex flex-col gap-2">
-        {data.issues.map((i) => (
-          <li key={i.id} className="flex items-start gap-3 text-base">
-            <span className="mt-1.5 shrink-0">
-              <StatusGlyph status={i.level} />
-            </span>
-            <span className={i.level === "critical" ? "text-fg" : "text-muted"}>
-              {i.level === "critical" ? <span className="sr-only">Kräver åtgärd: </span> : null}
-              {i.text}
-            </span>
-          </li>
-        ))}
+        {data.issues
+          .filter((i) => i.id !== "no-contract")
+          .map((i) => (
+            <li key={i.id} className="flex items-start gap-3 text-base">
+              <span className="mt-1.5 shrink-0">
+                <StatusGlyph status={i.level} />
+              </span>
+              <span className={i.level === "critical" ? "text-fg" : "text-muted"}>
+                {i.level === "critical" ? <span className="sr-only">Kräver åtgärd: </span> : null}
+                {i.text}
+              </span>
+            </li>
+          ))}
       </ul>
     </section>
   );
@@ -248,7 +282,7 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
               href={`/avtal?skapa=store:${store.id}`}
               className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover"
             >
-              Skapa avtal
+              Skapa kontrakt
             </Link>
           ) : undefined
         }
@@ -256,7 +290,7 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
       <div className="grid grid-cols-1 gap-x-8 gap-y-12 lg:grid-cols-12">
         <Sub
           label={`Intjänat · ${formatInt(month.days)} av ${formatInt(month.daysInMonth)} d`}
-          title={current ? sentence(current.termsLabel) : "Inget avtal gäller i dag."}
+          title={current ? sentence(current.termsLabel) : "Inga villkor i dag."}
           className="lg:col-span-5"
         >
           <dl className="flex flex-col">
@@ -278,14 +312,14 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
           </dl>
         </Sub>
         <Sub
-          label="Avtalshistorik"
-          meta={plural(data.agreements.length, "avtal", "avtal")}
+          label="Historik"
+          meta={plural(data.agreements.length, "villkor", "villkor")}
           title={
             data.agreements.length === 0
-              ? "Inga avtal registrerade."
+              ? "Inga villkor än."
               : current
-                ? sentence(`Gällande avtal från ${dayText(current.validFrom, ctx.today)}`)
-                : sentence(`Senaste avtalet ${data.agreements[0]!.periodLabel}`)
+                ? sentence(`Gäller från ${dayText(current.validFrom, ctx.today)}`)
+                : sentence(`Senast ${data.agreements[0]!.periodLabel}`)
           }
           className="lg:col-span-7"
         >
@@ -300,12 +334,12 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
             <StateMessage
               kind="not-configured"
               compact
-              message={`${store.name} har inget avtal.`}
+              message={`${store.name} har inga villkor.`}
             />
           )}
           <p className="mt-4 text-sm text-muted">
             <Link href="/avtal" className="rounded-xs hover:text-fg">
-              Avtalsfiler och uppsägning{NBSP}→
+              Kontrakt{NBSP}→
             </Link>
           </p>
         </Sub>

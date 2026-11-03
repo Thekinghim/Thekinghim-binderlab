@@ -183,7 +183,7 @@ export function LostSalesView({ model }: { model: LostModel }) {
           {
             id: "days",
             // Summa över titlar och automater (se noten under tabellen), inte kalenderdagar.
-            label: "Titeldagar slutsålt",
+            label: "Slutsålda dagar",
             value: model.totalDayWeightBp,
             format: (v) => titleDaysBp(v),
           },

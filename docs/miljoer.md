@@ -569,10 +569,20 @@ VAPID-nycklarna (push) särskilt vid första driftsättningen.
      Appen verifierar mot JWKS och godtar inte HS256.
    - Authentication → URL Configuration: Site URL = appens adress. Lägg till
      `https://*-<team>.vercel.app/**` under Redirect URLs för förhandsversionerna.
-   - Authentication → Emails → mallen "Invite user": länken ska vara
-     `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=invite`.
-   - Authentication → Emails → mallen "Magic Link": länken ska vara
-     `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=magiclink`.
+   - Mejlmallarna (Invite user, Magic Link, Reset Password) kan vara Supabases
+     standardmallar (`{{ .ConfirmationURL }}`, går inte att ändra på Free-planen). Appen
+     begär länkarna med det implicita flödet: länken landar på `/logga-in/bekrafta`,
+     `/logga-in/nytt-losenord` eller `/inbjudan/[token]` med sessionen i fragmentet
+     (`#access_token=…`) och fungerar i vilken webbläsare eller app som helst (Mail-appen,
+     hemskärmen). Går länken inte (gammal, redan använd, förhandsvisad av e-postprogrammet)
+     visar sidan "Logga in med lösenord" och "Skicka ny länk". Den som kan ändra mallen kan
+     i stället använda `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=invite`
+     (respektive `type=magiclink`); båda formerna tas emot. Testas mot en falsk Supabase i
+     `src/server/auth/supabase-link.test.ts`.
+   - Ägaren kan sätta ett lösenord åt den inbjudna (Användare → Bjud in → Sätt lösenord).
+     Kontot skapas då direkt med admin-API:t (bekräftad e-post); ett befintligt konto ändras
+     aldrig. Den inbjudna loggar in med lösenordet och går med på ett tryck
+     (`my_invitations`/`accept_my_invitation`, 20261105060000_mina_inbjudningar.sql).
    - Koppla en egen SMTP-tjänst (till exempel Resend). Supabases inbyggda SMTP har
      mycket låga gränser.
 2. **Vercel.** Importera repot och sätt miljövariablerna enligt `.env.example`:

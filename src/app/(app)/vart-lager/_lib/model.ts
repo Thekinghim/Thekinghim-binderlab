@@ -45,7 +45,12 @@ export interface VartLagerInput {
   readonly now: Date;
   readonly timeZone: string;
   readonly today: IsoDate;
-  readonly titles: readonly { readonly id: string; readonly name: string }[];
+  readonly titles: readonly {
+    readonly id: string;
+    readonly name: string;
+    /** Egen produkt: vi packar den själva ("Packa" i stället för "Beställ"). */
+    readonly ownProduct?: boolean;
+  }[];
   /** Vårt lagers rader ur Lagers vymodell (summan av alla egna lager: dagar kvar och status). */
   readonly warehouse: readonly WarehouseRow[];
   /** Saldot i alla egna lager tillsammans per titel. */
@@ -103,6 +108,65 @@ export interface VartLagerRow {
   readonly unitCostOre: number | null;
   readonly valueOre: number | null;
   readonly latest: LatestChange | null;
+  /** Egen produkt: vi packar den själva. */
+  readonly own: boolean;
+  /** Pack som behövs för NEED_DAYS dagar (bara när titeln tar slut), annars 0. */
+  readonly needQty: number;
+}
+
+/** "Packa/Beställ X st": så många dagar ska vårt lager räcka efter påfyllningen. */
+export const NEED_DAYS = 2 * WAREHOUSE_LOW_DAYS;
+
+/**
+ * Pack att packa eller beställa för en titel som tar slut: minst det veckans besök saknar,
+ * annars det som behövs för NEED_DAYS dagar vid nuvarande takt (aldrig under 1). Ren.
+ */
+export function needQtyOf(
+  home: number,
+  runsOut: boolean,
+  r: Pick<WarehouseRow, "perDayTenths" | "shortBy"> | undefined,
+): number {
+  if (!runsOut) return 0;
+  const perDay = (r?.perDayTenths ?? 0) / 10;
+  const forDays = Math.ceil(perDay * NEED_DAYS - 1e-9) - Math.max(0, home);
+  return Math.max(1, r?.shortBy ?? 0, forDays);
+}
+
+/** En rad i listan "Att göra" överst på Vårt lager. */
+export interface StockTodo {
+  readonly titleId: string;
+  readonly verb: "Räkna om" | "Packa" | "Beställ";
+  readonly title: string;
+  /** Pack att packa eller beställa (null för Räkna om). */
+  readonly qty: number | null;
+  readonly tone: "critical" | "warning";
+}
+
+/**
+ * Vad som ska göras i vårt lager, viktigast först: saldon under 0 (räkna om), titlar som
+ * är slut och sedan de som tar slut. Egna produkter packas, övriga beställs. Ren.
+ */
+export function stockTodos(rows: readonly VartLagerRow[]): StockTodo[] {
+  const rank = (r: VartLagerRow) => (r.negative ? 0 : r.home <= 0 ? 1 : 2);
+  return rows
+    .filter((r) => r.negative || r.runsOut)
+    .sort(
+      (a, b) =>
+        rank(a) - rank(b) ||
+        (a.daysLeft ?? -1) - (b.daysLeft ?? -1) ||
+        a.name.localeCompare(b.name, "sv"),
+    )
+    .map((r) =>
+      r.negative
+        ? { titleId: r.titleId, verb: "Räkna om", title: r.name, qty: null, tone: "critical" }
+        : {
+            titleId: r.titleId,
+            verb: r.own ? "Packa" : "Beställ",
+            title: r.name,
+            qty: r.needQty,
+            tone: r.home <= 0 ? "critical" : "warning",
+          },
+    );
 }
 
 export interface VartLagerModel {
@@ -259,6 +323,7 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
         if (!e || x.occurredAt > e.occurredAt) e = x;
       }
       const eAt = e ? (e.locationId ?? defaultPlace?.id) : undefined;
+      const runsOut = status !== "ok";
       return {
         titleId: t.id,
         name: t.name,
@@ -269,8 +334,10 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
         sold7,
         daysLeft,
         status,
-        runsOut: status !== "ok",
+        runsOut,
         negative: home < 0,
+        own: t.ownProduct === true,
+        needQty: needQtyOf(home, runsOut, r),
         unitCostOre,
         valueOre: unitCostOre === null ? null : Math.max(0, home) * unitCostOre,
         latest: e

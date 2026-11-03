@@ -69,14 +69,9 @@ export default async function VisitPlanPage({
           stops === 0
             ? "Lagret räcker 7 dagar."
             : late > 0
-              ? `${plural(late, "besök hamnar", "besök hamnar")} efter beräknat slut: ingen besöksdag fanns i tid.`
+              ? `${plural(late, "besök kommer", "besök kommer")} för sent.`
               : undefined
         }
-        meta={[
-          { label: "Besök", value: formatInt(stops) },
-          { label: "Pack", value: formatInt(plan.totalPacks) },
-          { label: "Dagar", value: formatInt(plan.days.length) },
-        ]}
       />
 
       <div
@@ -181,7 +176,7 @@ export default async function VisitPlanPage({
                     ) : route.needsLocation ? (
                       <p className="text-sm text-muted">
                         {ctx.canEdit
-                          ? "Ordning efter brådska. Klistra in kartlänken på butiken för kortaste väg."
+                          ? "Lägg in butikens kartlänk för kortaste väg."
                           : "Ordning efter brådska."}
                       </p>
                     ) : null}
@@ -217,7 +212,7 @@ export default async function VisitPlanPage({
                               editable={ctx.canEdit}
                             />
                             <span className="meta text-subtle">
-                              {stop.late ? "Efter beräknat slut · " : ""}
+                              {stop.late ? "För sent · " : ""}
                               {`${formatInt(stop.totalPacks)}${NBSP}pack`}
                             </span>
                           </span>
@@ -342,7 +337,7 @@ export default async function VisitPlanPage({
             id="inte-besok"
             eyebrow="Inget besök i veckan"
             title={`${plural(plan.notNeeded.length, "automat", "automater")} klarar sig.`}
-            aside="Senaste dag för besök vid nuvarande takt."
+            aside="Senaste besöksdag."
             size="sm"
           />
           <ul className="flex flex-col divide-y divide-line border-y border-line text-sm">

@@ -133,7 +133,7 @@ export const purchasingTool = defineTool({
           value: `${count(l.orderQty)} pack (${count(l.boxes)} boxar) · ${kr(l.orderValueOre)}`,
         })),
       ],
-      links: [{ label: "Prognos & inköp", href: "/prognos" }],
+      links: [{ label: "Inköp", href: "/prognos" }],
     };
   },
 });
@@ -233,7 +233,7 @@ export const forecastTool = defineTool({
           .slice(0, 3)
           .map((r) => ({ label: label(r.key), value: `${packs(r.t.unitsMilli)} pack` })),
       ],
-      links: [{ label: "Prognos & inköp", href: pageHref("/prognos", null) }],
+      links: [{ label: "Inköp", href: pageHref("/prognos", null) }],
     };
   },
 });

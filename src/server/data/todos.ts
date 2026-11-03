@@ -19,6 +19,8 @@ import { cache } from "react";
 import { prioritizeByLostSales, TODO_DEFAULTS } from "@/analytics/todos";
 import { addDays, DomainError, type Period } from "@/domain";
 import { AuthorizationError } from "@/server/access";
+import { readyPackageFor } from "@/server/bokforing/stored";
+import { loadNewMachinesFor } from "@/server/machines/new-machines";
 import { lostSalesSummaryFor } from "@/server/purchasing/lost-sales-summary";
 import type { LostSalesSummary } from "@/server/purchasing/types";
 import { withUserDb } from "@/server/session";
@@ -126,11 +128,17 @@ const TODO_COUNT_SECONDS = 60;
  * Ändringar i appen (revalidateAppData) rensar den direkt.
  */
 export async function loadTodoCount(): Promise<number> {
-  return cachedForViewer(
-    "todo-count",
-    TODO_COUNT_SECONDS,
-    async () => (await loadVisibleTodoState()).items.length,
-  );
+  return cachedForViewer("todo-count", TODO_COUNT_SECONDS, async () => {
+    const viewer = await requireViewer();
+    // Som rubriken på Att göra: punkterna plus raderna "Ny automat hittad" och
+    // bokföringen att ladda ner (bara ägare och admin; noll för andra roller).
+    const [state, ready, found] = await Promise.all([
+      loadVisibleTodoState(),
+      readyPackageFor(viewer).catch(() => null),
+      loadNewMachinesFor(viewer).catch(() => null),
+    ]);
+    return state.items.length + (ready ? 1 : 0) + ((found?.machines.length ?? 0) > 0 ? 1 : 0);
+  });
 }
 
 /**

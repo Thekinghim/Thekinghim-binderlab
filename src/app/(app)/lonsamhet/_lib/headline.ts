@@ -1,7 +1,7 @@
 /**
  * Rubriken på Lönsamhet: svaret på "Vad tjänar vi, och var?" i två delar.
  *
- *   "Ni behöll 31,4 % av intäkten." + "Automat 1 står för nästan hälften av vinsten."
+ *   "Vår vinst 12 480 kr på 30 dagar." + "Automat 1: nästan hälften av vinsten."
  *
  * Ren funktion. Alla tal kommer färdigräknade från beräkningslagret (marginal,
  * största bidragsgivare och dess andel); här väljs bara vilket påstående som är sant
@@ -154,20 +154,19 @@ export function lonsamhetHeadline(input: HeadlineInput): Headline {
     };
   }
 
-  const margin = input.marginBp === null ? null : formatPercent(input.marginBp / 10_000);
-  const title = margin
-    ? `Ni behöll ${margin} av intäkten${input.unpricedShareBp > 0 ? " med inköpspris" : ""}.`
-    : `Vinst ${sek(input.profitOre)} på ${days(input.days)}.`;
+  // Stor siffra först: vår vinst (efter butikernas del). "Vår" skiljer den från Hems
+  // "Vinst", som är hela vinsten före delningen. Marginalen står i nyckeltalen under.
+  const title = `Vår vinst ${sek(input.profitOre)} på ${days(input.days)}.`;
 
   let aside: string;
   const share = input.top?.shareOfProfitBp ?? null;
   if (input.top && share !== null) {
-    aside = `${input.top.name} står för ${shareOfProfitText(share)}.`;
+    aside = `${input.top.name}: ${shareOfProfitText(share)}.`;
   } else if (input.previous && input.previous.profitOre > 0) {
     const bp = changeBp(input.profitOre, input.previous.profitOre) ?? 0;
-    aside = `Vinsten är ${formatPercent(Math.abs(bp) / 10_000, 0)} ${bp >= 0 ? "högre" : "lägre"} än perioden innan.`;
+    aside = `${bp >= 0 ? "Upp" : "Ned"} ${formatPercent(Math.abs(bp) / 10_000, 0)} mot perioden innan.`;
   } else {
-    aside = `Vinst ${sek(input.profitOre)}.`;
+    aside = input.marginBp === null ? "" : `Marginal ${formatPercent(input.marginBp / 10_000)}.`;
   }
 
   return { kind: "profit", title, aside };
@@ -202,26 +201,25 @@ export interface ViewTitleInput {
   readonly losses: number;
 }
 
-/** "Automat 1 gav mest vinst." + "12 480 kr, 31,4 % marginal. 1 automat gick med förlust." */
+/** "Automat 1 gav mest vinst." + "12 480 kr · 31,4 %. 1 automat med förlust." */
 export function viewTitle(input: ViewTitleInput): SectionTitle {
   if (input.items === 0 || input.top === null) {
     return {
       title: `Ingen ${input.noun} med försäljning.`,
-      aside: "Inget att jämföra i perioden.",
+      aside: "",
     };
   }
   const margin =
-    input.top.marginBp === null ? "" : `, ${formatPercent(input.top.marginBp / 10_000)} marginal`;
+    input.top.marginBp === null ? "" : ` · ${formatPercent(input.top.marginBp / 10_000)}`;
+  // Bara det som kräver åtgärd: rader med förlust.
   const lossText =
     input.losses === 0
-      ? input.items === 1
-        ? ` Den enda ${input.definite} i urvalet.`
-        : ` Ingen ${input.noun} gick med förlust.`
-      : ` ${input.losses} ${input.losses === 1 ? input.noun : input.plural} gick med förlust.`;
+      ? ""
+      : ` ${input.losses} ${input.losses === 1 ? input.noun : input.plural} med förlust.`;
   if (input.top.profitOre <= 0) {
     return {
       title: `Ingen ${input.noun} gick med vinst.`,
-      aside: `Bäst var ${input.top.name} med ${sek(input.top.profitOre)}.`,
+      aside: `Bäst: ${input.top.name}, ${sek(input.top.profitOre)}.`,
     };
   }
   return {
@@ -254,14 +252,13 @@ const PLURAL: Record<TrendTitleInput["unit"], string> = {
 };
 
 /**
- * "Vinst och marginal per vecka." + "Bäst var vecka 43 med 9 495 kr. Senaste hela veckan
- * gav 7 100 kr." Inget snitt: delvisa veckor och månader i periodens kanter gör det
+ * "Vinst per vecka." + "Bäst: vecka 43, 9 495 kr. Senaste hela veckan: 7 100 kr." Inget snitt: delvisa veckor och månader i periodens kanter gör det
  * missvisande.
  */
 export function trendTitle(input: TrendTitleInput): SectionTitle {
-  const title = `Vinst och marginal per ${input.unit}.`;
+  const title = `Vinst per ${input.unit}.`;
   if (input.buckets === 0 || input.best === null) {
-    return { title, aside: "Ingen försäljning i perioden." };
+    return { title, aside: "Ingen försäljning." };
   }
   const loss =
     input.losses > 0
@@ -274,10 +271,10 @@ export function trendTitle(input: TrendTitleInput): SectionTitle {
     };
   }
   const latest = input.latestFull
-    ? ` Senaste hela ${DEFINITE[input.unit]} gav ${sek(input.latestFull.profitOre)}.`
+    ? ` Senaste hela ${DEFINITE[input.unit]}: ${sek(input.latestFull.profitOre)}.`
     : "";
   return {
     title,
-    aside: `Bäst var ${input.best.name} med ${sek(input.best.profitOre)}.${latest}${loss}`,
+    aside: `Bäst: ${input.best.name}, ${sek(input.best.profitOre)}.${latest}${loss}`,
   };
 }

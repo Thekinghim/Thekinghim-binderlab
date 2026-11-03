@@ -470,3 +470,77 @@ export function agreementChangeImpact(
   }
   return union(ranges);
 }
+
+// ---------------------------------------------------------------------------
+// Kontraktets villkor (Skapa kontrakt och Ny butik)
+// ---------------------------------------------------------------------------
+
+/** Högst så många tecken i "Särskilda villkor" (samma gräns som i databasen). */
+export const SPECIAL_TERMS_MAX = 2000;
+
+/**
+ * Villkoren i Skapa kontrakt och Ny butik, som fälten visar dem: andel i procent, av vad,
+ * fast hyra i kronor, vid förlust, VMB före delning och särskilda villkor. Ger samma
+ * värden som store_agreements och PDF:en använder (ContractTerms).
+ *
+ * - Andel eller hyra måste finnas (som i databasen).
+ * - Vid förlust och VMB gäller bara vinstdelning; för omsättning sparas förval (0, av).
+ */
+export const contractTermsSchema = z
+  .object({
+    share: z.string().optional().nullable(),
+    base: z
+      .enum(["profit_after_costs", "net_excl_vat"], { error: "Välj vinst eller omsättning." })
+      .optional()
+      .nullable(),
+    rent: z.string().optional().nullable(),
+    loss: z
+      .enum(["zero", "proportional"], { error: "Välj vad som gäller vid förlust." })
+      .optional()
+      .nullable(),
+    vmbBeforeSplit: z.boolean().optional().nullable(),
+    specialTerms: z
+      .string()
+      .trim()
+      .max(SPECIAL_TERMS_MAX, {
+        message: `Särskilda villkor får vara högst ${SPECIAL_TERMS_MAX.toLocaleString("sv-SE")} tecken.`,
+      })
+      .optional()
+      .nullable()
+      .transform((v) => (v ? v : null)),
+  })
+  .transform((v, ctx) => {
+    const c = parsePercentBp(v.share);
+    if (!c.ok) {
+      ctx.addIssue({
+        code: "custom",
+        message: c.message.replace("Provisionen", "Andelen"),
+        path: ["share"],
+      });
+      return z.NEVER;
+    }
+    const r = parseRentOre(v.rent);
+    if (!r.ok) {
+      ctx.addIssue({ code: "custom", message: r.message, path: ["rent"] });
+      return z.NEVER;
+    }
+    const shareBp = c.value === 0 ? null : c.value;
+    const monthlyRentOre = r.value === 0 ? null : r.value;
+    if (shareBp === null && monthlyRentOre === null) {
+      ctx.addIssue({ code: "custom", message: "Ange andel, hyra eller båda.", path: ["share"] });
+      return z.NEVER;
+    }
+    // Bara hyra: ingen andel att räkna, sparas som förut (omsättning, ingen procent).
+    const base: CommissionBase =
+      shareBp === null ? "net_excl_vat" : (v.base ?? "profit_after_costs");
+    const split = base === "profit_after_costs" && shareBp !== null;
+    return {
+      shareBp,
+      base,
+      lossTreatment: split ? (v.loss ?? "zero") : ("zero" as const),
+      vmbBeforeSplit: split ? v.vmbBeforeSplit === true : false,
+      monthlyRentOre,
+      specialTerms: v.specialTerms,
+    };
+  });
+export type ContractTermsInput = z.infer<typeof contractTermsSchema>;

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { CashflowResult } from "@/analytics/cashflow";
 
-import { economyHeadline, NO_PAYOUT_SOURCE_TEXT } from "./headline";
+import { bookkeepingTitle, economyHeadline, NO_PAYOUT_SOURCE_TEXT } from "./headline";
 
 const PERIOD = { start: "2026-10-04", end: "2026-11-02" };
 const TODAY = "2026-11-03";
@@ -27,13 +27,49 @@ const cash = {
 describe("economyHeadline utan utbetalningar", () => {
   it("utan källa: en neutral rad, ingen saknad utbetalning", () => {
     const h = economyHeadline(null, cash, PERIOD, TODAY, false);
-    expect(h.title).toBe("Inga utbetalningar är inlästa.");
+    expect(h.title).toBe("Inga utbetalningar inlästa.");
     expect(h.aside).toBe(NO_PAYOUT_SOURCE_TEXT);
     expect(`${h.title} ${h.aside}`).not.toMatch(/väntades|har inte kommit|75/);
   });
 
   it("med källa: den försenade utbetalningen visas", () => {
     const h = economyHeadline(null, cash, PERIOD, TODAY, true);
-    expect(h.aside).toMatch(/som väntades 31\sokt\. har inte kommit\.$/);
+    expect(h.aside).toMatch(/väntades 31\sokt\. Har inte kommit\.$/);
+    expect(h.title.split(/\s+/).length).toBeLessThanOrEqual(8);
+  });
+});
+
+describe("bookkeepingTitle", () => {
+  it("nästa stängda månad, annars läget", () => {
+    expect(bookkeepingTitle([{ status: "open" }, { status: "closed" }], "Oktober 2026")).toBe(
+      "Oktober 2026 klar att skicka.",
+    );
+    expect(bookkeepingTitle([{ status: "open" }, { status: "sent" }], "")).toBe("Allt är skickat.");
+    expect(bookkeepingTitle([{ status: "open" }], "")).toBe("Inget att skicka ännu.");
+  });
+});
+
+describe("economyHeadline med utbetalningar", () => {
+  const result = (differenceOre: number, openDeviations: number) =>
+    ({
+      payouts: [{ period: { start: "2026-10-01", end: "2026-10-31" } }],
+      totals: {
+        actualOre: 7_400_000,
+        expectedOre: 7_400_000 - differenceOre,
+        differenceOre,
+        openDeviations,
+      },
+    }) as unknown as Parameters<typeof economyHeadline>[0];
+
+  it("stämmer: kort rubrik, siffrorna i raden under", () => {
+    const h = economyHeadline(result(0, 0), null, PERIOD, TODAY);
+    expect(h.title).toBe("Utbetalningarna stämmer.");
+    expect(h.aside).toMatch(/^Utbetalt 74\s000\skr av 74\s000\skr för oktober 2026\.$/);
+  });
+
+  it("avvikelser: antalet i rubriken, skillnaden i raden under", () => {
+    const h = economyHeadline(result(-5_000, 2), null, PERIOD, TODAY);
+    expect(h.title).toMatch(/^2\savvikelser att utreda\.$/);
+    expect(h.aside).toMatch(/Skillnad .*50\skr\.$/);
   });
 });

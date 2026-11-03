@@ -7,9 +7,13 @@
  *   Innehållet i cookien litar vi aldrig på utan verifiering.
  * - Inbjudningsmejl skickas med admin-API:t (SUPABASE_SECRET_KEY). Finns
  *   kontot redan skickas en inloggningslänk till samma adress i stället.
- *   Mejlmallarna i Supabase ska peka på
- *   `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=invite` (respektive
- *   `type=magiclink`), se docs/miljoer.md.
+ * - Länkar (inloggning, nytt lösenord) begärs med det IMPLICITA flödet, så
+ *   att Supabases standardmall fungerar i vilken webbläsare eller app som
+ *   helst: länken landar med sessionen i fragmentet (`#access_token=…`), som
+ *   sidan skickar hit (completeTokenLink). PKCE (`?code=`) kräver
+ *   verifieraren i samma webbläsare och fungerade inte när länken öppnades
+ *   från Mail-appen eller hemskärmen. En egen mall med token_hash fungerar
+ *   också (completeEmailLink), se docs/miljoer.md.
  */
 
 import { createServerClient } from "@supabase/ssr";
@@ -18,7 +22,15 @@ import type { JWTVerifyGetKey } from "jose";
 
 import { supabaseCookieOptions } from "./supabase-cookies";
 import { createSupabaseJwtVerifier, remoteJwks } from "./supabase-jwt";
-import type { AuthProvider, AuthSession, CookieJar, EmailLinkType, SignInResult } from "./types";
+import type {
+  AuthProvider,
+  AuthSession,
+  CookieJar,
+  CreateAccountResult,
+  EmailLinkType,
+  LinkTokens,
+  SignInResult,
+} from "./types";
 
 export interface SupabaseAuthProviderOptions {
   env: {
@@ -35,6 +47,8 @@ export interface SupabaseAuthProviderOptions {
    * (APP_ENV=development, http://localhost).
    */
   secureCookies?: boolean;
+  /** fetch för Supabase-anropen (tester med en falsk Supabase); standard global fetch. */
+  fetch?: typeof fetch;
 }
 
 function required(value: string | undefined, name: string): string {
@@ -50,6 +64,7 @@ export class SupabaseAuthProvider implements AuthProvider {
   private readonly publishableKey: string;
   private readonly verify: ReturnType<typeof createSupabaseJwtVerifier>;
   private client: SupabaseClient | undefined;
+  private implicitClient: SupabaseClient | undefined;
 
   constructor(private readonly options: SupabaseAuthProviderOptions) {
     this.url = required(options.env.SUPABASE_URL, "SUPABASE_URL");
@@ -66,6 +81,7 @@ export class SupabaseAuthProvider implements AuthProvider {
   private userClient(): SupabaseClient {
     const flags = supabaseCookieOptions(this.options.secureCookies ?? true);
     this.client ??= createServerClient(this.url, this.publishableKey, {
+      ...this.globalOptions(),
       cookieOptions: flags,
       cookies: {
         getAll: () => this.options.cookies.getAll(),
@@ -88,10 +104,32 @@ export class SupabaseAuthProvider implements AuthProvider {
     return this.client;
   }
 
-  /** Admin-klient (secret key). Bara för att skicka inbjudningar. */
+  private globalOptions(): { global?: { fetch: typeof fetch } } {
+    return this.options.fetch ? { global: { fetch: this.options.fetch } } : {};
+  }
+
+  /**
+   * Klient utan session för att BEGÄRA länkar med det implicita flödet (ingen
+   * code_challenge): länken fungerar då i vilken webbläsare som helst.
+   */
+  private linkClient(): SupabaseClient {
+    this.implicitClient ??= createClient(this.url, this.publishableKey, {
+      ...this.globalOptions(),
+      auth: {
+        flowType: "implicit",
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    });
+    return this.implicitClient;
+  }
+
+  /** Admin-klient (secret key). Bara för inbjudningar och konton som ägaren skapar. */
   private adminClient(): SupabaseClient {
     const secret = required(this.options.env.SUPABASE_SECRET_KEY, "SUPABASE_SECRET_KEY");
     return createClient(this.url, secret, {
+      ...this.globalOptions(),
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     });
   }
@@ -128,7 +166,7 @@ export class SupabaseAuthProvider implements AuthProvider {
   }
 
   async signInWithMagicLink(email: string, redirectTo: string): Promise<{ ok: boolean }> {
-    const { error } = await this.userClient().auth.signInWithOtp({
+    const { error } = await this.linkClient().auth.signInWithOtp({
       email,
       options: { shouldCreateUser: false, emailRedirectTo: redirectTo },
     });
@@ -172,6 +210,44 @@ export class SupabaseAuthProvider implements AuthProvider {
       return null;
     }
     return this.sessionFromToken(data.session?.access_token);
+  }
+
+  async completeTokenLink(tokens: LinkTokens): Promise<AuthSession | null> {
+    // Token verifieras lokalt (signatur, issuer, exp) innan något sparas.
+    const check = await this.verify(tokens.accessToken);
+    if (!check.ok) {
+      return null;
+    }
+    const { data, error } = await this.userClient().auth.setSession({
+      access_token: tokens.accessToken,
+      refresh_token: tokens.refreshToken,
+    });
+    if (error) {
+      return null;
+    }
+    const session = await this.sessionFromToken(data.session?.access_token);
+    return session && session.userId === check.session.userId ? session : null;
+  }
+
+  async sendPasswordReset(email: string, redirectTo: string): Promise<{ ok: boolean }> {
+    const { error } = await this.linkClient().auth.resetPasswordForEmail(email, { redirectTo });
+    return { ok: !error };
+  }
+
+  async createAccountWithPassword(email: string, password: string): Promise<CreateAccountResult> {
+    const { error } = await this.adminClient().auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+    });
+    if (!error) {
+      return "created";
+    }
+    // 422 betyder också t.ex. weak_password: bara koderna för befintligt konto räknas.
+    if (error.code === "email_exists" || error.code === "user_already_exists") {
+      return "exists";
+    }
+    throw new Error(`Kontot kunde inte skapas (${error.code ?? error.status ?? "okänt"}).`);
   }
 
   async setPassword(password: string): Promise<void> {

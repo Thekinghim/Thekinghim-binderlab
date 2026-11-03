@@ -18,21 +18,34 @@ function code(c: string): string {
   return c.replace(/-/g, "‑");
 }
 
-/** Butikens status: åtgärd (med text för skärmläsare), arkiverad, avtal eller inget avtal. */
+/** Statusens text utan åtgärd: kontraktet först (grönt = signerat). */
+function quietStatus(r: StoreRow): string {
+  if (r.archived) return "Arkiverad";
+  if (r.contract === "signed") return "Signerat";
+  return r.current ? "Villkor finns" : "Inga villkor";
+}
+
+/** Butikens status: åtgärd (röd, med text för skärmläsare), arkiverad eller kontraktet. */
 function StoreStatus({ row: r }: { row: StoreRow }) {
   return r.issue ? (
     <span className="flex flex-col items-start">
-      <StatusTag status={r.issue.level === "neutral" ? "warning" : r.issue.level}>
+      <StatusTag
+        status={r.issue.level === "neutral" ? "warning" : r.issue.level}
+        className={r.issue.level === "critical" ? "text-signal-fg" : undefined}
+      >
         {r.issue.short}
       </StatusTag>
       <span className="sr-only">Kräver åtgärd: {r.issue.text}</span>
     </span>
   ) : r.archived ? (
     <StatusTag status="offline">Arkiverad</StatusTag>
-  ) : r.current ? (
-    <StatusTag status="ok">Avtal gäller</StatusTag>
+  ) : r.contract === "signed" ? (
+    <span className="label inline-flex h-6 items-center gap-1.5 text-up">
+      <span aria-hidden className="size-1.5 rounded-full bg-up" />
+      Signerat
+    </span>
   ) : (
-    <StatusTag status="neutral">Inget avtal</StatusTag>
+    <StatusTag status="neutral">{quietStatus(r)}</StatusTag>
   );
 }
 
@@ -95,8 +108,7 @@ function columns(monthLabel: string): Column<StoreRow>[] {
           : r.archived
             ? 4
             : 3,
-      csv: (r) =>
-        r.issue?.short ?? (r.archived ? "Arkiverad" : r.current ? "Avtal gäller" : "Inget avtal"),
+      csv: (r) => r.issue?.short ?? quietStatus(r),
       hideable: false,
       // Under md står statusen under namnet i första kolumnen (MachineCell på /design),
       // så att beloppen ryms utan sidledsscroll.
@@ -105,8 +117,7 @@ function columns(monthLabel: string): Column<StoreRow>[] {
     },
     {
       key: "terms",
-      // "Avtal" i rubriken: villkoren i avtalet, kortare än "Ersättningsmodell".
-      header: "Avtal",
+      header: "Villkor",
       sortValue: (r) => r.current?.termsLabel ?? "",
       csv: (r) => r.current?.termsLabel ?? "",
       hideOnMobile: true,

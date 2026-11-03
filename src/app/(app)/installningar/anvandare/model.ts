@@ -136,14 +136,14 @@ export function peopleCount(n: number): string {
 }
 
 /**
- * Sidans tvådelade rubrik: "Användare." och ett faktum, t.ex.
- * "5 personer har tillgång. 1 inbjudan väntar på svar."
+ * Sidans rubrik, en mening: väntar någon på att gå med säger den det (det är
+ * det som kan behöva göras), annars hur många som har tillgång.
  */
 export function headline(memberCount: number, pendingCount: number): string {
-  const access = `${peopleCount(memberCount)} har tillgång.`;
-  if (pendingCount === 0) return `${access} Inga inbjudningar väntar.`;
-  const invites = `${formatInt(pendingCount)} ${pendingCount === 1 ? "inbjudan väntar" : "inbjudningar väntar"} på svar.`;
-  return `${access} ${invites}`;
+  if (pendingCount > 0) {
+    return `${formatInt(pendingCount)} ${pendingCount === 1 ? "inbjudan väntar" : "inbjudningar väntar"}.`;
+  }
+  return `${peopleCount(memberCount)} har tillgång.`;
 }
 
 /** Metadata till rubriken: antal per roll, i rollordning, även nollor. */
@@ -175,7 +175,5 @@ export function membersAside(latest: { name: string; date: string } | null): str
 
 /** Den grå delen av "Väntar på svar.": när första länken går ut, annars regeln för länkar. */
 export function invitationsAside(firstExpires: string | null): string {
-  return firstExpires
-    ? sentence(`Första länken går ut ${firstExpires}`)
-    : "En länk gäller i 7 dagar och kan användas en gång.";
+  return firstExpires ? sentence(`Första länken går ut ${firstExpires}`) : "Länken gäller 7 dagar.";
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { MerHead } from "@/app/(app)/installningar/_components/mer-head";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StatusTag } from "@/components/ui/status-tag";
 import { formatInt, formatRelative } from "@/lib/format";
@@ -45,7 +46,7 @@ const TOOL_ABOUT: Record<string, string> = {
   automat_status: "Status per automat: i drift, tyst, fel.",
   avtal: "Avtalen: villkor, slutdatum och uppsägning.",
   bokforing: "Bokföringens månader: klara, skickade, siffror.",
-  synk: "Synken från Awish: status och senaste synk.",
+  synk: "Hämtningen från Awish: status och senaste gången.",
   foresla_knapp: "Knappar till rätt sida för nästa steg (ändrar inget).",
 };
 
@@ -108,34 +109,40 @@ export default async function AssistentPage({
   const modelLabel = ready ? (local ? "lokal testmodell" : config.model) : "–";
 
   const verified = recent.filter((r) => r.status === "answered").length;
-  const title = ready ? "Fråga om er data." : "Assistenten är inte påslagen.";
+  const title = ready ? "Fråga om er data." : "Assistenten är av.";
   const aside = !ready
     ? config.status === "not-configured"
-      ? "Den kräver en nyckel till Claude API."
+      ? "Kräver nyckel till Claude API."
       : `${config.variable} har ett ogiltigt värde.`
-    : recent.length > 0
-      ? `${formatInt(verified)} av dina ${formatInt(recent.length)} senaste svar hade alla tal i underlaget.`
-      : "Varje tal kontrolleras mot underlaget.";
+    : undefined;
 
   const notConfigured = ready
     ? null
     : config.status === "not-configured"
       ? {
-          message: "Assistenten är inte påslagen.",
-          detail: "Nyckeln sätts i miljövariablerna.",
+          // Rubriken säger redan varför; här bara vad som gäller i rutan.
+          message: "Frågor går inte än.",
+          detail: "",
         }
       : { message: config.message, detail: "Rätta värdet och starta om servern." };
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
-      <SectionHeader
-        className="rise"
-        as="h1"
-        size="xl"
+      <MerHead
         eyebrow="Assistent"
         title={title}
-        aside={aside}
-        meta={[{ label: "Modell", value: modelLabel }]}
+        line={aside}
+        meta={[
+          { label: "Modell", value: modelLabel },
+          ...(recent.length > 0
+            ? [
+                {
+                  label: "Kontrollerade",
+                  value: `${formatInt(verified)}/${formatInt(recent.length)}`,
+                },
+              ]
+            : []),
+        ]}
       />
 
       <section
@@ -171,14 +178,14 @@ export default async function AssistentPage({
             aside={
               advisor.lastRun
                 ? `Senaste körning ${formatRelative(new Date(advisor.lastRun.createdAt))}.`
-                : "Tas fram varje morgon."
+                : "Varje morgon."
             }
           />
           <Suggestions
             items={advisor.suggestions}
             manualLeft={advisor.manualLeft}
             canGenerate={ready && !local}
-            emptyText="Inga öppna förslag. Nya tas fram varje morgon."
+            emptyText="Inga förslag just nu."
           />
         </section>
       ) : null}
@@ -188,7 +195,7 @@ export default async function AssistentPage({
         style={{ "--i": 3 } as React.CSSProperties}
       >
         <summary className="flex cursor-pointer list-none items-baseline justify-between gap-4">
-          <h2 className="text-md font-medium text-fg">Om assistenten</h2>
+          <h2 className="text-md font-medium text-fg">Mer</h2>
           <span className="meta text-subtle">
             {`${formatInt(tools.length)} verktyg · ${formatInt(asked)} frågor`}
           </span>
@@ -213,7 +220,7 @@ export default async function AssistentPage({
             <SectionHeader
               id="logg"
               size="sm"
-              title="Dina senaste frågor."
+              title="Dina frågor."
               aside={
                 recent.length === 0
                   ? "Inga ännu."

@@ -19,6 +19,8 @@ import {
   titleRows,
   type PriceAuditEvent,
   type TitleRow,
+  costLabel,
+  priceTodos,
 } from "./model";
 
 const NBSP = " ";
@@ -43,6 +45,7 @@ function row(over: Partial<TitleRow>): TitleRow {
     unpricedRevenueOre: 0,
     unpricedFirstDate: null,
     status: "ok",
+    own: false,
     ...over,
   };
 }
@@ -504,5 +507,36 @@ describe("previewPrice", () => {
       lastDate: "2026-09-30",
     });
     expect(previewPrice({ ...base, validFrom: "2026-09-30" }).stillUnpriced).toBeNull();
+  });
+});
+
+describe("egna produkter och Att göra", () => {
+  it("titleRows bär flaggan; etiketten säger kostnad för innehållet", () => {
+    expect(costLabel(true)).toBe("Kostnad per pack (innehåll)");
+    expect(costLabel(false)).toBe("Inköpspris per pack");
+  });
+
+  it("utan pris först (flest order), sedan förlust; arkiverade utan order hoppas över", () => {
+    const todos = priceTodos([
+      row({ id: "ok" }),
+      row({ id: "loss", name: "Förlustis", status: "loss", leftOre: -200 }),
+      row({ id: "m1", name: "B", status: "missing", unpricedOrders: 2, currentCostOre: null }),
+      row({
+        id: "m2",
+        name: "Mystery Pack",
+        own: true,
+        status: "missing",
+        unpricedOrders: 9,
+        currentCostOre: null,
+      }),
+      row({ id: "idle", name: "C", status: "missing", orders: 0, currentCostOre: null }),
+      row({ id: "old", status: "missing", archived: true, orders: 0, currentCostOre: null }),
+    ]);
+    expect(todos.map((t) => [t.id, t.verb, t.tone])).toEqual([
+      ["m2", "Sätt kostnad", "critical"],
+      ["m1", "Sätt pris", "critical"],
+      ["idle", "Sätt pris", "warning"],
+      ["loss", "Förlust", "critical"],
+    ]);
   });
 });

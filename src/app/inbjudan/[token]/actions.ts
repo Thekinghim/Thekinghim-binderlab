@@ -29,6 +29,8 @@ export async function acceptInvitation(
   const confirm = field(formData, "confirm");
   const tokenHash = field(formData, "token_hash");
   const linkType = field(formData, "type");
+  const accessToken = field(formData, "access_token");
+  const refreshToken = field(formData, "refresh_token");
 
   if (formData.has("confirm") && password !== confirm) {
     return { error: "Lösenorden är inte lika.", field: "confirm" };
@@ -37,6 +39,7 @@ export async function acceptInvitation(
     password: password === "" ? undefined : password,
     emailTokenHash: tokenHash === "" ? undefined : tokenHash,
     emailLinkType: linkType === "invite" || linkType === "magiclink" ? linkType : undefined,
+    emailTokens: accessToken === "" ? undefined : { accessToken, refreshToken },
   });
   if (!result.ok) {
     const isPasswordError =

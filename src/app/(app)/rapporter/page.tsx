@@ -20,6 +20,7 @@ import { ReviewPanel } from "./_components/review-panel";
 import { ServiceLines } from "./_components/service-lines";
 import { pickView, ViewTabs } from "./_components/view-tabs";
 import { when } from "./_components/when";
+import { bookkeepingOverlap } from "./_lib/overlap";
 
 export const metadata: Metadata = { title: "Rapporter" };
 
@@ -153,10 +154,10 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
               title={`${TYPE_LABEL[data.type]}, ${scope}.`}
               aside={[
                 preview?.type === "butik"
-                  ? `Butikens ersättning ${data.range ? shown : monthName(preview.month)}: ${sek(preview.report.compensation.totalOre)}.`
+                  ? `Ersättning ${sek(preview.report.compensation.totalOre)}.`
                   : null,
                 data.current
-                  ? `Senaste versionen ${when(data.current.generatedAt, viewer.organization.timezone)}.`
+                  ? `Senast ${when(data.current.generatedAt, viewer.organization.timezone)}.`
                   : "Inget utkast ännu.",
               ]
                 .filter(Boolean)
@@ -164,8 +165,8 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
             />
             {staleDay ? (
               <p role="status" className="meta text-signal-fg">
-                Senaste synk {formatDate(dayDate(staleDay), { year: "auto" })}. Order efter det
-                saknas.
+                Data från Awish senast {formatDate(dayDate(staleDay), { year: "auto" })}. Senare
+                order saknas.
                 {data.canEdit ? (
                   <Link
                     href="/datakallor"
@@ -189,6 +190,13 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
               canEdit={data.canEdit}
               canCreate={preview !== null}
               currentId={data.current?.id ?? null}
+              overlap={bookkeepingOverlap({
+                type: data.type,
+                range: data.range,
+                month: data.month,
+                today: data.today,
+                archive: data.archive,
+              })}
             />
           </section>
 
@@ -231,7 +239,6 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
               id="forhandsvisning"
               size="md"
               title={preview ? `Förhandsvisning, ${shown}.` : "Ingen förhandsvisning."}
-              aside={preview ? preview.report.conclusion.text : undefined}
             />
             {preview ? (
               <div className="min-w-0 overflow-hidden rounded-md border border-line">

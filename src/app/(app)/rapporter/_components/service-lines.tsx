@@ -20,14 +20,14 @@ export function ServiceLines({
   if (status.mail.kind === "outbox") {
     lines.push({
       key: "mail",
-      message: "E-post skickas inte härifrån: utskicken sparas i den lokala utkorgen.",
+      message: "E-post är av: utskicken sparas lokalt.",
       detail: "Riktiga utskick kräver en e-postleverantör.",
       settings: "MAIL_PROVIDER=resend, RESEND_API_KEY, MAIL_FROM",
     });
   } else if (!status.mail.configured) {
     lines.push({
       key: "mail",
-      message: "Resend är valt men inte konfigurerat, så inget kan skickas.",
+      message: "E-post är inte inställd. Inget skickas.",
       detail: "Inställningarna för e-post saknas.",
       settings: status.mail.missing.join(", "),
     });
@@ -35,7 +35,7 @@ export function ServiceLines({
   if (!status.pdf.configured) {
     lines.push({
       key: "pdf",
-      message: "PDF kan inte skapas på servern. Utskrift från webbläsaren fungerar.",
+      message: "PDF kan inte skapas här. Skriv ut från webbläsaren.",
       detail: "Inställningarna för PDF saknas.",
       settings: status.pdf.missing.join(", "),
     });
@@ -43,8 +43,8 @@ export function ServiceLines({
   if (!status.storage.configured) {
     lines.push({
       key: "storage",
-      message: "Lagringen för PDF:er saknar inställningar.",
-      detail: "PDF:erna kan inte sparas.",
+      message: "PDF:er kan inte sparas.",
+      detail: "Inställningar saknas.",
       settings: status.storage.missing.join(", "),
     });
   }

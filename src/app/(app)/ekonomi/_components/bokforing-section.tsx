@@ -23,7 +23,9 @@ import {
   type MonthStatus,
 } from "@/server/bokforing/service";
 
+import { bookkeepingTitle } from "../_lib/headline";
 import { capitalize, isoToDate, kr, monthText, plural } from "../_lib/view";
+import { OpenMoreOnHash } from "./open-more";
 import {
   ArchiveReceiptButton,
   PlanForm,
@@ -31,6 +33,9 @@ import {
   SentToggle,
   VmbBookkeepingSwitch,
 } from "./bokforing-controls";
+
+/** Ankare som öppnar "Fler val" (#kontoplan är rutans id; kontraktet länkar till #bokforing). */
+const MORE_HASHES = ["kontoplan", "bokforing"] as const;
 
 const SECTION = "rise flex scroll-mt-28 flex-col gap-8 pb-12 md:gap-10 md:pb-16";
 
@@ -49,10 +54,13 @@ export async function BokforingSection({
   viewer,
   today,
   canEdit,
+  asPage = false,
 }: {
   viewer: Viewer;
   today: string;
   canEdit: boolean;
+  /** Egen sida (underfliken Bokföring): stor rubrik (h1) överst. */
+  asPage?: boolean;
 }) {
   let view: BokforingView;
   try {
@@ -85,55 +93,71 @@ export async function BokforingSection({
     >
       <SectionHeader
         id="bokforing-rubrik"
-        size="md"
-        title={
-          next
-            ? `${capitalize(monthText(next.month))} är klar att skicka.`
-            : view.months.some((m) => m.status === "sent")
-              ? "Allt är skickat."
-              : "Inget att skicka ännu."
-        }
+        as={asPage ? "h1" : undefined}
+        size={asPage ? "xl" : "md"}
+        eyebrow={asPage ? "Bokföring" : undefined}
+        title={bookkeepingTitle(view.months, capitalize(monthText(next?.month ?? "")))}
         aside={
-          todo.length > 1
-            ? `${plural(todo.length, "månad", "månader")} är inte skickade. Importera SIE-filen i Fortnox: Bokföring → Importera SIE.`
-            : "Ladda ner paketet och importera SIE-filen i Fortnox: Bokföring → Importera SIE."
+          next
+            ? todo.length > 1
+              ? `${plural(todo.length, "månad", "månader")} kvar. Importera SIE-filen i Fortnox.`
+              : "Importera SIE-filen i Fortnox."
+            : undefined
         }
       />
 
-      <VmbBookkeepingSwitch on={view.settings.vmbEnabled} canEdit={canEdit} />
-
       <ol className="flex flex-col gap-3" aria-label="Månader">
-        {view.months.map((m) => (
-          <MonthItem key={m.month} row={m} canEdit={canEdit} today={today} />
+        {view.months.map((m, i) => (
+          <MonthItem key={m.month} row={m} canEdit={canEdit} today={today} index={i} />
         ))}
       </ol>
 
+      <OpenMoreOnHash detailsId="kontoplan" hashes={MORE_HASHES} />
+      {/* Sällan ändrat: VMB-valet och kontoplanen. Läget syns i raden även när den är stängd. */}
       <details
         id="kontoplan"
+        suppressHydrationWarning
         className="group scroll-mt-28 rounded-md border border-line bg-surface"
       >
-        <summary className="label flex min-h-10 cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-2 text-muted hover:text-fg">
-          <span>Kontoplan</span>
+        <summary className="label flex min-h-10 cursor-pointer list-none flex-wrap items-center justify-between gap-2 px-4 py-2 text-muted hover:text-fg [&::-webkit-details-marker]:hidden">
+          <span>Fler val</span>
           <span className="text-subtle normal-case">
-            Förslag enligt BAS · kontrolleras av Talenom
+            {view.settings.vmbEnabled ? "VMB på" : "VMB av"} · Kontoplan
           </span>
         </summary>
-        <div className="border-t border-line p-4">
-          <PlanForm
-            rows={planRows}
-            series={view.settings.series}
-            orgNumber={view.settings.orgNumber}
-            purchaseBasis={view.settings.purchaseBasis}
-            openingCarryOre={view.settings.openingCarryOre}
-            canEdit={canEdit}
-          />
+        <div className="fade-in flex flex-col gap-6 border-t border-line p-4">
+          <VmbBookkeepingSwitch on={view.settings.vmbEnabled} canEdit={canEdit} />
+          <div className="flex flex-col gap-3">
+            <p className="label flex flex-wrap items-center justify-between gap-2 text-muted">
+              <span>Kontoplan</span>
+              <span className="text-subtle normal-case">Förslag enligt BAS</span>
+            </p>
+            <PlanForm
+              rows={planRows}
+              series={view.settings.series}
+              orgNumber={view.settings.orgNumber}
+              purchaseBasis={view.settings.purchaseBasis}
+              openingCarryOre={view.settings.openingCarryOre}
+              canEdit={canEdit}
+            />
+          </div>
         </div>
       </details>
     </section>
   );
 }
 
-function MonthItem({ row, canEdit, today }: { row: MonthRow; canEdit: boolean; today: string }) {
+function MonthItem({
+  row,
+  canEdit,
+  today,
+  index,
+}: {
+  row: MonthRow;
+  canEdit: boolean;
+  today: string;
+  index: number;
+}) {
   const b = row.book;
   const figures: [string, number][] = [
     ["Försäljning", netSales(b)],
@@ -152,7 +176,10 @@ function MonthItem({ row, canEdit, today }: { row: MonthRow; canEdit: boolean; t
   const tag: Status =
     row.status === "closed" && row.stored?.status === "final" ? "ok" : TAG[row.status];
   return (
-    <li className="rounded-md border border-line bg-surface">
+    <li
+      className="rise rounded-md border border-line bg-surface"
+      style={{ "--i": Math.min(index, 8) + 1 } as React.CSSProperties}
+    >
       <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:gap-6">
         <div className="flex min-w-40 items-center justify-between gap-3 lg:flex-col lg:items-start lg:gap-1">
           <h3 className="text-base font-medium text-fg">{capitalize(monthText(row.month))}</h3>
@@ -191,8 +218,8 @@ function MonthItem({ row, canEdit, today }: { row: MonthRow; canEdit: boolean; t
           <StateMessage
             compact
             kind="error"
-            message="Butikernas andel är inte färdigräknad."
-            detail={`${plural(b.profitSplitUnpricedOrders, "order", "order")} saknar inköpspris. Lägg in priserna innan månaden skickas.`}
+            message="Butikernas andel är inte klar."
+            detail={`${plural(b.profitSplitUnpricedOrders, "order", "order")} saknar inköpspris.`}
           />
         </div>
       ) : null}
@@ -201,7 +228,7 @@ function MonthItem({ row, canEdit, today }: { row: MonthRow; canEdit: boolean; t
           <StateMessage
             compact
             kind="error"
-            message="Siffrorna har ändrats sedan månaden skickades."
+            message="Ändrad sedan den skickades."
             detail="Skicka det nya paketet eller bokför skillnaden."
           />
         </div>
@@ -267,9 +294,7 @@ function MonthItem({ row, canEdit, today }: { row: MonthRow; canEdit: boolean; t
             </table>
           ) : (
             <p className="self-start text-sm text-muted">
-              {row.status === "sent"
-                ? "Skickad utan VMB: ingen VMB-moms."
-                : "VMB är av: ingen VMB-moms och inget underskott."}
+              {row.status === "sent" ? "Skickad utan VMB." : "Utan VMB."}
             </p>
           )}
         </div>

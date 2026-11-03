@@ -82,13 +82,14 @@ export function TodoList({ todos }: { todos: HomeTodo[] }) {
           <li
             key={t.key}
             className="rise border-b border-line"
-            style={{ "--i": i + 4 } as CSSProperties}
+            style={{ "--i": i + 5 } as CSSProperties}
           >
             <Link
               href={t.href}
+              title={t.detail}
               className="group lift grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-xs py-3 hover:bg-hover sm:grid-cols-[4.5rem_minmax(0,1fr)_auto]"
             >
-              <span className="label row-span-2 flex items-start gap-1.5 pt-1 text-fg">
+              <span className="label flex items-start gap-1.5 pt-1 text-fg">
                 <span className="inline-flex h-4 w-2 items-center">
                   <StatusGlyph status={status} />
                 </span>
@@ -98,16 +99,13 @@ export function TodoList({ todos }: { todos: HomeTodo[] }) {
               <span className="text-base font-medium text-balance text-fg">{t.title}</span>
               <span
                 aria-hidden
-                className="meta hidden self-start pt-0.5 text-subtle transition-colors group-hover:text-fg sm:row-span-2 sm:block"
+                className="meta hidden self-start pt-0.5 text-subtle transition-colors group-hover:text-fg sm:block"
               >
                 →
               </span>
-              <span className="col-start-2 text-sm text-muted">
-                {t.detail}
-                {t.orgWide ? (
-                  <span className="meta mt-1 block text-subtle">Gäller hela organisationen</span>
-                ) : null}
-              </span>
+              {t.orgWide ? (
+                <span className="meta col-start-2 text-subtle">Hela företaget</span>
+              ) : null}
             </Link>
           </li>
         );
@@ -336,8 +334,7 @@ export function WarningLine({
           <span>
             {formatInt(n)}
             {NBSP}
-            {n === 1 ? "titel saknar" : "titlar saknar"} inköpspris,{" "}
-            {unpricedShareText(unpriced.shareBp)} av intäkten.
+            {n === 1 ? "titel" : "titlar"} utan inköpspris ({unpricedShareText(unpriced.shareBp)}).
           </span>
           <ArrowLink href={unpriced.href}>{canEdit ? "Lägg in pris" : "Visa priser"}</ArrowLink>
         </span>
@@ -345,7 +342,7 @@ export function WarningLine({
       {lost ? (
         <span className="inline-flex flex-wrap items-baseline gap-x-3">
           <span className="text-fg">{lost.text}</span>
-          <ArrowLink href={lost.href}>Förlorad försäljning</ArrowLink>
+          <ArrowLink href={lost.href}>Visa</ArrowLink>
         </span>
       ) : null}
     </p>
@@ -367,10 +364,8 @@ function StaleImportText({
 }) {
   return (
     <span className="inline-flex flex-wrap items-baseline gap-x-3">
-      <span className="text-fg">
-        {`Senaste import ${dayText(stale.date, today)} Order efter det saknas.`}
-      </span>
-      {canEdit ? <ArrowLink href="/datakallor">Datakällor</ArrowLink> : null}
+      <span className="text-fg">{`Senast hämtat från Awish ${dayText(stale.date, today)}`}</span>
+      {canEdit ? <ArrowLink href="/datakallor">Kolla Awish</ArrowLink> : null}
     </span>
   );
 }

@@ -88,3 +88,21 @@ export function canonicalLonsamhetQuery(sp: LonsamhetSearchParams): string | nul
   const s = out.toString();
   return s ? `?${s}` : "";
 }
+
+/** Fliken under bryggan: tabell (förval), utveckling eller rytm (?visa=). */
+export type AnalysisTab = "table" | "trend" | "rhythm";
+
+/** ?visa= för varje flik. */
+export const ANALYSIS_PARAM: Record<AnalysisTab, string> = {
+  table: "tabell",
+  trend: "utveckling",
+  rhythm: "rytm",
+};
+
+/** Läser ?visa=; okänt eller saknat ger tabellen. */
+export function parseAnalysisTab(raw: Param): AnalysisTab {
+  const v = norm(raw);
+  if (v === "utveckling") return "trend";
+  if (v === "rytm") return "rhythm";
+  return "table";
+}

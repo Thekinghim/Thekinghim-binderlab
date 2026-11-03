@@ -187,7 +187,7 @@ describe("listan", () => {
   });
   it("sorterar på intäkt och flaggar det som kräver åtgärd, som butikens sida", () => {
     expect(rows.map((r) => r.id)).toEqual(["s1", "s2", "s3"]);
-    expect(rows[2]!.issue).toMatchObject({ short: "Inget avtal i dag", level: "critical" });
+    expect(rows[2]!.issue).toMatchObject({ short: "Inga villkor", level: "critical" });
     expect(rows[2]!.machineCodes).toEqual(["BL-003"]);
     // Gallerian har avtal men ingen tar emot rapporten.
     expect(rows[1]!.issue?.short).toBe("Ingen mottagare");
@@ -198,11 +198,11 @@ describe("listan", () => {
   it("rubriken bär intäkten och andelen till butikerna", () => {
     const h = listHeadline(rows, `på 2${NB}dagar`);
     expect(h.title).toBe(`3${NB}butiker gav 220${NB}kr på 2${NB}dagar.`);
-    expect(h.aside).toContain(`35${NB}kr (15,9${NB}%) till butikerna och vinst`);
-    expect(h.aside).toMatch(/, 68\u00a0% från Kiosken\.$/);
+    // Kort: butikernas andel och vår vinst.
+    expect(h.aside).toContain(`35${NB}kr (15,9${NB}%) till butikerna · vår vinst`);
     // En mening i rubrikens andra del.
     expect(h.aside?.match(/\.(\s|$)/g)).toHaveLength(1);
-    expect(listHeadline([rows[0]!], "i dag").aside).toContain("till butiken och vinst");
+    expect(listHeadline([rows[0]!], "i dag").aside).toContain("till butiken · vår vinst");
     expect(listHeadline([], "i dag").title).toBe("Inga butiker ännu.");
   });
 
@@ -261,7 +261,7 @@ describe("en butik", () => {
     });
     expect(h.title).toBe(`Kiosken gav 150${NB}kr på 2${NB}dagar.`);
     expect(h.aside).toBe(
-      `50${NB}% mer än perioden innan. Vinst för oss 90${NB}kr efter inköp och ersättning. Butikens ersättning hittills i november är 15${NB}kr.`,
+      `50${NB}% mer än förut · vår vinst 90${NB}kr · butiken 15${NB}kr i november.`,
     );
   });
 
@@ -334,5 +334,29 @@ describe("en butik", () => {
         today: "2026-11-02",
       }),
     ).toEqual([]);
+  });
+
+  it("att göra: butik med automat utan signerat kontrakt först (röd)", () => {
+    const base = {
+      agreements: [],
+      machineCodes: ["BL-001"],
+      recipients: [],
+      archived: false,
+      today: "2026-11-02",
+    };
+    expect(storeIssues({ ...base, contract: "missing" })[0]).toMatchObject({
+      id: "no-contract",
+      level: "critical",
+      short: "Kontrakt saknas",
+      actionable: true,
+    });
+    expect(storeIssues({ ...base, contract: "unsigned" })[0]!.short).toBe("Ej signerat");
+    expect(storeIssues({ ...base, contract: "signed" }).map((i) => i.id)).not.toContain(
+      "no-contract",
+    );
+    // Utan automat behövs inget kontrakt än.
+    expect(
+      storeIssues({ ...base, machineCodes: [], contract: "missing" }).map((i) => i.id),
+    ).not.toContain("no-contract");
   });
 });

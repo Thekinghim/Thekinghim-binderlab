@@ -579,6 +579,10 @@ export interface AgreementRecord {
   readonly monthlyRentOre: number | null;
   /** 'profit_after_costs' = vinstdelning (commissionBp är butikens andel av vinsten). */
   readonly commissionBase: "net_excl_vat" | "profit_after_costs";
+  /** Vinstdelning vid förlust ('zero' = butiken får 0). */
+  readonly lossTreatment?: "zero" | "proportional";
+  /** Vinstdelning: VMB-moms dras före delningen. */
+  readonly vmbBeforeSplit?: boolean;
   readonly note: string | null;
 }
 
@@ -593,6 +597,8 @@ export async function queryAgreementRecords(tx: Tx, orgId: string): Promise<Agre
       commissionBp: s.storeAgreements.commissionBp,
       monthlyRentOre: s.storeAgreements.monthlyRentOre,
       commissionBase: s.storeAgreements.commissionBase,
+      lossTreatment: s.storeAgreements.lossTreatment,
+      vmbBeforeSplit: s.storeAgreements.vmbBeforeSplit,
       note: s.storeAgreements.note,
     })
     .from(s.storeAgreements)

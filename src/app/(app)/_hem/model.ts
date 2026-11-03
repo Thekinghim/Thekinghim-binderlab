@@ -721,6 +721,8 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
       pricedOrders: byTitle.totals.pricedOrders,
       profitOre: profitSplit?.totalOre ?? km.profitOre,
       ourProfitOre: profitSplit && profitSplit.storesOre !== 0 ? profitSplit.ourOre : null,
+      storesProfitOre: profitSplit && profitSplit.storesOre !== 0 ? profitSplit.storesOre : null,
+      filtered: Boolean(input.scope.storeId || input.scope.machineId),
       marginBp: km.marginBp,
       unpricedShareBp: unpriced?.shareBp ?? 0,
       revenueChangeBp:

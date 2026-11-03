@@ -57,8 +57,8 @@ export function UnpricedSummary({ unpriced }: { unpriced: UnpricedBlock }) {
       </summary>
       <div className="fade-in mt-3 flex flex-col gap-2">
         <p className="text-sm text-muted">
-          {kr(unpriced.revenueOre)} från {formatInt(unpriced.orders)}
-          {NBSP}order räknas inte i vinsten.
+          {kr(unpriced.revenueOre)} · {formatInt(unpriced.orders)}
+          {NBSP}order ingår inte i vinsten.
         </p>
       </div>
       <ul className="flex flex-col">

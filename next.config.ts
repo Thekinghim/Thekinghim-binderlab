@@ -11,6 +11,8 @@ import { securityHeaderRules } from "./src/lib/security-headers";
 const MAX_ACTION_BODY = "21mb";
 
 const nextConfig: NextConfig = {
+  // Egen byggmapp per utvecklingsserver (NEXT_DIST_DIR), så att flera kan köra i samma träd.
+  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
   reactStrictMode: true,
   // Avslöja inte ramverket i varje svar.
   poweredByHeader: false,

@@ -420,7 +420,7 @@ describe("utgångna titlar (sortimentet)", () => {
     // Den tomma platsen för Gammal titel räknas inte som Kritisk längre.
     expect(model.counts).toEqual({ critical: 1, low: 1, ok: 1 });
     const h = headlineOf(viewOf(model));
-    expect(h.title).toBe("1 plats kritisk, 1 låg.");
+    expect(h.title).toBe("Fyll på 1 titel nu, 1 snart.");
   });
 
   it("visar en utgången titel med pack kvar, men utan status och påfyllning", () => {
@@ -435,7 +435,7 @@ describe("utgångna titlar (sortimentet)", () => {
 describe("headlineOf", () => {
   it("svarar med antal kritiska och låga, det mest brådskande och dagens besök", () => {
     const h = headlineOf(viewOf(build()));
-    expect(h.title).toBe("2 platser kritiska, 1 låg.");
+    expect(h.title).toBe("Fyll på 2 titlar nu, 1 snart.");
     // Högst två meningar: dagens besök står i sidhuvudets fakta (visitsToday).
     // Automatens namn i meningen (som Att göra och Prognos); koden står i tabellen.
     expect(h.aside).toBe("Black Bolt i Automat 1 är slut.");

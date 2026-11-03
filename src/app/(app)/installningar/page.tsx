@@ -8,6 +8,7 @@ import { EN_DASH, NBSP, formatDate, formatInt } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
 import { requireUser } from "@/server/session";
 
+import { MerHead } from "./_components/mer-head";
 import { OwnerSharesForm } from "./_components/owner-shares-form";
 import { SettingsForm } from "./_components/settings-form";
 import { SettingsLog } from "./_components/settings-log";
@@ -62,15 +63,10 @@ export default async function SettingsPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
-      <SectionHeader
-        className="rise"
-        as="h1"
-        size="xl"
+      <MerHead
         eyebrow="Inställningar"
         title={headline.title}
-        aside={headline.aside}
         meta={[
-          { label: "Organisation", value: ctx.organization.name },
           { label: "Räkenskapsår", value: fiscalYearLabel(settings.fiscalYearStartMonth) },
           {
             label: "Senast ändrat",
@@ -90,10 +86,6 @@ export default async function SettingsPage() {
           {
             href: "/installningar/anvandare",
             label: "Användare",
-          },
-          {
-            href: "/datakallor",
-            label: "Datakällor",
           },
           {
             href: "/installningar/konto",
@@ -118,40 +110,14 @@ export default async function SettingsPage() {
         className="rise flex flex-col gap-8"
         style={{ "--i": 2 } as React.CSSProperties}
       >
-        <SectionHeader
-          id="avgifter"
-          size="md"
-          title="Det som dras från varje order."
-          aside={
-            settings.vatRateBp === 0
-              ? "Momsen är 0 eftersom bolaget inte är momsregistrerat."
-              : `Moms ${formatBp(settings.vatRateBp)} räknas ur det betalda beloppet.`
-          }
-        />
-        <div className="grid grid-cols-1 gap-x-8 gap-y-10 lg:grid-cols-12">
-          <div className="lg:col-span-7">
-            <SettingsForm
-              key={`${settings.cardFeeBp}-${settings.vatRateBp}-${settings.fiscalYearStartMonth}`}
-              cardFeeBp={settings.cardFeeBp}
-              vatRateBp={settings.vatRateBp}
-              fiscalYearStartMonth={settings.fiscalYearStartMonth}
-            />
-          </div>
-          <dl className="flex flex-col text-sm lg:col-span-5">
-            {[
-              ["Intäkt", "Betalt minus moms."],
-              ["Kortavgift", "På belopp inkl. moms."],
-              ["Provision", "På belopp exkl. moms."],
-            ].map(([term, text]) => (
-              <div
-                key={term}
-                className="flex flex-col gap-1 border-t border-line py-3 last:border-b"
-              >
-                <dt className="label text-fg">{term}</dt>
-                <dd className="text-muted">{text}</dd>
-              </div>
-            ))}
-          </dl>
+        <SectionHeader id="avgifter" size="md" title="Avgifter och moms." />
+        <div className="max-w-2xl">
+          <SettingsForm
+            key={`${settings.cardFeeBp}-${settings.vatRateBp}-${settings.fiscalYearStartMonth}`}
+            cardFeeBp={settings.cardFeeBp}
+            vatRateBp={settings.vatRateBp}
+            fiscalYearStartMonth={settings.fiscalYearStartMonth}
+          />
         </div>
       </section>
 
@@ -164,11 +130,7 @@ export default async function SettingsPage() {
           id="agarandelar"
           size="md"
           title={currentGroup ? shareSummary(currentGroup) : "Inga ägarandelar inlagda."}
-          aside={
-            currentGroup
-              ? `Gäller sedan ${day(currentGroup.validFrom)}.`
-              : "Behövs för delägarrapporten."
-          }
+          aside={currentGroup ? `Sedan ${day(currentGroup.validFrom)}.` : undefined}
         />
         <div className="grid grid-cols-1 gap-x-8 gap-y-10 lg:grid-cols-12">
           <div className="flex min-w-0 flex-col gap-4 lg:col-span-7">
@@ -177,8 +139,8 @@ export default async function SettingsPage() {
               <StateMessage
                 kind="empty"
                 compact
-                message="Inga ägarandelar är inlagda."
-                detail={isOwner ? undefined : "Ägaren lägger in andelarna."}
+                message="Inga ägarandelar."
+                detail={isOwner ? undefined : "Ägaren lägger in dem."}
               />
             ) : (
               <ol className="flex flex-col">
@@ -239,8 +201,8 @@ export default async function SettingsPage() {
           <SectionHeader
             id="konton"
             size="md"
-            title="Bokföringskonton."
-            aside={`${formatInt(data.accounts.length)} konton enligt BAS.`}
+            title="Konton."
+            aside={`${formatInt(data.accounts.length)} st.`}
           />
         </summary>
         <div className="mt-6">
@@ -298,7 +260,7 @@ export default async function SettingsPage() {
         </summary>
         <div className="mt-6">
           {log.length === 0 ? (
-            <StateMessage kind="empty" compact message="Inga ändringar av inställningarna ännu." />
+            <StateMessage kind="empty" compact message="Inga ändringar ännu." />
           ) : (
             <SettingsLog entries={log} timeZone={tz} now={ctx.now} />
           )}

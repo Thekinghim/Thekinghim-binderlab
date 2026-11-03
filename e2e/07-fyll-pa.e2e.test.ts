@@ -1,7 +1,7 @@
 /**
  * Fyll på på en iPhone 15 (Playwrights devices["iPhone 15"], mörkt tema): påfyllaren öppnar
  * /fyll-pa, väljer automaten med tomma fack (den står först), minskar förslaget med −,
- * trycker Klar och ser "Sparat – 5 pack påfyllda, 45 kvar hemma". Vårt lager har då 5 pack
+ * trycker Klar och ser "Klart! 5 pack påfyllda" (med Ångra). Vårt lager har då 5 pack
  * färre och automaten 5 fler (databasen kontrolleras direkt).
  *
  * Förberedelse i databasen (E2E_DATABASE_URL): automaten får en Awish-läsning
@@ -148,7 +148,10 @@ describe("Fyll på på iPhone 15", () => {
     await screenshot(page, "07-fyll-pa-automat-iphone15");
 
     await page.getByRole("button", { name: /^Klar/ }).click();
-    await page.getByText("Sparat – 5 pack påfyllda, 45 kvar hemma").first().waitFor();
+    await page
+      .getByText(/5\s?pack påfyllda/)
+      .first()
+      .waitFor();
     await page.waitForURL((url) => url.pathname === "/fyll-pa");
 
     await until(

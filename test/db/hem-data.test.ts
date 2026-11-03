@@ -156,7 +156,9 @@ describe("loadHomeWith", () => {
     expect(model.kpis.find((k) => k.id === "orders")?.value).toBe(2);
     expect(model.kpis.find((k) => k.id === "revenue")?.value).toBe(7_900 + 8_900);
     expect(model.headline.state).toBe("ok");
-    expect(model.headline.title).toMatch(/^168 kr /);
+    // Rubriken är vinsten (hela vinsten, efter inköp och avgifter), inte intäkten.
+    expect(model.headline.title).toMatch(/^Vinst 71\skr /);
+    expect(model.headline.figure?.label).toBe("Vinst");
     expect(model.todos).not.toBeNull();
     expect(model.topTitles.rows.length).toBeGreaterThan(0);
   });

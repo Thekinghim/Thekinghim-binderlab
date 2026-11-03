@@ -12,6 +12,8 @@ import {
   lifecycleOf,
   machineFigures,
   machineHeadline,
+  machineNeeds,
+  needsHeadline,
   machineDaysIn,
   machineHref,
   machineSignals,
@@ -706,5 +708,50 @@ describe("startedOn", () => {
     expect(startedOn("2026-11-03", "2026-11-03", "2026-10-14")).toBe("2026-10-14");
     expect(startedOn("2026-10-01", "2026-11-03", null)).toBe("2026-10-01");
     expect(startedOn(null, null, null)).toBeNull();
+  });
+});
+
+describe("machineNeeds och needsHeadline", () => {
+  const status = (s: string, label: string, flagged: boolean, health: string | null = null) =>
+    ({ status: s, label, flagged, health, reason: `${label}.` }) as MachineListRow["status"];
+  const row = (
+    id: string,
+    code: string,
+    st: MachineListRow["status"],
+    refillNow = 0,
+    refillSoon = 0,
+  ) =>
+    ({
+      id,
+      code,
+      name: `Automat ${code}`,
+      href: `/automater/${code.toLowerCase()}`,
+      lifecycle: "active",
+      storeName: id === "a" ? "Sega gubben" : null,
+      status: st,
+      refillNow,
+      refillSoon,
+    }) as unknown as MachineListRow;
+
+  it("värst först; påfyllning går till Fyll på, fel till automatens sida", () => {
+    const needs = machineNeeds([
+      row("ok", "BL-4", status("ok", "I drift", false)),
+      row("s", "BL-3", status("warning", "Fyll på snart", false), 0, 2),
+      row("f", "BL-2", status("critical", "Fel", true, "fault")),
+      row("a", "BL-1", status("critical", "Fyll på nu", true), 1),
+      {
+        ...row("p", "BL-5", status("critical", "Tom", true)),
+        lifecycle: "planned",
+      } as MachineListRow,
+    ]);
+    expect(needs.map((n) => [n.code, n.place, n.action.label, n.action.href])).toEqual([
+      ["BL-1", "Sega gubben", "Fyll på", "/fyll-pa/a"],
+      ["BL-2", "Automat BL-2", "Öppna", "/automater/bl-2"],
+      ["BL-3", "Automat BL-3", "Fyll på", "/fyll-pa/s"],
+    ]);
+    expect(plain(needsHeadline(needs, 4))).toBe("2 automater behöver dig nu.");
+    expect(plain(needsHeadline(needs.slice(2), 4))).toBe("1 automat behöver dig snart.");
+    expect(needsHeadline([], 4)).toBe("Alla automater rullar.");
+    expect(needsHeadline([], 0)).toBe("Inga automater ännu.");
   });
 });

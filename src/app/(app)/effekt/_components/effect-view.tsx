@@ -129,7 +129,7 @@ function valueField(metricKey = "metric"): FieldSpec[] {
       type: "decimal",
       suffix: "h",
       required: true,
-      hint: "Timmar per månad, t.ex. 12,5.",
+      hint: "Timmar per månad, alla automater tillsammans. T.ex. 8.",
       when: (v) => v[metricKey] === "refill_hours_month" || v[metricKey] === "admin_hours_month",
     },
   ];

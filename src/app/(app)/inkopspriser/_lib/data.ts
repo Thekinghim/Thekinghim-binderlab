@@ -452,3 +452,45 @@ export async function correctPurchasePriceFor(
     return writeError(error);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Egen produkt (vi packar titeln själva)
+// ---------------------------------------------------------------------------
+
+const ownProductInput = z.object({
+  organizationId: z.string().uuid(),
+  titleId: z.string().uuid(),
+  ownProduct: z.boolean(),
+});
+
+export type OwnProductInput = z.input<typeof ownProductInput>;
+
+/**
+ * Markerar en titel som egen produkt (eller tar bort markeringen). Påverkar bara texterna
+ * (Packa i stället för Beställ) och inköpslistan; lönsamheten räknas som vanligt. Loggas
+ * i audit_log av triggern. Bara ägare och admin.
+ */
+export async function setOwnProductFor(
+  user: SessionUser | null,
+  raw: OwnProductInput,
+): Promise<ActionResult<{ ownProduct: boolean }>> {
+  const parsed = ownProductInput.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: PRICE_MESSAGES.invalid };
+  const input = parsed.data;
+  const denied = await authorizeWrite(user, input.organizationId);
+  if (denied) return denied;
+  try {
+    return await withUserDbFor(user as SessionUser, async (tx) => {
+      const titleError = await loadWritableTitle(tx, input.organizationId, input.titleId);
+      if (titleError) return { ok: false, error: titleError };
+      await tx.execute(
+        sql`update public.titles set own_product = ${input.ownProduct}
+            where organization_id = ${input.organizationId}::uuid and id = ${input.titleId}::uuid
+              and own_product is distinct from ${input.ownProduct}`,
+      );
+      return { ok: true, data: { ownProduct: input.ownProduct } };
+    });
+  } catch (error) {
+    return writeError(error);
+  }
+}

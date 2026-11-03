@@ -6,13 +6,26 @@ import { FormError } from "@/app/logga-in/form-error";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
-import { changePassword } from "@/server/actions/auth";
+import { changePassword, sendOwnPasswordLink } from "@/server/actions/auth";
 
 import { PASSWORD_MIN_LENGTH, passwordFormErrors, type PasswordFields } from "../_lib/model";
 
-/** Byte av eget lösenord. Alla roller. */
-export function PasswordForm() {
+/**
+ * Byte av eget lösenord. Alla roller. Med `canEmailLink` (Supabase) kan den som
+ * saknar lösenord (loggar in med länk) få en länk för att välja ett.
+ */
+export function PasswordForm({ canEmailLink = false }: { canEmailLink?: boolean }) {
   const toast = useToast();
+  const [sending, startSend] = useTransition();
+  const sendLink = () =>
+    startSend(async () => {
+      const result = await sendOwnPasswordLink();
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      toast({ title: "Kolla mejlen", description: "Länken gäller 1 timme.", tone: "ok" });
+    });
   const formRef = useRef<HTMLFormElement>(null);
   const [errors, setErrors] = useState<Partial<Record<keyof PasswordFields, string>>>({});
   const [error, setError] = useState<string>();
@@ -82,8 +95,15 @@ export function PasswordForm() {
         />
       </div>
       <FormError message={error} />
-      <div className="flex justify-end">
-        <Button type="submit" variant="secondary" loading={pending}>
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {canEmailLink ? (
+          <Button type="button" variant="ghost" loading={sending} onClick={sendLink}>
+            Inget lösenord? Få länk
+          </Button>
+        ) : (
+          <span />
+        )}
+        <Button type="submit" variant="primary" loading={pending}>
           Byt lösenord
         </Button>
       </div>

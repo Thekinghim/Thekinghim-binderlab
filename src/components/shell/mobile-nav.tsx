@@ -156,7 +156,7 @@ export function MobileNav(props: ShellNavProps) {
                     {props.syncState === "failed" ? (
                       <>
                         <StatusGlyph status="critical" size={6} />
-                        <span className="sr-only">Synk misslyckades</span>
+                        <span className="sr-only">Awish svarar inte</span>
                       </>
                     ) : null}
                   </span>

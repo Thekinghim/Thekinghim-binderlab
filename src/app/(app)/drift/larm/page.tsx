@@ -128,7 +128,7 @@ export default async function AlertSettingsPage() {
         <SectionHeader
           as="h1"
           size="xl"
-          eyebrow="Larminställningar"
+          eyebrow="Larm"
           title={
             !settings.saved
               ? "Du får inga larm ännu."

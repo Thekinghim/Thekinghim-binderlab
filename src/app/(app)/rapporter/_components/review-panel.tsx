@@ -184,10 +184,7 @@ export function ReviewPanel({
         {report.status === "draft" ? (
           canEdit ? (
             <div className="flex flex-col gap-3 border-t border-line pt-4">
-              <p className="text-base text-muted">
-                Läs igenom förhandsvisningen. Godkänn den här versionen innan den kan skickas;
-                ändrar du hälsningen eller kommentaren skapas en ny version.
-              </p>
+              <p className="text-base text-muted">Läs förhandsvisningen, godkänn sedan.</p>
               <div>
                 <Button variant="primary" onClick={approve} loading={pending} iconLeft="check">
                   Godkänn för utskick
@@ -196,7 +193,7 @@ export function ReviewPanel({
             </div>
           ) : (
             <p className="border-t border-line pt-4 text-base text-muted">
-              Väntar på godkännande av ägaren eller en admin.
+              Väntar på ägarens godkännande.
             </p>
           )
         ) : null}
@@ -205,12 +202,8 @@ export function ReviewPanel({
           <StateMessage
             kind="error"
             compact
-            message="PDF:en saknas i lagringen trots att rapporten är godkänd."
-            detail={
-              canEdit
-                ? "Den skapas när du öppnar PDF:en eller skickar rapporten. Butiksportalen kan inte visa filen förrän dess."
-                : "En ägare eller admin skapar den."
-            }
+            message="PDF:en saknas."
+            detail={canEdit ? "Butiken ser den inte förrän den skapats." : undefined}
             action={
               canEdit ? { label: "Skapa PDF →", href: `/rapport/${report.id}/fil/pdf` } : undefined
             }
@@ -223,7 +216,7 @@ export function ReviewPanel({
             <StateMessage
               kind="empty"
               compact
-              message="Ingen aktiv mottagare kan få den här rapporten."
+              message="Ingen mottagare för rapporten."
               action={{ label: "Lägg till mottagare →", href: "/rapporter?vy=mottagare" }}
             />
           ) : (
@@ -260,7 +253,7 @@ export function ReviewPanel({
               <TextArea
                 id={textId}
                 label="Följetext"
-                hint="Står under hälsningen i mejlet. Utan text används en kort standardmening."
+                hint="Valfri."
                 value={followText}
                 maxLength={1000}
                 rows={3}
@@ -280,7 +273,7 @@ export function ReviewPanel({
                 </Button>
                 {[...chosen].some((id) => deliveredTo.has(id)) ? (
                   <span className="text-sm text-muted">
-                    Någon av de valda har redan fått rapporten och får den igen.
+                    Någon har redan fått den och får den igen.
                   </span>
                 ) : null}
               </div>

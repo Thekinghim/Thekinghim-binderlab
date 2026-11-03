@@ -99,22 +99,12 @@ export default async function DriftPage() {
           eyebrow="Drift"
           title={headline.title}
           aside={headline.aside}
-          meta={[
-            {
-              label: "Automater",
-              value: formatInt(health.filter((h) => h.status !== "inactive").length),
-            },
-            {
-              label: "Besök i veckan",
-              value: formatInt(plan.days.reduce((n, d) => n + d.stops.length, 0)),
-            },
-          ]}
           actions={
             <Link
               href="/drift/besok"
               className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg transition-colors hover:bg-hover"
             >
-              Besöksplan →
+              {`Besök i veckan: ${formatInt(plan.days.reduce((n, d) => n + d.stops.length, 0))} →`}
             </Link>
           }
         />
@@ -125,17 +115,7 @@ export default async function DriftPage() {
         className="rise flex flex-col gap-6"
         style={{ "--i": 1 } as React.CSSProperties}
       >
-        <SectionHeader
-          id="halsa"
-          size="md"
-          title="Status per automat."
-          aside={
-            commonDetail ??
-            (data.vendorConfigured
-              ? "Från automaternas statusmeddelanden."
-              : "Status ur försäljning.")
-          }
-        />
+        <SectionHeader id="halsa" size="md" title="Status per automat." />
         {rows.length === 0 ? (
           <StateMessage
             kind="empty"
@@ -163,14 +143,12 @@ export default async function DriftPage() {
           }
           aside={
             overview.lastRun
-              ? `Senast utvärderat ${formatWhen(overview.lastRun.ranAt, ctx.timeZone, now)}${overview.lastRun.status === "failed" ? ", körningen misslyckades" : ""}.`
-              : ctx.canSeeEconomy
-                ? "Larmjobbet har inte körts ännu."
-                : undefined
+              ? `Koll ${formatWhen(overview.lastRun.ranAt, ctx.timeZone, now)}.`
+              : undefined
           }
           actions={
             <Link href="/drift/larm" className="rounded-xs text-sm text-muted hover:text-fg">
-              Larminställningar →
+              Inställningar →
             </Link>
           }
         />
@@ -178,7 +156,7 @@ export default async function DriftPage() {
           <StateMessage
             kind="not-configured"
             compact
-            message="Larmjobbet har inte körts i den här miljön."
+            message="Larm är inte igång än."
             diagnostics={[
               { label: "Jobb", value: "GET /api/cron/larm" },
               { label: "Kräver", value: "CRON_SECRET och schemaläggning (Vercel Cron)" },
@@ -189,7 +167,7 @@ export default async function DriftPage() {
           <StateMessage
             kind="error"
             compact
-            message="Senaste körningen av larmjobbet misslyckades."
+            message="Larmkollen misslyckades senast."
             diagnostics={[{ label: "Fel", value: overview.lastRun.error ?? "okänt" }]}
           />
         ) : null}

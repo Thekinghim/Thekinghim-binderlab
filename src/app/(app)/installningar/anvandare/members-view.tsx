@@ -152,15 +152,13 @@ export function MembersView({
     dialog?.kind === "role" && dialog.member.isSelf && !canManageMembers(nextRole);
 
   return (
-    <>
-      <section aria-labelledby="medlemmar" className="mt-12">
-        <SectionHeader
-          id="medlemmar"
-          eyebrow="Medlemmar"
-          title="Med tillgång nu."
-          aside={membersAside}
-          size="md"
-        />
+    <div className="flex flex-col">
+      <section
+        aria-labelledby="medlemmar"
+        className="rise mt-12"
+        style={{ "--i": 1, order: 2 } as React.CSSProperties}
+      >
+        <SectionHeader id="medlemmar" title="Medlemmar." aside={membersAside} size="md" />
         <div className="mt-6">
           <div
             aria-hidden
@@ -228,17 +226,15 @@ export function MembersView({
         </div>
       </section>
 
-      <section aria-labelledby="inbjudningar" className="mt-14">
-        <SectionHeader
-          id="inbjudningar"
-          eyebrow="Inbjudningar"
-          title="Väntar på svar."
-          aside={invitationsAside}
-          size="md"
-        />
+      <section
+        aria-labelledby="inbjudningar"
+        className="rise mt-12"
+        style={{ "--i": 2, order: invitations.length > 0 ? 1 : 3 } as React.CSSProperties}
+      >
+        <SectionHeader id="inbjudningar" title="Väntar." aside={invitationsAside} size="md" />
         <div className="mt-6">
           {invitations.length === 0 ? (
-            <StateMessage kind="empty" code="0 väntar" compact message="Ingen länk är aktiv." />
+            <StateMessage kind="empty" compact message="Ingen väntar." />
           ) : (
             <ul className="border-b border-line">
               {invitations.map((i) => (
@@ -294,7 +290,7 @@ export function MembersView({
         onClose={close}
         eyebrow={dialog?.kind === "role" ? dialog.member.email : undefined}
         title={dialog?.kind === "role" ? `Byt roll för ${dialog.member.name}` : "Byt roll"}
-        description="Ändringen gäller direkt, även för den som redan är inloggad, och loggas."
+        description="Gäller direkt."
       >
         {dialog?.kind === "role" ? (
           <form
@@ -403,6 +399,6 @@ export function MembersView({
       >
         {error && dialog?.kind === "revoke" ? <FormError message={error} /> : null}
       </Modal>
-    </>
+    </div>
   );
 }

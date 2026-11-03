@@ -34,6 +34,8 @@ export interface PriceFormProps {
   orderDays: ReadonlyArray<{ date: string; orders: number }>;
   closedMonths: readonly string[];
   today: string;
+  /** Fältets etikett (egen produkt: "Kostnad per pack (innehåll)"). */
+  label?: string;
 }
 
 /** "20–26 okt." / "27 okt." (året bara om det inte är i år). */
@@ -74,6 +76,7 @@ export function PriceForm({
   orderDays,
   closedMonths,
   today,
+  label = "Inköpspris per pack",
 }: PriceFormProps) {
   const router = useRouter();
   const toast = useToast();
@@ -226,7 +229,7 @@ export function PriceForm({
     >
       <Input
         ref={amountRef}
-        label="Inköpspris per pack"
+        label={label}
         name="unitCost"
         inputMode="decimal"
         autoComplete="off"

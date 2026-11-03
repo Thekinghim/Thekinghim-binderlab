@@ -1,14 +1,19 @@
 "use client";
 
-import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
 
 import { confirmMagicLink } from "../actions";
-import { FormError } from "../form-error";
+import { LinkFailed, LinkPending, useLinkFragment } from "../link-landing";
 import type { ConfirmState } from "../state";
 
+/**
+ * Tar emot inloggningslänken. Standardmallen lämnar sessionen i fragmentet
+ * (fungerar i vilken webbläsare som helst); `token_hash` (egen mall) och
+ * `code` (PKCE, äldre länkar) kommer i frågesträngen. Ett tryck på
+ * "Logga in" loggar in; går det inte visas "Logga in med lösenord".
+ */
 export function ConfirmForm({
   tokenHash,
   code = "",
@@ -19,27 +24,45 @@ export function ConfirmForm({
   type: string;
 }) {
   const [state, action, pending] = useActionState<ConfirmState, FormData>(confirmMagicLink, {});
-  const missing = tokenHash === "" && code === "";
+  const fragment = useLinkFragment();
+  const recovery = fragment?.kind === "tokens" && fragment.type === "recovery";
+
+  // En länk för nytt lösenord som hamnat här: till rätt sida med samma session.
+  useEffect(() => {
+    if (recovery && fragment?.kind === "tokens") {
+      const hash = new URLSearchParams({
+        access_token: fragment.accessToken,
+        refresh_token: fragment.refreshToken,
+        type: "recovery",
+      });
+      window.location.replace(`/logga-in/nytt-losenord#${hash.toString()}`);
+    }
+  }, [recovery, fragment]);
+
+  if (fragment === null || recovery) return <LinkPending />;
+  const tokens = fragment.kind === "tokens" ? fragment : null;
+  const usable = tokens !== null || tokenHash !== "" || code !== "";
+  if (!usable || state.failed) return <LinkFailed />;
+
   return (
-    <form action={action} className="flex flex-col gap-5">
-      <input type="hidden" name="token_hash" value={tokenHash} />
-      {code ? <input type="hidden" name="code" value={code} /> : null}
-      <input type="hidden" name="type" value={type} />
-      <FormError
-        message={missing ? "Länken är ofullständig. Kopiera hela länken från mejlet." : state.error}
-      />
-      {missing || state.error ? (
-        <Link
-          href="/logga-in"
-          className="inline-flex h-9 items-center justify-center rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg hover:border-line-control hover:bg-hover"
-        >
-          Begär en ny länk
-        </Link>
+    <form action={action} className="flex flex-col gap-4">
+      {tokens ? (
+        <>
+          <input type="hidden" name="access_token" value={tokens.accessToken} />
+          <input type="hidden" name="refresh_token" value={tokens.refreshToken} />
+        </>
+      ) : code ? (
+        <input type="hidden" name="code" value={code} />
       ) : (
-        <Button type="submit" variant="primary" loading={pending} className="w-full">
-          Logga in
-        </Button>
+        <>
+          <input type="hidden" name="token_hash" value={tokenHash} />
+          <input type="hidden" name="type" value={type} />
+        </>
       )}
+      {tokens?.email ? <p className="meta wrap-anywhere text-muted">{tokens.email}</p> : null}
+      <Button type="submit" variant="primary" loading={pending} className="h-12 w-full text-lg">
+        Logga in
+      </Button>
     </form>
   );
 }

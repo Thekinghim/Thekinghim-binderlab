@@ -214,7 +214,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     id: "prognos",
     group: "more",
     href: "/prognos",
-    label: "Prognos & inköp",
+    label: "Inköp",
     icon: "sales",
     section: "main",
     roles: READERS,
@@ -270,12 +270,15 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     id: "avtal",
     group: "hidden",
     href: "/avtal",
-    label: "Avtal",
+    // Sidan heter Kontrakt (/kontrakt pekar hit); "avtal" finns kvar som sökord i ⌘K.
+    label: "Kontrakt",
     icon: "report",
     section: "main",
     roles: READERS,
     phase: 9,
-    lead: "Butiksavtal, villkor och förfallodatum.",
+    lead: "Kontrakt och avtal med butikerna.",
+    // Sidan har inget periodval: Intäkt-fliken gäller alltid 12 månader.
+    context: false,
     vmb: false,
   },
   {
@@ -478,7 +481,8 @@ export const navSections: ReadonlyArray<NavSection> = [
     icon: "inventory",
     tabs: [
       tab("vart-lager", "Vårt lager"),
-      tab("prognos", "Prognos & inköp"),
+      tab("prognos", "Inköp"),
+      tab("prognos", "Prognos", "prognos"),
       tab("inkopspriser", "Inköpspriser"),
     ],
   },
@@ -488,7 +492,7 @@ export const navSections: ReadonlyArray<NavSection> = [
     icon: "columns",
     tabs: [
       tab("butiker", "Butiker"),
-      tab("avtal", "Avtal"),
+      tab("avtal", "Kontrakt"),
       tab("expansion", "Expansion"),
       tab("butiker", "Butiksportal", "portal"),
     ],

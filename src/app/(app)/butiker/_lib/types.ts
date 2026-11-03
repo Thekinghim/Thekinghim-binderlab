@@ -3,6 +3,7 @@
  * 'ÅÅÅÅ-MM-DD'. Allt räknas på servern (./model, @/domain); klienten formaterar bara.
  */
 
+import type { StoreContractState } from "@/analytics/contracts/signed";
 import type { CommissionBase, IsoDate } from "@/domain";
 
 /** Ersättningsmodellen i ett avtal. split = vinstdelning (andel av vinsten efter kostnader), ev. med hyra. */
@@ -74,6 +75,8 @@ export interface StoreRow {
   readonly earnedMonthOre: number;
   /** Avtalet som gäller i dag, eller null. */
   readonly current: AgreementView | null;
+  /** Kontraktet (signerat, osignerat, saknas), eller null om okänt. */
+  readonly contract: StoreContractState | null;
   /** Det viktigaste som kräver åtgärd (samma regler som butikens sida), eller null. */
   readonly issue: StoreIssue | null;
   readonly href: string;

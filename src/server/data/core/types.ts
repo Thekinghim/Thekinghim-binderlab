@@ -110,6 +110,8 @@ export interface TitleRecord extends TitleRef {
   readonly series: string | null;
   readonly mergedIntoId: string | null;
   readonly archived: boolean;
+  /** Egen produkt: vi packar den själva ("Packa" i stället för "Beställ"). */
+  readonly ownProduct?: boolean;
 }
 
 /** Automat. */

@@ -121,16 +121,6 @@ function daysText(weightBp: number): string {
   return `${tenths(t)} dagar`;
 }
 
-/**
- * Slutsålda dagar summerade över titlar och automater ("titeldagar"): en titel slutsåld i
- * två automater samma dag är två titeldagar. Totalen kan därför bli fler än periodens dagar.
- */
-function titleDaysText(weightBp: number): string {
-  const t = roundHalfUp(weightBp, 1_000);
-  if (t % 10 === 0) return plural(t / 10, "titeldag", "titeldagar");
-  return `${tenths(t)} titeldagar`;
-}
-
 /** Arbetsdata per serie. */
 interface Series {
   readonly machineId: string;
@@ -666,8 +656,10 @@ export function lostSales(input: LostSalesInput): LostSalesResult {
       // sortimentet före den) räknas inte i texten; de visas inte heller på Prognos.
       text:
         costing === 0
-          ? `Inget slutsålt ${periodText(period)}.`
-          : `Slutsålt kostade ${approxKr(totalRevenue)} ${periodText(period)} (${plural(costing, "period", "perioder")}, ${titleDaysText(totalWeight)}).`,
+          ? `Inget slutsålt ${periodText(period)}`.replace(/\.?$/, ".")
+          : // Kort (visas på Hem och Prognos); perioder och titeldagar står i underlaget.
+            // periodText slutar ofta med punkt ("3 nov."): ingen dubbelpunkt.
+            `Slutsålt kostade ${approxKr(totalRevenue)} ${periodText(period)}`.replace(/\.?$/, "."),
       evidence: planEvidence({
         rule: "Summan av månaderna, som är summan av de slutsålda perioderna.",
         period,

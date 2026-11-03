@@ -4,6 +4,7 @@ import { Suspense } from "react";
 
 import { periodText } from "@/analytics/todos/text";
 import { SectionHeader } from "@/components/ui/section-header";
+import { PageHead } from "../butiker/_components/page-head";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { formatInt } from "@/lib/format";
 
@@ -14,7 +15,7 @@ import { PlanView } from "./_components/plan-view";
 import { PipelineView, StoreProfilesView } from "./_components/pipeline-view";
 import { NewMachineForm, PriceChangeForm } from "./_components/scenario-forms";
 import { LEAD_PREFIX, loadExpansionPage, type Names } from "./_lib/data";
-import { hoursText, kr, monthLabel, oreToInput, paybackShort } from "./_lib/display";
+import { kr, monthLabel, oreToInput, paybackShort } from "./_lib/display";
 import { loadGrowthPlanPage } from "./_lib/plan-data";
 import { evidenceLinks, LEAD_STAGE_LABEL, monthOfDate, OPEN_STAGES } from "./_lib/model";
 import { withOrderCounts } from "./_lib/slim";
@@ -131,7 +132,7 @@ export default async function ExpansionPage({
     aside =
       g.toAdd === 0
         ? "Höj målet."
-        : `Ni har ${formatInt(g.machinesNow)}. ${formatInt(g.perMonth)} ${g.perMonth === 1 ? "ny" : "nya"} i månaden. Vid ${formatInt(g.atTarget.machines)}: ${hoursText(g.atTarget.minutesPerPersonWeek)}/vecka var.`;
+        : `Ni har ${formatInt(g.machinesNow)}. ${formatInt(g.perMonth)} ${g.perMonth === 1 ? "ny" : "nya"} i månaden.`;
   }
   const planLeads = data.leads
     .filter((l) => !l.archived && OPEN_STAGES.includes(l.stage) && l.storeId === null)
@@ -145,23 +146,10 @@ export default async function ExpansionPage({
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
       <div className="rise flex flex-col gap-6" style={rise(0)}>
-        <SectionHeader
-          as="h1"
-          size="xl"
+        <PageHead
           eyebrow="Expansion"
           title={title}
           aside={aside}
-          meta={[
-            {
-              label: "Underlag",
-              value:
-                view === "plan"
-                  ? growth.basisPeriod
-                    ? periodText(growth.basisPeriod)
-                    : "Ingen data"
-                  : periodLabel,
-            },
-          ]}
           actions={
             <Link
               href={`/expansion/saljunderlag?from=${data.period.period.start}&to=${data.period.period.end}`}
@@ -171,6 +159,9 @@ export default async function ExpansionPage({
             </Link>
           }
         />
+        {view === "plan" && growth.basisPeriod ? (
+          <p className="meta -mt-3 text-subtle">Underlag {periodText(growth.basisPeriod)}</p>
+        ) : null}
         {view === "plan" ? null : (
           <DataStartNote clippedFrom={data.period.clippedFrom} requested={data.period.requested} />
         )}
@@ -180,7 +171,7 @@ export default async function ExpansionPage({
           hrefFor={hrefFor}
           tabs={[
             { value: "plan", label: "Plan" },
-            { value: "pipeline", label: "Pipeline", count: openLeads },
+            { value: "pipeline", label: "Nya platser", count: openLeads },
             { value: "scenarier", label: "Scenarier" },
             { value: "mal", label: "Mål", count: data.goals.progress.length },
           ]}

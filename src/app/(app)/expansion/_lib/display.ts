@@ -99,7 +99,7 @@ export function minutesToHoursInput(min: number): string {
 export const BASELINE_METRIC_LABEL = {
   profit_per_machine_month: "Vinst per automat och månad",
   stockout_days_month: "Slutsålda dagar per månad",
-  refill_hours_month: "Tid för påfyllning per månad",
+  refill_hours_month: "Påfyllning, timmar per månad (alla automater)",
   admin_hours_month: "Tid för administration per månad",
 } as const;
 

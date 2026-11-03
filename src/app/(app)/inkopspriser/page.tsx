@@ -11,6 +11,9 @@ import { formatDate, formatInt } from "@/lib/format";
 import { loadDomainInput, loadPeriod, requireRoute } from "@/server/data/core";
 import { requireUser } from "@/server/session";
 
+import { PageHead } from "../vart-lager/_components/page-head";
+import { TodoList } from "../vart-lager/_components/todo-list";
+import { OwnProductToggle } from "./_components/own-product-toggle";
 import { PriceForm } from "./_components/price-form";
 import { PriceHistory } from "./_components/price-history";
 import { PriceLog } from "./_components/price-log";
@@ -18,9 +21,10 @@ import { ScrollIntoView } from "./_components/scroll-into-view";
 import { TitleTable } from "./_components/title-table";
 import { loadPricePageFor, loadTitleDetailFor } from "./_lib/data";
 import {
+  costLabel,
   PRICE_EDITOR_ID,
   pageHeadline,
-  perTitleAside,
+  priceTodos,
   priceLog,
   priceTimeline,
   signalTitleIds,
@@ -110,34 +114,55 @@ export default async function PurchasePricesPage({
       : [];
   const log = detail ? priceLog(detail.events, data.actorNames) : [];
   const titleHead = selectedTitle ? titleHeadline(selectedRow, selectedTitle.name, today) : null;
+  const own = selectedTitle?.ownProduct === true;
+  // Egen produkt: priset är kostnaden för innehållet, inte ett inköp.
+  const titleAside =
+    titleHead && own ? titleHead.aside.replace(/^Inköp /, "Kostnad ") : titleHead?.aside;
+  const todoHref = (id: string) => {
+    const q = new URLSearchParams(baseQuery);
+    q.set("titel", id);
+    return `/inkopspriser?${q.toString()}#${PRICE_EDITOR_ID}`;
+  };
+  const todos = priceTodos(allRows).map((t) => ({
+    key: t.id,
+    verb: t.verb,
+    title: t.title,
+    qty: t.orders > 0 ? t.orders : null,
+    unit: "order",
+    tone: t.tone,
+    href: todoHref(t.id),
+  }));
+  const lastChange = data.lastChangeAt
+    ? formatDate(wallClockIn(new Date(data.lastChangeAt), ctx.timeZone), {
+        year: "auto",
+        now: wallClockIn(new Date(ctx.now), ctx.timeZone),
+      })
+    : "Aldrig";
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
-      <div className="rise">
-        <SectionHeader
-          as="h1"
-          size="xl"
-          eyebrow="Inköpspriser"
-          title={headline.title}
-          aside={headline.aside}
-          meta={[
+      <div className="flex flex-col gap-6">
+        <PageHead eyebrow="Inköpspriser" title={headline.title} aside={headline.aside} />
+        <TodoList items={todos} done="Alla titlar har pris." moreHref={undefined} />
+        <dl
+          className="rise flex flex-wrap gap-x-8 gap-y-2"
+          style={{ "--i": 2 } as React.CSSProperties}
+        >
+          {[
             { label: "Period", value: periodLabel },
             {
-              label: "Med inköpspris",
+              label: "Med pris",
               value: `${formatInt(pricedCount)} av ${formatInt(allRows.length)}`,
             },
-            {
-              label: "Senaste prisändring",
-              value: data.lastChangeAt
-                ? formatDate(wallClockIn(new Date(data.lastChangeAt), ctx.timeZone), {
-                    year: "auto",
-                    now: wallClockIn(new Date(ctx.now), ctx.timeZone),
-                  })
-                : "Aldrig",
-            },
-          ]}
-        />
-        <AiPageLine metric="marginalen per titel" route="inkopspriser" className="mt-4" />
+            { label: "Senast ändrat", value: lastChange },
+          ].map((x) => (
+            <div key={x.label} className="flex flex-col">
+              <dt className="label text-subtle">{x.label}</dt>
+              <dd className="tnum text-base text-fg">{x.value}</dd>
+            </div>
+          ))}
+        </dl>
+        <AiPageLine metric="marginalen per titel" route="inkopspriser" />
       </div>
 
       <section
@@ -145,30 +170,23 @@ export default async function PurchasePricesPage({
         className="rise flex flex-col gap-6"
         style={{ "--i": 1 } as React.CSSProperties}
       >
-        <SectionHeader
-          id="per-titel"
-          eyebrow={`Per titel · ${periodLabel}`}
-          title="Vad varje pack lämnar."
-          aside={perTitleAside(rows, dates)}
-          actions={
-            onlyMissing ? (
-              <Link
-                href={showAllHref}
-                className="meta rounded-xs text-muted underline underline-offset-4 hover:text-fg"
-              >
-                Visa alla titlar
-              </Link>
-            ) : null
-          }
-        />
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 id="per-titel" className="label text-subtle">
+            Per titel · {periodLabel}
+          </h2>
+          {onlyMissing ? (
+            <Link
+              href={showAllHref}
+              className="meta rounded-xs text-muted underline underline-offset-4 hover:text-fg"
+            >
+              Visa alla titlar
+            </Link>
+          ) : null}
+        </div>
         {rows.length === 0 ? (
           <StateMessage
             kind="empty"
-            message={
-              onlyMissing
-                ? "Alla titlar har inköpspris."
-                : "Inga titlar ännu. Titlar skapas när order importeras."
-            }
+            message={onlyMissing ? "Alla titlar har inköpspris." : "Inga titlar ännu."}
             action={
               onlyMissing
                 ? { label: "Visa alla titlar →", href: showAllHref }
@@ -203,13 +221,20 @@ export default async function PurchasePricesPage({
             id="titel-rubrik"
             eyebrow={`Titel${selectedTitle.series ? ` · ${selectedTitle.series}` : ""}`}
             title={titleHead.title}
-            aside={titleHead.aside}
+            aside={titleAside}
           />
 
           <div className="grid grid-cols-1 gap-x-8 gap-y-12 lg:grid-cols-12">
             {/* Redigeraren först: ett klick på en titel rullar hit och sätter markören i priset. */}
             <div className="flex min-w-0 flex-col gap-6 lg:col-span-5">
-              <h3 className="label text-subtle">Ändra inköpspris</h3>
+              <OwnProductToggle
+                key={`own-${selectedTitle.id}`}
+                titleId={selectedTitle.id}
+                titleName={selectedTitle.name}
+                initial={own}
+                canEdit={ctx.canEdit}
+              />
+              <h3 className="label text-subtle">{own ? "Ändra kostnad" : "Ändra inköpspris"}</h3>
               {ctx.canEdit && detail ? (
                 <PriceForm
                   key={selectedTitle.id}
@@ -222,6 +247,7 @@ export default async function PurchasePricesPage({
                   orderDays={detail.orderDays}
                   closedMonths={data.closedMonths}
                   today={today}
+                  label={costLabel(own)}
                 />
               ) : (
                 <StateMessage kind="denied" compact message="Gäller från datumet." />
@@ -234,7 +260,7 @@ export default async function PurchasePricesPage({
                 <StateMessage
                   kind="not-configured"
                   compact
-                  message={`${selectedTitle.name} har inget inköpspris. Order av titeln räknas inte in i vinsten.`}
+                  message={`${selectedTitle.name} saknar pris. Räknas inte i vinsten.`}
                 />
               ) : (
                 <PriceHistory entries={timeline} today={today} />

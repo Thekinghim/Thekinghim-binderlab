@@ -9,11 +9,11 @@ const kr = (ore: number) => formatSek(ore / 100);
 /** Ett avdrag: "−1 200 kr" (0 kr utan minus). */
 const minus = (ore: number) => (ore > 0 ? `${MINUS}${kr(ore)}` : kr(0));
 
-/** "Gemensamma 391 kr fördelade efter nettointäkt, 90 kr direkt på automaten." */
+/** "Delat 391 kr, 90 kr per automat." */
 function fixedDetail(sharedOre: number, directOre: number): string {
   const parts: string[] = [];
-  if (sharedOre > 0) parts.push(`gemensamma ${kr(sharedOre)} fördelade efter nettointäkt`);
-  if (directOre > 0) parts.push(`${kr(directOre)} direkt på automat`);
+  if (sharedOre > 0) parts.push(`delat ${kr(sharedOre)}`);
+  if (directOre > 0) parts.push(`${kr(directOre)} per automat`);
   const text = parts.join(", ");
   return `${text.charAt(0).toLocaleUpperCase("sv-SE")}${text.slice(1)}.`;
 }
@@ -57,34 +57,30 @@ function Line({
 export function ResultAfterProfitPanel({ result }: { result: ResultAfterProfit }) {
   const r = result;
   const margin =
-    r.resultMarginBp === null
-      ? undefined
-      : `${formatPercent(r.resultMarginBp / 10_000)} av intäkten med inköpspris`;
+    r.resultMarginBp === null ? undefined : `${formatPercent(r.resultMarginBp / 10_000)} marginal`;
   return (
     <PanelSection label="Efter vinsten">
       <dl className="flex flex-col">
         <Line label="Vinst" value={kr(r.profitOre)} />
         <Line
-          label="Återbetalningar till kunder"
+          label="Återbetalningar"
           value={minus(r.refundOre)}
           detail={
             r.refundCount > 0
-              ? `${formatInt(r.refundCount)}${NBSP}${r.refundCount === 1 ? "ärende, räknat" : "ärenden, räknade"} på återbetalningsdagen.`
-              : "Inga återbetalningar i perioden."
+              ? `${formatInt(r.refundCount)}${NBSP}${r.refundCount === 1 ? "ärende" : "ärenden"}`
+              : undefined
           }
         />
         {r.freePackCount > 0 ? (
           <Line
             label="Gratis-pack"
             value={minus(r.freePackOre)}
-            detail={`${formatInt(r.freePackCount)}${NBSP}pack till inköpspris.`}
+            detail={`${formatInt(r.freePackCount)}${NBSP}pack`}
           />
         ) : null}
         <Line
           label={
-            r.freePackCount > 0
-              ? "Vinst efter återbetalningar och gratis-pack"
-              : "Vinst efter återbetalningar"
+            r.freePackCount > 0 ? "Efter återbetalningar och gratis-pack" : "Efter återbetalningar"
           }
           value={kr(r.profitAfterGiveawaysOre)}
           total
@@ -98,15 +94,13 @@ export function ResultAfterProfitPanel({ result }: { result: ResultAfterProfit }
             detail={
               r.fixedCostOre > 0
                 ? fixedDetail(r.sharedFixedOre ?? 0, r.directFixedOre ?? 0)
-                : "Inga fasta kostnader i perioden."
+                : undefined
             }
           />
         )}
         <Line
           label={
-            r.fixedCostOre === null
-              ? "Vinst efter återbetalningar, utan fasta kostnader"
-              : "Vinst efter fasta kostnader"
+            r.fixedCostOre === null ? "Efter återbetalningar, utan fasta" : "Efter fasta kostnader"
           }
           value={kr(r.resultOre)}
           detail={margin}
@@ -129,7 +123,7 @@ export function ResultAfterProfitPanel({ result }: { result: ResultAfterProfit }
           </Link>
         ) : null}
         <Link href="/ekonomi?vy=fasta" className={LINK}>
-          <span>Fasta kostnader i Ekonomi</span>
+          <span>Fasta kostnader</span>
           <span aria-hidden className="text-subtle">
             →
           </span>

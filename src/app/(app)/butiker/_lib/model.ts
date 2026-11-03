@@ -5,6 +5,7 @@
  * bara ihop per butik eller formateras. Testas i model.test.ts.
  */
 
+import type { StoreContractState } from "@/analytics/contracts/signed";
 import { CONTRACT_DEFAULTS } from "@/analytics/contracts";
 import { parseIsoDate } from "@/components/shell/period-state";
 import { dataCoverage } from "@/server/data/core/period";
@@ -298,6 +299,8 @@ export function buildStoreRows(args: {
   earnedMonth: ReadonlyMap<string, number>;
   /** Butikernas rapportmottagare (för Att göra), storeId → mottagare. */
   recipients: ReadonlyMap<string, readonly RecipientView[]>;
+  /** Kontraktet per butik (signed.ts). Saknas = okänt. */
+  contracts?: ReadonlyMap<string, StoreContractState>;
   today: IsoDate;
   query: string;
 }): StoreRow[] {
@@ -316,6 +319,7 @@ export function buildStoreRows(args: {
           recipients: args.recipients.get(s.id) ?? [],
           archived: s.archived,
           today: args.today,
+          contract: args.contracts?.get(s.id) ?? null,
         }).find((i) => i.actionable) ?? null;
       return {
         id: s.id,
@@ -335,6 +339,7 @@ export function buildStoreRows(args: {
         profitOre: row?.profitOre ?? 0,
         earnedMonthOre: args.earnedMonth.get(s.id) ?? 0,
         current,
+        contract: args.contracts?.get(s.id) ?? null,
         issue,
         href: `/butiker/${s.id}${args.query}`,
       };
@@ -358,13 +363,12 @@ export function listHeadline(
   const compensation = rows.reduce((n, r) => n + r.compensationOre, 0);
   const profit = rows.reduce((n, r) => n + r.profitOre, 0);
   const title = `${plural(active.length, "butik", "butiker")} gav ${sek(revenue)} ${span}.`;
-  if (revenue <= 0) return { title, aside: "Ingen försäljning i perioden." };
-  const top = [...rows].sort((a, b) => b.revenueOre - a.revenueOre)[0]!;
-  // En mening i andra delen: rubriken har högst två (design.md §5.5).
-  const split = `${sek(compensation)} (${formatPercent(compensation / revenue)}) till ${rows.length === 1 ? "butiken" : "butikerna"} och vinst ${sek(profit)}`;
-  const topText =
-    active.length > 1 ? `, ${formatPercent(top.revenueOre / revenue, 0)} från ${top.name}` : "";
-  return { title, aside: sentence(`${split}${topText}`) };
+  if (revenue <= 0) return { title, aside: "Ingen försäljning än." };
+  // Kort: butikernas andel och vår vinst.
+  return {
+    title,
+    aside: `${sek(compensation)} (${formatPercent(compensation / revenue)}) till ${rows.length === 1 ? "butiken" : "butikerna"} · vår vinst ${sek(profit)}.`,
+  };
 }
 
 /** Förändring som text: "12 % mer än" / "8 % mindre än" / "lika mycket som". */
@@ -515,20 +519,19 @@ export function storeHeadline(args: {
     args.revenueOre > 0
       ? `${args.name} gav ${sek(args.revenueOre)} ${args.span}.`
       : `${args.name} har ingen försäljning ${args.span}.`;
+  // Kort: förändring, vår vinst och butikens del i månaden, med "·" emellan.
   const parts: string[] = [];
   if (args.previousRevenueOre !== null && args.revenueOre > 0) {
     const change = changeText(args.revenueOre, args.previousRevenueOre);
-    if (change) parts.push(`${change} perioden innan`);
+    if (change) parts.push(`${change} förut`);
   }
   if (args.revenueOre > 0) {
     parts.push(
-      `${args.profitOre < 0 ? "förlust" : "vinst"} för oss ${sek(Math.abs(args.profitOre))} efter ${args.vmb ? "inköp, VMB-moms och ersättning" : "inköp och ersättning"}`,
+      `${args.profitOre < 0 ? "vår förlust" : "vår vinst"} ${sek(Math.abs(args.profitOre))}${args.vmb ? " efter VMB" : ""}`,
     );
   }
-  parts.push(
-    `butikens ersättning hittills i ${args.month.monthLabel} är ${sek(args.month.totalOre)}`,
-  );
-  return { title, aside: parts.map(sentence).join(" ") };
+  parts.push(`butiken ${sek(args.month.totalOre)} i ${args.month.monthLabel}`);
+  return { title, aside: `${sentence(parts.join(" · ")).replace(/\.$/, "")}.` };
 }
 
 export function storeKpis(args: {
@@ -587,9 +590,22 @@ export function storeIssues(args: {
   recipients: readonly RecipientView[];
   archived: boolean;
   today: IsoDate;
+  /** Kontraktet (signed.ts). Utelämnat = okänt (ingen punkt). */
+  contract?: StoreContractState | null;
 }): StoreIssue[] {
   if (args.archived) return [];
   const out: StoreIssue[] = [];
+  // Varje butik med automat ska ha ett signerat kontrakt (röd markering, Att göra).
+  if (args.machineCodes.length > 0 && args.contract && args.contract !== "signed") {
+    const missing = args.contract === "missing";
+    out.push({
+      id: "no-contract",
+      level: "critical",
+      text: missing ? "Kontrakt saknas." : "Kontraktet är inte signerat.",
+      short: missing ? "Kontrakt saknas" : "Ej signerat",
+      actionable: true,
+    });
+  }
   const current = args.agreements.find((a) => a.state === "current") ?? null;
   const upcoming = args.agreements
     .filter((a) => a.state === "upcoming")
@@ -599,8 +615,8 @@ export function storeIssues(args: {
     out.push({
       id: "no-agreement",
       level: "critical",
-      text: `Inget avtal gäller i dag för ${codes}. Ingen provision eller hyra räknas.`,
-      short: "Inget avtal i dag",
+      text: `Inga villkor för ${codes}. Butiken får inget.`,
+      short: "Inga villkor",
       actionable: true,
     });
   }

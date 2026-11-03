@@ -10,7 +10,7 @@ import { formatPercent, formatSek, NBSP } from "@/lib/format";
 
 import { sentence, type SectionTitle } from "../_lib/headline";
 import type { ProfitLine, TrendKey, TrendSeries, ViewKey } from "../_lib/model";
-import { TREND_PARAM, VIEW_PARAM } from "../_lib/params";
+import { ANALYSIS_PARAM, TREND_PARAM, VIEW_PARAM, type AnalysisTab } from "../_lib/params";
 import { DEFAULT_SORT, ExportButton, ProfitTable, VIEW_NOUN } from "./profit-table";
 import type { SortKey } from "@/components/ui/data-table";
 import { ProfitTrendChart, type TrendDatum } from "./profit-trend-chart";
@@ -242,28 +242,32 @@ export function TrendSection({
 // Tabell · Utveckling i en sektion
 // ---------------------------------------------------------------------------
 
-type AnalysisTab = "table" | "trend";
-
 const ANALYSIS_OPTIONS: ReadonlyArray<{ value: AnalysisTab; label: string }> = [
   { value: "table", label: "Tabell" },
   { value: "trend", label: "Utveckling" },
+  { value: "rhythm", label: "Rytm" },
 ];
 
-/** Tabellen per titel/automat/butik och utvecklingen, bakom en växlare (?visa=). */
+/**
+ * Tabellen per titel/automat/butik, utvecklingen och försäljningsrytmen med topplistan,
+ * bakom en växlare (?visa=). Rytmen ritas på servern och kommer in som färdigt innehåll.
+ */
 export function AnalysisSection({
   table,
   trend,
+  rhythm,
   initialTab,
 }: {
   table: Omit<ComponentProps<typeof TableSection>, "tabs">;
   trend: Omit<ComponentProps<typeof TrendSection>, "tabs">;
+  rhythm: ReactNode;
   initialTab: AnalysisTab;
 }) {
   // Kom man in med ?titel= gäller tabellen.
   const [tab, setTab] = useState<AnalysisTab>(table.selectedTitle ? "table" : initialTab);
   const change = (t: AnalysisTab) => {
     setTab(t);
-    replaceParam("visa", t === "trend" ? "utveckling" : "tabell");
+    replaceParam("visa", ANALYSIS_PARAM[t]);
   };
   const tabs = (
     <Segmented options={ANALYSIS_OPTIONS} value={tab} onChange={change} label="Visa" size="sm" />
@@ -272,8 +276,13 @@ export function AnalysisSection({
     <div key={tab} className="fade-in">
       {tab === "table" ? (
         <TableSection {...table} tabs={tabs} />
-      ) : (
+      ) : tab === "trend" ? (
         <TrendSection {...trend} tabs={tabs} />
+      ) : (
+        <div id="rytm-och-topplista" className="flex scroll-mt-28 flex-col gap-8">
+          <div className="flex justify-end">{tabs}</div>
+          {rhythm}
+        </div>
       )}
     </div>
   );

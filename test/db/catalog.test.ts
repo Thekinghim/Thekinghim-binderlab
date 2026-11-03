@@ -41,6 +41,8 @@ const APPEND_ONLY = [
 ];
 const RPCS = [
   "accept_invitation",
+  // Mina inbjudningar (20261105060000_mina_inbjudningar.sql): egen inbjudan utan mejllänk.
+  "accept_my_invitation",
   // Flera lager (20261104210000_flera_lager.sql): ta bort/ta tillbaka ett eget lager (ägare, admin).
   "archive_warehouse",
   "attach_contract_file",
@@ -62,6 +64,7 @@ const RPCS = [
   "lager_slot_periods",
   "list_members",
   "merge_titles",
+  "my_invitations",
   "portal_agreements",
   // Butiksportalen: butikens avtal och avtalsfil (20261104233400_butik_avrakning.sql).
   "portal_contract_file",
@@ -86,6 +89,7 @@ const RPCS = [
   "set_refill_source",
   // Flera lager: flytt mellan egna lager och ångra flytt (ägare, admin).
   "transfer_stock",
+  "undo_field_refills",
   "undo_transfer",
 ];
 /**
@@ -549,6 +553,7 @@ describe("anon", () => {
   it.each(RPCS)("kan inte köra %s", async (fn) => {
     const args: Record<string, ReturnType<typeof sql>> = {
       accept_invitation: sql`'x'`,
+      accept_my_invitation: sql`gen_random_uuid()`,
       archive_warehouse: sql`gen_random_uuid(), gen_random_uuid()`,
       attach_contract_file: sql`gen_random_uuid(), gen_random_uuid(), 'x', 'x', 'application/pdf', 1::bigint, 'x'`,
       awish_save_credentials: sql`gen_random_uuid(), gen_random_uuid(), 'x', 'y', 'z'`,
@@ -563,6 +568,7 @@ describe("anon", () => {
       lager_slot_periods: sql`gen_random_uuid()`,
       list_members: sql`gen_random_uuid()`,
       merge_titles: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid()`,
+      my_invitations: sql``,
       portal_agreements: sql`gen_random_uuid()`,
       portal_contract_file: sql`gen_random_uuid(), gen_random_uuid()`,
       portal_contracts: sql`gen_random_uuid()`,
@@ -581,6 +587,7 @@ describe("anon", () => {
       sales_data_until: sql`gen_random_uuid()`,
       set_refill_source: sql`gen_random_uuid(), gen_random_uuid(), null::uuid`,
       transfer_stock: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
+      undo_field_refills: sql`gen_random_uuid(), array[gen_random_uuid()]`,
       undo_transfer: sql`gen_random_uuid(), gen_random_uuid()`,
     };
     const outcome = await asAnon((tx) =>

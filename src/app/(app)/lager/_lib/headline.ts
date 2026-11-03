@@ -1,6 +1,6 @@
 /**
  * Sidans svar högst upp: tvådelad rubrik med fakta ur vymodellen.
- *   "1 plats kritisk, 3 låga."  "30th Celebration i BL‑003 har 1 pack kvar. 16 pack till BL‑003 i dag.
+ *   "Fyll på 1 titel nu, 3 snart."  "30th Celebration i BL‑003 har 1 pack kvar. 16 pack till BL‑003 i dag.
  *   BL‑001 och BL‑002 i morgon."
  * En plats är en titel i en automat (cellen i matrisen). Ordet "fack" används inte här:
  * ordlistans fack är en fysisk plats i automaten, och en automat har sex.
@@ -106,8 +106,8 @@ export function headlineOf(view: LagerView): Headline {
   }
   if (total === 0 && view.unknownCount > 0) {
     return {
-      title: `Saldo okänt på ${count(view.unknownCount, "plats", "platser")}.`,
-      aside: "Koppla automaten under Datakällor (Awish) eller inventera.",
+      title: `Saldo okänt för ${count(view.unknownCount, "titel", "titlar")}.`,
+      aside: "Koppla Awish eller räkna automaten.",
     };
   }
   if (total === 0) {
@@ -131,18 +131,18 @@ export function headlineOf(view: LagerView): Headline {
   // Dagens besök står i sidhuvudets fakta (visitsToday) och i påfyllningslistan.
   if (critical > 0) {
     return {
-      title: `${count(critical, "plats kritisk", "platser kritiska")}${low > 0 ? `, ${formatInt(low)} ${low === 1 ? "låg" : "låga"}` : ""}.`,
+      title: `Fyll på ${count(critical, "titel", "titlar")} nu${low > 0 ? `, ${formatInt(low)} snart` : ""}.`,
       aside: urgentText,
     };
   }
   if (low > 0) {
     return {
-      title: `Ingen plats är slut, ${count(low, "plats är låg", "platser är låga")}.`,
+      title: `${count(low, "titel tar", "titlar tar")} slut snart.`,
       aside: urgentText,
     };
   }
   return {
-    title: `Alla ${formatInt(total)}${NBSP}platser räcker minst ${tenthsText(view.lowThresholdTenths)}${NBSP}dagar.`,
+    title: `Alla titlar räcker ${tenthsText(view.lowThresholdTenths)}${NBSP}dagar till.`,
     aside: visitsText(view),
   };
 }
