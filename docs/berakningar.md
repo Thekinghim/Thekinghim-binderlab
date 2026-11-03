@@ -295,8 +295,44 @@ Saldo per plats (titel i automat) = senaste inventeringen + alla händelser efte
 inventerat): inventering 5 från Awish, saldot blir 5. Nästa läsning med A1 = 1: inventering 3. En order efter
 läsningen drar 1 (saldo 2) tills nästa läsning.
 
-Vårt eget lager (centrallagret) visas och inventeras under Prognos & inköp, "Vårt lager & beställ" (`/prognos#vart-lager`):
-pack hemma, hur länge det räcker vid alla automaters takt och vad veckans besök behöver (samma regler som förut).
+### Vårt lager (centrallagret)
+
+Vårt eget lager har en egen flik, **Vårt lager** (`/vart-lager`, ägare, admin och läsare; ägare och admin skriver).
+Blocket under Prognos & inköp, "Vårt lager & beställ", finns kvar och länkar dit.
+
+| Tal               | Formel                                                                                                     |
+| ----------------- | ---------------------------------------------------------------------------------------------------------- |
+| Antal hemma       | centrallagrets saldo (senaste inventering + händelser efter den). Att skriva antalet = en inventering      |
+| + Inköp           | en `receipt`-händelse med det antal som kom hem                                                            |
+| I automater       | Σ automaternas kända saldon för titeln (Awish eller inventering), en plats under 0 räknas som 0            |
+| Sålt 7 d          | sålda pack de senaste 7 dagarna t.o.m. i dag, alla automater                                               |
+| Räcker            | samma som Prognos & inköp: antal hemma / alla automaters takt (14 hela dagar t.o.m. i går), hela dagar     |
+| Tar slut inom 7 d | status Kritisk eller Låg: slut och behövs, räcker inte till veckans besök, eller räcker kortare än 7 dagar |
+| Värde, inköpspris | Σ max(0, antal hemma) × inköpspriset som gäller i dag (öre). Titlar utan pris räknas inte (visas)          |
+
+**Påfyllning dras automatiskt (Awish).** När Awish-synken läser en automat som redan har lästs förut och en titel
+som har ett räknat saldo där har **fler** pack än saldot, är ökningen en påfyllning från vårt lager:
+
+    uttag = Awish antal − max(0, saldot i automaten)      (bara om > 0)
+
+Uttaget skrivs i samma transaktion som inventeringen, som en `adjustment` med negativt antal, `source = 'awish'`
+och noteringen "Awish-påfyllning <kod> <butik>". Aldrig vid automatens första läsning, aldrig för en titel som
+inte har räknats i automaten än, aldrig vid minskning (försäljning) eller samma antal. En påfyllning som redan
+registrerats i appen från vårt lager har höjt saldot, så Awish visar samma antal och uttaget blir 0. Varje
+automat räknas för sig. Vårt lager får bli negativt (det är det verkliga värdet för bokföringen): raden visas då
+med "Räkna om".
+
+**Synken före Klar.** Registreras påfyllningen i appen först EFTER att synken dragit den (påfyllaren fyller,
+synken går, sedan trycks Klar, eller kön skickas senare) räknar `register_refill` av: Awish-uttag för samma
+automat och titel som sparades före påfyllningen, inte redan använts och gjordes från 30 minuter före till
+2 timmar efter påfyllningens tid täcker den först. Från vårt lager dras bara resten; utan uttag läggs det Awish
+drog tillbaka ("Återfört Awish-uttag <kod>"). Migreringen `20261104202000_vart_lager_avrakning_awish.sql`.
+Begränsning: två påfyllningar av samma titel i samma automat inom 30 minuter, där bara den andra registreras i
+appen, räknas som en.
+
+**Exempel.** 40 Surging Sparks hemma. Sega gubben (BL-001) hade 3, Awish visar 15: uttag 12, hemma 28. Nästa
+läsning 11 (fyra sålda): inget. Påfyllaren registrerar +5 i appen (hemma 23, automaten 16), Awish visar 16:
+inget uttag.
 
 ## 9. Enhetsekonomi per automat
 

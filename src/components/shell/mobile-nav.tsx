@@ -52,8 +52,24 @@ export function MobileNav(props: ShellNavProps) {
     if (open) setOpen(false);
   }
 
+  // Genvägen bara för påfyllaren (ägare och admin når Fyll på från Drift), och inte på
+  // fältsidorna som har en egen knapp nedtill.
+  const showRefill =
+    role === "refiller" && pathname !== "/drift/pafyllning" && !pathname.startsWith("/drift/besok");
+
   return (
     <>
+      {showRefill ? (
+        // Genväg till Fyll på (mobilsidan vid automaten), ovanför bottenraden.
+        <Link
+          href="/fyll-pa"
+          prefetch={false}
+          className="fixed right-4 bottom-[calc(56px+12px+env(safe-area-inset-bottom))] z-30 inline-flex h-11 items-center gap-2 rounded-full border border-inverse bg-inverse pr-4 pl-3 text-md font-medium text-on-inverse shadow-[0_8px_24px_-8px_rgb(0_0_0/0.5)] transition-transform active:scale-95 lg:hidden"
+        >
+          <Icon name="plus" />
+          Fyll på
+        </Link>
+      ) : null}
       <nav
         aria-label="Snabbmeny"
         className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-bg pb-[env(safe-area-inset-bottom)] lg:hidden"

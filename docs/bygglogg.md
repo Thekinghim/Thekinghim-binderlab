@@ -129,3 +129,13 @@ Beslut som påverkar siffror och datamodell står i `docs/datamodell.md` (Beslut
   loggen vid databasfel, CRON_SECRET slumpas i databasen, deploy schemalägger pg_cron-jobbet och rensningen,
   AppKey som lösenordsfält, ledtrådar bara för långa hemligheter, synk-token återkallade
   (`20261103120000_awish_api_granskning.sql`). Ny risk dokumenterad: gRPC utan TLS (`docs/awish-api.md`).
+
+## 3 nov. – nya funktioner
+
+- **Vårt lager** (`/vart-lager`): hemmalagret per titel med värde till inköpspris, sålt senaste 7 dagarna och
+  registrering av inleveranser och påfyllningar. Awish-uttag vid påfyllning dras av automatiskt och räknas inte
+  dubbelt när synken hinner före Klar (`20261104200000_vart_lager_awish_uttag.sql`,
+  `20261104202000_vart_lager_avrakning_awish.sql`). Länk från Prognos & inköp.
+- **Fyll på** (`/fyll-pa`): mobilsida vid automaten, nås via QR-kod per automat (utskrift för ägare och admin),
+  fack för fack med Klar, fungerar utan nät med kö som skickas när nätet är tillbaka
+  (`20261104201000_fyll_pa_awish_fack.sql`). Knapp i Drift och flytande knapp för påfyllare.

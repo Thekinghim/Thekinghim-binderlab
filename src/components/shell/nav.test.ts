@@ -11,7 +11,7 @@ const sidebar = (role: Role) => {
 };
 
 describe("menyns grupper", () => {
-  it("ägaren ser 7 primära, 8 under Mer och 2 under System", () => {
+  it("ägaren ser 8 primära, 8 under Mer och 2 under System", () => {
     const s = sidebar("owner");
     expect(s.main).toEqual([
       "hem",
@@ -19,6 +19,7 @@ describe("menyns grupper", () => {
       "lonsamhet",
       "order",
       "lager",
+      "vart-lager",
       "automater",
       "rapporter",
     ]);
@@ -35,10 +36,10 @@ describe("menyns grupper", () => {
     }
   });
 
-  it("högst 7 primära och 8 under Mer för varje roll", () => {
+  it("högst 8 primära och 8 under Mer för varje roll", () => {
     for (const role of ["owner", "admin", "viewer", "refiller"] as const) {
       const s = sidebar(role);
-      expect(s.main.length).toBeLessThanOrEqual(7);
+      expect(s.main.length).toBeLessThanOrEqual(8);
       expect(s.more.length).toBeLessThanOrEqual(8);
     }
   });
@@ -55,6 +56,14 @@ describe("menyns grupper", () => {
       ].filter(Boolean);
       expect(groups, r.id).toHaveLength(1);
     }
+  });
+
+  it("Vårt lager ligger direkt efter Lager för ägare, admin och läsare, inte för påfyllaren", () => {
+    for (const role of ["owner", "admin", "viewer"] as const) {
+      const main = sidebar(role).main;
+      expect(main[main.indexOf("lager") + 1], role).toBe("vart-lager");
+    }
+    expect(menuRoutesForRole("refiller").map((r) => r.id)).not.toContain("vart-lager");
   });
 
   it("påfyllaren ser varken Lönsamhet, Ekonomi, Inköpspriser eller Rapporter", () => {

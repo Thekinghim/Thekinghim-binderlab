@@ -129,6 +129,14 @@ export default async function PrognosPage({
                 eyebrow="Vårt lager"
                 title={ourStockTitle(stock.rows)}
                 aside={stock.rows.length > 0 ? ourStockAside(stock.rows) : undefined}
+                actions={
+                  <Link
+                    href="/vart-lager"
+                    className="meta inline-flex min-h-7 items-center rounded-xs text-muted hover:text-fg"
+                  >
+                    Öppna Vårt lager{"\u00a0"}→
+                  </Link>
+                }
               />
               <OurStock
                 rows={stock.rows}

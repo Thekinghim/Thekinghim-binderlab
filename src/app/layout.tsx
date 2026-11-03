@@ -10,6 +10,12 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: { default: "Binderlab", template: "%s · Binderlab" },
   description: "Kontrollpanel för varuautomater med samlarkort.",
+  // Installerad på iPhone (Safari → Dela → Lägg till på hemskärmen): egen app utan
+  // webbläsarens ramar. Statusraden följer theme-color (temat nedan).
+  appleWebApp: { capable: true, title: "Binderlab", statusBarStyle: "default" },
+  formatDetection: { telephone: false },
+  // Next skriver bara "mobile-web-app-capable"; äldre iOS läser den med apple-prefix.
+  other: { "apple-mobile-web-app-capable": "yes" },
 };
 
 /** Webbläsarens färg (adressfältet på mobilen) följer temat: --bl-bg i src/styles/tokens.css. */
@@ -19,6 +25,9 @@ export async function generateViewport(): Promise<Viewport> {
     themeColor: theme === "light" ? "#f4f3ef" : "#0a0a0b",
     width: "device-width",
     initialScale: 1,
+    // Hela skärmen på iPhone med notch och hemindikator; sidorna lägger till
+    // env(safe-area-inset-*) där det behövs (bottenmenyn, Fyll på).
+    viewportFit: "cover",
   };
 }
 

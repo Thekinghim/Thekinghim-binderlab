@@ -63,12 +63,22 @@ describe("groupProducts", () => {
       product("B3", "   ", 5),
     ]);
     expect(groups).toEqual([
-      { name: "Black Bolt", key: "black bolt", units: 0, capacity: 6, channels: ["B1"] },
+      {
+        name: "Black Bolt",
+        key: "black bolt",
+        units: 0,
+        capacity: 6,
+        slotCount: 1,
+        emptySlots: 1,
+        channels: ["B1"],
+      },
       {
         name: "Surging Sparks",
         key: "surging sparks",
         units: 7,
         capacity: 30,
+        slotCount: 3,
+        emptySlots: 0,
         channels: ["A2", "A3", "A10"],
       },
     ]);

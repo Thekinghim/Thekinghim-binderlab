@@ -427,6 +427,11 @@ export const stockLocations = pgTable("stock_locations", {
   archivedAt: ts("archived_at"),
   /** Senaste gången Awish-synken läste automatens fack. Bara synken skriver. */
   awishSyncedAt: ts("awish_synced_at"),
+  /** Awish fack per titel vid senaste läsningen (Fyll på). Skrivs bara av synken. */
+  awishFill:
+    jsonb("awish_fill").$type<
+      { title_id: string; units: number; capacity: number; channels: number; empty: number }[]
+    >(),
   ...stamps(),
 });
 

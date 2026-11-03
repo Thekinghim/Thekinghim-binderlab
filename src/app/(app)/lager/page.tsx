@@ -31,8 +31,8 @@ function first(v: string | string[] | undefined): string | null {
 /**
  * Lager: det som finns i automaterna. Matrisen titel × automat (antal kvar, dagar kvar,
  * status; saldot från Awish när automaten är kopplad), påfyllningslistan per automat
- * inför ett besök och historiken. Vårt eget lager ligger under Prognos & inköp
- * (/prognos#vart-lager); gamla länkar hit (#centrallager, ?vy=centrallager) skickas dit. Alla roller ser sidan;
+ * inför ett besök och historiken. Vårt eget lager har en egen flik
+ * (/vart-lager); gamla länkar hit (#centrallager, ?vy=centrallager) skickas dit. Alla roller ser sidan;
  * ägare, admin och påfyllare registrerar påfyllning och inventering. Inga belopp
  * visas eller skickas till klienten, för någon roll.
  */
@@ -62,7 +62,7 @@ export default async function LagerPage({ searchParams }: { searchParams: Promis
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
-      {routeById("prognos").roles.includes(ctx.role) ? (
+      {routeById("vart-lager").roles.includes(ctx.role) ? (
         <Suspense fallback={null}>
           <WarehouseRedirect />
         </Suspense>

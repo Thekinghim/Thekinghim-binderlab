@@ -23,13 +23,22 @@ Supabase pg_cron (*/10 * * * *) → private.awish_cron_tick() → pg_net GET {AP
   Vault (AppId/AppSecret/AppKey) → gRPC provider.Provider: Machines, Orders (sida 1, 2 …, 20 per sida)
   → adaptern (src/import/adapters/awish-grpc.ts) → samma pipeline som CSV → import (trigger 'schedule')
   → Products(machine_id) per kopplad automat (högst var 30:e minut, alltid vid "Synka nu")
-  → src/server/awish/stock.ts → inventeringar (source 'awish'), machine_slots, stock_locations.awish_synced_at
+  → src/server/awish/stock.ts → inventeringar (source 'awish'), uttag ur vårt lager vid påfyllning,
+    machine_slots, stock_locations.awish_synced_at
 ```
 
 - **Saldot (Products):** efter orderna, med den tid som är kvar av körningens budget. Automaten som lästes längst
   sedan går först; det som inte hinns med tas nästa körning. Fel för en automat stoppar inte de andra eller
   orderna. Resultatet står i `lastRun.stock` och `stockSyncedAt` i `data_sources.cursor`. Reglerna:
   `docs/berakningar.md`, avsnitt 8 (Saldot i automaterna).
+- **Påfyllning dras ur vårt lager:** visar en automat som redan har lästs fler pack av en titel än saldot (och
+  titeln är räknad där) skriver synken i samma transaktion ett uttag ur centrallagret: `adjustment` med negativt
+  antal, `source = 'awish'`, noteringen "Awish-påfyllning <kod> <butik>" (regeln i
+  `src/server/awish/refill-deduction.ts`). Aldrig vid första läsningen, aldrig vid minskning; en påfyllning som
+  redan registrerats i appen ger 0, och en påfyllning som registreras strax efter synken räknas av mot uttaget
+  (`register_refill`, `20261104202000_vart_lager_avrakning_awish.sql`). Pack som drogs står i `lastRun.stock.warehouseOut`. Vårt lager får bli
+  negativt (fliken Vårt lager visar då "Räkna om"). Migreringen `20261104200000_vart_lager_awish_uttag.sql`
+  tillåter `source = 'awish'` på ett sådant uttag. Detaljer: `docs/berakningar.md`, Vårt lager.
 
 - **Server:** `AWISH_GRPC_ADDRESS` (standard `49.51.72.74:50051`), `AWISH_GRPC_TLS` (`false`, som i dokumentationen).
 - **Inloggning** (metadata på varje anrop): `appid`, `token` = MD5 av `AppSecret.AppKey` som hex (gemener) och

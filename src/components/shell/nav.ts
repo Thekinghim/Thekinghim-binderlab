@@ -29,6 +29,7 @@ export type RouteId =
   | "lonsamhet"
   | "order"
   | "lager"
+  | "vart-lager"
   | "automater"
   | "butiker"
   | "inkopspriser"
@@ -134,6 +135,18 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     mobileRank: 4,
     phase: 5,
     lead: "Per artikel och automat.",
+  },
+  {
+    id: "vart-lager",
+    href: "/vart-lager",
+    label: "Vårt lager",
+    icon: "inventory",
+    section: "main",
+    // Samma roller som Prognos & inköp (sidan visar värdet till inköpspris).
+    roles: READERS,
+    phase: 6,
+    lead: "Pack hemma, per titel.",
+    context: false,
   },
   {
     id: "automater",
