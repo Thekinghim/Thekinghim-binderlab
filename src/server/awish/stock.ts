@@ -17,6 +17,12 @@
  *   automaten och saknar sortimentsperiod får en avslutad period (i går), så att Lager,
  *   Drift och Att göra räknar den som utgången och inte som tom. Fackfördelningen från
  *   en genomförd sortimentsändring (Marknad) skrivs inte över samma dag eller tidigare.
+ * - Påfyllning: visar en automat som redan har lästs fler pack av en titel än saldot
+ *   (och titeln har ett räknat saldo där) dras ökningen ur vårt lager (centrallagret) i
+ *   samma transaktion, som en 'adjustment' med source 'awish' och noteringen
+ *   "Awish-påfyllning <kod> <butik>" (./refill-deduction). Aldrig vid första läsningen,
+ *   aldrig vid minskning, och en påfyllning som redan registrerats i appen ger 0.
+ *   Saldot i vårt lager får bli negativt (Vårt lager visar då "Räkna om").
  * - stock_locations.awish_synced_at sätts, så att Lager vet att saldot är känt.
  *
  * En tom lista från Awish ändrar inget (automaten kan vara nere). Fel för en automat
@@ -31,6 +37,7 @@ import type { Db, Tx } from "@/db/client";
 import { comparableText } from "@/import/adapter";
 
 import { AWISH_MIN_CALL_MS, AwishApiError, type AwishApi, type AwishProduct } from "./grpc-client";
+import { awishRefillNote, refillDeductions } from "./refill-deduction";
 
 type Row = Record<string, unknown>;
 
@@ -51,6 +58,9 @@ export interface AwishSlotGroup {
   readonly key: string;
   readonly units: number;
   readonly capacity: number;
+  /** Fack (rader från Awish) för varan, och hur många av dem som är tomma (0 pack). */
+  readonly slotCount: number;
+  readonly emptySlots: number;
   /** Kanalernas namn, sorterade ("A1", "A2", "B10"). */
   readonly channels: string[];
 }
@@ -66,15 +76,31 @@ export function goodKey(name: string): string {
 export function groupProducts(products: readonly AwishProduct[]): AwishSlotGroup[] {
   const groups = new Map<
     string,
-    { name: string; units: number; capacity: number; channels: string[] }
+    {
+      name: string;
+      units: number;
+      capacity: number;
+      slotCount: number;
+      emptySlots: number;
+      channels: string[];
+    }
   >();
   for (const p of products) {
     const name = comparableText(p.goodName);
     if (name === "") continue;
     const key = name.toLowerCase();
-    const g = groups.get(key) ?? { name: name.slice(0, 200), units: 0, capacity: 0, channels: [] };
+    const g = groups.get(key) ?? {
+      name: name.slice(0, 200),
+      units: 0,
+      capacity: 0,
+      slotCount: 0,
+      emptySlots: 0,
+      channels: [],
+    };
     g.units += p.currentInventory;
     g.capacity += p.capacity;
+    g.slotCount += 1;
+    if (p.currentInventory <= 0) g.emptySlots += 1;
     if (p.channel !== "") g.channels.push(p.channel);
     groups.set(key, g);
   }
@@ -97,6 +123,8 @@ export interface AwishStockSummary {
   readonly read: number;
   /** Nya inventeringar (titlar vars antal ändrades). */
   readonly counts: number;
+  /** Pack som drogs ur vårt lager för påfyllningar som Awish visade. */
+  readonly warehouseOut?: number;
   /** Nya titlar från okända varor. */
   readonly titlesCreated: number;
   /** Automater som inte gick att läsa eller spara. */
@@ -108,6 +136,8 @@ export interface AwishStockSummary {
 
 export interface MachineStockResult {
   readonly counts: number;
+  /** Pack som drogs ur vårt lager (påfyllningar enligt Awish). */
+  readonly warehouseOut: number;
   readonly titlesCreated: number;
   readonly slotsChanged: boolean;
   readonly skipped: "empty" | null;
@@ -210,7 +240,7 @@ export async function applyMachineStock(
   const org = input.organizationId;
   const groups = groupProducts(input.products);
   if (groups.length === 0) {
-    return { counts: 0, titlesCreated: 0, slotsChanged: false, skipped: "empty" };
+    return { counts: 0, warehouseOut: 0, titlesCreated: 0, slotsChanged: false, skipped: "empty" };
   }
   const at = input.at.toISOString();
   return db.transaction(async (tx) => {
@@ -218,29 +248,46 @@ export async function applyMachineStock(
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtextextended(${`binderlab:import:${input.dataSourceId}`}, 0))`,
     );
-    const [machine] = await query<{ today: string; yesterday: string; label: string }>(
+    const [machine] = await query<{
+      today: string;
+      yesterday: string;
+      label: string;
+      code: string;
+      place: string;
+    }>(
       tx,
       sql`select ((${at}::timestamptz at time zone o.timezone)::date)::text as today,
                  ((${at}::timestamptz at time zone o.timezone)::date - 1)::text as yesterday,
-                 m.code || ' ' || m.name as label
+                 m.code || ' ' || m.name as label,
+                 m.code,
+                 coalesce((
+                   select st.name from public.machine_placements p
+                   join public.stores st on st.organization_id = p.organization_id and st.id = p.store_id
+                   where p.organization_id = m.organization_id and p.machine_id = m.id
+                     and p.valid_from <= (${at}::timestamptz at time zone o.timezone)::date
+                     and (p.valid_to is null
+                          or p.valid_to >= (${at}::timestamptz at time zone o.timezone)::date)
+                   order by p.valid_from desc limit 1
+                 ), m.name) as place
           from public.machines m
           join public.organizations o on o.id = m.organization_id
           where m.organization_id = ${org}::uuid and m.id = ${input.machineId}::uuid`,
     );
     if (!machine) throw new Error("Automaten finns inte.");
 
-    let [location] = await query<{ id: string }>(
+    let [location] = await query<{ id: string; synced: unknown }>(
       tx,
-      sql`select id from public.stock_locations
-          where organization_id = ${org}::uuid and machine_id = ${input.machineId}::uuid`,
+      sql`select id, awish_synced_at as synced from public.stock_locations
+          where organization_id = ${org}::uuid and machine_id = ${input.machineId}::uuid
+          for update`,
     );
     if (!location) {
-      [location] = await query<{ id: string }>(
+      [location] = await query<{ id: string; synced: unknown }>(
         tx,
         sql`insert into public.stock_locations (organization_id, kind, machine_id, name)
             values (${org}::uuid, 'machine', ${input.machineId}::uuid, ${machine.label})
             on conflict (organization_id, machine_id) do update set name = stock_locations.name
-            returning id`,
+            returning id, awish_synced_at as synced`,
       );
     }
     if (!location) throw new Error("Automatens lagerplats saknas.");
@@ -248,6 +295,11 @@ export async function applyMachineStock(
     const { byKey, created } = await resolveTitles(tx, org, groups);
     // Två varunamn kan peka på samma titel (sammanslagna titlar): summera.
     const wanted = new Map<string, { units: number; slots: number; channels: string[] }>();
+    // Fyll på: pack, kapacitet och tomma fack per titel (stock_locations.awish_fill).
+    const fill = new Map<
+      string,
+      { units: number; capacity: number; channels: number; empty: number }
+    >();
     for (const g of groups) {
       const titleId = byKey.get(g.key)!;
       const cur = wanted.get(titleId) ?? { units: 0, slots: 0, channels: [] };
@@ -255,6 +307,12 @@ export async function applyMachineStock(
       cur.slots += Math.max(1, g.channels.length);
       cur.channels.push(...g.channels);
       wanted.set(titleId, cur);
+      const f = fill.get(titleId) ?? { units: 0, capacity: 0, channels: 0, empty: 0 };
+      f.units += g.units;
+      f.capacity += g.capacity;
+      f.channels += g.slotCount;
+      f.empty += g.emptySlots;
+      fill.set(titleId, f);
     }
 
     const levels = await query<{ title_id: string; quantity: number; last_counted_at: unknown }>(
@@ -288,6 +346,44 @@ export async function applyMachineStock(
       );
     }
 
+    // Påfyllning enligt Awish: ökningen dras ur vårt lager (./refill-deduction).
+    const deductions = refillDeductions({
+      syncedBefore: location.synced !== null && location.synced !== undefined,
+      levels: new Map(
+        levels.map((l) => [
+          l.title_id,
+          { quantity: Number(l.quantity), counted: l.last_counted_at !== null },
+        ]),
+      ),
+      awish: new Map([...wanted].map(([titleId, w]) => [titleId, w.units])),
+    });
+    let warehouseOut = 0;
+    if (deductions.length > 0) {
+      const [central] = await query<{ id: string }>(
+        tx,
+        sql`select id from public.stock_locations
+            where organization_id = ${org}::uuid and is_central and archived_at is null
+            limit 1`,
+      );
+      if (central) {
+        for (const d of deductions) {
+          // Samma lås som register_refill: ett samtidigt uttag i appen köas.
+          await tx.execute(
+            sql`select pg_advisory_xact_lock(hashtextextended(${`${central.id}/${d.titleId}`}, 0))`,
+          );
+        }
+        await tx.execute(
+          sql`insert into public.stock_events
+                (organization_id, location_id, title_id, kind, quantity, occurred_at, performed_by, source, note)
+              select ${org}::uuid, ${central.id}::uuid, r.title_id, 'adjustment', -r.quantity,
+                     ${at}::timestamptz, null, 'awish', ${awishRefillNote(machine.code, machine.place)}
+              from jsonb_to_recordset(${JSON.stringify(deductions.map((d) => ({ title_id: d.titleId, quantity: d.quantity })))}::jsonb)
+                as r(title_id uuid, quantity integer)`,
+        );
+        warehouseOut = deductions.reduce((sum, d) => sum + d.quantity, 0);
+      }
+    }
+
     const slotsChanged = await syncSlots(tx, {
       org,
       machineId: input.machineId,
@@ -298,10 +394,20 @@ export async function applyMachineStock(
     });
 
     await tx.execute(
-      sql`update public.stock_locations set awish_synced_at = ${at}::timestamptz
+      sql`update public.stock_locations
+          set awish_synced_at = ${at}::timestamptz,
+              awish_fill = ${JSON.stringify(
+                [...fill].map(([titleId, f]) => ({ title_id: titleId, ...f })).slice(0, 500),
+              )}::jsonb
           where organization_id = ${org}::uuid and id = ${location.id}::uuid`,
     );
-    return { counts: counts.length, titlesCreated: created, slotsChanged, skipped: null };
+    return {
+      counts: counts.length,
+      warehouseOut,
+      titlesCreated: created,
+      slotsChanged,
+      skipped: null,
+    };
   });
 }
 
@@ -433,6 +539,7 @@ export async function syncSourceStock(
   );
   let read = 0;
   let counts = 0;
+  let warehouseOut = 0;
   let titlesCreated = 0;
   let failed = 0;
   let deferred = 0;
@@ -452,6 +559,7 @@ export async function syncSourceStock(
       });
       if (r.skipped === null) read += 1;
       counts += r.counts;
+      warehouseOut += r.warehouseOut;
       titlesCreated += r.titlesCreated;
     } catch (error) {
       if (error instanceof AwishApiError && error.kind === "budget") {
@@ -467,6 +575,7 @@ export async function syncSourceStock(
     machines: machines.length,
     read,
     counts,
+    warehouseOut,
     titlesCreated,
     failed,
     deferred,

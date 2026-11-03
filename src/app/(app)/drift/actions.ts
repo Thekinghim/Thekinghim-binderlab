@@ -13,7 +13,7 @@
 
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 
 import type { AlertDelivery } from "@/analytics/alerts";
@@ -29,7 +29,14 @@ import { dispatchDelivery, type Channel, type ChannelResult } from "@/server/not
 import { isAllowedPushEndpoint } from "@/server/notify/push-endpoint";
 import { createRateLimiter } from "@/server/rate-limit";
 import { resolveAppBaseUrl } from "@/server/request-info";
+import {
+  FIELD_REFILL_ROLES,
+  syncRefillsFor,
+  type RefillSyncResult,
+} from "@/server/data/field-refills";
 import { withUserDb } from "@/server/session";
+
+import { currentViewer } from "../lager/_lib/session";
 
 const uuid = z.string().uuid();
 
@@ -307,65 +314,22 @@ export async function sendTestAlert(): Promise<{
 // Påfyllning från fältet
 // ---------------------------------------------------------------------------
 
-const refillItem = z.object({
-  clientId: uuid,
-  machineId: uuid,
-  titleId: uuid,
-  quantity: z.number().int().min(1).max(10000),
-  fromWarehouse: z.boolean(),
-  occurredAt: z.string().datetime({ offset: true }),
-  note: z.string().max(500).optional(),
-});
-
-export interface RefillSyncResult {
-  readonly clientId: string;
-  readonly status: "saved" | "duplicate" | "rejected";
-  readonly error?: string;
-}
+export type { RefillSyncResult };
 
 /**
- * Tar emot påfyllningar från kön i webbläsaren. Varje påfyllning sparas i en egen transaktion
- * via register_refill_once: samma klient-id igen ger "duplicate" och inget nytt. Ett avvisat
- * inskick (t.ex. för lite i centrallagret) kommer tillbaka med ett svenskt felmeddelande och
- * stannar i kön tills användaren tar bort det.
+ * Tar emot påfyllningar från kön i webbläsaren (Påfyllning och Fyll på). Varje påfyllning
+ * sparas i en egen transaktion via register_refill_once: samma klient-id igen ger
+ * "duplicate" och inget nytt. Ett avvisat inskick (t.ex. för lite i vårt lager) kommer
+ * tillbaka med ett svenskt felmeddelande och stannar i kön tills användaren tar bort det.
+ * Logiken finns i @/server/data/field-refills (testbar utan Next).
  */
 export async function syncRefills(
   items: unknown,
 ): Promise<{ ok: boolean; results: RefillSyncResult[] }> {
-  const ctx = await requireContextRole(["owner", "admin", "refiller"]);
-  const list = z.array(z.unknown()).max(200).safeParse(items);
-  if (!list.success) return { ok: false, results: [] };
-  const results: RefillSyncResult[] = [];
-  for (const raw of list.data) {
-    const parsed = refillItem.safeParse(raw);
-    const clientId =
-      typeof raw === "object" && raw !== null && "clientId" in raw
-        ? String((raw as { clientId: unknown }).clientId)
-        : "";
-    if (!parsed.success) {
-      results.push({ clientId, status: "rejected", error: "Påfyllningen saknar uppgifter." });
-      continue;
-    }
-    const it = parsed.data;
-    try {
-      const rows = await withUserDb((tx) =>
-        tx.execute(sql`select stock_event_id, duplicate from public.register_refill_once(
-          ${ctx.organization.id}::uuid, ${it.clientId}::uuid, ${it.machineId}::uuid, ${it.titleId}::uuid,
-          ${it.quantity}::integer, ${it.fromWarehouse}::boolean, ${it.occurredAt}::timestamptz,
-          ${it.note ?? null}::text)`),
-      );
-      const row = Array.from(rows)[0] as { duplicate?: boolean } | undefined;
-      results.push({ clientId: it.clientId, status: row?.duplicate ? "duplicate" : "saved" });
-    } catch (error) {
-      results.push({
-        clientId: it.clientId,
-        status: "rejected",
-        error: pgMessage(error) ?? "Påfyllningen kunde inte sparas. Försök igen.",
-      });
-    }
-  }
-  if (results.some((r) => r.status === "saved")) {
+  await requireContextRole(FIELD_REFILL_ROLES);
+  const result = await syncRefillsFor(await currentViewer(), items);
+  if (result.results.some((r) => r.status === "saved")) {
     revalidatePath("/", "layout");
   }
-  return { ok: true, results };
+  return result;
 }

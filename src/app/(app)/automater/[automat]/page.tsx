@@ -153,12 +153,20 @@ export default async function MachinePage({
           ]}
           actions={
             ctx.canEdit ? (
-              <MachineActions
-                machine={data.editable}
-                stores={data.stores}
-                today={ctx.today}
-                storeName={store?.name ?? null}
-              />
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  href={`/fyll-pa/${machine.id}/qr`}
+                  className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast hover:border-line-control hover:bg-hover"
+                >
+                  QR för påfyllning
+                </Link>
+                <MachineActions
+                  machine={data.editable}
+                  stores={data.stores}
+                  today={ctx.today}
+                  storeName={store?.name ?? null}
+                />
+              </div>
             ) : undefined
           }
         />

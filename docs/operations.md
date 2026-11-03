@@ -35,6 +35,32 @@ Kontrollera en gång i veckan (fem minuter):
 3. **Datakällor**: "Data till" ska vara färsk för varje källa.
 4. **Supabase → Database → Backups**: senaste säkerhetskopian är från i natt.
 
+## Fyll på i telefonen (iPhone)
+
+`/fyll-pa` är mobilsidan vid automaten: automaterna står efter behov (tomma fack först, sedan
+lägst fyllnadsgrad), och för varje titel visas `nu/kapacitet` från Awish, hur många pack som
+föreslås och hur många som finns hemma. Klar registrerar påfyllningen (samma väg som
+Påfyllning: `register_refill_once`), så Vårt lager minskar direkt och Awish-synken drar inte
+samma pack en gång till. Fler pack än hemma registreras utan uttag. Utan nät sparas allt i
+telefonen och skickas när nätet kommer tillbaka. Ägare, admin och påfyllare.
+
+Installera som app (ingen App Store, inga nycklar):
+
+1. Öppna Binderlab i **Safari** på iPhone och logga in.
+2. Tryck **Dela** (rutan med pilen) → **Lägg till på hemskärmen** → **Lägg till**.
+3. Öppna Binderlab från hemskärmen och **logga in en gång till**: appen på hemskärmen har egna
+   cookies, skilda från Safari. Inloggningen ligger sedan kvar (sessionens cookie gäller i 400
+   dagar och förnyas när appen används).
+
+Appen startar i Fyll på (`start_url` i `src/app/manifest.ts`). I menyn nås den via Drift →
+**Fyll på** och knappen **Fyll på** nere till höger på telefonen. **QR för påfyllning** på en
+automats sida (Automater) ger en utskrivbar kod som öppnar Fyll på för just den automaten
+(`/fyll-pa/<id>`).
+
+Kapaciteten och de tomma facken kommer från Awish-läsningen (`stock_locations.awish_fill`, var
+10:e minut). En automat utan Awish visar saldot men inget förslag. Räkna om (per titel) sparar en
+inventering i automaten och kräver uppkoppling.
+
 ## Felövervakning och larm
 
 Fel som användaren inte ser själv, eller som händer när ingen är inloggad, ska både nå den som
@@ -411,7 +437,7 @@ Kända brister och vad som återstår står sist i `README.md`.
 
 ## E2E-tester
 
-Fem flöden plus felövervakningen går genom webbläsaren med Playwright-biblioteket (inte
+Sex flöden plus felövervakningen går genom webbläsaren med Playwright-biblioteket (inte
 `@playwright/test`) och vitest mot en körande server:
 
 | Fil                 | Flöde                                                                                                                                                                                |
@@ -422,6 +448,7 @@ Fem flöden plus felövervakningen går genom webbläsaren med Playwright-biblio
 | `04-prisandring`    | nytt inköpspris: Lönsamhet och Hem (seedens fasta period i adressen) ändras, ändringsloggen                                                                                          |
 | `05-rapportutskick` | mottagare, utkast, godkännande (PDF), utskick, mejlet i utkorgen med PDF och hälsning; mottagaren pausas efteråt                                                                     |
 | `06-felovervakning` | framkallat databasfel i `/api/cron/larm` och i en import genom gränssnittet: larm på Drift och i Att göra, påfyllaren ser det inte (375 px, mörkt), nästa körning stänger jobblarmet |
+| `07-fyll-pa`        | Fyll på på iPhone 15 (Playwrights `devices["iPhone 15"]`): automaten med tomma fack först, −, Klar, toasten "Sparat – …", vårt lager och automaten i databasen                       |
 
 Varje test kontrollerar att sidan inte haft sidfel eller konsolfel (t.ex. Reacts
 hydreringsfel), utom en kort lista kända och ofarliga (`ALLOWED_CONSOLE_ERRORS` i
