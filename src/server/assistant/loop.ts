@@ -243,6 +243,9 @@ export async function runAssistant(args: RunArgs): Promise<RunResult> {
   const usage = args.usage ?? emptyUsage();
   let status: AssistantStatus | null = null;
   let answer = "";
+  // Text som modellen skrev i ett varv som också anropade verktyg (t.ex. svaret följt av
+  // foresla_knapp). Används om slutvarvet saknar text, så att svaret aldrig blir tomt.
+  let earlierText = "";
   let jsonRetries = 0;
   let model: string | null = null;
 
@@ -287,7 +290,7 @@ export async function runAssistant(args: RunArgs): Promise<RunResult> {
       continue;
     }
     if (toolUses.length === 0) {
-      answer = textOf(message);
+      answer = textOf(message) || earlierText;
       status = message.stop_reason === "max_tokens" ? "limit" : "answered";
       break;
     }
@@ -306,6 +309,8 @@ export async function runAssistant(args: RunArgs): Promise<RunResult> {
       break;
     }
 
+    const turnText = textOf(message);
+    if (turnText.trim() !== "") earlierText = turnText;
     messages.push({ role: "assistant", content: message.content });
     for (const block of toolUses) {
       args.emit({
@@ -340,7 +345,9 @@ export async function runAssistant(args: RunArgs): Promise<RunResult> {
   if (status === null) {
     status = "limit";
     answer =
-      answer || "Frågan krävde fler steg än assistenten tillåter. Dela upp den i mindre frågor.";
+      answer ||
+      earlierText ||
+      "Frågan krävde fler steg än assistenten tillåter. Dela upp den i mindre frågor.";
   }
 
   const prefetched = args.prefetched ?? [];

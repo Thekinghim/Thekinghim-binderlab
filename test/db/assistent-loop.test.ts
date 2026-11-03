@@ -82,6 +82,39 @@ beforeAll(async () => {
 });
 
 describe("askAssistant med mockad klient", () => {
+  it("svaret skrivet före foresla_knapp blir svaret när slutvarvet är tomt", async () => {
+    const client = mockClient((request, turn) => {
+      if (turn === 1) {
+        return scriptedMessage("claude-opus-5-5", [
+          toolUseBlock(
+            "lonsamhet",
+            { fran: "2025-03-01", till: "2025-03-31", per: "automat" },
+            "toolu_a",
+          ),
+        ]);
+      }
+      if (turn === 2) {
+        const top = firstRow(request);
+        return scriptedMessage("claude-opus-5-5", [
+          textBlock(`${top.namn} tjänade mest i mars 2025: ${top.vinst} i vinst.`),
+          toolUseBlock("foresla_knapp", { sida: "lonsamhet" }, "toolu_b"),
+        ]);
+      }
+      return scriptedMessage("claude-opus-5-5", []);
+    });
+    const { events } = await collect({
+      viewer: owner,
+      question: "Vilken automat tjänade mest i mars?",
+      conversationId: randomUUID(),
+      now: NOW,
+      config: READY,
+      client,
+    });
+    const done = events.at(-1) as Extract<AssistantEvent, { type: "done" }>;
+    expect(done.answer).toMatch(/tjänade mest i mars 2025/);
+    expect(done.answer).not.toBe("");
+  });
+
   it("frågar, kör verktyget, strömmar svaret, kontrollerar talen och loggar", async () => {
     const client = mockClient((request, turn) => {
       if (turn === 1) {
