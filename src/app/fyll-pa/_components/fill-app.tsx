@@ -6,11 +6,15 @@ import { useCallback, useMemo, useState, type CSSProperties } from "react";
 
 import { newClientId, type QueuedRefill } from "@/components/pwa/refill-queue";
 import { useRefillQueue } from "@/components/pwa/use-refill-queue";
+import { PlaceButtons } from "@/components/stock/place-buttons";
+import { inPlace, pickPlace } from "@/components/stock/place-text";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
+import { rememberKey, useRemembered } from "@/lib/remembered";
 
+import { Sheet } from "@/app/(app)/lager/_components/sheet";
 import { registerCount } from "@/app/(app)/lager/actions";
 
 import {
@@ -46,14 +50,34 @@ const rise = (i: number) => ({ "--i": Math.min(i, 12) }) as CSSProperties;
 /**
  * Fyll på vid automaten: välj automat (störst behov först), justera antalet per titel med
  * stora knappar och tryck Klar. Påfyllningen läggs i kön (fungerar utan nät) och dras ur
- * vårt lager så långt packen räcker; resten registreras utan uttag. Awish-synken ser
- * sedan samma antal som saldot och drar inget en gång till.
+ * lagret i "Från: Hemma ▾" (automatens "Fylls på från", annars det man valde sist) så
+ * långt packen räcker; resten registreras utan uttag. Awish-synken ser sedan samma antal
+ * som saldot och drar inget en gång till.
  */
 export function FillApp({ scope, data, syncLabels }: FillAppProps) {
   const router = useRouter();
   const toast = useToast();
   const pathname = usePathname();
   const selectedId = machineIdFrom(pathname);
+  const sources = data.sources;
+  const [lastSource, setLastSource] = useRemembered(rememberKey(scope, "fyll-lager"));
+  // Lager valt med "Från: … ▾" för en automat (gäller tills sidan laddas om).
+  const [override, setOverride] = useState<Record<string, string>>({});
+  const sourceOf = useCallback(
+    (machineId: string) =>
+      pickPlace(
+        sources.places,
+        override[machineId],
+        sources.machineSource[machineId],
+        lastSource,
+        sources.defaultPlaceId,
+      ),
+    [lastSource, override, sources],
+  );
+  const placeName = useCallback(
+    (id: string | null) => sources.places.find((p) => p.id === id)?.name ?? "hemma",
+    [sources.places],
+  );
 
   // Påfyllningar som sparats men som serverns siffror inte visar än (tills sidan räknats om).
   const [saved, setSaved] = useState<{ base: FillData; items: FillAdjustment[] }>({
@@ -91,11 +115,12 @@ export function FillApp({ scope, data, syncLabels }: FillAppProps) {
     const adj: FillAdjustment[] = [...pending, ...(saved.base === data ? saved.items : [])];
     return applyAdjustments(
       data.machines,
-      data.home,
+      sources.stock,
       adj,
       counted.base === data ? counted.map : new Map(),
+      sourceOf,
     );
-  }, [counted, data, q.queue, saved]);
+  }, [counted, data, q.queue, saved, sources.stock, sourceOf]);
 
   const go = useCallback((href: string) => {
     window.history.pushState(null, "", href);
@@ -107,10 +132,18 @@ export function FillApp({ scope, data, syncLabels }: FillAppProps) {
   const waiting = q.queue.length - rejected.length;
 
   if (selectedId && selected) {
+    const source = sourceOf(selected.id);
     return (
       <MachineScreen
-        key={selected.id}
+        key={`${selected.id}/${source ?? ""}`}
         machine={selected}
+        places={sources.places.map((p) => ({
+          id: p.id,
+          name: p.name,
+          count: Object.values(view.stock[p.id] ?? {}).reduce((n, v) => n + Math.max(0, v), 0),
+        }))}
+        sourceId={source}
+        onSource={(id) => setOverride((prev) => ({ ...prev, [selected.id]: id }))}
         syncLabel={syncLabels[selected.id]}
         online={q.online}
         onBack={() => go(BASE)}
@@ -128,7 +161,7 @@ export function FillApp({ scope, data, syncLabels }: FillAppProps) {
           let packs = 0;
           let homeLeft = 0;
           for (const { row, quantity } of lines) {
-            const split = splitRefill(quantity, row.home);
+            const split = splitRefill(quantity, source ? row.home : 0);
             packs += quantity;
             homeLeft += Math.max(0, row.home - split.fromWarehouse);
             for (const [n, fromWarehouse] of [
@@ -143,6 +176,7 @@ export function FillApp({ scope, data, syncLabels }: FillAppProps) {
                 titleId: row.titleId,
                 quantity: n,
                 fromWarehouse,
+                ...(fromWarehouse && source ? { fromLocationId: source } : {}),
                 occurredAt: now,
                 note: fromWarehouse ? "Fyll på" : "Fyll på (utan uttag ur vårt lager)",
                 status: "queued",
@@ -155,7 +189,8 @@ export function FillApp({ scope, data, syncLabels }: FillAppProps) {
             return;
           }
           const out = await q.enqueue(items);
-          const message = doneMessage(packs, homeLeft);
+          if (source) setLastSource(source);
+          const message = doneMessage(packs, homeLeft, placeName(source));
           if (out.rejected.length > 0) {
             toast({
               title: "Något sparades inte",
@@ -190,7 +225,12 @@ export function FillApp({ scope, data, syncLabels }: FillAppProps) {
   }
 
   const need = view.machines.filter((m) => m.emptySlots > 0 || m.suggested > 0);
-  const homeTotal = Object.values(view.home).reduce((n, v) => n + Math.max(0, v), 0);
+  const homeTotal = Object.values(view.stock).reduce(
+    (n, place) => n + Object.values(place).reduce((m, v) => m + Math.max(0, v), 0),
+    0,
+  );
+  const stockLabel =
+    sources.places.length === 1 ? `pack ${inPlace(sources.places[0]!.name)}` : "pack i lager";
 
   return (
     <div className="flex flex-col gap-6 px-4 pt-[calc(16px+env(safe-area-inset-top))] pb-[calc(32px+env(safe-area-inset-bottom))]">
@@ -216,7 +256,7 @@ export function FillApp({ scope, data, syncLabels }: FillAppProps) {
         {data.hasWarehouse ? (
           <p className="text-md text-muted">
             <span className="tnum text-fg">{formatInt(homeTotal)}</span>
-            {`${NBSP}pack hemma`}
+            {`${NBSP}${stockLabel}`}
           </p>
         ) : null}
       </header>
@@ -375,6 +415,9 @@ interface Line {
 
 function MachineScreen({
   machine: m,
+  places,
+  sourceId,
+  onSource,
   syncLabel,
   online,
   onBack,
@@ -382,6 +425,11 @@ function MachineScreen({
   onCounted,
 }: {
   machine: FillMachine;
+  /** Våra lager med antal pack (för "Från: Hemma ▾"). */
+  places: readonly { id: string; name: string; count: number }[];
+  /** Lagret packen tas från, null = inget eget lager. */
+  sourceId: string | null;
+  onSource: (id: string) => void;
   syncLabel?: string;
   online: boolean;
   onBack: () => void;
@@ -394,6 +442,8 @@ function MachineScreen({
   );
   const [busy, setBusy] = useState(false);
   const [counting, setCounting] = useState<string | null>(null);
+  const [choosing, setChoosing] = useState(false);
+  const sourceName = places.find((p) => p.id === sourceId)?.name ?? "hemma";
   const total = m.rows.reduce((n, r) => n + (qty[r.titleId] ?? 0), 0);
   const after = useMemo(() => {
     let cap = 0;
@@ -441,11 +491,23 @@ function MachineScreen({
           <FillBar pct={after} className="h-2.5" />
         </header>
 
-        <div className="rise flex items-center justify-between gap-3" style={rise(1)}>
+        <div className="rise flex flex-wrap items-center justify-between gap-3" style={rise(1)}>
           <p className="text-md text-muted">
             <span className="tnum text-fg">{formatInt(total)}</span>
             {`${NBSP}pack`}
           </p>
+          {places.length > 1 ? (
+            <button
+              type="button"
+              onClick={() => setChoosing(true)}
+              aria-label={`Från ${sourceName}. Byt lager`}
+              className="inline-flex min-h-11 items-center gap-1 rounded-full border border-line-strong bg-surface px-4 text-md text-fg active:bg-hover"
+            >
+              <span className="text-subtle">Från:</span>
+              <span className="font-medium">{sourceName}</span>
+              <Icon name="chevronDown" size={14} />
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() =>
@@ -474,6 +536,7 @@ function MachineScreen({
               <li key={r.titleId} className="rise" style={rise(i + 2)}>
                 <TitleRow
                   row={r}
+                  sourceName={sourceName}
                   value={qty[r.titleId] ?? 0}
                   onChange={(v) => set(r.titleId, v, maxFill(r))}
                   counting={counting === r.titleId}
@@ -548,12 +611,31 @@ function MachineScreen({
           {busy ? "Sparar…" : total > 0 ? `Klar · ${formatInt(total)}${NBSP}pack` : "Klar"}
         </button>
       </div>
+      <Sheet
+        open={choosing}
+        onClose={() => setChoosing(false)}
+        title="Ta pack från"
+        eyebrow={m.place}
+      >
+        <div className="px-5 pb-5">
+          <PlaceButtons
+            label="Ta pack från"
+            places={places}
+            value={sourceId}
+            onChange={(id) => {
+              setChoosing(false);
+              onSource(id);
+            }}
+          />
+        </div>
+      </Sheet>
     </div>
   );
 }
 
 function TitleRow({
   row: r,
+  sourceName,
   value,
   onChange,
   counting,
@@ -561,6 +643,8 @@ function TitleRow({
   onCount,
 }: {
   row: FillRow;
+  /** Lagret packen tas från ("Hemma"). */
+  sourceName: string;
   value: number;
   onChange: (v: number) => void;
   counting: boolean;
@@ -579,7 +663,7 @@ function TitleRow({
             {r.name}
           </label>
           <span className={cn("meta", short ? "text-signal-fg" : "text-subtle")}>
-            {`hemma: ${formatInt(r.home)}`}
+            {`${sourceName.trim().toLowerCase() === "hemma" ? "hemma" : sourceName}: ${formatInt(r.home)}`}
             {short && r.home > 0 ? ` · ${formatInt(value - r.home)} utan uttag` : ""}
             {short && r.home <= 0 ? " · utan uttag" : ""}
           </span>

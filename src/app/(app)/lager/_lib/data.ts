@@ -52,19 +52,32 @@ interface HistoryResult {
   readonly total: number;
 }
 
-async function queryHasCentral(tx: Tx, orgId: string): Promise<boolean> {
+/** Ett eget lager (Hemma, Kontoret …). */
+export interface OwnPlace {
+  readonly id: string;
+  readonly name: string;
+  /** Standardlagret (is_central): används när inget annat är valt. */
+  readonly isDefault: boolean;
+}
+
+/** Organisationens aktiva egna lager: standardlagret först, sedan i den ordning de skapades. */
+export async function queryOwnPlaces(tx: Tx, orgId: string): Promise<OwnPlace[]> {
   const rows = await tx
-    .select({ id: s.stockLocations.id })
+    .select({
+      id: s.stockLocations.id,
+      name: s.stockLocations.name,
+      isDefault: s.stockLocations.isCentral,
+    })
     .from(s.stockLocations)
     .where(
       and(
         eq(s.stockLocations.organizationId, orgId),
-        eq(s.stockLocations.isCentral, true),
+        eq(s.stockLocations.kind, "warehouse"),
         isNull(s.stockLocations.archivedAt),
       ),
     )
-    .limit(1);
-  return rows.length > 0;
+    .orderBy(desc(s.stockLocations.isCentral), s.stockLocations.createdAt, s.stockLocations.id);
+  return rows;
 }
 
 /** Senaste läsningen av automatens fack från Awish, per automat. */
@@ -104,15 +117,15 @@ async function queryHistory(
   const where = and(
     eq(s.stockEvents.organizationId, orgId),
     ne(s.stockEvents.kind, "sale"),
-    // Uttaget ur centrallagret vid en påfyllning visas på påfyllningsraden (fromWarehouse).
+    // Uttaget ur vårt lager vid en påfyllning visas på påfyllningsraden (fromWarehouse).
     sql`not (${s.stockEvents.kind} = 'adjustment' and coalesce(${s.stockEvents.note}, '') like 'Uttag till påfyllning%')`,
     gte(s.stockEvents.businessDate, period.start),
     lte(s.stockEvents.businessDate, period.end),
     machineIds === null
       ? undefined
       : machineIds.length === 0
-        ? eq(s.stockLocations.isCentral, true)
-        : sql`(${s.stockLocations.isCentral} or ${inArray(s.stockLocations.machineId, [...machineIds])})`,
+        ? eq(s.stockLocations.kind, "warehouse")
+        : sql`(${s.stockLocations.kind} = 'warehouse' or ${inArray(s.stockLocations.machineId, [...machineIds])})`,
   );
   const base = tx
     .select({
@@ -190,28 +203,19 @@ async function modelFor(viewer: Viewer, scope: DataScope, now: Date) {
   // försäljning läses också men räknas inte i takten; saldot är alltid dagens.
   const salesFrom: IsoDate = addDays(today, -(WINDOW_DAYS + 1));
 
-  const [
-    master,
-    stock,
-    sales,
-    health,
-    slotPeriods,
-    slotAlerts,
-    awishSyncedAt,
-    hasCentral,
-    capacities,
-  ] = await Promise.all([
-    loadMasterDataFor(viewer, now),
-    loadStockFor(viewer),
-    loadSalesCountsFor(viewer, { period: { start: salesFrom, end: today } }),
-    // Samma maskinhälsa som Drift: automater med fel får besök i dag i veckoplanen.
-    loadMachineHealthFor(viewer, now),
-    withUserDbFor(viewer.user, (tx) => querySlotPeriods(tx, orgId)),
-    withUserDbFor(viewer.user, (tx) => querySlotAlerts(tx, orgId)),
-    withUserDbFor(viewer.user, (tx) => queryAwishSynced(tx, orgId)),
-    withUserDbFor(viewer.user, (tx) => queryHasCentral(tx, orgId)),
-    withUserDbFor(viewer.user, (tx) => querySlotCapacities(tx, orgId, now)),
-  ]);
+  const [master, stock, sales, health, slotPeriods, slotAlerts, awishSyncedAt, places, capacities] =
+    await Promise.all([
+      loadMasterDataFor(viewer, now),
+      loadStockFor(viewer),
+      loadSalesCountsFor(viewer, { period: { start: salesFrom, end: today } }),
+      // Samma maskinhälsa som Drift: automater med fel får besök i dag i veckoplanen.
+      loadMachineHealthFor(viewer, now),
+      withUserDbFor(viewer.user, (tx) => querySlotPeriods(tx, orgId)),
+      withUserDbFor(viewer.user, (tx) => querySlotAlerts(tx, orgId)),
+      withUserDbFor(viewer.user, (tx) => queryAwishSynced(tx, orgId)),
+      withUserDbFor(viewer.user, (tx) => queryOwnPlaces(tx, orgId)),
+      withUserDbFor(viewer.user, (tx) => querySlotCapacities(tx, orgId, now)),
+    ]);
 
   const model = buildLagerModel({
     now,
@@ -221,14 +225,14 @@ async function modelFor(viewer: Viewer, scope: DataScope, now: Date) {
     stock: stock.rows,
     sales: sales.rows,
     scope,
-    hasCentral,
+    hasCentral: places.length > 0,
     health,
     slotPeriods,
     slotAlerts,
     awishSyncedAt,
     capacities,
   });
-  return { model, master, role, orgId, timeZone, today };
+  return { model, master, role, orgId, timeZone, today, places, stock };
 }
 
 /**
@@ -282,13 +286,20 @@ export async function loadLagerFor(
   };
 }
 
-/** Vårt lager (centrallagret) för Prognos & inköp: alltid hela organisationen. */
+/**
+ * Vårt lager (alla egna lager tillsammans) för Prognos & inköp och Vårt lager: alltid hela
+ * organisationen. `rows` är summan per titel; `byPlace` saldot per lager och titel.
+ */
 export interface OurStockView {
   readonly now: string;
   readonly timeZone: string;
   readonly windowDays: number;
   readonly hasWarehouse: boolean;
   readonly rows: WarehouseRow[];
+  /** De egna lagren, standardlagret först. */
+  readonly places: OwnPlace[];
+  /** Saldot per lager: platsens id → titelns id → pack. */
+  readonly byPlace: Record<string, Record<string, number>>;
   /** Alla aktiva titler (för att inventera en titel som inte står i listan). */
   readonly titles: LagerTitle[];
   readonly canRegister: boolean;
@@ -298,17 +309,26 @@ export async function loadOurStockFor(
   viewer: Viewer,
   now: Date = new Date(),
 ): Promise<OurStockView> {
-  const { model, master, role, timeZone } = await modelFor(
+  const { model, master, role, timeZone, places, stock } = await modelFor(
     viewer,
     { storeId: null, machineId: null },
     now,
   );
+  const byPlace: Record<string, Record<string, number>> = Object.fromEntries(
+    places.map((p) => [p.id, {}]),
+  );
+  for (const r of stock.rows) {
+    const place = byPlace[r.locationId];
+    if (r.locationKind === "warehouse" && place) place[r.titleId] = r.onHand;
+  }
   return {
     now: now.toISOString(),
     timeZone,
     windowDays: model.window.days,
     hasWarehouse: model.hasWarehouse,
     rows: model.warehouse,
+    places,
+    byPlace,
     titles: master.titles
       .filter((t) => !t.archived)
       .map((t) => ({ id: t.id, name: t.name }))

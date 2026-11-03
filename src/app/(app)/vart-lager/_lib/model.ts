@@ -2,12 +2,12 @@
  * Vårt lager: vymodellen. Ren och klientsäker: allt räknas här från färdiga rader
  * (laddaren i ./data.ts), så att testet i ./model.test.ts täcker siffrorna på sidan.
  *
- * - Antal hemma: centrallagrets saldo (stock_levels på platsen is_central).
+ * - Antal i lager: summan av alla egna lager (Hemma, Kontoret …); per lager i `byPlace`.
  * - I automaterna: summan av automaternas kända saldon (Awish eller inventering), aldrig under 0.
  * - Sålt 7 d: sålda pack de senaste sju dagarna t.o.m. i dag, alla automater.
  * - Räcker: samma dagar och status som Prognos & inköp (Lagers vymodell, WarehouseRow).
  * - Värde: antal hemma × inköpspriset som gäller i dag (öre), bara titlar med pris.
- * - Senaste ändring: senaste händelsen i centrallagret (inte försäljning).
+ * - Senaste ändring: senaste händelsen i något eget lager (inte försäljning), och per lager.
  */
 
 import { wallClockIn } from "@/components/shell/period-state";
@@ -24,6 +24,10 @@ const RETURNED_NOTE_PREFIX = "Återfört Awish-uttag ";
 
 export interface WarehouseEvent {
   readonly titleId: string;
+  /** Lagret händelsen gäller (utelämnat = standardlagret). */
+  readonly locationId?: string;
+  /** Vid en flytt: det andra lagrets namn. */
+  readonly counterpart?: string | null;
   readonly kind: string;
   readonly quantity: number;
   readonly occurredAt: string;
@@ -42,19 +46,29 @@ export interface VartLagerInput {
   readonly timeZone: string;
   readonly today: IsoDate;
   readonly titles: readonly { readonly id: string; readonly name: string }[];
-  /** Centrallagrets rader ur Lagers vymodell (dagar kvar och status). */
+  /** Vårt lagers rader ur Lagers vymodell (summan av alla egna lager: dagar kvar och status). */
   readonly warehouse: readonly WarehouseRow[];
-  /** Saldot hemma per titel (alla titlar med händelser i centrallagret). */
+  /** Saldot i alla egna lager tillsammans per titel. */
   readonly home: ReadonlyMap<string, number>;
+  /** De egna lagren, standardlagret först. Utelämnat = ett lager (inga platsval). */
+  readonly places?: readonly Place[];
+  /** Saldot per lager: platsens id → titelns id → pack. */
+  readonly byPlace?: Readonly<Record<string, Readonly<Record<string, number>>>>;
   /** Pack i automaterna per titel (kända saldon, under 0 räknas som 0). */
   readonly inMachines: ReadonlyMap<string, number>;
   /** Sålda pack de senaste 7 dagarna per titel. */
   readonly sold7: ReadonlyMap<string, number>;
   readonly prices: readonly PurchasePrice[];
-  /** Senaste händelsen i centrallagret per titel. */
-  readonly latest: ReadonlyMap<string, WarehouseEvent>;
+  /** Senaste händelsen per titel och lager (en eller flera per titel). */
+  readonly latest: ReadonlyMap<string, WarehouseEvent | readonly WarehouseEvent[]>;
   readonly machines: readonly MachineRef[];
   readonly canEdit: boolean;
+}
+
+export interface Place {
+  readonly id: string;
+  readonly name: string;
+  readonly isDefault: boolean;
 }
 
 export interface LatestChange {
@@ -71,7 +85,12 @@ export interface LatestChange {
 export interface VartLagerRow {
   readonly titleId: string;
   readonly name: string;
+  /** Pack i alla egna lager tillsammans. */
   readonly home: number;
+  /** Pack per lager (platsens id → pack; saknas = 0). */
+  readonly byPlace: Readonly<Record<string, number>>;
+  /** Senaste ändringen per lager. */
+  readonly latestByPlace: Readonly<Record<string, LatestChange>>;
   readonly inMachines: number;
   readonly sold7: number;
   /** Hela dagar hemmalagret räcker, eller null (ingen försäljning). */
@@ -96,7 +115,10 @@ export interface VartLagerModel {
     readonly runsOut: number;
     readonly negative: number;
     readonly inMachines: number;
+    /** Pack per lager (negativa saldon räknas som 0). */
+    readonly byPlace: Readonly<Record<string, number>>;
   };
+  readonly places: readonly Place[];
   readonly lowDays: number;
   readonly canEdit: boolean;
 }
@@ -127,8 +149,27 @@ function refillPlace(rest: string, machines: readonly MachineRef[]): string {
   return rest.trim() || "automat";
 }
 
-/** Texten för senaste ändringen. Ren. */
+/**
+ * Texten för senaste ändringen. Ren. Med `place` (flera lager, alla visas) står lagret
+ * först: "−12 från Kontoret, påfyllning Sega gubben" · "+24 till Hemma, inköp" ·
+ * "räknat 84 i Kontoret".
+ */
 export function describeChange(
+  e: WarehouseEvent,
+  machines: readonly MachineRef[],
+  timeZone: string,
+  now: Date,
+  place: string | null = null,
+): LatestChange {
+  const base = describeChangeAt(e, machines, timeZone, now);
+  if (!place) return base;
+  if (e.kind === "count") return { ...base, text: `${base.text} i ${place}` };
+  const [amount, ...rest] = base.text.split(" ");
+  const dir = e.quantity < 0 ? "från" : "till";
+  return { ...base, text: `${amount} ${dir} ${place}, ${rest.join(" ")}` };
+}
+
+function describeChangeAt(
   e: WarehouseEvent,
   machines: readonly MachineRef[],
   timeZone: string,
@@ -169,19 +210,30 @@ export function describeChange(
       automatic: false,
     };
   }
-  const word =
-    e.kind === "transfer_in" || e.kind === "transfer_out"
-      ? "flytt"
-      : e.kind === "waste"
-        ? "svinn"
-        : e.kind === "refill"
-          ? "påfyllning"
-          : "justering";
+  if (e.kind === "transfer_in" || e.kind === "transfer_out") {
+    const other = e.counterpart?.trim();
+    const text = other
+      ? `${signed(e.quantity)} flytt ${e.kind === "transfer_out" ? "till" : "från"} ${other}`
+      : `${signed(e.quantity)} flytt`;
+    return { text, when, delta: e.quantity, automatic: false };
+  }
+  const word = e.kind === "waste" ? "svinn" : e.kind === "refill" ? "påfyllning" : "justering";
   return { text: `${signed(e.quantity)} ${word}`, when, delta: e.quantity, automatic: false };
 }
 
+const asList = (v: WarehouseEvent | readonly WarehouseEvent[] | undefined) =>
+  v === undefined
+    ? []
+    : Array.isArray(v)
+      ? (v as readonly WarehouseEvent[])
+      : [v as WarehouseEvent];
+
 export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
   const wh = new Map(input.warehouse.map((r) => [r.titleId, r]));
+  const places = input.places ?? [];
+  const multi = places.length > 1;
+  const placeName = new Map(places.map((p) => [p.id, p.name]));
+  const defaultPlace = places.find((p) => p.isDefault) ?? places[0];
   const rows: VartLagerRow[] = [...input.titles]
     .sort((a, b) => sv(a.name, b.name))
     .map((t) => {
@@ -194,11 +246,25 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
       const daysLeft = r ? r.daysLeft : null;
       const price = priceOn(input.prices, t.id, input.today);
       const unitCostOre = price?.unitCostOre ?? null;
-      const e = input.latest.get(t.id);
+      const events = asList(input.latest.get(t.id));
+      const byPlace: Record<string, number> = {};
+      for (const p of places) byPlace[p.id] = input.byPlace?.[p.id]?.[t.id] ?? 0;
+      const latestByPlace: Record<string, LatestChange> = {};
+      let e: WarehouseEvent | undefined;
+      for (const x of events) {
+        const at = x.locationId ?? defaultPlace?.id;
+        if (at && !latestByPlace[at]) {
+          latestByPlace[at] = describeChange(x, input.machines, input.timeZone, input.now);
+        }
+        if (!e || x.occurredAt > e.occurredAt) e = x;
+      }
+      const eAt = e ? (e.locationId ?? defaultPlace?.id) : undefined;
       return {
         titleId: t.id,
         name: t.name,
         home,
+        byPlace,
+        latestByPlace,
         inMachines,
         sold7,
         daysLeft,
@@ -207,7 +273,15 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
         negative: home < 0,
         unitCostOre,
         valueOre: unitCostOre === null ? null : Math.max(0, home) * unitCostOre,
-        latest: e ? describeChange(e, input.machines, input.timeZone, input.now) : null,
+        latest: e
+          ? describeChange(
+              e,
+              input.machines,
+              input.timeZone,
+              input.now,
+              multi && eAt ? (placeName.get(eAt) ?? null) : null,
+            )
+          : null,
       };
     });
   return {
@@ -219,7 +293,11 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
       runsOut: rows.filter((r) => r.runsOut).length,
       negative: rows.filter((r) => r.negative).length,
       inMachines: rows.reduce((s, r) => s + r.inMachines, 0),
+      byPlace: Object.fromEntries(
+        places.map((p) => [p.id, rows.reduce((s, r) => s + Math.max(0, r.byPlace[p.id] ?? 0), 0)]),
+      ),
     },
+    places,
     lowDays: WAREHOUSE_LOW_DAYS,
     canEdit: input.canEdit,
   };

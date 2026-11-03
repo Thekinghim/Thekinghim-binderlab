@@ -18,8 +18,8 @@
  *   Drift och Att göra räknar den som utgången och inte som tom. Fackfördelningen från
  *   en genomförd sortimentsändring (Marknad) skrivs inte över samma dag eller tidigare.
  * - Påfyllning: visar en automat som redan har lästs fler pack av en titel än saldot
- *   (och titeln har ett räknat saldo där) dras ökningen ur vårt lager (centrallagret) i
- *   samma transaktion, som en 'adjustment' med source 'awish' och noteringen
+ *   (och titeln har ett räknat saldo där) dras ökningen ur automatens "Fylls på från"
+ *   (stock_locations.refill_source_id, annars standardlagret) i samma transaktion, som en 'adjustment' med source 'awish' och noteringen
  *   "Awish-påfyllning <kod> <butik>" (./refill-deduction). Aldrig vid första läsningen,
  *   aldrig vid minskning, och en påfyllning som redan registrerats i appen ger 0.
  *   Saldot i vårt lager får bli negativt (Vårt lager visar då "Räkna om").
@@ -362,18 +362,17 @@ export async function applyMachineStock(
     });
     let warehouseOut = 0;
     if (deductions.length > 0) {
-      const [central] = await query<{ id: string }>(
+      // Automatens "Fylls på från" (ett aktivt eget lager), annars standardlagret.
+      const [central] = await query<{ id: string | null }>(
         tx,
-        sql`select id from public.stock_locations
-            where organization_id = ${org}::uuid and is_central and archived_at is null
-            limit 1`,
+        sql`select private.refill_source_for(${org}::uuid, ${input.machineId}::uuid)::text as id`,
       );
-      if (central) {
-        for (const d of deductions) {
-          // Samma lås som register_refill: ett samtidigt uttag i appen köas.
-          await tx.execute(
-            sql`select pg_advisory_xact_lock(hashtextextended(${`${central.id}/${d.titleId}`}, 0))`,
-          );
+      if (central?.id) {
+        // Samma lås som register_refill och flytt: ett samtidigt uttag i appen köas. Låsen
+        // tas i titelordning så att två automater som synkas samtidigt inte låser varandra.
+        const lockOrder = [...new Set(deductions.map((d) => d.titleId))].sort();
+        for (const titleId of lockOrder) {
+          await tx.execute(sql`select private.lock_own_stock(${org}::uuid, ${titleId}::uuid)`);
         }
         await tx.execute(
           sql`insert into public.stock_events

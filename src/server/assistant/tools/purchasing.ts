@@ -65,7 +65,7 @@ export const purchasingTool = defineTool({
   title: "Inköpsförslag",
   label: () => "Inköpsförslag",
   description:
-    "Inköpsförslag i dag per titel och leverantör, utifrån försäljningsprognosen, lagret i centrallager och automater, redan beställt, ledtid, säkerhetslager (95 % servicenivå), minsta order och boxstorlek: antal pack och boxar att beställa, ordervärde, väntad leverans, när lagret annars tar slut och senaste dag att beställa. Använd för 'vad ska jag beställa', 'behöver vi köpa in inför nästa vecka'.",
+    "Inköpsförslag i dag per titel och leverantör, utifrån försäljningsprognosen, lagret i våra egna lager (alla tillsammans) och automater, redan beställt, ledtid, säkerhetslager (95 % servicenivå), minsta order och boxstorlek: antal pack och boxar att beställa, ordervärde, väntad leverans, när lagret annars tar slut och senaste dag att beställa. Använd för 'vad ska jag beställa', 'behöver vi köpa in inför nästa vecka'.",
   roles: ECONOMY_ROLES,
   input: purchasingInput,
   async run(ctx: ToolContext, input) {
@@ -108,7 +108,7 @@ export const purchasingTool = defineTool({
           prisPerPack: kr(l.unitCostOre),
           varde: kr(l.orderValueOre),
           vardeOre: l.orderValueOre,
-          iCentrallager: l.warehouseOnHand,
+          iVartLager: l.warehouseOnHand,
           iAutomater: l.machineOnHand,
           redanBestalltSomRaknas: l.onOrderCounted,
           bestallningsniva: packs(l.targetMilli),

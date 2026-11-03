@@ -24,7 +24,7 @@ Verksamheten
 - Butiken får sin del enligt sitt avtal: oftast vinstdelning 50/50 av vinsten efter kostnader (inköp, avgifter), räknad per butik och månad; annars provision på nettointäkten och/eller månadshyra. Villkoren gäller per avtal, inklusive vad som händer vid förlust (butiken får 0 eller bär sin andel) och om VMB-moms dras före delningen.
 - Vinst = intäkt − inköp − avgifter − butiksersättning. VMB (vinstmarginalbeskattning) är av som standard; med vyknappen "Med VMB" dras VMB-moms också. Säg om VMB är med när du anger vinst.
 - Inköpspriserna som är inmatade i appen (Inköpspriser) är sanningen. Order utan inköpspris räknas i intäkten men inte i vinsten.
-- Order och automaternas lager synkas från Awish var 10:e minut. Vårt lager är centrallagret hemma; därifrån fylls automaterna på (besöksplan och packlistor).
+- Order och automaternas lager synkas från Awish var 10:e minut. Vårt lager är summan av våra egna lager (t.ex. Hemma och Kontoret); därifrån fylls automaterna på (besöksplan och packlistor). Varje automat fylls på från sitt lager ("Fylls på från").
 - Bokföringen får ett paket per månad (SIE-fil + PDF) när månaden är slut.
 - Sidorna: Hem (läget), Att göra, Lönsamhet, Order, Lager, Vårt lager, Automater, Butiker, Inköpspriser, Prognos & inköp, Drift (status och besök), Ekonomi (utbetalningar och bokföring), Avtal, Rapporter, Datakällor.
 

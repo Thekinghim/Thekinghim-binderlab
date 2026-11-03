@@ -12,7 +12,7 @@ export function headingOf(m: Pick<VartLagerModel, "totals" | "lowDays">): {
   aside: string;
 } {
   const t = m.totals;
-  const title = `${formatInt(t.home)}${NBSP}pack hemma.`;
+  const title = `${formatInt(t.home)}${NBSP}pack i lager.`;
   if (t.negative > 0) {
     return { title, aside: `${plural(t.negative, "titel", "titlar")} under 0. Räkna om.` };
   }

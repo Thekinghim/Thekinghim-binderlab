@@ -123,11 +123,12 @@ describe("buildVartLagerModel", () => {
       runsOut: 1,
       negative: 1,
       inMachines: 12,
+      byPlace: {},
     });
     expect(m.rows[2]).toMatchObject({ negative: true, valueOre: 0 });
     const h = headingOf(m);
     expect({ title: sp(h.title), aside: sp(h.aside) }).toEqual({
-      title: "40 pack hemma.",
+      title: "40 pack i lager.",
       aside: "1 titel under 0. Räkna om.",
     });
   });
@@ -153,6 +154,64 @@ describe("buildVartLagerModel", () => {
   });
 });
 
+describe("flera lager", () => {
+  const places = [
+    { id: "H", name: "Hemma", isDefault: true },
+    { id: "K", name: "Kontoret", isDefault: false },
+  ];
+  const multi = () =>
+    buildVartLagerModel(
+      input({
+        places,
+        byPlace: { H: { a: 30, b: 3 }, K: { a: 10, b: -1 } },
+        home: new Map([
+          ["a", 40],
+          ["b", 2],
+        ]),
+        latest: new Map([
+          [
+            "a",
+            [
+              ev({
+                locationId: "K",
+                kind: "adjustment",
+                quantity: -12,
+                note: "Awish-påfyllning BL-002 Sega gubben",
+                occurredAt: "2026-11-03T13:05:00Z",
+              }),
+              ev({
+                locationId: "H",
+                kind: "receipt",
+                quantity: 24,
+                occurredAt: "2026-11-03T08:00:00Z",
+              }),
+            ],
+          ],
+        ]),
+      }),
+    );
+
+  it("summan per titel och per lager; negativt räknas som 0 i summan per lager", () => {
+    const m = multi();
+    expect(m.places.map((p) => p.name)).toEqual(["Hemma", "Kontoret"]);
+    expect(m.rows[0]).toMatchObject({ name: "Black Bolt", home: 40, byPlace: { H: 30, K: 10 } });
+    expect(m.rows[2]).toMatchObject({ name: "Surging Sparks", byPlace: { H: 3, K: -1 } });
+    expect(m.rows[1]).toMatchObject({ name: "Paradox Rift", byPlace: { H: 0, K: 0 } });
+    expect(m.totals.byPlace).toEqual({ H: 33, K: 10 });
+  });
+
+  it("senaste ändringen: nyast över alla lager med lagret först, och per lager", () => {
+    const a = multi().rows[0]!;
+    expect(a.latest).toMatchObject({
+      text: "−12 från Kontoret, påfyllning Sega gubben",
+      automatic: true,
+      delta: -12,
+    });
+    expect(a.latestByPlace.K?.text).toBe("−12 påfyllning Sega gubben");
+    expect(a.latestByPlace.H?.text).toBe("+24 inköp");
+  });
+});
+
 describe("describeChange", () => {
   const d = (e: Partial<WarehouseEvent>) => describeChange(ev(e), machines, TZ, NOW).text;
   it("påfyllning i appen och från Awish visar butiken", () => {
@@ -168,6 +227,18 @@ describe("describeChange", () => {
     expect(d({ kind: "adjustment", quantity: 4, note: "Återfört Awish-uttag BL-002" })).toBe(
       "+4 återfört Sega gubben",
     );
+  });
+  it("flytt mellan lager och lagret först", () => {
+    expect(d({ kind: "transfer_out", quantity: -5, counterpart: "Kontoret" })).toBe(
+      "−5 flytt till Kontoret",
+    );
+    expect(d({ kind: "transfer_in", quantity: 5, counterpart: "Hemma" })).toBe(
+      "+5 flytt från Hemma",
+    );
+    const at = (e: Partial<WarehouseEvent>, place: string) =>
+      describeChange(ev(e), machines, TZ, NOW, place).text;
+    expect(at({ kind: "receipt", quantity: 24 }, "Kontoret")).toBe("+24 till Kontoret, inköp");
+    expect(at({ kind: "count", quantity: 84 }, "Hemma")).toBe("räknat 84 i Hemma");
   });
   it("inköp, inventering och justering", () => {
     expect(d({ kind: "receipt", quantity: 24 })).toBe("+24 inköp");

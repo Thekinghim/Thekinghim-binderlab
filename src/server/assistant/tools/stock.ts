@@ -145,9 +145,11 @@ export const lookupTool = defineTool({
 const stockInput = z
   .object({
     plats: z
-      .enum(["automater", "centrallager", "alla"])
+      .enum(["automater", "lager", "centrallager", "alla"])
       .optional()
-      .describe("Var: automater, centrallager eller alla (standard)."),
+      .describe(
+        "Var: automater, lager (våra egna lager: Hemma, Kontoret …; 'centrallager' betyder samma) eller alla (standard).",
+      ),
     automat: scopeSchema.automat,
     titel: z
       .string()
@@ -170,7 +172,7 @@ export const stockTool = defineTool({
   title: "Lagersaldo",
   label: () => "Lagersaldo",
   description:
-    "Lagersaldo just nu i pack per lagerplats (automater och centrallager) och titel, med senaste påfyllning. Lägst saldo först. Använd för 'hur många finns kvar', 'vad finns i centrallagret'.",
+    "Lagersaldo just nu i pack per lagerplats (automater och våra egna lager, t.ex. Hemma och Kontoret) och titel, med senaste påfyllning. Lägst saldo först. Använd för 'hur många finns kvar', 'vad finns hemma', 'vad finns på kontoret'.",
   roles: ALL_ROLES,
   input: stockInput,
   async run(ctx: ToolContext, input) {
@@ -184,8 +186,8 @@ export const stockTool = defineTool({
       .filter((r) =>
         plats === "automater"
           ? r.locationKind === "machine"
-          : plats === "centrallager"
-            ? r.isCentral
+          : plats === "centrallager" || plats === "lager"
+            ? r.locationKind === "warehouse"
             : true,
       )
       .filter((r) => !machine || r.machineId === machine.id)
@@ -211,7 +213,7 @@ export const stockTool = defineTool({
         tomma: empty,
         rader: rows.slice(0, limit).map((r) => ({
           plats: placeName(r),
-          typ: r.isCentral ? "centrallager" : r.locationKind === "machine" ? "automat" : "lager",
+          typ: r.locationKind === "machine" ? "automat" : "eget lager",
           titel: names.title.get(r.titleId) ?? r.titleId,
           iLager: r.onHand,
           senastPafylld: instantDateText(r.lastRestockedAt, ctx.timeZone),

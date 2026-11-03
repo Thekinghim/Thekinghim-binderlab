@@ -213,7 +213,7 @@ describe("Fyll på: påfyllning vid automaten", () => {
     });
     // Förslaget begränsas av packen hemma: 6 plats, 2 hemma.
     expect(byName.get("Black Bolt")).toMatchObject({ now: 2, capacity: 8, home: 2, suggested: 2 });
-    expect(data.home[surging]).toBe(40);
+    expect(data.sources.stock[centralId]?.[surging]).toBe(40);
   });
 
   it("Klar drar ur vårt lager direkt, och Awish-synken drar inget en gång till", async () => {

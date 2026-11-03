@@ -38,6 +38,8 @@ import {
   type StorePlace,
 } from "@/server/data/team";
 import { withUserDb } from "@/server/session";
+import { ownStockTotals } from "@/server/data/core/own-stock";
+import { queryRefillSources } from "@/server/data/core/places";
 
 /** Senaste körningen av larmjobbet. */
 export interface AlertRunInfo {
@@ -175,9 +177,7 @@ export async function loadDriftOverview(ctx: AppContext): Promise<DriftOverview>
     const alerts = await loadAlerts(tx, orgId, now);
     const lastRun = ctx.canSeeEconomy ? await loadLastRun(tx, orgId) : null;
     const stockRows = await queryStock(tx, orgId);
-    const warehouse = stockRows
-      .filter((r) => r.isCentral)
-      .map((r) => ({ titleId: r.titleId, onHand: r.onHand }));
+    const warehouse = ownStockTotals(stockRows);
     const slotPeriods = await querySlotPeriods(tx, orgId);
     const capacities = await querySlotCapacities(tx, orgId, now);
     const plan = buildPlan(
@@ -230,9 +230,7 @@ export async function loadVisitPlan(
     const data = await loadHealthData(tx, orgId, ctx.today, new Date(ctx.now));
     const health = healthOf(data, ctx.timeZone, now);
     const stockRows = await queryStock(tx, orgId);
-    const warehouse = stockRows
-      .filter((r) => r.isCentral)
-      .map((r) => ({ titleId: r.titleId, onHand: r.onHand }));
+    const warehouse = ownStockTotals(stockRows);
     const slotPeriods = await querySlotPeriods(tx, orgId);
     const capacities = await querySlotCapacities(tx, orgId, now);
     const [team, responsibles, places] = await Promise.all([
@@ -602,9 +600,8 @@ export async function loadRefillData(ctx: AppContext) {
       stock: stockRows
         .filter((r) => r.locationKind === "machine" && r.machineId !== null)
         .map((r) => ({ machineId: r.machineId as string, titleId: r.titleId, onHand: r.onHand })),
-      warehouse: stockRows
-        .filter((r) => r.isCentral)
-        .map((r) => ({ titleId: r.titleId, onHand: r.onHand })),
+      warehouse: ownStockTotals(stockRows),
+      sources: await queryRefillSources(tx, orgId),
       recent: recent.map((r) => ({
         ...r,
         occurredAt: r.occurredAt.toISOString(),

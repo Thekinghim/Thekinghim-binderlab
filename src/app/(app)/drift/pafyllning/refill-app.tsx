@@ -24,7 +24,13 @@ import { Input, Select } from "@/components/ui/field";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
+import { PlaceButtons } from "@/components/stock/place-buttons";
+import { inPlace, pickPlace } from "@/components/stock/place-text";
 import { formatDateTime, formatInt, NBSP } from "@/lib/format";
+import { rememberKey, useRemembered } from "@/lib/remembered";
+import type { RefillSources } from "@/server/data/core/places";
+
+import { Sheet } from "../../lager/_components/sheet";
 
 import { syncRefills, type RefillSyncResult } from "../actions";
 
@@ -39,7 +45,10 @@ export interface RefillAppProps {
   readonly machines: Option[];
   readonly titles: Option[];
   readonly stock: { machineId: string; titleId: string; onHand: number }[];
+  /** Vårt lager: summan av alla egna lager per titel. */
   readonly warehouse: { titleId: string; onHand: number }[];
+  /** Lagren, saldot per lager och automaternas "Fylls på från". */
+  readonly sources: RefillSources;
 }
 
 type Net = "online" | "offline";
@@ -62,7 +71,7 @@ function subscribeOnline(onChange: () => void): () => void {
  * eget id och skickas sedan; utan nät ligger den kvar och skickas när nätet kommer tillbaka.
  * Servern sparar varje id en gång (register_refill_once), så ett omförsök blir aldrig dubbelt.
  */
-export function RefillApp({ scope, machines, titles, stock, warehouse }: RefillAppProps) {
+export function RefillApp({ scope, machines, titles, stock, warehouse, sources }: RefillAppProps) {
   const router = useRouter();
   const toast = useToast();
   const online = useSyncExternalStore(
@@ -78,6 +87,19 @@ export function RefillApp({ scope, machines, titles, stock, warehouse }: RefillA
   const [titleId, setTitleId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [fromWarehouse, setFromWarehouse] = useState(true);
+  const [lastSource, setLastSource] = useRemembered(rememberKey(scope, "fyll-lager"));
+  // Valt med "Från: … ▾" för en automat; annars automatens lager, senaste valet, standard.
+  const [override, setOverride] = useState<Record<string, string>>({});
+  const [choosing, setChoosing] = useState(false);
+  const source = pickPlace(
+    sources.places,
+    override[machineId],
+    sources.machineSource[machineId],
+    lastSource,
+    sources.defaultPlaceId,
+  );
+  const sourceName = sources.places.find((p) => p.id === source)?.name ?? "";
+  const multi = sources.places.length > 1;
   const [note, setNote] = useState("");
   const [errors, setErrors] = useState<{ quantity?: string; titleId?: string; machineId?: string }>(
     {},
@@ -145,6 +167,7 @@ export function RefillApp({ scope, machines, titles, stock, warehouse }: RefillA
           titleId: q.titleId,
           quantity: q.quantity,
           fromWarehouse: q.fromWarehouse,
+          ...(q.fromWarehouse && q.fromLocationId ? { fromLocationId: q.fromLocationId } : {}),
           occurredAt: q.occurredAt,
           ...(q.note ? { note: q.note } : {}),
         })),
@@ -210,11 +233,13 @@ export function RefillApp({ scope, machines, titles, stock, warehouse }: RefillA
       titleId,
       quantity: q,
       fromWarehouse,
+      ...(fromWarehouse && source ? { fromLocationId: source } : {}),
       occurredAt: new Date().toISOString(),
       ...(note.trim() ? { note: note.trim().slice(0, 500) } : {}),
       status: "queued",
       attempts: 0,
     };
+    if (fromWarehouse && source) setLastSource(source);
     if (persistent) {
       await putQueued(item);
       await reload();
@@ -310,20 +335,53 @@ export function RefillApp({ scope, machines, titles, stock, warehouse }: RefillA
           error={errors.quantity}
           suffix="st"
           hint={
-            titleId && fromWarehouse && central.has(titleId)
-              ? `${formatInt(central.get(titleId) ?? 0)} i centrallagret`
+            titleId && fromWarehouse && source
+              ? `${formatInt(sources.stock[source]?.[titleId] ?? 0)} ${inPlace(sourceName)}${multi ? ` · ${formatInt(central.get(titleId) ?? 0)} i alla lager` : ""}`
               : undefined
           }
         />
-        <label className="flex items-center gap-2 text-sm text-fg">
-          <input
-            type="checkbox"
-            checked={fromWarehouse}
-            onChange={(e) => setFromWarehouse(e.target.checked)}
-            className="size-4 accent-current"
-          />
-          Från centrallagret
-        </label>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex min-h-11 items-center gap-2 text-sm text-fg">
+            <input
+              type="checkbox"
+              checked={fromWarehouse}
+              onChange={(e) => setFromWarehouse(e.target.checked)}
+              className="size-4 accent-current"
+            />
+            Ta packen från vårt lager
+          </label>
+          {fromWarehouse && multi ? (
+            <button
+              type="button"
+              onClick={() => setChoosing(true)}
+              aria-label={`Från ${sourceName}. Byt lager`}
+              className="inline-flex min-h-11 items-center gap-1 rounded-full border border-line-strong bg-surface px-4 text-sm text-fg hover:bg-hover"
+            >
+              <span className="text-subtle">Från:</span>
+              <span className="font-medium">{sourceName}</span>
+              <span aria-hidden className="text-subtle">
+                ▾
+              </span>
+            </button>
+          ) : null}
+        </div>
+        <Sheet open={choosing} onClose={() => setChoosing(false)} title="Ta pack från">
+          <div className="px-5 pb-5">
+            <PlaceButtons
+              label="Ta pack från"
+              places={sources.places.map((p) => ({
+                id: p.id,
+                name: p.name,
+                count: titleId ? (sources.stock[p.id]?.[titleId] ?? 0) : null,
+              }))}
+              value={source}
+              onChange={(id) => {
+                setOverride((prev) => ({ ...prev, [machineId]: id }));
+                setChoosing(false);
+              }}
+            />
+          </div>
+        </Sheet>
         <Input
           label="Notering"
           value={note}

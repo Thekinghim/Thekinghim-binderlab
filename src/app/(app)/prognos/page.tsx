@@ -127,7 +127,7 @@ export default async function PrognosPage({
               <SectionHeader
                 id="vart-lager"
                 eyebrow="Vårt lager"
-                title={ourStockTitle(stock.rows)}
+                title={ourStockTitle(stock.rows, stock.places.length)}
                 aside={stock.rows.length > 0 ? ourStockAside(stock.rows) : undefined}
                 actions={
                   <Link
@@ -144,7 +144,8 @@ export default async function PrognosPage({
                 timeZone={stock.timeZone}
                 now={stock.now}
                 windowDays={stock.windowDays}
-                canRegister={stock.canRegister}
+                // Flera lager: antalet räknas per lager på Vårt lager (här vore det oklart vilket).
+                canRegister={stock.canRegister && stock.places.length <= 1}
               />
             </section>
             <section aria-labelledby="inkopsforslag" className={`rise ${SECTION}`} style={rise(2)}>

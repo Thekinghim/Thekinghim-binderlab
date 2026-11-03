@@ -332,7 +332,7 @@ describe("registerRefillFor", () => {
     });
     expect(result).toEqual({
       ok: false,
-      error: "Centrallagret har bara 0 pack av Pokémon 151 Booster.",
+      error: "Hemma har bara 0 pack av Pokémon 151 Booster.",
     });
   });
 

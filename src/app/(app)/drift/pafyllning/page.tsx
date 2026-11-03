@@ -67,6 +67,7 @@ export default async function RefillPage() {
           titles={data.titles}
           stock={data.stock}
           warehouse={data.warehouse}
+          sources={data.sources}
         />
       )}
     </div>

@@ -427,7 +427,7 @@ function RefillDialog({ action }: { action: RefillActionView }) {
     }
     if (fromWarehouse && action.warehouseOnHand !== null && n > action.warehouseOnHand) {
       setQuantityError(
-        `Centrallagret har bara ${formatInt(action.warehouseOnHand)}${NBSP}pack. Minska antalet eller bocka ur centrallagret.`,
+        `Vårt lager har bara ${formatInt(action.warehouseOnHand)}${NBSP}pack. Minska antalet eller bocka ur vårt lager.`,
       );
       inputRef.current?.focus();
       return;
@@ -486,7 +486,7 @@ function RefillDialog({ action }: { action: RefillActionView }) {
             error={quantityError}
             hint={
               action.unitsInWindow !== null && action.windowDays !== null
-                ? `Sålt de senaste ${formatInt(action.windowDays)} dagarna: ${formatInt(action.unitsInWindow)}${NBSP}pack.${capped ? " Förslaget är begränsat av centrallagret." : ""}${after !== null && after > 0 ? ` Efter påfyllningen: ${formatInt(after)}${NBSP}pack i automaten.` : ""}`
+                ? `Sålt de senaste ${formatInt(action.windowDays)} dagarna: ${formatInt(action.unitsInWindow)}${NBSP}pack.${capped ? " Förslaget är begränsat av vårt lager." : ""}${after !== null && after > 0 ? ` Efter påfyllningen: ${formatInt(after)}${NBSP}pack i automaten.` : ""}`
                 : undefined
             }
             required
@@ -508,11 +508,11 @@ function RefillDialog({ action }: { action: RefillActionView }) {
               className="mt-0.5 size-4 shrink-0 accent-[var(--bl-fg)]"
             />
             <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-base text-fg">Ta packen från centrallagret</span>
+              <span className="text-base text-fg">Ta packen från vårt lager</span>
               <span className="text-sm text-muted">
                 {hasWarehouse
-                  ? `${formatInt(action.warehouseOnHand ?? 0)}${NBSP}pack ${action.titleName} i centrallagret. Lika många dras därifrån.`
-                  : "Organisationen har inget centrallager."}
+                  ? `${formatInt(action.warehouseOnHand ?? 0)}${NBSP}pack ${action.titleName} i vårt lager. Lika många dras ur automatens lager.`
+                  : "Organisationen har inget eget lager."}
               </span>
             </span>
           </label>

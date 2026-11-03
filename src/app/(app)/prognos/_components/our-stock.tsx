@@ -10,7 +10,7 @@ import { WarehouseList } from "../../lager/_components/warehouse-list";
 import type { LagerTitle, WarehouseRow } from "../../lager/_lib/types";
 
 /**
- * Vårt lager (centrallagret) under Prognos & inköp: antal per titel, hur länge det räcker
+ * Vårt lager (alla egna lager tillsammans) under Prognos & inköp: antal per titel, hur länge det räcker
  * och veckans behov. Tryck på en rad för att inventera; "Inventera annan titel" för en
  * titel som inte står i listan än.
  */

@@ -182,6 +182,7 @@ export interface StockRow {
   readonly locationId: string;
   readonly locationName: string;
   readonly locationKind: "warehouse" | "machine";
+  /** Standardlagret (ett av de egna lagren). Vårt lager är summan av alla egna lager. */
   readonly isCentral: boolean;
   /** Automaten för en automatplats, annars null. */
   readonly machineId: string | null;
@@ -200,7 +201,7 @@ export interface StockSnapshot {
   readonly rows: StockRow[];
   /** Automatplatserna i formen @/analytics/todos vill ha. */
   readonly machineStock: StockLevelRef[];
-  /** Centrallagret. */
+  /** Alla egna lager (Hemma, Kontoret …): en rad per lager och titel. Summan per titel: sumOwnStock. */
   readonly warehouse: StockRow[];
 }
 

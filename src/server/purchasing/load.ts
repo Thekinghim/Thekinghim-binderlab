@@ -39,6 +39,7 @@ import {
 } from "./queries";
 import { seriesStartsFromStock } from "./series-start";
 import type { HistoryWeek, PrognosData, PurchaseOrderRecord } from "./types";
+import { ownStockTotals } from "@/server/data/core/own-stock";
 
 export type { Viewer };
 
@@ -223,7 +224,7 @@ export async function loadPrognosFor(
     machines,
   });
 
-  // Inköp: hela organisationen (centrallagret är gemensamt).
+  // Inköp: hela organisationen (vårt lager = alla egna lager tillsammans).
   const activeSuppliers = new Set(db.suppliers.filter((s) => !s.archived).map((s) => s.id));
   const supplierItems: SupplierItemRef[] = db.items.filter((i) =>
     activeSuppliers.has(i.supplierId),
@@ -235,9 +236,7 @@ export async function loadPrognosFor(
       .filter((s) => !s.archived)
       .map((s) => ({ id: s.id, name: s.name, defaultLeadTimeDays: s.defaultLeadTimeDays })),
     supplierItems,
-    warehouseStock: db.stock
-      .filter((r) => r.isCentral)
-      .map((r) => ({ titleId: r.titleId, onHand: r.onHand })),
+    warehouseStock: ownStockTotals(db.stock),
     machineStock: db.stock
       .filter((r) => r.locationKind === "machine" && r.machineId !== null)
       .map((r) => ({ machineId: r.machineId as string, titleId: r.titleId, onHand: r.onHand })),

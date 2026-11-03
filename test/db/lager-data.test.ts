@@ -196,7 +196,12 @@ describe("registerRefillFor", () => {
         fromWarehouse: true,
       }),
     );
-    expect(result).toEqual({ previous: start, onHand: start + 6, warehouseOnHand: 14 });
+    expect(result).toEqual({
+      previous: start,
+      onHand: start + 6,
+      warehouseOnHand: 14,
+      placeName: "Hemma",
+    });
 
     const audit = await rows<{ action: string; actor_id: string }>(
       db(),

@@ -158,7 +158,7 @@ export function fiscalYearOf(month: IsoMonth, startMonth = 1): Period {
 
 /**
  * Lager vid månadens slut per titel: summan av kända, positiva saldon över alla
- * lagerplatser (automater och centrallager). Okända saldon räknas separat.
+ * lagerplatser (automater och alla egna lager). Okända saldon räknas separat.
  */
 export function stockAtMonthEnd(
   events: readonly SnapshotStockEvent[],

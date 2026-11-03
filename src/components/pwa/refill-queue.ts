@@ -15,6 +15,8 @@ export interface QueuedRefill {
   readonly titleId: string;
   readonly quantity: number;
   readonly fromWarehouse: boolean;
+  /** Lagret packen togs från (Hemma, Kontoret …). Utelämnat = automatens "Fylls på från". */
+  readonly fromLocationId?: string;
   /** Tidpunkten då påfyllningen gjordes (ISO 8601 med Z). */
   readonly occurredAt: string;
   readonly note?: string;

@@ -430,8 +430,11 @@ export const stockLocations = pgTable("stock_locations", {
   kind: stockLocationKind("kind").notNull(),
   machineId: uuid("machine_id"),
   name: text("name").notNull(),
+  /** Standardlagret (ett per organisation, aldrig arkiverat). */
   isCentral: boolean("is_central").notNull().default(false),
   archivedAt: ts("archived_at"),
+  /** Automatens "Fylls på från" (ett eget lager), null = standardlagret. */
+  refillSourceId: uuid("refill_source_id"),
   /** Senaste gången Awish-synken läste automatens fack. Bara synken skriver. */
   awishSyncedAt: ts("awish_synced_at"),
   /** Awish fack per titel vid senaste läsningen (Fyll på). Skrivs bara av synken. */
@@ -726,7 +729,7 @@ export const stockLevels = pgView("stock_levels", {
   lastEventAt: ts("last_event_at"),
 }).existing();
 
-/** stock_levels för centrallagret. */
+/** stock_levels för alla aktiva egna lager (kind 'warehouse'). */
 export const warehouseStock = pgView("warehouse_stock", {
   organizationId: uuid("organization_id").notNull(),
   locationId: uuid("location_id").notNull(),

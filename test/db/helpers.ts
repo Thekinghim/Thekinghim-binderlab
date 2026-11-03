@@ -799,6 +799,28 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       stockEventId: refill!.id,
       submittedBy: owner.id,
     });
+    // Flera lager (20261104210000_flera_lager.sql): en påfyllning från standardlagret och
+    // automatens "Fylls på från".
+    const [home] = await rows<{ id: string }>(
+      tx,
+      sql`select id from public.stock_locations
+          where organization_id = ${orgId}::uuid and kind = 'warehouse' and is_central limit 1`,
+    );
+    await tx.insert(s.fieldSubmissions).values({
+      ...org,
+      clientId: randomUUID(),
+      machineId: machine!.id,
+      titleId: title!.id,
+      quantity: 1,
+      fromWarehouse: true,
+      occurredAt: new Date("2025-03-01T08:05:00Z"),
+      stockEventId: refill!.id,
+      submittedBy: owner.id,
+      fromLocationId: home!.id,
+    });
+    await tx.execute(sql`
+      update public.stock_locations set refill_source_id = ${home!.id}::uuid
+      where organization_id = ${orgId}::uuid and kind = 'machine' and machine_id = ${machine!.id}::uuid`);
     await tx.execute(sql`set local role authenticated`);
     // Ärendet gäller en order och titel från automaten (incidents.order_id/title_id).
     await tx.insert(s.incidents).values({

@@ -10,20 +10,24 @@ import { requireRoute } from "@/server/data/core";
 
 import { currentViewer } from "../lager/_lib/session";
 import { HomeStock } from "./_components/home-stock";
+import { PlaceBar } from "./_components/place-bar";
 import { loadVartLagerFor } from "./_lib/data";
 import { headingOf } from "./_lib/heading";
 
 export const metadata: Metadata = { title: "Vårt lager" };
 
 /**
- * Vårt lager: hur många pack av varje titel vi har hemma. Skriv antalet, det sparas
- * (en inventering i centrallagret). "+ Inköp" lägger till pack som kom hem. När Awish
- * visar att en automat fyllts på dras packen härifrån automatiskt (Awish-synken).
+ * Vårt lager: hur många pack av varje titel vi har i våra egna lager (Hemma, Kontoret …),
+ * totalt eller per lager. Skriv antalet, det sparas (en inventering i valt lager).
+ * "+ Inköp" lägger till pack i ett lager, "Flytta" flyttar mellan lagren. När Awish visar
+ * att en automat fyllts på dras packen automatiskt ur automatens "Fylls på från".
  * Ägare, admin och läsare; bara ägare och admin skriver.
  */
 export default async function VartLagerPage() {
   const ctx = await requireRoute("vart-lager");
-  const view = await loadVartLagerFor(await currentViewer(), new Date(ctx.now));
+  const viewer = await currentViewer();
+  const view = await loadVartLagerFor(viewer, new Date(ctx.now));
+  const scope = `${viewer.organization.id}:${viewer.user.userId}`;
   const heading = headingOf(view);
 
   return (
@@ -46,7 +50,10 @@ export default async function VartLagerPage() {
         />
       </div>
       {!view.hasWarehouse ? (
-        <StateMessage kind="empty" message="Organisationen har inget eget lager." />
+        <>
+          <StateMessage kind="empty" message="Inget eget lager än." />
+          <PlaceBar places={[]} totals={{}} selected={null} canEdit={view.canAddPlace} />
+        </>
       ) : view.rows.length === 0 ? (
         <StateMessage
           kind="empty"
@@ -55,9 +62,9 @@ export default async function VartLagerPage() {
         />
       ) : (
         <>
-          <HomeStock model={view} />
+          <HomeStock model={view} scope={scope} />
           <p className="meta text-subtle">
-            Fylls en automat på drar Awish packen härifrån
+            Fylls en automat på drar Awish packen ur automatens lager
             {view.totals.negative > 0
               ? ` · ${formatInt(view.totals.negative)} under 0: räkna om`
               : ""}

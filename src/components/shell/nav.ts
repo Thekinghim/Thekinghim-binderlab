@@ -147,7 +147,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     // Samma roller som Prognos & inköp (sidan visar värdet till inköpspris).
     roles: READERS,
     phase: 6,
-    lead: "Pack hemma, per titel.",
+    lead: "Pack i lager, per titel.",
     context: false,
   },
   {

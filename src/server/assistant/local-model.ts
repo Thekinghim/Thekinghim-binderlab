@@ -134,7 +134,7 @@ export function chooseTool(
       name: "tid_monster",
       input: { ...period, per: has(/veckodag/) ? "veckodag" : "timme" },
     },
-    has(/vart lager|centrallager|hemma/) && { name: "vart_lager", input: {} },
+    has(/vart lager|centrallager|hemma|kontoret/) && { name: "vart_lager", input: {} },
     has(/besok|fylla pa forst|fyll pa forst|planera|packlista|ta med/) && {
       name: "besoksplan",
       input: {},

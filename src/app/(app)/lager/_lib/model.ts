@@ -25,6 +25,7 @@ import {
 import type { MachineHealth } from "@/analytics/health";
 import { planVisits, type MachineCapacity, type VisitPlan } from "@/analytics/visits";
 import { retiredPairs } from "@/analytics/todos/assortment";
+import { sumOwnStock } from "@/server/data/core/own-stock";
 import { planNow, weeklyVisitPlan } from "@/server/data/visit-plan";
 import {
   addDays,
@@ -67,7 +68,7 @@ export interface LagerModelInput {
   /** Sålda pack per dag, titel och automat. Minst fönstret plus i dag. */
   readonly sales: readonly SalesCountRow[];
   readonly scope: DataScope;
-  /** Sant om organisationen har ett centrallager (stock_locations.is_central). */
+  /** Sant om organisationen har minst ett eget lager (Hemma, Kontoret …). */
   readonly hasCentral: boolean;
   /**
    * Maskinhälsan som på Drift (loadMachineHealthFor). Automater med fel får ett besök i dag
@@ -202,14 +203,13 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
   }
 
   const machineRows = new Map<string, StockRow>();
-  const centralRows = new Map<string, StockRow>();
   for (const r of stock) {
     if (r.locationKind === "machine" && r.machineId !== null) {
       machineRows.set(pairKey(r.machineId, r.titleId), r);
-    } else if (r.isCentral) {
-      centralRows.set(r.titleId, r);
     }
   }
+  // Vårt lager: summan av alla egna lager per titel.
+  const centralRows = new Map(sumOwnStock(stock).map((r) => [r.titleId, r]));
   const hasWarehouse = hasCentral || centralRows.size > 0;
 
   // Ett saldo är känt när platsen har inventerats (i Binderlab eller av Awish-synken)
