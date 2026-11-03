@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { weekdayDay } from "@/analytics/todos/text";
 import { kmText } from "@/analytics/visits";
+import { ChannelTags } from "@/components/ui/channel-tags";
 import { Panel, PanelSection } from "@/components/ui/frame";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
@@ -161,6 +162,12 @@ export default async function VisitPlanPage() {
                                   <tr key={p.titleId}>
                                     <td className="py-2 pr-2 text-fg">
                                       {p.titleName}
+                                      {p.capacity !== null && p.channels.length > 0 ? (
+                                        <ChannelTags
+                                          channels={p.channels}
+                                          className="mt-0.5 flex"
+                                        />
+                                      ) : null}
                                       {p.shortBy > 0 ? (
                                         <span className="block text-xs text-muted">{`${formatInt(p.shortBy)} pack saknas i centrallagret`}</span>
                                       ) : null}

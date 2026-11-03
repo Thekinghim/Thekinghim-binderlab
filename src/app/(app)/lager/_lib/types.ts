@@ -93,6 +93,10 @@ export interface PackListLine {
   readonly target: number;
   /** Pack som saknas i centrallagret för att nå målet. */
   readonly shortBy: number;
+  /** Kapaciteten från Awish (målet är då kapaciteten), annars null. */
+  readonly capacity?: number | null;
+  /** Facken titeln står i enligt Awish, annars tom. */
+  readonly channels?: readonly string[];
 }
 
 /** En titel som behövs men saknas helt i centrallagret (inget att ta med). */

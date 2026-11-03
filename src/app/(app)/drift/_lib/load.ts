@@ -17,7 +17,7 @@ import {
   type MachineStockEvent,
   type TimelineEntry,
 } from "@/analytics/health";
-import type { VisitPlan } from "@/analytics/visits";
+import { compareChannels, type VisitPlan } from "@/analytics/visits";
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
 import { addDays } from "@/domain";
@@ -28,6 +28,7 @@ import { channelStatus, type ChannelStatus } from "@/server/notify";
 import { queryStock } from "@/server/data/core/queries";
 import type { AppContext } from "@/server/data/core";
 import { querySlotPeriods, type SlotPeriod } from "@/server/data/assortment";
+import { querySlotCapacities, type SlotCapacityRow } from "@/server/data/core/slot-capacity";
 import { weeklyVisitPlan } from "@/server/data/visit-plan";
 import { withUserDb } from "@/server/session";
 
@@ -53,6 +54,8 @@ export interface DriftOverview {
   readonly recentAlerts: AlertView[];
   readonly lastRun: AlertRunInfo | null;
   readonly plan: VisitPlan;
+  /** Kapacitet per automat och titel från Awish (fyllnadsgraden). Tom före första synken. */
+  readonly capacities: SlotCapacityRow[];
 }
 
 async function names(tx: Tx, orgId: string, userIds: string[]): Promise<Map<string, string>> {
@@ -126,6 +129,7 @@ function buildPlan(
   health: readonly MachineHealth[],
   warehouse: { titleId: string; onHand: number }[] | null,
   slotPeriods: readonly SlotPeriod[],
+  capacities: readonly SlotCapacityRow[],
   ctx: AppContext,
 ): VisitPlan {
   return weeklyVisitPlan({
@@ -136,6 +140,7 @@ function buildPlan(
     warehouseStock: warehouse,
     health,
     slotPeriods,
+    capacities,
     today: ctx.today,
     timeZone: ctx.timeZone,
     now: new Date(ctx.now),
@@ -156,8 +161,24 @@ export async function loadDriftOverview(ctx: AppContext): Promise<DriftOverview>
       .filter((r) => r.isCentral)
       .map((r) => ({ titleId: r.titleId, onHand: r.onHand }));
     const slotPeriods = await querySlotPeriods(tx, orgId);
-    const plan = buildPlan(data, health, warehouse.length > 0 ? warehouse : null, slotPeriods, ctx);
-    return { data, health, openAlerts: alerts.open, recentAlerts: alerts.recent, lastRun, plan };
+    const capacities = await querySlotCapacities(tx, orgId, now);
+    const plan = buildPlan(
+      data,
+      health,
+      warehouse.length > 0 ? warehouse : null,
+      slotPeriods,
+      capacities,
+      ctx,
+    );
+    return {
+      data,
+      health,
+      openAlerts: alerts.open,
+      recentAlerts: alerts.recent,
+      lastRun,
+      plan,
+      capacities,
+    };
   });
 }
 
@@ -175,7 +196,15 @@ export async function loadVisitPlan(
       .filter((r) => r.isCentral)
       .map((r) => ({ titleId: r.titleId, onHand: r.onHand }));
     const slotPeriods = await querySlotPeriods(tx, orgId);
-    const plan = buildPlan(data, health, warehouse.length > 0 ? warehouse : null, slotPeriods, ctx);
+    const capacities = await querySlotCapacities(tx, orgId, now);
+    const plan = buildPlan(
+      data,
+      health,
+      warehouse.length > 0 ? warehouse : null,
+      slotPeriods,
+      capacities,
+      ctx,
+    );
     return { data, health, plan, hasWarehouse: warehouse.length > 0 };
   });
 }
@@ -188,6 +217,17 @@ export interface MachineTimelineData {
   readonly from: string;
   readonly to: string;
   readonly days: number;
+  /** Facken enligt Awish, en rad per titel, sorterade efter fack. Tom utan kapacitet. */
+  readonly slots: MachineSlotView[];
+}
+
+/** En titel i automatens fack (Awish): fack, saldo och kapacitet. */
+export interface MachineSlotView {
+  readonly titleId: string;
+  readonly titleName: string;
+  readonly channels: readonly string[];
+  readonly onHand: number;
+  readonly capacity: number;
 }
 
 /** Tidslinjen för en automat de senaste `days` dagarna: försäljning, lager, ärenden, larm. */
@@ -294,6 +334,29 @@ export async function loadMachineTimeline(
       },
     );
     const alerts = await loadAlerts(tx, orgId, new Date(now.getTime()), machineId);
+    const capacities = (await querySlotCapacities(tx, orgId, now)).filter(
+      (c) => c.machineId === machineId,
+    );
+    const titleName = new Map(data.titles.map((t) => [t.id, t.name]));
+    const onHand = new Map<string, number>();
+    for (const st of data.stock) {
+      if (st.machineId === machineId) {
+        onHand.set(st.titleId, (onHand.get(st.titleId) ?? 0) + st.onHand);
+      }
+    }
+    const slots: MachineSlotView[] = capacities
+      .map((c) => ({
+        titleId: c.titleId,
+        titleName: titleName.get(c.titleId) ?? "Okänd titel",
+        channels: [...c.channels].sort(compareChannels),
+        onHand: Math.max(0, onHand.get(c.titleId) ?? 0),
+        capacity: c.capacity,
+      }))
+      .sort(
+        (a, b) =>
+          compareChannels(a.channels[0] ?? "\uffff", b.channels[0] ?? "\uffff") ||
+          a.titleName.localeCompare(b.titleName, "sv"),
+      );
     return {
       health,
       machine,
@@ -302,6 +365,7 @@ export async function loadMachineTimeline(
       from: from.toISOString(),
       to: now.toISOString(),
       days,
+      slots,
     };
   });
 }

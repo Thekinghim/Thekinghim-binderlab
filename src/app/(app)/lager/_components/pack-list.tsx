@@ -1,5 +1,6 @@
 "use client";
 
+import { ChannelTags } from "@/components/ui/channel-tags";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/field";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -154,6 +155,9 @@ function Line({
     <>
       <span className="flex min-w-0 flex-col">
         <span className="truncate text-base text-fg">{line.titleName}</span>
+        {line.capacity != null && line.channels && line.channels.length > 0 ? (
+          <ChannelTags channels={line.channels} className="mt-0.5" />
+        ) : null}
         {line.shortBy > 0 ? (
           <span className="meta text-subtle">
             {formatInt(line.shortBy)}

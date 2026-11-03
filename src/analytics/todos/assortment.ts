@@ -41,9 +41,12 @@ export function retiredPairs(periods: readonly SlotPeriod[], today: IsoDate): Se
   return new Set([...seen].filter((k) => !current.has(k)));
 }
 
-/** Är punkten en påfyllning av en utgången titel? */
+/**
+ * Är punkten en påfyllning (eller en tyst titel) av en utgången titel? En utgången titel
+ * säljs ut och ska varken fyllas på eller larma när den slutar sälja.
+ */
 export function isRetiredRefill(item: TodoItem, retired: ReadonlySet<string>): boolean {
-  if (item.kind !== "refill" || retired.size === 0) return false;
+  if ((item.kind !== "refill" && item.kind !== "silent-title") || retired.size === 0) return false;
   const machineId = item.evidence.machineIds[0];
   const titleId = item.evidence.titleIds[0];
   return (

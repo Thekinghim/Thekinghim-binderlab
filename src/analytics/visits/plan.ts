@@ -82,6 +82,8 @@ interface TitleNeed {
   readonly onHand: number;
   readonly velocity: SalesVelocity;
   readonly capacity: number | null;
+  /** Facken för titeln i automaten (från kapaciteten), annars tom. */
+  readonly channels: readonly string[];
   readonly stockout: IsoDate | null;
   readonly orderIds: string[];
 }
@@ -236,9 +238,16 @@ function machineNeeds(
   o: Required<Omit<VisitPlanOptions, "start" | "stockDate">>,
   titleName: (id: string) => string,
 ): MachineNeed[] {
-  const capacity = new Map(
-    (input.capacities ?? []).map((c) => [`${c.machineId}\u0000${c.titleId}`, c.capacity]),
-  );
+  const capacity = new Map<string, number>();
+  const channels = new Map<string, readonly string[]>();
+  for (const c of input.capacities ?? []) {
+    if (!Number.isSafeInteger(c.capacity) || c.capacity <= 0) continue;
+    const k = `${c.machineId}\u0000${c.titleId}`;
+    capacity.set(k, (capacity.get(k) ?? 0) + c.capacity);
+    if (c.channels && c.channels.length > 0) {
+      channels.set(k, [...(channels.get(k) ?? []), ...c.channels]);
+    }
+  }
   const ordersByPair = new Map<string, AnalyticsOrder[]>();
   for (const ord of input.orders) {
     if (ord.machineId === null || ord.businessDate > today) continue;
@@ -280,6 +289,7 @@ function machineNeeds(
         onHand,
         velocity: v,
         capacity: capacity.get(k) ?? null,
+        channels: channels.get(k) ?? [],
         stockout,
         orderIds: windowOrders.map((x) => x.id),
       });
@@ -336,6 +346,7 @@ function buildStop(
       projectedAtVisit: projected,
       target,
       capacity: t.capacity,
+      channels: t.channels,
       shortBy: wanted - quantity,
       stockoutDate: t.stockout,
     });

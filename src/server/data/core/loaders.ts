@@ -583,7 +583,11 @@ const TODO_LOOKBACK_DAYS = 45;
 /** Dagar bakåt för rapportutskick (förra månadens rapporter). */
 const TODO_REPORT_LOOKBACK_DAYS = 75;
 /** Punkterna en påfyllare ser: de som gäller lagret och automaterna. */
-const REFILLER_TODO_KINDS: ReadonlySet<TodoKind> = new Set(["refill", "stale-machine"]);
+const REFILLER_TODO_KINDS: ReadonlySet<TodoKind> = new Set([
+  "refill",
+  "stale-machine",
+  "silent-title",
+]);
 
 /**
  * Tar bort det som är ekonomi ur en punkt som räknats på order utan belopp:

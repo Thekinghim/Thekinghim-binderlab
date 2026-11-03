@@ -24,6 +24,8 @@
  *   aldrig vid minskning, och en påfyllning som redan registrerats i appen ger 0.
  *   Saldot i vårt lager får bli negativt (Vårt lager visar då "Räkna om").
  * - stock_locations.awish_synced_at sätts, så att Lager vet att saldot är känt.
+ * - Kapaciteten per titel (fyllnadsgraden) skrivs till machine_slot_capacity
+ *   (./slot-capacity).
  *
  * En tom lista från Awish ändrar inget (automaten kan vara nere). Fel för en automat
  * stoppar inte de andra.
@@ -35,6 +37,7 @@ import { sql } from "drizzle-orm";
 
 import type { Db, Tx } from "@/db/client";
 import { comparableText } from "@/import/adapter";
+import { writeSlotCapacities } from "@/server/awish/slot-capacity";
 
 import { AWISH_MIN_CALL_MS, AwishApiError, type AwishApi, type AwishProduct } from "./grpc-client";
 import { awishRefillNote, refillDeductions } from "./refill-deduction";
@@ -391,6 +394,15 @@ export async function applyMachineStock(
       yesterday: machine.yesterday,
       wanted,
       absentTitleIds: absent.map((l) => l.title_id),
+    });
+
+    // Fyllnadsgraden: kapaciteten per titel enligt Awish (./slot-capacity).
+    await writeSlotCapacities(tx, {
+      org,
+      machineId: input.machineId,
+      at,
+      groups,
+      titleIdByKey: byKey,
     });
 
     await tx.execute(

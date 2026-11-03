@@ -59,4 +59,11 @@ describe("utgångna titlar (sortimentet)", () => {
     expect(kept).toHaveLength(items.length - 1);
     expect(withoutRetiredRefills(items, new Set())).toEqual(items);
   });
+
+  it("tar också bort en tyst titel för en utgången titel, men inte en tyst automat", () => {
+    const item = computeTodos(base(), NOW).find((t) => t.kind === "refill")!;
+    const retired = retiredPairs([period("2026-10-31")], TODAY);
+    expect(isRetiredRefill({ ...item, kind: "silent-title" }, retired)).toBe(true);
+    expect(isRetiredRefill({ ...item, kind: "stale-machine" }, retired)).toBe(false);
+  });
 });

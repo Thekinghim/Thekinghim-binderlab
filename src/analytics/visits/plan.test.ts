@@ -83,6 +83,7 @@ describe("planVisits", () => {
         projectedAtVisit: 1,
         target: 14,
         capacity: null,
+        channels: [],
         shortBy: 0,
         stockoutDate: "2026-11-05",
       },
@@ -95,6 +96,41 @@ describe("planVisits", () => {
     expect(plan.days[1]?.load).toEqual([
       { titleId: "t1", titleName: "30th Celebration", quantity: 19 },
     ]);
+  });
+
+  it("kapacitet mindre än behovet: fyller bara till kapaciteten, med facken, och centrallagret begränsar", () => {
+    // m1 säljer 2 pack/dag; 7 dagars mål vore 14, men facken rymmer 8.
+    const capacities = [{ machineId: "m1", titleId: "t1", capacity: 8, channels: ["A3", "A4"] }];
+    const plan = planVisits(base({ capacities }), NOW);
+    const p = plan.days[1]?.stops.find((s) => s.machineId === "m1")?.packs[0];
+    // Onsdag: 1 kvar vid besöket → 8 − 1 = 7 pack.
+    expect(p).toMatchObject({ target: 8, capacity: 8, quantity: 7, projectedAtVisit: 1 });
+    expect(p?.channels).toEqual(["A3", "A4"]);
+    expect(t(plan.days[1]?.stops.find((s) => s.machineId === "m1")?.evidence.rule)).toContain(
+      "fyll till kapacitet",
+    );
+    const capped = planVisits(
+      base({
+        capacities,
+        warehouseStock: [
+          { titleId: "t1", onHand: 3 },
+          { titleId: "t2", onHand: 0 },
+        ],
+      }),
+      NOW,
+    );
+    const all = capped.days.flatMap((d) => d.stops).flatMap((s) => s.packs);
+    expect(all.filter((x) => x.titleId === "t1").reduce((n, x) => n + x.quantity, 0)).toBe(3);
+    // Saldot vid besöket redan på kapaciteten: inget att ta med.
+    const full = planVisits(
+      base({
+        capacities: [{ machineId: "m1", titleId: "t1", capacity: 1 }],
+      }),
+      NOW,
+    );
+    expect(
+      full.days.flatMap((d) => d.stops).find((s) => s.machineId === "m1")?.packs ?? [],
+    ).toEqual([]);
   });
 
   it("centrallagret begränsar i brådskeordning och bristen syns", () => {

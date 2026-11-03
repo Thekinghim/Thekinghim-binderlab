@@ -34,7 +34,9 @@ export const DISMISSED_LIST_DAYS = 14;
 
 /** Nyckeltyperna som påfyllaren ser (samma som private.todo_key_is_stock i databasen). */
 export function isStockKey(key: string): boolean {
-  return key.startsWith("refill:") || key.startsWith("stale-machine:");
+  return (
+    key.startsWith("refill:") || key.startsWith("stale-machine:") || key.startsWith("silent-title:")
+  );
 }
 
 /** Rollerna som har en Att göra-lista och får bocka av. */

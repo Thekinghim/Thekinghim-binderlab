@@ -4,11 +4,14 @@ import { notFound } from "next/navigation";
 
 import type { TimelineEntry } from "@/analytics/health";
 import { weekdayDay } from "@/analytics/todos/text";
+import { channelText, fillLevels, fillPercent } from "@/analytics/visits";
+import { FillBar } from "@/components/ui/fill-bar";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusGlyph, StatusTag, type Status } from "@/components/ui/status-tag";
 import type { IsoDate } from "@/domain";
-import { formatInt } from "@/lib/format";
+import { cn } from "@/lib/cn";
+import { formatInt, NBSP } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
 
 import { AlertList } from "../../_components/alert-list";
@@ -70,6 +73,16 @@ export default async function MachineTimelinePage({
     else byDay.set(e.date, [e]);
   }
   const alertItems = toAlertItems(data.alerts, ctx.timeZone, now);
+  const fill =
+    fillLevels(
+      data.slots.map((s) => ({
+        machineId: data.machine.id,
+        titleId: s.titleId,
+        capacity: s.capacity,
+        channels: s.channels,
+      })),
+      data.slots.map((s) => ({ machineId: data.machine.id, titleId: s.titleId, onHand: s.onHand })),
+    ).get(data.machine.id) ?? null;
 
   return (
     <div className="flex flex-col gap-12">
@@ -107,6 +120,58 @@ export default async function MachineTimelinePage({
         ))}
         {tag ? <StatusTag status={tag.status}>{tag.label}</StatusTag> : null}
       </nav>
+
+      {fill ? (
+        <section
+          aria-labelledby="automat-fack"
+          className="rise flex flex-col gap-6"
+          style={{ "--i": 1 } as React.CSSProperties}
+        >
+          <SectionHeader
+            id="automat-fack"
+            eyebrow="Fack"
+            title={`${fillPercent(fill.bp)}${NBSP}% fyllt.`}
+            aside={
+              fill.emptyTitles > 0
+                ? `${plural(fill.emptyTitles, "titel slut", "titlar slut")}.`
+                : undefined
+            }
+            meta={[
+              { label: "Pack", value: `${formatInt(fill.units)}/${formatInt(fill.capacity)}` },
+            ]}
+            size="md"
+          />
+          <ul
+            aria-label="Fack"
+            className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6"
+            title="Från Awish, uppdateras var 10:e minut"
+          >
+            {data.slots.map((s, i) => {
+              const empty = s.onHand === 0;
+              const bp = Math.round((Math.min(s.onHand, s.capacity) * 10_000) / s.capacity);
+              return (
+                <li
+                  key={s.titleId}
+                  className={cn(
+                    "rise flex flex-col gap-1.5 rounded-sm border px-2.5 py-2",
+                    empty ? "border-signal-line" : "border-line",
+                  )}
+                  style={{ "--i": Math.min(i, 12) + 2 } as React.CSSProperties}
+                >
+                  <span className="flex items-baseline justify-between gap-2">
+                    <span className="meta truncate text-fg">{channelText(s.channels) || "–"}</span>
+                    <span className={cn("tnum text-sm", empty ? "text-fg" : "text-muted")}>
+                      {`${formatInt(s.onHand)}/${formatInt(s.capacity)}`}
+                    </span>
+                  </span>
+                  <FillBar bp={bp} delayMs={Math.min(i, 12) * 40} />
+                  <span className="truncate text-xs text-muted">{s.titleName}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
 
       {alertItems.length > 0 ? (
         <section
