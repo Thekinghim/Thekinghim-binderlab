@@ -1,7 +1,8 @@
 "use server";
 
 /**
- * Server actions för Vårt lager: antal hemma (inventering) och inköp. Tunna omslag kring
+ * Server actions för Vårt lager: antal (inventering) per lager, inköp, flytt mellan lager
+ * (med Ångra) och lagren själva (nytt, byt namn, ta bort med Ångra). Tunna omslag kring
  * ./_lib/register: indata valideras med zod, rollen kontrolleras här och i tjänsten mot
  * databasen (ägare, admin), och allt skrivs som användaren med RLS. Efter en lyckad
  * registrering räknas sidorna om (revalidateAppData).
@@ -18,15 +19,28 @@ import { LagerError, type RegisterResult } from "../lager/_lib/register";
 import { currentViewer } from "../lager/_lib/session";
 import { EDIT_ROLES } from "./_lib/data";
 import {
+  archivePlaceFor,
+  archivePlaceSchema,
+  createPlaceFor,
+  createPlaceSchema,
   homeCountSchema,
+  moveSchema,
+  moveStockFor,
   receiptSchema,
   registerReceiptFor,
+  renamePlaceFor,
+  renamePlaceSchema,
   setHomeCountFor,
+  setRefillSourceFor,
+  undoMoveFor,
+  undoMoveSchema,
+  type MoveResult,
 } from "./_lib/register";
 
-export type VartLagerActionResult =
-  | { ok: true; data: RegisterResult; error?: undefined }
-  | { ok: false; error: string; data?: undefined };
+export type ActionResult<T> =
+  { ok: true; data: T; error?: undefined } | { ok: false; error: string; data?: undefined };
+
+export type VartLagerActionResult = ActionResult<RegisterResult>;
 
 function failure(error: unknown): { ok: false; error: string } {
   unstable_rethrow(error);
@@ -40,7 +54,7 @@ function failure(error: unknown): { ok: false; error: string } {
   return { ok: false, error: dbErrorMessage(error) };
 }
 
-/** Antal hemma för en titel. */
+/** Antal i ett lager för en titel. */
 export async function setHomeCount(raw: unknown): Promise<VartLagerActionResult> {
   try {
     await requireContextRole(EDIT_ROLES);
@@ -53,7 +67,7 @@ export async function setHomeCount(raw: unknown): Promise<VartLagerActionResult>
   }
 }
 
-/** Inköp: pack som kom hem. */
+/** Inköp: pack som kom till ett lager. */
 export async function addReceipt(raw: unknown): Promise<VartLagerActionResult> {
   try {
     await requireContextRole(EDIT_ROLES);
@@ -64,4 +78,54 @@ export async function addReceipt(raw: unknown): Promise<VartLagerActionResult> {
   } catch (error) {
     return failure(error);
   }
+}
+
+async function run<T>(fn: () => Promise<T>): Promise<ActionResult<T>> {
+  try {
+    await requireContextRole(EDIT_ROLES);
+    const data = await fn();
+    revalidateAppData();
+    return { ok: true, data };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** Flytta pack mellan två egna lager. */
+export async function moveStock(raw: unknown): Promise<ActionResult<MoveResult>> {
+  return run(async () => moveStockFor(await currentViewer(), moveSchema.parse(raw)));
+}
+
+/** Ångra en flytt. */
+export async function undoMove(raw: unknown): Promise<ActionResult<MoveResult>> {
+  return run(async () => undoMoveFor(await currentViewer(), undoMoveSchema.parse(raw)));
+}
+
+/** Nytt eget lager. */
+export async function createPlace(
+  raw: unknown,
+): Promise<ActionResult<{ id: string; name: string }>> {
+  return run(async () => createPlaceFor(await currentViewer(), createPlaceSchema.parse(raw)));
+}
+
+/** Byt namn på ett eget lager. */
+export async function renamePlace(
+  raw: unknown,
+): Promise<ActionResult<{ id: string; name: string }>> {
+  return run(async () => renamePlaceFor(await currentViewer(), renamePlaceSchema.parse(raw)));
+}
+
+/** Ta bort (arkivera) ett tomt lager, eller ta tillbaka det (Ångra). */
+export async function archivePlace(
+  raw: unknown,
+): Promise<ActionResult<{ id: string; name: string; archived: boolean }>> {
+  return run(async () => archivePlaceFor(await currentViewer(), archivePlaceSchema.parse(raw)));
+}
+
+/** Automatens "Fylls på från" (null = standardlagret). Visas på automatens sida. */
+export async function setRefillSource(raw: {
+  machineId: string;
+  placeId: string | null;
+}): Promise<ActionResult<{ placeId: string | null; name: string | null }>> {
+  return run(async () => setRefillSourceFor(await currentViewer(), raw));
 }

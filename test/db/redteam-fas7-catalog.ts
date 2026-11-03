@@ -574,6 +574,43 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [sink(c, { quantity: 2 })],
   },
+  // Vårt lager: flera lager (Hemma, Kontoret …)
+  {
+    module: "@/app/(app)/vart-lager/actions",
+    name: "moveStock",
+    allowed: OP,
+    args: (c) => [sink(c, { from: c.A.centralLocationId, to: c.A.machineLocationId, quantity: 1 })],
+  },
+  {
+    module: "@/app/(app)/vart-lager/actions",
+    name: "undoMove",
+    allowed: OP,
+    args: (c) => [sink(c, { transferId: c.A.centralLocationId })],
+  },
+  {
+    module: "@/app/(app)/vart-lager/actions",
+    name: "createPlace",
+    allowed: OP,
+    args: (c) => [sink(c, { name: "Rödteamets lager" })],
+  },
+  {
+    module: "@/app/(app)/vart-lager/actions",
+    name: "renamePlace",
+    allowed: OP,
+    args: (c) => [sink(c, { id: c.A.centralLocationId, name: "Rödteam" })],
+  },
+  {
+    module: "@/app/(app)/vart-lager/actions",
+    name: "archivePlace",
+    allowed: OP,
+    args: (c) => [sink(c, { id: c.A.centralLocationId, archived: true })],
+  },
+  {
+    module: "@/app/(app)/vart-lager/actions",
+    name: "setRefillSource",
+    allowed: OP,
+    args: (c) => [{ machineId: c.A.machineId, placeId: c.A.centralLocationId }],
+  },
   // Marknad
   {
     module: "@/app/(app)/marknad/actions",

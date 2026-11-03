@@ -206,7 +206,7 @@ export function purchasePlan(input: PurchasingInput): PurchasePlan {
     const sName = item ? supplierName(item.supplierId) : "";
     const boxes = orderQty / packSize;
     const leadText = `${plural(L, "dags", "dagars")} ledtid + ${plural(R, "dag", "dagar")} till nästa beställning`;
-    const stockParts = [`centrallager ${st.warehouse}`, `automater ${st.machines}`];
+    const stockParts = [`vårt lager ${st.warehouse}`, `automater ${st.machines}`];
     if (counted > 0) stockParts.push(`beställt ${counted}`);
     const need =
       `Behov till nästa leverans ${packs(dP)} pack (${leadText}) + säkerhetslager ${packs(ss)} = ${packs(target)}; ` +
@@ -242,7 +242,7 @@ export function purchasePlan(input: PurchasingInput): PurchasePlan {
     const evidence = planEvidence({
       rule:
         "Beställningsnivå = efterfrågan under ledtid + intervall (prognos) + säkerhetslager (z × √(dagar × dagsvarians)). " +
-        "Saknas något jämfört med centrallager + automater + beställt: hela pack → minsta order → hela boxar.",
+        "Saknas något jämfört med vårt lager + automater + beställt: hela pack → minsta order → hela boxar.",
       period: { start: today, end: addDays(today, L + R - 1) },
       titleIds: [titleId],
       machineIds: st.machineIds,

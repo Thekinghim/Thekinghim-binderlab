@@ -131,7 +131,7 @@ export function inventoryValuation(input: PurchasingInput): InventoryValuation {
         text,
         evidence: planEvidence({
           rule:
-            "Lagervärde = (centrallager + automater) × inköpspriset som gäller i dag; " +
+            "Lagervärde = (vårt lager + automater) × inköpspriset som gäller i dag; " +
             "kapitalbindning = lagervärde + beställt (kvar att ta emot × radens pris).",
           period: { start: today, end: today },
           titleIds: [r.titleId],
@@ -193,7 +193,7 @@ export function inventoryValuation(input: PurchasingInput): InventoryValuation {
       supplierIds: titles.flatMap((r) => r.evidence.supplierIds ?? []),
       figures: [
         fig("valueOre", "Lagervärde", valueOre, "ore"),
-        fig("warehouseValueOre", "Varav centrallager", warehouseValueOre, "ore"),
+        fig("warehouseValueOre", "Varav vårt lager", warehouseValueOre, "ore"),
         fig("machineValueOre", "Varav automater", machineValueOre, "ore"),
         fig("onOrderValueOre", "Beställt", onOrderValueOre, "ore"),
         fig("capitalTiedOre", "Kapitalbindning", capitalTiedOre, "ore"),

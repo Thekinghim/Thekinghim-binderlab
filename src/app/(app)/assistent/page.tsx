@@ -31,7 +31,7 @@ const TOOL_ABOUT: Record<string, string> = {
   inkopsforslag: "Vad som ska beställas i dag, hur mycket och när, utifrån prognos och lager.",
   prognos: "Försäljningsprognos för de kommande fyra veckorna, med intervall.",
   salda_pack: "Sålda pack per titel, automat eller dag.",
-  lager: "Lagersaldo i automater och centrallager just nu.",
+  lager: "Lagersaldo i automater och våra lager just nu.",
   rackvidd: "Hur många dagar lagret i varje automat räcker vid nuvarande takt.",
   att_gora: "Punkterna i Att göra, mest brådskande först.",
   hitta: "Automater, butiker och titlar med namn och kod.",

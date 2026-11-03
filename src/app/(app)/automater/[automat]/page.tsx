@@ -23,6 +23,7 @@ import { RevenueChart, SalesHeatmap, TitleBars } from "../_components/charts";
 import { PlacementsTable, RecentOrdersTable, StockTable } from "../_components/detail-tables";
 import { MachineKpis } from "../_components/kpis";
 import { MachineActions } from "../_components/machine-dialogs";
+import { RefillSourcePicker } from "../_components/refill-source";
 import { Sub } from "../_components/sub";
 import { UnpricedNote } from "../_components/unpriced-note";
 import { pickTab, ViewTabs } from "../_components/view-tabs";
@@ -33,6 +34,9 @@ import {
   type MachineDetailData,
 } from "../_lib/data";
 import { dayText, hourRange, sentence, unitEconomicsKpis } from "../_lib/model";
+import { currentViewer } from "../_lib/session";
+import { withUserDbFor } from "@/server/access";
+import { queryRefillSources } from "@/server/data/core/places";
 
 const TABS = [
   { value: "forsaljning", label: "Försäljning" },
@@ -332,6 +336,25 @@ function capitalize(s: string): string {
   return s ? s[0]!.toUpperCase() + s.slice(1) : s;
 }
 
+/** Automatens "Fylls på från" (våra egna lager). */
+async function RefillFrom({ data }: { data: MachineDetailData }) {
+  const viewer = await currentViewer();
+  const sources = await withUserDbFor(viewer.user, (tx) =>
+    queryRefillSources(tx, viewer.organization.id),
+  );
+  if (sources.places.length === 0) return null;
+  return (
+    <RefillSourcePicker
+      machineId={data.machine.id}
+      machineLabel={data.machine.code}
+      places={sources.places.map((p) => ({ id: p.id, name: p.name }))}
+      current={sources.machineSource[data.machine.id] ?? null}
+      defaultPlaceId={sources.defaultPlaceId}
+      canEdit={data.ctx.role === "owner" || data.ctx.role === "admin"}
+    />
+  );
+}
+
 function StockSection({ data }: { data: MachineDetailData }) {
   const lines = data.stock;
   const now = lines.filter((l) => l.level === "now");
@@ -365,6 +388,7 @@ function StockSection({ data }: { data: MachineDetailData }) {
           `${formatInt(packs)}${NBSP}pack i automaten${restocked ? `, senast påfylld ${restocked}` : ""}`,
         )}
       />
+      <RefillFrom data={data} />
       {lines.length > 0 ? (
         <StockTable lines={lines} timeZone={tz} now={data.ctx.now} />
       ) : (

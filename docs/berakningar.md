@@ -382,6 +382,30 @@ appen, räknas som en.
 läsning 11 (fyra sålda): inget. Påfyllaren registrerar +5 i appen (hemma 23, automaten 16), Awish visar 16:
 inget uttag.
 
+### Flera egna lager (Hemma, Kontoret …)
+
+Vårt lager kan bestå av flera egna lager (`stock_locations` med `kind = 'warehouse'`). Migreringen
+`20261104210000_flera_lager.sql`. Ägare och admin skapar, byter namn på och tar bort lager i Vårt lager
+("+ Nytt lager", "Ändra"). Det första lagret heter Hemma (ett ensamt lager med ett allmänt namn som
+"Centrallager" döptes om; historiken är orörd). `is_central` är **standardlagret**: det som används när inget
+annat är valt (inleverans från en beställning, påfyllning utan val, automat utan eget val).
+
+| Tal / regel           | Formel                                                                                                |
+| --------------------- | ----------------------------------------------------------------------------------------------------- |
+| Vårt lager (överallt) | Σ över alla egna lager per titel (Prognos & inköp, besöksplanen, Att göra, dagar kvar, AI, värdet)    |
+| Antal i ett lager     | lagrets saldo; att skriva antalet = en inventering i det valda lagret ("Alla": sidan frågar vilket)   |
+| Flytta                | `transfer_out` (−n) i det ena och `transfer_in` (+n) i det andra, samma `transfer_group_id`; summan   |
+|                       | oförändrad. Aldrig fler än det finns i lagret man flyttar från. Ångra = samma antal tillbaka, en gång |
+| Ta bort ett lager     | bara när alla titlar har 0 pack där; det sista lagret kan inte tas bort; Ångra tar tillbaka det       |
+| Fylls på från         | automatens lager (`stock_locations.refill_source_id`), annars standardlagret                          |
+
+**Påfyllning.** I Fyll på och Påfyllning väljs lagret med "Från: Hemma ▾" (standard: automatens "Fylls på
+från", annars det användaren valde sist, annars standardlagret). `register_refill` drar ur det valda lagret
+(`p_from_location`), annars automatens lager. **Awish** drar en påfyllning ur automatens "Fylls på från".
+Registreras samma påfyllning sedan i appen från ett annat lager läggs Awish-uttaget tillbaka i det lager det
+drogs ur och hela antalet dras ur det valda: packen dras aldrig två gånger. Alla uttag ur egna lager för en
+titel tar samma lås (`private.lock_own_stock`).
+
 ## 9. Enhetsekonomi per automat
 
 | Post                    | Formel                                                                                                          |

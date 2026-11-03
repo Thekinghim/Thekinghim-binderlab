@@ -287,7 +287,7 @@ export function RegisterDialog({
                 ? "Saldot stämde med systemet."
                 : `Systemet visade ${packs(result.previous)}, ${signed(result.onHand - result.previous)}.`}
             {result.warehouseOnHand !== null
-              ? ` Vårt lager har nu ${packs(result.warehouseOnHand)}.`
+              ? ` ${result.placeName ?? "Vårt lager"} har nu ${packs(result.warehouseOnHand)}.`
               : ""}
           </p>
         </div>

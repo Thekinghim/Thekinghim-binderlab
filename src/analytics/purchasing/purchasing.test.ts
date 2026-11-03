@@ -221,7 +221,7 @@ describe("purchasePlan", () => {
     expect(plain(a.text)).toBe(
       "Beställ 24 pack Pokémon 151 (2 boxar à 12) från Leverantör 1 för 720 kr. " +
         "Behov till nästa leverans 28 pack (7 dagars ledtid + 7 dagar till nästa beställning) + säkerhetslager 0 = 28; " +
-        "lager 12 (centrallager 5, automater 3, beställt 4). Saknas 16, avrundat till 24 (12 per box). " +
+        "lager 12 (vårt lager 5, automater 3, beställt 4). Saknas 16, avrundat till 24 (12 per box). " +
         "Lagret väntas ta slut 8 nov., före leveransen 9 nov. 10 beställda pack kommer senare och räknas inte.",
     );
     expect(a.evidence.machineIds).toEqual(["m-1", "m-2"]);

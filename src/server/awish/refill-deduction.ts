@@ -1,5 +1,6 @@
 /**
- * Påfyllning enligt Awish → uttag ur vårt lager (centrallagret). Ren funktion.
+ * Påfyllning enligt Awish → uttag ur vårt lager (automatens "Fylls på från", annars
+ * standardlagret). Ren funktion.
  *
  * Awish visar hur många pack som finns i automaten. Har en automat som redan har lästs
  * fler pack av en titel än saldot i Binderlab är ökningen en påfyllning, och packen kom

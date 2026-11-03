@@ -5,7 +5,8 @@
  *
  * Rollen kontrolleras mot databasen (ägare, admin, påfyllare) och allt skrivs som
  * användaren med RLS. Påfyllningen går genom public.register_refill, som drar samma antal
- * ur centrallagret i samma transaktion. Inventeringen är en 'count'-händelse.
+ * ur valt eget lager (annars automatens "Fylls på från", annars standardlagret) i samma
+ * transaktion. Inventeringen är en 'count'-händelse.
  * Händelserna loggas i audit_log av triggarna på stock_events.
  */
 
@@ -35,14 +36,20 @@ export interface RegisterResult {
   readonly previous: number;
   /** Nytt saldo på platsen. */
   readonly onHand: number;
-  /** Centrallagrets nya saldo för titeln (påfyllning från centrallagret), annars null. */
+  /** Lagrets nya saldo för titeln (påfyllning från vårt lager, inköp), annars null. */
   readonly warehouseOnHand: number | null;
+  /** Lagret som ändrades (påfyllning från vårt lager, inköp, inventering i ett lager). */
+  readonly placeName?: string | null;
 }
 
-async function locationId(
+/**
+ * Lagerplatsen: automatens, ett givet eget lager eller standardlagret (central). Ett
+ * arkiverat lager räknas inte.
+ */
+export async function locationId(
   tx: Tx,
   orgId: string,
-  where: { machineId: string } | { central: true },
+  where: { machineId: string } | { central: true } | { warehouseId: string },
 ): Promise<string | null> {
   const rows = await tx
     .select({ id: s.stockLocations.id })
@@ -53,11 +60,52 @@ async function locationId(
         isNull(s.stockLocations.archivedAt),
         "machineId" in where
           ? eq(s.stockLocations.machineId, where.machineId)
-          : eq(s.stockLocations.isCentral, true),
+          : "warehouseId" in where
+            ? and(
+                eq(s.stockLocations.id, where.warehouseId),
+                eq(s.stockLocations.kind, "warehouse"),
+              )
+            : eq(s.stockLocations.isCentral, true),
       ),
     )
     .limit(1);
   return rows[0]?.id ?? null;
+}
+
+/** Lagrets namn (för bekräftelsen "12 pack kvar i Kontoret"). */
+export async function locationName(tx: Tx, orgId: string, id: string): Promise<string | null> {
+  const rows = await tx
+    .select({ name: s.stockLocations.name })
+    .from(s.stockLocations)
+    .where(and(eq(s.stockLocations.organizationId, orgId), eq(s.stockLocations.id, id)))
+    .limit(1);
+  return rows[0]?.name ?? null;
+}
+
+/**
+ * Lagret som en påfyllning i automaten dras ur när inget är valt: automatens "Fylls på
+ * från" om det är ett aktivt eget lager, annars standardlagret (samma regel som
+ * private.refill_source_for i databasen).
+ */
+export async function refillSourceFor(
+  tx: Tx,
+  orgId: string,
+  machineId: string,
+): Promise<string | null> {
+  const result = await tx.execute(sql`
+    select coalesce(
+      (select w.id from public.stock_locations m
+       join public.stock_locations w
+         on w.organization_id = m.organization_id and w.id = m.refill_source_id
+       where m.organization_id = ${orgId}::uuid and m.machine_id = ${machineId}::uuid
+         and w.kind = 'warehouse' and w.archived_at is null
+       limit 1),
+      (select c.id from public.stock_locations c
+       where c.organization_id = ${orgId}::uuid and c.is_central and c.archived_at is null
+       limit 1)
+    )::text as id`);
+  const row = Array.from(result)[0] as { id: string | null } | undefined;
+  return row?.id ?? null;
 }
 
 async function level(tx: Tx, orgId: string, location: string, titleId: string): Promise<number> {
@@ -113,7 +161,8 @@ export async function registerRefillFor(
         sql`select public.register_refill(
               ${orgId}::uuid, ${input.machineId}::uuid, ${input.titleId}::uuid,
               ${input.quantity}::integer, ${input.fromWarehouse}::boolean, null,
-              ${input.note && input.note !== "" ? input.note : null}::text)`,
+              ${input.note && input.note !== "" ? input.note : null}::text,
+              ${input.fromLocationId ?? null}::uuid)`,
       );
     } catch (error) {
       rethrowKnown(error);
@@ -121,11 +170,16 @@ export async function registerRefillFor(
     const location =
       machineLocation ?? (await locationId(tx, orgId, { machineId: input.machineId }));
     if (!location) throw new LagerError("Automaten saknar lagerplats.");
-    const central = input.fromWarehouse ? await locationId(tx, orgId, { central: true }) : null;
+    const source = !input.fromWarehouse
+      ? null
+      : input.fromLocationId
+        ? input.fromLocationId
+        : await refillSourceFor(tx, orgId, input.machineId);
     return {
       previous,
       onHand: await level(tx, orgId, location, input.titleId),
-      warehouseOnHand: central ? await level(tx, orgId, central, input.titleId) : null,
+      warehouseOnHand: source ? await level(tx, orgId, source, input.titleId) : null,
+      placeName: source ? await locationName(tx, orgId, source) : null,
     };
   });
 }
@@ -139,13 +193,19 @@ export async function registerCountFor(viewer: Viewer, input: CountInput): Promi
     const location = await locationId(
       tx,
       orgId,
-      input.location === "machine" ? { machineId: input.machineId } : { central: true },
+      input.location === "machine"
+        ? { machineId: input.machineId }
+        : input.warehouseId
+          ? { warehouseId: input.warehouseId }
+          : { central: true },
     );
     if (!location) {
       throw new LagerError(
         input.location === "machine"
           ? "Automaten saknar lagerplats."
-          : "Organisationen har inget eget lager.",
+          : input.warehouseId
+            ? "Lagret finns inte."
+            : "Organisationen har inget eget lager.",
       );
     }
     const previous = await level(tx, orgId, location, input.titleId);
@@ -162,6 +222,7 @@ export async function registerCountFor(viewer: Viewer, input: CountInput): Promi
       previous,
       onHand: await level(tx, orgId, location, input.titleId),
       warehouseOnHand: null,
+      placeName: input.location === "warehouse" ? await locationName(tx, orgId, location) : null,
     };
   });
 }

@@ -20,48 +20,70 @@ import {
   type Viewer,
 } from "@/server/data/core/loaders";
 import { queryPrices } from "@/server/data/core/queries";
+import { sumOwnStock } from "@/server/data/core/own-stock";
 import { ECONOMY_ROLES } from "@/server/data/core/types";
 
 import { loadOurStockFor } from "../../lager/_lib/data";
 import { buildVartLagerModel, type VartLagerModel, type WarehouseEvent } from "./model";
 
-/** Roller som får skriva antal hemma och inköp (RLS: 'receipt' är ägare och admin). */
+/** Roller som får skriva antal, inköp, flytt och ändra lagren (RLS: ägare och admin). */
 export const EDIT_ROLES = ["owner", "admin"] as const;
 
-/** Senaste händelsen (inte försäljning) per titel i centrallagret. */
-async function queryLatest(tx: Tx, orgId: string): Promise<Map<string, WarehouseEvent>> {
+/**
+ * Senaste händelsen (inte försäljning) per titel och eget lager (aktiva lager), nyast
+ * först per titel. Vid en flytt följer det andra lagrets namn med.
+ */
+async function queryLatest(tx: Tx, orgId: string): Promise<Map<string, WarehouseEvent[]>> {
   const result = await tx.execute(sql`
-    select distinct on (e.title_id)
-      e.title_id::text as title_id, e.kind::text as kind, e.quantity, e.occurred_at,
-      e.note, e.source
-    from public.stock_events e
-    join public.stock_locations l
-      on l.organization_id = e.organization_id and l.id = e.location_id
-    where e.organization_id = ${orgId}::uuid and l.is_central and e.kind <> 'sale'
-    order by e.title_id, e.occurred_at desc, e.seq desc`);
-  const map = new Map<string, WarehouseEvent>();
+    select * from (
+      select distinct on (e.location_id, e.title_id)
+        e.title_id::text as title_id, e.location_id::text as location_id, e.kind::text as kind,
+        e.quantity, e.occurred_at, e.seq, e.note, e.source,
+        (select o.name from public.stock_events t
+         join public.stock_locations o on o.organization_id = t.organization_id and o.id = t.location_id
+         where t.organization_id = e.organization_id
+           and t.transfer_group_id = e.transfer_group_id
+           and t.location_id <> e.location_id
+         limit 1) as counterpart
+      from public.stock_events e
+      join public.stock_locations l
+        on l.organization_id = e.organization_id and l.id = e.location_id
+      where e.organization_id = ${orgId}::uuid and l.kind = 'warehouse'
+        and l.archived_at is null and e.kind <> 'sale'
+      order by e.location_id, e.title_id, e.occurred_at desc, e.seq desc
+    ) x
+    order by x.title_id, x.occurred_at desc, x.seq desc`);
+  const map = new Map<string, WarehouseEvent[]>();
   for (const r of Array.from(result) as {
     title_id: string;
+    location_id: string;
     kind: string;
     quantity: number;
     occurred_at: Date | string;
     note: string | null;
     source: string | null;
+    counterpart: string | null;
   }[]) {
-    map.set(r.title_id, {
+    const list = map.get(r.title_id) ?? [];
+    list.push({
       titleId: r.title_id,
+      locationId: r.location_id,
+      counterpart: r.counterpart,
       kind: r.kind,
       quantity: Number(r.quantity),
       occurredAt: new Date(r.occurred_at).toISOString(),
       note: r.note,
       source: r.source,
     });
+    map.set(r.title_id, list);
   }
   return map;
 }
 
 export interface VartLagerView extends VartLagerModel {
   readonly hasWarehouse: boolean;
+  /** Ägare och admin: får skapa ett lager (även när inget finns än). */
+  readonly canAddPlace: boolean;
 }
 
 export async function loadVartLagerFor(
@@ -82,11 +104,11 @@ export async function loadVartLagerFor(
     withUserDbFor(viewer.user, (tx) => queryLatest(tx, orgId)),
   ]);
 
-  const home = new Map<string, number>();
+  // Vårt lager: summan av alla egna lager per titel.
+  const home = new Map(sumOwnStock(stock.rows).map((r) => [r.titleId, r.onHand]));
   const inMachines = new Map<string, number>();
   for (const r of stock.rows) {
-    if (r.isCentral) home.set(r.titleId, r.onHand);
-    else if (r.locationKind === "machine" && (r.lastCountedAt || r.lastRestockedAt)) {
+    if (r.locationKind === "machine" && (r.lastCountedAt || r.lastRestockedAt)) {
       inMachines.set(r.titleId, (inMachines.get(r.titleId) ?? 0) + Math.max(0, r.onHand));
     }
   }
@@ -103,6 +125,8 @@ export async function loadVartLagerFor(
       .map((t) => ({ id: t.id, name: t.name })),
     warehouse: our.rows,
     home,
+    places: our.places,
+    byPlace: our.byPlace,
     inMachines,
     sold7,
     prices,
@@ -114,5 +138,9 @@ export async function loadVartLagerFor(
     })),
     canEdit: (EDIT_ROLES as readonly string[]).includes(role) && our.hasWarehouse,
   });
-  return { ...model, hasWarehouse: our.hasWarehouse };
+  return {
+    ...model,
+    hasWarehouse: our.hasWarehouse,
+    canAddPlace: (EDIT_ROLES as readonly string[]).includes(role),
+  };
 }

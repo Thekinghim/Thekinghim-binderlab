@@ -512,7 +512,7 @@ export async function loadStockFor(viewer: Viewer): Promise<StockSnapshot> {
         onHand: r.onHand,
         lastRestockedAt: r.lastRestockedAt,
       })),
-    warehouse: rows.filter((r) => r.isCentral),
+    warehouse: rows.filter((r) => r.locationKind === "warehouse"),
   };
 }
 

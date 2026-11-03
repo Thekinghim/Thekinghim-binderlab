@@ -197,6 +197,8 @@ describe("doneMessage", () => {
   it("antal påfyllda och kvar hemma", () => {
     expect(doneMessage(24, 61)).toBe("24 pack påfyllda, 61 kvar hemma");
     expect(doneMessage(3, -2)).toBe("3 pack påfyllda, 0 kvar hemma");
+    expect(doneMessage(5, 7, "Kontoret")).toBe("5 pack påfyllda, 7 kvar i Kontoret");
+    expect(doneMessage(5, 7, "Hemma")).toBe("5 pack påfyllda, 7 kvar hemma");
   });
 });
 
@@ -216,13 +218,19 @@ describe("applyAdjustments", () => {
       }),
     );
 
+  const H = () => "H";
+
   it("påfyllning från vårt lager: automaten upp, hemma ner, ny ordning", () => {
     const machines = base();
     expect(machines.map((m) => m.id)).toEqual(["A", "B"]);
-    const next = applyAdjustments(machines, { [T1]: 20 }, [
-      { machineId: "A", titleId: T1, quantity: 12, fromWarehouse: true },
-    ]);
-    expect(next.home[T1]).toBe(8);
+    const next = applyAdjustments(
+      machines,
+      { H: { [T1]: 20 } },
+      [{ machineId: "A", titleId: T1, quantity: 12, fromWarehouse: true }],
+      new Map(),
+      H,
+    );
+    expect(next.stock.H![T1]).toBe(8);
     expect(next.machines.map((m) => m.id)).toEqual(["B", "A"]);
     const a = next.machines.find((m) => m.id === "A")!;
     expect(a).toMatchObject({ fillPct: 100, emptySlots: 0, suggested: 0 });
@@ -232,18 +240,53 @@ describe("applyAdjustments", () => {
   });
 
   it("utan uttag: hemma oförändrat", () => {
-    const next = applyAdjustments(base(), { [T1]: 20 }, [
-      { machineId: "B", titleId: T1, quantity: 2, fromWarehouse: false },
-    ]);
-    expect(next.home[T1]).toBe(20);
+    const next = applyAdjustments(
+      base(),
+      { H: { [T1]: 20 } },
+      [{ machineId: "B", titleId: T1, quantity: 2, fromWarehouse: false }],
+      new Map(),
+      H,
+    );
+    expect(next.stock.H![T1]).toBe(20);
     expect(next.machines.find((m) => m.id === "B")!.rows[0]).toMatchObject({ now: 8 });
   });
 
   it("Räkna om ersätter saldot i automaten", () => {
-    const next = applyAdjustments(base(), { [T1]: 20 }, [], new Map([[pairKey("B", T1), 2]]));
+    const next = applyAdjustments(
+      base(),
+      { H: { [T1]: 20 } },
+      [],
+      new Map([[pairKey("B", T1), 2]]),
+      H,
+    );
     expect(next.machines.find((m) => m.id === "B")!.rows[0]).toMatchObject({
       now: 2,
       suggested: 10,
     });
+  });
+
+  it("flera lager: raderna visar lagret automaten fylls från, uttaget dras där", () => {
+    const stock = { H: { [T1]: 20 }, K: { [T1]: 3 } };
+    const sourceOf = (id: string) => (id === "A" ? "K" : "H");
+    const next = applyAdjustments(
+      base(),
+      stock,
+      [
+        { machineId: "A", titleId: T1, quantity: 2, fromWarehouse: true },
+        { machineId: "B", titleId: T1, quantity: 5, fromWarehouse: true, fromLocationId: "K" },
+      ],
+      new Map(),
+      sourceOf,
+    );
+    // A (Kontoret) −2 och B:s uttag ur Kontoret −5: Kontoret −4, Hemma orört.
+    expect(next.stock).toEqual({ H: { [T1]: 20 }, K: { [T1]: -4 } });
+    expect(next.machines.find((m) => m.id === "A")!.rows[0]).toMatchObject({
+      now: 2,
+      home: -4,
+      suggested: 0,
+    });
+    expect(next.machines.find((m) => m.id === "B")!.rows[0]).toMatchObject({ now: 11, home: 20 });
+    // Indata ändras inte.
+    expect(stock.K[T1]).toBe(3);
   });
 });

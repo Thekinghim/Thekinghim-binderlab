@@ -69,7 +69,8 @@ export const PAGE_INFO: Partial<Record<RouteId, PageInfo>> = {
   },
   "vart-lager": {
     name: "Vårt lager",
-    about: "pack i centrallagret hemma per titel, räckvidd och veckans behov",
+    about:
+      "pack i våra egna lager (Hemma, Kontoret …) per titel och lager, räckvidd och veckans behov",
     chips: ["Hur länge räcker vårt lager?", "Vad ska jag beställa?"],
   },
   automater: {

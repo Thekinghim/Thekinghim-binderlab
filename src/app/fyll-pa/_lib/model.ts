@@ -6,7 +6,9 @@
  *   påfyllningar som registrerats sedan dess). Ett negativt saldo visas som 0.
  * - Kapacitet: summan av fackens kapacitet enligt senaste Awish-läsningen
  *   (stock_locations.awish_fill). Okänd utan Awish: då föreslås inget.
- * - Förslag: kapacitet − nu, men aldrig fler än packen hemma (vårt lager) och aldrig under 0.
+ * - Förslag: kapacitet − nu, men aldrig fler än packen i lagret man fyller från (Hemma,
+ *   Kontoret …: automatens "Fylls på från", annars senast valda, annars standardlagret) och
+ *   aldrig under 0.
  * - Tomma fack: fack med 0 pack enligt Awish. Har titeln fyllts på sedan läsningen (saldot
  *   är högre än Awish antal) räknas dess fack som fyllda.
  * - Fyllnadsgrad: pack nu / kapacitet över titlarna med känd kapacitet.
@@ -14,6 +16,7 @@
  *   sist de utan Awish-data; lika ordnas efter kod.
  */
 
+import { inPlace } from "@/components/stock/place-text";
 import { formatInt, NBSP } from "@/lib/format";
 
 export interface AwishFillEntry {
@@ -198,9 +201,9 @@ export function machineOrder(
   return a.code.localeCompare(b.code, "sv", { numeric: true });
 }
 
-/** Påfyllningen som den visas efter Klar: "24 pack påfyllda, 61 kvar hemma". */
-export function doneMessage(packs: number, homeLeft: number): string {
-  return `${formatInt(packs)}${NBSP}pack påfyllda, ${formatInt(Math.max(0, homeLeft))} kvar hemma`;
+/** Påfyllningen som den visas efter Klar: "24 pack påfyllda, 61 kvar hemma" / "… kvar i Kontoret". */
+export function doneMessage(packs: number, homeLeft: number, place = "hemma"): string {
+  return `${formatInt(packs)}${NBSP}pack påfyllda, ${formatInt(Math.max(0, homeLeft))} kvar ${inPlace(place)}`;
 }
 
 /** En påfyllning som ännu inte syns i serverns siffror (i kön eller nyss sparad). */
@@ -209,36 +212,47 @@ export interface FillAdjustment {
   readonly titleId: string;
   readonly quantity: number;
   readonly fromWarehouse: boolean;
+  /** Lagret packen togs från (utelämnat = automatens lager enligt `sourceOf`). */
+  readonly fromLocationId?: string | null;
 }
+
+/** Saldot per eget lager: platsens id → titelns id → pack. */
+export type PlaceStock = Readonly<Record<string, Readonly<Record<string, number>>>>;
 
 /**
  * Serverns siffror plus påfyllningar som ännu inte syns där (kön utan nät, eller nyss
  * sparade innan sidan laddats om) och omräkningar ("Räkna om", saldot i automaten).
+ * `sourceOf` ger lagret varje automat fylls från just nu; raderna visar det lagrets saldo.
  * Förslag, fyllnadsgrad, tomma fack och ordning räknas om.
  */
 export function applyAdjustments(
   machines: readonly FillMachine[],
-  home: Readonly<Record<string, number>>,
+  stock: PlaceStock,
   adjustments: readonly FillAdjustment[],
   counts: ReadonlyMap<string, number> = new Map(),
-): { machines: FillMachine[]; home: Record<string, number> } {
-  if (adjustments.length === 0 && counts.size === 0) {
-    return { machines: [...machines], home: { ...home } };
-  }
-  const nextHome: Record<string, number> = { ...home };
+  sourceOf: (machineId: string) => string | null = () => null,
+): { machines: FillMachine[]; stock: Record<string, Record<string, number>> } {
+  const nextStock: Record<string, Record<string, number>> = Object.fromEntries(
+    Object.entries(stock).map(([k, v]) => [k, { ...v }]),
+  );
   const added = new Map<string, number>();
   for (const a of adjustments) {
     const k = pairKey(a.machineId, a.titleId);
     added.set(k, (added.get(k) ?? 0) + a.quantity);
-    if (a.fromWarehouse) nextHome[a.titleId] = (nextHome[a.titleId] ?? 0) - a.quantity;
+    const place = a.fromLocationId ?? sourceOf(a.machineId);
+    if (a.fromWarehouse && place) {
+      const at = (nextStock[place] ??= {});
+      at[a.titleId] = (at[a.titleId] ?? 0) - a.quantity;
+    }
   }
   const out = machines.map((m): FillMachine => {
     let changed = false;
+    const source = sourceOf(m.id);
     const rows = m.rows.map((r): FillRow => {
       const k = pairKey(m.id, r.titleId);
       const counted = counts.get(k);
       const plus = added.get(k) ?? 0;
-      const homeNow = nextHome[r.titleId] ?? r.home;
+      const homeNow = source ? (nextStock[source]?.[r.titleId] ?? 0) : r.home;
       if (counted === undefined && plus === 0 && homeNow === r.home) return r;
       changed = true;
       const now = Math.max(0, counted ?? r.now + plus);
@@ -270,5 +284,5 @@ export function applyAdjustments(
       suggested: rows.reduce((n, r) => n + r.suggested, 0),
     };
   });
-  return { machines: out.sort(machineOrder), home: nextHome };
+  return { machines: out.sort(machineOrder), stock: nextStock };
 }

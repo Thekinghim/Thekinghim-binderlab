@@ -109,6 +109,8 @@ export const fieldSubmissions = pgTable("field_submissions", {
   stockEventId: uuid("stock_event_id").notNull(),
   submittedBy: uuid("submitted_by"),
   receivedAt: ts("received_at").notNull().defaultNow(),
+  /** Lagret packen togs från (null = automatens "Fylls på från" eller standardlagret). */
+  fromLocationId: uuid("from_location_id"),
   ...stamps(),
 });
 

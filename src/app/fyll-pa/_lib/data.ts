@@ -1,6 +1,6 @@
 /**
- * Laddaren för Fyll på: automaterna, saldot i dem, packen hemma (vårt lager) och senaste
- * Awish-läsningen. Som användaren med RLS efter rollkontroll mot databasen (ägare, admin,
+ * Laddaren för Fyll på: automaterna, saldot i dem, packen i våra egna lager (Hemma,
+ * Kontoret …, och automaternas "Fylls på från") och senaste Awish-läsningen. Som användaren med RLS efter rollkontroll mot databasen (ägare, admin,
  * påfyllare). Bara antal, aldrig belopp. Testbar utan Next (test/db/fyll-pa.test.ts).
  */
 
@@ -13,14 +13,16 @@ import * as s from "@/db/schema";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
 import { querySlotPeriods } from "@/server/data/assortment";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
+import { queryRefillSources, type RefillSources } from "@/server/data/core/places";
 import { FIELD_REFILL_ROLES } from "@/server/data/field-refills";
 
 import { fillMachines, pairKey, type AwishFillEntry, type FillMachine } from "./model";
 
 export interface FillData {
+  /** Automaterna; radernas `home` är standardlagrets saldo (webbläsaren räknar om för valt lager). */
   readonly machines: FillMachine[];
-  /** Pack hemma per titel (vårt lager), för att räkna "kvar hemma" i webbläsaren. */
-  readonly home: Record<string, number>;
+  /** Lagren, saldot per lager och automaternas "Fylls på från". */
+  readonly sources: RefillSources;
   readonly hasWarehouse: boolean;
 }
 
@@ -48,7 +50,7 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
   const orgId = viewer.organization.id;
   const today = businessToday(now, viewer.organization.timezone);
   return withUserDbFor(viewer.user, async (tx) => {
-    const [machines, placements, locations, levels, titles, periods] = await Promise.all([
+    const [machines, placements, locations, levels, titles, periods, sources] = await Promise.all([
       tx
         .select({ id: s.machines.id, code: s.machines.code, name: s.machines.name })
         .from(s.machines)
@@ -74,7 +76,6 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
         .select({
           id: s.stockLocations.id,
           machineId: s.stockLocations.machineId,
-          isCentral: s.stockLocations.isCentral,
           syncedAt: s.stockLocations.awishSyncedAt,
           fill: s.stockLocations.awishFill,
         })
@@ -101,10 +102,10 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
           ),
         ),
       querySlotPeriods(tx, orgId),
+      queryRefillSources(tx, orgId),
     ]);
 
     const storeOf = new Map(placements.map((p) => [p.machineId, p.storeName]));
-    const central = locations.find((l) => l.isCentral) ?? null;
     const byLocation = new Map(
       locations.filter((l) => l.machineId !== null).map((l) => [l.id, l.machineId as string]),
     );
@@ -112,12 +113,11 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
       locations.filter((l) => l.machineId !== null).map((l) => [l.machineId as string, l]),
     );
     const machineStock = new Map<string, number>();
-    const home = new Map<string, number>();
+    // Raderna räknas mot standardlagret; webbläsaren byter till automatens valda lager.
+    const home = new Map(
+      Object.entries(sources.defaultPlaceId ? (sources.stock[sources.defaultPlaceId] ?? {}) : {}),
+    );
     for (const l of levels) {
-      if (central && l.locationId === central.id) {
-        home.set(l.titleId, Number(l.quantity));
-        continue;
-      }
       const machineId = byLocation.get(l.locationId);
       if (machineId) machineStock.set(pairKey(machineId, l.titleId), Number(l.quantity));
     }
@@ -146,6 +146,6 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
       current,
       retired: retiredPairs(periods, today),
     });
-    return { machines: list, home: Object.fromEntries(home), hasWarehouse: central !== null };
+    return { machines: list, sources, hasWarehouse: sources.places.length > 0 };
   });
 }

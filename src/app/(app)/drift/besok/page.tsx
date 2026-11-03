@@ -53,7 +53,7 @@ export default async function VisitPlanPage() {
         <StateMessage
           kind="not-configured"
           compact
-          message="Centrallagret har inget saldo, så packlistan räknar med att allt finns."
+          message="Vårt lager har inget saldo, så packlistan räknar med att allt finns."
           action={{ label: "Öppna Lager", href: "/lager" }}
         />
       ) : null}
@@ -169,7 +169,7 @@ export default async function VisitPlanPage() {
                                         />
                                       ) : null}
                                       {p.shortBy > 0 ? (
-                                        <span className="block text-xs text-muted">{`${formatInt(p.shortBy)} pack saknas i centrallagret`}</span>
+                                        <span className="block text-xs text-muted">{`${formatInt(p.shortBy)} pack saknas i vårt lager`}</span>
                                       ) : null}
                                     </td>
                                     <td className="tnum py-2 text-right text-fg">

@@ -4,7 +4,8 @@
  * src/app/(app)/drift/actions.ts är ett tunt omslag kring den här.
  *
  * Varje påfyllning sparas i en egen transaktion via register_refill_once: samma klient-id
- * igen ger "duplicate" och inget nytt. Ett avvisat inskick (t.ex. för lite i vårt lager)
+ * igen ger "duplicate" och inget nytt. Packen dras ur valt lager (fromLocationId), annars
+ * automatens "Fylls på från", annars standardlagret. Ett avvisat inskick (t.ex. för lite i vårt lager)
  * kommer tillbaka med ett svenskt felmeddelande. Rollen kontrolleras mot databasen här och
  * i funktionen (ägare, admin, påfyllare); allt skrivs som användaren med RLS.
  */
@@ -28,6 +29,8 @@ const refillItem = z.object({
   titleId: uuid,
   quantity: z.number().int().min(1).max(10000),
   fromWarehouse: z.boolean(),
+  /** Lagret packen togs från. Utelämnat = automatens "Fylls på från", annars standardlagret. */
+  fromLocationId: uuid.optional(),
   occurredAt: z.string().datetime({ offset: true }),
   note: z.string().max(500).optional(),
 });
@@ -76,7 +79,7 @@ export async function syncRefillsFor(
         tx.execute(sql`select stock_event_id, duplicate from public.register_refill_once(
           ${orgId}::uuid, ${it.clientId}::uuid, ${it.machineId}::uuid, ${it.titleId}::uuid,
           ${it.quantity}::integer, ${it.fromWarehouse}::boolean, ${it.occurredAt}::timestamptz,
-          ${it.note ?? null}::text)`),
+          ${it.note ?? null}::text, ${it.fromWarehouse ? (it.fromLocationId ?? null) : null}::uuid)`),
       );
       const row = Array.from(rows)[0] as { duplicate?: boolean } | undefined;
       results.push({ clientId: it.clientId, status: row?.duplicate ? "duplicate" : "saved" });

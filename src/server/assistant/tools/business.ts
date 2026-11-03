@@ -58,6 +58,7 @@ import {
   type ResolvedScope,
   type ToolContext,
 } from "./common";
+import { ownStockTotals } from "@/server/data/core/own-stock";
 
 function scopeIds(scope: ResolvedScope) {
   return { machineId: scope.machine?.id ?? null, storeId: scope.store?.id ?? null };
@@ -723,7 +724,7 @@ export const ourStockTool = defineTool({
   title: "Vårt lager",
   label: () => "Vårt lager",
   description:
-    "Vårt lager (centrallagret hemma) per titel: pack i lager, alla automaters takt per dag, hur många dagar lagret räcker, vad veckans besök behöver och hur mycket som saknas, och senaste inventering. Kortast räckvidd först. Använd för 'hur länge räcker vårt lager', 'vad saknas hemma inför veckans påfyllning'.",
+    "Vårt lager (summan av våra egna lager, t.ex. Hemma och Kontoret) per titel: pack i lager totalt och per lager, alla automaters takt per dag, hur många dagar lagret räcker, vad veckans besök behöver och hur mycket som saknas, och senaste inventering. Kortast räckvidd först. Använd för 'hur länge räcker vårt lager', 'vad saknas hemma inför veckans påfyllning', 'hur många har vi på kontoret'.",
   roles: ALL_ROLES,
   input: ourStockInput,
   async run(ctx: ToolContext, input) {
@@ -733,8 +734,8 @@ export const ourStockTool = defineTool({
     const view = await loadOurStockFor(ctx.viewer, ctx.now);
     if (!view.hasWarehouse) {
       return {
-        summary: "Organisationen har inget centrallager (Vårt lager) registrerat.",
-        data: { harCentrallager: false },
+        summary: "Organisationen har inget eget lager (Vårt lager) registrerat.",
+        data: { harLager: false },
         figures: [],
         links: [{ label: "Vårt lager", href: "/vart-lager" }],
       };
@@ -746,9 +747,17 @@ export const ourStockTool = defineTool({
           (a.daysLeft ?? Number.POSITIVE_INFINITY) - (b.daysLeft ?? Number.POSITIVE_INFINITY) ||
           a.onHand - b.onHand,
       );
+    const multi = view.places.length > 1;
     const shown = rows.slice(0, input.antal ?? 30).map((r) => ({
       titel: names.title.get(r.titleId) ?? r.titleId,
       iLager: r.onHand,
+      ...(multi
+        ? {
+            perLager: Object.fromEntries(
+              view.places.map((p) => [p.name, view.byPlace[p.id]?.[r.titleId] ?? 0]),
+            ),
+          }
+        : {}),
       taktPerDagTiondelar: r.perDayTenths,
       dagarKvar: r.daysLeft,
       veckansBehov: r.weekNeed,
@@ -758,11 +767,16 @@ export const ourStockTool = defineTool({
     const total = rows.reduce((n, r) => n + r.onHand, 0);
     const short = rows.filter((r) => r.shortBy > 0);
     const first = shown[0];
+    const perPlace = view.places.map((p) => ({
+      lager: p.name,
+      pack: rows.reduce((n, r) => n + Math.max(0, view.byPlace[p.id]?.[r.titleId] ?? 0), 0),
+    }));
     return {
-      summary: `Vårt lager: ${count(total)} pack i ${count(rows.length)} titlar, ${count(short.length)} räcker inte till veckans besök${first ? `. Kortast räckvidd: ${first.titel}, ${first.dagarKvar ?? "–"} dagar` : ""}.`,
+      summary: `Vårt lager: ${count(total)} pack i ${count(rows.length)} titlar${multi ? ` (${perPlace.map((p) => `${p.lager} ${count(p.pack)}`).join(", ")})` : ""}, ${count(short.length)} räcker inte till veckans besök${first ? `. Kortast räckvidd: ${first.titel}, ${first.dagarKvar ?? "–"} dagar` : ""}.`,
       data: {
         fonsterDagar: view.windowDays,
         packTotalt: total,
+        lager: perPlace,
         titlar: rows.length,
         racksInteForVeckan: short.length,
         anmarkning:
@@ -770,7 +784,7 @@ export const ourStockTool = defineTool({
         rader: shown,
       },
       figures: [
-        { label: "Pack hemma", value: count(total) },
+        { label: multi ? "Pack i lager" : "Pack hemma", value: count(total) },
         { label: "Räcker inte till veckan", value: count(short.length) },
       ],
       links: [{ label: "Vårt lager", href: "/vart-lager" }],
@@ -788,9 +802,7 @@ async function driftData(ctx: ToolContext) {
     const data = await loadHealthData(tx, orgId, ctx.today, ctx.now);
     const health = healthOf(data, ctx.timeZone, ctx.now);
     const stockRows = await queryStock(tx, orgId);
-    const warehouse = stockRows
-      .filter((r) => r.isCentral)
-      .map((r) => ({ titleId: r.titleId, onHand: r.onHand }));
+    const warehouse = ownStockTotals(stockRows);
     const slotPeriods = await querySlotPeriods(tx, orgId);
     return { data, health, warehouse, slotPeriods };
   });

@@ -32,6 +32,8 @@ export const refillSchema = z.object(
     titleId: uuid,
     quantity: packs(1, "Ange antal pack, minst 1."),
     fromWarehouse: z.boolean({ error: "Ange om packen tas från vårt lager." }),
+    /** Lagret packen tas från. Utelämnat = automatens "Fylls på från" (annars standardlagret). */
+    fromLocationId: uuid.optional(),
     note,
   },
   { error: INVALID },
@@ -53,6 +55,8 @@ export const countSchema = z.discriminatedUnion(
     z.object(
       {
         location: z.literal("warehouse"),
+        /** Vilket eget lager. Utelämnat = standardlagret. */
+        warehouseId: uuid.optional(),
         titleId: uuid,
         counted: packs(0, "Ange räknat antal, 0 eller mer."),
         note,

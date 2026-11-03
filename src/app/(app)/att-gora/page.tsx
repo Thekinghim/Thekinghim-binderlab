@@ -13,6 +13,7 @@ import {
   requireRoute,
   scopeFromSearchParams,
 } from "@/server/data/core";
+import { hasOwnStockRows, ownStockTotals } from "@/server/data/core/own-stock";
 import { loadRankedTodoState } from "@/server/data/todos";
 import { getActiveOrganization, requireUser } from "@/server/session";
 
@@ -66,11 +67,10 @@ export default async function TodoPage({
   // Rådgivarens öppna förslag (ägare och admin; null för andra roller).
   const advisor = organization ? await loadAdvisorStateFor({ user, organization }, now) : null;
 
-  const central = stock.warehouse.filter((r) => r.isCentral);
-  const warehouse =
-    central.length > 0 || stock.rows.some((r) => r.isCentral)
-      ? new Map(central.map((r) => [r.titleId, r.onHand]))
-      : null;
+  // Vårt lager: summan av alla egna lager per titel.
+  const warehouse = hasOwnStockRows(stock.rows)
+    ? new Map(ownStockTotals(stock.rows).map((r) => [r.titleId, r.onHand]))
+    : null;
 
   const view = buildPage({
     todos,

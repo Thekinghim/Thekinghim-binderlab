@@ -41,6 +41,8 @@ const APPEND_ONLY = [
 ];
 const RPCS = [
   "accept_invitation",
+  // Flera lager (20261104210000_flera_lager.sql): ta bort/ta tillbaka ett eget lager (ägare, admin).
+  "archive_warehouse",
   "attach_contract_file",
   // Datakällor: Awish gRPC-uppgifter till Vault (ägare, admin), returnerar aldrig hemligheten.
   "awish_save_credentials",
@@ -50,6 +52,8 @@ const RPCS = [
   "create_invitation",
   "create_organization",
   "create_store_invitation",
+  // Flera lager: nytt eget lager (ägare, admin).
+  "create_warehouse",
   // Lager (fas 5): visningsnamn för dem som registrerat lagerhändelser, alla roller.
   "lager_performers",
   // Lager (fas 7): sortimentets perioder per automat och titel, alla roller.
@@ -67,8 +71,15 @@ const RPCS = [
   // Att göra (fas 3): påfyllning med uttag från centrallagret (ägare, admin, påfyllare).
   "register_refill",
   "register_refill_once",
+  // Flera lager: byt namn på ett eget lager (ägare, admin).
+  "rename_warehouse",
   "reopen_period",
   "sales_data_until",
+  // Flera lager: automatens "Fylls på från" (ägare, admin).
+  "set_refill_source",
+  // Flera lager: flytt mellan egna lager och ångra flytt (ägare, admin).
+  "transfer_stock",
+  "undo_transfer",
 ];
 /**
  * RPC:er som kör med anroparens rättigheter (security invoker) i stället för definer.
@@ -513,6 +524,7 @@ describe("anon", () => {
   it.each(RPCS)("kan inte köra %s", async (fn) => {
     const args: Record<string, ReturnType<typeof sql>> = {
       accept_invitation: sql`'x'`,
+      archive_warehouse: sql`gen_random_uuid(), gen_random_uuid()`,
       attach_contract_file: sql`gen_random_uuid(), gen_random_uuid(), 'x', 'x', 'application/pdf', 1::bigint, 'x'`,
       awish_save_credentials: sql`gen_random_uuid(), gen_random_uuid(), 'x', 'y', 'z'`,
       close_period: sql`gen_random_uuid(), '2025-01-01'::date`,
@@ -520,6 +532,7 @@ describe("anon", () => {
       create_invitation: sql`gen_random_uuid(), 'a@b.se', 'viewer'`,
       create_organization: sql`'x', 'x'`,
       create_store_invitation: sql`gen_random_uuid(), gen_random_uuid(), 'a@b.se'`,
+      create_warehouse: sql`gen_random_uuid(), 'x'`,
       lager_performers: sql`gen_random_uuid()`,
       lager_slot_periods: sql`gen_random_uuid()`,
       list_members: sql`gen_random_uuid()`,
@@ -534,8 +547,12 @@ describe("anon", () => {
       portal_stores: sql``,
       register_refill: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
       register_refill_once: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
+      rename_warehouse: sql`gen_random_uuid(), gen_random_uuid(), 'x'`,
       reopen_period: sql`gen_random_uuid(), '2025-01-01'::date`,
       sales_data_until: sql`gen_random_uuid()`,
+      set_refill_source: sql`gen_random_uuid(), gen_random_uuid(), null::uuid`,
+      transfer_stock: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
+      undo_transfer: sql`gen_random_uuid(), gen_random_uuid()`,
     };
     const outcome = await asAnon((tx) =>
       attempt(tx, (sp) =>

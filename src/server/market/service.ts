@@ -258,7 +258,8 @@ export async function loadMarketDataFor(
     ]);
     const warehouseUnits = new Map<string, number>();
     for (const r of stock) {
-      if (r.isCentral)
+      // Vårt lager: alla egna lager tillsammans.
+      if (r.locationKind === "warehouse")
         warehouseUnits.set(r.titleId, (warehouseUnits.get(r.titleId) ?? 0) + r.onHand);
     }
     return {

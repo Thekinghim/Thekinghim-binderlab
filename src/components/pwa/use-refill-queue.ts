@@ -79,6 +79,7 @@ export function useRefillQueue(
           titleId: q.titleId,
           quantity: q.quantity,
           fromWarehouse: q.fromWarehouse,
+          ...(q.fromWarehouse && q.fromLocationId ? { fromLocationId: q.fromLocationId } : {}),
           occurredAt: q.occurredAt,
           ...(q.note ? { note: q.note } : {}),
         })),
