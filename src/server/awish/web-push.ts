@@ -78,7 +78,9 @@ export function planAwishPush(
     const k = key(want.titleName);
     const slots = slotsByTitle.get(k);
     if (!slots || slots.length === 0) {
-      titlesWithoutSlot.push(want.titleName);
+      // En titel med 0 pack som automaten inte säljer är inget problem: rapportera bara
+      // titlar som faktiskt har pack i Binderlab men inget fack i Awish.
+      if (want.quantity > 0) titlesWithoutSlot.push(want.titleName);
       continue;
     }
     // Hur många pack saknas i Awish jämfört med Binderlab? Awishs antal sjunker av

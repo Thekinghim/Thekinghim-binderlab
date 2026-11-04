@@ -108,4 +108,12 @@ describe("planAwishPush", () => {
     expect(plan.updates).toEqual([]);
     expect(plan.titlesWithoutSlot).toEqual(["Saknas"]);
   });
+
+  it("titlar med 0 pack utan fack rapporteras inte", () => {
+    const plan = planAwishPush(
+      [{ titleName: "Utgången", quantity: 0 }],
+      [slot({ id: 1, goodName: "A", currentInventory: 0, capacity: 10 })],
+    );
+    expect(plan.titlesWithoutSlot).toEqual([]);
+  });
 });
