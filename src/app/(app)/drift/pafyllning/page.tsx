@@ -34,7 +34,7 @@ export default async function RefillPage() {
   const latest = log.today.entries[0];
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-10 max-md:gap-7">
       <div className="rise flex flex-col gap-6" style={rise(0)}>
         <SectionHeader
           as="h1"
@@ -118,7 +118,10 @@ function LogList({ day }: { day: RefillLogDay }) {
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm text-fg">{e.titleName}</span>
             <span className="meta block truncate text-subtle">
-              {`${e.machineCode.replace(/-/g, "‑")} ${e.machineName}${e.by ? ` · ${e.by}` : ""}`}
+              {e.machineCode.replace(/-/g, "‑")}
+              {/* Mobil: bara koden, så att namnet på den som fyllde på får plats. */}
+              <span className="max-md:hidden">{` ${e.machineName}`}</span>
+              {e.by ? ` · ${e.by}` : ""}
             </span>
           </span>
           <span className="tnum shrink-0 text-base font-medium text-fg">

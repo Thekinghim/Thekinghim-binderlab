@@ -9,7 +9,7 @@ import {
   type CommandItem,
 } from "@/components/ui/command-palette";
 import { useCopyView } from "./copy-view";
-import { fabLayout, showsRefillShortcut } from "./fab";
+import { fabLayout, phoneFabLayout, showsRefillShortcut } from "./fab";
 import { MobileNav } from "./mobile-nav";
 import { activeRouteId, homeHref, routeById, routesForRole, showsContext, type Role } from "./nav";
 import type { ShellMachine, ShellStore } from "./period-bar";
@@ -91,10 +91,13 @@ export function AppShell(props: AppShellProps) {
   const route = routeId ? routeById(routeId) : null;
   const showContext = props.showContext ?? showsContext(props.activeHref ?? pathname, props.view);
   // Luft under sidan för de flytande knapparna på mobilen (./fab), så att inget göms bakom dem.
+  const refill = showsRefillShortcut(role, props.activeHref ?? pathname);
   const fab = fabLayout({
-    refill: showsRefillShortcut(role, props.activeHref ?? pathname),
+    refill,
     assistant: routesForRole(role).some((r) => r.id === "assistent"),
   });
+  // Telefonen (under md) har ingen flytande AI-knapp och behöver mindre luft.
+  const phoneFab = phoneFabLayout({ refill });
   const orgName = (
     props.organizations?.find((o) => o.id === props.activeOrganizationId) ??
     props.organizations?.[0]
@@ -146,10 +149,11 @@ export function AppShell(props: AppShellProps) {
             comparison={props.comparison}
           />
           <ShellMain
-            className="flex-1 pb-[var(--shell-pb)] lg:pb-0"
+            className="flex-1 pb-[var(--shell-pb-phone)] md:pb-[var(--shell-pb)] lg:pb-0"
             style={
               {
                 "--shell-pb": `calc(${fab.mainPaddingBottom}px + env(safe-area-inset-bottom))`,
+                "--shell-pb-phone": `calc(${phoneFab.mainPaddingBottom}px + env(safe-area-inset-bottom))`,
               } as CSSProperties
             }
           >
@@ -158,7 +162,7 @@ export function AppShell(props: AppShellProps) {
               role={role}
               activeHref={props.activeHref}
               todoCount={props.todoCount}
-              className="mx-auto w-full max-w-[1280px] px-4 pt-3 md:px-8 md:pt-5"
+              className="mx-auto w-full max-w-[1280px] px-4 pt-1 md:px-8 md:pt-5"
             />
             {/* Mjuk övergång vid sidbyte: nyckeln är sökvägen, så periodbyten animeras inte. */}
             <div key={pathname} className="fade-in">

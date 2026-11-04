@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 
+import { MobileFold } from "@/components/ui/mobile-fold";
 import { cn } from "@/lib/cn";
 import { ensureBrief, type BriefView } from "@/server/assistant/brief/service";
 import { loadContext, requireViewer } from "@/server/data/core";
@@ -42,32 +43,36 @@ export async function MorningBrief({
     { label: "Fel", text: brief.lines.problem, alert: problem },
     { label: "Gör i dag", text: brief.lines.today, alert: false },
   ];
+  // Under md: en rad "Morgonbrief" som öppnar briefen (från md öppen som förut).
   return (
-    <section
-      aria-labelledby="morgonbrief"
-      className={cn(
-        "fade-in rounded-md border border-line bg-surface px-4 py-4 md:px-5",
-        className,
-      )}
+    <MobileFold
+      className={cn("fade-in", className)}
+      summary="Morgonbrief"
+      meta={problem ? <span className="text-signal-fg">Fel</span> : null}
     >
-      <div className="flex items-baseline justify-between gap-4">
-        <h2 id="morgonbrief" className="label text-muted">
-          Morgonbrief
-        </h2>
-        <ArrowLink href={todoHref}>Att göra</ArrowLink>
-      </div>
-      <dl className="mt-3 flex flex-col gap-2">
-        {rows.map((r, i) => (
-          <div
-            key={r.label}
-            className="rise grid grid-cols-[5.5rem_minmax(0,1fr)] items-baseline gap-x-3"
-            style={{ "--i": i + 1 } as CSSProperties}
-          >
-            <dt className={cn("label", r.alert ? "text-signal-fg" : "text-subtle")}>{r.label}</dt>
-            <dd className="text-base text-fg">{r.text}</dd>
-          </div>
-        ))}
-      </dl>
-    </section>
+      <section
+        aria-labelledby="morgonbrief"
+        className="rounded-md border border-line bg-surface px-4 py-4 md:px-5"
+      >
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 id="morgonbrief" className="label text-muted">
+            Morgonbrief
+          </h2>
+          <ArrowLink href={todoHref}>Att göra</ArrowLink>
+        </div>
+        <dl className="mt-3 flex flex-col gap-2">
+          {rows.map((r, i) => (
+            <div
+              key={r.label}
+              className="rise grid grid-cols-[5.5rem_minmax(0,1fr)] items-baseline gap-x-3"
+              style={{ "--i": i + 1 } as CSSProperties}
+            >
+              <dt className={cn("label", r.alert ? "text-signal-fg" : "text-subtle")}>{r.label}</dt>
+              <dd className="text-base text-fg">{r.text}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+    </MobileFold>
   );
 }

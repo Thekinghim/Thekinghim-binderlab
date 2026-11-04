@@ -22,7 +22,16 @@ function pointsDelta(d: number): string {
  * Nyckeltalsremsan på Hem. Modellen är serialiserbar (tal och strängar); formateringen
  * väljs här efter enheten, eftersom funktioner inte kan skickas från servern.
  */
-export function HomeKpis({ kpis, ariaLabel }: { kpis: HomeKpi[]; ariaLabel: string }) {
+export function HomeKpis({
+  kpis,
+  ariaLabel,
+  mobileFold = false,
+}: {
+  kpis: HomeKpi[];
+  ariaLabel: string;
+  /** Under md bakom "Fler siffror" (KpiStrip mobileFold). */
+  mobileFold?: boolean;
+}) {
   const items: KpiItem[] = kpis.map((k) => ({
     id: k.id,
     label: k.label,
@@ -43,13 +52,13 @@ export function HomeKpis({ kpis, ariaLabel }: { kpis: HomeKpi[]; ariaLabel: stri
     note: k.note ?? undefined,
     parts: k.parts && k.parts.length > 0 ? k.parts : undefined,
   }));
-  // Under 640 px står huvudtalet i en halv kolumn: låt etiketten brytas i stället för att kapas,
-  // och ge alla etiketter två raders höjd så att talen i samma rad står i höjd med varandra.
+  // Under 640 px står huvudtalet i en halv kolumn: låt etiketten brytas i stället för att kapas.
   return (
     <KpiStrip
       items={items}
       ariaLabel={ariaLabel}
-      className="max-sm:[&_dt]:min-h-8 max-sm:[&_dt]:text-balance max-sm:[&_dt]:whitespace-normal"
+      mobileFold={mobileFold}
+      className="max-sm:[&_dt]:text-balance max-sm:[&_dt]:whitespace-normal"
     />
   );
 }

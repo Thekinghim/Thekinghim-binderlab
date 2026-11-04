@@ -11,6 +11,7 @@ import Link from "next/link";
 import { createContext, useContext } from "react";
 
 import { IconButton } from "@/components/ui/button";
+import { MOBILE_MENU_ITEM } from "@/components/ui/more-menu";
 import { cn } from "@/lib/cn";
 import { explainQuestion } from "@/server/assistant/page-context";
 import {
@@ -81,13 +82,15 @@ export function AskAiButton({ fallbackHref }: { fallbackHref?: string }) {
       aria-keyshortcuts="Meta+J Control+J"
       data-testid="ai-open"
       className={cn(
-        "group flex h-8 items-center gap-1.5 rounded-sm border px-2 text-sm transition-colors",
+        // Under md: tryckytan växer till 44 px utan att knappen ser större ut.
+        "group relative flex h-8 items-center gap-1.5 rounded-sm border px-2 text-sm transition-colors max-md:before:absolute max-md:before:-inset-1.5 max-md:before:content-['']",
         panel.isOpen
           ? "border-inverse bg-inverse text-on-inverse"
           : "border-line-strong text-fg hover:border-line-control hover:bg-hover",
       )}
     >
-      <Sparkle className="transition-transform duration-300 group-hover:scale-110 group-hover:rotate-12" />
+      {/* Under md finns ingen flytande AI-knapp: gnistan här skimrar i stället. */}
+      <Sparkle className="transition-transform duration-300 group-hover:scale-110 group-hover:rotate-12 max-md:animate-[bl-shimmer_2.4s_ease-in-out_infinite]" />
       <span className="hidden sm:inline">Fråga AI</span>
     </button>
   );
@@ -158,22 +161,34 @@ export function AiPageLine({
   metric,
   route,
   className,
+  menuItem = false,
 }: {
   metric: string;
   route: TipRoute;
   className?: string;
+  /** Står i en MobileMore-meny: under md en hel rad på 44 px (från md oförändrad). */
+  menuItem?: boolean;
 }) {
   const panel = useAssistantPanel();
   if (!panel) return null;
   const q = explainQuestion(metric);
   return (
-    <div className={cn("flex min-w-0 flex-wrap items-center gap-2", className)}>
+    <div
+      className={cn(
+        "flex min-w-0 flex-wrap items-center gap-2",
+        menuItem && "max-md:flex-col max-md:items-stretch max-md:gap-1",
+        className,
+      )}
+    >
       <button
         type="button"
         onClick={() => panel.open(q)}
         title={q}
         data-testid="ai-sparkle"
-        className="group inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-line px-2.5 text-sm text-muted transition-[color,background-color,border-color] duration-fast hover:border-line-control hover:bg-hover hover:text-fg"
+        className={cn(
+          "group inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-line px-2.5 text-sm text-muted transition-[color,background-color,border-color] duration-fast hover:border-line-control hover:bg-hover hover:text-fg",
+          menuItem && cn(MOBILE_MENU_ITEM, "max-md:gap-2 max-md:text-base max-md:text-fg"),
+        )}
       >
         <Sparkle size={13} className="transition-transform duration-300 group-hover:rotate-12" />
         {q}

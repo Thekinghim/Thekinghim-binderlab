@@ -44,7 +44,7 @@ export default async function DatakallorPage() {
   const awishLive = Boolean(awish.source?.credentials) && headline.tone === "ok";
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-14 md:px-8 md:pt-12">
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 max-md:gap-8 md:gap-14 md:px-8 md:pt-12">
       <MerHead
         eyebrow="Datakällor"
         title={headline.title}
@@ -52,6 +52,8 @@ export default async function DatakallorPage() {
         tone={tone}
         live={awishLive}
         count={data.queue.length > 0}
+        // Mobil: orderantalet står i rubriken; raderna visas bara när något ska kopplas.
+        metaOnMobile={data.queue.length > 0}
         meta={[
           { label: "Order", value: formatInt(data.sources.reduce((n, s) => n + s.orders, 0)) },
           { label: "Att koppla", value: formatInt(data.queue.length) },

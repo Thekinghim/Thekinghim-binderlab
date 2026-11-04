@@ -94,7 +94,7 @@ export default async function DriftPage() {
   const alertLink = alertCountLink(items.length, critical);
 
   return (
-    <div className="flex flex-col gap-10 md:gap-12">
+    <div className="flex flex-col gap-10 max-md:gap-7 md:gap-12">
       <div className="rise" style={{ "--i": 0 } as React.CSSProperties}>
         <SectionHeader
           as="h1"
@@ -109,7 +109,7 @@ export default async function DriftPage() {
                 <a
                   href={alertLink.href}
                   className={cn(
-                    "inline-flex h-9 items-center gap-2 rounded-sm border px-3.5 text-base transition-colors",
+                    "inline-flex h-9 items-center gap-2 rounded-sm border px-3.5 text-base transition-colors max-md:h-11 max-md:px-3 max-md:text-sm",
                     critical > 0
                       ? "border-signal-line text-signal-fg hover:border-signal hover:bg-signal-soft"
                       : "border-line-strong bg-surface text-fg hover:bg-hover",
@@ -120,7 +120,7 @@ export default async function DriftPage() {
               ) : null}
               <Link
                 href="/drift/besok"
-                className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg transition-colors hover:bg-hover"
+                className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg transition-colors hover:bg-hover max-md:h-11 max-md:px-3 max-md:text-sm"
               >
                 {`Besök i veckan: ${formatInt(plan.days.reduce((n, d) => n + d.stops.length, 0))} →`}
               </Link>
@@ -131,7 +131,7 @@ export default async function DriftPage() {
 
       <section
         aria-labelledby="halsa"
-        className="rise flex flex-col gap-6"
+        className="rise flex flex-col gap-6 max-md:gap-3"
         style={{ "--i": 1 } as React.CSSProperties}
       >
         <SectionHeader id="halsa" size="md" title="Status per automat." />
@@ -166,7 +166,10 @@ export default async function DriftPage() {
               : undefined
           }
           actions={
-            <Link href="/drift/larm" className="rounded-xs text-sm text-muted hover:text-fg">
+            <Link
+              href="/drift/larm"
+              className="rounded-xs text-sm text-muted hover:text-fg max-md:inline-flex max-md:min-h-11 max-md:items-center"
+            >
               Notiser →
             </Link>
           }

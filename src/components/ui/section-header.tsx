@@ -30,6 +30,8 @@ type SectionHeaderProps = {
   size?: SectionHeaderSize;
   className?: string;
   id?: string;
+  /** Under md: dölj den grå delen (t.ex. när samma tal står under diagrammet). */
+  hideAsideOnMobile?: boolean;
 };
 
 const titleSize: Record<SectionHeaderSize, string> = {
@@ -60,11 +62,15 @@ export function SectionHeader({
   size = "lg",
   className,
   id,
+  hideAsideOnMobile = false,
 }: SectionHeaderProps) {
   void index;
   const hasEyebrow = Boolean(eyebrow);
   const hasSide = Boolean(meta) || Boolean(actions);
   const small = size === "md" || size === "sm";
+  // Sidans namn står redan i underfliken: under md visas en etikett över h1 bara när den
+  // säger något mer (t.ex. "Hem · BL-001").
+  const eyebrowRepeatsTab = Tag === "h1" && !eyebrow?.includes("·");
 
   return (
     <header
@@ -75,6 +81,13 @@ export function SectionHeader({
         // Med metadata linjerar blockets första linje med etiketten;
         // med bara åtgärder står knapparna i höjd med rubrikens nederkant.
         hasSide && (meta ? "lg:items-start" : "lg:items-end"),
+        // Liten rubrik med bara åtgärder: under md på samma rad som rubriken ("Mest sålda.  Alla →").
+        small &&
+          Boolean(actions) &&
+          !meta &&
+          !description &&
+          !eyebrow &&
+          "max-md:flex max-md:items-baseline max-md:justify-between max-md:gap-x-4",
         className,
       )}
     >
@@ -86,13 +99,30 @@ export function SectionHeader({
         )}
       >
         {hasEyebrow ? (
-          <p className="label flex items-center gap-2 text-subtle">
+          <p
+            className={cn(
+              "label flex items-center gap-2 text-subtle",
+              eyebrowRepeatsTab && "max-md:hidden",
+            )}
+          >
             <span>{eyebrow}</span>
           </p>
         ) : null}
         <Tag id={id} className={cn("font-medium text-balance hyphens-none", titleSize[size])}>
           <span className="text-fg">{title}</span>
-          {aside ? <span className="text-subtle"> {aside}</span> : null}
+          {aside ? (
+            <span
+              className={cn(
+                "text-subtle",
+                // Under md: den stora rubriken på en rad, den grå delen mindre under.
+                size === "xl" && "max-md:mt-1 max-md:block max-md:text-lg",
+                hideAsideOnMobile && "max-md:hidden",
+              )}
+            >
+              {" "}
+              {aside}
+            </span>
+          ) : null}
         </Tag>
         {description ? (
           <p className={cn("line-clamp-2 max-w-xl text-muted", small ? "text-sm" : "text-base")}>
@@ -102,7 +132,7 @@ export function SectionHeader({
       </div>
 
       {hasSide ? (
-        <div className="flex min-w-0 flex-col gap-3 lg:col-span-4 lg:col-start-9">
+        <div className="flex min-w-0 flex-col gap-3 max-md:shrink-0 lg:col-span-4 lg:col-start-9">
           {meta ? (
             isMetaList(meta) ? (
               <dl className="flex flex-col">

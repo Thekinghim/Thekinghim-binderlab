@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+
+import { Icon } from "@/components/ui/icon";
 import { StatusGlyph } from "@/components/ui/status-tag";
 import { cn } from "@/lib/cn";
 import { formatInt, MISSING } from "@/lib/format";
@@ -64,83 +67,113 @@ export function StockMatrix({
 }) {
   const fits = fitsWithoutScroll(machines.length);
   const head = fits ? STICKY_HEAD : STILL_HEAD;
+  // Mobil: titlar som utgår i alla automater fälls ihop under tabellen.
+  const [showRetired, setShowRetired] = useState(false);
+  const retiredRow = titles.map((_, i) => {
+    const row = cells[i] ?? [];
+    return row.some((c) => c.retired) && row.every((c) => c.retired || !c.stocked);
+  });
+  const retiredCount = retiredRow.filter(Boolean).length;
   return (
-    <div
-      className={cn(
-        "relative -mx-4 border-y border-line md:mx-0 md:rounded-md md:border",
-        fits ? "overflow-x-clip" : "overflow-x-auto",
-      )}
-    >
-      <table
-        className="w-full table-fixed border-collapse text-base"
-        style={{ minWidth: `${112 + machines.length * 76}px` }}
+    <>
+      <div
+        className={cn(
+          "relative -mx-4 border-y border-line md:mx-0 md:rounded-md md:border",
+          fits ? "overflow-x-clip" : "overflow-x-auto",
+        )}
       >
-        <caption className="sr-only">
-          Lager per titel och automat: antal kvar, dagar kvar och status.
-        </caption>
-        <thead>
-          <tr className="border-b border-line-strong">
-            <th
-              scope="col"
-              className={cn(
-                head,
-                "sticky left-0 z-30 w-28 px-4 py-2 text-left align-bottom shadow-[inset_0_-1px_0_var(--bl-line-strong)] md:w-64",
-              )}
-            >
-              <span className="label text-subtle">Titel</span>
-            </th>
-            {machines.map((m) => (
+        <table
+          className="w-full table-fixed border-collapse text-base"
+          style={{ minWidth: `${112 + machines.length * 76}px` }}
+        >
+          <caption className="sr-only">
+            Lager per titel och automat: antal kvar, dagar kvar och status.
+          </caption>
+          <thead>
+            <tr className="border-b border-line-strong">
               <th
-                key={m.id}
                 scope="col"
                 className={cn(
                   head,
-                  "z-20 border-l border-line px-2 py-2 text-right align-bottom font-normal shadow-[inset_0_-1px_0_var(--bl-line-strong)]",
+                  "sticky left-0 z-30 w-28 px-4 py-2 text-left align-bottom shadow-[inset_0_-1px_0_var(--bl-line-strong)] md:w-64",
                 )}
               >
-                <span className="label block text-fg">{codeText(m.code)}</span>
-                <span className="block truncate text-xs text-subtle" title={m.name}>
-                  {m.storeName ?? m.name}
-                </span>
-                {m.awishSyncedAt ? (
-                  <span className="meta block truncate text-subtle">
-                    Awish {formatWhen(m.awishSyncedAt, timeZone, now)}
+                <span className="label text-subtle">Titel</span>
+              </th>
+              {machines.map((m) => (
+                <th
+                  key={m.id}
+                  scope="col"
+                  className={cn(
+                    head,
+                    "z-20 border-l border-line px-2 py-2 text-right align-bottom font-normal shadow-[inset_0_-1px_0_var(--bl-line-strong)]",
+                  )}
+                >
+                  <span className="label block text-fg">{codeText(m.code)}</span>
+                  <span className="block truncate text-xs text-subtle" title={m.name}>
+                    {m.storeName ?? m.name}
                   </span>
-                ) : null}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {titles.map((t, i) => (
-            <tr key={t.id} className="border-b border-line last:border-b-0">
-              <th
-                scope="row"
-                className="sticky left-0 z-10 bg-bg px-4 py-2 text-left align-middle text-sm font-normal hyphens-none text-fg md:text-base"
-              >
-                <span className="line-clamp-2 break-words">{t.name}</span>
-              </th>
-              {(cells[i] ?? []).map((c, j) => {
-                const m = machines[j];
-                if (!m) return null;
-                return (
-                  <td key={m.id} className="border-l border-line p-0 align-middle">
-                    <Cell
-                      cell={c}
-                      machine={m}
-                      title={t}
-                      windowDays={windowDays}
-                      canRegister={canRegister}
-                      onSelect={onSelect}
-                    />
-                  </td>
-                );
-              })}
+                  {m.awishSyncedAt ? (
+                    <span className="meta block truncate text-subtle">
+                      Awish {formatWhen(m.awishSyncedAt, timeZone, now)}
+                    </span>
+                  ) : null}
+                </th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {titles.map((t, i) => (
+              <tr
+                key={t.id}
+                className={cn(
+                  "border-b border-line last:border-b-0",
+                  retiredRow[i] && !showRetired && "max-md:hidden",
+                )}
+              >
+                <th
+                  scope="row"
+                  className="sticky left-0 z-10 bg-bg px-4 py-2 text-left align-middle text-sm font-normal hyphens-none text-fg md:text-base"
+                >
+                  <span className="line-clamp-2 break-words">{t.name}</span>
+                </th>
+                {(cells[i] ?? []).map((c, j) => {
+                  const m = machines[j];
+                  if (!m) return null;
+                  return (
+                    <td key={m.id} className="border-l border-line p-0 align-middle">
+                      <Cell
+                        cell={c}
+                        machine={m}
+                        title={t}
+                        windowDays={windowDays}
+                        canRegister={canRegister}
+                        onSelect={onSelect}
+                      />
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {retiredCount > 0 ? (
+        <button
+          type="button"
+          aria-expanded={showRetired}
+          onClick={() => setShowRetired((v) => !v)}
+          className="label -mt-2 flex min-h-11 w-full items-center justify-between gap-3 border-b border-line text-left text-muted hover:text-fg md:hidden"
+        >
+          <span>{`${showRetired ? "Dölj utgår" : "Utgår"} (${formatInt(retiredCount)})`}</span>
+          <Icon
+            name="chevronRight"
+            size={12}
+            className={cn("transition-transform duration-fast", showRetired && "rotate-90")}
+          />
+        </button>
+      ) : null}
+    </>
   );
 }
 

@@ -3,6 +3,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
 import { CountUp } from "@/components/ui/count-up";
+import { cn } from "@/lib/cn";
 import { formatInt } from "@/lib/format";
 
 import { splitFirstNumber } from "../_lib/split-number";
@@ -20,6 +21,7 @@ export function MerHead({
   line,
   count = true,
   meta,
+  metaOnMobile = true,
   actions,
 }: {
   eyebrow: string;
@@ -32,6 +34,8 @@ export function MerHead({
   /** Pulserande prick: datan kommer live (Awish). */
   live?: boolean;
   meta?: ReadonlyArray<{ label: string; value: ReactNode }>;
+  /** false: metaraderna döljs under md (de står redan längre ned på sidan). */
+  metaOnMobile?: boolean;
   actions?: ReactNode;
 }) {
   const head = count ? splitFirstNumber(title) : { before: title, value: null, after: "" };
@@ -42,7 +46,13 @@ export function MerHead({
       style={{ "--i": 0 } as CSSProperties}
     >
       <div className="flex min-w-0 flex-col gap-3 lg:col-span-8">
-        <p className="label flex items-center gap-2 text-subtle">
+        {/* Under md står sidans namn redan i underfliken: etiketten bara när den säger mer. */}
+        <p
+          className={cn(
+            "label flex items-center gap-2 text-subtle",
+            !live && !eyebrow.includes("·") && "max-md:hidden",
+          )}
+        >
           {live ? (
             <span
               aria-hidden
@@ -68,7 +78,7 @@ export function MerHead({
       {meta || actions ? (
         <div className="flex flex-col gap-4 lg:col-span-4 lg:items-end">
           {meta && meta.length > 0 ? (
-            <dl className="flex w-full flex-col">
+            <dl className={cn("flex w-full flex-col", !metaOnMobile && "max-md:hidden")}>
               {meta.map((m) => (
                 <div
                   key={m.label}

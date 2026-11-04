@@ -6,6 +6,7 @@ import type React from "react";
 import { PlaceButtons } from "@/components/stock/place-buttons";
 import { inPlace, pickPlace } from "@/components/stock/place-text";
 import { KpiStrip } from "@/components/ui/kpi-strip";
+import { MobileFold } from "@/components/ui/mobile-fold";
 import { Icon } from "@/components/ui/icon";
 import { StatusTag } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
@@ -61,61 +62,69 @@ export function HomeStock({ model, scope }: { model: VartLagerModel; scope: stri
   const countHeader = place && multi ? place.name : multi ? "Alla lager" : "Antal";
   const out = model.rows.filter((r) => r.runsOut && !r.negative);
   const packOnly = out.length > 0 && out.every((r) => r.own);
+  // Mobil: utgångna titlar (inget att räkna om) fälls ihop sist i listan.
+  const [showRetired, setShowRetired] = useState(false);
+  const retired = model.rows.filter(foldsOnMobile).length;
+  const kpiCount = 3 + (place && multi ? 1 : 0) + (t.idle.packs > 0 ? 1 : 0);
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-8 max-md:gap-5">
       <div className="rise" style={{ "--i": 1 } as React.CSSProperties}>
-        <KpiStrip
-          ariaLabel="Vårt lager i siffror"
-          items={[
-            // Totalen står i sidans rubrik; här bara valt lager.
-            ...(place && multi
-              ? [
-                  {
-                    id: "home",
-                    label: `Pack ${inPlace(place.name)}`,
-                    value: t.byPlace[place.id] ?? 0,
-                    format: formatInt,
-                    primary: true,
-                  },
-                ]
-              : []),
-            {
-              id: "value",
-              label: "Värde, inköpspris",
-              value: t.valueOre,
-              format: (v) => formatSek(v / 100),
-              ...(t.unpriced > 0 ? { note: `${formatInt(t.unpriced)} utan pris` } : {}),
-            },
-            {
-              id: "out",
-              label: `Tar slut inom ${formatInt(model.lowDays)} d`,
-              value: t.runsOut,
-              format: (v) => `${formatInt(v)}${NBSP}${v === 1 ? "titel" : "titlar"}`,
-              ...(t.runsOut > 0 ? { alert: true, alertText: packOnly ? "Packa" : "Beställ" } : {}),
-            },
-            {
-              id: "machines",
-              label: "I automaterna",
-              value: t.inMachines,
-              format: formatInt,
-            },
-            // Titlar som gått ur automaterna men ligger hemma: pengar som står still.
-            ...(t.idle.packs > 0
-              ? [
-                  {
-                    id: "idle",
-                    label: "Ligger still",
-                    value: t.idle.packs,
-                    format: (v: number) => `${formatInt(v)}${NBSP}pack`,
-                    note: `${formatInt(t.idle.titles)}${NBSP}${t.idle.titles === 1 ? "titel utgår" : "titlar utgår"}${
-                      t.idle.valueOre > 0 ? ` · ${formatSek(t.idle.valueOre / 100)}` : ""
-                    }`,
-                  },
-                ]
-              : []),
-          ]}
-        />
+        <MobileFold summary="Fler siffror" meta={formatInt(kpiCount)}>
+          <KpiStrip
+            ariaLabel="Vårt lager i siffror"
+            items={[
+              // Totalen står i sidans rubrik; här bara valt lager.
+              ...(place && multi
+                ? [
+                    {
+                      id: "home",
+                      label: `Pack ${inPlace(place.name)}`,
+                      value: t.byPlace[place.id] ?? 0,
+                      format: formatInt,
+                      primary: true,
+                    },
+                  ]
+                : []),
+              {
+                id: "value",
+                label: "Värde, inköpspris",
+                value: t.valueOre,
+                format: (v) => formatSek(v / 100),
+                ...(t.unpriced > 0 ? { note: `${formatInt(t.unpriced)} utan pris` } : {}),
+              },
+              {
+                id: "out",
+                label: `Tar slut inom ${formatInt(model.lowDays)} d`,
+                value: t.runsOut,
+                format: (v) => `${formatInt(v)}${NBSP}${v === 1 ? "titel" : "titlar"}`,
+                ...(t.runsOut > 0
+                  ? { alert: true, alertText: packOnly ? "Packa" : "Beställ" }
+                  : {}),
+              },
+              {
+                id: "machines",
+                label: "I automaterna",
+                value: t.inMachines,
+                format: formatInt,
+              },
+              // Titlar som gått ur automaterna men ligger hemma: pengar som står still.
+              ...(t.idle.packs > 0
+                ? [
+                    {
+                      id: "idle",
+                      label: "Ligger still",
+                      value: t.idle.packs,
+                      format: (v: number) => `${formatInt(v)}${NBSP}pack`,
+                      note: `${formatInt(t.idle.titles)}${NBSP}${t.idle.titles === 1 ? "titel utgår" : "titlar utgår"}${
+                        t.idle.valueOre > 0 ? ` · ${formatSek(t.idle.valueOre / 100)}` : ""
+                      }`,
+                    },
+                  ]
+                : []),
+            ]}
+          />
+        </MobileFold>
       </div>
 
       <PlaceBar
@@ -152,9 +161,25 @@ export function HomeStock({ model, scope }: { model: VartLagerModel; scope: stri
               onFocused={() => setFocusTitle(null)}
               onChoosePlace={() => setChooseFor(r)}
               onMove={() => setMoveRow(r)}
+              foldMobile={!showRetired && foldsOnMobile(r)}
             />
           ))}
         </ul>
+        {retired > 0 ? (
+          <button
+            type="button"
+            aria-expanded={showRetired}
+            onClick={() => setShowRetired((v) => !v)}
+            className="label flex min-h-11 w-full items-center justify-between gap-3 border-b border-line text-left text-muted hover:text-fg md:hidden"
+          >
+            <span>{`${showRetired ? "Dölj utgångna" : "Utgångna titlar"} (${formatInt(retired)})`}</span>
+            <Icon
+              name="chevronRight"
+              size={12}
+              className={cn("transition-transform duration-fast", showRetired && "rotate-90")}
+            />
+          </button>
+        ) : null}
       </div>
 
       <Sheet
@@ -196,6 +221,11 @@ export function HomeStock({ model, scope }: { model: VartLagerModel; scope: stri
   );
 }
 
+/** Utgången titel utan något att rätta: hopfälld på mobil. */
+function foldsOnMobile(r: VartLagerRow): boolean {
+  return r.retired && !r.negative && r.home >= 0;
+}
+
 function StockRow({
   row,
   index,
@@ -207,6 +237,7 @@ function StockRow({
   onFocused,
   onChoosePlace,
   onMove,
+  foldMobile = false,
 }: {
   row: VartLagerRow;
   index: number;
@@ -220,8 +251,13 @@ function StockRow({
   onFocused: () => void;
   onChoosePlace: () => void;
   onMove: () => void;
+  /** Dold på mobil (utgången titel tills "Utgångna titlar" öppnas). */
+  foldMobile?: boolean;
 }) {
   const toast = useToast();
+  // Mobil: en rad med det viktigaste; ett tryck på titeln visar senaste räkningen,
+  // sålt 7 d och knapparna Flytta och Inköp. Från md visas allt som förut.
+  const [more, setMore] = useState(false);
   const multi = places.length > 1;
   const count = place && multi ? (row.byPlace[place.id] ?? 0) : row.home;
   // Det man skriver, eller null: då visas antalet från servern (synken, ett inköp, en annan flik).
@@ -314,12 +350,18 @@ function StockRow({
   return (
     <li
       id={`rad-${row.titleId}`}
-      className="rise scroll-mt-32 border-b border-line target:bg-hover"
+      className={cn(
+        "rise scroll-mt-32 border-b border-line target:bg-hover",
+        foldMobile && "max-md:hidden",
+      )}
       style={{ "--i": Math.min(index, 16) + 3 } as React.CSSProperties}
       data-title={row.name}
     >
-      <div className={cn(GRID, "min-h-16 py-2.5")} style={actWidth(multi, canEdit)}>
-        <span className="flex min-w-0 flex-col">
+      <div
+        className={cn(GRID, "min-h-16 py-2.5 max-md:min-h-14 max-md:py-2")}
+        style={actWidth(multi, canEdit)}
+      >
+        <span className="flex min-w-0 flex-col" onClick={() => setMore((v) => !v)}>
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate text-base text-fg">{row.name}</span>
             {row.negative || negativeHere ? (
@@ -332,7 +374,7 @@ function StockRow({
               </StatusTag>
             ) : null}
           </span>
-          <span className="meta truncate text-subtle">
+          <span className={cn("meta truncate text-subtle", !more && "max-md:hidden")}>
             {latest ? (
               <>
                 <span
@@ -350,10 +392,25 @@ function StockRow({
               "Inget räknat än"
             )}
           </span>
-          <span className="meta text-subtle md:hidden">
-            {formatInt(row.inMachines)} i automater · {formatInt(row.sold7)} sålda 7 d · räcker{" "}
-            {lastsText(row)}
-          </span>
+          <button
+            type="button"
+            aria-expanded={more}
+            aria-label={`${more ? "Färre" : "Fler"} uppgifter, ${row.name}`}
+            className="meta flex min-w-0 items-center gap-1 text-left text-subtle md:hidden"
+          >
+            {/* Stängd: bara hur länge det räcker (får plats på en rad); öppen: allt. */}
+            <span className={more ? "min-w-0" : "min-w-0 truncate"}>
+              räcker {lastsText(row)}
+              {more
+                ? ` · ${formatInt(row.inMachines)} i automater · ${formatInt(row.sold7)} sålda 7 d`
+                : ""}
+            </span>
+            <Icon
+              name="chevronRight"
+              size={10}
+              className={cn("shrink-0 transition-transform duration-fast", more && "rotate-90")}
+            />
+          </button>
         </span>
         <span className="tnum hidden text-right text-sm text-muted md:block">
           {formatInt(row.inMachines)}
@@ -430,7 +487,12 @@ function StockRow({
           )}
         </span>
         {canEdit ? (
-          <span className="col-span-3 flex flex-wrap items-center justify-end gap-1 md:col-span-1">
+          <span
+            className={cn(
+              "col-span-3 flex flex-wrap items-center justify-end gap-1 md:col-span-1",
+              !more && !buyOpen && "max-md:hidden",
+            )}
+          >
             {buyOpen ? (
               <form
                 className="fade-in flex flex-col items-end gap-2"

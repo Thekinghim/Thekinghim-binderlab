@@ -11,6 +11,9 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatInt, NBSP } from "@/lib/format";
 
+import { MobileFold } from "@/components/ui/mobile-fold";
+
+import { MobileMore } from "../../_mobil/mobile-more";
 import { MachineKpis } from "../_components/kpis";
 import { AddMachineButton } from "../_components/machine-dialogs";
 import { MachineTable } from "../_components/machine-table";
@@ -57,8 +60,8 @@ export default async function AutomaterPage({
   const needs = machineNeeds(rows);
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
-      <div className="rise">
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 max-md:gap-8 md:gap-16 md:px-8 md:pt-12">
+      <div className="rise max-md:relative">
         <SectionHeader
           as="h1"
           size="xl"
@@ -67,17 +70,42 @@ export default async function AutomaterPage({
           aside={rows.length === 0 ? headline.aside : headline.title}
           actions={
             ctx.canEdit ? (
-              <AddMachineButton
-                stores={data.stores}
-                today={ctx.today}
-                suggestedCode={nextMachineCode(rows.map((r) => r.code))}
-              />
+              // Mobil: sällan använd, bakom "⋯" (Fyll på i listan nedan är huvudknappen).
+              // Under md uppe till höger, med AI-frågan (som från md står under rubriken).
+              <MobileMore
+                label="Fler val för automater"
+                className="max-md:absolute max-md:-top-2 max-md:-right-2"
+              >
+                <AddMachineButton
+                  stores={data.stores}
+                  today={ctx.today}
+                  suggestedCode={nextMachineCode(rows.map((r) => r.code))}
+                />
+                <AiPageLine
+                  metric="automaternas resultat"
+                  route="automater"
+                  menuItem
+                  className="md:hidden"
+                />
+              </MobileMore>
             ) : undefined
           }
+          className="max-md:pr-10"
         />
-        <AiPageLine metric="automaternas resultat" route="automater" className="mt-4" />
+        {ctx.canEdit ? null : (
+          <div className="absolute -top-2 -right-2 md:hidden">
+            <MobileMore label="Fler val för automater">
+              <AiPageLine metric="automaternas resultat" route="automater" menuItem />
+            </MobileMore>
+          </div>
+        )}
+        <AiPageLine
+          metric="automaternas resultat"
+          route="automater"
+          className="mt-4 max-md:hidden"
+        />
         {needs.length > 0 ? (
-          <div className="mt-8">
+          <div className="mt-8 max-md:mt-5">
             <NeedList needs={needs} />
           </div>
         ) : null}
@@ -91,11 +119,13 @@ export default async function AutomaterPage({
             <StateMessage kind="empty" message="Inga order i dag än." />
           ) : active.length > 0 || totals.orders > 0 ? (
             <div className="rise flex flex-col gap-4" style={{ "--i": 1 } as React.CSSProperties}>
-              <MachineKpis
-                items={overviewKpis(totals)}
-                label={`Nyckeltal · ${daysLabel}`}
-                comparison={comparison}
-              />
+              <MobileFold summary="Fler siffror" meta={formatInt(overviewKpis(totals).length)}>
+                <MachineKpis
+                  items={overviewKpis(totals)}
+                  label={`Nyckeltal · ${daysLabel}`}
+                  comparison={comparison}
+                />
+              </MobileFold>
               {overview.unpriced ? (
                 <UnpricedNote unpriced={overview.unpriced} canEdit={ctx.canEdit} />
               ) : null}
@@ -109,6 +139,8 @@ export default async function AutomaterPage({
           >
             <SectionHeader
               id="alla-automater"
+              // Mobil: den grå meningen döljs (talen står i tabellen).
+              className="max-md:[&_h2>span+span]:hidden"
               eyebrow={period.pendingToday ? "Per automat · nu" : `Per automat · ${daysLabel}`}
               title={
                 active.length === 0

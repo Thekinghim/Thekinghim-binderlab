@@ -3,6 +3,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
 import { CountUp } from "@/components/ui/count-up";
+import { cn } from "@/lib/cn";
 import { formatInt } from "@/lib/format";
 
 import { splitNumber } from "../_lib/head";
@@ -29,11 +30,20 @@ export function PageHead({
 }) {
   const head = splitNumber(title);
   return (
-    <header className="rise flex flex-col gap-3" style={{ "--i": 0 } as CSSProperties}>
-      <p className="label text-subtle">{eyebrow}</p>
+    <header
+      className="rise flex flex-col gap-3 max-md:relative max-md:pr-10"
+      style={{ "--i": 0 } as CSSProperties}
+    >
+      {/* Under md står sidans namn redan i underfliken: etiketten bara när den säger mer. */}
+      <p className={cn("label text-subtle", !eyebrow.includes("·") && "max-md:hidden")}>
+        {eyebrow}
+      </p>
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div className="flex min-w-0 flex-col gap-2">
-          <h1 id={id} className="text-3xl font-medium text-balance text-fg md:text-4xl">
+          <h1
+            id={id}
+            className="text-3xl font-medium text-balance text-fg max-md:text-2xl md:text-4xl"
+          >
             {head.before}
             {head.value !== null ? (
               <CountUp

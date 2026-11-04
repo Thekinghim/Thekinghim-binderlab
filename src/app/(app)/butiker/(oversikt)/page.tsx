@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { SectionHeader } from "@/components/ui/section-header";
+import { MobileFold } from "@/components/ui/mobile-fold";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatInt, NBSP, SPACED_RANGE_DASH } from "@/lib/format";
 import type React from "react";
@@ -10,6 +11,7 @@ import { Suspense } from "react";
 import { StoreShareToggle } from "@/components/shell/store-share-toggle";
 import { requireRoute, requireViewer } from "@/server/data/core";
 
+import { MobileMore } from "../../_mobil/mobile-more";
 import { StoreKpis } from "../_components/kpis";
 import { PageHead } from "../_components/page-head";
 import { SettlementsView } from "../_components/settlements-view";
@@ -57,21 +59,26 @@ export default async function ButikerPage({
       : null;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 max-md:gap-7 md:gap-12 md:px-8 md:pt-12">
       <PageHead
         eyebrow={data.scopeLabel ? `Butiker · ${data.scopeLabel}` : "Butiker"}
         title={headline.title}
         aside={headline.aside}
         actions={
           ctx.canEdit ? (
-            // Guiden: butik, villkor, automat och kontrakt på en minut.
-            <Link
-              href="/butiker/ny"
-              className="inline-flex h-11 items-center gap-2 rounded-sm border border-inverse bg-inverse px-5 text-base font-medium text-on-inverse transition-colors hover:bg-inverse-hover"
+            // Guiden: butik, villkor, automat och kontrakt på en minut. Mobil: bakom "⋯".
+            <MobileMore
+              label="Fler val för butiker"
+              className="max-md:absolute max-md:-top-2 max-md:-right-2"
             >
-              <span aria-hidden>+</span>
-              Ny butik
-            </Link>
+              <Link
+                href="/butiker/ny"
+                className="inline-flex h-11 items-center gap-2 rounded-sm border border-inverse bg-inverse px-5 text-base font-medium text-on-inverse transition-colors hover:bg-inverse-hover"
+              >
+                <span aria-hidden>+</span>
+                Ny butik
+              </Link>
+            </MobileMore>
           ) : undefined
         }
       />
@@ -84,14 +91,23 @@ export default async function ButikerPage({
             {data.ignoredMachine ? (
               <p className="meta text-subtle">Automatfiltret gäller inte här.</p>
             ) : null}
-            <StoreKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
-            {/* Butikernas andel på begäran; med vald butik visas den alltid. */}
-            {data.scopeLabel ? null : (
-              <Suspense fallback={null}>
-                <StoreShareToggle userKey={ctx.user.id} />
-              </Suspense>
-            )}
-            {dataRange ? <p className="meta text-subtle">Data {dataRange}</p> : null}
+            {/* Mobil: hopfällt bakom "Fler siffror" (rubriken har intäkten och vinsten). */}
+            <MobileFold summary="Fler siffror" meta={formatInt(data.kpis.length)}>
+              <div className="flex flex-col gap-3">
+                <StoreKpis
+                  items={data.kpis}
+                  label={`Nyckeltal · ${days}`}
+                  comparison={comparison}
+                />
+                {/* Butikernas andel på begäran; med vald butik visas den alltid. */}
+                {data.scopeLabel ? null : (
+                  <Suspense fallback={null}>
+                    <StoreShareToggle userKey={ctx.user.id} />
+                  </Suspense>
+                )}
+                {dataRange ? <p className="meta text-subtle">Data {dataRange}</p> : null}
+              </div>
+            </MobileFold>
           </div>
 
           {unsigned > 0 ? (
@@ -117,6 +133,8 @@ export default async function ButikerPage({
           >
             <SectionHeader
               id="alla-butiker"
+              // Mobil: den grå meningen döljs.
+              className="max-md:[&_h2>span+span]:hidden"
               size="md"
               eyebrow={`Per butik · ${days}`}
               title={
@@ -146,13 +164,20 @@ export default async function ButikerPage({
                 eyebrow="På väg in"
                 title={`${plural(prospects.length, "butik", "butiker")} utan automat än.`}
                 aside="Räknas inte i siffrorna ovan."
+                className="max-md:hidden"
               />
-              <StoreTable
-                rows={prospects}
-                monthLabel={data.monthLabel}
-                caption="Butiker utan automat"
-                showStoreShare={data.showStoreShare}
-              />
+              {/* Mobil: en rad som fäller ut samma tabell. */}
+              <MobileFold
+                summary="På väg in"
+                meta={`${plural(prospects.length, "butik", "butiker")} utan automat`}
+              >
+                <StoreTable
+                  rows={prospects}
+                  monthLabel={data.monthLabel}
+                  caption="Butiker utan automat"
+                  showStoreShare={data.showStoreShare}
+                />
+              </MobileFold>
             </section>
           ) : null}
         </>

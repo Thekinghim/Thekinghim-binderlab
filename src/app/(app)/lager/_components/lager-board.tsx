@@ -104,7 +104,8 @@ export function LagerBoard({
     view.machines.length > 0 ? (
       <section
         aria-labelledby="pafyllningslista"
-        className="rise"
+        // Mobil: påfyllningslistan (det man gör) direkt under rubriken.
+        className="rise max-md:-order-1"
         style={{ "--i": packFirst ? 1 : 3 } as React.CSSProperties}
       >
         <PackList
@@ -127,11 +128,13 @@ export function LagerBoard({
 
       <section
         aria-labelledby="matris"
-        className="rise flex flex-col gap-6 md:gap-10"
+        className="rise flex flex-col gap-6 max-md:gap-4 md:gap-10"
         style={{ "--i": 2 } as React.CSSProperties}
       >
         <SectionHeader
           id="matris"
+          // Mobil: den grå förklaringen döljs (cellerna visar dagar och status).
+          className="max-md:[&_h2>span+span]:hidden"
           eyebrow={`Lager per automat · ${salesWindow.days} d`}
           title={
             hasMachines

@@ -145,11 +145,12 @@ export default async function TodoPage({
           aside={view.header.aside}
           description={view.header.description || undefined}
           meta={<HeaderMeta items={view.header.meta} />}
-          className="pb-6 md:pb-8"
+          // Mobil: "Först: …" döljs (första raden säger samma sak).
+          className="pb-6 max-md:pb-3 md:pb-8 max-md:[&_p.line-clamp-2]:hidden"
         />
       </div>
       <div
-        className="rise flex flex-wrap items-center gap-3 pb-6"
+        className="rise flex flex-wrap items-center gap-3 pb-6 max-md:pb-4"
         style={{ "--i": 1 } as React.CSSProperties}
       >
         <MineToggle

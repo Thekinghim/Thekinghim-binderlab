@@ -65,10 +65,22 @@ const LEVEL_TEXT: Record<HomeTodo["level"], string> = {
  * De viktigaste punkterna i Att göra. Bara den första punkten som gäller nu får
  * signalglyfen (en markering per lista); övriga "nu" får varningsglyfen och texten "Nu".
  */
-export function TodoList({ todos }: { todos: HomeTodo[] }) {
+export function TodoList({
+  todos,
+  phoneKeys,
+}: {
+  todos: HomeTodo[];
+  /** Under md syns bara dessa punkter (todo-phone.ts); utan: alla. */
+  phoneKeys?: ReadonlySet<string>;
+}) {
   const firstNow = todos.findIndex((t) => t.level === "now");
   return (
-    <ol className="flex flex-col border-t border-line">
+    <ol
+      className={cn(
+        "flex flex-col border-t border-line",
+        phoneKeys && phoneKeys.size === 0 && "max-md:hidden",
+      )}
+    >
       {todos.map((t, i) => {
         const status: Status =
           t.level === "now"
@@ -81,13 +93,16 @@ export function TodoList({ todos }: { todos: HomeTodo[] }) {
         return (
           <li
             key={t.key}
-            className="rise border-b border-line"
+            className={cn(
+              "rise border-b border-line",
+              phoneKeys && !phoneKeys.has(t.key) && "max-md:hidden",
+            )}
             style={{ "--i": i + 5 } as CSSProperties}
           >
             <Link
               href={t.href}
               title={t.detail}
-              className="group lift grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-xs py-3 hover:bg-hover sm:grid-cols-[4.5rem_minmax(0,1fr)_auto]"
+              className="group lift grid min-h-11 grid-cols-[3.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-xs py-3 hover:bg-hover sm:grid-cols-[4.5rem_minmax(0,1fr)_auto]"
             >
               <span className="label flex items-start gap-1.5 pt-1 text-fg">
                 <span className="inline-flex h-4 w-2 items-center">
@@ -143,13 +158,23 @@ const TONE_TEXT: Record<HomeInsight["tone"], string> = {
 };
 
 /** Iakttagelserna: mening i fg, talen bakom i grått, och länken till underlaget. */
-export function InsightList({ insights }: { insights: HomeInsight[] }) {
+export function InsightList({
+  insights,
+  phoneLimit,
+}: {
+  insights: HomeInsight[];
+  /** Under md: bara de första iakttagelserna. */
+  phoneLimit?: number;
+}) {
   return (
     <ul className="flex flex-col border-t border-line">
       {insights.map((n, i) => (
         <li
           key={n.key}
-          className="rise border-b border-line"
+          className={cn(
+            "rise border-b border-line",
+            phoneLimit !== undefined && i >= phoneLimit && "max-md:hidden",
+          )}
           style={{ "--i": i + 6 } as CSSProperties}
         >
           <Link
@@ -189,7 +214,16 @@ function sentenceOf(text: string): string {
  * övriga i mellangrå. Titlar utan inköpspris får en streckad markering ("ingår inte i
  * vinsten"), inte signal: signalen bärs av nyckeltalet Vinst.
  */
-export function TopTitles({ top, caption }: { top: HomeTopTitles; caption: string }) {
+export function TopTitles({
+  top,
+  caption,
+  phoneLimit,
+}: {
+  top: HomeTopTitles;
+  caption: string;
+  /** Under md: bara de första raderna (resten nås via "Alla titlar"). */
+  phoneLimit?: number;
+}) {
   const rows = [
     ...top.rows.map((r, i) => ({
       ...r,
@@ -246,7 +280,14 @@ export function TopTitles({ top, caption }: { top: HomeTopTitles; caption: strin
         {rows.map((r, i) => {
           const emph = i === 0 && !r.rest;
           return (
-            <tr key={r.id} className="border-b border-line last:border-b-0">
+            <tr
+              key={r.id}
+              className={cn(
+                "border-b border-line last:border-b-0",
+                phoneLimit !== undefined && i >= phoneLimit && "max-md:hidden",
+                phoneLimit !== undefined && i === phoneLimit - 1 && "max-md:border-b-0",
+              )}
+            >
               <td className="meta tnum py-3 align-top text-subtle">
                 {r.rank === null ? "" : String(r.rank).padStart(2, "0")}
               </td>

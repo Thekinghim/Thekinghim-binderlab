@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useState } from "rea
 
 import { cn } from "@/lib/cn";
 import { CountUp } from "./count-up";
+import { MobileFold } from "./mobile-fold";
 import { Skeleton } from "./skeleton";
 import { KpiTrace } from "./kpi-trace";
 import {
@@ -53,6 +54,12 @@ type KpiStripProps = {
   className?: string;
   /** Namn för skärmläsare när remsan saknar synligt huvud (standard label, annars "Nyckeltal"). */
   ariaLabel?: string;
+  /**
+   * Under md: remsan fälls ihop bakom en rad "Fler siffror · 5" (talen upprepar ofta sidans
+   * rubrik). Från md står den öppen som vanligt. En text ersätter "Fler siffror". Inte för en
+   * remsa som står först eller sist i en panel (raden bryter panelens kantregler).
+   */
+  mobileFold?: boolean | string;
 };
 
 // Statiska klasser så att Tailwind hittar dem.
@@ -191,7 +198,41 @@ export function KpiStrip({
   motion = "count",
   className,
   ariaLabel,
+  mobileFold,
 }: KpiStripProps) {
+  const strip = (
+    <KpiStripInner
+      items={items}
+      label={label}
+      headingLevel={headingLevel}
+      comparison={comparison}
+      loading={loading}
+      motion={motion}
+      className={className}
+      ariaLabel={ariaLabel}
+    />
+  );
+  if (!mobileFold) return strip;
+  return (
+    <MobileFold
+      summary={typeof mobileFold === "string" ? mobileFold : "Fler siffror"}
+      meta={items.length}
+    >
+      {strip}
+    </MobileFold>
+  );
+}
+
+function KpiStripInner({
+  items,
+  label,
+  headingLevel = 3,
+  comparison,
+  loading,
+  motion = "count",
+  className,
+  ariaLabel,
+}: Omit<KpiStripProps, "mobileFold">) {
   const Heading = headingLevel === 2 ? "h2" : "h3";
   const hasHeader = Boolean(label || comparison);
   const layout = kpiStripLayout(items);
@@ -371,7 +412,7 @@ function KpiCell({
   return (
     <div
       className={cn(
-        "group/kpi rise -mt-px -ml-px flex min-w-0 flex-col border-t border-l border-line py-4 pr-4 transition-colors duration-300 hover:bg-hover/40 @4xl:pr-5",
+        "group/kpi rise -mt-px -ml-px flex min-w-0 flex-col border-t border-l border-line py-3 pr-4 transition-colors duration-300 hover:bg-hover/40 md:py-4 @4xl:pr-5",
         span,
       )}
       style={{ "--i": Math.min(index, 6) } as React.CSSProperties}
@@ -387,7 +428,7 @@ function KpiCell({
           <dd
             ref={ref}
             className={cn(
-              "tnum mt-3 truncate font-medium transition-transform duration-300 group-hover/kpi:-translate-y-0.5",
+              "tnum mt-2 truncate font-medium transition-transform duration-300 group-hover/kpi:-translate-y-0.5 md:mt-3",
               sizes[step],
             )}
           >

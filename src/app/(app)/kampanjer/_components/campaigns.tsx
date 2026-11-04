@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
+import { Icon } from "@/components/ui/icon";
 import { Modal } from "@/components/ui/modal";
 import { Segmented } from "@/components/ui/segmented";
 import { useToast } from "@/components/ui/toast";
@@ -117,31 +118,63 @@ function SuggestionList({
   onPick: (s: SuggestionView) => void;
 }) {
   const code = (id: string) => machines.find((m) => m.machineId === id)?.code ?? "";
+  // Mobil: första förslaget som en platt rad, resten bakom "Alla förslag".
+  const [all, setAll] = useState(false);
   return (
-    <ul aria-label="Förslag" className="flex w-full flex-col gap-2">
-      {suggestions.map((s, i) => (
-        <li
-          key={s.titleId}
-          className="rise flex flex-wrap items-center justify-between gap-3 rounded-md border border-line-strong bg-raised px-4 py-3"
-          style={{ "--i": i } as React.CSSProperties}
+    <>
+      <ul aria-label="Förslag" className="flex w-full flex-col gap-2 max-md:gap-0">
+        {suggestions.map((s, i) => (
+          <li
+            key={s.titleId}
+            className={cn(
+              "rise flex flex-wrap items-center justify-between gap-3 rounded-md border border-line-strong bg-raised px-4 py-3 max-md:flex-nowrap max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:border-line max-md:bg-transparent max-md:px-0 max-md:py-2",
+              i >= MOBILE_SUGGESTIONS && !all && "max-md:hidden",
+            )}
+            style={{ "--i": i } as React.CSSProperties}
+          >
+            <div className="flex min-w-0 flex-col max-md:flex-1">
+              <span className="label text-subtle">Förslag · ny titel</span>
+              <span className="text-base font-medium">{s.text}</span>
+              <span className="text-sm text-muted">
+                {s.machineIds.map(code).join(", ")} · in {s.sinceLabel}
+              </span>
+            </div>
+            {canEdit ? (
+              <Button
+                variant="secondary"
+                iconLeft="plus"
+                onClick={() => onPick(s)}
+                aria-label={`Skapa kampanj: ${s.text}`}
+                className="max-md:h-11 max-md:shrink-0"
+              >
+                <span className="md:hidden">Skapa</span>
+                <span className="max-md:hidden">Skapa kampanj</span>
+              </Button>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      {suggestions.length > MOBILE_SUGGESTIONS ? (
+        <button
+          type="button"
+          aria-expanded={all}
+          onClick={() => setAll((v) => !v)}
+          className="label flex min-h-11 w-full items-center justify-between border-b border-line text-muted hover:text-fg md:hidden"
         >
-          <div className="flex min-w-0 flex-col">
-            <span className="label text-subtle">Förslag · ny titel</span>
-            <span className="text-base font-medium">{s.text}</span>
-            <span className="text-sm text-muted">
-              {s.machineIds.map(code).join(", ")} · in {s.sinceLabel}
-            </span>
-          </div>
-          {canEdit ? (
-            <Button variant="secondary" iconLeft="plus" onClick={() => onPick(s)}>
-              Skapa kampanj
-            </Button>
-          ) : null}
-        </li>
-      ))}
-    </ul>
+          <span>{all ? "Färre förslag" : `Alla förslag (${suggestions.length})`}</span>
+          <Icon
+            name="chevronRight"
+            size={12}
+            className={cn("transition-transform duration-fast", all && "rotate-90")}
+          />
+        </button>
+      ) : null}
+    </>
   );
 }
+
+/** Så många förslag syns på mobil innan "Alla förslag". */
+const MOBILE_SUGGESTIONS = 1;
 
 function CampaignDialog({
   machines,

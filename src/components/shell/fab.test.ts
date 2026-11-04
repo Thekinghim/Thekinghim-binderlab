@@ -5,6 +5,7 @@ import {
   FAB_SIZE_PX,
   fabLayout,
   fabVisibleAfterScroll,
+  phoneFabLayout,
   showsRefillShortcut,
 } from "./fab";
 
@@ -24,6 +25,15 @@ describe("flytande knappar", () => {
     expect(l.refillBottom).not.toBeNull();
     expect(l.assistantBottom).toBeNull();
     expect(l.mainPaddingBottom).toBeGreaterThan((l.refillBottom ?? 0) + FAB_SIZE_PX);
+  });
+
+  it("på telefonen finns ingen flytande AI-knapp; Fyll på står kvar", () => {
+    const owner = phoneFabLayout({ refill: false });
+    expect(owner.assistantBottom).toBeNull();
+    expect(owner.mainPaddingBottom).toBe(BOTTOM_NAV_PX);
+    const refiller = phoneFabLayout({ refill: true });
+    expect(refiller.refillBottom).not.toBeNull();
+    expect(refiller.mainPaddingBottom).toBeGreaterThan((refiller.refillBottom ?? 0) + FAB_SIZE_PX);
   });
 
   it("Fyll på-genvägen bara för påfyllaren och inte på fältsidorna", () => {

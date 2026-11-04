@@ -56,8 +56,9 @@ const OLD_VIEWS: Record<string, { tab: Tab; hash: string }> = {
 };
 
 const SECTION = "flex scroll-mt-28 flex-col gap-8";
+/** "Mer"-raderna. Mobil: platta rader med linje under (inga kort), 44 px höga. */
 const MORE =
-  "group scroll-mt-28 rounded-sm border border-line [&>summary]:flex [&>summary]:cursor-pointer [&>summary]:items-baseline [&>summary]:justify-between [&>summary]:gap-4 [&>summary]:px-4 [&>summary]:py-3";
+  "group scroll-mt-28 rounded-sm border border-line [&>summary]:flex [&>summary]:cursor-pointer [&>summary]:items-baseline [&>summary]:justify-between [&>summary]:gap-4 [&>summary]:px-4 [&>summary]:py-3 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:[&>summary]:min-h-11 max-md:[&>summary]:items-center max-md:[&>summary]:px-0 max-md:[&>summary>span+span]:truncate max-md:[&>div]:px-0";
 
 function viewParam(sp: SearchParamsInput): string | undefined {
   return sp instanceof URLSearchParams || "get" in sp
@@ -151,7 +152,7 @@ export default async function PrognosPage({
       </Suspense>
 
       {tab === "bestall" ? (
-        <div key="bestall" className="fade-in flex flex-col gap-12 md:gap-14">
+        <div key="bestall" className="fade-in flex flex-col gap-12 max-md:gap-8 md:gap-14">
           <PageHead
             eyebrow={m.scoped ? "Inköp · hela organisationen" : "Inköp"}
             title={m.plan.heading.title}
@@ -203,8 +204,8 @@ export default async function PrognosPage({
             </section>
           ) : null}
 
-          <div className="rise flex flex-col gap-3" style={rise(4)}>
-            <p className="label text-subtle">Mer</p>
+          <div className="rise flex flex-col gap-3 max-md:gap-0" style={rise(4)}>
+            <p className="label text-subtle max-md:border-b max-md:border-line max-md:pb-2">Mer</p>
             {!ordersMain ? (
               <details id="inkopsorder" className={MORE}>
                 <summary>
@@ -265,7 +266,7 @@ export default async function PrognosPage({
           </div>
         </div>
       ) : (
-        <div key="prognos" className="fade-in flex flex-col gap-12 md:gap-14">
+        <div key="prognos" className="fade-in flex flex-col gap-12 max-md:gap-8 md:gap-14">
           <PageHead eyebrow="Prognos · 4 veckor" title={m.heading.title} aside={m.heading.aside} />
           <section aria-labelledby="prognos" className={`rise ${SECTION}`} style={rise(1)}>
             <h2 id="prognos" className="sr-only">
@@ -282,8 +283,8 @@ export default async function PrognosPage({
             <ForecastView model={m.forecast} />
           </section>
 
-          <div className="rise flex flex-col gap-3" style={rise(2)}>
-            <p className="label text-subtle">Mer</p>
+          <div className="rise flex flex-col gap-3 max-md:gap-0" style={rise(2)}>
+            <p className="label text-subtle max-md:border-b max-md:border-line max-md:pb-2">Mer</p>
             <details id="forlorad-forsaljning" className={MORE}>
               <summary>
                 <span className="text-sm font-medium text-fg">Förlorad försäljning</span>

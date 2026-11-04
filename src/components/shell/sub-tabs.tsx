@@ -215,7 +215,8 @@ function TabRow({
       <div ref={rowRef} className="relative flex min-w-0 items-stretch border-b border-line">
         <div
           ref={scrollRef}
-          className="-ml-4 min-w-0 [scrollbar-width:none] overflow-x-auto pl-4 md:ml-0 md:pl-0 [&::-webkit-scrollbar]:hidden"
+          // Under md tonar högerkanten ut, så att man ser att raden går att rulla.
+          className="-ml-4 min-w-0 [scrollbar-width:none] overflow-x-auto pl-4 max-md:[mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)] max-md:pr-6 md:ml-0 md:pl-0 [&::-webkit-scrollbar]:hidden"
         >
           <ul className="flex min-w-max gap-1">
             {inline.map((t) => (

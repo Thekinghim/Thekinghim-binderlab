@@ -7,6 +7,8 @@
 
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
+import { MobileFold } from "@/components/ui/mobile-fold";
+import { MobileTopList } from "@/components/ui/mobile-top-list";
 import { StatusTag, type Status } from "@/components/ui/status-tag";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/cn";
@@ -113,11 +115,24 @@ export async function BokforingSection({
         }
       />
 
-      <ol className="flex flex-col gap-3" aria-label="Månader">
+      {/* Mobil: tre månader (alltid den att skicka härnäst), resten bakom "Alla N månader". */}
+      <MobileTopList
+        className="flex flex-col gap-3"
+        ariaLabel="Månader"
+        total={view.months.length}
+        noun="månader"
+      >
         {view.months.map((m, i) => (
-          <MonthItem key={m.month} row={m} canEdit={canEdit} today={today} index={i} />
+          <MonthItem
+            key={m.month}
+            row={m}
+            canEdit={canEdit}
+            today={today}
+            index={i}
+            next={m.month === next?.month}
+          />
         ))}
-      </ol>
+      </MobileTopList>
 
       <OpenMoreOnHash detailsId="kontoplan" hashes={MORE_HASHES} />
       {/* Sällan ändrat: VMB-valet och kontoplanen. Läget syns i raden även när den är stängd. */}
@@ -159,11 +174,14 @@ function MonthItem({
   canEdit,
   today,
   index,
+  next = false,
 }: {
   row: MonthRow;
   canEdit: boolean;
   today: string;
   index: number;
+  /** Månaden som rubriken säger ska skickas härnäst. */
+  next?: boolean;
 }) {
   const b = row.book;
   const figures: [string, number][] = [
@@ -185,9 +203,28 @@ function MonthItem({
         ? `${final ? "klar att ladda ner" : "preliminär"}${row.stored ? version : ""}`
         : STATUS_LABEL[row.status];
   const tag: Status = row.status === "closed" && final ? "ok" : TAG[row.status];
+  // Mobil: månaden som ska skickas härnäst (eller är klar att skicka) står först med
+  // siffrorna öppna; de andra visar bara namn, läge och resultat tills man öppnar dem.
+  const ready = next || (row.status === "closed" && final);
+  const dl = (
+    <dl
+      className={cn(
+        "grid flex-1 grid-cols-2 gap-x-4 gap-y-2",
+        b.vmbEnabled ? "sm:grid-cols-5" : "sm:grid-cols-4",
+      )}
+    >
+      {figures.map(([label, v]) => (
+        <div key={label} className="flex min-w-0 flex-col">
+          <dt className="label text-subtle">{label}</dt>
+          <dd className={cn("tnum text-fg", label === "Resultat" && "font-medium")}>{kr(v)}</dd>
+        </div>
+      ))}
+    </dl>
+  );
   return (
     <li
-      className="rise rounded-md border border-line bg-surface"
+      className={cn("rise rounded-md border border-line bg-surface", ready && "max-md:order-first")}
+      data-keep={next ? "" : undefined}
       style={{ "--i": Math.min(index, 8) + 1 } as React.CSSProperties}
     >
       <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:gap-6">
@@ -195,19 +232,13 @@ function MonthItem({
           <h3 className="text-base font-medium text-fg">{capitalize(monthText(row.month))}</h3>
           <StatusTag status={tag}>{statusText}</StatusTag>
         </div>
-        <dl
-          className={cn(
-            "grid flex-1 grid-cols-2 gap-x-4 gap-y-2",
-            b.vmbEnabled ? "sm:grid-cols-5" : "sm:grid-cols-4",
-          )}
-        >
-          {figures.map(([label, v]) => (
-            <div key={label} className="flex min-w-0 flex-col">
-              <dt className="label text-subtle">{label}</dt>
-              <dd className={cn("tnum text-fg", label === "Resultat" && "font-medium")}>{kr(v)}</dd>
-            </div>
-          ))}
-        </dl>
+        {ready ? (
+          dl
+        ) : (
+          <MobileFold summary="Resultat" meta={kr(b.resultOre)} className="flex-1">
+            {dl}
+          </MobileFold>
+        )}
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           {row.status === "open" ? (
             <span className="text-sm text-muted">Pågår</span>

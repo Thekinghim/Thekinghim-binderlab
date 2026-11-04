@@ -61,15 +61,17 @@ export default async function LagerPage({ searchParams }: { searchParams: Promis
   const placesTotal = view.counts.critical + view.counts.low + view.counts.ok + view.unknownCount;
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 max-md:gap-8 md:gap-16 md:px-8 md:pt-12">
       {routeById("vart-lager").roles.includes(ctx.role) ? (
         <Suspense fallback={null}>
           <WarehouseRedirect />
         </Suspense>
       ) : null}
-      <div className="rise" style={{ "--i": 0 } as React.CSSProperties}>
+      <div className="rise max-md:-order-2" style={{ "--i": 0 } as React.CSSProperties}>
         <SectionHeader
           as="h1"
+          // Mobil: "Platser" döljs (samma tal står i matrisens rubrik).
+          className="max-md:[&_dl]:hidden"
           size="xl"
           eyebrow="Lager"
           title={headline.title}

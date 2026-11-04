@@ -7,6 +7,7 @@ import type { AlertSeverity } from "@/analytics/alerts";
 import { sentence } from "@/analytics/todos/text";
 import { Button } from "@/components/ui/button";
 import { StatusTag, type Status } from "@/components/ui/status-tag";
+import { cn } from "@/lib/cn";
 import { useToast } from "@/components/ui/toast";
 
 import { acknowledgeAlert } from "../actions";
@@ -62,6 +63,9 @@ function AckButton({ id }: { id: string }) {
   );
 }
 
+/** På mobil syns så här många larm innan "Visa alla". */
+const MOBILE_COUNT = 3;
+
 /**
  * Larm som lista: allvar, rubrik, text och underlaget (regeln och talen) bakom en
  * utfällning. Kritiska larm bär signal i statusetiketten, inget annat.
@@ -72,27 +76,38 @@ export function AlertList({ items, canAck }: { items: AlertItem[]; canAck: boole
   return (
     <div className="flex flex-col">
       <ul className="flex flex-col divide-y divide-line border-y border-line">
-        {visible.map((a) => (
-          <li key={a.id} className="grid gap-3 py-4 md:grid-cols-12 md:gap-8">
-            <div className="flex flex-col gap-2 md:col-span-3">
+        {visible.map((a, i) => (
+          <li
+            key={a.id}
+            // Mobil: rubrik och en rad till vänster, Kvittera till höger; bara de första
+            // larmen tills "Visa alla" (från md som förut).
+            className={cn(
+              "grid gap-3 py-4 max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-3 max-md:gap-y-1 max-md:py-3 md:grid-cols-12 md:gap-8",
+              !showAll && i >= MOBILE_COUNT && "max-md:hidden",
+            )}
+          >
+            <div className="flex flex-col gap-2 max-md:col-start-1 md:col-span-3">
               <div className="flex flex-wrap items-center gap-2">
                 <StatusTag status={a.open ? SEVERITY_TAG[a.severity].status : "neutral"}>
                   {a.open ? SEVERITY_TAG[a.severity].label : "Löst"}
                 </StatusTag>
-                <span className="label text-subtle">{a.kindLabel}</span>
+                <span className="label text-subtle max-md:hidden">{a.kindLabel}</span>
               </div>
-              <span className="meta text-subtle">
+              <span className="meta text-subtle max-md:hidden">
                 {a.open ? `Sedan ${a.opened}` : `${a.opened} – ${a.closed ?? ""}`}
               </span>
             </div>
-            <div className="flex min-w-0 flex-col gap-1 md:col-span-6">
+            <div className="flex min-w-0 flex-col gap-1 max-md:col-start-1 md:col-span-6">
               <p className="text-base text-fg">{sentence(a.title)}</p>
-              <p className="text-sm text-muted">{a.detail}</p>
+              <p className="text-sm text-muted max-md:line-clamp-2">{a.detail}</p>
               <details className="mt-1">
-                <summary className="w-fit cursor-pointer rounded-xs text-sm text-muted hover:text-fg">
+                <summary className="w-fit cursor-pointer rounded-xs text-sm text-muted hover:text-fg max-md:flex max-md:min-h-11 max-md:items-center">
                   Underlag
                 </summary>
                 <div className="mt-2 flex flex-col gap-2 text-sm text-muted">
+                  <p className="meta text-subtle md:hidden">
+                    {`${a.kindLabel} · ${a.open ? `Sedan ${a.opened}` : `${a.opened} – ${a.closed ?? ""}`}`}
+                  </p>
                   <p>{a.rule}</p>
                   {a.figures.length > 0 ? (
                     <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
@@ -116,7 +131,7 @@ export function AlertList({ items, canAck }: { items: AlertItem[]; canAck: boole
                 </div>
               </details>
             </div>
-            <div className="flex items-start gap-2 md:col-span-3 md:justify-end">
+            <div className="flex items-start gap-2 max-md:col-start-2 max-md:row-span-2 max-md:row-start-1 md:col-span-3 md:justify-end max-md:[&_button]:h-11">
               {a.acknowledged ? (
                 <span className="meta text-subtle">{a.acknowledged}</span>
               ) : a.open && canAck ? (
@@ -126,9 +141,14 @@ export function AlertList({ items, canAck }: { items: AlertItem[]; canAck: boole
           </li>
         ))}
       </ul>
-      {items.length > 8 ? (
-        <div className="pt-3">
-          <Button variant="ghost" size="sm" onClick={() => setShowAll((v) => !v)}>
+      {items.length > MOBILE_COUNT ? (
+        <div className={cn("pt-3", items.length <= 8 && "md:hidden")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowAll((v) => !v)}
+            className="max-md:h-11"
+          >
             {showAll ? "Visa färre" : `Visa alla ${items.length}`}
           </Button>
         </div>

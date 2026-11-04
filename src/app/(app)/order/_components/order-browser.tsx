@@ -271,7 +271,7 @@ export function OrderBrowser(props: OrderBrowserProps) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 max-md:gap-4">
       <OrderFilters
         q={props.q}
         titleId={props.titleId}
@@ -392,7 +392,8 @@ function OrderFilters({
       role="search"
       aria-label="Filtrera order"
       aria-busy={pending || undefined}
-      className="fade-in grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)_auto] sm:items-end"
+      // Mobil: sök och titel på en rad, etiketterna bara för skärmläsare, fälten 44 px.
+      className="fade-in grid grid-cols-1 gap-3 max-md:gap-2 max-sm:grid-cols-[minmax(0,1fr)_minmax(0,8.5rem)] sm:grid-cols-[minmax(0,1fr)_minmax(0,14rem)_auto] sm:items-end max-md:[&_input]:h-11 max-md:[&_label]:sr-only max-md:[&_select]:h-11"
       onSubmit={(e) => {
         e.preventDefault();
         const clean = cleanQuery(text);
@@ -425,7 +426,7 @@ function OrderFilters({
         onChange={(e) => onChange({ titleId: e.target.value || null })}
       />
       {active ? (
-        <div className="flex">
+        <div className="flex max-sm:col-span-2">
           <Button
             type="button"
             variant="ghost"
