@@ -18,7 +18,7 @@ import {
   withUserDbFor,
   type SessionUser,
 } from "../access";
-import { dbErrorMessage, pgErrorOf } from "../errors";
+import { dbErrorMessage, pgErrorOf, safeErrorForLog } from "../errors";
 import { describeInvitation, type InvitationLookup } from "../invitations";
 import type { RateLimiter } from "../rate-limit";
 import { validateNewPassword } from "./password";
@@ -166,10 +166,14 @@ export interface InviteContext {
 }
 
 /**
- * Skapar inbjudan (RPC create_invitation, som användaren) och skickar mejlet
- * i samma transaktion: misslyckas utskicket rullas inbjudan tillbaka.
+ * Skapar inbjudan (RPC create_invitation, som användaren) och skickar sedan mejlet.
+ * Inbjudan sparas först; går mejlet inte iväg ligger inbjudan kvar (emailSent: false)
+ * och kan skickas om. Med lösenord loggar personen in direkt och ser inbjudan.
  */
-export async function createInviteFlow(ctx: InviteContext, raw: unknown): Promise<ActionResult> {
+export async function createInviteFlow(
+  ctx: InviteContext,
+  raw: unknown,
+): Promise<ActionResult<{ emailSent: boolean }>> {
   if (!ctx.user) {
     return { ok: false, error: MESSAGES.notLoggedIn };
   }
@@ -204,25 +208,37 @@ export async function createInviteFlow(ctx: InviteContext, raw: unknown): Promis
       return { ok: false, error: MESSAGES.inviteAccountExists };
     }
   }
+  // 1) Inbjudan sparas och bekräftas först, utan att databasen väntar på mejlet.
+  let token: string;
   try {
-    await withUserDbFor(user, async (tx) => {
+    token = await withUserDbFor(user, async (tx) => {
       const result = await tx.execute(
         sql`select public.create_invitation(
               ${organizationId}::uuid, ${email}, ${role}::public.member_role, ${validDays ?? 7}::integer
             ) as token`,
       );
-      const token = (Array.from(result)[0] as { token?: unknown } | undefined)?.token;
-      if (typeof token !== "string") {
+      const value = (Array.from(result)[0] as { token?: unknown } | undefined)?.token;
+      if (typeof value !== "string") {
         throw new Error("create_invitation returnerade ingen token.");
       }
-      await ctx.provider.sendInvite(email, `${ctx.baseUrl}/inbjudan/${token}`);
+      return value;
     });
-    return { ok: true };
   } catch (error) {
+    console.error("[inbjudan] kunde inte sparas", safeErrorForLog(error));
     return {
       ok: false,
       error: pgErrorOf(error) ? dbErrorMessage(error) : MESSAGES.inviteSendFailed,
     };
+  }
+  // 2) Mejlet skickas efteråt. Med lösenord kan personen logga in direkt och ser
+  //    inbjudan då, så ett misslyckat mejl stoppar inget. Utan lösenord ligger
+  //    inbjudan kvar och kan skickas om ("Skicka ny länk").
+  try {
+    await ctx.provider.sendInvite(email, `${ctx.baseUrl}/inbjudan/${token}`);
+    return { ok: true, data: { emailSent: true } };
+  } catch (error) {
+    console.error("[inbjudan] mejlet gick inte iväg", safeErrorForLog(error));
+    return { ok: true, data: { emailSent: false } };
   }
 }
 

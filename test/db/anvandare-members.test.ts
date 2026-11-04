@@ -383,7 +383,7 @@ describe("bjud in delägaren som läsare och logga in som hen", () => {
       { provider: provider(), user: session(f.owner), baseUrl: "http://localhost:3200" },
       { organizationId: f.orgId, email, role: "viewer" },
     );
-    expect(invited).toEqual({ ok: true });
+    expect(invited).toMatchObject({ ok: true });
     const token = await tokenFor(email);
     const cookies = new MemoryCookieJar();
     const accepted = await acceptInviteFlow(
@@ -422,7 +422,7 @@ describe("bjud in delägaren som läsare och logga in som hen", () => {
       { provider: provider(), user: session(f.owner), baseUrl: "http://localhost:3200" },
       { organizationId: f.orgId, email: partner.email, role: "viewer" },
     );
-    expect(invited).toEqual({ ok: true });
+    expect(invited).toMatchObject({ ok: true });
     const token = await tokenFor(partner.email);
 
     // Utan session: kontot finns redan, personen ska logga in först.
@@ -441,7 +441,7 @@ describe("bjud in delägaren som läsare och logga in som hen", () => {
         { provider: p, limiter: createRateLimiter({ limit: 5, windowMs: 60_000 }), ip: "1.2.3.4" },
         { email: partner.email, password: PASSWORD },
       ),
-    ).toEqual({ ok: true });
+    ).toMatchObject({ ok: true });
     const sessionUser = await p.getSession();
     expect(sessionUser?.email).toBe(partner.email);
     const accepted = await acceptInviteFlow(

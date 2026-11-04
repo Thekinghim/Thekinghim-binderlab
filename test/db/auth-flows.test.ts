@@ -218,7 +218,7 @@ describe("inbjudningar", () => {
         { provider, user: session(owner), baseUrl: BASE_URL },
         { organizationId: org, email: invitee.toUpperCase(), role: "viewer" },
       ),
-    ).toEqual({ ok: true });
+    ).toMatchObject({ ok: true });
     const { text, token } = await latestMailTo(invitee);
     expect(text).toContain(`${BASE_URL}/inbjudan/${token}`);
     expect(await describeInvitation(token)).toEqual({
@@ -327,12 +327,12 @@ describe("inbjudningar", () => {
     });
 
     const admin = await createMember(org, "admin");
-    expect(await createInviteFlow(ctxFor(admin), input("viewer"))).toEqual({ ok: true });
+    expect(await createInviteFlow(ctxFor(admin), input("viewer"))).toMatchObject({ ok: true });
     expect(await createInviteFlow(ctxFor(admin), input("owner"))).toEqual({
       ok: false,
       error: "Du har inte behörighet till det här.",
     });
-    expect(await createInviteFlow(ctxFor(owner), input("owner"))).toEqual({ ok: true });
+    expect(await createInviteFlow(ctxFor(owner), input("owner"))).toMatchObject({ ok: true });
 
     expect(
       await createInviteFlow(ctxFor(owner), {
@@ -349,7 +349,7 @@ describe("inbjudningar", () => {
     });
   });
 
-  it("rullar tillbaka inbjudan om mejlet inte kan skickas", async () => {
+  it("inbjudan sparas även om mejlet inte kan skickas, och kan skickas om", async () => {
     const owner = await createUser();
     const org = await createOrg(owner);
     const failing: AuthProvider = {
@@ -368,14 +368,14 @@ describe("inbjudningar", () => {
         { provider: failing, user: session(owner), baseUrl: BASE_URL },
         { organizationId: org, email, role: "viewer" },
       ),
-    ).toEqual({ ok: false, error: MESSAGES.inviteSendFailed });
+    ).toEqual({ ok: true, data: { emailSent: false } });
     const count = await asPostgres((tx) =>
       one<{ n: number }>(
         tx,
         sql`select count(*)::int as n from public.invitations where organization_id = ${org} and email = ${email}`,
       ),
     );
-    expect(count.n).toBe(0);
+    expect(count.n).toBe(1);
   });
 
   it("utgångna och okända inbjudningar ger tydliga fel", async () => {
@@ -459,7 +459,7 @@ describe("lösenord som ägaren sätter vid inbjudan", () => {
         { provider, user: session(owner), baseUrl: BASE_URL },
         { organizationId: org, email: invitee, role: "admin", password: "delägarens lösenord" },
       ),
-    ).toEqual({ ok: true });
+    ).toMatchObject({ ok: true });
 
     // Inloggning med lösenordet, i en ny webbläsare.
     const cookies = new MemoryCookieJar();

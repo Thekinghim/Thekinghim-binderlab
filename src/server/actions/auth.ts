@@ -67,7 +67,7 @@ export async function createInvite(input: {
   validDays?: number;
   /** Valfritt: lösenord som ägaren sätter åt den inbjudna. */
   password?: string;
-}): Promise<ActionResult> {
+}): Promise<ActionResult<{ emailSent: boolean }>> {
   const provider = await getAuthProvider();
   const user = await getSessionUser();
   let baseUrl: string;

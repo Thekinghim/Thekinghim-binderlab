@@ -41,7 +41,7 @@ async function sendInvite(
   email: string,
   role: MemberRole,
   password?: string,
-): Promise<ActionResult> {
+): Promise<ActionResult<{ emailSent: boolean }>> {
   const organizationId = await activeOrganizationId();
   if (!organizationId) return { ok: false, error: MEMBER_MESSAGES.forbidden };
   let baseUrl: string;
@@ -68,7 +68,7 @@ export async function inviteMember(input: {
   email: string;
   role: MemberRole;
   password?: string;
-}): Promise<ActionResult> {
+}): Promise<ActionResult<{ emailSent: boolean }>> {
   const password = typeof input?.password === "string" ? input.password : undefined;
   const result = await sendInvite(String(input?.email ?? ""), input?.role, password);
   if (result.ok) revalidatePath(PAGE);
@@ -121,7 +121,9 @@ export async function revokeInvitation(input: { invitationId: string }): Promise
 }
 
 /** Skickar en ny länk. Den gamla slutar gälla (create_invitation löper ut den). */
-export async function resendInvitation(input: { invitationId: string }): Promise<ActionResult> {
+export async function resendInvitation(input: {
+  invitationId: string;
+}): Promise<ActionResult<{ emailSent: boolean }>> {
   const organizationId = await activeOrganizationId();
   const found = await findManageableInvitationFor(await getSessionUser(), {
     organizationId,

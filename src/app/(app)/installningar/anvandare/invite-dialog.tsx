@@ -93,14 +93,17 @@ export function InviteDialog({
         setError(result.error);
         return;
       }
+      const emailSent = result.data?.emailSent !== false;
       toast({
-        title: `Inbjudan skickad till ${address}`,
+        title: emailSent ? `Inbjudan skickad till ${address}` : `Inbjudan sparad för ${address}`,
         description: password
-          ? `${ROLE_LABEL[role]}. Lösenordet är satt.`
-          : devMailbox
-            ? `${ROLE_LABEL[role]}. Lokalt sparas mejlet i .data/mail.`
-            : `${ROLE_LABEL[role]}. Länken gäller i 7 dagar.`,
-        tone: "ok",
+          ? `${ROLE_LABEL[role]}. Lösenordet är satt: personen loggar in med det och godkänner inbjudan.`
+          : !emailSent
+            ? `${ROLE_LABEL[role]}. Mejlet gick inte iväg. Tryck Skicka ny länk om en stund.`
+            : devMailbox
+              ? `${ROLE_LABEL[role]}. Lokalt sparas mejlet i .data/mail.`
+              : `${ROLE_LABEL[role]}. Länken gäller i 7 dagar.`,
+        tone: emailSent || password ? "ok" : "neutral",
       });
       close();
       router.refresh();
