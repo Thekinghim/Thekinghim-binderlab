@@ -42,7 +42,9 @@ export {
 } from "./market";
 export {
   detectPriceChanges,
+  MAX_PLAUSIBLE_ELASTICITY,
   priceChangeEffect,
+  RAMP_DAYS,
   type DetectPriceChangeOptions,
   type PlaceboResult,
   type PriceChangeEffect,

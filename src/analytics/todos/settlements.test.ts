@@ -51,6 +51,36 @@ describe("settlementTodos", () => {
     expect(t.daysLeft).toBe(12);
   });
 
+  it("en avräkning som inte kan räknas visar inget gammalt belopp att betala", () => {
+    const ctx = createTodoContext(
+      {
+        ...base,
+        unpaidSettlements: [
+          { id: "a", storeId: "s1", month: "2026-10-01", amountOre: 1_293_000, blocked: true },
+        ],
+      },
+      at("2026-11-03"),
+    );
+    const [t] = settlementTodos(ctx);
+    expect(t!.title).toBe("Räkna klart avräkningen till Kafé Ett");
+    expect(t!.title).not.toContain("12");
+    expect(t!.detail).toContain("Inköpspris saknas");
+    const mixed = settlementTodos(
+      createTodoContext(
+        {
+          ...base,
+          unpaidSettlements: [
+            { id: "a", storeId: "s1", month: "2026-10-01", amountOre: 50_000 },
+            { id: "b", storeId: "s2", month: "2026-10-01", amountOre: 99_000, blocked: true },
+          ],
+        },
+        at("2026-11-03"),
+      ),
+    )[0]!;
+    expect(mixed.title.replace(/\u00a0/g, " ")).toBe("Betala 500 kr till Kafé Ett");
+    expect(mixed.detail).toContain("Butik Två kan inte räknas än");
+  });
+
   it("en butik: namnet i rubriken; nivå efter sista dagen", () => {
     const input = {
       ...base,

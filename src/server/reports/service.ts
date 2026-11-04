@@ -61,7 +61,15 @@ import {
   type ReportType,
 } from "./kinds";
 import { allowsRange, rangeError } from "./range";
-import { asSnapshot, buildSnapshot, storeIdOf, type ReportSnapshot } from "./snapshot";
+import {
+  asSnapshot,
+  buildSnapshot,
+  headlineOreOf,
+  requestOf,
+  sameReport,
+  storeIdOf,
+  type ReportSnapshot,
+} from "./snapshot";
 import { loadSnapshotInput, storesPlacedIn } from "./sources";
 import { DONE_DELIVERY, reportStatuses, type DeliveryStatus, type ReportStatus } from "./status";
 import { reportPdfPath } from "./storage";
@@ -530,11 +538,72 @@ export async function insertReportTx(
 // Godkännande
 // ---------------------------------------------------------------------------
 
-/** Godkänner rapporten för utskick. Ägare och admin. Ersatta rapporter kan inte godkännas. */
+/** Ett utkast vars siffror inte längre stämmer med en ny uträkning. */
+export interface StaleDraft {
+  /** Butiksrapporten: ersättningen i utkastet och nu (öre); annars null. */
+  readonly draftOre: number | null;
+  readonly nowOre: number | null;
+}
+
+/**
+ * Jämför ett utkast med samma rapport räknad nu. null = samma (eller inte ett utkast, eller
+ * kan inte räknas nu). Ett godkänt eller skickat utkast jämförs aldrig: det är låst.
+ */
+async function staleDraftTx(
+  tx: Tx,
+  viewer: Viewer,
+  report: ReportDetail,
+  now: Date,
+): Promise<StaleDraft | null> {
+  if (report.status !== "draft") return null;
+  let fresh: ReportSnapshot;
+  try {
+    fresh = await snapshotTx(
+      tx,
+      viewer.organization.id,
+      viewer.organization.timezone,
+      requestOf(report.snapshot),
+      now,
+    );
+  } catch (error) {
+    if (error instanceof ReportError) return null;
+    throw error;
+  }
+  return sameReport(report.snapshot, fresh)
+    ? null
+    : { draftOre: headlineOreOf(report.snapshot), nowOre: headlineOreOf(fresh) };
+}
+
+/** Är utkastet inaktuellt? (Rapporter visar det och låser "Godkänn".) Ägare, admin, läsare. */
+export async function staleDraftFor(
+  viewer: Viewer,
+  id: string,
+  now: Date = new Date(),
+): Promise<StaleDraft | null> {
+  return as(viewer, READ_ROLES, async (tx) => {
+    let report: ReportDetail;
+    try {
+      report = await getReportTx(tx, viewer.organization.id, id);
+    } catch (error) {
+      // Ett utkast vars underlag inte går att läsa (äldre format) kan inte jämföras: sidan
+      // ska ändå visas, i stället för att hela Rapporter går sönder.
+      if (error instanceof DomainError || error instanceof ReportError) return null;
+      throw error;
+    }
+    return staleDraftTx(tx, viewer, report, now);
+  });
+}
+
+/**
+ * Godkänner rapporten för utskick. Ägare och admin. Ersatta rapporter kan inte godkännas,
+ * och inte heller ett utkast vars siffror har ändrats sedan det skapades (då skapas en ny
+ * version först, så att butiken aldrig får ett belopp som inte stämmer med avräkningen).
+ */
 export async function approveReportFor(
   viewer: Viewer,
   id: string,
   note?: string | null,
+  now: Date = new Date(),
 ): Promise<void> {
   await as(viewer, EDIT_ROLES, async (tx) => {
     const orgId = viewer.organization.id;
@@ -543,6 +612,11 @@ export async function approveReportFor(
       throw new ReportError("Det finns en nyare version av rapporten. Godkänn den i stället.");
     }
     if (report.approvedAt) return;
+    if (await staleDraftTx(tx, viewer, report, now)) {
+      throw new ReportError(
+        "Siffrorna har ändrats sedan utkastet skapades. Skapa en ny version och godkänn den.",
+      );
+    }
     await tx.insert(s.reportApprovals).values({
       organizationId: orgId,
       reportId: id,

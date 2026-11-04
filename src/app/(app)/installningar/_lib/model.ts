@@ -53,6 +53,9 @@ export const SETTINGS_MESSAGES = {
   forbidden: "Bara ägare och admin kan ändra inställningarna.",
   ownerOnly: "Bara ägaren kan ändra ägarandelarna.",
   invalid: "Uppgifterna stämmer inte. Kontrollera procentsatserna och försök igen.",
+  companyInvalid: "Uppgifterna är för långa. Korta ner dem och försök igen.",
+  orgNumberInvalid: "Organisationsnummer skrivs NNNNNN-NNNN.",
+  emailInvalid: "E-postadressen ser inte rätt ut.",
   sharesInvalid: "Varje ägare behöver ett namn och en andel över 0 %.",
   sharesDuplicate: "Samma namn står två gånger. Varje ägare ska stå en gång.",
   sharesDateTaken:
@@ -212,6 +215,12 @@ const FIELD_LABEL: Record<AuditedTable, Record<string, string>> = {
     card_fee_bp: "Kortavgift",
     vat_rate_bp: "Momssats",
     fiscal_year_start_month: "Räkenskapsåret börjar",
+    company_name: "Företagsnamn",
+    org_number: "Organisationsnummer",
+    company_address: "Adress",
+    contact_name: "Kontaktperson",
+    contact_email: "E-post",
+    contact_phone: "Telefon",
   },
   owner_shares: {
     holder_name: "Ägare",
@@ -225,6 +234,16 @@ const FIELD_LABEL: Record<AuditedTable, Record<string, string>> = {
     name: "Namn",
   },
 };
+
+/** Företagsuppgifterna (kontraktet), loggas som "Företaget". */
+const COMPANY_FIELDS: ReadonlySet<string> = new Set([
+  "company_name",
+  "org_number",
+  "company_address",
+  "contact_name",
+  "contact_email",
+  "contact_phone",
+]);
 
 export interface FieldChange {
   readonly label: string;
@@ -260,7 +279,16 @@ function fieldValue(
 
 function subjectOf(e: SettingsAuditEvent): string {
   const row = e.after ?? e.before ?? {};
-  if (e.table === "organization_settings") return "Avgifter och moms";
+  if (e.table === "organization_settings") {
+    const before = e.before ?? {};
+    const after = e.after ?? {};
+    const changed = Object.keys(FIELD_LABEL.organization_settings).filter(
+      (k) => e.action === "update" && String(before[k] ?? "") !== String(after[k] ?? ""),
+    );
+    return changed.length > 0 && changed.every((k) => COMPANY_FIELDS.has(k))
+      ? "Företaget"
+      : "Avgifter och moms";
+  }
   if (e.table === "owner_shares") return `Ägarandel: ${String(row.holder_name ?? "")}`;
   return `Konto ${String(row.bas_account ?? "")}`.trim();
 }

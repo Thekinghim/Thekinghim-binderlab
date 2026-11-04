@@ -7,6 +7,7 @@
  */
 
 import { sql } from "drizzle-orm";
+import { cache } from "react";
 
 import { withRls, type Tx } from "@/db/client";
 import type { MemberRole } from "@/db/schema";
@@ -59,7 +60,12 @@ export function withUserDbFor<T>(user: SessionUser, fn: (tx: Tx) => Promise<T>):
   return withRls({ sub: user.userId, email: user.email }, fn);
 }
 
-/** Användarens roll i organisationen (läst under RLS), eller null. */
+/**
+ * Användarens roll i organisationen (läst under RLS), eller null. En gång per förfrågan och
+ * organisation (React cache i serverkomponenter): laddarna kontrollerar rollen var för sig,
+ * och varje kontroll var annars en egen transaktion (sju på Hem, fem på Att göra). Utanför
+ * en förfrågan (tester, cron) läses rollen varje gång.
+ */
 export async function getRoleFor(
   user: SessionUser,
   organizationId: string,
@@ -67,6 +73,15 @@ export async function getRoleFor(
   if (!isUuid(organizationId)) {
     return null;
   }
+  return roleInRequest(user.userId, user.email, organizationId.toLowerCase());
+}
+
+const roleInRequest = cache(
+  (userId: string, email: string, organizationId: string): Promise<MemberRole | null> =>
+    readRole({ userId, email }, organizationId),
+);
+
+async function readRole(user: SessionUser, organizationId: string): Promise<MemberRole | null> {
   return withUserDbFor(user, async (tx) => {
     const result = await tx.execute(
       sql`select m.role::text as role
@@ -100,11 +115,44 @@ export async function requireRoleFor(
   return role;
 }
 
+/** En organisation där användaren är medlem, med antal aktiva automater. */
+export interface OrganizationWithMachineCount extends OrganizationMembership {
+  readonly machines: number;
+}
+
 /** Organisationer där användaren är medlem (ej arkiverade), äldsta medlemskapet först. */
 export async function listOrganizationsFor(user: SessionUser): Promise<OrganizationMembership[]> {
+  return (await listOrganizationsWithMachinesFor(user)).map((o) => ({
+    id: o.id,
+    name: o.name,
+    slug: o.slug,
+    timezone: o.timezone,
+    role: o.role,
+  }));
+}
+
+/**
+ * Som listOrganizationsFor, med antal aktiva automater per organisation (organisationsväxlaren),
+ * i en fråga. En gång per förfrågan (React cache): skalet (@/server/data/core) och den aktiva
+ * organisationen (getActiveOrganization i ./session) delar samma läsning.
+ */
+export async function listOrganizationsWithMachinesFor(
+  user: SessionUser,
+): Promise<OrganizationWithMachineCount[]> {
+  return (await organizationsInRequest(user.userId, user.email)).map((o) => ({ ...o }));
+}
+
+const organizationsInRequest = cache(
+  (userId: string, email: string): Promise<OrganizationWithMachineCount[]> =>
+    readOrganizations({ userId, email }),
+);
+
+async function readOrganizations(user: SessionUser): Promise<OrganizationWithMachineCount[]> {
   return withUserDbFor(user, async (tx) => {
     const result = await tx.execute(
-      sql`select o.id, o.name, o.slug::text as slug, o.timezone, m.role::text as role
+      sql`select o.id, o.name, o.slug::text as slug, o.timezone, m.role::text as role,
+                 (select count(*)::int from public.machines ma
+                   where ma.organization_id = o.id and ma.archived_at is null) as machines
           from public.memberships m
           join public.organizations o on o.id = m.organization_id
           where m.user_id = (select auth.uid()) and o.archived_at is null
@@ -120,6 +168,7 @@ export async function listOrganizationsFor(user: SessionUser): Promise<Organizat
               slug: String(r.slug),
               timezone: String(r.timezone),
               role: r.role,
+              machines: Number(r.machines ?? 0),
             },
           ]
         : [];

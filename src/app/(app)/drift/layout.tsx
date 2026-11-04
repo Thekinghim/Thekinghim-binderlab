@@ -19,7 +19,7 @@ export default async function DriftLayout({ children }: { children: ReactNode })
         .slice(0, 32)
     : null;
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-8 px-4 pt-6 pb-16 md:px-8 md:pt-8">
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-4 pt-4 pb-16 md:gap-8 md:px-8 md:pt-8">
       <DriftNav canRefill={ctx ? ["owner", "admin", "refiller"].includes(ctx.role) : false} />
       <ServiceWorkerRegistration scope={scope} />
       {children}

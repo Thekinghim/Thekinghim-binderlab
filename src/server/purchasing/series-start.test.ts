@@ -4,7 +4,7 @@ import { forecastSales } from "@/analytics/forecast";
 import type { StockEventRef } from "@/analytics/lost-sales";
 import { addDays, type IsoDate, type OrderLine } from "@/domain";
 
-import { seriesStartsFromStock } from "./series-start";
+import { retiredSeries, seriesStartsFromStock } from "./series-start";
 
 const NO_TAX = { vatRateBp: 0, cardFeeBp: 0 };
 const AS_OF: IsoDate = "2026-11-01";
@@ -141,5 +141,17 @@ describe("nivåns osäkerhet i intervallet", () => {
     expect(shortRatio).toBeGreaterThan(longRatio);
     // 5 dagar med data och 28 dagars summa: varians × (1 + 28/5) ≈ 6,6 → bredd × ca 2,6.
     expect(shortRatio).toBeGreaterThan(2.3);
+  });
+});
+
+describe("retiredSeries: titlar som gått ur automaten får ingen prognos", () => {
+  it("bara par utan gällande period i dag", () => {
+    const periods = [
+      { machineId: "m1", titleId: "bolt", validFrom: "2026-10-14", validTo: "2026-11-02" },
+      { machineId: "m1", titleId: "30th", validFrom: "2026-10-14", validTo: null },
+      { machineId: "m1", titleId: "flair", validFrom: "2026-10-14", validTo: "2026-10-30" },
+      { machineId: "m1", titleId: "flair", validFrom: "2026-11-10", validTo: null },
+    ] as const;
+    expect(retiredSeries(periods, "2026-11-04")).toEqual([{ machineId: "m1", titleId: "bolt" }]);
   });
 });

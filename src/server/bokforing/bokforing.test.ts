@@ -9,6 +9,7 @@ import type { AccountantReport } from "@/reports";
 
 import {
   bookMonths,
+  missingCostReason,
   monthFiguresFromReport,
   monthResult,
   VmbVatRateError,
@@ -39,6 +40,7 @@ function figures(month: string, over: Partial<MonthFigures> = {}): MonthFigures 
     cardFeesOre: 1_500,
     purchasesOre: 40_000,
     purchaseBasis: "received_purchases",
+    purchaseBasisAuto: false,
     costOfGoodsOre: 35_000,
     receivedPurchasesOre: 40_000,
     unpricedOrders: 0,
@@ -724,6 +726,54 @@ describe("granskning: återbetalningar, tomma månader, momssats", () => {
       1_000,
     );
     expect(ok).toMatchObject({ refundsOre: 1_000, profitSplitUnpricedOrders: 2 });
+  });
+});
+
+describe("inköpen när inga inköpsorder finns (utvärderingen 4 nov, punkt 3)", () => {
+  // Oktober: 75 989 kr sålt, sålda pack kostade 57 702 kr, inga inköpsorder registrerade.
+  const report = {
+    vatRateBp: 0,
+    totals: {
+      grossOre: 7_598_900,
+      feesOre: 190_000,
+      costOre: 5_770_200,
+      unpricedOrders: 0,
+      orders: 438,
+    },
+    stores: [],
+    days: [],
+    profitSplitUnpricedOrders: 0,
+  } as unknown as AccountantReport;
+
+  it("utan inköpsorder räknas inköpen som inköpsvärdet för sålda pack", () => {
+    const f = monthFiguresFromReport("2026-10", report, 0, "received_purchases", 0, {
+      hasReceivedPurchases: false,
+    });
+    expect(f.purchaseBasis).toBe("cost_of_goods");
+    expect(f.purchaseBasisAuto).toBe(true);
+    expect(f.purchasesOre).toBe(5_770_200);
+    const [b] = bookMonths([f], 0);
+    expect(b!.resultOre).toBe(7_598_900 - 5_770_200 - 190_000);
+    expect(missingCostReason(f)).toBeNull();
+  });
+
+  it("med inköpsorder i andra månader: 0 kr i inköp gör månaden preliminär", () => {
+    const f = monthFiguresFromReport("2026-10", report, 0, "received_purchases", 0, {
+      hasReceivedPurchases: true,
+    });
+    expect(f.purchaseBasis).toBe("received_purchases");
+    expect(f.purchasesOre).toBe(0);
+    expect(missingCostReason(f)).toContain("Inga inköp registrerade");
+  });
+
+  it("inköpsvärde sålda pack med order utan inköpspris är inte klart", () => {
+    const f = monthFiguresFromReport(
+      "2026-10",
+      { ...report, totals: { ...report.totals, unpricedOrders: 3 } } as AccountantReport,
+      0,
+      "cost_of_goods",
+    );
+    expect(missingCostReason(f)).toBe("3 order saknar inköpspris, så inköpen är inte klara.");
   });
 });
 

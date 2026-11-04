@@ -21,7 +21,7 @@ import {
   type IsoMonth,
 } from "@/domain";
 
-import { loadDomainInput } from "./core";
+import { loadDataStart, loadDomainInput } from "./core";
 
 /** Ett sparat mål (som GoalRecord i Expansion). `month` är 'ÅÅÅÅ-MM'. */
 export interface GoalRow {
@@ -53,7 +53,10 @@ export async function goalsProgress(
     start = minDate(start, monthStart(g.month as IsoMonth));
     end = maxDate(end, monthEnd(g.month as IsoMonth));
   }
-  const input = await loadDomainInput({ period: { start, end: minDate(end, today) } });
+  const [input, dataStart] = await Promise.all([
+    loadDomainInput({ period: { start, end: minDate(end, today) } }),
+    loadDataStart(),
+  ]);
   return goalProgress({
     ...input.current,
     goals: goals.map((g) => ({
@@ -66,6 +69,10 @@ export async function goalsProgress(
       machineId: g.machineId,
     })),
     asOf: today,
+    // Samma dagregel som övriga sidor: bara hela dagar med data (i dag och dagar före
+    // första ordern räknas inte), se @/analytics/days.
+    today,
+    dataStart,
     stores: stores ?? input.stores,
     machines: machines ?? input.machines,
   });

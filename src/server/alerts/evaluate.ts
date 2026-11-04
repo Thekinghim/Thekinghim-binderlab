@@ -33,9 +33,11 @@ import {
   type AlertSubscription,
 } from "@/analytics/alerts";
 import { localDayStartMs } from "@/analytics/health";
+import { retiredPairs } from "@/analytics/todos/assortment";
 import { businessDateAt } from "@/analytics/todos/time";
 import type { Db, Tx } from "@/db/client";
 import * as s from "@/db/schema";
+import type { IsoDate } from "@/domain";
 
 import { queryNewMachines } from "@/server/machines/new-machines";
 import { recordJobOutcome } from "@/server/monitoring/failures";
@@ -132,6 +134,25 @@ export async function collectCandidates(
   const yesterdayKnown = known === null || known.getTime() >= localDayStartMs(today, timeZone);
   // Ny automat hittad: samma lista som Att göra (inte kopplad, inte "Inte vår").
   const discovered = await queryNewMachines(tx, orgId);
+  // Titlar som gått ur automaten (Utgår på Lager) larmar inte: samma regel som Lager.
+  const slots = await tx
+    .select({
+      machineId: s.machineSlots.machineId,
+      titleId: s.machineSlots.titleId,
+      validFrom: s.machineSlots.validFrom,
+      validTo: s.machineSlots.validTo,
+    })
+    .from(s.machineSlots)
+    .where(eq(s.machineSlots.organizationId, orgId));
+  const retired = retiredPairs(
+    slots.map((r) => ({
+      machineId: r.machineId,
+      titleId: r.titleId,
+      validFrom: r.validFrom as IsoDate,
+      validTo: (r.validTo ?? null) as IsoDate | null,
+    })),
+    today,
+  );
   const candidates: AlertCandidate[] = [
     ...healthAlerts(health),
     ...lowStockAlerts(
@@ -140,6 +161,7 @@ export async function collectCandidates(
         stock: data.stock,
         machines: data.machines,
         titles: data.titles,
+        retired,
         options: { timeZone },
       },
       now,

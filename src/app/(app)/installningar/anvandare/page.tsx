@@ -35,8 +35,14 @@ export const metadata: Metadata = { title: "Användare" };
  * och påfyllare skickas till sin startsida). Data läses under RLS efter en
  * rollkontroll mot databasen (loadMembersPageFor).
  */
-export default async function UsersPage() {
+export default async function UsersPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const ctx = await requireRoute("installningar");
+  // ?bjud-in=1 (Att göra → "Bjud in delägaren") öppnar inbjudan direkt.
+  const openInvite = (await searchParams)?.["bjud-in"] === "1";
   const user = await requireUser();
   const data = await loadMembersPageFor(user, ctx.organization.id);
 
@@ -94,6 +100,7 @@ export default async function UsersPage() {
             organizationName={ctx.organization.name}
             roles={assignableRoles(data.role)}
             devMailbox={getServerEnv().AUTH_PROVIDER === "dev"}
+            initialOpen={openInvite}
           />
         }
       />

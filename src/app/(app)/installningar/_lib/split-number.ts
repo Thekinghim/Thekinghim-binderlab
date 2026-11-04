@@ -1,7 +1,11 @@
 /** Ren hjälpfunktion för MerHead (klientsäker, testas i split-number.test.ts). */
 
-/** Första heltalet i rubriken ("2 personer har tillgång." → "", 2, " personer …"). */
-const NUMBER = /\d{1,3}(?:[   ]\d{3})+(?!\d)|\d+/;
+/**
+ * Första fristående heltalet i rubriken ("2 personer har tillgång." → "", 2, " personer …").
+ * Siffror som sitter ihop med bokstäver (ett namn som "wille1452", "BL-001") är inte tal och
+ * räknas aldrig upp eller får tusentalsavgränsare.
+ */
+const NUMBER = /(?<![\p{L}\d_-])(?:\d{1,3}(?:[   ]\d{3})+|\d+)(?![\p{L}\d_])/u;
 
 export function splitFirstNumber(text: string): {
   before: string;

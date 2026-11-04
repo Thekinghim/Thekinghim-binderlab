@@ -19,6 +19,7 @@ import { reportTodos } from "./reports";
 import { silentTitleTodos } from "./silent-title";
 import { settlementTodos } from "./settlements";
 import { staleMachineTodos } from "./stale-machine";
+import { teamTodos } from "./team";
 import type { TodoInput, TodoItem } from "./types";
 
 /**
@@ -30,7 +31,8 @@ export function computeTodos(input: TodoInput, now: Date | string | number): Tod
   const ctx = createTodoContext(input, now);
   const stale = staleMachineTodos(ctx);
   const staleMachines = new Set(stale.flatMap((t) => t.evidence.machineIds));
-  const refills = refillTodos(ctx);
+  // Med besöksplanens regel: en titel som ska fyllas på senast i dag står under "I dag".
+  const refills = refillTodos(ctx, { visitDue: true });
   const refillStake = new Map(
     refills.map((t) => [t.key.slice("refill:".length), t.atStakeOre ?? 0] as const),
   );
@@ -46,6 +48,7 @@ export function computeTodos(input: TodoInput, now: Date | string | number): Tod
     ...missingContractTodos(ctx),
     ...missingPriceTodos(ctx),
     ...duplicateTitleTodos(ctx),
+    ...teamTodos(ctx),
   ]);
 }
 
@@ -54,6 +57,7 @@ export {
   assortmentKey,
   isRetiredRefill,
   retiredPairs,
+  retiredTitles,
   withoutRetiredRefills,
   type SlotPeriod,
 } from "./assortment";
@@ -83,6 +87,7 @@ export { reviewLink } from "./report-review";
 export { settlementDue, settlementLink, SETTLEMENT_DUE_DAY } from "./settlements";
 export { todoInScope, type ScopeMachine, type TodoScope } from "./scope";
 export { missingPriceFingerprint } from "./missing-price";
-export { refillFingerprint, withSlotAlerts } from "./refill";
+export { refillFingerprint, VISIT_BUFFER_DAYS, withSlotAlerts } from "./refill";
 export { silentTitles, type SilentTitle } from "./silent-title";
+export { INVITE_LINK } from "./team";
 export type * from "./types";

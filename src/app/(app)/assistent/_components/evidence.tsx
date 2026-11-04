@@ -10,6 +10,7 @@ import { StatusTag } from "@/components/ui/status-tag";
 import { cn } from "@/lib/cn";
 import { formatDuration, formatInt } from "@/lib/format";
 import type { ToolCallRecord, Verification } from "@/server/assistant/protocol";
+import { withToolHrefs } from "@/server/assistant/links";
 import { extractNumbers } from "@/server/assistant/verify";
 
 const linkCls =
@@ -195,7 +196,7 @@ export function Evidence({
                   </dl>
                 ) : null}
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  {r.links.map((l) => (
+                  {withToolHrefs(r.links).map((l) => (
                     <Link key={l.href + l.label} href={l.href} className={cn("text-sm", linkCls)}>
                       {l.label} →
                     </Link>

@@ -13,6 +13,7 @@ import {
   packQtyOf,
   planHeading,
   buildPageModel,
+  correctionNoteOf,
   codesUnbroken,
   krRangeText,
   oneSentence,
@@ -399,8 +400,13 @@ describe("buildPageModel", () => {
     expect(line.supplierName).toBe("Grossisten");
     expect(line.orderQty % 12).toBe(0);
     expect(line.orderQty).toBeGreaterThanOrEqual(24);
-    // T2 säljer men saknar leverantör.
+    // T2 säljer men saknar leverantör: förslaget visas ändå med antal.
     expect(m.plan.counts["no-supplier"]).toBe(1);
+    expect(m.plan.noSupplierLines.map((l) => l.titleId)).toEqual([T2]);
+    expect(m.plan.noSupplierLines[0]!.suggestQty).toBeGreaterThan(0);
+    expect(m.plan.noSupplierLines[0]!.suggestQty).toBe(
+      m.plan.lines.find((l) => l.titleId === T2)!.suggestQty,
+    );
     expect(m.plan.heading.title).toMatch(/^Beställ 1\u00a0titel för ca/);
     expect(m.suppliers.heading.aside).toMatch(/saknar leverantör/);
   });
@@ -607,6 +613,9 @@ describe("egna produkter med Vårt lagers antal", () => {
     expect(t2).toMatchObject({ own: true, packQty: 0, statusLabel: "Räcker" });
     expect(m.plan.counts).toMatchObject({ order: 0, "no-supplier": 0 });
     expect(m.plan.proposals).toHaveLength(0);
+    // Egna produkter föreslås aldrig "utan leverantör": de packas.
+    expect(m.plan.noSupplierLines).toHaveLength(0);
+    expect(m.plan.lines.every((l) => l.own && l.suggestQty === 0)).toBe(true);
   });
 });
 
@@ -648,7 +657,12 @@ describe("planHeading", () => {
     });
     expect(sp(planHeading({ ...base, noSupplier: 3 }))).toEqual({
       title: "3 titlar saknar leverantör.",
-      aside: "Lägg till leverantör.",
+      aside: "Lägg till leverantör för pris och boxar.",
+    });
+    // Utan leverantör visas ändå hur mycket som behövs (förr bara "saknar leverantör").
+    expect(sp(planHeading({ ...base, noSupplier: 3, noSupplierPacks: 41 }))).toEqual({
+      title: "Köp ca 41 pack, 3 titlar.",
+      aside: "Lägg till leverantör för pris och boxar.",
     });
     expect(sp(planHeading({ ...base, empty: true })).title).toBe("Inget att planera ännu.");
   });
@@ -656,5 +670,27 @@ describe("planHeading", () => {
     expect(packQtyOf({ status: "order", orderQty: 24, rawQty: 17 })).toBe(24);
     expect(packQtyOf({ status: "no-supplier", orderQty: 0, rawQty: 17 })).toBe(17);
     expect(packQtyOf({ status: "ok", orderQty: 0, rawQty: 0 })).toBe(0);
+  });
+});
+
+describe("Räcker på Inköp: samma regel som Vårt lager", () => {
+  it("hemma + i automaterna vid 14 dagars takt (stockPace), '–' utan takt", () => {
+    const m = buildPageModel(data(), new Date("2026-11-02T09:00:00Z"), {
+      stockPace: new Map([[T1, 20]]),
+    });
+    const t1 = m.plan.lines.find((l) => l.titleId === T1)!;
+    expect(t1.lastsDays).toBe(Math.floor(((t1.warehouseOnHand + t1.machineOnHand) * 10) / 20));
+    const t2 = m.plan.lines.find((l) => l.titleId === T2)!;
+    expect(t2.lastsDays).toBeNull();
+  });
+});
+
+describe("correctionNoteOf", () => {
+  it("visar sänkningen i vanliga ord, inget utan sänkning", () => {
+    expect(correctionNoteOf({ factorBp: 8_302, origins: 2 })!.replace(/\u00a0/g, " ")).toBe(
+      "Sänkt 17 %: prognosen låg för högt i 2 testveckor.",
+    );
+    expect(correctionNoteOf({ factorBp: 10_000, origins: 2 })).toBeNull();
+    expect(correctionNoteOf(undefined)).toBeNull();
   });
 });

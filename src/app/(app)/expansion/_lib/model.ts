@@ -11,6 +11,7 @@
  * - översättningar (steg i pipelinen, länkar till underlaget).
  */
 
+import { measuredPeriod } from "@/analytics/days";
 import {
   perMachineMonth,
   Ratio,
@@ -321,6 +322,26 @@ export function clipToData(period: Period, dataStart: IsoDate | null): DataPerio
     return { period: clipped, days: periodDays(clipped), clippedFrom: dataStart };
   }
   return { period, days: periodDays(period), clippedFrom: null };
+}
+
+/**
+ * Perioden för snitt per dag (enhetsekonomi): bara hela dagar med data, samma regel som
+ * @/analytics/days. Dagar före första ordern och i dag (som pågår) räknas inte, så att
+ * beloppen och antalet dagar gäller samma dagar. Finns inga hela dagar (perioden "I dag")
+ * används perioden klippt till första ordern som förut.
+ */
+export function completeDataPeriod(
+  period: Period,
+  dataStart: IsoDate | null,
+  today: IsoDate,
+): DataPeriod {
+  const measured = measuredPeriod(period, { dataStart, today });
+  if (!measured) return clipToData(period, dataStart);
+  return {
+    period: measured,
+    days: periodDays(measured),
+    clippedFrom: measured.start > period.start ? measured.start : null,
+  };
 }
 
 /**

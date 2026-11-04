@@ -10,6 +10,7 @@ import {
   type Period,
 } from "@/domain";
 
+import { homeExtraTodos } from "./extras";
 import { homeHeadline } from "./headline";
 import { appHref, carriedParams } from "./links";
 import { kr } from "./text";
@@ -151,9 +152,16 @@ describe("buildHomeModel", () => {
     expect(revenue?.value).toBe(20 * 20_000 + 3 * 15_000);
     expect(revenue?.delta).toBeNull();
     expect(revenue?.trend).toHaveLength(20);
-    // Hela vinsten som stort tal, delningen bredvid (butiken har 10 % provision).
-    expect(plain(m.headline.title)).toBe("Vinst 2 070 kr sedan 13 okt.");
-    expect(plain(m.headline.aside)).toBe("Vår del 1 725 kr · butikerna 345 kr.");
+    // Vår vinst som stort tal (samma betydelse som Lönsamhet), intäkten bredvid. Butikens
+    // andel (10 % provision) står inte som eget tal utan vyknappen.
+    expect(plain(m.headline.title)).toBe("Vår vinst 1 725 kr sedan 13 okt.");
+    expect(plain(m.headline.aside)).toBe("Intäkt 4 450 kr.");
+    expect(m.headline.split).toEqual([]);
+    expect(m.hasStoreShare).toBe(true);
+    expect(m.showStoreShare).toBe(false);
+    expect(m.kpis.find((k) => k.id === "profit")?.parts).toEqual([]);
+    // Samma period i ord som rubriken, för topplistan och slutsålt-raden.
+    expect(plain(m.spanText)).toBe("sedan 13 okt.");
     expect(plain(m.headline.lead.join(" "))).toBe(
       "Före fasta kostnader. 22,5 % saknar inköpspris.",
     );
@@ -177,12 +185,13 @@ describe("buildHomeModel", () => {
       period: { start: DATA_START, end: "2026-11-01" },
       orders: input.current.orders,
     });
-    // Vår vinst som Lönsamhet; nyckeltalet visar hela vinsten (vår + butikens hyra och provision).
+    // Vår vinst som Lönsamhet, både i nyckeltalet och i delningen (butikens hyra och
+    // provision är dragna).
     expect(m.profitSplit?.ourOre).toBe(full.profitOre);
     const totals = profitability(input.current, "title").totals;
-    expect(m.kpis.find((k) => k.id === "profit")?.value).toBe(
-      full.profitOre + totals.compensationOre,
-    );
+    expect(m.kpis.find((k) => k.id === "profit")?.value).toBe(full.profitOre);
+    expect(m.kpis.find((k) => k.id === "profit")?.label).toBe("Vår vinst");
+    expect(m.profitSplit?.totalOre).toBe(full.profitOre + totals.compensationOre);
     expect(m.kpis.find((k) => k.id === "margin")?.value).toBe(full.marginBp);
     // Hyran för 4–12 okt. och 2 nov. ingår: vinsten är lägre än för dagarna med order.
     expect(full.profitOre).toBeLessThan(covered.profitOre);
@@ -258,7 +267,7 @@ describe("buildHomeModel", () => {
     expect(revenue?.delta).toBeCloseTo(0.225, 4);
     expect(m.kpis.find((k) => k.id === "margin")?.deltaKind).toBe("absolute");
     expect(m.daily?.compareOre).toHaveLength(10);
-    expect(plain(m.headline.title)).toMatch(/^Vinst .* på 10 dagar\.$/);
+    expect(plain(m.headline.title)).toMatch(/^Vår vinst .* på 10 dagar\.$/);
     expect(plain(m.headline.aside)).toMatch(/(\+23 %|butikerna)/);
   });
 
@@ -302,7 +311,7 @@ describe("buildHomeModel", () => {
     expect(m.daily?.dates).toHaveLength(6);
     expect(m.daily?.compareOre).toHaveLength(6);
     // Samma dagar som diagrammet och övriga sidor: i dag räknas inte utan order.
-    expect(plain(m.headline.title)).toMatch(/^Vinst .* på 6 dagar\.$/);
+    expect(plain(m.headline.title)).toMatch(/^Vår vinst .* på 6 dagar\.$/);
   });
 
   it("säger att det saknas order när datan saknas helt", () => {
@@ -558,30 +567,37 @@ describe("homeHeadline", () => {
   };
   it("skriver vinsten som det stora talet, med intäkten och förändringen bredvid", () => {
     const h = homeHeadline(base);
-    expect(plain(h.title)).toBe("Vinst 21 933 kr på 20 dagar.");
-    expect(h.figure).toMatchObject({ label: "Vinst", valueOre: 2_193_300, tone: "good" });
+    expect(plain(h.title)).toBe("Vår vinst 21 933 kr på 20 dagar.");
+    expect(h.figure).toMatchObject({ label: "Vår vinst", valueOre: 2_193_300, tone: "good" });
     expect(plain(h.aside)).toBe("Intäkt 79 987 kr, +12 %.");
     expect(h.lead).toEqual(["Före fasta kostnader."]);
     expect(h.split).toEqual([]);
   });
   it("rubriken är högst åtta ord", () => {
-    const h = homeHeadline({ ...base, ourProfitOre: 1_500_000 });
+    const h = homeHeadline({ ...base, storesProfitOre: 693_300, showStoreShare: true });
     expect((plain(h.title) ?? "").split(" ").length).toBeLessThanOrEqual(8);
   });
-  it("delningen står som andra del: vår del och butikerna", () => {
-    const h = homeHeadline({ ...base, ourProfitOre: 1_500_000 });
-    expect(plain(h.aside)).toBe("Vår del 15 000 kr · butikerna 6 933 kr.");
-    expect(h.split).toEqual([
-      { label: "Vår del", valueOre: 1_500_000 },
-      { label: "butikerna", valueOre: 693_300 },
+  it("butikernas andel bara på begäran: vår vinst är talet, totalen och andelen under", () => {
+    // Utan vyknappen: vår vinst och intäkten, ingen delning.
+    const off = homeHeadline({ ...base, storesProfitOre: 693_300 });
+    expect(plain(off.title)).toBe("Vår vinst 21 933 kr på 20 dagar.");
+    expect(plain(off.aside)).toBe("Intäkt 79 987 kr, +12 %.");
+    expect(off.split).toEqual([]);
+    // Med vyknappen: totalen före andelen och andelen.
+    const on = homeHeadline({ ...base, storesProfitOre: 693_300, showStoreShare: true });
+    expect(plain(on.title)).toBe("Vår vinst 21 933 kr på 20 dagar.");
+    expect(plain(on.aside)).toBe(
+      "Totalt före butikernas andel 28 866 kr · butikernas andel 6 933 kr.",
+    );
+    expect(on.split).toEqual([
+      { label: "Totalt före butikernas andel", valueOre: 2_886_600 },
+      { label: "butikernas andel", valueOre: 693_300 },
     ]);
-    const store = homeHeadline({
-      ...base,
-      ourProfitOre: 1_500_000,
-      storesProfitOre: 693_300,
-      filtered: true,
-    });
-    expect(plain(store.aside)).toBe("Butikens del 6 933 kr · vår del 15 000 kr.");
+    // Vald butik: andelen visas alltid, för just den butiken.
+    const store = homeHeadline({ ...base, storesProfitOre: 693_300, filtered: true });
+    expect(plain(store.aside)).toBe(
+      "Totalt före butikens andel 28 866 kr · butikens andel 6 933 kr.",
+    );
   });
   it("skriver förlust i rött och sämre med minustecken", () => {
     const h = homeHeadline({ ...base, profitOre: -50_000, marginBp: -500, revenueChangeBp: -450 });
@@ -592,10 +608,10 @@ describe("homeHeadline", () => {
   it("räknar dagarna som övriga sidor: i dag bara med order i dag", () => {
     const week = { start: "2026-10-27", end: TODAY };
     expect(plain(homeHeadline({ ...base, period: week }).title)).toBe(
-      "Vinst 21 933 kr på 6 dagar.",
+      "Vår vinst 21 933 kr på 6 dagar.",
     );
     expect(plain(homeHeadline({ ...base, period: week, hasOrdersToday: true }).title)).toBe(
-      "Vinst 21 933 kr på 7 dagar.",
+      "Vår vinst 21 933 kr på 7 dagar.",
     );
   });
   it("säger i dag och i går för en enda dag", () => {
@@ -608,11 +624,11 @@ describe("homeHeadline", () => {
   });
   it("säger sedan första ordern när datan börjar inne i perioden", () => {
     expect(plain(homeHeadline({ ...base, period: THIRTY, revenueChangeBp: null }).title)).toBe(
-      "Vinst 21 933 kr sedan 13 okt.",
+      "Vår vinst 21 933 kr sedan 13 okt.",
     );
     expect(
       plain(homeHeadline({ ...base, period: { start: "2026-10-01", end: "2026-10-19" } }).title),
-    ).toBe("Vinst 21 933 kr 13–\u206019 okt.");
+    ).toBe("Vår vinst 21 933 kr 13–\u206019 okt.");
   });
   it("visar intäkten när vinsten inte går att räkna, och nämner en stor andel utan pris", () => {
     const none = homeHeadline({
@@ -775,7 +791,7 @@ describe("hela vinsten på Hem", () => {
     return { org, scoped };
   }
 
-  function home(vmb: boolean, storeId: string | null) {
+  function home(vmb: boolean, storeId: string | null, showStoreShare = false) {
     const { org, scoped } = inputs(vmb, storeId);
     const sources = {
       prices: scoped.prices,
@@ -792,6 +808,7 @@ describe("hela vinsten på Hem", () => {
       period: PERIOD,
       dataStart: "2026-10-13",
       scope: { storeId, machineId: null },
+      showStoreShare,
     });
     return { m, org };
   }
@@ -807,10 +824,12 @@ describe("hela vinsten på Hem", () => {
         ourOre: t.profitOre,
         storesOre: t.compensationOre,
       });
-      expect(profit.value).toBe(t.profitOre + t.compensationOre);
-      expect(profit.parts).toEqual([
-        { id: "ours", label: "Vår del", value: t.profitOre },
-        { id: "stores", label: "Butikernas del", value: t.compensationOre },
+      // Talet är vår vinst; totalen och andelen bara med vyknappen.
+      expect(profit.value).toBe(t.profitOre);
+      expect(profit.parts).toEqual([]);
+      expect(home(vmb, null, true).m.kpis.find((k) => k.id === "profit")?.parts).toEqual([
+        { id: "total", label: "Totalt före andel", value: t.profitOre + t.compensationOre },
+        { id: "stores", label: "Butikernas andel", value: t.compensationOre },
       ]);
       // Butiker: raderna summerar till samma delar.
       const rows = lons.rows.filter((r) => r.kind === "item");
@@ -831,9 +850,11 @@ describe("hela vinsten på Hem", () => {
           ourOre: row.profitOre,
           storesOre: row.compensationOre,
         });
+        // Vald butik: andelen visas utan vyknappen, med butikens namn i ental.
+        expect(m.kpis.find((k) => k.id === "profit")?.value).toBe(row.profitOre);
         expect(m.kpis.find((k) => k.id === "profit")?.parts).toEqual([
-          { id: "stores", label: "Butikens del", value: row.compensationOre },
-          { id: "ours", label: "Vår del", value: row.profitOre },
+          { id: "total", label: "Totalt före andel", value: row.profitOre + row.compensationOre },
+          { id: "stores", label: "Butikens andel", value: row.compensationOre },
         ]);
       });
     }
@@ -850,12 +871,90 @@ describe("hela vinsten på Hem", () => {
     expect(on.m.kpis.find((k) => k.id === "profit")?.note).toBe("efter VMB-moms");
   });
 
-  it("rubriken säger hela vinsten och vår del", () => {
+  it("rubriken säger vår vinst; totalen och butikernas andel bara med vyknappen", () => {
     const { m } = home(false, null);
     const s = m.profitSplit!;
-    expect(plain(m.headline.title)).toMatch(new RegExp(`^Vinst ${plain(kr(s.totalOre))} `));
-    expect(plain(m.headline.aside)).toBe(
-      plain(`Vår del ${kr(s.ourOre)} · butikerna ${kr(s.storesOre)}.`),
+    expect(plain(m.headline.title)).toMatch(new RegExp(`^Vår vinst ${plain(kr(s.ourOre))} `));
+    expect(plain(m.headline.aside)).not.toMatch(/andel/);
+    const on = home(false, null, true).m;
+    expect(plain(on.headline.title)).toBe(plain(m.headline.title));
+    expect(plain(on.headline.aside)).toBe(
+      plain(
+        `Totalt före butikernas andel ${kr(s.totalOre)} · butikernas andel ${kr(s.storesOre)}.`,
+      ),
     );
+  });
+});
+
+describe("Hem: en källa för Att göra och samma period i alla rutor", () => {
+  const rule = (key: string, level: TodoItem["level"]): TodoItem =>
+    ({
+      key,
+      fingerprint: key,
+      kind: "contract",
+      level,
+      urgency: 0,
+      atStakeOre: null,
+      daysLeft: null,
+      title: key,
+      detail: "",
+      evidence: { machineIds: [], titleIds: [], orderIds: [], storeIds: [] },
+      link: "/avtal",
+    }) as unknown as TodoItem;
+
+  it("räknar bokföringen och nya automater som menyn och Att göra, och visar dem", () => {
+    const todos = [rule("contract:c1", "soon"), rule("payout:s1", "later")];
+    const extraTodos = homeExtraTodos({ bokforingMonth: "2026-10", newMachines: 0 });
+    expect(extraTodos).toEqual([
+      {
+        key: "bokforing",
+        level: "soon",
+        title: "Ladda ner bokföringen för oktober 2026",
+        href: "/ekonomi?vy=bokforing",
+      },
+    ]);
+    const m = buildHomeModel(inputFor(THIRTY, THIRTY_BEFORE, { todos, extraTodos }));
+    // Menyn: 2 punkter + bokföringen = 3; Hem säger samma.
+    expect(m.todoCount).toBe(3);
+    expect(m.todos?.map((t) => t.key)).toEqual(["bokforing", "contract:c1", "payout:s1"]);
+    expect(m.todos?.[0]?.href).toBe("/ekonomi?vy=bokforing");
+    // Ny automat gäller nu och står först.
+    const found = buildHomeModel(
+      inputFor(THIRTY, THIRTY_BEFORE, {
+        todos,
+        extraTodos: homeExtraTodos({ bokforingMonth: "2026-10", newMachines: 2 }),
+      }),
+    );
+    expect(found.todoCount).toBe(4);
+    expect(found.todoNowCount).toBe(1);
+    expect(found.todos?.[0]).toMatchObject({
+      key: "new-machines",
+      level: "now",
+      href: "/att-gora",
+    });
+  });
+
+  it("slutsålt-raden och topplistan säger samma period som rubriken", () => {
+    const m = buildHomeModel(inputFor(THIRTY, THIRTY_BEFORE));
+    // Perioden börjar 4 okt. men datan 13 okt.: rubriken säger "sedan 13 okt.".
+    expect(plain(m.headline.title)).toMatch(/sedan 13 okt\.$/);
+    const lost = homeLostSales(
+      {
+        period: THIRTY,
+        lostRevenueOre: 290_000,
+        lostGrossProfitOre: 0,
+        lostUnitsMilli: 0,
+        stockoutDayWeightBp: 0,
+        text: "Slutsålt kostade ca 2 900 kr 4 okt. – 1 nov.",
+        months: [],
+        series: [],
+        scope: { storeId: null, machineId: null },
+        href: "/prognos",
+      },
+      TODAY,
+      null,
+      m.spanText,
+    );
+    expect(plain(lost?.text)).toBe("Slutsålt kostade ca 2 900 kr sedan 13 okt.");
   });
 });

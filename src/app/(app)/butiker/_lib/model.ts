@@ -352,22 +352,50 @@ export function buildStoreRows(args: {
     );
 }
 
-/** Rubriken på listan: intäkten först, sedan vad butikerna fick och vem som bär mest. */
+/**
+ * Butiker i drift: inte arkiverade och med automat i dag eller försäljning i perioden. Det
+ * är dem rubriken och "X av Y har signerat" räknar (samma nämnare som Kontrakt: butiker med
+ * automat). Har ingen butik automat eller försäljning räknas alla som inte är arkiverade.
+ */
+export function activeStores<
+  T extends Pick<StoreRow, "archived" | "machineCodes" | "orders" | "revenueOre">,
+>(rows: readonly T[]): T[] {
+  const open = rows.filter((r) => !r.archived);
+  const running = open.filter(
+    (r) => r.machineCodes.length > 0 || r.orders > 0 || r.revenueOre !== 0,
+  );
+  return running.length > 0 ? running : open;
+}
+
+/** Butiker som inte är arkiverade men saknar automat och försäljning (på väg in). */
+export function prospectStores<
+  T extends Pick<StoreRow, "archived" | "machineCodes" | "orders" | "revenueOre">,
+>(rows: readonly T[]): T[] {
+  const active = new Set(activeStores(rows));
+  return rows.filter((r) => !r.archived && !active.has(r));
+}
+
+/**
+ * Rubriken på listan: intäkten först, sedan vår vinst. Butikernas andel bara med
+ * "Visa butikernas andel" eller vald butik (`showShare`).
+ */
 export function listHeadline(
   rows: readonly StoreRow[],
   span: string,
+  showShare = true,
 ): { title: string; aside: string | undefined } {
-  const active = rows.filter((r) => !r.archived);
+  const active = activeStores(rows);
   if (active.length === 0) return { title: "Inga butiker ännu.", aside: undefined };
   const revenue = rows.reduce((n, r) => n + r.revenueOre, 0);
   const compensation = rows.reduce((n, r) => n + r.compensationOre, 0);
   const profit = rows.reduce((n, r) => n + r.profitOre, 0);
   const title = `${plural(active.length, "butik", "butiker")} gav ${sek(revenue)} ${span}.`;
   if (revenue <= 0) return { title, aside: "Ingen försäljning än." };
+  if (!showShare) return { title, aside: `Vår vinst ${sek(profit)}.` };
   // Kort: butikernas andel och vår vinst.
   return {
     title,
-    aside: `${sek(compensation)} (${formatPercent(compensation / revenue)}) till ${rows.length === 1 ? "butiken" : "butikerna"} · vår vinst ${sek(profit)}.`,
+    aside: `${sek(compensation)} (${formatPercent(compensation / revenue)}) till ${active.length === 1 ? "butiken" : "butikerna"} · vår vinst ${sek(profit)}.`,
   };
 }
 
@@ -382,9 +410,14 @@ export function changeText(current: number, previous: number): string | null {
 
 /**
  * Listans nyckeltal. Jämförelsen räknas på de visade raderna (samma butiker i båda
- * perioderna), så att ett butiksfilter jämför butiken med sig själv.
+ * perioderna), så att ett butiksfilter jämför butiken med sig själv. Utan `showShare`
+ * (vyknappen "Visa butikernas andel" av, ingen vald butik): intäkt och vår vinst.
  */
-export function listKpis(rows: readonly StoreRow[], monthLabel: string): KpiView[] {
+export function listKpis(
+  rows: readonly StoreRow[],
+  monthLabel: string,
+  showShare = true,
+): KpiView[] {
   const revenue = rows.reduce((n, r) => n + r.revenueOre, 0);
   const compensation = rows.reduce((n, r) => n + r.compensationOre, 0);
   const earned = rows.reduce((n, r) => n + r.earnedMonthOre, 0);
@@ -395,18 +428,26 @@ export function listKpis(rows: readonly StoreRow[], monthLabel: string): KpiView
     const bp = compared ? changeBp(cur, prev) : null;
     return bp === null ? null : { kind: "relative" as const, value: bp / 10_000 };
   };
+  const revenueKpi: KpiView = {
+    id: "revenue",
+    label: "Intäkt",
+    value: revenue,
+    kind: "sek",
+    primary: true,
+    delta: rel(revenue, prevRevenue),
+  };
+  if (!showShare) {
+    const profit = rows.reduce((n, r) => n + r.profitOre, 0);
+    return [
+      revenueKpi,
+      { id: "profit", label: profit < 0 ? "Förlust" : "Vår vinst", value: profit, kind: "sek" },
+    ];
+  }
   return [
-    {
-      id: "revenue",
-      label: "Intäkt",
-      value: revenue,
-      kind: "sek",
-      primary: true,
-      delta: rel(revenue, prevRevenue),
-    },
+    revenueKpi,
     {
       id: "compensation",
-      label: rows.length === 1 ? "Till butiken" : "Till butikerna",
+      label: activeStores(rows).length === 1 ? "Till butiken" : "Till butikerna",
       value: compensation,
       kind: "sek",
       delta: rel(compensation, prevCompensation),
@@ -575,7 +616,7 @@ export function storeKpis(args: {
     },
     {
       id: "profit",
-      label: "Vinst",
+      label: "Vår vinst",
       value: cur?.profitOre ?? 0,
       kind: "sek",
       delta: rel(cur?.profitOre ?? 0, prev?.profitOre ?? 0),
@@ -660,4 +701,25 @@ export function earliestNewAgreementDay(agreements: readonly AgreementView[]): I
     null,
   );
   return latest ? addDays(latest, 1) : null;
+}
+
+/**
+ * Kontraktsknappen för en butik (bannern och fliken Villkor): Skapa kontrakt bara när inget
+ * kontrakt finns; ett osignerat kontrakt signeras (inget nytt kontrakt), ett signerat öppnas.
+ */
+export function contractAction(
+  contract: StoreContractState | null,
+  storeId: string,
+): { label: string; href: string; primary: boolean } {
+  if (contract === "unsigned") {
+    return { label: "Signera", href: `/avtal#butik-${storeId}`, primary: true };
+  }
+  if (contract === "signed") {
+    return { label: "Öppna kontrakt", href: `/avtal#butik-${storeId}`, primary: false };
+  }
+  return {
+    label: "Skapa kontrakt",
+    href: `/avtal?skapa=${encodeURIComponent(`store:${storeId}`)}`,
+    primary: true,
+  };
 }

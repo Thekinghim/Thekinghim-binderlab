@@ -49,7 +49,7 @@ import {
 } from "@/domain";
 import { fig, hundredths, Ratio, signedKr, signedPct } from "../expansion/common";
 import { nameLookup } from "../todos/common";
-import { day, krExact, plural } from "../todos/text";
+import { day, krExact, plural, sentence } from "../todos/text";
 import {
   bpOf,
   byDateThenId,
@@ -204,6 +204,11 @@ export interface PriceChangeEffectInput extends EconomicsSources {
 
 /** Slutsats. */
 export type PriceEffectVerdict = "clear" | "uncertain" | "too-early" | "no-data";
+
+/** De första så här många dagarna i en automat räknas som uppstart (ingen prisskattning). */
+export const RAMP_DAYS = 28;
+/** Största rimliga |elasticitet| i hundradelar (5,0). Större visas inte som siffra. */
+export const MAX_PLAUSIBLE_ELASTICITY = 500;
 
 /** En placeboperiod. */
 export interface PlaceboResult {
@@ -531,6 +536,35 @@ export function priceChangeEffect(input: PriceChangeEffectInput): PriceChangeEff
   const noiseBp = placeboValues.length > 0 ? Math.max(...placeboValues.map(Math.abs)) : null;
 
   const reasons: string[] = [];
+  // Nystartad automat: försäljningen växer de första veckorna oavsett pris (jämförelsegruppen
+  // +135 % i okt. 2026), så en skattning som börjar då säger inget om priset.
+  // Automatens start = dess första placering (orderna kan vara inlästa från en senare dag).
+  let firstInMachines: IsoDate | null = null;
+  for (const m of machineSet) {
+    let start: IsoDate | null = null;
+    for (const pl of input.placements) {
+      if (pl.machineId === m && (start === null || pl.from < start)) start = pl.from;
+    }
+    if (start !== null && (firstInMachines === null || start > firstInMachines)) {
+      firstInMachines = start;
+    }
+  }
+  const rampEnd = firstInMachines === null ? null : addDays(firstInMachines, RAMP_DAYS - 1);
+  const ramp = rampEnd !== null && before.start <= rampEnd;
+  if (ramp) {
+    reasons.push(
+      sentence(
+        `För tidigt att säga: automaten startade ${day(firstInMachines!)} och försäljningen växer fortfarande. Svar tidigast ${day(addDays(rampEnd!, 2 * L))}`,
+      ),
+    );
+  }
+  // En priskänslighet över så här mycket (|elasticitet| > 5) är inte trolig för en liten
+  // prisändring: skattningen visas inte som siffra.
+  const implausible =
+    elasticityHundredths !== null && Math.abs(elasticityHundredths) > MAX_PLAUSIBLE_ELASTICITY;
+  if (implausible && !ramp) {
+    reasons.push("Skattningen är orimligt stor för en så liten prisändring.");
+  }
   if (L < windowDays)
     reasons.push(`Bara ${plural(L, "dag", "dagar")} sedan ändringen (fönstret är ${windowDays}).`);
   if (pre.treated.length < minUnits || post.treated.length < minUnits) {
@@ -546,7 +580,8 @@ export function priceChangeEffect(input: PriceChangeEffectInput): PriceChangeEff
       `Effekten (${signedPct(did.effectBp)}) är inte större än den vanliga variationen (±${pctAbs(noiseBp)}).`,
     );
   }
-  const verdict: PriceEffectVerdict = reasons.length === 0 ? "clear" : "uncertain";
+  const verdict: PriceEffectVerdict =
+    reasons.length === 0 ? "clear" : ramp ? "too-early" : "uncertain";
 
   const controlOrders = [...pre.control, ...post.control];
   const controlTitleIds = [...new Set(controlOrders.map((o) => o.titleId))].sort(compareStrings);

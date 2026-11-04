@@ -214,7 +214,9 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
                     ? "Rapporten är skickad."
                     : data.current.status === "approved"
                       ? "Godkänd, redo att skicka."
-                      : "Utkastet väntar på granskning."
+                      : data.currentStale
+                        ? "Utkastet är gammalt."
+                        : "Utkastet väntar på granskning."
                 }
                 aside={`${formatInt(data.eligible.length)} mottagare.`}
               />
@@ -222,6 +224,7 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
               <ReviewPanel
                 key={data.current.id}
                 report={data.current}
+                stale={data.currentStale}
                 recipients={data.eligible}
                 canEdit={data.canEdit}
                 mailConfigured={services.mail.kind === "resend" && services.mail.configured}

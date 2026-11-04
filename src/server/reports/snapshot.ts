@@ -329,3 +329,50 @@ export function conclusionOf(snapshot: ReportSnapshot): string {
 export function storeIdOf(snapshot: ReportSnapshot): string | null {
   return snapshot.type === "butik" ? snapshot.store.id : null;
 }
+
+/**
+ * Samma rapport: samma typ och samma uträknade innehåll (allt i `report`). Ett utkast som
+ * inte längre är samma som en ny uträkning är inaktuellt (t.ex. rättade inköpspriser,
+ * ett testköp eller ett nytt avtal efter att utkastet skapades) och ska inte godkännas.
+ */
+export function sameReport(a: ReportSnapshot, b: ReportSnapshot): boolean {
+  // Den sparade ögonblicksbilden kommer ur jsonb, som ordnar om nycklarna: jämför med
+  // sorterade nycklar och utan fält som saknas (undefined sparas inte).
+  return a.type === b.type && canonical(a.report) === canonical(b.report);
+}
+
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(
+          Object.entries(v as Record<string, unknown>)
+            .filter(([, x]) => x !== undefined)
+            .sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0)),
+        )
+      : v,
+  );
+}
+
+/** Rapportens viktigaste belopp (butiksrapporten: butikens ersättning), annars null. */
+export function headlineOreOf(snapshot: ReportSnapshot): number | null {
+  return snapshot.type === "butik" ? snapshot.report.compensation.totalOre : null;
+}
+
+/** Förfrågan som ger samma rapport igen med dagens underlag. */
+export function requestOf(snapshot: ReportSnapshot): {
+  type: ReportType;
+  month: IsoMonth;
+  period: Period | null;
+  storeId: string | null;
+  greeting: string | null;
+  comment: string | null;
+} {
+  return {
+    type: snapshot.type,
+    month: snapshot.month,
+    period: isWholeMonth(snapshot.period) ? null : snapshot.period,
+    storeId: storeIdOf(snapshot),
+    greeting: snapshot.type === "butik" ? snapshot.report.greeting : null,
+    comment: snapshot.type === "delagare" ? snapshot.comment : null,
+  };
+}

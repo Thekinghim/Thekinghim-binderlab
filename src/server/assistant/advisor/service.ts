@@ -15,6 +15,7 @@ import { sql } from "drizzle-orm";
 
 import { getServiceDb, type Db } from "@/db/client";
 import type { AiConfidence, AiSuggestionStatus } from "@/db/schema";
+import { businessDateAt } from "@/analytics/todos/time";
 import { addDays } from "@/domain";
 import {
   AuthorizationError,
@@ -169,6 +170,44 @@ export async function loadSnapshotFor(viewer: Viewer, now: Date, vmb = false): P
 }
 
 // ---------------------------------------------------------------------------
+// Inaktuella förslag
+// ---------------------------------------------------------------------------
+
+/**
+ * Tabellerna vars ändringar gör förslagen inaktuella: inköpspriser, inställningar (moms,
+ * kortavgift) och butiksavtal (andel, hyra). Ändringsloggen (audit_log) har en rad för
+ * varje ändring, också borttagningar och ändringar bakåt i tiden.
+ */
+export const ADVISOR_INPUT_TABLES = [
+  "purchase_prices",
+  "organization_settings",
+  "store_agreements",
+] as const;
+
+/**
+ * Senaste ändringen av underlaget för förslagen (tidpunkten i ändringsloggen), eller null.
+ * Ett förslag från en körning före den bygger på gamla siffror och visas inte. Läses som
+ * användaren (RLS: ägare och admin ser ändringsloggen) eller med servicerollen (cron).
+ */
+async function inputsChangedAt(tx: Pick<Db, "execute">, orgId: string): Promise<Date | null> {
+  const parts = ADVISOR_INPUT_TABLES.map(
+    (t) =>
+      sql`(select max(a.occurred_at) from public.audit_log a
+           where a.organization_id = ${orgId}::uuid and a.table_name = ${t})`,
+  );
+  const [row] = Array.from(
+    await tx.execute(sql`select greatest(${sql.join(parts, sql`, `)}) as changed_at`),
+  ) as Array<{ changed_at: Date | string | null }>;
+  const v = row?.changed_at ?? null;
+  return v === null ? null : v instanceof Date ? v : new Date(v);
+}
+
+/** Sant när körningen gjordes före den senaste ändringen av underlaget. */
+export function isStaleRun(runAt: Date, changedAt: Date | null): boolean {
+  return changedAt !== null && runAt.getTime() < changedAt.getTime();
+}
+
+// ---------------------------------------------------------------------------
 // En körning
 // ---------------------------------------------------------------------------
 
@@ -233,14 +272,20 @@ export async function runAdvisor(args: RunArgs): Promise<RunOutcome> {
     const [counts] = Array.from(
       await tx.execute(
         sql`select count(*) filter (where trigger = 'manual')::int as manual,
-                   count(*) filter (where trigger = 'cron' and status in ('ok', 'empty', 'running'))::int as cron
+                   count(*) filter (where trigger = 'cron' and status in ('ok', 'empty', 'running'))::int as cron,
+                   max(created_at) filter (where status in ('ok', 'empty', 'running')) as last_at
             from public.ai_runs where organization_id = ${orgId} and created_at >= ${today.toISOString()}::timestamptz`,
       ),
-    ) as Array<{ manual: number; cron: number }>;
-    if (args.trigger === "manual" && counts!.manual >= MANUAL_RUNS_PER_DAY) {
+    ) as Array<{ manual: number; cron: number; last_at: Date | string | null }>;
+    // Har underlaget (inköpspriser, inställningar, avtal) ändrats efter dagens senaste
+    // körning visas inte förslagen längre (readAdvisorState). Då får en ny körning göras,
+    // också när dagens knapptryck är slut eller cron redan kört i dag.
+    const lastAt = counts?.last_at ? new Date(counts.last_at) : null;
+    const stale = lastAt !== null && isStaleRun(lastAt, await inputsChangedAt(tx, orgId));
+    if (args.trigger === "manual" && counts!.manual >= MANUAL_RUNS_PER_DAY && !stale) {
       return { kind: "rate-limited" as const };
     }
-    if (args.trigger === "cron" && counts!.cron > 0) return { kind: "skipped" as const };
+    if (args.trigger === "cron" && counts!.cron > 0 && !stale) return { kind: "skipped" as const };
     const spent = await monthCostOre(db, now, usdSek);
     const status = spent >= budgetOre ? "budget" : "running";
     const [row] = Array.from(
@@ -447,6 +492,8 @@ export interface SuggestionView {
   readonly effectSekMonth: number;
   readonly confidence: AiConfidence;
   readonly createdAt: string;
+  /** Affärsdagen siffrorna i förslaget kommer från (körningens dag), 'ÅÅÅÅ-MM-DD'. */
+  readonly dataDate: string;
 }
 
 export interface AdvisorState {
@@ -454,6 +501,11 @@ export interface AdvisorState {
   /** Senaste körningen (vilken som helst), eller null. */
   readonly lastRun: { status: string; createdAt: string } | null;
   readonly manualLeft: number;
+  /**
+   * Öppna förslag som inte visas: inköpspriser, inställningar eller avtal har ändrats
+   * efter körningen, så siffrorna i dem stämmer inte längre.
+   */
+  readonly staleCount: number;
 }
 
 /** Öppna förslag (status new) från de 14 senaste dagarna, nyast körning först. Ägare och admin. */
@@ -487,12 +539,14 @@ function readAdvisorState(
   return withUserDbFor(viewer.user, async (tx) => {
     const rows = Array.from(
       await tx.execute(
-        sql`select s.id, s.rank, s.title, s.why, s.action, s.effect_sek_month, s.confidence, s.created_at
+        sql`select s.id, s.rank, s.title, s.why, s.action, s.effect_sek_month, s.confidence, s.created_at,
+                   r.created_at as run_at
             from public.ai_suggestions s
+            join public.ai_runs r on r.organization_id = s.organization_id and r.id = s.run_id
             where s.organization_id = ${orgId} and s.status = 'new'
               and s.created_at >= ${addMs(now, -14 * 86_400_000).toISOString()}::timestamptz
             order by s.created_at desc, s.rank
-            limit 5`,
+            limit 20`,
       ),
     ) as Array<{
       id: string;
@@ -503,7 +557,11 @@ function readAdvisorState(
       effect_sek_month: number;
       confidence: AiConfidence;
       created_at: Date | string;
+      run_at: Date | string;
     }>;
+    const changedAt = await inputsChangedAt(tx, orgId);
+    const toDate = (d: Date | string) => (d instanceof Date ? d : new Date(d));
+    const fresh = rows.filter((r) => !isStaleRun(toDate(r.run_at), changedAt));
     const [last] = Array.from(
       await tx.execute(
         sql`select status, created_at from public.ai_runs where organization_id = ${orgId}
@@ -519,7 +577,7 @@ function readAdvisorState(
     const iso = (d: Date | string) =>
       d instanceof Date ? d.toISOString() : new Date(d).toISOString();
     return {
-      suggestions: rows.map((r) => ({
+      suggestions: fresh.slice(0, 5).map((r) => ({
         id: r.id,
         rank: Number(r.rank),
         title: r.title,
@@ -528,9 +586,15 @@ function readAdvisorState(
         effectSekMonth: Number(r.effect_sek_month),
         confidence: r.confidence,
         createdAt: iso(r.created_at),
+        dataDate: businessDateAt(toDate(r.run_at), viewer.organization.timezone),
       })),
       lastRun: last ? { status: last.status, createdAt: iso(last.created_at) } : null,
-      manualLeft: Math.max(0, MANUAL_RUNS_PER_DAY - (manual?.n ?? 0)),
+      // Med inaktuella förslag får en ny körning göras även när dagens knapptryck är slut.
+      manualLeft:
+        rows.length > fresh.length
+          ? Math.max(1, MANUAL_RUNS_PER_DAY - (manual?.n ?? 0))
+          : Math.max(0, MANUAL_RUNS_PER_DAY - (manual?.n ?? 0)),
+      staleCount: rows.length - fresh.length,
     };
   });
 }

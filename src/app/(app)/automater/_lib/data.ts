@@ -243,6 +243,7 @@ export interface MachineDetailData {
   readonly unpriced: UnpricedView | null;
   readonly heatmap: HeatmapView;
   readonly stock: StockLine[];
+  /** Senaste registrerade påfyllning (påfyllning eller flytt in), aldrig en inventering. */
   readonly lastRestockedAt: string | null;
   readonly recentOrders: RecentOrder[];
   readonly placements: PlacementLine[];
@@ -343,9 +344,10 @@ export async function loadMachineDetail(
   const stockRows = base.stock.rows.filter(
     (r) => r.locationKind === "machine" && r.machineId === machine.id,
   );
+  // Senaste registrerade påfyllning (refill eller flytt in), inte inventeringen.
   const lastRestockedAt =
     stockRows
-      .map((r) => r.lastRestockedAt)
+      .map((r) => r.lastRefilledAt ?? null)
       .filter((x): x is string => x !== null)
       .sort()
       .at(-1) ?? null;

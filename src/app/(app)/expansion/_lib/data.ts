@@ -37,7 +37,6 @@ import {
 import { DEFAULT_PROFIT_SHARE_BP, unitEconomics } from "@/domain";
 import { parseAmountOre } from "@/import/amount";
 import {
-  dataCoverage,
   loadDomainInput,
   loadPeriod,
   requireRoute,
@@ -48,6 +47,7 @@ import { goalsProgress } from "@/server/data/goals";
 
 import {
   clipToData,
+  completeDataPeriod,
   defaultInvestment,
   OPEN_STAGES,
   placementsFromData,
@@ -139,7 +139,9 @@ export interface UnitEconomicsPageData {
 export async function loadUnitEconomicsPage(sp: SearchParamsInput): Promise<UnitEconomicsPageData> {
   const ctx = await requireRoute("automater");
   const p = await loadPeriod(sp);
-  const dp = dataPeriodOf(p);
+  // Snitt per dag: bara hela dagar med data (i dag pågår och räknas inte), både i beloppen
+  // och i antalet dagar. Samma regel som Mål och Effekt (@/analytics/days).
+  const dp = completeDataPeriod(p.period, p.dataStart, ctx.today);
   const viewer = await currentViewer();
   const [input, investments] = await Promise.all([
     loadDomainInput({ period: dp.period, ...p.scope }),
@@ -152,17 +154,10 @@ export async function loadUnitEconomicsPage(sp: SearchParamsInput): Promise<Unit
   }
   const machineIds = [...inScope].sort();
   const ueInput = { ...input.current, investments: input.investments, machineIds };
-  // Sista dagen med data: i går när dagens order inte kommit (samma regel som övriga sidor).
-  const covered = dataCoverage(
-    dp.period,
-    p.dataStart,
-    ctx.today,
-    input.current.orders.some((o) => o.businessDate === ctx.today),
-  );
   const comparison = compareUnitEconomics(
     ueInput,
     input.machines.map((m) => ({ id: m.id, name: m.name })),
-    covered ? { lastDataDay: covered.end } : {},
+    { lastDataDay: dp.period.end },
   );
   return {
     ctx: { canEdit: ctx.canEdit, today: ctx.today },
@@ -537,7 +532,8 @@ export async function loadEffectPage(sp: SearchParamsInput): Promise<EffectPageD
       machineId: m.machineId,
     })),
     months,
-    asOf: ctx.today,
+    // Bara hela dagar (i dag pågår): samma dagregel som Mål och Enhetsekonomi.
+    today: ctx.today,
     stores: input.stores,
     machines: input.machines,
     options: {

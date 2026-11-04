@@ -195,6 +195,11 @@ export interface StockRow {
   readonly lastEventAt: string | null;
   /** Senaste påfyllning eller inventering (ISO 8601). */
   readonly lastRestockedAt: string | null;
+  /**
+   * Senaste registrerade påfyllning (påfyllning eller flytt in, ISO 8601), aldrig en
+   * inventering eller Awish-läsning. null/utelämnad = ingen påfyllning registrerad.
+   */
+  readonly lastRefilledAt?: string | null;
 }
 
 /** Lagret just nu. Tillåtet för alla roller (inga belopp). */

@@ -129,6 +129,20 @@ export function pdfStatus(env: Env = process.env): PdfStatus {
 
 type Launch = () => Promise<Browser>;
 
+/**
+ * Alla fel från Chromium (start, sida, utskrift) blir PdfError, så att anroparna kan falla
+ * tillbaka på HTML i webbläsaren i stället för att svara 500. Orsaken följer med (cause).
+ */
+async function asPdfError<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (error instanceof PdfError) throw error;
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new PdfError(`PDF kunde inte skapas: ${reason.slice(0, 200)}`, { cause: error });
+  }
+}
+
 async function withPage<T>(
   launch: Launch,
   request: PdfRequest,
@@ -238,15 +252,15 @@ export class LocalPdfRenderer implements PdfRenderer {
   };
 
   render(request: PdfRequest): Promise<Uint8Array> {
-    return printPdf(this.launch, request);
+    return asPdfError(() => printPdf(this.launch, request));
   }
 
   extract<T>(request: PdfRequest, globalName: string): Promise<T> {
-    return extractJson<T>(this.launch, request, globalName);
+    return asPdfError(() => extractJson<T>(this.launch, request, globalName));
   }
 
   renderHtml(html: string): Promise<Uint8Array> {
-    return printHtml(this.launch, html);
+    return asPdfError(() => printHtml(this.launch, html));
   }
 }
 
@@ -267,15 +281,15 @@ export class SparticuzPdfRenderer implements PdfRenderer {
   };
 
   render(request: PdfRequest): Promise<Uint8Array> {
-    return printPdf(this.launch, request);
+    return asPdfError(() => printPdf(this.launch, request));
   }
 
   extract<T>(request: PdfRequest, globalName: string): Promise<T> {
-    return extractJson<T>(this.launch, request, globalName);
+    return asPdfError(() => extractJson<T>(this.launch, request, globalName));
   }
 
   renderHtml(html: string): Promise<Uint8Array> {
-    return printHtml(this.launch, html);
+    return asPdfError(() => printHtml(this.launch, html));
   }
 }
 

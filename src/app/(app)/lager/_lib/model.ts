@@ -260,8 +260,13 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
   const capacities = (input.capacities ?? []).filter(
     (c) => !retired.has(pairKey(c.machineId, c.titleId)),
   );
+  // Utgångna titlar planeras inte (samma regel som weeklyVisitPlan): annars blev de en
+  // orsak till besöket ("Black bolt är slut") och drog fram besökets senaste dag.
+  const inAssortment = (machineId: string | null, titleId: string) =>
+    machineId === null || !retired.has(pairKey(machineId, titleId));
   const planBase = {
-    orders,
+    orders:
+      retired.size === 0 ? orders : orders.filter((o) => inAssortment(o.machineId, o.titleId)),
     titles: master.titles,
     ...(hasWarehouse ? { warehouseStock } : {}),
   };
@@ -299,7 +304,9 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
       {
         ...planBase,
         machines: [m],
-        stock: machineStock.filter((s) => s.machineId === m.id),
+        stock: machineStock.filter(
+          (s) => s.machineId === m.id && inAssortment(s.machineId, s.titleId),
+        ),
         capacities: capacities.filter((c) => c.machineId === m.id),
         extraVisits: [{ machineId: m.id, reason: "", needBy: asOf }],
         options: {

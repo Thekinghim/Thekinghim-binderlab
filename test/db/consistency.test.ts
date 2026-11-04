@@ -167,13 +167,13 @@ function kpi(home: HomeData, id: string): number | null {
 }
 
 /**
- * Vår vinst på Hem. Nyckeltalet "Vinst" visar hela vinsten (vår del + butikernas del);
- * vår del är samma tal som Lönsamhetens vinst.
+ * Vår vinst på Hem. Nyckeltalet "Vår vinst" är samma tal som Lönsamhetens vinst (en
+ * betydelse överallt); hela vinsten före butikernas andel finns bara i delningen.
  */
 function ourProfit(home: HomeData): number | null {
   const split = home.model.profitSplit;
-  const total = home.model.kpis.find((x) => x.id === "profit")?.value ?? null;
-  expect(total).toBe(split ? split.ourOre + split.storesOre : null);
+  const shown = home.model.kpis.find((x) => x.id === "profit")?.value ?? null;
+  expect(shown).toBe(split ? split.ourOre : null);
   return split ? split.ourOre : null;
 }
 
@@ -250,8 +250,11 @@ async function expectPagesAgree(sp: SearchParamsInput, label: string) {
   expect(lons.totals.revenueOre + lons.totals.unpricedRevenueOre, label).toBe(revenue);
   expect(lons.orders, label).toBe(orders);
   expect(lons.totals.profitOre, label).toBe(profit);
-  // Hela vinsten på Hem = vår vinst + butikernas del (butiksersättningen) på Lönsamhet.
-  expect(kpi(home, "profit"), label).toBe(lons.totals.profitOre + lons.totals.compensationOre);
+  // Hem visar vår vinst, som Lönsamhet; hela vinsten = vår vinst + butikernas andel.
+  expect(kpi(home, "profit"), label).toBe(lons.totals.profitOre);
+  expect(home.model.profitSplit?.totalOre ?? null, label).toBe(
+    home.model.profitSplit ? lons.totals.profitOre + lons.totals.compensationOre : null,
+  );
   expect(lons.bridge.marginBp, label).toBe(kpi(home, "margin"));
   expectViewsConsistent(lons);
 

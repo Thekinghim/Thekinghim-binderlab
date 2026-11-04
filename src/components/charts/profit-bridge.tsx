@@ -18,8 +18,11 @@ export type ProfitBridgeProps = {
   purchases: number;
   /** Avgifter (kortavgifter), positivt belopp i kronor */
   fees: number;
-  /** Butiksersättning = provision + hyra, positivt belopp i kronor */
-  storeCompensation: number;
+  /**
+   * Butiksersättning = provision + hyra, positivt belopp i kronor. Utelämnad = inget eget
+   * steg (beloppet ligger då i ett annat steg, t.ex. "Avgifter och butiker").
+   */
+  storeCompensation?: number;
   /** Intäkt för order utan inköpspris. Visas bredvid som "Ingår inte". */
   unpricedRevenue?: number;
   /** Exakt belopp i läsrutan, t.ex. formatSek eller v => formatKronor(v) */
@@ -56,7 +59,7 @@ export function ProfitBridge({
   height = 280,
   summary,
 }: ProfitBridgeProps) {
-  const profit = revenue - (vmb ?? 0) - purchases - fees - storeCompensation;
+  const profit = revenue - (vmb ?? 0) - purchases - fees - (storeCompensation ?? 0);
   const margin = revenue ? profit / revenue : undefined;
   const L = {
     revenue: labels.revenue ?? "Intäkt",
@@ -80,16 +83,20 @@ export function ProfitBridge({
     { label: L.purchases, value: -purchases, name: "Inköp av pack", ...f("purchases") },
     // Steg som är 0 ritas inte (design.md 7): med kortavgift 0 % hoppar bryggan över avgifterna.
     ...(fees !== 0 || flag?.step === "fees"
-      ? [{ label: L.fees, value: -fees, name: "Kortavgifter", ...f("fees") }]
+      ? [{ label: L.fees, value: -fees, name: labels.fees ?? "Kortavgifter", ...f("fees") }]
       : []),
-    {
-      label: L.storeCompensation,
-      // Hela ord när platsen inte räcker (ordlistan avråder från förkortningar).
-      short: "Till butiken",
-      value: -storeCompensation,
-      name: "Butiksersättning (provision och hyra)",
-      ...f("storeCompensation"),
-    },
+    ...(storeCompensation !== undefined
+      ? [
+          {
+            label: L.storeCompensation,
+            // Hela ord när platsen inte räcker (ordlistan avråder från förkortningar).
+            short: "Till butiken",
+            value: -storeCompensation,
+            name: `${L.storeCompensation} (provision och hyra)`,
+            ...f("storeCompensation"),
+          },
+        ]
+      : []),
     {
       label: resultLabel,
       value: 0,
@@ -101,7 +108,7 @@ export function ProfitBridge({
 
   const text =
     summary ??
-    `${L.revenue} ${format(revenue)} minus ${vmb !== undefined ? `VMB-moms ${format(vmb)}, ` : ""}inköp ${format(purchases)}, avgifter ${format(fees)} och butiksersättning ${format(storeCompensation)} ger ${resultLabel.toLowerCase()} ${format(loss ? -profit : profit)}${margin !== undefined ? `, marginal ${formatPercent(margin)}` : ""}.${unpricedRevenue ? ` ${format(unpricedRevenue)} i intäkt saknar inköpspris och ingår inte.` : ""}`;
+    `${L.revenue} ${format(revenue)} minus ${vmb !== undefined ? `VMB-moms ${format(vmb)}, ` : ""}inköp ${format(purchases)}, ${L.fees.toLowerCase()} ${format(fees)}${storeCompensation !== undefined ? ` och ${L.storeCompensation.toLowerCase()} ${format(storeCompensation)}` : ""} ger ${resultLabel.toLowerCase()} ${format(loss ? -profit : profit)}${margin !== undefined ? `, marginal ${formatPercent(margin)}` : ""}.${unpricedRevenue ? ` ${format(unpricedRevenue)} i intäkt saknar inköpspris och ingår inte.` : ""}`;
 
   return (
     <WaterfallChart

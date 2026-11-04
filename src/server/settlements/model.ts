@@ -132,14 +132,17 @@ export interface SettlementDocument {
   readonly paidOn: IsoDate | null;
   /** Kort referens (avräkningens id, första 8 tecknen). */
   readonly reference: string;
+  /** Varför en obetald inte kan räknas nu (beloppet är då inte klart). */
+  readonly blocked?: string | null;
 }
 
 /** Avräkningen som fristående HTML (inga externa resurser) för utskrift som A4-PDF. */
 export function settlementHtml(doc: SettlementDocument): string {
   const s = doc.statement;
   const state = settlementState(doc.amountOre, doc.paidOn);
-  const status =
-    state === "paid"
+  const status = doc.blocked
+    ? `Inte klar: ${doc.blocked}`
+    : state === "paid"
       ? `Betald ${dateText(doc.paidOn!)}`
       : state === "unpaid"
         ? `Betalas senast ${dateText(payoutDueDate(s.month))}`
@@ -157,6 +160,7 @@ export function settlementHtml(doc: SettlementDocument): string {
 <html lang="sv">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Avräkning ${escapeHtml(s.storeName)} ${escapeHtml(s.month)}</title>
 <style>
   @page { size: A4; margin: 22mm 20mm; }

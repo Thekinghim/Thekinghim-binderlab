@@ -2,7 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import { octoberExample } from "@/reports/testing/fixtures";
 
-import { asSnapshot, buildSnapshot, fiscalYearOf, stockAtMonthEnd } from "./snapshot";
+import {
+  asSnapshot,
+  buildSnapshot,
+  fiscalYearOf,
+  headlineOreOf,
+  requestOf,
+  sameReport,
+  stockAtMonthEnd,
+} from "./snapshot";
 
 const ORG = { id: "org", name: "Binderlab AB", orgNumber: null, timeZone: "Europe/Stockholm" };
 
@@ -100,5 +108,40 @@ describe("buildSnapshot", () => {
 
   it("avvisar okänt format", () => {
     expect(() => asSnapshot({ version: 99 })).toThrow();
+  });
+});
+
+describe("sameReport (inaktuellt utkast)", () => {
+  const make = (generatedAt: string, sources = octoberExample()) =>
+    buildSnapshot({
+      type: "butik",
+      month: "2026-10",
+      organization: ORG,
+      sources,
+      generatedAt,
+      storeId: "s-1",
+      greeting: "Tack!",
+    });
+
+  it("samma underlag = samma rapport, även med nycklarna i annan ordning (jsonb)", () => {
+    const a = make("2026-11-01T05:00:00.000Z");
+    const fromDb = JSON.parse(
+      JSON.stringify(a, (_k, v: unknown) =>
+        v && typeof v === "object" && !Array.isArray(v)
+          ? Object.fromEntries(Object.entries(v as Record<string, unknown>).reverse())
+          : v,
+      ),
+    ) as typeof a;
+    expect(sameReport(fromDb, make("2026-11-04T09:00:00.000Z"))).toBe(true);
+    expect(requestOf(a)).toMatchObject({ type: "butik", storeId: "s-1", greeting: "Tack!" });
+  });
+
+  it("en order mindre ger en annan rapport och ett annat belopp", () => {
+    const sources = octoberExample();
+    const fewer = { ...sources, orders: sources.orders.slice(1) };
+    const a = make("2026-11-01T05:00:00.000Z");
+    const b = make("2026-11-01T05:00:00.000Z", fewer);
+    expect(sameReport(a, b)).toBe(false);
+    expect(headlineOreOf(a)).not.toBe(headlineOreOf(b));
   });
 });

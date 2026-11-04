@@ -137,8 +137,8 @@ export interface UnpricedBlock {
 }
 
 /**
- * Vattenfallet: Intäkt → VMB-moms → Inköp → Avgifter → Butiksersättning → Vinst (prissatta
- * order).
+ * Vattenfallet: Intäkt → VMB-moms → Inköp → Avgifter → Butikernas andel → Vår vinst (prissatta
+ * order). Utan vyknappen står andelen i samma steg som avgifterna.
  */
 export interface Bridge {
   readonly revenueOre: number;
@@ -159,6 +159,13 @@ export interface Bridge {
   readonly profitOre: number;
   readonly marginBp: number | null;
   readonly unpricedRevenueOre: number;
+  /**
+   * Butikernas andel som eget steg (vyknappen "Visa butikernas andel" eller ett butiks-
+   * eller automatfilter). Av: andelen dras ändå, men i samma steg som avgifterna.
+   */
+  readonly showStoreShare: boolean;
+  /** "Butikens andel" med filter, annars "Butikernas andel". */
+  readonly storeShareLabel: string;
 }
 
 /** Ett nyckeltal i remsan. */
@@ -200,6 +207,8 @@ export interface LonsamhetModel {
   readonly defaultTrend: TrendKey;
   readonly unpriced: UnpricedBlock;
   readonly calcVersion: string;
+  /** Butikernas andel visas som eget tal (nyckeltal, steg, kolumn). Se Bridge.showStoreShare. */
+  readonly showStoreShare: boolean;
 }
 
 /** Det modellen behöver av DomainInput (så att testerna kan bygga den utan databas). */
@@ -223,6 +232,11 @@ export interface LonsamhetOptions {
   readonly dataStart?: IsoDate | null;
   /** Om organisationen har order i dag (dagen räknas då med). */
   readonly hasOrdersToday?: boolean;
+  /**
+   * Vyknappen "Visa butikernas andel" (?andel=1). Med butiks- eller automatfilter visas
+   * andelen alltid. Ändrar bara vad som visas: vår vinst är densamma.
+   */
+  readonly showStoreShare?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -457,6 +471,9 @@ export function buildLonsamhetModel(
 ): LonsamhetModel {
   const { today, carry } = options;
   const names = namesFor(input);
+  const filtered = Boolean(input.scope.storeId || input.scope.machineId);
+  const showShare = Boolean(options.showStoreShare) || filtered;
+  const shareLabel = filtered ? "Butikens andel" : "Butikernas andel";
   const period = input.current.period;
 
   const all = profitabilityViews(input.current, [
@@ -517,6 +534,7 @@ export function buildLonsamhetModel(
     feesOre: totalsRow.feesOre,
     vmbVatOre: totalsRow.vmbVatOre,
     compensationOre: totalsRow.compensationOre,
+    showStoreShare: showShare,
     unpricedShareBp: unpriced.shareBp,
     top:
       top && topName
@@ -530,7 +548,8 @@ export function buildLonsamhetModel(
   const kpis: Kpi[] = [
     {
       id: "profit",
-      label: totalsRow.profitOre < 0 ? "Förlust" : "Vinst",
+      // En betydelse överallt: vår vinst, efter butikernas andel (som på Hem).
+      label: totalsRow.profitOre < 0 ? "Förlust" : "Vår vinst",
       unit: "ore",
       value: totalsRow.profitOre,
       delta: prevTotals ? relative(totalsRow.profitOre, prevTotals.profitOre) : null,
@@ -540,7 +559,7 @@ export function buildLonsamhetModel(
     },
     {
       id: "margin",
-      label: "Marginal",
+      label: "Vår marginal",
       unit: "bp",
       value: totalsRow.marginBp,
       delta:
@@ -563,16 +582,23 @@ export function buildLonsamhetModel(
       invert: false,
       primary: false,
     },
-    {
-      id: "compensation",
-      label: "Butiksersättning",
-      unit: "ore",
-      value: totalsRow.compensationOre,
-      delta: prevTotals ? relative(totalsRow.compensationOre, prevTotals.compensationOre) : null,
-      deltaKind: "relative",
-      invert: true,
-      primary: false,
-    },
+    // Butikernas andel bara på begäran (vyknappen) eller med vald butik.
+    ...(showShare
+      ? [
+          {
+            id: "compensation" as const,
+            label: shareLabel,
+            unit: "ore" as const,
+            value: totalsRow.compensationOre,
+            delta: prevTotals
+              ? relative(totalsRow.compensationOre, prevTotals.compensationOre)
+              : null,
+            deltaKind: "relative" as const,
+            invert: true,
+            primary: false,
+          },
+        ]
+      : []),
     {
       id: "orders",
       label: "Order",
@@ -598,6 +624,8 @@ export function buildLonsamhetModel(
     profitOre: totalsRow.profitOre,
     marginBp: totalsRow.marginBp,
     unpricedRevenueOre: totalsRow.unpricedRevenueOre,
+    showStoreShare: showShare,
+    storeShareLabel: shareLabel,
   };
 
   const unpricedBlock: UnpricedBlock = {
@@ -653,5 +681,6 @@ export function buildLonsamhetModel(
     defaultTrend: week.buckets.length > 26 ? "month" : "week",
     unpriced: unpricedBlock,
     calcVersion: all.title.calcVersion,
+    showStoreShare: showShare,
   };
 }

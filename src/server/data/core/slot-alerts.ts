@@ -105,6 +105,7 @@ export interface SlotAlertData {
     titleId: string;
     onHand: number;
     lastRestockedAt: string | null;
+    lastRefilledAt: string | null;
   }>;
   readonly machines: MasterData["machines"];
   readonly titles: MasterData["titles"];
@@ -146,6 +147,7 @@ export async function loadSlotAlertDataFor(
       titleId: r.titleId,
       onHand: r.onHand,
       lastRestockedAt: r.lastRestockedAt,
+      lastRefilledAt: r.lastRefilledAt ?? null,
     }));
   return { ...found, stock, machines, titles, today };
 }

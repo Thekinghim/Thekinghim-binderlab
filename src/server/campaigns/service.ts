@@ -221,19 +221,34 @@ export async function loadCampaignPageFor(
       library.push({ campaignId: p.id, title: p.title });
     }
 
+    // Första dagen i flottan = tidigaste av sortimentet och första försäljningen (testköp
+    // räknas inte), om perioden gäller i dag och vad som finns i automaten nu.
     const firstStocked = await query<{
       title_id: string;
       title_name: string;
       machine_id: string;
       first_on: string;
+      first_sale: string | null;
+      current: boolean;
+      on_hand: number | null;
     }>(
       tx,
-      sql`select ms.title_id, t.name as title_name, ms.machine_id, min(ms.valid_from)::text as first_on
+      sql`select ms.title_id, t.name as title_name, ms.machine_id,
+                 min(ms.valid_from)::text as first_on,
+                 (select min(o.business_date)::text from public.orders o
+                   where o.organization_id = ms.organization_id and o.machine_id = ms.machine_id
+                     and o.title_id = ms.title_id and o.test_purchase_at is null) as first_sale,
+                 bool_or(ms.valid_to is null or ms.valid_to >= ${today}::date) as current,
+                 (select sum(sl.quantity)::int from public.stock_levels sl
+                   join public.stock_locations l
+                     on l.organization_id = sl.organization_id and l.id = sl.location_id
+                   where sl.organization_id = ms.organization_id and l.machine_id = ms.machine_id
+                     and sl.title_id = ms.title_id and l.archived_at is null) as on_hand
           from public.machine_slots ms
           join public.titles t on t.organization_id = ms.organization_id and t.id = ms.title_id
           where ms.organization_id = ${orgId}::uuid and ms.slots > 0
             and t.archived_at is null and t.merged_into_id is null
-          group by ms.title_id, t.name, ms.machine_id`,
+          group by ms.organization_id, ms.title_id, t.name, ms.machine_id`,
     );
     const suggestions = suggestCampaigns({
       firstStocked: firstStocked.map((r) => ({
@@ -241,6 +256,9 @@ export async function loadCampaignPageFor(
         titleName: r.title_name,
         machineId: r.machine_id,
         firstOn: r.first_on as IsoDate,
+        firstSale: (r.first_sale ?? null) as IsoDate | null,
+        current: r.current !== false,
+        onHand: r.on_hand === null || r.on_hand === undefined ? null : Number(r.on_hand),
       })),
       campaigned: campaigns
         .filter((c) => c.title_id !== null)

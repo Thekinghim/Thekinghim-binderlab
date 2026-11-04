@@ -2,15 +2,22 @@ import { describe, expect, it } from "vitest";
 
 import { profitability, storeCompensation, type ProfitabilityInput } from "@/domain";
 
+import { formatSek } from "@/lib/format";
+
+import { storeColumnKeys } from "../_components/store-table";
+import type { StoreRow } from "./types";
 import {
+  activeStores,
   agreementState,
   buildStoreRows,
   changeText,
+  contractAction,
   compensationHeadline,
   dataCoverage,
   ENDING_SOON_DAYS,
   listHeadline,
   listKpis,
+  prospectStores,
   monthCompensation,
   percentBp,
   placeText,
@@ -221,6 +228,20 @@ describe("listan", () => {
     const empty = listKpis([{ ...rows[2]!, revenueOre: 0, compensationOre: 0 }], "november");
     expect(empty.find((x) => x.id === "share")!.value).toBeNull();
   });
+
+  it("utan vyknappen leder översikten med vår vinst, utan butikernas andel", () => {
+    const profit = rows.reduce((n, r) => n + r.profitOre, 0);
+    const h = listHeadline(rows, `på 2${NB}dagar`, false);
+    expect(h.aside).toBe(`Vår vinst ${formatSek(profit / 100)}.`);
+    expect(h.aside).not.toMatch(/butik/);
+    const k = listKpis(rows, "november", false);
+    expect(k.map((x) => x.id)).toEqual(["revenue", "profit"]);
+    expect(k[1]).toMatchObject({ label: "Vår vinst", value: profit });
+    // Tabellen: andelen (perioden och månaden) bara med vyknappen.
+    expect(storeColumnKeys(false)).not.toContain("compensation");
+    expect(storeColumnKeys(false)).not.toContain("earned");
+    expect(storeColumnKeys(true)).toEqual(expect.arrayContaining(["compensation", "earned"]));
+  });
 });
 
 describe("dagar med data", () => {
@@ -358,5 +379,74 @@ describe("en butik", () => {
     expect(
       storeIssues({ ...base, machineCodes: [], contract: "missing" }).map((i) => i.id),
     ).not.toContain("no-contract");
+  });
+});
+
+describe("butiker i drift (rubriken räknade 4 butiker när bara 1 hade automat)", () => {
+  const row = (id: string, p: Partial<StoreRow> = {}): StoreRow =>
+    ({
+      id,
+      name: id,
+      place: null,
+      isExample: false,
+      archived: false,
+      machineCodes: [],
+      orders: 0,
+      revenueOre: 0,
+      previousRevenueOre: null,
+      revenueChange: null,
+      compensationOre: 0,
+      previousCompensationOre: null,
+      profitOre: 0,
+      earnedMonthOre: 0,
+      current: null,
+      contract: "unsigned",
+      issue: null,
+      href: `/butiker/${id}`,
+      ...p,
+    }) as StoreRow;
+  const rows = [
+    row("sega", {
+      machineCodes: ["BL-001"],
+      orders: 483,
+      revenueOre: 8_472_500,
+      contract: "unsigned",
+    }),
+    row("ny1"),
+    row("ny2"),
+    row("ny3"),
+    row("gammal", { archived: true }),
+  ];
+
+  it("räknar bara butiker med automat eller försäljning, och visar de nya för sig", () => {
+    expect(activeStores(rows).map((r) => r.id)).toEqual(["sega"]);
+    expect(prospectStores(rows).map((r) => r.id)).toEqual(["ny1", "ny2", "ny3"]);
+    expect(listHeadline(rows, "på 21 dagar", false).title).toBe(
+      `1${NB}butik gav 84${NB}725${NB}kr på 21 dagar.`,
+    );
+  });
+
+  it("utan någon butik i drift räknas alla som inte är arkiverade", () => {
+    expect(
+      activeStores([row("a"), row("b"), row("c", { archived: true })]).map((r) => r.id),
+    ).toEqual(["a", "b"]);
+  });
+});
+
+describe("contractAction (fliken Villkor visade alltid Skapa kontrakt)", () => {
+  it("osignerat kontrakt: Signera, inte ett nytt kontrakt", () => {
+    expect(contractAction("unsigned", "s1")).toEqual({
+      label: "Signera",
+      href: "/avtal#butik-s1",
+      primary: true,
+    });
+  });
+  it("signerat: Öppna kontrakt; saknas: Skapa kontrakt", () => {
+    expect(contractAction("signed", "s1")).toMatchObject({ label: "Öppna kontrakt" });
+    expect(contractAction("missing", "s1")).toEqual({
+      label: "Skapa kontrakt",
+      href: "/avtal?skapa=store%3As1",
+      primary: true,
+    });
   });
 });

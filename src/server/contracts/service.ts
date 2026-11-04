@@ -36,6 +36,7 @@ import {
   CONTRACT_TEMPLATE,
   contractHtml,
   contractTermsSummary,
+  type ContractParty,
   type ContractTemplateInput,
   type ContractTerms,
 } from "@/reports/contract-pdf";
@@ -44,10 +45,16 @@ import { requireRoleFor, withUserDbFor } from "@/server/access";
 import { attachContractFileFor } from "@/server/accounting/service";
 import { queryActiveContracts } from "@/server/data/core/queries";
 import type { SignableContract } from "@/analytics/contracts/signed";
-import type { Viewer } from "@/server/data/core/loaders";
+import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import { ECONOMY_ROLES, OPERATOR_ROLES } from "@/server/data/core/types";
 
-import { backdatedFrom, planContractAgreement, type ContractStatus } from "./plan";
+import { readOperator, operatorGaps } from "./operator";
+import {
+  backdatedFrom,
+  planContractAgreement,
+  suggestContractStart,
+  type ContractStatus,
+} from "./plan";
 
 export type { Viewer };
 
@@ -64,10 +71,13 @@ export interface ContractTargetOption {
   readonly value: string;
   readonly label: string;
   /**
-   * Föreslagen startdag: början på butikens öppna villkor när de är andel av försäljningen
-   * (fel modell). Ett avtal från den dagen skriver om dem till vinstdelning bakåt.
+   * Föreslagen startdag (suggestContractStart i ./plan): början på butikens öppna villkor,
+   * annars butikens första försäljning eller placering, så att kontraktet täcker allt
+   * automaten har sålt. null = i dag.
    */
   readonly suggestedFrom: IsoDate | null;
+  /** Butikens första försäljning (utan testköp), eller null. */
+  readonly firstSale: IsoDate | null;
   /** Butikens uppgifter som står i kontraktet (för förhandsvisningen). */
   readonly party: {
     readonly name: string;
@@ -80,18 +90,24 @@ export interface ContractTargetOption {
 
 export interface ContractSetup {
   readonly options: ContractTargetOption[];
-  /** Organisationsnumret saknas (Ekonomi → Bokföring); avtalet får en tom rad. */
+  /** Organisationsnumret saknas (Inställningar → Företaget); avtalet får en tom rad. */
   readonly orgNumberMissing: boolean;
-  /** Vi i kontraktet (för förhandsvisningen). */
-  readonly operator: { readonly name: string; readonly orgNumber: string | null };
+  /** Våra rader som blir tomma i kontraktet ("org.nr", "adress" …), tom = allt ifyllt. */
+  readonly operatorGaps: string[];
+  /** Vi i kontraktet (för förhandsvisningen): Inställningar → Företaget. */
+  readonly operator: ContractParty;
 }
 
-/** Butikerna och platserna i pipelinen som kan få ett avtal. */
-export async function loadContractSetupFor(viewer: Viewer): Promise<ContractSetup> {
+/** Butikerna och platserna i pipelinen som kan få ett avtal. `today` = affärsdagen. */
+export async function loadContractSetupFor(
+  viewer: Viewer,
+  today?: IsoDate,
+): Promise<ContractSetup> {
   const orgId = viewer.organization.id;
+  const day = today ?? businessToday(new Date(), viewer.organization.timezone);
   await requireRoleFor(viewer.user, orgId, OPERATOR_ROLES);
   return withUserDbFor(viewer.user, async (tx) => {
-    const [stores, leads, orgNumber, contracts, openTerms] = await Promise.all([
+    const [stores, leads, operator, contracts, openTerms, sales] = await Promise.all([
       tx
         .select({
           id: s.stores.id,
@@ -124,7 +140,7 @@ export async function loadContractSetupFor(viewer: Viewer): Promise<ContractSetu
           ),
         )
         .orderBy(asc(s.expansionLeads.name)),
-      readOrgNumber(tx, orgId),
+      readOperator(tx, orgId, viewer.organization.name),
       tx
         .select({ storeId: s.contracts.storeId })
         .from(s.contracts)
@@ -139,18 +155,33 @@ export async function loadContractSetupFor(viewer: Viewer): Promise<ContractSetu
         .select({
           storeId: s.storeAgreements.storeId,
           validFrom: s.storeAgreements.validFrom,
-          commissionBase: s.storeAgreements.commissionBase,
-          commissionBp: s.storeAgreements.commissionBp,
+          validTo: s.storeAgreements.validTo,
         })
         .from(s.storeAgreements)
-        .where(and(eq(s.storeAgreements.organizationId, orgId), isNull(s.storeAgreements.validTo))),
+        .where(eq(s.storeAgreements.organizationId, orgId)),
+      queryStoreSales(tx, orgId),
     ]);
     const withContract = new Set(contracts.map((c) => c.storeId));
-    const wrongModel = new Map(
-      openTerms
-        .filter((a) => a.commissionBase === "net_excl_vat" && (a.commissionBp ?? 0) > 0)
-        .map((a) => [a.storeId, a.validFrom as IsoDate]),
-    );
+    const suggestFor = (storeId: string): IsoDate | null => {
+      const own = openTerms.filter((a) => a.storeId === storeId);
+      const open = own
+        .filter((a) => a.validTo === null)
+        .map((a) => a.validFrom as IsoDate)
+        .sort()[0];
+      const closedUntil = own
+        .filter((a) => a.validTo !== null)
+        .map((a) => a.validTo as IsoDate)
+        .sort()
+        .at(-1);
+      const sale = sales.get(storeId);
+      return suggestContractStart({
+        today: day,
+        openTermsFrom: open ?? null,
+        closedUntil: closedUntil ?? null,
+        firstSale: sale?.firstSale ?? null,
+        firstPlacement: sale?.firstPlacement ?? null,
+      });
+    };
     // Det som väntar på ett avtal först: platser i steget Avtal eller Möte, sedan butiker
     // utan avtal, övriga platser och sist butiker som redan har ett avtal.
     const waiting = leads.filter((x) => x.stage === "agreement" || x.stage === "meeting");
@@ -174,12 +205,14 @@ export async function loadContractSetupFor(viewer: Viewer): Promise<ContractSetu
       value: `lead:${x.id}`,
       label: `${x.name} (ny från pipelinen)`,
       suggestedFrom: null,
+      firstSale: null,
       party: party(x),
     });
     const storeOption = (x: Row): ContractTargetOption => ({
       value: `store:${x.id}`,
       label: withContract.has(x.id) ? `${x.name} (har kontrakt)` : x.name,
-      suggestedFrom: wrongModel.get(x.id) ?? null,
+      suggestedFrom: suggestFor(x.id),
+      firstSale: sales.get(x.id)?.firstSale ?? null,
       party: party(x),
     });
     return {
@@ -189,27 +222,66 @@ export async function loadContractSetupFor(viewer: Viewer): Promise<ContractSetu
         ...later.map(leadOption),
         ...stores.filter((x) => withContract.has(x.id)).map(storeOption),
       ],
-      orgNumberMissing: orgNumber === null,
-      operator: { name: viewer.organization.name, orgNumber },
+      orgNumberMissing: !operator.orgNumber,
+      operatorGaps: operatorGaps(operator),
+      operator,
     };
   });
 }
 
+/** Butikens första försäljning (utan testköp) och första placering. */
+export interface StoreSales {
+  readonly firstSale: IsoDate | null;
+  readonly lastSale: IsoDate | null;
+  readonly firstPlacement: IsoDate | null;
+}
+
 /**
- * Organisationsnumret från Ekonomi → Bokföring (bookkeeping_settings), eller null. Läses med
- * SQL så att Avtal inte beror på Bokföringens schema: utan tabellen blir det en tom rad.
+ * Första och sista försäljningsdag per butik (ordern räknas till butiken där automaten stod
+ * den dagen; testköp räknas inte) och butikens första placering. En fråga för alla butiker.
  */
-async function readOrgNumber(tx: Tx, orgId: string): Promise<string | null> {
-  const exists = Array.from(
-    await tx.execute(sql`select to_regclass('public.bookkeeping_settings') is not null as ok`),
-  )[0] as { ok?: boolean } | undefined;
-  if (!exists?.ok) return null;
-  const row = Array.from(
-    await tx.execute(
-      sql`select org_number from public.bookkeeping_settings where organization_id = ${orgId}::uuid`,
-    ),
-  )[0] as { org_number?: string | null } | undefined;
-  return row?.org_number ?? null;
+export async function queryStoreSales(tx: Tx, orgId: string): Promise<Map<string, StoreSales>> {
+  const rows = Array.from(
+    await tx.execute(sql`
+      with placed as (
+        select p.store_id, min(p.valid_from) as first_placement
+          from public.machine_placements p
+         where p.organization_id = ${orgId}::uuid
+         group by p.store_id
+      ), sold as (
+        select p.store_id, min(o.business_date) as first_sale, max(o.business_date) as last_sale
+          from public.orders o
+          join public.machine_placements p
+            on p.organization_id = o.organization_id
+           and p.machine_id = o.machine_id
+           and o.business_date >= p.valid_from
+           and (p.valid_to is null or o.business_date <= p.valid_to)
+         where o.organization_id = ${orgId}::uuid
+           and o.test_purchase_at is null
+         group by p.store_id
+      )
+      select placed.store_id::text as store_id, placed.first_placement::text as first_placement,
+             sold.first_sale::text as first_sale, sold.last_sale::text as last_sale
+        from placed left join sold using (store_id)`),
+  ) as Array<Record<string, unknown>>;
+  const day = (v: unknown) => (typeof v === "string" ? (v.slice(0, 10) as IsoDate) : null);
+  return new Map(
+    rows.map((r) => [
+      String(r.store_id),
+      {
+        firstSale: day(r.first_sale),
+        lastSale: day(r.last_sale),
+        firstPlacement: day(r.first_placement),
+      },
+    ]),
+  );
+}
+
+/** Försäljningen per butik (Kontrakt: "försäljning utan signerat kontrakt"). */
+export async function loadStoreSalesFor(viewer: Viewer): Promise<Map<string, StoreSales>> {
+  const orgId = viewer.organization.id;
+  await requireRoleFor(viewer.user, orgId, ECONOMY_ROLES);
+  return withUserDbFor(viewer.user, (tx) => queryStoreSales(tx, orgId));
 }
 
 export interface CreateContractInput {
@@ -450,12 +522,12 @@ export async function createStoreContractFor(
       });
     }
 
-    const orgNumber = await readOrgNumber(tx, orgId);
+    const operator = await readOperator(tx, orgId, viewer.organization.name);
     return {
       contractId,
       storeId,
       template: {
-        operator: { name: viewer.organization.name, orgNumber },
+        operator,
         store: {
           name: store.name,
           address: store.address,
@@ -521,7 +593,7 @@ export async function contractTemplateHtmlFor(viewer: Viewer, contractId: string
       .from(s.contracts)
       .where(and(eq(s.contracts.organizationId, orgId), eq(s.contracts.id, contractId)));
     if (!c || c.template === null) throw new ContractError("Avtalet är inte skapat från mallen.");
-    const [[store], [terms], orgNumber] = await Promise.all([
+    const [[store], [terms], operator] = await Promise.all([
       tx
         .select()
         .from(s.stores)
@@ -540,11 +612,11 @@ export async function contractTemplateHtmlFor(viewer: Viewer, contractId: string
         )
         .orderBy(asc(s.storeAgreements.validFrom))
         .limit(1),
-      readOrgNumber(tx, orgId),
+      readOperator(tx, orgId, viewer.organization.name),
     ]);
     if (!store) throw new ContractError("Butiken finns inte.");
     return contractHtml({
-      operator: { name: viewer.organization.name, orgNumber },
+      operator,
       store,
       validFrom: c.validFrom,
       // Utan kopplade villkor: mallens standard (50 % av vinsten efter kostnader).

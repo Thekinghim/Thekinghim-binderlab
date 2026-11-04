@@ -5,6 +5,10 @@
  * kontrollerar mot databasen, och RLS). PDF hämtas ur lagringen eller skapas med
  * headless Chromium första gången (bara ägare och admin). Excel och SIE räknas ur
  * ögonblicksbilden varje gång och blir därför identiska med det som godkändes.
+ *
+ * Kan PDF:en inte skapas här (ingen Chromium, eller utskriften misslyckas) skickas
+ * webbläsaren till rapportens utskriftssida (/rapport/[id]?utskrift=1), samma innehåll
+ * som PDF:en, att skriva ut eller spara som PDF i webbläsaren. Aldrig ett 500-svar.
  */
 
 import { AuthorizationError } from "@/server/access";
@@ -46,7 +50,7 @@ function problem(status: number, message: string): Response {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string; typ: string }> },
 ): Promise<Response> {
   const { id, typ } = await params;
@@ -68,7 +72,15 @@ export async function GET(
     if (error instanceof AuthorizationError) return problem(403, error.message);
     if (error instanceof ReportError) return problem(404, error.message);
     if (error instanceof ReportFileError) return problem(409, error.message);
-    if (error instanceof PdfError) return problem(503, error.message);
+    if (error instanceof PdfError) {
+      console.error("[rapport/fil] PDF kunde inte skapas, visar utskriftssidan", error.message);
+      const print = new URL(`/rapport/${encodeURIComponent(id)}`, request.url);
+      print.searchParams.set("utskrift", "1");
+      return new Response(null, {
+        status: 303,
+        headers: { Location: print.toString(), "Cache-Control": "no-store" },
+      });
+    }
     // redirect() från requireUser (utloggad) ska nå Next.
     if (error && typeof error === "object" && "digest" in error) throw error;
     console.error("[rapport/fil]", error);

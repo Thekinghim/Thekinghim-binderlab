@@ -10,7 +10,12 @@ import { useToast } from "@/components/ui/toast";
 import { formatSek } from "@/lib/format";
 import { inviteStoreUser } from "@/server/portal/actions";
 
-import { markSettlementPaid, recomputeSettlement, undoSettlementPaid } from "../settlement-actions";
+import {
+  createMissingSettlements,
+  markSettlementPaid,
+  recomputeSettlement,
+  undoSettlementPaid,
+} from "../settlement-actions";
 
 const kr = (ore: number) => formatSek(ore / 100);
 
@@ -40,9 +45,11 @@ export function MarkPaidButton({
 
   const confirm = () =>
     start(async () => {
-      const res = await markSettlementPaid(id, date);
+      const res = await markSettlementPaid(id, date, amountOre);
       if (!res.ok) {
         setError(res.error);
+        // Beloppet kan ha ändrats: visa det nya under dialogen.
+        router.refresh();
         return;
       }
       setOpen(false);
@@ -135,7 +142,40 @@ export function UndoPaidButton({ id, storeName }: { id: string; storeName: strin
   );
 }
 
-/** Räkna om en obetald avräkning (om försäljning kommit in sent). */
+/** Skapa förra månadens saknade avräkningar (sidan skapar inget av sig själv). */
+export function CreateSettlementsButton({ count }: { count: number }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [pending, start] = useTransition();
+  return (
+    <Button
+      variant="primary"
+      size="sm"
+      loading={pending}
+      onClick={() =>
+        start(async () => {
+          const res = await createMissingSettlements();
+          if (!res.ok) {
+            toast({ title: res.error, tone: "critical" });
+            return;
+          }
+          router.refresh();
+          toast({
+            title:
+              res.data.created > 0
+                ? `Klart! ${res.data.created === 1 ? "1 avräkning" : `${res.data.created} avräkningar`} skapade.`
+                : "Inget nytt att skapa.",
+            tone: res.data.errors > 0 ? "critical" : "ok",
+          });
+        })
+      }
+    >
+      {count === 1 ? "Skapa avräkning" : "Skapa avräkningar"}
+    </Button>
+  );
+}
+
+/** Spara det nya beloppet på en obetald avräkning (det butiken ser i portalen). */
 export function RecomputeButton({ id }: { id: string }) {
   const router = useRouter();
   const toast = useToast();

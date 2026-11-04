@@ -150,8 +150,12 @@ describe("liggaren med vinstdelning", () => {
     });
     const shares = ledger.entries.map((e) => e.commissionOre);
     expect(shares.reduce((a, b) => a + b, 0)).toBe(8_880);
-    // Vikt = belopp: 8 880 × 19 900 / 64 700 = 2 731,2…, 24 900 → 3 417,5…
-    expect(shares).toEqual([2_731, 2_731, 3_418]);
+    // Vikt = varje orders egen vinst (belopp − inköp − kortavgift), så varje titel bär
+    // sin egen delning. Order med lika vinst får lika andel.
+    const profits = ledger.entries.map((e) => e.grossOre - e.costOre - e.cardFeeOre);
+    const sum = profits.reduce((a, b) => a + b, 0);
+    shares.forEach((v, i) => expect(Math.abs(v - (8_880 * profits[i]!) / sum)).toBeLessThan(1));
+
     const totals = profitability(input(), "store").totals;
     expect(totals.commissionOre).toBe(8_880);
   });

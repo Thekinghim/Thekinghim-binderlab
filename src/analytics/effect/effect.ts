@@ -67,6 +67,7 @@ import {
   type ProfitabilityResult,
 } from "@/domain";
 import { MINUS, NBSP } from "@/lib/format";
+import { lastCompleteDay } from "../days";
 import { nameLookup } from "../todos/common";
 import { kr, monthName, tenths } from "../todos/text";
 import {
@@ -137,6 +138,12 @@ export interface EffectInput extends EconomicsSources {
   readonly months: readonly IsoMonth[];
   /** Sista dag med data. Månader efter den hoppas över; en pågående månad räknas till och med den. */
   readonly asOf?: IsoDate;
+  /**
+   * Dagens datum. När det anges mäts bara hela dagar (till och med i går, samma regel som
+   * @/analytics/days): i dag pågår, och en tom dag räknad som automatdag drar ner vinsten
+   * per automat och månad (1 092 kr på 3 dagar blir 8 190 kr/mån i stället för 10 920 kr).
+   */
+  readonly today?: IsoDate;
   readonly stores?: readonly { id: string; name: string }[];
   readonly machines?: readonly { id: string; name: string }[];
   readonly options?: EffectOptions;
@@ -286,7 +293,10 @@ export function binderlabEffect(input: EffectInput): EffectSeries[] {
   }
   const months = [...new Set(input.months)].sort();
   for (const m of months) parseIsoMonth(m);
-  const asOf = input.asOf ?? null;
+  const asOf =
+    input.today === undefined
+      ? (input.asOf ?? null)
+      : minDate(input.asOf ?? lastCompleteDay(input.today), lastCompleteDay(input.today));
   const storeName = nameLookup(input.stores ?? []);
   const machineName = nameLookup(input.machines ?? []);
 

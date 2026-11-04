@@ -11,7 +11,7 @@ import { StatusTag, type Status } from "@/components/ui/status-tag";
 import { formatDate } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import type { Viewer } from "@/server/data/core/loaders";
-import { netSales, PURCHASE_BASIS_LABEL } from "@/server/bokforing/month";
+import { missingCostReason, netSales, PURCHASE_BASIS_LABEL } from "@/server/bokforing/month";
 import { PLAN_KEYS, PROPOSED_PLAN } from "@/server/bokforing/plan";
 import { MAX_RECEIPT_BYTES } from "@/server/bokforing/receipts";
 import {
@@ -76,6 +76,7 @@ export async function BokforingSection({
   }
   const todo = view.months.filter((m) => m.status === "closed");
   const next = todo[0] ?? null;
+  const nextMissing = next ? missingCostReason(next.book) : null;
   const planRows = PLAN_KEYS.map((k) => ({
     key: k,
     use: PROPOSED_PLAN[k].use,
@@ -96,13 +97,19 @@ export async function BokforingSection({
         as={asPage ? "h1" : undefined}
         size={asPage ? "xl" : "md"}
         eyebrow={asPage ? "Bokföring" : undefined}
-        title={bookkeepingTitle(view.months, capitalize(monthText(next?.month ?? "")))}
+        title={
+          nextMissing
+            ? `${capitalize(monthText(next!.month))} är inte klar.`
+            : bookkeepingTitle(view.months, capitalize(monthText(next?.month ?? "")))
+        }
         aside={
-          next
-            ? todo.length > 1
-              ? `${plural(todo.length, "månad", "månader")} kvar. Importera SIE-filen i Fortnox.`
-              : "Importera SIE-filen i Fortnox."
-            : undefined
+          nextMissing
+            ? nextMissing
+            : next
+              ? todo.length > 1
+                ? `${plural(todo.length, "månad", "månader")} kvar. Importera SIE-filen i Fortnox.`
+                : "Importera SIE-filen i Fortnox."
+              : undefined
         }
       />
 
@@ -167,14 +174,17 @@ function MonthItem({
     ["Resultat", b.resultOre],
   ];
   const version = row.stored && row.stored.version > 1 ? ` · v${row.stored.version}` : "";
+  // Räknat nu: saknas kostnader är månaden aldrig "klar", även om ett äldre sparat paket
+  // sa det (nästa paket blir preliminärt tills kostnaderna finns).
+  const missing = row.status === "open" ? null : missingCostReason(b);
+  const final = row.stored?.status === "final" && !missing;
   const statusText =
     row.status === "sent" && row.sentAt
       ? `skickad ${formatDate(new Date(row.sentAt), { year: "auto", now: isoToDate(today) })}`
-      : row.status === "closed" && row.stored
-        ? `${row.stored.status === "final" ? "klar att ladda ner" : "preliminär"}${version}`
+      : row.status === "closed" && (row.stored || missing)
+        ? `${final ? "klar att ladda ner" : "preliminär"}${row.stored ? version : ""}`
         : STATUS_LABEL[row.status];
-  const tag: Status =
-    row.status === "closed" && row.stored?.status === "final" ? "ok" : TAG[row.status];
+  const tag: Status = row.status === "closed" && final ? "ok" : TAG[row.status];
   return (
     <li
       className="rise rounded-md border border-line bg-surface"
@@ -213,15 +223,19 @@ function MonthItem({
           ) : null}
         </div>
       </div>
-      {b.profitSplitUnpricedOrders > 0 && row.status !== "open" ? (
+      {missing ? (
         <div className="px-4 pb-3">
           <StateMessage
             compact
             kind="error"
-            message="Butikernas andel är inte klar."
-            detail={`${plural(b.profitSplitUnpricedOrders, "order", "order")} saknar inköpspris.`}
+            message="Kostnaderna är inte klara."
+            detail={missing}
           />
         </div>
+      ) : b.purchaseBasis === "cost_of_goods" && b.purchasesOre > 0 ? (
+        <p className="meta px-4 pb-3 text-subtle">
+          {b.purchaseBasisAuto ? "Inga inköpsorder: inköp" : "Inköp"} = vad de sålda packen kostade.
+        </p>
       ) : null}
       {row.changedSinceSent ? (
         <div className="px-4 pb-3">

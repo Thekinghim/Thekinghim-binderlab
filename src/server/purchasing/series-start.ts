@@ -12,6 +12,7 @@
  */
 
 import { replayStockDaily, type StockEventRef } from "@/analytics/lost-sales";
+import { assortmentKey, retiredPairs, type SlotPeriod } from "@/analytics/todos/assortment";
 import type { SeriesStart } from "@/analytics/forecast/types";
 import type { IsoDate } from "@/domain";
 
@@ -34,4 +35,21 @@ export function seriesStartsFromStock(
     out.push({ machineId: series.machineId, titleId: series.titleId, date });
   }
   return out;
+}
+
+/**
+ * Par (automat, titel) som gått ur sortimentet i dag (samma regel som Lager, `retiredPairs`),
+ * som indata till prognosen (`excludeSeries`): de får ingen prognos och köps inte in.
+ */
+export function retiredSeries(
+  periods: readonly SlotPeriod[],
+  today: IsoDate,
+): { machineId: string; titleId: string }[] {
+  const retired = retiredPairs(periods, today);
+  const out = new Map<string, { machineId: string; titleId: string }>();
+  for (const p of periods) {
+    const k = assortmentKey(p.machineId, p.titleId);
+    if (retired.has(k)) out.set(k, { machineId: p.machineId, titleId: p.titleId });
+  }
+  return [...out.values()];
 }

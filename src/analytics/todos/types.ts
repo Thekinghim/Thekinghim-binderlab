@@ -54,6 +54,12 @@ export interface StockLevelRef {
    * saldot, och punkten kommer då tillbaka redan efter nästa försäljning.
    */
   readonly lastRestockedAt?: string | null;
+  /**
+   * Senaste registrerade påfyllning (påfyllning eller flytt in, aldrig en inventering).
+   * Används i påfyllningspunktens fingerprint: en avbockad punkt kommer tillbaka när någon
+   * fyller på eller saldot ändras.
+   */
+  readonly lastRefilledAt?: string | null;
 }
 
 /** Larmgräns: saldo högst `alertAtUnits` pack i automaten ger en påfyllningspunkt. */
@@ -118,6 +124,8 @@ export interface SettlementRef {
   readonly month: IsoDate;
   /** Att betala ut, öre. Högst 0 = inget att betala (ingen punkt). */
   readonly amountOre: number;
+  /** Kan inte räknas nu (t.ex. saknat inköpspris): beloppet är inte klart och visas inte. */
+  readonly blocked?: boolean;
 }
 
 /** Allvar för ett larm (enum alert_severity). */
@@ -200,7 +208,8 @@ export type TodoKind =
   | "report-review"
   | "contract"
   | "alert"
-  | "settlement";
+  | "settlement"
+  | "team";
 
 /** Brådskenivå: 'now' (gör i dag), 'soon' (de närmaste dagarna), 'later' (när tid finns). */
 export type TodoLevel = "now" | "soon" | "later";
@@ -215,7 +224,8 @@ export interface TodoAction {
     | "review-report"
     | "open-contract"
     | "open-alert"
-    | "open-machine";
+    | "open-machine"
+    | "invite-member";
   /** Knapptext, verbet först. */
   readonly label: string;
   readonly params: Readonly<Record<string, string>>;
@@ -299,6 +309,11 @@ export interface TodoInput extends EconomicsSources {
    * precis som på Drift, så att Att göra, Hem och Drift säger samma antal timmar.
    * Saknas = till nu.
    */
+  /**
+   * Konton i organisationen (utan butiksportalens) och väntande inbjudningar, för punkten
+   * "Bjud in delägaren" (./team.ts). Bara för ägare och admin. Saknas = ingen punkt.
+   */
+  readonly team?: { readonly members: number; readonly pendingInvites: number };
   readonly salesDataUntil?: readonly {
     readonly machineId: string;
     readonly until: string | null;

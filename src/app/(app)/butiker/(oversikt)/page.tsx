@@ -5,7 +5,9 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatInt, NBSP, SPACED_RANGE_DASH } from "@/lib/format";
 import type React from "react";
+import { Suspense } from "react";
 
+import { StoreShareToggle } from "@/components/shell/store-share-toggle";
 import { requireRoute, requireViewer } from "@/server/data/core";
 
 import { StoreKpis } from "../_components/kpis";
@@ -13,7 +15,7 @@ import { PageHead } from "../_components/page-head";
 import { SettlementsView } from "../_components/settlements-view";
 import { StoreTable } from "../_components/store-table";
 import { loadStoreList } from "../_lib/data";
-import { dayText, plural, sek } from "../_lib/model";
+import { activeStores, dayText, plural, prospectStores, sek } from "../_lib/model";
 
 export const metadata: Metadata = { title: "Butiker" };
 
@@ -36,7 +38,11 @@ export default async function ButikerPage({
   }
   const data = await loadStoreList(sp);
   const { ctx, rows, period, headline } = data;
-  const active = rows.filter((r) => !r.archived);
+  // I drift: automat i dag eller försäljning. Butiker på väg in visas för sig.
+  const active = activeStores(rows);
+  const prospects = prospectStores(rows);
+  const prospectIds = new Set(prospects.map((r) => r.id));
+  const listed = rows.filter((r) => !prospectIds.has(r.id));
   const days = `${formatInt(period.days)}${NBSP}d`;
   const comparison = period.comparisonLabel ? `Jämfört med ${period.comparisonLabel}` : undefined;
   const earned = active.reduce((n, r) => n + r.earnedMonthOre, 0);
@@ -79,6 +85,12 @@ export default async function ButikerPage({
               <p className="meta text-subtle">Automatfiltret gäller inte här.</p>
             ) : null}
             <StoreKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
+            {/* Butikernas andel på begäran; med vald butik visas den alltid. */}
+            {data.scopeLabel ? null : (
+              <Suspense fallback={null}>
+                <StoreShareToggle userKey={ctx.user.id} />
+              </Suspense>
+            )}
             {dataRange ? <p className="meta text-subtle">Data {dataRange}</p> : null}
           </div>
 
@@ -107,15 +119,42 @@ export default async function ButikerPage({
               id="alla-butiker"
               size="md"
               eyebrow={`Per butik · ${days}`}
-              title={`${sek(earned)} intjänat i ${data.monthLabel}.`}
+              title={
+                data.showStoreShare
+                  ? `${sek(earned)} intjänat i ${data.monthLabel}.`
+                  : "Vår vinst per butik."
+              }
               aside={`${formatInt(data.signed)} av ${plural(active.length, "butik", "butiker")} har signerat kontrakt.`}
             />
             <StoreTable
-              rows={rows}
+              rows={listed}
               monthLabel={data.monthLabel}
-              caption={`Butiker, intäkt och ersättning ${period.rangeLabel}`}
+              caption={`Butiker, intäkt och vinst ${period.rangeLabel}`}
+              showStoreShare={data.showStoreShare}
             />
           </section>
+
+          {prospects.length > 0 ? (
+            <section
+              aria-labelledby="pa-vag-in"
+              className="rise flex flex-col gap-6"
+              style={{ "--i": 4 } as React.CSSProperties}
+            >
+              <SectionHeader
+                id="pa-vag-in"
+                size="md"
+                eyebrow="På väg in"
+                title={`${plural(prospects.length, "butik", "butiker")} utan automat än.`}
+                aside="Räknas inte i siffrorna ovan."
+              />
+              <StoreTable
+                rows={prospects}
+                monthLabel={data.monthLabel}
+                caption="Butiker utan automat"
+                showStoreShare={data.showStoreShare}
+              />
+            </section>
+          ) : null}
         </>
       )}
     </div>

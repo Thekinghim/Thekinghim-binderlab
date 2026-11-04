@@ -27,6 +27,8 @@ export default async function AccountPage() {
       <MerHead
         eyebrow="Mitt konto"
         title={ctx.user.displayName ?? ctx.user.email}
+        // Ett namn är inget tal ("wille1452" ska inte bli "wille1 452").
+        count={false}
         meta={[
           { label: "E-post", value: ctx.user.email },
           { label: "Roll", value: ROLE_LABEL[ctx.role] },

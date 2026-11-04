@@ -423,6 +423,30 @@ describe("utgångna titlar (sortimentet)", () => {
     expect(h.title).toBe("Fyll på 1 titel nu, 1 snart.");
   });
 
+  it("en utgången titel är ingen orsak till besöket (utvärderingen 4 nov., punkt 8)", () => {
+    // Black Bolt (T1) gick ur BL-001 i går: tom och har sålt, men ska inte stå "är slut".
+    const model = buildLagerModel({
+      now: NOW,
+      timeZone: "Europe/Stockholm",
+      today: TODAY,
+      master,
+      stock,
+      sales,
+      scope: { storeId: null, machineId: null },
+      hasCentral: true,
+      slotPeriods: [
+        { machineId: M1, titleId: T1, validFrom: "2026-02-01", validTo: "2026-11-01" },
+        { machineId: M1, titleId: T2, validFrom: "2026-02-01", validTo: null },
+      ],
+    });
+    const list = model.packLists.find((p) => p.machineId === M1)!;
+    expect(list.reasons.some((r) => r.startsWith("Black Bolt"))).toBe(false);
+    expect(list.reasons).toContain(
+      `Surging Sparks tar slut tis 3${NBSP}nov. (4 kvar, 2,0 pack/dag)`,
+    );
+    expect(list.lines.some((l) => l.titleId === T1)).toBe(false);
+  });
+
   it("visar en utgången titel med pack kvar, men utan status och påfyllning", () => {
     const model = withSlots([row(M1, T3, 3)]);
     const cell = cellOf(model, M2, T3);

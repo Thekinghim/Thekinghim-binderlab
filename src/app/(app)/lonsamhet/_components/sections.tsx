@@ -37,6 +37,8 @@ export function TableSection({
   days,
   fileStem,
   selectedTitle,
+  showStoreShare = false,
+  storeShareLabel,
 }: {
   tabs?: ReactNode;
   initialView: ViewKey;
@@ -48,6 +50,9 @@ export function TableSection({
   fileStem: string;
   /** Titel från ?titel= som markeras i vyn per titel. */
   selectedTitle: string | null;
+  /** Kolumnen med butikernas andel (vyknappen eller vald butik). */
+  showStoreShare?: boolean;
+  storeShareLabel?: string;
 }) {
   const [view, setView] = useState<ViewKey>(initialView);
   const [sort, setSort] = useState<readonly SortKey[]>(DEFAULT_SORT);
@@ -103,7 +108,7 @@ export function TableSection({
                 `Vald titel: ${selected.name}${
                   selected.orders === selected.unpricedOrders
                     ? ", saknar inköpspris"
-                    : `, ${formatSek(selected.profitOre / 100)} i vinst${
+                    : `, ${formatSek(selected.profitOre / 100)} i vår vinst${
                         selected.marginBp === null
                           ? ""
                           : ` och ${formatPercent(selected.marginBp / 10_000)} marginal`
@@ -125,6 +130,8 @@ export function TableSection({
           sort={sort}
           onSortChange={setSort}
           selectedKey={selected?.key ?? null}
+          showStoreShare={showStoreShare}
+          storeShareLabel={storeShareLabel}
         />
       )}
     </section>

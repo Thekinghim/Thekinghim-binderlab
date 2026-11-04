@@ -5,7 +5,12 @@
  * - Antal i lager: summan av alla egna lager (Hemma, Kontoret …); per lager i `byPlace`.
  * - I automaterna: summan av automaternas kända saldon (Awish eller inventering), aldrig under 0.
  * - Sålt 7 d: sålda pack de senaste sju dagarna t.o.m. i dag, alla automater.
- * - Räcker: samma dagar och status som Prognos & inköp (Lagers vymodell, WarehouseRow).
+ * - Räcker (`lastsDays`, samma regel som tabellen på Inköp): hela dagar tills allt vi har,
+ *   hemma + i automaterna, är sålt vid takten de senaste 14 hela dagarna i alla automater.
+ *   Ingen försäljning de senaste 7 dagarna → "–". Status (tar slut, packa) från Lagers
+ *   vymodell (WarehouseRow), som Prognos & inköp.
+ * - Utgår: titlar som gått ur alla automater (samma regel som Lager, `retiredTitles`). De
+ *   ligger still hemma: ingen status, inget inköp, sist i listan och summerade i "Ligger still".
  * - Värde: antal hemma × inköpspriset som gäller i dag (öre), bara titlar med pris.
  * - Senaste ändring: senaste händelsen i något eget lager (inte försäljning), och per lager.
  */
@@ -68,6 +73,8 @@ export interface VartLagerInput {
   readonly latest: ReadonlyMap<string, WarehouseEvent | readonly WarehouseEvent[]>;
   readonly machines: readonly MachineRef[];
   readonly canEdit: boolean;
+  /** Titlar som gått ur alla automater (Utgår på Lager). Utelämnat = inga. */
+  readonly retired?: ReadonlySet<string>;
 }
 
 export interface Place {
@@ -98,8 +105,12 @@ export interface VartLagerRow {
   readonly latestByPlace: Readonly<Record<string, LatestChange>>;
   readonly inMachines: number;
   readonly sold7: number;
-  /** Hela dagar hemmalagret räcker, eller null (ingen försäljning). */
+  /** Hela dagar hemmalagret räcker (Lagers modell, styr status), eller null. */
   readonly daysLeft: number | null;
+  /** Räcker på sidan (`lastsDays`): hemma + i automaterna vid 14 dagars takt, eller null. */
+  readonly lastsDays: number | null;
+  /** Gått ur alla automater: ligger still hemma, köps inte in. */
+  readonly retired: boolean;
   readonly status: StockStatus;
   /** Räcker kortare än WAREHOUSE_LOW_DAYS eller behövs och är slut. */
   readonly runsOut: boolean;
@@ -112,6 +123,16 @@ export interface VartLagerRow {
   readonly own: boolean;
   /** Pack som behövs för NEED_DAYS dagar (bara när titeln tar slut), annars 0. */
   readonly needQty: number;
+}
+
+/**
+ * Räcker, samma regel på Vårt lager och Inköp: hela dagar tills `packs` (hemma + i
+ * automaterna) är sålda vid takten `perDayTenths` (tiondelar pack per dag, de senaste 14
+ * hela dagarna i alla automater). null utan takt. Ren.
+ */
+export function lastsDays(packs: number, perDayTenths: number | null): number | null {
+  if (perDayTenths === null || perDayTenths <= 0) return null;
+  return Math.floor((Math.max(0, packs) * 10) / perDayTenths);
 }
 
 /** "Packa/Beställ X st": så många dagar ska vårt lager räcka efter påfyllningen. */
@@ -181,6 +202,8 @@ export interface VartLagerModel {
     readonly inMachines: number;
     /** Pack per lager (negativa saldon räknas som 0). */
     readonly byPlace: Readonly<Record<string, number>>;
+    /** Titlar som gått ur automaterna men ligger hemma: antal titlar, pack och värde. */
+    readonly idle: { readonly titles: number; readonly packs: number; readonly valueOre: number };
   };
   readonly places: readonly Place[];
   readonly lowDays: number;
@@ -298,15 +321,26 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
   const multi = places.length > 1;
   const placeName = new Map(places.map((p) => [p.id, p.name]));
   const defaultPlace = places.find((p) => p.isDefault) ?? places[0];
+  const retiredSet = input.retired ?? new Set<string>();
   const rows: VartLagerRow[] = [...input.titles]
-    .sort((a, b) => sv(a.name, b.name))
+    .sort(
+      (a, b) => Number(retiredSet.has(a.id)) - Number(retiredSet.has(b.id)) || sv(a.name, b.name),
+    )
     .map((t) => {
       const r = wh.get(t.id);
+      const retired = retiredSet.has(t.id);
       const home = r?.onHand ?? input.home.get(t.id) ?? 0;
       const inMachines = Math.max(0, input.inMachines.get(t.id) ?? 0);
       const sold7 = input.sold7.get(t.id) ?? 0;
       // Utan rad i Lagers modell (inget i lagret och inget behov i veckan): slut om den säljer.
-      const status: StockStatus = r ? r.status : home <= 0 && sold7 > 0 ? "critical" : "ok";
+      // Utgången titel: ingen status (den ska inte köpas in eller packas).
+      const status: StockStatus = retired
+        ? "ok"
+        : r
+          ? r.status
+          : home <= 0 && sold7 > 0
+            ? "critical"
+            : "ok";
       const daysLeft = r ? r.daysLeft : null;
       const price = priceOn(input.prices, t.id, input.today);
       const unitCostOre = price?.unitCostOre ?? null;
@@ -322,6 +356,14 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
         }
         if (!e || x.occurredAt > e.occurredAt) e = x;
       }
+      // Under "Alla": senaste händelsen i ett lager som har titeln. "räknat 0 i Kontoret" på
+      // en titel med 180 hemma läses som "vi har 0"; lager utan pack hoppas då över.
+      const holding = events.filter(
+        (x) => (byPlace[x.locationId ?? defaultPlace?.id ?? ""] ?? 0) > 0,
+      );
+      if (multi && holding.length > 0) {
+        e = holding.reduce((a, b) => (b.occurredAt > a.occurredAt ? b : a));
+      }
       const eAt = e ? (e.locationId ?? defaultPlace?.id) : undefined;
       const runsOut = status !== "ok";
       return {
@@ -333,6 +375,9 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
         inMachines,
         sold7,
         daysLeft,
+        lastsDays:
+          retired || sold7 <= 0 ? null : lastsDays(home + inMachines, r?.perDayTenths ?? null),
+        retired,
         status,
         runsOut,
         negative: home < 0,
@@ -363,6 +408,11 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
       byPlace: Object.fromEntries(
         places.map((p) => [p.id, rows.reduce((s, r) => s + Math.max(0, r.byPlace[p.id] ?? 0), 0)]),
       ),
+      idle: {
+        titles: rows.filter((r) => r.retired && r.home > 0).length,
+        packs: rows.reduce((s, r) => s + (r.retired ? Math.max(0, r.home) : 0), 0),
+        valueOre: rows.reduce((s, r) => s + (r.retired ? (r.valueOre ?? 0) : 0), 0),
+      },
     },
     places,
     lowDays: WAREHOUSE_LOW_DAYS,
@@ -370,10 +420,13 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
   };
 }
 
-/** "räcker 12 d" · "slut" · "–" */
-export function lastsText(r: Pick<VartLagerRow, "home" | "daysLeft" | "sold7">): string {
-  if (r.home <= 0) return r.sold7 > 0 || r.daysLeft !== null ? "slut" : "–";
-  if (r.daysLeft === null) return "–";
-  if (r.daysLeft === 0) return `<${NBSP}1${NBSP}d`;
-  return `${formatInt(r.daysLeft)}${NBSP}d`;
+/** "12 d" · "slut" · "utgår" · "–" (Räcker, se `lastsDays`). */
+export function lastsText(
+  r: Pick<VartLagerRow, "home" | "inMachines" | "lastsDays" | "sold7" | "retired">,
+): string {
+  if (r.retired) return "utgår";
+  if (r.home + r.inMachines <= 0) return r.sold7 > 0 ? "slut" : "–";
+  if (r.lastsDays === null) return "–";
+  if (r.lastsDays === 0) return `<${NBSP}1${NBSP}d`;
+  return `${formatInt(r.lastsDays)}${NBSP}d`;
 }

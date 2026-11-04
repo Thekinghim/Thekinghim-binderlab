@@ -16,6 +16,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { DomainError } from "@/domain";
 import { AuthorizationError } from "@/server/access";
 
+import { withToolHrefs } from "./links";
 import type {
   ModelClient,
   ModelMessage,
@@ -177,6 +178,8 @@ async function runTool(
   try {
     const output = await tool.run(args.ctx, parsed.data as never);
     const result = { sammanfattning: output.summary, data: output.data };
+    // Bara adresser som finns (/forsaljning → Lönsamhet osv., som på Hem).
+    const links = withToolHrefs(output.links);
     return {
       record: {
         id: block.id,
@@ -186,12 +189,12 @@ async function runTool(
         ok: true,
         summary: output.summary,
         figures: output.figures,
-        links: output.links,
-        ...(output.actions ? { actions: output.actions } : {}),
+        links,
+        ...(output.actions ? { actions: withToolHrefs(output.actions) } : {}),
         result,
         durationMs: Date.now() - started,
       },
-      content: JSON.stringify({ ...result, lankar: output.links }),
+      content: JSON.stringify({ ...result, lankar: links }),
       isError: false,
     };
   } catch (error) {

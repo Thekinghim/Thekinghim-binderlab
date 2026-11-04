@@ -16,6 +16,7 @@ import { cronAuthorized } from "@/server/alerts/cron-auth";
 import { runAlertJob } from "@/server/alerts/job";
 import { CRON_JOBS, withCronMonitor } from "@/server/monitoring/cron-monitor";
 import { resolveAppBaseUrl } from "@/server/request-info";
+import { createMonthlySettlements } from "@/server/settlements/service";
 
 export const maxDuration = 60;
 
@@ -50,5 +51,21 @@ export async function GET(request: Request): Promise<Response> {
     () => runAlertJob(getServiceDb(), { baseUrl }),
     (r) => !allFailed(r),
   );
-  return json(result, allFailed(result) ? 500 : 200);
+  // Butikernas avräkningar (src/server/settlements): förra månadens saknade skapas från den
+  // 2:a, och obetalda räknas om så att butiken i portalen ser samma belopp som ägaren.
+  // Ett fel här påverkar inte larmen.
+  let settlements: { created: number; refreshed: number; errors: number } | null = null;
+  try {
+    const runs = await createMonthlySettlements(getServiceDb(), new Date(), {
+      create: "not-first",
+    });
+    settlements = {
+      created: runs.reduce((n, r) => n + r.created, 0),
+      refreshed: runs.reduce((n, r) => n + r.refreshed, 0),
+      errors: runs.reduce((n, r) => n + r.errors.length, 0),
+    };
+  } catch (error) {
+    console.error("[cron/larm] avräkningar", error instanceof Error ? error.message : error);
+  }
+  return json({ ...result, settlements }, allFailed(result) ? 500 : 200);
 }

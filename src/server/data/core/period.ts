@@ -13,7 +13,8 @@ import {
   toIsoDate,
   type SearchParamsInput,
 } from "@/components/shell/period-state";
-import { addDays as addIsoDays, isIsoDate, periodDays, type IsoDate, type Period } from "@/domain";
+import { measuredPeriod } from "@/analytics/days";
+import { isIsoDate, maxDate, periodDays, type IsoDate, type Period } from "@/domain";
 
 import type { AppPeriod, DataScope } from "./types";
 
@@ -99,14 +100,14 @@ export function dataCoverage(
   today: IsoDate,
   hasOrdersToday: boolean,
 ): Period | null {
+  // Hela dagar med data (gemensam regel, @/analytics/days); dagens order räknas med i
+  // summorna, så då räknas i dag också som en dag.
+  const complete = measuredPeriod(period, { dataStart, today });
   if (dataStart === null) return null;
-  const start = period.start > dataStart ? period.start : dataStart;
-  let end = period.end;
-  if (end >= today && !hasOrdersToday) {
-    const yesterday = addIsoDays(today, -1);
-    if (yesterday < end) end = yesterday;
+  if (hasOrdersToday && period.start <= today && period.end >= today && dataStart <= today) {
+    return { start: complete?.start ?? maxDate(period.start, dataStart), end: today };
   }
-  return start <= end ? { start, end } : null;
+  return complete;
 }
 
 /** Antal dagar med data (dataCoverage); 0 utan data. */

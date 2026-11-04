@@ -302,3 +302,78 @@ describe("goalProgress: revisionens fynd", () => {
     expect(p!.evidence.dates[0]).toBe("2026-10-07");
   });
 });
+
+/**
+ * Som produktionen 4 nov.: automaten sålde första gången 14 okt. (21 hela dagar till och
+ * med 3 nov.), i dag 4 nov. har inga order kommit. Prognosen ska dela med 21 dagar med data,
+ * inte med 28 (dagar innan automaten fanns) och inte räkna dagens tomma dag.
+ */
+describe("goalProgress: bara hela dagar med data (gemensam dagregel)", () => {
+  const young = (extra: Partial<GoalInput> = {}) =>
+    input([goal({ metric: "revenue", target: 1_000_000 })], "2026-11-04", {
+      orders: dailyOrders("m-1", "2026-10-14", 21),
+      placements: [placement("m-1", "s-1", "2026-10-14", null)],
+      ...extra,
+    });
+
+  it("före: 28 dagar i nämnaren ger för låg prognos (utan dataStart/today)", () => {
+    const [p] = goalProgress(young());
+    // Gammal regel: 3 × 4 900 + 21 × 4 900 × 26 / 28 (≈ 25 % för lågt)
+    expect(p!.forecast).toBe(14_700 + Math.round((102_900 * 26) / 28));
+  });
+
+  it("delar med 21 dagar och räknar inte i dag", () => {
+    const [p] = goalProgress(young({ today: "2026-11-04", dataStart: "2026-10-14" }));
+    // 1–3 nov. = 14 700; snitt 4 900 per dag (21 dagar 14 okt.–3 nov.) × 27 dagar kvar (4–30 nov.)
+    expect(p).toMatchObject({
+      actual: 14_700,
+      measuredThrough: "2026-11-03",
+      elapsedDays: 3,
+      remainingDays: 27,
+      forecastMethod: "trailing",
+      forecast: 14_700 + 4_900 * 27,
+    });
+    expect(p!.evidence.figures.find((f) => f.key === "trailingDays")!.value).toBe(21);
+    expect(p!.detail).toContain("sedan första ordern (21 dagar)");
+  });
+
+  it("snittet hittills delar bara med dagar efter första ordern i månaden", () => {
+    const [p] = goalProgress(
+      input([goal({ metric: "revenue", target: 1, month: "2026-10" })], "2026-10-25", {
+        orders: dailyOrders("m-1", "2026-10-14", 12),
+        placements: [placement("m-1", "s-1", "2026-10-14", null)],
+        today: "2026-10-26",
+        dataStart: "2026-10-14",
+      }),
+    );
+    // 14–25 okt. = 12 dagar med data → 4 900 per dag × 6 dagar kvar (26–31 okt.)
+    expect(p).toMatchObject({
+      forecastMethod: "run-rate",
+      averagePerDay: 4_900,
+      forecast: 12 * 4_900 + 6 * 4_900,
+    });
+  });
+
+  it("butiksmål: dagar före butikens första placering räknas inte", () => {
+    const [p] = goalProgress(
+      input(
+        [goal({ metric: "revenue", target: 1, scope: "store", storeId: "s-2" })],
+        "2026-11-04",
+        {
+          orders: [
+            ...dailyOrders("m-1", "2026-10-01", 34),
+            ...dailyOrders("m-2", "2026-10-25", 10),
+          ],
+          placements: [
+            placement("m-1", "s-1", "2026-10-01", null),
+            placement("m-2", "s-2", "2026-10-25", null),
+          ],
+          today: "2026-11-04",
+          dataStart: "2026-10-01",
+        },
+      ),
+    );
+    // s-2: 25 okt.–3 nov. = 10 dagar à 4 900 → 4 900 per dag × 27 dagar kvar
+    expect(p!.forecast).toBe(3 * 4_900 + 27 * 4_900);
+  });
+});

@@ -10,6 +10,7 @@ import { cache } from "react";
 
 import {
   describePeriod,
+  parseStoreShareView,
   toURLSearchParams,
   type SearchParamsInput,
 } from "@/components/shell/period-state";
@@ -25,6 +26,7 @@ import { isUuid } from "@/server/access";
 import { loadSignableContractsFor } from "@/server/contracts";
 import {
   loadDomainInput,
+  loadLastOrderDate,
   loadMasterData,
   loadPeriod,
   requireRoute,
@@ -33,6 +35,7 @@ import {
 } from "@/server/data/core";
 
 import {
+  activeStores,
   agreementsOf,
   buildStoreRows,
   compensationHeadline,
@@ -91,13 +94,14 @@ function hasOrdersOn(orders: readonly { businessDate: IsoDate }[], day: IsoDate)
 function periodInfo(
   p: AppPeriod,
   today: IsoDate,
-  orders: readonly { businessDate: IsoDate }[],
+  /** Organisationen har order i dag (dagarna med data räknas då med i dag). */
+  ordersToday: boolean,
   hasComparison: boolean,
 ): PeriodInfo {
   const d = describePeriod(p.resolved);
   // Dagarna med data räknas på organisationens order (som Hem och Automater), inte
   // butikens, så att alla sidor anger samma antal dagar för samma period.
-  const coverage = dataCoverage(p.period, p.dataStart, today, hasOrdersOn(orders, today));
+  const coverage = dataCoverage(p.period, p.dataStart, today, ordersToday);
   const span = spanText(coverage, today);
   return {
     days: span.days,
@@ -163,24 +167,29 @@ export interface StoreListData {
   readonly ignoredMachine: string | null;
   readonly flagged: number;
   readonly examples: number;
-  /** Butiker (inte arkiverade) med signerat kontrakt. */
+  /** Butiker i drift (activeStores) med signerat kontrakt. */
   readonly signed: number;
+  /** Butikernas andel visas (vyknappen "Visa butikernas andel" eller vald butik). */
+  readonly showStoreShare: boolean;
 }
 
 export async function loadStoreList(searchParams: SearchParamsInput): Promise<StoreListData> {
   const ctx = await requireRoute("butiker");
-  const p = await loadPeriod(searchParams);
   const viewer = await currentViewer();
   const month = monthToDate(ctx.today);
-  const [input, monthInput, master, stores, agreements, recipients, contracts] = await Promise.all([
-    loadDomainInput({ period: p.period, compare: p.compare }),
-    loadDomainInput({ period: month }),
-    loadMasterData(),
-    loadStores(),
-    loadAgreementsFor(viewer),
-    loadAllRecipientsFor(viewer),
-    loadSignableContractsFor(viewer),
-  ]);
+  // Perioden och det som inte beror på den hämtas samtidigt (förut perioden först).
+  const periodP = loadPeriod(searchParams);
+  const [p, input, monthInput, master, stores, agreements, recipients, contracts] =
+    await Promise.all([
+      periodP,
+      periodP.then((x) => loadDomainInput({ period: x.period, compare: x.compare })),
+      loadDomainInput({ period: month }),
+      loadMasterData(),
+      loadStores(),
+      loadAgreementsFor(viewer),
+      loadAllRecipientsFor(viewer),
+      loadSignableContractsFor(viewer),
+    ]);
   const previousInput = comparable(p, input.previous);
   const current = profitability(input.current, "store");
   const previous = previousInput ? profitability(previousInput, "store") : null;
@@ -208,14 +217,21 @@ export async function loadStoreList(searchParams: SearchParamsInput): Promise<St
     query: periodQuery(searchParams),
   });
   const monthName = monthLabel(ctx.today);
-  const info = periodInfo(p, ctx.today, input.current.orders, previous !== null);
+  const info = periodInfo(
+    p,
+    ctx.today,
+    hasOrdersOn(input.current.orders, ctx.today),
+    previous !== null,
+  );
   const machineId = p.scope.machineId;
+  // Butikernas andel på begäran (vyknappen) eller med vald butik.
+  const showShare = parseStoreShareView(searchParams) || Boolean(filterId);
   return {
     ctx,
     period: info,
     rows,
-    kpis: listKpis(rows, monthName),
-    headline: listHeadline(rows, info.span),
+    kpis: listKpis(rows, monthName, showShare),
+    headline: listHeadline(rows, info.span, showShare),
     monthLabel: monthName,
     scopeLabel: filterId ? (stores.find((s) => s.id === filterId)?.name ?? null) : null,
     ignoredMachine: machineId
@@ -223,7 +239,8 @@ export async function loadStoreList(searchParams: SearchParamsInput): Promise<St
       : null,
     flagged: rows.filter((r) => r.issue !== null).length,
     examples: rows.filter((r) => r.isExample && !r.archived).length,
-    signed: rows.filter((r) => !r.archived && r.contract === "signed").length,
+    signed: activeStores(rows).filter((r) => r.contract === "signed").length,
+    showStoreShare: showShare,
   };
 }
 
@@ -259,23 +276,30 @@ export async function loadStoreDetail(
   const ctx = await requireRoute("butiker");
   if (!isUuid(storeId)) return null;
   const viewer = await currentViewer();
-  const stores = await loadStores();
-  const store = stores.find((s) => s.id === storeId);
-  if (!store) return null;
-
-  const p = await loadPeriod(searchParams);
   const month = monthToDate(ctx.today);
-  const [input, orgInput, monthInput, master, agreements, recipients, contracts] =
+  // Allt som inte beror på perioden hämtas samtidigt med perioden och butiksregistret (förut
+  // i tre steg efter varandra). Organisationens order i perioden behövs inte: bara om det
+  // finns order i dag (en fråga), för dagarna med data.
+  const periodP = loadPeriod(searchParams);
+  const inputP = periodP.then((p) =>
+    loadDomainInput({ period: p.period, compare: p.compare, storeId }),
+  );
+  const [stores, p, input, ordersToday, monthInput, master, agreements, recipients, contracts] =
     await Promise.all([
-      loadDomainInput({ period: p.period, compare: p.compare, storeId }),
-      // Organisationens order (cachat per förfrågan): bara för dagarna med data.
-      loadDomainInput({ period: p.period }),
+      loadStores(),
+      periodP,
+      inputP,
+      loadLastOrderDate({ period: { start: ctx.today, end: ctx.today } }).then(
+        (d) => d === ctx.today,
+      ),
       loadDomainInput({ period: month, storeId }),
       loadMasterData(),
       loadAgreementsFor(viewer),
       loadRecipientsFor(viewer, storeId),
       loadSignableContractsFor(viewer),
     ]);
+  const store = stores.find((s) => s.id === storeId);
+  if (!store) return null;
   const contract = storeContractState(contracts, storeId, ctx.today);
   const previousInput = comparable(p, input.previous);
   const byStore = profitability(input.current, "store");
@@ -284,7 +308,7 @@ export async function loadStoreDetail(
   const prevRow = prevByStore
     ? (prevByStore.rows.find((r) => r.kind === "item" && r.key === storeId) ?? undefined)
     : null;
-  const info = periodInfo(p, ctx.today, orgInput.current.orders, prevByStore !== null);
+  const info = periodInfo(p, ctx.today, ordersToday, prevByStore !== null);
   // Dagsserien klipps till dagarna med data (inga nolldagar före första ordern eller
   // för en dag som ännu inte har data); jämförelsen klipps på samma ställen.
   const cov = info.coverage;

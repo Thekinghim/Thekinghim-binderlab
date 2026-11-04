@@ -11,13 +11,14 @@ import {
   requireViewer,
 } from "@/server/data/core";
 import { goalsProgress } from "@/server/data/goals";
-import { loadRankedTodoState } from "@/server/data/todos";
+import { loadRankedTodoState, loadTodoExtrasFor } from "@/server/data/todos";
 import { optionalOnboardingStatus } from "@/server/onboarding";
 import { lostSalesSummaryFor } from "@/server/purchasing";
 
 import { loadGoalsFor } from "../expansion/_lib/service";
 
 import { loadHomeWith, type HomeData } from "./data";
+import { homeExtraTodos } from "./extras";
 
 /**
  * Hem för den inloggade, med de memoiserade laddarna (samma frågor som layouten delas).
@@ -34,6 +35,8 @@ export async function loadHome(searchParams: SearchParamsInput): Promise<HomeDat
       period: loadPeriod,
       domainInput: loadDomainInput,
       todos: async () => (await loadRankedTodoState()).items,
+      // Samma rader som menyns räknare och Att göra (ny automat, bokföringen).
+      extras: async () => homeExtraTodos(await loadTodoExtrasFor(await requireViewer())),
       // Med viewern direkt: organisationen och rollen är redan lästa i förfrågan.
       lostSales: async (period, scope) => {
         const [viewer, ctx] = await Promise.all([requireViewer(), loadContext()]);

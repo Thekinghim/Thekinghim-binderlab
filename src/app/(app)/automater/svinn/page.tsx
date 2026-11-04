@@ -4,6 +4,7 @@ import type React from "react";
 
 import {
   buildShrinkage,
+  NO_REFILL_TEXT,
   shrinkageValueText,
   SHRINKAGE_MIN_PACKS,
   type ShrinkageLine,
@@ -165,6 +166,18 @@ function MachineCard({
           <StatusTag status="neutral">Ej jämfört</StatusTag>
         )}
       </header>
+      {machine.refilled === 0 ? (
+        // Inga registrerade påfyllningar: "Påfyllt 0" bredvid allt som sålts ser ut som svinn.
+        <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-line px-4 py-3 text-sm text-muted">
+          <span>{NO_REFILL_TEXT}</span>
+          <Link
+            href={`/fyll-pa/${encodeURIComponent(machine.machineId)}`}
+            className="text-fg underline decoration-line-control underline-offset-4 hover:decoration-fg"
+          >
+            Registrera i Fyll på
+          </Link>
+        </p>
+      ) : null}
       <div className="overflow-x-auto">
         <table className="w-full min-w-[28rem] text-sm">
           <thead>
@@ -188,7 +201,7 @@ function MachineCard({
           </thead>
           <tbody>
             {lines.map((l) => (
-              <LineRow key={l.titleId} line={l} />
+              <LineRow key={l.titleId} line={l} noRefills={machine.refilled === 0} />
             ))}
           </tbody>
         </table>
@@ -209,13 +222,15 @@ function missingText(l: ShrinkageLine): string {
   return formatInt(l.missing);
 }
 
-function LineRow({ line }: { line: ShrinkageLine }) {
+function LineRow({ line, noRefills }: { line: ShrinkageLine; noRefills: boolean }) {
   return (
     <tr className="border-t border-line">
       <th scope="row" className="px-4 py-2 text-left font-normal text-fg">
         {line.titleName}
       </th>
-      <td className="tnum px-2 py-2 text-right text-muted">{formatInt(line.refilled)}</td>
+      <td className="tnum px-2 py-2 text-right text-muted">
+        {noRefills ? EN_DASH : formatInt(line.refilled)}
+      </td>
       <td className="tnum px-2 py-2 text-right text-muted">{formatInt(line.sold)}</td>
       <td className="tnum px-2 py-2 text-right text-muted">
         {line.closing === null ? EN_DASH : formatInt(line.closing)}

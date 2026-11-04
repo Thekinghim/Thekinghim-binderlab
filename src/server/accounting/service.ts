@@ -31,6 +31,7 @@ import {
   type ContractReminderResult,
   type ExpiringRevenueOverview,
 } from "@/analytics/contracts";
+import { isSigned } from "@/analytics/contracts/signed";
 import {
   reconcilePayouts,
   type Deviation,
@@ -1357,31 +1358,48 @@ export function toContract(r: ContractRecord): Contract {
   };
 }
 
-/** Avtalen, villkoren, påminnelserna och översikten över intäkt på avtal som löper ut. */
-export async function loadContractsFor(viewer: Viewer, today: IsoDate): Promise<ContractsView> {
+/**
+ * Avtalen, villkoren, påminnelserna och översikten över intäkt på avtal som löper ut.
+ * `overview: false` hoppar över översikten (12 månaders order, den tyngsta frågan) när
+ * sidan inte visar den; `overview` blir då null.
+ */
+export async function loadContractsFor(
+  viewer: Viewer,
+  today: IsoDate,
+  opts: { readonly overview?: boolean } = {},
+): Promise<ContractsView> {
   const orgId = viewer.organization.id;
+  const withOverview = opts.overview !== false;
   return asRole(viewer, ECONOMY_ROLES, async (tx) => {
     const windowStart = addDays(`${addMonths(today.slice(0, 7), -12)}-01`, -1);
     const [contracts, agreements, stores, sources, orders] = await Promise.all([
       queryContracts(tx, orgId),
       queryAgreementRecords(tx, orgId),
       queryStores(tx, orgId),
-      economicsSources(tx, orgId),
-      queryOrders(tx, orgId, { start: windowStart, end: addDays(today, -1) }, NO_SCOPE),
+      withOverview ? economicsSources(tx, orgId) : null,
+      withOverview
+        ? queryOrders(tx, orgId, { start: windowStart, end: addDays(today, -1) }, NO_SCOPE)
+        : null,
     ]);
     const active = contracts.filter((c) => !c.archived).map(toContract);
+    // Intäkten "i riskzonen" räknas bara på signerade kontrakt: ett utkast eller ett skickat
+    // kontrakt skyddar ingen intäkt (butiken hamnar under "utan signerat kontrakt").
+    const signed = contracts.filter((c) => !c.archived && isSigned(c)).map(toContract);
     const storeRefs = stores.map((x) => ({ id: x.id, name: x.name }));
     const reminders = contractReminders({ contracts: active, asOf: today, stores: storeRefs });
     let overview: ExpiringRevenueOverview | null = null;
     let overviewError: string | null = null;
     try {
-      overview = expiringRevenueOverview({
-        ...sources,
-        contracts: active,
-        orders: orders.orders,
-        asOf: today,
-        stores: storeRefs,
-      });
+      overview =
+        sources && orders
+          ? expiringRevenueOverview({
+              ...sources,
+              contracts: signed,
+              orders: orders.orders,
+              asOf: today,
+              stores: storeRefs,
+            })
+          : null;
     } catch (error) {
       if (!(error instanceof DomainError)) throw error;
       overviewError = error.message;

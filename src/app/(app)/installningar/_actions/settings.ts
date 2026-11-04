@@ -11,7 +11,7 @@ import type { ActionResult } from "@/server/auth/flows";
 import { revalidateAppData } from "@/server/data/core";
 import { getActiveOrganization, getSessionUser } from "@/server/session";
 
-import { saveOwnerSharesFor, updateSettingsFor } from "../_lib/data";
+import { saveOwnerSharesFor, updateCompanyDetailsFor, updateSettingsFor } from "../_lib/data";
 import { SETTINGS_MESSAGES } from "../_lib/model";
 
 /** Sparar kortavgift, momssats och räkenskapsårets första månad. Ägare och admin. */
@@ -27,6 +27,31 @@ export async function updateSettings(input: {
     cardFeeBp: Number(input?.cardFeeBp),
     vatRateBp: Number(input?.vatRateBp),
     fiscalYearStartMonth: Number(input?.fiscalYearStartMonth),
+  });
+  if (result.ok && result.data?.changed) revalidateAppData();
+  return result;
+}
+
+/** Företagsuppgifterna som står i kontrakten (namn, org.nr, adress, kontakt). Ägare och admin. */
+export async function updateCompanyDetails(input: {
+  companyName: string;
+  orgNumber: string;
+  companyAddress: string;
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string;
+}): Promise<ActionResult<{ changed: boolean }>> {
+  const organization = await getActiveOrganization();
+  if (!organization) return { ok: false, error: SETTINGS_MESSAGES.forbidden };
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  const result = await updateCompanyDetailsFor(await getSessionUser(), {
+    organizationId: organization.id,
+    companyName: str(input?.companyName),
+    orgNumber: str(input?.orgNumber),
+    companyAddress: str(input?.companyAddress),
+    contactName: str(input?.contactName),
+    contactEmail: str(input?.contactEmail),
+    contactPhone: str(input?.contactPhone),
   });
   if (result.ok && result.data?.changed) revalidateAppData();
   return result;

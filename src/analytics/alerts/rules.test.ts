@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { assortmentKey } from "../todos/assortment";
 import { addDays } from "@/domain";
 import { daily, machine, many } from "@/analytics/todos/test-helpers";
 import { machineHealth } from "@/analytics/health";
@@ -81,6 +82,17 @@ describe("lowStockAlerts", () => {
     );
     expect(a?.evidence.period).toEqual({ start: "2026-10-19", end: "2026-11-01" });
     expect(a?.evidence.orderIds).toHaveLength(28);
+  });
+
+  it("ingen 'Kritisk – slut' för en titel som gått ur automaten (Utgår på Lager)", () => {
+    const stock = [{ machineId: "m1", titleId: "t1", onHand: 0 }];
+    expect(lowStockAlerts({ orders, machines, titles, stock }, NOW)).toHaveLength(1);
+    expect(
+      lowStockAlerts(
+        { orders, machines, titles, stock, retired: new Set([assortmentKey("m1", "t1")]) },
+        NOW,
+      ),
+    ).toHaveLength(0);
   });
 
   it("kritiskt när titeln är slut, inget larm med gott om lager eller utan försäljning", () => {

@@ -256,6 +256,7 @@ const KIND_NOUN: Record<TodoKind, [string, string]> = {
   settlement: ["utbetalning till butik", "utbetalningar till butiker"],
   "missing-price": ["titel utan inköpspris", "titlar utan inköpspris"],
   "duplicate-title": ["möjlig dubblett", "möjliga dubbletter"],
+  team: ["delägare att bjuda in", "delägare att bjuda in"],
 };
 
 const KIND_LABEL: Record<TodoKind, string> = {
@@ -269,6 +270,7 @@ const KIND_LABEL: Record<TodoKind, string> = {
   settlement: "Utbetalning",
   "missing-price": "Inköpspris",
   "duplicate-title": "Datakvalitet",
+  team: "Delägare",
 };
 
 const KIND_ORDER: readonly TodoKind[] = [
@@ -282,6 +284,7 @@ const KIND_ORDER: readonly TodoKind[] = [
   "contract",
   "missing-price",
   "duplicate-title",
+  "team",
 ];
 
 /** "3 påfyllningar och 1 tyst automat". */
@@ -546,6 +549,10 @@ function actionFor(item: TodoItem, input: ModelInput): ActionView | null {
       return canOpen(input.role, "drift")
         ? { kind: "link", label: a.label, href: item.link }
         : null;
+    case "invite-member":
+      return canOpen(input.role, "installningar")
+        ? { kind: "link", label: a.label, href: item.link }
+        : null;
   }
 }
 
@@ -791,6 +798,7 @@ const KIND_BY_PREFIX: Record<string, TodoKind> = {
   settlement: "settlement",
   "missing-price": "missing-price",
   "duplicate-title": "duplicate-title",
+  team: "team",
 };
 
 /** Avbockade punkter inom filtret, med samma etikett som i listan. */

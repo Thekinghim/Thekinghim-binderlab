@@ -38,6 +38,8 @@ export interface GrowthPlanPageData {
   readonly basisPeriod: Period | null;
   readonly saved: GrowthPlanRecord;
   readonly plan: GrowthPlan;
+  /** Påfyllningstiden på Effekt som planen bygger på (eller ignorerar), eller null. */
+  readonly refillMeasurement: { readonly month: string; readonly minutesPerMonth: number } | null;
 }
 
 /** Underlagsperioden: 90 dagar t.o.m. sista dagen med data, tidigast första ordern. */
@@ -125,5 +127,12 @@ export async function loadGrowthPlanPage(): Promise<GrowthPlanPageData> {
     },
   });
 
-  return { canEdit: ctx.canEdit, today: ctx.today, basisPeriod, saved, plan };
+  return {
+    canEdit: ctx.canEdit,
+    today: ctx.today,
+    basisPeriod,
+    saved,
+    plan,
+    refillMeasurement: refill ? { month: refill.month, minutesPerMonth: refill.value } : null,
+  };
 }

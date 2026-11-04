@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DomainError } from "./errors";
 import {
+  allocateSignedProportional,
   allocateLargestRemainder,
   allocateLargestRemainderBig,
   applyBp,
@@ -166,5 +167,26 @@ describe("allocateLargestRemainder", () => {
         expect(Math.abs(p - exact)).toBeLessThan(1 + 1e-6);
       });
     }
+  });
+});
+
+describe("allocateSignedProportional", () => {
+  it("varje del följer sin egen vinst (White Flair 35 kr vinst → 17,50 kr till butiken)", () => {
+    // White Flair 180 − 145 = 3 500 öre, Mystery Pack 199 − 90 = 10 900 öre; butiken 50 %.
+    expect(allocateSignedProportional(7_200, [3_500, 10_900], [18_000, 19_900])).toEqual([
+      1_750, 5_450,
+    ]);
+  });
+  it("en förlust får en negativ andel och summan är exakt", () => {
+    const out = allocateSignedProportional(1_000, [3_000, -1_000], [1, 1]);
+    expect(out).toEqual([1_500, -500]);
+    const odd = allocateSignedProportional(1_001, [1, 1, 1], [1, 1, 1]);
+    expect(odd.reduce((a, b) => a + b, 0)).toBe(1_001);
+  });
+  it("vikter som tar ut varandra faller tillbaka på reservvikterna", () => {
+    expect(allocateSignedProportional(100, [5, -5], [1, 3])).toEqual([25, 75]);
+  });
+  it("negativ total och negativ summa", () => {
+    expect(allocateSignedProportional(-300, [-1, -2], [1, 1])).toEqual([-100, -200]);
   });
 });

@@ -367,3 +367,37 @@ describe("binderlabEffect: pågående månad och underlag", () => {
     expect(nov.evidence.dates.at(-1)).toBe("2026-11-10");
   });
 });
+
+/**
+ * Som produktionen 4 nov.: order 1–3 nov., inga order i dag. Vinst per automat och månad ska
+ * räknas på 3 hela dagar, inte på 4 (i dag pågår), samma dagregel som Mål och Enhetsekonomi.
+ */
+describe("binderlabEffect: i dag räknas inte (gemensam dagregel)", () => {
+  const nov = (extra: Partial<EffectInput>) =>
+    binderlabEffect(
+      input({
+        orders: dailyOrders("m-1", "2026-11-01", 3),
+        placements: [placement("m-1", "s-1", "2026-11-01", null)],
+        baselines: [BASELINES[0]!],
+        observations: [],
+        months: ["2026-11"],
+        ...extra,
+      }),
+    )[0]!.points[0]!;
+
+  it("före: asOf = i dag ger 4 automatdagar och för låg takt", () => {
+    const p = nov({ asOf: "2026-11-04" });
+    expect(p.machineDays).toBe(4);
+    expect(p.value).toBe(Math.round((3 * 2_900 * 30) / 4));
+  });
+
+  it("med today: 3 hela dagar, 3 × 29 kr × 30 / 3", () => {
+    const p = nov({ asOf: "2026-11-04", today: "2026-11-04" });
+    expect(p).toMatchObject({ machineDays: 3, measuredDays: 3, partial: true });
+    expect(p.value).toBe(3 * 2_900 * 10);
+  });
+
+  it("utan asOf räcker today", () => {
+    expect(nov({ asOf: undefined, today: "2026-11-04" }).machineDays).toBe(3);
+  });
+});

@@ -5,9 +5,11 @@ import { wallClockIn } from "@/components/shell/period-state";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { EN_DASH, NBSP, formatDate, formatInt } from "@/lib/format";
+import { operatorGaps, operatorParty } from "@/server/contracts/operator";
 import { requireRoute } from "@/server/data/core";
 import { requireUser } from "@/server/session";
 
+import { CompanyForm } from "./_components/company-form";
 import { MerHead } from "./_components/mer-head";
 import { OwnerSharesForm } from "./_components/owner-shares-form";
 import { SettingsForm } from "./_components/settings-form";
@@ -60,6 +62,8 @@ export default async function SettingsPage() {
   const groups = shareGroups(data.shares, today);
   const currentGroup = groups.find((g) => g.current) ?? groups.find((g) => !g.future);
   const isOwner = data.role === "owner";
+  const company = data.company;
+  const companyGaps = operatorGaps(operatorParty(ctx.organization.name, company));
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
@@ -122,9 +126,40 @@ export default async function SettingsPage() {
       </section>
 
       <section
+        id="foretaget"
+        aria-labelledby="foretaget-rubrik"
+        className="rise flex scroll-mt-28 flex-col gap-8"
+        style={{ "--i": 3 } as React.CSSProperties}
+      >
+        <SectionHeader
+          id="foretaget-rubrik"
+          size="md"
+          title={companyGaps.length === 0 ? "Företaget." : "Företaget saknar uppgifter."}
+          aside={
+            companyGaps.length === 0
+              ? "Står i kontrakten."
+              : `Tomt i kontrakten: ${companyGaps.join(", ")}.`
+          }
+        />
+        <div className="max-w-2xl">
+          <CompanyForm
+            organizationName={ctx.organization.name}
+            initial={{
+              companyName: company.companyName ?? "",
+              orgNumber: company.orgNumber ?? "",
+              companyAddress: company.companyAddress ?? "",
+              contactName: company.contactName ?? "",
+              contactEmail: company.contactEmail ?? "",
+              contactPhone: company.contactPhone ?? "",
+            }}
+          />
+        </div>
+      </section>
+
+      <section
         aria-labelledby="agarandelar"
         className="rise flex flex-col gap-8"
-        style={{ "--i": 3 } as React.CSSProperties}
+        style={{ "--i": 4 } as React.CSSProperties}
       >
         <SectionHeader
           id="agarandelar"
@@ -195,7 +230,7 @@ export default async function SettingsPage() {
 
       <details
         className="rise rounded-md border border-line bg-surface p-4 md:p-5"
-        style={{ "--i": 4 } as React.CSSProperties}
+        style={{ "--i": 5 } as React.CSSProperties}
       >
         <summary className="cursor-pointer list-none">
           <SectionHeader
@@ -248,7 +283,7 @@ export default async function SettingsPage() {
 
       <details
         className="rise rounded-md border border-line bg-surface p-4 md:p-5"
-        style={{ "--i": 5 } as React.CSSProperties}
+        style={{ "--i": 6 } as React.CSSProperties}
       >
         <summary className="cursor-pointer list-none">
           <SectionHeader

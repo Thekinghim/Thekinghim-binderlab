@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
   useTransition,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { cn } from "@/lib/cn";
@@ -104,11 +105,19 @@ export function NavigationProgress() {
 }
 
 /** <main> som visar att innehållet laddas (aria-busy, tonat) medan skalets navigering väntar. */
-export function ShellMain({ children, className }: { children: ReactNode; className?: string }) {
+export function ShellMain({
+  children,
+  className,
+  style,
+}: {
+  children: ReactNode;
+  className?: string;
+  style?: CSSProperties;
+}) {
   const nav = useShellNavigation();
   const pending = nav?.pending ?? false;
   return (
-    <main id="main" aria-busy={pending || undefined} className={className}>
+    <main id="main" aria-busy={pending || undefined} className={className} style={style}>
       <div
         className={cn(
           "transition-opacity duration-200 ease-out",

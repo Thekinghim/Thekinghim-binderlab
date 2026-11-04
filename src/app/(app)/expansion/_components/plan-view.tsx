@@ -17,7 +17,15 @@ import { formatInt, NBSP } from "@/lib/format";
 import { roundHalfUp } from "@/domain/money";
 
 import { saveGrowthPlan } from "../actions";
-import { hoursText, kr, monthLabel, oreToInput, paybackShort, tenths } from "../_lib/display";
+import {
+  hoursText,
+  kr,
+  monthLabel,
+  oreToInput,
+  paybackShort,
+  refillWarning,
+  tenths,
+} from "../_lib/display";
 import type { GrowthPlanRecord } from "../_lib/service";
 import { FormModal, type FieldSpec } from "./form-kit";
 
@@ -162,6 +170,7 @@ export function PlanView({
   leads,
   openLeads,
   pipelineHref,
+  refillMeasurement,
 }: {
   plan: GrowthPlan;
   saved: GrowthPlanRecord;
@@ -169,6 +178,8 @@ export function PlanView({
   leads: readonly PlanLead[];
   openLeads: number;
   pipelineHref: string;
+  /** Påfyllningstiden på Effekt (minuter per månad), för varningen när den är orimlig. */
+  refillMeasurement?: { readonly month: string; readonly minutesPerMonth: number } | null;
 }) {
   const [editing, setEditing] = useState(false);
   const p = plan.profitPerMonthOre;
@@ -204,14 +215,13 @@ export function PlanView({
   if (plan.capitalPerMachineOre === null) {
     steps.push({ key: "price", text: "Ange vad en automat kostar." });
   }
-  if (plan.refillIgnored) {
-    steps.push({
-      key: "refill-high",
-      text: "Påfyllningstiden verkar hög – kolla värdet.",
-      ...(plan.refillIgnored.source === "data" ? { href: "/effekt", cta: "Mätningen" } : {}),
-      signal: true,
-    });
-  } else if (plan.refillSource === "default") {
+  // Ett för högt värde står en gång, i kortet Antagande (med var det rättas), inte här igen.
+  const refillWarn = refillWarning({
+    ignored: plan.refillIgnored,
+    usedMinutes: plan.refillMinutesPerMachineWeek,
+    measurement: refillMeasurement ?? null,
+  });
+  if (!plan.refillIgnored && plan.refillSource === "default") {
     steps.push({
       key: "refill",
       text: "Mät påfyllningstiden en månad.",
@@ -408,13 +418,13 @@ export function PlanView({
               </button>
             ) : null}
           </span>
-          {plan.refillIgnored ? (
+          {refillWarn ? (
             <span className="text-sm text-signal-fg">
-              Tiden verkar hög – kolla värdet ({hoursText(plan.refillIgnored.minutes)}
-              /vecka).{" "}
-              {plan.refillIgnored.source === "data" ? (
-                <Link href="/effekt" className="underline underline-offset-4">
-                  Mätningen{NBSP}→
+              {refillWarn.text}{" "}
+              {refillWarn.href ? (
+                <Link href={refillWarn.href} className="font-medium underline underline-offset-4">
+                  {refillWarn.cta}
+                  {NBSP}→
                 </Link>
               ) : null}
             </span>

@@ -148,7 +148,7 @@ function columns(
     },
     {
       key: "profit",
-      header: "Vinst",
+      header: "Vår vinst",
       numeric: true,
       sortValue: (r) => r.profitOre,
       csv: (r) => r.profitOre / 100,

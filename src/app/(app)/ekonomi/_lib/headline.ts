@@ -122,3 +122,40 @@ export function bookkeepingTitle(
   if (months.some((m) => m.status === "closed")) return `${nextName} klar att skicka.`;
   return months.some((m) => m.status === "sent") ? "Allt är skickat." : "Inget att skicka ännu.";
 }
+
+/**
+ * Rubriken på Kassaflöde (egen, inte Avstämningens "Inga utbetalningar inlästa."). Utan
+ * inlästa utbetalningar är hela nettot en prognos: rubriken säger det i stället för att
+ * låtsas att pengarna har kommit.
+ */
+export function cashflowHeadline(
+  cash: CashflowResult | null,
+  today: string,
+  payoutsTracked: boolean,
+): Headline {
+  if (!cash) return { title: "Kassaflöde per månad.", aside: "" };
+  const span = periodShort(cash.range, today);
+  const net = cash.totals.total.netOre;
+  const forecast = cash.totals.forecast.netOre;
+  if (!payoutsTracked) {
+    return {
+      title: sentence(`Väntat netto ${signedSek(net)} för ${span}`),
+      aside: `Beräknat ur försäljningen. ${NO_PAYOUT_SOURCE_TEXT}`,
+    };
+  }
+  return {
+    title: sentence(`Netto ${signedSek(net)} för ${span}`),
+    aside:
+      forecast !== 0
+        ? `Varav prognos: ${signedSek(forecast)}.`
+        : `In ${sek(cash.totals.total.inOre)}, ut ${sek(cash.totals.total.outOre)}.`,
+  };
+}
+
+/** Läget i en kassaflödesrad: en avslutad månad utan inläst utbetalning är inte "faktisk". */
+export function cashPhase(
+  phase: "actual" | "forecast" | "mixed",
+  payoutsTracked: boolean,
+): "actual" | "forecast" | "mixed" | "untracked" {
+  return !payoutsTracked && phase !== "forecast" ? "untracked" : phase;
+}

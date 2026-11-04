@@ -65,8 +65,8 @@ export function shortMonth(month: string): string {
   return SHORT_MONTH[month] ?? month;
 }
 
-function columns(monthLabel: string): Column<StoreRow>[] {
-  return [
+function columns(monthLabel: string, showStoreShare: boolean): Column<StoreRow>[] {
+  const all: Column<StoreRow>[] = [
     {
       key: "store",
       header: "Butik",
@@ -169,7 +169,7 @@ function columns(monthLabel: string): Column<StoreRow>[] {
     },
     {
       key: "compensation",
-      header: "Ersättning",
+      header: "Butikens andel",
       numeric: true,
       hideOnMobile: true,
       sortValue: (r) => r.compensationOre,
@@ -178,7 +178,7 @@ function columns(monthLabel: string): Column<StoreRow>[] {
     },
     {
       key: "profit",
-      header: "Vinst",
+      header: "Vår vinst",
       numeric: true,
       hideOnMobile: true,
       sortValue: (r) => r.profitOre,
@@ -198,6 +198,16 @@ function columns(monthLabel: string): Column<StoreRow>[] {
       render: (r) => sek(r.earnedMonthOre),
     },
   ];
+  // Butikens andel (periodens och månadens) bara med "Visa butikernas andel" eller vald butik.
+  return showStoreShare ? all : all.filter((c) => !STORE_SHARE_COLUMNS.has(c.key));
+}
+
+/** Kolumnerna med butikens andel, som döljs utan vyknappen. */
+export const STORE_SHARE_COLUMNS: ReadonlySet<string> = new Set(["compensation", "earned"]);
+
+/** Kolumnernas nycklar i ordning (för test). */
+export function storeColumnKeys(showStoreShare: boolean): string[] {
+  return columns("november", showStoreShare).map((c) => c.key);
 }
 
 /** Butikerna med periodens intäkt och ersättning och vad de tjänat hittills i månaden. */
@@ -205,12 +215,15 @@ export function StoreTable({
   rows,
   caption,
   monthLabel,
+  showStoreShare = true,
 }: {
   rows: readonly StoreRow[];
   caption: string;
   monthLabel: string;
+  /** Kolumnerna med butikens andel (vyknappen "Visa butikernas andel" eller vald butik). */
+  showStoreShare?: boolean;
 }) {
-  const cols = useMemo(() => columns(monthLabel), [monthLabel]);
+  const cols = useMemo(() => columns(monthLabel, showStoreShare), [monthLabel, showStoreShare]);
   return (
     <DataTable
       surface="bg"

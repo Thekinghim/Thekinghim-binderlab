@@ -10,6 +10,7 @@ import {
   findCreatedBanner,
   sniffCampaignImage,
   suggestCampaigns,
+  SUGGEST_MAX,
   unixSeconds,
 } from "./model";
 
@@ -157,5 +158,57 @@ describe("förslag", () => {
       today,
     });
     expect(s).toHaveLength(1);
+  });
+  it("ny räknas från första försäljningen: sålt sedan 14 okt. är inte nytt (13 kort i prod)", () => {
+    // Sortimentet kom med Awish-synken 2 nov., men titlarna har sålt sedan 14 okt.
+    const s = suggestCampaigns({
+      firstStocked: [
+        {
+          titleId: "t30",
+          titleName: "30th Celebration",
+          machineId: "m1",
+          firstOn: "2026-11-02",
+          firstSale: "2026-10-14",
+        },
+        {
+          titleId: "t-ny",
+          titleName: "Mystery pack premium",
+          machineId: "m1",
+          firstOn: "2026-11-02",
+          firstSale: "2026-10-28",
+        },
+      ],
+      campaigned: [],
+      linkedMachineIds: ["m1"],
+      today,
+    });
+    expect(s.map((x) => x.titleId)).toEqual(["t-ny"]);
+    expect(s[0]!.since).toBe("2026-10-28");
+  });
+  it("hoppar över utgångna och slutsålda titlar och visar högst 3", () => {
+    const row = (titleId: string, extra: object = {}) => ({
+      titleId,
+      titleName: titleId,
+      machineId: "m1",
+      firstOn: "2026-11-02" as const,
+      ...extra,
+    });
+    const s = suggestCampaigns({
+      firstStocked: [
+        row("utgår", { current: false }),
+        row("slut", { onHand: 0 }),
+        row("a", { onHand: 5 }),
+        row("b"),
+        row("c", { onHand: null }),
+        row("d", { onHand: 2 }),
+      ],
+      campaigned: [],
+      linkedMachineIds: ["m1"],
+      today,
+    });
+    expect(s).toHaveLength(SUGGEST_MAX);
+    expect(SUGGEST_MAX).toBe(3);
+    expect(s.map((x) => x.titleId)).not.toContain("utgår");
+    expect(s.map((x) => x.titleId)).not.toContain("slut");
   });
 });

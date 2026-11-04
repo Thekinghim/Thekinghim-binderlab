@@ -344,6 +344,7 @@ export function contractHtml(input: ContractTemplateInput): string {
 <html lang="sv">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Placeringsavtal ${escapeHtml(input.store.name)}</title>
 <style>
   @page { size: A4; margin: 22mm 20mm; }

@@ -29,3 +29,22 @@ export function testPurchaseNote(
   const by = testPurchase.by?.trim();
   return `Markerat ${at(testPurchase.at)}${by ? ` av ${by}` : ""}.`;
 }
+
+/** Bekräftelsen innan en order markeras som testköp (ett felklick tar bort en riktig försäljning). */
+export const CONFIRM_TEXT = "Säker? Ordern räknas inte i vinsten.";
+export const CONFIRM_LABEL = "Ja, markera";
+export const CANCEL_LABEL = "Avbryt";
+
+export type TestPurchaseStep = "idle" | "confirm";
+
+/**
+ * Vad ett tryck på testköpsknappen gör. Att markera kräver ett andra tryck på "Ja, markera"
+ * (steget "confirm"); att ångra ett testköp gör det direkt, eftersom ordern då räknas igen.
+ */
+export function pressTestPurchase(
+  step: TestPurchaseStep,
+  isTest: boolean,
+): { readonly step: TestPurchaseStep; readonly commit: boolean } {
+  if (isTest) return { step: "idle", commit: true };
+  return step === "confirm" ? { step: "idle", commit: true } : { step: "confirm", commit: false };
+}

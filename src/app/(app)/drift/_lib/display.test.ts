@@ -2,7 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import type { MachineHealth } from "@/analytics/health";
 
-import { alertHeadline, driftHeadline, figureText, firstSentence, sortAlerts } from "./display";
+import { assortmentKey } from "@/analytics/todos/assortment";
+
+import {
+  alertHeadline,
+  driftHeadline,
+  figureText,
+  firstSentence,
+  sortAlerts,
+  withoutRetiredAlerts,
+} from "./display";
 
 function h(status: MachineHealth["status"], title = "Automat"): MachineHealth {
   return {
@@ -107,5 +116,15 @@ describe("larmen på Drift", () => {
     );
     expect(alertHeadline([a("1", { kind: "import_failed" })])).toBe("1\u00a0öppet larm: Larm 1.");
     expect(alertHeadline([])).toBeNull();
+  });
+});
+
+describe("withoutRetiredAlerts", () => {
+  it("tar bort lagerlarm för titlar som gått ur automaten, behåller andra larm", () => {
+    const a = (kind: string, titleId: string | null) => ({ kind, machineId: "m1", titleId });
+    const alerts = [a("low_stock", "bolt"), a("low_stock", "30th"), a("suspected_fault", null)];
+    const retired = new Set([assortmentKey("m1", "bolt")]);
+    expect(withoutRetiredAlerts(alerts, retired).map((x) => x.titleId)).toEqual(["30th", null]);
+    expect(withoutRetiredAlerts(alerts, new Set())).toHaveLength(3);
   });
 });

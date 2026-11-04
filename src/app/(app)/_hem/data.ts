@@ -11,7 +11,7 @@
 import type { GoalProgress } from "@/analytics/goals";
 import type { TodoItem } from "@/analytics/todos";
 import { routeById } from "@/components/shell/nav";
-import type { SearchParamsInput } from "@/components/shell/period-state";
+import { parseStoreShareView, type SearchParamsInput } from "@/components/shell/period-state";
 import { addDays, monthOf, type IsoDate, type Period } from "@/domain";
 import { AuthorizationError } from "@/server/access";
 import type {
@@ -32,6 +32,7 @@ import {
   emptyRefillsInScope,
   homeLostSales,
   homeStaleImport,
+  type HomeExtraTodo,
   type HomeLostSales,
   type HomeModel,
   type HomeStaleImport,
@@ -42,6 +43,11 @@ export interface HomeLoaders {
   period(sp: SearchParamsInput): Promise<AppPeriod>;
   domainInput(args: DomainInputArgs): Promise<DomainInput>;
   todos(): Promise<TodoItem[]>;
+  /**
+   * Raderna i Att göra utanför reglerna (ny automat, bokföringen att ladda ner), samma som
+   * Att göra och menyns räknare. Utelämnad = inga (räknaren och Hem skiljer sig då).
+   */
+  extras?(): Promise<HomeExtraTodo[]>;
   /**
    * Förlorad försäljning för perioden och filtret (lostSalesSummary i Prognos & inköp).
    * null för roller utan ekonomi. Utelämnad = visas inte.
@@ -106,22 +112,24 @@ export async function loadHomeWith(
   // Dagens takt: samma veckodag de senaste veckorna och i dag, med samma filter.
   const withPace = periodIncludesToday(p.period, ctx.today);
 
-  const [input, laterInput, paceInput, todos, lost, onboarding, sync, goals] = await Promise.all([
-    loaders.domainInput({ period: p.period, compare: p.compare, ...p.scope }),
-    later ? loaders.domainInput({ period: later, compare: null, ...p.scope }) : null,
-    withPace
-      ? loaders.domainInput({
-          period: { start: addDays(ctx.today, -7 * PACE_WEEKS), end: ctx.today },
-          compare: null,
-          ...p.scope,
-        })
-      : null,
-    hasTodos ? loaders.todos() : Promise.resolve(null),
-    loaders.lostSales ? loaders.lostSales(p.period, p.scope) : Promise.resolve(null),
-    loaders.onboarding ? loaders.onboarding(ctx.organization.id) : Promise.resolve(null),
-    loaders.sync ? loaders.sync() : Promise.resolve(null),
-    loaders.goals ? loaders.goals(ctx.today) : Promise.resolve(null),
-  ]);
+  const [input, laterInput, paceInput, todos, extras, lost, onboarding, sync, goals] =
+    await Promise.all([
+      loaders.domainInput({ period: p.period, compare: p.compare, ...p.scope }),
+      later ? loaders.domainInput({ period: later, compare: null, ...p.scope }) : null,
+      withPace
+        ? loaders.domainInput({
+            period: { start: addDays(ctx.today, -7 * PACE_WEEKS), end: ctx.today },
+            compare: null,
+            ...p.scope,
+          })
+        : null,
+      hasTodos ? loaders.todos() : Promise.resolve(null),
+      hasTodos && loaders.extras ? loaders.extras() : Promise.resolve([]),
+      loaders.lostSales ? loaders.lostSales(p.period, p.scope) : Promise.resolve(null),
+      loaders.onboarding ? loaders.onboarding(ctx.organization.id) : Promise.resolve(null),
+      loaders.sync ? loaders.sync() : Promise.resolve(null),
+      loaders.goals ? loaders.goals(ctx.today) : Promise.resolve(null),
+    ]);
 
   const model = buildHomeModel({
     current: input.current,
@@ -138,6 +146,9 @@ export async function loadHomeWith(
     timeZone: ctx.timeZone,
     scope: p.scope,
     todos,
+    extraTodos: extras,
+    // Vyknappen "Visa butikernas andel"; med filter visas andelen ändå (buildHomeModel).
+    showStoreShare: parseStoreShareView(searchParams),
   });
 
   let scope: HomeScopeLabel | null = null;
@@ -171,6 +182,7 @@ export async function loadHomeWith(
       lost,
       ctx.today,
       todos ? emptyRefillsInScope(todos, p.scope, input.machines) : null,
+      model.spanText,
     ),
     onboarding: onboarding && !onboarding.complete ? onboarding : null,
     staleImport: homeStaleImport(sync, p.period.end, ctx.now, ctx.timeZone),

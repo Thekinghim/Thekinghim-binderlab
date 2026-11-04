@@ -19,6 +19,7 @@ import {
 } from "@/server/data/core";
 import { dbErrorMessage, safeErrorForLog } from "@/server/errors";
 import {
+  ensureSettlementsFor,
   markSettlementPaidFor,
   recomputeSettlementFor,
   SettlementError,
@@ -30,6 +31,7 @@ export type SettlementActionResult<T = undefined> =
 
 const idSchema = z.string().uuid("Avräkningen finns inte.");
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Välj ett datum.");
+const amountSchema = z.number().int("Ogiltigt belopp.").safe("Ogiltigt belopp.");
 
 function failure(error: unknown): { ok: false; error: string } {
   unstable_rethrow(error);
@@ -49,14 +51,23 @@ async function operator() {
   return requireViewer();
 }
 
-/** Markera som betald (datum ÅÅÅÅ-MM-DD). */
+/**
+ * Markera som betald (datum ÅÅÅÅ-MM-DD). `expectedOre` är beloppet som ägaren såg: har det
+ * ändrats sedan dess betalas inget, och hen får se det nya beloppet först.
+ */
 export async function markSettlementPaid(
   id: unknown,
   paidOn: unknown,
+  expectedOre?: unknown,
 ): Promise<SettlementActionResult<{ storeName: string; amountOre: number }>> {
   try {
     const viewer = await operator();
-    const data = await markSettlementPaidFor(viewer, idSchema.parse(id), dateSchema.parse(paidOn));
+    const data = await markSettlementPaidFor(
+      viewer,
+      idSchema.parse(id),
+      dateSchema.parse(paidOn),
+      expectedOre === undefined || expectedOre === null ? null : amountSchema.parse(expectedOre),
+    );
     revalidateAppData();
     return { ok: true, data };
   } catch (error) {
@@ -85,6 +96,20 @@ export async function recomputeSettlement(
     const data = await recomputeSettlementFor(viewer, idSchema.parse(id));
     revalidateAppData();
     return { ok: true, data };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** Skapa förra månadens saknade avräkningar (knappen på Butiksportal). */
+export async function createMissingSettlements(): Promise<
+  SettlementActionResult<{ created: number; errors: number }>
+> {
+  try {
+    const viewer = await operator();
+    const run = await ensureSettlementsFor(viewer);
+    revalidateAppData();
+    return { ok: true, data: { created: run?.created ?? 0, errors: run?.errors.length ?? 0 } };
   } catch (error) {
     return failure(error);
   }

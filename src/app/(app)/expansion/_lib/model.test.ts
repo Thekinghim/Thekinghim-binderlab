@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { octoberSources } from "@/analytics/expansion/test-fixtures";
-import { scenarioEvidence } from "@/analytics/expansion";
+import { dailyOrders, octoberSources } from "@/analytics/expansion/test-fixtures";
+import { compareUnitEconomics, scenarioEvidence } from "@/analytics/expansion";
 import { storeCompensation, type MachineInvestment } from "@/domain";
+import { agreement, NO_TAX, placement, price } from "@/domain/testing/fixtures";
 
 import {
   analyticsStage,
   clipToData,
+  completeDataPeriod,
   machinesInScope,
   placementsFromData,
   defaultInvestment,
@@ -229,5 +231,43 @@ describe("automater i omfattningen", () => {
     expect(machinesInScope(master, "store", "s-9", "2026-11")).toBe(1);
     expect(machinesInScope(master, "organization", null, "2026-11")).toBe(3);
     expect(machinesInScope(master, "organization", null, "2026-09")).toBe(2);
+  });
+});
+
+/**
+ * Enhetsekonomi 4 nov. (som produktionen): första ordern 14 okt., order varje dag till och
+ * med 3 nov., inga order ännu i dag. Snittet ska räknas på 21 hela dagar, inte 22.
+ */
+describe("completeDataPeriod: enhetsekonomins dagar", () => {
+  const p30 = { start: "2026-10-06", end: "2026-11-04" };
+
+  it("bara hela dagar med data: 14 okt.–3 nov., 21 dagar", () => {
+    expect(completeDataPeriod(p30, "2026-10-14", "2026-11-04")).toEqual({
+      period: { start: "2026-10-14", end: "2026-11-03" },
+      days: 21,
+      clippedFrom: "2026-10-14",
+    });
+    // Perioden "I dag": inga hela dagar, perioden används som den är.
+    const today = { start: "2026-11-04", end: "2026-11-04" };
+    expect(completeDataPeriod(today, "2026-10-14", "2026-11-04").period).toEqual(today);
+  });
+
+  it("intäkt per dag blir samma som Automater (4 900 / dag, inte 22 dagar)", () => {
+    const dp = completeDataPeriod(p30, "2026-10-14", "2026-11-04");
+    const res = compareUnitEconomics(
+      {
+        orders: dailyOrders("m-1", "2026-10-14", 21),
+        prices: [price("t-a", 2000, "2026-01-01")],
+        agreements: [agreement("s-1", "2026-01-01", null, { commissionBp: 0 })],
+        placements: [placement("m-1", "s-1", "2026-10-14", null)],
+        settings: NO_TAX,
+        period: dp.period,
+        investments: [],
+        machineIds: ["m-1"],
+      },
+      [],
+      { lastDataDay: dp.period.end },
+    );
+    expect(res.rows[0]).toMatchObject({ activeDays: 21, revenuePerDayOre: 4_900 });
   });
 });

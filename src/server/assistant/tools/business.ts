@@ -1088,7 +1088,7 @@ export const bookkeepingTool = defineTool({
       figures: months
         .slice(0, 4)
         .map((m) => ({ label: m.manad, value: `${m.status} · ${m.resultat}` })),
-      links: [{ label: "Bokföring", href: "/ekonomi/bokforing" }],
+      links: [{ label: "Bokföring", href: "/ekonomi?vy=bokforing#bokforing" }],
     };
   },
 });

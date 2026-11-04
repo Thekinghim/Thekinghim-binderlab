@@ -242,6 +242,10 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     roles: ALL,
     phase: 8,
     lead: "Maskinhälsa, larm och besöksplan.",
+    // Status, Besök, Påfyllning och Notiser räknar på i dag och veckan framåt (automatsidan
+    // väljer dagar själv): skalets period och filter gäller inte här.
+    context: false,
+    vmb: false,
   },
   {
     id: "inkorg",
@@ -313,6 +317,9 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     roles: ["owner", "admin", "refiller", "viewer"],
     phase: 6,
     lead: "Fråga om er data på svenska.",
+    // Frågorna säger själva vilken period de gäller; förslagen gäller alltid 30 dagar.
+    context: false,
+    vmb: false,
   },
   {
     id: "datakallor",
@@ -434,10 +441,22 @@ export type SubTab = {
   /** Unik nyckel (rutt-id, eller rutt-id och vy). */
   key: string;
   label: string;
+  /** Kortare namn på mobil (smal skärm), t.ex. "Lager" för "Lager i automaterna". */
+  short?: string;
   route: RouteId;
   /** Sidans vy (?vy=…). Ges den räknas också /<rutt>/<vy>/… hit. */
   view?: string;
+  /** Mindre använd: ligger under underfliken "Mer" när huvudfliken har många flikar. */
+  more?: true;
+  /**
+   * false: vyn har inget periodval eller filter (kontextraden döljs), fast rutten har det.
+   * Inköp räknar på lagret i dag och en prognos framåt, Bokföring på hela månader och
+   * Butiksportal på förra månaden.
+   */
+  context?: false;
 };
+
+type TabOptions = Pick<SubTab, "short" | "more" | "context">;
 
 export type NavSection = {
   id: SectionId;
@@ -446,11 +465,12 @@ export type NavSection = {
   tabs: ReadonlyArray<SubTab>;
 };
 
-const tab = (route: RouteId, label: string, view?: string): SubTab => ({
+const tab = (route: RouteId, label: string, view?: string, options: TabOptions = {}): SubTab => ({
   key: view ? `${route}:${view}` : route,
   label,
   route,
   view,
+  ...options,
 });
 
 export const navSections: ReadonlyArray<NavSection> = [
@@ -467,12 +487,13 @@ export const navSections: ReadonlyArray<NavSection> = [
     tabs: [
       tab("automater", "Automater"),
       tab("drift", "Drift"),
-      tab("lager", "Lager i automaterna"),
+      tab("lager", "Lager i automaterna", undefined, { short: "Lager" }),
       tab("order", "Order"),
-      tab("automater", "Svinn", "svinn"),
-      tab("inkorg", "Inkorg"),
-      tab("kampanjer", "Kampanjer"),
-      tab("kampanjer", "Gratis-pack", "gratis-pack"),
+      // Mindre använda: under "Mer", så att de fyra viktigaste får plats på mobilen.
+      tab("automater", "Svinn", "svinn", { more: true }),
+      tab("inkorg", "Inkorg", undefined, { more: true }),
+      tab("kampanjer", "Kampanjer", undefined, { more: true }),
+      tab("kampanjer", "Gratis-pack", "gratis-pack", { more: true }),
     ],
   },
   {
@@ -481,7 +502,7 @@ export const navSections: ReadonlyArray<NavSection> = [
     icon: "inventory",
     tabs: [
       tab("vart-lager", "Vårt lager"),
-      tab("prognos", "Inköp"),
+      tab("prognos", "Inköp", undefined, { context: false }),
       tab("prognos", "Prognos", "prognos"),
       tab("inkopspriser", "Inköpspriser"),
     ],
@@ -494,7 +515,7 @@ export const navSections: ReadonlyArray<NavSection> = [
       tab("butiker", "Butiker"),
       tab("avtal", "Kontrakt"),
       tab("expansion", "Expansion"),
-      tab("butiker", "Butiksportal", "portal"),
+      tab("butiker", "Butiksportal", "portal", { context: false }),
     ],
   },
   {
@@ -504,7 +525,7 @@ export const navSections: ReadonlyArray<NavSection> = [
     tabs: [
       tab("lonsamhet", "Lönsamhet"),
       tab("ekonomi", "Ekonomi"),
-      tab("ekonomi", "Bokföring", "bokforing"),
+      tab("ekonomi", "Bokföring", "bokforing", { context: false }),
       tab("rapporter", "Rapporter"),
     ],
   },
@@ -574,4 +595,33 @@ export function activeSubTab(
   );
   const tab = viewed ?? candidates.find((t) => t.view === undefined) ?? candidates[0];
   return tab ? { section, tab } : null;
+}
+
+/**
+ * Visar skalet periodval och filter (kontextraden) på sidan? Nej för rutter med
+ * context: false och för underflikar med context: false (Inköp, Bokföring, Butiksportal),
+ * där perioden inte ändrar något på sidan.
+ */
+export function showsContext(pathname: string | null | undefined, view?: string | null): boolean {
+  const id = activeRouteId(pathname);
+  if (id && routeById(id).context === false) return false;
+  return activeSubTab(pathname, view)?.tab.context !== false;
+}
+
+/** Flikar som får plats i raden innan de mindre använda läggs under "Mer". */
+export const SUB_TAB_INLINE_MAX = 5;
+
+/**
+ * Underflikarna i raden och under "Mer". Med fler än SUB_TAB_INLINE_MAX flikar läggs de
+ * mindre använda (more: true) under "Mer"; annars står alla i raden (påfyllaren har tre).
+ */
+export function splitSubTabs(tabs: ReadonlyArray<SubTab>): {
+  inline: SubTab[];
+  more: SubTab[];
+} {
+  if (tabs.length <= SUB_TAB_INLINE_MAX) return { inline: [...tabs], more: [] };
+  const inline = tabs.filter((t) => !t.more);
+  const more = tabs.filter((t) => t.more);
+  // En ensam flik under "Mer" är ett klick för mycket: då står den i raden.
+  return more.length < 2 ? { inline: [...tabs], more: [] } : { inline, more };
 }

@@ -145,15 +145,27 @@ export function shrinkageValueText(ore: number | null): string | null {
   return ore === null ? null : formatSek(ore / 100);
 }
 
+/** Raden när ingen påfyllning är registrerad (i perioden eller för en automat). */
+export const NO_REFILL_TEXT = "Ingen påfyllning registrerad än.";
+
 /** Rubriken: hur många pack som saknas och var, eller att allt stämmer. */
 export function shrinkageHeadline(args: {
   missing: number;
   machines: number;
   valueOre: number | null;
   compared: boolean;
+  /** Minst en påfyllning registrerad i perioden. Utelämnad = ja (som förut). */
+  refilled?: boolean;
 }): { title: string; aside: string } {
+  if (args.refilled === false) {
+    // Utan registrerade påfyllningar ser varje sålt pack ut som svinn eller överskott.
+    return {
+      title: args.compared ? "Inget att jämföra mot." : "Inget att jämföra än.",
+      aside: NO_REFILL_TEXT,
+    };
+  }
   if (!args.compared) {
-    return { title: "Inget att jämföra än.", aside: "Behöver saldo från Awish." };
+    return { title: "Inget att jämföra än.", aside: "Jämförelsen börjar efter nästa räkning." };
   }
   if (args.missing === 0) {
     return { title: "Inget saknas.", aside: "Påfyllt, sålt och saldo stämmer." };
@@ -230,7 +242,13 @@ export function buildShrinkage(
     valueOre,
     flaggedLines,
     unknownLines,
-    headline: shrinkageHeadline({ missing, machines: flagged.length, valueOre, compared }),
+    headline: shrinkageHeadline({
+      missing,
+      machines: flagged.length,
+      valueOre,
+      compared,
+      refilled: aggregates.length === 0 || aggregates.some((a) => a.refilled > 0),
+    }),
   };
 }
 

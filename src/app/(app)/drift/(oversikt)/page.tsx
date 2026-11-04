@@ -5,12 +5,14 @@ import { milliToTenths, probabilityText } from "@/analytics/health";
 import { fillLevels } from "@/analytics/visits";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
+import { cn } from "@/lib/cn";
 import { formatInt, MINUS, NBSP } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
 
 import { AlertList } from "../_components/alert-list";
 import { HealthTable, type HealthRow } from "../_components/health-table";
 import { toAlertItems } from "../_lib/alert-items";
+import { alertCountLink } from "../_lib/nav";
 import {
   alertHeadline,
   driftHeadline,
@@ -88,7 +90,8 @@ export default async function DriftPage() {
 
   const items = toAlertItems(openAlerts, ctx.timeZone, now);
   const resolved = toAlertItems(overview.recentAlerts, ctx.timeZone, now);
-  const critical = overview.openAlerts.filter((a) => a.severity === "critical").length;
+  const critical = openAlerts.filter((a) => a.severity === "critical").length;
+  const alertLink = alertCountLink(items.length, critical);
 
   return (
     <div className="flex flex-col gap-10 md:gap-12">
@@ -100,12 +103,28 @@ export default async function DriftPage() {
           title={headline.title}
           aside={headline.aside}
           actions={
-            <Link
-              href="/drift/besok"
-              className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg transition-colors hover:bg-hover"
-            >
-              {`Besök i veckan: ${formatInt(plan.days.reduce((n, d) => n + d.stops.length, 0))} →`}
-            </Link>
+            <div className="flex flex-wrap gap-2">
+              {alertLink ? (
+                // Antalet larm leder till listan nedanför (Notiser är bara inställningarna).
+                <a
+                  href={alertLink.href}
+                  className={cn(
+                    "inline-flex h-9 items-center gap-2 rounded-sm border px-3.5 text-base transition-colors",
+                    critical > 0
+                      ? "border-signal-line text-signal-fg hover:border-signal hover:bg-signal-soft"
+                      : "border-line-strong bg-surface text-fg hover:bg-hover",
+                  )}
+                >
+                  {`${alertLink.label} →`}
+                </a>
+              ) : null}
+              <Link
+                href="/drift/besok"
+                className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg transition-colors hover:bg-hover"
+              >
+                {`Besök i veckan: ${formatInt(plan.days.reduce((n, d) => n + d.stops.length, 0))} →`}
+              </Link>
+            </div>
           }
         />
       </div>
@@ -148,7 +167,7 @@ export default async function DriftPage() {
           }
           actions={
             <Link href="/drift/larm" className="rounded-xs text-sm text-muted hover:text-fg">
-              Inställningar →
+              Notiser →
             </Link>
           }
         />

@@ -38,6 +38,7 @@ import { cache } from "react";
 import {
   AuthorizationError,
   getRoleFor,
+  listOrganizationsWithMachinesFor,
   MEMBER_ROLES,
   withUserDbFor,
   type OrganizationMembership,
@@ -61,7 +62,6 @@ import {
   queryMasterData,
   queryOpenAlerts,
   queryOrders,
-  queryOrganizationsWithMachines,
   queryPrices,
   queryReportDeliveries,
   queryReportDrafts,
@@ -74,6 +74,7 @@ import {
   queryTodoDismissals,
 } from "./queries";
 import { queryUnpaidSettlements } from "@/server/settlements/queries";
+import { queryTeamSize } from "./team-size";
 
 import { effectivePlacements } from "./placements";
 import {
@@ -211,7 +212,8 @@ export async function loadOrganizationsFor(user: SessionUser): Promise<{
   organizations: OrganizationMembership[];
   machineCounts: Map<string, number>;
 }> {
-  const rows = await withUserDbFor(user, (tx) => queryOrganizationsWithMachines(tx));
+  // Samma läsning som listOrganizationsFor och getActiveOrganization (en gång per förfrågan).
+  const rows = await listOrganizationsWithMachinesFor(user);
   const organizations: OrganizationMembership[] = [];
   const machineCounts = new Map<string, number>();
   for (const r of rows) {
@@ -513,6 +515,7 @@ export async function loadStockFor(viewer: Viewer): Promise<StockSnapshot> {
         titleId: r.titleId,
         onHand: r.onHand,
         lastRestockedAt: r.lastRestockedAt,
+        lastRefilledAt: r.lastRefilledAt ?? null,
       })),
     warehouse: rows.filter((r) => r.locationKind === "warehouse"),
   };
@@ -664,6 +667,7 @@ export async function loadTodoStateFor(viewer: Viewer, now: Date = new Date()): 
         titleId: r.titleId,
         onHand: r.onHand,
         lastRestockedAt: r.lastRestockedAt,
+        lastRefilledAt: r.lastRefilledAt ?? null,
       }));
     // Hur långt försäljningen är importerad per automat: tystnaden räknas fram till dit,
     // som på Drift (maskinhälsan), så att alla sidor säger samma antal timmar.
@@ -675,7 +679,7 @@ export async function loadTodoStateFor(viewer: Viewer, now: Date = new Date()): 
     let input: TodoInput;
     if (baseP) {
       const reportSince = addDays(today, -TODO_REPORT_LOOKBACK_DAYS);
-      const [orders, recipients, deliveries, drafts, contracts, alerts, unpaidSettlements] =
+      const [orders, recipients, deliveries, drafts, contracts, alerts, unpaidSettlements, team] =
         await Promise.all([
           queryOrders(tx, orgId, range, NO_SCOPE),
           queryReportRecipients(tx, orgId),
@@ -684,7 +688,9 @@ export async function loadTodoStateFor(viewer: Viewer, now: Date = new Date()): 
           queryActiveContracts(tx, orgId),
           queryOpenAlerts(tx, orgId),
           // Månadsavräkningar som inte är betalda (Butiker → Butiksportal).
-          queryUnpaidSettlements(tx, orgId),
+          queryUnpaidSettlements(tx, orgId, now),
+          // Konton och inbjudningar: punkten "Bjud in delägaren" (bara ägare och admin).
+          queryTeamSize(tx, orgId),
         ]);
       const { prices, agreements, settings } = await baseP;
       input = {
@@ -703,6 +709,7 @@ export async function loadTodoStateFor(viewer: Viewer, now: Date = new Date()): 
         unpaidSettlements,
         contracts,
         alerts,
+        team,
         salesDataUntil,
         options: { timeZone },
       };

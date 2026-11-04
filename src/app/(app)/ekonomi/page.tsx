@@ -23,8 +23,8 @@ import { PayoutUpload } from "./_components/payout-upload";
 import { ReconciliationList } from "./_components/reconciliation";
 import { CashflowTable } from "./_components/tables";
 import { pickView, ViewTabs } from "../rapporter/_components/view-tabs";
-import { economyHeadline } from "./_lib/headline";
-import { isoToDate, periodShort, plural, sek, sentence, signedSek } from "./_lib/view";
+import { cashflowHeadline, cashPhase, economyHeadline } from "./_lib/headline";
+import { isoToDate, periodShort, plural, sek, sentence } from "./_lib/view";
 
 export const metadata: Metadata = { title: "Ekonomi" };
 
@@ -68,7 +68,17 @@ export default async function EkonomiPage({
   ]);
 
   const result = rec.result;
-  const headline = economyHeadline(result, cash.result, p.period, ctx.today, cash.payoutsTracked);
+  // Varje flik har sin egen rubrik (Avstämningens "Inga utbetalningar inlästa." passar inte
+  // på Kassaflöde eller Fasta kostnader).
+  const headline =
+    view === "kassaflode"
+      ? cashflowHeadline(cash.result, ctx.today, cash.payoutsTracked)
+      : view === "fasta"
+        ? {
+            title: "Fasta kostnader.",
+            aside: "Hyra, el, försäkring och annat som kommer varje månad.",
+          }
+        : economyHeadline(result, cash.result, p.period, ctx.today, cash.payoutsTracked);
   const when = periodShort(p.period, ctx.today);
   const canEdit = ctx.canEdit;
 
@@ -111,7 +121,7 @@ export default async function EkonomiPage({
   const cashRows =
     cash.result?.buckets.map((b) => ({
       key: b.key,
-      phase: b.phase,
+      phase: cashPhase(b.phase, cash.payoutsTracked),
       partial: b.partial,
       payoutsOre: b.total.payoutsOre,
       purchasesOre: b.total.purchasesOre,
@@ -318,30 +328,14 @@ export default async function EkonomiPage({
           className={SECTION}
           style={{ "--i": 1 } as React.CSSProperties}
         >
-          <SectionHeader
-            id="kassaflode"
-            size="md"
-            title={
-              cash.result
-                ? sentence(
-                    `Netto ${signedSek(cash.result.totals.total.netOre)} för ${periodShort(cash.result.range, ctx.today)}`,
-                  )
-                : "Kassaflöde per månad."
-            }
-            aside={
-              cash.result
-                ? cash.result.totals.forecast.netOre !== 0
-                  ? `Varav prognos: ${signedSek(cash.result.totals.forecast.netOre)}.`
-                  : `In ${sek(cash.result.totals.total.inOre)}, ut ${sek(cash.result.totals.total.outOre)}.`
-                : (cash.error ?? undefined)
-            }
-          />
+          <SectionHeader id="kassaflode" size="md" title="Per månad." />
           {cash.result ? (
-            <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
-              <div className="min-w-0 lg:col-span-8">
+            // Tabellen får hela bredden (Netto syns utan att scrolla); förklaringen under.
+            <div className="flex flex-col gap-6">
+              <div className="min-w-0">
                 <CashflowTable rows={cashRows} />
               </div>
-              <details className="rounded-md border border-line bg-surface p-4 lg:col-span-4 lg:self-start">
+              <details className="rounded-md border border-line bg-surface p-4 lg:max-w-[720px]">
                 <summary className="label cursor-pointer text-muted hover:text-fg">
                   Så räknas prognosen
                 </summary>

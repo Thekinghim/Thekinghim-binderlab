@@ -118,6 +118,22 @@ export const loadVisibleTodoState = cache(async (): Promise<TodoState> => {
   return applySlotAlerts(todoStateWithoutRetired(state, periods, ctx.today), alerts, periods);
 });
 
+/**
+ * Raderna i Att göra som inte kommer ur reglerna: månaden vars bokföring är klar att ladda
+ * ner (bara ägare och admin) och antalet nya automater att koppla. En källa för menyns
+ * räknare, Att göra och Hem, så att de räknar samma rader. Fel ger "inga" (raden är bara
+ * en påminnelse).
+ */
+export async function loadTodoExtrasFor(
+  viewer: Viewer,
+): Promise<{ bokforingMonth: string | null; newMachines: number }> {
+  const [ready, found] = await Promise.all([
+    readyPackageFor(viewer).catch(() => null),
+    loadNewMachinesFor(viewer).catch(() => null),
+  ]);
+  return { bokforingMonth: ready?.month ?? null, newMachines: found?.machines.length ?? 0 };
+}
+
 /** Sekunder som menyns räknare får vara gammal (den räknas annars vid varje sidladdning). */
 const TODO_COUNT_SECONDS = 60;
 
@@ -132,12 +148,8 @@ export async function loadTodoCount(): Promise<number> {
     const viewer = await requireViewer();
     // Som rubriken på Att göra: punkterna plus raderna "Ny automat hittad" och
     // bokföringen att ladda ner (bara ägare och admin; noll för andra roller).
-    const [state, ready, found] = await Promise.all([
-      loadVisibleTodoState(),
-      readyPackageFor(viewer).catch(() => null),
-      loadNewMachinesFor(viewer).catch(() => null),
-    ]);
-    return state.items.length + (ready ? 1 : 0) + ((found?.machines.length ?? 0) > 0 ? 1 : 0);
+    const [state, extras] = await Promise.all([loadVisibleTodoState(), loadTodoExtrasFor(viewer)]);
+    return state.items.length + (extras.bokforingMonth ? 1 : 0) + (extras.newMachines > 0 ? 1 : 0);
   });
 }
 

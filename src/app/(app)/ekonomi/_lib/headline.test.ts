@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type { CashflowResult } from "@/analytics/cashflow";
 
-import { bookkeepingTitle, economyHeadline, NO_PAYOUT_SOURCE_TEXT } from "./headline";
+import {
+  bookkeepingTitle,
+  cashflowHeadline,
+  cashPhase,
+  economyHeadline,
+  NO_PAYOUT_SOURCE_TEXT,
+} from "./headline";
 
 const PERIOD = { start: "2026-10-04", end: "2026-11-02" };
 const TODAY = "2026-11-03";
@@ -71,5 +77,35 @@ describe("economyHeadline med utbetalningar", () => {
     const h = economyHeadline(result(-5_000, 2), null, PERIOD, TODAY);
     expect(h.title).toMatch(/^2\savvikelser att utreda\.$/);
     expect(h.aside).toMatch(/Skillnad .*50\skr\.$/);
+  });
+});
+
+describe("Kassaflöde: egen rubrik och inget falskt 'Faktiskt 0 kr' (utvärderingen 4 nov)", () => {
+  const flow = {
+    range: { start: "2026-10-01", end: "2026-12-31" },
+    totals: {
+      total: { netOre: 6_639_800, inOre: 7_598_900, outOre: 959_100 },
+      forecast: { netOre: 6_639_800 },
+    },
+  } as unknown as CashflowResult;
+
+  it("utan inlästa utbetalningar: väntat netto, inte Avstämningens rubrik", () => {
+    const h = cashflowHeadline(flow, TODAY, false);
+    expect(h.title).toContain("Väntat netto");
+    expect(h.title).not.toBe("Inga utbetalningar inlästa.");
+    expect(h.aside).toContain("Beräknat ur försäljningen");
+  });
+
+  it("med utbetalningar: netto och prognosdelen", () => {
+    const h = cashflowHeadline(flow, TODAY, true);
+    expect(h.title.startsWith("Netto")).toBe(true);
+    expect(h.aside).toContain("Varav prognos");
+  });
+
+  it("en avslutad månad utan utbetalningsfil är inte 'Faktiskt'", () => {
+    expect(cashPhase("actual", false)).toBe("untracked");
+    expect(cashPhase("mixed", false)).toBe("untracked");
+    expect(cashPhase("forecast", false)).toBe("forecast");
+    expect(cashPhase("actual", true)).toBe("actual");
   });
 });

@@ -47,6 +47,11 @@ export interface ForecastOptions {
    * alla dagar i en summa: k dagar ger k × dagsvarians + k² × nivåvarians. Standard false.
    */
   readonly levelUncertainty?: boolean;
+  /**
+   * Sänk prognosen när backtesten visar att den legat för högt (se `biasCorrectionBp`).
+   * Standard false.
+   */
+  readonly biasCorrection?: boolean;
 }
 
 /**
@@ -85,6 +90,11 @@ export interface ForecastInput {
    * Ett datum efter första försäljningen ignoreras.
    */
   readonly seriesStarts?: readonly SeriesStart[];
+  /**
+   * Serier (titel × automat) som inte ska få någon prognos, t.ex. titlar som gått ur
+   * automaten (utgår). Deras order räknas inte heller i backtesten.
+   */
+  readonly excludeSeries?: readonly { machineId: string; titleId: string }[];
   readonly options?: ForecastOptions;
 }
 
@@ -280,6 +290,15 @@ export interface ForecastResult {
   readonly byMachine: readonly AggregateForecast[];
   readonly total: AggregateForecast;
   readonly accuracy: ForecastAccuracy;
+  /**
+   * Korrigeringen för känd överskattning (`biasCorrection`): faktorn som alla dagar
+   * multiplicerats med (10 000 = ingen), backtestens bias och antal testveckor.
+   */
+  readonly correction: {
+    readonly factorBp: number;
+    readonly biasBp: number | null;
+    readonly origins: number;
+  };
   readonly backtests: readonly SeriesBacktest[];
   /** Order som inte kunde räknas (saknar automat). */
   readonly ordersWithoutMachine: number;

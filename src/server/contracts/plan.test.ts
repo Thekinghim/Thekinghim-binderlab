@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { backdatedFrom, contractStatus, planContractAgreement } from "./plan";
+import { backdatedFrom, contractStatus, planContractAgreement, suggestContractStart } from "./plan";
 
 describe("planContractAgreement", () => {
   it("nytt villkor när butiken saknar villkor", () => {
@@ -56,5 +56,53 @@ describe("status", () => {
   it("bakåtdaterat bara före i dag", () => {
     expect(backdatedFrom("2026-11-03", "2026-11-03")).toBeNull();
     expect(backdatedFrom("2026-11-01", "2026-11-03")).toBe("2026-11-01");
+  });
+});
+
+describe("suggestContractStart", () => {
+  const base = {
+    today: "2026-11-03",
+    openTermsFrom: null,
+    closedUntil: null,
+    firstSale: null,
+    firstPlacement: null,
+  } as const;
+
+  it("Sega gubben: öppna villkor från 14 okt. ger kontrakt från 14 okt., inte i dag", () => {
+    const start = suggestContractStart({
+      ...base,
+      openTermsFrom: "2026-10-14",
+      firstSale: "2026-10-14",
+      firstPlacement: "2026-10-14",
+    });
+    expect(start).toBe("2026-10-14");
+    // Och det krockar inte: villkoren skrivs om från början i stället för att avslutas 2 nov.
+    expect(
+      planContractAgreement([{ id: "a", validFrom: "2026-10-14", validTo: null }], start),
+    ).toEqual({ kind: "update", id: "a" });
+  });
+
+  it("utan villkor: första försäljningen (eller placeringen om den är tidigare)", () => {
+    expect(suggestContractStart({ ...base, firstSale: "2026-10-15" })).toBe("2026-10-15");
+    expect(
+      suggestContractStart({ ...base, firstSale: "2026-10-15", firstPlacement: "2026-10-12" }),
+    ).toBe("2026-10-12");
+  });
+
+  it("aldrig före dagen efter avslutade villkor", () => {
+    const start = suggestContractStart({
+      ...base,
+      firstSale: "2026-10-14",
+      closedUntil: "2026-11-02",
+    });
+    expect(start).toBe("2026-11-03");
+    expect(
+      planContractAgreement([{ id: "a", validFrom: "2026-10-14", validTo: "2026-11-02" }], start),
+    ).toEqual({ kind: "insert", close: null });
+  });
+
+  it("ingen försäljning: i dag; aldrig efter i dag", () => {
+    expect(suggestContractStart(base)).toBe("2026-11-03");
+    expect(suggestContractStart({ ...base, firstPlacement: "2026-12-01" })).toBe("2026-11-03");
   });
 });

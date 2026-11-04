@@ -50,6 +50,31 @@ export function backdatedFrom(validFrom: IsoDate, today: IsoDate): IsoDate | nul
   return validFrom < today ? validFrom : null;
 }
 
+/**
+ * Föreslagen startdag i Skapa kontrakt: kontraktet ska täcka allt automaten har sålt i
+ * butiken (Sega gubben sålde från 14 okt. men kontraktet föreslog 3 nov., i dag).
+ * - Butiken har öppna villkor: deras startdag (kontraktet skriver om dem från början; en
+ *   senare dag skulle avsluta dem och lämna försäljningen före utan kontrakt).
+ * - Annars första försäljningen, eller första placeringen, men aldrig före dagen efter
+ *   butikens senaste avslutade villkor (de krockar annars, se planContractAgreement).
+ * - Inget av det, eller en dag efter i dag: i dag.
+ */
+export function suggestContractStart(args: {
+  readonly today: IsoDate;
+  /** Startdagen för butikens villkor utan slutdag, eller null. */
+  readonly openTermsFrom: IsoDate | null;
+  /** Sista dagen för butikens senaste avslutade villkor, eller null. */
+  readonly closedUntil: IsoDate | null;
+  readonly firstSale: IsoDate | null;
+  readonly firstPlacement: IsoDate | null;
+}): IsoDate {
+  if (args.openTermsFrom !== null) return args.openTermsFrom;
+  const seen = [args.firstSale, args.firstPlacement].filter((d): d is IsoDate => d !== null);
+  let start = seen.sort()[0] ?? args.today;
+  if (args.closedUntil !== null && start <= args.closedUntil) start = addDays(args.closedUntil, 1);
+  return start > args.today ? args.today : start;
+}
+
 export type ContractStatus = "draft" | "sent" | "signed";
 
 export const CONTRACT_STATUS_LABEL: Record<ContractStatus, string> = {

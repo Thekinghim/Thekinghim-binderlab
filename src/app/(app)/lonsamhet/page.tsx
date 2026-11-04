@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { AiPageLine } from "@/components/assistant/panel-context";
-import type { CSSProperties } from "react";
+import { Suspense, type CSSProperties } from "react";
 import { redirect } from "next/navigation";
 
-import { carriedQuery } from "@/components/shell/period-state";
+import { carriedQuery, parseStoreShareView } from "@/components/shell/period-state";
+import { StoreShareToggle } from "@/components/shell/store-share-toggle";
 import { Panel } from "@/components/ui/frame";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
@@ -129,6 +130,8 @@ export default async function LonsamhetPage({
       lastOrderDate,
       dataStart: p.dataStart,
       hasOrdersToday: organization.current.orders.some((o) => o.businessDate === ctx.today),
+      // Butikernas andel bara på begäran (vyknappen) eller med vald butik/automat.
+      showStoreShare: parseStoreShareView(sp),
     },
   );
 
@@ -165,7 +168,15 @@ export default async function LonsamhetPage({
           aside={model.headline.aside}
           meta={meta}
         />
-        <AiPageLine metric="vinsten" route="lonsamhet" className="mt-4" />
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-3">
+          <AiPageLine metric="vinsten" route="lonsamhet" />
+          {/* Med vald butik visas andelen alltid; knappen behövs bara utan filter. */}
+          {filtered || model.bridge.compensationOre === 0 ? null : (
+            <Suspense fallback={null}>
+              <StoreShareToggle userKey={ctx.user.id} />
+            </Suspense>
+          )}
+        </div>
         {model.orders > 0 ? (
           <LonsamhetKpis
             kpis={model.kpis}
@@ -210,7 +221,7 @@ export default async function LonsamhetPage({
               </Panel>
               <Panel className="flex flex-col lg:col-span-5">
                 <ResultAfterProfitPanel result={result} />
-                <CompensationBreakdown bridge={b} />
+                {model.showStoreShare ? <CompensationBreakdown bridge={b} /> : null}
                 <UnpricedSummary unpriced={model.unpriced} />
               </Panel>
             </div>
@@ -230,6 +241,8 @@ export default async function LonsamhetPage({
                 days: model.days,
                 fileStem,
                 selectedTitle,
+                showStoreShare: model.showStoreShare,
+                storeShareLabel: b.storeShareLabel,
               }}
               trend={{ initialTrend, trend: model.trend, days: model.days }}
               initialTab={parseAnalysisTab(sp.visa)}

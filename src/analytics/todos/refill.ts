@@ -6,11 +6,14 @@
  *   räcker        = i lager / takt (dagar)
  *   flaggas när     i lager × dagar × 100 < gräns (hundradels dagar) × sålda pack
  *   kronor i risk = intäkt per dag × (7 − räcker), dvs. intäkt som uteblir de närmaste 7 dagarna
- *   nivå          = 'now' om lagret räcker mindre än 1 dag, annars 'soon'
+ *   nivå          = 'now' om lagret räcker mindre än 1 dag, eller (med `visitDue`, Att göra
+ *                   och Hem) om besöksplanens "besök senast" (slutdatum − 1 dag) har
+ *                   passerat; annars 'soon'
  *
  * Väntat slutdatum = i går + tak(räcker), domänens `stockoutDate` med asOf = i går.
  *
- * Titlar utan försäljning i fönstret flaggas inte (takten är 0). Dagens försäljning ingår
+ * Titlar utan försäljning i fönstret flaggas inte (takten är 0), utom ett tomt fack för en
+ * titel som har sålt i automaten tidigare: det är slut, som Akut på Lager. Dagens försäljning ingår
  * inte i takten (dagen är inte slut) men har redan dragits från lagret. En titel som har
  * gått ur sortimentet i automaten (`input.slotPeriods`, ./assortment.ts) fylls inte på och
  * flaggas inte, som på Lager och i besöksplanen.
@@ -45,23 +48,42 @@ import type {
 } from "./types";
 
 /**
- * Fingerprint för en påfyllningspunkt: nivån plus senaste påfyllning (`lastRestockedAt`).
- * En avbockning gäller då tills lagret räcker under 1 dag eller någon fyllt på.
- * Saknas `lastRestockedAt` används saldot i stället: då syns punkten igen efter nästa
- * försäljning eller påfyllning. Det är hellre en punkt för mycket än en påfyllning som döljs.
+ * Fingerprint för en påfyllningspunkt: nivån, saldot och senaste registrerade påfyllning
+ * (`lastRefilledAt`, bara påfyllning och flytt in, aldrig en inventering eller Awish-läsning).
+ * "Klar" döljer alltså punkten bara tills läget ändras: ett pack till säljs (saldot ändras),
+ * titeln blir akut eller tar slut (nivån) eller någon registrerar en påfyllning. En räkning
+ * som inte ändrar saldot låter avbockningen stå kvar. Det är hellre en punkt för mycket än en
+ * påfyllning som döljs medan automaten töms.
  */
 export function refillFingerprint(
   level: TodoLevel,
-  stock: Pick<StockLevelRef, "onHand" | "lastRestockedAt">,
+  stock: Pick<StockLevelRef, "onHand" | "lastRefilledAt">,
 ): string {
-  const restocked = stock.lastRestockedAt;
-  return restocked !== undefined && restocked !== null && restocked !== ""
-    ? `${level}|${restocked}`
-    : `${level}|saldo:${stock.onHand}`;
+  const refilled = stock.lastRefilledAt;
+  const at = refilled !== undefined && refilled !== null && refilled !== "" ? refilled : "-";
+  return `${level}|saldo:${Math.max(0, stock.onHand)}|påfyllt:${at}`;
+}
+
+/**
+ * Besöksplanens marginal (`VISIT_DEFAULTS.bufferDays` i @/analytics/visits): besöket ska
+ * göras senast dagen före väntat slutdatum. Samma tal här, så att en titel vars besök
+ * besöksplanen säger är försenat står under "I dag".
+ * refill.test.ts kontrollerar att talen är lika.
+ */
+export const VISIT_BUFFER_DAYS = 1;
+
+/** Val för påfyllningsregeln. */
+export interface RefillOptions {
+  /**
+   * Sant = en titel vars besök enligt besöksplanen är försenat (slutdatum −
+   * VISIT_BUFFER_DAYS före i dag) får nivån 'now' och texten "Besöket är försenat (senast
+   * 3 nov.)". Att göra, Hem och automatsidan använder det (computeTodos).
+   */
+  readonly visitDue?: boolean;
 }
 
 /** Påfyllningspunkter. */
-export function refillTodos(ctx: TodoContext): TodoItem[] {
+export function refillTodos(ctx: TodoContext, opts: RefillOptions = {}): TodoItem[] {
   const { input, today, options } = ctx;
   const machines = new Map(input.machines.map((m) => [m.id, m]));
   const asOf = addDays(today, -1);
@@ -79,6 +101,12 @@ export function refillTodos(ctx: TodoContext): TodoItem[] {
 
   const retired = retiredPairs(input.slotPeriods ?? [], today);
   const alerts = alertMap(input.slotAlerts ?? []);
+  // Titel × automat som har sålt någon gång i indatat (inte bara i fönstret).
+  const soldHere = new Set(
+    input.orders.flatMap((o) =>
+      o.machineId === null ? [] : [assortmentKey(o.machineId, o.titleId)],
+    ),
+  );
   const out: TodoItem[] = [];
   for (const s of input.stock) {
     const machine = machines.get(s.machineId);
@@ -100,6 +128,10 @@ export function refillTodos(ctx: TodoContext): TodoItem[] {
     if (!byRate) {
       if (underAlert) {
         out.push(alertTodo(s, alertAt, ctx.titleName(s.titleId), ctx.machineName(s.machineId)));
+      } else if (onHand === 0 && soldHere.has(assortmentKey(s.machineId, s.titleId))) {
+        // Slut och har sålt här tidigare (före fönstret): Lager visar Akut, så Att göra
+        // säger detsamma, fast takten i fönstret är 0 (den är 0 för att facket är tomt).
+        out.push(emptyTodo(s, ctx.titleName(s.titleId), ctx.machineName(s.machineId)));
       }
       continue;
     }
@@ -110,21 +142,27 @@ export function refillTodos(ctx: TodoContext): TodoItem[] {
     const daysLeftTenths = floorDiv(onHand * v.days * 10, v.units);
     const lostDaysNumerator = HORIZON_DAYS * v.units - onHand * v.days; // (7 − räcker) × units
     const atStakeOre = Math.max(0, roundHalfUp(revenueOre * lostDaysNumerator, v.days * v.units));
-    const level: TodoLevel = daysLeftTenths < 10 ? "now" : "soon";
     const empty = onHand === 0;
+    // Domänens konvention: saldot räknas som saldot efter asOf (i går), så sista packet
+    // säljs dag asOf + tak(räcker). 2,3 dagar räknat från i går kväll → slut 4 nov. om i dag är 2 nov.
+    const outDate = stockoutDate(asOf, onHand, v);
+    // Besöksplanen: besök senast dagen före slutdatum. Har den dagen passerat är besöket
+    // försenat, och då står punkten under "I dag" (Lager: "Besök senast 3 nov. (passerat)").
+    const visitBy = outDate === null ? null : addDays(outDate, -VISIT_BUFFER_DAYS);
+    const visitLate = opts.visitDue === true && visitBy !== null && visitBy < today;
+    const level: TodoLevel = daysLeftTenths < 10 || visitLate ? "now" : "soon";
     const titleName = ctx.titleName(s.titleId);
     const machineName = ctx.machineName(s.machineId);
     const perDay = ratioTenths(v.units, v.days);
     const revenuePerDay = kr(roundHalfUp(revenueOre, v.days));
-    // Domänens konvention: saldot räknas som saldot efter asOf (i går), så sista packet
-    // säljs dag asOf + tak(räcker). 2,3 dagar räknat från i går kväll → slut 4 nov. om i dag är 2 nov.
-    const outDate = stockoutDate(asOf, onHand, v);
+    const visitText =
+      visitLate && visitBy !== null ? ` Besöket är försenat (senast ${day(visitBy)}).` : "";
 
     const rateDetail = empty
       ? `Slut i lager. Säljer i snitt ${perDay} pack och ${revenuePerDay} per dag (${v.days} dagar t.o.m. ${day(asOf)}).`
       : `${plural(onHand, "pack", "pack")} kvar räcker ca ${tenths(daysLeftTenths)} dagar vid ${perDay} pack per dag ` +
         `(${v.days} dagar t.o.m. ${day(asOf)}). ${sentence(`Väntas ta slut ${day(outDate ?? today)}`)}`;
-    const detail = underAlert ? `${alertText(onHand, alertAt)} ${rateDetail}` : rateDetail;
+    const detail = `${underAlert ? `${alertText(onHand, alertAt)} ` : ""}${rateDetail}${visitText}`;
 
     out.push({
       key: `refill:${s.machineId}:${s.titleId}`,
@@ -208,6 +246,33 @@ function alertTodo(
         { key: "onHand", label: "I lager", value: onHand, unit: "packs" },
         { key: "alertAtUnits", label: "Larmgräns", value: alertAt, unit: "packs" },
       ],
+    }),
+    link: links.stock(s.machineId, s.titleId),
+    action: {
+      kind: "register-refill",
+      label: "Registrera påfyllning",
+      params: { machineId: s.machineId, titleId: s.titleId },
+    },
+  };
+}
+
+/** Punkten för ett tomt fack utan försäljning i fönstret (titeln har sålt här förut). */
+function emptyTodo(s: StockLevelRef, titleName: string, machineName: string): TodoItem {
+  return {
+    key: `refill:${s.machineId}:${s.titleId}`,
+    fingerprint: refillFingerprint("now", s),
+    kind: "refill",
+    level: "now",
+    urgency: urgencyOf("now", 0),
+    atStakeOre: null,
+    daysLeft: 0,
+    title: `${titleName} är slut i ${machineName}`,
+    detail: "Slut i automaten. Inget sålt de senaste två veckorna.",
+    evidence: evidence({
+      rule: "Facket är tomt och titeln har sålt i automaten tidigare.",
+      titleIds: [s.titleId],
+      machineIds: [s.machineId],
+      figures: [{ key: "onHand", label: "I lager", value: 0, unit: "packs" }],
     }),
     link: links.stock(s.machineId, s.titleId),
     action: {

@@ -4,6 +4,7 @@ import {
   assortmentKey,
   isRetiredRefill,
   retiredPairs,
+  retiredTitles,
   withoutRetiredRefills,
   type SlotPeriod,
 } from "./assortment";
@@ -65,5 +66,17 @@ describe("utgångna titlar (sortimentet)", () => {
     const retired = retiredPairs([period("2026-10-31")], TODAY);
     expect(isRetiredRefill({ ...item, kind: "silent-title" }, retired)).toBe(true);
     expect(isRetiredRefill({ ...item, kind: "stale-machine" }, retired)).toBe(false);
+  });
+});
+
+describe("retiredTitles", () => {
+  it("titlar utan gällande period i någon automat; utan perioder aldrig utgången", () => {
+    const periods = [
+      { machineId: "m1", titleId: "bolt", validFrom: "2026-10-14", validTo: "2026-11-02" },
+      { machineId: "m1", titleId: "30th", validFrom: "2026-10-14", validTo: "2026-11-02" },
+      { machineId: "m2", titleId: "30th", validFrom: "2026-10-14", validTo: null },
+    ] as const;
+    expect([...retiredTitles(periods, "2026-11-04")]).toEqual(["bolt"]);
+    expect(retiredTitles([], "2026-11-04").size).toBe(0);
   });
 });

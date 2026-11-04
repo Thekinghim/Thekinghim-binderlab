@@ -31,6 +31,9 @@ describe("brödsmulor", () => {
     expect(crumbsFor("/", "B")).toEqual(["B", "Hem", "Översikt"]);
     expect(crumbsFor("/automater", "B")).toEqual(["B", "Automater"]);
     expect(crumbsFor("/drift/pafyllning", "B")).toEqual(["B", "Automater", "Drift", "Påfyllning"]);
+    expect(crumbsFor("/drift/larm", "B")).toEqual(["B", "Automater", "Drift", "Notiser"]);
+    expect(crumbsFor("/automater/svinn", "B")).toEqual(["B", "Automater", "Svinn"]);
+    expect(crumbsFor("/automater/bl-001", "B")).toEqual(["B", "Automater", "Automat"]);
     expect(crumbsFor("/butiker/x1", "B")).toEqual(["B", "Butiker", "Butik"]);
     expect(crumbsFor("/ekonomi", "B", "bokforing")).toEqual(["B", "Pengar", "Bokföring"]);
     expect(crumbsFor("/prognos", "B")).toEqual(["B", "Vårt lager", "Inköp"]);

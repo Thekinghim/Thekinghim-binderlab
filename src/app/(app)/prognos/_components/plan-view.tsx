@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type React from "react";
 
 import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { StatusTag } from "@/components/ui/status-tag";
-import { formatInt, MISSING } from "@/lib/format";
+import { formatInt, MISSING, NBSP } from "@/lib/format";
 
 import { dateText } from "../_lib/dates";
 import type { PlanLineView, PlanModel, SupplierView } from "../_lib/model";
@@ -13,9 +14,16 @@ import { kr, packsMilli } from "../_lib/units";
 import { CreateOrderDialog, type OrderDraft } from "./create-order-dialog";
 import { EvidenceButton } from "./evidence-button";
 
+/** Räcker (samma regel som Vårt lager): "12 dagar" · "–" utan takt. */
 function coverText(days: number | null): string {
-  if (days === null) return "över ett år";
+  if (days === null) return MISSING;
   return `${formatInt(days)} ${days === 1 ? "dag" : "dagar"}`;
+}
+
+/** Under titeln: leverantören, eller för egna produkter vad som ska packas. */
+function sourceText(r: PlanLineView): string {
+  if (r.own) return r.packQty > 0 ? `Packa ${formatInt(r.packQty)}` : "Egen produkt";
+  return r.supplierName ?? "Ingen leverantör";
 }
 
 /** Under titeln: lite data och utkast som inte räknas som beställt. */
@@ -23,7 +31,7 @@ function LineNotes({ r }: { r: PlanLineView }) {
   const notes: string[] = [];
   if (r.lowData) {
     notes.push(
-      `Lite data i ${formatInt(r.lowData.lowDataSeries)} av ${formatInt(r.lowData.series)} automater`,
+      `Lite data i ${formatInt(r.lowData.lowDataSeries)} av ${formatInt(r.lowData.series)} ${r.lowData.series === 1 ? "automat" : "automater"}`,
     );
   }
   if (r.drafts.length > 0) {
@@ -145,7 +153,7 @@ const allColumns: Column<PlanLineView>[] = [
     render: (r) => (
       <span className="flex min-w-0 flex-col">
         <span className="text-fg">{r.title}</span>
-        <span className="text-xs text-subtle">{r.supplierName ?? "Ingen leverantör"}</span>
+        <span className="text-xs text-subtle">{sourceText(r)}</span>
         <LineNotes r={r} />
         {/* Under md står läget här; kolumnen Läge är dold (design.md §5.1, MachineCell). */}
         <span className="mt-1 md:hidden">
@@ -192,9 +200,9 @@ const allColumns: Column<PlanLineView>[] = [
     key: "cover",
     header: "Räcker",
     numeric: true,
-    sortValue: (r) => r.coverDays ?? 100_000,
-    render: (r) => coverText(r.coverDays),
-    csv: (r) => r.coverDays,
+    sortValue: (r) => r.lastsDays ?? 100_000,
+    render: (r) => coverText(r.lastsDays),
+    csv: (r) => r.lastsDays,
   },
   {
     key: "lead",
@@ -202,12 +210,16 @@ const allColumns: Column<PlanLineView>[] = [
     numeric: true,
     hideOnMobile: true,
     sortValue: (r) => r.leadTimeDays,
-    render: (r) => (
-      <span className={r.leadTimeSource === "default" ? "text-subtle" : undefined}>
-        {r.leadTimeDays} d
-      </span>
-    ),
-    csv: (r) => r.leadTimeDays,
+    // Egna produkter packar vi själva: ingen ledtid.
+    render: (r) =>
+      r.own ? (
+        <span className="text-subtle">{MISSING}</span>
+      ) : (
+        <span className={r.leadTimeSource === "default" ? "text-subtle" : undefined}>
+          {r.leadTimeDays} d
+        </span>
+      ),
+    csv: (r) => (r.own ? null : r.leadTimeDays),
   },
   {
     key: "evidence",
@@ -245,75 +257,97 @@ export function PlanView({
 
   return (
     <div className="flex flex-col gap-12">
-      {model.proposals.length === 0 ? (
-        // Rubriken säger redan läget; här bara nästa steg.
-        model.counts["no-supplier"] > 0 && canEdit ? (
-          <div>
-            <a
-              href="#leverantorer"
-              className="inline-flex h-11 items-center rounded-sm border border-inverse bg-inverse px-4 text-base font-medium text-on-inverse transition-colors duration-fast ease-instrument hover:bg-inverse-hover"
-            >
-              Lägg till leverantör
-            </a>
-          </div>
-        ) : null
-      ) : (
-        model.proposals.map((p) => (
-          <section
-            key={p.supplierId}
-            aria-label={`Förslag till ${p.supplierName}`}
-            className="flex flex-col gap-4"
-          >
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <div className="flex min-w-0 flex-col gap-1">
-                <p className="label text-subtle">{p.supplierName}</p>
-                <p className="text-md text-fg">
-                  {formatInt(p.totalPacks)} pack för {kr(p.totalOre)}, framme{" "}
-                  {dateText(p.expectedArrival)}.
-                </p>
-                {p.drafts.length > 0 ? (
-                  <p className="text-sm text-muted">
-                    Utkast finns:{" "}
-                    {p.drafts.map((d) => `${d.number} (${formatInt(d.packs)} pack)`).join(", ")}.{" "}
-                    <a href="#inkopsorder" className="text-fg underline underline-offset-2">
-                      Beställ det
-                    </a>
-                    .
-                  </p>
-                ) : null}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <EvidenceButton evidence={p.evidence} title={p.supplierName} text={p.text} />
-                {canEdit ? (
-                  <Button
-                    variant={p.drafts.length > 0 ? "secondary" : "primary"}
-                    size="sm"
-                    onClick={() =>
-                      openDraft({
-                        supplierId: p.supplierId,
-                        quantities: Object.fromEntries(p.lines.map((l) => [l.titleId, l.orderQty])),
-                        expectedOn: p.expectedArrival,
-                      })
-                    }
-                  >
-                    Skapa inköpsorder
-                  </Button>
-                ) : null}
-              </div>
+      {model.noSupplierLines.length > 0 ? (
+        // Förslaget visas även utan leverantör: hur många pack som behövs. Leverantören
+        // (pris, boxar, ledtid) är nästa steg, inte ett krav för att se förslaget.
+        <section aria-label="Att köpa in utan leverantör" className="flex flex-col gap-3">
+          <ul className="flex flex-col divide-y divide-line border-y border-line">
+            {model.noSupplierLines.map((l, i) => (
+              <li
+                key={l.titleId}
+                className="rise flex min-h-12 items-center justify-between gap-4 py-2"
+                style={{ "--i": Math.min(i, 8) } as React.CSSProperties}
+              >
+                <span className="min-w-0 text-base text-fg">
+                  Köp ca <span className="tnum font-medium">{formatInt(l.suggestQty)}</span>
+                  {NBSP}st {l.title}
+                </span>
+                <EvidenceButton evidence={l.evidence} title={l.title} text={l.text} />
+              </li>
+            ))}
+          </ul>
+          {canEdit ? (
+            <div>
+              <a
+                href="#leverantorer"
+                className="inline-flex h-11 items-center rounded-sm border border-line-control px-4 text-sm font-medium text-fg transition-colors duration-fast ease-instrument hover:bg-hover"
+              >
+                Lägg till leverantör
+              </a>
+              <span className="meta ml-3 text-subtle">för pris och boxar</span>
             </div>
-            <DataTable
-              surface="bg"
-              columns={proposalColumns}
-              rows={p.lines}
-              rowKey={(r) => r.titleId}
-              caption={`Föreslagna rader till ${p.supplierName}`}
-              defaultSort={{ key: "value", dir: "desc" }}
-              isFlagged={(r) => r.late}
-              dense
-            />
-          </section>
-        ))
-      )}
+          ) : null}
+        </section>
+      ) : null}
+      {model.proposals.length === 0
+        ? null
+        : model.proposals.map((p) => (
+            <section
+              key={p.supplierId}
+              aria-label={`Förslag till ${p.supplierName}`}
+              className="flex flex-col gap-4"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div className="flex min-w-0 flex-col gap-1">
+                  <p className="label text-subtle">{p.supplierName}</p>
+                  <p className="text-md text-fg">
+                    {formatInt(p.totalPacks)} pack för {kr(p.totalOre)}, framme{" "}
+                    {dateText(p.expectedArrival)}.
+                  </p>
+                  {p.drafts.length > 0 ? (
+                    <p className="text-sm text-muted">
+                      Utkast finns:{" "}
+                      {p.drafts.map((d) => `${d.number} (${formatInt(d.packs)} pack)`).join(", ")}.{" "}
+                      <a href="#inkopsorder" className="text-fg underline underline-offset-2">
+                        Beställ det
+                      </a>
+                      .
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <EvidenceButton evidence={p.evidence} title={p.supplierName} text={p.text} />
+                  {canEdit ? (
+                    <Button
+                      variant={p.drafts.length > 0 ? "secondary" : "primary"}
+                      size="sm"
+                      onClick={() =>
+                        openDraft({
+                          supplierId: p.supplierId,
+                          quantities: Object.fromEntries(
+                            p.lines.map((l) => [l.titleId, l.orderQty]),
+                          ),
+                          expectedOn: p.expectedArrival,
+                        })
+                      }
+                    >
+                      Skapa inköpsorder
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+              <DataTable
+                surface="bg"
+                columns={proposalColumns}
+                rows={p.lines}
+                rowKey={(r) => r.titleId}
+                caption={`Föreslagna rader till ${p.supplierName}`}
+                defaultSort={{ key: "value", dir: "desc" }}
+                isFlagged={(r) => r.late}
+                dense
+              />
+            </section>
+          ))}
 
       {canEdit && hasSupplier ? (
         <div>

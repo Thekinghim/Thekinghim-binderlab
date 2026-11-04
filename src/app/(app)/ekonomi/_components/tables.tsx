@@ -143,7 +143,8 @@ export function AccountTable({
 
 export type CashRow = {
   key: string;
-  phase: "actual" | "forecast" | "mixed";
+  /** "untracked": avslutad månad utan inläst utbetalningsfil (inte "Faktiskt 0 kr"). */
+  phase: "actual" | "forecast" | "mixed" | "untracked";
   partial: boolean;
   payoutsOre: number;
   purchasesOre: number;
@@ -159,6 +160,7 @@ const PHASE: Record<CashRow["phase"], string> = {
   actual: "Faktiskt",
   forecast: "Prognos",
   mixed: "Faktiskt och prognos",
+  untracked: "Saknar utbetalningsfil",
 };
 
 const CASH_COLUMNS: ReadonlyArray<Column<CashRow>> = [
@@ -182,7 +184,15 @@ const CASH_COLUMNS: ReadonlyArray<Column<CashRow>> = [
     sortValue: (r) => r.phase,
     render: (r) => (
       <StatusTag
-        status={r.phase === "actual" ? "ok" : r.phase === "forecast" ? "offline" : "neutral"}
+        status={
+          r.phase === "actual"
+            ? "ok"
+            : r.phase === "forecast"
+              ? "offline"
+              : r.phase === "untracked"
+                ? "warning"
+                : "neutral"
+        }
       >
         {PHASE[r.phase]}
       </StatusTag>

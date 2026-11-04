@@ -9,6 +9,7 @@
  * iakttagelserna från computeInsights. Här väljs, ordnas och formuleras bara.
  */
 
+import { approxKr } from "@/analytics/forecast/common";
 import { computeInsights, type Insight } from "@/analytics/insights";
 import { todoInScope, type AnalyticsOrder, type TodoItem, type TodoLevel } from "@/analytics/todos";
 import type { LostSalesSummary } from "@/server/purchasing/types";
@@ -33,7 +34,7 @@ import type { DataScope, MachineRecord, SyncInfo, TitleRecord } from "@/server/d
 import type { EconomicsSources } from "@/domain";
 import { formatPercent } from "@/lib/format";
 
-import { homeHeadline, type HomeHeadline } from "./headline";
+import { homeHeadline, homeSpanText, type HomeHeadline } from "./headline";
 import { appHref } from "./links";
 
 // ---------------------------------------------------------------------------
@@ -64,13 +65,16 @@ export interface HomeKpi {
   readonly alertText: string | null;
   /** Grunden när den inte är hela intäkten: marginalen gäller bara order med inköpspris. */
   readonly note: string | null;
-  /** Vinstens delar under talet (bara vinsten): "Vår del · Butikernas del". Annars tom. */
+  /**
+   * Vinstens delar under talet (bara vinsten, och bara med "Visa butikernas andel" eller
+   * vald butik): "Totalt före andel · Butikernas andel". Annars tom.
+   */
   readonly parts?: readonly HomeKpiPart[];
 }
 
 /** En del av ett nyckeltal, i samma enhet (öre). */
 export interface HomeKpiPart {
-  readonly id: "ours" | "stores";
+  readonly id: "total" | "stores";
   readonly label: string;
   readonly value: number;
 }
@@ -149,6 +153,17 @@ export interface HomeInsight {
   readonly href: string;
 }
 
+/**
+ * En rad i Att göra som inte kommer ur reglerna (Att görasidans extraTodos): nya automater
+ * och bokföringen att ladda ner. Räknas i menyns räknare, på Att göra och på Hem.
+ */
+export interface HomeExtraTodo {
+  readonly key: string;
+  readonly level: TodoLevel;
+  readonly title: string;
+  readonly href: string;
+}
+
 export interface HomeTodo {
   readonly key: string;
   readonly level: TodoLevel;
@@ -186,10 +201,22 @@ export interface HomeModel {
   readonly insights: HomeInsight[];
   /** De viktigaste punkterna i Att göra, eller null när rollen inte har Att göra. */
   readonly todos: HomeTodo[] | null;
-  /** Antal punkter i Att göra totalt (efter filter). */
+  /**
+   * Antal punkter i Att göra totalt (efter filter), med raderna utanför reglerna (ny
+   * automat, bokföringen). Utan filter samma tal som menyns räknare.
+   */
   readonly todoCount: number;
   /** Antal av dem som gäller nu (nivå "now"). */
   readonly todoNowCount: number;
+  /** Butikerna har en andel av vinsten i perioden (vyknappen "Visa butikernas andel" behövs). */
+  readonly hasStoreShare: boolean;
+  /** Butikernas andel visas som eget tal (vyknappen eller vald butik/automat). */
+  readonly showStoreShare: boolean;
+  /**
+   * Perioden i ord, samma som i rubriken ("sedan 14 okt.", "på 30 dagar"). Topplistan och
+   * slutsålt-raden använder den, så att Hem inte visar olika datumspann. null utan data.
+   */
+  readonly spanText: string | null;
 }
 
 export interface HomeModelInput {
@@ -210,6 +237,10 @@ export interface HomeModelInput {
   readonly scope: DataScope;
   /** Punkterna i Att göra, eller null om rollen inte har Att göra. */
   readonly todos: readonly TodoItem[] | null;
+  /** Raderna i Att göra utanför reglerna (ny automat, bokföringen). Utelämnad = inga. */
+  readonly extraTodos?: readonly HomeExtraTodo[];
+  /** Vyknappen "Visa butikernas andel" (?andel=1). Med filter visas andelen ändå. */
+  readonly showStoreShare?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -313,10 +344,12 @@ function buildKpis(args: {
   prev: KeyMetrics | null;
   /** Hela vinsten och delningen i perioden (null utan order med inköpspris). */
   split: HomeProfitSplit | null;
-  /** Hela vinsten i jämförelseperioden. */
-  prevTotalOre: number | null;
-  /** Med butiks- eller automatfilter: delen heter "Butikens del". */
+  /** Vår vinst i jämförelseperioden. */
+  prevOurOre: number | null;
+  /** Med butiks- eller automatfilter: andelen heter "Butikens andel". */
   filtered: boolean;
+  /** Visa delningen under vinsten (vyknappen eller filter). */
+  showShare: boolean;
   days: ProfitabilityRow[];
   prevDays: ProfitabilityRow[];
   compareDays: number;
@@ -324,8 +357,8 @@ function buildKpis(args: {
   /** Vinsten bär VMB-moms; `preliminary` när perioden inte är avslutade hela månader. */
   vmb: { readonly applies: boolean; readonly preliminary: boolean };
 }): HomeKpi[] {
-  const { km, prev, split, prevTotalOre, filtered, days, prevDays, compareDays, unpriced, vmb } =
-    args;
+  const { km, prev, split, prevOurOre, filtered, showShare, days, prevDays, compareDays } = args;
+  const { unpriced, vmb } = args;
   const priced = split !== null;
   const revenueTrend = days.map(rowRevenue);
   const marginTrend = carryForward(days.map((r) => r.marginBp));
@@ -338,18 +371,18 @@ function buildKpis(args: {
   const hasPrev = prev !== null && compareDays > 0;
   // Dagsraderna saknar hyra som ingen order bär (raden "ej fördelad"); referensen räknas
   // därför ur jämförelseperiodens dagsrader, så att linje och referens jämför samma sak.
-  const prevDailyProfit = prevDays.reduce((n, r) => n + totalProfit(r), 0);
+  const prevDailyProfit = prevDays.reduce((n, r) => n + r.profitOre, 0);
+  // Delningen bara på begäran: vår vinst är talet, andelen och totalen står under det.
   const parts: HomeKpiPart[] =
-    split && (filtered || split.storesOre !== 0)
-      ? filtered
-        ? [
-            { id: "stores", label: "Butikens del", value: split.storesOre },
-            { id: "ours", label: "Vår del", value: split.ourOre },
-          ]
-        : [
-            { id: "ours", label: "Vår del", value: split.ourOre },
-            { id: "stores", label: "Butikernas del", value: split.storesOre },
-          ]
+    split && showShare && (filtered || split.storesOre !== 0)
+      ? [
+          { id: "total", label: "Totalt före andel", value: split.totalOre },
+          {
+            id: "stores",
+            label: filtered ? "Butikens andel" : "Butikernas andel",
+            value: split.storesOre,
+          },
+        ]
       : [];
 
   return [
@@ -366,12 +399,13 @@ function buildKpis(args: {
     },
     {
       id: "profit",
-      label: "Vinst före fasta kostnader",
+      // En betydelse överallt: vår vinst, efter butikernas andel (som Lönsamhet).
+      label: "Vår vinst",
       unit: "ore",
-      value: split ? split.totalOre : null,
-      delta: hasPrev && split ? relative(split.totalOre, prevTotalOre) : null,
+      value: split ? split.ourOre : null,
+      delta: hasPrev && split ? relative(split.ourOre, prevOurOre) : null,
       deltaKind: "relative",
-      trend: priced ? days.map(totalProfit) : [],
+      trend: priced ? days.map((r) => r.profitOre) : [],
       reference: hasPrev && priced ? perDay(prevDailyProfit, compareDays) : null,
       alertText:
         unpriced && unpriced.orders > 0
@@ -387,7 +421,7 @@ function buildKpis(args: {
     },
     {
       id: "margin",
-      // Vår vinst / intäkt, som på Lönsamhet (inte hela vinsten ovan).
+      // Vår vinst / intäkt, som på Lönsamhet.
       label: "Vår marginal",
       unit: "bp",
       value: km.marginBp,
@@ -562,30 +596,52 @@ function buildTodos(
   todos: readonly TodoItem[] | null,
   scope: DataScope,
   machines: readonly MachineRecord[],
+  extras: readonly HomeExtraTodo[] = [],
 ): { todos: HomeTodo[] | null; count: number; nowCount: number; staleMachines: Set<string> } {
   if (todos === null) return { todos: null, count: 0, nowCount: 0, staleMachines: new Set() };
   const relevant = todosInScope(todos, scope, machines);
   const filtered = Boolean(scope.machineId || scope.storeId);
-  // computeTodos sorterar redan efter brådska; nivån går ändå först om listan kommer osorterad.
-  const shown = relevant
-    .map((t, i) => ({ t, i }))
-    .sort((a, b) => LEVEL_ORDER[a.t.level] - LEVEL_ORDER[b.t.level] || a.i - b.i)
+  // En källa för antalet: reglernas punkter plus raderna utanför reglerna (ny automat,
+  // bokföringen), som menyns räknare och Att göra. Raderna utanför står först inom nivån,
+  // som överst på Att göra. computeTodos sorterar redan efter brådska; nivån går ändå först.
+  const all: Array<{ item: HomeTodo; kind: string | null }> = [
+    ...extras.map((e) => ({
+      item: {
+        key: e.key,
+        level: e.level,
+        title: e.title,
+        detail: "",
+        href: e.href,
+        orgWide: filtered,
+      },
+      kind: null,
+    })),
+    ...relevant.map((t) => ({
+      item: {
+        key: t.key,
+        level: t.level,
+        title: t.title,
+        detail: t.detail,
+        href: appHref(t.link),
+        orgWide: filtered && t.evidence.machineIds.length === 0 && t.evidence.storeIds.length === 0,
+      },
+      kind: t.kind,
+    })),
+  ];
+  const shown = all
+    .map((x, i) => ({ x, i }))
+    .sort((a, b) => LEVEL_ORDER[a.x.item.level] - LEVEL_ORDER[b.x.item.level] || a.i - b.i)
     .slice(0, HOME_TODO_COUNT);
+  const shownKeys = new Set(shown.map(({ x }) => x.item.key));
   const staleMachines = new Set(
-    shown.filter(({ t }) => t.kind === "stale-machine").flatMap(({ t }) => t.evidence.machineIds),
+    relevant
+      .filter((t) => t.kind === "stale-machine" && shownKeys.has(t.key))
+      .flatMap((t) => t.evidence.machineIds),
   );
-  const top = shown.map(({ t }) => ({
-    key: t.key,
-    level: t.level,
-    title: t.title,
-    detail: t.detail,
-    href: appHref(t.link),
-    orgWide: filtered && t.evidence.machineIds.length === 0 && t.evidence.storeIds.length === 0,
-  }));
   return {
-    todos: top,
-    count: relevant.length,
-    nowCount: relevant.filter((t) => t.level === "now").length,
+    todos: shown.map(({ x }) => x.item),
+    count: all.length,
+    nowCount: all.filter((x) => x.item.level === "now").length,
     staleMachines,
   };
 }
@@ -659,14 +715,19 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
         storesOre: byTitle.totals.compensationOre,
       }
     : null;
-  const prevTotalOre = previous ? totalProfit(profitability(previous, "title").totals) : null;
+  const prevOurOre = previous ? profitability(previous, "title").totals.profitOre : null;
+  const filtered = Boolean(input.scope.storeId || input.scope.machineId);
+  // Butikernas andel som eget tal bara på begäran (vyknappen) eller med vald butik/automat.
+  const showShare = Boolean(input.showStoreShare) || filtered;
+  const hasStoreShare = profitSplit !== null && profitSplit.storesOre !== 0;
 
   const kpis = buildKpis({
     km,
     prev: prevKm,
     split: profitSplit,
-    prevTotalOre,
-    filtered: Boolean(input.scope.storeId || input.scope.machineId),
+    prevOurOre,
+    filtered,
+    showShare,
     days,
     prevDays,
     compareDays,
@@ -702,6 +763,7 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
     input.todos,
     input.scope,
     input.machines,
+    input.extraTodos ?? [],
   );
   let insights: HomeInsight[] = [];
   if (coverage && km.orderCount > 0) {
@@ -719,10 +781,10 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
       revenueOre: km.revenueOre,
       orders: km.orderCount,
       pricedOrders: byTitle.totals.pricedOrders,
-      profitOre: profitSplit?.totalOre ?? km.profitOre,
-      ourProfitOre: profitSplit && profitSplit.storesOre !== 0 ? profitSplit.ourOre : null,
-      storesProfitOre: profitSplit && profitSplit.storesOre !== 0 ? profitSplit.storesOre : null,
-      filtered: Boolean(input.scope.storeId || input.scope.machineId),
+      profitOre: profitSplit?.ourOre ?? km.profitOre,
+      storesProfitOre: profitSplit && (hasStoreShare || filtered) ? profitSplit.storesOre : null,
+      filtered,
+      showStoreShare: showShare,
       marginBp: km.marginBp,
       unpricedShareBp: unpriced?.shareBp ?? 0,
       revenueChangeBp:
@@ -748,6 +810,12 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
     todos,
     todoCount: count,
     todoNowCount: nowCount,
+    hasStoreShare,
+    showStoreShare: showShare,
+    spanText:
+      dataStart !== null && km.orderCount > 0
+        ? homeSpanText(period, dataStart, today, hasOrdersToday)
+        : null,
   };
 }
 
@@ -778,18 +846,24 @@ export interface HomeLostSales {
  * dag. `emptyNow` är antalet titlar som är slut i en automat enligt Att göra (påfyllnings-
  * punkter med saldo 0, i filtret), så att Hem och Att göra säger samma sak; utan Att göra
  * räknas de perioder som pågår och har kostat något.
+ *
+ * `span` är Hems period i ord (HomeModel.spanText, "sedan 14 okt."): med den säger raden
+ * samma period som rubriken i stället för hela skalperioden ("6 okt. – 3 nov.").
  */
 export function homeLostSales(
   summary: LostSalesSummary | null,
   today: IsoDate,
   emptyNow: number | null = null,
+  span: string | null = null,
 ): HomeLostSales | null {
   if (!summary || summary.lostRevenueOre <= 0) return null;
   const current = summary.period.end >= addDays(today, -1);
   const ongoing =
     emptyNow ?? summary.series.filter((x) => x.ongoing && x.lostRevenueOre > 0).length;
   return {
-    text: summary.text,
+    text: span
+      ? `Slutsålt kostade ${approxKr(summary.lostRevenueOre)} ${span}`.replace(/\.?$/, ".")
+      : summary.text,
     href: summary.href,
     lostRevenueOre: summary.lostRevenueOre,
     ongoing: current ? ongoing : 0,

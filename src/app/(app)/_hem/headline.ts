@@ -1,7 +1,10 @@
 /**
- * Hems rubrik: vinsten som en stor siffra, delningen bredvid och en kort rad under.
+ * Hems rubrik: vår vinst som en stor siffra och en kort rad under. "Vinst" betyder samma
+ * sak på alla sidor: vår vinst, efter butikernas andel (som Lönsamhet).
  *
- *   "Vinst 28 948 kr på 30 dagar." + "Vår del 21 203 kr · butikerna 7 745 kr."
+ *   "Vår vinst 21 203 kr på 30 dagar." + "Intäkt 84 725 kr, +12 %."
+ *   Med "Visa butikernas andel" eller vald butik, andra delen:
+ *   "Totalt före butikernas andel 28 948 kr · butikernas andel 7 745 kr."
  *   Rad under: "Före fasta kostnader."
  *
  * Ren funktion utan databas och utan React. Inga beräkningar av ekonomi: talen kommer från
@@ -14,9 +17,9 @@ import { dataCoverage } from "@/server/data/core/period";
 
 import { dateOf, dayText, kr, sentence } from "./text";
 
-/** Det stora talet i rubriken (räknas upp på sidan): "Vinst" + belopp + "på 30 dagar." */
+/** Det stora talet i rubriken (räknas upp på sidan): "Vår vinst" + belopp + "på 30 dagar." */
 export interface HomeHeadlineFigure {
-  /** "Vinst", "Förlust" eller "Intäkt". */
+  /** "Vår vinst", "Förlust" eller "Intäkt". */
   readonly label: string;
   /** Beloppet i öre (alltid ≥ 0; förlust står i `label`). */
   readonly valueOre: number;
@@ -26,7 +29,7 @@ export interface HomeHeadlineFigure {
   readonly tone: "good" | "bad" | "neutral";
 }
 
-/** En del av delningsraden ("Vår del 21 203 kr"), räknas upp på sidan. */
+/** En del av delningsraden ("Totalt före butikernas andel 28 948 kr"), räknas upp på sidan. */
 export interface HomeHeadlineSplitPart {
   readonly label: string;
   readonly valueOre: number;
@@ -34,9 +37,9 @@ export interface HomeHeadlineSplitPart {
 
 /** Rubriken i två delar (första i fg, andra i grått) och en kort rad under. */
 export interface HomeHeadline {
-  /** Hela rubriken som text (skärmläsare, tester): "Vinst 28 948 kr på 30 dagar." */
+  /** Hela rubriken som text (skärmläsare, tester): "Vår vinst 21 203 kr på 30 dagar." */
   readonly title: string;
-  /** Andra delen: delningen ("Vår del 21 203 kr · butikerna 7 745 kr."), annars intäkten. */
+  /** Andra delen: delningen (bara med butikernas andel), annars intäkten. */
   readonly aside: string;
   /** En kort rad som hindrar misstag ("Före fasta kostnader."). Kan vara tom. */
   readonly lead: string[];
@@ -44,7 +47,10 @@ export interface HomeHeadline {
   readonly state: "no-data" | "no-orders" | "ok";
   /** Det stora talet, null utan order. */
   readonly figure: HomeHeadlineFigure | null;
-  /** Delningen vår del / butikernas del, tom när butikerna inte har någon del. */
+  /**
+   * Totalt före butikernas andel och andelen: bara med vyknappen "Visa butikernas andel"
+   * eller vald butik, och när butikerna har en andel. Annars tom.
+   */
   readonly split: HomeHeadlineSplitPart[];
 }
 
@@ -55,16 +61,16 @@ export interface HomeHeadlineInput {
   /** Order med inköpspris (de som ingår i vinsten). */
   readonly pricedOrders: number;
   /**
-   * Hela vinsten för order med inköpspris (öre): vår del + butikernas del, efter inköp och
-   * kortavgifter (och VMB-moms med vyknappen "Med VMB").
+   * Vår vinst för order med inköpspris (öre): efter inköp, kortavgifter och butikernas
+   * andel (och VMB-moms med vyknappen "Med VMB"). Samma tal som Lönsamhet.
    */
   readonly profitOre: number;
-  /** Vår del av vinsten (öre), eller null/utelämnad när butikerna inte har någon del. */
-  readonly ourProfitOre?: number | null;
-  /** Butikernas del (öre); räknas som hela vinsten − vår del när den utelämnas. */
+  /** Butikernas andel (öre), eller null/utelämnad när butikerna inte har någon andel. */
   readonly storesProfitOre?: number | null;
-  /** Butiks- eller automatfilter: delen heter "Butikens del" och står först. */
+  /** Butiks- eller automatfilter: andelen heter "butikens andel" och visas alltid. */
   readonly filtered?: boolean;
+  /** Vyknappen "Visa butikernas andel" (?andel=1). Standard av. */
+  readonly showStoreShare?: boolean;
   readonly marginBp: number | null;
   /** Andel av intäkten som saknar inköpspris, i bp. */
   readonly unpricedShareBp: number;
@@ -87,6 +93,19 @@ function changeText(bp: number): string {
 
 /** Från den andel utan inköpspris raden under rubriken säger det (20 %). */
 export const UNPRICED_HEADLINE_BP = 2_000;
+
+/**
+ * Perioden som Hems tal och texter gäller, i ord: samma för rubriken, slutsålt och topplistan
+ * (utvärderingen: "sedan 14 okt." bredvid "6 okt. – 3 nov." såg ut som olika perioder).
+ */
+export function homeSpanText(
+  period: Period,
+  dataStart: IsoDate,
+  today: IsoDate,
+  hasOrdersToday: boolean,
+): string {
+  return spanText(period, dataStart, today, hasOrdersToday);
+}
 
 /**
  * Hur länge talet gäller: "på 30 dagar", "i dag", "i går", "den 31 okt.", och när datan
@@ -113,28 +132,28 @@ function spanText(
   return `den ${dayText(start, today)}`;
 }
 
-/** Delningen: "Vår del" + "Butikerna" (utan filter) eller "Butikens del" + "Vår del". */
+/**
+ * Delningen, bara på begäran: "Totalt före butikernas andel" + "butikernas andel" (med
+ * filter "butikens"). Tom utan vyknappen och filter, och när butikerna inte har någon andel.
+ */
 function splitParts(input: HomeHeadlineInput): HomeHeadlineSplitPart[] {
-  const ours = input.ourProfitOre ?? null;
-  if (ours === null || input.pricedOrders === 0) return [];
-  const stores = input.storesProfitOre ?? input.profitOre - ours;
-  return input.filtered
-    ? [
-        { label: "Butikens del", valueOre: stores },
-        { label: "vår del", valueOre: ours },
-      ]
-    : [
-        { label: "Vår del", valueOre: ours },
-        { label: "butikerna", valueOre: stores },
-      ];
+  const stores = input.storesProfitOre ?? null;
+  if (stores === null || input.pricedOrders === 0) return [];
+  if (!input.showStoreShare && !input.filtered) return [];
+  const who = input.filtered ? "butikens" : "butikernas";
+  return [
+    { label: `Totalt före ${who} andel`, valueOre: input.profitOre + stores },
+    { label: `${who} andel`, valueOre: stores },
+  ];
 }
 
 /**
- * Rubriken för Hem: vinsten som det stora talet, delningen som andra del och en kort rad
- * som hindrar misstag (vinsten är före fasta kostnader; stor del utan inköpspris).
+ * Rubriken för Hem: vår vinst som det stora talet, intäkten (eller på begäran delningen)
+ * som andra del och en kort rad som hindrar misstag (före fasta kostnader; stor del utan
+ * inköpspris).
  *
- *   "Vinst 28 948 kr på 30 dagar." + "Vår del 21 203 kr · butikerna 7 745 kr."
- *   Utan delning: "Vinst 2 070 kr på 10 dagar." + "Intäkt 4 450 kr, +23 %."
+ *   "Vår vinst 2 070 kr på 10 dagar." + "Intäkt 4 450 kr, +23 %."
+ *   Med andelen: + "Totalt före butikernas andel 4 140 kr · butikernas andel 2 070 kr."
  *   Utan inköpspris: "Intäkt 4 450 kr på 10 dagar." + "Lägg in inköpspris för vinsten."
  */
 export function homeHeadline(input: HomeHeadlineInput): HomeHeadline {
@@ -172,7 +191,7 @@ export function homeHeadline(input: HomeHeadlineInput): HomeHeadline {
   const loss = priced && input.profitOre < 0;
   const figure: HomeHeadlineFigure = priced
     ? {
-        label: loss ? "Förlust" : "Vinst",
+        label: loss ? "Förlust" : "Vår vinst",
         valueOre: Math.abs(input.profitOre),
         tail: span,
         tone: loss ? "bad" : "good",

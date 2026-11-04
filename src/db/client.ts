@@ -21,7 +21,7 @@
 
 import "server-only";
 
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres, { type Sql } from "postgres";
 
@@ -93,6 +93,20 @@ export async function closeServiceDb(): Promise<void> {
   }
 }
 
+/** Typen text i Postgres (pg_type.oid). */
+const TEXT_OID = 25;
+
+/**
+ * Claims och roll i EN sats (som "set local role authenticated"; båda gäller bara
+ * transaktionen). Claims skickas som en parameter med känd typ (text): en parameter utan typ
+ * beskrivs först av postgres.js (en rundresa till), och rollen var en egen sats. Fem
+ * rundresor per transaktion blir tre (begin, den här, commit), och sidorna kör många.
+ */
+export function rlsSetup(client: Sql, jwt: string): SQL {
+  const claims = client.typed(jwt, TEXT_OID);
+  return sql`select set_config('request.jwt.claims', ${claims}, true), set_config('role', 'authenticated', true)`;
+}
+
 /**
  * Kör `fn` i en transaktion som användaren `claims.sub` med RLS påslaget.
  * Allt i `fn` måste gå via `tx`. Transaktionen rullas tillbaka om `fn` kastar.
@@ -107,9 +121,9 @@ export async function withRls<T>(claims: RlsClaims, fn: (tx: Tx) => Promise<T>):
     role: "authenticated",
     aud: "authenticated",
   });
-  return getServiceDb().transaction(async (tx) => {
-    await tx.execute(sql`select set_config('request.jwt.claims', ${jwt}, true)`);
-    await tx.execute(sql`set local role authenticated`);
+  const db = getServiceDb();
+  return db.transaction(async (tx) => {
+    await tx.execute(rlsSetup(db.$client, jwt));
     return fn(tx);
   });
 }

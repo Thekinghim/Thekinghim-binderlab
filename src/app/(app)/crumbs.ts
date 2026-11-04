@@ -4,7 +4,7 @@
  * underfliken som huvudfliken skrivs den en gång. Ren funktion, testas i crumbs.test.ts.
  */
 
-import { activeSubTab } from "@/components/shell/nav";
+import { activeSubTab, routeById } from "@/components/shell/nav";
 
 /** Undersidor med eget namn. Dynamiska delar ([id]) skrivs som `*`. */
 const SUBPAGES: ReadonlyArray<readonly [pattern: string, label: string]> = [
@@ -16,7 +16,7 @@ const SUBPAGES: ReadonlyArray<readonly [pattern: string, label: string]> = [
   ["/datakallor/importer/*", "Import"],
   ["/drift/automat/*", "Automat"],
   ["/drift/besok", "Besök"],
-  ["/drift/larm", "Larm"],
+  ["/drift/larm", "Notiser"],
   ["/drift/pafyllning", "Påfyllning"],
   ["/expansion/saljunderlag", "Säljunderlag"],
   ["/inkorg/nytt", "Nytt ärende"],
@@ -55,6 +55,9 @@ export function crumbsFor(
   }
   const main = hit.section.label;
   const tab = hit.tab.label === main ? null : hit.tab.label;
-  const sub = subpageLabel(path);
+  // /automater/svinn är underfliken Svinn själv (vyn som sökväg), ingen undersida.
+  const clean = path.length > 1 ? path.replace(/\/+$/, "") : path;
+  const isView = hit.tab.view && clean === `${routeById(hit.tab.route).href}/${hit.tab.view}`;
+  const sub = isView ? null : subpageLabel(path);
   return [orgName, main, tab, sub].filter((c): c is string => !!c);
 }

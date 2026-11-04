@@ -7,6 +7,10 @@
  *   nivå        = 'now' efter sista dagen, 'soon' 0–3 dagar kvar, annars 'later'
  *   fingerprint = antal obetalda och summan: en ny eller omräknad avräkning tar upp en
  *                 avbockad punkt igen
+ *
+ * Beloppen är räknade NU (src/server/settlements/live.ts). En avräkning som inte går att
+ * räkna (blocked, t.ex. saknat inköpspris) har inget belopp att betala: punkten säger att
+ * den ska räknas klart i stället för ett gammalt belopp.
  */
 
 import {
@@ -41,7 +45,7 @@ export function settlementLink(month: IsoMonth): string {
 
 /** En punkt per månad med obetalda avräkningar (belopp > 0). */
 export function settlementTodos(ctx: TodoContext): TodoItem[] {
-  const unpaid = (ctx.input.unpaidSettlements ?? []).filter((s) => s.amountOre > 0);
+  const unpaid = (ctx.input.unpaidSettlements ?? []).filter((s) => s.blocked || s.amountOre > 0);
   if (unpaid.length === 0) return [];
   const storeName = nameLookup(ctx.input.stores ?? []);
   const byMonth = new Map<IsoMonth, SettlementRef[]>();
@@ -54,19 +58,31 @@ export function settlementTodos(ctx: TodoContext): TodoItem[] {
 
   const out: TodoItem[] = [];
   for (const month of [...byMonth.keys()].sort()) {
-    const list = [...byMonth.get(month)!].sort(
-      (a, b) => b.amountOre - a.amountOre || (a.id < b.id ? -1 : 1),
-    );
+    const all = byMonth.get(month)!;
+    const blocked = all.filter((s) => s.blocked);
+    const list = all
+      .filter((s) => !s.blocked)
+      .sort((a, b) => b.amountOre - a.amountOre || (a.id < b.id ? -1 : 1));
     const total = list.reduce((n, s) => n + s.amountOre, 0);
     const due = settlementDue(month);
     const daysLeft = daysBetween(ctx.today, due);
     const level: TodoLevel = daysLeft < 0 ? "now" : daysLeft <= SOON_DAYS ? "soon" : "later";
     const names = list.map((s) => storeName(s.storeId));
-    const first = list[0]!;
-    const title =
-      list.length === 1
+    const blockedNames = blocked.map((s) => storeName(s.storeId));
+    const first = list[0];
+    const title = !first
+      ? blocked.length === 1
+        ? `Räkna klart avräkningen till ${blockedNames[0]}`
+        : `Räkna klart ${plural(blocked.length, "avräkning", "avräkningar")}`
+      : list.length === 1
         ? `Betala ${kr(first.amountOre)} till ${names[0]}`
         : `Betala ${kr(total)} till ${plural(list.length, "butik", "butiker")}`;
+    const blockedText =
+      blocked.length === 0
+        ? ""
+        : first
+          ? ` ${blockedNames.join(", ")} kan inte räknas än (inköpspris saknas).`
+          : " Inköpspris saknas, så beloppet är inte klart.";
     const when =
       daysLeft < 0
         ? `Skulle ha betalats ${day(due)}.`
@@ -75,7 +91,7 @@ export function settlementTodos(ctx: TodoContext): TodoItem[] {
           : `Senast ${day(due)}.`;
     out.push({
       key: `settlement:${month}`,
-      fingerprint: `${list.length}|${total}`,
+      fingerprint: `${list.length}|${total}${blocked.length ? `|${blocked.length}` : ""}`,
       kind: "settlement",
       level,
       urgency: urgencyOf(level, null),
@@ -83,14 +99,14 @@ export function settlementTodos(ctx: TodoContext): TodoItem[] {
       daysLeft,
       title,
       detail:
-        list.length === 1
+        (list.length <= 1
           ? `Avräkning ${monthName(month)}. ${when}`
-          : `Avräkning ${monthName(month)}: ${names.join(", ")}. ${when}`,
+          : `Avräkning ${monthName(month)}: ${names.join(", ")}. ${when}`) + blockedText,
       evidence: evidence({
         rule: "Butikens andel enligt avtalet betalas ut senast den 15:e månaden efter.",
         period: monthPeriod(month),
         dates: [due],
-        storeIds: list.map((s) => s.storeId),
+        storeIds: all.map((s) => s.storeId),
         figures: [
           { key: "settlements", label: "Avräkningar", value: list.length, unit: "count" },
           { key: "totalOre", label: "Att betala", value: total, unit: "ore" },
