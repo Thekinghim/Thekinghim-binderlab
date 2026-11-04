@@ -4,11 +4,19 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { wallClockIn } from "@/components/shell/period-state";
+import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StateMessage } from "@/components/ui/state-message";
+import { StatusTag } from "@/components/ui/status-tag";
 import { formatDateTime, formatInt, formatKronor, MISSING } from "@/lib/format";
 
+import {
+  MARK_LABEL,
+  TEST_PURCHASE_LABEL,
+  testPurchaseNote,
+  UNDO_LABEL,
+} from "../_lib/test-purchase";
 import type { OrderDetail } from "../_lib/types";
 
 const PROVIDER: Record<string, string> = {
@@ -143,15 +151,69 @@ export function OrderNotFound() {
   );
 }
 
+/** Testköpets rad överst i detaljvyn och knappen för ägare och admin. */
+function TestPurchase({
+  detail,
+  timeZone,
+  testPurchase,
+}: {
+  detail: OrderDetail;
+  timeZone: string;
+  testPurchase: TestPurchaseControl | null;
+}) {
+  const note = testPurchaseNote(detail.testPurchase, (iso) => at(iso, timeZone));
+  if (!detail.testPurchase && !testPurchase) return null;
+  return (
+    <div className="mb-6 flex flex-col gap-2">
+      {detail.testPurchase ? (
+        <p className="flex flex-wrap items-center gap-2 text-base text-fg">
+          <StatusTag status="neutral">{TEST_PURCHASE_LABEL}</StatusTag>
+          <span>Räknas inte i försäljningen.</span>
+        </p>
+      ) : null}
+      {note ? <p className="text-sm text-muted">{note}</p> : null}
+      {testPurchase ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            loading={testPurchase.saving}
+            disabled={testPurchase.saving}
+            onClick={() => testPurchase.onChange(!detail.testPurchase)}
+          >
+            {detail.testPurchase ? UNDO_LABEL : MARK_LABEL}
+          </Button>
+          {testPurchase.error ? (
+            <span role="alert" className="text-sm text-fg">
+              {testPurchase.error}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Knappen "Markera som testköp" / "Ångra testköp" (bara ägare och admin). */
+export interface TestPurchaseControl {
+  readonly saving: boolean;
+  readonly error: string | null;
+  readonly onChange: (test: boolean) => void;
+}
+
 /** Orderns uppgifter: order, titel, automat och butik, källa och import. */
 export function OrderDetailView({
   detail,
   timeZone,
   canOpenImport,
+  testPurchase = null,
 }: {
   detail: OrderDetail;
   timeZone: string;
   canOpenImport: boolean;
+  /** null = får inte ändra (läsaren). */
+  testPurchase?: TestPurchaseControl | null;
 }) {
   const sameTitle =
     detail.title !== null &&
@@ -161,6 +223,7 @@ export function OrderDetailView({
 
   return (
     <div className="flex flex-col">
+      <TestPurchase detail={detail} timeZone={timeZone} testPurchase={testPurchase} />
       <Group label="Order">
         <Row label="Ordernummer">
           <span className="font-mono">{detail.externalId}</span>

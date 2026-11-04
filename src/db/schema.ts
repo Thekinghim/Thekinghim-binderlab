@@ -421,6 +421,11 @@ export const orders = pgTable("orders", {
   importId: uuid("import_id"),
   sourceHash: text("source_hash").notNull(),
   lateInClosedPeriod: boolean("late_in_closed_period").notNull().default(false),
+  /**
+   * Markerad som testköp (null = vanlig order). Räknas inte i intäkt, vinst, avräkning,
+   * bokföring eller rapporter. Sätts bara via set_test_purchase(); vem står i audit_log.
+   */
+  testPurchaseAt: ts("test_purchase_at"),
   ...stamps(),
 });
 

@@ -19,6 +19,8 @@ export interface OrderRow {
   /** Butiken där automaten stod orderns dag (placeringen), eller null. */
   readonly storeId: string | null;
   readonly amountOre: number;
+  /** Markerad som testköp: står i listan men räknas inte i antal och summa. */
+  readonly testPurchase: boolean;
 }
 
 export interface TitleOption {
@@ -46,7 +48,7 @@ export interface OrderRefs {
   readonly stores: readonly StoreOption[];
 }
 
-/** Antal och summa för det som matchar filtret. */
+/** Antal och summa för det som matchar filtret (utan testköp). */
 export interface OrderTotals {
   readonly count: number;
   /** Summa betalt belopp (inkl. moms), öre. */
@@ -122,4 +124,6 @@ export interface OrderDetail {
   /** Importerad till en redan stängd månad. */
   readonly lateInClosedPeriod: boolean;
   readonly createdAt: string;
+  /** Markerad som testköp: när (ISO) och av vem (namn, om det finns), annars null. */
+  readonly testPurchase: { readonly at: string; readonly by: string | null } | null;
 }

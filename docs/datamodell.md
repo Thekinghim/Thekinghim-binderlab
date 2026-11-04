@@ -106,7 +106,7 @@ Behörigheten kontrolleras **både** i serverkoden (`requireRole()` i varje serv
 - **source_machines** _(ny)_: `data_source_id`, `external_id` (Awish ID), `external_device_no`, `external_name` ("Order Machine"), `machine_id`. Kopplingen mellan Awish-automat och vår automat. Okända automater stoppar inte importen: de hamnar i en kö där någon kopplar dem.
 - **imports**: `data_source_id`, `trigger` (`upload`, `schedule`, `webhook`), filnamn, `file_sha256`, `storage_path`, `parser_version`, `mapping jsonb`, antal rader totalt, nya, dubbletter, konflikter och fel, `status`, start och slut, `created_by`
 - **import_rows**: radnummer, `raw jsonb`, `status` (`new`, `conflict`, `error`), meddelande, `order_id`. **Dubbletter sparas inte rad för rad**, de räknas bara. Annars skulle tabellen växa för varje överlappande export. Rådata gallras efter 24 månader (orderna själva sparas i 7 år).
-- **orders**: `data_source_id`, `external_id` (Order No.), `raw_title` (ändras aldrig), `title_id`, `ordered_at` (UTC), `business_date`, `amount_ore`, `payment_method`, `source_machine_id`, `machine_id`, `import_id`, `source_hash`
+- **orders**: `data_source_id`, `external_id` (Order No.), `raw_title` (ändras aldrig), `title_id`, `ordered_at` (UTC), `business_date`, `amount_ore`, `payment_method`, `source_machine_id`, `machine_id`, `import_id`, `source_hash`, `test_purchase_at` (testköp: står kvar i Order men räknas inte i intäkt, vinst, avräkning, bokföring eller rapporter)
   - **Unik (organization_id, data_source_id, external_id).** Importen kör `insert … on conflict do nothing`.
   - Om källraden avviker från den sparade (`source_hash` skiljer sig) blir raden `conflict` i loggen. Ordern ändras inte.
   - Bara betalda order importeras (`Is Paid = Paid Success`).
@@ -190,6 +190,7 @@ först, och bara `authenticated` får köra dem.
 | `close_period(org, month, snapshot)`                  | Månadsstängning: bara passerade månader (BL015 om redan stängd). Databasen sparar en egen sammanfattning (antal, intäkt, inköp, prisets täckning); appens beräkning sparas under `app`.                          | Ä/A      |
 | `reopen_period(org, month)`                           | Öppnar en stängd månad igen (BL016 om den inte är stängd). Loggas i `audit_log`.                                                                                                                                 | Ä        |
 | `merge_titles(org, from, into)`                       | Flyttar `orders.title_id` (varje ändring loggas), lagret med kompenserande `adjustment`; den gamla titeln får `merged_into_id` och arkiveras. Alias och `raw_title` skrivs inte om.                              | Ä/A      |
+| `set_test_purchase(org, order, test)`                 | Markerar en order som testköp eller ångrar (`orders.test_purchase_at`, tiden sätts av databasen). Loggas i `audit_log`. Inte i en stängd månad (BL004). Testköp räknas inte i ekonomin (`…070000_testkop`).      | Ä/A      |
 
 ### Organisation, användare och onboarding
 

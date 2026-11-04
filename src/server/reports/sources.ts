@@ -24,6 +24,7 @@ import {
 } from "@/domain";
 import type { LedgerAccount, PartnerOwner, ReportSources } from "@/reports";
 import {
+  COUNTED_ORDER,
   queryAgreements,
   queryFirstOrderDate,
   queryMachines,
@@ -105,6 +106,8 @@ export async function queryReportOrders(
         eq(s.orders.organizationId, orgId),
         gte(s.orders.businessDate, range.start),
         lte(s.orders.businessDate, range.end),
+        // Testköp ingår inte i rapporter, avräkningar eller bokföringsunderlag.
+        COUNTED_ORDER,
       ),
     )
     .orderBy(asc(s.orders.orderedAt), asc(s.orders.id));

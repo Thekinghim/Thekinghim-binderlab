@@ -19,6 +19,7 @@ import { isIsoDate, type IsoDate } from "@/domain";
 import type { ActionResult } from "@/server/auth/flows";
 import { AuthorizationError, isUuid, requireRoleFor, withUserDbFor } from "@/server/access";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
+import { countedOrder } from "@/server/data/core/queries";
 import { ECONOMY_ROLES, OPERATOR_ROLES } from "@/server/data/core/types";
 import { dbErrorMessage, pgErrorOf } from "@/server/errors";
 
@@ -75,6 +76,7 @@ export async function loadLastOrderAtFor(viewer: Viewer): Promise<Map<string, st
       sql`select o.machine_id, max(o.ordered_at) as last
           from public.orders o
           where o.organization_id = ${orgId}::uuid and o.machine_id is not null
+            and ${countedOrder()}
           group by o.machine_id`,
     );
     const out = new Map<string, string>();
@@ -106,7 +108,8 @@ export async function loadMachineOrdersFor(
       tx,
       sql`select min(o.business_date)::text as first, max(o.business_date)::text as last
           from public.orders o
-          where o.organization_id = ${orgId}::uuid and o.machine_id = ${machineId}::uuid`,
+          where o.organization_id = ${orgId}::uuid and o.machine_id = ${machineId}::uuid
+            and ${countedOrder()}`,
     );
     const recent = await query<{
       id: string;
@@ -123,6 +126,7 @@ export async function loadMachineOrdersFor(
           from public.orders o
           left join public.titles t on t.organization_id = o.organization_id and t.id = o.title_id
           where o.organization_id = ${orgId}::uuid and o.machine_id = ${machineId}::uuid
+            and ${countedOrder()}
           order by o.ordered_at desc, o.id desc
           limit ${Math.max(1, Math.min(100, limit))}`,
     );

@@ -6,7 +6,7 @@ import { toURLSearchParams } from "@/components/shell/period-state";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatKronor, formatPeriodShort, MISSING } from "@/lib/format";
-import { requireRoute } from "@/server/data/core";
+import { OPERATOR_ROLES, requireRoute } from "@/server/data/core";
 
 import { OrderBrowser } from "./_components/order-browser";
 import { isoToLocalDate, orderHeadline, sentence } from "./_lib/headline";
@@ -59,6 +59,7 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
     now,
   );
   const canOpenImport = routeById("datakallor").roles.includes(ctx.role);
+  const canMarkTestPurchase = (OPERATOR_ROLES as readonly string[]).includes(ctx.role);
 
   let empty = null;
   if (!list.hasOrders) {
@@ -69,7 +70,8 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
         action={canOpenImport ? { label: "Importera orderlistan", href: "/datakallor" } : undefined}
       />
     );
-  } else if (list.totals.count === 0) {
+  } else if (list.totals.count === 0 && list.rows.length === 0) {
+    // Inga rader alls. Bara testköp ger rader men antal 0: då visas listan (de går att ångra).
     const all = toURLSearchParams(sp);
     all.delete("from");
     all.delete("to");
@@ -145,6 +147,7 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
           timeZone={ctx.timeZone}
           now={ctx.now}
           canOpenImport={canOpenImport}
+          canMarkTestPurchase={canMarkTestPurchase}
           initialOrderId={params.orderId}
           initialDetail={initialDetail}
           empty={empty}

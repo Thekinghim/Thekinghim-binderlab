@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { formatKronor } from "@/lib/format";
 
-import { getOrderDetail } from "../actions";
+import { getOrderDetail, setTestPurchase } from "../actions";
 import { formatAt } from "../_lib/headline";
 import { cleanQuery, withOrderParams, type OrderParamsPatch, type OrderSort } from "../_lib/params";
 import type { OrderDetail, OrderRefs, OrderRow, OrderTotals, TitleOption } from "../_lib/types";
@@ -45,6 +45,8 @@ export interface OrderBrowserProps {
   /** Förfrågans tidpunkt (ISO), så att server och klient formaterar likadant. */
   readonly now: string;
   readonly canOpenImport: boolean;
+  /** Ägare och admin: "Markera som testköp" / "Ångra testköp" i detaljvyn. */
+  readonly canMarkTestPurchase: boolean;
   /** Ordern i ?order= (laddad på servern), om någon. */
   readonly initialOrderId: string | null;
   readonly initialDetail: OrderDetail | null;
@@ -153,8 +155,56 @@ export function OrderBrowser(props: OrderBrowserProps) {
     );
   }, []);
 
+  // --- Testköp ---------------------------------------------------------------
+  // Markeringar gjorda här (order-id → testköp): listans rader laddas inte om.
+  const [changed, setChanged] = useState<ReadonlyMap<string, boolean>>(() => new Map());
+  const [testSave, setTestSave] = useState<{ saving: boolean; error: string | null }>({
+    saving: false,
+    error: null,
+  });
+
+  const changeTestPurchase = useCallback(
+    async (id: string, test: boolean) => {
+      setTestSave({ saving: true, error: null });
+      let res: Awaited<ReturnType<typeof setTestPurchase>>;
+      try {
+        res = await setTestPurchase(id, test);
+      } catch {
+        res = { ok: false, message: "Det gick inte att spara. Kontrollera anslutningen." };
+      }
+      if (!res.ok) {
+        setTestSave({ saving: false, error: res.message });
+        return;
+      }
+      const at = res.data.testPurchaseAt;
+      setChanged((cur) => new Map(cur).set(id, at !== null));
+      setDetail((cur) =>
+        cur.status === "ready" && cur.id === id && cur.detail
+          ? { ...cur, detail: { ...cur.detail, testPurchase: at ? { at, by: null } : null } }
+          : cur,
+      );
+      setTestSave({ saving: false, error: null });
+      cache.current.delete(id);
+      // Rubrikens antal och summa räknas om på servern.
+      startTransition(() => router.refresh());
+      // Namnet på den som markerade kommer från servern (audit_log).
+      if (at) {
+        const fresh = await getOrderDetail(id).catch(() => null);
+        if (fresh?.ok && fresh.data) {
+          const data = fresh.data;
+          cache.current.set(id, data);
+          setDetail((cur) =>
+            cur.status === "ready" && cur.id === id ? { ...cur, detail: data } : cur,
+          );
+        }
+      }
+    },
+    [router],
+  );
+
   const openOrder = useCallback(
     (row: OrderRow) => {
+      setTestSave({ saving: false, error: null });
       replaceOrderParam(row.id);
       const cached = cache.current.get(row.id);
       if (cached !== undefined) {
@@ -246,6 +296,7 @@ export function OrderBrowser(props: OrderBrowserProps) {
           pending={pending}
           onOpen={openOrder}
           onServerSort={(sort) => navigate({ sort })}
+          changed={changed}
         />
       )}
 
@@ -269,6 +320,15 @@ export function OrderBrowser(props: OrderBrowserProps) {
             detail={detail.detail}
             timeZone={props.timeZone}
             canOpenImport={props.canOpenImport}
+            testPurchase={
+              props.canMarkTestPurchase
+                ? {
+                    saving: testSave.saving,
+                    error: testSave.error,
+                    onChange: (test) => void changeTestPurchase(detail.id, test),
+                  }
+                : null
+            }
           />
         ) : null}
       </Modal>

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { Button } from "@/components/ui/button";
 import { DataTable, type Column, type SortKey } from "@/components/ui/data-table";
 import { StateMessage } from "@/components/ui/state-message";
+import { StatusTag } from "@/components/ui/status-tag";
 import { cn } from "@/lib/cn";
 import { formatInt, formatKronor, formatSek, MISSING, NBSP } from "@/lib/format";
 
@@ -18,6 +19,7 @@ import {
   type OrderSortKey,
 } from "../_lib/params";
 import { rankMap } from "../_lib/refs";
+import { isTestPurchase, TEST_PURCHASE_LABEL } from "../_lib/test-purchase";
 import type { OrderRefs, OrderRow, OrderTotals } from "../_lib/types";
 
 const ROW_HEIGHT = 36;
@@ -89,6 +91,7 @@ export function OrderList({
   pending,
   onOpen,
   onServerSort,
+  changed,
 }: {
   query: string;
   rows: readonly OrderRow[];
@@ -102,6 +105,8 @@ export function OrderList({
   onOpen: (row: OrderRow) => void;
   /** Sorteringen kräver nya rader från servern (allt är inte laddat). */
   onServerSort: (sort: OrderSort) => void;
+  /** Testköp markerade eller ångrade i detaljvyn (order-id → testköp). */
+  changed: ReadonlyMap<string, boolean>;
 }) {
   const [rows, setRows] = useState<readonly OrderRow[]>(initialRows);
   const [next, setNext] = useState<number | null>(initialNext);
@@ -256,14 +261,25 @@ export function OrderList({
         sortValue: (r) => rank(titleRank, r.titleId),
         render: (r) => {
           const name = r.titleId ? titles.get(r.titleId) : undefined;
-          const label = name ? (
-            <span className="block truncate" title={name}>
+          const text = name ? (
+            <span className="block min-w-0 truncate" title={name}>
               {name}
             </span>
           ) : (
-            <span className="block truncate text-muted" title={r.rawTitle ?? undefined}>
+            <span className="block min-w-0 truncate text-muted" title={r.rawTitle ?? undefined}>
               {r.rawTitle ?? MISSING}
             </span>
+          );
+          // Testköp står kvar i listan men räknas inte i summan.
+          const label = isTestPurchase(r, changed) ? (
+            <span className="flex min-w-0 items-center gap-2">
+              {text}
+              <StatusTag status="neutral" className="h-5 shrink-0">
+                {TEST_PURCHASE_LABEL}
+              </StatusTag>
+            </span>
+          ) : (
+            text
           );
           // Klick på titeln öppnar också ordern (tangentbord: ordernumret är knappen).
           // Under 768 px står tid och automat på en andra rad, eftersom kolumnerna saknas.
@@ -324,7 +340,7 @@ export function OrderList({
         footer: formatSek(totals.amountOre / 100),
       },
     ];
-  }, [refs, timeZone, now, onOpen, totals.amountOre]);
+  }, [refs, timeZone, now, onOpen, totals.amountOre, changed]);
   // Under 768 px: ordernummer, titel (med tid och automat under) och belopp ryms utan
   // sidledsscroll. Butiken finns i detaljvyn. Kolumnerna och andra raden döljs med CSS
   // (rätt redan före hydrering); bredderna och radhöjden följer skärmen i JS.

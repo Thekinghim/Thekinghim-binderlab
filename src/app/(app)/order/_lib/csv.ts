@@ -97,6 +97,8 @@ export function orderCsvColumns(refs: OrderRefs, timeZone: string): CsvColumn<Or
     },
     { header: "Butik", csv: (r) => (r.storeId ? (stores.get(r.storeId) ?? "") : "") },
     { header: "Belopp (kr)", csv: (r) => csvKronor(r.amountOre) },
+    // Testköp står med i filen (som i listan) men räknas inte i försäljningen.
+    { header: "Testköp", csv: (r) => (r.testPurchase ? "Ja" : "") },
   ];
 }
 

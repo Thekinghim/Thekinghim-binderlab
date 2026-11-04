@@ -785,6 +785,13 @@ export const ACTIONS: ActionSpec[] = [
     readOnly: true,
     args: (c) => [c.A.orderIds[0]],
   },
+  // Order: markera som testköp och ångra (ägare, admin; 20261105070000_testkop.sql)
+  {
+    module: "@/app/(app)/order/actions",
+    name: "setTestPurchase",
+    allowed: OP,
+    args: (c) => [c.A.orderIds[0], true],
+  },
   // Prognos och inköp
   {
     module: "@/app/(app)/prognos/actions",

@@ -29,6 +29,7 @@ import {
   withOrderParams,
 } from "./params";
 import { buildRefs, matchTerms, rankMap, sortRanks, titleChoices } from "./refs";
+import { isTestPurchase, testPurchaseNote } from "./test-purchase";
 import { providerNote } from "../_components/order-detail";
 import type { OrderRefs, OrderRow } from "./types";
 
@@ -345,6 +346,7 @@ describe("CSV", () => {
       machineId: M1,
       storeId: S1,
       amountOre: 17_000,
+      testPurchase: false,
     },
     {
       id: "o2",
@@ -356,6 +358,7 @@ describe("CSV", () => {
       machineId: null,
       storeId: null,
       amountOre: 12_950,
+      testPurchase: true,
     },
   ];
 
@@ -363,12 +366,12 @@ describe("CSV", () => {
     const csv = orderCsv(rows, refs, "Europe/Stockholm");
     const lines = csv.replace(/^﻿/, "").split("\r\n");
     expect(lines[0]).toBe(
-      "Ordernummer;Tid;Affärsdatum;Titel;Originaltitel;Automat;Automatnamn;Butik;Belopp (kr)",
+      "Ordernummer;Tid;Affärsdatum;Titel;Originaltitel;Automat;Automatnamn;Butik;Belopp (kr);Testköp",
     );
     expect(lines[1]).toBe(
-      "42780;2026-11-01 17:17;2026-11-01;Pokémon 151;Pokemon 151;BL-002;Centrum;Åhléns City;170,00",
+      "42780;2026-11-01 17:17;2026-11-01;Pokémon 151;Pokemon 151;BL-002;Centrum;Åhléns City;170,00;",
     );
-    expect(lines[2]).toBe(`42781;2026-03-29 01:30;2026-03-29;;"'=HYPERLINK(""x"")";;;;129,50`);
+    expect(lines[2]).toBe(`42781;2026-03-29 01:30;2026-03-29;;"'=HYPERLINK(""x"")";;;;129,50;Ja`);
     expect(csv.startsWith("﻿")).toBe(true);
   });
 
@@ -417,6 +420,30 @@ describe("CSV", () => {
   it("namnger filen efter perioden", () => {
     expect(orderCsvFileName({ start: "2026-10-13", end: "2026-11-01" })).toBe(
       "order-2026-10-13--2026-11-01.csv",
+    );
+  });
+});
+
+describe("testköp", () => {
+  it("en markering i detaljvyn gäller före radens värde från servern", () => {
+    const row = { id: "o1", testPurchase: false };
+    expect(isTestPurchase(row, new Map())).toBe(false);
+    expect(isTestPurchase(row, new Map([["o1", true]]))).toBe(true);
+    expect(isTestPurchase({ id: "o1", testPurchase: true }, new Map([["o1", false]]))).toBe(false);
+    expect(isTestPurchase({ id: "o2", testPurchase: true }, new Map([["o1", false]]))).toBe(true);
+  });
+
+  it("säger när och av vem, och inget för en vanlig order", () => {
+    const at = (iso: string) => iso.slice(0, 10);
+    expect(testPurchaseNote(null, at)).toBeNull();
+    expect(testPurchaseNote({ at: "2026-11-03T09:00:00.000Z", by: "Kim" }, at)).toBe(
+      "Markerat 2026-11-03 av Kim.",
+    );
+    expect(testPurchaseNote({ at: "2026-11-03T09:00:00.000Z", by: "  " }, at)).toBe(
+      "Markerat 2026-11-03.",
+    );
+    expect(testPurchaseNote({ at: "2026-11-03T09:00:00.000Z", by: null }, at)).toBe(
+      "Markerat 2026-11-03.",
     );
   });
 });

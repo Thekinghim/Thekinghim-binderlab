@@ -4,6 +4,8 @@
  * i ./service innan frågorna körs; RLS är det andra lagret (en påfyllare får inga order).
  *
  * Ingen ekonomilogik: frågorna filtrerar, sorterar, räknar och summerar betalt belopp.
+ * Testköp står med i raderna (med etiketten "Testköp") men räknas inte i antal, summa,
+ * snittorder eller urvalets första och senaste order.
  * Sökning på namn (titel, automat, butik) och sortering på namn görs med id-listor som
  * servern räknat fram med samma svenska ordning som tabellen i webbläsaren, så att en
  * sida som laddas från servern alltid står i samma ordning som tabellen sorterar.
@@ -15,6 +17,7 @@ import { sql, type SQL } from "drizzle-orm";
 
 import type { Tx } from "@/db/client";
 import type { IsoDate, Period } from "@/domain";
+import { countedOrder } from "@/server/data/core/queries";
 
 import { likePattern, type OrderSort } from "./params";
 
@@ -61,6 +64,8 @@ export interface RawOrderRow {
   readonly rawTitle: string | null;
   readonly machineId: string | null;
   readonly amountOre: number;
+  /** Markerad som testköp (räknas inte). */
+  readonly testPurchase: boolean;
 }
 
 /** uuid[]-literal. Id:na är redan validerade (kommer från databasen eller isUuid). */
@@ -104,9 +109,18 @@ function termCondition(t: TermMatch, placements: readonly PlacementWindow[]): SQ
   return sql`(${sql.join(parts, sql` or `)})`;
 }
 
-/** Filtrets villkor. `period` null = utan periodgräns (urvalets första och senaste order). */
-function where(orgId: string, f: OrderQueryFilter, period: Period | null = f.period): SQL {
+/**
+ * Filtrets villkor. `period` null = utan periodgräns (urvalets första och senaste order).
+ * `counted` = bara order som räknas (inte testköp), för antal och summor.
+ */
+function where(
+  orgId: string,
+  f: OrderQueryFilter,
+  period: Period | null = f.period,
+  counted = true,
+): SQL {
   const parts: SQL[] = [sql`o.organization_id = ${orgId}::uuid`];
+  if (counted) parts.push(countedOrder());
   if (period) {
     parts.push(sql`o.business_date >= ${period.start}::date`);
     parts.push(sql`o.business_date <= ${period.end}::date`);
@@ -154,18 +168,22 @@ function list(result: unknown): Record<string, unknown>[] {
   return Array.from(result as Iterable<Record<string, unknown>>);
 }
 
-/** Antal och summa betalt belopp för filtret i perioden. */
+/**
+ * Antal och summa betalt belopp för filtret i perioden, utan testköp. `withTestPurchases`
+ * räknar alla rader (exportens storlek).
+ */
 export async function queryOrderTotals(
   tx: Tx,
   orgId: string,
   filter: OrderQueryFilter,
   period: Period = filter.period,
+  withTestPurchases = false,
 ): Promise<{ count: number; amountOre: number }> {
   const rows = list(
     await tx.execute(sql`
       select count(*)::bigint as n, coalesce(sum(o.amount_ore), 0)::bigint as total
       from public.orders o
-      where ${where(orgId, filter, period)}`),
+      where ${where(orgId, filter, period, !withTestPurchases)}`),
   );
   const r = rows[0] ?? {};
   return { count: toNumber(r.n), amountOre: toNumber(r.total) };
@@ -259,9 +277,9 @@ function rowsSql(
   return sql`
       select o.id, o.external_id, o.ordered_at, o.business_date::text as business_date,
              o.title_id, ${raw} as raw_title,
-             o.machine_id, o.amount_ore
+             o.machine_id, o.amount_ore, (o.test_purchase_at is not null) as test_purchase
       from public.orders o
-      where ${where(orgId, filter)}${cursor}
+      where ${where(orgId, filter, filter.period, false)}${cursor}
       order by ${orderBy(sort, ranks, filter.placements)}`;
 }
 
@@ -275,6 +293,7 @@ function toRow(r: Record<string, unknown>): RawOrderRow {
     rawTitle: r.raw_title === null || r.raw_title === undefined ? null : String(r.raw_title),
     machineId: r.machine_id ? String(r.machine_id) : null,
     amountOre: toNumber(r.amount_ore),
+    testPurchase: Boolean(r.test_purchase),
   };
 }
 
@@ -362,6 +381,10 @@ export interface RawOrderDetail {
   readonly importRowNumber: number | null;
   readonly lateInClosedPeriod: boolean;
   readonly createdAt: string;
+  /** Markerad som testköp (ISO), eller null. */
+  readonly testPurchaseAt: string | null;
+  /** Vem som markerade (visningsnamn ur audit_log och profiles), eller null. */
+  readonly testPurchaseBy: string | null;
 }
 
 /** En order med titel, automat, källans automat, datakälla och import. null om den inte finns (eller inte syns). */
@@ -385,7 +408,18 @@ export async function queryOrderDetail(
                  and ir.import_id = o.import_id
                  and ir.order_id = o.id
                order by ir.row_number limit 1) as import_row_number,
-             o.late_in_closed_period, o.created_at
+             o.late_in_closed_period, o.created_at, o.test_purchase_at,
+             (select p.display_name
+                from public.audit_log a
+                left join public.profiles p
+                  on p.organization_id = a.organization_id and p.user_id = a.actor_id
+                 and p.anonymized_at is null
+               where o.test_purchase_at is not null
+                 and a.organization_id = o.organization_id and a.table_name = 'orders'
+                 and a.row_id = o.id and a.action = 'update'
+                 and a.after ->> 'test_purchase_at' is not null
+                 and a.before ->> 'test_purchase_at' is null
+               order by a.occurred_at desc limit 1) as test_purchase_by
       from public.orders o
       join public.data_sources ds
         on ds.organization_id = o.organization_id and ds.id = o.data_source_id
@@ -429,5 +463,7 @@ export async function queryOrderDetail(
         : toNumber(r.import_row_number),
     lateInClosedPeriod: Boolean(r.late_in_closed_period),
     createdAt: toIso(r.created_at),
+    testPurchaseAt: r.test_purchase_at ? toIso(r.test_purchase_at) : null,
+    testPurchaseBy: str(r.test_purchase_by),
   };
 }

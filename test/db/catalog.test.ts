@@ -87,6 +87,8 @@ const RPCS = [
   "sales_data_until",
   // Flera lager: automatens "Fylls på från" (ägare, admin).
   "set_refill_source",
+  // Testköp: markera en order som testköp och ångra (20261105070000_testkop.sql, ägare, admin).
+  "set_test_purchase",
   // Flera lager: flytt mellan egna lager och ångra flytt (ägare, admin).
   "transfer_stock",
   "undo_field_refills",
@@ -586,6 +588,7 @@ describe("anon", () => {
       reopen_period: sql`gen_random_uuid(), '2025-01-01'::date`,
       sales_data_until: sql`gen_random_uuid()`,
       set_refill_source: sql`gen_random_uuid(), gen_random_uuid(), null::uuid`,
+      set_test_purchase: sql`gen_random_uuid(), gen_random_uuid(), true`,
       transfer_stock: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
       undo_field_refills: sql`gen_random_uuid(), array[gen_random_uuid()]`,
       undo_transfer: sql`gen_random_uuid(), gen_random_uuid()`,

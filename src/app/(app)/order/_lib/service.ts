@@ -11,6 +11,8 @@
 
 import "server-only";
 
+import { sql } from "drizzle-orm";
+
 import {
   averageOrderValueOre,
   PlacementIndex,
@@ -28,7 +30,8 @@ import {
   queryStores,
   queryTitles,
 } from "@/server/data/core/queries";
-import { ECONOMY_ROLES, type DataScope } from "@/server/data/core/types";
+import { ECONOMY_ROLES, OPERATOR_ROLES, type DataScope } from "@/server/data/core/types";
+import { pgErrorOf } from "@/server/errors";
 import type { Tx } from "@/db/client";
 
 import { searchTerms, type OrderParams } from "./params";
@@ -279,7 +282,8 @@ export async function streamOrderExportFor(
   const orgId = viewer.organization.id;
   await asEconomyViewer(viewer, async (tx) => {
     const ctx = await context(tx, viewer, args, now);
-    const { count } = await queryOrderTotals(tx, orgId, ctx.filter);
+    // Exporten tar med testköpen (som listan), så storleken räknar dem.
+    const { count } = await queryOrderTotals(tx, orgId, ctx.filter, ctx.filter.period, true);
     if (!sink.begin({ count, refs: ctx.refs })) return;
     await forEachOrderRowBatch(
       tx,
@@ -351,6 +355,57 @@ export async function loadOrderDetailFor(
           : null,
       lateInClosedPeriod: r.lateInClosedPeriod,
       createdAt: r.createdAt,
+      testPurchase: r.testPurchaseAt ? { at: r.testPurchaseAt, by: r.testPurchaseBy } : null,
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Testköp (20261105070000_testkop.sql)
+// ---------------------------------------------------------------------------
+
+/** Ett fel som visas för användaren som det är (svenska, utan interna detaljer). */
+export class TestPurchaseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TestPurchaseError";
+  }
+}
+
+/**
+ * Markerar en order som testköp (`test` true) eller ångrar (false). Bara ägare och admin:
+ * rollen kontrolleras här och igen i set_test_purchase, som körs som användaren. Vem och
+ * när loggas i audit_log. Returnerar markeringens tidpunkt (ISO) eller null efter ångra.
+ */
+export async function setTestPurchaseFor(
+  viewer: Viewer,
+  orderId: string,
+  test: boolean,
+): Promise<{ testPurchaseAt: string | null }> {
+  const orgId = viewer.organization.id;
+  await requireRoleFor(viewer.user, orgId, OPERATOR_ROLES);
+  if (!isUuid(orderId)) throw new TestPurchaseError("Ordern finns inte.");
+  try {
+    return await withUserDbFor(viewer.user, async (tx) => {
+      const result = Array.from(
+        await tx.execute(
+          sql`select public.set_test_purchase(${orgId}::uuid, ${orderId.toLowerCase()}::uuid,
+                                              ${test}) as at`,
+        ),
+      ) as { at: unknown }[];
+      const at = result[0]?.at;
+      return {
+        testPurchaseAt:
+          at === null || at === undefined
+            ? null
+            : (at instanceof Date ? at : new Date(String(at))).toISOString(),
+      };
+    });
+  } catch (error) {
+    const pg = pgErrorOf(error);
+    if (pg && (pg.code === "22023" || pg.code === "BL004") && pg.message) {
+      throw new TestPurchaseError(pg.message);
+    }
+    throw error;
+  }
 }

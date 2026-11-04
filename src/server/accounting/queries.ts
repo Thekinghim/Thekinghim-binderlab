@@ -13,6 +13,7 @@ import * as s from "@/db/schema";
 import type { FixedCostCategory, FixedCostIntervalDb } from "@/db/schema";
 import type { IsoDate, Period } from "@/domain";
 import type { LedgerAccount } from "@/reports";
+import { COUNTED_ORDER } from "@/server/data/core/queries";
 
 /** En utbetalning som den står i databasen. */
 export interface PayoutRecord {
@@ -446,6 +447,7 @@ export async function queryOrderIdsFromSources(
         inArray(s.orders.dataSourceId, [...sourceIds]),
         gte(s.orders.businessDate, range.start),
         lte(s.orders.businessDate, range.end),
+        COUNTED_ORDER,
       ),
     );
   return new Set(rows.map((r) => r.id));

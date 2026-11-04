@@ -26,6 +26,7 @@ import {
 } from "@/server/access";
 import type { ActionResult } from "@/server/auth/flows";
 import { dbErrorMessage, pgErrorOf } from "@/server/errors";
+import { countedOrder } from "@/server/data/core/queries";
 
 import {
   closedMonthsHit,
@@ -98,6 +99,7 @@ async function queryOrderDays(
     sql`select o.business_date::text as day, count(*)::int as orders
         from public.orders o
         where o.organization_id = ${orgId}::uuid and o.title_id = ${titleId}::uuid
+          and ${countedOrder()}
         group by o.business_date
         order by o.business_date`,
   );

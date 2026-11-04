@@ -48,6 +48,23 @@ export const DEFAULT_SETTINGS: OrgSettings = {
   fiscalYearStartMonth: 1,
 };
 
+// ---------------------------------------------------------------------------
+// Testköp (20261105070000_testkop.sql)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ordern räknas: den är inte markerad som testköp. Varje fråga som summerar eller
+ * räknar order för ekonomin (intäkt, vinst, butikens andel, avräkning, bokföring,
+ * rapporter, prognos, "saknar inköpspris") tar med villkoret. Ordern finns kvar och
+ * syns i Order med etiketten "Testköp".
+ */
+export function countedOrder(alias = "o"): SQL {
+  return sql`${sql.identifier(alias)}.test_purchase_at is null`;
+}
+
+/** Samma villkor för Drizzles query builder (tabellen s.orders). */
+export const COUNTED_ORDER: SQL = isNull(s.orders.testPurchaseAt);
+
 function iso(d: Date | null): string | null {
   return d ? d.toISOString() : null;
 }
@@ -354,6 +371,7 @@ function orderConditions(orgId: string, range: Period, scope: DataScope): SQL[] 
     sql`o.organization_id = ${orgId}::uuid`,
     sql`o.business_date >= ${range.start}::date`,
     sql`o.business_date <= ${range.end}::date`,
+    countedOrder(),
   ];
   if (scope.machineId) conditions.push(sql`o.machine_id = ${scope.machineId}::uuid`);
   if (scope.storeId) {
@@ -418,6 +436,8 @@ export async function queryOrganizationsWithMachines(tx: Tx): Promise<Organizati
 /**
  * Order med affärsdatum i [start, end], filtrerade på butik (automatens placering den
  * dagen) eller automat. Order utan titel räknas men tas inte med (de kan inte prissättas).
+ * Testköp tas aldrig med (orderConditions): allt som byggs på laddarna (Hem, Lönsamhet,
+ * Automater, Butiker, Ekonomi, bokföring, prognos, Att göra, AI-assistenten) räknar dem inte.
  */
 export async function queryOrders(
   tx: Tx,
@@ -467,12 +487,12 @@ interface OrderRow {
   readonly ordered_at: string;
 }
 
-/** Första affärsdagen med en order, eller null. */
+/** Första affärsdagen med en order (testköp räknas inte), eller null. */
 export async function queryFirstOrderDate(tx: Tx, orgId: string): Promise<IsoDate | null> {
   const rows = await tx
     .select({ first: sql<string | null>`min(${s.orders.businessDate})::text` })
     .from(s.orders)
-    .where(eq(s.orders.organizationId, orgId));
+    .where(and(eq(s.orders.organizationId, orgId), COUNTED_ORDER));
   return rows[0]?.first ?? null;
 }
 
