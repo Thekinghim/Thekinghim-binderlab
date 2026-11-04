@@ -27,6 +27,7 @@ import {
   type AwishSyncResult,
 } from "./sync";
 import { createAwishWebClient, type AwishWebApi, type AwishWebClientOptions } from "./web-client";
+import { linkedAwishMachineIds, pushMachinesToAwish } from "./web-service";
 
 type Row = Record<string, unknown>;
 
@@ -359,4 +360,76 @@ export async function syncAwishNowFor(
     { db: deps.serviceDb ?? getServiceDb(), connect: deps.connect },
     { dataSourceId: id, trigger: "manual", actorUserId: viewer.user.userId },
   );
+}
+
+export interface AwishPushPreview {
+  ok: boolean;
+  /** Kort svensk sammanfattning. */
+  message: string;
+  machines: Array<{
+    code: string | null;
+    slotsRead: number;
+    planned: Array<{ titleName: string; from: number; to: number }>;
+    titlesWithoutSlot: string[];
+    error: string | null;
+  }>;
+}
+
+/**
+ * Provkör push till Awish: loggar in, läser automaternas fack och räknar ut vad som
+ * skulle ändras, men skriver ingenting. Fungerar även när push är avstängd.
+ */
+export async function previewAwishPushFor(
+  viewer: Viewer,
+  deps: ManageDeps = {},
+): Promise<AwishPushPreview> {
+  await operatorSource(viewer);
+  const orgId = viewer.organization.id;
+  const pushDeps = {
+    serviceDb: deps.serviceDb,
+    makeClient: deps.makeWebClient,
+    clientOptions: deps.webClientOptions,
+    dryRun: true,
+  };
+  const ids = await linkedAwishMachineIds(orgId, pushDeps);
+  if (ids.length === 0) {
+    return { ok: false, message: "Ingen automat är kopplad till Awish.", machines: [] };
+  }
+  const r = await pushMachinesToAwish(orgId, ids, pushDeps);
+  if (r.status === "off") {
+    return {
+      ok: false,
+      message:
+        r.reason === "no_credentials"
+          ? "Ingen Awish-inloggning sparad. Fyll i e-post och lösenord."
+          : "Hittar ingen Awish-källa.",
+      machines: [],
+    };
+  }
+  const machines = r.machines.map((m) => ({
+    code: m.machineCode,
+    slotsRead: m.slotsRead ?? 0,
+    planned: (m.planned ?? []).map((p) => ({ titleName: p.titleName, from: p.from, to: p.to })),
+    titlesWithoutSlot: m.titlesWithoutSlot,
+    error:
+      m.status === "error"
+        ? (m.error ?? "Okänt fel.")
+        : m.status === "no_awish_machine"
+          ? "Automaten är inte kopplad i Awish."
+          : null,
+  }));
+  const failed = machines.find((m) => m.error);
+  if (failed) {
+    return { ok: false, message: failed.error ?? "Provkörningen misslyckades.", machines };
+  }
+  const changes = machines.reduce((n, m) => n + m.planned.length, 0);
+  const slots = machines.reduce((n, m) => n + m.slotsRead, 0);
+  return {
+    ok: true,
+    message:
+      changes === 0
+        ? `Kopplingen fungerar. Läste ${slots} fack i Awish. Inget behöver ändras just nu.`
+        : `Kopplingen fungerar. Läste ${slots} fack. ${changes} fack skulle höjas (ändrades inte).`,
+    machines,
+  };
 }

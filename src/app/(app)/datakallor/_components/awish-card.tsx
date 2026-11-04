@@ -11,6 +11,7 @@ import { useToast } from "@/components/ui/toast";
 import { formatInt } from "@/lib/format";
 
 import {
+  previewAwishPush,
   saveAwishCredentials,
   saveAwishWebCredentials,
   setAwishWebPush,
@@ -69,8 +70,12 @@ export function AwishCard({
   const toast = useToast();
   const [pending, start] = useTransition();
   const [busy, setBusy] = useState<
-    "save" | "test" | "sync" | "web-save" | "web-test" | "web-toggle" | null
+    "save" | "test" | "sync" | "web-save" | "web-test" | "web-toggle" | "web-preview" | null
   >(null);
+  const [preview, setPreview] = useState<{
+    message: string;
+    lines: string[];
+  } | null>(null);
   const [appId, setAppId] = useState("");
   const [appSecret, setAppSecret] = useState("");
   const [appKey, setAppKey] = useState("");
@@ -82,7 +87,7 @@ export function AwishCard({
   const line = statusLine(source, timeZone, new Date(now));
 
   const run = (
-    kind: "save" | "test" | "sync" | "web-save" | "web-test" | "web-toggle",
+    kind: "save" | "test" | "sync" | "web-save" | "web-test" | "web-toggle" | "web-preview",
     fn: () => Promise<void>,
   ) => {
     setBusy(kind);
@@ -115,6 +120,30 @@ export function AwishCard({
         return;
       }
       setResult(r.data.message);
+    });
+
+  const previewWeb = () =>
+    run("web-preview", async () => {
+      const r = await previewAwishPush();
+      if (!r.ok) {
+        setPreview({ message: r.error, lines: [] });
+        return;
+      }
+      const lines: string[] = [];
+      for (const m of r.data.machines) {
+        const name = m.code ?? "Automat";
+        if (m.error) {
+          lines.push(`${name}: ${m.error}`);
+          continue;
+        }
+        if (m.planned.length === 0)
+          lines.push(`${name}: ${m.slotsRead} fack lästa, inget att ändra.`);
+        for (const p of m.planned) lines.push(`${name}: ${p.titleName} ${p.from} → ${p.to}`);
+        if (m.titlesWithoutSlot.length > 0) {
+          lines.push(`${name}: inget fack i Awish för ${m.titlesWithoutSlot.join(", ")}`);
+        }
+      }
+      setPreview({ message: r.data.message, lines });
     });
 
   const togglePush = (next: boolean) =>
@@ -301,6 +330,27 @@ export function AwishCard({
               >
                 Testa inloggningen
               </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                loading={busy === "web-preview"}
+                disabled={pending}
+                onClick={previewWeb}
+              >
+                Provkör (ändrar inget)
+              </Button>
+            </div>
+          ) : null}
+          {preview ? (
+            <div role="status" className="flex flex-col gap-1 text-sm">
+              <p className="text-muted">{preview.message}</p>
+              {preview.lines.length > 0 ? (
+                <ul className="flex flex-col gap-0.5 text-xs text-subtle">
+                  {preview.lines.map((l, i) => (
+                    <li key={i}>{l}</li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
           ) : null}
           <details className="group" open={web.hasPassword ? undefined : true}>

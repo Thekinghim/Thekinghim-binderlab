@@ -29,6 +29,10 @@ export interface MachinePushResult {
   slotsUpdated: number;
   /** Titlar i Binderlab som saknar fack i Awish (rapporteras, inte ett fel). */
   titlesWithoutSlot: string[];
+  /** Provkörning: vad som skulle ändras (titel, fack, från → till). Tom vid riktig push. */
+  planned?: Array<{ titleName: string; productId: number; from: number; to: number }>;
+  /** Provkörning: antal fack Awish visade för automaten. */
+  slotsRead?: number;
   error?: string;
 }
 
@@ -44,6 +48,8 @@ export interface WebPushDeps {
   /** Klienten mot Awish; injiceras i tester (annars riktiga webb-klienten). */
   makeClient?: (options: AwishWebClientOptions) => AwishWebApi;
   clientOptions?: AwishWebClientOptions;
+  /** Provkörning: logga in och läs, men skriv ingenting till Awish (gäller även när push är av). */
+  dryRun?: boolean;
 }
 
 interface WebSource {
@@ -143,6 +149,24 @@ async function machineCodes(
  * Skickar en eller flera automaters lager till Awish. `organizationId` och `machineIds`
  * kommer från en redan rollkontrollerad åtgärd (påfyllningen). Loggar aldrig lösenordet.
  */
+/** Alla Binderlab-automater som är kopplade till organisationens Awish-källa. */
+export async function linkedAwishMachineIds(
+  organizationId: string,
+  deps: WebPushDeps = {},
+): Promise<string[]> {
+  const db = deps.serviceDb ?? getServiceDb();
+  const rows = Array.from(
+    await db.execute(sql`
+      select distinct sm.machine_id::text as id
+      from public.source_machines sm
+      join public.data_sources ds on ds.organization_id = sm.organization_id and ds.id = sm.data_source_id
+      where sm.organization_id = ${organizationId}::uuid
+        and ds.provider = 'awish_grpc' and ds.archived_at is null
+        and sm.machine_id is not null`),
+  ) as Array<{ id: string }>;
+  return rows.map((r) => r.id);
+}
+
 export async function pushMachinesToAwish(
   organizationId: string,
   machineIds: readonly string[],
@@ -154,7 +178,7 @@ export async function pushMachinesToAwish(
 
   const source = await loadWebSource(db, organizationId);
   if (!source) return { status: "off", reason: "no_source", machines: [] };
-  if (!source.enabled) return { status: "off", reason: "disabled", machines: [] };
+  if (!source.enabled && !deps.dryRun) return { status: "off", reason: "disabled", machines: [] };
 
   const creds = await readWebCredentials(db, source.id);
   if (!creds) return { status: "off", reason: "no_credentials", machines: [] };
@@ -185,6 +209,23 @@ export async function pushMachinesToAwish(
       }
       const products = await client.products(awishId);
       const plan = planAwishPush(want, products);
+      if (deps.dryRun) {
+        machines.push({
+          machineId,
+          machineCode: code,
+          status: "nothing",
+          slotsUpdated: 0,
+          titlesWithoutSlot: plan.titlesWithoutSlot,
+          slotsRead: products.length,
+          planned: plan.updates.map((u) => ({
+            titleName: u.titleName,
+            productId: u.productId,
+            from: u.previousInventory,
+            to: u.currentInventory,
+          })),
+        });
+        continue;
+      }
       for (const u of plan.updates) {
         await client.setProductInventory(u.productId, {
           goodId: u.goodId,

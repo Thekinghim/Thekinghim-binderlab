@@ -33,6 +33,7 @@ vi.mock("server-only", () => ({}));
 
 // Hämta modulerna efter server-only-mocken (de importerar manage → server-only).
 const {
+  previewAwishPushFor,
   saveAwishCredentialsFor,
   saveAwishWebCredentialsFor,
   setAwishWebPushFor,
@@ -244,5 +245,25 @@ describe("Awish webb-inloggning och push", () => {
       clientOptions: webClientOptions(),
     });
     expect(result.machines[0]?.status).toBe("no_awish_machine");
+  });
+
+  it("provkörning läser och räknar men skriver aldrig, även när push är av", async () => {
+    const viewer = await viewerFor(owner, orgId);
+    await saveAwishWebCredentialsFor(viewer, {
+      email: fake.state.email,
+      password: fake.state.password,
+    });
+    await setAwishWebPushFor(viewer, false);
+    await setLevel("30th Celebration", 9);
+    const r = await previewAwishPushFor(viewer, {
+      serviceDb: db(),
+      makeWebClient,
+      webClientOptions: webClientOptions(),
+    });
+    expect(r.ok, r.message).toBe(true);
+    const planned = r.machines.flatMap((m) => m.planned);
+    expect(planned).toContainEqual({ titleName: "30th Celebration", from: 2, to: 9 });
+    expect(fake.state.calls.some((c) => c.operationName === "UpdateProduct")).toBe(false);
+    expect(fake.state.products["1001"]?.find((p) => p.id === 11)?.currentInventory).toBe(2);
   });
 });

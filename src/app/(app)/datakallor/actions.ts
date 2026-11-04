@@ -25,6 +25,8 @@ import {
   syncAwishNowFor,
   testAwishConnectionFor,
   testAwishWebLoginFor,
+  previewAwishPushFor,
+  type AwishPushPreview,
   type AwishWebLoginTest,
 } from "@/server/awish/manage";
 import type { AwishConnectionTest } from "@/server/awish/sync";
@@ -287,6 +289,16 @@ export async function setAwishWebPush(
     const r = await setAwishWebPushFor(viewer, enabled === true);
     revalidateAppData();
     return { ok: true, data: r };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** Provkör push till Awish: läser och räknar, skriver ingenting. */
+export async function previewAwishPush(): Promise<ActionResult<AwishPushPreview>> {
+  try {
+    const viewer = await operator();
+    return { ok: true, data: await previewAwishPushFor(viewer) };
   } catch (error) {
     return failure(error);
   }
