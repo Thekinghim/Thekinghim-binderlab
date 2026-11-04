@@ -18,9 +18,14 @@ import { AwishApiError } from "@/server/awish/grpc-client";
 import {
   AwishSetupError,
   saveAwishCredentialsFor,
+  saveAwishWebCredentialsFor,
   saveCredentialsSchema,
+  saveWebCredentialsSchema,
+  setAwishWebPushFor,
   syncAwishNowFor,
   testAwishConnectionFor,
+  testAwishWebLoginFor,
+  type AwishWebLoginTest,
 } from "@/server/awish/manage";
 import type { AwishConnectionTest } from "@/server/awish/sync";
 import { dbErrorMessage, safeErrorForLog } from "@/server/errors";
@@ -241,6 +246,47 @@ export async function syncAwishNow(): Promise<
         message: r.message,
       },
     };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Awish webbpanel: skicka påfyllningar till Awish (e-post/lösen i Vault).
+// ---------------------------------------------------------------------------
+
+/** Sparar Awish-inloggningen (e-post och lösenord). Tomt lösenord = behåll det sparade. */
+export async function saveAwishWebCredentials(raw: unknown): Promise<ActionResult> {
+  try {
+    const viewer = await operator();
+    const input = saveWebCredentialsSchema.parse(raw);
+    await saveAwishWebCredentialsFor(viewer, input);
+    revalidateAppData();
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** Testa att Awish-inloggningen fungerar (loggar bara in). */
+export async function testAwishWebLogin(): Promise<ActionResult<AwishWebLoginTest>> {
+  try {
+    const viewer = await operator();
+    return { ok: true, data: await testAwishWebLoginFor(viewer) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** Slå på eller av automatisk push av påfyllningar till Awish. */
+export async function setAwishWebPush(
+  enabled: unknown,
+): Promise<ActionResult<{ enabled: boolean }>> {
+  try {
+    const viewer = await operator();
+    const r = await setAwishWebPushFor(viewer, enabled === true);
+    revalidateAppData();
+    return { ok: true, data: r };
   } catch (error) {
     return failure(error);
   }

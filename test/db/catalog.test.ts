@@ -48,6 +48,9 @@ const RPCS = [
   "attach_contract_file",
   // Datakällor: Awish gRPC-uppgifter till Vault (ägare, admin), returnerar aldrig hemligheten.
   "awish_save_credentials",
+  // Awish webbpanel: e-post/lösenord till Vault och push på/av (ägare, admin).
+  "awish_save_web_credentials",
+  "awish_set_web_push",
   "close_period",
   // Signering på plats: engångslänk till avtalets PDF (ägare, admin).
   "create_contract_signing_link",
@@ -559,6 +562,8 @@ describe("anon", () => {
       archive_warehouse: sql`gen_random_uuid(), gen_random_uuid()`,
       attach_contract_file: sql`gen_random_uuid(), gen_random_uuid(), 'x', 'x', 'application/pdf', 1::bigint, 'x'`,
       awish_save_credentials: sql`gen_random_uuid(), gen_random_uuid(), 'x', 'y', 'z'`,
+      awish_save_web_credentials: sql`gen_random_uuid(), gen_random_uuid(), 'a@b.se', 'y'`,
+      awish_set_web_push: sql`gen_random_uuid(), gen_random_uuid(), true`,
       close_period: sql`gen_random_uuid(), '2025-01-01'::date`,
       create_first_organization: sql`'x', 'x'`,
       create_contract_signing_link: sql`gen_random_uuid(), gen_random_uuid(), 'x', 'x', null, 7`,
