@@ -59,12 +59,13 @@ function pgMessage(error: unknown): string | null {
 export async function syncRefillsFor(
   viewer: Viewer,
   items: unknown,
-): Promise<{ ok: boolean; results: RefillSyncResult[] }> {
+): Promise<{ ok: boolean; results: RefillSyncResult[]; savedMachineIds: string[] }> {
   await requireRoleFor(viewer.user, viewer.organization.id, FIELD_REFILL_ROLES);
   const orgId = viewer.organization.id;
   const list = z.array(z.unknown()).max(200).safeParse(items);
-  if (!list.success) return { ok: false, results: [] };
+  if (!list.success) return { ok: false, results: [], savedMachineIds: [] };
   const results: RefillSyncResult[] = [];
+  const savedMachines = new Set<string>();
   for (const raw of list.data) {
     const parsed = refillItem.safeParse(raw);
     const clientId =
@@ -85,6 +86,7 @@ export async function syncRefillsFor(
       );
       const row = Array.from(rows)[0] as { duplicate?: boolean } | undefined;
       results.push({ clientId: it.clientId, status: row?.duplicate ? "duplicate" : "saved" });
+      if (!row?.duplicate) savedMachines.add(it.machineId);
     } catch (error) {
       results.push({
         clientId: it.clientId,
@@ -93,7 +95,7 @@ export async function syncRefillsFor(
       });
     }
   }
-  return { ok: true, results };
+  return { ok: true, results, savedMachineIds: [...savedMachines] };
 }
 
 /**

@@ -26,6 +26,7 @@ import {
   type AwishLastRun,
   type AwishSyncResult,
 } from "./sync";
+import { createAwishWebClient, type AwishWebApi, type AwishWebClientOptions } from "./web-client";
 
 type Row = Record<string, unknown>;
 
@@ -40,6 +41,19 @@ export const saveCredentialsSchema = z.object({
   appId: field("AppId"),
   appSecret: field("AppSecret"),
   appKey: field("AppKey"),
+});
+
+export const saveWebCredentialsSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .max(200, "E-postadressen får vara högst 200 tecken.")
+    .regex(/^[^\p{Cc}]*$/u, "E-postadressen får inte innehålla radbrytningar."),
+  // Lösenordet trimmas inte (blanksteg kan ingå) men radbrytningar nekas.
+  password: z
+    .string()
+    .max(200, "Lösenordet får vara högst 200 tecken.")
+    .regex(/^[^\p{Cc}]*$/u, "Lösenordet får inte innehålla radbrytningar."),
 });
 
 export class AwishSetupError extends Error {
@@ -61,6 +75,8 @@ export interface AwishPanelData {
     credentials: { appIdLast4: string; appSecretLast4: string; appKeyLast4: string } | null;
     lastRun: AwishLastRun | null;
     historyDone: boolean;
+    /** Awish webbpanel: inloggning sparad (maskad e-post) och om push är på. */
+    web: { email: string | null; hasPassword: boolean; enabled: boolean };
   } | null;
 }
 
@@ -68,6 +84,9 @@ export interface AwishPanelData {
 export interface ManageDeps {
   serviceDb?: Db;
   connect?: (creds: AwishCredentials) => AwishApi;
+  /** Webb-klienten mot Awish; injiceras i tester. */
+  makeWebClient?: (options: AwishWebClientOptions) => AwishWebApi;
+  webClientOptions?: AwishWebClientOptions;
 }
 
 async function query<T extends Row>(tx: Tx, q: ReturnType<typeof sql>): Promise<T[]> {
@@ -116,6 +135,15 @@ function credentialsOf(config: unknown): NonNullable<AwishPanelData["source"]>["
   };
 }
 
+function webOf(config: unknown): NonNullable<AwishPanelData["source"]>["web"] {
+  const w = ((config ?? {}) as { awishWeb?: Record<string, unknown> }).awishWeb ?? {};
+  return {
+    email: typeof w.email === "string" ? w.email : null,
+    hasPassword: w.hasPassword === true,
+    enabled: w.enabled === true,
+  };
+}
+
 export async function loadAwishPanelFor(viewer: Viewer): Promise<AwishPanelData> {
   return asOperator(viewer, async (tx) => {
     const row = await findSource(tx, viewer.organization.id);
@@ -133,6 +161,7 @@ export async function loadAwishPanelFor(viewer: Viewer): Promise<AwishPanelData>
         credentials: credentialsOf(row.config),
         lastRun: state.lastRun,
         historyDone: state.paging.historyDone,
+        web: webOf(row.config),
       },
     };
   });
@@ -233,6 +262,84 @@ async function operatorSource(viewer: Viewer): Promise<string> {
   });
   if (!id) throw new AwishSetupError("Spara AppId, AppSecret och AppKey först.");
   return id;
+}
+
+/**
+ * Sparar butikens inloggning till Awishs webbpanel (e-post och lösenord) för
+ * push av påfyllningar. Kräver att AppId/AppSecret/AppKey redan sparats (samma
+ * datakälla). Tomt lösenord = behåll det sparade.
+ */
+export async function saveAwishWebCredentialsFor(
+  viewer: Viewer,
+  input: z.infer<typeof saveWebCredentialsSchema>,
+): Promise<{ dataSourceId: string }> {
+  const orgId = viewer.organization.id;
+  const id = await operatorSource(viewer);
+  await asOperator(viewer, async (tx) => {
+    try {
+      await tx.execute(
+        sql`select public.awish_save_web_credentials(${orgId}::uuid, ${id}::uuid,
+                   ${input.email}, ${input.password})`,
+      );
+    } catch (error) {
+      rpcError(error);
+    }
+  });
+  return { dataSourceId: id };
+}
+
+/** Slår på eller av automatisk push till Awish. */
+export async function setAwishWebPushFor(
+  viewer: Viewer,
+  enabled: boolean,
+): Promise<{ enabled: boolean }> {
+  const orgId = viewer.organization.id;
+  const id = await operatorSource(viewer);
+  await asOperator(viewer, async (tx) => {
+    try {
+      await tx.execute(
+        sql`select public.awish_set_web_push(${orgId}::uuid, ${id}::uuid, ${enabled}::boolean)`,
+      );
+    } catch (error) {
+      rpcError(error);
+    }
+  });
+  return { enabled };
+}
+
+export interface AwishWebLoginTest {
+  ok: boolean;
+  message: string;
+}
+
+/**
+ * Loggar in på Awishs webbpanel med den sparade inloggningen, bara för att visa att den
+ * fungerar. Läser uppgifterna med systemrollen (Vault) och gör inget mer än att logga in.
+ */
+export async function testAwishWebLoginFor(
+  viewer: Viewer,
+  deps: ManageDeps = {},
+): Promise<AwishWebLoginTest> {
+  const id = await operatorSource(viewer);
+  const db = deps.serviceDb ?? getServiceDb();
+  const rows = await query<{ creds: unknown }>(
+    db as unknown as Tx,
+    sql`select private.awish_read_web_credentials(${id}::uuid) as creds`,
+  );
+  const c = (rows[0]?.creds ?? null) as { email?: unknown; password?: unknown } | null;
+  if (!c || typeof c.email !== "string" || typeof c.password !== "string") {
+    return { ok: false, message: "Ingen Awish-inloggning sparad. Fyll i e-post och lösenord." };
+  }
+  const client = (deps.makeWebClient ?? createAwishWebClient)(deps.webClientOptions ?? {});
+  try {
+    await client.login({ email: c.email, password: c.password });
+    return { ok: true, message: "Inloggningen till Awish fungerar." };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Kunde inte logga in på Awish.",
+    };
+  }
 }
 
 export async function testAwishConnectionFor(

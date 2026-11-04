@@ -265,6 +265,16 @@ export function FillApp({
             rememberSaved(out.saved);
             router.refresh();
           }
+          if (out.awish && out.awish.state !== "sent") {
+            // Gick det inte hela vägen till Awish: säg till så antalet kan skrivas där.
+            toast({
+              title: "Skicka till Awish",
+              description: out.awish.message,
+              tone: out.awish.state === "error" ? "critical" : "neutral",
+            });
+          } else if (out.awish?.state === "sent") {
+            toast({ title: out.awish.message, tone: "ok" });
+          }
           go(BASE);
         }}
       />

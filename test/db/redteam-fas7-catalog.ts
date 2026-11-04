@@ -347,6 +347,26 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [sink(c)],
   },
+  // Datakällor → Awish webbpanel: inloggning i Vault, test och push på/av.
+  {
+    module: "@/app/(app)/datakallor/actions",
+    name: "saveAwishWebCredentials",
+    allowed: OP,
+    args: (c) => [sink(c, { email: "rodteam@example.com", password: "rodteam-losen" })],
+  },
+  {
+    module: "@/app/(app)/datakallor/actions",
+    name: "testAwishWebLogin",
+    allowed: OP,
+    readOnly: true,
+    args: (c) => [sink(c)],
+  },
+  {
+    module: "@/app/(app)/datakallor/actions",
+    name: "setAwishWebPush",
+    allowed: OP,
+    args: () => [false],
+  },
   // Drift
   {
     module: "@/app/(app)/drift/actions",

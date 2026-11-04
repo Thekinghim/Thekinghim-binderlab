@@ -10,7 +10,11 @@
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { syncRefills, type RefillSyncResult } from "@/app/(app)/drift/actions";
+import {
+  syncRefills,
+  type AwishPushStatus,
+  type RefillSyncResult,
+} from "@/app/(app)/drift/actions";
 
 import {
   listQueue,
@@ -39,6 +43,8 @@ export interface SyncOutcome {
   readonly rejected: RefillSyncResult[];
   /** Sant om inget kunde skickas (ingen uppkoppling). */
   readonly offline: boolean;
+  /** Kort besked om push till Awish, om något gjordes. */
+  readonly awish?: AwishPushStatus;
 }
 
 const NOTHING: SyncOutcome = { saved: [], rejected: [], offline: false };
@@ -104,7 +110,7 @@ export function useRefillQueue(
           }
         }
       }
-      return { saved, rejected, offline: false };
+      return { saved, rejected, offline: false, awish: res.awish };
     },
     [persistent],
   );
