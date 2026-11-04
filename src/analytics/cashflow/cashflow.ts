@@ -490,18 +490,20 @@ export function cashflow(input: CashflowInput): CashflowResult {
       ...(overdue ? { dueDate: due } : {}),
       label: overdue
         ? `Butiksersättning för ${monthName(month)} förföll ${day(due)} men är inte betald (${kr(total)})`
-        : `Butiksersättning för ${monthName(month)} (provision ${kr(commission)}, hyra ${kr(rent)})`,
+        : rent !== 0
+          ? `Butiksersättning för ${monthName(month)} (provision ${kr(commission)}, hyra ${kr(rent)})`
+          : `Butiksersättning för ${monthName(month)} (${kr(commission)})`,
       evidence: financeEvidence({
         rule: overdue
-          ? "Butiksersättning = provision på månadens order + månadens hyra enligt avtal. Förfallodagen har passerat utan registrerad betalning till butiken, så beloppet väntas i morgon."
-          : "Butiksersättning = provision på månadens order + månadens hyra enligt avtal; provision för dagar från i dag enligt snittet i fönstret.",
+          ? `Butiksersättning = provision på månadens order${rent !== 0 ? " + månadens hyra enligt avtal" : ""}. Förfallodagen har passerat utan registrerad betalning till butiken, så beloppet väntas i morgon.`
+          : `Butiksersättning = provision på månadens order${rent !== 0 ? " + månadens hyra enligt avtal" : ""}; provision för dagar från i dag enligt snittet i fönstret.`,
         period: mp,
         storeIds,
         dates: [due],
         figures: [
           oreFigure("commissionOre", "Provision", commission),
           oreFigure("forecastCommissionOre", "Varav prognos", forecastCommission),
-          oreFigure("rentOre", "Hyra", rent),
+          ...(rent !== 0 ? [oreFigure("rentOre", "Hyra", rent)] : []),
           ...(paidShare > 0 ? [oreFigure("paidOre", "Redan betalt till butiker", paidShare)] : []),
         ],
       }),
@@ -654,7 +656,10 @@ export function cashflow(input: CashflowInput): CashflowResult {
     `Butiksersättningen för en månad betalas ${
       compLag === 0 ? "samma månad" : compLag === 1 ? "månaden efter" : `${compLag} månader senare`
     }, ${dueDay === null ? "sista dagen" : `den ${dueDay}:e`}.`,
-    "Fasta kostnader före i dag räknas som betalda enligt plan.",
+    // Bara när det finns fasta kostnader (annars är inköpet den enda kostnaden).
+    ...(input.fixedCosts.length > 0
+      ? ["Fasta kostnader före i dag räknas som betalda enligt plan."]
+      : []),
   ];
   const overdueItems = items.filter((i) => i.overdue);
   const parts = [

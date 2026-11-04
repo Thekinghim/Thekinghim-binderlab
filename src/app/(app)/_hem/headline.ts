@@ -2,7 +2,7 @@
  * Hems rubrik: vinsten som en stor siffra, delningen bredvid och en kort rad under.
  *
  *   "Vinst 28 948 kr på 30 dagar." + "Vår del 21 203 kr · butikerna 7 745 kr."
- *   Rad under: "Före fasta kostnader."
+ *   Rad under: "Före fasta kostnader." (bara när det finns fasta kostnader)
  *
  * Ren funktion utan databas och utan React. Inga beräkningar av ekonomi: talen kommer från
  * keyMetrics/changeBp i @/domain; här väljs bara formuleringen.
@@ -76,6 +76,11 @@ export interface HomeHeadlineInput {
   readonly dataStart: IsoDate | null;
   /** Om det finns order i dag (dagen räknas då med, som på övriga sidor). */
   readonly hasOrdersToday?: boolean;
+  /**
+   * Organisationen har fasta kostnader: raden "Före fasta kostnader." visas. Standard sant.
+   * Utan fasta kostnader är vinsten redan allt som blir kvar.
+   */
+  readonly fixedCosts?: boolean;
 }
 
 /** Förändring i bp som "+12 %" / "−4,2 %" (en decimal under 10 %). */
@@ -190,11 +195,13 @@ export function homeHeadline(input: HomeHeadlineInput): HomeHeadline {
 
   const lead: string[] = [];
   if (priced) {
-    lead.push(
+    const parts = [
+      input.fixedCosts === false ? "" : "Före fasta kostnader.",
       input.unpricedShareBp >= UNPRICED_HEADLINE_BP
-        ? `Före fasta kostnader. ${formatPercent(input.unpricedShareBp / 10_000, 1)} saknar inköpspris.`
-        : "Före fasta kostnader.",
-    );
+        ? `${formatPercent(input.unpricedShareBp / 10_000, 1)} saknar inköpspris.`
+        : "",
+    ].filter(Boolean);
+    if (parts.length > 0) lead.push(parts.join(" "));
   }
 
   return { title, aside, lead, state: "ok", figure, split };

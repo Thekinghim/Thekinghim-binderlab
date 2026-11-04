@@ -7,9 +7,15 @@ import { useVmbView } from "./use-period";
 /** Knappens förklaring (title), en rad. */
 export const VMB_TOGGLE_TITLE = "Visa vinst och marginal efter VMB-moms (vinstmarginalbeskattning)";
 
+/** Texten på knappen: säger alltid hur siffrorna räknas just nu. */
+export function vmbToggleLabel(on: boolean): string {
+  return on ? "Med VMB" : "Utan VMB";
+}
+
 /**
- * Vyknappen "Med VMB" i kontextraden (standard av). På: alla vinst- och marginaltal räknas
- * efter VMB-moms (?vmb=1, följer med mellan sidor). Valet minns per användare.
+ * Vyknappen i kontextraden (standard av). Av: "Utan VMB" (dämpad), siffrorna räknas utan
+ * VMB-moms. På: "Med VMB" (markerad), alla vinst- och marginaltal räknas efter VMB-moms
+ * (?vmb=1, följer med mellan sidor). Valet minns per användare.
  */
 export function VmbToggle({ userKey, className }: { userKey: string; className?: string }) {
   const { on, setOn } = useVmbView(userKey);
@@ -32,7 +38,7 @@ export function VmbToggle({ userKey, className }: { userKey: string; className?:
           on ? "bg-current" : "bg-transparent",
         )}
       />
-      Med VMB
+      {vmbToggleLabel(on)}
     </button>
   );
 }

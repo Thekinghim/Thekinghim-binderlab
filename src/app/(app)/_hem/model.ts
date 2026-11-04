@@ -31,6 +31,7 @@ import {
 import { todayIn, toIsoDate } from "@/components/shell/period-state";
 import type { DataScope, MachineRecord, SyncInfo, TitleRecord } from "@/server/data/core/types";
 import type { EconomicsSources } from "@/domain";
+import { ALL_COST_LINES, type CostLines } from "@/lib/cost-lines";
 import { formatPercent } from "@/lib/format";
 
 import { homeHeadline, type HomeHeadline } from "./headline";
@@ -210,6 +211,8 @@ export interface HomeModelInput {
   readonly scope: DataScope;
   /** Punkterna i Att göra, eller null om rollen inte har Att göra. */
   readonly todos: readonly TodoItem[] | null;
+  /** Hyra och fasta kostnader finns (annars döljs "före fasta kostnader"). Saknas = finns. */
+  readonly costLines?: CostLines;
 }
 
 // ---------------------------------------------------------------------------
@@ -323,6 +326,8 @@ function buildKpis(args: {
   unpriced: HomeUnpriced | null;
   /** Vinsten bär VMB-moms; `preliminary` när perioden inte är avslutade hela månader. */
   vmb: { readonly applies: boolean; readonly preliminary: boolean };
+  /** Det finns fasta kostnader: vinsten heter "Vinst före fasta kostnader". */
+  fixedCosts: boolean;
 }): HomeKpi[] {
   const { km, prev, split, prevTotalOre, filtered, days, prevDays, compareDays, unpriced, vmb } =
     args;
@@ -366,7 +371,7 @@ function buildKpis(args: {
     },
     {
       id: "profit",
-      label: "Vinst före fasta kostnader",
+      label: args.fixedCosts ? "Vinst före fasta kostnader" : "Vinst",
       unit: "ore",
       value: split ? split.totalOre : null,
       delta: hasPrev && split ? relative(split.totalOre, prevTotalOre) : null,
@@ -672,6 +677,7 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
     compareDays,
     unpriced,
     vmb: { applies: byTitle.vmb.applies, preliminary: vmbPreliminary(byTitle.vmb, today) },
+    fixedCosts: (input.costLines ?? ALL_COST_LINES).fixed,
   });
 
   let daily: HomeDaily | null = null;
@@ -731,6 +737,7 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
       today,
       dataStart,
       hasOrdersToday,
+      fixedCosts: (input.costLines ?? ALL_COST_LINES).fixed,
     }),
     period,
     compare,

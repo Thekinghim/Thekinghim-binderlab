@@ -345,6 +345,15 @@ export async function queryAgreements(tx: Tx, orgId: string): Promise<StoreAgree
     .orderBy(asc(s.storeAgreements.storeId), asc(s.storeAgreements.validFrom));
 }
 
+/** Antal fasta kostnader som inte är arkiverade (för vilka kostnadsrader sidorna visar). */
+export async function queryActiveFixedCostCount(tx: Tx, orgId: string): Promise<number> {
+  const rows = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(s.fixedCosts)
+    .where(and(eq(s.fixedCosts.organizationId, orgId), isNull(s.fixedCosts.archivedAt)));
+  return Number(rows[0]?.n ?? 0);
+}
+
 export async function queryInvestments(tx: Tx, orgId: string): Promise<MachineInvestment[]> {
   const rows = await tx
     .select({

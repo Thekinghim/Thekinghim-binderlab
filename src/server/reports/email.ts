@@ -220,7 +220,7 @@ function accountantEmail(s: AccountantSnapshot, ctx: EmailContext): ReportEmailP
     ...(t.vatOre !== 0 ? [entry("vat_out", "Utgående moms", -t.vatOre)] : []),
     ...(t.feesOre !== 0 ? [entry("card_fees", "Kortavgifter", -t.feesOre)] : []),
     entry("store_commission", "Provision till butiker", -t.commissionOre),
-    entry("rent", "Hyra till butiker", -t.rentOre),
+    ...(t.rentOre !== 0 ? [entry("rent", "Hyra till butiker", -t.rentOre)] : []),
     entry(
       "cogs",
       `Inköpsvärde sålda pack (${formatInt(t.pricedOrders)} order med pris)`,

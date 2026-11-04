@@ -304,14 +304,20 @@ export function estimateSite(args: SiteEstimateArgs): SiteEstimate {
   const investmentText = `Investering ${kr(investment)} (automat ${kr(args.investment.purchaseOre)}, installation ${kr(args.investment.installationOre)}${
     args.investment.otherOre ? `, övrigt ${kr(args.investment.otherOre)}` : ""
   })`;
-  const termsText = terms
-    ? `butiksersättning enligt angivna villkor: ${[
+  // Hyran nämns bara när en hyra är angiven (de flesta avtal har ingen).
+  const termParts = terms
+    ? [
         ...((terms.profitShareBp ?? 0) > 0
           ? [`${pct(terms.profitShareBp!)} av vinsten efter kostnader`]
           : []),
         ...((terms.commissionBp ?? 0) > 0 ? [`provision ${pct(terms.commissionBp!)}`] : []),
-        `hyra ${kr(terms.monthlyRentOre ?? 0)} per månad`,
-      ].join(", ")}`
+        ...((terms.monthlyRentOre ?? 0) > 0 ? [`hyra ${kr(terms.monthlyRentOre!)} per månad`] : []),
+      ]
+    : [];
+  const termsText = terms
+    ? termParts.length > 0
+      ? `butiksersättning enligt angivna villkor: ${termParts.join(", ")}`
+      : "ingen butiksersättning enligt angivna villkor"
     : "butiksersättning enligt platsernas egna avtal";
   const rule =
     "Snittet per automat och månad av de mest lika befintliga butikerna, viktat efter likhet (butikstyp, ort, öppettider, yta); intervallet är lägsta och högsta platsens takt. Per månad = belopp / aktiva automatmånader (som enhetsekonomin). Återbetalningstid = investering / vinst per månad.";

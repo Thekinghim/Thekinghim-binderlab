@@ -227,6 +227,8 @@ describe("estimateSite", () => {
     const p = split.profitPerMonthOre!.expected;
     expect(Math.abs(p - n / 2)).toBeLessThanOrEqual(1);
     expect(split.detail).toMatch(/50\s%\sav vinsten efter kostnader/);
+    // Utan erbjuden hyra nämns ingen hyra ("hyra 0 kr per månad" stod förut).
+    expect(split.detail).not.toContain("hyra");
   });
 
   it("vinstdelning med VMB-avdrag: butikens andel räknas på bidraget efter VMB-moms", () => {

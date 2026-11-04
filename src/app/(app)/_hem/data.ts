@@ -138,6 +138,7 @@ export async function loadHomeWith(
     timeZone: ctx.timeZone,
     scope: p.scope,
     todos,
+    costLines: input.costLines,
   });
 
   let scope: HomeScopeLabel | null = null;

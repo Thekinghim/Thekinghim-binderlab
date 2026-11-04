@@ -44,12 +44,14 @@ import {
   type SessionUser,
 } from "@/server/access";
 import { todayIn, toIsoDate } from "@/components/shell/period-state";
+import { costLinesFrom, type CostLines } from "@/lib/cost-lines";
 import { loadCoverage } from "@/server/alerts/inputs";
 import { queryPeriodRefunds } from "@/server/data/core/queries";
 
 import {
   DEFAULT_SETTINGS,
   queryActiveContracts,
+  queryActiveFixedCostCount,
   queryAgreements,
   queryDataSources,
   queryDisplayName,
@@ -257,6 +259,8 @@ interface EconomyBase {
   readonly agreements: Awaited<ReturnType<typeof queryAgreements>>;
   readonly investments: Awaited<ReturnType<typeof queryInvestments>>;
   readonly settings: Awaited<ReturnType<typeof querySettings>>;
+  /** Hyra och fasta kostnader finns (annars döljs raderna, @/lib/cost-lines). */
+  readonly costLines: CostLines;
 }
 
 /**
@@ -268,18 +272,34 @@ interface EconomyBase {
 const economyInRequest = cache(
   (userId: string, email: string, orgId: string): Promise<EconomyBase> =>
     withUserDbFor({ userId, email }, async (tx) => {
-      const [prices, agreements, investments, settings] = await Promise.all([
+      const [prices, agreements, investments, settings, fixedCosts] = await Promise.all([
         queryPrices(tx, orgId),
         queryAgreements(tx, orgId),
         queryInvestments(tx, orgId),
         querySettings(tx, orgId),
+        queryActiveFixedCostCount(tx, orgId),
       ]);
-      return { prices, agreements, investments, settings };
+      return {
+        prices,
+        agreements,
+        investments,
+        settings,
+        costLines: costLinesFrom(agreements, fixedCosts),
+      };
     }),
 );
 
 function economyBase(viewer: Viewer): Promise<EconomyBase> {
   return economyInRequest(viewer.user.userId, viewer.user.email, viewer.organization.id);
+}
+
+/**
+ * Vilka kostnadsrader sidorna visar (hyra, fasta kostnader), samma underlag som
+ * beräkningarna (avtalen och de fasta kostnaderna). Ägare, admin och läsare.
+ */
+export async function loadCostLinesFor(viewer: Viewer): Promise<CostLines> {
+  await requireViewerRole(viewer, ECONOMY_ROLES);
+  return (await economyBase(viewer)).costLines;
 }
 
 /**
@@ -438,6 +458,7 @@ export async function loadDomainInputFor(
       sources: scoped.sources,
       investments: scoped.investments,
       settings,
+      costLines: base.costLines,
       diagnostics: {
         // Order utan titel räknas över hela spannet; de förekommer inte efter en lyckad import.
         ordersWithoutTitle: orderResult.withoutTitle,

@@ -5,6 +5,7 @@
 
 import type { MemberRole } from "@/db/schema";
 import type { IsoDate } from "@/domain";
+import type { CostLines } from "@/lib/cost-lines";
 
 import type { ModelSystemBlock } from "./model-client";
 
@@ -68,6 +69,18 @@ export interface PromptContext {
   } | null;
   /** Raderna om sidan användaren tittar på (page-context.ts), eller null. */
   readonly page?: string | null;
+  /** Hyra och fasta kostnader i organisationen (null/utelämnad = okänt, ingen rad). */
+  readonly costLines?: CostLines | null;
+}
+
+/** En rad om kostnaderna: utan hyra och fasta kostnader är inköpet den enda kostnaden. */
+export function costLinesText(c: CostLines | null | undefined): string {
+  if (!c) return "";
+  if (!c.rent && !c.fixed)
+    return "Kostnader: organisationen har ingen hyra i något avtal och inga fasta kostnader. Den enda kostnaden är inköpet av packen (butikens del är en delning, inte en kostnad). Nämn inte hyra eller fasta kostnader.";
+  if (!c.rent) return "Kostnader: inget avtal har hyra. Nämn inte hyra.";
+  if (!c.fixed) return "Kostnader: det finns inga fasta kostnader. Nämn inte fasta kostnader.";
+  return "";
 }
 
 function weekday(date: IsoDate): string {
@@ -87,6 +100,7 @@ export function contextBlock(ctx: PromptContext): string {
       ? `Vald period i panelen: ${ctx.shellPeriod.label}, ${ctx.shellPeriod.start} till ${ctx.shellPeriod.end}. Använd den när frågan inte anger någon period.`
       : "",
     ctx.page ?? "",
+    ctx.role === "refiller" ? "" : costLinesText(ctx.costLines),
     ctx.role === "refiller"
       ? "Du har bara lagerverktyg. Frågar påfyllaren om pengar, priser eller vinst: säg att rollen inte ser ekonomi och svara med det som finns i lagret."
       : "",

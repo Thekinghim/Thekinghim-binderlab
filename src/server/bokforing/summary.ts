@@ -28,8 +28,8 @@ const esc = (s: string) =>
 const kr = (ore: number) => esc(krText(ore, "always"));
 
 /** Avtalet i butikstabellen: vinstdelning med eller utan VMB-avdrag före delningen. */
-function splitText(split: StoreShare["split"]): string {
-  if (!split) return "Provision eller hyra";
+function splitText(split: StoreShare["split"], rentOre: number): string {
+  if (!split) return rentOre !== 0 ? "Provision och hyra" : "Provision";
   return split.vmbBeforeSplit
     ? `Vinstdelning, VMB-moms ${kr(split.vmbVatOre)} dragen före delning`
     : "Vinstdelning";
@@ -77,15 +77,18 @@ export function summaryHtml(input: SummaryInput): string {
     ["− Butikernas andel", kr(b.storeShareOre)],
     ["= Resultat", kr(b.resultOre), true],
   ];
+  // Hyreskolumnen bara när någon butik har hyra i månaden (de flesta avtal har ingen).
+  const rent = b.stores.some((x) => x.rentOre !== 0);
+  const rentCell = (ore: number) => (rent ? `<td class="n">${kr(ore)}</td>` : "");
   const stores = b.stores.length
     ? b.stores
         .map(
           (s) =>
-            `<tr><td>${esc(s.name)}</td><td>${splitText(s.split)}</td><td class="n">${s.orders}</td><td class="n">${kr(s.salesInclVatOre)}</td><td class="n">${kr(s.shareOre)}</td><td class="n">${kr(s.rentOre)}</td><td class="n">${kr(s.totalOre)}</td></tr>`,
+            `<tr><td>${esc(s.name)}</td><td>${splitText(s.split, s.rentOre)}</td><td class="n">${s.orders}</td><td class="n">${kr(s.salesInclVatOre)}</td><td class="n">${kr(s.shareOre)}</td>${rentCell(s.rentOre)}<td class="n">${kr(s.totalOre)}</td></tr>`,
         )
         .join("") +
-      `<tr class="total"><td>Summa</td><td></td><td class="n">${b.stores.reduce((s, x) => s + x.orders, 0)}</td><td class="n">${kr(b.stores.reduce((s, x) => s + x.salesInclVatOre, 0))}</td><td class="n">${kr(b.stores.reduce((s, x) => s + x.shareOre, 0))}</td><td class="n">${kr(b.stores.reduce((s, x) => s + x.rentOre, 0))}</td><td class="n">${kr(b.storeShareOre)}</td></tr>`
-    : `<tr><td colspan="7">Inga butiker med försäljning.</td></tr>`;
+      `<tr class="total"><td>Summa</td><td></td><td class="n">${b.stores.reduce((s, x) => s + x.orders, 0)}</td><td class="n">${kr(b.stores.reduce((s, x) => s + x.salesInclVatOre, 0))}</td><td class="n">${kr(b.stores.reduce((s, x) => s + x.shareOre, 0))}</td>${rentCell(b.stores.reduce((s, x) => s + x.rentOre, 0))}<td class="n">${kr(b.storeShareOre)}</td></tr>`
+    : `<tr><td colspan="${rent ? 7 : 6}">Inga butiker med försäljning.</td></tr>`;
   const ver = input.verification.rows
     .map(
       (r) =>
@@ -148,7 +151,7 @@ ${
 }
 ${notes.map((n) => `<p class="note">${esc(n)}</p>`).join("")}
 <h2>Butikernas andel</h2>
-<table><tr><th>Butik</th><th>Avtal</th><th class="n">Order</th><th class="n">Försäljning</th><th class="n">Andel</th><th class="n">Hyra</th><th class="n">Att betala</th></tr>${stores}</table>
+<table><tr><th>Butik</th><th>Avtal</th><th class="n">Order</th><th class="n">Försäljning</th><th class="n">Andel</th>${rent ? '<th class="n">Hyra</th>' : ""}<th class="n">Att betala</th></tr>${stores}</table>
 <h2>Verifikation ${esc(input.verification.series)} ${input.verification.number} · ${esc(dateText(input.verification.date))}</h2>
 <table><tr><th>Konto</th><th>Namn</th><th>Text</th><th class="n">Debet</th><th class="n">Kredit</th></tr>${ver}
 <tr class="total"><td colspan="3">Summa</td><td class="n">${kr(debit)}</td><td class="n">${kr(debit)}</td></tr></table>

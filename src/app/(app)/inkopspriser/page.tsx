@@ -8,6 +8,7 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { priceHistory, profitability, titleEconomics, type PurchasePrice } from "@/domain";
 import { formatDate, formatInt } from "@/lib/format";
+import { ALL_COST_LINES } from "@/lib/cost-lines";
 import { loadDomainInput, loadPeriod, requireRoute } from "@/server/data/core";
 import { requireUser } from "@/server/session";
 
@@ -201,6 +202,7 @@ export default async function PurchasePricesPage({
             today={today}
             periodLabel={periodLabel}
             criticalIds={signalIds}
+            rent={(input.costLines ?? ALL_COST_LINES).rent}
           />
         )}
       </section>

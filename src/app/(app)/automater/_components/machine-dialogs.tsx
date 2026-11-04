@@ -356,8 +356,8 @@ export function MachineActions({
         title={machine.storeId ? `Flytta ${machine.code}.` : `Placera ${machine.code}.`}
         description={
           storeName
-            ? `${machine.code} står i ${storeName}. Placeringen där slutar dagen före flytten, och hyra och provision räknas på den nya butiken från flyttdagen.`
-            : "Hyra och provision räknas på butiken från första dagen."
+            ? `${machine.code} står i ${storeName}. Placeringen där slutar dagen före flytten, och butikens del räknas på den nya butiken från flyttdagen.`
+            : "Butikens del räknas från första dagen."
         }
         submitLabel={machine.storeId ? "Flytta" : "Placera"}
         onSubmit={async (data) => {

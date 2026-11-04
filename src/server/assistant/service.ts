@@ -17,6 +17,7 @@ import type { IsoDate } from "@/domain";
 import { AuthorizationError, requireRoleFor } from "@/server/access";
 import {
   businessToday,
+  loadCostLinesFor,
   loadDataStartFor,
   loadMasterDataFor,
   type Viewer,
@@ -201,10 +202,12 @@ export async function askAssistant(args: AskArgs): Promise<AskResult> {
   const tools = toolsForRole(role);
   const client = args.client ?? clientFor(config);
   const shellParams = args.page ? args.page.shell : args.shellParams;
-  const [history, dataStart] = await Promise.all([
+  const [history, dataStart, costLines] = await Promise.all([
     // Bara rader som rollen får se nu: en nedgraderad användare får ingen ekonomihistorik.
     loadConversationFor(viewer.user, viewer.organization.id, args.conversationId, { role }),
     loadDataStartFor(viewer),
+    // Hyra och fasta kostnader: utan dem pratar assistenten inte om dem (bara ekonomiroller).
+    role === "refiller" ? null : loadCostLinesFor(viewer).catch(() => null),
   ]);
 
   emit({
@@ -244,6 +247,7 @@ export async function askAssistant(args: AskArgs): Promise<AskResult> {
         dataStart,
         shellPeriod,
         page: pageContext?.text ?? null,
+        costLines,
       }),
       prefetched: pageContext?.records ?? [],
       questionNote: pageContext?.summary ? pageSummaryNote(pageContext.summary) : null,

@@ -36,6 +36,8 @@ function agreementColumns(
   today: Date,
   canEdit: boolean,
   storeName: string,
+  /** Något av avtalen har hyra (annars ingen hyreskolumn). */
+  rent: boolean,
 ): Column<AgreementView>[] {
   const cols: Column<AgreementView>[] = [
     {
@@ -75,15 +77,17 @@ function agreementColumns(
             ? `${percentBp(a.commissionBp)} av vinsten`
             : `${percentBp(a.commissionBp)} av försäljn.`,
     },
-    {
+  ];
+  if (rent) {
+    cols.push({
       key: "rent",
       header: "Hyra/mån",
       numeric: true,
       hideOnMobile: true,
       sortValue: (a) => a.monthlyRentOre ?? -1,
       render: (a) => (a.monthlyRentOre === null ? MISSING : sek(a.monthlyRentOre)),
-    },
-  ];
+    });
+  }
   if (canEdit) {
     cols.push({
       key: "actions",
@@ -113,10 +117,11 @@ export function AgreementsTable({
   storeName: string;
 }) {
   const ref = parseIsoDate(today) ?? new Date();
+  const rent = agreements.some((a) => (a.monthlyRentOre ?? 0) > 0);
   const cols = useMemo(
-    () => agreementColumns(ref, canEdit, storeName),
+    () => agreementColumns(ref, canEdit, storeName, rent),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [today, canEdit, storeName],
+    [today, canEdit, storeName, rent],
   );
   return (
     <DataTable

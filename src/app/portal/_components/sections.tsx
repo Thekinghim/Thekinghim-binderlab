@@ -137,6 +137,8 @@ export function CompensationSection({
   const c = report.compensation;
   const steps = visibleSteps(c.steps);
   if (hasAgreement && splitsOf(c).length > 0) return <SplitSection report={report} />;
+  // Hyran nämns bara när avtalet har hyra (de flesta har ingen).
+  const rent = c.rentOre !== 0 || c.rentParts.length > 0;
   return (
     <section
       className="flex flex-col gap-10 border-t border-line py-16"
@@ -150,7 +152,7 @@ export function CompensationSection({
         aside={hasAgreement ? withPeriod(c.modelText) : "Inget avtal är registrerat för månaden."}
         meta={[
           { label: "Provision", value: krExact(c.commissionOre) },
-          { label: "Hyra", value: krExact(c.rentOre) },
+          ...(rent ? [{ label: "Hyra", value: krExact(c.rentOre) }] : []),
           { label: "Totalt", value: krExact(c.totalOre) },
         ]}
       />
@@ -158,7 +160,7 @@ export function CompensationSection({
         <StateMessage
           kind="not-configured"
           message="Operatören har inte registrerat ert avtal i Binderlab, så ingen ersättning räknas."
-          detail="Kontakta operatören om ni har ett avtal om provision eller hyra."
+          detail="Kontakta operatören om ni har ett avtal."
         />
       ) : (
         <ol className="flex flex-col border-t border-line-strong">
@@ -181,7 +183,8 @@ export function CompensationSection({
           <li className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-6 py-4 md:grid-cols-[10rem_minmax(0,1fr)_auto]">
             <span className="label text-fg">Totalt</span>
             <span className="hidden text-sm text-muted md:block">
-              Provision {krExact(c.commissionOre)} + hyra {krExact(c.rentOre)}
+              Provision {krExact(c.commissionOre)}
+              {rent ? ` + hyra ${krExact(c.rentOre)}` : null}
             </span>
             <span className="tnum text-right text-xl font-medium text-fg">
               {krExact(c.totalOre)}

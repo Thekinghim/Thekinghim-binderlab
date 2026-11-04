@@ -318,7 +318,7 @@ export function buildPartnerReport(
     unpricedRevenueOre: t.unpricedRevenueOre,
     unpricedShareBp: byTitle.unpriced.shareBp,
     evidence: evidence({
-      rule: `Intäkt = Σ belopp exkl. moms för alla order. Vinst = intäkt − inköp − avgifter${t.vmbVatOre !== 0 ? " − VMB-moms" : ""} − butiksersättning för order med inköpspris (all hyra dras).${t.vmbVatOre !== 0 ? " VMB-moms = 20 % av en positiv marginal (försäljning − återbetalningar − inköp) per månad." : ""} Marginal = round(vinst × 10 000 / intäkt med inköpspris) bp.`,
+      rule: `Intäkt = Σ belopp exkl. moms för alla order. Vinst = intäkt − inköp − avgifter${t.vmbVatOre !== 0 ? " − VMB-moms" : ""} − butiksersättning för order med inköpspris${t.rentOre !== 0 ? " (all hyra dras)" : ""}.${t.vmbVatOre !== 0 ? " VMB-moms = 20 % av en positiv marginal (försäljning − återbetalningar − inköp) per månad." : ""} Marginal = round(vinst × 10 000 / intäkt med inköpspris) bp.`,
       scope: { period },
       orderCount: t.orders,
       figures: [
@@ -328,7 +328,7 @@ export function buildPartnerReport(
         fig("Avgifter", t.feesOre, "ore"),
         ...(t.vmbVatOre !== 0 ? [fig("VMB-moms", t.vmbVatOre, "ore")] : []),
         fig("Provision", t.commissionOre, "ore"),
-        fig("Hyra", t.rentOre, "ore"),
+        ...(t.rentOre !== 0 ? [fig("Hyra", t.rentOre, "ore")] : []),
         fig("Vinst", t.profitOre, "ore"),
         ...(t.marginBp === null ? [] : [fig("Marginal", t.marginBp, "bp")]),
         fig("Order utan inköpspris", t.unpricedOrders, "count"),

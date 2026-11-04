@@ -235,7 +235,7 @@ export function compareUnitEconomics(
       rank: rankOf.get(u.machineId) ?? null,
       text,
       evidence: scenarioEvidence({
-        rule: "Vinst före avskrivning (prissatta order, efter inköp, avgifter, provision och hyra) delat med dagar då automaten var placerad, minst dagarna sedan första ordern. Återbetalningstid = investering / vinst per månad.",
+        rule: "Vinst före avskrivning (prissatta order, efter inköp, avgifter och butikens del) delat med dagar då automaten var placerad, minst dagarna sedan första ordern. Återbetalningstid = investering / vinst per månad.",
         period: input.period,
         machineIds: [u.machineId],
         ...orderTrail(entries, { machineId: u.machineId }),

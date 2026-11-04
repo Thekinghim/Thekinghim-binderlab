@@ -235,9 +235,13 @@ const CASH_COLUMNS: ReadonlyArray<Column<CashRow>> = [
 ];
 
 export function CashflowTable({ rows }: { rows: CashRow[] }) {
+  // Kolumnen "Fasta kostnader" bara när någon månad har en (läggs till under Fasta kostnader).
+  const columns = rows.some((r) => r.fixedCostsOre !== 0)
+    ? CASH_COLUMNS
+    : CASH_COLUMNS.filter((c) => c.key !== "fasta");
   return (
     <DataTable
-      columns={CASH_COLUMNS}
+      columns={columns}
       rows={rows}
       rowKey={(r) => r.key}
       caption="Kassaflöde per månad"

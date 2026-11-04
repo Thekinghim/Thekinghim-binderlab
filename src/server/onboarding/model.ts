@@ -313,7 +313,7 @@ export function buildOnboardingStatus(
     {
       id: "avtal",
       title: "Lägg in avtalet med butiken.",
-      why: "Avtalet anger provision och hyra, som dras från vinsten varje månad.",
+      why: "Avtalet anger butikens del, som dras från vinsten varje månad.",
       required: false,
       doneAt: a.count > 0 ? a.firstAt : null,
       detail:
