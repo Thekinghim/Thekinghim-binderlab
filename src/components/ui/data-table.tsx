@@ -325,6 +325,8 @@ function ColumnMenu<T>({
   const countId = useId();
   // Menyn förankras i knappens högerkant om den får plats, annars i vänsterkanten.
   const [align, setAlign] = useState<"left" | "right">("right");
+  // Under knappen om menyn får plats där, annars ovanför (knappen nära fönstrets nederkant).
+  const [side, setSide] = useState<"below" | "above">("below");
   const visibleCount = columns.filter((c) => !hidden.has(c.key)).length;
 
   useEffect(() => {
@@ -336,6 +338,13 @@ function ColumnMenu<T>({
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
   }, [open]);
+
+  // Läge räknas innan menyn visas, så att den aldrig syns på fel ställe först.
+  const place = () => {
+    setAlign(menuAlign(buttonRef.current));
+    const r = buttonRef.current?.getBoundingClientRect();
+    setSide(r ? menuSide(r, columnMenuHeight(columns.length), window.innerHeight) : "below");
+  };
 
   const close = (refocus: boolean) => {
     setOpen(false);
@@ -376,13 +385,13 @@ function ColumnMenu<T>({
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         onClick={() => {
-          if (!open) setAlign(menuAlign(buttonRef.current));
+          if (!open) place();
           setOpen((o) => !o);
         }}
         onKeyDown={(e) => {
           if (e.key === "ArrowDown" && !open) {
             e.preventDefault();
-            setAlign(menuAlign(buttonRef.current));
+            place();
             setOpen(true);
           }
         }}
@@ -396,9 +405,11 @@ function ColumnMenu<T>({
       </Button>
       {open ? (
         <div
+          data-side={side}
           className={cn(
-            "absolute top-full z-30 mt-1 w-60 max-w-[calc(100vw-2rem)] rounded-sm border border-line-strong bg-raised motion-safe:animate-[bl-fade_120ms_var(--bl-ease)]",
+            "absolute z-30 w-60 max-w-[calc(100vw-2rem)] rounded-sm border border-line-strong bg-raised motion-safe:animate-[bl-fade_120ms_var(--bl-ease)]",
             align === "right" ? "right-0" : "left-0",
+            side === "below" ? "top-full mt-1" : "bottom-full mb-1",
           )}
         >
           <div
@@ -461,6 +472,29 @@ function ColumnMenu<T>({
 
 const MENU_WIDTH = 240;
 const VIEWPORT_GUTTER = 16;
+/** Avståndet mellan knappen och menyn (mt-1/mb-1). */
+const MENU_OFFSET = 4;
+
+/** Menyns höjd: rader om 32 px (h-8), py-1, foten (en rad text-xs med pt-2/pb-2) och ramen. */
+export function columnMenuHeight(columnCount: number): number {
+  return columnCount * 32 + 8 + 33 + 2;
+}
+
+/**
+ * Öppnas menyn under eller ovanför knappen? Under om den ryms ovanför fönstrets
+ * nederkant, annars ovanför om det finns mer plats där (annars under ändå, och
+ * sidan kan rullas).
+ */
+export function menuSide(
+  button: { top: number; bottom: number },
+  menuHeight: number,
+  viewportHeight: number,
+): "below" | "above" {
+  const below = viewportHeight - VIEWPORT_GUTTER - (button.bottom + MENU_OFFSET);
+  if (menuHeight <= below) return "below";
+  const above = button.top - MENU_OFFSET - VIEWPORT_GUTTER;
+  return above > below ? "above" : "below";
+}
 
 function menuAlign(button: HTMLElement | null): "left" | "right" {
   if (!button) return "right";

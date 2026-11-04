@@ -25,7 +25,9 @@ export const reportMeta = {
   title: "Månadsrapport oktober 2026",
   recipient: `${STORE.name}, Centrumledningen`,
   period: OCTOBER,
-  generatedAt: new Date(2026, 10, 2, 9, 14),
+  // Ett ögonblick (09:14 svensk tid), inte lokal tid: sidfoten skriver det i Europe/Stockholm,
+  // och servern (UTC i drift) och webbläsaren måste få samma klockslag.
+  generatedAt: new Date("2026-11-02T08:14:00Z"),
 };
 
 export const machine = {
