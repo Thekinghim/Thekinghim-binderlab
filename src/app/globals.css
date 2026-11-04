@@ -196,13 +196,18 @@
    * Rörelse med liv: block glider upp i tur och ordning när sidan visas.
    * Användning: className="rise" och style={{"--i": n}} för fördröjning.
    * Respekterar prefers-reduced-motion (se ovan).
+   *
+   * Fyllnad bara bakåt (backwards), inte both: en animation som ligger kvar efter slutet
+   * gör blocket till en egen staplingskontext för alltid. Då ritas nästa block ovanpå
+   * menyer som sticker ut ur blocket (Kolumner i Enhetsekonomi hamnade under
+   * Investeringar på iPhone). Slutläget är ändå blockets vanliga utseende.
    */
   .rise {
-    animation: bl-rise 420ms var(--bl-ease) both;
+    animation: bl-rise 420ms var(--bl-ease) backwards;
     animation-delay: calc(var(--i, 0) * 55ms);
   }
   .fade-in {
-    animation: bl-fade 320ms var(--bl-ease) both;
+    animation: bl-fade 320ms var(--bl-ease) backwards;
   }
   /* Kort och rader som lyfter lätt vid hover */
   .lift {
