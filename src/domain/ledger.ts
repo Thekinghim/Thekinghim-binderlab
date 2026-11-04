@@ -18,7 +18,8 @@
  *
  * Vinstdelning (avtal 'profit_after_costs'): butikens andel räknas per butik, månad och
  * avtal på orderna MED inköpspris (profit-split.ts) och fördelas på just de orderna i
- * proportion till beloppet inkl. moms, med största-restmetoden. Order utan pris bär ingen
+ * proportion till varje orders egen vinst (belopp − inköp − kortavgift, kan vara negativ),
+ * så att varje titel bär sin egen delning (allocateSignedProportional). Order utan pris bär ingen
  * andel; `profitSplits` visar hur många de är, och butiksrapporten stoppas då.
  * Återbetalningar (`refunds`) dras från försäljningen i återbetalningens månad.
  *
@@ -41,7 +42,11 @@ import {
   createEconomicsContext,
   type EconomicsContext,
 } from "./economics";
-import { allocateLargestRemainder, allocateLargestRemainderBig } from "./money";
+import {
+  allocateLargestRemainder,
+  allocateLargestRemainderBig,
+  allocateSignedProportional,
+} from "./money";
 import { isProfitSplit, profitSplit, type ProfitSplitResult } from "./profit-split";
 import { rentByStoreMonth, type StoreMonthRent } from "./rent";
 import { vmbApplies, vmbVat, type VmbResult } from "./vmb";
@@ -464,8 +469,13 @@ function allocateProfitSplits(
       vmbBeforeSplit: g.agreement.vmbBeforeSplit === true,
     });
     if (priced.length > 0 && result.storeShareOre !== 0) {
-      const shares = allocateLargestRemainder(
+      // Butikens andel fördelas efter varje orders egen vinst (belopp − inköp − kortavgift),
+      // så att varje titel visar sin egen delning: 50 % av 35 kr vinst ger 17,50 kr kvar.
+      // En order med förlust får en negativ andel (butiken bär sin del av förlusten).
+      // Summan per butik och månad är densamma som förut.
+      const shares = allocateSignedProportional(
         result.storeShareOre,
+        priced.map((e) => e.grossOre - e.costOre - e.cardFeeOre),
         priced.map((e) => e.grossOre),
       );
       for (let i = 0; i < priced.length; i++) priced[i]!.commissionOre = shares[i]!;

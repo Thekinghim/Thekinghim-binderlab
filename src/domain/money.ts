@@ -299,3 +299,49 @@ export function allocateLargestRemainderBig(
   }
   return out;
 }
+
+/**
+ * Fördelar `totalOre` i proportion till vikter som får vara negativa (t.ex. varje orders
+ * vinst): andel_i = total × v_i / Σv, avrundat nedåt, och resten (0..n−1 öre) läggs ett öre
+ * i taget på de största resterna. Summan blir exakt `totalOre`. Är Σv = 0 används
+ * `fallbackWeights` (icke-negativa) med största-restmetoden.
+ */
+export function allocateSignedProportional(
+  totalOre: number,
+  weights: readonly number[],
+  fallbackWeights: readonly number[],
+): number[] {
+  assertSafeInteger(totalOre, "Beloppet att fördela");
+  const n = weights.length;
+  let sum = 0n;
+  for (let i = 0; i < n; i++) {
+    assertSafeInteger(weights[i], "Vikten");
+    sum += BigInt(weights[i]!);
+  }
+  if (sum === 0n) return allocateLargestRemainder(totalOre, fallbackWeights);
+  // Normalisera så att nämnaren är positiv: total × v / Σv = (−total) × v / (−Σv).
+  const sign = sum < 0n ? -1n : 1n;
+  const total = BigInt(totalOre) * sign;
+  const den = sum * sign;
+  const base: bigint[] = new Array<bigint>(n);
+  const rest: bigint[] = new Array<bigint>(n);
+  let allocated = 0n;
+  for (let i = 0; i < n; i++) {
+    const num = total * BigInt(weights[i]!);
+    let q = num / den;
+    let r = num % den;
+    if (r < 0n) {
+      q -= 1n;
+      r += den;
+    }
+    base[i] = q;
+    rest[i] = r;
+    allocated += q;
+  }
+  let left = BigInt(totalOre) - allocated;
+  const order = Array.from({ length: n }, (_, i) => i).sort((a, b) =>
+    rest[b]! > rest[a]! ? 1 : rest[b]! < rest[a]! ? -1 : a - b,
+  );
+  for (let k = 0; left > 0n; k++, left--) base[order[k % n]!]! += 1n;
+  return base.map((v) => Number(v));
+}
