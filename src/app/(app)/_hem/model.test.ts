@@ -167,6 +167,18 @@ describe("buildHomeModel", () => {
     );
   });
 
+  it("utan fasta kostnader: ingen rad 'Före fasta kostnader' och nyckeltalet heter Vinst", () => {
+    const input = inputFor(THIRTY, THIRTY_BEFORE);
+    const withCosts = buildHomeModel({ ...input, costLines: { rent: false, fixed: true } });
+    const without = buildHomeModel({ ...input, costLines: { rent: false, fixed: false } });
+    expect(plain(without.headline.lead.join(" "))).toBe("22,5 % saknar inköpspris.");
+    expect(without.kpis.find((k) => k.id === "profit")?.label).toBe("Vinst");
+    expect(withCosts.kpis.find((k) => k.id === "profit")?.label).toBe("Vinst före fasta kostnader");
+    // Bara texten ändras: talen är desamma.
+    expect(without.kpis.map((k) => k.value)).toEqual(withCosts.kpis.map((k) => k.value));
+    expect(without.headline.title).toBe(withCosts.headline.title);
+  });
+
   it("tar vinsten för hela perioden, som Lönsamhet, inklusive hyra för dagar utan order", () => {
     const rent = {
       ...SOURCES,
@@ -572,6 +584,9 @@ describe("homeHeadline", () => {
     expect(plain(h.aside)).toBe("Intäkt 79 987 kr, +12 %.");
     expect(h.lead).toEqual(["Före fasta kostnader."]);
     expect(h.split).toEqual([]);
+  });
+  it("utan fasta kostnader: ingen rad under rubriken", () => {
+    expect(homeHeadline({ ...base, fixedCosts: false }).lead).toEqual([]);
   });
   it("rubriken är högst åtta ord", () => {
     const h = homeHeadline({ ...base, storesProfitOre: 693_300, showStoreShare: true });

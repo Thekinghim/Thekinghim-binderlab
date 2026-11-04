@@ -52,7 +52,8 @@ function statement(s: AccountantSnapshot) {
       value: t.costOre,
     },
     { label: "Provision till butiker", value: t.commissionOre },
-    { label: "Hyra till butiker", value: t.rentOre },
+    // Hyran bara när någon hyra räknats (de flesta avtal har ingen).
+    ...(t.rentOre !== 0 ? [{ label: "Hyra till butiker", value: t.rentOre }] : []),
     { label: "Butiksersättning totalt", value: t.compensationOre, strong: true },
   ];
 }
@@ -116,13 +117,17 @@ function storeColumns(s: AccountantSnapshot): ReportColumn<AccountantStoreRow>[]
       render: (r) => kronor(r.commissionOre),
       total: kronor(t.commissionOre),
     },
-    {
-      key: "rent",
-      header: "Hyra",
-      numeric: true,
-      render: (r) => kronor(r.rentOre),
-      total: kronor(t.rentOre),
-    },
+    ...(t.rentOre !== 0
+      ? [
+          {
+            key: "rent",
+            header: "Hyra",
+            numeric: true,
+            render: (r: AccountantStoreRow) => kronor(r.rentOre),
+            total: kronor(t.rentOre),
+          },
+        ]
+      : []),
     {
       key: "comp",
       header: "Ersättning",
@@ -354,7 +359,11 @@ export function AccountantReportDocument({
           index={3}
           eyebrow="Per butik"
           title={`Butiksersättning ${kronor(t.compensationOre)}.`}
-          aside={`Provision ${kronor(t.commissionOre)} och hyra ${kronor(t.rentOre)}.`}
+          aside={
+            t.rentOre !== 0
+              ? `Provision ${kronor(t.commissionOre)} och hyra ${kronor(t.rentOre)}.`
+              : `Provision ${kronor(t.commissionOre)}.`
+          }
         >
           <ReportTable
             caption="Försäljning och butiksersättning per butik."

@@ -100,6 +100,25 @@ describe("systemprompten", () => {
     expect(text).toContain("Du har bara lagerverktyg");
   });
 
+  it("utan hyra och fasta kostnader säger sammanhanget att inköpet är enda kostnaden", () => {
+    const ctx = {
+      organizationName: "Binderlab",
+      role: "owner" as const,
+      today: "2026-11-02",
+      timeZone: "Europe/Stockholm",
+      dataStart: "2026-10-13",
+    };
+    const none = contextBlock({ ...ctx, costLines: { rent: false, fixed: false } });
+    expect(none).toContain("Den enda kostnaden är inköpet av packen");
+    expect(none).toContain("Nämn inte hyra eller fasta kostnader.");
+    expect(contextBlock({ ...ctx, costLines: { rent: true, fixed: false } })).toContain(
+      "Nämn inte fasta kostnader.",
+    );
+    const both = contextBlock({ ...ctx, costLines: { rent: true, fixed: true } });
+    expect(both).not.toContain("Kostnader:");
+    expect(contextBlock(ctx)).not.toContain("Kostnader:");
+  });
+
   it("första blocket är detsamma för alla (cachas)", () => {
     const a = systemBlocks({
       organizationName: "A",

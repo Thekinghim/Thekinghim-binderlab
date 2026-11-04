@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { ALL_COST_LINES, type CostLines } from "@/lib/cost-lines";
 import { formatInt, formatPercent, formatSek, NBSP } from "@/lib/format";
 
 import type { Bridge, UnpricedBlock } from "../_lib/model";
@@ -15,8 +16,15 @@ function Row({ label, value, sub }: { label: string; value: string; sub?: boolea
   );
 }
 
-/** Butiksersättningen uppdelad i provision och hyra. */
-export function CompensationBreakdown({ bridge }: { bridge: Bridge }) {
+/** Butiksersättningen uppdelad i provision och hyra (hyran bara när något avtal har hyra). */
+export function CompensationBreakdown({
+  bridge,
+  costLines = ALL_COST_LINES,
+}: {
+  bridge: Bridge;
+  costLines?: CostLines;
+}) {
+  const showRent = costLines.rent || bridge.rentOre !== 0;
   return (
     <details className="group border-t border-line pt-4">
       <summary className={SUMMARY}>
@@ -25,8 +33,8 @@ export function CompensationBreakdown({ bridge }: { bridge: Bridge }) {
       </summary>
       <dl className="fade-in mt-3 flex flex-col">
         <Row label="Provision" value={kr(bridge.commissionOre)} />
-        <Row label="Hyra" value={kr(bridge.rentOre)} />
-        {bridge.unallocatedRentOre > 0 ? (
+        {showRent ? <Row label="Hyra" value={kr(bridge.rentOre)} /> : null}
+        {showRent && bridge.unallocatedRentOre > 0 ? (
           <Row label="varav hyra utan prissatta order" value={kr(bridge.unallocatedRentOre)} sub />
         ) : null}
       </dl>

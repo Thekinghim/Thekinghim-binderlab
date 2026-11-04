@@ -32,6 +32,7 @@ import {
 import { todayIn, toIsoDate } from "@/components/shell/period-state";
 import type { DataScope, MachineRecord, SyncInfo, TitleRecord } from "@/server/data/core/types";
 import type { EconomicsSources } from "@/domain";
+import { ALL_COST_LINES, type CostLines } from "@/lib/cost-lines";
 import { formatPercent } from "@/lib/format";
 
 import { homeHeadline, homeSpanText, type HomeHeadline } from "./headline";
@@ -241,6 +242,8 @@ export interface HomeModelInput {
   readonly extraTodos?: readonly HomeExtraTodo[];
   /** Vyknappen "Visa butikernas andel" (?andel=1). Med filter visas andelen ändå. */
   readonly showStoreShare?: boolean;
+  /** Hyra och fasta kostnader finns (annars döljs "före fasta kostnader"). Saknas = finns. */
+  readonly costLines?: CostLines;
 }
 
 // ---------------------------------------------------------------------------
@@ -356,6 +359,8 @@ function buildKpis(args: {
   unpriced: HomeUnpriced | null;
   /** Vinsten bär VMB-moms; `preliminary` när perioden inte är avslutade hela månader. */
   vmb: { readonly applies: boolean; readonly preliminary: boolean };
+  /** Det finns fasta kostnader: vinsten heter "Vinst före fasta kostnader". */
+  fixedCosts: boolean;
 }): HomeKpi[] {
   const { km, prev, split, prevOurOre, filtered, showShare, days, prevDays, compareDays } = args;
   const { unpriced, vmb } = args;
@@ -733,6 +738,7 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
     compareDays,
     unpriced,
     vmb: { applies: byTitle.vmb.applies, preliminary: vmbPreliminary(byTitle.vmb, today) },
+    fixedCosts: (input.costLines ?? ALL_COST_LINES).fixed,
   });
 
   let daily: HomeDaily | null = null;
@@ -793,6 +799,7 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
       today,
       dataStart,
       hasOrdersToday,
+      fixedCosts: (input.costLines ?? ALL_COST_LINES).fixed,
     }),
     period,
     compare,

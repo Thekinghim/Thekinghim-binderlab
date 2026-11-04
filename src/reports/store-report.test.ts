@@ -32,6 +32,10 @@ describe("butiksersättning", () => {
     expect(plain(r.compensation.steps[0]!.calculation)).toBe(
       "10 % av 304,00 kr exkl. moms (6 order) = 30,40 kr",
     );
+    // Utan hyra i avtalet nämns ingen hyra i totalen ("+ hyra 0,00 kr" stod förut).
+    const total = r.compensation.steps.find((x) => x.kind === "total")!;
+    expect(plain(total.calculation)).toBe("Provision 30,40 kr");
+    expect(total.evidence.figures.map((f) => f.label)).not.toContain("Hyra");
     const d = compensationFromDomain(src, "s-1", "2026-11");
     expect(r.compensation.totalOre).toBe(d.totalOre);
   });

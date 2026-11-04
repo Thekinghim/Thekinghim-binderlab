@@ -89,7 +89,9 @@ function resultLines(s: PartnerSnapshot): ResultLine[] {
         ]
       : []),
     { label: "Provision", now: r.commissionOre, prev: null, lastYear: null, kind: "minus" },
-    { label: "Hyra", now: r.rentOre, prev: null, lastYear: null, kind: "minus" },
+    ...(r.rentOre !== 0
+      ? [{ label: "Hyra", now: r.rentOre, prev: null, lastYear: null, kind: "minus" as const }]
+      : []),
     {
       label: r.profitOre < 0 ? "Förlust" : "Vinst",
       now: r.profitOre,
@@ -313,7 +315,7 @@ export function PartnerReportDocument({
             <ReportNote>
               {formatInt(res.unpricedOrders)} order ({sek(res.unpricedRevenueOre)},{" "}
               {pct(res.unpricedShareBp)} av intäkten) saknar inköpspris och ingår inte i vinsten.
-              Hyran dras ändå i sin helhet.
+              {res.rentOre !== 0 ? " Hyran dras ändå i sin helhet." : null}
             </ReportNote>
           ) : null}
         </ReportSection>
@@ -486,8 +488,9 @@ export function PartnerReportDocument({
         </ReportSection>
 
         <ReportNote className="mt-auto">
-          Vinst = intäkt − inköp − avgifter − butiksersättning, för order med inköpspris. Hyran dras
-          alltid i sin helhet. Beräkningsversion {snapshot.calcVersion}.
+          Vinst = intäkt − inköp − avgifter − butiksersättning, för order med inköpspris.
+          {snapshot.report.result.rentOre !== 0 ? " Hyran dras alltid i sin helhet." : null}{" "}
+          Beräkningsversion {snapshot.calcVersion}.
         </ReportNote>
       </ReportPage>
     </ReportDocument>

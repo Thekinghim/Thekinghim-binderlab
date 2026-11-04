@@ -47,6 +47,7 @@ export function TitleTable({
   today,
   periodLabel,
   criticalIds,
+  rent = true,
 }: {
   rows: readonly TitleRow[];
   selectedId: string | null;
@@ -59,6 +60,11 @@ export function TitleTable({
    * åtgärd visas som varning med samma text.
    */
   criticalIds: readonly string[];
+  /**
+   * Något avtal har hyra: kolumnerna "Hyra per order" och "Kvar efter hyra" visas. Utan
+   * hyra är "Kvar per order" allt som blir kvar, och kolumnerna döljs.
+   */
+  rent?: boolean;
 }) {
   const router = useRouter();
   const criticalKey = criticalIds.join(",");
@@ -66,6 +72,28 @@ export function TitleTable({
   const columns = useMemo<Column<TitleRow>[]>(() => {
     const statusOf = (r: TitleRow): Status =>
       TAG[r.status] === "critical" && !critical.has(r.id) ? "warning" : TAG[r.status];
+    const rentColumns: Column<TitleRow>[] = [
+      {
+        key: "rent",
+        header: "Hyra per order",
+        numeric: true,
+        hideOnMobile: true,
+        // Kvar efter hyra visas; hyran själv finns i kolumnvalet (så att status får plats).
+        defaultHidden: true,
+        sortValue: (r) => r.rentOre ?? Number.NaN,
+        csv: (r) => (r.rentOre === null ? "" : kr(r.rentOre)),
+        render: (r) => money(r.rentOre),
+      },
+      {
+        key: "afterRent",
+        header: "Kvar efter hyra",
+        numeric: true,
+        hideOnMobile: true,
+        sortValue: (r) => r.leftAfterRentOre ?? Number.NaN,
+        csv: (r) => (r.leftAfterRentOre === null ? "" : kr(r.leftAfterRentOre)),
+        render: (r) => money(r.leftAfterRentOre),
+      },
+    ];
     return [
       {
         key: "name",
@@ -188,26 +216,7 @@ export function TitleTable({
         csv: (r) => (r.marginBp === null ? "" : r.marginBp / 10_000),
         render: (r) => (r.marginBp === null ? MISSING : formatPercent(r.marginBp / 10_000)),
       },
-      {
-        key: "rent",
-        header: "Hyra per order",
-        numeric: true,
-        hideOnMobile: true,
-        // Kvar efter hyra visas; hyran själv finns i kolumnvalet (så att status får plats).
-        defaultHidden: true,
-        sortValue: (r) => r.rentOre ?? Number.NaN,
-        csv: (r) => (r.rentOre === null ? "" : kr(r.rentOre)),
-        render: (r) => money(r.rentOre),
-      },
-      {
-        key: "afterRent",
-        header: "Kvar efter hyra",
-        numeric: true,
-        hideOnMobile: true,
-        sortValue: (r) => r.leftAfterRentOre ?? Number.NaN,
-        csv: (r) => (r.leftAfterRentOre === null ? "" : kr(r.leftAfterRentOre)),
-        render: (r) => money(r.leftAfterRentOre),
-      },
+      ...(rent ? rentColumns : []),
       {
         key: "orders",
         header: "Order",
@@ -218,7 +227,7 @@ export function TitleTable({
         render: (r) => formatInt(r.orders),
       },
     ];
-  }, [baseQuery, selectedId, today, critical]);
+  }, [baseQuery, selectedId, today, critical, rent]);
 
   // Klick var som helst på raden öppnar titelns prisredigerare (namnet är länken för tangentbordet).
   const openRow = useCallback(

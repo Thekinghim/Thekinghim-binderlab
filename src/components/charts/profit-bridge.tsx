@@ -92,7 +92,7 @@ export function ProfitBridge({
             // Hela ord när platsen inte räcker (ordlistan avråder från förkortningar).
             short: "Till butiken",
             value: -storeCompensation,
-            name: `${L.storeCompensation} (provision och hyra)`,
+            name: `${L.storeCompensation} (butikens del)`,
             ...f("storeCompensation"),
           },
         ]

@@ -26,6 +26,7 @@ import { deniedHref, routeById, type RouteId } from "@/components/shell/nav";
 import { VMB_HEADER, type SearchParamsInput } from "@/components/shell/period-state";
 import type { MemberRole } from "@/db/schema";
 import type { IsoDate, Period } from "@/domain";
+import type { CostLines } from "@/lib/cost-lines";
 import { ACTIVE_ORG_COOKIE } from "@/server/auth/flows";
 import { nextCookieJar } from "@/server/auth/next-cookies";
 import { AuthorizationError, requireUser, type OrganizationMembership } from "@/server/session";
@@ -35,6 +36,7 @@ import {
   loadDataStartFor,
   loadDomainInputFor,
   loadLastOrderDateFor,
+  loadCostLinesFor,
   loadMasterDataFor,
   loadOrganizationsFor,
   loadSalesCountsFor,
@@ -178,6 +180,14 @@ export async function loadPeriod(searchParams: SearchParamsInput): Promise<AppPe
 /** Titlar, automater, butiker och placeringar. Alla roller. */
 export const loadMasterData = cache(async (): Promise<MasterData> =>
   loadMasterDataFor(await requireViewer(), requestNow()),
+);
+
+/**
+ * Vilka kostnadsrader sidorna visar: hyra och fasta kostnader bara när organisationen har
+ * någon (@/lib/cost-lines). Ägare, admin och läsare. Memoiseras per förfrågan.
+ */
+export const loadCostLines = cache(async (): Promise<CostLines> =>
+  loadCostLinesFor(await requireViewer()),
 );
 
 /**

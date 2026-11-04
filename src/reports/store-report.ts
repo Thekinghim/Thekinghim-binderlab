@@ -953,12 +953,17 @@ function buildCompensation(
   const shareOre = splits.reduce((s, x) => s + x.storeShareOre, 0);
   const pending = splits.some((x) => x.pending);
   const totalOre = shareOre + commissionOre + rentOre;
+  // Hyran nämns bara när ett avtal i månaden har hyra (eller en hyra ändå räknats).
+  const hasRent = inMonth.some((a) => (a.monthlyRentOre ?? 0) > 0);
+  const showRent = rentOre !== 0 || hasRent;
   const parts = [
     ...(splits.length > 0 ? [`andel ${krText(shareOre, "always")}`] : []),
     ...(commissionOre !== 0 || splits.length === 0
       ? [`provision ${krText(commissionOre, "always")}`]
       : []),
-    ...(rentOre !== 0 || splits.length === 0 ? [`hyra ${krText(rentOre, "always")}`] : []),
+    ...(rentOre !== 0 || (splits.length === 0 && hasRent)
+      ? [`hyra ${krText(rentOre, "always")}`]
+      : []),
   ];
   const capitalized = parts.join(" + ").replace(/^./, (c) => c.toUpperCase());
   steps.push({
@@ -968,16 +973,17 @@ function buildCompensation(
       parts.length === 1 ? capitalized : `${capitalized} = ${krText(totalOre, "always")}`,
     amountOre: totalOre,
     evidence: evidence({
-      rule:
-        splits.length > 0
-          ? "Butiksersättning = andel av vinsten + provision + hyra."
-          : "Butiksersättning = provision + hyra.",
+      rule: `Butiksersättning = ${[
+        ...(splits.length > 0 ? ["andel av vinsten"] : []),
+        "provision",
+        ...(showRent ? ["hyra"] : []),
+      ].join(" + ")}.`,
       scope: { period, storeId },
       orderCount: entries.length,
       figures: [
         ...(splits.length > 0 ? [fig("Andel", shareOre, "ore")] : []),
         fig("Provision", commissionOre, "ore"),
-        fig("Hyra", rentOre, "ore"),
+        ...(showRent ? [fig("Hyra", rentOre, "ore")] : []),
         fig("Ersättning", totalOre, "ore"),
       ],
     }),
@@ -985,7 +991,6 @@ function buildCompensation(
 
   const hasSplit = inMonth.some((a) => isProfitSplit(a));
   const hasCommission = inMonth.some((a) => !isProfitSplit(a) && (a.commissionBp ?? 0) > 0);
-  const hasRent = inMonth.some((a) => (a.monthlyRentOre ?? 0) > 0);
   const model: CompensationModel = hasSplit
     ? hasRent
       ? "profit_split_and_rent"
@@ -1015,7 +1020,7 @@ function buildCompensation(
       orderCount: entries.length,
       figures: [
         fig("Provision", commissionOre, "ore"),
-        fig("Hyra", rentOre, "ore"),
+        ...(showRent ? [fig("Hyra", rentOre, "ore")] : []),
         fig("Ersättning", totalOre, "ore"),
       ],
       dates: inMonth.map((a) => a.validFrom),

@@ -225,7 +225,7 @@ export function buildAccountantReport(sources: ReportSources, period: Period): A
     rentOre: t.rentOre,
     compensationOre: commissionOre + t.rentOre,
     evidence: evidence({
-      rule: "Summor för alla order i perioden. Inköp bara för order med inköpspris; hyra per butik och månad.",
+      rule: `Summor för alla order i perioden. Inköp bara för order med inköpspris${t.rentOre !== 0 ? "; hyra per butik och månad" : ""}.`,
       scope: { period },
       orderCount: t.orders,
       figures: [
@@ -233,7 +233,7 @@ export function buildAccountantReport(sources: ReportSources, period: Period): A
         fig("Inköp", t.costOre, "ore"),
         fig("Order utan inköpspris", t.unpricedOrders, "count"),
         fig("Provision", commissionOre, "ore"),
-        fig("Hyra", t.rentOre, "ore"),
+        ...(t.rentOre !== 0 ? [fig("Hyra", t.rentOre, "ore")] : []),
       ],
     }),
   };
@@ -283,7 +283,7 @@ export function buildAccountantReport(sources: ReportSources, period: Period): A
         split: isStore ? (splitOf.get(r.key) ?? null) : null,
         evidence: evidence({
           rule: isStore
-            ? "Butikens order = order från automater som stod i butiken orderns dag. Ersättning = provision + hyra."
+            ? `Butikens order = order från automater som stod i butiken orderns dag. Ersättning = provision${rent !== 0 ? " + hyra" : ""}.`
             : "Order från automater som inte var placerade i någon butik den dagen; ingen ersättning.",
           scope: isStore ? { period, storeId: r.key } : { period },
           orderCount: a.orders,
@@ -291,7 +291,7 @@ export function buildAccountantReport(sources: ReportSources, period: Period): A
             ...amountFigures(a),
             fig("Inköp", r.costOre, "ore"),
             fig("Provision", commission, "ore"),
-            fig("Hyra", rent, "ore"),
+            ...(rent !== 0 ? [fig("Hyra", rent, "ore")] : []),
           ],
         }),
       };

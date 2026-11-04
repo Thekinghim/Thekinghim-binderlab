@@ -516,7 +516,7 @@ export function compensationHeadline(
       aside:
         month.totalOre > 0
           ? "Inget avtal gäller i dag, så ingen ny ersättning räknas."
-          : "Ingen provision eller hyra räknas förrän ett avtal läggs in.",
+          : "Butiken får ingen del förrän ett avtal läggs in.",
     };
   }
   const parts: string[] = [];

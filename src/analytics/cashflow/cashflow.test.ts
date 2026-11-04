@@ -132,6 +132,13 @@ describe("cashflow: per månad", () => {
       ["fixed:sw:2026-12-15", 10_000, "forecast"],
     ]);
     expect(norm(f[0]!.label)).toBe("Försäkring 3 000 kr per kvartal");
+    expect(r.assumptions).toContain("Fasta kostnader före i dag räknas som betalda enligt plan.");
+  });
+
+  it("utan fasta kostnader och hyra: inget antagande om fasta kostnader, ingen hyra i texten", () => {
+    const none = cashflow({ ...BASE, fixedCosts: [] });
+    expect(none.assumptions.join(" ")).not.toContain("Fasta kostnader");
+    expect(none.items.filter((i) => i.kind === "fixed-cost")).toEqual([]);
   });
 
   it("buckets: oktober faktisk, november blandad, december prognos; saldot går under noll i november", () => {

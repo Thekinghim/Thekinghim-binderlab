@@ -220,8 +220,10 @@ export default async function LonsamhetPage({
                 <LonsamhetBridge bridge={b} />
               </Panel>
               <Panel className="flex flex-col lg:col-span-5">
-                <ResultAfterProfitPanel result={result} />
-                {model.showStoreShare ? <CompensationBreakdown bridge={b} /> : null}
+                <ResultAfterProfitPanel result={result} costLines={input.costLines} />
+                {model.showStoreShare ? (
+                  <CompensationBreakdown bridge={b} costLines={input.costLines} />
+                ) : null}
                 <UnpricedSummary unpriced={model.unpriced} />
               </Panel>
             </div>

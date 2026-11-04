@@ -149,6 +149,7 @@ export async function loadHomeWith(
     extraTodos: extras,
     // Vyknappen "Visa butikernas andel"; med filter visas andelen ändå (buildHomeModel).
     showStoreShare: parseStoreShareView(searchParams),
+    costLines: input.costLines,
   });
 
   let scope: HomeScopeLabel | null = null;

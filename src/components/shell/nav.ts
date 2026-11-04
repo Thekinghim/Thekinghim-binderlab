@@ -184,7 +184,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     section: "main",
     roles: READERS,
     phase: 5,
-    lead: "Placeringar, hyra och utfall.",
+    lead: "Placeringar, avtal och utfall.",
   },
   {
     id: "inkopspriser",

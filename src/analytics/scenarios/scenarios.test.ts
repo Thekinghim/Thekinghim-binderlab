@@ -171,6 +171,31 @@ describe("priceChangeScenario", () => {
     );
   });
 
+  it("vinstdelning utan VMB före delningen: butikens del av ändringen räknas utan VMB-moms", () => {
+    const split = (vmbBeforeSplit: boolean) =>
+      priceChangeScenario({
+        ...priceInput({
+          agreements: [
+            agreement("s-1", "2026-01-01", null, {
+              commissionBp: 5_000,
+              commissionBase: "profit_after_costs",
+              vmbBeforeSplit,
+            }),
+          ],
+        }),
+        titleId: "t-a",
+        deltaOre: 1000,
+      });
+    // Utan VMB (standard): +10 kr per pack delas 50/50 → +5 kr × 10 pack = +50 kr.
+    const off = split(false);
+    expect(off.selected.profitChangeOre).toBe(5_000);
+    expect(off.text).not.toContain("hyran");
+    expect(off.detail).not.toContain("hyran");
+    // Med "VMB före delning": butikens del räknas på vinsten efter 20 % VMB-moms på
+    // marginalen (+8 kr per pack) → butiken +4 kr, vi +6 kr per pack = +60 kr.
+    expect(split(true).selected.profitChangeOre).toBe(6_000);
+  });
+
   it("hyran är fast och ingår i titelns vinst", () => {
     const res = priceChangeScenario({
       ...priceInput({

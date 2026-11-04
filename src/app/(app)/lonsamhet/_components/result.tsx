@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { PanelSection } from "@/components/ui/frame";
+import { ALL_COST_LINES, type CostLines } from "@/lib/cost-lines";
 import { formatInt, formatPercent, formatSek, MINUS, NBSP } from "@/lib/format";
 
 import type { ResultAfterProfit } from "../_lib/result";
@@ -54,10 +55,19 @@ function Line({
  * vattenfallet.
  * Vinsten är densamma som vattenfallets; inget ovanför ändras.
  */
-export function ResultAfterProfitPanel({ result }: { result: ResultAfterProfit }) {
+export function ResultAfterProfitPanel({
+  result,
+  costLines = ALL_COST_LINES,
+}: {
+  result: ResultAfterProfit;
+  /** Utan fasta kostnader döljs raderna för dem (beloppen är 0); länken lägger till en. */
+  costLines?: CostLines;
+}) {
   const r = result;
   const margin =
     r.resultMarginBp === null ? undefined : `${formatPercent(r.resultMarginBp / 10_000)} marginal`;
+  // Fasta kostnader visas när organisationen har några (eller om ett belopp ändå finns).
+  const showFixed = costLines.fixed || (r.fixedCostOre ?? 0) !== 0;
   return (
     <PanelSection label="Efter vinsten">
       <dl className="flex flex-col">
@@ -83,9 +93,10 @@ export function ResultAfterProfitPanel({ result }: { result: ResultAfterProfit }
             r.freePackCount > 0 ? "Efter återbetalningar och gratis-pack" : "Efter återbetalningar"
           }
           value={kr(r.profitAfterGiveawaysOre)}
+          detail={showFixed ? undefined : margin}
           total
         />
-        {r.fixedCostOre === null ? (
+        {!showFixed ? null : r.fixedCostOre === null ? (
           <Line label="Fasta kostnader" value="–" detail={r.fixedNote ?? undefined} />
         ) : (
           <Line
@@ -98,14 +109,18 @@ export function ResultAfterProfitPanel({ result }: { result: ResultAfterProfit }
             }
           />
         )}
-        <Line
-          label={
-            r.fixedCostOre === null ? "Efter återbetalningar, utan fasta" : "Efter fasta kostnader"
-          }
-          value={kr(r.resultOre)}
-          detail={margin}
-          total
-        />
+        {showFixed ? (
+          <Line
+            label={
+              r.fixedCostOre === null
+                ? "Efter återbetalningar, utan fasta"
+                : "Efter fasta kostnader"
+            }
+            value={kr(r.resultOre)}
+            detail={margin}
+            total
+          />
+        ) : null}
       </dl>
       <p className="flex flex-wrap gap-x-6 gap-y-1">
         <Link href="/inkorg" className={LINK}>
@@ -123,7 +138,7 @@ export function ResultAfterProfitPanel({ result }: { result: ResultAfterProfit }
           </Link>
         ) : null}
         <Link href="/ekonomi?vy=fasta" className={LINK}>
-          <span>Fasta kostnader</span>
+          <span>{showFixed ? "Fasta kostnader" : "Lägg till fast kostnad"}</span>
           <span aria-hidden className="text-subtle">
             →
           </span>

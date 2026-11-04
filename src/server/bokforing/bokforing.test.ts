@@ -615,6 +615,31 @@ describe("sammanfattningen", () => {
     expect(html).toContain("20 % av marginalen");
     expect(html).toContain("kontrolleras av Talenom");
     expect(html).not.toMatch(/<script/i);
+    // En butik har hyra: kolumnen och "Provision och hyra" visas.
+    expect(html).toContain('<th class="n">Hyra</th>');
+    expect(html).toContain("Provision och hyra");
+  });
+
+  it("utan hyra i någon butik: ingen hyreskolumn och avtalet heter Provision", () => {
+    const base = figures("2026-10");
+    const noRent = {
+      ...base,
+      stores: base.stores.map((s) => ({ ...s, rentOre: 0, totalOre: s.shareOre })),
+    };
+    const [b] = bookVmb([noRent], 0);
+    const html = summaryHtml({
+      company: "Binderlab",
+      orgNumber: null,
+      book: b!,
+      verification: monthVerification(b!, DEFAULT_PLAN, "A", 10),
+      accountNames: new Map(),
+      receipts: 0,
+      generatedOn: "2026-11-03",
+      sentOn: null,
+    });
+    expect(html).not.toContain("Hyra");
+    expect(html).not.toContain("hyra");
+    expect(html).toContain("<td>Provision</td>");
   });
 });
 

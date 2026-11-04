@@ -9,6 +9,7 @@
 import type { MachineRef, StockLevelRef, StoreRef, TitleRef } from "@/analytics/todos";
 import type { PeriodKey, ResolvedPeriod } from "@/components/shell/period-state";
 import type { MemberRole } from "@/db/schema";
+import type { CostLines } from "@/lib/cost-lines";
 import type {
   EconomicsSources,
   IsoDate,
@@ -171,6 +172,11 @@ export interface DomainInput extends MasterData {
   /** Investeringar (för unitEconomics), filtrerade på automat vid filter. */
   readonly investments: MachineInvestment[];
   readonly settings: OrgSettings;
+  /**
+   * Hyra och fasta kostnader finns i organisationen (hela organisationen, inte filtret).
+   * Saknas = allt visas. Bara visning, se @/lib/cost-lines.
+   */
+  readonly costLines?: CostLines;
   readonly diagnostics: {
     /** Order i perioden som saknar titel (räknas inte, ska inte förekomma efter import). */
     readonly ordersWithoutTitle: number;

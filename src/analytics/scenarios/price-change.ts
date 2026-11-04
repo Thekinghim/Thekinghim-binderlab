@@ -208,8 +208,10 @@ export function priceChangeScenario(input: PriceChangeScenarioInput): PriceChang
         ? null
         : ledger.context.agreements.agreementOn(e.storeId, e.order.businessDate);
     if (isProfitSplit(agreement)) {
-      const orderProfit = (g: number, fee: number) =>
-        g - vmbVatOfMargin(g - e.costOre) - e.costOre - fee;
+      // Samma regel som avtalet (profitSplit): VMB före delningen bara när avtalet säger det.
+      const splitVmb = (margin: number) =>
+        agreement!.vmbBeforeSplit === true ? vmbVatOfMargin(margin) : 0;
+      const orderProfit = (g: number, fee: number) => g - splitVmb(g - e.costOre) - e.costOre - fee;
       afterShare =
         e.commissionOre +
         applyBp(
@@ -298,14 +300,14 @@ export function priceChangeScenario(input: PriceChangeScenarioInput): PriceChang
   const perPack = n === 0 ? null : roundHalfUp(contribution, n);
   const newPerPack = n === 0 ? null : roundHalfUp(newContribution, n);
 
-  const rule =
-    "Varje prissatt order av titeln räknas om med nytt pris (moms, avgift och provision enligt samma regler som lönsamheten, inköpet oförändrat). Volymfaktor = 1 + elasticitet × prisändring / snittpris. Hyran är fast.";
+  const rule = `Varje prissatt order av titeln räknas om med nytt pris (moms, avgift och provision enligt samma regler som lönsamheten, inköpet oförändrat). Volymfaktor = 1 + elasticitet × prisändring / snittpris.${rent !== 0 ? " Hyran är fast." : ""}`;
   const figures = [
     fig("deltaOre", "Prisändring per pack", deltaOre, "ore"),
     fig("units", "Sålda pack i perioden", n, "packs"),
     fig("contributionOre", "Bidrag i dag", contribution, "ore"),
     fig("newContributionOre", "Bidrag med nytt pris, samma volym", newContribution, "ore"),
-    fig("rentOre", "Hyra (fast)", rent, "ore"),
+    // Hyran bara när titeln bär någon (utan hyra är bidraget allt som blir kvar).
+    ...(rent !== 0 ? [fig("rentOre", "Hyra (fast)", rent, "ore")] : []),
     fig("elasticityHundredths", "Antagen elasticitet", selectedE, "hundredths"),
     fig("profitChangeOre", "Vinständring", selected.profitChangeOre, "ore"),
   ];
@@ -357,7 +359,7 @@ export function priceChangeScenario(input: PriceChangeScenarioInput): PriceChang
   parts.push(
     `bidrag per pack efter inköp, avgifter och provision ${krExact(perPack!)} → ${krExact(newPerPack!)}`,
   );
-  parts.push(`hyran ${kr(rent)} är fast`);
+  if (rent !== 0) parts.push(`hyran ${kr(rent)} är fast`);
   let detail = `${parts.join(", ")}.`;
   if (breakEvenVolume !== null && deltaOre > 0 && breakEvenVolume < 0) {
     detail += ` Vinsten är oförändrad om ${volumeText(breakEvenVolume)}${

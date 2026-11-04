@@ -276,6 +276,9 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
   const { month, current, ctx, store } = data;
   // Skapa kontrakt bara utan kontrakt: ett skickat kontrakt signeras, inte dubbleras.
   const action = contractAction(data.contract, store.id);
+  // Hyran visas bara när butikens avtal har hyra (eller en hyra ändå räknats i månaden).
+  const storeHasRent =
+    month.rentOre !== 0 || data.agreements.some((a) => (a.monthlyRentOre ?? 0) > 0);
   return (
     <section aria-labelledby="ersattning" className="flex flex-col gap-8 border-t border-line pt-8">
       <SectionHeader
@@ -314,11 +317,13 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
               label={current?.model === "split" ? "Andel av vinsten" : "Provision"}
               value={kronor(month.commissionOre)}
             />
-            <Line
-              label="Hyra"
-              value={kronor(month.rentOre)}
-              meta={month.rentOre > 0 ? `${formatInt(month.days)}${NBSP}d` : undefined}
-            />
+            {storeHasRent ? (
+              <Line
+                label="Hyra"
+                value={kronor(month.rentOre)}
+                meta={month.rentOre > 0 ? `${formatInt(month.days)}${NBSP}d` : undefined}
+              />
+            ) : null}
             <Line label="Totalt till butiken" value={kronor(month.totalOre)} strong />
           </dl>
         </Sub>

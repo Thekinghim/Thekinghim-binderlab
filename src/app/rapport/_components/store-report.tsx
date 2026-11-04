@@ -335,7 +335,11 @@ export function StoreReportDocument({
           <ReportNote>
             {split
               ? `${noVmb ? "Vinst = försäljning − inköp − kortavgifter." : "Vinst = försäljning − VMB-moms (20 % av försäljning minus inköp) − inköp − kortavgifter."} ${sharesLoss ? "Vid förlust bär ni er andel av förlusten." : "Ingen vinst ger 0 kr."}`
-              : "Provisionen räknas per köp på beloppet exklusive moms, med det avtal som gällde den dagen. Hyran räknas per dag när avtalet gäller en del av månaden."}
+              : `Provisionen räknas per köp på beloppet exklusive moms, med det avtal som gällde den dagen.${
+                  r.compensation.rentOre !== 0 || r.compensation.model.endsWith("rent")
+                    ? " Hyran räknas per dag när avtalet gäller en del av månaden."
+                    : ""
+                }`}
           </ReportNote>
         </ReportSection>
 

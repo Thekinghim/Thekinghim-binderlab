@@ -25,6 +25,7 @@ import {
   type ProfitabilityRow,
   type StoreAgreement,
 } from "@/domain";
+import { ALL_COST_LINES } from "@/lib/cost-lines";
 import { formatDate, formatDelta } from "@/lib/format";
 import { titleRows, type TitleRow } from "@/app/(app)/inkopspriser/_lib/model";
 import { loadOurStockFor } from "@/app/(app)/lager/_lib/data";
@@ -123,8 +124,10 @@ function agreementData(a: StoreAgreement) {
     modell: MODEL_TEXT[base] ?? base,
     andel: a.commissionBp === null ? "–" : pct(a.commissionBp),
     andelBp: a.commissionBp,
-    manadshyra: a.monthlyRentOre === null ? "–" : kr(a.monthlyRentOre),
-    manadshyraOre: a.monthlyRentOre,
+    // Hyran bara när avtalet har någon (de flesta har ingen).
+    ...(a.monthlyRentOre !== null && a.monthlyRentOre > 0
+      ? { manadshyra: kr(a.monthlyRentOre), manadshyraOre: a.monthlyRentOre }
+      : {}),
     vidForlust:
       base === "profit_after_costs"
         ? a.lossTreatment === "proportional"
@@ -161,7 +164,7 @@ export const storeShareTool = defineTool({
   title: "Butikernas andel",
   label: (input) => (input.butik ? `Butikens andel: ${input.butik}` : "Butikernas andel"),
   description:
-    "Vad butikerna får enligt sina avtal: butiksersättning (vinstandel eller provision + hyra) per butik, och för en butik per månad med snitt per hel månad, plus avtalets villkor (modell, andel, hyra, vad som gäller vid förlust, VMB före delningen). Standardperiod: de tre senaste hela månaderna. Använd för 'hur mycket får Sega gubben i månaden', 'vad betalar vi butikerna'. Vinstdelningen är normalt 50/50 av vinsten efter kostnader.",
+    "Vad butikerna får enligt sina avtal: butiksersättning (vinstandel eller provision, plus hyra bara om avtalet har hyra) per butik, och för en butik per månad med snitt per hel månad, plus avtalets villkor (modell, andel, hyra, vad som gäller vid förlust, VMB före delningen). Standardperiod: de tre senaste hela månaderna. Använd för 'hur mycket får Sega gubben i månaden', 'vad betalar vi butikerna'. Vinstdelningen är normalt 50/50 av vinsten efter kostnader.",
   roles: ECONOMY_ROLES,
   input: storeShareInput,
   async run(ctx: ToolContext, input) {
@@ -173,6 +176,10 @@ export const storeShareTool = defineTool({
       ctx.now,
     );
     const names = nameMaps(data);
+    // Utan hyra i något avtal nämns ingen hyra (raderna vore 0 kr).
+    const rent = (data.costLines ?? ALL_COST_LINES).rent;
+    const rentOf = (ore: number) =>
+      rent || ore !== 0 ? { varavHyra: kr(ore), varavHyraOre: ore } : {};
     if (scope.store) {
       const store = scope.store;
       const months = profitability(data.current, "month", { fillTimeGaps: true }).rows.filter(
@@ -201,14 +208,14 @@ export const storeShareTool = defineTool({
             butiksersattningOre: r.compensationOre,
             varavAndel: kr(r.commissionOre),
             varavAndelOre: r.commissionOre,
-            varavHyra: kr(r.rentOre),
-            varavHyraOre: r.rentOre,
+            ...rentOf(r.rentOre),
             vinstForOss: kr(r.profitOre),
             vinstForOssOre: r.profitOre,
             order: r.orders,
           })),
-          anmarkning:
-            "Butiksersättning = andel/provision + hyra, räknad som i Lönsamhet och Bokföring. Vinst för oss är efter butikens del.",
+          anmarkning: rent
+            ? "Butiksersättning = andel/provision + hyra, räknad som i Lönsamhet och Bokföring. Vinst för oss är efter butikens del."
+            : "Butiksersättning = butikens andel/provision (ingen hyra), räknad som i Lönsamhet och Bokföring. Vinst för oss är efter butikens del.",
         },
         figures: [
           { label: "Butiksersättning", value: kr(total) },
@@ -239,8 +246,7 @@ export const storeShareTool = defineTool({
             butiksersattningOre: r.compensationOre,
             varavAndel: kr(r.commissionOre),
             varavAndelOre: r.commissionOre,
-            varavHyra: kr(r.rentOre),
-            varavHyraOre: r.rentOre,
+            ...rentOf(r.rentOre),
             vinstForOss: kr(r.profitOre),
             vinstForOssOre: r.profitOre,
             avtal: a ? agreementData(a) : "inget gällande avtal i dag",
@@ -280,7 +286,7 @@ const pricesInput = z
       .enum(["alla", "forlust", "saknar_pris"])
       .optional()
       .describe(
-        "alla (standard), forlust: bara titlar med förlust (även efter hyra), saknar_pris: titlar som saknar inköpspris.",
+        "alla (standard), forlust: bara titlar med förlust, saknar_pris: titlar som saknar inköpspris.",
       ),
     sortera: z
       .enum(["marginal", "kvar_per_order", "order"])
@@ -301,7 +307,7 @@ export const pricesTool = defineTool({
   title: "Inköpspriser och marginal",
   label: () => "Inköpspriser per titel",
   description:
-    "Per titel som på sidan Inköpspriser: inköpspris i dag (det som är inmatat i appen är sanningen), snittpris per order, vad varje order lämnar efter inköp, avgifter och provision, marginal, vad som är kvar efter hyran, antal order och status (förlust, saknar pris, lönsam). Använd för 'vilka titlar går med förlust', 'vad kostar Perfect Order', 'vilken titel har bäst marginal'.",
+    "Per titel som på sidan Inköpspriser: inköpspris i dag (det som är inmatat i appen är sanningen), snittpris per order, vad varje order lämnar efter inköp, avgifter och provision, marginal, vad som är kvar efter hyran (bara om något avtal har hyra), antal order och status (förlust, saknar pris, lönsam). Använd för 'vilka titlar går med förlust', 'vad kostar Perfect Order', 'vilken titel har bäst marginal'.",
   roles: ECONOMY_ROLES,
   input: pricesInput,
   async run(ctx: ToolContext, input) {
@@ -313,6 +319,8 @@ export const pricesTool = defineTool({
       ctx.now,
     );
     const active = data.titles.filter((t) => !t.archived).map((t) => t.id);
+    // Utan hyra i något avtal är "kvar per order" allt som blir kvar: inget "efter hyra".
+    const rent = (data.costLines ?? ALL_COST_LINES).rent;
     const economics = titleEconomics({ ...data.current, titleIds: active });
     const unpriced = profitability(data.current, "title").unpriced;
     const all = titleRows(economics, data.titles, unpriced.byTitle);
@@ -357,15 +365,20 @@ export const pricesTool = defineTool({
           snittprisPerOrderOre: r.averagePriceOre,
           kvarPerOrder: r.leftOre === null ? "–" : kr(r.leftOre),
           kvarPerOrderOre: r.leftOre,
-          kvarEfterHyra: r.leftAfterRentOre === null ? "–" : kr(r.leftAfterRentOre),
-          kvarEfterHyraOre: r.leftAfterRentOre,
+          ...(rent
+            ? {
+                kvarEfterHyra: r.leftAfterRentOre === null ? "–" : kr(r.leftAfterRentOre),
+                kvarEfterHyraOre: r.leftAfterRentOre,
+              }
+            : {}),
           marginal: pct(r.marginBp),
           marginalBp: r.marginBp,
           order: r.orders,
           orderUtanPris: r.unpricedOrders,
         })),
-        anmarkning:
-          "Kvar per order = snittpris exkl. moms − inköp − avgifter − provision. Kvar efter hyra drar även hyran per order.",
+        anmarkning: rent
+          ? "Kvar per order = snittpris exkl. moms − inköp − avgifter − provision. Kvar efter hyra drar även hyran per order."
+          : "Kvar per order = snittpris exkl. moms − inköp − avgifter − provision (ingen hyra).",
       },
       figures: [
         { label: "Med förlust", value: count(losses.length) },
@@ -999,8 +1012,9 @@ export const contractsTool = defineTool({
         modell: MODEL_TEXT[a.commissionBase] ?? a.commissionBase,
         andel: a.commissionBp === null ? "–" : pct(a.commissionBp),
         andelBp: a.commissionBp,
-        manadshyra: a.monthlyRentOre === null ? "–" : kr(a.monthlyRentOre),
-        manadshyraOre: a.monthlyRentOre,
+        ...(a.monthlyRentOre !== null && a.monthlyRentOre > 0
+          ? { manadshyra: kr(a.monthlyRentOre), manadshyraOre: a.monthlyRentOre }
+          : {}),
         giltigtFran: a.validFrom,
         giltigtTill: a.validTo ?? "tills vidare",
       }));
