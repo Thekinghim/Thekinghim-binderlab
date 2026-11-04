@@ -16,10 +16,13 @@ export async function settlementDocumentResponse(
   try {
     return pdfResponse(await render(doc.html), doc.fileName);
   } catch (error) {
-    console.error(
-      "[avrakning] PDF kunde inte skapas, visar HTML",
-      error instanceof Error ? error.message : error,
-    );
-    return htmlResponse(doc.html);
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error("[avrakning] PDF kunde inte skapas, visar HTML", reason);
+    const res = htmlResponse(doc.html);
+    // Orsaken följer med i ett eget huvud (inte i sidan) så att felet går att felsöka
+    // utan serverloggar. Bara felmeddelandet, kort och kodat; inga uppgifter om användaren.
+    const headers = new Headers(res.headers);
+    headers.set("X-Pdf-Fallback", encodeURIComponent(reason.replace(/\s+/g, " ").slice(0, 400)));
+    return new Response(res.body, { status: res.status, headers });
   }
 }
