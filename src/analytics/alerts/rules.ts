@@ -3,6 +3,7 @@
  * incidentnyckel, svensk text och underlag. Dedupliceringen över tid sköts av reconcileAlerts.
  */
 
+import { assortmentKey } from "../todos/assortment";
 import {
   addDays,
   dailyUnits,
@@ -128,6 +129,11 @@ export interface LowStockInput {
   readonly stock: readonly StockLevelRef[];
   readonly machines: readonly MachineRef[];
   readonly titles: readonly TitleRef[];
+  /**
+   * Par (automat, titel) som gått ur sortimentet (utgår), som `assortmentKey` i
+   * @/analytics/todos/assortment. De säljs ut och larmar aldrig (samma regel som Lager).
+   */
+  readonly retired?: ReadonlySet<string>;
   readonly options?: {
     readonly timeZone?: string;
     /** Fönster för takten. Standard 14 dagar. */
@@ -147,6 +153,7 @@ export interface LowStockInput {
  *   i lager 0 och titeln har sålt i fönstret  → critical ("slut")
  *   dagar kvar ≤ thresholdDays                → warning
  * Titlar utan försäljning i fönstret larmar inte (de tar inte slut med nuvarande takt).
+ * Titlar som gått ur automaten (`retired`, "Utgår" på Lager) larmar inte heller.
  * Nyckel: 'low_stock:<automat>:<titel>'.
  */
 export function lowStockAlerts(
@@ -185,6 +192,7 @@ export function lowStockAlerts(
   for (const s of input.stock) {
     const m = machines.get(s.machineId);
     if (!m || !isMachineActive(m, today)) continue;
+    if (input.retired?.has(assortmentKey(s.machineId, s.titleId))) continue;
     const orders = byPair.get(`${s.machineId}\u0000${s.titleId}`) ?? [];
     const v = salesVelocity(dailyUnits(orders), {
       asOf,

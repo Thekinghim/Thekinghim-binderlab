@@ -25,6 +25,7 @@ import {
 } from "@/server/access";
 import type { ActionResult } from "@/server/auth/flows";
 import { dbErrorMessage, pgErrorOf } from "@/server/errors";
+import { readCompanyDetails, type CompanyDetailsRow } from "@/server/contracts/operator";
 
 import {
   AUDITED_TABLES,
@@ -49,6 +50,8 @@ export interface SettingsPageData {
   readonly actorNames: Record<string, string>;
   /** Medlemmar med visningsnamn (för att koppla en ägarandel till en användare). */
   readonly members: Array<{ userId: string; name: string }>;
+  /** Företagsuppgifterna som står i kontrakten (Inställningar → Företaget). */
+  readonly company: CompanyDetailsRow;
 }
 
 function iso(value: unknown): string {
@@ -109,15 +112,16 @@ export async function loadSettingsPageFor(
 ): Promise<SettingsPageData> {
   const role = await requireRoleFor(user, organizationId, PAGE_ROLES);
   return withUserDbFor(user, async (tx) => {
-    const [settings, shares, accountResult, auditResult, profileResult] = await Promise.all([
-      querySettingsRow(tx, organizationId),
-      queryShares(tx, organizationId),
-      tx.execute(
-        sql`select id, key, bas_account, name from public.ledger_accounts
+    const [settings, shares, accountResult, auditResult, profileResult, company] =
+      await Promise.all([
+        querySettingsRow(tx, organizationId),
+        queryShares(tx, organizationId),
+        tx.execute(
+          sql`select id, key, bas_account, name from public.ledger_accounts
             where organization_id = ${organizationId}::uuid order by bas_account, key`,
-      ),
-      tx.execute(
-        sql`select a.id, a.table_name, a.row_id, a.action::text as action, a.actor_id,
+        ),
+        tx.execute(
+          sql`select a.id, a.table_name, a.row_id, a.action::text as action, a.actor_id,
                    a.occurred_at, a.before, a.after
             from public.audit_log a
             where a.organization_id = ${organizationId}::uuid
@@ -127,9 +131,9 @@ export async function loadSettingsPageFor(
               )})
             order by a.occurred_at desc, a.id desc
             limit 200`,
-      ),
-      tx.execute(
-        sql`select p.user_id, p.display_name,
+        ),
+        tx.execute(
+          sql`select p.user_id, p.display_name,
                    exists (select 1 from public.memberships m
                            where m.organization_id = p.organization_id
                              and m.user_id = p.user_id) as is_member
@@ -137,8 +141,9 @@ export async function loadSettingsPageFor(
             where p.organization_id = ${organizationId}::uuid and p.anonymized_at is null
               and p.user_id is not null
             order by p.display_name`,
-      ),
-    ]);
+        ),
+        readCompanyDetails(tx, organizationId),
+      ]);
     const actorNames: Record<string, string> = {};
     const members: Array<{ userId: string; name: string }> = [];
     for (const r of Array.from(profileResult) as Record<string, unknown>[]) {
@@ -180,6 +185,7 @@ export async function loadSettingsPageFor(
       events,
       actorNames,
       members,
+      company,
     };
   });
 }
@@ -254,6 +260,117 @@ export async function updateSettingsFor(
                       ${input.fiscalYearStartMonth})`,
         );
       }
+      return { ok: true, data: { changed: true } };
+    });
+  } catch (error) {
+    if (pgErrorOf(error)?.code === "42501")
+      return { ok: false, error: SETTINGS_MESSAGES.forbidden };
+    return { ok: false, error: dbErrorMessage(error) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Företagsuppgifter (kontraktets operatörsblock)
+// ---------------------------------------------------------------------------
+
+/** Tom text = null; annars trimmad text med en övre gräns. */
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .transform((v) => (v === "" ? null : v));
+
+export const companyInput = z.object({
+  organizationId: z.uuid(),
+  companyName: optionalText(200),
+  orgNumber: z
+    .string()
+    .trim()
+    .transform((v) => (v === "" ? null : v.replace(/\s/g, "").replace(/^(\d{6})(\d{4})$/, "$1-$2")))
+    .refine((v) => v === null || /^\d{6}-\d{4}$/.test(v), "orgNumber"),
+  companyAddress: optionalText(300),
+  contactName: optionalText(200),
+  contactEmail: optionalText(254).refine(
+    (v) => v === null || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v),
+    "contactEmail",
+  ),
+  contactPhone: optionalText(50),
+});
+
+export type CompanyInput = z.input<typeof companyInput>;
+
+/**
+ * Sparar företagsuppgifterna som står i kontrakten. Ägare och admin. Organisationsnumret
+ * skrivs också till Bokföring när den raden finns, så att SIE-filen och kontrakten har
+ * samma nummer.
+ */
+export async function updateCompanyDetailsFor(
+  user: SessionUser | null,
+  raw: CompanyInput,
+): Promise<ActionResult<{ changed: boolean }>> {
+  const parsed = companyInput.safeParse(raw);
+  if (!parsed.success) {
+    const field = parsed.error.issues[0]?.message;
+    return {
+      ok: false,
+      error:
+        field === "orgNumber"
+          ? SETTINGS_MESSAGES.orgNumberInvalid
+          : field === "contactEmail"
+            ? SETTINGS_MESSAGES.emailInvalid
+            : SETTINGS_MESSAGES.companyInvalid,
+    };
+  }
+  const input = parsed.data;
+  const denied = await authorize(
+    user,
+    input.organizationId,
+    PAGE_ROLES,
+    SETTINGS_MESSAGES.forbidden,
+  );
+  if (denied) return denied;
+  try {
+    return await withUserDbFor(user as SessionUser, async (tx) => {
+      const current = await readCompanyDetails(tx, input.organizationId);
+      const next: CompanyDetailsRow = {
+        companyName: input.companyName,
+        orgNumber: input.orgNumber,
+        companyAddress: input.companyAddress,
+        contactName: input.contactName,
+        contactEmail: input.contactEmail,
+        contactPhone: input.contactPhone,
+      };
+      const same = (Object.keys(next) as Array<keyof CompanyDetailsRow>).every(
+        (k) => current[k] === next[k],
+      );
+      if (same) return { ok: true, data: { changed: false } };
+      const updated = Array.from(
+        await tx.execute(
+          sql`update public.organization_settings
+              set company_name = ${next.companyName}, org_number = ${next.orgNumber},
+                  company_address = ${next.companyAddress}, contact_name = ${next.contactName},
+                  contact_email = ${next.contactEmail}, contact_phone = ${next.contactPhone}
+              where organization_id = ${input.organizationId}::uuid
+              returning id`,
+        ),
+      );
+      if (updated.length === 0) {
+        await tx.execute(
+          sql`insert into public.organization_settings
+                (organization_id, company_name, org_number, company_address, contact_name,
+                 contact_email, contact_phone)
+              values (${input.organizationId}::uuid, ${next.companyName}, ${next.orgNumber},
+                      ${next.companyAddress}, ${next.contactName}, ${next.contactEmail},
+                      ${next.contactPhone})`,
+        );
+      }
+      // Samma organisationsnummer i Bokföring (om den är inställd).
+      await tx.execute(
+        sql`update public.bookkeeping_settings set org_number = ${next.orgNumber}
+            where organization_id = ${input.organizationId}::uuid
+              and org_number is distinct from ${next.orgNumber}`,
+      );
       return { ok: true, data: { changed: true } };
     });
   } catch (error) {

@@ -1,6 +1,7 @@
 import { withSentryConfig } from "@sentry/nextjs/config";
 import type { NextConfig } from "next";
 
+import { APP_REDIRECTS } from "./src/lib/redirects";
 import { securityHeaderRules } from "./src/lib/security-headers";
 
 /**
@@ -31,6 +32,10 @@ const nextConfig: NextConfig = {
       dev: process.env.NODE_ENV === "development",
       sentryDsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
     });
+  },
+  // Adresser som bara pekar vidare (/kontrakt → /avtal), utan att rendera en sida.
+  async redirects() {
+    return [...APP_REDIRECTS];
   },
   // Bygget typkontrollerar bara appens kod. Tester och skript kontrolleras av
   // npm run typecheck (tsconfig.json) i CI, så att ett halvfärdigt test aldrig

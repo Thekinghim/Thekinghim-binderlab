@@ -59,6 +59,12 @@ export interface LoadArgs {
   readonly comment?: string | null;
   /** Nu (ISO 8601). */
   readonly now: string;
+  /**
+   * Ordrarnas fönster i stället för standardfönstret (13 månader bakåt). Avräkningen
+   * behöver bara förra och denna månad (settlementOrderWindow), så att Hem och
+   * Butiksportal kan räkna om obetalda avräkningar snabbt.
+   */
+  readonly orderWindow?: Period | null;
 }
 
 /**
@@ -126,6 +132,14 @@ export async function queryReportOrders(
 /** Ordrarnas fönster för en rapportmånad. */
 export function orderWindow(month: IsoMonth): Period {
   return { start: monthStart(addMonths(month, -12)), end: monthEnd(addMonths(month, 1)) };
+}
+
+/**
+ * Ordrar för en avräkning: butiksrapporten använder bara förra och denna månad (jämförelsen
+ * och liggaren), plus månaden efter för sena återbetalningar som standardfönstret.
+ */
+export function settlementOrderWindow(month: IsoMonth): Period {
+  return { start: monthStart(addMonths(month, -1)), end: monthEnd(addMonths(month, 1)) };
 }
 
 /**
@@ -322,7 +336,8 @@ export async function querySieNumbering(
 export async function loadSnapshotInput(tx: Tx, args: LoadArgs): Promise<SnapshotInput> {
   const orgId = args.organizationId;
   const period = args.period ?? { start: monthStart(args.month), end: monthEnd(args.month) };
-  const window = args.period ? rangeOrderWindow(args.period) : orderWindow(args.month);
+  const window =
+    args.orderWindow ?? (args.period ? rangeOrderWindow(args.period) : orderWindow(args.month));
   const today = args.now.slice(0, 10);
 
   const [organization, settings, titles, placements, stores, prices, agreements, orders, refunds] =

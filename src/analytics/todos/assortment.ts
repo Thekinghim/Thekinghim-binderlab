@@ -42,6 +42,21 @@ export function retiredPairs(periods: readonly SlotPeriod[], today: IsoDate): Se
 }
 
 /**
+ * Titlar som gått ur sortimentet i alla automater där de funnits (samma regel som
+ * `retiredPairs`): minst en period, ingen som gäller i dag eller senare i någon automat.
+ * De köps inte in och får ingen prognos; pack hemma "ligger still".
+ */
+export function retiredTitles(periods: readonly SlotPeriod[], today: IsoDate): Set<string> {
+  const current = new Set<string>();
+  const seen = new Set<string>();
+  for (const p of periods) {
+    seen.add(p.titleId);
+    if (p.validTo === null || p.validTo >= today) current.add(p.titleId);
+  }
+  return new Set([...seen].filter((t) => !current.has(t)));
+}
+
+/**
  * Är punkten en påfyllning (eller en tyst titel) av en utgången titel? En utgången titel
  * säljs ut och ska varken fyllas på eller larma när den slutar sälja.
  */

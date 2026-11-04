@@ -118,6 +118,12 @@ export function columnsFor(
   totals: ProfitLine,
   showUnpriced: boolean,
   selectedKey: string | null = null,
+  /**
+   * Kolumnen med butikernas andel (vyknappen "Visa butikernas andel" eller vald butik).
+   * Av: vinsten är ändå efter andelen; CSV-exporten har kolumnen kvar.
+   */
+  showStoreShare = false,
+  storeShareLabel = "Butikernas andel",
 ): Column<ProfitLine>[] {
   const nameHeader = VIEW_OPTIONS.find((o) => o.value === view)?.label ?? "Namn";
   const sv = sortValues(rows);
@@ -178,7 +184,7 @@ export function columnsFor(
     },
     {
       key: "compensation",
-      header: "Butiksersättning",
+      header: storeShareLabel,
       numeric: true,
       sortValue: sv.compensation,
       render: (r) => (onlyUnpriced(r) ? MISSING : kr(r.compensationOre)),
@@ -187,7 +193,7 @@ export function columnsFor(
     },
     {
       key: "profit",
-      header: "Vinst",
+      header: "Vår vinst",
       numeric: true,
       sortValue: sv.profit,
       render: (r) => (onlyUnpriced(r) ? MISSING : kr(r.profitOre)),
@@ -195,7 +201,7 @@ export function columnsFor(
     },
     {
       key: "margin",
-      header: "Marginal",
+      header: "Vår marginal",
       numeric: true,
       sortValue: sv.margin,
       render: (r) => pct(r.marginBp),
@@ -214,6 +220,11 @@ export function columnsFor(
   if (!hasVmb)
     cols.splice(
       cols.findIndex((c) => c.key === "vmb"),
+      1,
+    );
+  if (!showStoreShare)
+    cols.splice(
+      cols.findIndex((c) => c.key === "compensation"),
       1,
     );
   if (showUnpriced) {
@@ -329,6 +340,8 @@ export function ProfitTable({
   sort,
   onSortChange,
   selectedKey,
+  showStoreShare = false,
+  storeShareLabel,
 }: {
   view: ViewKey;
   onViewChange: (view: ViewKey) => void;
@@ -338,11 +351,14 @@ export function ProfitTable({
   sort: readonly SortKey[];
   onSortChange: (sort: ReadonlyArray<SortKey>) => void;
   selectedKey: string | null;
+  showStoreShare?: boolean;
+  storeShareLabel?: string;
 }) {
   const showUnpriced = totals.unpricedRevenueOre > 0;
   const columns = useMemo(
-    () => columnsFor(view, rows, totals, showUnpriced, selectedKey),
-    [view, rows, totals, showUnpriced, selectedKey],
+    () =>
+      columnsFor(view, rows, totals, showUnpriced, selectedKey, showStoreShare, storeShareLabel),
+    [view, rows, totals, showUnpriced, selectedKey, showStoreShare, storeShareLabel],
   );
   return (
     <DataTable

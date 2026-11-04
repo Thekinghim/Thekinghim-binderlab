@@ -594,6 +594,21 @@ export const ACTIONS: ActionSpec[] = [
   },
   {
     module: "@/app/(app)/installningar/_actions/settings",
+    name: "updateCompanyDetails",
+    allowed: OP,
+    args: () => [
+      {
+        companyName: "Rödteam AB",
+        orgNumber: "559000-0000",
+        companyAddress: "Rödgatan 1",
+        contactName: "Rödteam",
+        contactEmail: "rodteam@example.se",
+        contactPhone: "070-000 00 00",
+      },
+    ],
+  },
+  {
+    module: "@/app/(app)/installningar/_actions/settings",
     name: "saveOwnerShares",
     allowed: ["owner"],
     args: () => [{ validFrom: "2025-06-01", shares: [{ holderName: "Rödteam", shareBp: 10000 }] }],
@@ -964,7 +979,13 @@ export const ACTIONS: ActionSpec[] = [
     module: "@/app/(app)/butiker/settlement-actions",
     name: "markSettlementPaid",
     allowed: OP,
-    args: (c) => [c.idsA.store_settlements, TODAY],
+    args: (c) => [c.idsA.store_settlements, TODAY, 0],
+  },
+  {
+    module: "@/app/(app)/butiker/settlement-actions",
+    name: "createMissingSettlements",
+    allowed: OP,
+    args: () => [],
   },
   {
     module: "@/app/(app)/butiker/settlement-actions",

@@ -1,8 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { Suspense, useMemo, useState, type ReactNode } from "react";
-import { cn } from "@/lib/cn";
+import { Suspense, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
   CommandPalette,
   useCommandPaletteHotkey,
@@ -10,8 +9,9 @@ import {
   type CommandItem,
 } from "@/components/ui/command-palette";
 import { useCopyView } from "./copy-view";
+import { fabLayout, showsRefillShortcut } from "./fab";
 import { MobileNav } from "./mobile-nav";
-import { activeRouteId, homeHref, routeById, routesForRole, type Role } from "./nav";
+import { activeRouteId, homeHref, routeById, routesForRole, showsContext, type Role } from "./nav";
 import type { ShellMachine, ShellStore } from "./period-bar";
 import { periodChoices } from "./period-state";
 import {
@@ -64,10 +64,12 @@ export type AppShellProps = {
   /** Vyknappen "Med VMB": användarens nyckel för att minnas valet. null = ingen knapp. */
   vmbUserKey?: string | null;
   /**
-   * Visa periodval och filter. Standard: på, utom för rutter med
-   * context: false i ./nav (Datakällor, Inställningar).
+   * Visa periodval och filter. Standard: på, utom för rutter och vyer med
+   * context: false i ./nav (Datakällor, Inställningar, Drift, Inköp, Bokföring …).
    */
   showContext?: boolean;
+  /** Sidans vy (?vy=), för underflikarna som döljer periodvalet (Bokföring, Butiksportal). */
+  view?: string | null;
   /** Aktiv sökväg. Standard: aktuell sökväg. */
   activeHref?: string;
   /** Äldre lokalt periodval (/design, /datamodell). */
@@ -87,7 +89,12 @@ export function AppShell(props: AppShellProps) {
   const role = props.role ?? "owner";
   const routeId = activeRouteId(props.activeHref ?? pathname);
   const route = routeId ? routeById(routeId) : null;
-  const showContext = props.showContext ?? route?.context !== false;
+  const showContext = props.showContext ?? showsContext(props.activeHref ?? pathname, props.view);
+  // Luft under sidan för de flytande knapparna på mobilen (./fab), så att inget göms bakom dem.
+  const fab = fabLayout({
+    refill: showsRefillShortcut(role, props.activeHref ?? pathname),
+    assistant: routesForRole(role).some((r) => r.id === "assistent"),
+  });
   const orgName = (
     props.organizations?.find((o) => o.id === props.activeOrganizationId) ??
     props.organizations?.[0]
@@ -139,13 +146,12 @@ export function AppShell(props: AppShellProps) {
             comparison={props.comparison}
           />
           <ShellMain
-            className={cn(
-              "flex-1 lg:pb-0",
-              // Påfyllaren har genvägen "Fyll på" ovanför bottenraden: lika mycket luft till.
-              role === "refiller"
-                ? "pb-[calc(56px+68px+env(safe-area-inset-bottom))]"
-                : "pb-[calc(56px+env(safe-area-inset-bottom))]",
-            )}
+            className="flex-1 pb-[var(--shell-pb)] lg:pb-0"
+            style={
+              {
+                "--shell-pb": `calc(${fab.mainPaddingBottom}px + env(safe-area-inset-bottom))`,
+              } as CSSProperties
+            }
           >
             {/* Underflikarna står still vid sidbyte, så att markeringen kan glida. */}
             <SubTabs

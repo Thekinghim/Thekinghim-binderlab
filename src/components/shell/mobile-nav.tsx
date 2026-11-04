@@ -7,6 +7,7 @@ import { cn } from "@/lib/cn";
 import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/button";
 import { StatusGlyph } from "@/components/ui/status-tag";
+import { showsRefillShortcut } from "./fab";
 import {
   activeRouteId,
   activeSectionId,
@@ -60,8 +61,7 @@ export function MobileNav(props: ShellNavProps) {
 
   // Genvägen bara för påfyllaren (ägare och admin når Fyll på från Drift), och inte på
   // fältsidorna som har en egen knapp nedtill.
-  const showRefill =
-    role === "refiller" && pathname !== "/drift/pafyllning" && !pathname.startsWith("/drift/besok");
+  const showRefill = showsRefillShortcut(role, pathname);
 
   return (
     <>

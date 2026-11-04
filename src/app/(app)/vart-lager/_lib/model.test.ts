@@ -5,6 +5,7 @@ import { headingOf } from "./heading";
 import {
   buildVartLagerModel,
   describeChange,
+  lastsDays,
   lastsText,
   needQtyOf,
   stockTodos,
@@ -126,6 +127,7 @@ describe("buildVartLagerModel", () => {
       negative: 1,
       inMachines: 12,
       byPlace: {},
+      idle: { titles: 0, packs: 0, valueOre: 0 },
     });
     expect(m.rows[2]).toMatchObject({ negative: true, valueOre: 0 });
     const h = headingOf(m);
@@ -317,5 +319,99 @@ describe("whenText", () => {
     expect(whenText("2026-11-02T23:30:00Z", TZ, NOW)).toBe("i dag 00:30");
     expect(whenText("2026-11-02T08:12:00Z", TZ, NOW)).toBe("i går 09:12");
     expect(sp(whenText("2026-10-30T08:12:00Z", TZ, NOW))).toBe("30 okt. 09:12");
+  });
+});
+
+/**
+ * Som produktionen 4 nov.: Black Bolt har gått ur automaten (Utgår på Lager) men 8 pack
+ * ligger hemma; inget har sålts på 7 dagar. Den ska inte se ut som vanligt lager.
+ */
+describe("Vårt lager: utgångna titlar, Räcker och senaste händelsen", () => {
+  it("utgången titel: Utgår, ingen status eller inköp, sist i listan och i Ligger still", () => {
+    const m = buildVartLagerModel(
+      input({
+        retired: new Set(["a"]),
+        warehouse: [
+          wr("a", 40, { status: "low", daysLeft: 3 }),
+          wr("b", 3, { daysLeft: 2, status: "low" }),
+        ],
+        sold7: new Map([["a", 0]]),
+      }),
+    );
+    expect(m.rows.map((r) => r.name)).toEqual(["Paradox Rift", "Surging Sparks", "Black Bolt"]);
+    const a = m.rows[2]!;
+    expect(a).toMatchObject({
+      retired: true,
+      status: "ok",
+      runsOut: false,
+      needQty: 0,
+      lastsDays: null,
+    });
+    expect(lastsText(a)).toBe("utgår");
+    expect(m.totals.idle).toEqual({ titles: 1, packs: 40, valueOre: 180_000 });
+    expect(m.totals.runsOut).toBe(1);
+    expect(stockTodos(m.rows).map((t) => t.titleId)).toEqual(["b"]);
+  });
+
+  it("Räcker: hemma + i automaterna vid 14 dagars takt, '–' utan försäljning på 7 dagar", () => {
+    const m = buildVartLagerModel(
+      input({
+        warehouse: [
+          wr("a", 40, { perDayTenths: 26, daysLeft: 15 }),
+          wr("b", 3, { daysLeft: 2, status: "low" }),
+        ],
+        sold7: new Map([
+          ["a", 18],
+          ["b", 0],
+        ]),
+      }),
+    );
+    // (40 + 12) / 2,6 = 20 hela dagar
+    expect(m.rows[0]!.lastsDays).toBe(20);
+    expect(sp(lastsText(m.rows[0]!))).toBe("20 d");
+    // Black bolt-fallet: inget sålt på 7 dagar → "–", inte "räcker 10 d".
+    expect(lastsText(m.rows[2]!)).toBe("–");
+  });
+
+  it("lastsDays är samma regel som Inköp använder", () => {
+    expect(lastsDays(52, 26)).toBe(20);
+    expect(lastsDays(10, null)).toBeNull();
+    expect(lastsDays(10, 0)).toBeNull();
+    expect(lastsDays(-3, 10)).toBe(0);
+  });
+
+  it("under Alla: 'räknat 0 i Kontoret' visas inte när titeln ligger i Hemma", () => {
+    const places = [
+      { id: "h", name: "Hemma", isDefault: true },
+      { id: "k", name: "Kontoret", isDefault: false },
+    ];
+    const m = buildVartLagerModel(
+      input({
+        places,
+        byPlace: { h: { a: 180 }, k: { a: 0 } },
+        latest: new Map([
+          [
+            "a",
+            [
+              ev({
+                locationId: "k",
+                kind: "count",
+                quantity: 0,
+                occurredAt: "2026-11-03T20:09:00Z",
+              }),
+              ev({
+                locationId: "h",
+                kind: "count",
+                quantity: 180,
+                occurredAt: "2026-11-03T18:07:00Z",
+              }),
+            ],
+          ],
+        ]),
+      }),
+    );
+    expect(sp(m.rows[0]!.latest!.text)).toBe("räknat 180 i Hemma");
+    // Per lager finns båda kvar.
+    expect(sp(m.rows[0]!.latestByPlace.k!.text)).toBe("räknat 0");
   });
 });

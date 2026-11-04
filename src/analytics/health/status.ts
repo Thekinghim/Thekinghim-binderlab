@@ -60,6 +60,12 @@ import type {
 } from "./types";
 
 /** Standardvärden för hälsoberäkningen. */
+/**
+ * Under så här stor chans för en lika lång tystnad (bp) kallas den "ovanligt tyst" i
+ * texten (10 %). Larmet kommer först under `alarmProbabilityBp` (standard 1 %).
+ */
+const UNUSUAL_QUIET_BP = 1_000;
+
 export const HEALTH_DEFAULTS: Required<HealthOptions> = {
   timeZone: DEFAULT_TIME_ZONE,
   historyWeeks: 8,
@@ -643,7 +649,7 @@ function evaluate(
   if (silence.anomalous) {
     const hours = Math.floor(silence.minutes / 60);
     const derivedOffline = hours >= o.offlineAfterHours && !p.vendor.hasConnectivity;
-    const why = `Ingen försäljning sedan ${sinceText} (${durationText(silence.minutes)}). Samma veckodagar och timmar brukar ge ${expectedText} pack${busiest ? `, mest ${busiest}` : ""}; sannolikheten för noll försäljning är ${probabilityText(silence.zeroProbabilityBp)}.${coverageText}`;
+    const why = `Ingen försäljning sedan ${sinceText} (${durationText(silence.minutes)}). Samma veckodagar och timmar brukar ge ${expectedText} pack${busiest ? `, mest ${busiest}` : ""}. Så lång tystnad är mycket ovanlig.${coverageText}`;
     if (derivedOffline) {
       return base(
         "offline",
@@ -675,10 +681,13 @@ function evaluate(
     );
   }
 
+  // Vanliga ord på sidan; sannolikheten står i Underlag (figurerna ovan).
   const quiet =
-    silence.minutes >= o.minSilenceMinutes
-      ? ` Under tystnaden (${durationText(silence.minutes)}) brukar den sälja ${expectedText} pack; sannolikheten för noll är ${probabilityText(silence.zeroProbabilityBp)}.`
-      : "";
+    silence.minutes < o.minSilenceMinutes
+      ? ""
+      : silence.zeroProbabilityBp < UNUSUAL_QUIET_BP
+        ? ` Ovanligt tyst i ${durationText(silence.minutes)}: brukar sälja ca ${expectedText} pack på den tiden.`
+        : ` Tyst i ${durationText(silence.minutes)}, vanligt för den här tiden.`;
   return base(
     "ok",
     "sales",

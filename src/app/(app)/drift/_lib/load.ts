@@ -20,7 +20,6 @@ import {
 import { compareChannels, type VisitPlan } from "@/analytics/visits";
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
-import { addDays } from "@/domain";
 import { alertColumns, healthOf, loadHealthData, type HealthData } from "@/server/alerts/inputs";
 import { rowToIncident, type AlertRow } from "@/server/alerts/store";
 import { defaultSubscription, type SubscriptionRow } from "@/server/alerts/subscriptions";
@@ -28,6 +27,8 @@ import { channelStatus, type ChannelStatus } from "@/server/notify";
 import { queryStock } from "@/server/data/core/queries";
 import type { AppContext } from "@/server/data/core";
 import { querySlotPeriods, type SlotPeriod } from "@/server/data/assortment";
+import { retiredPairs } from "@/analytics/todos/assortment";
+import { withoutRetiredAlerts } from "./display";
 import { querySlotCapacities, type SlotCapacityRow } from "@/server/data/core/slot-capacity";
 import { weeklyVisitPlan } from "@/server/data/visit-plan";
 import { isMine, type TeamMember } from "@/analytics/team";
@@ -39,7 +40,6 @@ import {
 } from "@/server/data/team";
 import { withUserDb } from "@/server/session";
 import { ownStockTotals } from "@/server/data/core/own-stock";
-import { queryRefillSources } from "@/server/data/core/places";
 
 /** Senaste körningen av larmjobbet. */
 export interface AlertRunInfo {
@@ -188,11 +188,12 @@ export async function loadDriftOverview(ctx: AppContext): Promise<DriftOverview>
       capacities,
       ctx,
     );
+    const retired = retiredPairs(slotPeriods, ctx.today);
     return {
       data,
       health,
-      openAlerts: alerts.open,
-      recentAlerts: alerts.recent,
+      openAlerts: withoutRetiredAlerts(alerts.open, retired),
+      recentAlerts: withoutRetiredAlerts(alerts.recent, retired),
       lastRun,
       plan,
       capacities,
@@ -419,7 +420,10 @@ export async function loadMachineTimeline(
       health,
       machine,
       entries,
-      alerts: [...alerts.open, ...alerts.recent],
+      alerts: withoutRetiredAlerts(
+        [...alerts.open, ...alerts.recent],
+        retiredPairs(await querySlotPeriods(tx, orgId), ctx.today),
+      ),
       from: from.toISOString(),
       to: now.toISOString(),
       days,
@@ -555,60 +559,3 @@ export async function loadAlertSettings(ctx: AppContext): Promise<AlertSettings>
     };
   });
 }
-
-/**
- * Stamdata och lager för påfyllningsformuläret (alla roller som fyller på). Mina automater
- * (ansvarig jag eller Båda) först, så att formuläret börjar på en av dem.
- */
-export async function loadRefillData(ctx: AppContext) {
-  return withUserDb(async (tx) => {
-    const orgId = ctx.organization.id;
-    const data = await loadHealthData(tx, orgId, ctx.today, new Date(ctx.now));
-    const responsibles = await queryResponsibles(tx, orgId);
-    const stockRows = await queryStock(tx, orgId);
-    const since = addDays(ctx.today, -14);
-    const recent = await tx
-      .select({
-        clientId: s.fieldSubmissions.clientId,
-        machineId: s.fieldSubmissions.machineId,
-        titleId: s.fieldSubmissions.titleId,
-        quantity: s.fieldSubmissions.quantity,
-        occurredAt: s.fieldSubmissions.occurredAt,
-        receivedAt: s.fieldSubmissions.receivedAt,
-      })
-      .from(s.fieldSubmissions)
-      .where(
-        and(
-          eq(s.fieldSubmissions.organizationId, orgId),
-          eq(s.fieldSubmissions.submittedBy, ctx.user.id),
-          gte(s.fieldSubmissions.occurredAt, new Date(`${since}T00:00:00Z`)),
-        ),
-      )
-      .orderBy(desc(s.fieldSubmissions.occurredAt))
-      .limit(20);
-    return {
-      machines: data.machines
-        .filter((m) => !m.archived)
-        .map((m) => ({
-          id: m.id,
-          code: m.code,
-          name: m.name,
-          mine: isMine(responsibles.get(m.id), ctx.user.id),
-        }))
-        .sort((a, b) => Number(b.mine) - Number(a.mine)),
-      titles: data.titles.filter((t) => !t.archived).map((t) => ({ id: t.id, name: t.name })),
-      stock: stockRows
-        .filter((r) => r.locationKind === "machine" && r.machineId !== null)
-        .map((r) => ({ machineId: r.machineId as string, titleId: r.titleId, onHand: r.onHand })),
-      warehouse: ownStockTotals(stockRows),
-      sources: await queryRefillSources(tx, orgId),
-      recent: recent.map((r) => ({
-        ...r,
-        occurredAt: r.occurredAt.toISOString(),
-        receivedAt: r.receivedAt.toISOString(),
-      })),
-    };
-  });
-}
-
-export type RefillData = Awaited<ReturnType<typeof loadRefillData>>;

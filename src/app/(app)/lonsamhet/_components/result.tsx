@@ -61,7 +61,7 @@ export function ResultAfterProfitPanel({ result }: { result: ResultAfterProfit }
   return (
     <PanelSection label="Efter vinsten">
       <dl className="flex flex-col">
-        <Line label="Vinst" value={kr(r.profitOre)} />
+        <Line label="Vår vinst" value={kr(r.profitOre)} />
         <Line
           label="Återbetalningar"
           value={minus(r.refundOre)}

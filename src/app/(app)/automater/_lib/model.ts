@@ -759,7 +759,7 @@ export function machineKpis(
     },
     {
       id: "profit",
-      label: cur.profitOre < 0 ? "Förlust" : "Vinst",
+      label: cur.profitOre < 0 ? "Förlust" : "Vår vinst",
       value: cur.profitOre,
       kind: "sek",
       delta: prev ? rel(cur.profitOre, prev.profitOre) : null,
@@ -923,7 +923,8 @@ export function stockLines(args: {
         perDay: v.units > 0 ? v.perDay : null,
         daysLeft: daysOfStockLeft(onHand, v),
         stockoutDate: stockoutDate(asOf, onHand, v),
-        lastRestockedAt: r.lastRestockedAt,
+        // Registrerad påfyllning, inte inventeringen (kolumnen "Senast påfylld").
+        lastRestockedAt: r.lastRefilledAt ?? null,
         level: level.get(r.titleId) ?? null,
       };
     })
@@ -1042,7 +1043,8 @@ export function machineHeadline(args: {
     );
   } else {
     parts.push(
-      `${figures.profitOre < 0 ? "Förlust" : "Vinst"} ${kr(Math.abs(figures.profitOre))}.`,
+      // "Vår vinst" som på Hem, Lönsamhet och i tabellerna (en betydelse av vinst).
+      `${figures.profitOre < 0 ? "Vår förlust" : "Vår vinst"} ${kr(Math.abs(figures.profitOre))}.`,
     );
   }
   if (storeText) parts.push(storeText);
@@ -1077,7 +1079,8 @@ export function overviewKpis(totals: MachinesOverview["totals"]): KpiView[] {
     },
     {
       id: "profit",
-      label: totals.profitOre < 0 ? "Förlust" : "Vinst",
+      // En betydelse överallt: vår vinst, efter butikernas andel (som Hem och Lönsamhet).
+      label: totals.profitOre < 0 ? "Förlust" : "Vår vinst",
       value: totals.profitOre,
       kind: "sek",
       delta: rel(totals.profitChange),

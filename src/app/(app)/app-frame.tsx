@@ -98,6 +98,7 @@ export function AppFrame({
         earliest={earliest}
         vmbUserKey={vmbUserKey}
         crumbs={crumbsFor(pathname, orgName, view)}
+        view={view}
         onOrganizationChange={(id) =>
           startTransition(async () => {
             const result = await switchOrganization(id);

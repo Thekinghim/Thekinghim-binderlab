@@ -30,7 +30,10 @@ export function EvidenceDetails({
   const parts: string[] = [];
   const orders = orderCountOf(evidence);
   if (orders > 0) parts.push(`${formatInt(orders)} order`);
-  if (evidence.dates.length > 0) parts.push(`${formatInt(evidence.dates.length)} dagar`);
+  if (evidence.dates.length > 0)
+    parts.push(
+      `${formatInt(evidence.dates.length)} ${evidence.dates.length === 1 ? "dag" : "dagar"}`,
+    );
   return (
     <details className={cn("group min-w-0", className)}>
       <summary className="meta inline-flex cursor-pointer list-none items-center gap-2 rounded-xs text-muted transition-colors duration-fast ease-instrument hover:text-fg [&::-webkit-details-marker]:hidden">

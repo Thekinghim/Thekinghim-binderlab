@@ -630,6 +630,13 @@ export const organizationSettings = pgTable("organization_settings", {
   vatRateBp: integer("vat_rate_bp").notNull().default(0),
   cardFeeBp: integer("card_fee_bp").notNull().default(0),
   fiscalYearStartMonth: integer("fiscal_year_start_month").notNull().default(1),
+  /** Företagsuppgifter i kontrakt (20261106050000_foretagsuppgifter.sql). null = tom rad. */
+  companyName: text("company_name"),
+  orgNumber: text("org_number"),
+  companyAddress: text("company_address"),
+  contactName: text("contact_name"),
+  contactEmail: text("contact_email"),
+  contactPhone: text("contact_phone"),
   ...stamps(),
 });
 

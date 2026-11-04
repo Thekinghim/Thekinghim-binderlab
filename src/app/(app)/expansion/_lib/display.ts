@@ -108,3 +108,34 @@ export function hoursText(minutes: number): string {
   if (minutes < 60) return `${formatInt(minutes)}${NBSP}min`;
   return `~${formatInt(Math.round(minutes / 60))}${NBSP}h`;
 }
+
+/**
+ * Varningen när planen inte använder påfyllningstiden (över 10 h per automat och vecka är
+ * nästan alltid ett felinmatat värde). En mening som säger var värdet kommer ifrån, vad
+ * planen räknar med i stället och var det rättas. null när planen använder värdet.
+ */
+export function refillWarning(args: {
+  readonly ignored: { readonly minutes: number; readonly source: "saved" | "data" } | null;
+  /** Det planen räknar med i stället (minuter per automat och vecka). */
+  readonly usedMinutes: number;
+  /** Mätningen på Effekt som gav värdet (minuter per månad, hela flottan). */
+  readonly measurement: { readonly month: string; readonly minutesPerMonth: number } | null;
+}): { text: string; href?: string; cta?: string } | null {
+  const { ignored } = args;
+  if (!ignored) return null;
+  const used = `${hoursText(args.usedMinutes)} per automat och vecka`;
+  const perWeek = `${hoursText(ignored.minutes)} per automat och vecka`;
+  if (ignored.source === "data") {
+    const from = args.measurement
+      ? `Effekt har ${hoursText(args.measurement.minutesPerMonth)} påfyllning för ${monthLabel(args.measurement.month)} (${perWeek}).`
+      : `Mätningen på Effekt ger ${perWeek}.`;
+    return {
+      text: `${from} Troligen fel, så planen räknar med ${used}.`,
+      href: "/effekt",
+      cta: "Rätta på Effekt",
+    };
+  }
+  return {
+    text: `Ert värde ${perWeek} verkar fel, så planen räknar med ${used}. Ändra det här.`,
+  };
+}

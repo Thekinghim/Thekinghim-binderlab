@@ -7,25 +7,25 @@ import { addDays } from "@/domain/dates";
 import type { IsoDate } from "@/domain/types";
 
 const MONTHS = [
-  "jan",
-  "feb",
+  "jan.",
+  "feb.",
   "mars",
-  "apr",
+  "apr.",
   "maj",
   "juni",
   "juli",
-  "aug",
-  "sep",
-  "okt",
-  "nov",
-  "dec",
+  "aug.",
+  "sep.",
+  "okt.",
+  "nov.",
+  "dec.",
 ];
 
 export function addDaysIso(day: string, days: number): string {
   return addDays(day as IsoDate, days);
 }
 
-/** "i dag", "i morgon", "i går", "17 nov" eller "17 nov 2027" (annat år). */
+/** "i dag", "i morgon", "i går", "17 nov." eller "17 nov. 2027" (annat år), som resten av sajten. */
 export function dayLabel(day: string, today: string): string {
   if (day === today) return "i dag";
   if (day === addDaysIso(today, 1)) return "i morgon";

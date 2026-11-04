@@ -1,4 +1,8 @@
-import type { PriceChangeEffect, PriceEffectVerdict } from "@/analytics/pricing";
+import {
+  MAX_PLAUSIBLE_ELASTICITY,
+  type PriceChangeEffect,
+  type PriceEffectVerdict,
+} from "@/analytics/pricing";
 import { Panel, PanelSection } from "@/components/ui/frame";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
@@ -37,8 +41,22 @@ function lcFirst(text: string): string {
  * i stor stil. Effekten och bidraget är skattningar: bara en tydlig effekt
  * visas som nyckeltal, annars står "–" och skattningen i grått under.
  */
+/**
+ * Får skattningen visas som siffra (grå "Skattat …")? Inte under uppstarten ("För tidigt")
+ * och inte när den är orimligt stor: då vore siffran bara brus för den som läser.
+ */
+function plausible(effect: PriceChangeEffect): boolean {
+  if (effect.verdict === "clear") return true;
+  if (effect.verdict !== "uncertain") return false;
+  return (
+    effect.elasticityHundredths === null ||
+    Math.abs(effect.elasticityHundredths) <= MAX_PLAUSIBLE_ELASTICITY
+  );
+}
+
 function EffectFigures({ effect }: { effect: PriceChangeEffect }) {
   const sure = effect.verdict === "clear";
+  const showEstimate = plausible(effect);
   const noise =
     effect.noiseBp !== null ? `, vanlig variation ±${percentOfBp(effect.noiseBp, 0)}` : "";
   const volume = effect.effectBp === null ? null : deltaOfBp(effect.effectBp);
@@ -64,8 +82,8 @@ function EffectFigures({ effect }: { effect: PriceChangeEffect }) {
       </div>
       <div className="flex flex-col gap-1">
         <dt className="label text-subtle">Volym mot väntat</dt>
-        {sure || volume === null ? (
-          <dd className="tnum text-lg">{volume ?? "–"}</dd>
+        {sure || volume === null || !showEstimate ? (
+          <dd className="tnum text-lg">{sure ? (volume ?? "–") : "–"}</dd>
         ) : (
           <dd className="flex flex-col gap-0.5">
             <span className="tnum text-lg text-subtle">–</span>
@@ -78,8 +96,8 @@ function EffectFigures({ effect }: { effect: PriceChangeEffect }) {
       </div>
       <div className="flex flex-col gap-1">
         <dt className="label text-subtle">Bidrag/vecka</dt>
-        {sure || contribution === null ? (
-          <dd className="tnum text-lg">{contribution ?? "–"}</dd>
+        {sure || contribution === null || !showEstimate ? (
+          <dd className="tnum text-lg">{sure ? (contribution ?? "–") : "–"}</dd>
         ) : (
           <dd className="flex flex-col gap-0.5">
             <span className="tnum text-lg text-subtle">–</span>
@@ -102,6 +120,8 @@ function effectSentence(effect: PriceChangeEffect): string {
   }
   const reason = effect.reasons[0];
   if (effect.verdict === "no-data") return reason ?? effect.text;
+  // Uppstart: skälet är redan en hel mening i vanliga ord ("För tidigt att säga: …").
+  if (effect.verdict === "too-early" && reason) return reason;
   return reason ? `Ingen säker slutsats än: ${lcFirst(reason)}` : "Ingen säker slutsats än.";
 }
 
@@ -115,10 +135,15 @@ function EffectBlock({ effect, ctx }: { effect: PriceChangeEffect; ctx: SectionC
         names={ctx.names}
         extra={
           <div className="flex max-w-3xl flex-col gap-1 border-t border-line pt-3">
-            <p className="text-muted">{effect.text}</p>
-            {effect.elasticityHundredths !== null ? (
+            {/* Uträkningen i ord, bara när siffrorna går att lita på något. */}
+            {plausible(effect) ? (
+              <p className="text-muted">{effect.text}</p>
+            ) : (
+              <p className="text-muted">{effectSentence(effect)}</p>
+            )}
+            {effect.elasticityHundredths !== null && effect.verdict === "clear" ? (
               <p className="text-subtle">
-                Elasticitet {formatNumber(effect.elasticityHundredths / 100, 2)}
+                Priskänslighet {formatNumber(effect.elasticityHundredths / 100, 2)}
                 {effect.noiseBp !== null
                   ? `, vanlig variation upp till ${percentOfBp(effect.noiseBp, 0)}`
                   : ""}

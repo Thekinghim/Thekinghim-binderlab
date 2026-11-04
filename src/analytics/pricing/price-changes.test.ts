@@ -274,3 +274,44 @@ describe("priceChangeEffect", () => {
     expect(() => priceChangeEffect({ ...base, orders: [], windowDays: 0 })).toThrow(DomainError);
   });
 });
+
+/**
+ * Som produktionen: automaten startade 14 okt., Surging Sparks sänktes 5 kr 24 okt. medan
+ * övriga titlar växte kraftigt (uppstart). Ingen skattning eller elasticitet ska visas som
+ * en slutsats: "För tidigt att säga".
+ */
+describe("priceChangeEffect: nystartad automat och orimliga skattningar", () => {
+  const SRC14 = {
+    ...sources({ "t-a": 2_000, "t-b": 2_000 }),
+    placements: [{ machineId: "m-1", storeId: "s-1", from: "2026-10-14", to: null }],
+  };
+  const orders = [
+    ...daily("a", "t-a", "m-1", "2026-10-14", 10, 3, 12_500),
+    ...daily("A", "t-a", "m-1", "2026-10-24", 10, 2, 12_000),
+    ...daily("b", "t-b", "m-1", "2026-10-14", 10, 2),
+    ...daily("B", "t-b", "m-1", "2026-10-24", 10, 6),
+  ];
+  const run = (placements = SRC14.placements) =>
+    priceChangeEffect({
+      ...SRC14,
+      placements,
+      orders,
+      titleId: "t-a",
+      changeDate: "2026-10-24",
+      asOf: "2026-11-02",
+      titles: TITLES,
+    });
+
+  it("före-fönstret i automatens första 28 dagar: för tidigt att säga", () => {
+    const r = run();
+    expect(r.verdict).toBe("too-early");
+    expect(plain(r.reasons[0]!)).toMatch(/^För tidigt att säga: automaten startade 14 okt\./);
+  });
+
+  it("orimlig elasticitet (> 5) blir osäker även utan uppstart", () => {
+    const r = run([{ machineId: "m-1", storeId: "s-1", from: "2025-01-01", to: null }]);
+    expect(Math.abs(r.elasticityHundredths!)).toBeGreaterThan(500);
+    expect(r.verdict).toBe("uncertain");
+    expect(r.reasons).toContain("Skattningen är orimligt stor för en så liten prisändring.");
+  });
+});

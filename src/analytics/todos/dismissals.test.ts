@@ -3,12 +3,16 @@ import { applyDismissals, computeTodos, obsoleteDismissals } from "./index";
 import { daily, input, NOW, title } from "./test-helpers";
 import type { TodoInput } from "./types";
 
-const scenario = (onHand: number, lastRestockedAt: string): TodoInput =>
+const scenario = (
+  onHand: number,
+  lastRefilledAt: string | null,
+  lastRestockedAt: string | null = lastRefilledAt,
+): TodoInput =>
   input({
     titles: [title("t1", "Black Bolt")],
     orders: daily("t1", "m1", "2026-10-19", 14, 2),
     prices: [{ titleId: "t1", unitCostOre: 2_500, validFrom: "2026-01-01" }],
-    stock: [{ machineId: "m1", titleId: "t1", onHand, lastRestockedAt }],
+    stock: [{ machineId: "m1", titleId: "t1", onHand, lastRestockedAt, lastRefilledAt }],
   });
 
 describe("avbockning", () => {
@@ -18,10 +22,31 @@ describe("avbockning", () => {
     expect(t).toBeDefined();
     const dismissals = [{ key: t!.key, fingerprint: t!.fingerprint }];
     expect(applyDismissals(todos, dismissals)).toHaveLength(0);
-    // Ett pack till säljs: samma orsak, fortfarande dold.
+    // Samma saldo och ingen ny påfyllning: fortfarande dold.
     expect(
-      applyDismissals(computeTodos(scenario(3, "2026-10-20T08:00:00Z"), NOW), dismissals),
+      applyDismissals(computeTodos(scenario(4, "2026-10-20T08:00:00Z"), NOW), dismissals),
     ).toHaveLength(0);
+  });
+
+  it("en inventering som inte ändrar saldot låter avbockningen stå kvar", () => {
+    const [t] = computeTodos(scenario(4, null, "2026-11-01T12:20:00Z"), NOW);
+    const dismissals = [{ key: t!.key, fingerprint: t!.fingerprint }];
+    expect(
+      applyDismissals(computeTodos(scenario(4, null, "2026-11-02T07:20:00Z"), NOW), dismissals),
+    ).toHaveLength(0);
+  });
+
+  it("Klar döljer inte en påfyllning medan automaten töms (BL-001, 4 nov.)", () => {
+    // Avbockad vid 4 pack; ingen påfyllning registrerad, bara inventeringen 3 nov. Ett pack
+    // till säljs: punkten ska synas igen, annars säger Att göra "Inget i dag" fast Lager
+    // säger Akut.
+    const [t] = computeTodos(scenario(4, null, "2026-11-01T12:20:00Z"), NOW);
+    const dismissals = [{ key: t!.key, fingerprint: t!.fingerprint }];
+    const later = applyDismissals(
+      computeTodos(scenario(3, null, "2026-11-01T12:20:00Z"), NOW),
+      dismissals,
+    );
+    expect(later.map((x) => x.key)).toEqual(["refill:m1:t1"]);
   });
 
   it("visar punkten igen när orsaken ändras", () => {

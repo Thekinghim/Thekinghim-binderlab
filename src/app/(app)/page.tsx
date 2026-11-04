@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AiPageLine } from "@/components/assistant/panel-context";
 import { Suspense, type CSSProperties } from "react";
 
+import { StoreShareToggle } from "@/components/shell/store-share-toggle";
 import { Panel } from "@/components/ui/frame";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
@@ -37,17 +38,24 @@ type SearchParams = Record<string, string | string[] | undefined>;
  */
 export default async function HemPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   // Rollen kontrolleras före strömningen, så att påfyllaren får en riktig omdirigering.
-  await requireRoute("hem");
+  const ctx = await requireRoute("hem");
   // Skalet och skelettet går ut direkt; siffrorna strömmar in när de är räknade
   // (Att göra och förlorad försäljning tar längst tid med mycket data).
   return (
     <Suspense fallback={<HemSkeleton />}>
-      <HemContent searchParams={searchParams} />
+      <HemContent searchParams={searchParams} userKey={ctx.user.id} />
     </Suspense>
   );
 }
 
-async function HemContent({ searchParams }: { searchParams: Promise<SearchParams> }) {
+async function HemContent({
+  searchParams,
+  userKey,
+}: {
+  searchParams: Promise<SearchParams>;
+  /** För vyknappen "Visa butikernas andel" (valet minns per användare). */
+  userKey: string;
+}) {
   const sp = await searchParams;
   const {
     model,
@@ -106,7 +114,15 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
     <div className="mx-auto flex w-full max-w-[1280px] flex-col px-4 pt-8 pb-16 md:px-8 md:pt-12">
       <div className="rise" style={rise(0)}>
         <HemHero headline={headline} eyebrow={eyebrow}>
-          <AiPageLine metric="vinsten för perioden" route="hem" className="mt-1" />
+          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-3">
+            <AiPageLine metric="vinsten för perioden" route="hem" />
+            {/* Butikernas andel på begäran; med vald butik står den alltid under talet. */}
+            {model.hasStoreShare && !scope ? (
+              <Suspense fallback={null}>
+                <StoreShareToggle userKey={userKey} />
+              </Suspense>
+            ) : null}
+          </div>
         </HemHero>
       </div>
 
@@ -227,7 +243,7 @@ async function HemContent({ searchParams }: { searchParams: Promise<SearchParams
                     rows: model.topTitles.rows.slice(0, TOP_N),
                     rest: null,
                   }}
-                  caption={`De ${formatInt(TOP_N)} titlarna med högst intäkt ${periodText(model.period)}, med andel av intäkten.`}
+                  caption={`De ${formatInt(TOP_N)} titlarna med högst intäkt ${model.spanText ?? periodText(model.period)}, med andel av intäkten.`}
                 />
               </div>
             </section>

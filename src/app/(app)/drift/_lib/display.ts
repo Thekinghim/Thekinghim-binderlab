@@ -4,6 +4,7 @@
  */
 
 import type { HealthStatus, MachineHealth } from "@/analytics/health";
+import { assortmentKey } from "@/analytics/todos/assortment";
 import type { IsoDate } from "@/domain";
 import { sentence, weekdayDay } from "@/analytics/todos/text";
 import type { Status } from "@/components/ui/status-tag";
@@ -134,6 +135,24 @@ export interface AlertLike {
   readonly title: string;
   readonly openedAt: string;
   readonly evidence: { readonly dates: readonly string[] };
+}
+
+/**
+ * Larmen utan lagerlarm för titlar som gått ur automaten (Utgår på Lager): de säljs ut och
+ * ska inte stå som "Kritisk – slut". Samma regel som larmjobbet (`lowStockAlerts` med
+ * `retired`), så att ett larm som öppnades innan titeln togs bort inte syns tills nästa körning.
+ */
+export function withoutRetiredAlerts<
+  T extends { kind: string; machineId: string | null; titleId: string | null },
+>(alerts: readonly T[], retired: ReadonlySet<string>): T[] {
+  if (retired.size === 0) return [...alerts];
+  return alerts.filter(
+    (a) =>
+      a.kind !== "low_stock" ||
+      a.machineId === null ||
+      a.titleId === null ||
+      !retired.has(assortmentKey(a.machineId, a.titleId)),
+  );
 }
 
 const SEVERITY_RANK: Record<string, number> = { critical: 0, warning: 1, info: 2 };

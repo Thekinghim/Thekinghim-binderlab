@@ -187,6 +187,7 @@ export default async function ExpansionPage({
             leads={planLeads}
             openLeads={openLeads}
             pipelineHref={hrefFor("pipeline")}
+            refillMeasurement={growth.refillMeasurement}
           />
         </section>
       ) : null}

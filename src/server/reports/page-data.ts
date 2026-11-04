@@ -23,7 +23,9 @@ import {
   previewReportFor,
   ReportError,
   selectableMonths,
+  staleDraftFor,
   type ArchiveRow,
+  type StaleDraft,
   type RecipientRow,
   type Viewer,
 } from "./service";
@@ -74,6 +76,11 @@ export interface ReportsPageData {
   readonly previewError: string | null;
   /** Senaste sparade versionen för valet (typ, månad, butik). */
   readonly current: ArchiveRow | null;
+  /**
+   * Utkastet (`current`) stämmer inte längre med en ny uträkning (t.ex. rättade
+   * inköpspriser): "Godkänn" är låst tills en ny version skapas. null = aktuellt.
+   */
+  readonly currentStale: StaleDraft | null;
   readonly archive: readonly ArchiveRow[];
   readonly recipients: readonly RecipientRow[];
   /** Mottagare som kan få den valda rapporten. */
@@ -174,6 +181,11 @@ export async function loadReportsPage(
         r.status !== "superseded",
     ) ?? null;
 
+  const currentStale =
+    current && current.status === "draft" && preview
+      ? await staleDraftFor(viewer, current.id, now)
+      : null;
+
   // Månadens utskick: varje aktiv mottagare vars butik hade en automat (som i Att göra).
   // En rapport med eget datum inom månaden (t.ex. 15–31 okt.) räknas som månadens.
   const monthPeriod = { start: monthStart(month), end: monthEnd(month) };
@@ -213,6 +225,7 @@ export async function loadReportsPage(
     preview,
     previewError,
     current,
+    currentStale,
     archive,
     recipients: base.recipients,
     eligible: preview

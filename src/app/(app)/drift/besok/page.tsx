@@ -225,7 +225,7 @@ export default async function VisitPlanPage({
                             <li>
                               <details>
                                 <summary className="w-fit cursor-pointer rounded-xs hover:text-fg">
-                                  {`Och ${formatInt(stop.reasons.length - 3)} titlar till`}
+                                  {`Och ${formatInt(stop.reasons.length - 3)} ${stop.reasons.length - 3 === 1 ? "titel" : "titlar"} till`}
                                 </summary>
                                 <ul className="mt-1 flex flex-col gap-1">
                                   {stop.reasons.slice(3).map((r) => (

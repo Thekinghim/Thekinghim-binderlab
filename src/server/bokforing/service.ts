@@ -29,6 +29,7 @@ import { ECONOMY_ROLES, OPERATOR_ROLES } from "@/server/data/core/types";
 
 import {
   bookMonths,
+  missingCostReason,
   monthFiguresFromReport,
   VmbVatRateError,
   type MonthBook,
@@ -252,7 +253,10 @@ async function build(tx: Tx, org: OrgRef, today: IsoDate, until: string): Promis
     return x ? snapshotVmb(x.snapshot) : settings.vmbEnabled;
   };
   const months = first <= until ? eachMonth(`${first}-01`, `${until}-01`) : [];
-  const reports = await monthReportsIn(tx, orgId, months);
+  const [reports, hasReceivedPurchases] = await Promise.all([
+    monthReportsIn(tx, orgId, months),
+    anyReceivedPurchases(tx, orgId),
+  ]);
   const figures = months.map((m) => {
     const r = reports.get(m)!;
     try {
@@ -262,6 +266,7 @@ async function build(tx: Tx, org: OrgRef, today: IsoDate, until: string): Promis
         r.receivedPurchasesOre,
         settings.purchaseBasis,
         r.refundsOre,
+        { hasReceivedPurchases },
       );
     } catch (error) {
       if (error instanceof VmbVatRateError) throw new BokforingError(error.message);
@@ -275,6 +280,17 @@ async function build(tx: Tx, org: OrgRef, today: IsoDate, until: string): Promis
     books: bookMonths(figures, settings.openingCarryOre, carry, vmbFor),
     sent,
   };
+}
+
+/** Har organisationen någon gång tagit emot en inköpsorder (helt eller delvis)? */
+async function anyReceivedPurchases(tx: Tx, orgId: string): Promise<boolean> {
+  const result = await tx.execute(sql`
+    select exists (
+      select 1 from public.purchase_orders po
+      where po.organization_id = ${orgId}::uuid
+        and po.status::text in ('received', 'partially_received')
+    ) as any`);
+  return (Array.from(result)[0] as { any: boolean } | undefined)?.any === true;
 }
 
 function changed(b: MonthBook, snap: MonthSnapshot | null): boolean {
@@ -609,14 +625,7 @@ export function hasContent(src: PackageSource): boolean {
 
 /** Varför paketet bara är preliminärt, eller null. En rad. */
 export function preliminaryReason(book: MonthBook): string | null {
-  const n = book.profitSplitUnpricedOrders;
-  return n > 0
-    ? `${plural(n, "order", "order")} saknar inköpspris, så butikens andel är inte klar.`
-    : null;
-}
-
-function plural(n: number, one: string, many: string): string {
-  return `${n} ${n === 1 ? one : many}`;
+  return missingCostReason(book);
 }
 
 export async function renderPackage(

@@ -127,7 +127,9 @@ describe("revision 1: misstänkt fel härlett ur tystnad", () => {
     ]);
     expect(nbsp(h.detail)).toContain("Ingen försäljning sedan ons 4 nov. 11:30 (5 timmar)");
     expect(nbsp(h.detail)).toContain("brukar ge 5,0 pack");
-    expect(nbsp(h.detail)).toContain("0,67 %");
+    // Sannolikheten (0,67 %) står i Underlag, texten säger det med vanliga ord.
+    expect(nbsp(h.detail)).toContain("Så lång tystnad är mycket ovanlig.");
+    expect(h.evidence.figures.find((f) => f.key === "zeroProbabilityBp")?.value).toBe(67);
     // Underlag: sista ordern + 8 onsdagar × 6 veckotimmar (11–16) = 49 order.
     expect(h.evidence.orderIds).toHaveLength(49);
     expect(h.evidence.orderIds).toContain(last.id);

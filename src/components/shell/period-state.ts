@@ -5,6 +5,7 @@
  *   ?from=2026-10-13&to=2026-11-01           (eget intervall, båda ändar ingår)
  *   ?butik=<id>&automat=<id>                 (globalt filter)
  *   ?vmb=1                                   (vyknappen "Med VMB": vinst efter VMB-moms)
+ *   ?andel=1                                 (vyknappen "Visa butikernas andel")
  *
  * Allt här är rena funktioner utan React, så att samma tolkning används i
  * Server Components (parsePeriod(await searchParams)) och i klienten
@@ -38,6 +39,8 @@ export const TO_PARAM = "to";
 export const STORE_PARAM = "butik";
 export const MACHINE_PARAM = "automat";
 export const VMB_PARAM = "vmb";
+/** Vyknappen "Visa butikernas andel" (?andel=1). Bara visning: vår vinst räknas likadant. */
+export const STORE_SHARE_PARAM = "andel";
 
 /**
  * Förfrågans header som proxyn (src/proxy.ts) sätter från ?vmb=1, så att serverns laddare
@@ -53,6 +56,7 @@ export const SHELL_PARAMS = [
   STORE_PARAM,
   MACHINE_PARAM,
   VMB_PARAM,
+  STORE_SHARE_PARAM,
 ] as const;
 
 export const periodChoices: ReadonlyArray<{ key: PeriodKey; label: string; short: string }> = [
@@ -295,6 +299,32 @@ export function withVmbView(current: SearchParamsInput, on: boolean): URLSearchP
   if (on) next.set(VMB_PARAM, "1");
   else next.delete(VMB_PARAM);
   return next;
+}
+
+/**
+ * Vyknappen "Visa butikernas andel" (?andel=1). Standard av: sidorna visar vår vinst och
+ * butikernas andel bara med knappen eller med ett butiks- eller automatfilter
+ * (showStoreShare). Ändrar inget i beräkningen; andelen dras alltid från vår vinst.
+ */
+export function parseStoreShareView(sp: SearchParamsInput): boolean {
+  return readParam(sp, STORE_SHARE_PARAM) === "1";
+}
+
+/** Ny query med vyknappen satt (på = ?andel=1, av = parametern tas bort). */
+export function withStoreShareView(current: SearchParamsInput, on: boolean): URLSearchParams {
+  const next = toURLSearchParams(current);
+  if (on) next.set(STORE_SHARE_PARAM, "1");
+  else next.delete(STORE_SHARE_PARAM);
+  return next;
+}
+
+/**
+ * Om butikernas andel ska visas som eget tal: med vyknappen, eller när en butik eller
+ * automat är vald (då gäller andelen just den butiken).
+ */
+export function showStoreShare(sp: SearchParamsInput): boolean {
+  if (parseStoreShareView(sp)) return true;
+  return Boolean(readParam(sp, STORE_PARAM) || readParam(sp, MACHINE_PARAM));
 }
 
 /** Bara skalets parametrar, för att bära period och filter mellan sidor. */

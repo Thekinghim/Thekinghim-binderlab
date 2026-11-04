@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { addDays, dayOfWeek, DomainError } from "@/domain";
 import { accuracyMetrics, residualVariance } from "./backtest";
 import { approxKr, isqrtRound, packs, packsOneDecimal, signedPacksOneDecimal } from "./common";
-import { forecastSales, resolveForecastOptions } from "./forecast";
+import { biasCorrectionBp, forecastSales, resolveForecastOptions } from "./forecast";
 import { fitModel, predictDay, type DailyHistory } from "./model";
 import { dailyOrders, lcg, machine, NO_TAX, ord } from "./test-fixtures";
 
@@ -391,5 +391,85 @@ describe("forecastSales", () => {
     expect(() => forecastSales({ orders: [], asOf: "2026-02-30", settings: NO_TAX })).toThrow(
       DomainError,
     );
+  });
+});
+
+/**
+ * Som produktionen 4 nov.: automaten startade 14 okt. med en startpuckel (10 pack per dag
+ * första veckorna) och säljer nu 6 per dag. Prognosen låg för högt i testveckorna.
+ */
+describe("forecastSales: utgår och korrigering för överskattning", () => {
+  const launch = (d: number) => (d < 14 ? 10 : 6);
+  const orders = [
+    ...dailyOrders("a", "t-a", "m-1", "2026-10-14", 21, launch),
+    ...dailyOrders("b", "t-b", "m-1", "2026-10-14", 21, 2),
+  ];
+  const base = { orders, asOf: "2026-11-03", settings: NO_TAX, machines: [machine("m-1")] };
+
+  it("en serie som gått ur automaten får ingen prognos", () => {
+    const all = forecastSales(base);
+    const res = forecastSales({ ...base, excludeSeries: [{ machineId: "m-1", titleId: "t-b" }] });
+    expect(all.series.map((x) => x.titleId)).toEqual(["t-a", "t-b"]);
+    expect(res.series.map((x) => x.titleId)).toEqual(["t-a"]);
+    expect(res.total.total.unitsMilli).toBeLessThan(all.total.total.unitsMilli);
+  });
+
+  it("utan korrigering ligger prognosen över senaste veckans takt", () => {
+    const res = forecastSales({ ...base, excludeSeries: [{ machineId: "m-1", titleId: "t-b" }] });
+    // Senaste veckan: 6 per dag = 42 per vecka; prognosen bär med sig startpuckeln.
+    expect(res.total.weeks[0]!.unitsMilli).toBeGreaterThan(48_000);
+    expect(res.correction.factorBp).toBe(10_000);
+    expect(res.correction.biasBp).toBeGreaterThan(0);
+  });
+
+  it("med biasCorrection sänks prognosen med utfall / prognos i testveckorna, högst 30 %", () => {
+    const raw = forecastSales({ ...base, excludeSeries: [{ machineId: "m-1", titleId: "t-b" }] });
+    const res = forecastSales({
+      ...base,
+      excludeSeries: [{ machineId: "m-1", titleId: "t-b" }],
+      options: { biasCorrection: true },
+    });
+    const f = res.correction.factorBp;
+    expect(f).toBeLessThan(10_000);
+    expect(f).toBeGreaterThanOrEqual(7_000);
+    // faktor = 1 / (1 + bias)
+    expect(Math.abs(f - Math.round(100_000_000 / (10_000 + res.correction.biasBp!)))).toBeLessThan(
+      3,
+    );
+    const week = res.total.weeks[0]!.unitsMilli;
+    expect(Math.abs(week - Math.round((raw.total.weeks[0]!.unitsMilli * f) / 10_000))).toBeLessThan(
+      10,
+    );
+    expect(week).toBeLessThan(raw.total.weeks[0]!.unitsMilli);
+    expect(res.series[0]!.evidence.figures.some((x) => x.key === "biasCorrectionBp")).toBe(true);
+  });
+
+  it("biasCorrectionBp: skalar aldrig upp och kräver två testveckor", () => {
+    const o = (origin: string, a: number, f: number) => ({
+      origin,
+      actualMilli: a,
+      forecastMilli: f,
+    });
+    expect(
+      biasCorrectionBp([o("2026-10-27", 100_000, 80_000), o("2026-10-20", 100_000, 90_000)], true)
+        .factorBp,
+    ).toBe(10_000);
+    expect(biasCorrectionBp([o("2026-10-27", 100_000, 160_000)], true).factorBp).toBe(10_000);
+    expect(
+      biasCorrectionBp(
+        [o("2026-10-27", 129_000, 208_000), o("2026-10-20", 179_000, 163_000)],
+        true,
+      ),
+    ).toEqual({ factorBp: Math.round((308_000 * 10_000) / 371_000), biasBp: 2_045, origins: 2 });
+    expect(
+      biasCorrectionBp([o("2026-10-27", 100_000, 300_000), o("2026-10-20", 100_000, 300_000)], true)
+        .factorBp,
+    ).toBe(7_000);
+    expect(
+      biasCorrectionBp(
+        [o("2026-10-27", 129_000, 208_000), o("2026-10-20", 179_000, 163_000)],
+        false,
+      ).factorBp,
+    ).toBe(10_000);
   });
 });

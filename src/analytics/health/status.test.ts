@@ -55,7 +55,10 @@ describe("machineHealth: misstänkt fel ur tystnad", () => {
     expect(h?.title).toBe("Automat 1: misstänkt fel");
     expect(txt(h?.detail)).toContain("Ingen försäljning sedan mån 2 nov. 13:45 (4 timmar)");
     expect(txt(h?.detail)).toContain("brukar ge 9,5 pack");
-    expect(txt(h?.detail)).toContain("0,01 %");
+    // Vanliga ord: sannolikheten står i Underlag, inte i texten.
+    expect(txt(h?.detail)).toContain("Så lång tystnad är mycket ovanlig.");
+    expect(txt(h?.detail)).not.toContain("%");
+    expect(h?.evidence.figures.find((f) => f.key === "zeroProbabilityBp")?.value).toBe(1);
     expect(h?.evidence.machineIds).toEqual(["m1"]);
     expect(h?.evidence.orderIds.length).toBeGreaterThan(0);
     expect(h?.evidence.figures.find((f) => f.key === "expectedTenths")?.value).toBe(95);
@@ -91,7 +94,11 @@ describe("machineHealth: misstänkt fel ur tystnad", () => {
     const [h] = health({ orders }, MON_1830);
     expect(h?.silence?.zeroProbabilityBp).toBe(302);
     expect(h?.status).toBe("ok");
-    expect(txt(h?.detail)).toContain("sannolikheten för noll är 3,02 %");
+    // "sannolikheten för noll är 3,02 %" var svårt språk: nu vanliga ord, siffran i Underlag.
+    expect(txt(h?.detail)).toContain(
+      "Ovanligt tyst i 1 timme: brukar sälja ca 3,5 pack på den tiden.",
+    );
+    expect(txt(h?.detail)).not.toMatch(/sannolikhet|%/);
   });
 
   it("gränsen kan ändras: 5 % larmar vid samma tystnad", () => {

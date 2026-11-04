@@ -19,6 +19,9 @@
  *   antalet månadens sista dag enligt kända placeringar ('placements').
  * - Status: prognos ≥ mål → 'on-track' (i fas), annars 'behind' (efter). När månaden är slut:
  *   'met' (nått) eller 'missed' (missat).
+ * - Dagar (samma regel som @/analytics/days): med `today` räknas bara hela dagar, till och
+ *   med i går, och med `dataStart` delar snitten bara med dagar från första ordern. En
+ *   automat som sålt i 21 dagar ger alltså snitt = försäljning / 21, inte / 28.
  * - Behov per dag = (mål − utfall) / återstående dagar, avrundat uppåt till helt öre.
  * - Underlaget för intäkt och vinst pekar ut orderna och försäljningsdagarna utfallet (och
  *   en prognos på de senaste dagarna) bygger på: alla order för intäkt, prissatta order för
@@ -33,6 +36,8 @@ import {
   DomainError,
   monthEnd,
   monthStart,
+  maxDate,
+  minDate,
   mulDivRound,
   parseIsoMonth,
   periodDays,
@@ -46,6 +51,7 @@ import {
   type Period,
   type ProfitabilityResult,
 } from "@/domain";
+import { lastCompleteDay } from "../days";
 import { nameLookup } from "../todos/common";
 import { day, kr, monthName, plural, sentence } from "../todos/text";
 import {
@@ -91,6 +97,16 @@ export interface GoalInput extends EconomicsSources {
   readonly goals: readonly Goal[];
   /** Dagens affärsdatum (sista dag med kända order). */
   readonly asOf: IsoDate;
+  /**
+   * Dagens datum. När det anges räknas bara hela dagar (till och med i går, samma regel som
+   * @/analytics/days): i dag pågår och skulle annars räknas som en dag utan försäljning.
+   */
+  readonly today?: IsoDate;
+  /**
+   * Första dagen med data (första ordern). Dagar före den räknas inte i snitten: en automat
+   * som funnits i 21 dagar delar med 21, inte med 28.
+   */
+  readonly dataStart?: IsoDate | null;
   readonly stores?: readonly { id: string; name: string }[];
   readonly machines?: readonly { id: string; name: string }[];
   readonly options?: GoalOptions;
@@ -181,6 +197,13 @@ export function activeMachinesOn(
   return [...ids].sort();
 }
 
+/** Dagar i perioden från `dataStart`. */
+function measuredDaysIn(period: Period, dataStart: IsoDate | null): number {
+  if (dataStart === null) return 0;
+  const startAt = maxDate(period.start, dataStart);
+  return startAt <= period.end ? periodDays({ start: startAt, end: period.end }) : 0;
+}
+
 /**
  * Utfall, prognos och status för varje mål, sorterat på månad, mått, omfattning och id.
  * Se reglerna överst i filen.
@@ -195,6 +218,24 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
   }
   const { asOf } = input;
   addDays(asOf, 0); // kontrollerar datumet
+  // Sista hela dagen med data: asOf, men aldrig i dag (dagen pågår).
+  const today = input.today ?? null;
+  const lastDay = today !== null ? minDate(asOf, lastCompleteDay(today)) : asOf;
+  const orgDataStart = input.dataStart ?? null;
+  /**
+   * Första dagen med data för målets butik eller automat: första ordern, eller den första
+   * placeringen i butiken/automaten om den kom senare (en ny automat i en gammal flotta).
+   */
+  const dataStartOf = (goal: Goal): IsoDate | null => {
+    if (orgDataStart === null || goal.scope === "organization") return orgDataStart;
+    let first: IsoDate | null = null;
+    for (const p of input.placements) {
+      if (goal.scope === "store" && p.storeId !== goal.storeId) continue;
+      if (goal.scope === "machine" && p.machineId !== goal.machineId) continue;
+      if (first === null || p.from < first) first = p.from;
+    }
+    return first === null ? orgDataStart : maxDate(orgDataStart, first);
+  };
   const storeName = nameLookup(input.stores ?? []);
   const machineName = nameLookup(input.machines ?? []);
 
@@ -248,9 +289,9 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
     const start = monthStart(goal.month);
     const end = monthEnd(goal.month);
     const dim = periodDays({ start, end });
-    const finished = asOf >= end;
-    const started = asOf >= start;
-    const through = finished ? end : started ? asOf : null;
+    const finished = lastDay >= end;
+    const started = (today ?? asOf) >= start;
+    const through = finished ? end : lastDay >= start ? lastDay : null;
     const elapsed = through === null ? 0 : daysBetween(start, through) + 1;
     const remaining = dim - elapsed;
     const label = `${METRIC_NAME[goal.metric]} ${monthName(goal.month)}${
@@ -260,6 +301,10 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
           ? ` för ${machineName(id!)}`
           : ""
     }`;
+    const goalDataStart = dataStartOf(goal);
+    /** Dagar i perioden att dela med: bara dagar från första dagen med data. */
+    const rateDays = (period: Period): number =>
+      input.dataStart === undefined ? periodDays(period) : measuredDaysIn(period, goalDataStart);
     const scopeIds = {
       storeIds: goal.scope === "store" ? [id!] : [],
       machineIds: goal.scope === "machine" ? [id!] : [],
@@ -269,6 +314,7 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
     let forecast: number;
     let method: ForecastMethod;
     let averagePerDay: number | null = null;
+    let trailingWindowDays = opts.trailingDays;
     let requiredPerDay: number | null = null;
     let unpriced = 0;
     let evidenceMachineIds: string[] = scopeIds.machineIds;
@@ -281,7 +327,7 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
     if (goal.metric === "active_machines") {
       const filter = { storeId: goal.storeId, machineId: goal.machineId };
       const nowIds = started
-        ? activeMachinesOn(input.placements, finished ? end : asOf, filter)
+        ? activeMachinesOn(input.placements, finished ? end : (today ?? asOf), filter)
         : [];
       const endIds = activeMachinesOn(input.placements, end, filter);
       actual = nowIds.length;
@@ -301,23 +347,30 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
       }
       actual = measured?.value ?? 0;
       unpriced = goal.metric === "profit" ? (measured?.unpriced ?? 0) : 0;
-      if (elapsed > 0) averagePerDay = roundHalfUp(actual, elapsed);
+      // Dagar med data i månaden hittills (före första ordern fanns ingen automat).
+      const measuredInMonth = through === null ? 0 : rateDays({ start, end: through });
+      if (measuredInMonth > 0) averagePerDay = roundHalfUp(actual, measuredInMonth);
       if (finished) {
         forecast = actual;
         method = "final";
-      } else if (elapsed >= opts.minElapsedDays && elapsed > 0) {
-        forecast = actual + mulDivRound(actual, remaining, elapsed);
+      } else if (measuredInMonth >= opts.minElapsedDays && measuredInMonth > 0) {
+        forecast = actual + mulDivRound(actual, remaining, measuredInMonth);
         method = "run-rate";
       } else {
-        const window = { start: addDays(asOf, -(opts.trailingDays - 1)), end: asOf };
-        const trailing = moneyValue(goal, window).value;
-        const t = trail(goal, window);
-        evidenceOrderIds.push(...t.orderIds);
-        evidenceDates.push(...t.dates);
-        forecast = actual + mulDivRound(trailing, remaining, opts.trailingDays);
+        const window = { start: addDays(lastDay, -(opts.trailingDays - 1)), end: lastDay };
+        const windowDays = rateDays(window);
+        const trailing = windowDays > 0 ? moneyValue(goal, window).value : 0;
+        if (windowDays > 0) {
+          const t = trail(goal, window);
+          evidenceOrderIds.push(...t.orderIds);
+          evidenceDates.push(...t.dates);
+        }
+        forecast = actual + (windowDays > 0 ? mulDivRound(trailing, remaining, windowDays) : 0);
         method = "trailing";
+        trailingWindowDays = windowDays;
         figures.push(
-          fig("trailingValue", `Utfall senaste ${opts.trailingDays} dagarna`, trailing, "ore"),
+          fig("trailingValue", `Utfall senaste ${windowDays} dagarna`, trailing, "ore"),
+          fig("trailingDays", "Dagar i snittet", windowDays, "days"),
         );
       }
       if (remaining > 0) requiredPerDay = Math.max(0, ceilDiv(goal.target - actual, remaining));
@@ -372,7 +425,9 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
       const basis =
         method === "run-rate"
           ? `snittet hittills, ${kr(averagePerDay ?? 0)} per dag`
-          : `snittet de senaste ${opts.trailingDays} dagarna`;
+          : trailingWindowDays === opts.trailingDays
+            ? `snittet de senaste ${opts.trailingDays} dagarna`
+            : `snittet per dag sedan första ordern (${trailingWindowDays} dagar)`;
       const need =
         requiredPerDay !== null && status === "behind"
           ? ` Behöver ${kr(requiredPerDay)} per dag resten av månaden.`
@@ -409,7 +464,7 @@ export function goalProgress(input: GoalInput): GoalProgress[] {
         rule:
           goal.metric === "active_machines"
             ? "Automater i drift = automater placerade i en butik dagen; prognosen = antalet månadens sista dag enligt placeringarna."
-            : "Utfall enligt lönsamheten till och med i dag; prognos = utfall + snitt per dag × dagar kvar (snittet hittills efter minst 7 dagar, annars de senaste 28 dagarna).",
+            : "Utfall enligt lönsamheten till och med sista hela dagen (i dag räknas inte); prognos = utfall + snitt per dag × dagar kvar (snittet hittills efter minst 7 dagar med data, annars de senaste 28 dagarna). Dagar före första ordern räknas inte.",
         period: through === null ? null : { start, end: through },
         storeIds: scopeIds.storeIds,
         machineIds: evidenceMachineIds,

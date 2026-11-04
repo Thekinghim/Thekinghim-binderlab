@@ -149,7 +149,8 @@ describe("Revision 1: påfyllning", () => {
     const restocked: TodoInput = {
       ...base(),
       stock: [
-        { machineId: "m1", titleId: "t1", onHand: 7, lastRestockedAt: "2026-11-03T07:00:00Z" },
+        // En registrerad påfyllning (inte en inventering) gör punkten synlig igen.
+        { machineId: "m1", titleId: "t1", onHand: 7, lastRefilledAt: "2026-11-03T07:00:00Z" },
       ],
     };
     expect(

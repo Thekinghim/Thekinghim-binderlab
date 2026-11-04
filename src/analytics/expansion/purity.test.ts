@@ -3,7 +3,8 @@
  *
  * 1. Statisk kontroll: ingen källfil använder Date, slump, miljövariabler eller
  *    flyttalsformatering, och importer går bara till src/domain, src/lib/format,
- *    src/analytics/todos (underlag och text) och de egna mapparna.
+ *    src/analytics/todos (underlag och text), src/analytics/days (dagregeln) och de egna
+ *    mapparna.
  * 2. Samma beräkningar körs med TZ = UTC, Europe/Stockholm och Asia/Shanghai i samma
  *    process och ska ge identiska resultat.
  */
@@ -19,7 +20,7 @@ import { compareUnitEconomics, expansionPipeline } from ".";
 import { dailyOrders, INVESTMENT, OCTOBER, octoberSources, STORES } from "./test-fixtures";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const FOLDERS = ["expansion", "scenarios", "goals", "effect"];
+const FOLDERS = ["expansion", "scenarios", "goals", "effect", "days"];
 
 function sourceFiles(): string[] {
   return FOLDERS.flatMap((d) =>
@@ -46,7 +47,7 @@ describe("rena funktioner", () => {
       [/process\./, "process"],
       [/parseFloat|toFixed|toPrecision/, "flyttalsformatering"],
       [
-        /from\s+["'](?!\.\/|\.\.\/(todos|expansion)\/|@\/domain["']|@\/lib\/format["'])/,
+        /from\s+["'](?!\.\/|\.\.\/(todos|expansion)\/|\.\.\/days["']|@\/domain["']|@\/lib\/format["'])/,
         "import utanför tillåtna moduler",
       ],
     ];

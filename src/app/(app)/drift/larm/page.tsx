@@ -14,7 +14,7 @@ import { NoticesCard } from "./notices-card";
 import { PushDevices, type DeviceRow } from "./push-devices";
 import { SettingsForm, type KindOption } from "./settings-form";
 
-export const metadata: Metadata = { title: "Larminställningar" };
+export const metadata: Metadata = { title: "Notiser" };
 
 const KIND_HINT: Record<string, string> = {
   machine_offline: "Ovanligt lång tystnad.",
@@ -63,7 +63,8 @@ function shortAgent(ua: string | null): string {
 }
 
 /**
- * Larminställningar för den inloggade: vilka larm, för vilka automater, vilka tider och vilka
+ * Notiser (Drift → Notiser): inställningarna för larmen för den inloggade. Själva larmen står
+ * på Status (/drift#larm-sektion). Här: vilka larm, för vilka automater, vilka tider och vilka
  * kanaler; push-enheter; senaste utskicken. Varje användare ställer in sina egna.
  */
 export default async function AlertSettingsPage() {
@@ -128,17 +129,17 @@ export default async function AlertSettingsPage() {
         <SectionHeader
           as="h1"
           size="xl"
-          eyebrow="Larm"
+          eyebrow="Notiser"
           title={
             !settings.saved
-              ? "Du får inga larm ännu."
+              ? "Du får inga notiser om larm ännu."
               : !sub.active
-                ? "Larmen är avstängda för dig."
+                ? "Notiserna är avstängda för dig."
                 : `Du får ${plural(activeKinds, "typ av larm", "typer av larm")}${sub.machineIds === null ? " för alla automater" : ` för ${plural(sub.machineIds.length, "automat", "automater")}`}.`
           }
           aside={
             !settings.saved
-              ? "Spara för att börja få larm."
+              ? "Slå på för att få veta när något händer."
               : `Via ${sub.channels.map((c) => (c === "push" ? "push" : c === "email" ? "e-post" : "sms")).join(" och ")}${sub.quietStart ? `, tyst ${sub.quietStart}–${sub.quietEnd}` : ""}.`
           }
         />

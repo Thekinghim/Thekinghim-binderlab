@@ -17,7 +17,7 @@
  * utgående moms räknas två gånger, utan VMB skulle momsen bokas som försäljning.
  */
 
-import type { AccountantReport } from "@/reports";
+import { krText, type AccountantReport } from "@/reports";
 
 import { vmbChain, type VmbResult } from "./vmb";
 
@@ -35,6 +35,21 @@ export const PURCHASE_BASIS_LABEL: Record<PurchaseBasis, string> = {
   received_purchases: "Mottagna inköp i månaden",
   cost_of_goods: "Inköpsvärde sålda pack",
 };
+
+/**
+ * Underlaget som används: "mottagna inköp" kräver inköpsorder. Har organisationen aldrig
+ * tagit emot en inköpsorder används inköpsvärdet för sålda pack (inköpspriserna), annars
+ * blev inköpen 0 kr och resultatet hela försäljningen (oktober: 65 895 kr i stället för
+ * ~16 400 kr).
+ */
+export function effectivePurchaseBasis(
+  basis: PurchaseBasis,
+  hasReceivedPurchases: boolean,
+): { basis: PurchaseBasis; auto: boolean } {
+  return basis === "received_purchases" && !hasReceivedPurchases
+    ? { basis: "cost_of_goods", auto: true }
+    : { basis, auto: false };
+}
 
 export interface StoreShare {
   readonly storeId: string | null;
@@ -70,6 +85,11 @@ export interface MonthFigures {
   /** Inköp enligt valt underlag (VMB). */
   readonly purchasesOre: number;
   readonly purchaseBasis: PurchaseBasis;
+  /**
+   * Sant när inställningen är "mottagna inköp" men inga inköpsorder finns: inköpen är då
+   * inköpsvärdet för sålda pack (effectivePurchaseBasis).
+   */
+  readonly purchaseBasisAuto: boolean;
   readonly costOfGoodsOre: number;
   readonly receivedPurchasesOre: number;
   readonly unpricedOrders: number;
@@ -101,6 +121,7 @@ export function monthFiguresFromReport(
   receivedPurchasesOre: number,
   basis: PurchaseBasis,
   refundsOre = 0,
+  options: { readonly hasReceivedPurchases?: boolean } = {},
 ): MonthFigures {
   // Momssats 0 krävs med och utan VMB (se filhuvudet).
   if (report.vatRateBp !== 0) throw new VmbVatRateError();
@@ -108,6 +129,7 @@ export function monthFiguresFromReport(
     throw new RangeError("Återbetalningarna ska vara ett heltal ≥ 0 i öre.");
   }
   const t = report.totals;
+  const used = effectivePurchaseBasis(basis, options.hasReceivedPurchases ?? true);
   const stores = report.stores
     .filter((s) => s.kind === "store" && (s.compensationOre !== 0 || s.orders > 0))
     .map((s): StoreShare => ({
@@ -127,8 +149,9 @@ export function monthFiguresFromReport(
     salesInclVatOre: t.grossOre,
     refundsOre,
     cardFeesOre: t.feesOre,
-    purchasesOre: basis === "cost_of_goods" ? t.costOre : receivedPurchasesOre,
-    purchaseBasis: basis,
+    purchasesOre: used.basis === "cost_of_goods" ? t.costOre : receivedPurchasesOre,
+    purchaseBasis: used.basis,
+    purchaseBasisAuto: used.auto,
     costOfGoodsOre: t.costOre,
     receivedPurchasesOre,
     unpricedOrders: t.unpricedOrders,
@@ -140,6 +163,28 @@ export function monthFiguresFromReport(
       .map((d) => ({ date: d.date, orders: d.orders, salesInclVatOre: d.grossOre })),
   };
 }
+
+/**
+ * Varför månadens kostnader inte är klara, eller null. Då är paketet bara preliminärt och
+ * månaden står aldrig som "klar att ladda ner":
+ * - order hos butiker med vinstdelning saknar inköpspris (butikens andel är inte klar),
+ * - inköpen är inköpsvärdet för sålda pack men order saknar inköpspris (inköpen för låga),
+ * - inköpen är mottagna inköp men 0 kr fast sålda pack kostade pengar.
+ */
+export function missingCostReason(f: MonthFigures): string | null {
+  if (f.profitSplitUnpricedOrders > 0) {
+    return `${orders(f.profitSplitUnpricedOrders)} saknar inköpspris, så butikens andel är inte klar.`;
+  }
+  if (f.purchaseBasis === "cost_of_goods" && f.unpricedOrders > 0) {
+    return `${orders(f.unpricedOrders)} saknar inköpspris, så inköpen är inte klara.`;
+  }
+  if (f.purchaseBasis === "received_purchases" && f.purchasesOre === 0 && f.costOfGoodsOre > 0) {
+    return `Inga inköp registrerade (sålda pack kostade ${krText(f.costOfGoodsOre)}).`;
+  }
+  return null;
+}
+
+const orders = (n: number) => `${n} order`;
 
 /** Försäljningen efter återbetalningar (underlaget för VMB och resultatet). */
 export function netSales(f: Pick<MonthFigures, "salesInclVatOre" | "refundsOre">): number {

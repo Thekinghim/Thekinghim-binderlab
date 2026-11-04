@@ -4,9 +4,11 @@
  * läsaren får ekonomi men ingen Att göra, och modellen går att skicka till klienten.
  */
 
+import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import { loadHomeWith, type HomeLoaders } from "@/app/(app)/_hem/data";
+import { homeExtraTodos } from "@/app/(app)/_hem/extras";
 import { AuthorizationError, listOrganizationsFor } from "@/server/access";
 import {
   loadContextFor,
@@ -16,6 +18,7 @@ import {
   type Viewer,
 } from "@/server/data/core/loaders";
 import { resolveAppPeriod } from "@/server/data/core/period";
+import { loadTodoExtrasFor } from "@/server/data/todos";
 import { keyMetrics, profitability } from "@/domain";
 
 import * as s from "@/db/schema";
@@ -156,9 +159,10 @@ describe("loadHomeWith", () => {
     expect(model.kpis.find((k) => k.id === "orders")?.value).toBe(2);
     expect(model.kpis.find((k) => k.id === "revenue")?.value).toBe(7_900 + 8_900);
     expect(model.headline.state).toBe("ok");
-    // Rubriken är vinsten (hela vinsten, efter inköp och avgifter), inte intäkten.
-    expect(model.headline.title).toMatch(/^Vinst 71\skr /);
-    expect(model.headline.figure?.label).toBe("Vinst");
+    // Rubriken är vår vinst (efter inköp, avgifter och butikens provision), inte intäkten.
+    expect(model.headline.title).toMatch(/^Vår vinst \d+\skr /);
+    expect(model.headline.figure?.label).toBe("Vår vinst");
+    expect(model.headline.figure?.valueOre).toBe(model.profitSplit?.ourOre);
     expect(model.todos).not.toBeNull();
     expect(model.topTitles.rows.length).toBeGreaterThan(0);
   });
@@ -235,14 +239,14 @@ describe("loadHomeWith", () => {
     const input = await loadDomainInputFor(owner, { period: model.period }, NOW);
     const km = keyMetrics(input.current);
     const t = profitability(input.current, "title").totals;
-    // Nyckeltalet är hela vinsten: vår vinst + butikens provision (20 %).
+    // Nyckeltalet är vår vinst; hela vinsten = vår vinst + butikens provision (20 %).
     expect(model.profitSplit).toEqual({
       totalOre: km.profitOre + t.compensationOre,
       ourOre: km.profitOre,
       storesOre: t.compensationOre,
     });
     expect(t.compensationOre).toBe(3_360);
-    expect(model.kpis.find((k) => k.id === "profit")?.value).toBe(km.profitOre + 3_360);
+    expect(model.kpis.find((k) => k.id === "profit")?.value).toBe(km.profitOre);
     expect(model.kpis.find((k) => k.id === "margin")?.value).toBe(km.marginBp);
   });
 
@@ -271,12 +275,52 @@ describe("loadHomeWith", () => {
         ourOre: row.profitOre,
         storesOre: row.compensationOre,
       });
+      // Vald butik: andelen står under vår vinst utan vyknappen; utan filter bara med den.
       expect(one.model.kpis.find((k) => k.id === "profit")?.parts?.map((p) => p.label)).toEqual([
-        "Butikens del",
-        "Vår del",
+        "Totalt före andel",
+        "Butikens andel",
+      ]);
+      expect(all.model.kpis.find((k) => k.id === "profit")?.parts).toEqual([]);
+      const shared = await loadHomeWith(loaders, { ...MARCH, andel: "1" });
+      expect(shared.model.showStoreShare).toBe(true);
+      expect(shared.model.kpis.find((k) => k.id === "profit")?.value).toBe(t.profitOre);
+      expect(shared.model.kpis.find((k) => k.id === "profit")?.parts).toEqual([
+        { id: "total", label: "Totalt före andel", value: t.profitOre + t.compensationOre },
+        { id: "stores", label: "Butikernas andel", value: t.compensationOre },
       ]);
     });
   }
+});
+
+describe("loadHomeWith: Att göra räknas som menyn", () => {
+  it("tar med raden Ny automat (utanför reglerna) i listan och antalet", async () => {
+    const f = await seedHomeFixture();
+    const v = await viewerFor(f.owner, f.orgId);
+    // En automat som Awish hittat men som inte är kopplad.
+    await asUser(f.owner, async (tx) => {
+      const [source] = await tx
+        .select({ id: s.dataSources.id })
+        .from(s.dataSources)
+        .where(eq(s.dataSources.organizationId, f.orgId));
+      await tx.insert(s.sourceMachines).values({
+        organizationId: f.orgId,
+        dataSourceId: source!.id,
+        externalId: "AW-NY",
+        externalName: "Nya hallen",
+      });
+    });
+    const extras = await loadTodoExtrasFor(v);
+    expect(extras.newMachines).toBe(1);
+    const rules = (await loadTodosFor(v, NOW)).length;
+    const loaders: HomeLoaders = {
+      ...loadersFor(v),
+      extras: async () => homeExtraTodos(await loadTodoExtrasFor(v)),
+    };
+    const { model } = await loadHomeWith(loaders, MARCH);
+    // Samma regel som menyns räknare (loadTodoCount): punkterna + raden Ny automat.
+    expect(model.todoCount).toBe(rules + 1);
+    expect(model.todos?.[0]).toMatchObject({ key: "new-machines", level: "now" });
+  });
 });
 
 describe("loadHomeWith: i dag hittills", () => {

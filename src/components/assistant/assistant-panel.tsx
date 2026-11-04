@@ -30,6 +30,7 @@ import {
   pageTips,
   type PanelState,
 } from "@/app/(app)/assistent/panel-actions";
+import { fabLayout, fabVisibleAfterScroll, showsRefillShortcut } from "@/components/shell/fab";
 import type { Role } from "@/components/shell/nav";
 import { Button, IconButton } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
@@ -210,20 +211,12 @@ export function AssistantPanelProvider({
   return (
     <PanelContext.Provider value={api}>
       {children}
-      {/* Mobil: liten flytande knapp ovanför bottenraden (täcker den aldrig). */}
-      <button
-        type="button"
-        onClick={() => api.open()}
-        aria-label="Fråga AI"
-        data-testid="ai-fab"
-        className={cn(
-          "shadow-lg fixed right-4 z-30 flex size-11 items-center justify-center rounded-full border border-line-strong bg-inverse text-on-inverse transition-[transform,opacity] duration-300 ease-instrument active:scale-95 lg:hidden",
-          "bottom-[calc(56px+env(safe-area-inset-bottom)+12px)]",
-          isOpen ? "pointer-events-none scale-75 opacity-0" : "scale-100 opacity-100",
-        )}
-      >
-        <Sparkle size={18} className="animate-[bl-shimmer_2.4s_ease-in-out_infinite]" />
-      </button>
+      <FloatingAskButton
+        role={role}
+        pathname={pathname}
+        hidden={isOpen}
+        onOpen={() => api.open()}
+      />
       {/* Mobil: mörk bakgrund bakom arket; ett tryck stänger. */}
       <div
         aria-hidden
@@ -533,5 +526,75 @@ function TurnView({
         ) : null}
       </div>
     </li>
+  );
+}
+
+/**
+ * Mobil: liten flytande knapp ovanför bottenraden (täcker den aldrig). Skalet ger sidan luft
+ * under sig (@/components/shell/fab), så att sista raden går att rulla fram ovanför knappen,
+ * och knappen glider undan medan man rullar nedåt och läser. Påfyllarens "Fyll på" tar
+ * platsen där den visas (AI finns i toppraden).
+ */
+function FloatingAskButton({
+  role,
+  pathname,
+  hidden,
+  onOpen,
+}: {
+  role: Role;
+  pathname: string;
+  hidden: boolean;
+  onOpen: () => void;
+}) {
+  const layout = fabLayout({ refill: showsRefillShortcut(role, pathname), assistant: true });
+  const [visible, setVisible] = useState(true);
+  const lastY = useRef(0);
+
+  useEffect(() => {
+    if (layout.assistantBottom === null) return;
+    lastY.current = window.scrollY;
+    let frame = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const y = window.scrollY;
+        const atEnd = window.innerHeight + y >= document.documentElement.scrollHeight - 4;
+        // Förra läget läses nu: uppdateringen kan köras först vid nästa rendering.
+        const prev = lastY.current;
+        lastY.current = y;
+        setVisible((v) => fabVisibleAfterScroll(v, prev, y, atEnd));
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, [layout.assistantBottom]);
+
+  // Ny sida: knappen syns igen.
+  const [lastPath, setLastPath] = useState(pathname);
+  if (lastPath !== pathname) {
+    setLastPath(pathname);
+    setVisible(true);
+  }
+
+  if (layout.assistantBottom === null) return null;
+  const shown = visible && !hidden;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label="Fråga AI"
+      data-testid="ai-fab"
+      tabIndex={shown ? undefined : -1}
+      style={{ bottom: `calc(${layout.assistantBottom}px + env(safe-area-inset-bottom))` }}
+      className={cn(
+        "shadow-lg fixed right-4 z-30 flex size-11 items-center justify-center rounded-full border border-line-strong bg-inverse text-on-inverse transition-[transform,opacity] duration-300 ease-instrument active:scale-95 motion-reduce:transition-none lg:hidden",
+        shown ? "scale-100 opacity-100" : "pointer-events-none translate-y-4 scale-75 opacity-0",
+      )}
+    >
+      <Sparkle size={18} className="animate-[bl-shimmer_2.4s_ease-in-out_infinite]" />
+    </button>
   );
 }

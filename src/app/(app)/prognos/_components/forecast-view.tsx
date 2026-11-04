@@ -195,6 +195,7 @@ export function ForecastView({ model }: { model: ForecastModel }) {
             coverage={model.coverage}
             summary={summary}
           />
+          {model.correctionNote ? <p className="meta text-subtle">{model.correctionNote}</p> : null}
         </div>
       </Panel>
 
@@ -236,8 +237,8 @@ export function ForecastView({ model }: { model: ForecastModel }) {
             {group === "series"
               ? `${model.bySeries.length} serier`
               : group === "title"
-                ? `${model.byTitle.length} titlar`
-                : `${model.byMachine.length} automater`}
+                ? `${model.byTitle.length} ${model.byTitle.length === 1 ? "titel" : "titlar"}`
+                : `${model.byMachine.length} ${model.byMachine.length === 1 ? "automat" : "automater"}`}
             {model.lowDataSeries > 0
               ? `; ${model.lowDataSeries} av ${model.bySeries.length} serier har under 14 dagar med data.`
               : "."}

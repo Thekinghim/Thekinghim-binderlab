@@ -20,6 +20,8 @@ import {
   type Viewer,
 } from "@/server/data/core/loaders";
 import { queryPrices } from "@/server/data/core/queries";
+import { loadSlotPeriodsFor } from "@/server/data/assortment";
+import { retiredTitles } from "@/analytics/todos/assortment";
 import { sumOwnStock } from "@/server/data/core/own-stock";
 import { ECONOMY_ROLES } from "@/server/data/core/types";
 
@@ -95,13 +97,14 @@ export async function loadVartLagerFor(
   const timeZone = viewer.organization.timezone;
   const today = businessToday(now, timeZone);
 
-  const [our, master, stock, sales, prices, latest] = await Promise.all([
+  const [our, master, stock, sales, prices, latest, slotPeriods] = await Promise.all([
     loadOurStockFor(viewer, now),
     loadMasterDataFor(viewer, now),
     loadStockFor(viewer),
     loadSalesCountsFor(viewer, { period: { start: addDays(today, -6), end: today } }),
     withUserDbFor(viewer.user, (tx) => queryPrices(tx, orgId)),
     withUserDbFor(viewer.user, (tx) => queryLatest(tx, orgId)),
+    loadSlotPeriodsFor(viewer),
   ]);
 
   // Vårt lager: summan av alla egna lager per titel.
@@ -137,6 +140,8 @@ export async function loadVartLagerFor(
       storeName: m.storeId ? (storeName.get(m.storeId) ?? null) : null,
     })),
     canEdit: (EDIT_ROLES as readonly string[]).includes(role) && our.hasWarehouse,
+    // Samma utgår-regel som Lager, Drift och Prognos.
+    retired: retiredTitles(slotPeriods, today),
   });
   return {
     ...model,

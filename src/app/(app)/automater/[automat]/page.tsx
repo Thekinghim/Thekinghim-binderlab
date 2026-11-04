@@ -38,6 +38,7 @@ import {
   type MachineDetailData,
 } from "../_lib/data";
 import { dayText, hourRange, sentence, unitEconomicsKpis } from "../_lib/model";
+import { stockAsideText } from "../_lib/refill-text";
 import { currentViewer } from "../_lib/session";
 import { withUserDbFor } from "@/server/access";
 import { queryRefillSources } from "@/server/data/core/places";
@@ -385,11 +386,6 @@ function StockSection({ data }: { data: MachineDetailData }) {
   const known = lines.filter((l) => l.daysLeft !== null);
   const minDays = known.length > 0 ? Math.min(...known.map((l) => l.daysLeft ?? 0)) : null;
   const tz = data.ctx.timeZone;
-  const restocked = data.lastRestockedAt
-    ? formatDateTime(wallClockIn(new Date(data.lastRestockedAt), tz), {
-        now: wallClockIn(new Date(data.ctx.now), tz),
-      })
-    : null;
   const title =
     now.length > 0
       ? `${formatInt(now.length)} ${now.length === 1 ? "titel" : "titlar"} behöver fyllas på nu.`
@@ -406,9 +402,12 @@ function StockSection({ data }: { data: MachineDetailData }) {
         id="lager"
         eyebrow="Lager · nu"
         title={title}
-        aside={sentence(
-          `${formatInt(packs)}${NBSP}pack i automaten${restocked ? `, senast påfylld ${restocked}` : ""}`,
-        )}
+        aside={stockAsideText({
+          packs,
+          lastRefilledAt: data.lastRestockedAt,
+          timeZone: tz,
+          now: data.ctx.now,
+        })}
       />
       <RefillFrom data={data} />
       {lines.length > 0 ? (

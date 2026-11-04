@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { StateMessage } from "@/components/ui/state-message";
 import { StatusTag } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
-import { formatInt } from "@/lib/format";
-import type { ArchiveRow, RecipientRow } from "@/server/reports/service";
+import { formatInt, formatSek } from "@/lib/format";
+import type { ArchiveRow, RecipientRow, StaleDraft } from "@/server/reports/service";
 
 import { approveReport, sendReport } from "../actions";
 import { ReportStatusTag } from "./report-status";
@@ -49,12 +49,15 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
  */
 export function ReviewPanel({
   report,
+  stale = null,
   recipients,
   canEdit,
   mailConfigured,
   timeZone,
 }: {
   report: ArchiveRow;
+  /** Utkastets siffror stämmer inte längre: godkänn är låst tills en ny version finns. */
+  stale?: StaleDraft | null;
   recipients: readonly RecipientRow[];
   canEdit: boolean;
   mailConfigured: boolean;
@@ -181,7 +184,20 @@ export function ReviewPanel({
       </dl>
 
       <div className="flex min-w-0 flex-col gap-5 lg:col-span-7">
-        {report.status === "draft" ? (
+        {report.status === "draft" && stale ? (
+          <div className="border-t border-line pt-4">
+            <StateMessage
+              compact
+              kind="error"
+              message={
+                stale.draftOre !== null && stale.nowOre !== null
+                  ? `Siffrorna har ändrats: ${formatSek(stale.draftOre / 100)} i utkastet, ${formatSek(stale.nowOre / 100)} nu.`
+                  : "Siffrorna har ändrats sedan utkastet skapades."
+              }
+              detail={canEdit ? "Skapa ny version ovan och godkänn den." : undefined}
+            />
+          </div>
+        ) : report.status === "draft" ? (
           canEdit ? (
             <div className="flex flex-col gap-3 border-t border-line pt-4">
               <p className="text-base text-muted">Läs förhandsvisningen, godkänn sedan.</p>

@@ -5,6 +5,8 @@
  */
 
 export {
+  BIAS_MIN_FACTOR_BP,
+  biasCorrectionBp,
   explainComponents,
   FORECAST_DEFAULTS,
   forecastHistoryPeriod,

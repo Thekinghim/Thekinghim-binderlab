@@ -7,7 +7,7 @@
 
 import { dateText, krText, monthText } from "@/reports";
 
-import { PURCHASE_BASIS_LABEL, type MonthBook, type StoreShare } from "./month";
+import { missingCostReason, PURCHASE_BASIS_LABEL, type MonthBook, type StoreShare } from "./month";
 import type { MonthVerification } from "./sie";
 
 export interface SummaryInput {
@@ -99,10 +99,17 @@ export function summaryHtml(input: SummaryInput): string {
       `Butikernas andel är inte färdigräknad: ${b.profitSplitUnpricedOrders} order hos butiker med vinstdelning saknar inköpspris. Bokför inte månaden förrän priserna finns.`,
     );
   }
+  if (b.purchaseBasisAuto) {
+    notes.push(
+      "Inga inköpsorder registrerade: inköpen är inköpsvärdet för sålda pack (inköpspriserna i appen).",
+    );
+  }
+  const missing = missingCostReason(b);
+  if (missing && b.profitSplitUnpricedOrders === 0) notes.push(`Inte klar: ${missing}`);
   if (input.verification.rows.length === 0) {
     notes.push("Inga transaktioner i månaden: ingen verifikation att importera.");
   }
-  if (b.unpricedOrders > 0) {
+  if (b.unpricedOrders > 0 && !missing) {
     notes.push(`${b.unpricedOrders} order saknar inköpspris och har inget inköpsvärde.`);
   }
   if (

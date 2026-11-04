@@ -7,10 +7,13 @@ import {
   describePeriod,
   parsePeriod,
   parseScope,
+  parseStoreShareView,
   parseVmbView,
+  STORE_SHARE_PARAM,
   VMB_PARAM,
   withPeriod,
   withScope,
+  withStoreShareView,
   withVmbView,
   type ParseOptions,
   type PeriodDescription,
@@ -153,6 +156,39 @@ export function useVmbView(userKey: string | null): {
     (next: boolean) => {
       writeStored(key, next);
       replace(withVmbView(sp, next));
+    },
+    [key, replace, sp],
+  );
+  return { on, setOn };
+}
+
+/** Nyckeln i localStorage för användarens senaste val av "Visa butikernas andel". */
+export function storeShareStorageKey(userKey: string): string {
+  return `binderlab:andel:${userKey}`;
+}
+
+/**
+ * Vyknappen "Visa butikernas andel" (?andel=1), som "Med VMB": bara visning, sparas per
+ * användare i localStorage (`userKey`). Saknas parametern och användaren senast valde på,
+ * sätts den. Ingen inställning i databasen.
+ */
+export function useStoreShareView(userKey: string | null): {
+  on: boolean;
+  setOn: (on: boolean) => void;
+} {
+  const [sp, replace] = useQuery();
+  const on = parseStoreShareView(sp);
+  const key = userKey ? storeShareStorageKey(userKey) : null;
+  const hasParam = sp.has(STORE_SHARE_PARAM);
+  useEffect(() => {
+    if (!hasParam && readStored(key) === "1") replace(withStoreShareView(sp, true));
+    // Bara när sidan öppnas eller parametern försvinner, inte vid varje annat val.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, hasParam]);
+  const setOn = useCallback(
+    (next: boolean) => {
+      writeStored(key, next);
+      replace(withStoreShareView(sp, next));
     },
     [key, replace, sp],
   );

@@ -8,19 +8,7 @@
  * Ingen ekonomilogik: frågorna hämtar och formar rader, beräkningarna görs i @/domain.
  */
 
-import {
-  and,
-  asc,
-  eq,
-  gte,
-  inArray,
-  isNotNull,
-  isNull,
-  lte,
-  max,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, sql, type SQL } from "drizzle-orm";
 
 import type { SignableContract } from "@/analytics/contracts";
 import type { AlertRef, AnalyticsOrder, ReportDraftRef } from "@/analytics/todos";
@@ -545,23 +533,35 @@ export async function queryStock(tx: Tx, orgId: string): Promise<StockRow[]> {
     .where(and(eq(s.stockLevels.organizationId, orgId), isNull(s.stockLocations.archivedAt)))
     .orderBy(asc(s.stockLocations.name), asc(s.stockLevels.titleId));
 
+  // Senaste påfyllning eller inventering (lastRestockedAt), och senaste registrerade
+  // påfyllning (refill eller flytt in, lastRefilledAt) för sig: en inventering är ingen
+  // påfyllning (automatsidan, avbockning i Att göra).
   const restocked = await tx
     .select({
       locationId: s.stockEvents.locationId,
       titleId: s.stockEvents.titleId,
-      at: max(s.stockEvents.occurredAt),
+      at: sql<
+        string | Date | null
+      >`max(${s.stockEvents.occurredAt}) filter (where ${s.stockEvents.kind} in ('refill', 'count'))`,
+      refilledAt: sql<
+        string | Date | null
+      >`max(${s.stockEvents.occurredAt}) filter (where ${s.stockEvents.kind} in ('refill', 'transfer_in'))`,
     })
     .from(s.stockEvents)
     .where(
       and(
         eq(s.stockEvents.organizationId, orgId),
-        inArray(s.stockEvents.kind, ["refill", "count"]),
+        inArray(s.stockEvents.kind, ["refill", "count", "transfer_in"]),
       ),
     )
     .groupBy(s.stockEvents.locationId, s.stockEvents.titleId);
-  const restockedAt = new Map(
-    restocked.map((r) => [`${r.locationId}\u0000${r.titleId}`, r.at ? new Date(r.at) : null]),
-  );
+  const restockedAt = new Map<string, Date | null>();
+  const refilledAt = new Map<string, Date | null>();
+  for (const r of restocked) {
+    const k = `${r.locationId}\u0000${r.titleId}`;
+    restockedAt.set(k, r.at ? new Date(r.at) : null);
+    refilledAt.set(k, r.refilledAt ? new Date(r.refilledAt) : null);
+  }
 
   return levels.map((r) => ({
     locationId: r.locationId,
@@ -574,6 +574,7 @@ export async function queryStock(tx: Tx, orgId: string): Promise<StockRow[]> {
     lastCountedAt: iso(r.lastCountedAt),
     lastEventAt: iso(r.lastEventAt),
     lastRestockedAt: iso(restockedAt.get(`${r.locationId}\u0000${r.titleId}`) ?? null),
+    lastRefilledAt: iso(refilledAt.get(`${r.locationId}\u0000${r.titleId}`) ?? null),
   }));
 }
 

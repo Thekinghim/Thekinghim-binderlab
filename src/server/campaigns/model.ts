@@ -25,6 +25,8 @@ export const CAMPAIGN_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 export const CAMPAIGN_MAX_DAYS = 90;
 /** Förslag gäller titlar som kom in så här många dagar bakåt. */
 export const SUGGEST_DAYS = 14;
+/** Högst så många förslag (resten är brus för den som ska välja). */
+export const SUGGEST_MAX = 3;
 
 export const CAMPAIGN_IMAGE_TYPES = {
   "image/png": "png",
@@ -167,6 +169,13 @@ export interface CampaignSuggestion {
   readonly since: IsoDate;
 }
 
+/**
+ * Förslag på "Nytt: <titel>"-kampanjer, högst `SUGGEST_MAX`, nyast först. En titel är ny när
+ * den kom till flottan de senaste `SUGGEST_DAYS` dagarna. "Kom till" = tidigaste av första
+ * sortimentsdagen och första försäljningen: sortimentet registrerades först 2–3 nov. 2026
+ * (Awish-synken), så en titel som sålt sedan 14 okt. är inte ny bara för att facket syns nu.
+ * Automater där titeln gått ut (ingen gällande period) eller är slut föreslås inte.
+ */
 export function suggestCampaigns(input: {
   /** Första sortimentsdagen per automat och titel (machine_slots, min valid_from). */
   readonly firstStocked: readonly {
@@ -174,6 +183,12 @@ export function suggestCampaigns(input: {
     titleName: string;
     machineId: string;
     firstOn: IsoDate;
+    /** Första försäljningen av titeln i automaten, om någon. */
+    firstSale?: IsoDate | null;
+    /** Titeln har en gällande period i dag (inte utgången). Standard sant. */
+    current?: boolean;
+    /** Pack i automaten nu (null = okänt). 0 = slut: ingen kampanj för något som inte finns. */
+    onHand?: number | null;
   }[];
   /** Titlar som en kampanj (inte avstängd före start) gällt, med kampanjens skapelsedag. */
   readonly campaigned: readonly { titleId: string; createdOn: IsoDate }[];
@@ -188,16 +203,18 @@ export function suggestCampaigns(input: {
     { name: string; machines: Set<string>; since: IsoDate; everBefore: boolean }
   >();
   for (const r of input.firstStocked) {
+    const firstOn = r.firstSale && r.firstSale < r.firstOn ? r.firstSale : r.firstOn;
     const g = byTitle.get(r.titleId) ?? {
       name: r.titleName,
       machines: new Set<string>(),
-      since: r.firstOn,
+      since: firstOn,
       everBefore: false,
     };
-    if (r.firstOn < from) g.everBefore = true;
-    else if (linked.has(r.machineId)) {
+    const showable = r.current !== false && r.onHand !== 0;
+    if (firstOn < from) g.everBefore = true;
+    else if (linked.has(r.machineId) && showable) {
       g.machines.add(r.machineId);
-      if (r.firstOn < g.since || g.since < from) g.since = r.firstOn;
+      if (firstOn < g.since || g.since < from) g.since = firstOn;
     }
     byTitle.set(r.titleId, g);
   }
@@ -214,7 +231,9 @@ export function suggestCampaigns(input: {
       since: g.since,
     });
   }
-  return out.sort((a, b) =>
-    a.since < b.since ? 1 : a.since > b.since ? -1 : a.titleName.localeCompare(b.titleName, "sv"),
-  );
+  return out
+    .sort((a, b) =>
+      a.since < b.since ? 1 : a.since > b.since ? -1 : a.titleName.localeCompare(b.titleName, "sv"),
+    )
+    .slice(0, SUGGEST_MAX);
 }

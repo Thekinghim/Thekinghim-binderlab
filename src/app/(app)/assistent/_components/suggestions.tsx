@@ -13,9 +13,10 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
-import { formatInt, NBSP } from "@/lib/format";
+import { formatInt } from "@/lib/format";
 
 import { generateSuggestions, setSuggestionStatus } from "../actions";
+import { suggestionMeta } from "./suggestion-meta";
 
 export interface SuggestionCard {
   readonly id: string;
@@ -25,13 +26,9 @@ export interface SuggestionCard {
   readonly action: string;
   readonly effectSekMonth: number;
   readonly confidence: "high" | "medium" | "low";
+  /** Affärsdagen siffrorna kommer från ('ÅÅÅÅ-MM-DD'). */
+  readonly dataDate?: string;
 }
-
-const CONFIDENCE: Record<SuggestionCard["confidence"], string> = {
-  high: "säker",
-  medium: "trolig",
-  low: "test",
-};
 
 const linkButton =
   "inline-flex h-7 items-center justify-center gap-2 rounded-sm border border-transparent px-2.5 text-sm font-medium whitespace-nowrap text-muted transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg";
@@ -115,14 +112,13 @@ export function Suggestions({
               key={s.id}
               className="flex min-w-0 flex-col gap-2 rounded-md border border-line bg-surface p-4"
             >
-              <div className="flex items-baseline justify-between gap-3">
-                <h3 className="min-w-0 text-base font-medium break-words text-fg">{s.title}</h3>
-                <span className="meta tnum shrink-0 text-subtle">
-                  {s.effectSekMonth > 0
-                    ? `≈${NBSP}${formatInt(s.effectSekMonth)}${NBSP}kr/mån (uppskattning)`
-                    : "effekt okänd"}
-                  {` · ${CONFIDENCE[s.confidence]}`}
-                </span>
+              {/* Rubriken på en egen rad, effekten under: på mobilen bröts rubriken annars
+                  mitt i ord ("Myster / y Pack") bredvid effekten. */}
+              <div className="flex flex-col gap-1">
+                <h3 className="min-w-0 text-base font-medium text-pretty break-words text-fg">
+                  {s.title}
+                </h3>
+                <span className="meta tnum text-subtle">{suggestionMeta(s)}</span>
               </div>
               <p className="text-sm break-words text-muted">{s.why}</p>
               <p className="text-sm break-words text-fg">

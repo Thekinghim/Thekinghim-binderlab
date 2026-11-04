@@ -37,9 +37,10 @@ import {
   querySupplierItems,
   querySuppliers,
 } from "./queries";
-import { seriesStartsFromStock } from "./series-start";
+import { retiredSeries, seriesStartsFromStock } from "./series-start";
 import type { HistoryWeek, PrognosData, PurchaseOrderRecord } from "./types";
 import { ownStockTotals } from "@/server/data/core/own-stock";
+import { querySlotPeriods } from "@/server/data/assortment";
 
 export type { Viewer };
 
@@ -147,15 +148,16 @@ export async function loadPrognosFor(
     : all;
 
   const db = await withUserDbFor(viewer.user, async (tx) => {
-    const [events, suppliers, items, purchaseOrders, stock, central] = await Promise.all([
+    const [events, suppliers, items, purchaseOrders, stock, central, slots] = await Promise.all([
       queryMachineStockEvents(tx, orgId, ordersFrom, asOf),
       querySuppliers(tx, orgId),
       querySupplierItems(tx, orgId),
       queryPurchaseOrders(tx, orgId),
       queryStock(tx, orgId),
       queryCentralLocation(tx, orgId),
+      querySlotPeriods(tx, orgId),
     ]);
-    return { events, suppliers, items, purchaseOrders, stock, central };
+    return { events, suppliers, items, purchaseOrders, stock, central, slots };
   });
 
   const settings = all.settings;
@@ -194,6 +196,10 @@ export async function loadPrognosFor(
   }
   const seriesStarts = seriesStartsFromStock(db.events, asOf, firstOrder);
 
+  // Titlar som gått ur automaten (Utgår på Lager) får ingen prognos och köps inte in:
+  // samma utgår-regel som Lager, Drift och Vårt lager.
+  const excludeSeries = retiredSeries(db.slots, today);
+
   const forecastFor = (orders: DomainInput["current"]["orders"]): ForecastResult =>
     forecastSales({
       orders,
@@ -203,8 +209,11 @@ export async function loadPrognosFor(
       machines,
       unavailable,
       seriesStarts,
-      // Intervallet tar med att nivån är osäker när den skattats på få dagar.
-      options: { levelUncertainty: true },
+      excludeSeries,
+      // Intervallet tar med att nivån är osäker när den skattats på få dagar. Prognosen
+      // sänks när testveckorna visar att den legat för högt (startpuckeln efter en ny
+      // automat bärs annars med i snittet: +21 % i november 2026).
+      options: { levelUncertainty: true, biasCorrection: true },
     });
   const forecastAll = forecastFor(all.current.orders);
   const forecast = scoped ? forecastFor(inScope.current.orders) : forecastAll;

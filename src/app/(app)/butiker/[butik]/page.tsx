@@ -21,7 +21,16 @@ import { StoreActions } from "../_components/store-dialogs";
 import { Sub } from "../_components/sub";
 import { pickTab, ViewTabs } from "../../automater/_components/view-tabs";
 import { loadStoreDetail, storeNameOf, type StoreDetailData } from "../_lib/data";
-import { dayText, kronor, MODEL_LABEL, placeText, plural, sek, sentence } from "../_lib/model";
+import {
+  contractAction,
+  dayText,
+  kronor,
+  MODEL_LABEL,
+  placeText,
+  plural,
+  sek,
+  sentence,
+} from "../_lib/model";
 
 const TABS = [
   { value: "oversikt", label: "Översikt" },
@@ -135,14 +144,10 @@ export default async function StorePage({
             </span>
             {ctx.canEdit ? (
               <Link
-                href={
-                  data.contract === "unsigned"
-                    ? `/avtal#butik-${store.id}`
-                    : `/avtal?skapa=${encodeURIComponent(`store:${store.id}`)}`
-                }
+                href={contractAction(data.contract, store.id).href}
                 className="inline-flex h-11 items-center justify-center rounded-sm border border-inverse bg-inverse px-5 text-base font-medium text-on-inverse hover:bg-inverse-hover"
               >
-                {data.contract === "unsigned" ? "Signera" : "Skapa kontrakt"}
+                {contractAction(data.contract, store.id).label}
               </Link>
             ) : null}
           </div>
@@ -269,6 +274,8 @@ function SalesSection({ data, days }: { data: StoreDetailData; days: string }) {
 
 function CompensationSection({ data }: { data: StoreDetailData }) {
   const { month, current, ctx, store } = data;
+  // Skapa kontrakt bara utan kontrakt: ett skickat kontrakt signeras, inte dubbleras.
+  const action = contractAction(data.contract, store.id);
   return (
     <section aria-labelledby="ersattning" className="flex flex-col gap-8 border-t border-line pt-8">
       <SectionHeader
@@ -279,10 +286,14 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
         actions={
           ctx.canEdit && !store.archived ? (
             <Link
-              href={`/avtal?skapa=store:${store.id}`}
-              className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover"
+              href={action.href}
+              className={
+                action.primary
+                  ? "inline-flex h-9 items-center gap-2 rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse transition-colors duration-fast ease-instrument hover:bg-inverse-hover"
+                  : "inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover"
+              }
             >
-              Skapa kontrakt
+              {action.label}
             </Link>
           ) : undefined
         }

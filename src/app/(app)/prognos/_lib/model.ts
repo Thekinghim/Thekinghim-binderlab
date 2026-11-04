@@ -21,6 +21,7 @@ import type {
 
 import { dateText, periodShort } from "./dates";
 import { evidenceView, type EvidenceOptions, type EvidenceView, type NameLookup } from "./evidence";
+import { lastsDays } from "../../vart-lager/_lib/model";
 
 // ---------------------------------------------------------------------------
 // Typer
@@ -126,6 +127,11 @@ export interface ForecastModel {
   readonly weeks: readonly WeekValue[];
   readonly total: WeekValue;
   readonly totalText: string;
+  /**
+   * När prognosen sänkts för att den legat för högt i testveckorna (`biasCorrection`):
+   * "Sänkt 17 %: prognosen låg för högt de senaste 2 veckorna." Annars null.
+   */
+  readonly correctionNote: string | null;
   /** Prognosen summerad per veckodag (mån–sön) över horisonten. */
   readonly weekdays: readonly {
     readonly weekday: number;
@@ -209,6 +215,13 @@ export interface PlanLineView {
   readonly own: boolean;
   /** Egen produkt: pack att packa (0 = inget). */
   readonly packQty: number;
+  /**
+   * Räcker (samma regel som Vårt lager, `lastsDays`): hela dagar tills hemma + i
+   * automaterna är sålt vid 14 dagars takt. null = ingen takt ("–").
+   */
+  readonly lastsDays: number | null;
+  /** Utan leverantör: pack som behövs ändå (förslaget visas, leverantören är ett tillägg). */
+  readonly suggestQty: number;
   readonly text: string;
   readonly evidence: EvidenceView;
 }
@@ -241,6 +254,11 @@ export interface PlanModel {
   readonly lateCount: number;
   /** Egna produkter att packa, flest pack först. */
   readonly packLines: readonly PlanLineView[];
+  /**
+   * Titlar som behöver köpas in men saknar leverantör: förslaget visas ändå ("Köp ca 20 st"),
+   * med "Lägg till leverantör" som nästa steg för pris och box. Flest pack först.
+   */
+  readonly noSupplierLines: readonly PlanLineView[];
 }
 
 export interface PurchaseOrderView {
@@ -565,6 +583,16 @@ function lostModel(data: PrognosData, names: NameLookup, now: Date): LostModel {
   };
 }
 
+/** Kort rad om sänkningen (se ForecastModel.correctionNote). Ren. */
+export function correctionNoteOf(
+  c: { factorBp: number; origins: number } | undefined,
+): string | null {
+  if (!c || c.factorBp >= 10_000) return null;
+  const down = Math.round((10_000 - c.factorBp) / 100);
+  if (down <= 0) return null;
+  return `Sänkt ${formatInt(down)}${NBSP}%: prognosen låg för högt i ${plural(c.origins, "testvecka", "testveckor")}.`;
+}
+
 function forecastModel(
   data: PrognosData,
   names: NameLookup,
@@ -682,6 +710,7 @@ function forecastModel(
       weeks: f.total.weeks.map(week),
       total,
       totalText: tidy(f.total.text),
+      correctionNote: correctionNoteOf(f.correction),
       weekdays: WEEKDAYS.map((label, i) => {
         const days = f.total.days.filter((d) => dayOfWeek(d.date) === i + 1);
         return {
@@ -744,6 +773,7 @@ function planModel(
   data: PrognosData,
   names: ReturnType<typeof lookup>,
   packNeed?: ReadonlyMap<string, number>,
+  stockPace?: ReadonlyMap<string, number | null>,
 ): PlanModel {
   const p = data.plan;
   const ownIds = new Set(data.titles.filter((t) => t.ownProduct).map((t) => t.id));
@@ -824,6 +854,8 @@ function planModel(
       drafts,
       own,
       packQty: packQty ?? 0,
+      lastsDays: lastsDays(l.warehouseOnHand + l.machineOnHand, stockPace?.get(l.titleId) ?? null),
+      suggestQty: !own && l.status === "no-supplier" ? l.rawQty : 0,
       text: tidy(l.text),
       evidence: extra.length > 0 ? { ...ev, figures: [...ev.figures, ...extra] } : ev,
     };
@@ -880,9 +912,13 @@ function planModel(
     evidence: evidenceView(o.evidence, names, STOCK_EVIDENCE),
   }));
 
+  const noSupplierLines = lines
+    .filter((l) => l.suggestQty > 0)
+    .sort((a, b) => b.suggestQty - a.suggestQty || a.title.localeCompare(b.title, "sv"));
   const { title, aside } = planHeading({
     order: counts.order,
     noSupplier: counts["no-supplier"],
+    noSupplierPacks: noSupplierLines.reduce((sum, l) => sum + l.suggestQty, 0),
     totalOre,
     lateCount,
     packLines,
@@ -899,6 +935,7 @@ function planModel(
     counts,
     lateCount,
     packLines,
+    noSupplierLines,
   };
 }
 
@@ -909,6 +946,8 @@ function planModel(
 export function planHeading(x: {
   order: number;
   noSupplier: number;
+  /** Pack som titlarna utan leverantör behöver (förslaget visas ändå). */
+  noSupplierPacks?: number;
   totalOre: number;
   lateCount: number;
   packLines: readonly Pick<PlanLineView, "title" | "packQty">[];
@@ -927,6 +966,9 @@ export function planHeading(x: {
     title = `Beställ ${plural(x.order, "titel", "titlar")} för ${approxKr(x.totalOre)}.`;
   } else if (pack.length > 0) {
     title = `${cap(packText)}.`;
+  } else if (x.noSupplier > 0 && (x.noSupplierPacks ?? 0) > 0) {
+    // Förslaget visas även utan leverantör: hur mycket som behövs är det viktiga.
+    title = `Köp ca ${formatInt(x.noSupplierPacks ?? 0)}${NBSP}pack, ${plural(x.noSupplier, "titel", "titlar")}.`;
   } else if (x.noSupplier > 0) {
     title = `${plural(x.noSupplier, "titel", "titlar")} saknar leverantör.`;
   } else if (x.empty) {
@@ -947,7 +989,7 @@ export function planHeading(x: {
   if (parts.length === 0) {
     parts.push(
       x.noSupplier > 0 && x.order === 0 && pack.length === 0
-        ? "Lägg till leverantör."
+        ? "Lägg till leverantör för pris och boxar."
         : x.empty
           ? "Ingen försäljning än."
           : "Lagret räcker.",
@@ -1147,12 +1189,14 @@ export function buildPageModel(
   opts: {
     /** Pack att packa per egen produkt (samma regel som Vårt lager), annars planens antal. */
     readonly packNeed?: ReadonlyMap<string, number>;
+    /** Takten per titel (tiondelar pack per dag, 14 hela dagar) för Räcker, som Vårt lager. */
+    readonly stockPace?: ReadonlyMap<string, number | null>;
   } = {},
 ): PageModel {
   const names = lookup(data);
   const lost = lostModel(data, names, now);
   const { forecast, accuracy } = forecastModel(data, names);
-  const plan = planModel(data, names, opts.packNeed);
+  const plan = planModel(data, names, opts.packNeed, opts.stockPace);
   const orders = ordersModel(data, names, now);
   const valuation = valuationModel(data, names);
   const suppliers = suppliersModel(data, names);

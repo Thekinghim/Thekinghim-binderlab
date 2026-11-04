@@ -19,7 +19,7 @@ import {
   contractStatus,
   loadContractSetupFor,
   loadContractSignaturesFor,
-  loadContractStatusesFor,
+  loadStoreSalesFor,
   type ContractStatus as TemplateStatus,
 } from "@/server/contracts";
 import { loadMasterData, requireRoute } from "@/server/data/core";
@@ -34,7 +34,15 @@ import { ContractFileUpload } from "./_components/contract-file";
 import { ContractNextStep } from "./_components/contract-status";
 import { CreateContract } from "./_components/create-contract";
 import { SignOnSite } from "./_components/sign-on-site";
-import { buildContractRows, contractHeadline, ROW_STATUS, type ContractRow } from "./_lib/model";
+import {
+  buildContractRows,
+  contractHeadline,
+  revenueRiskHeadline,
+  ROW_STATUS,
+  uncoveredSales,
+  uncoveredText,
+  type ContractRow,
+} from "./_lib/model";
 import type { AgreementOption, ContractDraft } from "./_lib/types";
 
 export const metadata: Metadata = { title: "Kontrakt" };
@@ -62,7 +70,7 @@ const REMINDER: Record<ContractStatus, { status: Status; label: string }> = {
 const CATEGORY: Record<ExpiringCategory, string> = {
   expiring: "Löper ut inom 12 mån",
   secure: "Längre eller tills vidare",
-  "no-contract": "Inget kontrakt",
+  "no-contract": "Utan signerat kontrakt",
 };
 
 const TONE: Record<ContractRow["status"], string> = {
@@ -142,14 +150,22 @@ export default async function KontraktPage({
   const sp = await searchParams;
   const viewer = await currentViewer();
   const canEdit = ctx.canEdit;
-  const [data, statuses, setup, signatures, master] = await Promise.all([
-    loadContractsFor(viewer, ctx.today),
-    loadContractStatusesFor(viewer),
-    canEdit ? loadContractSetupFor(viewer) : null,
+  const tab = pickTab(TABS, sp.vy);
+  // Intäktsöversikten (12 månaders order) bara på fliken Intäkt. Status och signering står
+  // på kontraktsraderna (ingen egen fråga).
+  const [data, setup, signatures, master, sales] = await Promise.all([
+    loadContractsFor(viewer, ctx.today, { overview: tab === "intakt" }),
+    canEdit ? loadContractSetupFor(viewer, ctx.today) : null,
     loadContractSignaturesFor(viewer),
     loadMasterData(),
+    loadStoreSalesFor(viewer),
   ]);
-  const tab = pickTab(TABS, sp.vy);
+  const statuses = new Map(
+    data.contracts.map((c) => [
+      c.id,
+      { template: c.template, sentAt: c.sentAt, signedAt: c.signedAt },
+    ]),
+  );
   // ?skapa=store:{id} | lead:{id} (ett bart id räknas som butik).
   const skapaRaw = typeof sp.skapa === "string" ? sp.skapa : undefined;
   const skapa = skapaRaw && !skapaRaw.includes(":") ? `store:${skapaRaw}` : skapaRaw;
@@ -177,23 +193,24 @@ export default async function KontraktPage({
   const withMachine = new Set(
     master.machines.filter((m) => !m.archived && m.storeId).map((m) => m.storeId as string),
   );
+  const contractInputs = data.contracts.map((c) => ({
+    id: c.id,
+    storeId: c.storeId,
+    validFrom: c.validFrom,
+    validTo: c.validTo,
+    noticeMonths: c.noticePeriodMonths,
+    noticeDays: c.noticePeriodDays,
+    renewalMonths: c.renewalMonths,
+    terminatedOn: c.terminatedOn,
+    template: statuses.get(c.id)?.template ?? null,
+    sentAt: statuses.get(c.id)?.sentAt ?? null,
+    signedAt: statuses.get(c.id)?.signedAt ?? null,
+    hasFile: c.hasFile,
+    archived: c.archived,
+  }));
   const list = buildContractRows({
     stores,
-    contracts: data.contracts.map((c) => ({
-      id: c.id,
-      storeId: c.storeId,
-      validFrom: c.validFrom,
-      validTo: c.validTo,
-      noticeMonths: c.noticePeriodMonths,
-      noticeDays: c.noticePeriodDays,
-      renewalMonths: c.renewalMonths,
-      terminatedOn: c.terminatedOn,
-      template: statuses.get(c.id)?.template ?? null,
-      sentAt: statuses.get(c.id)?.sentAt ?? null,
-      signedAt: statuses.get(c.id)?.signedAt ?? null,
-      hasFile: c.hasFile,
-      archived: c.archived,
-    })),
+    contracts: contractInputs,
     agreements: data.agreements,
     reminders: new Map(data.reminders.reminders.map((r) => [r.contractId, r.status])),
     due: new Set(due.map((r) => r.contractId)),
@@ -201,6 +218,13 @@ export default async function KontraktPage({
     today: ctx.today,
   });
   const missing = list.total - list.signed;
+  // Försäljning som inget signerat kontrakt täcker (t.ex. sålt sedan 14 okt., kontrakt från 3 nov.).
+  const uncovered = uncoveredSales({
+    stores,
+    sales,
+    contracts: contractInputs,
+    today: ctx.today,
+  });
   // Andra raden: nästa åtgärd (listan står redan med röda först), inte samma tal igen.
   const firstAlert = missing > 0 ? (list.rows.find((r) => r.alert) ?? null) : null;
   const firstOfStore = new Set<string>();
@@ -212,7 +236,13 @@ export default async function KontraktPage({
         eyebrow="Kontrakt"
         title={contractHeadline(list.signed, list.total)}
         tone={list.total === 0 ? undefined : missing === 0 ? "good" : "bad"}
-        aside={firstAlert ? `Först: ${firstAlert.storeName}.` : undefined}
+        aside={
+          firstAlert
+            ? firstAlert.status === "missing"
+              ? `Nästa: skapa kontrakt med ${firstAlert.storeName}.`
+              : `Nästa: få ${firstAlert.storeName} att signera.`
+            : undefined
+        }
         actions={
           canEdit && setup ? (
             <CreateContract
@@ -221,6 +251,7 @@ export default async function KontraktPage({
               operator={setup.operator}
               today={ctx.today}
               orgNumberMissing={setup.orgNumberMissing}
+              operatorGaps={setup.operatorGaps}
               firstContract={firstContract}
               initialTarget={skapa}
               autoOpen={Boolean(skapa)}
@@ -235,6 +266,35 @@ export default async function KontraktPage({
       </div>
 
       <div key={tab} className="fade-in flex flex-col gap-8">
+        {tab === "lista" && uncovered.length > 0 ? (
+          <ul aria-label="Försäljning utan signerat kontrakt" className="flex flex-col gap-2">
+            {uncovered.map((u) => (
+              <li
+                key={u.storeId}
+                className="flex flex-col gap-2 rounded-md border border-signal-line bg-surface px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <span className="flex items-start gap-2 text-base text-fg">
+                  <span aria-hidden className="mt-2 size-2 shrink-0 rounded-full bg-signal" />
+                  {uncoveredText(u, ctx.today)}
+                </span>
+                {canEdit ? (
+                  <Link
+                    href={
+                      u.unsignedId
+                        ? `/avtal#avtal-${u.unsignedId}`
+                        : `/avtal?skapa=${encodeURIComponent(`store:${u.storeId}`)}`
+                    }
+                    scroll={!u.unsignedId ? false : undefined}
+                    className="shrink-0 text-sm font-medium text-fg underline-offset-4 hover:underline"
+                  >
+                    {u.unsignedId ? "Öppna kontraktet" : "Skapa kontrakt"}
+                    {"\u00a0→"}
+                  </Link>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {tab === "lista" ? (
           list.rows.length === 0 ? (
             <StateMessage kind="empty" message="Inga butiker än." />
@@ -329,12 +389,12 @@ export default async function KontraktPage({
                 id="intakt-per-butik"
                 size="md"
                 eyebrow={periodText(o.window)}
-                title={
-                  o.expiringShareBp === null
-                    ? "Ingen intäkt de senaste 12 månaderna."
-                    : `${formatPercent(o.expiringShareBp / 10_000)} av intäkten löper ut inom 12 mån.`
+                title={revenueRiskHeadline(o)}
+                aside={
+                  o.noContractRevenueOre > 0
+                    ? `${sek(o.noContractRevenueOre)} av ${sek(o.totalRevenueOre)}. Signera kontrakten först.`
+                    : `${sek(o.expiringRevenueOre)} av ${sek(o.totalRevenueOre)}.`
                 }
-                aside={`${sek(o.expiringRevenueOre)} av ${sek(o.totalRevenueOre)}.`}
               />
               <Panel>
                 <PanelSection label="Butiker" meta={formatInt(o.stores.length)}>

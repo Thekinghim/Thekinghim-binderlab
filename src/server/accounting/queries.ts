@@ -541,6 +541,10 @@ export interface ContractRecord {
   readonly hasFile: boolean;
   readonly archived: boolean;
   readonly updatedAt: string;
+  /** Mallen (null = registrerat för hand), skickat och signerat: om kontraktet är signerat. */
+  readonly template: string | null;
+  readonly sentAt: Date | null;
+  readonly signedAt: Date | null;
 }
 
 export async function queryContracts(tx: Tx, orgId: string): Promise<ContractRecord[]> {
@@ -567,6 +571,9 @@ export async function queryContracts(tx: Tx, orgId: string): Promise<ContractRec
     hasFile: r.storagePath !== null,
     archived: r.archivedAt !== null,
     updatedAt: r.updatedAt.toISOString(),
+    template: r.template,
+    sentAt: r.sentAt,
+    signedAt: r.signedAt,
   }));
 }
 

@@ -131,13 +131,13 @@ function kpi(home: HomeData, k: string): number | null {
 }
 
 /**
- * Vår vinst på Hem. Nyckeltalet "Vinst" visar hela vinsten (vår del + butikernas del);
- * vår del är samma tal som Lönsamhetens vinst.
+ * Vår vinst på Hem. Nyckeltalet "Vår vinst" är samma tal som Lönsamhetens vinst (en
+ * betydelse överallt); hela vinsten före butikernas andel finns bara i delningen.
  */
 function ourProfit(home: HomeData): number | null {
   const split = home.model.profitSplit;
-  const total = home.model.kpis.find((x) => x.id === "profit")?.value ?? null;
-  expect(total).toBe(split ? split.ourOre + split.storesOre : null);
+  const shown = home.model.kpis.find((x) => x.id === "profit")?.value ?? null;
+  expect(shown).toBe(split ? split.ourOre : null);
   return split ? split.ourOre : null;
 }
 

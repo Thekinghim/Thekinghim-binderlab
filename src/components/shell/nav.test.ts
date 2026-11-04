@@ -6,6 +6,8 @@ import {
   sectionHref,
   sectionsForRole,
   shellRoutes,
+  showsContext,
+  splitSubTabs,
   subTabHref,
   type Role,
 } from "./nav";
@@ -132,5 +134,77 @@ describe("aktiv flik", () => {
     );
     expect(withQuery("/lager", "?period=7d")).toBe("/lager?period=7d");
     expect(withQuery("/lager", "")).toBe("/lager");
+  });
+});
+
+describe("underfliken Mer", () => {
+  const labels = (role: Role, id: string) => {
+    const s = sectionsForRole(role).find((x) => x.id === id);
+    const split = splitSubTabs(s?.tabs ?? []);
+    return { inline: split.inline.map((t) => t.label), more: split.more.map((t) => t.label) };
+  };
+
+  it("Automater visar de fyra mest använda; resten under Mer", () => {
+    expect(labels("owner", "automater")).toEqual({
+      inline: ["Automater", "Drift", "Lager i automaterna", "Order"],
+      more: ["Svinn", "Inkorg", "Kampanjer", "Gratis-pack"],
+    });
+  });
+
+  it("få flikar står alla i raden (påfyllaren, Vårt lager, Pengar)", () => {
+    expect(labels("refiller", "automater")).toEqual({
+      inline: ["Drift", "Lager i automaterna", "Inkorg"],
+      more: [],
+    });
+    expect(labels("owner", "pengar").more).toEqual([]);
+    expect(labels("owner", "vart-lager").more).toEqual([]);
+  });
+
+  it("flikarna under Mer har kvar sina adresser och blir aktiva som förut", () => {
+    const more = splitSubTabs(navSections[1]!.tabs).more;
+    expect(more.map(subTabHref)).toEqual([
+      "/automater?vy=svinn",
+      "/inkorg",
+      "/kampanjer",
+      "/kampanjer?vy=gratis-pack",
+    ]);
+    expect(activeSubTab("/kampanjer", "gratis-pack")?.tab.label).toBe("Gratis-pack");
+    expect(activeSubTab("/inkorg/abc")?.tab.label).toBe("Inkorg");
+  });
+
+  it("Lager i automaterna har ett kort namn för mobilen", () => {
+    expect(navSections[1]!.tabs.find((t) => t.route === "lager")?.short).toBe("Lager");
+  });
+});
+
+describe("periodraden", () => {
+  it("visas bara där perioden ändrar sidan", () => {
+    const cases: Array<[string, string | null, boolean]> = [
+      ["/", null, true],
+      ["/lonsamhet", null, true],
+      ["/automater", null, true],
+      ["/automater/svinn", null, true],
+      ["/order", null, true],
+      ["/butiker", null, true],
+      ["/ekonomi", null, true],
+      ["/ekonomi", "kassaflode", true],
+      ["/prognos", "prognos", true],
+      // Inköp: lagret i dag och prognosen framåt.
+      ["/prognos", null, false],
+      ["/ekonomi", "bokforing", false],
+      ["/ekonomi/bokforing/kvitto/1", null, false],
+      ["/butiker", "portal", false],
+      ["/assistent", null, false],
+      ["/drift", null, false],
+      ["/drift/larm", null, false],
+      ["/drift/pafyllning", null, false],
+      ["/drift/besok", null, false],
+      ["/drift/automat/0b5c", null, false],
+      ["/att-gora", null, false],
+      ["/installningar", null, false],
+    ];
+    for (const [path, view, shown] of cases) {
+      expect(showsContext(path, view), `${path}?vy=${view}`).toBe(shown);
+    }
   });
 });

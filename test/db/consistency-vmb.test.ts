@@ -188,13 +188,13 @@ function kpi(home: HomeData, id: string): number | null {
 }
 
 /**
- * Vår vinst på Hem. Nyckeltalet "Vinst" visar hela vinsten (vår del + butikernas del);
- * vår del är samma tal som Lönsamhetens vinst.
+ * Vår vinst på Hem. Nyckeltalet "Vår vinst" är samma tal som Lönsamhetens vinst (en
+ * betydelse överallt); hela vinsten före butikernas andel finns bara i delningen.
  */
 function ourProfit(home: HomeData): number | null {
   const split = home.model.profitSplit;
-  const total = home.model.kpis.find((x) => x.id === "profit")?.value ?? null;
-  expect(total).toBe(split ? split.ourOre + split.storesOre : null);
+  const shown = home.model.kpis.find((x) => x.id === "profit")?.value ?? null;
+  expect(shown).toBe(split ? split.ourOre : null);
   return split ? split.ourOre : null;
 }
 
@@ -364,8 +364,9 @@ describe("vyknappen Med VMB på (seedad databas, vinstdelning 50/50)", () => {
       expect(carriedQuery(SEED_ON)).toContain("vmb=1");
       const home = await loadHome(SEED_ON);
       expect(ourProfit(home)).toBe(page.model.totals.profitOre);
-      // Hela vinsten = vår vinst + butikernas del, efter VMB-moms.
-      expect(kpi(home, "profit")).toBe(
+      // Hem visar vår vinst; hela vinsten = vår vinst + butikernas andel, efter VMB-moms.
+      expect(kpi(home, "profit")).toBe(page.model.totals.profitOre);
+      expect(home.model.profitSplit?.totalOre).toBe(
         page.model.totals.profitOre + page.model.totals.compensationOre,
       );
       expect(home.model.kpis.find((k) => k.id === "profit")?.note).toBe(
@@ -397,7 +398,7 @@ describe("vyknappen Med VMB på (seedad databas, vinstdelning 50/50)", () => {
           ourOre: row.profitOre,
           storesOre: row.compensationOre,
         });
-        expect(kpi(home, "profit"), name).toBe(row.profitOre + row.compensationOre);
+        expect(kpi(home, "profit"), name).toBe(row.profitOre);
       }
       // Vy av: samma kontroll utan VMB-moms.
       const off = await lonsamhet(SEED_RANGE);
@@ -408,7 +409,8 @@ describe("vyknappen Med VMB på (seedad databas, vinstdelning 50/50)", () => {
         view.vmb = false;
         const home = await loadHome({ ...SEED_RANGE, butik: id });
         expect(home.model.profitSplit?.ourOre, name).toBe(row.profitOre);
-        expect(kpi(home, "profit"), name).toBe(row.profitOre + row.compensationOre);
+        expect(kpi(home, "profit"), name).toBe(row.profitOre);
+        expect(home.model.profitSplit?.totalOre, name).toBe(row.profitOre + row.compensationOre);
       }
       for (const [code, id] of machineIds) {
         const row = byMachine.rows.find((r) => r.key === id);
@@ -495,7 +497,8 @@ describe("vy av/på × avtal på/av: vinsten stämmer exakt", () => {
       expect(off.page.model.bridge.vmbVatOre).toBeNull();
       const home = await loadHome(SEED_RANGE);
       expect(ourProfit(home)).toBe(off.profit);
-      expect(kpi(home, "profit")).toBe(off.profit + off.storeShare);
+      expect(kpi(home, "profit")).toBe(off.profit);
+      expect(home.model.profitSplit?.totalOre).toBe(off.profit + off.storeShare);
       expect(home.model.kpis.find((k) => k.id === "profit")?.note ?? null).toBeNull();
       const stores = await loadStoreList(SEED_RANGE);
       expect(stores.rows.reduce((n, r) => n + r.profitOre, 0)).toBe(off.profit);

@@ -22,20 +22,29 @@ export function InviteDialog({
   organizationName,
   roles,
   devMailbox,
+  initialOpen = false,
 }: {
   organizationName: string;
   roles: readonly MemberRole[];
   /** Lokalt: mejlen skrivs till .data/mail i stället för att skickas. */
   devMailbox: boolean;
+  /** Öppen från början (länken "Bjud in delägaren" i Att göra, ?bjud-in=1). */
+  initialOpen?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordError, setPasswordError] = useState<string>();
   const defaultRole: MemberRole = roles.includes("viewer") ? "viewer" : roles[0]!;
-  const [role, setRole] = useState<MemberRole>(defaultRole);
+  // Från "Bjud in delägaren": delägaren blir ägare (eller admin om ägare inte får väljas).
+  const coOwnerRole: MemberRole = roles.includes("owner")
+    ? "owner"
+    : roles.includes("admin")
+      ? "admin"
+      : defaultRole;
+  const [role, setRole] = useState<MemberRole>(initialOpen ? coOwnerRole : defaultRole);
   const [emailError, setEmailError] = useState<string>();
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();

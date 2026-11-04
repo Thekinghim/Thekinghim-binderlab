@@ -185,7 +185,11 @@ export default async function AssistentPage({
             items={advisor.suggestions}
             manualLeft={advisor.manualLeft}
             canGenerate={ready && !local}
-            emptyText="Inga förslag just nu."
+            emptyText={
+              advisor.staleCount > 0
+                ? "Priser eller inställningar har ändrats. Nya förslag kommer i morgon bitti."
+                : "Inga förslag just nu."
+            }
           />
         </section>
       ) : null}

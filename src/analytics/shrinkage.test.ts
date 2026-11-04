@@ -112,4 +112,24 @@ describe("shrinkageHeadline", () => {
       shrinkageHeadline({ missing: 3, machines: 1, valueOre: 12_000, compared: true }).aside,
     ).toMatch(/I 1\s+automat · 120/);
   });
+
+  it("utan registrerade påfyllningar säger rubriken det (inte 'Påfyllt 0' som svinn)", () => {
+    const r = buildShrinkage(
+      [
+        agg({ refilled: 0, sold: 156, deviation: null, compared: 0 }),
+        agg({ titleId: "t2", refilled: 0 }),
+      ],
+      names,
+    );
+    expect(r.headline.aside).toBe("Ingen påfyllning registrerad än.");
+    expect(r.ok[0]?.refilled).toBe(0);
+  });
+
+  it("med påfyllningar men utan räkning väntar jämförelsen på nästa räkning", () => {
+    const r = buildShrinkage([agg({ deviation: null, compared: 0 })], names);
+    expect(r.headline).toEqual({
+      title: "Inget att jämföra än.",
+      aside: "Jämförelsen börjar efter nästa räkning.",
+    });
+  });
 });

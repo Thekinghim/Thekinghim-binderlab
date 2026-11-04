@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { buildContractRows, contractHeadline, type ContractInput } from "./model";
+import {
+  buildContractRows,
+  contractHeadline,
+  revenueRiskHeadline,
+  startHint,
+  uncoveredSales,
+  uncoveredText,
+  type ContractInput,
+} from "./model";
 
 const TODAY = "2026-11-03";
 const stores = [
@@ -90,5 +98,118 @@ describe("contractHeadline", () => {
     expect(contractHeadline(1, 1)).toBe("Butiken har signerat kontrakt.");
     expect(contractHeadline(0, 1)).toBe("0 av 1 butik har signerat kontrakt.");
     expect(contractHeadline(0, 0)).toBe("Inga butiker än.");
+  });
+});
+
+describe("uncoveredSales (Sega gubben sålde från 14\u00a0okt., kontraktet gäller från 3\u00a0nov.)", () => {
+  const sega = [{ id: "a", name: "Sega gubben" }];
+  const sales = new Map([["a", { firstSale: "2026-10-14", lastSale: "2026-11-03" }]]);
+
+  it("osignerat kontrakt från 3\u00a0nov.: hela försäljningen saknar signerat kontrakt", () => {
+    const u = uncoveredSales({
+      stores: sega,
+      sales,
+      contracts: [
+        contract({ id: "k", storeId: "a", validFrom: "2026-11-03", template: "t", sentAt: "x" }),
+      ],
+      today: "2026-11-04",
+    });
+    expect(u).toEqual([
+      {
+        storeId: "a",
+        storeName: "Sega gubben",
+        from: "2026-10-14",
+        to: "2026-11-03",
+        unsignedId: "k",
+        unsignedFrom: "2026-11-03",
+      },
+    ]);
+    expect(uncoveredText(u[0]!, "2026-11-04")).toBe(
+      "Sega gubben har sålt 14\u00a0okt. – 3\u00a0nov. utan signerat kontrakt. Kontraktet gäller först från 3\u00a0nov.: ändra startdagen och signera.",
+    );
+  });
+
+  it("signerat från 3\u00a0nov.: luckan är 14\u00a0okt. – 2 nov.", () => {
+    const u = uncoveredSales({
+      stores: sega,
+      sales,
+      contracts: [
+        contract({ id: "k", storeId: "a", validFrom: "2026-11-03", template: "t", signedAt: "x" }),
+      ],
+      today: "2026-11-04",
+    });
+    expect(u.map((x) => [x.from, x.to, x.unsignedId])).toEqual([
+      ["2026-10-14", "2026-11-02", null],
+    ]);
+    expect(uncoveredText(u[0]!, "2026-11-04")).toContain("Skapa ett kontrakt för den tiden.");
+  });
+
+  it("signerat från första försäljningen: ingen varning; utan försäljning: ingen varning", () => {
+    expect(
+      uncoveredSales({
+        stores: sega,
+        sales,
+        contracts: [contract({ id: "k", storeId: "a", validFrom: "2026-10-14", template: null })],
+        today: "2026-11-04",
+      }),
+    ).toEqual([]);
+    expect(
+      uncoveredSales({ stores: sega, sales: new Map(), contracts: [], today: "2026-11-04" }),
+    ).toEqual([]);
+  });
+
+  it("arkiverade kontrakt täcker inget; utan kontrakt står butiken redan som Saknas", () => {
+    const u = uncoveredSales({
+      stores: sega,
+      sales,
+      contracts: [
+        contract({
+          id: "x",
+          storeId: "a",
+          validFrom: "2026-10-01",
+          template: null,
+          archived: true,
+        }),
+        contract({ id: "k", storeId: "a", validFrom: "2026-11-03", template: "t" }),
+      ],
+      today: "2026-11-04",
+    });
+    expect(u.map((x) => x.from)).toEqual(["2026-10-14"]);
+    expect(uncoveredSales({ stores: sega, sales, contracts: [], today: "2026-11-04" })).toEqual([]);
+  });
+});
+
+describe("revenueRiskHeadline (0,0 % i riskzonen fast inget var signerat)", () => {
+  it("intäkt utan signerat kontrakt står först", () => {
+    expect(
+      revenueRiskHeadline({
+        totalRevenueOre: 8_472_500,
+        expiringShareBp: 0,
+        noContractShareBp: 10_000,
+        noContractRevenueOre: 8_472_500,
+      }),
+    ).toBe("100\u00a0% av intäkten saknar signerat kontrakt.");
+  });
+  it("allt signerat: andelen som löper ut", () => {
+    expect(
+      revenueRiskHeadline({
+        totalRevenueOre: 100,
+        expiringShareBp: 2_500,
+        noContractShareBp: 0,
+        noContractRevenueOre: 0,
+      }),
+    ).toBe("25\u00a0% av intäkten löper ut inom 12 mån.");
+  });
+});
+
+describe("startHint", () => {
+  it("varnar när kontraktet börjar efter första försäljningen", () => {
+    expect(startHint("2026-10-14", "2026-11-03", "2026-11-04")).toBe(
+      "Automaten har sålt sedan 14\u00a0okt. Den försäljningen täcks inte.",
+    );
+    expect(startHint("2026-10-14", "2026-10-14", "2026-11-04")).toBe(
+      "Täcker försäljningen sedan 14\u00a0okt.",
+    );
+    expect(startHint(null, "2026-11-03", "2026-11-04")).toBeUndefined();
   });
 });

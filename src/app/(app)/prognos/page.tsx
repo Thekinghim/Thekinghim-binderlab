@@ -109,7 +109,9 @@ export default async function PrognosPage({
         .filter((r) => r.status !== "ok")
         .map((r) => [r.titleId, needQtyOf(r.onHand, true, r)] as const),
     );
-    m = buildPageModel(data, new Date(ctx.now), { packNeed });
+    // Räcker: samma regel och takt som Vårt lager (hemma + i automaterna, 14 dagars takt).
+    const stockPace = new Map(our.rows.map((r) => [r.titleId, r.perDayTenths] as const));
+    m = buildPageModel(data, new Date(ctx.now), { packNeed, stockPace });
     stock = our;
   } catch (error) {
     if (!(error instanceof DomainError)) throw error;

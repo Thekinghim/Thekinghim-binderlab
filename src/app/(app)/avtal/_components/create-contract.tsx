@@ -21,14 +21,20 @@ import {
   termsPayload,
   type TermsDraft,
 } from "../_lib/terms";
+import { startHint } from "../_lib/model";
 import { SignOnSite } from "./sign-on-site";
 import { TermsFields } from "./terms-fields";
 
 export interface CreateContractOption {
   readonly value: string;
   readonly label: string;
-  /** Startdagen som skriver om butikens felaktiga villkor (andel av försäljningen). */
+  /**
+   * Föreslagen startdag: början på butikens villkor, annars första försäljningen, så att
+   * kontraktet täcker allt automaten har sålt (suggestContractStart).
+   */
   readonly suggestedFrom?: string | null;
+  /** Butikens första försäljning, eller null. */
+  readonly firstSale?: string | null;
   /** Butikens uppgifter i kontraktet (förhandsvisningen). */
   readonly party?: ContractParty;
 }
@@ -49,6 +55,7 @@ export function CreateContract({
   initialTarget,
   autoOpen = false,
   orgNumberMissing,
+  operatorGaps = [],
   firstContract = false,
   variant = "primary",
   large = false,
@@ -61,6 +68,8 @@ export function CreateContract({
   initialTarget?: string;
   autoOpen?: boolean;
   orgNumberMissing: boolean;
+  /** Våra rader som blir tomma i kontraktet (Inställningar → Företaget). */
+  operatorGaps?: readonly string[];
   /** Inget kontrakt från mallen finns ännu: påminn en gång om att låta någon läsa mallen. */
   firstContract?: boolean;
   variant?: "primary" | "secondary";
@@ -260,6 +269,7 @@ export function CreateContract({
                     setValidFrom(e.target.value);
                     setConfirm(undefined);
                   }}
+                  hint={startHint(option?.firstSale ?? null, validFrom, today)}
                 />
                 <Link
                   href="/butiker/ny"
@@ -290,13 +300,15 @@ export function CreateContract({
                   sandbox=""
                   className="bg-white h-[46dvh] w-full rounded-sm border border-line"
                 />
-                {orgNumberMissing ? (
-                  <p className="meta text-subtle">
+                {operatorGaps.length > 0 || orgNumberMissing ? (
+                  <p className="text-sm text-signal-fg">
+                    Era uppgifter saknas i kontraktet (
+                    {(operatorGaps.length > 0 ? operatorGaps : ["org.nr"]).join(", ")}).{" "}
                     <Link
-                      href="/ekonomi?vy=bokforing#bokforing"
-                      className="underline underline-offset-2"
+                      href="/installningar#foretaget"
+                      className="font-medium underline underline-offset-2"
                     >
-                      Lägg in organisationsnumret
+                      Fyll i dem
                     </Link>
                   </p>
                 ) : null}

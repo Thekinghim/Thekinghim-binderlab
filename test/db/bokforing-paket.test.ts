@@ -565,3 +565,52 @@ describe("pg_cron: private.bokforing_cron_tick", () => {
     expect(res.ok).toBe(false);
   });
 });
+
+describe("inga inköpsorder: inköpen är vad de sålda packen kostade (utvärderingen 4 nov)", () => {
+  let o: Org;
+  beforeAll(async () => {
+    o = await seedOrg();
+    // Ägarna registrerar inga inköpsorder; underlaget står på "mottagna inköp" (standard).
+    await saveBokforingSettingsFor(o.ownerV, {
+      plan: { ...DEFAULT_PLAN },
+      series: "A",
+      orgNumber: "",
+      purchaseBasis: "received_purchases",
+      openingCarryOre: 0,
+    });
+    await addOrders(o, "2026-10", 3);
+  });
+
+  it("oktober har inköp = 3 × 20 kr och rätt resultat, och är klar", async () => {
+    const view = await loadBokforingFor(o.ownerV, TODAY);
+    const b = view.months.find((m) => m.month === "2026-10")!.book;
+    expect(b.purchaseBasis).toBe("cost_of_goods");
+    expect(b.purchaseBasisAuto).toBe(true);
+    expect(b.purchasesOre).toBe(6_000);
+    expect(b.resultOre).toBe(b.salesInclVatOre - 6_000 - b.cardFeesOre - b.storeShareOre);
+    expect(b.resultOre).toBeLessThan(b.salesInclVatOre - b.storeShareOre - b.cardFeesOre);
+    const r = await run(o);
+    expect(r.organizations.find((x) => x.month === "2026-10")).toMatchObject({
+      packageStatus: "final",
+    });
+  });
+
+  it("ett sålt pack utan inköpspris gör månaden preliminär, aldrig klar", async () => {
+    const unpriced = await asUser(o.owner, async (tx) => {
+      const [t] = await tx
+        .insert(s.titles)
+        .values({ organizationId: o.orgId, name: `Utan pris ${uniqueSuffix()}` })
+        .returning();
+      return t!.id;
+    });
+    await addOrders(o, "2026-10", 1, unpriced);
+    const r = await run(o);
+    expect(r.organizations.find((x) => x.month === "2026-10")).toMatchObject({
+      status: "created",
+      packageStatus: "preliminary",
+    });
+    const ready = await readyPackageFor(o.ownerV);
+    expect(ready).toMatchObject({ status: "preliminary" });
+    expect(ready!.reason).toContain("saknar inköpspris, så inköpen är inte klara");
+  });
+});

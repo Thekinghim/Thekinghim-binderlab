@@ -22,6 +22,14 @@
  *   Med `levelUncertainty` läggs nivåns osäkerhet till: nivåvarians = snittprognos per dag /
  *   dagar med data, och en summa över k dagar får k² × nivåvarians (samma fel alla dagar).
  * - **Träffsäkerhet** mäts med backtest på rullande ursprung (backtest.ts).
+ * - **Utgår.** Serier i `excludeSeries` (titlar som gått ur automaten) får ingen prognos.
+ * - **Korrigering** (`biasCorrection`, se `biasCorrectionBp`): har prognosen legat för högt i
+ *   backtesten (summan av alla serier, minst 2 testveckor) skalas alla dagar ner med
+ *   utfall / prognos, högst 30 %. Utredning nov. 2026: prognosen låg ca 30 % över
+ *   veckoförsäljningen. Orsakerna var (1) utgångna titlar som fortfarande prognostiserades
+ *   (ca 2 400 kr/vecka, nu borta via `excludeSeries`) och (2) startpuckeln: automaten
+ *   startade 14 okt. och vecka 2 sålde mest, vilket det viktade medlet bär med sig. (2) är
+ *   inget räknefel utan en egenskap hos data, så den dämpas med den uppmätta biasen.
  */
 
 import {
@@ -87,6 +95,7 @@ export const FORECAST_DEFAULTS = {
   backtestHorizonDays: 7,
   backtestStepDays: 7,
   levelUncertainty: false,
+  biasCorrection: false,
 } as const satisfies Required<ForecastOptions>;
 
 /** z-värden (i tusendelar) för de täckningar som stöds, normalfördelning. */
@@ -99,9 +108,12 @@ export const Z_BY_COVERAGE_BP: Readonly<Record<number, number>> = {
 };
 
 type ResolvedOptions = {
-  -readonly [K in Exclude<keyof Required<ForecastOptions>, "levelUncertainty">]: number;
+  -readonly [
+    K in Exclude<keyof Required<ForecastOptions>, "levelUncertainty" | "biasCorrection">
+  ]: number;
 } & {
   levelUncertainty: boolean;
+  biasCorrection: boolean;
   zMilli: number;
 };
 
@@ -208,6 +220,61 @@ interface SeriesDays {
   /** Nivåns varians (milli²), räknas k² gånger för k dagar. */
   readonly levelVarianceMilli2: number;
   readonly avgPriceOre: number;
+}
+
+/** En serie efter anpassning och backtest, före prognosen per dag. */
+interface PreparedSeries {
+  readonly key: string;
+  readonly machineId: string;
+  readonly titleId: string;
+  readonly firstSale: IsoDate;
+  readonly firstDate: IsoDate;
+  readonly startSource: SeriesForecast["startSource"];
+  readonly excludedDates: IsoDate[];
+  readonly historyOrderIds: string[];
+  readonly comps: ForecastComponents;
+  readonly avgPriceOre: number;
+  readonly priceSource: PriceSource;
+  readonly bt: ReturnType<typeof backtestHistory>;
+}
+
+/** Minst så många testveckor (ursprung) för att korrigera för överskattning. */
+export const BIAS_MIN_ORIGINS = 2;
+/** Minst så många sålda pack i testerna (tusendelar) för att korrigera. */
+export const BIAS_MIN_ACTUAL_MILLI = 50 * MILLI;
+/** Korrigeringen sänker prognosen högst så här mycket (bp): faktor minst 7 000 = −30 %. */
+export const BIAS_MIN_FACTOR_BP = 7_000;
+
+/**
+ * Korrigering för känd överskattning: när backtesten (summan av alla serier, minst
+ * `BIAS_MIN_ORIGINS` testveckor och `BIAS_MIN_ACTUAL_MILLI` pack) visar att modellen legat
+ * för högt, skalas prognosen ner med utfall / prognos i testerna, högst 30 %. Prognosen
+ * skalas aldrig upp (en för låg prognos syns som slutsålt och rättar sig när påfyllningen
+ * registreras; en för hög binder pengar i lager). Nya bolag har ofta en startpuckel de
+ * första veckorna som ett glidande medel bär med sig, så det här är den vanliga orsaken.
+ */
+export function biasCorrectionBp(
+  origins: readonly Pick<BacktestOrigin, "origin" | "actualMilli" | "forecastMilli">[],
+  enabled: boolean,
+): { factorBp: number; biasBp: number | null; origins: number } {
+  let a = 0;
+  let f = 0;
+  const dates = new Set<IsoDate>();
+  for (const x of origins) {
+    a += x.actualMilli;
+    f += x.forecastMilli;
+    dates.add(x.origin);
+  }
+  const biasBp = a > 0 ? roundHalfUp((f - a) * 10_000, a) : null;
+  const none = { factorBp: 10_000, biasBp, origins: dates.size };
+  if (!enabled || dates.size < BIAS_MIN_ORIGINS || a < BIAS_MIN_ACTUAL_MILLI || f <= a) {
+    return none;
+  }
+  return { ...none, factorBp: Math.max(BIAS_MIN_FACTOR_BP, roundHalfUp(a * 10_000, f)) };
+}
+
+function scaleBp(milli: number, factorBp: number): number {
+  return factorBp === 10_000 ? milli : roundHalfUp(milli * factorBp, 10_000);
 }
 
 /** Intern arbetsdata för en serie. */
@@ -338,9 +405,15 @@ export function forecastSales(input: ForecastInput): ForecastResult {
     }
   }
 
-  const works: SeriesWork[] = [];
+  // Serier som gått ur automaten (utgår) får ingen prognos: de säljs inte längre där.
+  const excluded = new Set<string>(
+    (input.excludeSeries ?? []).map((x) => seriesKey(x.machineId, x.titleId)),
+  );
+
+  const prepared: PreparedSeries[] = [];
   const keys = [...bySeries.keys()].sort();
   for (const key of keys) {
+    if (excluded.has(key)) continue;
     const orders = bySeries.get(key)!;
     const { machineId, titleId } = orders[0]! as { machineId: string; titleId: string };
     if (!orders.some((x) => x.businessDate >= historyStart)) continue;
@@ -401,6 +474,49 @@ export function forecastSales(input: ForecastInput): ForecastResult {
       priceSource = "title";
     }
 
+    const bt = backtestHistory(history, endIndex, model, {
+      origins: o.backtestOrigins,
+      horizonDays: o.backtestHorizonDays,
+      stepDays: o.backtestStepDays,
+    });
+    prepared.push({
+      key,
+      machineId,
+      titleId,
+      firstSale,
+      firstDate,
+      startSource,
+      excludedDates,
+      historyOrderIds,
+      comps,
+      avgPriceOre,
+      priceSource,
+      bt,
+    });
+  }
+
+  // Korrigering för känd överskattning (se `biasCorrection`): summan av backtesten.
+  const correction = biasCorrectionBp(
+    prepared.flatMap((x) => x.bt.origins),
+    o.biasCorrection,
+  );
+
+  const works: SeriesWork[] = [];
+  for (const x of prepared) {
+    const {
+      key,
+      machineId,
+      titleId,
+      firstSale,
+      firstDate,
+      startSource,
+      excludedDates,
+      historyOrderIds,
+      comps,
+      avgPriceOre,
+      priceSource,
+      bt,
+    } = x;
     // Prognos per dag.
     const days: ForecastDay[] = [];
     const activeDays: boolean[] = [];
@@ -408,13 +524,13 @@ export function forecastSales(input: ForecastInput): ForecastResult {
     for (let h = 1; h <= o.horizonDays; h++) {
       const p = predictDay(comps, h, o.maxTrendBp);
       const isActive = active(machineId, p.date);
-      const unitsMilli = isActive ? p.unitsMilli : 0;
+      const unitsMilli = isActive ? scaleBp(p.unitsMilli, correction.factorBp) : 0;
       activeDays.push(isActive);
       sumMilli += unitsMilli;
       days.push({
         date: p.date,
         weekday: p.weekday,
-        baseMilli: isActive ? p.baseMilli : 0,
+        baseMilli: isActive ? scaleBp(p.baseMilli, correction.factorBp) : 0,
         trendMilli: isActive ? p.trendMilli : 0,
         factorBp: p.factorBp,
         unitsMilli,
@@ -423,11 +539,6 @@ export function forecastSales(input: ForecastInput): ForecastResult {
     }
 
     // Backtest och varians.
-    const bt = backtestHistory(history, endIndex, model, {
-      origins: o.backtestOrigins,
-      horizonDays: o.backtestHorizonDays,
-      stepDays: o.backtestStepDays,
-    });
     const metrics = accuracyMetrics(bt.points, bt.origins);
     const resVar = residualVariance(bt.points);
     const activeCount = activeDays.filter(Boolean).length;
@@ -491,6 +602,9 @@ export function forecastSales(input: ForecastInput): ForecastResult {
         `(${useResiduals ? "backtestens residualer" : "Poisson-golv"}${levelVar > 0 ? " plus nivåns osäkerhet: snittprognos / dagar med data, × dagar²" : ""}).` +
         (startSource === "stock"
           ? ` Serien räknas från ${firstDate} (första kända saldo i automaten), före första försäljningen ${firstSale}.`
+          : "") +
+        (correction.factorBp < 10_000
+          ? ` Sänkt till ${pct(correction.factorBp)} eftersom prognosen låg ${pct(correction.biasBp ?? 0)} för högt i testveckorna.`
           : ""),
       period: comps.history,
       orderIds: historyOrderIds,
@@ -517,6 +631,9 @@ export function forecastSales(input: ForecastInput): ForecastResult {
             ]
           : []),
         fig("avgPriceOre", "Snittpris exkl. moms", avgPriceOre, "ore"),
+        ...(correction.factorBp < 10_000
+          ? [fig("biasCorrectionBp", "Justering för överskattning", correction.factorBp, "bp")]
+          : []),
         fig("forecastUnitsMilli", "Prognos, pack", total.unitsMilli, "milli"),
         fig("forecastLowMilli", "Prognos, nedre gräns", total.unitsLowMilli, "milli"),
         fig("forecastHighMilli", "Prognos, övre gräns", total.unitsHighMilli, "milli"),
@@ -635,6 +752,7 @@ export function forecastSales(input: ForecastInput): ForecastResult {
     byMachine,
     total,
     accuracy: overallAccuracy(backtests, o.backtestHorizonDays, o.backtestStepDays),
+    correction,
     backtests,
     ordersWithoutMachine,
   };

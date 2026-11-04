@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { computeTodos } from "./index";
-import { refillFingerprint, withSlotAlerts } from "./refill";
+import { VISIT_DEFAULTS } from "@/analytics/visits";
+import { refillFingerprint, VISIT_BUFFER_DAYS, withSlotAlerts } from "./refill";
 import { daily, input, machine, NOW, order, title, TODAY } from "./test-helpers";
 import type { TodoInput } from "./types";
 
@@ -66,12 +67,27 @@ describe("påfyllning", () => {
     expect(t?.evidence.figures.find((f) => f.key === "onHand")?.value).toBe(0);
   });
 
-  it("ingen försäljning i fönstret ger ingen punkt", () => {
+  it("ingen försäljning i fönstret ger ingen punkt så länge det finns pack kvar", () => {
+    const i = base({
+      orders: daily("t1", "m1", "2026-09-01", 10, 3),
+      stock: [{ machineId: "m1", titleId: "t1", onHand: 2 }],
+    });
+    expect(refills(i)).toHaveLength(0);
+  });
+
+  it("tomt fack för en titel som sålt här förut är slut i dag, fast takten i fönstret är 0", () => {
+    // Lager visar Akut för ett tomt fack; Att göra ska säga detsamma under "I dag".
     const i = base({
       orders: daily("t1", "m1", "2026-09-01", 10, 3),
       stock: [{ machineId: "m1", titleId: "t1", onHand: 0 }],
     });
-    expect(refills(i)).toHaveLength(0);
+    expect(refills(i)).toMatchObject([
+      { key: "refill:m1:t1", level: "now", title: "Black Bolt är slut i Automat 1" },
+    ]);
+    // Aldrig sålt i automaten: ingen punkt.
+    expect(
+      refills(base({ orders: [], stock: [{ machineId: "m1", titleId: "t1", onHand: 0 }] })),
+    ).toHaveLength(0);
   });
 
   it("dagens försäljning ingår inte i takten", () => {
@@ -128,14 +144,28 @@ describe("påfyllning", () => {
     expect(refills(i).map((t) => t.key)).toEqual(["refill:m2:t1"]);
   });
 
-  it("fingerprint ändras med påfyllning och nivå", () => {
-    const fp = (onHand: number, lastRestockedAt: string | null) =>
-      refills(base({ stock: [{ machineId: "m1", titleId: "t1", onHand, lastRestockedAt }] }))[0]
-        ?.fingerprint;
-    expect(fp(4, "2026-10-20T08:00:00Z")).toBe("soon|2026-10-20T08:00:00Z");
-    expect(fp(3, "2026-10-20T08:00:00Z")).toBe(fp(4, "2026-10-20T08:00:00Z"));
+  it("fingerprint ändras med registrerad påfyllning, saldo och nivå, inte med en inventering", () => {
+    const fp = (onHand: number, lastRefilledAt: string | null, lastRestockedAt?: string) =>
+      refills(
+        base({
+          stock: [
+            {
+              machineId: "m1",
+              titleId: "t1",
+              onHand,
+              lastRefilledAt,
+              lastRestockedAt: lastRestockedAt ?? lastRefilledAt,
+            },
+          ],
+        }),
+      )[0]?.fingerprint;
+    expect(fp(4, "2026-10-20T08:00:00Z")).toBe("soon|saldo:4|påfyllt:2026-10-20T08:00:00Z");
+    // Ett pack till sålt: läget har ändrats, punkten kommer tillbaka.
+    expect(fp(3, "2026-10-20T08:00:00Z")).not.toBe(fp(4, "2026-10-20T08:00:00Z"));
     expect(fp(0, "2026-10-20T08:00:00Z")).not.toBe(fp(4, "2026-10-20T08:00:00Z"));
     expect(fp(4, "2026-10-30T08:00:00Z")).not.toBe(fp(4, "2026-10-20T08:00:00Z"));
+    // En inventering (Awish) med samma saldo ändrar inget.
+    expect(fp(4, null, "2026-11-01T12:20:00Z")).toBe(fp(4, null, "2026-10-25T12:20:00Z"));
   });
 
   it("order utan automat ignoreras", () => {
@@ -159,15 +189,25 @@ describe("påfyllning: slutdatum och avbockning", () => {
     expect(t?.detail).toMatch(/Väntas ta slut 4 nov\.$/);
   });
 
-  it("utan lastRestockedAt bygger fingerprint på saldot, så en påfyllning syns", () => {
-    const fp = (onHand: number) =>
-      refills(base({ stock: [{ machineId: "m1", titleId: "t1", onHand }] }))[0]?.fingerprint;
-    expect(fp(4)).toBe("soon|saldo:4");
-    expect(fp(3)).not.toBe(fp(4));
-    expect(refillFingerprint("soon", { onHand: 4, lastRestockedAt: "2026-10-30T08:00:00Z" })).toBe(
-      "soon|2026-10-30T08:00:00Z",
+  it("refillFingerprint: nivå, saldo och senaste registrerade påfyllning", () => {
+    expect(refillFingerprint("soon", { onHand: 4, lastRefilledAt: "2026-10-30T08:00:00Z" })).toBe(
+      "soon|saldo:4|påfyllt:2026-10-30T08:00:00Z",
     );
-    expect(refillFingerprint("now", { onHand: 0, lastRestockedAt: null })).toBe("now|saldo:0");
+    expect(refillFingerprint("now", { onHand: 0, lastRefilledAt: null })).toBe(
+      "now|saldo:0|påfyllt:-",
+    );
+    expect(refillFingerprint("now", { onHand: -2 })).toBe("now|saldo:0|påfyllt:-");
+  });
+
+  it("besöksplanens marginal är densamma som här", () => {
+    expect(VISIT_BUFFER_DAYS).toBe(VISIT_DEFAULTS.bufferDays);
+  });
+
+  it("försenat besök (exakt 1,0 dag kvar, besök senast i går) står under I dag", () => {
+    // 2 per dag, 2 pack: räcker 1,0 dag → slut 2 nov. (i dag), besök senast 1 nov. (passerat).
+    const [t] = refills(base({ stock: [{ machineId: "m1", titleId: "t1", onHand: 2 }] }));
+    expect(t?.level).toBe("now");
+    expect(t?.detail).toMatch(/Besöket är försenat \(senast 1\u00a0nov\.\)\.$/);
   });
 });
 

@@ -91,7 +91,7 @@ export function HomeStock({ model, scope }: { model: VartLagerModel; scope: stri
               id: "out",
               label: `Tar slut inom ${formatInt(model.lowDays)} d`,
               value: t.runsOut,
-              format: (v) => `${formatInt(v)}${NBSP}titlar`,
+              format: (v) => `${formatInt(v)}${NBSP}${v === 1 ? "titel" : "titlar"}`,
               ...(t.runsOut > 0 ? { alert: true, alertText: packOnly ? "Packa" : "Beställ" } : {}),
             },
             {
@@ -100,6 +100,20 @@ export function HomeStock({ model, scope }: { model: VartLagerModel; scope: stri
               value: t.inMachines,
               format: formatInt,
             },
+            // Titlar som gått ur automaterna men ligger hemma: pengar som står still.
+            ...(t.idle.packs > 0
+              ? [
+                  {
+                    id: "idle",
+                    label: "Ligger still",
+                    value: t.idle.packs,
+                    format: (v: number) => `${formatInt(v)}${NBSP}pack`,
+                    note: `${formatInt(t.idle.titles)}${NBSP}${t.idle.titles === 1 ? "titel utgår" : "titlar utgår"}${
+                      t.idle.valueOre > 0 ? ` · ${formatSek(t.idle.valueOre / 100)}` : ""
+                    }`,
+                  },
+                ]
+              : []),
           ]}
         />
       </div>
@@ -310,6 +324,8 @@ function StockRow({
             <span className="truncate text-base text-fg">{row.name}</span>
             {row.negative || negativeHere ? (
               <StatusTag status="critical">Räkna om</StatusTag>
+            ) : row.retired ? (
+              <StatusTag status="offline">Utgår</StatusTag>
             ) : row.runsOut ? (
               <StatusTag status={tone}>
                 {row.own ? "Packa" : row.home <= 0 ? "Slut" : "Tar slut"}
@@ -476,15 +492,18 @@ function StockRow({
                     <span>Flytta</span>
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={() => setBuyOpen(true)}
-                  aria-label={`${row.own ? "Packat" : "Inköp"}, ${row.name}`}
-                  className="inline-flex h-11 items-center gap-1 rounded-sm px-2 text-sm text-muted transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg"
-                >
-                  <Icon name="plus" size={12} />
-                  <span>{row.own ? "Packat" : "Inköp"}</span>
-                </button>
+                {/* Utgången titel köps inte in: den ligger still tills den säljs eller flyttas. */}
+                {row.retired ? null : (
+                  <button
+                    type="button"
+                    onClick={() => setBuyOpen(true)}
+                    aria-label={`${row.own ? "Packat" : "Inköp"}, ${row.name}`}
+                    className="inline-flex h-11 items-center gap-1 rounded-sm px-2 text-sm text-muted transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg"
+                  >
+                    <Icon name="plus" size={12} />
+                    <span>{row.own ? "Packat" : "Inköp"}</span>
+                  </button>
+                )}
               </>
             )}
           </span>

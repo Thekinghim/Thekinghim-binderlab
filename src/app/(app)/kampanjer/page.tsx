@@ -124,7 +124,7 @@ async function CampaignsView({
         <p className="text-base text-muted">
           {data.linked.length === 0
             ? "Ingen automat är kopplad till Awish."
-            : `På ${formatInt(liveMachines.size)} av ${formatInt(data.linked.length)} automater.`}
+            : `På ${formatInt(liveMachines.size)} av ${formatInt(data.linked.length)} ${data.linked.length === 1 ? "automat" : "automater"}.`}
         </p>
         {!data.connected ? <NotConnected /> : null}
         <div className="flex flex-col items-start gap-3">
