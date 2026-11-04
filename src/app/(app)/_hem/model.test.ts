@@ -167,13 +167,13 @@ describe("buildHomeModel", () => {
     );
   });
 
-  it("utan fasta kostnader: ingen rad 'Före fasta kostnader' och nyckeltalet heter Vinst", () => {
+  it("utan fasta kostnader: ingen rad 'Före fasta kostnader' och nyckeltalet heter alltid Vår vinst", () => {
     const input = inputFor(THIRTY, THIRTY_BEFORE);
     const withCosts = buildHomeModel({ ...input, costLines: { rent: false, fixed: true } });
     const without = buildHomeModel({ ...input, costLines: { rent: false, fixed: false } });
     expect(plain(without.headline.lead.join(" "))).toBe("22,5 % saknar inköpspris.");
-    expect(without.kpis.find((k) => k.id === "profit")?.label).toBe("Vinst");
-    expect(withCosts.kpis.find((k) => k.id === "profit")?.label).toBe("Vinst före fasta kostnader");
+    expect(without.kpis.find((k) => k.id === "profit")?.label).toBe("Vår vinst");
+    expect(withCosts.kpis.find((k) => k.id === "profit")?.label).toBe("Vår vinst");
     // Bara texten ändras: talen är desamma.
     expect(without.kpis.map((k) => k.value)).toEqual(withCosts.kpis.map((k) => k.value));
     expect(without.headline.title).toBe(withCosts.headline.title);
