@@ -21,6 +21,21 @@ const nextConfig: NextConfig = {
   // i next start), och indikatorn täckte användarnamnet i sidomenyn och Hem i mobilmenyn.
   // Kompilerings- och körfel visas ändå.
   devIndicators: false,
+  // PDF på Vercel: @sparticuz/chromium läser sin packade Chromium ur node_modules/…/bin
+  // vid körning. Paketet får därför inte buntas, och bin/ måste följa med till de
+  // funktioner som skapar PDF (rapporter, avräkningar, avtal, bokföring, portalen, cron).
+  serverExternalPackages: ["@sparticuz/chromium", "puppeteer-core"],
+  outputFileTracingIncludes: Object.fromEntries(
+    [
+      "/rapport/**",
+      "/butiker/**",
+      "/portal/**",
+      "/avtal/**",
+      "/ekonomi/**",
+      "/signera/**",
+      "/api/cron/**",
+    ].map((route) => [route, ["./node_modules/@sparticuz/chromium/bin/**"]]),
+  ),
   experimental: {
     serverActions: { bodySizeLimit: MAX_ACTION_BODY },
     // Proxyn buffrar förfrågans kropp; standard 10 MB skulle klippa avtalsfiler.
