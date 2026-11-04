@@ -1,5 +1,7 @@
 /**
  * De flytande knapparna på mobilen (under lg): "Fyll på" för påfyllaren och "Fråga AI".
+ * På telefonen (under md) finns ingen flytande AI-knapp: den skymde innehåll till höger, och
+ * AI nås alltid från toppraden. Mellan md och lg står den kvar.
  * Rena regler, så att skalet (luften under sidan), bottenraden och AI-knappen räknar med
  * samma mått och aldrig döljer innehåll. Testas i fab.test.ts.
  */
@@ -46,6 +48,11 @@ export function fabLayout(options: { refill: boolean; assistant: boolean }): Fab
     assistantBottom,
     mainPaddingBottom: any ? slot + FAB_SIZE_PX + FAB_GAP_PX : BOTTOM_NAV_PX,
   };
+}
+
+/** Knapparna på telefonen (under md): som fabLayout, men utan flytande AI-knapp. */
+export function phoneFabLayout(options: { refill: boolean }): FabLayout {
+  return fabLayout({ refill: options.refill, assistant: false });
 }
 
 /** Rullar man så här långt (px) åt ett håll byter knappen läge. */

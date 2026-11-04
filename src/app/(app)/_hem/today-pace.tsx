@@ -32,7 +32,7 @@ export function TodayPaceCard({ pace }: { pace: TodayPace }) {
   return (
     <section
       aria-labelledby="i-dag-hittills"
-      className="flex flex-col gap-4 rounded-sm border border-line bg-surface p-4 sm:flex-row sm:items-center sm:justify-between md:px-5"
+      className="flex flex-col gap-4 rounded-sm border border-line bg-surface p-4 max-md:gap-1 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:bg-transparent max-md:px-0 max-md:py-3 sm:flex-row sm:items-center sm:justify-between md:px-5"
     >
       <div className="flex min-w-0 flex-col gap-1.5">
         <h2 id="i-dag-hittills" className="label flex items-center gap-2 text-muted">
@@ -45,7 +45,7 @@ export function TodayPaceCard({ pace }: { pace: TodayPace }) {
             id="i-dag-hittills"
             value={pace.soFarOre}
             format={(v) => formatSek(v / 100)}
-            className="text-3xl font-medium text-fg md:text-4xl"
+            className="text-xl font-medium text-fg sm:text-3xl md:text-4xl"
           />
           <span
             className={cn(
@@ -61,7 +61,10 @@ export function TodayPaceCard({ pace }: { pace: TodayPace }) {
           {`Prognos ${kr(pace.projectionOre)} · vanlig dag ${kr(pace.baselineFullOre)}`}
         </p>
       </div>
-      <PaceSpark pace={pace} weekday={weekday} />
+      {/* Under md bara talet: kurvan står från md. */}
+      <div className="shrink-0 max-md:hidden">
+        <PaceSpark pace={pace} weekday={weekday} />
+      </div>
     </section>
   );
 }

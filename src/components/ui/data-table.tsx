@@ -204,6 +204,11 @@ function formatMs(ms: number): string {
 // Celler
 // ---------------------------------------------------------------------------
 
+/** Under md: så här få rader syns ändå alla, så räknaren döljs. */
+const FEW_ROWS = 5;
+/** Verktygsknapparna under md: bara ikonen, 44 px tryckyta. */
+const TOOL_BUTTON = "max-md:size-11 max-md:justify-center max-md:gap-0 max-md:px-0";
+
 const surfaceVar = {
   surface: "[--dt-bg:var(--bl-surface)]",
   raised: "[--dt-bg:var(--bl-surface-raised)]",
@@ -372,6 +377,7 @@ function ColumnMenu<T>({
         ref={buttonRef}
         size="sm"
         iconLeft="columns"
+        className={TOOL_BUTTON}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -387,9 +393,9 @@ function ColumnMenu<T>({
           }
         }}
       >
-        Kolumner
+        <span className="max-md:sr-only">Kolumner</span>
         {visibleCount < columns.length ? (
-          <span className="tnum ml-1.5 font-mono text-xs text-subtle">
+          <span className="tnum ml-1.5 font-mono text-xs text-subtle max-md:hidden">
             {visibleCount}/{columns.length}
           </span>
         ) : null}
@@ -667,7 +673,15 @@ export function DataTable<T>({
   return (
     <div className={cn("relative w-full min-w-0", surfaceVar[surface], className)}>
       {showToolbar ? (
-        <div className="flex flex-col gap-3 pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div
+          className={cn(
+            "flex flex-col gap-3 pb-3 sm:flex-row sm:items-center sm:justify-between",
+            // Under md: en rad med räknaren och knapparna som ikoner till höger.
+            !toolbar || toolbar === true
+              ? "max-md:flex-row max-md:items-center max-md:justify-between max-md:gap-2 max-md:pb-2"
+              : null,
+          )}
+        >
           <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
             {toolbar !== true ? toolbar : null}
             <p
@@ -675,10 +689,13 @@ export function DataTable<T>({
               aria-live="polite"
               aria-atomic="true"
             >
-              <span className="text-fg">{formatInt(n)}</span> {n === 1 ? "rad" : "rader"}
+              {/* Under md säger antalet inget när alla rader syns på en gång. */}
+              <span className={cn(n <= FEW_ROWS && "max-md:sr-only")}>
+                <span className="text-fg">{formatInt(n)}</span> {n === 1 ? "rad" : "rader"}
+              </span>
               {sortParts.length ? (
                 <>
-                  <span aria-hidden className="text-subtle">
+                  <span aria-hidden className={cn("text-subtle", n <= FEW_ROWS && "max-md:hidden")}>
                     {" · "}
                   </span>
                   sorterat på{" "}
@@ -708,8 +725,8 @@ export function DataTable<T>({
                 <ColumnMenu columns={columns} hidden={hidden} onToggle={toggleColumn} />
               ) : null}
               {exportFileName ? (
-                <Button size="sm" iconLeft="download" onClick={exportCsv}>
-                  Exportera CSV
+                <Button size="sm" iconLeft="download" onClick={exportCsv} className={TOOL_BUTTON}>
+                  <span className="max-md:sr-only">Exportera CSV</span>
                 </Button>
               ) : null}
             </div>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { PanelSection } from "@/components/ui/frame";
+import { MobileFold } from "@/components/ui/mobile-fold";
 import { ALL_COST_LINES, type CostLines } from "@/lib/cost-lines";
 import { formatInt, formatPercent, formatSek, MINUS, NBSP } from "@/lib/format";
 
@@ -70,80 +71,92 @@ export function ResultAfterProfitPanel({
   const showFixed = costLines.fixed || (r.fixedCostOre ?? 0) !== 0;
   return (
     <PanelSection label="Efter vinsten">
-      <dl className="flex flex-col">
-        <Line label="Vår vinst" value={kr(r.profitOre)} />
-        <Line
-          label="Återbetalningar"
-          value={minus(r.refundOre)}
-          detail={
-            r.refundCount > 0
-              ? `${formatInt(r.refundCount)}${NBSP}${r.refundCount === 1 ? "ärende" : "ärenden"}`
-              : undefined
-          }
-        />
-        {r.freePackCount > 0 ? (
-          <Line
-            label="Gratis-pack"
-            value={minus(r.freePackOre)}
-            detail={`${formatInt(r.freePackCount)}${NBSP}pack`}
-          />
-        ) : null}
-        <Line
-          label={
-            r.freePackCount > 0 ? "Efter återbetalningar och gratis-pack" : "Efter återbetalningar"
-          }
-          value={kr(r.profitAfterGiveawaysOre)}
-          detail={showFixed ? undefined : margin}
-          total
-        />
-        {!showFixed ? null : r.fixedCostOre === null ? (
-          <Line label="Fasta kostnader" value="–" detail={r.fixedNote ?? undefined} />
-        ) : (
-          <Line
-            label="Fasta kostnader"
-            value={minus(r.fixedCostOre)}
-            detail={
-              r.fixedCostOre > 0
-                ? fixedDetail(r.sharedFixedOre ?? 0, r.directFixedOre ?? 0)
-                : undefined
-            }
-          />
-        )}
-        {showFixed ? (
-          <Line
-            label={
-              r.fixedCostOre === null
-                ? "Efter återbetalningar, utan fasta"
-                : "Efter fasta kostnader"
-            }
-            value={kr(r.resultOre)}
-            detail={margin}
-            total
-          />
-        ) : null}
-      </dl>
-      <p className="flex flex-wrap gap-x-6 gap-y-1">
-        <Link href="/inkorg" className={LINK}>
-          <span>Kundärenden</span>
-          <span aria-hidden className="text-subtle">
-            →
-          </span>
-        </Link>
-        {r.freePackCount > 0 ? (
-          <Link href="/kampanjer?vy=gratis-pack" className={LINK}>
-            <span>Gratis-pack</span>
-            <span aria-hidden className="text-subtle">
-              →
-            </span>
-          </Link>
-        ) : null}
-        <Link href="/ekonomi?vy=fasta" className={LINK}>
-          <span>{showFixed ? "Fasta kostnader" : "Lägg till fast kostnad"}</span>
-          <span aria-hidden className="text-subtle">
-            →
-          </span>
-        </Link>
-      </p>
+      {/* Mobil: en rad med slutraden; raderna och länkarna fälls ut. */}
+      <MobileFold
+        summary={
+          showFixed && r.fixedCostOre !== null ? "Efter fasta kostnader" : "Efter återbetalningar"
+        }
+        meta={`${kr(showFixed ? r.resultOre : r.profitAfterGiveawaysOre)}${margin ? ` · ${margin}` : ""}`}
+      >
+        <div className="flex flex-col gap-4">
+          <dl className="flex flex-col">
+            <Line label="Vår vinst" value={kr(r.profitOre)} />
+            <Line
+              label="Återbetalningar"
+              value={minus(r.refundOre)}
+              detail={
+                r.refundCount > 0
+                  ? `${formatInt(r.refundCount)}${NBSP}${r.refundCount === 1 ? "ärende" : "ärenden"}`
+                  : undefined
+              }
+            />
+            {r.freePackCount > 0 ? (
+              <Line
+                label="Gratis-pack"
+                value={minus(r.freePackOre)}
+                detail={`${formatInt(r.freePackCount)}${NBSP}pack`}
+              />
+            ) : null}
+            <Line
+              label={
+                r.freePackCount > 0
+                  ? "Efter återbetalningar och gratis-pack"
+                  : "Efter återbetalningar"
+              }
+              value={kr(r.profitAfterGiveawaysOre)}
+              detail={showFixed ? undefined : margin}
+              total
+            />
+            {!showFixed ? null : r.fixedCostOre === null ? (
+              <Line label="Fasta kostnader" value="–" detail={r.fixedNote ?? undefined} />
+            ) : (
+              <Line
+                label="Fasta kostnader"
+                value={minus(r.fixedCostOre)}
+                detail={
+                  r.fixedCostOre > 0
+                    ? fixedDetail(r.sharedFixedOre ?? 0, r.directFixedOre ?? 0)
+                    : undefined
+                }
+              />
+            )}
+            {showFixed ? (
+              <Line
+                label={
+                  r.fixedCostOre === null
+                    ? "Efter återbetalningar, utan fasta"
+                    : "Efter fasta kostnader"
+                }
+                value={kr(r.resultOre)}
+                detail={margin}
+                total
+              />
+            ) : null}
+          </dl>
+          <p className="flex flex-wrap gap-x-6 gap-y-1">
+            <Link href="/inkorg" className={LINK}>
+              <span>Kundärenden</span>
+              <span aria-hidden className="text-subtle">
+                →
+              </span>
+            </Link>
+            {r.freePackCount > 0 ? (
+              <Link href="/kampanjer?vy=gratis-pack" className={LINK}>
+                <span>Gratis-pack</span>
+                <span aria-hidden className="text-subtle">
+                  →
+                </span>
+              </Link>
+            ) : null}
+            <Link href="/ekonomi?vy=fasta" className={LINK}>
+              <span>{showFixed ? "Fasta kostnader" : "Lägg till fast kostnad"}</span>
+              <span aria-hidden className="text-subtle">
+                →
+              </span>
+            </Link>
+          </p>
+        </div>
+      </MobileFold>
     </PanelSection>
   );
 }

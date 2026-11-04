@@ -9,6 +9,7 @@ import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
 
+import { MobileMore } from "../../_mobil/mobile-more";
 import { Sheet } from "../../lager/_components/sheet";
 import { archivePlace, createPlace, renamePlace } from "../actions";
 import type { Place } from "../_lib/model";
@@ -85,25 +86,28 @@ export function PlaceBar({
         </div>
       ) : null}
       {canEdit ? (
-        <div className="flex flex-wrap gap-1">
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            className="inline-flex min-h-11 items-center gap-1 rounded-sm px-3 text-md text-muted hover:bg-hover hover:text-fg"
-          >
-            <Icon name="plus" size={12} />
-            Nytt lager
-          </button>
-          {multi ? (
+        // Mobil, med flera lager: "Nytt lager" och "Ändra" bakom "⋯" i slutet av raden.
+        <MaybeMore more={multi}>
+          <div className="flex flex-wrap gap-1 max-md:flex-col">
             <button
               type="button"
-              onClick={() => setEditing(true)}
-              className="inline-flex min-h-11 items-center rounded-sm px-3 text-md text-muted hover:bg-hover hover:text-fg"
+              onClick={() => setAdding(true)}
+              className="inline-flex min-h-11 items-center gap-1 rounded-sm px-3 text-md text-muted hover:bg-hover hover:text-fg"
             >
-              Ändra
+              <Icon name="plus" size={12} />
+              Nytt lager
             </button>
-          ) : null}
-        </div>
+            {multi ? (
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="inline-flex min-h-11 items-center rounded-sm px-3 text-md text-muted hover:bg-hover hover:text-fg"
+              >
+                Ändra
+              </button>
+            ) : null}
+          </div>
+        </MaybeMore>
       ) : null}
 
       {adding ? (
@@ -326,5 +330,15 @@ function EditPlaceRow({
         )}
       </div>
     </li>
+  );
+}
+
+function MaybeMore({ more, children }: { more: boolean; children: React.ReactNode }) {
+  return more ? (
+    <MobileMore label="Fler val för lagren" className="max-md:ml-auto">
+      {children}
+    </MobileMore>
+  ) : (
+    <>{children}</>
   );
 }

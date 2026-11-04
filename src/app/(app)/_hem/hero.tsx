@@ -25,17 +25,25 @@ export function HemHero({
 }: {
   headline: HomeHeadline;
   eyebrow: string;
-  /** Under raden, t.ex. AI-knappen. */
+  /**
+   * Under raden, t.ex. AI-knappen. Under md står de i en "⋯"-meny uppe till höger (se
+   * page.tsx), så rubriken lämnar plats åt den.
+   */
   children?: ReactNode;
 }) {
   const { figure, split } = headline;
+  // Under md står "Hem" redan i underfliken; etiketten visas bara med ett filter.
+  const scoped = eyebrow.includes("·");
   return (
-    <header className="flex min-w-0 flex-col gap-3">
-      <p className="label text-subtle">{eyebrow}</p>
+    <header className="relative flex min-w-0 flex-col gap-3 max-md:gap-2">
+      <p className={cn("label text-subtle", !scoped && "max-md:hidden")}>{eyebrow}</p>
       {figure ? (
         <h1
           aria-label={headline.title}
-          className="text-3xl font-medium text-balance hyphens-none lg:text-display lg:leading-[1.05]"
+          className={cn(
+            "text-3xl font-medium text-balance hyphens-none max-md:text-2xl lg:text-display lg:leading-[1.05]",
+            children ? "max-md:pr-12" : null,
+          )}
         >
           <span aria-hidden className="text-fg">
             {`${figure.label} `}
@@ -49,13 +57,18 @@ export function HemHero({
           </span>
         </h1>
       ) : (
-        <h1 className="text-2xl font-medium text-balance lg:text-3xl">
+        <h1
+          className={cn(
+            "text-2xl font-medium text-balance lg:text-3xl",
+            children ? "max-md:pr-12" : null,
+          )}
+        >
           <span className="text-fg">{headline.title}</span>
           {headline.aside ? <span className="text-subtle"> {headline.aside}</span> : null}
         </h1>
       )}
       {figure ? (
-        <p className="tnum text-lg text-muted md:text-xl">
+        <p className="tnum text-base text-muted sm:text-lg md:text-xl">
           {split.length > 0 ? (
             split.map((p, i) => (
               <span key={p.label}>

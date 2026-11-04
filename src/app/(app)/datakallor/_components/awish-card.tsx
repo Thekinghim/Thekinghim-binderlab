@@ -8,7 +8,10 @@ import { Input } from "@/components/ui/field";
 import { Panel } from "@/components/ui/frame";
 import { StatusGlyph, type Status } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
+import { cn } from "@/lib/cn";
 import { formatInt } from "@/lib/format";
+
+import { MobileMore } from "../../_mobil/mobile-more";
 
 import {
   previewAwishPush,
@@ -76,6 +79,9 @@ export function AwishCard({
     message: string;
     lines: string[];
   } | null>(null);
+  // Mobil: förklaringen, Testa inloggningen, Provkör och Ändra inloggning bakom "Mer".
+  const [pushMore, setPushMore] = useState(false);
+  const fold = pushMore ? "" : "max-md:hidden";
   const [appId, setAppId] = useState("");
   const [appSecret, setAppSecret] = useState("");
   const [appKey, setAppKey] = useState("");
@@ -236,15 +242,18 @@ export function AwishCard({
           >
             Hämta nu
           </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            loading={busy === "test"}
-            disabled={pending}
-            onClick={test}
-          >
-            Testa
-          </Button>
+          {/* Mobil: Testa bakom "⋯"; Hämta nu är den enda knappen. */}
+          <MobileMore label="Fler val för Awish" className="max-md:ml-auto">
+            <Button
+              type="button"
+              variant="secondary"
+              loading={busy === "test"}
+              disabled={pending}
+              onClick={test}
+            >
+              Testa
+            </Button>
+          </MobileMore>
         </div>
       ) : null}
       <details className="group" open={saved ? undefined : true}>
@@ -300,7 +309,7 @@ export function AwishCard({
         <div className="flex flex-col gap-3 border-t border-line pt-4">
           <div className="flex flex-col gap-1">
             <h4 className="text-sm font-medium">Skicka påfyllningar till Awish</h4>
-            <p className="text-xs text-subtle">
+            <p className={cn("text-xs text-subtle", web.hasPassword && fold)}>
               Logga in med ditt Awish-konto, så sätter Binderlab automatens antal i Awish när du
               fyller på. Då slipper du skriva antalet på Awish.
             </p>
@@ -321,24 +330,34 @@ export function AwishCard({
               >
                 {web.enabled ? "Stäng av" : "Slå på"}
               </Button>
-              <Button
+              <span className={cn("flex flex-wrap gap-2 md:contents", fold)}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  loading={busy === "web-test"}
+                  disabled={pending}
+                  onClick={testWeb}
+                >
+                  Testa inloggningen
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  loading={busy === "web-preview"}
+                  disabled={pending}
+                  onClick={previewWeb}
+                >
+                  Provkör (ändrar inget)
+                </Button>
+              </span>
+              <button
                 type="button"
-                variant="secondary"
-                loading={busy === "web-test"}
-                disabled={pending}
-                onClick={testWeb}
+                aria-expanded={pushMore}
+                onClick={() => setPushMore((v) => !v)}
+                className="inline-flex min-h-11 items-center px-2 text-sm text-muted hover:text-fg md:hidden"
               >
-                Testa inloggningen
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                loading={busy === "web-preview"}
-                disabled={pending}
-                onClick={previewWeb}
-              >
-                Provkör (ändrar inget)
-              </Button>
+                {pushMore ? "Mindre" : "Mer"}
+              </button>
             </div>
           ) : null}
           {preview ? (
@@ -353,7 +372,10 @@ export function AwishCard({
               ) : null}
             </div>
           ) : null}
-          <details className="group" open={web.hasPassword ? undefined : true}>
+          <details
+            className={cn("group", web.hasPassword && fold)}
+            open={web.hasPassword ? undefined : true}
+          >
             <summary
               className={
                 web.hasPassword ? "cursor-pointer text-sm text-muted hover:text-fg" : "sr-only"

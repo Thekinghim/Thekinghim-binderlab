@@ -26,14 +26,14 @@ export async function BokforingReady({
   return (
     <section
       aria-label="Bokföring"
-      className="rise mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-line bg-surface px-4 py-3"
+      className="rise mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-line bg-surface px-4 py-3 max-md:mb-4 max-md:flex-nowrap max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:bg-transparent max-md:px-0 max-md:py-1"
     >
-      <p className="text-base text-fg">
+      <p className="text-base text-fg max-md:line-clamp-2 max-md:min-w-0 max-md:text-sm">
         {final
           ? `Bokföring för ${month} är klar att ladda ner.`
           : `Bokföring för ${month} är preliminär: ${ready.reason ?? "underlaget är inte klart."}`}
       </p>
-      <span className="flex items-center gap-3 text-sm">
+      <span className="flex items-center gap-3 text-sm max-md:shrink-0 max-md:[&>a]:inline-flex max-md:[&>a]:min-h-11 max-md:[&>a]:items-center">
         <a
           href={`/ekonomi/bokforing/paket?manad=${ready.month}`}
           download

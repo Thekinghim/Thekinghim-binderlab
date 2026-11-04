@@ -109,9 +109,9 @@ async function CampaignsView({
 
   return (
     <>
-      <header className="rise flex flex-col gap-4" style={rise(0)}>
+      <header className="rise flex flex-col gap-4 max-md:gap-3" style={rise(0)}>
         <p className="label text-subtle">Kampanjer på skärmen</p>
-        <h1 className="text-3xl font-medium md:text-4xl">
+        <h1 className="text-3xl font-medium max-md:text-2xl md:text-4xl">
           {live.length === 0 ? (
             "Ingen kampanj visas nu."
           ) : (

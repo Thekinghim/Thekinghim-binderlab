@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 
 import type { HealthStatus } from "@/analytics/health";
 import { fillPercent } from "@/analytics/visits/fill";
@@ -109,7 +110,101 @@ const columns: Column<HealthRow>[] = [
   },
 ];
 
+/**
+ * Mobil: en kompakt rad per automat (kod och namn, status, fyllnad) med underlaget bakom
+ * en utfällning, i samma ordning som tabellens standardsortering. Från md tabellen.
+ */
+function HealthList({ rows }: { rows: HealthRow[] }) {
+  const [showOk, setShowOk] = useState(false);
+  const sorted = [...rows].sort(
+    (a, b) => a.rank - b.rank || (a.fillBp ?? 10_001) - (b.fillBp ?? 10_001),
+  );
+  // Det som behöver en blick först; automater i drift fälls ihop när något annat finns.
+  const okCount = sorted.filter((r) => r.status === "ok").length;
+  const foldOk = okCount > 0 && okCount < sorted.length && !showOk;
+  const shown = foldOk ? sorted.filter((r) => r.status !== "ok") : sorted;
+  return (
+    <div className="flex flex-col md:hidden">
+      <ul aria-label="Status per automat" className="flex flex-col border-y border-line">
+        {shown.map((r) => (
+          <li key={r.machineId} className="flex flex-col border-b border-line py-2 last:border-b-0">
+            <div className="flex min-h-11 items-center gap-3">
+              <Link
+                href={`/drift/automat/${r.machineId}`}
+                className="flex min-w-0 flex-1 flex-col rounded-xs hover:underline"
+              >
+                <span className="meta text-fg">{r.code.replace("-", "‑")}</span>
+                <span className="truncate text-sm text-muted">{r.name}</span>
+              </Link>
+              {r.fillBp !== null ? (
+                <span className="shrink-0">
+                  <FillValue bp={r.fillBp} />
+                </span>
+              ) : null}
+              <StatusTag status={HEALTH_TAG[r.status].status} className="shrink-0">
+                {HEALTH_TAG[r.status].label}
+              </StatusTag>
+            </div>
+            <details className="group">
+              <summary className="meta flex min-h-8 cursor-pointer list-none items-center gap-1 text-subtle hover:text-fg [&::-webkit-details-marker]:hidden">
+                {/* I drift: bara ordet; annars underlaget, som är skälet till statusen. */}
+                <span className="line-clamp-2 min-w-0">
+                  {r.status === "ok" ? "Underlag" : r.detail}
+                </span>
+              </summary>
+              <dl className="mt-1 mb-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-muted">
+                <dt className="label text-subtle">Underlag</dt>
+                <dd>{r.detail}</dd>
+                <dt className="label text-subtle">Sedan</dt>
+                <dd>{r.since}</dd>
+                <dt className="label text-subtle">Senast sålt</dt>
+                <dd>{r.lastSale}</dd>
+                <dt className="label text-subtle">Regel</dt>
+                <dd>{r.rule}</dd>
+                {r.expected ? (
+                  <>
+                    <dt className="label text-subtle">Förväntat</dt>
+                    <dd className="tnum">{r.expected}</dd>
+                  </>
+                ) : null}
+                {r.probability ? (
+                  <>
+                    <dt className="label text-subtle">Sannolikhet</dt>
+                    <dd className="tnum">{r.probability}</dd>
+                  </>
+                ) : null}
+              </dl>
+            </details>
+          </li>
+        ))}
+      </ul>
+      {okCount > 0 && okCount < sorted.length ? (
+        <button
+          type="button"
+          aria-expanded={showOk}
+          onClick={() => setShowOk((v) => !v)}
+          className="label flex min-h-11 w-full items-center justify-between border-b border-line text-left text-muted hover:text-fg"
+        >
+          {showOk ? "Dölj automater i drift" : `I drift · ${okCount}`}
+          <span aria-hidden>{showOk ? "↑" : "↓"}</span>
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export function HealthTable({ rows }: { rows: HealthRow[] }) {
+  return (
+    <>
+      <HealthList rows={rows} />
+      <div className="max-md:hidden">
+        <DataTableFull rows={rows} />
+      </div>
+    </>
+  );
+}
+
+function DataTableFull({ rows }: { rows: HealthRow[] }) {
   return (
     <DataTable
       columns={columns}

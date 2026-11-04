@@ -117,9 +117,10 @@ export default async function OrderPage({ searchParams }: { searchParams: Promis
         ];
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-8 px-4 pt-8 pb-16 md:px-8 md:pt-10">
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-8 px-4 pt-8 pb-16 max-md:gap-5 md:px-8 md:pt-10">
       <SectionHeader
-        className="rise"
+        // Mobil: perioden står redan i raden överst; bara snittet visas.
+        className="rise max-md:[&_dl>div:first-child]:hidden"
         as="h1"
         size="lg"
         eyebrow="Order"

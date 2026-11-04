@@ -3,6 +3,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
 import { CountUp } from "@/components/ui/count-up";
+import { cn } from "@/lib/cn";
 import { formatInt } from "@/lib/format";
 
 import { splitHeadNumber } from "../_lib/head-number";
@@ -32,7 +33,13 @@ export function PageHead({
   const head = splitHeadNumber(title);
   return (
     <header className="rise flex flex-col gap-3" style={{ "--i": 0 } as CSSProperties}>
-      <p className="label flex items-center gap-2 text-subtle">
+      {/* Under md står sidans namn redan i underfliken: etiketten bara när den säger mer. */}
+      <p
+        className={cn(
+          "label flex items-center gap-2 text-subtle",
+          !live && !eyebrow.includes("·") && "max-md:hidden",
+        )}
+      >
         <span>{eyebrow}</span>
         {live ? (
           <span className="inline-flex items-center gap-1.5 normal-case">

@@ -50,7 +50,8 @@ export default async function VartLagerPage() {
         actions={
           <Link
             href="/prognos"
-            className="inline-flex h-11 items-center rounded-sm border border-line-strong px-4 text-base text-fg transition-colors duration-fast ease-instrument hover:bg-hover"
+            // Under md står Inköp redan som underflik bredvid.
+            className="inline-flex h-11 items-center rounded-sm border border-line-strong px-4 text-base text-fg transition-colors duration-fast ease-instrument hover:bg-hover max-md:hidden"
           >
             Inköp{NBSP}→
           </Link>

@@ -3,6 +3,7 @@ import { AiPageLine } from "@/components/assistant/panel-context";
 import { Suspense, type CSSProperties } from "react";
 
 import { StoreShareToggle } from "@/components/shell/store-share-toggle";
+import { MobileMore } from "@/components/ui/more-menu";
 import { Panel } from "@/components/ui/frame";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
@@ -22,6 +23,7 @@ import { ArrowLink, InsightList, TodoList, TopTitles, WarningLine } from "./_hem
 import { OnboardingChecklist } from "./kom-igang/_components/onboarding-checklist";
 import { ShrinkageLine } from "./_hem/shrinkage-line";
 import { MorningBrief } from "./_hem/morning-brief";
+import { homeTodoLinkText, homeTodoPhone } from "./_hem/todo-phone";
 import { dateOf, kr, weekdayDayText } from "./_hem/text";
 
 export const metadata: Metadata = { title: "Hem" };
@@ -29,6 +31,11 @@ export const metadata: Metadata = { title: "Hem" };
 type SearchParams = Record<string, string | string[] | undefined>;
 
 /**
+ * Under md (telefonen) är Hem kortare: rubriken med en "⋯"-meny (Förklara, butikernas andel),
+ * sedan Att göra (bara det som gäller nu), målet som en rad, i dag, briefen, diagrammet,
+ * nyckeltalen bakom "Fler siffror" och de tre mest sålda. Ordningen byts med CSS order
+ * (max-md:order-*), så att sidan från md är oförändrad.
+ *
  * Hem: vinsten som en stor siffra med delningen, i dag hittills, målen och morgonbriefen
  * överst (i den ordningen); under dem det som behöver göras, nyckeltalen, intäkt per dag
  * och de mest sålda titlarna. Blocken glider upp i tur och ordning.
@@ -109,19 +116,25 @@ async function HemContent({
   const eyebrow = scopeText ? `Hem · ${scopeText}` : "Hem";
 
   // Ordning efter vikt: vinsten (stort tal + delning), i dag, målen, morgonbriefen. Allt
-  // annat (att göra, nyckeltal, diagram, titlar) står under.
+  // annat (att göra, nyckeltal, diagram, titlar) står under. Under md: se ORDER.
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col px-4 pt-8 pb-16 md:px-8 md:pt-12">
-      <div className="rise" style={rise(0)}>
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col px-4 pt-4 pb-10 md:px-8 md:pt-12 md:pb-16">
+      <div className={`rise ${ORDER.hero}`} style={rise(0)}>
         <HemHero headline={headline} eyebrow={eyebrow}>
-          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-3">
-            <AiPageLine metric="vinsten för perioden" route="hem" />
-            {/* Butikernas andel på begäran; med vald butik står den alltid under talet. */}
-            {model.hasStoreShare && !scope ? (
-              <Suspense fallback={null}>
-                <StoreShareToggle userKey={userKey} />
-              </Suspense>
-            ) : null}
+          {/* Under md: en "⋯"-meny uppe till höger; från md raden under talet som förut. */}
+          <div className="max-md:absolute max-md:-top-1.5 max-md:-right-2 md:contents">
+            <MobileMore
+              label="Fler val för vinsten"
+              className="md:mt-1 md:flex md:flex-wrap md:items-center md:gap-x-4 md:gap-y-3"
+            >
+              <AiPageLine metric="vinsten för perioden" route="hem" menuItem />
+              {/* Butikernas andel på begäran; med vald butik står den alltid under talet. */}
+              {model.hasStoreShare && !scope ? (
+                <Suspense fallback={null}>
+                  <StoreShareToggle userKey={userKey} menuItem />
+                </Suspense>
+              ) : null}
+            </MobileMore>
           </div>
         </HemHero>
       </div>
@@ -129,7 +142,7 @@ async function HemContent({
       {headline.state === "no-data" ? (
         // Ett enda kort när inget är importerat: checklistan om den finns, annars en rad.
         onboarding ? (
-          <div className="rise mt-8 md:mt-10" style={rise(1)}>
+          <div className={`rise mt-6 md:mt-10 ${ORDER.onboarding}`} style={rise(1)}>
             <OnboardingChecklist
               status={onboarding}
               canEdit={canEdit}
@@ -139,7 +152,7 @@ async function HemContent({
           </div>
         ) : (
           <StateMessage
-            className="rise mt-12"
+            className={`rise mt-8 md:mt-12 ${ORDER.onboarding}`}
             kind="not-configured"
             message="Inga order än."
             action={canEdit ? { label: "Koppla Awish", href: "/datakallor" } : undefined}
@@ -148,13 +161,13 @@ async function HemContent({
       ) : (
         <>
           {pace ? (
-            <div className="rise mt-8 md:mt-10" style={rise(1)}>
+            <div className={`rise mt-8 max-md:mt-0 md:mt-10 ${ORDER.pace}`} style={rise(1)}>
               <TodayPaceCard pace={pace} />
             </div>
           ) : null}
 
           {goals ? (
-            <div className="mt-6 empty:hidden">
+            <div className={`mt-6 empty:hidden max-md:mt-5 ${ORDER.goals}`}>
               <GoalsRow
                 goals={goals}
                 today={today}
@@ -168,12 +181,15 @@ async function HemContent({
           {/* Morgonbriefen (AI, en gång per dag): bara utan filter, inget alls utan AI. */}
           {scope ? null : (
             <Suspense fallback={null}>
-              <MorningBrief todoHref={`/att-gora${carriedParams(sp)}`} className="mt-6" />
+              <MorningBrief
+                todoHref={`/att-gora${carriedParams(sp)}`}
+                className={`mt-6 max-md:mt-4 ${ORDER.brief}`}
+              />
             </Suspense>
           )}
 
           {onboarding ? (
-            <div className="rise mt-8 md:mt-10" style={rise(3)}>
+            <div className={`rise mt-6 md:mt-10 ${ORDER.onboarding}`} style={rise(3)}>
               <OnboardingChecklist
                 status={onboarding}
                 canEdit={canEdit}
@@ -185,7 +201,7 @@ async function HemContent({
 
           {headline.state === "no-orders" ? (
             <StateMessage
-              className="rise mt-12"
+              className={`rise mt-8 md:mt-12 ${ORDER.onboarding}`}
               kind="empty"
               code="0 order"
               message="Inga order i perioden."
@@ -195,7 +211,7 @@ async function HemContent({
 
           {/* Det som behöver göras: punkterna, varningarna och svinnet. */}
           <div
-            className="rise mt-10 flex flex-col gap-4 border-t border-line pt-8 empty:hidden md:mt-12"
+            className={`rise mt-10 flex flex-col gap-4 border-t border-line pt-8 empty:hidden max-md:mt-5 max-md:gap-3 max-md:pt-4 md:mt-12 ${ORDER.todo}`}
             style={rise(4)}
           >
             {model.todos ? <TodoSection model={model} sp={sp} /> : null}
@@ -213,8 +229,8 @@ async function HemContent({
           </div>
 
           {headline.state === "ok" ? (
-            <div className="rise mt-10 md:mt-12" style={rise(5)}>
-              <HomeKpis kpis={model.kpis} ariaLabel={comparisonLabel} />
+            <div className={`rise mt-10 max-md:mt-6 md:mt-12 ${ORDER.kpis}`} style={rise(5)}>
+              <HomeKpis kpis={model.kpis} ariaLabel={comparisonLabel} mobileFold />
             </div>
           ) : null}
 
@@ -223,7 +239,7 @@ async function HemContent({
           {model.topTitles.rows.length > 0 ? (
             <section
               aria-labelledby="titlar"
-              className="rise mt-12 scroll-mt-28 border-t border-line pt-10 md:mt-14 md:pt-12"
+              className={`rise mt-12 scroll-mt-28 border-t border-line pt-10 max-md:mt-6 max-md:pt-5 md:mt-14 md:pt-12 ${ORDER.titles}`}
               style={rise(7)}
             >
               <SectionHeader
@@ -236,13 +252,14 @@ async function HemContent({
                   </ArrowLink>
                 }
               />
-              <div className="mt-6 lg:max-w-[66%]">
+              <div className="mt-6 max-md:mt-3 lg:max-w-[66%]">
                 <TopTitles
                   top={{
                     ...model.topTitles,
                     rows: model.topTitles.rows.slice(0, TOP_N),
                     rest: null,
                   }}
+                  phoneLimit={TOP_N_PHONE}
                   caption={`De ${formatInt(TOP_N)} titlarna med högst intäkt ${model.spanText ?? periodText(model.period)}, med andel av intäkten.`}
                 />
               </div>
@@ -256,6 +273,26 @@ async function HemContent({
 
 /** Topplistan på Hem: de fem största; resten finns i Lönsamhet per titel. */
 const TOP_N = 5;
+/** Under md: de tre största. */
+const TOP_N_PHONE = 3;
+/** Under md: en iakttagelse (resten från md). */
+const INSIGHTS_PHONE = 1;
+
+/**
+ * Blockens ordning under md (CSS order; från md DOM-ordningen): rubriken, kom igång, att
+ * göra, målet, i dag, briefen, diagrammet, nyckeltalen och de mest sålda.
+ */
+const ORDER = {
+  hero: "max-md:order-1",
+  onboarding: "max-md:order-2",
+  todo: "max-md:order-3",
+  goals: "max-md:order-4",
+  pace: "max-md:order-5",
+  brief: "max-md:order-6",
+  daily: "max-md:order-7",
+  kpis: "max-md:order-8",
+  titles: "max-md:order-9",
+} as const;
 
 /** Fördröjning för blockens uppglidning (globals.css .rise). */
 function rise(i: number): CSSProperties {
@@ -279,7 +316,7 @@ function DailyAndInsights({
   if (!model.daily && !showInsights) return null;
   return (
     <div
-      className="rise mt-10 grid grid-cols-1 gap-x-10 gap-y-12 border-t border-line pt-10 md:mt-12 md:pt-12 lg:grid-cols-12"
+      className={`rise mt-10 grid grid-cols-1 gap-x-10 gap-y-12 border-t border-line pt-10 max-md:mt-6 max-md:gap-y-8 max-md:pt-5 md:mt-12 md:pt-12 lg:grid-cols-12 ${ORDER.daily}`}
       style={rise(6)}
     >
       {model.daily ? (
@@ -351,6 +388,7 @@ function DailySection({
         id="intakt-per-dag"
         title="Intäkt per dag."
         aside={aside}
+        hideAsideOnMobile
         size="md"
         actions={
           <ArrowLink href={`/lonsamhet${carriedParams(sp, { per: "dag", visa: "utveckling" })}`}>
@@ -358,7 +396,7 @@ function DailySection({
           </ArrowLink>
         }
       />
-      <Panel grid marks className="fade-in mt-6">
+      <Panel grid marks className="fade-in mt-6 max-md:mt-3">
         <DailyChart
           dates={daily.dates}
           revenueOre={daily.revenueOre}
@@ -371,6 +409,8 @@ function DailySection({
           summary={summary}
         />
       </Panel>
+      {/* Under md står snittet här i stället för i rubriken. */}
+      <p className="meta tnum mt-2 text-subtle md:hidden">{aside}</p>
     </section>
   );
 }
@@ -378,6 +418,9 @@ function DailySection({
 function TodoSection({ model, sp }: { model: HomeModel; sp: SearchParams }) {
   if (!model.todos) return null;
   const href = `/att-gora${carriedParams(sp)}`;
+  // Under md bara det som gäller nu (todo-phone.ts); resten via länken.
+  const phone = homeTodoPhone(model.todos, model.todoCount);
+  const linkText = homeTodoLinkText(model.todos.length, model.todoCount);
   return (
     <section aria-labelledby="att-gora" className="min-w-0 scroll-mt-28">
       <div className="flex items-baseline justify-between gap-4">
@@ -388,14 +431,18 @@ function TodoSection({ model, sp }: { model: HomeModel; sp: SearchParams }) {
           ) : null}
         </h2>
         {model.todoCount > 0 ? (
-          <ArrowLink href={href}>
-            {model.todoCount > model.todos.length ? `Alla ${formatInt(model.todoCount)}` : "Öppna"}
+          <ArrowLink href={href} className="max-md:min-h-11">
+            <span className="md:hidden">{phone.linkText}</span>
+            <span className="max-md:hidden">{linkText}</span>
           </ArrowLink>
         ) : null}
       </div>
-      <div className="mt-3">
+      <div className="mt-3 max-md:mt-1">
+        {phone.emptyText ? (
+          <p className="text-base text-muted md:hidden">{phone.emptyText}</p>
+        ) : null}
         {model.todos.length > 0 ? (
-          <TodoList todos={model.todos} />
+          <TodoList todos={model.todos} phoneKeys={phone.shownKeys} />
         ) : (
           <StateMessage compact kind="empty" code="0 punkter" message="Inget att göra just nu." />
         )}
@@ -411,7 +458,7 @@ function Insights({ model }: { model: HomeModel }) {
         {`Värt att veta · ${formatInt(model.insights.length)}`}
       </h2>
       <div className="mt-3">
-        <InsightList insights={model.insights} />
+        <InsightList insights={model.insights} phoneLimit={INSIGHTS_PHONE} />
       </div>
     </section>
   );

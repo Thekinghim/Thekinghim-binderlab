@@ -36,14 +36,14 @@ export async function ShrinkageLine() {
   const line = await loadLine();
   if (!line) return null;
   return (
-    <p className="fade-in flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-signal-line bg-surface px-4 py-3 text-base text-fg">
+    <p className="fade-in flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-signal-line bg-surface px-4 py-3 text-base text-fg max-md:px-3 max-md:py-2 max-md:text-sm">
       <span>
         {line.text}
         {line.value ? <span className="text-muted"> · {line.value}</span> : null}
       </span>
       <Link
         href={`/automater/svinn?period=eget&from=${line.period.start}&to=${line.period.end}`}
-        className="text-sm font-medium underline-offset-2 hover:underline"
+        className="inline-flex min-h-7 items-center text-sm font-medium underline-offset-2 hover:underline"
       >
         Visa svinn
       </Link>

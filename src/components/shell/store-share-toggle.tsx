@@ -1,5 +1,6 @@
 "use client";
 
+import { MOBILE_MENU_ITEM } from "@/components/ui/more-menu";
 import { cn } from "@/lib/cn";
 
 import { useStoreShareView } from "./use-period";
@@ -15,9 +16,12 @@ export const STORE_SHARE_TOGGLE_LABEL = "Visa butikernas andel";
 export function StoreShareToggle({
   userKey,
   className,
+  menuItem = false,
 }: {
   userKey: string | null;
   className?: string;
+  /** Står i en MobileMore-meny: under md en hel rad på 44 px (från md oförändrad). */
+  menuItem?: boolean;
 }) {
   const { on, setOn } = useStoreShareView(userKey);
   return (
@@ -28,6 +32,7 @@ export function StoreShareToggle({
       className={cn(
         "label inline-flex h-8 shrink-0 items-center gap-2 self-start rounded-sm border border-line-strong px-2.5 transition-colors",
         on ? "bg-hover font-medium text-fg" : "text-subtle hover:text-muted",
+        menuItem && cn(MOBILE_MENU_ITEM, "max-md:gap-3"),
         className,
       )}
     >

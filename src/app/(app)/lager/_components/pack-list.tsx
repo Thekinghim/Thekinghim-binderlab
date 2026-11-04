@@ -5,6 +5,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/field";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
+import { MobileFold } from "@/components/ui/mobile-fold";
 import { StatusGlyph } from "@/components/ui/status-tag";
 import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
@@ -126,11 +127,14 @@ export function PackList({
             </div>
           ) : null}
           {list.reasons.length > 0 ? (
-            <ul className="mt-6 flex flex-col gap-1 text-sm text-muted">
-              {list.reasons.slice(0, 4).map((r) => (
-                <li key={r}>{r.endsWith(".") ? r : `${r}.`}</li>
-              ))}
-            </ul>
+            // Mobil: förklaringarna bakom "Varför" (från md öppna som förut).
+            <MobileFold summary="Varför" className="max-md:mt-4">
+              <ul className="mt-6 flex flex-col gap-1 text-sm text-muted max-md:mt-0">
+                {list.reasons.slice(0, 4).map((r) => (
+                  <li key={r}>{r.endsWith(".") ? r : `${r}.`}</li>
+                ))}
+              </ul>
+            </MobileFold>
           ) : null}
         </div>
       )}

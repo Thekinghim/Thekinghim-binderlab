@@ -17,6 +17,9 @@ const STATUS: Record<GoalStatus, { tag: Status; text: string }> = {
   missed: { tag: "critical", text: "Missat" },
 };
 
+/**
+ * Under md visas bara första målet, som en rad utan kort; resten nås via "Alla mål".
+ */
 const value = (g: HomeGoal, v: number) => (g.unit === "ore" ? kr(v) : formatInt(v));
 
 /**
@@ -47,7 +50,7 @@ export function GoalsRow({
     );
   }
   return (
-    <section aria-labelledby="mal" className="rise flex flex-col gap-3" style={style}>
+    <section aria-labelledby="mal" className="rise flex flex-col gap-3 max-md:gap-0" style={style}>
       <div className="flex items-baseline justify-between gap-4">
         <h2 id="mal" className="label text-muted">
           {`Mål i ${month}`}
@@ -71,7 +74,14 @@ function GoalCard({ goal: g, index }: { goal: HomeGoal; index: number }) {
       : "";
   const done = g.status === "met" || g.status === "missed";
   return (
-    <li className="lift flex min-w-0 flex-col gap-3 rounded-sm border border-line bg-surface p-4">
+    <li
+      className={cn(
+        "lift flex min-w-0 flex-col gap-3 rounded-sm border border-line bg-surface p-4",
+        // Under md: en rad utan kort, och bara det första målet (resten via "Alla mål").
+        "max-md:gap-2 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:bg-transparent max-md:px-0 max-md:py-3",
+        index > 0 && "max-md:hidden",
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <p className="label min-w-0 truncate text-muted">
           {g.label}
@@ -86,7 +96,7 @@ function GoalCard({ goal: g, index }: { goal: HomeGoal; index: number }) {
           id={g.id}
           value={g.actual}
           unit={g.unit}
-          className="text-2xl font-medium text-fg"
+          className="text-xl font-medium text-fg md:text-2xl"
         />
         <span className="meta text-subtle">{`av ${value(g, g.target)}`}</span>
       </p>

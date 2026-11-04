@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { carriedQuery, parseStoreShareView } from "@/components/shell/period-state";
 import { StoreShareToggle } from "@/components/shell/store-share-toggle";
 import { Panel } from "@/components/ui/frame";
+import { MobileFold } from "@/components/ui/mobile-fold";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { NBSP } from "@/lib/format";
@@ -18,6 +19,7 @@ import {
   requireRoute,
 } from "@/server/data/core";
 
+import { MobileMore } from "../_mobil/mobile-more";
 import { homeStaleImport } from "../_hem/model";
 import { StaleImportLine } from "../_hem/sections";
 
@@ -75,7 +77,8 @@ function moverNames(input: {
   };
 }
 
-const SECTION = "flex scroll-mt-28 flex-col gap-10 border-t border-line py-12 md:gap-12 md:py-16";
+const SECTION =
+  "flex scroll-mt-28 flex-col gap-10 border-t border-line py-12 max-md:gap-6 max-md:py-8 md:gap-12 md:py-16";
 
 /**
  * Lönsamhet: vad tjänar vi, och var? Vattenfall från intäkt till vinst, och under det
@@ -159,7 +162,7 @@ export default async function LonsamhetPage({
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col px-4 pt-8 md:px-8 md:pt-12">
-      <div className="rise flex flex-col gap-10 pb-12 md:gap-12 md:pb-16">
+      <div className="rise flex flex-col gap-10 pb-12 max-md:relative max-md:gap-5 max-md:pb-8 md:gap-12 md:pb-16">
         <SectionHeader
           as="h1"
           size="xl"
@@ -167,22 +170,32 @@ export default async function LonsamhetPage({
           title={model.headline.title}
           aside={model.headline.aside}
           meta={meta}
+          // Mobil: perioden och filtret står i raden överst.
+          className="max-md:pr-10 max-md:[&_dl]:hidden"
         />
-        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-3">
-          <AiPageLine metric="vinsten" route="lonsamhet" />
-          {/* Med vald butik visas andelen alltid; knappen behövs bara utan filter. */}
-          {filtered || model.bridge.compensationOre === 0 ? null : (
-            <Suspense fallback={null}>
-              <StoreShareToggle userKey={ctx.user.id} />
-            </Suspense>
-          )}
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-3 max-md:contents">
+          {/* Mobil: AI-frågan och butikernas andel bakom "⋯" uppe till höger. */}
+          <MobileMore
+            label="Fler val för lönsamhet"
+            className="max-md:absolute max-md:-top-2 max-md:-right-2"
+          >
+            <AiPageLine metric="vinsten" route="lonsamhet" menuItem />
+            {/* Med vald butik visas andelen alltid; knappen behövs bara utan filter. */}
+            {filtered || model.bridge.compensationOre === 0 ? null : (
+              <Suspense fallback={null}>
+                <StoreShareToggle userKey={ctx.user.id} menuItem />
+              </Suspense>
+            )}
+          </MobileMore>
         </div>
         {model.orders > 0 ? (
-          <LonsamhetKpis
-            kpis={model.kpis}
-            label={`Nyckeltal · ${model.periodLabel}`}
-            comparison={model.comparisonLabel}
-          />
+          <MobileFold summary="Fler siffror" meta={String(model.kpis.length)}>
+            <LonsamhetKpis
+              kpis={model.kpis}
+              label={`Nyckeltal · ${model.periodLabel}`}
+              comparison={model.comparisonLabel}
+            />
+          </MobileFold>
         ) : null}
         {stale ? <StaleImportLine stale={stale} today={ctx.today} canEdit={ctx.canEdit} /> : null}
       </div>
@@ -230,7 +243,7 @@ export default async function LonsamhetPage({
           </section>
 
           <div
-            className="rise border-t border-line py-12 md:py-16"
+            className="rise border-t border-line py-12 max-md:py-8 md:py-16"
             style={{ "--i": 2 } as CSSProperties}
           >
             <AnalysisSection

@@ -6,6 +6,7 @@ import type React from "react";
 import { Button } from "@/components/ui/button";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { StatusTag } from "@/components/ui/status-tag";
+import { cn } from "@/lib/cn";
 import { formatInt, MISSING, NBSP } from "@/lib/format";
 
 import { dateText } from "../_lib/dates";
@@ -350,7 +351,8 @@ export function PlanView({
           ))}
 
       {canEdit && hasSupplier ? (
-        <div>
+        // Mobil: utan förslag står samma knapp under Inköpsorder; en räcker.
+        <div className={cn(model.proposals.length === 0 && "max-md:hidden")}>
           <Button variant="secondary" size="sm" iconLeft="plus" onClick={() => openDraft(null)}>
             Ny inköpsorder
           </Button>
@@ -362,7 +364,7 @@ export function PlanView({
           aria-labelledby="alla-titlar"
           className="group flex flex-col gap-4 rounded-sm border border-line"
         >
-          <summary className="flex cursor-pointer items-baseline justify-between gap-4 px-4 py-3">
+          <summary className="flex cursor-pointer items-baseline justify-between gap-4 px-4 py-3 max-md:flex-wrap max-md:gap-x-3 max-md:gap-y-0.5">
             <h3 id="alla-titlar" className="text-sm font-medium text-fg">
               Alla titlar ({formatInt(others.length)})
             </h3>

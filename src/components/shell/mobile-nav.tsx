@@ -8,6 +8,7 @@ import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/button";
 import { StatusGlyph } from "@/components/ui/status-tag";
 import { showsRefillShortcut } from "./fab";
+import { setTheme, useTheme } from "./theme-toggle";
 import {
   activeRouteId,
   activeSectionId,
@@ -223,6 +224,8 @@ export function MobileNav(props: ShellNavProps) {
           href={syncHref(role)}
           className="border-b border-line px-4 py-3"
         />
+        {/* Temat (under md: inte i toppraden, se topbar.tsx). */}
+        <ThemeRow className="border-b border-line md:hidden" />
         <UserMenu
           user={props.user}
           role={role}
@@ -231,6 +234,25 @@ export function MobileNav(props: ShellNavProps) {
         />
       </MoreSheet>
     </>
+  );
+}
+
+/** "Ljust läge" / "Mörkt läge": byter tema direkt. */
+function ThemeRow({ className }: { className?: string }) {
+  const theme = useTheme();
+  const next = theme === "dark" ? "light" : "dark";
+  return (
+    <button
+      type="button"
+      onClick={() => setTheme(next)}
+      className={cn(
+        "flex h-11 w-full items-center gap-3 px-4 text-left text-base text-muted transition-colors hover:text-fg focus-visible:-outline-offset-2",
+        className,
+      )}
+    >
+      <Icon name={theme === "dark" ? "sun" : "moon"} />
+      {next === "light" ? "Ljust läge" : "Mörkt läge"}
+    </button>
   );
 }
 

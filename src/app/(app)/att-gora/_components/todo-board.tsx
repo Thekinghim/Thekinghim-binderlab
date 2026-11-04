@@ -59,6 +59,13 @@ function hideId(item: Pick<TodoView, "key" | "fingerprint">): string {
   return `${item.key}\u0000${item.fingerprint}`;
 }
 
+/**
+ * Grupprubriken på mobil: mindre, och den grå delen på en egen, mindre rad.
+ * Från md som förut.
+ */
+const MOBILE_GROUP_HEADER =
+  "max-md:[&_h2]:text-lg max-md:[&_h2>span+span]:block max-md:[&_h2>span+span]:text-base";
+
 /** Notisen med "Ångra" står kvar så här länge (och så länge den har fokus eller hovras). */
 const UNDO_TOAST_MS = 15_000;
 
@@ -87,6 +94,8 @@ export function TodoBoard({
   /** Nycklar som ångrats här, tills servern skickat en ny lista. */
   const [undone, setUndone] = useState<ReadonlySet<string>>(new Set());
   const [, startTransition] = useTransition();
+  /** Mobil: gruppen "Senare" är hopfälld tills man öppnar den. */
+  const [laterOpen, setLaterOpen] = useState(false);
   const all = groups.flatMap((g) => g.items);
   const isHidden = (t: TodoView) => hidden.has(hideId(t));
 
@@ -176,10 +185,37 @@ export function TodoBoard({
           <section
             key={g.level}
             aria-labelledby={`${g.id}-rubrik`}
-            className="scroll-mt-28 border-t border-line pt-8 pb-10 md:pt-10"
+            className="scroll-mt-28 border-t border-line pt-8 pb-10 max-md:pt-5 max-md:pb-6 md:pt-10"
           >
-            <SectionHeader id={`${g.id}-rubrik`} title={g.title} aside={g.aside} />
-            <ol className="mt-6 flex flex-col md:mt-8">
+            <SectionHeader
+              id={`${g.id}-rubrik`}
+              title={g.title}
+              aside={g.aside}
+              className={MOBILE_GROUP_HEADER}
+            />
+            {g.level === "later" ? (
+              <button
+                type="button"
+                aria-expanded={laterOpen}
+                onClick={() => setLaterOpen((v) => !v)}
+                className="label mt-3 flex min-h-11 w-full items-center justify-between border-y border-line text-muted md:hidden"
+              >
+                <span>
+                  {laterOpen ? "Dölj" : "Visa"} · {formatInt(items.length)}
+                </span>
+                <Icon
+                  name="chevronRight"
+                  size={12}
+                  className={cn("transition-transform duration-fast", laterOpen && "rotate-90")}
+                />
+              </button>
+            ) : null}
+            <ol
+              className={cn(
+                "mt-6 flex flex-col max-md:mt-3 md:mt-8",
+                g.level === "later" && !laterOpen && "max-md:hidden",
+              )}
+            >
               {items.map((item, i) => (
                 <TodoRow
                   key={item.key}
@@ -276,33 +312,40 @@ function TodoRow({
   people: readonly PersonOption[];
 }) {
   const titleId = useId();
+  // Mobil: rubrik och en huvudåtgärd på raden; talen, länken, Vem och (när det finns en
+  // annan huvudåtgärd) Klar fälls ut med "Mer". Från md visas allt som förut.
+  const [more, setMore] = useState(false);
+  const fold = more ? "" : "max-md:hidden";
+  const hasPrimary = item.action != null;
   return (
     <li
       id={rowId(item.key)}
       tabIndex={-1}
       aria-labelledby={titleId}
       style={{ "--i": Math.min(index, 8) + 2 } as CSSProperties}
-      className="rise grid min-w-0 grid-cols-1 gap-x-8 gap-y-4 border-t border-line py-5 outline-offset-2 first:border-t-0 lg:grid-cols-12"
+      className="rise grid min-w-0 grid-cols-1 gap-x-8 gap-y-4 border-t border-line py-5 outline-offset-2 first:border-t-0 max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-3 max-md:gap-y-2 max-md:py-3 lg:grid-cols-12"
     >
-      <div className="flex min-w-0 flex-col gap-2 lg:col-span-6">
+      <div className="flex min-w-0 flex-col gap-2 max-md:col-start-1 max-md:row-start-1 max-md:gap-1 lg:col-span-6">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <StatusTag status={item.status}>{item.statusText}</StatusTag>
           <span className="label text-subtle">{item.eyebrow}</span>
         </div>
-        <h3 id={titleId} className="text-md font-medium text-balance hyphens-none text-fg">
+        <h3
+          id={titleId}
+          className="text-md font-medium text-balance hyphens-none text-fg max-md:line-clamp-2"
+        >
           {item.title}
         </h3>
-        <details className="group max-w-2xl">
-          <summary
-            aria-label={`Varför: ${item.title}`}
-            className="meta inline-flex cursor-pointer list-none items-center gap-1 rounded-xs text-subtle hover:text-fg [&::-webkit-details-marker]:hidden"
-          >
+        <details className="group max-w-2xl" onToggle={(e) => setMore(e.currentTarget.open)}>
+          <summary className="meta inline-flex cursor-pointer list-none items-center gap-1 rounded-xs text-subtle hover:text-fg max-md:-my-1.5 max-md:min-h-11 max-md:pr-4 [&::-webkit-details-marker]:hidden">
             <Icon
               name="chevronRight"
               size={12}
               className="shrink-0 transition-transform duration-fast group-open:rotate-90"
             />
-            Varför
+            <span className="md:hidden">Mer</span>
+            <span className="max-md:hidden">Varför</span>
+            <span className="sr-only">{`: ${item.title}`}</span>
           </summary>
           <div className="mt-3 flex flex-col gap-3 border-t border-line pt-3">
             {item.detail ? <p className="text-sm text-muted">{item.detail}</p> : null}
@@ -325,7 +368,12 @@ function TodoRow({
       </div>
 
       {item.figures.length > 0 ? (
-        <dl className="flex min-w-0 flex-wrap gap-x-6 gap-y-2 lg:col-span-3 lg:flex-col lg:gap-y-1.5">
+        <dl
+          className={cn(
+            "flex min-w-0 flex-wrap gap-x-6 gap-y-2 max-md:col-span-2 lg:col-span-3 lg:flex-col lg:gap-y-1.5",
+            fold,
+          )}
+        >
           {item.figures.map((f) => (
             <div
               key={f.label}
@@ -340,28 +388,43 @@ function TodoRow({
         <div className="hidden lg:col-span-3 lg:block" />
       )}
 
-      <div className="flex flex-wrap items-start gap-2 lg:col-span-3 lg:flex-col lg:items-end">
-        {item.action?.kind === "register-refill" ? (
-          <RefillDialog action={item.action} />
-        ) : item.action?.kind === "merge-titles" ? (
-          <MergeDialog action={item.action} />
-        ) : item.action?.kind === "link" ? (
-          <ActionLink action={item.action} />
+      <div className="flex flex-wrap items-start gap-2 max-md:contents lg:col-span-3 lg:flex-col lg:items-end">
+        {hasPrimary ? (
+          <div className="max-md:col-start-2 max-md:row-start-1 max-md:self-start md:contents max-md:[&>a]:h-11 max-md:[&>button]:h-11">
+            {item.action?.kind === "register-refill" ? (
+              <RefillDialog action={item.action} />
+            ) : item.action?.kind === "merge-titles" ? (
+              <MergeDialog action={item.action} />
+            ) : item.action?.kind === "link" ? (
+              <ActionLink action={item.action} />
+            ) : null}
+          </div>
         ) : null}
-        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-          {item.link ? <ActionLink action={item.link} variant="ghost" /> : null}
+        <div
+          className={cn(
+            "flex flex-wrap items-center gap-2 max-md:col-span-2 max-md:justify-end lg:justify-end max-md:[&_button]:min-h-11",
+            hasPrimary && fold,
+          )}
+        >
+          {item.link ? (
+            <span className={cn("md:contents max-md:[&>a]:h-11", fold)}>
+              <ActionLink action={item.link} variant="ghost" />
+            </span>
+          ) : null}
           {people.length > 0 ? (
-            <PersonPicker
-              target={{ kind: "todo", key: item.key }}
-              value={item.assignee}
-              options={
-                people.some((p) => p.value === item.assignee)
-                  ? people
-                  : [...people, { value: item.assignee, label: "Delägaren" }]
-              }
-              label="Vem"
-              editable={canDismiss}
-            />
+            <span className={cn("md:contents", fold)}>
+              <PersonPicker
+                target={{ kind: "todo", key: item.key }}
+                value={item.assignee}
+                options={
+                  people.some((p) => p.value === item.assignee)
+                    ? people
+                    : [...people, { value: item.assignee, label: "Delägaren" }]
+                }
+                label="Vem"
+                editable={canDismiss}
+              />
+            </span>
           ) : null}
           {canDismiss ? (
             <Button

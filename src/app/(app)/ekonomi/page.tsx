@@ -4,6 +4,8 @@ import { Suspense } from "react";
 
 import { Panel, PanelSection } from "@/components/ui/frame";
 import { Skeleton, TableSkeleton } from "@/components/ui/skeleton";
+import { MobileFold } from "@/components/ui/mobile-fold";
+import { MobileMore } from "../_mobil/mobile-more";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { formatDate, formatDateTime, formatInt, NBSP } from "@/lib/format";
@@ -30,7 +32,8 @@ export const metadata: Metadata = { title: "Ekonomi" };
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
-const SECTION = "rise flex scroll-mt-28 flex-col gap-8 pb-12 md:gap-10 md:pb-16";
+const SECTION =
+  "rise flex scroll-mt-28 flex-col gap-8 pb-12 max-md:gap-5 max-md:pb-8 md:gap-10 md:pb-16";
 
 /**
  * Ekonomi: varje krona från automat till bankkonto. Avstämning av leverantörens
@@ -170,7 +173,7 @@ export default async function EkonomiPage({
     <div className="mx-auto flex w-full max-w-[1280px] flex-col px-4 pt-8 md:px-8 md:pt-12">
       {bookkeeping ? null : (
         <div
-          className="rise flex flex-col gap-6 pb-10 md:pb-12"
+          className="rise flex flex-col gap-6 pb-10 max-md:relative max-md:gap-4 max-md:pb-6 md:pb-12"
           style={{ "--i": 0 } as React.CSSProperties}
         >
           <SectionHeader
@@ -180,8 +183,21 @@ export default async function EkonomiPage({
             title={headline.title}
             aside={headline.aside}
             meta={[{ label: "Period", value: when }]}
+            // Mobil: perioden står i raden överst.
+            className="max-md:pr-10 max-md:[&_dl]:hidden"
           />
-          <AiPageLine metric="ekonomin för perioden" route="ekonomi" className="mt-4" />
+          {/* Mobil: AI-frågan bakom "⋯" uppe till höger; från md som förut. */}
+          <MobileMore
+            label="Fler val för ekonomin"
+            className="max-md:absolute max-md:-top-2 max-md:-right-2"
+          >
+            <AiPageLine
+              metric="ekonomin för perioden"
+              route="ekonomi"
+              className="md:mt-4"
+              menuItem
+            />
+          </MobileMore>
           {scoped ? (
             <p className="meta text-subtle">Alla butiker · filtret gäller inte här</p>
           ) : null}
@@ -205,7 +221,9 @@ export default async function EkonomiPage({
           style={{ "--i": 1 } as React.CSSProperties}
         >
           {result ? (
-            <EconomyKpis items={kpis} label={`Avstämning · ${when}`} headingLevel={2} />
+            <MobileFold summary="Fler siffror" meta={formatInt(kpis.length)}>
+              <EconomyKpis items={kpis} label={`Avstämning · ${when}`} headingLevel={2} />
+            </MobileFold>
           ) : null}
           <SectionHeader
             id="avstamning"
@@ -224,15 +242,18 @@ export default async function EkonomiPage({
                   payoutIds={payoutIds}
                 />
               ) : (
-                <StateMessage
-                  kind="empty"
-                  message="Ingen utbetalning i perioden."
-                  action={
-                    canEdit
-                      ? { label: "Ladda upp utbetalningar", href: "#ladda-upp-utbetalningar" }
-                      : undefined
-                  }
-                />
+                // Mobil: uppladdningen står direkt under, så knappen hit behövs inte.
+                <div className="max-md:[&_a]:hidden">
+                  <StateMessage
+                    kind="empty"
+                    message="Ingen utbetalning i perioden."
+                    action={
+                      canEdit
+                        ? { label: "Ladda upp utbetalningar", href: "#ladda-upp-utbetalningar" }
+                        : undefined
+                    }
+                  />
+                </div>
               )}
               {rec.ordersWithoutTitle > 0 ? (
                 <StateMessage
@@ -245,18 +266,22 @@ export default async function EkonomiPage({
             </div>
             <div className="flex min-w-0 flex-col gap-8 lg:col-span-4">
               {canEdit ? (
-                <Panel>
-                  <PanelSection label="Ladda upp utbetalningar">
-                    <div id="ladda-upp-utbetalningar" className="scroll-mt-28">
-                      <PayoutUpload
-                        columns={{
-                          payouts: PAYOUT_FILE_COLUMNS.payouts.join(", "),
-                          lines: PAYOUT_FILE_COLUMNS.lines.join(", "),
-                        }}
-                      />
-                    </div>
-                  </PanelSection>
-                </Panel>
+                // Mobil: med utbetalningar i perioden är uppladdningen hopfälld; utan står
+                // den öppen som sidans enda knapp.
+                <MobileFold summary="Ladda upp fil" defaultOpen={!result}>
+                  <Panel>
+                    <PanelSection label="Ladda upp utbetalningar">
+                      <div id="ladda-upp-utbetalningar" className="scroll-mt-28">
+                        <PayoutUpload
+                          columns={{
+                            payouts: PAYOUT_FILE_COLUMNS.payouts.join(", "),
+                            lines: PAYOUT_FILE_COLUMNS.lines.join(", "),
+                          }}
+                        />
+                      </div>
+                    </PanelSection>
+                  </Panel>
+                </MobileFold>
               ) : null}
               <details className="group rounded-md border border-line bg-surface">
                 <summary className="label flex h-10 cursor-pointer list-none items-center justify-between px-4 text-muted hover:text-fg">

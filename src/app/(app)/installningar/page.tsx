@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { wallClockIn } from "@/components/shell/period-state";
+import { MobileFold } from "@/components/ui/mobile-fold";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { EN_DASH, NBSP, formatDate, formatInt } from "@/lib/format";
@@ -66,10 +67,12 @@ export default async function SettingsPage() {
   const companyGaps = operatorGaps(operatorParty(ctx.organization.name, company));
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 md:gap-12 md:px-8 md:pt-12">
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-10 px-4 pt-8 pb-16 max-md:gap-6 md:gap-12 md:px-8 md:pt-12">
       <MerHead
         eyebrow="Inställningar"
         title={headline.title}
+        // Mobil: räkenskapsåret står i formuläret, ändringarna i loggen.
+        metaOnMobile={false}
         meta={[
           { label: "Räkenskapsår", value: fiscalYearLabel(settings.fiscalYearStartMonth) },
           {
@@ -83,7 +86,8 @@ export default async function SettingsPage() {
 
       <nav
         aria-label="Fler inställningar"
-        className="rise flex flex-wrap gap-2"
+        // Mobil: två rader i en lista i stället för knappar.
+        className="rise flex flex-wrap gap-2 max-md:flex-col max-md:gap-0 max-md:border-t max-md:border-line"
         style={{ "--i": 1 } as React.CSSProperties}
       >
         {[
@@ -99,7 +103,7 @@ export default async function SettingsPage() {
           <Link
             key={l.href}
             href={l.href}
-            className="lift group inline-flex h-9 items-center gap-3 rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg hover:bg-hover"
+            className="lift group inline-flex h-9 items-center gap-3 rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg hover:bg-hover max-md:h-12 max-md:justify-between max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:border-line max-md:bg-transparent max-md:px-0"
           >
             {l.label}
             <span aria-hidden className="text-faint transition-colors group-hover:text-fg">
@@ -111,24 +115,30 @@ export default async function SettingsPage() {
 
       <section
         aria-labelledby="avgifter"
-        className="rise flex flex-col gap-8"
+        className="rise flex flex-col gap-8 max-md:gap-3"
         style={{ "--i": 2 } as React.CSSProperties}
       >
         <SectionHeader id="avgifter" size="md" title="Avgifter och moms." />
-        <div className="max-w-2xl">
-          <SettingsForm
-            key={`${settings.cardFeeBp}-${settings.vatRateBp}-${settings.fiscalYearStartMonth}`}
-            cardFeeBp={settings.cardFeeBp}
-            vatRateBp={settings.vatRateBp}
-            fiscalYearStartMonth={settings.fiscalYearStartMonth}
-          />
-        </div>
+        {/* Mobil: formulären är hopfällda med nuvarande värden på raden. */}
+        <MobileFold
+          summary="Ändra"
+          meta={`Kortavgift ${formatBp(settings.cardFeeBp)} · moms ${formatBp(settings.vatRateBp)}`}
+        >
+          <div className="max-w-2xl">
+            <SettingsForm
+              key={`${settings.cardFeeBp}-${settings.vatRateBp}-${settings.fiscalYearStartMonth}`}
+              cardFeeBp={settings.cardFeeBp}
+              vatRateBp={settings.vatRateBp}
+              fiscalYearStartMonth={settings.fiscalYearStartMonth}
+            />
+          </div>
+        </MobileFold>
       </section>
 
       <section
         id="foretaget"
         aria-labelledby="foretaget-rubrik"
-        className="rise flex scroll-mt-28 flex-col gap-8"
+        className="rise flex scroll-mt-28 flex-col gap-8 max-md:gap-3"
         style={{ "--i": 3 } as React.CSSProperties}
       >
         <SectionHeader
@@ -141,91 +151,102 @@ export default async function SettingsPage() {
               : `Tomt i kontrakten: ${companyGaps.join(", ")}.`
           }
         />
-        <div className="max-w-2xl">
-          <CompanyForm
-            organizationName={ctx.organization.name}
-            initial={{
-              companyName: company.companyName ?? "",
-              orgNumber: company.orgNumber ?? "",
-              companyAddress: company.companyAddress ?? "",
-              contactName: company.contactName ?? "",
-              contactEmail: company.contactEmail ?? "",
-              contactPhone: company.contactPhone ?? "",
-            }}
-          />
-        </div>
+        <MobileFold
+          summary="Ändra"
+          meta={
+            companyGaps.length === 0 ? "Allt ifyllt" : `${formatInt(companyGaps.length)} saknas`
+          }
+        >
+          <div className="max-w-2xl">
+            <CompanyForm
+              organizationName={ctx.organization.name}
+              initial={{
+                companyName: company.companyName ?? "",
+                orgNumber: company.orgNumber ?? "",
+                companyAddress: company.companyAddress ?? "",
+                contactName: company.contactName ?? "",
+                contactEmail: company.contactEmail ?? "",
+                contactPhone: company.contactPhone ?? "",
+              }}
+            />
+          </div>
+        </MobileFold>
       </section>
 
       <section
         aria-labelledby="agarandelar"
-        className="rise flex flex-col gap-8"
+        className="rise flex flex-col gap-8 max-md:gap-3"
         style={{ "--i": 4 } as React.CSSProperties}
       >
         <SectionHeader
           id="agarandelar"
           size="md"
           title={currentGroup ? shareSummary(currentGroup) : "Inga ägarandelar inlagda."}
-          aside={currentGroup ? `Sedan ${day(currentGroup.validFrom)}.` : undefined}
+          aside={
+            currentGroup ? `Sedan ${day(currentGroup.validFrom).replace(/\.$/, "")}.` : undefined
+          }
         />
-        <div className="grid grid-cols-1 gap-x-8 gap-y-10 lg:grid-cols-12">
-          <div className="flex min-w-0 flex-col gap-4 lg:col-span-7">
-            <SubLabel>Fördelningar</SubLabel>
-            {groups.length === 0 ? (
-              <StateMessage
-                kind="empty"
-                compact
-                message="Inga ägarandelar."
-                detail={isOwner ? undefined : "Ägaren lägger in dem."}
-              />
-            ) : (
-              <ol className="flex flex-col">
-                {groups.map((g) => (
-                  <li
-                    key={g.validFrom}
-                    className="flex flex-col gap-2 border-t border-line py-3 last:border-b"
-                  >
-                    <p className="meta tnum text-muted">
-                      {day(g.validFrom)}
-                      {NBSP}
-                      {EN_DASH}
-                      {g.validTo ? `${NBSP}${day(g.validTo)}` : " tills vidare"}
-                      {g.current ? <span className="label ml-2 text-fg">Gäller nu</span> : null}
-                      {g.future ? <span className="label ml-2 text-subtle">Kommande</span> : null}
-                    </p>
-                    <ul className="flex flex-col gap-1">
-                      {g.shares.map((s) => (
-                        <li key={s.id} className="flex items-baseline justify-between gap-4">
-                          <span className="text-fg">{s.holderName}</span>
-                          <span className="tnum text-fg">{formatBp(s.shareBp)}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                ))}
-              </ol>
-            )}
+        <MobileFold summary="Visa och ändra" meta={formatInt(groups.length)}>
+          <div className="grid grid-cols-1 gap-x-8 gap-y-10 lg:grid-cols-12">
+            <div className="flex min-w-0 flex-col gap-4 lg:col-span-7">
+              <SubLabel>Fördelningar</SubLabel>
+              {groups.length === 0 ? (
+                <StateMessage
+                  kind="empty"
+                  compact
+                  message="Inga ägarandelar."
+                  detail={isOwner ? undefined : "Ägaren lägger in dem."}
+                />
+              ) : (
+                <ol className="flex flex-col">
+                  {groups.map((g) => (
+                    <li
+                      key={g.validFrom}
+                      className="flex flex-col gap-2 border-t border-line py-3 last:border-b"
+                    >
+                      <p className="meta tnum text-muted">
+                        {day(g.validFrom)}
+                        {NBSP}
+                        {EN_DASH}
+                        {g.validTo ? `${NBSP}${day(g.validTo)}` : " tills vidare"}
+                        {g.current ? <span className="label ml-2 text-fg">Gäller nu</span> : null}
+                        {g.future ? <span className="label ml-2 text-subtle">Kommande</span> : null}
+                      </p>
+                      <ul className="flex flex-col gap-1">
+                        {g.shares.map((s) => (
+                          <li key={s.id} className="flex items-baseline justify-between gap-4">
+                            <span className="text-fg">{s.holderName}</span>
+                            <span className="tnum text-fg">{formatBp(s.shareBp)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+            <div className="flex min-w-0 flex-col gap-4 lg:col-span-5">
+              <SubLabel>Ny fördelning</SubLabel>
+              {isOwner ? (
+                <OwnerSharesForm
+                  initial={(currentGroup?.shares ?? []).map((s) => ({
+                    holderName: s.holderName,
+                    shareBp: s.shareBp,
+                    memberUserId: s.memberUserId,
+                  }))}
+                  members={data.members
+                    .slice()
+                    .sort(
+                      (a, b) => Number(b.userId === ctx.user.id) - Number(a.userId === ctx.user.id),
+                    )}
+                  today={today}
+                />
+              ) : (
+                <StateMessage kind="denied" compact message="Bara ägaren ändrar ägarandelarna." />
+              )}
+            </div>
           </div>
-          <div className="flex min-w-0 flex-col gap-4 lg:col-span-5">
-            <SubLabel>Ny fördelning</SubLabel>
-            {isOwner ? (
-              <OwnerSharesForm
-                initial={(currentGroup?.shares ?? []).map((s) => ({
-                  holderName: s.holderName,
-                  shareBp: s.shareBp,
-                  memberUserId: s.memberUserId,
-                }))}
-                members={data.members
-                  .slice()
-                  .sort(
-                    (a, b) => Number(b.userId === ctx.user.id) - Number(a.userId === ctx.user.id),
-                  )}
-                today={today}
-              />
-            ) : (
-              <StateMessage kind="denied" compact message="Bara ägaren ändrar ägarandelarna." />
-            )}
-          </div>
-        </div>
+        </MobileFold>
       </section>
 
       <details
