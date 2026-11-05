@@ -11,6 +11,11 @@
  *   vymodell (WarehouseRow), som Prognos & inköp.
  * - Utgår: titlar som gått ur alla automater (samma regel som Lager, `retiredTitles`). De
  *   ligger still hemma: ingen status, inget inköp, sist i listan och summerade i "Ligger still".
+ * - Packa/Beställ X st (`needQty`): samma antal som Inköp på /prognos, ur inköpsplanen med
+ *   EN regel (purchaseQty i @/analytics/purchasing): försäljning under ledtid + dagar till
+ *   nästa beställning + säkerhetslager, minus vårt lager, automaterna och det som är
+ *   beställt, avrundat till minsta order och hela boxar när leverantören är känd. Att göra
+ *   överst visar titlarna där det antalet är över 0 (som Inköp), egna produkter som Packa.
  * - Värde: antal hemma × inköpspriset som gäller i dag (öre), bara titlar med pris.
  * - Senaste ändring: senaste händelsen i något eget lager (inte försäljning), och per lager.
  */
@@ -75,6 +80,12 @@ export interface VartLagerInput {
   readonly canEdit: boolean;
   /** Titlar som gått ur alla automater (Utgår på Lager). Utelämnat = inga. */
   readonly retired?: ReadonlySet<string>;
+  /**
+   * Antal att köpa in eller packa per titel ur Inköps plan (purchaseQtyByTitle), samma
+   * siffra som på /prognos. Saknas titeln är antalet 0. null/utelämnat = planen kunde inte
+   * räknas: titlar som tar slut visas utan antal.
+   */
+  readonly purchase?: ReadonlyMap<string, number> | null;
 }
 
 export interface Place {
@@ -121,8 +132,11 @@ export interface VartLagerRow {
   readonly latest: LatestChange | null;
   /** Egen produkt: vi packar den själva. */
   readonly own: boolean;
-  /** Pack som behövs för NEED_DAYS dagar (bara när titeln tar slut), annars 0. */
-  readonly needQty: number;
+  /**
+   * Pack att packa eller beställa: Inköps antal (purchaseQty), 0 när inget behövs, null
+   * när planen saknas.
+   */
+  readonly needQty: number | null;
 }
 
 /**
@@ -135,24 +149,6 @@ export function lastsDays(packs: number, perDayTenths: number | null): number | 
   return Math.floor((Math.max(0, packs) * 10) / perDayTenths);
 }
 
-/** "Packa/Beställ X st": så många dagar ska vårt lager räcka efter påfyllningen. */
-export const NEED_DAYS = 2 * WAREHOUSE_LOW_DAYS;
-
-/**
- * Pack att packa eller beställa för en titel som tar slut: minst det veckans besök saknar,
- * annars det som behövs för NEED_DAYS dagar vid nuvarande takt (aldrig under 1). Ren.
- */
-export function needQtyOf(
-  home: number,
-  runsOut: boolean,
-  r: Pick<WarehouseRow, "perDayTenths" | "shortBy"> | undefined,
-): number {
-  if (!runsOut) return 0;
-  const perDay = (r?.perDayTenths ?? 0) / 10;
-  const forDays = Math.ceil(perDay * NEED_DAYS - 1e-9) - Math.max(0, home);
-  return Math.max(1, r?.shortBy ?? 0, forDays);
-}
-
 /** En rad i listan "Att göra" överst på Vårt lager. */
 export interface StockTodo {
   readonly titleId: string;
@@ -163,14 +159,21 @@ export interface StockTodo {
   readonly tone: "critical" | "warning";
 }
 
+/** Ska packas eller beställas: Inköps antal är över 0 (utan plan: titeln tar slut). */
+export function needsPurchase(r: Pick<VartLagerRow, "retired" | "needQty" | "runsOut">): boolean {
+  if (r.retired) return false;
+  return r.needQty === null ? r.runsOut : r.needQty > 0;
+}
+
 /**
  * Vad som ska göras i vårt lager, viktigast först: saldon under 0 (räkna om), titlar som
- * är slut och sedan de som tar slut. Egna produkter packas, övriga beställs. Ren.
+ * är slut och sedan de som ska packas eller beställas (samma titlar och antal som Inköp).
+ * Egna produkter packas, övriga beställs. Ren.
  */
 export function stockTodos(rows: readonly VartLagerRow[]): StockTodo[] {
   const rank = (r: VartLagerRow) => (r.negative ? 0 : r.home <= 0 ? 1 : 2);
   return rows
-    .filter((r) => r.negative || r.runsOut)
+    .filter((r) => r.negative || needsPurchase(r))
     .sort(
       (a, b) =>
         rank(a) - rank(b) ||
@@ -382,7 +385,8 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
         runsOut,
         negative: home < 0,
         own: t.ownProduct === true,
-        needQty: needQtyOf(home, runsOut, r),
+        // Inköps antal (samma regel och siffra som /prognos); utgången titel köps inte.
+        needQty: retired ? 0 : input.purchase ? (input.purchase.get(t.id) ?? 0) : null,
         unitCostOre,
         valueOre: unitCostOre === null ? null : Math.max(0, home) * unitCostOre,
         latest: e

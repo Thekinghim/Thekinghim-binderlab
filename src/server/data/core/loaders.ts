@@ -14,6 +14,7 @@
 import {
   applyDismissals,
   computeTodos,
+  withCapacities,
   type AnalyticsOrder,
   type TodoInput,
   type TodoItem,
@@ -76,6 +77,7 @@ import {
   queryTodoDismissals,
 } from "./queries";
 import { queryUnpaidSettlements } from "@/server/settlements/queries";
+import { querySlotCapacities, type SlotCapacityRow } from "./slot-capacity";
 import { queryTeamSize } from "./team-size";
 
 import { effectivePlacements } from "./placements";
@@ -523,21 +525,49 @@ export function stockRowsInRequest(viewer: Viewer): Promise<StockRow[]> {
   return stockInRequest(viewer.user.userId, viewer.user.email, viewer.organization.id);
 }
 
+const capacitiesInRequest = cache(
+  (userId: string, email: string, orgId: string, nowMs: number): Promise<SlotCapacityRow[]> =>
+    withUserDbFor({ userId, email }, (tx) => querySlotCapacities(tx, orgId, new Date(nowMs))),
+);
+
+/**
+ * Fackens kapacitet från Awish (machine_slot_capacity) en gång per förfrågan. Att göra,
+ * larmgränserna och Automater lägger den på lagerraderna (withCapacities), så att ett fullt
+ * fack inte ger någon påfyllningspunkt, som på Fyll på. Alla roller (inga belopp).
+ */
+export function slotCapacitiesInRequest(
+  viewer: Viewer,
+  now: Date = new Date(),
+): Promise<SlotCapacityRow[]> {
+  return capacitiesInRequest(
+    viewer.user.userId,
+    viewer.user.email,
+    viewer.organization.id,
+    now.getTime(),
+  );
+}
+
 /** Lagersaldon just nu. Alla roller, inga belopp. */
 export async function loadStockFor(viewer: Viewer): Promise<StockSnapshot> {
   await requireViewerRole(viewer, ALL_ROLES);
-  const rows = await stockRowsInRequest(viewer);
+  const [rows, capacities] = await Promise.all([
+    stockRowsInRequest(viewer),
+    slotCapacitiesInRequest(viewer),
+  ]);
   return {
     rows,
-    machineStock: rows
-      .filter((r) => r.locationKind === "machine" && r.machineId !== null && isKnownStock(r))
-      .map((r) => ({
-        machineId: r.machineId as string,
-        titleId: r.titleId,
-        onHand: r.onHand,
-        lastRestockedAt: r.lastRestockedAt,
-        lastRefilledAt: r.lastRefilledAt ?? null,
-      })),
+    machineStock: withCapacities(
+      rows
+        .filter((r) => r.locationKind === "machine" && r.machineId !== null && isKnownStock(r))
+        .map((r) => ({
+          machineId: r.machineId as string,
+          titleId: r.titleId,
+          onHand: r.onHand,
+          lastRestockedAt: r.lastRestockedAt,
+          lastRefilledAt: r.lastRefilledAt ?? null,
+        })),
+      capacities,
+    ),
     warehouse: rows.filter((r) => r.locationKind === "warehouse"),
   };
 }
@@ -671,25 +701,31 @@ export async function loadTodoStateFor(viewer: Viewer, now: Date = new Date()): 
   const masterP = masterData(viewer, today);
   const baseP = economy ? economyBase(viewer) : null;
   const stockP = stockRowsInRequest(viewer);
+  const capacityP = slotCapacitiesInRequest(viewer, now);
   masterP.catch(() => {});
   baseP?.catch(() => {});
   stockP.catch(() => {});
+  capacityP.catch(() => {});
 
   return withUserDbFor(viewer.user, async (tx) => {
     const [dismissals, coverage] = await Promise.all([
       queryTodoDismissals(tx, orgId),
       loadCoverage(tx, orgId, now),
     ]);
-    const [master, stockRows] = await Promise.all([masterP, stockP]);
-    const stock = stockRows
-      .filter((r) => r.locationKind === "machine" && r.machineId !== null && isKnownStock(r))
-      .map((r) => ({
-        machineId: r.machineId as string,
-        titleId: r.titleId,
-        onHand: r.onHand,
-        lastRestockedAt: r.lastRestockedAt,
-        lastRefilledAt: r.lastRefilledAt ?? null,
-      }));
+    const [master, stockRows, capacities] = await Promise.all([masterP, stockP, capacityP]);
+    // Med fackens kapacitet: ett fullt fack ger ingen påfyllningspunkt (som på Fyll på).
+    const stock = withCapacities(
+      stockRows
+        .filter((r) => r.locationKind === "machine" && r.machineId !== null && isKnownStock(r))
+        .map((r) => ({
+          machineId: r.machineId as string,
+          titleId: r.titleId,
+          onHand: r.onHand,
+          lastRestockedAt: r.lastRestockedAt,
+          lastRefilledAt: r.lastRefilledAt ?? null,
+        })),
+      capacities,
+    );
     // Hur långt försäljningen är importerad per automat: tystnaden räknas fram till dit,
     // som på Drift (maskinhälsan), så att alla sidor säger samma antal timmar.
     const salesDataUntil = coverage.map((c) => ({

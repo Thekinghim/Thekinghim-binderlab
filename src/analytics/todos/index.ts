@@ -87,7 +87,13 @@ export { reviewLink } from "./report-review";
 export { settlementDue, settlementLink, SETTLEMENT_DUE_DAY } from "./settlements";
 export { todoInScope, type ScopeMachine, type TodoScope } from "./scope";
 export { missingPriceFingerprint } from "./missing-price";
-export { refillFingerprint, VISIT_BUFFER_DAYS, withSlotAlerts } from "./refill";
+export {
+  isFullSlot,
+  refillFingerprint,
+  VISIT_BUFFER_DAYS,
+  withCapacities,
+  withSlotAlerts,
+} from "./refill";
 export { silentTitles, type SilentTitle } from "./silent-title";
 export { INVITE_LINK } from "./team";
 export type * from "./types";

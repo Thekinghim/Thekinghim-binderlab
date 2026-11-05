@@ -261,6 +261,33 @@ describe("buildLagerModel", () => {
     expect(model.counts).toEqual({ critical: 2, low: 1, ok: 1 });
   });
 
+  it("fullt fack (känd kapacitet, saldo ≥ kapacitet) är aldrig Snart slut, som Fyll på", () => {
+    const full = buildLagerModel({
+      now: NOW,
+      timeZone: "Europe/Stockholm",
+      today: TODAY,
+      master,
+      stock,
+      sales,
+      scope: { storeId: null, machineId: null },
+      hasCentral: true,
+      capacities: [{ machineId: M1, titleId: T2, capacity: 4 }],
+    });
+    expect(cellOf(full, M1, T2)).toMatchObject({ onHand: 4, status: "ok" });
+    const notFull = buildLagerModel({
+      now: NOW,
+      timeZone: "Europe/Stockholm",
+      today: TODAY,
+      master,
+      stock,
+      sales,
+      scope: { storeId: null, machineId: null },
+      hasCentral: true,
+      capacities: [{ machineId: M1, titleId: T2, capacity: 12 }],
+    });
+    expect(cellOf(notFull, M1, T2)).toMatchObject({ onHand: 4, status: "low" });
+  });
+
   it("räknar en plats som varit tom länge som lagerförd och Kritisk", () => {
     // Saldoraden finns (0 pack), ingen försäljning i fönstret och senaste händelsen i augusti.
     const cell = cellOf(build(), M2, T3);

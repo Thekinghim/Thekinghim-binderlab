@@ -12,6 +12,7 @@ import { and, eq } from "drizzle-orm";
 
 import {
   applyDismissals,
+  withCapacities,
   withSlotAlerts,
   type SlotAlert,
   type SlotPeriod,
@@ -26,6 +27,7 @@ import {
   businessToday,
   loadMasterDataFor,
   requireViewerRole,
+  slotCapacitiesInRequest,
   stockRowsInRequest,
   type TodoState,
   type Viewer,
@@ -106,6 +108,7 @@ export interface SlotAlertData {
     onHand: number;
     lastRestockedAt: string | null;
     lastRefilledAt: string | null;
+    capacity?: number | null;
   }>;
   readonly machines: MasterData["machines"];
   readonly titles: MasterData["titles"];
@@ -136,19 +139,24 @@ export async function loadSlotAlertDataFor(
   });
   if (!found) return null;
   // Stamdata och lager delas med resten av förfrågan (React cache i ./loaders).
-  const [{ titles, machines }, stockRows] = await Promise.all([
+  const [{ titles, machines }, stockRows, capacities] = await Promise.all([
     loadMasterDataFor(viewer, now),
     stockRowsInRequest(viewer),
+    slotCapacitiesInRequest(viewer, now),
   ]);
-  const stock = stockRows
-    .filter((r) => r.locationKind === "machine" && r.machineId !== null)
-    .map((r) => ({
-      machineId: r.machineId as string,
-      titleId: r.titleId,
-      onHand: r.onHand,
-      lastRestockedAt: r.lastRestockedAt,
-      lastRefilledAt: r.lastRefilledAt ?? null,
-    }));
+  // Med kapaciteten: ett fullt fack ger ingen punkt för larmgränsen heller (som på Fyll på).
+  const stock = withCapacities(
+    stockRows
+      .filter((r) => r.locationKind === "machine" && r.machineId !== null)
+      .map((r) => ({
+        machineId: r.machineId as string,
+        titleId: r.titleId,
+        onHand: r.onHand,
+        lastRestockedAt: r.lastRestockedAt,
+        lastRefilledAt: r.lastRefilledAt ?? null,
+      })),
+    capacities,
+  );
   return { ...found, stock, machines, titles, today };
 }
 

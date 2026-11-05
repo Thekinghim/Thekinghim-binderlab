@@ -11,6 +11,7 @@ import "server-only";
 import { demandFromForecast, inventoryValuation, purchasePlan } from "@/analytics/purchasing";
 import type {
   PurchaseOrderRef,
+  PurchasePlan,
   PurchasingInput,
   SupplierItemRef,
 } from "@/analytics/purchasing/types";
@@ -75,6 +76,16 @@ export function lostPeriodOf(period: Period, asOf: IsoDate): Period {
   return { start, end };
 }
 
+/**
+ * Första dagen med order och lagerhändelser för prognosen och inköpsplanen: prognosens
+ * historik (forecastRange) och LOST_LOOKBACK_DAYS före den (takten före en slutsåld dag).
+ * Beror bara på `asOf`, aldrig på periodvalet, så att Inköp och Vårt lager
+ * (loadPurchasePlanFor) räknar på exakt samma underlag och visar samma antal.
+ */
+export function planFrom(asOf: IsoDate): IsoDate {
+  return addDays(forecastRange(asOf).start, -LOST_LOOKBACK_DAYS);
+}
+
 /** Automaterna som filtret omfattar (null = alla). */
 export function machinesInScope(input: DomainInput, scope: DataScope): Set<string> | null {
   if (scope.machineId) return new Set([scope.machineId]);
@@ -121,6 +132,167 @@ function toPurchaseOrderRef(po: PurchaseOrderRecord): PurchaseOrderRef {
   };
 }
 
+/** Underlaget för prognosen och inköpsplanen (order och händelser från planFrom(asOf)). */
+interface PlanSources {
+  readonly today: IsoDate;
+  readonly asOf: IsoDate;
+  /** Hela organisationens order från planFrom(asOf) t.o.m. asOf. */
+  readonly orders: DomainInput["current"]["orders"];
+  /** queryMachineStockEvents(planFrom(asOf), asOf). */
+  readonly events: readonly StockEventRef[];
+  readonly settings: DomainInput["settings"];
+  readonly prices: DomainInput["sources"]["prices"];
+  readonly titles: readonly { id: string; name: string; archived: boolean }[];
+  readonly machines: readonly {
+    id: string;
+    name: string;
+    code: string;
+    activeFrom: IsoDate | null;
+    activeTo: IsoDate | null;
+    archived: boolean;
+  }[];
+  readonly suppliers: Awaited<ReturnType<typeof querySuppliers>>;
+  readonly items: Awaited<ReturnType<typeof querySupplierItems>>;
+  readonly purchaseOrders: readonly PurchaseOrderRecord[];
+  readonly stock: Awaited<ReturnType<typeof queryStock>>;
+  readonly slots: Awaited<ReturnType<typeof querySlotPeriods>>;
+}
+
+/**
+ * Prognosen för hela organisationen och inköpsplanen ur den. Samma funktion för Inköp
+ * (loadPrognosFor) och Vårt lager (loadPurchasePlanFor): samma underlag ger samma antal.
+ */
+function forecastAndPlan(src: PlanSources): {
+  forecastAll: ForecastResult;
+  unavailable: UnavailableDay[];
+  seriesStarts: ReturnType<typeof seriesStartsFromStock>;
+  excludeSeries: ReturnType<typeof retiredSeries>;
+  purchasing: PurchasingInput;
+} {
+  const { today, asOf, settings, titles, machines } = src;
+  const fRange = forecastRange(asOf);
+  // Slutsålda dagar under prognosens historik räknas inte som efterfrågan 0.
+  const lostForForecast = lostSales({
+    orders: src.orders,
+    stockEvents: src.events,
+    period: fRange,
+    settings,
+    prices: src.prices,
+    titles,
+    machines,
+  });
+  const unavailable: UnavailableDay[] = lostForForecast.stockoutDays.map((d) => ({
+    machineId: d.machineId,
+    titleId: d.titleId,
+    date: d.date,
+  }));
+
+  // En titel som legat i automaten utan att sälja räknas från första kända saldo, inte
+  // från första försäljningen (annars överskattas nya och svaga serier).
+  // Dagar före första ordern i datan saknar orderdata och räknas inte som försäljning 0.
+  let firstOrder: IsoDate | null = null;
+  for (const o of src.orders) {
+    if (firstOrder === null || o.businessDate < firstOrder) firstOrder = o.businessDate;
+  }
+  const seriesStarts = seriesStartsFromStock(src.events, asOf, firstOrder);
+
+  // Titlar som gått ur automaten (Utgår på Lager) får ingen prognos och köps inte in:
+  // samma utgår-regel som Lager, Drift och Vårt lager.
+  const excludeSeries = retiredSeries(src.slots, today);
+
+  const forecastAll = forecastSales({
+    orders: src.orders,
+    asOf,
+    settings,
+    titles,
+    machines,
+    unavailable,
+    seriesStarts,
+    excludeSeries,
+    // Intervallet tar med att nivån är osäker när den skattats på få dagar. Prognosen
+    // sänks när testveckorna visar att den legat för högt (startpuckeln efter en ny
+    // automat bärs annars med i snittet: +21 % i november 2026).
+    options: { levelUncertainty: true, biasCorrection: true },
+  });
+
+  // Inköp: hela organisationen (vårt lager = alla egna lager tillsammans).
+  const activeSuppliers = new Set(src.suppliers.filter((s) => !s.archived).map((s) => s.id));
+  const supplierItems: SupplierItemRef[] = src.items.filter((i) =>
+    activeSuppliers.has(i.supplierId),
+  );
+  const purchasing: PurchasingInput = {
+    today,
+    titles,
+    suppliers: src.suppliers
+      .filter((s) => !s.archived)
+      .map((s) => ({ id: s.id, name: s.name, defaultLeadTimeDays: s.defaultLeadTimeDays })),
+    supplierItems,
+    warehouseStock: ownStockTotals(src.stock),
+    machineStock: src.stock
+      .filter((r) => r.locationKind === "machine" && r.machineId !== null)
+      .map((r) => ({ machineId: r.machineId as string, titleId: r.titleId, onHand: r.onHand })),
+    openPurchaseOrders: src.purchaseOrders
+      .filter((po) => (OPEN_STATUSES as readonly string[]).includes(po.status))
+      .map(toPurchaseOrderRef),
+    prices: src.prices,
+    demand: demandFromForecast(forecastAll, today),
+    // Utkast räknas inte som beställt (de kan glömmas och skulle då dölja behovet för
+    // alltid). Sidan visar i stället "utkast finns" på förslagets rader.
+    options: { includeDraftOrders: false },
+  };
+  return { forecastAll, unavailable, seriesStarts, excludeSeries, purchasing };
+}
+
+const titleRefs = (input: DomainInput) =>
+  input.titles.map((t) => ({ id: t.id, name: t.name, archived: t.archived }));
+const machineRefs = (input: DomainInput) =>
+  input.machines.map((m) => ({
+    id: m.id,
+    name: m.name,
+    code: m.code,
+    activeFrom: m.activeFrom,
+    activeTo: m.activeTo,
+    archived: m.archived,
+  }));
+
+/**
+ * Bara inköpsplanen (för Vårt lager): samma underlag och samma funktion som Inköp på
+ * /prognos, så att "Beställ 36 st" står på båda sidorna. Ägare, admin och läsare.
+ */
+export async function loadPurchasePlanFor(
+  viewer: Viewer,
+  now: Date = new Date(),
+): Promise<PurchasePlan> {
+  const orgId = viewer.organization.id;
+  await requireRoleFor(viewer.user, orgId, ECONOMY_ROLES);
+  const today = businessToday(now, viewer.organization.timezone);
+  const asOf = addDays(today, -1);
+  const from = planFrom(asOf);
+  const all = await loadDomainInputFor(viewer, { period: { start: from, end: asOf } }, now);
+  const db = await withUserDbFor(viewer.user, async (tx) => {
+    const [events, suppliers, items, purchaseOrders, stock, slots] = await Promise.all([
+      queryMachineStockEvents(tx, orgId, from, asOf),
+      querySuppliers(tx, orgId),
+      querySupplierItems(tx, orgId),
+      queryPurchaseOrders(tx, orgId),
+      queryStock(tx, orgId),
+      querySlotPeriods(tx, orgId),
+    ]);
+    return { events, suppliers, items, purchaseOrders, stock, slots };
+  });
+  const { purchasing } = forecastAndPlan({
+    today,
+    asOf,
+    orders: all.current.orders,
+    settings: all.settings,
+    prices: all.sources.prices,
+    titles: titleRefs(all),
+    machines: machineRefs(all),
+    ...db,
+  });
+  return purchasePlan(purchasing);
+}
+
 /**
  * Allt sidan behöver. `now` styr "i dag" (prognosen börjar i dag, i går är sista dagen
  * med data). Kastar AuthorizationError("forbidden") för påfyllare.
@@ -137,9 +309,11 @@ export async function loadPrognosFor(
   const scope: DataScope = args.scope ?? { storeId: null, machineId: null };
   const scoped = Boolean(scope.storeId || scope.machineId);
 
-  const fRange = forecastRange(asOf);
   const lostPeriod = lostPeriodOf(args.period, asOf);
-  const ordersFrom = minDate(fRange.start, addDays(lostPeriod.start, -LOST_LOOKBACK_DAYS));
+  // Prognosen och inköpsplanen räknas alltid från planFrom (oberoende av periodvalet);
+  // förlorad försäljning för en lång period kan behöva order längre bakåt.
+  const fromPlan = planFrom(asOf);
+  const ordersFrom = minDate(fromPlan, addDays(lostPeriod.start, -LOST_LOOKBACK_DAYS));
   const orderRange: Period = { start: ordersFrom, end: asOf };
 
   const all = await loadDomainInputFor(viewer, { period: orderRange }, now);
@@ -148,57 +322,52 @@ export async function loadPrognosFor(
     : all;
 
   const db = await withUserDbFor(viewer.user, async (tx) => {
-    const [events, suppliers, items, purchaseOrders, stock, central, slots] = await Promise.all([
-      queryMachineStockEvents(tx, orgId, ordersFrom, asOf),
-      querySuppliers(tx, orgId),
-      querySupplierItems(tx, orgId),
-      queryPurchaseOrders(tx, orgId),
-      queryStock(tx, orgId),
-      queryCentralLocation(tx, orgId),
-      querySlotPeriods(tx, orgId),
-    ]);
-    return { events, suppliers, items, purchaseOrders, stock, central, slots };
+    const [events, planEvents, suppliers, items, purchaseOrders, stock, central, slots] =
+      await Promise.all([
+        queryMachineStockEvents(tx, orgId, ordersFrom, asOf),
+        // Samma händelser som Vårt lager läser (från planFrom); samma lista när perioden
+        // inte kräver äldre data.
+        ordersFrom === fromPlan ? null : queryMachineStockEvents(tx, orgId, fromPlan, asOf),
+        querySuppliers(tx, orgId),
+        querySupplierItems(tx, orgId),
+        queryPurchaseOrders(tx, orgId),
+        queryStock(tx, orgId),
+        queryCentralLocation(tx, orgId),
+        querySlotPeriods(tx, orgId),
+      ]);
+    return {
+      events,
+      planEvents: planEvents ?? events,
+      suppliers,
+      items,
+      purchaseOrders,
+      stock,
+      central,
+      slots,
+    };
   });
 
   const settings = all.settings;
-  const titles = all.titles.map((t) => ({ id: t.id, name: t.name, archived: t.archived }));
-  const machines = all.machines.map((m) => ({
-    id: m.id,
-    name: m.name,
-    code: m.code,
-    activeFrom: m.activeFrom,
-    activeTo: m.activeTo,
-    archived: m.archived,
-  }));
-
-  // Slutsålda dagar under prognosens historik räknas inte som efterfrågan 0.
-  const lostForForecast = lostSales({
-    orders: all.current.orders,
-    stockEvents: db.events,
-    period: fRange,
+  const titles = titleRefs(all);
+  const machines = machineRefs(all);
+  const { forecastAll, unavailable, seriesStarts, excludeSeries, purchasing } = forecastAndPlan({
+    today,
+    asOf,
+    orders:
+      ordersFrom === fromPlan
+        ? all.current.orders
+        : all.current.orders.filter((o) => o.businessDate >= fromPlan),
+    events: db.planEvents,
     settings,
     prices: all.sources.prices,
     titles,
     machines,
+    suppliers: db.suppliers,
+    items: db.items,
+    purchaseOrders: db.purchaseOrders,
+    stock: db.stock,
+    slots: db.slots,
   });
-  const unavailable: UnavailableDay[] = lostForForecast.stockoutDays.map((d) => ({
-    machineId: d.machineId,
-    titleId: d.titleId,
-    date: d.date,
-  }));
-
-  // En titel som legat i automaten utan att sälja räknas från första kända saldo, inte
-  // från första försäljningen (annars överskattas nya och svaga serier).
-  // Dagar före första ordern i datan saknar orderdata och räknas inte som försäljning 0.
-  let firstOrder: IsoDate | null = null;
-  for (const o of all.current.orders) {
-    if (firstOrder === null || o.businessDate < firstOrder) firstOrder = o.businessDate;
-  }
-  const seriesStarts = seriesStartsFromStock(db.events, asOf, firstOrder);
-
-  // Titlar som gått ur automaten (Utgår på Lager) får ingen prognos och köps inte in:
-  // samma utgår-regel som Lager, Drift och Vårt lager.
-  const excludeSeries = retiredSeries(db.slots, today);
 
   const forecastFor = (orders: DomainInput["current"]["orders"]): ForecastResult =>
     forecastSales({
@@ -210,12 +379,9 @@ export async function loadPrognosFor(
       unavailable,
       seriesStarts,
       excludeSeries,
-      // Intervallet tar med att nivån är osäker när den skattats på få dagar. Prognosen
-      // sänks när testveckorna visar att den legat för högt (startpuckeln efter en ny
-      // automat bärs annars med i snittet: +21 % i november 2026).
+      // Samma val som forecastAndPlan.
       options: { levelUncertainty: true, biasCorrection: true },
     });
-  const forecastAll = forecastFor(all.current.orders);
   const forecast = scoped ? forecastFor(inScope.current.orders) : forecastAll;
 
   // Förlorad försäljning för periodvalet och filtret.
@@ -232,32 +398,6 @@ export async function loadPrognosFor(
     titles,
     machines,
   });
-
-  // Inköp: hela organisationen (vårt lager = alla egna lager tillsammans).
-  const activeSuppliers = new Set(db.suppliers.filter((s) => !s.archived).map((s) => s.id));
-  const supplierItems: SupplierItemRef[] = db.items.filter((i) =>
-    activeSuppliers.has(i.supplierId),
-  );
-  const purchasing: PurchasingInput = {
-    today,
-    titles,
-    suppliers: db.suppliers
-      .filter((s) => !s.archived)
-      .map((s) => ({ id: s.id, name: s.name, defaultLeadTimeDays: s.defaultLeadTimeDays })),
-    supplierItems,
-    warehouseStock: ownStockTotals(db.stock),
-    machineStock: db.stock
-      .filter((r) => r.locationKind === "machine" && r.machineId !== null)
-      .map((r) => ({ machineId: r.machineId as string, titleId: r.titleId, onHand: r.onHand })),
-    openPurchaseOrders: db.purchaseOrders
-      .filter((po) => (OPEN_STATUSES as readonly string[]).includes(po.status))
-      .map(toPurchaseOrderRef),
-    prices: all.sources.prices,
-    demand: demandFromForecast(forecastAll, today),
-    // Utkast räknas inte som beställt (de kan glömmas och skulle då dölja behovet för
-    // alltid). Sidan visar i stället "utkast finns" på förslagets rader.
-    options: { includeDraftOrders: false },
-  };
 
   // Hur säker efterfrågan i inköpsplanen är: serier med lite data per titel (hela org.).
   const basis = new Map<

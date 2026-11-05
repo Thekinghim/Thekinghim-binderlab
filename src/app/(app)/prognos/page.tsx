@@ -26,7 +26,6 @@ import { SuppliersView } from "./_components/suppliers-view";
 import { ValuationView } from "./_components/valuation-view";
 import { PageHead } from "../vart-lager/_components/page-head";
 import { TodoList } from "../vart-lager/_components/todo-list";
-import { needQtyOf } from "../vart-lager/_lib/model";
 import { buildPageModel, type PageModel } from "./_lib/model";
 import { loadOurStockFor, type OurStockView } from "../lager/_lib/data";
 
@@ -104,15 +103,10 @@ export default async function PrognosPage({
       loadPrognosFor(viewer, { period: p.period, scope: p.scope }),
       loadOurStockFor(viewer, new Date(ctx.now)),
     ]);
-    // Egna produkter: "Packa X st" med samma antal som Vårt lager.
-    const packNeed = new Map(
-      our.rows
-        .filter((r) => r.status !== "ok")
-        .map((r) => [r.titleId, needQtyOf(r.onHand, true, r)] as const),
-    );
+    // Packa och Beställ X st: inköpsplanens antal (purchaseQty), samma som Vårt lager.
     // Räcker: samma regel och takt som Vårt lager (hemma + i automaterna, 14 dagars takt).
     const stockPace = new Map(our.rows.map((r) => [r.titleId, r.perDayTenths] as const));
-    m = buildPageModel(data, new Date(ctx.now), { packNeed, stockPace });
+    m = buildPageModel(data, new Date(ctx.now), { stockPace });
     stock = our;
   } catch (error) {
     if (!(error instanceof DomainError)) throw error;
