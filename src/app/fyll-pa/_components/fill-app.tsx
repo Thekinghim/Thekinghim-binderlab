@@ -23,7 +23,10 @@ import { registerCount } from "@/app/(app)/lager/actions";
 
 import {
   applyAdjustments,
+  chooseSource,
   fillHeadline,
+  FULL_FAST_TIP,
+  fullFastNote,
   maxFill,
   needLabel,
   pairKey,
@@ -31,6 +34,7 @@ import {
   type FillAdjustment,
   type FillMachine,
   type FillRow,
+  type SourceChoice,
 } from "../_lib/model";
 import type { FillData } from "../_lib/data";
 
@@ -105,17 +109,6 @@ export function FillApp({
   const [lastSource, setLastSource] = useRemembered(rememberKey(scope, "fyll-lager"));
   // Lager valt med "Från: … ▾" för en automat (gäller tills sidan laddas om).
   const [override, setOverride] = useState<Record<string, string>>({});
-  const sourceOf = useCallback(
-    (machineId: string) =>
-      pickPlace(
-        sources.places,
-        override[machineId],
-        sources.machineSource[machineId],
-        lastSource,
-        sources.defaultPlaceId,
-      ),
-    [lastSource, override, sources],
-  );
   const placeName = useCallback(
     (id: string | null) => sources.places.find((p) => p.id === id)?.name ?? "hemma",
     [sources.places],
@@ -155,14 +148,38 @@ export function FillApp({
   const view = useMemo(() => {
     const pending = q.queue.filter((i) => i.status === "queued");
     const adj: FillAdjustment[] = [...pending, ...(saved.base === data ? saved.items : [])];
-    return applyAdjustments(
+    const counts = counted.base === data ? counted.map : new Map<string, number>();
+    // Föreslaget lager: automatens "Fylls på från", sedan senast valda, sedan standardlagret.
+    const preferred = (id: string) => [
+      sources.machineSource[id],
+      lastSource,
+      sources.defaultPlaceId,
+    ];
+    // Först med det föreslagna lagret (raderna och lagrens saldo efter kön), sedan väljs lagret
+    // som har packen (chooseSource) och raderna räknas mot det.
+    const first = applyAdjustments(data.machines, sources.stock, adj, counts, (id) =>
+      pickPlace(sources.places, override[id], ...preferred(id)),
+    );
+    const choice: Record<string, SourceChoice> = {};
+    for (const m of first.machines) {
+      choice[m.id] = chooseSource({
+        places: sources.places,
+        stock: first.stock,
+        rows: m.rows,
+        explicit: override[m.id],
+        preferred: preferred(m.id),
+      });
+    }
+    const out = applyAdjustments(
       data.machines,
       sources.stock,
       adj,
-      counted.base === data ? counted.map : new Map(),
-      sourceOf,
+      counts,
+      (id) => choice[id]?.id ?? null,
     );
-  }, [counted, data, q.queue, saved, sources.stock, sourceOf]);
+    return { ...out, choice };
+  }, [counted, data, lastSource, override, q.queue, saved, sources]);
+  const sourceOf = (machineId: string) => view.choice[machineId]?.id ?? null;
 
   const go = useCallback((href: string) => {
     window.history.pushState(null, "", href);
@@ -185,6 +202,7 @@ export function FillApp({
           count: Object.values(view.stock[p.id] ?? {}).reduce((n, v) => n + Math.max(0, v), 0),
         }))}
         sourceId={source}
+        sourceReason={view.choice[selected.id]?.reason ?? null}
         onSource={(id) => setOverride((prev) => ({ ...prev, [selected.id]: id }))}
         syncLabel={syncLabels[selected.id]}
         fresh={fresh[selected.id] ?? false}
@@ -612,6 +630,7 @@ function MachineScreen({
   machine: m,
   places,
   sourceId,
+  sourceReason,
   onSource,
   syncLabel,
   fresh,
@@ -625,6 +644,8 @@ function MachineScreen({
   places: readonly { id: string; name: string; count: number }[];
   /** Lagret packen tas från, null = inget eget lager. */
   sourceId: string | null;
+  /** Varför ett annat lager än automatens är valt ("Kontoret saknar pack"), annars null. */
+  sourceReason: string | null;
   onSource: (id: string) => void;
   syncLabel?: string;
   fresh: boolean;
@@ -657,7 +678,9 @@ function MachineScreen({
     setQty((prev) => ({ ...prev, [titleId]: Math.max(0, Math.min(max, Math.trunc(value) || 0)) }));
 
   // Det som behöver fyllas syns först; resten under "Fler titlar".
-  const first = m.rows.filter((r) => r.status !== null || r.emptySlots > 0 || r.suggested > 0);
+  const first = m.rows.filter(
+    (r) => r.status !== null || r.emptySlots > 0 || r.suggested > 0 || fullFastNote(r) !== null,
+  );
   const rest = m.rows.filter((r) => !first.includes(r));
   const renderRow = (r: FillRow, i: number) => (
     <li key={r.titleId} className="rise" style={rise(i + 2)}>
@@ -782,6 +805,9 @@ function MachineScreen({
               Fyll allt
             </button>
           ) : null}
+          {places.length > 1 && sourceReason ? (
+            <p className="basis-full text-sm text-muted">{sourceReason}</p>
+          ) : null}
         </div>
 
         {m.rows.length === 0 ? (
@@ -881,6 +907,7 @@ function TitleRow({
   const [saving, setSaving] = useState(false);
   const inputId = `antal-${r.titleId}`;
   const short = value > Math.max(0, r.home);
+  const fullNote = fullFastNote(r);
   return (
     <div
       className={cn(
@@ -919,6 +946,9 @@ function TitleRow({
           )}
         </p>
       </div>
+      {fullNote ? (
+        <p className="-mt-1 text-sm text-muted">{`${fullNote} · ${FULL_FAST_TIP}`}</p>
+      ) : null}
 
       <div className="grid grid-cols-[56px_1fr_56px] items-center gap-2">
         <button

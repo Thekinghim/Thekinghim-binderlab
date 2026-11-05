@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyAdjustments,
+  chooseSource,
+  coverage,
   doneMessage,
   fillHeadline,
   fillMachines,
+  fullFastNote,
   machineOrder,
   maxFill,
   needLabel,
+  packsWanted,
   pairKey,
   rowStatus,
   splitRefill,
@@ -425,5 +429,181 @@ describe("utan kapacitet (Awish har inte läst facken): sålt och slut styr", ()
     ]);
     expect(out.machines[0]).toMatchObject({ empty: 0, low: 0, suggested: 0, needs: false });
     expect(out.machines[0]!.rows[0]).toMatchObject({ now: 7, status: null });
+  });
+});
+
+describe("fullt fack som säljer fort (inte snart slut)", () => {
+  it("rowStatus: nu ≥ kapacitet är aldrig slut eller snart slut", () => {
+    // 14 pack, 100 sålda på 14 dagar: räcker ~2 dagar men facket är fullt.
+    expect(rowStatus(14, 100, 14)).toBeNull();
+    expect(rowStatus(15, 100, 14)).toBeNull();
+    // Inte fullt: som förut.
+    expect(rowStatus(13, 100, 14)).toBe("low");
+    expect(rowStatus(0, 5, 14)).toBe("empty");
+    // Okänd kapacitet: som förut.
+    expect(rowStatus(4, 28, null)).toBe("low");
+  });
+
+  it("fullFastNote: lugn rad för fullt fack som annars vore snart slut", () => {
+    expect(fullFastNote({ now: 14, capacity: 14, sold: 100 })).toBe("Fullt · räcker ~2 d");
+    expect(fullFastNote({ now: 14, capacity: 14, sold: 300 })).toBe("Fullt · räcker ~1 d");
+    expect(fullFastNote({ now: 14, capacity: 14, sold: 10 })).toBeNull();
+    expect(fullFastNote({ now: 13, capacity: 14, sold: 100 })).toBeNull();
+    expect(fullFastNote({ now: 4, capacity: null, sold: 28 })).toBeNull();
+  });
+
+  it("automaten: fullt fack räknas inte som snart slut och kräver inget", () => {
+    const [m] = fillMachines(
+      input({
+        machines: [
+          machine("m1", "BL-001", [
+            { title_id: T1, units: 14, capacity: 14, channels: 1, empty: 0 },
+          ]),
+        ],
+        machineStock: new Map([[pairKey("m1", T1), 14]]),
+        sold: new Map([[pairKey("m1", T1), 100]]),
+        home: new Map([[T1, 169]]),
+      }),
+    );
+    expect(m!.rows[0]!.status).toBeNull();
+    expect(m!.low).toBe(0);
+    expect(m!.needs).toBe(false);
+    expect(needLabel(m!)).toBe("fullt");
+    expect(fillHeadline([m!])).toBe("Automaten är full.");
+  });
+
+  it("applyAdjustments: påfyllt till fullt slutar vara snart slut", () => {
+    const machines = fillMachines(
+      input({
+        machines: [
+          machine("m1", "BL-001", [
+            { title_id: T1, units: 2, capacity: 14, channels: 1, empty: 0 },
+          ]),
+        ],
+        machineStock: new Map([[pairKey("m1", T1), 2]]),
+        sold: new Map([[pairKey("m1", T1), 100]]),
+      }),
+    );
+    expect(machines[0]!.low).toBe(1);
+    const out = applyAdjustments(machines, {}, [
+      { machineId: "m1", titleId: T1, quantity: 12, fromWarehouse: false },
+    ]);
+    expect(out.machines[0]!.rows[0]!.status).toBeNull();
+    expect(out.machines[0]!.low).toBe(0);
+  });
+});
+
+describe("chooseSource: lagret som har packen", () => {
+  const places = [
+    { id: "kontoret", name: "Kontoret" },
+    { id: "hemma", name: "Hemma" },
+  ];
+  // Två titlar som vill ha 10 + 7 pack.
+  const rows = [
+    { titleId: T1, now: 4, capacity: 14, sold: 10 },
+    { titleId: T2, now: 7, capacity: 14, sold: 2 },
+  ];
+
+  it("packsWanted och coverage", () => {
+    expect(packsWanted(rows[0]!)).toBe(10);
+    expect(coverage(rows, { [T1]: 3, [T2]: 50 })).toBe(10);
+    expect(coverage(rows, undefined)).toBe(0);
+    expect(coverage(rows, { [T1]: -4 })).toBe(0);
+  });
+
+  it("automatens lager saknar packen: lagret med flest väljs, skälet sägs", () => {
+    const c = chooseSource({
+      places,
+      stock: { kontoret: { [T1]: 0 }, hemma: { [T1]: 169, [T2]: 3 } },
+      rows,
+      preferred: ["kontoret", null, "kontoret"],
+    });
+    expect(c).toEqual({ id: "hemma", reason: "Kontoret saknar pack" });
+  });
+
+  it("automatens lager räcker: det används, inget skäl", () => {
+    const c = chooseSource({
+      places,
+      stock: { kontoret: { [T1]: 10, [T2]: 7 }, hemma: { [T1]: 169, [T2]: 30 } },
+      rows,
+      preferred: ["kontoret"],
+    });
+    expect(c).toEqual({ id: "kontoret", reason: null });
+  });
+
+  it("klart sämre (högst hälften): byts, med antalet", () => {
+    const c = chooseSource({
+      places,
+      stock: { kontoret: { [T1]: 3 }, hemma: { [T1]: 10, [T2]: 7 } },
+      rows,
+      preferred: ["kontoret"],
+    });
+    expect(c).toEqual({ id: "hemma", reason: "Kontoret har bara 3" });
+    // Lite sämre: stannar.
+    expect(
+      chooseSource({
+        places,
+        stock: { kontoret: { [T1]: 10 }, hemma: { [T1]: 10, [T2]: 7 } },
+        rows,
+        preferred: ["kontoret"],
+      }).id,
+    ).toBe("kontoret");
+  });
+
+  it("inget lager har packen, eller inget behövs: det föreslagna lagret", () => {
+    expect(chooseSource({ places, stock: {}, rows, preferred: ["kontoret"] })).toEqual({
+      id: "kontoret",
+      reason: null,
+    });
+    const full = [{ titleId: T1, now: 14, capacity: 14, sold: 100 }];
+    expect(
+      chooseSource({
+        places,
+        stock: { hemma: { [T1]: 169 } },
+        rows: full,
+        preferred: ["kontoret"],
+      }),
+    ).toEqual({ id: "kontoret", reason: null });
+  });
+
+  it("lika: det föreslagna först, sedan namn", () => {
+    const three = [...places, { id: "bilen", name: "Bilen" }];
+    const stock = { hemma: { [T1]: 10 }, bilen: { [T1]: 10 } };
+    expect(chooseSource({ places: three, stock, rows, preferred: ["kontoret"] }).id).toBe("bilen");
+    expect(chooseSource({ places: three, stock, rows, preferred: ["hemma"] }).id).toBe("hemma");
+  });
+
+  it("valt för automaten nu gäller alltid; tomt lager får en hint", () => {
+    const stock = { kontoret: {}, hemma: { [T1]: 169 } };
+    expect(
+      chooseSource({ places, stock, rows, explicit: "kontoret", preferred: ["kontoret"] }),
+    ).toEqual({ id: "kontoret", reason: "Hemma har pack" });
+    expect(
+      chooseSource({ places, stock, rows, explicit: "hemma", preferred: ["kontoret"] }),
+    ).toEqual({
+      id: "hemma",
+      reason: null,
+    });
+    // Ett borttaget lager som val ignoreras.
+    expect(
+      chooseSource({ places, stock, rows, explicit: "borta", preferred: ["kontoret"] }).id,
+    ).toBe("hemma");
+  });
+
+  it("senast valda (minnet) som saknar pack styr inte när ett annat har dem", () => {
+    const c = chooseSource({
+      places,
+      stock: { kontoret: {}, hemma: { [T1]: 20 } },
+      rows,
+      preferred: [undefined, "kontoret", "hemma"],
+    });
+    expect(c).toEqual({ id: "hemma", reason: "Kontoret saknar pack" });
+  });
+
+  it("inga lager: null", () => {
+    expect(chooseSource({ places: [], stock: {}, rows, preferred: [] })).toEqual({
+      id: null,
+      reason: null,
+    });
   });
 });
