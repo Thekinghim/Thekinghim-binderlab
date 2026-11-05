@@ -29,6 +29,8 @@ const columns = await publicColumns();
 const APPEND_ONLY = [
   "assistant_logs",
   "audit_log",
+  // Värde: logg över automatiskt arbete (20261111000000_varde.sql).
+  "automation_log",
   "deviation_reviews",
   "import_rows",
   "payout_imports",
@@ -99,6 +101,8 @@ const RPCS = [
   "transfer_stock",
   "undo_field_refills",
   "undo_transfer",
+  // Värde: antal uppgifter Binderlab gjort per månad (20261111000000_varde.sql, ägare, admin).
+  "varde_automation_counts",
 ];
 /**
  * RPC:er som kör med anroparens rättigheter (security invoker) i stället för definer.
@@ -127,6 +131,8 @@ describe("tabeller", () => {
         "assistant_logs",
         "assortment_changes",
         "audit_log",
+        // Värde: logg över automatiskt arbete (20261111000000_varde.sql).
+        "automation_log",
         "baselines",
         // Bokföring: kontoplan, skickade månader, kvitton (20261103210000_bokforing.sql)
         // och sparade månadspaket (20261104130000_bokforing_paket.sql).
@@ -601,6 +607,7 @@ describe("anon", () => {
       transfer_stock: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
       undo_field_refills: sql`gen_random_uuid(), array[gen_random_uuid()]`,
       undo_transfer: sql`gen_random_uuid(), gen_random_uuid()`,
+      varde_automation_counts: sql`gen_random_uuid(), '2026-10-01'::date, '2026-10-31'::date`,
     };
     const outcome = await asAnon((tx) =>
       attempt(tx, (sp) =>

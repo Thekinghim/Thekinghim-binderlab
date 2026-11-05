@@ -11,6 +11,8 @@
 import { getServiceDb, type Db } from "@/db/client";
 import { sql } from "drizzle-orm";
 
+import { logAwishPushes } from "@/server/varde/log";
+
 import { AwishApiError } from "./grpc-client";
 import {
   createAwishWebClient,
@@ -261,5 +263,7 @@ export async function pushMachinesToAwish(
     }
   }
 
+  // Värde: räknas som sparad tid (automation_log). Stoppar aldrig pushen.
+  if (!deps.dryRun) await logAwishPushes(db, organizationId, machines);
   return { status: "done", machines };
 }

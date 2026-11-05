@@ -1101,6 +1101,11 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
             (organization_id, target_machines, machine_price_ore, people, hours_per_person_week)
           values (${orgId}, 20, 3000000, 2, 10)`,
     );
+    // Värde: logg över automatiskt arbete (20261111000000_varde.sql), skrivs bara av servern.
+    await tx.execute(
+      sql`insert into public.automation_log (organization_id, kind, machine_id, units)
+          values (${orgId}, 'awish_push', ${machine!.id}, 3)`,
+    );
     await tx.execute(sql`set local role authenticated`);
 
     return {
