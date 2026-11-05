@@ -323,6 +323,33 @@ describe("planNewProduct", () => {
     );
   });
 
+  it("ny vara utan bild stoppar (Awish kräver bild), befintlig vara behöver ingen", () => {
+    const ny = planNewProduct({
+      input,
+      sameNameGoods: [],
+      title: null,
+      image: null,
+      today: "2026-11-05",
+    });
+    expect(ny.blocking).toBe("Välj en bild. Awish kräver bild på nya varor.");
+    const medBild = planNewProduct({
+      input,
+      sameNameGoods: [],
+      title: null,
+      image: { fileName: "mystery-pack.png", bytes: 1000 },
+      today: "2026-11-05",
+    });
+    expect(medBild.blocking).toBeNull();
+    const finns = planNewProduct({
+      input,
+      sameNameGoods: [{ id: 9, name: "Mystery Pack", priceOre: 7900, thumb: null }],
+      title: null,
+      image: null,
+      today: "2026-11-05",
+    });
+    expect(finns.blocking).toBeNull();
+  });
+
   it("fingeravtrycket ändras när planen ändras, inte av nyckelordning", () => {
     const a = planFingerprint({ x: 1, y: [1, { b: 2, a: 1 }] }, { image: null });
     const b = planFingerprint({ y: [1, { a: 1, b: 2 }], x: 1 }, { image: null });

@@ -257,7 +257,7 @@ function NewProductForm({
         </div>
         <Input
           ref={fileRef}
-          label="Bild (valfri)"
+          label="Bild"
           name="image"
           type="file"
           accept="image/jpeg,image/png,image/webp"

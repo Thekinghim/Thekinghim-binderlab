@@ -370,6 +370,8 @@ export function planNewProduct(args: {
   if (title?.archived) {
     blocking ??= `${title.titleName} är arkiverad i Binderlab. Ta fram den igen först.`;
   }
+  // Awish egen panel sparar ingen ny vara utan bild, så vi skickar aldrig en utan.
+  if (!existing && !image) blocking ??= "Välj en bild. Awish kräver bild på nya varor.";
 
   const purchasePrice: NewProductPlan["purchasePrice"] =
     title && title.purchasePriceOre !== null
@@ -415,7 +417,7 @@ export function planNewProduct(args: {
   const lines: string[] = [];
   if (awish.action === "create") {
     lines.push(
-      `Awish: ny vara ${input.name}, ${formatKr(awish.priceOre)}${image ? `, bild ${image.fileName}` : ", ingen bild"}.`,
+      `Awish: ny vara ${input.name}, ${formatKr(awish.priceOre)}${image ? `, bild ${image.fileName}` : ""}.`,
     );
   } else {
     lines.push(`Awish: ${input.name} finns redan (id ${awish.goodId}). Ingen ändring i Awish.`);

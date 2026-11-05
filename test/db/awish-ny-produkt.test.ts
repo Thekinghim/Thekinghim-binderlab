@@ -63,6 +63,7 @@ let orgId: string;
 let machineId: string;
 
 const JPG = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 9, 8, 7, 6, 5]);
+const IMG = () => checkGoodImage(JPG, "Testbild");
 
 async function titleRows(name: string) {
   return rows<{
@@ -313,10 +314,10 @@ describe("Ny produkt: hela flödet", () => {
   it("Awish nekar varan: inget sparas i Binderlab, svenskt fel", async () => {
     const viewer = await viewerFor(owner, orgId);
     const input = { name: "Felvara", salePrice: "50", purchasePrice: "20", ownProduct: false };
-    const preview = await np.previewNewProductFor(viewer, input, null, deps());
+    const preview = await np.previewNewProductFor(viewer, input, IMG(), deps());
     fake.state.failOn.CreateGood = { message: "The name has already been taken." };
     await expect(
-      np.createNewProductFor(viewer, input, null, preview.fingerprint, deps()),
+      np.createNewProductFor(viewer, input, IMG(), preview.fingerprint, deps()),
     ).rejects.toThrow("Awish svarade med ett fel: The name has already been taken.");
     expect(await titleRows("Felvara")).toEqual([]);
   });
@@ -337,7 +338,7 @@ describe("Ny produkt: hela flödet", () => {
   it("ändrad plan efter förhandsvisningen (annan bild) skickar ingenting", async () => {
     const viewer = await viewerFor(owner, orgId);
     const input = { name: "Bytt bild", salePrice: "50", purchasePrice: "20", ownProduct: false };
-    const preview = await np.previewNewProductFor(viewer, input, null, deps());
+    const preview = await np.previewNewProductFor(viewer, input, IMG(), deps());
     await expect(
       np.createNewProductFor(viewer, input, checkGoodImage(JPG, "x"), preview.fingerprint, deps()),
     ).rejects.toThrow(/sedan förhandsvisningen/);
@@ -346,7 +347,7 @@ describe("Ny produkt: hela flödet", () => {
       np.createNewProductFor(
         viewer,
         { ...input, salePrice: "51" },
-        null,
+        IMG(),
         preview.fingerprint,
         deps(),
       ),
@@ -359,10 +360,10 @@ describe("Ny produkt: hela flödet", () => {
   it("dubbelklick: varan skapas en gång", async () => {
     const viewer = await viewerFor(owner, orgId);
     const input = { name: "Dubbel", salePrice: "60", purchasePrice: "25", ownProduct: false };
-    const preview = await np.previewNewProductFor(viewer, input, null, deps());
+    const preview = await np.previewNewProductFor(viewer, input, IMG(), deps());
     const results = await Promise.allSettled([
-      np.createNewProductFor(viewer, input, null, preview.fingerprint, deps()),
-      np.createNewProductFor(viewer, input, null, preview.fingerprint, deps()),
+      np.createNewProductFor(viewer, input, IMG(), preview.fingerprint, deps()),
+      np.createNewProductFor(viewer, input, IMG(), preview.fingerprint, deps()),
     ]);
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     const failed = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
@@ -383,11 +384,11 @@ describe("Ny produkt: hela flödet", () => {
       content: "",
     });
     const input = { name: "gammal  VARA", salePrice: "99", purchasePrice: "20", ownProduct: false };
-    const preview = await np.previewNewProductFor(viewer, input, null, deps());
+    const preview = await np.previewNewProductFor(viewer, input, IMG(), deps());
     expect(preview.warnings).toContain(
       "Awish har redan Gammal vara för 45 kr. Priset ändras inte här.",
     );
-    const r = await np.createNewProductFor(viewer, input, null, preview.fingerprint, deps());
+    const r = await np.createNewProductFor(viewer, input, IMG(), preview.fingerprint, deps());
     expect(r).toMatchObject({ status: "linked", goodId: 77 });
     expect(writes()).toEqual([]);
     expect(fake.state.goods.find((g) => g.id === 77)?.price).toBe("45.00");
@@ -405,9 +406,9 @@ describe("Ny produkt: hela flödet", () => {
       insert into public.purchase_prices (organization_id, title_id, unit_cost_ore, valid_from)
       values (${orgId}::uuid, ${title!.id}::uuid, 3000, '2026-10-01')`);
     const input = { name: "Befintlig", salePrice: "79", purchasePrice: "35", ownProduct: false };
-    const preview = await np.previewNewProductFor(viewer, input, null, deps());
+    const preview = await np.previewNewProductFor(viewer, input, IMG(), deps());
     expect(preview.warnings[0]).toMatch(/redan inköpspris 30 kr/);
-    const r = await np.createNewProductFor(viewer, input, null, preview.fingerprint, deps());
+    const r = await np.createNewProductFor(viewer, input, IMG(), preview.fingerprint, deps());
     expect(r.titleId).toBe(title!.id);
     expect(await titleRows("Befintlig")).toEqual([
       {
@@ -431,11 +432,11 @@ describe("Ny produkt: befintlig egen produkt", () => {
         .returning(),
     );
     const input = { name: "Egen Box", salePrice: "120", purchasePrice: "40", ownProduct: false };
-    const preview = await np.previewNewProductFor(viewer, input, null, deps());
+    const preview = await np.previewNewProductFor(viewer, input, IMG(), deps());
     expect(preview.warnings).toContain(
       "Egen Box är Egen produkt i Binderlab. Det ändras inte här (ändra under Inköpspriser).",
     );
-    const r = await np.createNewProductFor(viewer, input, null, preview.fingerprint, deps());
+    const r = await np.createNewProductFor(viewer, input, IMG(), preview.fingerprint, deps());
     expect(r).toMatchObject({ status: "created", titleId: title!.id });
     const t = await titleRows("Egen Box");
     expect(t).toHaveLength(1);
