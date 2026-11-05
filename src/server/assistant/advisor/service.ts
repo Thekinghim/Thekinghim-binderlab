@@ -440,6 +440,7 @@ export async function runAdvisorForAll(
           join auth.users u on u.id = owner.user_id
           where o.archived_at is null
             and o.slug not like 'nordljus-demo%'
+            and not o.is_demo
             and exists (
               select 1 from public.orders x
               where x.organization_id = o.id and x.business_date >= (${now.toISOString()}::timestamptz at time zone o.timezone)::date - 30

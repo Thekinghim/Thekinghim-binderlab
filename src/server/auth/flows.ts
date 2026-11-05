@@ -18,6 +18,7 @@ import {
   withUserDbFor,
   type SessionUser,
 } from "../access";
+import { DEMO_MESSAGES, isDemoFor } from "../demo/guard";
 import { dbErrorMessage, pgErrorOf, safeErrorForLog } from "../errors";
 import { describeInvitation, type InvitationLookup } from "../invitations";
 import type { RateLimiter } from "../rate-limit";
@@ -188,6 +189,10 @@ export async function createInviteFlow(
     await requireRoleFor(user, organizationId, ["owner", "admin"]);
   } catch {
     return { ok: false, error: MESSAGES.inviteForbidden };
+  }
+  // Ingen inbjudan (och inget konto eller mejl) från en demo. Databasen nekar också (BL090).
+  if (await isDemoFor(user, organizationId)) {
+    return { ok: false, error: DEMO_MESSAGES.invites };
   }
   if (password !== undefined) {
     const invalid = validateNewPassword(password);

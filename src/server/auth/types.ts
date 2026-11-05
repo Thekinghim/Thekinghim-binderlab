@@ -93,6 +93,15 @@ export interface AuthProvider {
    */
   createAccountWithPassword?(email: string, password: string): Promise<CreateAccountResult>;
 
+  /**
+   * Demo för kunder: skapar ett konto som ingen kan logga in med (slumpat lösenord som
+   * aldrig sparas eller visas, e-post på .invalid). Returnerar användarens id.
+   */
+  createSystemUser?(email: string, fullName: string): Promise<string>;
+
+  /** Demo för kunder: raderar ett konto (platshållare eller kundens demokonto). */
+  deleteUser?(userId: string): Promise<void>;
+
   /** Sätter lösenord för den inloggade användaren (Supabase och dev). */
   setPassword?(password: string): Promise<void>;
 }

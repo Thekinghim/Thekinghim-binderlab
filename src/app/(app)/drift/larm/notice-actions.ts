@@ -18,6 +18,7 @@ import { getServerEnv } from "@/lib/env";
 import { saveNoticeChange } from "@/server/alerts/notice-service";
 import type { NoticeState } from "@/server/alerts/notices";
 import { ALL_ROLES, requireContextRole } from "@/server/data/core";
+import { DEMO_MESSAGES, isDemoFor } from "@/server/demo/guard";
 import { dispatchDelivery } from "@/server/notify";
 import { createRateLimiter } from "@/server/rate-limit";
 import { resolveAppBaseUrl } from "@/server/request-info";
@@ -55,6 +56,9 @@ const testLimiter = createRateLimiter({ limit: 3, windowMs: 10 * 60_000 });
 
 export async function sendTestNotice(): Promise<{ ok: boolean; error?: string }> {
   const ctx = await requireContextRole(ALL_ROLES);
+  if (await isDemoFor({ userId: ctx.user.id, email: ctx.user.email }, ctx.organization.id)) {
+    return { ok: false, error: DEMO_MESSAGES.email };
+  }
   const limit = testLimiter.consume([{ key: `user:${ctx.user.id}` }]);
   if (!limit.allowed) return { ok: false, error: "Vänta en stund och försök igen." };
   const devices = await withUserDb((tx) =>

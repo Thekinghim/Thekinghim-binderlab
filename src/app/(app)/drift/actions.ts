@@ -26,6 +26,7 @@ import {
   type SubscriptionInput,
 } from "@/server/alerts/subscriptions";
 import { ALL_ROLES, OPERATOR_ROLES, requireContextRole } from "@/server/data/core";
+import { DEMO_MESSAGES, isDemoFor } from "@/server/demo/guard";
 import { dispatchDelivery, type Channel, type ChannelResult } from "@/server/notify";
 import { isAllowedPushEndpoint } from "@/server/notify/push-endpoint";
 import { createRateLimiter } from "@/server/rate-limit";
@@ -224,6 +225,9 @@ export async function sendTestAlert(): Promise<{
   error?: string;
 }> {
   const ctx = await requireContextRole(ALL_ROLES);
+  if (await isDemoFor({ userId: ctx.user.id, email: ctx.user.email }, ctx.organization.id)) {
+    return { ok: false, results: [], error: DEMO_MESSAGES.email };
+  }
   const limit = testAlertLimiter.consume([
     { key: `user:${ctx.user.id}` },
     { key: `org:${ctx.organization.id}`, limit: 20 },

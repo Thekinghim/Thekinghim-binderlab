@@ -171,3 +171,29 @@ En körning tar ungefär 1,5 minut lokalt, varav importen av de tio månadsfiler
 - Ingen månad är stängd (`period_closes`). Det gör att demon går att återställa och visa ändringar fritt.
 - Inga rapporter eller PDF:er är genererade. Mottagarna finns, och en rapport kan skapas live under Rapporter.
 - Kontrakten saknar avtalsfil (PDF).
+
+## Demo för kunder (från sajten)
+
+Ägaren i en riktig organisation kan visa hela panelen för en presumtiv kund utan att något
+eget syns: **Inställningar → Demo för kunder**, skriv kundens e-post och tryck **Skapa demo och
+bjud in**. Ingen databasåtkomst behövs; allt körs i appens server actions.
+
+- Varje kund får en egen organisation (`organizations.is_demo = true`, slug `kunddemo-…`) med
+  samma påhittade data som ovan, men flyttad så att perioden slutar nu (svensk tid). Samma
+  datum och timme ger samma demo (`src/seed/demo/calendar.ts`).
+- Demon ägs av tre platshållarkonton (t.ex. `elin.strand.1a2b3c4d@nordljus.invalid`, slumpat lösenord som aldrig sparas)
+  med namnen ur katalogen. Ingen riktig användare kan bli medlem (BL091). Kunden bjuds in som
+  ägare med den vanliga inbjudan och kan vara ett helt nytt konto. Kunden kan inte ta sig ur
+  demon genom att skapa en egen organisation, inte heller via RPC:n direkt (BL093).
+- Kopplingen till den riktiga organisationen finns bara i `private.customer_demos`, som kunden
+  inte kan läsa. Ägaren ser listan via `list_customer_demos`.
+- Demon byggs i steg (ca 20–35 s totalt lokalt); sidan anropar servern tills den är klar och
+  visar hur långt den kommit. Varje anrop håller sig under ca 90 s (Vercel tillåter 300 s).
+- Inget går ut från en demo: inbjudningar (även butiksportalen) nekas (BL090), Awish och andra
+  kopplingar nekas (BL092 och i Datakällor), och larm, rapportutskick, testnotiser,
+  bokföring, AI-cron, månadsutkast, avräkningar och kampanjpublicering hoppar över demos.
+  Assistenten fungerar, med samma tak och gränser.
+- **Bjud in igen** skickar en ny länk, **Återställ** bygger en ny demo med färsk data (kunden är
+  kvar som ägare) och **Ta bort** raderar demon, platshållarna och kundens demokonto.
+
+Tester: `test/db/demo-kunder.test.ts`.

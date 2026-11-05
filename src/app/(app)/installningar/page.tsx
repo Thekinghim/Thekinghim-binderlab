@@ -8,9 +8,11 @@ import { StateMessage } from "@/components/ui/state-message";
 import { EN_DASH, NBSP, formatDate, formatInt } from "@/lib/format";
 import { operatorGaps, operatorParty } from "@/server/contracts/operator";
 import { requireRoute } from "@/server/data/core";
+import { listCustomerDemosFor } from "@/server/demo/customer-demos";
 import { requireUser } from "@/server/session";
 
 import { CompanyForm } from "./_components/company-form";
+import { CustomerDemos, type CustomerDemoRow } from "./_components/customer-demos";
 import { MerHead } from "./_components/mer-head";
 import { OwnerSharesForm } from "./_components/owner-shares-form";
 import { SettingsForm } from "./_components/settings-form";
@@ -28,6 +30,9 @@ import {
 } from "./_lib/model";
 
 export const metadata: Metadata = { title: "Inställningar" };
+
+// Demo för kunder byggs i steg av server actions på den här sidan (högst ca 90 s per steg).
+export const maxDuration = 300;
 
 function dayDate(date: string): Date {
   const [y, m, d] = date.split("-").map(Number) as [number, number, number];
@@ -64,6 +69,19 @@ export default async function SettingsPage() {
   const currentGroup = groups.find((g) => g.current) ?? groups.find((g) => !g.future);
   const isOwner = data.role === "owner";
   const company = data.company;
+  // Demo för kunder: bara ägaren i en riktig organisation (null annars, sektionen syns inte).
+  const demoList = isOwner ? await listCustomerDemosFor(user, ctx.organization.id) : null;
+  const customerDemos: CustomerDemoRow[] | null = demoList?.ok
+    ? (demoList.data ?? []).map((d) => ({
+        id: d.id,
+        customerEmail: d.customerEmail,
+        status: d.status,
+        step: d.step,
+        steps: d.steps,
+        createdLabel: when(d.createdAt),
+        accepted: d.accepted,
+      }))
+    : null;
   const companyGaps = operatorGaps(operatorParty(ctx.organization.name, company));
 
   return (
@@ -249,9 +267,34 @@ export default async function SettingsPage() {
         </MobileFold>
       </section>
 
+      {customerDemos ? (
+        <section
+          id="demo"
+          aria-labelledby="demo-rubrik"
+          className="rise flex scroll-mt-28 flex-col gap-8 max-md:gap-3"
+          style={{ "--i": 5 } as React.CSSProperties}
+        >
+          <SectionHeader
+            id="demo-rubrik"
+            size="md"
+            title="Demo för kunder."
+            aside={
+              customerDemos.length === 0
+                ? "Visa panelen utan era siffror."
+                : `${formatInt(customerDemos.length)} st.`
+            }
+          />
+          <MobileFold summary="Visa" meta={formatInt(customerDemos.length)}>
+            <div className="max-w-3xl">
+              <CustomerDemos demos={customerDemos} />
+            </div>
+          </MobileFold>
+        </section>
+      ) : null}
+
       <details
         className="rise rounded-md border border-line bg-surface p-4 md:p-5"
-        style={{ "--i": 5 } as React.CSSProperties}
+        style={{ "--i": 6 } as React.CSSProperties}
       >
         <summary className="cursor-pointer list-none">
           <SectionHeader
@@ -304,7 +347,7 @@ export default async function SettingsPage() {
 
       <details
         className="rise rounded-md border border-line bg-surface p-4 md:p-5"
-        style={{ "--i": 6 } as React.CSSProperties}
+        style={{ "--i": 7 } as React.CSSProperties}
       >
         <summary className="cursor-pointer list-none">
           <SectionHeader

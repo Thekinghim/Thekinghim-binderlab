@@ -31,6 +31,7 @@ import {
   type AwishWebLoginTest,
 } from "@/server/awish/manage";
 import type { AwishConnectionTest } from "@/server/awish/sync";
+import { DEMO_MESSAGES, isDemoFor } from "@/server/demo/guard";
 import { dbErrorMessage, safeErrorForLog } from "@/server/errors";
 import { AuthorizationError } from "@/server/access";
 import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/data/core";
@@ -81,6 +82,18 @@ function failure(error: unknown): { ok: false; error: string } {
 async function operator() {
   await requireContextRole(OPERATOR_ROLES);
   return currentViewer();
+}
+
+/**
+ * Ägare/admin och inte en demo: i en demo (Demo för kunder) görs inga anrop till Awish
+ * med demons data. Databasen nekar också Awish-källor i en demo (BL092).
+ */
+async function awishOperator() {
+  const viewer = await operator();
+  if (await isDemoFor(viewer.user, viewer.organization.id)) {
+    throw new AwishSetupError(DEMO_MESSAGES.integrations);
+  }
+  return viewer;
 }
 
 /** Mellanlagret (databasen). Filstoret behövs bara vid import. */
@@ -211,7 +224,7 @@ export async function discardUpload(raw: unknown): Promise<ActionResult> {
 /** Sparar AppId, AppSecret och AppKey (tomt fält = behåll det sparade). */
 export async function saveAwishCredentials(raw: unknown): Promise<ActionResult> {
   try {
-    const viewer = await operator();
+    const viewer = await awishOperator();
     const input = saveCredentialsSchema.parse(raw);
     await saveAwishCredentialsFor(viewer, input);
     revalidateAppData();
@@ -224,7 +237,7 @@ export async function saveAwishCredentials(raw: unknown): Promise<ActionResult> 
 /** Testa anslutningen: Merchant, Machines och Orders (en order). Importerar inget. */
 export async function testAwishConnection(): Promise<ActionResult<AwishConnectionTest>> {
   try {
-    const viewer = await operator();
+    const viewer = await awishOperator();
     return { ok: true, data: await testAwishConnectionFor(viewer) };
   } catch (error) {
     return failure(error);
@@ -236,7 +249,7 @@ export async function syncAwishNow(): Promise<
   ActionResult<{ newOrders: number; fetched: number; historyDone: boolean; message: string | null }>
 > {
   try {
-    const viewer = await operator();
+    const viewer = await awishOperator();
     const r = await syncAwishNowFor(viewer);
     revalidateAppData();
     if (!r.ok) return { ok: false, error: r.message ?? "Synken misslyckades." };
@@ -261,7 +274,7 @@ export async function syncAwishNow(): Promise<
 /** Sparar Awish-inloggningen (e-post och lösenord). Tomt lösenord = behåll det sparade. */
 export async function saveAwishWebCredentials(raw: unknown): Promise<ActionResult> {
   try {
-    const viewer = await operator();
+    const viewer = await awishOperator();
     const input = saveWebCredentialsSchema.parse(raw);
     await saveAwishWebCredentialsFor(viewer, input);
     revalidateAppData();
@@ -274,7 +287,7 @@ export async function saveAwishWebCredentials(raw: unknown): Promise<ActionResul
 /** Testa att Awish-inloggningen fungerar (loggar bara in). */
 export async function testAwishWebLogin(): Promise<ActionResult<AwishWebLoginTest>> {
   try {
-    const viewer = await operator();
+    const viewer = await awishOperator();
     return { ok: true, data: await testAwishWebLoginFor(viewer) };
   } catch (error) {
     return failure(error);
@@ -286,7 +299,7 @@ export async function setAwishWebPush(
   enabled: unknown,
 ): Promise<ActionResult<{ enabled: boolean }>> {
   try {
-    const viewer = await operator();
+    const viewer = await awishOperator();
     const r = await setAwishWebPushFor(viewer, enabled === true);
     revalidateAppData();
     return { ok: true, data: r };
@@ -298,7 +311,7 @@ export async function setAwishWebPush(
 /** Provkör push till Awish: läser och räknar, skriver ingenting. */
 export async function previewAwishPush(): Promise<ActionResult<AwishPushPreview>> {
   try {
-    const viewer = await operator();
+    const viewer = await awishOperator();
     return { ok: true, data: await previewAwishPushFor(viewer) };
   } catch (error) {
     return failure(error);
@@ -308,7 +321,7 @@ export async function previewAwishPush(): Promise<ActionResult<AwishPushPreview>
 /** Skicka till Awish nu: höjer facken i Awish till Binderlabs antal. */
 export async function pushAwishNow(): Promise<ActionResult<{ message: string }>> {
   try {
-    const viewer = await operator();
+    const viewer = await awishOperator();
     const r = await pushAwishNowFor(viewer);
     if (!r.ok) return { ok: false, error: r.message };
     return { ok: true, data: { message: r.message } };

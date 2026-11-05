@@ -249,7 +249,8 @@ export async function createMonthlySettlements(
     await db
       .select({ id: s.organizations.id, timezone: s.organizations.timezone })
       .from(s.organizations)
-      .where(isNull(s.organizations.archivedAt))
+      // Demos (Demo för kunder) får inga automatiska avräkningar.
+      .where(and(isNull(s.organizations.archivedAt), eq(s.organizations.isDemo, false)))
   ).filter((o) => !options.organizationIds || options.organizationIds.includes(o.id));
   const out: (SettlementRunResult & { refreshed: number })[] = [];
   for (const org of orgs) {

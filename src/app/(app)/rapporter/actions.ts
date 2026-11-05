@@ -14,6 +14,7 @@ import { z, ZodError } from "zod";
 
 import { AuthorizationError } from "@/server/access";
 import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/data/core";
+import { DEMO_MESSAGES, isDemoFor } from "@/server/demo/guard";
 import { dbErrorMessage } from "@/server/errors";
 import { MailError } from "@/server/mail/report-mailer";
 import { PdfError } from "@/server/pdf/render";
@@ -147,6 +148,9 @@ const sendSchema = z.object({
 export async function sendReport(raw: unknown): Promise<ActionResult<SendResult>> {
   try {
     const viewer = await operator();
+    if (await isDemoFor(viewer.user, viewer.organization.id)) {
+      return { ok: false, error: DEMO_MESSAGES.email };
+    }
     const input = sendSchema.parse(raw);
     const result = await sendReportFor(
       viewer,

@@ -9,7 +9,7 @@ export function inviteMail(acceptUrl: string): { subject: string; text: string }
       "",
       acceptUrl,
       "",
-      "Länken gäller i 7 dagar och kan bara användas en gång.",
+      "Länken gäller en begränsad tid och kan bara användas en gång.",
       "Om du inte väntade dig det här mejlet kan du bortse från det.",
     ].join("\n"),
   };

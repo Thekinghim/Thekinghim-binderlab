@@ -157,6 +157,8 @@ export const organizations = pgTable("organizations", {
   machineLimit: integer("machine_limit"),
   archivedAt: ts("archived_at"),
   ...stamps(),
+  /** Demoorganisation (20261108000000_demo_kunder.sql). Sätts bara av servern. */
+  isDemo: boolean("is_demo").notNull().default(false),
 });
 
 export const profiles = pgTable("profiles", {

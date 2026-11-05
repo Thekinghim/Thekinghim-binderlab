@@ -18,6 +18,7 @@ import { headlineOf } from "../_lib/headline";
 import { loadDatakallorFor } from "../_lib/service";
 import { currentViewer } from "../_lib/session";
 import { loadAwishPanelFor } from "@/server/awish/manage";
+import { DEMO_MESSAGES, isDemoFor } from "@/server/demo/guard";
 
 export const metadata: Metadata = { title: "Datakällor" };
 /** "Synka nu" och "Testa anslutningen" (server actions på sidan) anropar Awish. */
@@ -32,7 +33,11 @@ export const maxDuration = 60;
 export default async function DatakallorPage() {
   await requireRoute("datakallor");
   const viewer = await currentViewer();
-  const [data, awish] = await Promise.all([loadDatakallorFor(viewer), loadAwishPanelFor(viewer)]);
+  const [data, awish, demo] = await Promise.all([
+    loadDatakallorFor(viewer),
+    loadAwishPanelFor(viewer),
+    isDemoFor(viewer.user, viewer.organization.id),
+  ]);
   const headline = headlineOf(data);
   const fileSources = data.sources.filter((s) => s.acceptsFiles && !s.archived);
   const queuedOrders = data.queue.reduce((sum, q) => sum + q.pendingOrders, 0);
@@ -80,8 +85,17 @@ export default async function DatakallorPage() {
         className="rise flex flex-col gap-6"
         style={{ "--i": 2 } as CSSProperties}
       >
-        <SectionHeader id="awish" title="Awish." aside="Hämtas automatiskt." />
-        <AwishCard source={awish.source} timeZone={data.timeZone} now={data.now} />
+        <SectionHeader
+          id="awish"
+          title="Awish."
+          aside={demo ? "Avstängt i demon." : "Hämtas automatiskt."}
+        />
+        {demo ? (
+          // Demo för kunder: inga anrop till Awish med demons data (även spärrat på servern).
+          <p className="max-w-2xl text-base text-muted">{DEMO_MESSAGES.integrations}</p>
+        ) : (
+          <AwishCard source={awish.source} timeZone={data.timeZone} now={data.now} />
+        )}
       </section>
 
       <OpenOnHash id="ladda-upp" />

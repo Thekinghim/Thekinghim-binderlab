@@ -14,6 +14,7 @@
 import "server-only";
 
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 
 import { LocalFileStore, SupabaseFileStore, type FileStore } from "@/import/file-store";
 import { nextCookieJar } from "@/server/auth/next-cookies";
@@ -49,6 +50,23 @@ export async function importFileStore(env: Env = process.env): Promise<FileStore
       // Sessionen förnyas av proxyn; här skrivs inga cookies.
       setAll: () => {},
     },
+  });
+  return new SupabaseFileStore(client, IMPORTS_BUCKET);
+}
+
+/**
+ * Lagringen med systemnyckeln, för importer som servern gör utan någon medlem i
+ * organisationen (Demo för kunder: ägaren som skapar demon är inte medlem i den).
+ */
+export function systemImportFileStore(env: Env = process.env): FileStore {
+  if (importFileStoreKind(env) === "local") {
+    return new LocalFileStore();
+  }
+  if (!env.SUPABASE_URL || !env.SUPABASE_SECRET_KEY) {
+    throw new Error("SUPABASE_URL och SUPABASE_SECRET_KEY saknas: filen kan inte sparas.");
+  }
+  const client = createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
   return new SupabaseFileStore(client, IMPORTS_BUCKET);
 }

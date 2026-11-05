@@ -16,6 +16,8 @@
  *   också (completeEmailLink), se docs/miljoer.md.
  */
 
+import { randomBytes } from "node:crypto";
+
 import { createServerClient } from "@supabase/ssr";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { JWTVerifyGetKey } from "jose";
@@ -248,6 +250,27 @@ export class SupabaseAuthProvider implements AuthProvider {
       return "exists";
     }
     throw new Error(`Kontot kunde inte skapas (${error.code ?? error.status ?? "okänt"}).`);
+  }
+
+  async createSystemUser(email: string, fullName: string): Promise<string> {
+    const { data, error } = await this.adminClient().auth.admin.createUser({
+      email,
+      // Slumpat och kastat: kontot kan aldrig logga in.
+      password: randomBytes(32).toString("base64url"),
+      email_confirm: true,
+      user_metadata: { full_name: fullName },
+    });
+    if (error || !data.user) {
+      throw new Error(`Kontot kunde inte skapas (${error?.code ?? error?.status ?? "okänt"}).`);
+    }
+    return data.user.id;
+  }
+
+  async deleteUser(userId: string): Promise<void> {
+    const { error } = await this.adminClient().auth.admin.deleteUser(userId);
+    if (error && error.status !== 404) {
+      throw new Error(`Kontot kunde inte raderas (${error.code ?? error.status ?? "okänt"}).`);
+    }
   }
 
   async setPassword(password: string): Promise<void> {

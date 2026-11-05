@@ -65,6 +65,8 @@ const RPCS = [
   "lager_performers",
   // Lager (fas 7): sortimentets perioder per automat och titel, alla roller.
   "lager_slot_periods",
+  // Demo för kunder (20261108000000_demo_kunder.sql): ägarens lista, bara i en riktig organisation.
+  "list_customer_demos",
   "list_members",
   "merge_titles",
   "my_invitations",
@@ -573,6 +575,7 @@ describe("anon", () => {
       create_warehouse: sql`gen_random_uuid(), 'x'`,
       lager_performers: sql`gen_random_uuid()`,
       lager_slot_periods: sql`gen_random_uuid()`,
+      list_customer_demos: sql`gen_random_uuid()`,
       list_members: sql`gen_random_uuid()`,
       merge_titles: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid()`,
       my_invitations: sql``,

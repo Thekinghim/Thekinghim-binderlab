@@ -1,6 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { Metadata } from "next";
+import { hideInDemo } from "@/server/demo/pages";
 import { requireUser } from "@/server/session";
 
 import { DesignSystemPage } from "./design-system-page";
@@ -31,6 +32,8 @@ export default async function Page({
 }) {
   // Bara för inloggade (även proxyn kräver det).
   await requireUser();
+  // Internt: inte i en demo (Demo för kunder).
+  await hideInDemo();
   // Sidan läser periodvalet ur URL:en, så den renderas per begäran.
   await searchParams;
   const css = await readFile(path.join(root, "src/styles/tokens.css"), "utf8");

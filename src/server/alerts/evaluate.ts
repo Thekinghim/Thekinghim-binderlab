@@ -352,11 +352,11 @@ function failedSummary(orgId: string, message: string): EvaluationSummary {
   };
 }
 
-/** Alla organisationer som inte är arkiverade. */
+/** Alla organisationer som inte är arkiverade och inte är demos (Demo för kunder). */
 export async function activeOrganizations(db: Db): Promise<string[]> {
   const rows = await db
     .select({ id: s.organizations.id })
     .from(s.organizations)
-    .where(isNull(s.organizations.archivedAt));
+    .where(and(isNull(s.organizations.archivedAt), eq(s.organizations.isDemo, false)));
   return rows.map((r) => r.id);
 }

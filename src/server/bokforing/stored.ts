@@ -291,6 +291,7 @@ export async function runBokforingForAll(
       from public.organizations o
       left join public.bookkeeping_packages p on p.organization_id = o.id
       where o.archived_at is null
+        and not o.is_demo
         and exists (select 1 from public.orders x where x.organization_id = o.id)
         and (${only}::uuid[] is null or o.id = any (${only}::uuid[]))
       group by o.id, o.name, o.timezone

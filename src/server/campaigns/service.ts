@@ -482,6 +482,7 @@ export async function publishAllDueCampaigns(deps: {
         join public.campaigns c on c.organization_id = cm.organization_id and c.id = cm.campaign_id
         join public.organizations o on o.id = cm.organization_id
         where cm.status = 'scheduled' and c.stopped_at is null and o.archived_at is null
+          and not o.is_demo
           and c.starts_at <= ${tsParam(now)} and c.ends_at > ${tsParam(now)}`,
   );
   let shown = 0;

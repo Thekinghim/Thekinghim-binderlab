@@ -129,9 +129,17 @@ export async function deliverDue(
         }
       }
       const [org] = await tx
-        .select({ name: s.organizations.name, timezone: s.organizations.timezone })
+        .select({
+          name: s.organizations.name,
+          timezone: s.organizations.timezone,
+          isDemo: s.organizations.isDemo,
+        })
         .from(s.organizations)
         .where(eq(s.organizations.id, row.organizationId));
+      // Inget mejl, sms eller push från en demo (Demo för kunder).
+      if (org?.isDemo) {
+        return skip("Demo: inget skickas");
+      }
       const [sub] = await tx
         .select({
           channels: s.alertSubscriptions.channels,

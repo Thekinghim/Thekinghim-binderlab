@@ -35,19 +35,15 @@ import type { IsoDate } from "@/domain/types";
 
 import { stockholmToUtcMs, type SeedOrder } from "../orders";
 import { createRandom, type Random } from "../random";
+import { demoCatalog, type DemoCatalog } from "./calendar";
 import {
-  DEMO_BACKORDER,
   DEMO_FIRST_AWISH_ID,
   DEMO_FIRST_ORDER_NO,
-  DEMO_LAST_DAY_CUTOFF_HOUR,
-  DEMO_MACHINES,
   DEMO_PAYMENT_METHODS,
-  DEMO_PERIOD,
   DEMO_PURCHASING,
   DEMO_RANDOM_SEED,
   DEMO_STORES,
   DEMO_SUPPLIERS,
-  DEMO_TITLES,
   type DemoMachine,
   type DemoPlacement,
   type DemoTitle,
@@ -59,6 +55,8 @@ export interface DemoOptions {
   /** Skala på efterfrågan och kapacitet (1 = vanlig demo, DEMO_LARGE_SCALE = --stor). */
   scale?: number;
   seed?: number;
+  /** Katalogen för demons "nu" (calendar.ts). Standard: originalet, 2 nov 2026 kl. 12. */
+  catalog?: DemoCatalog;
 }
 
 export type DemoActor = "owner" | "refiller";
@@ -305,6 +303,11 @@ export function generateDemo(options: DemoOptions = {}): DemoGeneration {
   if (!(scale > 0) || !Number.isFinite(scale)) {
     throw new RangeError("Skalan måste vara > 0.");
   }
+  const cat = options.catalog ?? demoCatalog();
+  const DEMO_PERIOD = cat.period;
+  const DEMO_TITLES = cat.titles;
+  const DEMO_MACHINES = cat.machines;
+  const DEMO_BACKORDER = cat.backorder;
   const rng = createRandom(options.seed ?? DEMO_RANDOM_SEED);
   const clock = new DayClock();
   const days = eachDay(DEMO_PERIOD.start, DEMO_PERIOD.end);
@@ -348,7 +351,8 @@ export function generateDemo(options: DemoOptions = {}): DemoGeneration {
   }
 
   let poNumber = 0;
-  const nextPoKey = (): string => `IO-2026-${String(++poNumber).padStart(4, "0")}`;
+  const nextPoKey = (): string =>
+    `${cat.purchaseOrderPrefix}${String(++poNumber).padStart(4, "0")}`;
   const inTransit = (title: string): number =>
     purchaseOrders
       .filter((po) => po.status !== "received")
@@ -596,7 +600,10 @@ export function generateDemo(options: DemoOptions = {}): DemoGeneration {
 
     // 4. Försäljning.
     const growth = 1 + 0.02 * monthsElapsed(DEMO_PERIOD.start, date);
-    const dayPct = (WEEKDAY[weekday] ?? 100) * (SEASON[date.slice(5, 7)] ?? 100) * holidayPct(date);
+    // Veckodagen ur det verkliga datumet, säsong och lov ur berättelsens (calendar.ts).
+    const story = cat.storyDate(date);
+    const dayPct =
+      (WEEKDAY[weekday] ?? 100) * (SEASON[story.slice(5, 7)] ?? 100) * holidayPct(story);
     const weekend = weekday >= 6;
     DEMO_MACHINES.forEach((machine, machineIndex) => {
       const placement = placementOn(machine, date);
@@ -632,7 +639,7 @@ export function generateDemo(options: DemoOptions = {}): DemoGeneration {
       for (let i = 0; i < count; i++) {
         const hour = hours[rng.weighted(hourWeights)] ?? store.hours.first;
         const second = hour * 3600 + rng.int(3600);
-        if (date === lastDay && second >= DEMO_LAST_DAY_CUTOFF_HOUR * 3600) {
+        if (date === lastDay && second >= cat.cutoffHour * 3600) {
           continue;
         }
         seconds.push(second);

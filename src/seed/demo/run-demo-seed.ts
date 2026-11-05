@@ -40,32 +40,18 @@ import { hashPassword, verifyPassword } from "@/server/auth/password";
 
 import { SEED_LEDGER_ACCOUNTS } from "../catalog";
 import { stockholmToUtcMs } from "../orders";
+import { demoCatalog, type DemoCatalog } from "./calendar";
 import {
-  DEMO_ACTIVE_MACHINE_GOALS,
-  DEMO_AGREEMENTS,
-  DEMO_BASELINE_PERIOD,
-  DEMO_BASELINES,
   DEMO_BIG_RELEASE,
-  DEMO_CONTRACTS,
   DEMO_DATA_SOURCE_NAME,
-  DEMO_EFFECT,
   DEMO_EFFECT_SETTINGS,
-  DEMO_FIXED_COSTS,
-  DEMO_INCIDENTS,
   DEMO_LARGE_SCALE,
-  DEMO_LEADS,
-  DEMO_MACHINES,
-  DEMO_NOW,
   DEMO_ORGANIZATION,
   DEMO_ORGANIZATION_LARGE,
   DEMO_OWNER_SHARES,
-  DEMO_OWNER_SHARES_FROM,
   DEMO_PROFIT_GOAL_BP,
-  DEMO_RECIPIENTS,
-  DEMO_REVENUE_GOALS_KR,
   DEMO_STORES,
   DEMO_SUPPLIERS,
-  DEMO_TITLES,
   DEMO_USERS,
   type DemoUser,
 } from "./catalog";
@@ -85,6 +71,28 @@ export interface RunDemoSeedOptions {
   /** Var de importerade filerna sparas. Standard: importens LocalFileStore. */
   fileStore?: FileStore;
   log?: (message: string) => void;
+  /** Demons "nu" (calendar.ts). Standard: originalet, 2 nov 2026 kl. 12. */
+  catalog?: DemoCatalog;
+  /**
+   * Kunddemo (src/server/demo): organisationen och användarna finns redan (skapade av
+   * servern). Organisationen måste vara markerad som demo (organizations.is_demo);
+   * spärren i guard.ts gäller bara den lokala demon. Användarna skapas eller ändras inte.
+   */
+  existing?: {
+    organizationId: string;
+    users: { owner: DemoActor; viewer: DemoActor; refiller: DemoActor };
+  };
+  /**
+   * Sluta mellan stegen efter den här tidpunkten (Date.now()). Allt är idempotent, så
+   * nästa körning fortsätter där den här slutade (result.done = false).
+   */
+  deadlineMs?: number;
+}
+
+export interface DemoActor {
+  id: string;
+  email: string;
+  fullName: string;
 }
 
 export interface SeedSectionResult {
@@ -105,6 +113,10 @@ export interface RunDemoSeedResult {
   alerts: number | null;
   generated: { orders: number; revenueOre: number; lostSales: number; stockoutDays: number };
   totals: { orders: number; revenueOre: number };
+  /** false: tiden (deadlineMs) tog slut; kör igen för att fortsätta. */
+  done: boolean;
+  /** Steg klara av totalt (organisation och grunddata, en per månadsfil, lager, ärenden, larm). */
+  progress: { step: number; steps: number };
 }
 
 type Row = Record<string, unknown>;
@@ -125,11 +137,7 @@ async function single<T extends Row>(executor: Db | Tx, query: SQL, what: string
   return row;
 }
 
-interface Actor {
-  id: string;
-  email: string;
-  fullName: string;
-}
+type Actor = DemoActor;
 
 function claimsOf(actor: Actor): string {
   return JSON.stringify({
@@ -143,7 +151,12 @@ function claimsOf(actor: Actor): string {
 
 /** Byter till användaren (RLS) inne i en pågående transaktion. */
 async function becomeActor(tx: Tx, actor: Actor): Promise<void> {
-  await tx.execute(sql`select set_config('request.jwt.claims', ${claimsOf(actor)}, true)`);
+  // binderlab.demo_setup: seeden får bjuda in demons egna användare i en demo
+  // (20261108000000_demo_kunder.sql); appens egna flöden sätter aldrig flaggan.
+  await tx.execute(
+    sql`select set_config('request.jwt.claims', ${claimsOf(actor)}, true),
+               set_config('binderlab.demo_setup', 'on', true)`,
+  );
   await tx.execute(sql`set local role authenticated`);
 }
 
@@ -314,8 +327,25 @@ async function ensureMasterData(
   users: { owner: Actor; viewer: Actor | null },
   scale: number,
   sections: Sections,
+  cat: DemoCatalog,
 ): Promise<MasterData> {
   const org = sql`${orgId}::uuid`;
+  const {
+    contracts: DEMO_CONTRACTS,
+    agreements: DEMO_AGREEMENTS,
+    machines: DEMO_MACHINES,
+    titles: DEMO_TITLES,
+    now: DEMO_NOW,
+    ownerSharesFrom: DEMO_OWNER_SHARES_FROM,
+    revenueGoalsKr: DEMO_REVENUE_GOALS_KR,
+    activeMachineGoals: DEMO_ACTIVE_MACHINE_GOALS,
+    baselines: DEMO_BASELINES,
+    baselinePeriod: DEMO_BASELINE_PERIOD,
+    effect: DEMO_EFFECT,
+    fixedCosts: DEMO_FIXED_COSTS,
+    leads: DEMO_LEADS,
+    recipients: DEMO_RECIPIENTS,
+  } = cat;
 
   const settings = await rows(
     tx,
@@ -882,8 +912,11 @@ async function ensureStockAndPurchasing(
     // Inköpsorderraderna som databasägare utan triggrar: mottagningstriggern skulle
     // annars skapa inleveranser med dagens tid. Inleveranserna finns redan ovan med
     // rätt tid (gen.stockEvents, kind = receipt).
+    // binderlab.historic_seed (20261108000000_demo_kunder.sql) gör samma sak utan
+    // session_replication_role, som kräver superuser. Ägarens claims: created_by.
+    await becomeActor(tx, owner);
     await tx.execute(sql`reset role`);
-    await tx.execute(sql`set local session_replication_role = replica`);
+    await tx.execute(sql`select set_config('binderlab.historic_seed', 'on', true)`);
     const linePayload = gen.purchaseOrders.flatMap((po) =>
       po.lines.map((l) => ({
         purchase_order_id: poIds.get(po.key),
@@ -902,7 +935,7 @@ async function ensureStockAndPurchasing(
             purchase_order_id uuid, title_id uuid, quantity integer, unit_cost_ore bigint, received_quantity integer
           )`,
     );
-    await tx.execute(sql`set local session_replication_role = origin`);
+    await tx.execute(sql`select set_config('binderlab.historic_seed', 'off', true)`);
     return { stockEvents, purchaseOrders: poRows.length };
   });
 }
@@ -993,7 +1026,9 @@ async function ensureIncidents(
   master: MasterData,
   plans: ReturnType<typeof planIncidents>,
   sections: Sections,
+  cat: DemoCatalog,
 ): Promise<void> {
+  const DEMO_INCIDENTS = cat.incidents;
   const org = sql`${orgId}::uuid`;
   await asActor(db, owner, async (tx) => {
     const existing = await first<{ n: number }>(
@@ -1033,40 +1068,93 @@ async function ensureIncidents(
   });
 }
 
-/** Kör hela demoseeden. Se filhuvudet. */
+/** Kör hela demoseeden (eller så mycket som hinns före deadlineMs). Se filhuvudet. */
 export async function runDemoSeed(db: Db, options: RunDemoSeedOptions): Promise<RunDemoSeedResult> {
   const log = options.log ?? (() => {});
   const sections = new Sections();
   const large = options.large === true;
   const organization = large ? DEMO_ORGANIZATION_LARGE : DEMO_ORGANIZATION;
   const scale = large ? DEMO_LARGE_SCALE : 1;
+  const cat = options.catalog ?? demoCatalog();
+  const outOfTime = () => options.deadlineMs !== undefined && Date.now() > options.deadlineMs;
 
   const started = Date.now();
-  const gen = generateDemo({ scale });
+  const gen = generateDemo({ scale, catalog: cat });
   const revenueOre = gen.orders.reduce((n, o) => n + o.amountOre, 0);
   log(
     `Genererade ${gen.orders.length} order, ${gen.stockEvents.length} lagerhändelser och ` +
       `${gen.purchaseOrders.length} inköpsorder på ${Date.now() - started} ms.`,
   );
+  const orderFiles = demoOrderFiles(gen.orders, large ? "-stor" : "");
+  const steps = 1 + orderFiles.length + 3;
+  let step = 0;
 
-  const owner = await ensureUser(db, DEMO_USERS.owner, options, sections);
-  const viewer = await ensureUser(db, DEMO_USERS.viewer, options, sections);
-  const refiller = await ensureUser(db, DEMO_USERS.refiller, options, sections);
-  const orgId = await ensureOrganization(db, organization, owner, sections);
-  if (!large) {
+  let owner: Actor;
+  let viewer: Actor;
+  let refiller: Actor;
+  let orgId: string;
+  let slug: string;
+  if (options.existing) {
+    ({ owner, viewer, refiller } = options.existing.users);
+    orgId = options.existing.organizationId;
+    const org = await first<{ slug: string; is_demo: boolean }>(
+      db,
+      sql`select slug, is_demo from public.organizations where id = ${orgId}::uuid`,
+    );
+    if (!org?.is_demo) {
+      throw new Error("Vägrar: organisationen är inte en demo.");
+    }
+    slug = org.slug;
     await ensureMember(db, orgId, owner, viewer, "viewer", sections);
     await ensureMember(db, orgId, owner, refiller, "refiller", sections);
+  } else {
+    owner = await ensureUser(db, DEMO_USERS.owner, options, sections);
+    viewer = await ensureUser(db, DEMO_USERS.viewer, options, sections);
+    refiller = await ensureUser(db, DEMO_USERS.refiller, options, sections);
+    orgId = await ensureOrganization(db, organization, owner, sections);
+    slug = organization.slug;
+    // Demon är en demo: inget skickas ut från den (20261108000000_demo_kunder.sql).
+    await db.execute(
+      sql`update public.organizations set is_demo = true where id = ${orgId}::uuid and not is_demo`,
+    );
+    if (!large) {
+      await ensureMember(db, orgId, owner, viewer, "viewer", sections);
+      await ensureMember(db, orgId, owner, refiller, "refiller", sections);
+    }
   }
-  log(`Organisation ${organization.slug} (${orgId}), användare klara.`);
+  log(`Organisation ${slug} (${orgId}), användare klara.`);
 
   const master = await asActor(db, owner, (tx) =>
-    ensureMasterData(tx, orgId, { owner, viewer: large ? null : viewer }, scale, sections),
+    ensureMasterData(tx, orgId, { owner, viewer: large ? null : viewer }, scale, sections, cat),
   );
+  step++;
   log("Butiker, avtal, automater, titlar, priser, leverantörer, mål och släpp klara.");
+
+  const result = (done: boolean, extra?: Partial<RunDemoSeedResult>): RunDemoSeedResult => ({
+    organizationId: orgId,
+    slug,
+    dataSourceId: master.dataSourceId,
+    users: { owner: owner.id, viewer: viewer.id, refiller: refiller.id },
+    sections: sections.data,
+    imports,
+    stockEvents: 0,
+    purchaseOrders: 0,
+    alerts: null,
+    generated: {
+      orders: gen.orders.length,
+      revenueOre,
+      lostSales: gen.lostSales.length,
+      stockoutDays: gen.stockoutDays,
+    },
+    totals: { orders: 0, revenueOre: 0 },
+    done,
+    progress: { step, steps },
+    ...extra,
+  });
 
   // Orderna: en Awish-export per månad, importerad som ägaren.
   const imports: RunDemoSeedResult["imports"] = [];
-  for (const file of demoOrderFiles(gen.orders, large ? "-stor" : "")) {
+  for (const file of orderFiles) {
     const sha = sha256Hex(file.bytes);
     const previous = await first<{ id: string }>(
       db,
@@ -1077,10 +1165,14 @@ export async function runDemoSeed(db: Db, options: RunDemoSeedOptions): Promise<
     );
     if (previous) {
       imports.push({ month: file.month, file: file.name, orders: file.orders, imported: null });
+      step++;
       continue;
     }
+    if (outOfTime()) {
+      return result(false);
+    }
     const t0 = Date.now();
-    const result = await runImport(db, {
+    const imported = await runImport(db, {
       organizationId: orgId,
       dataSourceId: master.dataSourceId,
       actorUserId: owner.id,
@@ -1090,9 +1182,9 @@ export async function runDemoSeed(db: Db, options: RunDemoSeedOptions): Promise<
       fileStore: options.fileStore,
       rowLimit: 0,
     });
-    if (result.summary.error > 0 || result.summary.conflict > 0) {
+    if (imported.summary.error > 0 || imported.summary.conflict > 0) {
       throw new Error(
-        `Importen av ${file.name} gav ${result.summary.error} fel och ${result.summary.conflict} konflikter. ` +
+        `Importen av ${file.name} gav ${imported.summary.error} fel och ${imported.summary.conflict} konflikter. ` +
           "Har demogeneratorn ändrats sedan demon seedades? Kör npm run db:seed-demo -- --aterstall.",
       );
     }
@@ -1100,11 +1192,15 @@ export async function runDemoSeed(db: Db, options: RunDemoSeedOptions): Promise<
       month: file.month,
       file: file.name,
       orders: file.orders,
-      imported: result.summary.new,
+      imported: imported.summary.new,
     });
-    log(`Importerade ${file.name}: ${result.summary.new} nya order på ${Date.now() - t0} ms.`);
+    step++;
+    log(`Importerade ${file.name}: ${imported.summary.new} nya order på ${Date.now() - t0} ms.`);
   }
 
+  if (outOfTime()) {
+    return result(false);
+  }
   const stock = await ensureStockAndPurchasing(
     db,
     orgId,
@@ -1113,22 +1209,27 @@ export async function runDemoSeed(db: Db, options: RunDemoSeedOptions): Promise<
     master,
     gen,
   );
+  step++;
   log(
     stock.stockEvents > 0
       ? `${stock.stockEvents} lagerhändelser och ${stock.purchaseOrders} inköpsorder skrivna.`
       : "Lager och inköp är redan seedade.",
   );
 
-  const incidentPlans = planIncidents(gen.orders);
-  await ensureIncidents(db, orgId, owner, master, incidentPlans, sections);
+  if (outOfTime()) {
+    return result(false, { stockEvents: stock.stockEvents, purchaseOrders: stock.purchaseOrders });
+  }
+  const incidentPlans = planIncidents(gen.orders, cat);
+  await ensureIncidents(db, orgId, owner, master, incidentPlans, sections, cat);
   await ensurePayouts(
     db,
     orgId,
     owner,
     master,
-    demoPayoutFiles(gen.orders, incidentPlans),
+    demoPayoutFiles(gen.orders, incidentPlans, cat),
     sections,
   );
+  step++;
   log("Kundärenden och utbetalningar klara.");
 
   // Larmen: larmjobbet utvärderar organisationen en gång vid demons "nu".
@@ -1138,7 +1239,7 @@ export async function runDemoSeed(db: Db, options: RunDemoSeedOptions): Promise<
     sql`select count(*)::int as n from public.alert_runs where organization_id = ${orgId}::uuid`,
   );
   if ((runs?.n ?? 0) === 0) {
-    const now = new Date(stockholmToUtcMs(DEMO_NOW.date, DEMO_NOW.time));
+    const now = new Date(stockholmToUtcMs(cat.now.date, cat.now.time));
     const summary = await evaluateOrganization(db, orgId, now);
     if (summary.status === "failed") {
       throw new Error(`Larmjobbet misslyckades: ${summary.error ?? "okänt fel"}`);
@@ -1146,6 +1247,7 @@ export async function runDemoSeed(db: Db, options: RunDemoSeedOptions): Promise<
     alerts = summary.openIncidents;
     log(`Larmjobbet: ${summary.openIncidents} öppna larm.`);
   }
+  step++;
 
   const totals = await single<{ orders: number; revenue_ore: string }>(
     db,
@@ -1154,24 +1256,12 @@ export async function runDemoSeed(db: Db, options: RunDemoSeedOptions): Promise<
     "Summeringen",
   );
 
-  return {
-    organizationId: orgId,
-    slug: organization.slug,
-    dataSourceId: master.dataSourceId,
-    users: { owner: owner.id, viewer: viewer.id, refiller: refiller.id },
-    sections: sections.data,
-    imports,
+  return result(true, {
     stockEvents: stock.stockEvents,
     purchaseOrders: stock.purchaseOrders,
     alerts,
-    generated: {
-      orders: gen.orders.length,
-      revenueOre,
-      lostSales: gen.lostSales.length,
-      stockoutDays: gen.stockoutDays,
-    },
     totals: { orders: totals.orders, revenueOre: Number(totals.revenue_ore) },
-  };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1203,7 +1293,31 @@ export async function resetDemo(
   if (problem) {
     throw new Error(`Vägrar: ${problem}`);
   }
-  const org = { id: checked.id };
+  // En demo seedad före is_demo (20261108000000_demo_kunder.sql) markeras först; spärren
+  // ovan har redan godkänt den, och samma spärr körs igen med raden låst nedan.
+  await db.execute(
+    sql`update public.organizations set is_demo = true where id = ${checked.id}::uuid`,
+  );
+  const deleted = await purgeDemoOrganization(db, checked.id, async (tx) => {
+    const locked = await demoOrganizationFacts(tx, slug, true);
+    return locked && locked.id === checked.id
+      ? demoOrganizationProblem(locked, { forReset: true })
+      : `${slug} ändrades under återställningen.`;
+  });
+  return { organizationId: checked.id, deleted };
+}
+
+/**
+ * Raderar en demoorganisation och allt i den (gallringsläget, som databasägare). Vägrar om
+ * organisationen inte är markerad som demo (organizations.is_demo) eller om `recheck`, som körs
+ * med organisationsraden låst i raderingstransaktionen, säger nej. Returnerar antal rader per
+ * tabell.
+ */
+export async function purgeDemoOrganization(
+  db: Db,
+  orgId: string,
+  recheck: (tx: Tx) => Promise<string | null>,
+): Promise<Record<string, number>> {
   // Tabellerna med organization_id och beroendena mellan dem (barn före förälder).
   const tables = (
     await rows<{ table_name: string }>(
@@ -1241,33 +1355,29 @@ export async function resetDemo(
   const deleteOrder = [...order.filter((t) => t !== "audit_log"), "audit_log"];
   const deleted: Record<string, number> = {};
   await db.transaction(async (tx) => {
-    const locked = await demoOrganizationFacts(tx, slug, true);
-    const lockedProblem =
-      locked && locked.id === org.id
-        ? demoOrganizationProblem(locked, { forReset: true })
-        : `${slug} ändrades under återställningen.`;
-    if (lockedProblem) {
-      throw new Error(`Vägrar: ${lockedProblem}`);
+    const flagged = await first<{ is_demo: boolean }>(
+      tx,
+      sql`select is_demo from public.organizations where id = ${orgId}::uuid for update`,
+    );
+    if (!flagged) {
+      return;
     }
+    const problem = flagged.is_demo ? await recheck(tx) : "organisationen är inte en demo.";
+    if (problem) {
+      throw new Error(`Vägrar: ${problem}`);
+    }
+    // Gallringsläget: append-only-raderna och "minst en ägare" (för medlemskapen) gäller inte.
     await tx.execute(sql`select set_config('binderlab.allow_purge', 'on', true)`);
     for (const table of deleteOrder) {
-      // Spärren "minst en ägare" gäller även gallringen; medlemskapen raderas därför
-      // utan triggrar (alla rader som pekar på dem är redan borta).
-      if (table === "memberships") {
-        await tx.execute(sql`set local session_replication_role = replica`);
-      }
       const result = await rows(
         tx,
         sql`delete from ${sql.identifier("public")}.${sql.identifier(table)}
-            where organization_id = ${org.id}::uuid returning 1`,
+            where organization_id = ${orgId}::uuid returning 1`,
       );
-      if (table === "memberships") {
-        await tx.execute(sql`set local session_replication_role = origin`);
-      }
       if (result.length > 0) deleted[table] = result.length;
     }
-    await tx.execute(sql`delete from public.audit_log where organization_id = ${org.id}::uuid`);
-    await tx.execute(sql`delete from public.organizations where id = ${org.id}::uuid`);
+    await tx.execute(sql`delete from public.audit_log where organization_id = ${orgId}::uuid`);
+    await tx.execute(sql`delete from public.organizations where id = ${orgId}::uuid`);
   });
-  return { organizationId: org.id, deleted };
+  return deleted;
 }

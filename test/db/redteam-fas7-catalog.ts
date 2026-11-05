@@ -683,6 +683,26 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [sink(c)],
   },
+  // Inställningar → Demo för kunder: bara ägaren i en riktig organisation.
+  {
+    module: "@/app/(app)/installningar/_actions/demo",
+    name: "createCustomerDemo",
+    allowed: ["owner"],
+    args: () => [{ email: "kund-rodteam@example.se" }],
+  },
+  ...(
+    [
+      "continueCustomerDemo",
+      "resendCustomerDemoInvite",
+      "resetCustomerDemo",
+      "deleteCustomerDemo",
+    ] as const
+  ).map((name): ActionSpec => ({
+    module: "@/app/(app)/installningar/_actions/demo",
+    name,
+    allowed: ["owner"],
+    args: () => [{ demoId: "00000000-0000-4000-8000-000000000000" }],
+  })),
   // Lager
   {
     module: "@/app/(app)/lager/actions",

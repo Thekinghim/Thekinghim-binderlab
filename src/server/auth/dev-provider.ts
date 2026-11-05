@@ -15,6 +15,8 @@
  * från regeln att användarförfrågningar går via withUserDb.
  */
 
+import { randomBytes } from "node:crypto";
+
 import { sql } from "drizzle-orm";
 
 import type { Db } from "@/db/client";
@@ -197,6 +199,27 @@ export class DevAuthProvider implements AuthProvider {
       ),
     );
     return inserted.length > 0 ? "created" : "exists";
+  }
+
+  /** Konto som ingen kan logga in med: slumpat lösenord som kastas direkt. */
+  async createSystemUser(email: string, fullName: string): Promise<string> {
+    const encrypted = await hashPassword(randomBytes(32).toString("base64url"));
+    const meta = JSON.stringify({ full_name: fullName });
+    const inserted = Array.from(
+      await this.options.db().execute(
+        sql`insert into auth.users (email, encrypted_password, raw_user_meta_data)
+            values (${email.trim().toLowerCase()}, ${encrypted}, ${meta}::jsonb)
+            returning id`,
+      ),
+    )[0] as { id: string } | undefined;
+    if (!inserted) {
+      throw new Error("Kontot kunde inte skapas.");
+    }
+    return inserted.id;
+  }
+
+  async deleteUser(userId: string): Promise<void> {
+    await this.options.db().execute(sql`delete from auth.users where id = ${userId}::uuid`);
   }
 
   /** Byter lösenord för den inloggade användaren (byte under "Mitt konto"). */

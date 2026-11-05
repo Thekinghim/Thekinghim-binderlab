@@ -17,7 +17,7 @@ import type { IsoDate, IsoMonth } from "@/domain/types";
 
 import { formatAwishAmount, toAwishCsv } from "../awish-csv";
 import { stockholmToUtcMs, type SeedOrder } from "../orders";
-import { DEMO_INCIDENTS, DEMO_NOW, DEMO_PAYOUT } from "./catalog";
+import { demoCatalog, type DemoCatalog } from "./calendar";
 import { ordersByMonth } from "./generate";
 
 export interface DemoCsvFile {
@@ -58,8 +58,11 @@ export interface DemoIncidentPlan {
 }
 
 /** Ärendenas order och återbetalningar: första ordern i automaten från tidpunkten (inom 3 dygn). */
-export function planIncidents(orders: readonly SeedOrder[]): DemoIncidentPlan[] {
-  return DEMO_INCIDENTS.map((incident, index) => {
+export function planIncidents(
+  orders: readonly SeedOrder[],
+  catalog: DemoCatalog = demoCatalog(),
+): DemoIncidentPlan[] {
+  return catalog.incidents.map((incident, index) => {
     const startedAtMs = stockholmToUtcMs(incident.date, incident.time);
     const endedOn =
       incident.resolvedAfterDays === null
@@ -115,23 +118,25 @@ export interface DemoPayoutFiles {
 }
 
 /** De två order i avvikelsemånaden som inte betalas ut: den 14:e mitt på dagen. */
-function missingOrders(list: readonly SeedOrder[]): string[] {
-  const day = `${DEMO_PAYOUT.deviationMonth}-14`;
+function missingOrders(list: readonly SeedOrder[], payout: DemoCatalog["payout"]): string[] {
+  const day = `${payout.deviationMonth}-14`;
   const candidates = list.filter((o) => {
     const hour = Number(o.stockholmTime.slice(11, 13));
     return o.businessDate === day && hour >= 12 && hour <= 16;
   });
-  if (candidates.length < DEMO_PAYOUT.missingOrders) {
+  if (candidates.length < payout.missingOrders) {
     throw new Error("För få order för avvikelsen i utbetalningen.");
   }
-  return candidates.slice(0, DEMO_PAYOUT.missingOrders).map((o) => o.externalId);
+  return candidates.slice(0, payout.missingOrders).map((o) => o.externalId);
 }
 
 /** Utbetalningar för alla hela månader före demons "nu", betalda den 2:a nästa månad. */
 export function demoPayoutFiles(
   orders: readonly SeedOrder[],
   incidents: readonly DemoIncidentPlan[],
+  catalog: DemoCatalog = demoCatalog(),
 ): DemoPayoutFiles {
+  const DEMO_PAYOUT = catalog.payout;
   const byMonth = ordersByMonth(orders);
   const payouts: DemoPayout[] = [];
   const lineRows: string[] = [];
@@ -139,7 +144,7 @@ export function demoPayoutFiles(
     const periodStart = monthStart(month);
     const periodEnd = monthEnd(month);
     const paidOn = addDays(monthStart(addMonths(month, 1)), 1);
-    if (paidOn > DEMO_NOW.date) {
+    if (paidOn > catalog.now.date) {
       continue;
     }
     const salesOre = list.reduce((n, o) => n + o.amountOre, 0);
@@ -148,7 +153,7 @@ export function demoPayoutFiles(
         (i) => i.refundedOn !== null && i.refundedOn >= periodStart && i.refundedOn <= periodEnd,
       )
       .reduce((n, i) => n + i.refundedOre, 0);
-    const missing = month === DEMO_PAYOUT.deviationMonth ? missingOrders(list) : [];
+    const missing = month === DEMO_PAYOUT.deviationMonth ? missingOrders(list, DEMO_PAYOUT) : [];
     const missingSet = new Set(missing);
     const missingOre = list
       .filter((o) => missingSet.has(o.externalId))

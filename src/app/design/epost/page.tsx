@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { hideInDemo } from "@/server/demo/pages";
 import { requireUser } from "@/server/session";
 
 import { EpostPreview } from "./epost-preview";
@@ -13,6 +14,8 @@ export default async function Page({
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   await requireUser();
+  // Internt: inte i en demo (Demo för kunder).
+  await hideInDemo();
   const { typ } = await searchParams;
   return <EpostPreview initialKind={parseRecipientKind(typ)} />;
 }
