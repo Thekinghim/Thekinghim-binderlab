@@ -28,7 +28,7 @@ import {
   setContractStatusFor,
   type ContractStatus,
 } from "@/server/contracts";
-import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/data/core";
+import { OPERATOR_ROLES, requireContextRole, revalidateSettlementData } from "@/server/data/core";
 import { businessToday } from "@/server/data/core/loaders";
 import { dbErrorMessage, pgErrorOf } from "@/server/errors";
 import { getPdfRenderer, pdfStatus } from "@/server/pdf/render";
@@ -140,7 +140,7 @@ export async function saveContract(raw: unknown): Promise<ActionResult<{ id: str
     const viewer = await operator();
     const input = contractSchema.parse(raw);
     const data = await saveContractFor(viewer, input);
-    revalidateAppData();
+    await revalidateSettlementData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -153,7 +153,7 @@ export async function archiveContract(raw: unknown): Promise<ActionResult> {
     const viewer = await operator();
     const input = z.object({ id: z.uuid(), archived: z.boolean() }).parse(raw);
     await archiveContractFor(viewer, input);
-    revalidateAppData();
+    await revalidateSettlementData();
     return { ok: true, data: undefined };
   } catch (error) {
     return failure(error);
@@ -210,7 +210,7 @@ export async function createContract(
       fileStore: () => contractFileStore(),
     });
     if (!result.ok) return { ok: false, error: result.message, needsConfirm: true };
-    revalidateAppData();
+    await revalidateSettlementData();
     return {
       ok: true,
       data: { id: result.contractId, storeName: result.storeName, pdf: result.pdf },
@@ -228,7 +228,7 @@ export async function setContractStatus(raw: unknown): Promise<ActionResult> {
       .object({ id: z.uuid(), status: z.enum(["draft", "sent", "signed"]) })
       .parse(raw) as { id: string; status: ContractStatus };
     await setContractStatusFor(viewer, input);
-    revalidateAppData();
+    await revalidateSettlementData();
     return { ok: true, data: undefined };
   } catch (error) {
     return failure(error);
@@ -261,7 +261,7 @@ export async function uploadContractFile(
     if (form.get("signed") === "1") {
       await setContractStatusFor(viewer, { id: contractId, status: "signed" });
     }
-    revalidateAppData();
+    await revalidateSettlementData();
     return { ok: true, data: { fileName: file.name } };
   } catch (error) {
     return failure(error);
@@ -283,7 +283,7 @@ export async function createSigningLink(
       fileStore: await contractFileStore(),
     });
     const base = resolveAppBaseUrl(getServerEnv(), await headers());
-    revalidateAppData();
+    await revalidateSettlementData();
     return {
       ok: true,
       data: { url: `${base}/signera/${token}`, expiresAt: expiresAt.toISOString() },

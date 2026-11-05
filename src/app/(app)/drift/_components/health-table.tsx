@@ -159,7 +159,7 @@ function HealthList({ rows }: { rows: HealthRow[] }) {
             <div className="flex min-h-11 items-center gap-3">
               <Link
                 href={`/drift/automat/${r.machineId}`}
-                className="flex min-w-0 flex-1 flex-col rounded-xs hover:underline"
+                className="flex min-w-0 flex-1 flex-col rounded-xs hover:underline max-md:min-h-11 max-md:justify-center"
               >
                 <span className="meta text-fg">{r.code.replace("-", "‑")}</span>
                 <span className="truncate text-sm text-muted">{r.name}</span>
@@ -175,7 +175,7 @@ function HealthList({ rows }: { rows: HealthRow[] }) {
               </StatusTag>
             </div>
             <details className="group">
-              <summary className="meta flex min-h-8 cursor-pointer list-none items-center gap-1 text-subtle hover:text-fg [&::-webkit-details-marker]:hidden">
+              <summary className="meta flex min-h-8 cursor-pointer list-none items-center gap-1 text-subtle hover:text-fg max-md:min-h-11 [&::-webkit-details-marker]:hidden">
                 {/* I drift: bara ordet; annars underlaget, som är skälet till statusen. */}
                 <span className="line-clamp-2 min-w-0">
                   {r.status === "ok" ? "Underlag" : r.detail}

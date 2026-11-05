@@ -29,7 +29,7 @@ export function NeedList({ needs }: { needs: readonly MachineNeed[] }) {
           <Link
             href={n.action.href}
             className={cn(
-              "inline-flex min-h-10 items-center rounded-sm border px-4 text-md font-medium transition-colors",
+              "inline-flex min-h-10 items-center rounded-sm border px-4 text-md font-medium transition-colors max-md:min-h-11",
               n.status === "critical"
                 ? "border-inverse bg-inverse text-on-inverse hover:bg-inverse-hover"
                 : "border-line-strong text-fg hover:bg-hover",

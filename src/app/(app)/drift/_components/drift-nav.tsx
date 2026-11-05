@@ -26,7 +26,7 @@ export function DriftNav({ canRefill = false }: { canRefill?: boolean }) {
                   href={item.href}
                   aria-current={on ? "page" : undefined}
                   className={cn(
-                    "-mb-px inline-flex h-9 items-center border-b-2 px-3 text-sm transition-colors duration-fast",
+                    "-mb-px inline-flex h-9 items-center border-b-2 px-3 text-sm transition-colors duration-fast max-md:h-11",
                     on ? "border-fg text-fg" : "border-transparent text-muted hover:text-fg",
                   )}
                 >

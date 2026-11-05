@@ -64,7 +64,7 @@ export function Segmented<T extends string>({
       aria-label={label}
       className={cn(
         "inline-flex w-fit max-w-full [scrollbar-width:none] divide-x divide-line-strong overflow-x-auto rounded-sm border border-line-strong",
-        size === "sm" ? "h-7" : "h-8",
+        size === "sm" ? "h-7 max-md:h-[46px]" : "h-8 max-md:h-[46px]",
         className,
       )}
     >

@@ -98,7 +98,7 @@ export function Topbar({
         <div className="flex h-14 items-center gap-2 px-4 md:gap-3 md:px-6">
           <Link
             href={homeHref}
-            className="shrink-0 rounded-xs lg:hidden"
+            className="relative shrink-0 rounded-xs before:absolute before:-inset-3.5 before:content-[''] lg:hidden"
             aria-label="Binderlab, till startsidan"
           >
             <Logo withWordmark={false} />

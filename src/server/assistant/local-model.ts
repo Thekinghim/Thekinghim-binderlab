@@ -128,6 +128,7 @@ export function chooseTool(
       input: {
         ...period,
         ...(has(/forlust/) ? { visa: "forlust" } : has(/saknar/) ? { visa: "saknar_pris" } : {}),
+        ...(has(/andel|var del/) ? { visa_andel: true } : {}),
       },
     },
     has(/timme|dygnet|klockan|pa kvallen|veckodag/) && {

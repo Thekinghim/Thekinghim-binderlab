@@ -19,6 +19,7 @@ import { resolveAppBaseUrl } from "@/server/request-info";
 import { syncAllAwishSources } from "@/server/awish/sync";
 import { publishAllDueCampaigns } from "@/server/campaigns/service";
 import { CRON_JOBS, withCronMonitor } from "@/server/monitoring/cron-monitor";
+import { invalidateUnpaidSettlements } from "@/server/settlements/cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,6 +70,12 @@ export async function GET(request: Request): Promise<Response> {
     // Även när orderna misslyckades: anslutningen sparas före orderna (sync.ts).
     result.sources.filter((s) => s.skipped === null).map((s) => s.organizationId),
   );
+  // Nya order ändrar obetalda avräkningar: menyns räknare, Hem och Att göra räknar om dem.
+  for (const org of new Set(
+    result.sources.filter((s) => (s.summary?.new ?? 0) > 0).map((s) => s.organizationId),
+  )) {
+    invalidateUnpaidSettlements(org);
+  }
   // Kampanjer med en senare start som användaren redan har bekräftat (Kampanjer): de vars
   // starttid har passerat skickas till Awish nu. Ett fel här stoppar inte synken.
   const campaigns = await publishAllDueCampaigns({ db: getServiceDb() }).catch((error: unknown) => {

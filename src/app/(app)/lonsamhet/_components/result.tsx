@@ -21,7 +21,7 @@ function fixedDetail(sharedOre: number, directOre: number): string {
 }
 
 const LINK =
-  "meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-muted underline-offset-4 transition-colors hover:text-fg hover:underline";
+  "meta inline-flex min-h-7 items-center max-md:min-h-11 gap-1.5 rounded-xs text-muted underline-offset-4 transition-colors hover:text-fg hover:underline";
 
 function Line({
   label,
