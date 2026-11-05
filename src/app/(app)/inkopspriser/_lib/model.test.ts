@@ -26,8 +26,17 @@ import {
 const NBSP = " ";
 const DATES = { asOf: "2026-11-01", today: "2026-11-02" };
 
+/** En rad utan butiksandel (före andel = vår del) om inget annat anges. */
 function row(over: Partial<TitleRow>): TitleRow {
+  const left = "leftOre" in over ? (over.leftOre ?? null) : 5_000;
+  const afterRent = "leftAfterRentOre" in over ? (over.leftAfterRentOre ?? null) : 4_700;
   return {
+    leftBeforeOre: left,
+    storeShareOre: left === null ? null : 0,
+    marginBeforeBp: "marginBp" in over ? (over.marginBp ?? null) : 3_333,
+    marginBeforeShare:
+      "marginBp" in over ? (over.marginBp == null ? null : over.marginBp / 10_000) : 0.3333,
+    leftBeforeAfterRentOre: afterRent,
     id: "t",
     name: "Titel",
     series: null,

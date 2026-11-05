@@ -1,17 +1,25 @@
 import type { Metadata } from "next";
 import { AiPageLine } from "@/components/assistant/panel-context";
 import type React from "react";
+import { Suspense } from "react";
 import Link from "next/link";
 
-import { describePeriod, toURLSearchParams, wallClockIn } from "@/components/shell/period-state";
+import {
+  describePeriod,
+  parseStoreShareView,
+  toURLSearchParams,
+  wallClockIn,
+} from "@/components/shell/period-state";
+import { StoreShareToggle } from "@/components/shell/store-share-toggle";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
-import { priceHistory, profitability, titleEconomics, type PurchasePrice } from "@/domain";
+import { priceHistory, profitability, type PurchasePrice } from "@/domain";
 import { formatDate, formatInt } from "@/lib/format";
 import { ALL_COST_LINES } from "@/lib/cost-lines";
 import { loadDomainInput, loadPeriod, requireRoute } from "@/server/data/core";
 import { requireUser } from "@/server/session";
 
+import { MobileMore } from "../_mobil/mobile-more";
 import { PageHead } from "../vart-lager/_components/page-head";
 import { TodoList } from "../vart-lager/_components/todo-list";
 import { OwnProductToggle } from "./_components/own-product-toggle";
@@ -19,8 +27,9 @@ import { PriceForm } from "./_components/price-form";
 import { PriceHistory } from "./_components/price-history";
 import { PriceLog } from "./_components/price-log";
 import { ScrollIntoView } from "./_components/scroll-into-view";
-import { TitleTable } from "./_components/title-table";
+import { TitleTable, type StoreShareColumns } from "./_components/title-table";
 import { loadPricePageFor, loadTitleDetailFor } from "./_lib/data";
+import { currentPriceEconomics } from "./_lib/price-economics";
 import {
   costLabel,
   PRICE_EDITOR_ID,
@@ -34,6 +43,24 @@ import {
 } from "./_lib/model";
 
 export const metadata: Metadata = { title: "Inköpspriser" };
+
+/** Kolumnrubriken för andelen och vem den gäller: vald butik, vald automat eller alla. */
+function shareScope(
+  scope: { storeId: string | null; machineId: string | null },
+  stores: ReadonlyArray<{ id: string; name: string }>,
+  machines: ReadonlyArray<{ id: string; name: string; code?: string | null }>,
+): StoreShareColumns {
+  if (scope.storeId) {
+    const store = stores.find((s) => s.id === scope.storeId);
+    return { header: "Butikens andel", scope: store?.name ?? "vald butik" };
+  }
+  if (scope.machineId) {
+    const m = machines.find((x) => x.id === scope.machineId);
+    const name = m ? m.code || m.name : null;
+    return { header: "Butikens andel", scope: name ? `automat ${name}` : "vald automat" };
+  }
+  return { header: "Butikernas andel", scope: "alla butiker" };
+}
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -63,13 +90,22 @@ export default async function PurchasePricesPage({
   const today = ctx.today;
   const periodLabel = describePeriod(period.resolved).rangeLabel;
   const activeTitleIds = input.titles.filter((t) => !t.archived).map((t) => t.id);
-  const economics = titleEconomics({ ...input.current, titleIds: activeTitleIds });
+  const economics = currentPriceEconomics({ ...input.current, titleIds: activeTitleIds });
   const unpriced = profitability(input.current, "title").unpriced;
   const allRows = titleRows(economics, input.titles, unpriced.byTitle);
   const onlyMissing = one(sp.saknar) === "pris";
   const rows = onlyMissing
     ? allRows.filter((r) => r.status === "missing" || r.unpricedOrders > 0)
     : allRows;
+  // Ägarens regel: hela beloppet (före butikens andel) som standard. Andelen och vår del
+  // visas med vald butik eller automat, eller med "Visa butikernas andel" (?andel=1) när
+  // någon titel har en andel.
+  const filtered = Boolean(period.scope.storeId || period.scope.machineId);
+  const anyShare = allRows.some((r) => (r.storeShareOre ?? 0) !== 0);
+  const showShare = filtered || (parseStoreShareView(sp) && anyShare);
+  const shareColumns: StoreShareColumns | null = showShare
+    ? shareScope(period.scope, input.stores, input.machines)
+    : null;
   const dates = { asOf: input.current.period.end, today: ctx.today };
   const headline = pageHeadline(allRows, dates);
   const signalIds = signalTitleIds(rows);
@@ -114,7 +150,9 @@ export default async function PurchasePricesPage({
         )
       : [];
   const log = detail ? priceLog(detail.events, data.actorNames) : [];
-  const titleHead = selectedTitle ? titleHeadline(selectedRow, selectedTitle.name, today) : null;
+  const titleHead = selectedTitle
+    ? titleHeadline(selectedRow, selectedTitle.name, today, shareColumns?.header ?? null)
+    : null;
   const own = selectedTitle?.ownProduct === true;
   // Egen produkt: priset är kostnaden för innehållet, inte ett inköp.
   const titleAside =
@@ -143,7 +181,26 @@ export default async function PurchasePricesPage({
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-8 pb-16 md:gap-16 md:px-8 md:pt-12">
       <div className="flex flex-col gap-6">
-        <PageHead eyebrow="Inköpspriser" title={headline.title} aside={headline.aside} />
+        <div className="relative">
+          <PageHead
+            eyebrow="Inköpspriser"
+            title={headline.title}
+            aside={headline.aside}
+            actions={
+              // Vald butik: andelen visas alltid, knappen behövs inte. Utan andel: ingen knapp.
+              filtered || !anyShare ? undefined : (
+                <MobileMore
+                  label="Fler val för inköpspriser"
+                  className="max-md:absolute max-md:-top-2 max-md:-right-2"
+                >
+                  <Suspense fallback={null}>
+                    <StoreShareToggle userKey={ctx.user.id} menuItem />
+                  </Suspense>
+                </MobileMore>
+              )
+            }
+          />
+        </div>
         <TodoList items={todos} done="Alla titlar har pris." moreHref={undefined} />
         <dl
           className="rise flex flex-wrap gap-x-8 gap-y-2"
@@ -172,9 +229,17 @@ export default async function PurchasePricesPage({
         style={{ "--i": 1 } as React.CSSProperties}
       >
         <div className="flex items-baseline justify-between gap-4">
-          <h2 id="per-titel" className="label text-subtle">
-            Per titel · {periodLabel}
-          </h2>
+          <div className="flex min-w-0 flex-col gap-1">
+            <h2 id="per-titel" className="label text-subtle">
+              Per titel · {periodLabel}
+            </h2>
+            {/* Vem andelen gäller syns vid tabellen (beskrivningen läses bara av skärmläsare). */}
+            {shareColumns ? (
+              <p className="meta text-subtle">
+                {shareColumns.header} och vår del: {shareColumns.scope}
+              </p>
+            ) : null}
+          </div>
           {onlyMissing ? (
             <Link
               href={showAllHref}
@@ -203,6 +268,10 @@ export default async function PurchasePricesPage({
             periodLabel={periodLabel}
             criticalIds={signalIds}
             rent={(input.costLines ?? ALL_COST_LINES).rent}
+            share={shareColumns}
+            note={
+              anyShare && !shareColumns ? "Kvar per order är före butikernas andel." : undefined
+            }
           />
         )}
       </section>
@@ -250,6 +319,17 @@ export default async function PurchasePricesPage({
                   closedMonths={data.closedMonths}
                   today={today}
                   label={costLabel(own)}
+                  current={
+                    selectedRow
+                      ? {
+                          leftBeforeOre: selectedRow.leftBeforeOre,
+                          storeShareOre: selectedRow.storeShareOre,
+                          leftOre: selectedRow.leftOre,
+                        }
+                      : null
+                  }
+                  query={baseQuery}
+                  showShare={shareColumns?.header ?? null}
                 />
               ) : (
                 <StateMessage kind="denied" compact message="Gäller från datumet." />

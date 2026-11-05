@@ -7,14 +7,16 @@ import { useCallback, useMemo } from "react";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { StatusTag, type Status } from "@/components/ui/status-tag";
 import { cn } from "@/lib/cn";
-import { MISSING, formatInt, formatKronor, formatPercent } from "@/lib/format";
+import { MISSING, formatInt, formatKronor } from "@/lib/format";
 
 import {
   PRICE_EDITOR_ID,
-  STATUS_LABEL,
   STATUS_RANK,
   formatDayShort,
   kr,
+  marginText,
+  sentence,
+  statusLabel,
   type TitleRow,
   type TitleStatus,
 } from "../_lib/model";
@@ -39,7 +41,21 @@ function money(ore: number | null): string {
   return ore === null ? MISSING : formatKronor(kr(ore));
 }
 
-/** Tabellen över alla titlar: inköpspris, snittpris, vad som blir kvar och status. */
+/** Butikens andel som kolumner: rubriken och vem den gäller (vald butik eller alla). */
+export interface StoreShareColumns {
+  /** "Butikens andel" (en butik) eller "Butikernas andel". */
+  readonly header: string;
+  /** Vem andelen gäller, t.ex. "Sega gubben" eller "alla butiker" (tabellens beskrivning). */
+  readonly scope: string;
+}
+
+/**
+ * Tabellen över alla titlar: inköpspris, snittpris, vad som blir kvar och status.
+ *
+ * "Kvar per order" och "Kvar av pris" är hela beloppet, före butikens andel (ägarens regel:
+ * hela beloppet som standard). Med `share` (vald butik eller "Visa butikernas andel") visas
+ * också butikens andel och vår del per order. Statusen räknas på vår del (se statusLabel).
+ */
 export function TitleTable({
   rows,
   selectedId,
@@ -48,6 +64,8 @@ export function TitleTable({
   periodLabel,
   criticalIds,
   rent = true,
+  share = null,
+  note,
 }: {
   rows: readonly TitleRow[];
   selectedId: string | null;
@@ -65,6 +83,10 @@ export function TitleTable({
    * hyra är "Kvar per order" allt som blir kvar, och kolumnerna döljs.
    */
   rent?: boolean;
+  /** Visa butikens andel och vår del (null = dolda, standard). */
+  share?: StoreShareColumns | null;
+  /** Extra mening i tabellens beskrivning (t.ex. att kvar per order är före andelen). */
+  note?: string;
 }) {
   const router = useRouter();
   const criticalKey = criticalIds.join(",");
@@ -84,16 +106,50 @@ export function TitleTable({
         csv: (r) => (r.rentOre === null ? "" : kr(r.rentOre)),
         render: (r) => money(r.rentOre),
       },
-      {
-        key: "afterRent",
-        header: "Kvar efter hyra",
-        numeric: true,
-        hideOnMobile: true,
-        sortValue: (r) => r.leftAfterRentOre ?? Number.NaN,
-        csv: (r) => (r.leftAfterRentOre === null ? "" : kr(r.leftAfterRentOre)),
-        render: (r) => money(r.leftAfterRentOre),
-      },
+      // Samma grund som kolumnen bredvid: hela beloppet utan andel, vår del med andel.
+      share
+        ? {
+            key: "afterRent",
+            header: "Vår del efter hyra",
+            numeric: true,
+            hideOnMobile: true,
+            // Med andelens två kolumner blir tabellen för bred: finns i kolumnvalet.
+            defaultHidden: true,
+            sortValue: (r) => r.leftAfterRentOre ?? Number.NaN,
+            csv: (r) => (r.leftAfterRentOre === null ? "" : kr(r.leftAfterRentOre)),
+            render: (r) => money(r.leftAfterRentOre),
+          }
+        : {
+            key: "afterRent",
+            header: "Kvar efter hyra",
+            numeric: true,
+            hideOnMobile: true,
+            sortValue: (r) => r.leftBeforeAfterRentOre ?? Number.NaN,
+            csv: (r) => (r.leftBeforeAfterRentOre === null ? "" : kr(r.leftBeforeAfterRentOre)),
+            render: (r) => money(r.leftBeforeAfterRentOre),
+          },
     ];
+    const shareColumns: Column<TitleRow>[] = share
+      ? [
+          {
+            key: "storeShare",
+            header: share.header,
+            numeric: true,
+            hideOnMobile: true,
+            sortValue: (r) => r.storeShareOre ?? Number.NaN,
+            csv: (r) => (r.storeShareOre === null ? "" : kr(r.storeShareOre)),
+            render: (r) => money(r.storeShareOre),
+          },
+          {
+            key: "ours",
+            header: "Vår del",
+            numeric: true,
+            sortValue: (r) => r.leftOre ?? Number.NaN,
+            csv: (r) => (r.leftOre === null ? "" : kr(r.leftOre)),
+            render: (r) => money(r.leftOre),
+          },
+        ]
+      : [];
     return [
       {
         key: "name",
@@ -138,7 +194,7 @@ export function TitleTable({
               ) : null}
               {/* Under md står statusen på egen rad under namnet, så att beloppet ryms (design.md 5.1). */}
               <span className="mt-1.5 md:hidden">
-                <StatusTag status={statusOf(r)}>{STATUS_LABEL[r.status]}</StatusTag>
+                <StatusTag status={statusOf(r)}>{statusLabel(r)}</StatusTag>
               </span>
             </span>
           );
@@ -150,8 +206,8 @@ export function TitleTable({
         hideable: false,
         hideOnMobile: true,
         sortValue: (r) => STATUS_RANK[r.status],
-        csv: (r) => STATUS_LABEL[r.status],
-        render: (r) => <StatusTag status={statusOf(r)}>{STATUS_LABEL[r.status]}</StatusTag>,
+        csv: (r) => statusLabel(r),
+        render: (r) => <StatusTag status={statusOf(r)}>{statusLabel(r)}</StatusTag>,
       },
       {
         key: "cost",
@@ -203,19 +259,20 @@ export function TitleTable({
         key: "left",
         header: "Kvar per order",
         numeric: true,
-        sortValue: (r) => r.leftOre ?? Number.NaN,
-        csv: (r) => (r.leftOre === null ? "" : kr(r.leftOre)),
-        render: (r) => money(r.leftOre),
+        sortValue: (r) => r.leftBeforeOre ?? Number.NaN,
+        csv: (r) => (r.leftBeforeOre === null ? "" : kr(r.leftBeforeOre)),
+        render: (r) => money(r.leftBeforeOre),
       },
       {
         key: "margin",
         header: "Kvar av pris",
         numeric: true,
         hideOnMobile: true,
-        sortValue: (r) => r.marginBp ?? Number.NaN,
-        csv: (r) => (r.marginBp === null ? "" : r.marginBp / 10_000),
-        render: (r) => (r.marginBp === null ? MISSING : formatPercent(r.marginBp / 10_000)),
+        sortValue: (r) => r.marginBeforeBp ?? Number.NaN,
+        csv: (r) => (r.marginBeforeBp === null ? "" : r.marginBeforeBp / 10_000),
+        render: (r) => marginText(r),
       },
+      ...shareColumns,
       ...(rent ? rentColumns : []),
       {
         key: "orders",
@@ -227,7 +284,7 @@ export function TitleTable({
         render: (r) => formatInt(r.orders),
       },
     ];
-  }, [baseQuery, selectedId, today, critical, rent]);
+  }, [baseQuery, selectedId, today, critical, rent, share]);
 
   // Klick var som helst på raden öppnar titelns prisredigerare (namnet är länken för tangentbordet).
   const openRow = useCallback(
@@ -243,7 +300,14 @@ export function TitleTable({
       columns={columns}
       rows={rows}
       rowKey={(r) => r.id}
-      caption={`Inköpspris och kvar per order per titel, ${periodLabel}`}
+      caption={[
+        sentence(`Inköpspris och kvar per order per titel, ${periodLabel}`),
+        share
+          ? `Kvar per order är före andelen. ${share.header} och vår del: ${share.scope}.`
+          : note,
+      ]
+        .filter(Boolean)
+        .join(" ")}
       defaultSort={[
         { key: "status", dir: "asc" },
         { key: "orders", dir: "desc" },

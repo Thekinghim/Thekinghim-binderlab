@@ -103,3 +103,79 @@ describe("titleEconomics", () => {
     expect(rows.map((r) => r.titleId)).toEqual(["t-a", "t-b", "t-e", "t-c", "t-d", "t-f"]);
   });
 });
+
+describe("titleEconomics: före och efter butikens andel", () => {
+  /** Mystery pack premium: 299 kr, inköp 190 kr, kortavgift 2,5 % (7,48 kr), ingen moms. */
+  const mystery = (terms: Parameters<typeof agreement>[3]): TitleEconomicsInput => ({
+    orders: [order({ titleId: "t-mp", businessDate: "2026-11-02", amountOre: 29_900 })],
+    prices: [price("t-mp", 19_000, "2026-01-01")],
+    agreements: [agreement("s-sega", "2026-01-01", null, terms)],
+    placements: [placement("m-1", "s-sega", "2026-01-01", null)],
+    settings: { vatRateBp: 0, cardFeeBp: 250 },
+    period: { start: "2026-11-01", end: "2026-11-30" },
+  });
+
+  it("vinstdelning 50 %: 101,52 kr före andel, 50,76 kr till butiken, 50,76 kr vår del", () => {
+    const [r] = titleEconomics(
+      mystery({ commissionBp: 5000, commissionBase: "profit_after_costs" }),
+    );
+    expect(r).toMatchObject({
+      averagePriceOre: 29_900,
+      averageFeeOre: 748,
+      leftBeforeStoreOre: 10_152,
+      storeSharePerOrderOre: 5_076,
+      leftPerOrderOre: 5_076,
+      marginBeforeStoreBp: 3395, // 10 152 / 29 900
+      marginBp: 1698, // 5 076 / 29 900
+      lossWarning: false,
+      lossBeforeStoreWarning: false,
+    });
+  });
+
+  it("andel av intäkten (20 %): butiken får 59,80 kr, vår del 41,72 kr", () => {
+    const [r] = titleEconomics(mystery({ commissionBp: 2000 }));
+    expect(r).toMatchObject({
+      leftBeforeStoreOre: 10_152,
+      storeSharePerOrderOre: 5_980,
+      leftPerOrderOre: 4_172,
+    });
+  });
+
+  it("utan avtal: före andel = vår del, andelen är 0", () => {
+    const input = { ...mystery({}), agreements: [], placements: [] };
+    const [r] = titleEconomics(input);
+    expect(r!.leftBeforeStoreOre).toBe(10_152);
+    expect(r!.storeSharePerOrderOre).toBe(0);
+    expect(r!.leftPerOrderOre).toBe(10_152);
+    expect(r!.marginBeforeStoreBp).toBe(r!.marginBp);
+  });
+
+  it("förlust först efter butikens andel: lossWarning men inte lossBeforeStoreWarning", () => {
+    // Andel 40 % av intäkten = 119,60 kr > 101,52 kr kvar före andel.
+    const [r] = titleEconomics(mystery({ commissionBp: 4000 }));
+    expect(r).toMatchObject({
+      leftBeforeStoreOre: 10_152,
+      storeSharePerOrderOre: 11_960,
+      leftPerOrderOre: -1_808,
+      lossWarning: true,
+      lossBeforeStoreWarning: false,
+    });
+  });
+
+  it("före andel − andel = vår del, högst 1 öre ifrån (avrundning)", () => {
+    for (const r of titleEconomics(input)) {
+      if (r.leftPerOrderOre === null) {
+        expect(r.leftBeforeStoreOre).toBeNull();
+        expect(r.storeSharePerOrderOre).toBeNull();
+        continue;
+      }
+      const diff = r.leftBeforeStoreOre! - r.storeSharePerOrderOre! - r.leftPerOrderOre;
+      expect(Math.abs(diff)).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(
+          r.leftBeforeStoreAfterRentOre! - r.storeSharePerOrderOre! - r.leftPerOrderAfterRentOre!,
+        ),
+      ).toBeLessThanOrEqual(1);
+    }
+  });
+});

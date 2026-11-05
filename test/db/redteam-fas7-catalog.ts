@@ -591,6 +591,13 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [sink(c, { unitCostOre: 1 })],
   },
+  {
+    module: "@/app/(app)/inkopspriser/actions",
+    name: "previewPriceSplit",
+    allowed: OP,
+    readOnly: true,
+    args: (c) => [{ titleId: c.A.titleId, unitCostOre: 100, query: "" }],
+  },
   // Egen produkt (städrundan)
   {
     module: "@/app/(app)/inkopspriser/actions",

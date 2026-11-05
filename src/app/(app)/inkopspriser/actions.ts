@@ -8,7 +8,12 @@
  */
 
 import type { ActionResult } from "@/server/auth/flows";
-import { loadOptionalContext, revalidateAppData } from "@/server/data/core";
+import {
+  loadDomainInput,
+  loadOptionalContext,
+  loadPeriod,
+  revalidateAppData,
+} from "@/server/data/core";
 import { getActiveOrganization, getSessionUser } from "@/server/session";
 
 import {
@@ -18,7 +23,8 @@ import {
   type AddPriceOutcome,
   type CorrectPriceOutcome,
 } from "./_lib/data";
-import { PRICE_MESSAGES } from "./_lib/model";
+import { MAX_UNIT_COST_ORE, PRICE_MESSAGES } from "./_lib/model";
+import { splitWithPrice, type PerOrderSplit } from "./_lib/price-economics";
 
 /** Lägger till (eller ersätter samma dag) ett inköpspris för en titel. Ägare och admin. */
 export async function addPurchasePrice(input: {
@@ -76,4 +82,33 @@ export async function setOwnProduct(input: {
   });
   if (result.ok) revalidateAppData();
   return result;
+}
+
+/**
+ * Förhandsvisning: kvar per order (före butikens andel, andelen och vår del) för titeln i
+ * sidans period och filter om det nya priset gällt all försäljning. Bara läsning; samma
+ * titleEconomics som tabellen. `query` är sidans searchParams (period, ?butik=, ?automat=).
+ */
+export async function previewPriceSplit(input: {
+  titleId: string;
+  unitCostOre: number;
+  query: string;
+}): Promise<ActionResult<PerOrderSplit>> {
+  const ctx = await loadOptionalContext();
+  if (!ctx || !ctx.canEdit) return { ok: false, error: PRICE_MESSAGES.forbidden };
+  const unitCostOre = Number(input?.unitCostOre);
+  const titleId = String(input?.titleId ?? "");
+  if (!Number.isSafeInteger(unitCostOre) || unitCostOre < 0 || unitCostOre > MAX_UNIT_COST_ORE) {
+    return { ok: false, error: PRICE_MESSAGES.invalid };
+  }
+  try {
+    const period = await loadPeriod(new URLSearchParams(String(input?.query ?? "")));
+    const domain = await loadDomainInput({ period: period.period, ...period.scope });
+    if (!domain.titles.some((t) => t.id === titleId)) {
+      return { ok: false, error: PRICE_MESSAGES.titleMissing };
+    }
+    return { ok: true, data: splitWithPrice(domain.current, titleId, unitCostOre) };
+  } catch {
+    return { ok: false, error: PRICE_MESSAGES.invalid };
+  }
 }

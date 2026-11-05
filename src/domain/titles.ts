@@ -3,7 +3,10 @@
  * blir kvar per order, med varning när en titel går med förlust.
  *
  *   snittpris        = round(Σ netto / n)
+ *   kvar före andel  = round((Σ netto − Σ kortavgift − VMB − n × aktuellt inköpspris) / n)
+ *   butikens andel   = round(Σ provision / n)             (provision, % av intäkt eller vinstdelning)
  *   kvar per order   = round((Σ netto − Σ kortavgift − Σ provision − VMB − n × aktuellt inköpspris) / n)
+ *                      (vår del: kvar efter butikens andel)
  *   VMB              = med VMB (vmbApplies): 20 % av max(0, Σ netto − n × aktuellt inköpspris),
  *                      annars 0
  *   hyra per order   = round(Σ fördelad hyra / n)            (redovisas separat, ingår inte ovan)
@@ -11,7 +14,9 @@
  *   förlustvarning   = kvar per order ≤ 0
  *
  * n = alla titelns order i perioden (även de som saknade pris på orderdagen), eftersom
- * frågan är vad nästa order lämnar med dagens pris. Avrundning sker en gång, på slutet.
+ * frågan är vad nästa order lämnar med dagens pris. Avrundning sker en gång, på slutet,
+ * per tal: därför kan kvar före andel − butikens andel skilja sig från kvar per order
+ * med högst 1 öre (tre avrundade kvoter av heltalssummor).
  */
 
 import { assertIsoDate } from "./dates";
@@ -38,16 +43,38 @@ export interface TitleEconomics {
   readonly averageCostOre: number | null;
   readonly averageFeeOre: number | null;
   readonly averageCommissionOre: number | null;
-  /** Kvar per order (hyra exkluderad). `null` om pris eller order saknas. */
+  /**
+   * Kvar per order före butikens andel (hyra exkluderad): netto − kortavgift − VMB −
+   * aktuellt inköp. `null` om pris eller order saknas.
+   */
+  readonly leftBeforeStoreOre: number | null;
+  /**
+   * Σ kvar före butikens andel för periodens order (täljaren ovan, oavrundad). Ger "kvar av
+   * pris" med en enda avrundning: leftBeforeStoreTotalOre / revenueOre.
+   */
+  readonly leftBeforeStoreTotalOre: number | null;
+  /**
+   * Butikens andel per order (snittprovision: % av intäkten eller andel av vinsten). `null`
+   * när kvar per order saknas. leftBeforeStoreOre − storeSharePerOrderOre = leftPerOrderOre
+   * ±1 öre (avrundning).
+   */
+  readonly storeSharePerOrderOre: number | null;
+  /** Vår del: kvar per order efter butikens andel (hyra exkluderad). `null` om pris eller order saknas. */
   readonly leftPerOrderOre: number | null;
+  /** Kvar per order före butikens andel, efter hyra. */
+  readonly leftBeforeStoreAfterRentOre: number | null;
   /** Hyra per order (fördelad hyra / antal order). */
   readonly rentPerOrderOre: number | null;
   /** Kvar per order efter hyra. */
   readonly leftPerOrderAfterRentOre: number | null;
-  /** Kvar i bp av snittpriset. */
+  /** Vår del i bp av snittpriset. */
   readonly marginBp: number | null;
-  /** Kvar per order ≤ 0. */
+  /** Kvar före butikens andel i bp av snittpriset. */
+  readonly marginBeforeStoreBp: number | null;
+  /** Vår del per order ≤ 0 (den verkliga förlusten). */
   readonly lossWarning: boolean;
+  /** Kvar per order före butikens andel ≤ 0. */
+  readonly lossBeforeStoreWarning: boolean;
   /** Kvar per order efter hyra ≤ 0. */
   readonly lossAfterRentWarning: boolean;
   /** Inget inköpspris gäller `asOf`. */
@@ -117,11 +144,15 @@ export function titleEconomics(input: TitleEconomicsInput): TitleEconomics[] {
       withVmb && unitCost !== null
         ? BigInt(vmbVatOfMargin(fromBigInt(a.net - n * BigInt(unitCost), "Marginalen")))
         : 0n;
-    const leftNumerator =
-      unitCost === null ? null : a.net - a.fee - a.commission - vmb - n * BigInt(unitCost);
+    const beforeNumerator = unitCost === null ? null : a.net - a.fee - vmb - n * BigInt(unitCost);
+    const leftNumerator = beforeNumerator === null ? null : beforeNumerator - a.commission;
+    const priced = has && beforeNumerator !== null;
+    const before = priced ? roundHalfUp(beforeNumerator, n) : null;
     const left = has && leftNumerator !== null ? roundHalfUp(leftNumerator, n) : null;
     const leftAfterRent =
       has && leftNumerator !== null ? roundHalfUp(leftNumerator - a.rent, n) : null;
+    const margin = (num: bigint | null): number | null =>
+      has && num !== null && a.net !== 0n ? roundHalfUp(num * BigInt(BP_SCALE), a.net) : null;
     out.push({
       titleId,
       orders: a.orders,
@@ -134,14 +165,17 @@ export function titleEconomics(input: TitleEconomicsInput): TitleEconomics[] {
       averageCostOre: a.priced > 0 ? roundHalfUp(a.cost, BigInt(a.priced)) : null,
       averageFeeOre: has ? roundHalfUp(a.fee, n) : null,
       averageCommissionOre: has ? roundHalfUp(a.commission, n) : null,
+      leftBeforeStoreOre: before,
+      leftBeforeStoreTotalOre: priced ? fromBigInt(beforeNumerator, "Kvar före andel") : null,
+      storeSharePerOrderOre: priced ? roundHalfUp(a.commission, n) : null,
       leftPerOrderOre: left,
+      leftBeforeStoreAfterRentOre: priced ? roundHalfUp(beforeNumerator - a.rent, n) : null,
       rentPerOrderOre: has ? roundHalfUp(a.rent, n) : null,
       leftPerOrderAfterRentOre: leftAfterRent,
-      marginBp:
-        has && leftNumerator !== null && a.net !== 0n
-          ? roundHalfUp(leftNumerator * BigInt(BP_SCALE), a.net)
-          : null,
+      marginBp: margin(leftNumerator),
+      marginBeforeStoreBp: margin(beforeNumerator),
       lossWarning: left !== null && left <= 0,
+      lossBeforeStoreWarning: before !== null && before <= 0,
       lossAfterRentWarning: leftAfterRent !== null && leftAfterRent <= 0,
       missingPrice: unitCost === null,
     });
