@@ -55,6 +55,10 @@ export function monthLabel(month: string): string {
   return `${monthName(month)} ${month.slice(0, 4)}`;
 }
 
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 function shortMonth(month: string): string {
   return monthName(month).slice(0, 3);
 }
@@ -74,9 +78,12 @@ export function buildValueView(data: ValueData): ValueView {
   // Rubriken: det viktigaste i en mening.
   let title: string;
   if (!data.hasData) title = `Inget att visa för ${word} än.`;
+  // Påfyllningen görs av människor: rubriken säger att påfyllning i tid räddade
+  // försäljningen, inte att Binderlab gjorde det. Tiden är Binderlabs.
   else if (saved > 0 && minutes > 0)
-    title = `Binderlab räddade ${kr(saved)} och ${hoursText(minutes)} ${when}.`;
-  else if (saved > 0) title = `Binderlab räddade ${kr(saved)} i försäljning ${when}.`;
+    title = `${capitalize(when)} räddade påfyllning i tid ${kr(saved)} i försäljning och Binderlab sparade ${hoursText(minutes)}.`;
+  else if (saved > 0)
+    title = `${capitalize(when)} räddade påfyllning i tid ${kr(saved)} i försäljning.`;
   else if (minutes > 0) title = `Binderlab sparade ${hoursText(minutes)} ${when}.`;
   else title = `Kvar efter inköp ${kr(margin?.current.keptOre ?? 0)} ${when}.`;
   const aside = data.hasData
@@ -114,7 +121,7 @@ export function buildValueView(data: ValueData): ValueView {
       value: kr(margin?.current.keptOre ?? 0),
       sub:
         margin?.previous && margin.keptChangeBp !== null
-          ? `${changeText(margin.keptChangeBp)} mot ${monthName(margin.previous.month)}${margin.current.partial ? " (samma dagar)" : ""}.`
+          ? `${changeText(margin.keptChangeBp)} mot ${monthName(margin.previous.month)}${data.partial ? " (samma dagar)" : ""}.`
           : "Ingen månad före att jämföra med.",
       tone: margin?.keptChangeBp == null ? null : margin.keptChangeBp >= 0 ? "good" : "bad",
     },
@@ -124,7 +131,7 @@ export function buildValueView(data: ValueData): ValueView {
       value: kr(margin?.current.revenueOre ?? 0),
       sub:
         margin?.previous && margin.revenueChangeBp !== null
-          ? `${changeText(margin.revenueChangeBp)} mot ${monthName(margin.previous.month)}.`
+          ? `${changeText(margin.revenueChangeBp)} mot ${monthName(margin.previous.month)}${data.partial ? " (samma dagar)" : ""}.`
           : `${formatInt(margin?.current.orders ?? 0)} order.`,
       tone: null,
     },
@@ -187,6 +194,7 @@ export function buildValueView(data: ValueData): ValueView {
 
   const assumptions = [
     `Slutsålt undvikt: pack som såldes efter en påfyllning i tid och som annars hade mött ett tomt fack. Högst ${formatInt(SAVED_SALES_MAX_DAYS)} dagar räknas, i snittpris utan moms.`,
+    "Slutsålt undvikt är försäljning, inte vinst, och gäller alla påfyllningar i tid, inte bara dem Binderlab föreslog.",
     "Tomt kostade: beräknad förlorad försäljning när ett fack stod tomt (samma siffra som på Inköp).",
     ...TASK_ASSUMPTIONS.map(
       (t) =>

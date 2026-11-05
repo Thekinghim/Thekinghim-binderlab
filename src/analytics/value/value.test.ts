@@ -128,10 +128,37 @@ describe("refillValue: påfyllning i tid", () => {
     ];
     const r = refillValue({ stockEvents: events, orders: [], period: OCT, settings: NO_TAX });
     expect(r.refills.onTime).toBe(1);
-    // Andra påfyllningen: saldot 3 före. 6 sålda − 3 = 3 räddade, utan snittpris.
-    expect(r.savedUnits).toBe(3);
-    expect(r.unitsWithoutPrice).toBe(3);
+    // Andra påfyllningen: saldot 3 före, 5 efter. Pack 4 och 5 räddade; det sjätte fanns
+    // inte enligt lagret (saldot blir negativt) och räknas inte. Utan snittpris.
+    expect(r.savedUnits).toBe(2);
+    expect(r.unitsWithoutPrice).toBe(2);
     expect(r.savedRevenueOre).toBe(0);
+  });
+
+  it("räknar aldrig fler räddade pack än lagret säger fanns", () => {
+    const events = [
+      at(ev("c1", "m-1", "t-a", "count", 2, "2026-10-01"), "06:00:00"),
+      at(ev("r1", "m-1", "t-a", "refill", 3, "2026-10-01"), "08:00:00"),
+      // 8 sålda men bara 5 fanns: 3 pack kom från en påfyllning som inte registrerats.
+      ...salesEachDay("x", 2, 9),
+    ];
+    const r = refillValue({ stockEvents: events, orders: [], period: OCT, settings: NO_TAX });
+    expect(r.refills.onTime).toBe(1);
+    // Högst påfyllningens 3 pack.
+    expect(r.savedUnits).toBe(3);
+  });
+
+  it("en andra påfyllning samma dag efter tomt ger inga räddade pack", () => {
+    const events = [
+      at(ev("c1", "m-1", "t-a", "count", 0, "2026-10-01"), "06:00:00"),
+      at(ev("r1", "m-1", "t-a", "refill", 2, "2026-10-02"), "08:00:00"),
+      at(ev("r2", "m-1", "t-a", "refill", 4, "2026-10-02"), "08:30:00"),
+      ...salesEachDay("x", 3, 8),
+    ];
+    const r = refillValue({ stockEvents: events, orders: [], period: OCT, settings: NO_TAX });
+    // Ett besök, och facket var tomt före: efter tomt, inget räddat.
+    expect(r.refills).toEqual({ onTime: 0, afterEmpty: 1, unknown: 0 });
+    expect(r.savedUnits).toBe(0);
   });
 
   it("använder titelns snittpris i alla automater när automaten saknar egna order", () => {

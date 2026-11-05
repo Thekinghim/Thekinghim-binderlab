@@ -111,7 +111,10 @@ describe("text", () => {
 describe("buildValueView", () => {
   it("rubriken säger det viktigaste: räddad försäljning och sparad tid", () => {
     const v = buildValueView(data());
-    expect(v.headline.title).toBe("Binderlab räddade 490 kr och 2,5 h i oktober.");
+    // Påfyllningen görs av människor: rubriken säger inte att Binderlab räddade pengarna.
+    expect(v.headline.title).toBe(
+      "I oktober räddade påfyllning i tid 490\u00a0kr i försäljning och Binderlab sparade 2,5\u00a0h.",
+    );
     expect(v.cards.map((c) => c.id)).toEqual(["saved", "time", "kept", "revenue"]);
     expect(v.cards[0]!.sub).toContain("3 av 4 påfyllningar i tid");
     expect(v.cards[0]!.sub).toContain("123 kr");
@@ -135,6 +138,9 @@ describe("buildValueView", () => {
 
   it("visar antagandena, även att tiden inte värderas utan timkostnad", () => {
     const v = buildValueView(data());
+    // Ärligt: räddat är försäljning, inte vinst, och gäller alla påfyllningar i tid.
+    expect(v.assumptions.some((a) => a.includes("inte vinst"))).toBe(true);
+    expect(v.assumptions.some((a) => a.includes("inte bara dem Binderlab föreslog"))).toBe(true);
     expect(v.assumptions.some((a) => a.startsWith("Påfyllning registrerad: 5 min"))).toBe(true);
     expect(v.assumptions).toContain(
       "Tiden värderas inte i kronor: ange en timkostnad under Effekt.",
@@ -159,7 +165,8 @@ describe("buildValueView", () => {
 
   it("pågående månad", () => {
     const v = buildValueView(data({ partial: true }));
-    expect(v.headline.title).toContain("hittills i oktober");
+    expect(v.headline.title).toMatch(/^Hittills i oktober räddade/);
+    expect(v.cards[3]!.sub).toContain("(samma dagar)");
     expect(v.headline.aside).toBe("Månaden pågår. Räknat till och med i går.");
   });
 });

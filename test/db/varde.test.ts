@@ -203,6 +203,45 @@ describe("varde_automation_counts", () => {
     expect(asOther.code).toBe("42501");
   });
 
+  it("räknar ett larm och en rapport en gång, hur många som än fick dem", async () => {
+    const org = await seed("Gamma");
+    const alertId = "00000000-0000-4000-8000-0000000000a1";
+    // Samma larm till tre användare (en rad per användare) och en påminnelse om samma larm.
+    for (const at of [
+      "2025-03-10T08:00:00Z",
+      "2025-03-10T08:00:00Z",
+      "2025-03-10T08:00:00Z",
+      "2025-03-12T08:00:00Z",
+    ]) {
+      await db().execute(
+        sql`insert into public.alert_deliveries
+              (organization_id, send_at, status, subject, items, alert_ids, sent_at)
+            values (${org.orgId}::uuid, ${at}::timestamptz, 'sent', 'Larm', '[]'::jsonb,
+                    array[${alertId}::uuid], ${at}::timestamptz)`,
+      );
+    }
+    // En rapport skickad till två mottagare.
+    const [report] = await rows<{ id: string }>(
+      db(),
+      sql`insert into public.reports
+            (organization_id, kind, period_start, period_end, data_snapshot, calc_version, storage_path)
+          values (${org.orgId}::uuid, 'owner_statement', '2025-02-01', '2025-02-28', '{}'::jsonb, 'v1',
+                  ${`${org.orgId}/rapport.pdf`})
+          returning id`,
+    );
+    for (const email of ["a@test.binderlab.se", "b@test.binderlab.se"]) {
+      await db().execute(
+        sql`insert into public.report_deliveries (organization_id, report_id, email, status, sent_at)
+            values (${org.orgId}::uuid, ${report!.id}::uuid, ${email}, 'sent', '2025-03-11T09:00:00Z')`,
+      );
+    }
+    const list = await asUser(org.owner, (tx) =>
+      rows<{ month: string; kind: string; n: number }>(tx, call(org.orgId)),
+    );
+    expect(list.find((r) => r.kind === "alert")?.n).toBe(1);
+    expect(list.find((r) => r.kind === "report")?.n).toBe(1);
+  });
+
   it("vägrar en orimlig period", async () => {
     const out = await asUser(a.owner, (tx) =>
       attempt(tx, (sp) =>

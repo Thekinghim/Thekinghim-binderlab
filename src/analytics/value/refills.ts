@@ -18,8 +18,12 @@
  *    försäljning inom `maxDays` dagar från dagen då facket hade blivit tomt räknas
  *    (SAVED_SALES_MAX_DAYS, standard 7): antagandet är att någon annars hade fyllt på inom
  *    en vecka. Räkningen slutar vid nästa inflöde, vid en positiv justering och vid en
- *    inventering som visar fler pack än väntat (en påfyllning som inte registrerats).
+ *    inventering som visar fler pack än väntat (en påfyllning som inte registrerats), och
+ *    vid en försäljning som gör saldot negativt (packet fanns inte enligt lagret och räknas
+ *    inte). Räddade pack blir alltså aldrig fler än påfyllningen.
  *    Svinn ändrar inte S (försiktigt: färre räddade pack).
+ *    En andra påfyllning samma dag är samma besök: var facket tomt vid dagens första
+ *    påfyllning räddar inte heller den andra något.
  * 4. **Kronor.** Räddade pack × snittpriset exkl. moms för titeln i automaten (orderna som
  *    skickas in), annars titelns snitt i alla automater. Bruttoresultat = intäkt − inköpspriset
  *    som gällde försäljningsdagen; pack utan inköpspris räknas inte i bruttoresultatet.
@@ -140,7 +144,9 @@ function walkSeries(
 ): void {
   let level: number | null = null;
   let open: { before: number; sold: number; emptyDate: IsoDate | null } | null = null;
-  const seenRefillDays = new Set<IsoDate>();
+  // Dagens första påfyllning avgör besöket: var facket tomt då ger inte en andra
+  // påfyllning samma dag några räddade pack.
+  const firstRefillOnTime = new Map<IsoDate, boolean>();
 
   events.forEach((e, i) => {
     const machineId = e.machineId!;
@@ -152,9 +158,10 @@ function walkSeries(
       return;
     }
     if (INFLOW.has(e.kind)) {
-      if (e.kind === "refill" && date >= period.start && date <= period.end) {
-        if (!seenRefillDays.has(date)) {
-          seenRefillDays.add(date);
+      const sameDay = e.kind === "refill" ? firstRefillOnTime.get(date) : undefined;
+      if (e.kind === "refill" && sameDay === undefined) {
+        firstRefillOnTime.set(date, level !== null && level > 0);
+        if (date >= period.start && date <= period.end) {
           marks.push({
             machineId,
             titleId: e.titleId,
@@ -164,7 +171,7 @@ function walkSeries(
         }
       }
       open =
-        e.kind === "refill" && level !== null && level > 0
+        e.kind === "refill" && sameDay !== false && level !== null && level > 0
           ? { before: level, sold: 0, emptyDate: null }
           : null;
       if (level !== null) level += e.quantity;
@@ -172,6 +179,9 @@ function walkSeries(
       return;
     }
     if (e.kind === "sale") {
+      // Ett pack som inte fanns enligt lagret (saldot blir negativt) kom från en påfyllning
+      // som inte registrerats: räkna inte det, och sluta räkna.
+      if (open && (level === null || level + e.quantity < 0)) open = null;
       if (open) {
         open.sold += 1;
         if (open.sold > open.before) {

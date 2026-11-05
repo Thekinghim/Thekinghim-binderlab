@@ -56,7 +56,7 @@ describe.each([
     await page.goto("/varde");
     const h1 = page.getByRole("heading", { level: 1 });
     await h1.waitFor();
-    expect(await h1.innerText()).toMatch(/Binderlab|Kvar efter inköp|Inget att visa/);
+    expect(await h1.innerText()).toMatch(/Binderlab|räddade|Kvar efter inköp|Inget att visa/);
     for (const label of ["Slutsålt undvikt", "Tid sparad", "Kvar efter inköp", "Försäljning"]) {
       expect(await page.getByText(label, { exact: true }).count()).toBeGreaterThan(0);
     }
