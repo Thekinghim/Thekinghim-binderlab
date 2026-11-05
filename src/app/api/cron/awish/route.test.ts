@@ -22,6 +22,11 @@ const sync = vi.fn(async () => ({
 vi.mock("@/server/awish/sync", () => ({ syncAllAwishSources: sync }));
 const campaigns = vi.fn(async () => ({ organizations: 1, shown: 2, failed: 0 }));
 vi.mock("@/server/campaigns/service", () => ({ publishAllDueCampaigns: campaigns }));
+const offline = vi.fn(async (_db: unknown, _orgs: string[], _o: unknown) => ({
+  organizations: [{ organizationId: "org-1" }],
+  deliveries: { processed: 1, sent: 1, failed: 0, skipped: 0 },
+}));
+vi.mock("@/server/awish/offline-alerts", () => ({ runOfflineAlerts: offline }));
 
 const { GET } = await import("./route");
 
@@ -36,6 +41,7 @@ describe("/api/cron/awish", () => {
     delete process.env.CRON_SECRET;
     sync.mockClear();
     campaigns.mockClear();
+    offline.mockClear();
   });
 
   it("utan CRON_SECRET: 503 och ingen synk", async () => {
@@ -75,7 +81,24 @@ describe("/api/cron/awish", () => {
         },
       ],
       campaigns: { shown: 2, failed: 0 },
+      offlineAlerts: { organizations: 1, sent: 1 },
     });
+    // Offlinelarmet utvärderas direkt efter synken för de synkade organisationerna.
+    expect(offline).toHaveBeenCalledTimes(1);
+    expect(offline.mock.calls[0]?.[1]).toEqual(["org-1"]);
+  });
+
+  it("offlinelarmet utvärderas även när orderna i en källa misslyckades (läget är sparat)", async () => {
+    process.env.CRON_SECRET = SECRET;
+    const ok: Record<string, unknown> = (await sync()).sources[0]!;
+    sync.mockResolvedValueOnce({
+      sources: [
+        { ...ok, dataSourceId: "ds-2", organizationId: "org-2", ok: false, message: "stopp" },
+        { ...ok, dataSourceId: "ds-3", organizationId: "org-3", skipped: "paused" },
+      ],
+    } as never);
+    await GET(req(`Bearer ${SECRET}`));
+    expect(offline.mock.calls[0]?.[1]).toEqual(["org-2"]);
   });
 
   it("ett fel i kampanjerna stoppar inte synkens svar", async () => {

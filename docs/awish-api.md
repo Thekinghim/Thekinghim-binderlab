@@ -75,6 +75,19 @@ Supabase pg_cron (*/10 * * * *) → private.awish_cron_tick() → pg_net GET {AP
   Det gör att en tidigare uppladdad orderlista inte dubbleras, även om CSV:ns "Order No." inte är samma tal som
   API:ts `id`. Det kräver samma tidszon i båda källorna: API-källan skapas därför med tidszonen från
   organisationens senaste Awish CSV-källa (annars `Asia/Shanghai`). Byt aldrig tidszon på bara den ena.
+- **Online/offline (Machines):** synken sparar `is_online` och `status` per källautomat
+  (`source_machines.awish_*`, migreringen `20261110000000_awish_online_konto.sql`, regeln i
+  `src/analytics/health/connectivity.ts`). En automat räknas som offline när den varit online förut och Awish sagt
+  offline i minst 20 minuter; den räknas som tillbaka först efter 20 minuter online (fladder: samma period
+  fortsätter). En automat som aldrig varit online larmar inte, och ett läge äldre än en timme används inte. Drift
+  och automatens sida visar "Online" eller "Offline sedan 14:10"; larmet `machine_offline` heter "BL-001 är offline
+  sedan 14:10" (Notiser, push, Att göra) och stängs av larmjobbet när automaten är tillbaka. Eftersom larmjobbet
+  bara körs en gång om dagen utvärderar `/api/cron/awish` larmen direkt efter synken för organisationer med en
+  automat offline eller ett öppet offlinelarm (`src/server/awish/offline-alerts.ts`). Alla roller läser läget via
+  `public.machine_connectivity(org)`; bara synken (systemrollen) kan skriva det.
+- **Kontots slutdag (Merchant):** `Merchant.expired_at` läses högst en gång per dygn (i källans tidszon) och sparas i
+  `data_sources.awish_expires_at`. 30 dagar före står "Awish-kontot går ut 18 apr. 2027 – förläng hos Awish" på Att
+  göra, Hem, Drift och Datakällor (ägare och admin), 7 dagar före som brådskande (`src/server/awish/expiry.ts`).
 - **Larm:** `expectedInterval('awish_grpc') = 10` minuter. En tyst synk syns på Drift efter 30 minuter, men push,
   e-post och sms skickas först vid nästa larmkörning (`/api/cron/larm`, en gång om dagen på Vercel Hobby). För snabb
   avisering: Sentry Cron Monitor `binderlab-awish` (kräver `SENTRY_DSN`).

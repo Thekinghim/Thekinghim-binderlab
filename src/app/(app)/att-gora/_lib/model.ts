@@ -152,14 +152,24 @@ export interface ExtraTodo {
 }
 
 /**
- * Raderna överst på Att göra som inte kommer ur reglerna: nya automater att koppla och
- * månadens bokföring att ladda ner (månaden som text, "oktober 2026", eller null).
+ * Raderna överst på Att göra som inte kommer ur reglerna: Awish-kontot som går ut, nya
+ * automater att koppla och månadens bokföring att ladda ner (månaden som text, "oktober
+ * 2026", eller null).
  */
 export function extraTodos(input: {
   readonly bokforingMonth: string | null;
   readonly newMachines: number;
+  /** Awish-kontot går ut inom 30 dagar (src/server/awish/expiry.ts), annars null. */
+  readonly awishExpiry?: { readonly text: string; readonly level: "now" | "soon" } | null;
 }): ExtraTodo[] {
   const out: ExtraTodo[] = [];
+  if (input.awishExpiry) {
+    out.push({
+      key: "awish-expiry",
+      title: input.awishExpiry.text,
+      level: input.awishExpiry.level,
+    });
+  }
   if (input.newMachines > 0) {
     out.push({
       key: "new-machines",

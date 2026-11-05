@@ -267,6 +267,29 @@ describe("buildPage", () => {
     expect(page.header.description).toBe("Först: Välj butik för 2\u00a0nya automater.");
   });
 
+  it("Awish-kontot som går ut står först och räknas (brådskande = i dag)", () => {
+    const text = "Awish-kontot går ut 18 apr. 2027 – förläng hos Awish";
+    const soon = extraTodos({
+      bokforingMonth: null,
+      newMachines: 1,
+      awishExpiry: { text, level: "soon" },
+    });
+    expect(soon.map((e) => [e.key, e.level])).toEqual([
+      ["awish-expiry", "soon"],
+      ["new-machines", "now"],
+    ]);
+    const urgent = extraTodos({
+      bokforingMonth: null,
+      newMachines: 0,
+      awishExpiry: { text, level: "now" },
+    });
+    const page = buildPage(input([], { extras: urgent }));
+    expect(page.total).toBe(1);
+    expect(page.header.aside).toBe("1 i dag.");
+    expect(page.header.description).toBe(`Först: ${text}.`);
+    expect(extraTodos({ bokforingMonth: null, newMachines: 0, awishExpiry: null })).toEqual([]);
+  });
+
   it("utan extra rader blir inget kvar", () => {
     expect(extraTodos({ bokforingMonth: null, newMachines: 0 })).toEqual([]);
     expect(extraTodos({ bokforingMonth: null, newMachines: 1 })[0]?.title).toBe(

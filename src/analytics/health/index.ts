@@ -20,6 +20,20 @@ export {
   type VendorState,
 } from "./status";
 export { machineTimeline } from "./timeline";
+export {
+  CONNECTIVITY_STATE_PREFIX,
+  connectivitySignals,
+  connectivityView,
+  EMPTY_CONNECTIVITY,
+  FLAP_MINUTES,
+  nextConnectivity,
+  OFFLINE_ALERT_MINUTES,
+  offlineSinceMs,
+  STALE_MINUTES,
+  type ConnectivityState,
+  type ConnectivityView,
+  type MachineConnectivity,
+} from "./connectivity";
 export { poissonCdf, poissonSf, poissonZero, probabilityToBp } from "./poisson";
 export {
   buildHourCalendar,

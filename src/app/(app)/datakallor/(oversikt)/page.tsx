@@ -18,6 +18,8 @@ import { headlineOf } from "../_lib/headline";
 import { loadDatakallorFor } from "../_lib/service";
 import { currentViewer } from "../_lib/session";
 import { loadAwishPanelFor } from "@/server/awish/manage";
+import { loadAwishExpirySafe } from "@/server/awish/expiry-notice";
+import { AwishExpiry } from "@/app/(app)/_awish/awish-expiry";
 
 export const metadata: Metadata = { title: "Datakällor" };
 /** "Synka nu" och "Testa anslutningen" (server actions på sidan) anropar Awish. */
@@ -32,7 +34,11 @@ export const maxDuration = 60;
 export default async function DatakallorPage() {
   await requireRoute("datakallor");
   const viewer = await currentViewer();
-  const [data, awish] = await Promise.all([loadDatakallorFor(viewer), loadAwishPanelFor(viewer)]);
+  const [data, awish, awishExpiry] = await Promise.all([
+    loadDatakallorFor(viewer),
+    loadAwishPanelFor(viewer),
+    loadAwishExpirySafe(viewer),
+  ]);
   const headline = headlineOf(data);
   const fileSources = data.sources.filter((s) => s.acceptsFiles && !s.archived);
   const queuedOrders = data.queue.reduce((sum, q) => sum + q.pendingOrders, 0);
@@ -81,6 +87,7 @@ export default async function DatakallorPage() {
         style={{ "--i": 2 } as CSSProperties}
       >
         <SectionHeader id="awish" title="Awish." aside="Hämtas automatiskt." />
+        <AwishExpiry notice={awishExpiry} link={false} className="mb-0 max-md:mb-0" />
         <AwishCard source={awish.source} timeZone={data.timeZone} now={data.now} />
       </section>
 

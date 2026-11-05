@@ -3,8 +3,9 @@
  * tider i organisationens tidszon. Rent och klientsäkert.
  */
 
-import type { HealthStatus, MachineHealth } from "@/analytics/health";
+import type { ConnectivityView, HealthStatus, MachineHealth } from "@/analytics/health";
 import { assortmentKey } from "@/analytics/todos/assortment";
+import { localParts } from "@/analytics/todos/time";
 import type { IsoDate } from "@/domain";
 import { sentence, weekdayDay } from "@/analytics/todos/text";
 import type { Status } from "@/components/ui/status-tag";
@@ -40,6 +41,32 @@ export function formatWhen(iso: string | null, timeZone: string, now: Date = new
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return MISSING;
   return formatDateTime(wallClockIn(d, timeZone), { now: wallClockIn(now, timeZone) });
+}
+
+/** Anslutningen enligt Awish som den visas per automat: "Online" eller "Offline sedan 14:10". */
+export interface ConnectionLabel {
+  readonly state: "online" | "offline";
+  readonly text: string;
+}
+
+/**
+ * Anslutningen per automat (@/analytics/health connectivityView). null när den är okänd
+ * (ingen Awish API-källa, aldrig sedd online eller gammalt läge): då visas ingenting.
+ */
+export function connectionLabel(
+  view: ConnectivityView,
+  timeZone: string,
+  now: Date = new Date(),
+): ConnectionLabel | null {
+  if (view.state === "online") return { state: "online", text: "Online" };
+  if (view.state === "offline" && view.since) {
+    // I dag bara klockslaget ("Offline sedan 14:10"), annars dag och tid.
+    const since = localParts(Date.parse(view.since), timeZone);
+    const today = localParts(now.getTime(), timeZone).date;
+    const when = since.date === today ? since.time : formatWhen(view.since, timeZone, now);
+    return { state: "offline", text: `Offline sedan ${when}` };
+  }
+  return null;
 }
 
 /** Första meningen i en text (för grå rubrikdelar). */
