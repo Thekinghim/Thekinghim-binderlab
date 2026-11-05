@@ -357,6 +357,9 @@ export const dataSources = pgTable("data_sources", {
   lastSyncedAt: ts("last_synced_at"),
   status: dataSourceStatus("status").notNull().default("active"),
   archivedAt: ts("archived_at"),
+  /** Merchant.expired_at, läst av synken högst en gång per dygn (20261110000000_awish_online_konto.sql). */
+  awishExpiresAt: ts("awish_expires_at"),
+  awishMerchantCheckedAt: ts("awish_merchant_checked_at"),
   ...stamps(),
 });
 
@@ -368,6 +371,14 @@ export const sourceMachines = pgTable("source_machines", {
   externalDeviceNo: text("external_device_no"),
   externalName: text("external_name"),
   machineId: uuid("machine_id"),
+  /** Anslutningen enligt Awish Machines, skriven av synken (20261110000000_awish_online_konto.sql). */
+  awishOnline: boolean("awish_online"),
+  awishStatus: text("awish_status"),
+  awishSeenAt: ts("awish_seen_at"),
+  awishOnlineAt: ts("awish_online_at"),
+  awishOfflineSince: ts("awish_offline_since"),
+  awishBackOnlineAt: ts("awish_back_online_at"),
+  awishLastOfflineFrom: ts("awish_last_offline_from"),
   ...stamps(),
 });
 

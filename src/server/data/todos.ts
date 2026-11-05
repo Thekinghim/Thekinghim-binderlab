@@ -19,6 +19,8 @@ import { cache } from "react";
 import { prioritizeByLostSales, TODO_DEFAULTS } from "@/analytics/todos";
 import { addDays, DomainError, type Period } from "@/domain";
 import { AuthorizationError } from "@/server/access";
+import type { AwishExpiryNotice } from "@/server/awish/expiry";
+import { loadAwishExpiryFor } from "@/server/awish/expiry-notice";
 import { readyPackageFor } from "@/server/bokforing/stored";
 import { loadNewMachinesFor } from "@/server/machines/new-machines";
 import { lostSalesSummaryFor } from "@/server/purchasing/lost-sales-summary";
@@ -120,18 +122,25 @@ export const loadVisibleTodoState = cache(async (): Promise<TodoState> => {
 
 /**
  * Raderna i Att göra som inte kommer ur reglerna: månaden vars bokföring är klar att ladda
- * ner (bara ägare och admin) och antalet nya automater att koppla. En källa för menyns
+ * ner (bara ägare och admin), antalet nya automater att koppla och Awish-kontot som går ut. En källa för menyns
  * räknare, Att göra och Hem, så att de räknar samma rader. Fel ger "inga" (raden är bara
  * en påminnelse).
  */
-export async function loadTodoExtrasFor(
-  viewer: Viewer,
-): Promise<{ bokforingMonth: string | null; newMachines: number }> {
-  const [ready, found] = await Promise.all([
+export async function loadTodoExtrasFor(viewer: Viewer): Promise<{
+  bokforingMonth: string | null;
+  newMachines: number;
+  awishExpiry: AwishExpiryNotice | null;
+}> {
+  const [ready, found, awishExpiry] = await Promise.all([
     readyPackageFor(viewer).catch(() => null),
     loadNewMachinesFor(viewer).catch(() => null),
+    loadAwishExpiryFor(viewer).catch(() => null),
   ]);
-  return { bokforingMonth: ready?.month ?? null, newMachines: found?.machines.length ?? 0 };
+  return {
+    bokforingMonth: ready?.month ?? null,
+    newMachines: found?.machines.length ?? 0,
+    awishExpiry,
+  };
 }
 
 /** Sekunder som menyns räknare får vara gammal (den räknas annars vid varje sidladdning). */
@@ -146,10 +155,15 @@ const TODO_COUNT_SECONDS = 60;
 export async function loadTodoCount(): Promise<number> {
   return cachedForViewer("todo-count", TODO_COUNT_SECONDS, async () => {
     const viewer = await requireViewer();
-    // Som rubriken på Att göra: punkterna plus raderna "Ny automat hittad" och
-    // bokföringen att ladda ner (bara ägare och admin; noll för andra roller).
+    // Som rubriken på Att göra: punkterna plus raderna "Ny automat hittad", bokföringen
+    // att ladda ner och Awish-kontot (bara ägare och admin; noll för andra roller).
     const [state, extras] = await Promise.all([loadVisibleTodoState(), loadTodoExtrasFor(viewer)]);
-    return state.items.length + (extras.bokforingMonth ? 1 : 0) + (extras.newMachines > 0 ? 1 : 0);
+    return (
+      state.items.length +
+      (extras.bokforingMonth ? 1 : 0) +
+      (extras.newMachines > 0 ? 1 : 0) +
+      (extras.awishExpiry ? 1 : 0)
+    );
   });
 }
 

@@ -66,6 +66,9 @@ const RPCS = [
   // Lager (fas 7): sortimentets perioder per automat och titel, alla roller.
   "lager_slot_periods",
   "list_members",
+  // Awish: automatens anslutning (online/offline) per automat, alla roller
+  // (20261110000000_awish_online_konto.sql).
+  "machine_connectivity",
   "merge_titles",
   "my_invitations",
   "portal_agreements",
@@ -102,7 +105,7 @@ const RPCS = [
  * De kontrollerar rollen själva och läser via en definer-funktion i private som har
  * samma kontroll (20261102150500_drift_sales_last_order.sql).
  */
-const INVOKER_RPCS = ["sales_data_until"];
+const INVOKER_RPCS = ["machine_connectivity", "sales_data_until"];
 
 function columnsOf(table: string) {
   return columns.filter((c) => c.table === table);
@@ -574,6 +577,7 @@ describe("anon", () => {
       lager_performers: sql`gen_random_uuid()`,
       lager_slot_periods: sql`gen_random_uuid()`,
       list_members: sql`gen_random_uuid()`,
+      machine_connectivity: sql`gen_random_uuid()`,
       merge_titles: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid()`,
       my_invitations: sql``,
       portal_agreements: sql`gen_random_uuid()`,

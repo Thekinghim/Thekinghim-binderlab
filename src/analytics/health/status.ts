@@ -507,17 +507,23 @@ function evaluate(
     const heartbeat = signal.kind !== "offline";
     const detail = heartbeat
       ? `Ingen kontakt sedan ${whenText(parseInstant(signal.at), tz)} (${durationText(Math.floor((nowMs - parseInstant(signal.at)) / MINUTE_MS))}). ${lastSaleText}`
-      : `Leverantören rapporterade att automaten tappade anslutningen ${whenText(sinceMs, tz)} (för ${durationText(minutes)} sedan). ${lastSaleText}`;
+      : `${signal.source === "awish_grpc" ? "Awish" : "Leverantören"} säger att automaten är offline sedan ${whenText(sinceMs, tz)} (${durationText(minutes)}). ${lastSaleText}`;
+    // "BL-001 är offline sedan 14:10" (annan dag: "sedan tis 3 nov. 14:10").
+    const label = m.code?.trim() || name;
+    const sinceText =
+      localParts(sinceMs, tz).date === localParts(nowMs, tz).date
+        ? localParts(sinceMs, tz).time
+        : whenText(sinceMs, tz);
     return base(
       "offline",
       "vendor",
       sinceMs,
-      `${name} saknar anslutning`,
+      heartbeat ? `${label} saknar anslutning` : `${label} är offline sedan ${sinceText}`,
       detail,
       {
         rule: heartbeat
           ? `Utan anslutning när leverantören inte hört av automaten på ${o.heartbeatTimeoutMinutes} minuter.`
-          : "Utan anslutning när leverantörens senaste anslutningshändelse säger att automaten är frånkopplad.",
+          : "Offline när leverantören säger att automaten är offline (Awish: i minst 20 minuter, och den har varit online förut).",
         dates: [localParts(sinceMs, tz).date],
         orderIds: p.lastOrder ? [p.lastOrder.id] : [],
         figures: [

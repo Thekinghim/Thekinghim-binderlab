@@ -11,7 +11,9 @@ import { and, asc, desc, eq, gte, inArray, isNull, lt, ne, or } from "drizzle-or
 
 import type { AlertIncident } from "@/analytics/alerts";
 import {
+  CONNECTIVITY_STATE_PREFIX,
   machineTimeline,
+  type MachineConnectivity,
   type MachineHealth,
   type MachineIncident,
   type MachineStockEvent,
@@ -278,6 +280,8 @@ export interface MachineTimelineData {
   readonly days: number;
   /** Facken enligt Awish, en rad per titel, sorterade efter fack. Tom utan kapacitet. */
   readonly slots: MachineSlotView[];
+  /** Anslutningen enligt Awish, eller null utan Awish API-källa. */
+  readonly connectivity: MachineConnectivity | null;
 }
 
 /** En titel i automatens fack (Awish): fack, saldo och kapacitet. */
@@ -380,7 +384,10 @@ export async function loadMachineTimeline(
         machineId,
         orders: data.orders.filter((o) => o.machineId === machineId),
         stockEvents,
-        signals: data.signals.filter((x) => x.machineId === machineId),
+        // Läget "anslutningen är känd" är ingen händelse: bara offline och online igen.
+        signals: data.signals.filter(
+          (x) => x.machineId === machineId && !x.id.startsWith(CONNECTIVITY_STATE_PREFIX),
+        ),
         incidents,
         titles: data.titles.map((t) => ({ id: t.id, name: t.name })),
       },
@@ -428,6 +435,7 @@ export async function loadMachineTimeline(
       to: now.toISOString(),
       days,
       slots,
+      connectivity: data.connectivity.find((c) => c.machineId === machineId) ?? null,
     };
   });
 }

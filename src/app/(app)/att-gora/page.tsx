@@ -24,6 +24,8 @@ import { Suggestions } from "@/app/(app)/assistent/_components/suggestions";
 import { BokforingReady } from "@/app/(app)/ekonomi/_components/bokforing-ready";
 import { monthText } from "@/app/(app)/ekonomi/_lib/view";
 import { NewMachinesFound, loadNewMachinesSafe } from "@/app/(app)/_nya-automater/new-machines";
+import { AwishExpiry } from "@/app/(app)/_awish/awish-expiry";
+import { loadAwishExpirySafe } from "@/server/awish/expiry-notice";
 import { readyPackageFor } from "@/server/bokforing/stored";
 import { loadAdvisorStateFor } from "@/server/assistant/advisor/service";
 
@@ -87,7 +89,7 @@ export default async function TodoPage({
   // Rådgivarens förslag, bokföringen att ladda ner och nya automater (ägare och admin; tomt
   // för andra roller). Läses här en gång, så att rubriken räknar med raderna som visas.
   const viewer = organization ? { user, organization } : null;
-  const [advisor, ready, newMachines] = viewer
+  const [advisor, ready, newMachines, awishExpiry] = viewer
     ? await Promise.all([
         loadAdvisorStateFor(viewer, now),
         readyPackageFor(viewer).catch((error: unknown) => {
@@ -95,8 +97,9 @@ export default async function TodoPage({
           return null;
         }),
         loadNewMachinesSafe(viewer),
+        loadAwishExpirySafe(viewer, now),
       ])
-    : [null, null, null];
+    : [null, null, null, null];
 
   // Vårt lager: summan av alla egna lager per titel.
   const warehouse = hasOwnStockRows(stock.rows)
@@ -124,6 +127,7 @@ export default async function TodoPage({
     extras: extraTodos({
       bokforingMonth: ready ? monthText(ready.month) : null,
       newMachines: newMachines?.machines.length ?? 0,
+      awishExpiry,
     }),
     dismissed: dismissed.map((d) => ({
       key: d.key,
@@ -160,6 +164,7 @@ export default async function TodoPage({
           label="Vems punkter"
         />
       </div>
+      <AwishExpiry notice={awishExpiry} />
       {viewer ? <NewMachinesFound viewer={viewer} preloaded={newMachines} /> : null}
       {viewer ? <BokforingReady viewer={viewer} preloaded={ready} /> : null}
       {advisor && advisor.suggestions.length > 0 ? (

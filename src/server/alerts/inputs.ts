@@ -5,9 +5,10 @@
  * Försäljningen läses ur lagrets försäljningshändelser (en per order, med betaltidpunkten
  * och utan belopp), så att samma uträkning fungerar för påfyllaren som inte får se order.
  *
- * Leverantörens maskindata (online/offline/fel) finns inte ännu: Awish-adaptern för gRPC
- * väntar på specifikationen (docs/awish.md). Tills dess härleds statusen ur försäljningen,
- * och `vendorSignals` är tomt med `vendorConfigured: false`.
+ * Leverantörens maskindata: Awish-synken sparar is_online per automat
+ * (public.machine_connectivity, regeln i @/analytics/health/connectivity). Läget blir
+ * maskinhändelser (online/offline efter 20 minuter) som maskinhälsan använder före
+ * försäljningen. Automater utan läge härleds ur försäljningen som förut.
  *
  * Försäljningens täckning (public.sales_data_until) säger hur långt den importerade
  * försäljningen räcker per automat. Awish CSV laddas upp för hand en gång per dag, så fram
@@ -21,8 +22,10 @@ import { and, asc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 
 import type { DataSourceRef, ImportRunRef } from "@/analytics/alerts";
 import {
+  connectivitySignals,
   machineHealth,
   type HealthInput,
+  type MachineConnectivity,
   type MachineHealth,
   type MachineSignal,
   type SalesCoverage,
@@ -54,6 +57,31 @@ export interface HealthData {
   readonly vendorConfigured: boolean;
   /** Hur långt försäljningen är importerad, per automat (tom om ingen datakälla har order). */
   readonly coverage: CoverageRow[];
+  /** Anslutningen enligt Awish per automat (tom utan Awish API). */
+  readonly connectivity: MachineConnectivity[];
+}
+
+/** Anslutningen per automat (public.machine_connectivity). Alla roller utom butiken. */
+export async function loadConnectivity(tx: Tx, orgId: string): Promise<MachineConnectivity[]> {
+  const res = await tx.execute(
+    sql`select machine_id, online, status, seen_at, online_at, offline_since, back_online_at,
+               last_offline_from
+        from public.machine_connectivity(${orgId}::uuid)`,
+  );
+  const iso = (v: unknown): string | null =>
+    v === null || v === undefined
+      ? null
+      : (v instanceof Date ? v : new Date(String(v))).toISOString();
+  return (Array.from(res) as Record<string, unknown>[]).map((r) => ({
+    machineId: String(r.machine_id),
+    online: typeof r.online === "boolean" ? r.online : null,
+    status: r.status === null || r.status === undefined ? null : String(r.status),
+    seenAt: iso(r.seen_at),
+    onlineAt: iso(r.online_at),
+    offlineSince: iso(r.offline_since),
+    backOnlineAt: iso(r.back_online_at),
+    lastOfflineFrom: iso(r.last_offline_from),
+  }));
 }
 
 /** En rad ur public.sales_data_until. */
@@ -140,6 +168,7 @@ export async function loadHealthData(
 ): Promise<HealthData> {
   const placements = await queryPlacements(tx, orgId);
   const coverage = await loadCoverage(tx, orgId, now);
+  const connectivity = await loadConnectivity(tx, orgId);
   const [machines, titles, orders, stockRows] = await Promise.all([
     queryMachines(tx, orgId, placements, today),
     queryTitles(tx, orgId),
@@ -162,9 +191,10 @@ export async function loadHealthData(
     titles,
     orders,
     stock,
-    signals: [],
-    vendorConfigured: false,
+    signals: connectivitySignals(connectivity, now),
+    vendorConfigured: connectivity.length > 0,
     coverage,
+    connectivity,
   };
 }
 
