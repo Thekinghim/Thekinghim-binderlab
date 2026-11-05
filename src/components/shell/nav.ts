@@ -43,6 +43,7 @@ export type RouteId =
   | "avtal"
   | "marknad"
   | "effekt"
+  | "varde"
   | "assistent"
   | "datakallor"
   | "installningar";
@@ -268,6 +269,21 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     roles: READERS,
     phase: 9,
     lead: "Avstämning, bokföring och kassaflöde.",
+    vmb: false,
+  },
+  {
+    id: "varde",
+    group: "more",
+    href: "/varde",
+    label: "Värde",
+    icon: "arrowUpRight",
+    section: "main",
+    // Ägare och admin: sidan räknar sparad tid och visar butikernas andel per butik.
+    roles: OPERATORS,
+    phase: 13,
+    lead: "Vad Binderlab gett dig, månad för månad.",
+    // Sidan väljer månad själv (?manad); skalets period och filter gäller inte här.
+    context: false,
     vmb: false,
   },
   {
@@ -527,6 +543,7 @@ export const navSections: ReadonlyArray<NavSection> = [
       tab("ekonomi", "Ekonomi"),
       tab("ekonomi", "Bokföring", "bokforing", { context: false }),
       tab("rapporter", "Rapporter"),
+      tab("varde", "Värde"),
     ],
   },
   {

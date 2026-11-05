@@ -76,6 +76,8 @@ const VIEWER_OWN_ROWS_ONLY = [
   // Morgonbriefen: bara ägare och admin.
   "ai_briefs",
   "assistant_logs",
+  // Värde: loggen över automatiskt arbete syns bara för ägare och admin.
+  "automation_log",
   // Gratis-pack: koderna (värda ett pack var) syns bara för ägare och admin.
   "free_pack_codes",
   "import_upload_chunks",

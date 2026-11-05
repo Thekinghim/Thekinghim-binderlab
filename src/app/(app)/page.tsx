@@ -23,6 +23,7 @@ import { ArrowLink, InsightList, TodoList, TopTitles, WarningLine } from "./_hem
 import { OnboardingChecklist } from "./kom-igang/_components/onboarding-checklist";
 import { ShrinkageLine } from "./_hem/shrinkage-line";
 import { MorningBrief } from "./_hem/morning-brief";
+import { VardeCard } from "./_hem/varde-card";
 import { homeTodoLinkText, homeTodoPhone } from "./_hem/todo-phone";
 import { dateOf, kr, weekdayDayText } from "./_hem/text";
 
@@ -50,7 +51,7 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
   // (Att göra och förlorad försäljning tar längst tid med mycket data).
   return (
     <Suspense fallback={<HemSkeleton />}>
-      <HemContent searchParams={searchParams} userKey={ctx.user.id} />
+      <HemContent searchParams={searchParams} userKey={ctx.user.id} canSeeValue={ctx.canEdit} />
     </Suspense>
   );
 }
@@ -58,10 +59,13 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
 async function HemContent({
   searchParams,
   userKey,
+  canSeeValue,
 }: {
   searchParams: Promise<SearchParams>;
   /** För vyknappen "Visa butikernas andel" (valet minns per användare). */
   userKey: string;
+  /** Ägare och admin: kortet "Vad Binderlab gett dig" (/varde). */
+  canSeeValue: boolean;
 }) {
   const sp = await searchParams;
   const {
@@ -226,6 +230,12 @@ async function HemContent({
             <Suspense fallback={null}>
               <ShrinkageLine />
             </Suspense>
+            {/* Värde: sparad tid i månaden och länk till /varde (ägare och admin). */}
+            {canSeeValue && !scope ? (
+              <Suspense fallback={null}>
+                <VardeCard />
+              </Suspense>
+            ) : null}
           </div>
 
           {headline.state === "ok" ? (

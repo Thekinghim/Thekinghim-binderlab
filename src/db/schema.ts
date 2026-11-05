@@ -810,3 +810,5 @@ export * from "./schema/bokforing";
 export * from "./schema/brief";
 // Tillväxt: kampanjer på automaternas skärm och gratis-pack-koder.
 export * from "./schema/tillvaxt";
+// Värde: logg över automatiskt arbete (Awish-push).
+export * from "./schema/varde";

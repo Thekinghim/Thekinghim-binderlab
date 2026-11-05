@@ -52,7 +52,7 @@ describe("huvudflikar", () => {
       ],
       "vart-lager": ["Vårt lager", "Inköp", "Prognos", "Inköpspriser"],
       butiker: ["Butiker", "Kontrakt", "Expansion", "Butiksportal"],
-      pengar: ["Lönsamhet", "Ekonomi", "Bokföring", "Rapporter"],
+      pengar: ["Lönsamhet", "Ekonomi", "Bokföring", "Rapporter", "Värde"],
       mer: ["Inställningar", "Datakällor", "Assistent", "Marknad", "Effekt"],
     });
   });
@@ -108,6 +108,7 @@ describe("aktiv flik", () => {
       ["/expansion/saljunderlag", "butiker"],
       ["/ekonomi", "pengar"],
       ["/rapporter", "pengar"],
+      ["/varde", "pengar"],
       ["/installningar/anvandare", "mer"],
       ["/datakallor/importer/1", "mer"],
       ["/assistent", "mer"],
