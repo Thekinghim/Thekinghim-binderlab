@@ -25,8 +25,10 @@ export const PLATFORM_INFO: Readonly<Record<PlatformId, PlatformInfo>> = {
     },
     notes:
       "Order, automater och fack via Awish officiella gRPC-API (src/server/awish/grpc-client.ts). " +
-      "Påfyllning, varor och priser via Awish webbpanels API med leverantörens skriftliga " +
-      "godkännande 5 nov. 2026 (src/server/awish/web-client.ts). Orderlistan som CSV är reserv.",
+      "Nya varor via Awish webbpanels API (src/server/awish/web-client.ts); leverantörens " +
+      "skriftliga svar 5 nov. 2026 godkänner att skapa produkter. Påfyllning (antal i facken) " +
+      "via samma API nämns inte uttryckligen i svaret och är avstängd som standard. " +
+      "Orderlistan som CSV är reserv.",
   },
   manual_csv: {
     id: "manual_csv",

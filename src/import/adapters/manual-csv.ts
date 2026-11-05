@@ -5,7 +5,7 @@
  * skriv den i ett kalkylblad) och ladda upp filen under Datakällor.
  *
  * Kolumner (rubrikerna hittas på samma synonymer som Awish-importen, okänsligt för
- * skiftläge; svenska och engelska namn går bra):
+ * skiftläge; svenska, engelska och danska/norska namn går bra):
  *   Datum        obligatorisk. ÅÅÅÅ-MM-DD (även med klockslag) eller DD.MM.ÅÅÅÅ/DD/MM/ÅÅÅÅ.
  *   Automat      obligatorisk. Automatens namn eller kod; kopplas under Datakällor.
  *   Produkt      obligatorisk. Titeln som den heter i automaten.
@@ -54,6 +54,10 @@ export const MANUAL_CSV_TEMPLATE =
 
 const TIME_HEADERS = new Set(["tid", "time", "klockslag", "kl", "klocka", "tidpunkt"]);
 const QUANTITY_HEADERS = new Set(["antal", "quantity", "qty", "st", "styck", "count", "pcs"]);
+// Danska och norska rubriker som Awish-importens synonymer saknar (operatörer i Norden).
+const DATE_HEADERS = new Set(["dato"]);
+const AMOUNT_HEADERS = new Set(["beløb", "beløp", "belob"]);
+const EXTERNAL_ID_HEADERS = new Set(["ordrenummer", "ordrenr", "ordrenr."].map(normalizeHeader));
 
 export interface ManualCsvInput extends AdapterInput {
   file: { name: string; content: string | Uint8Array };
@@ -81,15 +85,16 @@ function resolve(headers: readonly string[]): Columns {
   const at = (header: string | null): number => (header === null ? -1 : headers.indexOf(header));
   const find = (names: ReadonlySet<string>): number =>
     headers.findIndex((h) => names.has(normalizeHeader(h)));
+  const either = (a: number, b: number): number => (a >= 0 ? a : b);
   return {
     // "Datum" hittas som orderDate, "Betaltid"/"Payment Time" som paidAt.
-    date: at(auto.paidAt) >= 0 ? at(auto.paidAt) : at(auto.orderDate),
+    date: either(at(auto.paidAt) >= 0 ? at(auto.paidAt) : at(auto.orderDate), find(DATE_HEADERS)),
     time: find(TIME_HEADERS),
     machine: at(auto.machine),
     title: at(auto.title),
-    amount: at(auto.amount),
+    amount: either(at(auto.amount), find(AMOUNT_HEADERS)),
     quantity: find(QUANTITY_HEADERS),
-    externalId: at(auto.externalId),
+    externalId: either(at(auto.externalId), find(EXTERNAL_ID_HEADERS)),
     isPaid: at(auto.isPaid),
   };
 }

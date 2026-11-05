@@ -89,6 +89,16 @@ describe("katalogen", () => {
   });
 });
 
+describe("ärliga beskrivningar", () => {
+  it("Awish: godkännandet 2026-11-05 gäller att skapa produkter, inte påfyllning", async () => {
+    const { PLATFORM_INFO } = await import("./catalog");
+    const notes = PLATFORM_INFO.awish.notes;
+    expect(notes).toMatch(/skapa produkter/);
+    expect(notes).not.toMatch(/Påfyllning, varor och priser via Awish webbpanels API med/);
+    expect(notes).toMatch(/påfyllning[^.]*inte uttryckligen/i);
+  });
+});
+
 describe("filer genom plattformen", () => {
   it("Awish orderlista: exakt samma resultat som awish_csv-adaptern direkt", async () => {
     const direct = await awishCsvAdapter.fetch({

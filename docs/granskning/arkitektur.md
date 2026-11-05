@@ -84,15 +84,15 @@ per dygn.
 Kostnaderna är inte angivna här: de beror på plan och volym och ska tas ur respektive
 leverantörs faktura. Det som står är vad koden kräver.
 
-| Tjänst            | Gör                                                   | Krav ur koden och dokumentationen                                                 | Utan den                                     |
-| ----------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------- |
-| Vercel            | Webb, funktioner (region `lhr1`, London), Vercel Cron | Två cron-jobb; funktioner upp till 300 s (`maxDuration` i cron-routerna)          | Inget fungerar                               |
-| Supabase          | Postgres, Auth, Storage, Vault, pg_cron/pg_net        | EU-region; Pro rekommenderas för PITR och dagliga backuper (`docs/operations.md`) | Inget fungerar                               |
-| Awish (DingShang) | Order, automater, fack (gRPC); fack-antal (webbpanel) | AppId/AppSecret/AppKey och panelinloggning per organisation, i Vault              | CSV-uppladdning som reserv                   |
-| Resend            | Rapport- och larmmejl                                 | `RESEND_API_KEY`, verifierad avsändardomän                                        | Mejlen skrivs till serverns disk (`outbox`)  |
-| Sentry            | Felrapporter och cron-övervakning                     | `SENTRY_DSN` (EU-region)                                                          | Inga felrapporter; larmen i appen finns kvar |
-| Anthropic         | Assistenten och AI-rådgivaren                         | `ANTHROPIC_API_KEY`; budget 300 kr/månad som standard (`AI_MONTHLY_BUDGET_SEK`)   | Assistenten visar att nyckeln saknas         |
-| Web Push          | Aviseringar till telefonen                            | VAPID-nycklar                                                                     | Inga push-aviseringar                        |
+| Tjänst            | Gör                                                   | Krav ur koden och dokumentationen                                                          | Utan den                                     |
+| ----------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------- |
+| Vercel            | Webb, funktioner (region `lhr1`, London), Vercel Cron | Två cron-jobb; funktioner upp till 300 s (`maxDuration` i cron-routerna)                   | Inget fungerar                               |
+| Supabase          | Postgres, Auth, Storage, Vault, pg_cron/pg_net        | London (eu-west-2); Pro rekommenderas för PITR och dagliga backuper (`docs/operations.md`) | Inget fungerar                               |
+| Awish (DingShang) | Order, automater, fack (gRPC); fack-antal (webbpanel) | AppId/AppSecret/AppKey och panelinloggning per organisation, i Vault                       | CSV-uppladdning som reserv                   |
+| Resend            | Rapport- och larmmejl                                 | `RESEND_API_KEY`, verifierad avsändardomän                                                 | Mejlen skrivs till serverns disk (`outbox`)  |
+| Sentry            | Felrapporter och cron-övervakning                     | `SENTRY_DSN` (EU-region)                                                                   | Inga felrapporter; larmen i appen finns kvar |
+| Anthropic         | Assistenten och AI-rådgivaren                         | `ANTHROPIC_API_KEY`; budget 300 kr/månad som standard (`AI_MONTHLY_BUDGET_SEK`)            | Assistenten visar att nyckeln saknas         |
+| Web Push          | Aviseringar till telefonen                            | VAPID-nycklar                                                                              | Inga push-aviseringar                        |
 
 Varje tjänst har en lokal ersättare, så att utveckling och tester aldrig anropar riktiga
 tjänster ([docs/miljoer.md](../miljoer.md)).

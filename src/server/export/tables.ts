@@ -4,7 +4,7 @@
  * `omit`: tekniska fält och hänvisningar till hemligheter. Inga hemligheter finns i
  * tabellerna (de ligger i Vault), men datakällans config och secret_ref är interna.
  *
- * Ren data, testas i export.test.ts och test/db/dataexport.test.ts.
+ * Ren data, testas i export.test.ts och test/db/granskning.test.ts.
  */
 
 export interface ExportTable {

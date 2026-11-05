@@ -74,6 +74,19 @@ describe("Annan automat (CSV)", () => {
     expect(r.rows[0]!.paidAtUtc.toISOString()).toBe("2026-11-05T08:15:00.000Z");
   });
 
+  it("danska och norska rubriker (Dato, Beløb, Ordrenummer) hittas", () => {
+    const r = parse(
+      "Dato;Automat;Produkt;Beløb;Ordrenummer\n2026-11-05 10:00;DK-1;Booster;45;D-9\n",
+    );
+    expect(r.errors).toEqual([]);
+    expect(r.rows[0]).toMatchObject({
+      externalId: "D-9",
+      amountOre: 4500,
+      sourceMachineName: "DK-1",
+    });
+    expect(r.rows[0]!.paidAtUtc.toISOString()).toBe("2026-11-05T09:00:00.000Z");
+  });
+
   it("bara datum: kl. 12.00 i källans tidszon, rätt affärsdag", () => {
     const r = parse("Datum;Automat;Produkt;Belopp\n2026-11-05;A;X;10\n");
     expect(r.rows[0]!.paidAtUtc.toISOString()).toBe("2026-11-05T11:00:00.000Z");

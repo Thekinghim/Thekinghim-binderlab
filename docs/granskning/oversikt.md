@@ -19,8 +19,8 @@ Allt gränssnitt är på svenska, belopp sparas i öre och datum räknas i organ
 ## Kunder och organisationer (multi-tenant)
 
 - **Organisation = kund.** All data har `organization_id` och hör till exakt en organisation
-  (83 tabeller; katalogtestet `test/db/catalog.test.ts` kräver det för varje tabell utom
-  `organizations`). En operatör (t.ex. en dansk operatör) får en egen organisation och ser
+  (82 av 83 tabeller i `public`; katalogtestet `test/db/catalog.test.ts` kräver det för varje
+  tabell utom `organizations` själv). En operatör (t.ex. en dansk operatör) får en egen organisation och ser
   aldrig någon annans data.
 - **Roller per organisation** (`public.member_role`): ägare (`owner`), admin, läsare
   (`viewer`, t.ex. delägare) och påfyllare (`refiller`, bara lager, inga belopp). Butiker

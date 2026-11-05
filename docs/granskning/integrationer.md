@@ -64,7 +64,8 @@ Datum;Tid;Automat;Produkt;Belopp;Antal
 2026-11-03;16:40;Butik Centrum;Pokémon 151 Booster;178;2
 ```
 
-- Rubrikerna hittas automatiskt (svenska eller engelska, t.ex. Date/Machine/Product/Amount);
+- Rubrikerna hittas automatiskt (svenska, engelska eller danska/norska, t.ex.
+  Date/Machine/Product/Amount eller Dato/Automat/Produkt/Beløb);
   komma, semikolon eller tab; UTF-8 eller Windows-1252.
 - Datum `ÅÅÅÅ-MM-DD` eller `DD.MM.ÅÅÅÅ`; utan klockslag används kl. 12.00. Belopp är radens
   belopp; med Antal delas det lika per pack (en order per pack, som för Awish).

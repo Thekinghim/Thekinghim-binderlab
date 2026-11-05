@@ -10,7 +10,7 @@ vi.mock("server-only", () => ({}));
 const { crc32, zipBytes, zipEntry } = await import("./zip");
 const { parseExportCsv, unzip } = await import("./testing/unzip");
 const { EXPORT_TABLES, README_FILE } = await import("./tables");
-const { exportFileName, tableCsv } = await import("./service");
+const { exportFileName, exportReadme, tableCsv } = await import("./service");
 
 const AT = new Date("2026-11-05T19:30:12Z");
 
@@ -82,6 +82,19 @@ describe("exportens CSV", () => {
   it("text som börjar som en formel blir text i Excel", () => {
     const csv = tableCsv(["note"], [{ note: "=HYPERLINK(1)" }]);
     expect(parseExportCsv(csv)[1]).toEqual(["'=HYPERLINK(1)"]);
+  });
+
+  it("förklaringsfilen: 1 rad, 2 rader (svensk böjning)", () => {
+    const text = exportReadme({
+      organizationName: "Test",
+      at: AT,
+      files: [
+        { file: "organisation.csv", rows: 1 },
+        { file: "order.csv", rows: 2 },
+      ],
+    });
+    expect(text).toContain("- organisation.csv (1 rad):");
+    expect(text).toContain("- order.csv (2 rader):");
   });
 
   it("filnamnet har organisationen och dagen i organisationens tidszon", () => {

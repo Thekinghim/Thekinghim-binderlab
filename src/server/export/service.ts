@@ -137,7 +137,8 @@ async function readTable(
   return { headers: columns.map((c) => c.name), rows };
 }
 
-function readme(args: {
+/** LASMIG.txt: formatet och filerna med antal rader. */
+export function exportReadme(args: {
   organizationName: string;
   at: Date;
   files: readonly ExportedFile[];
@@ -152,6 +153,7 @@ function readme(args: {
     "- En CSV-fil per tabell: UTF-8 med BOM, semikolon, en rubrikrad (kolumnernas namn).",
     "- Belopp i öre (kolumner som slutar på _ore): 7900 = 79,00 kr.",
     "- Procent i baspunkter (_bp): 2500 = 25 %.",
+    "- Decimaltal (t.ex. latitude) med punkt som decimaltecken.",
     "- Tider i UTC (ISO 8601, slutar på Z). Datum (YYYY-MM-DD) är affärsdagar i organisationens tidszon.",
     "- Id:n (uuid) kopplar ihop filerna, t.ex. orders.machine_id = machines.id.",
     "- Text som börjar med = + - @ har fått ett ' först (skydd mot formler i Excel).",
@@ -160,7 +162,7 @@ function readme(args: {
     "Filer",
     ...args.files.map((f) => {
       const spec = EXPORT_TABLES.find((t) => t.file === f.file);
-      return `- ${f.file} (${f.rows} rader): ${spec?.description ?? ""}`;
+      return `- ${f.file} (${f.rows} ${f.rows === 1 ? "rad" : "rader"}): ${spec?.description ?? ""}`;
     }),
     "",
   ];
@@ -233,7 +235,7 @@ export async function exportOrganizationDataFor(
     entries.unshift(
       zipEntry(
         README_FILE,
-        `${BOM}${readme({ organizationName: viewer.organization.name, at: now, files })}`,
+        `${BOM}${exportReadme({ organizationName: viewer.organization.name, at: now, files })}`,
       ),
     );
     const parts = zipParts(entries, now);

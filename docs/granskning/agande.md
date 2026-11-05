@@ -2,10 +2,10 @@
 
 ## Koden
 
-- **Upphovsman:** all kod i repot är skriven för Binderlab. Git-historiken (166 commits sedan
-  2 nov. 2026, `git shortlog -sne HEAD`) har två författare: ägaren (`Wilsterb`, GitHub
-  `Thekinghim`) och Claude (Anthropic), som skrivit koden på ägarens uppdrag; 153 commits har
-  raden `Co-Authored-By: Claude`. Ägaren har beställt och styrt arbetet. Hur rättigheterna
+- **Upphovsman:** all kod i repot är skriven för Binderlab. Git-historiken före granskningen (166 commits sedan
+  2 nov. 2026, `git shortlog -sne`) har två författare: Claude (Anthropic) står som författare
+  till 161 commits och ägaren (`Wilsterb`, GitHub `Thekinghim`) till 5. Nästan all kod är alltså
+  skriven av AI på ägarens uppdrag; 153 commits har dessutom raden `Co-Authored-By: Claude`. Ägaren har beställt och styrt arbetet. Hur rättigheterna
   till AI-skriven kod ska beskrivas i köpeavtalet bör en jurist bekräfta.
 - **Ingen LICENSE-fil** och `"private": true` i `package.json`: koden är inte öppen källkod.
   Vad en köpare får (överlåtelse eller licens) ska stå i köpeavtalet och sedan i en

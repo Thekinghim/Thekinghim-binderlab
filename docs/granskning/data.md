@@ -4,6 +4,9 @@
 
 All data ligger i **Supabase** (Postgres och Storage) i produktionsprojektets region
 (eu-west-2, London, enligt `docs/operations.md`); funktionerna körs i samma region (`lhr1`).
+London ligger i Storbritannien, alltså **utanför EU/EES**: datat stannar inte i EU. Överföringen
+dit vilar på EU-kommissionens adekvansbeslut för Storbritannien; kontrollera att det gäller när
+avtalet skrivs (eller byt region).
 
 | Område             | Tabeller (urval)                                                                   |
 | ------------------ | ---------------------------------------------------------------------------------- |
@@ -57,7 +60,7 @@ Dessutom: orderlistan som CSV (Order → Exportera), SIE 4 och Excel till bokfö
 
 | Punkt                          | Läge                                                                                  |
 | ------------------------------ | ------------------------------------------------------------------------------------- |
-| Region                         | EU (London) för databas och funktioner; Anthropic behandlar utanför EU                |
+| Region                         | London (Storbritannien, utanför EU) för databas och funktioner; Anthropic utanför EU  |
 | Biträdesavtal (DPA)            | Inte tecknade med Supabase, Vercel, Resend, Sentry eller Anthropic                    |
 | Lagringstider och gallring     | Spärr finns i databasen (`private.purge_allowed()`), men inget gallringsjobb är byggt |
 | Registrerades rätt till utdrag | Ingen funktion per person; organisationens export ovan täcker organisationens data    |
