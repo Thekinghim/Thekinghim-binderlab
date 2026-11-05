@@ -13,7 +13,7 @@
  * Ren funktion (inga laddare), så att regeln kan testas utan databas.
  */
 
-import type { TitleRow } from "@/app/(app)/inkopspriser/_lib/model";
+import { lossOnlyAfterShare, type TitleRow } from "@/app/(app)/inkopspriser/_lib/model";
 import { formatPercent, formatSek } from "@/lib/format";
 
 export type PriceSort = "marginal" | "kvar_per_order" | "order";
@@ -35,6 +35,25 @@ const STATUS_TEXT: Record<TitleRow["status"], string> = {
   idle: "ingen försäljning",
   ok: "lönsam",
 };
+
+/**
+ * Statusen som sidans statusLabel: säger när förlusten kommer först efter butikens andel
+ * (hela beloppet är positivt), så att den inte motsäger "kvar per order".
+ */
+function statusText(r: TitleRow): string {
+  if (lossOnlyAfterShare(r)) return "går med förlust efter butikens andel";
+  if (lossAfterRentOnlyAfterShare(r)) return "går med förlust efter hyra och andel";
+  return STATUS_TEXT[r.status];
+}
+
+/** Förlust efter hyra som kommer av andelen: före andelen är det kvar efter hyran. */
+function lossAfterRentOnlyAfterShare(r: TitleRow): boolean {
+  return (
+    r.status === "loss-after-rent" &&
+    r.leftBeforeAfterRentOre !== null &&
+    r.leftBeforeAfterRentOre > 0
+  );
+}
 
 function kr(ore: number | null): string {
   return ore === null ? "–" : formatSek(ore / 100);
@@ -72,7 +91,7 @@ export function priceRowData(r: TitleRow, o: PriceViewOptions): Record<string, u
   const base: Record<string, unknown> = {
     titel: r.name,
     id: r.id,
-    status: STATUS_TEXT[r.status],
+    status: statusText(r),
     inkopsprisIdag: r.currentCostOre === null ? "saknas" : kr(r.currentCostOre),
     inkopsprisIdagOre: r.currentCostOre,
     giltigtFran: r.currentFrom,
@@ -103,6 +122,11 @@ export function priceRowData(r: TitleRow, o: PriceViewOptions): Record<string, u
     if (r.status === "loss" && hasShare(r)) {
       base.varDelPerOrder = kr(r.leftOre);
       base.varDelPerOrderOre = r.leftOre;
+    }
+    // Som sidans rubrik: "förlust … per order efter andel och hyra".
+    if (o.rent && lossAfterRentOnlyAfterShare(r)) {
+      base.varDelEfterHyra = kr(r.leftAfterRentOre);
+      base.varDelEfterHyraOre = r.leftAfterRentOre;
     }
   }
   base.order = r.orders;
