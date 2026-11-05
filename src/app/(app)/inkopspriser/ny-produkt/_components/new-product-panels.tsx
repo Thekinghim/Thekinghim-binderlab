@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { fitInSquare, SQUARE_SIDE } from "../_lib/square";
+import { squareImage } from "../_lib/square-file";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,7 @@ type Slot = {
   capacity: number | null;
 };
 type Good = { id: number; name: string; priceOre: number | null };
-type Preview = {
+export type Preview = {
   lines: string[];
   warnings: string[];
   blocking: string | null;
@@ -49,32 +49,13 @@ function kr(ore: number | null): string {
   return rest === 0 ? `${whole} kr` : `${whole},${String(rest).padStart(2, "0")} kr`;
 }
 
-/**
- * Lägger bilden mitt i en kvadrat (600×600, genomskinlig kant) som png. Awish gör alltid om
- * bilden till en kvadrat, så en avlång bild blev utdragen; nu behåller den sina proportioner.
- */
-async function squareImage(file: File): Promise<File> {
-  if (typeof createImageBitmap !== "function") return file;
-  try {
-    const bitmap = await createImageBitmap(file);
-    const box = fitInSquare(bitmap.width, bitmap.height);
-    const canvas = document.createElement("canvas");
-    canvas.width = SQUARE_SIDE;
-    canvas.height = SQUARE_SIDE;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return file;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(bitmap, box.x, box.y, box.w, box.h);
-    bitmap.close?.();
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-    if (!blob) return file;
-    return new File([blob], file.name.replace(/\.\w+$/, "") + ".png", { type: "image/png" });
-  } catch {
-    return file;
-  }
-}
-
-function PreviewBox({ preview, children }: { preview: Preview; children?: React.ReactNode }) {
+export function PreviewBox({
+  preview,
+  children,
+}: {
+  preview: Preview;
+  children?: React.ReactNode;
+}) {
   return (
     <div role="status" className="flex flex-col gap-3 rounded-md border border-line-strong p-4">
       <p className="label text-subtle">Det här händer</p>

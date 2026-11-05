@@ -191,12 +191,20 @@ export default async function PurchasePricesPage({
             actions={
               <>
                 {canAddProduct ? (
-                  <Link
-                    href="/inkopspriser/ny-produkt"
-                    className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3 text-sm font-medium text-fg hover:border-line-control hover:bg-hover"
-                  >
-                    + Ny produkt
-                  </Link>
+                  <>
+                    <Link
+                      href="/inkopspriser/ny-produkt"
+                      className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3 text-sm font-medium text-fg hover:border-line-control hover:bg-hover max-md:h-11"
+                    >
+                      Varor i Awish
+                    </Link>
+                    <Link
+                      href="/inkopspriser/ny-produkt?flik=ny"
+                      className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3 text-sm font-medium text-fg hover:border-line-control hover:bg-hover max-md:h-11"
+                    >
+                      + Ny produkt
+                    </Link>
+                  </>
                 ) : null}
                 {/* Vald butik: andelen visas alltid, knappen behövs inte. Utan andel: ingen knapp. */}
                 {filtered || !anyShare ? null : (
@@ -310,6 +318,14 @@ export default async function PurchasePricesPage({
           <div className="grid grid-cols-1 gap-x-8 gap-y-12 lg:grid-cols-12">
             {/* Redigeraren först: ett klick på en titel rullar hit och sätter markören i priset. */}
             <div className="flex min-w-0 flex-col gap-6 lg:col-span-5">
+              {canAddProduct ? (
+                <Link
+                  href={`/inkopspriser/ny-produkt?titel=${selectedTitle.id}`}
+                  className="meta inline-flex min-h-11 w-fit items-center text-muted underline underline-offset-4 hover:text-fg md:min-h-0"
+                >
+                  Redigera namn, pris och bild i Awish →
+                </Link>
+              ) : null}
               <OwnProductToggle
                 key={`own-${selectedTitle.id}`}
                 titleId={selectedTitle.id}

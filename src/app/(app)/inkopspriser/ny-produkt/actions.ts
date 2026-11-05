@@ -14,6 +14,14 @@ import { AuthorizationError } from "@/server/access";
 import { AwishApiError } from "@/server/awish/grpc-client";
 import { checkGoodImage, NewProductError, type GoodImage } from "@/server/awish/goods";
 import {
+  linkGoodToTitleFor,
+  previewEditGoodFor,
+  saveEditGoodFor,
+  type EditGoodDeps,
+  type EditGoodPreview,
+  type EditGoodResult,
+} from "@/server/awish/edit-good";
+import {
   applySlotChangeFor,
   createNewProductFor,
   FORBIDDEN_MESSAGE,
@@ -29,6 +37,7 @@ import {
   OPERATOR_ROLES,
   requireContextRole,
   requireViewer,
+  requestVmbView,
   revalidateAppData,
 } from "@/server/data/core";
 import { dbErrorMessage, safeErrorForLog } from "@/server/errors";
@@ -138,6 +147,72 @@ export async function applySlotChange(raw: unknown): Promise<ActionResult<{ mess
     const r = (raw ?? {}) as { fingerprint?: unknown; confirmed?: unknown };
     const fingerprint = fingerprintSchema.parse(r.fingerprint);
     const data = await applySlotChangeFor(viewer, raw, fingerprint, r.confirmed === true);
+    revalidateAppData();
+    return { ok: true, data };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Varor i Awish: redigera och koppla
+// ---------------------------------------------------------------------------
+
+const scopeSchema = z
+  .object({
+    storeId: z.uuid().nullish(),
+    machineId: z.uuid().nullish(),
+  })
+  .nullish();
+
+/** Vald butik eller automat (som Inköpspriser) och "Med VMB" för effekten av ett nytt pris. */
+async function editDeps(input: unknown): Promise<EditGoodDeps> {
+  const scope = scopeSchema.safeParse((input as { scope?: unknown } | null)?.scope);
+  const s = scope.success ? scope.data : null;
+  return {
+    storeId: s?.storeId ?? null,
+    machineId: s?.machineId ?? null,
+    vmb: await requestVmbView(),
+  };
+}
+
+/** Förhandsvisning av en ändrad vara (namn, pris, bild). Skriver ingenting. */
+export async function previewEditGood(form: FormData): Promise<ActionResult<EditGoodPreview>> {
+  try {
+    const viewer = await operator();
+    const { input, image } = await readForm(form);
+    return {
+      ok: true,
+      data: await previewEditGoodFor(viewer, input, image, await editDeps(input)),
+    };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** Spara i Awish: ändrar varan i Awish och kopplar det nya namnet i Binderlab. */
+export async function saveEditGood(form: FormData): Promise<ActionResult<EditGoodResult>> {
+  try {
+    const viewer = await operator();
+    const fingerprint = fingerprintSchema.parse(
+      form instanceof FormData ? form.get("fingerprint") : null,
+    );
+    const { input, image } = await readForm(form);
+    const data = await saveEditGoodFor(viewer, input, image, fingerprint, await editDeps(input));
+    if (data.status !== "nothing") revalidateAppData();
+    return { ok: true, data };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** Kopplar en vara utan titel till en titel (eller en ny titel med varans namn). */
+export async function linkGoodToTitle(
+  raw: unknown,
+): Promise<ActionResult<{ titleId: string; titleName: string; message: string }>> {
+  try {
+    const viewer = await operator();
+    const data = await linkGoodToTitleFor(viewer, raw);
     revalidateAppData();
     return { ok: true, data };
   } catch (error) {

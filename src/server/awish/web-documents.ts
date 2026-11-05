@@ -31,7 +31,10 @@ export const GOODS_DOCUMENT =
 export const CREATE_GOOD_DOCUMENT =
   "mutation CreateGood($input: GoodInput!) { createGood(input: $input) }";
 
-/** Ändra vara. Används INTE av Binderlab (priser på befintliga varor ändras inte härifrån). */
+/**
+ * Ändra vara ("Redigera vara"). Panelens sida skickar hela varan tillbaka (GoodInput) med
+ * varans id; se goods-edit.ts (encodeUpdateGoodInput). Skalärt svar.
+ */
 export const UPDATE_GOOD_DOCUMENT =
   "mutation UpdateGood($id: Int!, $input: GoodInput!) { updateGood(id: $id, input: $input) }";
 

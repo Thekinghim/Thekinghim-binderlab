@@ -65,10 +65,26 @@ export interface FakeWebGood {
   media: string[];
   description: string;
   content: string;
+  /** SEK-prisets id (standard id × 10). */
+  priceId?: number;
+  originalPrice?: string;
+  memberPrice?: string;
+  costPrice?: string;
+  /** Priser i andra valutor (varor med flera valutor). */
+  extraPrices?: Array<{ id: number; currencyId: number; price: string }>;
+  multiCurrency?: boolean;
+  slug?: string;
+  unitId?: number | null;
+  attributes?: Array<{ id: number; label_name: string; label_value: string[]; immutable: boolean }>;
+  isTaxExempt?: boolean;
+  taxRate?: string;
+  isReturnable?: boolean;
 }
 
 export interface FakeWebUpload {
   fields: Record<string, string>;
+  /** Bildens innehåll (serveras på url, som Awish visar sina bilder). */
+  bytes?: Uint8Array;
   fileName: string;
   type: string;
   size: number;
@@ -93,6 +109,14 @@ export interface FakeWebState {
   nextGoodId: number;
   /** Vad createGood svarar med (riktiga Awish: ett skalärt värde; standard true). */
   createGoodResult: unknown;
+  /** Vad updateGood svarar med (skalärt; standard true). */
+  updateGoodResult: unknown;
+  /** Svara "true" på nästa UpdateGood men spara ingenting (för kontrollen efteråt). */
+  dropNextUpdate: boolean;
+  /** Spara nästa UpdateGood men svara med HTTP 503 (svaret går förlorat på vägen). */
+  failAfterNextUpdate: boolean;
+  /** Kontots behörigheter (Profile.permissions), som panelen läser för att visa fälten. */
+  permissions: string[];
   /** Kategorier per automat (machine_id som sträng). */
   categories: Record<string, Array<{ id: number; title: string }>>;
   uploads: FakeWebUpload[];
@@ -223,6 +247,10 @@ export async function startFakeAwishWeb(
     goods: [],
     nextGoodId: 500,
     createGoodResult: true,
+    updateGoodResult: true,
+    dropNextUpdate: false,
+    failAfterNextUpdate: false,
+    permissions: ["goods:create", "goods:update", "goods:delete"],
     categories: {},
     uploads: [],
     failNext: 0,
@@ -253,35 +281,54 @@ export async function startFakeAwishWeb(
   let baseUrl = "";
 
   const sek = () => state.currencies.find((c) => c.code === "SEK") ?? state.currencies[0]!;
+  const currencyById = (id: number) => state.currencies.find((c) => c.id === id) ?? sek();
   const goodJson = (g: FakeWebGood) => ({
     id: g.id,
     name: g.name,
     description: g.description,
     price: g.price,
-    original_price: "0.00",
-    multi_currency_enabled: false,
+    original_price: g.originalPrice ?? "0.00",
+    multi_currency_enabled: g.multiCurrency ?? false,
     prices: [
       {
-        id: g.id * 10,
+        id: g.priceId ?? g.id * 10,
         price: g.price,
+        original_price: g.originalPrice ?? "0.00",
+        member_price: g.memberPrice ?? "0.00",
+        cost_price: g.costPrice ?? "0.00",
+        currency: sek(),
+      },
+      ...(g.extraPrices ?? []).map((p) => ({
+        id: p.id,
+        price: p.price,
         original_price: "0.00",
         member_price: "0.00",
         cost_price: "0.00",
-        currency: sek(),
-      },
+        currency: currencyById(p.currencyId),
+      })),
     ],
     thumb: g.thumb,
     media: g.media,
     content: g.content,
-    slug: `good-${g.id}`,
+    slug: g.slug ?? `good-${g.id}`,
     updated_at: "2026-11-05 10:00:00",
     age_verification_enabled: false,
     age_verification_min: 0,
-    unit: null,
-    attributes: [],
-    is_tax_exempt: true,
-    tax_rate: "0.00",
-    is_returnable: false,
+    unit:
+      g.unitId == null
+        ? null
+        : {
+            id: g.unitId,
+            name: "st",
+            display_name: "Styck",
+            multiplier: 1,
+            base_unit: "st",
+            description: "",
+          },
+    attributes: g.attributes ?? [],
+    is_tax_exempt: g.isTaxExempt ?? true,
+    tax_rate: g.taxRate ?? "0.00",
+    is_returnable: g.isReturnable ?? false,
     category_id: null,
   });
 
@@ -353,7 +400,14 @@ export async function startFakeAwishWeb(
     }
     const n = state.uploads.length + 1;
     const url = `${baseUrl}/uploads/${n}.${ext}`;
-    state.uploads.push({ fields, fileName: file.name, type: file.type, size: file.size, url });
+    state.uploads.push({
+      fields,
+      fileName: file.name,
+      type: file.type,
+      size: file.size,
+      url,
+      bytes: new Uint8Array(await file.arrayBuffer()),
+    });
     send(res, 200, {
       id: n,
       file_url: url,
@@ -515,7 +569,7 @@ export async function startFakeAwishWeb(
             email: state.email,
             username: "butik",
             status: 1,
-            permissions: [],
+            permissions: state.permissions,
             merchant: { id: state.merchantId, title: "Binderlab test", tax_enabled: false },
             role: { id: state.isRoot ? 1 : 2, name: state.isRoot ? "root" : "merchant" },
             is_readonly: false,
@@ -576,6 +630,81 @@ export async function startFakeAwishWeb(
           content: String(g.content),
         });
         reply({ createGood: state.createGoodResult });
+        return;
+      }
+
+      case "UpdateGood": {
+        if (!isInt(variables.id)) {
+          reject('Variable "$id" got invalid value; Int cannot represent non-integer value.');
+          return;
+        }
+        const good = state.goods.find((x) => x.id === variables.id);
+        if (!good) {
+          send(res, 200, { errors: [{ message: "good not found" }] });
+          return;
+        }
+        const g = checkGoodInput(
+          variables.input,
+          state.currencies.map((c) => c.id),
+        );
+        // Panelens redigering skickar varans priser tillbaka med sina id:n. Ett id som inte
+        // hör till varan, eller två priser i samma valuta, nekas.
+        const sekId = sek().id;
+        const own = new Map<number, number>([
+          [good.priceId ?? good.id * 10, sekId],
+          ...(good.extraPrices ?? []).map((p) => [p.id, p.currencyId] as [number, number]),
+        ]);
+        const prices = g.prices as Array<{ id: number; currency_id: number; price: number }>;
+        const seen = new Set<number>();
+        for (const p of prices) {
+          if (seen.has(p.currency_id)) {
+            send(res, 200, { errors: [{ message: "duplicate currency in prices" }] });
+            return;
+          }
+          seen.add(p.currency_id);
+          if (p.id !== 0 && own.get(p.id) !== p.currency_id) {
+            send(res, 200, { errors: [{ message: "price not found" }] });
+            return;
+          }
+        }
+        if (state.dropNextUpdate) {
+          state.dropNextUpdate = false;
+          reply({ updateGood: state.updateGoodResult });
+          return;
+        }
+        const sekPrice = prices.find((p) => p.currency_id === sekId);
+        good.name = String(g.name);
+        good.description = String(g.description);
+        good.content = String(g.content);
+        good.thumb = String(g.thumb);
+        good.media = [...(g.media as string[])];
+        good.slug = String(g.slug);
+        good.unitId = (g.unit_id as number | null) ?? null;
+        good.attributes = g.attributes as FakeWebGood["attributes"];
+        good.isTaxExempt = Boolean(g.is_tax_exempt);
+        good.taxRate = (g.tax_rate as number).toFixed(2);
+        good.isReturnable = Boolean(g.is_returnable);
+        good.multiCurrency = Boolean(g.multi_currency_enabled);
+        if (sekPrice) {
+          const full = sekPrice as unknown as Record<string, number>;
+          good.price = sekPrice.price.toFixed(2);
+          good.originalPrice = full.original_price!.toFixed(2);
+          good.memberPrice = full.member_price!.toFixed(2);
+          good.costPrice = full.cost_price!.toFixed(2);
+        }
+        good.extraPrices = prices
+          .filter((p) => p.currency_id !== sekId)
+          .map((p) => ({
+            id: p.id === 0 ? state.nextGoodId++ * 10 : p.id,
+            currencyId: p.currency_id,
+            price: p.price.toFixed(2),
+          }));
+        if (state.failAfterNextUpdate) {
+          state.failAfterNextUpdate = false;
+          send(res, 503, { errors: [{ message: "service unavailable" }] });
+          return;
+        }
+        reply({ updateGood: state.updateGoodResult });
         return;
       }
 
@@ -713,6 +842,16 @@ export async function startFakeAwishWeb(
 
   const server: Server = createServer((req, res) => {
     const path = req.url?.split("?")[0] ?? "";
+    if (req.method === "GET" && path.startsWith("/uploads/")) {
+      const upload = state.uploads.find((u) => u.url.endsWith(path));
+      if (!upload?.bytes) {
+        send(res, 404, { message: "not found" });
+        return;
+      }
+      res.writeHead(200, { "content-type": upload.type });
+      res.end(Buffer.from(upload.bytes));
+      return;
+    }
     if (req.method === "POST" && path.endsWith("/api/v1/files")) {
       handleUpload(req, res).catch(() => send(res, 500, { message: "error" }));
       return;

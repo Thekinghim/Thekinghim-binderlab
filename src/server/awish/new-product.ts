@@ -56,15 +56,15 @@ export interface NewProductDeps {
 
 type Row = Record<string, unknown>;
 
-async function rows<T extends Row>(db: Db | Tx, q: ReturnType<typeof sql>): Promise<T[]> {
+export async function rows<T extends Row>(db: Db | Tx, q: ReturnType<typeof sql>): Promise<T[]> {
   return Array.from(await db.execute(q)) as T[];
 }
 
 export const FORBIDDEN_MESSAGE = "Bara ägare och admin kan lägga till produkter i Awish.";
-const STALE_MESSAGE =
+export const STALE_MESSAGE =
   "Något har ändrats i Awish eller Binderlab sedan förhandsvisningen. Titta på förhandsvisningen igen och skicka sedan.";
 
-async function requireOperator(viewer: Viewer): Promise<void> {
+export async function requireOperator(viewer: Viewer): Promise<void> {
   try {
     await requireRoleFor(viewer.user, viewer.organization.id, OPERATOR_ROLES);
   } catch (error) {
@@ -83,7 +83,7 @@ export interface NewProductStatus {
   readonly blocker: string | null;
 }
 
-async function awishStatus(
+export async function awishStatus(
   db: Db,
   orgId: string,
 ): Promise<NewProductStatus & { sourceId: string | null }> {
@@ -113,7 +113,7 @@ async function awishStatus(
 }
 
 /** Inloggad klient mot Awish, eller NewProductError om push är av eller inloggning saknas. */
-async function loggedInClient(
+export async function loggedInClient(
   viewer: Viewer,
   deps: NewProductDeps,
 ): Promise<{ db: Db; client: AwishWebApi; sourceId: string }> {
@@ -134,7 +134,11 @@ async function loggedInClient(
  * En skrivning till Awish i taget per organisation. Låset hålls i en transaktion i
  * databasen medan anropen pågår och släpps när den avslutas (även vid fel).
  */
-async function withAwishWriteLock<T>(db: Db, orgId: string, fn: () => Promise<T>): Promise<T> {
+export async function withAwishWriteLock<T>(
+  db: Db,
+  orgId: string,
+  fn: () => Promise<T>,
+): Promise<T> {
   return db.transaction(async (tx) => {
     const [row] = await rows<{ ok: boolean }>(
       tx,
@@ -193,7 +197,7 @@ export async function newProductPageFor(
 // ---------------------------------------------------------------------------
 
 /** Titeln i Binderlab för namnet: via alias (följer sammanslagningar), annars samma namn. */
-async function titleStateFor(
+export async function titleStateFor(
   tx: Tx,
   orgId: string,
   name: string,

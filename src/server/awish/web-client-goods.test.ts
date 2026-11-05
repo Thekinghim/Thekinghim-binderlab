@@ -366,3 +366,107 @@ describe("låtsas-panelen är lika sträng som riktiga Awish", () => {
     expect(r.errors).toBeUndefined();
   });
 });
+
+const { encodeUpdateGoodInput, GOOD_PERMISSIONS } = await import("./goods-edit");
+
+describe("Redigera vara (UpdateGood)", () => {
+  function seed() {
+    fake.state.goods.push({
+      id: 42,
+      name: "Delta Reign",
+      price: "150.00",
+      thumb: "https://img.example/a.png",
+      media: ["https://img.example/a.png", "https://img.example/b.png"],
+      description: "Delta Reign",
+      content: "<p>Delta Reign</p>",
+      priceId: 4200,
+      originalPrice: "199.00",
+      costPrice: "80.00",
+      extraPrices: [{ id: 4201, currencyId: 1, price: "14.50" }],
+      multiCurrency: true,
+      slug: "delta-reign",
+      unitId: 3,
+      attributes: [{ id: 9, label_name: "weight", label_value: ["100g"], immutable: false }],
+      isTaxExempt: false,
+      taxRate: "12.00",
+      isReturnable: true,
+    });
+  }
+
+  it("läser kontots behörigheter (Profile.permissions)", async () => {
+    const c = await loggedIn();
+    expect((await c.profile()).permissions).toEqual([
+      "goods:create",
+      "goods:update",
+      "goods:delete",
+    ]);
+  });
+
+  it("skickar panelens dokument och hela varan; bara namn, SEK-pris och bild ändras", async () => {
+    seed();
+    const c = await loggedIn();
+    const good = (await c.allGoodsFull()).find((g) => g.id === 42)!;
+    const input = encodeUpdateGoodInput(
+      good,
+      { name: "Delta Reign ETB", priceOre: 16_000, imageUrl: "https://img.example/ny.png" },
+      Object.values(GOOD_PERMISSIONS),
+    );
+    await c.updateGood(42, input);
+    expect(fake.state.rejected).toEqual([]);
+    const call = fake.state.calls.find((x) => x.operationName === "UpdateGood")!;
+    expect(call.query).toBe(DASHBOARD_DOCUMENTS.UpdateGood);
+    expect(call.variables).toEqual({ id: 42, input });
+
+    const after = (await c.allGoodsFull()).find((g) => g.id === 42)!;
+    expect(after).toEqual({
+      ...good,
+      name: "Delta Reign ETB",
+      description: "Delta Reign ETB",
+      content: "<p>Delta Reign ETB</p>",
+      thumb: "https://img.example/ny.png",
+      media: ["https://img.example/ny.png", "https://img.example/b.png"],
+      prices: [{ ...good.prices[0]!, price: 160 }, good.prices[1]!],
+    });
+  });
+
+  it("låtsas-panelen nekar fel form: urval på mutationen, okänt fält, fel pris-id", async () => {
+    seed();
+    const c = await loggedIn();
+    const good = (await c.allGoodsFull()).find((g) => g.id === 42)!;
+    const input = encodeUpdateGoodInput(
+      good,
+      { name: "X", priceOre: 100, imageUrl: null },
+      Object.values(GOOD_PERMISSIONS),
+    );
+    const withSelection = await raw(
+      "UpdateGood",
+      "mutation UpdateGood($id: Int!, $input: GoodInput!) { updateGood(id: $id, input: $input) { id } }",
+      { id: 42, input },
+    );
+    expect(withSelection.errors?.[0]?.message).toBeTruthy();
+    const extra = await raw("UpdateGood", DASHBOARD_DOCUMENTS.UpdateGood!, {
+      id: 42,
+      input: { ...input, category_id: 1 },
+    });
+    expect(extra.errors?.[0]?.message).toMatch(/category_id/);
+    const wrongPrice = await raw("UpdateGood", DASHBOARD_DOCUMENTS.UpdateGood!, {
+      id: 42,
+      input: { ...input, prices: [{ ...input.prices[0]!, id: 999 }] },
+    });
+    expect(wrongPrice.errors?.[0]?.message).toBe("price not found");
+    expect(fake.state.goods.find((g) => g.id === 42)!.name).toBe("Delta Reign");
+  });
+
+  it("ett nekat UpdateGood blir ett svenskt fel", async () => {
+    seed();
+    const c = await loggedIn();
+    const good = (await c.allGoodsFull()).find((g) => g.id === 42)!;
+    fake.state.failOn.UpdateGood = { message: "permission denied", code: "FORBIDDEN" };
+    await expect(
+      c.updateGood(
+        42,
+        encodeUpdateGoodInput(good, { name: "X", priceOre: 100, imageUrl: null }, []),
+      ),
+    ).rejects.toThrow("Awish-kontot saknar behörighet för den åtgärden.");
+  });
+});

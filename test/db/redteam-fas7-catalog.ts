@@ -43,6 +43,14 @@ function newProductForm(fingerprint?: string): FormData {
   return form;
 }
 
+/** Formuläret "Redigera vara" (FormData med JSON och ev. fingeravtryck). */
+function editGoodForm(fingerprint?: string): FormData {
+  const form = new FormData();
+  form.set("input", JSON.stringify({ goodId: 1, name: "Rödteam", salePrice: "79" }));
+  if (fingerprint) form.set("fingerprint", fingerprint);
+  return form;
+}
+
 /** Ett objekt med alla fält som någon action läser, med A:s id:n. */
 export function sink(c: Cast, extra: Record<string, unknown> = {}): Record<string, unknown> {
   const a = c.idsA;
@@ -433,6 +441,26 @@ export const ACTIONS: ActionSpec[] = [
         confirmed: true,
       },
     ],
+  },
+  // Inköpspriser → Varor i Awish: redigera en vara i Awish och koppla den (ägare och admin).
+  {
+    module: "@/app/(app)/inkopspriser/ny-produkt/actions",
+    name: "previewEditGood",
+    allowed: OP,
+    readOnly: true,
+    args: () => [editGoodForm()],
+  },
+  {
+    module: "@/app/(app)/inkopspriser/ny-produkt/actions",
+    name: "saveEditGood",
+    allowed: OP,
+    args: () => [editGoodForm("0123456789abcdef0123456789abcdef")],
+  },
+  {
+    module: "@/app/(app)/inkopspriser/ny-produkt/actions",
+    name: "linkGoodToTitle",
+    allowed: OP,
+    args: (c) => [{ goodId: 1, titleId: c.A.titleId }],
   },
   // Drift
   {
