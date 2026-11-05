@@ -1101,6 +1101,8 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
             (organization_id, target_machines, machine_price_ore, people, hours_per_person_week)
           values (${orgId}, 20, 3000000, 2, 10)`,
     );
+    // Logg över "Exportera all data" (20261111020100_granskning_dataexport.sql).
+    await tx.execute(sql`insert into public.data_exports (organization_id) values (${orgId})`);
     await tx.execute(sql`set local role authenticated`);
 
     return {

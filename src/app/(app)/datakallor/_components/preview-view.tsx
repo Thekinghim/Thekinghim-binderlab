@@ -229,6 +229,7 @@ function TimezoneCheck({
 }) {
   const first = result.firstRow;
   const [zone, setZone] = useState(result.dataSource.sourceTimezone);
+  const manual = result.dataSource.provider === "manual_csv";
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   if (!first) return null;
@@ -257,15 +258,22 @@ function TimezoneCheck({
 
   return (
     // Panelens gap ger redan luften ovanför; sektionens egen marginal skulle dubbla den.
-    <PanelSection label="Kontrollera tidszonen mot Awish" className="mt-0! md:mt-0!">
+    <PanelSection
+      label={manual ? "Kontrollera tidszonen" : "Kontrollera tidszonen mot Awish"}
+      className="mt-0! md:mt-0!"
+    >
       <div className="grid gap-6 md:grid-cols-12">
         <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3 md:col-span-7">
           <div className="flex flex-col gap-1">
             <dt className="label text-subtle">
-              Order {first.externalId} · rad {formatInt(first.rowNumber)}
+              {manual
+                ? `Rad ${formatInt(first.rowNumber)}`
+                : `Order ${first.externalId} · rad ${formatInt(first.rowNumber)}`}
             </dt>
             <dd className="tnum text-base text-fg">{first.sourceLocal}</dd>
-            <dd className="text-xs text-subtle">Payment Time i filen</dd>
+            <dd className="text-xs text-subtle">
+              {manual ? "Tiden i filen" : "Payment Time i filen"}
+            </dd>
           </div>
           <div className="flex flex-col gap-1">
             <dt className="label text-subtle">Tolkas som</dt>
@@ -280,7 +288,9 @@ function TimezoneCheck({
         </dl>
         <div className="flex flex-col gap-3 md:col-span-5">
           <p className="text-sm text-muted">
-            Öppna order {first.externalId} i Awish och kontrollera att den betalades{" "}
+            {manual
+              ? `Kontrollera att rad ${formatInt(first.rowNumber)} såldes `
+              : `Öppna order ${first.externalId} i Awish och kontrollera att den betalades `}
             <span className="text-fg">{swedish}</span> svensk tid. Stämmer det inte är källans
             tidszon fel; skillnaden i timmar är felet. Byt tidszon innan du importerar.
           </p>

@@ -43,6 +43,7 @@ import {
   queryTitles,
 } from "@/server/data/core/queries";
 import type { MachineRecord, TitleRecord } from "@/server/data/core";
+import { isManualProvider } from "@/server/platforms/catalog";
 
 /** Dagar bakåt som läses: 8 veckors historik för veckomönstret och samma veckodag, plus marginal. */
 export const HEALTH_LOOKBACK_DAYS = 70;
@@ -205,7 +206,8 @@ export async function loadHealthData(
  */
 export function expectedInterval(provider: string): number | null {
   if (provider === "awish_grpc") return 10;
-  if (provider === "awish_csv") return 36 * 60;
+  // Uppladdade filer (Awish orderlista och "Annan automat").
+  if (isManualProvider(provider)) return 36 * 60;
   return null;
 }
 
@@ -267,7 +269,7 @@ export async function loadImportData(
       status: x.status,
       lastSyncedAt: x.lastSyncedAt ? x.lastSyncedAt.toISOString() : null,
       expectedIntervalMinutes: expectedInterval(x.provider),
-      manual: x.provider === "awish_csv",
+      manual: isManualProvider(x.provider),
       dataUntil: untilBySource.get(x.id)?.toISOString() ?? null,
     })),
     imports: runs.map((r) => ({

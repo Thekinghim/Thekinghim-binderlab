@@ -28,7 +28,17 @@ export const PROVIDER_LABELS: Record<string, string> = {
   awish_grpc: "Awish · API (gRPC)",
   awish_web: "Awish · webb",
   awish_extension: "Awish · Chrome-tillägg",
+  manual_csv: "Annan automat · försäljning (CSV)",
 };
+
+/**
+ * Mallen för "Annan automat (CSV)". Samma som MANUAL_CSV_TEMPLATE i
+ * src/import/adapters/manual-csv.ts (kontrolleras i test).
+ */
+export const MANUAL_CSV_TEMPLATE =
+  "Datum;Tid;Automat;Produkt;Belopp;Antal\r\n" +
+  "2026-11-03;14:05;Butik Centrum;Pokémon Scarlet & Violet Booster;79;1\r\n" +
+  "2026-11-03;16:40;Butik Centrum;Pokémon 151 Booster;178;2\r\n";
 
 /** Fälten i kolumnmappningen, i visningsordning. Samma som IMPORT_FIELDS i @/import. */
 export const MAPPING_FIELDS = [

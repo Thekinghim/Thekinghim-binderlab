@@ -11,7 +11,8 @@ import type { FirstRowCheck, ImportWarning } from "@/import/run-import";
 
 export type { FirstRowCheck, ImportField, ImportSummary, ImportWarning, RowStatus };
 
-export type ProviderKey = "awish_csv" | "awish_grpc" | "awish_web" | "awish_extension";
+export type ProviderKey =
+  "awish_csv" | "awish_grpc" | "awish_web" | "awish_extension" | "manual_csv";
 export type SourceStatus = "active" | "paused" | "error";
 export type ImportStatus = "pending" | "running" | "succeeded" | "failed";
 export type ImportTrigger = "upload" | "schedule" | "webhook" | "extension";
@@ -126,7 +127,7 @@ export interface PreviewResult {
   readonly uploadId: string;
   readonly dryRun: boolean;
   readonly importId: string | null;
-  readonly dataSource: { id: string; name: string; sourceTimezone: string };
+  readonly dataSource: { id: string; name: string; sourceTimezone: string; provider: ProviderKey };
   readonly organizationTimezone: string;
   readonly file: { name: string; bytes: number; sha256: string };
   readonly summary: ImportSummary;

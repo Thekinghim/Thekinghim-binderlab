@@ -29,6 +29,8 @@ const columns = await publicColumns();
 const APPEND_ONLY = [
   "assistant_logs",
   "audit_log",
+  // Logg över "Exportera all data" (20261111020100_granskning_dataexport.sql).
+  "data_exports",
   "deviation_reviews",
   "import_rows",
   "payout_imports",
@@ -95,6 +97,9 @@ const RPCS = [
   "set_refill_source",
   // Testköp: markera en order som testköp och ångra (20261105070000_testkop.sql, ägare, admin).
   "set_test_purchase",
+  // Exportera all data (20261111020100_granskning_dataexport.sql): loggar exporten och
+  // begränsar till 3 per timme och organisation (ägaren).
+  "start_data_export",
   // Flera lager: flytt mellan egna lager och ångra flytt (ägare, admin).
   "transfer_stock",
   "undo_field_refills",
@@ -141,6 +146,8 @@ describe("tabeller", () => {
         "contract_signatures",
         "contract_signing_links",
         "contracts",
+        // Logg över "Exportera all data" (20261111020100_granskning_dataexport.sql).
+        "data_exports",
         "data_sources",
         "deviation_reviews",
         "effect_measurements",
@@ -598,6 +605,7 @@ describe("anon", () => {
       sales_data_until: sql`gen_random_uuid()`,
       set_refill_source: sql`gen_random_uuid(), gen_random_uuid(), null::uuid`,
       set_test_purchase: sql`gen_random_uuid(), gen_random_uuid(), true`,
+      start_data_export: sql`gen_random_uuid()`,
       transfer_stock: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
       undo_field_refills: sql`gen_random_uuid(), array[gen_random_uuid()]`,
       undo_transfer: sql`gen_random_uuid(), gen_random_uuid()`,

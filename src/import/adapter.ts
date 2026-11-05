@@ -81,7 +81,13 @@ export interface AdapterContext {
   secretRef: string | null;
 }
 
-export type DataSourceProvider = "awish_csv" | "awish_grpc" | "awish_web" | "awish_extension";
+export type DataSourceProvider =
+  | "awish_csv"
+  | "awish_grpc"
+  | "awish_web"
+  | "awish_extension"
+  // Annan automatplattform: försäljning uppladdad som CSV (adapters/manual-csv.ts).
+  | "manual_csv";
 
 /** Indata till en adapter: alltid datakällans inställningar, plus adapterns egna. */
 export interface AdapterInput {

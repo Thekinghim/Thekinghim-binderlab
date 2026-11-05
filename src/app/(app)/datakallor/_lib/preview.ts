@@ -64,6 +64,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** Mappningen som adaptern använde (imports.mapping), i en form som klienten kan visa. */
 export function previewMapping(mapping: unknown): PreviewMapping | null {
   if (!isRecord(mapping) || !isRecord(mapping.columns)) return null;
+  // Manuell CSV hittar sina kolumner själv (Datum, Automat, Produkt, Belopp): ingen editor.
+  if (mapping.kind === "manual_csv") return null;
   const columns = {} as Record<ImportField, string | null>;
   const source = {} as Record<ImportField, FieldSource>;
   const rawSource = isRecord(mapping.source) ? mapping.source : {};
@@ -157,6 +159,7 @@ export function toPreviewResult(uploadId: string, result: RunImportResult): Prev
       id: result.dataSource.id,
       name: result.dataSource.name,
       sourceTimezone: result.dataSource.sourceTimezone,
+      provider: result.dataSource.provider,
     },
     organizationTimezone: result.organizationTimezone,
     file: { name: result.file.name, bytes: result.file.bytes, sha256: result.file.sha256 },
