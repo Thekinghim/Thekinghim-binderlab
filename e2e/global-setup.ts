@@ -53,7 +53,7 @@ async function assertServerUsesDatabase(
   try {
     const { page } = await openPage(browser, baseUrl, { viewport: "mobile" });
     await page.goto("/logga-in");
-    await page.getByLabel("E-postadress").fill(email);
+    await page.getByLabel("E-post", { exact: true }).fill(email);
     await page.getByLabel("Lösenord").fill(password);
     await page.getByRole("button", { name: "Logga in", exact: true }).click();
     // Den som förlorar kapplöpningen avbryts när webbläsaren stängs: fångas här.
