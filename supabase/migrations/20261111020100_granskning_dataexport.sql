@@ -10,7 +10,7 @@
 --    aldrig (append-only).
 --
 -- 3. start_data_export(org) → id. Bara ägaren. Högst 3 exporter per organisation och
---    timme, räknat i databasen (gäller alla serverinstanser). Själva datat läses sedan
+--    timme (BL094), räknat i databasen (gäller alla serverinstanser). Själva datat läses sedan
 --    av servern under användarens RLS (src/server/export).
 -- =============================================================================
 
@@ -135,7 +135,7 @@ begin
   from public.data_exports e
   where e.organization_id = p_organization_id and e.created_at > now() - interval '1 hour';
   if v_recent >= 3 then
-    raise exception using errcode = 'BL090',
+    raise exception using errcode = 'BL094',
       message = 'Högst 3 exporter per timme. Försök igen senare.';
   end if;
   insert into public.data_exports (organization_id) values (p_organization_id)

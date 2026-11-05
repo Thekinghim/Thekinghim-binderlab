@@ -279,6 +279,11 @@ describe("Exportera all data", () => {
     expect(blocked.status).toBe(429);
     expect(blocked.headers.get("retry-after")).toBe("3600");
     expect(blocked.text).toMatch(/Högst 3 exporter per timme/);
+    // Egen felkod (BL094): BL090 är demons "inga inbjudningar", koderna får inte blandas ihop.
+    const direct = await asUser(cast.personas.owner.user!, (tx) =>
+      attempt(tx, (sp) => sp.execute(sql`select public.start_data_export(${cast.A.orgId}::uuid)`)),
+    );
+    expect(direct.code).toBe("BL094");
     // B påverkas inte av A:s gräns.
     await clearExports(cast.B.orgId);
     await loginAs(req, cast.personas.outsider);

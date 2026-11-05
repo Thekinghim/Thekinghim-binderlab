@@ -282,7 +282,7 @@ export async function goodsOverviewFor(
         id: g.id,
         name: g.name,
         priceOre: summaryOf(g).priceOre,
-        image: awishImageSrc(goodImage(g)),
+        image: awishImageSrc(orgId, goodImage(g)),
       })),
       links,
       sales,
@@ -527,7 +527,7 @@ export async function saveEditGoodFor(
           id: good.id,
           name: good.name,
           priceOre: before.priceOre,
-          image: awishImageSrc(goodImage(good)),
+          image: awishImageSrc(orgId, goodImage(good)),
         },
       };
     }
@@ -586,7 +586,7 @@ export async function saveEditGoodFor(
           id: plan.goodId,
           name: plan.to.name,
           priceOre: plan.to.priceOre,
-          image: awishImageSrc(imageUrl ?? plan.from.image),
+          image: awishImageSrc(orgId, imageUrl ?? plan.from.image),
         },
       };
     }
@@ -596,7 +596,7 @@ export async function saveEditGoodFor(
       id: saved.id,
       name: saved.name,
       priceOre: summaryOf(saved).priceOre,
-      image: awishImageSrc(goodImage(saved)),
+      image: awishImageSrc(orgId, goodImage(saved)),
     };
     if (!check.all) {
       return {

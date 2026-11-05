@@ -1,7 +1,8 @@
 /**
  * GET /inkopspriser/ny-produkt/bild?u=…&s=… → en varubild från Awish, för listan "Varor i
  * Awish" (sidornas CSP tillåter bara bilder från appen själv). Adressen måste vara signerad
- * av servern (image-proxy.ts), som bara signerar bilder Awish svarat med. Bara ägare och
+ * av servern för den aktiva organisationen (image-proxy.ts), som bara signerar bilder Awish
+ * svarat med. Bara ägare och
  * admin. Hämtas utan omdirigeringar, med tidsgräns och storleksgräns, och skickas bara
  * vidare om det är en bild.
  */
@@ -23,14 +24,16 @@ function text(status: number, body: string): Response {
 
 export async function GET(request: Request): Promise<Response> {
   const params = new URL(request.url).searchParams;
-  const url = verifyAwishImage(params.get("u"), params.get("s"));
-  if (!url) return text(404, "Bilden finns inte.");
+  let organizationId: string;
   try {
-    await requireContextRole(OPERATOR_ROLES);
+    organizationId = (await requireContextRole(OPERATOR_ROLES)).organization.id;
   } catch (error) {
     if (error instanceof AuthorizationError) return text(403, "Bara ägare och admin.");
     throw error;
   }
+  // Signaturen gäller bara den aktiva organisationen (inte en annan kund eller en demo).
+  const url = verifyAwishImage(organizationId, params.get("u"), params.get("s"));
+  if (!url) return text(404, "Bilden finns inte.");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8_000);
   try {

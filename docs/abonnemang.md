@@ -25,19 +25,32 @@ sådan organisation är plattformsoperatörer (`private.is_platform_operator()`)
   ägare eller admin är det enda sättet att ge åtkomst (och att ta bort medlemskapet tar bort den).
 - Alla andra får 404 på `/plattform` och CSV:n, och RPC:erna nekar med 42501.
 
-### Produktion: gör Binderlabs organisation till operatör (en rad SQL)
+### Produktion: gör Binderlabs organisation till operatör (SQL, välj på id)
 
 Ingen migrering gör det automatiskt, eftersom vi inte kan veta säkert vilken organisation i produktionen som är
-Binderlabs (en kund kan i teorin heta "Binderlab"). Kör i Supabase SQL Editor (som `postgres`):
+Binderlabs (en kund kan i teorin heta "Binderlab"). Välj därför organisationen på **id**, aldrig på namn eller
+slug: ägare kan ändra sin organisations slug själva, så en kund kan ha tagit sluggen `binderlab` om Binderlabs
+egen organisation har en annan. Kör i Supabase SQL Editor (som `postgres`):
 
-```sql
-insert into private.platform_operators (organization_id, note)
-select id, 'Binderlab' from public.organizations where slug = 'binderlab' on conflict do nothing;
-```
+1. Hitta Binderlabs organisation (den äldsta, skapad av William) och kontrollera namn, slug och ägare:
 
-Kontrollera först att sluggen är rätt: `select id, name, slug, created_at from public.organizations order by
-created_at;` (Binderlabs organisation är den äldsta, skapad av William). Ta bort: `delete from
-private.platform_operators where organization_id = '<id>';`.
+   ```sql
+   select o.id, o.name, o.slug, o.created_at, o.is_demo,
+          (select string_agg(u.email, ', ') from public.memberships m join auth.users u on u.id = m.user_id
+            where m.organization_id = o.id and m.role = 'owner') as owners
+   from public.organizations o order by o.created_at;
+   ```
+
+2. Lägg till just den raden, med id:t från steg 1 (aldrig en demo):
+
+   ```sql
+   insert into private.platform_operators (organization_id, note)
+   select id, 'Binderlab' from public.organizations
+   where id = '<id från steg 1>' and not is_demo
+   on conflict do nothing;
+   ```
+
+Ta bort: `delete from private.platform_operators where organization_id = '<id>';`.
 
 ## Modellen
 

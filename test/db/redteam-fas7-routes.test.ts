@@ -301,7 +301,7 @@ describe("POST /assistent/fraga", () => {
 // ---------------------------------------------------------------------------
 
 describe("GET /inkopspriser/ny-produkt/bild", () => {
-  it("bara ägare och admin får bilden; osignerad eller ändrad adress ger 404", async () => {
+  it("bara ägare och admin får bilden; osignerad, ändrad eller annan organisations adress ger 404", async () => {
     const { createServer } = await import("node:http");
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
     const server = createServer((_q, res) => {
@@ -313,7 +313,7 @@ describe("GET /inkopspriser/ny-produkt/bild", () => {
     try {
       const { awishImageSrc } = await import("@/server/awish/image-proxy");
       const { GET } = await import("@/app/(app)/inkopspriser/ny-produkt/bild/route");
-      const src = awishImageSrc(`http://127.0.0.1:${port}/uploads/1.png`)!;
+      const src = awishImageSrc(cast.A.orgId, `http://127.0.0.1:${port}/uploads/1.png`)!;
       const get = (path: string) => respond(() => GET(new Request(`${BASE}${path}`)));
 
       for (const p of ["owner", "admin"] as const) {
@@ -328,7 +328,14 @@ describe("GET /inkopspriser/ny-produkt/bild", () => {
         expect(r.status, p).not.toBe(200);
         expect(r.body, p).not.toContain("PNG");
       }
+      // Signaturen är bunden till A: ägaren i B (aktiv organisation B) får 404 på A:s
+      // adress, och B:s egen signatur för samma bild godtas inte när A är aktiv.
+      await loginAs(req, cast.personas.outsider);
+      expect((await get(src)).status).toBe(404);
+      const signedForB = awishImageSrc(cast.B.orgId, `http://127.0.0.1:${port}/uploads/1.png`)!;
+      expect((await get(signedForB)).status).toBe(200);
       await loginAs(req, cast.personas.owner);
+      expect((await get(signedForB)).status).toBe(404);
       const other = new URL(src, BASE);
       other.searchParams.set("u", `http://127.0.0.1:${port}/annan.png`);
       expect((await get(`${other.pathname}${other.search}`)).status).toBe(404);

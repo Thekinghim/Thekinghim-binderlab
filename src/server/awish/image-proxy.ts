@@ -4,7 +4,9 @@
  * /inkopspriser/ny-produkt/bild, som hämtar bilden på servern.
  *
  * Det är ingen öppen proxy: adressen måste vara signerad (HMAC) av servern, och servern
- * signerar bara bildadresser som Awish själv svarat med (varans thumb/media). Nyckeln
+ * signerar bara bildadresser som Awish själv svarat med (varans thumb/media). Signaturen
+ * är bunden till organisationen: en adress som signerats för en organisation godtas inte
+ * när en annan organisation är aktiv (inte heller en demo). Nyckeln
  * härleds ur en hemlighet som servern redan har (CRON_SECRET, annars DATABASE_URL); finns
  * ingen används en slumpad nyckel per process.
  */
@@ -24,8 +26,11 @@ function key(): Buffer {
   return fallbackKey;
 }
 
-function sign(url: string): string {
-  return createHmac("sha256", key()).update(url).digest("base64url").slice(0, 32);
+function sign(organizationId: string, url: string): string {
+  return createHmac("sha256", key())
+    .update(`${organizationId}\n${url}`)
+    .digest("base64url")
+    .slice(0, 32);
 }
 
 /**
@@ -75,17 +80,21 @@ function allowedUrl(raw: string): URL | null {
   return url;
 }
 
-/** Sidans bildadress för en bild från Awish, eller null. */
-export function awishImageSrc(url: string | null): string | null {
-  if (!url || !allowedUrl(url)) return null;
-  const q = new URLSearchParams({ u: url, s: sign(url) });
+/** Sidans bildadress för en bild från Awish (för organisationen), eller null. */
+export function awishImageSrc(organizationId: string, url: string | null): string | null {
+  if (!organizationId || !url || !allowedUrl(url)) return null;
+  const q = new URLSearchParams({ u: url, s: sign(organizationId, url) });
   return `${AWISH_IMAGE_ROUTE}?${q.toString()}`;
 }
 
-/** Bildadressen om signaturen stämmer, annars null. */
-export function verifyAwishImage(u: string | null, s: string | null): URL | null {
-  if (!u || !s) return null;
-  const expected = Buffer.from(sign(u));
+/** Bildadressen om signaturen stämmer för organisationen, annars null. */
+export function verifyAwishImage(
+  organizationId: string,
+  u: string | null,
+  s: string | null,
+): URL | null {
+  if (!organizationId || !u || !s) return null;
+  const expected = Buffer.from(sign(organizationId, u));
   const given = Buffer.from(s);
   if (expected.length !== given.length || !timingSafeEqual(expected, given)) return null;
   return allowedUrl(u);

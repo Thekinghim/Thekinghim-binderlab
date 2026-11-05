@@ -4,7 +4,7 @@
  * Säkerhet i tre lager:
  *   1. Rollen: bara ägaren (requireViewerRole mot databasen).
  *   2. start_data_export i databasen: kontrollerar ägaren igen, loggar exporten i
- *      data_exports och tillåter högst 3 exporter per organisation och timme (BL090).
+ *      data_exports och tillåter högst 3 exporter per organisation och timme (BL094).
  *   3. All data läses i samma transaktion som användaren, med RLS, och filtreras på
  *      organisationen. En annan organisations rader kan inte komma med.
  *
@@ -213,7 +213,7 @@ export async function exportOrganizationDataFor(
       id = row.id;
     } catch (error) {
       const code = pgCode(error);
-      if (code === "BL090") throw new ExportRateLimitError();
+      if (code === "BL094") throw new ExportRateLimitError();
       if (code === "42501") throw new AuthorizationError("forbidden");
       throw error;
     }
