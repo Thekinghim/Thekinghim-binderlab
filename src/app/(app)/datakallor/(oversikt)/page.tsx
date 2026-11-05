@@ -28,7 +28,8 @@ export const maxDuration = 60;
 
 /**
  * Datakällor: Awish (gRPC-API, hämtas automatiskt var tionde minut), varifrån orderna
- * kommer, uppladdning av en orderlista som reserv (ihopfälld), kön för okända
+ * kommer, uppladdning av en orderlista som reserv eller försäljning från ett annat märke
+ * (ihopfälld, länkad under Awish), kön för okända
  * automater och loggen över alla importer. Bara ägare och admin (requireRoute skickar
  * andra vidare).
  */
@@ -102,6 +103,14 @@ export default async function DatakallorPage() {
             <AwishCard source={awish.source} timeZone={data.timeZone} now={data.now} />
           </>
         )}
+        <p className="text-sm text-muted">
+          <a
+            href="#ladda-upp"
+            className="text-fg underline decoration-line-strong underline-offset-4 hover:decoration-fg"
+          >
+            Har du automater från ett annat märke? Ladda upp försäljning som CSV →
+          </a>
+        </p>
       </section>
 
       <OpenOnHash id="ladda-upp" />

@@ -193,6 +193,12 @@ bjud in**. Ingen databasåtkomst behövs; allt körs i appens server actions.
   kopplingar nekas (BL092 och i Datakällor), och larm, rapportutskick, testnotiser,
   bokföring, AI-cron, månadsutkast, avräkningar och kampanjpublicering hoppar över demos.
   Assistenten fungerar, med samma tak och gränser.
+- De nya funktionerna i en demo (`20261111030000_demo_nya_funktioner.sql`): **Redigera vara**
+  och **Ny produkt** når aldrig Awish (servern stoppar före inloggningen och sidan visar
+  demomeddelandet), **/plattform** ger 404 (en demo räknas aldrig som plattformsorganisation,
+  inte heller i databasen), **Exportera all data** exporterar bara demons egna data (under RLS)
+  och **Värde** visar bara demons siffror. **Annan automat (CSV)** går att prova i demon: det är
+  en uppladdad fil, inget hämtas utifrån.
 - **Bjud in igen** skickar en ny länk, **Återställ** bygger en ny demo med färsk data (kunden är
   kvar som ägare) och **Ta bort** raderar demon, platshållarna och kundens demokonto.
 

@@ -346,7 +346,8 @@ hand lagras i EU.
 Postgres, Auth och Storage, Sentry för fel och cron-övervakning, Resend för e-post. Två Supabase-projekt (utveckling
 och produktion).
 
-**Konsekvenser.** Ingen server att underhålla. Larmjobbet var 10:e minut kräver Vercel Pro. Funktioner har gränser
+**Konsekvenser.** Ingen server att underhålla. Larmjobbet går en gång per dygn (`vercel.json`), vilket ryms i Vercel Hobby; Awish-synken
+var tionde minut körs av pg_cron i Supabase. Funktioner har gränser
 (4,5 MB per förfrågan, tid per anrop). Egna dumpar (`npm run db:backup`) behövs utöver Supabases backuper, se
 `docs/operations.md`.
 
@@ -356,8 +357,8 @@ Allt stannar inte i EU. Databasen, filerna och inloggningen ligger i Supabases E
   Claude API hos Anthropic, som behandlar dem utanför EU. Inga e-postadresser eller telefonnummer ingår i verktygens
   resultat, men en användare kan skriva vad som helst i en fråga. Assistenten är avstängd tills `ANTHROPIC_API_KEY`
   sätts.
-- **Vercel** skulle köra funktionerna i USA om ingen region väljs; `vercel.json` sätter därför `"regions": ["arn1"]`
-  (Stockholm), se `docs/operations.md`.
+- **Vercel** skulle köra funktionerna i USA om ingen region väljs; `vercel.json` sätter därför `"regions": ["lhr1"]`
+  (London, samma region som Supabase-projektet), se `docs/operations.md`.
 - **Resend och Sentry** har EU-regioner som måste väljas.
 
 Inga personuppgiftsbiträdesavtal är tecknade. Biträdena, vad var och en får, lagringstider och vad som återstår står i

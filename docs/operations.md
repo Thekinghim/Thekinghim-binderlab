@@ -29,8 +29,9 @@ blir det en ny version. Preliminärt när en butik med vinstdelning har order ut
 
 Kontrollera en gång i veckan (fem minuter):
 
-1. **Drift → Maskinhälsa → Larm**: "Senaste körning" ska vara högst tio minuter gammal. Står det
-   "Larmjobbet har inte körts" saknas `CRON_SECRET` eller cron i Vercel.
+1. **Drift → Maskinhälsa → Larm**: "Senaste körning" ska vara högst ett dygn gammal (larmjobbet
+   körs 05:07 UTC varje dag, `vercel.json`). Står det "Larmjobbet har inte körts" saknas
+   `CRON_SECRET` eller cron i Vercel.
 2. **Sentry → Issues**: nya ärenden sedan förra veckan (filtrera på `environment:production`).
 3. **Datakällor**: "Data till" ska vara färsk för varje källa.
 4. **Supabase → Database → Backups**: senaste säkerhetskopian är från i natt.
@@ -83,14 +84,16 @@ driver tjänsten (Sentry) och den som äger verksamheten (larm i appen). Koden f
 - **Aviseringar**: ett nytt systemlarm läggs i utskickskön (`alert_deliveries`) till dem som
   prenumererar under Drift → Larminställningar, med samma regler som övriga larm (typ, lägsta
   allvar, tysta timmar; kritiska larm går igenom tysta timmar om prenumerationen tillåter
-  det). Larmjobbet skickar kön var 10:e minut, även när utvärderingen för organisationen
-  misslyckas. Samma öppna larm aviseras inte igen. Påfyllaren får aldrig systemlarm
+  det). Larmjobbet skickar kön en gång per dygn (05:07 UTC), även när utvärderingen
+  för organisationen misslyckas; däremellan utvärderas larmen och kön skickas efter varje
+  Awish-synk (var tionde minut, pg_cron) för organisationer där det behövs, t.ex. när en automat
+  går offline (`src/server/awish/offline-alerts.ts`). Samma öppna larm aviseras inte igen. Påfyllaren får aldrig systemlarm
   (`src/server/monitoring/notify.ts`).
 - **När jobben inte körs alls**: larmen i appen förutsätter att appen kör. Därför checkar båda
   cron-routerna in hos Sentry Cron Monitors (`src/server/monitoring/cron-monitor.ts`) när
   `SENTRY_DSN` finns: "in_progress" när ett behörigt anrop börjar, sedan "ok" eller "error".
   Monitorerna skapas automatiskt vid första incheckningen med schemat från `vercel.json`
-  (`binderlab-larm` var 10:e minut, marginal 5 min; `binderlab-rapporter` den 1:a 05:17 UTC,
+  (`binderlab-larm` varje dag 05:07 UTC, marginal 5 min; `binderlab-rapporter` den 1:a 05:17 UTC,
   marginal 30 min; `binderlab-awish` var tionde minut via pg_cron, marginal 10 min). Uteblir en incheckning, till exempel för att `CRON_SECRET` är fel (401)
   eller saknas (503) eller cron är avstängt, skapar Sentry ett ärende. **Vid överlämning:**
   Sentry → Crons → kontrollera att båda monitorerna finns efter första körningen, och lägg en
@@ -244,7 +247,8 @@ npm run db:restore -- --file backups/binderlab-2026-11-02.dump --target binderla
 2. Logga in som ägare: Hem visar samma intäkt som före felet för en period som inte berörs.
 3. Datakällor: "Data till" stämmer; ladda upp senaste orderlistan igen (dubbletter ändrar
    inget, bara nya order läggs till).
-4. Drift: larmjobbet kör ("Senaste körning" uppdateras inom tio minuter).
+4. Drift: larmjobbet kör ("Senaste körning" uppdateras vid nästa körning 05:07 UTC, eller direkt
+   med `curl -H "Authorization: Bearer …" …/api/cron/larm`).
 5. Kör e2e-testerna mot en kopia om tid finns (`npm run test:e2e`, se nedan).
 
 ## Nya organisationer
@@ -263,7 +267,7 @@ En ny operatör (eget bolag) får en egen organisation. Data delas aldrig mellan
    och dess placering, datakällan, första importen och inköpspriserna. Bjud sedan in fler
    användare under Inställningar → Användare (ägare, admin, läsare, påfyllare) och lägg in
    mottagare för rapporterna under Rapporter.
-4. **Kontrollera** att Drift visar en körning av larmjobbet inom tio minuter och att Hem visar
+4. **Kontrollera** att Drift visar en körning av larmjobbet (senast nästa morgon 05:07 UTC) och att Hem visar
    försäljningen efter första importen.
 
 En ägare med flera bolag kan skapa fler organisationer och byta mellan dem i sidomenyn.
@@ -327,7 +331,7 @@ skriv en incidentanteckning (nedan).
 
 | Symtom                                  | Troligen                                                  | Gör                                                                                |
 | --------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| "Larmjobbet har inte körts" på Drift    | `CRON_SECRET` saknas, cron avstängt eller Hobby-plan      | Vercel → Settings → Cron Jobs; `curl -H "Authorization: Bearer …" …/api/cron/larm` |
+| "Larmjobbet har inte körts" på Drift    | `CRON_SECRET` saknas eller cron avstängt                  | Vercel → Settings → Cron Jobs; `curl -H "Authorization: Bearer …" …/api/cron/larm` |
 | Sentry: "missed check-in" för en cron   | Jobbet anropas inte, eller svarar 401/503 (`CRON_SECRET`) | Vercel → Logs för `/api/cron/*`; jämför `CRON_SECRET` i Vercel med hemligheten     |
 | Larm `job:larm`                         | Databasfel eller trasig data för en organisation          | Läs felet i larmet och `alert_runs.error`; Sentry-ärendet har stackspåret          |
 | Larm `job:rapporter`                    | Oväntat fel i månadsjobbet för en organisation            | Sentry-ärendet; skapa utkasten under Rapporter (då stängs månadens utkastlarm)     |

@@ -295,7 +295,11 @@ export function UploadPanel({
             )}
           >
             <Icon name="download" size={20} className="rotate-180 text-muted" />
-            <span className="text-base font-medium text-fg">Välj orderlistan (CSV)</span>
+            <span className="text-base font-medium text-fg">
+              {source?.provider === "manual_csv"
+                ? "Välj försäljningsfilen (CSV)"
+                : "Välj orderlistan (CSV)"}
+            </span>
             <span className="text-sm text-muted">
               eller dra den hit · högst 50 MB · {source?.name ?? ""} i{" "}
               {source?.sourceTimezone ?? ""}

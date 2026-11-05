@@ -21,7 +21,7 @@ export function e2e(): E2eFixture {
 /** Fyller i inloggningen och skickar (utan att vänta på resultatet). */
 export async function submitLogin(page: Page, email: string, password: string): Promise<void> {
   await page.goto("/logga-in");
-  await page.getByLabel("E-postadress").fill(email);
+  await page.getByLabel(/^E-post(adress)?$/).fill(email);
   await page.getByLabel("Lösenord").fill(password);
   await page.getByRole("button", { name: "Logga in", exact: true }).click();
 }

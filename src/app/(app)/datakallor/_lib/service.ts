@@ -29,6 +29,11 @@ import { IMPORT_PIPELINE_VERSION, notPaidOf, runImport } from "@/import/run-impo
 import { AuthorizationError, requireRoleFor, withUserDbFor } from "@/server/access";
 import { recordImportFailure, type MonitoringDeps } from "@/server/monitoring";
 import { loadMasterDataFor, type Viewer } from "@/server/data/core/loaders";
+import {
+  FILE_PROVIDERS,
+  providerAcceptsFiles,
+  type FileProvider,
+} from "@/server/platforms/catalog";
 import { OPERATOR_ROLES } from "@/server/data/core/types";
 
 import type { ImportRowFilter } from "./constants";
@@ -220,7 +225,7 @@ export async function loadDatakallorFor(
         lastSyncedAt: iso(r.last_synced_at),
         latestOrderAt: iso(r.latest_order_at),
         archived: r.archived_at !== null && r.archived_at !== undefined,
-        acceptsFiles: r.provider === "awish_csv",
+        acceptsFiles: providerAcceptsFiles(String(r.provider)),
         orders: int(r.orders),
         unmapped: int(r.unmapped),
         lastImport: lastBySource.get(String(r.id)) ?? null,
@@ -380,17 +385,25 @@ export async function loadImportDetailFor(
 // Datakällor
 // ---------------------------------------------------------------------------
 
-/** Ny CSV-datakälla (Awish orderlista). Returnerar id. */
+/**
+ * Ny CSV-datakälla: Awish orderlista (standard) eller "Annan automat" (manual_csv, en
+ * annan automatplattform). Returnerar id.
+ */
 export async function createDataSourceFor(
   viewer: Viewer,
-  input: { name: string; sourceTimezone: string },
+  input: { name: string; sourceTimezone: string; provider?: FileProvider },
 ): Promise<string> {
   const orgId = viewer.organization.id;
+  const provider: FileProvider = input.provider ?? "awish_csv";
+  if (!(FILE_PROVIDERS as readonly string[]).includes(provider)) {
+    throw new ImportValidationError("Okänd typ av datakälla.");
+  }
   return asOperator(viewer, async (tx) => {
     const [row] = await query<{ id: string }>(
       tx,
       sql`insert into public.data_sources (organization_id, provider, name, source_timezone)
-          values (${orgId}::uuid, 'awish_csv', ${input.name}, ${input.sourceTimezone})
+          values (${orgId}::uuid, ${provider}::public.data_source_provider, ${input.name},
+                  ${input.sourceTimezone})
           returning id`,
     );
     if (!row) throw new Error("Datakällan kunde inte skapas.");

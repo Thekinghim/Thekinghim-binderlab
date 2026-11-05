@@ -100,8 +100,8 @@ Vercel (webb och cron) och Supabase i EU (Postgres, Auth, Storage), med Sentry f
    registrering, använd asymmetriska JWT-nycklar (ES256) och sätt mallarna för inbjudan och inloggningslänk.
 2. **Vercel:** importera repot och sätt variablerna enligt `.env.example` för Preview och Production
    (`APP_ENV`, `AUTH_PROVIDER=supabase`, `APP_URL`, `DATABASE_URL` mot poolern på port 6543, `DATABASE_POOL_MAX=3`,
-   Supabase-, Sentry-, VAPID- och `CRON_SECRET`-värden). Cron-jobben står i `vercel.json`; larmjobbet var 10:e minut
-   kräver Vercel Pro.
+   Supabase-, Sentry-, VAPID- och `CRON_SECRET`-värden). Cron-jobben står i `vercel.json` (larmjobbet en gång per
+   dygn 05:07 UTC, rapportutkasten den 1:a); båda ryms i Vercel Hobby.
 3. **E-post (Resend):** sätt `MAIL_PROVIDER=resend`, `RESEND_API_KEY` och `MAIL_FROM` (en avsändare på en domän som
    är verifierad i Resend). **Standardvärdet är `outbox` även i production**: utan `MAIL_PROVIDER=resend` skrivs
    rapport- och larmmejlen till serverns disk och når aldrig mottagarna. Inbjudningar och inloggningslänkar skickas av
@@ -141,19 +141,20 @@ docs/               Dokumentationen (nedan)
 
 ## Dokumentation
 
-| Fil                                                                                                                      | Innehåll                                                               |
-| ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| [docs/product.md](docs/product.md)                                                                                       | Vad Binderlab löser, för vem, siffror ur panelen och hur effekten mäts |
-| [docs/architecture.md](docs/architecture.md)                                                                             | Lager, adaptrar, jobb, dataflöden, säkerhetsmodell, tider och pengar   |
-| [docs/decisions.md](docs/decisions.md)                                                                                   | Tekniska beslut (ADR) och varför                                       |
-| [docs/datamodell.md](docs/datamodell.md)                                                                                 | Tabeller, roller, RLS och alla funktioner, per område                  |
-| [docs/berakningar.md](docs/berakningar.md)                                                                               | Hur varje siffra räknas, med exempel som också är tester               |
-| [docs/miljoer.md](docs/miljoer.md)                                                                                       | Miljöer, variabler, inloggning, adaptrar och beställarens steg         |
-| [docs/operations.md](docs/operations.md)                                                                                 | Drift, övervakning, säkerhetskopior, återställning, incidenter, e2e    |
-| [docs/design.md](docs/design.md)                                                                                         | Designsystemet: tokens, komponenter, regler                            |
-| [docs/demo.md](docs/demo.md)                                                                                             | Demoorganisationen                                                     |
-| [docs/awish-api.md](docs/awish-api.md), [docs/awish.md](docs/awish.md), [docs/marknadskallor.md](docs/marknadskallor.md) | Awish API och CSV-importen; underlag för val av marknadspriskälla      |
-| [docs/bygglogg.md](docs/bygglogg.md)                                                                                     | Byggets logg och läge per fas                                          |
+| Fil                                                                                                                      | Innehåll                                                                                                        |
+| ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| [docs/product.md](docs/product.md)                                                                                       | Vad Binderlab löser, för vem, siffror ur panelen och hur effekten mäts                                          |
+| [docs/architecture.md](docs/architecture.md)                                                                             | Lager, adaptrar, jobb, dataflöden, säkerhetsmodell, tider och pengar                                            |
+| [docs/decisions.md](docs/decisions.md)                                                                                   | Tekniska beslut (ADR) och varför                                                                                |
+| [docs/datamodell.md](docs/datamodell.md)                                                                                 | Tabeller, roller, RLS och alla funktioner, per område                                                           |
+| [docs/berakningar.md](docs/berakningar.md)                                                                               | Hur varje siffra räknas, med exempel som också är tester                                                        |
+| [docs/miljoer.md](docs/miljoer.md)                                                                                       | Miljöer, variabler, inloggning, adaptrar och beställarens steg                                                  |
+| [docs/operations.md](docs/operations.md)                                                                                 | Drift, övervakning, säkerhetskopior, återställning, incidenter, e2e                                             |
+| [docs/design.md](docs/design.md)                                                                                         | Designsystemet: tokens, komponenter, regler                                                                     |
+| [docs/demo.md](docs/demo.md)                                                                                             | Demoorganisationen                                                                                              |
+| [docs/awish-api.md](docs/awish-api.md), [docs/awish.md](docs/awish.md), [docs/marknadskallor.md](docs/marknadskallor.md) | Awish API och CSV-importen; underlag för val av marknadspriskälla                                               |
+| [docs/bygglogg.md](docs/bygglogg.md)                                                                                     | Byggets logg och läge per fas                                                                                   |
+| [docs/granskning/](docs/granskning/README.md)                                                                            | Granskning inför köp: översikt, arkitektur, säkerhet, data, integrationer, kvalitet, drift, ägande och licenser |
 
 ## Läge och kvarstående
 
@@ -220,7 +221,7 @@ Panelen fungerar i dag för en operatör (en organisation) åt gången, driftsat
 släpps in behövs:
 
 1. **Driftsättning och nycklar.** Projekt i Supabase (EU, helst Stockholm `eu-north-1`), Vercel (funktionerna i
-   `arn1`, redan satt i `vercel.json`, Pro för larmjobbet var 10:e minut), Sentry (EU-region), Resend (verifierad
+   `lhr1`, London, redan satt i `vercel.json`; larmjobbet går en gång per dygn), Sentry (EU-region), Resend (verifierad
    avsändardomän), VAPID-nycklar för push, `CRON_SECRET` och `ANTHROPIC_API_KEY`. Steg för steg i
    [docs/miljoer.md](docs/miljoer.md) ("Det här måste beställaren göra").
 2. **Prova varje extern tjänst en gång:** inloggning och inbjudan via Supabase, import till Storage, rapportutskick

@@ -415,9 +415,9 @@ hemligheten ur Vault (`binderlab_app_url`, `binderlab_cron_secret`, skrivs av `s
 Sätt `CRON_SECRET` (minst 16 tecken) i projektets miljövariabler för Production. Vercel
 skickar den som `Authorization: Bearer <CRON_SECRET>` till varje cron-route; utan den svarar
 båda routerna 503 och gör ingenting, och fel hemlighet ger 401. Vercel kör cron bara i
-Production, inte i förhandsversioner. Vercel Hobby kör cron högst en gång om dagen, så
-larmjobbet var 10:e minut kräver Pro (på Hobby avvisas `vercel.json` vid driftsättning; byt
-då larmets schema till en gång om dagen, t.ex. `7 6 * * *`).
+Production, inte i förhandsversioner. Vercel Hobby kör cron högst en gång om dagen; `vercel.json`
+kör larmjobbet en gång per dygn (`7 5 * * *`, 05:07 UTC), så det ryms. Ett tätare schema kräver Pro
+(på Hobby avvisas `vercel.json` vid driftsättning).
 
 **Push** (Web Push): skapa nycklar med `npx web-push generate-vapid-keys` och sätt
 `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` och `VAPID_SUBJECT`. Varje användare slår på push per

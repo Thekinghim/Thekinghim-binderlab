@@ -29,6 +29,10 @@ const columns = await publicColumns();
 const APPEND_ONLY = [
   "assistant_logs",
   "audit_log",
+  // Värde: logg över automatiskt arbete (20261111000000_varde.sql).
+  "automation_log",
+  // Logg över "Exportera all data" (20261111020100_granskning_dataexport.sql).
+  "data_exports",
   "deviation_reviews",
   "import_rows",
   "payout_imports",
@@ -43,6 +47,8 @@ const RPCS = [
   "accept_invitation",
   // Mina inbjudningar (20261105060000_mina_inbjudningar.sql): egen inbjudan utan mejllänk.
   "accept_my_invitation",
+  // Abonnemang (20261111010000_abonnemang.sql): är den inloggade plattformsoperatör.
+  "am_platform_operator",
   // Flera lager (20261104210000_flera_lager.sql): ta bort/ta tillbaka ett eget lager (ägare, admin).
   "archive_warehouse",
   "attach_contract_file",
@@ -73,6 +79,11 @@ const RPCS = [
   "machine_connectivity",
   "merge_titles",
   "my_invitations",
+  // Abonnemang: organisationens egen plan och automater (ägare, admin).
+  "my_subscription",
+  // Abonnemang: plattformens data och planer (bara plattformsoperatörer).
+  "platform_overview_data",
+  "platform_save_plan",
   "portal_agreements",
   // Butiksportalen: butikens avtal och avtalsfil (20261104233400_butik_avrakning.sql).
   "portal_contract_file",
@@ -97,10 +108,15 @@ const RPCS = [
   "set_refill_source",
   // Testköp: markera en order som testköp och ångra (20261105070000_testkop.sql, ägare, admin).
   "set_test_purchase",
+  // Exportera all data (20261111020100_granskning_dataexport.sql): loggar exporten och
+  // begränsar till 3 per timme och organisation (ägaren).
+  "start_data_export",
   // Flera lager: flytt mellan egna lager och ångra flytt (ägare, admin).
   "transfer_stock",
   "undo_field_refills",
   "undo_transfer",
+  // Värde: antal uppgifter Binderlab gjort per månad (20261111000000_varde.sql, ägare, admin).
+  "varde_automation_counts",
 ];
 /**
  * RPC:er som kör med anroparens rättigheter (security invoker) i stället för definer.
@@ -129,6 +145,8 @@ describe("tabeller", () => {
         "assistant_logs",
         "assortment_changes",
         "audit_log",
+        // Värde: logg över automatiskt arbete (20261111000000_varde.sql).
+        "automation_log",
         "baselines",
         // Bokföring: kontoplan, skickade månader, kvitton (20261103210000_bokforing.sql)
         // och sparade månadspaket (20261104130000_bokforing_paket.sql).
@@ -143,6 +161,8 @@ describe("tabeller", () => {
         "contract_signatures",
         "contract_signing_links",
         "contracts",
+        // Logg över "Exportera all data" (20261111020100_granskning_dataexport.sql).
+        "data_exports",
         "data_sources",
         "deviation_reviews",
         "effect_measurements",
@@ -564,6 +584,7 @@ describe("anon", () => {
     const args: Record<string, ReturnType<typeof sql>> = {
       accept_invitation: sql`'x'`,
       accept_my_invitation: sql`gen_random_uuid()`,
+      am_platform_operator: sql``,
       archive_warehouse: sql`gen_random_uuid(), gen_random_uuid()`,
       attach_contract_file: sql`gen_random_uuid(), gen_random_uuid(), 'x', 'x', 'application/pdf', 1::bigint, 'x'`,
       awish_save_credentials: sql`gen_random_uuid(), gen_random_uuid(), 'x', 'y', 'z'`,
@@ -583,6 +604,9 @@ describe("anon", () => {
       machine_connectivity: sql`gen_random_uuid()`,
       merge_titles: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid()`,
       my_invitations: sql``,
+      my_subscription: sql`gen_random_uuid()`,
+      platform_overview_data: sql``,
+      platform_save_plan: sql`gen_random_uuid(), '2026-01-01'::date, 'active', 0::bigint, 'SEK', null::date, null, null, null`,
       portal_agreements: sql`gen_random_uuid()`,
       portal_contract_file: sql`gen_random_uuid(), gen_random_uuid()`,
       portal_contracts: sql`gen_random_uuid()`,
@@ -601,9 +625,11 @@ describe("anon", () => {
       sales_data_until: sql`gen_random_uuid()`,
       set_refill_source: sql`gen_random_uuid(), gen_random_uuid(), null::uuid`,
       set_test_purchase: sql`gen_random_uuid(), gen_random_uuid(), true`,
+      start_data_export: sql`gen_random_uuid()`,
       transfer_stock: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
       undo_field_refills: sql`gen_random_uuid(), array[gen_random_uuid()]`,
       undo_transfer: sql`gen_random_uuid(), gen_random_uuid()`,
+      varde_automation_counts: sql`gen_random_uuid(), '2026-10-01'::date, '2026-10-31'::date`,
     };
     const outcome = await asAnon((tx) =>
       attempt(tx, (sp) =>

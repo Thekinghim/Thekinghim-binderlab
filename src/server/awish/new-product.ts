@@ -5,6 +5,7 @@
  * Säkerhet (samma mönster som Provkör / Skicka till Awish nu):
  *  - Bara ägare och admin (rollen kontrolleras mot databasen i varje anrop).
  *  - Push till Awish måste vara påslaget (Datakällor → Awish) och inloggningen sparad.
+ *  - Aldrig från en demo (Demo för kunder): inget anrop till Awish, inte ens inloggningen.
  *  - Varje skrivning föregås av en förhandsvisning som visar exakt vad som ändras. Den ger
  *    ett fingeravtryck; "Skicka till Awish" skickar tillbaka det och servern räknar fram
  *    planen på nytt. Skiljer sig planen (något ändrades under tiden) skickas ingenting.
@@ -24,6 +25,7 @@ import { getServiceDb, type Db, type Tx } from "@/db/client";
 import { AuthorizationError, requireRoleFor, withUserDbFor } from "@/server/access";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import { OPERATOR_ROLES } from "@/server/data/core/types";
+import { DEMO_MESSAGES, isDemoOrganization } from "@/server/demo/guard";
 import { dbErrorMessage } from "@/server/errors";
 
 import {
@@ -87,6 +89,16 @@ export async function awishStatus(
   db: Db,
   orgId: string,
 ): Promise<NewProductStatus & { sourceId: string | null }> {
+  // Demo för kunder: Awish är avstängt (databasen nekar också Awish-källor i en demo).
+  if (await isDemoOrganization(db, orgId)) {
+    return {
+      connected: false,
+      enabled: false,
+      hasLogin: false,
+      sourceId: null,
+      blocker: DEMO_MESSAGES.integrations,
+    };
+  }
   const source = await loadWebSource(db, orgId);
   if (!source) {
     return {
@@ -119,6 +131,10 @@ export async function loggedInClient(
 ): Promise<{ db: Db; client: AwishWebApi; sourceId: string }> {
   await requireOperator(viewer);
   const db = deps.serviceDb ?? getServiceDb();
+  // Före allt annat: en demo når aldrig Awish (inte heller med en källa som lagts in förbi spärren).
+  if (await isDemoOrganization(db, viewer.organization.id)) {
+    throw new NewProductError(DEMO_MESSAGES.integrations);
+  }
   const status = await awishStatus(db, viewer.organization.id);
   if (status.blocker || !status.sourceId)
     throw new NewProductError(status.blocker ?? "Koppla Awish först.");

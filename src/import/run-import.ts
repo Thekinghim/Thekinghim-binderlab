@@ -19,6 +19,7 @@ import type { Db, Tx } from "@/db/client";
 
 import type { AdapterContext, DataSourceProvider, FetchResult } from "./adapter";
 import { awishCsvAdapter } from "./adapters/awish-csv";
+import { manualCsvAdapter } from "./adapters/manual-csv";
 import { ImportForbiddenError, ImportNotFoundError, ImportValidationError } from "./errors";
 import { importStoragePath, LocalFileStore, type FileStore } from "./file-store";
 import { sha256Hex } from "./hash";
@@ -153,7 +154,10 @@ function isoOrNull(value: unknown): string | null {
   return (value instanceof Date ? value : new Date(String(value))).toISOString();
 }
 
-/** Adaptern för filuppladdning per typ av datakälla. */
+/**
+ * Adaptern för filuppladdning per typ av datakälla. Samma adaptrar som plattformarna i
+ * src/server/platforms använder (Awish orderlista och "Annan automat (CSV)").
+ */
 async function fetchFromFile(
   provider: DataSourceProvider,
   context: AdapterContext,
@@ -162,6 +166,12 @@ async function fetchFromFile(
   switch (provider) {
     case "awish_csv":
       return awishCsvAdapter.fetch({ context, file: options.file, mapping: options.mapping });
+    case "manual_csv":
+      return manualCsvAdapter.fetch({
+        context,
+        file: options.file,
+        mapping: options.mapping?.delimiter ? { delimiter: options.mapping.delimiter } : undefined,
+      });
     default:
       throw new ImportValidationError(
         `Datakällan (${provider}) tar inte emot filer. Välj en CSV-datakälla.`,

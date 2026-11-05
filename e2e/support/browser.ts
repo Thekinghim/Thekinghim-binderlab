@@ -85,7 +85,10 @@ export interface BrowserContext {
   addCookies(cookies: { name: string; value: string; url: string }[]): Promise<void>;
   /** HTTP-anrop med sammanhangets cookies (inloggningen), utan att rendera sidan. */
   readonly request: {
-    get(url: string, options?: { maxRedirects?: number }): Promise<{ status(): number }>;
+    get(
+      url: string,
+      options?: { maxRedirects?: number },
+    ): Promise<{ status(): number; text(): Promise<string> }>;
   };
   close(): Promise<void>;
 }

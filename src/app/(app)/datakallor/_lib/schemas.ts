@@ -25,6 +25,8 @@ export const timeZoneSchema = z
 export const createSourceSchema = z.object({
   name: z.string().trim().min(1, "Ange ett namn.").max(200, "Namnet får vara högst 200 tecken."),
   sourceTimezone: timeZoneSchema,
+  /** Awish orderlista (standard) eller en annan automatplattform (manual_csv). */
+  provider: z.enum(["awish_csv", "manual_csv"]).default("awish_csv"),
 });
 
 export const updateSourceSchema = z.object({

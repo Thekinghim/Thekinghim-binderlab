@@ -202,7 +202,7 @@ stateDiagram-v2
 
 ```mermaid
 flowchart LR
-  CRON["Vercel Cron<br/>var 10:e minut"] --> JOB["/api/cron/larm<br/>src/server/alerts/job.ts"]
+  CRON["Vercel Cron<br/>05:07 UTC varje dag"] --> JOB["/api/cron/larm<br/>src/server/alerts/job.ts"]
   JOB --> IN["Indata per organisation<br/>order, lager, importer,<br/>sales_data_until"]
   IN --> EV["@/analytics/health, alerts<br/>(rena funktioner)"]
   EV --> AL["alerts<br/>en öppen rad per incident_key"]

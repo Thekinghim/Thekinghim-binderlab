@@ -6,6 +6,9 @@
  * tabell, vy eller RPC; inte organisationen i växlaren, inbjudningar eller medlemslistan),
  * aldrig en hemlighet (Vault, nycklar), och inget går ut från demon (inbjudningar och
  * Awish nekas). Inga riktiga användare är med i demon.
+ *
+ * De nya funktionerna i en demo: Redigera vara och Ny produkt når aldrig Awish, /plattform
+ * nås aldrig, Exportera all data ger bara demons egna data och Värde visar bara demons data.
  */
 
 import { mkdtempSync } from "node:fs";
@@ -16,6 +19,24 @@ import { sql, type SQL } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { LocalFileStore } from "../../src/import/file-store";
+import { listOrganizationsFor } from "../../src/server/access";
+import {
+  goodsOverviewFor,
+  previewEditGoodFor,
+  saveEditGoodFor,
+} from "../../src/server/awish/edit-good";
+import {
+  createNewProductFor,
+  newProductPageFor,
+  previewNewProductFor,
+  slotChoicesFor,
+} from "../../src/server/awish/new-product";
+import type { Viewer } from "../../src/server/data/core/loaders";
+import { DEMO_MESSAGES } from "../../src/server/demo/guard";
+import { exportOrganizationDataFor } from "../../src/server/export/service";
+import { unzip } from "../../src/server/export/testing/unzip";
+import { isPlatformOperatorFor } from "../../src/server/subscriptions/service";
+import { loadValueFor } from "../../src/server/varde/load";
 import { runSeed, type RunSeedResult } from "../../src/seed/run-seed";
 import { isDemoBlocked } from "../../src/server/assistant/advisor/service";
 import {
@@ -535,6 +556,152 @@ describe("demo för kunder: inget går ut från demon", () => {
       sql`update public.organizations set is_demo = false where id = ${demoOrgId}::uuid`,
     );
     expect(r.code).toBe("42501");
+  });
+});
+
+describe("demo för kunder: de nya funktionerna", () => {
+  async function viewerOf(u: TestUser, orgId: string): Promise<Viewer> {
+    const organization = (await listOrganizationsFor(user(u))).find((o) => o.id === orgId);
+    if (!organization) throw new Error("Saknar medlemskap");
+    return { user: user(u), organization };
+  }
+  const awishCalls: string[] = [];
+  const awishDeps = () => ({
+    serviceDb: db(),
+    // Skapas webb-klienten har något försökt nå Awish: testet ska aldrig komma hit.
+    makeWebClient: () => {
+      awishCalls.push("klient");
+      throw new Error("Awish anropades från en demo");
+    },
+  });
+
+  it("Redigera vara och Ny produkt når aldrig Awish från en demo", async () => {
+    const v = await viewerOf(customer, demoOrgId);
+    expect(v.organization.role).toBe("owner");
+    const page = await newProductPageFor(v, awishDeps());
+    expect(page.status.blocker).toBe(DEMO_MESSAGES.integrations);
+    expect(page.status.connected).toBe(false);
+
+    const machine = await one<{ id: string }>(
+      db(),
+      sql`select id::text as id from public.machines where organization_id = ${demoOrgId}::uuid limit 1`,
+    );
+    const input = { name: "Kundens vara", salePrice: "49", purchasePrice: "20", ownProduct: false };
+    const attempts: Array<[string, () => Promise<unknown>]> = [
+      ["goodsOverviewFor", () => goodsOverviewFor(v, awishDeps())],
+      [
+        "previewEditGoodFor",
+        () => previewEditGoodFor(v, { goodId: 1, ...input }, null, awishDeps()),
+      ],
+      [
+        "saveEditGoodFor",
+        () => saveEditGoodFor(v, { goodId: 1, ...input }, null, "0".repeat(32), awishDeps()),
+      ],
+      ["previewNewProductFor", () => previewNewProductFor(v, input, null, awishDeps())],
+      [
+        "createNewProductFor",
+        () => createNewProductFor(v, input, null, "0".repeat(32), awishDeps()),
+      ],
+      ["slotChoicesFor", () => slotChoicesFor(v, machine.id, awishDeps())],
+    ];
+    for (const [name, run] of attempts) {
+      await expect(run(), name).rejects.toThrow(DEMO_MESSAGES.integrations);
+    }
+    expect(awishCalls).toEqual([]);
+  });
+
+  it("Annan automat (CSV) går att lägga till i en demo, Awish-kopplingar nekas fortfarande", async () => {
+    const r = await asUser(customer, (tx) =>
+      attempt(tx, async (sp) =>
+        Array.from(
+          await sp.execute(
+            sql`insert into public.data_sources (organization_id, provider, name)
+                values (${demoOrgId}::uuid, 'manual_csv', 'Försäljning, annan automat') returning id`,
+          ),
+        ),
+      ),
+    );
+    expect(r.ok).toBe(true);
+    const grpc = await peek(
+      customer,
+      sql`insert into public.data_sources (organization_id, provider, name)
+          values (${demoOrgId}::uuid, 'awish_grpc', 'Awish')`,
+    );
+    expect(grpc.code).toBe("BL092");
+  });
+
+  it("kunden når aldrig /plattform, inte ens om demon av misstag blir plattformsorganisation", async () => {
+    expect(await isPlatformOperatorFor(user(customer))).toBe(false);
+    await db().execute(
+      sql`insert into private.platform_operators (organization_id, note) values (${demoOrgId}::uuid, 'test')`,
+    );
+    try {
+      expect(await isPlatformOperatorFor(user(customer))).toBe(false);
+      const op = await peek<{ ok: boolean }>(
+        customer,
+        sql`select public.am_platform_operator() as ok`,
+      );
+      expect(op.rows[0]?.ok).toBe(false);
+      const overview = await peek(customer, sql`select public.platform_overview_data()`);
+      expect(overview.code).toBe("42501");
+      const save = await peek(
+        customer,
+        sql`select public.platform_save_plan(${real.organizationId}::uuid, current_date, 'active', 0, 'SEK', null, null, null, null)`,
+      );
+      expect(save.code).toBe("42501");
+    } finally {
+      await db().execute(
+        sql`delete from private.platform_operators where organization_id = ${demoOrgId}::uuid`,
+      );
+    }
+  });
+
+  it("Exportera all data: kunden exporterar demon, aldrig den riktiga organisationen", async () => {
+    const v = await viewerOf(customer, demoOrgId);
+    const r = await exportOrganizationDataFor(v);
+    const all = unzip(new Uint8Array(Buffer.concat(r.parts)))
+      .map((f) => f.text)
+      .join("\n");
+    expect(all).toContain(demoOrgId);
+    for (const m of markers) expect(all, m).not.toContain(m);
+
+    // Den riktiga organisationens id direkt mot RPC:n och som "aktiv" organisation.
+    const rpc = await peek(
+      customer,
+      sql`select public.start_data_export(${real.organizationId}::uuid)`,
+    );
+    expect(rpc.code).toBe("42501");
+    const forged: Viewer = { ...v, organization: { ...v.organization, id: real.organizationId } };
+    await expect(exportOrganizationDataFor(forged)).rejects.toThrow();
+    const logged = await one<{ n: number }>(
+      db(),
+      sql`select count(*)::int as n from public.data_exports
+          where organization_id = ${real.organizationId}::uuid`,
+    );
+    expect(logged.n).toBe(0);
+  });
+
+  it("Värde i demon visar bara demons data", async () => {
+    const v = await viewerOf(customer, demoOrgId);
+    const data = await loadValueFor(v, null);
+    expect(data.hasData).toBe(true);
+    const text = JSON.stringify(data);
+    for (const m of markers) expect(text, m).not.toContain(m);
+    const demoMachines = await rows<{ id: string }>(
+      db(),
+      sql`select id::text as id from public.machines where organization_id = ${demoOrgId}::uuid`,
+    );
+    const ids = new Set(demoMachines.map((m) => m.id));
+    expect(data.names.machines.length).toBeGreaterThan(0);
+    expect(data.names.machines.every((m) => ids.has(m.id))).toBe(true);
+
+    const counts = await peek(
+      customer,
+      sql`select * from public.varde_automation_counts(${real.organizationId}::uuid, current_date - 60, current_date)`,
+    );
+    expect(counts.code).toBe("42501");
+    const forged: Viewer = { ...v, organization: { ...v.organization, id: real.organizationId } };
+    await expect(loadValueFor(forged, null)).rejects.toThrow();
   });
 });
 

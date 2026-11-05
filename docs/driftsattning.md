@@ -108,8 +108,8 @@ Alla tar `--dry-run`. Det finns inget npm-skript (package.json ägs av andra); k
    halva filen eller en bokföringsrad. Misslyckas en migrering i utvecklingen rörs produktionen inte.
 7. **Lagring.** Migreringarna skapar de privata buckets `imports`, `reports` och `contracts` med policyer. Skriptet
    kontrollerar dem via Storage-API:t och skapar de som saknas (privata).
-8. **Vercel-inställningar.** Funktionsregion `arn1` (`PATCH /v9/projects/{id}`; `vercel.json` säger också `arn1`).
-   Varning om Hobby-planen: larmjobbet var 10:e minut i `vercel.json` kräver Pro.
+8. **Vercel-inställningar.** Funktionsregion `lhr1` (`PATCH /v9/projects/{id}`; `vercel.json` säger också `lhr1`).
+   Cron-jobben i `vercel.json` går högst en gång per dygn och ryms i Hobby-planen.
 9. **Miljövariabler** för Production (produktionsprojektet) och Preview (utvecklingsprojektet):
 
    | Variabel                                                                  | Production                                       | Preview            | Typ             |
@@ -227,7 +227,7 @@ märkta **osäker** är de där form eller beteende kan skilja sig; skriptet han
 | Vercel `POST /v9/projects/{id}/link` (koppla ett befintligt okopplat projekt)                                           | osäker   | Koppla repot under Settings → Git och kör igen.                                                                                                         |
 | Vercel `GET /v10/projects/{id}/env`, `GET /v1/projects/{id}/env/{id}`, `POST /v10/…/env`, `PATCH/DELETE /v9/…/env/{id}` | säker    |                                                                                                                                                         |
 | Vercel `PATCH /v9/…/env/{id}` med bara `target` (uppdelning)                                                            | osäker   | Ta bort den delade variabeln för hand och kör igen.                                                                                                     |
-| Vercel `PATCH /v9/projects/{id}` (`serverlessFunctionRegion`)                                                           | säker    | `vercel.json` (`regions: ["arn1"]`) gäller ändå.                                                                                                        |
+| Vercel `PATCH /v9/projects/{id}` (`serverlessFunctionRegion`)                                                           | säker    | `vercel.json` (`regions: ["lhr1"]`) gäller ändå.                                                                                                        |
 | Vercel `POST /v13/deployments` (`gitSource`), `GET /v13/deployments/{id}`, `GET /v6/deployments`                        | säker    |                                                                                                                                                         |
 | Vercel `GET /v9/projects/{id}/domains`                                                                                  | säker    |                                                                                                                                                         |
 
@@ -235,8 +235,8 @@ märkta **osäker** är de där form eller beteende kan skilja sig; skriptet han
 
 Det här kan inte skripten göra, och sammanfattningen påminner om det som gäller:
 
-- **Vercel Pro** om larmjobbet ska gå var 10:e minut (`vercel.json`). På Hobby avvisas driftsättningen; varningen säger
-  det.
+- **Vercel Cron**: `vercel.json` kör larmjobbet en gång per dygn (05:07 UTC) och rapportutkasten den 1:a; det ryms i
+  Hobby. Ett tätare schema kräver Pro (på Hobby avvisas driftsättningen).
 - **E-post med egen domän (Resend)**: verifiera avsändardomänen (SPF/DKIM) i Resend och kör igen med `RESEND_API_KEY`
   och `MAIL_FROM`. Utan det skickar Supabase inloggningslänkar med sin inbyggda e-post, som bara når adresser som är
   medlemmar i Supabase-organisationen och bara några mejl i timmen, och rapportmejlen hamnar i serverns utkorg.

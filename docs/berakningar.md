@@ -833,3 +833,65 @@ Testerna: `effect.test.ts`, `test/db/expansion-service.test.ts`.
 - **Mallen är inte juridiskt granskad.** Dialogen säger det tills första avtalet är skapat: låt Talenom läsa den en gång. En ändrad mall får ett nytt namn (`-v2`), så att varje avtal visar vilken text det skapades med.
 
 Testerna: `src/reports/contract-pdf.test.ts`, `src/server/contracts/plan.test.ts`, `test/db/avtal-mall.test.ts`.
+
+## 27. Vad Binderlab gett dig (`src/analytics/value`, sidan `/varde` och månadsrapporten `/rapport/varde`)
+
+Sidan visar för en kalendermånad (`?manad=ÅÅÅÅ-MM`, standard förra månaden) vad Binderlab gett ägaren, räknat ur data som redan finns. Allt är **försiktigt räknat**: när något är osäkert räknas det inte. Bara ägare och admin ser sidan, och bara den egna organisationens data (RLS). En pågående månad räknas till och med i går. Antagandena står på sidan under "Så räknas det" och i rapporten, och alla konstanter finns på ett ställe: `src/analytics/value/assumptions.ts`.
+
+### Slutsålt undvikt (`refills.ts`)
+
+Per automat och titel spelas lagerhändelserna upp i tidsordning (samma saldoregler som avsnitt 8 och förlorad försäljning).
+
+| Begrepp              | Regel                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Påfyllning i tid     | En påfyllning (`refill`) när saldot strax före var > 0. Saldo ≤ 0: **efter tomt**. Okänt saldo: räknas inte. Flera påfyllningar av samma titel i samma automat samma dag räknas som en.                                                                                                                                                                                                                                                                                                      |
+| Räddade pack         | Efter en påfyllning i tid med saldot _S_ före: de pack som säljs efter påfyllningen utöver _S_ (de hade annars mött ett tomt fack). Bara de första **7 dagarna** från dagen facket hade blivit tomt räknas (`SAVED_SALES_MAX_DAYS`).                                                                                                                                                                                                                                                         |
+| När räkningen slutar | Vid nästa inflöde (påfyllning, mottagning, flytt in), en positiv justering, en inventering som visar fler pack än väntat (en påfyllning som inte registrerats) eller en försäljning som gör saldot negativt (packet fanns inte enligt lagret och räknas inte). Räddade pack blir aldrig fler än påfyllningen. En andra påfyllning samma dag är samma besök: var facket tomt vid dagens första påfyllning räddar inte heller den andra något. Svinn ändrar inte _S_ (ger färre räddade pack). |
+| Kronor               | Räddade pack × snittpriset utan moms för titeln i automaten (annars titelns snitt i alla automater). Pack utan snittpris räknas inte i kronor.                                                                                                                                                                                                                                                                                                                                               |
+| Tomt kostade         | Förlorad försäljning när facket var tomt, exakt som avsnitt 18 (samma siffra som på Inköp).                                                                                                                                                                                                                                                                                                                                                                                                  |
+
+**Vad siffran inte säger.** Slutsålt undvikt är försäljning utan moms, inte vinst, och gäller alla påfyllningar i tid, även de som hade gjorts utan Binderlab. Därför står det "påfyllning i tid räddade", inte "Binderlab räddade", i rubriken; sidan och rapporten säger samma sak under "Så räknas det".
+
+**Exempel.** 10 pack inventerade 1 okt., ett pack säljs varje dag 1–20 okt. Påfyllning +10 den 9 okt. på morgonen: 2 pack kvar, alltså i tid. 9 och 10 okt. säljs de 2 som fanns; 11–17 okt. räknas som räddade (7 pack), 18–20 okt. räknas inte. 7 × 49 kr = 343 kr. Påfyllningen 25 okt. (0 kvar) är efter tomt. Andel i tid: 1 av 2 = 50 %.
+
+### Tid sparad (`time.ts`, RPC `varde_automation_counts`)
+
+Antal uppgifter i månaden × minuter per uppgift. Antalen räknas i databasen (organisationens tidszon):
+
+| Uppgift                | Räknas som en gång                                                                                                                              | Minuter | I stället för att                                   |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------- | --------------------------------------------------- |
+| Påfyllning registrerad | automat och dag med minst en påfyllning (`stock_events` kind `refill`)                                                                          | 5       | skriva upp påfyllningen och räkna lagret för hand   |
+| Awish uppdaterad       | automat som Binderlab satte i Awish efter en påfyllning (`automation_log`)                                                                      | 3       | logga in på Awish och skriva in antal per fack      |
+| Butiksavräkning        | butiksavräkning som räknats fram (`store_settlements`, skapad)                                                                                  | 20      | räkna ut butikens andel i Excel                     |
+| Bokföringsunderlag     | bokföringspaket som skapats (`bookkeeping_packages`)                                                                                            | 60      | sammanställa försäljning och inköp till bokföringen |
+| Larm skickat           | larm som gått iväg (`alert_deliveries` sent/partial), varje larm en gång oavsett antal mottagare och påminnelser, i månaden det först gick iväg | 5       | själv kolla om en automat står still                |
+| Rapport till butik     | rapport som skickats (`report_deliveries` sent/delivered), varje rapport en gång oavsett antal mottagare                                        | 15      | ta fram och mejla siffror till butiken              |
+
+Tiden blir kronor bara om ägaren angett en timkostnad (Effekt): round(minuter × timkostnad / 60). Awish-push loggas från och med denna version (`automation_log`, migreringen `20261111000000_varde.sql`); tidigare pushar räknas inte. Att larm och rapporter räknas en gång var kom med `20261111000100_varde_rakna_en_gang.sql`.
+
+### Marginal och utveckling (`margin.ts`)
+
+Samma regler som Lönsamhet och Inköpspriser (`profitabilityViews`):
+
+- **Försäljning** = nettointäkt utan moms för order med inköpspris.
+- **Kvar efter inköp** = försäljning − inköp − kortavgifter − VMB-moms: hela beloppet, **före** butikens andel (som "Kvar per order" på Inköpspriser).
+- **Per butik** visas också butikens andel (provision + hyra) och vår del = kvar efter inköp − butikens andel. Butikens andel visas bara per butik.
+- **Per automat** och **per månad** (sex månader bakåt). Order utan inköpspris ingår inte och anges separat.
+- **Förändring** = changeBp(nu, månaden före). Pågår månaden jämförs samma dagar månaden före (1–10 nov. mot 1–10 okt.).
+
+**Exempel.** 10 order à 49 kr i oktober med inköp 20 kr, provision 10 %: försäljning 490 kr, kvar efter inköp 290 kr, butikens andel 49 kr, vår del 241 kr. September 5 order: kvar 145 kr. Förändring +100 %.
+
+### Bästa åtgärder (`actions.ts`)
+
+Högst tre förslag, värderade i kronor per månad där det går:
+
+| Förslag            | Villkor                                                                      | Värde                                    |
+| ------------------ | ---------------------------------------------------------------------------- | ---------------------------------------- |
+| Fyll på tidigare   | slutsålt kostade minst 50 kr i månaden för titeln i automaten                | förlorad försäljning i månaden           |
+| Höj priset         | minst 3 prissatta order och negativt kvar efter inköp i månaden              | förlusten                                |
+| Flytta titlar      | sortimentsrådet (Marknad) säger "ändra" för automaten, de senaste 28 dagarna | väntad effekt per vecka × 4              |
+| Lägg in inköpspris | order utan inköpspris i månaden                                              | inget (vinsten går inte att räkna), sist |
+
+Först väljs det bästa av varje sort (så att listan blir varierad), sedan fylls listan på efter värde.
+
+Testerna: `src/analytics/value/value.test.ts`, `src/app/(app)/varde/_lib/view.test.ts`, `test/db/varde.test.ts`.
