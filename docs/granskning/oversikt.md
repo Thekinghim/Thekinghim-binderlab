@@ -12,6 +12,12 @@ butiker. Panelen läser in all försäljning från automatplattformen och svarar
 - **Vad ska köpas in?** Prognos per vecka och inköpsförslag (Prognos & inköp, Vårt lager).
 - **Pappersarbetet:** månadsrapporter till butiker (PDF), avräkningar, SIE 4 och Excel till
   bokföringen, avtal med signering, butiksportal (Rapporter, Ekonomi, Avtal, Butiker).
+- **Vad har Binderlab gett oss?** Försäljning som räddats av påfyllning i tid och tid som
+  sparats av automatiskt arbete, per månad med månadsrapport (Värde, bara ägare och admin).
+  Hur det räknas: [docs/berakningar.md](../berakningar.md) avsnitt 27.
+- **Abonnemang (för den som driver plattformen):** plan per kundorganisation, MRR, ARR,
+  churn och fakturaunderlag som CSV (`/plattform`, bara plattformsoperatörer). Mer i
+  [docs/abonnemang.md](../abonnemang.md).
 
 Allt gränssnitt är på svenska, belopp sparas i öre och datum räknas i organisationens tidszon
 (standard `Europe/Stockholm`). Mer i [docs/product.md](../product.md).
@@ -19,7 +25,7 @@ Allt gränssnitt är på svenska, belopp sparas i öre och datum räknas i organ
 ## Kunder och organisationer (multi-tenant)
 
 - **Organisation = kund.** All data har `organization_id` och hör till exakt en organisation
-  (82 av 83 tabeller i `public`; katalogtestet `test/db/catalog.test.ts` kräver det för varje
+  (83 av 84 tabeller i `public`; katalogtestet `test/db/catalog.test.ts` kräver det för varje
   tabell utom `organizations` själv). En operatör (t.ex. en dansk operatör) får en egen organisation och ser
   aldrig någon annans data.
 - **Roller per organisation** (`public.member_role`): ägare (`owner`), admin, läsare

@@ -1,12 +1,12 @@
 # Kvalitet
 
-## Tester (körda 5 nov. 2026 på grenen `claude/dd`)
+## Tester (körda 5 nov. 2026 på grenen `claude/exit`)
 
 | Svit                               | Kommando           | Filer | Tester | Resultat                                                          |
 | ---------------------------------- | ------------------ | ----- | ------ | ----------------------------------------------------------------- |
-| Enhetstester                       | `npm test`         | 283   | 3 752  | Alla gröna                                                        |
-| Databastester (riktig Postgres 16) | `npm run test:db`  | 113   | 3 362  | 3 360 gröna, 2 hoppade (`ai-live` kräver en riktig API-nyckel)    |
-| E2E (Playwright, 8 flöden)         | `npm run test:e2e` | 8     | –      | Inte körda i den här granskningen (kräver egen server, se README) |
+| Enhetstester                       | `npm test`         | 287   | 3 808  | Alla gröna                                                        |
+| Databastester (riktig Postgres 16) | `npm run test:db`  | 115   | 3 410  | 3 408 gröna, 2 hoppade (`ai-live` kräver en riktig API-nyckel)    |
+| E2E (Playwright, 10 flöden)        | `npm run test:e2e` | 10    | –      | Inte körda i den här granskningen (kräver egen server, se README) |
 
 - **Enhetstester** (`src/**/*.test.ts`): rena beräkningar (öre, moms, provision, prognos,
   larm), importens tolkning (Awish och Annan automat), ZIP och CSV för exporten, adaptrarna

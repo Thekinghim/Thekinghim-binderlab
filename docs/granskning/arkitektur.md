@@ -8,7 +8,7 @@ besluten: [docs/decisions.md](../decisions.md).
 | Del           | Val                                                                                          |
 | ------------- | -------------------------------------------------------------------------------------------- |
 | Webb          | Next.js 16 (App Router, serverkomponenter, server actions), React 19, TypeScript (strikt)    |
-| Databas       | Postgres 16 i Supabase; RLS på varje tabell; SQL-migreringar i `supabase/migrations` (90 st) |
+| Databas       | Postgres 16 i Supabase; RLS på varje tabell; SQL-migreringar i `supabase/migrations` (94 st) |
 | Databasklient | Drizzle ORM över postgres.js (`src/db`)                                                      |
 | Inloggning    | Supabase Auth (JWT, ES256 mot JWKS); egen dev-inloggning bara lokalt (`src/server/auth`)     |
 | Filer         | Supabase Storage, privata buckets `imports`, `reports`, `contracts`                          |
@@ -17,7 +17,7 @@ besluten: [docs/decisions.md](../decisions.md).
 | Tester        | vitest (enhet och databas mot riktig Postgres), Playwright (e2e)                             |
 
 Koden: cirka 266 000 rader TypeScript i `src` (`git ls-files 'src/**.ts' 'src/**.tsx' | xargs cat | wc -l`),
-59 sidor och 24 route handlers.
+63 sidor och 25 route handlers.
 
 ## Dataflöde
 

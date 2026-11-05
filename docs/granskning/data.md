@@ -20,7 +20,7 @@ avtalet skrivs (eller byt region).
 | Drift              | `alerts`, `incidents`, `alert_subscriptions`, `push_subscriptions`                 |
 | Loggar             | `audit_log`, `assistant_logs`, `data_exports`                                      |
 
-Alla 83 tabeller i `public` och deras kolumner: [docs/datamodell.md](../datamodell.md) och sidan
+Alla 84 tabeller i `public` och deras kolumner: [docs/datamodell.md](../datamodell.md) och sidan
 `/datamodell` i appen. Orderna innehåller inga uppgifter om köparen (tid, belopp, betalsätt,
 titel, automat). Personuppgifter som finns (användare, butikskontakter, kundärenden):
 [docs/operations.md](../operations.md#personuppgifter-och-biträden).
