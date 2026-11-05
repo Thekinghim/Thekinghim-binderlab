@@ -88,6 +88,8 @@ export default async function PurchasePricesPage({
   ]);
 
   const today = ctx.today;
+  // Ny produkt i Awish: ägare och admin.
+  const canAddProduct = ctx.role === "owner" || ctx.role === "admin";
   const periodLabel = describePeriod(period.resolved).rangeLabel;
   const activeTitleIds = input.titles.filter((t) => !t.archived).map((t) => t.id);
   const economics = currentPriceEconomics({ ...input.current, titleIds: activeTitleIds });
@@ -187,17 +189,27 @@ export default async function PurchasePricesPage({
             title={headline.title}
             aside={headline.aside}
             actions={
-              // Vald butik: andelen visas alltid, knappen behövs inte. Utan andel: ingen knapp.
-              filtered || !anyShare ? undefined : (
-                <MobileMore
-                  label="Fler val för inköpspriser"
-                  className="max-md:absolute max-md:-top-2 max-md:-right-2"
-                >
-                  <Suspense fallback={null}>
-                    <StoreShareToggle userKey={ctx.user.id} menuItem />
-                  </Suspense>
-                </MobileMore>
-              )
+              <>
+                {canAddProduct ? (
+                  <Link
+                    href="/inkopspriser/ny-produkt"
+                    className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3 text-sm font-medium text-fg hover:border-line-control hover:bg-hover"
+                  >
+                    + Ny produkt
+                  </Link>
+                ) : null}
+                {/* Vald butik: andelen visas alltid, knappen behövs inte. Utan andel: ingen knapp. */}
+                {filtered || !anyShare ? null : (
+                  <MobileMore
+                    label="Fler val för inköpspriser"
+                    className="max-md:absolute max-md:-top-2 max-md:-right-2"
+                  >
+                    <Suspense fallback={null}>
+                      <StoreShareToggle userKey={ctx.user.id} menuItem />
+                    </Suspense>
+                  </MobileMore>
+                )}
+              </>
             }
           />
         </div>
