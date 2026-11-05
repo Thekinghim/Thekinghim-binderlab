@@ -7,6 +7,8 @@ export { demandFromForecast } from "./demand";
 export {
   orderQuantity,
   purchasePlan,
+  purchaseQty,
+  purchaseQtyByTitle,
   PURCHASING_DEFAULTS,
   resolvePurchasingOptions,
   safetyStockMilli,

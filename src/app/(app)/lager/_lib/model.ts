@@ -15,7 +15,7 @@
 
 import { createTodoContext } from "@/analytics/todos/context";
 import { isMachineActive } from "@/analytics/todos/common";
-import { refillTodos } from "@/analytics/todos/refill";
+import { refillTodos, withCapacities } from "@/analytics/todos/refill";
 import {
   TODO_DEFAULTS,
   type AnalyticsOrder,
@@ -216,12 +216,16 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
   // eller fyllts på. Bara försäljning ger inget känt saldo: platsen är "Saldo okänt",
   // inte tom, och ingår inte i påfyllningsregeln eller listan.
   const isKnown = (r: StockRow) => r.lastRestockedAt !== null || r.lastCountedAt !== null;
-  const machineStock: StockLevelRef[] = [...machineRows.values()].filter(isKnown).map((r) => ({
-    machineId: r.machineId as string,
-    titleId: r.titleId,
-    onHand: r.onHand,
-    lastRestockedAt: r.lastRestockedAt,
-  }));
+  // Med fackens kapacitet: ett fullt fack är aldrig Kritisk eller Snart slut (som Fyll på).
+  const machineStock: StockLevelRef[] = withCapacities(
+    [...machineRows.values()].filter(isKnown).map((r) => ({
+      machineId: r.machineId as string,
+      titleId: r.titleId,
+      onHand: r.onHand,
+      lastRestockedAt: r.lastRestockedAt,
+    })),
+    input.capacities ?? [],
+  );
   const warehouseStock = [...centralRows.values()].map((r) => ({
     titleId: r.titleId,
     onHand: r.onHand,

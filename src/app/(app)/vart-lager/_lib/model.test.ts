@@ -7,7 +7,7 @@ import {
   describeChange,
   lastsDays,
   lastsText,
-  needQtyOf,
+  needsPurchase,
   stockTodos,
   whenText,
   type VartLagerInput,
@@ -159,15 +159,33 @@ describe("buildVartLagerModel", () => {
 });
 
 describe("egna produkter och Att göra", () => {
-  it("behovet: minst veckans brist, annars två veckors takt minus lagret, aldrig under 1", () => {
-    expect(needQtyOf(3, false, wr("x", 3))).toBe(0);
-    // 1 pack/dag i 14 dagar − 3 hemma = 11.
-    expect(needQtyOf(3, true, wr("x", 3))).toBe(11);
-    expect(needQtyOf(3, true, wr("x", 3, { shortBy: 20 }))).toBe(20);
-    // 2,5 pack/dag → 35 för 14 dagar; under 0 räknas som 0.
-    expect(needQtyOf(-4, true, wr("x", -4, { perDayTenths: 25 }))).toBe(35);
-    expect(needQtyOf(50, true, wr("x", 50))).toBe(1);
-    expect(needQtyOf(0, true, undefined)).toBe(1);
+  it("utan inköpsplan: titlar som tar slut visas utan antal", () => {
+    const m = buildVartLagerModel(input());
+    const b = m.rows.find((r) => r.titleId === "b")!;
+    expect(b).toMatchObject({ runsOut: true, needQty: null });
+    expect(needsPurchase(b)).toBe(true);
+    expect(stockTodos(m.rows)).toEqual([
+      { titleId: "b", verb: "Beställ", title: "Surging Sparks", qty: null, tone: "warning" },
+    ]);
+  });
+
+  it("med inköpsplanen: Inköps antal, och bara titlar där det är över 0", () => {
+    // a räcker hemma men Inköp vill beställa (ledtid + nästa beställning); b tar slut men
+    // är redan beställd (Inköp: 0). Samma titlar och antal som Inköp.
+    const m = buildVartLagerModel(input({ purchase: new Map([["a", 36]]) }));
+    expect(m.rows.find((r) => r.titleId === "a")).toMatchObject({ runsOut: false, needQty: 36 });
+    expect(m.rows.find((r) => r.titleId === "b")).toMatchObject({ runsOut: true, needQty: 0 });
+    expect(stockTodos(m.rows)).toEqual([
+      { titleId: "a", verb: "Beställ", title: "Black Bolt", qty: 36, tone: "warning" },
+    ]);
+    expect(sp(headingOf(m).aside)).toBe("1 titel tar slut: beställ 1.");
+    const none = buildVartLagerModel(input({ purchase: new Map() }));
+    expect(stockTodos(none.rows)).toEqual([]);
+    expect(sp(headingOf(none).aside)).toBe("1 titel tar slut. Inget att beställa än.");
+    const nothingOut = buildVartLagerModel(
+      input({ warehouse: [wr("a", 40)], sold7: new Map(), purchase: new Map([["a", 12]]) }),
+    );
+    expect(sp(headingOf(nothingOut).aside)).toBe("Beställ 1 titel.");
   });
 
   it("egen produkt packas, övriga beställs; under 0 räknas om först", () => {
@@ -187,6 +205,12 @@ describe("egna produkter och Att göra", () => {
           ["a", -2],
           ["b", 3],
           ["c", 0],
+        ]),
+        purchase: new Map([
+          ["b", 11],
+          ["c", 7],
+          // Under 0: räknas om först, aldrig beställ.
+          ["a", 30],
         ]),
       }),
     );
@@ -208,6 +232,10 @@ describe("egna produkter och Att göra", () => {
           wr("b", 3, { daysLeft: 2, status: "low" }),
           wr("c", 0, { daysLeft: 0, status: "critical" }),
         ],
+        purchase: new Map([
+          ["b", 11],
+          ["c", 7],
+        ]),
       }),
     );
     expect(sp(headingOf(noNegative).aside)).toBe("2 titlar tar slut: packa 1, beställ 1.");
@@ -336,6 +364,11 @@ describe("Vårt lager: utgångna titlar, Räcker och senaste händelsen", () => 
           wr("b", 3, { daysLeft: 2, status: "low" }),
         ],
         sold7: new Map([["a", 0]]),
+        // En utgången titel köps aldrig in, även om planen skulle ha ett antal.
+        purchase: new Map([
+          ["a", 20],
+          ["b", 5],
+        ]),
       }),
     );
     expect(m.rows.map((r) => r.name)).toEqual(["Paradox Rift", "Surging Sparks", "Black Bolt"]);

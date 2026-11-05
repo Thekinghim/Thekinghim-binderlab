@@ -4,7 +4,14 @@ import { forecastSales } from "../forecast";
 import { dailyOrders, NO_TAX } from "../forecast/test-fixtures";
 import { chooseSupplierItem, coverDays, demandAt, demandSum } from "./common";
 import { demandFromForecast } from "./demand";
-import { orderQuantity, purchasePlan, resolvePurchasingOptions, safetyStockMilli } from "./plan";
+import {
+  orderQuantity,
+  purchasePlan,
+  purchaseQty,
+  purchaseQtyByTitle,
+  resolvePurchasingOptions,
+  safetyStockMilli,
+} from "./plan";
 import type { PurchasingInput, SupplierItemRef, TitleDemand } from "./types";
 import { inventoryValuation } from "./valuation";
 
@@ -465,5 +472,28 @@ describe("från prognos till inköp", () => {
     expect(a.safetyStockMilli).toBe(12_310);
     expect(a.rawQty).toBe(59); // 68 310 − 10 000 → 58,31 → 59
     expect(a.orderQty).toBe(60);
+  });
+});
+
+describe("purchaseQty: en regel för Inköp och Vårt lager", () => {
+  it("beställ: det avrundade antalet; utan leverantör: det som saknas; annars 0", () => {
+    expect(purchaseQty({ status: "order", orderQty: 36, rawQty: 25 })).toBe(36);
+    expect(purchaseQty({ status: "no-supplier", orderQty: 0, rawQty: 59 })).toBe(59);
+    expect(purchaseQty({ status: "ok", orderQty: 0, rawQty: 0 })).toBe(0);
+    expect(purchaseQty({ status: "no-demand", orderQty: 0, rawQty: 0 })).toBe(0);
+  });
+
+  it("per titel: bara titlar med antal över 0", () => {
+    const m = purchaseQtyByTitle({
+      lines: [
+        { titleId: "a", status: "order", orderQty: 24, rawQty: 14 },
+        { titleId: "b", status: "no-supplier", orderQty: 0, rawQty: 7 },
+        { titleId: "c", status: "ok", orderQty: 0, rawQty: 0 },
+      ] as unknown as Parameters<typeof purchaseQtyByTitle>[0]["lines"],
+    });
+    expect([...m]).toEqual([
+      ["a", 24],
+      ["b", 7],
+    ]);
   });
 });

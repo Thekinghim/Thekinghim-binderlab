@@ -102,6 +102,34 @@ export function orderQuantity(
   return { rawQty, afterMinQty, orderQty };
 }
 
+/**
+ * Antalet att köpa in (eller packa, för egna produkter) för en titel: EN regel för Inköp
+ * (/prognos) och Vårt lager, så att båda sidorna visar samma tal.
+ *
+ *   behov  = försäljning under ledtid + dagar till nästa beställning (prognos) + säkerhetslager
+ *   saknas = behov − (vårt lager + automaterna + beställt som kommer i tid)
+ *   antal  = saknas i hela pack → minst minsta order → uppåt till hela boxar (orderQuantity)
+ *
+ * Med leverantör ('order') är det det avrundade antalet ("Beställ 36 st"). Utan leverantör
+ * ('no-supplier') finns ingen box: det som saknas i hela pack ("Köp ca 35 st"). Räcker
+ * lagret, eller säljs titeln inte, är det 0.
+ */
+export function purchaseQty(line: Pick<PurchaseLine, "status" | "orderQty" | "rawQty">): number {
+  if (line.status === "order") return line.orderQty;
+  if (line.status === "no-supplier") return line.rawQty;
+  return 0;
+}
+
+/** purchaseQty per titel i planen (bara titlar med antal > 0). */
+export function purchaseQtyByTitle(plan: Pick<PurchasePlan, "lines">): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const l of plan.lines) {
+    const q = purchaseQty(l);
+    if (q > 0) out.set(l.titleId, q);
+  }
+  return out;
+}
+
 /** Säkerhetslager i tusendelar: z × √(dagar × dagsvarians). */
 export function safetyStockMilli(zMilli: number, days: number, dayVarianceMilli2: number): number {
   assertIntAtLeast(dayVarianceMilli2, 0, "Dagsvariansen");
