@@ -107,3 +107,92 @@ export function splitWithPrice(
     leftOre: e?.leftPerOrderOre ?? null,
   };
 }
+
+/** Kvar per order före och efter ett nytt försäljningspris, och vad det ger på en månad. */
+export interface SalePriceEffect {
+  /** Order i underlaget (de senaste 30 dagarna). 0 = räknat på ett tänkt pack. */
+  readonly orders: number;
+  /** Kvar per order före butikens andel (hela beloppet), nu och med det nya priset. */
+  readonly beforeOre: number | null;
+  readonly afterOre: number | null;
+  /** Vår del (efter butikens andel), nu och med det nya priset. */
+  readonly shareBeforeOre: number | null;
+  readonly shareAfterOre: number | null;
+  /** Skillnad i kvar (hela beloppet) på underlagets order, eller null utan försäljning. */
+  readonly monthlyDeltaOre: number | null;
+  /** Samma för vår del. */
+  readonly shareMonthlyDeltaOre: number | null;
+}
+
+/**
+ * Vad ett nytt försäljningspris (öre, med moms) gör med "Kvar per order", räknat med samma
+ * ekonomi som Inköpspriser (currentPriceEconomics: kortavgift, VMB, butikens andel och dagens
+ * inköpspris). Varje betald order av titeln i underlaget räknas om till det nya priset
+ * (gratis-pack, 0 kr, lämnas som de är); "före" är underlaget som det är, så att det är samma
+ * tal som i listan. Utan försäljning räknas ett tänkt pack i `machineId` (null = ingen butik)
+ * till nuvarande och nytt pris, och ingen månadseffekt ges.
+ */
+export function salePriceEffect(
+  input: TitleEconomicsInput,
+  titleId: string,
+  fromOre: number | null,
+  toOre: number,
+  machineId: string | null = null,
+): SalePriceEffect {
+  const own = input.orders.filter((o) => o.titleId === titleId && o.amountOre > 0);
+  const run = (orders: TitleEconomicsInput["orders"]) =>
+    currentPriceEconomics({ ...input, orders, titleIds: [titleId] }).find(
+      (e) => e.titleId === titleId,
+    ) ?? null;
+  const reprice = (ore: number) =>
+    input.orders.map((o) =>
+      o.titleId === titleId && o.amountOre > 0 ? { ...o, amountOre: ore } : o,
+    );
+
+  if (own.length > 0) {
+    const before = run(input.orders);
+    const after = run(reprice(toOre));
+    const totalBefore = before?.leftBeforeStoreTotalOre ?? null;
+    const totalAfter = after?.leftBeforeStoreTotalOre ?? null;
+    const shareBefore = before?.leftPerOrderOre ?? null;
+    const shareAfter = after?.leftPerOrderOre ?? null;
+    return {
+      orders: own.length,
+      beforeOre: before?.leftBeforeStoreOre ?? null,
+      afterOre: after?.leftBeforeStoreOre ?? null,
+      shareBeforeOre: shareBefore,
+      shareAfterOre: shareAfter,
+      monthlyDeltaOre:
+        totalBefore !== null && totalAfter !== null ? totalAfter - totalBefore : null,
+      shareMonthlyDeltaOre:
+        shareBefore !== null && shareAfter !== null
+          ? (shareAfter - shareBefore) * (before?.orders ?? 0)
+          : null,
+    };
+  }
+
+  // Ingen försäljning: ett tänkt pack sista dagen i underlaget.
+  const one = (ore: number) =>
+    run([
+      ...input.orders,
+      {
+        id: "binderlab:tankt-pack",
+        externalId: "binderlab:tankt-pack",
+        titleId,
+        machineId,
+        businessDate: input.period.end,
+        amountOre: ore,
+      },
+    ]);
+  const before = fromOre === null ? null : one(fromOre);
+  const after = one(toOre);
+  return {
+    orders: 0,
+    beforeOre: before?.leftBeforeStoreOre ?? null,
+    afterOre: after?.leftBeforeStoreOre ?? null,
+    shareBeforeOre: before?.leftPerOrderOre ?? null,
+    shareAfterOre: after?.leftPerOrderOre ?? null,
+    monthlyDeltaOre: null,
+    shareMonthlyDeltaOre: null,
+  };
+}

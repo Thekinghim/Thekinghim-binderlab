@@ -65,8 +65,10 @@ maskin-id), samma koppling som orderimporten och lagerläsningen använder.
 You can build a feature that allows you to create products directly on your website." Skärmbild:
 [`docs/img/awish-godkannande-produkter-2026-11-05.png`](img/awish-godkannande-produkter-2026-11-05.png).
 
-Inköpspriser → **+ Ny produkt** (`/inkopspriser/ny-produkt`, länk även från Datakällor → Awish). Bara
-ägare och admin, och bara när **Skicka påfyllningar till Awish** är på och inloggningen sparad.
+Inköpspriser → **Varor i Awish** (`/inkopspriser/ny-produkt`, flikarna **Redigera vara** och **Ny
+produkt** (`?flik=ny`); länk även från Datakällor → Awish). Bara ägare och admin, och bara när
+**Skicka påfyllningar till Awish** är på och inloggningen sparad. Redigera vara beskrivs i nästa
+avsnitt.
 
 - **Ny produkt**: namn, försäljningspris (det kunden betalar i automaten), inköpspris (bara i
   Binderlab), Egen produkt och en valfri bild (jpg/png/webp, högst 4 MB; stora bilder krymps i
@@ -87,9 +89,9 @@ Inköpspriser → **+ Ny produkt** (`/inkopspriser/ny-produkt`, länk även frå
 - **Egen produkt slås bara på, aldrig av, härifrån.** Är en befintlig titel redan Egen produkt
   behålls den (med en varning i förhandsvisningen), precis som ett befintligt inköpspris.
 - **Fack med antal men utan vara** räknas som fack med pack: byte kräver bekräftelse.
-- **Inga prisändringar.** En vara som redan finns i Awish (samma namn, normaliserat) skapas inte igen
-  och dess pris ändras inte (`UpdateGood` används aldrig); den kopplas bara i Binderlab. Har titeln
-  redan ett inköpspris behålls det (ändras under Inköpspriser).
+- **Inga prisändringar här.** En vara som redan finns i Awish (samma namn, normaliserat) skapas inte
+  igen och dess pris ändras inte av Ny produkt; den kopplas bara i Binderlab. Priset ändras under
+  Redigera vara. Har titeln redan ett inköpspris behålls det (ändras under Inköpspriser).
 - **Inget halvgjort.** Awish anropas först; misslyckas något där (valuta, bild, varan) sparas
   ingenting i Binderlab. Binderlab skrivs sedan i en transaktion. Skulle just den misslyckas finns
   varan i Awish och nästa försök kopplar den (planen blir "finns redan").
@@ -100,6 +102,66 @@ Inköpspriser → **+ Ny produkt** (`/inkopspriser/ny-produkt`, länk även frå
   ändras inte (som i panelen).
 - Inloggningen läses ur Vault och lämnar aldrig servern; inget hemligt loggas (bara felets namn och
   SQLSTATE).
+
+## Redigera vara och listan "Varor i Awish"
+
+Godkännandet ovan (DingShang 2026-11-05) gäller även att ändra varor. Fliken **Redigera vara** visar
+alla varor i Awish med det en chef behöver se, räknat ur Binderlab (Awish visar bara id, kod och
+pris). Inga andra anrop än `Goods` (alla sidor) och `Products` per kopplad automat.
+
+- **Per vara:** kvadratisk bild, namn, pris; sålt senaste 30 dagarna (st och kr, order via titelns
+  alias som importen); fack och pack just nu per automat; vårt lager (summan av de egna lagren);
+  inköpspris och **kvar per order** (hela beloppet, samma `currentPriceEconomics` som Inköpspriser;
+  vår del bara när en butik eller automat är vald i filtret).
+- **Flaggor** (en per problem): Samma namn två gånger i Awish · Inte kopplad till Binderlab (knappen
+  **Koppla**: ny titel med varans namn eller alias på en befintlig titel) · Saknar inköpspris (länk
+  till Inköpspriser) · Ingen bild · Ligger inte i något fack · Låg marginal (inköp ≥ 80 % av priset) ·
+  Sålt 0 st på 30 d (bara när varan ligger i ett fack och inget filter är valt).
+- **Ordning:** det som behöver åtgärd först, sedan bäst säljande, sedan namn. Sökruta (namn, titel,
+  id) och filter Alla / Behöver åtgärd / I automat / Inte i automat. På mobilen syns tre varor och
+  "Alla N varor" fäller ut resten.
+- **Inköpspriser → titel → "Redigera namn, pris och bild i Awish →"** öppnar fliken med varan vald
+  (`?titel=<id>`, varan vars namn hör till titeln; flera: sökningen fylls i).
+- **Bilder** visas via `/inkopspriser/ny-produkt/bild?u=…&s=…` (sidornas CSP tillåter bara `'self'`).
+  Adressen är HMAC-signerad av servern, som bara signerar bildadresser Awish svarat med, så det är
+  ingen öppen proxy. Bara ägare och admin, bara bildtyper, högst 5 MB, inga omdirigeringar, och i
+  drift aldrig interna adresser (localhost, privata nät, 169.254.x.x).
+
+**Redigera:** namn (1–100 tecken), försäljningspris (0,01–10 000 kr) och bild (samma kvadrat 600×600
+som Ny produkt, med förhandsbild). Inköpspris och Egen produkt ändras under Inköpspriser (länk).
+
+1. **Förhandsgranska** visar t.ex. "Namn: Delta Reign → Delta Reign ETB", "Pris: 150 kr → 160 kr",
+   "Bild: byts", "Binderlab: lägger till namnet … så försäljningen kopplas rätt", och för ett nytt
+   pris "Kvar per order: 67 kr → 77 kr" och "≈ +300 kr per månad om försäljningen håller i sig (12
+   sålda senaste 30 d). En uppskattning." Effekten räknas med samma ekonomi som Inköpspriser:
+   titelns betalda order de senaste 30 dagarna räknas om till det nya priset (kortavgift, VMB,
+   butikens andel och dagens inköpspris följer med); utan försäljning räknas ett tänkt pack. Inget
+   ändrat → ingen knapp.
+2. **Spara i Awish** räknar fram allt igen och skickar bara om fingeravtrycket stämmer. Det täcker
+   planen OCH hela varan som den lästes i Awish (och kontots behörigheter): har någon ändrat varan i
+   panelen under tiden skickas ingenting.
+3. Efteråt läses varan tillbaka. Listan uppdateras direkt (optimistiskt) och sedan med det Awish
+   faktiskt sparade. Sparades inte allt sägs det ("Awish sparade inte priset …").
+
+**Namnbyte och Binderlab:** det nya namnet läggs till som alias på samma titel; det gamla aliaset
+finns kvar så gamla order hamnar rätt (var titeln bara kopplad via sitt namn läggs även det gamla
+namnet till som alias). Titeln byter namn bara om den hette exakt som varan (normaliserat), och inte
+om en annan titel redan heter det nya namnet. Beskrivning och innehåll i Awish som var namnet (det
+Ny produkt sätter) följer med; en egen beskrivning rörs inte.
+
+**Stopp:** två varor i Awish skulle heta samma (normaliserat) · det nya namnet hör redan till en
+annan titel i Binderlab · titeln är arkiverad · varan saknar SEK-pris · varan skulle sakna bild
+(panelen sparar aldrig en vara utan bild) · kontot saknar `goods:update`/`goods:create` i Awish ·
+varan har ordinarie pris, medlemspris, kostnadspris eller egenskaper som kontot saknar behörighet
+för (panelen skickar då 0/[] och skulle nollställa dem; Binderlab stoppar i stället och ber ägaren
+ändra varan direkt i Awish).
+
+**Ordningen:** bilden laddas upp först (en bild som blir över är ofarlig). Sedan, i en transaktion i
+Binderlab: alias och titelnamn skrivs, `UpdateGood` skickas, varan läses tillbaka. Nekar Awish, eller
+sparades inte namnet, rullas Binderlab tillbaka. Går svaret på `UpdateGood` förlorat (tidsgräns, 503) läses varan först: har Awish ändå sparat det nya namnet sparas Binderlab (annars skulle
+försäljningen under det nya namnet hamna på en ny titel). Går varan inte att läsa tillbaka efter ett "ja"
+sparas Binderlab (aliaset är ofarligt) och användaren ombeds kontrollera. Samma lås per organisation
+som Ny produkt stoppar dubbelklick.
 
 ### Anropen (ordagrant panelens, ur dess publika JavaScript, version 1.30.4)
 
@@ -237,6 +299,30 @@ mutation CreateGood($input: GoodInput!) {
 #     multi_currency_enabled: false, slug: "", unit_id: null, attributes: [], is_tax_exempt: true,
 #     tax_rate: 0, is_returnable: false,
 #     prices: [{ id: 0, currency_id: <SEK>, price: 79.5, original_price: 0, member_price: 0, cost_price: 0 }] }
+
+mutation UpdateGood($id: Int!, $input: GoodInput!) {
+  updateGood(id: $id, input: $input)
+}
+#   skalärt svar (inget urval). Panelens sida "Redigera vara" (create-*.js, samma komponent som
+#   "Ny vara" med id) läser varan och skickar HELA varan tillbaka. Ur panelens handler, ordagrant:
+#     prices.map(e => ({ id: e.id, good_id: e.good_id, currency_id: e.currency_id, price: e.price,
+#       original_price: hasPermission(["goods:original_price:update"]) ? e.original_price : 0,
+#       member_price:   hasPermission(["goods:member_price:update"])   ? e.member_price   : 0,
+#       cost_price:     hasPermission(["goods:cost_price:update"])     ? e.cost_price     : 0 }))
+#     { name, description, thumb: thumb ?? media[0], content, media, multi_currency_enabled, slug,
+#       unit_id, attributes: hasPermission(["goods:attributes:update"]) ? attributes : [],
+#       is_tax_exempt, tax_rate: parseFloat(tax_rate), is_returnable, prices }
+#     await updateGood({ id, input })
+#   Vid läsningen gör panelen om priserna till tal (parseFloat), currency_id = currency?.id ?? 1,
+#   unit_id = unit?.id. good_id finns inte i panelens prisfråga och blir undefined (utelämnas i JSON),
+#   så Binderlab skickar det inte heller. Behörigheterna är Profile.permissions (lista strängar;
+#   hasPermission = någon av dem). Panelen sparar inte utan "goods:create" eller "goods:update" och
+#   inte en vara utan bild (media tom). Binderlab läser varan med samma Goods-fråga som listan
+#   (samma fält som panelens Good-fråga utom category_id, som inte skickas) och ändrar bara:
+#     name, SEK-priset (samma pris-id; andra valutor oförändrade), thumb + media[0] vid ny bild
+#     (gamla huvudbilden ut, övriga bilder kvar, högst 5), och description/content om de var namnet.
+#   unit_id skickas som null när varan saknar enhet (panelen utelämnar det; null är detsamma för ett
+#   frivilligt fält och är vad CreateGood redan skickar).
 
 query Products($input: String!) {
   products(input: $input) {

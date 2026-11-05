@@ -297,6 +297,52 @@ describe("POST /assistent/fraga", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Varubilder från Awish (Varor i Awish)
+// ---------------------------------------------------------------------------
+
+describe("GET /inkopspriser/ny-produkt/bild", () => {
+  it("bara ägare och admin får bilden; osignerad eller ändrad adress ger 404", async () => {
+    const { createServer } = await import("node:http");
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+    const server = createServer((_q, res) => {
+      res.writeHead(200, { "content-type": "image/png" });
+      res.end(png);
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", () => r()));
+    const port = (server.address() as { port: number }).port;
+    try {
+      const { awishImageSrc } = await import("@/server/awish/image-proxy");
+      const { GET } = await import("@/app/(app)/inkopspriser/ny-produkt/bild/route");
+      const src = awishImageSrc(`http://127.0.0.1:${port}/uploads/1.png`)!;
+      const get = (path: string) => respond(() => GET(new Request(`${BASE}${path}`)));
+
+      for (const p of ["owner", "admin"] as const) {
+        await loginAs(req, cast.personas[p]);
+        const r = await get(src);
+        expect(r.status, p).toBe(200);
+        expect(r.headers.get("content-type"), p).toBe("image/png");
+      }
+      for (const p of ["viewer", "refiller", "store", "stranger", "anon"] as const) {
+        await loginAs(req, cast.personas[p]);
+        const r = await get(src);
+        expect(r.status, p).not.toBe(200);
+        expect(r.body, p).not.toContain("PNG");
+      }
+      await loginAs(req, cast.personas.owner);
+      const other = new URL(src, BASE);
+      other.searchParams.set("u", `http://127.0.0.1:${port}/annan.png`);
+      expect((await get(`${other.pathname}${other.search}`)).status).toBe(404);
+      expect(
+        (await get(`/inkopspriser/ny-produkt/bild?u=${encodeURIComponent("http://127.0.0.1/")}`))
+          .status,
+      ).toBe(404);
+    } finally {
+      await new Promise<void>((r) => server.close(() => r()));
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Schemalagda jobb
 // ---------------------------------------------------------------------------
 

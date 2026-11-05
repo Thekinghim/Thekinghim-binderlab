@@ -22,6 +22,7 @@ import {
   type GoodImage,
   type GoodInput,
 } from "./goods";
+import { parseAwishGood, summaryOf, type AwishGoodFull } from "./goods-edit";
 import {
   CREATE_GOOD_DOCUMENT,
   GOOD_IMAGE_UPLOAD_FIELDS,
@@ -29,6 +30,7 @@ import {
   PRODUCTS_DOCUMENT,
   PROFILE_DOCUMENT,
   UNITS_AND_CURRENCIES_DOCUMENT,
+  UPDATE_GOOD_DOCUMENT,
   UPLOAD_PATH,
 } from "./web-documents";
 import { AWISH_WEB_APP_KEY, awishEncode } from "./web-sign";
@@ -74,6 +76,8 @@ export interface AwishGoodsPage {
   readonly currentPage: number;
   readonly lastPage: number;
   readonly goods: AwishGoodSummary[];
+  /** Samma varor med alla fält (för redigering). */
+  readonly full: AwishGoodFull[];
 }
 
 /** En valuta hos butiken (UnitsAndCurrencies). */
@@ -170,13 +174,11 @@ const MAX_GOODS_PAGES = 50;
 /** En vara ur Goods: SEK-priset (annars första priset) i öre. */
 function goodSummary(g: Record<string, unknown>): AwishGoodSummary {
   const prices = Array.isArray(g.prices) ? (g.prices as Array<Record<string, unknown>>) : [];
-  const code = (p: Record<string, unknown>) =>
-    String((p.currency as { code?: unknown } | null)?.code ?? "").toUpperCase();
-  const sek = prices.find((p) => code(p) === "SEK") ?? prices[0];
+  if (prices.length > 0) return summaryOf(parseAwishGood(g));
   return {
     id: Number(g.id),
     name: String(g.name ?? ""),
-    priceOre: awishPriceToOre(sek?.price ?? g.price),
+    priceOre: awishPriceToOre(g.price),
     thumb: typeof g.thumb === "string" && g.thumb !== "" ? g.thumb : null,
   };
 }
@@ -188,18 +190,22 @@ export interface AwishWebApi {
   useTokens(tokens: AwishWebTokens): void;
   machines(): Promise<AwishWebMachine[]>;
   products(machineId: number): Promise<AwishWebProduct[]>;
-  /** Inloggad butik (Profile): butikens merchant-id. */
-  profile(): Promise<{ merchantId: number }>;
+  /** Inloggad butik (Profile): butikens merchant-id och kontots behörigheter. */
+  profile(): Promise<{ merchantId: number; permissions: string[] }>;
   /** Butikens valutor (UnitsAndCurrencies). */
   currencies(merchantId: number): Promise<AwishCurrency[]>;
   /** En sida varor (Goods, 20 per sida som panelen). */
   goods(page: number): Promise<AwishGoodsPage>;
   /** Alla varor, sida för sida (högst `maxPages` sidor). */
   allGoods(maxPages?: number): Promise<AwishGoodSummary[]>;
+  /** Alla varor med alla fält (samma Goods-anrop), för redigering. */
+  allGoodsFull(maxPages?: number): Promise<AwishGoodFull[]>;
   /** Laddar upp en varubild som panelen gör. Returnerar bildens adress (file_url). */
   uploadImage(image: GoodImage): Promise<string>;
   /** Skapar en vara (CreateGood). Svaret är panelens skalära värde. */
   createGood(input: GoodInput): Promise<unknown>;
+  /** Ändrar en vara (UpdateGood, hela varan som panelens redigering). Skalärt svar. */
+  updateGood(id: number, input: GoodInput): Promise<unknown>;
   /** En automats fack med vara, status, felstatus, antal och kapacitet (Products). */
   slots(machineId: number): Promise<AwishSlot[]>;
   /** Sätter ett facks antal (absolut). Panelens UpdateProduct. */
@@ -336,16 +342,19 @@ export function createAwishWebClient(options: AwishWebClientOptions = {}): Awish
     },
 
     async profile() {
-      const data = await call<{ profile: { merchant?: { id?: unknown } | null } | null }>(
-        "Profile",
-        PROFILE_DOCUMENT,
-        {},
-      );
+      const data = await call<{
+        profile: { merchant?: { id?: unknown } | null; permissions?: unknown } | null;
+      }>("Profile", PROFILE_DOCUMENT, {});
       const id = Number(data.profile?.merchant?.id);
       if (!Number.isInteger(id) || id <= 0) {
         throw toApiError("Awish-kontot hör inte till någon butik.", "server");
       }
-      return { merchantId: id };
+      const raw = data.profile?.permissions;
+      // Panelen: profile.permissions ?? [], en lista strängar (hasPermission = some(includes)).
+      const permissions = Array.isArray(raw)
+        ? raw.filter((p): p is string => typeof p === "string")
+        : [];
+      return { merchantId: id, permissions };
     },
 
     async currencies(merchantId) {
@@ -372,6 +381,7 @@ export function createAwishWebClient(options: AwishWebClientOptions = {}): Awish
         currentPage: Number(g.currentPage ?? page),
         lastPage: Number(g.lastPage ?? page),
         goods: rows.map(goodSummary),
+        full: rows.map(parseAwishGood),
       };
     },
 
@@ -381,6 +391,19 @@ export function createAwishWebClient(options: AwishWebClientOptions = {}): Awish
         const p = await api.goods(page);
         out.push(...p.goods);
         if (p.goods.length === 0 || page >= p.lastPage) return out;
+      }
+      throw toApiError(
+        `Awish har fler än ${maxPages * GOODS_PER_PAGE} varor. Det klarar Binderlab inte än.`,
+        "server",
+      );
+    },
+
+    async allGoodsFull(maxPages = MAX_GOODS_PAGES) {
+      const out: AwishGoodFull[] = [];
+      for (let page = 1; page <= maxPages; page += 1) {
+        const p = await api.goods(page);
+        out.push(...p.full);
+        if (p.full.length === 0 || page >= p.lastPage) return out;
       }
       throw toApiError(
         `Awish har fler än ${maxPages * GOODS_PER_PAGE} varor. Det klarar Binderlab inte än.`,
@@ -454,6 +477,18 @@ export function createAwishWebClient(options: AwishWebClientOptions = {}): Awish
         throw toApiError("Awish skapade inte varan.", "server");
       }
       return data.createGood;
+    },
+
+    async updateGood(id, input) {
+      if (!Number.isInteger(id) || id <= 0) throw toApiError("Ogiltig vara.", "server");
+      const data = await call<{ updateGood: unknown }>("UpdateGood", UPDATE_GOOD_DOCUMENT, {
+        id,
+        input,
+      });
+      if (data.updateGood === false || data.updateGood == null) {
+        throw toApiError("Awish sparade inte ändringen av varan.", "server");
+      }
+      return data.updateGood;
     },
 
     async slots(machineId) {

@@ -120,18 +120,21 @@ function cap(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/** Namnet på en vara: trimmat, 1–100 tecken, inga radbrytningar. */
+const goodNameSchema = z
+  .string({ error: "Skriv ett namn." })
+  .transform(cleanGoodName)
+  .pipe(
+    z
+      .string()
+      .min(1, "Skriv ett namn.")
+      .max(MAX_GOOD_NAME, `Namnet får vara högst ${MAX_GOOD_NAME} tecken.`)
+      .regex(noControl, "Namnet får inte innehålla radbrytningar."),
+  );
+
 /** Formuläret "Ny produkt". Priserna skrivs i kronor och blir öre. */
 export const newProductInputSchema = z.object({
-  name: z
-    .string({ error: "Skriv ett namn." })
-    .transform(cleanGoodName)
-    .pipe(
-      z
-        .string()
-        .min(1, "Skriv ett namn.")
-        .max(MAX_GOOD_NAME, `Namnet får vara högst ${MAX_GOOD_NAME} tecken.`)
-        .regex(noControl, "Namnet får inte innehålla radbrytningar."),
-    ),
+  name: goodNameSchema,
   salePrice: priceField("försäljningspriset", 1, MAX_SALE_PRICE_ORE),
   purchasePrice: priceField("inköpspriset", 0, MAX_PURCHASE_PRICE_ORE),
   ownProduct: z.boolean().default(false),
