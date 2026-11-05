@@ -66,7 +66,8 @@ export async function GET(request: Request): Promise<Response> {
   // (src/server/awish/offline-alerts.ts). Ett fel här stoppar inte synken.
   const offline = await runOfflineAlertsAfterSync(
     request,
-    result.sources.filter((s) => s.ok && s.skipped === null).map((s) => s.organizationId),
+    // Även när orderna misslyckades: anslutningen sparas före orderna (sync.ts).
+    result.sources.filter((s) => s.skipped === null).map((s) => s.organizationId),
   );
   // Kampanjer med en senare start som användaren redan har bekräftat (Kampanjer): de vars
   // starttid har passerat skickas till Awish nu. Ett fel här stoppar inte synken.

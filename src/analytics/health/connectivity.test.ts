@@ -137,4 +137,31 @@ describe("connectivitySignals → maskinhälsan", () => {
     ]);
     expect(healthAt(done, min(60)).status).not.toBe("offline");
   });
+
+  it("ny period som just kommit tillbaka: blandas inte ihop med förra perioden", () => {
+    // Period 1: 10–40 (slut vid 60). Period 2: offline från 70, tillbaka 100 (fladderfönster).
+    const states = run([
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+    ]);
+    const flap = states[11]!;
+    expect(flap.lastOfflineFrom).toBe(iso(min(10)));
+    expect(flap.offlineSince).toBe(iso(min(80)));
+    const signals = connectivitySignals([{ ...flap, machineId: "m1" }], min(110));
+    expect(signals.map((x) => [x.kind, x.at])).toEqual([
+      ["offline", iso(min(80))],
+      ["online", iso(min(110))],
+      ["online", iso(min(110))],
+    ]);
+  });
 });

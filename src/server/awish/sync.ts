@@ -541,6 +541,17 @@ export async function syncAwishSource(
   let fetched = 0;
   try {
     const machines = await fetchMachines(api);
+    // Anslutningen (online/offline) per automat, före orderna: ett fel eller stopp i
+    // orderna får inte tysta offlinelarmet. Ett fel här stoppar inte synken.
+    const saveMachinesConnectivity = async (list: readonly FetchedMachine[]) => {
+      try {
+        return await saveConnectivity(deps.db, source, list, now());
+      } catch (error) {
+        console.error("[awish] anslutningen kunde inte sparas", error);
+        return new Set<string>();
+      }
+    };
+    const connectivitySaved = await saveMachinesConnectivity(machines);
     const known = await maxKnownId(deps.db, source);
     const collected = await collectOrders({
       fetchPage: async (page) => {
@@ -587,12 +598,8 @@ export async function syncAwishSource(
       pages,
     });
 
-    // Anslutningen (online/offline) per automat. Ett fel här stoppar inte synken.
-    try {
-      await saveConnectivity(deps.db, source, machines, now());
-    } catch (error) {
-      console.error("[awish] anslutningen kunde inte sparas", error);
-    }
+    // Automater som importen just skapade får sitt läge nu.
+    await saveMachinesConnectivity(machines.filter((m) => !connectivitySaved.has(m.id)));
 
     // Saldot i automaterna (Products) efter orderna, med den tid som är kvar. Ett fel
     // här stoppar inte synken av order: det loggas och läses om nästa gång.
@@ -662,15 +669,16 @@ function isoOrNull(v: Date | string | null): string | null {
 
 /**
  * Sparar anslutningen för automaterna i svaret (nextConnectivity per källautomat).
- * Automater som saknas i svaret lämnas orörda. Källautomaterna finns redan (importOrders).
+ * Automater som saknas i svaret, eller som ännu inte finns som källautomat, lämnas orörda.
+ * Returnerar Awish-id för de källautomater som fick sitt läge.
  */
 export async function saveConnectivity(
   db: Db,
   source: { id: string; organization_id: string },
   machines: readonly FetchedMachine[],
   at: Date,
-): Promise<number> {
-  if (machines.length === 0) return 0;
+): Promise<Set<string>> {
+  if (machines.length === 0) return new Set();
   const ids = [...new Set(machines.map((m) => m.id))];
   const prevRows = await query<ConnectivityRow & Row>(
     db,
@@ -716,7 +724,7 @@ export async function saveConnectivity(
       last_offline_from: next.lastOfflineFrom,
     });
   }
-  if (payload.length === 0) return 0;
+  if (payload.length === 0) return seen;
   await db.execute(
     sql`update public.source_machines sm
         set awish_online = r.online, awish_status = r.status, awish_seen_at = r.seen_at,
@@ -730,7 +738,7 @@ export async function saveConnectivity(
           and sm.data_source_id = ${source.id}::uuid
           and sm.external_id = r.external_id`,
   );
-  return payload.length;
+  return seen;
 }
 
 /**

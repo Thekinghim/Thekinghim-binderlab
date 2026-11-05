@@ -28,7 +28,11 @@ import {
 import { createAwishClient } from "../../src/server/awish/grpc-client";
 import { saveAwishCredentialsFor } from "../../src/server/awish/manage";
 import { syncAwishSource } from "../../src/server/awish/sync";
-import { startFakeAwish, type FakeAwish } from "../../src/server/awish/testing/fake-server";
+import {
+  fakeOrder,
+  startFakeAwish,
+  type FakeAwish,
+} from "../../src/server/awish/testing/fake-server";
 import type { Viewer } from "../../src/server/data/core/loaders";
 
 import {
@@ -366,5 +370,46 @@ describe("Awish-kontots slutdag", () => {
       ),
     );
     expect(rename.ok).toBe(true);
+  });
+});
+
+describe("anslutningen när orderna stoppar synken", () => {
+  it("läget sparas ändå (annars tystnar offlinelarmet medan orderna inte går att läsa)", async () => {
+    const f = await startFakeAwish({
+      machines: [{ id: "7", name: "Hamnen", machine_no: "163279xx", is_online: true }],
+    });
+    try {
+      const o = await createUser();
+      const org = await createOrg(o);
+      const { dataSourceId } = await saveAwishCredentialsFor(await viewerFor(o, org), {
+        appId: f.state.appId,
+        appSecret: f.state.appSecret,
+        appKey: f.state.appKey,
+      });
+      const conn = (creds: { appId: string; appSecret: string; appKey: string }) =>
+        createAwishClient(creds, { address: f.address, tls: false, sleep: async () => {} });
+      const first = await syncAwishSource(
+        { db: db(), connect: conn, now: () => at(0) },
+        { dataSourceId },
+      );
+      expect(first.ok, first.message ?? "").toBe(true);
+      // Ett heltalsbelopp stoppar synken av order (AwishSyncStop) tills någon rättar det.
+      f.state.orders = [fakeOrder(9001, { payTime: "2026-11-02 21:05:00", amount: "400" })];
+      f.state.machines[0]!.is_online = false;
+      const stopped = await syncAwishSource(
+        { db: db(), connect: conn, now: () => at(10) },
+        { dataSourceId },
+      );
+      expect(stopped.ok).toBe(false);
+      const st = await one<{ awish_online: boolean | null; awish_offline_since: Date | null }>(
+        db(),
+        sql`select awish_online, awish_offline_since from public.source_machines
+            where data_source_id = ${dataSourceId}::uuid and external_id = '7'`,
+      );
+      expect(st.awish_online).toBe(false);
+      expect(iso(st.awish_offline_since)).toBe(at(10).toISOString());
+    } finally {
+      await f.stop();
+    }
   });
 });

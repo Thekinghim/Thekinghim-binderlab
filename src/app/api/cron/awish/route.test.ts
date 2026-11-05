@@ -88,6 +88,19 @@ describe("/api/cron/awish", () => {
     expect(offline.mock.calls[0]?.[1]).toEqual(["org-1"]);
   });
 
+  it("offlinelarmet utvärderas även när orderna i en källa misslyckades (läget är sparat)", async () => {
+    process.env.CRON_SECRET = SECRET;
+    const ok: Record<string, unknown> = (await sync()).sources[0]!;
+    sync.mockResolvedValueOnce({
+      sources: [
+        { ...ok, dataSourceId: "ds-2", organizationId: "org-2", ok: false, message: "stopp" },
+        { ...ok, dataSourceId: "ds-3", organizationId: "org-3", skipped: "paused" },
+      ],
+    } as never);
+    await GET(req(`Bearer ${SECRET}`));
+    expect(offline.mock.calls[0]?.[1]).toEqual(["org-2"]);
+  });
+
   it("ett fel i kampanjerna stoppar inte synkens svar", async () => {
     process.env.CRON_SECRET = SECRET;
     campaigns.mockRejectedValueOnce(new Error("nere"));

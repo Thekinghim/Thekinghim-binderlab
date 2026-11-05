@@ -129,7 +129,8 @@ export const CONNECTIVITY_STATE_PREFIX = "awish-state:";
 
 /**
  * Maskinhändelser ur läget, för maskinhälsan och tidslinjen:
- *   - senaste avslutade offlineperiod som varade OFFLINE_ALERT_MINUTES: offline + online igen
+ *   - senaste offlineperiod som kommit tillbaka och varade OFFLINE_ALERT_MINUTES: offline +
+ *     online igen (avslutad, eller i fladderfönstret)
  *   - pågående offline enligt offlineSinceMs: offline vid periodens början
  *   - annars: en "online"-händelse (id med CONNECTIVITY_STATE_PREFIX) vid senaste online,
  *     så att maskinhälsan vet att anslutningen är känd (tidslinjen visar den inte)
@@ -145,14 +146,18 @@ export function connectivitySignals(
   for (const c of rows) {
     if (!fresh(c, nowMs) || c.onlineAt === null) continue;
     const id = (what: string, at: string) => `awish:${c.machineId}:${what}:${at}`;
-    if (c.lastOfflineFrom !== null && c.backOnlineAt !== null) {
-      const from = parseInstant(c.lastOfflineFrom);
+    // Avslutad period (lastOfflineFrom → backOnlineAt), eller pågående period som just kommit
+    // tillbaka (offlineSince → backOnlineAt, fladderfönstret). backOnlineAt hör alltid till
+    // den senaste perioden, så den paras aldrig med en äldre periods början.
+    const periodFrom = c.offlineSince ?? c.lastOfflineFrom;
+    if (periodFrom !== null && c.backOnlineAt !== null) {
+      const from = parseInstant(periodFrom);
       const to = parseInstant(c.backOnlineAt);
       if (to - from >= OFFLINE_ALERT_MINUTES * MINUTE_MS && to <= nowMs) {
         out.push({
-          id: id("offline", c.lastOfflineFrom),
+          id: id("offline", periodFrom),
           machineId: c.machineId,
-          at: c.lastOfflineFrom,
+          at: periodFrom,
           kind: "offline",
           source,
         });
