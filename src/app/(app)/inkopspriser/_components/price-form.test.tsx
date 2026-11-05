@@ -12,7 +12,11 @@ import { describe, expect, it, vi } from "vitest";
 import { ToastProvider } from "@/components/ui/toast";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }) }));
-vi.mock("../actions", () => ({ addPurchasePrice: vi.fn(), correctPurchasePrice: vi.fn() }));
+vi.mock("../actions", () => ({
+  addPurchasePrice: vi.fn(),
+  correctPurchasePrice: vi.fn(),
+  previewPriceSplit: vi.fn(),
+}));
 
 const { PriceForm } = await import("./price-form");
 

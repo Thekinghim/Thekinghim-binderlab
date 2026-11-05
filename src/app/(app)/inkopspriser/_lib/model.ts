@@ -19,7 +19,15 @@ import {
   type UnpricedTitle,
 } from "@/domain";
 import { parseAmountOre } from "@/import/amount";
-import { formatDate, formatInt, formatKronor, formatMonth, formatSignedKronor } from "@/lib/format";
+import {
+  formatDate,
+  formatInt,
+  formatKronor,
+  formatMonth,
+  formatPercent,
+  formatSignedKronor,
+  MISSING,
+} from "@/lib/format";
 
 /** Högsta inköpspris per pack som tas emot (100 000 kr): ett större värde är ett skrivfel. */
 export const MAX_UNIT_COST_ORE = 10_000_000;
@@ -69,9 +77,28 @@ export interface TitleRow {
   readonly currentFrom: IsoDate | null;
   readonly averagePriceOre: number | null;
   readonly averageCostOre: number | null;
+  /**
+   * Kvar per order före butikens andel (netto − kortavgift − VMB − inköp). Sidans
+   * "Kvar per order": hela beloppet, som standard.
+   */
+  readonly leftBeforeOre: number | null;
+  /** Butikens andel per order (provision eller vinstdelning). 0 utan avtal. */
+  readonly storeShareOre: number | null;
+  /** Vår del: kvar per order efter butikens andel. Förlust när den är ≤ 0. */
   readonly leftOre: number | null;
+  /** Kvar före butikens andel i bp av snittpriset (sortering och export). */
+  readonly marginBeforeBp: number | null;
+  /**
+   * Kvar före butikens andel som andel av intäkten, oavrundad (sidans "Kvar av pris"; visas
+   * med marginText, så att talet avrundas en gång och inte först till bp).
+   */
+  readonly marginBeforeShare: number | null;
+  /** Vår del i bp av snittpriset. */
   readonly marginBp: number | null;
   readonly rentOre: number | null;
+  /** Kvar före butikens andel, efter hyra. */
+  readonly leftBeforeAfterRentOre: number | null;
+  /** Vår del efter hyra. */
   readonly leftAfterRentOre: number | null;
   readonly orders: number;
   /** Order i perioden som saknade inköpspris på sin dag (räknas inte in i vinsten). */
@@ -98,6 +125,11 @@ export function costLabel(own: boolean): string {
   return own ? "Kostnad per pack (innehåll)" : "Inköpspris per pack";
 }
 
+/**
+ * Statusen räknas på vår del (det vi faktiskt får behålla). Texten säger när förlusten
+ * kommer först efter butikens andel, så att den inte motsäger "Kvar per order" (hela
+ * beloppet, före andelen).
+ */
 export const STATUS_LABEL: Record<TitleStatus, string> = {
   missing: "Saknar pris",
   loss: "Förlust",
@@ -106,6 +138,26 @@ export const STATUS_LABEL: Record<TitleStatus, string> = {
   idle: "Ingen försäljning",
   ok: "Lönsam",
 };
+
+/** Förlusten syns först efter butikens andel: kvar före andelen är positivt. */
+export function lossOnlyAfterShare(r: Pick<TitleRow, "status" | "leftBeforeOre">): boolean {
+  return r.status === "loss" && r.leftBeforeOre !== null && r.leftBeforeOre > 0;
+}
+
+/** Statusens text för en rad (se STATUS_LABEL). Samma i båda vyerna. */
+export function statusLabel(
+  r: Pick<TitleRow, "status" | "leftBeforeOre" | "leftBeforeAfterRentOre">,
+): string {
+  if (lossOnlyAfterShare(r)) return "Förlust efter butikens andel";
+  if (
+    r.status === "loss-after-rent" &&
+    r.leftBeforeAfterRentOre !== null &&
+    r.leftBeforeAfterRentOre > 0
+  ) {
+    return "Förlust efter hyra och andel";
+  }
+  return STATUS_LABEL[r.status];
+}
 
 /** Ordning när tabellen sorteras på status: det som kräver åtgärd först. */
 export const STATUS_RANK: Record<TitleStatus, number> = {
@@ -244,9 +296,17 @@ export function titleRows(
         currentFrom: e.currentPriceValidFrom,
         averagePriceOre: e.averagePriceOre,
         averageCostOre: e.averageCostOre,
+        leftBeforeOre: e.leftBeforeStoreOre,
+        storeShareOre: e.storeSharePerOrderOre,
         leftOre: e.leftPerOrderOre,
+        marginBeforeBp: e.marginBeforeStoreBp,
+        marginBeforeShare:
+          e.leftBeforeStoreTotalOre !== null && e.revenueOre !== 0
+            ? e.leftBeforeStoreTotalOre / e.revenueOre
+            : null,
         marginBp: e.marginBp,
         rentOre: e.rentPerOrderOre,
+        leftBeforeAfterRentOre: e.leftBeforeStoreAfterRentOre,
         leftAfterRentOre: e.leftPerOrderAfterRentOre,
         orders: e.orders,
         unpricedOrders: e.unpricedOrders,
@@ -321,13 +381,14 @@ export function pageHeadline(
     .sort((a, b) => (a.leftOre ?? 0) - (b.leftOre ?? 0));
   if (losses.length > 0) {
     const worst = losses[0]!;
+    const afterShare = losses.every(lossOnlyAfterShare) ? " efter butikens andel" : "";
     return {
       title:
         losses.length === 1
-          ? `${worst.name} går med förlust.`
-          : `${plural(losses.length, "titel", "titlar")} går med förlust.`,
+          ? `${worst.name} går med förlust${afterShare}.`
+          : `${plural(losses.length, "titel", "titlar")} går med förlust${afterShare}.`,
       aside: sentence(
-        `${losses.length === 1 ? "" : `Sämst är ${worst.name}: `}${formatKronor(kr(worst.leftOre ?? 0))} per order ${priceAsOf(dates)}`,
+        `${losses.length === 1 ? "" : `Sämst är ${worst.name}: `}${perOrderText(worst)} ${priceAsOf(dates)}`,
       ),
     };
   }
@@ -346,15 +407,40 @@ export function pageHeadline(
   return {
     title: `Alla ${plural(active.length, "titel", "titlar")} har inköpspris.`,
     aside: lowest
-      ? `Minst kvar per order: ${lowest.name}, ${formatKronor(kr(lowest.leftOre ?? 0))}.`
+      ? `Minst kvar per order: ${lowest.name}, ${formatKronor(kr(lowest.leftBeforeOre ?? 0))}.`
       : "Ingen försäljning i perioden.",
   };
 }
 
+/**
+ * Andelen visas: `true` = "butikens andel", en text = den texten (t.ex. "butikernas andel"
+ * utan vald butik), falskt/null = dold.
+ */
+export type ShareView = boolean | string | null | undefined;
+
+function shareName(view: ShareView): string | null {
+  if (!view) return null;
+  return view === true ? "butikens andel" : view.toLowerCase();
+}
+
+/**
+ * En förlustrads belopp per order. "Kvar per order" är hela beloppet (före butikens andel);
+ * har titeln en andel står vår del bredvid, eftersom det är den som gör förlusten.
+ */
+function perOrderText(r: TitleRow): string {
+  const before = r.leftBeforeOre ?? r.leftOre ?? 0;
+  if (!r.storeShareOre || r.leftOre === null) return `${formatKronor(kr(before))} per order`;
+  return `${formatKronor(kr(before))} per order före butikens andel, vår del ${formatKronor(kr(r.leftOre))}`;
+}
+
+/** Titeln som lämnar minst per order, på samma grund som kolumnen Kvar per order. */
 function lowestLeft(rows: readonly TitleRow[]): TitleRow | undefined {
   return rows
-    .filter((r) => r.leftOre !== null && r.orders > 0)
-    .sort((a, b) => (a.leftOre ?? 0) - (b.leftOre ?? 0) || a.name.localeCompare(b.name, "sv"))[0];
+    .filter((r) => r.leftBeforeOre !== null && r.orders > 0)
+    .sort(
+      (a, b) =>
+        (a.leftBeforeOre ?? 0) - (b.leftBeforeOre ?? 0) || a.name.localeCompare(b.name, "sv"),
+    )[0];
 }
 
 /** Grå delen av rubriken för avsnittet Per titel: den titel som lämnar minst. */
@@ -362,7 +448,7 @@ export function perTitleAside(rows: readonly TitleRow[], dates: HeadlineDates): 
   const lowest = lowestLeft(rows.filter((r) => !r.archived || r.orders > 0));
   if (!lowest) return "Ingen titel med inköpspris har sålt i perioden.";
   return sentence(
-    `Minst kvar har ${lowest.name}, ${formatKronor(kr(lowest.leftOre ?? 0))} per order ${priceAsOf(dates)}`,
+    `Minst kvar har ${lowest.name}, ${formatKronor(kr(lowest.leftBeforeOre ?? 0))} per order ${priceAsOf(dates)}`,
   );
 }
 
@@ -372,12 +458,18 @@ function leftText(ore: number): string {
   return `${formatKronor(kr(ore))} kvar per order`;
 }
 
-/** Rubriken för en vald titel. */
+/**
+ * Rubriken för en vald titel. "Kvar per order" är hela beloppet (före butikens andel).
+ * Med `showShare` (vald butik eller "Visa butikernas andel") står delningen efter: butikens
+ * andel och vår del. Utan står vår del bara när den är en förlust.
+ */
 export function titleHeadline(
   row: TitleRow | null,
   name: string,
   today?: IsoDate,
+  showShare: ShareView = false,
 ): { title: string; aside: string } {
+  const shareText = shareName(showShare);
   const title = `${name}.`;
   if (!row || row.currentCostOre === null) {
     return {
@@ -389,15 +481,34 @@ export function titleHeadline(
     };
   }
   const cost = `Inköp ${formatKronor(kr(row.currentCostOre))}${row.currentFrom ? ` sedan ${formatDayShort(row.currentFrom, today)}` : ""}`;
-  if (row.leftOre === null)
+  const before = row.leftBeforeOre ?? row.leftOre;
+  if (before === null || row.leftOre === null)
     return { title, aside: `${sentence(cost)} Ingen försäljning i perioden.` };
-  let left = leftText(row.leftOre);
-  const afterRent = row.leftAfterRentOre;
-  if (row.leftOre > 0 && afterRent !== null && afterRent <= 0) {
+  const ours = row.leftOre;
+  const share = row.storeShareOre ?? 0;
+  let left = leftText(before);
+  if (share !== 0 && shareText) {
+    left += ` (${shareText} ${formatKronor(kr(share))}, vår del ${formatKronor(kr(ours))})`;
+  } else if (share !== 0 && before > 0 && ours <= 0) {
+    left +=
+      ours === 0
+        ? ", men går jämnt efter butikens andel"
+        : `, men förlust ${formatKronor(kr(-ours))} per order efter butikens andel`;
+  }
+  // Hyran: på samma grund som kolumnen Kvar efter hyra (vår del när andelen visas).
+  const base = shareText ? ours : before;
+  const afterRent = shareText ? row.leftAfterRentOre : row.leftBeforeAfterRentOre;
+  if (base > 0 && afterRent !== null && afterRent <= 0) {
     left +=
       afterRent === 0
         ? ", men går jämnt efter hyra"
         : `, men förlust ${formatKronor(kr(-afterRent))} per order efter hyra`;
+  } else if (ours > 0 && row.leftAfterRentOre !== null && row.leftAfterRentOre <= 0) {
+    // Andelen dold: vår del går back först när både andel och hyra är dragna.
+    left +=
+      row.leftAfterRentOre === 0
+        ? ", men går jämnt efter andel och hyra"
+        : `, men förlust ${formatKronor(kr(-row.leftAfterRentOre))} per order efter andel och hyra`;
   }
   const unpriced =
     row.unpricedOrders > 0
@@ -840,8 +951,16 @@ export function signedKr(ore: number): string {
   return formatSignedKronor(kr(ore), { decimals: ore % 100 === 0 ? 0 : 2 });
 }
 
-/** Förhandsvisningen under knapparna: vad "Rätta priset" gör med sålda order. */
-export function correctionText(c: PriceCorrection, today: IsoDate): string[] {
+/**
+ * Förhandsvisningen under knapparna: vad "Rätta priset" gör med sålda order. Vinsten är hela
+ * beloppet (före butikens andel), som "Kvar per order"; med `showShare` står det utskrivet.
+ */
+export function correctionText(
+  c: PriceCorrection,
+  today: IsoDate,
+  showShare: ShareView = false,
+): string[] {
+  const shareText = shareName(showShare);
   const lines: string[] = [];
   if (c.start === null) {
     return [`${cap(monthName(c.closedUntil ?? monthOf(today)))} är stängd. Välj Nytt inköpspris.`];
@@ -860,7 +979,7 @@ export function correctionText(c: PriceCorrection, today: IsoDate): string[] {
   const priced = c.affectedOrders - c.ordersGainingPrice;
   if (priced > 0) {
     lines.push(
-      `${plural(c.affectedOrders, "order", "order")} får nytt inköp, vinsten ändras med ${signedKr(c.profitDeltaOre)}.`,
+      `${plural(c.affectedOrders, "order", "order")} får nytt inköp, vinsten${shareText ? ` före ${shareText}` : ""} ändras med ${signedKr(c.profitDeltaOre)}.`,
     );
   } else {
     lines.push(`${plural(c.affectedOrders, "order", "order")} får inköpspris.`);
@@ -873,19 +992,65 @@ export function correctionText(c: PriceCorrection, today: IsoDate): string[] {
   return lines;
 }
 
-/** Toasten efter "Rätta priset". */
-export function correctionToast(c: {
-  readonly profitDeltaOre: number;
-  readonly affectedOrders: number;
-  readonly ordersGainingPrice: number;
-}): string {
+/** Toasten efter "Rätta priset" (vinsten på samma grund som correctionText). */
+export function correctionToast(
+  c: {
+    readonly profitDeltaOre: number;
+    readonly affectedOrders: number;
+    readonly ordersGainingPrice: number;
+  },
+  showShare: ShareView = false,
+): string {
+  const shareText = shareName(showShare);
   if (c.affectedOrders > c.ordersGainingPrice) {
-    return `Priset rättat – vinsten ändrades med ${signedKr(c.profitDeltaOre)}`;
+    return `Priset rättat – vinsten${shareText ? ` före ${shareText}` : ""} ändrades med ${signedKr(c.profitDeltaOre)}`;
   }
   if (c.ordersGainingPrice > 0) {
     return `Priset rättat – ${plural(c.ordersGainingPrice, "order", "order")} räknas nu in i vinsten`;
   }
   return "Priset rättat";
+}
+
+/** Kvar per order: före butikens andel, andelen och vår del (som tabellens kolumner). */
+export interface SplitNumbers {
+  readonly leftBeforeOre: number | null;
+  readonly storeShareOre: number | null;
+  readonly leftOre: number | null;
+}
+
+/**
+ * Prisformulärets rad om kvar per order med det nya priset, på samma grund som tabellen:
+ * hela beloppet (före butikens andel). Med `showShare` och en andel står delningen efter;
+ * utan står vår del bara när den blir en förlust. Tom lista utan försäljning.
+ */
+export function splitPreviewText(
+  next: SplitNumbers,
+  now: SplitNumbers | null,
+  showShare: ShareView,
+): string[] {
+  const shareText = shareName(showShare);
+  const before = next.leftBeforeOre;
+  if (before === null || next.leftOre === null) return [];
+  const was =
+    now?.leftBeforeOre != null && now.leftBeforeOre !== before
+      ? ` (nu ${formatKronor(kr(now.leftBeforeOre))})`
+      : "";
+  const lines = [`Kvar per order blir ${formatKronor(kr(before))}${was}.`];
+  const share = next.storeShareOre ?? 0;
+  if (share !== 0 && shareText) {
+    lines.push(
+      `${cap(shareText)} ${formatKronor(kr(share))}, vår del ${formatKronor(kr(next.leftOre))}.`,
+    );
+  } else if (share !== 0 && before > 0 && next.leftOre <= 0) {
+    lines.push(
+      next.leftOre === 0
+        ? "Går jämnt efter butikens andel."
+        : `Förlust ${formatKronor(kr(-next.leftOre))} per order efter butikens andel.`,
+    );
+  } else if (next.leftOre <= 0) {
+    lines.push("Titeln går med förlust.");
+  }
+  return lines;
 }
 
 /**
@@ -913,7 +1078,7 @@ export const PRICE_EDITOR_ID = "titel";
 /** En sak att göra på Inköpspriser: sätta pris eller se över en titel som går med förlust. */
 export interface PriceTodo {
   readonly id: string;
-  readonly verb: "Sätt pris" | "Sätt kostnad" | "Förlust";
+  readonly verb: "Sätt pris" | "Sätt kostnad" | "Förlust" | "Förlust efter andel";
   readonly title: string;
   /** Order utan pris (Sätt pris) eller i perioden (Förlust). */
   readonly orders: number;
@@ -945,10 +1110,17 @@ export function priceTodos(rows: readonly TitleRow[]): PriceTodo[] {
     .sort((a, b) => (a.leftOre ?? 0) - (b.leftOre ?? 0))
     .map((r): PriceTodo => ({
       id: r.id,
-      verb: "Förlust",
+      // Samma grund som statusen: vår del ≤ 0. Visar kolumnen ett positivt belopp (före
+      // butikens andel) säger verbet varför.
+      verb: lossOnlyAfterShare(r) ? "Förlust efter andel" : "Förlust",
       title: r.name,
       orders: r.orders,
       tone: "critical",
     }));
   return [...missing, ...loss];
+}
+
+/** "Kvar av pris" (34,0 %): kvar före butikens andel av intäkten, avrundad en gång. */
+export function marginText(r: Pick<TitleRow, "marginBeforeShare">): string {
+  return r.marginBeforeShare === null ? MISSING : formatPercent(r.marginBeforeShare);
 }

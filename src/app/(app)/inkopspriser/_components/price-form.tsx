@@ -12,7 +12,7 @@ import { isIsoDate } from "@/domain";
 import { formatInt, formatKronor, formatPeriodShort, formatSignedKronor } from "@/lib/format";
 import { useHydrated } from "@/lib/use-hydrated";
 
-import { addPurchasePrice, correctPurchasePrice } from "../actions";
+import { addPurchasePrice, correctPurchasePrice, previewPriceSplit } from "../actions";
 import {
   PRICE_MESSAGES,
   correctionText,
@@ -24,7 +24,9 @@ import {
   planCorrection,
   previewPrice,
   sentence,
+  splitPreviewText,
   type PricePreview,
+  type SplitNumbers,
 } from "../_lib/model";
 
 export interface PriceFormProps {
@@ -36,6 +38,15 @@ export interface PriceFormProps {
   today: string;
   /** Fältets etikett (egen produkt: "Kostnad per pack (innehåll)"). */
   label?: string;
+  /** Titelns kvar per order i tabellen (före andel, andel, vår del), null = ingen försäljning. */
+  current?: SplitNumbers | null;
+  /** Sidans searchParams (period och filter), för förhandsvisningen av kvar per order. */
+  query?: string;
+  /**
+   * Butikens andel visas (vald butik eller "Visa butikernas andel"): andelens namn, t.ex.
+   * "Butikens andel" eller "Butikernas andel". null = dold (standard).
+   */
+  showShare?: string | null;
 }
 
 /** "20–26 okt." / "27 okt." (året bara om det inte är i år). */
@@ -77,6 +88,9 @@ export function PriceForm({
   closedMonths,
   today,
   label = "Inköpspris per pack",
+  current = null,
+  query = "",
+  showShare = null,
 }: PriceFormProps) {
   const router = useRouter();
   const toast = useToast();
@@ -109,6 +123,28 @@ export function PriceForm({
         : planCorrection({ prices, orderDays, unitCostOre: ore, closedMonths, today }),
     [prices, orderDays, ore, closedMonths, today],
   );
+
+  // Kvar per order med det nya priset: räknas på servern med samma titleEconomics som
+  // tabellen (butikens vinstdelning beror på alla titlar i butiken). Bara när titeln sålt.
+  const [split, setSplit] = useState<{ ore: number; numbers: SplitNumbers } | null>(null);
+  const hasSales = current !== null && current.leftBeforeOre !== null;
+  useEffect(() => {
+    if (ore === null || !hasSales) return;
+    let live = true;
+    const timer = setTimeout(() => {
+      previewPriceSplit({ titleId, unitCostOre: ore, query })
+        .then((r) => {
+          if (live && r.ok && r.data) setSplit({ ore, numbers: r.data });
+        })
+        .catch(() => {});
+    }, 250);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [ore, titleId, query, hasSales]);
+  const splitLines =
+    split && split.ore === ore ? splitPreviewText(split.numbers, current, showShare) : [];
 
   const dateOk = isIsoDate(validFrom);
   const dated = useMemo(
@@ -177,7 +213,7 @@ export function PriceForm({
         return;
       }
       toast({
-        title: correctionToast(result.data),
+        title: correctionToast(result.data, showShare),
         description: sentence(`${titleName}: ${formatKronor(kr(unitCostOre))} per pack`),
         tone: "ok",
       });
@@ -216,7 +252,10 @@ export function PriceForm({
     if (!pending) correct();
   };
 
-  const lines = correction ? correctionText(correction, today) : [];
+  const lines = [
+    ...splitLines,
+    ...(correction ? correctionText(correction, today, showShare) : []),
+  ];
   const correctBlocked = correction !== null && correction.start === null;
   const otherBusy = (kind: Busy) => pending && busy !== kind;
 
