@@ -8,11 +8,17 @@
  *   (stock_locations.awish_fill). Okänd före första läsningen ("Fyllnad: väntar på Awish").
  * - Sålt: pack sålda de senaste 14 hela dagarna (t.o.m. i går), som Att göra.
  * - Läge per titel: "slut" (0 pack), "snart slut" (räcker under 2,5 dagar vid snittet,
- *   samma regel som Att göra), annars inget.
+ *   samma regel som Att göra), annars inget. Ett fullt fack (känd kapacitet, nu ≥ kapacitet)
+ *   är aldrig slut eller snart slut: det går inte att fylla. Säljer det ändå fort visas en
+ *   lugn rad ("Fullt · räcker ~2 d", tips: ge titeln ett fack till).
  * - Förslag: kapacitet − nu; utan känd kapacitet en veckas försäljning − nu, men bara för
  *   titlar som är slut eller snart slut. Aldrig fler än packen i lagret man fyller från
  *   (Hemma, Kontoret …: automatens "Fylls på från", annars senast valda, annars
  *   standardlagret) och aldrig under 0. Utan kapacitet sägs aldrig "fullt".
+ * - Lager att fylla från (`chooseSource`): det man valt för automaten nu gäller. Annars
+ *   automatens "Fylls på från" (sedan senast valda, standardlagret), men saknar det packen
+ *   som behövs och ett annat aktivt lager har dem väljs det lager som täcker flest
+ *   (lika: det föreslagna först, sedan namn) och skälet visas ("Kontoret saknar pack").
  * - Tomma fack: fack med 0 pack enligt Awish. Har titeln fyllts på sedan läsningen (saldot
  *   är högre än Awish antal) räknas dess fack som fyllda.
  * - Fyllnadsgrad: pack nu / kapacitet över titlarna med känd kapacitet.
@@ -20,7 +26,7 @@
  *   snart slut, sedan lägst fyllnadsgrad, sist de utan Awish-data; lika ordnas efter kod.
  */
 
-import { inPlace } from "@/components/stock/place-text";
+import { inPlace, pickPlace } from "@/components/stock/place-text";
 import { formatInt, NBSP } from "@/lib/format";
 
 export interface AwishFillEntry {
@@ -115,13 +121,41 @@ export interface FillMachine {
 export const pairKey = (machineId: string, titleId: string): string =>
   `${machineId}\u0000${titleId}`;
 
-/** Slut (0 pack), snart slut (räcker under 2,5 dagar vid snittet) eller inget. */
-export function rowStatus(now: number, sold: number): RowStatus {
+/** Räcker under 2,5 dagar vid snittet (och är inte slut). */
+function lastsShort(now: number, sold: number): boolean {
+  return now > 0 && sold > 0 && now * SALES_WINDOW_DAYS * 100 < LOW_CENTIDAYS * sold;
+}
+
+/** Fullt fack: kapaciteten är känd och automaten har minst så många pack. */
+export function isFull(now: number, capacity: number | null): boolean {
+  return capacity !== null && capacity > 0 && Math.max(0, now) >= capacity;
+}
+
+/**
+ * Slut (0 pack), snart slut (räcker under 2,5 dagar vid snittet) eller inget. Ett fullt fack
+ * (känd kapacitet, nu ≥ kapacitet) är aldrig slut eller snart slut: inget går att fylla.
+ */
+export function rowStatus(now: number, sold: number, capacity: number | null = null): RowStatus {
   const n = Math.max(0, now);
+  if (isFull(n, capacity)) return null;
   if (n === 0) return "empty";
-  if (sold > 0 && n * SALES_WINDOW_DAYS * 100 < LOW_CENTIDAYS * sold) return "low";
+  if (lastsShort(n, sold)) return "low";
   return null;
 }
+
+/**
+ * Fullt men säljer fort (skulle annars vara snart slut): "Fullt · räcker ~2 d", annars null.
+ * Visas lugnt, utan larm, med tipset att ge titeln ett fack till.
+ */
+export function fullFastNote(row: Pick<FillRow, "now" | "capacity" | "sold">): string | null {
+  const n = Math.max(0, row.now);
+  if (!isFull(n, row.capacity) || !lastsShort(n, row.sold)) return null;
+  const days = Math.max(1, Math.round((n * SALES_WINDOW_DAYS) / row.sold));
+  return `Fullt · räcker ~${formatInt(days)}${NBSP}d`;
+}
+
+/** Tipset under en full titel som säljer fort. */
+export const FULL_FAST_TIP = "Säljer fort – ge den ett fack till";
 
 /**
  * Förslaget: kapacitet − nu; utan kapacitet en veckas försäljning − nu för titlar som är slut
@@ -205,7 +239,7 @@ export function machineRows(machine: FillMachineInput, input: FillInput): FillRo
       suggested: suggestFill(now, capacity, home, sold),
       emptySlots: f && now <= f.units ? Math.max(0, f.empty) : 0,
       sold,
-      status: rowStatus(now, sold),
+      status: rowStatus(now, sold, capacity),
     });
   }
   return rows.sort(rowOrder);
@@ -362,11 +396,83 @@ export function applyAdjustments(
         home: homeNow,
         suggested: suggestFill(now, r.capacity, homeNow, r.sold),
         emptySlots: plus > 0 || (counted !== undefined && counted > r.now) ? 0 : r.emptySlots,
-        status: rowStatus(now, r.sold),
+        status: rowStatus(now, r.sold, r.capacity),
       };
     });
     if (!changed) return m;
     return { ...m, ...totals(rows), rows: [...rows].sort(rowOrder) };
   });
   return { machines: out.sort(machineOrder), stock: nextStock };
+}
+
+/** Pack en titel vill ha om lagret räcker: förslaget utan taket från lagret. */
+export function packsWanted(row: Pick<FillRow, "now" | "capacity" | "sold">): number {
+  return suggestFill(row.now, row.capacity, Number.MAX_SAFE_INTEGER, row.sold);
+}
+
+/** Hur många av de pack automaten vill ha som ett lager kan ge: summan av min(vill ha, saldo). */
+export function coverage(
+  rows: readonly Pick<FillRow, "titleId" | "now" | "capacity" | "sold">[],
+  stock: Readonly<Record<string, number>> | undefined,
+): number {
+  let n = 0;
+  for (const r of rows) n += Math.min(packsWanted(r), Math.max(0, stock?.[r.titleId] ?? 0));
+  return n;
+}
+
+export interface SourceChoice {
+  /** Lagret att fylla från, null = inget eget lager. */
+  readonly id: string | null;
+  /** Skälet som visas vid "Från: … ▾" ("Kontoret saknar pack"), annars null. */
+  readonly reason: string | null;
+}
+
+/**
+ * Lagret en automat fylls från.
+ * - Valt för automaten nu ("Från: … ▾"): gäller alltid. Saknar det packen men ett annat lager
+ *   har dem sägs det ("Hemma har pack").
+ * - Annars det första giltiga av `preferred` (automatens "Fylls på från", senast valda,
+ *   standardlagret; annars första lagret). Täcker ett annat aktivt lager minst dubbelt så
+ *   många av packen som behövs (och fler än noll) väljs det lager som täcker flest; lika:
+ *   det föreslagna först, sedan namn. Skälet: "Kontoret saknar pack" / "Kontoret har bara 3".
+ * Automatens sparade "Fylls på från" ändras aldrig.
+ */
+export function chooseSource(args: {
+  readonly places: readonly { readonly id: string; readonly name: string }[];
+  readonly stock: PlaceStock;
+  readonly rows: readonly Pick<FillRow, "titleId" | "now" | "capacity" | "sold">[];
+  /** Valt för automaten nu (gäller tills sidan laddas om). */
+  readonly explicit?: string | null;
+  readonly preferred: readonly (string | null | undefined)[];
+}): SourceChoice {
+  const { places, stock, rows } = args;
+  if (places.length === 0) return { id: null, reason: null };
+  const cover = new Map(places.map((p) => [p.id, coverage(rows, stock[p.id])]));
+  const name = (id: string) => places.find((p) => p.id === id)?.name ?? "";
+  const base = pickPlace(places, ...args.preferred) as string;
+  const best = [...places].sort((a, b) => {
+    const d = (cover.get(b.id) ?? 0) - (cover.get(a.id) ?? 0);
+    if (d !== 0) return d;
+    if (a.id === base || b.id === base) return a.id === base ? -1 : 1;
+    return a.name.localeCompare(b.name, "sv");
+  })[0]!;
+  const bestCover = cover.get(best.id) ?? 0;
+  const explicit =
+    args.explicit && places.some((p) => p.id === args.explicit) ? args.explicit : null;
+  if (explicit) {
+    const own = cover.get(explicit) ?? 0;
+    const hint = own === 0 && bestCover > 0 && best.id !== explicit;
+    return { id: explicit, reason: hint ? `${name(best.id)} har pack` : null };
+  }
+  const baseCover = cover.get(base) ?? 0;
+  if (best.id !== base && bestCover > 0 && baseCover * 2 <= bestCover) {
+    return {
+      id: best.id,
+      reason:
+        baseCover === 0
+          ? `${name(base)} saknar pack`
+          : `${name(base)} har bara ${formatInt(baseCover)}`,
+    };
+  }
+  return { id: base, reason: null };
 }
