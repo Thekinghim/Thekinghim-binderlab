@@ -205,6 +205,7 @@ export default async function PlatformPage() {
                       <p className="flex flex-wrap items-center gap-2 text-lg text-fg">
                         <span className="min-w-0 break-words">{c.name}</span>
                         {c.operator ? <span className="label text-subtle">Plattform</span> : null}
+                        {c.archivedAt ? <span className="label text-subtle">Arkiverad</span> : null}
                       </p>
                       <div>
                         <StatusTag status={STATE_STATUS[s.state]}>{STATE_LABEL[s.state]}</StatusTag>
@@ -245,7 +246,7 @@ export default async function PlatformPage() {
                           ["Land", c.customer.countryCode ?? "SE"],
                           ["Momsnummer", c.customer.vatNumber ?? "–"],
                           [
-                            "Denna månad",
+                            "Denna månad, prognos",
                             formatMoneyList(
                               s.thisMonth.totals.map((t) => ({
                                 currency: t.currency,
@@ -290,6 +291,7 @@ export default async function PlatformPage() {
                         organizationId={c.id}
                         customerName={c.name}
                         hasPlan={c.periods.length > 0}
+                        monthStart={`${today.slice(0, 7)}-01`}
                         initial={{
                           effectiveFrom: today,
                           status: plan?.status ?? "active",

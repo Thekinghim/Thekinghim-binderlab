@@ -16,7 +16,8 @@
  *   - Annat EU-land utan momsnummer: 25 % svensk moms och en varning (momsnummer saknas).
  *   - Utanför EU: ingen svensk moms (tjänsten omsätts utomlands).
  * - MRR en dag = pris × aktiva automater den dagen, för kunder med aktiv plan och utan
- *   provperiod. ARR = 12 × MRR. Summor per valuta (valutor blandas aldrig).
+ *   provperiod. ARR = 12 × MRR. Summor per valuta (valutor blandas aldrig). Betalande kund =
+ *   MRR över 0 (en aktiv plan utan automater eller med pris 0 räknas inte).
  * - Churn i en månad = kunder med aktiv plan (betalande eller i provperiod) dagen före månaden
  *   som inte har en aktiv eller pausad plan vid månadens slut (eller i dag för innevarande
  *   månad). Andel = churnade / aktiva vid månadens start.
@@ -133,7 +134,7 @@ export function vatTreatment(
   return {
     mode: "outside_eu",
     rateBp: 0,
-    note: "Tjänsten är omsatt utanför EU. Ingen svensk moms (3 kap. 5 § ML / art. 44).",
+    note: "Tjänsten är omsatt utanför EU (art. 44 i direktiv 2006/112/EG). Ingen svensk moms.",
   };
 }
 
@@ -343,6 +344,11 @@ export interface MonthHistory {
   churnBp: number | null;
 }
 
+/** Betalande = något debiteras (aktiv plan utanför provperioden, minst en automat, pris > 0). */
+export function isPaying(mrr: Money | null): boolean {
+  return mrr !== null && mrr.amountOre > 0;
+}
+
 function isLive(state: CustomerState): boolean {
   return state === "active" || state === "trial";
 }
@@ -367,7 +373,7 @@ export function platformHistory(
     for (const c of customers) {
       const m = mrrOn(c, day);
       mrr.push(m);
-      if (m) paying++;
+      if (isPaying(m)) paying++;
       const startLive = isLive(customerStateOn(c, before));
       if (startLive) {
         atStart++;
@@ -434,7 +440,7 @@ export function customerSummary(c: PlatformCustomerInput, today: IsoDate): Custo
 export interface PlatformTotals {
   mrr: Money[];
   arr: Money[];
-  /** Kunder som betalar i dag. */
+  /** Kunder som betalar i dag (MRR över 0). */
   payingCustomers: number;
   trialCustomers: number;
   pausedCustomers: number;
@@ -451,7 +457,7 @@ export function platformTotals(summaries: readonly CustomerSummary[]): PlatformT
   return {
     mrr,
     arr: mrr.map((m) => ({ currency: m.currency, amountOre: m.amountOre * 12 })),
-    payingCustomers: summaries.filter((s) => s.state === "active").length,
+    payingCustomers: summaries.filter((s) => isPaying(s.mrr)).length,
     trialCustomers: summaries.filter((s) => s.state === "trial").length,
     pausedCustomers: summaries.filter((s) => s.state === "paused").length,
     customers: summaries.length,

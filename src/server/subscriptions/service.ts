@@ -206,11 +206,18 @@ export async function loadPlatformFor(
     customer,
     summary: customerSummary(customer, today),
   }));
+  // Plattformens egna organisationer visas men är inga kunder: de räknas inte i totaler,
+  // historik eller churn (och deras automater inte som kundernas).
+  const customerRows = rows.filter((r) => !r.customer.operator);
   return {
     today,
     rows,
-    totals: platformTotals(rows.map((r) => r.summary)),
-    history: platformHistory(customers, today, months),
+    totals: platformTotals(customerRows.map((r) => r.summary)),
+    history: platformHistory(
+      customers.filter((c) => !c.operator),
+      today,
+      months,
+    ),
   };
 }
 

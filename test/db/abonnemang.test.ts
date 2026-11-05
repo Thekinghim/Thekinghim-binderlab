@@ -354,6 +354,49 @@ describe("planer och fakturaunderlag", () => {
     );
   });
 
+  it("plattformens egen organisation räknas inte som kund i totalerna", async () => {
+    await asUser(platformOwner, (tx) =>
+      tx.insert(s.machines).values({
+        organizationId: platformOrg,
+        code: "P-1",
+        name: "Egen automat",
+        activeFrom: "2026-01-01",
+      }),
+    );
+    const data = await loadPlatformFor(user(platformOwner), "2026-11-05", 3);
+    const customers = data.rows.filter((r) => !r.customer.operator);
+    expect(data.rows.some((r) => r.customer.id === platformOrg)).toBe(true);
+    expect(data.totals.customers).toBe(customers.length);
+    expect(data.totals.machines).toBe(customers.reduce((n, r) => n + r.summary.machinesNow, 0));
+  });
+
+  it("en arkiverad kundorganisation: automaterna slutar räknas dagen före arkiveringen", async () => {
+    const owner = await createUser(`arkiv-${uniqueSuffix()}@test.binderlab.se`);
+    const org = await createOrg(owner, `Arkiverad kund ${uniqueSuffix()}`);
+    await asUser(owner, (tx) =>
+      tx.insert(s.machines).values({
+        organizationId: org,
+        code: "R-1",
+        name: "Automat",
+        activeFrom: "2026-01-01",
+      }),
+    );
+    expect(await savePlanFor(user(platformOwner), plan(org))).toEqual({ ok: true });
+    await asPostgres((tx) =>
+      tx.execute(
+        sql`update public.organizations set archived_at = '2026-10-11 09:00+02' where id = ${org}`,
+      ),
+    );
+    const data = await loadPlatformFor(user(platformOwner), "2026-11-05", 3);
+    const row = data.rows.find((r) => r.customer.id === org)!;
+    expect(row.customer.machines.map((m) => [m.activeFrom, m.activeTo])).toEqual([
+      ["2026-01-01", "2026-10-10"],
+    ]);
+    expect(row.summary.mrr?.amountOre ?? 0).toBe(0);
+    // Oktober: 10 av 31 dagar.
+    expect(invoiceBasis(row.customer, "2026-10").billableMachineDays).toBe(10);
+  });
+
   it("en plattformsoperatör som tas bort ur plattformsorganisationen förlorar åtkomsten", async () => {
     const temp = await createMember(platformOrg, "admin");
     expect(await isPlatformOperatorFor(user(temp))).toBe(true);

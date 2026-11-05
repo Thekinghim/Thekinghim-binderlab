@@ -166,7 +166,7 @@ export function invoiceCsv(month: IsoMonth, rows: readonly InvoiceCsvRow[]): str
     { header: "Kund-id", csv: (x) => x.r.slug },
     { header: "Land", csv: (x) => x.r.countryCode ?? "SE" },
     { header: "Momsnummer", csv: (x) => x.r.vatNumber ?? "" },
-    { header: "Moms", csv: (x) => VAT_LABEL[x.r.basis.vat.mode] },
+    { header: "Momsregel", csv: (x) => VAT_LABEL[x.r.basis.vat.mode] },
     { header: "Valuta", csv: (x) => x.currency },
     { header: "Aktiva automater", csv: (x) => x.r.basis.activeMachines },
     { header: "Debiterade automatdagar", csv: (x) => x.machineDays },

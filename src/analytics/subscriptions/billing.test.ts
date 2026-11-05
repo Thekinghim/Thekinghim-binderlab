@@ -189,6 +189,13 @@ describe("moms", () => {
       rateBp: 0,
     });
   });
+  it("utanför EU: noteringen hänvisar inte till en paragraf som inte gäller", () => {
+    // "3 kap. 5 § ML" handlar inte om var en tjänst omsätts (och gamla ML är ersatt av
+    // mervärdesskattelagen 2023:200). Bara direktivets huvudregel för B2B, art. 44.
+    const note = vatTreatment({ countryCode: "US", vatNumber: null }).note;
+    expect(note).not.toMatch(/kap\./);
+    expect(note).toContain("art. 44");
+  });
 });
 
 describe("MRR och ARR", () => {
@@ -317,5 +324,19 @@ describe("kundens läge, historik och churn", () => {
       billableMachines: 2,
       machines: 5,
     });
+  });
+
+  it("betalande kund = MRR över 0 (aktiv plan utan automater eller med pris 0 räknas inte)", () => {
+    const today = "2026-11-05";
+    const noMachines: PlatformCustomerInput = { ...paying, id: "k5", machines: [] };
+    const free: PlatformCustomerInput = {
+      ...paying,
+      id: "k6",
+      periods: [plan("2026-01-01", null, 0)],
+    };
+    const s = [paying, noMachines, free].map((c) => customerSummary(c, today));
+    expect(platformTotals(s).payingCustomers).toBe(1);
+    const h = platformHistory([paying, noMachines, free], today, 2);
+    expect(h.map((m) => m.payingCustomers)).toEqual([1, 1]);
   });
 });

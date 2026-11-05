@@ -101,8 +101,8 @@ export async function SubscriptionSection({
         <MobileFold
           summary="Visa underlag"
           meta={
-            now && now.totals[0]
-              ? `${monthLabel(current)}: ${formatMoney(now.totals[0].netOre, now.totals[0].currency)}`
+            now && now.totals.length > 0
+              ? `${monthLabel(current)}: ${now.totals.map((t) => formatMoney(t.netOre, t.currency)).join(" + ")} exkl. moms`
               : undefined
           }
         >
@@ -111,8 +111,8 @@ export async function SubscriptionSection({
               {mrr
                 ? `${formatInt(machinesOn(sub.machines, today))} automater i drift i dag, ${formatMoney(mrr.amountOre, mrr.currency)} per månad exkl. moms.`
                 : "Inget debiteras i dag."}{" "}
-              Varje automat räknas per dag den är i drift. Binderlab fakturerar i efterskott; inget
-              dras automatiskt.
+              Varje automat räknas per dag den är i drift. Underlaget visar vad som faktureras;
+              inget dras automatiskt.
             </p>
             <div className="-mx-4 overflow-x-auto px-4 md:mx-0 md:px-0">
               <table className="w-full border-collapse text-base">
@@ -138,7 +138,11 @@ export async function SubscriptionSection({
                 </thead>
                 <tbody>
                   {bases.map((b) => {
-                    const t = b.totals[0];
+                    // Valutor blandas aldrig: byter planen valuta mitt i månaden visas båda.
+                    const money = (pick: (t: (typeof b.totals)[number]) => number) =>
+                      b.totals.length === 0
+                        ? "–"
+                        : b.totals.map((t) => formatMoney(pick(t), t.currency, 2)).join(" + ");
                     return (
                       <tr key={b.month} className="border-b border-line">
                         <td className="py-2.5 pr-3 text-fg">
@@ -154,11 +158,9 @@ export async function SubscriptionSection({
                           </span>
                         </td>
                         <td className="tnum hidden px-3 py-2.5 text-right md:table-cell">
-                          {t ? formatMoney(t.netOre, t.currency, 2) : "–"}
+                          {money((t) => t.netOre)}
                         </td>
-                        <td className="tnum py-2.5 pl-3 text-right">
-                          {t ? formatMoney(t.totalOre, t.currency, 2) : "–"}
-                        </td>
+                        <td className="tnum py-2.5 pl-3 text-right">{money((t) => t.totalOre)}</td>
                       </tr>
                     );
                   })}

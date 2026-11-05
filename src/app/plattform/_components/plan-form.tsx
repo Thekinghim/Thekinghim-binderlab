@@ -35,11 +35,14 @@ export function PlanForm({
   customerName,
   initial,
   hasPlan,
+  monthStart,
 }: {
   organizationId: string;
   customerName: string;
   initial: PlanFormValues;
   hasPlan: boolean;
+  /** Första dagen i innevarande månad (ÅÅÅÅ-MM-DD). Tidigare datum ändrar fakturerade månader. */
+  monthStart: string;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -80,7 +83,13 @@ export function PlanForm({
           name="effectiveFrom"
           value={values.effectiveFrom}
           onChange={(e) => set("effectiveFrom")(e.target.value)}
-          hint={hasPlan ? "Ny period från dagen" : undefined}
+          hint={
+            hasPlan && values.effectiveFrom !== "" && values.effectiveFrom < monthStart
+              ? "Obs: ändrar underlaget för tidigare månader"
+              : hasPlan
+                ? "Ny period från dagen"
+                : undefined
+          }
         />
         <Select
           label="Status"

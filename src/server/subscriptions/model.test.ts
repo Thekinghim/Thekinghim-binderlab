@@ -81,7 +81,7 @@ describe("CSV", () => {
     ]);
     const lines = csv.replace(/^﻿/, "").trim().split("\r\n");
     expect(lines[0]).toBe(
-      "Månad;Kund;Kund-id;Land;Momsnummer;Moms;Valuta;Aktiva automater;Debiterade automatdagar;Dagar i månaden;Belopp exkl. moms;Momssats %;Moms;Att fakturera;Specifikation;Notering",
+      "Månad;Kund;Kund-id;Land;Momsnummer;Momsregel;Valuta;Aktiva automater;Debiterade automatdagar;Dagar i månaden;Belopp exkl. moms;Momssats %;Moms;Att fakturera;Specifikation;Notering",
     );
     expect(lines[1]).toContain(
       "2026-11;Kund AB;kund;SE;;Svensk moms 25 %;SEK;2;45;30;749,25;25;187,31;936,56;",
@@ -90,6 +90,14 @@ describe("CSV", () => {
     expect(lines[2]).toContain(
       "'=Elak;elak;DK;DK1234;Omvänd skattskyldighet;;0;0;30;0,00;0;0,00;0,00",
     );
+  });
+
+  it("kolumnnamnen är unika (momsregeln och momsbeloppet heter olika)", () => {
+    const header = invoiceCsv("2026-11", [])
+      .replace(/^\uFEFF/, "")
+      .split("\r\n")[0]!;
+    const names = header.split(";");
+    expect(new Set(names).size).toBe(names.length);
   });
 
   it("specifikation", () => {
