@@ -543,7 +543,8 @@ export function slotCapacitiesInRequest(
     viewer.user.userId,
     viewer.user.email,
     viewer.organization.id,
-    now.getTime(),
+    // Hela minuten: alla anrop i förfrågan (med och utan `now`) delar en läsning.
+    Math.floor(now.getTime() / 60_000) * 60_000,
   );
 }
 

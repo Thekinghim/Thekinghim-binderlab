@@ -34,6 +34,15 @@ export function headingOf(m: Pick<VartLagerModel, "totals" | "lowDays" | "rows">
         : `${plural(t.runsOut, "titel tar", "titlar tar")} slut. Inget att beställa än.`,
     };
   }
-  if (what) return { title, aside: `${what.charAt(0).toUpperCase()}${what.slice(1)}.` };
+  if (what) {
+    // Utan "tar slut" före: skriv ut vad talet räknar ("Beställ 1 titel.").
+    const full = [
+      pack > 0 ? `packa ${plural(pack, "titel", "titlar")}` : null,
+      order > 0 ? `beställ ${plural(order, "titel", "titlar")}` : null,
+    ]
+      .filter((p): p is string => p !== null)
+      .join(", ");
+    return { title, aside: `${full.charAt(0).toUpperCase()}${full.slice(1)}.` };
+  }
   return { title, aside: `Allt räcker ${formatInt(m.lowDays)}${NBSP}dagar.` };
 }

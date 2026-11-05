@@ -185,7 +185,7 @@ describe("egna produkter och Att göra", () => {
     const nothingOut = buildVartLagerModel(
       input({ warehouse: [wr("a", 40)], sold7: new Map(), purchase: new Map([["a", 12]]) }),
     );
-    expect(sp(headingOf(nothingOut).aside)).toBe("Beställ 1.");
+    expect(sp(headingOf(nothingOut).aside)).toBe("Beställ 1 titel.");
   });
 
   it("egen produkt packas, övriga beställs; under 0 räknas om först", () => {
