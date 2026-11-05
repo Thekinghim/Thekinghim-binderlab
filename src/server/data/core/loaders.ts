@@ -15,6 +15,7 @@ import {
   applyDismissals,
   computeTodos,
   type AnalyticsOrder,
+  type SettlementRef,
   type TodoInput,
   type TodoItem,
   type TodoKind,
@@ -652,6 +653,15 @@ export async function loadTodosFor(viewer: Viewer, now: Date = new Date()): Prom
   return (await loadTodoStateFor(viewer, now)).items;
 }
 
+/** Val för loadTodoStateFor. */
+export interface TodoStateOptions {
+  /**
+   * Obetalda avräkningar i stället för att räkna dem i laddarens transaktion (appen skickar
+   * den sparade versionen, src/server/settlements/cache.ts). Bara för ekonomiroller.
+   */
+  readonly unpaidSettlements?: () => Promise<SettlementRef[]>;
+}
+
 /**
  * Som loadTodosFor, men med de avbockade punkterna vars orsak finns kvar (för listan
  * "Avbockade" i Att göra, som då inte visar punkter som redan är lösta).
@@ -659,7 +669,11 @@ export async function loadTodosFor(viewer: Viewer, now: Date = new Date()): Prom
  * Ägare och admin får också larm som kräver åtgärd, rapportutkast att granska och avtal
  * att säga upp eller omförhandla (påminnelsen 90 dagar före sista uppsägningsdag).
  */
-export async function loadTodoStateFor(viewer: Viewer, now: Date = new Date()): Promise<TodoState> {
+export async function loadTodoStateFor(
+  viewer: Viewer,
+  now: Date = new Date(),
+  options: TodoStateOptions = {},
+): Promise<TodoState> {
   const orgId = viewer.organization.id;
   const timeZone = viewer.organization.timezone;
   const today = businessToday(now, timeZone);
@@ -708,8 +722,11 @@ export async function loadTodoStateFor(viewer: Viewer, now: Date = new Date()): 
           queryReportDrafts(tx, orgId, reportSince),
           queryActiveContracts(tx, orgId),
           queryOpenAlerts(tx, orgId),
-          // Månadsavräkningar som inte är betalda (Butiker → Butiksportal).
-          queryUnpaidSettlements(tx, orgId, now),
+          // Månadsavräkningar som inte är betalda (Butiker → Butiksportal). I appen sparade
+          // en kort stund (options.unpaidSettlements, src/server/settlements/cache.ts).
+          options.unpaidSettlements
+            ? options.unpaidSettlements()
+            : queryUnpaidSettlements(tx, orgId, now),
           // Konton och inbjudningar: punkten "Bjud in delägaren" (bara ägare och admin).
           queryTeamSize(tx, orgId),
         ]);

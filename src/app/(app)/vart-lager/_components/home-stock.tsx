@@ -396,7 +396,7 @@ function StockRow({
             type="button"
             aria-expanded={more}
             aria-label={`${more ? "Färre" : "Fler"} uppgifter, ${row.name}`}
-            className="meta flex min-w-0 items-center gap-1 text-left text-subtle md:hidden"
+            className="meta flex min-h-11 min-w-0 items-center gap-1 text-left text-subtle md:hidden"
           >
             {/* Stängd: bara hur länge det räcker (får plats på en rad); öppen: allt. */}
             <span className={more ? "min-w-0" : "min-w-0 truncate"}>

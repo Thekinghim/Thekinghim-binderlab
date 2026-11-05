@@ -6,7 +6,8 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { keyMetrics, profitability, titleEconomics } from "@/domain";
+import { currentPriceEconomics } from "@/app/(app)/inkopspriser/_lib/price-economics";
+import { keyMetrics, profitability } from "@/domain";
 import { AuthorizationError } from "@/server/access";
 import { toolContextFor } from "@/server/assistant/service";
 import { ToolInputError } from "@/server/assistant/tools";
@@ -44,7 +45,7 @@ beforeAll(async () => {
 });
 
 describe("ekonomi: samma tal som beräkningslagret", () => {
-  it("inkopspriser ger titleEconomics marginal och order per titel", async () => {
+  it("inkopspriser ger hela beloppet per order som standard, som sidan", async () => {
     const ctx = toolContextFor(owner, "owner", NOW);
     const out = await pricesTool.run(ctx, pricesTool.input.parse(MARCH));
     const data = await loadDomainInputFor(
@@ -52,16 +53,49 @@ describe("ekonomi: samma tal som beräkningslagret", () => {
       { period: { start: MARCH.fran, end: MARCH.till } },
       NOW,
     );
-    const expected = titleEconomics({ ...data.current, titleIds: [...fx.titleIds] });
-    const rows = (
-      out.data as { rader: Array<{ id: string; marginalBp: number | null; order: number }> }
-    ).rader;
+    const expected = currentPriceEconomics({ ...data.current, titleIds: [...fx.titleIds] });
+    const d = out.data as { butikensAndelVisas: boolean; rader: Array<Record<string, unknown>> };
+    expect(d.butikensAndelVisas).toBe(false);
     for (const e of expected) {
-      const row = rows.find((r) => r.id === e.titleId)!;
-      expect(row.marginalBp).toBe(e.marginBp);
+      const row = d.rader.find((r) => r.id === e.titleId)!;
+      expect(row.kvarPerOrderOre).toBe(e.leftBeforeStoreOre);
+      expect(row.marginalBp).toBe(e.marginBeforeStoreBp);
       expect(row.order).toBe(e.orders);
+      expect(row).not.toHaveProperty("butikensAndelPerOrderOre");
+      if (!e.lossWarning) expect(row).not.toHaveProperty("varDelPerOrderOre");
     }
     expect(out.links[0]!.href).toContain("/inkopspriser");
+    expect(out.links[0]!.href).not.toContain("andel=1");
+  });
+
+  it("inkopspriser med butik eller visa_andel ger butikens andel och vår del", async () => {
+    const ctx = toolContextFor(owner, "owner", NOW);
+    const data = await loadDomainInputFor(
+      owner,
+      { period: { start: MARCH.fran, end: MARCH.till }, storeId: fx.storeId },
+      NOW,
+    );
+    const expected = currentPriceEconomics({ ...data.current, titleIds: [...fx.titleIds] });
+    const out = await pricesTool.run(
+      ctx,
+      pricesTool.input.parse({ ...MARCH, butik: "ICA Assistent" }),
+    );
+    const d = out.data as { butikensAndelVisas: boolean; rader: Array<Record<string, unknown>> };
+    expect(d.butikensAndelVisas).toBe(true);
+    let withShare = 0;
+    for (const e of expected) {
+      const row = d.rader.find((r) => r.id === e.titleId)!;
+      expect(row.kvarPerOrderOre).toBe(e.leftBeforeStoreOre);
+      expect(row.butikensAndelPerOrderOre).toBe(e.storeSharePerOrderOre);
+      expect(row.varDelPerOrderOre).toBe(e.leftPerOrderOre);
+      if ((e.storeSharePerOrderOre ?? 0) !== 0) withShare++;
+    }
+    // Fixturens butik har 10 % provision: delningen syns.
+    expect(withShare).toBeGreaterThan(0);
+
+    const all = await pricesTool.run(ctx, pricesTool.input.parse({ ...MARCH, visa_andel: true }));
+    expect((all.data as { butikensAndelVisas: boolean }).butikensAndelVisas).toBe(true);
+    expect(all.links[0]!.href).toContain("andel=1");
   });
 
   it("butiksandel: butikens ersättning är profitability per butik", async () => {

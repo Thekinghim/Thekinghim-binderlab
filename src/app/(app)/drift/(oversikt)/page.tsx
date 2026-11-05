@@ -196,7 +196,7 @@ export default async function DriftPage() {
         {items.length > 0 ? <AlertList items={items} canAck={ctx.canEdit} /> : null}
         {resolved.length > 0 ? (
           <details>
-            <summary className="w-fit cursor-pointer rounded-xs text-sm text-muted hover:text-fg">
+            <summary className="w-fit cursor-pointer rounded-xs text-sm text-muted hover:text-fg max-md:flex max-md:min-h-11 max-md:items-center">
               {`Lösta de senaste 7 dagarna (${formatInt(resolved.length)})`}
             </summary>
             <div className="mt-4">

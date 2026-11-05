@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
 
 import { Panel } from "@/components/ui/frame";
+import { MobileTopRows } from "@/components/ui/mobile-top-list";
 import { SectionHeader } from "@/components/ui/section-header";
 import { Segmented } from "@/components/ui/segmented";
 import { StateMessage } from "@/components/ui/state-message";
@@ -26,6 +27,12 @@ function replaceParam(name: string, value: string) {
 // ---------------------------------------------------------------------------
 // 02 / Per titel, automat, butik
 // ---------------------------------------------------------------------------
+
+const VIEW_PLURAL: Record<ViewKey, string> = {
+  title: "titlar",
+  machine: "automater",
+  store: "butiker",
+};
 
 export function TableSection({
   tabs,
@@ -121,18 +128,27 @@ export function TableSection({
       {rows.length === 0 ? (
         <StateMessage kind="empty" message={sentence(`Inga order under ${periodLabel}`)} />
       ) : (
-        <ProfitTable
-          view={view}
-          onViewChange={change}
-          rows={rows}
-          totals={totals}
-          caption={`Lönsamhet per ${VIEW_NOUN[view]}, ${periodLabel}`}
-          sort={sort}
-          onSortChange={setSort}
-          selectedKey={selected?.key ?? null}
-          showStoreShare={showStoreShare}
-          storeShareLabel={storeShareLabel}
-        />
+        // På mobilen de fem första raderna och "Visa alla N" (från md hela tabellen).
+        <MobileTopRows
+          key={view}
+          // Över 200 rader virtualiseras tabellen (DataTable): då fälls inget ihop.
+          total={rows.length > 200 ? 0 : rows.length}
+          noun={VIEW_PLURAL[view]}
+          defaultOpen={selected !== null}
+        >
+          <ProfitTable
+            view={view}
+            onViewChange={change}
+            rows={rows}
+            totals={totals}
+            caption={`Lönsamhet per ${VIEW_NOUN[view]}, ${periodLabel}`}
+            sort={sort}
+            onSortChange={setSort}
+            selectedKey={selected?.key ?? null}
+            showStoreShare={showStoreShare}
+            storeShareLabel={storeShareLabel}
+          />
+        </MobileTopRows>
       )}
     </section>
   );

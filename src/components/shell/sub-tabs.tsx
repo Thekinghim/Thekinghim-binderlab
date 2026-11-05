@@ -84,7 +84,7 @@ function SubTabsInner({
 }
 
 const TAB_CLASS =
-  "inline-flex h-10 items-center gap-2 px-2.5 text-sm whitespace-nowrap transition-colors duration-200 focus-visible:-outline-offset-2 sm:px-3";
+  "inline-flex h-10 items-center gap-2 px-2.5 max-md:h-11 text-sm whitespace-nowrap transition-colors duration-200 focus-visible:-outline-offset-2 sm:px-3";
 
 function TabLabel({ tab }: { tab: SubTab }) {
   if (!tab.short) return <>{tab.label}</>;

@@ -19,7 +19,6 @@ import {
   changeBp,
   monthEnd,
   profitability,
-  titleEconomics,
   type IsoDate,
   type Period,
   type ProfitabilityRow,
@@ -27,7 +26,8 @@ import {
 } from "@/domain";
 import { ALL_COST_LINES } from "@/lib/cost-lines";
 import { formatDate, formatDelta } from "@/lib/format";
-import { titleRows, type TitleRow } from "@/app/(app)/inkopspriser/_lib/model";
+import { titleRows } from "@/app/(app)/inkopspriser/_lib/model";
+import { currentPriceEconomics } from "@/app/(app)/inkopspriser/_lib/price-economics";
 import { loadOurStockFor } from "@/app/(app)/lager/_lib/data";
 import { withUserDbFor } from "@/server/access";
 import { loadContractsFor } from "@/server/accounting/service";
@@ -60,6 +60,7 @@ import {
   type ToolContext,
 } from "./common";
 import { ownStockTotals } from "@/server/data/core/own-stock";
+import { perOrderText, priceNote, priceRowData, priceSortKey } from "./prices-view";
 
 function scopeIds(scope: ResolvedScope) {
   return { machineId: scope.machine?.id ?? null, storeId: scope.store?.id ?? null };
@@ -269,15 +270,6 @@ export const storeShareTool = defineTool({
 // inkopspriser
 // ---------------------------------------------------------------------------
 
-const STATUS_TEXT: Record<TitleRow["status"], string> = {
-  missing: "saknar inköpspris",
-  loss: "går med förlust",
-  partial: "inköpspris saknas för en del av perioden",
-  "loss-after-rent": "går med förlust efter hyran",
-  idle: "ingen försäljning",
-  ok: "lönsam",
-};
-
 const pricesInput = z
   .object({
     ...periodSchema,
@@ -292,6 +284,12 @@ const pricesInput = z
       .enum(["marginal", "kvar_per_order", "order"])
       .optional()
       .describe("marginal (standard, lägst först), kvar_per_order (lägst först) eller order."),
+    visa_andel: z
+      .boolean()
+      .optional()
+      .describe(
+        "true bara när frågan uttryckligen gäller butikens andel eller vår del (vad som blir kvar åt oss efter butiken). Med butik eller automat visas andelen alltid. Annars utelämna: svaret ska ge hela beloppet per order.",
+      ),
     antal: z
       .number()
       .int()
@@ -307,7 +305,7 @@ export const pricesTool = defineTool({
   title: "Inköpspriser och marginal",
   label: () => "Inköpspriser per titel",
   description:
-    "Per titel som på sidan Inköpspriser: inköpspris i dag (det som är inmatat i appen är sanningen), snittpris per order, vad varje order lämnar efter inköp, avgifter och provision, marginal, vad som är kvar efter hyran (bara om något avtal har hyra), antal order och status (förlust, saknar pris, lönsam). Använd för 'vilka titlar går med förlust', 'vad kostar Perfect Order', 'vilken titel har bäst marginal'.",
+    "Per titel som på sidan Inköpspriser: inköpspris i dag (det som är inmatat i appen är sanningen), snittpris per order, kvar per order (HELA beloppet per order före butikens andel: pris exkl. moms − inköp − avgifter), marginal (kvar av pris), kvar efter hyra (bara om något avtal har hyra), antal order och status (förlust, saknar pris, lönsam). Butikens andel och vår del per order kommer bara med när frågan gäller en butik/automat (butik, automat) eller uttryckligen andelen (visa_andel). Använd för 'vilka titlar går med förlust', 'vad kostar Perfect Order', 'vilken titel har bäst marginal', 'hur mycket får vi kvar per order på 151 hos ICA'.",
   roles: ECONOMY_ROLES,
   input: pricesInput,
   async run(ctx: ToolContext, input) {
@@ -321,9 +319,14 @@ export const pricesTool = defineTool({
     const active = data.titles.filter((t) => !t.archived).map((t) => t.id);
     // Utan hyra i något avtal är "kvar per order" allt som blir kvar: inget "efter hyra".
     const rent = (data.costLines ?? ALL_COST_LINES).rent;
-    const economics = titleEconomics({ ...data.current, titleIds: active });
+    // Samma tal som sidan: butikens andel och vår del räknas med dagens inköpspris.
+    const economics = currentPriceEconomics({ ...data.current, titleIds: active });
     const unpriced = profitability(data.current, "title").unpriced;
     const all = titleRows(economics, data.titles, unpriced.byTitle);
+    // Sidans regel: hela beloppet som standard; andelen och vår del med vald butik/automat
+    // eller när frågan gäller andelen.
+    const share = Boolean(scope.store || scope.machine || input.visa_andel);
+    const view = { share, rent, scope: scopeText(scope).replace(/^, /, "") || null };
     const visa = input.visa ?? "alla";
     const filtered = all.filter((r) =>
       visa === "forlust"
@@ -333,68 +336,48 @@ export const pricesTool = defineTool({
           : true,
     );
     const sort = input.sortera ?? "marginal";
-    const key = (r: TitleRow) =>
-      sort === "order"
-        ? -r.orders
-        : sort === "kvar_per_order"
-          ? (r.leftOre ?? Number.POSITIVE_INFINITY)
-          : (r.marginBp ?? Number.POSITIVE_INFINITY);
+    const key = priceSortKey(sort, view);
     const rows = [...filtered].sort(
       (a, b) => key(a) - key(b) || a.name.localeCompare(b.name, "sv"),
     );
     const shown = rows.slice(0, input.antal ?? 20);
     const losses = all.filter((r) => r.status === "loss" || r.status === "loss-after-rent");
     const missing = all.filter((r) => r.status === "missing" || r.unpricedOrders > 0);
+    const first = shown[0];
     return {
-      summary: `${periodText(period)}${scopeText(scope)}: ${count(all.length)} titlar, ${count(losses.length)} med förlust, ${count(missing.length)} saknar inköpspris${shown[0] ? `. Först (${sort}): ${shown[0].name}, marginal ${pct(shown[0].marginBp)}` : ""}.`,
+      summary: `${periodText(period)}${scopeText(scope)}: ${count(all.length)} titlar, ${count(losses.length)} med förlust, ${count(missing.length)} saknar inköpspris${first ? `. Först (${sort}): ${first.name}, ${perOrderText(first, view)}, marginal ${pct(first.marginBeforeBp)}` : ""}.`,
       data: {
         period: periodData(period),
         visa,
         sorterat: sort,
+        butikensAndelVisas: share,
         antalTitlar: all.length,
         medForlust: losses.map((r) => r.name),
         saknarPris: missing.map((r) => r.name),
-        rader: shown.map((r) => ({
-          titel: r.name,
-          id: r.id,
-          status: STATUS_TEXT[r.status],
-          inkopsprisIdag: r.currentCostOre === null ? "saknas" : kr(r.currentCostOre),
-          inkopsprisIdagOre: r.currentCostOre,
-          giltigtFran: r.currentFrom,
-          snittprisPerOrder: r.averagePriceOre === null ? "–" : kr(r.averagePriceOre),
-          snittprisPerOrderOre: r.averagePriceOre,
-          kvarPerOrder: r.leftOre === null ? "–" : kr(r.leftOre),
-          kvarPerOrderOre: r.leftOre,
-          ...(rent
-            ? {
-                kvarEfterHyra: r.leftAfterRentOre === null ? "–" : kr(r.leftAfterRentOre),
-                kvarEfterHyraOre: r.leftAfterRentOre,
-              }
-            : {}),
-          marginal: pct(r.marginBp),
-          marginalBp: r.marginBp,
-          order: r.orders,
-          orderUtanPris: r.unpricedOrders,
-        })),
-        anmarkning: rent
-          ? "Kvar per order = snittpris exkl. moms − inköp − avgifter − provision. Kvar efter hyra drar även hyran per order."
-          : "Kvar per order = snittpris exkl. moms − inköp − avgifter − provision (ingen hyra).",
+        rader: shown.map((r) => priceRowData(r, view)),
+        anmarkning: priceNote(view),
       },
       figures: [
         { label: "Med förlust", value: count(losses.length) },
         { label: "Saknar pris", value: count(missing.length) },
         ...shown.slice(0, 3).map((r) => ({
           label: r.name,
-          value: `${pct(r.marginBp)} · ${r.leftOre === null ? "–" : kr(r.leftOre)} per order`,
+          value: `${pct(r.marginBeforeBp)} · ${perOrderText(r, view)}`,
         })),
       ],
       links: [
-        { label: "Inköpspriser", href: pageHref("/inkopspriser", period, scopeIds(scope)) },
-        ...(shown[0]
+        {
+          label: "Inköpspriser",
+          href: withShareParam(
+            pageHref("/inkopspriser", period, scopeIds(scope)),
+            Boolean(input.visa_andel && !scope.store && !scope.machine),
+          ),
+        },
+        ...(first
           ? [
               {
-                label: `Inköpspris för ${shown[0].name}`,
-                href: `/inkopspriser?titel=${encodeURIComponent(shown[0].id)}`,
+                label: `Inköpspris för ${first.name}`,
+                href: `/inkopspriser?titel=${encodeURIComponent(first.id)}`,
               },
             ]
           : []),
@@ -402,6 +385,12 @@ export const pricesTool = defineTool({
     };
   },
 });
+
+/** Länken till sidan visar andelen som svaret ("Visa butikernas andel", ?andel=1). */
+function withShareParam(href: string, on: boolean): string {
+  if (!on) return href;
+  return `${href}${href.includes("?") ? "&" : "?"}andel=1`;
+}
 
 // ---------------------------------------------------------------------------
 // forandring

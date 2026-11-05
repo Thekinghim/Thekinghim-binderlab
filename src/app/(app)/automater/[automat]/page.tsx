@@ -129,7 +129,7 @@ export default async function MachinePage({
           <Link
             href={listHref}
             // min-h-7: klickytan minst 24 px hög (WCAG 2.5.8) även på mobilen.
-            className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-subtle hover:text-fg"
+            className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-subtle hover:text-fg max-md:min-h-11"
           >
             <span aria-hidden className="text-faint">
               ←
@@ -529,7 +529,7 @@ function UnitEconomicsSection({ data }: { data: MachineDetailData }) {
         actions={
           <Link
             href={href}
-            className="meta inline-flex min-h-7 items-center rounded-xs text-muted hover:text-fg"
+            className="meta inline-flex min-h-7 items-center rounded-xs text-muted hover:text-fg max-md:min-h-11"
           >
             Jämför med andra automater{NBSP}→
           </Link>

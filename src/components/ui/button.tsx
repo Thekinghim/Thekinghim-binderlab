@@ -52,8 +52,9 @@ const disabledCls =
 const disabledGhostCls = "cursor-not-allowed border-transparent bg-transparent text-disabled";
 
 const sizes: Record<Size, string> = {
-  sm: "h-7 px-2.5 text-sm",
-  md: "h-9 px-3.5 text-base",
+  // Under md når träffytan 44 px (::before) utan att knappen ritas större.
+  sm: "h-7 px-2.5 text-sm max-md:before:absolute max-md:before:inset-x-0 max-md:before:-inset-y-2.5 max-md:before:content-['']",
+  md: "h-9 px-3.5 text-base max-md:before:absolute max-md:before:inset-x-0 max-md:before:-inset-y-1.5 max-md:before:content-['']",
 };
 
 function variantClass(variant: Variant, inactive: boolean) {

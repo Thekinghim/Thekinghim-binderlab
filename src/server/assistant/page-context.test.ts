@@ -152,6 +152,14 @@ describe("sidans sammanfattning", () => {
     expect(summaryCallFor(pageContextFromUrl("/inkopspriser", ""), "viewer", PERIOD)?.tool).toBe(
       "inkopspriser",
     );
+    // Inköpspriser: hela beloppet som standard, andelen med "Visa butikernas andel".
+    expect(
+      summaryCallFor(pageContextFromUrl("/inkopspriser", ""), "owner", PERIOD)?.input,
+    ).not.toHaveProperty("visa_andel");
+    const andel = pageContextFromUrl("/inkopspriser", "?andel=1");
+    expect(andel.storeShare).toBe(true);
+    expect(parsePageContext({ ...andel })?.storeShare).toBe(true);
+    expect(summaryCallFor(andel, "owner", PERIOD)?.input).toMatchObject({ visa_andel: true });
     expect(summaryCallFor(pageContextFromUrl(`/butiker/${STORE}`, ""), "owner", PERIOD)).toEqual({
       tool: "butiksandel",
       input: { butik: STORE },

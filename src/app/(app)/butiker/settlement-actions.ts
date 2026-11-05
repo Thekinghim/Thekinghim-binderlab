@@ -15,7 +15,7 @@ import {
   OPERATOR_ROLES,
   requireContextRole,
   requireViewer,
-  revalidateAppData,
+  revalidateSettlementData,
 } from "@/server/data/core";
 import { dbErrorMessage, safeErrorForLog } from "@/server/errors";
 import {
@@ -68,7 +68,7 @@ export async function markSettlementPaid(
       dateSchema.parse(paidOn),
       expectedOre === undefined || expectedOre === null ? null : amountSchema.parse(expectedOre),
     );
-    revalidateAppData();
+    await revalidateSettlementData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -80,7 +80,7 @@ export async function undoSettlementPaid(id: unknown): Promise<SettlementActionR
   try {
     const viewer = await operator();
     await undoSettlementPaidFor(viewer, idSchema.parse(id));
-    revalidateAppData();
+    await revalidateSettlementData();
     return { ok: true, data: undefined };
   } catch (error) {
     return failure(error);
@@ -94,7 +94,7 @@ export async function recomputeSettlement(
   try {
     const viewer = await operator();
     const data = await recomputeSettlementFor(viewer, idSchema.parse(id));
-    revalidateAppData();
+    await revalidateSettlementData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -108,7 +108,7 @@ export async function createMissingSettlements(): Promise<
   try {
     const viewer = await operator();
     const run = await ensureSettlementsFor(viewer);
-    revalidateAppData();
+    await revalidateSettlementData();
     return { ok: true, data: { created: run?.created ?? 0, errors: run?.errors.length ?? 0 } };
   } catch (error) {
     return failure(error);
