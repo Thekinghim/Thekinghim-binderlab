@@ -77,7 +77,7 @@ export interface ImportFixture {
 }
 
 export async function setupImportOrg(
-  options: { sourceTimezone?: string } = {},
+  options: { sourceTimezone?: string; provider?: "awish_csv" | "manual_csv" } = {},
 ): Promise<ImportFixture> {
   const owner = await createUser(`import-owner-${uniqueSuffix()}@test.binderlab.se`);
   const orgId = await createOrg(owner, `Import ${uniqueSuffix()}`);
@@ -86,7 +86,8 @@ export async function setupImportOrg(
     one<{ id: string }>(
       tx,
       sql`insert into public.data_sources (organization_id, provider, name, source_timezone)
-          values (${orgId}, 'awish_csv', 'Awish orderlista', ${options.sourceTimezone ?? "Asia/Shanghai"})
+          values (${orgId}, ${options.provider ?? "awish_csv"}::public.data_source_provider,
+                  'Awish orderlista', ${options.sourceTimezone ?? "Asia/Shanghai"})
           returning id`,
     ),
   );

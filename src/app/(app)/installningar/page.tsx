@@ -8,9 +8,11 @@ import { StateMessage } from "@/components/ui/state-message";
 import { EN_DASH, NBSP, formatDate, formatInt } from "@/lib/format";
 import { operatorGaps, operatorParty } from "@/server/contracts/operator";
 import { requireRoute } from "@/server/data/core";
+import { listDataExportsFor } from "@/server/export/service";
 import { requireUser } from "@/server/session";
 
 import { CompanyForm } from "./_components/company-form";
+import { ExportDataButton } from "./_components/export-data";
 import { MerHead } from "./_components/mer-head";
 import { OwnerSharesForm } from "./_components/owner-shares-form";
 import { SettingsForm } from "./_components/settings-form";
@@ -47,7 +49,15 @@ function SubLabel({ children }: { children: string }) {
 export default async function SettingsPage() {
   const ctx = await requireRoute("installningar");
   const user = await requireUser();
-  const data = await loadSettingsPageFor(user, ctx.organization.id);
+  const isOwnerRole = ctx.role === "owner";
+  const [data, exports] = await Promise.all([
+    loadSettingsPageFor(user, ctx.organization.id),
+    isOwnerRole
+      ? listDataExportsFor({ user, organization: { ...ctx.organization, role: ctx.role } }).catch(
+          () => [],
+        )
+      : Promise.resolve([]),
+  ]);
 
   const tz = ctx.timeZone;
   const today = ctx.today;
@@ -257,9 +267,36 @@ export default async function SettingsPage() {
         </MobileFold>
       </section>
 
+      <section
+        id="din-data"
+        aria-labelledby="din-data-rubrik"
+        className="rise flex scroll-mt-28 flex-col gap-4 max-md:gap-3"
+        style={{ "--i": 5 } as React.CSSProperties}
+      >
+        <SectionHeader
+          id="din-data-rubrik"
+          size="md"
+          title="Din data."
+          aside={
+            exports[0]
+              ? `Senast ${when(exports[0].createdAt)}${exports[0].createdBy ? ` · ${exports[0].createdBy}` : ""}.`
+              : "Allt i en ZIP-fil."
+          }
+        />
+        <p className="max-w-2xl text-sm text-muted">
+          Order, automater, butiker, titlar, priser, lager och avräkningar som CSV-filer. Öppnas i
+          Excel. Högst 3 gånger per timme.
+        </p>
+        {isOwnerRole ? (
+          <ExportDataButton />
+        ) : (
+          <StateMessage kind="denied" compact message="Bara ägaren kan exportera all data." />
+        )}
+      </section>
+
       <details
         className="rise rounded-md border border-line bg-surface p-4 md:p-5"
-        style={{ "--i": 5 } as React.CSSProperties}
+        style={{ "--i": 6 } as React.CSSProperties}
       >
         <summary className="cursor-pointer list-none">
           <SectionHeader
@@ -312,7 +349,7 @@ export default async function SettingsPage() {
 
       <details
         className="rise rounded-md border border-line bg-surface p-4 md:p-5"
-        style={{ "--i": 6 } as React.CSSProperties}
+        style={{ "--i": 7 } as React.CSSProperties}
       >
         <summary className="cursor-pointer list-none">
           <SectionHeader

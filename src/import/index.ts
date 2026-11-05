@@ -24,6 +24,13 @@ export {
   type AwishCsvInput,
 } from "./adapters/awish-csv";
 export {
+  manualCsvAdapter,
+  parseManualCsv,
+  MANUAL_CSV_PARSER_VERSION,
+  MANUAL_CSV_TEMPLATE,
+  type ManualCsvInput,
+} from "./adapters/manual-csv";
+export {
   awishGrpcAdapter,
   assertSecretRefInNamespace,
   mapAwishOrders,

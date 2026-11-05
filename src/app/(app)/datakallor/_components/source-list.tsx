@@ -13,7 +13,7 @@ import { useToast } from "@/components/ui/toast";
 import { formatInt } from "@/lib/format";
 
 import { createDataSource, updateDataSource } from "../actions";
-import { PROVIDER_LABELS, SOURCE_TIMEZONES } from "../_lib/constants";
+import { MANUAL_CSV_TEMPLATE, PROVIDER_LABELS, SOURCE_TIMEZONES } from "../_lib/constants";
 import { formatWhen } from "../_lib/display";
 import { isStale } from "../_lib/headline";
 import type { SourceView } from "../_lib/types";
@@ -68,7 +68,7 @@ export function SourceList({
         <StateMessage
           kind="not-configured"
           message="Ingen datakälla ännu."
-          detail="Lägg till Awish-orderlistan. Därefter laddar du upp CSV-filen här på sidan."
+          detail="Lägg till Awish-orderlistan, eller försäljning från en annan automat. Därefter laddar du upp CSV-filen här på sidan."
           action={
             <Button variant="primary" iconLeft="plus" onClick={() => openDialog(null)}>
               Lägg till datakälla
@@ -209,8 +209,16 @@ function SourceDialog({
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
+  const [kind, setKind] = useState<"awish_csv" | "manual_csv">("awish_csv");
   const [name, setName] = useState(source?.name ?? "Awish orderlista");
   const [zone, setZone] = useState(source?.sourceTimezone ?? "Asia/Shanghai");
+  const manual = source ? source.provider === "manual_csv" : kind === "manual_csv";
+  const chooseKind = (next: "awish_csv" | "manual_csv") => {
+    setKind(next);
+    // Standardnamn och tidszon följer typen (Awish skriver Shanghai-tid, andra oftast svensk).
+    setName(next === "manual_csv" ? "Försäljning, annan automat" : "Awish orderlista");
+    setZone(next === "manual_csv" ? "Europe/Stockholm" : "Asia/Shanghai");
+  };
   const [error, setError] = useState<string | null>(null);
   const zoneChanged = source !== null && zone !== source.sourceTimezone;
 
@@ -219,7 +227,7 @@ function SourceDialog({
       setError(null);
       const result = source
         ? await updateDataSource({ id: source.id, name, sourceTimezone: zone })
-        : await createDataSource({ name, sourceTimezone: zone });
+        : await createDataSource({ name, sourceTimezone: zone, provider: kind });
       if (!result.ok) {
         setError(result.error);
         return;
@@ -230,7 +238,9 @@ function SourceDialog({
           ? zoneChanged
             ? `Källans tid är nu ${zone}. Gäller nästa import; redan importerade order ändras inte.`
             : undefined
-          : "Ladda upp orderlistan från Awish nedan.",
+          : manual
+            ? "Ladda upp försäljningen som CSV nedan."
+            : "Ladda upp orderlistan från Awish nedan.",
         tone: "ok",
       });
       onClose();
@@ -242,11 +252,17 @@ function SourceDialog({
       open={open}
       onClose={onClose}
       eyebrow={source ? "Datakälla" : "Ny datakälla"}
-      title={source ? source.name : "Lägg till Awish-orderlistan"}
+      title={
+        source ? source.name : manual ? "Lägg till annan automat" : "Lägg till Awish-orderlistan"
+      }
       description={
         source
-          ? "Namn och tidszonen som Awish skriver tiderna i."
-          : "En CSV-källa för orderlistan som exporteras från Awish."
+          ? manual
+            ? "Namn och tidszonen som filens tider står i."
+            : "Namn och tidszonen som Awish skriver tiderna i."
+          : manual
+            ? "Försäljning från en automat som inte är Awish, uppladdad som CSV."
+            : "En CSV-källa för orderlistan som exporteras från Awish."
       }
       footer={
         <>
@@ -264,6 +280,29 @@ function SourceDialog({
           submit();
         }}
       >
+        {source ? null : (
+          <Select
+            label="Automater"
+            value={kind}
+            options={[
+              { value: "awish_csv", label: "Awish (orderlista)" },
+              { value: "manual_csv", label: "Annat märke (CSV)" },
+            ]}
+            onChange={(e) => chooseKind(e.target.value as "awish_csv" | "manual_csv")}
+          />
+        )}
+        {manual ? (
+          <p className="text-sm text-muted">
+            En rad per försäljning: Datum, Automat, Produkt, Belopp. Tid och Antal är valfria.{" "}
+            <a
+              className="text-fg underline underline-offset-4"
+              href={`data:text/csv;charset=utf-8,${encodeURIComponent(`\ufeff${MANUAL_CSV_TEMPLATE}`)}`}
+              download="binderlab-forsaljning-mall.csv"
+            >
+              Ladda ner mall
+            </a>
+          </p>
+        ) : null}
         <Input
           label="Namn"
           value={name}
@@ -276,7 +315,11 @@ function SourceDialog({
           value={zone}
           options={timezoneOptions(source?.sourceTimezone)}
           onChange={(e) => setZone(e.target.value)}
-          hint="Awish visar Payment Time i Shanghai-tid tills det kontrollerats. Förhandsvisningen visar första orderns tid i svensk tid så att du kan jämföra."
+          hint={
+            manual
+              ? "Tidszonen som tiderna i filen står i. Förhandsvisningen visar första raden i svensk tid."
+              : "Awish visar Payment Time i Shanghai-tid tills det kontrollerats. Förhandsvisningen visar första orderns tid i svensk tid så att du kan jämföra."
+          }
         />
         {zoneChanged ? (
           <p className="text-sm text-muted">

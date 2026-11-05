@@ -141,19 +141,20 @@ docs/               Dokumentationen (nedan)
 
 ## Dokumentation
 
-| Fil                                                                                                                      | Innehåll                                                               |
-| ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| [docs/product.md](docs/product.md)                                                                                       | Vad Binderlab löser, för vem, siffror ur panelen och hur effekten mäts |
-| [docs/architecture.md](docs/architecture.md)                                                                             | Lager, adaptrar, jobb, dataflöden, säkerhetsmodell, tider och pengar   |
-| [docs/decisions.md](docs/decisions.md)                                                                                   | Tekniska beslut (ADR) och varför                                       |
-| [docs/datamodell.md](docs/datamodell.md)                                                                                 | Tabeller, roller, RLS och alla funktioner, per område                  |
-| [docs/berakningar.md](docs/berakningar.md)                                                                               | Hur varje siffra räknas, med exempel som också är tester               |
-| [docs/miljoer.md](docs/miljoer.md)                                                                                       | Miljöer, variabler, inloggning, adaptrar och beställarens steg         |
-| [docs/operations.md](docs/operations.md)                                                                                 | Drift, övervakning, säkerhetskopior, återställning, incidenter, e2e    |
-| [docs/design.md](docs/design.md)                                                                                         | Designsystemet: tokens, komponenter, regler                            |
-| [docs/demo.md](docs/demo.md)                                                                                             | Demoorganisationen                                                     |
-| [docs/awish-api.md](docs/awish-api.md), [docs/awish.md](docs/awish.md), [docs/marknadskallor.md](docs/marknadskallor.md) | Awish API och CSV-importen; underlag för val av marknadspriskälla      |
-| [docs/bygglogg.md](docs/bygglogg.md)                                                                                     | Byggets logg och läge per fas                                          |
+| Fil                                                                                                                      | Innehåll                                                                                                        |
+| ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| [docs/product.md](docs/product.md)                                                                                       | Vad Binderlab löser, för vem, siffror ur panelen och hur effekten mäts                                          |
+| [docs/architecture.md](docs/architecture.md)                                                                             | Lager, adaptrar, jobb, dataflöden, säkerhetsmodell, tider och pengar                                            |
+| [docs/decisions.md](docs/decisions.md)                                                                                   | Tekniska beslut (ADR) och varför                                                                                |
+| [docs/datamodell.md](docs/datamodell.md)                                                                                 | Tabeller, roller, RLS och alla funktioner, per område                                                           |
+| [docs/berakningar.md](docs/berakningar.md)                                                                               | Hur varje siffra räknas, med exempel som också är tester                                                        |
+| [docs/miljoer.md](docs/miljoer.md)                                                                                       | Miljöer, variabler, inloggning, adaptrar och beställarens steg                                                  |
+| [docs/operations.md](docs/operations.md)                                                                                 | Drift, övervakning, säkerhetskopior, återställning, incidenter, e2e                                             |
+| [docs/design.md](docs/design.md)                                                                                         | Designsystemet: tokens, komponenter, regler                                                                     |
+| [docs/demo.md](docs/demo.md)                                                                                             | Demoorganisationen                                                                                              |
+| [docs/awish-api.md](docs/awish-api.md), [docs/awish.md](docs/awish.md), [docs/marknadskallor.md](docs/marknadskallor.md) | Awish API och CSV-importen; underlag för val av marknadspriskälla                                               |
+| [docs/bygglogg.md](docs/bygglogg.md)                                                                                     | Byggets logg och läge per fas                                                                                   |
+| [docs/granskning/](docs/granskning/README.md)                                                                            | Granskning inför köp: översikt, arkitektur, säkerhet, data, integrationer, kvalitet, drift, ägande och licenser |
 
 ## Läge och kvarstående
 

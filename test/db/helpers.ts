@@ -1106,6 +1106,8 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       sql`insert into public.automation_log (organization_id, kind, machine_id, units)
           values (${orgId}, 'awish_push', ${machine!.id}, 3)`,
     );
+    // Logg över "Exportera all data" (20261111020100_granskning_dataexport.sql).
+    await tx.execute(sql`insert into public.data_exports (organization_id) values (${orgId})`);
     await tx.execute(sql`set local role authenticated`);
 
     return {

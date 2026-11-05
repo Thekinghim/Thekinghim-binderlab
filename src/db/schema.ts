@@ -55,6 +55,8 @@ export const dataSourceProvider = pgEnum("data_source_provider", [
   "awish_csv",
   // Awish Chrome-tillägget (20261102235500_tillagg_enums.sql).
   "awish_extension",
+  // Annan automatplattform, försäljning som CSV (20261111020000_plattform_manuell_csv.sql).
+  "manual_csv",
 ]);
 export const dataSourceStatus = pgEnum("data_source_status", ["active", "paused", "error"]);
 export const importTrigger = pgEnum("import_trigger", [
@@ -812,3 +814,6 @@ export * from "./schema/brief";
 export * from "./schema/tillvaxt";
 // Värde: logg över automatiskt arbete (Awish-push).
 export * from "./schema/varde";
+
+// Granskning och oberoende: logg över "Exportera all data".
+export * from "./schema/granskning";

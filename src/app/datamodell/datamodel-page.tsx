@@ -50,6 +50,11 @@ const sources: Array<[string, string, string]> = [
     "Uppladdning på Datakällor: förhandsvisning, kolumnmappning, dubblettkontroll, logg.",
   ],
   ["awish_web", "Reserv", "Serverhämtning av orderlistan. Bara om gRPC dröjer."],
+  [
+    "manual_csv",
+    "Nu",
+    "Annan automatplattform: försäljningen laddas upp som CSV (Datum, Automat, Produkt, Belopp).",
+  ],
 ];
 
 function Rows({ rows, cols }: { rows: ReactNode[][]; cols: string }) {

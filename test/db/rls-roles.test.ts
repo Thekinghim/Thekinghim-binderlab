@@ -78,6 +78,8 @@ const VIEWER_OWN_ROWS_ONLY = [
   "assistant_logs",
   // Värde: loggen över automatiskt arbete syns bara för ägare och admin.
   "automation_log",
+  // Exportera all data: loggen syns bara för ägaren.
+  "data_exports",
   // Gratis-pack: koderna (värda ett pack var) syns bara för ägare och admin.
   "free_pack_codes",
   "import_upload_chunks",

@@ -189,6 +189,7 @@ describe("proxyn", () => {
     "/api/cron",
     "/api/other",
     "/order/export",
+    "/installningar/export",
     "/ekonomi/bokforing/paket",
     "/portal",
     "/assistent/fraga",
