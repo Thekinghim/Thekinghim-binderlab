@@ -15,6 +15,7 @@ import { MobileMore } from "../../_mobil/mobile-more";
 
 import {
   previewAwishPush,
+  pushAwishNow,
   saveAwishCredentials,
   saveAwishWebCredentials,
   setAwishWebPush,
@@ -73,11 +74,20 @@ export function AwishCard({
   const toast = useToast();
   const [pending, start] = useTransition();
   const [busy, setBusy] = useState<
-    "save" | "test" | "sync" | "web-save" | "web-test" | "web-toggle" | "web-preview" | null
+    | "save"
+    | "test"
+    | "sync"
+    | "web-save"
+    | "web-test"
+    | "web-toggle"
+    | "web-preview"
+    | "web-push"
+    | null
   >(null);
   const [preview, setPreview] = useState<{
     message: string;
     lines: string[];
+    changes: number;
   } | null>(null);
   // Mobil: förklaringen, Testa inloggningen, Provkör och Ändra inloggning bakom "Mer".
   const [pushMore, setPushMore] = useState(false);
@@ -93,7 +103,15 @@ export function AwishCard({
   const line = statusLine(source, timeZone, new Date(now));
 
   const run = (
-    kind: "save" | "test" | "sync" | "web-save" | "web-test" | "web-toggle" | "web-preview",
+    kind:
+      | "save"
+      | "test"
+      | "sync"
+      | "web-save"
+      | "web-test"
+      | "web-toggle"
+      | "web-preview"
+      | "web-push",
     fn: () => Promise<void>,
   ) => {
     setBusy(kind);
@@ -132,7 +150,7 @@ export function AwishCard({
     run("web-preview", async () => {
       const r = await previewAwishPush();
       if (!r.ok) {
-        setPreview({ message: r.error, lines: [] });
+        setPreview({ message: r.error, lines: [], changes: 0 });
         return;
       }
       const lines: string[] = [];
@@ -149,7 +167,23 @@ export function AwishCard({
           lines.push(`${name}: inget fack i Awish för ${m.titlesWithoutSlot.join(", ")}`);
         }
       }
-      setPreview({ message: r.data.message, lines });
+      setPreview({
+        message: r.data.message,
+        lines,
+        changes: r.data.machines.reduce((n, m) => n + m.planned.length, 0),
+      });
+    });
+
+  const pushNow = () =>
+    run("web-push", async () => {
+      const r = await pushAwishNow();
+      if (!r.ok) {
+        toast({ title: "Inte skickat", description: r.error, tone: "critical" });
+        return;
+      }
+      toast({ title: r.data.message, tone: "ok" });
+      setPreview(null);
+      router.refresh();
     });
 
   const togglePush = (next: boolean) =>
@@ -363,6 +397,19 @@ export function AwishCard({
           {preview ? (
             <div role="status" className="flex flex-col gap-1 text-sm">
               <p className="text-muted">{preview.message}</p>
+              {preview.changes > 0 && web.enabled ? (
+                <div>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    loading={busy === "web-push"}
+                    disabled={pending}
+                    onClick={pushNow}
+                  >
+                    Skicka till Awish nu
+                  </Button>
+                </div>
+              ) : null}
               {preview.lines.length > 0 ? (
                 <ul className="flex flex-col gap-0.5 text-xs text-subtle">
                   {preview.lines.map((l, i) => (

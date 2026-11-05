@@ -433,3 +433,39 @@ export async function previewAwishPushFor(
     machines,
   };
 }
+
+/**
+ * Skicka till Awish nu: samma push som efter en påfyllning, för alla kopplade automater.
+ * Höjer bara fack som har färre pack i Awish än i Binderlab. Kräver att push är på.
+ */
+export async function pushAwishNowFor(
+  viewer: Viewer,
+  deps: ManageDeps = {},
+): Promise<{ ok: boolean; message: string }> {
+  await operatorSource(viewer);
+  const orgId = viewer.organization.id;
+  const pushDeps = {
+    serviceDb: deps.serviceDb,
+    makeClient: deps.makeWebClient,
+    clientOptions: deps.webClientOptions,
+  };
+  const ids = await linkedAwishMachineIds(orgId, pushDeps);
+  if (ids.length === 0) return { ok: false, message: "Ingen automat är kopplad till Awish." };
+  const r = await pushMachinesToAwish(orgId, ids, pushDeps);
+  if (r.status === "off") {
+    return {
+      ok: false,
+      message:
+        r.reason === "disabled"
+          ? "Slå på Skicka påfyllningar till Awish först."
+          : "Ingen Awish-inloggning sparad.",
+    };
+  }
+  const failed = r.machines.find((m) => m.status === "error");
+  if (failed) return { ok: false, message: failed.error ?? "Kunde inte skicka till Awish." };
+  const slots = r.machines.reduce((n, m) => n + m.slotsUpdated, 0);
+  return {
+    ok: true,
+    message: slots === 0 ? "Awish hade redan rätt antal." : `Skickat till Awish (${slots} fack).`,
+  };
+}

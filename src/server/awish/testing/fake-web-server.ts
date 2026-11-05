@@ -93,7 +93,7 @@ export async function startFakeAwishWeb(initial: Partial<FakeWebState> = {}): Pr
         });
         return;
       }
-      let payload: { operationName?: string; variables?: Record<string, unknown> };
+      let payload: { operationName?: string; query?: string; variables?: Record<string, unknown> };
       try {
         payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
       } catch {
@@ -205,6 +205,19 @@ export async function startFakeAwishWeb(initial: Partial<FakeWebState> = {}): Pr
       }
 
       if (op === "UpdateProduct") {
+        // Som riktiga Awish: updateProduct ger ett skalärt värde, så ett urval ({ … }) nekas.
+        const q = String((payload as { query?: unknown }).query ?? "");
+        if (/updateProduct\s*\([^)]*\)\s*\{/.test(q)) {
+          send(res, 200, {
+            errors: [
+              {
+                message:
+                  'Field "updateProduct" must not have a selection since type "Boolean" has no subfields.',
+              },
+            ],
+          });
+          return;
+        }
         const id = Number(variables.id);
         const input = (variables.input ?? {}) as {
           good_id?: number | null;
@@ -227,7 +240,7 @@ export async function startFakeAwishWeb(initial: Partial<FakeWebState> = {}): Pr
           found.currentInventory = input.current_inventory;
         if (typeof input.status === "boolean") found.status = input.status;
         if (input.good_id !== undefined) found.goodId = input.good_id;
-        send(res, 200, { data: { updateProduct: { id } } });
+        send(res, 200, { data: { updateProduct: true } });
         return;
       }
 

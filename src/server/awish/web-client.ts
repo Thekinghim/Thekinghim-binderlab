@@ -188,7 +188,7 @@ export function createAwishWebClient(options: AwishWebClientOptions = {}): Awish
   const SIGNIN = `mutation Signin($input: String!) { signin(input: $input) { access_token refresh_token expires_in } }`;
   const MACHINES = `query MachinesLite { machinesLite { id machine_no name } }`;
   const PRODUCTS = `query Products($input: String!) { products(input: $input) { id good_id status current_inventory good { id name } channel { name total } } }`;
-  const UPDATE_PRODUCT = `mutation UpdateProduct($id: Int!, $input: ProductInput!) { updateProduct(id: $id, input: $input) { id } }`;
+  const UPDATE_PRODUCT = `mutation UpdateProduct($id: Int!, $input: ProductInput!) { updateProduct(id: $id, input: $input) }`;
 
   function tokensFrom(raw: unknown): AwishWebTokens {
     const r = (raw ?? {}) as { access_token?: string; refresh_token?: string; expires_in?: number };

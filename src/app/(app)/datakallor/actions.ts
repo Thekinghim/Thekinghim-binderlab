@@ -26,6 +26,7 @@ import {
   testAwishConnectionFor,
   testAwishWebLoginFor,
   previewAwishPushFor,
+  pushAwishNowFor,
   type AwishPushPreview,
   type AwishWebLoginTest,
 } from "@/server/awish/manage";
@@ -299,6 +300,18 @@ export async function previewAwishPush(): Promise<ActionResult<AwishPushPreview>
   try {
     const viewer = await operator();
     return { ok: true, data: await previewAwishPushFor(viewer) };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** Skicka till Awish nu: höjer facken i Awish till Binderlabs antal. */
+export async function pushAwishNow(): Promise<ActionResult<{ message: string }>> {
+  try {
+    const viewer = await operator();
+    const r = await pushAwishNowFor(viewer);
+    if (!r.ok) return { ok: false, error: r.message };
+    return { ok: true, data: { message: r.message } };
   } catch (error) {
     return failure(error);
   }

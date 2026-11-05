@@ -370,6 +370,12 @@ export const ACTIONS: ActionSpec[] = [
   },
   {
     module: "@/app/(app)/datakallor/actions",
+    name: "pushAwishNow",
+    allowed: OP,
+    args: (c) => [sink(c)],
+  },
+  {
+    module: "@/app/(app)/datakallor/actions",
     name: "setAwishWebPush",
     allowed: OP,
     args: () => [false],
