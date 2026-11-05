@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { fitInSquare, SQUARE_SIDE } from "../_lib/square";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -39,8 +40,6 @@ type Preview = {
   confirm: string | null;
 };
 
-/** Största bild som skickas oförändrad; större bilder krymps i webbläsaren först. */
-const SHRINK_OVER = 1.5 * 1024 * 1024;
 const MAX_IMAGE = 4 * 1024 * 1024;
 
 function kr(ore: number | null): string {
@@ -50,21 +49,26 @@ function kr(ore: number | null): string {
   return rest === 0 ? `${whole} kr` : `${whole},${String(rest).padStart(2, "0")} kr`;
 }
 
-/** Krymper en stor bild till högst 1600 px (jpg) så att uppladdningen går fort i mobilen. */
-async function shrinkImage(file: File): Promise<File> {
-  if (file.size <= SHRINK_OVER || typeof createImageBitmap !== "function") return file;
+/**
+ * Lägger bilden mitt i en kvadrat (600×600, genomskinlig kant) som png. Awish gör alltid om
+ * bilden till en kvadrat, så en avlång bild blev utdragen; nu behåller den sina proportioner.
+ */
+async function squareImage(file: File): Promise<File> {
+  if (typeof createImageBitmap !== "function") return file;
   try {
     const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    const box = fitInSquare(bitmap.width, bitmap.height);
     const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", 0.85),
-    );
+    canvas.width = SQUARE_SIDE;
+    canvas.height = SQUARE_SIDE;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bitmap, box.x, box.y, box.w, box.h);
+    bitmap.close?.();
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
     if (!blob) return file;
-    return new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" });
+    return new File([blob], file.name.replace(/\.\w+$/, "") + ".png", { type: "image/png" });
   } catch {
     return file;
   }
@@ -136,6 +140,13 @@ function NewProductForm({
   const [purchasePrice, setPurchasePrice] = useState("");
   const [ownProduct, setOwnProduct] = useState(false);
   const [image, setImage] = useState<File | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  useEffect(
+    () => () => {
+      if (imageUrl) URL.revokeObjectURL(imageUrl);
+    },
+    [imageUrl],
+  );
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -203,6 +214,7 @@ function NewProductForm({
       setPurchasePrice("");
       setOwnProduct(false);
       setImage(null);
+      setImageUrl(null);
       if (fileRef.current) fileRef.current.value = "";
       router.refresh();
     });
@@ -261,21 +273,36 @@ function NewProductForm({
           name="image"
           type="file"
           accept="image/jpeg,image/png,image/webp"
-          hint="jpg, png eller webp. Awish visar den på automaten."
+          hint="jpg, png eller webp. Läggs i en kvadrat så den inte sträcks ut."
           className="h-auto py-1.5 text-sm"
           wrapperClassName="md:col-span-2"
           onChange={async (e) => {
             const file = e.target.files?.[0] ?? null;
-            const small = file ? await shrinkImage(file) : null;
+            const small = file ? await squareImage(file) : null;
             if (small && small.size > MAX_IMAGE) {
               edit(setImage)(null);
+              setImageUrl(null);
               setError("Bilden är för stor (högst 4 MB).");
               e.target.value = "";
               return;
             }
             edit(setImage)(small);
+            setImageUrl(small ? URL.createObjectURL(small) : null);
           }}
         />
+        {imageUrl ? (
+          <div className="flex items-center gap-3 md:col-span-2">
+            {/* eslint-disable-next-line @next/next/no-img-element -- lokal förhandsvisning (blob:) */}
+            <img
+              src={imageUrl}
+              alt="Bilden som skickas till Awish"
+              width={96}
+              height={96}
+              className="size-24 rounded-sm border border-line bg-[repeating-conic-gradient(var(--color-line)_0_25%,transparent_0_50%)] bg-[length:12px_12px] object-contain"
+            />
+            <p className="text-sm text-subtle">Så här ser bilden ut i Awish.</p>
+          </div>
+        ) : null}
         <div className="flex flex-wrap gap-2 md:col-span-2">
           <Button
             type="submit"
