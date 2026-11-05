@@ -60,7 +60,7 @@ interface WebSource {
 
 type WebCredentials = AwishWebLogin;
 
-async function loadWebSource(db: Db, organizationId: string): Promise<WebSource | null> {
+export async function loadWebSource(db: Db, organizationId: string): Promise<WebSource | null> {
   const rows = Array.from(
     await db.execute(sql`
       select ds.id, ds.organization_id,
@@ -74,7 +74,10 @@ async function loadWebSource(db: Db, organizationId: string): Promise<WebSource 
   return rows[0] ?? null;
 }
 
-async function readWebCredentials(db: Db, dataSourceId: string): Promise<WebCredentials | null> {
+export async function readWebCredentials(
+  db: Db,
+  dataSourceId: string,
+): Promise<WebCredentials | null> {
   const rows = Array.from(
     await db.execute(
       sql`select private.awish_read_web_credentials(${dataSourceId}::uuid) as creds`,
@@ -86,7 +89,7 @@ async function readWebCredentials(db: Db, dataSourceId: string): Promise<WebCred
 }
 
 /** Awishs maskin-id (source_machines.external_id) för en Binderlab-automat. */
-async function awishMachineId(
+export async function awishMachineId(
   db: Db,
   organizationId: string,
   dataSourceId: string,

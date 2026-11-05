@@ -13,7 +13,7 @@ import {
   ECONOMY_ROLES,
   OPERATOR_ROLES,
   requireContextRole,
-  revalidateAppData,
+  revalidateSettlementData,
 } from "@/server/data/core";
 import { AuthorizationError } from "@/server/session";
 
@@ -107,7 +107,7 @@ export async function setTestPurchase(
   }
   try {
     const data = await setTestPurchaseFor(await currentViewer(), orderId, test);
-    revalidateAppData();
+    await revalidateSettlementData();
     return { ok: true, data };
   } catch (error) {
     if (error instanceof AuthorizationError) {

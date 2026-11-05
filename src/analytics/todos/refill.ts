@@ -20,6 +20,11 @@
  *
  * Larmgräns (`input.slotAlerts`, tabellen slot_alerts): saldo högst gränsen ger också en
  * punkt, med eller utan försäljning. Texten börjar då med "Saldo 3, larmgräns 4."
+ *
+ * Fullt fack (`StockLevelRef.capacity` känd och saldo ≥ kapacitet, isFullSlot): ingen punkt
+ * alls, inte heller för larmgränsen. Det går inte att fylla på, som på Fyll på (där
+ * raden i stället säger "Fullt · räcker ~2 d" och "Säljer fort – ge den ett fack till").
+ * Så fort ett pack säljs är facket inte fullt längre och regeln ovan gäller igen.
  */
 
 import {
@@ -72,6 +77,44 @@ export function refillFingerprint(
  */
 export const VISIT_BUFFER_DAYS = 1;
 
+/**
+ * Fullt fack: kapaciteten är känd (> 0) och automaten har minst så många pack. Samma regel
+ * som Fyll på (src/app/fyll-pa/_lib/model.ts isFull), Att göra, Hem, Lager och Drift.
+ */
+export function isFullSlot(onHand: number, capacity: number | null | undefined): boolean {
+  return (
+    capacity !== null &&
+    capacity !== undefined &&
+    Number.isFinite(capacity) &&
+    capacity > 0 &&
+    Math.max(0, onHand) >= capacity
+  );
+}
+
+/**
+ * Lägger fackens kapacitet (summerad per automat och titel) på lagerraderna. Rader utan
+ * kapacitet får `capacity: null`.
+ */
+export function withCapacities<T extends StockLevelRef>(
+  stock: readonly T[],
+  capacities: readonly {
+    readonly machineId: string;
+    readonly titleId: string;
+    readonly capacity: number;
+  }[],
+): T[] {
+  const sum = new Map<string, number>();
+  for (const c of capacities) {
+    if (!Number.isSafeInteger(c.capacity) || c.capacity <= 0) continue;
+    const k = assortmentKey(c.machineId, c.titleId);
+    sum.set(k, (sum.get(k) ?? 0) + c.capacity);
+  }
+  return stock.map((s) => ({
+    ...s,
+    capacity: sum.get(assortmentKey(s.machineId, s.titleId)) ?? null,
+  }));
+}
+
 /** Val för påfyllningsregeln. */
 export interface RefillOptions {
   /**
@@ -119,6 +162,8 @@ export function refillTodos(ctx: TodoContext, opts: RefillOptions = {}): TodoIte
       ...(machine.activeFrom !== null ? { activeFrom: machine.activeFrom } : {}),
     });
     const onHand = Math.max(0, s.onHand);
+    // Fullt fack: inget att fylla på (Fyll på visar "Fullt · räcker ~N d").
+    if (isFullSlot(onHand, s.capacity)) continue;
     const alertAt = alerts.get(assortmentKey(s.machineId, s.titleId));
     const underAlert = alertAt !== undefined && onHand <= alertAt;
     const byRate =
@@ -314,6 +359,7 @@ export function withSlotAlerts(
     const alertAt = alerts.get(pair);
     const onHand = Math.max(0, s.onHand);
     if (alertAt === undefined || onHand > alertAt) continue;
+    if (isFullSlot(onHand, s.capacity)) continue;
     const machine = machines.get(s.machineId);
     if (!machine || !isMachineActive(machine, args.today)) continue;
     if (retired.has(pair)) continue;

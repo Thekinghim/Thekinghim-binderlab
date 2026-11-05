@@ -174,8 +174,23 @@ describe("machineHealth: leverantörens maskindata", () => {
     expect(h?.source).toBe("vendor");
     expect(h?.since).toBe(localIso("2026-11-02", "15:00"));
     expect(txt(h?.detail)).toContain(
-      "Leverantören rapporterade att automaten tappade anslutningen mån 2 nov. 15:00 (för 3 timmar sedan)",
+      "Awish säger att automaten är offline sedan mån 2 nov. 15:00 (3 timmar)",
     );
+    expect(txt(h?.title)).toMatch(/är offline sedan 15:00$/);
+  });
+
+  it("offline från Awish: kort rubrik med klockslaget, dag och tid en annan dag", () => {
+    const today = [
+      signal({ kind: "offline", at: localIso("2026-11-02", "14:10"), source: "awish_grpc" }),
+    ];
+    const [h] = health({ orders: orders(), signals: today }, MON_1830);
+    expect(txt(h?.title)).toMatch(/är offline sedan 14:10$/);
+    expect(txt(h?.detail)).toContain("Awish säger att automaten är offline sedan mån 2 nov. 14:10");
+    const yesterday = [
+      signal({ kind: "offline", at: localIso("2026-11-01", "22:05"), source: "awish_grpc" }),
+    ];
+    const [y] = health({ orders: orders(), signals: yesterday }, MON_1830);
+    expect(txt(y?.title)).toMatch(/är offline sedan sön 1 nov\. 22:05$/);
   });
 
   it("online efter offline är i drift", () => {

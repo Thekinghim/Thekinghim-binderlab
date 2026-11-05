@@ -7,6 +7,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { purchaseQtyByTitle } from "@/analytics/purchasing";
 import * as s from "@/db/schema";
 import { addDays } from "@/domain";
 import { AuthorizationError, listOrganizationsFor } from "@/server/access";
@@ -18,6 +19,7 @@ import {
   createSupplierFor,
   deleteSupplierItemFor,
   loadPrognosFor,
+  loadPurchasePlanFor,
   lostSalesSummaryFor,
   markPurchaseOrderOrderedFor,
   PurchasingError,
@@ -255,6 +257,25 @@ describe("loadPrognosFor", () => {
     expect(line.orderQty % 36).toBe(0);
     expect(data.plan.orders[0]?.supplierId).toBe(supplierId);
     expect(data.valuation.titles.find((t) => t.titleId === fx.titleId)?.unitCostOre).toBe(4_500);
+  });
+
+  it("Vårt lager får samma inköpsplan och antal som Inköp, oavsett periodval", async () => {
+    const page = await loadPrognosFor(owner, { period: MAY }, NOW);
+    const long = await loadPrognosFor(
+      owner,
+      { period: { start: "2024-06-01", end: "2025-05-31" } },
+      NOW,
+    );
+    const plan = await loadPurchasePlanFor(owner, NOW);
+    const qty = purchaseQtyByTitle(plan);
+    expect(qty.get(fx.titleId)).toBeGreaterThan(0);
+    expect([...qty]).toEqual([...purchaseQtyByTitle(page.plan)]);
+    expect([...qty]).toEqual([...purchaseQtyByTitle(long.plan)]);
+    expect(plan.lines).toEqual(page.plan.lines);
+    // Läsaren ser samma; påfyllaren får inte planen.
+    const asReader = await loadPurchasePlanFor(reader, NOW);
+    expect([...purchaseQtyByTitle(asReader)]).toEqual([...qty]);
+    await expect(loadPurchasePlanFor(refiller, NOW)).rejects.toBeInstanceOf(AuthorizationError);
   });
 
   it("låter läsaren se men inte ändra, och stoppar påfyllaren", async () => {

@@ -32,6 +32,17 @@ const ECON: PersonaName[] = ["owner", "admin", "viewer"];
 const NOW = new Date().toISOString();
 const TODAY = NOW.slice(0, 10);
 
+/** Formuläret "Ny produkt" (FormData med JSON och ev. fingeravtryck). */
+function newProductForm(fingerprint?: string): FormData {
+  const form = new FormData();
+  form.set(
+    "input",
+    JSON.stringify({ name: "Rödteam", salePrice: "79", purchasePrice: "30", ownProduct: false }),
+  );
+  if (fingerprint) form.set("fingerprint", fingerprint);
+  return form;
+}
+
 /** Ett objekt med alla fält som någon action läser, med A:s id:n. */
 export function sink(c: Cast, extra: Record<string, unknown> = {}): Record<string, unknown> {
   const a = c.idsA;
@@ -379,6 +390,49 @@ export const ACTIONS: ActionSpec[] = [
     name: "setAwishWebPush",
     allowed: OP,
     args: () => [false],
+  },
+  // Inköpspriser → Ny produkt: skapar varor och byter vara i fack i Awish (ägare och admin).
+  {
+    module: "@/app/(app)/inkopspriser/ny-produkt/actions",
+    name: "previewNewProduct",
+    allowed: OP,
+    readOnly: true,
+    args: () => [newProductForm()],
+  },
+  {
+    module: "@/app/(app)/inkopspriser/ny-produkt/actions",
+    name: "createNewProduct",
+    allowed: OP,
+    args: () => [newProductForm("0123456789abcdef0123456789abcdef")],
+  },
+  {
+    module: "@/app/(app)/inkopspriser/ny-produkt/actions",
+    name: "loadSlotChoices",
+    allowed: OP,
+    readOnly: true,
+    args: (c) => [c.A.machineId],
+  },
+  {
+    module: "@/app/(app)/inkopspriser/ny-produkt/actions",
+    name: "previewSlotChange",
+    allowed: OP,
+    readOnly: true,
+    args: (c) => [{ machineId: c.A.machineId, productId: 1, goodId: 1, count: 1 }],
+  },
+  {
+    module: "@/app/(app)/inkopspriser/ny-produkt/actions",
+    name: "applySlotChange",
+    allowed: OP,
+    args: (c) => [
+      {
+        machineId: c.A.machineId,
+        productId: 1,
+        goodId: 1,
+        count: 1,
+        fingerprint: "0123456789abcdef0123456789abcdef",
+        confirmed: true,
+      },
+    ],
   },
   // Drift
   {

@@ -34,7 +34,7 @@ import type { AwishConnectionTest } from "@/server/awish/sync";
 import { DEMO_MESSAGES, isDemoFor } from "@/server/demo/guard";
 import { dbErrorMessage, safeErrorForLog } from "@/server/errors";
 import { AuthorizationError } from "@/server/access";
-import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/data/core";
+import { OPERATOR_ROLES, requireContextRole, revalidateSettlementData } from "@/server/data/core";
 
 import {
   chunkMetaSchema,
@@ -106,7 +106,7 @@ export async function createDataSource(raw: unknown): Promise<ActionResult<{ id:
     const viewer = await operator();
     const input = createSourceSchema.parse(raw);
     const id = await createDataSourceFor(viewer, input);
-    revalidateAppData();
+    await revalidateSettlementData();
     return { ok: true, data: { id } };
   } catch (error) {
     return failure(error);
@@ -118,7 +118,7 @@ export async function updateDataSource(raw: unknown): Promise<ActionResult> {
     const viewer = await operator();
     const input = updateSourceSchema.parse(raw);
     await updateDataSourceFor(viewer, input);
-    revalidateAppData();
+    await revalidateSettlementData();
     return { ok: true, data: undefined };
   } catch (error) {
     return failure(error);
@@ -132,7 +132,7 @@ export async function mapSourceMachine(
     const viewer = await operator();
     const input = mapMachineSchema.parse(raw);
     const data = await mapSourceMachineFor(viewer, input);
-    revalidateAppData();
+    await revalidateSettlementData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -199,7 +199,7 @@ export async function commitUpload(raw: unknown): Promise<ActionResult<PreviewRe
         saveMapping: input.saveMapping,
       },
     );
-    revalidateAppData();
+    await revalidateSettlementData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);
@@ -227,7 +227,7 @@ export async function saveAwishCredentials(raw: unknown): Promise<ActionResult> 
     const viewer = await awishOperator();
     const input = saveCredentialsSchema.parse(raw);
     await saveAwishCredentialsFor(viewer, input);
-    revalidateAppData();
+    await revalidateSettlementData();
     return { ok: true, data: undefined };
   } catch (error) {
     return failure(error);
@@ -251,7 +251,7 @@ export async function syncAwishNow(): Promise<
   try {
     const viewer = await awishOperator();
     const r = await syncAwishNowFor(viewer);
-    revalidateAppData();
+    await revalidateSettlementData();
     if (!r.ok) return { ok: false, error: r.message ?? "Synken misslyckades." };
     return {
       ok: true,
@@ -277,7 +277,7 @@ export async function saveAwishWebCredentials(raw: unknown): Promise<ActionResul
     const viewer = await awishOperator();
     const input = saveWebCredentialsSchema.parse(raw);
     await saveAwishWebCredentialsFor(viewer, input);
-    revalidateAppData();
+    await revalidateSettlementData();
     return { ok: true, data: undefined };
   } catch (error) {
     return failure(error);
@@ -301,7 +301,7 @@ export async function setAwishWebPush(
   try {
     const viewer = await awishOperator();
     const r = await setAwishWebPushFor(viewer, enabled === true);
-    revalidateAppData();
+    await revalidateSettlementData();
     return { ok: true, data: r };
   } catch (error) {
     return failure(error);

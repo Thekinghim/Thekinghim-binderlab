@@ -60,6 +60,12 @@ export interface StockLevelRef {
    * fyller på eller saldot ändras.
    */
   readonly lastRefilledAt?: string | null;
+  /**
+   * Fackens kapacitet för titeln i automaten (Awish, machine_slot_capacity), om den är känd.
+   * Ett fullt fack (saldo ≥ kapacitet) ger ingen påfyllningspunkt, som på Fyll på.
+   * Saknas eller null = okänd.
+   */
+  readonly capacity?: number | null;
 }
 
 /** Larmgräns: saldo högst `alertAtUnits` pack i automaten ger en påfyllningspunkt. */

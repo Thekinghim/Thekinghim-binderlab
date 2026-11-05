@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { AiPageLine } from "@/components/assistant/panel-context";
 import { Suspense } from "react";
 
@@ -26,6 +27,7 @@ import { ReconciliationList } from "./_components/reconciliation";
 import { CashflowTable } from "./_components/tables";
 import { pickView, ViewTabs } from "../rapporter/_components/view-tabs";
 import { cashflowHeadline, cashPhase, economyHeadline } from "./_lib/headline";
+import { economyTabs, hasFixedCosts, showAddFixedLink } from "./_lib/tabs";
 import { isoToDate, periodShort, plural, sek, sentence } from "./_lib/view";
 
 export const metadata: Metadata = { title: "Ekonomi" };
@@ -71,6 +73,8 @@ export default async function EkonomiPage({
   ]);
 
   const result = rec.result;
+  // Fliken Fasta kostnader bara när organisationen har någon (src/lib/cost-lines.ts).
+  const fixedActive = hasFixedCosts(fixed.costs);
   // Varje flik har sin egen rubrik (Avstämningens "Inga utbetalningar inlästa." passar inte
   // på Kassaflöde eller Fasta kostnader).
   const headline =
@@ -205,12 +209,16 @@ export default async function EkonomiPage({
             label="Vy"
             value={view}
             hrefFor={hrefFor}
-            tabs={[
-              { value: "avstamning", label: "Avstämning" },
-              { value: "kassaflode", label: "Kassaflöde" },
-              { value: "fasta", label: "Fasta kostnader" },
-            ]}
+            tabs={economyTabs(fixedActive, view)}
           />
+          {showAddFixedLink(fixedActive, view, ctx.canEdit) ? (
+            <Link
+              href={hrefFor("fasta")}
+              className="meta self-start text-subtle underline-offset-4 transition-colors duration-fast ease-instrument hover:text-fg hover:underline max-md:inline-flex max-md:min-h-11 max-md:items-center"
+            >
+              + Lägg till fast kostnad
+            </Link>
+          ) : null}
         </div>
       )}
 

@@ -12,7 +12,7 @@ import {
   loadDomainInput,
   loadOptionalContext,
   loadPeriod,
-  revalidateAppData,
+  revalidateSettlementData,
 } from "@/server/data/core";
 import { getActiveOrganization, getSessionUser } from "@/server/session";
 
@@ -42,7 +42,7 @@ export async function addPurchasePrice(input: {
     validFrom: String(input?.validFrom ?? ""),
     note: typeof input?.note === "string" ? input.note : undefined,
   });
-  if (result.ok) revalidateAppData();
+  if (result.ok) await revalidateSettlementData();
   return result;
 }
 
@@ -64,7 +64,7 @@ export async function correctPurchasePrice(input: {
     note: typeof input?.note === "string" ? input.note : undefined,
     today: ctx.today,
   });
-  if (result.ok) revalidateAppData();
+  if (result.ok) await revalidateSettlementData();
   return result;
 }
 
@@ -80,7 +80,7 @@ export async function setOwnProduct(input: {
     titleId: String(input?.titleId ?? ""),
     ownProduct: input?.ownProduct === true,
   });
-  if (result.ok) revalidateAppData();
+  if (result.ok) await revalidateSettlementData();
   return result;
 }
 

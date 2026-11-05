@@ -21,7 +21,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 
-import type { TodoItem } from "@/analytics/todos";
+import type { SettlementRef, TodoItem } from "@/analytics/todos";
 import { deniedHref, routeById, type RouteId } from "@/components/shell/nav";
 import { VMB_HEADER, type SearchParamsInput } from "@/components/shell/period-state";
 import type { MemberRole } from "@/db/schema";
@@ -30,6 +30,9 @@ import type { CostLines } from "@/lib/cost-lines";
 import { ACTIVE_ORG_COOKIE } from "@/server/auth/flows";
 import { nextCookieJar } from "@/server/auth/next-cookies";
 import { AuthorizationError, requireUser, type OrganizationMembership } from "@/server/session";
+import { withUserDbFor } from "@/server/access";
+import { cachedUnpaidSettlements, invalidateUnpaidSettlements } from "@/server/settlements/cache";
+import { queryUnpaidSettlements } from "@/server/settlements/queries";
 
 import {
   loadContextFor,
@@ -282,9 +285,28 @@ export const loadTodos = cache(async (): Promise<TodoItem[]> => (await loadTodoS
  * Punkterna i Att göra med de avbockade vars orsak finns kvar, memoiserad per förfrågan:
  * menyns räknare, Hem och Att göra räknar punkterna en gång per sidladdning.
  */
-export const loadTodoState = cache(async (): Promise<TodoState> =>
-  loadTodoStateFor(await requireViewer(), requestNow()),
-);
+export const loadTodoState = cache(async (): Promise<TodoState> => {
+  const viewer = await requireViewer();
+  const now = requestNow();
+  return loadTodoStateFor(viewer, now, {
+    unpaidSettlements: () => unpaidSettlementsInRequest(viewer, now),
+  });
+});
+
+/**
+ * Obetalda avräkningar för Att göra: en gång per förfrågan (React cache) och sparade
+ * UNPAID_SETTLEMENTS_SECONDS mellan förfrågningar (src/server/settlements/cache.ts), så att
+ * menyns räknare, Hem och Att göra inte räknar om alla avräkningar vid varje sidladdning.
+ * Rensas av revalidateSettlementData (och revalidateAppData).
+ */
+const unpaidSettlementsInRequest = cache((viewer: Viewer, now: Date): Promise<SettlementRef[]> => {
+  const orgId = viewer.organization.id;
+  return cachedUnpaidSettlements(
+    { organizationId: orgId, userId: viewer.user.userId, role: viewer.organization.role },
+    () => withUserDbFor(viewer.user, (tx) => queryUnpaidSettlements(tx, orgId, now)),
+    [appDataTag(orgId)],
+  );
+});
 
 /** Antal automater per organisation (organisationsväxlarens detaljrad). */
 export const loadMachineCounts = cache(
@@ -351,4 +373,15 @@ export async function cachedForViewer<T>(
 export function revalidateAppData(): void {
   // Rensar också det som cachedForViewer sparat under sidorna (Next:s implicita taggar).
   revalidatePath("/", "layout");
+}
+
+/**
+ * Som revalidateAppData, och rensar dessutom organisationens sparade obetalda avräkningar
+ * (menyns räknare, Hem, Att göra) direkt. För åtgärder som ändrar order, testköp,
+ * inköpspriser, avtal, butiker eller avräkningar. Anropa sist, efter att ändringen sparats.
+ */
+export async function revalidateSettlementData(): Promise<void> {
+  revalidateAppData();
+  const ctx = await loadOptionalContext().catch(() => null);
+  if (ctx) invalidateUnpaidSettlements(ctx.organization.id);
 }

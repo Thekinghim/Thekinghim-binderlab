@@ -21,12 +21,21 @@
  *    är samma försäljning och importeras inte (se docs/awish-api.md).
  * 4. Skapar en import (trigger 'schedule') bara när något nytt finns, uppdaterar
  *    källautomaterna (namn, maskinnummer), last_synced_at och läget.
+ * 5. Sparar automaternas anslutning (Machines.is_online, status) per källautomat
+ *    (@/analytics/health/connectivity: offline efter 20 minuter, mot fladder) och,
+ *    högst en gång per dygn, Awish-kontots slutdag (Merchant.expired_at). Fel här
+ *    stoppar inte synken av order.
  */
 
 import "server-only";
 
 import { sql } from "drizzle-orm";
 
+import {
+  EMPTY_CONNECTIVITY,
+  nextConnectivity,
+  type ConnectivityState,
+} from "@/analytics/health/connectivity";
 import type { Db, Tx } from "@/db/client";
 import {
   assertSecretRefInNamespace,
@@ -48,6 +57,7 @@ import {
   type AwishClientOptions,
   type AwishCredentials,
 } from "./grpc-client";
+import { merchantCheckDue, parseMerchantExpiry } from "./expiry";
 import { collectOrders, parseCursor, type SyncCursor } from "./paging";
 import { STOCK_SYNC_INTERVAL_MS, syncSourceStock, type AwishStockSummary } from "./stock";
 
@@ -199,6 +209,7 @@ interface SourceRow {
   org_timezone: string;
   secret_ref: string | null;
   cursor: string | null;
+  awish_merchant_checked_at: Date | string | null;
 }
 
 async function loadSource(db: Db, dataSourceId: string): Promise<SourceRow | undefined> {
@@ -206,7 +217,7 @@ async function loadSource(db: Db, dataSourceId: string): Promise<SourceRow | und
     db,
     sql`select ds.id, ds.organization_id, ds.name, ds.status::text as status, ds.archived_at,
                o.archived_at as org_archived_at, ds.source_timezone, o.timezone as org_timezone,
-               ds.secret_ref, ds.cursor
+               ds.secret_ref, ds.cursor, ds.awish_merchant_checked_at
         from public.data_sources ds
         join public.organizations o on o.id = ds.organization_id
         where ds.id = ${dataSourceId}::uuid and ds.provider = 'awish_grpc'`,
@@ -276,16 +287,30 @@ async function maxKnownId(tx: Db, source: SourceRow): Promise<string | null> {
   return row?.max ?? null;
 }
 
+/** En automat ur Machines: det adaptern behöver plus anslutningen. */
+export interface FetchedMachine extends AwishGrpcMachine {
+  isOnline: boolean;
+  status: string;
+}
+
 /**
  * Alla automater (högst MAX_MACHINE_PAGES sidor). Antalet sidor som i paging.ts:
  * last_page, annars total, annars has_more, annars tills en sida inte är full.
  */
-export async function fetchMachines(api: AwishApi): Promise<AwishGrpcMachine[]> {
-  const all: AwishGrpcMachine[] = [];
+export async function fetchMachines(api: AwishApi): Promise<FetchedMachine[]> {
+  const all: FetchedMachine[] = [];
   let perPage: number | null = null;
   for (let page = 1; page <= MAX_MACHINE_PAGES; page += 1) {
     const res = await api.machines({ currentPage: page, perPage: AWISH_PER_PAGE });
-    all.push(...res.items.map((m) => ({ id: m.id, name: m.name, machineNo: m.machineNo })));
+    all.push(
+      ...res.items.map((m) => ({
+        id: m.id,
+        name: m.name,
+        machineNo: m.machineNo,
+        isOnline: m.isOnline,
+        status: m.status,
+      })),
+    );
     if (res.items.length === 0) break;
     perPage ??= res.perPage && res.perPage > 0 ? res.perPage : res.items.length;
     const last =
@@ -516,6 +541,17 @@ export async function syncAwishSource(
   let fetched = 0;
   try {
     const machines = await fetchMachines(api);
+    // Anslutningen (online/offline) per automat, före orderna: ett fel eller stopp i
+    // orderna får inte tysta offlinelarmet. Ett fel här stoppar inte synken.
+    const saveMachinesConnectivity = async (list: readonly FetchedMachine[]) => {
+      try {
+        return await saveConnectivity(deps.db, source, list, now());
+      } catch (error) {
+        console.error("[awish] anslutningen kunde inte sparas", error);
+        return new Set<string>();
+      }
+    };
+    const connectivitySaved = await saveMachinesConnectivity(machines);
     const known = await maxKnownId(deps.db, source);
     const collected = await collectOrders({
       fetchPage: async (page) => {
@@ -562,6 +598,9 @@ export async function syncAwishSource(
       pages,
     });
 
+    // Automater som importen just skapade får sitt läge nu.
+    await saveMachinesConnectivity(machines.filter((m) => !connectivitySaved.has(m.id)));
+
     // Saldot i automaterna (Products) efter orderna, med den tid som är kvar. Ett fel
     // här stoppar inte synken av order: det loggas och läses om nästa gång.
     let stock: AwishStockSummary | null = null;
@@ -572,6 +611,8 @@ export async function syncAwishSource(
         console.error("[awish] saldot kunde inte läsas", error);
       }
     }
+    // Awish-kontots slutdag, högst en gång per dygn.
+    await refreshMerchantExpiry(deps.db, api, source, now());
     return finish(
       {
         ok: true,
@@ -607,6 +648,141 @@ export async function syncAwishSource(
   } finally {
     api.close();
   }
+}
+
+type ConnectivityRow = {
+  external_id: string;
+  awish_online: boolean | null;
+  awish_status: string | null;
+  awish_seen_at: Date | string | null;
+  awish_online_at: Date | string | null;
+  awish_offline_since: Date | string | null;
+  awish_back_online_at: Date | string | null;
+  awish_last_offline_from: Date | string | null;
+};
+
+function isoOrNull(v: Date | string | null): string | null {
+  if (v === null) return null;
+  const d = v instanceof Date ? v : new Date(v);
+  return Number.isFinite(d.getTime()) ? d.toISOString() : null;
+}
+
+/**
+ * Sparar anslutningen för automaterna i svaret (nextConnectivity per källautomat).
+ * Automater som saknas i svaret, eller som ännu inte finns som källautomat, lämnas orörda.
+ * Returnerar Awish-id för de källautomater som fick sitt läge.
+ */
+export async function saveConnectivity(
+  db: Db,
+  source: { id: string; organization_id: string },
+  machines: readonly FetchedMachine[],
+  at: Date,
+): Promise<Set<string>> {
+  if (machines.length === 0) return new Set();
+  const ids = [...new Set(machines.map((m) => m.id))];
+  const prevRows = await query<ConnectivityRow & Row>(
+    db,
+    sql`select external_id, awish_online, awish_status, awish_seen_at, awish_online_at,
+               awish_offline_since, awish_back_online_at, awish_last_offline_from
+        from public.source_machines
+        where organization_id = ${source.organization_id}::uuid
+          and data_source_id = ${source.id}::uuid
+          and external_id in (select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))`,
+  );
+  const prev = new Map<string, ConnectivityState>(
+    prevRows.map((r) => [
+      r.external_id,
+      {
+        online: r.awish_online,
+        status: r.awish_status,
+        seenAt: isoOrNull(r.awish_seen_at),
+        onlineAt: isoOrNull(r.awish_online_at),
+        offlineSince: isoOrNull(r.awish_offline_since),
+        backOnlineAt: isoOrNull(r.awish_back_online_at),
+        lastOfflineFrom: isoOrNull(r.awish_last_offline_from),
+      },
+    ]),
+  );
+  const seen = new Set<string>();
+  const payload = [];
+  for (const m of machines) {
+    if (seen.has(m.id) || !prev.has(m.id)) continue;
+    seen.add(m.id);
+    const next = nextConnectivity(
+      prev.get(m.id) ?? EMPTY_CONNECTIVITY,
+      { isOnline: m.isOnline, status: m.status.trim().slice(0, 40) || null },
+      at,
+    );
+    payload.push({
+      external_id: m.id,
+      online: next.online,
+      status: next.status,
+      seen_at: next.seenAt,
+      online_at: next.onlineAt,
+      offline_since: next.offlineSince,
+      back_online_at: next.backOnlineAt,
+      last_offline_from: next.lastOfflineFrom,
+    });
+  }
+  if (payload.length === 0) return seen;
+  await db.execute(
+    sql`update public.source_machines sm
+        set awish_online = r.online, awish_status = r.status, awish_seen_at = r.seen_at,
+            awish_online_at = r.online_at, awish_offline_since = r.offline_since,
+            awish_back_online_at = r.back_online_at, awish_last_offline_from = r.last_offline_from
+        from jsonb_to_recordset(${JSON.stringify(payload)}::jsonb)
+          as r(external_id text, online boolean, status text, seen_at timestamptz,
+               online_at timestamptz, offline_since timestamptz, back_online_at timestamptz,
+               last_offline_from timestamptz)
+        where sm.organization_id = ${source.organization_id}::uuid
+          and sm.data_source_id = ${source.id}::uuid
+          and sm.external_id = r.external_id`,
+  );
+  return seen;
+}
+
+/**
+ * Läser Merchant.expired_at högst en gång per dygn och sparar slutdagen. Tidpunkten för
+ * läsningen sparas även när svaret saknar slutdag eller anropet misslyckas (då försöker
+ * nästa dygn igen), så att ett fel inte ger ett anrop var tionde minut. Kastar inte.
+ */
+export async function refreshMerchantExpiry(
+  db: Db,
+  api: Pick<AwishApi, "merchant">,
+  source: Pick<
+    SourceRow,
+    "id" | "organization_id" | "source_timezone" | "awish_merchant_checked_at"
+  >,
+  at: Date,
+): Promise<boolean> {
+  const checked =
+    source.awish_merchant_checked_at === null ? null : new Date(source.awish_merchant_checked_at);
+  if (!merchantCheckDue(checked, at)) return false;
+  let expiresAt: Date | null = null;
+  let ok = false;
+  try {
+    const merchant = await api.merchant();
+    expiresAt = parseMerchantExpiry(merchant.expiredAt, source.source_timezone);
+    ok = true;
+  } catch (error) {
+    console.error("[awish] Merchant kunde inte läsas", error);
+  }
+  try {
+    await db.execute(
+      ok
+        ? sql`update public.data_sources
+              set awish_expires_at = ${expiresAt?.toISOString() ?? null}::timestamptz,
+                  awish_merchant_checked_at = ${at.toISOString()}::timestamptz
+              where organization_id = ${source.organization_id}::uuid and id = ${source.id}::uuid`
+        : sql`update public.data_sources
+              set awish_merchant_checked_at = ${at.toISOString()}::timestamptz
+              where organization_id = ${source.organization_id}::uuid and id = ${source.id}::uuid`,
+    );
+  } catch (error) {
+    console.error("[awish] kontots slutdag kunde inte sparas", error);
+    return false;
+  }
+  return ok;
 }
 
 interface ImportOutcome {

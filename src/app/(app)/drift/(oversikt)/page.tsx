@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { milliToTenths, probabilityText } from "@/analytics/health";
+import { connectivityView, milliToTenths, probabilityText } from "@/analytics/health";
 import { fillLevels } from "@/analytics/visits";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { cn } from "@/lib/cn";
 import { formatInt, MINUS, NBSP } from "@/lib/format";
-import { requireRoute } from "@/server/data/core";
+import { requireRoute, requireViewer } from "@/server/data/core";
+import { loadAwishExpirySafe } from "@/server/awish/expiry-notice";
+
+import { AwishExpiry } from "../../_awish/awish-expiry";
 
 import { AlertList } from "../_components/alert-list";
 import { HealthTable, type HealthRow } from "../_components/health-table";
@@ -15,6 +18,7 @@ import { toAlertItems } from "../_lib/alert-items";
 import { alertCountLink } from "../_lib/nav";
 import {
   alertHeadline,
+  connectionLabel,
   driftHeadline,
   firstSentence,
   formatWhen,
@@ -39,7 +43,8 @@ function tenthsText(tenths: number): string {
 export default async function DriftPage() {
   const ctx = await requireRoute("drift");
   const now = new Date(ctx.now);
-  const overview = await loadDriftOverview(ctx);
+  const [overview, viewer] = await Promise.all([loadDriftOverview(ctx), requireViewer()]);
+  const awishExpiry = await loadAwishExpirySafe(viewer, now);
   const { health, data, plan } = overview;
   const machinesHeadline = driftHeadline(health);
   const openAlerts = sortAlerts(overview.openAlerts);
@@ -53,6 +58,7 @@ export default async function DriftPage() {
     : machinesHeadline;
 
   const machineById = new Map(data.machines.map((m) => [m.id, m]));
+  const connectivity = new Map(data.connectivity.map((c) => [c.machineId, c]));
   const fill = fillLevels(overview.capacities, data.stock);
   const lastSale = new Map<string, string>();
   for (const o of data.orders) {
@@ -85,6 +91,11 @@ export default async function DriftPage() {
         : "",
       rank: healthRank(h.status),
       fillBp: fill.get(h.machineId)?.bp ?? null,
+      connection: connectionLabel(
+        connectivityView(connectivity.get(h.machineId), now),
+        ctx.timeZone,
+        now,
+      ),
     };
   });
 
@@ -128,6 +139,8 @@ export default async function DriftPage() {
           }
         />
       </div>
+
+      {awishExpiry ? <AwishExpiry notice={awishExpiry} className="mb-0 max-md:mb-0" /> : null}
 
       <section
         aria-labelledby="halsa"
@@ -196,7 +209,7 @@ export default async function DriftPage() {
         {items.length > 0 ? <AlertList items={items} canAck={ctx.canEdit} /> : null}
         {resolved.length > 0 ? (
           <details>
-            <summary className="w-fit cursor-pointer rounded-xs text-sm text-muted hover:text-fg">
+            <summary className="w-fit cursor-pointer rounded-xs text-sm text-muted hover:text-fg max-md:flex max-md:min-h-11 max-md:items-center">
               {`Lösta de senaste 7 dagarna (${formatInt(resolved.length)})`}
             </summary>
             <div className="mt-4">

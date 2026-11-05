@@ -9,6 +9,7 @@
 
 import { approxKr, packs } from "@/analytics/forecast/common";
 import type { AccuracyMetrics, ForecastTotal } from "@/analytics/forecast/types";
+import { purchaseQty } from "@/analytics/purchasing/plan";
 import type { PurchaseLine, PurchaseLineStatus } from "@/analytics/purchasing/types";
 import { daysBetween, dayOfWeek, ratioBp, type IsoDate, type Period } from "@/domain";
 import { formatInt, formatPercent, NBSP } from "@/lib/format";
@@ -467,11 +468,12 @@ export function purchaseOrderStatusLabel(status: PurchaseOrderStatus): string {
   return PO_STATUS[status].label;
 }
 
-/** Egen produkt som behöver fyllas på: pack att packa (beställningsförslaget, annars behovet). */
+/**
+ * Egen produkt som behöver fyllas på: pack att packa. Samma regel som allt annat antal på
+ * Inköp och Vårt lager (purchaseQty i @/analytics/purchasing).
+ */
 export function packQtyOf(line: Pick<PurchaseLine, "status" | "orderQty" | "rawQty">): number {
-  if (line.status === "order") return Math.max(line.orderQty, line.rawQty);
-  if (line.status === "no-supplier") return line.rawQty;
-  return 0;
+  return purchaseQty(line);
 }
 
 function planStatus(
@@ -772,14 +774,13 @@ function accuracyAside(m: AccuracyMetrics, weeks: number, fallback: string): str
 function planModel(
   data: PrognosData,
   names: ReturnType<typeof lookup>,
-  packNeed?: ReadonlyMap<string, number>,
   stockPace?: ReadonlyMap<string, number | null>,
 ): PlanModel {
   const p = data.plan;
   const ownIds = new Set(data.titles.filter((t) => t.ownProduct).map((t) => t.id));
-  // Egna produkter: samma antal som Vårt lager ("Packa X st") när det skickas in, annars planens.
+  // Egna produkter: "Packa X st" med planens antal (purchaseQty, samma som Vårt lager).
   const packQtyFor = (l: PurchaseLine): number | null =>
-    ownIds.has(l.titleId) ? (packNeed ? (packNeed.get(l.titleId) ?? 0) : packQtyOf(l)) : null;
+    ownIds.has(l.titleId) ? packQtyOf(l) : null;
   const basis = new Map(data.demandBasis.map((b) => [b.titleId, b]));
   // Öppna utkast per titel och per leverantör (räknas inte som beställt i planen).
   const draftOrders = data.purchaseOrders.filter((po) => po.status === "draft");
@@ -855,7 +856,7 @@ function planModel(
       own,
       packQty: packQty ?? 0,
       lastsDays: lastsDays(l.warehouseOnHand + l.machineOnHand, stockPace?.get(l.titleId) ?? null),
-      suggestQty: !own && l.status === "no-supplier" ? l.rawQty : 0,
+      suggestQty: !own && l.status === "no-supplier" ? purchaseQty(l) : 0,
       text: tidy(l.text),
       evidence: extra.length > 0 ? { ...ev, figures: [...ev.figures, ...extra] } : ev,
     };
@@ -1187,8 +1188,6 @@ export function buildPageModel(
   data: PrognosData,
   now: Date = new Date(),
   opts: {
-    /** Pack att packa per egen produkt (samma regel som Vårt lager), annars planens antal. */
-    readonly packNeed?: ReadonlyMap<string, number>;
     /** Takten per titel (tiondelar pack per dag, 14 hela dagar) för Räcker, som Vårt lager. */
     readonly stockPace?: ReadonlyMap<string, number | null>;
   } = {},
@@ -1196,7 +1195,7 @@ export function buildPageModel(
   const names = lookup(data);
   const lost = lostModel(data, names, now);
   const { forecast, accuracy } = forecastModel(data, names);
-  const plan = planModel(data, names, opts.packNeed, opts.stockPace);
+  const plan = planModel(data, names, opts.stockPace);
   const orders = ordersModel(data, names, now);
   const valuation = valuationModel(data, names);
   const suppliers = suppliersModel(data, names);

@@ -124,7 +124,7 @@ export function AlertList({ items, canAck }: { items: AlertItem[]; canAck: boole
                   </p>
                   <Link
                     href={a.link}
-                    className="w-fit rounded-xs text-fg underline-offset-2 hover:underline"
+                    className="w-fit rounded-xs text-fg underline-offset-2 hover:underline max-md:flex max-md:min-h-11 max-md:items-center"
                   >
                     Öppna underlaget →
                   </Link>

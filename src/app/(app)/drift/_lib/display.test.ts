@@ -6,6 +6,7 @@ import { assortmentKey } from "@/analytics/todos/assortment";
 
 import {
   alertHeadline,
+  connectionLabel,
   driftHeadline,
   figureText,
   firstSentence,
@@ -126,5 +127,27 @@ describe("withoutRetiredAlerts", () => {
     const retired = new Set([assortmentKey("m1", "bolt")]);
     expect(withoutRetiredAlerts(alerts, retired).map((x) => x.titleId)).toEqual(["30th", null]);
     expect(withoutRetiredAlerts(alerts, new Set())).toHaveLength(3);
+  });
+});
+
+describe("anslutningen enligt Awish", () => {
+  const now = new Date("2026-11-02T13:30:00Z"); // 14:30 i Stockholm
+  it("online, offline sedan klockslaget, okänt visas inte", () => {
+    expect(connectionLabel({ state: "online", since: null }, "Europe/Stockholm", now)).toEqual({
+      state: "online",
+      text: "Online",
+    });
+    const off = connectionLabel(
+      { state: "offline", since: "2026-11-02T13:10:00Z" },
+      "Europe/Stockholm",
+      now,
+    );
+    expect(off?.state).toBe("offline");
+    expect(off?.text).toBe("Offline sedan 14:10");
+    expect(
+      connectionLabel({ state: "offline", since: "2026-11-01T13:10:00Z" }, "Europe/Stockholm", now)
+        ?.text,
+    ).toMatch(/^Offline sedan 1\snov\. 14:10$/);
+    expect(connectionLabel({ state: "unknown", since: null }, "Europe/Stockholm", now)).toBeNull();
   });
 });

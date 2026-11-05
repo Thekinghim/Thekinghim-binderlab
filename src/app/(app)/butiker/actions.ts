@@ -15,7 +15,7 @@
 import { unstable_rethrow } from "next/navigation";
 
 import type { ActionResult } from "@/server/auth/flows";
-import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/data/core";
+import { OPERATOR_ROLES, requireContextRole, revalidateSettlementData } from "@/server/data/core";
 import { AuthorizationError } from "@/server/session";
 
 import {
@@ -47,7 +47,7 @@ async function run<R extends { ok: boolean }>(
     throw error;
   }
   const result = await fn(viewer);
-  if (result.ok) revalidateAppData();
+  if (result.ok) await revalidateSettlementData();
   return result;
 }
 

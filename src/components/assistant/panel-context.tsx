@@ -83,7 +83,7 @@ export function AskAiButton({ fallbackHref }: { fallbackHref?: string }) {
       data-testid="ai-open"
       className={cn(
         // Under md: tryckytan växer till 44 px utan att knappen ser större ut.
-        "group relative flex h-8 items-center gap-1.5 rounded-sm border px-2 text-sm transition-colors max-md:before:absolute max-md:before:-inset-1.5 max-md:before:content-['']",
+        "group relative flex h-8 items-center gap-1.5 rounded-sm border px-2 text-sm transition-colors max-md:before:absolute max-md:before:-inset-2 max-md:before:content-['']",
         panel.isOpen
           ? "border-inverse bg-inverse text-on-inverse"
           : "border-line-strong text-fg hover:border-line-control hover:bg-hover",

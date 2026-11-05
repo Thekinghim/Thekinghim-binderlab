@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import type { TimelineEntry } from "@/analytics/health";
+import { connectivityView, type TimelineEntry } from "@/analytics/health";
 import { weekdayDay } from "@/analytics/todos/text";
 import { channelText, fillLevels, fillPercent } from "@/analytics/visits";
 import { FillBar } from "@/components/ui/fill-bar";
@@ -16,7 +16,7 @@ import { requireRoute } from "@/server/data/core";
 
 import { AlertList } from "../../_components/alert-list";
 import { toAlertItems } from "../../_lib/alert-items";
-import { firstSentence, HEALTH_TAG, plural } from "../../_lib/display";
+import { connectionLabel, firstSentence, HEALTH_TAG, plural } from "../../_lib/display";
 import { loadMachineTimeline } from "../../_lib/load";
 
 export const metadata: Metadata = { title: "Tidslinje" };
@@ -65,7 +65,17 @@ export default async function MachineTimelinePage({
 
   const sold = data.entries.filter((e) => e.kind === "sales").reduce((n, e) => n - e.packs, 0);
   const refilled = data.entries.filter((e) => e.kind === "refill").reduce((n, e) => n + e.packs, 0);
-  const tag = data.health ? HEALTH_TAG[data.health.status] : null;
+  const connection = connectionLabel(
+    connectivityView(data.connectivity ?? undefined, now),
+    ctx.timeZone,
+    now,
+  );
+  const healthTag = data.health ? HEALTH_TAG[data.health.status] : null;
+  // Awish säger offline: etiketten säger det rakt ut.
+  const tag =
+    healthTag && data.health?.status === "offline" && connection?.state === "offline"
+      ? { ...healthTag, label: "Offline" }
+      : healthTag;
   const byDay = new Map<string, TimelineEntry[]>();
   for (const e of data.entries) {
     const list = byDay.get(e.date);
@@ -97,6 +107,7 @@ export default async function MachineTimelinePage({
             : `${plural(sold, "pack sålt", "pack sålda")} de senaste ${plural(days, "dagen", "dagarna")}.`
         }
         meta={[
+          ...(connection ? [{ label: "Awish", value: connection.text }] : []),
           { label: "Period", value: `${formatInt(days)} d` },
           { label: "Sålda pack", value: formatInt(sold) },
           { label: "Påfyllda pack", value: formatInt(refilled) },

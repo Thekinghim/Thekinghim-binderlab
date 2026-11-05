@@ -12,10 +12,14 @@
  */
 
 import { getServiceDb } from "@/db/client";
+import { getServerEnv } from "@/lib/env";
 import { cronAuthorized } from "@/server/alerts/cron-auth";
+import { runOfflineAlerts } from "@/server/awish/offline-alerts";
+import { resolveAppBaseUrl } from "@/server/request-info";
 import { syncAllAwishSources } from "@/server/awish/sync";
 import { publishAllDueCampaigns } from "@/server/campaigns/service";
 import { CRON_JOBS, withCronMonitor } from "@/server/monitoring/cron-monitor";
+import { invalidateUnpaidSettlements } from "@/server/settlements/cache";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +27,21 @@ export const maxDuration = 60;
 
 function json(body: unknown, status = 200): Response {
   return Response.json(body, { status, headers: { "cache-control": "no-store" } });
+}
+
+async function runOfflineAlertsAfterSync(request: Request, orgIds: string[]) {
+  let baseUrl: string | null = null;
+  try {
+    baseUrl = resolveAppBaseUrl(getServerEnv(), request.headers);
+  } catch {
+    // Utan adress köas utskicken; larmjobbet skickar dem.
+  }
+  try {
+    return await runOfflineAlerts(getServiceDb(), orgIds, { baseUrl });
+  } catch (error) {
+    console.error("[awish] offlinelarm", error instanceof Error ? error.message : "fel");
+    return null;
+  }
 }
 
 export async function GET(request: Request): Promise<Response> {
@@ -43,6 +62,20 @@ export async function GET(request: Request): Promise<Response> {
     () => syncAllAwishSources({ db: getServiceDb() }),
     (r) => !allFailed(r),
   );
+  // Offlinelarmet: larmjobbet körs bara en gång om dagen, så organisationer med en automat
+  // som är offline (eller ett öppet offlinelarm) utvärderas här direkt efter synken
+  // (src/server/awish/offline-alerts.ts). Ett fel här stoppar inte synken.
+  const offline = await runOfflineAlertsAfterSync(
+    request,
+    // Även när orderna misslyckades: anslutningen sparas före orderna (sync.ts).
+    result.sources.filter((s) => s.skipped === null).map((s) => s.organizationId),
+  );
+  // Nya order ändrar obetalda avräkningar: menyns räknare, Hem och Att göra räknar om dem.
+  for (const org of new Set(
+    result.sources.filter((s) => (s.summary?.new ?? 0) > 0).map((s) => s.organizationId),
+  )) {
+    invalidateUnpaidSettlements(org);
+  }
   // Kampanjer med en senare start som användaren redan har bekräftat (Kampanjer): de vars
   // starttid har passerat skickas till Awish nu. Ett fel här stoppar inte synken.
   const campaigns = await publishAllDueCampaigns({ db: getServiceDb() }).catch((error: unknown) => {
@@ -64,6 +97,12 @@ export async function GET(request: Request): Promise<Response> {
         historyDone: s.historyDone,
       })),
       campaigns: campaigns ? { shown: campaigns.shown, failed: campaigns.failed } : null,
+      offlineAlerts: offline
+        ? {
+            organizations: offline.organizations.length,
+            sent: offline.deliveries?.sent ?? 0,
+          }
+        : null,
     },
     allFailed(result) ? 500 : 200,
   );

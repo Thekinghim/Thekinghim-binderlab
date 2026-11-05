@@ -9,7 +9,8 @@ import "server-only";
 
 import { sql } from "drizzle-orm";
 
-import { addDays } from "@/domain";
+import { purchaseQtyByTitle } from "@/analytics/purchasing";
+import { addDays, DomainError } from "@/domain";
 import type { Tx } from "@/db/client";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
 import {
@@ -24,6 +25,7 @@ import { loadSlotPeriodsFor } from "@/server/data/assortment";
 import { retiredTitles } from "@/analytics/todos/assortment";
 import { sumOwnStock } from "@/server/data/core/own-stock";
 import { ECONOMY_ROLES } from "@/server/data/core/types";
+import { loadPurchasePlanFor } from "@/server/purchasing/load";
 
 import { loadOurStockFor } from "../../lager/_lib/data";
 import { buildVartLagerModel, type VartLagerModel, type WarehouseEvent } from "./model";
@@ -97,7 +99,7 @@ export async function loadVartLagerFor(
   const timeZone = viewer.organization.timezone;
   const today = businessToday(now, timeZone);
 
-  const [our, master, stock, sales, prices, latest, slotPeriods] = await Promise.all([
+  const [our, master, stock, sales, prices, latest, slotPeriods, plan] = await Promise.all([
     loadOurStockFor(viewer, now),
     loadMasterDataFor(viewer, now),
     loadStockFor(viewer),
@@ -105,6 +107,12 @@ export async function loadVartLagerFor(
     withUserDbFor(viewer.user, (tx) => queryPrices(tx, orgId)),
     withUserDbFor(viewer.user, (tx) => queryLatest(tx, orgId)),
     loadSlotPeriodsFor(viewer),
+    // Inköps plan: "Beställ X st" med samma antal som /prognos. Kan den inte räknas
+    // (för lite data) visas titlarna som tar slut utan antal.
+    loadPurchasePlanFor(viewer, now).catch((error: unknown) => {
+      if (error instanceof DomainError) return null;
+      throw error;
+    }),
   ]);
 
   // Vårt lager: summan av alla egna lager per titel.
@@ -142,6 +150,7 @@ export async function loadVartLagerFor(
     canEdit: (EDIT_ROLES as readonly string[]).includes(role) && our.hasWarehouse,
     // Samma utgår-regel som Lager, Drift och Prognos.
     retired: retiredTitles(slotPeriods, today),
+    purchase: plan ? purchaseQtyByTitle(plan) : null,
   });
   return {
     ...model,

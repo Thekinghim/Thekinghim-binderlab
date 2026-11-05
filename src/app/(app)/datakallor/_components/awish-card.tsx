@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -393,6 +394,14 @@ export function AwishCard({
                 {pushMore ? "Mindre" : "Mer"}
               </button>
             </div>
+          ) : null}
+          {web.hasPassword && web.enabled ? (
+            <Link
+              href="/inkopspriser/ny-produkt"
+              className="w-fit rounded-xs text-sm text-muted underline underline-offset-4 hover:text-fg"
+            >
+              Ny produkt i Awish →
+            </Link>
           ) : null}
           {preview ? (
             <div role="status" className="flex flex-col gap-1 text-sm">

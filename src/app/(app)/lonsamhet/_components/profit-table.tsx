@@ -65,7 +65,7 @@ function NameCell({ row, selected }: { row: ProfitLine; selected: boolean }) {
           </StatusTag>
           <Link
             href={row.priceHref}
-            className="rounded-xs text-sm whitespace-nowrap text-fg underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-fg"
+            className="rounded-xs text-sm whitespace-nowrap text-fg underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-fg max-md:inline-flex max-md:min-h-11 max-md:items-center"
           >
             Lägg in pris<span className="sr-only"> för {row.name}</span>
             <span aria-hidden>{`${NBSP}→`}</span>

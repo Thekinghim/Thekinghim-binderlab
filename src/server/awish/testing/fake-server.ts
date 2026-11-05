@@ -17,6 +17,10 @@ export interface FakeMachine {
   id: string;
   name: string;
   machine_no: string;
+  /** Machine.is_online (standard true). */
+  is_online?: boolean;
+  /** Machine.status (standard "1"). */
+  status?: string;
 }
 
 /** Ett fack i låtsas-Awish (Products). */
@@ -52,6 +56,8 @@ export interface FakeAwishState {
   appSecret: string;
   appKey: string;
   merchantTitle: string;
+  /** Merchant.expired_at (null = skickas inte). */
+  merchantExpiredAt: string | null;
   /** Svarar sida 1 med nyaste först ("desc") eller äldsta först ("asc"). */
   order: "desc" | "asc";
   orders: AwishGrpcOrder[];
@@ -127,6 +133,7 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
     appSecret: "hemlig-secret",
     appKey: "nyckel-key",
     merchantTitle: "Testhandlare",
+    merchantExpiredAt: "2027-04-18 23:48:54",
     order: "desc",
     orders: [],
     machines: [],
@@ -237,7 +244,7 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
           title: state.merchantTitle,
           status: "APPROVED",
           created_at: "2024-04-18 23:48:27",
-          expired_at: "2027-04-18 23:48:54",
+          ...(state.merchantExpiredAt === null ? {} : { expired_at: state.merchantExpiredAt }),
           config: { debug: false, is_dev: false, appid: state.appId, app_key: "kva" },
         },
         request_id: "fake",
@@ -248,7 +255,11 @@ export async function startFakeAwish(initial: Partial<FakeAwishState> = {}): Pro
       const page = paged(state.machines, call.request);
       callback(null, {
         ...page,
-        data: page.data.map((m) => ({ ...m, status: "1", is_online: true })),
+        data: page.data.map((m) => ({
+          ...m,
+          status: m.status ?? "1",
+          is_online: m.is_online ?? true,
+        })),
       });
     },
     Orders(call: Call, callback: Callback): void {

@@ -3,7 +3,13 @@ import { describe, expect, it } from "vitest";
 import { forecastSales } from "@/analytics/forecast";
 import { lostSales } from "@/analytics/lost-sales";
 import type { StockEventRef } from "@/analytics/lost-sales/stock";
-import { demandFromForecast, inventoryValuation, purchasePlan } from "@/analytics/purchasing";
+import {
+  demandFromForecast,
+  inventoryValuation,
+  purchasePlan,
+  purchaseQty,
+  purchaseQtyByTitle,
+} from "@/analytics/purchasing";
 import type { PurchasingInput } from "@/analytics/purchasing/types";
 import { addDays, revenue, type IsoDate, type OrderLine } from "@/domain";
 import type { PrognosData, PurchaseOrderRecord } from "@/server/purchasing/types";
@@ -21,6 +27,7 @@ import {
   tidy,
 } from "./model";
 import { oreToField, parseCount, parseKronor } from "./units";
+import { buildVartLagerModel, stockTodos } from "../../vart-lager/_lib/model";
 
 const SETTINGS = { vatRateBp: 0, cardFeeBp: 0 };
 const TODAY: IsoDate = "2026-11-02";
@@ -601,21 +608,64 @@ describe("buildPageModel", () => {
   });
 });
 
-describe("egna produkter med Vårt lagers antal", () => {
-  it("packNeed styr antalet; utan behov räcker titeln och beställs aldrig", () => {
-    const d = data();
-    const own: PrognosData = { ...d, titles: d.titles.map((t) => ({ ...t, ownProduct: true })) };
-    const m = buildPageModel(own, new Date("2026-11-02T09:00:00Z"), {
-      packNeed: new Map([[T1, 29]]),
+describe("samma antal på Inköp och Vårt lager (purchaseQty)", () => {
+  // Vårt lagers vymodell med Inköps plan, som laddaren skickar in den (purchaseQtyByTitle).
+  const vartLager = (d: PrognosData) =>
+    buildVartLagerModel({
+      now: new Date("2026-11-02T09:00:00Z"),
+      timeZone: "Europe/Stockholm",
+      today: TODAY,
+      titles: d.titles.map((t) => ({ id: t.id, name: t.name, ownProduct: t.ownProduct })),
+      warehouse: [],
+      home: new Map([[T1, 10]]),
+      inMachines: new Map([[T1, 5]]),
+      sold7: new Map([
+        [T1, 14],
+        [T2, 7],
+      ]),
+      prices: [],
+      latest: new Map(),
+      machines: [],
+      canEdit: true,
+      purchase: purchaseQtyByTitle(d.plan),
     });
-    expect(m.plan.packLines.map((l) => [l.titleId, l.packQty])).toEqual([[T1, 29]]);
+  const qtyOnVartLager = (d: PrognosData, titleId: string) =>
+    stockTodos(vartLager(d).rows).find((t) => t.titleId === titleId)?.qty ?? 0;
+
+  it("med leverantör: Beställ X st (minsta order, hela boxar) är samma tal", () => {
+    const d = data();
+    const m = buildPageModel(d, new Date("2026-11-02T09:00:00Z"));
+    const t1 = m.plan.lines.find((l) => l.titleId === T1)!;
+    expect(t1.status).toBe("order");
+    expect(t1.orderQty).toBeGreaterThan(0);
+    expect(t1.orderQty % 12).toBe(0);
+    expect(qtyOnVartLager(d, T1)).toBe(t1.orderQty);
+    expect(stockTodos(vartLager(d).rows).find((t) => t.titleId === T1)?.verb).toBe("Beställ");
+  });
+
+  it("utan leverantör: Köp ca X st är samma tal (inga boxar)", () => {
+    const d = data([], { noItems: true });
+    const m = buildPageModel(d, new Date("2026-11-02T09:00:00Z"));
+    expect(m.plan.noSupplierLines.length).toBeGreaterThan(0);
+    for (const l of m.plan.noSupplierLines) {
+      expect(l.suggestQty).toBeGreaterThan(0);
+      expect(qtyOnVartLager(d, l.titleId)).toBe(l.suggestQty);
+    }
+  });
+
+  it("egen produkt: Packa X st är samma tal; titel som räcker står inte på någon av sidorna", () => {
+    const d = data([], { noItems: true, t2Stock: 500 });
+    const own: PrognosData = { ...d, titles: d.titles.map((t) => ({ ...t, ownProduct: true })) };
+    const m = buildPageModel(own, new Date("2026-11-02T09:00:00Z"));
+    expect(m.plan.packLines.map((l) => l.titleId)).toEqual([T1]);
+    const p1 = m.plan.packLines[0]!;
+    expect(p1.packQty).toBe(purchaseQty(d.plan.lines.find((l) => l.titleId === T1)!));
+    const todos = stockTodos(vartLager(own).rows);
+    expect(todos.map((t) => [t.titleId, t.verb, t.qty])).toEqual([[T1, "Packa", p1.packQty]]);
     const t2 = m.plan.lines.find((l) => l.titleId === T2)!;
-    expect(t2).toMatchObject({ own: true, packQty: 0, statusLabel: "Räcker" });
-    expect(m.plan.counts).toMatchObject({ order: 0, "no-supplier": 0 });
-    expect(m.plan.proposals).toHaveLength(0);
+    expect(t2).toMatchObject({ own: true, packQty: 0 });
     // Egna produkter föreslås aldrig "utan leverantör": de packas.
     expect(m.plan.noSupplierLines).toHaveLength(0);
-    expect(m.plan.lines.every((l) => l.own && l.suggestQty === 0)).toBe(true);
   });
 });
 

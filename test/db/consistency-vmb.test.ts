@@ -103,6 +103,8 @@ vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
   revalidateTag: vi.fn(),
   unstable_noStore: vi.fn(),
+  // Obetalda avräkningar cachas (src/server/settlements/cache.ts); här läses de direkt.
+  unstable_cache: <T>(fn: T) => fn,
 }));
 
 // Importeras efter mockarna (vi.mock hissas, så ordningen här är bara för läsbarheten).

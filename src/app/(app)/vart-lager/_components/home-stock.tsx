@@ -16,7 +16,13 @@ import { rememberKey, useRemembered } from "@/lib/remembered";
 
 import { Sheet } from "../../lager/_components/sheet";
 import { addReceipt, moveStock, setHomeCount, undoMove } from "../actions";
-import { lastsText, type Place, type VartLagerModel, type VartLagerRow } from "../_lib/model";
+import {
+  lastsText,
+  needsPurchase,
+  type Place,
+  type VartLagerModel,
+  type VartLagerRow,
+} from "../_lib/model";
 import { PlaceBar } from "./place-bar";
 
 const GRID =
@@ -60,7 +66,8 @@ export function HomeStock({ model, scope }: { model: VartLagerModel; scope: stri
 
   const t = model.totals;
   const countHeader = place && multi ? place.name : multi ? "Alla lager" : "Antal";
-  const out = model.rows.filter((r) => r.runsOut && !r.negative);
+  // Packa/Beställ: samma titlar som Att göra-listan och Inköp (needsPurchase).
+  const out = model.rows.filter((r) => !r.negative && needsPurchase(r));
   const packOnly = out.length > 0 && out.every((r) => r.own);
   // Mobil: utgångna titlar (inget att räkna om) fälls ihop sist i listan.
   const [showRetired, setShowRetired] = useState(false);
@@ -98,7 +105,7 @@ export function HomeStock({ model, scope }: { model: VartLagerModel; scope: stri
                 label: `Tar slut inom ${formatInt(model.lowDays)} d`,
                 value: t.runsOut,
                 format: (v) => `${formatInt(v)}${NBSP}${v === 1 ? "titel" : "titlar"}`,
-                ...(t.runsOut > 0
+                ...(t.runsOut > 0 && out.length > 0
                   ? { alert: true, alertText: packOnly ? "Packa" : "Beställ" }
                   : {}),
               },
@@ -396,7 +403,7 @@ function StockRow({
             type="button"
             aria-expanded={more}
             aria-label={`${more ? "Färre" : "Fler"} uppgifter, ${row.name}`}
-            className="meta flex min-w-0 items-center gap-1 text-left text-subtle md:hidden"
+            className="meta flex min-h-11 min-w-0 items-center gap-1 text-left text-subtle md:hidden"
           >
             {/* Stängd: bara hur länge det räcker (får plats på en rad); öppen: allt. */}
             <span className={more ? "min-w-0" : "min-w-0 truncate"}>

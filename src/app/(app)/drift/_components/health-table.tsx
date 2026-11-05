@@ -9,7 +9,9 @@ import { DataTable, type Column } from "@/components/ui/data-table";
 import { FillBar, FillValue } from "@/components/ui/fill-bar";
 import { StatusTag } from "@/components/ui/status-tag";
 
-import { HEALTH_TAG } from "../_lib/display";
+import { cn } from "@/lib/cn";
+
+import { HEALTH_TAG, type ConnectionLabel } from "../_lib/display";
 
 /** En rad i tabellen (serialiserbar från servern). */
 export interface HealthRow {
@@ -27,6 +29,33 @@ export interface HealthRow {
   readonly rank: number;
   /** Fyllnadsgrad i bp (Awish-kapaciteten), eller null när den saknas. */
   readonly fillBp: number | null;
+  /** Anslutningen enligt Awish ("Online", "Offline sedan 14:10"), null = okänd. */
+  readonly connection: ConnectionLabel | null;
+}
+
+/** Statusetiketten: "Offline" när Awish säger det, annars hälsans etikett. */
+function statusTag(r: HealthRow) {
+  const tag = HEALTH_TAG[r.status];
+  return r.status === "offline" && r.connection?.state === "offline"
+    ? { status: tag.status, label: "Offline" }
+    : tag;
+}
+
+/** "● Online" / "● Offline sedan 14:10" under automatens namn. */
+function Connection({ c }: { c: ConnectionLabel | null }) {
+  if (!c) return null;
+  const off = c.state === "offline";
+  return (
+    <span
+      className={cn("meta mt-0.5 flex items-center gap-1.5", off ? "text-signal-fg" : "text-muted")}
+    >
+      <span
+        aria-hidden
+        className={cn("inline-block size-1.5 rounded-full", off ? "bg-signal" : "bg-fill-ok")}
+      />
+      {c.text}
+    </span>
+  );
 }
 
 /** Från Awish-synken; samma text som rubrikens title. */
@@ -44,6 +73,7 @@ const columns: Column<HealthRow>[] = [
       >
         <span className="meta text-fg">{r.code.replace("-", "‑")}</span>
         <span className="truncate text-sm text-muted">{r.name}</span>
+        <Connection c={r.connection} />
         {r.fillBp !== null ? <FillBar bp={r.fillBp} className="mt-1.5 w-24 md:hidden" /> : null}
       </Link>
     ),
@@ -53,10 +83,8 @@ const columns: Column<HealthRow>[] = [
     key: "status",
     header: "Status",
     sortValue: (r) => r.rank,
-    render: (r) => (
-      <StatusTag status={HEALTH_TAG[r.status].status}>{HEALTH_TAG[r.status].label}</StatusTag>
-    ),
-    csv: (r) => HEALTH_TAG[r.status].label,
+    render: (r) => <StatusTag status={statusTag(r).status}>{statusTag(r).label}</StatusTag>,
+    csv: (r) => statusTag(r).label,
   },
   {
     key: "fill",
@@ -131,22 +159,23 @@ function HealthList({ rows }: { rows: HealthRow[] }) {
             <div className="flex min-h-11 items-center gap-3">
               <Link
                 href={`/drift/automat/${r.machineId}`}
-                className="flex min-w-0 flex-1 flex-col rounded-xs hover:underline"
+                className="flex min-w-0 flex-1 flex-col rounded-xs hover:underline max-md:min-h-11 max-md:justify-center"
               >
                 <span className="meta text-fg">{r.code.replace("-", "‑")}</span>
                 <span className="truncate text-sm text-muted">{r.name}</span>
+                <Connection c={r.connection} />
               </Link>
               {r.fillBp !== null ? (
                 <span className="shrink-0">
                   <FillValue bp={r.fillBp} />
                 </span>
               ) : null}
-              <StatusTag status={HEALTH_TAG[r.status].status} className="shrink-0">
-                {HEALTH_TAG[r.status].label}
+              <StatusTag status={statusTag(r).status} className="shrink-0">
+                {statusTag(r).label}
               </StatusTag>
             </div>
             <details className="group">
-              <summary className="meta flex min-h-8 cursor-pointer list-none items-center gap-1 text-subtle hover:text-fg [&::-webkit-details-marker]:hidden">
+              <summary className="meta flex min-h-8 cursor-pointer list-none items-center gap-1 text-subtle hover:text-fg max-md:min-h-11 [&::-webkit-details-marker]:hidden">
                 {/* I drift: bara ordet; annars underlaget, som är skälet till statusen. */}
                 <span className="line-clamp-2 min-w-0">
                   {r.status === "ok" ? "Underlag" : r.detail}

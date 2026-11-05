@@ -36,7 +36,7 @@ const KIND_RULE: Record<string, string> = {
   machine_suspected_fault:
     "Automaten säljer mycket mindre än vanligt för tiden på dygnet (maskinhälsan på Drift).",
   machine_offline:
-    "Automaten har inte sålt på länge och räknas som ur drift (maskinhälsan på Drift).",
+    "Awish säger att automaten är offline sedan minst 20 minuter, eller (utan Awish-data) har den inte sålt på länge (maskinhälsan på Drift).",
   import_failed: "Senaste importen från datakällan misslyckades.",
   report_failed: "Ett rapportutskick eller månadens utkast misslyckades.",
   job_failed: "Ett schemalagt jobb misslyckades.",

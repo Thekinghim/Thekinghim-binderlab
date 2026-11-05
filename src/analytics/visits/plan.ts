@@ -7,6 +7,8 @@
  *      senast      = slutdatum − bufferDays (eller ExtraVisit.needBy)
  *    Automatens `needBy` är den tidigaste av titlarnas och extrabesökens. Automaten behöver
  *    besök om needBy ligger inom planens 7 dagar (eller tidigare).
+ *    Ett fullt fack (känd kapacitet, i lager ≥ kapacitet; isFullSlot som Att göra och Fyll på)
+ *    går inte att fylla i dag: dess senast-dag är tidigast i morgon.
  * 2. Besöksdag = senaste besöksdag (visitWeekdays) som är ≤ needBy, så att varje besök fyller
  *    på så sent som möjligt. Finns ingen sådan dag blir det första besöksdagen (sent besök).
  * 3. Fler än maxStopsPerDay: den minst brådskande flyttas till närmaste tidigare dag med plats,
@@ -37,6 +39,7 @@ import {
   type SalesVelocity,
 } from "@/domain";
 import { evidence, isMachineActive, links, nameLookup } from "@/analytics/todos/common";
+import { isFullSlot } from "@/analytics/todos/refill";
 import { plural, ratioTenths, sentence, weekdayDay } from "@/analytics/todos/text";
 import { businessDateAt, DEFAULT_TIME_ZONE } from "@/analytics/todos/time";
 import { formatInt, NBSP } from "@/lib/format";
@@ -294,7 +297,11 @@ function machineNeeds(
         orderIds: windowOrders.map((x) => x.id),
       });
       if (stockout !== null) {
-        const needBy = addDays(stockout, -o.bufferDays);
+        const due = addDays(stockout, -o.bufferDays);
+        // Fullt fack: inget att fylla i dag (Fyll på: "Fullt · räcker ~N d").
+        const tomorrow = addDays(today, 1);
+        const needBy =
+          isFullSlot(onHand, capacity.get(k)) && compareDates(due, tomorrow) < 0 ? tomorrow : due;
         reasons.push({
           needBy,
           text:

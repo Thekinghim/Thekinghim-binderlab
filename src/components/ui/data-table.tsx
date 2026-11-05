@@ -857,7 +857,7 @@ export function DataTable<T>({
                         onClick={(e) => onHeaderClick(col, e)}
                         className={cn(
                           // Träffytan 28 px hög utan att rubrikraden växer.
-                          "label group/sort -my-1.5 inline-flex max-w-full items-center gap-1 rounded-xs py-1.5 align-middle transition-colors duration-fast ease-instrument",
+                          "label group/sort relative -my-1.5 inline-flex max-w-full items-center gap-1 rounded-xs py-1.5 align-middle transition-colors duration-fast ease-instrument max-md:before:absolute max-md:before:inset-x-0 max-md:before:-inset-y-2 max-md:before:content-['']",
                           col.numeric && "flex-row-reverse",
                           active ? "text-fg" : "text-subtle hover:text-fg",
                         )}

@@ -83,7 +83,7 @@ function columns(
         <span className="flex min-w-0 flex-col gap-1 py-1">
           <Link
             href={r.href}
-            className="flex min-w-0 flex-col rounded-xs hover:text-fg"
+            className="flex min-w-0 flex-col rounded-xs hover:text-fg max-md:min-h-11 max-md:justify-center"
             aria-label={`${r.code} ${r.name}`}
           >
             <span className="meta text-fg">{r.code.replace("-", "‑")}</span>

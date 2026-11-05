@@ -19,6 +19,11 @@ export interface PageContext {
   readonly storeId: string | null;
   readonly machineId: string | null;
   readonly vmb: boolean;
+  /**
+   * "Visa butikernas andel" är på (?andel=1). Utelämnad = av: då är beloppen per order hela
+   * beloppet före butikens andel, som på sidan.
+   */
+  readonly storeShare?: boolean;
   /** Detaljsidans automat (kod eller id), butik (id) eller titel (id). */
   readonly detail: { readonly kind: "automat" | "butik" | "titel"; readonly ref: string } | null;
 }
@@ -210,6 +215,7 @@ export function pageContextFromUrl(pathname: string, search: string): PageContex
     storeId: butik && UUID.test(butik) ? butik.toLowerCase() : null,
     machineId: automat && UUID.test(automat) ? automat.toLowerCase() : null,
     vmb: sp.get("vmb") === "1",
+    ...(sp.get("andel") === "1" ? { storeShare: true } : {}),
     detail: detailOf(path, sp),
   };
 }
@@ -252,6 +258,7 @@ export function parsePageContext(raw: unknown): PageContext | null {
     storeId: uuidOrNull(r.storeId),
     machineId: uuidOrNull(r.machineId),
     vmb: r.vmb === true,
+    ...(r.storeShare === true ? { storeShare: true } : {}),
     detail,
   };
 }
@@ -339,7 +346,10 @@ export function summaryCallFor(
     case "ekonomi":
       return { tool: "nyckeltal", input: { ...range, ...scope } };
     case "inkopspriser":
-      return { tool: "inkopspriser", input: { ...range, ...scope, antal: 8 } };
+      return {
+        tool: "inkopspriser",
+        input: { ...range, ...scope, antal: 8, ...(page.storeShare ? { visa_andel: true } : {}) },
+      };
     case "lager":
     case "att-gora":
       return {
@@ -389,7 +399,7 @@ export function pagePromptText(args: {
     `Användaren tittar just nu på sidan ${info.name} (${path}), som visar ${info.about}.`,
     args.detailName ? `Sidan gäller ${safeName(args.detailName)}.` : "",
     args.periodText ? `Sidans period: ${args.periodText}.` : "",
-    `Filter: ${filters.length ? filters.join(", ") : "inga (hela organisationen)"}. Med VMB: ${args.page.vmb ? "på" : "av"}.`,
+    `Filter: ${filters.length ? filters.join(", ") : "inga (hela organisationen)"}. Med VMB: ${args.page.vmb ? "på" : "av"}.${args.page.storeShare ? " Butikernas andel visas (vår del efter andelen)." : ""}`,
     'Frågor som "den här", "siffran" eller "varför" gäller den sidan, perioden och filtret. Använd dem när frågan inte säger annat.',
     args.summary
       ? "Sidans sammanfattning står först i frågan, inom <sidan>, och är data ur verktyget."

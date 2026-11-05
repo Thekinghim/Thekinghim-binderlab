@@ -19,6 +19,8 @@ import { loadDatakallorFor } from "../_lib/service";
 import { currentViewer } from "../_lib/session";
 import { loadAwishPanelFor } from "@/server/awish/manage";
 import { DEMO_MESSAGES, isDemoFor } from "@/server/demo/guard";
+import { loadAwishExpirySafe } from "@/server/awish/expiry-notice";
+import { AwishExpiry } from "@/app/(app)/_awish/awish-expiry";
 
 export const metadata: Metadata = { title: "Datakällor" };
 /** "Synka nu" och "Testa anslutningen" (server actions på sidan) anropar Awish. */
@@ -33,10 +35,11 @@ export const maxDuration = 60;
 export default async function DatakallorPage() {
   await requireRoute("datakallor");
   const viewer = await currentViewer();
-  const [data, awish, demo] = await Promise.all([
+  const [data, awish, demo, awishExpiry] = await Promise.all([
     loadDatakallorFor(viewer),
     loadAwishPanelFor(viewer),
     isDemoFor(viewer.user, viewer.organization.id),
+    loadAwishExpirySafe(viewer),
   ]);
   const headline = headlineOf(data);
   const fileSources = data.sources.filter((s) => s.acceptsFiles && !s.archived);
@@ -94,7 +97,10 @@ export default async function DatakallorPage() {
           // Demo för kunder: inga anrop till Awish med demons data (även spärrat på servern).
           <p className="max-w-2xl text-base text-muted">{DEMO_MESSAGES.integrations}</p>
         ) : (
-          <AwishCard source={awish.source} timeZone={data.timeZone} now={data.now} />
+          <>
+            <AwishExpiry notice={awishExpiry} link={false} className="mb-0 max-md:mb-0" />
+            <AwishCard source={awish.source} timeZone={data.timeZone} now={data.now} />
+          </>
         )}
       </section>
 

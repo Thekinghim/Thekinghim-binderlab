@@ -131,6 +131,33 @@ describe("larmgräns", () => {
     expect((await loadRankedTodoStateFor(reader, NOW)).items).toEqual([]);
   });
 
+  it("fullt fack (Awish-kapacitet 10, saldo 10): ingen punkt och inte Låg, som Fyll på", async () => {
+    const add = () =>
+      db().execute(sql`
+        insert into public.machine_slot_capacity
+          (organization_id, machine_id, title_id, capacity, channels, synced_at)
+        values (${fx.orgId}::uuid, ${fx.machineId}::uuid, ${fx.titleId}::uuid, 10, '{A1}',
+                ${NOW.toISOString()}::timestamptz)`);
+    const remove = () =>
+      db().execute(sql`
+        delete from public.machine_slot_capacity
+        where organization_id = ${fx.orgId}::uuid and machine_id = ${fx.machineId}::uuid`);
+    await add();
+    try {
+      for (const v of [owner, refiller]) {
+        const state = await loadRankedTodoStateFor(v, NOW);
+        expect(state.items.map((t) => t.key)).not.toContain(key());
+      }
+      const view = await loadLagerFor(owner, { period: ALL_TIME, scope: NO_SCOPE }, NOW);
+      const i = view.titles.findIndex((t) => t.id === fx.titleId);
+      expect(view.cells[i]?.[0]).toMatchObject({ alertAt: 10, status: "ok", onHand: 10 });
+    } finally {
+      await remove();
+    }
+    // Utan kapaciteten är punkten tillbaka.
+    expect((await loadRankedTodoStateFor(owner, NOW)).items.map((t) => t.key)).toContain(key());
+  });
+
   it("Lager visar gränsen och gör cellen Låg; bara ägare och admin får ändra", async () => {
     const view = await loadLagerFor(refiller, { period: ALL_TIME, scope: NO_SCOPE }, NOW);
     const i = view.titles.findIndex((t) => t.id === fx.titleId);

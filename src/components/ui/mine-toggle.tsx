@@ -27,7 +27,7 @@ export function MineToggle({
     <nav
       aria-label={label}
       className={cn(
-        "inline-flex h-8 w-fit divide-x divide-line-strong rounded-sm border border-line-strong",
+        "inline-flex h-8 w-fit divide-x divide-line-strong rounded-sm border border-line-strong max-md:h-[46px]",
         className,
       )}
     >
