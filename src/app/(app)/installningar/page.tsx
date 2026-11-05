@@ -15,6 +15,7 @@ import { MerHead } from "./_components/mer-head";
 import { OwnerSharesForm } from "./_components/owner-shares-form";
 import { SettingsForm } from "./_components/settings-form";
 import { SettingsLog } from "./_components/settings-log";
+import { SubscriptionSection } from "./_components/subscription-section";
 import { loadSettingsPageFor } from "./_lib/data";
 import {
   accountUse,
@@ -172,6 +173,13 @@ export default async function SettingsPage() {
           </div>
         </MobileFold>
       </section>
+
+      <SubscriptionSection
+        user={user}
+        organizationId={ctx.organization.id}
+        today={today}
+        index={3}
+      />
 
       <section
         aria-labelledby="agarandelar"

@@ -707,6 +707,25 @@ export const ACTIONS: ActionSpec[] = [
     allowed: ["owner"],
     args: () => [{ validFrom: "2025-06-01", shares: [{ holderName: "Rödteam", shareBp: 10000 }] }],
   },
+  // Plattformen (abonnemang): bara plattformsoperatörer, ingen roll i A (test/db/abonnemang.test.ts).
+  {
+    module: "@/app/plattform/actions",
+    name: "savePlan",
+    allowed: [],
+    args: (c) => [
+      {
+        organizationId: c.A.orgId,
+        effectiveFrom: TODAY,
+        status: "active",
+        price: "0",
+        currency: "SEK",
+        trialEndsOn: "",
+        countryCode: "SE",
+        vatNumber: "",
+        note: "Rödteam",
+      },
+    ],
+  },
   {
     module: "@/app/(app)/installningar/anvandare/actions",
     name: "inviteMember",
