@@ -489,6 +489,13 @@ export const ACTIONS: ActionSpec[] = [
     allowed: FIELD,
     args: () => [[crypto.randomUUID()]],
   },
+  // Uppdatera i Fyll på: läser facken i Awish nu (spärr per organisation)
+  {
+    module: "@/app/fyll-pa/actions",
+    name: "refreshFill",
+    allowed: FIELD,
+    args: () => [],
+  },
   {
     module: "@/app/(app)/drift/actions",
     name: "removePushDevice",

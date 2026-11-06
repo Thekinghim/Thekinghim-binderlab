@@ -42,6 +42,8 @@ const paths = {
   report: "M3.5 1.5h6l3 3v10h-9zM9.5 1.5v3h3M5.5 8h5M5.5 10.5h5M5.5 13h2.5",
   columns: "M2.5 2.5h11v11h-11zM6.17 2.5v11M9.83 2.5v11",
   print: "M4.5 5.5v-4h7v4M4.5 11.5H2v-6h12v6h-2.5M4.5 9h7v5.5h-7z",
+  // Uppdatera: en båge nästan runt och en pilspets uppe till höger.
+  refresh: "M13.5 8A5.5 5.5 0 1 1 11.9 4.1M12.5 1.5v3h-3",
 } as const;
 
 export type IconName = keyof typeof paths;

@@ -1,16 +1,11 @@
 import Link from "next/link";
 
-import { wallClockIn } from "@/components/shell/period-state";
-import { formatRelative } from "@/lib/format";
 import { loadContext } from "@/server/data/core";
 
 import { currentViewer } from "@/app/(app)/lager/_lib/session";
 
 import { loadFillDataFor } from "../_lib/data";
 import { FillApp } from "./fill-app";
-
-/** En Awish-läsning yngre än så här pulserar (synken läser facken var femte minut). */
-const FRESH_MS = 15 * 60_000;
 
 /** Serverdelen av Fyll på (/fyll-pa och /fyll-pa/<automat>): samma data, samma app. */
 export async function FillPage({ machineId = null }: { machineId?: string | null } = {}) {
@@ -28,24 +23,12 @@ export async function FillPage({ machineId = null }: { machineId?: string | null
   }
   const now = new Date(ctx.now);
   const data = await loadFillDataFor(await currentViewer(), now);
-  const syncLabels: Record<string, string> = {};
-  const fresh: Record<string, boolean> = {};
-  for (const m of data.machines) {
-    if (m.syncedAt) {
-      const at = new Date(m.syncedAt);
-      syncLabels[m.id] = formatRelative(
-        wallClockIn(at, ctx.timeZone),
-        wallClockIn(now, ctx.timeZone),
-      );
-      fresh[m.id] = now.getTime() - at.getTime() < FRESH_MS;
-    }
-  }
   return (
     <FillApp
       scope={`${ctx.organization.id}:${ctx.user.id}`}
       data={data}
-      syncLabels={syncLabels}
-      fresh={fresh}
+      timeZone={ctx.timeZone}
+      renderedAt={now.toISOString()}
       initialMachineId={
         machineId && data.machines.some((m) => m.id === machineId) ? machineId : null
       }
