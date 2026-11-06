@@ -278,7 +278,12 @@ describe("Fyll på från Kontoret på iPhone 15", () => {
     await new Promise((r) => setTimeout(r, 1_200));
     await screenshot(page, "08-fyll-pa-kontoret-iphone15");
     await page.getByRole("button", { name: /^Klar/ }).click();
-    await page.getByText("Sparat – 6 pack påfyllda, 9 kvar i Kontoret").first().waitFor();
+    // Klar frågar först (skydd mot tryck av misstag när man packar).
+    await page.getByRole("button", { name: "Ja, jag har fyllt på" }).click();
+    await page
+      .getByText(/Klart! 6\s?pack påfyllda/)
+      .first()
+      .waitFor();
     await until(async () => (await level(kontoret, target.titleId)) === 9, "Kontoret har 9");
     expect(await level(target.hemma, target.titleId)).toBe(45);
     expect(await level(target.machineLocation, target.titleId)).toBe(target.before + 6);

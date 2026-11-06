@@ -661,6 +661,22 @@ function MachineScreen({
   const [busy, setBusy] = useState(false);
   const [counting, setCounting] = useState<string | null>(null);
   const [choosing, setChoosing] = useState(false);
+  // Klar sparar och skickar till Awish: fråga först, så att ett tryck av misstag (t.ex. när
+  // man packar hemma) inte registrerar en påfyllning.
+  const [confirming, setConfirming] = useState(false);
+  const finish = async () => {
+    setBusy(true);
+    try {
+      await onDone(
+        m.rows
+          .map((row) => ({ row, quantity: qty[row.titleId] ?? 0 }))
+          .filter((l) => l.quantity > 0),
+      );
+    } finally {
+      setBusy(false);
+      setConfirming(false);
+    }
+  };
   const sourceName = places.find((p) => p.id === sourceId)?.name ?? "hemma";
   const total = m.rows.reduce((n, r) => n + (qty[r.titleId] ?? 0), 0);
   const after = useMemo(() => {
@@ -837,31 +853,61 @@ function MachineScreen({
       </div>
 
       <div className="sticky bottom-0 z-10 border-t border-line bg-bg/95 px-4 pt-3 pb-[calc(12px+env(safe-area-inset-bottom))] backdrop-blur">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            try {
-              await onDone(
-                m.rows
-                  .map((row) => ({ row, quantity: qty[row.titleId] ?? 0 }))
-                  .filter((l) => l.quantity > 0),
-              );
-            } finally {
-              setBusy(false);
-            }
-          }}
-          className={cn(
-            "flex h-14 w-full items-center justify-center gap-2 rounded-md border text-lg font-medium transition-colors",
-            busy
-              ? "border-dashed border-line-strong text-disabled"
-              : "border-inverse bg-inverse text-on-inverse active:bg-inverse-hover",
-          )}
-        >
-          <Icon name="check" size={20} />
-          {busy ? "Sparar…" : total > 0 ? `Klar · ${formatInt(total)}${NBSP}pack` : "Klar"}
-        </button>
+        {confirming ? (
+          <div
+            className="flex flex-col gap-2"
+            role="group"
+            aria-label="Har du fyllt på automaten nu?"
+          >
+            <p className="text-md font-medium text-fg">Har du fyllt på automaten nu?</p>
+            <p className="text-sm text-muted">
+              {`${formatInt(total)}${NBSP}pack sparas och antalen skickas till Awish.`}
+            </p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void finish()}
+              className={cn(
+                "flex h-14 w-full items-center justify-center gap-2 rounded-md border text-lg font-medium transition-colors",
+                busy
+                  ? "border-dashed border-line-strong text-disabled"
+                  : "border-inverse bg-inverse text-on-inverse active:bg-inverse-hover",
+              )}
+            >
+              <Icon name="check" size={20} />
+              {busy ? "Sparar…" : "Ja, jag har fyllt på"}
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setConfirming(false)}
+              className="flex h-12 w-full items-center justify-center rounded-md border border-line-control text-md font-medium text-fg"
+            >
+              Nej, jag packar bara
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              if (total > 0) {
+                setConfirming(true);
+                return;
+              }
+              await finish();
+            }}
+            className={cn(
+              "flex h-14 w-full items-center justify-center gap-2 rounded-md border text-lg font-medium transition-colors",
+              busy
+                ? "border-dashed border-line-strong text-disabled"
+                : "border-inverse bg-inverse text-on-inverse active:bg-inverse-hover",
+            )}
+          >
+            <Icon name="check" size={20} />
+            {busy ? "Sparar…" : total > 0 ? `Klar · ${formatInt(total)}${NBSP}pack` : "Klar"}
+          </button>
+        )}
       </div>
       <Sheet
         open={choosing}

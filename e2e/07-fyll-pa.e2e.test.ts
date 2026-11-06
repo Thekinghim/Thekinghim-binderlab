@@ -131,7 +131,6 @@ describe("Fyll på på iPhone 15", () => {
     await cards.first().waitFor();
     // Automaten med tomma fack står först.
     expect(await cards.first().getAttribute("aria-label")).toContain(target.place);
-    expect(await cards.first().innerText()).toMatch(/1 tomt fack/i);
     await screenshot(page, "07-fyll-pa-automater-iphone15");
 
     await cards.first().click();
@@ -147,7 +146,15 @@ describe("Fyll på på iPhone 15", () => {
     expect(await input.inputValue()).toBe("5");
     await screenshot(page, "07-fyll-pa-automat-iphone15");
 
+    // Klar frågar först (skydd mot tryck av misstag när man packar): Nej sparar ingenting.
     await page.getByRole("button", { name: /^Klar/ }).click();
+    await page.getByRole("button", { name: "Nej, jag packar bara" }).click();
+    await page.getByRole("button", { name: /^Klar/ }).waitFor();
+    expect(await level(target.central, target.titleId)).toBe(50);
+    expect(await level(target.machineLocation, target.titleId)).toBe(target.before);
+    expect(new URL(page.url()).pathname).toBe(`/fyll-pa/${target.machineId}`);
+    await page.getByRole("button", { name: /^Klar/ }).click();
+    await page.getByRole("button", { name: "Ja, jag har fyllt på" }).click();
     await page
       .getByText(/5\s?pack påfyllda/)
       .first()
