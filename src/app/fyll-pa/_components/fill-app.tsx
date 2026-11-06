@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useMemo,
+  useState,
+  useTransition,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import { newClientId, type QueuedRefill } from "@/components/pwa/refill-queue";
 import { useRefillQueue } from "@/components/pwa/use-refill-queue";
@@ -21,6 +28,7 @@ import { undoRefills } from "@/app/(app)/drift/actions";
 import { Sheet } from "@/app/(app)/lager/_components/sheet";
 import { registerCount } from "@/app/(app)/lager/actions";
 
+import { refreshFill } from "../actions";
 import {
   applyAdjustments,
   chooseSource,
@@ -37,15 +45,23 @@ import {
   type SourceChoice,
 } from "../_lib/model";
 import type { FillData } from "../_lib/data";
+import {
+  clockLabel,
+  lastAwishRead,
+  refreshNotice,
+  type RefreshNotice,
+  type RefreshOutcome,
+} from "../_lib/refresh";
+import { useFreshData } from "../_lib/use-fresh-data";
 
 export interface FillAppProps {
   /** Köns ägare: organisation och användare (samma som /drift/pafyllning). */
   readonly scope: string;
   readonly data: FillData;
-  /** "för 7 min sedan" per automat (räknat på servern i organisationens tidszon). */
-  readonly syncLabels: Record<string, string>;
-  /** Automater som Awish läst den senaste halvtimmen (pulserande prick). */
-  readonly fresh?: Record<string, boolean>;
+  /** Organisationens tidszon (klockslagen "Awish läst 14:50"). */
+  readonly timeZone: string;
+  /** När servern renderade datan (ISO). En äldre sida (sparad i telefonen) hämtas om. */
+  readonly renderedAt: string;
   /**
    * Automaten som sidan renderades för (/fyll-pa/<id>), null = listan. Används under
    * hydreringen: en sparad /fyll-pa (service workern utan nät) får inte krocka med adressen.
@@ -62,6 +78,26 @@ interface Done {
 }
 
 const BASE = "/fyll-pa";
+/** En Awish-läsning yngre än så här pulserar. */
+const FRESH_MS = 30 * 60_000;
+/** Uppdatera väntar högst så här länge på servern (Awish har en egen, kortare gräns). */
+const REFRESH_TIMEOUT_MS = 15_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timeout")), ms);
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e: unknown) => {
+        clearTimeout(timer);
+        reject(e instanceof Error ? e : new Error(String(e)));
+      },
+    );
+  });
+}
 
 function machineIdFrom(pathname: string | null): string | null {
   if (!pathname?.startsWith(`${BASE}/`)) return null;
@@ -94,8 +130,8 @@ function AwishDot({ live }: { live: boolean }) {
 export function FillApp({
   scope,
   data,
-  syncLabels,
-  fresh = {},
+  timeZone,
+  renderedAt,
   initialMachineId = null,
 }: FillAppProps) {
   const router = useRouter();
@@ -134,16 +170,79 @@ export function FillApp({
     [data],
   );
 
-  const q = useRefillQueue(scope, {
-    onBackgroundSaved: (items) => {
+  const onQueueSaved = useCallback(
+    (items: readonly QueuedRefill[]) => {
       rememberSaved(items);
       toast({
         title: `Sparat – ${formatInt(items.reduce((n, i) => n + i.quantity, 0))}${NBSP}pack från kön`,
         tone: "ok",
       });
+    },
+    [rememberSaved, toast],
+  );
+  const q = useRefillQueue(scope, {
+    onBackgroundSaved: (items) => {
+      onQueueSaved(items);
       router.refresh();
     },
   });
+
+  // Awish-läsningen per automat ("Awish läst 14:50") och den senaste av alla.
+  const syncLabels = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const m of data.machines) {
+      if (m.syncedAt) out[m.id] = `Awish läst ${clockLabel(m.syncedAt, renderedAt, timeZone)}`;
+    }
+    return out;
+  }, [data.machines, renderedAt, timeZone]);
+  const fresh = useMemo(() => {
+    const out: Record<string, boolean> = {};
+    const now = Date.parse(renderedAt);
+    for (const m of data.machines) {
+      if (m.syncedAt) out[m.id] = now - Date.parse(m.syncedAt) < FRESH_MS;
+    }
+    return out;
+  }, [data.machines, renderedAt]);
+  const lastRead = lastAwishRead(data.machines);
+
+  // Hämta om: först kön (så att datan visar det som just skickats), sedan sidan.
+  const [refreshing, startRefresh] = useTransition();
+  const [reading, setReading] = useState(false);
+  const [notice, setNotice] = useState<RefreshNotice | null>(null);
+  const { sync: syncQueue } = q;
+  const reloadData = useCallback(async () => {
+    try {
+      const out = await syncQueue();
+      if (out.saved.length > 0) onQueueSaved(out.saved);
+    } catch {
+      // Kön ligger kvar och skickas nästa gång.
+    }
+    startRefresh(() => router.refresh());
+  }, [onQueueSaved, router, syncQueue]);
+  // Appen öppnas igen (synlig, fokus, bfcache, nät tillbaka): hämta om, högst var 30:e s.
+  useFreshData({ renderedAt, refresh: () => void reloadData() });
+
+  /** Uppdatera: läs facken i Awish nu och hämta om datan. */
+  const update = async () => {
+    if (reading) return;
+    setReading(true);
+    let outcome: RefreshOutcome;
+    try {
+      const res = await withTimeout(refreshFill(), REFRESH_TIMEOUT_MS);
+      outcome = res.ok ? { ok: true, ...res.data } : { ok: false, offline: false };
+    } catch {
+      outcome = { ok: false, offline: typeof navigator !== "undefined" && !navigator.onLine };
+    }
+    try {
+      await reloadData();
+    } finally {
+      setNotice(refreshNotice(outcome, { now: new Date(), lastReadAt: lastRead, timeZone }));
+      setReading(false);
+    }
+  };
+  const busy = reading || refreshing;
+  const refreshButton = <RefreshButton busy={busy} onClick={() => void update()} />;
+  const noticeLine = notice ? <NoticeLine notice={notice} /> : null;
 
   const view = useMemo(() => {
     const pending = q.queue.filter((i) => i.status === "queued");
@@ -207,6 +306,13 @@ export function FillApp({
         syncLabel={syncLabels[selected.id]}
         fresh={fresh[selected.id] ?? false}
         online={q.online}
+        headerActions={
+          <div className="flex items-center gap-2">
+            {refreshButton}
+            <NetPill online={q.online} waiting={waiting} syncing={q.syncing} />
+          </div>
+        }
+        notice={noticeLine}
         onBack={() => go(BASE)}
         onCounted={(titleId, value) => {
           setCounted((prev) => {
@@ -314,7 +420,7 @@ export function FillApp({
   return (
     <div className="flex flex-col gap-6 px-4 pt-[calc(16px+env(safe-area-inset-top))] pb-[calc(32px+env(safe-area-inset-bottom))]">
       <header className="rise flex flex-col gap-3" style={rise(0)}>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
           <Link
             href="/drift"
             className="label inline-flex min-h-11 items-center gap-1 text-subtle hover:text-fg"
@@ -322,7 +428,10 @@ export function FillApp({
             <Icon name="chevronLeft" />
             Binderlab
           </Link>
-          <NetPill online={q.online} waiting={waiting} syncing={q.syncing} />
+          <div className="flex items-center gap-2">
+            {refreshButton}
+            <NetPill online={q.online} waiting={waiting} syncing={q.syncing} />
+          </div>
         </div>
         <p className="label text-subtle">Fyll på</p>
         <h1 className="text-3xl font-medium text-balance text-fg">
@@ -336,7 +445,7 @@ export function FillApp({
             headline
           )}
         </h1>
-        {data.hasWarehouse || waitingAwish ? (
+        {data.hasWarehouse || waitingAwish || lastRead ? (
           <p className="flex flex-wrap gap-x-3 gap-y-1 text-md text-muted">
             {data.hasWarehouse ? (
               <span>
@@ -345,8 +454,14 @@ export function FillApp({
               </span>
             ) : null}
             {waitingAwish ? <span>Fyllnad: väntar på Awish</span> : null}
+            {lastRead ? (
+              <span className="tnum">
+                {`Awish läst ${clockLabel(lastRead, renderedAt, timeZone)}`}
+              </span>
+            ) : null}
           </p>
         ) : null}
+        {noticeLine}
         {data.hasOthers ? (
           <MineSwitch mine={mine} onChange={(v) => setMineOnly(v ? "1" : null)} />
         ) : null}
@@ -431,6 +546,35 @@ export function FillApp({
         ))}
       </ul>
     </div>
+  );
+}
+
+/** Uppdatera: läser facken i Awish nu. Stor (44 px), ikon och text, snurrar medan den arbetar. */
+function RefreshButton({ busy, onClick }: { busy: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      aria-busy={busy}
+      className="inline-flex min-h-11 items-center gap-2 rounded-full border border-line-strong bg-surface px-3 text-md font-medium text-fg active:bg-hover disabled:text-muted"
+    >
+      <Icon name="refresh" size={16} className={cn(busy && "motion-safe:animate-spin")} />
+      {busy ? "Uppdaterar…" : "Uppdatera"}
+    </button>
+  );
+}
+
+/** Raden efter Uppdatera: "Uppdaterat 14:52" eller ett lugnt fel. */
+function NoticeLine({ notice }: { notice: RefreshNotice }) {
+  return (
+    <p
+      role="status"
+      aria-live="polite"
+      className={cn("text-sm", notice.tone === "ok" ? "text-subtle" : "text-signal-fg")}
+    >
+      {notice.text}
+    </p>
   );
 }
 
@@ -635,6 +779,8 @@ function MachineScreen({
   syncLabel,
   fresh,
   online,
+  headerActions,
+  notice,
   onBack,
   onDone,
   onCounted,
@@ -650,14 +796,25 @@ function MachineScreen({
   syncLabel?: string;
   fresh: boolean;
   online: boolean;
+  /** Uppdatera och uppkopplingen, till höger om Automater. */
+  headerActions?: ReactNode;
+  /** Raden efter Uppdatera. */
+  notice?: ReactNode;
   onBack: () => void;
   onDone: (lines: Line[]) => Promise<void>;
   onCounted: (titleId: string, value: number) => void;
 }) {
   const toast = useToast();
-  const [qty, setQty] = useState<Record<string, number>>(() =>
-    Object.fromEntries(m.rows.map((r) => [r.titleId, r.suggested])),
-  );
+  const suggestedQty = () => Object.fromEntries(m.rows.map((r) => [r.titleId, r.suggested]));
+  const [qty, setQty] = useState<Record<string, number>>(suggestedQty);
+  // Ny data (Uppdatera, appen öppnad igen): nya förslag, så länge inget antal har ändrats.
+  const suggestKey = m.rows.map((r) => `${r.titleId}:${r.suggested}`).join(",");
+  const [seenKey, setSeenKey] = useState(suggestKey);
+  const [touched, setTouched] = useState(false);
+  if (suggestKey !== seenKey) {
+    setSeenKey(suggestKey);
+    if (!touched) setQty(suggestedQty());
+  }
   const [busy, setBusy] = useState(false);
   const [counting, setCounting] = useState<string | null>(null);
   const [choosing, setChoosing] = useState(false);
@@ -690,8 +847,10 @@ function MachineScreen({
     return cap > 0 ? Math.round((known / cap) * 100) : null;
   }, [m.rows, qty]);
 
-  const set = (titleId: string, value: number, max: number) =>
+  const set = (titleId: string, value: number, max: number) => {
+    setTouched(true);
     setQty((prev) => ({ ...prev, [titleId]: Math.max(0, Math.min(max, Math.trunc(value) || 0)) }));
+  };
 
   // Det som behöver fyllas syns först; resten under "Fler titlar".
   const first = m.rows.filter(
@@ -751,14 +910,17 @@ function MachineScreen({
     <div className="flex min-h-dvh flex-col">
       <div className="flex flex-1 flex-col gap-5 px-4 pt-[calc(12px+env(safe-area-inset-top))] pb-6">
         <header className="rise flex flex-col gap-3" style={rise(0)}>
-          <button
-            type="button"
-            onClick={onBack}
-            className="label inline-flex min-h-11 items-center gap-1 self-start text-subtle hover:text-fg"
-          >
-            <Icon name="chevronLeft" />
-            Automater
-          </button>
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <button
+              type="button"
+              onClick={onBack}
+              className="label inline-flex min-h-11 items-center gap-1 text-subtle hover:text-fg"
+            >
+              <Icon name="chevronLeft" />
+              Automater
+            </button>
+            {headerActions}
+          </div>
           <div className="flex items-end justify-between gap-3">
             <div className="flex min-w-0 flex-col gap-1">
               <h1 className="truncate text-2xl font-medium text-fg">{m.place}</h1>
@@ -784,6 +946,7 @@ function MachineScreen({
             ) : null}
           </div>
           <FillBar pct={after} className="h-2.5" />
+          {notice}
         </header>
 
         <div className="rise flex flex-wrap items-center justify-between gap-3" style={rise(1)}>
@@ -806,7 +969,8 @@ function MachineScreen({
           {m.rows.some((r) => r.capacity !== null) ? (
             <button
               type="button"
-              onClick={() =>
+              onClick={() => {
+                setTouched(true);
                 setQty(
                   Object.fromEntries(
                     m.rows.map((r) => [
@@ -814,8 +978,8 @@ function MachineScreen({
                       r.capacity === null ? (qty[r.titleId] ?? 0) : Math.max(0, r.capacity - r.now),
                     ]),
                   ),
-                )
-              }
+                );
+              }}
               className="min-h-11 rounded-sm border border-line-strong bg-surface px-4 text-md font-medium text-fg active:bg-hover"
             >
               Fyll allt

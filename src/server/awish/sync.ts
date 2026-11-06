@@ -118,6 +118,11 @@ export interface AwishSyncState {
    * högst var STOCK_SYNC_INTERVAL_MS; "Synka nu" läser alltid.
    */
   stockSyncedAt: string | null;
+  /**
+   * Senaste gången någon tryckte Uppdatera i Fyll på (readFillStock). Spärren per
+   * organisation: högst en läsning per FILL_READ_INTERVAL_MS.
+   */
+  fillReadAt: string | null;
 }
 
 export interface AwishLastRun {
@@ -176,6 +181,7 @@ export function parseState(text: unknown): AwishSyncState {
       : [],
     amountFormat: value.amountFormat === "decimal" ? "decimal" : null,
     stockSyncedAt: typeof value.stockSyncedAt === "string" ? value.stockSyncedAt : null,
+    fillReadAt: typeof value.fillReadAt === "string" ? value.fillReadAt : null,
   };
 }
 
@@ -469,6 +475,7 @@ export async function syncAwishSource(
         extra.stock && extra.stock.deferred === 0 && extra.stock.failed === 0
           ? extra.stock.at
           : before.stockSyncedAt,
+      fillReadAt: before.fillReadAt,
     };
     try {
       // Bara om läget är det vi låste med. Har någon sparat ett nytt AppId under
@@ -648,6 +655,131 @@ export async function syncAwishSource(
   } finally {
     api.close();
   }
+}
+
+/** Uppdatera i Fyll på: högst en läsning av facken per organisation så här ofta. */
+export const FILL_READ_INTERVAL_MS = 20_000;
+/** Uppdatera i Fyll på: anropen till Awish får så här lång tid (kort, påfyllaren väntar). */
+export const FILL_READ_DEADLINE_MS = 8_000;
+
+/**
+ * Får facken läsas nu (Uppdatera i Fyll på)? Nej om någon i organisationen läste för
+ * mindre än `minMs` sedan. En tidpunkt långt i framtiden (fel klocka) spärrar inte.
+ */
+export function fillReadDue(
+  state: Pick<AwishSyncState, "fillReadAt">,
+  now: Date,
+  minMs: number = FILL_READ_INTERVAL_MS,
+): boolean {
+  if (state.fillReadAt === null) return true;
+  const last = Date.parse(state.fillReadAt);
+  if (!Number.isFinite(last)) return true;
+  const age = now.getTime() - last;
+  return age >= minMs || age < -minMs;
+}
+
+export interface FillReadResult {
+  /**
+   * read: alla kopplade automater lästa. partial: några lästes inte (fel eller tiden
+   * tog slut). failed: ingen kunde läsas. throttled: någon läste nyss. busy: en synk
+   * pågår redan (den läser facken själv). paused/no_credentials/archived: ingen läsning.
+   */
+  status:
+    "read" | "partial" | "failed" | "throttled" | "busy" | "paused" | "no_credentials" | "archived";
+  stock: AwishStockSummary | null;
+}
+
+/**
+ * Läser bara facken (Products) för källans kopplade automater, nu: Uppdatera i Fyll på.
+ * Samma läsning som synken (syncSourceStock), utan order och utan Machines. Spärras per
+ * organisation (fillReadAt i läget, FILL_READ_INTERVAL_MS) och tar samma lås som synken,
+ * så att cron, "Synka nu" och flera telefoner aldrig läser samtidigt. Kort tidsgräns och
+ * inga nya försök. Kastar inte för fel från Awish.
+ */
+export async function readFillStock(
+  deps: AwishSyncDeps,
+  input: { dataSourceId: string; minIntervalMs?: number; deadlineMs?: number },
+): Promise<FillReadResult> {
+  const now = deps.now ?? (() => new Date());
+  const started = now();
+  const deadlineMs = input.deadlineMs ?? FILL_READ_DEADLINE_MS;
+  const deadlineAt = started.getTime() + deadlineMs;
+  const source = await loadSource(deps.db, input.dataSourceId);
+  if (!source || source.archived_at !== null || source.org_archived_at !== null) {
+    return { status: "archived", stock: null };
+  }
+  if (source.status === "paused") return { status: "paused", stock: null };
+  const before = parseState(source.cursor);
+  if (!fillReadDue(before, started, input.minIntervalMs ?? FILL_READ_INTERVAL_MS)) {
+    return { status: "throttled", stock: null };
+  }
+  if (before.leaseUntil && Date.parse(before.leaseUntil) > started.getTime()) {
+    return { status: "busy", stock: null };
+  }
+  // Låset gäller bara läsningen (plus marginal), inte synkens tre minuter.
+  const leased: AwishSyncState = {
+    ...before,
+    leaseUntil: new Date(deadlineAt + 30_000).toISOString(),
+    fillReadAt: started.toISOString(),
+  };
+  const leasedText = JSON.stringify(leased);
+  // Jämför-och-skriv: två samtidiga tryck (två telefoner) ger en läsning.
+  if (!(await writeState(deps.db, source, leased, source.cursor))) {
+    return { status: "busy", stock: null };
+  }
+
+  const release = async (stock: AwishStockSummary | null) => {
+    const complete = stock !== null && stock.deferred === 0 && stock.failed === 0;
+    const state: AwishSyncState = {
+      ...leased,
+      leaseUntil: null,
+      stockSyncedAt: complete ? stock.at : before.stockSyncedAt,
+    };
+    try {
+      if (await writeState(deps.db, source, state, leasedText)) return;
+      // Läget ändrades under läsningen (t.ex. nytt AppId): släpp bara vårt lås.
+      const [current] = await query<{ cursor: string | null }>(
+        deps.db,
+        sql`select cursor from public.data_sources
+            where organization_id = ${source.organization_id}::uuid and id = ${source.id}::uuid`,
+      );
+      const fresh = parseState(current?.cursor ?? null);
+      if (fresh.leaseUntil === leased.leaseUntil) {
+        await writeState(deps.db, source, { ...fresh, leaseUntil: null }, current?.cursor ?? null);
+      }
+    } catch (error) {
+      console.error("[awish] läget kunde inte sparas", error);
+    }
+  };
+
+  let creds: AwishCredentials | null = null;
+  try {
+    creds = await readCredentials(deps.db, source);
+  } catch (error) {
+    console.error("[awish] inloggningen kunde inte läsas", error);
+  }
+  if (!creds) {
+    await release(null);
+    return { status: "no_credentials", stock: null };
+  }
+
+  const clock = () => now().getTime();
+  let stock: AwishStockSummary | null = null;
+  const api = (deps.connect ?? defaultConnect)(creds, { deadlineAt, clock, maxAttempts: 1 });
+  try {
+    stock = await syncSourceStock(deps.db, api, source, { now, deadlineAt });
+  } catch (error) {
+    if (!(error instanceof AwishApiError)) console.error("[awish] facken kunde inte läsas", error);
+  } finally {
+    api.close();
+    await release(stock);
+  }
+  if (stock === null) return { status: "failed", stock: null };
+  if (stock.read === 0 && (stock.failed > 0 || stock.deferred > 0)) {
+    return { status: "failed", stock };
+  }
+  if (stock.failed > 0 || stock.deferred > 0) return { status: "partial", stock };
+  return { status: "read", stock };
 }
 
 type ConnectivityRow = {

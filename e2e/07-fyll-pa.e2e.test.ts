@@ -8,6 +8,10 @@
  * (stock_locations.awish_fill, som synken skriver) med plats för 6 pack och ett tomt fack,
  * och vårt lager räknas till 50 pack av titeln. Andra automater får ingen Awish-läsning,
  * så att den här står först. Testet går att köra flera gånger.
+ *
+ * Uppdatera: en ny Awish-läsning i databasen (fler fack) syns efter ett tryck på Uppdatera,
+ * utan att sidan laddas om (i e2e finns ingen Awish API-källa, så knappen hämtar bara om
+ * datan; läsningen i Awish testas i test/db/fyll-pa-uppdatera.test.ts).
  */
 
 import postgres from "postgres";
@@ -153,10 +157,15 @@ describe("Fyll på på iPhone 15", () => {
     expect(await level(target.central, target.titleId)).toBe(50);
     expect(await level(target.machineLocation, target.titleId)).toBe(target.before);
     expect(new URL(page.url()).pathname).toBe(`/fyll-pa/${target.machineId}`);
+    // Seeden kan ge andra titlar i automaten ett förslag också: bekräftelsen visar summan.
+    const total = Number(
+      (await page.getByRole("button", { name: /^Klar/ }).innerText()).replace(/\D/g, ""),
+    );
+    expect(total).toBeGreaterThanOrEqual(5);
     await page.getByRole("button", { name: /^Klar/ }).click();
     await page.getByRole("button", { name: "Ja, jag har fyllt på" }).click();
     await page
-      .getByText(/5\s?pack påfyllda/)
+      .getByText(new RegExp(`${total}\\s?pack påfyllda`))
       .first()
       .waitFor();
     await page.waitForURL((url) => url.pathname === "/fyll-pa");
@@ -172,5 +181,48 @@ describe("Fyll på på iPhone 15", () => {
         and quantity = 5 and from_warehouse and occurred_at > now() - interval '5 minutes'`;
     expect(ev?.n).toBe(1);
     await screenshot(page, "07-fyll-pa-klar-iphone15");
+  });
+  it("Uppdatera visar en ny Awish-läsning utan att sidan laddas om", async () => {
+    await page.goto(`/fyll-pa/${target.machineId}`);
+    await page.getByLabel(target.title, { exact: true }).waitFor();
+    const now = await level(target.machineLocation, target.titleId);
+    const text = () => page.locator("body").innerText();
+    expect(await text()).toContain(`${now}/${target.before + 6}`);
+    // Laddas sidan om försvinner markören.
+    await page.evaluate(() => {
+      (window as unknown as { __kvar?: boolean }).__kvar = true;
+    });
+    await sql`
+      update public.stock_locations
+      set awish_synced_at = now(),
+          awish_fill = ${sql.json([
+            { title_id: target.titleId, units: now, capacity: now + 17, channels: 3, empty: 0 },
+          ])}
+      where id = ${target.machineLocation}::uuid`;
+    const button = page.getByRole("button", { name: "Uppdatera", exact: true });
+    // Stor nog för en tumme (minst 44 px hög).
+    const height = await page.evaluate(() =>
+      Math.max(
+        ...[...document.querySelectorAll("button")]
+          .filter((b) => b.textContent?.trim() === "Uppdatera")
+          .map((b) => b.getBoundingClientRect().height),
+      ),
+    );
+    expect(height).toBeGreaterThanOrEqual(44);
+    await button.click();
+    await until(async () => (await text()).includes(`${now}/${now + 17}`), "nya kapaciteten syns");
+    await page.getByText(/^Uppdaterat \d\d:\d\d$/).waitFor();
+    expect(await text()).toMatch(/Awish läst \d\d:\d\d/);
+    expect(
+      await page.evaluate(() => (window as unknown as { __kvar?: boolean }).__kvar === true),
+    ).toBe(true);
+    await screenshot(page, "07-fyll-pa-uppdatera-iphone15");
+
+    // Listan: knappen finns där också och visar senaste läsningen.
+    await page.getByRole("button", { name: "Automater" }).click();
+    await page.waitForURL((url) => url.pathname === "/fyll-pa");
+    await page.getByText(/^Awish läst \d\d:\d\d$/).waitFor();
+    await page.getByRole("button", { name: "Uppdatera", exact: true }).waitFor();
+    await screenshot(page, "07-fyll-pa-lista-uppdatera-iphone15");
   });
 });
