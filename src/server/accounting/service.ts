@@ -1231,11 +1231,16 @@ export interface FixedCostsView {
   readonly machines: MachineRecord[];
 }
 
-/** De fasta kostnaderna och lönsamheten efter fasta kostnader för perioden. */
+/**
+ * De fasta kostnaderna och lönsamheten efter fasta kostnader för perioden. Vinsten är före
+ * butikernas andel, eller efter den med `storeShare` (vyknappen "Visa butikernas andel",
+ * samma regel som övriga sidor, @/domain storeShareDeducted).
+ */
 export async function loadFixedCostsFor(
   viewer: Viewer,
   period: Period,
   today: IsoDate,
+  options: { readonly storeShare?: boolean } = {},
 ): Promise<FixedCostsView> {
   const orgId = viewer.organization.id;
   return asRole(viewer, ECONOMY_ROLES, async (tx) => {
@@ -1250,6 +1255,7 @@ export async function loadFixedCostsFor(
       const allocation = profitabilityWithFixedCosts(
         {
           ...sources,
+          settings: { ...sources.settings, deductStoreShare: options.storeShare === true },
           orders: orders.orders,
           period,
           fixedCosts: costs.filter((c) => !c.archived).map(toFixedCost),

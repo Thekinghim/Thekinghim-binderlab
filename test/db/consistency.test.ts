@@ -55,6 +55,14 @@ vi.mock("@/server/session", async () => {
   };
 });
 
+// Vyknappen "Visa butikernas andel" på (headern som proxyn sätter från ?andel=1 eller kakan):
+// testerna här prövar vinsten EFTER butikernas andel (vår del) mot handräkning och SQL-facit.
+// Standardläget (före andelen) och båda lägena mot varandra: consistency-andel.test.ts.
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers({ "x-binderlab-andel": "1" }),
+  cookies: async () => ({ get: () => undefined, getAll: () => [], set: () => {} }),
+}));
+
 class RedirectSignal extends Error {
   constructor(readonly url: string) {
     super(`redirect ${url}`);
@@ -306,16 +314,16 @@ async function expectPagesAgree(sp: SearchParamsInput, label: string) {
       sum(stores.rows, (r) => r.profitOre),
       label,
     ).toBe(lons.totals.profitOre);
-    // Butiksersättningen på Butiker är det butiken får: provision på ALLA order (även utan
-    // inköpspris) + hyra. Lönsamhet räknar bara provisionen för prissatta order in i vinsten.
-    // Skillnaden är exakt provisionen på order utan pris (beräkningslagrets summa).
+    // Butikernas andel på Butiker är andelen som dras från vår vinst, samma som Lönsamhet
+    // (andelen + vår del = vår vinst före andelen). Provisionen på order utan inköpspris
+    // ingår inte, eftersom de orderna inte ingår i vinsten (beräkningslagrets summa nedan).
     const p = await loadPeriod(sp);
     const input = await loadDomainInput({ period: p.period, compare: p.compare, ...p.scope });
     const unpricedCommission = profitability(input.current, "store").totals.unpricedCommissionOre;
     expect(
       sum(stores.rows, (r) => r.compensationOre),
       label,
-    ).toBe(lons.totals.compensationOre + unpricedCommission);
+    ).toBe(lons.totals.compensationOre);
     unpricedCommissionSeen.set(label, unpricedCommission);
   }
   return { home, lons, order, machines };
@@ -418,7 +426,7 @@ describe("(b, e) samma siffror på alla sidor, före prisändringarna", () => {
       ]);
       expect(lons.totals.unpricedOrders).toBe(25);
       expect(lons.totals.unpricedRevenueOre).toBe(15 * 14_900 + 10 * 15_900);
-      // Provision på order utan pris (ingår i Butikers ersättning, inte i vinsten):
+      // Provision på order utan pris (ingår varken i vinsten eller i andelen på Butiker):
       //   Perfect Order (14 900): BL-001 5 × 1 788 = 8 940, BL-003 7 × 1 192 = 8 344
       //   White Flair   (15 900): BL-001 4 × 1 908 = 7 632, BL-003 2 × 1 272 = 2 544
       //   summa 27 460 (BL-002 har bara hyra)

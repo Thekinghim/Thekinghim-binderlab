@@ -118,6 +118,7 @@ export function siteHistories(input: ProfitabilityInput): SiteHistory[] {
       contributionOre: revenue - cost - fees,
       vmbVatOre: r?.vmbVatOre ?? 0,
       profitOre: r?.profitOre ?? 0,
+      storeShareDeducted: result.storeShareDeducted,
     });
   }
   return out;

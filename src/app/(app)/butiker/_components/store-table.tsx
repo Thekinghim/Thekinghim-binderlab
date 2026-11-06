@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { ourProfitLabel } from "@/lib/store-share";
 import { StatusTag } from "@/components/ui/status-tag";
 import { formatDelta, formatSek, MISSING } from "@/lib/format";
 
@@ -178,7 +179,8 @@ function columns(monthLabel: string, showStoreShare: boolean): Column<StoreRow>[
     },
     {
       key: "profit",
-      header: "Vår vinst",
+      // Före butikens andel; efter den ("Vår del") med vyknappen eller vald butik.
+      header: ourProfitLabel(showStoreShare),
       numeric: true,
       hideOnMobile: true,
       sortValue: (r) => r.profitOre,

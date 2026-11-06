@@ -12,7 +12,7 @@ import { formatPercent, formatSek, NBSP } from "@/lib/format";
 import { sentence, type SectionTitle } from "../_lib/headline";
 import type { ProfitLine, TrendKey, TrendSeries, ViewKey } from "../_lib/model";
 import { ANALYSIS_PARAM, TREND_PARAM, VIEW_PARAM, type AnalysisTab } from "../_lib/params";
-import { DEFAULT_SORT, ExportButton, ProfitTable, VIEW_NOUN } from "./profit-table";
+import { DEFAULT_SORT, ExportButton, ProfitTable, profitLabels, VIEW_NOUN } from "./profit-table";
 import type { SortKey } from "@/components/ui/data-table";
 import { ProfitTrendChart, type TrendDatum } from "./profit-trend-chart";
 
@@ -104,6 +104,7 @@ export function TableSection({
               totals={totals}
               sort={sort}
               fileName={`${fileStem}-per-${VIEW_PARAM[view]}`}
+              showStoreShare={showStoreShare}
             />
           </div>
         }
@@ -115,7 +116,9 @@ export function TableSection({
                 `Vald titel: ${selected.name}${
                   selected.orders === selected.unpricedOrders
                     ? ", saknar inköpspris"
-                    : `, ${formatSek(selected.profitOre / 100)} i vår vinst${
+                    : `, ${formatSek(selected.profitOre / 100)} i ${
+                        showStoreShare ? "vår del efter butikernas andel" : "vår vinst"
+                      }${
                         selected.marginBp === null
                           ? ""
                           : ` och ${formatPercent(selected.marginBp / 10_000)} marginal`
@@ -192,26 +195,39 @@ const UNIT: Record<TrendKey, { noun: string; one: string; plural: string }> = {
   month: { noun: "månad", one: "en månad", plural: "månader" },
 };
 
-export function TrendSection({
-  tabs,
-  initialTrend,
-  trend,
-  days,
-}: {
-  tabs?: ReactNode;
-  initialTrend: TrendKey;
-  trend: Record<TrendKey, TrendSeries>;
-  days: number;
-}) {
-  const [key, setKey] = useState<TrendKey>(initialTrend);
-  const change = (k: TrendKey) => {
-    setKey(k);
-    replaceParam("per", TREND_PARAM[k]);
-  };
-  const series = trend[key];
+/**
+ * Raderna under utvecklingen: periodens vinst och marginal med samma ord och tal som
+ * nyckeltalen (före eller efter butikernas andel), delvisa staplar och ej fördelad hyra.
+ * Ren funktion (testas).
+ */
+export function trendNotes(
+  series: TrendSeries,
+  key: TrendKey,
+  showStoreShare: boolean,
+  total?: { profitOre: number; marginBp: number | null },
+): string[] {
   const unit = UNIT[key];
-  const partial = series.buckets.filter((b) => b.partial).length;
   const notes: string[] = [];
+  if (total) {
+    const profit = profitLabels(showStoreShare);
+    const label = total.profitOre < 0 ? "Förlust" : profit.profit;
+    const margin =
+      total.marginBp === null
+        ? ""
+        : `, ${profit.margin.toLowerCase()} ${formatPercent(total.marginBp / 10_000)}`;
+    notes.push(
+      `Perioden: ${label} ${formatSek(Math.abs(total.profitOre) / 100)}${margin} (${
+        showStoreShare ? "efter" : "före"
+      } butikernas andel).`,
+    );
+  } else {
+    notes.push(
+      showStoreShare
+        ? "Vinst och marginal efter butikernas andel (vår del)."
+        : "Vinst och marginal före butikernas andel.",
+    );
+  }
+  const partial = series.buckets.filter((b) => b.partial).length;
   if (partial > 0) {
     notes.push(
       partial === 1
@@ -224,6 +240,34 @@ export function TrendSection({
       `* Ej fördelad hyra ${formatSek(Math.abs(series.unallocatedProfitOre) / 100)} ingår bara i totalen.`,
     );
   }
+  return notes;
+}
+
+export function TrendSection({
+  tabs,
+  initialTrend,
+  trend,
+  days,
+  showStoreShare = false,
+  total,
+}: {
+  tabs?: ReactNode;
+  initialTrend: TrendKey;
+  trend: Record<TrendKey, TrendSeries>;
+  days: number;
+  /** Vinsten per dag/vecka/månad är efter butikernas andel (som nyckeltalen). */
+  showStoreShare?: boolean;
+  /** Periodens vinst och marginal (nyckeltalen), som staplarna summerar till. */
+  total?: { profitOre: number; marginBp: number | null };
+}) {
+  const [key, setKey] = useState<TrendKey>(initialTrend);
+  const change = (k: TrendKey) => {
+    setKey(k);
+    replaceParam("per", TREND_PARAM[k]);
+  };
+  const series = trend[key];
+  const unit = UNIT[key];
+  const notes = trendNotes(series, key, showStoreShare, total);
 
   return (
     <section aria-labelledby="utveckling" className="flex scroll-mt-28 flex-col gap-10 md:gap-12">

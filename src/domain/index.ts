@@ -191,3 +191,5 @@ export {
 } from "./unit-economics";
 
 export { allocateToOwners, type OwnerAllocation } from "./owners";
+
+export { entryProfitOre, storeShareDeducted } from "./store-share";

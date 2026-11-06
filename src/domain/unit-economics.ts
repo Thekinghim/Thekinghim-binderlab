@@ -3,8 +3,9 @@
  * återbetalningstid.
  *
  * Vinst per månad:
- *   Automatens vinst i perioden (prissatta order, efter inköp, avgifter, VMB-moms, provision
- *   och fördelad hyra; samma siffra som i lönsamhetsvyn per automat) delat med antalet
+ *   Automatens vinst i perioden (prissatta order, efter inköp, avgifter och VMB-moms, och
+ *   efter provision och fördelad hyra när butikernas andel dras, store-share.ts; samma
+ *   siffra som i lönsamhetsvyn per automat utom ej fördelad hyra) delat med antalet
  *   aktiva månader. Aktiva månader = Σ över kalendermånader (aktiva dagar / dagar i
  *   månaden), där en dag är aktiv om automaten var placerad i en butik. Saknar automaten
  *   placeringar räknas hela perioden. Bråket räknas exakt (gemensam nämnare 377 580 =
@@ -23,6 +24,7 @@ import { assertIsoDate, daysInMonth, eachDay, monthsElapsed } from "./dates";
 import { DomainError } from "./errors";
 import { buildLedger } from "./ledger";
 import { assertNonNegativeInteger, checkSafe, roundHalfUp } from "./money";
+import { entryProfitOre, storeShareDeducted } from "./store-share";
 import type { IsoDate, MachineInvestment, ProfitabilityInput } from "./types";
 
 /** Minsta gemensamma multipel av 28, 29, 30 och 31. */
@@ -100,6 +102,7 @@ export function depreciation(
 /** Enhetsekonomi per automat, sorterad på automat-id. */
 export function unitEconomics(input: UnitEconomicsInput): MachineUnitEconomics[] {
   const ledger = buildLedger(input);
+  const deduct = storeShareDeducted(ledger.settings);
   const asOf = input.asOf ?? input.period.end;
   assertIsoDate(asOf, "Datum för bokfört värde");
   const placements = ledger.context.placements;
@@ -127,8 +130,7 @@ export function unitEconomics(input: UnitEconomicsInput): MachineUnitEconomics[]
       continue;
     }
     s.revenue += e.netRevenueOre;
-    s.profit +=
-      e.netRevenueOre - e.costOre - e.cardFeeOre - e.vmbVatOre - e.commissionOre - e.rentOre;
+    s.profit += entryProfitOre(e, deduct);
   }
 
   const out: MachineUnitEconomics[] = [];

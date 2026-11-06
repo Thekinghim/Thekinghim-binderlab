@@ -102,7 +102,7 @@ export default async function ButikerPage({
                 {/* Butikernas andel på begäran; med vald butik visas den alltid. */}
                 {data.scopeLabel ? null : (
                   <Suspense fallback={null}>
-                    <StoreShareToggle userKey={ctx.user.id} />
+                    <StoreShareToggle on={data.showStoreShare} />
                   </Suspense>
                 )}
                 {dataRange ? <p className="meta text-subtle">Data {dataRange}</p> : null}

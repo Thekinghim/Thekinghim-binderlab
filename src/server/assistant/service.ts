@@ -31,7 +31,13 @@ import { createLocalModelClient } from "./local-model";
 import { insertLogFor, loadConversationFor } from "./log";
 import { emptyUsage, runAssistant, runToolDirect, type RunResult } from "./loop";
 import { createAnthropicClient, type ModelClient } from "./model-client";
-import { pagePromptText, pageSummaryNote, summaryCallFor, type PageContext } from "./page-context";
+import {
+  pagePromptText,
+  pageSummaryNote,
+  pageWithStoreShare,
+  summaryCallFor,
+  type PageContext,
+} from "./page-context";
 import { systemBlocks } from "./prompt";
 import { QUESTION_MAX_LENGTH, type AssistantEvent, type ToolCallRecord } from "./protocol";
 import { toModelTool, toolsForRole, type AssistantTool, type ToolContext } from "./tools";
@@ -60,6 +66,11 @@ export interface AskArgs {
    * Ger modellen sidans sammanhang och en sammanfattning av vad sidan visar.
    */
   readonly page?: PageContext | null;
+  /**
+   * Vyknappen "Visa butikernas andel" i förfrågan (kakan eller ?andel=1, requestStoreShareView).
+   * Vinst och marginal räknas då efter butikernas andel, som på sidan. Standard av.
+   */
+  readonly storeShare?: boolean;
 }
 
 /** Perioden som är vald i panelen, tolkad som på sidorna (i organisationens tidszon). */
@@ -133,6 +144,7 @@ export function toolContextFor(
   role: MemberRole,
   now: Date,
   vmb = false,
+  storeShare = false,
 ): ToolContext {
   let masterPromise: Promise<MasterData> | null = null;
   return {
@@ -140,6 +152,7 @@ export function toolContextFor(
     role,
     now,
     vmb,
+    storeShare,
     today: businessToday(now, viewer.organization.timezone),
     timeZone: viewer.organization.timezone,
     master: () => (masterPromise ??= loadMasterDataFor(viewer, now)),
@@ -197,11 +210,19 @@ export async function askAssistant(args: AskArgs): Promise<AskResult> {
     }
   }
 
-  const ctx = toolContextFor(viewer, role, now, args.page?.vmb === true);
+  // "Visa butikernas andel" som sidan räknade det: ?andel i sidans adress går före kakan.
+  const page = args.page ? pageWithStoreShare(args.page, args.storeShare === true) : null;
+  const ctx = toolContextFor(
+    viewer,
+    role,
+    now,
+    page?.vmb === true,
+    page ? page.storeShare === true : args.storeShare === true,
+  );
   const today = ctx.today;
   const tools = toolsForRole(role);
   const client = args.client ?? clientFor(config);
-  const shellParams = args.page ? args.page.shell : args.shellParams;
+  const shellParams = page ? page.shell : args.shellParams;
   const [history, dataStart, costLines] = await Promise.all([
     // Bara rader som rollen får se nu: en nedgraderad användare får ingen ekonomihistorik.
     loadConversationFor(viewer.user, viewer.organization.id, args.conversationId, { role }),
@@ -223,9 +244,7 @@ export async function askAssistant(args: AskArgs): Promise<AskResult> {
     dataStart,
     now,
   });
-  const pageContext = args.page
-    ? await pageContextFor(args.page, { ctx, tools, period: shellPeriod })
-    : null;
+  const pageContext = page ? await pageContextFor(page, { ctx, tools, period: shellPeriod }) : null;
   for (const record of pageContext?.records ?? []) emit({ type: "tool_result", call: record });
 
   let result: RunResult;

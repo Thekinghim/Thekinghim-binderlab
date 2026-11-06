@@ -23,7 +23,11 @@ import { cache } from "react";
 
 import type { SettlementRef, TodoItem } from "@/analytics/todos";
 import { deniedHref, routeById, type RouteId } from "@/components/shell/nav";
-import { VMB_HEADER, type SearchParamsInput } from "@/components/shell/period-state";
+import {
+  STORE_SHARE_HEADER,
+  VMB_HEADER,
+  type SearchParamsInput,
+} from "@/components/shell/period-state";
 import type { MemberRole } from "@/db/schema";
 import type { IsoDate, Period } from "@/domain";
 import type { CostLines } from "@/lib/cost-lines";
@@ -206,6 +210,20 @@ export const requestVmbView = cache(async (): Promise<boolean> => {
   }
 });
 
+/**
+ * Vyknappen "Visa butikernas andel" i förfrågan: proxyn sätter headern från ?andel=1 eller
+ * från kakan som knappen sparar (src/proxy.ts), så att alla laddare i förfrågan räknar vår
+ * vinst likadant: före butikernas andel som standard, efter den med knappen. Utan förfrågan
+ * (tester, cron): av.
+ */
+export const requestStoreShareView = cache(async (): Promise<boolean> => {
+  try {
+    return (await headers()).get(STORE_SHARE_HEADER) === "1";
+  } catch {
+    return false;
+  }
+});
+
 const loadDomainInputCached = cache(
   async (
     start: IsoDate,
@@ -215,12 +233,13 @@ const loadDomainInputCached = cache(
     storeId: string | null,
     machineId: string | null,
     vmb: boolean,
+    storeShare: boolean,
   ): Promise<DomainInput> => {
     const compare: Period | null =
       compareStart && compareEnd ? { start: compareStart, end: compareEnd } : null;
     return loadDomainInputFor(
       await requireViewer(),
-      { period: { start, end }, compare, storeId, machineId, vmb },
+      { period: { start, end }, compare, storeId, machineId, vmb, storeShare },
       requestNow(),
     );
   },
@@ -230,8 +249,9 @@ const loadDomainInputCached = cache(
  * Indata till beräkningslagret för perioden (och jämförelsen): order, priser, avtal,
  * placeringar, inställningar, investeringar, titlar, automater och butiker. Bara
  * ägare, admin och läsare; kastar AuthorizationError("forbidden") för påfyllare.
- * Memoiseras per förfrågan på periodens och filtrets värden. Vinsten följer vyknappen
- * "Med VMB" i förfrågan (requestVmbView), om inte `args.vmb` anges.
+ * Memoiseras per förfrågan på periodens och filtrets värden. Vinsten följer vyknapparna
+ * "Med VMB" (requestVmbView) och "Visa butikernas andel" (requestStoreShareView) i
+ * förfrågan, om inte `args.vmb`/`args.storeShare` anges.
  */
 export async function loadDomainInput(args: DomainInputArgs): Promise<DomainInput> {
   return loadDomainInputCached(
@@ -242,6 +262,7 @@ export async function loadDomainInput(args: DomainInputArgs): Promise<DomainInpu
     args.storeId ?? null,
     args.machineId ?? null,
     args.vmb ?? (await requestVmbView()),
+    args.storeShare ?? (await requestStoreShareView()),
   );
 }
 

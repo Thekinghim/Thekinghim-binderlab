@@ -205,11 +205,11 @@ describe("listan", () => {
   it("rubriken bär intäkten och andelen till butikerna", () => {
     const h = listHeadline(rows, `på 2${NB}dagar`);
     expect(h.title).toBe(`3${NB}butiker gav 220${NB}kr på 2${NB}dagar.`);
-    // Kort: butikernas andel och vår vinst.
-    expect(h.aside).toContain(`35${NB}kr (15,9${NB}%) till butikerna · vår vinst`);
+    // Kort: butikernas andel och vår del (efter andelen, med vyknappen).
+    expect(h.aside).toContain(`35${NB}kr (15,9${NB}%) till butikerna · vår del`);
     // En mening i rubrikens andra del.
     expect(h.aside?.match(/\.(\s|$)/g)).toHaveLength(1);
-    expect(listHeadline([rows[0]!], "i dag").aside).toContain("till butiken · vår vinst");
+    expect(listHeadline([rows[0]!], "i dag").aside).toContain("till butiken · vår del");
     expect(listHeadline([], "i dag").title).toBe("Inga butiker ännu.");
   });
 
@@ -281,8 +281,9 @@ describe("en butik", () => {
       },
     });
     expect(h.title).toBe(`Kiosken gav 150${NB}kr på 2${NB}dagar.`);
+    // Butikens sida: butiken är vald, så vinsten är vår del efter butikens andel.
     expect(h.aside).toBe(
-      `50${NB}% mer än förut · vår vinst 90${NB}kr · butiken 15${NB}kr i november.`,
+      `50${NB}% mer än förut · vår del 90${NB}kr · butiken 15${NB}kr i november.`,
     );
   });
 

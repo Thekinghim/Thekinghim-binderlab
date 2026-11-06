@@ -99,6 +99,15 @@ export interface Settings {
    * följer "VMB i bokföringen" (standard av) oberoende av den.
    */
   readonly vmb?: boolean;
+  /**
+   * Om butikernas andel (provision, vinstdelning och hyra, `compensationOre`) dras från vår
+   * vinst. Sätts av vyn (loadDomainInputFor `storeShare`): i panelen är vår vinst och
+   * marginal FÖRE butikernas andel, och andelen dras bara med knappen "Visa butikernas andel"
+   * eller när en butik är vald. Utelämnad = dras (`storeShareDeducted`), så avräkningar,
+   * rapporter, bokföring och portalen, som bygger inställningarna själva, räknar som förut.
+   * Andelen i sig (per butik och avtal, ledger.ts) räknas alltid likadant.
+   */
+  readonly deductStoreShare?: boolean;
 }
 
 /** Period av hela affärsdagar, båda ändar inräknade. */

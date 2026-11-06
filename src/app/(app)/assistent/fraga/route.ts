@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 
 import { FROM_PARAM, PERIOD_PARAM, TO_PARAM } from "@/components/shell/period-state";
 import { isUuid } from "@/server/access";
+import { requestStoreShareView } from "@/server/data/core";
 import { parsePageContext } from "@/server/assistant/page-context";
 import type { AssistantEvent } from "@/server/assistant/protocol";
 import { askAssistant, cleanQuestion } from "@/server/assistant/service";
@@ -100,6 +101,7 @@ export async function POST(request: Request): Promise<Response> {
     ? body.conversationId.toLowerCase()
     : randomUUID();
 
+  const storeShare = await requestStoreShareView();
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -122,6 +124,8 @@ export async function POST(request: Request): Promise<Response> {
           shellParams: shellParamsFrom(body.shell),
           // AI-panelen skickar sidan frågan ställdes från (validerad här och på servern).
           page: parsePageContext(body.page),
+          // Vyknappen "Visa butikernas andel" (kakan): samma vinst som sidan visar.
+          storeShare,
         });
       } catch (error) {
         console.error("[assistent] oväntat fel:", error);

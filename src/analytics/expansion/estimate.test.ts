@@ -218,6 +218,18 @@ describe("estimateSite", () => {
     expect(e.detail).toContain("provision 15 %, hyra 300 kr per månad");
   });
 
+  it("utan butikernas andel (vyknappen av): villkoren dras inte och texten säger det", () => {
+    const before = histories.map((h) => ({ ...h, storeShareDeducted: false }));
+    const e = estimate({
+      histories: before,
+      terms: { commissionBp: 1_500, monthlyRentOre: 30_000 },
+    });
+    const plainE = estimate({ histories: before });
+    expect(e.profitPerMonthOre).toEqual(plainE.profitPerMonthOre);
+    expect(e.detail).toContain("vinst före butikens andel");
+    expect(e.detail).not.toContain("butiksersättning enligt");
+  });
+
   it("vinstdelning 50 %: utan VMB-avdrag som standard får butiken hälften av täckningsbidraget", () => {
     const none = estimate({ terms: { commissionBp: 0, monthlyRentOre: 0 } });
     const split = estimate({

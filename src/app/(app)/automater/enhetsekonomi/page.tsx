@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import type React from "react";
 
 import { SectionHeader } from "@/components/ui/section-header";
+import { Suspense } from "react";
+
 import type { SearchParamsInput } from "@/components/shell/period-state";
+import { StoreShareToggle } from "@/components/shell/store-share-toggle";
+import { requestStoreShareView } from "@/server/data/core";
 import { formatInt } from "@/lib/format";
 
 import { DataStartNote, EvidenceDetails } from "../../expansion/_components/evidence";
@@ -31,7 +35,10 @@ export default async function EnhetsekonomiPage({
   searchParams: Promise<SearchParamsInput>;
 }) {
   const sp = await searchParams;
-  const data = await loadUnitEconomicsPage(sp);
+  const [data, shareToggle] = await Promise.all([
+    loadUnitEconomicsPage(sp),
+    requestStoreShareView(),
+  ]);
   // Länken "Registrera investering" från en automat (?automat=) öppnar investeringarna.
   const openInvestments =
     Boolean(
@@ -79,6 +86,10 @@ export default async function EnhetsekonomiPage({
             },
           ]}
         />
+        {/* Vinsten före butikernas andel; med knappen efter den (samma regel som Lönsamhet). */}
+        <Suspense fallback={null}>
+          <StoreShareToggle on={shareToggle} />
+        </Suspense>
         <DataStartNote clippedFrom={period.clippedFrom} requested={period.requested} />
         <EvidenceDetails
           evidence={comparison.evidence}

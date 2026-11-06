@@ -373,8 +373,9 @@ export function buildSnapshot(input: SnapshotInput) {
       foregaende7: metrics(mPrev7),
       forandring7: change(m7, mPrev7),
       andelUtanInkopspris30: pct(m30.unpricedShareBp),
-      // Alla vinsttal här är efter inköp, avgifter och butiksersättning, och efter VMB-moms
-      // bara när vyknappen "Med VMB" var på (vinstEfterVmbMoms).
+      // Alla vinsttal här är efter inköp och avgifter, före butikernas andel (som i appen;
+      // vinstEfterButikernasAndel), och efter VMB-moms bara med "Med VMB" (vinstEfterVmbMoms).
+      vinstEfterButikernasAndel: views30.title.storeShareDeducted,
       vinstEfterVmbMoms: views30.title.vmb.applies,
       ...(views30.title.vmb.applies ? { vmbMoms30: kr(views30.title.totals.vmbVatOre) } : {}),
     },

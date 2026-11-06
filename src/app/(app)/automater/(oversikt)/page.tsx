@@ -6,6 +6,8 @@ import type React from "react";
 import { Suspense } from "react";
 
 import { carriedQuery } from "@/components/shell/period-state";
+import { StoreShareToggle } from "@/components/shell/store-share-toggle";
+import { requestStoreShareView } from "@/server/data/core";
 
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
@@ -48,7 +50,7 @@ export default async function AutomaterPage({
   if (sp.vy === "svinn") {
     redirect(`/automater/svinn${carriedQuery(sp)}`);
   }
-  const data = await loadOverview(sp);
+  const [data, shareToggle] = await Promise.all([loadOverview(sp), requestStoreShareView()]);
   const { ctx, overview, period } = data;
   const { totals, rows, headline } = overview;
   const active = rows.filter((r) => r.lifecycle === "active");
@@ -119,6 +121,12 @@ export default async function AutomaterPage({
             <StateMessage kind="empty" message="Inga order i dag än." />
           ) : active.length > 0 || totals.orders > 0 ? (
             <div className="rise flex flex-col gap-4" style={{ "--i": 1 } as React.CSSProperties}>
+              {/* Vår vinst före butikernas andel; med knappen efter den (vald butik: alltid). */}
+              {data.scopeLabel ? null : (
+                <Suspense fallback={null}>
+                  <StoreShareToggle on={shareToggle} />
+                </Suspense>
+              )}
               <MobileFold summary="Fler siffror" meta={formatInt(overviewKpis(totals).length)}>
                 <MachineKpis
                   items={overviewKpis(totals)}
@@ -170,6 +178,7 @@ export default async function AutomaterPage({
               timeZone={ctx.timeZone}
               now={ctx.now}
               caption={`Automater, intäkt och vinst ${period.rangeLabel}`}
+              shareDeducted={totals.storeShareDeducted === true}
             />
           </section>
 

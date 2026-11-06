@@ -14,7 +14,11 @@
  * dag och vecka; per butik på butikens rad; per månad på månadens rad.
  *
  *   betalt (grossOre)   = vatOre + revenueOre + unpricedVatOre + unpricedRevenueOre
- *   vinst               = revenueOre − costOre − feesOre − vmbVatOre − compensationOre
+ *   vinst före andel    = revenueOre − costOre − feesOre − vmbVatOre
+ *   vinst efter andel   = vinst före andel − compensationOre (butikernas andel)
+ *   vinst (profitOre)   = före andel som standard i våra vyer; efter andel när
+ *                         `Settings.deductStoreShare` inte är false (knappen "Visa butikernas
+ *                         andel", vald butik, och alltid i avräkningar och rapporter)
  *   vmbVatOre           = radens del av VMB-momsen (ledger.ts; 0 utan VMB)
  *   compensationOre     = commissionOre + rentOre
  *   all hyra i perioden = Σ rentOre      (ej fördelad hyra, även den på order utan pris, ingår)
@@ -44,6 +48,7 @@ import {
 } from "./ledger";
 import { checkSafe, ratioBp } from "./money";
 import type { StoreMonthRent } from "./rent";
+import { storeShareDeducted } from "./store-share";
 import type { GroupBy, IsoDate, Period, ProfitabilityInput } from "./types";
 import { vmbApplies } from "./vmb";
 
@@ -93,12 +98,21 @@ export interface ProfitabilityRow {
   readonly commissionOre: number;
   /** Hyra som dras från vinsten: fördelad på prissatta order + ej fördelad hyra. */
   readonly rentOre: number;
-  /** Butiksersättning = provision + hyra. */
+  /** Butiksersättning = butikernas andel = provision + hyra. */
   readonly compensationOre: number;
-  /** Vinst = intäkt − inköp − avgifter − VMB-moms − butiksersättning. */
+  /**
+   * Vår vinst i vyn: före butikernas andel (`profitBeforeShareOre`) eller efter den
+   * (`profitAfterShareOre`) enligt `Settings.deductStoreShare` (se store-share.ts).
+   */
   readonly profitOre: number;
   /** Marginal i bp = round(vinst × 10 000 / intäkt). `null` när intäkten är 0. */
   readonly marginBp: number | null;
+  /** Vinst före butikernas andel = intäkt − inköp − avgifter − VMB-moms. */
+  readonly profitBeforeShareOre: number;
+  readonly marginBeforeShareBp: number | null;
+  /** Vår del = vinst före andel − butikernas andel (`compensationOre`). */
+  readonly profitAfterShareOre: number;
+  readonly marginAfterShareBp: number | null;
   /**
    * Den del av `rentOre` som inte bärs av någon prissatt order: butik-månader utan order
    * och hyra på order utan pris.
@@ -158,8 +172,9 @@ export interface WaterfallStep {
 
 /**
  * Vattenfall Intäkt → VMB-moms → Inköp → Avgifter → Butiksersättning → Vinst för prissatta
- * order. Steget VMB-moms finns bara med VMB (`vmbApplies`). Butiksersättningen innehåller all
- * hyra i perioden (även ej fördelad).
+ * order. Steget VMB-moms finns bara med VMB (`vmbApplies`), steget Butiksersättning bara när
+ * butikernas andel dras (`storeShareDeducted`). Butiksersättningen innehåller all hyra i
+ * perioden (även ej fördelad).
  */
 export interface ProfitabilityWaterfall {
   readonly steps: readonly WaterfallStep[];
@@ -179,6 +194,8 @@ export interface ProfitabilityResult {
   readonly calcVersion: string;
   readonly period: Period;
   readonly groupBy: GroupBy;
+  /** Sant när vinsten (`profitOre`) är efter butikernas andel (store-share.ts). */
+  readonly storeShareDeducted: boolean;
   readonly rows: ProfitabilityRow[];
   readonly totals: ProfitabilityRow;
   readonly unpriced: UnpricedSummary;
@@ -262,13 +279,12 @@ class RowAccumulator {
     this.unallocatedRentOre += rentOre;
   }
 
-  finish(): ProfitabilityRow {
+  finish(deductStoreShare: boolean): ProfitabilityRow {
     const what = `Raden ${this.key}`;
     const compensation = checkSafe(this.commissionOre + this.rentOre, what);
-    const profit = checkSafe(
-      this.revenueOre - this.costOre - this.feesOre - this.vmbVatOre - compensation,
-      what,
-    );
+    const before = checkSafe(this.revenueOre - this.costOre - this.feesOre - this.vmbVatOre, what);
+    const after = checkSafe(before - compensation, what);
+    const profit = deductStoreShare ? after : before;
     const row: ProfitabilityRow = {
       key: this.key,
       kind: this.kind,
@@ -288,6 +304,10 @@ class RowAccumulator {
       compensationOre: compensation,
       profitOre: profit,
       marginBp: ratioBp(profit, this.revenueOre),
+      profitBeforeShareOre: before,
+      marginBeforeShareBp: ratioBp(before, this.revenueOre),
+      profitAfterShareOre: after,
+      marginAfterShareBp: ratioBp(after, this.revenueOre),
       unallocatedRentOre: checkSafe(this.unallocatedRentOre, what),
       unpricedRevenueOre: checkSafe(this.unpricedRevenueOre, what),
       unpricedVatOre: checkSafe(this.unpricedVatOre, what),
@@ -387,6 +407,7 @@ function buildWaterfall(
   totals: ProfitabilityRow,
   unpriced: UnpricedSummary,
   vmbApplies: boolean,
+  deductStoreShare: boolean,
 ): ProfitabilityWaterfall {
   return {
     steps: [
@@ -403,12 +424,16 @@ function buildWaterfall(
         : []),
       { key: "cost", label: "Inköp", valueOre: deduction(totals.costOre), total: false },
       { key: "fees", label: "Avgifter", valueOre: deduction(totals.feesOre), total: false },
-      {
-        key: "compensation",
-        label: "Butiksersättning",
-        valueOre: deduction(totals.compensationOre),
-        total: false,
-      },
+      ...(deductStoreShare
+        ? [
+            {
+              key: "compensation" as const,
+              label: "Butiksersättning",
+              valueOre: deduction(totals.compensationOre),
+              total: false,
+            },
+          ]
+        : []),
       { key: "profit", label: "Vinst", valueOre: totals.profitOre, total: true },
     ],
     compensation: { commissionOre: totals.commissionOre, rentOre: totals.rentOre },
@@ -501,19 +526,21 @@ export function summarizeLedger(
     }
   }
 
-  const finished = [...rows.values()].map((r) => r.finish());
+  const deduct = storeShareDeducted(ledger.settings);
+  const finished = [...rows.values()].map((r) => r.finish(deduct));
   sortRows(finished, groupBy);
-  const totalRow = totals.finish();
+  const totalRow = totals.finish(deduct);
   const unpriced = summarizeUnpriced(ledger, totalRow.revenueOre + totalRow.unpricedRevenueOre);
 
   return {
     calcVersion: CALC_VERSION,
     period,
     groupBy,
+    storeShareDeducted: deduct,
     rows: finished,
     totals: totalRow,
     unpriced,
-    waterfall: buildWaterfall(totalRow, unpriced, vmbApplies(ledger.settings)),
+    waterfall: buildWaterfall(totalRow, unpriced, vmbApplies(ledger.settings), deduct),
     vmb: {
       applies: vmbApplies(ledger.settings),
       vatOre: totalRow.vmbVatOre,

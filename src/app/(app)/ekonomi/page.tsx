@@ -17,7 +17,7 @@ import {
   loadReconciliationFor,
   PAYOUT_FILE_COLUMNS,
 } from "@/server/accounting";
-import { loadPeriod, requireRoute } from "@/server/data/core";
+import { loadPeriod, requestStoreShareView, requireRoute } from "@/server/data/core";
 
 import { EconomyKpis, type EconomyKpi } from "./_components/bits";
 import { BokforingSection } from "./_components/bokforing-section";
@@ -66,10 +66,12 @@ export default async function EkonomiPage({
     const qs = q.toString();
     return qs ? `/ekonomi?${qs}` : "/ekonomi";
   };
+  const storeShare = await requestStoreShareView();
   const [rec, cash, fixed] = await Promise.all([
     loadReconciliationFor(viewer, p.period),
     loadCashflowFor(viewer, ctx.today, p.dataStart),
-    loadFixedCostsFor(viewer, p.period, ctx.today),
+    // Vinsten före butikernas andel, efter den med vyknappen (som övriga sidor).
+    loadFixedCostsFor(viewer, p.period, ctx.today, { storeShare }),
   ]);
 
   const result = rec.result;
@@ -423,7 +425,12 @@ export default async function EkonomiPage({
                   unit: "ore",
                   primary: true,
                 },
-                { id: "before", label: "Vinst före fasta", value: at.profitOre, unit: "ore" },
+                {
+                  id: "before",
+                  label: storeShare ? "Vår del före fasta" : "Vinst före fasta",
+                  value: at.profitOre,
+                  unit: "ore",
+                },
                 { id: "fixed", label: "Fasta kostnader", value: at.fixedCostOre, unit: "ore" },
                 {
                   id: "margin",

@@ -6,6 +6,7 @@
  */
 
 import type { StoreContractState } from "@/analytics/contracts/signed";
+import { ourProfitLabel } from "@/lib/store-share";
 import { CONTRACT_DEFAULTS } from "@/analytics/contracts";
 import { parseIsoDate } from "@/components/shell/period-state";
 import { dataCoverage } from "@/server/data/core/period";
@@ -219,9 +220,15 @@ export function revenueOf(row: ProfitabilityRow | undefined): number {
   return row ? row.revenueOre + row.unpricedRevenueOre : 0;
 }
 
-/** Butiksersättning på raden: provision för alla order + all hyra (som storeCompensation). */
+/**
+ * Butikens andel på raden, så som den dras från vår vinst: provision på order med
+ * inköpspris + all hyra (`compensationOre`, samma tal som Lönsamhet per butik). Andelen +
+ * vår del = vår vinst före andelen. Provisionen på order utan inköpspris räknas inte här,
+ * eftersom de orderna inte ingår i vinsten; det butiken faktiskt får för månaden står i
+ * "Intjänat" (storeCompensation, som avräkningen).
+ */
 export function compensationOf(row: ProfitabilityRow | undefined): number {
-  return row ? row.commissionOre + row.unpricedCommissionOre + row.rentOre : 0;
+  return row ? row.compensationOre : 0;
 }
 
 function rowsByKey(result: ProfitabilityResult | null): Map<string, ProfitabilityRow> {
@@ -376,8 +383,8 @@ export function prospectStores<
 }
 
 /**
- * Rubriken på listan: intäkten först, sedan vår vinst. Butikernas andel bara med
- * "Visa butikernas andel" eller vald butik (`showShare`).
+ * Rubriken på listan: intäkten först, sedan vår vinst (före butikernas andel). Med "Visa
+ * butikernas andel" eller vald butik (`showShare`): andelen och vår del efter den.
  */
 export function listHeadline(
   rows: readonly StoreRow[],
@@ -395,7 +402,7 @@ export function listHeadline(
   // Kort: butikernas andel och vår vinst.
   return {
     title,
-    aside: `${sek(compensation)} (${formatPercent(compensation / revenue)}) till ${active.length === 1 ? "butiken" : "butikerna"} · vår vinst ${sek(profit)}.`,
+    aside: `${sek(compensation)} (${formatPercent(compensation / revenue)}) till ${active.length === 1 ? "butiken" : "butikerna"} · vår del ${sek(profit)}.`,
   };
 }
 
@@ -436,11 +443,12 @@ export function listKpis(
     primary: true,
     delta: rel(revenue, prevRevenue),
   };
+  const profit = rows.reduce((n, r) => n + r.profitOre, 0);
   if (!showShare) {
-    const profit = rows.reduce((n, r) => n + r.profitOre, 0);
+    // Vår vinst före butikernas andel.
     return [
       revenueKpi,
-      { id: "profit", label: profit < 0 ? "Förlust" : "Vår vinst", value: profit, kind: "sek" },
+      { id: "profit", label: ourProfitLabel(false, profit), value: profit, kind: "sek" },
     ];
   }
   return [
@@ -459,6 +467,8 @@ export function listKpis(
       value: revenue > 0 ? compensation / revenue : null,
       kind: "percent",
     },
+    // Vår del efter butikernas andel.
+    { id: "profit", label: ourProfitLabel(true, profit), value: profit, kind: "sek" },
     { id: "earned", label: `Intjänat ${monthLabel}`, value: earned, kind: "sek" },
   ];
 }
@@ -555,6 +565,11 @@ export function storeHeadline(args: {
   month: MonthCompensation;
   /** Vinsten är efter VMB-moms (vyknappen "Med VMB"). Standard av. */
   vmb?: boolean;
+  /**
+   * Vinsten är efter butikens andel ("vår del"). Standard på: på butikens sida är butiken
+   * vald, och då dras dess andel enligt avtalet.
+   */
+  storeShareDeducted?: boolean;
 }): { title: string; aside: string } {
   const title =
     args.revenueOre > 0
@@ -568,7 +583,7 @@ export function storeHeadline(args: {
   }
   if (args.revenueOre > 0) {
     parts.push(
-      `${args.profitOre < 0 ? "vår förlust" : "vår vinst"} ${sek(Math.abs(args.profitOre))}${args.vmb ? " efter VMB" : ""}`,
+      `${args.profitOre < 0 ? "vår förlust" : (args.storeShareDeducted ?? true) ? "vår del" : "vår vinst"} ${sek(Math.abs(args.profitOre))}${args.vmb ? " efter VMB" : ""}`,
     );
   }
   parts.push(`butiken ${sek(args.month.totalOre)} i ${args.month.monthLabel}`);
@@ -579,6 +594,10 @@ export function storeKpis(args: {
   current: ProfitabilityRow | undefined;
   previous: ProfitabilityRow | undefined | null;
   daily: readonly DailyPoint[];
+  /** Avtalets villkor i klartext ("50 % av vinsten"), visas i andelens etikett. */
+  terms?: string | null;
+  /** Vinsten är efter butikens andel (standard på: butiken är vald). */
+  storeShareDeducted?: boolean;
 }): KpiView[] {
   const cur = args.current;
   const prev = args.previous;
@@ -608,7 +627,7 @@ export function storeKpis(args: {
     },
     {
       id: "compensation",
-      label: "Till butiken",
+      label: args.terms ? `Till butiken · ${args.terms}` : "Till butiken",
       value: compensation,
       kind: "sek",
       delta: rel(compensation, compensationOf(prev ?? undefined)),
@@ -616,7 +635,7 @@ export function storeKpis(args: {
     },
     {
       id: "profit",
-      label: "Vår vinst",
+      label: ourProfitLabel(args.storeShareDeducted ?? true, cur?.profitOre ?? 0),
       value: cur?.profitOre ?? 0,
       kind: "sek",
       delta: rel(cur?.profitOre ?? 0, prev?.profitOre ?? 0),

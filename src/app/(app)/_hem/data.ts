@@ -11,7 +11,7 @@
 import type { GoalProgress } from "@/analytics/goals";
 import type { TodoItem } from "@/analytics/todos";
 import { routeById } from "@/components/shell/nav";
-import { parseStoreShareView, type SearchParamsInput } from "@/components/shell/period-state";
+import type { SearchParamsInput } from "@/components/shell/period-state";
 import { addDays, monthOf, type IsoDate, type Period } from "@/domain";
 import { AuthorizationError } from "@/server/access";
 import type {
@@ -147,8 +147,10 @@ export async function loadHomeWith(
     scope: p.scope,
     todos,
     extraTodos: extras,
-    // Vyknappen "Visa butikernas andel"; med filter visas andelen ändå (buildHomeModel).
-    showStoreShare: parseStoreShareView(searchParams),
+    // Butikernas andel följer indata (vyknappen eller vald butik, loadDomainInput).
+    storeName: p.scope.storeId
+      ? input.stores.find((x) => x.id === p.scope.storeId)?.name
+      : undefined,
     costLines: input.costLines,
   });
 

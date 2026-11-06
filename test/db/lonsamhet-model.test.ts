@@ -140,7 +140,10 @@ describe("Lönsamhet från databasen", () => {
     expect(m.orders).toBe(3);
     expect(m.pricedOrders).toBe(2);
     const b = m.bridge;
-    expect(b.revenueOre - b.costOre - b.feesOre - b.compensationOre).toBe(b.profitOre);
+    // Vyknappen av: vår vinst före butikernas andel (ingen andel i stegen).
+    expect(b.showStoreShare).toBe(false);
+    expect(b.revenueOre - b.costOre - b.feesOre).toBe(b.profitOre);
+    expect(b.profitBeforeShareOre).toBe(b.profitOre);
     expect(b.unpricedRevenueOre).toBe(6900);
 
     // Titeln utan pris: ingår inte i vinsten, länkar till inköpspriset.
@@ -159,7 +162,18 @@ describe("Lönsamhet från databasen", () => {
     // Hela månadshyran dras, även den del som hamnade på ordern utan pris.
     expect(b.rentOre).toBe(50_000);
     expect(b.unallocatedRentOre).toBeGreaterThan(0);
-    expect(m.views.title.find((r) => r.kind === "unallocated")?.name).toBe("Ej fördelad hyra");
+    // Hyran är en del av butikernas andel: raden "Ej fördelad hyra" finns bara med vyknappen
+    // "Visa butikernas andel", då hela hyran dras från vår del.
+    expect(m.views.title.find((r) => r.kind === "unallocated")).toBeUndefined();
+    const shared = model(
+      await loadDomainInputFor(owner, { period: MARCH, compare: FEBRUARY, storeShare: true }, NOW),
+    );
+    expect(shared.views.title.find((r) => r.kind === "unallocated")?.name).toBe("Ej fördelad hyra");
+    expect(shared.totals.profitOre).toBe(m.totals.profitOre - shared.totals.compensationOre);
+    for (const view of ["title", "machine", "store"] as const) {
+      const sum = shared.views[view].reduce((acc, r) => acc + r.profitOre, 0);
+      expect(sum).toBe(shared.totals.profitOre);
+    }
 
     for (const view of ["title", "machine", "store"] as const) {
       const sum = m.views[view].reduce((acc, r) => acc + r.profitOre, 0);
@@ -171,9 +185,11 @@ describe("Lönsamhet från databasen", () => {
     // Februari saknar order: ingen jämförelse i nyckeltalen.
     expect(m.comparisonLabel).toBeNull();
     expect(m.kpis.every((k) => k.delta === null)).toBe(true);
-    // 158 kr intäkt med pris klarar inte 500 kr i hyra: förlust.
-    expect(m.headline.kind).toBe("loss");
-    expect(m.headline.title).toMatch(/^Förlust /);
+    // Före butikens andel är det vinst; 158 kr intäkt med pris klarar inte 500 kr i hyra:
+    // med vyknappen är vår del en förlust.
+    expect(m.headline.kind).toBe("profit");
+    expect(shared.headline.kind).toBe("loss");
+    expect(shared.headline.title).toMatch(/^Förlust /);
   });
 
   it("ger läsaren samma siffror som ägaren", async () => {

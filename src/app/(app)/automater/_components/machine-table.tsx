@@ -5,6 +5,7 @@ import { useMemo, type ReactNode } from "react";
 
 import { wallClockIn } from "@/components/shell/period-state";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { ourMarginLabel, ourProfitLabel } from "@/lib/store-share";
 import { StatusGlyph, StatusTag, type Status } from "@/components/ui/status-tag";
 
 /** Status med pulserande ring när automaten är i drift. */
@@ -61,6 +62,8 @@ function columns(
   now: Date,
   foot: FootData | null,
   pending: boolean,
+  /** Vinsten är efter butikernas andel (vyknappen eller vald butik). */
+  shareDeducted = false,
 ): Column<MachineListRow>[] {
   const localNow = wallClockIn(now, timeZone);
   const f = (
@@ -148,7 +151,7 @@ function columns(
     },
     {
       key: "profit",
-      header: "Vår vinst",
+      header: ourProfitLabel(shareDeducted),
       numeric: true,
       sortValue: (r) => r.profitOre,
       csv: (r) => r.profitOre / 100,
@@ -160,7 +163,7 @@ function columns(
     },
     {
       key: "margin",
-      header: "Marginal",
+      header: ourMarginLabel(shareDeducted, "Marginal"),
       numeric: true,
       hideOnMobile: true,
       sortValue: (r) => r.marginBp ?? Number.NEGATIVE_INFINITY,
@@ -253,6 +256,7 @@ export function MachineTable({
   timeZone,
   now,
   caption,
+  shareDeducted,
 }: {
   rows: readonly MachineListRow[];
   others: readonly OtherRow[];
@@ -263,10 +267,22 @@ export function MachineTable({
   timeZone: string;
   now: string;
   caption: string;
+  /**
+   * Vinsten är efter butikernas andel (vyknappen eller vald butik). Styr rubrikerna även
+   * utan fotrad (en enda rad). Utelämnad: fotradens summa avgör.
+   */
+  shareDeducted?: boolean;
 }) {
   const cols = useMemo(
-    () => columns(timeZone, new Date(now), totals && !pending ? { others, totals } : null, pending),
-    [timeZone, now, others, totals, pending],
+    () =>
+      columns(
+        timeZone,
+        new Date(now),
+        totals && !pending ? { others, totals } : null,
+        pending,
+        shareDeducted ?? totals?.storeShareDeducted === true,
+      ),
+    [timeZone, now, others, totals, pending, shareDeducted],
   );
   return (
     <DataTable

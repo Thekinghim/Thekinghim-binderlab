@@ -8,6 +8,7 @@ import {
   pagePromptText,
   pageSummaryNote,
   parsePageContext,
+  pageWithStoreShare,
   safeName,
   suggestionsFor,
   summaryCallFor,
@@ -160,6 +161,17 @@ describe("sidans sammanfattning", () => {
     expect(andel.storeShare).toBe(true);
     expect(parsePageContext({ ...andel })?.storeShare).toBe(true);
     expect(summaryCallFor(andel, "owner", PERIOD)?.input).toMatchObject({ visa_andel: true });
+    // Vyknappen sparas i en kaka: en sida utan ?andel (t.ex. via logotypen) visar ändå
+    // andelen, och AI:n ska räkna och sammanfatta som sidan. ?andel=0 går före kakan.
+    const viaCookie = pageWithStoreShare(pageContextFromUrl("/inkopspriser", ""), true);
+    expect(viaCookie.storeShare).toBe(true);
+    expect(summaryCallFor(viaCookie, "owner", PERIOD)?.input).toMatchObject({ visa_andel: true });
+    expect(pageWithStoreShare(pageContextFromUrl("/", ""), false).storeShare).toBe(false);
+    const explicitOff = pageContextFromUrl("/lonsamhet", "?andel=0");
+    expect(explicitOff.storeShare).toBe(false);
+    expect(parsePageContext({ ...explicitOff })?.storeShare).toBe(false);
+    expect(pageWithStoreShare(explicitOff, true).storeShare).toBe(false);
+    expect(pageWithStoreShare(andel, false).storeShare).toBe(true);
     expect(summaryCallFor(pageContextFromUrl(`/butiker/${STORE}`, ""), "owner", PERIOD)).toEqual({
       tool: "butiksandel",
       input: { butik: STORE },

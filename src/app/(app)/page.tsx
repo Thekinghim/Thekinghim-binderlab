@@ -7,7 +7,7 @@ import { MobileMore } from "@/components/ui/more-menu";
 import { Panel } from "@/components/ui/frame";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
-import { requireRoute } from "@/server/data/core";
+import { requestStoreShareView, requireRoute } from "@/server/data/core";
 import { NBSP, formatDecimal, formatInt, formatPeriodShort } from "@/lib/format";
 
 import { DailyChart } from "./_hem/daily-chart";
@@ -51,23 +51,20 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
   // (Att göra och förlorad försäljning tar längst tid med mycket data).
   return (
     <Suspense fallback={<HemSkeleton />}>
-      <HemContent searchParams={searchParams} userKey={ctx.user.id} canSeeValue={ctx.canEdit} />
+      <HemContent searchParams={searchParams} canSeeValue={ctx.canEdit} />
     </Suspense>
   );
 }
 
 async function HemContent({
   searchParams,
-  userKey,
   canSeeValue,
 }: {
   searchParams: Promise<SearchParams>;
-  /** För vyknappen "Visa butikernas andel" (valet minns per användare). */
-  userKey: string;
   /** Ägare och admin: kortet "Vad Binderlab gett dig" (/varde). */
   canSeeValue: boolean;
 }) {
-  const sp = await searchParams;
+  const [sp, shareToggle] = await Promise.all([searchParams, requestStoreShareView()]);
   const {
     model,
     today,
@@ -132,10 +129,10 @@ async function HemContent({
               className="md:mt-1 md:flex md:flex-wrap md:items-center md:gap-x-4 md:gap-y-3"
             >
               <AiPageLine metric="vinsten för perioden" route="hem" menuItem />
-              {/* Butikernas andel på begäran; med vald butik står den alltid under talet. */}
-              {model.hasStoreShare && !scope ? (
+              {/* Butikernas andel på begäran; med vald butik dras den alltid (under talet). */}
+              {model.hasStoreShare && scope?.kind !== "store" ? (
                 <Suspense fallback={null}>
-                  <StoreShareToggle userKey={userKey} menuItem />
+                  <StoreShareToggle on={shareToggle} menuItem />
                 </Suspense>
               ) : null}
             </MobileMore>

@@ -134,8 +134,11 @@ describe("loadDomainInputFor", () => {
     const result = profitability(input.current, "machine");
     expect(result.totals.orders).toBe(2);
     expect(result.totals.revenueOre).toBe(16_800);
-    // 7 900 + 8 900 − (4 500 + 5 200) − 20 % provision (1 580 + 1 780)
-    expect(result.totals.profitOre).toBe(16_800 - 9_700 - 3_360);
+    // Standard (vyknappen av): 7 900 + 8 900 − (4 500 + 5 200), före butikens andel.
+    expect(result.totals.profitOre).toBe(16_800 - 9_700);
+    // Med "Visa butikernas andel": − 20 % provision (1 580 + 1 780).
+    const shared = await loadDomainInputFor(owner, { period: MARCH, storeShare: true }, NOW);
+    expect(profitability(shared.current, "machine").totals.profitOre).toBe(16_800 - 9_700 - 3_360);
     expect(titleEconomics(input.current)).toHaveLength(2);
     expect(unitEconomics({ ...input.current, investments: input.investments })).toHaveLength(1);
   });

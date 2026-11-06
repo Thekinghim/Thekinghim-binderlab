@@ -299,7 +299,14 @@ describe("buildLonsamhetModel", () => {
   });
 
   it("svarar 'Automat 1 står för nästan hälften av vinsten' med två automater", () => {
-    const m = buildLonsamhetModel(twoMachines(true), { today: "2026-11-02" });
+    // Utan vyknappen (som laddaren): vår vinst före butikernas andel.
+    const two = twoMachines(true);
+    const off = <T extends ProfitabilityInput | null>(i: T): T =>
+      (i ? { ...i, settings: { ...i.settings, deductStoreShare: false } } : i) as T;
+    const m = buildLonsamhetModel(
+      { ...two, current: off(two.current), previous: off(two.previous) },
+      { today: "2026-11-02" },
+    );
     expect(m.headline).toEqual({
       kind: "profit",
       title: expect.stringMatching(/^Vår vinst .+ på 20\sdagar\.$/),

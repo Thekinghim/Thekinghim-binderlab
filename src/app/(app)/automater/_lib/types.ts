@@ -109,6 +109,18 @@ export interface MachinesOverview {
     readonly activeMachines: number;
     /** Av dem: ur drift enligt hälsan (kan inte sälja). Utelämnad = 0. */
     readonly offlineMachines?: number;
+    /**
+     * Vinsten är efter butikernas andel (vyknappen eller vald butik). Utelämnad = före
+     * andelen ("Vår vinst"); på: "Vår del".
+     */
+    readonly storeShareDeducted?: boolean;
+    /**
+     * Butikens/butikernas andel som dragits (vinst före andel − vår del), bara när den är
+     * dragen. Andelen + `profitOre` = vår vinst före andelen.
+     */
+    readonly storeShareOre?: number;
+    /** Etiketten: "Butikernas andel", eller vald butiks namn och villkor. */
+    readonly storeShareLabel?: string;
   };
   readonly headline: { readonly title: string; readonly aside: string };
   /** Antal rader som kräver åtgärd. */

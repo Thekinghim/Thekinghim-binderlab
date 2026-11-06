@@ -8,31 +8,33 @@ import type { Bridge } from "../_lib/model";
 /** Rad under vattenfallet när VMB-momsen inte är slutlig (en rad, kort). */
 export const VMB_PRELIMINARY_TEXT = "VMB-momsen är preliminär: perioden är inte en avslutad månad.";
 
-/** Steget för avgifterna när butikernas andel inte visas för sig (den dras ändå). */
-export const FEES_AND_STORES_LABEL = "Avgifter och butiker";
+/** Steget för butikernas andel utan vald butik (bara när andelen dras). */
+export const TO_STORES_LABEL = "Till butikerna";
 
 /**
- * Vad vattenfallet ritar, i öre. Med butikernas andel (vyknappen eller vald butik):
- * Intäkt → (VMB-moms) → Inköp → Avgifter → Butikernas andel → Vår vinst. Utan: andelen
- * ligger i samma steg som avgifterna ("Avgifter och butiker"), så att stegen fortfarande
- * går ihop till vår vinst men andelen inte står som eget tal. Ren funktion (testas).
+ * Vad vattenfallet ritar, i öre. Av (standard): Intäkt → (VMB-moms) → Inköp → Avgifter →
+ * Vår vinst, före butikernas andel (inget steg för andelen). På (vyknappen eller vald
+ * butik): … → Avgifter → Till butikerna → Vår del. Avgifterna innehåller aldrig andelen.
+ * Ren funktion (testas).
  */
 export function bridgeSteps(bridge: Bridge): {
   feesOre: number;
   storeShareOre: number | null;
-  feesLabel: string;
+  storeShareLabel: string;
+  /** Kort etikett när platsen inte räcker: "Till butikerna" för alla, "Till butiken" för en. */
+  storeShareShort: string;
+  profitLabel: string;
+  /** Marginalen i bp, samma tal som nyckeltalet (inte en egen avrundning av kronorna). */
+  marginBp: number | null;
 } {
-  if (bridge.showStoreShare || bridge.compensationOre === 0) {
-    return {
-      feesOre: bridge.feesOre,
-      storeShareOre: bridge.compensationOre,
-      feesLabel: "Avgifter",
-    };
-  }
+  const allStores = bridge.storeShareLabel === "Butikernas andel";
   return {
-    feesOre: bridge.feesOre + bridge.compensationOre,
-    storeShareOre: null,
-    feesLabel: FEES_AND_STORES_LABEL,
+    feesOre: bridge.feesOre,
+    storeShareOre: bridge.showStoreShare ? bridge.compensationOre : null,
+    storeShareLabel: allStores ? TO_STORES_LABEL : bridge.storeShareLabel,
+    storeShareShort: allStores ? TO_STORES_LABEL : "Till butiken",
+    profitLabel: bridge.profitLabel,
+    marginBp: bridge.marginBp,
   };
 }
 
@@ -50,10 +52,12 @@ export function LonsamhetBridge({ bridge }: { bridge: Bridge }) {
         unpricedRevenue={
           bridge.unpricedRevenueOre > 0 ? bridge.unpricedRevenueOre / 100 : undefined
         }
+        margin={steps.marginBp === null ? undefined : steps.marginBp / 10_000}
         labels={{
-          fees: steps.feesLabel,
-          storeCompensation: bridge.storeShareLabel,
-          profit: "Vår vinst",
+          fees: "Avgifter",
+          storeCompensation: steps.storeShareLabel,
+          storeCompensationShort: steps.storeShareShort,
+          profit: steps.profitLabel,
         }}
         format={formatSek}
         height={300}

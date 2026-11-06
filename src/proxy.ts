@@ -12,7 +12,13 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 
-import { parseVmbView, VMB_HEADER } from "@/components/shell/period-state";
+import {
+  parseVmbView,
+  STORE_SHARE_COOKIE,
+  STORE_SHARE_HEADER,
+  storeShareViewOf,
+  VMB_HEADER,
+} from "@/components/shell/period-state";
 import { getServerEnv } from "@/lib/env";
 import { LOGIN_PATH, isPublicPath, loginRedirectPath } from "@/server/auth/paths";
 import { checkProxySession } from "@/server/auth/proxy-session";
@@ -20,14 +26,19 @@ import { checkProxySession } from "@/server/auth/proxy-session";
 let reportedEnvError = false;
 
 /**
- * Skickar förfrågan vidare med vyknappen "Med VMB" (?vmb=1) som header, så att serverns
- * laddare läser samma val som URL:en (requestVmbView i src/server/data/core). En header
+ * Skickar förfrågan vidare med vyknapparna som headers, så att serverns laddare läser samma
+ * val som URL:en: "Med VMB" (?vmb=1, requestVmbView) och "Visa butikernas andel" (?andel=1
+ * eller kakan som knappen sparar, requestStoreShareView i src/server/data/core). En header
  * från klienten skrivs alltid över.
  */
 function forward(request: NextRequest): NextResponse {
   const headers = new Headers(request.headers);
-  if (parseVmbView(request.nextUrl.searchParams)) headers.set(VMB_HEADER, "1");
+  const sp = request.nextUrl.searchParams;
+  if (parseVmbView(sp)) headers.set(VMB_HEADER, "1");
   else headers.delete(VMB_HEADER);
+  if (storeShareViewOf(sp, request.cookies.get(STORE_SHARE_COOKIE)?.value)) {
+    headers.set(STORE_SHARE_HEADER, "1");
+  } else headers.delete(STORE_SHARE_HEADER);
   return NextResponse.next({ request: { headers } });
 }
 

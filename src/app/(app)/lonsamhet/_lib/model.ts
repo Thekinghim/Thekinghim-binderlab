@@ -32,6 +32,12 @@ import {
   type ProfitabilityRow,
 } from "@/domain";
 import { formatDay, formatMonth, formatPeriodShort, formatWeekdayDay } from "@/lib/format";
+import {
+  OUR_PART_LABEL,
+  STORES_SHARE_LABEL,
+  storeShareLabel,
+  storeShareTerms,
+} from "@/lib/store-share";
 import type { DataScope, MachineRecord, StoreRecord, TitleRecord } from "@/server/data/core/types";
 import { coverageDays, isoDateToShellDate } from "@/server/data/core/period";
 
@@ -137,8 +143,9 @@ export interface UnpricedBlock {
 }
 
 /**
- * Vattenfallet: Intäkt → VMB-moms → Inköp → Avgifter → Butikernas andel → Vår vinst (prissatta
- * order). Utan vyknappen står andelen i samma steg som avgifterna.
+ * Vattenfallet för prissatta order. Av (standard): Intäkt → VMB-moms → Inköp → Avgifter →
+ * Vår vinst, FÖRE butikernas andel. På (vyknappen eller vald butik): … → Avgifter → Till
+ * butikerna → Vår del. Avgifterna innehåller aldrig butikernas andel.
  */
 export interface Bridge {
   readonly revenueOre: number;
@@ -160,12 +167,17 @@ export interface Bridge {
   readonly marginBp: number | null;
   readonly unpricedRevenueOre: number;
   /**
-   * Butikernas andel som eget steg (vyknappen "Visa butikernas andel" eller ett butiks-
-   * eller automatfilter). Av: andelen dras ändå, men i samma steg som avgifterna.
+   * Butikernas andel dras från vår vinst och står som eget steg (vyknappen "Visa butikernas
+   * andel" eller vald butik, `ProfitabilityResult.storeShareDeducted`). Av: vinsten är före
+   * andelen och andelen syns inte.
    */
   readonly showStoreShare: boolean;
-  /** "Butikens andel" med filter, annars "Butikernas andel". */
+  /** "Butikernas andel", med vald butik "Sega gubben 50 % av vinsten". */
   readonly storeShareLabel: string;
+  /** "Vår vinst" (före andelen) eller "Vår del" (efter andelen). */
+  readonly profitLabel: string;
+  /** Vinsten före butikernas andel (samma som profitOre när andelen inte dras). */
+  readonly profitBeforeShareOre: number;
 }
 
 /** Ett nyckeltal i remsan. */
@@ -232,11 +244,6 @@ export interface LonsamhetOptions {
   readonly dataStart?: IsoDate | null;
   /** Om organisationen har order i dag (dagen räknas då med). */
   readonly hasOrdersToday?: boolean;
-  /**
-   * Vyknappen "Visa butikernas andel" (?andel=1). Med butiks- eller automatfilter visas
-   * andelen alltid. Ändrar bara vad som visas: vår vinst är densamma.
-   */
-  readonly showStoreShare?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -471,9 +478,6 @@ export function buildLonsamhetModel(
 ): LonsamhetModel {
   const { today, carry } = options;
   const names = namesFor(input);
-  const filtered = Boolean(input.scope.storeId || input.scope.machineId);
-  const showShare = Boolean(options.showStoreShare) || filtered;
-  const shareLabel = filtered ? "Butikens andel" : "Butikernas andel";
   const period = input.current.period;
 
   const all = profitabilityViews(input.current, [
@@ -489,6 +493,19 @@ export function buildLonsamhetModel(
     machine: all.machine,
     store: all.store,
   };
+  // En källa: om butikernas andel dras avgörs av indata (Settings.deductStoreShare, satt av
+  // laddaren från vyknappen eller vald butik). Vinst, marginal, tabell och utveckling följer.
+  const showShare = all.title.storeShareDeducted;
+  const storeSelected = Boolean(input.scope.storeId && !input.scope.machineId);
+  const shareLabel = storeSelected
+    ? storeShareLabel({
+        name: names.store(input.scope.storeId!),
+        terms: storeShareTerms(input.current.agreements, input.scope.storeId!, period),
+      })
+    : input.scope.machineId
+      ? "Butikens andel"
+      : STORES_SHARE_LABEL;
+  const profitLabel = showShare ? OUR_PART_LABEL : "Vår vinst";
   const totalsRow = all.title.totals;
   const unpriced = all.title.unpriced;
   const allRevenue = totalsRow.revenueOre + totalsRow.unpricedRevenueOre;
@@ -535,6 +552,7 @@ export function buildLonsamhetModel(
     vmbVatOre: totalsRow.vmbVatOre,
     compensationOre: totalsRow.compensationOre,
     showStoreShare: showShare,
+    storeShareLabel: shareLabel,
     unpricedShareBp: unpriced.shareBp,
     top:
       top && topName
@@ -548,8 +566,8 @@ export function buildLonsamhetModel(
   const kpis: Kpi[] = [
     {
       id: "profit",
-      // En betydelse överallt: vår vinst, efter butikernas andel (som på Hem).
-      label: totalsRow.profitOre < 0 ? "Förlust" : "Vår vinst",
+      // Av: vår vinst före butikernas andel. På: vår del, efter andelen (som på Hem).
+      label: totalsRow.profitOre < 0 ? "Förlust" : profitLabel,
       unit: "ore",
       value: totalsRow.profitOre,
       delta: prevTotals ? relative(totalsRow.profitOre, prevTotals.profitOre) : null,
@@ -559,7 +577,7 @@ export function buildLonsamhetModel(
     },
     {
       id: "margin",
-      label: "Vår marginal",
+      label: showShare ? "Marginal efter andel" : "Vår marginal",
       unit: "bp",
       value: totalsRow.marginBp,
       delta:
@@ -587,7 +605,7 @@ export function buildLonsamhetModel(
       ? [
           {
             id: "compensation" as const,
-            label: shareLabel,
+            label: storeSelected ? "Butikens andel" : shareLabel,
             unit: "ore" as const,
             value: totalsRow.compensationOre,
             delta: prevTotals
@@ -626,6 +644,8 @@ export function buildLonsamhetModel(
     unpricedRevenueOre: totalsRow.unpricedRevenueOre,
     showStoreShare: showShare,
     storeShareLabel: shareLabel,
+    profitLabel,
+    profitBeforeShareOre: totalsRow.profitBeforeShareOre,
   };
 
   const unpricedBlock: UnpricedBlock = {
@@ -644,10 +664,12 @@ export function buildLonsamhetModel(
     })),
   };
 
+  // Utan butikernas andel bär raden "Ej fördelad hyra" inget (hyran är en del av andelen).
+  const shown = (r: ProfitabilityRow) => showShare || r.kind !== "unallocated";
   const lines: Record<ViewKey, ProfitLine[]> = {
-    title: views.title.rows.map((r) => toLine(r, "title", names, carry)),
-    machine: views.machine.rows.map((r) => toLine(r, "machine", names, carry)),
-    store: views.store.rows.map((r) => toLine(r, "store", names, carry)),
+    title: views.title.rows.filter(shown).map((r) => toLine(r, "title", names, carry)),
+    machine: views.machine.rows.filter(shown).map((r) => toLine(r, "machine", names, carry)),
+    store: views.store.rows.filter(shown).map((r) => toLine(r, "store", names, carry)),
   };
 
   const day = trendSeries(all.day, "day", today);

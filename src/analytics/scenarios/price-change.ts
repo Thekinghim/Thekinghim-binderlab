@@ -36,6 +36,7 @@ import {
   orderEconomics,
   vmbVatOfMargin,
   roundHalfUp,
+  storeShareDeducted,
   type Period,
   type ProfitabilityInput,
 } from "@/domain";
@@ -72,7 +73,7 @@ export interface PriceChangeRow {
   readonly volumeChangeBp: number;
   readonly units: number;
   readonly revenueOre: number;
-  /** Bidrag efter inköp, avgifter och provision. */
+  /** Bidrag efter inköp och avgifter, och provision när butikernas andel dras. */
   readonly contributionOre: number;
   /** Bidrag − titelns andel av hyran (oförändrad). */
   readonly profitOre: number;
@@ -174,6 +175,8 @@ export function priceChangeScenario(input: PriceChangeScenarioInput): PriceChang
   const titleName = input.titleName?.trim() || titleId;
 
   const ledger = buildLedger(input);
+  // Butikernas andel och hyran dras bara när vyn drar dem (@/domain storeShareDeducted).
+  const deduct = storeShareDeducted(ledger.settings);
   let n = 0;
   let unpriced = 0;
   let gross = 0;
@@ -234,11 +237,14 @@ export function priceChangeScenario(input: PriceChangeScenarioInput): PriceChang
     cost += e.costOre;
     fees += e.cardFeeOre;
     vmb += e.vmbVatOre;
-    commission += e.commissionOre;
-    rent += e.rentOre;
+    if (deduct) {
+      commission += e.commissionOre;
+      rent += e.rentOre;
+    }
     newGross += after.grossOre;
     newRevenue += after.netRevenueOre;
-    newContribution += after.netRevenueOre - e.costOre - after.cardFeeOre - afterVmb - afterShare;
+    newContribution +=
+      after.netRevenueOre - e.costOre - after.cardFeeOre - afterVmb - (deduct ? afterShare : 0);
     orderIds.push(e.order.id);
     dates.push(e.order.businessDate);
   }
@@ -357,7 +363,9 @@ export function priceChangeScenario(input: PriceChangeScenarioInput): PriceChang
     `Snittpris ${krExact(avg!)} → ${krExact(newAvg!)}${priceChangeBp === null ? "" : ` (${signedPct(priceChangeBp)})`}`,
   );
   parts.push(
-    `bidrag per pack efter inköp, avgifter och provision ${krExact(perPack!)} → ${krExact(newPerPack!)}`,
+    deduct
+      ? `bidrag per pack efter inköp, avgifter och provision ${krExact(perPack!)} → ${krExact(newPerPack!)}`
+      : `bidrag per pack efter inköp och avgifter, före butikens andel ${krExact(perPack!)} → ${krExact(newPerPack!)}`,
   );
   if (rent !== 0) parts.push(`hyran ${kr(rent)} är fast`);
   let detail = `${parts.join(", ")}.`;

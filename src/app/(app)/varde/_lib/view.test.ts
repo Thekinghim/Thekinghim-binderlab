@@ -122,8 +122,11 @@ describe("buildValueView", () => {
     expect(v.cards[2]!.sub).toBe("+25 % mot september.");
   });
 
-  it("butikens andel bara i tabellen per butik", () => {
-    const v = buildValueView(data());
+  it("butikens andel bara i tabellen per butik, och bara med vyknappen", () => {
+    const off = buildValueView(data());
+    expect(off.stores.head).toEqual(["Butik", "Försäljning", "Kvar efter inköp"]);
+    expect(off.stores.rows[0]!.cells).toHaveLength(3);
+    const v = buildValueView(data(), { showStoreShare: true });
     expect(v.stores.head).toContain("Butikens andel");
     expect(v.stores.rows[0]!.cells).toEqual([
       "ICA Test",

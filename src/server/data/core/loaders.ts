@@ -335,6 +335,12 @@ export interface DomainInputArgs {
    * Standard av (vinst före VMB-moms). Bokföringen följer "VMB i bokföringen" (standard av).
    */
   readonly vmb?: boolean;
+  /**
+   * Vyknappen "Visa butikernas andel": vår vinst dras med butikernas andel
+   * (`Settings.deductStoreShare`, @/domain storeShareDeducted). Standard av: vår vinst och
+   * marginal före andelen. Med en vald butik (`storeId`) dras butikens andel alltid.
+   */
+  readonly storeShare?: boolean;
 }
 
 interface ScopedSources {
@@ -419,7 +425,14 @@ export async function loadDomainInputFor(
     const [master, base] = await Promise.all([masterP, baseP]);
     const { prices, agreements, investments } = base;
     // Vyknappen avgör om vinsten bär VMB-moms; organisationens inställningar ändras inte.
-    const settings = args.vmb === true ? { ...base.settings, vmb: true } : base.settings;
+    // Likaså om butikernas andel dras: med knappen eller när en butik är vald. Ett
+    // automatfilter är inget val av butik (skalet lägger till automatens butik i adressen).
+    const settings = {
+      ...base.settings,
+      ...(args.vmb === true ? { vmb: true } : {}),
+      deductStoreShare:
+        args.storeShare === true || (scope.storeId !== null && scope.machineId === null),
+    };
     // Vinstdelningen drar återbetalningarna från butikens försäljning.
     const refunds = refundRows.map((r) => ({
       machineId: r.machineId,

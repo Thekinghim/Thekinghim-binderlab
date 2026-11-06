@@ -55,6 +55,7 @@ import {
   resolveScope,
   scopeSchema,
   scopeText,
+  profitRuleText,
   ToolInputError,
   type ResolvedScope,
   type ToolContext,
@@ -173,7 +174,13 @@ export const storeShareTool = defineTool({
     const scope = await resolveScope(ctx, { butik: input.butik });
     const data = await loadDomainInputFor(
       ctx.viewer,
-      { period, compare: null, storeId: scope.store?.id ?? null, vmb: ctx.vmb },
+      {
+        period,
+        compare: null,
+        storeId: scope.store?.id ?? null,
+        vmb: ctx.vmb,
+        storeShare: ctx.storeShare,
+      },
       ctx.now,
     );
     const names = nameMaps(data);
@@ -215,8 +222,8 @@ export const storeShareTool = defineTool({
             order: r.orders,
           })),
           anmarkning: rent
-            ? "Butiksersättning = andel/provision + hyra, räknad som i Lönsamhet och Bokföring. Vinst för oss är efter butikens del."
-            : "Butiksersättning = butikens andel/provision (ingen hyra), räknad som i Lönsamhet och Bokföring. Vinst för oss är efter butikens del.",
+            ? "Butiksersättning = andel/provision + hyra, räknad som i Lönsamhet och Bokföring. Vår vinst på sidorna är före butikens del; vår del = vinsten − butiksersättningen."
+            : "Butiksersättning = butikens andel/provision (ingen hyra), räknad som i Lönsamhet och Bokföring. Vår vinst på sidorna är före butikens del; vår del = vinsten − butiksersättningen.",
         },
         figures: [
           { label: "Butiksersättning", value: kr(total) },
@@ -288,7 +295,7 @@ const pricesInput = z
       .boolean()
       .optional()
       .describe(
-        "true bara när frågan uttryckligen gäller butikens andel eller vår del (vad som blir kvar åt oss efter butiken). Med butik eller automat visas andelen alltid. Annars utelämna: svaret ska ge hela beloppet per order.",
+        "true bara när frågan uttryckligen gäller butikens andel eller vår del (vad som blir kvar åt oss efter butiken). Med vald butik (utan automat) eller vyknappen 'Visa butikernas andel' visas andelen alltid. Annars utelämna: svaret ska ge hela beloppet per order.",
       ),
     antal: z
       .number()
@@ -305,7 +312,7 @@ export const pricesTool = defineTool({
   title: "Inköpspriser och marginal",
   label: () => "Inköpspriser per titel",
   description:
-    "Per titel som på sidan Inköpspriser: inköpspris i dag (det som är inmatat i appen är sanningen), snittpris per order, kvar per order (HELA beloppet per order före butikens andel: pris exkl. moms − inköp − avgifter), marginal (kvar av pris), kvar efter hyra (bara om något avtal har hyra), antal order och status (förlust, saknar pris, lönsam). Butikens andel och vår del per order kommer bara med när frågan gäller en butik/automat (butik, automat) eller uttryckligen andelen (visa_andel). Använd för 'vilka titlar går med förlust', 'vad kostar Perfect Order', 'vilken titel har bäst marginal', 'hur mycket får vi kvar per order på 151 hos ICA'.",
+    "Per titel som på sidan Inköpspriser: inköpspris i dag (det som är inmatat i appen är sanningen), snittpris per order, kvar per order (HELA beloppet per order före butikens andel: pris exkl. moms − inköp − avgifter), marginal (kvar av pris), kvar efter hyra (bara om något avtal har hyra), antal order och status (förlust, saknar pris, lönsam). Butikens andel och vår del per order kommer bara med när en butik är vald (butik utan automat), vyknappen 'Visa butikernas andel' är på, eller frågan uttryckligen gäller andelen (visa_andel). Använd för 'vilka titlar går med förlust', 'vad kostar Perfect Order', 'vilken titel har bäst marginal', 'hur mycket får vi kvar per order på 151 hos ICA'.",
   roles: ECONOMY_ROLES,
   input: pricesInput,
   async run(ctx: ToolContext, input) {
@@ -313,7 +320,7 @@ export const pricesTool = defineTool({
     const scope = await resolveScope(ctx, input);
     const data = await loadDomainInputFor(
       ctx.viewer,
-      { period, compare: null, ...scopeIds(scope), vmb: ctx.vmb },
+      { period, compare: null, ...scopeIds(scope), vmb: ctx.vmb, storeShare: ctx.storeShare },
       ctx.now,
     );
     const active = data.titles.filter((t) => !t.archived).map((t) => t.id);
@@ -323,9 +330,12 @@ export const pricesTool = defineTool({
     const economics = currentPriceEconomics({ ...data.current, titleIds: active });
     const unpriced = profitability(data.current, "title").unpriced;
     const all = titleRows(economics, data.titles, unpriced.byTitle);
-    // Sidans regel: hela beloppet som standard; andelen och vår del med vald butik/automat
-    // eller när frågan gäller andelen.
-    const share = Boolean(scope.store || scope.machine || input.visa_andel);
+    // Sidans regel (inkopspriser/page.tsx): hela beloppet som standard; andelen och vår del
+    // med vald butik (ett automatfilter är ingen vald butik, även om skalet lägger till
+    // automatens butik), med vyknappen "Visa butikernas andel" (ctx.storeShare), eller när
+    // frågan uttryckligen gäller andelen.
+    const storeSelected = Boolean(scope.store && !scope.machine);
+    const share = storeSelected || ctx.storeShare === true || input.visa_andel === true;
     const view = { share, rent, scope: scopeText(scope).replace(/^, /, "") || null };
     const visa = input.visa ?? "alla";
     const filtered = all.filter((r) =>
@@ -370,7 +380,7 @@ export const pricesTool = defineTool({
           label: "Inköpspriser",
           href: withShareParam(
             pageHref("/inkopspriser", period, scopeIds(scope)),
-            Boolean(input.visa_andel && !scope.store && !scope.machine),
+            share && !storeSelected,
           ),
         },
         ...(first
@@ -431,7 +441,7 @@ export const changeTool = defineTool({
         : periodBefore(period);
     const data = await loadDomainInputFor(
       ctx.viewer,
-      { period, compare, ...scopeIds(scope), vmb: ctx.vmb },
+      { period, compare, ...scopeIds(scope), vmb: ctx.vmb, storeShare: ctx.storeShare },
       ctx.now,
     );
     const names = nameMaps(data);
@@ -513,8 +523,10 @@ export const changeTool = defineTool({
           .reverse()
           .slice(0, limit)
           .filter((r) => r.vinstForandringOre > 0),
-        anmarkning:
-          "forandringPerDel: intäktens förändring höjer vinsten; inköp, avgifter, butiksersättning och VMB-moms som ökar (+) sänker den.",
+        anmarkning: cur.storeShareDeducted
+          ? "forandringPerDel: intäktens förändring höjer vinsten; inköp, avgifter, butiksersättning och VMB-moms som ökar (+) sänker den."
+          : "forandringPerDel: intäktens förändring höjer vinsten; inköp, avgifter och VMB-moms som ökar (+) sänker den. Butiksersättningen ingår inte i vinsten (vinsten är före butikernas andel).",
+        vinstRegel: profitRuleText(cur.storeShareDeducted),
       },
       figures: [
         { label: "Vinst", value: `${kr(t.profitOre)} (${signedKr(totalDiff)})` },
@@ -571,7 +583,7 @@ export const patternTool = defineTool({
     const scope = await resolveScope(ctx, input);
     const data = await loadDomainInputFor(
       ctx.viewer,
-      { period, compare: null, ...scopeIds(scope), vmb: ctx.vmb },
+      { period, compare: null, ...scopeIds(scope), vmb: ctx.vmb, storeShare: ctx.storeShare },
       ctx.now,
     );
     const orders = data.current.orders;

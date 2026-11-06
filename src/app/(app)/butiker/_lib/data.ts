@@ -6,11 +6,11 @@
 
 import "server-only";
 
+import { storeShareTerms } from "@/lib/store-share";
 import { cache } from "react";
 
 import {
   describePeriod,
-  parseStoreShareView,
   toURLSearchParams,
   type SearchParamsInput,
 } from "@/components/shell/period-state";
@@ -114,11 +114,15 @@ function periodInfo(
   };
 }
 
-/** Bara periodens parametrar (inte butiks- och automatfiltret), för länkar mellan sidorna. */
+/**
+ * Periodens parametrar och vyknapparna (?vmb, ?andel), inte butiks- och automatfiltret, för
+ * länkar mellan sidorna.
+ */
 export function periodQuery(sp: SearchParamsInput): string {
   const src = toURLSearchParams(sp);
   const out = new URLSearchParams();
-  for (const key of ["period", "from", "to"]) {
+  // Vyknapparna följer med (som skalets länkar), filtret inte.
+  for (const key of ["period", "from", "to", "vmb", "andel"]) {
     const v = src.get(key);
     if (v) out.set(key, v);
   }
@@ -169,7 +173,10 @@ export interface StoreListData {
   readonly examples: number;
   /** Butiker i drift (activeStores) med signerat kontrakt. */
   readonly signed: number;
-  /** Butikernas andel visas (vyknappen "Visa butikernas andel" eller vald butik). */
+  /**
+   * Butikernas andel är dragen från vår vinst och visas (vyknappen "Visa butikernas andel"
+   * eller vald butik). Av: vår vinst före andelen.
+   */
   readonly showStoreShare: boolean;
 }
 
@@ -182,7 +189,15 @@ export async function loadStoreList(searchParams: SearchParamsInput): Promise<St
   const [p, input, monthInput, master, stores, agreements, recipients, contracts] =
     await Promise.all([
       periodP,
-      periodP.then((x) => loadDomainInput({ period: x.period, compare: x.compare })),
+      // Hela organisationen (hyran per butik); med vald butik dras butikens andel (som
+      // loadDomainInput med storeId), annars följer vinsten vyknappen.
+      periodP.then((x) =>
+        loadDomainInput({
+          period: x.period,
+          compare: x.compare,
+          ...(x.scope.storeId ? { storeShare: true } : {}),
+        }),
+      ),
       loadDomainInput({ period: month }),
       loadMasterData(),
       loadStores(),
@@ -224,8 +239,8 @@ export async function loadStoreList(searchParams: SearchParamsInput): Promise<St
     previous !== null,
   );
   const machineId = p.scope.machineId;
-  // Butikernas andel på begäran (vyknappen) eller med vald butik.
-  const showShare = parseStoreShareView(searchParams) || Boolean(filterId);
+  // Butikernas andel dras (och visas) med vyknappen eller vald butik: samma flagga som talen.
+  const showShare = current.storeShareDeducted;
   return {
     ctx,
     period: info,
@@ -383,8 +398,15 @@ export async function loadStoreDetail(
       span: info.span,
       month: mc,
       vmb: input.settings.vmb === true,
+      storeShareDeducted: byStore.storeShareDeducted,
     }),
-    kpis: storeKpis({ current: row, previous: prevRow, daily }),
+    kpis: storeKpis({
+      current: row,
+      previous: prevRow,
+      daily,
+      terms: storeShareTerms(input.current.agreements, storeId, p.period),
+      storeShareDeducted: byStore.storeShareDeducted,
+    }),
     daily,
     dailyCompare: dailyPrev ? dailyPrev.map((d) => d.value) : null,
     month: mc,

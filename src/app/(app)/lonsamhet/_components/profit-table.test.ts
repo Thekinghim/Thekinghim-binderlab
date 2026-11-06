@@ -56,10 +56,16 @@ describe("sortering i tabellen och exporten", () => {
 
 describe("lonsamhetCsv", () => {
   it("skriver belopp med två decimaler, i tabellens ordning och med totalen sist", () => {
-    const csv = lonsamhetCsv("title", rows, totals, [{ key: "name", dir: "asc" }]);
+    // Med butikernas andel (vyknappen): andelen och vår del efter den.
+    const csv = lonsamhetCsv("title", rows, totals, [{ key: "name", dir: "asc" }], true);
     const lines = csv.replace(/^﻿/, "").trimEnd().split("\r\n");
     expect(lines[0]).toBe(
-      "Titel;Order;Order med inköpspris;Order utan inköpspris;Intäkt med inköpspris (kr);Inköp (kr);Avgifter (kr);VMB-moms (kr);Butiksersättning (kr);Vinst (kr);Marginal (%);Intäkt utan inköpspris (kr)",
+      "Titel;Order;Order med inköpspris;Order utan inköpspris;Intäkt med inköpspris (kr);Inköp (kr);Avgifter (kr);VMB-moms (kr);Butikernas andel (kr);Vår del (kr);Marginal efter andel (%);Intäkt utan inköpspris (kr)",
+    );
+    // Utan vyknappen: ingen kolumn för andelen, vinsten före den.
+    const off = lonsamhetCsv("title", rows, totals, [{ key: "name", dir: "asc" }], false);
+    expect(off.replace(/^﻿/, "").split("\r\n")[0]).toBe(
+      "Titel;Order;Order med inköpspris;Order utan inköpspris;Intäkt med inköpspris (kr);Inköp (kr);Avgifter (kr);VMB-moms (kr);Vinst före butikernas andel (kr);Marginal före butikernas andel (%);Intäkt utan inköpspris (kr)",
     );
     expect(lines.map((l) => l.split(";")[0])).toEqual([
       "Titel",

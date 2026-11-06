@@ -1,9 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import type React from "react";
+import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 
-import { carriedQuery, parseIsoDate, wallClockIn } from "@/components/shell/period-state";
+import {
+  carriedQuery,
+  parseIsoDate,
+  storeShareHint,
+  wallClockIn,
+} from "@/components/shell/period-state";
+import { StoreShareToggle } from "@/components/shell/store-share-toggle";
+import { requestStoreShareView } from "@/server/data/core";
 import { Panel } from "@/components/ui/frame";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
@@ -106,7 +114,10 @@ export default async function MachinePage({
     redirect(`/automater/${encodeURIComponent(code.toLowerCase())}${query ? `?${query}` : ""}`);
   }
 
-  const data = await loadMachineDetail(automat, sp);
+  const [data, shareToggle] = await Promise.all([
+    loadMachineDetail(automat, sp),
+    requestStoreShareView(),
+  ]);
   if (!data) notFound();
 
   const { ctx, machine, period, headline, status, store } = data;
@@ -203,6 +214,10 @@ export default async function MachinePage({
         <StateMessage kind="empty" message={`Inga order från ${machine.code} i dag än.`} />
       ) : (
         <div className="rise flex flex-col gap-4" style={rise(1)}>
+          {/* Vår vinst före butikernas andel; med knappen efter butikens andel. */}
+          <Suspense fallback={null}>
+            <StoreShareToggle on={shareToggle} />
+          </Suspense>
           <MachineKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
           {data.unpriced ? <UnpricedNote unpriced={data.unpriced} canEdit={ctx.canEdit} /> : null}
         </div>
@@ -523,7 +538,7 @@ function UnitEconomicsSection({ data }: { data: MachineDetailData }) {
         }
         aside={
           u && u.profitPerMonthOre !== null
-            ? `Vinst ${formatSek(u.profitPerMonthOre / 100)} per månad före avskrivning.`
+            ? `Vinst ${formatSek(u.profitPerMonthOre / 100)} per månad före avskrivning, ${storeShareHint(data.storeShareDeducted).toLowerCase()}.`
             : undefined
         }
         actions={

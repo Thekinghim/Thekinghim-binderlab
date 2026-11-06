@@ -41,10 +41,13 @@ export interface HeadlineInput {
   readonly vmbVatOre?: number;
   readonly compensationOre: number;
   /**
-   * Butikernas andel visas som eget tal. Av: förlustfallet nämner den inte för sig (den
-   * räknas då in i avgifterna, som i vattenfallet). Standard på.
+   * Butikernas andel är dragen från `profitOre` (vyknappen eller vald butik): vinsten heter
+   * då "Vår del" och andelen nämns. Av: vinsten är före andelen och andelen nämns inte.
+   * Standard på.
    */
   readonly showStoreShare?: boolean;
+  /** "Butikernas andel", med vald butik "Sega gubben 50 % av vinsten". */
+  readonly storeShareLabel?: string;
   /** Andel av intäkten som saknar inköpspris, bp. */
   readonly unpricedShareBp: number;
   /** Största bidragsgivaren (topContributor) med namn. */
@@ -107,15 +110,16 @@ function sek(ore: number): string {
 
 /** Den största kostnadsposten och dess andel av intäkten, för förlustfallet. */
 function largestDeduction(input: HeadlineInput): string {
-  const share = input.showStoreShare ?? true;
+  const share = input.showStoreShare ?? false;
+  // Utan vyknappen är vinsten före butikernas andel: andelen är ingen kostnad här.
   const items: Array<[string, number]> = [
-    ...(share ? ([["Butikernas andel", input.compensationOre]] as Array<[string, number]>) : []),
+    ...(share
+      ? ([[input.storeShareLabel ?? "Butikernas andel", input.compensationOre]] as Array<
+          [string, number]
+        >)
+      : []),
     ["Inköpen", input.costOre],
-    // Utan vyknappen ligger butikernas andel i samma steg som avgifterna (vattenfallet).
-    [
-      share ? "Avgifterna" : "Avgifterna och butikerna",
-      input.feesOre + (share ? 0 : input.compensationOre),
-    ],
+    ["Avgifterna", input.feesOre],
     ["VMB-momsen", input.vmbVatOre ?? 0],
   ];
   items.sort((a, b) => b[1] - a[1]);
@@ -164,13 +168,17 @@ export function lonsamhetHeadline(input: HeadlineInput): Headline {
     };
   }
 
-  // Stor siffra först: vår vinst (efter butikernas andel), samma ord och tal som på Hem.
-  // Marginalen står i nyckeltalen under.
-  const title = `Vår vinst ${sek(input.profitOre)} på ${days(input.days)}.`;
+  // Stor siffra först: vår vinst (före butikernas andel), eller vår del (efter andelen) med
+  // vyknappen, samma ord och tal som på Hem. Marginalen står i nyckeltalen under.
+  const deducted = input.showStoreShare ?? false;
+  const title = `${deducted ? "Vår del" : "Vår vinst"} ${sek(input.profitOre)} på ${days(input.days)}.`;
 
   let aside: string;
   const share = input.top?.shareOfProfitBp ?? null;
-  if (input.top && share !== null) {
+  if (deducted && input.compensationOre !== 0) {
+    // Med andelen: vad butikerna fick (eller butikens villkor och belopp med vald butik).
+    aside = `${input.storeShareLabel ?? "Butikernas andel"}: ${sek(input.compensationOre)}.`;
+  } else if (input.top && share !== null) {
     aside = `${input.top.name}: ${shareOfProfitText(share)}.`;
   } else if (input.previous && input.previous.profitOre > 0) {
     const bp = changeBp(input.profitOre, input.previous.profitOre) ?? 0;

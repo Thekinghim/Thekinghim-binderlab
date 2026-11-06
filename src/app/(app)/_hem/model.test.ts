@@ -70,7 +70,8 @@ const SOURCES = {
     },
   ],
   placements: [{ machineId: "m1", storeId: "s1", from: "2026-10-01", to: null }],
-  settings: { vatRateBp: 0, cardFeeBp: 0 },
+  // Som laddaren utan vyknappen: vår vinst före butikernas andel.
+  settings: { vatRateBp: 0, cardFeeBp: 0, deductStoreShare: false },
 };
 
 function inputFor(
@@ -154,7 +155,8 @@ describe("buildHomeModel", () => {
     expect(revenue?.trend).toHaveLength(20);
     // Vår vinst som stort tal (samma betydelse som Lönsamhet), intäkten bredvid. Butikens
     // andel (10 % provision) står inte som eget tal utan vyknappen.
-    expect(plain(m.headline.title)).toBe("Vår vinst 1 725 kr sedan 13 okt.");
+    // Före butikens andel (10 % provision): 1 725 kr + 345 kr provision.
+    expect(plain(m.headline.title)).toBe("Vår vinst 2 070 kr sedan 13 okt.");
     expect(plain(m.headline.aside)).toBe("Intäkt 4 450 kr.");
     expect(m.headline.split).toEqual([]);
     expect(m.hasStoreShare).toBe(true);
@@ -163,7 +165,7 @@ describe("buildHomeModel", () => {
     // Samma period i ord som rubriken, för topplistan och slutsålt-raden.
     expect(plain(m.spanText)).toBe("sedan 13 okt.");
     expect(plain(m.headline.lead.join(" "))).toBe(
-      "Före fasta kostnader. 22,5 % saknar inköpspris.",
+      "Före butikernas andel och fasta kostnader. 22,5 % saknar inköpspris.",
     );
   });
 
@@ -171,7 +173,9 @@ describe("buildHomeModel", () => {
     const input = inputFor(THIRTY, THIRTY_BEFORE);
     const withCosts = buildHomeModel({ ...input, costLines: { rent: false, fixed: true } });
     const without = buildHomeModel({ ...input, costLines: { rent: false, fixed: false } });
-    expect(plain(without.headline.lead.join(" "))).toBe("22,5 % saknar inköpspris.");
+    expect(plain(without.headline.lead.join(" "))).toBe(
+      "Före butikernas andel. 22,5 % saknar inköpspris.",
+    );
     expect(without.kpis.find((k) => k.id === "profit")?.label).toBe("Vår vinst");
     expect(withCosts.kpis.find((k) => k.id === "profit")?.label).toBe("Vår vinst");
     // Bara texten ändras: talen är desamma.
@@ -180,9 +184,11 @@ describe("buildHomeModel", () => {
   });
 
   it("tar vinsten för hela perioden, som Lönsamhet, inklusive hyra för dagar utan order", () => {
+    // Med vyknappen "Visa butikernas andel": hyran är en del av andelen och dras.
     const rent = {
       ...SOURCES,
       agreements: [{ ...SOURCES.agreements[0]!, monthlyRentOre: 310_000 }],
+      settings: { ...SOURCES.settings, deductStoreShare: true },
     };
     const base = inputFor(THIRTY, THIRTY_BEFORE);
     const input: HomeModelInput = {
@@ -202,7 +208,7 @@ describe("buildHomeModel", () => {
     expect(m.profitSplit?.ourOre).toBe(full.profitOre);
     const totals = profitability(input.current, "title").totals;
     expect(m.kpis.find((k) => k.id === "profit")?.value).toBe(full.profitOre);
-    expect(m.kpis.find((k) => k.id === "profit")?.label).toBe("Vår vinst");
+    expect(m.kpis.find((k) => k.id === "profit")?.label).toBe("Vår del");
     expect(m.profitSplit?.totalOre).toBe(full.profitOre + totals.compensationOre);
     expect(m.kpis.find((k) => k.id === "margin")?.value).toBe(full.marginBp);
     // Hyran för 4–12 okt. och 2 nov. ingår: vinsten är lägre än för dagarna med order.
@@ -598,9 +604,9 @@ describe("homeHeadline", () => {
     expect(plain(off.title)).toBe("Vår vinst 21 933 kr på 20 dagar.");
     expect(plain(off.aside)).toBe("Intäkt 79 987 kr, +12 %.");
     expect(off.split).toEqual([]);
-    // Med vyknappen: totalen före andelen och andelen.
+    // Med vyknappen: vår del (efter andelen), totalen före andelen och andelen.
     const on = homeHeadline({ ...base, storesProfitOre: 693_300, showStoreShare: true });
-    expect(plain(on.title)).toBe("Vår vinst 21 933 kr på 20 dagar.");
+    expect(plain(on.title)).toBe("Vår del 21 933 kr på 20 dagar.");
     expect(plain(on.aside)).toBe(
       "Totalt före butikernas andel 28 866 kr · butikernas andel 6 933 kr.",
     );
@@ -608,8 +614,13 @@ describe("homeHeadline", () => {
       { label: "Totalt före butikernas andel", valueOre: 2_886_600 },
       { label: "butikernas andel", valueOre: 693_300 },
     ]);
-    // Vald butik: andelen visas alltid, för just den butiken.
-    const store = homeHeadline({ ...base, storesProfitOre: 693_300, filtered: true });
+    // Vald butik: andelen dras alltid (modellen säger showStoreShare), för just den butiken.
+    const store = homeHeadline({
+      ...base,
+      storesProfitOre: 693_300,
+      filtered: true,
+      showStoreShare: true,
+    });
     expect(plain(store.aside)).toBe(
       "Totalt före butikens andel 28 866 kr · butikens andel 6 933 kr.",
     );
@@ -786,8 +797,14 @@ describe("hela vinsten på Hem", () => {
   ];
 
   /** Indata som loadDomainInputFor bygger den: urval på butiken, VMB-momsen organisationens. */
-  function inputs(vmb: boolean, storeId: string | null) {
-    const settings = { vatRateBp: 0, cardFeeBp: 150, vmb };
+  function inputs(vmb: boolean, storeId: string | null, share = false) {
+    // Som laddaren: andelen dras med vyknappen eller vald butik.
+    const settings = {
+      vatRateBp: 0,
+      cardFeeBp: 150,
+      vmb,
+      deductStoreShare: share || storeId !== null,
+    };
     const org = { prices, agreements, placements, settings, orders, period: PERIOD };
     if (!storeId) return { org, scoped: org };
     const vmbByOrder = new Map(
@@ -807,7 +824,7 @@ describe("hela vinsten på Hem", () => {
   }
 
   function home(vmb: boolean, storeId: string | null, showStoreShare = false) {
-    const { org, scoped } = inputs(vmb, storeId);
+    const { org, scoped } = inputs(vmb, storeId, showStoreShare);
     const sources = {
       prices: scoped.prices,
       agreements: scoped.agreements,
@@ -823,54 +840,69 @@ describe("hela vinsten på Hem", () => {
       period: PERIOD,
       dataStart: "2026-10-13",
       scope: { storeId, machineId: null },
-      showStoreShare,
+      ...(storeId ? { storeName: `Butik ${storeId}` } : {}),
     });
     return { m, org };
   }
 
   for (const vmb of [false, true]) {
-    it(`alla butiker${vmb ? ", med VMB" : ""}: hela vinsten = vår vinst + butikernas del, som Lönsamhet`, () => {
+    it(`alla butiker${vmb ? ", med VMB" : ""}: vår vinst före butikernas andel, vår del med vyknappen`, () => {
       const { m, org } = home(vmb, null);
       const lons = profitability(org, "store");
       const t = lons.totals;
       const profit = m.kpis.find((k) => k.id === "profit")!;
+      // Standard: vår vinst = vinsten före butikernas andel (som Lönsamhet utan vyknappen).
+      expect(m.showStoreShare).toBe(false);
       expect(m.profitSplit).toEqual({
-        totalOre: t.profitOre + t.compensationOre,
-        ourOre: t.profitOre,
+        totalOre: t.profitBeforeShareOre,
+        ourOre: t.profitBeforeShareOre,
         storesOre: t.compensationOre,
       });
-      // Talet är vår vinst; totalen och andelen bara med vyknappen.
-      expect(profit.value).toBe(t.profitOre);
+      expect(profit).toMatchObject({ label: "Vår vinst", value: t.profitBeforeShareOre });
       expect(profit.parts).toEqual([]);
-      expect(home(vmb, null, true).m.kpis.find((k) => k.id === "profit")?.parts).toEqual([
-        { id: "total", label: "Totalt före andel", value: t.profitOre + t.compensationOre },
-        { id: "stores", label: "Butikernas andel", value: t.compensationOre },
-      ]);
+      expect(m.kpis.find((k) => k.id === "margin")).toMatchObject({
+        label: "Vår marginal",
+        value: t.marginBeforeShareBp,
+      });
+      // Med vyknappen: vår del efter butikernas andel, totalen och andelen under talet.
+      const on = home(vmb, null, true).m;
+      expect(on.showStoreShare).toBe(true);
+      expect(on.kpis.find((k) => k.id === "profit")).toMatchObject({
+        label: "Vår del",
+        value: t.profitAfterShareOre,
+        parts: [
+          { id: "total", label: "Totalt före andel", value: t.profitBeforeShareOre },
+          { id: "stores", label: "Butikernas andel", value: t.compensationOre },
+        ],
+      });
+      expect(on.kpis.find((k) => k.id === "margin")?.value).toBe(t.marginAfterShareBp);
       // Butiker: raderna summerar till samma delar.
       const rows = lons.rows.filter((r) => r.kind === "item");
-      expect(rows.reduce((n, r) => n + r.profitOre + r.compensationOre, 0)).toBe(
-        t.profitOre + t.compensationOre,
-      );
-      expect(m.kpis.find((k) => k.id === "margin")?.value).toBe(t.marginBp);
+      expect(rows.reduce((n, r) => n + r.profitBeforeShareOre, 0)).toBe(t.profitBeforeShareOre);
+      expect(t.profitAfterShareOre).toBe(t.profitBeforeShareOre - t.compensationOre);
       expect(t.vmbVatOre > 0).toBe(vmb);
     });
 
     for (const storeId of ["s1", "s2"]) {
-      it(`butik ${storeId}${vmb ? ", med VMB" : ""}: butikens vinst och delning, som butikens rad`, () => {
+      it(`butik ${storeId}${vmb ? ", med VMB" : ""}: vald butik drar sin andel, som butikens rad`, () => {
         const { m, org } = home(vmb, storeId);
         const row = profitability(org, "store").rows.find((r) => r.key === storeId)!;
         expect(row.compensationOre).toBeGreaterThan(0);
         expect(m.profitSplit).toEqual({
-          totalOre: row.profitOre + row.compensationOre,
-          ourOre: row.profitOre,
+          totalOre: row.profitBeforeShareOre,
+          ourOre: row.profitAfterShareOre,
           storesOre: row.compensationOre,
         });
-        // Vald butik: andelen visas utan vyknappen, med butikens namn i ental.
-        expect(m.kpis.find((k) => k.id === "profit")?.value).toBe(row.profitOre);
-        expect(m.kpis.find((k) => k.id === "profit")?.parts).toEqual([
-          { id: "total", label: "Totalt före andel", value: row.profitOre + row.compensationOre },
-          { id: "stores", label: "Butikens andel", value: row.compensationOre },
-        ]);
+        // Vald butik: andelen dras utan vyknappen, med butikens namn och villkor.
+        const profit = m.kpis.find((k) => k.id === "profit")!;
+        expect(profit).toMatchObject({ label: "Vår del", value: row.profitAfterShareOre });
+        expect(profit.parts?.[0]).toEqual({
+          id: "total",
+          label: "Totalt före andel",
+          value: row.profitBeforeShareOre,
+        });
+        expect(profit.parts?.[1]).toMatchObject({ id: "stores", value: row.compensationOre });
+        expect(profit.parts?.[1]?.label).toMatch(new RegExp(`^Butik ${storeId} `));
       });
     }
   }
@@ -886,18 +918,48 @@ describe("hela vinsten på Hem", () => {
     expect(on.m.kpis.find((k) => k.id === "profit")?.note).toBe("efter VMB-moms");
   });
 
-  it("rubriken säger vår vinst; totalen och butikernas andel bara med vyknappen", () => {
+  it("rubriken säger vår vinst före andelen; vår del, totalen och andelen med vyknappen", () => {
     const { m } = home(false, null);
     const s = m.profitSplit!;
     expect(plain(m.headline.title)).toMatch(new RegExp(`^Vår vinst ${plain(kr(s.ourOre))} `));
+    expect(s.ourOre).toBe(s.totalOre);
     expect(plain(m.headline.aside)).not.toMatch(/andel/);
+    // Raden under: vinsten är före butikernas andel.
+    expect(m.headline.lead.join(" ")).toMatch(/Före butikernas andel/);
     const on = home(false, null, true).m;
-    expect(plain(on.headline.title)).toBe(plain(m.headline.title));
+    const so = on.profitSplit!;
+    expect(so.ourOre).toBe(so.totalOre - so.storesOre);
+    expect(plain(on.headline.title)).toMatch(new RegExp(`^Vår del ${plain(kr(so.ourOre))} `));
     expect(plain(on.headline.aside)).toBe(
       plain(
-        `Totalt före butikernas andel ${kr(s.totalOre)} · butikernas andel ${kr(s.storesOre)}.`,
+        `Totalt före butikernas andel ${kr(so.totalOre)} · Butikernas andel ${kr(so.storesOre)}.`,
       ),
     );
+  });
+
+  it("automatfilter med vyknappen: andelen heter butikens (en butik), som på Lönsamhet", () => {
+    // Skalet lägger till automatens butik (?automat=m1&butik=s1); det är inget val av butik,
+    // så andelen dras bara med vyknappen, men det är EN butiks andel.
+    const { scoped } = inputs(false, "s1", true);
+    const m = buildHomeModel({
+      ...inputFor(PERIOD, null),
+      current: scoped,
+      previous: null,
+      sources: {
+        prices: scoped.prices,
+        agreements: scoped.agreements,
+        placements: scoped.placements,
+        settings: scoped.settings,
+      },
+      machines,
+      period: PERIOD,
+      dataStart: "2026-10-13",
+      scope: { storeId: "s1", machineId: "m1" },
+    });
+    expect(m.showStoreShare).toBe(true);
+    const profit = m.kpis.find((k) => k.id === "profit")!;
+    expect(profit.parts?.[1]?.label).toBe("Butikens andel");
+    expect(plain(m.headline.aside)).toMatch(/^Totalt före butikens andel .* · Butikens andel /);
   });
 });
 

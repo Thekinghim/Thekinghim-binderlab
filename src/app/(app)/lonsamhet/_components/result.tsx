@@ -59,8 +59,11 @@ function Line({
 export function ResultAfterProfitPanel({
   result,
   costLines = ALL_COST_LINES,
+  profitLabel = "Vår vinst",
 }: {
   result: ResultAfterProfit;
+  /** "Vår vinst" (före butikernas andel) eller "Vår del" (efter andelen), som vattenfallet. */
+  profitLabel?: string;
   /** Utan fasta kostnader döljs raderna för dem (beloppen är 0); länken lägger till en. */
   costLines?: CostLines;
 }) {
@@ -80,7 +83,7 @@ export function ResultAfterProfitPanel({
       >
         <div className="flex flex-col gap-4">
           <dl className="flex flex-col">
-            <Line label="Vår vinst" value={kr(r.profitOre)} />
+            <Line label={profitLabel} value={kr(r.profitOre)} />
             <Line
               label="Återbetalningar"
               value={minus(r.refundOre)}

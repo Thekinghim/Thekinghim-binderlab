@@ -39,8 +39,21 @@ export const TO_PARAM = "to";
 export const STORE_PARAM = "butik";
 export const MACHINE_PARAM = "automat";
 export const VMB_PARAM = "vmb";
-/** Vyknappen "Visa butikernas andel" (?andel=1). Bara visning: vår vinst räknas likadant. */
+/**
+ * Vyknappen "Visa butikernas andel" (?andel=1, av = ?andel=0). Av (standard): vår vinst och
+ * marginal före butikernas andel. På: andelen dras per butik och avtal (vår del).
+ */
 export const STORE_SHARE_PARAM = "andel";
+/**
+ * Kakan där knappen sparar valet ("1" = på), så att det gäller på alla sidor även när en
+ * länk saknar ?andel. Läses av proxyn (src/proxy.ts), som sätter STORE_SHARE_HEADER.
+ */
+export const STORE_SHARE_COOKIE = "binderlab-andel";
+/**
+ * Förfrågans header som proxyn sätter från ?andel eller kakan, så att serverns laddare
+ * (requestStoreShareView) drar butikernas andel likadant på hela sidan.
+ */
+export const STORE_SHARE_HEADER = "x-binderlab-andel";
 
 /**
  * Förfrågans header som proxyn (src/proxy.ts) sätter från ?vmb=1, så att serverns laddare
@@ -302,15 +315,37 @@ export function withVmbView(current: SearchParamsInput, on: boolean): URLSearchP
 }
 
 /**
- * Vyknappen "Visa butikernas andel" (?andel=1). Standard av: sidorna visar vår vinst och
- * butikernas andel bara med knappen eller med ett butiks- eller automatfilter
- * (showStoreShare). Ändrar inget i beräkningen; andelen dras alltid från vår vinst.
+ * Vyknappen "Visa butikernas andel" ur URL:en: true (?andel=1), false (?andel=0) eller null
+ * (ingen parameter: kakan avgör, storeShareViewOf).
  */
-export function parseStoreShareView(sp: SearchParamsInput): boolean {
-  return readParam(sp, STORE_SHARE_PARAM) === "1";
+export function readStoreShareParam(sp: SearchParamsInput): boolean | null {
+  const v = readParam(sp, STORE_SHARE_PARAM);
+  return v === "1" ? true : v === "0" ? false : null;
 }
 
-/** Ny query med vyknappen satt (på = ?andel=1, av = parametern tas bort). */
+/** Sant med ?andel=1 (bara URL:en; serverns val, med kakan, är storeShareViewOf). */
+export function parseStoreShareView(sp: SearchParamsInput): boolean {
+  return readStoreShareParam(sp) === true;
+}
+
+/**
+ * Vyknappens läge för en förfrågan: ?andel=1/0 i URL:en, annars kakan som knappen sparar.
+ * Av (standard): vår vinst och marginal FÖRE butikernas andel. På: andelen dras (vår del).
+ * En vald butik drar dessutom alltid sin egen andel (loadDomainInputFor), oavsett knappen.
+ */
+export function storeShareViewOf(sp: SearchParamsInput, cookieValue: string | undefined): boolean {
+  return readStoreShareParam(sp) ?? cookieValue === "1";
+}
+
+/** Kort förklaring bredvid knappen: vad vår vinst räknas som i läget. */
+export function storeShareHint(on: boolean): string {
+  return on ? "Efter butikernas andel" : "Före butikernas andel";
+}
+
+/**
+ * Ny query med vyknappen satt (på = ?andel=1, av = parametern tas bort). Knappen sparar
+ * samtidigt valet i kakan (STORE_SHARE_COOKIE), så att det följer med till alla sidor.
+ */
 export function withStoreShareView(current: SearchParamsInput, on: boolean): URLSearchParams {
   const next = toURLSearchParams(current);
   if (on) next.set(STORE_SHARE_PARAM, "1");
@@ -319,12 +354,14 @@ export function withStoreShareView(current: SearchParamsInput, on: boolean): URL
 }
 
 /**
- * Om butikernas andel ska visas som eget tal: med vyknappen, eller när en butik eller
- * automat är vald (då gäller andelen just den butiken).
+ * Om butikernas andel ska dras och visas som eget tal: med vyknappen (`toggleOn`, serverns
+ * val ur URL eller kaka), eller när en butik är vald (då gäller just den butikens andel
+ * enligt dess avtal). Samma regel som loadDomainInputFor (`Settings.deductStoreShare`).
  */
-export function showStoreShare(sp: SearchParamsInput): boolean {
-  if (parseStoreShareView(sp)) return true;
-  return Boolean(readParam(sp, STORE_PARAM) || readParam(sp, MACHINE_PARAM));
+export function showStoreShare(sp: SearchParamsInput, toggleOn = parseStoreShareView(sp)): boolean {
+  if (toggleOn) return true;
+  // Skalet lägger till automatens butik vid automatfilter: det är inget val av butik.
+  return Boolean(readParam(sp, STORE_PARAM)) && !readParam(sp, MACHINE_PARAM);
 }
 
 /** Bara skalets parametrar, för att bära period och filter mellan sidor. */

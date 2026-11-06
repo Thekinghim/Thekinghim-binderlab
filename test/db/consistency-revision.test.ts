@@ -50,6 +50,14 @@ vi.mock("@/server/session", async () => {
   };
 });
 
+// Vyknappen "Visa butikernas andel" på (headern som proxyn sätter från ?andel=1 eller kakan):
+// testerna här prövar vinsten EFTER butikernas andel (vår del) mot handräkning och SQL-facit.
+// Standardläget (före andelen) och båda lägena mot varandra: consistency-andel.test.ts.
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers({ "x-binderlab-andel": "1" }),
+  cookies: async () => ({ get: () => undefined, getAll: () => [], set: () => {} }),
+}));
+
 vi.mock("next/navigation", () => ({
   redirect: (url: string) => {
     throw new Error(`redirect ${url}`);
@@ -380,12 +388,14 @@ describe("handräknat mot seedens rådata (moms 0, kortavgift 0)", () => {
     expect(store("Gallerian Väst (exempel)").compensationOre).toBe(91_935 + 5_000);
     expect(store("Kiosken Stationen (exempel)").compensationOre).toBe(148_112 + 45_968 + 2_500);
 
-    // Butiker: provision på ALLA order + hyra.
+    // Butiker: samma andel som dras från vår vinst (som Lönsamhet per butik), så att
+    // andelen + vår del = vår vinst före andelen. Provisionen på order utan inköpspris
+    // (16 572 och 10 888) ingår inte, eftersom de orderna inte ingår i vinsten.
     const list = await loadStoreList(SEED_RANGE);
     const b = (name: string) => list.rows.find((r) => r.id === id(storeIds, name))!;
-    expect(b("Spelbutiken Centrum (exempel)").compensationOre).toBe(407_940 + 16_572);
+    expect(b("Spelbutiken Centrum (exempel)").compensationOre).toBe(407_940);
     expect(b("Gallerian Väst (exempel)").compensationOre).toBe(96_935);
-    expect(b("Kiosken Stationen (exempel)").compensationOre).toBe(196_580 + 10_888);
+    expect(b("Kiosken Stationen (exempel)").compensationOre).toBe(196_580);
   });
 
   /*

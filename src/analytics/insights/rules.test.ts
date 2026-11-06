@@ -304,7 +304,7 @@ describe("titel med förlust", () => {
     validFrom: "2026-01-01",
   });
 
-  it("Black Bolt går med förlust per pack (provision 10 %)", () => {
+  it("Black Bolt går med förlust per pack efter butikens andel (provision 10 %)", () => {
     const i = input({ titles, orders: spread("bb", 5), prices: [price("bb", 4_500)] });
     const [r] = lossTitleRule(ctx(i));
     expect(r).toMatchObject({
@@ -312,10 +312,23 @@ describe("titel med förlust", () => {
       tone: "negative",
       score: 9_005,
       text: `Black Bolt går med förlust: −0,90${S}kr per pack`,
-      detail: `Snittpris 49,00${S}kr, inköpspris 45,00${S}kr, provision 4,90${S}kr per pack (5${S}order 26${S}okt.${S}–\u2060${S}1${S}nov.).`,
+      detail: `Snittpris 49,00${S}kr, inköpspris 45,00${S}kr, butikens andel 4,90${S}kr per pack (5${S}order 26${S}okt.${S}–\u2060${S}1${S}nov.).`,
       link: "/inkopspriser?titel=bb",
     });
     expect(r?.evidence.figures.find((f) => f.key === "leftPerOrderOre")?.value).toBe(-90);
+  });
+
+  it("före butikens andel (vyknappen av): ingen förlust när packet ger något före andelen", () => {
+    const i = input({ titles, orders: spread("bb", 5), prices: [price("bb", 4_500)] });
+    const off = { ...i, settings: { ...i.settings, deductStoreShare: false } };
+    expect(lossTitleRule(ctx(off))).toHaveLength(0);
+    // Under inköpspriset är det förlust även före andelen, utan andelen i texten.
+    const loss = input({ titles, orders: spread("bb", 5), prices: [price("bb", 5_000)] });
+    const [r] = lossTitleRule(
+      ctx({ ...loss, settings: { ...loss.settings, deductStoreShare: false } }),
+    );
+    expect(r?.text).toBe(`Black Bolt går med förlust: −1,00${S}kr per pack`);
+    expect(r?.detail).not.toMatch(/andel|provision/);
   });
 
   it("noll kvar räknas som förlustvarning, lönsam titel och få order inte", () => {
