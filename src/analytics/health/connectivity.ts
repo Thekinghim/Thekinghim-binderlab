@@ -1,6 +1,6 @@
 /**
  * Automatens anslutning enligt leverantören (Awish Machines: is_online), som synken läser
- * var tionde minut. Rena funktioner: `now` är den enda tidskällan.
+ * var femte minut. Rena funktioner: `now` är den enda tidskällan.
  *
  * Läget per automat (source_machines.awish_*) går framåt med nextConnectivity:
  *

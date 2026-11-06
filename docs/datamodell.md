@@ -311,7 +311,7 @@ Alla marknadstabeller: läs Ä/A/L, skriv Ä/A, påfyllaren ser inget. Inget är
 Adaptergränssnittet: `SourceAdapter.fetch(cursor) → { orders: RawOrder[], machines: RawMachine[], nextCursor }`. Allt efter adaptern är gemensamt: koppling av automater och titlar, deduplicering, logg och lagerhändelser. Så blir de olika källorna:
 
 1. **`awish_grpc` (i bruk).** Awish officiella gRPC-API med AppId, AppSecret och AppKey (i Vault, `secret_ref`).
-   - Körs på servern var 10:e minut (pg_cron → `/api/cron/awish`), utan webbläsare och utan tillägg. Läget (sidor, senaste körning) ligger i `cursor` som JSON. Se `docs/awish-api.md`.
+   - Körs på servern var femte minut (pg_cron → `/api/cron/awish`), utan webbläsare och utan tillägg. Läget (sidor, senaste körning) ligger i `cursor` som JSON. Se `docs/awish-api.md`.
    - Migreringar: `20261103090000_awish_api.sql` (Vault-RPC:erna, pg_cron) och `20261103120000_awish_api_granskning.sql` (ledtrådar bara för långa hemligheter, rensning av `cron.job_run_details`).
    - Tabellen `sync_tokens` (Chrome-tillägget, borttaget) ligger kvar oanvänd; alla token är återkallade och `awish_extension`-källor pausade i `20261103120000_awish_api_granskning.sql`.
 2. **`awish_csv` (reserv).** Uppladdning på sidan Datakällor, med förhandsvisning, kolumnmappning, kontroll av dubbletter och logg.

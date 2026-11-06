@@ -159,9 +159,10 @@ Alla tar `--dry-run`. Det finns inget npm-skript (package.json ägs av andra); k
     säga "inte konfigurerat". Säger den det skrivs variabelnamnen som saknas ut (aldrig värden).
 12. **Awish-synken (pg_cron).** `CRON_SECRET` för Production läses ur produktionens Vault (`binderlab_cron_secret`)
     och samma värde sätts i Vercel; finns det inte skapas ett nytt och skrivs först till Vault. Den bekräftade
-    adressen skrivs till `binderlab_app_url`. Båda läses av `private.awish_cron_tick()`, som pg_cron kör var tionde
-    minut (`docs/awish-api.md`). Saknas pg_cron-jobbet (tilläggen pg_cron eller pg_net är inte påslagna) blir det ett
-    manuellt steg i sammanfattningen.
+    adressen skrivs till `binderlab_app_url`. Båda läses av `private.awish_cron_tick()`, som pg_cron kör var femte
+    minut (`docs/awish-api.md`). Har jobbet ett annat schema (t.ex. det äldre var tionde minut) schemaläggs det om till
+    `*/5 * * * *`. Saknas pg_cron-jobbet (tilläggen pg_cron eller pg_net är inte påslagna) blir det ett manuellt steg i
+    sammanfattningen.
 13. **Ägaren.** Kontot skapas i produktionsprojektet med bekräftad e-post och utan lösenord
     (`POST {SUPABASE_URL}/auth/v1/admin/users` med secret key). Finns kontot bekräftas e-posten om det behövs. Ägaren gör
     sedan:

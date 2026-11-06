@@ -265,7 +265,7 @@ export interface ImportAlertInput {
     readonly stuckAfterMinutes?: number;
     /**
      * En schemalagd källa utan lyckad hämtning på så här många intervall larmar.
-     * Standard 3 (gRPC var 10:e minut → 30 minuter, men minst `minStaleMinutes`).
+     * Standard 3 (gRPC var 5:e minut → 15 minuter, men minst `minStaleMinutes`).
      */
     readonly staleIntervals?: number;
     /** Minsta tid utan hämtning innan larm. Standard 60 minuter. */

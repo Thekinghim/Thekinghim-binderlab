@@ -64,19 +64,19 @@ aldrig efter import (trigger `orders_before_update`).
 
 ## Schemalagda jobb
 
-| Jobb                     | Schema (UTC)   | Startas av                  | Gör                                                            |
-| ------------------------ | -------------- | --------------------------- | -------------------------------------------------------------- |
-| `/api/cron/awish`        | var 10:e minut | pg_cron i Supabase          | Hämtar nya order, automater, anslutning och fack från Awish    |
-| `/api/cron/larm`         | `7 5 * * *`    | Vercel Cron (`vercel.json`) | Maskinhälsa, titlar nära slut, misslyckade importer; utskick   |
-| `/api/cron/rapporter`    | `17 5 1 * *`   | Vercel Cron                 | Månadens rapportutkast till butiker och bokföring              |
-| `/api/cron/bokforing`    | `37 3 * * *`   | pg_cron                     | Sparar förra månadens bokföringspaket (ny version vid ändring) |
-| `/api/cron/ai`           | `43 4 * * *`   | pg_cron                     | AI-rådgivarens förslag och morgonbriefen                       |
-| `binderlab-cron-cleanup` | `23 3 * * *`   | pg_cron                     | Rensar pg_cron:s körlogg äldre än 7 dagar                      |
+| Jobb                     | Schema (UTC)  | Startas av                  | Gör                                                            |
+| ------------------------ | ------------- | --------------------------- | -------------------------------------------------------------- |
+| `/api/cron/awish`        | `*/5 * * * *` | pg_cron i Supabase          | Hämtar nya order, automater, anslutning och fack från Awish    |
+| `/api/cron/larm`         | `7 5 * * *`   | Vercel Cron (`vercel.json`) | Maskinhälsa, titlar nära slut, misslyckade importer; utskick   |
+| `/api/cron/rapporter`    | `17 5 1 * *`  | Vercel Cron                 | Månadens rapportutkast till butiker och bokföring              |
+| `/api/cron/bokforing`    | `37 3 * * *`  | pg_cron                     | Sparar förra månadens bokföringspaket (ny version vid ändring) |
+| `/api/cron/ai`           | `43 4 * * *`  | pg_cron                     | AI-rådgivarens förslag och morgonbriefen                       |
+| `binderlab-cron-cleanup` | `23 3 * * *`  | pg_cron                     | Rensar pg_cron:s körlogg äldre än 7 dagar                      |
 
 Alla routes kräver `Authorization: Bearer <CRON_SECRET>` (jämförs i konstant tid,
 `src/server/alerts/cron-auth.ts`) och svarar 503 utan hemlighet. pg_cron-jobben läser adress och
 hemlighet ur Vault (`binderlab_app_url`, `binderlab_cron_secret`). Larmjobbet körs en gång per dygn
-(`vercel.json`); larmen utvärderas också efter varje Awish-synk (var tionde minut).
+(`vercel.json`); larmen utvärderas också efter varje Awish-synk (var femte minut).
 
 ## Externa tjänster
 

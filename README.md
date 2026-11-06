@@ -183,7 +183,7 @@ Läget 2 nov. 2026, efter fas 7:s sista rättningar. Sammanfattning av fas 7 med
 - **Inte provat mot riktiga tjänster** (byggmiljön hade inget nät): Supabase-lägena (PostgREST, storage-policyer,
   JWKS, inbjudningsmejl), Resend, Sentry, Vercel Cron, Web Push, PDF-visning i en vanlig Chrome och CI-jobbet för e2e
   på GitHub. Allt har lokala ersättare och tester, men ingen extern integration har körts en enda gång.
-- **Awish:** orderna hämtas från Awish officiella gRPC-API var tionde minut (`docs/awish-api.md`), men det är bara
+- **Awish:** orderna hämtas från Awish officiella gRPC-API var femte minut (`docs/awish-api.md`), men det är bara
   provat mot en låtsasserver; byggmiljön når inte Awish. Uppladdning av orderlistan (CSV) finns kvar som reserv.
   Utbetalningarnas API och maskindata kräver dokumentation från Awish. Maskinhälsan härleds ur försäljningen.
 - **Säkerhet:** CSP:n tillåter `'unsafe-inline'` för skript (nonce-CSP kräver dynamisk rendering), HSTS saknar

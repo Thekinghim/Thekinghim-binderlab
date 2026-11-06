@@ -5,7 +5,7 @@
  * - En kampanj = text + bild + start och slut, på en eller flera automater. I Awish blir
  *   den en kampanjbild (Banner) per automat med bildens publika adress och utgångstiden.
  * - Start "nu" skickas direkt efter bekräftelsen. En senare start skickas av den
- *   schemalagda Awish-körningen (var tionde minut) när starttiden har passerat.
+ *   schemalagda Awish-körningen (var femte minut) när starttiden har passerat.
  * - "Stäng av" sätter utgångstiden i Awish till nu (Awish har ingen radering).
  * - Förslag: en titel som kom in i en automat de senaste 14 dagarna (första
  *   sortimentsperioden) och som ingen kampanj har gällt sedan dess.

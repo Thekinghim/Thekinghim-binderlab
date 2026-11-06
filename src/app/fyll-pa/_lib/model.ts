@@ -2,7 +2,7 @@
  * Fyll på: automaterna som kort, sorterade efter behov, och raderna per titel med
  * förslaget. Rena funktioner (testas i model.test.ts).
  *
- * - Nu: Binderlabs saldo i automaten (Awish-inventeringen var 10:e minut plus
+ * - Nu: Binderlabs saldo i automaten (Awish-inventeringen var femte minut plus
  *   påfyllningar som registrerats sedan dess). Ett negativt saldo visas som 0.
  * - Kapacitet: summan av fackens kapacitet enligt senaste Awish-läsningen
  *   (stock_locations.awish_fill). Okänd före första läsningen ("Fyllnad: väntar på Awish").

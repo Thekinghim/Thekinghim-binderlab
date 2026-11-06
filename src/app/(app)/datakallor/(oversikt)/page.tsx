@@ -27,7 +27,7 @@ export const metadata: Metadata = { title: "Datakällor" };
 export const maxDuration = 60;
 
 /**
- * Datakällor: Awish (gRPC-API, hämtas automatiskt var tionde minut), varifrån orderna
+ * Datakällor: Awish (gRPC-API, hämtas automatiskt var femte minut), varifrån orderna
  * kommer, uppladdning av en orderlista som reserv eller försäljning från ett annat märke
  * (ihopfälld, länkad under Awish), kön för okända
  * automater och loggen över alla importer. Bara ägare och admin (requireRoute skickar

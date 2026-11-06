@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 const { createAwishClient, toProduct } = await import("./grpc-client");
-const { groupProducts, goodKey } = await import("./stock");
+const { groupProducts, goodKey, STOCK_SYNC_INTERVAL_MS } = await import("./stock");
 const { parseState, stockDue } = await import("./sync");
 const { startFakeAwish } = await import("./testing/fake-server");
 
@@ -92,11 +92,48 @@ describe("groupProducts", () => {
 
 describe("stockDue", () => {
   const now = new Date("2026-11-03T12:00:00Z");
-  it("Synka nu läser alltid; cron var 30:e minut", () => {
+  it("Synka nu läser alltid; cron var femte minut", () => {
+    expect(STOCK_SYNC_INTERVAL_MS).toBe(5 * 60_000);
     expect(stockDue({ stockSyncedAt: null }, "schedule", now)).toBe(true);
-    expect(stockDue({ stockSyncedAt: "2026-11-03T11:50:00Z" }, "manual", now)).toBe(true);
-    expect(stockDue({ stockSyncedAt: "2026-11-03T11:50:00Z" }, "schedule", now)).toBe(false);
-    expect(stockDue({ stockSyncedAt: "2026-11-03T11:31:00Z" }, "schedule", now)).toBe(true);
+    expect(stockDue({ stockSyncedAt: "2026-11-03T11:59:00Z" }, "manual", now)).toBe(true);
+    // Strax efter "Synka nu" läser cron inte om.
+    expect(stockDue({ stockSyncedAt: "2026-11-03T11:59:00Z" }, "schedule", now)).toBe(false);
+    expect(stockDue({ stockSyncedAt: "2026-11-03T11:58:00Z" }, "schedule", now)).toBe(false);
+    expect(stockDue({ stockSyncedAt: "2026-11-03T11:55:00Z" }, "schedule", now)).toBe(true);
+    expect(stockDue({ stockSyncedAt: "2026-11-03T11:30:00Z" }, "schedule", now)).toBe(true);
+    expect(stockDue({ stockSyncedAt: "trasig" }, "schedule", now)).toBe(true);
+  });
+
+  /**
+   * Simulerar ticks var femte minut i två timmar. Varje körning startar 0–20 s efter
+   * utsatt tid (pg_net, kallstart) och facken är lästa (stockSyncedAt) 5–60 s efter
+   * starten (maxDuration 60 s). Saldot ska läsas i varje tick: ingen hoppas över.
+   */
+  it("cron var femte minut: varje tick läser saldot, även med ojämn takt", () => {
+    const t0 = Date.parse("2026-11-03T10:00:00Z");
+    // Fasta "slumpvärden" som täcker ytterlägena: snabb efter långsam och tvärtom.
+    const startDelay = [0, 20, 0, 19, 1, 20, 0, 0, 20, 5, 0, 20];
+    const readTime = [60, 5, 60, 60, 5, 60, 5, 60, 5, 60, 60, 5];
+    let stockSyncedAt: string | null = null;
+    let reads = 0;
+    const ticks = 24;
+    for (let i = 0; i < ticks; i++) {
+      const started = new Date(t0 + i * STOCK_SYNC_INTERVAL_MS + startDelay[i % 12]! * 1000);
+      if (stockDue({ stockSyncedAt }, "schedule", started)) {
+        reads++;
+        stockSyncedAt = new Date(started.getTime() + readTime[i % 12]! * 1000).toISOString();
+      }
+    }
+    expect(reads).toBe(ticks);
+  });
+
+  it("två körningar inom samma femminutersperiod läser inte saldot två gånger", () => {
+    const tick = new Date("2026-11-03T12:00:00Z");
+    // Förra ticken läste klart 12:00:40; en extra körning 12:02 (t.ex. ett nytt försök) läser inte.
+    const after = { stockSyncedAt: "2026-11-03T12:00:40Z" };
+    expect(stockDue(after, "schedule", new Date(tick.getTime() + 2 * 60_000))).toBe(false);
+    // Nästa ordinarie tick 12:05 läser.
+    expect(stockDue(after, "schedule", new Date(tick.getTime() + 5 * 60_000))).toBe(true);
   });
 
   it("läget kommer ihåg senaste saldoläsningen", () => {

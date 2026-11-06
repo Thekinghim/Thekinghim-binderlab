@@ -42,7 +42,7 @@ const sources: Array<[string, string, string]> = [
   [
     "awish_grpc",
     "Mål",
-    "Schemalagd hämtning var 10:e min via Awishs gRPC-API med app-ID. Kräver .proto, token-beräkning och TLS-uppgifter från Awish.",
+    "Schemalagd hämtning var femte minut via Awishs gRPC-API med app-ID. Kräver .proto, token-beräkning och TLS-uppgifter från Awish.",
   ],
   [
     "awish_csv",

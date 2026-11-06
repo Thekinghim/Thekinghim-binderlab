@@ -230,15 +230,13 @@ describe("demo för kunder: skapa", () => {
       sql`select max(business_date)::text as day, count(*)::int as n
           from public.orders where organization_id = ${demoOrgId}::uuid`,
     );
-    // Sista dagen har bara försäljning före nuvarande timme, och ingen butik öppnar före
-    // DEMO_STORES första timme: tidigt på morgonen slutar datan därför igår.
+    // Försäljningen slutar vid timmen just nu; automaterna öppnar tidigast 08 (demokatalogen),
+    // så en förmiddag kan dagens första order ännu saknas och gårdagen vara senast.
     const clock = stockholmClock(new Date());
-    const earliest = Math.min(...DEMO_STORES.map((s) => s.hours.first));
-    const yesterday = new Date(`${clock.date}T12:00:00Z`);
-    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-    expect(
-      clock.hour > earliest + 1 ? [clock.date] : [clock.date, yesterday.toISOString().slice(0, 10)],
-    ).toContain(last.day);
+    const yesterday = new Date(Date.parse(`${clock.date}T12:00:00Z`) - 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    expect(clock.hour < 12 ? [clock.date, yesterday] : [clock.date]).toContain(last.day);
     expect(last.n).toBeGreaterThan(12_000);
     const real0 = await one<{ is_demo: boolean }>(
       db(),

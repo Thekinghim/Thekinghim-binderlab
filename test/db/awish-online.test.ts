@@ -413,3 +413,43 @@ describe("anslutningen när orderna stoppar synken", () => {
     }
   });
 });
+
+describe("audit_log: anslutningen loggas inte i varje tick", () => {
+  /**
+   * Synken skriver source_machines.awish_* (senast sedd, online) i varje körning, var
+   * femte minut. audit_log är append-only: en rad per automat och tick skulle bli
+   * hundratusentals rader om året. Kopplingen till en automat (machine_id) loggas som förut.
+   */
+  const auditRows = async () =>
+    (
+      await one<{ n: number }>(
+        db(),
+        sql`select count(*)::int as n from public.audit_log
+            where organization_id = ${orgId}::uuid and table_name = 'source_machines'`,
+      )
+    ).n;
+
+  it("ticks som bara ändrar awish_* ger ingen loggrad; en ny koppling gör det", async () => {
+    const before = await auditRows();
+    await syncAt(3 * 24 * 60, true);
+    await syncAt(3 * 24 * 60 + 5, true);
+    await syncAt(3 * 24 * 60 + 10, false);
+    await syncAt(3 * 24 * 60 + 15, true);
+    expect(await auditRows()).toBe(before);
+
+    await asUser(owner, (tx) =>
+      tx.execute(
+        sql`update public.source_machines set machine_id = null
+            where data_source_id = ${sourceId}::uuid and external_id = '3'`,
+      ),
+    );
+    expect(await auditRows()).toBe(before + 1);
+    await asUser(owner, (tx) =>
+      tx.execute(
+        sql`update public.source_machines set machine_id = ${m2}::uuid
+            where data_source_id = ${sourceId}::uuid and external_id = '3'`,
+      ),
+    );
+    expect(await auditRows()).toBe(before + 2);
+  });
+});

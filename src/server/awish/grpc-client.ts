@@ -486,7 +486,7 @@ export function mapGrpcError(error: unknown, address: string): AwishApiError {
   if (code === grpc.status.UNAVAILABLE) {
     return new AwishApiError(
       "unavailable",
-      `Awish svarar inte (${address}). Synken försöker igen om tio minuter.`,
+      `Awish svarar inte (${address}). Synken försöker igen om fem minuter.`,
       code,
     );
   }

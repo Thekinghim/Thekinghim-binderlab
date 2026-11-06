@@ -38,7 +38,7 @@ organisationer är nivå 1: stäng tjänsten och kör isoleringstesterna mot en 
 `vercel.json` är facit, och dokumentationen följer den nu:
 
 - Larmjobbet körs `7 5 * * *` (en gång per dygn, 05:07 UTC), inte var 10:e minut. Dessutom
-  utvärderas larmen och utskicken efter varje Awish-synk (var 10:e minut, pg_cron) för
+  utvärderas larmen och utskicken efter varje Awish-synk (var femte minut, pg_cron) för
   organisationer där det behövs, t.ex. när en automat går offline
   (`src/server/awish/offline-alerts.ts`). Rättat i `docs/operations.md`, README, `docs/miljoer.md`,
   `docs/driftsattning.md`, `docs/decisions.md` och `docs/architecture.md`.

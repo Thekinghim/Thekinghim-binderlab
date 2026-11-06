@@ -9,8 +9,8 @@ import { currentViewer } from "@/app/(app)/lager/_lib/session";
 import { loadFillDataFor } from "../_lib/data";
 import { FillApp } from "./fill-app";
 
-/** En Awish-läsning yngre än så här pulserar (synken går var 10:e minut). */
-const FRESH_MS = 30 * 60_000;
+/** En Awish-läsning yngre än så här pulserar (synken läser facken var femte minut). */
+const FRESH_MS = 15 * 60_000;
 
 /** Serverdelen av Fyll på (/fyll-pa och /fyll-pa/<automat>): samma data, samma app. */
 export async function FillPage({ machineId = null }: { machineId?: string | null } = {}) {

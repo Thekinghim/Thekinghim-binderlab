@@ -10,7 +10,7 @@
  * - Automatens övriga rader tas bort: titlar som inte längre står i automaten, och
  *   titlar vars kapacitet summerades till 0.
  *
- * Tabellen saknar audit-trigger med flit (raderna skrivs om var 10:e minut).
+ * Tabellen saknar audit-trigger med flit (raderna skrivs om var femte minut).
  */
 
 import "server-only";

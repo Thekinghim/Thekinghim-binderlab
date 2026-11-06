@@ -1,7 +1,7 @@
 /**
  * Synk från Awish officiella gRPC-API till Binderlab (docs/awish-api.md).
  *
- * Körs av /api/cron/awish (pg_cron var tionde minut, alla aktiva awish_grpc-källor)
+ * Körs av /api/cron/awish (pg_cron var femte minut, alla aktiva awish_grpc-källor)
  * och av knappen "Synka nu" i Datakällor. Allt körs som systemrollen
  * (getServiceDb): organisation och datakälla kommer alltid ur data_sources-raden,
  * aldrig ur en begäran. Inloggningsuppgifterna läses ur Vault
@@ -59,7 +59,12 @@ import {
 } from "./grpc-client";
 import { merchantCheckDue, parseMerchantExpiry } from "./expiry";
 import { collectOrders, parseCursor, type SyncCursor } from "./paging";
-import { STOCK_SYNC_INTERVAL_MS, syncSourceStock, type AwishStockSummary } from "./stock";
+import {
+  STOCK_DUE_MARGIN_MS,
+  STOCK_SYNC_INTERVAL_MS,
+  syncSourceStock,
+  type AwishStockSummary,
+} from "./stock";
 
 type Row = Record<string, unknown>;
 
@@ -78,7 +83,12 @@ export const TIME_BUDGET_MS = 40_000;
 export const MIN_SOURCE_MS = 8_000;
 /** "Testa anslutningen": kort tidsgräns och inga nya försök, så att svaret kommer snabbt. */
 export const TEST_DEADLINE_MS = 8_000;
-/** Låset på en källa (om en körning dör släpps det efter så här lång tid). */
+/**
+ * Låset på en källa (om en körning dör släpps det efter så här lång tid). Kortare än
+ * cron-intervallet (fem minuter) och längre än en körning (maxDuration 60 s i
+ * /api/cron/awish): körningar överlappar aldrig, och ett lås från en död körning är
+ * släppt till nästa tick.
+ */
 export const LEASE_MS = 3 * 60_000;
 /** Så många order som redan loggats (återbetald efter import, eller fel) kommer vi ihåg. */
 const MAX_REFUND_REPORTED = 500;
@@ -181,8 +191,10 @@ export function parseState(text: unknown): AwishSyncState {
 
 /**
  * Ska saldot läsas i den här körningen? Alltid vid "Synka nu", annars när det gått
- * STOCK_SYNC_INTERVAL_MS sedan förra gången (en minuts marginal för cron-tickens
- * ojämna takt) eller saldot aldrig har lästs.
+ * STOCK_SYNC_INTERVAL_MS sedan förra gången (minus STOCK_DUE_MARGIN_MS för cron-tickens
+ * ojämna takt) eller saldot aldrig har lästs. Med cron var femte minut läses saldot i
+ * varje schemalagd körning; en körning strax efter "Synka nu" (under 2,5 min) läser inte
+ * om det.
  */
 export function stockDue(
   state: Pick<AwishSyncState, "stockSyncedAt">,
@@ -191,7 +203,9 @@ export function stockDue(
 ): boolean {
   if (trigger === "manual" || state.stockSyncedAt === null) return true;
   const last = Date.parse(state.stockSyncedAt);
-  return !Number.isFinite(last) || now.getTime() - last >= STOCK_SYNC_INTERVAL_MS - 60_000;
+  return (
+    !Number.isFinite(last) || now.getTime() - last >= STOCK_SYNC_INTERVAL_MS - STOCK_DUE_MARGIN_MS
+  );
 }
 
 async function query<T extends Row>(tx: Tx | Db, q: ReturnType<typeof sql>): Promise<T[]> {
@@ -347,7 +361,7 @@ function errorMessage(error: unknown): string {
   if (error instanceof AwishSyncStop) return error.message;
   if (error instanceof AwishApiError) return error.message;
   if (error instanceof Error && error.name === "ImportValidationError") return error.message;
-  return "Binderlab kunde inte spara orderna från Awish. Synken försöker igen om tio minuter.";
+  return "Binderlab kunde inte spara orderna från Awish. Synken försöker igen om fem minuter.";
 }
 
 /**
@@ -744,7 +758,7 @@ export async function saveConnectivity(
 /**
  * Läser Merchant.expired_at högst en gång per dygn och sparar slutdagen. Tidpunkten för
  * läsningen sparas även när svaret saknar slutdag eller anropet misslyckas (då försöker
- * nästa dygn igen), så att ett fel inte ger ett anrop var tionde minut. Kastar inte.
+ * nästa dygn igen), så att ett fel inte ger ett anrop var femte minut. Kastar inte.
  */
 export async function refreshMerchantExpiry(
   db: Db,

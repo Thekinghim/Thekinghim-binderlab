@@ -59,7 +59,7 @@ function Connection({ c }: { c: ConnectionLabel | null }) {
 }
 
 /** Från Awish-synken; samma text som rubrikens title. */
-const FILL_SOURCE = "Från Awish, uppdateras var 10:e minut";
+const FILL_SOURCE = "Från Awish, uppdateras var femte minut";
 
 const columns: Column<HealthRow>[] = [
   {
