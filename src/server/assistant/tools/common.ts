@@ -33,6 +33,12 @@ export interface ToolContext {
    * räknas då efter VMB-moms, som på sidan.
    */
   readonly vmb: boolean;
+  /**
+   * Vyknappen "Visa butikernas andel" (standard av). Av: vinst och marginal FÖRE butikernas
+   * andel, som på sidorna. På: efter varje butiks andel enligt dess avtal (vår del). En vald
+   * butik drar alltid sin andel (loadDomainInputFor med storeId).
+   */
+  readonly storeShare?: boolean;
   /** Stamdata (titlar, automater, butiker, placeringar), läst en gång per fråga. */
   master(): Promise<MasterData>;
 }
@@ -281,4 +287,14 @@ export function pageHref(
   if (scope?.machineId) params.set("automat", scope.machineId);
   const query = params.toString();
   return query ? `${path}?${query}` : path;
+}
+
+/**
+ * Regeln för vinsten i ett svar, samma som på sidorna (@/domain storeShareDeducted): före
+ * butikernas andel som standard, efter den (vår del) med vyknappen eller vald butik.
+ */
+export function profitRuleText(storeShareDeducted: boolean): string {
+  return storeShareDeducted
+    ? "Vinst = vår del: intäkt − inköp − avgifter − butikernas andel (varje butiks andel enligt sitt avtal, plus hyra). Säg 'vår del' och nämn butikernas andel."
+    : "Vinst = intäkt − inköp − avgifter, FÖRE butikernas andel (vyknappen 'Visa butikernas andel' är av). Dra inte av butikens andel.";
 }

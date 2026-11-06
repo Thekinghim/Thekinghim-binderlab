@@ -4,16 +4,11 @@ import type React from "react";
 import { Suspense } from "react";
 import Link from "next/link";
 
-import {
-  describePeriod,
-  parseStoreShareView,
-  toURLSearchParams,
-  wallClockIn,
-} from "@/components/shell/period-state";
+import { describePeriod, toURLSearchParams, wallClockIn } from "@/components/shell/period-state";
 import { StoreShareToggle } from "@/components/shell/store-share-toggle";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
-import { priceHistory, profitability, type PurchasePrice } from "@/domain";
+import { priceHistory, profitability, storeShareDeducted, type PurchasePrice } from "@/domain";
 import { formatDate, formatInt } from "@/lib/format";
 import { ALL_COST_LINES } from "@/lib/cost-lines";
 import { loadDomainInput, loadPeriod, requireRoute } from "@/server/data/core";
@@ -100,11 +95,12 @@ export default async function PurchasePricesPage({
     ? allRows.filter((r) => r.status === "missing" || r.unpricedOrders > 0)
     : allRows;
   // Ägarens regel: hela beloppet (före butikens andel) som standard. Andelen och vår del
-  // visas med vald butik eller automat, eller med "Visa butikernas andel" (?andel=1) när
-  // någon titel har en andel.
-  const filtered = Boolean(period.scope.storeId || period.scope.machineId);
+  // visas med vald butik, eller med "Visa butikernas andel" när någon titel har en andel:
+  // samma flagga som alla sidors vinst (loadDomainInput, Settings.deductStoreShare).
+  const filtered = Boolean(period.scope.storeId && !period.scope.machineId);
   const anyShare = allRows.some((r) => (r.storeShareOre ?? 0) !== 0);
-  const showShare = filtered || (parseStoreShareView(sp) && anyShare);
+  const shareToggle = storeShareDeducted(input.settings) && !filtered;
+  const showShare = filtered || (shareToggle && anyShare);
   const shareColumns: StoreShareColumns | null = showShare
     ? shareScope(period.scope, input.stores, input.machines)
     : null;
@@ -213,7 +209,7 @@ export default async function PurchasePricesPage({
                     className="max-md:absolute max-md:-top-2 max-md:-right-2"
                   >
                     <Suspense fallback={null}>
-                      <StoreShareToggle userKey={ctx.user.id} menuItem />
+                      <StoreShareToggle on={shareToggle} menuItem />
                     </Suspense>
                   </MobileMore>
                 )}

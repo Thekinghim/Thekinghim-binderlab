@@ -22,6 +22,7 @@ import {
   type KeyMetrics,
   type Period,
   type ProfitabilityRow,
+  storeShareDeducted,
 } from "@/domain";
 import { formatDelta } from "@/lib/format";
 import { loadDomainInputFor } from "@/server/data/core/loaders";
@@ -43,6 +44,7 @@ import {
   scopeText,
   type ResolvedScope,
   type ToolContext,
+  profitRuleText,
 } from "./common";
 
 function scopeIds(scope: ResolvedScope) {
@@ -102,7 +104,7 @@ export const keyMetricsTool = defineTool({
     const compare = input.jamfor === false ? null : periodBefore(period);
     const data = await loadDomainInputFor(
       ctx.viewer,
-      { period, compare, ...scopeIds(scope), vmb: ctx.vmb },
+      { period, compare, ...scopeIds(scope), vmb: ctx.vmb, storeShare: ctx.storeShare },
       ctx.now,
     );
     const current = keyMetrics(data.current);
@@ -133,6 +135,7 @@ export const keyMetricsTool = defineTool({
           : {}),
         anmarkning:
           "Vinst och marginal gäller order med inköpspris. Order utan inköpspris ingår i intäkten men inte i vinsten.",
+        vinstRegel: profitRuleText(storeShareDeducted(data.current.settings)),
       },
       figures: [
         { label: "Intäkt", value: kr(current.revenueOre) },
@@ -229,7 +232,7 @@ export const profitabilityTool = defineTool({
   title: "Lönsamhet",
   label: (input) => `Lönsamhet per ${GROUP_LABEL[input.per]}`,
   description:
-    "Lönsamhet uppdelad per automat, butik, titel, månad, vecka eller dag för en period: intäkt, inköp, VMB-moms, butiksersättning, vinst, marginal och order per rad, sorterad. Använd för 'vilken automat tjänade mest', 'sämsta titlarna', 'vinst per månad'. Vinst = intäkt − inköp − avgifter − butiksersättning (butikens del enligt avtalet); utan VMB som standard (VMB-moms 0), med VMB-moms dragen bara när vyknappen \"Med VMB\" är på (följer sidan där frågan ställdes).",
+    "Lönsamhet uppdelad per automat, butik, titel, månad, vecka eller dag för en period: intäkt, inköp, VMB-moms, butiksersättning, vinst, marginal och order per rad, sorterad. Använd för 'vilken automat tjänade mest', 'sämsta titlarna', 'vinst per månad'. Vinst = intäkt − inköp − avgifter, FÖRE butikernas andel som standard (som sidorna); efter butikernas andel (vår del) bara med vyknappen 'Visa butikernas andel' eller en vald butik (se vinstRegel i svaret); utan VMB som standard (VMB-moms 0), med VMB-moms dragen bara när vyknappen \"Med VMB\" är på (följer sidan där frågan ställdes).",
   roles: ECONOMY_ROLES,
   input: profitabilityInput,
   async run(ctx: ToolContext, input) {
@@ -237,7 +240,7 @@ export const profitabilityTool = defineTool({
     const scope = await resolveScope(ctx, input);
     const data = await loadDomainInputFor(
       ctx.viewer,
-      { period, compare: null, ...scopeIds(scope), vmb: ctx.vmb },
+      { period, compare: null, ...scopeIds(scope), vmb: ctx.vmb, storeShare: ctx.storeShare },
       ctx.now,
     );
     const groupBy = GROUPS[input.per];
@@ -312,6 +315,7 @@ export const profitabilityTool = defineTool({
             : input.ordning === "lagst"
               ? "lägst först"
               : "högst först",
+        vinstRegel: profitRuleText(result.storeShareDeducted),
         antalRader: items.length,
         visade: shown.length,
         rader: shown.map(row),
@@ -373,7 +377,11 @@ export const insightsTool = defineTool({
   async run(ctx: ToolContext, input) {
     const period = periodFrom(ctx, input);
     const compare = periodBefore(period);
-    const data = await loadDomainInputFor(ctx.viewer, { period, compare, vmb: ctx.vmb }, ctx.now);
+    const data = await loadDomainInputFor(
+      ctx.viewer,
+      { period, compare, vmb: ctx.vmb, storeShare: ctx.storeShare },
+      ctx.now,
+    );
     const insights = computeInsights(
       {
         ...data.sources,

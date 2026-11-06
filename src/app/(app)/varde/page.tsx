@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { CSSProperties } from "react";
+import { Suspense, type CSSProperties } from "react";
 
+import { StoreShareToggle } from "@/components/shell/store-share-toggle";
 import { SectionHeader } from "@/components/ui/section-header";
 import { formatInt } from "@/lib/format";
-import { requireRoute, requireViewer } from "@/server/data/core";
+import { requestStoreShareView, requireRoute, requireViewer } from "@/server/data/core";
 import { loadValueFor } from "@/server/varde/load";
 
 import { ActionList, Fold, MonthPicker, ValueCards, ValueTable } from "./_components/sections";
@@ -30,8 +31,11 @@ function rise(i: number): CSSProperties {
 export default async function VardePage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const [, sp] = await Promise.all([requireRoute("varde"), searchParams]);
   const manad = typeof sp.manad === "string" ? sp.manad : null;
-  const data = await loadValueFor(await requireViewer(), manad);
-  const view = buildValueView(data);
+  const [data, showStoreShare] = await Promise.all([
+    requireViewer().then((viewer) => loadValueFor(viewer, manad)),
+    requestStoreShareView(),
+  ]);
+  const view = buildValueView(data, { showStoreShare });
   const shortLabel = (m: string) => {
     const l = monthLabel(m);
     return `${l.slice(0, 3)} ${m.slice(2, 4)}`;
@@ -99,6 +103,10 @@ export default async function VardePage({ searchParams }: { searchParams: Promis
           />
         </Fold>
         <Fold id="butiker" title="Per butik" meta={formatInt(view.stores.rows.length)}>
+          {/* Butikens andel och vår del per butik visas med knappen (som övriga sidor). */}
+          <Suspense fallback={null}>
+            <StoreShareToggle on={showStoreShare} className="mb-4" />
+          </Suspense>
           <ValueTable
             {...view.stores}
             caption={`Per butik, ${view.monthLabel}`}

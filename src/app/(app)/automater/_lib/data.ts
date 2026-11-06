@@ -21,7 +21,9 @@ import {
   type AppPeriod,
   type MachineRecord,
 } from "@/server/data/core";
+import { storeShareLabel, storeShareTerms } from "@/lib/store-share";
 import { isUuid } from "@/server/access";
+import type { DomainInput, MasterData } from "@/server/data/core/types";
 import { loadMachineHealth } from "@/server/data/health";
 
 import {
@@ -235,6 +237,8 @@ export interface MachineDetailData {
   readonly store: { readonly id: string; readonly name: string; readonly since: IsoDate } | null;
   /** Faktisk driftstart: registrerad driftstart, första placering eller första order (tidigast). */
   readonly startedOn: IsoDate | null;
+  /** Vinsten (nyckeltal, enhetsekonomi) är efter butikernas andel (vyknappen). */
+  readonly storeShareDeducted: boolean;
   readonly kpis: KpiView[];
   readonly daily: DailyPoint[];
   readonly dailyCompare: number[] | null;
@@ -392,7 +396,13 @@ export async function loadMachineDetail(
     }),
     store,
     startedOn: started,
-    kpis: machineKpis(figures, previous, daily),
+    storeShareDeducted: figures.storeShareDeducted === true,
+    kpis: machineKpis(
+      figures,
+      previous,
+      daily,
+      machineShareLabel(input.current, master, machine.id),
+    ),
     daily,
     dailyCompare,
     titles: titleShares(input.current, machine.id, master),
@@ -416,4 +426,29 @@ export async function loadMachineDetail(
     stores: storeOptions(master),
     query: carriedQuery(searchParams),
   };
+}
+
+/**
+ * Andelens etikett på automatens sida: stod automaten i en enda butik under perioden,
+ * butikens namn och villkor ("Sega gubben 50 % av vinsten"), annars "Butikernas andel".
+ */
+function machineShareLabel(
+  input: DomainInput["current"],
+  master: MasterData,
+  machineId: string,
+): string {
+  const stores = new Set(
+    master.placements
+      .filter(
+        (pl) =>
+          pl.machineId === machineId &&
+          pl.from <= input.period.end &&
+          (pl.to === null || pl.to >= input.period.start),
+      )
+      .map((pl) => pl.storeId),
+  );
+  if (stores.size !== 1) return storeShareLabel(null);
+  const storeId = [...stores][0]!;
+  const name = master.stores.find((st) => st.id === storeId)?.name ?? "butiken";
+  return storeShareLabel({ name, terms: storeShareTerms(input.agreements, storeId, input.period) });
 }

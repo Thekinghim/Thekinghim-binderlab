@@ -61,16 +61,22 @@ export interface HomeHeadlineInput {
   /** Order med inköpspris (de som ingår i vinsten). */
   readonly pricedOrders: number;
   /**
-   * Vår vinst för order med inköpspris (öre): efter inköp, kortavgifter och butikernas
-   * andel (och VMB-moms med vyknappen "Med VMB"). Samma tal som Lönsamhet.
+   * Vår vinst för order med inköpspris (öre): efter inköp och kortavgifter (och VMB-moms med
+   * vyknappen "Med VMB"), FÖRE butikernas andel; med `showStoreShare` efter andelen (vår
+   * del). Samma tal som Lönsamhet.
    */
   readonly profitOre: number;
   /** Butikernas andel (öre), eller null/utelämnad när butikerna inte har någon andel. */
   readonly storesProfitOre?: number | null;
-  /** Butiks- eller automatfilter: andelen heter "butikens andel" och visas alltid. */
+  /** Vald butik: andelen heter "butikens andel" (och dras alltid). */
   readonly filtered?: boolean;
-  /** Vyknappen "Visa butikernas andel" (?andel=1). Standard av. */
+  /**
+   * Butikernas andel är dragen från `profitOre` (vyknappen "Visa butikernas andel" eller
+   * vald butik). Standard av.
+   */
   readonly showStoreShare?: boolean;
+  /** Etiketten för andelen ("Butikernas andel", "Sega gubben 50 % av vinsten"). */
+  readonly storeShareLabel?: string;
   readonly marginBp: number | null;
   /** Andel av intäkten som saknar inköpspris, i bp. */
   readonly unpricedShareBp: number;
@@ -144,11 +150,11 @@ function spanText(
 function splitParts(input: HomeHeadlineInput): HomeHeadlineSplitPart[] {
   const stores = input.storesProfitOre ?? null;
   if (stores === null || input.pricedOrders === 0) return [];
-  if (!input.showStoreShare && !input.filtered) return [];
+  if (!input.showStoreShare) return [];
   const who = input.filtered ? "butikens" : "butikernas";
   return [
     { label: `Totalt före ${who} andel`, valueOre: input.profitOre + stores },
-    { label: `${who} andel`, valueOre: stores },
+    { label: input.storeShareLabel ?? `${who} andel`, valueOre: stores },
   ];
 }
 
@@ -196,7 +202,7 @@ export function homeHeadline(input: HomeHeadlineInput): HomeHeadline {
   const loss = priced && input.profitOre < 0;
   const figure: HomeHeadlineFigure = priced
     ? {
-        label: loss ? "Förlust" : "Vår vinst",
+        label: loss ? "Förlust" : input.showStoreShare ? "Vår del" : "Vår vinst",
         valueOre: Math.abs(input.profitOre),
         tail: span,
         tone: loss ? "bad" : "good",
@@ -214,8 +220,16 @@ export function homeHeadline(input: HomeHeadlineInput): HomeHeadline {
 
   const lead: string[] = [];
   if (priced) {
+    // Utan vyknappen är vinsten före butikernas andel: säg det när butikerna har en andel.
+    const beforeShare = !input.showStoreShare && (input.storesProfitOre ?? 0) !== 0;
+    const before = [
+      beforeShare ? "butikernas andel" : "",
+      input.fixedCosts === false ? "" : "fasta kostnader",
+    ]
+      .filter(Boolean)
+      .join(" och ");
     const parts = [
-      input.fixedCosts === false ? "" : "Före fasta kostnader.",
+      before ? `Före ${before}.` : "",
       input.unpricedShareBp >= UNPRICED_HEADLINE_BP
         ? `${formatPercent(input.unpricedShareBp / 10_000, 1)} saknar inköpspris.`
         : "",

@@ -184,11 +184,15 @@ Den är ändå en kostnad för perioden och dras alltid från vinsten. Den visas
 
 ### Vinst och marginal
 
-> vinst = intäkt − inköp − avgifter − butiksersättning (− VMB-moms med vyknappen "Med VMB")
+> vår vinst (standard) = intäkt − inköp − avgifter (− VMB-moms med vyknappen "Med VMB"), FÖRE butikernas andel
+>
+> vår del (med "Visa butikernas andel" eller vald butik) = vår vinst − butikernas andel (butiksersättning = provision/vinstdelning per butikens eget avtal + hyra)
 >
 > marginal = round(vinst × 10 000 / intäkt) bp
 
-Marginalen visas inte (–) när intäkten är 0. Samma vinst och marginal visas på Hem, Lönsamhet (vattenfall, nyckeltal och tabeller), Butiker, Automater, Enhetsekonomi, Expansion och i AI-rådgivarens underlag.
+Marginalen visas inte (–) när intäkten är 0. Samma vinst och marginal visas på Hem, Lönsamhet (vattenfall, nyckeltal, tabeller, CSV och utvecklingen per dag/vecka/månad), Butiker, Automater, Enhetsekonomi, Expansion, Värde, Ekonomi (fasta kostnader), i Att göra/Värt att veta och i AI-svaren.
+
+**Vyknappen "Visa butikernas andel"** (standard **av**): av = vår vinst och marginal före butikernas andel; andelen syns inte och avgifterna innehåller den aldrig. På = varje butiks andel enligt dess eget avtal dras (summerad), visas som "Butikernas andel" och vinsten heter "Vår del"; vattenfallet får steget "Till butikerna". En **vald butik** (`?butik=`, butikens sida) drar alltid just den butikens andel, med villkoren i etiketten ("Sega gubben 50 % av vinsten"). Ett automatfilter är ingen vald butik. En källa: `Settings.deductStoreShare` (`src/domain/store-share.ts`), satt av `loadDomainInputFor` från förfrågans header (proxyn: `?andel=1`, annars kakan `binderlab-andel` som knappen sparar, så valet gäller på alla sidor). Utan flaggan (avräkningar, butiksrapporter, revisors- och delägarrapporter, bokföring, portalen) dras andelen som förut: det butikerna ska ha ändras aldrig. Testas i `src/domain/store-share.test.ts` och `test/db/consistency-andel.test.ts` (alla sidor, båda lägena, fyra sorters avtal, mot SQL-facit och avräkningarna).
 
 **Vyknappen "Med VMB"** (kontextraden bredvid period och filter, standard **av**): av = omsättning och vinst före VMB-moms; på = vinsten och marginalen efter VMB-moms i alla vyerna ovan, och vattenfallet får steget VMB-moms. Valet står i URL:en (`?vmb=1`, följer med mellan sidor som perioden) och minns per användare i webbläsaren. Knappen ändrar bara vår vinst: butikens andel följer avtalets val (avsnitt 4) och Bokföringen följer sin egen knapp "VMB i bokföringen" (standard av, avsnitt Bokföringen nedan), oberoende av vyknappen. Delägar- och bokföringsrapporterna räknas utan knappen (vinst före VMB-moms; VMB-momsen står i Bokföringen när "VMB i bokföringen" är på).
 

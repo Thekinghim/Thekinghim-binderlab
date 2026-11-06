@@ -3,7 +3,7 @@ import { AiPageLine } from "@/components/assistant/panel-context";
 import { Suspense, type CSSProperties } from "react";
 import { redirect } from "next/navigation";
 
-import { carriedQuery, parseStoreShareView } from "@/components/shell/period-state";
+import { carriedQuery } from "@/components/shell/period-state";
 import { StoreShareToggle } from "@/components/shell/store-share-toggle";
 import { Panel } from "@/components/ui/frame";
 import { MobileFold } from "@/components/ui/mobile-fold";
@@ -16,6 +16,7 @@ import {
   loadLastOrderDate,
   loadPeriod,
   loadSyncInfo,
+  requestStoreShareView,
   requireRoute,
 } from "@/server/data/core";
 
@@ -104,11 +105,12 @@ export default async function LonsamhetPage({
   // av de fasta kostnaderna räknas på hela organisationen även med filter (annars fick
   // automaten alla), så med filter läses också organisationens indata.
   const filtered = Boolean(p.scope.machineId || p.scope.storeId);
-  const [input, adjustments, organizationInput, sync] = await Promise.all([
+  const [input, adjustments, organizationInput, sync, shareToggle] = await Promise.all([
     loadDomainInput({ period: p.period, compare: p.compare, ...p.scope }),
     loadProfitAdjustments(p.period),
     filtered ? loadDomainInput({ period: p.period }) : null,
     loadSyncInfo(),
+    requestStoreShareView(),
   ]);
   const organization = organizationInput ?? input;
 
@@ -133,8 +135,6 @@ export default async function LonsamhetPage({
       lastOrderDate,
       dataStart: p.dataStart,
       hasOrdersToday: organization.current.orders.some((o) => o.businessDate === ctx.today),
-      // Butikernas andel bara på begäran (vyknappen) eller med vald butik/automat.
-      showStoreShare: parseStoreShareView(sp),
     },
   );
 
@@ -180,10 +180,11 @@ export default async function LonsamhetPage({
             className="max-md:absolute max-md:-top-2 max-md:-right-2"
           >
             <AiPageLine metric="vinsten" route="lonsamhet" menuItem />
-            {/* Med vald butik visas andelen alltid; knappen behövs bara utan filter. */}
-            {filtered || model.bridge.compensationOre === 0 ? null : (
+            {/* Med vald butik dras butikens andel alltid; knappen behövs bara utan butik. */}
+            {(p.scope.storeId && !p.scope.machineId) ||
+            model.bridge.compensationOre === 0 ? null : (
               <Suspense fallback={null}>
-                <StoreShareToggle userKey={ctx.user.id} menuItem />
+                <StoreShareToggle on={shareToggle} menuItem />
               </Suspense>
             )}
           </MobileMore>
@@ -233,7 +234,11 @@ export default async function LonsamhetPage({
                 <LonsamhetBridge bridge={b} />
               </Panel>
               <Panel className="flex flex-col lg:col-span-5">
-                <ResultAfterProfitPanel result={result} costLines={input.costLines} />
+                <ResultAfterProfitPanel
+                  result={result}
+                  costLines={input.costLines}
+                  profitLabel={b.profitLabel}
+                />
                 {model.showStoreShare ? (
                   <CompensationBreakdown bridge={b} costLines={input.costLines} />
                 ) : null}
@@ -259,7 +264,13 @@ export default async function LonsamhetPage({
                 showStoreShare: model.showStoreShare,
                 storeShareLabel: b.storeShareLabel,
               }}
-              trend={{ initialTrend, trend: model.trend, days: model.days }}
+              trend={{
+                initialTrend,
+                trend: model.trend,
+                days: model.days,
+                showStoreShare: model.showStoreShare,
+                total: { profitOre: b.profitOre, marginBp: b.marginBp },
+              }}
               initialTab={parseAnalysisTab(sp.visa)}
               rhythm={
                 // Managerpaket 6: försäljningsrytm och topplista med förändring (samma order).

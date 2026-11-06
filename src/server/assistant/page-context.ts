@@ -20,8 +20,9 @@ export interface PageContext {
   readonly machineId: string | null;
   readonly vmb: boolean;
   /**
-   * "Visa butikernas andel" är på (?andel=1). Utelämnad = av: då är beloppen per order hela
-   * beloppet före butikens andel, som på sidan.
+   * "Visa butikernas andel" i adressen: true (?andel=1), false (?andel=0) eller utelämnad
+   * (ingen parameter: kakan som knappen sparar avgör, pageWithStoreShare). Av: vinsten och
+   * beloppen per order är före butikens andel, som på sidan.
    */
   readonly storeShare?: boolean;
   /** Detaljsidans automat (kod eller id), butik (id) eller titel (id). */
@@ -215,7 +216,11 @@ export function pageContextFromUrl(pathname: string, search: string): PageContex
     storeId: butik && UUID.test(butik) ? butik.toLowerCase() : null,
     machineId: automat && UUID.test(automat) ? automat.toLowerCase() : null,
     vmb: sp.get("vmb") === "1",
-    ...(sp.get("andel") === "1" ? { storeShare: true } : {}),
+    ...(sp.get("andel") === "1"
+      ? { storeShare: true }
+      : sp.get("andel") === "0"
+        ? { storeShare: false }
+        : {}),
     detail: detailOf(path, sp),
   };
 }
@@ -258,9 +263,18 @@ export function parsePageContext(raw: unknown): PageContext | null {
     storeId: uuidOrNull(r.storeId),
     machineId: uuidOrNull(r.machineId),
     vmb: r.vmb === true,
-    ...(r.storeShare === true ? { storeShare: true } : {}),
+    ...(typeof r.storeShare === "boolean" ? { storeShare: r.storeShare } : {}),
     detail,
   };
+}
+
+/**
+ * Sidans läge för "Visa butikernas andel", som sidan själv räknade det (storeShareViewOf):
+ * ?andel=1/0 i adressen går före, annars förfrågans kaka (`requestOn`). Så räknar och
+ * sammanfattar AI:n samma vinst som sidan, även när en länk saknade ?andel.
+ */
+export function pageWithStoreShare(page: PageContext, requestOn: boolean): PageContext {
+  return { ...page, storeShare: page.storeShare ?? requestOn };
 }
 
 /** Ser rollen ekonomi (belopp, priser, vinst)? */

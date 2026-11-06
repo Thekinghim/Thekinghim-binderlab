@@ -40,6 +40,14 @@ type Props = {
   height?: number;
 };
 
+/**
+ * Texten vid marginallinjens sista punkt: med dagen/veckan den gäller ("6 nov: 11,0 %"), så
+ * att den inte läses som periodens marginal (den står i nyckeltalen och under diagrammet).
+ */
+export function marginMarkerText(d: TrendDatum): string {
+  return `${d.axis}: ${d.margin === null ? MISSING : formatPercent(d.margin)}`;
+}
+
 // Marginaler runt ritytan. Vänster rymmer axeltalen ("−12", "100").
 const M = { top: 40, right: 8, left: 36, bottom: 26 };
 /** Luft mellan vinstdelen och marginalremsan (rymmer remsans enhet och namn). */
@@ -373,7 +381,7 @@ export function ProfitTrendChart({ data, format, summary, height = 320 }: Props)
                   anchor="end"
                   upper={false}
                 >
-                  {lastM.margin === null ? MISSING : formatPercent(lastM.margin)}
+                  {marginMarkerText(lastM)}
                 </AxisText>
               </g>
             ) : null}

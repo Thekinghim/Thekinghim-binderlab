@@ -119,12 +119,14 @@ export function columnsFor(
   showUnpriced: boolean,
   selectedKey: string | null = null,
   /**
-   * Kolumnen med butikernas andel (vyknappen "Visa butikernas andel" eller vald butik).
-   * Av: vinsten är ändå efter andelen; CSV-exporten har kolumnen kvar.
+   * Butikernas andel är dragen från vinsten (vyknappen "Visa butikernas andel" eller vald
+   * butik): kolumnen med andelen visas och vinsten heter "Vår del". Av: vinsten och
+   * marginalen är före andelen, och andelen visas inte (inte heller i CSV-exporten).
    */
   showStoreShare = false,
   storeShareLabel = "Butikernas andel",
 ): Column<ProfitLine>[] {
+  const labels = profitLabels(showStoreShare);
   const nameHeader = VIEW_OPTIONS.find((o) => o.value === view)?.label ?? "Namn";
   const sv = sortValues(rows);
   const cols: Column<ProfitLine>[] = [
@@ -193,7 +195,7 @@ export function columnsFor(
     },
     {
       key: "profit",
-      header: "Vår vinst",
+      header: labels.profit,
       numeric: true,
       sortValue: sv.profit,
       render: (r) => (onlyUnpriced(r) ? MISSING : kr(r.profitOre)),
@@ -201,7 +203,7 @@ export function columnsFor(
     },
     {
       key: "margin",
-      header: "Vår marginal",
+      header: labels.margin,
       numeric: true,
       sortValue: sv.margin,
       render: (r) => pct(r.marginBp),
@@ -263,8 +265,19 @@ const FORMULA_START = /^[=+\-@\t\r]/;
 /** Text som kalkylprogrammet inte får tolka som formel (talen är redan text). */
 const csvText = (s: string) => (FORMULA_START.test(s) ? `'${s}` : s);
 
-/** Kolumnerna i CSV-filen: belopp i kronor med ören, marginal i procent med två decimaler. */
-function csvColumns(view: ViewKey): CsvColumn<ProfitLine>[] {
+/** Rubrikerna för vinst och marginal, före eller efter butikernas andel. */
+export function profitLabels(showStoreShare: boolean): { profit: string; margin: string } {
+  return showStoreShare
+    ? { profit: "Vår del", margin: "Marginal efter andel" }
+    : { profit: "Vår vinst", margin: "Vår marginal" };
+}
+
+/**
+ * Kolumnerna i CSV-filen: belopp i kronor med ören, marginal i procent med två decimaler.
+ * Samma regel som tabellen: utan butikernas andel är vinsten före andelen och kolumnen med
+ * andelen saknas; med andelen finns den och vinsten är vår del efter den.
+ */
+function csvColumns(view: ViewKey, showStoreShare: boolean): CsvColumn<ProfitLine>[] {
   const nameHeader = VIEW_OPTIONS.find((o) => o.value === view)?.label ?? "Namn";
   const cols: CsvColumn<ProfitLine>[] = [{ header: nameHeader, csv: (r) => csvText(r.name) }];
   if (view === "machine") cols.push({ header: "Kod", csv: (r) => csvText(r.code ?? "") });
@@ -276,10 +289,15 @@ function csvColumns(view: ViewKey): CsvColumn<ProfitLine>[] {
     { header: "Inköp (kr)", csv: (r) => csvKr(r.costOre) },
     { header: "Avgifter (kr)", csv: (r) => csvKr(r.feesOre) },
     { header: "VMB-moms (kr)", csv: (r) => csvKr(r.vmbVatOre) },
-    { header: "Butiksersättning (kr)", csv: (r) => csvKr(r.compensationOre) },
-    { header: "Vinst (kr)", csv: (r) => csvKr(r.profitOre) },
+    ...(showStoreShare
+      ? [{ header: "Butikernas andel (kr)", csv: (r: ProfitLine) => csvKr(r.compensationOre) }]
+      : []),
     {
-      header: "Marginal (%)",
+      header: showStoreShare ? "Vår del (kr)" : "Vinst före butikernas andel (kr)",
+      csv: (r) => csvKr(r.profitOre),
+    },
+    {
+      header: showStoreShare ? "Marginal efter andel (%)" : "Marginal före butikernas andel (%)",
       csv: (r) => (r.marginBp === null ? null : formatCsvNumber(r.marginBp / 100, 2)),
     },
     { header: "Intäkt utan inköpspris (kr)", csv: (r) => csvKr(r.unpricedRevenueOre) },
@@ -297,8 +315,9 @@ export function lonsamhetCsv(
   rows: readonly ProfitLine[],
   totals: ProfitLine,
   sort: readonly SortKey[] = DEFAULT_SORT,
+  showStoreShare = false,
 ) {
-  return toCsv([...sortedLines(rows, sort), totals], csvColumns(view), {
+  return toCsv([...sortedLines(rows, sort), totals], csvColumns(view, showStoreShare), {
     escapeFormulas: false,
   });
 }
@@ -309,18 +328,20 @@ export function ExportButton({
   totals,
   sort,
   fileName,
+  showStoreShare = false,
 }: {
   view: ViewKey;
   rows: readonly ProfitLine[];
   totals: ProfitLine;
   sort: readonly SortKey[];
   fileName: string;
+  showStoreShare?: boolean;
 }) {
   return (
     <Button
       size="sm"
       iconLeft="download"
-      onClick={() => downloadCsv(fileName, lonsamhetCsv(view, rows, totals, sort))}
+      onClick={() => downloadCsv(fileName, lonsamhetCsv(view, rows, totals, sort, showStoreShare))}
     >
       Exportera CSV
     </Button>

@@ -239,12 +239,13 @@ describe("loadHomeWith", () => {
     const input = await loadDomainInputFor(owner, { period: model.period }, NOW);
     const km = keyMetrics(input.current);
     const t = profitability(input.current, "title").totals;
-    // Nyckeltalet är vår vinst; hela vinsten = vår vinst + butikens provision (20 %).
+    // Nyckeltalet är vår vinst före butikens andel (vyknappen av): hela vinsten.
     expect(model.profitSplit).toEqual({
-      totalOre: km.profitOre + t.compensationOre,
+      totalOre: km.profitOre,
       ourOre: km.profitOre,
       storesOre: t.compensationOre,
     });
+    expect(km.profitOre).toBe(t.profitBeforeShareOre);
     expect(t.compensationOre).toBe(3_360);
     expect(model.kpis.find((k) => k.id === "profit")?.value).toBe(km.profitOre);
     expect(model.kpis.find((k) => k.id === "margin")?.value).toBe(km.marginBp);
@@ -261,31 +262,41 @@ describe("loadHomeWith", () => {
       const byStore = profitability(input.current, "store");
       const t = byStore.totals;
       expect(t.vmbVatOre > 0, "VMB-moms").toBe(vmb);
+      // Utan vyknappen: vår vinst = hela vinsten, före butikernas andel.
       expect(all.model.profitSplit).toEqual({
-        totalOre: t.profitOre + t.compensationOre,
-        ourOre: t.profitOre,
+        totalOre: t.profitBeforeShareOre,
+        ourOre: t.profitBeforeShareOre,
         storesOre: t.compensationOre,
       });
       const store = input.stores[0]!;
       const row = byStore.rows.find((r) => r.key === store.id)!;
       const one = await loadHomeWith(loaders, { ...MARCH, butik: store.id });
       expect(one.scope).toMatchObject({ kind: "store", id: store.id });
+      // Vald butik: butikens andel dras (vår del), utan vyknappen.
       expect(one.model.profitSplit).toEqual({
-        totalOre: row.profitOre + row.compensationOre,
-        ourOre: row.profitOre,
+        totalOre: row.profitBeforeShareOre,
+        ourOre: row.profitAfterShareOre,
         storesOre: row.compensationOre,
       });
       // Vald butik: andelen står under vår vinst utan vyknappen; utan filter bara med den.
-      expect(one.model.kpis.find((k) => k.id === "profit")?.parts?.map((p) => p.label)).toEqual([
-        "Totalt före andel",
-        "Butikens andel",
-      ]);
+      const parts = one.model.kpis.find((k) => k.id === "profit")?.parts ?? [];
+      expect(parts[0]?.label).toBe("Totalt före andel");
+      // Butikens namn och villkor (20 % av försäljningen).
+      expect(parts[1]?.label).toBe(`${store.name} 20\u00a0% av försäljningen`);
       expect(all.model.kpis.find((k) => k.id === "profit")?.parts).toEqual([]);
-      const shared = await loadHomeWith(loaders, { ...MARCH, andel: "1" });
+      // Med vyknappen (proxyn: ?andel=1 eller kakan → loadDomainInput storeShare).
+      const sharedLoaders = loadersFor(owner);
+      sharedLoaders.domainInput = vi.fn((args: Parameters<HomeLoaders["domainInput"]>[0]) =>
+        loadDomainInputFor(owner, { ...args, vmb, storeShare: true }, NOW),
+      );
+      const shared = await loadHomeWith(sharedLoaders, { ...MARCH, andel: "1" });
       expect(shared.model.showStoreShare).toBe(true);
-      expect(shared.model.kpis.find((k) => k.id === "profit")?.value).toBe(t.profitOre);
+      expect(shared.model.kpis.find((k) => k.id === "profit")).toMatchObject({
+        label: "Vår del",
+        value: t.profitAfterShareOre,
+      });
       expect(shared.model.kpis.find((k) => k.id === "profit")?.parts).toEqual([
-        { id: "total", label: "Totalt före andel", value: t.profitOre + t.compensationOre },
+        { id: "total", label: "Totalt före andel", value: t.profitBeforeShareOre },
         { id: "stores", label: "Butikernas andel", value: t.compensationOre },
       ]);
     });

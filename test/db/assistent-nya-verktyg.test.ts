@@ -98,6 +98,22 @@ describe("ekonomi: samma tal som beräkningslagret", () => {
     expect(all.links[0]!.href).toContain("andel=1");
   });
 
+  it("inkopspriser följer sidans regel: vyknappen visar andelen, ett automatfilter inte", async () => {
+    // Vyknappen "Visa butikernas andel" på (kakan): andelen och vår del, som på sidan.
+    const on = toolContextFor(owner, "owner", NOW, false, true);
+    const toggled = await pricesTool.run(on, pricesTool.input.parse(MARCH));
+    expect((toggled.data as { butikensAndelVisas: boolean }).butikensAndelVisas).toBe(true);
+    // Ett automatfilter är ingen vald butik: hela beloppet, som sidan (även när skalet har
+    // lagt till automatens butik).
+    const off = toolContextFor(owner, "owner", NOW);
+    for (const scope of [{ automat: "BL-001" }, { automat: "BL-001", butik: "ICA Assistent" }]) {
+      const out = await pricesTool.run(off, pricesTool.input.parse({ ...MARCH, ...scope }));
+      const d = out.data as { butikensAndelVisas: boolean; rader: Array<Record<string, unknown>> };
+      expect(d.butikensAndelVisas).toBe(false);
+      for (const row of d.rader) expect(row).not.toHaveProperty("butikensAndelPerOrderOre");
+    }
+  });
+
   it("butiksandel: butikens ersättning är profitability per butik", async () => {
     const ctx = toolContextFor(owner, "owner", NOW);
     const out = await storeShareTool.run(

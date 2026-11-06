@@ -34,6 +34,7 @@ import type { DataScope, MachineRecord, SyncInfo, TitleRecord } from "@/server/d
 import type { EconomicsSources } from "@/domain";
 import { ALL_COST_LINES, type CostLines } from "@/lib/cost-lines";
 import { formatPercent } from "@/lib/format";
+import { STORES_SHARE_LABEL, storeShareLabel, storeShareTerms } from "@/lib/store-share";
 
 import { homeHeadline, homeSpanText, type HomeHeadline } from "./headline";
 import { appHref } from "./links";
@@ -211,7 +212,10 @@ export interface HomeModel {
   readonly todoNowCount: number;
   /** Butikerna har en andel av vinsten i perioden (vyknappen "Visa butikernas andel" behövs). */
   readonly hasStoreShare: boolean;
-  /** Butikernas andel visas som eget tal (vyknappen eller vald butik/automat). */
+  /**
+   * Butikernas andel dras från vår vinst och visas som eget tal (vyknappen eller vald butik,
+   * `ProfitabilityResult.storeShareDeducted`). Av: vinst och marginal före andelen.
+   */
   readonly showStoreShare: boolean;
   /**
    * Perioden i ord, samma som i rubriken ("sedan 14 okt.", "på 30 dagar"). Topplistan och
@@ -240,8 +244,8 @@ export interface HomeModelInput {
   readonly todos: readonly TodoItem[] | null;
   /** Raderna i Att göra utanför reglerna (ny automat, bokföringen). Utelämnad = inga. */
   readonly extraTodos?: readonly HomeExtraTodo[];
-  /** Vyknappen "Visa butikernas andel" (?andel=1). Med filter visas andelen ändå. */
-  readonly showStoreShare?: boolean;
+  /** Namnet på vald butik (för etiketten "Sega gubben 50 % av vinsten"). */
+  readonly storeName?: string;
   /** Hyra och fasta kostnader finns (annars döljs "före fasta kostnader"). Saknas = finns. */
   readonly costLines?: CostLines;
 }
@@ -307,14 +311,6 @@ function rowsIn(rows: readonly ProfitabilityRow[], range: Period): Profitability
   return rows.filter((r) => r.key >= range.start && r.key <= range.end);
 }
 
-/**
- * Hela vinsten för en rad: vår vinst + butiksersättningen. Liggaren drar ersättningen
- * (och VMB-momsen) från vinsten, så summan är vinsten före butikernas del (berakningar.md).
- */
-function totalProfit(row: Pick<ProfitabilityRow, "profitOre" | "compensationOre">): number {
-  return row.profitOre + row.compensationOre;
-}
-
 function relative(current: number | null, previous: number | null): number | null {
   if (current === null || previous === null) return null;
   const bp = changeBp(current, previous);
@@ -349,10 +345,12 @@ function buildKpis(args: {
   split: HomeProfitSplit | null;
   /** Vår vinst i jämförelseperioden. */
   prevOurOre: number | null;
-  /** Med butiks- eller automatfilter: andelen heter "Butikens andel". */
+  /** Vald butik: andelen heter "Butikens andel". */
   filtered: boolean;
-  /** Visa delningen under vinsten (vyknappen eller filter). */
+  /** Andelen är dragen från vinsten: visa delningen under den (vyknappen eller vald butik). */
   showShare: boolean;
+  /** Etiketten för andelen ("Butikernas andel", "Sega gubben 50 % av vinsten"). */
+  shareLabel: string;
   days: ProfitabilityRow[];
   prevDays: ProfitabilityRow[];
   compareDays: number;
@@ -362,7 +360,8 @@ function buildKpis(args: {
   /** Det finns fasta kostnader: vinsten heter "Vinst före fasta kostnader". */
   fixedCosts: boolean;
 }): HomeKpi[] {
-  const { km, prev, split, prevOurOre, filtered, showShare, days, prevDays, compareDays } = args;
+  const { km, prev, split, prevOurOre, filtered, showShare, shareLabel, days, prevDays } = args;
+  const { compareDays } = args;
   const { unpriced, vmb } = args;
   const priced = split !== null;
   const revenueTrend = days.map(rowRevenue);
@@ -377,16 +376,12 @@ function buildKpis(args: {
   // Dagsraderna saknar hyra som ingen order bär (raden "ej fördelad"); referensen räknas
   // därför ur jämförelseperiodens dagsrader, så att linje och referens jämför samma sak.
   const prevDailyProfit = prevDays.reduce((n, r) => n + r.profitOre, 0);
-  // Delningen bara på begäran: vår vinst är talet, andelen och totalen står under det.
+  // Delningen bara när andelen dras: vår del är talet, totalen och andelen står under det.
   const parts: HomeKpiPart[] =
     split && showShare && (filtered || split.storesOre !== 0)
       ? [
           { id: "total", label: "Totalt före andel", value: split.totalOre },
-          {
-            id: "stores",
-            label: filtered ? "Butikens andel" : "Butikernas andel",
-            value: split.storesOre,
-          },
+          { id: "stores", label: shareLabel, value: split.storesOre },
         ]
       : [];
 
@@ -404,8 +399,8 @@ function buildKpis(args: {
     },
     {
       id: "profit",
-      // En betydelse överallt: vår vinst, efter butikernas andel (som Lönsamhet).
-      label: "Vår vinst",
+      // Samma regel som Lönsamhet: vår vinst före butikernas andel, vår del efter den.
+      label: showShare ? "Vår del" : "Vår vinst",
       unit: "ore",
       value: split ? split.ourOre : null,
       delta: hasPrev && split ? relative(split.ourOre, prevOurOre) : null,
@@ -426,8 +421,8 @@ function buildKpis(args: {
     },
     {
       id: "margin",
-      // Vår vinst / intäkt, som på Lönsamhet.
-      label: "Vår marginal",
+      // Vår vinst / intäkt, som på Lönsamhet (efter andelen med vyknappen).
+      label: showShare ? "Marginal efter andel" : "Vår marginal",
       unit: "bp",
       value: km.marginBp,
       delta: hasPrev ? marginDelta : null,
@@ -712,18 +707,29 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
   const prevDays = previous && compare ? rowsIn(dayRows(previous), compare) : [];
   const compareDays = compare ? periodDays(compare) : 0;
 
-  // Hela vinsten = vår vinst + butikernas del, ur samma liggare som Lönsamhet och Butiker.
+  // Vår vinst ur samma liggare som Lönsamhet och Butiker: före butikernas andel, eller vår
+  // del efter den när andelen dras (vyknappen eller vald butik, Settings.deductStoreShare).
   const profitSplit: HomeProfitSplit | null = priced
     ? {
-        totalOre: totalProfit(byTitle.totals),
+        totalOre: byTitle.totals.profitBeforeShareOre,
         ourOre: byTitle.totals.profitOre,
         storesOre: byTitle.totals.compensationOre,
       }
     : null;
   const prevOurOre = previous ? profitability(previous, "title").totals.profitOre : null;
-  const filtered = Boolean(input.scope.storeId || input.scope.machineId);
-  // Butikernas andel som eget tal bara på begäran (vyknappen) eller med vald butik/automat.
-  const showShare = Boolean(input.showStoreShare) || filtered;
+  // Vald butik (inte automatens butik som skalet lägger till vid automatfilter).
+  const filtered = Boolean(input.scope.storeId && !input.scope.machineId);
+  // En källa: indata säger om andelen dras (samma flagga som alla tal ovan).
+  const showShare = byTitle.storeShareDeducted;
+  const shareLabel = filtered
+    ? storeShareLabel({
+        name: input.storeName ?? "Butiken",
+        terms: storeShareTerms(current.agreements, input.scope.storeId!, period),
+      })
+    : input.scope.machineId
+      ? // En automat står i en butik: det är butikens andel (som på Lönsamhet).
+        "Butikens andel"
+      : STORES_SHARE_LABEL;
   const hasStoreShare = profitSplit !== null && profitSplit.storesOre !== 0;
 
   const kpis = buildKpis({
@@ -733,6 +739,7 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
     prevOurOre,
     filtered,
     showShare,
+    shareLabel,
     days,
     prevDays,
     compareDays,
@@ -789,8 +796,10 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
       pricedOrders: byTitle.totals.pricedOrders,
       profitOre: profitSplit?.ourOre ?? km.profitOre,
       storesProfitOre: profitSplit && (hasStoreShare || filtered) ? profitSplit.storesOre : null,
-      filtered,
+      // Rubrikens ord: en butiks andel med vald butik eller automat.
+      filtered: filtered || Boolean(input.scope.machineId),
       showStoreShare: showShare,
+      storeShareLabel: shareLabel,
       marginBp: km.marginBp,
       unpricedShareBp: unpriced?.shareBp ?? 0,
       revenueChangeBp:

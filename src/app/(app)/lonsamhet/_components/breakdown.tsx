@@ -16,7 +16,15 @@ function Row({ label, value, sub }: { label: string; value: string; sub?: boolea
   );
 }
 
-/** Butiksersättningen uppdelad i provision och hyra (hyran bara när något avtal har hyra). */
+/**
+ * Rubriken för uppdelningen: samma ord som nyckeltalet ("Butikernas andel", med en butik
+ * eller automat "Butikens andel"), inte det äldre "Butiksersättning".
+ */
+export function compensationBreakdownLabel(bridge: Pick<Bridge, "storeShareLabel">): string {
+  return bridge.storeShareLabel === "Butikernas andel" ? "Butikernas andel" : "Butikens andel";
+}
+
+/** Butikernas andel uppdelad i provision och hyra (hyran bara när något avtal har hyra). */
 export function CompensationBreakdown({
   bridge,
   costLines = ALL_COST_LINES,
@@ -28,7 +36,7 @@ export function CompensationBreakdown({
   return (
     <details className="group border-t border-line pt-4">
       <summary className={SUMMARY}>
-        <span className="label text-muted">Butiksersättning</span>
+        <span className="label text-muted">{compensationBreakdownLabel(bridge)}</span>
         <span className="label tnum text-subtle">{kr(bridge.compensationOre)}</span>
       </summary>
       <dl className="fade-in mt-3 flex flex-col">

@@ -29,6 +29,7 @@ import {
   addDays,
   assertIsoDate,
   createEconomicsContext,
+  storeShareDeducted,
   orderEconomics,
   type EconomicsSources,
   type OrderLine,
@@ -138,6 +139,8 @@ export function proposePriceTests(input: PriceTestInput): PriceTestProposal[] {
   const titleName = nameLookup(input.titles ?? []);
   const machineName = nameLookup(input.machines ?? []);
   const ctx = createEconomicsContext(input);
+  // Provisionen dras bara när vyn drar butikernas andel (@/domain storeShareDeducted).
+  const share = (commissionOre: number) => (storeShareDeducted(input.settings) ? commissionOre : 0);
 
   const window: Period = { start: addDays(input.asOf, -(lookbackDays - 1)), end: input.asOf };
   const recentChange = new Set(
@@ -166,7 +169,9 @@ export function proposePriceTests(input: PriceTestInput): PriceTestProposal[] {
       byMachine.set(o.machineId!, (byMachine.get(o.machineId!) ?? 0) + 1);
       const e = orderEconomics(o, ctx);
       if (e.costOre === null) continue;
-      contributionSum += BigInt(e.netRevenueOre - e.costOre - e.cardFeeOre - e.commissionOre);
+      contributionSum += BigInt(
+        e.netRevenueOre - e.costOre - e.cardFeeOre - share(e.commissionOre),
+      );
       pricedCount++;
     }
     if (byMachine.size < 2 || pricedCount === 0 || contributionSum <= 0n) continue;
@@ -207,7 +212,7 @@ export function proposePriceTests(input: PriceTestInput): PriceTestProposal[] {
       }
       const e = orderEconomics({ ...o, amountOre: amount }, ctx);
       if (e.costOre === null) continue;
-      newSum += BigInt(e.netRevenueOre - e.costOre - e.cardFeeOre - e.commissionOre);
+      newSum += BigInt(e.netRevenueOre - e.costOre - e.cardFeeOre - share(e.commissionOre));
     }
     if (!feasible || newSum <= 0n) continue;
     const factor = new Ratio(c.contributionSum, newSum);

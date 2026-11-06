@@ -49,6 +49,12 @@ import {
   NBSP,
   weekdaysShort,
 } from "@/lib/format";
+import {
+  ourMarginLabel,
+  ourProfitLabel,
+  storeShareLabel,
+  storeShareTerms,
+} from "@/lib/store-share";
 import type {
   DataScope,
   DomainInput,
@@ -568,6 +574,21 @@ export function buildOverview(args: OverviewArgs): MachinesOverview {
     previousMarginBp: pt?.marginBp ?? null,
     activeMachines,
     offlineMachines,
+    storeShareDeducted: current.storeShareDeducted,
+    // Andelen bredvid vår del (som Lönsamhet): med vald butik dess namn och villkor.
+    ...(current.storeShareDeducted && t
+      ? {
+          storeShareOre: t.profitBeforeShareOre - t.profitOre,
+          storeShareLabel: storeShareLabel(
+            scope.storeId && !scope.machineId
+              ? {
+                  name: storeName.get(scope.storeId) ?? "butiken",
+                  terms: storeShareTerms(input.current.agreements, scope.storeId, input.period),
+                }
+              : null,
+          ),
+        }
+      : {}),
   };
 
   // Rader utanför automaterna (ej fördelad hyra, order utan automat), så att raderna
@@ -690,6 +711,10 @@ export interface MachineFigures {
   readonly marginBp: number | null;
   readonly orders: number;
   readonly averageOrderOre: number | null;
+  /** Vinsten är efter butikernas andel (vyknappen). Utelämnad = före andelen. */
+  readonly storeShareDeducted?: boolean;
+  /** Andelen som dragits från automatens vinst (bara när den dras). */
+  readonly storeShareOre?: number;
 }
 
 /**
@@ -699,13 +724,18 @@ export interface MachineFigures {
  */
 export function machineFigures(input: ProfitabilityInput, machineId: string): MachineFigures {
   const own = keyMetrics(machineInput(input, machineId));
-  const row = byKey(profitability(input, "machine").rows).get(machineId);
+  const result = profitability(input, "machine");
+  const row = byKey(result.rows).get(machineId);
   return {
     revenueOre: own.revenueOre,
     profitOre: row?.profitOre ?? 0,
     marginBp: row?.marginBp ?? null,
     orders: own.orderCount,
     averageOrderOre: own.averageOrderValueOre,
+    storeShareDeducted: result.storeShareDeducted,
+    ...(result.storeShareDeducted && row
+      ? { storeShareOre: row.profitBeforeShareOre - row.profitOre }
+      : {}),
   };
 }
 
@@ -738,6 +768,8 @@ export function machineKpis(
   cur: MachineFigures,
   prev: MachineFigures | null,
   trend: readonly DailyPoint[],
+  /** Andelens etikett ("Butikernas andel" eller butikens namn och villkor). */
+  shareLabel = "Butikernas andel",
 ): KpiView[] {
   const rel = (a: number, b: number | null | undefined) => {
     const c = changeShare(a, b ?? null);
@@ -759,14 +791,25 @@ export function machineKpis(
     },
     {
       id: "profit",
-      label: cur.profitOre < 0 ? "Förlust" : "Vår vinst",
+      label: ourProfitLabel(cur.storeShareDeducted === true, cur.profitOre),
       value: cur.profitOre,
       kind: "sek",
       delta: prev ? rel(cur.profitOre, prev.profitOre) : null,
     },
+    ...(cur.storeShareDeducted === true && cur.storeShareOre !== undefined
+      ? [
+          {
+            id: "store-share",
+            label: shareLabel,
+            value: cur.storeShareOre,
+            kind: "sek" as const,
+            delta: null,
+          },
+        ]
+      : []),
     {
       id: "margin",
-      label: "Marginal",
+      label: ourMarginLabel(cur.storeShareDeducted === true, "Marginal"),
       value: cur.marginBp === null ? Number.NaN : cur.marginBp / BP,
       kind: "percent",
       delta: marginDelta,
@@ -1043,8 +1086,9 @@ export function machineHeadline(args: {
     );
   } else {
     parts.push(
-      // "Vår vinst" som på Hem, Lönsamhet och i tabellerna (en betydelse av vinst).
-      `${figures.profitOre < 0 ? "Vår förlust" : "Vår vinst"} ${kr(Math.abs(figures.profitOre))}.`,
+      // "Vår vinst" (före butikernas andel) som på Hem, Lönsamhet och i tabellerna, "Vår
+      // del" efter andelen med vyknappen.
+      `${figures.profitOre < 0 ? "Vår förlust" : ourProfitLabel(figures.storeShareDeducted === true)} ${kr(Math.abs(figures.profitOre))}.`,
     );
   }
   if (storeText) parts.push(storeText);
@@ -1079,15 +1123,28 @@ export function overviewKpis(totals: MachinesOverview["totals"]): KpiView[] {
     },
     {
       id: "profit",
-      // En betydelse överallt: vår vinst, efter butikernas andel (som Hem och Lönsamhet).
-      label: totals.profitOre < 0 ? "Förlust" : "Vår vinst",
+      // Samma regel överallt: vår vinst före butikernas andel, vår del efter den (som Hem
+      // och Lönsamhet).
+      label: ourProfitLabel(totals.storeShareDeducted === true, totals.profitOre),
       value: totals.profitOre,
       kind: "sek",
       delta: rel(totals.profitChange),
     },
+    // Andelen som dragits, bara när den dras (vyknappen eller vald butik).
+    ...(totals.storeShareDeducted === true && totals.storeShareOre !== undefined
+      ? [
+          {
+            id: "store-share",
+            label: totals.storeShareLabel ?? "Butikernas andel",
+            value: totals.storeShareOre,
+            kind: "sek" as const,
+            delta: null,
+          },
+        ]
+      : []),
     {
       id: "margin",
-      label: "Marginal",
+      label: ourMarginLabel(totals.storeShareDeducted === true, "Marginal"),
       value: totals.marginBp === null ? Number.NaN : totals.marginBp / BP,
       kind: "percent",
       delta:

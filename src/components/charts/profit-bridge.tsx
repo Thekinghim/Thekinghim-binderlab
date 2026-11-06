@@ -33,7 +33,18 @@ export type ProfitBridgeProps = {
   flag?: { step: CostKey; note: string };
   /** Etiketter, om de ska avvika från standard */
   /** `loss` ersätter `profit` som etikett när resultatet är negativt (standard "Förlust"). */
-  labels?: Partial<Record<"revenue" | CostKey | "profit" | "loss" | "unpriced", string>>;
+  /**
+   * `storeCompensationShort`: kort etikett för butiksersättningen när platsen inte räcker
+   * (standard "Till butiken"; för alla butiker "Till butikerna").
+   */
+  labels?: Partial<
+    Record<"revenue" | CostKey | "profit" | "loss" | "unpriced" | "storeCompensationShort", string>
+  >;
+  /**
+   * Marginalen som andel (0,121), när den redan är räknad (t.ex. nyckeltalets bp / 10 000),
+   * så att vattenfallet visar exakt samma tal som nyckeltalen. Utelämnad = vinst / intäkt.
+   */
+  margin?: number;
   height?: number;
   /** Skärmläsartext. Standard: en mening med alla belopp och marginalen. */
   summary?: string;
@@ -45,7 +56,32 @@ export type ProfitBridgeProps = {
  * som minskningar och summerar exakt till vinsten. Negativ vinst heter
  * "Förlust" och flaggas (signal + "! Under noll"), eftersom den kräver åtgärd.
  */
-export function ProfitBridge({
+export function ProfitBridge(props: ProfitBridgeProps) {
+  const { format, unit = "kr", height = 280, unpricedRevenue } = props;
+  const { steps, text, unpricedLabel } = profitBridgeModel(props);
+  return (
+    <WaterfallChart
+      steps={steps}
+      format={format}
+      unit={unit}
+      height={height}
+      summary={text}
+      excluded={
+        unpricedRevenue
+          ? {
+              label: unpricedLabel,
+              value: unpricedRevenue,
+              note: "Ingår inte",
+              name: "Intäkt utan inköpspris",
+            }
+          : undefined
+      }
+    />
+  );
+}
+
+/** Stegen och skärmläsartexten för bryggan. Ren funktion (testas). */
+export function profitBridgeModel({
   revenue,
   vmb,
   purchases,
@@ -53,14 +89,13 @@ export function ProfitBridge({
   storeCompensation,
   unpricedRevenue,
   format,
-  unit = "kr",
   flag,
   labels = {},
-  height = 280,
   summary,
-}: ProfitBridgeProps) {
+  margin: marginIn,
+}: ProfitBridgeProps): { steps: WaterfallStep[]; text: string; unpricedLabel: string } {
   const profit = revenue - (vmb ?? 0) - purchases - fees - (storeCompensation ?? 0);
-  const margin = revenue ? profit / revenue : undefined;
+  const margin = marginIn ?? (revenue ? profit / revenue : undefined);
   const L = {
     revenue: labels.revenue ?? "Intäkt",
     vmb: labels.vmb ?? "VMB-moms",
@@ -90,9 +125,9 @@ export function ProfitBridge({
           {
             label: L.storeCompensation,
             // Hela ord när platsen inte räcker (ordlistan avråder från förkortningar).
-            short: "Till butiken",
+            short: labels.storeCompensationShort ?? "Till butiken",
             value: -storeCompensation,
-            name: `${L.storeCompensation} (butikens del)`,
+            name: L.storeCompensation,
             ...f("storeCompensation"),
           },
         ]
@@ -106,27 +141,13 @@ export function ProfitBridge({
     },
   ];
 
+  // Bara vanliga ord får liten bokstav; en butiks namn i etiketten ("Sega gubben 50 % av
+  // vinsten") skrivs som det är.
+  const lowerFirst = (t: string) =>
+    /^(Butik|Till )/.test(t) ? t.charAt(0).toLowerCase() + t.slice(1) : t;
   const text =
     summary ??
-    `${L.revenue} ${format(revenue)} minus ${vmb !== undefined ? `VMB-moms ${format(vmb)}, ` : ""}inköp ${format(purchases)}, ${L.fees.toLowerCase()} ${format(fees)}${storeCompensation !== undefined ? ` och ${L.storeCompensation.toLowerCase()} ${format(storeCompensation)}` : ""} ger ${resultLabel.toLowerCase()} ${format(loss ? -profit : profit)}${margin !== undefined ? `, marginal ${formatPercent(margin)}` : ""}.${unpricedRevenue ? ` ${format(unpricedRevenue)} i intäkt saknar inköpspris och ingår inte.` : ""}`;
+    `${L.revenue} ${format(revenue)} minus ${vmb !== undefined ? `VMB-moms ${format(vmb)}, ` : ""}inköp ${format(purchases)}, ${L.fees.toLowerCase()} ${format(fees)}${storeCompensation !== undefined ? ` och ${lowerFirst(L.storeCompensation)} ${format(storeCompensation)}` : ""} ger ${resultLabel.toLowerCase()} ${format(loss ? -profit : profit)}${margin !== undefined ? `, marginal ${formatPercent(margin)}` : ""}.${unpricedRevenue ? ` ${format(unpricedRevenue)} i intäkt saknar inköpspris och ingår inte.` : ""}`;
 
-  return (
-    <WaterfallChart
-      steps={steps}
-      format={format}
-      unit={unit}
-      height={height}
-      summary={text}
-      excluded={
-        unpricedRevenue
-          ? {
-              label: L.unpriced,
-              value: unpricedRevenue,
-              note: "Ingår inte",
-              name: "Intäkt utan inköpspris",
-            }
-          : undefined
-      }
-    />
-  );
+  return { steps, text, unpricedLabel: L.unpriced };
 }

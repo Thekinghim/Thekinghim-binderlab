@@ -71,6 +71,12 @@ export interface SiteHistory {
    * Vinst = täckningsbidrag − VMB-moms − butiksersättning (samma som lönsamhetsvyn per butik).
    */
   readonly profitOre: number;
+  /**
+   * Om butikernas andel är dragen från `profitOre` (@/domain storeShareDeducted). Av: vinsten
+   * är före andelen, och en uppskattning med nya villkor drar inte heller andelen.
+   * Utelämnad = dragen.
+   */
+  readonly storeShareDeducted?: boolean;
 }
 
 /** Investering för en ny automat. */

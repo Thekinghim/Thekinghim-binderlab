@@ -20,6 +20,7 @@ import { getLogFor } from "@/server/assistant/log";
 import { MAX_OUTPUT_TOKENS_PER_QUESTION, MAX_TURNS } from "@/server/assistant/loop";
 import { getServiceDb } from "@/db/client";
 import { sql } from "drizzle-orm";
+import { pageContextFromUrl } from "@/server/assistant/page-context";
 import { askAssistant } from "@/server/assistant/service";
 import { chooseTool, createLocalModelClient } from "@/server/assistant/local-model";
 import type { Viewer } from "@/server/data/core/loaders";
@@ -492,6 +493,40 @@ describe("askAssistant med mockad klient", () => {
     expect(without.requests[0]!.system.map((b) => b.text).join("\n")).not.toContain(
       "Vald period i panelen",
     );
+  });
+
+  it("vyknappen Visa butikernas andel: AI:n räknar som sidan, ?andel i adressen före kakan", async () => {
+    // Sidans sammanfattning (nyckeltal på Lönsamhet) och systemprompten för en sida i ett läge.
+    async function ask(search: string, cookie: boolean) {
+      const client = mockClient(() => scriptedMessage("claude-opus-5-5", [textBlock("Ok.")]));
+      const { events } = await collect({
+        viewer: owner,
+        question: "Hur gick det?",
+        conversationId: randomUUID(),
+        now: NOW,
+        config: READY,
+        client,
+        page: pageContextFromUrl("/lonsamhet", `?period=manad${search}`),
+        storeShare: cookie,
+      });
+      const call = events.find((e) => e.type === "tool_result") as Extract<
+        AssistantEvent,
+        { type: "tool_result" }
+      >;
+      const profit = call.call.figures.find((f) => f.label === "Vinst")?.value;
+      const system = client.requests[0]!.system.map((b) => b.text).join("\n");
+      return { profit, shown: system.includes("Butikernas andel visas") };
+    }
+    const off = await ask("", false);
+    const on = await ask("&andel=1", false);
+    // Fixturens butik har 10 % provision: vår del är mindre än vinsten före andelen.
+    expect(on.profit).not.toBe(off.profit);
+    expect(off.shown).toBe(false);
+    expect(on.shown).toBe(true);
+    // Kakan utan ?andel (t.ex. via logotypen): sidan visar andelen, och AI:n likaså.
+    expect(await ask("", true)).toEqual(on);
+    // ?andel=0 i adressen går före kakan, som på sidan (storeShareViewOf).
+    expect(await ask("&andel=0", true)).toEqual(off);
   });
 
   it("den lokala testmodellen svarar med verktygets egen sammanfattning", async () => {

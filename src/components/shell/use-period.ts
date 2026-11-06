@@ -1,15 +1,14 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   carriedQuery,
   describePeriod,
   parsePeriod,
   parseScope,
-  parseStoreShareView,
   parseVmbView,
-  STORE_SHARE_PARAM,
+  STORE_SHARE_COOKIE,
   VMB_PARAM,
   withPeriod,
   withScope,
@@ -162,35 +161,41 @@ export function useVmbView(userKey: string | null): {
   return { on, setOn };
 }
 
-/** Nyckeln i localStorage för användarens senaste val av "Visa butikernas andel". */
-export function storeShareStorageKey(userKey: string): string {
-  return `binderlab:andel:${userKey}`;
+/**
+ * Sparar vyknappen "Visa butikernas andel" i kakan (STORE_SHARE_COOKIE) som proxyn läser, så
+ * att valet gäller på alla sidor, även när en länk saknar ?andel. Av = kakan tas bort.
+ */
+export function writeStoreShareCookie(on: boolean): void {
+  try {
+    document.cookie = on
+      ? `${STORE_SHARE_COOKIE}=1; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`
+      : `${STORE_SHARE_COOKIE}=; path=/; max-age=0; samesite=lax`;
+  } catch {
+    // Kakor avstängda: valet följer ändå med i URL:en (?andel=1).
+  }
 }
 
 /**
- * Vyknappen "Visa butikernas andel" (?andel=1), som "Med VMB": bara visning, sparas per
- * användare i localStorage (`userKey`). Saknas parametern och användaren senast valde på,
- * sätts den. Ingen inställning i databasen.
+ * Vyknappen "Visa butikernas andel". `serverOn` är förfrågans läge (?andel=1 eller kakan,
+ * requestStoreShareView), samma som siffrorna på sidan räknades med. Knappen sparar valet i
+ * kakan och sätter ?andel=1 (av: tar bort parametern), så att servern räknar om sidan.
  */
-export function useStoreShareView(userKey: string | null): {
+export function useStoreShareView(serverOn: boolean): {
   on: boolean;
   setOn: (on: boolean) => void;
 } {
   const [sp, replace] = useQuery();
-  const on = parseStoreShareView(sp);
-  const key = userKey ? storeShareStorageKey(userKey) : null;
-  const hasParam = sp.has(STORE_SHARE_PARAM);
-  useEffect(() => {
-    if (!hasParam && readStored(key) === "1") replace(withStoreShareView(sp, true));
-    // Bara när sidan öppnas eller parametern försvinner, inte vid varje annat val.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, hasParam]);
+  // Visas direkt vid klick, tills servern har räknat om sidan med det nya läget.
+  const [pending, setPending] = useState<boolean | null>(null);
+  if (pending !== null && pending === serverOn) setPending(null);
+  const on = pending ?? serverOn;
   const setOn = useCallback(
     (next: boolean) => {
-      writeStored(key, next);
+      writeStoreShareCookie(next);
+      setPending(next);
       replace(withStoreShareView(sp, next));
     },
-    [key, replace, sp],
+    [replace, sp],
   );
   return { on, setOn };
 }

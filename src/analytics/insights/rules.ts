@@ -25,6 +25,7 @@ import {
   revenue,
   roundHalfUp,
   salesVelocity,
+  storeShareDeducted,
   titleEconomics,
   type IsoDate,
   type Period,
@@ -444,13 +445,17 @@ export function weekdayPatternRule(ctx: InsightContext): Insight[] {
 
 /**
  * Titel med förlust: med dagens inköpspris (periodens sista dag) blir det ingenting eller
- * mindre än ingenting kvar per pack efter inköp, kortavgift och provision (titleEconomics,
- * hyra exkluderad). Kräver minst 3 order. Titeln med störst total förlust väljs.
+ * mindre än ingenting kvar per pack efter inköp och kortavgift (titleEconomics, hyra
+ * exkluderad), och efter butikens andel bara när vyn drar den (@/domain storeShareDeducted,
+ * som Inköpspriser). Kräver minst 3 order. Titeln med störst total förlust väljs.
  * "Black Bolt går med förlust: −3,50 kr per pack"
  */
 export function lossTitleRule(ctx: InsightContext): Insight[] {
   const { input, orders, period } = ctx;
   if (orders.length === 0) return [];
+  const deduct = storeShareDeducted(input.settings);
+  const leftOf = (t: { leftPerOrderOre: number | null; leftBeforeStoreOre: number | null }) =>
+    deduct ? t.leftPerOrderOre : t.leftBeforeStoreOre;
   const rows = titleEconomics({
     orders,
     period,
@@ -459,16 +464,21 @@ export function lossTitleRule(ctx: InsightContext): Insight[] {
     placements: input.placements,
     settings: input.settings,
     asOf: period.end,
-  }).filter((t) => t.lossWarning && t.orders >= LOSS_MIN_ORDERS && t.leftPerOrderOre !== null);
+  }).filter(
+    (t) =>
+      (deduct ? t.lossWarning : t.lossBeforeStoreWarning) &&
+      t.orders >= LOSS_MIN_ORDERS &&
+      leftOf(t) !== null,
+  );
   if (rows.length === 0) return [];
   rows.sort(
     (a, b) =>
-      (a.leftPerOrderOre ?? 0) * a.orders - (b.leftPerOrderOre ?? 0) * b.orders ||
+      (leftOf(a) ?? 0) * a.orders - (leftOf(b) ?? 0) * b.orders ||
       byKey<{ titleId: string }>((r) => r.titleId)(a, b),
   );
   const t = rows[0];
   if (!t) return [];
-  const left = t.leftPerOrderOre ?? 0;
+  const left = leftOf(t) ?? 0;
   const name = ctx.titleName(t.titleId);
   const list = orders.filter((o) => o.titleId === t.titleId);
   const fee = t.averageFeeOre ?? 0;
@@ -483,12 +493,14 @@ export function lossTitleRule(ctx: InsightContext): Insight[] {
           ? `${name} går jämnt ut: ${krExact(0)} kvar per pack`
           : `${name} går med förlust: ${krExact(left)} per pack`,
       detail:
-        `Snittpris ${krExact(t.averagePriceOre ?? 0)}, inköpspris ${krExact(t.currentUnitCostOre ?? 0)}, ` +
-        `provision ${krExact(t.averageCommissionOre ?? 0)}` +
+        `Snittpris ${krExact(t.averagePriceOre ?? 0)}, inköpspris ${krExact(t.currentUnitCostOre ?? 0)}` +
+        (deduct ? `, butikens andel ${krExact(t.averageCommissionOre ?? 0)}` : "") +
         (fee !== 0 ? `, kortavgift ${krExact(fee)}` : "") +
         ` per pack (${plural(t.orders, "order", "order")} ${periodText(period)}).`,
       evidence: evidence({
-        rule: "Med aktuellt inköpspris blir högst 0 kr kvar per pack efter inköp, kortavgift och provision (minst 3 order).",
+        rule: deduct
+          ? "Med aktuellt inköpspris blir högst 0 kr kvar per pack efter inköp, kortavgift och butikens andel (minst 3 order)."
+          : "Med aktuellt inköpspris blir högst 0 kr kvar per pack efter inköp och kortavgift, före butikens andel (minst 3 order).",
         period,
         orderIds: list.map((o) => o.id),
         dates: list.map((o) => o.businessDate),
@@ -506,12 +518,16 @@ export function lossTitleRule(ctx: InsightContext): Insight[] {
             value: t.currentUnitCostOre ?? 0,
             unit: "ore",
           },
-          {
-            key: "averageCommissionOre",
-            label: "Provision per pack",
-            value: t.averageCommissionOre ?? 0,
-            unit: "ore",
-          },
+          ...(deduct
+            ? [
+                {
+                  key: "averageCommissionOre",
+                  label: "Butikens andel per pack",
+                  value: t.averageCommissionOre ?? 0,
+                  unit: "ore" as const,
+                },
+              ]
+            : []),
           { key: "averageFeeOre", label: "Kortavgift per pack", value: fee, unit: "ore" },
           { key: "leftPerOrderOre", label: "Kvar per pack", value: left, unit: "ore" },
           { key: "orders", label: "Order", value: t.orders, unit: "count" },

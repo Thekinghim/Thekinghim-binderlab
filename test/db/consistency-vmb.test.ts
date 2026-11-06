@@ -64,10 +64,13 @@ vi.mock("@/server/session", async () => {
   };
 });
 
-// Vyknappen "Med VMB": headern som proxyn sätter från ?vmb=1.
+// Vyknappen "Med VMB": headern som proxyn sätter från ?vmb=1. Vyknappen "Visa butikernas
+// andel" är på (x-binderlab-andel): testerna här prövar vår vinst EFTER butikens andel.
+// Standardläget (före andelen): consistency-andel.test.ts.
 const view = vi.hoisted(() => ({ vmb: false }));
 vi.mock("next/headers", () => ({
-  headers: async () => new Headers(view.vmb ? { "x-binderlab-vmb": "1" } : {}),
+  headers: async () =>
+    new Headers({ "x-binderlab-andel": "1", ...(view.vmb ? { "x-binderlab-vmb": "1" } : {}) }),
   cookies: async () => ({ get: () => undefined, getAll: () => [], set: () => {} }),
 }));
 

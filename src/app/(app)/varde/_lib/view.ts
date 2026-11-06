@@ -63,7 +63,14 @@ function shortMonth(month: string): string {
   return monthName(month).slice(0, 3);
 }
 
-export function buildValueView(data: ValueData): ValueView {
+export function buildValueView(
+  data: ValueData,
+  /**
+   * Vyknappen "Visa butikernas andel": tabellen per butik visar då butikens andel och vår
+   * del. Av (standard): bara kvar efter inköp, före butikernas andel, som övriga sidor.
+   */
+  options: { readonly showStoreShare?: boolean } = {},
+): ValueView {
   const word = monthName(data.month);
   const label = monthLabel(data.month);
   const when = data.partial ? `hittills i ${word}` : `i ${word}`;
@@ -170,16 +177,21 @@ export function buildValueView(data: ValueData): ValueView {
     })),
   };
 
+  const share = options.showStoreShare === true;
   const stores = {
-    head: ["Butik", "Försäljning", "Kvar efter inköp", "Butikens andel", "Vår del"],
+    head: [
+      "Butik",
+      "Försäljning",
+      "Kvar efter inköp",
+      ...(share ? ["Butikens andel", "Vår del"] : []),
+    ],
     rows: (margin?.stores ?? []).map((s) => ({
       key: s.key,
       cells: [
         storeName.get(s.key) ?? "Utan butik",
         kr(s.revenueOre),
         kr(s.keptOre),
-        kr(s.storeShareOre),
-        kr(s.ourOre),
+        ...(share ? [kr(s.storeShareOre), kr(s.ourOre)] : []),
       ],
     })),
   };

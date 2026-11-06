@@ -183,13 +183,15 @@ interface SiteRates {
 }
 
 /**
- * Platsens takt per automatdag och per automatmånad. Med villkor: vinst = täckningsbidrag
- * − butikens andel av vinsten − intäkt × provisionssats − månadshyra × automatmånader.
+ * Platsens takt per automatdag och per automatmånad. Med villkor och när butikernas andel
+ * dras (vyknappen, `SiteHistory.storeShareDeducted`): vinst = täckningsbidrag − butikens
+ * andel av vinsten − intäkt × provisionssats − månadshyra × automatmånader. Utan andelen är
+ * vinsten före den (som historiken), oavsett villkor.
  */
 function siteRates(h: SiteHistory, terms: SiteTerms | null): SiteRates {
   const units = h.machineMonthUnits;
   let profit = new Ratio(h.profitOre);
-  if (terms) {
+  if (terms && h.storeShareDeducted !== false) {
     const commission = new Ratio(h.revenueOre).mul(new Ratio(terms.commissionBp ?? 0, BP_SCALE));
     const rent = new Ratio(terms.monthlyRentOre ?? 0).mul(new Ratio(units, MONTH_LCM));
     const shareBp = terms.profitShareBp ?? 0;
@@ -314,11 +316,15 @@ export function estimateSite(args: SiteEstimateArgs): SiteEstimate {
         ...((terms.monthlyRentOre ?? 0) > 0 ? [`hyra ${kr(terms.monthlyRentOre!)} per månad`] : []),
       ]
     : [];
-  const termsText = terms
-    ? termParts.length > 0
-      ? `butiksersättning enligt angivna villkor: ${termParts.join(", ")}`
-      : "ingen butiksersättning enligt angivna villkor"
-    : "butiksersättning enligt platsernas egna avtal";
+  // Vyknappen av (standard): vinsten är före butikens andel, och villkoren dras inte.
+  const shareDeducted = histories.every((h) => h.storeShareDeducted !== false);
+  const termsText = !shareDeducted
+    ? "vinst före butikens andel (provision, vinstdelning och hyra dras med Visa butikernas andel)"
+    : terms
+      ? termParts.length > 0
+        ? `butiksersättning enligt angivna villkor: ${termParts.join(", ")}`
+        : "ingen butiksersättning enligt angivna villkor"
+      : "butiksersättning enligt platsernas egna avtal";
   const rule =
     "Snittet per automat och månad av de mest lika befintliga butikerna, viktat efter likhet (butikstyp, ort, öppettider, yta); intervallet är lägsta och högsta platsens takt. Per månad = belopp / aktiva automatmånader (som enhetsekonomin). Återbetalningstid = investering / vinst per månad.";
 

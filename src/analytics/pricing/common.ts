@@ -13,6 +13,7 @@ import {
   DomainError,
   orderEconomics,
   roundHalfUp,
+  storeShareDeducted,
   type EconomicsSources,
   type IsoDate,
   type OrderLine,
@@ -147,12 +148,16 @@ export function orderContributions(
   sources: EconomicsSources,
 ): Map<string, number | null> {
   const ctx = createEconomicsContext(sources);
+  // Provisionen dras bara när vyn drar butikernas andel (@/domain storeShareDeducted).
+  const deduct = storeShareDeducted(sources.settings);
   const out = new Map<string, number | null>();
   for (const o of orders) {
     const e = orderEconomics(o, ctx);
     out.set(
       o.id,
-      e.costOre === null ? null : e.netRevenueOre - e.costOre - e.cardFeeOre - e.commissionOre,
+      e.costOre === null
+        ? null
+        : e.netRevenueOre - e.costOre - e.cardFeeOre - (deduct ? e.commissionOre : 0),
     );
   }
   return out;

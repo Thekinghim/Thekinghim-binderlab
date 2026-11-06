@@ -171,6 +171,16 @@ describe("priceChangeScenario", () => {
     );
   });
 
+  it("utan butikernas andel (standard i panelen): texten nämner inte provisionen", () => {
+    const res = priceChangeScenario({
+      ...priceInput({ settings: { ...NO_TAX, deductStoreShare: false } }),
+      titleId: "t-a",
+      deltaOre: 1000,
+    });
+    expect(res.detail).toContain("bidrag per pack efter inköp och avgifter, före butikens andel");
+    expect(res.detail).not.toContain("provision");
+  });
+
   it("vinstdelning utan VMB före delningen: butikens del av ändringen räknas utan VMB-moms", () => {
     const split = (vmbBeforeSplit: boolean) =>
       priceChangeScenario({
