@@ -48,8 +48,22 @@ async function query<T extends Row>(tx: Tx | Db, q: ReturnType<typeof sql>): Pro
   return Array.from(await tx.execute(q)) as T[];
 }
 
-/** Saldot läses högst så här ofta i cron (Synka nu läser alltid). */
-export const STOCK_SYNC_INTERVAL_MS = 30 * 60_000;
+/**
+ * Saldot läses högst så här ofta i cron (Synka nu läser alltid). Samma takt som cron
+ * (pg_cron var femte minut, 20261112000000_awish_synk_var_femte_minut.sql): varje
+ * schemalagd körning läser facken.
+ */
+export const STOCK_SYNC_INTERVAL_MS = 5 * 60_000;
+/**
+ * Marginalen för cron-tickens ojämna takt (stockDue i sync.ts): saldot räknas som
+ * förfallet när det gått STOCK_SYNC_INTERVAL_MS minus marginalen. Halva intervallet:
+ * stockSyncedAt sätts när facken är lästa, upp till en minut (maxDuration) efter att
+ * körningen startade, och nästa tick kan starta några sekunder tidigt eller sent. Med
+ * en fast minut (4 min av 5) kunde en långsam körning följd av en snabb hamna under
+ * gränsen och hoppa över varannan tick. Två schemalagda körningar ligger alltid minst
+ * ett intervall isär, så halva intervallet ger heller aldrig dubbla läsningar.
+ */
+export const STOCK_DUE_MARGIN_MS = STOCK_SYNC_INTERVAL_MS / 2;
 /** Så här mycket tid ska vara kvar för att nästa automat ska påbörjas. */
 const STOCK_MIN_LEFT_MS = AWISH_MIN_CALL_MS + 2_000;
 

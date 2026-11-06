@@ -50,10 +50,11 @@ export interface FakeState {
     /** Supabase Vault per projekt: namn → värde. */
     vault: Record<string, Record<string, string>>;
     /**
-     * pg_cron/pg_net och jobbet per projekt: true (påslagna, jobbet finns; standard),
+     * pg_cron/pg_net och jobbet per projekt: true (påslagna, jobbet finns var femte
+     * minut; standard), "old" (jobbet finns med det äldre schemat var tionde minut),
      * "nojob" (påslagna men jobbet saknas) eller false (inte påslagna).
      */
-    awishCron?: Record<string, boolean | "nojob">;
+    awishCron?: Record<string, boolean | "nojob" | "old">;
     /** Jobb som schemalagts via deploy (namn). */
     cronScheduled?: Record<string, string[]>;
     /** Gör att signing-keys-API:t svarar 404 (äldre API). */
@@ -367,13 +368,17 @@ export function createFakeFetch(state: FakeState) {
         }
         if (/binderlab:awish-cron-job \*\//.test(query)) {
           const c = sb.awishCron?.[ref];
-          return json(201, [{ n: c === false || c === "nojob" ? 0 : 1 }]);
+          if (c === false || c === "nojob") return json(201, []);
+          return json(201, [{ schedule: c === "old" ? "*/10 * * * *" : "*/5 * * * *" }]);
         }
         if (/binderlab:awish-cron-schedule \*\//.test(query)) {
           if (sb.awishCron?.[ref] === false)
             return json(400, { message: 'schema "cron" does not exist' });
           const names = [...query.matchAll(/cron\.schedule\('([a-z-]+)'/g)].map((m) => m[1]!);
           (sb.cronScheduled ??= {})[ref] = names;
+          // Awish-jobbets schema måste vara var femte minut (annars skrivs "old" kvar).
+          if (!/cron\.schedule\('binderlab-awish-sync', '\*\/5 \* \* \* \*'/.test(query))
+            return json(400, { message: "fel schema för binderlab-awish-sync" });
           (sb.awishCron ??= {})[ref] = true;
           return json(201, []);
         }

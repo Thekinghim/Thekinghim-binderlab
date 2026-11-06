@@ -59,7 +59,7 @@ automats sida (Automater) ger en utskrivbar kod som öppnar Fyll på för just d
 (`/fyll-pa/<id>`).
 
 Kapaciteten och de tomma facken kommer från Awish-läsningen (`stock_locations.awish_fill`, var
-10:e minut). En automat utan Awish visar saldot men inget förslag. Räkna om (per titel) sparar en
+femte minut). En automat utan Awish visar saldot men inget förslag. Räkna om (per titel) sparar en
 inventering i automaten och kräver uppkoppling.
 
 ## Felövervakning och larm
@@ -86,7 +86,7 @@ driver tjänsten (Sentry) och den som äger verksamheten (larm i appen). Koden f
   allvar, tysta timmar; kritiska larm går igenom tysta timmar om prenumerationen tillåter
   det). Larmjobbet skickar kön en gång per dygn (05:07 UTC), även när utvärderingen
   för organisationen misslyckas; däremellan utvärderas larmen och kön skickas efter varje
-  Awish-synk (var tionde minut, pg_cron) för organisationer där det behövs, t.ex. när en automat
+  Awish-synk (var femte minut, pg_cron) för organisationer där det behövs, t.ex. när en automat
   går offline (`src/server/awish/offline-alerts.ts`). Samma öppna larm aviseras inte igen. Påfyllaren får aldrig systemlarm
   (`src/server/monitoring/notify.ts`).
 - **När jobben inte körs alls**: larmen i appen förutsätter att appen kör. Därför checkar båda
@@ -94,7 +94,7 @@ driver tjänsten (Sentry) och den som äger verksamheten (larm i appen). Koden f
   `SENTRY_DSN` finns: "in_progress" när ett behörigt anrop börjar, sedan "ok" eller "error".
   Monitorerna skapas automatiskt vid första incheckningen med schemat från `vercel.json`
   (`binderlab-larm` varje dag 05:07 UTC, marginal 5 min; `binderlab-rapporter` den 1:a 05:17 UTC,
-  marginal 30 min; `binderlab-awish` var tionde minut via pg_cron, marginal 10 min). Uteblir en incheckning, till exempel för att `CRON_SECRET` är fel (401)
+  marginal 30 min; `binderlab-awish` var femte minut via pg_cron, marginal 5 min). Uteblir en incheckning, till exempel för att `CRON_SECRET` är fel (401)
   eller saknas (503) eller cron är avstängt, skapar Sentry ett ärende. **Vid överlämning:**
   Sentry → Crons → kontrollera att båda monitorerna finns efter första körningen, och lägg en
   larmregel (Alerts → "Cron monitor missed or failed check-in") som mejlar och sms:ar den som

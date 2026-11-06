@@ -2,8 +2,9 @@
  * Awish-synken: GET /api/cron/awish med `Authorization: Bearer <CRON_SECRET>`.
  *
  * Hämtar nya order från Awish officiella gRPC-API för alla aktiva datakällor av typen
- * awish_grpc (src/server/awish/sync.ts). Schemaläggs var tionde minut av pg_cron i
- * Supabase (migreringen 20261103090000_awish_api.sql, private.awish_cron_tick), eftersom
+ * awish_grpc (src/server/awish/sync.ts). Schemaläggs var femte minut av pg_cron i
+ * Supabase (migreringarna 20261103090000_awish_api.sql och
+ * 20261112000000_awish_synk_var_femte_minut.sql, private.awish_cron_tick), eftersom
  * Vercel Hobby bara tillåter en körning om dagen. Samma CRON_SECRET och samma kontroll
  * som de andra cron-routerna.
  *

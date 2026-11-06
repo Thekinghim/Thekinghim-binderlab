@@ -2,7 +2,7 @@
  * Offlinelarmet direkt efter Awish-synken.
  *
  * Larmjobbet (/api/cron/larm) körs bara en gång om dagen på Vercel Hobby, men en automat
- * som är offline ska larma inom minuter. Därför utvärderar Awish-cronen (var tionde minut)
+ * som är offline ska larma inom minuter. Därför utvärderar Awish-cronen (var femte minut)
  * larmen för de organisationer där anslutningen kräver det, och skickar utskicken som är på
  * tur. Samma larmjobb (evaluateOrganization): samma incidenter, samma prenumerationer och
  * tysta timmar, så inget larmar två gånger.

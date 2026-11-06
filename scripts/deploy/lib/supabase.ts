@@ -977,6 +977,11 @@ export async function ensureBuckets(
 export const VAULT_APP_URL = "binderlab_app_url";
 export const VAULT_CRON_SECRET = "binderlab_cron_secret";
 export const AWISH_CRON_JOB = "binderlab-awish-sync";
+/**
+ * Synkens schema: var femte minut (migreringen 20261112000000_awish_synk_var_femte_minut.sql).
+ * Samma värde som CRON_JOBS.awish.schedule (src/server/monitoring/cron-monitor.ts).
+ */
+export const AWISH_CRON_SCHEDULE = "*/5 * * * *";
 /** Rensar pg_cron:s körlogg (migreringen 20261103120000_awish_api_granskning.sql). */
 export const CRON_CLEANUP_JOB = "binderlab-cron-cleanup";
 
@@ -1067,16 +1072,19 @@ export interface AwishCronStatus {
   extensions: boolean;
   /** Jobbet binderlab-awish-sync finns. */
   job: boolean;
+  /** Jobbets schema (null när jobbet saknas). */
+  schedule: string | null;
 }
 
 /** Är pg_cron och pg_net påslagna, och finns jobbet för Awish-synken? */
 export async function awishCronStatus(ctx: Ctx, ref: string): Promise<AwishCronStatus> {
   const ext = `select /* binderlab:awish-cron */ exists (select 1 from pg_catalog.pg_extension where extname = 'pg_cron') and exists (select 1 from pg_catalog.pg_extension where extname = 'pg_net') as ok;`;
   const rows = await runQueryReadOnly<{ ok: boolean }>(ctx, ref, ext);
-  if (rows[0]?.ok !== true) return { extensions: false, job: false };
-  const job = `select /* binderlab:awish-cron-job */ count(*)::int as n from cron.job where jobname = ${sqlLiteral(AWISH_CRON_JOB)};`;
-  const jobs = await runQueryReadOnly<{ n: number }>(ctx, ref, job);
-  return { extensions: true, job: Number(jobs[0]?.n ?? 0) > 0 };
+  if (rows[0]?.ok !== true) return { extensions: false, job: false, schedule: null };
+  const job = `select /* binderlab:awish-cron-job */ schedule from cron.job where jobname = ${sqlLiteral(AWISH_CRON_JOB)};`;
+  const jobs = await runQueryReadOnly<{ schedule: string | null }>(ctx, ref, job);
+  const schedule = jobs[0]?.schedule ?? null;
+  return { extensions: true, job: jobs.length > 0, schedule: jobs.length > 0 ? schedule : null };
 }
 
 /** Finns pg_cron-jobbet för Awish-synken? */
@@ -1085,15 +1093,19 @@ export async function hasAwishCronJob(ctx: Ctx, ref: string): Promise<boolean> {
 }
 
 /**
- * SQL som schemalägger Awish-synken (var tionde minut) och rensningen av
- * cron.job_run_details. cron.schedule med namn är idempotent (samma jobb skrivs över).
+ * SQL som schemalägger Awish-synken (var femte minut) och rensningen av
+ * cron.job_run_details. cron.schedule med namn är idempotent (samma jobb skrivs över,
+ * även ett äldre schema, t.ex. var tionde minut).
  */
 export const AWISH_CRON_SCHEDULE_SQL = [
-  `select cron.schedule('${AWISH_CRON_JOB}', '*/10 * * * *', 'select private.awish_cron_tick()');`,
+  `select cron.schedule('${AWISH_CRON_JOB}', '${AWISH_CRON_SCHEDULE}', 'select private.awish_cron_tick()');`,
   `select cron.schedule('${CRON_CLEANUP_JOB}', '23 3 * * *', $job$delete from cron.job_run_details where end_time < now() - interval '7 days'$job$);`,
 ].join("\n");
 
-/** Schemalägger jobben (när pg_cron och pg_net är påslagna men jobbet saknas). */
+/**
+ * Schemalägger jobben (när pg_cron och pg_net är påslagna men jobbet saknas eller har
+ * ett annat schema än AWISH_CRON_SCHEDULE).
+ */
 export async function scheduleAwishCronJob(ctx: Ctx, ref: string): Promise<void> {
   if (ctx.dryRun) {
     ctx.log.plan(`schemalägga ${AWISH_CRON_JOB} och ${CRON_CLEANUP_JOB} i pg_cron (${ref})`);

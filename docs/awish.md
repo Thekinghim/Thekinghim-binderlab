@@ -48,3 +48,32 @@ Shanghai har ingen sommartid. Om källan någon gång ligger i en zon med sommar
 
 Den automatiska hämtningen beskrivs i [awish-api.md](awish-api.md). Kontrollen mot order 42780 ovan görs på samma
 sätt för API:t: `pay_time` tolkas i datakällans `source_timezone`.
+
+### Takt och belastning på Awish
+
+Synken körs var femte minut (pg_cron `*/5 * * * *`, migreringen
+`20261112000000_awish_synk_var_femte_minut.sql`). Tidigare gick den var tionde minut och läste facken bara var 30:e
+minut; nu läser varje körning både order och fack. Anrop till Awish per körning och datakälla:
+
+| Anrop                  | Per körning                                                                   | Per dygn (288 körningar)       |
+| ---------------------- | ----------------------------------------------------------------------------- | ------------------------------ |
+| `Machines`             | 1 per sida (50 automater per sida)                                            | 288 för en källa med ≤ 50      |
+| `Orders`               | 1 per sida (50 order), tills en order äldre än ett dygn har setts; oftast 1–2 | ca 300–600                     |
+| `Products(machine_id)` | 1 per kopplad automat                                                         | 288 × antal kopplade automater |
+| `Merchant`             | högst 1 per dygn                                                              | 1                              |
+
+Med 10 kopplade automater blir det 2 `Products`-anrop i minuten per källa (förut 10 var 30:e minut, en tredjedel i
+minuten) och totalt ungefär 3 500–3 800 anrop per dygn, mot ungefär 900–1 200 förut. Anropen görs i följd, aldrig
+parallellt, inom körningens tidsbudget (`TIME_BUDGET_MS`, 40 s för alla källor tillsammans). Hinns inte alla automater
+med läses de som lästes längst sedan först nästa körning, så antalet anrop per körning har ett tak oavsett antal
+automater. Låset per källa (`LEASE_MS`, 3 min) och funktionens `maxDuration` (60 s) är kortare än intervallet, så
+körningar överlappar inte. "Synka nu" läser alltid facken; en schemalagd körning mindre än 2,5 minuter efter en
+läsning läser inte om dem (`STOCK_DUE_MARGIN_MS` i `src/server/awish/stock.ts`).
+
+Awish har inte publicerat någon gräns för antal anrop. Svarar Awish med fel eller för långsamt tas det som inte hanns
+med nästa körning; det finns ingen extra backoff mellan körningar. Blir belastningen ett problem kan
+`STOCK_SYNC_INTERVAL_MS` (`src/server/awish/stock.ts`) höjas till 10 eller 15 minuter utan att orderna påverkas.
+
+I Binderlab skriver varje körning automatens läge (`source_machines.awish_*`) och facken. Läget loggas inte i
+`audit_log` (migreringen `20261112000100_awish_anslutning_utan_audit.sql`), annars skulle varje tick ge en rad per
+automat; kopplingen till en automat loggas som förut.

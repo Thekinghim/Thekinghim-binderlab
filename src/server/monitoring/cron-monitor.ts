@@ -33,11 +33,12 @@ export const CRON_JOBS = {
     checkinMarginMinutes: 5,
     maxRuntimeMinutes: 5,
   },
-  // Schemat sätts av pg_cron i Supabase (20261103090000_awish_api.sql), inte i vercel.json.
+  // Schemat sätts av pg_cron i Supabase (20261112000000_awish_synk_var_femte_minut.sql),
+  // inte i vercel.json. En utebliven tick räknas som missad efter fem minuter.
   awish: {
     slug: "binderlab-awish",
-    schedule: "*/10 * * * *",
-    checkinMarginMinutes: 10,
+    schedule: "*/5 * * * *",
+    checkinMarginMinutes: 5,
     maxRuntimeMinutes: 2,
   },
   rapporter: {

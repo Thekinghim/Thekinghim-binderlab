@@ -231,7 +231,7 @@ describe("importAlerts", () => {
     const grpc: DataSourceRef = {
       ...src,
       provider: "awish_grpc",
-      expectedIntervalMinutes: 10,
+      expectedIntervalMinutes: 5,
       lastSyncedAt: "2026-11-02T08:15:00Z",
     };
     expect(importAlerts({ sources: [grpc], imports: [] }, NOW)).toEqual([]); // 45 min < 60

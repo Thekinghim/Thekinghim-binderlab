@@ -155,7 +155,7 @@ export default async function MachineTimelinePage({
           <ul
             aria-label="Fack"
             className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6"
-            title="Från Awish, uppdateras var 10:e minut"
+            title="Från Awish, uppdateras var femte minut"
           >
             {data.slots.map((s, i) => {
               const empty = s.onHand === 0;

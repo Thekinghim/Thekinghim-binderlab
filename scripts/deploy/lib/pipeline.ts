@@ -521,11 +521,12 @@ export async function runDeploy(options: DeployOptions, deps: Deps): Promise<Out
         log.manual(
           `${prodEnv.ref}: pg_cron-jobbet ${sb.AWISH_CRON_JOB} saknas (pg_cron eller pg_net är inte påslaget). Slå på båda under Database → Extensions och kör scripts/deploy igen (det schemalägger jobbet), eller kör i SQL-redigeraren:\n${sb.AWISH_CRON_SCHEDULE_SQL}`,
         );
-      } else if (!cron.job) {
+      } else if (!cron.job || cron.schedule !== sb.AWISH_CRON_SCHEDULE) {
+        // Saknas jobbet, eller har det ett äldre schema (var tionde minut), skrivs det om.
         await sb.scheduleAwishCronJob(sctx, prodEnv.ref);
-        if (!dryRun) log.ok(`${prodEnv.ref}: Awish-synken körs var tionde minut (pg_cron).`);
+        if (!dryRun) log.ok(`${prodEnv.ref}: Awish-synken körs var femte minut (pg_cron).`);
       } else {
-        log.ok(`${prodEnv.ref}: Awish-synken körs var tionde minut (pg_cron).`);
+        log.ok(`${prodEnv.ref}: Awish-synken körs var femte minut (pg_cron).`);
       }
     }
 

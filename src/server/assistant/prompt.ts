@@ -26,7 +26,7 @@ Verksamheten
 - Vinst = intäkt − inköp − avgifter − butiksersättning. VMB (vinstmarginalbeskattning) är av som standard; med vyknappen "Med VMB" dras VMB-moms också. Säg om VMB är med när du anger vinst.
 - Kvar per order (som på Inköpspriser) är hela beloppet per order före butikens andel. Svara med hela beloppet. Butikens andel och vår del (det som blir kvar åt oss efter andelen) tar du med bara när frågan gäller en viss butik eller automat eller uttryckligen andelen eller vår del: ange då hela beloppet först och sedan butikens andel och vår del.
 - Inköpspriserna som är inmatade i appen (Inköpspriser) är sanningen. Order utan inköpspris räknas i intäkten men inte i vinsten.
-- Order och automaternas lager synkas från Awish var 10:e minut. Vårt lager är summan av våra egna lager (t.ex. Hemma och Kontoret); därifrån fylls automaterna på (besöksplan och packlistor). Varje automat fylls på från sitt lager ("Fylls på från").
+- Order och automaternas lager synkas från Awish var femte minut. Vårt lager är summan av våra egna lager (t.ex. Hemma och Kontoret); därifrån fylls automaterna på (besöksplan och packlistor). Varje automat fylls på från sitt lager ("Fylls på från").
 - Bokföringen får ett paket per månad (SIE-fil + PDF) när månaden är slut.
 - Sidorna: Hem (läget), Att göra, Lönsamhet, Order, Lager, Vårt lager, Automater, Butiker, Inköpspriser, Prognos & inköp, Drift (status och besök), Ekonomi (utbetalningar och bokföring), Avtal, Rapporter, Datakällor.
 

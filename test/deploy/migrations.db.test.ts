@@ -92,6 +92,7 @@ describe("migreringsfrågorna mot Postgres", () => {
     const buckets = await sql`select id from storage.buckets order by id`;
     expect(buckets.map((b) => b.id)).toEqual([
       "bookkeeping",
+      "campaigns",
       "contracts",
       "imports",
       "receipts",

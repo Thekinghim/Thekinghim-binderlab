@@ -248,15 +248,21 @@ describe("saldot från Awish", () => {
     expect(n.n).toBe(3);
   });
 
-  it("cron läser saldot högst var 30:e minut", async () => {
-    const before = fake.state.calls.filter((c) => c.method === "Products").length;
-    now = new Date("2026-11-02T16:00:00Z");
+  it("cron läser saldot var femte minut, men inte strax efter Synka nu", async () => {
+    const products = () => fake.state.calls.filter((c) => c.method === "Products").length;
+    const before = products();
+    // Synka nu 15:50; en körning två minuter senare läser inte om facken.
+    now = new Date("2026-11-02T15:52:00Z");
     const early = await run("schedule");
     expect(early.stock ?? null).toBeNull();
-    expect(fake.state.calls.filter((c) => c.method === "Products").length).toBe(before);
-    now = new Date("2026-11-02T16:20:00Z");
-    const due = await run("schedule");
-    expect(due.stock).toMatchObject({ read: 1 });
+    expect(products()).toBe(before);
+    // Varje tick var femte minut läser facken.
+    for (const at of ["15:55:00", "16:00:10", "16:05:00", "16:10:20"]) {
+      now = new Date(`2026-11-02T${at}Z`);
+      const due = await run("schedule");
+      expect(due.stock).toMatchObject({ read: 1 });
+    }
+    expect(products()).toBe(before + 4);
   });
 
   it("titel som tas ur automaten blir 0 och utgången; tom lista ändrar inget", async () => {

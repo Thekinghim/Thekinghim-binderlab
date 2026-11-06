@@ -809,7 +809,7 @@ describe("Awish-synken: Vault för pg_cron", () => {
     expect(vault.binderlab_cron_secret!.length).toBeGreaterThanOrEqual(16);
     // Hemligheten skrivs aldrig ut.
     expect(output).not.toContain(vault.binderlab_cron_secret!);
-    expect(output).toContain("Awish-synken körs var tionde minut");
+    expect(output).toContain("Awish-synken körs var femte minut");
   });
 
   it("ett CRON_SECRET som redan finns i Vault används i Vercel (Vault är källan)", async () => {
@@ -886,8 +886,26 @@ describe("Awish-synken: Vault för pg_cron", () => {
       "binderlab-awish-sync",
       "binderlab-cron-cleanup",
     ]);
-    expect(output).toContain("Awish-synken körs var tionde minut");
+    expect(output).toContain("Awish-synken körs var femte minut");
     expect(output).not.toMatch(/pg_cron-jobbet binderlab-awish-sync saknas/);
+  });
+
+  it("jobbet finns med det äldre schemat (var tionde minut): deploy schemalägger om till var femte", async () => {
+    const state = initialState();
+    await run(state, ["--agare", OWNER]);
+    const ref = prodRef(state);
+    state.supabase.awishCron = { [ref]: "old" };
+    const { output } = await run(state, ["--agare", OWNER]);
+    expect(state.supabase.cronScheduled?.[ref]).toEqual([
+      "binderlab-awish-sync",
+      "binderlab-cron-cleanup",
+    ]);
+    expect(state.supabase.awishCron?.[ref]).toBe(true);
+    expect(output).toContain("Awish-synken körs var femte minut");
+    // En ny körning med rätt schema schemalägger inget igen.
+    delete state.supabase.cronScheduled;
+    await run(state, ["--agare", OWNER]);
+    expect(state.supabase.cronScheduled?.[ref]).toBeUndefined();
   });
 
   it("dry-run schemalägger inget i pg_cron", async () => {

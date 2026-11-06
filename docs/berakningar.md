@@ -323,7 +323,7 @@ Provisionen och hyran är de som faktiskt gällde för titelns order i perioden.
 Saldo per plats (titel i automat) = senaste inventeringen + alla händelser efter den (påfyllning, svinn, försäljning
 −1 per order). Varifrån inventeringen kommer:
 
-1. **Awish (facit).** Synken läser automatens fack (`Products`) högst var 30:e minut och vid "Synka nu", för varje
+1. **Awish (facit).** Synken läser automatens fack (`Products`) var femte minut (varje schemalagd körning) och vid "Synka nu", för varje
    automat som är kopplad under Datakällor. Facken grupperas per vara (samma namnregel som orderimporten: NFKC,
    blanktecken ihopslagna, gemener; titeln via alias, okänd vara blir ny titel). Antal = summan av
    `current_inventory` i varans fack. Skiljer det sig från saldot, eller har platsen aldrig inventerats, skrivs en

@@ -1112,7 +1112,7 @@ export const syncTool = defineTool({
   title: "Hämtning från Awish",
   label: () => "Hämtning från Awish",
   description:
-    "Hur synken från Awish mår: status (fungerar, inaktuell, misslyckas), senaste lyckade synk och hur många minuter sedan, antal datakällor. Order och automaternas lager synkas var 10:e minut. Använd för 'fungerar synken', 'varför syns inte dagens order'.",
+    "Hur synken från Awish mår: status (fungerar, inaktuell, misslyckas), senaste lyckade synk och hur många minuter sedan, antal datakällor. Order och automaternas lager synkas var femte minut. Använd för 'fungerar synken', 'varför syns inte dagens order'.",
   roles: ECONOMY_ROLES,
   input: z.object({}).strict(),
   async run(ctx: ToolContext) {

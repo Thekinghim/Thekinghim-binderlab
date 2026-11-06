@@ -44,7 +44,7 @@ export interface FillAppProps {
   readonly data: FillData;
   /** "för 7 min sedan" per automat (räknat på servern i organisationens tidszon). */
   readonly syncLabels: Record<string, string>;
-  /** Automater som Awish läst den senaste halvtimmen (pulserande prick). */
+  /** Automater som Awish läst den senaste kvarten (pulserande prick). */
   readonly fresh?: Record<string, boolean>;
   /**
    * Automaten som sidan renderades för (/fyll-pa/<id>), null = listan. Används under

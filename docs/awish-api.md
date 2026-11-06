@@ -1,6 +1,6 @@
 # Awish API: automatisk hämtning
 
-Binderlab hämtar orderna direkt från Awish officiella gRPC-API, var tionde minut, på servern. Ingen behöver ladda
+Binderlab hämtar orderna direkt från Awish officiella gRPC-API, var femte minut, på servern. Ingen behöver ladda
 ner något eller ha en webbläsare öppen. Uppladdning av orderlistan (CSV, `docs/awish.md`) finns kvar som reserv
 under Datakällor → Ladda upp fil.
 
@@ -17,12 +17,12 @@ klicka **Spara**, sedan **Testa anslutningen** och **Synka nu**. Klart. Första 
 ## Så fungerar det
 
 ```
-Supabase pg_cron (*/10 * * * *) → private.awish_cron_tick() → pg_net GET {APP_URL}/api/cron/awish
+Supabase pg_cron (*/5 * * * *) → private.awish_cron_tick() → pg_net GET {APP_URL}/api/cron/awish
   Authorization: Bearer CRON_SECRET    (adress och hemlighet ur Vault: binderlab_app_url, binderlab_cron_secret)
 /api/cron/awish → syncAllAwishSources → per datakälla awish_grpc:
   Vault (AppId/AppSecret/AppKey) → gRPC provider.Provider: Machines, Orders (sida 1, 2 …, 20 per sida)
   → adaptern (src/import/adapters/awish-grpc.ts) → samma pipeline som CSV → import (trigger 'schedule')
-  → Products(machine_id) per kopplad automat (högst var 30:e minut, alltid vid "Synka nu")
+  → Products(machine_id) per kopplad automat (i varje körning, alltid vid "Synka nu")
   → src/server/awish/stock.ts → inventeringar (source 'awish'), uttag ur vårt lager vid påfyllning,
     machine_slots, stock_locations.awish_synced_at
 ```
@@ -88,7 +88,7 @@ Supabase pg_cron (*/10 * * * *) → private.awish_cron_tick() → pg_net GET {AP
 - **Kontots slutdag (Merchant):** `Merchant.expired_at` läses högst en gång per dygn (i källans tidszon) och sparas i
   `data_sources.awish_expires_at`. 30 dagar före står "Awish-kontot går ut 18 apr. 2027 – förläng hos Awish" på Att
   göra, Hem, Drift och Datakällor (ägare och admin), 7 dagar före som brådskande (`src/server/awish/expiry.ts`).
-- **Larm:** `expectedInterval('awish_grpc') = 10` minuter. En tyst synk syns på Drift efter 30 minuter, men push,
+- **Larm:** `expectedInterval('awish_grpc') = 5` minuter. En tyst synk syns på Drift efter 30 minuter, men push,
   e-post och sms skickas först vid nästa larmkörning (`/api/cron/larm`, en gång om dagen på Vercel Hobby). För snabb
   avisering: Sentry Cron Monitor `binderlab-awish` (kräver `SENTRY_DSN`).
 

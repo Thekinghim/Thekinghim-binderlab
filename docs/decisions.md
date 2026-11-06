@@ -347,7 +347,7 @@ Postgres, Auth och Storage, Sentry för fel och cron-övervakning, Resend för e
 och produktion).
 
 **Konsekvenser.** Ingen server att underhålla. Larmjobbet går en gång per dygn (`vercel.json`), vilket ryms i Vercel Hobby; Awish-synken
-var tionde minut körs av pg_cron i Supabase. Funktioner har gränser
+var femte minut (från 12 nov. 2026; tidigare var tionde) körs av pg_cron i Supabase. Funktioner har gränser
 (4,5 MB per förfrågan, tid per anrop). Egna dumpar (`npm run db:backup`) behövs utöver Supabases backuper, se
 `docs/operations.md`.
 

@@ -9,7 +9,11 @@
  *   dygnet, återbetald efter import loggas en gång, källans tidszon, källautomater,
  *   samma försäljning i en uppladdad CSV-källa importeras inte igen, last_synced_at.
  * - Testa anslutningen och pg_cron-funktionen (private.awish_cron_tick).
+ * - Migreringen som schemalägger om jobbet till var femte minut (20261112000000).
  */
+
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -483,6 +487,107 @@ describe("pg_cron: private.awish_cron_tick", () => {
         },
       ]);
       // Allt ovan rullas tillbaka (låtsas-pg_net och hemligheterna).
+      throw new Rollback();
+    }).catch((error: unknown) => {
+      if (!(error instanceof Rollback)) throw error;
+    });
+  });
+});
+
+describe("pg_cron: binderlab-awish-sync var femte minut (20261112000000)", () => {
+  const migration = readFileSync(
+    fileURLToPath(
+      new URL(
+        "../../supabase/migrations/20261112000000_awish_synk_var_femte_minut.sql",
+        import.meta.url,
+      ),
+    ),
+    "utf8",
+  );
+
+  it("utan pg_cron gör migreringen ingenting; med pg_cron schemaläggs jobbet om, idempotent", async () => {
+    await asPostgres(async (tx) => {
+      await tx.execute(sql`drop schema if exists cron cascade`);
+      await tx.execute(sql`drop schema if exists net cascade`);
+      // Lokalt och i CI: inget pg_cron, inget fel.
+      await tx.execute(sql.raw(migration));
+
+      // pg_cron och pg_net finns bara i Supabase: låtsasversioner med samma signaturer.
+      await tx.execute(sql`create schema net`);
+      await tx.execute(sql`create schema cron`);
+      await tx.execute(sql`
+        create table cron.job (jobid bigserial primary key, jobname text unique,
+                               schedule text not null, command text not null)`);
+      await tx.execute(sql`create table cron.calls (n serial, fn text, jobname text)`);
+      await tx.execute(sql`
+        create function cron.schedule(job_name text, schedule text, command text)
+        returns bigint language plpgsql as $$
+        declare v bigint;
+        begin
+          insert into cron.calls (fn, jobname) values ('schedule', job_name);
+          insert into cron.job (jobname, schedule, command) values (job_name, schedule, command)
+          on conflict (jobname) do update set schedule = excluded.schedule, command = excluded.command
+          returning jobid into v;
+          return v;
+        end $$`);
+      await tx.execute(sql`
+        create function cron.unschedule(job_name text) returns boolean language plpgsql as $$
+        begin
+          insert into cron.calls (fn, jobname) values ('unschedule', job_name);
+          delete from cron.job where jobname = job_name;
+          if not found then raise exception 'jobbet % finns inte', job_name; end if;
+          return true;
+        end $$`);
+      await tx.execute(sql`
+        insert into cron.job (jobname, schedule, command) values
+          ('binderlab-awish-sync', '*/10 * * * *', 'select private.awish_cron_tick()'),
+          ('binderlab-cron-cleanup', '23 3 * * *', 'delete from cron.job_run_details')`);
+
+      const jobs = () =>
+        rows<{ jobname: string; schedule: string; command: string }>(
+          tx,
+          sql`select jobname, schedule, command from cron.job order by jobname`,
+        );
+      const expected = [
+        {
+          jobname: "binderlab-awish-sync",
+          schedule: "*/5 * * * *",
+          command: "select private.awish_cron_tick()",
+        },
+        {
+          jobname: "binderlab-cron-cleanup",
+          schedule: "23 3 * * *",
+          command: "delete from cron.job_run_details",
+        },
+      ];
+
+      // Det befintliga jobbet (var tionde minut) skrivs om; rensningsjobbet rörs inte.
+      await tx.execute(sql.raw(migration));
+      expect(await jobs()).toEqual(expected);
+      // En gång till: samma resultat.
+      await tx.execute(sql.raw(migration));
+      expect(await jobs()).toEqual(expected);
+      // Jobbet saknas helt: det skapas.
+      await tx.execute(sql`delete from cron.job where jobname = 'binderlab-awish-sync'`);
+      await tx.execute(sql.raw(migration));
+      expect(await jobs()).toEqual(expected);
+      const calls = await rows<{ fn: string; jobname: string }>(
+        tx,
+        sql`select fn, jobname from cron.calls order by n`,
+      );
+      expect(calls).toEqual([
+        { fn: "unschedule", jobname: "binderlab-awish-sync" },
+        { fn: "schedule", jobname: "binderlab-awish-sync" },
+        { fn: "unschedule", jobname: "binderlab-awish-sync" },
+        { fn: "schedule", jobname: "binderlab-awish-sync" },
+        { fn: "schedule", jobname: "binderlab-awish-sync" },
+      ]);
+
+      // Utan pg_net (tick-funktionen gör då ingenting) lämnas jobbet som det är.
+      await tx.execute(sql`update cron.job set schedule = '*/10 * * * *'`);
+      await tx.execute(sql`drop schema net cascade`);
+      await tx.execute(sql.raw(migration));
+      expect((await jobs())[0]?.schedule).toBe("*/10 * * * *");
       throw new Rollback();
     }).catch((error: unknown) => {
       if (!(error instanceof Rollback)) throw error;

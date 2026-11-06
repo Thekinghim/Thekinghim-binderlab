@@ -200,12 +200,12 @@ export async function loadHealthData(
 }
 
 /**
- * Förväntat intervall mellan importer per leverantör (minuter). gRPC hämtas var tionde
+ * Förväntat intervall mellan importer per leverantör (minuter). gRPC hämtas var femte
  * minut. CSV laddas upp för hand varje dag: utan ny försäljning på 36 timmar larmar
  * importregeln att datat inte är importerat (ett datalarm, inte ett maskinlarm).
  */
 export function expectedInterval(provider: string): number | null {
-  if (provider === "awish_grpc") return 10;
+  if (provider === "awish_grpc") return 5;
   // Uppladdade filer (Awish orderlista och "Annan automat").
   if (isManualProvider(provider)) return 36 * 60;
   return null;
