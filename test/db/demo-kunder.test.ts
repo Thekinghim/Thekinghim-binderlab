@@ -37,6 +37,7 @@ import { exportOrganizationDataFor } from "../../src/server/export/service";
 import { unzip } from "../../src/server/export/testing/unzip";
 import { isPlatformOperatorFor } from "../../src/server/subscriptions/service";
 import { loadValueFor } from "../../src/server/varde/load";
+import { DEMO_STORES } from "../../src/seed/demo/catalog";
 import { runSeed, type RunSeedResult } from "../../src/seed/run-seed";
 import { isDemoBlocked } from "../../src/server/assistant/advisor/service";
 import {
@@ -229,7 +230,15 @@ describe("demo för kunder: skapa", () => {
       sql`select max(business_date)::text as day, count(*)::int as n
           from public.orders where organization_id = ${demoOrgId}::uuid`,
     );
-    expect(last.day).toBe(stockholmClock(new Date()).date);
+    // Sista dagen har bara försäljning före nuvarande timme, och ingen butik öppnar före
+    // DEMO_STORES första timme: tidigt på morgonen slutar datan därför igår.
+    const clock = stockholmClock(new Date());
+    const earliest = Math.min(...DEMO_STORES.map((s) => s.hours.first));
+    const yesterday = new Date(`${clock.date}T12:00:00Z`);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    expect(
+      clock.hour > earliest + 1 ? [clock.date] : [clock.date, yesterday.toISOString().slice(0, 10)],
+    ).toContain(last.day);
     expect(last.n).toBeGreaterThan(12_000);
     const real0 = await one<{ is_demo: boolean }>(
       db(),

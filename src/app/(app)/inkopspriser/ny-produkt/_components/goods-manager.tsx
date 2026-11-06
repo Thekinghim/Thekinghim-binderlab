@@ -127,6 +127,20 @@ function GoodLine({
   const [busy, startLink] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const kinds = new Set(row.flags.map((f) => f.kind));
+  const noSlot = kinds.has("no-slot");
+  const slotLink = (
+    <Link
+      href={`/inkopspriser/ny-produkt?flik=fack&vara=${row.id}`}
+      className={cn(
+        "inline-flex h-9 items-center justify-center rounded-sm border px-3.5 text-base font-medium whitespace-nowrap transition-colors max-md:h-11",
+        noSlot
+          ? "border-inverse bg-inverse text-on-inverse hover:border-inverse-hover hover:bg-inverse-hover"
+          : "border-line-strong bg-surface text-fg hover:border-line-control hover:bg-hover",
+      )}
+    >
+      Lägg i fack<span className="sr-only">: {row.name}</span>
+    </Link>
+  );
 
   const link = () =>
     startLink(async () => {
@@ -193,15 +207,18 @@ function GoodLine({
           </ul>
         ) : null}
         <div className="mt-1 flex flex-wrap items-center gap-2">
+          {/* Inte i något fack: Lägg i fack är det viktigaste, först och fylld. */}
+          {noSlot ? slotLink : null}
           <Button
             type="button"
-            variant={selected ? "primary" : "secondary"}
+            variant={selected && !noSlot ? "primary" : "secondary"}
             onClick={onEdit}
             disabled={pending}
             className="max-md:h-11"
           >
             {pending ? "Sparar…" : "Redigera"}
           </Button>
+          {noSlot ? null : slotLink}
           {kinds.has("no-purchase") && row.titleId ? (
             <Link
               href={`/inkopspriser?titel=${row.titleId}#titel`}

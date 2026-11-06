@@ -17,9 +17,11 @@ import {
   linkGoodToTitleFor,
   previewEditGoodFor,
   saveEditGoodFor,
+  titleGoodFor,
   type EditGoodDeps,
   type EditGoodPreview,
   type EditGoodResult,
+  type TitleGood,
 } from "@/server/awish/edit-good";
 import {
   applySlotChangeFor,
@@ -119,12 +121,21 @@ export async function createNewProduct(form: FormData): Promise<ActionResult<New
   }
 }
 
-/** Automatens fack och varorna i Awish (läses nu). Skriver ingenting. */
-export async function loadSlotChoices(machineId: unknown): Promise<ActionResult<SlotChoices>> {
+/**
+ * Automatens fack och varorna i Awish (läses nu). Med `titleId` (Lägg i fack från
+ * Inköpspriser) följer titelns vara med; ett ogiltigt id ignoreras. Skriver ingenting.
+ */
+export async function loadSlotChoices(
+  machineId: unknown,
+  titleId?: unknown,
+): Promise<ActionResult<SlotChoices & { title: TitleGood | null }>> {
   try {
     const viewer = await operator();
     const id = z.uuid("Välj automat.").parse(machineId);
-    return { ok: true, data: await slotChoicesFor(viewer, id) };
+    const data = await slotChoicesFor(viewer, id);
+    const tid = z.uuid().safeParse(titleId);
+    const title = tid.success ? await titleGoodFor(viewer, data.goods, tid.data) : null;
+    return { ok: true, data: { ...data, title } };
   } catch (error) {
     return failure(error);
   }

@@ -23,7 +23,8 @@ import { safeErrorForLog } from "@/server/errors";
 
 import { PageHead } from "../../vart-lager/_components/page-head";
 import { GoodsManager } from "./_components/goods-manager";
-import { NewProductPanels } from "./_components/new-product-panels";
+import { NewProductPanels, SlotPanel } from "./_components/new-product-panels";
+import { goodsPreselect, goodsTab, initialSlotMachine } from "./_lib/fack";
 
 export const metadata: Metadata = { title: "Varor i Awish" };
 
@@ -32,8 +33,6 @@ type SearchParams = Record<string, string | string[] | undefined>;
 function one(v: string | string[] | undefined): string | null {
   return typeof v === "string" ? v : Array.isArray(v) ? (v[0] ?? null) : null;
 }
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Listan med varorna (läser Awish): strömmas in medan resten av sidan redan syns. */
 async function GoodsSection({
@@ -92,9 +91,9 @@ function GoodsSkeleton() {
 
 /**
  * Inköpspriser → Varor i Awish: "Redigera vara" (listan med Binderlabs siffror och flaggor;
- * namn, pris och bild) och "Ny produkt" (skapa en vara och lägga den i ett fack). Bara ägare
- * och admin; alla andra skickas tillbaka till Inköpspriser. Kräver att push till Awish är
- * påslaget under Datakällor.
+ * namn, pris och bild), "Lägg i fack" (en vara i ett fack, ?vara= eller ?titel= förvald)
+ * och "Ny produkt" (skapa en vara). Bara ägare och admin; alla andra skickas tillbaka till
+ * Inköpspriser. Kräver att push till Awish är påslaget under Datakällor.
  */
 export default async function NewProductPage({
   searchParams,
@@ -110,13 +109,8 @@ export default async function NewProductPage({
     loadPeriod(sp),
     requestVmbView(),
   ]);
-  const tab = one(sp.flik) === "ny" ? "ny" : "redigera";
-  const titel = one(sp.titel);
-  const vara = Number(one(sp.vara));
-  const preselect = {
-    titleId: titel && UUID.test(titel) ? titel.toLowerCase() : null,
-    goodId: Number.isInteger(vara) && vara > 0 ? vara : null,
-  };
+  const tab = goodsTab(one(sp.flik));
+  const preselect = goodsPreselect(one(sp.vara), one(sp.titel));
   const scope = {
     storeId: period.scope.storeId ?? null,
     machineId: period.scope.machineId ?? null,
@@ -124,6 +118,7 @@ export default async function NewProductPage({
 
   const tabs = [
     { id: "redigera", label: "Redigera vara", href: "/inkopspriser/ny-produkt" },
+    { id: "fack", label: "Lägg i fack", href: "/inkopspriser/ny-produkt?flik=fack" },
     { id: "ny", label: "Ny produkt", href: "/inkopspriser/ny-produkt?flik=ny" },
   ] as const;
 
@@ -135,8 +130,10 @@ export default async function NewProductPage({
           title="Varor i Awish"
           aside={
             tab === "ny"
-              ? "Skapa varan, lägg den i ett fack. Du ser allt innan det skickas."
-              : "Det som behöver åtgärd står först. Du ser allt innan det sparas."
+              ? "Skapa varan i Awish. Du ser allt innan det skickas."
+              : tab === "fack"
+                ? "Välj fack och vara. Du ser allt innan det skickas."
+                : "Det som behöver åtgärd står först. Du ser allt innan det sparas."
           }
         />
         <Link
@@ -146,14 +143,14 @@ export default async function NewProductPage({
           ← Inköpspriser
         </Link>
       </div>
-      <nav aria-label="Varor i Awish" className="flex gap-2 border-b border-line">
+      <nav aria-label="Varor i Awish" className="flex gap-1 border-b border-line sm:gap-2">
         {tabs.map((t) => (
           <Link
             key={t.id}
             href={t.href}
             aria-current={tab === t.id ? "page" : undefined}
             className={cn(
-              "-mb-px inline-flex min-h-11 items-center border-b-2 px-3 text-base transition-colors",
+              "-mb-px inline-flex min-h-11 items-center border-b-2 px-2 text-base whitespace-nowrap transition-colors sm:px-3",
               tab === t.id
                 ? "border-fg font-medium text-fg"
                 : "border-transparent text-muted hover:text-fg",
@@ -170,7 +167,16 @@ export default async function NewProductPage({
           action={{ label: "Till Datakällor →", href: "/datakallor" }}
         />
       ) : tab === "ny" ? (
-        <NewProductPanels machines={data.machines} />
+        <NewProductPanels />
+      ) : tab === "fack" ? (
+        <SlotPanel
+          machines={data.machines}
+          initialMachineId={initialSlotMachine(data.machines, scope.machineId)}
+          preselect={{
+            goodId: preselect.goodId,
+            titleId: preselect.goodId === null ? preselect.titleId : null,
+          }}
+        />
       ) : (
         <Suspense fallback={<GoodsSkeleton />}>
           <GoodsSection viewer={viewer} scope={scope} vmb={vmb} preselect={preselect} />
