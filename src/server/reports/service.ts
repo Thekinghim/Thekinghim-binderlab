@@ -387,7 +387,7 @@ export interface ReportRequest {
   readonly type: ReportType;
   readonly month: IsoMonth;
   /**
-   * Eget datum (butik och bokföring). Ersätter `month`, som då ska vara intervallets
+   * Eget datum (butik, bokföring och delägare). Ersätter `month`, som då ska vara intervallets
    * startmånad (se requestFor). Saknas = hela månaden.
    */
   readonly period?: Period | null;
@@ -417,7 +417,7 @@ function customPeriod(req: ReportRequest, today: string): Period | null {
   const error = rangeError(start, end, today);
   if (error) throw new ReportError(error);
   if (isWholeMonth(req.period)) return null;
-  if (!allowsRange(req.type)) throw new ReportError("Delägarrapporten görs per månad.");
+  if (!allowsRange(req.type)) throw new ReportError("Rapporten görs per månad.");
   if (monthOf(start) !== req.month) throw new ReportError("Ogiltig period.");
   return { start, end };
 }

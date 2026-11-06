@@ -1,5 +1,6 @@
 /**
- * Delägarrapporten som A4: resultat mot förra månaden och samma månad i fjol,
+ * Delägarrapporten som A4: resultat mot förra månaden och samma månad i fjol (eget datum:
+ * mot lika många dagar före och samma datum i fjol),
  * 6–12 månaders utveckling, lönsamhet per automat och titel, lagervärde, händelser,
  * vinstfördelning enligt ägarandelar och en egen kommentar.
  */
@@ -16,6 +17,7 @@ import {
 import { ReportLineChart } from "@/components/report/report-charts";
 import { ReportDocument, ReportPage, type ReportLayout } from "@/components/report/report-document";
 import { formatInt, formatMonth, formatSekAxis } from "@/lib/format";
+import { isWholeMonth, periodText } from "@/reports/text";
 import type {
   InventoryLine,
   OwnerPayout,
@@ -37,6 +39,7 @@ import {
   monthLabel,
   monthName,
   pct,
+  periodLabel,
   sek,
   sekValue,
   sentence,
@@ -117,11 +120,18 @@ function cell(value: number | null, kind: ResultLine["kind"]) {
   return sek(value);
 }
 
+/** Kolumnrubriken för en jämförelse: "september", eller för eget datum "15–30 sep. 2026". */
+function compareHeader(c: PartnerComparison, custom: boolean, withYear: boolean): string {
+  if (custom && c.period) return periodText(c.period);
+  return withYear ? monthLabel(c.month) : monthName(c.month);
+}
+
 function resultColumns(
   s: PartnerSnapshot,
   prev: PartnerComparison | null,
   lastYear: PartnerComparison | null,
 ): ReportColumn<ResultLine>[] {
+  const custom = !isWholeMonth(s.period);
   return [
     {
       key: "label",
@@ -131,19 +141,23 @@ function resultColumns(
     },
     {
       key: "now",
-      header: monthName(s.month),
+      header: custom ? periodText(s.period) : monthName(s.month),
       numeric: true,
       render: (l) => cell(l.now, l.kind),
     },
     {
       key: "prev",
-      header: prev ? monthName(prev.month) : "Förra månaden",
+      header: prev
+        ? compareHeader(prev, custom, false)
+        : custom
+          ? "Perioden före"
+          : "Förra månaden",
       numeric: true,
       render: (l) => (prev ? cell(l.prev, l.kind) : "–"),
     },
     {
       key: "lastYear",
-      header: lastYear ? monthLabel(lastYear.month) : "I fjol",
+      header: lastYear ? compareHeader(lastYear, custom, true) : "I fjol",
       numeric: true,
       render: (l) => (lastYear ? cell(l.lastYear, l.kind) : "–"),
     },
@@ -230,7 +244,11 @@ export function PartnerReportDocument({
 }) {
   const r = snapshot.report;
   const res = r.result;
-  const month = monthLabel(snapshot.month);
+  const month = periodLabel(snapshot);
+  const custom = !isWholeMonth(snapshot.period);
+  // KPI-raden: "mot september", eller för eget datum "mot perioden före".
+  const against = (c: PartnerComparison) =>
+    custom ? "mot perioden före" : `mot ${monthName(c.month)}`;
   const prev = r.previousMonth;
   const lastYear = r.sameMonthLastYear;
   const months = r.trend.months;
@@ -270,15 +288,14 @@ export function PartnerReportDocument({
               value: sekValue(res.totalRevenueOre),
               unit: "kr",
               delta: delta(prev?.totalRevenueChangeBp ?? null),
-              context:
-                prev?.totalRevenueChangeBp != null ? `mot ${monthName(prev.month)}` : undefined,
+              context: prev?.totalRevenueChangeBp != null ? against(prev) : undefined,
             },
             {
               label: res.profitOre < 0 ? "Förlust" : "Vinst",
               value: sekValue(res.profitOre),
               unit: "kr",
               delta: delta(prev?.profitChangeBp ?? null),
-              context: prev?.profitChangeBp != null ? `mot ${monthName(prev.month)}` : undefined,
+              context: prev?.profitChangeBp != null ? against(prev) : undefined,
               flag: res.profitOre < 0 ? "Under noll" : undefined,
             },
             {
@@ -306,7 +323,11 @@ export function PartnerReportDocument({
           }
         >
           <ReportTable
-            caption={`Resultat för ${month} jämfört med förra månaden och samma månad i fjol.`}
+            caption={
+              custom
+                ? `Resultat för ${month} jämfört med lika många dagar före och samma period i fjol.`
+                : `Resultat för ${month} jämfört med förra månaden och samma månad i fjol.`
+            }
             columns={resultColumns(snapshot, prev, lastYear)}
             rows={resultLines(snapshot)}
             rowKey={(l) => l.label}
@@ -325,11 +346,16 @@ export function PartnerReportDocument({
           index={2}
           eyebrow={`Utveckling · ${formatInt(months.length)} månader`}
           title="Intäkt och vinst per månad."
-          aside={
+          aside={`${
             r.trend.limitedHistory
               ? `Data finns för ${formatInt(withData.length)} ${withData.length === 1 ? "månad" : "månader"}.`
               : `Snitt ${sek(Math.round(withData.reduce((a, m) => a + m.revenueOre, 0) / Math.max(1, withData.length)))} intäkt per månad.`
-          }
+          }${
+            // Eget datum som slutar mitt i en månad: sista punkten är bara en del av månaden.
+            r.trend.lastMonthThrough
+              ? ` Sista månaden till och med ${sentence(dayLabel(r.trend.lastMonthThrough))}`
+              : ""
+          }`}
         >
           <ReportLineChart
             labels={months.map((m) =>
@@ -349,7 +375,7 @@ export function PartnerReportDocument({
               },
             ]}
             formatAxis={formatSekAxis}
-            height={200}
+            height={custom ? 150 : 200}
             summary={`Intäkt och vinst per månad, ${months
               .filter((m) => m.hasData)
               .map(
@@ -417,12 +443,12 @@ export function PartnerReportDocument({
           aside={
             r.inventory
               ? `${formatInt(r.inventory.quantity)} pack${r.inventory.unpricedQuantity > 0 ? `, varav ${formatInt(r.inventory.unpricedQuantity)} utan inköpspris` : ""}${snapshot.unknownStock > 0 ? `; ${formatInt(snapshot.unknownStock)} saldon okända` : ""}.`
-              : "Inga lagerhändelser fram till månadens slut."
+              : `Inga lagerhändelser fram till ${custom ? "periodens" : "månadens"} slut.`
           }
         >
           {inventoryLines.length > 0 ? (
             <ReportTable
-              caption="Lager vid månadens slut, högst värde först."
+              caption={`Lager vid ${custom ? "periodens" : "månadens"} slut, högst värde först.`}
               columns={inventoryColumns}
               rows={inventoryLines}
               rowKey={(l) => l.titleId}

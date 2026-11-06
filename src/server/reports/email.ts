@@ -322,7 +322,7 @@ function partnerEmail(s: PartnerSnapshot, ctx: EmailContext): ReportEmailProps {
     recipientKind: "delagare",
     intro:
       ctx.followText?.trim() ||
-      `Här är månadens resultat med jämförelser, lönsamhet per automat och titel och vinstfördelningen. Hela rapporten är bifogad som PDF.`,
+      `Här är ${isWholeMonth(s.period) ? "månadens" : `resultatet för ${periodText(s.period)}`} med jämförelser, lönsamhet per automat och titel och vinstfördelningen. Hela rapporten är bifogad som PDF.`,
     kpis,
     rows,
     rowsTotal: machineRows.length,

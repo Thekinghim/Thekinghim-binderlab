@@ -3,7 +3,7 @@
  * används av server action, tjänsten och sidan.
  *
  * Regler: giltiga datum, från ≤ till, till högst i dag (organisationens affärsdag) och
- * högst ett år (366 dagar). Delägarrapporten görs alltid per månad.
+ * högst ett år (366 dagar). Alla rapporttyper (butik, bokföring och delägare) kan ha eget datum.
  */
 
 import {
@@ -22,7 +22,7 @@ import type { ReportType } from "./kinds";
 export const MAX_RANGE_DAYS = 366;
 
 /** Rapporttyper där man kan välja eget datum. */
-export const RANGE_TYPES: readonly ReportType[] = ["butik", "bokforing"];
+export const RANGE_TYPES: readonly ReportType[] = ["butik", "bokforing", "delagare"];
 
 export function allowsRange(type: ReportType): boolean {
   return RANGE_TYPES.includes(type);

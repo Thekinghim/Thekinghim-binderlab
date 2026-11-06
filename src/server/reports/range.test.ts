@@ -37,7 +37,7 @@ describe("eget datum: kontroll", () => {
     expect(isCustomRange({ start: "2026-02-01", end: "2026-02-28" })).toBe(false);
     expect(allowsRange("butik")).toBe(true);
     expect(allowsRange("bokforing")).toBe(true);
-    expect(allowsRange("delagare")).toBe(false);
+    expect(allowsRange("delagare")).toBe(true);
   });
 });
 
@@ -67,8 +67,31 @@ describe("ögonblicksbild med eget datum", () => {
     expect(reportFileName(month, "sie")).toBe("binderlab-bokforing-2026-10.se");
   });
 
-  it("delägarrapporten och intervall utanför månaden stoppas", () => {
-    expect(() => buildSnapshot({ ...input, type: "delagare" })).toThrow(/per månad/);
+  it("delägarrapport: perioden, siffrorna, lagret och filnamnet följer intervallet", () => {
+    const s = buildSnapshot({
+      ...input,
+      type: "delagare",
+      owners: [
+        { id: "a", name: "Anna", shareBp: 6000 },
+        { id: "b", name: "Bo", shareBp: 4000 },
+      ],
+      stockEvents: [],
+    });
+    if (s.type !== "delagare") throw new Error("fel typ");
+    expect(s.period).toEqual({ start: "2026-10-15", end: "2026-10-31" });
+    expect(s.report.period).toEqual({ start: "2026-10-15", end: "2026-10-31" });
+    expect(s.report.result.orders).toBe(4);
+    expect(s.report.profitSplit!.owners.reduce((n, o) => n + o.amountOre, 0)).toBe(
+      s.report.result.profitOre,
+    );
+    expect(s.report.inventory!.asOf).toBe("2026-10-31");
+    expect(reportFileName(s, "pdf")).toBe("binderlab-delagare-2026-10-15--2026-10-31.pdf");
+    const month = buildSnapshot({ ...input, period: null, type: "delagare" });
+    expect(month.period).toEqual({ start: "2026-10-01", end: "2026-10-31" });
+    expect(reportFileName(month, "pdf")).toBe("binderlab-delagare-2026-10.pdf");
+  });
+
+  it("intervall utanför månaden stoppas", () => {
     expect(() =>
       buildSnapshot({ ...input, month: "2026-09", type: "butik", storeId: "s-1" }),
     ).toThrow(/börja i rapportens månad/);
