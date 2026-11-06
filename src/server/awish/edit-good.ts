@@ -55,6 +55,7 @@ import {
 } from "./goods-overview";
 import {
   loggedInClient,
+  requireOperator,
   rows,
   STALE_MESSAGE,
   titleStateFor,
@@ -179,6 +180,44 @@ async function titleLinksByName(
       },
     ]),
   );
+}
+
+/** Titelns vara i Awish (Lägg i fack från Inköpspriser). */
+export interface TitleGood {
+  /** Titelns namn, eller null om titeln inte finns i organisationen. */
+  readonly titleName: string | null;
+  /** Varan i Awish som hör till titeln, eller null om ingen eller flera gör det. */
+  readonly goodId: number | null;
+}
+
+/**
+ * Varan i `goods` (som just lästs i Awish) som hör till titeln, med samma koppling som listan
+ * (alias, annars samma namn). Exakt en träff krävs; annars väljs ingen. Skriver ingenting.
+ */
+export async function titleGoodFor(
+  viewer: Viewer,
+  goods: ReadonlyArray<{ id: number; name: string }>,
+  titleId: string,
+): Promise<TitleGood> {
+  await requireOperator(viewer);
+  const orgId = viewer.organization.id;
+  const today = businessToday(new Date(), viewer.organization.timezone);
+  return withUserDbFor(viewer.user, async (tx) => {
+    const [title] = await rows<{ name: string }>(
+      tx,
+      sql`select t.name from public.titles t
+          where t.organization_id = ${orgId}::uuid and t.id = ${titleId}::uuid`,
+    );
+    if (!title) return { titleName: null, goodId: null };
+    const links = await titleLinksByName(
+      tx,
+      orgId,
+      goods.map((g) => g.name),
+      today,
+    );
+    const hits = goods.filter((g) => links.get(goodNameKey(g.name))?.titleId === titleId);
+    return { titleName: title.name, goodId: hits.length === 1 ? hits[0]!.id : null };
+  });
 }
 
 function salesPeriod(viewer: Viewer, now: Date) {

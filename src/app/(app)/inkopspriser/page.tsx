@@ -319,12 +319,20 @@ export default async function PurchasePricesPage({
             {/* Redigeraren först: ett klick på en titel rullar hit och sätter markören i priset. */}
             <div className="flex min-w-0 flex-col gap-6 lg:col-span-5">
               {canAddProduct ? (
-                <Link
-                  href={`/inkopspriser/ny-produkt?titel=${selectedTitle.id}`}
-                  className="meta inline-flex min-h-11 w-fit items-center text-muted underline underline-offset-4 hover:text-fg md:min-h-0"
-                >
-                  Redigera namn, pris och bild i Awish →
-                </Link>
+                <div className="flex flex-wrap gap-x-6">
+                  <Link
+                    href={`/inkopspriser/ny-produkt?titel=${selectedTitle.id}`}
+                    className="meta inline-flex min-h-11 w-fit items-center text-muted underline underline-offset-4 hover:text-fg md:min-h-0"
+                  >
+                    Redigera namn, pris och bild i Awish →
+                  </Link>
+                  <Link
+                    href={`/inkopspriser/ny-produkt?flik=fack&titel=${selectedTitle.id}`}
+                    className="meta inline-flex min-h-11 w-fit items-center text-muted underline underline-offset-4 hover:text-fg md:min-h-0"
+                  >
+                    Lägg i fack →
+                  </Link>
+                </div>
               ) : null}
               <OwnProductToggle
                 key={`own-${selectedTitle.id}`}

@@ -65,8 +65,8 @@ maskin-id), samma koppling som orderimporten och lagerläsningen använder.
 You can build a feature that allows you to create products directly on your website." Skärmbild:
 [`docs/img/awish-godkannande-produkter-2026-11-05.png`](img/awish-godkannande-produkter-2026-11-05.png).
 
-Inköpspriser → **Varor i Awish** (`/inkopspriser/ny-produkt`, flikarna **Redigera vara** och **Ny
-produkt** (`?flik=ny`); länk även från Datakällor → Awish). Bara ägare och admin, och bara när
+Inköpspriser → **Varor i Awish** (`/inkopspriser/ny-produkt`, flikarna **Redigera vara**, **Lägg i
+fack** (`?flik=fack`) och **Ny produkt** (`?flik=ny`); länk även från Datakällor → Awish). Bara ägare och admin, och bara när
 **Skicka påfyllningar till Awish** är på och inloggningen sparad. Redigera vara beskrivs i nästa
 avsnitt.
 
@@ -77,6 +77,11 @@ avsnitt.
   själv till titeln.
 - **Lägg i fack**: automat (Binderlab-automater med `source_machines.external_id`), fack (läses ur
   Awish med vara och antal) och vara (alla varor i Awish, även en nyss skapad), valfritt antal.
+  Egen flik. Nås även via **Lägg i fack** på varje vara i listan (`?vara=<id>`), knappen **Lägg den
+  i ett fack →** efter en ny produkt och **Lägg i fack →** på en titel i Inköpspriser
+  (`?titel=<uuid>`; titelns vara väljs bara om exakt en vara i Awish hör till titeln, med samma
+  koppling som listan). Förvalet är bara en bekvämlighet: en vara väljs bara om den finns i varulistan
+  som just lästs ur Awish, och förhandsvisning och skick kontrolleras på servern som vanligt.
 
 ### Säkerhet
 

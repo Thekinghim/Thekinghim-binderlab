@@ -1,7 +1,7 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { squareImage } from "../_lib/square-file";
 import { useEffect, useRef, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,8 @@ import { Panel } from "@/components/ui/frame";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/cn";
 
+import { pickPreselectedGood } from "../_lib/fack";
+import { squareImage } from "../_lib/square-file";
 import {
   applySlotChange,
   createNewProduct,
@@ -332,16 +334,23 @@ function slotOption(s: Slot): string {
   return `${name} · ${s.goodName ?? `vara ${s.goodId}`} · ${s.currentInventory}${cap} st`;
 }
 
+type Choices = {
+  slots: Slot[];
+  goods: Good[];
+  title: { titleName: string | null; goodId: number | null } | null;
+};
+
+/** Vad som ska vara valt från början: en vara (?vara=) eller titelns vara (?titel=). */
+export type SlotPreselect = { goodId: number | null; titleId: string | null };
+
 function SlotForm({
   machines,
   initialMachineId,
-  onMachine,
-  preferGood,
+  preselect,
 }: {
   machines: Machine[];
   initialMachineId: string;
-  onMachine: (id: string) => void;
-  preferGood: { id: number; name: string } | null;
+  preselect: SlotPreselect;
 }) {
   const toast = useToast();
   const [pending, start] = useTransition();
@@ -350,25 +359,44 @@ function SlotForm({
   const [slots, setSlots] = useState<Slot[] | null>(null);
   const [goods, setGoods] = useState<Good[]>([]);
   const [productId, setProductId] = useState("");
-  const [goodId, setGoodId] = useState(preferGood ? String(preferGood.id) : "");
+  const [goodId, setGoodId] = useState("");
   const [count, setCount] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  // Förvalet från adressen används en gång, när varorna i Awish först har lästs. En vara som
+  // inte finns i Awish (gammal länk, fel id) väljs inte.
+  const wanted = useRef<SlotPreselect | null>(
+    preselect.goodId !== null || preselect.titleId !== null ? preselect : null,
+  );
 
-  // Vald automat från början (en enda automat, eller samma som före en ny produkt): läs
-  // facken och varorna i Awish när formuläret visas.
+  const show = (data: Choices) => {
+    setSlots(data.slots);
+    setGoods(data.goods);
+    const want = wanted.current;
+    if (!want) return;
+    wanted.current = null;
+    const pick = pickPreselectedGood(want, data.goods, data.title);
+    if (pick.goodId) setGoodId(pick.goodId);
+    setNotice(pick.notice);
+  };
+
+  const read = (id: string) =>
+    loadSlotChoices(id, wanted.current?.goodId === null ? wanted.current.titleId : undefined);
+
+  // Vald automat från början (en enda automat, eller den valda i Inköpspriser): läs facken
+  // och varorna i Awish när formuläret visas.
   useEffect(() => {
     if (!initialMachineId) return;
     let alive = true;
-    void loadSlotChoices(initialMachineId).then((r) => {
+    void read(initialMachineId).then((r) => {
       if (!alive) return;
       if (!r.ok) {
         setError(r.error);
         return;
       }
-      setSlots(r.data.slots);
-      setGoods(r.data.goods);
+      show(r.data);
     });
     return () => {
       alive = false;
@@ -393,13 +421,12 @@ function SlotForm({
       setPreview(null);
       setError(null);
       if (!id) return;
-      const r = await loadSlotChoices(id);
+      const r = await read(id);
       if (!r.ok) {
         setError(r.error);
         return;
       }
-      setSlots(r.data.slots);
-      setGoods(r.data.goods);
+      show(r.data);
     });
 
   const reset =
@@ -444,22 +471,23 @@ function SlotForm({
       setPreview(null);
       setCount("");
       const again = await loadSlotChoices(machineId);
-      if (again.ok) {
-        setSlots(again.data.slots);
-        setGoods(again.data.goods);
-      }
+      if (again.ok) show(again.data);
     });
 
   const slot = slots?.find((s) => String(s.id) === productId) ?? null;
+  const good = goods.find((g) => String(g.id) === goodId) ?? null;
 
   return (
     <Panel className="flex flex-col gap-4" id="fack">
       <div className="flex flex-col gap-1">
         <h2 className="text-lg font-medium">Lägg i fack</h2>
         <p className="text-sm text-muted">
-          Välj automat, fack och vara. Du ser ändringen innan den skickas.
+          {good
+            ? `Var ska ${good.name} ligga? Välj fack. Du ser ändringen innan den skickas.`
+            : "Välj automat, fack och vara. Du ser ändringen innan den skickas."}
         </p>
       </div>
+      {notice ? <p className="text-sm text-muted">{notice}</p> : null}
       {machines.length === 0 ? (
         <p className="text-sm text-muted">Ingen automat är kopplad till Awish.</p>
       ) : (
@@ -474,6 +502,7 @@ function SlotForm({
             label="Automat"
             name="machine"
             value={machineId}
+            className="max-md:h-11"
             options={[
               ...(machines.length > 1 ? [{ value: "", label: "Välj automat" }] : []),
               ...machines.map((m) => ({
@@ -483,7 +512,6 @@ function SlotForm({
             ]}
             onChange={(e) => {
               reset(setMachineId)(e.target.value);
-              onMachine(e.target.value);
               setProductId("");
               load(e.target.value);
             }}
@@ -493,6 +521,7 @@ function SlotForm({
             name="slot"
             value={productId}
             disabled={!slots || slots.length === 0}
+            className="max-md:h-11"
             options={[
               {
                 value: "",
@@ -512,6 +541,7 @@ function SlotForm({
             name="good"
             value={goodId}
             disabled={goods.length === 0}
+            className="max-md:h-11"
             options={[
               { value: "", label: "Välj vara" },
               ...goods.map((g) => ({
@@ -519,7 +549,10 @@ function SlotForm({
                 label: `${g.name} · ${kr(g.priceOre)}`,
               })),
             ]}
-            onChange={(e) => reset(setGoodId)(e.target.value)}
+            onChange={(e) => {
+              reset(setGoodId)(e.target.value);
+              setNotice(null);
+            }}
           />
           <Input
             label="Antal (valfritt)"
@@ -529,6 +562,7 @@ function SlotForm({
             min={0}
             max={slot?.capacity ?? 999}
             suffix="st"
+            className="max-md:h-11"
             hint={
               slot
                 ? `Tomt = ${String(slot.goodId) === goodId ? `behåll ${slot.currentInventory}` : "0"}.${slot.capacity ? ` Rymmer ${slot.capacity}.` : ""}`
@@ -543,6 +577,7 @@ function SlotForm({
               variant={preview ? "secondary" : "primary"}
               loading={busy === "preview"}
               disabled={pending || !machineId || !productId || !goodId}
+              className="max-md:h-11"
             >
               Förhandsgranska
             </Button>
@@ -575,6 +610,7 @@ function SlotForm({
                 loading={busy === "send"}
                 disabled={pending || (preview.confirm !== null && !confirmed)}
                 onClick={send}
+                className="max-md:h-11"
               >
                 Skicka till Awish
               </Button>
@@ -586,21 +622,49 @@ function SlotForm({
   );
 }
 
-/** "Ny produkt" och "Lägg i fack". En ny vara väljs direkt i fackformuläret. */
-export function NewProductPanels({ machines }: { machines: Machine[] }) {
-  const [created, setCreated] = useState<{ id: number; name: string } | null>(null);
-  const [machineId, setMachineId] = useState(machines.length === 1 ? machines[0]!.id : "");
+/** Fliken "Lägg i fack": fackformuläret, ev. med en vara (eller titelns vara) förvald. */
+export function SlotPanel({
+  machines,
+  initialMachineId,
+  preselect,
+}: {
+  machines: Machine[];
+  initialMachineId: string;
+  preselect: SlotPreselect;
+}) {
   return (
-    <div className="grid gap-8 lg:grid-cols-2 lg:items-start">
-      <NewProductForm onCreated={setCreated} />
-      {/* Ny vara: fackformuläret börjar om med varan vald och facken lästa på nytt. */}
+    <div className="max-w-2xl">
+      {/* Ny vara i adressen: formuläret börjar om med den varan vald. */}
       <SlotForm
-        key={created?.id ?? 0}
+        key={`${preselect.goodId ?? ""}-${preselect.titleId ?? ""}`}
         machines={machines}
-        initialMachineId={machineId}
-        onMachine={setMachineId}
-        preferGood={created}
+        initialMachineId={initialMachineId}
+        preselect={preselect}
       />
+    </div>
+  );
+}
+
+/** Fliken "Ny produkt". Efter en ny vara: en länk som lägger den i ett fack. */
+export function NewProductPanels() {
+  const [created, setCreated] = useState<{ id: number; name: string } | null>(null);
+  return (
+    <div className="flex max-w-2xl flex-col gap-4">
+      {created ? (
+        <div
+          role="status"
+          className="flex flex-col gap-3 rounded-md border border-line-strong p-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p className="text-sm text-fg">{created.name} finns nu i Awish.</p>
+          <Link
+            href={`/inkopspriser/ny-produkt?flik=fack&vara=${created.id}`}
+            className="inline-flex h-11 w-fit items-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse hover:border-inverse-hover hover:bg-inverse-hover md:h-9"
+          >
+            Lägg den i ett fack →
+          </Link>
+        </div>
+      ) : null}
+      <NewProductForm onCreated={setCreated} />
     </div>
   );
 }

@@ -544,3 +544,51 @@ describe("Koppla en vara till Binderlab", () => {
     expect(updates()).toEqual([]);
   });
 });
+
+describe("Lägg i fack: titelns vara", () => {
+  it("alias eller samma namn ger varan; ingen eller två varor, annan org och nekad roll ger ingen", async () => {
+    const viaAlias = await seedTitle("Fack Titel", { alias: "Fack Alias" });
+    const sameName = await seedTitle("Fack Samma", { alias: null });
+    const none = await seedTitle("Fack Ingen");
+    const twice = await seedTitle("Fack Dubbel");
+    const goods = [
+      { id: 70, name: "Fack Alias" },
+      { id: 71, name: "fack  samma" },
+      { id: 72, name: "Fack Dubbel" },
+      { id: 73, name: "Fack Dubbel" },
+    ];
+    const viewer = await viewerFor(owner, orgId);
+    expect(await eg.titleGoodFor(viewer, goods, viaAlias)).toEqual({
+      titleName: "Fack Titel",
+      goodId: 70,
+    });
+    expect(await eg.titleGoodFor(viewer, goods, sameName)).toEqual({
+      titleName: "Fack Samma",
+      goodId: 71,
+    });
+    expect(await eg.titleGoodFor(viewer, goods, none)).toEqual({
+      titleName: "Fack Ingen",
+      goodId: null,
+    });
+    expect(await eg.titleGoodFor(viewer, goods, twice)).toEqual({
+      titleName: "Fack Dubbel",
+      goodId: null,
+    });
+
+    // En annan organisations titel: varken namnet eller varan läcker.
+    const other = await createUser();
+    const otherOrg = await createOrg(other);
+    const [foreign] = await asUser(other, (tx) =>
+      tx.insert(s.titles).values({ organizationId: otherOrg, name: "Fack Alias" }).returning(),
+    );
+    expect(await eg.titleGoodFor(viewer, goods, foreign!.id)).toEqual({
+      titleName: null,
+      goodId: null,
+    });
+
+    // Läsare nekas.
+    const reader = await viewerFor(await createMember(orgId, "viewer"), orgId);
+    await expect(eg.titleGoodFor(reader, goods, viaAlias)).rejects.toThrow(FORBIDDEN_MESSAGE);
+    expect(fake.state.calls).toEqual([]);
+  });
+});
