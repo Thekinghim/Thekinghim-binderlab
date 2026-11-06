@@ -53,8 +53,9 @@ export interface StoreShareColumns {
  * Tabellen över alla titlar: inköpspris, snittpris, vad som blir kvar och status.
  *
  * "Kvar per order" och "Kvar av pris" är hela beloppet, före butikens andel (ägarens regel:
- * hela beloppet som standard). Med `share` (vald butik eller "Visa butikernas andel") visas
- * också butikens andel och vår del per order. Statusen räknas på vår del (se statusLabel).
+ * hela beloppet som standard; ingen hyra dras heller). Med `share` (vald butik eller "Visa
+ * butikernas andel") visas också butikens andel (provision eller vinstdelning + hyra, som i
+ * Lönsamhet) och vår del per order. Statusen räknas på vår del (se statusLabel).
  */
 export function TitleTable({
   rows,
@@ -79,8 +80,8 @@ export function TitleTable({
    */
   criticalIds: readonly string[];
   /**
-   * Något avtal har hyra: kolumnerna "Hyra per order" och "Kvar efter hyra" visas. Utan
-   * hyra är "Kvar per order" allt som blir kvar, och kolumnerna döljs.
+   * Något avtal har hyra: med andelen synlig finns "Varav hyra" i kolumnvalet (hyran ingår i
+   * butikens andel). Utan andel visas ingen hyra: inget som hör till butikerna dras.
    */
   rent?: boolean;
   /** Visa butikens andel och vår del (null = dolda, standard). */
@@ -94,41 +95,23 @@ export function TitleTable({
   const columns = useMemo<Column<TitleRow>[]>(() => {
     const statusOf = (r: TitleRow): Status =>
       TAG[r.status] === "critical" && !critical.has(r.id) ? "warning" : TAG[r.status];
-    const rentColumns: Column<TitleRow>[] = [
-      {
-        key: "rent",
-        header: "Hyra per order",
-        numeric: true,
-        hideOnMobile: true,
-        // Kvar efter hyra visas; hyran själv finns i kolumnvalet (så att status får plats).
-        defaultHidden: true,
-        sortValue: (r) => r.rentOre ?? Number.NaN,
-        csv: (r) => (r.rentOre === null ? "" : kr(r.rentOre)),
-        render: (r) => money(r.rentOre),
-      },
-      // Samma grund som kolumnen bredvid: hela beloppet utan andel, vår del med andel.
-      share
-        ? {
-            key: "afterRent",
-            header: "Vår del efter hyra",
-            numeric: true,
-            hideOnMobile: true,
-            // Med andelens två kolumner blir tabellen för bred: finns i kolumnvalet.
-            defaultHidden: true,
-            sortValue: (r) => r.leftAfterRentOre ?? Number.NaN,
-            csv: (r) => (r.leftAfterRentOre === null ? "" : kr(r.leftAfterRentOre)),
-            render: (r) => money(r.leftAfterRentOre),
-          }
-        : {
-            key: "afterRent",
-            header: "Kvar efter hyra",
-            numeric: true,
-            hideOnMobile: true,
-            sortValue: (r) => r.leftBeforeAfterRentOre ?? Number.NaN,
-            csv: (r) => (r.leftBeforeAfterRentOre === null ? "" : kr(r.leftBeforeAfterRentOre)),
-            render: (r) => money(r.leftBeforeAfterRentOre),
-          },
-    ];
+    // Hyran hör till butikernas andel: bara med andelen synlig, som en del av den.
+    const rentColumns: Column<TitleRow>[] =
+      share && rent
+        ? [
+            {
+              key: "rent",
+              header: "Varav hyra",
+              numeric: true,
+              hideOnMobile: true,
+              // Ingår i andelen; finns i kolumnvalet (så att status får plats).
+              defaultHidden: true,
+              sortValue: (r) => r.rentOre ?? Number.NaN,
+              csv: (r) => (r.rentOre === null ? "" : kr(r.rentOre)),
+              render: (r) => money(r.rentOre),
+            },
+          ]
+        : [];
     const shareColumns: Column<TitleRow>[] = share
       ? [
           {
@@ -273,7 +256,7 @@ export function TitleTable({
         render: (r) => marginText(r),
       },
       ...shareColumns,
-      ...(rent ? rentColumns : []),
+      ...rentColumns,
       {
         key: "orders",
         header: "Order",

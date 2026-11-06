@@ -9,7 +9,7 @@
  */
 
 import { changeBp, ratioBp } from "@/domain";
-import { formatInt, formatPercent, formatSek, NBSP } from "@/lib/format";
+import { formatInt, formatMarginBp, formatPercent, formatSek, NBSP } from "@/lib/format";
 
 export interface Headline {
   /** Första, ljusa delen. */
@@ -184,7 +184,7 @@ export function lonsamhetHeadline(input: HeadlineInput): Headline {
     const bp = changeBp(input.profitOre, input.previous.profitOre) ?? 0;
     aside = `${bp >= 0 ? "Upp" : "Ned"} ${formatPercent(Math.abs(bp) / 10_000, 0)} mot perioden innan.`;
   } else {
-    aside = input.marginBp === null ? "" : `Marginal ${formatPercent(input.marginBp / 10_000)}.`;
+    aside = input.marginBp === null ? "" : `Marginal ${formatMarginBp(input.marginBp)}.`;
   }
 
   return { kind: "profit", title, aside };
@@ -227,8 +227,7 @@ export function viewTitle(input: ViewTitleInput): SectionTitle {
       aside: "",
     };
   }
-  const margin =
-    input.top.marginBp === null ? "" : ` · ${formatPercent(input.top.marginBp / 10_000)}`;
+  const margin = input.top.marginBp === null ? "" : ` · ${formatMarginBp(input.top.marginBp)}`;
   // Bara det som kräver åtgärd: rader med förlust.
   const lossText =
     input.losses === 0

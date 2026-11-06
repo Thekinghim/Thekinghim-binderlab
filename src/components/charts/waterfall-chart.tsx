@@ -45,6 +45,11 @@ type WaterfallProps = {
   excluded?: WaterfallExcluded;
   height?: number;
   summary: string;
+  /**
+   * Resultatets andel som färdig text (t.ex. nyckeltalets marginal, formatMarginBp), så att
+   * vattenfallet visar exakt samma procent som nyckeltalet. Utelämnad = resultat / första.
+   */
+  totalShareText?: string;
 };
 
 const M = { top: 40, right: 8, left: 36 };
@@ -113,6 +118,7 @@ export function WaterfallChart({
   excluded,
   height = 280,
   summary,
+  totalShareText,
 }: WaterfallProps) {
   const [ref, width, measured] = useMeasure<HTMLDivElement>();
   const [active, setActive] = useState<number | null>(null);
@@ -202,7 +208,7 @@ export function WaterfallChart({
     if (i === lastIdx && b.kind === "total") {
       const v = g.axis.withUnit(b.value);
       if (!(showShare && base)) return [v];
-      const share = formatPercent(b.value / base);
+      const share = totalShareText ?? formatPercent(b.value / base);
       const one = `${v} · ${share}`;
       return one.length * 7.2 <= step + 8 ? [one] : [v, share];
     }
@@ -512,7 +518,10 @@ export function WaterfallChart({
                 ? [
                     {
                       name: `Andel av ${g.bars[0]?.label.toLowerCase() ?? ""}`,
-                      value: formatPercent(Math.abs(a.value) / base),
+                      value:
+                        a.kind === "total" && active === lastIdx && totalShareText !== undefined
+                          ? totalShareText
+                          : formatPercent(Math.abs(a.value) / base),
                     },
                   ]
                 : []),

@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { titleEconomics, type TitleEconomicsInput } from "@/domain";
+import { profitability, titleEconomics, type TitleEconomicsInput } from "@/domain";
 import { agreement, order, placement, price } from "@/domain/testing/fixtures";
 
 import {
@@ -235,9 +235,10 @@ function priceChange(terms: Parameters<typeof agreement>[3]) {
 describe("Inköpspriser: andelen räknas med dagens inköpspris", () => {
   it("vinstdelning 50 %: andelen och vår del är hälften var av kvar per order", () => {
     const { row } = priceChange(SPLIT_50);
-    // 185 − 4,63 kortavgift − 120 inköp = 60,37 kr; hälften 30,185 kr (avrundas var för sig).
+    // 185 − 4,63 kortavgift − 120 inköp = 60,37 kr; hälften 30,185 kr. Vår del avrundas och
+    // andelen är resten, så att andel + vår del = kvar per order exakt.
     expect(row.leftBeforeOre).toBe(6_037);
-    expect(row.storeShareOre).toBe(3_019);
+    expect(row.storeShareOre).toBe(3_018);
     expect(row.leftOre).toBe(3_019);
     // Snittet av de inköp som faktiskt gällde orderna är oförändrat.
     expect(row.averageCostOre).toBe(11_600);
@@ -284,5 +285,46 @@ describe("Inköpspriser: Kvar av pris", () => {
     // 159 − 3,98 − 140 = 15,02 kr av 159 kr = 9,4465 %.
     expect(row.leftBeforeOre).toBe(1_502);
     expect(plain(marginText(row))).toBe("9,4 %");
+  });
+});
+
+describe("Inköpspriser: hyran är en del av butikens andel (som Lönsamhet)", () => {
+  // 10 % av försäljningen + hyra 300 kr/mån, två order i november.
+  const RENT = {
+    commissionBp: 1000,
+    commissionBase: "net_excl_vat" as const,
+    monthlyRentOre: 30_000,
+  };
+
+  it("andelen per order = provision + hyra, vår del = kvar efter båda, och talen går ihop", () => {
+    const { row, input } = mystery(RENT, [
+      order({ titleId: "t-mp", businessDate: "2026-11-03", amountOre: 29_900 }),
+    ]);
+    const e = titleEconomics(input).find((x) => x.titleId === "t-mp")!;
+    expect(e.rentPerOrderOre).toBeGreaterThan(0);
+    expect(row.leftOre).toBe(e.leftPerOrderAfterRentOre);
+    expect(row.storeShareOre).toBe(row.leftBeforeOre! - row.leftOre!);
+    // Andelen innehåller hyran: större än provisionen ensam.
+    expect(row.storeShareOre!).toBeGreaterThan(e.storeSharePerOrderOre!);
+    // Vår del × order = titelns vinst efter andelen i Lönsamhet (±avrundning per order).
+    const lonsamhet = profitability(
+      { ...input, settings: { ...input.settings, deductStoreShare: true } },
+      "title",
+    );
+    const title = lonsamhet.rows.find((r) => r.key === "t-mp")!;
+    expect(Math.abs(row.leftOre! * 2 - title.profitOre)).toBeLessThanOrEqual(1);
+    expect(Math.abs(row.storeShareOre! * 2 - title.compensationOre)).toBeLessThanOrEqual(1);
+  });
+
+  it("förhandsvisningen av ett nytt pris räknar andelen på samma sätt (hyran ingår)", () => {
+    const { row, input } = mystery(RENT, [
+      order({ titleId: "t-mp", businessDate: "2026-11-03", amountOre: 29_900 }),
+    ]);
+    const split = splitWithPrice(input, "t-mp", 19_000);
+    expect(split).toMatchObject({
+      leftBeforeOre: row.leftBeforeOre,
+      storeShareOre: row.storeShareOre,
+      leftOre: row.leftOre,
+    });
   });
 });

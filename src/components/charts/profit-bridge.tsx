@@ -1,6 +1,6 @@
 "use client";
 
-import { formatPercent } from "@/lib/format";
+import { formatMarginBp, formatPercent } from "@/lib/format";
 import type { AxisUnit } from "./axis";
 import { WaterfallChart, type WaterfallStep } from "./waterfall-chart";
 
@@ -45,6 +45,11 @@ export type ProfitBridgeProps = {
    * så att vattenfallet visar exakt samma tal som nyckeltalen. Utelämnad = vinst / intäkt.
    */
   margin?: number;
+  /**
+   * Marginalen i bp (nyckeltalets tal). Ges den visas marginalen i vattenfallet och i texten
+   * med formatMarginBp, samma funktion som nyckeltalet, så att procenten alltid är lika.
+   */
+  marginBp?: number;
   height?: number;
   /** Skärmläsartext. Standard: en mening med alla belopp och marginalen. */
   summary?: string;
@@ -66,6 +71,7 @@ export function ProfitBridge(props: ProfitBridgeProps) {
       unit={unit}
       height={height}
       summary={text}
+      totalShareText={props.marginBp === undefined ? undefined : formatMarginBp(props.marginBp)}
       excluded={
         unpricedRevenue
           ? {
@@ -93,9 +99,16 @@ export function profitBridgeModel({
   labels = {},
   summary,
   margin: marginIn,
+  marginBp,
 }: ProfitBridgeProps): { steps: WaterfallStep[]; text: string; unpricedLabel: string } {
   const profit = revenue - (vmb ?? 0) - purchases - fees - (storeCompensation ?? 0);
   const margin = marginIn ?? (revenue ? profit / revenue : undefined);
+  const marginText =
+    marginBp !== undefined
+      ? formatMarginBp(marginBp)
+      : margin !== undefined
+        ? formatPercent(margin)
+        : undefined;
   const L = {
     revenue: labels.revenue ?? "Intäkt",
     vmb: labels.vmb ?? "VMB-moms",
@@ -147,7 +160,7 @@ export function profitBridgeModel({
     /^(Butik|Till )/.test(t) ? t.charAt(0).toLowerCase() + t.slice(1) : t;
   const text =
     summary ??
-    `${L.revenue} ${format(revenue)} minus ${vmb !== undefined ? `VMB-moms ${format(vmb)}, ` : ""}inköp ${format(purchases)}, ${L.fees.toLowerCase()} ${format(fees)}${storeCompensation !== undefined ? ` och ${lowerFirst(L.storeCompensation)} ${format(storeCompensation)}` : ""} ger ${resultLabel.toLowerCase()} ${format(loss ? -profit : profit)}${margin !== undefined ? `, marginal ${formatPercent(margin)}` : ""}.${unpricedRevenue ? ` ${format(unpricedRevenue)} i intäkt saknar inköpspris och ingår inte.` : ""}`;
+    `${L.revenue} ${format(revenue)} minus ${vmb !== undefined ? `VMB-moms ${format(vmb)}, ` : ""}inköp ${format(purchases)}, ${L.fees.toLowerCase()} ${format(fees)}${storeCompensation !== undefined ? ` och ${lowerFirst(L.storeCompensation)} ${format(storeCompensation)}` : ""} ger ${resultLabel.toLowerCase()} ${format(loss ? -profit : profit)}${marginText !== undefined ? `, marginal ${marginText}` : ""}.${unpricedRevenue ? ` ${format(unpricedRevenue)} i intäkt saknar inköpspris och ingår inte.` : ""}`;
 
   return { steps, text, unpricedLabel: L.unpriced };
 }

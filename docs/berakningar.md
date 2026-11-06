@@ -176,9 +176,10 @@ Ej fördelad hyra är hyra som inte bärs av någon order med inköpspris:
 
 Den är ändå en kostnad för perioden och dras alltid från vinsten. Den visas som:
 
-- en egen rad **"Ej fördelad hyra"** (nyckel `unallocated`) per titel, per automat, per dag och per vecka,
+- en egen rad **"Ej fördelad hyra"** (nyckel `unallocated`) per titel och per automat,
 - på **butikens rad** i vyn per butik,
-- på **månadens rad** i vyn per månad.
+- på **månadens rad** i vyn per månad,
+- **per dag och per vecka på de dagar den gäller**: butik-månadens hyra fördelas på avtalets dagar i perioden (vikt = månadshyran den dagen, största rest, så att summan är exakt butik-månadens hyra), och hyran på en order utan pris ligger på orderns dag. Staplarna per dag och vecka summerar därför exakt till periodens vinst; ingen rest ligger utanför dem.
 
 ## 5. Lönsamhet
 
@@ -271,11 +272,11 @@ Alla vyer bygger på samma orderliggare (en rad per order med alla belopp ovan).
 
 Särskilda rader:
 
-| Nyckel        | Var                        | Innehåll                                                            |
-| ------------- | -------------------------- | ------------------------------------------------------------------- |
-| `unallocated` | titel, automat, dag, vecka | ej fördelad hyra                                                    |
-| `no-machine`  | automat                    | order vars automat i källan inte är kopplad                         |
-| `no-store`    | butik                      | order från en automat som inte var placerad i någon butik den dagen |
+| Nyckel        | Var            | Innehåll                                                            |
+| ------------- | -------------- | ------------------------------------------------------------------- |
+| `unallocated` | titel, automat | ej fördelad hyra                                                    |
+| `no-machine`  | automat        | order vars automat i källan inte är kopplad                         |
+| `no-store`    | butik          | order från en automat som inte var placerad i någon butik den dagen |
 
 Tidsvyerna (dag, vecka, månad) visar alla dagar/veckor/månader i perioden, även de utan försäljning. Veckor följer ISO 8601 (måndag–söndag, vecka 1 är veckan med årets första torsdag; 2026 har 53 veckor). Veckor och månader som bara delvis ligger i perioden markeras som delvisa.
 
@@ -298,14 +299,17 @@ Intäkt → VMB-moms → Inköp → Avgifter → Butiksersättning → Vinst, f�
 
 För varje titel och vald period, med _n_ = antal order av titeln:
 
-| Post                | Formel                                                                                   |
-| ------------------- | ---------------------------------------------------------------------------------------- |
-| Snittpris           | round(Σ netto / _n_)                                                                     |
-| Aktuellt inköpspris | priset som gäller periodens sista dag                                                    |
-| Kvar per order      | round((Σ netto − Σ kortavgift − Σ provision − VMB − _n_ × aktuellt inköpspris) / _n_)    |
-| Hyra per order      | round(Σ fördelad hyra / _n_), visas separat och ingår inte i "kvar per order"            |
-| Kvar efter hyra     | round((Σ netto − Σ kortavgift − Σ provision − Σ hyra − _n_ × aktuellt inköpspris) / _n_) |
-| Förlustvarning      | kvar per order ≤ 0                                                                       |
+| Post                | Formel                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------------------- |
+| Snittpris           | round(Σ netto / _n_)                                                                           |
+| Aktuellt inköpspris | priset som gäller periodens sista dag                                                          |
+| Kvar per order      | round((Σ netto − Σ kortavgift − VMB − _n_ × aktuellt inköpspris) / _n_), före butikens andel   |
+| Vår del             | round((Σ netto − Σ kortavgift − Σ provision − Σ hyra − VMB − _n_ × aktuellt inköpspris) / _n_) |
+| Butikens andel      | kvar per order − vår del (provision eller vinstdelning + hyra, så att talen går ihop exakt)    |
+| Varav hyra          | round(Σ fördelad hyra / _n_)                                                                   |
+| Förlustvarning      | vår del ≤ 0                                                                                    |
+
+Med vyknappen "Visa butikernas andel" av och ingen vald butik visas bara kvar per order (före andelen): ingen provision och ingen hyra dras, och kolumnerna för andel, hyra och vår del döljs. Med knappen på eller en vald butik visas butikens andel (hyran ingår, som i Lönsamhet) och vår del.
 
 VMB = med vyknappen "Med VMB" 20 % av max(0, Σ netto − _n_ × aktuellt inköpspris), annars 0.
 

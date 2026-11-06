@@ -48,7 +48,7 @@ import {
   allocateSignedProportional,
 } from "./money";
 import { isProfitSplit, profitSplit, type ProfitSplitResult } from "./profit-split";
-import { rentByStoreMonth, type StoreMonthRent } from "./rent";
+import { rentByStoreMonth, type RentSegment, type StoreMonthRent } from "./rent";
 import { vmbApplies, vmbVat, type VmbResult } from "./vmb";
 import type {
   IsoDate,
@@ -121,6 +121,11 @@ export interface UnallocatedRent {
   readonly storeId: string;
   readonly month: IsoMonth;
   readonly rentOre: number;
+  /**
+   * Avtalets dagar i månaden inom perioden (rent.ts), så att vyer per dag och vecka kan lägga
+   * hyran på de dagar den gäller (profitability).
+   */
+  readonly segments: readonly RentSegment[];
 }
 
 /** Saker som bör åtgärdas för att siffrorna ska bli kompletta (används t.ex. i Att göra). */
@@ -323,7 +328,12 @@ function computeLedger(input: ProfitabilityInput): Ledger {
     if (sm.rentOre === 0) continue;
     const list = byStoreMonth.get(`${sm.storeId}\u0000${sm.month}`);
     if (!list || list.length === 0) {
-      unallocatedRent.push({ storeId: sm.storeId, month: sm.month, rentOre: sm.rentOre });
+      unallocatedRent.push({
+        storeId: sm.storeId,
+        month: sm.month,
+        rentOre: sm.rentOre,
+        segments: sm.segments,
+      });
       continue;
     }
     list.sort(compareEntries);
@@ -334,7 +344,12 @@ function computeLedger(input: ProfitabilityInput): Ledger {
     if (weights.every((w) => w === 0)) weights = rates; // alla netto 0 → lika per order och hyresdag
     if (weights.every((w) => w === 0)) {
       // Inga order på dagar med hyra: hyran kan inte bäras av någon order.
-      unallocatedRent.push({ storeId: sm.storeId, month: sm.month, rentOre: sm.rentOre });
+      unallocatedRent.push({
+        storeId: sm.storeId,
+        month: sm.month,
+        rentOre: sm.rentOre,
+        segments: sm.segments,
+      });
       continue;
     }
     // Vikterna som vanliga tal när produkterna är säkra heltal (samma fördelning, se

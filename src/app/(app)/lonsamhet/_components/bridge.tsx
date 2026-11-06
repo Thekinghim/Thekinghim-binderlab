@@ -52,7 +52,7 @@ export function LonsamhetBridge({ bridge }: { bridge: Bridge }) {
         unpricedRevenue={
           bridge.unpricedRevenueOre > 0 ? bridge.unpricedRevenueOre / 100 : undefined
         }
-        margin={steps.marginBp === null ? undefined : steps.marginBp / 10_000}
+        marginBp={steps.marginBp ?? undefined}
         labels={{
           fees: "Avgifter",
           storeCompensation: steps.storeShareLabel,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { eachDay, type Period } from "@/domain";
-import { daily, input, machine, many, title } from "../todos/test-helpers";
+import { AGREEMENT, daily, input, machine, many, title } from "../todos/test-helpers";
 import type { AnalyticsOrder, TodoInput } from "../todos/types";
 import {
   bestDayRule,
@@ -316,6 +316,22 @@ describe("titel med förlust", () => {
       link: "/inkopspriser?titel=bb",
     });
     expect(r?.evidence.figures.find((f) => f.key === "leftPerOrderOre")?.value).toBe(-90);
+  });
+
+  it("med andelen: hyran hör till butikens andel, som vår del på Inköpspriser", () => {
+    // 49 kr − 40 kr inköp − 4,90 kr provision = 4,10 kr; hyra 300 kr/mån på 5 order i
+    // perioden (en del av månadens hyra) gör vår del negativ.
+    const i = input({
+      titles,
+      orders: spread("bb", 5),
+      prices: [price("bb", 4_000)],
+      agreements: [{ ...AGREEMENT, monthlyRentOre: 30_000 }],
+    });
+    const [r] = lossTitleRule(ctx(i));
+    expect(r?.key).toBe("loss-title:bb");
+    const left = r?.evidence.figures.find((f) => f.key === "leftPerOrderOre")?.value ?? 0;
+    expect(left).toBeLessThan(0);
+    expect(r?.detail).toMatch(/butikens andel \d+,\d\d\skr \(varav hyra/);
   });
 
   it("före butikens andel (vyknappen av): ingen förlust när packet ger något före andelen", () => {

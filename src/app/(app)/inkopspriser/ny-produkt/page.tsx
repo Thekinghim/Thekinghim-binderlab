@@ -14,6 +14,7 @@ import { newProductPageFor } from "@/server/awish/new-product";
 import {
   loadPeriod,
   OPERATOR_ROLES,
+  requestStoreShareView,
   requestVmbView,
   requireRoute,
   requireViewer,
@@ -39,16 +40,18 @@ async function GoodsSection({
   viewer,
   scope,
   vmb,
+  storeShare,
   preselect,
 }: {
   viewer: Viewer;
   scope: { storeId: string | null; machineId: string | null };
   vmb: boolean;
+  storeShare: boolean;
   preselect: { titleId: string | null; goodId: number | null };
 }) {
   let overview: GoodsOverview;
   try {
-    overview = await goodsOverviewFor(viewer, { ...scope, vmb });
+    overview = await goodsOverviewFor(viewer, { ...scope, vmb, storeShare });
   } catch (error) {
     if (
       error instanceof NewProductError ||
@@ -104,10 +107,11 @@ export default async function NewProductPage({
   if (!(OPERATOR_ROLES as readonly string[]).includes(ctx.role)) redirect("/inkopspriser");
   const sp = await searchParams;
   const viewer = await requireViewer();
-  const [data, period, vmb] = await Promise.all([
+  const [data, period, vmb, storeShare] = await Promise.all([
     newProductPageFor(viewer),
     loadPeriod(sp),
     requestVmbView(),
+    requestStoreShareView(),
   ]);
   const tab = goodsTab(one(sp.flik));
   const preselect = goodsPreselect(one(sp.vara), one(sp.titel));
@@ -179,7 +183,13 @@ export default async function NewProductPage({
         />
       ) : (
         <Suspense fallback={<GoodsSkeleton />}>
-          <GoodsSection viewer={viewer} scope={scope} vmb={vmb} preselect={preselect} />
+          <GoodsSection
+            viewer={viewer}
+            scope={scope}
+            vmb={vmb}
+            storeShare={storeShare}
+            preselect={preselect}
+          />
         </Suspense>
       )}
     </div>

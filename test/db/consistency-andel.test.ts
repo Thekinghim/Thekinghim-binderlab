@@ -426,6 +426,13 @@ describe("butikernas andel: samma regel på alla sidor (seedad databas, fyra sor
           storesOre: share,
         });
         expect(all.toolRule).toMatch(/vår del/);
+        // Staplarna per dag och vecka summerar exakt till nyckeltalet: hyran utan order ligger
+        // på avtalets dagar, ingen rest "ej fördelad" utanför staplarna.
+        for (const k of ["day", "week"] as const) {
+          expect(m.trend[k].unallocatedProfitOre, `${label} ${k}`).toBe(0);
+          const bars = m.trend[k].buckets.reduce((n, b) => n + b.profitOre, 0);
+          expect(bars, `${label} ${k}`).toBe(facit - share);
+        }
       });
     });
   }
@@ -532,6 +539,41 @@ describe("butikernas andel: samma regel på alla sidor (seedad databas, fyra sor
         expect(shares).toBe(page.model.views.store.reduce((n, r) => n + r.compensationOre, 0));
         expect(ours).toBe(october - shares);
       }
+    });
+  });
+
+  it("Hem mål: Vinst följer samma regel som nyckeltalet bredvid (av, på, vald butik)", async () => {
+    await asOwner(async () => {
+      // Gallerian: bara hyra, och en automat som säljer i november.
+      const kiosk = storeIds.get("Gallerian Väst (exempel)")!;
+      const month = "2026-11-01";
+      await db().execute(sql`
+        insert into public.goals (organization_id, scope, store_id, month, metric, target)
+        values (${orgId}::uuid, 'organization', null, ${month}::date, 'profit', 100000000),
+               (${orgId}::uuid, 'store', ${kiosk}::uuid, ${month}::date, 'profit', 100000000)`);
+      // Perioden är målens: november t.o.m. i går (i dag, 3 nov., räknas inte i målen).
+      const NOV = { from: "2026-11-01", to: "2026-11-02" };
+      const goal = (h: Awaited<ReturnType<typeof loadHome>>, scope: "org" | "store") =>
+        h.goals!.find((g) => g.metric === "profit" && (scope === "org") === (g.scopeName === null))!
+          .actual;
+      const kpi = (h: Awaited<ReturnType<typeof loadHome>>) =>
+        h.model.kpis.find((k) => k.id === "profit")!.value;
+
+      const off = await loadHome(withToggle(NOV, false));
+      const on = await loadHome(withToggle(NOV, true));
+      const store = await loadHome({ ...withToggle(NOV, false), butik: kiosk });
+      const storeOn = await loadHome({ ...withToggle(NOV, true), butik: kiosk });
+
+      // Av: före andelen, som nyckeltalet. På: efter varje butiks andel, som nyckeltalet.
+      expect(goal(off, "org")).toBe(kpi(off));
+      expect(goal(on, "org")).toBe(kpi(on));
+      expect(goal(on, "org")).toBeLessThan(goal(off, "org"));
+      // Vald butik: butikens mål är efter butikens andel, samma tal som nyckeltalet.
+      expect(goal(store, "store")).toBe(kpi(store));
+      expect(goal(storeOn, "store")).toBe(kpi(store));
+      expect(goal(store, "store")).toBe(goal(on, "store"));
+      expect(goal(store, "store")).toBeLessThan(goal(off, "store"));
+      view.andel = false;
     });
   });
 });

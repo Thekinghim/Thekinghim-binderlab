@@ -29,6 +29,8 @@ import {
   MISSING,
 } from "@/lib/format";
 
+import { perOrderSplit } from "./price-economics";
+
 /** Högsta inköpspris per pack som tas emot (100 000 kr): ett större värde är ett skrivfel. */
 export const MAX_UNIT_COST_ORE = 10_000_000;
 
@@ -82,9 +84,12 @@ export interface TitleRow {
    * "Kvar per order": hela beloppet, som standard.
    */
   readonly leftBeforeOre: number | null;
-  /** Butikens andel per order (provision eller vinstdelning). 0 utan avtal. */
+  /**
+   * Butikens andel per order: provision eller vinstdelning + hyra (hyran hör till butikernas
+   * andel, som i Lönsamhet). leftBeforeOre − storeShareOre = leftOre exakt. 0 utan avtal.
+   */
   readonly storeShareOre: number | null;
-  /** Vår del: kvar per order efter butikens andel. Förlust när den är ≤ 0. */
+  /** Vår del: kvar per order efter butikens hela andel (även hyran). */
   readonly leftOre: number | null;
   /** Kvar före butikens andel i bp av snittpriset (sortering och export). */
   readonly marginBeforeBp: number | null;
@@ -93,8 +98,9 @@ export interface TitleRow {
    * med marginText, så att talet avrundas en gång och inte först till bp).
    */
   readonly marginBeforeShare: number | null;
-  /** Vår del i bp av snittpriset. */
+  /** Vår del (efter andel och hyra) i bp av snittpriset. */
   readonly marginBp: number | null;
+  /** Hyra per order (en del av storeShareOre). */
   readonly rentOre: number | null;
   /** Kvar före butikens andel, efter hyra. */
   readonly leftBeforeAfterRentOre: number | null;
@@ -296,15 +302,14 @@ export function titleRows(
         currentFrom: e.currentPriceValidFrom,
         averagePriceOre: e.averagePriceOre,
         averageCostOre: e.averageCostOre,
-        leftBeforeOre: e.leftBeforeStoreOre,
-        storeShareOre: e.storeSharePerOrderOre,
-        leftOre: e.leftPerOrderOre,
+        // Butikens andel = provision eller vinstdelning + hyra (som Lönsamhet), vår del efter den.
+        ...perOrderSplit(e),
         marginBeforeBp: e.marginBeforeStoreBp,
         marginBeforeShare:
           e.leftBeforeStoreTotalOre !== null && e.revenueOre !== 0
             ? e.leftBeforeStoreTotalOre / e.revenueOre
             : null,
-        marginBp: e.marginBp,
+        marginBp: e.marginAfterRentBp,
         rentOre: e.rentPerOrderOre,
         leftBeforeAfterRentOre: e.leftBeforeStoreAfterRentOre,
         leftAfterRentOre: e.leftPerOrderAfterRentOre,
@@ -494,21 +499,6 @@ export function titleHeadline(
       ours === 0
         ? ", men går jämnt efter butikens andel"
         : `, men förlust ${formatKronor(kr(-ours))} per order efter butikens andel`;
-  }
-  // Hyran: på samma grund som kolumnen Kvar efter hyra (vår del när andelen visas).
-  const base = shareText ? ours : before;
-  const afterRent = shareText ? row.leftAfterRentOre : row.leftBeforeAfterRentOre;
-  if (base > 0 && afterRent !== null && afterRent <= 0) {
-    left +=
-      afterRent === 0
-        ? ", men går jämnt efter hyra"
-        : `, men förlust ${formatKronor(kr(-afterRent))} per order efter hyra`;
-  } else if (ours > 0 && row.leftAfterRentOre !== null && row.leftAfterRentOre <= 0) {
-    // Andelen dold: vår del går back först när både andel och hyra är dragna.
-    left +=
-      row.leftAfterRentOre === 0
-        ? ", men går jämnt efter andel och hyra"
-        : `, men förlust ${formatKronor(kr(-row.leftAfterRentOre))} per order efter andel och hyra`;
   }
   const unpriced =
     row.unpricedOrders > 0

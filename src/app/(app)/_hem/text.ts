@@ -3,7 +3,7 @@
  * klientkomponenterna kan använda dem utan att dra in beräkningslagret.
  */
 
-import { formatDate, formatPercent, formatSek } from "@/lib/format";
+import { formatDate, formatMarginBp, formatSek } from "@/lib/format";
 
 type IsoDate = string;
 
@@ -20,7 +20,7 @@ export function kr(ore: number): string {
 
 /** Marginal i bp som procent med en decimal: "23,7 %". */
 export function marginText(bp: number): string {
-  return formatPercent(bp / 10_000, 1);
+  return formatMarginBp(bp);
 }
 
 /** "1 nov." (året bara när det inte är samma som i dag). */

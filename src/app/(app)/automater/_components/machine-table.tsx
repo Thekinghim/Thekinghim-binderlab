@@ -23,6 +23,7 @@ function MachineStatus({ status, label }: { status: Status; label: string }) {
 import {
   formatDelta,
   formatInt,
+  formatMarginBp,
   formatPercent,
   formatRelative,
   formatSek,
@@ -170,9 +171,9 @@ function columns(
       csv: (r) => (r.marginBp === null ? "" : r.marginBp / 100),
       footer: f(
         () => "",
-        (t) => (t.marginBp === null ? MISSING : formatPercent(t.marginBp / 10_000, 1)),
+        (t) => (t.marginBp === null ? MISSING : formatMarginBp(t.marginBp)),
       ),
-      render: (r) => (r.marginBp === null ? MISSING : formatPercent(r.marginBp / 10_000, 1)),
+      render: (r) => (r.marginBp === null ? MISSING : formatMarginBp(r.marginBp)),
     },
     {
       key: "share",

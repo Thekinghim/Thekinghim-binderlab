@@ -12,7 +12,7 @@ import type { GoalProgress } from "@/analytics/goals";
 import type { TodoItem } from "@/analytics/todos";
 import { routeById } from "@/components/shell/nav";
 import type { SearchParamsInput } from "@/components/shell/period-state";
-import { addDays, monthOf, type IsoDate, type Period } from "@/domain";
+import { addDays, monthOf, storeShareInView, type IsoDate, type Period } from "@/domain";
 import { AuthorizationError } from "@/server/access";
 import type {
   AppContext,
@@ -57,8 +57,12 @@ export interface HomeLoaders {
   onboarding?(orgId: string): Promise<OnboardingStatus | null>;
   /** Senaste synk (för varningen om inaktuell import). Utelämnad = ingen varning. */
   sync?(): Promise<SyncInfo | null>;
-  /** Utfall och prognos för målen i dagens månad (alla omfattningar). Utelämnad = visas inte. */
-  goals?(today: IsoDate): Promise<GoalProgress[]>;
+  /**
+   * Utfall och prognos för målen i dagens månad (alla omfattningar). Utelämnad = visas inte.
+   * `storeShare`: dra butikernas andel även utan vyknappen (vald butik), så att målet Vinst
+   * räknas som nyckeltalet bredvid.
+   */
+  goals?(today: IsoDate, options: { storeShare: boolean }): Promise<GoalProgress[]>;
 }
 
 /** Filtret som det visas: automatens kod och namn, eller butikens namn. */
@@ -128,7 +132,16 @@ export async function loadHomeWith(
       loaders.lostSales ? loaders.lostSales(p.period, p.scope) : Promise.resolve(null),
       loaders.onboarding ? loaders.onboarding(ctx.organization.id) : Promise.resolve(null),
       loaders.sync ? loaders.sync() : Promise.resolve(null),
-      loaders.goals ? loaders.goals(ctx.today) : Promise.resolve(null),
+      // Vald butik drar butikens andel i nyckeltalen (loadDomainInput): målen likaså.
+      loaders.goals
+        ? loaders.goals(ctx.today, {
+            storeShare: storeShareInView({
+              toggle: false,
+              storeId: p.scope.storeId,
+              machineId: p.scope.machineId,
+            }),
+          })
+        : Promise.resolve(null),
     ]);
 
   const model = buildHomeModel({

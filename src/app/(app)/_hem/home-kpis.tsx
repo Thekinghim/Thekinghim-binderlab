@@ -1,13 +1,13 @@
 "use client";
 
 import { KpiStrip, type KpiItem } from "@/components/ui/kpi-strip";
-import { MINUS, NBSP, formatInt, formatNumber, formatPercent, formatSek } from "@/lib/format";
+import { formatInt, formatMarginBp, formatNumber, formatSek, MINUS, NBSP } from "@/lib/format";
 
 import type { HomeKpi } from "./model";
 
 const formats: Record<HomeKpi["unit"], (v: number) => string> = {
   ore: (v) => formatSek(v / 100),
-  bp: (v) => formatPercent(v / 10_000, 1),
+  bp: (v) => formatMarginBp(v),
   count: (v) => formatInt(v),
 };
 

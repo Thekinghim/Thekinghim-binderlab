@@ -555,7 +555,7 @@ describe("vattenfall och flera vyer", () => {
         agreement("s-tom", "2026-10-01", null, { monthlyRentOre: 31_000 }),
       ],
     };
-    for (const g of ["title", "machine", "day", "week"] as const) {
+    for (const g of ["title", "machine"] as const) {
       const r = profitability(input, g);
       expect(r.rows.at(-1)).toMatchObject({
         key: UNALLOCATED_KEY,
@@ -563,6 +563,57 @@ describe("vattenfall och flera vyer", () => {
         rentOre: 31_000,
       });
       expect(r.totals.profitOre).toBe(7_660 - 31_000);
+    }
+  });
+
+  it("per dag och vecka ligger hyran utan order på avtalets dagar: staplarna summerar till totalen", () => {
+    const input: ProfitabilityInput = {
+      ...priceChangeScenario(),
+      agreements: [
+        agreement("s-1", "2026-01-01", null, { commissionBp: 1000, monthlyRentOre: 6200 }),
+        // 310 kr/mån från 22 okt.: 10 dagar i oktober = 100 kr, 10 kr per dag.
+        agreement("s-tom", "2026-10-22", null, { monthlyRentOre: 31_000 }),
+      ],
+    };
+    for (const g of ["day", "week"] as const) {
+      const r = profitability(input, g);
+      expect(r.rows.some((x) => x.kind === "unallocated")).toBe(false);
+      expect(r.rows.every((x) => x.kind === "time")).toBe(true);
+      const sum = (k: "profitOre" | "rentOre" | "compensationOre") =>
+        r.rows.reduce((n, x) => n + x[k], 0);
+      expect(r.totals.profitOre).toBe(7_660 - 10_000);
+      expect(sum("profitOre")).toBe(r.totals.profitOre);
+      expect(sum("rentOre")).toBe(r.totals.rentOre);
+      expect(sum("compensationOre")).toBe(r.totals.compensationOre);
+    }
+    const days = profitability(input, "day");
+    const day = (d: string) => days.rows.find((x) => x.key === d)!;
+    // Före avtalet ingen hyra från s-tom; från 22 okt. 10 kr per dag.
+    expect(day("2026-10-21").unallocatedRentOre).toBe(0);
+    expect(day("2026-10-22").unallocatedRentOre).toBe(1_000);
+    expect(day("2026-10-25")).toMatchObject({ orders: 0, profitOre: -1_000, revenueOre: 0 });
+    expect(day("2026-10-31").unallocatedRentOre).toBe(1_000);
+    // Utan butikernas andel (vyknappen av) dras ingen hyra någonstans.
+    const off = profitability(
+      { ...input, settings: { ...input.settings, deductStoreShare: false } },
+      "day",
+    );
+    expect(off.rows.find((x) => x.key === "2026-10-25")!.profitOre).toBe(0);
+    expect(off.rows.reduce((n, x) => n + x.profitOre, 0)).toBe(off.totals.profitOre);
+  });
+
+  it("hyran på en order utan pris ligger på orderns dag", () => {
+    const input: ProfitabilityInput = {
+      ...priceChangeScenario(),
+      prices: [price("t-a", 2500, "2026-10-16")],
+    };
+    const r = profitability(input, "day");
+    expect(r.rows.some((x) => x.kind === "unallocated")).toBe(false);
+    expect(r.rows.reduce((n, x) => n + x.profitOre, 0)).toBe(r.totals.profitOre);
+    const unpricedDays = ["2026-10-05", "2026-10-10", "2026-10-15"];
+    for (const d of unpricedDays) {
+      const row = r.rows.find((x) => x.key === d)!;
+      expect(row.unallocatedRentOre).toBeGreaterThan(0);
     }
   });
 });

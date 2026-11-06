@@ -1,14 +1,15 @@
 "use client";
 
 import { KpiStrip, type KpiItem } from "@/components/ui/kpi-strip";
-import { formatInt, formatPercent, formatSek } from "@/lib/format";
+import { formatInt, formatMarginBp, formatSek } from "@/lib/format";
 
 import type { Kpi } from "../_lib/model";
 
-const FORMAT: Record<Kpi["unit"], (v: number) => string> = {
+export const KPI_FORMAT: Record<Kpi["unit"], (v: number) => string> = {
   // Öre in, hela kronor ut.
   ore: (v) => formatSek(v / 100),
-  bp: (v) => formatPercent(v / 10_000),
+  // Samma funktion som vattenfallets marginal (bridge.tsx), så att talen alltid är lika.
+  bp: (v) => formatMarginBp(v),
   count: (v) => formatInt(v),
 };
 
@@ -26,7 +27,7 @@ export function LonsamhetKpis({
     id: k.id,
     label: k.label,
     value: k.value ?? Number.NaN,
-    format: FORMAT[k.unit],
+    format: KPI_FORMAT[k.unit],
     primary: k.primary,
     delta:
       k.delta === null

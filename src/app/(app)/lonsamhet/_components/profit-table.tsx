@@ -14,7 +14,7 @@ import {
 import { Segmented } from "@/components/ui/segmented";
 import { StatusTag } from "@/components/ui/status-tag";
 import { downloadCsv, toCsv, type CsvColumn } from "@/lib/csv";
-import { formatCsvNumber, formatInt, formatPercent, formatSek, MISSING, NBSP } from "@/lib/format";
+import { formatCsvNumber, formatInt, formatMarginBp, formatSek, MISSING, NBSP } from "@/lib/format";
 
 import type { ProfitLine, ViewKey } from "../_lib/model";
 
@@ -31,7 +31,7 @@ export const VIEW_NOUN: Record<ViewKey, string> = {
 };
 
 const kr = (ore: number) => formatSek(ore / 100);
-const pct = (bp: number | null) => (bp === null ? MISSING : formatPercent(bp / 10_000));
+const pct = (bp: number | null) => (bp === null ? MISSING : formatMarginBp(bp));
 
 /** Raden har order men inga med inköpspris: vinst och marginal går inte att räkna. */
 function onlyUnpriced(r: ProfitLine): boolean {

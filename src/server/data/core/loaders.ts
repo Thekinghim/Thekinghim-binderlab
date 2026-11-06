@@ -28,6 +28,7 @@ import {
   buildLedger,
   maxDate,
   minDate,
+  storeShareInView,
   vmbApplies,
   type EconomicsSources,
   type IsoDate,
@@ -430,8 +431,11 @@ export async function loadDomainInputFor(
     const settings = {
       ...base.settings,
       ...(args.vmb === true ? { vmb: true } : {}),
-      deductStoreShare:
-        args.storeShare === true || (scope.storeId !== null && scope.machineId === null),
+      deductStoreShare: storeShareInView({
+        toggle: args.storeShare === true,
+        storeId: scope.storeId,
+        machineId: scope.machineId,
+      }),
     };
     // Vinstdelningen drar återbetalningarna från butikens försäljning.
     const refunds = refundRows.map((r) => ({

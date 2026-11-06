@@ -445,17 +445,22 @@ export function weekdayPatternRule(ctx: InsightContext): Insight[] {
 
 /**
  * Titel med förlust: med dagens inköpspris (periodens sista dag) blir det ingenting eller
- * mindre än ingenting kvar per pack efter inköp och kortavgift (titleEconomics, hyra
- * exkluderad), och efter butikens andel bara när vyn drar den (@/domain storeShareDeducted,
- * som Inköpspriser). Kräver minst 3 order. Titeln med störst total förlust väljs.
+ * mindre än ingenting kvar per pack efter inköp och kortavgift (titleEconomics), och efter
+ * butikens andel (provision eller vinstdelning + hyra) bara när vyn drar den (@/domain
+ * storeShareDeducted, som vår del på Inköpspriser). Kräver minst 3 order. Titeln med störst total förlust väljs.
  * "Black Bolt går med förlust: −3,50 kr per pack"
  */
 export function lossTitleRule(ctx: InsightContext): Insight[] {
   const { input, orders, period } = ctx;
   if (orders.length === 0) return [];
   const deduct = storeShareDeducted(input.settings);
-  const leftOf = (t: { leftPerOrderOre: number | null; leftBeforeStoreOre: number | null }) =>
-    deduct ? t.leftPerOrderOre : t.leftBeforeStoreOre;
+  // Med andelen: vår del efter butikens hela andel (provision eller vinstdelning + hyra), som
+  // kolumnen Vår del på Inköpspriser. Utan: kvar före andelen (ingen hyra dras heller).
+  const leftOf = (t: {
+    leftPerOrderOre: number | null;
+    leftPerOrderAfterRentOre: number | null;
+    leftBeforeStoreOre: number | null;
+  }) => (deduct ? (t.leftPerOrderAfterRentOre ?? t.leftPerOrderOre) : t.leftBeforeStoreOre);
   const rows = titleEconomics({
     orders,
     period,
@@ -464,12 +469,7 @@ export function lossTitleRule(ctx: InsightContext): Insight[] {
     placements: input.placements,
     settings: input.settings,
     asOf: period.end,
-  }).filter(
-    (t) =>
-      (deduct ? t.lossWarning : t.lossBeforeStoreWarning) &&
-      t.orders >= LOSS_MIN_ORDERS &&
-      leftOf(t) !== null,
-  );
+  }).filter((t) => t.orders >= LOSS_MIN_ORDERS && leftOf(t) !== null && leftOf(t)! <= 0);
   if (rows.length === 0) return [];
   rows.sort(
     (a, b) =>
@@ -482,6 +482,9 @@ export function lossTitleRule(ctx: InsightContext): Insight[] {
   const name = ctx.titleName(t.titleId);
   const list = orders.filter((o) => o.titleId === t.titleId);
   const fee = t.averageFeeOre ?? 0;
+  const rent = t.rentPerOrderOre ?? 0;
+  // Butikens andel per pack inklusive hyran: kvar före andelen − vår del (går ihop exakt).
+  const share = deduct && t.leftBeforeStoreOre !== null ? t.leftBeforeStoreOre - left : 0;
   return [
     {
       key: `loss-title:${t.titleId}`,
@@ -494,12 +497,14 @@ export function lossTitleRule(ctx: InsightContext): Insight[] {
           : `${name} går med förlust: ${krExact(left)} per pack`,
       detail:
         `Snittpris ${krExact(t.averagePriceOre ?? 0)}, inköpspris ${krExact(t.currentUnitCostOre ?? 0)}` +
-        (deduct ? `, butikens andel ${krExact(t.averageCommissionOre ?? 0)}` : "") +
+        (deduct
+          ? `, butikens andel ${krExact(share)}${rent !== 0 ? ` (varav hyra ${krExact(rent)})` : ""}`
+          : "") +
         (fee !== 0 ? `, kortavgift ${krExact(fee)}` : "") +
         ` per pack (${plural(t.orders, "order", "order")} ${periodText(period)}).`,
       evidence: evidence({
         rule: deduct
-          ? "Med aktuellt inköpspris blir högst 0 kr kvar per pack efter inköp, kortavgift och butikens andel (minst 3 order)."
+          ? "Med aktuellt inköpspris blir högst 0 kr kvar per pack efter inköp, kortavgift och butikens andel med hyra (minst 3 order)."
           : "Med aktuellt inköpspris blir högst 0 kr kvar per pack efter inköp och kortavgift, före butikens andel (minst 3 order).",
         period,
         orderIds: list.map((o) => o.id),
@@ -523,7 +528,7 @@ export function lossTitleRule(ctx: InsightContext): Insight[] {
                 {
                   key: "averageCommissionOre",
                   label: "Butikens andel per pack",
-                  value: t.averageCommissionOre ?? 0,
+                  value: share,
                   unit: "ore" as const,
                 },
               ]

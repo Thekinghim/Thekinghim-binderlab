@@ -192,4 +192,4 @@ export {
 
 export { allocateToOwners, type OwnerAllocation } from "./owners";
 
-export { entryProfitOre, storeShareDeducted } from "./store-share";
+export { entryProfitOre, storeShareDeducted, storeShareInView } from "./store-share";

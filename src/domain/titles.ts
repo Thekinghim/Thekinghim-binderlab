@@ -69,6 +69,8 @@ export interface TitleEconomics {
   readonly leftPerOrderAfterRentOre: number | null;
   /** Vår del i bp av snittpriset. */
   readonly marginBp: number | null;
+  /** Vår del efter butikens hela andel (provision + hyra) i bp av snittpriset. */
+  readonly marginAfterRentBp: number | null;
   /** Kvar före butikens andel i bp av snittpriset. */
   readonly marginBeforeStoreBp: number | null;
   /** Vår del per order ≤ 0 (den verkliga förlusten). */
@@ -173,6 +175,7 @@ export function titleEconomics(input: TitleEconomicsInput): TitleEconomics[] {
       rentPerOrderOre: has ? roundHalfUp(a.rent, n) : null,
       leftPerOrderAfterRentOre: leftAfterRent,
       marginBp: margin(leftNumerator),
+      marginAfterRentBp: margin(leftNumerator === null ? null : leftNumerator - a.rent),
       marginBeforeStoreBp: margin(beforeNumerator),
       lossWarning: left !== null && left <= 0,
       lossBeforeStoreWarning: before !== null && before <= 0,

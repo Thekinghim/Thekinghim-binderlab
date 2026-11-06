@@ -7,7 +7,7 @@ import { MobileTopRows } from "@/components/ui/mobile-top-list";
 import { SectionHeader } from "@/components/ui/section-header";
 import { Segmented } from "@/components/ui/segmented";
 import { StateMessage } from "@/components/ui/state-message";
-import { formatPercent, formatSek, NBSP } from "@/lib/format";
+import { formatMarginBp, formatSek, NBSP } from "@/lib/format";
 
 import { sentence, type SectionTitle } from "../_lib/headline";
 import type { ProfitLine, TrendKey, TrendSeries, ViewKey } from "../_lib/model";
@@ -121,7 +121,7 @@ export function TableSection({
                       }${
                         selected.marginBp === null
                           ? ""
-                          : ` och ${formatPercent(selected.marginBp / 10_000)} marginal`
+                          : ` och ${formatMarginBp(selected.marginBp)} marginal`
                       }`
                 }`,
               )
@@ -183,7 +183,7 @@ function trendSummary(series: TrendSeries, unit: string): string {
   const parts = series.buckets.map(
     (b) =>
       `${b.shortName} ${formatSek(b.profitOre / 100)}${
-        b.marginBp === null ? "" : ` (${formatPercent(b.marginBp / 10_000)})`
+        b.marginBp === null ? "" : ` (${formatMarginBp(b.marginBp)})`
       }`,
   );
   return `Vinst och marginal per ${unit}: ${parts.join(", ")}.`;
@@ -214,7 +214,7 @@ export function trendNotes(
     const margin =
       total.marginBp === null
         ? ""
-        : `, ${profit.margin.toLowerCase()} ${formatPercent(total.marginBp / 10_000)}`;
+        : `, ${profit.margin.toLowerCase()} ${formatMarginBp(total.marginBp)}`;
     notes.push(
       `Perioden: ${label} ${formatSek(Math.abs(total.profitOre) / 100)}${margin} (${
         showStoreShare ? "efter" : "före"

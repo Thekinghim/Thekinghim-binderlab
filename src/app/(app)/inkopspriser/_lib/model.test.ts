@@ -319,15 +319,18 @@ describe("titleHeadline och sentence", () => {
     );
   });
 
-  it("förlust med liten bokstav, går jämnt vid 0 och förlust efter hyra", () => {
+  it("förlust med liten bokstav, går jämnt vid 0, och ingen hyra dras före andelen", () => {
     expect(titleHeadline(row({ leftOre: -513 }), "B").aside).toBe(
       `Inköp 100,00${NBSP}kr sedan 1${NBSP}okt., förlust 5,13${NBSP}kr per order.`,
     );
     expect(titleHeadline(row({ leftOre: 0 }), "B").aside).toContain("går jämnt per order.");
-    expect(
-      titleHeadline(row({ leftOre: 500, leftAfterRentOre: -200, status: "loss-after-rent" }), "B")
-        .aside,
-    ).toContain(`5,00${NBSP}kr kvar per order, men förlust 2,00${NBSP}kr per order efter hyra.`);
+    // Hyran hör till butikernas andel: med vyknappen av dras den inte från kvar per order.
+    const rent = titleHeadline(
+      row({ leftOre: 500, leftAfterRentOre: -200, status: "loss-after-rent" }),
+      "B",
+    ).aside;
+    expect(rent).toContain(`5,00${NBSP}kr kvar per order.`);
+    expect(rent).not.toContain("efter hyra");
   });
 
   it("order utan pris i perioden nämns", () => {

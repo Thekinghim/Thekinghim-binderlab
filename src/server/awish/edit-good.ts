@@ -19,9 +19,10 @@ import "server-only";
 
 import { sql } from "drizzle-orm";
 
-import { addDays } from "@/domain";
+import { addDays, storeShareInView } from "@/domain";
 import {
   currentPriceEconomics,
+  perOrderSplit,
   salePriceEffect,
 } from "@/app/(app)/inkopspriser/_lib/price-economics";
 import { withUserDbFor } from "@/server/access";
@@ -68,9 +69,23 @@ import type { AwishWebApi } from "./web-client";
 export interface EditGoodDeps extends NewProductDeps {
   /** "Med VMB" (vyknappen); standard av, som Inköpspriser. */
   vmb?: boolean;
-  /** Vald butik eller automat (andelen visas då, som Inköpspriser). */
+  /**
+   * Vald butik eller automat. En vald butik visar och drar butikens andel; en automat gör det
+   * inte (samma regel som alla sidor, storeShareInView).
+   */
   storeId?: string | null;
   machineId?: string | null;
+  /** Vyknappen "Visa butikernas andel" (standard av: kvar per order före andelen). */
+  storeShare?: boolean;
+}
+
+/** Om vår del (efter butikernas andel) visas: vyknappen eller vald butik, inte en automat. */
+function shareShown(deps: EditGoodDeps): boolean {
+  return storeShareInView({
+    toggle: deps.storeShare === true,
+    storeId: deps.storeId,
+    machineId: deps.machineId,
+  });
 }
 
 /** Dagarna listan och effekten räknar på. */
@@ -233,7 +248,7 @@ export interface GoodsOverview {
   readonly rows: GoodRow[];
   /** Aktiva titlar att koppla en vara till. */
   readonly titles: Array<{ id: string; name: string }>;
-  /** Vår del visas (butik eller automat vald). */
+  /** Vår del visas (vyknappen eller vald butik, inte bara en automat). */
   readonly showShare: boolean;
   readonly machines: number;
   /** Saker som inte gick att läsa (en automats fack), visas lugnt ovanför listan. */
@@ -273,7 +288,7 @@ export async function goodsOverviewFor(
     }
   }
 
-  const scoped = Boolean(deps.storeId || deps.machineId);
+  const scoped = shareShown(deps);
   const [byName, domain, stock] = await Promise.all([
     withUserDbFor(viewer.user, (tx) =>
       titleLinksByName(
@@ -290,6 +305,7 @@ export async function goodsOverviewFor(
         storeId: deps.storeId ?? null,
         machineId: deps.machineId ?? null,
         vmb: deps.vmb ?? false,
+        storeShare: deps.storeShare ?? false,
       },
       now,
     ),
@@ -310,7 +326,8 @@ export async function goodsOverviewFor(
   const economics = new Map(
     currentPriceEconomics({ ...domain.current, titleIds }).map((e) => [
       e.titleId,
-      { leftBeforeOre: e.leftBeforeStoreOre, leftOre: e.leftPerOrderOre },
+      // Vår del efter butikens hela andel (provision eller vinstdelning + hyra), som Inköpspriser.
+      { leftBeforeOre: e.leftBeforeStoreOre, leftOre: perOrderSplit(e).leftOre },
     ]),
   );
   const warehouse = new Map(sumOwnStock(stock.warehouse).map((r) => [r.titleId, r.onHand]));
@@ -329,7 +346,8 @@ export async function goodsOverviewFor(
       warehouse,
       economics,
       showShare: scoped,
-      allMachines: !scoped,
+      // Försäljningen gäller alla automater bara utan filter.
+      allMachines: !deps.storeId && !deps.machineId,
     }),
     titles: domain.titles
       .filter((t) => !t.archived && t.mergedIntoId === null)
@@ -435,6 +453,7 @@ async function priceEffectLines(
       storeId: deps.storeId ?? null,
       machineId: deps.machineId ?? null,
       vmb: deps.vmb ?? false,
+      storeShare: deps.storeShare ?? false,
     },
     now,
   );
@@ -450,7 +469,7 @@ async function priceEffectLines(
   const pair = (a: number | null, b: number) =>
     `${a === null ? "–" : formatKr(a)} → ${formatKr(b)}`;
   lines.push(`Kvar per order: ${pair(effect.beforeOre, effect.afterOre)}`);
-  const scoped = Boolean(deps.storeId || deps.machineId);
+  const scoped = shareShown(deps);
   if (scoped && effect.shareAfterOre !== null) {
     lines.push(`Vår del per order: ${pair(effect.shareBeforeOre, effect.shareAfterOre)}`);
   }

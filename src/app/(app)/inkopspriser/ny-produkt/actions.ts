@@ -39,6 +39,7 @@ import {
   OPERATOR_ROLES,
   requireContextRole,
   requireViewer,
+  requestStoreShareView,
   requestVmbView,
   revalidateAppData,
 } from "@/server/data/core";
@@ -176,14 +177,19 @@ const scopeSchema = z
   })
   .nullish();
 
-/** Vald butik eller automat (som Inköpspriser) och "Med VMB" för effekten av ett nytt pris. */
+/**
+ * Vald butik eller automat (som Inköpspriser), "Med VMB" och "Visa butikernas andel" för
+ * effekten av ett nytt pris.
+ */
 async function editDeps(input: unknown): Promise<EditGoodDeps> {
   const scope = scopeSchema.safeParse((input as { scope?: unknown } | null)?.scope);
   const s = scope.success ? scope.data : null;
+  const [vmb, storeShare] = await Promise.all([requestVmbView(), requestStoreShareView()]);
   return {
     storeId: s?.storeId ?? null,
     machineId: s?.machineId ?? null,
-    vmb: await requestVmbView(),
+    vmb,
+    storeShare,
   };
 }
 

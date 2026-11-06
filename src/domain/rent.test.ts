@@ -156,7 +156,13 @@ describe("fördelning av hyra på order", () => {
       ],
     };
     const ledger = buildLedger(input);
-    expect(ledger.unallocatedRent).toEqual([{ storeId: "s-2", month: "2026-11", rentOre: 25_000 }]);
+    expect(ledger.unallocatedRent.map(({ segments: _s, ...u }) => u)).toEqual([
+      { storeId: "s-2", month: "2026-11", rentOre: 25_000 },
+    ]);
+    // Avtalets dagar följer med, så att vyer per dag kan lägga hyran där den gäller.
+    expect(ledger.unallocatedRent[0]!.segments).toMatchObject([
+      { start: "2026-11-01", end: "2026-11-30", days: 30, monthlyRentOre: 25_000 },
+    ]);
 
     const byTitle = profitability(input, "title");
     const unallocated = byTitle.rows.find((r) => r.key === UNALLOCATED_KEY)!;

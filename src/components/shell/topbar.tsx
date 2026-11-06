@@ -10,6 +10,7 @@ import { Segmented } from "@/components/ui/segmented";
 import { CopyViewButton } from "./copy-view";
 import { HotkeyHint } from "./kbd";
 import { Logo } from "./logo";
+import { WithCarriedQuery, withQuery } from "./side-nav";
 import {
   PeriodControl,
   PeriodControlFallback,
@@ -96,13 +97,18 @@ export function Topbar({
     <>
       <header className="sticky top-0 z-30 border-b border-line bg-bg">
         <div className="flex h-14 items-center gap-2 px-4 md:gap-3 md:px-6">
-          <Link
-            href={homeHref}
-            className="relative shrink-0 rounded-xs before:absolute before:-inset-3.5 before:content-[''] lg:hidden"
-            aria-label="Binderlab, till startsidan"
-          >
-            <Logo withWordmark={false} />
-          </Link>
+          {/* Som menyns länkar: period, filter och vyknapparna följer med till Hem. */}
+          <WithCarriedQuery>
+            {(query) => (
+              <Link
+                href={withQuery(homeHref, query)}
+                className="relative shrink-0 rounded-xs before:absolute before:-inset-3.5 before:content-[''] lg:hidden"
+                aria-label="Binderlab, till startsidan"
+              >
+                <Logo withWordmark={false} />
+              </Link>
+            )}
+          </WithCarriedQuery>
           {/* Under md står perioden och filtret i toppraden i stället för sidans namn (som redan
               står i underflikarna), så att kontextraden inte tar en egen rad. */}
           <Crumbs crumbs={crumbs} className={mobileContext ? "max-md:hidden" : undefined} />

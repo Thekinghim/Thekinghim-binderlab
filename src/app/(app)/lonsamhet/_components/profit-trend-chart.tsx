@@ -13,7 +13,7 @@ import {
   Node,
   Readout,
 } from "@/components/charts/primitives";
-import { formatInt, formatPercent, MISSING } from "@/lib/format";
+import { formatInt, formatMarginBp, MISSING } from "@/lib/format";
 import { svgSizeProps, unmeasuredStyle, useMeasure } from "@/lib/hooks/use-measure";
 
 export type TrendDatum = {
@@ -45,7 +45,7 @@ type Props = {
  * att den inte läses som periodens marginal (den står i nyckeltalen och under diagrammet).
  */
 export function marginMarkerText(d: TrendDatum): string {
-  return `${d.axis}: ${d.margin === null ? MISSING : formatPercent(d.margin)}`;
+  return `${d.axis}: ${d.margin === null ? MISSING : formatMarginBp(Math.round(d.margin * 10_000))}`;
 }
 
 // Marginaler runt ritytan. Vänster rymmer axeltalen ("−12", "100").
@@ -415,7 +415,10 @@ export function ProfitTrendChart({ data, format, summary, height = 320 }: Props)
                 value: format(Math.abs(a.profit)),
                 strong: true,
               },
-              { name: "Marginal", value: a.margin === null ? MISSING : formatPercent(a.margin) },
+              {
+                name: "Marginal",
+                value: a.margin === null ? MISSING : formatMarginBp(Math.round(a.margin * 10_000)),
+              },
               { name: "Intäkt", value: format(a.revenue) },
               { name: "Order", value: formatInt(a.orders) },
             ]}

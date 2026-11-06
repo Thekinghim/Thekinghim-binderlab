@@ -51,10 +51,12 @@ describe("inkopspriser: hela beloppet som standard", () => {
     expect(sp(perOrderText(row(), FULL))).toBe("30 kr per order");
   });
 
-  it("med hyra: kvar efter hyra är också före andelen", () => {
+  it("med hyra: hyran hör till butikernas andel och dras inte (vyknappen av)", () => {
     const d = priceRowData(row(), { share: false, rent: true });
-    expect(d.kvarEfterHyraOre).toBe(2_800);
+    expect(d.kvarPerOrderOre).toBe(3_000);
+    expect(d).not.toHaveProperty("kvarEfterHyraOre");
     expect(d).not.toHaveProperty("varDelEfterHyraOre");
+    expect(d).not.toHaveProperty("varavHyraPerOrderOre");
   });
 
   it("förlust som kommer av andelen: vår del står med för att förklara förlusten", () => {
@@ -82,7 +84,7 @@ describe("inkopspriser: hela beloppet som standard", () => {
   it("anmärkningen säger att svaret ska ge hela beloppet", () => {
     expect(priceNote(FULL)).toContain("före butikens andel");
     expect(priceNote(FULL)).toContain("svara med hela beloppet");
-    expect(priceNote(FULL)).toContain("Ingen hyra");
+    expect(priceNote({ ...FULL, rent: true })).toContain("inte heller hyran");
   });
 });
 
@@ -99,10 +101,12 @@ describe("inkopspriser: delningen vid vald butik eller fråga om andelen", () =>
     );
   });
 
-  it("med hyra: vår del efter hyra i stället för kvar efter hyra", () => {
+  it("med hyra: hyran ingår i butikens andel (varav hyra), vår del är efter den", () => {
     const d = priceRowData(row(), { ...SPLIT, rent: true });
-    expect(d.varDelEfterHyraOre).toBe(1_300);
+    expect(d.varavHyraPerOrderOre).toBe(200);
+    expect(d.varDelPerOrderOre).toBe(1_500);
     expect(d).not.toHaveProperty("kvarEfterHyraOre");
+    expect(priceNote({ ...SPLIT, rent: true })).toContain("+ hyra");
   });
 
   it("titel utan andel: vår del är hela beloppet, texten nämner ingen delning", () => {
@@ -134,17 +138,18 @@ describe("inkopspriser: status som sidan (statusLabel)", () => {
     expect(priceRowData(real, FULL).status).toBe("går med förlust");
   });
 
-  it("förlust efter hyra som kommer av andelen: status och vår del efter hyra står med", () => {
+  it("förlust efter hyra som kommer av andelen: status och vår del (efter andel och hyra) står med", () => {
     const r = row({
       status: "loss-after-rent",
       leftBeforeAfterRentOre: 1_000,
-      leftOre: 300,
+      storeShareOre: 3_200,
+      leftOre: -200,
       leftAfterRentOre: -200,
     });
     const d = priceRowData(r, { share: false, rent: true });
     expect(d.status).toBe("går med förlust efter hyra och andel");
-    expect(d.kvarEfterHyraOre).toBe(1_000);
-    expect(d.varDelEfterHyraOre).toBe(-200);
+    expect(d).not.toHaveProperty("kvarEfterHyraOre");
+    expect(d.varDelPerOrderOre).toBe(-200);
     expect(d).not.toHaveProperty("butikensAndelPerOrderOre");
     const plain = row({
       status: "loss-after-rent",

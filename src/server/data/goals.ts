@@ -39,12 +39,17 @@ type Named = readonly { id: string; name: string }[];
 /**
  * Utfall och prognos per mål (laddar order för målens månader och 28 dagar bakåt, för
  * hela organisationen). Utan `stores`/`machines` tas namnen från de inlästa grunddata.
+ *
+ * Målet Vinst följer samma regel som sidans nyckeltal: före butikernas andel som standard,
+ * efter den med vyknappen "Visa butikernas andel". `storeShare: true` drar andelen även
+ * utan knappen (Hem med vald butik, där nyckeltalet bredvid är efter butikens andel).
  */
 export async function goalsProgress(
   goals: readonly GoalRow[],
   today: IsoDate,
   stores?: Named,
   machines?: Named,
+  options: { readonly storeShare?: boolean } = {},
 ): Promise<GoalProgress[]> {
   if (goals.length === 0) return [];
   let start: IsoDate = addDays(today, -27);
@@ -54,7 +59,10 @@ export async function goalsProgress(
     end = maxDate(end, monthEnd(g.month as IsoMonth));
   }
   const [input, dataStart] = await Promise.all([
-    loadDomainInput({ period: { start, end: minDate(end, today) } }),
+    loadDomainInput({
+      period: { start, end: minDate(end, today) },
+      ...(options.storeShare ? { storeShare: true } : {}),
+    }),
     loadDataStart(),
   ]);
   return goalProgress({

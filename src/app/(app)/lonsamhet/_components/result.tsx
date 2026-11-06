@@ -3,7 +3,7 @@ import Link from "next/link";
 import { PanelSection } from "@/components/ui/frame";
 import { MobileFold } from "@/components/ui/mobile-fold";
 import { ALL_COST_LINES, type CostLines } from "@/lib/cost-lines";
-import { formatInt, formatPercent, formatSek, MINUS, NBSP } from "@/lib/format";
+import { formatInt, formatMarginBp, formatSek, MINUS, NBSP } from "@/lib/format";
 
 import type { ResultAfterProfit } from "../_lib/result";
 
@@ -69,7 +69,7 @@ export function ResultAfterProfitPanel({
 }) {
   const r = result;
   const margin =
-    r.resultMarginBp === null ? undefined : `${formatPercent(r.resultMarginBp / 10_000)} marginal`;
+    r.resultMarginBp === null ? undefined : `${formatMarginBp(r.resultMarginBp)} marginal`;
   // Fasta kostnader visas när organisationen har några (eller om ett belopp ändå finns).
   const showFixed = costLines.fixed || (r.fixedCostOre ?? 0) !== 0;
   return (

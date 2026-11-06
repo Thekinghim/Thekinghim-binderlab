@@ -103,31 +103,21 @@ export function priceRowData(r: TitleRow, o: PriceViewOptions): Record<string, u
     marginalBp: r.marginBeforeBp,
   };
   if (o.share) {
+    // Butikens andel = provision eller vinstdelning + hyra (som sidan och Lönsamhet).
     base.butikensAndelPerOrder = kr(r.storeShareOre);
     base.butikensAndelPerOrderOre = r.storeShareOre;
+    if (o.rent) {
+      base.varavHyraPerOrder = kr(r.rentOre);
+      base.varavHyraPerOrderOre = r.rentOre;
+    }
     base.varDelPerOrder = kr(r.leftOre);
     base.varDelPerOrderOre = r.leftOre;
     base.varMarginal = pct(r.marginBp);
     base.varMarginalBp = r.marginBp;
-    if (o.rent) {
-      base.varDelEfterHyra = kr(r.leftAfterRentOre);
-      base.varDelEfterHyraOre = r.leftAfterRentOre;
-    }
-  } else {
-    if (o.rent) {
-      base.kvarEfterHyra = kr(r.leftBeforeAfterRentOre);
-      base.kvarEfterHyraOre = r.leftBeforeAfterRentOre;
-    }
+  } else if ((r.status === "loss" || r.status === "loss-after-rent") && hasShare(r)) {
     // Förlusten kommer av butikens andel: vår del behövs för att förklara den.
-    if (r.status === "loss" && hasShare(r)) {
-      base.varDelPerOrder = kr(r.leftOre);
-      base.varDelPerOrderOre = r.leftOre;
-    }
-    // Som sidans rubrik: "förlust … per order efter andel och hyra".
-    if (o.rent && lossAfterRentOnlyAfterShare(r)) {
-      base.varDelEfterHyra = kr(r.leftAfterRentOre);
-      base.varDelEfterHyraOre = r.leftAfterRentOre;
-    }
+    base.varDelPerOrder = kr(r.leftOre);
+    base.varDelPerOrderOre = r.leftOre;
   }
   base.order = r.orders;
   base.orderUtanPris = r.unpricedOrders;
@@ -139,7 +129,7 @@ export function priceNote(o: PriceViewOptions): string {
   const full =
     "Kvar per order = hela beloppet per order före butikens andel: snittpris exkl. moms − inköp − avgifter (som sidan Inköpspriser). Marginal = kvar per order av priset.";
   if (o.share) {
-    return `${full} Butikens andel per order och vår del (kvar efter andelen) gäller ${o.scope ?? "alla butiker"}. Ange hela beloppet och sedan delningen: butikens andel och vår del.${o.rent ? " Vår del efter hyra drar även hyran per order." : ""}`;
+    return `${full} Butikens andel per order (provision eller vinstdelning${o.rent ? " + hyra" : ""}) och vår del (kvar efter andelen) gäller ${o.scope ?? "alla butiker"}. Ange hela beloppet och sedan delningen: butikens andel och vår del.`;
   }
-  return `${full}${o.rent ? " Kvar efter hyra drar även hyran per order." : " Ingen hyra."} Butikens andel och vår del visas inte: svara med hela beloppet. Vår del står bara på titlar med förlust, där andelen gör förlusten. Fråga om en butik eller om andelen ger delningen.`;
+  return `${full} Butikens andel och vår del visas inte, inte heller hyran (den hör till butikernas andel): svara med hela beloppet. Vår del står bara på titlar med förlust, där andelen gör förlusten. Fråga om en butik eller om andelen ger delningen.`;
 }

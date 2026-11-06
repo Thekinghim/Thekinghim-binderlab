@@ -22,7 +22,10 @@ import {
   type TitleEconomicsInput,
 } from "@/domain";
 
-/** Kvar per order: före butikens andel, andelen och vår del (öre, null = ingen försäljning). */
+/**
+ * Kvar per order: före butikens andel, andelen (provision eller vinstdelning + hyra) och vår
+ * del efter den (öre, null = ingen försäljning).
+ */
 export interface PerOrderSplit {
   readonly orders: number;
   readonly leftBeforeOre: number | null;
@@ -75,6 +78,7 @@ export function currentPriceEconomics(input: TitleEconomicsInput): TitleEconomic
       leftPerOrderOre: f.leftPerOrderOre,
       leftPerOrderAfterRentOre: f.leftPerOrderAfterRentOre,
       marginBp: f.marginBp,
+      marginAfterRentBp: f.marginAfterRentBp,
       lossWarning: f.lossWarning,
       lossAfterRentWarning: f.lossAfterRentWarning,
     };
@@ -100,11 +104,26 @@ export function splitWithPrice(
   const e = currentPriceEconomics({ ...input, prices, titleIds: [titleId] }).find(
     (r) => r.titleId === titleId,
   );
+  return { orders: e?.orders ?? 0, ...perOrderSplit(e ?? null) };
+}
+
+/**
+ * Kvar per order delat som sidorna visar det: före butikens andel, butikens andel och vår
+ * del. Andelen är hela butikernas andel (provision eller vinstdelning + hyra), som i
+ * Lönsamhet, och räknas som skillnaden så att kvar före = andel + vår del exakt.
+ */
+export function perOrderSplit(
+  e: Pick<
+    TitleEconomics,
+    "leftBeforeStoreOre" | "leftPerOrderOre" | "leftPerOrderAfterRentOre"
+  > | null,
+): Omit<PerOrderSplit, "orders"> {
+  const before = e?.leftBeforeStoreOre ?? null;
+  const ours = e?.leftPerOrderAfterRentOre ?? e?.leftPerOrderOre ?? null;
   return {
-    orders: e?.orders ?? 0,
-    leftBeforeOre: e?.leftBeforeStoreOre ?? null,
-    storeShareOre: e?.storeSharePerOrderOre ?? null,
-    leftOre: e?.leftPerOrderOre ?? null,
+    leftBeforeOre: before,
+    storeShareOre: before !== null && ours !== null ? before - ours : null,
+    leftOre: ours,
   };
 }
 
@@ -154,8 +173,9 @@ export function salePriceEffect(
     const after = run(reprice(toOre));
     const totalBefore = before?.leftBeforeStoreTotalOre ?? null;
     const totalAfter = after?.leftBeforeStoreTotalOre ?? null;
-    const shareBefore = before?.leftPerOrderOre ?? null;
-    const shareAfter = after?.leftPerOrderOre ?? null;
+    // Vår del efter butikens hela andel (provision eller vinstdelning + hyra), som tabellen.
+    const shareBefore = perOrderSplit(before).leftOre;
+    const shareAfter = perOrderSplit(after).leftOre;
     return {
       orders: own.length,
       beforeOre: before?.leftBeforeStoreOre ?? null,
@@ -190,8 +210,8 @@ export function salePriceEffect(
     orders: 0,
     beforeOre: before?.leftBeforeStoreOre ?? null,
     afterOre: after?.leftBeforeStoreOre ?? null,
-    shareBeforeOre: before?.leftPerOrderOre ?? null,
-    shareAfterOre: after?.leftPerOrderOre ?? null,
+    shareBeforeOre: perOrderSplit(before).leftOre,
+    shareAfterOre: perOrderSplit(after).leftOre,
     monthlyDeltaOre: null,
     shareMonthlyDeltaOre: null,
   };

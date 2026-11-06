@@ -210,6 +210,20 @@ export function formatPercent(share: number, digits: number | PercentOptions = 1
   return `${num(share * 100, d)}${NBSP}%`;
 }
 
+/**
+ * Marginal i baspunkter som procent, avrundad EN gång ur heltalet (halvt uppåt i belopp):
+ * 2 375 → "23,8 %", 2 374 → "23,7 %", −2 375 → "−23,8 %". Samma funktion överallt där en
+ * marginal i bp visas (nyckeltal, vattenfall, tabeller), så att samma tal ger samma text.
+ * `digits` 0–2 (standard 1).
+ */
+export function formatMarginBp(bp: number, digits = 1): string {
+  if (!Number.isFinite(bp)) return MISSING;
+  const d = Math.min(2, clampDigits(digits));
+  const step = 10 ** (2 - d);
+  const units = Math.sign(bp) * Math.floor((Math.abs(Math.round(bp)) + step / 2) / step) || 0;
+  return `${num(units / 10 ** d, d)}${NBSP}%`;
+}
+
 /** +42 % · −8 % · ±0 % (förändring som andel). Tecken skrivs alltid ut. Standard 0 decimaler. */
 export function formatDelta(change: number, digits = 0): string {
   if (!Number.isFinite(change)) return MISSING;

@@ -715,14 +715,16 @@ describe(`revision 2: avtalsbyte, flytt och period över två månader (TZ=${pro
       ["2026-W44", false],
       ["2026-W45", false],
       ["2026-W46", true],
-      [UNALLOCATED_KEY, false],
     ]);
     expect(rowOf(r, "2026-W43")!.range).toEqual({ start: "2026-10-20", end: "2026-10-25" });
     expect(rowOf(r, "2026-W46")!.range).toEqual({ start: "2026-11-09", end: "2026-11-10" });
     const profits = r.rows.map((x) => x.profitOre);
     // W45: p2 0 + p3 2 722 + q3 0 + q4 14 568 = 17 290; W46: p4 3 278 + r3 12 099 = 15 377.
-    expect(profits).toEqual([-46_357, -28_821, -7_960, -10_859, -50_000]);
-    expect(r.rows.map((x) => x.rentOre)).toEqual([56_505, 31_721, 17_290, 15_377, 50_000]);
+    // S2 nov. (50 000, ingen order) ligger på avtalets dagar 1–10 nov., 5 000 per dag:
+    // W44 1 dag (1 nov.), W45 7 dagar, W46 2 dagar. Ingen rad "Ej fördelad hyra".
+    expect(profits).toEqual([-46_357, -33_821, -42_960, -20_859]);
+    expect(r.rows.map((x) => x.rentOre)).toEqual([56_505, 36_721, 52_290, 25_377]);
+    expect(profits.reduce((a, b) => a + b, 0)).toBe(r.totals.profitOre);
   });
 
   it("identiteterna håller i alla vyer", () => {
@@ -995,9 +997,9 @@ describe(`revision 5: kantfall (TZ=${process.env.TZ ?? "?"})`, () => {
     expect(v.machine.rows.map((r) => r.key)).toEqual([UNALLOCATED_KEY]);
     expect(v.store.rows.map((r) => [r.key, r.rentOre])).toEqual([["S2", 150_000]]);
     expect(v.title.waterfall.steps.map((s) => s.valueOre)).toEqual([0, 0, 0, -150_000, -150_000]);
-    // 30 dagar + raden "Ej fördelad hyra".
-    expect(v.day.rows).toHaveLength(31);
-    expect(v.day.rows.at(-1)?.key).toBe(UNALLOCATED_KEY);
+    // 30 dagar, hyran 1 500 kr/mån på avtalets dagar: 50 kr per dag, ingen egen rad.
+    expect(v.day.rows).toHaveLength(30);
+    expect(v.day.rows.every((r) => r.kind === "time" && r.profitOre === -5_000)).toBe(true);
   });
 
   it("0 order och inga avtal: allt noll, inga −0", () => {

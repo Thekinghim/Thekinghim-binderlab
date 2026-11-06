@@ -614,9 +614,18 @@ export function Sidebar({ className, ...props }: SidebarProps) {
       )}
     >
       <div className="flex h-14 shrink-0 items-center border-b border-line px-4">
-        <Link href={homeHref(role)} className="rounded-xs" aria-label="Binderlab, till startsidan">
-          <Logo />
-        </Link>
+        {/* Som menyns länkar: period, filter och vyknapparna följer med till Hem. */}
+        <WithCarriedQuery>
+          {(query) => (
+            <Link
+              href={withQuery(homeHref(role), query)}
+              className="rounded-xs"
+              aria-label="Binderlab, till startsidan"
+            >
+              <Logo />
+            </Link>
+          )}
+        </WithCarriedQuery>
       </div>
 
       {props.organizations?.length ? (

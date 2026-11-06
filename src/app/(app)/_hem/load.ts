@@ -45,12 +45,14 @@ export async function loadHome(searchParams: SearchParamsInput): Promise<HomeDat
       onboarding: optionalOnboardingStatus,
       sync: loadSyncInfo,
       // Bara dagens månad; namnen tas från grunddata som redan är inlästa.
-      goals: async (today) => {
+      goals: async (today, options) => {
         const month = monthOf(today);
         const records = (await loadGoalsFor(await requireViewer())).filter(
           (g) => g.month === month,
         );
-        return records.length === 0 ? [] : goalsProgress(records, today);
+        return records.length === 0
+          ? []
+          : goalsProgress(records, today, undefined, undefined, options);
       },
     },
     searchParams,

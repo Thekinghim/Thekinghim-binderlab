@@ -34,3 +34,16 @@ export function entryProfitOre(
   const before = e.netRevenueOre - e.costOre - e.cardFeeOre - e.vmbVatOre;
   return deductStoreShare ? before - e.commissionOre - e.rentOre : before;
 }
+
+/**
+ * Om en vy drar butikernas andel: vyknappen "Visa butikernas andel" (`toggle`), eller en
+ * vald butik (då just den butikens andel). Ett automatfilter är inget val av butik (skalet
+ * lägger till automatens butik i adressen), så `machineId` stänger av butiksregeln.
+ */
+export function storeShareInView(view: {
+  readonly toggle: boolean;
+  readonly storeId?: string | null;
+  readonly machineId?: string | null;
+}): boolean {
+  return view.toggle || (Boolean(view.storeId) && !view.machineId);
+}

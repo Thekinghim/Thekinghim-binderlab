@@ -592,3 +592,33 @@ describe("Lägg i fack: titelns vara", () => {
     expect(fake.state.calls).toEqual([]);
   });
 });
+
+describe("Varor i Awish: butikernas andel följer vyknappen (samma regel som Inköpspriser)", () => {
+  it("vald automat är ingen vald butik: kvar per order före andelen, ingen vår del", async () => {
+    await seedTitle("Andel Echo", { orders: 2 });
+    fake.state.goods.push(delta(52, "Andel Echo"));
+    const viewer = await viewerFor(owner, orgId);
+    const machine = await eg.goodsOverviewFor(viewer, { ...deps(), machineId });
+    expect(machine.showShare).toBe(false);
+    expect(machine.rows.find((r) => r.id === 52)!.shareLeftOre).toBeNull();
+    const preview = await eg.previewEditGoodFor(
+      viewer,
+      { goodId: 52, name: "Andel Echo", salePrice: "160" },
+      null,
+      { ...deps(), machineId },
+    );
+    expect(preview.effect.some((l) => l.startsWith("Vår del per order"))).toBe(false);
+
+    // Vyknappen på: vår del visas, även utan vald butik.
+    const on = await eg.goodsOverviewFor(viewer, { ...deps(), storeShare: true });
+    expect(on.showShare).toBe(true);
+    expect(on.rows.find((r) => r.id === 52)!.shareLeftOre).not.toBeNull();
+    const previewOn = await eg.previewEditGoodFor(
+      viewer,
+      { goodId: 52, name: "Andel Echo", salePrice: "160" },
+      null,
+      { ...deps(), storeShare: true },
+    );
+    expect(previewOn.effect.some((l) => l.startsWith("Vår del per order"))).toBe(true);
+  });
+});

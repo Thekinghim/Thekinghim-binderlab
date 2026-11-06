@@ -46,8 +46,8 @@ import {
   type LedgerEntry,
   type VmbMonth,
 } from "./ledger";
-import { checkSafe, ratioBp } from "./money";
-import type { StoreMonthRent } from "./rent";
+import { allocateLargestRemainder, checkSafe, ratioBp } from "./money";
+import type { RentSegment, StoreMonthRent } from "./rent";
 import { storeShareDeducted } from "./store-share";
 import type { GroupBy, IsoDate, Period, ProfitabilityInput } from "./types";
 import { vmbApplies } from "./vmb";
@@ -488,16 +488,46 @@ export function summarizeLedger(
     }
   };
 
-  // Ej fördelad hyra: per butik på butikens rad, per månad på månadens rad, annars 'unallocated'.
-  const addUnallocated = (storeId: string, month: string, rentOre: number): void => {
-    let acc: RowAccumulator;
-    if (groupBy === "store") acc = getRow(storeId, "item");
-    else if (groupBy === "month") {
-      const b = timeBucket(maxDate(monthStart(month), period.start), "month", period);
-      acc = getRow(b.key, "time", b.range, b.partial);
-    } else acc = getRow(UNALLOCATED_KEY, "unallocated");
+  // Ej fördelad hyra: per butik på butikens rad, per månad på månadens rad, per dag och vecka
+  // på de dagar den gäller (så att staplarna summerar till totalen), annars 'unallocated'.
+  const addRentTo = (acc: RowAccumulator, rentOre: number): void => {
     acc.addUnallocatedRent(rentOre);
+  };
+  const addUnallocated = (
+    storeId: string,
+    month: string,
+    rentOre: number,
+    days: { readonly date: IsoDate } | { readonly segments: readonly RentSegment[] },
+  ): void => {
     totals.addUnallocatedRent(rentOre);
+    if (groupBy === "store") return addRentTo(getRow(storeId, "item"), rentOre);
+    if (groupBy === "month") {
+      const b = timeBucket(maxDate(monthStart(month), period.start), "month", period);
+      return addRentTo(getRow(b.key, "time", b.range, b.partial), rentOre);
+    }
+    if (groupBy === "day" || groupBy === "week") {
+      const toDay = (date: IsoDate, ore: number) => {
+        if (ore === 0) return;
+        const b = timeBucket(date, groupBy, period);
+        addRentTo(getRow(b.key, "time", b.range, b.partial), ore);
+      };
+      if ("date" in days) return toDay(days.date, rentOre);
+      // Hyran per dag efter avtalets månadshyra den dagen; summan är exakt butik-månadens hyra.
+      const dates: IsoDate[] = [];
+      const weights: number[] = [];
+      for (const seg of days.segments) {
+        for (const d of eachDay(seg.start, seg.end)) {
+          dates.push(d);
+          weights.push(seg.monthlyRentOre);
+        }
+      }
+      if (dates.length > 0 && weights.some((w) => w > 0)) {
+        const shares = allocateLargestRemainder(rentOre, weights);
+        dates.forEach((d, i) => toDay(d, shares[i]!));
+        return;
+      }
+    }
+    addRentTo(getRow(UNALLOCATED_KEY, "unallocated"), rentOre);
   };
 
   for (const e of ledger.entries) {
@@ -505,11 +535,13 @@ export function summarizeLedger(
     totals.addEntry(e);
     // Hyran på en order utan pris är ändå en kostnad: den dras från vinsten som ej fördelad.
     if (!e.priced && e.rentOre !== 0 && e.storeId !== null) {
-      addUnallocated(e.storeId, e.month, e.rentOre);
+      addUnallocated(e.storeId, e.month, e.rentOre, { date: e.order.businessDate });
     }
   }
 
-  for (const u of ledger.unallocatedRent) addUnallocated(u.storeId, u.month, u.rentOre);
+  for (const u of ledger.unallocatedRent) {
+    addUnallocated(u.storeId, u.month, u.rentOre, { segments: u.segments });
+  }
 
   if (isTime && options.fillTimeGaps !== false) {
     const g = groupBy as "day" | "week" | "month";
