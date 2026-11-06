@@ -37,7 +37,6 @@ import { exportOrganizationDataFor } from "../../src/server/export/service";
 import { unzip } from "../../src/server/export/testing/unzip";
 import { isPlatformOperatorFor } from "../../src/server/subscriptions/service";
 import { loadValueFor } from "../../src/server/varde/load";
-import { DEMO_STORES } from "../../src/seed/demo/catalog";
 import { runSeed, type RunSeedResult } from "../../src/seed/run-seed";
 import { isDemoBlocked } from "../../src/server/assistant/advisor/service";
 import {
