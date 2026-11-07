@@ -19,11 +19,15 @@ import * as s from "@/db/schema";
 
 import type { SystemAlertInput } from "./system-alerts";
 
-/** Lägger utskicken för ett nytt systemlarm i kön. Ger antalet utskick. */
+/**
+ * Lägger utskicken för ett nytt systemlarm i kön. Ger antalet utskick. `roles` begränsar
+ * mottagarna till medlemmar med de rollerna (Daglig kontroll: bara ägare och admin).
+ */
 export async function notifySystemAlert(
   db: Db,
   alertId: string,
   input: SystemAlertInput,
+  options: { readonly roles?: readonly string[] } = {},
 ): Promise<number> {
   // Dynamisk import: larmjobbet (evaluate) importerar själv felövervakningen.
   const { allowedSubscriptions, loadSubscriptions } = await import("@/server/alerts/evaluate");
@@ -34,9 +38,10 @@ export async function notifySystemAlert(
       .from(s.organizations)
       .where(eq(s.organizations.id, input.organizationId));
     if (!org) return 0;
-    const subs = allowedSubscriptions(await loadSubscriptions(tx, input.organizationId)).map(
-      (sub) => ({ ...sub, timeZone: org.timezone }),
+    const rows = (await loadSubscriptions(tx, input.organizationId)).filter(
+      (r) => !options.roles || (r.role !== undefined && options.roles.includes(r.role)),
     );
+    const subs = allowedSubscriptions(rows).map((sub) => ({ ...sub, timeZone: org.timezone }));
     const notification: AlertNotification = {
       incidentId: alertId,
       key: input.key,

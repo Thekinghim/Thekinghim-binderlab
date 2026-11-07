@@ -15,7 +15,6 @@ import {
   loadDomainInput,
   loadMasterData,
   loadPeriod,
-  loadStock,
   requireRoute,
   type AppContext,
   type AppPeriod,
@@ -24,7 +23,7 @@ import {
 import { storeShareLabel, storeShareTerms } from "@/lib/store-share";
 import { isUuid } from "@/server/access";
 import type { DomainInput, MasterData } from "@/server/data/core/types";
-import { loadMachineHealth } from "@/server/data/health";
+import { requestPageLoaders, type PageLoaders } from "@/server/data/page-loaders";
 
 import {
   buildOverview,
@@ -128,14 +127,14 @@ function hasOrdersOn(orders: readonly { businessDate: IsoDate }[], day: IsoDate)
   return orders.some((o) => o.businessDate === day);
 }
 
-async function signalsFor(ctx: AppContext) {
+async function signalsFor(ctx: AppContext, loaders: PageLoaders = requestPageLoaders()) {
   const [recent, stock, master, health] = await Promise.all([
-    loadDomainInput({ period: recentWindow(ctx.today) }),
-    loadStock(),
-    loadMasterData(),
+    loaders.domainInput({ period: recentWindow(ctx.today) }),
+    loaders.stock(),
+    loaders.masterData(),
     // Samma status som Drift (försäljningens täckning räknas med). Ett fel här ska inte
     // stoppa sidan: då räknas hälsan på orderna som förut.
-    loadMachineHealth().catch((error: unknown) => {
+    loaders.machineHealth().catch((error: unknown) => {
       console.error("[automater] Maskinhälsan kunde inte läsas:", error);
       return null;
     }),
@@ -178,15 +177,28 @@ export interface OverviewData {
 }
 
 export async function loadOverview(searchParams: SearchParamsInput): Promise<OverviewData> {
-  const ctx = await requireRoute("automater");
-  const p = await loadPeriod(searchParams);
+  await requireRoute("automater");
+  return loadOverviewWith(requestPageLoaders(), searchParams);
+}
+
+/**
+ * Listan med givna laddare: sidan med förfrågans (loadOverview), Daglig kontroll med en
+ * given användare och vyknappens läge (src/server/self-check). Rollen kontrolleras av
+ * laddarna (loadDomainInputFor: ägare, admin och läsare).
+ */
+export async function loadOverviewWith(
+  loaders: PageLoaders,
+  searchParams: SearchParamsInput,
+): Promise<OverviewData> {
+  const ctx = await loaders.context();
+  const p = await loaders.period(searchParams);
   // Vid automatfilter läses hela organisationen: butikens hyra delas då mellan butikens
   // automater, som på automatens sida, i stället för att hela hyran hamnar på automaten.
   const focused = p.scope.machineId !== null;
   const [loaded, base, lastOrderAt] = await Promise.all([
-    loadDomainInput({ period: p.period, compare: p.compare, ...(focused ? {} : p.scope) }),
-    signalsFor(ctx),
-    currentViewer().then(loadLastOrderAtFor),
+    loaders.domainInput({ period: p.period, compare: p.compare, ...(focused ? {} : p.scope) }),
+    signalsFor(ctx, loaders),
+    loaders.viewer().then(loadLastOrderAtFor),
   ]);
   const input = comparable(p, loaded.previous) ? loaded : { ...loaded, previous: null };
   const coverage = coverageOf(

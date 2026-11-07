@@ -23,7 +23,7 @@ import {
   type SubscriptionRow,
 } from "./subscriptions";
 
-export type NoticeType = "empty" | "silent" | "stopped" | "discovered";
+export type NoticeType = "empty" | "silent" | "stopped" | "discovered" | "selfcheck";
 
 export interface NoticeTypeOption {
   readonly value: NoticeType;
@@ -52,6 +52,12 @@ export const NOTICE_TYPES: readonly NoticeTypeOption[] = [
     value: "discovered",
     label: "Ny automat hittad",
     kinds: ["machine_discovered"],
+    operatorsOnly: true,
+  },
+  {
+    value: "selfcheck",
+    label: "Kontrollen hittade fel",
+    kinds: ["self_check"],
     operatorsOnly: true,
   },
 ];

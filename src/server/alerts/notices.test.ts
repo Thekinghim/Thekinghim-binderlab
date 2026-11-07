@@ -24,14 +24,15 @@ function apply(
 }
 
 describe("notiser: typer per roll", () => {
-  it("ägaren ser fyra typer, påfyllaren två", () => {
+  it("ägaren ser fem typer, påfyllaren två", () => {
     expect(noticeTypesFor("owner").map((t) => t.value)).toEqual([
       "empty",
       "silent",
       "stopped",
       "discovered",
+      "selfcheck",
     ]);
-    expect(noticeTypesFor("admin")).toHaveLength(4);
+    expect(noticeTypesFor("admin")).toHaveLength(5);
     expect(noticeTypesFor("refiller").map((t) => t.value)).toEqual(["empty", "silent"]);
     expect(noticeTypesFor("viewer").map((t) => t.value)).toEqual(["empty", "silent"]);
   });
@@ -47,7 +48,7 @@ describe("notiser: läge", () => {
   it("inget sparat: av, alla typer förvalda", () => {
     expect(noticeState(null, "owner")).toEqual({
       on: false,
-      types: ["empty", "silent", "stopped", "discovered"],
+      types: ["empty", "silent", "stopped", "discovered", "selfcheck"],
     });
   });
 
@@ -106,7 +107,9 @@ describe("notiser: på/av", () => {
 describe("notiser: typer", () => {
   it("alla typer = alla larm", () => {
     const base = { ...defaultSubscription("u1", "owner"), kinds: ["low_stock"] };
-    expect(apply(base, { types: ["empty", "silent", "stopped", "discovered"] }).kinds).toBeNull();
+    expect(
+      apply(base, { types: ["empty", "silent", "stopped", "discovered", "selfcheck"] }).kinds,
+    ).toBeNull();
   });
 
   it("en del av typerna behåller avvikande dag (syns inte i det enkla läget)", () => {

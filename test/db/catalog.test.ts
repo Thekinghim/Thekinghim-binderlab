@@ -40,6 +40,8 @@ const APPEND_ONLY = [
   "report_approvals",
   "report_deliveries",
   "report_files",
+  // Daglig kontroll (20261114000000_daglig_kontroll.sql).
+  "self_check_runs",
   "stock_events",
   "voucher_deliveries",
 ];
@@ -212,6 +214,8 @@ describe("tabeller", () => {
         "report_files",
         "report_recipients",
         "reports",
+        // Daglig kontroll: resultatet per körning (20261114000000_daglig_kontroll.sql).
+        "self_check_runs",
         // Lager: larmgräns per automat och titel (20261103160000_lager_larmgrans.sql).
         "slot_alerts",
         "source_machines",

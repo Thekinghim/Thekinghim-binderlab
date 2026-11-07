@@ -11,6 +11,12 @@ describe("brödsmulor", () => {
       "Användare",
     ]);
     expect(crumbsFor("/installningar", "Binderlab")).toEqual(["Binderlab", "Mer", "Inställningar"]);
+    expect(crumbsFor("/installningar/kontroll", "Binderlab")).toEqual([
+      "Binderlab",
+      "Mer",
+      "Inställningar",
+      "Kontroll",
+    ]);
   });
 
   it("undersidor och dynamiska sidor", () => {

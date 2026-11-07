@@ -85,6 +85,8 @@ const VIEWER_OWN_ROWS_ONLY = [
   "import_upload_chunks",
   "import_uploads",
   "push_subscriptions",
+  // Daglig kontroll: resultaten syns bara för ägare och admin.
+  "self_check_runs",
   // Awish Chrome-tillägget: synk-tokens syns bara för ägare och admin.
   "sync_tokens",
 ];

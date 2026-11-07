@@ -12,7 +12,8 @@ import type {
 
 /**
  * Larmtyperna som går att prenumerera på (samma lista som private.alert_kinds_valid).
- * Systemlarmen (report_failed, job_failed) syns på Drift men aviseras inte.
+ * Systemlarmen (report_failed, job_failed) syns på Drift men aviseras inte. Daglig kontroll
+ * (self_check) går att välja: den aviserar ägare och admin när en kontroll inte går igenom.
  */
 export const ALERT_KINDS: readonly AlertKind[] = [
   "machine_offline",
@@ -22,6 +23,7 @@ export const ALERT_KINDS: readonly AlertKind[] = [
   "import_failed",
   "day_anomaly",
   "machine_discovered",
+  "self_check",
 ];
 
 /** Larmtyper som rör automater och lager: det påfyllaren får. */
@@ -42,6 +44,7 @@ export const KIND_LABEL: Record<AlertKind, string> = {
   report_failed: "Misslyckad rapport",
   job_failed: "Misslyckat schemalagt jobb",
   machine_discovered: "Ny automat hittad",
+  self_check: "Kontrollen hittade fel",
 };
 
 export const SEVERITY_LABEL: Record<AlertSeverity, string> = {

@@ -53,6 +53,7 @@ const KINDS: readonly AlertKind[] = [
   "report_failed",
   "job_failed",
   "machine_discovered",
+  "self_check",
 ];
 const GROUPS: readonly AlertGroup[] = ["machine", "stock", "import", "sales", "system"];
 

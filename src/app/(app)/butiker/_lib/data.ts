@@ -61,6 +61,7 @@ import {
   loadStoresFor,
 } from "./service";
 import { currentViewer } from "./session";
+import { requestPageLoaders, type PageLoaders } from "@/server/data/page-loaders";
 import type {
   AgreementView,
   DailyPoint,
@@ -181,26 +182,38 @@ export interface StoreListData {
 }
 
 export async function loadStoreList(searchParams: SearchParamsInput): Promise<StoreListData> {
-  const ctx = await requireRoute("butiker");
-  const viewer = await currentViewer();
+  await requireRoute("butiker");
+  return loadStoreListWith(requestPageLoaders(), searchParams);
+}
+
+/**
+ * Listan med givna laddare: sidan med förfrågans (loadStoreList), Daglig kontroll med en
+ * given användare och vyknappens läge (src/server/self-check). Rollen kontrolleras av
+ * laddarna (loadDomainInputFor, loadStoresFor m.fl.).
+ */
+export async function loadStoreListWith(
+  loaders: PageLoaders,
+  searchParams: SearchParamsInput,
+): Promise<StoreListData> {
+  const [ctx, viewer] = await Promise.all([loaders.context(), loaders.viewer()]);
   const month = monthToDate(ctx.today);
   // Perioden och det som inte beror på den hämtas samtidigt (förut perioden först).
-  const periodP = loadPeriod(searchParams);
+  const periodP = loaders.period(searchParams);
   const [p, input, monthInput, master, stores, agreements, recipients, contracts] =
     await Promise.all([
       periodP,
       // Hela organisationen (hyran per butik); med vald butik dras butikens andel (som
       // loadDomainInput med storeId), annars följer vinsten vyknappen.
       periodP.then((x) =>
-        loadDomainInput({
+        loaders.domainInput({
           period: x.period,
           compare: x.compare,
           ...(x.scope.storeId ? { storeShare: true } : {}),
         }),
       ),
-      loadDomainInput({ period: month }),
-      loadMasterData(),
-      loadStores(),
+      loaders.domainInput({ period: month }),
+      loaders.masterData(),
+      loadStoresFor(viewer),
       loadAgreementsFor(viewer),
       loadAllRecipientsFor(viewer),
       loadSignableContractsFor(viewer),

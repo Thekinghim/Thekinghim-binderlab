@@ -30,7 +30,10 @@ import type { Db } from "@/db/client";
  * Typerna som skrivs här: systemfamiljen, och import_failed som reserv när larmjobbet inte
  * hann skapa importlarmet (se recordImportFailure).
  */
-export type SystemAlertKind = Extract<AlertKind, "report_failed" | "job_failed" | "import_failed">;
+export type SystemAlertKind = Extract<
+  AlertKind,
+  "report_failed" | "job_failed" | "import_failed" | "self_check"
+>;
 
 export interface SystemAlertInput {
   readonly organizationId: string;
