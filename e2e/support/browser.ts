@@ -67,6 +67,13 @@ export interface Page {
     caret?: "hide" | "initial";
   }): Promise<Buffer>;
   evaluate<R>(fn: () => R): Promise<R>;
+  evaluate<R, A>(fn: (arg: A) => R, arg: A): Promise<R>;
+  waitForFunction(
+    fn: () => boolean,
+    arg?: undefined,
+    options?: { timeout?: number },
+  ): Promise<unknown>;
+  emulateMedia(options: { media: "print" | "screen" | null }): Promise<void>;
   setDefaultTimeout(ms: number): void;
   close(): Promise<void>;
   on(event: "pageerror", fn: (error: Error) => void): void;
@@ -88,7 +95,7 @@ export interface BrowserContext {
     get(
       url: string,
       options?: { maxRedirects?: number },
-    ): Promise<{ status(): number; text(): Promise<string> }>;
+    ): Promise<{ status(): number; text(): Promise<string>; body(): Promise<Buffer> }>;
   };
   close(): Promise<void>;
 }

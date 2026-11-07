@@ -147,6 +147,7 @@ async function withPage<T>(
   launch: Launch,
   request: PdfRequest,
   fn: (page: Page, timeout: number) => Promise<T>,
+  media?: "print",
 ): Promise<T> {
   const url = new URL(request.url);
   const timeout = request.timeoutMs ?? 120_000;
@@ -154,6 +155,8 @@ async function withPage<T>(
   try {
     const page = await browser.newPage();
     page.setDefaultTimeout(timeout);
+    // Utskriftsläget från början, så att sidindelningen mäts som den skrivs ut.
+    if (media) await page.emulateMediaType(media);
     if (request.cookies.length > 0) {
       await browser.setCookie(
         ...request.cookies.map((c) => ({
@@ -183,18 +186,35 @@ async function withPage<T>(
 }
 
 async function printPdf(launch: Launch, request: PdfRequest): Promise<Uint8Array> {
-  return withPage(launch, request, async (page, timeout) => {
-    await page.waitForSelector(".bl-report", { timeout });
-    await page.evaluate(() => document.fonts.ready);
-    await page.emulateMediaType("print");
-    const pdf = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      preferCSSPageSize: true,
-      margin: { top: "0", right: "0", bottom: "0", left: "0" },
-    });
-    return new Uint8Array(pdf);
-  });
+  return withPage(
+    launch,
+    request,
+    async (page, timeout) => {
+      await page.waitForSelector(".bl-report", { timeout });
+      await page.evaluate(() => document.fonts.ready);
+      // Rapporten delar själv innehåll som inte får plats på ett ark på nya ark
+      // (src/components/report/report-document.tsx) och sätter data-paginated när den är klar.
+      // Blir den aldrig klar (skriptet körs inte) skrivs serverns HTML ut ändå, ett ark per
+      // sida som förut, hellre än ingen PDF alls.
+      await page
+        .waitForFunction(
+          () =>
+            Array.from(document.querySelectorAll(".bl-report")).every((r) =>
+              r.hasAttribute("data-paginated"),
+            ),
+          { timeout },
+        )
+        .catch(() => undefined);
+      const pdf = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        preferCSSPageSize: true,
+        margin: { top: "0", right: "0", bottom: "0", left: "0" },
+      });
+      return new Uint8Array(pdf);
+    },
+    "print",
+  );
 }
 
 async function extractJson<T>(launch: Launch, request: PdfRequest, globalName: string): Promise<T> {

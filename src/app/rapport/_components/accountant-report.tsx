@@ -11,7 +11,6 @@ import {
   ReportSection,
   ReportTable,
   ReportTitle,
-  splitRows,
   type ReportColumn,
 } from "@/components/report/report-blocks";
 import { ReportDocument, ReportPage, type ReportLayout } from "@/components/report/report-document";
@@ -35,10 +34,6 @@ import {
   sekValue,
   type HeadingLevel,
 } from "./shared";
-
-/** Rader per ark i dagstabellen. */
-const DAY_ROWS_FIRST = 33;
-const DAY_ROWS = 40;
 
 function statement(s: AccountantSnapshot) {
   const t = s.report.totals;
@@ -172,51 +167,51 @@ function machineColumns(s: AccountantSnapshot): ReportColumn<AccountantMachineRo
   ];
 }
 
-function dayColumns(s: AccountantSnapshot, last: boolean): ReportColumn<AccountantDay>[] {
+/** Summaraden står bara i tabellens sista del (ReportTable delar den mellan ark). */
+function dayColumns(s: AccountantSnapshot): ReportColumn<AccountantDay>[] {
   const t = s.report.totals;
-  const total = <T,>(v: T) => (last ? v : undefined);
   return [
     {
       key: "date",
       header: "Dag",
       width: "22%",
       render: (d) => formatWeekdayDay(localDate(d.date)),
-      total: total("Totalt"),
+      total: "Totalt",
     },
     {
       key: "orders",
       header: "Order",
       numeric: true,
       render: (d) => formatInt(d.orders),
-      total: total(formatInt(t.orders)),
+      total: formatInt(t.orders),
     },
     {
       key: "gross",
       header: "Inkl. moms",
       numeric: true,
       render: (d) => kronor(d.grossOre),
-      total: total(kronor(t.grossOre)),
+      total: kronor(t.grossOre),
     },
     {
       key: "vat",
       header: "Moms",
       numeric: true,
       render: (d) => kronor(d.vatOre),
-      total: total(kronor(t.vatOre)),
+      total: kronor(t.vatOre),
     },
     {
       key: "net",
       header: "Exkl. moms",
       numeric: true,
       render: (d) => kronor(d.netOre),
-      total: total(kronor(t.netOre)),
+      total: kronor(t.netOre),
     },
     {
       key: "fees",
       header: "Avgifter",
       numeric: true,
       render: (d) => kronor(d.feesOre),
-      total: total(kronor(t.feesOre)),
+      total: kronor(t.feesOre),
     },
   ];
 }
@@ -237,7 +232,6 @@ export function AccountantReportDocument({
   const rec = r.reconciliation;
   const month = periodLabel(snapshot);
   const n = rec.numbers;
-  const dayPages = splitRows(r.days, DAY_ROWS, DAY_ROWS_FIRST);
   const failedChecks = rec.checks.filter((c) => !c.ok).length;
 
   return (
@@ -411,26 +405,23 @@ export function AccountantReportDocument({
         </ReportSection>
       </ReportPage>
 
-      {dayPages.map((rows, i) => (
-        <ReportPage key={`days-${i}`} className="gap-[6mm]">
-          {i === 0 ? (
-            <ReportSection
-              as={SECTION_TAG[level]}
-              index={6}
-              eyebrow="Per dag"
-              title={`${formatInt(r.days.filter((d) => d.orders > 0).length)} dagar med försäljning.`}
-              aside="Dagskassa per affärsdag (svensk tid), samma som verifikationerna i SIE."
-            />
-          ) : null}
+      {/* Långa perioder fortsätter på nya ark (ReportPage delar tabellen). */}
+      <ReportPage className="gap-[6mm]">
+        <ReportSection
+          as={SECTION_TAG[level]}
+          index={6}
+          eyebrow="Per dag"
+          title={`${formatInt(r.days.filter((d) => d.orders > 0).length)} dagar med försäljning.`}
+          aside="Dagskassa per affärsdag (svensk tid), samma som verifikationerna i SIE."
+        >
           <ReportTable
             caption="Försäljning per dag."
-            columns={dayColumns(snapshot, i === dayPages.length - 1)}
-            rows={rows}
+            columns={dayColumns(snapshot)}
+            rows={r.days}
             rowKey={(d) => d.date}
-            continued={i > 0}
           />
-        </ReportPage>
-      ))}
+        </ReportSection>
+      </ReportPage>
     </ReportDocument>
   );
 }

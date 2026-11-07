@@ -7,6 +7,7 @@
 
 import {
   ReportKpiRow,
+  ReportList,
   ReportMark,
   ReportNote,
   ReportSection,
@@ -474,8 +475,9 @@ export function PartnerReportDocument({
           }
         >
           {r.events.length > 0 ? (
-            <ol className="flex flex-col border-t border-line text-[11px] leading-[15px]">
-              {r.events.slice(0, 12).map((e, i) => (
+            <ReportList
+              className="flex flex-col border-t border-line text-[11px] leading-[15px]"
+              items={r.events.slice(0, 12).map((e, i) => (
                 <li
                   key={`${e.kind}-${e.date}-${i}`}
                   className="grid grid-cols-[18mm_22mm_1fr] items-baseline gap-[3mm] border-b border-line py-[1.6mm]"
@@ -488,7 +490,7 @@ export function PartnerReportDocument({
                   <span className="text-fg">{e.text}</span>
                 </li>
               ))}
-            </ol>
+            />
           ) : null}
         </ReportSection>
 
