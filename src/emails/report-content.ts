@@ -273,7 +273,10 @@ export function eyebrow(props: ReportEmailProps): [string, string] {
     case "bokforing":
       return ["Bokföringsunderlag", props.details.company];
     case "delagare":
-      return ["Månadsrapport", `${formatInt(props.rowsTotal ?? props.rows.length)} automater`];
+      return [
+        isFullMonth(normalizePeriod(props.period)) ? "Månadsrapport" : "Delägarrapport",
+        `${formatInt(props.rowsTotal ?? props.rows.length)} automater`,
+      ];
   }
 }
 
@@ -286,7 +289,7 @@ export function buildSubject(props: ReportEmailProps): string {
     case "bokforing":
       return `Bokföringsunderlag ${period}. ${props.summary}`;
     case "delagare":
-      return `Månadsrapport ${period}. ${props.summary}`;
+      return `${isFullMonth(normalizePeriod(props.period)) ? "Månadsrapport" : "Delägarrapport"} ${period}. ${props.summary}`;
   }
 }
 

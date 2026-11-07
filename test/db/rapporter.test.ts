@@ -20,7 +20,7 @@ import { decodeCp437 } from "@/reports";
 import { AuthorizationError, listOrganizationsFor, type SessionUser } from "@/server/access";
 import { OutboxMailer } from "@/server/mail/report-mailer";
 import { draftsForOrganization } from "@/server/reports/drafts";
-import { excelOf, sieOf } from "@/server/reports/files";
+import { excelOf, reportFileName, sieOf } from "@/server/reports/files";
 import {
   approveReportFor,
   createRecipientFor,
@@ -421,7 +421,7 @@ describe("eget datum", () => {
     expect(row.month).toBe(OCT);
   });
 
-  it("stoppar fel datum, framtida datum och delägarrapport med eget datum", async () => {
+  it("stoppar fel datum och framtida datum", async () => {
     await expect(
       previewReportFor(
         ownerViewer,
@@ -446,9 +446,6 @@ describe("eget datum", () => {
         NOW,
       ),
     ).rejects.toThrow(/efter i dag/);
-    await expect(
-      previewReportFor(ownerViewer, { type: "delagare", month: OCT, period: RANGE }, NOW),
-    ).rejects.toThrow(/per månad/);
   });
 
   it("innevarande månad fram till i dag går med eget datum", async () => {
@@ -458,5 +455,181 @@ describe("eget datum", () => {
       NOW,
     );
     expect(snap.period).toEqual({ start: "2025-11-01", end: "2025-11-05" });
+  });
+});
+
+describe("delägarrapport med eget datum", () => {
+  const RANGE = { start: "2025-10-11", end: "2025-10-31" };
+
+  /** Order som räknas, summerade direkt i databasen för dagarna i perioden. */
+  async function ordersIn(period: { start: string; end: string }) {
+    const [row] = await rows<{ n: number; sum: number }>(
+      db(),
+      sql`
+        select count(*)::int as n, coalesce(sum(amount_ore), 0)::int as sum
+        from public.orders
+        where organization_id = ${orgId}::uuid
+          and test_purchase_at is null
+          and business_date between ${period.start}::date and ${period.end}::date`,
+    );
+    return row!;
+  }
+
+  it("utkast 11–31 okt.: perioden sparas, arkivraden och filnamnet följer intervallet", async () => {
+    const id = await createReportFor(
+      ownerViewer,
+      { type: "delagare", month: OCT, period: RANGE, comment: "Halva månaden." },
+      NOW,
+    );
+    const report = await getReportFor(ownerViewer, id);
+    expect(report.type).toBe("delagare");
+    expect(report.custom).toBe(true);
+    expect(report.period).toEqual(RANGE);
+    expect(report.month).toBe(OCT);
+    expect(report.status).toBe("draft");
+    const snap = report.snapshot;
+    if (snap.type !== "delagare") throw new Error("fel typ");
+    expect(snap.period).toEqual(RANGE);
+    expect(snap.report.period).toEqual(RANGE);
+    expect(snap.comment).toBe("Halva månaden.");
+    const [dbRow] = await rows<{ period_start: string; period_end: string; kind: string }>(
+      db(),
+      sql`
+        select period_start::text, period_end::text, kind::text from public.reports
+        where id = ${id}::uuid`,
+    );
+    expect(dbRow).toEqual({
+      period_start: RANGE.start,
+      period_end: RANGE.end,
+      kind: "owner_statement",
+    });
+    const archive = await listArchiveFor(ownerViewer);
+    expect(archive.find((r) => r.id === id)).toMatchObject({ custom: true, period: RANGE });
+    expect(reportFileName(snap, "pdf")).toBe("binderlab-delagare-2025-10-11--2025-10-31.pdf");
+    expect(
+      emailPropsFor(
+        report,
+        { name: "Delägaren" },
+        {
+          followText: null,
+          reportUrl: "https://app.test",
+          attachments: [],
+        },
+      ).subject,
+    ).toMatch(/^Delägarrapport 11–31 okt\. 2025 · /);
+  });
+
+  it("siffrorna är summan av dagarna i intervallet och vinsten fördelas exakt", async () => {
+    const snap = await previewReportFor(
+      ownerViewer,
+      { type: "delagare", month: OCT, period: RANGE },
+      NOW,
+    );
+    if (snap.type !== "delagare") throw new Error("fel typ");
+    const r = snap.report.result;
+
+    // Mot databasen: order 1003, 1004, 1005 och 1007.
+    const fromDb = await ordersIn(RANGE);
+    expect(r.orders).toBe(fromDb.n);
+    expect(r.orders).toBe(4);
+    expect(r.totalRevenueOre).toBe(fromDb.sum);
+    expect(r.totalRevenueOre).toBe(3 * 4900 + 5900);
+
+    // Summan av varje dag för sig (samma uträkning per dag).
+    const days: (typeof r)[] = [];
+    for (let d = 11; d <= 31; d++) {
+      const day = `2025-10-${String(d).padStart(2, "0")}`;
+      const s = await previewReportFor(
+        ownerViewer,
+        { type: "delagare", month: OCT, period: { start: day, end: day } },
+        NOW,
+      );
+      if (s.type !== "delagare") throw new Error("fel typ");
+      days.push(s.report.result);
+    }
+    const sum = (pick: (x: typeof r) => number) => days.reduce((n, x) => n + pick(x), 0);
+    expect(r.orders).toBe(sum((x) => x.orders));
+    expect(r.totalRevenueOre).toBe(sum((x) => x.totalRevenueOre));
+    expect(r.revenueOre).toBe(sum((x) => x.revenueOre));
+    expect(r.costOre).toBe(sum((x) => x.costOre));
+    expect(r.feesOre).toBe(sum((x) => x.feesOre));
+    expect(r.commissionOre).toBe(sum((x) => x.commissionOre));
+    // Hyran per dag: 62 kr × 21/31 = 42 kr och 30 kr × 21/31 = 20,32 kr.
+    expect(r.rentOre).toBe(4200 + 2032);
+    // Prissatta order: 1003, 1005, 1007 (Black Bolt, 20 kr); provision bara 1003 i Nordstan.
+    expect(r.revenueOre).toBe(3 * 4900);
+    expect(r.costOre).toBe(3 * 2000);
+    expect(r.profitOre).toBe(3 * 4900 - 3 * 2000 - 490 - (4200 + 2032));
+
+    const split = snap.report.profitSplit!;
+    expect(split.profitOre).toBe(r.profitOre);
+    expect(split.owners.reduce((a, o) => a + o.amountOre, 0)).toBe(r.profitOre);
+    expect(Object.fromEntries(split.owners.map((o) => [o.name, o.shareBp]))).toEqual({
+      Ägaren: 6000,
+      Delägaren: 4000,
+    });
+
+    // Jämförelsen: lika många dagar före (20 sep.–10 okt.: order 990, 1001, 1002).
+    expect(snap.report.previousMonth).toMatchObject({
+      period: { start: "2025-09-20", end: "2025-10-10" },
+      orders: (await ordersIn({ start: "2025-09-20", end: "2025-10-10" })).n,
+    });
+    expect(snap.report.previousMonth!.orders).toBe(3);
+  });
+
+  it("månadsrapporten är oförändrad", async () => {
+    const month = await previewReportFor(ownerViewer, { type: "delagare", month: OCT }, NOW);
+    const whole = await previewReportFor(
+      ownerViewer,
+      { type: "delagare", month: OCT, period: { start: "2025-10-01", end: "2025-10-31" } },
+      NOW,
+    );
+    if (month.type !== "delagare" || whole.type !== "delagare") throw new Error("fel typ");
+    expect(whole.report).toEqual(month.report);
+    expect(month.period).toEqual({ start: "2025-10-01", end: "2025-10-31" });
+    const r = month.report.result;
+    expect(r.totalRevenueOre).toBe(30_400);
+    expect(r.profitOre).toBe(24_500 - 10_000 - 1470 - 9200);
+    expect(month.report.previousMonth).toMatchObject({ month: "2025-09", totalRevenueOre: 4900 });
+    expect(month.report.previousMonth?.period).toBeUndefined();
+    expect(month.report.trend.lastMonthThrough).toBeUndefined();
+    expect(
+      Object.fromEntries(month.report.profitSplit!.owners.map((o) => [o.name, o.amountOre])),
+    ).toEqual({
+      Ägaren: 2298,
+      Delägaren: 1532,
+    });
+  });
+
+  it("godkänns som vanligt och en ny version ersätter den gamla för samma datum", async () => {
+    const first = await createReportFor(
+      ownerViewer,
+      { type: "delagare", month: OCT, period: RANGE },
+      NOW,
+    );
+    const later = new Date(NOW.getTime() + 60_000);
+    const second = await createReportFor(
+      ownerViewer,
+      { type: "delagare", month: OCT, period: RANGE },
+      later,
+    );
+    expect((await getReportFor(ownerViewer, first)).status).toBe("superseded");
+    await approveReportFor(ownerViewer, second, null, later);
+    expect((await getReportFor(ownerViewer, second)).status).toBe("approved");
+  });
+
+  it("stoppar till > från, framtida datum och mer än ett år", async () => {
+    const preview = (start: string, end: string) =>
+      previewReportFor(
+        ownerViewer,
+        { type: "delagare", month: start.slice(0, 7) as typeof OCT, period: { start, end } },
+        NOW,
+      );
+    await expect(preview("2025-10-20", "2025-10-10")).rejects.toThrow(/före till-datumet/);
+    await expect(preview("2025-11-01", "2025-11-06")).rejects.toThrow(/efter i dag/);
+    await expect(preview("2024-10-01", "2025-10-31")).rejects.toThrow(/högst ett år/);
+    // Innevarande månad fram till i dag (affärsdagen i Europe/Stockholm) går.
+    const today = await preview("2025-11-01", "2025-11-05");
+    expect(today.period).toEqual({ start: "2025-11-01", end: "2025-11-05" });
   });
 });

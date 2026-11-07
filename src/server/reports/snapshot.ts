@@ -91,7 +91,7 @@ export interface PartnerSnapshot extends SnapshotBase {
   readonly report: PartnerReport;
   /** Egen kommentar till delägaren. */
   readonly comment: string | null;
-  /** Antal lagerplatser och titlar vars saldo inte var känt vid månadens slut. */
+  /** Antal lagerplatser och titlar vars saldo inte var känt vid periodens slut. */
   readonly unknownStock: number;
 }
 
@@ -104,7 +104,7 @@ export interface SnapshotInput {
   readonly type: ReportType;
   readonly month: IsoMonth;
   /**
-   * Eget datum (butik och bokföring): rapportens dagar. Saknas = hela `month`. `month` är
+   * Eget datum (alla rapporttyper): rapportens dagar. Saknas = hela `month`. `month` är
    * då månaden som intervallet börjar i.
    */
   readonly period?: Period | null;
@@ -121,9 +121,9 @@ export interface SnapshotInput {
   readonly storeService?: StoreService;
   /** Egen kommentar (delägarrapport). */
   readonly comment?: string | null;
-  /** Ägarandelar som gällde månadens sista dag (delägarrapport). */
+  /** Ägarandelar som gällde periodens sista dag (delägarrapport). */
   readonly owners?: readonly PartnerOwner[];
-  /** Lagerhändelser fram till månadens slut (delägarrapport, lagervärde). */
+  /** Lagerhändelser fram till periodens slut (delägarrapport, lagervärde). */
   readonly stockEvents?: readonly SnapshotStockEvent[] | null;
   /** Första dagen med data. */
   readonly historyStart?: IsoDate | null;
@@ -156,15 +156,23 @@ export function fiscalYearOf(month: IsoMonth, startMonth = 1): Period {
   return { start: `${first}-01`, end: monthEnd(addMonths(first, 11)) };
 }
 
-/**
- * Lager vid månadens slut per titel: summan av kända, positiva saldon över alla
- * lagerplatser (automater och alla egna lager). Okända saldon räknas separat.
- */
+/** Lager vid månadens slut per titel (se `stockAt`). */
 export function stockAtMonthEnd(
   events: readonly SnapshotStockEvent[],
   month: IsoMonth,
 ): { stock: { titleId: string; quantity: number }[]; unknown: number } {
-  const levels = stockLevels(events, monthEnd(month));
+  return stockAt(events, monthEnd(month));
+}
+
+/**
+ * Lager vid dagens slut per titel: summan av kända, positiva saldon över alla
+ * lagerplatser (automater och alla egna lager). Okända saldon räknas separat.
+ */
+export function stockAt(
+  events: readonly SnapshotStockEvent[],
+  date: IsoDate,
+): { stock: { titleId: string; quantity: number }[]; unknown: number } {
+  const levels = stockLevels(events, date);
   const byTitle = new Map<string, number>();
   let unknown = 0;
   for (const l of levels) {
@@ -283,11 +291,10 @@ export function buildSnapshot(input: SnapshotInput): ReportSnapshot {
       };
     }
     case "delagare": {
-      if (custom) {
-        throw new DomainError("invalid_input", "Delägarrapporten görs per månad.");
-      }
-      const stock = input.stockEvents ? stockAtMonthEnd(input.stockEvents, input.month) : null;
-      const report = buildPartnerReport(input.sources, input.month, {
+      // Eget datum: samma uträkning på intervallets dagar; lagret och ägarandelarna gäller
+      // periodens sista dag (en hel månad: månadens sista dag, som förut).
+      const stock = input.stockEvents ? stockAt(input.stockEvents, period.end) : null;
+      const report = buildPartnerReport(input.sources, custom ? period : input.month, {
         owners: input.owners && input.owners.length > 0 ? input.owners : undefined,
         stock: stock?.stock,
         historyStart: input.historyStart,

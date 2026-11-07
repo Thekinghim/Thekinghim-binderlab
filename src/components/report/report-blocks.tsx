@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 
+import { FlowRows, FlowSection } from "./report-flow";
+
 /**
  * Byggblock för rapportsidor. Måtten är satta för A4 i 100 %:
  * brödtext 12 px (9 pt), tabeller 11 px, etiketter 8,5–9,5 px mono.
@@ -89,7 +91,11 @@ type ReportSectionProps = {
   as?: "h2" | "h3" | "h4";
 };
 
-/** "01 / FÖRSÄLJNING" och en tvådelad rubrik i rapportstorlek. */
+/**
+ * "01 / FÖRSÄLJNING" och en tvådelad rubrik i rapportstorlek. Delas sektionen mellan ark
+ * (en lång tabell eller lista, se report-flow.tsx) står "01 / FÖRSÄLJNING · FORTS." överst
+ * på nästa ark.
+ */
 export function ReportSection({
   index,
   eyebrow,
@@ -99,24 +105,35 @@ export function ReportSection({
   className,
   as: Heading = "h2",
 }: ReportSectionProps) {
+  const number = typeof index === "number" ? String(index).padStart(2, "0") : index;
+  const label = (continued: boolean) => (
+    <p className="label flex items-center gap-2 text-[9.5px] leading-[12px] text-subtle">
+      <span className="tnum text-fg">{number}</span>
+      <span aria-hidden className="text-faint">
+        /
+      </span>
+      <span>
+        {eyebrow}
+        {continued ? <span className="text-faint"> · forts.</span> : null}
+      </span>
+    </p>
+  );
   return (
     <section className={cn("flex flex-col gap-[4mm]", className)}>
-      <header className="flex flex-col gap-[1.5mm]">
-        <p className="label flex items-center gap-2 text-[9.5px] leading-[12px] text-subtle">
-          <span className="tnum text-fg">
-            {typeof index === "number" ? String(index).padStart(2, "0") : index}
-          </span>
-          <span aria-hidden className="text-faint">
-            /
-          </span>
-          <span>{eyebrow}</span>
-        </p>
-        <Heading className="max-w-[160mm] text-[15px] leading-[20px] font-medium tracking-[-0.01em] text-balance">
-          <span className="text-fg">{title}</span>
-          {aside ? <span className="text-subtle"> {aside}</span> : null}
-        </Heading>
-      </header>
-      {children}
+      <FlowSection
+        header={
+          <header className="flex flex-col gap-[1.5mm]">
+            {label(false)}
+            <Heading className="max-w-[160mm] text-[15px] leading-[20px] font-medium tracking-[-0.01em] text-balance">
+              <span className="text-fg">{title}</span>
+              {aside ? <span className="text-subtle"> {aside}</span> : null}
+            </Heading>
+          </header>
+        }
+        continuedHeader={<header>{label(true)}</header>}
+      >
+        {children}
+      </FlowSection>
     </section>
   );
 }
@@ -215,9 +232,9 @@ type ReportTableProps<T> = {
 
 /**
  * Tät tabell: hårfina linjer, inga zebrarader, högerställda tal och
- * summarad om någon kolumn har `total`. Rubrikraden upprepas om tabellen
- * bryts i ett vanligt utskriftsflöde; i ReportPage delas långa tabeller
- * med splitRows och `continued`.
+ * summarad om någon kolumn har `total`. I en ReportPage delas en tabell som inte får plats
+ * automatiskt mellan ark (report-flow.tsx); rubrikraden upprepas och summaraden står sist.
+ * Utanför ReportDocument kan långa tabeller delas för hand med splitRows och `continued`.
  */
 export function ReportTable<T>({
   columns,
@@ -231,77 +248,77 @@ export function ReportTable<T>({
   const hasTotals = columns.some((c) => c.total !== undefined);
   const align = (c: ReportColumn<T>) => (c.numeric ? "text-right" : "text-left");
   const cell = "px-[2mm] first:pl-0 last:pr-0";
+  const head = (more: boolean) => (
+    <tr>
+      {columns.map((c, i) => (
+        <th
+          key={c.key}
+          scope="col"
+          className={cn(
+            "label border-b border-line-strong pb-[1.5mm] align-bottom text-[8.5px] leading-[11px] font-normal text-subtle",
+            cell,
+            align(c),
+          )}
+        >
+          {c.header}
+          {more && i === 0 ? <span className="text-faint"> · forts.</span> : null}
+        </th>
+      ))}
+    </tr>
+  );
   return (
-    <table
+    <FlowRows
+      kind="table"
       className={cn(
         "w-full border-separate border-spacing-0 text-[11px] leading-[15px]",
         className,
       )}
-    >
-      <caption className="sr-only">
-        {caption}
-        {continued ? " (fortsättning)" : ""}
-      </caption>
-      <colgroup>
-        {columns.map((c) => (
-          <col key={c.key} style={c.width ? { width: c.width } : undefined} />
-        ))}
-      </colgroup>
-      <thead>
-        <tr>
-          {columns.map((c, i) => (
-            <th
-              key={c.key}
-              scope="col"
-              className={cn(
-                "label border-b border-line-strong pb-[1.5mm] align-bottom text-[8.5px] leading-[11px] font-normal text-subtle",
-                cell,
-                align(c),
-              )}
-            >
-              {c.header}
-              {continued && i === 0 ? <span className="text-faint"> · forts.</span> : null}
-            </th>
+      caption={caption}
+      continued={continued}
+      colgroup={
+        <colgroup>
+          {columns.map((c) => (
+            <col key={c.key} style={c.width ? { width: c.width } : undefined} />
           ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row, ri) => {
-          const marked = isMarked?.(row) ?? false;
-          return (
-            <tr key={rowKey(row, ri)}>
-              {columns.map((c, ci) => {
-                const Tag = ci === 0 ? "th" : "td";
-                return (
-                  <Tag
-                    key={c.key}
-                    scope={ci === 0 ? "row" : undefined}
-                    className={cn(
-                      "border-b border-line py-[1.6mm] align-baseline",
-                      marked ? "font-medium" : "font-normal",
-                      cell,
-                      align(c),
-                      c.numeric ? "tnum font-mono text-[10.5px]" : "text-fg",
-                      ci === 0 && "relative text-left",
-                      hasTotals && ri === rows.length - 1 && "border-b-0",
-                    )}
-                  >
-                    {ci === 0 && marked ? (
-                      <ReportMark
-                        className="absolute top-1/2 -left-[5mm] -translate-y-1/2"
-                        label="Markerad"
-                      />
-                    ) : null}
-                    {c.render(row, ri)}
-                  </Tag>
-                );
-              })}
-            </tr>
-          );
-        })}
-      </tbody>
-      {hasTotals ? (
-        <tfoot>
+        </colgroup>
+      }
+      head={head(false)}
+      headContinued={head(true)}
+      rows={rows.map((row, ri) => {
+        const marked = isMarked?.(row) ?? false;
+        return (
+          <tr key={rowKey(row, ri)}>
+            {columns.map((c, ci) => {
+              const Tag = ci === 0 ? "th" : "td";
+              return (
+                <Tag
+                  key={c.key}
+                  scope={ci === 0 ? "row" : undefined}
+                  className={cn(
+                    "border-b border-line py-[1.6mm] align-baseline",
+                    marked ? "font-medium" : "font-normal",
+                    cell,
+                    align(c),
+                    c.numeric ? "tnum font-mono text-[10.5px]" : "text-fg",
+                    ci === 0 && "relative text-left",
+                    hasTotals && ri === rows.length - 1 && "border-b-0",
+                  )}
+                >
+                  {ci === 0 && marked ? (
+                    <ReportMark
+                      className="absolute top-1/2 -left-[5mm] -translate-y-1/2"
+                      label="Markerad"
+                    />
+                  ) : null}
+                  {c.render(row, ri)}
+                </Tag>
+              );
+            })}
+          </tr>
+        );
+      })}
+      foot={
+        hasTotals ? (
           <tr>
             {columns.map((c, ci) => {
               const Tag = ci === 0 ? "th" : "td";
@@ -321,11 +338,28 @@ export function ReportTable<T>({
               );
             })}
           </tr>
-        </tfoot>
-      ) : null}
-    </table>
+        ) : undefined
+      }
+    />
   );
 }
+/** FlowSection känner igen tabellen som rader som kan delas (utan RSC). */
+ReportTable.flowRows = true as const;
+
+/**
+ * Lista med en rad per post (t.ex. händelser), som delas mellan ark som en tabell.
+ * `items` är färdiga <li>-element med nyckel.
+ */
+export function ReportList({
+  items,
+  className,
+}: {
+  items: ReadonlyArray<ReactNode>;
+  className?: string;
+}) {
+  return <FlowRows kind="list" className={className} rows={items} />;
+}
+ReportList.flowRows = true as const;
 
 /**
  * Delar rader i ark: första arket rymmer `first` rader (ofta färre, för att

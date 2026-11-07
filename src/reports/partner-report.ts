@@ -17,12 +17,19 @@ import {
   addDays,
   addMonths,
   allocateToOwners,
+  assertPeriod,
   buildLedger,
   changeBp,
+  daysInMonth,
   eachMonth,
   isProfitSplit,
+  monthEnd,
+  monthOf,
   monthPeriod,
   monthStart,
+  parseIsoDate,
+  periodDays,
+  previousPeriod,
   summarizeLedger,
   titleEconomics,
   type IsoDate,
@@ -34,12 +41,14 @@ import {
 import { Catalog, evidence, fig, firstOrderDate, hasHistory, monthScope, safeOre } from "./shared";
 import {
   dateText,
+  isWholeMonth,
   krText,
   listText,
   monthNameText,
   monthText,
   ordersText,
   pctText,
+  periodText,
   pointsText,
   signedKrText,
   signedPctText,
@@ -78,12 +87,15 @@ export interface PartnerResult {
 }
 
 /**
- * Jämförelse mot en annan månad. `totalRevenueOre`/`totalRevenueChangeBp` gäller alla order
+ * Jämförelse mot en annan månad (eget datum: lika många dagar före, eller samma datum i
+ * fjol). `totalRevenueOre`/`totalRevenueChangeBp` gäller alla order
  * (panelens Intäkt och Förändring) och används i texten; `revenueOre`/`revenueChangeBp`
  * jämför vinstens underlag (order med inköpspris), som `PartnerResult.revenueOre`.
  */
 export interface PartnerComparison {
   readonly month: IsoMonth;
+  /** Jämförelsens dagar vid eget datum; saknas för en hel månad (= hela `month`). */
+  readonly period?: Period;
   readonly orders: number;
   /** Intäkt för alla order den månaden (= panelens Intäkt). */
   readonly totalRevenueOre: number;
@@ -218,6 +230,11 @@ export interface PartnerReport {
   readonly trend: {
     readonly months: readonly PartnerTrendMonth[];
     readonly limitedHistory: boolean;
+    /**
+     * Eget datum som slutar mitt i en månad: sista månaden i utvecklingen räknas bara till
+     * och med detta datum. Saknas annars.
+     */
+    readonly lastMonthThrough?: IsoDate;
   };
   readonly machines: readonly PartnerRow[];
   readonly titles: readonly PartnerRow[];
@@ -252,8 +269,26 @@ export const RECORD_MIN_MONTHS = 6;
 /** Andel utan inköpspris som nämns i slutsatsen (5 %). */
 export const UNPRICED_NOTICE_BP = 500;
 
+/** Längsta eget datum för delägarrapporten (ett år, skottår inräknat). */
+export const PARTNER_MAX_RANGE_DAYS = 366;
+
 /**
- * Bygger delägarrapporten för en kalendermånad.
+ * Samma datum ett år tidigare. 29 feb blir 28 feb; en period som slutar på månadens sista
+ * dag slutar på den månadens sista dag i fjol.
+ */
+export function samePeriodLastYear(period: Period): Period {
+  const back = (date: IsoDate, end: boolean): IsoDate => {
+    const p = parseIsoDate(date);
+    const month = addMonths(monthOf(date), -12);
+    const last = daysInMonth(month);
+    const day = end && p.day === daysInMonth(date) ? last : Math.min(p.day, last);
+    return `${month}-${String(day).padStart(2, "0")}`;
+  };
+  return { start: back(period.start, false), end: back(period.end, true) };
+}
+
+/**
+ * Bygger delägarrapporten för en kalendermånad eller ett eget datum (högst ett år).
  *
  * Regler:
  * - Intäkt = Σ belopp exkl. moms för alla order, samma tal som panelen (`keyMetrics`).
@@ -267,13 +302,36 @@ export const UNPRICED_NOTICE_BP = 500;
  * - Lagervärde = Σ antal × inköpspriset som gällde månadens sista dag.
  * - Vinstfördelning: `allocateToOwners`, avkortat per ägare och resten till den största
  *   andelen, så att summan stämmer exakt på öret.
+ *
+ * Eget datum (t.ex. 1–15 nov.) räknas med exakt samma regler på intervallets dagar (samma
+ * liggare som Lönsamhet för samma datum, hyran per dag). Skillnaderna: jämförelsen görs mot
+ * lika många dagar närmast före (`previousPeriod`) och samma datum i fjol, utvecklingen
+ * slutar med månaden där intervallet slutar, och rekordmånad utses inte. Ett intervall som
+ * är exakt en hel kalendermånad blir den vanliga månadsrapporten.
  */
 export function buildPartnerReport(
   sources: ReportSources,
-  month: IsoMonth,
+  monthOrPeriod: IsoMonth | Period,
   options: PartnerReportOptions = {},
 ): PartnerReport {
-  const period = monthScope(month);
+  let custom = false;
+  let month: IsoMonth;
+  let period: Period;
+  if (typeof monthOrPeriod === "string") {
+    month = monthOrPeriod;
+    period = monthScope(month);
+  } else {
+    assertPeriod(monthOrPeriod);
+    if (periodDays(monthOrPeriod) > PARTNER_MAX_RANGE_DAYS) {
+      throw new DomainError("invalid_period", "Perioden får vara högst ett år.");
+    }
+    month = monthOf(monthOrPeriod.start);
+    custom = !isWholeMonth(monthOrPeriod);
+    period = custom ? { start: monthOrPeriod.start, end: monthOrPeriod.end } : monthScope(month);
+  }
+  // Månaden där perioden slutar: sista månaden i utvecklingen (= `month` för en hel månad).
+  const endMonth = monthOf(period.end);
+  const periodName = custom ? periodText(period) : monthText(month);
   const catalog = new Catalog(sources);
   const trendLength = options.trendMonths ?? 12;
   if (!Number.isSafeInteger(trendLength) || trendLength < 6 || trendLength > 12) {
@@ -291,9 +349,13 @@ export function buildPartnerReport(
   const t = byTitle.totals;
 
   const lastYear = addMonths(month, -12);
+  const trendStart = addMonths(endMonth, -(trendLength - 1));
   const longLedger = buildLedger({
     ...sources,
-    period: { start: monthStart(lastYear), end: period.end },
+    period: {
+      start: monthStart(trendStart < lastYear ? trendStart : lastYear),
+      end: period.end,
+    },
   });
   const monthRows = new Map(
     summarizeLedger(longLedger, "month")
@@ -338,10 +400,20 @@ export function buildPartnerReport(
     }),
   };
 
-  const compare = (other: IsoMonth, label: string): PartnerComparison | null => {
-    const otherPeriod = monthPeriod(other);
+  type CompareRow = {
+    readonly orders: number;
+    readonly revenueOre: number;
+    readonly unpricedRevenueOre: number;
+    readonly profitOre: number;
+    readonly marginBp: number | null;
+  };
+  const compare = (
+    otherPeriod: Period,
+    r: CompareRow | undefined,
+    label: string,
+  ): PartnerComparison | null => {
     if (!hasHistory(otherPeriod, historyStart)) return null;
-    const r = monthRows.get(other);
+    const other = monthOf(otherPeriod.start);
     const orders = r?.orders ?? 0;
     const total = r ? totalRevenue(r) : 0;
     const totalChange = changeBp(result.totalRevenueOre, total);
@@ -360,6 +432,7 @@ export function buildPartnerReport(
       parts.push(`marginal ${pctText(margin!, 1)} (nu ${pointsText(marginDiff)})`);
     return {
       month: other,
+      ...(custom ? { period: otherPeriod } : {}),
       orders,
       totalRevenueOre: total,
       totalRevenueChangeBp: totalChange,
@@ -369,7 +442,7 @@ export function buildPartnerReport(
       revenueChangeBp: revenueChange,
       profitChangeBp: profitChange,
       marginDiffBp: marginDiff,
-      text: `${label} (${monthText(other)}): ${parts.join(", ")}.`,
+      text: `${label} (${custom ? periodText(otherPeriod) : monthText(other)}): ${parts.join(", ")}.`,
       evidence: evidence({
         rule: "Förändring = round((nu − då) × 10 000 / |då|) bp; saknas när då = 0. Intäkten gäller alla order, vinsten order med inköpspris. Marginalskillnad i procentenheter.",
         scope: { period: otherPeriod },
@@ -383,37 +456,58 @@ export function buildPartnerReport(
       }),
     };
   };
-  const previousMonth = compare(addMonths(month, -1), "Förra månaden");
-  const sameMonthLastYear = compare(lastYear, "Samma månad i fjol");
+  // Eget datum: jämförelsen räknas på sin egen liggare över lika många dagar, med samma
+  // regler som resultatet.
+  const rangeTotals = (p: Period): CompareRow =>
+    summarizeLedger(buildLedger({ ...sources, period: p }), "title").totals;
+  let previousMonth: PartnerComparison | null;
+  let sameMonthLastYear: PartnerComparison | null;
+  if (custom) {
+    const prevPeriod = previousPeriod(period);
+    const yearPeriod = samePeriodLastYear(period);
+    previousMonth = hasHistory(prevPeriod, historyStart)
+      ? compare(prevPeriod, rangeTotals(prevPeriod), "Perioden före")
+      : null;
+    sameMonthLastYear = hasHistory(yearPeriod, historyStart)
+      ? compare(yearPeriod, rangeTotals(yearPeriod), "Samma period i fjol")
+      : null;
+  } else {
+    const prev = addMonths(month, -1);
+    previousMonth = compare(monthPeriod(prev), monthRows.get(prev), "Förra månaden");
+    sameMonthLastYear = compare(
+      monthPeriod(lastYear),
+      monthRows.get(lastYear),
+      "Samma månad i fjol",
+    );
+  }
 
-  const trendMonths: PartnerTrendMonth[] = eachMonth(
-    monthStart(addMonths(month, -(trendLength - 1))),
-    period.end,
-  ).map((m) => {
-    const r = monthRows.get(m);
-    const hasData = hasHistory(monthPeriod(m), historyStart);
-    const total = r ? totalRevenue(r) : 0;
-    return {
-      month: m,
-      hasData,
-      orders: r?.orders ?? 0,
-      revenueOre: total,
-      pricedRevenueOre: r?.revenueOre ?? 0,
-      unpricedRevenueOre: r?.unpricedRevenueOre ?? 0,
-      profitOre: r?.profitOre ?? 0,
-      marginBp: r?.marginBp ?? null,
-      evidence: evidence({
-        rule: "Intäkt för alla order (som panelen); vinst och marginal för order med inköpspris, som i resultatet.",
-        scope: { period: monthPeriod(m) },
-        orderCount: r?.orders ?? 0,
-        figures: [
-          fig("Intäkt", total, "ore"),
-          fig("Intäkt med inköpspris", r?.revenueOre ?? 0, "ore"),
-          fig("Vinst", r?.profitOre ?? 0, "ore"),
-        ],
-      }),
-    };
-  });
+  const trendMonths: PartnerTrendMonth[] = eachMonth(monthStart(trendStart), period.end).map(
+    (m) => {
+      const r = monthRows.get(m);
+      const hasData = hasHistory(monthPeriod(m), historyStart);
+      const total = r ? totalRevenue(r) : 0;
+      return {
+        month: m,
+        hasData,
+        orders: r?.orders ?? 0,
+        revenueOre: total,
+        pricedRevenueOre: r?.revenueOre ?? 0,
+        unpricedRevenueOre: r?.unpricedRevenueOre ?? 0,
+        profitOre: r?.profitOre ?? 0,
+        marginBp: r?.marginBp ?? null,
+        evidence: evidence({
+          rule: "Intäkt för alla order (som panelen); vinst och marginal för order med inköpspris, som i resultatet.",
+          scope: { period: monthPeriod(m) },
+          orderCount: r?.orders ?? 0,
+          figures: [
+            fig("Intäkt", total, "ore"),
+            fig("Intäkt med inköpspris", r?.revenueOre ?? 0, "ore"),
+            fig("Vinst", r?.profitOre ?? 0, "ore"),
+          ],
+        }),
+      };
+    },
+  );
 
   const toRow = (r: ProfitabilityRow, dim: "machine" | "title"): PartnerRow => {
     const kind =
@@ -476,7 +570,8 @@ export function buildPartnerReport(
 
   const events = buildEvents({
     sources,
-    month,
+    periodName,
+    custom,
     period,
     catalog,
     ledger,
@@ -495,11 +590,19 @@ export function buildPartnerReport(
     calcVersion: CALC_VERSION,
     month,
     period,
-    conclusion: partnerConclusion(month, result, previousMonth),
+    conclusion: partnerConclusion(
+      custom ? { name: periodName, period } : { name: monthText(month), month },
+      result,
+      previousMonth,
+    ),
     result,
     previousMonth,
     sameMonthLastYear,
-    trend: { months: trendMonths, limitedHistory: trendMonths.some((m) => !m.hasData) },
+    trend: {
+      months: trendMonths,
+      limitedHistory: trendMonths.some((m) => !m.hasData),
+      ...(custom && period.end < monthEnd(endMonth) ? { lastMonthThrough: period.end } : {}),
+    },
     machines,
     titles,
     inventory,
@@ -643,7 +746,10 @@ const SEVERITY_RANK = { warning: 0, positive: 1, info: 2 } as const;
  */
 function buildEvents(args: {
   sources: ReportSources;
-  month: IsoMonth;
+  /** "oktober 2026", eller för eget datum "1–15 nov. 2026". */
+  periodName: string;
+  /** Eget datum: rekordmånad utses inte (perioden är inte en månad i utvecklingen). */
+  custom: boolean;
   period: Period;
   catalog: Catalog;
   ledger: ReturnType<typeof buildLedger>;
@@ -652,7 +758,9 @@ function buildEvents(args: {
   trend: readonly PartnerTrendMonth[];
   manual: readonly { readonly date: IsoDate; readonly text: string }[];
 }): PartnerEvent[] {
-  const { sources, month, period, catalog, ledger, unpriced, machineRows, trend, manual } = args;
+  const { sources, periodName, custom, period, catalog, ledger, unpriced, machineRows, trend } =
+    args;
+  const manual = args.manual;
   const ctx = ledger.context;
   const inMonth = (d: IsoDate): boolean => d >= period.start && d <= period.end;
   const events: PartnerEvent[] = [];
@@ -872,7 +980,7 @@ function buildEvents(args: {
       kind: "idle_machine",
       severity: "warning",
       date: period.end,
-      text: `${catalog.machine(machineId)} i ${catalog.store(p.storeId)} sålde inget under ${monthText(month)}.`,
+      text: `${catalog.machine(machineId)} i ${catalog.store(p.storeId)} sålde inget under ${periodName}.`,
       evidence: evidence({
         rule: "Automaten stod i samma butik hela månaden och har inga order.",
         scope: { period, machineId },
@@ -885,7 +993,7 @@ function buildEvents(args: {
   // Rekord.
   const withData = trend.filter((m) => m.hasData);
   const current = trend[trend.length - 1];
-  if (current && current.hasData && withData.length >= RECORD_MIN_MONTHS) {
+  if (!custom && current && current.hasData && withData.length >= RECORD_MIN_MONTHS) {
     const others = withData.slice(0, -1);
     const max = Math.max(...others.map((m) => m.revenueOre));
     const min = Math.min(...others.map((m) => m.revenueOre));
@@ -967,11 +1075,14 @@ function buildEvents(args: {
  * Saknar minst 5 % av intäkten inköpspris läggs det till som förbehåll.
  */
 function partnerConclusion(
-  month: IsoMonth,
+  what:
+    | { readonly name: string; readonly month: IsoMonth }
+    | { readonly name: string; readonly period: Period },
   r: PartnerResult,
   prev: PartnerComparison | null,
 ): Conclusion {
-  const scope = { period: monthPeriod(month) };
+  const month = "month" in what ? what.month : null;
+  const scope = { period: "month" in what ? monthPeriod(what.month) : what.period };
   const figures = [
     fig("Vinst", r.profitOre, "ore"),
     fig("Intäkt", r.totalRevenueOre, "ore"),
@@ -988,14 +1099,14 @@ function partnerConclusion(
 
   if (r.orders === 0 && r.compensationOre === 0) {
     return {
-      text: `Ingen försäljning i ${monthText(month)}.`,
+      text: `Ingen försäljning ${month ? "i" : "under"} ${what.name}.`,
       ruleId: "partner.no_sales",
       evidence: ev("Inga order och inga kostnader under månaden."),
     };
   }
   if (r.profitOre < 0) {
     return {
-      text: `${capitalize(monthText(month))} gick med förlust: ${krText(r.profitOre)} på ${krText(r.totalRevenueOre)} intäkt${caveat}.`,
+      text: `${month ? capitalize(what.name) : `Perioden ${what.name}`} gick med förlust: ${krText(r.profitOre)} på ${krText(r.totalRevenueOre)} intäkt${caveat}.`,
       ruleId: "partner.loss",
       evidence: ev("Vinsten är negativ."),
     };
@@ -1003,21 +1114,25 @@ function partnerConclusion(
   const margin = r.marginBp === null ? "" : ` (marginal ${pctText(r.marginBp, 1)})`;
   if (prev && prev.profitOre !== 0 && prev.profitChangeBp !== null) {
     const diff = r.profitOre - prev.profitOre;
-    const prevName =
-      prev.month.slice(0, 4) === month.slice(0, 4)
+    // Eget datum: periodens datum står i jämförelsen; slutsatsen hålls kort.
+    const prevName = !month
+      ? "perioden före"
+      : prev.month.slice(0, 4) === month.slice(0, 4)
         ? monthNameText(prev.month)
         : monthText(prev.month);
     const direction =
       diff === 0
-        ? `samma som i ${prevName}`
+        ? `samma som ${month ? "i " : ""}${prevName}`
         : `${signedKrText(diff)} (${signedPctText(prev.profitChangeBp)}) mot ${prevName}`;
     return {
       text: `Vinsten blev ${krText(r.profitOre)}${margin}, ${direction}${caveat}.`,
       ruleId: diff >= 0 ? "partner.profit_up" : "partner.profit_down",
       evidence: ev(
-        "Förändring = round((vinst nu − vinst förra månaden) × 10 000 / |vinst förra månaden|) bp.",
+        month
+          ? "Förändring = round((vinst nu − vinst förra månaden) × 10 000 / |vinst förra månaden|) bp."
+          : "Förändring = round((vinst nu − vinst lika många dagar före) × 10 000 / |vinst då|) bp.",
         [
-          fig("Vinst förra månaden", prev.profitOre, "ore"),
+          fig(month ? "Vinst förra månaden" : "Vinst perioden före", prev.profitOre, "ore"),
           fig("Förändring", prev.profitChangeBp, "bp"),
         ],
       ),
