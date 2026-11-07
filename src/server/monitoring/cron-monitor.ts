@@ -47,6 +47,13 @@ export const CRON_JOBS = {
     checkinMarginMinutes: 30,
     maxRuntimeMinutes: 15,
   },
+  // Daglig kontroll: pg_cron 03:37 och 04:37 UTC (20261114000000_daglig_kontroll.sql).
+  kontroll: {
+    slug: "binderlab-kontroll",
+    schedule: "37 3,4 * * *",
+    checkinMarginMinutes: 30,
+    maxRuntimeMinutes: 5,
+  },
 } as const satisfies Record<string, CronJob>;
 
 type SentryCron = {

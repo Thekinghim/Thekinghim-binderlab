@@ -17,11 +17,12 @@ efteråt.
 
 Inget behöver göras för hand. Det som körs av sig självt:
 
-| Jobb                  | Schema (UTC) | Vad                                                     | Om det misslyckas                     |
-| --------------------- | ------------ | ------------------------------------------------------- | ------------------------------------- |
-| `/api/cron/larm`      | `7 5 * * *`  | Maskinhälsa, lager, importer, avvikande dag; utskick    | Larm `job:larm` + Sentry, se nedan    |
-| `/api/cron/rapporter` | `17 5 1 * *` | Utkast för förra månadens rapporter (ingenting skickas) | Larm `report_drafts:<månad>` + Sentry |
-| `/api/cron/bokforing` | `37 3 * * *` | Förra månadens bokföringspaket sparas (pg_cron)         | Nedladdningen tar fram paketet direkt |
+| Jobb                  | Schema (UTC)   | Vad                                                                                                                                                                       | Om det misslyckas                                                                                  |
+| --------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `/api/cron/larm`      | `7 5 * * *`    | Maskinhälsa, lager, importer, avvikande dag; utskick                                                                                                                      | Larm `job:larm` + Sentry, se nedan                                                                 |
+| `/api/cron/rapporter` | `17 5 1 * *`   | Utkast för förra månadens rapporter (ingenting skickas)                                                                                                                   | Larm `report_drafts:<månad>` + Sentry                                                              |
+| `/api/cron/bokforing` | `37 3 * * *`   | Förra månadens bokföringspaket sparas (pg_cron)                                                                                                                           | Nedladdningen tar fram paketet direkt                                                              |
+| `/api/cron/kontroll`  | `37 3,4 * * *` | Daglig kontroll (pg_cron), en gång per org från 05:00 lokal tid: samma vinst överallt, Awish = appen, påfyllningar nådde Awish, synk, avräkningar, datahygien. Läser bara | Larm `self_check:<kontroll>` per röd kontroll, stängs när den går igenom; Inställningar → Kontroll |
 
 `/api/cron/bokforing` schemaläggs av pg_cron i Supabase (`binderlab-bokforing`, migreringen
 `20261104130000_bokforing_paket.sql`). Paketet sparas i bucketen `bookkeeping`; ändras underlaget

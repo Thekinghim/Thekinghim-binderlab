@@ -11,8 +11,8 @@ import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { NBSP } from "@/lib/format";
 import { loadProfitAdjustments } from "@/server/data/adjustments";
+import { requestPageLoaders } from "@/server/data/page-loaders";
 import {
-  loadDomainInput,
   loadLastOrderDate,
   loadPeriod,
   loadSyncInfo,
@@ -30,7 +30,8 @@ import { LonsamhetKpis } from "./_components/kpis";
 import { ResultAfterProfitPanel } from "./_components/result";
 import { AnalysisSection } from "./_components/sections";
 import { RhythmSection } from "./_components/rhythm";
-import { buildLonsamhetModel, periodText, type TrendKey, type ViewKey } from "./_lib/model";
+import { loadLonsamhetWith } from "./_lib/data";
+import { periodText, type TrendKey, type ViewKey } from "./_lib/model";
 import { buildMovers } from "./_lib/movers";
 import { salesHeatmap, machineHref } from "../automater/_lib/model";
 import { resultAfterProfit } from "./_lib/result";
@@ -100,43 +101,18 @@ export default async function LonsamhetPage({
   const canonical = canonicalLonsamhetQuery(sp);
   if (canonical !== null) redirect(`/lonsamhet${canonical}`);
 
-  const p = await loadPeriod(sp);
-  // Allt läses parallellt. Efter vinsten: återbetalningar och fasta kostnader. Fördelningen
-  // av de fasta kostnaderna räknas på hela organisationen även med filter (annars fick
-  // automaten alla), så med filter läses också organisationens indata.
-  const filtered = Boolean(p.scope.machineId || p.scope.storeId);
-  const [input, adjustments, organizationInput, sync, shareToggle] = await Promise.all([
-    loadDomainInput({ period: p.period, compare: p.compare, ...p.scope }),
-    loadProfitAdjustments(p.period),
-    filtered ? loadDomainInput({ period: p.period }) : null,
+  // Allt läses parallellt. Efter vinsten: återbetalningar och fasta kostnader. Indata och
+  // modellen med samma kod som Daglig kontroll (./_lib/data).
+  const periodP = loadPeriod(sp);
+  const [{ p, input, organization, model }, adjustments, sync, shareToggle] = await Promise.all([
+    loadLonsamhetWith(requestPageLoaders(), sp, {
+      carry: carriedQuery(sp).replace(/^\?/, ""),
+      lastOrderDate: loadLastOrderDate,
+    }),
+    periodP.then((x) => loadProfitAdjustments(x.period)),
     loadSyncInfo(),
     requestStoreShareView(),
   ]);
-  const organization = organizationInput ?? input;
-
-  // Tomt läge: senaste ordern i urvalet (samma filter), för att säga när det såldes senast.
-  const lastOrderDate =
-    input.current.orders.length === 0 && p.dataStart && p.dataStart <= ctx.today
-      ? await loadLastOrderDate({ period: { start: p.dataStart, end: ctx.today }, ...p.scope })
-      : null;
-
-  const model = buildLonsamhetModel(
-    {
-      current: input.current,
-      previous: input.previous,
-      titles: input.titles,
-      machines: input.machines,
-      stores: input.stores,
-      scope: input.scope,
-    },
-    {
-      today: ctx.today,
-      carry: carriedQuery(sp).replace(/^\?/, ""),
-      lastOrderDate,
-      dataStart: p.dataStart,
-      hasOrdersToday: organization.current.orders.some((o) => o.businessDate === ctx.today),
-    },
-  );
 
   const stale = homeStaleImport(sync, p.period.end, ctx.now, ctx.timeZone);
   const result = resultAfterProfit({

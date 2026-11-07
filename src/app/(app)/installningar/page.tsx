@@ -128,6 +128,10 @@ export default async function SettingsPage() {
             href: "/installningar/konto",
             label: "Mitt konto",
           },
+          {
+            href: "/installningar/kontroll",
+            label: "Kontroll",
+          },
         ].map((l) => (
           <Link
             key={l.href}

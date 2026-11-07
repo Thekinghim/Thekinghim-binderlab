@@ -24,6 +24,7 @@ const KIND_HINT: Record<string, string> = {
   import_failed: "Import misslyckad.",
   day_anomaly: "Gårdagen avvek minst 30 %.",
   machine_discovered: "Awish har en automat utan butik.",
+  self_check: "Daglig kontroll hittade fel.",
 };
 
 const DELIVERY_STATUS: Record<

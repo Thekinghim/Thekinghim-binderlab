@@ -1108,6 +1108,11 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
     );
     // Logg över "Exportera all data" (20261111020100_granskning_dataexport.sql).
     await tx.execute(sql`insert into public.data_exports (organization_id) values (${orgId})`);
+    // Daglig kontroll (20261114000000_daglig_kontroll.sql), skrivs bara av servern.
+    await tx.execute(
+      sql`insert into public.self_check_runs (organization_id, trigger, status, checks)
+          values (${orgId}, 'schedule', 'ok', '[]'::jsonb)`,
+    );
     await tx.execute(sql`set local role authenticated`);
 
     return {

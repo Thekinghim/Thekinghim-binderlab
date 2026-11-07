@@ -9,6 +9,7 @@ import { activeSubTab, routeById } from "@/components/shell/nav";
 /** Undersidor med eget namn. Dynamiska delar ([id]) skrivs som `*`. */
 const SUBPAGES: ReadonlyArray<readonly [pattern: string, label: string]> = [
   ["/installningar/anvandare", "Användare"],
+  ["/installningar/kontroll", "Kontroll"],
   ["/automater/enhetsekonomi", "Enhetsekonomi"],
   ["/automater/*", "Automat"],
   ["/butiker/ny", "Ny butik"],

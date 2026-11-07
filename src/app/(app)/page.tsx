@@ -23,6 +23,7 @@ import { ArrowLink, InsightList, TodoList, TopTitles, WarningLine } from "./_hem
 import { OnboardingChecklist } from "./kom-igang/_components/onboarding-checklist";
 import { ShrinkageLine } from "./_hem/shrinkage-line";
 import { MorningBrief } from "./_hem/morning-brief";
+import { SelfCheckLine } from "./_hem/self-check-line";
 import { VardeCard } from "./_hem/varde-card";
 import { homeTodoLinkText, homeTodoPhone } from "./_hem/todo-phone";
 import { dateOf, kr, weekdayDayText } from "./_hem/text";
@@ -139,6 +140,13 @@ async function HemContent({
           </div>
         </HemHero>
       </div>
+
+      {/* Daglig kontroll: bara när senaste kontrollen hittade fel (ägare och admin). */}
+      {canSeeValue && !scope ? (
+        <Suspense fallback={null}>
+          <SelfCheckLine className={`rise mt-6 max-md:mt-4 ${ORDER.hero}`} />
+        </Suspense>
+      ) : null}
 
       {headline.state === "no-data" ? (
         // Ett enda kort när inget är importerat: checklistan om den finns, annars en rad.

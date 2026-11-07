@@ -742,6 +742,13 @@ export const ACTIONS: ActionSpec[] = [
     allowed: ["owner"],
     args: () => [{ validFrom: "2025-06-01", shares: [{ holderName: "Rödteam", shareBp: 10000 }] }],
   },
+  // Daglig kontroll (Inställningar → Kontroll): kör kontrollen (läser, sparar resultatet).
+  {
+    module: "@/app/(app)/installningar/kontroll/actions",
+    name: "runSelfCheckNow",
+    allowed: OP,
+    args: () => [],
+  },
   // Plattformen (abonnemang): bara plattformsoperatörer, ingen roll i A (test/db/abonnemang.test.ts).
   {
     module: "@/app/plattform/actions",

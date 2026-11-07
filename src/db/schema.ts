@@ -819,3 +819,6 @@ export * from "./schema/varde";
 
 // Granskning och oberoende: logg över "Exportera all data".
 export * from "./schema/granskning";
+
+// Daglig kontroll (20261114000000_daglig_kontroll.sql).
+export * from "./schema/kontroll";
