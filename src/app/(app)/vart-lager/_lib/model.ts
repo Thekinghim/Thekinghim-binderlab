@@ -31,6 +31,9 @@ import { AWISH_REFILL_NOTE_PREFIX } from "@/server/awish/refill-deduction";
 const MANUAL_REFILL_NOTE_PREFIX = "Uttag till påfyllning av ";
 /** Notering när register_refill lägger tillbaka ett Awish-uttag (påfyllning utan uttag). */
 const RETURNED_NOTE_PREFIX = "Återfört Awish-uttag ";
+/** Mystery packs: pack_mystery och undo_mystery_packing (20261115000000_mystery_packs.sql). */
+const PACKED_NOTE_PREFIX = "Packat ";
+const UNPACKED_NOTE_PREFIX = "Ångrat: Packat ";
 
 export interface WarehouseEvent {
   readonly titleId: string;
@@ -295,6 +298,17 @@ function describeChangeAt(
     const place = refillPlace(note.slice(RETURNED_NOTE_PREFIX.length), machines);
     return {
       text: `${signed(e.quantity)} återfört ${place}`,
+      when,
+      delta: e.quantity,
+      automatic: false,
+    };
+  }
+  if (e.kind === "adjustment" && note.startsWith(PACKED_NOTE_PREFIX)) {
+    return { text: `${signed(e.quantity)} packat`, when, delta: e.quantity, automatic: false };
+  }
+  if (e.kind === "adjustment" && note.startsWith(UNPACKED_NOTE_PREFIX)) {
+    return {
+      text: `${signed(e.quantity)} ångrad packning`,
       when,
       delta: e.quantity,
       automatic: false,

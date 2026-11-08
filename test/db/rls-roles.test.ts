@@ -57,6 +57,9 @@ const REFILLER_ALLOWLIST = [
   "slot_alerts",
   // Fyllnadsgrad: kapacitet och fack från Awish (antal pack, inga belopp).
   "machine_slot_capacity",
+  // Mystery packs: innehållet (antal och HIT, inga belopp), påfyllaren packar.
+  "mystery_recipes",
+  "mystery_recipe_items",
 ];
 /** Påfyllaren ser bara sin egen rad. */
 const OWN_ROW_ONLY = ["profiles", "memberships"];

@@ -30,6 +30,7 @@ export type RouteId =
   | "order"
   | "lager"
   | "vart-lager"
+  | "mystery"
   | "automater"
   | "kampanjer"
   | "butiker"
@@ -151,6 +152,20 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     phase: 6,
     lead: "Pack i lager, per titel.",
     context: false,
+  },
+  {
+    id: "mystery",
+    group: "hidden",
+    href: "/vart-lager/mystery",
+    label: "Mystery packs",
+    icon: "inventory",
+    section: "main",
+    // Påfyllaren packar också (innehållet och saldot, inga belopp).
+    roles: ALL,
+    phase: 14,
+    lead: "Innehåll och packning av egna mystery packs.",
+    context: false,
+    vmb: false,
   },
   {
     id: "automater",
@@ -518,6 +533,7 @@ export const navSections: ReadonlyArray<NavSection> = [
     icon: "inventory",
     tabs: [
       tab("vart-lager", "Vårt lager"),
+      tab("mystery", "Mystery packs", undefined, { short: "Mystery" }),
       tab("prognos", "Inköp", undefined, { context: false }),
       tab("prognos", "Prognos", "prognos"),
       tab("inkopspriser", "Inköpspriser"),

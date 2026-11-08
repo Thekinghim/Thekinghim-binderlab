@@ -13,6 +13,7 @@ import { TodoList, type TodoItem } from "./_components/todo-list";
 import { loadVartLagerFor } from "./_lib/data";
 import { headingOf } from "./_lib/heading";
 import { stockTodos } from "./_lib/model";
+import { packHref } from "./mystery/_lib/model";
 
 export const metadata: Metadata = { title: "Vårt lager" };
 
@@ -35,8 +36,13 @@ export default async function VartLagerPage() {
     title: t.title,
     qty: t.qty,
     tone: t.tone,
-    // Räkna om och Packa görs här (raden); Beställ på Inköp.
-    href: t.verb === "Beställ" ? "/prognos" : `#rad-${t.titleId}`,
+    // Räkna om görs här (raden), Packa under Mystery packs, Beställ på Inköp.
+    href:
+      t.verb === "Beställ"
+        ? "/prognos"
+        : t.verb === "Packa"
+          ? packHref(t.titleId, t.qty)
+          : `#rad-${t.titleId}`,
   }));
   const awish = view.rows.some((r) => r.latest?.automatic);
 

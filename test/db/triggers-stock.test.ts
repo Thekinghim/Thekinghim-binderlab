@@ -215,7 +215,8 @@ describe("saldon (stock_levels)", () => {
         .where(sql`${s.warehouseStock.organizationId} = ${fx.orgId}`),
     );
     expect(warehouse.every((w) => w.locationId === fx.centralLocationId)).toBe(true);
-    expect(warehouse).toHaveLength(2);
+    // Titel 1 och 2, och fixturens mystery pack (delen 0, mystery-packet 1).
+    expect(warehouse).toHaveLength(4);
   });
 
   it("en inventering ersätter allt före den", async () => {

@@ -893,6 +893,41 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [{ machineId: c.A.machineId, placeId: c.A.centralLocationId }],
   },
+  // Vårt lager → Mystery packs (20261115000000_mystery_packs.sql): innehållet och
+  // inköpspriset ägare och admin, packa och ångra även påfyllaren.
+  {
+    module: "@/app/(app)/vart-lager/mystery/actions",
+    name: "saveMysteryRecipe",
+    allowed: OP,
+    args: (c) => [
+      sink(c, { batchSize: 1, items: [{ titleId: c.A.secondTitleId, quantity: 1, hit: false }] }),
+    ],
+  },
+  {
+    module: "@/app/(app)/vart-lager/mystery/actions",
+    name: "packMystery",
+    allowed: FIELD,
+    args: (c) => [
+      sink(c, {
+        placeId: c.A.centralLocationId,
+        batches: 1,
+        recipeId: c.idsA.mystery_recipes,
+        clientId: "00000000-0000-4000-8000-000000000077",
+      }),
+    ],
+  },
+  {
+    module: "@/app/(app)/vart-lager/mystery/actions",
+    name: "undoMysteryPack",
+    allowed: FIELD,
+    args: (c) => [sink(c, { packingId: c.idsA.mystery_packings })],
+  },
+  {
+    module: "@/app/(app)/vart-lager/mystery/actions",
+    name: "setMysteryCost",
+    allowed: OP,
+    args: (c) => [sink(c, { unitCostOre: 1 })],
+  },
   // Marknad
   {
     module: "@/app/(app)/marknad/actions",

@@ -50,7 +50,7 @@ describe("huvudflikar", () => {
         "Kampanjer",
         "Gratis-pack",
       ],
-      "vart-lager": ["Vårt lager", "Inköp", "Prognos", "Inköpspriser"],
+      "vart-lager": ["Vårt lager", "Mystery packs", "Inköp", "Prognos", "Inköpspriser"],
       butiker: ["Butiker", "Kontrakt", "Expansion", "Butiksportal"],
       pengar: ["Lönsamhet", "Ekonomi", "Bokföring", "Rapporter", "Värde"],
       mer: ["Inställningar", "Datakällor", "Assistent", "Marknad", "Effekt"],
@@ -68,6 +68,8 @@ describe("huvudflikar", () => {
     expect(tree("refiller")).toEqual({
       hem: ["Att göra"],
       automater: ["Drift", "Lager i automaterna", "Inkorg"],
+      // Påfyllaren packar mystery packs (innehållet och saldot, inga belopp).
+      "vart-lager": ["Mystery packs"],
       mer: ["Assistent"],
     });
     const hem = sectionsForRole("refiller").find((s) => s.id === "hem");

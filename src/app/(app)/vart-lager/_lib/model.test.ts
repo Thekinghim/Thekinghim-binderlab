@@ -338,6 +338,14 @@ describe("describeChange", () => {
     expect(d({ kind: "count", quantity: 84 })).toBe("räknat 84");
     expect(d({ kind: "adjustment", quantity: 2, note: "Hittade" })).toBe("+2 justering");
   });
+  it("packning av mystery packs och ångrad packning", () => {
+    const note = "Packat 2 omgångar Mystery Pack Plus";
+    expect(d({ kind: "adjustment", quantity: -8, note })).toBe("−8 packat");
+    expect(d({ kind: "adjustment", quantity: 28, note })).toBe("+28 packat");
+    expect(d({ kind: "adjustment", quantity: 8, note: `Ångrat: ${note}` })).toBe(
+      "+8 ångrad packning",
+    );
+  });
 });
 
 describe("whenText", () => {

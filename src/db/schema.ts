@@ -822,3 +822,6 @@ export * from "./schema/granskning";
 
 // Daglig kontroll (20261114000000_daglig_kontroll.sql).
 export * from "./schema/kontroll";
+
+// Mystery packs: innehåll och packning (20261115000000_mystery_packs.sql).
+export * from "./schema/mystery";

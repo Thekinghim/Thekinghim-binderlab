@@ -35,6 +35,9 @@ const APPEND_ONLY = [
   "data_exports",
   "deviation_reviews",
   "import_rows",
+  // Mystery packs: innehållets versioner (20261115000000_mystery_packs.sql).
+  "mystery_recipe_items",
+  "mystery_recipes",
   "payout_imports",
   "payout_lines",
   "report_approvals",
@@ -83,6 +86,8 @@ const RPCS = [
   "my_invitations",
   // Abonnemang: organisationens egen plan och automater (ägare, admin).
   "my_subscription",
+  // Mystery packs (20261115000000_mystery_packs.sql): packa (ägare, admin, påfyllare).
+  "pack_mystery",
   // Abonnemang: plattformens data och planer (bara plattformsoperatörer).
   "platform_overview_data",
   "platform_save_plan",
@@ -106,6 +111,8 @@ const RPCS = [
   "rename_warehouse",
   "reopen_period",
   "sales_data_until",
+  // Mystery packs: spara innehållet (ägare, admin).
+  "save_mystery_recipe",
   // Flera lager: automatens "Fylls på från" (ägare, admin).
   "set_refill_source",
   // Testköp: markera en order som testköp och ångra (20261105070000_testkop.sql, ägare, admin).
@@ -116,6 +123,8 @@ const RPCS = [
   // Flera lager: flytt mellan egna lager och ångra flytt (ägare, admin).
   "transfer_stock",
   "undo_field_refills",
+  // Mystery packs: ångra en packning inom 30 minuter (ägare, admin, påfyllare).
+  "undo_mystery_packing",
   "undo_transfer",
   // Värde: antal uppgifter Binderlab gjort per månad (20261111000000_varde.sql, ägare, admin).
   "varde_automation_counts",
@@ -192,6 +201,10 @@ describe("tabeller", () => {
         "machine_slots",
         "machines",
         "memberships",
+        // Mystery packs: innehåll och packningar (20261115000000_mystery_packs.sql).
+        "mystery_packings",
+        "mystery_recipe_items",
+        "mystery_recipes",
         "orders",
         "organization_settings",
         "organizations",
@@ -547,6 +560,9 @@ describe("policyer", () => {
       // Fyllnadsgrad: kapacitet och fack från Awish (antal pack, inga belopp).
       "machine_slot_capacity",
       "machines",
+      // Mystery packs: innehållet (antal och HIT, inga belopp), påfyllaren packar.
+      "mystery_recipe_items",
+      "mystery_recipes",
       "organizations",
       "profiles",
       "push_subscriptions",
@@ -609,6 +625,7 @@ describe("anon", () => {
       merge_titles: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid()`,
       my_invitations: sql``,
       my_subscription: sql`gen_random_uuid()`,
+      pack_mystery: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
       platform_overview_data: sql``,
       platform_save_plan: sql`gen_random_uuid(), '2026-01-01'::date, 'active', 0::bigint, 'SEK', null::date, null, null, null`,
       portal_agreements: sql`gen_random_uuid()`,
@@ -627,11 +644,13 @@ describe("anon", () => {
       rename_warehouse: sql`gen_random_uuid(), gen_random_uuid(), 'x'`,
       reopen_period: sql`gen_random_uuid(), '2025-01-01'::date`,
       sales_data_until: sql`gen_random_uuid()`,
+      save_mystery_recipe: sql`gen_random_uuid(), gen_random_uuid(), 14, '[]'::jsonb`,
       set_refill_source: sql`gen_random_uuid(), gen_random_uuid(), null::uuid`,
       set_test_purchase: sql`gen_random_uuid(), gen_random_uuid(), true`,
       start_data_export: sql`gen_random_uuid()`,
       transfer_stock: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 1`,
       undo_field_refills: sql`gen_random_uuid(), array[gen_random_uuid()]`,
+      undo_mystery_packing: sql`gen_random_uuid(), gen_random_uuid()`,
       undo_transfer: sql`gen_random_uuid(), gen_random_uuid()`,
       varde_automation_counts: sql`gen_random_uuid(), '2026-10-01'::date, '2026-10-31'::date`,
     };

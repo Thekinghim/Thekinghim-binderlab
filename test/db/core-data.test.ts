@@ -110,7 +110,11 @@ describe("loadDomainInputFor", () => {
     });
     expect(input.previous?.orders).toEqual([]);
     expect(input.previous?.period).toEqual(FEBRUARY);
-    expect(input.current.prices).toHaveLength(2);
+    // Fixturens två titlar plus Mystery packs två (den egna produkten och dess del).
+    expect(input.current.prices).toHaveLength(4);
+    expect(input.current.prices.map((p) => p.titleId)).toEqual(
+      expect.arrayContaining([fx.titleId, fx.secondTitleId]),
+    );
     expect(input.current.agreements).toEqual([
       {
         storeId: fx.storeId,
@@ -139,7 +143,14 @@ describe("loadDomainInputFor", () => {
     // Med "Visa butikernas andel": − 20 % provision (1 580 + 1 780).
     const shared = await loadDomainInputFor(owner, { period: MARCH, storeShare: true }, NOW);
     expect(profitability(shared.current, "machine").totals.profitOre).toBe(16_800 - 9_700 - 3_360);
-    expect(titleEconomics(input.current)).toHaveLength(2);
+    // Titlar med pris listas även utan försäljning (fixturens två mystery-titlar).
+    expect(titleEconomics(input.current)).toHaveLength(4);
+    expect(
+      titleEconomics(input.current)
+        .filter((t) => t.orders > 0)
+        .map((t) => t.titleId)
+        .sort(),
+    ).toEqual([fx.titleId, fx.secondTitleId].sort());
     expect(unitEconomics({ ...input.current, investments: input.investments })).toHaveLength(1);
   });
 

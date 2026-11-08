@@ -1,0 +1,246 @@
+/**
+ * Mystery packs: räkningen bakom innehållet och packningen. Ren (inga beroenden på Next eller
+ * databasen), testas i ./model.test.ts.
+ *
+ * - Chans (per rad och till hit): antal av omgången, i baspunkter (avrundat en gång).
+ * - Snittkostnad per mystery pack: Σ (antal × dagens inköpspris) / omgångens storlek, avrundat
+ *   till öre. Saknar någon del inköpspris saknas snittet (vi gissar aldrig).
+ * - Kan packa: hur många hela omgångar ett lager räcker till, och vilken del som tar slut först.
+ * - Packa N omgångar: vad som tas ut (antal × N per del) och vad som läggs till (storlek × N).
+ * - Saknas: vilka delar ett lager inte har nog av för N omgångar, och hur många som fattas.
+ * - Standardlager: lagret med flest pack av delarna (lika: standardlagret, sedan ordningen).
+ */
+
+/** En rad i innehållet: en titel, antal per omgång och om den är en HIT. */
+export interface RecipeItem {
+  readonly titleId: string;
+  readonly name: string;
+  readonly quantity: number;
+  readonly hit: boolean;
+}
+
+/** En version av innehållet. */
+export interface Recipe {
+  readonly id: string;
+  readonly titleId: string;
+  readonly version: number;
+  readonly validFrom: string;
+  readonly batchSize: number;
+  readonly note: string | null;
+  readonly items: readonly RecipeItem[];
+}
+
+/** Ett eget lager (Hemma, Kontoret …). */
+export interface Place {
+  readonly id: string;
+  readonly name: string;
+  readonly isDefault: boolean;
+}
+
+export const DEFAULT_BATCH_SIZE = 14;
+export const MAX_BATCHES = 10;
+export const MAX_ITEMS = 30;
+export const MAX_BATCH_SIZE = 200;
+/** Ångra går inom så här många minuter (samma som databasen). */
+export const UNDO_MINUTES = 30;
+
+/** Andel i baspunkter, avrundad halvt uppåt (0 om nämnaren är 0). */
+export function shareBp(part: number, whole: number): number {
+  if (!(whole > 0)) return 0;
+  return Math.round((part * 10_000) / whole);
+}
+
+export interface Odds {
+  /** Antal HIT-pack per omgång. */
+  readonly hits: number;
+  /** Chans till hit i ett mystery pack (bp). */
+  readonly hitBp: number;
+  /** Chansen per rad (bp), i innehållets ordning. */
+  readonly items: ReadonlyArray<RecipeItem & { readonly bp: number }>;
+}
+
+/** Chansen per rad och till en hit. */
+export function recipeOdds(recipe: Pick<Recipe, "batchSize" | "items">): Odds {
+  const hits = recipe.items.reduce((n, i) => n + (i.hit ? i.quantity : 0), 0);
+  return {
+    hits,
+    hitBp: shareBp(hits, recipe.batchSize),
+    items: recipe.items.map((i) => ({ ...i, bp: shareBp(i.quantity, recipe.batchSize) })),
+  };
+}
+
+export interface AverageCost {
+  /** Snittkostnad per mystery pack (öre), null när någon del saknar inköpspris. */
+  readonly perPackOre: number | null;
+  /** Kostnaden för en hel omgång (öre), null när någon del saknar inköpspris. */
+  readonly perBatchOre: number | null;
+  /** Delarna som saknar inköpspris (namn, i innehållets ordning). */
+  readonly missing: readonly string[];
+}
+
+/** Snittkostnaden per mystery pack med dagens inköpspriser (titelns id → öre). */
+export function averageCost(
+  recipe: Pick<Recipe, "batchSize" | "items">,
+  prices: ReadonlyMap<string, number>,
+): AverageCost {
+  let total = 0;
+  const missing: string[] = [];
+  for (const i of recipe.items) {
+    const p = prices.get(i.titleId);
+    if (p === undefined) missing.push(i.name);
+    else total += p * i.quantity;
+  }
+  if (missing.length > 0 || recipe.batchSize <= 0) {
+    return { perPackOre: null, perBatchOre: null, missing };
+  }
+  return { perPackOre: Math.round(total / recipe.batchSize), perBatchOre: total, missing };
+}
+
+export interface Capacity {
+  /** Hela omgångar lagret räcker till. */
+  readonly batches: number;
+  /** Delen som tar slut först (null utan rader). Lika: den som står först i innehållet. */
+  readonly limiting: RecipeItem | null;
+}
+
+/** Hur många omgångar ett lager räcker till (titelns id → pack i lagret). */
+export function maxBatches(
+  recipe: Pick<Recipe, "items">,
+  stock: Readonly<Record<string, number>>,
+): Capacity {
+  let best: Capacity | null = null;
+  for (const i of recipe.items) {
+    const have = Math.max(0, stock[i.titleId] ?? 0);
+    const n = Math.floor(have / i.quantity);
+    if (best === null || n < best.batches) best = { batches: n, limiting: i };
+  }
+  return best ?? { batches: 0, limiting: null };
+}
+
+export interface Take {
+  readonly titleId: string;
+  readonly name: string;
+  readonly quantity: number;
+}
+
+export interface PackPlan {
+  readonly batches: number;
+  /** Pack som tas ur lagret, per del. */
+  readonly takes: readonly Take[];
+  /** Mystery packs som läggs till. */
+  readonly packs: number;
+}
+
+/** Vad N omgångar tar ut och lägger till. */
+export function packPlan(recipe: Pick<Recipe, "batchSize" | "items">, batches: number): PackPlan {
+  return {
+    batches,
+    takes: recipe.items.map((i) => ({
+      titleId: i.titleId,
+      name: i.name,
+      quantity: i.quantity * batches,
+    })),
+    packs: recipe.batchSize * batches,
+  };
+}
+
+/** Delarna som lagret inte har nog av för N omgångar, och hur många som fattas. */
+export function shortages(
+  recipe: Pick<Recipe, "items">,
+  batches: number,
+  stock: Readonly<Record<string, number>>,
+): Take[] {
+  const out: Take[] = [];
+  for (const i of recipe.items) {
+    const need = i.quantity * batches;
+    const have = Math.max(0, stock[i.titleId] ?? 0);
+    if (have < need) out.push({ titleId: i.titleId, name: i.name, quantity: need - have });
+  }
+  return out;
+}
+
+/** Omgångar för ett antal mystery packs (avrundat uppåt, 1–MAX_BATCHES). */
+export function batchesForPacks(packs: number, batchSize: number): number {
+  if (!(batchSize > 0) || !(packs > 0)) return 1;
+  return Math.min(MAX_BATCHES, Math.max(1, Math.ceil(packs / batchSize)));
+}
+
+/** Lagret att packa i: flest pack av delarna. Lika: standardlagret, sedan listans ordning. */
+export function defaultPlace(
+  recipe: Pick<Recipe, "items">,
+  places: readonly Place[],
+  byPlace: Readonly<Record<string, Readonly<Record<string, number>>>>,
+): Place | null {
+  let best: { place: Place; score: number } | null = null;
+  for (const p of places) {
+    const stock = byPlace[p.id] ?? {};
+    const score = recipe.items.reduce((n, i) => n + Math.max(0, stock[i.titleId] ?? 0), 0);
+    if (
+      best === null ||
+      score > best.score ||
+      (score === best.score && p.isDefault && !best.place.isDefault)
+    ) {
+      best = { place: p, score };
+    }
+  }
+  return best?.place ?? null;
+}
+
+/** "8 Phantasmal Flames, 6 Delta Reign och 4 Destined Rivals". */
+export function listText(takes: readonly Take[]): string {
+  const parts = takes.map((t) => `${t.quantity} ${t.name}`);
+  if (parts.length <= 1) return parts.join("");
+  return `${parts.slice(0, -1).join(", ")} och ${parts.at(-1)}`;
+}
+
+/** Adressen till Packa för en titel, med ett antal mystery packs förvalt (Inköps "Packa X st"). */
+export function packHref(titleId: string, packs?: number | null): string {
+  const q = packs && packs > 0 ? `?packa=${Math.trunc(packs)}` : "";
+  return `/vart-lager/mystery/${titleId}${q}#packa`;
+}
+
+/** "1 omgång" · "2 omgångar". */
+export function batchesText(n: number): string {
+  return `${n} ${n === 1 ? "omgång" : "omgångar"}`;
+}
+
+// ---------------------------------------------------------------------------
+// Redigeraren
+// ---------------------------------------------------------------------------
+
+export interface DraftItem {
+  readonly titleId: string;
+  readonly quantity: number;
+  readonly hit: boolean;
+}
+
+export interface DraftCheck {
+  readonly ok: boolean;
+  /** Summan av antalen. */
+  readonly sum: number;
+  /** Första felet att visa (kort), eller null. */
+  readonly error: string | null;
+}
+
+/** Samma regler som databasen (save_mystery_recipe), för att visa felet innan man sparar. */
+export function checkDraft(batchSize: number, items: readonly DraftItem[]): DraftCheck {
+  const sum = items.reduce((n, i) => n + (Number.isInteger(i.quantity) ? i.quantity : 0), 0);
+  const fail = (error: string): DraftCheck => ({ ok: false, sum, error });
+  if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > MAX_BATCH_SIZE) {
+    return fail(`En omgång är 1–${MAX_BATCH_SIZE} pack.`);
+  }
+  if (items.length === 0) return fail("Lägg till minst en titel.");
+  if (items.length > MAX_ITEMS) return fail(`Högst ${MAX_ITEMS} titlar.`);
+  if (items.some((i) => !i.titleId)) return fail("Välj en titel på varje rad.");
+  if (new Set(items.map((i) => i.titleId)).size !== items.length) {
+    return fail("Samma titel står två gånger.");
+  }
+  if (items.some((i) => !Number.isInteger(i.quantity) || i.quantity < 1)) {
+    return fail("Varje rad behöver minst 1.");
+  }
+  if (sum !== batchSize) {
+    const diff = batchSize - sum;
+    return fail(diff > 0 ? `${diff} kvar att lägga till.` : `${-diff} för många.`);
+  }
+  return { ok: true, sum, error: null };
+}

@@ -1009,6 +1009,35 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       sql`select public.create_invitation(${orgId}, ${`invited-${uniqueSuffix()}@test.binderlab.se`}, 'viewer') as token`,
     );
     await tx.execute(sql`select public.close_period(${orgId}, '2024-12-01'::date)`);
+    // Mystery packs (20261115000000_mystery_packs.sql): en egen produkt med innehåll (en
+    // version) och en packning. Egna titlar, så att fixturens övriga saldon inte ändras.
+    const [mystery, mysteryPart] = await tx
+      .insert(s.titles)
+      .values([
+        { ...org, name: "Fixtur Mystery Pack", ownProduct: true },
+        { ...org, name: "Fixtur Booster" },
+      ])
+      .returning();
+    await tx.insert(s.purchasePrices).values([
+      { ...org, titleId: mystery!.id, unitCostOre: 4500, validFrom: "2025-01-01" },
+      { ...org, titleId: mysteryPart!.id, unitCostOre: 4500, validFrom: "2025-01-01" },
+    ]);
+    await tx.insert(s.stockEvents).values({
+      ...org,
+      locationId: central!.id,
+      titleId: mysteryPart!.id,
+      kind: "receipt",
+      quantity: 1,
+    });
+    const recipe = await one<{ id: string }>(
+      tx,
+      sql`select public.save_mystery_recipe(${orgId}::uuid, ${mystery!.id}::uuid, 1,
+            ${JSON.stringify([{ titleId: mysteryPart!.id, quantity: 1, hit: true }])}::jsonb) as id`,
+    );
+    await tx.execute(
+      sql`select * from public.pack_mystery(${orgId}::uuid, gen_random_uuid(), ${mystery!.id}::uuid,
+            ${central!.id}::uuid, 1, ${recipe.id}::uuid)`,
+    );
     // AI-rådgivaren (20261104090000_ai_radgivare.sql): bara servern skriver körningar och
     // förslag, så raderna skrivs som databasägaren i samma transaktion.
     await tx.execute(sql`reset role`);
