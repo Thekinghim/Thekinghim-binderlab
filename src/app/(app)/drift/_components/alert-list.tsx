@@ -50,15 +50,16 @@ function AckButton({ id }: { id: string }) {
           toast(
             r.ok
               ? {
-                  title: "Larmet kvitterat",
-                  description: "Inga fler påminnelser om det här problemet.",
+                  title: "Du tar det",
+                  description: "Inga fler påminnelser om det här.",
                 }
-              : { title: r.error ?? "Larmet kunde inte kvitteras", tone: "critical" },
+              : { title: r.error ?? "Det gick inte att spara. Försök igen.", tone: "critical" },
           );
         })
       }
+      title="Inga fler påminnelser om det här larmet"
     >
-      Kvittera
+      Jag tar det
     </Button>
   );
 }
@@ -101,10 +102,12 @@ export function AlertList({ items, canAck }: { items: AlertItem[]; canAck: boole
               <p className="text-base text-fg">{sentence(a.title)}</p>
               <p className="text-sm text-muted max-md:line-clamp-2">{a.detail}</p>
               <details className="mt-1">
-                <summary className="w-fit cursor-pointer rounded-xs text-sm text-muted hover:text-fg max-md:flex max-md:min-h-11 max-md:items-center">
+                <summary className="w-fit cursor-pointer rounded-xs text-sm text-muted hover:text-fg max-md:tap max-md:flex max-md:min-h-11 max-md:items-center">
                   Underlag
                 </summary>
                 <div className="mt-2 flex flex-col gap-2 text-sm text-muted">
+                  {/* Mobil: texten ovan kortas efter två rader, här står den hel. */}
+                  <p className="text-fg md:hidden">{a.detail}</p>
                   <p className="meta text-subtle md:hidden">
                     {`${a.kindLabel} · ${a.open ? `Sedan ${a.opened}` : `${a.opened} – ${a.closed ?? ""}`}`}
                   </p>

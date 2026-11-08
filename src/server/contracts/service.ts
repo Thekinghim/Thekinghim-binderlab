@@ -203,7 +203,7 @@ export async function loadContractSetupFor(
     });
     const leadOption = (x: Row): ContractTargetOption => ({
       value: `lead:${x.id}`,
-      label: `${x.name} (ny från pipelinen)`,
+      label: `${x.name} (ny plats)`,
       suggestedFrom: null,
       firstSale: null,
       party: party(x),

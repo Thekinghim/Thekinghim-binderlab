@@ -87,7 +87,7 @@ export function SignForm({
               <span className="text-sm text-muted">Rita med fingret</span>
               <button
                 type="button"
-                className="rounded-xs text-sm text-fg underline-offset-4 hover:underline"
+                className="max-md:tap-offset-4 rounded-xs text-sm text-fg underline hover:underline"
                 onClick={() => pad.current?.clear()}
               >
                 Rita om

@@ -381,7 +381,7 @@ function DailySection({
     ? `bästa dagen ${weekdayDayText(peakDate, today)} med ${kr(peakValue)}`
     : null;
   const days = daily.dates.length;
-  const compareName = `Föreg. ${formatInt(days)}${NBSP}d`;
+  const compareName = `Förra ${formatInt(days)}${NBSP}d`;
   const shownTotal = daily.revenueOre.reduce((a, b) => a + b, 0);
   const summary = [
     `Intäkt per dag, ${formatInt(days)} dagar: totalt ${kr(shownTotal || revenue)}, snitt ${kr(daily.averageOre)} per dag`,

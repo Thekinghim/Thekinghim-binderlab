@@ -165,8 +165,14 @@ function TabRow({
     }
     place();
     if (!box) return;
+    // Rullad bort från början: vänsterkanten tonar också ut (det finns flikar till vänster).
+    const edge = () => {
+      box.dataset.start = box.scrollLeft <= 1 ? "1" : "0";
+    };
+    edge();
     // Raden rullar: markeringen följer med (utan glidning, den ska sitta fast under fliken).
     const onScroll = () => {
+      edge();
       const bar = barRef.current;
       if (bar) bar.style.transition = "none";
       place();
@@ -216,7 +222,7 @@ function TabRow({
         <div
           ref={scrollRef}
           // Under md tonar högerkanten ut, så att man ser att raden går att rulla.
-          className="-ml-4 min-w-0 [scrollbar-width:none] overflow-x-auto pl-4 max-md:[mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)] max-md:pr-6 md:ml-0 md:pl-0 [&::-webkit-scrollbar]:hidden"
+          className="-ml-4 min-w-0 [scrollbar-width:none] overflow-x-auto pl-4 max-md:[mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)] max-md:pr-6 max-md:data-[start=0]:[mask-image:linear-gradient(to_right,transparent,black_2rem,black_calc(100%-1.5rem),transparent)] md:ml-0 md:pl-0 [&::-webkit-scrollbar]:hidden"
         >
           <ul className="flex min-w-max gap-1">
             {inline.map((t) => (

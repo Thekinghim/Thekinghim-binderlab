@@ -197,7 +197,7 @@ describe("listan", () => {
     expect(rows[2]!.issue).toMatchObject({ short: "Inga villkor", level: "critical" });
     expect(rows[2]!.machineCodes).toEqual(["BL-003"]);
     // Gallerian har avtal men ingen tar emot rapporten.
-    expect(rows[1]!.issue?.short).toBe("Ingen mottagare");
+    expect(rows[1]!.issue?.short).toBe("Ingen får rapporten");
     expect(rows[0]!.issue).toBeNull();
     expect(rows[0]!.href).toBe("/butiker/s1?period=30d");
     expect(rows[0]!.current?.termsLabel).toBe(`Provision 10${NB}%`);

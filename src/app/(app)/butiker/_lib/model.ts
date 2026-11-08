@@ -706,7 +706,7 @@ export function storeIssues(args: {
       id: "no-recipient",
       level: "neutral",
       text: "Ingen tar emot butikens månadsrapport.",
-      short: "Ingen mottagare",
+      short: "Ingen får rapporten",
       actionable: true,
     });
   }

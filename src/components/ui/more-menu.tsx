@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 
@@ -34,6 +34,13 @@ export function MobileMore({
 }) {
   const [open, setOpen] = useState(false);
   const [empty, setEmpty] = useState(false);
+  // Var menyn ritas: uppåt när den annars hamnar under flikraden längst ned, och flyttad i
+  // sidled så att den håller sig på skärmen (knappen kan stå till vänster fast align är
+  // "right"). left är px från knappens vänsterkant; null = enligt align.
+  const [place, setPlace] = useState<{ up: boolean; left: number | null }>({
+    up: false,
+    left: null,
+  });
   const id = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -48,6 +55,25 @@ export function MobileMore({
     mo.observe(el, { childList: true });
     return () => mo.disconnect();
   }, []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const panel = panelRef.current;
+    const root = rootRef.current;
+    if (!panel || !root) return;
+    const r = panel.getBoundingClientRect();
+    const b = root.getBoundingClientRect();
+    // Flikraden längst ned på mobilen (ca 64 px plus hemraden).
+    const bottomLimit = window.innerHeight - 88;
+    const up = r.bottom > bottomLimit && b.top - r.height - 8 > 64;
+    const margin = 8;
+    const wanted = align === "right" ? b.right - r.width : b.left;
+    const clamped = Math.min(
+      Math.max(wanted, margin),
+      Math.max(margin, window.innerWidth - margin - r.width),
+    );
+    setPlace({ up, left: clamped === wanted ? null : clamped - b.left });
+  }, [open, align]);
 
   useEffect(() => {
     if (!open) return;
@@ -74,7 +100,11 @@ export function MobileMore({
         aria-label={label}
         aria-expanded={open}
         aria-controls={id}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          // Mäts om när menyn öppnas (se useLayoutEffect ovan).
+          if (!open) setPlace({ up: false, left: null });
+          setOpen((o) => !o);
+        }}
         className={cn(
           "flex size-11 items-center justify-center rounded-sm text-muted transition-colors hover:bg-hover hover:text-fg md:hidden",
           open && "bg-hover text-fg",
@@ -95,8 +125,10 @@ export function MobileMore({
             if (!panelRef.current?.querySelector("dialog[open]")) setOpen(false);
           }, 60);
         }}
+        style={place.left === null ? undefined : { left: place.left, right: "auto" }}
         className={cn(
-          "max-md:shadow-lg max-md:absolute max-md:top-full max-md:z-40 max-md:mt-1 max-md:flex max-md:w-max max-md:max-w-[calc(100vw-2rem)] max-md:min-w-56 max-md:flex-col max-md:gap-1 max-md:rounded-md max-md:border max-md:border-line-strong max-md:bg-surface max-md:p-1",
+          "max-md:shadow-lg max-md:absolute max-md:z-40 max-md:flex max-md:w-max max-md:max-w-[calc(100vw-2rem)] max-md:min-w-56 max-md:flex-col max-md:gap-1 max-md:rounded-md max-md:border max-md:border-line-strong max-md:bg-surface max-md:p-1",
+          place.up ? "max-md:bottom-full max-md:mb-1" : "max-md:top-full max-md:mt-1",
           align === "right" ? "max-md:right-0" : "max-md:left-0",
           open ? "max-md:animate-enter" : "max-md:hidden",
           className,

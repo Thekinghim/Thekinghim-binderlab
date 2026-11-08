@@ -7,6 +7,7 @@ import type { HealthStatus } from "@/analytics/health";
 import { fillPercent } from "@/analytics/visits/fill";
 import { DataTable, type Column } from "@/components/ui/data-table";
 import { FillBar, FillValue } from "@/components/ui/fill-bar";
+import { Icon } from "@/components/ui/icon";
 import { StatusTag } from "@/components/ui/status-tag";
 
 import { cn } from "@/lib/cn";
@@ -69,7 +70,7 @@ const columns: Column<HealthRow>[] = [
     render: (r) => (
       <Link
         href={`/drift/automat/${r.machineId}`}
-        className="flex min-w-0 flex-col rounded-xs hover:underline"
+        className="flex min-w-0 flex-col rounded-xs hover:underline max-md:min-h-11 max-md:justify-center"
       >
         <span className="meta text-fg">{r.code.replace("-", "‑")}</span>
         <span className="truncate text-sm text-muted">{r.name}</span>
@@ -180,6 +181,12 @@ function HealthList({ rows }: { rows: HealthRow[] }) {
                 <span className="line-clamp-2 min-w-0">
                   {r.status === "ok" ? "Underlag" : r.detail}
                 </span>
+                {/* Visar att raden går att öppna (hela texten och underlaget). */}
+                <Icon
+                  name="chevronDown"
+                  size={12}
+                  className="ml-auto shrink-0 transition-transform group-open:rotate-180 motion-reduce:transition-none"
+                />
               </summary>
               <dl className="mt-1 mb-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs text-muted">
                 <dt className="label text-subtle">Underlag</dt>

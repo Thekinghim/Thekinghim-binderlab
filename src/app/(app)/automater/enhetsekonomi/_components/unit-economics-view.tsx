@@ -65,7 +65,7 @@ export function UnitEconomicsKpis({
     { id: "investment", label: "Investerat", value: investmentOre, format: sek },
     { id: "book", label: "Bokfört värde", value: bookValueOre, format: sek },
   ];
-  return <KpiStrip items={items} label="Flottan" headingLevel={2} comparison={comparison} />;
+  return <KpiStrip items={items} label="Alla automater" headingLevel={2} comparison={comparison} />;
 }
 
 export function ProfitPerDayChart({
@@ -126,7 +126,7 @@ export function ComparisonTable({
         render: (r) => (
           <Link
             href={lonsamhetHref(period, r.machineId)}
-            className="flex min-w-0 flex-col rounded-xs hover:underline"
+            className="flex min-w-0 flex-col rounded-xs hover:underline max-md:min-h-11 max-md:justify-center"
             title={r.name}
           >
             <span className="font-mono text-sm">

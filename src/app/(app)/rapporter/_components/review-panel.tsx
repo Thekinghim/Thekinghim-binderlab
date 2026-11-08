@@ -33,9 +33,17 @@ const DELIVERY_STATUS = {
   bounced: { tag: "critical", label: "Studsade" },
 } as const;
 
-function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+function Fact({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="flex min-w-0 flex-col gap-1">
+    <div className={`flex min-w-0 flex-col gap-1 ${className ?? ""}`}>
       <dt className="label text-subtle">{label}</dt>
       <dd className="text-base text-fg">{children}</dd>
     </div>
@@ -155,19 +163,20 @@ export function ReviewPanel({
             <span className="text-muted">Inte än</span>
           )}
         </Fact>
-        <Fact label="Beräkningsversion">
+        {/* Teknisk detalj: tar plats på telefonen utan att säga ägaren något. */}
+        <Fact label="Beräkningsversion" className="max-md:hidden">
           <span className="tnum font-mono text-sm">{report.calcVersion}</span>
         </Fact>
         <div className="col-span-2 flex flex-wrap items-center gap-2">
           <a
             href={`/rapport/${report.id}`}
-            className="inline-flex h-7 items-center rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover"
+            className="inline-flex h-7 items-center rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:h-11 max-md:px-4"
           >
             Öppna
           </a>
           <a
             href={`/rapport/${report.id}/epost`}
-            className="inline-flex h-7 items-center rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover"
+            className="inline-flex h-7 items-center rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:h-11 max-md:px-4"
           >
             Mejlet
           </a>
@@ -175,7 +184,7 @@ export function ReviewPanel({
             <a
               key={f.kind}
               href={`/rapport/${report.id}/fil/${f.kind}`}
-              className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover"
+              className="inline-flex h-7 items-center gap-1.5 rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:h-11 max-md:px-4"
             >
               {f.label}
             </a>

@@ -50,7 +50,7 @@ const UPLOAD_MAX_BYTES = process.env.VERCEL ? 4 * 1024 * 1024 : MAX_RECEIPT_BYTE
 const TAG: Record<MonthStatus, Status> = { open: "neutral", closed: "warning", sent: "ok" };
 
 const PRIMARY =
-  "inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse transition-colors hover:border-inverse-hover hover:bg-inverse-hover";
+  "inline-flex h-9 items-center justify-center max-md:min-h-11 gap-2 whitespace-nowrap rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse transition-colors hover:border-inverse-hover hover:bg-inverse-hover";
 
 export async function BokforingSection({
   viewer,

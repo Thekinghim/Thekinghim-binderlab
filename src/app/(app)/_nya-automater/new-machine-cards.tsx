@@ -148,7 +148,7 @@ function Card({
           <Link
             href={`/butiker/ny?awish=${encodeURIComponent(card.id)}`}
             className={cn(
-              "inline-flex h-9 items-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse hover:bg-inverse-hover",
+              "inline-flex h-9 items-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse hover:bg-inverse-hover max-md:min-h-11",
             )}
           >
             Ny butik

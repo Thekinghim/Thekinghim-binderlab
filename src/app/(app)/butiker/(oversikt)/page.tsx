@@ -140,7 +140,7 @@ export default async function ButikerPage({
               title={
                 data.showStoreShare
                   ? `${sek(earned)} intjänat i ${data.monthLabel}.`
-                  : "Vår vinst per butik."
+                  : "Intäkt per butik."
               }
               aside={`${formatInt(data.signed)} av ${plural(active.length, "butik", "butiker")} har signerat kontrakt.`}
             />

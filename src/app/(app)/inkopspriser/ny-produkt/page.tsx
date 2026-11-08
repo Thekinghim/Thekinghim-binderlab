@@ -166,9 +166,10 @@ export default async function NewProductPage({
       </nav>
       {data.status.blocker ? (
         <StateMessage
-          kind="empty"
+          kind="not-configured"
+          code="Inte kopplad"
           message={data.status.blocker}
-          action={{ label: "Till Datakällor →", href: "/datakallor" }}
+          action={{ label: "Till Datakällor", href: "/datakallor" }}
         />
       ) : tab === "ny" ? (
         <NewProductPanels />

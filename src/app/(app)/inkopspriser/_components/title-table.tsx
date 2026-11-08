@@ -157,7 +157,7 @@ export function TitleTable({
                 }}
                 aria-current={selected ? "true" : undefined}
                 className={cn(
-                  "rounded-xs underline-offset-4 hover:underline",
+                  "rounded-xs underline-offset-4 hover:underline max-md:tap",
                   selected ? "font-medium text-fg underline" : "text-fg",
                 )}
               >

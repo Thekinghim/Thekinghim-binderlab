@@ -209,7 +209,7 @@ export function NoticesCard({
           onClick={toggle}
           disabled={busy}
           className={cn(
-            "relative inline-flex h-9 w-16 shrink-0 items-center rounded-full border transition-[background-color,border-color] duration-base ease-instrument disabled:cursor-progress",
+            "relative inline-flex h-9 w-16 shrink-0 items-center rounded-full border transition-[background-color,border-color] duration-base ease-instrument disabled:cursor-progress max-md:before:absolute max-md:before:inset-x-0 max-md:before:-inset-y-1 max-md:before:content-['']",
             on ? "border-inverse bg-inverse" : "border-line-strong bg-hover",
           )}
         >

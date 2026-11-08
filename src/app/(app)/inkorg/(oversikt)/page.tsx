@@ -217,7 +217,7 @@ export default async function InboxPage({
           ctx.canEdit ? (
             <Link
               href="/inkorg/nytt"
-              className="inline-flex h-9 items-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse hover:bg-inverse-hover"
+              className="inline-flex h-9 items-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse hover:bg-inverse-hover max-md:min-h-11"
             >
               Registrera ärende
             </Link>
@@ -272,7 +272,7 @@ export default async function InboxPage({
               </span>
             ) : null}
           </summary>
-          <div className="mt-6 grid gap-10 lg:grid-cols-12 lg:gap-8">
+          <div className="mt-6 grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-8">
             <div className="lg:col-span-6">
               <StatTable caption="Ärenden per automat" rows={byMachine} first="Automat" />
             </div>

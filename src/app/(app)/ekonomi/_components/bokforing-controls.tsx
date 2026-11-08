@@ -73,7 +73,7 @@ export function VmbBookkeepingSwitch({ on, canEdit }: { on: boolean; canEdit: bo
           })
         }
         className={cn(
-          "label flex h-8 items-center gap-2 rounded-sm border border-line-strong px-2.5 transition-colors disabled:cursor-not-allowed",
+          "label flex h-8 items-center gap-2 rounded-sm border border-line-strong px-2.5 transition-colors disabled:cursor-not-allowed max-md:min-h-11",
           on ? "bg-hover font-medium text-fg" : "text-muted hover:text-fg",
           pending && "opacity-60",
         )}
@@ -322,7 +322,7 @@ export function PlanForm({
                     aria-label={`Konto för ${r.use}`}
                     disabled={!canEdit}
                     className={cn(
-                      "tnum h-8 w-20 rounded-sm border bg-bg px-2 text-fg disabled:border-dashed disabled:bg-transparent",
+                      "tnum h-8 w-20 rounded-sm border bg-bg px-2 text-fg disabled:border-dashed disabled:bg-transparent max-md:h-11",
                       r.account === r.proposal ? "border-line-control" : "border-fg",
                     )}
                   />

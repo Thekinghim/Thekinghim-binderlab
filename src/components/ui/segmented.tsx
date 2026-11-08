@@ -83,7 +83,7 @@ export function Segmented<T extends string>({
             onClick={() => onChange(o.value)}
             onKeyDown={onKeyDown}
             className={cn(
-              "label relative shrink-0 whitespace-nowrap transition-[background-color,color] duration-fast ease-instrument focus-visible:-outline-offset-2",
+              "label relative shrink-0 whitespace-nowrap transition-[background-color,color] duration-fast ease-instrument focus-visible:-outline-offset-2 max-md:min-w-11",
               size === "sm" ? "px-2.5" : "px-3",
               // Valt läge bärs av form, inte bara färg: ett 2px indexstreck i
               // förgrundsfärg längs underkanten, inuti ramen.

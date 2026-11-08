@@ -67,7 +67,7 @@ export function UnpricedSummary({ unpriced }: { unpriced: UnpricedBlock }) {
         <span className="label flex items-center gap-2 text-muted">
           <span aria-hidden className="size-2 shrink-0 bg-signal" />
           <span className="sr-only">Kräver åtgärd: </span>
-          Utan inköpspris · {share}
+          Saknar inköpspris · {share} av intäkten
         </span>
         <span className="label tnum text-subtle">{formatInt(unpriced.titles.length)} st</span>
       </summary>
@@ -92,7 +92,7 @@ export function UnpricedSummary({ unpriced }: { unpriced: UnpricedBlock }) {
             </span>
             <Link
               href={t.href}
-              className="rounded-xs text-sm whitespace-nowrap text-fg underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-fg max-md:inline-flex max-md:min-h-11 max-md:items-center"
+              className="rounded-xs text-sm whitespace-nowrap text-fg underline decoration-line-strong underline-offset-4 transition-colors hover:decoration-fg max-md:tap max-md:inline-flex max-md:min-h-11 max-md:items-center"
             >
               Lägg in pris<span className="sr-only"> för {t.name}</span>
               <span aria-hidden>{`${NBSP}→`}</span>

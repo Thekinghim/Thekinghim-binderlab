@@ -14,6 +14,7 @@ import {
   activeSectionId,
   sectionHref,
   sectionsForRole,
+  shellRoutes,
   subTabHref,
   type SectionId,
 } from "./nav";
@@ -203,11 +204,17 @@ export function MobileNav(props: ShellNavProps) {
                           onClick={() => setOpen(false)}
                           aria-current={active ? "page" : undefined}
                           className={cn(
-                            "flex h-11 items-center gap-3 px-4 text-base transition-colors focus-visible:-outline-offset-2",
+                            "flex min-h-11 flex-col justify-center px-4 py-1.5 text-base transition-colors focus-visible:-outline-offset-2",
                             active ? "font-medium text-fg" : "text-muted hover:text-fg",
                           )}
                         >
                           {t.label}
+                          {/* En rad om vad sidan är till för ("Datakällor" säger inget själv). */}
+                          {LEADS.get(t.route) ? (
+                            <span className="text-xs font-normal text-subtle">
+                              {LEADS.get(t.route)}
+                            </span>
+                          ) : null}
                         </Link>
                       </li>
                     );
@@ -236,6 +243,9 @@ export function MobileNav(props: ShellNavProps) {
     </>
   );
 }
+
+/** Sidornas förklaring (lead i nav.ts) per rutt, för raderna i "Mer". */
+const LEADS = new Map<string, string>(shellRoutes.map((r) => [r.id, r.lead]));
 
 /** "Ljust läge" / "Mörkt läge": byter tema direkt. */
 function ThemeRow({ className }: { className?: string }) {

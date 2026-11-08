@@ -216,7 +216,7 @@ function Cell({
       </>
     ) : cell.stocked ? (
       <>
-        <span className="flex w-full items-baseline justify-end gap-2">
+        <span className="flex w-full flex-wrap items-baseline justify-end gap-x-2">
           <span className="meta text-subtle">{daysLeftText(cell)}</span>
           <span className="tnum text-xl leading-none font-medium">{formatInt(cell.onHand)}</span>
         </span>

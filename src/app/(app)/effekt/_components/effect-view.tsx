@@ -192,7 +192,8 @@ export function SeriesView({
         />
       ) : null}
       <div className="relative min-w-0 overflow-x-auto">
-        <table className="w-full min-w-[560px] border-collapse text-base">
+        {/* Under md: månad, värde och förbättring (ryms utan att rulla). */}
+        <table className="w-full border-collapse text-base md:min-w-[560px]">
           <caption className="sr-only">{METRIC_LABEL[series.metric]} per månad</caption>
           <thead>
             <tr className="border-b border-line-strong">
@@ -203,6 +204,7 @@ export function SeriesView({
                   className={cn(
                     "label h-9 font-normal text-subtle",
                     i === 0 ? "text-left" : "pl-4 text-right",
+                    (i === 2 || i === 4) && "max-md:hidden",
                   )}
                 >
                   {h}
@@ -218,7 +220,7 @@ export function SeriesView({
                   {p.partial ? <span className="meta text-subtle"> · hittills</span> : null}
                 </td>
                 <td className="tnum pl-4 text-right">{metricValue(series.metric, p.value)}</td>
-                <td className="tnum pl-4 text-right text-muted">
+                <td className="tnum pl-4 text-right text-muted max-md:hidden">
                   {series.metric === "profit_per_machine_month"
                     ? kr(series.baseline)
                     : series.metric === "stockout_days_month"
@@ -228,7 +230,7 @@ export function SeriesView({
                 <td className="tnum pl-4 text-right">
                   {p.improvementBp === null ? MISSING : signedPct(p.improvementBp)}
                 </td>
-                <td className="tnum pl-4 text-right">
+                <td className="tnum pl-4 text-right max-md:hidden">
                   {p.improvementOre === null ? MISSING : signedKr(p.improvementOre)}
                 </td>
               </tr>

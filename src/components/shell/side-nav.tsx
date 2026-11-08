@@ -458,7 +458,7 @@ export function UserMenu({
   useDismiss(open, setOpen, rootRef, buttonRef);
   if (!user) return null;
   const rowCls =
-    "flex h-8 w-full items-center gap-3 px-4 text-left text-base text-muted transition-colors hover:text-fg focus-visible:-outline-offset-2";
+    "flex h-8 max-lg:h-11 w-full items-center gap-3 px-4 text-left text-base text-muted transition-colors hover:text-fg focus-visible:-outline-offset-2";
   return (
     <div ref={rootRef}>
       {open ? (

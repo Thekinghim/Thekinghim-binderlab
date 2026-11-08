@@ -409,7 +409,7 @@ function OrderFilters({
         value={text}
         autoComplete="off"
         spellCheck={false}
-        placeholder="Ordernr, titel, automat eller butik"
+        placeholder="Sök order"
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Escape" && text) {

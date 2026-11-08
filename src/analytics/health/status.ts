@@ -45,7 +45,7 @@ import {
 } from "./calendar";
 import { poissonZero, probabilityToBp } from "./poisson";
 import { buildWeeklyProfile, expectedSales, milliToTenths, type SaleInstant } from "./profile";
-import { durationText, probabilityText, slotsText, whenText } from "./text";
+import { durationText, probabilityText, whenText } from "./text";
 import type { EvidenceFigure } from "@/analytics/todos/types";
 import type {
   AnalyticsOrder,
@@ -450,7 +450,7 @@ function evaluate(
       : Math.max(Math.min(p.dataUntilMs, nowMs), p.silenceStartMs ?? p.dataUntilMs);
   const lagging = nowMs - endMs >= o.minSilenceMinutes * MINUTE_MS && endMs < nowMs;
   const coverageText = lagging
-    ? ` Försäljningen${p.dataSourceName ? ` från ${p.dataSourceName}` : ""} är importerad till och med ${whenText(endMs, tz)}; tystnaden är bedömd fram till dit.`
+    ? ` Vi har försäljningen${p.dataSourceName ? ` från ${p.dataSourceName}` : ""} fram till ${whenText(endMs, tz)}.`
     : "";
   const coverageRule = lagging
     ? " Tystnaden räknas fram till senaste importerade försäljning i automatens datakälla, inte fram till nu."
@@ -606,7 +606,6 @@ function evaluate(
   const sinceText = p.fromActivation
     ? `driftstart ${whenText(p.silenceStartMs, tz)}`
     : whenText(p.silenceStartMs, tz);
-  const busiest = slotsText(silence.topSlots);
   const figures: EvidenceFigure[] = [
     {
       key: "silenceMinutes",
@@ -655,14 +654,15 @@ function evaluate(
   if (silence.anomalous) {
     const hours = Math.floor(silence.minutes / 60);
     const derivedOffline = hours >= o.offlineAfterHours && !p.vendor.hasConnectivity;
-    const why = `Ingen försäljning sedan ${sinceText} (${durationText(silence.minutes)}). Samma veckodagar och timmar brukar ge ${expectedText} pack${busiest ? `, mest ${busiest}` : ""}. Så lång tystnad är mycket ovanlig.${coverageText}`;
+    const why = `Ingen försäljning sedan ${sinceText} (${durationText(silence.minutes)}). Den brukar sälja ca ${expectedText} pack på den tiden. Så lång tystnad är mycket ovanlig.${coverageText}`;
     if (derivedOffline) {
       return base(
         "offline",
         "sales",
         p.silenceStartMs,
         `${name} är troligen ur drift`,
-        `${why} Maskindata saknas, så statusen är härledd ur försäljningen.`,
+        // Vad man ska göra först: på mobilen kortas texten efter två rader.
+        `Åk dit och kolla kortläsaren och strömmen. ${why}`,
         {
           ...ev,
           rule: `${rule} Offline när tystnaden dessutom varat minst ${plural(o.offlineAfterHours, "timme", "timmar")} och maskindata saknas.`,

@@ -31,7 +31,7 @@ export function toAlertItems(
     notifyCount: a.notifyCount,
     occurrences: a.occurrences,
     acknowledged: a.acknowledgedAt
-      ? `Kvitterat ${formatWhen(a.acknowledgedAt, timeZone, now)}${a.acknowledgedByName ? ` av ${a.acknowledgedByName}` : ""}`
+      ? `${a.acknowledgedByName ?? "Någon"} tar det, sedan ${formatWhen(a.acknowledgedAt, timeZone, now)}`
       : null,
     open: a.status === "open",
   }));

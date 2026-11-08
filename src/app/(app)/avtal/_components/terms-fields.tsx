@@ -87,8 +87,9 @@ export function TermsFields({
             value={value.base}
             onChange={(base) => set({ base })}
             options={[
-              { value: "profit_after_costs", label: "Vinst efter kostnader" },
-              { value: "net_excl_vat", label: "Omsättning exkl. moms" },
+              // Korta namn: båda ska synas på en iPhone SE utan att rutan skrollar i sidled.
+              { value: "profit_after_costs", label: "Vinsten" },
+              { value: "net_excl_vat", label: "Omsättning ex. moms" },
             ]}
           />
         </div>
@@ -115,7 +116,7 @@ export function TermsFields({
           aria-expanded={more}
           aria-controls={`${id}-mer`}
           onClick={() => setMore(!more)}
-          className="label inline-flex w-fit items-center gap-1.5 rounded-xs text-subtle hover:text-fg"
+          className="label inline-flex w-fit items-center gap-1.5 rounded-xs text-subtle hover:text-fg max-md:tap"
         >
           <span
             aria-hidden

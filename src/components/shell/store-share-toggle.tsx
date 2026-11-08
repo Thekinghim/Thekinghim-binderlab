@@ -34,9 +34,9 @@ export function StoreShareToggle({
       type="button"
       aria-pressed={on}
       onClick={() => setOn(!on)}
-      title={`Vår vinst och marginal visas ${storeShareHint(on).toLowerCase()}`}
+      title={storeShareHint(on)}
       className={cn(
-        "label inline-flex h-8 shrink-0 items-center gap-2 self-start rounded-sm border border-line-strong px-2.5 transition-colors",
+        "label inline-flex h-8 shrink-0 items-center gap-2 self-start rounded-sm border border-line-strong px-2.5 transition-colors max-md:min-h-11",
         on ? "bg-hover font-medium text-fg" : "text-subtle hover:text-muted",
         menuItem && cn(MOBILE_MENU_ITEM, "max-md:gap-3"),
         !hint && className,
@@ -56,7 +56,7 @@ export function StoreShareToggle({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-2 self-start",
+        "inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 self-start md:shrink-0 md:flex-nowrap",
         menuItem && "max-md:w-full max-md:flex-col max-md:items-stretch max-md:gap-0",
         className,
       )}

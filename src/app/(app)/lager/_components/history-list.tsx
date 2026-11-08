@@ -55,7 +55,7 @@ export function HistoryList({
               </span>
               <span className="text-base text-fg md:order-2">{what}</span>
               <span className="text-right text-sm text-muted md:order-6 md:text-left">{who}</span>
-              <span className="col-span-2 min-w-0 truncate text-sm text-muted md:order-3 md:col-span-1">
+              <span className="col-span-2 min-w-0 text-sm [overflow-wrap:anywhere] text-muted md:order-3 md:col-span-1 md:truncate">
                 {e.titleName}
                 <span className="md:hidden"> · {place}</span>
                 {e.fromWarehouse ? <span> · från vårt lager</span> : null}

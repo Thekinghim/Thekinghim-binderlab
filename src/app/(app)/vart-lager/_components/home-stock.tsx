@@ -369,8 +369,10 @@ function StockRow({
         style={actWidth(multi, canEdit)}
       >
         <span className="flex min-w-0 flex-col" onClick={() => setMore((v) => !v)}>
-          <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-base text-fg">{row.name}</span>
+          <span className="flex min-w-0 items-center gap-2 max-md:flex-wrap max-md:gap-y-1">
+            <span className="truncate text-base text-fg max-md:[overflow-wrap:anywhere] max-md:whitespace-normal">
+              {row.name}
+            </span>
             {row.negative || negativeHere ? (
               <StatusTag status="critical">Räkna om</StatusTag>
             ) : row.retired ? (
@@ -381,7 +383,7 @@ function StockRow({
               </StatusTag>
             ) : null}
           </span>
-          <span className={cn("meta truncate text-subtle", !more && "max-md:hidden")}>
+          <span className={cn("meta text-subtle md:truncate", !more && "max-md:hidden")}>
             {latest ? (
               <>
                 <span
@@ -407,9 +409,10 @@ function StockRow({
           >
             {/* Stängd: bara hur länge det räcker (får plats på en rad); öppen: allt. */}
             <span className={more ? "min-w-0" : "min-w-0 truncate"}>
-              räcker {lastsText(row)}
+              {/* "–" = inget sålt senaste veckan: säg det i ord (kort, får plats på en iPhone SE). */}
+              {lastsText(row) === "–" ? `inget sålt på 7${NBSP}d` : `räcker ${lastsText(row)}`}
               {more
-                ? ` · ${formatInt(row.inMachines)} i automater · ${formatInt(row.sold7)} sålda 7 d`
+                ? ` · ${formatInt(row.inMachines)}${NBSP}i${NBSP}automater · ${formatInt(row.sold7)}${NBSP}sålda${NBSP}7${NBSP}d`
                 : ""}
             </span>
             <Icon

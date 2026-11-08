@@ -64,7 +64,7 @@ export function EvidenceDetails({
               <li key={l.href}>
                 <Link
                   href={l.href}
-                  className="meta rounded-xs text-fg underline decoration-line-control underline-offset-4 hover:decoration-fg"
+                  className="meta rounded-xs text-fg underline decoration-line-control underline-offset-4 hover:decoration-fg max-md:tap"
                 >
                   {l.label} →
                 </Link>

@@ -190,13 +190,13 @@ export default async function PurchasePricesPage({
                   <>
                     <Link
                       href="/inkopspriser/ny-produkt"
-                      className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3 text-sm font-medium text-fg hover:border-line-control hover:bg-hover max-md:h-11"
+                      className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3 text-sm font-medium text-fg hover:border-line-control hover:bg-hover max-md:h-11 max-md:min-h-11"
                     >
                       Varor i Awish
                     </Link>
                     <Link
                       href="/inkopspriser/ny-produkt?flik=ny"
-                      className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3 text-sm font-medium text-fg hover:border-line-control hover:bg-hover max-md:h-11"
+                      className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3 text-sm font-medium text-fg hover:border-line-control hover:bg-hover max-md:h-11 max-md:min-h-11"
                     >
                       + Ny produkt
                     </Link>
@@ -271,8 +271,8 @@ export default async function PurchasePricesPage({
             message={onlyMissing ? "Alla titlar har inköpspris." : "Inga titlar ännu."}
             action={
               onlyMissing
-                ? { label: "Visa alla titlar →", href: showAllHref }
-                : { label: "Importera order →", href: "/datakallor" }
+                ? { label: "Visa alla titlar", href: showAllHref }
+                : { label: "Importera order", href: "/datakallor" }
             }
           />
         ) : (
@@ -373,6 +373,7 @@ export default async function PurchasePricesPage({
               {timeline.length === 0 ? (
                 <StateMessage
                   kind="not-configured"
+                  code="Inget pris"
                   compact
                   message={`${selectedTitle.name} saknar pris. Räknas inte i vinsten.`}
                 />

@@ -325,7 +325,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     section: "main",
     roles: READERS,
     phase: 11,
-    lead: "Releaser, priser och sortiment.",
+    lead: "Nya kortsläpp, priser och sortiment.",
   },
   {
     id: "effekt",
@@ -360,7 +360,7 @@ export const shellRoutes: ReadonlyArray<ShellRoute> = [
     section: "system",
     roles: OPERATORS,
     phase: 2,
-    lead: "Import och synk.",
+    lead: "Var siffrorna kommer ifrån (Awish).",
     context: false,
   },
   {

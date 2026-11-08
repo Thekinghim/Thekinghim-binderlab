@@ -42,7 +42,7 @@ export function ArchiveTable({
         render: (r) => (
           <a
             href={`/rapport/${r.id}`}
-            className="rounded-xs text-fg underline-offset-4 hover:underline"
+            className="rounded-xs text-fg underline-offset-4 hover:underline max-md:tap"
           >
             {r.custom ? periodText(r.period) : monthOf(r.month)}
           </a>

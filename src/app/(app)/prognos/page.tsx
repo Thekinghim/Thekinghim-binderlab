@@ -58,7 +58,7 @@ const OLD_VIEWS: Record<string, { tab: Tab; hash: string }> = {
 const SECTION = "flex scroll-mt-28 flex-col gap-8";
 /** "Mer"-raderna. Mobil: platta rader med linje under (inga kort), 44 px höga. */
 const MORE =
-  "group scroll-mt-28 rounded-sm border border-line [&>summary]:flex [&>summary]:cursor-pointer [&>summary]:items-baseline [&>summary]:justify-between [&>summary]:gap-4 [&>summary]:px-4 [&>summary]:py-3 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:[&>summary]:min-h-11 max-md:[&>summary]:items-center max-md:[&>summary]:px-0 max-md:[&>summary>span+span]:truncate max-md:[&>div]:px-0";
+  "group scroll-mt-28 rounded-sm border border-line [&>summary]:flex [&>summary]:cursor-pointer [&>summary]:items-baseline [&>summary]:justify-between [&>summary]:gap-4 [&>summary]:px-4 [&>summary]:py-3 max-md:rounded-none max-md:border-x-0 max-md:border-t-0 max-md:[&>summary]:min-h-11 max-md:[&>summary]:items-center max-md:[&>summary]:px-0 max-md:[&>summary]:flex-wrap max-md:[&>summary]:gap-x-3 max-md:[&>summary]:py-2 max-md:[&>div]:px-0";
 
 function viewParam(sp: SearchParamsInput): string | undefined {
   return sp instanceof URLSearchParams || "get" in sp
@@ -228,7 +228,7 @@ export default async function PrognosPage({
                   // Flera lager: antalet räknas per lager på Vårt lager (här vore det oklart vilket).
                   canRegister={stock.canRegister && stock.places.length <= 1}
                 />
-                <Link href="/vart-lager" className="meta w-fit text-muted hover:text-fg">
+                <Link href="/vart-lager" className="meta w-fit text-muted hover:text-fg max-md:tap">
                   Vårt lager{"\u00a0"}→
                 </Link>
               </div>
@@ -241,7 +241,10 @@ export default async function PrognosPage({
               <div className="flex flex-col gap-4 border-t border-line p-4">
                 <p className="text-sm text-muted">{m.suppliers.heading.aside}</p>
                 <SuppliersView model={m.suppliers} titles={m.titles} canEdit={m.canEdit} />
-                <Link href="/inkopspriser" className="meta w-fit text-muted hover:text-fg">
+                <Link
+                  href="/inkopspriser"
+                  className="meta w-fit text-muted hover:text-fg max-md:tap"
+                >
                   Inköpspriser{"\u00a0"}→
                 </Link>
               </div>

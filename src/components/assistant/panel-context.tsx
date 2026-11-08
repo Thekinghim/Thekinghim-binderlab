@@ -186,7 +186,7 @@ export function AiPageLine({
         title={q}
         data-testid="ai-sparkle"
         className={cn(
-          "group inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-line px-2.5 text-sm text-muted transition-[color,background-color,border-color] duration-fast hover:border-line-control hover:bg-hover hover:text-fg",
+          "group inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-line px-2.5 text-sm text-muted transition-[color,background-color,border-color] duration-fast hover:border-line-control hover:bg-hover hover:text-fg max-md:min-h-11",
           menuItem && cn(MOBILE_MENU_ITEM, "max-md:gap-2 max-md:text-base max-md:text-fg"),
         )}
       >

@@ -108,7 +108,7 @@ export function EvidenceBody({ evidence, text }: { evidence: EvidenceView; text?
             <li key={l.href}>
               <Link
                 href={l.href}
-                className="rounded-xs text-sm text-fg underline decoration-line-control underline-offset-4 hover:decoration-fg"
+                className="rounded-xs text-sm text-fg underline decoration-line-control underline-offset-4 hover:decoration-fg max-md:tap"
               >
                 {l.label} →
               </Link>

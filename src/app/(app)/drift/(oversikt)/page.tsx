@@ -120,7 +120,7 @@ export default async function DriftPage() {
                 <a
                   href={alertLink.href}
                   className={cn(
-                    "inline-flex h-9 items-center gap-2 rounded-sm border px-3.5 text-base transition-colors max-md:h-11 max-md:px-3 max-md:text-sm",
+                    "inline-flex h-9 items-center gap-2 rounded-sm border px-3.5 text-base transition-colors max-md:h-11 max-md:min-h-11 max-md:px-3 max-md:text-sm",
                     critical > 0
                       ? "border-signal-line text-signal-fg hover:border-signal hover:bg-signal-soft"
                       : "border-line-strong bg-surface text-fg hover:bg-hover",
@@ -131,7 +131,7 @@ export default async function DriftPage() {
               ) : null}
               <Link
                 href="/drift/besok"
-                className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg transition-colors hover:bg-hover max-md:h-11 max-md:px-3 max-md:text-sm"
+                className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg transition-colors hover:bg-hover max-md:h-11 max-md:min-h-11 max-md:px-3 max-md:text-sm"
               >
                 {`Besök i veckan: ${formatInt(plan.days.reduce((n, d) => n + d.stops.length, 0))} →`}
               </Link>
@@ -181,7 +181,7 @@ export default async function DriftPage() {
           actions={
             <Link
               href="/drift/larm"
-              className="rounded-xs text-sm text-muted hover:text-fg max-md:inline-flex max-md:min-h-11 max-md:items-center"
+              className="rounded-xs text-sm text-muted hover:text-fg max-md:tap max-md:inline-flex max-md:min-h-11 max-md:items-center"
             >
               Notiser →
             </Link>
@@ -209,7 +209,7 @@ export default async function DriftPage() {
         {items.length > 0 ? <AlertList items={items} canAck={ctx.canEdit} /> : null}
         {resolved.length > 0 ? (
           <details>
-            <summary className="w-fit cursor-pointer rounded-xs text-sm text-muted hover:text-fg max-md:flex max-md:min-h-11 max-md:items-center">
+            <summary className="w-fit cursor-pointer rounded-xs text-sm text-muted hover:text-fg max-md:tap max-md:flex max-md:min-h-11 max-md:items-center">
               {`Lösta de senaste 7 dagarna (${formatInt(resolved.length)})`}
             </summary>
             <div className="mt-4">

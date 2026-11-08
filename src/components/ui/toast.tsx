@@ -153,7 +153,8 @@ export function ToastCard({
           type="button"
           onClick={onDismiss}
           aria-label="Stäng notis"
-          className="absolute top-2.5 right-2.5 grid size-6 place-items-center rounded-xs text-subtle transition-colors duration-fast hover:bg-hover hover:text-fg"
+          // Mobil: osynlig träffyta på 44 px runt krysset.
+          className="absolute top-2.5 right-2.5 grid size-6 place-items-center rounded-xs text-subtle transition-colors duration-fast hover:bg-hover hover:text-fg max-md:after:absolute max-md:after:-inset-2.5 max-md:after:content-['']"
         >
           <Icon name="close" size={12} />
         </button>

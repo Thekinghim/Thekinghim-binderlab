@@ -323,17 +323,14 @@ function TodoRow({
       tabIndex={-1}
       aria-labelledby={titleId}
       style={{ "--i": Math.min(index, 8) + 2 } as CSSProperties}
-      className="rise grid min-w-0 grid-cols-1 gap-x-8 gap-y-4 border-t border-line py-5 outline-offset-2 first:border-t-0 max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-3 max-md:gap-y-2 max-md:py-3 lg:grid-cols-12"
+      className="rise grid min-w-0 grid-cols-1 gap-x-8 gap-y-4 border-t border-line py-5 outline-offset-2 first:border-t-0 max-md:gap-x-3 max-md:gap-y-2 max-md:py-3 lg:grid-cols-12"
     >
-      <div className="flex min-w-0 flex-col gap-2 max-md:col-start-1 max-md:row-start-1 max-md:gap-1 lg:col-span-6">
+      <div className="flex min-w-0 flex-col gap-2 max-md:row-start-1 max-md:gap-1 lg:col-span-6">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <StatusTag status={item.status}>{item.statusText}</StatusTag>
           <span className="label text-subtle">{item.eyebrow}</span>
         </div>
-        <h3
-          id={titleId}
-          className="text-md font-medium text-balance hyphens-none text-fg max-md:line-clamp-2"
-        >
+        <h3 id={titleId} className="text-md font-medium text-balance hyphens-none text-fg">
           {item.title}
         </h3>
         <details className="group max-w-2xl" onToggle={(e) => setMore(e.currentTarget.open)}>
@@ -370,7 +367,7 @@ function TodoRow({
       {item.figures.length > 0 ? (
         <dl
           className={cn(
-            "flex min-w-0 flex-wrap gap-x-6 gap-y-2 max-md:col-span-2 lg:col-span-3 lg:flex-col lg:gap-y-1.5",
+            "flex min-w-0 flex-wrap gap-x-6 gap-y-2 lg:col-span-3 lg:flex-col lg:gap-y-1.5",
             fold,
           )}
         >
@@ -390,7 +387,7 @@ function TodoRow({
 
       <div className="flex flex-wrap items-start gap-2 max-md:contents lg:col-span-3 lg:flex-col lg:items-end">
         {hasPrimary ? (
-          <div className="max-md:col-start-2 max-md:row-start-1 max-md:self-start md:contents max-md:[&>a]:h-11 max-md:[&>button]:h-11">
+          <div className="max-md:row-start-2 md:contents max-md:[&>a]:h-11 max-md:[&>a]:w-full max-md:[&>button]:h-11 max-md:[&>button]:w-full">
             {item.action?.kind === "register-refill" ? (
               <RefillDialog action={item.action} />
             ) : item.action?.kind === "merge-titles" ? (
@@ -402,7 +399,7 @@ function TodoRow({
         ) : null}
         <div
           className={cn(
-            "flex flex-wrap items-center gap-2 max-md:col-span-2 max-md:justify-end lg:justify-end max-md:[&_button]:min-h-11",
+            "flex flex-wrap items-center gap-2 max-md:justify-start lg:justify-end max-md:[&_button]:min-h-11",
             hasPrimary && fold,
           )}
         >

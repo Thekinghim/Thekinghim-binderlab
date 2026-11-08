@@ -114,7 +114,8 @@ export default async function MachineTimelinePage({
         ]}
       />
 
-      <nav aria-label="Period" className="flex flex-wrap items-center gap-2">
+      {/* Perioden styr talen ovan (Sålda, Påfyllda). */}
+      <nav aria-label="Period" className="flex flex-wrap items-center gap-2 max-md:-mt-8">
         {RANGES.map((r) => (
           <Link
             key={r}
@@ -122,14 +123,19 @@ export default async function MachineTimelinePage({
             aria-current={r === days ? "page" : undefined}
             className={
               r === days
-                ? "inline-flex h-8 items-center rounded-sm border border-line-strong bg-hover px-3 text-sm text-fg"
-                : "inline-flex h-8 items-center rounded-sm border border-line px-3 text-sm text-muted hover:text-fg"
+                ? "inline-flex h-8 items-center rounded-sm border border-line-strong bg-hover px-3 text-sm text-fg max-md:min-h-11"
+                : "inline-flex h-8 items-center rounded-sm border border-line px-3 text-sm text-muted hover:text-fg max-md:min-h-11"
             }
           >
             {r === 1 ? "1 dygn" : `${r} dagar`}
           </Link>
         ))}
-        {tag ? <StatusTag status={tag.status}>{tag.label}</StatusTag> : null}
+        {/* Under md står statusen bara i rubriken (taggen såg ut som en fjärde knapp). */}
+        {tag ? (
+          <StatusTag status={tag.status} className="max-md:hidden">
+            {tag.label}
+          </StatusTag>
+        ) : null}
       </nav>
 
       {fill ? (

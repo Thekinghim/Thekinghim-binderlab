@@ -132,7 +132,7 @@ export default async function ExpansionPage({
     aside =
       g.toAdd === 0
         ? "Höj målet."
-        : `Ni har ${formatInt(g.machinesNow)}. ${formatInt(g.perMonth)} ${g.perMonth === 1 ? "ny" : "nya"} i månaden.`;
+        : `Ni har ${formatInt(g.machinesNow)} automater i dag och planerar ${formatInt(g.perMonth)} ${g.perMonth === 1 ? "ny" : "nya"} i månaden.`;
   }
   const planLeads = data.leads
     .filter((l) => !l.archived && OPEN_STAGES.includes(l.stage) && l.storeId === null)
@@ -153,7 +153,7 @@ export default async function ExpansionPage({
           actions={
             <Link
               href={`/expansion/saljunderlag?from=${data.period.period.start}&to=${data.period.period.end}`}
-              className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover"
+              className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:min-h-11"
             >
               Säljunderlag (PDF)
             </Link>

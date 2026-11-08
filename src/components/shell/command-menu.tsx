@@ -633,9 +633,10 @@ export function CommandMenu({
       ? "Välj automat"
       : step
         ? "Välj titel"
-        : role === "refiller"
-          ? "Sök titel, automat, butik eller åtgärd"
-          : "Sök order, titel, automat, butik eller åtgärd";
+        : // Kort, så att texten inte klipps på en iPhone SE (åtgärderna står i listan under).
+          role === "refiller"
+          ? "Sök titel, automat eller butik"
+          : "Sök order, titel, automat, butik";
 
   const stepInfo = step
     ? {

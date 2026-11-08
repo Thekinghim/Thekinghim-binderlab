@@ -54,7 +54,7 @@ describe("machineHealth: misstänkt fel ur tystnad", () => {
     expect(h?.since).toBe(localIso("2026-11-02", "13:45"));
     expect(h?.title).toBe("Automat 1: misstänkt fel");
     expect(txt(h?.detail)).toContain("Ingen försäljning sedan mån 2 nov. 13:45 (4 timmar)");
-    expect(txt(h?.detail)).toContain("brukar ge 9,5 pack");
+    expect(txt(h?.detail)).toContain("brukar sälja ca 9,5 pack");
     // Vanliga ord: sannolikheten står i Underlag, inte i texten.
     expect(txt(h?.detail)).toContain("Så lång tystnad är mycket ovanlig.");
     expect(txt(h?.detail)).not.toContain("%");
@@ -113,7 +113,7 @@ describe("machineHealth: misstänkt fel ur tystnad", () => {
     expect(h?.status).toBe("offline");
     expect(h?.source).toBe("sales");
     expect(h?.title).toBe("Automat 1 är troligen ur drift");
-    expect(txt(h?.detail)).toContain("Maskindata saknas");
+    expect(txt(h?.detail)).toContain("kolla kortläsaren");
   });
 
   it("räknar lång tystnad som misstänkt fel när leverantören säger online", () => {

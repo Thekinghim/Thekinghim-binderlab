@@ -266,7 +266,7 @@ function CompactChecklist({
           ) : null}
           <Link
             href="/kom-igang"
-            className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-muted underline-offset-4 transition-colors hover:text-fg hover:underline max-md:min-h-11"
+            className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-muted underline-offset-4 transition-colors hover:text-fg hover:underline max-md:tap max-md:min-h-11"
           >
             <span>{`Alla${NBSP}${formatInt(status.steps.length)} steg`}</span>
             <span aria-hidden className="text-subtle">

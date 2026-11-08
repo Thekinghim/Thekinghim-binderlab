@@ -165,7 +165,7 @@ describe("buildHomeModel", () => {
     // Samma period i ord som rubriken, för topplistan och slutsålt-raden.
     expect(plain(m.spanText)).toBe("sedan 13 okt.");
     expect(plain(m.headline.lead.join(" "))).toBe(
-      "Före butikernas andel och fasta kostnader. 22,5 % saknar inköpspris.",
+      "Innan butikernas andel och fasta kostnader dras av. 22,5 % saknar inköpspris.",
     );
   });
 
@@ -174,7 +174,7 @@ describe("buildHomeModel", () => {
     const withCosts = buildHomeModel({ ...input, costLines: { rent: false, fixed: true } });
     const without = buildHomeModel({ ...input, costLines: { rent: false, fixed: false } });
     expect(plain(without.headline.lead.join(" "))).toBe(
-      "Före butikernas andel. 22,5 % saknar inköpspris.",
+      "Innan butikernas andel dras av. 22,5 % saknar inköpspris.",
     );
     expect(without.kpis.find((k) => k.id === "profit")?.label).toBe("Vår vinst");
     expect(withCosts.kpis.find((k) => k.id === "profit")?.label).toBe("Vår vinst");
@@ -588,7 +588,7 @@ describe("homeHeadline", () => {
     expect(plain(h.title)).toBe("Vår vinst 21 933 kr på 20 dagar.");
     expect(h.figure).toMatchObject({ label: "Vår vinst", valueOre: 2_193_300, tone: "good" });
     expect(plain(h.aside)).toBe("Intäkt 79 987 kr, +12 %.");
-    expect(h.lead).toEqual(["Före fasta kostnader."]);
+    expect(h.lead).toEqual(["Innan fasta kostnader dras av."]);
     expect(h.split).toEqual([]);
   });
   it("utan fasta kostnader: ingen rad under rubriken", () => {
@@ -670,7 +670,9 @@ describe("homeHeadline", () => {
     expect(none.lead).toEqual([]);
     const many = homeHeadline({ ...base, unpricedShareBp: 3_500, revenueChangeBp: null });
     expect(plain(many.aside)).toBe("Intäkt 79 987 kr.");
-    expect(plain(many.lead.join(" "))).toBe("Före fasta kostnader. 35,0 % saknar inköpspris.");
+    expect(plain(many.lead.join(" "))).toBe(
+      "Innan fasta kostnader dras av. 35,0 % saknar inköpspris.",
+    );
   });
   it("säger när perioden ligger före första ordern", () => {
     const h = homeHeadline({
@@ -925,7 +927,7 @@ describe("hela vinsten på Hem", () => {
     expect(s.ourOre).toBe(s.totalOre);
     expect(plain(m.headline.aside)).not.toMatch(/andel/);
     // Raden under: vinsten är före butikernas andel.
-    expect(m.headline.lead.join(" ")).toMatch(/Före butikernas andel/);
+    expect(m.headline.lead.join(" ")).toMatch(/Innan butikernas andel/);
     const on = home(false, null, true).m;
     const so = on.profitSplit!;
     expect(so.ourOre).toBe(so.totalOre - so.storesOre);

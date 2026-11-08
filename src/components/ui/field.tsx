@@ -46,7 +46,7 @@ function FieldShell({ id, label, hint, error, children, className }: FieldShellP
  * Inaktiv: streckad kant, ingen fyllning, läsbar text (--bl-fg-disabled).
  */
 const control =
-  "h-9 w-full min-w-0 rounded-sm border bg-bg px-3 text-base text-fg transition-[border-color,background-color] duration-fast ease-instrument placeholder:text-subtle enabled:hover:border-muted disabled:cursor-not-allowed disabled:border-dashed disabled:border-line-strong disabled:bg-transparent disabled:text-disabled disabled:placeholder:text-disabled";
+  "h-9 max-md:h-11 w-full min-w-0 rounded-sm border bg-bg px-3 text-base text-fg transition-[border-color,background-color] duration-fast ease-instrument placeholder:text-subtle enabled:hover:border-muted disabled:cursor-not-allowed disabled:border-dashed disabled:border-line-strong disabled:bg-transparent disabled:text-disabled disabled:placeholder:text-disabled";
 
 type InputProps = InputHTMLAttributes<HTMLInputElement> & {
   label: string;

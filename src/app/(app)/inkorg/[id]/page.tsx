@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { SectionHeader } from "@/components/ui/section-header";
+import { MobileFold } from "@/components/ui/mobile-fold";
 import { StatusTag } from "@/components/ui/status-tag";
 import { formatCsvNumber, formatDate } from "@/lib/format";
 import { isoDateToShellDate, requireRoute } from "@/server/data/core";
@@ -64,48 +65,55 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
         </StatusTag>
         <Link
           href={`/drift/automat/${i.machineId}`}
-          className="rounded-xs text-sm text-muted hover:text-fg"
+          className="rounded-xs text-sm text-muted hover:text-fg max-md:tap"
         >
           Automatens tidslinje →
         </Link>
-        <Link href="/inkorg" className="rounded-xs text-sm text-muted hover:text-fg">
+        <Link href="/inkorg" className="rounded-xs text-sm text-muted hover:text-fg max-md:tap">
           Alla ärenden →
         </Link>
       </div>
-      <IncidentForm
-        initial={{
-          id: i.id,
-          machineId: i.machineId,
-          kind: i.kind,
-          occurredAt: utcToLocalInput(i.startedAt, ctx.timeZone),
-          orderId: i.orderId ?? "",
-          titleId: i.titleId ?? "",
-          description: i.description ?? "",
-          customerContact: i.customerContact ?? "",
-          status: i.status,
-          assigneeId: i.assigneeId ?? "",
-          actionTaken: i.actionTaken ?? "",
-          refunded: i.refundedOre > 0 ? formatCsvNumber(i.refundedOre / 100) : "",
-          refundedOn: i.refundedOn ?? ctx.today,
-        }}
-        machines={data.machines.map((m) => ({ id: m.id, label: `${m.code} ${m.name}` }))}
-        titles={data.titles}
-        members={data.members}
-        timeZone={ctx.timeZone}
-        currentOrder={
-          data.order
-            ? {
-                id: data.order.id,
-                externalId: data.order.externalId,
-                orderedAt: data.order.orderedAt,
-                amountOre: data.order.amountOre,
-                titleId: data.order.titleId,
-                titleName,
-              }
-            : null
-        }
-        readOnly={!ctx.canEdit}
-      />
+      {/* Ett löst ärende: sammanfattningen ovan räcker på mobilen, formuläret fälls ut. */}
+      <MobileFold
+        summary="Ändra ärendet"
+        defaultOpen={i.status !== "resolved"}
+        className="max-md:-mt-4"
+      >
+        <IncidentForm
+          initial={{
+            id: i.id,
+            machineId: i.machineId,
+            kind: i.kind,
+            occurredAt: utcToLocalInput(i.startedAt, ctx.timeZone),
+            orderId: i.orderId ?? "",
+            titleId: i.titleId ?? "",
+            description: i.description ?? "",
+            customerContact: i.customerContact ?? "",
+            status: i.status,
+            assigneeId: i.assigneeId ?? "",
+            actionTaken: i.actionTaken ?? "",
+            refunded: i.refundedOre > 0 ? formatCsvNumber(i.refundedOre / 100) : "",
+            refundedOn: i.refundedOn ?? ctx.today,
+          }}
+          machines={data.machines.map((m) => ({ id: m.id, label: `${m.code} ${m.name}` }))}
+          titles={data.titles}
+          members={data.members}
+          timeZone={ctx.timeZone}
+          currentOrder={
+            data.order
+              ? {
+                  id: data.order.id,
+                  externalId: data.order.externalId,
+                  orderedAt: data.order.orderedAt,
+                  amountOre: data.order.amountOre,
+                  titleId: data.order.titleId,
+                  titleName,
+                }
+              : null
+          }
+          readOnly={!ctx.canEdit}
+        />
+      </MobileFold>
       {data.history.length > 0 ? (
         <section
           aria-labelledby="historik"

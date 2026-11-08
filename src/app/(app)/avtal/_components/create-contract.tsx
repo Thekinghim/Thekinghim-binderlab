@@ -39,7 +39,7 @@ export interface CreateContractOption {
   readonly party?: ContractParty;
 }
 
-const STEPS = ["Butik", "Villkor", "Se kontraktet", "Klart"] as const;
+const STEPS = ["Butik", "Villkor", "Kolla", "Klart"] as const;
 
 type TermsError = { message: string; field: "share" | "rent" | "special" };
 
@@ -273,7 +273,7 @@ export function CreateContract({
                 />
                 <Link
                   href="/butiker/ny"
-                  className="meta w-fit rounded-xs text-subtle underline-offset-4 hover:text-fg hover:underline"
+                  className="meta w-fit rounded-xs text-subtle underline-offset-4 hover:text-fg hover:underline max-md:tap"
                 >
                   Ny butik{" "}→
                 </Link>

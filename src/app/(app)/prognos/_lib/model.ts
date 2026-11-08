@@ -1119,8 +1119,8 @@ function valuationModel(data: PrognosData, names: NameLookup): ValuationModel {
     v.capitalTiedOre === 0 && rows.length === 0
       ? "Inget lager registrerat."
       : incomplete
-        ? `Kapitalbindning minst ${approxKr(v.capitalTiedOre).replace(/^ca\s/, "ca ")}.`
-        : `Kapitalbindning ${approxKr(v.capitalTiedOre)}.`;
+        ? `Pengar i lagret minst ${approxKr(v.capitalTiedOre).replace(/^ca\s/, "ca ")}.`
+        : `Pengar i lagret ${approxKr(v.capitalTiedOre)}.`;
   const parts = [
     `Lagervärde ${approxKr(v.valueOre)} (vårt lager ${approxKr(v.warehouseValueOre)}, automater ${approxKr(v.machineValueOre)}), beställt ${approxKr(v.onOrderValueOre)}.`,
   ];

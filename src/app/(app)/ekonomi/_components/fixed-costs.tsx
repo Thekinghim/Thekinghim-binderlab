@@ -199,6 +199,7 @@ export function FixedCosts({
         key: "period",
         header: `Del av ${periodLabel}`,
         numeric: true,
+        hideOnMobile: true,
         sortValue: (r) => r.accruedOre,
         render: (r) =>
           r.archived ? <StatusTag status="offline">Arkiverad</StatusTag> : kr(r.accruedOre),

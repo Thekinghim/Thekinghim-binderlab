@@ -73,7 +73,7 @@ export function EvidenceDetails({
         {href ? (
           <Link
             href={href}
-            className="w-fit rounded-xs text-sm text-fg underline-offset-4 hover:underline"
+            className="w-fit rounded-xs text-sm text-fg underline-offset-4 hover:underline max-md:tap"
           >
             {evidence.orderIds.length === 1 ? "Visa ordern" : "Visa orderna i perioden"} →
           </Link>
