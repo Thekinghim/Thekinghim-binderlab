@@ -1,6 +1,6 @@
 /**
  * Vilka sökvägar som är öppna utan inloggning, och säkra omdirigeringar.
- * Används av src/proxy.ts. /api/cron/* (CRON_SECRET) är öppet. /design och /datamodell kräver inloggning: de visar hela schemat och roll-/RLS-modellen. Proxyn är bara en bekvämlighet: behörigheten
+ * Används av src/proxy.ts. /api/cron/* (CRON_SECRET) och /api/version (byggets id) är öppna. /design och /datamodell kräver inloggning: de visar hela schemat och roll-/RLS-modellen. Proxyn är bara en bekvämlighet: behörigheten
  * kontrolleras alltid i serverkoden (requireUser/requireRole) och i RLS.
  */
 
@@ -30,6 +30,8 @@ export function isPublicPath(pathname: string): boolean {
     pathname.startsWith("/_next/") ||
     // Schemalagda jobb (Vercel Cron) har ingen session; varje route kräver CRON_SECRET.
     pathname.startsWith("/api/cron/") ||
+    // Byggets id (för "Ny version av appen finns"): inga uppgifter, fungerar utloggad.
+    pathname === "/api/version" ||
     STATIC_FILE.test(pathname)
   );
 }

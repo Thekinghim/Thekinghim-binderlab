@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
+import { AppRefreshRow } from "@/components/pwa/app-refresh-button";
 import { Icon } from "@/components/ui/icon";
 import { IconButton } from "@/components/ui/button";
 import { StatusGlyph } from "@/components/ui/status-tag";
@@ -233,6 +234,8 @@ export function MobileNav(props: ShellNavProps) {
         />
         {/* Temat (under md: inte i toppraden, se topbar.tsx). */}
         <ThemeRow className="border-b border-line md:hidden" />
+        {/* Hämtar senaste versionen av appen (appen på hemskärmen visar annars ibland en gammal). */}
+        <AppRefreshRow className="border-b border-line" />
         <UserMenu
           user={props.user}
           role={role}

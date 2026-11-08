@@ -1,3 +1,5 @@
+import { execSync } from "node:child_process";
+
 import { withSentryConfig } from "@sentry/nextjs/config";
 import type { NextConfig } from "next";
 
@@ -10,6 +12,28 @@ import { securityHeaderRules } from "./src/lib/security-headers";
  * OBS: Vercel Functions tar emot högst 4,5 MB per förfrågan oavsett detta.
  */
 const MAX_ACTION_BODY = "21mb";
+
+/**
+ * Byggets id (src/lib/build-id.ts): telefonen jämför det med serverns (/api/version) och
+ * visar "Ny version av appen finns" efter en driftsättning. På Vercel driftsättningens id
+ * (nytt vid varje driftsättning), annars incheckningen, git eller "lokal". Samma värde i
+ * alla byggprocesser (ingen tidsstämpel), så att sidan och servern alltid är överens.
+ */
+function buildId(): string {
+  const fromVercel = process.env.VERCEL_DEPLOYMENT_ID || process.env.VERCEL_GIT_COMMIT_SHA;
+  if (fromVercel) return fromVercel.slice(0, 80);
+  try {
+    const sha = execSync("git rev-parse --short=12 HEAD", {
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .toString()
+      .trim();
+    if (/^[0-9a-f]{4,40}$/.test(sha)) return sha;
+  } catch {
+    // Ingen git (t.ex. e2e-kopian): ett fast id räcker lokalt.
+  }
+  return "lokal";
+}
 
 const nextConfig: NextConfig = {
   // Egen byggmapp per utvecklingsserver (NEXT_DIST_DIR), så att flera kan köra i samma träd.
@@ -56,9 +80,11 @@ const nextConfig: NextConfig = {
   // npm run typecheck (tsconfig.json) i CI, så att ett halvfärdigt test aldrig
   // stoppar en driftsättning men ändå stoppar en sammanslagning.
   typescript: { tsconfigPath: "tsconfig.build.json" },
-  // Miljön (development/preview/production) behövs i webbläsaren för Sentry.
+  // Miljön (development/preview/production) behövs i webbläsaren för Sentry, byggets id
+  // för "Ny version av appen finns".
   env: {
     NEXT_PUBLIC_APP_ENV: process.env.APP_ENV ?? "development",
+    NEXT_PUBLIC_BUILD_ID: buildId(),
   },
 };
 

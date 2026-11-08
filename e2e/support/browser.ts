@@ -46,6 +46,7 @@ export interface Locator {
   getByText(text: TextMatch, options?: { exact?: boolean }): Locator;
   scrollIntoViewIfNeeded(): Promise<void>;
   screenshot(options?: { path?: string }): Promise<Buffer>;
+  boundingBox(): Promise<{ x: number; y: number; width: number; height: number } | null>;
 }
 
 export interface Page {
@@ -90,6 +91,8 @@ export interface BrowserContext {
   newPage(): Promise<Page>;
   addInitScript(script: string): Promise<void>;
   addCookies(cookies: { name: string; value: string; url: string }[]): Promise<void>;
+  clearCookies(options?: { name?: string }): Promise<void>;
+  setOffline(offline: boolean): Promise<void>;
   /** HTTP-anrop med sammanhangets cookies (inloggningen), utan att rendera sidan. */
   readonly request: {
     get(
