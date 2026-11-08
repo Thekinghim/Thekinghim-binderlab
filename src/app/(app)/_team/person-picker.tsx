@@ -75,7 +75,7 @@ export function PersonPicker({
   return (
     <span
       className={cn(
-        "relative inline-flex h-7 items-center gap-1 rounded-sm border border-line-strong pr-6 pl-2 transition-colors duration-fast hover:border-line-control hover:bg-hover",
+        "relative inline-flex h-7 items-center gap-1 rounded-sm border border-line-strong pr-6 pl-2 transition-colors duration-fast hover:border-line-control hover:bg-hover max-md:h-11",
         pending && "opacity-70",
         className,
       )}
@@ -88,7 +88,7 @@ export function PersonPicker({
         value={current}
         disabled={pending}
         onChange={(e) => change(e.target.value)}
-        className="label cursor-pointer appearance-none bg-transparent pr-1 text-fg focus-visible:outline-none"
+        className="label cursor-pointer appearance-none bg-transparent pr-1 text-fg focus-visible:outline-none max-md:h-11 max-md:min-w-24 max-md:font-sans max-md:tracking-normal max-md:normal-case"
       >
         {options.map((o) => (
           <option key={o.value || "bada"} value={o.value}>

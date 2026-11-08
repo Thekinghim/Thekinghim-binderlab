@@ -34,7 +34,8 @@ export function emailProblem(email: string): string | undefined {
   return undefined;
 }
 
-const LINK = "text-fg underline decoration-line-strong underline-offset-4 hover:decoration-fg";
+const LINK =
+  "text-fg underline decoration-line-strong underline-offset-4 max-md:tap hover:decoration-fg";
 const BIG = "h-12 w-full text-lg";
 
 /**

@@ -107,23 +107,25 @@ export function RecipientsPanel({
                 className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 py-3"
               >
                 <span className="flex min-w-0 flex-col">
-                  <span className="truncate text-base text-fg">
+                  <span className="text-base [overflow-wrap:anywhere] text-fg md:truncate">
                     {r.name}
-                    <span className="text-muted">
-                      {" · "}
+                    <span className="text-muted max-md:block max-md:text-sm">
+                      <span className="max-md:hidden">{" · "}</span>
                       {KIND_LABEL[r.kind]}
                       {r.storeId ? `, ${storeName.get(r.storeId) ?? "okänd butik"}` : ""}
                     </span>
                   </span>
-                  <span className="meta truncate text-subtle">{r.email}</span>
+                  <span className="meta break-all text-subtle md:truncate md:break-normal">
+                    {r.email}
+                  </span>
                 </span>
-                <span className="flex items-center gap-2">
+                <span className="flex flex-wrap items-center justify-end gap-2">
                   {!r.active ? (
                     <StatusTag status="offline">Pausad</StatusTag>
                   ) : delivered.get(r.id) ? (
                     <StatusTag status="ok">Fått månadens</StatusTag>
                   ) : delivered.has(r.id) ? (
-                    <StatusTag status="warning">Väntar</StatusTag>
+                    <StatusTag status="warning">Inte skickad än</StatusTag>
                   ) : null}
                   {canEdit ? (
                     <Button

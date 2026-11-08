@@ -84,7 +84,7 @@ function CheckCard({ check }: { check: CheckResult }) {
         <div>
           <Link
             href={check.link}
-            className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg hover:bg-hover"
+            className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base text-fg hover:bg-hover max-md:min-h-11"
           >
             Till {check.linkLabel}
             <span aria-hidden className="text-faint">
@@ -165,6 +165,7 @@ export default async function SelfCheckPage() {
         <div className="rise" style={rise(1)}>
           <StateMessage
             kind="empty"
+            code="Inte körd"
             message="Ingen kontroll än."
             detail="Den första körs i morgon bitti, eller nu med knappen ovan."
           />

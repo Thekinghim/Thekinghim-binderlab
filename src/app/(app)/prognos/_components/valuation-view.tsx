@@ -75,7 +75,8 @@ export function ValuationView({ model }: { model: ValuationModel }) {
       },
       {
         key: "capital",
-        header: "Kapitalbindning",
+        // "Kapitalbindning" i klartext: lager + automater + beställt.
+        header: "Totalt",
         numeric: true,
         sortValue: (r) => (r.unitCostOre === null ? -1 : r.capitalTiedOre),
         render: (r) =>
@@ -132,14 +133,12 @@ export function ValuationView({ model }: { model: ValuationModel }) {
     <div className="flex flex-col gap-10">
       <KpiStrip
         label={
-          model.incomplete
-            ? "Lager och beställt i dag · ofullständigt, titlar utan inköpspris saknas"
-            : "Lager och beställt i dag"
+          model.incomplete ? "Värde i dag · titlar utan inköpspris räknas inte" : "Värde i dag"
         }
         items={[
           {
             id: "capital",
-            label: "Kapitalbindning",
+            label: "Totalt",
             value: model.capitalTiedOre,
             format: kr,
             primary: true,
@@ -162,7 +161,7 @@ export function ValuationView({ model }: { model: ValuationModel }) {
             columns={columns}
             rows={model.rows}
             rowKey={(r) => r.titleId}
-            caption="Lagervärde och kapitalbindning per titel"
+            caption="Lagervärde per titel"
             defaultSort={{ key: "capital", dir: "desc" }}
             dense
             columnPicker
@@ -172,6 +171,7 @@ export function ValuationView({ model }: { model: ValuationModel }) {
             <EvidenceButton
               evidence={model.evidence}
               title="Lagervärde"
+              label="Underlag för totalen"
               text={model.heading.aside}
             />
           </div>

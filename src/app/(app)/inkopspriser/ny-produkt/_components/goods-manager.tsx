@@ -132,7 +132,7 @@ function GoodLine({
     <Link
       href={`/inkopspriser/ny-produkt?flik=fack&vara=${row.id}`}
       className={cn(
-        "inline-flex h-9 items-center justify-center rounded-sm border px-3.5 text-base font-medium whitespace-nowrap transition-colors max-md:h-11",
+        "inline-flex h-9 items-center justify-center rounded-sm border px-3.5 text-base font-medium whitespace-nowrap transition-colors max-md:h-11 max-md:min-h-11",
         noSlot
           ? "border-inverse bg-inverse text-on-inverse hover:border-inverse-hover hover:bg-inverse-hover"
           : "border-line-strong bg-surface text-fg hover:border-line-control hover:bg-hover",
@@ -222,7 +222,7 @@ function GoodLine({
           {kinds.has("no-purchase") && row.titleId ? (
             <Link
               href={`/inkopspriser?titel=${row.titleId}#titel`}
-              className="inline-flex h-9 items-center rounded-sm px-2 text-sm text-muted underline underline-offset-4 hover:text-fg max-md:h-11"
+              className="inline-flex h-9 items-center rounded-sm px-2 text-sm text-muted underline underline-offset-4 hover:text-fg max-md:h-11 max-md:min-h-11"
             >
               Sätt inköpspris
             </Link>

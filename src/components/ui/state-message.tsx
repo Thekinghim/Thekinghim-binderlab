@@ -19,7 +19,7 @@ export type StateMessageProps = {
   /**
    * Kod till prefixet. För fel, offline och behörighet läggs den efter
    * ordet ("FEL 503"), så att ordet alltid står kvar. För tomma lägen
-   * ersätter den standardprefixet ("0 RADER" → "0 AV 1 240").
+   * ersätter den standardprefixet ("TOMT" → "0 AV 1 240").
    */
   code?: string;
   /** En mening: vad som saknas eller gick fel, var och när. */
@@ -47,7 +47,7 @@ type KindSpec = {
 };
 
 const kinds: Record<StateKind, KindSpec> = {
-  empty: { prefix: "0 rader", glyph: "neutral", appendCode: false, role: "status" },
+  empty: { prefix: "Tomt", glyph: "neutral", appendCode: false, role: "status" },
   "no-results": { prefix: "0 träffar", glyph: "neutral", appendCode: false, role: "status" },
   error: { prefix: "Fel", glyph: "critical", appendCode: true, role: "alert" },
   "loading-failed": { prefix: "Ej laddad", glyph: "critical", appendCode: true, role: "alert" },
@@ -61,7 +61,7 @@ const kinds: Record<StateKind, KindSpec> = {
   },
 };
 
-/** Prefixet som det skrivs ut, t.ex. "FEL 503" eller "0 RADER". */
+/** Prefixet som det skrivs ut, t.ex. "FEL 503" eller "TOMT". */
 export function statePrefix(kind: StateKind, code?: string): string {
   const spec = kinds[kind];
   if (!code) return spec.prefix.toUpperCase();
@@ -129,7 +129,7 @@ function ActionControl({
       <a
         href={action.href}
         className={cn(
-          "inline-flex h-9 items-center rounded-sm border px-3.5 text-base font-medium whitespace-nowrap transition-[background-color,border-color,color] duration-fast ease-instrument",
+          "inline-flex h-9 items-center rounded-sm border px-3.5 text-base font-medium whitespace-nowrap transition-[background-color,border-color,color] duration-fast ease-instrument max-md:min-h-11",
           emphasis === "primary"
             ? "border-inverse bg-inverse text-on-inverse hover:border-inverse-hover hover:bg-inverse-hover"
             : "border-transparent text-muted hover:bg-hover hover:text-fg",
@@ -258,7 +258,7 @@ export function StateMessage({
       onClick={() => setOpen((v) => !v)}
       className={cn(
         "inline-flex items-center gap-1 rounded-xs font-mono text-muted transition-colors duration-fast ease-instrument hover:text-fg",
-        compact ? "h-7 px-1.5 text-sm" : "h-9 px-2 text-sm",
+        compact ? "h-7 px-1.5 text-sm max-md:h-11" : "h-9 px-2 text-sm max-md:h-11",
       )}
     >
       <span aria-hidden className="inline-block w-2.5 text-center">
@@ -280,7 +280,7 @@ export function StateMessage({
             {detail ? <span className="text-subtle"> {detail}</span> : null}
           </p>
           {action || secondaryAction || toggle ? (
-            <div className="col-start-2 row-span-2 row-start-1 -mr-1.5 -mb-1 flex flex-wrap items-center justify-end gap-x-1 self-end">
+            <div className="col-start-2 row-span-2 row-start-1 -mb-1 flex flex-wrap items-center justify-end gap-x-1 self-end md:-mr-1.5">
               {action ? <ActionControl action={action} emphasis="primary" compact /> : null}
               {secondaryAction ? (
                 <ActionControl action={secondaryAction} emphasis="secondary" compact />

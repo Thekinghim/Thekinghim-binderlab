@@ -344,7 +344,7 @@ export function OrderDetailView({
               {canOpenImport ? (
                 <Link
                   href={`/datakallor/importer/${encodeURIComponent(imp.id)}`}
-                  className="inline-flex w-fit items-center gap-1 rounded-xs text-sm text-fg underline decoration-line-control underline-offset-4 hover:decoration-fg"
+                  className="inline-flex w-fit items-center gap-1 rounded-xs text-sm text-fg underline decoration-line-control underline-offset-4 hover:decoration-fg max-md:tap"
                 >
                   Öppna importen
                   <Icon name="arrowUpRight" size={12} />

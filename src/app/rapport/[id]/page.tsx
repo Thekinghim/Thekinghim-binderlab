@@ -53,8 +53,11 @@ export default async function ReportPrintPage({ params }: { params: Promise<{ id
           <nav aria-label="Sökväg" className="label flex min-w-0 items-center gap-2 text-subtle">
             <Link
               href={back}
-              className="shrink-0 rounded-xs text-muted transition-colors duration-fast ease-instrument hover:text-fg"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-xs text-muted transition-colors duration-fast ease-instrument hover:text-fg max-md:tap"
             >
+              <span aria-hidden className="text-faint">
+                ←
+              </span>
               Rapporter
             </Link>
             <span aria-hidden className="text-faint">
@@ -70,12 +73,12 @@ export default async function ReportPrintPage({ params }: { params: Promise<{ id
               <a
                 key={kind}
                 href={`/rapport/${report.id}/fil/${kind}`}
-                className="inline-flex h-7 items-center rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover"
+                className="inline-flex h-7 items-center rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:min-h-11 max-md:min-w-11 max-md:justify-center"
               >
                 {FILE_LABEL[kind]}
               </a>
             ))}
-            <PrintButton>Skriv ut</PrintButton>
+            <PrintButton className="max-md:h-11">Skriv ut</PrintButton>
           </div>
         </div>
       </div>

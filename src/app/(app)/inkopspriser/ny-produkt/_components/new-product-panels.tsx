@@ -93,7 +93,7 @@ function OwnProductSwitch({ on, onChange }: { on: boolean; onChange: (v: boolean
         aria-label="Egen produkt"
         onClick={() => onChange(!on)}
         className={cn(
-          "relative inline-flex h-8 w-14 shrink-0 items-center rounded-full border transition-colors duration-fast ease-instrument",
+          "relative inline-flex h-8 w-14 shrink-0 items-center rounded-full border transition-colors duration-fast ease-instrument max-md:before:absolute max-md:before:inset-x-0 max-md:before:-inset-y-1.5 max-md:before:content-['']",
           on ? "border-up bg-up" : "border-line-control bg-raised",
         )}
       >

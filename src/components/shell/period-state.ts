@@ -339,7 +339,7 @@ export function storeShareViewOf(sp: SearchParamsInput, cookieValue: string | un
 
 /** Kort förklaring bredvid knappen: vad vår vinst räknas som i läget. */
 export function storeShareHint(on: boolean): string {
-  return on ? "Efter butikernas andel" : "Före butikernas andel";
+  return on ? "Vinsten är efter butikernas del" : "Vinsten är före butikernas del";
 }
 
 /**

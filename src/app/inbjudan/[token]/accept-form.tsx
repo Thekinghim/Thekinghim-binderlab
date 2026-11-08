@@ -106,7 +106,7 @@ export function AcceptForm({
           {state.accountExists ? "Kontot finns redan. " : "Har du redan ett konto? "}
           <Link
             href={loginHref}
-            className="text-fg underline decoration-line-strong underline-offset-4 hover:decoration-fg"
+            className="text-fg underline decoration-line-strong underline-offset-4 hover:decoration-fg max-md:tap"
           >
             Logga in och gå med
           </Link>

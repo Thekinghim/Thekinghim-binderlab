@@ -91,7 +91,7 @@ export function TodoList({
       </ul>
       {rest > 0 ? (
         moreHref ? (
-          <Link href={moreHref} className="meta w-fit text-muted hover:text-fg">
+          <Link href={moreHref} className="meta w-fit text-muted hover:text-fg max-md:tap">
             +{NBSP}
             {formatInt(rest)} till
           </Link>

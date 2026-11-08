@@ -241,7 +241,7 @@ export function CommandDialog({
                   inputRef.current?.focus();
                 }}
                 aria-label={`Tillbaka från ${step.label}`}
-                className="meta inline-flex h-7 max-w-[45%] shrink-0 items-center gap-1 rounded-xs border border-line-strong px-2 text-muted transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg"
+                className="meta inline-flex h-7 max-w-[45%] shrink-0 items-center gap-1 rounded-xs border border-line-strong px-2 text-muted transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg max-md:h-11"
               >
                 <Icon name="chevronLeft" size={12} className="shrink-0" />
                 <span className="truncate">{step.label}</span>
@@ -274,7 +274,7 @@ export function CommandDialog({
                   setQuery("");
                   inputRef.current?.focus();
                 }}
-                className="label inline-flex h-7 items-center rounded-xs px-2 text-subtle transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg"
+                className="label inline-flex h-7 items-center rounded-xs px-2 text-subtle transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg max-md:h-11 max-md:min-w-11 max-md:justify-center"
               >
                 Rensa
               </button>
@@ -283,7 +283,7 @@ export function CommandDialog({
               type="button"
               onClick={close}
               aria-label="Stäng"
-              className="inline-flex h-7 items-center rounded-sm px-1.5 text-muted transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg"
+              className="inline-flex h-7 items-center rounded-sm px-1.5 text-muted transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg max-md:size-11 max-md:justify-center"
             >
               <span className="hidden sm:inline-flex">
                 <Kbd>Esc</Kbd>

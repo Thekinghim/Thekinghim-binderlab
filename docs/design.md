@@ -428,7 +428,7 @@ Komponenterna ligger i `src/components/ui`, `charts`, `shell`, `brand` och `repo
 
 ### Tom-, fel- och laddningslägen
 
-- `StateMessage` för alla lägen: `empty` (0 RADER), `no-results` (0 TRÄFFAR), `error` (FEL), `loading-failed` (EJ LADDAD), `offline` (UR DRIFT), `denied` (SAKNAR BEHÖRIGHET) och `not-configured` (EJ KONFIGURERAD).
+- `StateMessage` för alla lägen: `empty` (TOMT), `no-results` (0 TRÄFFAR), `error` (FEL), `loading-failed` (EJ LADDAD), `offline` (UR DRIFT), `denied` (SAKNAR BEHÖRIGHET) och `not-configured` (EJ KONFIGURERAD).
 - Mönstret är ett prefix i mono, en mening om vad som saknas, var och när, och en åtgärd med verbet först och `→`. Tekniska uppgifter (request-id, tid, tjänst, svar) står bakom "Visa detaljer" och kan kopieras. Ingen stacktrace.
 - `compact` i panel eller tabellrad (`StateRow`). Blockläget används när läget ersätter en hel yta.
 - `error` och `loading-failed` har `role="alert"` och signal på glyfen. Övriga har `role="status"` och är grå.

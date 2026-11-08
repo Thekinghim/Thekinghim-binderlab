@@ -728,7 +728,8 @@ export function DataTable<T>({
                 <span className="text-fg">{formatInt(n)}</span> {n === 1 ? "rad" : "rader"}
               </span>
               {sortParts.length ? (
-                <>
+                // Under md syns sorteringen i kolumnrubriken (pilen); texten är för datorn.
+                <span className="max-md:sr-only">
                   <span aria-hidden className={cn("text-subtle", n <= FEW_ROWS && "max-md:hidden")}>
                     {" · "}
                   </span>
@@ -741,7 +742,7 @@ export function DataTable<T>({
                       <span className="sr-only"> {s.dir === "asc" ? "stigande" : "fallande"}</span>
                     </span>
                   ))}
-                </>
+                </span>
               ) : null}
               {showTiming && sorted.order ? (
                 <span suppressHydrationWarning>
@@ -754,7 +755,8 @@ export function DataTable<T>({
             </p>
           </div>
           {columnPicker || exportFileName ? (
-            <div className="flex shrink-0 items-center gap-2">
+            // Kolumnval och CSV är datorverktyg: dolda på mobilen.
+            <div className="flex shrink-0 items-center gap-2 max-md:hidden">
               {columnPicker ? (
                 <ColumnMenu columns={columns} hidden={hidden} onToggle={toggleColumn} />
               ) : null}
@@ -857,7 +859,7 @@ export function DataTable<T>({
                         onClick={(e) => onHeaderClick(col, e)}
                         className={cn(
                           // Träffytan 28 px hög utan att rubrikraden växer.
-                          "label group/sort relative -my-1.5 inline-flex max-w-full items-center gap-1 rounded-xs py-1.5 align-middle transition-colors duration-fast ease-instrument max-md:before:absolute max-md:before:inset-x-0 max-md:before:-inset-y-2 max-md:before:content-['']",
+                          "label group/sort relative -my-1.5 inline-flex max-w-full items-center gap-1 rounded-xs py-1.5 align-middle transition-colors duration-fast ease-instrument max-md:before:absolute max-md:before:-inset-x-2 max-md:before:-inset-y-2 max-md:before:content-['']",
                           col.numeric && "flex-row-reverse",
                           active ? "text-fg" : "text-subtle hover:text-fg",
                         )}

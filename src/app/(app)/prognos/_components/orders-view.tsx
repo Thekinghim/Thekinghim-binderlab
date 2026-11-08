@@ -312,13 +312,13 @@ function LinesDialog({ order, onClose }: { order: PurchaseOrderView; onClose: ()
             <th scope="col" className="label py-2 text-left font-normal text-subtle">
               Titel
             </th>
-            <th scope="col" className="label py-2 text-right font-normal text-subtle">
+            <th scope="col" className="label py-2 pl-3 text-right font-normal text-subtle">
               Antal
             </th>
-            <th scope="col" className="label py-2 text-right font-normal text-subtle">
-              Mottaget
+            <th scope="col" className="label py-2 pl-3 text-right font-normal text-subtle">
+              Fått
             </th>
-            <th scope="col" className="label py-2 text-right font-normal text-subtle">
+            <th scope="col" className="label py-2 pl-3 text-right font-normal text-subtle">
               Pris
             </th>
           </tr>
@@ -329,9 +329,11 @@ function LinesDialog({ order, onClose }: { order: PurchaseOrderView; onClose: ()
               <th scope="row" className="py-2 pr-2 text-left font-normal text-fg">
                 {l.title}
               </th>
-              <td className="tnum py-2 text-right">{formatInt(l.quantity)}</td>
-              <td className="tnum py-2 text-right">{formatInt(l.receivedQuantity)}</td>
-              <td className="tnum py-2 text-right">{krExact(l.unitCostOre)}</td>
+              <td className="tnum py-2 pl-3 text-right">{formatInt(l.quantity)}</td>
+              <td className="tnum py-2 pl-3 text-right">{formatInt(l.receivedQuantity)}</td>
+              <td className="tnum py-2 pl-3 text-right whitespace-nowrap">
+                {krExact(l.unitCostOre)}
+              </td>
             </tr>
           ))}
         </tbody>

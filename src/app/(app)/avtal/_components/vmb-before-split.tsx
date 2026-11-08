@@ -65,7 +65,7 @@ export function VmbBeforeSplitMore({
 }) {
   return (
     <details open={checked ? true : undefined} className="group">
-      <summary className="label inline-flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-xs text-subtle hover:text-fg [&::-webkit-details-marker]:hidden">
+      <summary className="label inline-flex w-fit cursor-pointer list-none items-center gap-1.5 rounded-xs text-subtle hover:text-fg max-md:tap [&::-webkit-details-marker]:hidden">
         <span
           aria-hidden
           className="inline-block transition-transform duration-fast group-open:rotate-90"

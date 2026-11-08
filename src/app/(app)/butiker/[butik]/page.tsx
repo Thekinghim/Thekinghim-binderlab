@@ -82,7 +82,7 @@ export default async function StorePage({
         <nav aria-label="Brödsmulor">
           <Link
             href={`/butiker${data.query}`}
-            className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-subtle hover:text-fg max-md:min-h-11"
+            className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-subtle hover:text-fg max-md:tap max-md:min-h-11"
           >
             <span aria-hidden className="text-faint">
               ←
@@ -292,8 +292,8 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
               href={action.href}
               className={
                 action.primary
-                  ? "inline-flex h-9 items-center gap-2 rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse transition-colors duration-fast ease-instrument hover:bg-inverse-hover"
-                  : "inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover"
+                  ? "inline-flex h-9 items-center gap-2 rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse transition-colors duration-fast ease-instrument hover:bg-inverse-hover max-md:min-h-11"
+                  : "inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:min-h-11"
               }
             >
               {action.label}
@@ -354,7 +354,7 @@ function CompensationSection({ data }: { data: StoreDetailData }) {
             />
           )}
           <p className="mt-4 text-sm text-muted">
-            <Link href="/avtal" className="rounded-xs hover:text-fg">
+            <Link href="/avtal" className="rounded-xs hover:text-fg max-md:tap">
               Kontrakt{NBSP}→
             </Link>
           </p>
@@ -475,7 +475,10 @@ function ContactSection({ data }: { data: StoreDetailData }) {
                 <dd className="min-w-0 text-right break-words text-fg">
                   {c.value ? (
                     c.href ? (
-                      <a href={c.href} className="rounded-xs hover:underline">
+                      <a
+                        href={c.href}
+                        className="rounded-xs hover:underline max-md:tap max-md:max-w-full max-md:justify-end max-md:underline max-md:decoration-line-strong max-md:underline-offset-4"
+                      >
                         {c.value}
                       </a>
                     ) : (

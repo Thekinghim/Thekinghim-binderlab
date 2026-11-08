@@ -3,7 +3,7 @@ import { cn } from "@/lib/cn";
 import { StateMessage, type StateKind } from "./state-message";
 
 type EmptyStateProps = {
-  /** Ersätter prefixet "0 RADER", t.ex. "0 AV 1 240". */
+  /** Ersätter prefixet "TOMT", t.ex. "0 AV 1 240". */
   code?: string;
   title: string;
   description?: string;

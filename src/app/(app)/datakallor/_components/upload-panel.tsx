@@ -391,7 +391,7 @@ export function UploadPanel({
               {phase.result.importId ? (
                 <Link
                   href={`/datakallor/importer/${phase.result.importId}`}
-                  className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg hover:border-line-control hover:bg-hover"
+                  className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg hover:border-line-control hover:bg-hover max-md:min-h-11"
                 >
                   Visa importen
                 </Link>

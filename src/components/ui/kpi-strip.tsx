@@ -417,7 +417,9 @@ function KpiCell({
       )}
       style={{ "--i": Math.min(index, 6) } as React.CSSProperties}
     >
-      <dt className="label truncate text-muted">{item.label}</dt>
+      <dt className="label truncate text-muted max-md:[overflow-wrap:anywhere] max-md:whitespace-normal">
+        {item.label}
+      </dt>
       {loading ? (
         <dd className="mt-3 flex flex-col gap-2" aria-label="Laddar">
           <Skeleton className={cn("h-7", primary ? "w-40 @xl:h-11" : "w-20 @xl:h-8")} />

@@ -331,9 +331,14 @@ function MobileContext({ stores, machines, earliest, hasScope, vmbUserKey }: Con
                 <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-1">
                     <PeriodReadout earliest={earliest} />
-                    <CopyViewButton className="-my-1" />
+                    {/* Kopiera länk är ett datorverktyg (en ikon utan text). */}
+                    <CopyViewButton className="-my-1 max-md:hidden" />
                   </div>
-                  {vmbUserKey ? <VmbToggle userKey={vmbUserKey} /> : null}
+                  {/* VMB-valet är bokföring: på mobilen syns det bara när det är på, så att
+                      det går att stänga av. */}
+                  {vmbUserKey && vmb.on ? (
+                    <VmbToggle userKey={vmbUserKey} className="max-md:min-h-11" />
+                  ) : null}
                 </div>
               </>
             ) : (

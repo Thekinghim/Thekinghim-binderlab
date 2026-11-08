@@ -252,7 +252,7 @@ function MonthBar({
             </select>
             <button
               type="submit"
-              className="ml-2 inline-flex h-8 items-center rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg hover:bg-hover"
+              className="ml-2 inline-flex h-8 items-center rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg hover:bg-hover max-md:min-h-11"
             >
               Visa
             </button>
@@ -355,7 +355,7 @@ function TrendTable({ trend }: { trend: readonly PortalTrendMonth[] }) {
               <th scope="row" className="text-left font-normal text-fg">
                 <Link
                   href={`/portal?manad=${t.month}`}
-                  className="rounded-xs underline-offset-4 hover:underline"
+                  className="rounded-xs underline-offset-4 hover:underline max-md:tap"
                 >
                   {monthText(t.month)}
                 </Link>
@@ -413,7 +413,7 @@ function MachinesSection({
         actions={
           <Link
             href="/portal/felanmalan"
-            className="inline-flex h-9 items-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse transition-colors duration-fast ease-instrument hover:border-inverse-hover hover:bg-inverse-hover"
+            className="inline-flex h-9 items-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse transition-colors duration-fast ease-instrument hover:border-inverse-hover hover:bg-inverse-hover max-md:min-h-11"
           >
             Felanmäl en automat
           </Link>

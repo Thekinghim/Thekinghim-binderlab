@@ -131,7 +131,7 @@ export function Evidence({
         {links.length === 1 ? (
           <Link
             href={links[0]!.href}
-            className="self-start rounded-xs text-muted underline decoration-line-strong underline-offset-4 hover:text-fg"
+            className="self-start rounded-xs text-muted underline decoration-line-strong underline-offset-4 hover:text-fg max-md:tap"
           >
             {links[0]!.label}
           </Link>
@@ -146,7 +146,7 @@ export function Evidence({
                 <li key={l.href}>
                   <Link
                     href={l.href}
-                    className="rounded-xs text-muted underline decoration-line-strong underline-offset-4 hover:text-fg"
+                    className="rounded-xs text-muted underline decoration-line-strong underline-offset-4 hover:text-fg max-md:tap"
                   >
                     {l.label}
                   </Link>

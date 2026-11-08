@@ -125,13 +125,23 @@ export function ModalPanel({
             label="Stäng"
             size="sm"
             onClick={onClose}
-            className="-mt-1 -mr-1"
+            className="-mt-1 -mr-1 shrink-0"
           />
         ) : null}
       </header>
-      {children ? <div className="overflow-y-auto p-5">{children}</div> : null}
+      {children ? (
+        <div
+          className={cn(
+            "min-h-0 overflow-y-auto p-5",
+            // Arket står mot skärmens nederkant på mobil: luft för hemlinjen på iPhone.
+            !footer && "max-sm:pb-[calc(1.25rem+env(safe-area-inset-bottom))]",
+          )}
+        >
+          {children}
+        </div>
+      ) : null}
       {footer ? (
-        <footer className="flex flex-col-reverse gap-2 border-t border-line p-4 sm:flex-row sm:justify-end">
+        <footer className="flex flex-col-reverse gap-2 border-t border-line p-4 max-sm:pb-[calc(1rem+env(safe-area-inset-bottom))] sm:flex-row sm:justify-end">
           {footer}
         </footer>
       ) : null}

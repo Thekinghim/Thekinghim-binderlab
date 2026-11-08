@@ -166,7 +166,10 @@ export function DataModelPage() {
                   <span className="text-fg">{r}</span>
                   <span className="label tracking-normal text-subtle normal-case">{key}</span>
                 </span>,
-                <span key="d" className="flex flex-col gap-0.5 text-sm">
+                <span
+                  key="d"
+                  className="flex flex-col gap-0.5 text-sm max-md:min-h-11 max-md:justify-center"
+                >
                   <span className="text-muted">
                     <span className="label mr-2 text-subtle">Läser</span>
                     {read}

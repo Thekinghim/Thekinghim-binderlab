@@ -4,12 +4,7 @@ import type React from "react";
 import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 
-import {
-  carriedQuery,
-  parseIsoDate,
-  storeShareHint,
-  wallClockIn,
-} from "@/components/shell/period-state";
+import { carriedQuery, parseIsoDate, wallClockIn } from "@/components/shell/period-state";
 import { StoreShareToggle } from "@/components/shell/store-share-toggle";
 import { requestStoreShareView } from "@/server/data/core";
 import { Panel } from "@/components/ui/frame";
@@ -140,7 +135,7 @@ export default async function MachinePage({
           <Link
             href={listHref}
             // min-h-7: klickytan minst 24 px hög (WCAG 2.5.8) även på mobilen.
-            className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-subtle hover:text-fg max-md:min-h-11"
+            className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-subtle hover:text-fg max-md:tap max-md:min-h-11"
           >
             <span aria-hidden className="text-faint">
               ←
@@ -151,7 +146,7 @@ export default async function MachinePage({
         <SectionHeader
           as="h1"
           size="xl"
-          eyebrow={`Automat / ${machine.code} · ${machine.name}`}
+          eyebrow={`${machine.name} · ${machine.code}`}
           title={headline.title}
           aside={headline.aside}
           description={status.reason && status.status !== "ok" ? status.reason : undefined}
@@ -194,7 +189,7 @@ export default async function MachinePage({
               <div className="flex flex-wrap items-center gap-2">
                 <Link
                   href={`/fyll-pa/${machine.id}/qr`}
-                  className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast hover:border-line-control hover:bg-hover"
+                  className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast hover:border-line-control hover:bg-hover max-md:min-h-11"
                 >
                   QR för påfyllning
                 </Link>
@@ -538,13 +533,13 @@ function UnitEconomicsSection({ data }: { data: MachineDetailData }) {
         }
         aside={
           u && u.profitPerMonthOre !== null
-            ? `Vinst ${formatSek(u.profitPerMonthOre / 100)} per månad före avskrivning, ${storeShareHint(data.storeShareDeducted).toLowerCase()}.`
+            ? `Vinst ${formatSek(u.profitPerMonthOre / 100)} per månad, ${data.storeShareDeducted ? "efter" : "före"} butikernas del.`
             : undefined
         }
         actions={
           <Link
             href={href}
-            className="meta inline-flex min-h-7 items-center rounded-xs text-muted hover:text-fg max-md:min-h-11"
+            className="meta inline-flex min-h-7 items-center rounded-xs text-muted hover:text-fg max-md:tap max-md:min-h-11"
           >
             Jämför med andra automater{NBSP}→
           </Link>

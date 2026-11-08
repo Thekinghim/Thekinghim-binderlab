@@ -448,7 +448,7 @@ export function AssistantChat({
                   type="button"
                   disabled={!ready || busy}
                   onClick={() => void ask(ex)}
-                  className="min-h-7 rounded-sm border border-line-strong bg-surface px-2.5 py-1 text-left text-sm text-fg transition-[background-color,border-color] duration-fast ease-instrument enabled:hover:border-line-control enabled:hover:bg-hover disabled:cursor-not-allowed disabled:border-dashed disabled:bg-transparent disabled:text-disabled"
+                  className="min-h-7 rounded-sm border border-line-strong bg-surface px-2.5 py-1 text-left text-sm text-fg transition-[background-color,border-color] duration-fast ease-instrument enabled:hover:border-line-control enabled:hover:bg-hover disabled:cursor-not-allowed disabled:border-dashed disabled:bg-transparent disabled:text-disabled max-md:min-h-11"
                 >
                   {ex}
                 </button>

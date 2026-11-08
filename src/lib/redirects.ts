@@ -11,4 +11,6 @@ export const APP_REDIRECTS: ReadonlyArray<{
 }> = [
   // Sidan heter Kontrakt men ligger på /avtal (menyn länkar dit direkt).
   { source: "/kontrakt", destination: "/avtal", permanent: false },
+  // Bokföringen är en flik på Ekonomi (gamla länkar och bokmärken).
+  { source: "/ekonomi/bokforing", destination: "/ekonomi?vy=bokforing", permanent: false },
 ];

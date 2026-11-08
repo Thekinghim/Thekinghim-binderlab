@@ -43,7 +43,7 @@ describe("machineHealth: försäljning som inte importerats än", () => {
     );
     expect(h.map((x) => x.status)).toEqual(["ok", "ok"]);
     expect(h[0]?.dataUntil).toBe(new Date(until).toISOString());
-    expect(txt(h[0]?.detail)).toContain("Försäljningen från Awish CSV är importerad till och med");
+    expect(txt(h[0]?.detail)).toContain("Vi har försäljningen från Awish CSV fram till");
     expect(h[0]?.silence?.to).toBe(new Date(until).toISOString());
   });
 

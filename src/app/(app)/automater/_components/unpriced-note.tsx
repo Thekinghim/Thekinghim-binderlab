@@ -30,7 +30,7 @@ export function UnpricedNote({ unpriced, canEdit }: { unpriced: UnpricedView; ca
       </span>
       <Link
         href={unpriced.href}
-        className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-muted underline-offset-4 transition-colors hover:text-fg hover:underline max-md:min-h-11"
+        className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-muted underline-offset-4 transition-colors hover:text-fg hover:underline max-md:tap max-md:min-h-11"
       >
         <span>{canEdit ? "Lägg in inköpspris" : "Visa inköpspriser"}</span>
         <span aria-hidden className="text-subtle">

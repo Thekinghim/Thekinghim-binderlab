@@ -307,7 +307,10 @@ export default async function EkonomiPage({
                     ) : (
                       <ol className="flex flex-col gap-3">
                         {rec.reviews.slice(0, 12).map((r) => (
-                          <li key={r.id} className="flex flex-col gap-0.5 text-sm">
+                          <li
+                            key={r.id}
+                            className="flex flex-col gap-0.5 text-sm max-md:min-h-11 max-md:justify-center"
+                          >
                             <span className="meta text-subtle">
                               {formatDateTime(new Date(r.createdAt))} · {r.actor ?? "System"}
                             </span>
@@ -330,7 +333,10 @@ export default async function EkonomiPage({
                     ) : (
                       <ol className="flex flex-col gap-3">
                         {rec.imports.slice(0, 6).map((i) => (
-                          <li key={i.id} className="flex flex-col gap-0.5 text-sm">
+                          <li
+                            key={i.id}
+                            className="flex flex-col gap-0.5 text-sm max-md:min-h-11 max-md:justify-center"
+                          >
                             <span className="truncate text-fg">{i.fileName}</span>
                             <span className="meta text-subtle">
                               {formatDateTime(new Date(i.createdAt))} · {formatInt(i.rowsNew)} nya ·{" "}

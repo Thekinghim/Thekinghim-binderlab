@@ -23,6 +23,8 @@ export function InboxKpis({
     <KpiStrip
       label={`Ärenden · ${period}`}
       headingLevel={2}
+      // Rubriken säger redan hur många som är öppna: siffrorna fälls ihop på mobilen.
+      mobileFold
       items={[
         { id: "open", label: "Öppna ärenden", value: open, format: formatInt, primary: true },
         { id: "created", label: "Nya i perioden", value: created, format: formatInt },

@@ -53,7 +53,10 @@ function Check({
         className="mt-0.5 size-4 shrink-0 accent-current"
         aria-describedby={hint ? `${id}-hint` : undefined}
       />
-      <label htmlFor={id} className="flex flex-col gap-0.5 text-sm text-fg">
+      <label
+        htmlFor={id}
+        className="flex flex-col gap-0.5 text-sm text-fg max-md:min-h-11 max-md:justify-center"
+      >
         {children}
         {hint ? (
           <span id={`${id}-hint`} className="text-xs text-subtle">

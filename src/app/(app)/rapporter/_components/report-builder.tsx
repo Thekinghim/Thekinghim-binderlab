@@ -206,7 +206,7 @@ export function ReportBuilder({
               setMode(next);
               if (next === "month" && (range || rangeProblem)) go({ fran: null, till: null });
             }}
-            className="label inline-flex h-8 w-fit items-center gap-2 rounded-sm text-muted transition-colors duration-fast ease-instrument hover:text-fg"
+            className="label inline-flex h-8 w-fit items-center gap-2 rounded-sm text-muted transition-colors duration-fast ease-instrument hover:text-fg max-md:min-h-11"
           >
             <span
               aria-hidden
@@ -276,7 +276,7 @@ export function ReportBuilder({
             {currentId ? (
               <a
                 href={`/rapport/${currentId}`}
-                className="rounded-xs text-sm text-muted underline-offset-4 transition-colors duration-fast ease-instrument hover:text-fg hover:underline"
+                className="rounded-xs text-sm text-muted underline-offset-4 transition-colors duration-fast ease-instrument hover:text-fg hover:underline max-md:tap"
               >
                 Öppna senaste versionen →
               </a>

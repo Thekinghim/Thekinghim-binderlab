@@ -174,6 +174,8 @@ const CASH_COLUMNS: ReadonlyArray<Column<CashRow>> = [
           {monthText(r.key)}
         </span>
         {r.note ? <span className="text-xs text-subtle">{r.note}</span> : null}
+        {/* Under md: läget som text under månaden (kolumnen döljs), så att nettot syns. */}
+        <span className="text-xs text-subtle md:hidden">{PHASE[r.phase]}</span>
       </span>
     ),
     csv: (r) => r.key,
@@ -181,6 +183,7 @@ const CASH_COLUMNS: ReadonlyArray<Column<CashRow>> = [
   {
     key: "lage",
     header: "Läge",
+    hideOnMobile: true,
     sortValue: (r) => r.phase,
     render: (r) => (
       <StatusTag
@@ -203,6 +206,7 @@ const CASH_COLUMNS: ReadonlyArray<Column<CashRow>> = [
     key: "in",
     header: "Utbetalningar in",
     numeric: true,
+    hideOnMobile: true,
     sortValue: (r) => r.payoutsOre,
     render: (r) => sek(r.payoutsOre),
     csv: (r) => formatCsvNumber(r.payoutsOre / 100),

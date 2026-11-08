@@ -106,7 +106,7 @@ export default async function DatakallorPage() {
         <p className="text-sm text-muted">
           <a
             href="#ladda-upp"
-            className="text-fg underline decoration-line-strong underline-offset-4 hover:decoration-fg"
+            className="text-fg underline decoration-line-strong underline-offset-4 hover:decoration-fg max-md:tap"
           >
             Har du automater från ett annat märke? Ladda upp försäljning som CSV →
           </a>

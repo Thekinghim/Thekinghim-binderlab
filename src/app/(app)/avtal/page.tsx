@@ -331,7 +331,7 @@ export default async function KontraktPage({
             <ContractDialog
               stores={stores}
               agreements={agreementOptions}
-              trigger={{ label: "Registrera befintligt", variant: "ghost", size: "sm" }}
+              trigger={{ label: "Lägg in ett kontrakt ni redan har", variant: "ghost", size: "sm" }}
             />
           </div>
         ) : null}
@@ -365,7 +365,7 @@ export default async function KontraktPage({
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <a
                         href={`/avtal#avtal-${r.contractId}`}
-                        className="rounded-xs text-base text-fg hover:underline"
+                        className="rounded-xs text-base text-fg hover:underline max-md:tap"
                       >
                         {r.title}
                       </a>
@@ -404,22 +404,25 @@ export default async function KontraktPage({
                         key={row.storeId}
                         className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1 border-t border-line py-3 first:border-t-0 first:pt-0 sm:grid-cols-[minmax(0,1fr)_10rem_7rem_6rem]"
                       >
-                        <span className="min-w-0 truncate text-fg">
+                        {/* Under sm: namn och belopp på första raden, läget och andelen under. */}
+                        <span className="min-w-0 [overflow-wrap:anywhere] text-fg sm:truncate">
                           {storeName.get(row.storeId) ?? "Okänd butik"}
                         </span>
-                        <span className="meta text-subtle sm:order-none">
+                        <span className="meta text-subtle max-sm:order-3 sm:order-none">
                           {CATEGORY[row.category]}
                           {row.currentEnd ? ` · ${day(row.currentEnd)}` : ""}
                         </span>
-                        <span className="tnum text-right text-fg">{sek(row.revenueOre)}</span>
-                        <span className="tnum text-right text-muted">
+                        <span className="tnum text-right text-fg max-sm:order-2">
+                          {sek(row.revenueOre)}
+                        </span>
+                        <span className="tnum text-right text-muted max-sm:order-4">
                           {row.shareBp === null ? "–" : formatPercent(row.shareBp / 10_000)}
                         </span>
                       </li>
                     ))}
                   </ul>
                 </PanelSection>
-                <PanelSection label="Underlag">
+                <PanelSection label="Så räknas det">
                   <EvidenceDetails evidence={o.evidence} />
                 </PanelSection>
               </Panel>
@@ -523,7 +526,7 @@ function ContractItem({
         <div className="flex min-w-0 flex-col gap-1">
           <Link
             href={`/butiker/${row.storeId}`}
-            className="truncate rounded-xs text-md font-medium text-fg hover:underline"
+            className="truncate rounded-xs text-md font-medium text-fg hover:underline max-md:inline-block max-md:min-h-11 max-md:py-3"
           >
             {row.storeName}
           </Link>
@@ -546,6 +549,10 @@ function ContractItem({
               )}
             />
             {st.label}
+            {/* "Löper ut" säger när: annars ser det ut som att avtalet redan har gått ut. */}
+            {row.status === "due" && (c?.terminatedOn ?? c?.validTo)
+              ? ` ${day((c?.terminatedOn ?? c?.validTo)!)}`
+              : ""}
           </span>
           {pdf ? (
             <Link href={pdf.href} prefetch={false} target="_blank" className={link}>
@@ -556,7 +563,7 @@ function ContractItem({
             <Link
               href={`/avtal?skapa=${encodeURIComponent(`store:${row.storeId}`)}`}
               scroll={false}
-              className="inline-flex h-9 items-center rounded-sm border border-inverse bg-inverse px-3.5 text-sm font-medium text-on-inverse hover:bg-inverse-hover"
+              className="inline-flex h-9 items-center rounded-sm border border-inverse bg-inverse px-3.5 text-sm font-medium text-on-inverse hover:bg-inverse-hover max-md:min-h-11"
             >
               Skapa kontrakt
             </Link>

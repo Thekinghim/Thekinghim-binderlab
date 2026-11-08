@@ -162,5 +162,16 @@ export function packListAside(
     list.plannedDay && list.plannedDay !== list.needBy
       ? `, planerat ${relativeDay(list.plannedDay, today)}`
       : "";
+  // Redan passerat: säg det rakt ut i stället för "Besök senast 7 nov. (passerat)".
+  if (list.needBy < today) {
+    const next =
+      list.plannedDay && list.plannedDay >= today
+        ? ` Planerat ${relativeDay(list.plannedDay, today)}.`
+        : " Åk så snart du kan.";
+    return `Borde ha fyllts på ${relativeDay(list.needBy, today).replace(" (passerat)", "")}.${next}`.replace(
+      "..",
+      ".",
+    );
+  }
   return sentence(`Besök senast ${relativeDay(list.needBy, today)}${planned}`);
 }

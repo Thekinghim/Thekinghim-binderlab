@@ -85,7 +85,7 @@ export async function acknowledgeAlert(alertId: string): Promise<{ ok: boolean; 
   revalidatePath("/drift", "layout");
   return updated.length > 0
     ? { ok: true }
-    : { ok: false, error: "Larmet är redan kvitterat eller finns inte." };
+    : { ok: false, error: "Någon tar redan det här larmet, eller så är det borta." };
 }
 
 // ---------------------------------------------------------------------------

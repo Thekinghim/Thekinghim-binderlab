@@ -86,7 +86,7 @@ export default async function LagerPage({ searchParams }: { searchParams: Promis
             view.unknownCount > 0 && routeById("datakallor").roles.includes(ctx.role) ? (
               <Link
                 href="/datakallor"
-                className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover"
+                className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:min-h-11"
               >
                 Koppla Awish
               </Link>

@@ -229,7 +229,7 @@ export function homeHeadline(input: HomeHeadlineInput): HomeHeadline {
       .filter(Boolean)
       .join(" och ");
     const parts = [
-      before ? `Före ${before}.` : "",
+      before ? `Innan ${before} dras av.` : "",
       input.unpricedShareBp >= UNPRICED_HEADLINE_BP
         ? `${formatPercent(input.unpricedShareBp / 10_000, 1)} saknar inköpspris.`
         : "",

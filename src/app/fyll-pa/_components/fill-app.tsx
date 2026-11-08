@@ -453,7 +453,7 @@ export function FillApp({
                 {`${NBSP}${stockLabel}`}
               </span>
             ) : null}
-            {waitingAwish ? <span>Fyllnad: väntar på Awish</span> : null}
+            {waitingAwish ? <span>Hur fulla automaterna är syns efter nästa läsning</span> : null}
             {lastRead ? (
               <span className="tnum">
                 {`Awish läst ${clockLabel(lastRead, renderedAt, timeZone)}`}
@@ -607,7 +607,7 @@ function NetPill({
       {online
         ? waiting > 0
           ? `${formatInt(waiting)} skickas`
-          : "Uppkopplad"
+          : "Har nät"
         : waiting > 0
           ? `Utan nät · ${formatInt(waiting)} i kön`
           : "Utan nät"}
@@ -737,29 +737,27 @@ function MachineCard({
     >
       <span className="flex items-start justify-between gap-3">
         <span className="flex min-w-0 flex-col gap-1">
-          <span className="truncate text-lg font-medium text-fg">{m.place}</span>
-          <span className="meta inline-flex items-center gap-1.5 text-subtle">
+          <span className="text-lg font-medium [overflow-wrap:anywhere] text-fg">{m.place}</span>
+          <span className="inline-flex items-center gap-1.5 text-sm text-muted">
             {syncLabel ? <AwishDot live={fresh} /> : null}
             {m.code}
             {m.fillPct !== null && syncLabel ? ` · ${syncLabel}` : ""}
           </span>
         </span>
-        <span className="flex shrink-0 flex-col items-end">
-          {m.fillPct !== null ? (
-            <span className="tnum text-2xl font-medium text-fg">{`${m.fillPct}${NBSP}%`}</span>
-          ) : null}
-          {label ? (
-            <span
-              className={cn(
-                "label",
-                urgent ? "text-signal-fg" : label === "fullt" ? "text-up" : "text-subtle",
-              )}
-            >
-              {label}
-            </span>
-          ) : null}
-        </span>
+        {m.fillPct !== null ? (
+          <span className="tnum shrink-0 text-2xl font-medium text-fg">{`${m.fillPct}${NBSP}%`}</span>
+        ) : null}
       </span>
+      {label ? (
+        <span
+          className={cn(
+            "text-md font-medium first-letter:uppercase",
+            urgent ? "text-signal-fg" : label === "fullt" ? "text-up" : "text-muted",
+          )}
+        >
+          {label}
+        </span>
+      ) : null}
       <FillBar pct={m.fillPct} />
     </a>
   );
@@ -923,12 +921,12 @@ function MachineScreen({
           </div>
           <div className="flex items-end justify-between gap-3">
             <div className="flex min-w-0 flex-col gap-1">
-              <h1 className="truncate text-2xl font-medium text-fg">{m.place}</h1>
+              <h1 className="text-2xl font-medium [overflow-wrap:anywhere] text-fg">{m.place}</h1>
               <p className="meta inline-flex items-center gap-1.5 text-subtle">
                 {syncLabel ? <AwishDot live={fresh} /> : null}
                 {m.code}
                 {after === null
-                  ? " · Fyllnad: väntar på Awish"
+                  ? " · Hur full den är syns efter nästa läsning"
                   : syncLabel
                     ? ` · ${syncLabel}`
                     : ""}
@@ -951,6 +949,7 @@ function MachineScreen({
 
         <div className="rise flex flex-wrap items-center justify-between gap-3" style={rise(1)}>
           <p className="text-md text-muted">
+            {"Du fyller på "}
             <span className="tnum text-fg">{formatInt(total)}</span>
             {`${NBSP}pack`}
           </p>
@@ -1003,7 +1002,7 @@ function MachineScreen({
                   <Icon
                     name="chevronDown"
                     size={14}
-                    className="transition-transform group-open:rotate-180"
+                    className="-rotate-90 transition-transform group-open:rotate-0"
                   />
                   {`Fler titlar (${formatInt(rest.length)})`}
                 </summary>
@@ -1059,6 +1058,7 @@ function MachineScreen({
                 setConfirming(true);
                 return;
               }
+              toast({ title: "Inget fylldes på. Inget sparades.", tone: "neutral" });
               await finish();
             }}
             className={cn(
@@ -1127,11 +1127,11 @@ function TitleRow({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col">
-          <label htmlFor={inputId} className="truncate text-md font-medium text-fg">
+          <label htmlFor={inputId} className="text-md font-medium [overflow-wrap:anywhere] text-fg">
             {r.name}
           </label>
-          <span className={cn("meta", short ? "text-signal-fg" : "text-subtle")}>
-            {`${sourceName.trim().toLowerCase() === "hemma" ? "hemma" : sourceName}: ${formatInt(r.home)}`}
+          <span className={cn("text-sm", short ? "text-signal-fg" : "text-muted")}>
+            {`${sourceName.trim().toLowerCase() === "hemma" ? "Hemma" : sourceName}: ${formatInt(r.home)}${NBSP}pack`}
             {short && r.home > 0 ? ` · ${formatInt(value - r.home)} utan uttag` : ""}
             {short && r.home <= 0 ? " · utan uttag" : ""}
           </span>
@@ -1152,7 +1152,7 @@ function TitleRow({
           ) : r.status === "low" ? (
             <span className="label text-signal-fg">snart slut</span>
           ) : (
-            <span className="label text-subtle">i automaten</span>
+            <span className="text-sm text-muted">i automaten</span>
           )}
         </p>
       </div>
@@ -1202,7 +1202,7 @@ function TitleRow({
 
       {counting ? (
         <form
-          className="flex items-center gap-2"
+          className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2"
           onSubmit={async (e) => {
             e.preventDefault();
             const n = Number(draft);
@@ -1215,11 +1215,8 @@ function TitleRow({
             }
           }}
         >
-          <label
-            htmlFor={`${inputId}-raknat`}
-            className="shrink-0 text-md whitespace-nowrap text-muted"
-          >
-            I automaten nu
+          <label htmlFor={`${inputId}-raknat`} className="col-span-3 text-md text-muted">
+            Så många pack är i automaten nu
           </label>
           <input
             id={`${inputId}-raknat`}
@@ -1231,7 +1228,7 @@ function TitleRow({
             value={draft}
             autoFocus
             onChange={(e) => setDraft(e.target.value)}
-            className="tnum h-11 w-20 rounded-sm border border-line-control bg-bg text-center text-fg"
+            className="tnum h-11 w-full min-w-0 rounded-sm border border-line-control bg-bg text-center text-fg"
             style={{ fontSize: 18 }}
           />
           <button
@@ -1244,7 +1241,7 @@ function TitleRow({
           <button
             type="button"
             onClick={onCountToggle}
-            className="h-11 px-2 text-md text-subtle hover:text-fg"
+            className="h-11 min-w-11 px-2 text-md text-subtle hover:text-fg"
           >
             Avbryt
           </button>
@@ -1258,7 +1255,7 @@ function TitleRow({
           }}
           className="-my-1 min-h-11 self-start text-md text-subtle underline-offset-4 hover:text-fg hover:underline"
         >
-          Fel antal?
+          Fel antal i automaten?
         </button>
       )}
     </div>

@@ -32,6 +32,10 @@ const limiter = createRateLimiter({ limit: SEARCHES_PER_MINUTE, windowMs: 60_000
 
 export async function GET(request: NextRequest): Promise<Response> {
   const sp = request.nextUrl.searchParams;
+  // /sok öppnad som sida (bokmärke, historik, brödsmula): till Hem i stället för rå JSON.
+  if (!sp.has("q") && !sp.has("lista") && request.headers.get("accept")?.includes("text/html")) {
+    return Response.redirect(new URL("/", request.url), 307);
+  }
   try {
     const user = await getSessionUser();
     if (!user) {

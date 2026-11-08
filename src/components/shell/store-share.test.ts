@@ -55,7 +55,7 @@ describe("vyknappen Visa butikernas andel (?andel=1 eller kakan)", () => {
   });
 
   it("säger vad vinsten är i läget", () => {
-    expect(storeShareHint(false)).toBe("Före butikernas andel");
-    expect(storeShareHint(true)).toBe("Efter butikernas andel");
+    expect(storeShareHint(false)).toBe("Vinsten är före butikernas del");
+    expect(storeShareHint(true)).toBe("Vinsten är efter butikernas del");
   });
 });

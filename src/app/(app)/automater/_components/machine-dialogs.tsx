@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useId, useState, useTransition, type FormEvent, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { MOBILE_MENU_ITEM, MobileMore } from "@/components/ui/more-menu";
+import { cn } from "@/lib/cn";
 import { Input, Select } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
@@ -256,44 +258,59 @@ export function MachineActions({
 
   return (
     <div className="flex flex-wrap gap-2" data-print="hide">
-      <Button variant="secondary" size="sm" onClick={() => setDialog("edit")}>
-        Redigera
-      </Button>
-      {decommissioned ? (
+      {/* Under md bakom "⋯", så att Avveckla inte ligger ett snedtryck från de andra. */}
+      <MobileMore label="Ändra automaten" className="md:flex md:flex-wrap md:gap-2">
         <Button
           variant="secondary"
           size="sm"
-          loading={reactivating}
-          onClick={() =>
-            startReactivate(async () => {
-              try {
-                const r = await reactivateMachine({ machineId: machine.id });
-                if (r.ok) done(`${machine.code} är i drift igen`);
-                else toast({ title: r.error, tone: "critical", meta: machine.code });
-              } catch (err) {
-                console.warn("[automater] Återaktiveringen kunde inte skickas:", err);
-                toast({ title: SEND_FAILED, tone: "critical", meta: machine.code });
-              }
-            })
-          }
+          className={MOBILE_MENU_ITEM}
+          onClick={() => setDialog("edit")}
         >
-          Återaktivera
+          Redigera
         </Button>
-      ) : (
-        <>
+        {decommissioned ? (
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => setDialog("move")}
-            disabled={otherStores.length === 0}
+            className={MOBILE_MENU_ITEM}
+            loading={reactivating}
+            onClick={() =>
+              startReactivate(async () => {
+                try {
+                  const r = await reactivateMachine({ machineId: machine.id });
+                  if (r.ok) done(`${machine.code} är i drift igen`);
+                  else toast({ title: r.error, tone: "critical", meta: machine.code });
+                } catch (err) {
+                  console.warn("[automater] Återaktiveringen kunde inte skickas:", err);
+                  toast({ title: SEND_FAILED, tone: "critical", meta: machine.code });
+                }
+              })
+            }
           >
-            {machine.storeId ? "Flytta" : "Placera i butik"}
+            Återaktivera
           </Button>
-          <Button variant="danger" size="sm" onClick={() => setDialog("decommission")}>
-            Avveckla
-          </Button>
-        </>
-      )}
+        ) : (
+          <>
+            <Button
+              variant="secondary"
+              size="sm"
+              className={MOBILE_MENU_ITEM}
+              onClick={() => setDialog("move")}
+              disabled={otherStores.length === 0}
+            >
+              {machine.storeId ? "Flytta till en annan butik" : "Placera i butik"}
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              className={cn(MOBILE_MENU_ITEM, "max-md:mt-2")}
+              onClick={() => setDialog("decommission")}
+            >
+              Avveckla automaten
+            </Button>
+          </>
+        )}
+      </MobileMore>
 
       <FormDialog
         open={dialog === "edit"}
@@ -356,8 +373,8 @@ export function MachineActions({
         title={machine.storeId ? `Flytta ${machine.code}.` : `Placera ${machine.code}.`}
         description={
           storeName
-            ? `${machine.code} står i ${storeName}. Placeringen där slutar dagen före flytten, och butikens del räknas på den nya butiken från flyttdagen.`
-            : "Butikens del räknas från första dagen."
+            ? `${machine.code} står i ${storeName} i dag. Från flyttdagen räknas försäljningen på den nya butiken.`
+            : "Försäljningen räknas på butiken från första dagen."
         }
         submitLabel={machine.storeId ? "Flytta" : "Placera"}
         onSubmit={async (data) => {
@@ -377,8 +394,11 @@ export function MachineActions({
             <Select
               name="storeId"
               label="Till butik"
-              defaultValue={otherStores[0]?.id ?? ""}
-              options={otherStores.map((s) => ({ value: s.id, label: s.name }))}
+              defaultValue=""
+              options={[
+                { value: "", label: "Välj butik" },
+                ...otherStores.map((s) => ({ value: s.id, label: s.name })),
+              ]}
               required
             />
             <Input
@@ -399,10 +419,11 @@ export function MachineActions({
         open={dialog === "decommission"}
         onClose={close}
         eyebrow={`Automat / ${machine.code}`}
-        title={`Avveckla ${machine.code}.`}
-        description={`${machine.code} tas ur drift efter sista dagen${
-          storeName ? ` och placeringen i ${storeName} avslutas samma dag` : ""
-        }. Order, placeringar och lager finns kvar i historiken.`}
+        title={`Avveckla ${machine.code}?`}
+        // "Ur drift" är statusen för en automat som har slutat sälja; det här är något annat.
+        description={`Gör det bara när ${machine.code} inte ska användas mer. Den räknas inte efter sista dagen${
+          storeName ? ` och lämnar ${storeName}` : ""
+        }. Försäljning och lager finns kvar i historiken.`}
         submitLabel="Avveckla"
         danger
         onSubmit={async (data) => {

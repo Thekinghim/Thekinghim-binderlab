@@ -124,6 +124,17 @@
   --breakpoint-2xl: 1536px;
 }
 
+/*
+ * Tryckyta på mobil: minst 44 × 44 px med innehållet centrerat i höjd, för länkar och
+ * knappar som ritas som text ("Visa →", "› Underlag"). Används som max-md:tap.
+ */
+@utility tap {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 44px;
+}
+
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
@@ -453,4 +464,40 @@ dialog::backdrop {
   transform-origin: left;
   animation: bl-grow-x 600ms var(--bl-ease) both;
   animation-delay: calc(var(--i, 0) * 40ms);
+}
+
+/*
+ * Mobil (under md). Utanför lagren med flit, så att reglerna gäller före klasserna i
+ * komponenterna (som annars sätter 13–14 px eller låga höjder).
+ */
+@media (width < 48rem) {
+  /* iOS zoomar in på ett fält med mindre text än 16 px och zoomar inte ut igen. Stora
+     sifferfält (text-lg och uppåt) har redan större text. */
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]):not(
+      [class*="text-lg"],
+      [class*="text-xl"],
+      [class*="text-2xl"],
+      [class*="text-3xl"]
+    ),
+  select:not([class*="text-lg"], [class*="text-xl"]),
+  textarea {
+    font-size: 16px;
+  }
+
+  /* Fällbara rubriker ("› Underlag", "Mer") är tryckytor: minst 44 px höga. */
+  main summary {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  main summary:where(:not([class*="flex"], [class*="grid"])) {
+    display: flex;
+    align-items: center;
+  }
+}
+
+/* Långa ord (titlar, butiksnamn, belopp med datum) bryts hellre än att gå utanför rutan. */
+h1,
+h2,
+h3 {
+  overflow-wrap: break-word;
 }

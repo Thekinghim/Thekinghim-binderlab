@@ -4,7 +4,7 @@
 
 import type { CashflowResult } from "@/analytics/cashflow";
 import type { ReconciliationResult } from "@/analytics/reconciliation";
-import { formatDate } from "@/lib/format";
+import { EN_DASH, formatDate, NBSP, SPACED_RANGE_DASH } from "@/lib/format";
 
 import {
   isoToDate,
@@ -134,7 +134,8 @@ export function cashflowHeadline(
   payoutsTracked: boolean,
 ): Headline {
   if (!cash) return { title: "Kassaflöde per månad.", aside: "" };
-  const span = periodShort(cash.range, today);
+  // Rubriken får brytas efter tankstrecket: hela intervallet ryms annars inte på en mobil.
+  const span = periodShort(cash.range, today).replace(SPACED_RANGE_DASH, `${NBSP}${EN_DASH} `);
   const net = cash.totals.total.netOre;
   const forecast = cash.totals.forecast.netOre;
   if (!payoutsTracked) {

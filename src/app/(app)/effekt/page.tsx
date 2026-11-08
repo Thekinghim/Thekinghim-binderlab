@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { MerHead } from "@/app/(app)/installningar/_components/mer-head";
+import { MobileFold } from "@/components/ui/mobile-fold";
 import { SectionHeader } from "@/components/ui/section-header";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { daysInMonth } from "@/domain";
@@ -111,7 +112,7 @@ export default async function EffektPage({
             data.period.key !== "allt" ? (
               <Link
                 href="?period=allt"
-                className="meta rounded-xs text-fg underline decoration-line-control underline-offset-4 hover:decoration-fg"
+                className="meta rounded-xs text-fg underline decoration-line-control underline-offset-4 hover:decoration-fg max-md:tap"
               >
                 Visa alla månader →
               </Link>
@@ -143,16 +144,19 @@ export default async function EffektPage({
           id="utgangslage"
           title={
             data.baselines.length === 0
-              ? "Utgångsläge."
-              : `Utgångsläge: ${formatInt(data.baselines.length)} mått.`
+              ? "Så var det före Binderlab."
+              : `Så var det före Binderlab: ${formatInt(data.baselines.length)} mått.`
           }
         />
-        <BaselinesSection
-          baselines={data.baselines}
-          stores={data.names.stores}
-          machines={data.names.machines}
-          canEdit={data.ctx.canEdit}
-        />
+        {/* Inställningar för mätningen: fällda på mobilen, siffrorna ovan är det viktiga. */}
+        <MobileFold summary="Visa och ändra">
+          <BaselinesSection
+            baselines={data.baselines}
+            stores={data.names.stores}
+            machines={data.names.machines}
+            canEdit={data.ctx.canEdit}
+          />
+        </MobileFold>
       </section>
 
       <section
@@ -160,15 +164,17 @@ export default async function EffektPage({
         className="rise flex flex-col gap-8"
         style={{ "--i": 3 } as React.CSSProperties}
       >
-        <SectionHeader id="matvarden" title="Mätvärden." aside="Per månad." />
-        <MeasurementsSection
-          measurements={data.measurements}
-          settings={data.settings}
-          stores={data.names.stores}
-          machines={data.names.machines}
-          canEdit={data.ctx.canEdit}
-          defaultMonth={monthOfDate(data.ctx.today)}
-        />
+        <SectionHeader id="matvarden" title="Inmatade siffror." aside="Per månad." />
+        <MobileFold summary="Visa och ändra">
+          <MeasurementsSection
+            measurements={data.measurements}
+            settings={data.settings}
+            stores={data.names.stores}
+            machines={data.names.machines}
+            canEdit={data.ctx.canEdit}
+            defaultMonth={monthOfDate(data.ctx.today)}
+          />
+        </MobileFold>
       </section>
     </div>
   );

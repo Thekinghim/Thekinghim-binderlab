@@ -165,7 +165,9 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
         base,
         variantClass(variant, Boolean(disabled)),
         size === "sm" ? "size-7" : "size-9",
-        "px-0",
+        // Under md når träffytan 44 px (::before) utan att knappen ritas större.
+        "px-0 max-md:before:absolute max-md:before:content-['']",
+        size === "sm" ? "max-md:before:-inset-2" : "max-md:before:-inset-1",
         className,
       )}
       {...rest}

@@ -72,14 +72,14 @@ export default async function EnhetsekonomiPage({
         <SectionHeader
           as="h1"
           size="xl"
-          eyebrow="Automater / Enhetsekonomi"
+          eyebrow="Automater / Vad varje automat ger"
           title={title}
           aside={comparison.text}
           meta={[
             { label: "Period", value: periodText(period.period) },
             { label: "Automater", value: formatInt(comparison.rows.length) },
             {
-              label: "Snabbast återbetald",
+              label: "Betalar sig snabbast",
               value: fastest
                 ? `${codes[fastest.machineId] ?? ""} ${paybackShort(fastest.paybackTenths)}`
                 : "–",
@@ -119,7 +119,7 @@ export default async function EnhetsekonomiPage({
           aside={
             comparison.averageProfitPerDayOre === null
               ? "Ingen automat var placerad i perioden."
-              : `Snitt ${kr(comparison.averageProfitPerDayOre)}, viktat efter automatdagar.`
+              : `En automat tjänar i snitt ${kr(comparison.averageProfitPerDayOre)} per dag.`
           }
         />
         <ProfitPerDayChart rows={comparison.rows} codes={codes} />
@@ -132,11 +132,11 @@ export default async function EnhetsekonomiPage({
       >
         <SectionHeader
           id="sida-vid-sida"
-          eyebrow="Sida vid sida"
-          title="Investering, vinst och återbetalning."
+          eyebrow="Alla automater"
+          title="Vad de kostade och när de har betalat sig."
           aside={
             fastest
-              ? `${fastest.name} återbetalas snabbast, på ${paybackShort(fastest.paybackTenths)}.`
+              ? `${fastest.name} betalar sig snabbast, på ${paybackShort(fastest.paybackTenths)}.`
               : investmentOre === 0
                 ? "Ingen investering registrerad."
                 : "Ingen automat återbetalas med nuvarande vinst."

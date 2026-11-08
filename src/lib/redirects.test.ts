@@ -15,4 +15,12 @@ describe("APP_REDIRECTS", () => {
     const page = fileURLToPath(new URL("../app/(app)/kontrakt/page.tsx", import.meta.url));
     expect(existsSync(page)).toBe(false);
   });
+
+  it("/ekonomi/bokforing skickas vidare till fliken Bokföring på Ekonomi", () => {
+    expect(APP_REDIRECTS).toContainEqual({
+      source: "/ekonomi/bokforing",
+      destination: "/ekonomi?vy=bokforing",
+      permanent: false,
+    });
+  });
 });

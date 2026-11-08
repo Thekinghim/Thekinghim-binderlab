@@ -283,7 +283,7 @@ export function PipelineView({
                         </Button>
                         <Link
                           href={`/avtal?skapa=${lead.storeId ? `store:${lead.storeId}` : `lead:${lead.id}`}`}
-                          className="inline-flex h-8 items-center rounded-sm border border-line-strong bg-surface px-3 text-sm font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover"
+                          className="inline-flex h-8 items-center rounded-sm border border-line-strong bg-surface px-3 text-sm font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:min-h-11"
                         >
                           Skapa avtal
                         </Link>
@@ -376,8 +376,8 @@ export function PipelineView({
         open={editing !== null}
         onClose={() => setEditing(null)}
         title={editing === "new" ? "Ny plats" : `Ändra ${l?.name ?? "plats"}`}
-        eyebrow="Expansionspipeline"
-        description="Attributen avgör vilka befintliga platser uppskattningen bygger på."
+        eyebrow="Nya platser"
+        description="Fyll i det du vet. Ju mer, desto bättre gissning på vad platsen kan sälja."
         fields={fields}
         initial={initial}
         fixed={{ id: l?.id ?? null }}

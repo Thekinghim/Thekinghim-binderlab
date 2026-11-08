@@ -89,7 +89,7 @@ export function PackList({
             <>
               <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-end gap-x-4 border-b border-line-strong pb-2">
                 <span className="label text-subtle">Titel</span>
-                <span className="label w-20 text-right text-subtle">Nu → mål</span>
+                <span className="label w-20 text-right text-subtle">Har → ska ha</span>
                 <span className="label w-16 text-right text-subtle">Ta med</span>
               </div>
               <ul aria-label={`Påfyllningslista för ${machine.code}`}>
@@ -181,9 +181,8 @@ function Line({
       type="button"
       className={cn(
         cls,
-        "-mx-2 px-2 transition-colors duration-fast ease-instrument hover:bg-hover focus-visible:-outline-offset-2",
+        "transition-colors duration-fast ease-instrument hover:bg-hover focus-visible:-outline-offset-2",
       )}
-      style={{ width: "calc(100% + 16px)" }}
       aria-label={`${line.titleName}: ta med ${packs(line.quantity)} till ${machineCode}, ${formatInt(line.onHand)} i automaten, mål ${formatInt(line.target)}. Registrera påfyllning.`}
       onClick={onSelect}
     >

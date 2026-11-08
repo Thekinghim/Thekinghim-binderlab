@@ -161,7 +161,7 @@ export default async function AutomaterPage({
               actions={
                 <Link
                   href="/automater/enhetsekonomi"
-                  className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-muted underline-offset-4 transition-colors hover:text-fg hover:underline max-md:min-h-11"
+                  className="meta inline-flex min-h-7 items-center gap-1.5 rounded-xs text-muted underline-offset-4 transition-colors hover:text-fg hover:underline max-md:tap max-md:min-h-11"
                 >
                   <span>Enhetsekonomi</span>
                   <span aria-hidden className="text-subtle">

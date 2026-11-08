@@ -460,7 +460,7 @@ describe("buildPageModel", () => {
     const t1 = m.valuation.rows.find((r) => r.titleId === T1)!;
     expect(t1.onHand).toBe(15);
     expect(t1.valueOre).toBe(15 * 4_500);
-    expect(m.valuation.heading.title).toMatch(/^Kapitalbindning/);
+    expect(m.valuation.heading.title).toMatch(/^Pengar i lagret/);
   });
 
   it("visar utkast på förslagets rader utan att räkna dem som beställda", () => {
@@ -532,7 +532,7 @@ describe("buildPageModel", () => {
     const t2 = m.valuation.rows.find((r) => r.titleId === T2)!;
     expect(t2.unitCostOre).toBeNull();
     expect(m.valuation.incomplete).toBe(true);
-    expect(m.valuation.heading.title).toMatch(/^Kapitalbindning minst/);
+    expect(m.valuation.heading.title).toMatch(/^Pengar i lagret minst/);
     expect(m.meta.find((x) => x.label === "Kapitalbindning")?.value).toMatch(/^minst /);
   });
 

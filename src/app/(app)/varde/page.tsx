@@ -54,7 +54,7 @@ export default async function VardePage({ searchParams }: { searchParams: Promis
             data.hasData ? (
               <Link
                 href={`/rapport/varde?manad=${data.month}`}
-                className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover"
+                className="inline-flex h-9 items-center gap-2 rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:min-h-11"
               >
                 Månadsrapport
               </Link>

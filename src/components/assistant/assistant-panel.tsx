@@ -387,7 +387,7 @@ function Panel({
                   type="button"
                   disabled={!ready}
                   onClick={() => send(c)}
-                  className="rounded-full border border-line-strong px-2.5 py-1 text-left text-sm text-fg transition-[background-color,border-color,transform] duration-fast ease-instrument enabled:hover:border-line-control enabled:hover:bg-hover enabled:active:scale-[0.97] disabled:cursor-not-allowed disabled:border-dashed disabled:text-disabled"
+                  className="rounded-sm border border-line-strong px-2.5 py-1 text-left text-sm text-fg transition-[background-color,border-color,transform] duration-fast ease-instrument enabled:hover:border-line-control enabled:hover:bg-hover enabled:active:scale-[0.97] disabled:cursor-not-allowed disabled:border-dashed disabled:text-disabled max-md:min-h-11 max-md:px-3"
                 >
                   {c}
                 </button>
@@ -409,7 +409,7 @@ function Panel({
             maxLength={QUESTION_MAX_LENGTH}
             disabled={!ready}
             placeholder={ready ? "Skriv en fråga" : (state?.message ?? "Laddar…")}
-            className="max-h-32 min-h-9 w-full min-w-0 resize-none rounded-sm border border-line-control bg-bg px-3 py-1.5 text-base text-fg placeholder:text-subtle disabled:cursor-not-allowed disabled:border-dashed disabled:border-line-strong disabled:text-disabled"
+            className="max-h-32 min-h-9 w-full min-w-0 resize-none rounded-sm border border-line-control bg-bg px-3 py-1.5 text-base text-fg placeholder:text-subtle disabled:cursor-not-allowed disabled:border-dashed disabled:border-line-strong disabled:text-disabled max-md:min-h-11"
           />
           {busy ? (
             <Button type="button" variant="secondary" onClick={conversation.stop}>
@@ -426,7 +426,7 @@ function Panel({
           <Link
             href={conversationId ? `/assistent?samtal=${conversationId}` : "/assistent"}
             onClick={onClose}
-            className="meta ml-auto text-muted underline decoration-line-control underline-offset-4 hover:text-fg"
+            className="meta ml-auto text-muted underline decoration-line-control underline-offset-4 hover:text-fg max-md:tap max-md:justify-end"
           >
             Öppna i Assistent
           </Link>
@@ -501,7 +501,7 @@ function TurnView({
                 onClick={() => {
                   if (window.matchMedia("(max-width: 639px)").matches) onNavigate();
                 }}
-                className="inline-flex h-8 items-center gap-1.5 rounded-sm border border-line-strong bg-surface px-3 text-sm text-fg transition-[background-color,border-color] duration-fast hover:border-line-control hover:bg-hover"
+                className="inline-flex h-8 items-center gap-1.5 rounded-sm border border-line-strong bg-surface px-3 text-sm text-fg transition-[background-color,border-color] duration-fast hover:border-line-control hover:bg-hover max-md:min-h-11"
               >
                 {a.label} <span aria-hidden>→</span>
               </Link>
@@ -514,7 +514,7 @@ function TurnView({
             <VerificationLine verification={t.verification} />
             {t.calls.length > 0 ? (
               <details className="text-sm">
-                <summary className="meta w-fit cursor-pointer text-subtle hover:text-fg">
+                <summary className="meta w-fit cursor-pointer text-subtle hover:text-fg max-md:min-h-11">
                   Underlag · {formatInt(modelCalls.length)}{" "}
                   {modelCalls.length === 1 ? "verktyg" : "verktyg"}
                   {t.pageName ? ` · från ${t.pageName}` : ""}

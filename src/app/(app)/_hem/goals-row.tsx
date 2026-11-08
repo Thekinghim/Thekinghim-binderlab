@@ -12,7 +12,7 @@ import { dateOf, kr } from "./text";
 
 const STATUS: Record<GoalStatus, { tag: Status; text: string }> = {
   "on-track": { tag: "ok", text: "I fas" },
-  behind: { tag: "warning", text: "Efter" },
+  behind: { tag: "warning", text: "Ligger efter" },
   met: { tag: "ok", text: "Nått" },
   missed: { tag: "critical", text: "Missat" },
 };
@@ -70,7 +70,7 @@ function GoalCard({ goal: g, index }: { goal: HomeGoal; index: number }) {
   const status = STATUS[g.status];
   const need =
     g.requiredPerDay !== null && g.metric !== "active_machines"
-      ? ` · kräver ${kr(g.requiredPerDay)}/dag`
+      ? ` · behöver ${kr(g.requiredPerDay)}/dag`
       : "";
   const done = g.status === "met" || g.status === "missed";
   return (

@@ -169,7 +169,7 @@ export default async function MarknadPage({
           value={view}
           hrefFor={hrefFor}
           tabs={[
-            { value: "releaser", label: "Releaser", count: upcoming },
+            { value: "releaser", label: "Släpp", count: upcoming },
             { value: "priser", label: "Priser", count: data.quotes.length },
             { value: "sortiment", label: "Sortiment", count: machinesWithSlots },
           ]}

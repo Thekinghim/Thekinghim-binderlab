@@ -340,7 +340,7 @@ export function PriceForm({
           aria-controls={`${titleId}-annat-datum`}
           disabled={!ready}
           onClick={() => setOtherDate((v) => !v)}
-          className="meta inline-flex w-fit cursor-pointer items-center gap-1 rounded-xs text-subtle hover:text-fg"
+          className="meta inline-flex w-fit cursor-pointer items-center gap-1 rounded-xs text-subtle hover:text-fg max-md:min-h-11"
         >
           <Icon
             name="chevronRight"

@@ -235,7 +235,7 @@ export function OrderList({
             aria-label={`Visa order ${r.externalId}`}
             data-order-button={r.id}
             onClick={() => onOpen(r)}
-            className="inline-flex min-h-7 w-full items-center rounded-xs font-mono text-sm text-fg underline decoration-line-control underline-offset-4 transition-colors hover:decoration-fg"
+            className="inline-flex min-h-7 w-full items-center rounded-xs font-mono text-sm text-fg underline decoration-line-control underline-offset-4 transition-colors hover:decoration-fg max-md:min-h-11"
           >
             {r.externalId}
           </button>
@@ -369,20 +369,23 @@ export function OrderList({
         <p className="tnum font-mono text-xs text-muted" aria-live="polite" aria-atomic="true">
           <span className="text-fg">{formatInt(totals.count)}</span>
           {NBSP}order
-          {partial ? (
-            <>
-              <span aria-hidden className="text-subtle">
-                {" · "}
-              </span>
-              <span className="text-fg">{formatInt(rows.length)}</span> laddade
-            </>
-          ) : null}
-          <span aria-hidden className="text-subtle">
-            {" · "}
+          {/* Under md räcker antalet: sorteringen syns på kolumnrubriken. */}
+          <span className="max-md:sr-only">
+            {partial ? (
+              <>
+                <span aria-hidden className="text-subtle">
+                  {" · "}
+                </span>
+                <span className="text-fg">{formatInt(rows.length)}</span> laddade
+              </>
+            ) : null}
+            <span aria-hidden className="text-subtle">
+              {" · "}
+            </span>
+            sorterat på <span className="text-fg">{SORT_LABEL[sort.key]}</span>
+            <span aria-hidden> {sort.dir === "asc" ? "↑" : "↓"}</span>
+            <span className="sr-only"> {sort.dir === "asc" ? "stigande" : "fallande"}</span>
           </span>
-          sorterat på <span className="text-fg">{SORT_LABEL[sort.key]}</span>
-          <span aria-hidden> {sort.dir === "asc" ? "↑" : "↓"}</span>
-          <span className="sr-only"> {sort.dir === "asc" ? "stigande" : "fallande"}</span>
           {pending ? (
             <>
               <span aria-hidden className="text-subtle">
@@ -474,7 +477,8 @@ function ExportButton({ count }: { count: number }) {
   };
 
   return (
-    <div className="flex flex-col items-start gap-2 sm:items-end">
+    // CSV är ett datorverktyg: dold på mobilen.
+    <div className="flex flex-col items-start gap-2 max-md:hidden sm:items-end">
       <Button
         size="sm"
         iconLeft="download"

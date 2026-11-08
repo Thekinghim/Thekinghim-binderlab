@@ -31,7 +31,7 @@ export function MonthPicker({
                 aria-current={active ? "page" : undefined}
                 aria-label={label(m.month)}
                 className={cn(
-                  "inline-flex h-9 items-center rounded-sm border px-3 text-sm whitespace-nowrap transition-colors duration-fast ease-instrument",
+                  "inline-flex h-9 items-center rounded-sm border px-3 text-sm whitespace-nowrap transition-colors duration-fast ease-instrument max-md:min-h-11",
                   active
                     ? "border-inverse bg-inverse text-on-inverse"
                     : "border-line-strong bg-surface text-fg hover:border-line-control hover:bg-hover",

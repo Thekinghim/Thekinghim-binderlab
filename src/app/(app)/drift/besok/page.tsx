@@ -21,7 +21,7 @@ import { dayRouteView } from "../_lib/route";
 
 /** Länk som ser ut som en knapp. */
 const linkButton =
-  "inline-flex h-9 items-center justify-center gap-2 rounded-sm border px-3.5 text-base font-medium whitespace-nowrap transition-[background-color,border-color,color] duration-fast ease-instrument";
+  "inline-flex h-9 items-center justify-center max-md:min-h-11 gap-2 rounded-sm border px-3.5 text-base font-medium whitespace-nowrap transition-[background-color,border-color,color] duration-fast ease-instrument";
 const linkPrimary =
   "border-inverse bg-inverse text-on-inverse hover:border-inverse-hover hover:bg-inverse-hover";
 const linkSecondary =
@@ -69,7 +69,7 @@ export default async function VisitPlanPage({
           stops === 0
             ? "Lagret räcker 7 dagar."
             : late > 0
-              ? `${plural(late, "besök kommer", "besök kommer")} för sent.`
+              ? `${plural(late, "automat hinner", "automater hinner")} ta slut före besöket.`
               : undefined
         }
       />
@@ -85,7 +85,10 @@ export default async function VisitPlanPage({
           label="Vems besök"
         />
         {stops > 0 ? (
-          <a href={calendarHref()} className={cn(linkButton, linkSecondary, "h-8 text-sm")}>
+          <a
+            href={calendarHref()}
+            className={cn(linkButton, linkSecondary, "h-8 text-sm max-md:min-h-11")}
+          >
             <Icon name="calendar" className="shrink-0" />
             Veckan i kalender
           </a>
@@ -183,7 +186,7 @@ export default async function VisitPlanPage({
                   </div>
                 );
               })()}
-              <div className="grid gap-8 lg:grid-cols-12">
+              <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
                 <ol className="flex flex-col gap-4 lg:col-span-8">
                   {day.stops.map((stop) => (
                     <li key={stop.machineId}>
@@ -195,7 +198,7 @@ export default async function VisitPlanPage({
                             </span>
                             <Link
                               href={`/drift/automat/${stop.machineId}`}
-                              className="rounded-xs text-base text-fg hover:underline"
+                              className="rounded-xs text-base text-fg hover:underline max-md:tap"
                             >
                               {`${(machineCode.get(stop.machineId) ?? "").replace("-", "‑")} ${stop.machineName}`}
                             </Link>
@@ -212,19 +215,25 @@ export default async function VisitPlanPage({
                               editable={ctx.canEdit}
                             />
                             <span className="meta text-subtle">
-                              {stop.late ? "För sent · " : ""}
+                              {stop.late ? "Hinner ta slut · " : ""}
                               {`${formatInt(stop.totalPacks)}${NBSP}pack`}
                             </span>
                           </span>
                         </div>
-                        <ul className="mt-2 flex flex-col gap-1 text-sm text-muted">
+                        {/* Under md står packlistan först; prognosraderna ligger under Underlag. */}
+                        <ul
+                          className={cn(
+                            "mt-2 flex flex-col gap-1 text-sm text-muted",
+                            stop.packs.length > 0 && "max-md:hidden",
+                          )}
+                        >
                           {stop.reasons.slice(0, 3).map((r) => (
                             <li key={r}>{r}</li>
                           ))}
                           {stop.reasons.length > 3 ? (
                             <li>
                               <details>
-                                <summary className="w-fit cursor-pointer rounded-xs hover:text-fg">
+                                <summary className="w-fit cursor-pointer rounded-xs hover:text-fg max-md:tap">
                                   {`Och ${formatInt(stop.reasons.length - 3)} ${stop.reasons.length - 3 === 1 ? "titel" : "titlar"} till`}
                                 </summary>
                                 <ul className="mt-1 flex flex-col gap-1">
@@ -242,14 +251,17 @@ export default async function VisitPlanPage({
                             meta={`${formatInt(stop.totalPacks)} st`}
                             className="mt-4"
                           >
-                            <table className="w-full text-sm">
+                            <table className="w-full text-sm max-sm:table-fixed">
                               <caption className="sr-only">{`Packlista för ${stop.machineName}`}</caption>
                               <thead>
                                 <tr className="label text-subtle">
                                   <th scope="col" className="py-1 text-left font-normal">
                                     Titel
                                   </th>
-                                  <th scope="col" className="py-1 text-right font-normal">
+                                  <th
+                                    scope="col"
+                                    className="py-1 text-right font-normal max-sm:w-20"
+                                  >
                                     Ta med
                                   </th>
                                   <th
@@ -269,7 +281,7 @@ export default async function VisitPlanPage({
                               <tbody className="divide-y divide-line">
                                 {stop.packs.map((p) => (
                                   <tr key={p.titleId}>
-                                    <td className="py-2 pr-2 text-fg">
+                                    <td className="py-2 pr-2 [overflow-wrap:anywhere] text-fg">
                                       {p.titleName}
                                       {p.capacity !== null && p.channels.length > 0 ? (
                                         <ChannelTags
@@ -297,9 +309,16 @@ export default async function VisitPlanPage({
                           </PanelSection>
                         ) : null}
                         <details className="mt-4">
-                          <summary className="w-fit cursor-pointer rounded-xs text-sm text-muted hover:text-fg">
+                          <summary className="w-fit cursor-pointer rounded-xs text-sm text-muted hover:text-fg max-md:tap">
                             Underlag
                           </summary>
+                          {stop.packs.length > 0 ? (
+                            <ul className="mt-2 flex flex-col gap-1 text-sm text-muted md:hidden">
+                              {stop.reasons.map((r) => (
+                                <li key={r}>{r}</li>
+                              ))}
+                            </ul>
+                          ) : null}
                           <p className="mt-2 text-sm text-muted">{stop.evidence.rule}</p>
                         </details>
                       </Panel>

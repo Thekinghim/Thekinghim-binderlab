@@ -95,7 +95,7 @@ export function SignOnSite({
                 href={link.url}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="inline-flex h-9 items-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse hover:bg-inverse-hover"
+                className="inline-flex h-9 items-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse hover:bg-inverse-hover max-md:min-h-11"
               >
                 Öppna här
               </a>

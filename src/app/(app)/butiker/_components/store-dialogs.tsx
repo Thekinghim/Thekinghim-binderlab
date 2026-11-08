@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
+import { MOBILE_MENU_ITEM, MobileMore } from "@/components/ui/more-menu";
 import { Input } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
@@ -87,7 +88,10 @@ function StoreFields({ store }: { store?: StoreDetail }) {
           className="mt-0.5 size-4 shrink-0 accent-current"
         />
         <div className="flex flex-col gap-0.5">
-          <label htmlFor={`${idBase}-example`} className="text-base text-fg">
+          <label
+            htmlFor={`${idBase}-example`}
+            className="text-base text-fg max-md:-mt-3.5 max-md:-mb-2 max-md:tap"
+          >
             Exempelbutik
           </label>
           <p id={`${idBase}-example-hint`} className="text-sm text-muted">
@@ -183,12 +187,25 @@ export function StoreActions({
   const blocked = !store.archived && machines.length > 0;
   return (
     <div className="flex flex-wrap gap-2" data-print="hide">
-      <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
-        Redigera
-      </Button>
-      <Button variant="secondary" size="sm" onClick={() => setConfirm(true)}>
-        {store.archived ? "Återställ" : "Arkivera"}
-      </Button>
+      {/* Under md bakom "⋯": sällan använt, och Arkivera ska inte ligga ett tryck bort. */}
+      <MobileMore label="Ändra butiken" className="md:flex md:flex-wrap md:gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          className={MOBILE_MENU_ITEM}
+          onClick={() => setOpen(true)}
+        >
+          Redigera
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          className={MOBILE_MENU_ITEM}
+          onClick={() => setConfirm(true)}
+        >
+          {store.archived ? "Återställ" : "Arkivera"}
+        </Button>
+      </MobileMore>
       <FormDialog
         open={open}
         onClose={() => setOpen(false)}

@@ -194,7 +194,7 @@ export function PlanView({
       key: `lead-${l.id}`,
       text: `${l.name}: ${l.stageLabel.toLowerCase()}.`,
       href: `/butiker/ny?plats=${encodeURIComponent(l.id)}`,
-      cta: "Starta Ny butik",
+      cta: "Lägg till ny butik",
     });
   }
   if (missingLeads > 0) {
@@ -412,7 +412,7 @@ export function PlanView({
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                className="rounded-xs text-sm text-fg underline underline-offset-4 hover:text-muted"
+                className="rounded-xs text-sm text-fg underline underline-offset-4 hover:text-muted max-md:tap"
               >
                 Ändra
               </button>
@@ -458,7 +458,7 @@ export function PlanView({
                 {s.href && s.cta ? (
                   <Link
                     href={s.href}
-                    className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3.5 text-sm font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover"
+                    className="inline-flex h-9 items-center rounded-sm border border-line-strong bg-surface px-3.5 text-sm font-medium text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:min-h-11"
                   >
                     {s.cta}
                   </Link>

@@ -69,7 +69,7 @@ export function ImportLog({
         <span className="flex flex-col items-start gap-1">
           <Link
             href={`/datakallor/importer/${e.id}`}
-            className="tnum whitespace-nowrap text-fg underline-offset-4 hover:underline"
+            className="tnum whitespace-nowrap text-fg underline-offset-4 hover:underline max-md:tap"
           >
             {formatWhen(when(e), timeZone, nowDate)}
           </Link>
