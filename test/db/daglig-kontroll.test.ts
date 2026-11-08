@@ -718,8 +718,11 @@ describe("daglig kontroll: schemat", () => {
       expect.objectContaining({ organizationId: orgId, status: "skipped" }),
     ]);
     // I morgon 04:00 svensk tid (03:00 UTC i november): för tidigt.
-    const tomorrow = new Date(Date.now() + 86_400_000);
-    const day = tomorrow.toISOString().slice(0, 10);
+    // Svensk kalenderdag (inte UTC): mellan 00 och 01 svensk tid är UTC-dagen fortfarande i går.
+    const todaySe = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Stockholm" });
+    const day = new Date(Date.parse(`${todaySe}T12:00:00Z`) + 86_400_000)
+      .toISOString()
+      .slice(0, 10);
     const early = await runScheduledSelfChecks(db(), new Date(`${day}T03:00:00Z`), {
       only: [orgId],
     });

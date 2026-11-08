@@ -118,7 +118,8 @@ describe("kontroll 1: kantfall", () => {
       insert into public.orders (organization_id, data_source_id, external_id, raw_title, title_id,
                                  ordered_at, business_date, amount_ore, machine_id, source_hash)
       select o.organization_id, o.data_source_id, 'kantfall-' || g, o.raw_title, o.title_id,
-             now() - (g || ' days')::interval, (now() - (g || ' days')::interval)::date,
+             now() - (g || ' days')::interval,
+             ((now() - (g || ' days')::interval) at time zone 'Europe/Stockholm')::date,
              o.amount_ore, ${m.id}::uuid, md5('kantfall-' || g)
         from (select * from public.orders where organization_id = ${orgId}::uuid
                and title_id is not null order by ordered_at desc limit 1) o,
