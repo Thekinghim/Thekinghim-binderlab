@@ -3,13 +3,18 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
+import { AppFrameRoot } from "@/components/shell/frame-root";
 import { ServiceWorkerRegistration } from "@/components/pwa/service-worker";
 import { ConfigMissing } from "@/components/ui/config-missing";
 import { getConfigStatus } from "@/server/config-status";
+import { getT } from "@/i18n/server";
 import { loadOptionalContext } from "@/server/data/core";
 import { requireUser } from "@/server/session";
 
-export const metadata: Metadata = { title: "Fyll på" };
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getT();
+  return { title: t.fill.title };
+}
 
 // Sessionen läses per förfrågan; sidan förrenderas aldrig vid bygget.
 export const dynamic = "force-dynamic";
@@ -29,10 +34,21 @@ export default async function FillLayout({ children }: { children: ReactNode }) 
     .update(`${ctx.organization.id}:${ctx.user.id}`)
     .digest("hex")
     .slice(0, 32);
-  return (
+  const page = (
     <div className="mx-auto min-h-dvh w-full max-w-[560px] bg-bg text-fg">
       <ServiceWorkerRegistration scope={scope} />
       {children}
     </div>
+  );
+  // Enkel vy: samma tre flikar nedtill som i resten av den enkla vyn (Fyll på har en egen
+  // rubrikrad med menyknappen, se FillApp).
+  return (
+    <AppFrameRoot
+      locale={ctx.locale}
+      simple={ctx.viewMode === "simple" ? { role: ctx.role, email: ctx.user.email } : null}
+      topBar={false}
+    >
+      {page}
+    </AppFrameRoot>
   );
 }

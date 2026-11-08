@@ -227,6 +227,8 @@ describe("inbjudningar", () => {
       role: "viewer",
       organizationName: "Inbjudande AB",
       storeName: null,
+      // Språket ägaren valde (standard svenska, 20261116000000_enkel_vy_och_sprak.sql).
+      locale: "sv",
     });
 
     const cookies = new MemoryCookieJar();
@@ -472,7 +474,8 @@ describe("lösenord som ägaren sätter vid inbjudan", () => {
     expect(mine).toHaveLength(1);
     expect(mine[0]).toMatchObject({ organizationName: "Delägarbolaget", role: "admin" });
     expect(Object.keys(mine[0]!).sort()).toEqual(
-      ["expiresAt", "id", "organizationName", "role", "storeName"].sort(),
+      // Språket (för sidan "Du är inbjuden.") men aldrig token eller vem som bjöd in.
+      ["expiresAt", "id", "locale", "organizationName", "role", "storeName"].sort(),
     );
 
     const accepted = await acceptMyInvitationFlow(

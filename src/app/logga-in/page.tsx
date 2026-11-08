@@ -3,6 +3,8 @@ import { getConfigStatus } from "@/server/config-status";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
+import { messages } from "@/i18n";
+import { getRequestLocale } from "@/i18n/request";
 import { getServerEnv } from "@/lib/env";
 import { safeRedirectPath } from "@/server/auth/paths";
 import { getSessionUser } from "@/server/session";
@@ -11,7 +13,10 @@ import { AuthFrame } from "./auth-frame";
 import { LoginForm, type LoginMode } from "./login-form";
 import { LOGIN_NOTICES } from "./state";
 
-export const metadata: Metadata = { title: "Logga in" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = messages(await getRequestLocale());
+  return { title: t.auth.login };
+}
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -45,12 +50,17 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   } catch {
     // Felkonfigurerad miljö: formuläret visas, och inloggningen svarar med ett fel.
   }
+  const locale = await getRequestLocale();
   const view = first(params.vy);
   const mode: LoginMode =
     view === "losenord" ? "password" : view === "glomt" ? "forgot" : "magic-link";
 
   return (
-    <AuthFrame eyebrow={<span>Binderlab</span>} title="Logga in.">
+    <AuthFrame
+      eyebrow={<span>Binderlab</span>}
+      title={messages(locale).auth.loginTitle}
+      locale={locale}
+    >
       <LoginForm
         next={next === "/" ? "" : next}
         initialMode={mode}

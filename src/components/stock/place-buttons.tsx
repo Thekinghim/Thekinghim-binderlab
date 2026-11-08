@@ -21,6 +21,7 @@ export function PlaceButtons({
   onChange,
   label,
   compact = false,
+  countText,
 }: {
   places: readonly PlaceOption[];
   value: string | null;
@@ -29,6 +30,8 @@ export function PlaceButtons({
   label: string;
   /** Lägre knappar (inne i ett formulär på en rad). */
   compact?: boolean;
+  /** Antalet som text (standard "12 pack"). */
+  countText?: (n: number) => string;
 }) {
   return (
     <div role="radiogroup" aria-label={label} className="grid grid-cols-2 gap-2">
@@ -55,7 +58,7 @@ export function PlaceButtons({
             </span>
             {p.count !== undefined && p.count !== null ? (
               <span className={cn("meta tnum", on ? "text-on-inverse/80" : "text-subtle")}>
-                {`${formatInt(p.count)}${NBSP}pack`}
+                {countText ? countText(p.count) : `${formatInt(p.count)}${NBSP}pack`}
               </span>
             ) : null}
           </button>

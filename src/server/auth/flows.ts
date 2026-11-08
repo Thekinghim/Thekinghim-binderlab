@@ -566,6 +566,8 @@ export interface MyInvitation {
   role: (typeof MEMBER_ROLES)[number] | "store";
   storeName: string | null;
   expiresAt: string;
+  /** Språket ägaren valde (invitations.locale). Saknas = svenska. */
+  locale?: "sv" | "en";
 }
 
 /** Den inloggades egna obesvarade inbjudningar (RPC my_invitations, som användaren). */
@@ -573,7 +575,7 @@ export async function myInvitationsFlow(user: SessionUser | null): Promise<MyInv
   if (!user) return [];
   const result = await withUserDbFor(user, (tx) =>
     tx.execute(
-      sql`select id, organization_name, role::text as role, store_name, expires_at
+      sql`select id, organization_name, role::text as role, store_name, expires_at, locale
           from public.my_invitations()`,
     ),
   );
@@ -583,6 +585,7 @@ export async function myInvitationsFlow(user: SessionUser | null): Promise<MyInv
     role: String(r.role) as MyInvitation["role"],
     storeName: r.store_name == null ? null : String(r.store_name),
     expiresAt: r.expires_at instanceof Date ? r.expires_at.toISOString() : String(r.expires_at),
+    locale: r.locale === "en" ? ("en" as const) : ("sv" as const),
   }));
 }
 

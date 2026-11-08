@@ -4,6 +4,8 @@
  */
 
 const NUMBER = /\d{1,3}(?:[   ]\d{3})+(?!\d)|\d+/;
+/** Engelska: tusental med komma ("1,234"). */
+const NUMBER_EN = /\d{1,3}(?:,\d{3})+(?!\d)|\d+/;
 
 export interface HeadNumber {
   readonly before: string;
@@ -11,10 +13,10 @@ export interface HeadNumber {
   readonly after: string;
 }
 
-export function splitHeadNumber(text: string): HeadNumber {
-  const m = NUMBER.exec(text);
+export function splitHeadNumber(text: string, locale: "sv" | "en" = "sv"): HeadNumber {
+  const m = (locale === "en" ? NUMBER_EN : NUMBER).exec(text);
   if (!m) return { before: text, value: null, after: "" };
-  const value = Number(m[0].replace(/[   ]/g, ""));
+  const value = Number(m[0].replace(/[   ,]/g, ""));
   if (!Number.isSafeInteger(value)) return { before: text, value: null, after: "" };
   return {
     before: text.slice(0, m.index),

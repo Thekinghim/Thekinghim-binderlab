@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
+import { useT } from "@/i18n/client";
+import { LOCALES, LOCALE_NAME, type Locale } from "@/i18n/locale";
 
 import { inviteMember } from "./actions";
 import { FormError } from "@/app/logga-in/form-error";
@@ -45,6 +47,10 @@ export function InviteDialog({
       ? "admin"
       : defaultRole;
   const [role, setRole] = useState<MemberRole>(initialOpen ? coOwnerRole : defaultRole);
+  const t = useT();
+  // Enkel vy och språk när inbjudan tas emot. Från "Bjud in delägaren": enkel vy förvald.
+  const [simple, setSimple] = useState(false);
+  const [locale, setLocale] = useState<Locale>("sv");
   const [emailError, setEmailError] = useState<string>();
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
@@ -65,6 +71,8 @@ export function InviteDialog({
     setPassword("");
     setPasswordError(undefined);
     setRole(defaultRole);
+    setSimple(false);
+    setLocale("sv");
     setEmailError(undefined);
     setError(undefined);
   };
@@ -88,6 +96,8 @@ export function InviteDialog({
         email: address,
         role,
         password: password === "" ? undefined : password,
+        viewMode: simple ? "simple" : "full",
+        locale,
       });
       if (!result.ok) {
         setError(result.error);
@@ -131,6 +141,36 @@ export function InviteDialog({
             ref={emailRef}
           />
           <RoleChoice roles={roles} value={role} onChange={setRole} />
+          <div className="flex flex-col gap-3 border-t border-line pt-4">
+            <label className="flex min-h-11 cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                checked={simple}
+                onChange={(e) => setSimple(e.target.checked)}
+                className="mt-1 size-5 shrink-0 accent-current"
+              />
+              <span className="flex flex-col">
+                <span className="text-base text-fg">{t.team.simpleView}</span>
+                <span className="text-sm text-muted">{t.team.simpleViewHint}</span>
+              </span>
+            </label>
+            <label className="flex min-h-11 items-center justify-between gap-3">
+              <span className="text-base text-fg">{t.team.inviteLanguage}</span>
+              <select
+                name="invite-locale"
+                value={locale}
+                onChange={(e) => setLocale(e.target.value as Locale)}
+                className="h-11 rounded-sm border border-line-control bg-bg px-3 text-fg"
+                style={{ fontSize: 16 }}
+              >
+                {LOCALES.map((l) => (
+                  <option key={l} value={l}>
+                    {LOCALE_NAME[l]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <details className="group" open={passwordError !== undefined || undefined}>
             <summary className="cursor-pointer text-sm text-muted hover:text-fg">
               Sätt lösenord (valfritt)

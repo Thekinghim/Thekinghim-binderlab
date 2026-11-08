@@ -1,6 +1,9 @@
 "use client";
 
 import { useId, useState, type ReactNode } from "react";
+
+import { useT } from "@/i18n/client";
+import { sv, type Messages } from "@/i18n/sv";
 import { cn } from "@/lib/cn";
 import { Button } from "./button";
 import { StatusGlyph, type Status } from "./status-tag";
@@ -62,10 +65,15 @@ const kinds: Record<StateKind, KindSpec> = {
 };
 
 /** Prefixet som det skrivs ut, t.ex. "FEL 503" eller "TOMT". */
-export function statePrefix(kind: StateKind, code?: string): string {
+export function statePrefix(
+  kind: StateKind,
+  code?: string,
+  prefixes: Messages["state"]["prefix"] = sv.state.prefix,
+): string {
   const spec = kinds[kind];
-  if (!code) return spec.prefix.toUpperCase();
-  return (spec.appendCode ? `${spec.prefix} ${code}` : code).toUpperCase();
+  const prefix = prefixes[kind] ?? spec.prefix;
+  if (!code) return prefix.toUpperCase();
+  return (spec.appendCode ? `${prefix} ${code}` : code).toUpperCase();
 }
 
 /** Signalfärg reserveras för fel som kräver åtgärd. */
@@ -152,24 +160,19 @@ function ActionControl({
 
 /** Glyf + versalt prefix. Glyfen är den enda delen som får signalfärg. */
 function Prefix({ kind, code }: { kind: StateKind; code?: string }) {
+  const t = useT();
   const spec = kinds[kind];
   return (
     <span className="label inline-flex shrink-0 items-center gap-2 text-fg">
       <span className={cn("inline-flex", needsAction(kind) ? "" : "text-muted")}>
         <StatusGlyph status={spec.glyph} />
       </span>
-      <span className="tnum">{statePrefix(kind, code)}</span>
+      <span className="tnum">{statePrefix(kind, code, t.state.prefix)}</span>
     </span>
   );
 }
 
 type CopyState = "idle" | "copied" | "failed";
-
-const copyLabels: Record<CopyState, string> = {
-  idle: "Kopiera",
-  copied: "Kopierat",
-  failed: "Kunde inte kopiera",
-};
 
 function Diagnostics({
   id,
@@ -182,6 +185,12 @@ function Diagnostics({
   open: boolean;
   className?: string;
 }) {
+  const t = useT();
+  const copyLabels: Record<CopyState, string> = {
+    idle: t.state.copy,
+    copied: t.state.copied,
+    failed: t.state.copyFailed,
+  };
   const [copyState, setCopyState] = useState<CopyState>("idle");
   const text = items.map((d) => `${d.label}: ${d.value}`).join("\n");
   const copy = async () => {
@@ -245,6 +254,7 @@ export function StateMessage({
   compact = false,
   className,
 }: StateMessageProps) {
+  const t = useT();
   const [open, setOpen] = useState(diagnosticsOpen);
   const diagId = useId();
   const spec = kinds[kind];
@@ -264,7 +274,7 @@ export function StateMessage({
       <span aria-hidden className="inline-block w-2.5 text-center">
         {open ? "−" : "+"}
       </span>
-      {open ? "Dölj detaljer" : "Visa detaljer"}
+      {open ? t.state.hideDetails : t.state.showDetails}
     </button>
   ) : null;
 

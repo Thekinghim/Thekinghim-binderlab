@@ -35,7 +35,20 @@ export function useToast() {
   return ctx;
 }
 
-export function ToastProvider({ children }: { children: ReactNode }) {
+/** Skärmläsartexterna (regionen och krysset); rotlayouten ger språket ur kakan. */
+const LABELS = {
+  sv: { region: "Notiser", close: "Stäng notis" },
+  en: { region: "Notifications", close: "Close notification" },
+} as const;
+
+export function ToastProvider({
+  children,
+  locale = "sv",
+}: {
+  children: ReactNode;
+  locale?: keyof typeof LABELS;
+}) {
+  const labels = LABELS[locale];
   const [items, setItems] = useState<ToastItem[]>([]);
   const nextId = useRef(1);
 
@@ -50,19 +63,32 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       <section
-        aria-label="Notiser"
+        aria-label={labels.region}
         aria-live="polite"
         className="pointer-events-none fixed inset-x-4 bottom-4 z-50 flex flex-col items-end gap-2 sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-[380px]"
       >
         {items.map((t) => (
-          <ToastView key={t.id} item={t} onDismiss={() => dismiss(t.id)} />
+          <ToastView
+            key={t.id}
+            item={t}
+            onDismiss={() => dismiss(t.id)}
+            closeLabel={labels.close}
+          />
         ))}
       </section>
     </ToastContext.Provider>
   );
 }
 
-function ToastView({ item, onDismiss }: { item: ToastItem; onDismiss: () => void }) {
+function ToastView({
+  item,
+  onDismiss,
+  closeLabel,
+}: {
+  item: ToastItem;
+  onDismiss: () => void;
+  closeLabel: string;
+}) {
   const [paused, setPaused] = useState(false);
   const duration = item.duration ?? 5000;
   // onDismiss är en ny funktion vid varje rendering av listan (t.ex. när sidan räknas om
@@ -84,6 +110,7 @@ function ToastView({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
       onDismiss={onDismiss}
       progressMs={paused ? undefined : duration}
       onPause={setPaused}
+      closeLabel={closeLabel}
     />
   );
 }
@@ -98,6 +125,7 @@ export function ToastCard({
   progressMs,
   onPause,
   className,
+  closeLabel = "Stäng notis",
 }: {
   item: ToastInput;
   onDismiss?: () => void;
@@ -105,6 +133,8 @@ export function ToastCard({
   progressMs?: number;
   onPause?: (paused: boolean) => void;
   className?: string;
+  /** Krysset (skärmläsare). Standard svenska. */
+  closeLabel?: string;
 }) {
   const tone = item.tone ?? "neutral";
   const live = Boolean(onDismiss);
@@ -152,7 +182,7 @@ export function ToastCard({
         <button
           type="button"
           onClick={onDismiss}
-          aria-label="Stäng notis"
+          aria-label={closeLabel}
           // Mobil: osynlig träffyta på 44 px runt krysset.
           className="absolute top-2.5 right-2.5 grid size-6 place-items-center rounded-xs text-subtle transition-colors duration-fast hover:bg-hover hover:text-fg max-md:after:absolute max-md:after:-inset-2.5 max-md:after:content-['']"
         >

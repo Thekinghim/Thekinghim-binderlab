@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { StateMessage, type StateDiagnostic } from "@/components/ui/state-message";
+import { useT } from "@/i18n/client";
 
 /** Klockan i Stockholm, som resten av appen (inte webbläsarens tidszon): "15:51". */
 const stockholmTime = new Intl.DateTimeFormat("sv-SE", {
@@ -55,13 +56,14 @@ export function RouteError({
     console.error(error);
   }, [error]);
 
+  const t = useT();
   const digest = digestOf(error);
   const diagnostics: StateDiagnostic[] = [];
-  if (digest) diagnostics.push({ label: "Fel-id", value: digest });
+  if (digest) diagnostics.push({ label: t.state.diagErrorId, value: digest });
   if (where) {
     diagnostics.push(
-      { label: "Tid", value: `${where.at} Stockholm` },
-      { label: "Sida", value: where.path },
+      { label: t.state.diagTime, value: `${where.at} Stockholm` },
+      { label: t.state.diagPage, value: where.path },
     );
   }
 
@@ -70,27 +72,26 @@ export function RouteError({
   return (
     <div className="flex flex-col">
       <p className="label flex items-center gap-2 text-subtle">
-        <span className="text-fg">Fel</span>
+        <span className="text-fg">{t.state.errorEyebrow}</span>
         <span aria-hidden className="text-faint">
           /
         </span>
-        <span>Inläsning</span>
+        <span>{t.state.errorEyebrowArea}</span>
       </p>
       <h1 className="mt-3 text-2xl font-medium text-balance hyphens-none md:text-3xl">
-        <span className="text-fg">Sidan kunde inte laddas.</span>{" "}
+        <span className="text-fg">{t.state.errorTitle}</span>{" "}
         <span className="text-subtle" suppressHydrationWarning>
           {/* Neutral: felet kan vara en databas som inte svarar lika väl som ett programfel. */}
-          Ett fel stoppade sidan
-          {where ? ` kl. ${where.at}` : ""}.
+          {t.state.errorStopped(where ? where.at : null)}
         </span>
       </h1>
       <StateMessage
         className="-mt-4 -ml-5 md:-mt-10 md:-ml-6"
         kind="loading-failed"
-        message="Inget av det som redan är sparat har ändrats."
-        detail="Fortsätter felet, skicka fel-id:t i detaljerna till den som sköter driften."
-        action={{ label: "Försök igen", onClick: again }}
-        secondaryAction={homeHref ? { label: "Till Hem", href: homeHref } : undefined}
+        message={t.state.errorNothingChanged}
+        detail={t.state.errorAskOps}
+        action={{ label: t.state.tryAgain, onClick: again }}
+        secondaryAction={homeHref ? { label: t.state.toHome, href: homeHref } : undefined}
         diagnostics={diagnostics.length > 0 ? diagnostics : undefined}
       />
     </div>

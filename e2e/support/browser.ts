@@ -162,6 +162,8 @@ export interface PageOptions {
   readonly theme?: "light" | "dark";
   /** En enhet ur Playwrights lista (t.ex. "iPhone 15"): skärm, pixeltäthet, touch, user agent. */
   readonly device?: string;
+  /** Webbläsarens språk (Accept-Language). Standard sv-SE. */
+  readonly locale?: string;
 }
 
 /** Ny sida i ett eget sammanhang (egna cookies), svensk tid och språk. */
@@ -177,7 +179,7 @@ export async function openPage(
     baseURL,
     viewport: device?.viewport ?? VIEWPORTS[options.viewport ?? "desktop"],
     colorScheme: options.theme ?? "dark",
-    locale: "sv-SE",
+    locale: options.locale ?? "sv-SE",
     timezoneId: "Europe/Stockholm",
     ...(device
       ? {

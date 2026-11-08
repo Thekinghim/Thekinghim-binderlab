@@ -1,11 +1,15 @@
+"use client";
+
 import { Skeleton } from "@/components/ui/skeleton";
+import { useT } from "@/i18n/client";
 
 /** Laddningsläget för Fyll på: kortens platser, utan text. */
 export default function Loading() {
+  const t = useT();
   return (
     <div
       aria-busy="true"
-      aria-label="Laddar"
+      aria-label={t.state.loading}
       className="flex flex-col gap-3 px-4 pt-[calc(72px+env(safe-area-inset-top))]"
     >
       <Skeleton className="mb-3 h-8 w-3/4" />

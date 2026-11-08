@@ -14,17 +14,20 @@ import {
 import { newClientId, type QueuedRefill } from "@/components/pwa/refill-queue";
 import { useRefillQueue } from "@/components/pwa/use-refill-queue";
 import { PlaceButtons } from "@/components/stock/place-buttons";
-import { inPlace, pickPlace } from "@/components/stock/place-text";
+import { pickPlace } from "@/components/stock/place-text";
 import { CountUp } from "@/components/ui/count-up";
 import { FillBar as Bar } from "@/components/ui/fill-bar";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
+import { SimpleMenuButton, useSimpleShell } from "@/components/shell/simple-shell";
+import { useFormat, useT } from "@/i18n/client";
+import type { Messages } from "@/i18n/sv";
 import { cn } from "@/lib/cn";
-import { formatInt, NBSP } from "@/lib/format";
+import { NBSP } from "@/lib/format";
 import { rememberKey, useRemembered } from "@/lib/remembered";
 import { useHydrated } from "@/lib/use-hydrated";
 
-import { undoRefills } from "@/app/(app)/drift/actions";
+import { undoRefills, type AwishPushStatus } from "@/app/(app)/drift/actions";
 import { Sheet } from "@/app/(app)/lager/_components/sheet";
 import { registerCount } from "@/app/(app)/lager/actions";
 
@@ -33,7 +36,6 @@ import {
   applyAdjustments,
   chooseSource,
   fillHeadline,
-  FULL_FAST_TIP,
   fullFastNote,
   fillAllQty,
   maxFill,
@@ -110,6 +112,24 @@ function machineIdFrom(pathname: string | null): string | null {
 
 const rise = (i: number) => ({ "--i": Math.min(i, 12) }) as CSSProperties;
 
+/** Beskedet om Awish efter Klar, på personens språk (svenska: serverns text). */
+function awishText(t: Messages, status: AwishPushStatus): string {
+  if (t.locale === "sv" || !status.kind)
+    return t.locale === "sv" ? status.message : t.serverError(status.message);
+  switch (status.kind) {
+    case "sent":
+      return t.fill.awishSent(status.slots ?? 0);
+    case "alreadyRight":
+      return t.fill.awishAlreadyRight;
+    case "notLinked":
+      return t.fill.awishNotLinked;
+    case "partial":
+      return t.fill.awishPartial(status.message);
+    default:
+      return t.fill.awishError;
+  }
+}
+
 /** Prick för Awish-läsningen: pulserar när läsningen är färsk. */
 function AwishDot({ live }: { live: boolean }) {
   return (
@@ -139,6 +159,9 @@ export function FillApp({
 }: FillAppProps) {
   const router = useRouter();
   const toast = useToast();
+  const t = useT();
+  const fmt = useFormat();
+  const simple = useSimpleShell();
   const pathname = usePathname();
   const hydrated = useHydrated();
   const selectedId = hydrated ? machineIdFrom(pathname) : initialMachineId;
@@ -149,8 +172,8 @@ export function FillApp({
   // Lager valt med "Från: … ▾" för en automat (gäller tills sidan laddas om).
   const [override, setOverride] = useState<Record<string, string>>({});
   const placeName = useCallback(
-    (id: string | null) => sources.places.find((p) => p.id === id)?.name ?? "hemma",
-    [sources.places],
+    (id: string | null) => sources.places.find((p) => p.id === id)?.name ?? t.common.homeFallback,
+    [sources.places, t],
   );
 
   // Påfyllningar som sparats men som serverns siffror inte visar än (tills sidan räknats om).
@@ -177,11 +200,11 @@ export function FillApp({
     (items: readonly QueuedRefill[]) => {
       rememberSaved(items);
       toast({
-        title: `Sparat – ${formatInt(items.reduce((n, i) => n + i.quantity, 0))}${NBSP}pack från kön`,
+        title: t.fill.savedFromQueue(items.reduce((n, i) => n + i.quantity, 0)),
         tone: "ok",
       });
     },
-    [rememberSaved, toast],
+    [rememberSaved, toast, t],
   );
   const q = useRefillQueue(scope, {
     onBackgroundSaved: (items) => {
@@ -194,10 +217,10 @@ export function FillApp({
   const syncLabels = useMemo(() => {
     const out: Record<string, string> = {};
     for (const m of data.machines) {
-      if (m.syncedAt) out[m.id] = `Awish läst ${clockLabel(m.syncedAt, renderedAt, timeZone)}`;
+      if (m.syncedAt) out[m.id] = t.fill.awishRead(clockLabel(m.syncedAt, renderedAt, timeZone, t));
     }
     return out;
-  }, [data.machines, renderedAt, timeZone]);
+  }, [data.machines, renderedAt, timeZone, t]);
   const fresh = useMemo(() => {
     const out: Record<string, boolean> = {};
     const now = Date.parse(renderedAt);
@@ -239,7 +262,7 @@ export function FillApp({
     try {
       await reloadData();
     } finally {
-      setNotice(refreshNotice(outcome, { now: new Date(), lastReadAt: lastRead, timeZone }));
+      setNotice(refreshNotice(outcome, { now: new Date(), lastReadAt: lastRead, timeZone, t }));
       setReading(false);
     }
   };
@@ -270,6 +293,7 @@ export function FillApp({
         rows: m.rows,
         explicit: override[m.id],
         preferred: preferred(m.id),
+        t,
       });
     }
     const out = applyAdjustments(
@@ -280,7 +304,7 @@ export function FillApp({
       (id) => choice[id]?.id ?? null,
     );
     return { ...out, choice };
-  }, [counted, data, lastSource, override, q.queue, saved, sources]);
+  }, [counted, data, lastSource, override, q.queue, saved, sources, t]);
   const sourceOf = (machineId: string) => view.choice[machineId]?.id ?? null;
 
   const go = useCallback((href: string) => {
@@ -366,14 +390,16 @@ export function FillApp({
           if (source) setLastSource(source);
           if (out.rejected.length > 0) {
             toast({
-              title: "Något sparades inte",
-              description: out.rejected[0]?.error ?? "Se listan.",
+              title: t.fill.notSavedTitle,
+              description: out.rejected[0]?.error
+                ? t.serverError(out.rejected[0].error)
+                : t.fill.seeList,
               tone: "critical",
             });
           } else if (out.offline && !q.persistent) {
             toast({
-              title: "Ingen uppkoppling",
-              description: "Försök igen med nät.",
+              title: t.fill.noConnection,
+              description: t.fill.tryWithNet,
               tone: "critical",
             });
             return;
@@ -381,9 +407,7 @@ export function FillApp({
             const rejectedIds = new Set(out.rejected.map((r) => r.clientId));
             setDone({
               packs,
-              left: source
-                ? `${formatInt(Math.max(0, homeLeft))} kvar ${inPlace(placeName(source))}`
-                : "",
+              left: source ? t.fill.leftAt(Math.max(0, homeLeft), placeName(source)) : "",
               offline: out.offline,
               clientIds: items.map((i) => i.clientId).filter((id) => !rejectedIds.has(id)),
             });
@@ -395,12 +419,12 @@ export function FillApp({
           if (out.awish && out.awish.state !== "sent") {
             // Gick det inte hela vägen till Awish: säg till så antalet kan skrivas där.
             toast({
-              title: "Skicka till Awish",
-              description: out.awish.message,
+              title: t.fill.sendToAwish,
+              description: awishText(t, out.awish),
               tone: out.awish.state === "error" ? "critical" : "neutral",
             });
           } else if (out.awish?.state === "sent") {
-            toast({ title: out.awish.message, tone: "ok" });
+            toast({ title: awishText(t, out.awish), tone: "ok" });
           }
           go(BASE);
         }}
@@ -412,37 +436,41 @@ export function FillApp({
   const shown = mine ? view.machines.filter((m) => m.mine) : view.machines;
   const need = shown.filter((m) => m.needs).length;
   const waitingAwish = shown.some((m) => m.fillPct === null);
-  const headline = fillHeadline(shown);
+  const headline = fillHeadline(shown, t);
   const homeTotal = Object.values(view.stock).reduce(
     (n, place) => n + Object.values(place).reduce((m, v) => m + Math.max(0, v), 0),
     0,
   );
   const stockLabel =
-    sources.places.length === 1 ? `pack ${inPlace(sources.places[0]!.name)}` : "pack i lager";
+    sources.places.length === 1 ? t.fill.stockAt(sources.places[0]!.name) : t.fill.stockAll;
 
   return (
     <div className="flex flex-col gap-6 px-4 pt-[calc(16px+env(safe-area-inset-top))] pb-[calc(32px+env(safe-area-inset-bottom))]">
       <header className="rise flex flex-col gap-3" style={rise(0)}>
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-          <Link
-            href="/drift"
-            className="label inline-flex min-h-11 items-center gap-1 text-subtle hover:text-fg"
-          >
-            <Icon name="chevronLeft" />
-            Binderlab
-          </Link>
+          {simple ? (
+            <SimpleMenuButton />
+          ) : (
+            <Link
+              href="/drift"
+              className="label inline-flex min-h-11 items-center gap-1 text-subtle hover:text-fg"
+            >
+              <Icon name="chevronLeft" />
+              {t.fill.back}
+            </Link>
+          )}
           <div className="flex items-center gap-2">
             {refreshButton}
             <NetPill online={q.online} waiting={waiting} syncing={q.syncing} />
           </div>
         </div>
-        <p className="label text-subtle">Fyll på</p>
+        <p className="label text-subtle">{t.fill.title}</p>
         <h1 className="text-3xl font-medium text-balance text-fg">
           {need > 0 ? (
             <>
-              {"Fyll på "}
-              <CountUp id="behov" value={need} format={formatInt} className="tnum" />
-              {need === 1 ? " automat." : " automater."}
+              {t.fill.needPrefix}
+              <CountUp id="behov" value={need} format={fmt.int} className="tnum" />
+              {t.fill.needSuffix(need)}
             </>
           ) : (
             headline
@@ -452,14 +480,14 @@ export function FillApp({
           <p className="flex flex-wrap gap-x-3 gap-y-1 text-md text-muted">
             {data.hasWarehouse ? (
               <span>
-                <CountUp id="hemma" value={homeTotal} format={formatInt} className="tnum text-fg" />
+                <CountUp id="hemma" value={homeTotal} format={fmt.int} className="tnum text-fg" />
                 {`${NBSP}${stockLabel}`}
               </span>
             ) : null}
-            {waitingAwish ? <span>Hur fulla automaterna är syns efter nästa läsning</span> : null}
+            {waitingAwish ? <span>{t.fill.waitingAwish}</span> : null}
             {lastRead ? (
               <span className="tnum">
-                {`Awish läst ${clockLabel(lastRead, renderedAt, timeZone)}`}
+                {t.fill.awishRead(clockLabel(lastRead, renderedAt, timeZone, t))}
               </span>
             ) : null}
           </p>
@@ -483,10 +511,14 @@ export function FillApp({
             if (sent.length > 0) {
               const res = await undoRefills(sent).catch(() => ({
                 ok: false as const,
-                error: "Ingen uppkoppling. Försök igen.",
+                error: t.common.offlineRetry,
               }));
               if (!res.ok) {
-                toast({ title: "Kunde inte ångra", description: res.error, tone: "critical" });
+                toast({
+                  title: t.fill.undoFailed,
+                  description: t.serverError(res.error),
+                  tone: "critical",
+                });
                 return;
               }
             }
@@ -497,7 +529,7 @@ export function FillApp({
               ),
             }));
             setDone(null);
-            toast({ title: `Ångrat · ${formatInt(done.packs)}${NBSP}pack`, tone: "neutral" });
+            toast({ title: t.fill.undone(done.packs), tone: "neutral" });
             router.refresh();
           }}
         />
@@ -521,7 +553,7 @@ export function FillApp({
             ]);
             if (out.saved.length > 0) {
               rememberSaved(out.saved);
-              toast({ title: "Sparat utan uttag ur vårt lager", tone: "ok" });
+              toast({ title: t.fill.savedDirect, tone: "ok" });
               router.refresh();
             }
           }}
@@ -529,11 +561,9 @@ export function FillApp({
         />
       ) : null}
 
-      {shown.length === 0 && mine ? (
-        <p className="text-md text-muted">Inga automater är dina.</p>
-      ) : null}
+      {shown.length === 0 && mine ? <p className="text-md text-muted">{t.fill.noneMine}</p> : null}
 
-      <ul className="flex flex-col gap-3" aria-label="Automater">
+      <ul className="flex flex-col gap-3" aria-label={t.fill.machines}>
         {shown.map((m, i) => (
           <li key={m.id} className="rise" style={rise(i + 1)}>
             <MachineCard
@@ -554,6 +584,7 @@ export function FillApp({
 
 /** Uppdatera: läser facken i Awish nu. Stor (44 px), ikon och text, snurrar medan den arbetar. */
 function RefreshButton({ busy, onClick }: { busy: boolean; onClick: () => void }) {
+  const t = useT();
   return (
     <button
       type="button"
@@ -563,7 +594,7 @@ function RefreshButton({ busy, onClick }: { busy: boolean; onClick: () => void }
       className="inline-flex min-h-11 items-center gap-2 rounded-full border border-line-strong bg-surface px-3 text-md font-medium text-fg active:bg-hover disabled:text-muted"
     >
       <Icon name="refresh" size={16} className={cn(busy && "motion-safe:animate-spin")} />
-      {busy ? "Uppdaterar…" : "Uppdatera"}
+      {busy ? t.fill.refreshing : t.fill.refresh}
     </button>
   );
 }
@@ -590,6 +621,7 @@ function NetPill({
   waiting: number;
   syncing: boolean;
 }) {
+  const t = useT();
   return (
     <span
       role="status"
@@ -609,11 +641,11 @@ function NetPill({
       />
       {online
         ? waiting > 0
-          ? `${formatInt(waiting)} skickas`
-          : "Har nät"
+          ? t.fill.sending(waiting)
+          : t.fill.online
         : waiting > 0
-          ? `Utan nät · ${formatInt(waiting)} i kön`
-          : "Utan nät"}
+          ? t.fill.offlineQueued(waiting)
+          : t.fill.offline}
     </span>
   );
 }
@@ -626,12 +658,17 @@ function FillBar({ pct, className }: { pct: number | null; className?: string })
 
 /** "Alla / Mina": stora knappar, valet sparas i telefonen. */
 function MineSwitch({ mine, onChange }: { mine: boolean; onChange: (mine: boolean) => void }) {
+  const t = useT();
   const items = [
-    { on: !mine, text: "Alla", value: false },
-    { on: mine, text: "Mina", value: true },
+    { on: !mine, text: t.fill.all, value: false },
+    { on: mine, text: t.fill.mine, value: true },
   ];
   return (
-    <div role="radiogroup" aria-label="Visa" className="grid w-full max-w-72 grid-cols-2 gap-2">
+    <div
+      role="radiogroup"
+      aria-label={t.fill.showLabel}
+      className="grid w-full max-w-72 grid-cols-2 gap-2"
+    >
       {items.map((i) => (
         <button
           key={i.text}
@@ -663,6 +700,7 @@ function DoneBanner({
   onUndo: () => Promise<void>;
   onClose: () => void;
 }) {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   return (
     <section
@@ -677,12 +715,8 @@ function DoneBanner({
         <Icon name="check" size={22} />
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="text-lg font-medium text-fg">
-          {`Klart! ${formatInt(done.packs)}${NBSP}pack påfyllda`}
-        </span>
-        <span className="text-sm text-muted">
-          {done.offline ? "Sparat i telefonen. Skickas med nät." : done.left}
-        </span>
+        <span className="text-lg font-medium text-fg">{t.fill.doneTitle(done.packs)}</span>
+        <span className="text-sm text-muted">{done.offline ? t.fill.doneOffline : done.left}</span>
       </span>
       <button
         type="button"
@@ -697,12 +731,12 @@ function DoneBanner({
         }}
         className="min-h-11 shrink-0 rounded-md border border-line-strong bg-raised px-4 text-md font-medium text-fg active:bg-hover disabled:text-disabled"
       >
-        {busy ? "Ångrar…" : "Ångra"}
+        {busy ? t.common.undoing : t.common.undo}
       </button>
       <button
         type="button"
         onClick={onClose}
-        aria-label="Stäng"
+        aria-label={t.common.close}
         className="-mr-2 flex size-11 shrink-0 items-center justify-center text-subtle hover:text-fg"
       >
         <Icon name="close" size={18} />
@@ -722,7 +756,8 @@ function MachineCard({
   fresh: boolean;
   onOpen: () => void;
 }) {
-  const label = needLabel(m);
+  const t = useT();
+  const label = needLabel(m, t);
   const urgent = m.emptySlots > 0 || m.empty > 0 || m.low > 0;
   return (
     <a
@@ -732,7 +767,7 @@ function MachineCard({
         e.preventDefault();
         onOpen();
       }}
-      aria-label={`${m.place}${label ? `, ${label}` : ""}${m.fillPct === null ? "" : `, ${m.fillPct} procent fylld`}`}
+      aria-label={t.fill.cardAria(m.place, label, m.fillPct)}
       className={cn(
         "lift flex min-h-24 flex-col gap-3 rounded-md border bg-surface p-4 active:scale-[0.99]",
         urgent ? "border-signal-line" : m.needs ? "border-line-strong" : "border-line",
@@ -748,14 +783,16 @@ function MachineCard({
           </span>
         </span>
         {m.fillPct !== null ? (
-          <span className="tnum shrink-0 text-2xl font-medium text-fg">{`${m.fillPct}${NBSP}%`}</span>
+          <span className="tnum shrink-0 text-2xl font-medium text-fg">
+            {t.common.pct(m.fillPct)}
+          </span>
         ) : null}
       </span>
       {label ? (
         <span
           className={cn(
             "text-md font-medium first-letter:uppercase",
-            urgent ? "text-signal-fg" : label === "fullt" ? "text-up" : "text-muted",
+            urgent ? "text-signal-fg" : label === t.fill.needFull ? "text-up" : "text-muted",
           )}
         >
           {label}
@@ -806,6 +843,7 @@ function MachineScreen({
   onCounted: (titleId: string, value: number) => void;
 }) {
   const toast = useToast();
+  const t = useT();
   const suggestedQty = () => Object.fromEntries(m.rows.map((r) => [r.titleId, r.suggested]));
   const [qty, setQty] = useState<Record<string, number>>(suggestedQty);
   // Ny data (Uppdatera, appen öppnad igen): nya förslag, så länge inget antal har ändrats.
@@ -835,7 +873,7 @@ function MachineScreen({
       setConfirming(false);
     }
   };
-  const sourceName = places.find((p) => p.id === sourceId)?.name ?? "hemma";
+  const sourceName = places.find((p) => p.id === sourceId)?.name ?? t.common.homeFallback;
   const total = m.rows.reduce((n, r) => n + (qty[r.titleId] ?? 0), 0);
   const after = useMemo(() => {
     let cap = 0;
@@ -855,7 +893,7 @@ function MachineScreen({
 
   // Det som behöver fyllas syns först; resten under "Fler titlar".
   const first = m.rows.filter(
-    (r) => r.status !== null || r.emptySlots > 0 || r.suggested > 0 || fullFastNote(r) !== null,
+    (r) => r.status !== null || r.emptySlots > 0 || r.suggested > 0 || fullFastNote(r, t) !== null,
   );
   const rest = m.rows.filter((r) => !first.includes(r));
   const renderRow = (r: FillRow, i: number) => (
@@ -870,8 +908,8 @@ function MachineScreen({
         onCount={async (value) => {
           if (!online) {
             toast({
-              title: "Kräver nät",
-              description: "Klar fungerar ändå.",
+              title: t.fill.needsNet,
+              description: t.fill.doneStillWorks,
               tone: "critical",
             });
             return;
@@ -882,11 +920,11 @@ function MachineScreen({
             titleId: r.titleId,
             counted: value,
             note: "Räkna om (Fyll på)",
-          }).catch(() => ({ ok: false as const, error: "Ingen uppkoppling." }));
+          }).catch(() => ({ ok: false as const, error: t.common.offline }));
           if (!res.ok) {
             toast({
-              title: "Kunde inte räkna om",
-              description: res.error,
+              title: t.fill.countFailed,
+              description: t.serverError(res.error),
               tone: "critical",
             });
             return;
@@ -897,7 +935,7 @@ function MachineScreen({
           if (next !== null) {
             set(r.titleId, next, maxFill({ ...r, now: value }));
           }
-          toast({ title: `Sparat: ${formatInt(value)} i automaten`, tone: "ok" });
+          toast({ title: t.fill.countSaved(value), tone: "ok" });
         }}
       />
     </li>
@@ -914,7 +952,7 @@ function MachineScreen({
               className="label inline-flex min-h-11 items-center gap-1 text-subtle hover:text-fg"
             >
               <Icon name="chevronLeft" />
-              Automater
+              {t.fill.machines}
             </button>
             {headerActions}
           </div>
@@ -924,20 +962,16 @@ function MachineScreen({
               <p className="meta inline-flex items-center gap-1.5 text-subtle">
                 {syncLabel ? <AwishDot live={fresh} /> : null}
                 {m.code}
-                {after === null
-                  ? " · Hur full den är syns efter nästa läsning"
-                  : syncLabel
-                    ? ` · ${syncLabel}`
-                    : ""}
+                {after === null ? t.fill.machineFillUnknown : syncLabel ? ` · ${syncLabel}` : ""}
               </p>
             </div>
             {after !== null ? (
               <p className="flex shrink-0 flex-col items-end">
-                <span className="tnum text-2xl font-medium text-fg">{`${after}${NBSP}%`}</span>
+                <span className="tnum text-2xl font-medium text-fg">{t.common.pct(after)}</span>
                 <span className="label text-subtle">
                   {m.fillPct === null || m.fillPct === after
-                    ? "fyllt"
-                    : `från ${m.fillPct}${NBSP}%`}
+                    ? t.fill.filled
+                    : t.fill.fromPct(m.fillPct)}
                 </span>
               </p>
             ) : null}
@@ -948,19 +982,18 @@ function MachineScreen({
 
         <div className="rise flex flex-wrap items-center justify-between gap-3" style={rise(1)}>
           <p className="text-md text-muted">
-            {"Du fyller på "}
-            <span className="tnum text-fg">{formatInt(total)}</span>
-            {`${NBSP}pack`}
+            {t.fill.youFillPrefix}
+            <span className="tnum text-fg">{t.common.packs(total)}</span>
           </p>
           {places.length > 1 ? (
             <button
               type="button"
               onClick={() => setChoosing(true)}
-              aria-label={`Från ${sourceName}. Byt lager`}
+              aria-label={t.fill.fromAria(sourceName)}
               className="inline-flex min-h-11 items-center gap-1 rounded-full border border-line-strong bg-surface px-4 text-md text-fg active:bg-hover"
             >
-              <span className="text-subtle">Från:</span>
-              <span className="font-medium">{sourceName}</span>
+              <span className="text-subtle">{t.fill.from}</span>
+              <span className="font-medium">{t.common.placeName(sourceName)}</span>
               <Icon name="chevronDown" size={14} />
             </button>
           ) : null}
@@ -977,7 +1010,7 @@ function MachineScreen({
               }}
               className="min-h-11 rounded-sm border border-line-strong bg-surface px-4 text-md font-medium text-fg active:bg-hover"
             >
-              Fyll allt
+              {t.fill.fillAll}
             </button>
           ) : null}
           {places.length > 1 && sourceReason ? (
@@ -986,10 +1019,10 @@ function MachineScreen({
         </div>
 
         {m.rows.length === 0 ? (
-          <p className="text-md text-muted">Inga titlar i automaten än.</p>
+          <p className="text-md text-muted">{t.fill.noTitles}</p>
         ) : (
           <>
-            <ul className="flex flex-col gap-3" aria-label="Titlar">
+            <ul className="flex flex-col gap-3" aria-label={t.fill.titlesAria}>
               {first.map((r, i) => renderRow(r, i))}
             </ul>
             {rest.length > 0 ? (
@@ -1000,9 +1033,9 @@ function MachineScreen({
                     size={14}
                     className="-rotate-90 transition-transform group-open:rotate-0"
                   />
-                  {`Fler titlar (${formatInt(rest.length)})`}
+                  {t.fill.moreTitles(rest.length)}
                 </summary>
-                <ul className="mt-3 flex flex-col gap-3" aria-label="Fler titlar">
+                <ul className="mt-3 flex flex-col gap-3" aria-label={t.fill.moreTitlesAria}>
                   {rest.map((r, i) => renderRow(r, i))}
                 </ul>
               </details>
@@ -1013,15 +1046,9 @@ function MachineScreen({
 
       <div className="sticky bottom-0 z-10 border-t border-line bg-bg/95 px-4 pt-3 pb-[calc(12px+env(safe-area-inset-bottom))] backdrop-blur">
         {confirming ? (
-          <div
-            className="flex flex-col gap-2"
-            role="group"
-            aria-label="Har du fyllt på automaten nu?"
-          >
-            <p className="text-md font-medium text-fg">Har du fyllt på automaten nu?</p>
-            <p className="text-sm text-muted">
-              {`${formatInt(total)}${NBSP}pack sparas och antalen skickas till Awish.`}
-            </p>
+          <div className="flex flex-col gap-2" role="group" aria-label={t.fill.confirmQuestion}>
+            <p className="text-md font-medium text-fg">{t.fill.confirmQuestion}</p>
+            <p className="text-sm text-muted">{t.fill.confirmDetail(total)}</p>
             <button
               type="button"
               disabled={busy}
@@ -1034,7 +1061,7 @@ function MachineScreen({
               )}
             >
               <Icon name="check" size={20} />
-              {busy ? "Sparar…" : "Ja, jag har fyllt på"}
+              {busy ? t.common.saving : t.fill.confirmYes}
             </button>
             <button
               type="button"
@@ -1042,7 +1069,7 @@ function MachineScreen({
               onClick={() => setConfirming(false)}
               className="flex h-12 w-full items-center justify-center rounded-md border border-line-control text-md font-medium text-fg"
             >
-              Nej, jag packar bara
+              {t.fill.confirmNo}
             </button>
           </div>
         ) : (
@@ -1054,7 +1081,7 @@ function MachineScreen({
                 setConfirming(true);
                 return;
               }
-              toast({ title: "Inget fylldes på. Inget sparades.", tone: "neutral" });
+              toast({ title: t.fill.nothingFilled, tone: "neutral" });
               await finish();
             }}
             className={cn(
@@ -1065,20 +1092,22 @@ function MachineScreen({
             )}
           >
             <Icon name="check" size={20} />
-            {busy ? "Sparar…" : total > 0 ? `Klar · ${formatInt(total)}${NBSP}pack` : "Klar"}
+            {busy ? t.common.saving : total > 0 ? t.fill.doneWith(total) : t.fill.done}
           </button>
         )}
       </div>
       <Sheet
         open={choosing}
         onClose={() => setChoosing(false)}
-        title="Ta pack från"
+        title={t.fill.takeFrom}
         eyebrow={m.place}
+        closeLabel={t.common.close}
       >
         <div className="px-5 pb-5">
           <PlaceButtons
-            label="Ta pack från"
-            places={places}
+            label={t.fill.takeFrom}
+            places={places.map((p) => ({ ...p, name: t.common.placeName(p.name) }))}
+            countText={t.common.packs}
             value={sourceId}
             onChange={(id) => {
               setChoosing(false);
@@ -1109,12 +1138,13 @@ function TitleRow({
   onCountToggle: () => void;
   onCount: (value: number) => Promise<void>;
 }) {
+  const t = useT();
   const [draft, setDraft] = useState(String(r.now));
   const [saving, setSaving] = useState(false);
   const inputId = `antal-${r.titleId}`;
   const short = value > Math.max(0, r.home);
-  const fullNote = fullFastNote(r);
-  const mystery = mysteryNote(r, value);
+  const fullNote = fullFastNote(r, t);
+  const mystery = mysteryNote(r, value, t);
   return (
     <div
       className={cn(
@@ -1128,33 +1158,31 @@ function TitleRow({
             {r.name}
           </label>
           <span className={cn("text-sm", short ? "text-signal-fg" : "text-muted")}>
-            {`${sourceName.trim().toLowerCase() === "hemma" ? "Hemma" : sourceName}: ${formatInt(r.home)}${NBSP}pack`}
-            {short && r.home > 0 ? ` · ${formatInt(value - r.home)} utan uttag` : ""}
-            {short && r.home <= 0 ? " · utan uttag" : ""}
+            {t.fill.stockLine(t.common.placeName(sourceName), r.home)}
+            {short && r.home > 0 ? t.fill.withoutWithdrawalN(value - r.home) : ""}
+            {short && r.home <= 0 ? t.fill.withoutWithdrawal : ""}
           </span>
         </div>
         <p className="flex shrink-0 flex-col items-end">
           <span className="tnum text-xl font-medium text-fg">
-            {formatInt(r.now)}
+            {t.common.int(r.now)}
             <span className="text-subtle">
-              {r.capacity === null ? "" : `/${formatInt(r.capacity)}`}
+              {r.capacity === null ? "" : `/${t.common.int(r.capacity)}`}
             </span>
           </span>
           {r.status === "empty" ? (
-            <span className="label text-signal-fg">slut</span>
+            <span className="label text-signal-fg">{t.fill.statusEmpty}</span>
           ) : r.emptySlots > 0 ? (
-            <span className="label text-signal-fg">
-              {`${formatInt(r.emptySlots)} ${r.emptySlots === 1 ? "tom plats" : "tomma platser"}`}
-            </span>
+            <span className="label text-signal-fg">{t.fill.needEmptySlots(r.emptySlots)}</span>
           ) : r.status === "low" ? (
-            <span className="label text-signal-fg">snart slut</span>
+            <span className="label text-signal-fg">{t.fill.statusLow}</span>
           ) : (
-            <span className="text-sm text-muted">i automaten</span>
+            <span className="text-sm text-muted">{t.fill.inMachine}</span>
           )}
         </p>
       </div>
       {fullNote ? (
-        <p className="-mt-1 text-sm text-muted">{`${fullNote} · ${FULL_FAST_TIP}`}</p>
+        <p className="-mt-1 text-sm text-muted">{`${fullNote} · ${t.fill.fullFastTip}`}</p>
       ) : null}
       {mystery ? (
         <p className="-mt-1 text-sm text-muted" role="note">
@@ -1165,7 +1193,7 @@ function TitleRow({
       <div className="grid grid-cols-[56px_1fr_56px] items-center gap-2">
         <button
           type="button"
-          aria-label={`En mindre ${r.name}`}
+          aria-label={t.fill.lessAria(r.name)}
           onClick={() => onChange(value - 1)}
           disabled={value <= 0}
           className="flex size-14 items-center justify-center rounded-md border border-line-strong bg-raised text-fg active:bg-hover disabled:border-dashed disabled:text-disabled"
@@ -1188,7 +1216,7 @@ function TitleRow({
         />
         <button
           type="button"
-          aria-label={`En till ${r.name}`}
+          aria-label={t.fill.moreAria(r.name)}
           onClick={() => onChange(value + 1)}
           disabled={value >= maxFill(r)}
           className="flex size-14 items-center justify-center rounded-md border border-line-strong bg-raised text-fg active:bg-hover disabled:border-dashed disabled:text-disabled"
@@ -1197,9 +1225,7 @@ function TitleRow({
         </button>
       </div>
       <span id={`${inputId}-hint`} className="sr-only">
-        {r.capacity === null
-          ? `Förslag ${r.suggested}.`
-          : `Förslag ${r.suggested}. Plats för ${Math.max(0, r.capacity - r.now)}.`}
+        {t.fill.hint(r.suggested, r.capacity === null ? null : Math.max(0, r.capacity - r.now))}
       </span>
 
       {counting ? (
@@ -1218,7 +1244,7 @@ function TitleRow({
           }}
         >
           <label htmlFor={`${inputId}-raknat`} className="col-span-3 text-md text-muted">
-            Så många pack är i automaten nu
+            {t.fill.countLabel}
           </label>
           <input
             id={`${inputId}-raknat`}
@@ -1238,14 +1264,14 @@ function TitleRow({
             disabled={saving}
             className="h-11 rounded-sm border border-inverse bg-inverse px-4 text-md font-medium text-on-inverse disabled:opacity-60"
           >
-            {saving ? "Sparar…" : "Spara"}
+            {saving ? t.common.saving : t.common.save}
           </button>
           <button
             type="button"
             onClick={onCountToggle}
             className="h-11 min-w-11 px-2 text-md text-subtle hover:text-fg"
           >
-            Avbryt
+            {t.common.cancel}
           </button>
         </form>
       ) : (
@@ -1257,7 +1283,7 @@ function TitleRow({
           }}
           className="-my-1 min-h-11 self-start text-md text-subtle underline-offset-4 hover:text-fg hover:underline"
         >
-          Fel antal i automaten?
+          {t.fill.wrongCount}
         </button>
       )}
     </div>
@@ -1275,21 +1301,26 @@ function RejectedList({
   onRetryDirect: (item: QueuedRefill) => Promise<void>;
   onRemove: (item: QueuedRefill) => void;
 }) {
+  const t = useT();
   const place = new Map(names.map((m) => [m.id, m.place]));
   const title = new Map(names.flatMap((m) => m.rows.map((r) => [r.titleId, r.name] as const)));
   return (
     <section
-      aria-label="Sparades inte"
+      aria-label={t.fill.rejectedTitle}
       className="flex flex-col gap-3 rounded-md border border-signal-line bg-signal-soft p-4"
     >
-      <p className="label text-signal-fg">Sparades inte</p>
+      <p className="label text-signal-fg">{t.fill.rejectedTitle}</p>
       <ul className="flex flex-col gap-3">
         {items.map((item) => (
           <li key={item.clientId} className="flex flex-col gap-2">
             <p className="text-md text-fg">
-              {`${formatInt(item.quantity)}${NBSP}pack ${title.get(item.titleId) ?? "okänd titel"} · ${place.get(item.machineId) ?? "okänd automat"}`}
+              {t.fill.rejectedLine(
+                item.quantity,
+                title.get(item.titleId) ?? t.fill.unknownTitle,
+                place.get(item.machineId) ?? t.fill.unknownMachine,
+              )}
             </p>
-            {item.error ? <p className="text-sm text-muted">{item.error}</p> : null}
+            {item.error ? <p className="text-sm text-muted">{t.serverError(item.error)}</p> : null}
             <div className="flex flex-wrap gap-2">
               {item.fromWarehouse ? (
                 <button
@@ -1297,7 +1328,7 @@ function RejectedList({
                   onClick={() => void onRetryDirect(item)}
                   className="min-h-11 rounded-sm border border-line-strong bg-surface px-3 text-md text-fg"
                 >
-                  Spara utan uttag
+                  {t.fill.saveDirect}
                 </button>
               ) : null}
               <button
@@ -1305,7 +1336,7 @@ function RejectedList({
                 onClick={() => onRemove(item)}
                 className="min-h-11 px-3 text-md text-subtle hover:text-fg"
               >
-                Ta bort
+                {t.common.remove}
               </button>
             </div>
           </li>

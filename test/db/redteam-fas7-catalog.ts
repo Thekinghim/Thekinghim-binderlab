@@ -798,6 +798,25 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [sink(c)],
   },
+  // Inställningar → Användare: Enkel vy och språk per medlem och inbjudan.
+  {
+    module: "@/app/(app)/installningar/anvandare/actions",
+    name: "setMemberViewMode",
+    allowed: OP,
+    args: (c) => [sink(c, { viewMode: "simple" })],
+  },
+  {
+    module: "@/app/(app)/installningar/anvandare/actions",
+    name: "setMemberLocale",
+    allowed: OP,
+    args: (c) => [sink(c, { locale: "en" })],
+  },
+  {
+    module: "@/app/(app)/installningar/anvandare/actions",
+    name: "setInvitationOptions",
+    allowed: OP,
+    args: (c) => [sink(c, { viewMode: "simple", locale: "en" })],
+  },
   // Inställningar → Demo för kunder: bara ägaren i en riktig organisation.
   {
     module: "@/app/(app)/installningar/_actions/demo",

@@ -32,13 +32,8 @@
  */
 
 import { inPlace, pickPlace } from "@/components/stock/place-text";
-import {
-  mysteryBatch,
-  mysteryCapacityShort,
-  mysteryCapacityText,
-  mysteryRefillQty,
-  MYSTERY_TOP_UP_WARNING,
-} from "@/domain";
+import { mysteryBatch, mysteryCapacityShort, mysteryRefillQty } from "@/domain";
+import { sv, type Messages } from "@/i18n/sv";
 import { formatInt, NBSP } from "@/lib/format";
 
 export interface AwishFillEntry {
@@ -170,15 +165,18 @@ export function rowStatus(
  * Fullt men säljer fort (skulle annars vara snart slut): "Fullt · räcker ~2 d", annars null.
  * Visas lugnt, utan larm, med tipset att ge titeln ett fack till.
  */
-export function fullFastNote(row: Pick<FillRow, "now" | "capacity" | "sold">): string | null {
+export function fullFastNote(
+  row: Pick<FillRow, "now" | "capacity" | "sold">,
+  t: Messages = sv,
+): string | null {
   const n = Math.max(0, row.now);
   if (!isFull(n, row.capacity) || !lastsShort(n, row.sold)) return null;
   const days = Math.max(1, Math.round((n * SALES_WINDOW_DAYS) / row.sold));
-  return `Fullt · räcker ~${formatInt(days)}${NBSP}d`;
+  return t.fill.fullFast(days);
 }
 
 /** Tipset under en full titel som säljer fort. */
-export const FULL_FAST_TIP = "Säljer fort – ge den ett fack till";
+export const FULL_FAST_TIP = sv.fill.fullFastTip;
 
 /**
  * Förslaget: kapacitet − nu; utan kapacitet en veckas försäljning − nu för titlar som är slut
@@ -254,12 +252,13 @@ export function qtyAfterCount(
 export function mysteryNote(
   row: Pick<FillRow, "now" | "capacity"> & Partial<Pick<FillRow, "batchSize">>,
   value: number,
+  t: Messages = sv,
 ): string | null {
   const batch = mysteryBatch(row.batchSize);
   if (batch === null) return null;
-  if (row.now > 0) return value > 0 ? MYSTERY_TOP_UP_WARNING : null;
+  if (row.now > 0) return value > 0 ? t.fill.mysteryOnlyEmpty : null;
   if (row.capacity !== null && mysteryCapacityShort(row.capacity, batch)) {
-    return mysteryCapacityText(row.capacity, batch);
+    return t.fill.mysteryCapacity(row.capacity, batch);
   }
   return null;
 }
@@ -403,30 +402,26 @@ export function doneMessage(packs: number, homeLeft: number, place = "hemma"): s
 }
 
 /** Rubriken på Fyll på: aldrig "fulla" utan känd kapacitet. */
-export function fillHeadline(machines: readonly FillMachine[]): string {
-  if (machines.length === 0) return "Inga automater.";
+export function fillHeadline(machines: readonly FillMachine[], t: Messages = sv): string {
+  if (machines.length === 0) return t.fill.headlineNone;
   const need = machines.filter((m) => m.needs).length;
-  if (need === 1) return "Fyll på 1 automat.";
-  if (need > 1) return `Fyll på ${formatInt(need)} automater.`;
-  if (machines.every((m) => m.fillPct !== null)) {
-    return machines.length === 1 ? "Automaten är full." : "Alla automater är fulla.";
-  }
-  return "Inget är slut just nu.";
+  if (need > 0) return t.fill.needHeadline(need);
+  if (machines.every((m) => m.fillPct !== null)) return t.fill.headlineFull(machines.length);
+  return t.fill.headlineCalm;
 }
 
 /** Kortets rad till höger: "2 slut · 1 snart", "fyll 9", "fullt" eller inget. */
 export function needLabel(
   m: Pick<FillMachine, "empty" | "low" | "emptySlots" | "suggested" | "fillPct">,
+  t: Messages = sv,
 ): string | null {
   const parts: string[] = [];
-  if (m.empty > 0) parts.push(`${formatInt(m.empty)} slut`);
-  else if (m.emptySlots > 0) {
-    parts.push(`${formatInt(m.emptySlots)} ${m.emptySlots === 1 ? "tom plats" : "tomma platser"}`);
-  }
-  if (m.low > 0) parts.push(`${formatInt(m.low)} snart slut`);
+  if (m.empty > 0) parts.push(t.fill.needEmpty(m.empty));
+  else if (m.emptySlots > 0) parts.push(t.fill.needEmptySlots(m.emptySlots));
+  if (m.low > 0) parts.push(t.fill.needLow(m.low));
   if (parts.length > 0) return parts.join(" · ");
-  if (m.suggested > 0) return `fyll ${formatInt(m.suggested)}`;
-  if (m.fillPct !== null) return "fullt";
+  if (m.suggested > 0) return t.fill.needFill(m.suggested);
+  if (m.fillPct !== null) return t.fill.needFull;
   return null;
 }
 
@@ -552,7 +547,10 @@ export function chooseSource(args: {
   /** Valt för automaten nu (gäller tills sidan laddas om). */
   readonly explicit?: string | null;
   readonly preferred: readonly (string | null | undefined)[];
+  /** Texterna för skälet (standard svenska). */
+  readonly t?: Messages;
 }): SourceChoice {
+  const t = args.t ?? sv;
   const { places, stock, rows } = args;
   if (places.length === 0) return { id: null, reason: null };
   const cover = new Map(places.map((p) => [p.id, coverage(rows, stock[p.id])]));
@@ -570,7 +568,7 @@ export function chooseSource(args: {
   if (explicit) {
     const own = cover.get(explicit) ?? 0;
     const hint = own === 0 && bestCover > 0 && best.id !== explicit;
-    return { id: explicit, reason: hint ? `${name(best.id)} har pack` : null };
+    return { id: explicit, reason: hint ? t.fill.sourceHasPacks(name(best.id)) : null };
   }
   const baseCover = cover.get(base) ?? 0;
   if (best.id !== base && bestCover > 0 && baseCover * 2 <= bestCover) {
@@ -578,8 +576,8 @@ export function chooseSource(args: {
       id: best.id,
       reason:
         baseCover === 0
-          ? `${name(base)} saknar pack`
-          : `${name(base)} har bara ${formatInt(baseCover)}`,
+          ? t.fill.sourceMissing(name(base))
+          : t.fill.sourceOnly(name(base), baseCover),
     };
   }
   return { id: base, reason: null };

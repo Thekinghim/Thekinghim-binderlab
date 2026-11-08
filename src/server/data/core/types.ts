@@ -6,6 +6,8 @@
  * byggda så att resultaten kan skickas rakt in i @/domain och @/analytics.
  */
 
+import type { Locale } from "@/i18n/locale";
+import type { ViewMode } from "@/server/access";
 import type { MachineRef, StockLevelRef, StoreRef, TitleRef } from "@/analytics/todos";
 import type { PeriodKey, ResolvedPeriod } from "@/components/shell/period-state";
 import type { MemberRole } from "@/db/schema";
@@ -76,6 +78,10 @@ export interface AppContext {
   readonly now: string;
   /** Dagens affärsdatum i organisationens tidszon. */
   readonly today: IsoDate;
+  /** Enkel vy i den aktiva organisationen (memberships.view_mode). */
+  readonly viewMode: ViewMode;
+  /** Personens språk i appen (profiles.locale). */
+  readonly locale: Locale;
 }
 
 /** Globalt filter (?butik= ?automat=). Ogiltiga id:n (inte uuid) blir null. */

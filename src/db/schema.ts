@@ -170,6 +170,8 @@ export const profiles = pgTable("profiles", {
   displayName: text("display_name").notNull(),
   anonymizedAt: ts("anonymized_at"),
   ...stamps(),
+  /** Appens språk för personen: 'sv' | 'en' (20261116000000_enkel_vy_och_sprak.sql). */
+  locale: text("locale").notNull().default("sv"),
 });
 
 export const memberships = pgTable("memberships", {
@@ -180,6 +182,8 @@ export const memberships = pgTable("memberships", {
   /** Butiken för en butiksanvändare (role = store), annars null. */
   storeId: uuid("store_id"),
   ...stamps(),
+  /** 'full' | 'simple' (Enkel vy). Bara ägare/admin ändrar, aldrig den egna (BL130). */
+  viewMode: text("view_mode").notNull().default("full"),
 });
 
 export const invitations = pgTable("invitations", {
@@ -195,6 +199,9 @@ export const invitations = pgTable("invitations", {
   acceptedBy: uuid("accepted_by"),
   invitedBy: uuid("invited_by"),
   ...stamps(),
+  /** Vyn och språket medlemskapet/profilen får när inbjudan tas emot. */
+  viewMode: text("view_mode").notNull().default("full"),
+  locale: text("locale").notNull().default("sv"),
 });
 
 // ---------------------------------------------------------------------------

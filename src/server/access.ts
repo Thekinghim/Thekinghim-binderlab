@@ -25,12 +25,17 @@ export interface SessionUser {
   email: string;
 }
 
+/** "full": hela appen. "simple": Enkel vy (bara Fyll på, Försäljning och Mystery). */
+export type ViewMode = "full" | "simple";
+
 export interface OrganizationMembership {
   id: string;
   name: string;
   slug: string;
   timezone: string;
   role: MemberRole;
+  /** Enkel vy (memberships.view_mode). Saknas = full. */
+  viewMode?: ViewMode;
 }
 
 export class AuthorizationError extends Error {
@@ -128,6 +133,7 @@ export async function listOrganizationsFor(user: SessionUser): Promise<Organizat
     slug: o.slug,
     timezone: o.timezone,
     role: o.role,
+    viewMode: o.viewMode,
   }));
 }
 
@@ -151,6 +157,7 @@ async function readOrganizations(user: SessionUser): Promise<OrganizationWithMac
   return withUserDbFor(user, async (tx) => {
     const result = await tx.execute(
       sql`select o.id, o.name, o.slug::text as slug, o.timezone, m.role::text as role,
+                 m.view_mode,
                  (select count(*)::int from public.machines ma
                    where ma.organization_id = o.id and ma.archived_at is null) as machines
           from public.memberships m
@@ -168,6 +175,7 @@ async function readOrganizations(user: SessionUser): Promise<OrganizationWithMac
               slug: String(r.slug),
               timezone: String(r.timezone),
               role: r.role,
+              viewMode: r.view_mode === "simple" ? ("simple" as const) : ("full" as const),
               machines: Number(r.machines ?? 0),
             },
           ]

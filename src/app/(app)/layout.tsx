@@ -3,6 +3,7 @@ import { getConfigStatus } from "@/server/config-status";
 import type { ReactNode } from "react";
 import type { ShellMachine, ShellStore } from "@/components/shell/period-bar";
 import { routeById } from "@/components/shell/nav";
+import { getCookieLocale, getRequestLocale } from "@/i18n/request";
 import { formatInt } from "@/lib/format";
 import {
   isoDateToShellDate,
@@ -16,6 +17,8 @@ import { redirectStoreUserToPortal } from "@/server/portal/session";
 import { loadTodoCount } from "@/server/data/todos";
 import { myInvitationsFlow } from "@/server/auth/flows";
 import { requireUser } from "@/server/session";
+import { AppFrameRoot } from "@/components/shell/frame-root";
+
 import { AppFrame } from "./app-frame";
 import { NoOrganization } from "./no-organization";
 
@@ -53,7 +56,25 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     // En butiksanvändare (rollen store, fas 10) har ingen approll: till /portal.
     await redirectStoreUserToPortal();
     const invitations = await myInvitationsFlow(user).catch(() => []);
-    return <NoOrganization email={user.email} invitations={invitations} />;
+    // Språket: personens eget val, annars det ägaren valde på inbjudan, annars webbläsaren.
+    const locale =
+      (await getCookieLocale()) ??
+      (invitations.some((i) => i.locale === "en") ? "en" : await getRequestLocale());
+    return (
+      <AppFrameRoot locale={locale} simple={null}>
+        <NoOrganization email={user.email} invitations={invitations} />
+      </AppFrameRoot>
+    );
+  }
+
+  // Enkel vy: bara det nerskalade skalet (tre flikar, språk, Logga ut). Inget av det som
+  // hela skalet läser (filter, synk, räknare) behövs.
+  if (ctx.viewMode === "simple") {
+    return (
+      <AppFrameRoot locale={ctx.locale} simple={{ role: ctx.role, email: ctx.user.email }}>
+        {children}
+      </AppFrameRoot>
+    );
   }
 
   const hasTodos = routeById("att-gora").roles.includes(ctx.role);
@@ -70,29 +91,31 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     .map((m) => ({ id: m.id, name: m.name, code: m.code, storeId: m.storeId ?? undefined }));
 
   return (
-    <AppFrame
-      role={ctx.role}
-      user={{ name: ctx.user.displayName ?? ctx.user.email, email: ctx.user.email }}
-      organizations={ctx.organizations.map((o) => {
-        const n = machineCounts.get(o.id);
-        return {
-          id: o.id,
-          name: o.name,
-          detail:
-            n === undefined ? undefined : `${formatInt(n)} ${n === 1 ? "automat" : "automater"}`,
-        };
-      })}
-      activeOrganizationId={ctx.organization.id}
-      vmbUserKey={ctx.canSeeEconomy ? ctx.user.id : null}
-      todoCount={todoCount}
-      syncedAt={sync?.syncedAt ?? undefined}
-      syncState={sync?.state}
-      stores={stores}
-      machines={machines}
-      earliest={dataStart ? isoDateToShellDate(dataStart) : undefined}
-    >
-      {children}
-    </AppFrame>
+    <AppFrameRoot locale={ctx.locale} simple={null}>
+      <AppFrame
+        role={ctx.role}
+        user={{ name: ctx.user.displayName ?? ctx.user.email, email: ctx.user.email }}
+        organizations={ctx.organizations.map((o) => {
+          const n = machineCounts.get(o.id);
+          return {
+            id: o.id,
+            name: o.name,
+            detail:
+              n === undefined ? undefined : `${formatInt(n)} ${n === 1 ? "automat" : "automater"}`,
+          };
+        })}
+        activeOrganizationId={ctx.organization.id}
+        vmbUserKey={ctx.canSeeEconomy ? ctx.user.id : null}
+        todoCount={todoCount}
+        syncedAt={sync?.syncedAt ?? undefined}
+        syncState={sync?.state}
+        stores={stores}
+        machines={machines}
+        earliest={dataStart ? isoDateToShellDate(dataStart) : undefined}
+      >
+        {children}
+      </AppFrame>
+    </AppFrameRoot>
   );
 }
 

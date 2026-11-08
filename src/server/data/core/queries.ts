@@ -14,6 +14,7 @@ import type { SignableContract } from "@/analytics/contracts";
 import type { AlertRef, AnalyticsOrder, ReportDraftRef } from "@/analytics/todos";
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
+import { DEFAULT_LOCALE, isLocale, type Locale } from "@/i18n/locale";
 import { toSafeInteger } from "@/db/types";
 import { reportStatuses, type DeliveryStatus } from "@/server/reports/status";
 import type { IsoDate, MachineInvestment, Period, PurchasePrice, StoreAgreement } from "@/domain";
@@ -96,8 +97,17 @@ export async function queryDisplayName(
   orgId: string,
   userId: string,
 ): Promise<string | null> {
+  return (await queryProfile(tx, orgId, userId)).displayName;
+}
+
+/** Visningsnamnet (null om det saknas) och språket ('sv' om profilen saknas). */
+export async function queryProfile(
+  tx: Tx,
+  orgId: string,
+  userId: string,
+): Promise<{ displayName: string | null; locale: Locale }> {
   const rows = await tx
-    .select({ displayName: s.profiles.displayName })
+    .select({ displayName: s.profiles.displayName, locale: s.profiles.locale })
     .from(s.profiles)
     .where(
       and(
@@ -108,7 +118,8 @@ export async function queryDisplayName(
     )
     .limit(1);
   const name = rows[0]?.displayName?.trim();
-  return name ? name : null;
+  const locale = rows[0]?.locale;
+  return { displayName: name ? name : null, locale: isLocale(locale) ? locale : DEFAULT_LOCALE };
 }
 
 /** Inställningarna (standardvärden om raden saknas). Påfyllaren kan inte läsa dem (RLS). */

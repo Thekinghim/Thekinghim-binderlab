@@ -58,7 +58,7 @@ import {
   queryActiveFixedCostCount,
   queryAgreements,
   queryDataSources,
-  queryDisplayName,
+  queryProfile,
   queryFirstOrderDate,
   queryFirstSaleDate,
   queryInvestments,
@@ -172,8 +172,8 @@ export async function loadContextFor(
   const org = viewer.organization;
   return asViewer(viewer, ALL_ROLES, async (tx, role) => {
     const economy = canSeeEconomy(role);
-    const [displayName, settings] = await Promise.all([
-      queryDisplayName(tx, org.id, viewer.user.userId),
+    const [{ displayName, locale }, settings] = await Promise.all([
+      queryProfile(tx, org.id, viewer.user.userId),
       economy ? querySettings(tx, org.id) : Promise.resolve(null),
     ]);
     return {
@@ -193,6 +193,8 @@ export async function loadContextFor(
       timeZone: org.timezone,
       now: now.toISOString(),
       today: businessToday(now, org.timezone),
+      viewMode: org.viewMode ?? "full",
+      locale,
     };
   });
 }
@@ -225,7 +227,15 @@ export async function loadOrganizationsFor(user: SessionUser): Promise<{
   for (const r of rows) {
     const role = MEMBER_ROLES.find((x) => x === r.role);
     if (!role) continue;
-    organizations.push({ id: r.id, name: r.name, slug: r.slug, timezone: r.timezone, role });
+    organizations.push({
+      id: r.id,
+      name: r.name,
+      slug: r.slug,
+      timezone: r.timezone,
+      role,
+      // Enkel vy (memberships.view_mode): skalet och omdirigeringen i ./index.ts.
+      viewMode: r.viewMode ?? "full",
+    });
     // Som queryMachineCountsByOrg: organisationer utan automater saknas i kartan.
     if (r.machines > 0) machineCounts.set(r.id, r.machines);
   }

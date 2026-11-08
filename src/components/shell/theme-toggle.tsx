@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { IconButton } from "@/components/ui/button";
+import { useLocale } from "@/i18n/client";
 import { THEME_STORAGE_KEY, themeCookie, type Theme } from "@/lib/theme";
 
 function read(): Theme {
@@ -32,10 +33,19 @@ export function useTheme(): Theme {
 export function ThemeToggle() {
   const theme = useTheme();
   const next = theme === "dark" ? "light" : "dark";
+  const en = useLocale() === "en";
   return (
     <IconButton
       icon={theme === "dark" ? "sun" : "moon"}
-      label={next === "light" ? "Byt till ljust läge" : "Byt till mörkt läge"}
+      label={
+        en
+          ? next === "light"
+            ? "Switch to light mode"
+            : "Switch to dark mode"
+          : next === "light"
+            ? "Byt till ljust läge"
+            : "Byt till mörkt läge"
+      }
       onClick={() => setTheme(next)}
     />
   );

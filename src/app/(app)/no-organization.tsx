@@ -9,9 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { acceptMyInvitation, logout } from "@/server/actions/auth";
 import type { MyInvitation } from "@/server/auth/flows";
+import { useT } from "@/i18n/client";
 import { createOrganization } from "@/server/onboarding/actions";
-
-import { ROLE_LABEL } from "./installningar/anvandare/model";
 
 /**
  * Visas i stället för appen när den inloggade användaren inte är medlem i någon
@@ -40,6 +39,7 @@ export function NoOrganization({
 
 function Invited({ email, invitations }: { email: string; invitations: readonly MyInvitation[] }) {
   const router = useRouter();
+  const t = useT();
   const [pending, startJoin] = useTransition();
   const [joining, setJoining] = useState<string>();
   const [error, setError] = useState<string>();
@@ -48,9 +48,12 @@ function Invited({ email, invitations }: { email: string; invitations: readonly 
     setError(undefined);
     setJoining(id);
     startJoin(async () => {
-      const result = await acceptMyInvitation(id);
+      const result = await acceptMyInvitation(id).catch(() => ({
+        ok: false as const,
+        error: t.common.offlineRetry,
+      }));
       if (!result.ok) {
-        setError(result.error);
+        setError(t.serverError(result.error ?? ""));
         return;
       }
       router.replace("/");
@@ -63,7 +66,7 @@ function Invited({ email, invitations }: { email: string; invitations: readonly 
       className="mx-auto flex min-h-dvh w-full max-w-[520px] flex-col justify-center gap-8 px-4 py-16"
     >
       <Logo />
-      <h1 className="rise text-3xl font-medium text-balance text-fg">Du är inbjuden.</h1>
+      <h1 className="rise text-3xl font-medium text-balance text-fg">{t.invite.title}</h1>
       <ul className="flex flex-col gap-3">
         {invitations.map((inv, i) => (
           <li
@@ -73,7 +76,7 @@ function Invited({ email, invitations }: { email: string; invitations: readonly 
           >
             <p className="flex items-baseline justify-between gap-3">
               <span className="text-lg font-medium text-fg">{inv.organizationName}</span>
-              <span className="label text-subtle">{inv.storeName ?? ROLE_LABEL[inv.role]}</span>
+              <span className="label text-subtle">{inv.storeName ?? t.invite.roles[inv.role]}</span>
             </p>
             <Button
               variant="primary"
@@ -81,7 +84,7 @@ function Invited({ email, invitations }: { email: string; invitations: readonly 
               loading={pending && joining === inv.id}
               onClick={() => join(inv.id)}
             >
-              Gå med
+              {t.invite.joinShort}
             </Button>
           </li>
         ))}
@@ -100,7 +103,7 @@ function Invited({ email, invitations }: { email: string; invitations: readonly 
             })
           }
         >
-          Logga ut
+          {t.common.logout}
         </button>
       </p>
     </main>

@@ -23,8 +23,12 @@ import {
   MEMBER_MESSAGES,
   changeMemberRoleFlow,
   findManageableInvitationFor,
+  latestInvitationIdFor,
   removeMemberFlow,
   revokeInvitationFlow,
+  setInvitationOptionsFlow,
+  setMemberLocaleFlow,
+  setMemberViewFlow,
 } from "./members-data";
 import { inviteErrorFor } from "./model";
 
@@ -37,10 +41,35 @@ async function activeOrganizationId(): Promise<string | null> {
   return (await getActiveOrganization())?.id ?? null;
 }
 
+type InviteOptions = { viewMode: "full" | "simple"; locale: "sv" | "en" };
+
+/** Inbjudan finns, men valen sparades inte: ägaren ska inte tro att den är enkel/engelsk. */
+const INVITE_OPTIONS_FAILED =
+  "Inbjudan skickades, men Enkel vy och språket sparades inte. Ändra dem på inbjudan nedan.";
+
+/**
+ * Vy och språk på den nya inbjudan (bara när de inte är standard: full vy, svenska).
+ * Ett fel tigs aldrig ihjäl: då skulle inbjudan i tysthet ge hela appen.
+ */
+async function applyInviteOptions(
+  organizationId: string,
+  email: string,
+  options: InviteOptions | undefined,
+): Promise<boolean> {
+  if (!options || (options.viewMode === "full" && options.locale === "sv")) return true;
+  const user = await getSessionUser();
+  if (!user) return false;
+  const invitationId = await latestInvitationIdFor(user, organizationId, email).catch(() => null);
+  if (!invitationId) return false;
+  const set = await setInvitationOptionsFlow(user, { organizationId, invitationId, ...options });
+  return set.ok;
+}
+
 async function sendInvite(
   email: string,
   role: MemberRole,
   password?: string,
+  options?: InviteOptions,
 ): Promise<ActionResult<{ emailSent: boolean }>> {
   const organizationId = await activeOrganizationId();
   if (!organizationId) return { ok: false, error: MEMBER_MESSAGES.forbidden };
@@ -54,9 +83,22 @@ async function sendInvite(
     { provider: await getAuthProvider(), user: await getSessionUser(), baseUrl },
     { organizationId, email, role, password },
   );
+  if (result.ok && !(await applyInviteOptions(organizationId, email, options))) {
+    revalidatePath(PAGE);
+    return { ok: false, error: INVITE_OPTIONS_FAILED };
+  }
   return result.ok
     ? result
     : { ok: false, error: inviteErrorFor(role, result.error, FORBIDDEN_DB) };
+}
+
+function inviteOptionsOf(raw: unknown): InviteOptions | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const r = raw as Record<string, unknown>;
+  return {
+    viewMode: r.viewMode === "simple" ? "simple" : "full",
+    locale: r.locale === "en" ? "en" : "sv",
+  };
 }
 
 /**
@@ -68,9 +110,17 @@ export async function inviteMember(input: {
   email: string;
   role: MemberRole;
   password?: string;
+  /** Enkel vy och språk när inbjudan tas emot (standard: full vy, svenska). */
+  viewMode?: "full" | "simple";
+  locale?: "sv" | "en";
 }): Promise<ActionResult<{ emailSent: boolean }>> {
   const password = typeof input?.password === "string" ? input.password : undefined;
-  const result = await sendInvite(String(input?.email ?? ""), input?.role, password);
+  const result = await sendInvite(
+    String(input?.email ?? ""),
+    input?.role,
+    password,
+    inviteOptionsOf(input),
+  );
   if (result.ok) revalidatePath(PAGE);
   return result;
 }
@@ -130,7 +180,55 @@ export async function resendInvitation(input: {
     invitationId: input?.invitationId,
   });
   if (!found.ok || !found.data) return { ok: false, error: found.error ?? MEMBER_MESSAGES.invalid };
-  const result = await sendInvite(found.data.email, found.data.role);
+  // Den nya länken bär samma vy och språk som den gamla.
+  const result = await sendInvite(found.data.email, found.data.role, undefined, {
+    viewMode: found.data.viewMode,
+    locale: found.data.locale,
+  });
+  if (result.ok) revalidatePath(PAGE);
+  return result;
+}
+
+/** Enkel vy på eller av för en medlem (inte den egna). */
+export async function setMemberViewMode(input: {
+  membershipId: string;
+  viewMode: "full" | "simple";
+}): Promise<ActionResult<{ viewMode: "full" | "simple" }>> {
+  const result = await setMemberViewFlow(await getSessionUser(), {
+    organizationId: await activeOrganizationId(),
+    membershipId: input?.membershipId,
+    viewMode: input?.viewMode,
+  });
+  if (result.ok) revalidatePath(PAGE);
+  return result;
+}
+
+/** Språket i appen för en medlem. */
+export async function setMemberLocale(input: {
+  membershipId: string;
+  locale: "sv" | "en";
+}): Promise<ActionResult<{ locale: "sv" | "en" }>> {
+  const result = await setMemberLocaleFlow(await getSessionUser(), {
+    organizationId: await activeOrganizationId(),
+    membershipId: input?.membershipId,
+    locale: input?.locale,
+  });
+  if (result.ok) revalidatePath(PAGE);
+  return result;
+}
+
+/** Vy och språk på en obesvarad inbjudan. */
+export async function setInvitationOptions(input: {
+  invitationId: string;
+  viewMode: "full" | "simple";
+  locale: "sv" | "en";
+}): Promise<ActionResult> {
+  const result = await setInvitationOptionsFlow(await getSessionUser(), {
+    organizationId: await activeOrganizationId(),
+    invitationId: input?.invitationId,
+    viewMode: input?.viewMode,
+    locale: input?.locale,
+  });
   if (result.ok) revalidatePath(PAGE);
   return result;
 }
