@@ -51,7 +51,7 @@ describe("huvudflikar", () => {
         "Gratis-pack",
       ],
       "vart-lager": ["Vårt lager", "Mystery packs", "Inköp", "Prognos", "Inköpspriser"],
-      butiker: ["Butiker", "Kontrakt", "Expansion", "Butiksportal"],
+      butiker: ["Butiker", "Kontrakt", "Expansion", "Utbetalning"],
       pengar: ["Lönsamhet", "Ekonomi", "Bokföring", "Rapporter", "Värde"],
       mer: ["Inställningar", "Datakällor", "Assistent", "Marknad", "Effekt"],
     });
@@ -196,7 +196,7 @@ describe("periodraden", () => {
       ["/prognos", null, false],
       ["/ekonomi", "bokforing", false],
       ["/ekonomi/bokforing/kvitto/1", null, false],
-      ["/butiker", "portal", false],
+      ["/butiker", "utbetalning", false],
       ["/assistent", null, false],
       ["/drift", null, false],
       ["/drift/larm", null, false],

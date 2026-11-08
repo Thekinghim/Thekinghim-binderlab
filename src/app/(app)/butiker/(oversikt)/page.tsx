@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { SectionHeader } from "@/components/ui/section-header";
 import { MobileFold } from "@/components/ui/mobile-fold";
@@ -21,6 +22,22 @@ import { activeStores, dayText, plural, prospectStores, sek } from "../_lib/mode
 
 export const metadata: Metadata = { title: "Butiker" };
 
+/** Fliken Utbetalning (?vy=utbetalning). */
+const PAYOUT_VIEW = "utbetalning";
+/** Flikens gamla namn (Butiksportal), som gamla länkar och bokmärken har. */
+const PORTAL_VIEW_OLD = "portal";
+
+/** Samma adress med ?vy=utbetalning i stället för ?vy=portal. */
+function utbetalningHref(sp: Record<string, string | string[] | undefined>): string {
+  const out = new URLSearchParams();
+  for (const [k, v] of Object.entries(sp)) {
+    if (k === "vy" || v === undefined) continue;
+    for (const x of Array.isArray(v) ? v : [v]) out.append(k, x);
+  }
+  out.set("vy", PAYOUT_VIEW);
+  return `/butiker?${out.toString()}`;
+}
+
 /**
  * Butiker: alla butiker med periodens intäkt, butiksersättning, ersättningsmodell och
  * vad butiken tjänat hittills i månaden. Ägare, admin och läsare (påfyllaren skickas
@@ -33,8 +50,12 @@ export default async function ButikerPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
-  // Butiker → Butiksportal: avräkningar och inbjudningar (?vy=portal).
-  if (sp.vy === "portal") {
+  // Gamla länkar (?vy=portal, fliken hette Butiksportal) går till Utbetalning med samma
+  // parametrar i övrigt.
+  if (sp.vy === PORTAL_VIEW_OLD) redirect(utbetalningHref(sp));
+  // Butiker → Utbetalning: att betala till butikerna, avräkningarna och längst ner
+  // butiksportalens inbjudningar (?vy=utbetalning).
+  if (sp.vy === PAYOUT_VIEW) {
     const ctx = await requireRoute("butiker");
     return <SettlementsView viewer={await requireViewer()} today={ctx.today} />;
   }
@@ -50,6 +71,9 @@ export default async function ButikerPage({
   const earned = active.reduce((n, r) => n + r.earnedMonthOre, 0);
   // Butiker med automat utan signerat kontrakt (röd rad, samma regel som Att göra).
   const unsigned = active.filter((r) => r.issue?.id === "no-contract").length;
+  // Butiker med automat men utan avtal någon dag i perioden: de räknas som 0 %.
+  const noDeal = listed.filter((r) => r.agreementGap !== null);
+  const toStores = listed.reduce((n, r) => n + r.toStoreOre, 0);
   const cov = period.coverage;
   const dataRange =
     cov && period.partial
@@ -126,6 +150,30 @@ export default async function ButikerPage({
             </Link>
           ) : null}
 
+          {noDeal.length > 0 ? (
+            <Link
+              href={
+                noDeal.length === 1
+                  ? `${noDeal[0]!.href}${noDeal[0]!.href.includes("?") ? "&" : "?"}vy=avtal`
+                  : "#alla-butiker"
+              }
+              className="rise lift flex items-center justify-between gap-3 rounded-md border border-signal-line bg-surface px-4 py-3"
+              style={{ "--i": 2 } as React.CSSProperties}
+              data-no-agreement-banner
+            >
+              <span className="flex items-center gap-2 text-base text-fg">
+                <span aria-hidden className="size-2 shrink-0 rounded-full bg-signal" />
+                {noDeal.length === 1
+                  ? `${noDeal[0]!.name}: ${noDeal[0]!.agreementGap!.short.charAt(0).toLocaleLowerCase("sv-SE")}${noDeal[0]!.agreementGap!.short.slice(1)}.`
+                  : `${formatInt(noDeal.length)} butiker saknar avtal och räknas som 0${NBSP}%.`}
+              </span>
+              <span className="shrink-0 text-sm font-medium text-fg">
+                {noDeal.length === 1 ? "Lägg in avtal" : "Visa"}
+                {NBSP}→
+              </span>
+            </Link>
+          ) : null}
+
           <section
             aria-labelledby="alla-butiker"
             className="rise flex flex-col gap-6"
@@ -140,15 +188,16 @@ export default async function ButikerPage({
               title={
                 data.showStoreShare
                   ? `${sek(earned)} intjänat i ${data.monthLabel}.`
-                  : "Intäkt per butik."
+                  : `${sek(toStores)} till butikerna.`
               }
               aside={`${formatInt(data.signed)} av ${plural(active.length, "butik", "butiker")} har signerat kontrakt.`}
             />
             <StoreTable
               rows={listed}
               monthLabel={data.monthLabel}
-              caption={`Butiker, intäkt och vinst ${period.rangeLabel}`}
+              caption={`Butiker, intäkt och till butiken ${period.rangeLabel}`}
               showStoreShare={data.showStoreShare}
+              showTotal
             />
           </section>
 

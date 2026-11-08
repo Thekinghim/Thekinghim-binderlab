@@ -17,6 +17,7 @@ import {
   daysInMonth,
   monthOf,
   monthStart,
+  type AgreementGap,
   type CommissionBase,
   type IsoDate,
   type Period,
@@ -36,6 +37,7 @@ import {
 } from "@/lib/format";
 
 import type {
+  AgreementGapView,
   AgreementState,
   AgreementView,
   CompensationModel,
@@ -193,6 +195,41 @@ export function agreementsOf(
     .sort((a, b) => (a.validFrom < b.validFrom ? 1 : a.validFrom > b.validFrom ? -1 : 0));
 }
 
+/** Kort varning för en butik utan avtal: "Inget avtal – butiken räknas som 0 %". */
+export const NO_AGREEMENT_SHORT = `Inget avtal – butiken räknas som 0${NBSP}%`;
+
+/** "10–12 okt." eller "27 okt." för en följd av dagar. */
+function rangeText(r: Period, today: IsoDate): string {
+  return r.start === r.end
+    ? dayText(r.start, today)
+    : `${dayText(r.start, today)}${SPACED_RANGE_DASH}${dayText(r.end, today)}`;
+}
+
+/**
+ * Texterna för dagar med automat utan avtal (agreementGaps i @/domain). Alla dagar utan
+ * avtal: "Inget avtal – butiken räknas som 0 %". Några dagar: "Inget avtal 3 dagar – 0 %
+ * de dagarna" och dagarna i meningen.
+ */
+export function agreementGapView(gap: AgreementGap, today: IsoDate): AgreementGapView {
+  const whole = gap.days >= gap.placedDays;
+  const shown = gap.ranges.slice(0, 3).map((r) => rangeText(r, today));
+  const more = gap.ranges.length - shown.length;
+  const when = `${shown.join(", ")}${more > 0 ? ` och ${plural(more, "period", "perioder")} till` : ""}`;
+  return {
+    days: gap.days,
+    placedDays: gap.placedDays,
+    whole,
+    short: whole
+      ? NO_AGREEMENT_SHORT
+      : `Inget avtal ${plural(gap.days, "dag", "dagar")} – 0${NBSP}% de dagarna`,
+    text: whole
+      ? `Inget avtal ${when}. Butiken räknas som 0${NBSP}% och får inget.`
+      : `Inget avtal ${when} (${plural(gap.days, "dag", "dagar")}). Butiken räknas som 0${NBSP}% de dagarna.`,
+    firstDay: gap.ranges[0]!.start,
+    lastDay: gap.ranges[0]!.end,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Siffror ur beräkningslagret
 // ---------------------------------------------------------------------------
@@ -308,6 +345,12 @@ export function buildStoreRows(args: {
   recipients: ReadonlyMap<string, readonly RecipientView[]>;
   /** Kontraktet per butik (signed.ts). Saknas = okänt. */
   contracts?: ReadonlyMap<string, StoreContractState>;
+  /** storeCompensation för perioden: storeId → totalOre (det butiken får). Saknas = 0. */
+  toStore?: ReadonlyMap<string, number>;
+  /** Villkoren i klartext för perioden (storeShareTerms). Saknas = null. */
+  terms?: ReadonlyMap<string, string | null>;
+  /** agreementGaps för perioden, per butik. Saknas = inga luckor. */
+  gaps?: ReadonlyMap<string, AgreementGap>;
   today: IsoDate;
   query: string;
 }): StoreRow[] {
@@ -319,6 +362,8 @@ export function buildStoreRows(args: {
       const own = agreementsOf(args.agreements, s.id);
       const current = own.find((a) => a.state === "current") ?? null;
       const machineCodes = machinesIn(s.id, args.placements, args.machineCodes, args.today);
+      const rawGap = args.gaps?.get(s.id);
+      const agreementGap = rawGap && !s.archived ? agreementGapView(rawGap, args.today) : null;
       const issue =
         storeIssues({
           agreements: own,
@@ -327,6 +372,7 @@ export function buildStoreRows(args: {
           archived: s.archived,
           today: args.today,
           contract: args.contracts?.get(s.id) ?? null,
+          gap: agreementGap,
         }).find((i) => i.actionable) ?? null;
       return {
         id: s.id,
@@ -345,6 +391,9 @@ export function buildStoreRows(args: {
         previousCompensationOre: args.previous ? compensationOf(prev.get(s.id)) : null,
         profitOre: row?.profitOre ?? 0,
         earnedMonthOre: args.earnedMonth.get(s.id) ?? 0,
+        toStoreOre: args.toStore?.get(s.id) ?? 0,
+        terms: args.terms?.get(s.id) ?? null,
+        agreementGap,
         current,
         contract: args.contracts?.get(s.id) ?? null,
         issue,
@@ -652,6 +701,8 @@ export function storeIssues(args: {
   today: IsoDate;
   /** Kontraktet (signed.ts). Utelämnat = okänt (ingen punkt). */
   contract?: StoreContractState | null;
+  /** Dagar i perioden med automat utan avtal (agreementGapView). Utelämnat = inga. */
+  gap?: AgreementGapView | null;
 }): StoreIssue[] {
   if (args.archived) return [];
   const out: StoreIssue[] = [];
@@ -675,8 +726,17 @@ export function storeIssues(args: {
     out.push({
       id: "no-agreement",
       level: "critical",
-      text: `Inga villkor för ${codes}. Butiken får inget.`,
-      short: "Inga villkor",
+      text: `Inget avtal för ${codes}. Butiken räknas som 0${NBSP}% och får inget.`,
+      short: "Inget avtal",
+      actionable: true,
+    });
+  } else if (args.gap) {
+    // Avtal i dag, men dagar i perioden utan: de dagarna räknas som 0 %.
+    out.push({
+      id: "agreement-gap",
+      level: args.gap.whole ? "critical" : "warning",
+      text: args.gap.text,
+      short: args.gap.whole ? "Inget avtal" : `Inget avtal ${formatInt(args.gap.days)}${NBSP}d`,
       actionable: true,
     });
   }

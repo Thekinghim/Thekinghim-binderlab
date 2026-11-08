@@ -923,6 +923,8 @@ export function DataTable<T>({
                       col.numeric ? "tnum text-right text-base" : "label text-subtle",
                       edgeClasses(col, ci, ctx, "z-[3]"),
                       virtual && "overflow-hidden text-ellipsis whitespace-nowrap",
+                      // Samma synlighet som kolumnens celler (t.ex. "hidden xl:table-cell").
+                      col.className,
                     )}
                   >
                     {col.footer}

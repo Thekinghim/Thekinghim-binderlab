@@ -15,8 +15,11 @@ import {
   type SearchParamsInput,
 } from "@/components/shell/period-state";
 import {
+  agreementGaps,
+  minDate,
   profitability,
   storeCompensation,
+  type AgreementGap,
   type IsoDate,
   type Period,
   type ProfitabilityInput,
@@ -36,6 +39,7 @@ import {
 
 import {
   activeStores,
+  agreementGapView,
   agreementsOf,
   buildStoreRows,
   compensationHeadline,
@@ -63,6 +67,7 @@ import {
 import { currentViewer } from "./session";
 import { requestPageLoaders, type PageLoaders } from "@/server/data/page-loaders";
 import type {
+  AgreementGapView,
   AgreementView,
   DailyPoint,
   KpiView,
@@ -143,6 +148,28 @@ function comparable(p: AppPeriod, previous: ProfitabilityInput | null): Profitab
     p.compare.start >= p.dataStart
     ? previous
     : null;
+}
+
+/**
+ * Dagar i perioden (t.o.m. i dag) med automat men utan avtal, per butik: samma placeringar
+ * och avtal som beräkningen använder (agreementGaps i @/domain).
+ */
+function gapsFor(
+  current: Pick<ProfitabilityInput, "placements" | "agreements">,
+  period: Period,
+  today: IsoDate,
+  storeIds?: readonly string[],
+): Map<string, AgreementGap> {
+  const end = minDate(period.end, today);
+  if (end < period.start) return new Map();
+  return new Map(
+    agreementGaps({
+      placements: current.placements,
+      agreements: current.agreements,
+      period: { start: period.start, end },
+      ...(storeIds ? { storeIds } : {}),
+    }).map((g) => [g.storeId, g]),
+  );
 }
 
 /** Butiksregistret, en gång per förfrågan (sidan och metadata delar det). */
@@ -227,6 +254,15 @@ export async function loadStoreListWith(
   const views = agreements.map((a) => toAgreementView(a, ctx.today));
   const filterId = p.scope.storeId;
   const shown = filterId ? stores.filter((s) => s.id === filterId) : stores;
+  // Till butiken i perioden: samma motor och samma indata som avräkningen (alla order,
+  // butikens eget avtal). Dras inte från vår vinst; det gör bara vyknappen.
+  const toStore = new Map(
+    storeCompensation(input.current).stores.map((c) => [c.storeId, c.totalOre]),
+  );
+  const terms = new Map(
+    shown.map((s) => [s.id, storeShareTerms(input.current.agreements, s.id, p.period)]),
+  );
+  const gaps = gapsFor(input.current, p.period, ctx.today);
   const rows = buildStoreRows({
     stores: shown,
     placements: master.placements,
@@ -241,6 +277,9 @@ export async function loadStoreListWith(
       shown.map((s) => s.id),
       ctx.today,
     ),
+    toStore,
+    terms,
+    gaps,
     today: ctx.today,
     query: periodQuery(searchParams),
   });
@@ -291,6 +330,11 @@ export interface StoreDetailData {
   readonly machines: StoreMachineRow[];
   readonly recipients: RecipientView[];
   readonly issues: StoreIssue[];
+  /**
+   * Dagar i perioden med automat men utan avtal (butiken räknas som 0 %), eller null. Med
+   * automat i dag och inget avtal i dag gäller det också (`issues` har "no-agreement").
+   */
+  readonly agreementGap: AgreementGapView | null;
   /** Kontraktet: signerat, osignerat eller saknas. */
   readonly contract: "signed" | "unsigned" | "missing";
   /** Periodens query-sträng för länkar. */
@@ -398,6 +442,8 @@ export async function loadStoreDetail(
     new Map(master.machines.map((m) => [m.id, m.code])),
     ctx.today,
   );
+  const rawGap = gapsFor(input.current, p.period, ctx.today, [storeId]).get(storeId);
+  const agreementGap = rawGap && !store.archived ? agreementGapView(rawGap, ctx.today) : null;
 
   return {
     ctx,
@@ -435,7 +481,9 @@ export async function loadStoreDetail(
       archived: store.archived,
       today: ctx.today,
       contract,
+      gap: agreementGap,
     }),
+    agreementGap,
     contract,
     query,
   };

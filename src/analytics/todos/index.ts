@@ -7,6 +7,7 @@
  * Reglerna är rena funktioner utan I/O; `now` är den enda tidskällan.
  */
 
+import { agreementGapTodos, mergeAgreementTodos } from "./agreement-gaps";
 import { alertTodos } from "./alerts";
 import { createTodoContext, sortTodos } from "./context";
 import { contractTodos } from "./contracts";
@@ -17,7 +18,7 @@ import { refillTodos } from "./refill";
 import { reportReviewTodos } from "./report-review";
 import { reportTodos } from "./reports";
 import { silentTitleTodos } from "./silent-title";
-import { settlementTodos } from "./settlements";
+import { missingSettlementTodos, settlementTodos } from "./settlements";
 import { staleMachineTodos } from "./stale-machine";
 import { teamTodos } from "./team";
 import type { TodoInput, TodoItem } from "./types";
@@ -36,6 +37,8 @@ export function computeTodos(input: TodoInput, now: Date | string | number): Tod
   const refillStake = new Map(
     refills.map((t) => [t.key.slice("refill:".length), t.atStakeOre ?? 0] as const),
   );
+  // En butik utan kontrakt och avtal: en punkt (Skapa kontrakt lägger in avtalet).
+  const deals = mergeAgreementTodos(missingContractTodos(ctx), agreementGapTodos(ctx));
   return sortTodos([
     ...refills,
     ...stale,
@@ -44,8 +47,10 @@ export function computeTodos(input: TodoInput, now: Date | string | number): Tod
     ...reportReviewTodos(ctx),
     ...reportTodos(ctx),
     ...settlementTodos(ctx),
+    ...missingSettlementTodos(ctx),
+    ...deals.agreements,
     ...contractTodos(ctx),
-    ...missingContractTodos(ctx),
+    ...deals.contracts,
     ...missingPriceTodos(ctx),
     ...duplicateTitleTodos(ctx),
     ...teamTodos(ctx),
@@ -85,6 +90,7 @@ export { LOST_REVENUE_FIGURE, prioritizeByLostSales } from "./lost-sales";
 export { reportDeadline } from "./reports";
 export { reviewLink } from "./report-review";
 export { settlementDue, settlementLink, SETTLEMENT_DUE_DAY } from "./settlements";
+export { agreementLink } from "./agreement-gaps";
 export { todoInScope, type ScopeMachine, type TodoScope } from "./scope";
 export { missingPriceFingerprint } from "./missing-price";
 export {

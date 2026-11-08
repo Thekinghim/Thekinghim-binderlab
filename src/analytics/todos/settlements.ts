@@ -38,9 +38,13 @@ export function settlementDue(month: IsoMonth): IsoDate {
   return `${addMonths(month, 1)}-${String(SETTLEMENT_DUE_DAY).padStart(2, "0")}`;
 }
 
-/** Sidan där avräkningarna betalas (Butiker → Butiksportal). */
+/** Sidan där avräkningarna betalas och skapas (Butiker → Utbetalning). */
 export function settlementLink(month: IsoMonth): string {
-  return `/butiker?vy=portal&manad=${month}`;
+  return `/butiker?vy=utbetalning&manad=${month}`;
+}
+
+function capitalize(text: string): string {
+  return text.charAt(0).toLocaleUpperCase("sv-SE") + text.slice(1);
 }
 
 /** En punkt per månad med obetalda avräkningar (belopp > 0). */
@@ -70,13 +74,16 @@ export function settlementTodos(ctx: TodoContext): TodoItem[] {
     const names = list.map((s) => storeName(s.storeId));
     const blockedNames = blocked.map((s) => storeName(s.storeId));
     const first = list[0];
+    // "Betala butikerna: 12 172 kr senast 15 nov." (försenad: "… försenad sedan 15 nov.").
+    const deadline =
+      daysLeft < 0 ? `försenad sedan ${day(due)}` : daysLeft === 0 ? "i dag" : `senast ${day(due)}`;
     const title = !first
       ? blocked.length === 1
         ? `Räkna klart avräkningen till ${blockedNames[0]}`
         : `Räkna klart ${plural(blocked.length, "avräkning", "avräkningar")}`
       : list.length === 1
-        ? `Betala ${kr(first.amountOre)} till ${names[0]}`
-        : `Betala ${kr(total)} till ${plural(list.length, "butik", "butiker")}`;
+        ? `Betala ${names[0]}: ${kr(first.amountOre)} ${deadline}`
+        : `Betala butikerna: ${kr(total)} ${deadline}`;
     const blockedText =
       blocked.length === 0
         ? ""
@@ -117,4 +124,44 @@ export function settlementTodos(ctx: TodoContext): TodoItem[] {
     });
   }
   return out;
+}
+
+/**
+ * Månaden är slut men avräkningarna saknas (butiker som hade en automat då): en punkt
+ * "Skapa oktober-avräkningarna" som går till Utbetalning, där knappen skapar dem. Bara när
+ * det inte redan finns en punkt om att betala samma månad (den säger då redan vart man går).
+ *
+ *   nivå        = 'now' (utbetalningen ska vara klar senast den 15:e)
+ *   nyckel      = 'settlement-create:<månad>', fingerprint = antal butiker
+ */
+export function missingSettlementTodos(ctx: TodoContext): TodoItem[] {
+  const missing = ctx.input.missingSettlements;
+  if (!missing || missing.storeIds.length === 0) return [];
+  const storeName = nameLookup(ctx.input.stores ?? []);
+  const { month } = missing;
+  const due = settlementDue(month);
+  const daysLeft = daysBetween(ctx.today, due);
+  const names = [...missing.storeIds].map(storeName).sort((a, b) => a.localeCompare(b, "sv"));
+  const n = names.length;
+  return [
+    {
+      key: `settlement-create:${month}`,
+      fingerprint: String(n),
+      kind: "settlement-create",
+      level: "now",
+      urgency: urgencyOf("now", null),
+      atStakeOre: null,
+      daysLeft,
+      title: `Skapa ${monthName(month)}-avräkning${n === 1 ? "en" : "arna"}`,
+      detail: `${capitalize(monthName(month))} är slut. ${names.join(", ")} saknar avräkning. Betala senast ${day(due)}.`,
+      evidence: evidence({
+        rule: "Varje butik som hade en automat under månaden får en avräkning när månaden är slut.",
+        period: monthPeriod(month),
+        dates: [due],
+        storeIds: missing.storeIds,
+        figures: [{ key: "stores", label: "Butiker utan avräkning", value: n, unit: "count" }],
+      }),
+      link: settlementLink(month),
+    },
+  ];
 }

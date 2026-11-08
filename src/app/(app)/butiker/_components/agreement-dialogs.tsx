@@ -10,7 +10,7 @@ import { useToast } from "@/components/ui/toast";
 import { formatNumber } from "@/lib/format";
 
 import { VmbBeforeSplitMore } from "../../avtal/_components/vmb-before-split";
-import { updateAgreement } from "../actions";
+import { createAgreement, updateAgreement } from "../actions";
 import type { AgreementView } from "../_lib/types";
 import { FormDialog, text } from "./form-dialog";
 
@@ -36,6 +36,12 @@ const MODELS: { value: Model; label: string }[] = [
   { value: "sales", label: "Andel av försäljning" },
 ];
 
+/** Nytt avtal: båda modellerna (t.ex. "10 % av försäljningen + hyra 500 kr/mån"). */
+const NEW_MODELS: { value: Model; label: string }[] = [
+  { value: "split", label: "50 % av vinsten" },
+  { value: "sales", label: "% av försäljningen" },
+];
+
 /**
  * Villkoren: vinstdelning 50/50 (hälften av vinsten efter inköp och kortavgifter; VMB-moms
  * dras bara om avtalets val är på) och valfri hyra. Valet "Andel av försäljning" visas bara för gamla avtal med den modellen,
@@ -43,6 +49,7 @@ const MODELS: { value: Model; label: string }[] = [
  */
 function TermsFields({ agreement }: { agreement?: AgreementView }) {
   const legacy = agreement !== undefined && agreement.commissionBase !== "profit_after_costs";
+  const fresh = agreement === undefined;
   const [model, setModel] = useState<Model>(legacy ? "sales" : "split");
   // En vinstdelning med annan andel än 50 % behåller sin andel när den rättas.
   const keptShare =
@@ -50,8 +57,13 @@ function TermsFields({ agreement }: { agreement?: AgreementView }) {
   return (
     <div className="flex flex-col gap-4">
       <input type="hidden" name="model" value={model} />
-      {legacy ? (
-        <Segmented label="Ersättning" options={MODELS} value={model} onChange={setModel} />
+      {legacy || fresh ? (
+        <Segmented
+          label="Butiken får"
+          options={fresh ? NEW_MODELS : MODELS}
+          value={model}
+          onChange={setModel}
+        />
       ) : null}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {model === "sales" ? (
@@ -171,6 +183,84 @@ export function EditAgreementButton({
           autoComplete="off"
           maxLength={500}
         />
+      </FormDialog>
+    </>
+  );
+}
+
+/**
+ * "Lägg in avtal" för en butik utan avtal (eller med dagar utan avtal): villkoren från ett
+ * datum, så att butiken inte längre räknas som 0 %. Förvalt från första dagen utan avtal;
+ * ett datum före i dag räknar om de dagarna och kräver en bekräftelse (som Skapa avtal).
+ */
+export function AddAgreementButton({
+  storeId,
+  storeName,
+  defaultFrom,
+  defaultTo = null,
+  className,
+}: {
+  storeId: string;
+  storeName: string;
+  defaultFrom: string;
+  /** Sista dag när ett senare avtal redan finns (luckan slutar där), annars tills vidare. */
+  defaultTo?: string | null;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [needsConfirm, setNeedsConfirm] = useState(false);
+  const router = useRouter();
+  const toast = useToast();
+  const close = () => {
+    setOpen(false);
+    setNeedsConfirm(false);
+  };
+  return (
+    <>
+      <Button variant="primary" onClick={() => setOpen(true)} className={className}>
+        Lägg in avtal
+      </Button>
+      <FormDialog
+        open={open}
+        onClose={close}
+        eyebrow={`Butiker / ${storeName} / Avtal`}
+        title="Lägg in avtal."
+        description={`Vad ${storeName} ska få. Utan avtal räknas butiken som 0\u00a0%.`}
+        submitLabel={needsConfirm ? "Spara ändå" : "Spara"}
+        onSubmit={async (data) => {
+          const model = text(data, "model");
+          const result = await createAgreement({
+            storeId,
+            validFrom: text(data, "validFrom"),
+            validTo: text(data, "validTo"),
+            model,
+            commission: model === "split" ? "" : text(data, "commission"),
+            rent: text(data, "rent"),
+            note: text(data, "note"),
+            confirmHistory: needsConfirm,
+          });
+          if (!result.ok) {
+            if (result.needsConfirm) setNeedsConfirm(true);
+            return result;
+          }
+          close();
+          toast({ title: "Avtalet är sparat", tone: "ok", meta: storeName });
+          router.refresh();
+          return { ok: true };
+        }}
+      >
+        <TermsFields />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Input name="validFrom" label="Gäller från" type="date" defaultValue={defaultFrom} />
+          <Input
+            name="validTo"
+            label="Sista dag"
+            hint="Tom = tills vidare."
+            type="date"
+            defaultValue={defaultTo ?? ""}
+          />
+        </div>
+        <Input name="note" label="Anteckning" autoComplete="off" maxLength={500} />
       </FormDialog>
     </>
   );

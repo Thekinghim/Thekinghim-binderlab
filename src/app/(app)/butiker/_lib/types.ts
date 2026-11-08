@@ -73,6 +73,16 @@ export interface StoreRow {
   readonly profitOre: number;
   /** Hittills intjänad ersättning denna månad. */
   readonly earnedMonthOre: number;
+  /**
+   * Till butiken i perioden: provision eller andel av vinsten + hyra enligt butikens eget
+   * avtal, på alla order (storeCompensation, samma motor som avräkningen). För en hel
+   * månad exakt avräkningens belopp. Visas alltid; dras inte från "Vår vinst".
+   */
+  readonly toStoreOre: number;
+  /** Villkoren i klartext för perioden ("50 % av vinsten"), eller null utan avtal. */
+  readonly terms: string | null;
+  /** Dagar i perioden med automat men utan avtal (butiken räknas som 0 %), eller null. */
+  readonly agreementGap: AgreementGapView | null;
   /** Avtalet som gäller i dag, eller null. */
   readonly current: AgreementView | null;
   /** Kontraktet (signerat, osignerat, saknas), eller null om okänt. */
@@ -80,6 +90,22 @@ export interface StoreRow {
   /** Det viktigaste som kräver åtgärd (samma regler som butikens sida), eller null. */
   readonly issue: StoreIssue | null;
   readonly href: string;
+}
+
+/** Dagar med automat men utan avtal, med färdiga texter (agreementGapView i ./model). */
+export interface AgreementGapView {
+  readonly days: number;
+  readonly placedDays: number;
+  /** Alla dagar med automat saknade avtal. */
+  readonly whole: boolean;
+  /** "Inget avtal – butiken räknas som 0 %" / "Inget avtal 3 dagar – 0 % de dagarna". */
+  readonly short: string;
+  /** Hela meningen med dagarna: "Inget avtal 10–12 okt. Butiken räknas som 0 % de dagarna." */
+  readonly text: string;
+  /** Första dagen utan avtal (förval i "Lägg in avtal"). */
+  readonly firstDay: IsoDate;
+  /** Sista dagen i den första följden utan avtal. */
+  readonly lastDay: IsoDate;
 }
 
 /** Hittills intjänad ersättning denna månad för en butik. */

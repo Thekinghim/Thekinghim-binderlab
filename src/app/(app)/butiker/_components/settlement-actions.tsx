@@ -10,6 +10,7 @@ import { useToast } from "@/components/ui/toast";
 import { formatSek } from "@/lib/format";
 import { inviteStoreUser } from "@/server/portal/actions";
 
+import { noAgreementLine } from "../_lib/settlement-headline";
 import {
   createMissingSettlements,
   markSettlementPaid,
@@ -142,36 +143,85 @@ export function UndoPaidButton({ id, storeName }: { id: string; storeName: strin
   );
 }
 
-/** Skapa förra månadens saknade avräkningar (sidan skapar inget av sig själv). */
-export function CreateSettlementsButton({ count }: { count: number }) {
+/**
+ * Skapa förra månadens saknade avräkningar (sidan skapar inget av sig själv). Saknar en
+ * butik avtal frågar knappen först: "Lägg in avtal först, eller skapa ändå" (servern skapar
+ * inget utan bekräftelsen).
+ */
+export function CreateSettlementsButton({
+  count,
+  monthLabel,
+}: {
+  count: number;
+  /** "november" */
+  monthLabel: string;
+}) {
   const router = useRouter();
   const toast = useToast();
   const [pending, start] = useTransition();
-  return (
-    <Button
-      variant="primary"
-      size="sm"
-      loading={pending}
-      onClick={() =>
-        start(async () => {
-          const res = await createMissingSettlements();
-          if (!res.ok) {
-            toast({ title: res.error, tone: "critical" });
-            return;
-          }
-          router.refresh();
-          toast({
-            title:
-              res.data.created > 0
-                ? `Klart! ${res.data.created === 1 ? "1 avräkning" : `${res.data.created} avräkningar`} skapade.`
-                : "Inget nytt att skapa.",
-            tone: res.data.errors > 0 ? "critical" : "ok",
-          });
-        })
+  const [ask, setAsk] = useState<{ storeName: string; days: number; whole: boolean }[] | null>(
+    null,
+  );
+  const run = (confirm: boolean) =>
+    start(async () => {
+      const res = await createMissingSettlements(confirm);
+      if (!res.ok) {
+        toast({ title: res.error, tone: "critical" });
+        return;
       }
-    >
-      {count === 1 ? "Skapa avräkning" : "Skapa avräkningar"}
-    </Button>
+      if (res.data.noAgreement && res.data.noAgreement.length > 0) {
+        setAsk(res.data.noAgreement);
+        return;
+      }
+      setAsk(null);
+      router.refresh();
+      toast({
+        title:
+          res.data.created > 0
+            ? `Klart! ${res.data.created === 1 ? "1 avräkning" : `${res.data.created} avräkningar`} skapade.`
+            : "Inget nytt att skapa.",
+        tone: res.data.errors > 0 ? "critical" : "ok",
+      });
+    });
+  return (
+    <>
+      <Button
+        variant="primary"
+        size="sm"
+        loading={pending && ask === null}
+        onClick={() => run(false)}
+      >
+        {`Skapa ${monthLabel}-avräkning${count === 1 ? "en" : "arna"}`}
+      </Button>
+      <Modal
+        open={ask !== null}
+        onClose={() => (pending ? undefined : setAsk(null))}
+        eyebrow="Utbetalning"
+        title={
+          ask && ask.length === 1
+            ? `${ask[0]!.storeName} har inget avtal.`
+            : `${ask?.length ?? 0} butiker saknar avtal.`
+        }
+        description="Utan avtal räknas butiken som 0 %. Lägg in avtalet först, så blir beloppet rätt."
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setAsk(null)} disabled={pending}>
+              Avbryt
+            </Button>
+            <Button variant="danger" loading={pending} onClick={() => run(true)}>
+              Skapa ändå
+            </Button>
+          </>
+        }
+      >
+        <ul className="flex flex-col gap-1 text-base text-fg" data-no-agreement-confirm>
+          {(ask ?? []).map((g) => (
+            <li key={g.storeName}>{noAgreementLine(g)}</li>
+          ))}
+        </ul>
+      </Modal>
+    </>
   );
 }
 

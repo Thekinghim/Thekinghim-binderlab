@@ -452,6 +452,51 @@ describe("integration: Att göra, avtal och förlorad försäljning på Hem", ()
     ]);
   });
 
+  it("utbetalningen står som egen rad överst, inte också i listan (men räknas)", () => {
+    const pay = {
+      ...item(
+        "settlement:2026-10",
+        "settlement",
+        { storeIds: ["s1", "s2"] },
+        "/butiker?vy=utbetalning&manad=2026-10",
+      ),
+      title: "Betala butikerna: 12 172 kr senast 15 nov.",
+      level: "later" as const,
+    };
+    const late = { ...pay, key: "settlement:2026-09", daysLeft: -3, level: "now" as const };
+    const create = {
+      ...item(
+        "settlement-create:2026-10",
+        "settlement-create",
+        { storeIds: ["s3"] },
+        "/butiker?vy=utbetalning&manad=2026-10",
+      ),
+      title: "Skapa oktober-avräkningarna",
+      level: "now" as const,
+    };
+    const other = item(
+      "contract:c1:2027-01-31",
+      "contract",
+      { storeIds: ["s1"] },
+      "/avtal#avtal-c1",
+    );
+    const m = buildHomeModel(
+      inputFor(THIRTY, THIRTY_BEFORE, { todos: [late, pay, create, other] }),
+    );
+    expect(m.payouts.map((p) => [p.key, p.late])).toEqual([
+      ["settlement:2026-09", true],
+      ["settlement:2026-10", false],
+      ["settlement-create:2026-10", false],
+    ]);
+    expect(m.payouts[1]).toMatchObject({
+      title: "Betala butikerna: 12 172 kr senast 15 nov.",
+      href: "/butiker?vy=utbetalning&manad=2026-10",
+    });
+    expect(m.todos?.map((t) => t.key)).toEqual(["contract:c1:2027-01-31"]);
+    expect(m.todoCount).toBe(4);
+    expect(buildHomeModel(inputFor(THIRTY, THIRTY_BEFORE)).payouts).toEqual([]);
+  });
+
   it("appHref behåller ankaret för Avtal, Rapporter och Drift", () => {
     expect(appHref("/avtal#avtal-c1")).toBe("/avtal#avtal-c1");
     expect(appHref("/rapporter?manad=2026-10#granska")).toBe("/rapporter?manad=2026-10#granska");

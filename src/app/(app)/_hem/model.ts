@@ -176,6 +176,23 @@ export interface HomeTodo {
   readonly orgWide: boolean;
 }
 
+/**
+ * Utbetalningen till butikerna som egen rad överst på Hem ("Betala butikerna: 12 172 kr
+ * senast 15 nov.", "Skapa oktober-avräkningarna"). Samma punkter som i Att göra (de räknas
+ * i antalet) men står inte också i listan under.
+ */
+export interface HomePayout {
+  readonly key: string;
+  readonly title: string;
+  readonly href: string;
+  readonly level: TodoLevel;
+  /** Sista dagen har passerat ("försenad"): signalfärg. */
+  readonly late: boolean;
+}
+
+/** Punkterna som står som utbetalningsrad på Hem i stället för i listan. */
+export const HOME_PAYOUT_KINDS: ReadonlySet<string> = new Set(["settlement", "settlement-create"]);
+
 export interface HomeModel {
   readonly headline: HomeHeadline;
   /** Perioden i skalet. Nyckeltal, vinst och marginal gäller hela den (som på Lönsamhet). */
@@ -203,6 +220,8 @@ export interface HomeModel {
   readonly insights: HomeInsight[];
   /** De viktigaste punkterna i Att göra, eller null när rollen inte har Att göra. */
   readonly todos: HomeTodo[] | null;
+  /** Utbetalningen till butikerna (egna rader överst), tom när inget ska betalas eller skapas. */
+  readonly payouts: HomePayout[];
   /**
    * Antal punkter i Att göra totalt (efter filter), med raderna utanför reglerna (ny
    * automat, bokföringen). Utan filter samma tal som menyns räknare.
@@ -597,9 +616,29 @@ function buildTodos(
   scope: DataScope,
   machines: readonly MachineRecord[],
   extras: readonly HomeExtraTodo[] = [],
-): { todos: HomeTodo[] | null; count: number; nowCount: number; staleMachines: Set<string> } {
-  if (todos === null) return { todos: null, count: 0, nowCount: 0, staleMachines: new Set() };
+): {
+  todos: HomeTodo[] | null;
+  payouts: HomePayout[];
+  count: number;
+  nowCount: number;
+  staleMachines: Set<string>;
+} {
+  if (todos === null) {
+    return { todos: null, payouts: [], count: 0, nowCount: 0, staleMachines: new Set() };
+  }
   const relevant = todosInScope(todos, scope, machines);
+  // Utbetalningen står som egen rad överst (HomePayout), inte en gång till i listan.
+  // Att betala först, sedan att skapa (betalningen har en sista dag).
+  const payouts: HomePayout[] = relevant
+    .filter((t) => HOME_PAYOUT_KINDS.has(t.kind))
+    .sort((a, b) => Number(a.kind !== "settlement") - Number(b.kind !== "settlement"))
+    .map((t) => ({
+      key: t.key,
+      title: t.title,
+      href: appHref(t.link),
+      level: t.level,
+      late: t.kind === "settlement" && t.daysLeft !== null && t.daysLeft < 0,
+    }));
   const filtered = Boolean(scope.machineId || scope.storeId);
   // En källa för antalet: reglernas punkter plus raderna utanför reglerna (ny automat,
   // bokföringen), som menyns räknare och Att göra. Raderna utanför står först inom nivån,
@@ -629,6 +668,7 @@ function buildTodos(
     })),
   ];
   const shown = all
+    .filter((x) => x.kind === null || !HOME_PAYOUT_KINDS.has(x.kind))
     .map((x, i) => ({ x, i }))
     .sort((a, b) => LEVEL_ORDER[a.x.item.level] - LEVEL_ORDER[b.x.item.level] || a.i - b.i)
     .slice(0, HOME_TODO_COUNT);
@@ -640,6 +680,7 @@ function buildTodos(
   );
   return {
     todos: shown.map(({ x }) => x.item),
+    payouts,
     count: all.length,
     nowCount: all.filter((x) => x.item.level === "now").length,
     staleMachines,
@@ -772,7 +813,7 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
   const topTitles = buildTopTitles(byTitle.rows, km.revenueOre, titleName);
   // Iakttagelserna räknas från första dagen med data, så att snitt per dag och antal
   // veckodagar inte späds ut av dagar före datan.
-  const { todos, count, nowCount, staleMachines } = buildTodos(
+  const { todos, payouts, count, nowCount, staleMachines } = buildTodos(
     input.todos,
     input.scope,
     input.machines,
@@ -824,6 +865,7 @@ export function buildHomeModel(input: HomeModelInput): HomeModel {
     topTitles,
     insights,
     todos,
+    payouts,
     todoCount: count,
     todoNowCount: nowCount,
     hasStoreShare,

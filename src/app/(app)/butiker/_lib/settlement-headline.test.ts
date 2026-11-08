@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { settlementIdleHeadline } from "./settlement-headline";
+import { noAgreementLine, settlementIdleHeadline } from "./settlement-headline";
 
-describe("settlementIdleHeadline (Butiksportal utan något att betala)", () => {
+describe("settlementIdleHeadline (Utbetalning utan något att betala)", () => {
   const base = { blocked: 0, failed: 0, missing: 0, monthLabel: "oktober 2026" };
 
   it("en butik vars avräkning inte kan skapas har inte fått betalt (inte 'Allt är betalt.')", () => {
@@ -20,5 +20,20 @@ describe("settlementIdleHeadline (Butiksportal utan något att betala)", () => {
       aside: "Skapa avräkningarna för oktober 2026.",
     });
     expect(settlementIdleHeadline(base).title).toBe("Allt är betalt.");
+  });
+});
+
+describe("noAgreementLine (butik utan avtal i avräkningsmånaden)", () => {
+  const plain = (t: string) => t.replace(/\u00a0/g, " ");
+  it("hela månaden: 0 kr; några dagar: 0 % de dagarna", () => {
+    expect(plain(noAgreementLine({ storeName: "Hörnan", days: 31, whole: true }))).toBe(
+      "Hörnan: inget avtal – får 0 kr.",
+    );
+    expect(plain(noAgreementLine({ storeName: "Hörnan", days: 3, whole: false }))).toBe(
+      "Hörnan: inget avtal 3 dagar – 0 % de dagarna.",
+    );
+    expect(plain(noAgreementLine({ storeName: "Hörnan", days: 1, whole: false }))).toBe(
+      "Hörnan: inget avtal 1 dag – 0 % de dagarna.",
+    );
   });
 });

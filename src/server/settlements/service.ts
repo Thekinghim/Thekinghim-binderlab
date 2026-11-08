@@ -22,15 +22,17 @@ import type { Db, Tx } from "@/db/client";
 import * as s from "@/db/schema";
 import {
   addMonths,
+  agreementGaps,
   DomainError,
   monthEnd,
+  monthPeriod,
   monthStart,
   type IsoDate,
   type IsoMonth,
 } from "@/domain";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
-import { queryPlacements } from "@/server/data/core/queries";
+import { queryAgreements, queryPlacements } from "@/server/data/core/queries";
 import { ECONOMY_ROLES, OPERATOR_ROLES } from "@/server/data/core/types";
 import { pgErrorOf } from "@/server/errors";
 import { krText } from "@/reports";
@@ -97,6 +99,37 @@ export async function computeSettlementTx(
 async function storesForMonth(tx: Tx, orgId: string, month: IsoMonth): Promise<string[]> {
   const placements = await queryPlacements(tx, orgId);
   return storesPlacedIn(placements, { start: monthStart(month), end: monthEnd(month) });
+}
+
+/** En butik som hade en automat men inget avtal några dagar i månaden. */
+export interface SettlementAgreementGap {
+  readonly storeId: string;
+  readonly storeName: string;
+  /** Dagar i månaden med automat utan avtal. */
+  readonly days: number;
+  /** Alla dagar med automat saknade avtal: avräkningen blir 0 kr. */
+  readonly whole: boolean;
+}
+
+/**
+ * Butikerna (av `storeIds`) som hade en automat men inget avtal någon dag i månaden, med
+ * samma placeringar och avtal som avräkningen räknar med (agreementGaps i @/domain). De
+ * dagarna räknas som 0 %, så sidan och knappen varnar innan avräkningen skapas.
+ */
+async function monthAgreementGaps(
+  tx: Tx,
+  orgId: string,
+  month: IsoMonth,
+  storeIds: readonly string[],
+): Promise<Omit<SettlementAgreementGap, "storeName">[]> {
+  if (storeIds.length === 0) return [];
+  const [placements, agreements] = await Promise.all([
+    queryPlacements(tx, orgId),
+    queryAgreements(tx, orgId),
+  ]);
+  return agreementGaps({ placements, agreements, period: monthPeriod(month), storeIds }).map(
+    (g) => ({ storeId: g.storeId, days: g.days, whole: g.days >= g.placedDays }),
+  );
 }
 
 async function existingStores(tx: Tx, orgId: string, month: IsoMonth): Promise<Set<string>> {
@@ -278,19 +311,60 @@ export async function createMonthlySettlements(
 }
 
 /**
- * "Skapa avräkningar" på Butiksportal: förra månadens saknade avräkningar, som användaren
+ * "Skapa avräkningar" på Utbetalning: förra månadens saknade avräkningar, som användaren
  * (ägare och admin). Läsaren skapar inget. Felen (per butik) visas på sidan. Sidan i sig
  * skapar aldrig något när den öppnas; det gör det schemalagda jobbet eller den här knappen.
+ *
+ * Saknar en butik avtal några dagar i månaden (den räknas då som 0 % de dagarna) skapas
+ * inget förrän ägaren bekräftat (`allowNoAgreement`): svaret har då `noAgreement` med
+ * butikerna, och sidan frågar "Lägg in avtal först, eller skapa ändå".
  */
 export async function ensureSettlementsFor(
   viewer: Viewer,
   now: Date = new Date(),
-): Promise<SettlementRunResult | null> {
-  const role = await requireRoleFor(viewer.user, viewer.organization.id, ECONOMY_ROLES);
+  options: { readonly allowNoAgreement?: boolean } = {},
+): Promise<(SettlementRunResult & { noAgreement?: SettlementAgreementGap[] }) | null> {
+  const orgId = viewer.organization.id;
+  const role = await requireRoleFor(viewer.user, orgId, ECONOMY_ROLES);
   if (role === "viewer") return null;
   const today = businessToday(now, viewer.organization.timezone);
   const month = settlementMonthFor(today);
-  return createMissing((fn) => withUserDbFor(viewer.user, fn), viewer.organization.id, month, now);
+  if (!options.allowNoAgreement) {
+    const gaps = await withUserDbFor(viewer.user, async (tx) => {
+      const [wanted, existing] = await Promise.all([
+        storesForMonth(tx, orgId, month),
+        existingStores(tx, orgId, month),
+      ]);
+      const found = await monthAgreementGaps(
+        tx,
+        orgId,
+        month,
+        wanted.filter((id) => !existing.has(id)),
+      );
+      if (found.length === 0) return [];
+      const names = await storeNames(tx, orgId);
+      return found.map((g) => ({ ...g, storeName: names.get(g.storeId) ?? "Okänd butik" }));
+    });
+    if (gaps.length > 0) {
+      return {
+        organizationId: orgId,
+        month,
+        created: 0,
+        skipped: 0,
+        errors: [],
+        noAgreement: gaps,
+      };
+    }
+  }
+  return createMissing((fn) => withUserDbFor(viewer.user, fn), orgId, month, now);
+}
+
+async function storeNames(tx: Tx, orgId: string): Promise<Map<string, string>> {
+  const rows = await tx
+    .select({ id: s.stores.id, name: s.stores.name })
+    .from(s.stores)
+    .where(eq(s.stores.organizationId, orgId));
+  return new Map(rows.map((r) => [r.id, r.name]));
 }
 
 // ---------------------------------------------------------------------------
@@ -419,13 +493,18 @@ export interface SettlementPage {
   readonly missing: { storeId: string; storeName: string }[];
   /** Butiker utan avräkning för månaden och varför (bara när de inte kunde räknas). */
   readonly failed: { storeId: string; storeName: string; message: string }[];
+  /**
+   * Butiker som hade en automat förra månaden men inget avtal några dagar (räknas som 0 %
+   * de dagarna), saknad avräkning eller inte. Sidan varnar och länkar till "Lägg in avtal".
+   */
+  readonly noAgreement: SettlementAgreementGap[];
   /** Butikerna och deras tillgång till portalen (bara för ägare och admin). */
   readonly portal: StorePortalSummary[] | null;
   readonly canEdit: boolean;
 }
 
 /**
- * Sidan Butiker → Butiksportal. Läser bara: obetalda räknas om i minnet, och förra
+ * Sidan Butiker → Utbetalning. Läser bara: obetalda räknas om i minnet, och förra
  * månadens saknade avräkningar visas som "saknas" (skapas av jobbet eller knappen).
  */
 export async function loadSettlementPageFor(
@@ -447,7 +526,12 @@ export async function loadSettlementPageFor(
       .orderBy(s.stores.name);
     const name = new Map(stores.map((x) => [x.id, x.name]));
     const have = new Set(rows.filter((r) => r.month === month).map((r) => r.storeId));
-    const missingIds = (await storesForMonth(tx, orgId, month)).filter((id) => !have.has(id));
+    const wantedIds = await storesForMonth(tx, orgId, month);
+    const missingIds = wantedIds.filter((id) => !have.has(id));
+    const noAgreement = (await monthAgreementGaps(tx, orgId, month, wantedIds)).map((g) => ({
+      ...g,
+      storeName: name.get(g.storeId) ?? "Okänd butik",
+    }));
     // Varför en saknad inte går att skapa (samma uträkning som knappen skulle göra).
     const live = await computeSettlementsTx(tx, {
       organizationId: orgId,
@@ -487,7 +571,7 @@ export async function loadSettlementPageFor(
         pending: Number(byStore.get(x.id)?.pending ?? 0),
       }));
     }
-    return { month, rows, missing, failed, portal, canEdit };
+    return { month, rows, missing, failed, noAgreement, portal, canEdit };
   });
 }
 

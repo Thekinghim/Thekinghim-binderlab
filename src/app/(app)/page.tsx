@@ -24,6 +24,7 @@ import { OnboardingChecklist } from "./kom-igang/_components/onboarding-checklis
 import { ShrinkageLine } from "./_hem/shrinkage-line";
 import { MorningBrief } from "./_hem/morning-brief";
 import { SelfCheckLine } from "./_hem/self-check-line";
+import { PayoutLines } from "./_hem/payout-line";
 import { VardeCard } from "./_hem/varde-card";
 import { homeTodoLinkText, homeTodoPhone } from "./_hem/todo-phone";
 import { dateOf, kr, weekdayDayText } from "./_hem/text";
@@ -147,6 +148,9 @@ async function HemContent({
           <SelfCheckLine className={`rise mt-6 max-md:mt-4 ${ORDER.hero}`} />
         </Suspense>
       ) : null}
+
+      {/* Utbetalningen till butikerna: "Betala butikerna: 12 172 kr senast 15 nov." */}
+      <PayoutLines payouts={model.payouts} className={`rise mt-6 max-md:mt-4 ${ORDER.hero}`} />
 
       {headline.state === "no-data" ? (
         // Ett enda kort när inget är importerat: checklistan om den finns, annars en rad.

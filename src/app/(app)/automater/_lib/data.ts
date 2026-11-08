@@ -10,7 +10,7 @@ import {
   describePeriod,
   type SearchParamsInput,
 } from "@/components/shell/period-state";
-import { addDays, type IsoDate, type Period } from "@/domain";
+import { addDays, type IsoDate, type Period, type StoreAgreement } from "@/domain";
 import {
   loadDomainInput,
   loadMasterData,
@@ -154,10 +154,22 @@ async function signalsFor(ctx: AppContext, loaders: PageLoaders = requestPageLoa
   };
 }
 
-function storeOptions(master: Awaited<ReturnType<typeof loadMasterData>>): StoreOption[] {
+/**
+ * Butikerna att placera en automat i. Med hela organisationens avtal (`agreements`) får
+ * varje butik sina, så att dialogen kan varna "inget avtal – räknas som 0 %"; utan dem
+ * (t.ex. listan med butiksfilter, där bara butikens avtal är laddade) ingen varning.
+ */
+function storeOptions(
+  master: Awaited<ReturnType<typeof loadMasterData>>,
+  agreements?: readonly StoreAgreement[],
+): StoreOption[] {
   return master.stores
     .filter((s) => !s.archived)
-    .map((s) => ({ id: s.id, name: s.name }))
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      ...(agreements ? { agreements: agreements.filter((a) => a.storeId === s.id) } : {}),
+    }))
     .sort((a, b) => a.name.localeCompare(b.name, "sv"));
 }
 
@@ -230,7 +242,11 @@ export async function loadOverviewWith(
     period,
     overview,
     focused,
-    stores: storeOptions(base.master),
+    // Hela organisationens avtal bara utan butiks- och automatfilter (annars är de filtrerade).
+    stores: storeOptions(
+      base.master,
+      p.scope.storeId || p.scope.machineId ? undefined : loaded.current.agreements,
+    ),
     scopeLabel,
   };
 }
@@ -435,7 +451,8 @@ export async function loadMachineDetail(
     recentOrders: orders.recent,
     placements,
     unitEconomics: machineUnitEconomics(input, machine.id),
-    stores: storeOptions(master),
+    // Automatens sida läser hela organisationen: alla butikers avtal finns.
+    stores: storeOptions(master, input.current.agreements),
     query: carriedQuery(searchParams),
   };
 }

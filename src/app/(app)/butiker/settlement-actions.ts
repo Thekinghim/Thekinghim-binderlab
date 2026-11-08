@@ -1,7 +1,7 @@
 "use server";
 
 /**
- * Server actions för månadsavräkningarna (Butiker → Butiksportal). Tunna omslag:
+ * Server actions för månadsavräkningarna (Butiker → Utbetalning). Tunna omslag:
  * organisationen är den aktiva, rollen kontrolleras här (requireContextRole) och igen i
  * tjänsten mot databasen (src/server/settlements/service.ts), allt körs under RLS och
  * databasen låser beloppet på en betald avräkning.
@@ -101,13 +101,36 @@ export async function recomputeSettlement(
   }
 }
 
-/** Skapa förra månadens saknade avräkningar (knappen på Butiksportal). */
-export async function createMissingSettlements(): Promise<
-  SettlementActionResult<{ created: number; errors: number }>
+/**
+ * Skapa förra månadens saknade avräkningar (knappen på Utbetalning). Saknar en butik avtal
+ * skapas inget utan `confirmNoAgreement`: svaret säger vilka butiker (de får 0 kr de dagarna).
+ */
+export async function createMissingSettlements(confirmNoAgreement = false): Promise<
+  SettlementActionResult<{
+    created: number;
+    errors: number;
+    noAgreement?: { storeName: string; days: number; whole: boolean }[];
+  }>
 > {
   try {
     const viewer = await operator();
-    const run = await ensureSettlementsFor(viewer);
+    const run = await ensureSettlementsFor(viewer, new Date(), {
+      allowNoAgreement: confirmNoAgreement === true,
+    });
+    if (run?.noAgreement && run.noAgreement.length > 0) {
+      return {
+        ok: true,
+        data: {
+          created: 0,
+          errors: 0,
+          noAgreement: run.noAgreement.map((g) => ({
+            storeName: g.storeName,
+            days: g.days,
+            whole: g.whole,
+          })),
+        },
+      };
+    }
     await revalidateSettlementData();
     return { ok: true, data: { created: run?.created ?? 0, errors: run?.errors.length ?? 0 } };
   } catch (error) {
