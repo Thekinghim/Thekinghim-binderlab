@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { computeTodos } from "./index";
-import { settlementDue, settlementTodos } from "./settlements";
+import { missingSettlementTodos, settlementDue, settlementTodos } from "./settlements";
 import { createTodoContext } from "./context";
 import type { TodoInput } from "./types";
 
@@ -43,9 +43,9 @@ describe("settlementTodos", () => {
     const t = todos[0]!;
     expect(t.key).toBe("settlement:2026-10");
     expect(t.kind).toBe("settlement");
-    expect(t.title.replace(/ /g, " ")).toBe("Betala 1 500 kr till 2 butiker");
+    expect(t.title.replace(/ /g, " ")).toBe("Betala butikerna: 1 500 kr senast 15 nov.");
     expect(t.detail).toContain("Kafé Ett, Butik Två");
-    expect(t.link).toBe("/butiker?vy=portal&manad=2026-10");
+    expect(t.link).toBe("/butiker?vy=utbetalning&manad=2026-10");
     expect(t.fingerprint).toBe("2|150000");
     expect(t.level).toBe("later");
     expect(t.daysLeft).toBe(12);
@@ -77,7 +77,7 @@ describe("settlementTodos", () => {
         at("2026-11-03"),
       ),
     )[0]!;
-    expect(mixed.title.replace(/\u00a0/g, " ")).toBe("Betala 500 kr till Kafé Ett");
+    expect(mixed.title.replace(/\u00a0/g, " ")).toBe("Betala Kafé Ett: 500 kr senast 15 nov.");
     expect(mixed.detail).toContain("Butik Två kan inte räknas än");
   });
 
@@ -87,11 +87,17 @@ describe("settlementTodos", () => {
       unpaidSettlements: [{ id: "a", storeId: "s1", month: "2026-10-01", amountOre: 50_000 }],
     };
     const soon = settlementTodos(createTodoContext(input, at("2026-11-13")))[0]!;
-    expect(soon.title.replace(/ /g, " ")).toBe("Betala 500 kr till Kafé Ett");
+    expect(soon.title.replace(/ /g, " ")).toBe("Betala Kafé Ett: 500 kr senast 15 nov.");
     expect(soon.level).toBe("soon");
     const late = settlementTodos(createTodoContext(input, at("2026-11-20")))[0]!;
     expect(late.level).toBe("now");
     expect(late.detail).toContain("Skulle ha betalats");
+    // Försenad: står i rubriken (Hem visar den i signalfärg).
+    expect(late.title.replace(/\u00a0/g, " ")).toBe(
+      "Betala Kafé Ett: 500 kr försenad sedan 15 nov.",
+    );
+    const today = settlementTodos(createTodoContext(input, at("2026-11-15")))[0]!;
+    expect(today.title.replace(/\u00a0/g, " ")).toBe("Betala Kafé Ett: 500 kr i dag");
   });
 
   it("finns i computeTodos och sista dagen är den 15:e", () => {
@@ -104,5 +110,47 @@ describe("settlementTodos", () => {
       at("2026-11-03"),
     );
     expect(all.some((t) => t.kind === "settlement")).toBe(true);
+  });
+});
+
+describe("missingSettlementTodos (månaden är slut, avräkningarna saknas)", () => {
+  it("en punkt 'Skapa oktober-avräkningarna' till Utbetalning", () => {
+    const ctx = createTodoContext(
+      { ...base, missingSettlements: { month: "2026-10", storeIds: ["s2", "s1"] } },
+      at("2026-11-03"),
+    );
+    const [t, ...rest] = missingSettlementTodos(ctx);
+    expect(rest).toHaveLength(0);
+    expect(t!.title).toBe("Skapa oktober-avräkningarna");
+    expect(t!.key).toBe("settlement-create:2026-10");
+    expect(t!.kind).toBe("settlement-create");
+    expect(t!.level).toBe("now");
+    expect(t!.link).toBe("/butiker?vy=utbetalning&manad=2026-10");
+    expect(t!.detail).toContain("Butik Två, Kafé Ett saknar avräkning");
+    expect(t!.fingerprint).toBe("2");
+    const one = missingSettlementTodos(
+      createTodoContext(
+        { ...base, missingSettlements: { month: "2026-10", storeIds: ["s1"] } },
+        at("2026-11-03"),
+      ),
+    )[0]!;
+    expect(one.title).toBe("Skapa oktober-avräkningen");
+  });
+
+  it("inget saknas: ingen punkt; finns i computeTodos", () => {
+    expect(
+      missingSettlementTodos(
+        createTodoContext(
+          { ...base, missingSettlements: { month: "2026-10", storeIds: [] } },
+          at("2026-11-03"),
+        ),
+      ),
+    ).toEqual([]);
+    expect(missingSettlementTodos(createTodoContext(base, at("2026-11-03")))).toEqual([]);
+    const all = computeTodos(
+      { ...base, missingSettlements: { month: "2026-10", storeIds: ["s1"] } },
+      at("2026-11-03"),
+    );
+    expect(all.some((t) => t.kind === "settlement-create")).toBe(true);
   });
 });

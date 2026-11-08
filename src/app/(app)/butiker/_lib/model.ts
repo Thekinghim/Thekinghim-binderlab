@@ -8,6 +8,7 @@
 import type { StoreContractState } from "@/analytics/contracts/signed";
 import { ourProfitLabel } from "@/lib/store-share";
 import { CONTRACT_DEFAULTS } from "@/analytics/contracts";
+import { links } from "@/analytics/todos/common";
 import { parseIsoDate } from "@/components/shell/period-state";
 import { dataCoverage } from "@/server/data/core/period";
 import {
@@ -17,11 +18,13 @@ import {
   daysInMonth,
   monthOf,
   monthStart,
+  type AgreementGap,
   type CommissionBase,
   type IsoDate,
   type Period,
   type ProfitabilityResult,
   type ProfitabilityRow,
+  type StoreMonthSplit,
 } from "@/domain";
 import {
   formatDate,
@@ -36,6 +39,7 @@ import {
 } from "@/lib/format";
 
 import type {
+  AgreementGapView,
   AgreementState,
   AgreementView,
   CompensationModel,
@@ -193,6 +197,41 @@ export function agreementsOf(
     .sort((a, b) => (a.validFrom < b.validFrom ? 1 : a.validFrom > b.validFrom ? -1 : 0));
 }
 
+/** Kort varning för en butik utan avtal: "Inget avtal – butiken räknas som 0 %". */
+export const NO_AGREEMENT_SHORT = `Inget avtal – butiken räknas som 0${NBSP}%`;
+
+/** "10–12 okt." eller "27 okt." för en följd av dagar. */
+function rangeText(r: Period, today: IsoDate): string {
+  return r.start === r.end
+    ? dayText(r.start, today)
+    : `${dayText(r.start, today)}${SPACED_RANGE_DASH}${dayText(r.end, today)}`;
+}
+
+/**
+ * Texterna för dagar med automat utan avtal (agreementGaps i @/domain). Alla dagar utan
+ * avtal: "Inget avtal – butiken räknas som 0 %". Några dagar: "Inget avtal 3 dagar – 0 %
+ * de dagarna" och dagarna i meningen.
+ */
+export function agreementGapView(gap: AgreementGap, today: IsoDate): AgreementGapView {
+  const whole = gap.days >= gap.placedDays;
+  const shown = gap.ranges.slice(0, 3).map((r) => rangeText(r, today));
+  const more = gap.ranges.length - shown.length;
+  const when = `${shown.join(", ")}${more > 0 ? ` och ${plural(more, "period", "perioder")} till` : ""}`;
+  return {
+    days: gap.days,
+    placedDays: gap.placedDays,
+    whole,
+    short: whole
+      ? NO_AGREEMENT_SHORT
+      : `Inget avtal ${plural(gap.days, "dag", "dagar")} – 0${NBSP}% de dagarna`,
+    text: whole
+      ? `Inget avtal ${when}. Butiken räknas som 0${NBSP}% och får inget.`
+      : `Inget avtal ${when} (${plural(gap.days, "dag", "dagar")}). Butiken räknas som 0${NBSP}% de dagarna.`,
+    firstDay: gap.ranges[0]!.start,
+    lastDay: gap.ranges[0]!.end,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Siffror ur beräkningslagret
 // ---------------------------------------------------------------------------
@@ -293,6 +332,42 @@ export function changeShare(current: number, previous: number): number | null {
   return bp === null ? null : bp / 10_000;
 }
 
+/**
+ * Butikerna vars avräkning inte kan räknas klart: vinstdelning (andel av vinsten) och order
+ * utan inköpspris under avtalet (samma regel som avräkningen, som då spärras). storeId →
+ * titlarna som saknar pris, sorterade.
+ */
+export function blockedByUnpriced(
+  splits: readonly StoreMonthSplit[],
+): Map<string, readonly string[]> {
+  const out = new Map<string, Set<string>>();
+  for (const s of splits) {
+    if (s.unpricedOrders <= 0) continue;
+    const set = out.get(s.storeId) ?? new Set<string>();
+    for (const t of s.unpricedTitleIds) set.add(t);
+    out.set(s.storeId, set);
+  }
+  return new Map([...out].map(([k, v]) => [k, [...v].sort()]));
+}
+
+/** Notisen under "Till butiken" när avräkningen är spärrad, med länk till inköpspriset. */
+export function blockedNote(
+  titleIds: readonly string[] | undefined,
+  canOpenPrices: boolean,
+): StoreRow["blocked"] {
+  if (!titleIds) return null;
+  return {
+    text: BLOCKED_SHORT,
+    // Samma mål som Att göra ("Lägg in inköpspris för …"): titeln, eller sidan med flera.
+    href: canOpenPrices
+      ? links.purchasePrices(titleIds.length === 1 ? titleIds[0] : undefined)
+      : null,
+  };
+}
+
+/** Kort text för en spärrad avräkning (listan). */
+export const BLOCKED_SHORT = "Kan inte räknas klart – lägg in inköpspris";
+
 export function buildStoreRows(args: {
   stores: readonly StoreBase[];
   placements: readonly MachinePlacementRef[];
@@ -308,6 +383,19 @@ export function buildStoreRows(args: {
   recipients: ReadonlyMap<string, readonly RecipientView[]>;
   /** Kontraktet per butik (signed.ts). Saknas = okänt. */
   contracts?: ReadonlyMap<string, StoreContractState>;
+  /** storeCompensation för perioden: storeId → totalOre (det butiken får). Saknas = 0. */
+  toStore?: ReadonlyMap<string, number>;
+  /** Villkoren i klartext för perioden (storeShareTerms). Saknas = null. */
+  terms?: ReadonlyMap<string, string | null>;
+  /** agreementGaps för perioden, per butik. Saknas = inga luckor. */
+  gaps?: ReadonlyMap<string, AgreementGap>;
+  /**
+   * Butiker med vinstdelning och order utan inköpspris i perioden (blockedByUnpriced):
+   * storeId → titlarna som saknar pris. Avräkningen kan inte räknas klart. Saknas = inga.
+   */
+  blocked?: ReadonlyMap<string, readonly string[]>;
+  /** Användaren får öppna Inköpspriser (länken i notisen). Standard nej. */
+  canOpenPrices?: boolean;
   today: IsoDate;
   query: string;
 }): StoreRow[] {
@@ -319,6 +407,8 @@ export function buildStoreRows(args: {
       const own = agreementsOf(args.agreements, s.id);
       const current = own.find((a) => a.state === "current") ?? null;
       const machineCodes = machinesIn(s.id, args.placements, args.machineCodes, args.today);
+      const rawGap = args.gaps?.get(s.id);
+      const agreementGap = rawGap && !s.archived ? agreementGapView(rawGap, args.today) : null;
       const issue =
         storeIssues({
           agreements: own,
@@ -327,6 +417,7 @@ export function buildStoreRows(args: {
           archived: s.archived,
           today: args.today,
           contract: args.contracts?.get(s.id) ?? null,
+          gap: agreementGap,
         }).find((i) => i.actionable) ?? null;
       return {
         id: s.id,
@@ -345,6 +436,10 @@ export function buildStoreRows(args: {
         previousCompensationOre: args.previous ? compensationOf(prev.get(s.id)) : null,
         profitOre: row?.profitOre ?? 0,
         earnedMonthOre: args.earnedMonth.get(s.id) ?? 0,
+        toStoreOre: args.toStore?.get(s.id) ?? 0,
+        terms: args.terms?.get(s.id) ?? null,
+        blocked: blockedNote(args.blocked?.get(s.id), args.canOpenPrices === true),
+        agreementGap,
         current,
         contract: args.contracts?.get(s.id) ?? null,
         issue,
@@ -598,11 +693,20 @@ export function storeKpis(args: {
   terms?: string | null;
   /** Vinsten är efter butikens andel (standard på: butiken är vald). */
   storeShareDeducted?: boolean;
+  /**
+   * Till butiken i perioden, det vi faktiskt betalar (storeCompensation, samma som listan
+   * och avräkningen: även provisionen på order utan inköpspris). Utelämnat: andelen som
+   * dragits från vinsten (compensationOf).
+   */
+  toStoreOre?: number;
+  /** Samma för jämförelseperioden. */
+  previousToStoreOre?: number | null;
 }): KpiView[] {
   const cur = args.current;
   const prev = args.previous;
   const revenue = revenueOf(cur);
-  const compensation = compensationOf(cur);
+  const compensation = args.toStoreOre ?? compensationOf(cur);
+  const prevCompensation = args.previousToStoreOre ?? compensationOf(prev ?? undefined);
   const rel = (a: number, b: number) => {
     if (prev === null) return null;
     const bp = changeBp(a, b);
@@ -630,7 +734,7 @@ export function storeKpis(args: {
       label: args.terms ? `Till butiken · ${args.terms}` : "Till butiken",
       value: compensation,
       kind: "sek",
-      delta: rel(compensation, compensationOf(prev ?? undefined)),
+      delta: rel(compensation, prevCompensation),
       invert: true,
     },
     {
@@ -643,6 +747,17 @@ export function storeKpis(args: {
   ];
 }
 
+/**
+ * Kort notis vid nyckeltalen när sålda pack i perioden saknar inköpspris: "Till butiken"
+ * är det vi betalar (också provisionen på de orderna), men vinsten räknar inte med dem, så
+ * Till butiken + Vår del blir inte vinsten. null när alla har inköpspris.
+ */
+export function unpricedProfitNote(row: ProfitabilityRow | undefined): string | null {
+  const n = row?.unpricedOrders ?? 0;
+  if (n <= 0) return null;
+  return `${formatInt(n)}${NBSP}${n === 1 ? "såld" : "sålda"} saknar inköpspris – vinsten är inte helt rätt.`;
+}
+
 /** Vad som behöver göras för butiken, viktigast först. */
 export function storeIssues(args: {
   agreements: readonly AgreementView[];
@@ -652,6 +767,8 @@ export function storeIssues(args: {
   today: IsoDate;
   /** Kontraktet (signed.ts). Utelämnat = okänt (ingen punkt). */
   contract?: StoreContractState | null;
+  /** Dagar i perioden med automat utan avtal (agreementGapView). Utelämnat = inga. */
+  gap?: AgreementGapView | null;
 }): StoreIssue[] {
   if (args.archived) return [];
   const out: StoreIssue[] = [];
@@ -675,8 +792,17 @@ export function storeIssues(args: {
     out.push({
       id: "no-agreement",
       level: "critical",
-      text: `Inga villkor för ${codes}. Butiken får inget.`,
-      short: "Inga villkor",
+      text: `Inget avtal för ${codes}. Butiken räknas som 0${NBSP}% och får inget.`,
+      short: "Inget avtal",
+      actionable: true,
+    });
+  } else if (args.gap) {
+    // Avtal i dag, men dagar i perioden utan: de dagarna räknas som 0 %.
+    out.push({
+      id: "agreement-gap",
+      level: args.gap.whole ? "critical" : "warning",
+      text: args.gap.text,
+      short: args.gap.whole ? "Inget avtal" : `Inget avtal ${formatInt(args.gap.days)}${NBSP}d`,
       actionable: true,
     });
   }

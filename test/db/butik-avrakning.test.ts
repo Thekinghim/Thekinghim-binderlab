@@ -167,7 +167,7 @@ describe("betald", () => {
     const todos = await loadTodosFor(ownerA, new Date("2025-04-03T08:00:00Z"));
     const t = todos.find((x) => x.kind === "settlement");
     expect(t?.key).toBe("settlement:2025-03");
-    expect(t?.link).toBe("/butiker?vy=portal&manad=2025-03");
+    expect(t?.link).toBe("/butiker?vy=utbetalning&manad=2025-03");
   });
 
   it("markera som betald: databasen sätter vem och när och låser beloppet", async () => {

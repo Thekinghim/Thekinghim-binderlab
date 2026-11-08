@@ -15,7 +15,7 @@ import {
   UndoPaidButton,
 } from "./settlement-actions";
 import { MoneyCount } from "./money-count";
-import { settlementIdleHeadline } from "../_lib/settlement-headline";
+import { noAgreementLine, settlementIdleHeadline } from "../_lib/settlement-headline";
 
 const kr = (ore: number) => formatSek(ore / 100);
 const rise = (i: number) => ({ "--i": i }) as CSSProperties;
@@ -39,8 +39,9 @@ const dayLabel = (d: string) =>
   `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]!.slice(0, 3)}.`;
 
 /**
- * Butiker → Butiksportal: överst summan att betala ut, sedan avräkningarna (betala med en
- * knapp) och butikernas tillgång till portalen (bjud in med en knapp).
+ * Butiker → Utbetalning: överst summan att betala till butikerna, sedan avräkningarna
+ * (betala med en knapp) och sist butikernas tillgång till butiksportalen (bjud in med en
+ * knapp). Butiker utan avtal förra månaden (räknas som 0 %) varnas före "Skapa".
  */
 export async function SettlementsView({ viewer, today }: { viewer: Viewer; today: string }) {
   const page = await loadSettlementPageFor(viewer);
@@ -58,6 +59,7 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
     missing: page.missing.length,
     monthLabel: monthLabel(page.month),
   });
+  const noDeal = new Map(page.noAgreement.map((g) => [g.storeId, g]));
   const byMonth = new Map<string, SettlementRow[]>();
   for (const r of page.rows) {
     const list = byMonth.get(r.month);
@@ -97,16 +99,29 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
 
       {page.missing.length > 0 ? (
         <section
-          className="rise flex flex-wrap items-center justify-between gap-3 rounded-md border border-line px-4 py-3"
+          className={`rise flex flex-col gap-3 rounded-md border px-4 py-3 ${
+            page.missing.some((m) => noDeal.has(m.storeId)) ? "border-signal-line" : "border-line"
+          }`}
           style={rise(1)}
           aria-label="Saknas"
         >
-          <p className="text-base text-fg">
-            {page.missing.length === 1
-              ? `${page.missing[0]!.storeName}: ${monthLabel(page.month)} saknar avräkning.`
-              : `${page.missing.length} butiker saknar avräkning för ${monthLabel(page.month)}.`}
-          </p>
-          {page.canEdit ? <CreateSettlementsButton count={page.missing.length} /> : null}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-base text-fg">
+              {page.missing.length === 1
+                ? `${page.missing[0]!.storeName}: ${monthLabel(page.month)} saknar avräkning.`
+                : `${page.missing.length} butiker saknar avräkning för ${monthLabel(page.month)}.`}
+            </p>
+            {page.canEdit ? (
+              <CreateSettlementsButton
+                count={page.missing.length}
+                monthLabel={MONTHS[Number(page.month.slice(5, 7)) - 1]!}
+              />
+            ) : null}
+          </div>
+          <NoAgreementLines
+            gaps={page.missing.flatMap((m) => noDeal.get(m.storeId) ?? [])}
+            canEdit={page.canEdit}
+          />
         </section>
       ) : null}
 
@@ -127,6 +142,17 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
                   >
                     <div className="flex min-w-0 flex-col gap-0.5">
                       <span className="truncate text-md text-fg">{r.storeName}</span>
+                      {r.month === page.month && noDeal.has(r.storeId) && !r.paidOn ? (
+                        <span className="text-sm text-signal-fg" data-no-agreement>
+                          {noAgreementLine(noDeal.get(r.storeId)!).replace(`${r.storeName}: `, "")}{" "}
+                          <Link
+                            href={`/butiker/${r.storeId}?vy=avtal`}
+                            className="underline underline-offset-4"
+                          >
+                            Lägg in avtal →
+                          </Link>
+                        </span>
+                      ) : null}
                       <span className="meta truncate text-subtle">
                         {r.state === "paid" && r.paidOn
                           ? `Betald ${dayLabel(r.paidOn)}`
@@ -244,5 +270,33 @@ export async function SettlementsView({ viewer, today }: { viewer: Viewer; today
         </section>
       ) : null}
     </div>
+  );
+}
+
+/** Butikerna utan avtal förra månaden, med länk till "Lägg in avtal" på butikens sida. */
+function NoAgreementLines({
+  gaps,
+  canEdit,
+}: {
+  gaps: readonly { storeId: string; storeName: string; days: number; whole: boolean }[];
+  canEdit: boolean;
+}) {
+  if (gaps.length === 0) return null;
+  return (
+    <ul className="flex flex-col gap-1" data-no-agreement>
+      {gaps.map((g) => (
+        <li key={g.storeId} className="flex flex-wrap items-center gap-x-3 text-sm text-signal-fg">
+          <span>{noAgreementLine(g)}</span>
+          {canEdit ? (
+            <Link
+              href={`/butiker/${g.storeId}?vy=avtal`}
+              className="inline-flex min-h-11 items-center text-fg underline underline-offset-4"
+            >
+              Lägg in avtal →
+            </Link>
+          ) : null}
+        </li>
+      ))}
+    </ul>
   );
 }

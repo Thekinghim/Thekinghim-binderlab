@@ -87,6 +87,7 @@ export {
 } from "./prices";
 
 export { agreementOn, AgreementIndex, PlacementIndex, storeOn } from "./placements";
+export { agreementGaps, type AgreementGap } from "./agreement-gaps";
 
 export {
   createEconomicsContext,

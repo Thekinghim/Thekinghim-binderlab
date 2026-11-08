@@ -17,6 +17,7 @@ import type {
 } from "@/analytics/self-check";
 import { REFILL_WINDOW_HOURS } from "@/analytics/self-check";
 import type { Db } from "@/db/client";
+import { agreementGaps, type IsoDate, type Period } from "@/domain";
 import { awishExpiryNotice } from "@/server/awish/expiry";
 import { mysteryBatchSql } from "@/server/data/core/queries";
 import { parseState } from "@/server/awish/sync";
@@ -392,4 +393,62 @@ export async function queryHygiene(
       quantity: Number(n.quantity),
     })),
   };
+}
+
+/**
+ * Butiker (inte arkiverade) med dagar i perioden då en automat stod där men inget avtal
+ * gällde: samma placeringar och avtal som beräkningarna, samma regel (agreementGaps).
+ */
+export async function queryAgreementGaps(
+  db: Db,
+  orgId: string,
+  period: Period,
+): Promise<NonNullable<HygieneInput["agreementGaps"]>> {
+  const [placements, agreements, stores] = await Promise.all([
+    rows<{ machine_id: string; store_id: string; valid_from: string; valid_to: string | null }>(
+      db,
+      sql`select machine_id, store_id, valid_from::text as valid_from, valid_to::text as valid_to
+          from public.machine_placements where organization_id = ${orgId}::uuid`,
+    ),
+    rows<{
+      store_id: string;
+      valid_from: string;
+      valid_to: string | null;
+      commission_bp: number | null;
+      monthly_rent_ore: number | null;
+    }>(
+      db,
+      sql`select store_id, valid_from::text as valid_from, valid_to::text as valid_to,
+                 commission_bp, monthly_rent_ore::int as monthly_rent_ore
+          from public.store_agreements where organization_id = ${orgId}::uuid`,
+    ),
+    rows<{ id: string; name: string }>(
+      db,
+      sql`select id, name from public.stores
+          where organization_id = ${orgId}::uuid and archived_at is null`,
+    ),
+  ]);
+  const names = new Map(stores.map((s) => [String(s.id), s.name]));
+  return agreementGaps({
+    placements: placements.map((p) => ({
+      machineId: String(p.machine_id),
+      storeId: String(p.store_id),
+      from: p.valid_from as IsoDate,
+      to: (p.valid_to as IsoDate | null) ?? null,
+    })),
+    agreements: agreements.map((a) => ({
+      storeId: String(a.store_id),
+      validFrom: a.valid_from as IsoDate,
+      validTo: (a.valid_to as IsoDate | null) ?? null,
+      commissionBp: a.commission_bp === null ? null : Number(a.commission_bp),
+      monthlyRentOre: a.monthly_rent_ore === null ? null : Number(a.monthly_rent_ore),
+    })),
+    period,
+    storeIds: [...names.keys()],
+  }).map((g) => ({
+    storeId: g.storeId,
+    storeName: names.get(g.storeId) ?? "Okänd butik",
+    days: g.days,
+    whole: g.days >= g.placedDays,
+  }));
 }

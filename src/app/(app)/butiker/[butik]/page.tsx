@@ -13,6 +13,7 @@ import { StatusGlyph, StatusTag } from "@/components/ui/status-tag";
 import { formatInt, MISSING, NBSP } from "@/lib/format";
 import { StorePortalAccess } from "@/app/portal/_components/store-portal-access";
 
+import { AddAgreementButton } from "../_components/agreement-dialogs";
 import { AddRecipientButton } from "../_components/recipient-dialogs";
 import { StoreRevenueChart } from "../_components/charts";
 import { AgreementsTable, MachinesTable, RecipientsTable } from "../_components/detail-tables";
@@ -26,6 +27,7 @@ import {
   dayText,
   kronor,
   MODEL_LABEL,
+  NO_AGREEMENT_SHORT,
   placeText,
   plural,
   sek,
@@ -37,6 +39,11 @@ const TABS = [
   { value: "avtal", label: "Villkor" },
   { value: "kontakt", label: "Kontakt och rapport" },
 ] as const;
+
+/** Åtgärderna om avtalet (egen ruta med "Lägg in avtal"). */
+const AGREEMENT_ISSUES: ReadonlySet<string> = new Set(["no-agreement", "agreement-gap"]);
+/** Åtgärderna som har en egen ruta överst (kontraktet och avtalet), inte i listan. */
+const BANNER_ISSUES: ReadonlySet<string> = new Set(["no-contract", ...AGREEMENT_ISSUES]);
 
 /** Ankare → flik (t.ex. /butiker/<id>#ersattning från kom-igång-listan). */
 const HASH_TO_TAB: Record<string, string> = { ersattning: "avtal" };
@@ -72,6 +79,13 @@ export default async function StorePage({
   const placed = data.machines.filter((m) => m.current);
   const tab = pickTab(TABS, sp.vy);
   const rise = (i: number) => ({ "--i": i }) as React.CSSProperties;
+  // Inget avtal (i dag med automat, eller dagar i perioden): butiken räknas som 0 %.
+  const noAgreement = data.issues.find((i) => AGREEMENT_ISSUES.has(i.id)) ?? null;
+  const firstPlaced = placed.map((m) => m.from).sort()[0] ?? ctx.today;
+  const agreementFrom =
+    data.agreements.length === 0 ? firstPlaced : (data.agreementGap?.firstDay ?? ctx.today);
+  // Luckan ligger före dagens avtal: det nya avtalet slutar där luckan slutar.
+  const gapEnd = current && data.agreementGap ? (data.agreementGap.lastDay ?? null) : null;
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-6 pb-16 md:gap-16 md:px-8 md:pt-10">
@@ -131,6 +145,31 @@ export default async function StorePage({
             ) : undefined
           }
         />
+        {noAgreement && !store.archived ? (
+          <div
+            className="flex flex-col gap-3 rounded-md border border-signal-line bg-surface px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+            data-no-agreement
+          >
+            <span className="flex flex-col gap-0.5">
+              <span className="flex items-center gap-2 text-base font-medium text-fg">
+                <span aria-hidden className="size-2 shrink-0 rounded-full bg-signal" />
+                {noAgreement.id === "no-agreement" || data.agreementGap?.whole
+                  ? NO_AGREEMENT_SHORT
+                  : data.agreementGap!.short}
+              </span>
+              <span className="text-sm text-muted">{noAgreement.text}</span>
+            </span>
+            {ctx.canEdit ? (
+              <AddAgreementButton
+                storeId={store.id}
+                storeName={store.name}
+                defaultFrom={agreementFrom}
+                defaultTo={gapEnd}
+                className="max-sm:w-full"
+              />
+            ) : null}
+          </div>
+        ) : null}
         {!store.archived && data.contract !== "signed" ? (
           <div
             className={`flex flex-col gap-3 rounded-md border bg-surface px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${placed.length > 0 ? "border-signal-line" : "border-line"}`}
@@ -154,11 +193,17 @@ export default async function StorePage({
         ) : null}
         <AiPageLine metric="butikens resultat och andel" route="butiker" className="mt-4" />
         {/* Kontraktet står i rutan ovan; här resten. */}
-        {data.issues.some((i) => i.id !== "no-contract") ? <Issues data={data} /> : null}
+        {data.issues.some((i) => !BANNER_ISSUES.has(i.id)) ? <Issues data={data} /> : null}
       </div>
 
       <div className="rise flex flex-col gap-3" style={rise(1)}>
         <StoreKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
+        {/* Till butiken är det vi betalar; vinsten räknar inte order utan inköpspris. */}
+        {data.unpricedNote ? (
+          <p className="text-sm text-muted" data-unpriced-note>
+            {data.unpricedNote}
+          </p>
+        ) : null}
       </div>
 
       <div className="rise -mb-6 md:-mb-10" style={rise(2)}>
@@ -208,7 +253,7 @@ function Issues({ data }: { data: StoreDetailData }) {
       <p className="label text-subtle">Att göra</p>
       <ul className="mt-3 flex flex-col gap-2">
         {data.issues
-          .filter((i) => i.id !== "no-contract")
+          .filter((i) => !BANNER_ISSUES.has(i.id))
           .map((i) => (
             <li key={i.id} className="flex items-start gap-3 text-base">
               <span className="mt-1.5 shrink-0">

@@ -13,7 +13,9 @@ import { and, eq, isNull } from "drizzle-orm";
 import type { SettlementRef } from "@/analytics/todos";
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
-import type { IsoDate } from "@/domain";
+import { monthPeriod, type IsoDate, type IsoMonth } from "@/domain";
+import { queryPlacements } from "@/server/data/core/queries";
+import { storesPlacedIn } from "@/server/reports/sources";
 
 import { liveFor } from "./live";
 
@@ -45,4 +47,31 @@ export async function queryUnpaidSettlements(
     }
   }
   return out;
+}
+
+/**
+ * Butikerna som hade en automat under månaden men saknar avräkning för den (samma urval
+ * som "Skapa avräkningarna" på Utbetalning, src/server/settlements/service.ts). För punkten
+ * "Skapa oktober-avräkningarna" i Att göra och på Hem.
+ */
+export async function queryMissingSettlements(
+  tx: Tx,
+  orgId: string,
+  month: IsoMonth,
+): Promise<{ month: IsoMonth; storeIds: string[] }> {
+  const [placements, existing] = await Promise.all([
+    queryPlacements(tx, orgId),
+    tx
+      .select({ storeId: s.storeSettlements.storeId })
+      .from(s.storeSettlements)
+      .where(
+        and(
+          eq(s.storeSettlements.organizationId, orgId),
+          eq(s.storeSettlements.month, `${month}-01`),
+        ),
+      ),
+  ]);
+  const have = new Set(existing.map((r) => r.storeId));
+  const storeIds = storesPlacedIn(placements, monthPeriod(month)).filter((id) => !have.has(id));
+  return { month, storeIds };
 }

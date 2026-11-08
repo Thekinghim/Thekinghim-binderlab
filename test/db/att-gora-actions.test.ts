@@ -214,7 +214,14 @@ describe("listan per roll", () => {
   it("ägaren ser påfyllning, tyst automat, dubblett och butiken utan kontrakt", async () => {
     const todos = await loadTodosFor(owner, NOW);
     const kinds = todos.map((t) => t.kind).sort();
-    expect(kinds).toEqual(["contract", "duplicate-title", "refill", "stale-machine"]);
+    // Förra månaden är slut utan avräkning för butiken: "Skapa …-avräkningen".
+    expect(kinds).toEqual([
+      "contract",
+      "duplicate-title",
+      "refill",
+      "settlement-create",
+      "stale-machine",
+    ]);
     // Butiken med automat har inget kontrakt (Kontrakt → Skapa kontrakt).
     expect(todos.find((t) => t.kind === "contract")?.action?.label).toBe("Skapa kontrakt");
   });

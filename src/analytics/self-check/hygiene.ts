@@ -6,6 +6,8 @@
  *   titlar som sålt utan inköpspris  fel (vinsten saknar de orderna)
  *   negativt saldo i en automat      fel
  *   negativt saldo i vårt lager      varning (tillåtet, Vårt lager visar "Räkna om")
+ *   butik med automat utan avtal     fel när alla dagarna saknar avtal (butiken får 0 kr),
+ *                                    varning när bara några dagar saknar (0 % de dagarna)
  */
 
 import { countText, kr, resultOf } from "./common";
@@ -25,6 +27,17 @@ export interface HygieneInput {
     readonly kind: "machine" | "warehouse";
     readonly titleName: string;
     readonly quantity: number;
+  }[];
+  /**
+   * Butiker med dagar då en automat stod där men inget avtal gällde (agreementGaps i
+   * @/domain): de räknas som 0 % de dagarna. Saknas = inga.
+   */
+  readonly agreementGaps?: readonly {
+    readonly storeId: string;
+    readonly storeName: string;
+    readonly days: number;
+    /** Alla dagar med automat saknade avtal. */
+    readonly whole: boolean;
   }[];
 }
 
@@ -58,6 +71,15 @@ export function hygieneCheck(input: HygieneInput): CheckResult {
       link: s.kind === "machine" ? "/lager" : "/vart-lager",
     });
   }
+  for (const g of input.agreementGaps ?? []) {
+    findings.push({
+      level: g.whole ? "fail" : "warn",
+      text: g.whole
+        ? `${g.storeName} har en automat men inget avtal och räknas som 0 %. Lägg in avtalet.`
+        : `${g.storeName} saknar avtal ${countText(g.days, "dag", "dagar")} och räknas som 0 % de dagarna.`,
+      link: `/butiker/${encodeURIComponent(g.storeId)}?vy=avtal`,
+    });
+  }
   const fails = findings.filter((f) => f.level === "fail").length;
   return resultOf("datahygien", {
     findings,
@@ -66,9 +88,10 @@ export function hygieneCheck(input: HygieneInput): CheckResult {
       { label: "Order utan belopp", value: input.ordersWithoutAmount, unit: "count" },
       { label: "Titlar utan inköpspris", value: input.unpricedTitles.length, unit: "count" },
       { label: "Negativa saldon", value: input.negativeStock.length, unit: "count" },
+      { label: "Butiker utan avtal", value: input.agreementGaps?.length ?? 0, unit: "count" },
     ],
     summary: {
-      pass: "Alla order har titel och belopp, alla sålda titlar har inköpspris, inga negativa saldon.",
+      pass: "Alla order har titel och belopp, alla sålda titlar har inköpspris, inga negativa saldon, alla butiker med automat har avtal.",
       warn: "Inga fel; något att titta på.",
       fail: `${countText(fails, "sak", "saker")} att rätta i datan.`,
     },

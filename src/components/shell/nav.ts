@@ -547,7 +547,7 @@ export const navSections: ReadonlyArray<NavSection> = [
       tab("butiker", "Butiker"),
       tab("avtal", "Kontrakt"),
       tab("expansion", "Expansion"),
-      tab("butiker", "Butiksportal", "portal", { context: false }),
+      tab("butiker", "Utbetalning", "utbetalning", { context: false }),
     ],
   },
   {

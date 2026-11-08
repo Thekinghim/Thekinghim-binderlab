@@ -460,6 +460,28 @@ describe("datahygien", () => {
     });
     expect(r.status).toBe("warn");
   });
+
+  it("butik med automat utan avtal: fel (0 kr); några dagar utan avtal: varning", () => {
+    const whole = hygieneCheck({
+      ...clean,
+      agreementGaps: [{ storeId: "s3", storeName: "Hörnan", days: 12, whole: true }],
+    });
+    expect(whole.status).toBe("fail");
+    expect(whole.findings[0]).toEqual({
+      level: "fail",
+      text: "Hörnan har en automat men inget avtal och räknas som 0 %. Lägg in avtalet.",
+      link: "/butiker/s3?vy=avtal",
+    });
+    const some = hygieneCheck({
+      ...clean,
+      agreementGaps: [{ storeId: "s1", storeName: "Kiosken", days: 3, whole: false }],
+    });
+    expect(some.status).toBe("warn");
+    expect(some.findings[0]!.text.replace(/\u00a0/g, " ")).toBe(
+      "Kiosken saknar avtal 3 dagar och räknas som 0 % de dagarna.",
+    );
+    expect(some.figures.find((f) => f.label === "Butiker utan avtal")?.value).toBe(1);
+  });
 });
 
 // ---------------------------------------------------------------------------

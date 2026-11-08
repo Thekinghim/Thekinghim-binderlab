@@ -478,6 +478,54 @@ describe("butikernas andel: samma regel på alla sidor (seedad databas, fyra sor
     });
   });
 
+  it("Butiker: 'Till butiken' per butik = avräkningen, och 'Vår vinst' är ändå före andelen", async () => {
+    await asOwner(async () => {
+      const ids = [...storeIds.values()];
+      const live = await withUserDbFor(owner.user, (tx) =>
+        computeSettlementsTx(tx, {
+          organizationId: orgId,
+          month: "2026-10",
+          storeIds: ids,
+          now: NOW,
+        }),
+      );
+      const facit = await beforeShareFacit(OCTOBER.from, OCTOBER.to);
+      for (const on of [false, true]) {
+        const list = await loadStoreList(withToggle(OCTOBER, on));
+        let total = 0;
+        for (const [name, id] of storeIds) {
+          const row = list.rows.find((r) => r.id === id)!;
+          const s = live.get(id);
+          const amount = s && s.ok ? s.computed.amountOre : 0;
+          // Samma motor som avräkningen: exakt det butiken ska få för månaden.
+          expect(row.toStoreOre, `${on ? "på" : "av"} ${name}`).toBe(amount);
+          total += amount;
+        }
+        expect(list.rows.reduce((n, r) => n + r.toStoreOre, 0)).toBe(total);
+        // Kolumnen ändrar inte vår vinst: av = före andelen, på = efter.
+        const profit = list.rows.reduce((n, r) => n + r.profitOre, 0);
+        expect(profit).toBe(on ? facit - total : facit);
+        expect(list.showStoreShare).toBe(on);
+      }
+      const list = await loadStoreList(withToggle(OCTOBER, false));
+      const terms = new Map(list.rows.map((r) => [r.name, r.terms]));
+      expect(terms.get("Spelbutiken Centrum (exempel)")).toBe("50\u00a0% av vinsten");
+      expect(terms.get("Kiosken Stationen (exempel)")).toBe(
+        "8\u00a0% av försäljningen + hyra 750\u00a0kr/mån",
+      );
+      expect(terms.get("Gallerian Väst (exempel)")).toBe("hyra 1\u00a0500\u00a0kr/mån");
+      // Butiken utan avtal: BL-003 stod där 27–31 okt. utan avtal, räknas som 0 %.
+      const noDeal = list.rows.find((r) => r.name === "Utan avtal")!;
+      expect(noDeal.terms).toBeNull();
+      expect(noDeal.toStoreOre).toBe(0);
+      expect(noDeal.agreementGap).toMatchObject({ days: 5, placedDays: 5, whole: true });
+      expect(noDeal.agreementGap!.short).toBe("Inget avtal – butiken räknas som 0\u00a0%");
+      expect(list.rows.filter((r) => r.agreementGap !== null).map((r) => r.name)).toEqual([
+        "Utan avtal",
+      ]);
+    });
+  });
+
   it("vald butik drar just den butikens andel, med butikens villkor i etiketten", async () => {
     await asOwner(async () => {
       const id = storeIds.get("Spelbutiken Centrum (exempel)")!;

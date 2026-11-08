@@ -8,7 +8,14 @@
  */
 
 import type { SignableContract } from "@/analytics/contracts/signed";
-import type { EconomicsSources, IsoDate, OrderLine, Period } from "@/domain";
+import type {
+  AgreementGap,
+  EconomicsSources,
+  IsoDate,
+  IsoMonth,
+  OrderLine,
+  Period,
+} from "@/domain";
 import type { SlotPeriod } from "./assortment";
 
 /** En order med betaltidpunkt. Tidpunkten behövs för regeln om automater som inte sålt på 48 timmar. */
@@ -220,6 +227,8 @@ export type TodoKind =
   | "contract"
   | "alert"
   | "settlement"
+  | "settlement-create"
+  | "agreement"
   | "team";
 
 /** Brådskenivå: 'now' (gör i dag), 'soon' (de närmaste dagarna), 'later' (när tid finns). */
@@ -302,6 +311,20 @@ export interface TodoInput extends EconomicsSources {
   readonly contracts?: readonly SignableContract[];
   /** Obetalda månadsavräkningar till butikerna. Saknas = inga. */
   readonly unpaidSettlements?: readonly SettlementRef[];
+  /**
+   * Månaden som ska avräknas (förra månaden) och butikerna som hade en automat då men
+   * saknar avräkning (samma urval som knappen på Utbetalning). Saknas = inga.
+   */
+  readonly missingSettlements?: {
+    readonly month: IsoMonth;
+    readonly storeIds: readonly string[];
+  };
+  /**
+   * Butiker med dagar då en automat stod där men inget avtal gällde (agreementGaps i
+   * @/domain), från avräkningsmånadens början t.o.m. i dag. Butiken räknas som 0 % de
+   * dagarna. Saknas = inga punkter.
+   */
+  readonly agreementGaps?: readonly AgreementGap[];
   /** Öppna larm. Bara okvitterade larm om automater och importer blir punkter. */
   readonly alerts?: readonly AlertRef[];
   /**

@@ -20,7 +20,31 @@ import {
   reactivateMachine,
   updateMachine,
 } from "../actions";
+import { placementAgreementWarning } from "../_lib/placement-warning";
 import type { MachineEditable, StoreOption } from "../_lib/types";
+
+/**
+ * "Inget avtal – butiken räknas som 0 %" under butiksvalet när den valda butiken saknar
+ * avtal från dagen automaten ställs dit, med länk till butikens avtal.
+ */
+function NoAgreementNote({ store, day }: { store: StoreOption | undefined; day: string }) {
+  const text = placementAgreementWarning(store, day);
+  if (!text || !store) return null;
+  return (
+    <p role="status" className="flex items-start gap-2 text-sm" data-no-agreement>
+      <span aria-hidden className="mt-1.5 inline-block size-2 shrink-0 bg-signal" />
+      <span className="text-fg">
+        {text}{" "}
+        <a
+          href={`/butiker/${encodeURIComponent(store.id)}?vy=avtal`}
+          className="whitespace-nowrap underline underline-offset-4"
+        >
+          Lägg in avtal →
+        </a>
+      </span>
+    </p>
+  );
+}
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -136,11 +160,21 @@ export function AddMachineButton({
   suggestedCode: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [storeId, setStoreId] = useState("");
+  const [from, setFrom] = useState<string>(today);
   const router = useRouter();
   const toast = useToast();
   return (
     <>
-      <Button variant="primary" iconLeft="plus" onClick={() => setOpen(true)}>
+      <Button
+        variant="primary"
+        iconLeft="plus"
+        onClick={() => {
+          setStoreId("");
+          setFrom(today);
+          setOpen(true);
+        }}
+      >
         Lägg till automat
       </Button>
       <FormDialog
@@ -194,18 +228,21 @@ export function AddMachineButton({
                 label="Driftstart"
                 type="date"
                 defaultValue={today}
+                onChange={(e) => setFrom(e.target.value)}
                 required
               />
               <Select
                 name="storeId"
                 label="Butik"
                 defaultValue=""
+                onChange={(e) => setStoreId(e.target.value)}
                 options={[
                   { value: "", label: "Ingen butik ännu" },
                   ...stores.map((s) => ({ value: s.id, label: s.name })),
                 ]}
               />
             </div>
+            <NoAgreementNote store={stores.find((s) => s.id === storeId)} day={from} />
           </>
         ) : null}
       </FormDialog>
@@ -232,6 +269,8 @@ export function MachineActions({
   storeName: string | null;
 }) {
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [moveStore, setMoveStore] = useState("");
+  const [moveFrom, setMoveFrom] = useState<string>("");
   const [reactivating, startReactivate] = useTransition();
   const router = useRouter();
   const toast = useToast();
@@ -295,7 +334,11 @@ export function MachineActions({
               variant="secondary"
               size="sm"
               className={MOBILE_MENU_ITEM}
-              onClick={() => setDialog("move")}
+              onClick={() => {
+                setMoveStore("");
+                setMoveFrom(moveDefault);
+                setDialog("move");
+              }}
               disabled={otherStores.length === 0}
             >
               {machine.storeId ? "Flytta till en annan butik" : "Placera i butik"}
@@ -395,6 +438,7 @@ export function MachineActions({
               name="storeId"
               label="Till butik"
               defaultValue=""
+              onChange={(e) => setMoveStore(e.target.value)}
               options={[
                 { value: "", label: "Välj butik" },
                 ...otherStores.map((s) => ({ value: s.id, label: s.name })),
@@ -406,9 +450,14 @@ export function MachineActions({
               label={machine.storeId ? "Flyttdag" : "Från"}
               type="date"
               defaultValue={moveDefault}
+              onChange={(e) => setMoveFrom(e.target.value)}
               min={moveMin}
               max={machine.activeTo ?? undefined}
               required
+            />
+            <NoAgreementNote
+              store={otherStores.find((s) => s.id === moveStore)}
+              day={moveFrom || moveDefault}
             />
             <Input name="note" label="Anteckning" autoComplete="off" maxLength={500} />
           </>

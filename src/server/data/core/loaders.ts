@@ -25,7 +25,9 @@ import type { Tx } from "@/db/client";
 import type { MemberRole } from "@/db/schema";
 import {
   addDays,
+  agreementGaps,
   buildLedger,
+  monthStart,
   maxDate,
   minDate,
   storeShareInView,
@@ -78,7 +80,8 @@ import {
   queryStock,
   queryTodoDismissals,
 } from "./queries";
-import { queryUnpaidSettlements } from "@/server/settlements/queries";
+import { queryMissingSettlements, queryUnpaidSettlements } from "@/server/settlements/queries";
+import { settlementMonthFor } from "@/server/settlements/model";
 import { querySlotCapacities, type SlotCapacityRow } from "./slot-capacity";
 import { queryTeamSize } from "./team-size";
 
@@ -768,28 +771,48 @@ export async function loadTodoStateFor(
     let input: TodoInput;
     if (baseP) {
       const reportSince = addDays(today, -TODO_REPORT_LOOKBACK_DAYS);
-      const [orders, recipients, deliveries, drafts, contracts, alerts, unpaidSettlements, team] =
-        await Promise.all([
-          queryOrders(tx, orgId, range, NO_SCOPE),
-          queryReportRecipients(tx, orgId),
-          queryReportDeliveries(tx, orgId, reportSince),
-          queryReportDrafts(tx, orgId, reportSince),
-          queryActiveContracts(tx, orgId),
-          queryOpenAlerts(tx, orgId),
-          // Månadsavräkningar som inte är betalda (Butiker → Butiksportal). I appen sparade
-          // en kort stund (options.unpaidSettlements, src/server/settlements/cache.ts).
-          options.unpaidSettlements
-            ? options.unpaidSettlements()
-            : queryUnpaidSettlements(tx, orgId, now),
-          // Konton och inbjudningar: punkten "Bjud in delägaren" (bara ägare och admin).
-          queryTeamSize(tx, orgId),
-        ]);
+      const settlementMonth = settlementMonthFor(today);
+      const [
+        orders,
+        recipients,
+        deliveries,
+        drafts,
+        contracts,
+        alerts,
+        unpaidSettlements,
+        team,
+        missingSettlements,
+      ] = await Promise.all([
+        queryOrders(tx, orgId, range, NO_SCOPE),
+        queryReportRecipients(tx, orgId),
+        queryReportDeliveries(tx, orgId, reportSince),
+        queryReportDrafts(tx, orgId, reportSince),
+        queryActiveContracts(tx, orgId),
+        queryOpenAlerts(tx, orgId),
+        // Månadsavräkningar som inte är betalda (Butiker → Butiksportal). I appen sparade
+        // en kort stund (options.unpaidSettlements, src/server/settlements/cache.ts).
+        options.unpaidSettlements
+          ? options.unpaidSettlements()
+          : queryUnpaidSettlements(tx, orgId, now),
+        // Konton och inbjudningar: punkten "Bjud in delägaren" (bara ägare och admin).
+        queryTeamSize(tx, orgId),
+        // Förra månadens butiker utan avräkning: "Skapa oktober-avräkningarna".
+        queryMissingSettlements(tx, orgId, settlementMonth),
+      ]);
       const { prices, agreements, settings } = await baseP;
+      const placements = effectivePlacements(master.placements, orders.orders);
+      // Butiker med automat men utan avtal från avräkningsmånaden t.o.m. i dag (0 %).
+      const archivedStores = new Set(master.stores.filter((st) => st.archived).map((st) => st.id));
+      const gaps = agreementGaps({
+        placements,
+        agreements,
+        period: { start: monthStart(settlementMonth), end: today },
+      }).filter((g) => !archivedStores.has(g.storeId));
       input = {
         orders: orders.orders,
         prices,
         agreements,
-        placements: effectivePlacements(master.placements, orders.orders),
+        placements,
         settings,
         titles: master.titles,
         machines: master.machines,
@@ -799,6 +822,8 @@ export async function loadTodoStateFor(
         reportDeliveries: deliveries,
         reportDrafts: drafts,
         unpaidSettlements,
+        missingSettlements,
+        agreementGaps: gaps,
         contracts,
         alerts,
         team,

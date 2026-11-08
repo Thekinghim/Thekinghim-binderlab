@@ -6,7 +6,7 @@
  */
 
 import type { HealthStatus } from "@/analytics/health";
-import type { IsoDate } from "@/domain";
+import type { IsoDate, StoreAgreement } from "@/domain";
 
 /** Automatens läge i registret (active_from / active_to mot i dag). */
 export type MachineLifecycle = "active" | "planned" | "decommissioned";
@@ -218,6 +218,11 @@ export interface UnitEconomicsView {
 export interface StoreOption {
   readonly id: string;
   readonly name: string;
+  /**
+   * Butikens avtal (för varningen "inget avtal – räknas som 0 %" när automaten placeras),
+   * eller utelämnat när de inte är kända (då ingen varning).
+   */
+  readonly agreements?: readonly StoreAgreement[];
 }
 
 /** Det som formulären behöver om automaten. */

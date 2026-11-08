@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { profitability, storeCompensation, type ProfitabilityInput } from "@/domain";
+import {
+  agreementGaps,
+  buildLedger,
+  profitability,
+  storeCompensation,
+  type ProfitabilityInput,
+} from "@/domain";
+import { storeShareTerms } from "@/lib/store-share";
 
 import { formatSek } from "@/lib/format";
 
@@ -8,7 +15,11 @@ import { storeColumnKeys } from "../_components/store-table";
 import type { StoreRow } from "./types";
 import {
   activeStores,
+  agreementGapView,
   agreementState,
+  BLOCKED_SHORT,
+  blockedByUnpriced,
+  blockedNote,
   buildStoreRows,
   changeText,
   contractAction,
@@ -194,7 +205,10 @@ describe("listan", () => {
   });
   it("sorterar på intäkt och flaggar det som kräver åtgärd, som butikens sida", () => {
     expect(rows.map((r) => r.id)).toEqual(["s1", "s2", "s3"]);
-    expect(rows[2]!.issue).toMatchObject({ short: "Inga villkor", level: "critical" });
+    expect(rows[2]!.issue).toMatchObject({ short: "Inget avtal", level: "critical" });
+    expect(rows[2]!.issue?.text).toBe(
+      `Inget avtal för BL-003. Butiken räknas som 0${NB}% och får inget.`,
+    );
     expect(rows[2]!.machineCodes).toEqual(["BL-003"]);
     // Gallerian har avtal men ingen tar emot rapporten.
     expect(rows[1]!.issue?.short).toBe("Ingen får rapporten");
@@ -237,10 +251,132 @@ describe("listan", () => {
     const k = listKpis(rows, "november", false);
     expect(k.map((x) => x.id)).toEqual(["revenue", "profit"]);
     expect(k[1]).toMatchObject({ label: "Vår vinst", value: profit });
-    // Tabellen: andelen (perioden och månaden) bara med vyknappen.
+    // Tabellen: "Till butiken" (det butiken får i perioden) står alltid som egen kolumn,
+    // bredvid "Vår vinst" som är före andelen. Månadens intjänade bara med vyknappen.
+    expect(storeColumnKeys(false)).toEqual(
+      expect.arrayContaining(["revenue", "toStore", "profit"]),
+    );
     expect(storeColumnKeys(false)).not.toContain("compensation");
     expect(storeColumnKeys(false)).not.toContain("earned");
-    expect(storeColumnKeys(true)).toEqual(expect.arrayContaining(["compensation", "earned"]));
+    expect(storeColumnKeys(true)).toEqual(expect.arrayContaining(["toStore", "earned"]));
+    const keys = storeColumnKeys(false);
+    expect(keys.indexOf("toStore")).toBe(keys.indexOf("revenue") + 1);
+  });
+});
+
+describe("listan: villkor, till butiken och butiker utan avtal", () => {
+  const base = input();
+  // S3 har en automat från 1 nov. men inget avtal.
+  const withNoDeal: ProfitabilityInput = {
+    ...base,
+    placements: [
+      ...base.placements,
+      { machineId: "m3", storeId: "s3", from: "2026-11-01", to: null },
+    ],
+    orders: [
+      ...base.orders,
+      {
+        id: "o4",
+        externalId: "4",
+        titleId: "t",
+        machineId: "m3",
+        businessDate: "2026-11-02",
+        amountOre: 9_000,
+      },
+    ],
+  };
+  const period = withNoDeal.period;
+  const comp = storeCompensation(withNoDeal);
+  const gaps = agreementGaps({
+    placements: withNoDeal.placements,
+    agreements: withNoDeal.agreements,
+    period,
+  });
+  const rows = buildStoreRows({
+    stores: [
+      { id: "s1", name: "Kiosken", address: null, city: null, isExample: false, archived: false },
+      { id: "s2", name: "Gallerian", address: null, city: null, isExample: false, archived: false },
+      { id: "s3", name: "Hörnan", address: null, city: null, isExample: false, archived: false },
+    ],
+    placements: withNoDeal.placements,
+    machineCodes: new Map([
+      ["m1", "BL-001"],
+      ["m2", "BL-002"],
+      ["m3", "BL-003"],
+    ]),
+    agreements,
+    current: profitability(withNoDeal, "store"),
+    previous: null,
+    earnedMonth: new Map(),
+    recipients: new Map(),
+    toStore: new Map(comp.stores.map((c) => [c.storeId, c.totalOre])),
+    terms: new Map(
+      ["s1", "s2", "s3"].map((id) => [id, storeShareTerms(withNoDeal.agreements, id, period)]),
+    ),
+    gaps: new Map(gaps.map((g) => [g.storeId, g])),
+    today: "2026-11-02",
+    query: "",
+  });
+  const byId = (id: string) => rows.find((r) => r.id === id)!;
+
+  it("villkoren i klartext och det butiken får, samma motor som avräkningen", () => {
+    expect(byId("s1").terms).toBe(`10${NB}% av försäljningen`);
+    expect(byId("s2").terms).toBe(`hyra 300${NB}kr/mån`);
+    expect(byId("s3").terms).toBeNull();
+    expect(byId("s1").toStoreOre).toBe(1_500);
+    expect(byId("s2").toStoreOre).toBe(2_000);
+    expect(byId("s3").toStoreOre).toBe(0);
+    expect(rows.reduce((n, r) => n + r.toStoreOre, 0)).toBe(comp.totalOre);
+    // Vår vinst på raden är före butikens andel (vyknappen av): den ändras inte av kolumnen.
+    const before = profitability(
+      { ...withNoDeal, settings: { ...withNoDeal.settings, deductStoreShare: false } },
+      "store",
+    );
+    const s1 = before.rows.find((r) => r.key === "s1")!;
+    expect(s1.profitOre).toBe(15_000 - 2 * 2_000);
+  });
+
+  it("butik med automat men utan avtal: varningen och 0 %", () => {
+    const s3 = byId("s3");
+    expect(s3.agreementGap).toMatchObject({
+      days: 2,
+      placedDays: 2,
+      whole: true,
+      firstDay: "2026-11-01",
+    });
+    expect(s3.agreementGap!.short).toBe(`Inget avtal – butiken räknas som 0${NB}%`);
+    expect(s3.issue?.id).toBe("no-agreement");
+    expect(byId("s1").agreementGap).toBeNull();
+  });
+
+  it("dagar utan avtal fast avtal finns i dag: egen åtgärd med dagarna", () => {
+    const view = agreementGapView(
+      {
+        storeId: "s2",
+        days: 3,
+        placedDays: 33,
+        ranges: [{ start: "2026-10-01", end: "2026-10-03" }],
+        machineIds: ["m2"],
+      },
+      "2026-11-02",
+    );
+    expect(view.whole).toBe(false);
+    expect(view.short).toBe(`Inget avtal 3${NB}dagar – 0${NB}% de dagarna`);
+    expect(view.text).toContain("Butiken räknas som 0");
+    const issues = storeIssues({
+      agreements,
+      machineCodes: ["BL-002"],
+      recipients: [{ id: "r", name: "A", email: "a@b.se", active: true, lastSentAt: null }],
+      archived: false,
+      today: "2026-11-02",
+      gap: view,
+    }).filter((i) => i.id === "agreement-gap");
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      level: "warning",
+      actionable: true,
+      short: `Inget avtal 3${NB}d`,
+    });
   });
 });
 
@@ -449,5 +585,110 @@ describe("contractAction (fliken Villkor visade alltid Skapa kontrakt)", () => {
       href: "/avtal?skapa=store%3As1",
       primary: true,
     });
+  });
+});
+
+describe("listan: avräkningen kan inte räknas klart (vinstdelning utan inköpspris)", () => {
+  // S1 delar vinsten 30 % och har en order på en titel utan pris ("u"); S2 provision 10 %
+  // med samma titel (provisionen behöver inget inköpspris, inget spärras).
+  const base = input();
+  const withSplit: ProfitabilityInput = {
+    ...base,
+    orders: [
+      ...base.orders,
+      {
+        id: "o5",
+        externalId: "5",
+        titleId: "u",
+        machineId: "m1",
+        businessDate: "2026-11-02",
+        amountOre: 4_000,
+      },
+      {
+        id: "o6",
+        externalId: "6",
+        titleId: "u",
+        machineId: "m2",
+        businessDate: "2026-11-02",
+        amountOre: 4_000,
+      },
+    ],
+    agreements: [
+      {
+        storeId: "s1",
+        validFrom: "2026-10-01",
+        validTo: null,
+        commissionBp: 3_000,
+        monthlyRentOre: null,
+        commissionBase: "profit_after_costs",
+      },
+      {
+        storeId: "s2",
+        validFrom: "2026-10-01",
+        validTo: null,
+        commissionBp: 1_000,
+        monthlyRentOre: null,
+      },
+    ],
+  };
+  const blocked = blockedByUnpriced(buildLedger(withSplit).profitSplits);
+  const rows = (canOpenPrices: boolean) =>
+    buildStoreRows({
+      stores: [
+        { id: "s1", name: "Kiosken", address: null, city: null, isExample: false, archived: false },
+        {
+          id: "s2",
+          name: "Gallerian",
+          address: null,
+          city: null,
+          isExample: false,
+          archived: false,
+        },
+      ],
+      placements: withSplit.placements,
+      machineCodes: new Map([
+        ["m1", "BL-001"],
+        ["m2", "BL-002"],
+      ]),
+      agreements,
+      current: profitability(withSplit, "store"),
+      previous: null,
+      earnedMonth: new Map(),
+      recipients: new Map(),
+      blocked,
+      canOpenPrices,
+      today: "2026-11-02",
+      query: "",
+    });
+
+  it("bara butiken med vinstdelning och order utan pris", () => {
+    expect([...blocked]).toEqual([["s1", ["u"]]]);
+    const r = rows(true);
+    expect(r.find((x) => x.id === "s1")!.blocked).toEqual({
+      text: "Kan inte räknas klart – lägg in inköpspris",
+      // Samma mål som Att göra ("Lägg in inköpspris för …"): links.purchasePrices(titel).
+      href: "/inkopspriser?titel=u",
+    });
+    expect(r.find((x) => x.id === "s2")!.blocked).toBeNull();
+  });
+
+  it("utan behörighet till Inköpspriser: texten utan länk", () => {
+    expect(rows(false).find((x) => x.id === "s1")!.blocked).toEqual({
+      text: BLOCKED_SHORT,
+      href: null,
+    });
+  });
+
+  it("flera titlar utan pris: länken går till Inköpspriser", () => {
+    expect(blockedNote(["u", "v"], true)?.href).toBe("/inkopspriser");
+    expect(blockedNote(undefined, true)).toBeNull();
+  });
+
+  it("alla order med pris: inget spärras", () => {
+    const priced = {
+      ...withSplit,
+      prices: [...withSplit.prices, { titleId: "u", unitCostOre: 1_000, validFrom: "2026-01-01" }],
+    };
+    expect(blockedByUnpriced(buildLedger(priced).profitSplits).size).toBe(0);
   });
 });

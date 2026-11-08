@@ -39,6 +39,7 @@ import { liveFor } from "@/server/settlements/live";
 import { syncSelfCheckAlerts, type AlertOutcome } from "./alerts";
 import { gatherProfit, monthStoreShares, unpricedTitlesFor, type UnpricedTitle } from "./profit";
 import {
+  queryAgreementGaps,
   queryAwishReads,
   queryHygiene,
   queryRefillPushes,
@@ -191,11 +192,13 @@ export async function runChecks(db: Db, viewer: Viewer, now: Date): Promise<Chec
       return settlementCheck(rows);
     }),
     timed("datahygien", async () => {
-      const [base, unpricedTitles] = await Promise.all([
+      const [base, unpricedTitles, agreementGaps] = await Promise.all([
         queryHygiene(db, orgId, from30),
         unpricedP,
+        // Butiker med automat men utan avtal (räknas som 0 %), senaste 30 dagarna.
+        queryAgreementGaps(db, orgId, { start: from30, end: today }),
       ]);
-      return hygieneCheck({ ...base, unpricedTitles });
+      return hygieneCheck({ ...base, unpricedTitles, agreementGaps });
     }),
   ]);
   return results;
