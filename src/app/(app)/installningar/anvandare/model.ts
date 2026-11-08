@@ -63,6 +63,10 @@ export interface MemberRow {
   role: MemberRole;
   /** ISO-tid. */
   createdAt: string;
+  /** Enkel vy (memberships.view_mode). */
+  viewMode?: "full" | "simple";
+  /** Språket i appen (profiles.locale). */
+  locale?: "sv" | "en";
 }
 
 export interface InvitationRow {
@@ -74,6 +78,9 @@ export interface InvitationRow {
   /** ISO-tid. */
   expiresAt: string;
   invitedBy: string | null;
+  /** Vy och språk när inbjudan tas emot. */
+  viewMode?: "full" | "simple";
+  locale?: "sv" | "en";
 }
 
 export interface MemberPermissions {
@@ -115,6 +122,19 @@ export function memberPermissions(
     return { canChangeRole: false, canRemove: false, reason: LAST_OWNER_REASON };
   }
   return { canChangeRole: true, canRemove: true, reason: null };
+}
+
+/**
+ * Får `actor` ändra medlemmens Enkel vy och språk? Ägare och admin, aldrig sin egen vy
+ * (BL130 i databasen), och admin aldrig en ägare (memberships_update).
+ */
+export function canSetMemberView(
+  actor: MemberRole,
+  member: Pick<MemberRow, "role">,
+  isSelf: boolean,
+): boolean {
+  if (!canManageMembers(actor) || isSelf) return false;
+  return actor === "owner" || member.role !== "owner";
 }
 
 /** En admin kan inte återkalla en ägarinbjudan (som RLS på invitations). */

@@ -18,6 +18,7 @@ import {
   ROLE_SUMMARY,
   assignableRoles,
   canRevokeInvitation,
+  canSetMemberView,
   countByRole,
   headline,
   invitationsAside,
@@ -68,6 +69,9 @@ export default async function UsersPage({
       since: date(m.createdAt),
       isSelf: m.userId === ctx.user.id,
       ...memberPermissions(data.role, m, ownerCount),
+      viewMode: m.viewMode ?? "full",
+      locale: m.locale ?? "sv",
+      canSetView: canSetMemberView(data.role, m, m.userId === ctx.user.id),
     }));
 
   const invitations: InvitationView[] = data.invitations.map((i) => ({
@@ -78,6 +82,8 @@ export default async function UsersPage({
     expires: date(i.expiresAt),
     invitedBy: i.invitedBy ? (nameById.get(i.invitedBy) ?? "En tidigare medlem") : "Okänd",
     canManage: canRevokeInvitation(data.role, i),
+    viewMode: i.viewMode ?? "full",
+    locale: i.locale ?? "sv",
   }));
 
   const newest = data.members.reduce<(typeof data.members)[number] | null>(

@@ -4,6 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import { cookies } from "next/headers";
 import { ThemeSync } from "@/components/shell/theme-sync";
 import { ToastProvider } from "@/components/ui/toast";
+import { getRequestLocale } from "@/i18n/request";
 import { THEME_COOKIE, themeFromCookie } from "@/lib/theme";
 import "./globals.css";
 
@@ -37,17 +38,20 @@ export async function generateViewport(): Promise<Viewport> {
  * inloggade sidorna redan är.
  */
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const theme = themeFromCookie((await cookies()).get(THEME_COOKIE)?.value);
+  const [jar, locale] = await Promise.all([cookies(), getRequestLocale()]);
+  const theme = themeFromCookie(jar.get(THEME_COOKIE)?.value);
+  // Språket ur kakan (eller webbläsaren). Inloggade: skalet håller kakan och lang i takt med
+  // profilen (LocaleSync), så att nästa förfrågan redan har rätt språk.
   return (
     <html
-      lang="sv"
+      lang={locale}
       data-theme={theme}
       className={`${GeistSans.variable} ${GeistMono.variable}`}
       suppressHydrationWarning
     >
       <body>
         <ThemeSync />
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider locale={locale}>{children}</ToastProvider>
       </body>
     </html>
   );

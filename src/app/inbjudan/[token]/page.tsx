@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { ROLE_LABEL } from "@/app/(app)/installningar/anvandare/model";
 import { AuthFrame } from "@/app/logga-in/auth-frame";
+import { messages, type Locale, type Messages } from "@/i18n";
+import { getCookieLocale, getRequestLocale } from "@/i18n/request";
 import { getServerEnv } from "@/lib/env";
 import { describeInvitation } from "@/server/invitations";
 import { getSessionUser } from "@/server/session";
@@ -12,7 +13,9 @@ import { AcceptForm, SwitchAccount } from "./accept-form";
 import { devAccountExists } from "./account";
 import { InviteLink } from "./invite-link";
 
-export const metadata: Metadata = { title: "Inbjudan" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: messages(await getRequestLocale()).invite.eyebrow };
+}
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -20,31 +23,25 @@ function first(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
 }
 
-const INVALID: Record<"missing" | "expired" | "accepted", { aside: string; body: string }> = {
-  // Okänd token: återkallad, ersatt av en ny länk ("Skicka igen") eller avklippt.
-  // Sidan kan inte skilja dem åt utan att avslöja mer, så texten är neutral.
-  missing: {
-    aside: "Länken känns inte igen.",
-    body: "Be om en ny inbjudan.",
-  },
-  expired: {
-    aside: "Den har gått ut.",
-    body: "Be om en ny inbjudan.",
-  },
-  accepted: {
-    aside: "Den har redan använts.",
-    body: "Logga in som vanligt.",
-  },
-};
+// Okänd token: återkallad, ersatt av en ny länk ("Skicka igen") eller avklippt. Sidan kan
+// inte skilja dem åt utan att avslöja mer, så texten är neutral.
+function invalidCopy(
+  t: Messages,
+  status: "missing" | "expired" | "accepted",
+): { aside: string; body: string } {
+  if (status === "expired") return { aside: t.invite.expiredAside, body: t.invite.expiredBody };
+  if (status === "accepted") return { aside: t.invite.acceptedAside, body: t.invite.acceptedBody };
+  return { aside: t.invite.missingAside, body: t.invite.missingBody };
+}
 
-function Eyebrow() {
+function Eyebrow({ t }: { t: Messages }) {
   return (
     <>
       <span className="tnum text-fg">01</span>
       <span aria-hidden className="text-faint">
         /
       </span>
-      <span>Inbjudan</span>
+      <span>{t.invite.eyebrow}</span>
     </>
   );
 }
@@ -85,18 +82,29 @@ export default async function InvitationPage({
   const query = await searchParams;
   const [lookup, user] = await Promise.all([describeInvitation(token), getSessionUser()]);
   const loginHref = `/logga-in?next=${encodeURIComponent(`/inbjudan/${token}`)}`;
+  // Språket: personens eget val i webbläsaren, annars det ägaren valde på inbjudan, annars
+  // webbläsarens språk.
+  const locale: Locale =
+    (await getCookieLocale()) ??
+    (lookup.status === "valid" && lookup.locale === "en" ? "en" : await getRequestLocale());
+  const t = messages(locale);
 
   if (lookup.status !== "valid") {
-    const copy = INVALID[lookup.status];
+    const copy = invalidCopy(t, lookup.status);
     return (
-      <AuthFrame eyebrow={<Eyebrow />} title="Inbjudan gäller inte." aside={copy.aside}>
+      <AuthFrame
+        eyebrow={<Eyebrow t={t} />}
+        title={t.invite.invalidTitle}
+        aside={copy.aside}
+        locale={locale}
+      >
         <div className="flex flex-col gap-5">
           <p className="text-base text-muted">{copy.body}</p>
           <Link
             href={user ? "/" : "/logga-in"}
-            className="inline-flex h-9 w-fit items-center rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg hover:border-line-control hover:bg-hover"
+            className="inline-flex h-11 w-fit items-center rounded-sm border border-line-strong bg-surface px-3.5 text-base font-medium text-fg hover:border-line-control hover:bg-hover"
           >
-            {user ? "Öppna Binderlab" : "Till inloggningen"}
+            {user ? t.invite.openApp : t.invite.toLogin}
           </Link>
         </div>
       </AuthFrame>
@@ -121,12 +129,12 @@ export default async function InvitationPage({
   } else if (provider === "dev" && (await devAccountExists(lookup.email))) {
     body = (
       <div className="flex flex-col gap-5">
-        <p className="text-base text-muted">Kontot finns redan.</p>
+        <p className="text-base text-muted">{t.invite.accountExists}</p>
         <Link
           href={loginHref}
-          className="inline-flex h-9 w-full items-center justify-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse hover:bg-inverse-hover"
+          className="inline-flex h-11 w-full items-center justify-center rounded-sm border border-inverse bg-inverse px-3.5 text-base font-medium text-on-inverse hover:bg-inverse-hover"
         >
-          Logga in och gå med
+          {t.invite.loginAndJoin}
         </Link>
       </div>
     );
@@ -163,23 +171,24 @@ export default async function InvitationPage({
 
   return (
     <AuthFrame
-      eyebrow={<Eyebrow />}
-      title="Du är inbjuden."
+      eyebrow={<Eyebrow t={t} />}
+      title={t.invite.title}
       aside={
         lookup.storeName
-          ? `Butiksportalen för ${lookup.storeName}.`
-          : `Gå med i ${lookup.organizationName}.`
+          ? t.invite.storePortal(lookup.storeName)
+          : t.invite.joinOrg(lookup.organizationName)
       }
       systemStatus={false}
+      locale={locale}
     >
       <div className="flex flex-col gap-8">
         <div className="flex flex-col gap-3">
           <Facts
             rows={[
-              { label: "Organisation", value: lookup.organizationName },
-              ...(lookup.storeName ? [{ label: "Butik", value: lookup.storeName }] : []),
-              { label: "Roll", value: ROLE_LABEL[lookup.role] },
-              { label: "E-post", value: lookup.email },
+              { label: t.invite.organization, value: lookup.organizationName },
+              ...(lookup.storeName ? [{ label: t.invite.store, value: lookup.storeName }] : []),
+              { label: t.invite.role, value: t.invite.roles[lookup.role] },
+              { label: t.invite.email, value: lookup.email },
             ]}
           />
         </div>

@@ -17,6 +17,7 @@ export function Sheet({
   eyebrow,
   children,
   footer,
+  closeLabel = "Stäng",
 }: {
   open: boolean;
   onClose: () => void;
@@ -24,6 +25,8 @@ export function Sheet({
   eyebrow?: string;
   children?: ReactNode;
   footer?: ReactNode;
+  /** Stängknappens etikett (standard "Stäng"). */
+  closeLabel?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -60,7 +63,7 @@ export function Sheet({
           {/* IconButton har "relative" och size-9 i basklasserna (cn slår inte ihop): därför "!". */}
           <IconButton
             icon="close"
-            label="Stäng"
+            label={closeLabel}
             onClick={onClose}
             className="absolute! top-2 right-2 size-11!"
           />

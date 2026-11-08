@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { LanguageChoice } from "@/components/shell/simple-shell";
 import { SectionHeader } from "@/components/ui/section-header";
 import { getServerEnv } from "@/lib/env";
 import { loadContext } from "@/server/data/core";
@@ -42,6 +43,19 @@ export default async function AccountPage() {
       >
         <SectionHeader id="losenord" size="md" title="Byt lösenord." />
         <PasswordForm canEmailLink={canEmailLink} />
+      </section>
+      <section
+        aria-labelledby="sprak"
+        className="rise flex max-w-md flex-col gap-4"
+        style={{ "--i": 2 } as React.CSSProperties}
+      >
+        <SectionHeader
+          id="sprak"
+          size="md"
+          title="Language / Språk."
+          aside="Gäller hela appen för dig."
+        />
+        <LanguageChoice />
       </section>
     </div>
   );

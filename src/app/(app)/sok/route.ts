@@ -15,6 +15,7 @@
  * under; gränsen skyddar databasen mot skript.
  */
 
+import { unstable_rethrow } from "next/navigation";
 import type { NextRequest } from "next/server";
 
 import { isUuid } from "@/server/access";
@@ -63,6 +64,8 @@ export async function GET(request: NextRequest): Promise<Response> {
     }
     return Response.json(await search(sp.get("q") ?? ""), { headers: HEADERS });
   } catch (error) {
+    // Enkel vy (getActiveOrganization): omdirigeringen till startsidan, inte ett fel.
+    unstable_rethrow(error);
     if (error instanceof AuthorizationError) {
       const status = error.reason === "unauthenticated" ? 401 : 403;
       return Response.json({ error: error.message }, { status, headers: HEADERS });

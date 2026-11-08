@@ -4,7 +4,7 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { CountUp } from "@/components/ui/count-up";
 import { cn } from "@/lib/cn";
-import { formatInt } from "@/lib/format";
+import { useFormat } from "@/i18n/client";
 
 import { splitHeadNumber } from "../_lib/head-number";
 
@@ -21,6 +21,7 @@ export function PageHead({
   actions,
   live,
   id,
+  count = true,
 }: {
   eyebrow: string;
   title: string;
@@ -29,8 +30,13 @@ export function PageHead({
   /** Text bredvid den pulserande pricken, t.ex. "Awish". Utelämnat = ingen prick. */
   live?: string;
   id?: string;
+  /** false: ingen uppräkning (rubriken är ett namn, t.ex. "Scarlet & Violet 151"). */
+  count?: boolean;
 }) {
-  const head = splitHeadNumber(title);
+  const fmt = useFormat();
+  const head = count
+    ? splitHeadNumber(title, fmt.locale)
+    : { before: title, value: null, after: "" };
   return (
     <header className="rise flex flex-col gap-3" style={{ "--i": 0 } as CSSProperties}>
       {/* Under md står sidans namn redan i underfliken: etiketten bara när den säger mer. */}
@@ -56,7 +62,7 @@ export function PageHead({
             {head.value !== null ? (
               <CountUp
                 value={head.value}
-                format={formatInt}
+                format={fmt.int}
                 id={`head:${eyebrow}`}
                 className="tnum"
               />

@@ -19,6 +19,7 @@ import {
   storeShareViewOf,
   VMB_HEADER,
 } from "@/components/shell/period-state";
+import { PATHNAME_HEADER } from "@/components/shell/simple-view";
 import { getServerEnv } from "@/lib/env";
 import { LOGIN_PATH, isPublicPath, loginRedirectPath } from "@/server/auth/paths";
 import { checkProxySession } from "@/server/auth/proxy-session";
@@ -33,6 +34,8 @@ let reportedEnvError = false;
  */
 function forward(request: NextRequest): NextResponse {
   const headers = new Headers(request.headers);
+  // Sökvägen till servern (Enkel vy, src/server/data/core): alltid proxyns värde.
+  headers.set(PATHNAME_HEADER, request.nextUrl.pathname);
   const sp = request.nextUrl.searchParams;
   if (parseVmbView(sp)) headers.set(VMB_HEADER, "1");
   else headers.delete(VMB_HEADER);
@@ -45,7 +48,10 @@ function forward(request: NextRequest): NextResponse {
 export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { pathname, search } = request.nextUrl;
   if (isPublicPath(pathname)) {
-    return NextResponse.next();
+    // Även öppna sidor får proxyns sökväg: en header från klienten skrivs alltid över.
+    const headers = new Headers(request.headers);
+    headers.set(PATHNAME_HEADER, pathname);
+    return NextResponse.next({ request: { headers } });
   }
 
   let authenticated = false;

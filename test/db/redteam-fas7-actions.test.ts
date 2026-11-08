@@ -143,6 +143,8 @@ const SPECIAL = new Set([
   "@/server/actions/auth#switchOrganization",
   // Eget lösenord (ingen organisation); testas i test/db/auth-flows.test.ts.
   "@/server/actions/auth#changePassword",
+  // Eget språk (bara den egna profilen, ingen organisation); testas i test/db/enkel-vy.test.ts.
+  "@/server/actions/locale#setMyLocale",
   "@/app/logga-in/actions#signIn",
   "@/app/logga-in/actions#requestMagicLink",
   "@/app/logga-in/actions#confirmMagicLink",

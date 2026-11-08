@@ -9,11 +9,13 @@ import { Modal } from "@/components/ui/modal";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { useToast } from "@/components/ui/toast";
+import { useT } from "@/i18n/client";
 
 import { changeMemberRole, removeMember, resendInvitation, revokeInvitation } from "./actions";
 import { FormError } from "@/app/logga-in/form-error";
 import { ROLE_LABEL, canManageMembers } from "./model";
 import { RoleChoice } from "./role-choice";
+import { ViewSettings } from "./view-settings";
 
 export interface MemberView {
   id: string;
@@ -26,6 +28,11 @@ export interface MemberView {
   canChangeRole: boolean;
   canRemove: boolean;
   reason: string | null;
+  /** Enkel vy och språk (memberships.view_mode, profiles.locale). */
+  viewMode: "full" | "simple";
+  locale: "sv" | "en";
+  /** Får den inloggade ändra Enkel vy och språk (inte den egna, admin inte en ägare)? */
+  canSetView: boolean;
 }
 
 export interface InvitationView {
@@ -36,6 +43,8 @@ export interface InvitationView {
   expires: string;
   invitedBy: string;
   canManage: boolean;
+  viewMode: "full" | "simple";
+  locale: "sv" | "en";
 }
 
 type Dialog =
@@ -45,7 +54,7 @@ type Dialog =
   | null;
 
 const ROW =
-  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 border-t border-line py-3 md:grid-cols-[minmax(0,1fr)_160px_140px_auto] md:py-0 md:h-14";
+  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 border-t border-line py-3 md:grid-cols-[minmax(0,1fr)_160px_140px_auto] md:py-2 md:min-h-14";
 
 export function MembersView({
   organizationName,
@@ -67,6 +76,7 @@ export function MembersView({
 }) {
   const router = useRouter();
   const toast = useToast();
+  const t = useT();
   const [dialog, setDialog] = useState<Dialog>(null);
   const [error, setError] = useState<string>();
   const [nextRole, setNextRole] = useState<MemberRole>("viewer");
@@ -220,6 +230,18 @@ export function MembersView({
                     <span className="text-xs text-subtle md:text-right">{m.reason}</span>
                   ) : null}
                 </div>
+                {m.canSetView ? (
+                  <ViewSettings
+                    target={{ kind: "member", membershipId: m.id }}
+                    name={m.name}
+                    viewMode={m.viewMode}
+                    locale={m.locale}
+                  />
+                ) : m.viewMode === "simple" ? (
+                  <span className="col-span-2 text-xs text-subtle md:col-span-4">
+                    {`${t.team.simpleView} · ${t.team.simpleViewHint}`}
+                  </span>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -278,6 +300,14 @@ export function MembersView({
                       <span className="text-xs text-subtle">Ägarinbjudan</span>
                     )}
                   </div>
+                  {i.canManage ? (
+                    <ViewSettings
+                      target={{ kind: "invitation", invitationId: i.id }}
+                      name={i.email}
+                      viewMode={i.viewMode}
+                      locale={i.locale}
+                    />
+                  ) : null}
                 </li>
               ))}
             </ul>

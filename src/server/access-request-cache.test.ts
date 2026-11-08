@@ -67,6 +67,8 @@ describe("läsningar en gång per förfrågan", () => {
       slug: "binderlab",
       timezone: "Europe/Stockholm",
       role: "owner",
+      // Utan view_mode i raden: hela appen.
+      viewMode: "full",
     });
     expect(active?.id).toBe(ORG);
     expect(calls.n).toBe(1);

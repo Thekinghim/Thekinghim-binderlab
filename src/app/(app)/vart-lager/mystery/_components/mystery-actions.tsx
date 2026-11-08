@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
+import { useT } from "@/i18n/client";
 import { cn } from "@/lib/cn";
 
 import { setMysteryCost, undoMysteryPack } from "../actions";
@@ -53,6 +54,7 @@ export function SetCostButton({
 /** Ångra en packning (inom 30 minuter). */
 export function UndoPackButton({ packingId }: { packingId: string }) {
   const toast = useToast();
+  const t = useT();
   const [pending, start] = useTransition();
   return (
     <button
@@ -60,17 +62,24 @@ export function UndoPackButton({ packingId }: { packingId: string }) {
       disabled={pending}
       onClick={() =>
         start(async () => {
-          const res = await undoMysteryPack({ packingId });
+          const res = await undoMysteryPack({ packingId }).catch(() => ({
+            ok: false as const,
+            error: t.common.offlineRetry,
+          }));
           toast(
             res.ok
-              ? { title: "Ångrat. Delarna är tillbaka.", tone: "neutral" }
-              : { title: "Kunde inte ångra", description: res.error, tone: "critical" },
+              ? { title: t.mystery.undone, tone: "neutral" }
+              : {
+                  title: t.mystery.undoFailed,
+                  description: t.serverError(res.error),
+                  tone: "critical",
+                },
           );
         })
       }
       className="inline-flex h-11 shrink-0 items-center rounded-sm border border-line-strong px-3 text-sm font-medium text-fg hover:bg-hover disabled:border-dashed disabled:text-disabled"
     >
-      {pending ? "Ångrar…" : "Ångra"}
+      {pending ? t.common.undoing : t.common.undo}
     </button>
   );
 }
@@ -87,6 +96,7 @@ export function ContentsSection({
   choices: ReadonlyArray<{ id: string; name: string }>;
   canEdit: boolean;
 }) {
+  const t = useT();
   const [editing, setEditing] = useState(recipe === null);
   if (canEdit && (editing || recipe === null)) {
     return (
@@ -99,7 +109,7 @@ export function ContentsSection({
     );
   }
   if (!recipe) {
-    return <p className="text-base text-muted">Inget innehåll än. Ägaren lägger in det.</p>;
+    return <p className="text-base text-muted">{t.mystery.noContentsOwner}</p>;
   }
   return (
     <div className="flex flex-col gap-3">
@@ -110,7 +120,7 @@ export function ContentsSection({
           onClick={() => setEditing(true)}
           className="inline-flex h-11 w-fit items-center gap-2 rounded-sm border border-line-strong px-4 text-base text-fg hover:bg-hover"
         >
-          Ändra innehåll
+          {t.mystery.editContents}
         </button>
       ) : null}
     </div>

@@ -3,8 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { wallClockIn } from "@/components/shell/period-state";
-import { inPlace } from "@/components/stock/place-text";
-import { formatDate, formatDateTime, formatInt, formatKronor, NBSP } from "@/lib/format";
+import { formatters, messages } from "@/i18n";
+import { getT } from "@/i18n/server";
+import { formatInt, formatKronor, NBSP } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
 
 import { currentViewer } from "../../../lager/_lib/session";
@@ -12,16 +13,12 @@ import { PageHead } from "../../_components/page-head";
 import { ContentsSection, SetCostButton, UndoPackButton } from "../_components/mystery-actions";
 import { PackFlow } from "../_components/pack-flow";
 import { loadMysteryDetailFor } from "../_lib/data";
-import {
-  averageCost,
-  batchesForPacks,
-  batchesText,
-  defaultPlace,
-  maxBatches,
-  recipeOdds,
-} from "../_lib/model";
+import { averageCost, batchesForPacks, defaultPlace, maxBatches, recipeOdds } from "../_lib/model";
 
-export const metadata: Metadata = { title: "Mystery pack" };
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getT();
+  return { title: t.mystery.title };
+}
 
 const kr = (ore: number) => formatKronor(ore / 100);
 const SECTION = "flex flex-col gap-4 scroll-mt-28";
@@ -46,13 +43,18 @@ export default async function MysteryPackPage({
   searchParams: SearchParams;
 }) {
   const ctx = await requireRoute("mystery");
+  const m = messages(ctx.locale);
+  const f = formatters(ctx.locale);
+  // Enkel vy: innehållet, Packa och Ångra. Inga belopp, ingen redigering, inga länkar bort.
+  const simple = ctx.viewMode === "simple";
   const [{ titelId }, sp] = await Promise.all([params, searchParams]);
   if (!/^[0-9a-f-]{36}$/i.test(titelId)) notFound();
   const viewer = await currentViewer();
   const now = new Date(ctx.now);
   const detail = await loadMysteryDetailFor(viewer, titelId, now);
   if (!detail) notFound();
-  const { overview: view, title: t, recipe } = { ...detail, recipe: detail.title.recipe };
+  const { title: t, recipe } = { ...detail, recipe: detail.title.recipe };
+  const view = simple ? { ...detail.overview, canEdit: false, seesMoney: false } : detail.overview;
 
   const place = recipe ? defaultPlace(recipe, view.places, view.byPlace) : null;
   const cap = recipe && place ? maxBatches(recipe, view.byPlace[place.id] ?? {}) : null;
@@ -71,22 +73,28 @@ export default async function MysteryPackPage({
   const nowLocal = wallClockIn(now, ctx.timeZone);
 
   const aside = recipe
-    ? `${formatInt(recipe.batchSize)} per omgång${
-        odds && odds.hits > 0 ? ` · ${Math.round(odds.hitBp / 100)}${NBSP}% chans till hit` : ""
-      }${cap && place ? ` · räcker till ${batchesText(cap.batches)} ${inPlace(place.name)}` : ""}`
-    : "Lägg in innehållet först.";
+    ? m.mystery.detailAside(
+        recipe.batchSize,
+        odds && odds.hits > 0 ? Math.round(odds.hitBp / 100) : null,
+        cap && place ? cap.batches : null,
+        cap && place ? place.name : null,
+      )
+    : m.mystery.addContentsFirst;
 
   return (
     <div className="mx-auto flex w-full max-w-[880px] flex-col gap-10 px-4 pt-8 pb-16 md:px-8 md:pt-12">
       <div className="flex flex-col gap-3">
-        <Link href="/vart-lager/mystery" className="meta w-fit text-muted hover:text-fg">
-          ← Mystery packs
+        <Link
+          href="/vart-lager/mystery"
+          className="meta inline-flex min-h-11 w-fit items-center text-muted hover:text-fg"
+        >
+          {m.mystery.back}
         </Link>
-        <PageHead eyebrow="Mystery packs" title={t.name} aside={aside} />
+        <PageHead eyebrow={m.mystery.title} title={t.name} aside={aside} count={false} />
         <p className="tnum text-base text-muted">
           {[
-            ...view.places.map((p) => `${p.name} ${formatInt(t.inPlaces[p.id] ?? 0)}`),
-            `I automaterna ${formatInt(t.inMachines)}`,
+            ...view.places.map((p) => m.mystery.stockIn(p.name, t.inPlaces[p.id] ?? 0)),
+            m.mystery.inMachines(t.inMachines),
           ].join(" · ")}
         </p>
       </div>
@@ -94,12 +102,11 @@ export default async function MysteryPackPage({
       {recipe && view.canPack ? (
         <section id="packa" aria-labelledby="packa-rubrik" className={SECTION}>
           <h2 id="packa-rubrik" className="text-xl font-medium text-fg">
-            Packa
+            {m.mystery.pack}
           </h2>
           {t.packQty !== null && t.packQty > 0 ? (
             <p className="text-base text-muted">
-              Inköp säger packa {formatInt(t.packQty)}
-              {NBSP}st ({batchesText(batchesForPacks(t.packQty, recipe.batchSize))}).
+              {m.mystery.buySays(t.packQty, batchesForPacks(t.packQty, recipe.batchSize))}
             </p>
           ) : null}
           <PackFlow
@@ -116,7 +123,7 @@ export default async function MysteryPackPage({
 
       <section id="innehall" aria-labelledby="innehall-rubrik" className={SECTION}>
         <h2 id="innehall-rubrik" className="text-xl font-medium text-fg">
-          Innehåll
+          {m.mystery.contents}
         </h2>
         <ContentsSection
           titleId={t.id}
@@ -124,12 +131,14 @@ export default async function MysteryPackPage({
           choices={detail.choices}
           canEdit={view.canEdit}
         />
-        {detail.versions.length > 0 ? (
+        {detail.versions.length > 0 && !simple ? (
           <p className="meta text-subtle">
             {detail.versions
-              .map(
-                (v) =>
-                  `Version ${formatInt(v.version)} från ${formatDate(new Date(`${v.validFrom}T12:00:00`), { year: "auto", now: nowLocal })}`,
+              .map((v) =>
+                m.mystery.version(
+                  v.version,
+                  f.date(new Date(`${v.validFrom}T12:00:00`), { year: "auto", now: nowLocal }),
+                ),
               )
               .join(" · ")}
           </p>
@@ -202,7 +211,7 @@ export default async function MysteryPackPage({
       {detail.packings.length > 0 ? (
         <section aria-labelledby="packat-rubrik" className={SECTION}>
           <h2 id="packat-rubrik" className="text-xl font-medium text-fg">
-            Senast packat
+            {m.mystery.recent}
           </h2>
           <ul className="flex flex-col divide-y divide-line rounded-md border border-line">
             {detail.packings.map((p) => (
@@ -211,14 +220,17 @@ export default async function MysteryPackPage({
                   <span
                     className={p.undone ? "text-base text-muted line-through" : "text-base text-fg"}
                   >
-                    {batchesText(p.batches)} · {formatInt(p.packs)}
-                    {NBSP}st {inPlace(p.placeName)}
+                    {m.mystery.packingLine(p.batches, p.packs, p.placeName)}
                   </span>
                   <span className="meta text-subtle">
-                    {formatDateTime(local(p.packedAt), { year: "auto", now: nowLocal })} · version{" "}
-                    {formatInt(p.version)}
-                    {p.costPerPackOre !== null ? ` · ${kr(p.costPerPackOre)} per pack` : ""}
-                    {p.undone ? " · ångrad" : ""}
+                    {m.mystery.packingMeta(
+                      f.dateTime(local(p.packedAt), { year: "auto", now: nowLocal }),
+                      simple ? null : p.version,
+                    )}
+                    {p.costPerPackOre !== null && !simple
+                      ? ` · ${kr(p.costPerPackOre)} per pack`
+                      : ""}
+                    {p.undone ? m.mystery.packingUndone : ""}
                   </span>
                 </span>
                 {p.undoable ? <UndoPackButton packingId={p.id} /> : null}

@@ -113,6 +113,8 @@ const RPCS = [
   "sales_data_until",
   // Mystery packs: spara innehållet (ägare, admin).
   "save_mystery_recipe",
+  // Enkel vy och språk på en obesvarad inbjudan (20261116000000_enkel_vy_och_sprak.sql).
+  "set_invitation_options",
   // Flera lager: automatens "Fylls på från" (ägare, admin).
   "set_refill_source",
   // Testköp: markera en order som testköp och ångra (20261105070000_testkop.sql, ägare, admin).
@@ -645,6 +647,7 @@ describe("anon", () => {
       reopen_period: sql`gen_random_uuid(), '2025-01-01'::date`,
       sales_data_until: sql`gen_random_uuid()`,
       save_mystery_recipe: sql`gen_random_uuid(), gen_random_uuid(), 14, '[]'::jsonb`,
+      set_invitation_options: sql`gen_random_uuid(), gen_random_uuid(), 'simple', 'en'`,
       set_refill_source: sql`gen_random_uuid(), gen_random_uuid(), null::uuid`,
       set_test_purchase: sql`gen_random_uuid(), gen_random_uuid(), true`,
       start_data_export: sql`gen_random_uuid()`,

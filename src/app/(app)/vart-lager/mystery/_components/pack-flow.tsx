@@ -3,16 +3,13 @@
 import { useMemo, useRef, useState, useTransition } from "react";
 
 import { PlaceButtons } from "@/components/stock/place-buttons";
-import { inPlace } from "@/components/stock/place-text";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
+import { useT } from "@/i18n/client";
 import { cn } from "@/lib/cn";
-import { formatInt, NBSP } from "@/lib/format";
 
 import { packMystery, undoMysteryPack } from "../actions";
 import {
-  batchesText,
-  listText,
   MAX_BATCHES,
   maxBatches,
   packPlan,
@@ -55,6 +52,7 @@ export function PackFlow({
   initialBatches: number;
 }) {
   const toast = useToast();
+  const t = useT();
   const [pending, start] = useTransition();
   const [placeId, setPlaceId] = useState<string | null>(defaultPlaceId ?? places[0]?.id ?? null);
   const [batches, setBatches] = useState(initialBatches);
@@ -70,7 +68,7 @@ export function PackFlow({
   const missing = shortages(recipe, batches, stock);
   const cap = maxBatches(recipe, stock);
   const ready = place !== null && missing.length === 0 && !pending;
-  const where = place ? inPlace(place.name) : "";
+  const placeLabel = place?.name ?? "";
 
   function submit() {
     if (!ready || !place) return;
@@ -81,35 +79,46 @@ export function PackFlow({
         batches,
         recipeId: recipe.id,
         clientId: clientId.current,
-      });
+      }).catch(() => ({ ok: false as const, error: t.common.offlineRetry }));
       if (!res.ok) {
-        toast({ title: "Packades inte", description: res.error, tone: "critical" });
+        toast({
+          title: t.mystery.notPacked,
+          description: t.serverError(res.error),
+          tone: "critical",
+        });
         return;
       }
       clientId.current = newId();
       // Nästa packning börjar om på en omgång (saldot har minskat).
       setBatches(1);
-      const text = `${formatInt(res.data.packs)}${NBSP}${name} ${where}`;
+      const text = t.mystery.addsLine(res.data.packs, name, placeLabel);
       setDone({ packingId: res.data.packingId, text, undone: false });
       toast({
-        title: `Klart! ${text}`,
-        description: `Packat ${batchesText(batches)}.`,
+        title: t.mystery.doneToast(text),
+        description: t.mystery.packedBatches(batches),
         tone: "ok",
         duration: 10_000,
-        action: { label: "Ångra", onClick: () => undo(res.data.packingId) },
+        action: { label: t.common.undo, onClick: () => undo(res.data.packingId) },
       });
     });
   }
 
   function undo(packingId: string) {
     start(async () => {
-      const u = await undoMysteryPack({ packingId });
+      const u = await undoMysteryPack({ packingId }).catch(() => ({
+        ok: false as const,
+        error: t.common.offlineRetry,
+      }));
       if (!u.ok) {
-        toast({ title: "Kunde inte ångra", description: u.error, tone: "critical" });
+        toast({
+          title: t.mystery.undoFailed,
+          description: t.serverError(u.error),
+          tone: "critical",
+        });
         return;
       }
       setDone((d) => (d && d.packingId === packingId ? { ...d, undone: true } : d));
-      toast({ title: "Ångrat. Delarna är tillbaka.", tone: "neutral" });
+      toast({ title: t.mystery.undone, tone: "neutral" });
     });
   }
 
@@ -123,10 +132,10 @@ export function PackFlow({
     >
       {places.length > 1 ? (
         <div className="flex flex-col gap-2">
-          <span className="label text-subtle">Packa i</span>
+          <span className="label text-subtle">{t.mystery.packIn}</span>
           <PlaceButtons
-            label="Packa i"
-            places={places.map((p) => ({ id: p.id, name: p.name }))}
+            label={t.mystery.packIn}
+            places={places.map((p) => ({ id: p.id, name: t.common.placeName(p.name) }))}
             value={placeId}
             onChange={setPlaceId}
           />
@@ -135,12 +144,12 @@ export function PackFlow({
 
       <div className="flex flex-col gap-2">
         <label htmlFor={`omgangar-${titleId}`} className="label text-subtle">
-          Omgångar
+          {t.mystery.batchesLabel}
         </label>
         <div className="grid grid-cols-[56px_1fr_56px] items-center gap-2">
           <button
             type="button"
-            aria-label="En omgång mindre"
+            aria-label={t.mystery.lessBatch}
             onClick={() => setBatches((b) => Math.max(1, b - 1))}
             disabled={batches <= 1}
             className="flex size-14 items-center justify-center rounded-md border border-line-strong bg-raised text-fg active:bg-hover disabled:border-dashed disabled:text-disabled"
@@ -166,7 +175,7 @@ export function PackFlow({
           />
           <button
             type="button"
-            aria-label="En omgång till"
+            aria-label={t.mystery.moreBatch}
             onClick={() => setBatches((b) => Math.min(MAX_BATCHES, b + 1))}
             disabled={batches >= MAX_BATCHES}
             className="flex size-14 items-center justify-center rounded-md border border-line-strong bg-raised text-fg active:bg-hover disabled:border-dashed disabled:text-disabled"
@@ -175,7 +184,7 @@ export function PackFlow({
           </button>
         </div>
         <span className="meta text-subtle">
-          {`= ${formatInt(plan.packs)}${NBSP}mystery packs · räcker till ${batchesText(cap.batches)} ${where}`}
+          {t.mystery.planLine(plan.packs, cap.batches, placeLabel)}
         </span>
       </div>
 
@@ -190,17 +199,17 @@ export function PackFlow({
       >
         {missing.length > 0 ? (
           <p className="text-base text-fg">
-            <span className="label block text-signal-fg">Det saknas {where}</span>
-            {listText(missing)}.
+            <span className="label block text-signal-fg">{t.mystery.missingIn(placeLabel)}</span>
+            {t.mystery.list(missing)}.
           </p>
         ) : null}
         <p className="text-base text-fg">
-          <span className="label block text-subtle">Tar ur {place?.name ?? ""}</span>
-          {listText(plan.takes)}
+          <span className="label block text-subtle">{t.mystery.takesFrom(placeLabel)}</span>
+          {t.mystery.list(plan.takes)}
         </p>
         <p className="text-base text-fg">
-          <span className="label block text-subtle">Lägger till</span>
-          {`${formatInt(plan.packs)}${NBSP}${name} ${where}`}
+          <span className="label block text-subtle">{t.mystery.adds}</span>
+          {t.mystery.addsLine(plan.packs, name, placeLabel)}
         </p>
       </div>
 
@@ -216,16 +225,16 @@ export function PackFlow({
       >
         {missing.length > 0 ? null : <Icon name="check" size={20} />}
         {pending
-          ? "Packar…"
+          ? t.mystery.packing
           : missing.length > 0
-            ? "Det saknas delar"
-            : `Packa ${batchesText(batches)}`}
+            ? t.mystery.missingParts
+            : t.mystery.packBatches(batches)}
       </button>
 
       {done ? (
         <p className="flex min-h-11 items-center justify-between gap-3 rounded-md border border-line px-4 py-2 text-base">
           <span className={cn("min-w-0", done.undone ? "text-muted line-through" : "text-fg")}>
-            {done.undone ? "Ångrad: " : "Packat: "}
+            {done.undone ? t.mystery.undoneLabel : t.mystery.packedLabel}
             {done.text}
           </span>
           {done.undone ? null : (
@@ -235,7 +244,7 @@ export function PackFlow({
               disabled={pending}
               className="inline-flex h-11 shrink-0 items-center rounded-sm border border-line-strong px-3 text-sm font-medium text-fg hover:bg-hover"
             >
-              Ångra
+              {t.common.undo}
             </button>
           )}
         </p>

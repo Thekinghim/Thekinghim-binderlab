@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useTransition } from "react";
 
+import { useFormat, useT } from "@/i18n/client";
 import { cn } from "@/lib/cn";
-import { formatDateTime } from "@/lib/format";
 
 import { SectionHeader } from "./section-header";
 import { StateMessage, type StateDiagnostic } from "./state-message";
@@ -31,12 +31,14 @@ export type RouteErrorProps = {
  * serverloggen och Sentry.
  */
 export function RouteError({ error, retry, area, title, home, inset = "page" }: RouteErrorProps) {
+  const t = useT();
+  const f = useFormat();
   const [pending, startTransition] = useTransition();
   // Felgränsen renderas i webbläsaren, så tid och sökväg läses där (på servern blir de tomma).
   const [where] = useState<{ at: string; path: string } | null>(() =>
     typeof window === "undefined"
       ? null
-      : { at: formatDateTime(new Date()), path: window.location.pathname },
+      : { at: f.dateTime(new Date()), path: window.location.pathname },
   );
   useEffect(() => {
     console.error(error);
@@ -47,11 +49,11 @@ export function RouteError({ error, retry, area, title, home, inset = "page" }: 
       ? error.digest
       : null;
   const diagnostics: StateDiagnostic[] = [
-    ...(digest ? [{ label: "Felkod", value: digest }] : []),
+    ...(digest ? [{ label: t.state.diagErrorCode, value: digest }] : []),
     ...(where
       ? [
-          { label: "Tid", value: where.at },
-          { label: "Sida", value: where.path },
+          { label: t.state.diagTime, value: where.at },
+          { label: t.state.diagPage, value: where.path },
         ]
       : []),
   ];
@@ -66,21 +68,21 @@ export function RouteError({ error, retry, area, title, home, inset = "page" }: 
       <SectionHeader
         as="h1"
         size="xl"
-        eyebrow={area}
-        title={title ?? `${area} kunde inte visas.`}
-        aside="Inget har ändrats. Uppgifterna finns kvar."
+        eyebrow={t.state.areaEyebrow(area)}
+        title={title ?? t.state.areaTitle(area)}
+        aside={t.state.areaAside}
       />
       <StateMessage
         kind="loading-failed"
         className="border-t border-line px-0! pt-10! md:pt-12!"
-        message="Uppgifterna till sidan kunde inte hämtas."
-        detail="Försök igen om en stund. Kvarstår felet, skicka felkoden under Visa detaljer till den som sköter driften."
+        message={t.state.areaMessage}
+        detail={t.state.areaDetail}
         action={{
-          label: "Försök igen",
+          label: t.state.tryAgain,
           loading: pending,
           onClick: () => startTransition(() => retry()),
         }}
-        secondaryAction={home ?? { label: "Till Hem", href: "/" }}
+        secondaryAction={home ?? { label: t.state.toHome, href: "/" }}
         diagnostics={diagnostics.length > 0 ? diagnostics : undefined}
       />
     </div>

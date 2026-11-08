@@ -5,6 +5,8 @@ import { useActionState, useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/field";
 import { Icon } from "@/components/ui/icon";
+import { useT } from "@/i18n/client";
+import type { Messages } from "@/i18n/sv";
 
 import { requestMagicLink, requestPasswordReset, signIn } from "./actions";
 import { FormError } from "./form-error";
@@ -27,10 +29,10 @@ function value(form: HTMLFormElement, name: string): string {
   return typeof v === "string" ? v : "";
 }
 
-/** Fältkontroller före anropet, med svenska texter i stället för webbläsarens. */
-export function emailProblem(email: string): string | undefined {
-  if (email.trim() === "") return "Skriv din e-post.";
-  if (!EMAIL.test(email.trim())) return "Det ser inte ut som en e-post.";
+/** Fältkontroller före anropet, med appens texter i stället för webbläsarens. */
+export function emailProblem(email: string, t?: Messages): string | undefined {
+  if (email.trim() === "") return t?.auth.emailMissing ?? "Skriv din e-post.";
+  if (!EMAIL.test(email.trim())) return t?.auth.emailInvalid ?? "Det ser inte ut som en e-post.";
   return undefined;
 }
 
@@ -58,6 +60,7 @@ export function LoginForm({
   /** Meddelande från ?fel=, t.ex. en länk som inte gick. */
   notice?: string;
 }) {
+  const t = useT();
   const [mode, setMode] = useState<LoginMode>(canUseLinks ? initialMode : "password");
 
   // Skickade Supabase hit en länk (t.ex. till sajtens adress i stället för
@@ -77,7 +80,7 @@ export function LoginForm({
         notice={notice}
         footer={
           <button type="button" onClick={() => setMode("password")} className={LINK}>
-            Logga in med lösenord
+            {t.auth.loginWithPassword}
           </button>
         }
       />
@@ -90,7 +93,7 @@ export function LoginForm({
         next={next}
         footer={
           <button type="button" onClick={() => setMode("password")} className={LINK}>
-            Tillbaka
+            {t.auth.back}
           </button>
         }
       />
@@ -104,10 +107,10 @@ export function LoginForm({
         canUseLinks ? (
           <>
             <button type="button" onClick={() => setMode("forgot")} className={LINK}>
-              Glömt lösenord?
+              {t.auth.forgot}
             </button>
             <button type="button" onClick={() => setMode("magic-link")} className={LINK}>
-              Få länk i mejlet
+              {t.auth.getLink}
             </button>
           </>
         ) : null
@@ -125,13 +128,15 @@ function PasswordForm({
   notice?: string;
   footer: React.ReactNode;
 }) {
+  const t = useT();
   const [state, action, pending] = useActionState<LoginState, FormData>(signIn, {});
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const error = state.error ?? (state.email === undefined ? notice : undefined);
+  const raw = state.error ?? (state.email === undefined ? notice : undefined);
+  const error = raw ? t.serverError(raw) : undefined;
   const check = (e: FormEvent<HTMLFormElement>) => {
     const next: FieldErrors = {
-      email: emailProblem(value(e.currentTarget, "email")),
-      password: value(e.currentTarget, "password") === "" ? "Skriv ditt lösenord." : undefined,
+      email: emailProblem(value(e.currentTarget, "email"), t),
+      password: value(e.currentTarget, "password") === "" ? t.auth.passwordMissing : undefined,
     };
     setFieldErrors(next);
     if (next.email || next.password) {
@@ -144,7 +149,7 @@ function PasswordForm({
     <form action={action} onSubmit={check} noValidate className="fade-in flex flex-col gap-5">
       <input type="hidden" name="next" value={next} />
       <Input
-        label="E-post"
+        label={t.auth.email}
         name="email"
         type="email"
         autoComplete="username"
@@ -156,7 +161,7 @@ function PasswordForm({
         autoFocus
       />
       <Input
-        label="Lösenord"
+        label={t.auth.password}
         name="password"
         type="password"
         autoComplete="current-password"
@@ -165,7 +170,7 @@ function PasswordForm({
       />
       <FormError message={fieldErrors.email || fieldErrors.password ? undefined : error} />
       <Button type="submit" variant="primary" loading={pending} className={BIG}>
-        Logga in
+        {t.auth.login}
       </Button>
       {footer ? (
         <p className="flex flex-wrap justify-between gap-x-6 gap-y-2 text-sm">{footer}</p>
@@ -190,6 +195,7 @@ function LinkForm({
     kind === "login" ? requestMagicLink : requestPasswordReset,
     { status: "idle" },
   );
+  const t = useT();
   const [emailError, setEmailError] = useState<string>();
 
   if (state.status === "sent") {
@@ -199,23 +205,23 @@ function LinkForm({
           <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-up/15 text-up">
             <Icon name="check" size={16} />
           </span>
-          Kolla mejlen.
+          {t.auth.checkMail}
         </p>
         <dl className="flex flex-col border-y border-line">
           <div className="flex items-baseline justify-between gap-4 py-2">
-            <dt className="label text-subtle">Till</dt>
+            <dt className="label text-subtle">{t.auth.to}</dt>
             <dd className="meta truncate text-fg">{state.email}</dd>
           </div>
           <div className="flex items-baseline justify-between gap-4 border-t border-line py-2">
-            <dt className="label text-subtle">Gäller</dt>
-            <dd className="meta text-fg">1 timme</dd>
+            <dt className="label text-subtle">{t.auth.valid}</dt>
+            <dd className="meta text-fg">{t.auth.oneHour}</dd>
           </div>
         </dl>
         <form action={action}>
           <input type="hidden" name="next" value={next} />
           <input type="hidden" name="email" value={state.email ?? ""} />
           <Button type="submit" loading={pending}>
-            Skicka igen
+            {t.auth.sendAgain}
           </Button>
         </form>
         <p className="text-sm">{footer}</p>
@@ -223,9 +229,10 @@ function LinkForm({
     );
   }
 
-  const error = state.error ?? (state.email === undefined ? notice : undefined);
+  const raw = state.error ?? (state.email === undefined ? notice : undefined);
+  const error = raw ? t.serverError(raw) : undefined;
   const check = (e: FormEvent<HTMLFormElement>) => {
-    const problem = emailProblem(value(e.currentTarget, "email"));
+    const problem = emailProblem(value(e.currentTarget, "email"), t);
     setEmailError(problem);
     if (problem) {
       e.preventDefault();
@@ -236,7 +243,7 @@ function LinkForm({
     <form action={action} onSubmit={check} noValidate className="fade-in flex flex-col gap-5">
       <input type="hidden" name="next" value={next} />
       <Input
-        label="E-post"
+        label={t.auth.email}
         name="email"
         type="email"
         autoComplete="email"
@@ -249,7 +256,7 @@ function LinkForm({
       />
       <FormError message={emailError ? undefined : error} />
       <Button type="submit" variant="primary" loading={pending} className={BIG}>
-        {kind === "login" ? "Skicka länk" : "Skicka länk för nytt lösenord"}
+        {kind === "login" ? t.auth.sendLink : t.auth.sendResetLink}
       </Button>
       <p className="text-sm">{footer}</p>
     </form>

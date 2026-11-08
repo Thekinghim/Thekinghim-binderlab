@@ -5,6 +5,7 @@ import { sql } from "drizzle-orm";
 import { wallClockIn } from "@/components/shell/period-state";
 import { StatusGlyph } from "@/components/ui/status-tag";
 import { getServiceDb } from "@/db/client";
+import type { Locale } from "@/i18n/locale";
 import { getServerEnv } from "@/lib/env";
 import { formatInt, formatTime } from "@/lib/format";
 
@@ -12,9 +13,26 @@ const TIME_ZONE = "Europe/Stockholm";
 const PING_TIMEOUT_MS = 1500;
 
 const ENV_LABEL = {
-  development: "Lokal miljö",
-  preview: "Förhandsversion",
-  production: null,
+  sv: { development: "Lokal miljö", preview: "Förhandsversion", production: null },
+  en: { development: "Local", preview: "Preview", production: null },
+} as const;
+
+/** Raden följer inloggningssidans språk (kakan eller webbläsaren). */
+const TEXT = {
+  sv: {
+    misconfigured: "Miljön är felkonfigurerad",
+    devLogin: "Dev-inloggning",
+    reply: (ms: string) => `Svar ${ms} ms`,
+    up: "Databasen i drift",
+    down: "Databasen svarar inte",
+  },
+  en: {
+    misconfigured: "Environment misconfigured",
+    devLogin: "Dev sign-in",
+    reply: (ms: string) => `Reply ${ms} ms`,
+    up: "Database up",
+    down: "Database not answering",
+  },
 } as const;
 
 /** Hur länge ett pingresultat återanvänds, så att anonyma sidvisningar inte belastar databasen. */
@@ -65,23 +83,24 @@ async function ping(): Promise<number | null> {
  * snabbt), miljö, inloggningssätt och klockan i Stockholm. Raden påstår bara
  * det den har mätt: databasens svar, inte resten av systemet.
  */
-export async function SystemStatus() {
+export async function SystemStatus({ locale = "sv" }: { locale?: Locale } = {}) {
+  const t = TEXT[locale];
   let envLabel: string | null = null;
   let method = "";
   // Svarstiden är driftuppgift: den visas inte för anonyma besökare i produktion.
   let showLatency = true;
   try {
     const env = getServerEnv();
-    envLabel = ENV_LABEL[env.APP_ENV];
+    envLabel = ENV_LABEL[locale][env.APP_ENV];
     showLatency = env.APP_ENV !== "production";
-    method = env.AUTH_PROVIDER === "dev" ? "Dev-inloggning" : "";
+    method = env.AUTH_PROVIDER === "dev" ? t.devLogin : "";
   } catch {
-    envLabel = "Miljön är felkonfigurerad";
+    envLabel = t.misconfigured;
   }
   const ms = await ping();
   const now = wallClockIn(new Date(), TIME_ZONE);
   const parts = [
-    ms === null || !showLatency ? null : `Svar ${formatInt(ms)} ms`,
+    ms === null || !showLatency ? null : t.reply(formatInt(ms)),
     envLabel,
     method || null,
     `${formatTime(now)} Stockholm`,
@@ -91,7 +110,7 @@ export async function SystemStatus() {
     <p className="label flex flex-wrap items-center gap-x-3 gap-y-1 text-subtle" role="status">
       <span className="inline-flex items-center gap-2 text-muted">
         <StatusGlyph status={ms === null ? "critical" : "ok"} size={ms === null ? 8 : 6} />
-        {ms === null ? "Databasen svarar inte" : "Databasen i drift"}
+        {ms === null ? t.down : t.up}
       </span>
       {parts.map((p) => (
         <span key={p} className="inline-flex items-center gap-3">

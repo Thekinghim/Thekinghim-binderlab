@@ -7,7 +7,18 @@ import { MobileMore } from "@/components/ui/more-menu";
 import { Panel } from "@/components/ui/frame";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
-import { requestStoreShareView, requireRoute } from "@/server/data/core";
+import { redirect } from "next/navigation";
+
+import { simpleHomeFor } from "@/components/shell/simple-view";
+import { messages } from "@/i18n";
+import {
+  loadContext,
+  loadOptionalContextIfSignedIn,
+  requestStoreShareView,
+  requireRoute,
+} from "@/server/data/core";
+
+import { SalesScreen } from "./forsaljning/_components/sales-screen";
 import { NBSP, formatDecimal, formatInt, formatPeriodShort } from "@/lib/format";
 
 import { DailyChart } from "./_hem/daily-chart";
@@ -29,7 +40,12 @@ import { VardeCard } from "./_hem/varde-card";
 import { homeTodoLinkText, homeTodoPhone } from "./_hem/todo-phone";
 import { dateOf, kr, weekdayDayText } from "./_hem/text";
 
-export const metadata: Metadata = { title: "Hem" };
+/** Hem; i Enkel vy är startsidan Försäljning (på personens språk). */
+export async function generateMetadata(): Promise<Metadata> {
+  const ctx = await loadOptionalContextIfSignedIn().catch(() => null);
+  if (ctx?.viewMode === "simple") return { title: messages(ctx.locale).sales.title };
+  return { title: "Hem" };
+}
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
@@ -47,6 +63,12 @@ type SearchParams = Record<string, string | string[] | undefined>;
  * göra). Allt räknas i @/domain och @/analytics via modellen i _hem/model.ts.
  */
 export default async function HemPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  // Enkel vy: startsidan är Försäljning (utan omväg via en omdirigering efter inloggningen).
+  const simple = await loadContext();
+  if (simple.viewMode === "simple") {
+    if (!simple.canSeeEconomy) redirect(simpleHomeFor(simple.role));
+    return <SalesScreen ctx={simple} />;
+  }
   // Rollen kontrolleras före strömningen, så att påfyllaren får en riktig omdirigering.
   const ctx = await requireRoute("hem");
   // Skalet och skelettet går ut direkt; siffrorna strömmar in när de är räknade

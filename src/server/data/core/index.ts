@@ -18,7 +18,7 @@ import "server-only";
 
 import { revalidatePath, unstable_cache } from "next/cache";
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { cache } from "react";
 
 import type { SettlementRef, TodoItem } from "@/analytics/todos";
@@ -33,8 +33,14 @@ import type { IsoDate, Period } from "@/domain";
 import type { CostLines } from "@/lib/cost-lines";
 import { ACTIVE_ORG_COOKIE } from "@/server/auth/flows";
 import { nextCookieJar } from "@/server/auth/next-cookies";
-import { AuthorizationError, requireUser, type OrganizationMembership } from "@/server/session";
+import {
+  AuthorizationError,
+  getSessionUser,
+  requireUser,
+  type OrganizationMembership,
+} from "@/server/session";
 import { withUserDbFor } from "@/server/access";
+import { guardSimpleView } from "@/server/simple-view-guard";
 import { cachedUnpaidSettlements, invalidateUnpaidSettlements } from "@/server/settlements/cache";
 import { queryUnpaidSettlements } from "@/server/settlements/queries";
 
@@ -105,7 +111,22 @@ const loadViewer = cache(async (): Promise<Viewer | null> => {
   ]);
   const preferred = jar.get(ACTIVE_ORG_COOKIE)?.toLowerCase();
   const organization = organizations.find((o) => o.id === preferred) ?? organizations[0] ?? null;
+  // Enkel vy: allt utanför det tillåtna skickas till startsidan (@/server/simple-view-guard).
+  await guardSimpleView(organization);
   return organization ? verifiedViewer({ user, organization }) : null;
+});
+
+/**
+ * Kontexten om någon är inloggad, annars null, utan att skicka till /logga-in (för språket
+ * på sidor som visas både med och utan inloggning). Användare utan organisation: null.
+ */
+export const loadOptionalContextIfSignedIn = cache(async (): Promise<AppContext | null> => {
+  const user = await getSessionUser().catch(() => null);
+  if (!user) return null;
+  return loadOptionalContext().catch((error: unknown) => {
+    unstable_rethrow(error);
+    return null;
+  });
 });
 
 /**

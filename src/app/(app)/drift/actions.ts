@@ -345,7 +345,7 @@ export async function syncRefills(
       const pushed = await pushMachinesToAwish(viewer.organization.id, result.savedMachineIds);
       awish = summariseAwishPush(pushed);
     } catch {
-      awish = { state: "error", message: "Kunde inte skicka till Awish just nu." };
+      awish = { state: "error", kind: "error", message: "Kunde inte skicka till Awish just nu." };
     }
   }
   return { ok: result.ok, results: result.results, awish };
@@ -354,6 +354,10 @@ export async function syncRefills(
 /** Kort status om Awish-push, för Fyll på. */
 export interface AwishPushStatus {
   state: "off" | "sent" | "partial" | "error";
+  /** Vilket besked (för översättning i Fyll på): skickat, redan rätt, inte kopplad, fel. */
+  kind?: "sent" | "alreadyRight" | "notLinked" | "partial" | "error";
+  /** Antal fack som skickades (kind "sent"). */
+  slots?: number;
   message: string;
 }
 
@@ -370,19 +374,26 @@ function summariseAwishPush(
   if (errors.length > 0) {
     return {
       state: "partial",
+      kind: "partial",
       message: `Sparat i Binderlab. Till Awish gick det inte: ${errors[0]?.error ?? "okänt fel"}. Skriv antalet i Awish den här gången.`,
     };
   }
   if (noMachine.length > 0 && slots === 0) {
     return {
       state: "partial",
+      kind: "notLinked",
       message: "Sparat i Binderlab. Automaten är inte kopplad till Awish ännu.",
     };
   }
   if (slots === 0) {
-    return { state: "sent", message: "Sparat. Awish hade redan rätt antal." };
+    return { state: "sent", kind: "alreadyRight", message: "Sparat. Awish hade redan rätt antal." };
   }
-  return { state: "sent", message: `Sparat och skickat till Awish (${slots} fack).` };
+  return {
+    state: "sent",
+    kind: "sent",
+    slots,
+    message: `Sparat och skickat till Awish (${slots} fack).`,
+  };
 }
 
 /** Ångra efter Klar i Fyll på: motbokar egna påfyllningar (klient-id) från de senaste 30 minuterna. */

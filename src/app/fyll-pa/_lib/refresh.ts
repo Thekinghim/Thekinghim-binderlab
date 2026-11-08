@@ -10,7 +10,8 @@
  */
 
 import { wallClockIn } from "@/components/shell/period-state";
-import { formatDateTime, formatTime } from "@/lib/format";
+import { formatters } from "@/i18n/format";
+import { sv, type Messages } from "@/i18n/sv";
 
 /** Sidan hämtar om datan högst så här ofta av sig själv (fokus, synlig igen). */
 export const AUTO_REFRESH_MS = 30_000;
@@ -20,13 +21,19 @@ function dayKey(d: Date): string {
 }
 
 /** "14:52" i dag, "igår 14:52", annars "6 nov 14:52" (organisationens tidszon). */
-export function clockLabel(at: string | Date, now: string | Date, timeZone: string): string {
+export function clockLabel(
+  at: string | Date,
+  now: string | Date,
+  timeZone: string,
+  t: Messages = sv,
+): string {
+  const f = formatters(t.locale);
   const a = wallClockIn(new Date(at), timeZone);
   const n = wallClockIn(new Date(now), timeZone);
-  if (dayKey(a) === dayKey(n)) return formatTime(a);
+  if (dayKey(a) === dayKey(n)) return f.time(a);
   const yesterday = new Date(n.getFullYear(), n.getMonth(), n.getDate() - 1);
-  if (dayKey(a) === dayKey(yesterday)) return `igår ${formatTime(a)}`;
-  return formatDateTime(a, { now: n });
+  if (dayKey(a) === dayKey(yesterday)) return t.fill.yesterdayAt(f.time(a));
+  return f.dateTime(a, { now: n });
 }
 
 /** Senaste Awish-läsningen (ISO) bland automaterna, null om ingen har lästs. */
@@ -84,24 +91,25 @@ export interface RefreshNotice {
  */
 export function refreshNotice(
   outcome: RefreshOutcome,
-  ctx: { now: string | Date; lastReadAt: string | null; timeZone: string },
+  ctx: { now: string | Date; lastReadAt: string | null; timeZone: string; t?: Messages },
 ): RefreshNotice {
-  const at = (v: string | Date) => clockLabel(v, ctx.now, ctx.timeZone);
+  const t = ctx.t ?? sv;
+  const at = (v: string | Date) => clockLabel(v, ctx.now, ctx.timeZone, t);
   const last = (outcome.ok ? outcome.lastReadAt : null) ?? ctx.lastReadAt;
-  const latest = last ? ` – visar senaste läsningen ${at(last)}` : "";
+  const latest = last ? at(last) : null;
   if (!outcome.ok) {
     return {
-      text: outcome.offline ? `Utan nät${latest}` : `Kunde inte nå Awish${latest}`,
+      text: outcome.offline ? t.fill.refreshOffline(latest) : t.fill.refreshFailed(latest),
       tone: "warn",
     };
   }
   switch (outcome.status) {
     case "failed":
     case "no_credentials":
-      return { text: `Kunde inte nå Awish${latest}`, tone: "warn" };
+      return { text: t.fill.refreshFailed(latest), tone: "warn" };
     case "partial":
-      return { text: `Uppdaterat ${at(ctx.now)} · några automater svarade inte`, tone: "warn" };
+      return { text: t.fill.refreshPartial(at(ctx.now)), tone: "warn" };
     default:
-      return { text: `Uppdaterat ${at(ctx.now)}`, tone: "ok" };
+      return { text: t.fill.refreshUpdated(at(ctx.now)), tone: "ok" };
   }
 }

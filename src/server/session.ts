@@ -29,6 +29,7 @@ import { getAuthProvider } from "./auth";
 import { ACTIVE_ORG_COOKIE } from "./auth/flows";
 import { nextCookieJar } from "./auth/next-cookies";
 import { LOGIN_PATH } from "./auth/paths";
+import { guardSimpleView } from "./simple-view-guard";
 
 export { AuthorizationError, type OrganizationMembership, type SessionUser } from "./access";
 
@@ -64,7 +65,11 @@ export async function withUserDb<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
 export const getActiveOrganization = cache(async (): Promise<OrganizationMembership | null> => {
   const user = await requireUser();
   const jar = await nextCookieJar();
-  return resolveActiveOrganization(user, jar.get(ACTIVE_ORG_COOKIE));
+  const organization = await resolveActiveOrganization(user, jar.get(ACTIVE_ORG_COOKIE));
+  // Enkel vy: route handlers och server actions som läser organisationen här (sökningen,
+  // assistenten, exporten, filer) spärras som sidorna (@/server/simple-view-guard).
+  await guardSimpleView(organization);
+  return organization;
 });
 
 /**

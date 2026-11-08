@@ -26,6 +26,8 @@ export type InvitationLookup =
       organizationName: string;
       /** Butiken för en inbjudan till butiksportalen (rollen store), annars null. */
       storeName: string | null;
+      /** Språket ägaren valde för den inbjudna (invitations.locale). Saknas = svenska. */
+      locale?: "sv" | "en";
     }
   | { status: "expired" | "accepted" | "missing" };
 
@@ -48,7 +50,7 @@ export async function describeInvitation(
   }
   const result = await db().execute(
     sql`select i.email::text as email, i.role::text as role, o.name as organization_name,
-               st.name as store_name,
+               st.name as store_name, i.locale,
                i.accepted_at is not null as accepted, i.expires_at <= now() as expired
         from public.invitations i
         join public.organizations o on o.id = i.organization_id
@@ -62,6 +64,7 @@ export async function describeInvitation(
         role: MemberRole;
         organization_name: string;
         store_name: string | null;
+        locale: string | null;
         accepted: boolean;
         expired: boolean;
       }
@@ -81,5 +84,6 @@ export async function describeInvitation(
     role: row.role,
     organizationName: row.organization_name,
     storeName: row.store_name ?? null,
+    locale: row.locale === "en" ? "en" : "sv",
   };
 }

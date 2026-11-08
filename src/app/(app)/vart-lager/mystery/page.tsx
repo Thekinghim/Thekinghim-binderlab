@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 
-import { inPlace } from "@/components/stock/place-text";
 import { Icon } from "@/components/ui/icon";
 import { StateMessage } from "@/components/ui/state-message";
-import { formatInt, formatKronor, NBSP } from "@/lib/format";
+import { messages, type Messages } from "@/i18n";
+import { getT } from "@/i18n/server";
+import { formatKronor } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
 
 import { currentViewer } from "../../lager/_lib/session";
@@ -13,30 +14,23 @@ import { PageHead } from "../_components/page-head";
 import { ContentsCard } from "./_components/contents-card";
 import { SetCostButton } from "./_components/mystery-actions";
 import { loadMysteryOverviewFor, type MysteryOverview, type MysteryTitle } from "./_lib/data";
-import {
-  averageCost,
-  batchesForPacks,
-  batchesText,
-  defaultPlace,
-  maxBatches,
-  packHref,
-} from "./_lib/model";
+import { averageCost, batchesForPacks, defaultPlace, maxBatches, packHref } from "./_lib/model";
 
-export const metadata: Metadata = { title: "Mystery packs" };
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getT();
+  return { title: t.mystery.title };
+}
 
 const kr = (ore: number) => formatKronor(ore / 100);
 
 /** "Kan packa 2 omgångar hemma · Delta Reign tar slut först". */
-function capacityLine(view: MysteryOverview, t: MysteryTitle): string | null {
-  if (!t.recipe) return null;
-  const place = defaultPlace(t.recipe, view.places, view.byPlace);
-  if (!place) return "Inget eget lager än.";
-  const cap = maxBatches(t.recipe, view.byPlace[place.id] ?? {});
-  if (cap.batches === 0) {
-    return `Kan inte packa ${inPlace(place.name)}: ${cap.limiting?.name ?? "delar"} räcker inte.`;
-  }
-  const limit = cap.limiting ? ` · ${cap.limiting.name} tar slut först` : "";
-  return `Kan packa ${batchesText(cap.batches)} ${inPlace(place.name)}${limit}`;
+function capacityLine(view: MysteryOverview, title: MysteryTitle, t: Messages): string | null {
+  if (!title.recipe) return null;
+  const place = defaultPlace(title.recipe, view.places, view.byPlace);
+  if (!place) return t.mystery.noOwnStock;
+  const cap = maxBatches(title.recipe, view.byPlace[place.id] ?? {});
+  if (cap.batches === 0) return t.mystery.cannotPack(place.name, cap.limiting?.name ?? null);
+  return t.mystery.canPack(cap.batches, place.name, cap.limiting?.name ?? null);
 }
 
 /**
@@ -46,8 +40,12 @@ function capacityLine(view: MysteryOverview, t: MysteryTitle): string | null {
  */
 export default async function MysteryPacksPage() {
   const ctx = await requireRoute("mystery");
+  const t = messages(ctx.locale);
+  // Enkel vy: bara innehållet och Packa (inga belopp, ingen redigering, inga länkar bort).
+  const simple = ctx.viewMode === "simple";
   const viewer = await currentViewer();
-  const view = await loadMysteryOverviewFor(viewer, new Date(ctx.now));
+  const loaded = await loadMysteryOverviewFor(viewer, new Date(ctx.now));
+  const view: MysteryOverview = simple ? { ...loaded, canEdit: false, seesMoney: false } : loaded;
 
   const totalHome = view.titles.reduce(
     (n, t) => n + Object.values(t.inPlaces).reduce((a, b) => a + Math.max(0, b), 0),
@@ -58,30 +56,26 @@ export default async function MysteryPacksPage() {
     view.titles.length === 0
       ? undefined
       : missingRecipe > 0
-        ? `${formatInt(missingRecipe)} ${missingRecipe === 1 ? "titel" : "titlar"} saknar innehåll.`
-        : "Tryck Packa när du har packat en omgång.";
+        ? t.mystery.missingRecipe(missingRecipe)
+        : t.mystery.pressPack;
 
   return (
     <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-10 px-4 pt-8 pb-16 md:px-8 md:pt-12">
-      <PageHead
-        eyebrow="Mystery packs"
-        title={`${formatInt(totalHome)} mystery packs i lagret.`}
-        aside={aside}
-      />
+      <PageHead eyebrow={t.mystery.title} title={t.mystery.headline(totalHome)} aside={aside} />
       {view.titles.length === 0 ? (
         <StateMessage
           kind="empty"
-          message="Inga egna produkter än."
-          detail="Slå på Egen produkt för titeln under Inköpspriser."
+          message={t.mystery.empty}
+          detail={simple ? t.mystery.emptySimple : t.mystery.emptyDetail}
           {...(view.canEdit
             ? { action: { label: "Öppna Inköpspriser", href: "/inkopspriser" } }
             : {})}
         />
       ) : (
         <ul className="flex flex-col gap-6">
-          {view.titles.map((t, i) => (
-            <li key={t.id} className="rise" style={{ "--i": i + 1 } as CSSProperties}>
-              <TitleCard view={view} title={t} />
+          {view.titles.map((title, i) => (
+            <li key={title.id} className="rise" style={{ "--i": i + 1 } as CSSProperties}>
+              <TitleCard view={view} title={title} t={t} />
             </li>
           ))}
         </ul>
@@ -90,16 +84,24 @@ export default async function MysteryPacksPage() {
   );
 }
 
-function TitleCard({ view, title: t }: { view: MysteryOverview; title: MysteryTitle }) {
-  const cap = capacityLine(view, t);
+function TitleCard({
+  view,
+  title: t,
+  t: m,
+}: {
+  view: MysteryOverview;
+  title: MysteryTitle;
+  t: Messages;
+}) {
+  const cap = capacityLine(view, t, m);
   const cost = t.recipe && view.seesMoney ? averageCost(t.recipe, view.prices) : null;
   const differs =
     cost?.perPackOre !== null &&
     cost?.perPackOre !== undefined &&
     cost.perPackOre !== t.currentCostOre;
   const stockParts = [
-    ...view.places.map((p) => `${p.name} ${formatInt(t.inPlaces[p.id] ?? 0)}`),
-    `I automaterna ${formatInt(t.inMachines)}`,
+    ...view.places.map((p) => m.mystery.stockIn(p.name, t.inPlaces[p.id] ?? 0)),
+    m.mystery.inMachines(t.inMachines),
   ];
 
   return (
@@ -118,8 +120,7 @@ function TitleCard({ view, title: t }: { view: MysteryOverview; title: MysteryTi
           {cap ? <p className="text-base text-fg">{cap}</p> : null}
           {t.packQty !== null && t.packQty > 0 && t.recipe ? (
             <p className="text-base text-signal-fg">
-              Inköp: packa {formatInt(t.packQty)}
-              {NBSP}st ({batchesText(batchesForPacks(t.packQty, t.recipe.batchSize))})
+              {m.mystery.buyPack(t.packQty, batchesForPacks(t.packQty, t.recipe.batchSize))}
             </p>
           ) : null}
         </div>
@@ -129,7 +130,7 @@ function TitleCard({ view, title: t }: { view: MysteryOverview; title: MysteryTi
             className="flex h-14 shrink-0 items-center justify-center gap-2 rounded-md border border-inverse bg-inverse px-6 text-lg font-medium text-on-inverse active:bg-inverse-hover md:h-12"
           >
             <Icon name="plus" size={18} />
-            Packa
+            {m.mystery.pack}
           </Link>
         ) : !t.recipe && view.canEdit ? (
           <Link
@@ -144,7 +145,7 @@ function TitleCard({ view, title: t }: { view: MysteryOverview; title: MysteryTi
       {t.recipe ? (
         <ContentsCard recipe={t.recipe} />
       ) : (
-        <p className="text-base text-muted">Inget innehåll än.</p>
+        <p className="text-base text-muted">{m.mystery.noContents}</p>
       )}
 
       {cost ? (
