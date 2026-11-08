@@ -205,12 +205,38 @@ function columns(
       sortValue: (r) => r.toStoreOre,
       csv: (r) => r.toStoreOre / 100,
       footer: totals ? sek(totals.toStoreOre) : undefined,
-      render: (r) =>
-        r.agreementGap?.whole && r.toStoreOre === 0 ? (
-          <span className="text-signal-fg">{sek(0)}</span>
-        ) : (
-          sek(r.toStoreOre)
-        ),
+      render: (r) => {
+        const amount =
+          r.agreementGap?.whole && r.toStoreOre === 0 ? (
+            <span className="text-signal-fg">{sek(0)}</span>
+          ) : (
+            sek(r.toStoreOre)
+          );
+        if (!r.blocked) return amount;
+        // Vinstdelning med order utan inköpspris: avräkningen spärras. Kort notis under
+        // beloppet (smal nog för 375 px), länkad dit inköpspriset läggs in (som Att göra).
+        return (
+          <span className="flex flex-col items-end gap-0.5">
+            <span>{amount}</span>
+            {r.blocked.href ? (
+              <Link
+                href={r.blocked.href}
+                className="block max-w-28 rounded-xs text-right text-sm whitespace-normal text-signal-fg underline underline-offset-4 sm:max-w-40"
+                data-settlement-blocked
+              >
+                {r.blocked.text}
+              </Link>
+            ) : (
+              <span
+                className="block max-w-28 text-right text-sm whitespace-normal text-signal-fg sm:max-w-40"
+                data-settlement-blocked
+              >
+                {r.blocked.text}
+              </span>
+            )}
+          </span>
+        );
+      },
     },
     {
       key: "profit",

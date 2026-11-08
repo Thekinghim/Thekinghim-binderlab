@@ -6,7 +6,7 @@
  *             med en återbetalning
  *   Hyran     bara hyra 1 000 kr/mån; automaten flyttas dit 11 okt. (hyra för 21 dagar)
  *   Provision 20 % av försäljningen; automaten stod där 1–10 okt., en order utan inköpspris
- *   Utan pris 30 % av vinsten och en order utan inköpspris: avräkningen spärras
+ *   Utan pris 30 % av vinsten och en order utan inköpspris: avräkningen spärras (notis i listan)
  *   Luckan    10 % av försäljningen utom 10–19 okt. (inget avtal): 0 % de dagarna
  *   Tom       ingen automat och inget avtal: ingen varning
  */
@@ -89,6 +89,7 @@ const OCTOBER = { from: "2026-10-01", to: "2026-10-31" } as const;
 let orgId: string;
 let owner: { user: SessionUser; organization: OrganizationMembership };
 const ids = new Map<string, string>();
+let unpricedTitle: string;
 
 beforeAll(async () => {
   const u = await createUser();
@@ -144,6 +145,7 @@ beforeAll(async () => {
     const unpriced = await id(
       sql`insert into public.titles (organization_id, name) values (${orgId}, 'Utan pris') returning id`,
     );
+    unpricedTitle = unpriced;
     await tx.execute(
       sql`insert into public.purchase_prices (organization_id, title_id, unit_cost_ore, valid_from) values (${orgId}, ${priced}, 4000, '2026-01-01')`,
     );
@@ -219,9 +221,24 @@ describe("Till butiken = butikens sida = avräkningen (oktober)", () => {
         const kpi = detail.kpis.find((k) => k.id === "compensation")!.value;
         const facit = amount(name);
         if (facit !== null) expect(row.toStoreOre, `${name} lista`).toBe(facit);
-        // Butikens sida visar andelen som dras från vår vinst (prissatta order): samma
-        // som listan utom provisionen på order utan inköpspris (Provision: 1 000 öre).
-        expect(kpi, `${name} sida`).toBe(name === "Provision" ? 1_800 : row.toStoreOre);
+        // Butikens sida visar det vi betalar, samma som listan: också provisionen på
+        // ordern utan inköpspris (Provision 2 800 öre, inte 1 800).
+        expect(kpi, `${name} sida`).toBe(row.toStoreOre);
+        // Sålda utan inköpspris: Till butiken + Vår del går inte ihop, så en notis.
+        const unpriced = name === "Provision" || name === "Utan pris";
+        expect(detail.unpricedNote, `${name} notis`).toBe(
+          unpriced ? "1\u00a0såld saknar inköpspris – vinsten är inte helt rätt." : null,
+        );
+        // Vinstdelning med order utan pris: avräkningen spärras, notisen under beloppet
+        // länkar dit inköpspriset läggs in (samma som Att göra).
+        expect(row.blocked, `${name} spärrad`).toEqual(
+          name === "Utan pris"
+            ? {
+                text: "Kan inte räknas klart – lägg in inköpspris",
+                href: `/inkopspriser?titel=${unpricedTitle}`,
+              }
+            : null,
+        );
         // Varningen: bara Luckan (10 dagar); butiker utan automat larmar aldrig.
         expect(row.agreementGap?.days ?? 0, `${name} lucka`).toBe(name === "Luckan" ? 10 : 0);
         expect(detail.agreementGap?.days ?? 0).toBe(name === "Luckan" ? 10 : 0);

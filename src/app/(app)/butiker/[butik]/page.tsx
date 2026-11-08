@@ -198,6 +198,12 @@ export default async function StorePage({
 
       <div className="rise flex flex-col gap-3" style={rise(1)}>
         <StoreKpis items={data.kpis} label={`Nyckeltal · ${days}`} comparison={comparison} />
+        {/* Till butiken är det vi betalar; vinsten räknar inte order utan inköpspris. */}
+        {data.unpricedNote ? (
+          <p className="text-sm text-muted" data-unpriced-note>
+            {data.unpricedNote}
+          </p>
+        ) : null}
       </div>
 
       <div className="rise -mb-6 md:-mb-10" style={rise(2)}>

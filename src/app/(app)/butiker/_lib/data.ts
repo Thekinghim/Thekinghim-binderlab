@@ -16,6 +16,7 @@ import {
 } from "@/components/shell/period-state";
 import {
   agreementGaps,
+  buildLedger,
   minDate,
   profitability,
   storeCompensation,
@@ -25,6 +26,7 @@ import {
   type ProfitabilityInput,
 } from "@/domain";
 import { storeContractState, storeContractStates } from "@/analytics/contracts/signed";
+import { routeById } from "@/components/shell/nav";
 import { isUuid } from "@/server/access";
 import { loadSignableContractsFor } from "@/server/contracts";
 import {
@@ -41,6 +43,7 @@ import {
   activeStores,
   agreementGapView,
   agreementsOf,
+  blockedByUnpriced,
   buildStoreRows,
   compensationHeadline,
   dailySeries,
@@ -57,6 +60,7 @@ import {
   storeIssues,
   storeKpis,
   toAgreementView,
+  unpricedProfitNote,
 } from "./model";
 import {
   loadAgreementsFor,
@@ -263,6 +267,8 @@ export async function loadStoreListWith(
     shown.map((s) => [s.id, storeShareTerms(input.current.agreements, s.id, p.period)]),
   );
   const gaps = gapsFor(input.current, p.period, ctx.today);
+  // Vinstdelning med order utan inköpspris: avräkningen spärras (samma regel).
+  const blocked = blockedByUnpriced(buildLedger(input.current).profitSplits);
   const rows = buildStoreRows({
     stores: shown,
     placements: master.placements,
@@ -280,6 +286,8 @@ export async function loadStoreListWith(
     toStore,
     terms,
     gaps,
+    blocked,
+    canOpenPrices: routeById("inkopspriser").roles.includes(ctx.role),
     today: ctx.today,
     query: periodQuery(searchParams),
   });
@@ -337,8 +345,21 @@ export interface StoreDetailData {
   readonly agreementGap: AgreementGapView | null;
   /** Kontraktet: signerat, osignerat eller saknas. */
   readonly contract: "signed" | "unsigned" | "missing";
+  /**
+   * "3 sålda saknar inköpspris – vinsten är inte helt rätt." vid nyckeltalen, eller null:
+   * Till butiken + Vår del blir då inte vinsten (unpricedProfitNote).
+   */
+  readonly unpricedNote: string | null;
   /** Periodens query-sträng för länkar. */
   readonly query: string;
+}
+
+/**
+ * Till butiken i perioden för en butik: storeCompensation (alla order, butikens eget
+ * avtal), samma tal som listan och avräkningen.
+ */
+function toStoreOf(input: ProfitabilityInput, storeId: string): number {
+  return storeCompensation(input).stores.find((c) => c.storeId === storeId)?.totalOre ?? 0;
 }
 
 export async function loadStoreDetail(
@@ -465,7 +486,10 @@ export async function loadStoreDetail(
       daily,
       terms: storeShareTerms(input.current.agreements, storeId, p.period),
       storeShareDeducted: byStore.storeShareDeducted,
+      toStoreOre: toStoreOf(input.current, storeId),
+      previousToStoreOre: previousInput ? toStoreOf(previousInput, storeId) : null,
     }),
+    unpricedNote: unpricedProfitNote(row),
     daily,
     dailyCompare: dailyPrev ? dailyPrev.map((d) => d.value) : null,
     month: mc,

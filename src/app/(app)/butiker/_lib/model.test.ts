@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { agreementGaps, profitability, storeCompensation, type ProfitabilityInput } from "@/domain";
+import {
+  agreementGaps,
+  buildLedger,
+  profitability,
+  storeCompensation,
+  type ProfitabilityInput,
+} from "@/domain";
 import { storeShareTerms } from "@/lib/store-share";
 
 import { formatSek } from "@/lib/format";
@@ -11,6 +17,9 @@ import {
   activeStores,
   agreementGapView,
   agreementState,
+  BLOCKED_SHORT,
+  blockedByUnpriced,
+  blockedNote,
   buildStoreRows,
   changeText,
   contractAction,
@@ -576,5 +585,110 @@ describe("contractAction (fliken Villkor visade alltid Skapa kontrakt)", () => {
       href: "/avtal?skapa=store%3As1",
       primary: true,
     });
+  });
+});
+
+describe("listan: avräkningen kan inte räknas klart (vinstdelning utan inköpspris)", () => {
+  // S1 delar vinsten 30 % och har en order på en titel utan pris ("u"); S2 provision 10 %
+  // med samma titel (provisionen behöver inget inköpspris, inget spärras).
+  const base = input();
+  const withSplit: ProfitabilityInput = {
+    ...base,
+    orders: [
+      ...base.orders,
+      {
+        id: "o5",
+        externalId: "5",
+        titleId: "u",
+        machineId: "m1",
+        businessDate: "2026-11-02",
+        amountOre: 4_000,
+      },
+      {
+        id: "o6",
+        externalId: "6",
+        titleId: "u",
+        machineId: "m2",
+        businessDate: "2026-11-02",
+        amountOre: 4_000,
+      },
+    ],
+    agreements: [
+      {
+        storeId: "s1",
+        validFrom: "2026-10-01",
+        validTo: null,
+        commissionBp: 3_000,
+        monthlyRentOre: null,
+        commissionBase: "profit_after_costs",
+      },
+      {
+        storeId: "s2",
+        validFrom: "2026-10-01",
+        validTo: null,
+        commissionBp: 1_000,
+        monthlyRentOre: null,
+      },
+    ],
+  };
+  const blocked = blockedByUnpriced(buildLedger(withSplit).profitSplits);
+  const rows = (canOpenPrices: boolean) =>
+    buildStoreRows({
+      stores: [
+        { id: "s1", name: "Kiosken", address: null, city: null, isExample: false, archived: false },
+        {
+          id: "s2",
+          name: "Gallerian",
+          address: null,
+          city: null,
+          isExample: false,
+          archived: false,
+        },
+      ],
+      placements: withSplit.placements,
+      machineCodes: new Map([
+        ["m1", "BL-001"],
+        ["m2", "BL-002"],
+      ]),
+      agreements,
+      current: profitability(withSplit, "store"),
+      previous: null,
+      earnedMonth: new Map(),
+      recipients: new Map(),
+      blocked,
+      canOpenPrices,
+      today: "2026-11-02",
+      query: "",
+    });
+
+  it("bara butiken med vinstdelning och order utan pris", () => {
+    expect([...blocked]).toEqual([["s1", ["u"]]]);
+    const r = rows(true);
+    expect(r.find((x) => x.id === "s1")!.blocked).toEqual({
+      text: "Kan inte räknas klart – lägg in inköpspris",
+      // Samma mål som Att göra ("Lägg in inköpspris för …"): links.purchasePrices(titel).
+      href: "/inkopspriser?titel=u",
+    });
+    expect(r.find((x) => x.id === "s2")!.blocked).toBeNull();
+  });
+
+  it("utan behörighet till Inköpspriser: texten utan länk", () => {
+    expect(rows(false).find((x) => x.id === "s1")!.blocked).toEqual({
+      text: BLOCKED_SHORT,
+      href: null,
+    });
+  });
+
+  it("flera titlar utan pris: länken går till Inköpspriser", () => {
+    expect(blockedNote(["u", "v"], true)?.href).toBe("/inkopspriser");
+    expect(blockedNote(undefined, true)).toBeNull();
+  });
+
+  it("alla order med pris: inget spärras", () => {
+    const priced = {
+      ...withSplit,
+      prices: [...withSplit.prices, { titleId: "u", unitCostOre: 1_000, validFrom: "2026-01-01" }],
+    };
+    expect(blockedByUnpriced(buildLedger(priced).profitSplits).size).toBe(0);
   });
 });

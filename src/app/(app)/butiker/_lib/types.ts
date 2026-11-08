@@ -81,6 +81,11 @@ export interface StoreRow {
   readonly toStoreOre: number;
   /** Villkoren i klartext för perioden ("50 % av vinsten"), eller null utan avtal. */
   readonly terms: string | null;
+  /**
+   * Vinstdelning med order utan inköpspris i perioden: avräkningen kan inte räknas klart.
+   * Kort text under beloppet och länken dit inköpspriset läggs in (null utan behörighet).
+   */
+  readonly blocked: { readonly text: string; readonly href: string | null } | null;
   /** Dagar i perioden med automat men utan avtal (butiken räknas som 0 %), eller null. */
   readonly agreementGap: AgreementGapView | null;
   /** Avtalet som gäller i dag, eller null. */

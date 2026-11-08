@@ -8,6 +8,7 @@
 import type { StoreContractState } from "@/analytics/contracts/signed";
 import { ourProfitLabel } from "@/lib/store-share";
 import { CONTRACT_DEFAULTS } from "@/analytics/contracts";
+import { links } from "@/analytics/todos/common";
 import { parseIsoDate } from "@/components/shell/period-state";
 import { dataCoverage } from "@/server/data/core/period";
 import {
@@ -23,6 +24,7 @@ import {
   type Period,
   type ProfitabilityResult,
   type ProfitabilityRow,
+  type StoreMonthSplit,
 } from "@/domain";
 import {
   formatDate,
@@ -330,6 +332,42 @@ export function changeShare(current: number, previous: number): number | null {
   return bp === null ? null : bp / 10_000;
 }
 
+/**
+ * Butikerna vars avräkning inte kan räknas klart: vinstdelning (andel av vinsten) och order
+ * utan inköpspris under avtalet (samma regel som avräkningen, som då spärras). storeId →
+ * titlarna som saknar pris, sorterade.
+ */
+export function blockedByUnpriced(
+  splits: readonly StoreMonthSplit[],
+): Map<string, readonly string[]> {
+  const out = new Map<string, Set<string>>();
+  for (const s of splits) {
+    if (s.unpricedOrders <= 0) continue;
+    const set = out.get(s.storeId) ?? new Set<string>();
+    for (const t of s.unpricedTitleIds) set.add(t);
+    out.set(s.storeId, set);
+  }
+  return new Map([...out].map(([k, v]) => [k, [...v].sort()]));
+}
+
+/** Notisen under "Till butiken" när avräkningen är spärrad, med länk till inköpspriset. */
+export function blockedNote(
+  titleIds: readonly string[] | undefined,
+  canOpenPrices: boolean,
+): StoreRow["blocked"] {
+  if (!titleIds) return null;
+  return {
+    text: BLOCKED_SHORT,
+    // Samma mål som Att göra ("Lägg in inköpspris för …"): titeln, eller sidan med flera.
+    href: canOpenPrices
+      ? links.purchasePrices(titleIds.length === 1 ? titleIds[0] : undefined)
+      : null,
+  };
+}
+
+/** Kort text för en spärrad avräkning (listan). */
+export const BLOCKED_SHORT = "Kan inte räknas klart – lägg in inköpspris";
+
 export function buildStoreRows(args: {
   stores: readonly StoreBase[];
   placements: readonly MachinePlacementRef[];
@@ -351,6 +389,13 @@ export function buildStoreRows(args: {
   terms?: ReadonlyMap<string, string | null>;
   /** agreementGaps för perioden, per butik. Saknas = inga luckor. */
   gaps?: ReadonlyMap<string, AgreementGap>;
+  /**
+   * Butiker med vinstdelning och order utan inköpspris i perioden (blockedByUnpriced):
+   * storeId → titlarna som saknar pris. Avräkningen kan inte räknas klart. Saknas = inga.
+   */
+  blocked?: ReadonlyMap<string, readonly string[]>;
+  /** Användaren får öppna Inköpspriser (länken i notisen). Standard nej. */
+  canOpenPrices?: boolean;
   today: IsoDate;
   query: string;
 }): StoreRow[] {
@@ -393,6 +438,7 @@ export function buildStoreRows(args: {
         earnedMonthOre: args.earnedMonth.get(s.id) ?? 0,
         toStoreOre: args.toStore?.get(s.id) ?? 0,
         terms: args.terms?.get(s.id) ?? null,
+        blocked: blockedNote(args.blocked?.get(s.id), args.canOpenPrices === true),
         agreementGap,
         current,
         contract: args.contracts?.get(s.id) ?? null,
@@ -647,11 +693,20 @@ export function storeKpis(args: {
   terms?: string | null;
   /** Vinsten är efter butikens andel (standard på: butiken är vald). */
   storeShareDeducted?: boolean;
+  /**
+   * Till butiken i perioden, det vi faktiskt betalar (storeCompensation, samma som listan
+   * och avräkningen: även provisionen på order utan inköpspris). Utelämnat: andelen som
+   * dragits från vinsten (compensationOf).
+   */
+  toStoreOre?: number;
+  /** Samma för jämförelseperioden. */
+  previousToStoreOre?: number | null;
 }): KpiView[] {
   const cur = args.current;
   const prev = args.previous;
   const revenue = revenueOf(cur);
-  const compensation = compensationOf(cur);
+  const compensation = args.toStoreOre ?? compensationOf(cur);
+  const prevCompensation = args.previousToStoreOre ?? compensationOf(prev ?? undefined);
   const rel = (a: number, b: number) => {
     if (prev === null) return null;
     const bp = changeBp(a, b);
@@ -679,7 +734,7 @@ export function storeKpis(args: {
       label: args.terms ? `Till butiken · ${args.terms}` : "Till butiken",
       value: compensation,
       kind: "sek",
-      delta: rel(compensation, compensationOf(prev ?? undefined)),
+      delta: rel(compensation, prevCompensation),
       invert: true,
     },
     {
@@ -690,6 +745,17 @@ export function storeKpis(args: {
       delta: rel(cur?.profitOre ?? 0, prev?.profitOre ?? 0),
     },
   ];
+}
+
+/**
+ * Kort notis vid nyckeltalen när sålda pack i perioden saknar inköpspris: "Till butiken"
+ * är det vi betalar (också provisionen på de orderna), men vinsten räknar inte med dem, så
+ * Till butiken + Vår del blir inte vinsten. null när alla har inköpspris.
+ */
+export function unpricedProfitNote(row: ProfitabilityRow | undefined): string | null {
+  const n = row?.unpricedOrders ?? 0;
+  if (n <= 0) return null;
+  return `${formatInt(n)}${NBSP}${n === 1 ? "såld" : "sålda"} saknar inköpspris – vinsten är inte helt rätt.`;
 }
 
 /** Vad som behöver göras för butiken, viktigast först. */
