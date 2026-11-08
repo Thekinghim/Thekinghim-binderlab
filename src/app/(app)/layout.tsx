@@ -69,11 +69,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  // Enkel vy: bara det nerskalade skalet (tre flikar, språk, Logga ut). Inget av det som
-  // hela skalet läser (filter, synk, räknare) behövs.
+  // Enkel vy: bara det nerskalade skalet (tre flikar, språk, Uppdatera appen, Logga ut).
+  // Inget av det som hela skalet läser (filter, synk, räknare) behövs.
   if (ctx.viewMode === "simple") {
+    const simpleBuildId = await liveBuildId();
     return (
       <AppFrameRoot locale={ctx.locale} simple={{ role: ctx.role, email: ctx.user.email }}>
+        {/* "Ny version av appen finns" också i den enkla vyn (på personens språk). */}
+        <AppUpdate buildId={simpleBuildId} />
         {children}
       </AppFrameRoot>
     );

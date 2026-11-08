@@ -32,6 +32,8 @@ const SERVER_EXACT: Record<string, string> = {
   "Du har inte behörighet till det här.": "You do not have access to this.",
   "Du har inte behörighet att ändra det här.": "You are not allowed to change this.",
   "Du är inte inloggad.": "You are not signed in.",
+  "Med Enkel vy kan du inte ändra teamet. Be ägaren.":
+    "In the simple view you cannot change the team. Ask the owner.",
   "Påfyllningen avvisades.": "The refill was rejected.",
   "Kunde inte nå Awish.": "Could not reach the machines.",
   "Kunde inte skicka till Awish just nu.": "Could not update the machine right now.",
@@ -424,7 +426,7 @@ export const en: Messages = {
     later: "Later",
     offline: "No connection. Try again when you are online.",
     unsavedConfirm: "What you typed will not be saved. Update anyway?",
-    refreshApp: "Update the app",
+    refreshApp: "Update app",
     refreshHint: "If something looks old",
   },
   state: {

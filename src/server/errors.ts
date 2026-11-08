@@ -43,7 +43,8 @@ export function dbErrorMessage(error: unknown, fallback = "Något gick fel. För
   if (!pg) {
     return fallback;
   }
-  if (/^BL0\d\d$/.test(pg.code) && pg.message) {
+  // BL132: teamlåset i Enkel vy (20261117000000_enkel_vy_teamlas.sql), också på svenska.
+  if ((/^BL0\d\d$/.test(pg.code) || pg.code === "BL132") && pg.message) {
     return pg.message;
   }
   return GENERIC[pg.code] ?? fallback;

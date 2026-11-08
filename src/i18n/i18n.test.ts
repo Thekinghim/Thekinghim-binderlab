@@ -79,6 +79,24 @@ describe("serverns felmeddelanden på engelska", () => {
     expect(en.serverError("Något helt okänt.")).toMatch(/^Something went wrong/);
     expect(sv.serverError("Något helt okänt.")).toBe("Något helt okänt.");
   });
+
+  it("teamlåset i Enkel vy (BL132) på engelska", () => {
+    expect(en.serverError("Med Enkel vy kan du inte ändra teamet. Be ägaren.")).toBe(
+      "In the simple view you cannot change the team. Ask the owner.",
+    );
+  });
+});
+
+describe("Uppdatera appen på båda språken", () => {
+  it("rutan och Uppdatera appen: svenska som förut, enkel engelska för delägaren", () => {
+    expect(sv.appUpdate.banner).toBe("Ny version av appen finns");
+    expect(sv.appUpdate.refreshApp).toBe("Uppdatera appen");
+    expect(en.appUpdate.update).toBe("Update");
+    expect(en.appUpdate.refreshApp).toBe("Update app");
+    for (const value of Object.values(en.appUpdate)) {
+      expect(value).not.toMatch(/[åäöÅÄÖ]/);
+    }
+  });
 });
 
 describe("formatering", () => {

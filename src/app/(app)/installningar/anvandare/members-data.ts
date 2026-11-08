@@ -18,7 +18,9 @@ import type { MemberRole } from "@/db/schema";
 import {
   AuthorizationError,
   MEMBER_ROLES,
+  SIMPLE_VIEW_TEAM_MESSAGE,
   requireRoleFor,
+  requireTeamManagerFor,
   withUserDbFor,
   type SessionUser,
 } from "@/server/access";
@@ -43,6 +45,7 @@ export const MEMBER_MESSAGES = {
   lastOwnerRemove: "Sista ägaren kan inte tas bort. Gör någon annan till ägare först.",
   lastOwnerRole: LAST_OWNER_REASON,
   sameRole: "Personen har redan den rollen.",
+  simpleView: SIMPLE_VIEW_TEAM_MESSAGE,
 } as const;
 
 export interface MembersPageData {
@@ -132,15 +135,27 @@ export async function loadMembersPageFor(
   });
 }
 
+/**
+ * Ägare eller admin, och inte i Enkel vy (teamlåset): varje ändring av teamet går hit.
+ * Med Enkel vy hanteras inget (databasen nekar också, BL132).
+ */
 async function authorize(
   user: SessionUser | null,
   organizationId: string,
 ): Promise<MemberRole | ActionResult> {
   if (!user) return { ok: false, error: "Du är inte inloggad." };
   try {
-    return await requireRoleFor(user, organizationId, ["owner", "admin"]);
+    return await requireTeamManagerFor(user, organizationId, ["owner", "admin"]);
   } catch (error) {
-    if (error instanceof AuthorizationError) return { ok: false, error: MEMBER_MESSAGES.forbidden };
+    if (error instanceof AuthorizationError) {
+      return {
+        ok: false,
+        error:
+          error.message === SIMPLE_VIEW_TEAM_MESSAGE
+            ? MEMBER_MESSAGES.simpleView
+            : MEMBER_MESSAGES.forbidden,
+      };
+    }
     throw error;
   }
 }

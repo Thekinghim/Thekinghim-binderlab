@@ -2,7 +2,7 @@
 
 /**
  * Skalet för Enkel vy: tre stora flikar nedtill (Fyll på, Försäljning, Mystery) och en
- * liten meny uppe till höger med bara språk och Logga ut. Ingen sidomeny, ingen sökning,
+ * liten meny uppe till höger med bara språk, Uppdatera appen och Logga ut. Ingen sidomeny, ingen sökning,
  * ingen AI, ingen knapp för "Fyll på" ovanpå sidan. Reglerna (vilka sökvägar, vilka flikar)
  * finns i ./simple-view och gäller också på servern.
  */
@@ -13,6 +13,7 @@ import { createContext, useContext, useState, useTransition, type ReactNode } fr
 
 import { Sheet } from "@/app/(app)/lager/_components/sheet";
 import { Wordmark } from "@/components/brand/wordmark";
+import { useAppRefresh } from "@/components/pwa/app-refresh-button";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
 import type { MemberRole } from "@/db/schema";
@@ -105,7 +106,29 @@ export function LanguageChoice({ className }: { className?: string }) {
   );
 }
 
-/** Menyknappen (⋯) med språk och Logga ut. */
+/** "Update app" i menyn: hämtar senaste versionen och laddar om (som Mer i hela appen). */
+function UpdateAppButton() {
+  const t = useT().appUpdate;
+  const { busy, error, run } = useAppRefresh();
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void run()}
+        className="flex min-h-12 w-full items-center justify-center gap-2 rounded-md border border-line-strong bg-surface text-lg font-medium text-fg active:bg-hover disabled:text-disabled"
+      >
+        <Icon name="refresh" size={18} />
+        {busy ? t.updating : t.refreshApp}
+      </button>
+      <p role={error ? "alert" : undefined} className="meta text-center text-subtle">
+        {error ?? t.refreshHint}
+      </p>
+    </div>
+  );
+}
+
+/** Menyknappen (⋯) med språk, Uppdatera appen och Logga ut. */
 export function SimpleMenuButton({ className }: { className?: string }) {
   const t = useT();
   const shell = useSimpleShell();
@@ -137,6 +160,9 @@ export function SimpleMenuButton({ className }: { className?: string }) {
           <section className="flex flex-col gap-2" aria-label={t.lang.title}>
             <p className="label text-subtle">{t.lang.title}</p>
             <LanguageChoice />
+          </section>
+          <section className="flex flex-col gap-2 border-t border-line pt-5">
+            <UpdateAppButton />
           </section>
           <section className="flex flex-col gap-2 border-t border-line pt-5">
             {shell ? (

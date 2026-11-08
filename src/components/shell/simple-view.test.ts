@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { navSections, subTabHref } from "./nav";
 import {
   MYSTERY_HREF,
   REFILL_HREF,
@@ -50,6 +51,37 @@ describe("Enkel vy: tillåtna sökvägar", () => {
     "/fyll-pa\\..\\installningar",
   ])("stoppar %s", (path) => {
     expect(simpleViewAllows(path)).toBe(false);
+  });
+});
+
+describe("Enkel vy: butikernas andel och utbetalningen är bara för ägaren i full vy", () => {
+  // Proxyn skickar bara sökvägen (utan ?vy=…): /butiker?vy=utbetalning är /butiker.
+  it("fliken Utbetalning (/butiker?vy=utbetalning) och butikssidorna stoppas", () => {
+    const tabs = navSections.flatMap((s) => s.tabs).filter((t) => t.label === "Utbetalning");
+    expect(tabs).toHaveLength(1);
+    const href = subTabHref(tabs[0]!);
+    expect(href).toBe("/butiker?vy=utbetalning");
+    expect(simpleViewAllows(new URL(href, "http://x").pathname)).toBe(false);
+    // Även om sökvägen någon gång skulle komma med frågan.
+    expect(simpleViewAllows(href)).toBe(false);
+  });
+
+  it.each([
+    "/butiker",
+    "/butiker/3f1c9a2e-0b7d-4c55-9e8a-1a2b3c4d5e6f",
+    "/avtal",
+    "/expansion",
+    "/att-gora",
+  ])("stoppar %s", (path) => {
+    expect(simpleViewAllows(path)).toBe(false);
+  });
+
+  it("varje flik i hela appens meny utom de tre i den enkla vyn stoppas", () => {
+    const allowed = new Set(["/", "/forsaljning", REFILL_HREF, MYSTERY_HREF]);
+    for (const t of navSections.flatMap((s) => s.tabs)) {
+      const path = new URL(subTabHref(t), "http://x").pathname;
+      expect(simpleViewAllows(path), path).toBe(allowed.has(path));
+    }
   });
 });
 

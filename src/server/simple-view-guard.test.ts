@@ -57,12 +57,19 @@ describe("Enkel vy i getActiveOrganization (route handlers, server actions)", ()
     state.role = "owner";
   });
 
-  it.each(["/sok", "/assistent/fraga", "/installningar/export", "/avtal/x/fil", "/ekonomi"])(
-    "%s skickas till den enkla vyns startsida",
-    async (path) => {
-      await expect(activeAt(path)).rejects.toThrow("REDIRECT:/");
-    },
-  );
+  it.each([
+    "/sok",
+    "/assistent/fraga",
+    "/installningar/export",
+    "/avtal/x/fil",
+    "/ekonomi",
+    // Utbetalningen till butikerna (/butiker?vy=utbetalning: proxyn skickar /butiker).
+    "/butiker",
+    "/butiker/3f1c9a2e-0b7d-4c55-9e8a-1a2b3c4d5e6f",
+    "/installningar/anvandare",
+  ])("%s skickas till den enkla vyns startsida", async (path) => {
+    await expect(activeAt(path)).rejects.toThrow("REDIRECT:/");
+  });
 
   it("påfyllaren med enkel vy skickas till Fyll på", async () => {
     state.role = "refiller";

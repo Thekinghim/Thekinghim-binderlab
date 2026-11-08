@@ -12,7 +12,7 @@
  *   skapas, precis som för vanliga inbjudningar.
  * - removeStoreUser / revokeStoreInvitation: ägare/admin tar bort en
  *   butiksanvändare eller återkallar en väntande inbjudan (från /butiker).
- *   requireRole här, RLS (memberships_delete, invitations_delete) i databasen,
+ *   requireTeamManagerFor här, RLS (memberships_delete, invitations_delete) i databasen,
  *   och frågan rör bara role = store för just den butiken.
  *
  * Alla returnerar { ok, error? } med svenska meddelanden. Indata är okontrollerad.
@@ -24,12 +24,12 @@ import { z } from "zod";
 
 import { getServerEnv } from "@/lib/env";
 
-import { withUserDbFor } from "../access";
+import { SIMPLE_VIEW_TEAM_MESSAGE, requireTeamManagerFor, withUserDbFor } from "../access";
 import { getAuthProvider } from "../auth";
 import { dbErrorMessage, pgErrorOf } from "../errors";
 import { createRateLimiter } from "../rate-limit";
 import { resolveAppBaseUrl } from "../request-info";
-import { getActiveOrganization, getSessionUser, requireRole, type SessionUser } from "../session";
+import { getActiveOrganization, getSessionUser, type SessionUser } from "../session";
 
 import { deleteStorePortalInvitation, deleteStorePortalUser } from "./access";
 import { FAULT_KINDS } from "./faults";
@@ -151,7 +151,7 @@ const inviteInput = z.object({
 
 /**
  * Bjud in en butiksanvändare till portalen (från /butiker). Ägare och admin i den
- * aktiva organisationen. Kontrolleras både här (requireRole) och i databasen
+ * aktiva organisationen. Kontrolleras både här (requireTeamManagerFor) och i databasen
  * (create_store_invitation: has_role owner/admin, butiken finns i organisationen).
  */
 export async function inviteStoreUser(input: {
@@ -166,9 +166,13 @@ export async function inviteStoreUser(input: {
   }
   const org = await getActiveOrganization();
   if (!org) return { ok: false, error: "Du är inte medlem i någon organisation." };
+  // Teamlåset: med Enkel vy bjuds ingen in (databasen nekar också, BL132).
   try {
-    await requireRole(org.id, ["owner", "admin"]);
-  } catch {
+    await requireTeamManagerFor(user, org.id);
+  } catch (error) {
+    if (error instanceof Error && error.message === SIMPLE_VIEW_TEAM_MESSAGE) {
+      return { ok: false, error: SIMPLE_VIEW_TEAM_MESSAGE };
+    }
     return { ok: false, error: "Bara ägare och administratörer kan bjuda in butiker." };
   }
   let baseUrl: string;
@@ -210,8 +214,11 @@ async function requireStoreManager(): Promise<
   const org = await getActiveOrganization();
   if (!org) return { ok: false, error: "Du är inte medlem i någon organisation." };
   try {
-    await requireRole(org.id, ["owner", "admin"]);
-  } catch {
+    await requireTeamManagerFor(user, org.id);
+  } catch (error) {
+    if (error instanceof Error && error.message === SIMPLE_VIEW_TEAM_MESSAGE) {
+      return { ok: false, error: SIMPLE_VIEW_TEAM_MESSAGE };
+    }
     return { ok: false, error: "Bara ägare och administratörer hanterar butikens portal." };
   }
   return { ok: true, user, orgId: org.id };

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Icon } from "@/components/ui/icon";
+import { useT } from "@/i18n/client";
 import { cn } from "@/lib/cn";
 
 import {
@@ -55,6 +56,8 @@ function markState(state: "ok" | "ny"): void {
  * öppnas igen efter en stund i bakgrunden och inget är ifyllt (se app-version.ts).
  */
 export function AppUpdate({ buildId }: { buildId: string }) {
+  // Texterna på personens språk (delägaren i Enkel vy: engelska).
+  const t = useT().appUpdate;
   const [live, setLive] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -169,7 +172,7 @@ export function AppUpdate({ buildId }: { buildId: string }) {
 
   const update = async () => {
     if (busy) return;
-    if (hasUnsavedInput() && !window.confirm("Det du har fyllt i sparas inte. Uppdatera ändå?")) {
+    if (hasUnsavedInput() && !window.confirm(t.unsavedConfirm)) {
       return;
     }
     setBusy(true);
@@ -186,12 +189,12 @@ export function AppUpdate({ buildId }: { buildId: string }) {
     <div className="pointer-events-none fixed inset-x-0 top-0 z-[60] px-3 pt-[calc(8px+env(safe-area-inset-top))] lg:hidden">
       <div
         role="status"
-        aria-label="Ny version av appen"
+        aria-label={t.bannerLabel}
         className="pointer-events-auto mx-auto flex max-w-[560px] items-center gap-2 rounded-md border border-line-strong bg-surface py-1.5 pr-1 pl-3.5 shadow-[0_8px_24px_-8px_rgb(0_0_0/0.5)]"
         style={{ animation: "bl-enter var(--bl-dur-slow) var(--bl-ease)" }}
       >
         <p className="min-w-0 flex-1 text-base leading-5 text-fg">
-          {offline ? "Ingen uppkoppling. Försök igen med nät." : "Ny version av appen finns"}
+          {offline ? t.offline : t.banner}
         </p>
         <button
           type="button"
@@ -202,11 +205,11 @@ export function AppUpdate({ buildId }: { buildId: string }) {
             busy && "opacity-70",
           )}
         >
-          {busy ? "Uppdaterar…" : "Uppdatera"}
+          {busy ? t.updating : t.update}
         </button>
         <button
           type="button"
-          aria-label="Senare"
+          aria-label={t.later}
           onClick={() => setDismissed(live)}
           className="grid size-11 shrink-0 place-items-center rounded-sm text-subtle transition-colors hover:text-fg"
         >

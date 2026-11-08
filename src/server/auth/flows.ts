@@ -12,9 +12,11 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 
 import {
+  AuthorizationError,
   MEMBER_ROLES,
+  SIMPLE_VIEW_TEAM_MESSAGE,
   getRoleFor,
-  requireRoleFor,
+  requireTeamManagerFor,
   withUserDbFor,
   type SessionUser,
 } from "../access";
@@ -185,9 +187,14 @@ export async function createInviteFlow(
   }
   const { organizationId, email, role, validDays } = parsed.data;
   const password = parsed.data.password === "" ? undefined : parsed.data.password;
+  // Teamlåset: med Enkel vy bjuder man inte in (före kontot och mejlet; databasen nekar
+  // också, BL132).
   try {
-    await requireRoleFor(user, organizationId, ["owner", "admin"]);
-  } catch {
+    await requireTeamManagerFor(user, organizationId, ["owner", "admin"]);
+  } catch (error) {
+    if (error instanceof AuthorizationError && error.message === SIMPLE_VIEW_TEAM_MESSAGE) {
+      return { ok: false, error: SIMPLE_VIEW_TEAM_MESSAGE };
+    }
     return { ok: false, error: MESSAGES.inviteForbidden };
   }
   // Ingen inbjudan (och inget konto eller mejl) från en demo. Databasen nekar också (BL090).

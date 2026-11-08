@@ -120,6 +120,46 @@ export async function requireRoleFor(
   return role;
 }
 
+/** Teamlåset (BL132 i databasen): den som har Enkel vy hanterar inte teamet. */
+export const SIMPLE_VIEW_TEAM_MESSAGE = "Med Enkel vy kan du inte ändra teamet. Be ägaren.";
+
+/** Användarens vy i organisationen (läst under RLS), eller null om hen inte är medlem. */
+export async function getViewModeFor(
+  user: SessionUser,
+  organizationId: string,
+): Promise<ViewMode | null> {
+  if (!isUuid(organizationId)) return null;
+  return withUserDbFor(user, async (tx) => {
+    const result = await tx.execute(
+      sql`select m.view_mode from public.memberships m
+          where m.organization_id = ${organizationId}::uuid
+            and m.user_id = (select auth.uid())`,
+    );
+    const row = Array.from(result)[0] as { view_mode?: unknown } | undefined;
+    if (!row) return null;
+    return row.view_mode === "simple" ? "simple" : "full";
+  });
+}
+
+/**
+ * Teamet (inbjudningar, roller, vyer, språk åt andra, borttagning): ägare eller admin
+ * (eller de angivna rollerna) och INTE i Enkel vy. Ägaren står överst och hanterar teamet
+ * från sitt eget konto; en delägare med Enkel vy är ägare i datan men hanterar inget.
+ * Kastar AuthorizationError("forbidden", SIMPLE_VIEW_TEAM_MESSAGE) i Enkel vy. Databasen
+ * nekar också (BL132, 20261117000000_enkel_vy_teamlas.sql).
+ */
+export async function requireTeamManagerFor(
+  user: SessionUser,
+  organizationId: string,
+  roles: readonly MemberRole[] = ["owner", "admin"],
+): Promise<MemberRole> {
+  const role = await requireRoleFor(user, organizationId, roles);
+  if ((await getViewModeFor(user, organizationId)) === "simple") {
+    throw new AuthorizationError("forbidden", SIMPLE_VIEW_TEAM_MESSAGE);
+  }
+  return role;
+}
+
 /** En organisation där användaren är medlem, med antal aktiva automater. */
 export interface OrganizationWithMachineCount extends OrganizationMembership {
   readonly machines: number;
