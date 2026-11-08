@@ -6,7 +6,7 @@
 
 import "server-only";
 
-import { and, count, eq, gte, isNull, lte, or } from "drizzle-orm";
+import { and, count, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 
 import { isMine } from "@/analytics/team";
 import { retiredPairs } from "@/analytics/todos";
@@ -16,6 +16,7 @@ import { requireRoleFor, withUserDbFor } from "@/server/access";
 import { querySlotPeriods } from "@/server/data/assortment";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import { queryRefillSources, type RefillSources } from "@/server/data/core/places";
+import { mysteryBatchSql } from "@/server/data/core/queries";
 import { FIELD_REFILL_ROLES } from "@/server/data/field-refills";
 import { queryResponsibles } from "@/server/data/team";
 
@@ -106,7 +107,12 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
           .from(s.stockLevels)
           .where(eq(s.stockLevels.organizationId, orgId)),
         tx
-          .select({ id: s.titles.id, name: s.titles.name })
+          .select({
+            id: s.titles.id,
+            name: s.titles.name,
+            // Mystery pack: pack per omgång (fylls bara på när facket är tomt).
+            batch: sql<number | null>`${mysteryBatchSql("titles")}`,
+          })
           .from(s.titles)
           .where(
             and(
@@ -188,6 +194,9 @@ export async function loadFillDataFor(viewer: Viewer, now: Date = new Date()): P
       current,
       retired: retiredPairs(periods, today),
       sold,
+      mystery: new Map(
+        titles.flatMap((t) => (t.batch === null ? [] : [[t.id, Number(t.batch)] as const])),
+      ),
     });
     return {
       machines: list,

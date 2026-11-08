@@ -18,7 +18,15 @@
  * visar appens antal för titeln (en push som inte hade något att ändra loggas inte).
  * Påfyllningar som ångrats räknas inte, och inte heller de senaste PUSH_GRACE_MINUTES
  * (pushen kan pågå).
+ *
+ * Mystery packs (`mysteryBatchSize`): facket fylls bara på när det är tomt, med en hel omgång,
+ * och pushen till Awish fyller bara tomma fack. En påfyllning i ett mystery-fack som inte var
+ * tomt når därför inte Awish med flit: det ger en varning ("fylldes på innan det var tomt"),
+ * inget larm, och appens högre saldo i kontroll 2 likaså. Ett mystery-fack med fler pack än
+ * en omgång i Awish och en påfyllning som inte är en hel omgång ger också en varning.
  */
+
+import { mysteryBatch, mysteryRefillProblem } from "@/domain";
 
 import { countText, plural, resultOf, skipped } from "./common";
 import type { CheckFinding, CheckResult } from "./types";
@@ -43,6 +51,8 @@ export interface AwishTitleRead {
   readonly changedSince: number;
   /** Titeln har inventerats i appen efter läsningen (jämförs inte). */
   readonly countedSince: boolean;
+  /** Mystery pack: pack per omgång, annars null/utelämnat. */
+  readonly mysteryBatchSize?: number | null;
 }
 
 export interface AwishMachineRead {
@@ -72,6 +82,7 @@ export function awishStockCheck(input: {
   let compared = 0;
   let different = 0;
   let old = 0;
+  let mystery = 0;
   for (const m of input.machines) {
     if (m.readAt === null || !Number.isFinite(Date.parse(m.readAt))) {
       old += 1;
@@ -89,11 +100,28 @@ export function awishStockCheck(input: {
       continue;
     }
     for (const t of m.titles) {
+      const batch = mysteryBatch(t.mysteryBatchSize);
+      if (batch !== null && t.awishUnits > batch) {
+        mystery += 1;
+        findings.push({
+          level: "warn",
+          text: `${m.label} ${t.titleName}: ${t.awishUnits} pack i Awish, mer än en omgång (${batch}). Mystery-facket fylls bara på när det är tomt.`,
+        });
+      }
       if (t.countedSince) continue;
       compared += 1;
       const expected = t.awishUnits + t.changedSince;
       const app = t.appUnits ?? 0;
       if (app === expected) continue;
+      if (batch !== null && app > expected) {
+        // Pushen fyller bara tomma mystery-fack: en påfyllning före 0 hålls tillbaka.
+        mystery += 1;
+        findings.push({
+          level: "warn",
+          text: `${m.label} ${t.titleName}: appen ${app} pack, Awish ${expected}. Mystery-facket fylldes på innan det var tomt, så Awish fylls inte på förrän facket är tomt.`,
+        });
+        continue;
+      }
       different += 1;
       const after =
         t.changedSince === 0
@@ -114,7 +142,10 @@ export function awishStockCheck(input: {
     ],
     summary: {
       pass: `Awish och appen visar samma antal pack (${compared} titlar i ${input.machines.length} ${plural(input.machines.length, "automat", "automater")}).`,
-      warn: `Samma antal där det gick att jämföra; ${countText(old, "automat", "automater")} med gammal läsning.`,
+      warn:
+        old > 0
+          ? `Samma antal där det gick att jämföra; ${countText(old, "automat", "automater")} med gammal läsning.`
+          : `Samma antal där det gick att jämföra; ${countText(mystery, "mystery-fack", "mystery-fack")} att se över.`,
       fail: `${countText(different, "titel", "titlar")} har olika antal i Awish och appen.`,
     },
   });
@@ -139,6 +170,10 @@ export interface RefillRow {
    * påfyllningen nått Awish även utan loggad push (pushen loggas bara när ett fack ändrades).
    */
   readonly confirmedByRead?: boolean;
+  /** Mystery pack: pack per omgång, annars null/utelämnat. */
+  readonly mysteryBatchSize?: number | null;
+  /** Appens saldo i automaten just före påfyllningen (null = okänt). */
+  readonly before?: number | null;
 }
 
 export interface PushRow {
@@ -177,6 +212,25 @@ export function refillPushCheck(input: {
   let missing = 0;
   for (const r of due) {
     const at = Date.parse(r.at);
+    const batch = mysteryBatch(r.mysteryBatchSize);
+    const problem =
+      batch === null || r.before === null || r.before === undefined
+        ? null
+        : mysteryRefillProblem(r.before, r.quantity, batch);
+    if (batch !== null && problem === "not_empty") {
+      // Med flit inte till Awish (pushen fyller bara tomma mystery-fack): varning, inget larm.
+      findings.push({
+        level: "warn",
+        text: `${r.machineLabel} ${r.titleName}: fylldes på med ${r.quantity} pack fast facket hade ${r.before} kvar. Mystery-facket fylls bara på när det är tomt.`,
+      });
+      continue;
+    }
+    if (batch !== null && problem === "not_one_batch") {
+      findings.push({
+        level: "warn",
+        text: `${r.machineLabel} ${r.titleName}: fylldes på med ${r.quantity} pack, en omgång är ${batch}.`,
+      });
+    }
     const reached =
       r.confirmedByRead === true ||
       (pushesByMachine.get(r.machineId) ?? []).some((t) => t >= at - CLOCK_SKEW_MS);

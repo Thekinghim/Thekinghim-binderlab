@@ -18,6 +18,7 @@ import type {
 import { REFILL_WINDOW_HOURS } from "@/analytics/self-check";
 import type { Db } from "@/db/client";
 import { awishExpiryNotice } from "@/server/awish/expiry";
+import { mysteryBatchSql } from "@/server/data/core/queries";
 import { parseState } from "@/server/awish/sync";
 
 type Row = Record<string, unknown>;
@@ -53,6 +54,7 @@ export async function queryAwishReads(db: Db, orgId: string): Promise<AwishMachi
     app: number | null;
     changed: number | string | null;
     counted_since: boolean | null;
+    mystery_batch: number | null;
   }>(
     db,
     sql`with loc as (
@@ -84,7 +86,8 @@ export async function queryAwishReads(db: Db, orgId: string): Promise<AwishMachi
                     and (sl.last_counted_at is null or e.occurred_at > sl.last_counted_at)
                     and (e.occurred_at > f.awish_synced_at or e.created_at > f.awish_synced_at)
                ) as changed,
-               (sl.last_counted_at > f.awish_synced_at) as counted_since
+               (sl.last_counted_at > f.awish_synced_at) as counted_since,
+               ${mysteryBatchSql("t")} as mystery_batch
         from fill f
         left join public.titles t on t.organization_id = ${orgId}::uuid and t.id = f.title_id
         left join public.stock_levels sl
@@ -110,6 +113,7 @@ export async function queryAwishReads(db: Db, orgId: string): Promise<AwishMachi
       appUnits: r.app === null ? null : Number(r.app),
       changedSince: Number(r.changed ?? 0),
       countedSince: r.counted_since === true,
+      ...(r.mystery_batch === null ? {} : { mysteryBatchSize: Number(r.mystery_batch) }),
     });
   }
   return [...byMachine.values()];
@@ -151,6 +155,8 @@ export async function queryRefillPushes(db: Db, orgId: string, now: Date): Promi
     undone: boolean;
     no_slot: boolean;
     confirmed: boolean | null;
+    mystery_batch: number | null;
+    before: number | string | null;
   }>(
     db,
     sql`select e.id, l.machine_id, coalesce(nullif(m.code, ''), m.name) as label,
@@ -186,7 +192,25 @@ export async function queryRefillPushes(db: Db, orgId: string, now: Date): Promi
                              and (sl.last_counted_at is null or e2.occurred_at > sl.last_counted_at)
                              and (e2.occurred_at > l.awish_synced_at
                                   or e2.created_at > l.awish_synced_at))
-                        = coalesce(sl.quantity, 0))) as confirmed
+                        = coalesce(sl.quantity, 0))) as confirmed,
+               ${mysteryBatchSql("t")} as mystery_batch,
+               -- Saldot just före påfyllningen (samma regel som stock_levels: senaste
+               -- inventeringen före händelsen + händelserna mellan), bara för mystery packs.
+               (case when ${mysteryBatchSql("t")} is not null then (
+                  select coalesce(lc.quantity, 0) + coalesce((
+                    select sum(a.quantity) from public.stock_events a
+                     where a.organization_id = e.organization_id and a.location_id = e.location_id
+                       and a.title_id = e.title_id and a.kind <> 'count'
+                       and (a.occurred_at, a.seq) < (e.occurred_at, e.seq)
+                       and (lc.seq is null or (a.occurred_at, a.seq) > (lc.occurred_at, lc.seq))), 0)
+                  from (select 1) one
+                  left join lateral (
+                    select c.quantity, c.occurred_at, c.seq from public.stock_events c
+                     where c.organization_id = e.organization_id and c.location_id = e.location_id
+                       and c.title_id = e.title_id and c.kind = 'count'
+                       and (c.occurred_at, c.seq) < (e.occurred_at, e.seq)
+                     order by c.occurred_at desc, c.seq desc limit 1) lc on true
+               ) end) as before
         from public.stock_events e
         join public.stock_locations l on l.organization_id = e.organization_id and l.id = e.location_id
         join public.machines m on m.organization_id = l.organization_id and m.id = l.machine_id
@@ -219,6 +243,12 @@ export async function queryRefillPushes(db: Db, orgId: string, now: Date): Promi
       undone: r.undone === true,
       noSlot: r.no_slot === true,
       confirmedByRead: r.confirmed === true,
+      ...(r.mystery_batch === null
+        ? {}
+        : {
+            mysteryBatchSize: Number(r.mystery_batch),
+            before: r.before === null ? null : Number(r.before),
+          }),
     })),
     pushes: pushRows.map((p) => ({ machineId: p.machine_id, at: iso(p.at) ?? "" })),
   };

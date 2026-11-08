@@ -26,6 +26,11 @@ export interface TitleRef {
   readonly name: string;
   /** Arkiverad eller sammanslagen titel. Tas inte med i dubblettsökningen. */
   readonly archived?: boolean;
+  /**
+   * Mystery pack (egen produkt med innehåll): antal pack per omgång, annars null/utelämnat.
+   * Facket fylls bara på när det är tomt, med en hel omgång (@/domain mystery-refill).
+   */
+  readonly mysteryBatchSize?: number | null;
 }
 
 /** En automat. */

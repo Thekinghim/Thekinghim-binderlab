@@ -25,10 +25,18 @@
  * alls, inte heller för larmgränsen. Det går inte att fylla på, som på Fyll på (där
  * raden i stället säger "Fullt · räcker ~2 d" och "Säljer fort – ge den ett fack till").
  * Så fort ett pack säljs är facket inte fullt längre och regeln ovan gäller igen.
+ *
+ * Mystery packs (`TitleRef.mysteryBatchSize`): facket fylls bara på när det är tomt, med en
+ * hel omgång (oddsen gäller per omgång). Medan det har pack kvar blir det ingen punkt alls,
+ * varken "snart slut", "fyll på" eller larmgränsen. Tomt (och har sålt här, eller har en
+ * larmgräns): punkten "Mystery Pack Plus är slut i BL-001 – fyll på en hel omgång (14 st)",
+ * nivå 'now'.
  */
 
 import {
   addDays,
+  mysteryBatch,
+  mysteryEmptyText,
   dailyUnits,
   daysOfStockLeft,
   floorDiv,
@@ -150,6 +158,7 @@ export function refillTodos(ctx: TodoContext, opts: RefillOptions = {}): TodoIte
       o.machineId === null ? [] : [assortmentKey(o.machineId, o.titleId)],
     ),
   );
+  const batches = mysteryBatches(input.titles);
   const out: TodoItem[] = [];
   for (const s of input.stock) {
     const machine = machines.get(s.machineId);
@@ -162,6 +171,34 @@ export function refillTodos(ctx: TodoContext, opts: RefillOptions = {}): TodoIte
       ...(machine.activeFrom !== null ? { activeFrom: machine.activeFrom } : {}),
     });
     const onHand = Math.max(0, s.onHand);
+    const batch = batches.get(s.titleId);
+    if (batch !== undefined) {
+      // Mystery pack: ingen punkt förrän facket är tomt, då en hel omgång.
+      if (onHand > 0) continue;
+      const alertAt = alerts.get(assortmentKey(s.machineId, s.titleId));
+      if (
+        v.units > 0 ||
+        alertAt !== undefined ||
+        soldHere.has(assortmentKey(s.machineId, s.titleId))
+      ) {
+        const windowOrders = orders.filter(
+          (o) => o.businessDate >= v.start && o.businessDate <= v.end,
+        );
+        const revenueOre = v.units > 0 ? revenue(windowOrders, input.settings) : 0;
+        const atStakeOre =
+          v.days > 0 ? Math.max(0, roundHalfUp(revenueOre * HORIZON_DAYS, v.days)) : 0;
+        out.push(
+          mysteryTodo(s, batch, ctx.titleName(s.titleId), ctx.machineName(s.machineId), {
+            atStakeOre: v.units > 0 ? atStakeOre : null,
+            detail:
+              v.units > 0
+                ? ` Säljer i snitt ${ratioTenths(v.units, v.days)} pack per dag (${v.days} dagar t.o.m. ${day(asOf)}).`
+                : "",
+          }),
+        );
+      }
+      continue;
+    }
     // Fullt fack: inget att fylla på (Fyll på visar "Fullt · räcker ~N d").
     if (isFullSlot(onHand, s.capacity)) continue;
     const alertAt = alerts.get(assortmentKey(s.machineId, s.titleId));
@@ -246,6 +283,58 @@ export function refillTodos(ctx: TodoContext, opts: RefillOptions = {}): TodoIte
     });
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Mystery packs
+// ---------------------------------------------------------------------------
+
+/** Mystery packs: titelns id → pack per omgång. */
+export function mysteryBatches(titles: readonly TitleRef[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const t of titles) {
+    const b = mysteryBatch(t.mysteryBatchSize);
+    if (b !== null) out.set(t.id, b);
+  }
+  return out;
+}
+
+/** Punkten för ett tomt mystery-fack: fyll på en hel omgång. */
+function mysteryTodo(
+  s: StockLevelRef,
+  batch: number,
+  titleName: string,
+  machineName: string,
+  extra: { readonly atStakeOre: number | null; readonly detail: string },
+): TodoItem {
+  return {
+    key: `refill:${s.machineId}:${s.titleId}`,
+    fingerprint: refillFingerprint("now", s),
+    kind: "refill",
+    level: "now",
+    urgency: urgencyOf("now", extra.atStakeOre),
+    atStakeOre: extra.atStakeOre,
+    daysLeft: 0,
+    title: mysteryEmptyText(titleName, batch, machineName),
+    detail:
+      `Mystery-facket är tomt. Det fylls bara på när det är tomt, med en hel omgång (${batch} pack), så att oddsen på etiketten stämmer.` +
+      extra.detail,
+    evidence: evidence({
+      rule: "Mystery pack: facket fylls på först när det är tomt, med exakt en omgång.",
+      titleIds: [s.titleId],
+      machineIds: [s.machineId],
+      figures: [
+        { key: "onHand", label: "I lager", value: 0, unit: "packs" },
+        { key: "batchSize", label: "Pack per omgång", value: batch, unit: "packs" },
+      ],
+    }),
+    link: links.stock(s.machineId, s.titleId),
+    action: {
+      kind: "register-refill",
+      label: "Registrera påfyllning",
+      params: { machineId: s.machineId, titleId: s.titleId },
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -353,12 +442,16 @@ export function withSlotAlerts(
   const titleName = titleNames(args.titles);
   const machineName = machineNames(args.machines);
   const byKey = new Map(items.map((t, i) => [t.key, i]));
+  const batches = mysteryBatches(args.titles);
   const out = [...items];
   for (const s of args.stock) {
     const pair = assortmentKey(s.machineId, s.titleId);
     const alertAt = alerts.get(pair);
     const onHand = Math.max(0, s.onHand);
     if (alertAt === undefined || onHand > alertAt) continue;
+    // Mystery pack: larmgränsen gäller inte före 0 (facket fylls bara på när det är tomt).
+    const batch = batches.get(s.titleId);
+    if (batch !== undefined && onHand > 0) continue;
     if (isFullSlot(onHand, s.capacity)) continue;
     const machine = machines.get(s.machineId);
     if (!machine || !isMachineActive(machine, args.today)) continue;
@@ -372,7 +465,14 @@ export function withSlotAlerts(
       continue;
     }
     if (args.skipKeys?.has(key)) continue;
-    out.push(alertTodo(s, alertAt, titleName(s.titleId), machineName(s.machineId)));
+    out.push(
+      batch !== undefined
+        ? mysteryTodo(s, batch, titleName(s.titleId), machineName(s.machineId), {
+            atStakeOre: null,
+            detail: ` ${alertText(onHand, alertAt)}`,
+          })
+        : alertTodo(s, alertAt, titleName(s.titleId), machineName(s.machineId)),
+    );
   }
   return sortTodos(out);
 }

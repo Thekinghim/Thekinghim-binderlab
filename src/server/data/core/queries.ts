@@ -143,6 +143,17 @@ export async function queryMachineCountsByOrg(
 // Stamdata (alla roller)
 // ---------------------------------------------------------------------------
 
+/**
+ * Mystery pack: omgångens storlek i gällande innehåll (senaste versionen i mystery_recipes)
+ * för en egen produkt, annars null. Uttryck mot titeltabellen med aliaset `alias`.
+ */
+export function mysteryBatchSql(alias = "t"): SQL {
+  const t = sql.identifier(alias);
+  return sql`(case when ${t}.own_product then (select r.batch_size from public.mystery_recipes r
+    where r.organization_id = ${t}.organization_id and r.title_id = ${t}.id
+    order by r.version desc limit 1) end)`;
+}
+
 export async function queryTitles(tx: Tx, orgId: string): Promise<TitleRecord[]> {
   const rows = await tx
     .select({
@@ -152,6 +163,7 @@ export async function queryTitles(tx: Tx, orgId: string): Promise<TitleRecord[]>
       mergedIntoId: s.titles.mergedIntoId,
       archivedAt: s.titles.archivedAt,
       ownProduct: s.titles.ownProduct,
+      mysteryBatchSize: sql<number | null>`${mysteryBatchSql("titles")}`,
     })
     .from(s.titles)
     .where(eq(s.titles.organizationId, orgId))
@@ -163,6 +175,7 @@ export async function queryTitles(tx: Tx, orgId: string): Promise<TitleRecord[]>
     mergedIntoId: r.mergedIntoId,
     archived: r.archivedAt !== null || r.mergedIntoId !== null,
     ownProduct: r.ownProduct,
+    mysteryBatchSize: r.mysteryBatchSize === null ? null : Number(r.mysteryBatchSize),
   }));
 }
 
@@ -265,7 +278,8 @@ export async function queryMasterData(
       (select coalesce(json_agg(json_build_object(
           'id', t.id, 'name', t.name, 'series', t.series, 'mergedIntoId', t.merged_into_id,
           'archived', t.archived_at is not null or t.merged_into_id is not null,
-          'ownProduct', t.own_product
+          'ownProduct', t.own_product,
+          'mysteryBatchSize', ${mysteryBatchSql("t")}
         ) order by t.name, t.id), '[]'::json)
         from public.titles t where t.organization_id = ${orgId}::uuid) as titles,
       (select coalesce(json_agg(json_build_object(

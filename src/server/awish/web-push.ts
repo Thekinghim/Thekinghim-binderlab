@@ -16,6 +16,10 @@
  *    kapaciteten inte räcker).
  *  - Bara fack som har en vara (good) och vars antal faktiskt ändras tas med.
  *  - Titlar som inte finns som fack i Awish hoppas över och rapporteras som "okänt fack".
+ *  - Mystery packs (`mystery`): ett mystery-fack fylls bara på när det är tomt (oddsen gäller
+ *    per omgång). Packen läggs bara i fack med 0 pack i Awish; ett fack som har pack kvar
+ *    rörs inte. Finns inget tomt fack hålls påfyllningen tillbaka och titeln rapporteras i
+ *    `mysteryHeldBack` (dagliga kontrollen varnar då i stället för att larma).
  */
 
 import { comparableText } from "@/import/adapter";
@@ -26,6 +30,8 @@ import type { AwishWebProduct } from "./web-client";
 export interface MachineTitleQuantity {
   readonly titleName: string;
   readonly quantity: number;
+  /** Mystery pack: fylls bara i tomma fack. */
+  readonly mystery?: boolean;
 }
 
 /** Ett fack som ska sättas till ett nytt antal i Awish. */
@@ -43,6 +49,8 @@ export interface PushPlan {
   readonly updates: AwishProductUpdate[];
   /** Titlar i Binderlab som inte har något fack i Awish. */
   readonly titlesWithoutSlot: string[];
+  /** Mystery packs vars påfyllning inte skickades: inget tomt fack i Awish. */
+  readonly mysteryHeldBack: string[];
 }
 
 function key(name: string): string {
@@ -73,6 +81,7 @@ export function planAwishPush(
 
   const updates: AwishProductUpdate[] = [];
   const titlesWithoutSlot: string[] = [];
+  const mysteryHeldBack: string[] = [];
 
   for (const want of wantByTitle) {
     const k = key(want.titleName);
@@ -89,6 +98,33 @@ export function planAwishPush(
     const inAwish = slots.reduce((sum, s) => sum + Math.max(0, s.currentInventory), 0);
     let toAdd = wanted - inAwish;
     if (toAdd <= 0) continue;
+
+    if (want.mystery) {
+      // Bara tomma fack; ett mystery-fack med pack kvar fylls inte på.
+      const empty = slots.filter((x) => Math.max(0, x.currentInventory) === 0);
+      for (let i = 0; i < empty.length && toAdd > 0; i += 1) {
+        const slot = empty[i]!;
+        const isLast = i === empty.length - 1;
+        const add =
+          slot.capacity == null
+            ? isLast
+              ? toAdd
+              : 0
+            : Math.min(toAdd, Math.max(0, slot.capacity));
+        if (add <= 0) continue;
+        toAdd -= add;
+        updates.push({
+          productId: slot.id,
+          goodId: slot.goodId,
+          status: slot.status,
+          currentInventory: add,
+          previousInventory: slot.currentInventory,
+          titleName: want.titleName,
+        });
+      }
+      if (toAdd > 0) mysteryHeldBack.push(want.titleName);
+      continue;
+    }
 
     // Lägg packen i facken i tur och ordning, upp till ledig plats (kapacitet − antal).
     // Sista facket får resten även om kapaciteten är okänd, så inget pack tappas bort.
@@ -114,5 +150,5 @@ export function planAwishPush(
     }
   }
 
-  return { updates, titlesWithoutSlot };
+  return { updates, titlesWithoutSlot, mysteryHeldBack };
 }

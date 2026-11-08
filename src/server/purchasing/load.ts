@@ -142,7 +142,13 @@ interface PlanSources {
   readonly events: readonly StockEventRef[];
   readonly settings: DomainInput["settings"];
   readonly prices: DomainInput["sources"]["prices"];
-  readonly titles: readonly { id: string; name: string; archived: boolean }[];
+  readonly titles: readonly {
+    id: string;
+    name: string;
+    archived: boolean;
+    /** Mystery pack: pack per omgång (packas i hela omgångar). */
+    mysteryBatchSize?: number | null;
+  }[];
   readonly machines: readonly {
     id: string;
     name: string;
@@ -244,7 +250,12 @@ function forecastAndPlan(src: PlanSources): {
 }
 
 const titleRefs = (input: DomainInput) =>
-  input.titles.map((t) => ({ id: t.id, name: t.name, archived: t.archived }));
+  input.titles.map((t) => ({
+    id: t.id,
+    name: t.name,
+    archived: t.archived,
+    mysteryBatchSize: t.mysteryBatchSize ?? null,
+  }));
 const machineRefs = (input: DomainInput) =>
   input.machines.map((m) => ({
     id: m.id,

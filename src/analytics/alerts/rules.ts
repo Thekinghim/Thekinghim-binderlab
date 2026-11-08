@@ -12,10 +12,12 @@ import {
   DomainError,
   roundHalfUp,
   salesVelocity,
+  mysteryEmptyText,
   stockoutDate,
   type IsoDate,
 } from "@/domain";
 import { evidence, isMachineActive, links, nameLookup } from "@/analytics/todos/common";
+import { mysteryBatches } from "@/analytics/todos/refill";
 import {
   plural,
   ratioTenths,
@@ -157,6 +159,8 @@ export interface LowStockInput {
  *   dagar kvar ≤ thresholdDays                → warning
  * Titlar utan försäljning i fönstret larmar inte (de tar inte slut med nuvarande takt).
  * Titlar som gått ur automaten (`retired`, "Utgår" på Lager) larmar inte heller.
+ * Mystery packs (`TitleRef.mysteryBatchSize`) fylls bara på när facket är tomt: de larmar
+ * inte före 0, och vid 0 säger larmet att en hel omgång ska fyllas på.
  * Nyckel: 'low_stock:<automat>:<titel>'.
  */
 export function lowStockAlerts(
@@ -191,11 +195,15 @@ export function lowStockAlerts(
     if (list) list.push(o);
     else byPair.set(k, [o]);
   }
+  const batches = mysteryBatches(input.titles);
   const out: AlertCandidate[] = [];
   for (const s of input.stock) {
     const m = machines.get(s.machineId);
     if (!m || !isMachineActive(m, today)) continue;
     if (input.retired?.has(assortmentKey(s.machineId, s.titleId))) continue;
+    const batch = batches.get(s.titleId);
+    // Mystery pack: inget larm medan facket har pack (det fylls bara på när det är tomt).
+    if (batch !== undefined && s.onHand > 0) continue;
     const orders = byPair.get(`${s.machineId}\u0000${s.titleId}`) ?? [];
     const v = salesVelocity(dailyUnits(orders), {
       asOf,
@@ -211,7 +219,9 @@ export function lowStockAlerts(
     const end = stockoutDate(asOf, onHand, v);
     const rate = `${ratioTenths(v.units, v.days)} pack/dag (${v.units} pack på ${plural(v.days, "dag", "dagar")})`;
     const title = empty
-      ? `${titleName(s.titleId)} är slut i ${machineName(m.id)}`
+      ? batch !== undefined
+        ? mysteryEmptyText(titleName(s.titleId), batch, machineName(m.id))
+        : `${titleName(s.titleId)} är slut i ${machineName(m.id)}`
       : `${titleName(s.titleId)} i ${machineName(m.id)} tar slut ${
           // Samma uträkning som "Beräknat slut" i texten (stockoutDate), så att rubrik och text
           // aldrig säger olika saker.

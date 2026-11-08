@@ -119,7 +119,11 @@ async function machineTitleStock(
 ): Promise<MachineTitleQuantity[]> {
   const rows = Array.from(
     await db.execute(sql`
-      select t.name as title_name, l.quantity
+      select t.name as title_name, l.quantity,
+             -- Mystery pack (egen produkt med innehåll): fylls bara i tomma fack.
+             (t.own_product and exists (
+                select 1 from public.mystery_recipes r
+                where r.organization_id = t.organization_id and r.title_id = t.id)) as mystery
       from public.stock_locations loc
       join public.stock_levels l
         on l.organization_id = loc.organization_id and l.location_id = loc.id
@@ -129,8 +133,12 @@ async function machineTitleStock(
         and loc.kind = 'machine'
         and l.last_counted_at is not null
         and t.archived_at is null`),
-  ) as Array<{ title_name: string; quantity: number }>;
-  return rows.map((r) => ({ titleName: r.title_name, quantity: Number(r.quantity) }));
+  ) as Array<{ title_name: string; quantity: number; mystery: boolean | null }>;
+  return rows.map((r) => ({
+    titleName: r.title_name,
+    quantity: Number(r.quantity),
+    ...(r.mystery === true ? { mystery: true } : {}),
+  }));
 }
 
 /** Automatens kod (BL-001) för loggning. */

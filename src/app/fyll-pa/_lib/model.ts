@@ -22,11 +22,23 @@
  * - Tomma fack: fack med 0 pack enligt Awish. Har titeln fyllts på sedan läsningen (saldot
  *   är högre än Awish antal) räknas dess fack som fyllda.
  * - Fyllnadsgrad: pack nu / kapacitet över titlarna med känd kapacitet.
+ * - Mystery packs (egen produkt med innehåll, `FillInput.mystery`): facket fylls bara på när
+ *   det är tomt, med exakt en hel omgång (oddsen gäller per omgång). Medan det har pack kvar är
+ *   förslaget 0 och raden aldrig "snart slut" eller "tom plats"; vid 0 är den "slut" och
+ *   förslaget en omgång (om lagret har en hel omgång). Fyller man ändå i ett antal för ett
+ *   mystery-fack som inte är tomt visas en lugn varning (`mysteryNote`); "Räkna om" stoppas aldrig.
  * - Ordning: automater med slut (tomma fack eller titlar på 0) först (flest först), sedan
  *   snart slut, sedan lägst fyllnadsgrad, sist de utan Awish-data; lika ordnas efter kod.
  */
 
 import { inPlace, pickPlace } from "@/components/stock/place-text";
+import {
+  mysteryBatch,
+  mysteryCapacityShort,
+  mysteryCapacityText,
+  mysteryRefillQty,
+  MYSTERY_TOP_UP_WARNING,
+} from "@/domain";
 import { formatInt, NBSP } from "@/lib/format";
 
 export interface AwishFillEntry {
@@ -64,6 +76,8 @@ export interface FillInput {
   readonly retired: ReadonlySet<string>;
   /** Sålda pack de senaste SALES_WINDOW_DAYS hela dagarna, som nycklar som machineStock. */
   readonly sold?: ReadonlyMap<string, number>;
+  /** Mystery packs: titelns id → pack per omgång (gällande innehåll). */
+  readonly mystery?: ReadonlyMap<string, number>;
 }
 
 /** Fönstret för försäljningstakten (hela dagar t.o.m. i går), som Att göra. */
@@ -92,6 +106,8 @@ export interface FillRow {
   /** Sålda pack de senaste SALES_WINDOW_DAYS dagarna. */
   readonly sold: number;
   readonly status: RowStatus;
+  /** Mystery pack: pack per omgång (fylls bara på när facket är tomt), annars null. */
+  readonly batchSize?: number | null;
 }
 
 export interface FillMachine {
@@ -135,8 +151,15 @@ export function isFull(now: number, capacity: number | null): boolean {
  * Slut (0 pack), snart slut (räcker under 2,5 dagar vid snittet) eller inget. Ett fullt fack
  * (känd kapacitet, nu ≥ kapacitet) är aldrig slut eller snart slut: inget går att fylla.
  */
-export function rowStatus(now: number, sold: number, capacity: number | null = null): RowStatus {
+export function rowStatus(
+  now: number,
+  sold: number,
+  capacity: number | null = null,
+  batchSize: number | null = null,
+): RowStatus {
   const n = Math.max(0, now);
+  // Mystery pack: bara slut (0) räknas; medan facket har pack fylls det inte på.
+  if (mysteryBatch(batchSize) !== null) return n === 0 ? "empty" : null;
   if (isFull(n, capacity)) return null;
   if (n === 0) return "empty";
   if (lastsShort(n, sold)) return "low";
@@ -161,8 +184,20 @@ export const FULL_FAST_TIP = "Säljer fort – ge den ett fack till";
  * Förslaget: kapacitet − nu; utan kapacitet en veckas försäljning − nu för titlar som är slut
  * eller snart slut. Högst packen hemma, minst 0.
  */
-export function suggestFill(now: number, capacity: number | null, home: number, sold = 0): number {
+export function suggestFill(
+  now: number,
+  capacity: number | null,
+  home: number,
+  sold = 0,
+  batchSize: number | null = null,
+): number {
   const n = Math.max(0, now);
+  const batch = mysteryBatch(batchSize);
+  if (batch !== null) {
+    // En hel omgång när facket är tomt och lagret har en hel omgång, annars inget.
+    const q = mysteryRefillQty(n, batch);
+    return q > 0 && Math.max(0, home) >= q ? q : 0;
+  }
   const target =
     capacity !== null
       ? capacity
@@ -173,9 +208,60 @@ export function suggestFill(now: number, capacity: number | null, home: number, 
 }
 
 /** Största antal som går att välja för en rad (stegarens tak). */
-export function maxFill(row: Pick<FillRow, "now" | "capacity">): number {
+export function maxFill(
+  row: Pick<FillRow, "now" | "capacity"> & Partial<Pick<FillRow, "batchSize">>,
+): number {
   if (row.capacity === null) return 500;
-  return Math.max(0, row.capacity - row.now, 1);
+  const base = Math.max(0, row.capacity - row.now, 1);
+  // Mystery pack: en hel omgång ska alltid gå att välja (varning om den inte får plats).
+  const batch = mysteryBatch(row.batchSize);
+  return batch !== null ? Math.max(base, batch) : base;
+}
+
+/**
+ * Antalet "Fyll allt" sätter för en rad: kapacitet − nu; mystery packs en hel omgång när
+ * facket är tomt, annars 0; utan känd kapacitet behålls det valda antalet.
+ */
+export function fillAllQty(
+  row: Pick<FillRow, "now" | "capacity"> & Partial<Pick<FillRow, "batchSize">>,
+  current: number,
+): number {
+  const batch = mysteryBatch(row.batchSize);
+  if (batch !== null) return mysteryRefillQty(row.now, batch);
+  if (row.capacity === null) return current;
+  return Math.max(0, row.capacity - row.now);
+}
+
+/**
+ * Antalet efter "Räkna om" (nytt saldo `counted`): det som får plats, högst lagret; för ett
+ * mystery pack en hel omgång om facket är tomt, annars 0. null = ändra inte (okänd kapacitet).
+ */
+export function qtyAfterCount(
+  row: Pick<FillRow, "capacity" | "home"> & Partial<Pick<FillRow, "batchSize">>,
+  counted: number,
+): number | null {
+  const batch = mysteryBatch(row.batchSize);
+  if (batch !== null) return suggestFill(counted, row.capacity, row.home, 0, batch);
+  if (row.capacity === null) return null;
+  return Math.max(0, Math.min(row.capacity - counted, Math.max(0, row.home)));
+}
+
+/**
+ * Lugn rad under ett mystery pack: "Mystery-facket fylls bara på när det är tomt" när man
+ * fyller i ett antal för ett fack som har pack kvar, annars att en omgång inte får plats.
+ * null för andra titlar. Stoppar aldrig något (Räkna om och Klar fungerar som vanligt).
+ */
+export function mysteryNote(
+  row: Pick<FillRow, "now" | "capacity"> & Partial<Pick<FillRow, "batchSize">>,
+  value: number,
+): string | null {
+  const batch = mysteryBatch(row.batchSize);
+  if (batch === null) return null;
+  if (row.now > 0) return value > 0 ? MYSTERY_TOP_UP_WARNING : null;
+  if (row.capacity !== null && mysteryCapacityShort(row.capacity, batch)) {
+    return mysteryCapacityText(row.capacity, batch);
+  }
+  return null;
 }
 
 /** Packen delas: så många som finns hemma tas från vårt lager, resten registreras utan uttag. */
@@ -230,16 +316,20 @@ export function machineRows(machine: FillMachineInput, input: FillInput): FillRo
     const capacity = f && f.capacity > 0 ? f.capacity : null;
     const home = input.home.get(titleId) ?? 0;
     const sold = Math.max(0, input.sold?.get(key) ?? 0);
+    const batchSize = mysteryBatch(input.mystery?.get(titleId));
     rows.push({
       titleId,
       name,
       now,
       capacity,
       home,
-      suggested: suggestFill(now, capacity, home, sold),
-      emptySlots: f && now <= f.units ? Math.max(0, f.empty) : 0,
+      suggested: suggestFill(now, capacity, home, sold, batchSize),
+      // Ett mystery pack med pack kvar har inga "tomma platser" att fylla.
+      emptySlots:
+        f && now <= f.units && (batchSize === null || now === 0) ? Math.max(0, f.empty) : 0,
       sold,
-      status: rowStatus(now, sold, capacity),
+      status: rowStatus(now, sold, capacity, batchSize),
+      ...(batchSize !== null ? { batchSize } : {}),
     });
   }
   return rows.sort(rowOrder);
@@ -394,9 +484,12 @@ export function applyAdjustments(
         ...r,
         now,
         home: homeNow,
-        suggested: suggestFill(now, r.capacity, homeNow, r.sold),
-        emptySlots: plus > 0 || (counted !== undefined && counted > r.now) ? 0 : r.emptySlots,
-        status: rowStatus(now, r.sold, r.capacity),
+        suggested: suggestFill(now, r.capacity, homeNow, r.sold, r.batchSize ?? null),
+        emptySlots:
+          plus > 0 || (counted !== undefined && counted > r.now) || (r.batchSize && now > 0)
+            ? 0
+            : r.emptySlots,
+        status: rowStatus(now, r.sold, r.capacity, r.batchSize ?? null),
       };
     });
     if (!changed) return m;
@@ -406,17 +499,31 @@ export function applyAdjustments(
 }
 
 /** Pack en titel vill ha om lagret räcker: förslaget utan taket från lagret. */
-export function packsWanted(row: Pick<FillRow, "now" | "capacity" | "sold">): number {
-  return suggestFill(row.now, row.capacity, Number.MAX_SAFE_INTEGER, row.sold);
+export function packsWanted(
+  row: Pick<FillRow, "now" | "capacity" | "sold"> & Partial<Pick<FillRow, "batchSize">>,
+): number {
+  return suggestFill(
+    row.now,
+    row.capacity,
+    Number.MAX_SAFE_INTEGER,
+    row.sold,
+    row.batchSize ?? null,
+  );
 }
 
 /** Hur många av de pack automaten vill ha som ett lager kan ge: summan av min(vill ha, saldo). */
 export function coverage(
-  rows: readonly Pick<FillRow, "titleId" | "now" | "capacity" | "sold">[],
+  rows: readonly (Pick<FillRow, "titleId" | "now" | "capacity" | "sold"> &
+    Partial<Pick<FillRow, "batchSize">>)[],
   stock: Readonly<Record<string, number>> | undefined,
 ): number {
   let n = 0;
-  for (const r of rows) n += Math.min(packsWanted(r), Math.max(0, stock?.[r.titleId] ?? 0));
+  for (const r of rows) {
+    const want = packsWanted(r);
+    const have = Math.max(0, stock?.[r.titleId] ?? 0);
+    // Mystery pack: bara en hel omgång räknas (en del av en omgång fylls inte på).
+    n += r.batchSize && have < want ? 0 : Math.min(want, have);
+  }
   return n;
 }
 
@@ -440,7 +547,8 @@ export interface SourceChoice {
 export function chooseSource(args: {
   readonly places: readonly { readonly id: string; readonly name: string }[];
   readonly stock: PlaceStock;
-  readonly rows: readonly Pick<FillRow, "titleId" | "now" | "capacity" | "sold">[];
+  readonly rows: readonly (Pick<FillRow, "titleId" | "now" | "capacity" | "sold"> &
+    Partial<Pick<FillRow, "batchSize">>)[];
   /** Valt för automaten nu (gäller tills sidan laddas om). */
   readonly explicit?: string | null;
   readonly preferred: readonly (string | null | undefined)[];

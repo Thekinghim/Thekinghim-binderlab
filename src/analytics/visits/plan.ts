@@ -20,6 +20,10 @@
  *      mål             = kapacitet, eller tak(sålda × coverDays / fönstrets dagar) när den saknas
  *      antal           = max(0, mål − lager vid besök), begränsat av centrallagret i
  *                        brådskeordning (dag, needBy, automat)
+ *    Mystery packs (`TitleRef.mysteryBatchSize`) fylls bara på när facket är tomt, med en hel
+ *    omgång: senast-dagen är dagen efter beräknat slut (ingen marginal; i dag om facket redan är
+ *    tomt), och packlistan har en omgång bara om facket väntas vara tomt vid besöket (annars
+ *    inget), och bara om centrallagret har en hel omgång.
  * 6. Ordning per dag: med koordinater för alla besök närmaste granne + 2-opt från depån
  *    (route.ts); annars efter needBy, sedan namn.
  */
@@ -33,13 +37,14 @@ import {
   daysBetween,
   DomainError,
   floorDiv,
+  mysteryEmptyText,
   salesVelocity,
   stockoutDate,
   type IsoDate,
   type SalesVelocity,
 } from "@/domain";
 import { evidence, isMachineActive, links, nameLookup } from "@/analytics/todos/common";
-import { isFullSlot } from "@/analytics/todos/refill";
+import { isFullSlot, mysteryBatches } from "@/analytics/todos/refill";
 import { plural, ratioTenths, sentence, weekdayDay } from "@/analytics/todos/text";
 import { businessDateAt, DEFAULT_TIME_ZONE } from "@/analytics/todos/time";
 import { formatInt, NBSP } from "@/lib/format";
@@ -89,6 +94,8 @@ interface TitleNeed {
   readonly channels: readonly string[];
   readonly stockout: IsoDate | null;
   readonly orderIds: string[];
+  /** Mystery pack: pack per omgång, annars null. */
+  readonly batch: number | null;
 }
 
 interface MachineNeed {
@@ -264,6 +271,7 @@ function machineNeeds(
     const k = `${s.machineId}\u0000${s.titleId}`;
     stockByPair.set(k, (stockByPair.get(k) ?? 0) + s.onHand);
   }
+  const batches = mysteryBatches(input.titles);
   const out: MachineNeed[] = [];
   for (const m of input.machines) {
     if (!isMachineActive(m, today)) continue;
@@ -295,7 +303,22 @@ function machineNeeds(
         channels: channels.get(k) ?? [],
         stockout,
         orderIds: windowOrders.map((x) => x.id),
+        batch: batches.get(titleId) ?? null,
       });
+      const batch = batches.get(titleId);
+      if (batch !== undefined) {
+        // Mystery pack: besök när facket är tomt (dagen efter beräknat slut), inte före.
+        if (onHand === 0) {
+          reasons.push({ needBy: today, text: mysteryEmptyText(titleName(titleId), batch) });
+        } else if (stockout !== null) {
+          const empty = addDays(stockout, 1);
+          reasons.push({
+            needBy: compareDates(empty, today) < 0 ? today : empty,
+            text: `${titleName(titleId)} tar slut ${weekdayDay(stockout)} (${onHand} kvar), sedan en hel omgång (${batch}${NBSP}st)`,
+          });
+        }
+        continue;
+      }
       if (stockout !== null) {
         const due = addDays(stockout, -o.bufferDays);
         // Fullt fack: inget att fylla i dag (Fyll på: "Fullt · räcker ~N d").
@@ -336,12 +359,18 @@ function buildStop(
     const v = t.velocity;
     const soldUntil = v.days > 0 ? floorDiv(v.units * daysUntil, v.days) : 0;
     const projected = Math.max(0, t.onHand - soldUntil);
-    const target = t.capacity ?? (v.days > 0 ? ceilDiv(v.units * o.coverDays, v.days) : 0);
-    const wanted = Math.max(0, target - projected);
+    // Mystery pack: en hel omgång om facket väntas vara tomt vid besöket, annars inget.
+    const target =
+      t.batch !== null
+        ? t.batch
+        : (t.capacity ?? (v.days > 0 ? ceilDiv(v.units * o.coverDays, v.days) : 0));
+    const wanted =
+      t.batch !== null ? (projected === 0 ? t.batch : 0) : Math.max(0, target - projected);
     let quantity = wanted;
     if (warehouse) {
       const available = warehouse.get(t.titleId) ?? 0;
-      quantity = Math.min(wanted, available);
+      quantity =
+        t.batch !== null ? (available >= wanted ? wanted : 0) : Math.min(wanted, available);
       warehouse.set(t.titleId, available - quantity);
     }
     if (wanted === 0) continue;

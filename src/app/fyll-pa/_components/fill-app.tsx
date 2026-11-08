@@ -35,7 +35,10 @@ import {
   fillHeadline,
   FULL_FAST_TIP,
   fullFastNote,
+  fillAllQty,
   maxFill,
+  mysteryNote,
+  qtyAfterCount,
   needLabel,
   pairKey,
   splitRefill,
@@ -892,13 +895,9 @@ function MachineScreen({
           }
           setCounting(null);
           onCounted(r.titleId, value);
-          const cap = r.capacity;
-          if (cap !== null) {
-            set(
-              r.titleId,
-              Math.max(0, Math.min(cap - value, Math.max(0, r.home))),
-              Math.max(1, cap - value),
-            );
+          const next = qtyAfterCount(r, value);
+          if (next !== null) {
+            set(r.titleId, next, maxFill({ ...r, now: value }));
           }
           toast({ title: `Sparat: ${formatInt(value)} i automaten`, tone: "ok" });
         }}
@@ -973,10 +972,7 @@ function MachineScreen({
                 setTouched(true);
                 setQty(
                   Object.fromEntries(
-                    m.rows.map((r) => [
-                      r.titleId,
-                      r.capacity === null ? (qty[r.titleId] ?? 0) : Math.max(0, r.capacity - r.now),
-                    ]),
+                    m.rows.map((r) => [r.titleId, fillAllQty(r, qty[r.titleId] ?? 0)]),
                   ),
                 );
               }}
@@ -1118,6 +1114,7 @@ function TitleRow({
   const inputId = `antal-${r.titleId}`;
   const short = value > Math.max(0, r.home);
   const fullNote = fullFastNote(r);
+  const mystery = mysteryNote(r, value);
   return (
     <div
       className={cn(
@@ -1158,6 +1155,11 @@ function TitleRow({
       </div>
       {fullNote ? (
         <p className="-mt-1 text-sm text-muted">{`${fullNote} · ${FULL_FAST_TIP}`}</p>
+      ) : null}
+      {mystery ? (
+        <p className="-mt-1 text-sm text-muted" role="note">
+          {mystery}
+        </p>
       ) : null}
 
       <div className="grid grid-cols-[56px_1fr_56px] items-center gap-2">

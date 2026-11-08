@@ -14,11 +14,22 @@
  * 5. **Antal.** Saknas något: behov i hela pack (avrundat uppåt) → minst minsta order →
  *    uppåt till hela boxar (`packSize`). Exempel: saknas 13,2 pack, minsta order 24, box 12
  *    → 14 → 24 → 24 (2 boxar). Saknas 25 → 25 → 25 → 36 (3 boxar).
+ *    Mystery packs (`TitleRef.mysteryBatchSize`) packas i hela omgångar: antalet avrundas
+ *    uppåt till en multipel av omgången (saknas 5, omgång 14 → 14; saknas 15 → 28).
  * 6. **Täckning.** Dagar som lagerpositionen räcker enligt prognosen; senaste beställningsdag =
  *    väntat slut − ledtid. Tar lagret slut före leverans även vid beställning i dag är raden sen.
  */
 
-import { addDays, assertIsoDate, ceilDiv, DomainError, roundHalfUp, type IsoDate } from "@/domain";
+import {
+  addDays,
+  assertIsoDate,
+  ceilDiv,
+  DomainError,
+  mysteryBatch,
+  roundHalfUp,
+  wholeBatches,
+  type IsoDate,
+} from "@/domain";
 import { assertIntAtLeast, fig, isqrtRound, MILLI, packs, planEvidence } from "../forecast/common";
 import { nameLookup, titleNames } from "../todos/common";
 import { day, kr, plural, sentence } from "../todos/text";
@@ -190,6 +201,12 @@ export function purchasePlan(input: PurchasingInput): PurchasePlan {
     countUntil: (titleId) => addDays(today, leadFor(titleId) + o.reviewPeriodDays - 1),
   });
   const stock = stockByTitle(input.warehouseStock, input.machineStock);
+  const batchOf = new Map(
+    (input.titles ?? []).flatMap((t) => {
+      const b = mysteryBatch(t.mysteryBatchSize);
+      return b === null ? [] : [[t.id, b] as const];
+    }),
+  );
 
   const titleIds = [
     ...new Set([...demand.keys(), ...stock.keys(), ...itemsByTitle.keys(), ...onOrder.keys()]),
@@ -214,7 +231,17 @@ export function purchasePlan(input: PurchasingInput): PurchasePlan {
     const shortfall = Math.max(0, target - position * MILLI);
     const packSize = item?.packSize ?? 1;
     const minQty = item?.minOrderQty ?? 0;
-    const q = orderQuantity(shortfall, minQty, packSize);
+    const base = orderQuantity(shortfall, minQty, packSize);
+    // Mystery pack: hela omgångar (packas hemma, en omgång i taget).
+    const batch = batchOf.get(titleId);
+    const q =
+      batch === undefined
+        ? base
+        : {
+            rawQty: wholeBatches(base.rawQty, batch),
+            afterMinQty: wholeBatches(base.afterMinQty, batch),
+            orderQty: wholeBatches(base.orderQty, batch),
+          };
     let status: PurchaseLineStatus;
     if (dP === 0) status = "no-demand";
     else if (shortfall === 0) status = "ok";
