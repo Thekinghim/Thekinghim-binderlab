@@ -12,6 +12,7 @@ import {
 } from "react";
 
 import { newClientId, type QueuedRefill } from "@/components/pwa/refill-queue";
+import { useUnsavedInput } from "@/components/pwa/unsaved-input";
 import { useRefillQueue } from "@/components/pwa/use-refill-queue";
 import { PlaceButtons } from "@/components/stock/place-buttons";
 import { inPlace, pickPlace } from "@/components/stock/place-text";
@@ -822,6 +823,8 @@ function MachineScreen({
   // Klar sparar och skickar till Awish: fråga först, så att ett tryck av misstag (t.ex. när
   // man packar hemma) inte registrerar en påfyllning.
   const [confirming, setConfirming] = useState(false);
+  // Ändrade antal som inte sparats: appen laddar inte om av sig själv för en ny version.
+  useUnsavedInput(touched || busy || confirming || counting !== null);
   const finish = async () => {
     setBusy(true);
     try {

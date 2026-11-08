@@ -16,6 +16,7 @@ describe("öppna sökvägar", () => {
     "/manifest.webmanifest",
     "/api/cron/larm",
     "/api/cron/awish",
+    "/api/version",
   ])("%s är öppen", (path) => {
     expect(isPublicPath(path)).toBe(true);
   });
@@ -38,6 +39,8 @@ describe("öppna sökvägar", () => {
     "/inkorg/x.json",
     "/design-system",
     "/designer-admin",
+    "/api/version/x",
+    "/api/versioner",
     "/logga-in-x",
     "/api/export.csv.php",
     "/api/cron",

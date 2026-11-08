@@ -16,6 +16,8 @@ import { redirectStoreUserToPortal } from "@/server/portal/session";
 import { loadTodoCount } from "@/server/data/todos";
 import { myInvitationsFlow } from "@/server/auth/flows";
 import { requireUser } from "@/server/session";
+import { AppUpdate } from "@/components/pwa/app-update";
+import { liveBuildId } from "@/server/build-id";
 import { AppFrame } from "./app-frame";
 import { NoOrganization } from "./no-organization";
 
@@ -61,6 +63,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // punkterna är räknade (Att göra läser order och lager och tar längst tid i skalet).
   const todoCount = hasTodos ? countTodos() : undefined;
   const [master, sync, dataStart, machineCounts] = await shellP;
+  const buildId = await liveBuildId();
 
   const stores: ShellStore[] = master.stores
     .filter((s) => !s.archived)
@@ -70,29 +73,33 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     .map((m) => ({ id: m.id, name: m.name, code: m.code, storeId: m.storeId ?? undefined }));
 
   return (
-    <AppFrame
-      role={ctx.role}
-      user={{ name: ctx.user.displayName ?? ctx.user.email, email: ctx.user.email }}
-      organizations={ctx.organizations.map((o) => {
-        const n = machineCounts.get(o.id);
-        return {
-          id: o.id,
-          name: o.name,
-          detail:
-            n === undefined ? undefined : `${formatInt(n)} ${n === 1 ? "automat" : "automater"}`,
-        };
-      })}
-      activeOrganizationId={ctx.organization.id}
-      vmbUserKey={ctx.canSeeEconomy ? ctx.user.id : null}
-      todoCount={todoCount}
-      syncedAt={sync?.syncedAt ?? undefined}
-      syncState={sync?.state}
-      stores={stores}
-      machines={machines}
-      earliest={dataStart ? isoDateToShellDate(dataStart) : undefined}
-    >
-      {children}
-    </AppFrame>
+    <>
+      {/* "Ny version av appen finns" (mobilen och appen på hemskärmen). */}
+      <AppUpdate buildId={buildId} />
+      <AppFrame
+        role={ctx.role}
+        user={{ name: ctx.user.displayName ?? ctx.user.email, email: ctx.user.email }}
+        organizations={ctx.organizations.map((o) => {
+          const n = machineCounts.get(o.id);
+          return {
+            id: o.id,
+            name: o.name,
+            detail:
+              n === undefined ? undefined : `${formatInt(n)} ${n === 1 ? "automat" : "automater"}`,
+          };
+        })}
+        activeOrganizationId={ctx.organization.id}
+        vmbUserKey={ctx.canSeeEconomy ? ctx.user.id : null}
+        todoCount={todoCount}
+        syncedAt={sync?.syncedAt ?? undefined}
+        syncState={sync?.state}
+        stores={stores}
+        machines={machines}
+        earliest={dataStart ? isoDateToShellDate(dataStart) : undefined}
+      >
+        {children}
+      </AppFrame>
+    </>
   );
 }
 

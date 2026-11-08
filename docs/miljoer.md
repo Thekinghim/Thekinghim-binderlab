@@ -448,6 +448,22 @@ organisation och användare) och rensas när någon annan loggar in eller när i
 utloggningen visas. Ikoner för installation: `public/icons/` (192, 512 och maskerbar 512 px,
 renderade ur `src/app/icon.svg`).
 
+**Ny version av appen**: varje bygge får ett id (`NEXT_PUBLIC_BUILD_ID` i `next.config.ts`:
+Vercels `VERCEL_DEPLOYMENT_ID`, annars incheckningen). `GET /api/version` (öppen, `no-store`)
+svarar med id:t som körs. Telefonen (under `lg` eller appen på hemskärmen) jämför det med
+sidans bygge när sidan laddas, när appen öppnas igen och var femte minut; skiljer de sig visas
+"Ny version av appen finns" med Uppdatera överst (`src/components/pwa/app-update.tsx`). Appen
+laddar om av sig själv bara när den öppnas igen efter minst 30 s i bakgrunden, inget är ifyllt
+(t.ex. ändrade antal i Fyll på) och samma uppdatering inte redan provats (högst två gånger per
+session, `sessionStorage`). Service workern får veta bygget och hämtar fältsidorna på nytt, så
+en sida från ett äldre bygge inte visas när det finns nät; en sparad sida ersätts bara när en ny
+har hämtats, så läget utan nät fungerar även om nätet försvinner mitt i. Visas ändå en sparad
+sida från ett äldre bygge (nätet för långsamt) tar workern det byggets sparade filer om servern
+inte har dem kvar, så att sidan fungerar och kan visa rutan. "Uppdatera appen" i Mer och i
+Inställningar laddar om när som helst; nästa sidladdning väntar då på nätet i stället för att
+visa den sparade sidan. E2E låtsas ett nytt bygge med
+kakan `binderlab-test-build`, som bara läses av `next dev` (aldrig i drift).
+
 ## Marknad
 
 Sidan `/marknad` (releasekalender, leverantörspriser, sortiment, prissättning) räknar allt på

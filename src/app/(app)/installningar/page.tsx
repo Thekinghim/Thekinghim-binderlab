@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { AppRefreshButton } from "@/components/pwa/app-refresh-button";
 import { wallClockIn } from "@/components/shell/period-state";
 import { MobileFold } from "@/components/ui/mobile-fold";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -339,6 +340,24 @@ export default async function SettingsPage() {
         ) : (
           <StateMessage kind="denied" compact message="Bara ägaren kan exportera all data." />
         )}
+      </section>
+
+      <section
+        id="appen"
+        aria-labelledby="appen-rubrik"
+        className="rise flex scroll-mt-28 flex-col gap-4 max-md:gap-3"
+        style={{ "--i": 7 } as React.CSSProperties}
+      >
+        <SectionHeader
+          id="appen-rubrik"
+          size="md"
+          title="Appen."
+          aside="Om något ser gammalt ut."
+        />
+        <p className="max-w-2xl text-sm text-muted">
+          Hämtar senaste versionen och laddar om sidan. Fungerar även för appen på hemskärmen.
+        </p>
+        <AppRefreshButton />
       </section>
 
       <details
