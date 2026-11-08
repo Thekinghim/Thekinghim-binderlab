@@ -4,7 +4,8 @@
  * ser bara tre flikar: Refill, Sales och Mystery, allt på engelska. /lonsamhet och
  * /installningar skickar tillbaka till Sales. Fyll på: Done frågar "Have you refilled the
  * machine now?", "Yes, I refilled" sparar (vårt lager och automaten ändras i databasen).
- * Mystery: ett mystery pack visar innehållet.
+ * Mystery: ett mystery pack visar innehållet. Menyn har Update app, och en ny version visas
+ * för delägaren på engelska ("A new version of the app is ready", som e2e/12 på svenska).
  *
  * Förberedelse i databasen (E2E_DATABASE_URL): en delägare (ägarroll) med eget lösenord,
  * en Awish-läsning för en automat (som e2e/07) och ett mystery pack med innehåll. Testet går
@@ -14,6 +15,7 @@
 import postgres from "postgres";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import { TEST_BUILD_COOKIE } from "@/lib/build-id";
 import { hashPassword } from "@/server/auth/password";
 
 import {
@@ -220,7 +222,7 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
       return r?.view_mode === "simple" && r.locale === "en";
     }, "delägaren har enkel vy och engelska i databasen");
     await row.scrollIntoViewIfNeeded();
-    await screenshot(page, "12-agare-team-enkel-vy-iphonese");
+    await screenshot(page, "13-agare-team-enkel-vy-iphonese");
     // Den egna raden har ingen brytare (man ändrar aldrig sin egen vy).
     const own = page
       .getByRole("listitem")
@@ -234,7 +236,7 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
     await page.goto("/logga-in");
     // Före inloggningen: webbläsarens språk.
     await page.getByRole("heading", { name: "Sign in." }).waitFor();
-    await screenshot(page, "12-delagare-logga-in-iphonese");
+    await screenshot(page, "13-delagare-logga-in-iphonese");
     await page.getByLabel("Email").fill(PARTNER);
     await page.getByLabel("Password").fill(PARTNER_PASSWORD);
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
@@ -258,16 +260,37 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
-    await screenshot(page, "12-delagare-sales-iphonese");
+    await screenshot(page, "13-delagare-sales-iphonese");
 
-    // Menyn: bara språk och Log out.
+    // Menyn: bara språk, Update app och Log out.
     await page.getByRole("button", { name: "More" }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByRole("radio", { name: "English" }).waitFor();
+    await dialog.getByRole("button", { name: "Update app", exact: true }).waitFor();
     await dialog.getByRole("button", { name: "Log out" }).waitFor();
     expect(await dialog.getByRole("link").count()).toBe(0);
-    await screenshot(page, "12-delagare-meny-iphonese");
+    await screenshot(page, "13-delagare-meny-iphonese");
     await dialog.getByRole("button", { name: "Close" }).click();
+
+    // En ny version driftsätts (kakan, som e2e/12): rutan visas på engelska.
+    await until(
+      async () => (await page.evaluate(() => document.documentElement.dataset.appVersion)) === "ok",
+      "versionen ok",
+    );
+    // Sidans kontext: den senast öppnade (newPage ovan).
+    await contexts[contexts.length - 1]!.addCookies([
+      { name: TEST_BUILD_COOKIE, value: `e2e-en-${Date.now().toString(36)}`, url: e2e().baseUrl },
+    ]);
+    await page.evaluate(() =>
+      window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: false })),
+    );
+    const banner = page.getByRole("status", { name: "New version of the app" });
+    await banner.waitFor();
+    expect(await banner.innerText()).toContain("A new version of the app is ready");
+    await banner.getByRole("button", { name: "Update", exact: true }).waitFor();
+    await screenshot(page, "13-delagare-ny-version-iphonese");
+    await banner.getByRole("button", { name: "Later", exact: true }).click();
+    await banner.waitFor({ state: "detached" });
 
     // Allt annat skickas tillbaka till Sales.
     for (const path of [
@@ -302,7 +325,7 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
     await cards.first().waitFor();
     expect(await cards.first().getAttribute("aria-label")).toContain(target.place);
     await page.getByRole("button", { name: "More" }).waitFor();
-    await screenshot(page, "12-delagare-refill-iphonese");
+    await screenshot(page, "13-delagare-refill-iphonese");
 
     await cards.first().click();
     await page.waitForURL((url) => url.pathname === `/fyll-pa/${target.machineId}`);
@@ -313,7 +336,7 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
     expect(await input.inputValue()).toBe("3");
     // Bottenraden döljs här: Done står nedtill.
     expect(await page.getByRole("navigation", { name: "Menu" }).count()).toBe(0);
-    await screenshot(page, "12-delagare-refill-automat-iphonese");
+    await screenshot(page, "13-delagare-refill-automat-iphonese");
 
     const done = page.getByRole("button", { name: /^Done/ });
     const total = Number((await done.innerText()).replace(/\D/g, ""));
@@ -321,7 +344,7 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
     await done.click();
     await page.getByText("Have you refilled the machine now?").first().waitFor();
     await page.getByRole("button", { name: "No, I'm only packing" }).waitFor();
-    await screenshot(page, "12-delagare-refill-bekrafta-iphonese");
+    await screenshot(page, "13-delagare-refill-bekrafta-iphonese");
     expect(await level(target.central, target.titleId)).toBe(50);
     await page.getByRole("button", { name: "Yes, I refilled" }).click();
     await page
@@ -335,7 +358,7 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
     );
     expect(await level(target.machineLocation, target.titleId)).toBe(target.before + 3);
     await page.getByRole("button", { name: "Undo" }).waitFor();
-    await screenshot(page, "12-delagare-refill-klar-iphonese");
+    await screenshot(page, "13-delagare-refill-klar-iphonese");
   });
 
   it("Mystery: listan och innehållet på engelska", async () => {
@@ -367,7 +390,7 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
     expect(body).not.toMatch(
       /\d\s?kr\b|Inköpspris|Purchase price|Lägg in innehållet|Change contents/,
     );
-    await screenshot(page, "12-delagare-mystery-iphonese");
+    await screenshot(page, "13-delagare-mystery-iphonese");
 
     await page.getByRole("link", { name: MYSTERY }).click();
     await page.waitForURL((url) => url.pathname === `/vart-lager/mystery/${target.mysteryId}`);
@@ -378,6 +401,6 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
     await page.getByText("Chance of a hit", { exact: true }).waitFor();
     expect(await page.getByRole("link", { name: "Purchase prices" }).count()).toBe(0);
     expect(await page.getByRole("button", { name: "Change contents" }).count()).toBe(0);
-    await screenshot(page, "12-delagare-mystery-innehall-iphonese");
+    await screenshot(page, "13-delagare-mystery-innehall-iphonese");
   });
 });
