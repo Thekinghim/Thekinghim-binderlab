@@ -12,9 +12,11 @@ import { OpenOnHash } from "@/components/ui/open-on-hash";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
 import { DomainError } from "@/domain";
-import { loadPeriod, requireRoute } from "@/server/data/core";
+import { messages } from "@/i18n";
+import { loadOptionalContextIfSignedIn, loadPeriod, requireRoute } from "@/server/data/core";
 import { currentViewer, loadPrognosFor } from "@/server/purchasing";
 
+import { SimpleBuyListScreen } from "../_enkel/buy-list-screen";
 import { AccuracyView } from "./_components/accuracy-view";
 import { ForecastView } from "./_components/forecast-view";
 import { LostSalesView } from "./_components/lost-sales-view";
@@ -30,7 +32,12 @@ import { TodoList } from "../vart-lager/_components/todo-list";
 import { buildPageModel, type PageModel } from "./_lib/model";
 import { loadOurStockFor, type OurStockView } from "../lager/_lib/data";
 
-export const metadata: Metadata = { title: "Inköp och prognos" };
+/** Inköp och prognos; i Enkel vy Inköpslistan på personens språk. */
+export async function generateMetadata(): Promise<Metadata> {
+  const ctx = await loadOptionalContextIfSignedIn().catch(() => null);
+  if (ctx?.viewMode === "simple") return { title: messages(ctx.locale).stock.buyTitle };
+  return { title: "Inköp och prognos" };
+}
 
 /** Vyerna: Inköp (standard) och Prognos, båda underflikar i menyn. */
 type Tab = "bestall" | "prognos";
@@ -80,6 +87,8 @@ export default async function PrognosPage({
   searchParams: Promise<SearchParamsInput>;
 }) {
   const ctx = await requireRoute("prognos");
+  // Enkel vy: bara inköpslistan (vad som ska köpas och hur mycket), ingen prognos.
+  if (ctx.viewMode === "simple") return <SimpleBuyListScreen ctx={ctx} />;
   const sp = await searchParams;
   const raw = viewParam(sp);
   const old = raw ? OLD_VIEWS[raw] : undefined;

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Skalet för Enkel vy: tre stora flikar nedtill (Fyll på, Försäljning, Mystery) och en
+ * Skalet för Enkel vy: fyra stora flikar nedtill (Fyll på, Försäljning, Lager, Mystery) och en
  * liten meny uppe till höger med bara språk, Uppdatera appen och Logga ut. Ingen sidomeny, ingen sökning,
  * ingen AI, ingen knapp för "Fyll på" ovanpå sidan. Reglerna (vilka sökvägar, vilka flikar)
  * finns i ./simple-view och gäller också på servern.
@@ -24,7 +24,7 @@ import { logout } from "@/server/actions/auth";
 import { setMyLocale } from "@/server/actions/locale";
 
 import { clearAllRecent } from "./command-recent";
-import { simpleHomeFor, simpleTabsFor, type SimpleTabId } from "./simple-view";
+import { simpleHomeFor, simpleTabActive, simpleTabsFor, type SimpleTabId } from "./simple-view";
 
 /** Höjden på bottenraden, utan säkerhetsmarginal. */
 export const SIMPLE_NAV_HEIGHT = 64;
@@ -200,16 +200,13 @@ export function SimpleMenuButton({ className }: { className?: string }) {
 }
 
 function tabLabel(t: ReturnType<typeof useT>, id: SimpleTabId): string {
-  return id === "refill"
-    ? t.simple.tabRefill
-    : id === "sales"
-      ? t.simple.tabSales
-      : t.simple.tabMystery;
-}
-
-/** Är fliken aktiv på sökvägen? */
-function isActive(href: string, pathname: string): boolean {
-  return pathname === href || pathname.startsWith(`${href}/`);
+  const labels: Record<SimpleTabId, string> = {
+    refill: t.simple.tabRefill,
+    sales: t.simple.tabSales,
+    stock: t.simple.tabStock,
+    mystery: t.simple.tabMystery,
+  };
+  return labels[id];
 }
 
 /** Fyll på för en automat har Klar nedtill: där visas ingen bottenrad. */
@@ -217,7 +214,7 @@ export function showsSimpleTabs(pathname: string): boolean {
   return !/^\/fyll-pa\/[0-9a-f-]{36}/i.test(pathname);
 }
 
-/** Bottenraden: tre stora flikar. */
+/** Bottenraden: fyra stora flikar (färre för påfyllaren och läsaren). */
 export function SimpleTabs({ role }: { role: MemberRole }) {
   const t = useT();
   const pathname = usePathname() ?? "/";
@@ -233,7 +230,7 @@ export function SimpleTabs({ role }: { role: MemberRole }) {
         style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
       >
         {tabs.map((tab) => {
-          const on = isActive(tab.href, pathname);
+          const on = simpleTabActive(tab, pathname);
           return (
             <li key={tab.id}>
               <Link

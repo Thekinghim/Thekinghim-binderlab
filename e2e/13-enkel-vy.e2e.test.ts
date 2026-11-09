@@ -1,11 +1,15 @@
 /**
- * Enkel vy på engelska (iPhone SE, 375 px): ägaren slår på Enkel vy och engelska för en
+ * Enkel vy på engelska (iPhone SE): ägaren slår på Enkel vy och engelska för en
  * delägare i Inställningar → Användare. Delägaren loggar in (webbläsaren på engelska) och
- * ser bara tre flikar: Refill, Sales och Mystery, allt på engelska. /lonsamhet och
+ * ser bara fyra flikar: Refill, Sales, Stock och Mystery, allt på engelska. /lonsamhet och
  * /installningar skickar tillbaka till Sales. Fyll på: Done frågar "Have you refilled the
  * machine now?", "Yes, I refilled" sparar (vårt lager och automaten ändras i databasen).
  * Mystery: ett mystery pack visar innehållet. Menyn har Update app, och en ny version visas
  * för delägaren på engelska ("A new version of the app is ready", som e2e/12 på svenska).
+ * Delägaren köper in (iPhone SE 3:e generationen, 375 px): Stock (leverans in och rätta
+ * antalet ändrar databasen), Buy list, Purchase prices (ett nytt pris från i dag sparas)
+ * och Profit per product på Sales, allt på engelska, utan sidledes scroll och med
+ * tryckytor på minst 44 px. Mystery visar kostnaden för delägaren.
  *
  * Förberedelse i databasen (E2E_DATABASE_URL): en delägare (ägarroll) med eget lösenord,
  * en Awish-läsning för en automat (som e2e/07) och ett mystery pack med innehåll. Testet går
@@ -31,6 +35,8 @@ import {
 import { e2e, login } from "./support/session";
 
 const DEVICE = "iPhone SE";
+/** Delägarens inköpsskärmar: iPhone SE (3:e generationen), 375 × 667, 2× pixeltäthet. */
+const DEVICE_375 = "iPhone SE (3rd gen)";
 const PARTNER = "delagare-enkel@binderlab.local";
 const PARTNER_PASSWORD = "enkel-vy-e2e-losenord";
 const MYSTERY = "E2E Mystery Pack";
@@ -60,11 +66,78 @@ async function level(location: string, titleId: string): Promise<number> {
   return r?.q ?? 0;
 }
 
-async function newPage(locale: string): Promise<Page> {
-  const opened = await openPage(browser, e2e().baseUrl, { device: DEVICE, theme: "dark", locale });
+async function newPage(locale: string, device = DEVICE): Promise<Page> {
+  const opened = await openPage(browser, e2e().baseUrl, { device, theme: "dark", locale });
   contexts.push(opened.context);
   errors.push(opened.errors);
   return opened.page;
+}
+
+/** Delägaren inloggad på iPhone SE (375 px), på Sales. */
+async function partnerPage(): Promise<Page> {
+  const page = await newPage("en-GB", DEVICE_375);
+  await page.goto("/logga-in");
+  await page.getByLabel("Email").fill(PARTNER);
+  await page.getByLabel("Password").fill(PARTNER_PASSWORD);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.waitForURL((url) => url.pathname === "/");
+  return page;
+}
+
+/** Bottenradens flik (dev-servern kompilerar sidan kallt första gången: den hämtas först). */
+async function openTab(page: Page, name: string, path: string): Promise<void> {
+  const context = contexts.at(-1);
+  if (!context) throw new Error("Sidan saknar sammanhang.");
+  expect((await context.request.get(path, { maxRedirects: 0 })).status()).toBe(200);
+  await page.getByRole("navigation", { name: "Menu" }).getByRole("link", { name }).click();
+  await page.waitForURL((url) => url.pathname === path);
+}
+
+/**
+ * Tryckytor på minst 44 × 44 px (knappar, länkar och fält som syns) inom `scope` (en
+ * CSS-väljare: "main", bottenraden eller det öppna arket).
+ */
+async function expectTapTargets(page: Page, scope: string): Promise<void> {
+  const small = await page.evaluate(
+    (sel: string) =>
+      Array.from(document.querySelectorAll(sel)).flatMap((root) =>
+        Array.from(root.querySelectorAll("a, button, input, select, [role=radio]"))
+          .map((el) => {
+            const r = el.getBoundingClientRect();
+            const label = (el.getAttribute("aria-label") ?? el.textContent ?? "")
+              .trim()
+              .slice(0, 40);
+            return { label, w: Math.round(r.width), h: Math.round(r.height) };
+          })
+          .filter((x) => x.w > 0 && x.h > 0 && (x.h < 44 || x.w < 44)),
+      ),
+    scope,
+  );
+  expect(small, JSON.stringify(small)).toEqual([]);
+}
+
+/** Väntar tills arkets animation (in från botten) är klar, före en skärmbild. */
+async function settled(page: Page): Promise<void> {
+  await until(
+    () =>
+      page.evaluate(() =>
+        document.getAnimations().every((a) => a.playState !== "running" || a.effect === null),
+      ),
+    "animationerna är klara",
+  );
+}
+
+/** Engelska, ingen sidledes scroll och stora tryckytor i sidan och bottenraden. */
+async function expectSimplePage(page: Page): Promise<void> {
+  const body = await page.locator("body").innerText();
+  expect(body).not.toMatch(
+    /Vårt lager|Inköp|Lager|Räkna|Beställ|Sparat|Ändra|Saknar|Butik|Awish|VMB|queue|purchasing/,
+  );
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await expectTapTargets(page, "main");
+  await expectTapTargets(page, 'nav[aria-label="Menu"]');
 }
 
 /** Som ägaren i databasen (RLS, auth.uid()): för RPC:er som kräver en inloggad ägare. */
@@ -190,6 +263,8 @@ afterEach(() => {
 afterAll(async () => {
   for (const c of contexts) await c.close().catch(() => {});
   await browser?.close();
+  // Priset som delägaren lade in i dag ligger kvar (purchase_prices raderas aldrig). En ny
+  // körning samma dag ersätter det med ett annat belopp, så testet går att köra igen.
   // Delägaren tillbaka till full vy och svenska (testet går att köra igen).
   await sql`
     update public.memberships m set view_mode = 'full'
@@ -206,7 +281,7 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
       .getByRole("listitem")
       .filter({ has: page.getByText(PARTNER, { exact: true }) });
     await row.getByText("Enkel vy", { exact: true }).waitFor();
-    await row.getByText("Ser bara Fyll på, Försäljning och Mystery.").waitFor();
+    await row.getByText("Ser bara Fyll på, Försäljning, Lager och Mystery.").waitFor();
     expect(await row.getByRole("switch").isChecked()).toBe(false);
     // Etiketten är tryckytan (44 px); brytaren följer med.
     await row.getByText("Enkel vy", { exact: true }).click();
@@ -231,7 +306,7 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
     expect(await own.getByRole("switch").count()).toBe(0);
   });
 
-  it("delägaren ser bara Refill, Sales och Mystery, på engelska", async () => {
+  it("delägaren ser bara Refill, Sales, Stock och Mystery, på engelska", async () => {
     const page = await newPage("en-GB");
     await page.goto("/logga-in");
     // Före inloggningen: webbläsarens språk.
@@ -245,7 +320,7 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
 
     const nav = page.getByRole("navigation", { name: "Menu" });
     const tabs = nav.getByRole("link");
-    expect(await tabs.allInnerTexts()).toEqual(["Refill", "Sales", "Mystery"]);
+    expect(await tabs.allInnerTexts()).toEqual(["Refill", "Sales", "Stock", "Mystery"]);
     await page.getByText("Our profit (before stores' share)").first().waitFor();
     await page.getByText("Today", { exact: true }).waitFor();
     await page.getByText("This week", { exact: true }).waitFor();
@@ -299,6 +374,11 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
       "/installningar/anvandare",
       "/",
       "/drift",
+      "/butiker",
+      "/avtal",
+      "/ekonomi",
+      "/rapporter",
+      "/inkopspriser/ny-produkt",
     ]) {
       await page.goto(path);
       await page.waitForURL((url) => url.pathname === "/");
@@ -385,10 +465,14 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
     await page.waitForURL((url) => url.pathname === "/vart-lager/mystery");
     await page.getByRole("heading", { name: /mystery packs? in stock\.$/ }).waitFor();
     await page.getByText("Chance of a hit").first().waitFor();
+    // Delägaren köper in: kostnaden syns (på engelska), men ingen redigering av innehållet.
+    await page
+      .getByText(/^The contents cost .+ per pack|^No purchase price: /)
+      .first()
+      .waitFor();
     const body = await page.locator("body").innerText();
-    // Inga belopp och ingen redigering i den enkla vyn.
     expect(body).not.toMatch(
-      /\d\s?kr\b|Inköpspris|Purchase price|Lägg in innehållet|Change contents/,
+      /Inköpspris|Innehållet kostar|Saknar inköpspris|Lägg in innehållet|Change contents/,
     );
     await screenshot(page, "13-delagare-mystery-iphonese");
 
@@ -399,8 +483,165 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
     await page.getByText("3 of 10").first().waitFor();
     await page.getByText("HIT", { exact: true }).first().waitFor();
     await page.getByText("Chance of a hit", { exact: true }).waitFor();
-    expect(await page.getByRole("link", { name: "Purchase prices" }).count()).toBe(0);
+    // Kostnaden på engelska (VMB och kortavgiften nämns inte vid namn).
+    await page.getByRole("heading", { name: "Cost", exact: true }).waitFor();
+    await page.getByText("Purchase price today", { exact: true }).waitFor();
+    await page.getByText("Left per pack before the store's share", { exact: true }).waitFor();
+    const detail = await page.locator("body").innerText();
+    expect(detail).not.toMatch(/Kostnad|Kvar per pack|VMB|kortavgift/);
     expect(await page.getByRole("button", { name: "Change contents" }).count()).toBe(0);
     await screenshot(page, "13-delagare-mystery-innehall-iphonese");
+  });
+  it("Stock: leverans in och rätta antalet, på engelska (375 px)", async () => {
+    const page = await partnerPage();
+    await openTab(page, "Stock", "/vart-lager");
+    const sub = page.getByRole("navigation", { name: "Stock" });
+    await sub.getByRole("link", { name: "Purchase prices" }).waitFor();
+    expect(await sub.getByRole("link").allInnerTexts()).toEqual([
+      "Stock",
+      "Buy list",
+      "Purchase prices",
+    ]);
+    await page.getByRole("heading", { name: /packs? in stock\.$/ }).waitFor();
+    await expectSimplePage(page);
+    await screenshot(page, "13-delagare-stock-iphonese");
+
+    const before = await level(target.central, target.titleId);
+    await page.getByRole("button", { name: `Change the stock of ${target.title}` }).click();
+    const sheet = page.getByRole("dialog");
+    await sheet.getByRole("heading", { name: "A delivery came in" }).waitFor();
+    await sheet.getByRole("heading", { name: "Correct the count" }).waitFor();
+    await sheet.getByLabel("Number of packs").fill("5");
+    await expectTapTargets(page, "dialog[open]");
+    await settled(page);
+    await screenshot(page, "13-delagare-stock-leverans-iphonese");
+    await sheet.getByRole("button", { name: "Add", exact: true }).click();
+    await page
+      .getByText(/^5\spacks added at /)
+      .first()
+      .waitFor();
+    await until(
+      async () => (await level(target.central, target.titleId)) === before + 5,
+      "leveransen är i vårt lager",
+    );
+
+    await page.getByRole("button", { name: `Change the stock of ${target.title}` }).click();
+    const count = page.getByRole("dialog").getByLabel(/^Packs /);
+    await count.waitFor();
+    expect(await count.inputValue()).toBe(String(before + 5));
+    await count.fill("50");
+    await page.getByRole("dialog").getByRole("button", { name: "Save the count" }).click();
+    await page
+      .getByText(/^Saved: 50\spacks /)
+      .first()
+      .waitFor();
+    await until(
+      async () => (await level(target.central, target.titleId)) === 50,
+      "antalet är rättat till 50",
+    );
+  });
+
+  it("Buy list: vad som ska köpas och hur mycket, på engelska (375 px)", async () => {
+    const page = await partnerPage();
+    await openTab(page, "Stock", "/vart-lager");
+    await page
+      .getByRole("navigation", { name: "Stock" })
+      .getByRole("link", { name: "Buy list" })
+      .click();
+    await page.waitForURL((url) => url.pathname === "/prognos");
+    await page
+      .getByRole("heading", { name: /^Buy \d+ products?\.$|^Nothing to buy right now\.$/ })
+      .waitFor();
+    // Stock-fliken nedtill är markerad på alla tre underflikarna.
+    expect(
+      await page
+        .getByRole("navigation", { name: "Menu" })
+        .getByRole("link", { name: "Stock" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    const items = page.getByRole("list", { name: "Buy list" }).getByRole("listitem");
+    if ((await items.count()) > 0) {
+      expect(await items.first().innerText()).toMatch(/(Buy|Pack) (\d+\spacks?|more)/);
+    }
+    await expectSimplePage(page);
+    await screenshot(page, "13-delagare-buy-list-iphonese");
+  });
+
+  it("Purchase prices: delägaren ändrar ett pris, på engelska (375 px)", async () => {
+    const page = await partnerPage();
+    await openTab(page, "Stock", "/vart-lager");
+    await page
+      .getByRole("navigation", { name: "Stock" })
+      .getByRole("link", { name: "Purchase prices" })
+      .click();
+    await page.waitForURL((url) => url.pathname === "/inkopspriser");
+    await page
+      .getByRole("heading", { name: /purchase price\.$/ })
+      .first()
+      .waitFor();
+    await expectSimplePage(page);
+    await screenshot(page, "13-delagare-purchase-prices-iphonese");
+
+    // Ett pris som inte redan finns (testet går att köra igen samma dag).
+    const ore = 4000 + (Date.now() % 900);
+    const typed = (ore / 100).toFixed(2);
+    await page
+      .getByRole("button", { name: `Change the purchase price of ${target.title}` })
+      .click();
+    const sheet = page.getByRole("dialog");
+    await sheet.getByLabel("New price per pack").fill(typed);
+    await sheet.getByRole("button", { name: /^Fix the price/ }).waitFor();
+    await expectTapTargets(page, "dialog[open]");
+    await settled(page);
+    await screenshot(page, "13-delagare-purchase-price-andra-iphonese");
+    await sheet.getByRole("button", { name: /^New price from today/ }).click();
+    await page.getByText("New purchase price saved").first().waitFor();
+    await until(async () => {
+      const [r] = await sql<{ ore: number }[]>`
+        select pp.unit_cost_ore::int as ore from public.purchase_prices pp
+        join auth.users u on u.id = pp.created_by and u.email = ${PARTNER}
+        where pp.organization_id = ${target.orgId}::uuid and pp.title_id = ${target.titleId}::uuid
+          and pp.valid_from = (now() at time zone 'Europe/Stockholm')::date`;
+      return r?.ore === ore;
+    }, "det nya inköpspriset är sparat som delägarens");
+    await page.getByText(`${typed} kr per pack`).first().waitFor();
+    await screenshot(page, "13-delagare-purchase-price-sparat-iphonese");
+  });
+
+  it("Sales: vinst per produkt före butikernas andel, på engelska (375 px)", async () => {
+    const page = await partnerPage();
+    const heading = page.getByRole("heading", { name: "Profit per product this month" });
+    await heading.waitFor();
+    await page
+      .getByText("Most profit first. The profit is before the stores' share.", { exact: true })
+      .waitFor();
+    const list = page.getByRole("list", { name: "Profit per product this month" });
+    if ((await list.count()) > 0) {
+      expect(await list.getByRole("listitem").count()).toBeGreaterThan(0);
+      expect(await list.getByRole("listitem").first().innerText()).toMatch(/\spacks?/);
+    } else {
+      await page.getByText("Nothing sold this month.").waitFor();
+    }
+    const body = await page.locator("body").innerText();
+    expect(body).not.toMatch(/Butikens andel|Vår del|payout|settlement|Utbetalning|Avtal/i);
+    await expectSimplePage(page);
+    await heading.scrollIntoViewIfNeeded();
+    await screenshot(page, "13-delagare-profit-per-product-iphonese");
+  });
+  it("Mystery: delägaren ser kostnaden på engelska (375 px)", async () => {
+    const page = await partnerPage();
+    await openTab(page, "Mystery", "/vart-lager/mystery");
+    await page
+      .getByText(/^The contents cost .+ per pack|^No purchase price: /)
+      .first()
+      .waitFor();
+    await expectSimplePage(page);
+    await page.getByRole("link", { name: MYSTERY }).click();
+    await page.waitForURL((url) => url.pathname === `/vart-lager/mystery/${target.mysteryId}`);
+    const cost = page.getByRole("heading", { name: "Cost", exact: true });
+    await cost.waitFor();
+    await page.getByText("Contents, average per pack", { exact: true }).waitFor();
+    await cost.scrollIntoViewIfNeeded();
+    await screenshot(page, "13-delagare-mystery-kostnad-iphonese");
   });
 });

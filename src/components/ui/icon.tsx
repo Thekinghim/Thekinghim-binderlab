@@ -11,6 +11,8 @@ const paths = {
   sales: "M2.5 13.5h11M4 11V8M7 11V4.5M10 11V6.5M13 11V3",
   machine: "M3.5 1.5h9v13h-9zM3.5 10.5h9M5.5 4h3.5M5.5 6.5h3.5M11 4v1M11 6.5v1M6 12.5h4",
   inventory: "M2 5l6-3 6 3v6l-6 3-6-3zM2 5l6 3 6-3M8 8v6",
+  // Tre staplade lådor: vårt lager (Enkel vy), skild från paketet "inventory" (Mystery).
+  stock: "M2 8.5h5.5v5H2zM8.5 8.5H14v5H8.5zM5.25 2.5h5.5v5h-5.5z",
   margin: "M2.5 13.5L6 8l3 2.5 4.5-7M10.5 3.5h3v3",
   // Tre reglage med greppen i olika lägen (inte ett kugghjul, som annars liknar "sun").
   settings: "M2 4h7M11 4h3M9 2.5h2v3H9zM2 8h2M6 8h8M4 6.5h2v3H4zM2 12h8M12 12h2M10 10.5h2v3h-2z",

@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { StateMessage } from "@/components/ui/state-message";
+import { messages } from "@/i18n";
 import { NBSP } from "@/lib/format";
-import { requireRoute } from "@/server/data/core";
+import { loadOptionalContextIfSignedIn, requireRoute } from "@/server/data/core";
 
+import { SimpleStockScreen } from "../_enkel/stock-screen";
 import { currentViewer } from "../lager/_lib/session";
 import { HomeStock } from "./_components/home-stock";
 import { PageHead } from "./_components/page-head";
@@ -15,7 +17,12 @@ import { headingOf } from "./_lib/heading";
 import { stockTodos } from "./_lib/model";
 import { packHref } from "./mystery/_lib/model";
 
-export const metadata: Metadata = { title: "Vårt lager" };
+/** Vårt lager; i Enkel vy Lager på personens språk. */
+export async function generateMetadata(): Promise<Metadata> {
+  const ctx = await loadOptionalContextIfSignedIn().catch(() => null);
+  if (ctx?.viewMode === "simple") return { title: messages(ctx.locale).stock.title };
+  return { title: "Vårt lager" };
+}
 
 /**
  * Vårt lager: hur många pack av varje titel vi har i våra egna lager (Hemma, Kontoret …).
@@ -26,6 +33,8 @@ export const metadata: Metadata = { title: "Vårt lager" };
  */
 export default async function VartLagerPage() {
   const ctx = await requireRoute("vart-lager");
+  // Enkel vy: delägarens egen, enkla skärm (lagret, leverans in och rätta antalet).
+  if (ctx.viewMode === "simple") return <SimpleStockScreen ctx={ctx} />;
   const viewer = await currentViewer();
   const view = await loadVartLagerFor(viewer, new Date(ctx.now));
   const scope = `${viewer.organization.id}:${viewer.user.userId}`;

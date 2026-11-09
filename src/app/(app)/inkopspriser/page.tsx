@@ -11,9 +11,16 @@ import { StateMessage } from "@/components/ui/state-message";
 import { priceHistory, profitability, storeShareDeducted, type PurchasePrice } from "@/domain";
 import { formatDate, formatInt } from "@/lib/format";
 import { ALL_COST_LINES } from "@/lib/cost-lines";
-import { loadDomainInput, loadPeriod, requireRoute } from "@/server/data/core";
+import { messages } from "@/i18n";
+import {
+  loadDomainInput,
+  loadOptionalContextIfSignedIn,
+  loadPeriod,
+  requireRoute,
+} from "@/server/data/core";
 import { requireUser } from "@/server/session";
 
+import { SimplePricesScreen } from "../_enkel/prices-screen";
 import { MobileMore } from "../_mobil/mobile-more";
 import { PageHead } from "../vart-lager/_components/page-head";
 import { TodoList } from "../vart-lager/_components/todo-list";
@@ -37,7 +44,12 @@ import {
   titleRows,
 } from "./_lib/model";
 
-export const metadata: Metadata = { title: "Inköpspriser" };
+/** Inköpspriser; i Enkel vy på personens språk. */
+export async function generateMetadata(): Promise<Metadata> {
+  const ctx = await loadOptionalContextIfSignedIn().catch(() => null);
+  if (ctx?.viewMode === "simple") return { title: messages(ctx.locale).stock.pricesTitle };
+  return { title: "Inköpspriser" };
+}
 
 /** Kolumnrubriken för andelen och vem den gäller: vald butik, vald automat eller alla. */
 function shareScope(
@@ -75,6 +87,8 @@ export default async function PurchasePricesPage({
   searchParams: Promise<SearchParams>;
 }) {
   const ctx = await requireRoute("inkopspriser");
+  // Enkel vy: delägarens enkla lista med priser och Ändra (ingen butiksandel, ingen logg).
+  if (ctx.viewMode === "simple") return <SimplePricesScreen ctx={ctx} />;
   const sp = await searchParams;
   const [period, user] = await Promise.all([loadPeriod(sp), requireUser()]);
   const [input, data] = await Promise.all([

@@ -83,6 +83,29 @@ const SERVER_EXACT: Record<string, string> = {
   "Du är inte medlem i organisationen.": "You are not a member of the organisation.",
   "Du kan inte ändra din egen vy. Be en ägare eller admin.":
     "You cannot change your own view. Ask an owner or admin.",
+  // Lager (antal och leveranser) i den enkla vyn.
+  "Ange antal, 0 eller mer.": "Type a number, 0 or more.",
+  "Ange antal pack, minst 1.": "Type a number of packs, at least 1.",
+  "Ogiltig registrering. Ladda om sidan och försök igen.":
+    "Something did not match. Reload the page and try again.",
+  "Ogiltigt id.": "Something did not match. Reload the page and try again.",
+  "Lagret finns inte.": "That stock place does not exist. Reload the page.",
+  "Organisationen har inget eget lager.": "There is no stock place yet. Ask the owner.",
+  // Inköpspriser (PRICE_MESSAGES i inkopspriser/_lib/model.ts).
+  "Bara ägare och admin kan ändra inköpspriser.": "Only the owner can change purchase prices.",
+  "Uppgifterna stämmer inte. Kontrollera pris och datum och försök igen.":
+    "Something does not add up. Check the price and try again.",
+  "Titeln finns inte längre. Ladda om sidan.": "The product is gone. Reload the page.",
+  "Titeln är sammanslagen med en annan. Lägg priset på den titeln i stället.":
+    "The product was merged into another one. Set the price on that one instead.",
+  "Priset är redan inlagt med samma belopp och datum.": "That price is already saved.",
+  "All försäljning har redan det priset.": "All sales already have that price.",
+  "Månaden är stängd. Välj Nytt inköpspris i stället, eller be en ägare öppna månaden.":
+    "That month is closed. Choose New price from today instead, or ask the owner.",
+  "Priset skulle gälla i en stängd månad. Välj ett senare datum, eller be en ägare öppna månaden.":
+    "The price would count in a closed month. Ask the owner.",
+  "Ange inköpspriset per pack.": "Type the price per pack.",
+  "Skriv priset i kronor, t.ex. 112,50.": "Type the price in kronor, for example 112.50.",
 };
 
 const SERVER_PATTERNS: ReadonlyArray<readonly [RegExp, (m: RegExpMatchArray) => string]> = [
@@ -96,6 +119,11 @@ const SERVER_PATTERNS: ReadonlyArray<readonly [RegExp, (m: RegExpMatchArray) => 
     (m) => `Too many attempts. Wait ${m[1]} ${m[1] === "1" ? "minute" : "minutes"}.`,
   ],
   [/^Lagret (.+) har bara (\d+) /, (m) => `${placeName(m[1]!)} only has ${m[2]} packs.`],
+  [/^Högst ([\d\s\u00a0]+) pack\.$/, (m) => `At most ${m[1]!.trim()} packs.`],
+  [
+    /^Priset skulle gälla i .+, som är stängda?\./,
+    () => "The price would count in a closed month. Ask the owner.",
+  ],
 ];
 
 function serverError(message: string): string {
@@ -145,6 +173,7 @@ export const en: Messages = {
     nav: "Menu",
     tabRefill: "Refill",
     tabSales: "Sales",
+    tabStock: "Stock",
     tabMystery: "Mystery",
     menu: "More",
     menuTitle: "Menu",
@@ -170,6 +199,11 @@ export const en: Messages = {
       `${f.int(n)} ${n === 1 ? "sale has" : "sales have"} no purchase price and ${n === 1 ? "is" : "are"} not counted in the profit.`,
     updated: (time) => `Figures from ${time}`,
     noAccess: "Sales are only shown to owners, admins and viewers.",
+    perProduct: "Profit per product this month",
+    perProductHint: "Most profit first. The profit is before the stores' share.",
+    noProducts: "Nothing sold this month.",
+    perPack: (amount) => `${amount} per pack`,
+    noPurchasePrice: "No purchase price",
   },
   fill: {
     title: "Refill",
@@ -333,11 +367,112 @@ export const en: Messages = {
     packedBatches: (n) => `Packed ${batches(n)}.`,
     undoFailed: "Could not undo",
     undone: "Undone. The parts are back.",
+    contentsCost: (amount) => `The contents cost ${amount} per pack`,
+    missingPrice: (names) => `No purchase price: ${names}`,
+    currentCost: (amount) => ` · purchase price ${amount ?? "missing"}`,
+    setCost: (amount) => `Set purchase price to ${amount}`,
+    costSet: "The purchase price is set from today.",
+    costNotSaved: "Not saved",
+    costTitle: "Cost",
+    costAverage: "Contents, average per pack",
+    costToday: "Purchase price today",
+    costMissing: "missing",
+    salePrice: "Price in the machine (last sale)",
+    noSaleYet: "no sale yet",
+    leftPerPack: "Left per pack before the store's share",
+    missingPrices: (names) => `No purchase price: ${names}.`,
+    pricesLink: "Purchase prices",
+    costDiffers: (current, contents) =>
+      `Sold mystery packs are counted with the purchase price ${current ?? "(missing)"}, but the contents cost ${contents}.`,
+    costNote: (orders) =>
+      `Left per pack takes off the card fee and tax, on ${
+        orders > 0
+          ? `${f.int(orders)} ${orders === 1 ? "sale" : "sales"} in the last 30 days`
+          : "one example sale"
+      }, with the average of the contents as the purchase price.`,
     list: (items) => {
       const parts = items.map((t) => `${t.quantity} ${t.name}`);
       if (parts.length <= 1) return parts.join("");
       return `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
     },
+  },
+  stock: {
+    nav: "Stock",
+    tabStock: "Stock",
+    tabBuy: "Buy list",
+    tabPrices: "Purchase prices",
+    title: "Stock",
+    headline: (n) => `${packs(n)} in stock.`,
+    inMachines: (n) => `In the machines ${f.int(n)}`,
+    placeLine: (place, n) => `${placeName(place)} ${f.int(n)}`,
+    noWarehouse: "No stock place yet. Ask the owner to add one.",
+    noTitles: "No products yet.",
+    countAgain: "Count again",
+    out: "Out",
+    low: "Running low",
+    soldWeek: (n) => `Sold in 7 days: ${f.int(n)}`,
+    lasts: (days) => `Lasts ${f.int(days)} ${days === 1 ? "day" : "days"}`,
+    update: "Change",
+    updateAria: (title) => `Change the stock of ${title}`,
+    sheetEyebrow: "Stock",
+    delivery: "A delivery came in",
+    deliveryHint: "Adds packs to the stock.",
+    packsLabel: "Number of packs",
+    placeLabel: "Where",
+    add: "Add",
+    count: "Correct the count",
+    countHint: "Type how many packs there are now.",
+    countIn: (place) => `Packs ${inPlace(place)}`,
+    saveCount: "Save the count",
+    added: (n, place) => `${packs(n)} added ${inPlace(place)}.`,
+    counted: (n, place) => `Saved: ${packs(n)} ${inPlace(place)}.`,
+    notSaved: "Not saved",
+    qtyMin1: "Type a number of packs, at least 1.",
+    qtyMin0: "Type a number, 0 or more.",
+    qtyMax: (n) => `At most ${f.int(n)} packs.`,
+    readOnly: "Only the owner changes the stock.",
+    buyTitle: "Buy list",
+    buyHeadline: (n) =>
+      n === 0
+        ? "Nothing to buy right now."
+        : `Buy ${f.int(n)} ${n === 1 ? "product" : "products"}.`,
+    buyAside: "Enough to last until the next order, plus a little extra.",
+    buyNoPlan: "The amounts could not be worked out yet. These are running low.",
+    buy: (n) => `Buy ${packs(n)}`,
+    buyMore: "Buy more",
+    packOwn: (n) => `Pack ${packs(n)}`,
+    packMore: "Pack more",
+    haveLine: (home, machines) => `${f.int(home)} in stock · ${f.int(machines)} in the machines`,
+    costAbout: (amount) => `About ${amount}`,
+    totalAbout: (amount) => `About ${amount} in total to buy.`,
+    noPrice: "No purchase price",
+    pricesTitle: "Purchase prices",
+    pricesHeadline: (missing) =>
+      missing === 0
+        ? "All products have a purchase price."
+        : `${f.int(missing)} ${missing === 1 ? "product has" : "products have"} no purchase price.`,
+    pricesAside: "What one pack costs us to buy.",
+    perPack: (amount) => `${amount} per pack`,
+    since: (date) => `since ${date}`,
+    missingPrice: "No price",
+    ownProduct: "Mystery pack",
+    edit: "Change",
+    editAria: (title) => `Change the purchase price of ${title}`,
+    priceEyebrow: "Purchase price",
+    newPrice: "New price per pack",
+    nowPrice: (amount) => `Now: ${amount} per pack.`,
+    nowMissing: "No price yet.",
+    fixAll: "Fix the price",
+    fixAllSub: "Counts for all sales so far",
+    fromToday: "New price from today",
+    fromTodaySub: "Older sales keep the old price",
+    fixedToast: "Price fixed",
+    savedToast: "New purchase price saved",
+    priceLine: (title, amount) => `${title}: ${amount} per pack.`,
+    priceRequired: "Type the price per pack.",
+    priceInvalid: "Type the price in kronor, for example 112.50.",
+    priceTooHigh: "The price is too high.",
+    readOnlyPrices: "Only the owner changes the prices.",
   },
   auth: {
     loginTitle: "Sign in.",
@@ -406,7 +541,7 @@ export const en: Messages = {
   },
   team: {
     simpleView: "Simple view",
-    simpleViewHint: "Sees only Refill, Sales and Mystery.",
+    simpleViewHint: "Sees only Refill, Sales, Stock and Mystery.",
     language: "Language",
     simpleOn: "Simple view on",
     simpleOff: "Simple view off",
@@ -415,7 +550,7 @@ export const en: Messages = {
     savedLanguage: (name) => `Language for ${name} saved.`,
     notSaved: "Not saved",
     selfNote: "Your own view is changed by another owner or admin.",
-    inviteSimple: "Simple view (only Refill, Sales and Mystery)",
+    inviteSimple: "Simple view (only Refill, Sales, Stock and Mystery)",
     inviteLanguage: "Language in the app",
   },
   appUpdate: {

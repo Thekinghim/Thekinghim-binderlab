@@ -34,6 +34,13 @@ import { e2e, login } from "./support/session";
 
 const DEVICES = ["iPhone SE (3rd gen)", "iPhone 15"] as const;
 
+/**
+ * Utan nät misslyckas det som går till nätet, och det är väntat: versionen, dev-serverns
+ * filer och dev-serverns omladdningsuttag (HMR-websocketen, som försöker koppla upp igen).
+ */
+const OFFLINE_ERRORS =
+  /Failed to load resource: net::ERR_(FAILED|INTERNET_DISCONNECTED)|WebSocket connection to '[^']*\/_next\/(webpack-)?hmr[^']*' failed: .*net::ERR_INTERNET_DISCONNECTED/;
+
 let errors: Error[] = [];
 afterEach(() => expectNoPageErrors(errors));
 
@@ -206,9 +213,8 @@ describe.each(DEVICES)("Uppdatera appen på %s", (device) => {
       } finally {
         await context.setOffline(false);
       }
-      // Utan nät misslyckas anropen som går till nätet (versionen, dev-serverns filer): väntat.
-      const offlineErrors = /Failed to load resource: net::ERR_(FAILED|INTERNET_DISCONNECTED)/;
-      errors.splice(0, errors.length, ...errors.filter((e) => !offlineErrors.test(e.message)));
+      // Utan nät misslyckas anropen som går till nätet: väntat (OFFLINE_ERRORS).
+      errors.splice(0, errors.length, ...errors.filter((e) => !OFFLINE_ERRORS.test(e.message)));
     } finally {
       await context.close();
       await browser.close();
@@ -254,8 +260,7 @@ describe("Uppdatera när nätet försvinner (iPhone SE)", () => {
       await page.goto("/fyll-pa");
       await cards.first().waitFor();
       await context.setOffline(false);
-      const offlineErrors = /Failed to load resource: net::ERR_(FAILED|INTERNET_DISCONNECTED)/;
-      errors.splice(0, errors.length, ...errors.filter((e) => !offlineErrors.test(e.message)));
+      errors.splice(0, errors.length, ...errors.filter((e) => !OFFLINE_ERRORS.test(e.message)));
     } finally {
       await context.close();
       await browser.close();

@@ -4,9 +4,8 @@ import type { CSSProperties } from "react";
 
 import { Icon } from "@/components/ui/icon";
 import { StateMessage } from "@/components/ui/state-message";
-import { messages, type Messages } from "@/i18n";
+import { formatters, messages, type Messages } from "@/i18n";
 import { getT } from "@/i18n/server";
-import { formatKronor } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
 
 import { currentViewer } from "../../lager/_lib/session";
@@ -20,8 +19,6 @@ export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
   return { title: t.mystery.title };
 }
-
-const kr = (ore: number) => formatKronor(ore / 100);
 
 /** "Kan packa 2 omgångar hemma · Delta Reign tar slut först". */
 function capacityLine(view: MysteryOverview, title: MysteryTitle, t: Messages): string | null {
@@ -37,15 +34,19 @@ function capacityLine(view: MysteryOverview, title: MysteryTitle, t: Messages): 
  * Vårt lager → Mystery packs: varje egen produkt med innehållet (som etiketten), hur många
  * som finns i lagren och automaterna, hur många omgångar som går att packa och Packa.
  * Alla roller i appen (påfyllaren packar); belopp bara för ägare, admin och läsare.
+ * Enkel vy: ingen redigering av innehållet och inga länkar bort, men kostnaden och "Sätt
+ * inköpspris" visas (delägaren köper in och sköter inköpspriserna).
  */
 export default async function MysteryPacksPage() {
   const ctx = await requireRoute("mystery");
   const t = messages(ctx.locale);
-  // Enkel vy: bara innehållet och Packa (inga belopp, ingen redigering, inga länkar bort).
+  // Enkel vy: innehållet, Packa och kostnaden (ingen redigering av innehållet). Inköpspriset
+  // sätts av den som får ändra priser (ägare och admin), som i hela appen.
   const simple = ctx.viewMode === "simple";
   const viewer = await currentViewer();
   const loaded = await loadMysteryOverviewFor(viewer, new Date(ctx.now));
-  const view: MysteryOverview = simple ? { ...loaded, canEdit: false, seesMoney: false } : loaded;
+  const view: MysteryOverview = simple ? { ...loaded, canEdit: false } : loaded;
+  const canSetCost = loaded.canEdit;
 
   const totalHome = view.titles.reduce(
     (n, t) => n + Object.values(t.inPlaces).reduce((a, b) => a + Math.max(0, b), 0),
@@ -75,7 +76,7 @@ export default async function MysteryPacksPage() {
         <ul className="flex flex-col gap-6">
           {view.titles.map((title, i) => (
             <li key={title.id} className="rise" style={{ "--i": i + 1 } as CSSProperties}>
-              <TitleCard view={view} title={title} t={t} />
+              <TitleCard view={view} title={title} t={t} canSetCost={canSetCost} />
             </li>
           ))}
         </ul>
@@ -88,11 +89,15 @@ function TitleCard({
   view,
   title: t,
   t: m,
+  canSetCost,
 }: {
   view: MysteryOverview;
   title: MysteryTitle;
   t: Messages;
+  canSetCost: boolean;
 }) {
+  const f = formatters(m.locale);
+  const kr = (ore: number) => f.kronor(ore / 100);
   const cap = capacityLine(view, t, m);
   const cost = t.recipe && view.seesMoney ? averageCost(t.recipe, view.prices) : null;
   const differs =
@@ -112,7 +117,10 @@ function TitleCard({
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="flex min-w-0 flex-col gap-1">
           <h2 id={`mp-${t.id}`} className="text-2xl font-medium text-fg">
-            <Link href={`/vart-lager/mystery/${t.id}`} className="hover:underline">
+            <Link
+              href={`/vart-lager/mystery/${t.id}`}
+              className="inline-flex min-h-11 items-center hover:underline"
+            >
               {t.name}
             </Link>
           </h2>
@@ -152,15 +160,15 @@ function TitleCard({
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <p className="tnum text-base text-muted">
             {cost.perPackOre !== null
-              ? `Innehållet kostar ${kr(cost.perPackOre)} per pack`
-              : `Saknar inköpspris: ${cost.missing.join(", ")}`}
-            {` · inköpspris ${t.currentCostOre !== null ? kr(t.currentCostOre) : "saknas"}`}
+              ? m.mystery.contentsCost(kr(cost.perPackOre))
+              : m.mystery.missingPrice(cost.missing.join(", "))}
+            {m.mystery.currentCost(t.currentCostOre !== null ? kr(t.currentCostOre) : null)}
           </p>
-          {differs && view.canEdit && cost.perPackOre !== null ? (
+          {differs && canSetCost && cost.perPackOre !== null ? (
             <SetCostButton
               titleId={t.id}
               unitCostOre={cost.perPackOre}
-              label={`Sätt inköpspris till ${kr(cost.perPackOre)}`}
+              label={m.mystery.setCost(kr(cost.perPackOre))}
             />
           ) : null}
         </div>

@@ -172,12 +172,65 @@ function allTexts(value: unknown): string[] {
 }
 
 describe("engelskan för den som inte är teknisk", () => {
-  it("Fyll på, Mystery, Försäljning och fellägen nämner aldrig Awish, VMB eller kön", () => {
-    const texts = [en.fill, en.mystery, en.sales, en.simple, en.state].flatMap(allTexts);
-    expect(texts.length).toBeGreaterThan(100);
+  it("Fyll på, Mystery, Försäljning, Lager och fellägen nämner aldrig Awish, VMB eller kön", () => {
+    const texts = [en.fill, en.mystery, en.sales, en.simple, en.stock, en.state].flatMap(allTexts);
+    expect(texts.length).toBeGreaterThan(200);
     for (const text of texts) {
-      expect(text, text).not.toMatch(/awish|vmb|queue|purchasing/i);
+      expect(text, text).not.toMatch(
+        /awish|vmb|queue|purchasing|forecast|supplier|sku|inventory|payout|settlement|contract|agreement|commission|accounting|margin/i,
+      );
+      // Ingen svenska kvar i de engelska texterna.
+      expect(text, text).not.toMatch(/[åäöÅÄÖ]/);
     }
+  });
+
+  it("Lager, Inköpslista och Inköpspriser på engelska; svenskan för ägaren är kvar", () => {
+    expect(en.simple.tabStock).toBe("Stock");
+    expect([en.stock.tabStock, en.stock.tabBuy, en.stock.tabPrices]).toEqual([
+      "Stock",
+      "Buy list",
+      "Purchase prices",
+    ]);
+    expect(en.stock.headline(120)).toBe("120\u00a0packs in stock.");
+    expect(en.stock.buy(24)).toBe("Buy 24\u00a0packs");
+    expect(en.stock.buyHeadline(0)).toBe("Nothing to buy right now.");
+    expect(en.stock.buyHeadline(1)).toBe("Buy 1 product.");
+    expect(en.stock.countIn("Hemma")).toBe("Packs at home");
+    expect(en.stock.placeLine("Hemma", 12)).toBe("Home 12");
+    expect(en.stock.fixAll).toBe("Fix the price");
+    expect(en.stock.fromToday).toBe("New price from today");
+    expect(en.sales.perProduct).toBe("Profit per product this month");
+    // Ägarens svenska på Mystery är oförändrad (texterna flyttade till katalogen).
+    expect(sv.mystery.setCost("76,07 kr")).toBe("Sätt inköpspris till 76,07 kr");
+    expect(sv.mystery.contentsCost("76,07 kr")).toBe("Innehållet kostar 76,07 kr per pack");
+    expect(sv.mystery.currentCost(null)).toBe(" · inköpspris saknas");
+    expect(sv.mystery.costDiffers("70,00 kr", "76,07 kr")).toBe(
+      "Sålda mystery packs räknas med inköpspriset 70,00 kr, men innehållet kostar 76,07 kr.",
+    );
+    expect(sv.mystery.costNote(0)).toBe(
+      "Kvar per pack räknas som på Inköpspriser (kortavgift, VMB) på ett tänkt köp med innehållets snitt som inköpspris.",
+    );
+    expect(sv.mystery.costNote(3)).toBe(
+      "Kvar per pack räknas som på Inköpspriser (kortavgift, VMB) på 3 köp senaste 30 dagarna med innehållets snitt som inköpspris.",
+    );
+    expect(sv.mystery.costSet).toBe("Inköpspriset är satt från i dag.");
+  });
+
+  it("serverns fel för lager och inköpspriser på engelska", () => {
+    expect(en.serverError("Ange antal pack, minst 1.")).toBe("Type a number of packs, at least 1.");
+    expect(en.serverError("Högst 10000 pack.")).toBe("At most 10000 packs.");
+    expect(en.serverError("Bara ägare och admin kan ändra inköpspriser.")).toBe(
+      "Only the owner can change purchase prices.",
+    );
+    expect(en.serverError("All försäljning har redan det priset.")).toBe(
+      "All sales already have that price.",
+    );
+    expect(
+      en.serverError(
+        "Priset skulle gälla i december 2024, som är stängd. Välj ett giltig från-datum efter månaden, eller be en ägare öppna den.",
+      ),
+    ).toBe("The price would count in a closed month. Ask the owner.");
+    expect(en.serverError("Lagret Kontoret har bara 3 pack.")).toBe("Kontoret only has 3 packs.");
   });
 
   it("tomma lägen och fel har engelska prefix", () => {

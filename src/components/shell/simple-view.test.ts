@@ -2,10 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import { navSections, subTabHref } from "./nav";
 import {
+  BUY_LIST_HREF,
   MYSTERY_HREF,
+  PRICES_HREF,
   REFILL_HREF,
   SALES_HREF,
+  STOCK_HREF,
+  STOCK_SUBTABS,
+  SIMPLE_TABS,
   simpleHomeFor,
+  simpleTabActive,
   simpleTabsFor,
   simpleViewAllows,
 } from "./simple-view";
@@ -20,6 +26,12 @@ describe("Enkel vy: tillåtna sökvägar", () => {
     "/vart-lager/mystery",
     "/vart-lager/mystery/3f1c9a2e-0b7d-4c55-9e8a-1a2b3c4d5e6f",
     "/vart-lager/mystery/",
+    // Lager, Inköpslistan och Inköpspriserna (delägaren köper in): bara exakt de sökvägarna.
+    "/vart-lager",
+    "/vart-lager/",
+    "/prognos",
+    "/inkopspriser",
+    "/inkopspriser/",
     "/logga-in",
     "/inbjudan/abc",
   ])("släpper igenom %s", (path) => {
@@ -33,8 +45,22 @@ describe("Enkel vy: tillåtna sökvägar", () => {
     "/installningar",
     "/installningar/anvandare",
     "/installningar/konto",
-    "/vart-lager",
     "/vart-lager/flytta",
+    "/vart-lager/x",
+    "/vart-lagerx",
+    "/inkopspriser/ny-produkt",
+    "/inkopspriser/ny-produkt/bild",
+    "/inkopspriserx",
+    "/prognos/x",
+    "/prognosx",
+    "/lager",
+    "/vinst",
+    "/butiker?vy=utbetalning",
+    "/ekonomi",
+    "/bokforing",
+    "/rapporter",
+    "/automater",
+    "/inkorg",
     "/vart-lager/mysteryx",
     "/forsaljningar",
     "/fyll-pax",
@@ -70,14 +96,26 @@ describe("Enkel vy: butikernas andel och utbetalningen är bara för ägaren i f
     "/butiker",
     "/butiker/3f1c9a2e-0b7d-4c55-9e8a-1a2b3c4d5e6f",
     "/avtal",
+    "/avtal/x/fil",
     "/expansion",
     "/att-gora",
+    "/lonsamhet",
+    "/installningar/export",
+    "/assistent/fraga",
   ])("stoppar %s", (path) => {
     expect(simpleViewAllows(path)).toBe(false);
   });
 
-  it("varje flik i hela appens meny utom de tre i den enkla vyn stoppas", () => {
-    const allowed = new Set(["/", "/forsaljning", REFILL_HREF, MYSTERY_HREF]);
+  it("varje flik i hela appens meny utom de i den enkla vyn stoppas", () => {
+    const allowed = new Set([
+      "/",
+      "/forsaljning",
+      REFILL_HREF,
+      MYSTERY_HREF,
+      STOCK_HREF,
+      BUY_LIST_HREF,
+      PRICES_HREF,
+    ]);
     for (const t of navSections.flatMap((s) => s.tabs)) {
       const path = new URL(subTabHref(t), "http://x").pathname;
       expect(simpleViewAllows(path), path).toBe(allowed.has(path));
@@ -86,10 +124,11 @@ describe("Enkel vy: butikernas andel och utbetalningen är bara för ägaren i f
 });
 
 describe("Enkel vy: flikar och startsida", () => {
-  it("ägaren ser Fyll på, Försäljning och Mystery i den ordningen", () => {
+  it("ägaren ser Fyll på, Försäljning, Lager och Mystery i den ordningen", () => {
     expect(simpleTabsFor("owner").map((t) => t.href)).toEqual([
       REFILL_HREF,
       SALES_HREF,
+      STOCK_HREF,
       MYSTERY_HREF,
     ]);
     expect(simpleHomeFor("owner")).toBe(SALES_HREF);
@@ -102,14 +141,36 @@ describe("Enkel vy: flikar och startsida", () => {
   });
 
   it("läsaren fyller inte på", () => {
-    expect(simpleTabsFor("viewer").map((t) => t.id)).toEqual(["sales", "mystery"]);
+    expect(simpleTabsFor("viewer").map((t) => t.id)).toEqual(["sales", "stock", "mystery"]);
     expect(simpleHomeFor("viewer")).toBe(SALES_HREF);
   });
 
-  it("varje flik och startsida är själv tillåten", () => {
+  it("påfyllaren ser inte Lager (inköp och priser är ekonomi)", () => {
+    expect(simpleTabsFor("refiller").some((t) => t.id === "stock")).toBe(false);
+  });
+
+  it("varje flik, underflik och startsida är själv tillåten", () => {
     for (const role of ["owner", "admin", "refiller", "viewer"] as const) {
       expect(simpleViewAllows(simpleHomeFor(role))).toBe(true);
       for (const tab of simpleTabsFor(role)) expect(simpleViewAllows(tab.href)).toBe(true);
     }
+    expect(STOCK_SUBTABS.map((s) => s.href)).toEqual([STOCK_HREF, BUY_LIST_HREF, PRICES_HREF]);
+    for (const sub of STOCK_SUBTABS) expect(simpleViewAllows(sub.href)).toBe(true);
+  });
+
+  it("Lager är markerad på sina tre underflikar men inte på Mystery", () => {
+    const stock = SIMPLE_TABS.find((t) => t.id === "stock")!;
+    const mystery = SIMPLE_TABS.find((t) => t.id === "mystery")!;
+    for (const path of [STOCK_HREF, `${STOCK_HREF}/`, BUY_LIST_HREF, PRICES_HREF]) {
+      expect(simpleTabActive(stock, path), path).toBe(true);
+      expect(simpleTabActive(mystery, path), path).toBe(false);
+    }
+    for (const path of [MYSTERY_HREF, `${MYSTERY_HREF}/3f1c9a2e-0b7d-4c55-9e8a-1a2b3c4d5e6f`]) {
+      expect(simpleTabActive(stock, path), path).toBe(false);
+      expect(simpleTabActive(mystery, path), path).toBe(true);
+    }
+    const refill = SIMPLE_TABS.find((t) => t.id === "refill")!;
+    expect(simpleTabActive(refill, "/fyll-pa/3f1c9a2e-0b7d-4c55-9e8a-1a2b3c4d5e6f")).toBe(true);
+    expect(simpleTabActive(refill, "/fyll-pax")).toBe(false);
   });
 });

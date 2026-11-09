@@ -12,7 +12,7 @@ import type { Recipe } from "../_lib/model";
 import { ContentsCard } from "./contents-card";
 import { RecipeEditor } from "./recipe-editor";
 
-/** "Sätt inköpspris till 76,07 kr": ett inköpspris från i dag (ägare, admin). */
+/** "Sätt inköpspris till 76,07 kr": ett inköpspris från i dag (ägare, admin, även i Enkel vy). */
 export function SetCostButton({
   titleId,
   unitCostOre,
@@ -23,6 +23,7 @@ export function SetCostButton({
   label: string;
 }) {
   const toast = useToast();
+  const t = useT();
   const [pending, start] = useTransition();
   return (
     <button
@@ -30,11 +31,18 @@ export function SetCostButton({
       disabled={pending}
       onClick={() =>
         start(async () => {
-          const res = await setMysteryCost({ titleId, unitCostOre });
+          const res = await setMysteryCost({ titleId, unitCostOre }).catch(() => ({
+            ok: false as const,
+            error: t.common.offlineRetry,
+          }));
           toast(
             res.ok
-              ? { title: "Inköpspriset är satt från i dag.", tone: "ok" }
-              : { title: "Sparades inte", description: res.error, tone: "critical" },
+              ? { title: t.mystery.costSet, tone: "ok" }
+              : {
+                  title: t.mystery.costNotSaved,
+                  description: t.serverError(res.error),
+                  tone: "critical",
+                },
           );
         })
       }
@@ -46,7 +54,7 @@ export function SetCostButton({
       )}
     >
       <Icon name="check" size={16} />
-      {pending ? "Sparar…" : label}
+      {pending ? t.common.saving : label}
     </button>
   );
 }

@@ -4,14 +4,16 @@ import { profitabilityViews } from "@/domain";
 import { formatters, messages, type Formatters, type Messages } from "@/i18n";
 import { loadDomainInput, type AppContext } from "@/server/data/core";
 
+import { productProfits } from "../../_enkel/model";
 import { PageHead } from "../../vart-lager/_components/page-head";
 import { daysIn, figuresOf, machineSales, salesPeriods, type SalesFigures } from "../_lib/model";
 
 /**
  * Försäljningen i den enkla vyn: sålt och tjänat i dag, den här veckan och den här månaden,
- * och per automat den här månaden. Inget annat: inga filter, inga perioder, ingen knapp för
- * butikernas andel. Vinsten är vår vinst före butikernas andel (står i rubriken). Bara för
- * roller som ser ekonomi (sidan kontrollerar det innan).
+ * per automat och vinst per produkt den här månaden. Inget annat: inga filter, inga
+ * perioder, ingen knapp för butikernas andel. Vinsten är vår vinst före butikernas andel
+ * (står i rubriken), även per produkt. Bara för roller som ser ekonomi (sidan kontrollerar
+ * det innan).
  */
 export async function SalesScreen({ ctx }: { ctx: AppContext }) {
   const t = messages(ctx.locale);
@@ -36,12 +38,16 @@ export async function SalesScreen({ ctx }: { ctx: AppContext }) {
   const monthOrders = input.current.orders.filter(
     (o) => o.businessDate >= p.month.start && o.businessDate <= p.month.end,
   );
+  const monthViews = profitabilityViews(
+    { ...input.current, orders: monthOrders, period: p.month },
+    ["machine", "title"],
+  );
   const perMachine = machineSales(
-    profitabilityViews({ ...input.current, orders: monthOrders, period: p.month }, [
-      "machine",
-    ]).machine.rows.filter((r) => r.kind === "item"),
+    monthViews.machine.rows.filter((r) => r.kind === "item"),
     input.machines,
   );
+  // Vinst per produkt (som Lönsamhet per titel), alltid före butikernas andel.
+  const perProduct = productProfits(monthViews.title.rows, input.titles);
   const unpriced = month.unpriced;
 
   return (
@@ -85,6 +91,48 @@ export async function SalesScreen({ ctx }: { ctx: AppContext }) {
                 <span className="tnum flex items-baseline justify-between gap-3 text-sm text-muted">
                   <span>{t.sales.soldPacks(m.packs)}</span>
                   <span>{`${t.sales.profitShort} ${f.sek(m.profitOre / 100)}`}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section aria-labelledby="per-produkt" className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <h2 id="per-produkt" className="text-lg font-medium text-fg">
+            {t.sales.perProduct}
+          </h2>
+          <p className="text-sm text-muted">{t.sales.perProductHint}</p>
+        </div>
+        {perProduct.length === 0 ? (
+          <p className="text-base text-muted">{t.sales.noProducts}</p>
+        ) : (
+          <ul
+            aria-label={t.sales.perProduct}
+            className="flex flex-col divide-y divide-line rounded-md border border-line"
+          >
+            {perProduct.map((r) => (
+              <li key={r.titleId} className="flex min-h-14 flex-col gap-1 px-4 py-3">
+                <span className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 text-base font-medium [overflow-wrap:anywhere] text-fg">
+                    {r.name}
+                  </span>
+                  <span
+                    className={
+                      r.noPrice
+                        ? "shrink-0 text-sm text-signal-fg"
+                        : "tnum shrink-0 text-base font-medium text-fg"
+                    }
+                  >
+                    {r.noPrice ? t.sales.noPurchasePrice : f.sek(r.profitOre / 100)}
+                  </span>
+                </span>
+                <span className="tnum flex items-baseline justify-between gap-3 text-sm text-muted">
+                  <span>{t.sales.soldPacks(r.packs)}</span>
+                  {r.perPackOre !== null ? (
+                    <span>{t.sales.perPack(f.kronor(r.perPackOre / 100))}</span>
+                  ) : null}
                 </span>
               </li>
             ))}

@@ -20,6 +20,8 @@ const inPlace = (name: string) => {
   const n = name.trim();
   return n.toLowerCase() === "hemma" ? "hemma" : `i ${n}`;
 };
+/** "Hemma" med stor bokstav, andra lager som de heter. */
+const placeName = (name: string) => (name.trim().toLowerCase() === "hemma" ? "Hemma" : name);
 
 export const sv = {
   locale: "sv" as Locale,
@@ -44,7 +46,7 @@ export const sv = {
     batches,
     inPlace,
     /** "Hemma" med stor bokstav, andra lager som de heter. */
-    placeName: (name: string) => (name.trim().toLowerCase() === "hemma" ? "Hemma" : name),
+    placeName,
     /** Lagret när inget eget lager är valt. */
     homeFallback: "hemma",
     and: "och",
@@ -60,6 +62,7 @@ export const sv = {
     nav: "Meny",
     tabRefill: "Fyll på",
     tabSales: "Försäljning",
+    tabStock: "Lager",
     tabMystery: "Mystery",
     menu: "Mer",
     menuTitle: "Meny",
@@ -84,6 +87,11 @@ export const sv = {
     unpriced: (n: number) => `${f.int(n)} köp saknar inköpspris och räknas inte i vinsten.`,
     updated: (time: string) => `Siffrorna från ${time}`,
     noAccess: "Försäljningen syns bara för ägare, admin och läsare.",
+    perProduct: "Vinst per produkt den här månaden",
+    perProductHint: "Mest vinst först. Vinsten är före butikernas andel.",
+    noProducts: "Inget sålt den här månaden.",
+    perPack: (amount: string) => `${amount} per pack`,
+    noPurchasePrice: "Saknar inköpspris",
   },
   fill: {
     title: "Fyll på",
@@ -262,12 +270,117 @@ export const sv = {
     packedBatches: (n: number) => `Packat ${batches(n)}.`,
     undoFailed: "Kunde inte ångra",
     undone: "Ångrat. Delarna är tillbaka.",
+    /** Kostnaden (ägaren och delägaren som köper in; aldrig påfyllaren). */
+    contentsCost: (amount: string) => `Innehållet kostar ${amount} per pack`,
+    missingPrice: (names: string) => `Saknar inköpspris: ${names}`,
+    currentCost: (amount: string | null) => ` · inköpspris ${amount ?? "saknas"}`,
+    setCost: (amount: string) => `Sätt inköpspris till ${amount}`,
+    costSet: "Inköpspriset är satt från i dag.",
+    costNotSaved: "Sparades inte",
+    costTitle: "Kostnad",
+    costAverage: "Innehållet, snitt per pack",
+    costToday: "Inköpspris i dag",
+    costMissing: "saknas",
+    salePrice: "Pris i automaten (senaste köpet)",
+    noSaleYet: "inget köp än",
+    leftPerPack: "Kvar per pack före butikens andel",
+    missingPrices: (names: string) => `Saknar inköpspris: ${names}.`,
+    pricesLink: "Inköpspriser",
+    costDiffers: (current: string | null, contents: string) =>
+      `Sålda mystery packs räknas med inköpspriset ${current ?? "(saknas)"}, men innehållet kostar ${contents}.`,
+    costNote: (orders: number) =>
+      `Kvar per pack räknas som på Inköpspriser (kortavgift, VMB) på ${
+        orders > 0 ? `${f.int(orders)} köp senaste 30 dagarna` : "ett tänkt köp"
+      } med innehållets snitt som inköpspris.`,
     /** "8 Phantasmal Flames, 6 Delta Reign och 4 Destined Rivals". */
     list: (items: readonly { quantity: number; name: string }[]) => {
       const parts = items.map((t) => `${t.quantity} ${t.name}`);
       if (parts.length <= 1) return parts.join("");
       return `${parts.slice(0, -1).join(", ")} och ${parts.at(-1)}`;
     },
+  },
+  /**
+   * Lager i den enkla vyn (delägaren köper in): tre underflikar, Lager, Inköpslista och
+   * Inköpspriser. Hela appens sidor har sina egna svenska texter kvar.
+   */
+  stock: {
+    nav: "Lager",
+    tabStock: "Lager",
+    tabBuy: "Inköpslista",
+    tabPrices: "Inköpspriser",
+    title: "Lager",
+    headline: (n: number) => `${packs(n)} i lagret.`,
+    inMachines: (n: number) => `I automaterna ${f.int(n)}`,
+    placeLine: (place: string, n: number) => `${placeName(place)} ${f.int(n)}`,
+    noWarehouse: "Inget eget lager än. Be ägaren lägga till ett.",
+    noTitles: "Inga produkter än.",
+    countAgain: "Räkna om",
+    out: "Slut",
+    low: "Tar snart slut",
+    soldWeek: (n: number) => `Sålt 7 d: ${f.int(n)}`,
+    lasts: (days: number) => `Räcker ${f.int(days)}${NBSP}d`,
+    update: "Ändra",
+    updateAria: (title: string) => `Ändra lagret för ${title}`,
+    sheetEyebrow: "Lager",
+    delivery: "Leverans kom in",
+    deliveryHint: "Lägger till pack i lagret.",
+    packsLabel: "Antal pack",
+    placeLabel: "Lager",
+    add: "Lägg till",
+    count: "Rätta antalet",
+    countHint: "Skriv hur många pack som finns nu.",
+    countIn: (place: string) => `Antal ${inPlace(place)}`,
+    saveCount: "Spara antalet",
+    added: (n: number, place: string) => `${packs(n)} tillagda ${inPlace(place)}.`,
+    counted: (n: number, place: string) => `Sparat: ${packs(n)} ${inPlace(place)}.`,
+    notSaved: "Sparades inte",
+    qtyMin1: "Skriv antal pack, minst 1.",
+    qtyMin0: "Skriv antal, 0 eller mer.",
+    qtyMax: (n: number) => `Högst ${f.int(n)} pack.`,
+    readOnly: "Bara ägaren ändrar lagret.",
+    buyTitle: "Inköpslista",
+    buyHeadline: (n: number) =>
+      n === 0
+        ? "Inget behöver köpas in nu."
+        : `Köp in ${f.int(n)} ${n === 1 ? "produkt" : "produkter"}.`,
+    buyAside: "Antalet räcker till nästa inköp, med lite extra.",
+    buyNoPlan: "Antalen kunde inte räknas fram än. De här tar slut.",
+    buy: (n: number) => `Köp ${packs(n)}`,
+    buyMore: "Köp mer",
+    packOwn: (n: number) => `Packa ${packs(n)}`,
+    packMore: "Packa mer",
+    haveLine: (home: number, machines: number) =>
+      `${f.int(home)} i lagret · ${f.int(machines)} i automaterna`,
+    costAbout: (amount: string) => `Cirka ${amount}`,
+    totalAbout: (amount: string) => `Totalt cirka ${amount} att köpa in.`,
+    noPrice: "Saknar inköpspris",
+    pricesTitle: "Inköpspriser",
+    pricesHeadline: (missing: number) =>
+      missing === 0
+        ? "Alla produkter har inköpspris."
+        : `${f.int(missing)} ${missing === 1 ? "produkt saknar" : "produkter saknar"} inköpspris.`,
+    pricesAside: "Vad ett pack kostar oss att köpa in.",
+    perPack: (amount: string) => `${amount} per pack`,
+    since: (date: string) => `sedan ${date}`,
+    missingPrice: "Inget pris",
+    ownProduct: "Mystery pack",
+    edit: "Ändra",
+    editAria: (title: string) => `Ändra inköpspris för ${title}`,
+    priceEyebrow: "Inköpspris",
+    newPrice: "Nytt pris per pack",
+    nowPrice: (amount: string) => `Nu: ${amount} per pack.`,
+    nowMissing: "Inget pris än.",
+    fixAll: "Rätta priset",
+    fixAllSub: "Gäller all försäljning",
+    fromToday: "Nytt pris från i dag",
+    fromTodaySub: "Äldre försäljning behåller sitt pris",
+    fixedToast: "Priset är rättat",
+    savedToast: "Nytt inköpspris sparat",
+    priceLine: (title: string, amount: string) => `${title}: ${amount} per pack.`,
+    priceRequired: "Skriv priset per pack.",
+    priceInvalid: "Skriv priset i kronor, t.ex. 112,50.",
+    priceTooHigh: "Priset är för högt.",
+    readOnlyPrices: "Bara ägaren ändrar priserna.",
   },
   auth: {
     loginTitle: "Logga in.",
@@ -336,7 +449,7 @@ export const sv = {
   },
   team: {
     simpleView: "Enkel vy",
-    simpleViewHint: "Ser bara Fyll på, Försäljning och Mystery.",
+    simpleViewHint: "Ser bara Fyll på, Försäljning, Lager och Mystery.",
     language: "Språk",
     simpleOn: "Enkel vy på",
     simpleOff: "Enkel vy av",
@@ -345,7 +458,7 @@ export const sv = {
     savedLanguage: (name: string) => `Språket för ${name} är sparat.`,
     notSaved: "Sparades inte",
     selfNote: "Din egen vy ändras av en annan ägare eller admin.",
-    inviteSimple: "Enkel vy (bara Fyll på, Försäljning och Mystery)",
+    inviteSimple: "Enkel vy (bara Fyll på, Försäljning, Lager och Mystery)",
     inviteLanguage: "Språk i appen",
   },
   /**

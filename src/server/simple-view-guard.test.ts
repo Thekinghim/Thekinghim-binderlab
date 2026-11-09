@@ -67,6 +67,13 @@ describe("Enkel vy i getActiveOrganization (route handlers, server actions)", ()
     "/butiker",
     "/butiker/3f1c9a2e-0b7d-4c55-9e8a-1a2b3c4d5e6f",
     "/installningar/anvandare",
+    // Lagret är tillåtet, men bara exakt Lager, Inköpslistan och Inköpspriserna.
+    "/vart-lager/flytta",
+    "/inkopspriser/ny-produkt",
+    "/inkopspriser/ny-produkt/bild",
+    "/lonsamhet",
+    "/avtal",
+    "/rapporter",
   ])("%s skickas till den enkla vyns startsida", async (path) => {
     await expect(activeAt(path)).rejects.toThrow("REDIRECT:/");
   });
@@ -76,12 +83,20 @@ describe("Enkel vy i getActiveOrganization (route handlers, server actions)", ()
     await expect(activeAt("/sok")).rejects.toThrow("REDIRECT:/fyll-pa");
   });
 
-  it.each(["/", "/fyll-pa", "/fyll-pa/abc", "/vart-lager/mystery", "/forsaljning"])(
-    "%s är tillåten",
-    async (path) => {
-      expect((await activeAt(path))?.viewMode).toBe("simple");
-    },
-  );
+  it.each([
+    "/",
+    "/fyll-pa",
+    "/fyll-pa/abc",
+    "/vart-lager/mystery",
+    "/forsaljning",
+    // Delägaren köper in: Lager (antal, leverans in), Inköpslistan och Inköpspriserna. Server
+    // actions på de sidorna (setHomeCount, addReceipt, addPurchasePrice …) har sidans sökväg.
+    "/vart-lager",
+    "/prognos",
+    "/inkopspriser",
+  ])("%s är tillåten", async (path) => {
+    expect((await activeAt(path))?.viewMode).toBe("simple");
+  });
 
   it("full vy och anrop utan sökväg (cron, skript) påverkas inte", async () => {
     expect((await activeAt(null))?.id).toBeDefined();

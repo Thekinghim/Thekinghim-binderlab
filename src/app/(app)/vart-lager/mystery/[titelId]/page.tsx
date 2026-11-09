@@ -5,7 +5,6 @@ import { notFound } from "next/navigation";
 import { wallClockIn } from "@/components/shell/period-state";
 import { formatters, messages } from "@/i18n";
 import { getT } from "@/i18n/server";
-import { formatInt, formatKronor, NBSP } from "@/lib/format";
 import { requireRoute } from "@/server/data/core";
 
 import { currentViewer } from "../../../lager/_lib/session";
@@ -20,7 +19,6 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t.mystery.title };
 }
 
-const kr = (ore: number) => formatKronor(ore / 100);
 const SECTION = "flex flex-col gap-4 scroll-mt-28";
 
 type Params = Promise<{ titelId: string }>;
@@ -45,8 +43,10 @@ export default async function MysteryPackPage({
   const ctx = await requireRoute("mystery");
   const m = messages(ctx.locale);
   const f = formatters(ctx.locale);
-  // Enkel vy: innehållet, Packa och Ångra. Inga belopp, ingen redigering, inga länkar bort.
+  // Enkel vy: innehållet, Packa, Ångra och kostnaden (delägaren köper in). Ingen redigering
+  // av innehållet och inga versioner.
   const simple = ctx.viewMode === "simple";
+  const kr = (ore: number) => f.kronor(ore / 100);
   const [{ titelId }, sp] = await Promise.all([params, searchParams]);
   if (!/^[0-9a-f-]{36}$/i.test(titelId)) notFound();
   const viewer = await currentViewer();
@@ -54,7 +54,9 @@ export default async function MysteryPackPage({
   const detail = await loadMysteryDetailFor(viewer, titelId, now);
   if (!detail) notFound();
   const { title: t, recipe } = { ...detail, recipe: detail.title.recipe };
-  const view = simple ? { ...detail.overview, canEdit: false, seesMoney: false } : detail.overview;
+  const view = simple ? { ...detail.overview, canEdit: false } : detail.overview;
+  // Inköpspriset sätts av den som får ändra priser (ägare och admin), även i Enkel vy.
+  const canSetCost = detail.overview.canEdit;
 
   const place = recipe ? defaultPlace(recipe, view.places, view.byPlace) : null;
   const cap = recipe && place ? maxBatches(recipe, view.byPlace[place.id] ?? {}) : null;
@@ -148,27 +150,27 @@ export default async function MysteryPackPage({
       {cost ? (
         <section aria-labelledby="kostnad-rubrik" className={SECTION}>
           <h2 id="kostnad-rubrik" className="text-xl font-medium text-fg">
-            Kostnad
+            {m.mystery.costTitle}
           </h2>
           <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 text-base">
-            <dt className="text-muted">Innehållet, snitt per pack</dt>
+            <dt className="text-muted">{m.mystery.costAverage}</dt>
             <dd className="tnum text-right text-fg">
               {cost.perPackOre !== null ? kr(cost.perPackOre) : "–"}
             </dd>
-            <dt className="text-muted">Inköpspris i dag</dt>
+            <dt className="text-muted">{m.mystery.costToday}</dt>
             <dd className="tnum text-right text-fg">
-              {t.currentCostOre !== null ? kr(t.currentCostOre) : "saknas"}
+              {t.currentCostOre !== null ? kr(t.currentCostOre) : m.mystery.costMissing}
             </dd>
-            <dt className="text-muted">Pris i automaten (senaste köpet)</dt>
+            <dt className="text-muted">{m.mystery.salePrice}</dt>
             <dd className="tnum text-right text-fg">
-              {detail.salePriceOre !== null ? kr(detail.salePriceOre) : "inget köp än"}
+              {detail.salePriceOre !== null ? kr(detail.salePriceOre) : m.mystery.noSaleYet}
             </dd>
-            <dt className="text-muted">Kvar per pack före butikens andel</dt>
+            <dt className="text-muted">{m.mystery.leftPerPack}</dt>
             <dd className="tnum text-right font-medium text-fg">
               {detail.leftPerPackOre !== null
                 ? `${kr(detail.leftPerPackOre)}${
                     detail.salePriceOre
-                      ? ` (${Math.round((detail.leftPerPackOre * 100) / detail.salePriceOre)}${NBSP}%)`
+                      ? ` (${m.common.pct(Math.round((detail.leftPerPackOre * 100) / detail.salePriceOre))})`
                       : ""
                   }`
                 : "–"}
@@ -176,35 +178,30 @@ export default async function MysteryPackPage({
           </dl>
           {cost.missing.length > 0 ? (
             <p className="text-base text-signal-fg">
-              Saknar inköpspris: {cost.missing.join(", ")}.{" "}
+              {m.mystery.missingPrices(cost.missing.join(", "))}{" "}
               <Link href="/inkopspriser" className="underline">
-                Inköpspriser
+                {m.mystery.pricesLink}
               </Link>
             </p>
           ) : null}
           {differs && cost.perPackOre !== null ? (
             <div className="flex flex-col gap-3 rounded-md border border-signal-line bg-signal-soft px-4 py-3">
               <p className="text-base text-fg">
-                Sålda mystery packs räknas med inköpspriset{" "}
-                {t.currentCostOre !== null ? kr(t.currentCostOre) : "(saknas)"}, men innehållet
-                kostar {kr(cost.perPackOre)}.
+                {m.mystery.costDiffers(
+                  t.currentCostOre !== null ? kr(t.currentCostOre) : null,
+                  kr(cost.perPackOre),
+                )}
               </p>
-              {view.canEdit ? (
+              {canSetCost ? (
                 <SetCostButton
                   titleId={t.id}
                   unitCostOre={cost.perPackOre}
-                  label={`Sätt inköpspris till ${kr(cost.perPackOre)}`}
+                  label={m.mystery.setCost(kr(cost.perPackOre))}
                 />
               ) : null}
             </div>
           ) : null}
-          <p className="meta text-subtle">
-            Kvar per pack räknas som på Inköpspriser (kortavgift, VMB) på{" "}
-            {detail.salesOrders > 0
-              ? `${formatInt(detail.salesOrders)} köp senaste 30 dagarna`
-              : "ett tänkt köp"}{" "}
-            med innehållets snitt som inköpspris.
-          </p>
+          <p className="meta text-subtle">{m.mystery.costNote(detail.salesOrders)}</p>
         </section>
       ) : null}
 
@@ -227,8 +224,8 @@ export default async function MysteryPackPage({
                       f.dateTime(local(p.packedAt), { year: "auto", now: nowLocal }),
                       simple ? null : p.version,
                     )}
-                    {p.costPerPackOre !== null && !simple
-                      ? ` · ${kr(p.costPerPackOre)} per pack`
+                    {p.costPerPackOre !== null && view.seesMoney
+                      ? ` · ${m.sales.perPack(kr(p.costPerPackOre))}`
                       : ""}
                     {p.undone ? m.mystery.packingUndone : ""}
                   </span>
