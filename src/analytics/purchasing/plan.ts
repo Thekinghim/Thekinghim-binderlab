@@ -129,11 +129,22 @@ export function orderQuantity(
  * Med leverantör ('order') är det det avrundade antalet ("Beställ 36 st"). Utan leverantör
  * ('no-supplier') finns ingen box: det som saknas i hela pack ("Köp ca 35 st"). Räcker
  * lagret, eller säljs titeln inte, är det 0.
+ *
+ * Mystery packs med `packNow` (omgångar räknade från facken): antalet att packa nu, i pack.
  */
-export function purchaseQty(line: Pick<PurchaseLine, "status" | "orderQty" | "rawQty">): number {
+export function purchaseQty(
+  line: Pick<PurchaseLine, "status" | "orderQty" | "rawQty" | "packNow">,
+): number {
+  // Mystery pack med känt antal från facken: det som ska packas nu (samma som Mystery-sidan).
+  if (line.packNow) return line.packNow.packs;
   if (line.status === "order") return line.orderQty;
   if (line.status === "no-supplier") return line.rawQty;
   return 0;
+}
+
+/** Ett antal omgångar som ett heltal ≥ 0 (saknas, minus och trasiga tal blir 0). */
+function wholeBatchCount(n: number | null | undefined): number {
+  return n === null || n === undefined || !Number.isFinite(n) ? 0 : Math.max(0, Math.trunc(n));
 }
 
 /** purchaseQty per titel i planen (bara titlar med antal > 0). */
@@ -392,19 +403,27 @@ export function purchasePlan(input: PurchasingInput): PurchasePlan {
   }
   const givenBatches = new Map((input.mysteryBatches ?? []).map((b) => [b.titleId, b.batches]));
   const needs = componentNeeds(recipes, (mysteryId) => {
-    const given = givenBatches.get(mysteryId);
-    if (given !== undefined) return given;
     const line = mysteryLines.get(mysteryId);
-    if (!line) return 0;
-    // Samma tal som sidorna visar ("Packa 2 omgångar"): planens antal i hela omgångar.
-    return (
-      mysteryBatchesToPack({
-        batchSize: recipeSize.get(mysteryId),
-        planPacks: purchaseQty(line),
-        packedAtHome: line.warehouseOnHand,
-      })?.batches ?? 0
-    );
+    // Planens antal i hela omgångar: täcker ledtid + dagar till nästa beställning.
+    const planned = line
+      ? (mysteryBatchesToPack({
+          batchSize: recipeSize.get(mysteryId),
+          planPacks: purchaseQty(line),
+          packedAtHome: line.warehouseOnHand,
+        })?.batches ?? 0)
+      : 0;
+    // Delarna köps för det största av planens antal och fackens (se PurchasingInput): fackens
+    // tal ser bara 7 dagar fram och får aldrig sänka det som köps, bara höja det.
+    return Math.max(planned, wholeBatchCount(givenBatches.get(mysteryId)));
   });
+  // Raden för mystery packet visar fackens tal (det som ska packas nu), när det är känt.
+  for (const [mysteryId, line] of [...mysteryLines]) {
+    const given = givenBatches.get(mysteryId);
+    const size = mysteryBatch(recipeSize.get(mysteryId));
+    if (given === undefined || size === null) continue;
+    const batches = wholeBatchCount(given);
+    mysteryLines.set(mysteryId, { ...line, packNow: { batches, packs: batches * size } });
+  }
   const titleIds = [...new Set([...known, ...needs.keys()])].sort();
   const lines: PurchaseLine[] = titleIds.map(
     (titleId) => mysteryLines.get(titleId) ?? lineOf(titleId, needs.get(titleId) ?? null),

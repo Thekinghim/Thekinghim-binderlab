@@ -42,6 +42,8 @@ import { retiredSeries, seriesStartsFromStock } from "./series-start";
 import type { HistoryWeek, PrognosData, PurchaseOrderRecord } from "./types";
 import { ownStockTotals } from "@/server/data/core/own-stock";
 import { querySlotPeriods } from "@/server/data/assortment";
+import { weekShapesInRequest } from "@/server/data/week-shapes";
+import { queryMysteryPackNow, type MysteryPackNow } from "./mystery-pack-now";
 
 export type { Viewer };
 
@@ -164,6 +166,8 @@ interface PlanSources {
   readonly slots: Awaited<ReturnType<typeof querySlotPeriods>>;
   /** Gällande innehåll per mystery pack: delarna som går åt när en omgång packas. */
   readonly recipes: Awaited<ReturnType<typeof queryMysteryRecipeRefs>>;
+  /** Omgångar att packa nu per mystery pack, räknat från facken (queryMysteryPackNow). */
+  readonly packNow: readonly MysteryPackNow[];
 }
 
 /**
@@ -246,6 +250,9 @@ function forecastAndPlan(src: PlanSources): {
     demand: demandFromForecast(forecastAll, today),
     // Delarna som mystery packen äter upp läggs på varje dels behov (T3-5).
     mysteryRecipes: src.recipes,
+    // Fackens tal (samma som Mystery-sidan): raden visar det, och delarna köps för det
+    // största av det och planens eget antal (R2-9, se PurchasingInput.mysteryBatches).
+    mysteryBatches: src.packNow,
     // Utkast räknas inte som beställt (de kan glömmas och skulle då dölja behovet för
     // alltid). Sidan visar i stället "utkast finns" på förslagets rader.
     options: { includeDraftOrders: false },
@@ -283,7 +290,10 @@ export async function loadPurchasePlanFor(
   const today = businessToday(now, viewer.organization.timezone);
   const asOf = addDays(today, -1);
   const from = planFrom(asOf);
-  const all = await loadDomainInputFor(viewer, { period: { start: from, end: asOf } }, now);
+  const [all, weekShares] = await Promise.all([
+    loadDomainInputFor(viewer, { period: { start: from, end: asOf } }, now),
+    weekShapesInRequest(viewer, today),
+  ]);
   const db = await withUserDbFor(viewer.user, async (tx) => {
     const [events, suppliers, items, purchaseOrders, stock, slots, recipes] = await Promise.all([
       queryMachineStockEvents(tx, orgId, from, asOf),
@@ -294,7 +304,13 @@ export async function loadPurchasePlanFor(
       querySlotPeriods(tx, orgId),
       queryMysteryRecipeRefs(tx, orgId),
     ]);
-    return { events, suppliers, items, purchaseOrders, stock, slots, recipes };
+    const packNow = await queryMysteryPackNow(tx, orgId, today, {
+      recipes,
+      machines: all.machines,
+      stock,
+      weekShares,
+    });
+    return { events, suppliers, items, purchaseOrders, stock, slots, recipes, packNow };
   });
   const { purchasing } = forecastAndPlan({
     today,
@@ -332,7 +348,10 @@ export async function loadPrognosFor(
   const ordersFrom = minDate(fromPlan, addDays(lostPeriod.start, -LOST_LOOKBACK_DAYS));
   const orderRange: Period = { start: ordersFrom, end: asOf };
 
-  const all = await loadDomainInputFor(viewer, { period: orderRange }, now);
+  const [all, weekShares] = await Promise.all([
+    loadDomainInputFor(viewer, { period: orderRange }, now),
+    weekShapesInRequest(viewer, today),
+  ]);
   const inScope = scoped
     ? await loadDomainInputFor(viewer, { period: orderRange, ...scope }, now)
     : all;
@@ -352,6 +371,12 @@ export async function loadPrognosFor(
         querySlotPeriods(tx, orgId),
         queryMysteryRecipeRefs(tx, orgId),
       ]);
+    const packNow = await queryMysteryPackNow(tx, orgId, today, {
+      recipes,
+      machines: all.machines,
+      stock,
+      weekShares,
+    });
     return {
       events,
       planEvents: planEvents ?? events,
@@ -362,6 +387,7 @@ export async function loadPrognosFor(
       central,
       slots,
       recipes,
+      packNow,
     };
   });
 
@@ -386,6 +412,7 @@ export async function loadPrognosFor(
     stock: db.stock,
     slots: db.slots,
     recipes: db.recipes,
+    packNow: db.packNow,
   });
 
   const forecastFor = (orders: DomainInput["current"]["orders"]): ForecastResult =>

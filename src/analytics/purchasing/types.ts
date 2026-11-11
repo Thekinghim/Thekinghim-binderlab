@@ -111,8 +111,19 @@ export interface PurchasingInput {
    */
   readonly mysteryRecipes?: readonly MysteryRecipeRef[];
   /**
-   * Omgångar att packa per mystery pack när ett bättre tal finns än planens eget
-   * (mysteryBatchesToPack med fackens saldo). Saknas en titel används planens antal.
+   * Omgångar att packa NU per mystery pack, räknat från facken (mysteryBatchesToPack med
+   * fackens saldo: ett fack som är tomt eller blir tomt inom 7 dagar = en omgång). Samma tal
+   * som Mystery-sidan visar ("Packa 1 omgång före fredag").
+   *
+   * Två saker händer med talet (runda 2, R2-9):
+   * 1. Raden för mystery packet visar det (`PurchaseLine.packNow`, purchaseQty), så att
+   *    Vårt lager, Inköp och delägarens inköpslista säger samma antal som Mystery-sidan.
+   * 2. DELARNA köps för det STÖRSTA av talet och planens eget antal. Planens antal täcker
+   *    ledtid + dagar till nästa beställning (ca 14 dagar); fackens tal bara 7 dagar. Delar
+   *    tar ca 7 dagar att få hem, så med bara fackens tal skulle delarna till nästa veckas
+   *    omgång beställas för sent. Fackens tal är ändå ett golv: en ny automat utan
+   *    försäljning ger 0 i planen men 1 omgång från facket.
+   * Saknas en titel här används planens antal till båda.
    */
   readonly mysteryBatches?: readonly { readonly titleId: string; readonly batches: number }[];
 }
@@ -192,6 +203,11 @@ export interface PurchaseLine {
    * `targetMilli` och därmed i antalet att köpa. Saknas när inget går dit.
    */
   readonly mysteryNeed?: MysteryNeed;
+  /**
+   * Bara mystery packs, när fackens tal är känt (PurchasingInput.mysteryBatches): omgångar
+   * och pack att packa nu. purchaseQty() ger då `packs` i stället för planens antal.
+   */
+  readonly packNow?: { readonly batches: number; readonly packs: number };
 }
 
 /** Förslag på inköpsorder till en leverantör. */

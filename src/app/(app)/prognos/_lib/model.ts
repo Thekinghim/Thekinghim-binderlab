@@ -878,6 +878,19 @@ function planModel(
       mysteryBatchSize: batchSizes.get(l.titleId) ?? null,
       home,
     });
+    // Mystery pack: raden visar det som ska packas NU (fackens tal, som Mystery-sidan).
+    // Underlaget nedan är planens längre sikt (ledtid + dagar till nästa beställning), som
+    // delarna köps för. Båda talen står i underlaget, så att de inte ser ut att säga emot.
+    if (l.packNow) {
+      extra.push({
+        key: "packNow",
+        label: "Att packa nu (fack som är tomma eller blir tomma inom 7 dagar)",
+        value:
+          l.packNow.batches === 0
+            ? "Inget den här veckan"
+            : `${formatInt(l.packNow.batches)}${NBSP}${l.packNow.batches === 1 ? "omgång" : "omgångar"} (${formatInt(l.packNow.packs)}${NBSP}pack)`,
+      });
+    }
     const drafts = draftsByTitle.get(l.titleId) ?? [];
     if (drafts.length > 0) {
       extra.push({

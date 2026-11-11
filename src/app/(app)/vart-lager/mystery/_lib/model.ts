@@ -18,6 +18,7 @@ import {
   addDays,
   dayOfWeek,
   daysBetween,
+  mysteryBatchesToPack,
   recipeCost,
   unitMargin,
   type IsoDate,
@@ -453,6 +454,30 @@ export function slotInputs(
 export function wholeBatchesDown(packs: number, batchSize: number): number {
   if (!Number.isFinite(packs) || !Number.isInteger(batchSize) || batchSize < 1) return 0;
   return Math.floor(Math.max(0, packs) / batchSize) * batchSize;
+}
+
+/**
+ * Omgångar att packa nu, räknat från facken. EN funktion för Mystery-sidorna och för
+ * inköpsplanen (src/server/purchasing/mystery-pack-now.ts), så att "Packa 1 omgång" är samma
+ * tal på Mystery, Vårt lager, Inköp och delägarens inköpslista.
+ *
+ * `perPlace` = färdiga pack per eget lager. Varje lager räknas för sig: 7 hemma och 7 på
+ * kontoret är ingen färdig omgång (ett minus i ett lager räknas som 0 där).
+ */
+export function toPackFromSlots(x: {
+  readonly batchSize: number;
+  readonly perPlace: readonly number[];
+  readonly facts: readonly SlotFacts[];
+  readonly today: IsoDate;
+  readonly weekShareOf?: (machineId: string) => readonly number[] | null | undefined;
+}): MysteryPackPlan | null {
+  return mysteryBatchesToPack({
+    batchSize: x.batchSize,
+    planPacks: 0,
+    packedAtHome: x.perPlace.reduce((n, q) => n + wholeBatchesDown(q, x.batchSize), 0),
+    slots: slotInputs(x.facts, x.today, x.weekShareOf),
+    today: x.today,
+  });
 }
 
 /** Meningen om vad som ska packas, och om den är en uppmaning ("act") eller lugn ("calm"). */

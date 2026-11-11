@@ -185,12 +185,37 @@ describe("inköpsplanen: delarna som mystery packs äter upp", () => {
     expect(mysteryShare(purchaseQty(l), l.mysteryNeed!.packs)).toBe(8);
   });
 
-  it("ett givet antal omgångar går före planens eget", () => {
+  it("fackens antal (R2-9): raden visar det, men delarna köps aldrig för mindre än planen", () => {
+    // Planen: 2 omgångar (ledtid + dagar till nästa beställning). Facken: 1 omgång i veckan.
     const plan = purchasePlan(
       input({ perDay151Milli: 1_000, mysteryBatches: [{ titleId: "MP", batches: 1 }] }),
     );
-    expect(purchaseQty(lineOf(plan, "151")!)).toBe(18);
-    expect(lineOf(plan, "151")!.mysteryNeed?.parts[0]?.batches).toBe(1);
+    // Raden för mystery packet säger det som ska packas NU, samma som Mystery-sidan.
+    const mp = lineOf(plan, "MP")!;
+    expect(mp.packNow).toEqual({ batches: 1, packs: 14 });
+    expect(purchaseQty(mp)).toBe(14);
+    // Delarna: fortfarande 2 omgångar × 4 = 8 till. Delar tar ca en vecka att få hem, så
+    // fackens 7 dagar får inte sänka det som köps.
+    expect(purchaseQty(lineOf(plan, "151")!)).toBe(22);
+    expect(lineOf(plan, "151")!.mysteryNeed?.parts[0]?.batches).toBe(2);
+  });
+
+  it("fackens antal är ett golv för delarna: fler tomma fack än planen ser", () => {
+    // T.ex. nya automater utan försäljning: planen säger 2, facken 3 → delar till 3.
+    const plan = purchasePlan(
+      input({ perDay151Milli: 1_000, mysteryBatches: [{ titleId: "MP", batches: 3 }] }),
+    );
+    expect(purchaseQty(lineOf(plan, "MP")!)).toBe(42);
+    expect(purchaseQty(lineOf(plan, "151")!)).toBe(26);
+    expect(lineOf(plan, "151")!.mysteryNeed?.parts[0]?.batches).toBe(3);
+  });
+
+  it("facken säger 0: inget att packa nu, men delarna till planens omgångar köps ändå", () => {
+    const plan = purchasePlan(
+      input({ perDay151Milli: 1_000, mysteryBatches: [{ titleId: "MP", batches: 0 }] }),
+    );
+    expect(purchaseQty(lineOf(plan, "MP")!)).toBe(0);
+    expect(purchaseQty(lineOf(plan, "151")!)).toBe(22);
   });
 
   it("mystery-packets egen rad ändras inte av innehållet", () => {

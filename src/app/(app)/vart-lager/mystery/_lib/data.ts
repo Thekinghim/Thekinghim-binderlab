@@ -12,7 +12,6 @@ import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import {
   addDays,
   currentSalePriceDetails,
-  mysteryBatchesToPack,
   mysteryCostDrifts,
   PRICE_ADVICE_WINDOW_DAYS,
   PriceIndex,
@@ -39,14 +38,7 @@ import { ALL_ROLES, ECONOMY_ROLES } from "@/server/data/core/types";
 import { weekShapesInRequest } from "@/server/data/week-shapes";
 
 import { queryOwnPlaces } from "../../../lager/_lib/data";
-import {
-  slotInputs,
-  UNDO_MINUTES,
-  wholeBatchesDown,
-  type CalcFees,
-  type Place,
-  type Recipe,
-} from "./model";
+import { toPackFromSlots, UNDO_MINUTES, type CalcFees, type Place, type Recipe } from "./model";
 import { queryMysterySlotFacts } from "./slots";
 
 /** Packar: ägare, admin och påfyllare (pack_mystery). */
@@ -233,17 +225,14 @@ export async function loadMysteryOverviewFor(
         inPlaces,
         inMachines: inMachines.get(t.id) ?? 0,
         // Färdiga hemma: hela omgångar per lager (ett minus i ett lager räknas som 0 där).
+        // Hela omgångar per lager, och facken i automaterna (toPackFromSlots).
         toPack: recipe
-          ? mysteryBatchesToPack({
+          ? toPackFromSlots({
               batchSize: recipe.batchSize,
-              planPacks: 0,
-              // Varje lager för sig: 7 hemma och 7 på kontoret är ingen färdig omgång.
-              packedAtHome: Object.values(inPlaces).reduce(
-                (n, q) => n + wholeBatchesDown(q, recipe.batchSize),
-                0,
-              ),
-              slots: slotInputs(db.slots.get(t.id) ?? [], today, (id) => weekShares.get(id)),
+              perPlace: Object.values(inPlaces),
+              facts: db.slots.get(t.id) ?? [],
               today,
+              weekShareOf: (id) => weekShares.get(id),
             })
           : null,
         currentCostOre: seesMoney ? (prices.get(t.id) ?? null) : null,
