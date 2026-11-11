@@ -173,6 +173,10 @@ export async function loadVartLagerFor(
     // Samma utgår-regel som Lager, Drift och Prognos.
     retired: retiredTitles(slotPeriods, today),
     purchase: plan ? purchaseQtyByTitle(plan) : null,
+    // Delarna som mystery packen äter upp (ingår i antalet): "16 av dem går till …".
+    mysteryNeed: plan
+      ? new Map(plan.lines.flatMap((l) => (l.mysteryNeed ? [[l.titleId, l.mysteryNeed]] : [])))
+      : null,
   });
   const rowOf = new Map(model.rows.map((r) => [r.titleId, r]));
   const way: WayView[] = (plan ? onTheWay(plan) : [])

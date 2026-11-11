@@ -27,7 +27,14 @@ import { formatDateTime, formatInt, formatTime, MINUS, NBSP } from "@/lib/format
 import { WAREHOUSE_LOW_DAYS, type StockStatus, type WarehouseRow } from "../../lager/_lib/types";
 import { AWISH_REFILL_NOTE_PREFIX } from "@/server/awish/refill-deduction";
 
-import { factLine, needAction, stepsText, type NeedAction } from "./steps";
+import {
+  factLine,
+  needAction,
+  stepsText,
+  toMystery,
+  type NeedAction,
+  type ToMystery,
+} from "./steps";
 
 /** Notering som register_refill sätter på uttaget ur centrallagret. */
 const MANUAL_REFILL_NOTE_PREFIX = "Uttag till påfyllning av ";
@@ -95,6 +102,14 @@ export interface VartLagerInput {
    * räknas: titlar som tar slut visas utan antal.
    */
   readonly purchase?: ReadonlyMap<string, number> | null;
+  /**
+   * Delar i mystery packs: pack av titeln som går åt till omgångarna som ska packas
+   * (PurchaseLine.mysteryNeed i inköpsplanen). Ingår redan i `purchase`.
+   */
+  readonly mysteryNeed?: ReadonlyMap<
+    string,
+    { readonly packs: number; readonly parts: readonly { readonly titleId: string }[] }
+  > | null;
 }
 
 export interface Place {
@@ -153,6 +168,8 @@ export interface VartLagerRow {
   readonly action: NeedAction | null;
   /** "0 hemma · 9 i automaten · slut om 3 dagar" (samma rad som på Inköp). */
   readonly fact: string;
+  /** Delen av inköpet som mystery packen äter upp ("16 av dem går till Mystery Pack."). */
+  readonly toMystery: ToMystery | null;
 }
 
 /**
@@ -187,8 +204,12 @@ export interface StockTodo {
 }
 
 /** Ska packas eller beställas: Inköps antal är över 0 (utan plan: titeln tar slut). */
-export function needsPurchase(r: Pick<VartLagerRow, "retired" | "needQty" | "runsOut">): boolean {
-  if (r.retired) return false;
+export function needsPurchase(
+  r: Pick<VartLagerRow, "retired" | "needQty" | "runsOut"> &
+    Partial<Pick<VartLagerRow, "toMystery">>,
+): boolean {
+  // Utgången titel köps inte, utom det som mystery packen behöver av den.
+  if (r.retired && !r.toMystery) return false;
   return r.needQty === null ? r.runsOut : r.needQty > 0;
 }
 
@@ -228,7 +249,8 @@ export function stockTodos(rows: readonly VartLagerRow[]): StockTodo[] {
             qty: r.action?.qty ?? null,
             unit: r.action?.unit ?? "st",
             packs: r.action?.packs ?? null,
-            steps: null,
+            // En del i mystery packs: "16 av dem går till Mystery Pack."
+            steps: r.toMystery?.text ?? null,
             fact: r.fact,
             tone: r.home <= 0 ? "critical" : "warning",
           },
@@ -378,6 +400,8 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
   const placeName = new Map(places.map((p) => [p.id, p.name]));
   const defaultPlace = places.find((p) => p.isDefault) ?? places[0];
   const retiredSet = input.retired ?? new Set<string>();
+  const names = new Map(input.titles.map((t) => [t.id, t.name]));
+  const titleName = (id: string) => names.get(id) ?? "mystery packs";
   const rows: VartLagerRow[] = [...input.titles]
     .sort(
       (a, b) => Number(retiredSet.has(a.id)) - Number(retiredSet.has(b.id)) || sv(a.name, b.name),
@@ -425,8 +449,12 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
       const lasts =
         retired || sold7 <= 0 ? null : lastsDays(home + inMachines, r?.perDayTenths ?? null);
       // Inköps antal (samma regel och siffra som /prognos); utgången titel köps inte.
-      const needQty = retired ? 0 : input.purchase ? (input.purchase.get(t.id) ?? 0) : null;
+      // En utgången titel kan ändå vara en del i ett mystery pack: då gäller planens antal.
+      const mysteryNeed = input.mysteryNeed?.get(t.id) ?? null;
+      const planQty = input.purchase ? (input.purchase.get(t.id) ?? 0) : null;
+      const needQty = retired && !mysteryNeed ? 0 : planQty;
       const own = t.ownProduct === true;
+      const share = own ? null : toMystery(needQty, mysteryNeed, titleName);
       return {
         titleId: t.id,
         name: t.name,
@@ -443,7 +471,8 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
         negative: home < 0,
         own,
         needQty,
-        action: needsPurchase({ retired, needQty, runsOut })
+        toMystery: share,
+        action: needsPurchase({ retired, needQty, runsOut, toMystery: share })
           ? needAction({ own, needQty, mysteryBatchSize: t.mysteryBatchSize, home })
           : null,
         fact: factLine({

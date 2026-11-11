@@ -64,6 +64,11 @@ export const t3 = {
   gotFewer: (planned: number, got: number) =>
     `Du planerade ${f.int(planned)}, fick ${f.int(got)}. Vi ber dig köpa ${f.int(planned - got)} till.`,
   notSavedTitle: "Sparades inte",
+
+  // Delarna som mystery packs äter upp (T3-5).
+  toMystery: (n: number, into: string) => `${f.int(n)} av dem går till ${into}.`,
+  toMysteryAll: (into: string) => `Alla går till ${into}.`,
+  mysteryPacks: "mystery packs",
 };
 
 export type R2T3 = typeof t3;

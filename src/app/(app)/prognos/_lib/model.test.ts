@@ -757,6 +757,94 @@ describe("samma besked på Inköp och Vårt lager (mystery pack under 0)", () =>
   });
 });
 
+describe("delarna som mystery packs äter upp (samma rad på Inköp och Vårt lager)", () => {
+  const MP = "00000000-0000-4000-8000-000000000009";
+  it("Köp ca N st, och hur många av dem som går till mystery packet", () => {
+    // T2 (Surging Sparks) saknar leverantör och är en del i ett mystery pack: 6 per omgång.
+    const base = data([], { noItems: true });
+    const all = [...base.titles, { id: MP, name: "Mystery Pack" }];
+    const input: PurchasingInput = {
+      today: TODAY,
+      titles: all.map((t) => ({ ...t, mysteryBatchSize: t.id === MP ? 14 : null })),
+      suppliers: [],
+      supplierItems: [],
+      warehouseStock: [],
+      machineStock: [],
+      openPurchaseOrders: [],
+      demand: [
+        ...base.plan.lines
+          .filter((l) => l.titleId === T2)
+          .map(() => ({
+            titleId: T2,
+            dailyMilli: new Array<number>(28).fill(1_000),
+            dayVarianceMilli2: 0,
+          })),
+        { titleId: MP, dailyMilli: new Array<number>(28).fill(1_500), dayVarianceMilli2: 0 },
+      ],
+      mysteryRecipes: [
+        {
+          titleId: MP,
+          batchSize: 14,
+          items: [
+            { titleId: T2, quantity: 6 },
+            { titleId: T1, quantity: 8 },
+          ],
+        },
+      ],
+    };
+    const plan = purchasePlan(input);
+    const d: PrognosData = {
+      ...base,
+      plan,
+      valuation: inventoryValuation(input),
+      titles: all.map((t) => ({
+        ...t,
+        ownProduct: t.id === MP,
+        mysteryBatchSize: t.id === MP ? 14 : null,
+      })),
+    };
+    const page = buildPageModel(d, new Date("2026-11-02T09:00:00Z"));
+    // MP: 21 pack på 14 dagar → 2 omgångar → 12 st T2 till; T2 säljer 14 själv → 26.
+    const t2 = page.plan.noSupplierLines.find((l) => l.titleId === T2)!;
+    expect(t2.suggestQty).toBe(26);
+    expect(t2.toMystery?.text).toBe("12 av dem går till Mystery Pack.");
+    // T1 säljs inte själv här: allt som köps går till mystery packet.
+    const t1 = page.plan.noSupplierLines.find((l) => l.titleId === T1)!;
+    expect(t1.suggestQty).toBe(16);
+    expect(t1.toMystery?.text).toBe("Alla går till Mystery Pack.");
+    // Mystery packet självt får ingen sådan rad.
+    expect(page.plan.packLines.find((l) => l.titleId === MP)?.toMystery).toBeNull();
+
+    // Vårt lager bygger på samma plan och säger samma sak.
+    const lager = buildVartLagerModel({
+      now: new Date("2026-11-02T09:00:00Z"),
+      timeZone: "Europe/Stockholm",
+      today: TODAY,
+      titles: d.titles.map((t) => ({
+        id: t.id,
+        name: t.name,
+        ownProduct: t.ownProduct,
+        mysteryBatchSize: t.mysteryBatchSize,
+      })),
+      warehouse: [],
+      home: new Map(),
+      inMachines: new Map(),
+      sold7: new Map(),
+      prices: [],
+      latest: new Map(),
+      machines: [],
+      canEdit: true,
+      purchase: purchaseQtyByTitle(plan),
+      mysteryNeed: new Map(
+        plan.lines.flatMap((l) => (l.mysteryNeed ? [[l.titleId, l.mysteryNeed] as const] : [])),
+      ),
+    });
+    const row = lager.rows.find((r) => r.titleId === T2)!;
+    expect(row.needQty).toBe(t2.suggestQty);
+    expect(row.toMystery?.text).toBe(t2.toMystery?.text);
+  });
+});
+
 describe("planHeading", () => {
   const base = {
     order: 0,

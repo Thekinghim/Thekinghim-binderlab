@@ -41,9 +41,11 @@ function LineNotes({ r }: { r: PlanLineView }) {
       `I utkast ${r.drafts.map((d) => `${d.number} (${formatInt(d.quantity)})`).join(", ")}`,
     );
   }
-  if (notes.length === 0 && !r.steps) return null;
+  if (notes.length === 0 && !r.steps && !r.toMystery) return null;
   return (
     <>
+      {/* En del i mystery packs: så många av packen som köps går dit. */}
+      {r.toMystery ? <span className="text-xs text-muted">{r.toMystery.text}</span> : null}
       {/* Under 0 hemma: räkna om först (samma två steg som på Vårt lager). */}
       {r.steps ? <span className="text-xs font-medium text-signal-fg">{r.steps}</span> : null}
       {notes.length > 0 ? <span className="text-xs text-subtle">{notes.join(" · ")}</span> : null}
@@ -287,6 +289,9 @@ export function PlanView({
                     Köp ca <span className="tnum font-medium">{formatInt(l.suggestQty)}</span>
                     {NBSP}st {l.title}
                   </span>
+                  {l.toMystery ? (
+                    <span className="tnum text-sm text-muted">{l.toMystery.text}</span>
+                  ) : null}
                   {l.steps ? (
                     <span className="text-sm font-medium text-signal-fg">
                       1. Räkna om. 2. Köp ca {formatInt(l.suggestQty)}

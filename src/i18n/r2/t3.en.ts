@@ -52,6 +52,10 @@ export const t3: R2T3 = {
   gotFewer: (planned, got) =>
     `You planned ${f.int(planned)}, got ${f.int(got)}. We will ask you to buy ${f.int(planned - got)} more.`,
   notSavedTitle: "Not saved",
+
+  toMystery: (n, into) => `${f.int(n)} of them go into ${into}.`,
+  toMysteryAll: (into) => `All of them go into ${into}.`,
+  mysteryPacks: "mystery packs",
 };
 
 /**

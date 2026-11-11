@@ -5,9 +5,10 @@
  * belopp i öre, andelar i bp. `packSize` är antal pack per box från leverantören.
  */
 
-import type { IsoDate, PurchasePrice } from "@/domain";
+import type { IsoDate, MysteryRecipeRef, PurchasePrice } from "@/domain";
 import type { PlanEvidence } from "../forecast/common";
 import type { TitleRef } from "../todos/types";
+import type { MysteryNeed } from "./mystery-components";
 
 /** Leverantör (suppliers). */
 export interface SupplierRef {
@@ -104,6 +105,16 @@ export interface PurchasingInput {
   readonly prices?: readonly PurchasePrice[];
   readonly demand: readonly TitleDemand[];
   readonly options?: PurchasingOptions;
+  /**
+   * Gällande innehåll per mystery pack (delar och antal per omgång). Med dem läggs
+   * omgångarna som ska packas × innehållet på varje dels behov. Utan: som förr.
+   */
+  readonly mysteryRecipes?: readonly MysteryRecipeRef[];
+  /**
+   * Omgångar att packa per mystery pack när ett bättre tal finns än planens eget
+   * (mysteryBatchesToPack med fackens saldo). Saknas en titel används planens antal.
+   */
+  readonly mysteryBatches?: readonly { readonly titleId: string; readonly batches: number }[];
 }
 
 /** Redan beställt för en titel. */
@@ -176,6 +187,11 @@ export interface PurchaseLine {
   readonly late: boolean;
   readonly text: string;
   readonly evidence: PlanEvidence;
+  /**
+   * Titeln är en del i mystery packs som ska packas: pack som går åt till dem. De ingår i
+   * `targetMilli` och därmed i antalet att köpa. Saknas när inget går dit.
+   */
+  readonly mysteryNeed?: MysteryNeed;
 }
 
 /** Förslag på inköpsorder till en leverantör. */

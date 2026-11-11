@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { factLine, needAction, runsOutText, stepsText, whyPackText } from "./steps";
+import { factLine, needAction, runsOutText, stepsText, toMystery, whyPackText } from "./steps";
 
 const sp = (s: string | null | undefined) => (s ?? "").replace(/ /g, " ");
 
@@ -66,5 +66,26 @@ describe("stegen och raden under titeln", () => {
         ]),
       ),
     ).toBe("1 titel är slut hemma, 1 tar snart slut.");
+  });
+  it("delen av ett inköp som går till mystery packs", () => {
+    const name = (id: string) => (id === "m" ? "Mystery Pack" : "Mystery Pack premium");
+    const one = { packs: 16, parts: [{ titleId: "m" }] };
+    expect(toMystery(24, one, name)).toEqual({
+      packs: 16,
+      all: false,
+      into: "Mystery Pack",
+      text: "16 av dem går till Mystery Pack.",
+    });
+    // Köps färre än mystery packen behöver (resten ligger hemma): alla går dit.
+    expect(toMystery(5, one, name)?.text).toBe("Alla går till Mystery Pack.");
+    // Två olika mystery packs: inget namn.
+    expect(toMystery(40, { packs: 26, parts: [{ titleId: "m" }, { titleId: "p" }] }, name)).toEqual(
+      { packs: 26, all: false, into: null, text: "26 av dem går till mystery packs." },
+    );
+    // Inget köps, inget går dit eller ingen plan: ingen rad.
+    expect(toMystery(0, one, name)).toBeNull();
+    expect(toMystery(24, null, name)).toBeNull();
+    expect(toMystery(24, { packs: 0, parts: [] }, name)).toBeNull();
+    expect(toMystery(null, one, name)).toBeNull();
   });
 });

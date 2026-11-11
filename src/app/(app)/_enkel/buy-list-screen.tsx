@@ -88,6 +88,14 @@ export async function SimpleBuyListScreen({ ctx }: { ctx: AppContext }) {
                   ) : null}
                 </span>
                 <span className="text-2xl font-medium text-fg">{action}</span>
+                {/* En del i mystery packs: så många av packen går dit. */}
+                {item.toMystery ? (
+                  <span className="tnum text-base text-fg">
+                    {item.toMystery.all
+                      ? r2.toMysteryAll(item.toMystery.into ?? r2.mysteryPacks)
+                      : r2.toMystery(item.toMystery.packs, item.toMystery.into ?? r2.mysteryPacks)}
+                  </span>
+                ) : null}
                 <span className="tnum text-sm text-muted">
                   {t.stock.haveLine(item.home, item.inMachines)}
                 </span>

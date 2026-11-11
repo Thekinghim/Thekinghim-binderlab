@@ -28,8 +28,10 @@ import {
   factLine,
   needAction,
   stepsText,
+  toMystery,
   whyPackText,
   type NeedAction,
+  type ToMystery,
 } from "../../vart-lager/_lib/steps";
 
 // ---------------------------------------------------------------------------
@@ -239,6 +241,8 @@ export interface PlanLineView {
   readonly steps: string | null;
   /** "0 hemma · 9 i automaten · slut om 3 dagar" (samma rad som på Vårt lager). */
   readonly fact: string;
+  /** Delen av inköpet som mystery packen äter upp ("16 av dem går till Mystery Pack."). */
+  readonly toMystery: ToMystery | null;
   /**
    * Räcker (samma regel som Vårt lager, `lastsDays`): hela dagar tills hemma + i
    * automaterna är sålt vid 14 dagars takt. null = ingen takt ("–").
@@ -911,6 +915,7 @@ function planModel(
       priceOre: priceToday.get(l.titleId) ?? null,
       negative,
       steps: stepsText(negative, action),
+      toMystery: own ? null : toMystery(purchaseQty(l), l.mysteryNeed, names.title),
       fact: factLine({
         home,
         inMachines: l.machineOnHand,

@@ -10,6 +10,7 @@
  * - Den grå raden i rubriken säger varför något ska packas: "Mystery Pack är slut hemma."
  */
 
+import { mysteryShare } from "@/analytics/purchasing/mystery-components";
 import { mysteryBatchesToPack } from "@/domain";
 import { formatInt, MINUS, NBSP } from "@/lib/format";
 
@@ -113,6 +114,45 @@ export function factLine(x: {
   const out = runsOutText(x);
   if (out) parts.push(out);
   return parts.join(" · ");
+}
+
+/** Hur många av packen som köps som går till mystery packs (delar i innehållet). */
+export interface ToMystery {
+  /** Pack som går dit (högst det som köps). */
+  readonly packs: number;
+  /** Allt som köps går dit. */
+  readonly all: boolean;
+  /** Mystery-packets namn, eller null när delen går till flera olika. */
+  readonly into: string | null;
+  /** "16 av dem går till Mystery Pack." · "Alla går till Mystery Pack." */
+  readonly text: string;
+}
+
+/**
+ * "16 av dem går till Mystery Pack.": delen av ett inköp som mystery packen äter upp.
+ * `need` är planens extra behov för titeln (PurchaseLine.mysteryNeed). null när inget köps
+ * eller inget går dit. Samma regel på Vårt lager, Inköp och delägarens inköpslista.
+ */
+export function toMystery(
+  buyQty: number | null,
+  need:
+    | { readonly packs: number; readonly parts: readonly { readonly titleId: string }[] }
+    | null
+    | undefined,
+  nameOf: (titleId: string) => string,
+): ToMystery | null {
+  if (!need || buyQty === null) return null;
+  const packs = mysteryShare(buyQty, need.packs);
+  if (packs <= 0) return null;
+  const into = need.parts.length === 1 ? nameOf(need.parts[0]!.titleId) : null;
+  const all = packs >= buyQty;
+  const where = into ?? "mystery packs";
+  return {
+    packs,
+    all,
+    into,
+    text: all ? `Alla går till ${where}.` : `${formatInt(packs)} av dem går till ${where}.`,
+  };
 }
 
 const titles = (n: number) => `${formatInt(n)}${NBSP}${n === 1 ? "titel" : "titlar"}`;

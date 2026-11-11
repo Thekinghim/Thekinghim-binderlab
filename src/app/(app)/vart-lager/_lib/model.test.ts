@@ -258,6 +258,66 @@ describe("egna produkter och Att göra", () => {
   });
 });
 
+describe("delar i mystery packs", () => {
+  const titles = [
+    { id: "m", name: "Mystery Pack", ownProduct: true, mysteryBatchSize: 14 },
+    { id: "a", name: "Black Bolt" },
+    { id: "c", name: "Paradox Rift" },
+  ];
+  const need = new Map([
+    ["a", { packs: 8, parts: [{ titleId: "m" }] }],
+    ["c", { packs: 18, parts: [{ titleId: "m" }] }],
+  ]);
+
+  it("raden säger hur många av packen som går till mystery packet", () => {
+    const m = buildVartLagerModel(
+      input({
+        titles,
+        purchase: new Map([
+          ["a", 22],
+          ["c", 18],
+          ["m", 28],
+        ]),
+        mysteryNeed: need,
+      }),
+    );
+    expect(m.rows.find((r) => r.titleId === "a")?.toMystery?.text).toBe(
+      "8 av dem går till Mystery Pack.",
+    );
+    expect(m.rows.find((r) => r.titleId === "c")?.toMystery?.text).toBe(
+      "Alla går till Mystery Pack.",
+    );
+    expect(m.rows.find((r) => r.titleId === "m")?.toMystery).toBeNull();
+    const todo = stockTodos(m.rows).find((t) => t.titleId === "a")!;
+    expect(todo).toMatchObject({
+      verb: "Beställ",
+      qty: 22,
+      steps: "8 av dem går till Mystery Pack.",
+    });
+  });
+
+  it("en titel som gått ur automaterna köps ändå när mystery packet behöver den", () => {
+    const m = buildVartLagerModel(
+      input({
+        titles,
+        retired: new Set(["c"]),
+        purchase: new Map([["c", 18]]),
+        mysteryNeed: need,
+      }),
+    );
+    const c = m.rows.find((r) => r.titleId === "c")!;
+    expect(c).toMatchObject({ retired: true, needQty: 18 });
+    expect(needsPurchase(c)).toBe(true);
+    // Utan behov från mystery packet: utgången titel köps inte, som förr.
+    const before = buildVartLagerModel(
+      input({ titles, retired: new Set(["c"]), purchase: new Map([["c", 18]]) }),
+    );
+    const c0 = before.rows.find((r) => r.titleId === "c")!;
+    expect(c0.needQty).toBe(0);
+    expect(needsPurchase(c0)).toBe(false);
+  });
+});
+
 describe("flera lager", () => {
   const places = [
     { id: "H", name: "Hemma", isDefault: true },

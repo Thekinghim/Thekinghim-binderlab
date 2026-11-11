@@ -91,6 +91,15 @@ export interface BuyItem {
   readonly unitCostOre: number | null;
   /** qty × inköpspriset, när båda finns (bara det som köps, inte det som packas). */
   readonly costOre: number | null;
+  /**
+   * Delen av inköpet som mystery packen äter upp: pack, om det är allt som köps, och
+   * mystery-packets namn (null = flera olika). null = inget går dit.
+   */
+  readonly toMystery: {
+    readonly packs: number;
+    readonly all: boolean;
+    readonly into: string | null;
+  } | null;
 }
 
 export interface BuyList {
@@ -133,6 +142,9 @@ export function buyList(rows: readonly VartLagerRow[]): BuyList {
         out: r.home <= 0,
         unitCostOre: r.unitCostOre,
         costOre,
+        toMystery: r.toMystery
+          ? { packs: r.toMystery.packs, all: r.toMystery.all, into: r.toMystery.into }
+          : null,
       };
     });
   return {
