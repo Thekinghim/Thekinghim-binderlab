@@ -231,9 +231,24 @@ export async function registerReceiptWithPriceFor(
 ): Promise<ReceiptResult | PriceDoubtResult> {
   await requireRoleFor(viewer.user, viewer.organization.id, EDIT_ROLES);
   const { unitCostOre, confirmed, ...receipt } = input;
-  if (unitCostOre === undefined) {
-    return { ...(await registerReceiptFor(viewer, receipt)), price: { status: "none" } };
-  }
+  return withReceiptPrice(viewer, { titleId: input.titleId, unitCostOre, confirmed }, now, () =>
+    registerReceiptFor(viewer, receipt),
+  );
+}
+
+/**
+ * Prisdelen av en leverans, runt valfritt lagersteg (`stock`): ett vanligt inköp här, eller
+ * "Kom fram" på inköpslistan (src/server/purchasing/quick.ts). Kollen körs före lagersteget,
+ * priset sparas efter. Utan pris körs bara lagersteget.
+ */
+export async function withReceiptPrice<R extends object>(
+  viewer: Viewer,
+  input: { titleId: string; unitCostOre?: number | undefined; confirmed?: boolean | undefined },
+  now: Date,
+  stock: () => Promise<R>,
+): Promise<(R & { readonly price: ReceiptPrice }) | PriceDoubtResult> {
+  const { unitCostOre, confirmed } = input;
+  if (unitCostOre === undefined) return { ...(await stock()), price: { status: "none" } };
   const organizationId = viewer.organization.id;
   const today = businessToday(now, viewer.organization.timezone);
   const check = await receiptPriceCheckFor(viewer.user, {
@@ -245,11 +260,11 @@ export async function registerReceiptWithPriceFor(
   if (check.doubt && confirmed !== true) {
     return { ok: false, error: priceDoubtText(check.doubt), doubt: check.doubt };
   }
-  const stock = await registerReceiptFor(viewer, receipt);
+  const saved = await stock();
   if (check.currentOre === unitCostOre) {
-    return { ...stock, price: { status: "same", unitCostOre, previousOre: check.currentOre } };
+    return { ...saved, price: { status: "same", unitCostOre, previousOre: check.currentOre } };
   }
-  const saved = await addPurchasePriceFor(viewer.user, {
+  const price = await addPurchasePriceFor(viewer.user, {
     organizationId,
     titleId: input.titleId,
     unitCostOre,
@@ -260,10 +275,10 @@ export async function registerReceiptWithPriceFor(
     return { ok: false as const, error: "Priset gick inte att spara just nu." };
   });
   return {
-    ...stock,
-    price: saved.ok
+    ...saved,
+    price: price.ok
       ? { status: "saved", unitCostOre, previousOre: check.currentOre }
-      : { status: "failed", unitCostOre, previousOre: check.currentOre, error: saved.error },
+      : { status: "failed", unitCostOre, previousOre: check.currentOre, error: price.error },
   };
 }
 

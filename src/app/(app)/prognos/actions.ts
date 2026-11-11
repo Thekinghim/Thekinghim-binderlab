@@ -13,7 +13,12 @@ import { unstable_rethrow } from "next/navigation";
 import { ZodError } from "zod";
 
 import { AuthorizationError } from "@/server/access";
-import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/data/core";
+import {
+  OPERATOR_ROLES,
+  requireContextRole,
+  revalidateAppData,
+  revalidateSettlementData,
+} from "@/server/data/core";
 import { dbErrorMessage } from "@/server/errors";
 import {
   cancelPurchaseOrderFor,
@@ -24,11 +29,17 @@ import {
   deleteSupplierItemFor,
   markPurchaseOrderOrderedFor,
   PurchasingError,
+  quickOrderFor,
+  quickOrderSchema,
+  arrivalSchema,
+  receiveArrivalFor,
   receivePurchaseOrderFor,
   saveSupplierItemFor,
   setSupplierArchivedFor,
   updateSupplierFor,
+  type ArrivalResult,
   type CloseResult,
+  type QuickOrderResult,
   type ReceiveResult,
 } from "@/server/purchasing";
 import {
@@ -41,6 +52,9 @@ import {
   supplierSchema,
   updateSupplierSchema,
 } from "@/server/purchasing/schemas";
+
+import type { PriceDoubtResult } from "../inkopspriser/_lib/price-check";
+import { withReceiptPrice, type ReceiptPrice } from "../vart-lager/_lib/register";
 
 export type ActionResult<T = void> =
   { ok: true; data: T; error?: undefined } | { ok: false; error: string; data?: undefined };
@@ -140,4 +154,38 @@ export async function closePurchaseOrder(raw: unknown): Promise<ActionResult<Clo
     const viewer = await operator();
     return closePurchaseOrderFor(viewer, idSchema.parse(raw));
   });
+}
+
+// ---------------------------------------------------------------------------
+// "Beställt" och "Kom fram" direkt på inköpslistan (utan leverantörsregister)
+// ---------------------------------------------------------------------------
+
+/** "Beställt": packen är beställda och väntas om ca 7 dagar. Listan slutar fråga efter dem. */
+export async function markOrdered(raw: unknown): Promise<ActionResult<QuickOrderResult>> {
+  return run(async () => quickOrderFor(await operator(), quickOrderSchema.parse(raw)));
+}
+
+export type ArrivedResult = ArrivalResult & { readonly price: ReceiptPrice };
+
+/**
+ * "Kom fram" / "Köpt, har dem här": packen läggs in i lagret (först mot det som var på väg)
+ * och, om priset skickas med och är ett annat än dagens, sparas det från i dag. Ser priset
+ * konstigt ut sparas ingenting förrän användaren bekräftat (svaret har då `doubt`).
+ */
+export async function markArrived(
+  raw: unknown,
+): Promise<ActionResult<ArrivedResult> | PriceDoubtResult> {
+  try {
+    const viewer = await operator();
+    const input = arrivalSchema.parse(raw);
+    const data = await withReceiptPrice(viewer, input, new Date(), () =>
+      receiveArrivalFor(viewer, input),
+    );
+    if ("doubt" in data) return data;
+    if (data.price.status === "saved") await revalidateSettlementData();
+    else revalidateAppData();
+    return { ok: true, data };
+  } catch (error) {
+    return failure(error);
+  }
 }
