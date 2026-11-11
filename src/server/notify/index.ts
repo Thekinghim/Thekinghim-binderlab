@@ -102,14 +102,18 @@ export async function dispatchDelivery(
       // En notis om påfyllning (per automat) och en för övriga larm: högst två.
       const payloads = pushPayloads(delivery, options.push);
       let ok = 0;
+      // Notiser som inte gick fram till en enhet som fick en annan notis ur samma utskick.
+      let lost = 0;
       const errors: string[] = [];
       for (const device of recipient.pushDevices) {
         let delivered = false;
+        let missed = 0;
         let gone = false;
         for (const payload of payloads) {
           const out = await sender.send(device, payload);
           if (out.ok) delivered = true;
           else {
+            missed += 1;
             errors.push(out.detail);
             if (out.gone) gone = true;
           }
@@ -118,6 +122,7 @@ export async function dispatchDelivery(
         }
         if (delivered) {
           ok += 1;
+          lost += missed;
           okDevices.push(device.id);
         } else if (gone) goneDevices.push(device.id);
       }
@@ -126,7 +131,12 @@ export async function dispatchDelivery(
         status: ok > 0 ? "sent" : "failed",
         detail:
           ok > 0
-            ? `${ok} av ${recipient.pushDevices.length} enheter${sender.kind === "outbox" ? " (lokalt, .data/outbox/push)" : ""}`
+            ? // En av två notiser kan ha fallit bort (timeout, 5xx): det ska synas i utfallet.
+              `${ok} av ${recipient.pushDevices.length} enheter${sender.kind === "outbox" ? " (lokalt, .data/outbox/push)" : ""}${
+                lost > 0
+                  ? `. ${lost} ${lost === 1 ? "notis" : "notiser"} gick inte fram: ${errors.join(", ")}`
+                  : ""
+              }`
             : `Push misslyckades: ${errors.join(", ")}`,
       });
     }
