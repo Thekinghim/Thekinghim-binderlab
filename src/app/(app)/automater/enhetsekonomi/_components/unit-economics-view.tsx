@@ -237,22 +237,6 @@ export function ComparisonTable({
   );
 }
 
-/**
- * Senaste inköpet av en annan automat (det som förifylls i "Ny investering"), eller null.
- * Senast = senaste datumet; lika datum: sist i listan.
- */
-export function lastPurchase(
-  investments: ReadonlyArray<InvestmentRecord>,
-  exceptMachineId: string | null,
-): InvestmentRecord | null {
-  let best: InvestmentRecord | null = null;
-  for (const i of investments) {
-    if (i.kind !== "purchase" || i.machineId === exceptMachineId || i.amountOre <= 0) continue;
-    if (best === null || i.investedOn >= best.investedOn) best = i;
-  }
-  return best;
-}
-
 const INVESTMENT_FIELDS = (machines: ReadonlyArray<Named>, amountHint?: string): FieldSpec[] => [
   {
     name: "machineId",
@@ -299,6 +283,7 @@ export function InvestmentsSection({
   today,
   forMachineId,
   openNew = false,
+  template = null,
 }: {
   investments: ReadonlyArray<InvestmentRecord>;
   machines: ReadonlyArray<Named>;
@@ -308,6 +293,8 @@ export function InvestmentsSection({
   forMachineId?: string;
   /** Öppna "Ny investering" direkt (Startklar-länken, ?ny=1). */
   openNew?: boolean;
+  /** Förifyllt från senaste automaten: vad den kostade och avskrivningstiden. */
+  template?: { amountOre: number; depreciationMonths: number | null; code: string } | null;
 }) {
   const [editing, setEditing] = useState<InvestmentRecord | "new" | null>(() =>
     canEdit && openNew && machines.some((m) => !m.archived && m.id === forMachineId) ? "new" : null,
@@ -315,20 +302,15 @@ export function InvestmentsSection({
   const byId = useMemo(() => new Map(machines.map((m) => [m.id, m])), [machines]);
   const active = machines.filter((m) => !m.archived);
   const preselected = active.find((m) => m.id === forMachineId) ?? null;
-  // Förifyllt från senaste automaten: vad den kostade och avskrivningstiden.
-  const template = lastPurchase(investments, preselected?.id ?? null);
-  const templateCode = template
-    ? (machines.find((m) => m.id === template.machineId)?.code ?? null)
-    : null;
   const fields = useMemo(
     () =>
       INVESTMENT_FIELDS(
         active,
-        editing === "new" && template && templateCode
-          ? `Samma som ${templateCode}. Ändra om den här kostade något annat.`
+        editing === "new" && template
+          ? `Samma som ${template.code}. Ändra om den här kostade något annat.`
           : undefined,
       ),
-    [active, editing, template, templateCode],
+    [active, editing, template],
   );
 
   const columns = useMemo<Column<InvestmentRecord>[]>(

@@ -1361,7 +1361,13 @@ export function needsHeadline(needs: readonly MachineNeed[], machines: number): 
   if (needs.length === 0) return "Alla automater rullar.";
   const total = needsStake(needs);
   const money = total > 0 ? ` Ca ${kr(total)} står på spel i veckan.` : "";
-  if (urgent > 0) return `${plural(urgent, "automat", "automater")} behöver dig nu.${money}`;
+  // Kronorna är summan av alla rader: finns det också rader som bara är "snart" nämns de,
+  // så att antalet och beloppet gäller samma automater.
+  const later = needs.length - urgent;
+  if (urgent > 0) {
+    const also = later > 0 && total > 0 ? `, ${formatInt(later)} snart` : "";
+    return `${plural(urgent, "automat", "automater")} behöver dig nu${also}.${money}`;
+  }
   return `${plural(needs.length, "automat", "automater")} behöver dig snart.${money}`;
 }
 

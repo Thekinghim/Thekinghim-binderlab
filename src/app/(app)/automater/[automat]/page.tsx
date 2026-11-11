@@ -206,6 +206,8 @@ export default async function MachinePage({
                   QR för påfyllning
                 </Link>
                 <MachineActions
+                  // Ny nyckel när länken "Välj butik" trycks på samma sida: rutan öppnas då.
+                  key={openPlace ? "placera" : "vanlig"}
                   machine={data.editable}
                   stores={data.stores}
                   today={ctx.today}

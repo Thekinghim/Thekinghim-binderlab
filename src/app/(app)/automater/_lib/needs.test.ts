@@ -78,6 +78,10 @@ describe("Behöver dig: kronor på varje rad, dyrast först", () => {
     expect(plain(needsHeadline(machineNeeds([rows[3]!]), 5))).toBe(
       "1 automat behöver dig snart. Ca 9 000 kr står på spel i veckan.",
     );
+    // Rader på båda nivåerna: antalet och beloppet gäller samma automater.
+    expect(plain(needsHeadline(machineNeeds(rows), 5))).toBe(
+      "3 automater behöver dig nu, 2 snart. Ca 13 200 kr står på spel i veckan.",
+    );
     // Inget står på spel: bara första meningen.
     expect(plain(needsHeadline(machineNeeds([rows[4]!]), 5))).toBe("1 automat behöver dig snart.");
   });
