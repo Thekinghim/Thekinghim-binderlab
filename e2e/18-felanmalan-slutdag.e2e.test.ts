@@ -95,7 +95,8 @@ describe("runda 2, T4: felanmälan och slutdag i telefonen", () => {
   it("ärendet från butiken har en knapp som ringer butiken", async () => {
     await page.goto(`/inkorg/${incidentId}`);
     await page.getByRole("heading", { level: 1 }).waitFor();
-    const call = page.getByRole("link", { name: new RegExp(`^Ring ${store.name}`) });
+    // Butikens namn kan ha parenteser ("… (exempel)"): matcha som text, inte som mönster.
+    const call = page.getByRole("link", { name: `Ring ${store.name}` });
     await call.waitFor();
     expect(await call.getAttribute("href")).toBe("tel:040123456");
     expect(await call.textContent()).toContain(PHONE);

@@ -75,7 +75,7 @@ export default async function IncidentPage({ params }: { params: Promise<{ id: s
               className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-sm border border-inverse bg-inverse px-4 text-base font-medium text-on-inverse hover:border-inverse-hover hover:bg-inverse-hover md:w-fit"
             >
               <span>{`Ring ${data.store.name}`}</span>
-              <span className="tabular-nums">{data.store.phone}</span>
+              <span className="whitespace-nowrap tabular-nums">{data.store.phone}</span>
             </a>
           ) : (
             <p className="text-sm text-muted">
