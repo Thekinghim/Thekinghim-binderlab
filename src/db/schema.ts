@@ -659,6 +659,8 @@ export const organizationSettings = pgTable("organization_settings", {
   contactName: text("contact_name"),
   contactEmail: text("contact_email"),
   contactPhone: text("contact_phone"),
+  /** Prisråd: mål för marginalen före butikernas andel (20261120000000_prisrad.sql). */
+  targetMarginBp: integer("target_margin_bp").notNull().default(2500),
   ...stamps(),
 });
 

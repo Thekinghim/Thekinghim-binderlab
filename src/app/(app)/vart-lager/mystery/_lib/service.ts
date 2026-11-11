@@ -7,6 +7,9 @@
  * - Packa: public.pack_mystery (ägare, admin, påfyllare), en transaktion, idempotent på id.
  * - Ångra: public.undo_mystery_packing inom 30 minuter.
  * - Inköpspriset: Inköprisers addPurchasePriceFor (från i dag, ägare och admin).
+ * - Kalkylens pris: updateMysteryCostFor räknar kostnaden på servern (innehållet × dagens
+ *   inköpspriser) och lägger in den från i dag, eller rättar priset för all försäljning när
+ *   ägaren väljer det. Historiken skrivs aldrig om utan det valet.
  */
 
 import "server-only";
@@ -14,14 +17,16 @@ import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
+import { PriceIndex, recipeCost } from "@/domain";
 import * as s from "@/db/schema";
 import type { Tx } from "@/db/client";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
 import { businessToday, type Viewer } from "@/server/data/core/loaders";
+import { queryMysteryRecipeRefs, queryPrices } from "@/server/data/core/queries";
 import { pgErrorOf } from "@/server/errors";
 
-import { addPurchasePriceFor } from "../../../inkopspriser/_lib/data";
-import { MAX_UNIT_COST_ORE } from "../../../inkopspriser/_lib/model";
+import { addPurchasePriceFor, correctPurchasePriceFor } from "../../../inkopspriser/_lib/data";
+import { MAX_UNIT_COST_ORE, PRICE_MESSAGES } from "../../../inkopspriser/_lib/model";
 import { PACK_ROLES, RECIPE_ROLES } from "./data";
 import { MAX_BATCH_SIZE, MAX_BATCHES, MAX_ITEMS } from "./model";
 
@@ -225,4 +230,109 @@ export async function setMysteryCostFor(
   });
   if (!result.ok) throw new MysteryError(result.error);
   return { unitCostOre: input.unitCostOre, validFrom: today };
+}
+
+/** Felen från updateMysteryCostFor (visas som de är; engelskan finns i @/i18n). */
+export const COST_MESSAGES = {
+  noRecipe: "Mystery-packet har inget innehåll än.",
+  missingPrice: "En del saknar inköpspris. Lägg in det först.",
+  changed: "Kalkylen har ändrats. Ladda om sidan och försök igen.",
+} as const;
+
+export const updateCostSchema = z.object(
+  {
+    titleId: uuid,
+    /** Kostnaden per pack som sidan visade (öre). Nekas om kalkylen har ändrats sedan dess. */
+    expectedOre: z
+      .number({ error: INVALID })
+      .int(INVALID)
+      .min(0, INVALID)
+      .max(MAX_UNIT_COST_ORE, INVALID),
+    /** "today": nytt pris från i dag. "correct": Rätta priset (all försäljning hittills). */
+    mode: z.enum(["today", "correct"], { error: INVALID }),
+  },
+  { error: INVALID },
+);
+
+export interface UpdateCostResult {
+  readonly unitCostOre: number;
+  readonly mode: "today" | "correct";
+  /** Första dagen som har det nya priset. */
+  readonly validFrom: string;
+  /** Rätta priset: sålda order som fick nytt pris (0 för "från i dag"). */
+  readonly affectedOrders: number;
+}
+
+/**
+ * Sätter mystery-packets inköpspris till kalkylen: innehållet × dagens inköpspriser på
+ * delarna, räknat här på servern (aldrig ett belopp från klienten). `expectedOre` är vad
+ * sidan visade; stämmer det inte längre nekas ändringen så att ingen sparar ett pris den
+ * inte har sett.
+ *
+ * - "today": ett nytt inköpspris från i dag. Sålda pack behåller sitt pris.
+ * - "correct": Rätta priset, samma regler som Inköpspriser (stängda månader rörs inte).
+ *
+ * Ägare och admin. Allt loggas i audit_log av triggern på purchase_prices.
+ */
+export async function updateMysteryCostFor(
+  viewer: Viewer,
+  input: z.infer<typeof updateCostSchema>,
+  now: Date = new Date(),
+): Promise<UpdateCostResult> {
+  await requireRoleFor(viewer.user, viewer.organization.id, RECIPE_ROLES);
+  const orgId = viewer.organization.id;
+  const today = businessToday(now, viewer.organization.timezone);
+  const calc = await withUserDbFor(viewer.user, async (tx) => {
+    const [recipes, prices] = await Promise.all([
+      queryMysteryRecipeRefs(tx, orgId),
+      queryPrices(tx, orgId),
+    ]);
+    const recipe = recipes.find((r) => r.titleId === input.titleId);
+    if (!recipe) throw new MysteryError(COST_MESSAGES.noRecipe);
+    const index = new PriceIndex(prices);
+    return {
+      perPackOre: recipeCost(recipe, (id) => index.priceOn(id, today)?.unitCostOre ?? null)
+        .perPackOre,
+      own: index.priceOn(input.titleId, today) ?? null,
+    };
+  });
+  const cost = calc.perPackOre;
+  if (cost === null) throw new MysteryError(COST_MESSAGES.missingPrice);
+  if (cost !== input.expectedOre) throw new MysteryError(COST_MESSAGES.changed);
+
+  // Ett andra tryck (dubbeltryck, två flikar) ska ge samma läge, inte ett fel: priset från
+  // i dag är redan kalkylen, så inget skrivs och inget loggas en gång till.
+  if (input.mode === "today" && calc.own?.unitCostOre === cost) {
+    return { unitCostOre: cost, mode: "today", validFrom: calc.own.validFrom, affectedOrders: 0 };
+  }
+
+  if (input.mode === "correct") {
+    const result = await correctPurchasePriceFor(viewer.user, {
+      organizationId: orgId,
+      titleId: input.titleId,
+      unitCostOre: cost,
+      today,
+      note: "Rättat efter kalkylen (Mystery packs)",
+    });
+    // Redan rättat (ett andra tryck): all försäljning har priset, så det är inget fel.
+    if (!result.ok && result.error === PRICE_MESSAGES.correctionUnchanged) {
+      return { unitCostOre: cost, mode: "correct", validFrom: today, affectedOrders: 0 };
+    }
+    if (!result.ok) throw new MysteryError(result.error);
+    return {
+      unitCostOre: cost,
+      mode: "correct",
+      validFrom: result.data?.start ?? today,
+      affectedOrders: result.data?.affectedOrders ?? 0,
+    };
+  }
+  const result = await addPurchasePriceFor(viewer.user, {
+    organizationId: orgId,
+    titleId: input.titleId,
+    unitCostOre: cost,
+    validFrom: today,
+    note: "Kalkylen (Mystery packs)",
+  });
+  if (!result.ok) throw new MysteryError(result.error);
+  return { unitCostOre: cost, mode: "today", validFrom: today, affectedOrders: 0 };
 }

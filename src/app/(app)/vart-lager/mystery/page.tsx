@@ -11,7 +11,8 @@ import { requireRoute } from "@/server/data/core";
 import { currentViewer } from "../../lager/_lib/session";
 import { PageHead } from "../_components/page-head";
 import { ContentsCard } from "./_components/contents-card";
-import { SetCostButton } from "./_components/mystery-actions";
+import { CostNotice } from "./_components/cost-notice";
+import { krAuto } from "./_lib/kr";
 import { loadMysteryOverviewFor, type MysteryOverview, type MysteryTitle } from "./_lib/data";
 import { averageCost, batchesForPacks, defaultPlace, maxBatches, packHref } from "./_lib/model";
 
@@ -34,8 +35,8 @@ function capacityLine(view: MysteryOverview, title: MysteryTitle, t: Messages): 
  * Vårt lager → Mystery packs: varje egen produkt med innehållet (som etiketten), hur många
  * som finns i lagren och automaterna, hur många omgångar som går att packa och Packa.
  * Alla roller i appen (påfyllaren packar); belopp bara för ägare, admin och läsare.
- * Enkel vy: ingen redigering av innehållet och inga länkar bort, men kostnaden och "Sätt
- * inköpspris" visas (delägaren köper in och sköter inköpspriserna).
+ * Enkel vy: ingen redigering av innehållet och inga länkar bort, men kostnaden och notisen
+ * "kostar nu X kr, inte Y kr" visas (delägaren köper in och sköter inköpspriserna).
  */
 export default async function MysteryPacksPage() {
   const ctx = await requireRoute("mystery");
@@ -97,7 +98,7 @@ function TitleCard({
   canSetCost: boolean;
 }) {
   const f = formatters(m.locale);
-  const kr = (ore: number) => f.kronor(ore / 100);
+  const kr = (ore: number) => krAuto(f, ore);
   const cap = capacityLine(view, t, m);
   const cost = t.recipe && view.seesMoney ? averageCost(t.recipe, view.prices) : null;
   const differs =
@@ -157,18 +158,21 @@ function TitleCard({
       )}
 
       {cost ? (
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-3">
           <p className="tnum text-base text-muted">
             {cost.perPackOre !== null
               ? m.mystery.contentsCost(kr(cost.perPackOre))
               : m.mystery.missingPrice(cost.missing.join(", "))}
             {m.mystery.currentCost(t.currentCostOre !== null ? kr(t.currentCostOre) : null)}
           </p>
-          {differs && canSetCost && cost.perPackOre !== null ? (
-            <SetCostButton
+          {differs && cost.perPackOre !== null ? (
+            <CostNotice
               titleId={t.id}
-              unitCostOre={cost.perPackOre}
-              label={m.mystery.setCost(kr(cost.perPackOre))}
+              name={t.name}
+              currentOre={t.currentCostOre}
+              calculatedOre={cost.perPackOre}
+              canUpdate={canSetCost}
+              href={`/vart-lager/mystery/${t.id}#kalkyl`}
             />
           ) : null}
         </div>

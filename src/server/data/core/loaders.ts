@@ -66,10 +66,12 @@ import {
   queryInvestments,
   queryLastOrderDate,
   queryMachineCountsByOrg,
+  queryMysteryRecipeRefs,
   queryMasterData,
   queryOpenAlerts,
   queryOrders,
   queryPrices,
+  queryTargetMarginBp,
   queryReportDeliveries,
   queryReportDrafts,
   queryReportRecipients,
@@ -794,6 +796,8 @@ export async function loadTodoStateFor(
         team,
         missingSettlements,
         stockCounts,
+        mysteryRecipes,
+        targetMarginBp,
       ] = await Promise.all([
         queryOrders(tx, orgId, range, NO_SCOPE),
         queryReportRecipients(tx, orgId),
@@ -812,6 +816,10 @@ export async function loadTodoStateFor(
         queryMissingSettlements(tx, orgId, settlementMonth),
         // De egna lagren och senaste inventeringen: "Inventera Hemma" efter 30 dagar.
         queryStockCountRefs(tx, orgId),
+        // Mystery packs: innehållet, för punkten "kostar nu X kr, inte Y kr".
+        queryMysteryRecipeRefs(tx, orgId),
+        // Prisråd: organisationens mål för marginalen.
+        queryTargetMarginBp(tx, orgId),
       ]);
       const { prices, agreements, settings } = await baseP;
       const placements = effectivePlacements(master.placements, orders.orders);
@@ -842,8 +850,9 @@ export async function loadTodoStateFor(
         alerts,
         team,
         stockCounts,
+        mysteryRecipes,
         salesDataUntil,
-        options: { timeZone },
+        options: { timeZone, targetMarginBp },
       };
     } else {
       input = {

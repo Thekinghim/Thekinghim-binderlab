@@ -960,6 +960,20 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [sink(c, { unitCostOre: 1 })],
   },
+  // Mystery-kalkylen: "Uppdatera priset från idag" / "Rätta priset"
+  {
+    module: "@/app/(app)/vart-lager/mystery/actions",
+    name: "updateMysteryCost",
+    allowed: OP,
+    args: (c) => [sink(c, { expectedOre: 1, mode: "correct" })],
+  },
+  // Prisråd: målet för marginalen (Lönsamhet)
+  {
+    module: "@/app/(app)/lonsamhet/actions",
+    name: "setTargetMargin",
+    allowed: OP,
+    args: () => [{ targetMarginBp: 3300 }],
+  },
   // Marknad
   {
     module: "@/app/(app)/marknad/actions",

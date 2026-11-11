@@ -201,19 +201,32 @@ describe("engelskan för den som inte är teknisk", () => {
     expect(en.stock.fromToday).toBe("New price from today");
     expect(en.sales.perProduct).toBe("Profit per product this month");
     // Ägarens svenska på Mystery är oförändrad (texterna flyttade till katalogen).
-    expect(sv.mystery.setCost("76,07 kr")).toBe("Sätt inköpspris till 76,07 kr");
     expect(sv.mystery.contentsCost("76,07 kr")).toBe("Innehållet kostar 76,07 kr per pack");
     expect(sv.mystery.currentCost(null)).toBe(" · inköpspris saknas");
-    expect(sv.mystery.costDiffers("70,00 kr", "76,07 kr")).toBe(
-      "Sålda mystery packs räknas med inköpspriset 70,00 kr, men innehållet kostar 76,07 kr.",
+  });
+
+  it("mystery-kalkylen: notisen och knapparna på båda språken", () => {
+    expect(sv.mystery.costNow("Mystery pack premium", "213 kr", "174 kr")).toBe(
+      "Mystery pack premium kostar nu 213 kr, inte 174 kr",
     );
-    expect(sv.mystery.costNote(0)).toBe(
-      "Kvar per pack räknas som på Inköpspriser (kortavgift, VMB) på ett tänkt köp med innehållets snitt som inköpspris.",
+    expect(sv.mystery.costNow("Mystery pack premium", "213 kr", null)).toBe(
+      "Mystery pack premium kostar 213 kr men saknar inköpspris",
     );
-    expect(sv.mystery.costNote(3)).toBe(
-      "Kvar per pack räknas som på Inköpspriser (kortavgift, VMB) på 3 köp senaste 30 dagarna med innehållets snitt som inköpspris.",
+    // Saknas priset har inget "ändrats": en egen förklaring.
+    expect(sv.mystery.costMissingWhy).toBe("Utan inköpspris räknas ingen vinst på sålda pack.");
+    expect(en.mystery.costMissingWhy).toBe(
+      "Without a purchase price, no profit is counted for sold packs.",
     );
-    expect(sv.mystery.costSet).toBe("Inköpspriset är satt från i dag.");
+    expect(sv.mystery.updateFromToday).toBe("Uppdatera priset från idag");
+    expect(sv.mystery.fixPrice).toBe("Rätta priset");
+    expect(en.mystery.costNow("Mystery pack premium", "213 kr", "174 kr")).toBe(
+      "Mystery pack premium now costs 213 kr, not 174 kr",
+    );
+    expect(en.mystery.updateFromToday).toBe("Update the price from today");
+    expect(en.mystery.calcCostBatch(14)).toBe("Cost per batch (14\u00a0packs)");
+    expect(en.serverError("Kalkylen har ändrats. Ladda om sidan och försök igen.")).toBe(
+      "The numbers have changed. Reload the page and try again.",
+    );
   });
 
   it("serverns fel för lager och inköpspriser på engelska", () => {

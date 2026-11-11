@@ -86,6 +86,11 @@ export function pct1(bp: number): string {
   return `${formatInt(Math.trunc(tenths / 10))},${Math.abs(tenths % 10)}${NBSP}%`;
 }
 
+/** Kronor utan ören när beloppet är jämnt: 21 300 öre → "213 kr", 21 321 öre → "213,21 kr". */
+export function krAuto(ore: number): string {
+  return ore % 100 === 0 ? kr(ore) : krExact(ore);
+}
+
 /** Procent från bp, hela procent: 3 312 bp → "33 %". */
 export function pct(bp: number): string {
   return `${formatInt(roundHalfUp(bp, 100))}${NBSP}%`;

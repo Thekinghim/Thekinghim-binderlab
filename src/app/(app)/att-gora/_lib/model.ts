@@ -267,6 +267,8 @@ const KIND_NOUN: Record<TodoKind, [string, string]> = {
   "settlement-create": ["avräkning att skapa", "avräkningar att skapa"],
   agreement: ["butik utan avtal", "butiker utan avtal"],
   "missing-price": ["titel utan inköpspris", "titlar utan inköpspris"],
+  "mystery-cost": ["mystery pack med fel pris", "mystery packs med fel pris"],
+  "price-advice": ["prisråd", "prisråd"],
   "duplicate-title": ["möjlig dubblett", "möjliga dubbletter"],
   team: ["delägare att bjuda in", "delägare att bjuda in"],
   "stock-count": ["lager att inventera", "lager att inventera"],
@@ -284,6 +286,8 @@ const KIND_LABEL: Record<TodoKind, string> = {
   "settlement-create": "Utbetalning",
   agreement: "Avtal",
   "missing-price": "Inköpspris",
+  "mystery-cost": "Mystery pack",
+  "price-advice": "Prisråd",
   "duplicate-title": "Datakvalitet",
   team: "Delägare",
   "stock-count": "Inventering",
@@ -301,6 +305,8 @@ const KIND_ORDER: readonly TodoKind[] = [
   "agreement",
   "contract",
   "missing-price",
+  "mystery-cost",
+  "price-advice",
   "duplicate-title",
   "team",
   "stock-count",
@@ -568,6 +574,14 @@ function actionFor(item: TodoItem, input: ModelInput): ActionView | null {
       return canOpen(input.role, "drift")
         ? { kind: "link", label: a.label, href: item.link }
         : null;
+    case "open-mystery":
+      return canOpen(input.role, "mystery")
+        ? { kind: "link", label: a.label, href: item.link }
+        : null;
+    case "open-pricing":
+      return canOpen(input.role, "lonsamhet")
+        ? { kind: "link", label: a.label, href: item.link }
+        : null;
     case "invite-member":
       return canOpen(input.role, "installningar")
         ? { kind: "link", label: a.label, href: item.link }
@@ -822,6 +836,8 @@ const KIND_BY_PREFIX: Record<string, TodoKind> = {
   "settlement-create": "settlement-create",
   agreement: "agreement",
   "missing-price": "missing-price",
+  "mystery-cost": "mystery-cost",
+  "price-advice": "price-advice",
   "duplicate-title": "duplicate-title",
   team: "team",
   "stock-count": "stock-count",

@@ -9,7 +9,7 @@
  * Delägaren köper in (iPhone SE 3:e generationen, 375 px): Stock (leverans in och rätta
  * antalet ändrar databasen), Buy list, Purchase prices (ett nytt pris från i dag sparas)
  * och Profit per product på Sales, allt på engelska, utan sidledes scroll och med
- * tryckytor på minst 44 px. Mystery visar kostnaden för delägaren.
+ * tryckytor på minst 44 px. Mystery visar kalkylen (kostnad och vinst per pack) för delägaren.
  *
  * Förberedelse i databasen (E2E_DATABASE_URL): en delägare (ägarroll) med eget lösenord,
  * en Awish-läsning för en automat (som e2e/07) och ett mystery pack med innehåll. Testet går
@@ -483,12 +483,12 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
     await page.getByText("3 of 10").first().waitFor();
     await page.getByText("HIT", { exact: true }).first().waitFor();
     await page.getByText("Chance of a hit", { exact: true }).waitFor();
-    // Kostnaden på engelska (VMB och kortavgiften nämns inte vid namn).
-    await page.getByRole("heading", { name: "Cost", exact: true }).waitFor();
-    await page.getByText("Purchase price today", { exact: true }).waitFor();
-    await page.getByText("Left per pack before the store's share", { exact: true }).waitFor();
+    // Kalkylen på engelska (VMB och kortavgiften nämns inte vid namn).
+    await page.getByRole("heading", { name: "Calculator", exact: true }).waitFor();
+    await page.getByText("Cost per pack", { exact: true }).waitFor();
+    await page.getByText("Profit per pack", { exact: true }).waitFor();
     const detail = await page.locator("body").innerText();
-    expect(detail).not.toMatch(/Kostnad|Kvar per pack|VMB|kortavgift/);
+    expect(detail).not.toMatch(/Kostnad|Kalkyl|Vinst per pack|VMB|kortavgift/);
     expect(await page.getByRole("button", { name: "Change contents" }).count()).toBe(0);
     await screenshot(page, "13-delagare-mystery-innehall-iphonese");
   });
@@ -638,9 +638,9 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
     await expectSimplePage(page);
     await page.getByRole("link", { name: MYSTERY }).click();
     await page.waitForURL((url) => url.pathname === `/vart-lager/mystery/${target.mysteryId}`);
-    const cost = page.getByRole("heading", { name: "Cost", exact: true });
+    const cost = page.getByRole("heading", { name: "Calculator", exact: true });
     await cost.waitFor();
-    await page.getByText("Contents, average per pack", { exact: true }).waitFor();
+    await page.getByText("How the cost adds up", { exact: true }).waitFor();
     await cost.scrollIntoViewIfNeeded();
     await screenshot(page, "13-delagare-mystery-kostnad-iphonese");
   });

@@ -9,10 +9,12 @@ import { requireRoute } from "@/server/data/core";
 
 import { currentViewer } from "../../../lager/_lib/session";
 import { PageHead } from "../../_components/page-head";
-import { ContentsSection, SetCostButton, UndoPackButton } from "../_components/mystery-actions";
+import { Calculator } from "../_components/calculator";
+import { CostNotice } from "../_components/cost-notice";
+import { ContentsSection, UndoPackButton } from "../_components/mystery-actions";
 import { PackFlow } from "../_components/pack-flow";
 import { loadMysteryDetailFor } from "../_lib/data";
-import { averageCost, batchesForPacks, defaultPlace, maxBatches, recipeOdds } from "../_lib/model";
+import { batchesForPacks, defaultPlace, maxBatches, mysteryCalc, recipeOdds } from "../_lib/model";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
@@ -30,7 +32,8 @@ function one(v: string | string[] | undefined): string | null {
 
 /**
  * En egen produkt: Packa överst (mobil först), innehållet som på etiketten (ägare och admin
- * ändrar det), kostnaden och kvar per pack med "Sätt inköpspris", och senaste packningarna
+ * ändrar det, med kalkylen live), kalkylen (kostnad per omgång och pack, pris, vinst och
+ * marginal) med notisen när inköpspriset har halkat efter, och senaste packningarna
  * med Ångra. ?packa=28 förväljer omgångarna för 28 mystery packs (Inköps "Packa X st").
  */
 export default async function MysteryPackPage({
@@ -43,8 +46,8 @@ export default async function MysteryPackPage({
   const ctx = await requireRoute("mystery");
   const m = messages(ctx.locale);
   const f = formatters(ctx.locale);
-  // Enkel vy: innehållet, Packa, Ångra och kostnaden (delägaren köper in). Ingen redigering
-  // av innehållet och inga versioner.
+  // Enkel vy: innehållet, Packa, Ångra, kalkylen och notisen (delägaren köper in). Ingen
+  // redigering av innehållet och inga versioner.
   const simple = ctx.viewMode === "simple";
   const kr = (ore: number) => f.kronor(ore / 100);
   const [{ titelId }, sp] = await Promise.all([params, searchParams]);
@@ -69,8 +72,14 @@ export default async function MysteryPackPage({
       )
     : 1;
   const odds = recipe ? recipeOdds(recipe) : null;
-  const cost = recipe && view.seesMoney ? averageCost(recipe, view.prices) : null;
-  const differs = cost?.perPackOre != null && cost.perPackOre !== t.currentCostOre;
+  // Kalkylen: innehållet × dagens inköpspriser, priset i automaten, vinst och marginal.
+  const prices = Object.fromEntries(view.prices);
+  const calc =
+    recipe && view.seesMoney
+      ? mysteryCalc(recipe.batchSize, recipe.items, prices, detail.salePriceOre, detail.fees)
+      : null;
+  // Sålda pack räknas med titelns eget inköpspris: stämmer det inte med kalkylen visas notisen.
+  const differs = calc !== null && calc.perPackOre !== null && calc.perPackOre !== t.currentCostOre;
   const local = (iso: string) => wallClockIn(new Date(iso), ctx.timeZone);
   const nowLocal = wallClockIn(now, ctx.timeZone);
 
@@ -132,6 +141,9 @@ export default async function MysteryPackPage({
           recipe={recipe}
           choices={detail.choices}
           canEdit={view.canEdit}
+          calc={
+            view.seesMoney ? { prices, salePriceOre: detail.salePriceOre, fees: detail.fees } : null
+          }
         />
         {detail.versions.length > 0 && !simple ? (
           <p className="meta text-subtle">
@@ -147,61 +159,29 @@ export default async function MysteryPackPage({
         ) : null}
       </section>
 
-      {cost ? (
-        <section aria-labelledby="kostnad-rubrik" className={SECTION}>
-          <h2 id="kostnad-rubrik" className="text-xl font-medium text-fg">
-            {m.mystery.costTitle}
+      {calc ? (
+        <section id="kalkyl" aria-labelledby="kalkyl-rubrik" className={SECTION}>
+          <h2 id="kalkyl-rubrik" className="text-xl font-medium text-fg">
+            {m.mystery.calcTitle}
           </h2>
-          <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 text-base">
-            <dt className="text-muted">{m.mystery.costAverage}</dt>
-            <dd className="tnum text-right text-fg">
-              {cost.perPackOre !== null ? kr(cost.perPackOre) : "–"}
-            </dd>
-            <dt className="text-muted">{m.mystery.costToday}</dt>
-            <dd className="tnum text-right text-fg">
-              {t.currentCostOre !== null ? kr(t.currentCostOre) : m.mystery.costMissing}
-            </dd>
-            <dt className="text-muted">{m.mystery.salePrice}</dt>
-            <dd className="tnum text-right text-fg">
-              {detail.salePriceOre !== null ? kr(detail.salePriceOre) : m.mystery.noSaleYet}
-            </dd>
-            <dt className="text-muted">{m.mystery.leftPerPack}</dt>
-            <dd className="tnum text-right font-medium text-fg">
-              {detail.leftPerPackOre !== null
-                ? `${kr(detail.leftPerPackOre)}${
-                    detail.salePriceOre
-                      ? ` (${m.common.pct(Math.round((detail.leftPerPackOre * 100) / detail.salePriceOre))})`
-                      : ""
-                  }`
-                : "–"}
-            </dd>
-          </dl>
-          {cost.missing.length > 0 ? (
-            <p className="text-base text-signal-fg">
-              {m.mystery.missingPrices(cost.missing.join(", "))}{" "}
-              <Link href="/inkopspriser" className="underline">
-                {m.mystery.pricesLink}
-              </Link>
-            </p>
+          {differs && calc.perPackOre !== null ? (
+            <CostNotice
+              titleId={t.id}
+              name={t.name}
+              currentOre={t.currentCostOre}
+              calculatedOre={calc.perPackOre}
+              canUpdate={canSetCost}
+            />
           ) : null}
-          {differs && cost.perPackOre !== null ? (
-            <div className="flex flex-col gap-3 rounded-md border border-signal-line bg-signal-soft px-4 py-3">
-              <p className="text-base text-fg">
-                {m.mystery.costDiffers(
-                  t.currentCostOre !== null ? kr(t.currentCostOre) : null,
-                  kr(cost.perPackOre),
-                )}
-              </p>
-              {canSetCost ? (
-                <SetCostButton
-                  titleId={t.id}
-                  unitCostOre={cost.perPackOre}
-                  label={m.mystery.setCost(kr(cost.perPackOre))}
-                />
-              ) : null}
-            </div>
+          <Calculator calc={calc} />
+          {calc.missing.length > 0 ? (
+            <Link
+              href="/inkopspriser"
+              className="inline-flex min-h-11 w-fit items-center text-base text-fg underline underline-offset-4"
+            >
+              {m.mystery.pricesLink}
+            </Link>
           ) : null}
-          <p className="meta text-subtle">{m.mystery.costNote(detail.salesOrders)}</p>
         </section>
       ) : null}
 

@@ -1,7 +1,8 @@
 "use server";
 
 /**
- * Server actions för Mystery packs: spara innehållet, packa, ångra och "Sätt inköpspris".
+ * Server actions för Mystery packs: spara innehållet, packa, ångra, "Sätt inköpspris" och
+ * "Uppdatera priset från i dag" / "Rätta priset" efter kalkylen.
  * Tunna omslag kring ./_lib/service: indata valideras med zod, rollen kontrolleras här och
  * i tjänsten mot databasen, och allt skrivs som användaren genom RPC:erna. Efter en lyckad
  * ändring räknas sidorna om (revalidateAppData).
@@ -30,7 +31,10 @@ import {
   setMysteryCostFor,
   undoPackFor,
   undoPackSchema,
+  updateCostSchema,
+  updateMysteryCostFor,
   type PackResult,
+  type UpdateCostResult,
 } from "./_lib/service";
 
 export type MysteryActionResult<T> =
@@ -95,6 +99,24 @@ export async function setMysteryCost(
   try {
     await requireContextRole(RECIPE_ROLES);
     const data = await setMysteryCostFor(await currentViewer(), setCostSchema.parse(raw));
+    await revalidateSettlementData();
+    return { ok: true, data };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/**
+ * "Uppdatera priset från i dag" eller "Rätta priset" (ägare, admin): mystery-packets
+ * inköpspris blir kalkylen, räknad på servern. Sålda pack behåller sitt pris om inte
+ * "Rätta priset" väljs.
+ */
+export async function updateMysteryCost(
+  raw: unknown,
+): Promise<MysteryActionResult<UpdateCostResult>> {
+  try {
+    await requireContextRole(RECIPE_ROLES);
+    const data = await updateMysteryCostFor(await currentViewer(), updateCostSchema.parse(raw));
     await revalidateSettlementData();
     return { ok: true, data };
   } catch (error) {

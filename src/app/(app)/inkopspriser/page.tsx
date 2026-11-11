@@ -22,8 +22,11 @@ import { requireUser } from "@/server/session";
 
 import { SimplePricesScreen } from "../_enkel/prices-screen";
 import { MobileMore } from "../_mobil/mobile-more";
+import { currentViewer } from "../lager/_lib/session";
 import { PageHead } from "../vart-lager/_components/page-head";
 import { TodoList } from "../vart-lager/_components/todo-list";
+import { CostNotice } from "../vart-lager/mystery/_components/cost-notice";
+import { loadMysteryCostDriftsFor } from "../vart-lager/mystery/_lib/data";
 import { OwnProductToggle } from "./_components/own-product-toggle";
 import { PriceForm } from "./_components/price-form";
 import { PriceHistory } from "./_components/price-history";
@@ -91,9 +94,11 @@ export default async function PurchasePricesPage({
   if (ctx.viewMode === "simple") return <SimplePricesScreen ctx={ctx} />;
   const sp = await searchParams;
   const [period, user] = await Promise.all([loadPeriod(sp), requireUser()]);
-  const [input, data] = await Promise.all([
+  const [input, data, mysteryDrifts] = await Promise.all([
     loadDomainInput({ period: period.period, ...period.scope }),
     loadPricePageFor(user, ctx.organization.id),
+    // Mystery packs vars inköpspris inte stämmer med kalkylen ("kostar nu X kr, inte Y kr").
+    currentViewer().then((viewer) => loadMysteryCostDriftsFor(viewer, new Date(ctx.now))),
   ]);
 
   const today = ctx.today;
@@ -232,6 +237,17 @@ export default async function PurchasePricesPage({
           />
         </div>
         <TodoList items={todos} done="Alla titlar har pris." moreHref={undefined} />
+        {mysteryDrifts.map((d) => (
+          <CostNotice
+            key={d.titleId}
+            titleId={d.titleId}
+            name={d.name}
+            currentOre={d.currentOre}
+            calculatedOre={d.calculatedOre}
+            canUpdate={ctx.canEdit}
+            href={`/vart-lager/mystery/${d.titleId}#kalkyl`}
+          />
+        ))}
         <dl
           className="rise flex flex-wrap gap-x-8 gap-y-2"
           style={{ "--i": 2 } as React.CSSProperties}

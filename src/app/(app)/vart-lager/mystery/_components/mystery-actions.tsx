@@ -2,62 +2,13 @@
 
 import { useState, useTransition } from "react";
 
-import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
 import { useT } from "@/i18n/client";
-import { cn } from "@/lib/cn";
 
-import { setMysteryCost, undoMysteryPack } from "../actions";
-import type { Recipe } from "../_lib/model";
+import { undoMysteryPack } from "../actions";
+import type { CalcFees, Recipe } from "../_lib/model";
 import { ContentsCard } from "./contents-card";
 import { RecipeEditor } from "./recipe-editor";
-
-/** "Sätt inköpspris till 76,07 kr": ett inköpspris från i dag (ägare, admin, även i Enkel vy). */
-export function SetCostButton({
-  titleId,
-  unitCostOre,
-  label,
-}: {
-  titleId: string;
-  unitCostOre: number;
-  label: string;
-}) {
-  const toast = useToast();
-  const t = useT();
-  const [pending, start] = useTransition();
-  return (
-    <button
-      type="button"
-      disabled={pending}
-      onClick={() =>
-        start(async () => {
-          const res = await setMysteryCost({ titleId, unitCostOre }).catch(() => ({
-            ok: false as const,
-            error: t.common.offlineRetry,
-          }));
-          toast(
-            res.ok
-              ? { title: t.mystery.costSet, tone: "ok" }
-              : {
-                  title: t.mystery.costNotSaved,
-                  description: t.serverError(res.error),
-                  tone: "critical",
-                },
-          );
-        })
-      }
-      className={cn(
-        "flex h-12 items-center justify-center gap-2 rounded-md border px-4 text-base font-medium",
-        pending
-          ? "border-dashed border-line-strong text-disabled"
-          : "border-inverse bg-inverse text-on-inverse active:bg-inverse-hover",
-      )}
-    >
-      <Icon name="check" size={16} />
-      {pending ? t.common.saving : label}
-    </button>
-  );
-}
 
 /** Ångra en packning (inom 30 minuter). */
 export function UndoPackButton({ packingId }: { packingId: string }) {
@@ -92,17 +43,30 @@ export function UndoPackButton({ packingId }: { packingId: string }) {
   );
 }
 
-/** Innehållet (etiketten) med "Ändra innehåll" för ägare och admin. */
+/** Det kalkylen behöver medan innehållet ändras: priserna på delarna, priset och avgifterna. */
+export interface CalcContext {
+  /** Dagens inköpspris per titel (öre). */
+  readonly prices: Readonly<Record<string, number>>;
+  readonly salePriceOre: number | null;
+  readonly fees: CalcFees;
+}
+
+/**
+ * Innehållet (etiketten) med "Ändra innehåll" för ägare och admin. Med `calc` visar
+ * redigeraren kalkylen live medan antalen ändras ("vad händer om").
+ */
 export function ContentsSection({
   titleId,
   recipe,
   choices,
   canEdit,
+  calc,
 }: {
   titleId: string;
   recipe: Recipe | null;
   choices: ReadonlyArray<{ id: string; name: string }>;
   canEdit: boolean;
+  calc?: CalcContext | null;
 }) {
   const t = useT();
   const [editing, setEditing] = useState(recipe === null);
@@ -112,6 +76,7 @@ export function ContentsSection({
         titleId={titleId}
         recipe={recipe}
         choices={choices}
+        calc={calc ?? null}
         onDone={() => setEditing(false)}
       />
     );

@@ -943,3 +943,33 @@ Per titel i automaten:
 Laddarna (`src/app/(app)/automater/_lib/ranking-data.ts`) läser order, lagerhändelser och sortiment en gång för hela organisationen: lika många frågor med 1 som med 10 automater (`test/db/automat-ranking.test.ts`).
 
 Testerna: `src/analytics/ranking/*.test.ts`, `src/app/(app)/automater/_lib/ranking.test.ts`, `assortment-view.test.ts`, `test/db/automat-ranking.test.ts`, `e2e/14-automat-ranking.e2e.test.ts`.
+
+## 29. Mystery-kalkylen (`src/domain/mystery-cost.ts`, sidan Vårt lager → Mystery packs)
+
+Vad ett mystery pack kostar, räknat på innehållet (receptet) och dagens inköpspriser på delarna:
+
+- omgångens kostnad = Σ (antal × delens inköpspris i dag)
+- kostnad per pack = omgångens kostnad / omgångens storlek, avrundat till hela öre
+- vinst per pack = pris utan moms − kortavgift − kostnad per pack (`unitMargin`, samma formler som liggaren, före butikens andel och utan VMB)
+- marginal = vinst per pack / pris utan moms
+
+Priset i automaten är det senaste betalda köpet av titeln. Saknar en del inköpspris är kostnaden okänd (ingen gissning). Sidan visar kalkylen för det sparade innehållet, och redigeraren räknar om den för varje ändring innan något sparas.
+
+**Sålda mystery packs räknas med titelns eget inköpspris** (`purchase_prices`), precis som alla andra titlar. Kalkylen ändrar aldrig det priset av sig själv. När kalkylen inte är titelns pris i dag (en del har bytt pris eller innehållet är ändrat) visas "Mystery pack premium kostar nu 213 kr, inte 174 kr" på Mystery packs, på Inköpspriser och i Att göra (`mystery-cost`), med två val för ägare och admin:
+
+- **Uppdatera priset från idag**: ett nytt inköpspris från i dag. Allt som redan är sålt behåller sitt pris.
+- **Rätta priset**: samma rättelse som på Inköpspriser (alla perioder som inte ligger i en stängd månad får det nya priset). Knappen frågar först ("Ja, rätta priset"), eftersom det inte går att ångra.
+
+Ett andra tryck på samma knapp (dubbeltryck, två flikar) ger samma läge och inget fel: inget skrivs och inget loggas en gång till.
+
+Beloppet räknas på servern (`updateMysteryCostFor`); sidan skickar bara med vad den visade, och en inaktuell sida nekas. `mystery_packings.cost_per_pack_ore` är som förut kostnaden när packningen gjordes (visas under Senast packat) och används inte i vinsten.
+
+## 30. Prisråd (`src/domain/price-advice.ts`, Lönsamhet och Att göra)
+
+En produkt "tjänar för lite" när marginalen **före butikernas andel** är under organisationens mål (`organization_settings.target_margin_bp`, standard 25 %, 1–90 %, ändras av ägare och admin på Lönsamhet):
+
+- priset i automaten = senaste betalda köpet de senaste 30 dagarna (per automat; det lägsta om automaterna har olika pris)
+- inköpspriset = det som gäller i dag
+- marginal = (pris utan moms − kortavgift − inköpspris) / pris utan moms
+
+"Höj till X kr" är det lägsta priset över dagens, i hela kronor som slutar på 5 eller 9, där marginalen når målet (inköp 220 kr och mål 25 % ger 295 kr). Titlar utan köp på 30 dagar eller utan inköpspris får inget råd. Lönsamhet visar listan och Att göra en enda punkt ("2 produkter tjänar för lite", `price-advice`); båda räknar på hela organisationen i dag, oavsett sidans period och filter. Det är bara ett råd: priset ändras i automatens system.
