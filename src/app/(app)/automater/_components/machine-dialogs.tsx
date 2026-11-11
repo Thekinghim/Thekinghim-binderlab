@@ -262,13 +262,20 @@ export function MachineActions({
   stores,
   today,
   storeName,
+  openMove = false,
 }: {
   machine: MachineEditable;
   stores: readonly StoreOption[];
   today: IsoDate;
   storeName: string | null;
+  /** Öppna "Placera i butik" direkt (länken "Välj butik" i Startklar). */
+  openMove?: boolean;
 }) {
-  const [dialog, setDialog] = useState<Dialog>(null);
+  const canOpenMove =
+    openMove &&
+    machine.lifecycle !== "decommissioned" &&
+    stores.some((s) => s.id !== machine.storeId);
+  const [dialog, setDialog] = useState<Dialog>(canOpenMove ? "move" : null);
   const [moveStore, setMoveStore] = useState("");
   const [moveFrom, setMoveFrom] = useState<string>("");
   const [reactivating, startReactivate] = useTransition();

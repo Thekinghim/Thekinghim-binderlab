@@ -237,7 +237,23 @@ export function ComparisonTable({
   );
 }
 
-const INVESTMENT_FIELDS = (machines: ReadonlyArray<Named>): FieldSpec[] => [
+/**
+ * Senaste inköpet av en annan automat (det som förifylls i "Ny investering"), eller null.
+ * Senast = senaste datumet; lika datum: sist i listan.
+ */
+export function lastPurchase(
+  investments: ReadonlyArray<InvestmentRecord>,
+  exceptMachineId: string | null,
+): InvestmentRecord | null {
+  let best: InvestmentRecord | null = null;
+  for (const i of investments) {
+    if (i.kind !== "purchase" || i.machineId === exceptMachineId || i.amountOre <= 0) continue;
+    if (best === null || i.investedOn >= best.investedOn) best = i;
+  }
+  return best;
+}
+
+const INVESTMENT_FIELDS = (machines: ReadonlyArray<Named>, amountHint?: string): FieldSpec[] => [
   {
     name: "machineId",
     label: "Automat",
@@ -257,7 +273,14 @@ const INVESTMENT_FIELDS = (machines: ReadonlyArray<Named>): FieldSpec[] => [
       { value: "other", label: "Övrigt" },
     ],
   },
-  { name: "amountOre", label: "Belopp", type: "decimal", suffix: "kr", required: true },
+  {
+    name: "amountOre",
+    label: "Belopp",
+    type: "decimal",
+    suffix: "kr",
+    required: true,
+    ...(amountHint ? { hint: amountHint } : {}),
+  },
   { name: "investedOn", label: "Datum", type: "date", required: true },
   {
     name: "depreciationMonths",
@@ -274,16 +297,37 @@ export function InvestmentsSection({
   machines,
   canEdit,
   today,
+  forMachineId,
+  openNew = false,
 }: {
   investments: ReadonlyArray<InvestmentRecord>;
   machines: ReadonlyArray<Named>;
   canEdit: boolean;
   today: string;
+  /** Automaten som länken gäller (?automat=): vald i "Ny investering". */
+  forMachineId?: string;
+  /** Öppna "Ny investering" direkt (Startklar-länken, ?ny=1). */
+  openNew?: boolean;
 }) {
-  const [editing, setEditing] = useState<InvestmentRecord | "new" | null>(null);
   const byId = useMemo(() => new Map(machines.map((m) => [m.id, m])), [machines]);
   const active = machines.filter((m) => !m.archived);
-  const fields = useMemo(() => INVESTMENT_FIELDS(active), [active]);
+  const preselected = active.find((m) => m.id === forMachineId) ?? null;
+  const [editing, setEditing] = useState<InvestmentRecord | "new" | null>(
+    canEdit && openNew && preselected ? "new" : null,
+  );
+  // Förifyllt från senaste automaten: vad den kostade och avskrivningstiden.
+  const template = lastPurchase(investments, preselected?.id ?? null);
+  const templateCode = template ? (byId.get(template.machineId)?.code ?? null) : null;
+  const fields = useMemo(
+    () =>
+      INVESTMENT_FIELDS(
+        active,
+        editing === "new" && template && templateCode
+          ? `Samma som ${templateCode}. Ändra om den här kostade något annat.`
+          : undefined,
+      ),
+    [active, editing, template, templateCode],
+  );
 
   const columns = useMemo<Column<InvestmentRecord>[]>(
     () => [
@@ -348,11 +392,15 @@ export function InvestmentsSection({
   const initial =
     editing === null || editing === "new"
       ? {
-          machineId: active[0]?.id ?? "",
+          machineId: preselected?.id ?? active[0]?.id ?? "",
           kind: "purchase",
-          amountOre: "",
+          amountOre: template ? oreToInput(template.amountOre) : "",
           investedOn: today,
-          depreciationMonths: "60",
+          depreciationMonths: template
+            ? template.depreciationMonths
+              ? String(template.depreciationMonths)
+              : ""
+            : "60",
           note: "",
         }
       : {

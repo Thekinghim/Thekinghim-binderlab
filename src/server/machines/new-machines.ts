@@ -255,6 +255,7 @@ async function connectInTx(
   const codes = await machineCodes(tx, orgId);
   const code = input.code ?? nextMachineCode(codes);
   if (codes.includes(code)) throw new UserError(`Det finns redan en automat med koden ${code}.`);
+  const inherited = await inheritFromLastMachine(tx, orgId);
   const [machine] = await tx
     .insert(s.machines)
     .values({
@@ -267,9 +268,16 @@ async function connectInTx(
       ),
       serial: source.external_device_no?.trim().slice(0, 100) || null,
       activeFrom: from,
+      responsibleUserId: inherited.responsibleUserId,
     })
     .returning({ id: s.machines.id });
   if (!machine) throw new UserError("Automaten kunde inte sparas.");
+  if (inherited.refillSourceId) {
+    await tx.execute(
+      sql`select public.set_refill_source(${orgId}::uuid, ${machine.id}::uuid,
+            ${inherited.refillSourceId}::uuid)`,
+    );
+  }
   await tx.insert(s.machinePlacements).values({
     organizationId: orgId,
     machineId: machine.id,
@@ -278,6 +286,39 @@ async function connectInTx(
   });
   await linkSource(tx, orgId, input.sourceMachineId, machine.id);
   return { machineId: machine.id, code, orders: Number(pending?.n ?? 0), from };
+}
+
+/**
+ * "Ansvarig" och "Fylls på från" för en ny automat: samma som på senaste automaten som lades
+ * till, så att de inte behöver väljas om för varje ny automat. Bara värden som fortfarande
+ * gäller ärvs: ansvarig ska vara kvar som medlem som fyller på, lagret får inte vara arkiverat.
+ * Finns ingen automat (eller inget valt) blir det standard: Båda och standardlagret.
+ */
+export async function inheritFromLastMachine(
+  tx: Tx,
+  orgId: string,
+): Promise<{ responsibleUserId: string | null; refillSourceId: string | null }> {
+  const [last] = await query<{ responsible: string | null; source: string | null }>(
+    tx,
+    sql`select
+          (select me.user_id from public.memberships me
+            where me.organization_id = m.organization_id and me.user_id = m.responsible_user_id
+              and me.role in ('owner', 'admin', 'refiller')) as responsible,
+          (select w.id from public.stock_locations loc
+            join public.stock_locations w
+              on w.organization_id = loc.organization_id and w.id = loc.refill_source_id
+             and w.kind = 'warehouse' and w.archived_at is null
+            where loc.organization_id = m.organization_id and loc.machine_id = m.id
+              and loc.kind = 'machine') as source
+        from public.machines m
+        where m.organization_id = ${orgId}::uuid and m.archived_at is null
+        order by m.created_at desc, m.code desc
+        limit 1`,
+  );
+  return {
+    responsibleUserId: last?.responsible ?? null,
+    refillSourceId: last?.source ?? null,
+  };
 }
 
 async function linkSource(
@@ -457,6 +498,7 @@ export async function createStoreGuideFor(
         if (codes.includes(code)) {
           throw new UserError(`Det finns redan en automat med koden ${code}.`);
         }
+        const inherited = await inheritFromLastMachine(tx, orgId);
         const [m] = await tx
           .insert(s.machines)
           .values({
@@ -464,8 +506,15 @@ export async function createStoreGuideFor(
             code,
             name: machineName(machine.name, { name: null, deviceNo: null }, code),
             activeFrom: day,
+            responsibleUserId: inherited.responsibleUserId,
           })
           .returning({ id: s.machines.id });
+        if (inherited.refillSourceId) {
+          await tx.execute(
+            sql`select public.set_refill_source(${orgId}::uuid, ${m!.id}::uuid,
+                  ${inherited.refillSourceId}::uuid)`,
+          );
+        }
         await tx.insert(s.machinePlacements).values({
           organizationId: orgId,
           machineId: m!.id,

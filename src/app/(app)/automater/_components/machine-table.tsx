@@ -65,6 +65,8 @@ function columns(
   pending: boolean,
   /** Vinsten är efter butikernas andel (vyknappen eller vald butik). */
   shareDeducted = false,
+  /** Startklar: "2 saker kvar" per automat-id, för automater som inte är helt inlagda. */
+  readyLeft: Readonly<Record<string, string>> = {},
 ): Column<MachineListRow>[] {
   const localNow = wallClockIn(now, timeZone);
   const f = (
@@ -92,6 +94,11 @@ function columns(
           >
             <span className="meta text-fg">{r.code.replace("-", "‑")}</span>
             <span className="truncate text-sm text-muted">{r.name}</span>
+            {readyLeft[r.id] ? (
+              <span className="text-sm text-subtle" data-startklar-kvar>
+                {readyLeft[r.id]}
+              </span>
+            ) : null}
           </Link>
           {/* Under md står statusen här, under namnet (design.md 5.1). */}
           <span className="md:hidden">
@@ -258,6 +265,7 @@ export function MachineTable({
   now,
   caption,
   shareDeducted,
+  readyLeft,
 }: {
   rows: readonly MachineListRow[];
   others: readonly OtherRow[];
@@ -273,6 +281,8 @@ export function MachineTable({
    * utan fotrad (en enda rad). Utelämnad: fotradens summa avgör.
    */
   shareDeducted?: boolean;
+  /** Startklar: "2 saker kvar" per automat-id (utelämnad: ingen rad). */
+  readyLeft?: Readonly<Record<string, string>>;
 }) {
   const cols = useMemo(
     () =>
@@ -282,8 +292,9 @@ export function MachineTable({
         totals && !pending ? { others, totals } : null,
         pending,
         shareDeducted ?? totals?.storeShareDeducted === true,
+        readyLeft,
       ),
-    [timeZone, now, others, totals, pending, shareDeducted],
+    [timeZone, now, others, totals, pending, shareDeducted, readyLeft],
   );
   return (
     <DataTable

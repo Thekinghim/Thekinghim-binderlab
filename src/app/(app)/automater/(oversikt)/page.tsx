@@ -23,6 +23,8 @@ import { NeedList } from "../_components/need-list";
 import { ProfitRanking } from "../_components/profit-ranking";
 import { UnpricedNote } from "../_components/unpriced-note";
 import { loadOverview } from "../_lib/data";
+import { loadMachineReadinessSafe } from "@/server/onboarding/machine-ready-load";
+import { readinessLeft } from "@/server/onboarding/machine-ready";
 import {
   machineNeeds,
   needsHeadline,
@@ -52,6 +54,13 @@ export default async function AutomaterPage({
   }
   const [data, shareToggle] = await Promise.all([loadOverview(sp), requestStoreShareView()]);
   const { ctx, overview, period } = data;
+  // Startklar: "2 saker kvar" på raden för automater som inte är helt inlagda.
+  const readyLeft = readinessLeft(
+    await loadMachineReadinessSafe(
+      { userId: ctx.user.id, email: ctx.user.email },
+      ctx.organization.id,
+    ),
+  );
   const { totals, rows, headline } = overview;
   const active = rows.filter((r) => r.lifecycle === "active");
   // Ur drift (hälsan offline) räknas inte som i drift, som på Drift.
@@ -183,6 +192,7 @@ export default async function AutomaterPage({
               now={ctx.now}
               caption={`Automater, intäkt och vinst ${period.rangeLabel}`}
               shareDeducted={totals.storeShareDeducted === true}
+              readyLeft={readyLeft}
             />
           </section>
 

@@ -31,6 +31,7 @@ import { loadTeamStateFor } from "@/server/data/team";
 
 import { PersonPicker } from "../../_team/person-picker";
 import { MachineActions } from "../_components/machine-dialogs";
+import { ReadyList } from "../_components/ready-list";
 import { RefillSourcePicker } from "../_components/refill-source";
 import { Sub } from "../_components/sub";
 import { UnpricedNote } from "../_components/unpriced-note";
@@ -46,6 +47,7 @@ import { stockAsideText } from "../_lib/refill-text";
 import { currentViewer } from "../_lib/session";
 import { withUserDbFor } from "@/server/access";
 import { queryRefillSources } from "@/server/data/core/places";
+import { loadMachineReadinessSafe } from "@/server/onboarding/machine-ready-load";
 
 const TABS = [
   { value: "forsaljning", label: "Försäljning" },
@@ -123,11 +125,16 @@ export default async function MachinePage({
   const listHref = `/automater${data.query}`;
   const tab = pickTab(TABS, sp.vy);
   const rise = (i: number) => ({ "--i": i }) as React.CSSProperties;
-  const team = await loadTeamStateFor(
-    { userId: ctx.user.id, email: ctx.user.email },
-    ctx.organization.id,
-  );
+  const sessionUser = { userId: ctx.user.id, email: ctx.user.email };
+  const [team, readiness] = await Promise.all([
+    loadTeamStateFor(sessionUser, ctx.organization.id),
+    // Startklar: vad som är kvar innan automaten är helt inlagd (tom lista när allt är klart).
+    loadMachineReadinessSafe(sessionUser, ctx.organization.id),
+  ]);
   const responsible = team.responsibles.get(machine.id) ?? null;
+  const ready = readiness.find((r) => r.machineId === machine.id && !r.complete) ?? null;
+  // Länken "Välj butik" i Startklar (?gor=placera) öppnar rutan direkt.
+  const openPlace = first(sp.gor) === "placera" && store === null;
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-6 pb-16 md:gap-16 md:px-8 md:pt-10">
@@ -199,12 +206,15 @@ export default async function MachinePage({
                   stores={data.stores}
                   today={ctx.today}
                   storeName={store?.name ?? null}
+                  openMove={openPlace}
                 />
               </div>
             ) : undefined
           }
         />
       </div>
+
+      {ready ? <ReadyList ready={ready} canEdit={ctx.canEdit} /> : null}
 
       {period.pendingToday ? (
         <StateMessage kind="empty" message={`Inga order från ${machine.code} i dag än.`} />

@@ -40,12 +40,19 @@ export default async function EnhetsekonomiPage({
     requestStoreShareView(),
   ]);
   // Länken "Registrera investering" från en automat (?automat=) öppnar investeringarna.
-  const openInvestments =
-    Boolean(
+  const param = (name: string): string | undefined => {
+    const v =
       "get" in sp && typeof sp.get === "function"
-        ? sp.get("automat")
-        : (sp as Record<string, unknown>).automat,
-    ) || data.investments.length === 0;
+        ? sp.get(name)
+        : (sp as Record<string, unknown>)[name];
+    const one = Array.isArray(v) ? v[0] : v;
+    return typeof one === "string" && one !== "" ? one : undefined;
+  };
+  const forMachine = param("automat");
+  const openInvestments = Boolean(forMachine) || data.investments.length === 0;
+  // Startklar-länken "Lägg in vad automaten kostade" (?automat=<id>&ny=1): rutan öppnas direkt
+  // med automaten vald.
+  const openNew = param("ny") === "1" && Boolean(forMachine);
   const { comparison, period } = data;
   const codes = Object.fromEntries(data.names.machines.map((m) => [m.id, m.code ?? m.name]));
   const names = {
@@ -184,6 +191,8 @@ export default async function EnhetsekonomiPage({
             machines={data.names.machines}
             canEdit={data.ctx.canEdit}
             today={data.ctx.today}
+            forMachineId={forMachine}
+            openNew={openNew}
           />
         </section>
       </details>
