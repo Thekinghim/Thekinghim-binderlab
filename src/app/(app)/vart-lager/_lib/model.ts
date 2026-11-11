@@ -27,6 +27,8 @@ import { formatDateTime, formatInt, formatTime, MINUS, NBSP } from "@/lib/format
 import { WAREHOUSE_LOW_DAYS, type StockStatus, type WarehouseRow } from "../../lager/_lib/types";
 import { AWISH_REFILL_NOTE_PREFIX } from "@/server/awish/refill-deduction";
 
+import { factLine, needAction, stepsText, type NeedAction } from "./steps";
+
 /** Notering som register_refill sätter på uttaget ur centrallagret. */
 const MANUAL_REFILL_NOTE_PREFIX = "Uttag till påfyllning av ";
 /** Notering när register_refill lägger tillbaka ett Awish-uttag (påfyllning utan uttag). */
@@ -63,7 +65,11 @@ export interface VartLagerInput {
     readonly name: string;
     /** Egen produkt: vi packar den själva ("Packa" i stället för "Beställ"). */
     readonly ownProduct?: boolean;
+    /** Mystery pack: pack per omgång. Då skrivs antalet i hela omgångar. */
+    readonly mysteryBatchSize?: number | null;
   }[];
+  /** Antal automater (1 = "i automaten" i raden under titeln). Utelämnat = flera. */
+  readonly machineCount?: number;
   /** Vårt lagers rader ur Lagers vymodell (summan av alla egna lager: dagar kvar och status). */
   readonly warehouse: readonly WarehouseRow[];
   /** Saldot i alla egna lager tillsammans per titel. */
@@ -140,6 +146,13 @@ export interface VartLagerRow {
    * när planen saknas.
    */
   readonly needQty: number | null;
+  /**
+   * Det som ska packas eller beställas (samma regel som Inköp, ./steps.ts): mystery packs i
+   * hela omgångar. null = inget behövs.
+   */
+  readonly action: NeedAction | null;
+  /** "0 hemma · 9 i automaten · slut om 3 dagar" (samma rad som på Inköp). */
+  readonly fact: string;
 }
 
 /**
@@ -157,8 +170,19 @@ export interface StockTodo {
   readonly titleId: string;
   readonly verb: "Räkna om" | "Packa" | "Beställ";
   readonly title: string;
-  /** Pack att packa eller beställa (null för Räkna om). */
+  /**
+   * Antalet på kortet: omgångar för mystery packs, annars pack. null för Räkna om och när
+   * antalet är okänt.
+   */
   readonly qty: number | null;
+  /** Enheten efter antalet: "st", "omgång" eller "omgångar". */
+  readonly unit: string;
+  /** Samma sak i pack (för länken till Mystery packs), eller null. */
+  readonly packs: number | null;
+  /** Under 0 och ska fyllas på: "1. Räkna om. 2. Packa 2 omgångar." Annars null. */
+  readonly steps: string | null;
+  /** "0 hemma · 9 i automaten · slut om 3 dagar" */
+  readonly fact: string;
   readonly tone: "critical" | "warning";
 }
 
@@ -185,12 +209,27 @@ export function stockTodos(rows: readonly VartLagerRow[]): StockTodo[] {
     )
     .map((r) =>
       r.negative
-        ? { titleId: r.titleId, verb: "Räkna om", title: r.name, qty: null, tone: "critical" }
+        ? {
+            titleId: r.titleId,
+            verb: "Räkna om",
+            title: r.name,
+            qty: null,
+            unit: "st",
+            packs: null,
+            // Under 0 och ska fyllas på: båda stegen, samma text som på Inköp.
+            steps: stepsText(true, r.action),
+            fact: r.fact,
+            tone: "critical",
+          }
         : {
             titleId: r.titleId,
             verb: r.own ? "Packa" : "Beställ",
             title: r.name,
-            qty: r.needQty,
+            qty: r.action?.qty ?? null,
+            unit: r.action?.unit ?? "st",
+            packs: r.action?.packs ?? null,
+            steps: null,
+            fact: r.fact,
             tone: r.home <= 0 ? "critical" : "warning",
           },
     );
@@ -383,6 +422,11 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
       }
       const eAt = e ? (e.locationId ?? defaultPlace?.id) : undefined;
       const runsOut = status !== "ok";
+      const lasts =
+        retired || sold7 <= 0 ? null : lastsDays(home + inMachines, r?.perDayTenths ?? null);
+      // Inköps antal (samma regel och siffra som /prognos); utgången titel köps inte.
+      const needQty = retired ? 0 : input.purchase ? (input.purchase.get(t.id) ?? 0) : null;
+      const own = t.ownProduct === true;
       return {
         titleId: t.id,
         name: t.name,
@@ -392,15 +436,22 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
         inMachines,
         sold7,
         daysLeft,
-        lastsDays:
-          retired || sold7 <= 0 ? null : lastsDays(home + inMachines, r?.perDayTenths ?? null),
+        lastsDays: lasts,
         retired,
         status,
         runsOut,
         negative: home < 0,
-        own: t.ownProduct === true,
-        // Inköps antal (samma regel och siffra som /prognos); utgången titel köps inte.
-        needQty: retired ? 0 : input.purchase ? (input.purchase.get(t.id) ?? 0) : null,
+        own,
+        needQty,
+        action: needsPurchase({ retired, needQty, runsOut })
+          ? needAction({ own, needQty, mysteryBatchSize: t.mysteryBatchSize, home })
+          : null,
+        fact: factLine({
+          home,
+          inMachines,
+          lastsDays: lasts,
+          ...(input.machineCount === undefined ? {} : { machineCount: input.machineCount }),
+        }),
         unitCostOre,
         valueOre: unitCostOre === null ? null : Math.max(0, home) * unitCostOre,
         latest: e

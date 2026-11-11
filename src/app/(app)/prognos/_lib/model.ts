@@ -23,6 +23,13 @@ import type {
 import { dateText, periodShort } from "./dates";
 import { evidenceView, type EvidenceOptions, type EvidenceView, type NameLookup } from "./evidence";
 import { lastsDays } from "../../vart-lager/_lib/model";
+import {
+  factLine,
+  needAction,
+  stepsText,
+  whyPackText,
+  type NeedAction,
+} from "../../vart-lager/_lib/steps";
 
 // ---------------------------------------------------------------------------
 // Typer
@@ -216,6 +223,19 @@ export interface PlanLineView {
   readonly own: boolean;
   /** Egen produkt: pack att packa (0 = inget). */
   readonly packQty: number;
+  /**
+   * Det som ska packas eller beställas, samma regel och text som Vårt lager (steps.ts):
+   * mystery packs i hela omgångar ("Packa 2 omgångar"). null = inget behövs.
+   */
+  readonly action: NeedAction | null;
+  /** Pack hemma som de är, även under 0 (planen räknar under 0 som 0). */
+  readonly home: number;
+  /** Under 0 hemma: räkna om först. */
+  readonly negative: boolean;
+  /** Under 0 och ska fyllas på: "1. Räkna om. 2. Packa 2 omgångar." Annars null. */
+  readonly steps: string | null;
+  /** "0 hemma · 9 i automaten · slut om 3 dagar" (samma rad som på Vårt lager). */
+  readonly fact: string;
   /**
    * Räcker (samma regel som Vårt lager, `lastsDays`): hela dagar tills hemma + i
    * automaterna är sålt vid 14 dagars takt. null = ingen takt ("–").
@@ -775,9 +795,11 @@ function planModel(
   data: PrognosData,
   names: ReturnType<typeof lookup>,
   stockPace?: ReadonlyMap<string, number | null>,
+  stockHome?: ReadonlyMap<string, number>,
 ): PlanModel {
   const p = data.plan;
   const ownIds = new Set(data.titles.filter((t) => t.ownProduct).map((t) => t.id));
+  const batchSizes = new Map(data.titles.map((t) => [t.id, t.mysteryBatchSize ?? null]));
   // Egna produkter: "Packa X st" med planens antal (purchaseQty, samma som Vårt lager).
   const packQtyFor = (l: PurchaseLine): number | null =>
     ownIds.has(l.titleId) ? packQtyOf(l) : null;
@@ -814,6 +836,17 @@ function planModel(
         value: `${formatInt(lowData.lowDataSeries)} av ${formatInt(lowData.series)}, ${formatPercent(lowData.shareBp / 10_000, 0)} av prognosen`,
       });
     }
+    // Samma besked som Vårt lager: antal i omgångar, båda stegen under 0, raden under titeln.
+    const home = stockHome?.get(l.titleId) ?? l.warehouseOnHand;
+    const negative = home < 0;
+    // Samma summa som Vårt lager (hemma som det är + i automaterna), så raden blir densamma.
+    const lasts = lastsDays(home + l.machineOnHand, stockPace?.get(l.titleId) ?? null);
+    const action = needAction({
+      own,
+      needQty: purchaseQty(l),
+      mysteryBatchSize: batchSizes.get(l.titleId) ?? null,
+      home,
+    });
     const drafts = draftsByTitle.get(l.titleId) ?? [];
     if (drafts.length > 0) {
       extra.push({
@@ -855,7 +888,17 @@ function planModel(
       drafts,
       own,
       packQty: packQty ?? 0,
-      lastsDays: lastsDays(l.warehouseOnHand + l.machineOnHand, stockPace?.get(l.titleId) ?? null),
+      action,
+      home,
+      negative,
+      steps: stepsText(negative, action),
+      fact: factLine({
+        home,
+        inMachines: l.machineOnHand,
+        lastsDays: lasts,
+        ...(data.machineCount === undefined ? {} : { machineCount: data.machineCount }),
+      }),
+      lastsDays: lasts,
       suggestQty: !own && l.status === "no-supplier" ? purchaseQty(l) : 0,
       text: tidy(l.text),
       evidence: extra.length > 0 ? { ...ev, figures: [...ev.figures, ...extra] } : ev,
@@ -942,7 +985,9 @@ function planModel(
 
 /**
  * Inköpets rubrik: kort, det som ska göras först. "Beställ 2 titlar för ca 1 100 kr." ·
- * "Packa 24 st Mystery Pack." · "Inget att beställa." Den grå delen är en kort rad.
+ * "Packa 2 omgångar Mystery Pack." · "Inget att beställa." Den grå delen är en kort rad som
+ * säger varför ("Mystery Pack är slut hemma."), aldrig "Lagret räcker." när något ska packas.
+ * En titel under 0 hemma räknas om först: "1. Räkna om. 2. Packa 2 omgångar."
  */
 export function planHeading(x: {
   order: number;
@@ -951,20 +996,26 @@ export function planHeading(x: {
   noSupplierPacks?: number;
   totalOre: number;
   lateCount: number;
-  packLines: readonly Pick<PlanLineView, "title" | "packQty">[];
+  packLines: readonly (Pick<PlanLineView, "title" | "packQty"> &
+    Partial<Pick<PlanLineView, "action" | "home" | "negative" | "steps" | "lastsDays">>)[];
   lowDataOrder: number;
   draftTitles: number;
   empty: boolean;
 }): Heading {
   const pack = x.packLines;
   const packOne = pack.length === 1 ? pack[0]! : null;
+  // Mystery packs i hela omgångar ("packa 2 omgångar Mystery Pack"), övriga i pack.
   const packText = packOne
-    ? `packa ${formatInt(packOne.packQty)}${NBSP}st ${packOne.title}`
+    ? `${(packOne.action?.text ?? `Packa ${formatInt(packOne.packQty)}${NBSP}st`).replace(/^P/, "p")} ${packOne.title}`
     : `packa ${plural(pack.length, "titel", "titlar")}`;
   const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+  const negative = pack.filter((l) => l.negative);
   let title: string;
   if (x.order > 0) {
     title = `Beställ ${plural(x.order, "titel", "titlar")} för ${approxKr(x.totalOre)}.`;
+  } else if (packOne?.negative) {
+    // Under 0 hemma: räkna om först, stegen står i den grå raden.
+    title = `Räkna om ${packOne.title}.`;
   } else if (pack.length > 0) {
     title = `${cap(packText)}.`;
   } else if (x.noSupplier > 0 && (x.noSupplierPacks ?? 0) > 0) {
@@ -978,7 +1029,25 @@ export function planHeading(x: {
     title = "Inget att beställa.";
   }
   const parts: string[] = [];
-  if (x.order > 0 && pack.length > 0) parts.push(`${cap(packText)}.`);
+  const stepsOne = packOne?.negative ? (packOne.steps ?? null) : null;
+  if (x.order > 0 && pack.length > 0 && !stepsOne) parts.push(`${cap(packText)}.`);
+  if (pack.length > 0) {
+    if (packOne && stepsOne) {
+      // Med en beställning i rubriken står titeln här: "Mystery Pack: 1. Räkna om. 2. …"
+      parts.push(x.order > 0 ? `${packOne.title}: ${stepsOne}` : stepsOne);
+    } else {
+      if (negative.length > 0) {
+        parts.push(`Räkna om ${plural(negative.length, "titel", "titlar")} först.`);
+      }
+      // Varför det ska packas (aldrig "Lagret räcker." bredvid "Packa").
+      const why = whyPackText(
+        pack
+          .filter((l) => !l.negative && l.home !== undefined)
+          .map((l) => ({ title: l.title, home: l.home ?? 0, lastsDays: l.lastsDays ?? null })),
+      );
+      if (why) parts.push(why);
+    }
+  }
   if (x.lateCount > 0) {
     parts.push(`${plural(x.lateCount, "titel hinner", "titlar hinner")} ta slut före leverans.`);
   }
@@ -989,11 +1058,13 @@ export function planHeading(x: {
   if (x.draftTitles > 0) parts.push(`${plural(x.draftTitles, "titel", "titlar")} i utkast.`);
   if (parts.length === 0) {
     parts.push(
-      x.noSupplier > 0 && x.order === 0 && pack.length === 0
+      x.noSupplier > 0 && x.order === 0
         ? "Lägg till leverantör för pris och boxar."
-        : x.empty
-          ? "Ingen försäljning än."
-          : "Lagret räcker.",
+        : pack.length > 0
+          ? "Behövs för att fylla på automaterna."
+          : x.empty
+            ? "Ingen försäljning än."
+            : "Lagret räcker.",
     );
   }
   return { title, aside: parts.join(" ") };
@@ -1190,12 +1261,14 @@ export function buildPageModel(
   opts: {
     /** Takten per titel (tiondelar pack per dag, 14 hela dagar) för Räcker, som Vårt lager. */
     readonly stockPace?: ReadonlyMap<string, number | null>;
+    /** Pack hemma per titel som de är (även under 0), som Vårt lager. */
+    readonly stockHome?: ReadonlyMap<string, number>;
   } = {},
 ): PageModel {
   const names = lookup(data);
   const lost = lostModel(data, names, now);
   const { forecast, accuracy } = forecastModel(data, names);
-  const plan = planModel(data, names, opts.stockPace);
+  const plan = planModel(data, names, opts.stockPace, opts.stockHome);
   const orders = ordersModel(data, names, now);
   const valuation = valuationModel(data, names);
   const suppliers = suppliersModel(data, names);

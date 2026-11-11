@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { en } from "@/i18n/en";
+import { sv } from "@/i18n/sv";
+
 import type { VartLagerRow } from "../vart-lager/_lib/model";
+import { needAction } from "../vart-lager/_lib/steps";
 import {
   buyList,
   parsePackCount,
@@ -30,6 +34,8 @@ function row(over: Partial<VartLagerRow> & { titleId: string; name: string }): V
     latest: null,
     own: false,
     needQty: 0,
+    action: null,
+    fact: "",
     ...over,
   };
 }
@@ -101,6 +107,25 @@ describe("Inköpslistan", () => {
     expect(list.totalOre).toBe(108_000);
     expect(list.unpriced).toBe(1);
     expect(list.noPlan).toBe(false);
+  });
+
+  it("mystery pack: hela omgångar; under 0 hemma räknas om först", () => {
+    const action = needAction({ own: true, needQty: 28, mysteryBatchSize: 14, home: -1 });
+    const list = buyList([
+      row({
+        titleId: "m",
+        name: "Mystery Pack premium",
+        home: -1,
+        negative: true,
+        own: true,
+        needQty: 28,
+        runsOut: true,
+        action,
+      }),
+    ]);
+    expect(list.items[0]).toMatchObject({ qty: 28, batches: 2, countFirst: true, home: 0 });
+    expect(sv.r2.t3.countFirst(sv.r2.t3.packBatches(2))).toBe("1. Räkna om. 2. Packa 2 omgångar.");
+    expect(en.r2.t3.countFirst(en.r2.t3.packBatches(1))).toBe("1. Count again. 2. Pack 1 batch.");
   });
 
   it("utan inköpsplan: titlarna som tar slut, utan antal", () => {

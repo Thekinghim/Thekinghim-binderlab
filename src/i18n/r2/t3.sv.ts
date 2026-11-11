@@ -12,6 +12,14 @@
  * `inPlace`, `placeName` och `f` från "../words.sv". Importera aldrig från "../sv" (cirkel).
  */
 
-export const t3 = {};
+import { batches } from "../words.sv";
+
+export const t3 = {
+  /** Inköpslistan: mystery packs skrivs alltid i hela omgångar. */
+  packBatches: (n: number) => `Packa ${batches(n)}`,
+  /** Under 0 hemma: räkna om först. `then` är nästa steg ("Packa 2 omgångar"). */
+  countFirst: (then: string) => `1. Räkna om. 2. ${then}.`,
+  countFirstHint: "Antalet hemma står under 0. Räkna packen under Lager först.",
+};
 
 export type R2T3 = typeof t3;

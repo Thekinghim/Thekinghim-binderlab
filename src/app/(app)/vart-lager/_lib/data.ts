@@ -133,7 +133,14 @@ export async function loadVartLagerFor(
     today,
     titles: master.titles
       .filter((t) => !t.archived && t.mergedIntoId === null)
-      .map((t) => ({ id: t.id, name: t.name, ownProduct: t.ownProduct === true })),
+      .map((t) => ({
+        id: t.id,
+        name: t.name,
+        ownProduct: t.ownProduct === true,
+        mysteryBatchSize: t.mysteryBatchSize ?? null,
+      })),
+    // Samma antal som Inköp räknar med (aktiva automater): "i automaten" med en.
+    machineCount: master.machines.filter((m) => !m.archived).length,
     warehouse: our.rows,
     home,
     places: our.places,

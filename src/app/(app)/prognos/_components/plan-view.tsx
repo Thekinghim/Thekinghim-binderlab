@@ -23,7 +23,7 @@ function coverText(days: number | null): string {
 
 /** Under titeln: leverantören, eller för egna produkter vad som ska packas. */
 function sourceText(r: PlanLineView): string {
-  if (r.own) return r.packQty > 0 ? `Packa ${formatInt(r.packQty)}` : "Egen produkt";
+  if (r.own) return r.packQty > 0 ? (r.action?.text ?? "Packa") : "Egen produkt";
   return r.supplierName ?? "Ingen leverantör";
 }
 
@@ -40,8 +40,14 @@ function LineNotes({ r }: { r: PlanLineView }) {
       `I utkast ${r.drafts.map((d) => `${d.number} (${formatInt(d.quantity)})`).join(", ")}`,
     );
   }
-  if (notes.length === 0) return null;
-  return <span className="text-xs text-subtle">{notes.join(" · ")}</span>;
+  if (notes.length === 0 && !r.steps) return null;
+  return (
+    <>
+      {/* Under 0 hemma: räkna om först (samma två steg som på Vårt lager). */}
+      {r.steps ? <span className="text-xs font-medium text-signal-fg">{r.steps}</span> : null}
+      {notes.length > 0 ? <span className="text-xs text-subtle">{notes.join(" · ")}</span> : null}
+    </>
+  );
 }
 
 function notesCsv(r: PlanLineView): string {
@@ -269,9 +275,17 @@ export function PlanView({
                 className="rise flex min-h-12 items-center justify-between gap-4 py-2"
                 style={{ "--i": Math.min(i, 8) } as React.CSSProperties}
               >
-                <span className="min-w-0 text-base text-fg">
-                  Köp ca <span className="tnum font-medium">{formatInt(l.suggestQty)}</span>
-                  {NBSP}st {l.title}
+                <span className="flex min-w-0 flex-col text-base text-fg">
+                  <span>
+                    Köp ca <span className="tnum font-medium">{formatInt(l.suggestQty)}</span>
+                    {NBSP}st {l.title}
+                  </span>
+                  {l.steps ? (
+                    <span className="text-sm font-medium text-signal-fg">
+                      1. Räkna om. 2. Köp ca {formatInt(l.suggestQty)}
+                      {NBSP}st.
+                    </span>
+                  ) : null}
                 </span>
                 <EvidenceButton evidence={l.evidence} title={l.title} text={l.text} />
               </li>

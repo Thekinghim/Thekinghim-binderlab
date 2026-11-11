@@ -6,9 +6,14 @@
  * Small words such as "3 packs" and "at Kontoret": import from "../words.en".
  */
 
+import { batches } from "../words.en";
 import type { R2T3 } from "./t3.sv";
 
-export const t3: R2T3 = {};
+export const t3: R2T3 = {
+  packBatches: (n) => `Pack ${batches(n)}`,
+  countFirst: (then) => `1. Count again. 2. ${then}.`,
+  countFirstHint: "The number at home is below 0. Count the packs under Stock first.",
+};
 
 /**
  * Swedish messages from this track's server actions and database functions, in English:

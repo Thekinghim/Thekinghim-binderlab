@@ -100,7 +100,11 @@ export interface PrognosData {
     readonly name: string;
     /** Egen produkt: vi packar den själva ("Att packa" i stället för "Beställ"). */
     readonly ownProduct?: boolean;
+    /** Mystery pack: pack per omgång ("Packa 2 omgångar" i stället för "Packa 28 st"). */
+    readonly mysteryBatchSize?: number | null;
   }[];
+  /** Antal aktiva automater (1 = "i automaten" i raden under titeln). */
+  readonly machineCount?: number;
   readonly machines: readonly {
     readonly id: string;
     readonly name: string;

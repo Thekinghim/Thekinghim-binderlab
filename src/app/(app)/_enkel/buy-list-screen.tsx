@@ -23,6 +23,7 @@ import { StockTabs } from "./stock-tabs";
 export async function SimpleBuyListScreen({ ctx }: { ctx: AppContext }) {
   const t = messages(ctx.locale);
   const f = formatters(ctx.locale);
+  const r2 = t.r2.t3;
   const view = await loadVartLagerFor(await currentViewer(), new Date(ctx.now));
   const list = buyList(view.rows);
   const toBuy = list.items.length;
@@ -44,13 +45,18 @@ export async function SimpleBuyListScreen({ ctx }: { ctx: AppContext }) {
       ) : toBuy === 0 ? null : (
         <ul aria-label={t.stock.buyTitle} className="flex flex-col gap-3">
           {list.items.map((item, i) => {
-            const action = item.own
-              ? item.qty !== null
-                ? t.stock.packOwn(item.qty)
-                : t.stock.packMore
+            // Mystery packs alltid i hela omgångar, samma tal som Inköp och Vårt lager.
+            const what = item.own
+              ? item.batches !== null
+                ? r2.packBatches(item.batches)
+                : item.qty !== null
+                  ? t.stock.packOwn(item.qty)
+                  : t.stock.packMore
               : item.qty !== null
                 ? t.stock.buy(item.qty)
                 : t.stock.buyMore;
+            // Under 0 hemma: räkna om först (samma två steg som i hela appen).
+            const action = item.countFirst ? r2.countFirst(what) : what;
             return (
               <li
                 key={item.titleId}
@@ -72,6 +78,9 @@ export async function SimpleBuyListScreen({ ctx }: { ctx: AppContext }) {
                 <span className="tnum text-sm text-muted">
                   {t.stock.haveLine(item.home, item.inMachines)}
                 </span>
+                {item.countFirst ? (
+                  <span className="text-base text-signal-fg">{r2.countFirstHint}</span>
+                ) : null}
                 {item.own ? (
                   <Link
                     href={packHref(item.titleId, item.qty)}

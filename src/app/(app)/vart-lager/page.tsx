@@ -44,13 +44,16 @@ export default async function VartLagerPage() {
     verb: t.verb,
     title: t.title,
     qty: t.qty,
+    unit: t.unit,
+    note: t.steps,
+    fact: t.fact,
     tone: t.tone,
     // Räkna om görs här (raden), Packa under Mystery packs, Beställ på Inköp.
     href:
       t.verb === "Beställ"
         ? "/prognos"
         : t.verb === "Packa"
-          ? packHref(t.titleId, t.qty)
+          ? packHref(t.titleId, t.packs)
           : `#rad-${t.titleId}`,
   }));
   const awish = view.rows.some((r) => r.latest?.automatic);

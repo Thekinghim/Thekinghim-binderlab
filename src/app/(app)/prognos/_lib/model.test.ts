@@ -28,6 +28,7 @@ import {
 } from "./model";
 import { oreToField, parseCount, parseKronor } from "./units";
 import { buildVartLagerModel, stockTodos } from "../../vart-lager/_lib/model";
+import { needAction, stepsText } from "../../vart-lager/_lib/steps";
 
 const SETTINGS = { vatRateBp: 0, cardFeeBp: 0 };
 const TODAY: IsoDate = "2026-11-02";
@@ -669,6 +670,93 @@ describe("samma antal på Inköp och Vårt lager (purchaseQty)", () => {
   });
 });
 
+describe("samma besked på Inköp och Vårt lager (mystery pack under 0)", () => {
+  const NOW2 = new Date("2026-11-02T09:00:00Z");
+  // T1 är ett mystery pack (14 per omgång) och står på −1 hemma med 9 i automaten.
+  const own = (): PrognosData => {
+    const d = data([], { noItems: true, t2Stock: 500 });
+    return {
+      ...d,
+      machineCount: 1,
+      titles: d.titles.map((t) => ({
+        ...t,
+        ownProduct: true,
+        mysteryBatchSize: t.id === T1 ? 14 : null,
+      })),
+    };
+  };
+  const pages = (home: number) => {
+    const d = own();
+    const pace = new Map([[T1, 30]]);
+    const prognos = buildPageModel(d, NOW2, {
+      stockPace: pace,
+      stockHome: new Map([[T1, home]]),
+    });
+    const lager = buildVartLagerModel({
+      now: NOW2,
+      timeZone: "Europe/Stockholm",
+      today: TODAY,
+      titles: d.titles.map((t) => ({
+        id: t.id,
+        name: t.name,
+        ownProduct: t.ownProduct,
+        mysteryBatchSize: t.mysteryBatchSize,
+      })),
+      machineCount: 1,
+      warehouse: [
+        {
+          titleId: T1,
+          onHand: home,
+          perDayTenths: 30,
+          daysLeft: 0,
+          weekNeed: 0,
+          shortBy: 0,
+          status: "critical",
+          lastCountedAt: null,
+        },
+      ],
+      home: new Map([[T1, home]]),
+      inMachines: new Map([[T1, 5]]),
+      sold7: new Map([[T1, 21]]),
+      prices: [],
+      latest: new Map(),
+      machines: [],
+      canEdit: true,
+      purchase: purchaseQtyByTitle(d.plan),
+    });
+    return {
+      p: prognos.plan.packLines.find((l) => l.titleId === T1)!,
+      v: stockTodos(lager.rows).find((t) => t.titleId === T1)!,
+      heading: prognos.plan.heading,
+    };
+  };
+
+  it("−1 hemma: samma två steg och samma rad på båda sidorna", () => {
+    const { p, v, heading } = pages(-1);
+    expect(p.negative).toBe(true);
+    expect(p.steps).toMatch(/^1\. Räkna om\. 2\. Packa \d+ omgång(ar)?\.$/);
+    expect(v.verb).toBe("Räkna om");
+    expect(v.steps).toBe(p.steps);
+    expect(v.fact).toBe(p.fact);
+    expect(p.fact.replace(/\u00a0/g, " ")).toMatch(/^−1 hemma · 5 i automaten · slut /);
+    expect(heading.title).toBe("Räkna om Pokémon 151.");
+    expect(heading.aside).toBe(p.steps);
+    expect(heading.aside).not.toContain("Lagret räcker.");
+  });
+
+  it("0 hemma: samma antal omgångar på båda sidorna, alltid hela omgångar", () => {
+    const { p, v, heading } = pages(0);
+    expect(p.negative).toBe(false);
+    expect(p.action?.batches).toBeGreaterThan(0);
+    expect(p.action!.packs! % 14).toBe(0);
+    expect(v).toMatchObject({ verb: "Packa", qty: p.action!.qty, unit: p.action!.unit });
+    expect(v.packs).toBe(p.action!.packs);
+    expect(v.fact).toBe(p.fact);
+    expect(heading.title.replace(/\u00a0/g, " ")).toMatch(/^Packa \d+ omgång(ar)? Pokémon 151\.$/);
+    expect(heading.aside).toBe("Pokémon 151 är slut hemma.");
+  });
+});
+
 describe("planHeading", () => {
   const base = {
     order: 0,
@@ -699,6 +787,58 @@ describe("planHeading", () => {
       title: "Beställ 2 titlar för ca 1 100 kr.",
       aside: "Packa 24 st Mystery Pack. 1 titel hinner ta slut före leverans.",
     });
+  });
+  it("den grå raden säger varför det ska packas, aldrig 'Lagret räcker.'", () => {
+    const mystery = {
+      title: "Mystery Pack",
+      packQty: 28,
+      action: needAction({ own: true, needQty: 28, mysteryBatchSize: 14, home: 0 }),
+      home: 0,
+      negative: false,
+      steps: null,
+      lastsDays: 3,
+    };
+    expect(sp(planHeading({ ...base, packLines: [mystery] }))).toEqual({
+      title: "Packa 2 omgångar Mystery Pack.",
+      aside: "Mystery Pack är slut hemma.",
+    });
+    expect(sp(planHeading({ ...base, packLines: [{ ...mystery, home: 5 }] })).aside).toBe(
+      "Mystery Pack tar slut om 3 dagar.",
+    );
+    const two = [mystery, { ...mystery, title: "Mystery Pack premium" }];
+    expect(sp(planHeading({ ...base, packLines: two }))).toEqual({
+      title: "Packa 2 titlar.",
+      aside: "2 titlar är slut hemma.",
+    });
+    // Alla kombinationer: "Packa" i rubriken står aldrig ihop med "Lagret räcker.".
+    for (const order of [0, 2]) {
+      for (const noSupplier of [0, 1]) {
+        for (const lines of [[mystery], two, [{ title: "Eget", packQty: 3 }]]) {
+          const h = planHeading({ ...base, order, noSupplier, totalOre: 5000, packLines: lines });
+          expect(`${h.title} ${h.aside}`).toMatch(/[Pp]acka/);
+          expect(h.aside).not.toContain("Lagret räcker.");
+        }
+      }
+    }
+  });
+  it("under 0 hemma: räkna om först, sedan packa (båda stegen)", () => {
+    const action = needAction({ own: true, needQty: 28, mysteryBatchSize: 14, home: -1 });
+    const line = {
+      title: "Mystery Pack premium",
+      packQty: 28,
+      action,
+      home: -1,
+      negative: true,
+      steps: stepsText(true, action),
+      lastsDays: 3,
+    };
+    expect(sp(planHeading({ ...base, packLines: [line] }))).toEqual({
+      title: "Räkna om Mystery Pack premium.",
+      aside: "1. Räkna om. 2. Packa 2 omgångar.",
+    });
+    expect(sp(planHeading({ ...base, order: 1, totalOre: 50_000, packLines: [line] })).aside).toBe(
+      "Mystery Pack premium: 1. Räkna om. 2. Packa 2 omgångar.",
+    );
   });
   it("inget att göra", () => {
     expect(sp(planHeading(base))).toEqual({

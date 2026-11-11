@@ -116,7 +116,15 @@ export default async function PrognosPage({
     // Packa och Beställ X st: inköpsplanens antal (purchaseQty), samma som Vårt lager.
     // Räcker: samma regel och takt som Vårt lager (hemma + i automaterna, 14 dagars takt).
     const stockPace = new Map(our.rows.map((r) => [r.titleId, r.perDayTenths] as const));
-    m = buildPageModel(data, new Date(ctx.now), { stockPace });
+    // Pack hemma som de är (även under 0): planen räknar under 0 som 0, men en titel under 0
+    // ska räknas om först, precis som på Vårt lager.
+    const stockHome = new Map<string, number>();
+    for (const place of Object.values(our.byPlace)) {
+      for (const [titleId, n] of Object.entries(place)) {
+        stockHome.set(titleId, (stockHome.get(titleId) ?? 0) + n);
+      }
+    }
+    m = buildPageModel(data, new Date(ctx.now), { stockPace, stockHome });
     stock = our;
   } catch (error) {
     if (!(error instanceof DomainError)) throw error;
@@ -174,12 +182,20 @@ export default async function PrognosPage({
                 max={12}
                 items={m.plan.packLines.map((l) => ({
                   key: l.titleId,
-                  verb: "Packa",
+                  // Under 0 hemma: räkna om först (samma två steg som på Vårt lager).
+                  verb: l.negative ? "Räkna om" : "Packa",
                   title: l.title,
-                  qty: l.packQty,
-                  tone: l.late ? "critical" : "warning",
-                  // Packa öppnar Mystery packs med antalet förvalt (omgångar).
-                  href: packHref(l.titleId, l.packQty),
+                  // Mystery packs i hela omgångar, samma tal som Vårt lager.
+                  qty: l.negative ? null : (l.action?.qty ?? l.packQty),
+                  unit: l.action?.unit ?? "st",
+                  note: l.steps,
+                  fact: l.fact,
+                  tone: l.negative || l.late || l.home <= 0 ? "critical" : "warning",
+                  // Räkna om görs på Vårt lager (raden); Packa öppnar Mystery packs med
+                  // antalet förvalt.
+                  href: l.negative
+                    ? `/vart-lager#rad-${l.titleId}`
+                    : packHref(l.titleId, l.action?.packs ?? l.packQty),
                 }))}
               />
             </section>
