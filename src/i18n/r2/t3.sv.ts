@@ -34,6 +34,16 @@ export const t3 = {
     `${now} är mer än packet säljs för (ca ${sale}). Stämmer det?`,
   priceSaveAnyway: "Ja, spara ändå",
   priceChange: "Ändra priset",
+
+  // Leverans med pris (T3-3): "+ Inköp" frågar vad packen kostade.
+  receiptPriceLabel: "Pris per pack",
+  receiptNewPrice: (now: string, before: string) => `Nytt pris ${now} (var ${before}).`,
+  receiptFirstPrice: (now: string) => `Pris ${now} per pack.`,
+  receiptLeft: (left: string) => `Kvar per pack blir ${left}.`,
+  receiptPriceSaved: (now: string) => `Nytt pris ${now} från i dag.`,
+  receiptPriceFailed: (reason: string) => `Packen är sparade, men priset sparades inte. ${reason}`,
+  receiptPriceFailedTitle: "Priset sparades inte",
+  receiptPriceInvalid: "Skriv priset i kronor, t.ex. 112,50.",
 };
 
 export type R2T3 = typeof t3;

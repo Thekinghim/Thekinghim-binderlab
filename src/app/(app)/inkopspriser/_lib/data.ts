@@ -36,7 +36,7 @@ import {
   type PriceAuditEvent,
   type PriceRecord,
 } from "./model";
-import { priceDoubt, priceDoubtText, type PriceDoubtResult } from "./price-check";
+import { priceDoubt, priceDoubtText, type PriceDoubt, type PriceDoubtResult } from "./price-check";
 
 const READ_ROLES = ["owner", "admin", "viewer"] as const satisfies readonly MemberRole[];
 const WRITE_ROLES = ["owner", "admin"] as const satisfies readonly MemberRole[];
@@ -408,6 +408,36 @@ export async function addPurchasePriceFor(
   } catch (error) {
     return writeError(error);
   }
+}
+
+/**
+ * Inför en leverans med pris (Vårt lager, "+ Inköp"): dagens pris för titeln och om det
+ * nya priset ser konstigt ut. Bara läsning; samma koll som när priset sedan sparas.
+ */
+export async function receiptPriceCheckFor(
+  user: SessionUser,
+  input: { organizationId: string; titleId: string; unitCostOre: number; today: string },
+): Promise<{ currentOre: number | null; doubt: PriceDoubt | null }> {
+  return withUserDbFor(user, async (tx) => {
+    const own = (await queryPriceRecords(tx, input.organizationId)).filter(
+      (p) => p.titleId === input.titleId,
+    );
+    const current =
+      own
+        .filter((p) => p.validFrom <= input.today)
+        .sort((x, y) => x.validFrom.localeCompare(y.validFrom))
+        .at(-1)?.unitCostOre ?? null;
+    if (current === input.unitCostOre) return { currentOre: current, doubt: null };
+    const saleOre = await queryAvgSaleOre(tx, input.organizationId, input.titleId);
+    return {
+      currentOre: current,
+      doubt: priceDoubt({
+        newOre: input.unitCostOre,
+        oldOre: priceBefore(own, input.today),
+        saleOre,
+      }),
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------

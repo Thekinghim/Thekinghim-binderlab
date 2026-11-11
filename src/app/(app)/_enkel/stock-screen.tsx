@@ -32,6 +32,8 @@ export async function SimpleStockScreen({ ctx }: { ctx: AppContext }) {
     sold7: r.sold7,
     lastsDays: r.lastsDays,
     badge: stockBadge(r),
+    unitCostOre: r.unitCostOre,
+    own: r.own,
   }));
   const places = view.places.map((p) => ({ id: p.id, name: p.name }));
   const aside =

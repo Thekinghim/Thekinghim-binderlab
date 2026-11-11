@@ -10,8 +10,9 @@ import { MobileFold } from "@/components/ui/mobile-fold";
 import { Icon } from "@/components/ui/icon";
 import { StatusTag } from "@/components/ui/status-tag";
 import { useToast } from "@/components/ui/toast";
+import { useT } from "@/i18n/client";
 import { cn } from "@/lib/cn";
-import { formatInt, formatSek, MINUS, NBSP } from "@/lib/format";
+import { formatInt, formatKronor, formatSek, MINUS, NBSP } from "@/lib/format";
 import { rememberKey, useRemembered } from "@/lib/remembered";
 
 import { Sheet } from "../../lager/_components/sheet";
@@ -24,6 +25,7 @@ import {
   type VartLagerRow,
 } from "../_lib/model";
 import { PlaceBar } from "./place-bar";
+import { ReceiptPriceNote, useReceiptPrice } from "./receipt-price";
 
 const GRID =
   "grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-4 gap-y-1 md:grid-cols-[minmax(0,1fr)_88px_80px_72px_132px_var(--act,auto)]";
@@ -281,6 +283,9 @@ function StockRow({
   const [lastBuy, setLastBuy] = useRemembered(rememberKey(scope, "inkop-lager"));
   const [buyPlace, setBuyPlace] = useState<string | null>(null);
   const buyTo = pickPlace(places, buyPlace, place?.id, lastBuy);
+  // "+ Inköp" frågar vad packen kostade (inte för egna produkter: de packas, priset räknas).
+  const r2 = useT().r2.t3;
+  const price = useReceiptPrice(row.unitCostOre, canEdit && !row.own);
 
   useEffect(() => {
     if (buyOpen) buyRef.current?.focus();
@@ -322,18 +327,25 @@ function StockRow({
     });
   }
 
-  function receive() {
+  function receive(confirmed = false) {
     const n = parseCount(buy);
     if (n === null || n < 1) {
       toast({ title: "Ange antal pack, minst 1.", tone: "critical" });
       return;
     }
+    if (price.state.kind === "invalid") return;
     start(async () => {
       const res = await addReceipt({
         titleId: row.titleId,
         quantity: n,
         ...(buyTo ? { warehouseId: buyTo } : {}),
+        ...(price.ore === undefined ? {} : { unitCostOre: price.ore, confirmed }),
       });
+      // Priset ser konstigt ut: inget är sparat, frågan visas under fältet.
+      if ("doubt" in res) {
+        price.setDoubt(res.doubt);
+        return;
+      }
       if (!res.ok) {
         toast({ title: "Inköpet sparades inte", description: res.error, tone: "critical" });
         return;
@@ -343,11 +355,27 @@ function StockRow({
       setBuyPlace(null);
       setBuyOpen(false);
       setSaved((k) => k + 1);
+      const p = res.data.price;
+      const kr = (ore: number) =>
+        ore % 100 === 0 ? formatSek(ore / 100) : formatKronor(ore / 100);
       toast({
         title: `Klart! +${formatInt(n)} ${row.name}`,
-        description: `${formatInt(res.data.onHand)} pack ${inPlace(res.data.placeName ?? "hemma")}.`,
+        description: `${formatInt(res.data.onHand)} pack ${inPlace(res.data.placeName ?? "hemma")}.${
+          p.status === "saved" && p.unitCostOre !== undefined
+            ? ` ${r2.receiptPriceSaved(kr(p.unitCostOre))}`
+            : ""
+        }`,
         tone: "ok",
       });
+      // Packen är sparade men priset gick inte att spara: säg det tydligt.
+      if (p.status === "failed") {
+        toast({
+          title: r2.receiptPriceFailedTitle,
+          description: r2.receiptPriceFailed(p.error ?? ""),
+          tone: "critical",
+          duration: 12_000,
+        });
+      }
     });
   }
 
@@ -541,15 +569,52 @@ function StockRow({
                       }
                     }}
                   />
-                  <button
-                    type="submit"
-                    disabled={pending}
-                    aria-label={`Lägg till ${row.own ? "packade" : "inköp"}, ${row.name}`}
-                    className="inline-flex size-11 items-center justify-center rounded-sm border border-inverse bg-inverse text-on-inverse hover:bg-inverse-hover"
-                  >
-                    <Icon name="check" size={14} />
-                  </button>
+                  {row.own ? null : (
+                    <>
+                      <span className="text-sm text-muted">st à</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        autoComplete="off"
+                        aria-label={`${r2.receiptPriceLabel}, ${row.name}`}
+                        placeholder="pris"
+                        className="tnum h-11 w-20 rounded-sm border border-line-control bg-bg px-2 text-right text-base text-fg"
+                        value={price.text}
+                        disabled={pending}
+                        onChange={(e) => price.setText(e.target.value)}
+                      />
+                      <span className="text-sm text-muted">kr</span>
+                    </>
+                  )}
+                  {price.doubt ? null : (
+                    <button
+                      type="submit"
+                      disabled={pending}
+                      aria-label={`Lägg till ${row.own ? "packade" : "inköp"}, ${row.name}`}
+                      className="inline-flex size-11 shrink-0 items-center justify-center rounded-sm border border-inverse bg-inverse text-on-inverse hover:bg-inverse-hover"
+                    >
+                      <Icon name="check" size={14} />
+                    </button>
+                  )}
                 </span>
+                {row.own ? null : (
+                  <ReceiptPriceNote
+                    titleId={row.titleId}
+                    currentOre={row.unitCostOre}
+                    price={price}
+                    className="max-w-72 text-right"
+                  />
+                )}
+                {price.doubt ? (
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => receive(true)}
+                    className="inline-flex min-h-11 items-center justify-center rounded-sm border border-inverse bg-inverse px-4 text-base font-medium text-on-inverse hover:bg-inverse-hover"
+                  >
+                    {r2.priceSaveAnyway}
+                  </button>
+                ) : null}
               </form>
             ) : (
               <>
@@ -568,7 +633,10 @@ function StockRow({
                 {row.retired ? null : (
                   <button
                     type="button"
-                    onClick={() => setBuyOpen(true)}
+                    onClick={() => {
+                      price.reset();
+                      setBuyOpen(true);
+                    }}
                     aria-label={`${row.own ? "Packat" : "Inköp"}, ${row.name}`}
                     className="inline-flex h-11 items-center gap-1 rounded-sm px-2 text-sm text-muted transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg"
                   >

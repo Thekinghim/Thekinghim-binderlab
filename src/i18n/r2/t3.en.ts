@@ -26,6 +26,15 @@ export const t3: R2T3 = {
     `${now} is more than the pack sells for (about ${sale}). Is that right?`,
   priceSaveAnyway: "Yes, save anyway",
   priceChange: "Change the price",
+
+  receiptPriceLabel: "Price per pack",
+  receiptNewPrice: (now, before) => `New price ${now} (was ${before}).`,
+  receiptFirstPrice: (now) => `Price ${now} per pack.`,
+  receiptLeft: (left) => `You keep ${left} per pack.`,
+  receiptPriceSaved: (now) => `New price ${now} from today.`,
+  receiptPriceFailed: (reason) => `The packs are saved, but the price was not saved. ${reason}`,
+  receiptPriceFailedTitle: "The price was not saved",
+  receiptPriceInvalid: "Write the price in kronor, like 112.50.",
 };
 
 /**
