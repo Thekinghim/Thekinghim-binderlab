@@ -15,7 +15,14 @@ import { ContentsSection, UndoPackButton } from "../_components/mystery-actions"
 import { PackFlow } from "../_components/pack-flow";
 import { StockLine } from "../_components/stock-line";
 import { loadMysteryDetailFor } from "../_lib/data";
-import { batchesForPacks, defaultPlace, maxBatches, mysteryCalc, recipeOdds } from "../_lib/model";
+import {
+  batchesForPacks,
+  defaultPlace,
+  maxBatches,
+  mysteryCalc,
+  packSentence,
+  recipeOdds,
+} from "../_lib/model";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
@@ -75,6 +82,7 @@ export default async function MysteryPackPage({
       )
     : 1;
   const odds = recipe ? recipeOdds(recipe) : null;
+  const sentence = packSentence(t.toPack, m);
   // Kalkylen: innehållet × dagens inköpspriser, priset i automaten, vinst och marginal.
   const prices = Object.fromEntries(view.prices);
   const calc =
@@ -122,9 +130,15 @@ export default async function MysteryPackPage({
           <h2 id="packa-rubrik" className="text-xl font-medium text-fg">
             {m.mystery.pack}
           </h2>
-          {t.packQty !== null && t.packQty > 0 ? (
-            <p className="text-base text-muted">
-              {m.mystery.buySays(t.packQty, batchesForPacks(t.packQty, recipe.batchSize))}
+          {sentence ? (
+            <p
+              className={
+                sentence.tone === "act"
+                  ? "text-base font-medium text-signal-fg"
+                  : "text-base text-muted"
+              }
+            >
+              {sentence.text}
             </p>
           ) : null}
           <PackFlow

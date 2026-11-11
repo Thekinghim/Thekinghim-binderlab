@@ -227,10 +227,6 @@ export const sv = {
       `Kan packa ${batches(n)} ${inPlace(place)}${limiting ? ` · ${limiting} tar slut först` : ""}`,
     stockIn: (place: string, n: number) => `${place} ${f.int(n)}`,
     inMachines: (n: number) => `I automaterna ${f.int(n)}`,
-    buyPack: (n: number, batchesN: number) =>
-      `Inköp: packa ${f.int(n)}${NBSP}st (${batches(batchesN)})`,
-    buySays: (n: number, batchesN: number) =>
-      `Inköp säger packa ${f.int(n)}${NBSP}st (${batches(batchesN)}).`,
     pack: "Packa",
     addContents: "Lägg in innehållet",
     noContents: "Inget innehåll än.",

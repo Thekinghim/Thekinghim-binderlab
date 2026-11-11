@@ -30,6 +30,20 @@ export const t1: R2T1 = {
     packNow: (n) => `Pack ${batches(n)} now`,
     countNow: "Count the stock",
     askOwnerCount: "Ask the owner to count the stock.",
+    packBefore: (n, weekday) => `Pack ${batches(n)} before ${weekday}.`,
+    packToday: (n) => `Pack ${batches(n)} today.`,
+    packNew: (n, machine) => `New machine ${machine}: pack ${batches(n)}.`,
+    slotEmpty: (machine) => `${machine} is empty.`,
+    slotTomorrow: (machine) => `${machine} is empty tomorrow.`,
+    slotInDays: (machine, days) => `${machine} is empty in about ${f.int(days)} days.`,
+    moreSlots: (n) =>
+      n === 1
+        ? "1 more machine runs out this week."
+        : `${f.int(n)} more machines run out this week.`,
+    readyHome: (n) =>
+      n === 1 ? "1 batch is packed and ready." : `${f.int(n)} batches are packed and ready.`,
+    nothingToPack: "Nothing to pack this week.",
+    weekdays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
   },
 };
 

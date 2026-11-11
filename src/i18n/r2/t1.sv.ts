@@ -45,6 +45,31 @@ export const t1 = {
     packNow: (n: number) => `Packa ${batches(n)} nu`,
     countNow: "Räkna om lagret",
     askOwnerCount: "Be ägaren räkna om lagret.",
+    /** "Packa 1 omgång före fredag." */
+    packBefore: (n: number, weekday: string) => `Packa ${batches(n)} före ${weekday}.`,
+    packToday: (n: number) => `Packa ${batches(n)} i dag.`,
+    /** Ny automat utan historik, tomt fack. */
+    packNew: (n: number, machine: string) => `Ny automat ${machine}: packa ${batches(n)}.`,
+    slotEmpty: (machine: string) => `${machine} är tom.`,
+    slotTomorrow: (machine: string) => `${machine} är tom i morgon.`,
+    slotInDays: (machine: string, days: number) => `${machine} är tom om ca ${f.int(days)} dagar.`,
+    moreSlots: (n: number) =>
+      n === 1
+        ? "1 automat till blir tom i veckan."
+        : `${f.int(n)} automater till blir tomma i veckan.`,
+    readyHome: (n: number) =>
+      n === 1 ? "1 omgång ligger klar hemma." : `${f.int(n)} omgångar ligger klara hemma.`,
+    nothingToPack: "Inget att packa den här veckan.",
+    /** Måndag först. */
+    weekdays: [
+      "måndag",
+      "tisdag",
+      "onsdag",
+      "torsdag",
+      "fredag",
+      "lördag",
+      "söndag",
+    ] as readonly string[],
   },
 };
 

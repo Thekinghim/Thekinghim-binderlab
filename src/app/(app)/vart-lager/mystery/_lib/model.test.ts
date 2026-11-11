@@ -300,3 +300,130 @@ describe("minusFix (påfyllt utan att trycka Packa)", () => {
     expect(countHref("p1")).toBe("/vart-lager/inventering?lager=p1");
   });
 });
+
+describe("Packa N omgångar före en dag (räknat från facken)", () => {
+  const TODAY = "2026-11-10"; // tisdag
+  const facts = (over: Partial<import("./model").SlotFacts> = {}): import("./model").SlotFacts => ({
+    machineId: "m1",
+    label: "BL-001",
+    onHand: 9,
+    sold: 42, // 3 om dagen i 14 dagar
+    everSold: true,
+    ...over,
+  });
+  const load = async () => {
+    const model = await import("./model");
+    const { mysteryBatchesToPack } = await import("@/domain");
+    const { sv } = await import("@/i18n/sv");
+    const { en } = await import("@/i18n/en");
+    const plan = (
+      list: import("./model").SlotFacts[],
+      packedAtHome = 0,
+      weekShareOf?: (id: string) => readonly number[] | null,
+    ) =>
+      mysteryBatchesToPack({
+        batchSize: 14,
+        planPacks: 56,
+        packedAtHome,
+        slots: model.slotInputs(list, TODAY, weekShareOf),
+        today: TODAY,
+      });
+    return { ...model, plan, sv, en };
+  };
+
+  it("som i prod: 1 automat, 9 pack i facket, 3 om dagen ger 1 omgång före fredag", async () => {
+    const { plan, packSentence, sv } = await load();
+    const p = plan([facts()]);
+    expect(p).toMatchObject({ batches: 1, packs: 14, before: "2026-11-13" });
+    expect(packSentence(p, sv)).toEqual({
+      text: "Packa 1 omgång före fredag. BL-001 är tom om ca 3 dagar.",
+      tone: "act",
+    });
+  });
+
+  it("en omgång packad hemma: '1 omgång ligger klar hemma'", async () => {
+    const { plan, packSentence, sv } = await load();
+    const s = packSentence(plan([facts()], 14), sv);
+    expect(s?.tone).toBe("calm");
+    expect(s?.text).toBe("1 omgång ligger klar hemma. BL-001 är tom om ca 3 dagar.");
+  });
+
+  it("facket räcker längre än veckan: 'Inget att packa den här veckan.'", async () => {
+    const { plan, packSentence, sv } = await load();
+    expect(packSentence(plan([facts({ onHand: 14, sold: 14 })]), sv)).toEqual({
+      text: "Inget att packa den här veckan.",
+      tone: "calm",
+    });
+  });
+
+  it("tomt fack: 'Packa 1 omgång nu. BL-001 är tom.'", async () => {
+    const { plan, packSentence, sv } = await load();
+    expect(packSentence(plan([facts({ onHand: 0 })]), sv)?.text).toBe(
+      "Packa 1 omgång nu. BL-001 är tom.",
+    );
+  });
+
+  it("ny automat utan historik: 'Ny automat BL-004: packa 1 omgång.'", async () => {
+    const { plan, packSentence, sv } = await load();
+    const p = plan([facts({ label: "BL-004", onHand: null, sold: 0, everSold: false })]);
+    expect(packSentence(p, sv)?.text).toBe("Ny automat BL-004: packa 1 omgång.");
+  });
+
+  it("tom i morgon: packa i dag", async () => {
+    const { plan, packSentence, sv } = await load();
+    expect(packSentence(plan([facts({ onHand: 3 })]), sv)?.text).toBe(
+      "Packa 1 omgång i dag. BL-001 är tom i morgon.",
+    );
+  });
+
+  it("två automater: en omgång var, den som blir tom först nämns", async () => {
+    const { plan, packSentence, sv } = await load();
+    const p = plan([facts(), facts({ machineId: "m2", label: "BL-002", onHand: 12 })]);
+    expect(p?.batches).toBe(2);
+    expect(packSentence(p, sv)?.text).toBe(
+      "Packa 2 omgångar före fredag. BL-001 är tom om ca 3 dagar. 1 automat till blir tom i veckan.",
+    );
+  });
+
+  it("veckoformen flyttar dagen (helgen säljer mer)", async () => {
+    const { plan } = await load();
+    // 12 pack, 2 om dagen: platt snitt ger måndag 16 nov (6 dagar).
+    const flat = plan([facts({ onHand: 12, sold: 28 })]);
+    expect(flat?.before).toBe("2026-11-16");
+    // Automaten säljer bara på helgen (7 om dagen då): slut redan på söndagen.
+    const weekend = plan([facts({ onHand: 12, sold: 28 })], 0, () => [0, 0, 0, 0, 0, 1, 1]);
+    expect(weekend?.before).toBe("2026-11-15");
+  });
+
+  it("aldrig strängen 'packa 56 st'", async () => {
+    const { plan, packSentence, sv, en } = await load();
+    for (const t of [sv, en]) {
+      for (const p of [
+        plan([facts()]),
+        plan([facts()], 14),
+        plan([]),
+        plan([facts({ onHand: 0 })]),
+      ]) {
+        expect(packSentence(p, t)?.text ?? "").not.toMatch(/56|st\b/);
+      }
+    }
+  });
+
+  it("engelska för delägaren", async () => {
+    const { plan, packSentence, en } = await load();
+    expect(packSentence(plan([facts()]), en)?.text).toBe(
+      "Pack 1 batch before Friday. BL-001 is empty in about 3 days.",
+    );
+    expect(packSentence(plan([facts()], 14), en)?.text).toBe(
+      "1 batch is packed and ready. BL-001 is empty in about 3 days.",
+    );
+    expect(packSentence(plan([]), en)?.text).toBe("Nothing to pack this week.");
+  });
+
+  it("utan fack-underlag (planens antal) visas ingen mening", async () => {
+    const { packSentence, sv } = await load();
+    const { mysteryBatchesToPack } = await import("@/domain");
+    expect(packSentence(mysteryBatchesToPack({ batchSize: 14, planPacks: 56 }), sv)).toBeNull();
+    expect(packSentence(null, sv)).toBeNull();
+  });
+});

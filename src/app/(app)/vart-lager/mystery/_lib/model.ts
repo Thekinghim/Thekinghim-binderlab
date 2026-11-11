@@ -13,7 +13,17 @@
  *   butikens andel), även för ett utkast som inte är sparat ("vad händer om").
  */
 
-import { recipeCost, unitMargin } from "@/domain";
+import { sellOut } from "@/analytics/sellout";
+import {
+  dayOfWeek,
+  recipeCost,
+  unitMargin,
+  type IsoDate,
+  type MysteryDueSlot,
+  type MysteryPackPlan,
+  type MysterySlotInput,
+} from "@/domain";
+import type { Messages } from "@/i18n/sv";
 
 /** En rad i innehållet: en titel, antal per omgång och om den är en HIT. */
 export interface RecipeItem {
@@ -361,4 +371,93 @@ export function packInPlaceHref(titleId: string, placeId: string, packs: number)
 /** Inventeringen av ett eget lager. */
 export function countHref(placeId: string): string {
   return `/vart-lager/inventering?lager=${placeId}`;
+}
+
+// ---------------------------------------------------------------------------
+// "Packa 1 omgång före fredag": räknat från facken i automaterna
+// ---------------------------------------------------------------------------
+
+/** Fönstret för takten i ett mystery-fack (hela dagar t.o.m. i går), som Fyll på. */
+export const SLOT_WINDOW_DAYS = 14;
+
+/** Ett mystery-fack i en automat, som laddaren läser det. */
+export interface SlotFacts {
+  readonly machineId: string;
+  /** Automatens kod ("BL-001"). */
+  readonly label: string;
+  /** Pack i facket nu, null = inget känt saldo (aldrig läst eller påfyllt). */
+  readonly onHand: number | null;
+  /** Sålda pack de senaste SLOT_WINDOW_DAYS hela dagarna. */
+  readonly sold: number;
+  /** Automaten har sålt titeln någon gång. */
+  readonly everSold: boolean;
+}
+
+/**
+ * Facken som mysteryBatchesToPack() vill ha dem: dagen varje fack blir tomt räknas med
+ * sellOut() (samma slutdag som resten av appen). `weekShareOf` ger automatens veckoform när
+ * den finns (helgen säljer mer); utan den räknas ett platt snitt.
+ */
+export function slotInputs(
+  facts: readonly SlotFacts[],
+  today: IsoDate,
+  weekShareOf?: (machineId: string) => readonly number[] | null | undefined,
+): MysterySlotInput[] {
+  return facts.map((f) => {
+    const onHand = Math.max(0, Math.trunc(f.onHand ?? 0));
+    const out =
+      onHand > 0
+        ? sellOut({
+            onHand,
+            dailyAvg: { units: Math.max(0, f.sold), days: SLOT_WINDOW_DAYS },
+            from: today,
+            weekShare: weekShareOf?.(f.machineId) ?? null,
+          })
+        : null;
+    return { label: f.label, onHand, emptyOn: out?.date ?? null, isNew: !f.everSold };
+  });
+}
+
+/** Meningen om vad som ska packas, och om den är en uppmaning ("act") eller lugn ("calm"). */
+export interface PackSentence {
+  readonly text: string;
+  readonly tone: "act" | "calm";
+}
+
+type PackTexts = Messages["r2"]["t1"]["mystery"];
+
+function slotText(d: MysteryDueSlot, m: PackTexts): string {
+  if (d.emptyNow) return m.slotEmpty(d.label);
+  return d.daysLeft <= 1 ? m.slotTomorrow(d.label) : m.slotInDays(d.label, d.daysLeft);
+}
+
+/**
+ * En mening för kortet och sidan:
+ * - "Packa 1 omgång före fredag. BL-001 är tom om ca 3 dagar."
+ * - "Packa 1 omgång nu. BL-001 är tom." · "Ny automat BL-004: packa 1 omgång."
+ * - "1 omgång ligger klar hemma. BL-001 är tom om ca 3 dagar."
+ * - "Inget att packa den här veckan."
+ * null utan innehåll (inget mystery pack) eller när facken inte är kända.
+ */
+export function packSentence(plan: MysteryPackPlan | null, t: Messages): PackSentence | null {
+  if (!plan || plan.basis !== "slots") return null;
+  const m = t.r2.t1.mystery;
+  const first = plan.first ?? null;
+  if (plan.batches > 0 && first) {
+    const lead = first.emptyNow
+      ? first.isNew
+        ? m.packNew(plan.batches, first.label)
+        : `${m.packNow(plan.batches)}. ${m.slotEmpty(first.label)}`
+      : first.daysLeft <= 1
+        ? `${m.packToday(plan.batches)} ${m.slotTomorrow(first.label)}`
+        : `${m.packBefore(plan.batches, m.weekdays[dayOfWeek(first.emptyOn) - 1] ?? "")} ${m.slotInDays(first.label, first.daysLeft)}`;
+    const more = plan.batches - 1;
+    return { text: more > 0 ? `${lead} ${m.moreSlots(more)}` : lead, tone: "act" };
+  }
+  if (plan.readyBatches > 0) {
+    const next = plan.due?.[0];
+    const ready = m.readyHome(plan.readyBatches);
+    return { text: next ? `${ready} ${slotText(next, m)}` : ready, tone: "calm" };
+  }
+  return { text: m.nothingToPack, tone: "calm" };
 }

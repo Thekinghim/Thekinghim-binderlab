@@ -355,8 +355,6 @@ export const en: Messages = {
       `Can pack ${batches(n)} ${inPlace(place)}${limiting ? ` · ${limiting} runs out first` : ""}`,
     stockIn: (place, n) => `${placeName(place)} ${f.int(n)}`,
     inMachines: (n) => `In the machines ${f.int(n)}`,
-    buyPack: (n, batchesN) => `Suggested: pack ${f.int(n)} (${batches(batchesN)})`,
-    buySays: (n, batchesN) => `Suggested: pack ${f.int(n)} (${batches(batchesN)}).`,
     pack: "Pack",
     addContents: "Add the contents",
     noContents: "No contents yet.",
