@@ -1138,6 +1138,25 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: id("purchase_orders"),
   },
+  // Runda 2 (T3): "Beställt", "Kom fram" och "Kommer inte" direkt på inköpslistan
+  {
+    module: "@/app/(app)/prognos/actions",
+    name: "markOrdered",
+    allowed: OP,
+    args: (c) => [sink(c, { quantity: 1 })],
+  },
+  {
+    module: "@/app/(app)/prognos/actions",
+    name: "markArrived",
+    allowed: OP,
+    args: (c) => [sink(c, { quantity: 1 })],
+  },
+  {
+    module: "@/app/(app)/prognos/actions",
+    name: "markNotComing",
+    allowed: OP,
+    args: (c) => [sink(c)],
+  },
   // Rapporter
   {
     module: "@/app/(app)/rapporter/actions",
