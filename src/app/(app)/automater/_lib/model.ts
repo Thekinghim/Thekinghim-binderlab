@@ -15,6 +15,8 @@ import {
 } from "@/analytics/health";
 import { sellOut, type WeekShare } from "@/analytics/sellout";
 import { computeTodos, TODO_DEFAULTS, type AnalyticsOrder, type TodoItem } from "@/analytics/todos";
+import { retiredPairs, withoutRetiredRefills, type SlotPeriod } from "@/analytics/todos/assortment";
+import { businessDateAt } from "@/analytics/todos/time";
 import type { VisitPlan } from "@/analytics/visits";
 import {
   addDays,
@@ -233,13 +235,18 @@ export function machineSignals(args: {
    * slutdag som Att göra. Utelämnad: formen räknas ur orderna (15 dagar räcker inte: platt).
    */
   weekShares?: ReadonlyMap<string, WeekShare> | null;
+  /**
+   * Sortimentets perioder: påfyllningar av titlar som gått ur automaten räknas inte (som i
+   * Att göra), så att antal och kronor per automat är desamma på båda sidorna.
+   */
+  slotPeriods?: readonly SlotPeriod[] | null;
 }): MachineSignals {
   const { recent, stock, master, now, timeZone } = args;
   const refill = new Map<string, TodoItem[]>();
   const health = new Map<string, MachineHealth>();
   let stake = new Map<string, number>();
   try {
-    const todos = computeTodos(
+    const computed = computeTodos(
       {
         ...recent.sources,
         orders: recent.current.orders,
@@ -254,6 +261,8 @@ export function machineSignals(args: {
       now,
       args.weekShares ? { weekShares: args.weekShares } : {},
     );
+    const retired = retiredPairs(args.slotPeriods ?? [], businessDateAt(now, timeZone));
+    const todos = retired.size === 0 ? computed : withoutRetiredRefills(computed, retired);
     for (const t of todos) {
       if (t.kind !== "refill") continue;
       const machineId = t.evidence.machineIds[0];
@@ -1323,7 +1332,7 @@ export interface MachineNeed {
   readonly status: MachineStatusView["status"];
   /** Intäkt i risk de närmaste 7 dagarna (öre). 0 när inget står på spel eller inte visas. */
   readonly stakeOre: number;
-  /** "Tappar ca 1 700 kr den här veckan", eller null. */
+  /** "1 700 kr i risk den här veckan" (samma mått och ord som Att göra), eller null. */
   readonly stakeText: string | null;
   /** "Fyll på senast torsdag." (besöksplanens dag) för "Fyll på snart", annars null. */
   readonly refillBy: string | null;
@@ -1373,7 +1382,8 @@ export function machineNeeds(
         reason: r.status.reason,
         status: r.status.status,
         stakeOre,
-        stakeText: stakeOre > 0 ? `Tappar ca ${kr(stakeOre)} den här veckan` : null,
+        // Samma ord som Att göra och Hem ("1 040 kr i risk"): samma mått, 7 dagars intäkt.
+        stakeText: stakeOre > 0 ? `${kr(stakeOre)} i risk den här veckan` : null,
         refillBy: by && options.today ? refillByText(by, options.today) : null,
         action: refill
           ? { label: "Fyll på", href: `/fyll-pa/${r.id}` }
@@ -1391,7 +1401,7 @@ export function needsHeadline(needs: readonly MachineNeed[], machines: number): 
   const urgent = needs.filter((n) => n.status === "critical").length;
   if (needs.length === 0) return "Alla automater rullar.";
   const total = needsStake(needs);
-  const money = total > 0 ? ` Ca ${kr(total)} står på spel i veckan.` : "";
+  const money = total > 0 ? ` Ca ${kr(total)} i risk den här veckan.` : "";
   // Kronorna är summan av alla rader: finns det också rader som bara är "snart" nämns de,
   // så att antalet och beloppet gäller samma automater.
   const later = needs.length - urgent;

@@ -65,7 +65,7 @@ describe("Behöver dig: kronor på varje rad, dyrast först", () => {
       ["BL-4", 9_000],
       ["BL-5", 0],
     ]);
-    expect(plain(needs[1]!.stakeText)).toBe("Tappar ca 1 700 kr den här veckan");
+    expect(plain(needs[1]!.stakeText)).toBe("1 700 kr i risk den här veckan");
     expect(needs[4]!.stakeText).toBeNull();
   });
 
@@ -73,14 +73,14 @@ describe("Behöver dig: kronor på varje rad, dyrast först", () => {
     const needs = machineNeeds(rows.slice(0, 3));
     expect(needsStake(needs)).toBe(420_000);
     expect(plain(needsHeadline(needs, 5))).toBe(
-      "3 automater behöver dig nu. Ca 4 200 kr står på spel i veckan.",
+      "3 automater behöver dig nu. Ca 4 200 kr i risk den här veckan.",
     );
     expect(plain(needsHeadline(machineNeeds([rows[3]!]), 5))).toBe(
-      "1 automat behöver dig snart. Ca 9 000 kr står på spel i veckan.",
+      "1 automat behöver dig snart. Ca 9 000 kr i risk den här veckan.",
     );
     // Rader på båda nivåerna: antalet och beloppet gäller samma automater.
     expect(plain(needsHeadline(machineNeeds(rows), 5))).toBe(
-      "3 automater behöver dig nu, 2 snart. Ca 13 200 kr står på spel i veckan.",
+      "3 automater behöver dig nu, 2 snart. Ca 13 200 kr i risk den här veckan.",
     );
     // Inget står på spel: bara första meningen.
     expect(plain(needsHeadline(machineNeeds([rows[4]!]), 5))).toBe("1 automat behöver dig snart.");

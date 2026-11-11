@@ -30,8 +30,9 @@ export interface SuggestionCard {
   readonly dataDate?: string;
 }
 
+// Under md når träffytan 44 px (::before), som knapparna bredvid (Button size="sm").
 const linkButton =
-  "inline-flex h-7 items-center justify-center gap-2 rounded-sm border border-transparent px-2.5 text-sm font-medium whitespace-nowrap text-muted transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg";
+  "relative inline-flex h-7 items-center justify-center gap-2 rounded-sm border border-transparent px-2.5 text-sm font-medium whitespace-nowrap text-muted transition-colors duration-fast ease-instrument hover:bg-hover hover:text-fg max-md:before:absolute max-md:before:inset-x-0 max-md:before:-inset-y-2.5 max-md:before:content-['']";
 
 /** Frågan som "Fråga assistenten" fyller i. */
 export function askHref(s: SuggestionCard): string {

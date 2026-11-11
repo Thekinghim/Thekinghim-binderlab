@@ -28,6 +28,7 @@ import { storeContractStates, type StoreContractState } from "@/analytics/contra
 import { loadSignableContractsFor } from "@/server/contracts";
 import type { Viewer } from "@/server/data/core/loaders";
 import { weekShapesInRequest } from "@/server/data/week-shapes";
+import { loadSlotPeriodsFor } from "@/server/data/assortment";
 import type { DomainInput, MasterData } from "@/server/data/core/types";
 import { requestPageLoaders, type PageLoaders } from "@/server/data/page-loaders";
 
@@ -136,7 +137,7 @@ function hasOrdersOn(orders: readonly { businessDate: IsoDate }[], day: IsoDate)
 }
 
 async function signalsFor(ctx: AppContext, loaders: PageLoaders = requestPageLoaders()) {
-  const [recent, stock, master, health, weekShares] = await Promise.all([
+  const [recent, stock, master, health, weekShares, slotPeriods] = await Promise.all([
     loaders.domainInput({ period: recentWindow(ctx.today) }),
     loaders.stock(),
     loaders.masterData(),
@@ -149,6 +150,15 @@ async function signalsFor(ctx: AppContext, loaders: PageLoaders = requestPageLoa
     // Veckans form per automat: samma karta som Att göra, Lager och Besök. Automater läser
     // bara de senaste dagarnas order och kan inte räkna formen själv.
     loaders.viewer().then((viewer) => weekShapesInRequest(viewer, ctx.today)),
+    // Sortimentet: en titel som gått ur automaten ska inte fyllas på (som i Att göra). Ett
+    // fel här stoppar inte sidan: då räknas alla titlar som förut.
+    loaders
+      .viewer()
+      .then((viewer) => loadSlotPeriodsFor(viewer))
+      .catch((error: unknown) => {
+        console.error("[automater] Sortimentet kunde inte läsas:", error);
+        return [];
+      }),
   ]);
   return {
     recent,
@@ -163,6 +173,7 @@ async function signalsFor(ctx: AppContext, loaders: PageLoaders = requestPageLoa
       timeZone: ctx.timeZone,
       health,
       weekShares,
+      slotPeriods,
     }),
   };
 }

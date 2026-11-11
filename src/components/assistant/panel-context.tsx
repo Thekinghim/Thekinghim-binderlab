@@ -130,7 +130,8 @@ export function PageTip({ route, className }: { route: TipRoute; className?: str
     <div
       data-testid="ai-tip"
       className={cn(
-        "flex min-w-0 animate-[bl-rise_0.4s_ease-out] items-center gap-2 rounded-sm border border-line px-3 py-2 text-sm",
+        // Mobil: knappen är 44 px hög (träffytan), så raden behöver ingen egen luft.
+        "flex min-w-0 animate-[bl-rise_0.4s_ease-out] items-center gap-2 rounded-sm border border-line px-3 py-2 text-sm max-md:py-0",
         className,
       )}
     >
@@ -138,10 +139,12 @@ export function PageTip({ route, className }: { route: TipRoute; className?: str
       <button
         type="button"
         onClick={() => panel.open(tipQuestion(tip), { send: true })}
-        className="min-w-0 flex-1 truncate text-left text-fg hover:underline"
+        className="flex min-w-0 flex-1 items-center text-left text-fg hover:underline max-md:min-h-11"
         title={tip.why}
       >
-        <span className="text-muted">Tips:</span> {tip.title}
+        <span className="min-w-0 truncate">
+          <span className="text-muted">Tips:</span> {tip.title}
+        </span>
       </button>
       <IconButton
         icon="close"
