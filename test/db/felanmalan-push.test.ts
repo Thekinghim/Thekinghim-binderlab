@@ -99,6 +99,12 @@ beforeAll(async () => {
       sql`update public.stores set name = 'Sega gubben', phone = '040-12 34 56'
           where id = ${cast.A.storeId}::uuid`,
     );
+    // Ägaren har Notiser på (organisationens ägare börjar med bara e-post).
+    await tx.execute(
+      sql`insert into public.alert_subscriptions (organization_id, user_id, channels, active)
+          values (${cast.A.orgId}::uuid, ${p.owner.user!.id}::uuid, array['push', 'email'], true)
+          on conflict (organization_id, user_id) do update set channels = array['push', 'email'], active = true`,
+    );
     // Påfyllaren är automatens ansvariga.
     await tx.execute(
       sql`update public.machines set responsible_user_id = ${p.refiller.user!.id}::uuid
@@ -248,9 +254,9 @@ describe("butikens felanmälan plingar direkt", () => {
           returning id`,
     );
     expect((await notifyFaultReported(db(), other.id)).skipped).toBe("not_store_fault");
-    expect(
-      (await notifyFaultReported(db(), "00000000-0000-4000-8000-000000000000")).skipped,
-    ).toBe("not_found");
+    expect((await notifyFaultReported(db(), "00000000-0000-4000-8000-000000000000")).skipped).toBe(
+      "not_found",
+    );
     // Ogiltigt id: frågan misslyckas, men funktionen kastar inte.
     expect(await notifyFaultReported(db(), "inte-ett-id")).toEqual({
       sent: 0,

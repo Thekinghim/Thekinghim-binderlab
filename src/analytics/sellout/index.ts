@@ -14,6 +14,11 @@
  * domänens `stockoutDate` och `daysOfStockLeft` (se index.test.ts), så ett anrop kan bytas
  * utan att någon siffra ändras.
  *
+ * Veckoformen per automat räknas i ./week-shape (weekShape, weekShapes: 28 dagar t.o.m. i
+ * går; under 28 dagars försäljning ingen form, alltså platt snitt). Sidor som bara har de
+ * senaste dagarnas order hämtar formerna med loadWeekShapes (@/server/data/week-shapes).
+ * Meningen "Tar slut på lördag – fyll på senast fredag" finns i ./text (sellOutPhrase).
+ *
  * Rena funktioner: ingen databas, ingen klocka.
  */
 

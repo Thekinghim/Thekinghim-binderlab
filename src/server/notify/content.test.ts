@@ -5,6 +5,8 @@ import { evidence } from "@/analytics/todos/common";
 import type { IsoDate } from "@/domain";
 
 import {
+  caseLink,
+  faultPush,
   fillLink,
   machineLabel,
   pushPayload,
@@ -96,7 +98,10 @@ describe("push om påfyllning", () => {
     const ctx: PushContext = {
       today: TODAY,
       machines: new Map([
-        ["m3", machine("BL-003", "Sega gubben", { empty: 3, soon: 2, soonDates: [SATURDAY, SATURDAY] })],
+        [
+          "m3",
+          machine("BL-003", "Sega gubben", { empty: 3, soon: 2, soonDates: [SATURDAY, SATURDAY] }),
+        ],
       ]),
     };
     const out = refillPush(delivery([low("m3", "t1", "empty")]), ctx);
@@ -221,5 +226,52 @@ describe("push om påfyllning", () => {
       body: "2 slut. Tryck för att fylla på.",
       url: "/fyll-pa/m3",
     });
+  });
+});
+
+describe("push om butikens felanmälan", () => {
+  const base = {
+    incidentId: "i1",
+    machineId: "m3",
+    place: "Sega gubben",
+    fault: "Betalningen fungerar inte",
+    phone: "040-12 34 56",
+    canOpenCase: true,
+  };
+
+  it("ägare och admin: butik och fel i rubriken, trycket öppnar ärendet", () => {
+    expect(faultPush(base)).toEqual({
+      title: "Sega gubben: Betalningen fungerar inte",
+      body: "Butiken har felanmält automaten. Tryck för att ringa butiken.",
+      url: "/inkorg/i1",
+      tag: "fel-i1",
+      severity: "critical",
+    });
+    expect(caseLink("i1")).toBe("/inkorg/i1");
+  });
+
+  it("utan telefonnummer: tryck för att öppna ärendet", () => {
+    expect(faultPush({ ...base, phone: null }).body).toBe(
+      "Butiken har felanmält automaten. Tryck för att öppna ärendet.",
+    );
+    expect(faultPush({ ...base, phone: "  " }).body).toBe(
+      "Butiken har felanmält automaten. Tryck för att öppna ärendet.",
+    );
+  });
+
+  it("påfyllaren: numret i texten och länken till Fyll på", () => {
+    expect(faultPush({ ...base, canOpenCase: false })).toMatchObject({
+      body: "Butiken har felanmält automaten. Ring butiken: 040-12 34 56.",
+      url: "/fyll-pa/m3",
+    });
+    expect(faultPush({ ...base, canOpenCase: false, phone: null }).body).toBe(
+      "Butiken har felanmält automaten. Säg till ägaren.",
+    );
+  });
+
+  it("en mycket lång rubrik kortas", () => {
+    const long = faultPush({ ...base, place: "B".repeat(200) });
+    expect(long.title).toHaveLength(120);
+    expect(long.title.endsWith("…")).toBe(true);
   });
 });

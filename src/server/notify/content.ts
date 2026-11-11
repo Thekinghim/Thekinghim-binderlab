@@ -277,7 +277,9 @@ export function pushPayloads(delivery: AlertDelivery, ctx: PushContext = {}): Pu
   if (rest.length === 0) return [refill];
   const first = rest[0];
   const subject =
-    rest.length > 1 && first ? `${rest.length} larm: ${first.title} med flera` : (first?.title ?? "");
+    rest.length > 1 && first
+      ? `${rest.length} larm: ${first.title} med flera`
+      : (first?.title ?? "");
   return [refill, pushPayload({ ...delivery, items: rest, subject })];
 }
 

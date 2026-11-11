@@ -32,8 +32,18 @@ describe("machinesJustLow", () => {
   });
 
   it("flera automater: varje automat en gång, sorterade", () => {
-    const before = [slot("m2", "t1", 1), slot("m2", "t2", 2), slot("m1", "t1", 1), slot("m3", "t1", 9)];
-    const after = [slot("m2", "t1", 0), slot("m2", "t2", 0), slot("m1", "t1", 0), slot("m3", "t1", 8)];
+    const before = [
+      slot("m2", "t1", 1),
+      slot("m2", "t2", 2),
+      slot("m1", "t1", 1),
+      slot("m3", "t1", 9),
+    ];
+    const after = [
+      slot("m2", "t1", 0),
+      slot("m2", "t2", 0),
+      slot("m1", "t1", 0),
+      slot("m3", "t1", 8),
+    ];
     expect(machinesJustLow(before, after)).toEqual(["m1", "m2"]);
   });
 

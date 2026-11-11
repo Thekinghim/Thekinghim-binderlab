@@ -150,8 +150,7 @@ export function refillTodos(ctx: TodoContext, opts: RefillOptions = {}): TodoIte
   const windowStart = addDays(asOf, -(options.refillWindowDays - 1));
 
   // Veckans form per automat: helgen säljer mer, så slutdagen räknas dag för dag (sellOut).
-  const shapes =
-    opts.weekShares ?? weekShapes(input.orders, { asOf, machines: input.machines });
+  const shapes = opts.weekShares ?? weekShapes(input.orders, { asOf, machines: input.machines });
 
   const byPair = new Map<string, AnalyticsOrder[]>();
   for (const o of input.orders) {

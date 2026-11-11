@@ -270,12 +270,7 @@ export async function deliverDue(
         organizationName: org?.name ?? "Binderlab",
         idempotencyKey: row.id,
         push: {
-          ...(await loadPushContext(
-            tx,
-            row.organizationId,
-            items,
-            businessDateAt(now, timeZone),
-          )),
+          ...(await loadPushContext(tx, row.organizationId, items, businessDateAt(now, timeZone))),
           lang: await userLang(tx, row.organizationId, row.userId),
         },
       });

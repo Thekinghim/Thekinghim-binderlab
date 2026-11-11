@@ -126,11 +126,14 @@ describe("samma slutdag i Att göra, larmen och besöksplanen", () => {
     expect(without.stop!.packs.find((p) => p.titleId === "t1")?.stockoutDate).toBe("2026-11-14");
     // Med formerna: fredag, som Att göra med full historik.
     const withShapes = all(recent, 28, shapes);
-    expect(withShapes.stop!.packs.find((p) => p.titleId === "t1")?.stockoutDate).toBe(
-      "2026-11-13",
-    );
+    expect(withShapes.stop!.packs.find((p) => p.titleId === "t1")?.stockoutDate).toBe("2026-11-13");
     const ctx = createTodoContext(
-      input({ orders: recent, stock: [{ machineId: "m1", titleId: "t1", onHand: 28 }], titles, machines }),
+      input({
+        orders: recent,
+        stock: [{ machineId: "m1", titleId: "t1", onHand: 28 }],
+        titles,
+        machines,
+      }),
       NOW,
     );
     const [viaOption] = refillTodos(ctx, { weekShares: shapes });
