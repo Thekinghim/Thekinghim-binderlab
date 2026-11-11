@@ -36,6 +36,8 @@ import { getServerEnv } from "@/lib/env";
 import { contractTermsSchema } from "../butiker/_lib/validation";
 import { resolveAppBaseUrl } from "@/server/request-info";
 
+import { moveContractStartFor, StartMoveError, type StartMoveResult } from "./_lib/start-move";
+
 export type ActionResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
 function failure(error: unknown): { ok: false; error: string } {
@@ -46,6 +48,7 @@ function failure(error: unknown): { ok: false; error: string } {
   if (
     error instanceof AccountingError ||
     error instanceof ContractError ||
+    error instanceof StartMoveError ||
     error instanceof AuthorizationError ||
     error instanceof DomainError
   ) {
@@ -140,6 +143,27 @@ export async function saveContract(raw: unknown): Promise<ActionResult<{ id: str
     const viewer = await operator();
     const input = contractSchema.parse(raw);
     const data = await saveContractFor(viewer, input);
+    await revalidateSettlementData();
+    return { ok: true, data };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/**
+ * "Ändra start till 14 okt.": kontraktet (och dess villkor) börjar första dagen med
+ * försäljning utan signerat kontrakt. Dagen räknas på servern. Mallkontraktets PDF skrivs
+ * ut på nytt, så att butiken ser den nya dagen innan de signerar.
+ */
+export async function moveContractStart(raw: unknown): Promise<ActionResult<StartMoveResult>> {
+  try {
+    const viewer = await operator();
+    const input = z.object({ contractId: z.uuid() }).parse(raw);
+    const data = await moveContractStartFor(viewer, input.contractId, {
+      today: businessToday(new Date(), viewer.organization.timezone),
+      renderPdf: pdfStatus().configured ? (html) => getPdfRenderer().renderHtml(html) : null,
+      fileStore: () => contractFileStore(),
+    });
     await revalidateSettlementData();
     return { ok: true, data };
   } catch (error) {

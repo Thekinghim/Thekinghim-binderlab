@@ -3,10 +3,15 @@ import { describe, expect, it } from "vitest";
 import {
   buildContractRows,
   contractHeadline,
+  firstSaleLabelFor,
+  planStartMove,
   revenueRiskHeadline,
+  startFix,
   startHint,
+  uncoveredCardText,
   uncoveredSales,
   uncoveredText,
+  type AgreementInput,
   type ContractInput,
 } from "./model";
 
@@ -211,5 +216,140 @@ describe("startHint", () => {
       "Täcker försäljningen sedan 14\u00a0okt.",
     );
     expect(startHint(null, "2026-11-03", "2026-11-04")).toBeUndefined();
+  });
+});
+
+describe("Ändra start till 14 okt. (kortet på Kontrakt)", () => {
+  const sega = [{ id: "a", name: "Sega gubben" }];
+  const sales = new Map([["a", { firstSale: "2026-10-14", lastSale: "2026-11-02" }]]) as never;
+  const nb = (t: string) => t.replace(/\u00a0/g, " ");
+  const terms = (p: Partial<AgreementInput> & { id: string }): AgreementInput => ({
+    storeId: "a",
+    contractId: "k",
+    validFrom: "2026-11-03",
+    validTo: null,
+    commissionBp: 5_000,
+    monthlyRentOre: null,
+    commissionBase: "profit_after_costs",
+    ...p,
+  });
+  const gap = (contracts: ContractInput[]) =>
+    uncoveredSales({ stores: sega, sales, contracts, today: TODAY })[0]!;
+  const unsigned = contract({ id: "k", storeId: "a", template: "t", validFrom: "2026-11-03" });
+
+  it("osignerat kontrakt som börjar efter första försäljningen: knappen med dagen", () => {
+    const u = gap([unsigned]);
+    expect(nb(uncoveredCardText(u, TODAY))).toBe("Sålt sedan 14 okt. utan signerat kontrakt.");
+    const fix = startFix(u, TODAY);
+    expect(fix).toMatchObject({ contractId: "k", to: "2026-10-14", from: "2026-11-03" });
+    expect(nb(fix!.label)).toBe("Ändra start till 14 okt.");
+    expect(nb(fix!.now)).toBe("Kontraktet börjar 3 nov.");
+  });
+
+  it("ingen knapp när kontraktet redan börjar första dagen, är signerat eller saknas", () => {
+    expect(startFix(gap([{ ...unsigned, validFrom: "2026-10-14" }]), TODAY)).toBeNull();
+    const signedLater = gap([{ ...unsigned, signedAt: "2026-11-03T10:00:00Z" }]);
+    expect(signedLater.unsignedId).toBeNull();
+    expect(startFix(signedLater, TODAY)).toBeNull();
+  });
+
+  it("kontraktets villkor flyttas med till samma dag", () => {
+    const fix = startFix(gap([unsigned]), TODAY)!;
+    expect(
+      planStartMove({
+        fix,
+        storeName: "Sega gubben",
+        agreements: [terms({ id: "v" })],
+        today: TODAY,
+      }),
+    ).toEqual({ ok: true, moveAgreementId: "v" });
+  });
+
+  it("villkoren gäller redan från första dagen: bara kontraktet ändras", () => {
+    const fix = startFix(gap([unsigned]), TODAY)!;
+    expect(
+      planStartMove({
+        fix,
+        storeName: "Sega gubben",
+        agreements: [terms({ id: "v", validFrom: "2026-10-14" })],
+        today: TODAY,
+      }),
+    ).toEqual({ ok: true, moveAgreementId: null });
+    // Kontrakt utan egna villkor, men butikens villkor gäller den dagen.
+    expect(
+      planStartMove({
+        fix,
+        storeName: "Sega gubben",
+        agreements: [terms({ id: "v", contractId: null, validFrom: "2026-10-01" })],
+        today: TODAY,
+      }),
+    ).toEqual({ ok: true, moveAgreementId: null });
+  });
+
+  it("andra villkor i vägen, eller inga villkor: säger vad som saknas", () => {
+    const fix = startFix(gap([unsigned]), TODAY)!;
+    const blocked = planStartMove({
+      fix,
+      storeName: "Sega gubben",
+      agreements: [
+        terms({ id: "v" }),
+        terms({ id: "gamla", contractId: null, validFrom: "2026-10-14", validTo: "2026-11-02" }),
+      ],
+      today: TODAY,
+    });
+    expect(blocked.ok).toBe(true);
+    // Samma villkor de dagarna (Ny butik-guidens, avslutade dagen före): bara kontraktet.
+    expect(blocked).toEqual({ ok: true, moveAgreementId: null });
+    const other = planStartMove({
+      fix,
+      storeName: "Sega gubben",
+      agreements: [
+        terms({ id: "v" }),
+        terms({
+          id: "gamla",
+          contractId: null,
+          validFrom: "2026-10-14",
+          validTo: "2026-11-02",
+          commissionBp: 4_000,
+        }),
+      ],
+      today: TODAY,
+    });
+    expect(nb(other.ok ? "" : other.reason)).toBe(
+      "Sega gubben har andra villkor från 14 okt. Ändra dem under Butiker först.",
+    );
+    // Samma villkor, men bara en del av dagarna: knappen gissar inte.
+    const partly = planStartMove({
+      fix,
+      storeName: "Sega gubben",
+      agreements: [
+        terms({ id: "v" }),
+        terms({ id: "gamla", contractId: null, validFrom: "2026-10-20", validTo: "2026-11-02" }),
+      ],
+      today: TODAY,
+    });
+    expect(partly.ok).toBe(false);
+    const none = planStartMove({ fix, storeName: "Sega gubben", agreements: [], today: TODAY });
+    expect(nb(none.ok ? "" : none.reason)).toBe(
+      "Sega gubben har inga villkor från 14 okt. Lägg in dem under Butiker först.",
+    );
+    // Villkor som slutade före luckan står inte i vägen.
+    expect(
+      planStartMove({
+        fix,
+        storeName: "Sega gubben",
+        agreements: [
+          terms({ id: "v" }),
+          terms({ id: "gamla", contractId: null, validFrom: "2026-09-01", validTo: "2026-10-13" }),
+        ],
+        today: TODAY,
+      }),
+    ).toEqual({ ok: true, moveAgreementId: "v" });
+  });
+
+  it("Skapa kontrakt: länken Använd 14 okt. bara när starten ligger efter första försäljningen", () => {
+    expect(nb(firstSaleLabelFor("2026-10-14", "2026-11-03", TODAY) ?? "")).toBe("Använd 14 okt.");
+    expect(firstSaleLabelFor("2026-10-14", "2026-10-14", TODAY)).toBeNull();
+    expect(firstSaleLabelFor(null, "2026-11-03", TODAY)).toBeNull();
   });
 });

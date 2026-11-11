@@ -21,7 +21,7 @@ import {
   termsPayload,
   type TermsDraft,
 } from "../_lib/terms";
-import { startHint } from "../_lib/model";
+import { firstSaleLabelFor, startHint } from "../_lib/model";
 import { SignOnSite } from "./sign-on-site";
 import { TermsFields } from "./terms-fields";
 
@@ -95,6 +95,7 @@ export function CreateContract({
 
   const option = options.find((o) => o.value === target);
   const checked = useMemo(() => checkTerms(terms), [terms]);
+  const firstSaleLabel = firstSaleLabelFor(option?.firstSale ?? null, validFrom, today);
   const preview = useMemo(() => {
     if (step !== 2 || !checked.ok || !option) return "";
     return contractHtml({
@@ -271,6 +272,19 @@ export function CreateContract({
                   }}
                   hint={startHint(option?.firstSale ?? null, validFrom, today)}
                 />
+                {firstSaleLabel && option?.firstSale ? (
+                  <button
+                    type="button"
+                    data-use-first-sale
+                    onClick={() => {
+                      setValidFrom(option.firstSale ?? validFrom);
+                      setConfirm(undefined);
+                    }}
+                    className="-mt-2 w-fit rounded-xs text-sm font-medium text-fg underline underline-offset-4 max-md:min-h-11"
+                  >
+                    {firstSaleLabel}
+                  </button>
+                ) : null}
                 <Link
                   href="/butiker/ny"
                   className="meta w-fit rounded-xs text-subtle underline-offset-4 hover:text-fg hover:underline max-md:tap"
