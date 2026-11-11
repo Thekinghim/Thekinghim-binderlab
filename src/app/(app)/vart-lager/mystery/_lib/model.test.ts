@@ -12,6 +12,7 @@ import {
   recipeOdds,
   shortages,
   type Recipe,
+  type SlotFacts,
 } from "./model";
 
 /** Mystery Pack Plus 179 kr: 14 per omgång, två HIT-rader (3 av 14). */
@@ -303,7 +304,7 @@ describe("minusFix (påfyllt utan att trycka Packa)", () => {
 
 describe("Packa N omgångar före en dag (räknat från facken)", () => {
   const TODAY = "2026-11-10"; // tisdag
-  const facts = (over: Partial<import("./model").SlotFacts> = {}): import("./model").SlotFacts => ({
+  const facts = (over: Partial<SlotFacts> = {}): SlotFacts => ({
     machineId: "m1",
     label: "BL-001",
     onHand: 9,
@@ -317,7 +318,7 @@ describe("Packa N omgångar före en dag (räknat från facken)", () => {
     const { sv } = await import("@/i18n/sv");
     const { en } = await import("@/i18n/en");
     const plan = (
-      list: import("./model").SlotFacts[],
+      list: SlotFacts[],
       packedAtHome = 0,
       weekShareOf?: (id: string) => readonly number[] | null,
     ) =>
