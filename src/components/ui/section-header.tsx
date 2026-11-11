@@ -35,7 +35,8 @@ type SectionHeaderProps = {
 };
 
 const titleSize: Record<SectionHeaderSize, string> = {
-  xl: "text-2xl lg:text-3xl",
+  // Under 400 px (iPhone SE och mini): ett steg mindre, så att rubriken ryms på två rader.
+  xl: "text-2xl max-[399px]:text-xl lg:text-3xl",
   lg: "text-xl md:text-2xl",
   md: "text-lg",
   sm: "text-md",
@@ -115,7 +116,7 @@ export function SectionHeader({
               className={cn(
                 "text-subtle",
                 // Under md: den stora rubriken på en rad, den grå delen mindre under.
-                size === "xl" && "max-md:mt-1 max-md:block max-md:text-lg",
+                size === "xl" && "max-md:mt-1 max-md:block max-md:text-lg max-[399px]:text-md",
                 hideAsideOnMobile && "max-md:hidden",
               )}
             >

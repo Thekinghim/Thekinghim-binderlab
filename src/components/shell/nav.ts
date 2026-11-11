@@ -492,6 +492,8 @@ type TabOptions = Pick<SubTab, "short" | "more" | "context">;
 export type NavSection = {
   id: SectionId;
   label: string;
+  /** Kortare ord i mobilens bottenrad på smala skärmar (under 360 px), t.ex. "Automat". */
+  short?: string;
   icon: IconName;
   tabs: ReadonlyArray<SubTab>;
 };
@@ -514,6 +516,7 @@ export const navSections: ReadonlyArray<NavSection> = [
   {
     id: "automater",
     label: "Automater",
+    short: "Automat",
     icon: "machine",
     tabs: [
       tab("automater", "Automater"),
@@ -530,6 +533,7 @@ export const navSections: ReadonlyArray<NavSection> = [
   {
     id: "vart-lager",
     label: "Vårt lager",
+    short: "Lager",
     icon: "inventory",
     tabs: [
       tab("vart-lager", "Vårt lager"),

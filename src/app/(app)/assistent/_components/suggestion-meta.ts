@@ -7,7 +7,12 @@
 import { day } from "@/analytics/todos/text";
 import { formatInt, NBSP } from "@/lib/format";
 
-export const CONFIDENCE_TEXT = { high: "säker", medium: "trolig", low: "test" } as const;
+/** Hur säkert förslaget är, i vanliga ord (aldrig "test": det lät som att appen provkörde). */
+export const CONFIDENCE_TEXT = {
+  high: "säkert",
+  medium: "troligt",
+  low: "värt att prova",
+} as const;
 
 export function suggestionMeta(s: {
   readonly effectSekMonth: number;

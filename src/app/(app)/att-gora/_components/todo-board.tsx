@@ -16,6 +16,9 @@ import { formatInt, NBSP } from "@/lib/format";
 
 import type { PersonOption } from "@/analytics/team";
 
+// Samma varning som Fyll på för mystery-facket (läses bara).
+import { mysteryNote } from "@/app/fyll-pa/_lib/model";
+
 import { PersonPicker } from "../../_team/person-picker";
 import { dismissTodo, mergeTitles, registerRefill, undoDismissTodo } from "../actions";
 import type {
@@ -24,7 +27,9 @@ import type {
   LinkActionView,
   MergeActionView,
   RefillActionView,
+  RowView,
   TodoView,
+  VisitView,
 } from "../_lib/model";
 
 /** Länk som ser ut som en knapp (sekundär eller ghost, liten). */
@@ -179,8 +184,13 @@ export function TodoBoard({
   return (
     <div className="flex flex-col">
       {groups.map((g) => {
-        const items = g.items.filter((t) => !isHidden(t));
-        if (items.length === 0) return null;
+        // Ett besök visar titlarna som är kvar; är alla avbockade försvinner raden.
+        const rows: RowView[] = g.rows.flatMap((r): RowView[] => {
+          if (r.type === "todo") return isHidden(r.item) ? [] : [r];
+          const left = r.visit.items.filter((t) => !isHidden(t));
+          return left.length > 0 ? [{ type: "visit", visit: { ...r.visit, items: left } }] : [];
+        });
+        if (rows.length === 0) return null;
         return (
           <section
             key={g.level}
@@ -201,7 +211,7 @@ export function TodoBoard({
                 className="label mt-3 flex min-h-11 w-full items-center justify-between border-y border-line text-muted md:hidden"
               >
                 <span>
-                  {laterOpen ? "Dölj" : "Visa"} · {formatInt(items.length)}
+                  {laterOpen ? "Dölj" : "Visa"} · {formatInt(rows.length)}
                 </span>
                 <Icon
                   name="chevronRight"
@@ -216,16 +226,27 @@ export function TodoBoard({
                 g.level === "later" && !laterOpen && "max-md:hidden",
               )}
             >
-              {items.map((item, i) => (
-                <TodoRow
-                  key={item.key}
-                  index={i}
-                  item={item}
-                  canDismiss={canDismiss}
-                  onDismiss={() => dismiss(item)}
-                  people={people}
-                />
-              ))}
+              {rows.map((row, i) =>
+                row.type === "visit" ? (
+                  <VisitRow
+                    key={row.visit.key}
+                    index={i}
+                    visit={row.visit}
+                    canDismiss={canDismiss}
+                    onDismiss={dismiss}
+                    people={people}
+                  />
+                ) : (
+                  <TodoRow
+                    key={row.item.key}
+                    index={i}
+                    item={row.item}
+                    canDismiss={canDismiss}
+                    onDismiss={() => dismiss(row.item)}
+                    people={people}
+                  />
+                ),
+              )}
             </ol>
           </section>
         );
@@ -257,7 +278,7 @@ function DismissedList({
         aria-expanded={open}
         aria-controls={listId}
         onClick={() => setOpen((v) => !v)}
-        className={cn(linkButton, linkVariant.ghost, "-ml-2.5")}
+        className={cn(linkButton, linkVariant.ghost, "-ml-2.5 max-md:min-h-11")}
       >
         <Icon
           name="chevronRight"
@@ -285,7 +306,7 @@ function DismissedList({
                 variant="secondary"
                 onClick={() => onUndo(d)}
                 aria-label={`Ångra klar: ${d.title}`}
-                className="self-start"
+                className="self-start max-md:min-h-11"
               >
                 Ångra
               </Button>
@@ -294,6 +315,94 @@ function DismissedList({
         </ul>
       </div>
     </section>
+  );
+}
+
+/**
+ * Ett besök: "Åk till BL-003 senast torsdag." med en grå rad (titlar, pack, kronor i risk)
+ * och knappen till Fyll på. "Visa titlarna" öppnar vägbeskrivningen, Ta med-listan och
+ * automatens titlar, som bockas av var för sig precis som förut.
+ */
+function VisitRow({
+  visit,
+  index,
+  canDismiss,
+  onDismiss,
+  people,
+}: {
+  visit: VisitView;
+  index: number;
+  canDismiss: boolean;
+  onDismiss: (item: TodoView) => void;
+  people: readonly PersonOption[];
+}) {
+  const titleId = useId();
+  return (
+    <li
+      id={rowId(visit.key)}
+      tabIndex={-1}
+      aria-labelledby={titleId}
+      data-visit={visit.machineId}
+      style={{ "--i": Math.min(index, 8) + 2 } as CSSProperties}
+      className="rise flex min-w-0 flex-col gap-2 border-t border-line py-5 outline-offset-2 first:border-t-0 max-md:py-3"
+    >
+      <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-start md:justify-between md:gap-8">
+        <div className="flex min-w-0 flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <StatusTag status={visit.status}>{visit.statusText}</StatusTag>
+          </div>
+          <h3 id={titleId} className="text-md font-medium text-balance hyphens-none text-fg">
+            {visit.title}
+          </h3>
+          <p className="tnum text-sm text-muted">{visit.facts}</p>
+        </div>
+        <div className="shrink-0 max-md:[&>a]:h-11 max-md:[&>a]:w-full">
+          <Link href={visit.fillHref} className={cn(linkButton, linkVariant.secondary)}>
+            <span>Fyll på</span>
+            <Icon name="chevronRight" className="-mr-0.5 shrink-0" />
+          </Link>
+        </div>
+      </div>
+      <details className="group/visit min-w-0">
+        <summary className="meta inline-flex min-h-11 cursor-pointer list-none items-center gap-1 rounded-xs pr-4 text-subtle hover:text-fg md:min-h-7 [&::-webkit-details-marker]:hidden">
+          <Icon
+            name="chevronRight"
+            size={12}
+            className="shrink-0 transition-transform duration-fast group-open/visit:rotate-90"
+          />
+          <span>{`Visa titlarna (${formatInt(visit.items.length)})`}</span>
+        </summary>
+        <div className="flex flex-col gap-3 pt-2">
+          <div className="flex flex-wrap gap-2 max-md:[&>a]:h-11">
+            {visit.mapsHref ? (
+              <a
+                href={visit.mapsHref}
+                target="_blank"
+                rel="noreferrer"
+                className={cn(linkButton, linkVariant.secondary)}
+              >
+                Öppna i Google Maps
+              </a>
+            ) : null}
+            <Link href={visit.bringHref} className={cn(linkButton, linkVariant.secondary)}>
+              Ta med-lista
+            </Link>
+          </div>
+          <ol className="flex flex-col border-t border-line md:pl-4">
+            {visit.items.map((item, i) => (
+              <TodoRow
+                key={item.key}
+                index={i}
+                item={item}
+                canDismiss={canDismiss}
+                onDismiss={() => onDismiss(item)}
+                people={people}
+              />
+            ))}
+          </ol>
+        </div>
+      </details>
+    </li>
   );
 }
 
@@ -312,8 +421,8 @@ function TodoRow({
   people: readonly PersonOption[];
 }) {
   const titleId = useId();
-  // Mobil: rubrik och en huvudåtgärd på raden; talen, länken, Vem och (när det finns en
-  // annan huvudåtgärd) Klar fälls ut med "Mer". Från md visas allt som förut.
+  // Mobil: rubrik, talen som en grå rad och en huvudåtgärd; förklaringen, länken, Vem och
+  // (när det finns en annan huvudåtgärd) Klar fälls ut med "Mer". Från md visas allt som förut.
   const [more, setMore] = useState(false);
   const fold = more ? "" : "max-md:hidden";
   const hasPrimary = item.action != null;
@@ -328,11 +437,14 @@ function TodoRow({
       <div className="flex min-w-0 flex-col gap-2 max-md:row-start-1 max-md:gap-1 lg:col-span-6">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <StatusTag status={item.status}>{item.statusText}</StatusTag>
-          <span className="label text-subtle">{item.eyebrow}</span>
+          {/* Mobil: etiketten upprepar rubriken ("Påfyllning · BL-001") och visas inte. */}
+          <span className="label text-subtle max-md:hidden">{item.eyebrow}</span>
         </div>
         <h3 id={titleId} className="text-md font-medium text-balance hyphens-none text-fg">
           {item.title}
         </h3>
+        {/* Mobil: talen som en grå rad under rubriken, alltid synlig. */}
+        {item.facts ? <p className="tnum text-sm text-muted md:hidden">{item.facts}</p> : null}
         <details className="group max-w-2xl" onToggle={(e) => setMore(e.currentTarget.open)}>
           <summary className="meta inline-flex cursor-pointer list-none items-center gap-1 rounded-xs text-subtle hover:text-fg max-md:-my-1.5 max-md:min-h-11 max-md:pr-4 [&::-webkit-details-marker]:hidden">
             <Icon
@@ -366,10 +478,8 @@ function TodoRow({
 
       {item.figures.length > 0 ? (
         <dl
-          className={cn(
-            "flex min-w-0 flex-wrap gap-x-6 gap-y-2 lg:col-span-3 lg:flex-col lg:gap-y-1.5",
-            fold,
-          )}
+          // Mobil: talen står redan i raden under rubriken.
+          className="flex min-w-0 flex-wrap gap-x-6 gap-y-2 max-md:hidden lg:col-span-3 lg:flex-col lg:gap-y-1.5"
         >
           {item.figures.map((f) => (
             <div
@@ -447,8 +557,11 @@ function TodoRow({
 function RefillDialog({ action }: { action: RefillActionView }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
-  const [quantity, setQuantity] = useState(String(action.suggested));
+  const suggestedText = action.suggested > 0 ? String(action.suggested) : "";
+  const [quantity, setQuantity] = useState(suggestedText);
   const hasWarehouse = action.warehouseOnHand !== null;
+  /** Lagret packen tas från: "Kontoret", annars "vårt lager". */
+  const warehouse = action.warehouseName ?? "vårt lager";
   const [fromWarehouse, setFromWarehouse] = useState(
     hasWarehouse && (action.warehouseOnHand ?? 0) > 0,
   );
@@ -467,7 +580,7 @@ function RefillDialog({ action }: { action: RefillActionView }) {
 
   /** Varje öppning börjar från dagens förslag (det kan ha ändrats sedan sist). */
   const openDialog = () => {
-    setQuantity(String(action.suggested));
+    setQuantity(suggestedText);
     setFromWarehouse(hasWarehouse && (action.warehouseOnHand ?? 0) > 0);
     setQuantityError(undefined);
     setError(undefined);
@@ -476,15 +589,27 @@ function RefillDialog({ action }: { action: RefillActionView }) {
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    // Dubbeltryck eller Enter två gånger: en påfyllning sparas bara en gång.
+    if (pending) return;
     const n = Number(quantity.trim());
-    if (!Number.isInteger(n) || n < 1 || n > 10_000) {
-      setQuantityError("Ange antal pack som ett heltal mellan 1 och 10 000.");
+    if (quantity.trim() === "" || !Number.isInteger(n) || n < 1) {
+      setQuantityError("Skriv hur många pack du fyllde på.");
+      inputRef.current?.focus();
+      return;
+    }
+    // Samma tak som Fyll på: det som får plats i facket (en hel omgång för mystery pack).
+    if (n > action.max) {
+      setQuantityError(
+        action.capacity !== null
+          ? `Det får bara plats ${formatInt(action.max)}${NBSP}pack till. Facket rymmer ${formatInt(action.capacity)}.`
+          : `Ange högst ${formatInt(action.max)}${NBSP}pack.`,
+      );
       inputRef.current?.focus();
       return;
     }
     if (fromWarehouse && action.warehouseOnHand !== null && n > action.warehouseOnHand) {
       setQuantityError(
-        `Vårt lager har bara ${formatInt(action.warehouseOnHand)}${NBSP}pack. Minska antalet eller bocka ur vårt lager.`,
+        `${warehouse} har bara ${formatInt(Math.max(0, action.warehouseOnHand))}${NBSP}pack. Minska antalet eller bocka ur lagret.`,
       );
       inputRef.current?.focus();
       return;
@@ -511,9 +636,29 @@ function RefillDialog({ action }: { action: RefillActionView }) {
     });
   };
 
-  const after = Number.isInteger(Number(quantity)) ? action.onHand + Number(quantity) : null;
-  const capped =
-    action.unitsInWindow !== null && action.suggested < action.unitsInWindow - action.onHand;
+  const typed = quantity.trim() === "" ? null : Number(quantity);
+  const valid = typed !== null && Number.isInteger(typed) && typed > 0;
+  const now = Math.max(0, action.onHand);
+  // "Efter: 25 av 25" med känd kapacitet, annars "Efter: 12 pack".
+  const afterText = valid
+    ? action.capacity !== null
+      ? `Efter: ${formatInt(now + typed)} av ${formatInt(action.capacity)}.`
+      : `Efter: ${formatInt(now + typed)}${NBSP}pack.`
+    : null;
+  const soldText =
+    action.unitsInWindow !== null && action.windowDays !== null
+      ? `Sålt ${formatInt(action.windowDays)}${NBSP}d: ${formatInt(action.unitsInWindow)}${NBSP}pack.`
+      : null;
+  // Mystery pack: facket fylls bara på när det är tomt, med en hel omgång (som Fyll på).
+  const mystery = mysteryNote(
+    { now, capacity: action.capacity, batchSize: action.batchSize },
+    valid ? typed : 0,
+  );
+  const hint =
+    [afterText, soldText, mystery]
+      .filter((t): t is string => Boolean(t))
+      .map((t) => (/[.!?]$/.test(t) ? t : `${t}.`))
+      .join(" ") || undefined;
 
   return (
     <>
@@ -535,17 +680,16 @@ function RefillDialog({ action }: { action: RefillActionView }) {
             type="number"
             inputMode="numeric"
             min={1}
-            max={10_000}
+            max={action.max}
             step={1}
             suffix="pack"
             value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
+            onChange={(e) => {
+              setQuantity(e.target.value);
+              setQuantityError(undefined);
+            }}
             error={quantityError}
-            hint={
-              action.unitsInWindow !== null && action.windowDays !== null
-                ? `Sålt ${formatInt(action.windowDays)}${NBSP}d: ${formatInt(action.unitsInWindow)}${NBSP}pack.${capped ? " Mer finns inte i lagret." : ""}${after !== null && after > 0 ? ` Efter: ${formatInt(after)}${NBSP}pack.` : ""}`
-                : undefined
-            }
+            hint={hint}
             required
             autoFocus
           />
@@ -565,20 +709,21 @@ function RefillDialog({ action }: { action: RefillActionView }) {
               className="mt-0.5 size-4 shrink-0 accent-[var(--bl-fg)]"
             />
             <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-base text-fg">Ta packen från vårt lager</span>
+              <span className="text-base text-fg">{`Ta packen från ${warehouse}`}</span>
               <span className="text-sm text-muted">
                 {hasWarehouse
-                  ? `${formatInt(action.warehouseOnHand ?? 0)}${NBSP}pack kvar hemma.`
+                  ? `${formatInt(Math.max(0, action.warehouseOnHand ?? 0))}${NBSP}pack finns där.`
                   : "Inget eget lager."}
               </span>
             </span>
           </label>
           <FormError message={error} />
           <div className="flex flex-col-reverse gap-2 border-t border-line pt-4 sm:flex-row sm:justify-end">
-            <Button type="button" onClick={close}>
+            {/* Telefonen: 44 px tryckyta. */}
+            <Button type="button" onClick={close} className="max-md:min-h-11">
               Avbryt
             </Button>
-            <Button type="submit" variant="primary" loading={pending}>
+            <Button type="submit" variant="primary" loading={pending} className="max-md:min-h-11">
               Spara
             </Button>
           </div>

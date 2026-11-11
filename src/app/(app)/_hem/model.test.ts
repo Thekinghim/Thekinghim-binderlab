@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { NBSP } from "@/lib/format";
 
 import type { AnalyticsOrder, TodoItem } from "@/analytics/todos";
 import {
@@ -357,11 +358,76 @@ describe("buildHomeModel", () => {
     }
   });
 
+  it("påfyllningarna för en automat är ett besök: en rad, en sak i antalet", () => {
+    const refill = (
+      machineId: string,
+      titleId: string,
+      level: TodoItem["level"],
+      atStakeOre: number,
+    ): TodoItem => ({
+      key: `refill:${machineId}:${titleId}`,
+      fingerprint: "f",
+      kind: "refill",
+      level,
+      urgency: 0,
+      atStakeOre,
+      daysLeft: null,
+      title: `Fyll på ${titleId}`,
+      detail: "",
+      evidence: {
+        machineIds: [machineId],
+        titleIds: [titleId],
+        orderIds: [],
+        storeIds: [],
+      } as unknown as TodoItem["evidence"],
+      link: `/lager?automat=${machineId}`,
+    });
+    const todos = [
+      refill("m1", "a", "soon", 50_040),
+      refill("m2", "a", "soon", 20_000),
+      refill("m1", "b", "soon", 30_000),
+      refill("m1", "c", "soon", 149_960),
+      refill("m2", "b", "soon", 10_000),
+      refill("m2", "c", "soon", 0),
+    ];
+    const base = inputFor(THIRTY, THIRTY_BEFORE, { todos });
+    const needBy = addDays(base.today, 3);
+    const m = buildHomeModel({
+      ...base,
+      visitPlan: {
+        days: [
+          {
+            date: needBy,
+            stops: [
+              { machineId: "m1", needBy, late: false, totalPacks: 38 },
+              { machineId: "m2", needBy: addDays(base.today, 1), late: false, totalPacks: 0 },
+            ],
+          },
+        ],
+      },
+    });
+    expect(m.todoCount).toBe(2);
+    expect(m.todoNowCount).toBe(0);
+    expect(m.todoStakeOre).toBe(260_000);
+    expect(m.todos?.map((t) => t.key)).toEqual(["visit:m1", "visit:m2"]);
+    const [v1, v2] = m.todos!;
+    // Dagen är besöksplanens needBy, i ord.
+    expect(v1!.title).toMatch(
+      /^Åk till .+ senast (måndag|tisdag|onsdag|torsdag|fredag|lördag|söndag)$/,
+    );
+    expect(v1!.detail).toBe(`3${NBSP}titlar · 38${NBSP}pack`);
+    expect(v1!.atStakeOre).toBe(230_000);
+    expect(v1!.href).toBe("/att-gora#punkt-visit-m1");
+    expect(v2!.title).toMatch(/^Åk till .+ senast i morgon$/);
+    expect(v2!.detail).toBe(`3${NBSP}titlar`);
+  });
+
   it("visar de tre viktigaste punkterna i Att göra, nu först, och räknar alla", () => {
     const todo = (key: string, level: TodoItem["level"], machineIds: string[]): TodoItem => ({
       key,
       fingerprint: key,
-      kind: "refill",
+      // Inte påfyllningar: de slås ihop till besök (testet under).
+      kind: "silent-title",
       level,
       urgency: 0,
       atStakeOre: null,

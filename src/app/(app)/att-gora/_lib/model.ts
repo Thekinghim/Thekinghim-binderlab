@@ -6,18 +6,27 @@
  */
 
 import {
+  groupVisits,
   LOST_REVENUE_FIGURE,
   todoInScope,
+  visitTitle,
   type EvidenceFigure,
+  type TodoEntry,
   type TodoItem,
   type TodoKind,
   type TodoLevel,
+  type TodoVisit,
+  type VisitPlanDays,
 } from "@/analytics/todos";
+import { googleMapsUrls, type GeoPoint } from "@/analytics/visits";
 import type { Role } from "@/components/shell/nav";
 import { routeById } from "@/components/shell/nav";
 import type { Status } from "@/components/ui/status-tag";
-import { sumOre } from "@/domain";
+import { sumOre, type IsoDate } from "@/domain";
 import { formatDecimal, formatInt, formatPercent, formatSek, NBSP } from "@/lib/format";
+
+// Samma förslag och samma tak som Fyll på (läses bara, ändras aldrig här).
+import { maxFill, suggestFill } from "@/app/fyll-pa/_lib/model";
 
 // ---------------------------------------------------------------------------
 // Typer
@@ -38,13 +47,24 @@ export interface RefillActionView {
   readonly titleName: string;
   /** Pack i automaten nu. */
   readonly onHand: number;
-  /** Pack av titeln i centrallagret, eller null om det saknas ett centrallager. */
+  /** Fackens kapacitet för titeln i automaten (Awish), eller null om den är okänd. */
+  readonly capacity: number | null;
+  /** Mystery pack: pack per omgång (fylls bara på när facket är tomt), annars null. */
+  readonly batchSize: number | null;
+  /**
+   * Pack av titeln i lagret automaten fylls på från ("Fylls på från", annars standardlagret),
+   * eller null om det saknas ett eget lager.
+   */
   readonly warehouseOnHand: number | null;
+  /** Lagrets namn ("Kontoret"), eller null. */
+  readonly warehouseName: string | null;
   /** Sålda pack de senaste 14 dagarna (underlaget), eller null. */
   readonly unitsInWindow: number | null;
   readonly windowDays: number | null;
-  /** Förslag på antal: fyll till 14 dagars försäljning, högst det som finns i centrallagret. */
+  /** Förslaget, samma som Fyll på (suggestFill): det som får plats, högst packen i lagret. */
   readonly suggested: number;
+  /** Största antal som går att fylla på, samma tak som Fyll på (maxFill). */
+  readonly max: number;
 }
 
 export interface MergeActionView {
@@ -76,6 +96,8 @@ export interface TodoView {
   readonly detail: string;
   /** Upp till tre mått som står bredvid punkten. */
   readonly figures: FigureView[];
+  /** Måtten som en grå rad under rubriken i telefonen: "5 pack kvar · räcker 1,8 d · 2 300 kr i risk". */
+  readonly facts: string;
   readonly rule: string;
   /** Hela underlaget, formaterat. */
   readonly evidence: FigureView[];
@@ -86,6 +108,36 @@ export interface TodoView {
   readonly assignee: string;
 }
 
+/**
+ * Ett besök: automatens alla påfyllningar som en rad, "Åk till BL-003 senast torsdag".
+ * Titlarna (items) är samma punkter som förut och bockas av var för sig.
+ */
+export interface VisitView {
+  /** 'visit:<automat>'. Bara för visning, sparas aldrig. */
+  readonly key: string;
+  readonly level: TodoLevel;
+  readonly status: Status;
+  readonly statusText: string;
+  /** "Åk till BL-003 senast torsdag." */
+  readonly title: string;
+  /** "4 titlar · 38 pack · 2 300 kr i risk" (kronor bara för roller som ser ekonomi). */
+  readonly facts: string;
+  readonly machineId: string;
+  /** Titlarna att fylla på, i listans ordning. */
+  readonly items: TodoView[];
+  /** Vägbeskrivning till butiken, om den har adress eller plats. */
+  readonly mapsHref: string | null;
+  /** Fyll på-appen för automaten (ägare, admin och påfyllare). */
+  readonly fillHref: string;
+  /** Ta med-listan ligger överst i Fyll på. */
+  readonly bringHref: string;
+}
+
+/** En rad i en grupp: en vanlig punkt eller ett besök. */
+export type RowView =
+  | { readonly type: "todo"; readonly item: TodoView }
+  | { readonly type: "visit"; readonly visit: VisitView };
+
 export interface GroupView {
   readonly level: TodoLevel;
   readonly id: string;
@@ -93,6 +145,9 @@ export interface GroupView {
   readonly eyebrow: string;
   readonly title: string;
   readonly aside: string;
+  /** Raderna som visas: besök (en rad per automat) och övriga punkter. */
+  readonly rows: RowView[];
+  /** Alla punkter i gruppen, också de som ligger i ett besök. */
   readonly items: TodoView[];
 }
 
@@ -195,7 +250,7 @@ export interface ModelInput {
   readonly todos: readonly TodoItem[];
   readonly role: Role;
   readonly economy: boolean;
-  readonly titles: ReadonlyArray<{ id: string; name: string }>;
+  readonly titles: ReadonlyArray<{ id: string; name: string; mysteryBatchSize?: number | null }>;
   readonly machines: ReadonlyArray<{
     id: string;
     name: string;
@@ -206,6 +261,22 @@ export interface ModelInput {
   readonly machineStock: ReadonlyArray<{ machineId: string; titleId: string; onHand: number }>;
   /** Saldo i centrallagret per titel, eller null om det saknas ett centrallager. */
   readonly warehouse: ReadonlyMap<string, number> | null;
+  /** Fackens kapacitet per automat och titel (Awish). Utelämnad = okänd. */
+  readonly capacities?: ReadonlyArray<{
+    readonly machineId: string;
+    readonly titleId: string;
+    readonly capacity: number;
+  }>;
+  /**
+   * Våra lager: saldo per lager och titel, automatens "Fylls på från" och standardlagret.
+   * Påfyllningen tar packen därifrån (register_refill). Utelämnad = `warehouse` används.
+   */
+  readonly sources?: {
+    readonly places: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+    readonly stock: Readonly<Record<string, Readonly<Record<string, number>>>>;
+    readonly machineSource: Readonly<Record<string, string>>;
+    readonly defaultPlaceId: string | null;
+  } | null;
   /**
    * Automater med platser vars saldo är okänt (bara försäljning, ingen inventering).
    * Påfyllningsregeln hoppar över dem, så sidan får inte påstå att lagret räcker.
@@ -220,6 +291,19 @@ export interface ModelInput {
   readonly assignees?: ReadonlyMap<string, string | null>;
   /** Punkter utanför reglerna som sidan visar (räknas i rubriken). */
   readonly extras?: readonly ExtraTodo[];
+  /** Dagens affärsdatum: behövs för att säga besökets dag i ord ("senast torsdag"). */
+  readonly today?: IsoDate;
+  /** Veckans besöksplan (samma som Drift > Besök). Utan den står besöken utan dag. */
+  readonly visitPlan?: VisitPlanDays | null;
+  /** Butikernas adress och plats (butikens id), för "Öppna i Google Maps". */
+  readonly places?: ReadonlyMap<
+    string,
+    {
+      readonly address: string | null;
+      readonly city: string | null;
+      readonly location: GeoPoint | null;
+    }
+  >;
 }
 
 // ---------------------------------------------------------------------------
@@ -312,12 +396,16 @@ const KIND_ORDER: readonly TodoKind[] = [
   "stock-count",
 ];
 
-/** "3 påfyllningar och 1 tyst automat". */
-export function kindSummary(items: readonly { kind: TodoKind }[]): string {
+/**
+ * "3 påfyllningar och 1 tyst automat". Med `visits` (antal besök) står påfyllningarna som
+ * besök, en per automat: "2 besök och 1 tyst automat".
+ */
+export function kindSummary(items: readonly { kind: TodoKind }[], visits?: number): string {
   const counts = new Map<TodoKind, number>();
   for (const i of items) counts.set(i.kind, (counts.get(i.kind) ?? 0) + 1);
   return joinSv(
     KIND_ORDER.filter((k) => counts.has(k)).map((k) => {
+      if (k === "refill" && visits !== undefined) return plural(visits, "besök", "besök");
       const [one, many] = KIND_NOUN[k];
       return plural(counts.get(k)!, one, many);
     }),
@@ -468,6 +556,40 @@ export function primaryFigures(item: TodoItem, economy: boolean): FigureView[] {
   return out.slice(0, 3);
 }
 
+/**
+ * Måtten som en mening under rubriken (telefonen): "5 pack kvar · räcker 1,8 d · 2 300 kr i
+ * risk". Samma tal som primaryFigures, i ord i stället för etikett och värde. Tom utan mått.
+ */
+export function factLine(item: TodoItem, economy: boolean): string {
+  if (item.kind === "refill") {
+    const parts: string[] = [];
+    const onHand = figureValue(item, "onHand");
+    const tenths = figureValue(item, "daysLeftTenths");
+    const lostOre = figureValue(item, LOST_REVENUE_FIGURE);
+    if (onHand !== null) {
+      parts.push(onHand <= 0 ? "slut" : `${formatInt(onHand)}${NBSP}pack kvar`);
+      if (onHand > 0 && tenths !== null) parts.push(`räcker ${formatDecimal(tenths / 10)}${NBSP}d`);
+    }
+    if (economy && item.atStakeOre !== null && item.atStakeOre > 0) {
+      parts.push(`${kr(item.atStakeOre)} i risk`);
+    }
+    if (economy && lostOre !== null && lostOre > 0)
+      parts.push(`förlorat ${kr(lostOre)} på 14${NBSP}d`);
+    return capitalize(parts.join(" · "));
+  }
+  return primaryFigures(item, economy)
+    .map((f) => (f.label === "I risk 7 d" ? `${f.value} i risk` : `${f.label} ${f.value}`))
+    .join(" · ");
+}
+
+/** "1 förslag från AI · ca 1 000 kr/mån": raden som fäller ut AI-förslagen under listan. */
+export function suggestionsLine(items: readonly { readonly effectSekMonth: number }[]): string {
+  const sum = items.reduce((a, s) => a + Math.max(0, s.effectSekMonth), 0);
+  return `${plural(items.length, "förslag", "förslag")} från AI${
+    sum > 0 ? ` · ca${NBSP}${formatInt(sum)}${NBSP}kr/mån` : ""
+  }`;
+}
+
 /** Hela underlaget, formaterat. Belopp tas bort för roller som inte ser ekonomi. */
 export function evidenceFigures(item: TodoItem, economy: boolean): FigureView[] {
   return item.evidence.figures
@@ -488,16 +610,26 @@ function canOpen(role: Role, id: Parameters<typeof routeById>[0]): boolean {
   return routeById(id).roles.includes(role);
 }
 
-/** Förslag på antal vid påfyllning: fyll till fönstrets försäljning, minst 1, högst centrallagret. */
-export function suggestRefill(
-  onHand: number,
-  unitsInWindow: number | null,
-  warehouseOnHand: number | null,
-): number {
-  const target = unitsInWindow !== null && unitsInWindow > 0 ? unitsInWindow : 1;
-  let n = Math.max(target - Math.max(onHand, 0), 1);
-  if (warehouseOnHand !== null && warehouseOnHand > 0) n = Math.min(n, warehouseOnHand);
-  return n;
+/**
+ * Lagret en påfyllning i automaten tar packen från och hur många pack av titeln som finns
+ * där: automatens "Fylls på från", annars standardlagret (samma val som register_refill).
+ * null = inget eget lager.
+ */
+export function refillHome(
+  input: Pick<ModelInput, "sources" | "warehouse">,
+  machineId: string,
+  titleId: string,
+): { readonly onHand: number; readonly name: string | null } | null {
+  const src = input.sources;
+  if (src) {
+    const placeId = src.machineSource[machineId] ?? src.defaultPlaceId;
+    if (!placeId) return null;
+    return {
+      onHand: src.stock[placeId]?.[titleId] ?? 0,
+      name: src.places.find((p) => p.id === placeId)?.name ?? null,
+    };
+  }
+  return input.warehouse ? { onHand: input.warehouse.get(titleId) ?? 0, name: null } : null;
 }
 
 function actionFor(item: TodoItem, input: ModelInput): ActionView | null {
@@ -524,7 +656,13 @@ function actionFor(item: TodoItem, input: ModelInput): ActionView | null {
         input.machineStock.find((s) => s.machineId === machineId && s.titleId === titleId)
           ?.onHand ??
         0;
-      const warehouseOnHand = input.warehouse ? (input.warehouse.get(titleId) ?? 0) : null;
+      const home = refillHome(input, machineId, titleId);
+      const capacity =
+        input.capacities?.find((c) => c.machineId === machineId && c.titleId === titleId)
+          ?.capacity ?? null;
+      const batchSize =
+        input.titles.find((t) => t.id === titleId)?.mysteryBatchSize ??
+        figureValue(item, "batchSize");
       const unitsInWindow = figureValue(item, "unitsInWindow");
       return {
         kind: "register-refill",
@@ -536,10 +674,21 @@ function actionFor(item: TodoItem, input: ModelInput): ActionView | null {
         machineCode: machine ? unbreakable(machine.code) : "",
         titleName: input.titles.find((t) => t.id === titleId)?.name ?? titleId,
         onHand,
-        warehouseOnHand,
+        capacity,
+        batchSize,
+        warehouseOnHand: home?.onHand ?? null,
+        warehouseName: home?.name ?? null,
         unitsInWindow,
         windowDays: figureValue(item, "windowDays"),
-        suggested: suggestRefill(onHand, unitsInWindow, warehouseOnHand),
+        // Utan eget lager begränsar inget lager förslaget: det som får plats.
+        suggested: suggestFill(
+          onHand,
+          capacity,
+          home ? home.onHand : Number.MAX_SAFE_INTEGER,
+          unitsInWindow ?? 0,
+          batchSize,
+        ),
+        max: maxFill({ now: Math.max(0, onHand), capacity, batchSize }),
       };
     }
     case "merge-titles": {
@@ -645,6 +794,7 @@ export function toView(item: TodoItem, input: ModelInput, signal: boolean): Todo
     title: withPeriod(item.title),
     detail: plainWords(item.detail),
     figures: primaryFigures(item, input.economy),
+    facts: factLine(item, input.economy),
     rule: item.evidence.rule,
     evidence: evidenceFigures(item, input.economy),
     action: actionFor(item, input),
@@ -707,8 +857,8 @@ export function unpricedOf(items: readonly TodoItem[]): number {
   );
 }
 
-function groupAside(items: readonly TodoItem[], economy: boolean): string {
-  const parts = [capitalize(kindSummary(items))];
+function groupAside(items: readonly TodoItem[], economy: boolean, visits: number): string {
+  const parts = [capitalize(kindSummary(items, visits))];
   const stake = economy ? stakeOf(items) : 0;
   if (stake > 0) parts.push(`${kr(stake)} i risk`);
   const unpriced = economy ? unpricedOf(items) : 0;
@@ -758,16 +908,23 @@ function unknownText(n: number): string {
 
 const LEVEL_RANK: Record<TodoLevel, number> = { now: 0, soon: 1, later: 2 };
 
+function entryLevelOf(e: TodoEntry): TodoLevel {
+  return e.type === "visit" ? e.visit.level : e.item.level;
+}
+
 function headerView(
   visible: readonly TodoItem[],
+  entries: readonly TodoEntry[],
   extras: readonly ExtraTodo[],
   hidden: number,
   input: ModelInput,
   unknown: number,
 ): HeaderView {
+  // Ett besök räknas som en sak (som menyns räknare och Hem).
   const count = (l: TodoLevel) =>
-    visible.filter((i) => i.level === l).length + extras.filter((e) => e.level === l).length;
-  const total = visible.length + extras.length;
+    entries.filter((e) => entryLevelOf(e) === l).length +
+    extras.filter((e) => e.level === l).length;
+  const total = entries.length + extras.length;
   const now = count("now");
   const stake = input.economy ? stakeOf(visible) : 0;
   const unpriced = input.economy ? unpricedOf(visible) : 0;
@@ -783,16 +940,20 @@ function headerView(
     title = "Inget att göra.";
     aside = "Allt ser bra ut.";
   } else {
-    const onlyRefills = extras.length === 0 && visible.every((i) => i.kind === "refill");
-    title = onlyRefills
-      ? `${plural(total, "påfyllning", "påfyllningar")} att göra.`
+    const onlyVisits = extras.length === 0 && entries.every((e) => e.type === "visit");
+    title = onlyVisits
+      ? `${plural(total, "besök", "besök")} att göra.`
       : `${plural(total, "sak", "saker")} att göra.`;
     aside = now > 0 ? `${formatInt(now)} i dag.` : "Inget i dag.";
-    // Den mest brådskande: reglernas första punkt, eller en extra punkt om den är brådskare.
-    const first = visible[0] ?? null;
+    // Den mest brådskande: listans första rad, eller en extra punkt om den är brådskare.
+    const first = entries[0] ?? null;
     const extra = extras[0] ?? null;
-    if (first && (!extra || LEVEL_RANK[first.level] <= LEVEL_RANK[extra.level])) {
-      parts.push(leadText(first));
+    if (first && (!extra || LEVEL_RANK[entryLevelOf(first)] <= LEVEL_RANK[extra.level])) {
+      parts.push(
+        first.type === "visit"
+          ? `Först: ${visitHeading(first.visit, input)}.`
+          : leadText(first.item),
+      );
     } else if (extra) {
       parts.push(`Först: ${stripPeriod(extra.title)}.`);
     }
@@ -864,37 +1025,128 @@ export function dismissedViews(input: ModelInput): DismissedView[] {
     });
 }
 
-/** Hela sidan. Punkterna är redan sorterade efter brådska (computeTodos). */
+/** Automatens kod (BL-003, obrytbar), annars namnet. */
+function machineLabel(machineId: string, input: Pick<ModelInput, "machines">): string {
+  const m = input.machines.find((x) => x.id === machineId);
+  return m ? (m.code ? unbreakable(m.code) : m.name) : "automaten";
+}
+
+/** "Åk till BL-003 senast torsdag" (utan punkt). Utan dagens datum: utan dag ur planen. */
+function visitHeading(visit: TodoVisit, input: ModelInput): string {
+  const label = machineLabel(visit.machineId, input);
+  return input.today
+    ? visitTitle(visit, label, input.today)
+    : visitTitle({ needBy: null, level: visit.level }, label, "1970-01-01");
+}
+
+/** "4 titlar · 38 pack · 2 300 kr i risk". Pack = besöksplanens packlista för automaten. */
+export function visitFacts(
+  visit: Pick<TodoVisit, "items" | "packs" | "atStakeOre">,
+  economy: boolean,
+): string {
+  const parts = [plural(visit.items.length, "titel", "titlar")];
+  if (visit.packs !== null && visit.packs > 0) parts.push(`${formatInt(visit.packs)}${NBSP}pack`);
+  if (economy && visit.atStakeOre > 0) parts.push(`${kr(visit.atStakeOre)} i risk`);
+  return parts.join(" · ");
+}
+
+/** Vägbeskrivning till automatens butik, eller null utan adress och plats. */
+function mapsHrefFor(machineId: string, input: ModelInput): string | null {
+  const machine = input.machines.find((m) => m.id === machineId);
+  const place = machine?.storeId ? input.places?.get(machine.storeId) : undefined;
+  if (!machine || !place) return null;
+  return (
+    googleMapsUrls([
+      {
+        machineId,
+        label: machine.name,
+        storeId: machine.storeId,
+        storeName: null,
+        address: place.address,
+        city: place.city,
+        location: place.location,
+        packs: 0,
+      },
+    ])[0] ?? null
+  );
+}
+
+function visitView(visit: TodoVisit, items: TodoView[], input: ModelInput): VisitView {
+  const signal = items.some((t) => t.status === "critical");
+  return {
+    key: visit.key,
+    level: visit.level,
+    status:
+      visit.level === "now"
+        ? signal
+          ? "critical"
+          : "warning"
+        : visit.level === "soon"
+          ? "warning"
+          : "neutral",
+    statusText: LEVEL_TEXT[visit.level],
+    title: `${visitHeading(visit, input)}.`,
+    facts: visitFacts(visit, input.economy),
+    machineId: visit.machineId,
+    items,
+    mapsHref: mapsHrefFor(visit.machineId, input),
+    fillHref: `/fyll-pa/${visit.machineId}`,
+    bringHref: "/fyll-pa",
+  };
+}
+
+/**
+ * Hela sidan. Punkterna är redan sorterade efter brådska (computeTodos). Påfyllningarna för
+ * en automat slås ihop till ett besök (groupVisits): raden står i sin mest brådskande punkts
+ * grupp och innehåller automatens alla titlar.
+ */
 export function buildPage(input: ModelInput): PageView {
   const visible = input.todos.filter((t) => inScope(t, input));
   const hidden = input.todos.length - visible.length;
+  const entries = groupVisits(
+    visible,
+    input.today ? (input.visitPlan ?? null) : null,
+    input.today ?? null,
+  );
   let signals = 0;
   const groups: GroupView[] = [];
   for (const level of LEVELS) {
-    const items = visible.filter((t) => t.level === level);
-    if (items.length === 0) continue;
+    const levelEntries = entries.filter((e) => entryLevelOf(e) === level);
+    if (levelEntries.length === 0) continue;
     const meta = GROUP_META[level];
+    const view = (t: TodoItem) => {
+      const signal = t.level === "now" && signals < SIGNAL_BUDGET;
+      if (signal) signals += 1;
+      return toView(t, input, signal);
+    };
+    const rows: RowView[] = levelEntries.map((e) =>
+      e.type === "visit"
+        ? { type: "visit", visit: visitView(e.visit, e.visit.items.map(view), input) }
+        : { type: "todo", item: view(e.item) },
+    );
+    const items = levelEntries.flatMap((e) => (e.type === "visit" ? e.visit.items : [e.item]));
     groups.push({
       level,
       id: meta.id,
       index: groups.length + 1,
       eyebrow: meta.eyebrow,
       title: meta.title,
-      aside: groupAside(items, input.economy),
-      items: items.map((t) => {
-        const signal = t.level === "now" && signals < SIGNAL_BUDGET;
-        if (signal) signals += 1;
-        return toView(t, input, signal);
-      }),
+      aside: groupAside(
+        items,
+        input.economy,
+        levelEntries.filter((e) => e.type === "visit").length,
+      ),
+      rows,
+      items: rows.flatMap((r) => (r.type === "visit" ? r.visit.items : [r.item])),
     });
   }
-  // Punkterna är sorterade efter brådska: den första är den mest brådskande.
+  // Raderna är sorterade efter brådska: den första är den mest brådskande.
   const extras = input.extras ?? [];
   const unknown = unknownStockInScope(input);
   return {
-    header: headerView(visible, extras, hidden, input, unknown),
+    header: headerView(visible, entries, extras, hidden, input, unknown),
     groups,
-    total: visible.length + extras.length,
+    total: entries.length + extras.length,
     hiddenByScope: hidden,
     economy: input.economy,
     unknownStock: unknown,

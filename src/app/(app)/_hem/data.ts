@@ -9,7 +9,7 @@
  */
 
 import type { GoalProgress } from "@/analytics/goals";
-import type { TodoItem } from "@/analytics/todos";
+import type { TodoItem, VisitPlanDays } from "@/analytics/todos";
 import { routeById } from "@/components/shell/nav";
 import type { SearchParamsInput } from "@/components/shell/period-state";
 import { addDays, monthOf, storeShareInView, type IsoDate, type Period } from "@/domain";
@@ -48,6 +48,8 @@ export interface HomeLoaders {
    * Att göra och menyns räknare. Utelämnad = inga (räknaren och Hem skiljer sig då).
    */
   extras?(): Promise<HomeExtraTodo[]>;
+  /** Veckans besöksplan (som Drift > Besök), eller null. Läses bara när något ska fyllas på. */
+  visitPlan?(): Promise<VisitPlanDays | null>;
   /**
    * Förlorad försäljning för perioden och filtret (lostSalesSummary i Prognos & inköp).
    * null för roller utan ekonomi. Utelämnad = visas inte.
@@ -144,6 +146,12 @@ export async function loadHomeWith(
         : Promise.resolve(null),
     ]);
 
+  // Besöksplanen ger dagen i "Åk till BL-003 senast torsdag" (samma som Drift > Besök).
+  const visitPlan =
+    loaders.visitPlan && todos?.some((t) => t.kind === "refill")
+      ? await loaders.visitPlan().catch(() => null)
+      : null;
+
   const model = buildHomeModel({
     current: input.current,
     previous: input.previous,
@@ -160,6 +168,7 @@ export async function loadHomeWith(
     scope: p.scope,
     todos,
     extraTodos: extras,
+    visitPlan,
     // Butikernas andel följer indata (vyknappen eller vald butik, loadDomainInput).
     storeName: p.scope.storeId
       ? input.stores.find((x) => x.id === p.scope.storeId)?.name
