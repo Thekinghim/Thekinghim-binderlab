@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
   type CSSProperties,
@@ -32,8 +33,9 @@ import { useHydrated } from "@/lib/use-hydrated";
 import { undoRefills, type AwishPushStatus } from "@/app/(app)/drift/actions";
 import { Sheet } from "@/app/(app)/lager/_components/sheet";
 import { registerCount } from "@/app/(app)/lager/actions";
+import { packMystery } from "@/app/(app)/vart-lager/mystery/actions";
 
-import { refreshFill } from "../actions";
+import { refreshFill, retryAwishPush } from "../actions";
 import { bringStore, useBring, useDone, type Done } from "../_lib/done-store";
 import {
   applyAdjustments,
@@ -43,14 +45,19 @@ import {
   fillAllQty,
   maxFill,
   mysteryNote,
+  mysteryShortAtHome,
+  packAsks,
   qtyAfterCount,
   needLabel,
   pairKey,
   splitRefill,
   toggleBring,
+  withPacked,
   type FillAdjustment,
   type FillMachine,
+  type FillRecipe,
   type FillRow,
+  type PackAsk,
   type SourceChoice,
 } from "../_lib/model";
 import type { FillData } from "../_lib/data";
@@ -83,6 +90,8 @@ export interface FillAppProps {
 const BASE = FILL_BASE;
 /** En Awish-läsning yngre än så här pulserar. */
 const FRESH_MS = 30 * 60_000;
+/** Appen försöker själv skicka till Awish igen högst så här ofta. */
+const AUTO_RETRY_MS = 5 * 60_000;
 /** Uppdatera väntar högst så här länge på servern (Awish har en egen, kortare gräns). */
 const REFRESH_TIMEOUT_MS = 15_000;
 
@@ -193,6 +202,12 @@ export function FillApp({
     map: new Map(),
   });
 
+  // Packat här ("Ja, packa 1 omgång och fyll på") men inte i serverns siffror än.
+  const [packed, setPacked] = useState<{ base: FillData; deltas: PackDelta[] }>({
+    base: data,
+    deltas: [],
+  });
+
   const rememberSaved = useCallback(
     (items: readonly QueuedRefill[]) => {
       setSaved((prev) => ({
@@ -213,12 +228,148 @@ export function FillApp({
     },
     [rememberSaved, toast, t],
   );
+
+  // Automater som väntar på Awish: serverns lista, plus det som hänt här sedan sidan
+  // hämtades (en sändning som just misslyckades, eller ett försök som just gick fram).
+  const [pushLocal, setPushLocal] = useState<{
+    base: FillData;
+    failed: readonly string[];
+    cleared: readonly string[];
+  }>({ base: data, failed: [], cleared: [] });
+  const notePush = useCallback(
+    (failed: readonly string[], cleared: readonly string[]) => {
+      if (failed.length === 0 && cleared.length === 0) return;
+      setPushLocal((prev) => {
+        const same = prev.base === data;
+        const gone = new Set(cleared);
+        const bad = new Set(failed);
+        return {
+          base: data,
+          failed: [...(same ? prev.failed.filter((id) => !gone.has(id)) : []), ...failed],
+          cleared: [...(same ? prev.cleared.filter((id) => !bad.has(id)) : []), ...cleared],
+        };
+      });
+    },
+    [data],
+  );
+  const pendingPush = useMemo(() => {
+    const out = new Set(Object.keys(data.awishPending));
+    if (pushLocal.base === data) {
+      for (const id of pushLocal.failed) out.add(id);
+      for (const id of pushLocal.cleared) out.delete(id);
+    }
+    return out;
+  }, [data, pushLocal]);
+
+  /** Beskedet om Awish efter att påfyllningar sparats (Klar, eller kön i bakgrunden). */
+  const reportAwish = useCallback(
+    (awish: AwishPushStatus | undefined) => {
+      if (!awish) return;
+      if (awish.failedMachineIds?.length) notePush(awish.failedMachineIds, []);
+      if (awish.state !== "sent") {
+        // Gick det inte hela vägen till Awish: säg till. Raden på automaten ligger kvar.
+        toast({
+          title: t.fill.sendToAwish,
+          description: awishText(t, awish),
+          tone: awish.state === "error" ? "critical" : "neutral",
+        });
+      } else {
+        toast({ title: awishText(t, awish), tone: "ok" });
+      }
+    },
+    [notePush, toast, t],
+  );
+
   const q = useRefillQueue(scope, {
-    onBackgroundSaved: (items) => {
+    onBackgroundSaved: (items, awish) => {
       onQueueSaved(items);
+      reportAwish(awish);
       router.refresh();
     },
   });
+
+  const pendingRef = useRef(pendingPush);
+  useEffect(() => {
+    pendingRef.current = pendingPush;
+  }, [pendingPush]);
+
+  // "Försök igen": skicka antalen till Awish en gång till (en automat, eller alla som väntar).
+  const [retrying, setRetrying] = useState<string | null>(null);
+  const retryBusy = useRef(false);
+  const retryPush = useCallback(
+    async (machineId: string | null, quiet = false) => {
+      if (retryBusy.current) return;
+      retryBusy.current = true;
+      if (!quiet) setRetrying(machineId ?? "alla");
+      try {
+        const res = await retryAwishPush(machineId ? { machineId } : {}).catch(() => ({
+          ok: false as const,
+          error: t.common.offlineRetry,
+        }));
+        if (!res.ok) {
+          if (!quiet) {
+            toast({
+              title: t.r2.t1.fill.retryFailedTitle,
+              description: t.serverError(res.error),
+              tone: "critical",
+            });
+          }
+          return;
+        }
+        const still = new Set(res.data.pending);
+        const asked = machineId ? [machineId] : [...pendingRef.current];
+        notePush(
+          asked.filter((id) => still.has(id)),
+          asked.filter((id) => !still.has(id)),
+        );
+        if (res.data.cleared) {
+          const slots = res.data.awish?.kind === "sent" ? (res.data.awish.slots ?? 0) : 0;
+          toast({
+            title: slots > 0 ? t.r2.t1.fill.retrySent(slots) : t.r2.t1.fill.retryNothing,
+            tone: "ok",
+          });
+        } else if (!quiet) {
+          toast({
+            title: t.r2.t1.fill.retryFailedTitle,
+            description: t.r2.t1.fill.retryFailedHint,
+            tone: "critical",
+          });
+        }
+        if (res.data.cleared || !quiet) router.refresh();
+      } finally {
+        retryBusy.current = false;
+        setRetrying(null);
+      }
+    },
+    [notePush, router, toast, t],
+  );
+  // Appen försöker igen själv: strax efter att sidan öppnats och sedan var femte minut,
+  // så länge någon automat väntar och det finns nät.
+  const lastAutoRetry = useRef(0);
+  const waitingPush = pendingPush.size;
+  useEffect(() => {
+    if (waitingPush === 0 || !q.online) return;
+    const run = () => {
+      if (Date.now() - lastAutoRetry.current < AUTO_RETRY_MS) return;
+      lastAutoRetry.current = Date.now();
+      void retryPush(null, true);
+    };
+    const first = window.setTimeout(run, 3_000);
+    const timer = window.setInterval(run, 60_000);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(timer);
+    };
+  }, [q.online, retryPush, waitingPush]);
+  const pendingLine = (m: { id: string; code: string }) =>
+    pendingPush.has(m.id) ? (
+      <AwishPendingLine
+        title={t.r2.t1.fill.awishPending(m.code)}
+        busy={retrying === m.id || retrying === "alla"}
+        disabled={!q.online}
+        onRetry={() => void retryPush(m.id)}
+      />
+    ) : null;
 
   // Awish-läsningen per automat ("Awish läst 14:50") och den senaste av alla.
   const syncLabels = useMemo(() => {
@@ -246,12 +397,15 @@ export function FillApp({
   const reloadData = useCallback(async () => {
     try {
       const out = await syncQueue();
-      if (out.saved.length > 0) onQueueSaved(out.saved);
+      if (out.saved.length > 0) {
+        onQueueSaved(out.saved);
+        reportAwish(out.awish);
+      }
     } catch {
       // Kön ligger kvar och skickas nästa gång.
     }
     startRefresh(() => router.refresh());
-  }, [onQueueSaved, router, syncQueue]);
+  }, [onQueueSaved, reportAwish, router, syncQueue]);
   // Appen öppnas igen (synlig, fokus, bfcache, nät tillbaka): hämta om, högst var 30:e s.
   useFreshData({ renderedAt, refresh: () => void reloadData() });
 
@@ -289,7 +443,8 @@ export function FillApp({
     ];
     // Först med det föreslagna lagret (raderna och lagrens saldo efter kön), sedan väljs lagret
     // som har packen (chooseSource) och raderna räknas mot det.
-    const first = applyAdjustments(data.machines, sources.stock, adj, counts, (id) =>
+    const stock = withPacked(sources.stock, packed.base === data ? packed.deltas : []);
+    const first = applyAdjustments(data.machines, stock, adj, counts, (id) =>
       pickPlace(sources.places, override[id], ...preferred(id)),
     );
     const choice: Record<string, SourceChoice> = {};
@@ -303,15 +458,9 @@ export function FillApp({
         t,
       });
     }
-    const out = applyAdjustments(
-      data.machines,
-      sources.stock,
-      adj,
-      counts,
-      (id) => choice[id]?.id ?? null,
-    );
+    const out = applyAdjustments(data.machines, stock, adj, counts, (id) => choice[id]?.id ?? null);
     return { ...out, choice };
-  }, [counted, data, lastSource, override, q.queue, saved, sources, t]);
+  }, [counted, data, lastSource, override, packed, q.queue, saved, sources, t]);
   const sourceOf = (machineId: string) => view.choice[machineId]?.id ?? null;
 
   const go = useCallback((href: string) => {
@@ -336,6 +485,14 @@ export function FillApp({
           count: Object.values(view.stock[p.id] ?? {}).reduce((n, v) => n + Math.max(0, v), 0),
         }))}
         sourceId={source}
+        sourceStock={source ? (view.stock[source] ?? {}) : null}
+        recipes={data.recipes}
+        onPacked={(deltas) =>
+          setPacked((prev) => ({
+            base: data,
+            deltas: [...(prev.base === data ? prev.deltas : []), ...deltas],
+          }))
+        }
         sourceReason={view.choice[selected.id]?.reason ?? null}
         onSource={(id) => setOverride((prev) => ({ ...prev, [selected.id]: id }))}
         syncLabel={syncLabels[selected.id]}
@@ -347,7 +504,12 @@ export function FillApp({
             <NetPill online={q.online} waiting={waiting} syncing={q.syncing} />
           </div>
         }
-        notice={noticeLine}
+        notice={
+          <>
+            {noticeLine}
+            {pendingLine(selected)}
+          </>
+        }
         onBack={() => go(BASE)}
         onCounted={(titleId, value) => {
           setCounted((prev) => {
@@ -421,16 +583,7 @@ export function FillApp({
             });
           }
           if (out.saved.length > 0) rememberSaved(out.saved);
-          if (out.awish && out.awish.state !== "sent") {
-            // Gick det inte hela vägen till Awish: säg till så antalet kan skrivas där.
-            toast({
-              title: t.fill.sendToAwish,
-              description: awishText(t, out.awish),
-              tone: out.awish.state === "error" ? "critical" : "neutral",
-            });
-          } else if (out.awish?.state === "sent") {
-            toast({ title: awishText(t, out.awish), tone: "ok" });
-          }
+          reportAwish(out.awish);
           // Först tillbaka till listan (bekräftelsen syns direkt), sedan hämtas datan om för
           // den adressen.
           go(BASE);
@@ -441,12 +594,19 @@ export function FillApp({
   }
 
   const mine = data.hasOthers && mineOnly === "1";
-  const shown = mine ? view.machines.filter((m) => m.mine) : view.machines;
+  const visible = mine ? view.machines.filter((m) => m.mine) : view.machines;
+  // Automater som väntar på Awish ("Awish fick inte antalen …"): EN ruta överst på sidan, före
+  // Ta med-listan och automaterna. Automaten är oftast full efter påfyllningen och ligger sist
+  // i listan, så en rad under kortet hamnar under skärmkanten. Väntar flera (Awish nere, eller
+  // inloggningen har gått ut) räcker ett Försök igen för alla.
+  const waitingShown = visible.filter((m) => pendingPush.has(m.id));
+  const shown = visible;
 
-  if (bring && shown.length > 0) {
+  // Ta med-listan följer alltid den vanliga ordningen.
+  if (bring && visible.length > 0) {
     return (
       <BringScreen
-        machines={shown}
+        machines={visible}
         places={sources.places.map((p) => ({
           id: p.id,
           name: p.name,
@@ -458,7 +618,7 @@ export function FillApp({
           // Läget läses när man trycker (inte ur renderingen): två snabba tryck räknas båda.
           const current = bringStore.read(scope);
           if (!current) return;
-          setBring({ ...current, chosen: toggleBring(current.chosen, shown, id) });
+          setBring({ ...current, chosen: toggleBring(current.chosen, visible, id) });
         }}
         placeId={pickPlace(sources.places, bring.placeId, lastSource, sources.defaultPlaceId)}
         online={q.online}
@@ -580,6 +740,21 @@ export function FillApp({
         />
       ) : null}
 
+      {waitingShown.length === 1 ? (
+        pendingLine(waitingShown[0]!)
+      ) : waitingShown.length > 1 ? (
+        <AwishPendingLine
+          title={t.r2.t1.fill.awishPendingMany(
+            waitingShown
+              .map((m) => m.code)
+              .sort((a, b) => a.localeCompare(b, "sv", { numeric: true })),
+          )}
+          busy={retrying !== null}
+          disabled={!q.online}
+          onRetry={() => void retryPush(null)}
+        />
+      ) : null}
+
       {rejected.length > 0 ? (
         <RejectedList
           items={rejected}
@@ -642,6 +817,45 @@ export function FillApp({
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * Sändningen till Awish gick inte fram för automaten: raden ligger kvar tills den gått fram
+ * ("Awish fick inte antalen för BL-003." med Försök igen). Påfyllningen är sparad i appen.
+ */
+function AwishPendingLine({
+  title,
+  busy,
+  disabled,
+  onRetry,
+}: {
+  /** "Awish fick inte antalen för BL-003." */
+  title: string;
+  busy: boolean;
+  disabled: boolean;
+  onRetry: () => void;
+}) {
+  const t = useT();
+  return (
+    <div
+      role="status"
+      className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-md border border-signal-line bg-surface p-3"
+    >
+      <p className="flex min-w-0 flex-1 basis-48 flex-col gap-0.5">
+        <span className="text-md font-medium text-signal-fg">{title}</span>
+        <span className="text-sm text-muted">{t.r2.t1.fill.awishPendingHint}</span>
+      </p>
+      <button
+        type="button"
+        disabled={busy || disabled}
+        aria-busy={busy}
+        onClick={onRetry}
+        className="min-h-11 shrink-0 rounded-md border border-line-strong bg-raised px-4 text-md font-medium text-fg active:bg-hover disabled:text-disabled"
+      >
+        {busy ? t.r2.t1.fill.retrying : t.r2.t1.fill.retry}
+      </button>
     </div>
   );
 }
@@ -872,10 +1086,27 @@ interface Line {
   readonly quantity: number;
 }
 
+/** En ändring i ett eget lager efter en packning här (delar ut, mystery packs in). */
+interface PackDelta {
+  readonly placeId: string;
+  readonly titleId: string;
+  readonly delta: number;
+}
+
+/** Frågorna "Packade du en omgång?" före Klar: en i taget, med svaren hittills. */
+interface Asking {
+  readonly asks: readonly PackAsk[];
+  readonly index: number;
+  readonly yes: readonly PackAsk[];
+}
+
 function MachineScreen({
   machine: m,
   places,
   sourceId,
+  sourceStock,
+  recipes,
+  onPacked,
   sourceReason,
   onSource,
   syncLabel,
@@ -892,6 +1123,12 @@ function MachineScreen({
   places: readonly { id: string; name: string; count: number }[];
   /** Lagret packen tas från, null = inget eget lager. */
   sourceId: string | null;
+  /** Saldot per titel i lagret packen tas från (efter kön), null = inget eget lager. */
+  sourceStock: Readonly<Record<string, number>> | null;
+  /** Mystery packs: gällande innehåll per titel (för "Packade du en omgång?"). */
+  recipes: Readonly<Record<string, FillRecipe>>;
+  /** En packning gjordes här: lagrets saldo ändras direkt på skärmen. */
+  onPacked: (deltas: PackDelta[]) => void;
   /** Varför ett annat lager än automatens är valt ("Kontoret saknar pack"), annars null. */
   sourceReason: string | null;
   onSource: (id: string) => void;
@@ -924,20 +1161,78 @@ function MachineScreen({
   // Klar sparar och skickar till Awish: fråga först, så att ett tryck av misstag (t.ex. när
   // man packar hemma) inte registrerar en påfyllning.
   const [confirming, setConfirming] = useState(false);
+  // Mystery packs som fylls på fast de inte finns färdiga i lagret: "Packade du en omgång?".
+  const [asking, setAsking] = useState<Asking | null>(null);
+  const [packing, setPacking] = useState(false);
+  // Klient-id per påbörjad packning (lager, titel, innehåll, omgångar) tills den gått fram.
+  const packIds = useRef(new Map<string, string>());
   // Ändrade antal som inte sparats: appen laddar inte om av sig själv för en ny version.
-  useUnsavedInput(touched || busy || confirming || counting !== null);
-  const finish = async () => {
+  useUnsavedInput(touched || busy || confirming || asking !== null || counting !== null);
+  const linesNow = (): Line[] =>
+    m.rows.map((row) => ({ row, quantity: qty[row.titleId] ?? 0 })).filter((l) => l.quantity > 0);
+  /** Sparar påfyllningen. `toPack`: omgångar som först packas i lagret (svaret Ja). */
+  const finish = async (toPack: readonly PackAsk[] = []) => {
     setBusy(true);
     try {
-      await onDone(
-        m.rows
-          .map((row) => ({ row, quantity: qty[row.titleId] ?? 0 }))
-          .filter((l) => l.quantity > 0),
-      );
+      let lines = linesNow();
+      if (toPack.length > 0 && sourceId) {
+        setPacking(true);
+        const added = new Map<string, number>();
+        for (const ask of toPack) {
+          // Samma id vid ett nytt försök: kom svaret aldrig fram (nätet dog) men packningen
+          // sparades, packas det inte en gång till när man trycker Ja igen.
+          const packKey = `${sourceId}:${ask.titleId}:${ask.recipeId}:${ask.batches}`;
+          const clientId = packIds.current.get(packKey) ?? newClientId();
+          packIds.current.set(packKey, clientId);
+          const res = await packMystery({
+            titleId: ask.titleId,
+            placeId: sourceId,
+            batches: ask.batches,
+            recipeId: ask.recipeId,
+            clientId,
+          }).catch(() => ({ ok: false as const, error: t.common.offlineRetry }));
+          if (!res.ok) {
+            // Inget är påfyllt än: stanna här, så att man kan trycka Klar igen.
+            toast({
+              title: t.r2.t1.fill.packFailed,
+              description: `${t.serverError(res.error)} ${t.r2.t1.fill.packFailedHint}`,
+              tone: "critical",
+            });
+            return;
+          }
+          packIds.current.delete(packKey);
+          added.set(ask.titleId, ask.packs);
+          onPacked([
+            { placeId: sourceId, titleId: ask.titleId, delta: ask.packs },
+            ...(recipes[ask.titleId]?.items ?? []).map((i) => ({
+              placeId: sourceId,
+              titleId: i.titleId,
+              delta: -i.quantity * ask.batches,
+            })),
+          ]);
+        }
+        // De nypackade packen ligger nu i lagret: påfyllningen tar dem därifrån.
+        lines = lines.map((l) => {
+          const plus = added.get(l.row.titleId);
+          return plus ? { ...l, row: { ...l.row, home: l.row.home + plus } } : l;
+        });
+      }
+      setPacking(false);
+      await onDone(lines);
     } finally {
       setBusy(false);
+      setPacking(false);
       setConfirming(false);
+      setAsking(null);
     }
+  };
+  const ask = asking ? asking.asks[asking.index] : undefined;
+  const lastAsk = asking !== null && asking.index === asking.asks.length - 1;
+  const answer = (yes: boolean) => {
+    if (!asking || !ask) return;
+    const next = yes ? [...asking.yes, ask] : asking.yes;
+    if (lastAsk) void finish(next);
+    else setAsking({ ...asking, index: asking.index + 1, yes: next });
   };
   const sourceName = places.find((p) => p.id === sourceId)?.name ?? t.common.homeFallback;
   const total = m.rows.reduce((n, r) => n + (qty[r.titleId] ?? 0), 0);
@@ -967,6 +1262,7 @@ function MachineScreen({
       <TitleRow
         row={r}
         sourceName={sourceName}
+        hasSource={sourceId !== null}
         value={qty[r.titleId] ?? 0}
         onChange={(v) => set(r.titleId, v, maxFill(r))}
         counting={counting === r.titleId}
@@ -1111,7 +1407,57 @@ function MachineScreen({
       </div>
 
       <div className="sticky bottom-0 z-10 border-t border-line bg-bg/95 px-4 pt-3 pb-[calc(12px+env(safe-area-inset-bottom))] backdrop-blur">
-        {confirming ? (
+        {asking && ask ? (
+          <div
+            className="flex flex-col gap-2"
+            role="group"
+            aria-label={t.r2.t1.fill.packAskQuestion(ask.batches)}
+          >
+            <p className="text-md text-muted">
+              {t.r2.t1.fill.packAskHave(ask.home, ask.name, sourceName)}
+            </p>
+            <p className="text-lg font-medium text-fg">
+              {t.r2.t1.fill.packAskQuestion(ask.batches)}
+            </p>
+            <p className="text-sm text-muted">{t.r2.t1.fill.packAskDetail(sourceName)}</p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => answer(true)}
+              className={cn(
+                "flex min-h-14 w-full items-center justify-center gap-2 rounded-md border px-3 text-lg font-medium transition-colors",
+                busy
+                  ? "border-dashed border-line-strong text-disabled"
+                  : "border-inverse bg-inverse text-on-inverse active:bg-inverse-hover",
+              )}
+            >
+              <Icon name="check" size={20} />
+              {busy
+                ? packing
+                  ? t.r2.t1.fill.packing
+                  : t.common.saving
+                : t.r2.t1.fill.packAskYes(ask.batches, lastAsk)}
+            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => answer(false)}
+                className="flex min-h-12 w-full items-center justify-center rounded-md border border-line-control px-3 text-md font-medium text-fg disabled:text-disabled"
+              >
+                {t.r2.t1.fill.packAskNo(lastAsk)}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setAsking(null)}
+                className="flex min-h-12 w-full items-center justify-center rounded-md px-3 text-md text-subtle hover:text-fg disabled:text-disabled"
+              >
+                {t.common.cancel}
+              </button>
+            </div>
+          </div>
+        ) : confirming ? (
           <div className="flex flex-col gap-2" role="group" aria-label={t.fill.confirmQuestion}>
             <p className="text-md font-medium text-fg">{t.fill.confirmQuestion}</p>
             <p className="text-sm text-muted">{t.fill.confirmDetail(total)}</p>
@@ -1144,7 +1490,10 @@ function MachineScreen({
             disabled={busy}
             onClick={async () => {
               if (total > 0) {
-                setConfirming(true);
+                // Utan nät går det inte att packa: påfyllningen läggs i kön som vanligt.
+                const asks = online ? packAsks(linesNow(), recipes, sourceStock) : [];
+                if (asks.length > 0) setAsking({ asks, index: 0, yes: [] });
+                else setConfirming(true);
                 return;
               }
               toast({ title: t.fill.nothingFilled, tone: "neutral" });
@@ -1189,6 +1538,7 @@ function MachineScreen({
 function TitleRow({
   row: r,
   sourceName,
+  hasSource,
   value,
   onChange,
   counting,
@@ -1198,6 +1548,8 @@ function TitleRow({
   row: FillRow;
   /** Lagret packen tas från ("Hemma"). */
   sourceName: string;
+  /** Det finns ett eget lager att ta packen från. */
+  hasSource: boolean;
   value: number;
   onChange: (v: number) => void;
   counting: boolean;
@@ -1211,6 +1563,8 @@ function TitleRow({
   const short = value > Math.max(0, r.home);
   const fullNote = fullFastNote(r, t);
   const mystery = mysteryNote(r, value, t);
+  // Tomt mystery-fack men ingen hel omgång färdig i lagret: säg det och erbjud en omgång.
+  const shortBatch = hasSource && value === 0 ? mysteryShortAtHome(r) : null;
   return (
     <div
       className={cn(
@@ -1254,6 +1608,20 @@ function TitleRow({
         <p className="-mt-1 text-sm text-muted" role="note">
           {mystery}
         </p>
+      ) : null}
+      {shortBatch !== null ? (
+        <div className="-mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <p className="text-sm text-signal-fg" role="note">
+            {t.r2.t1.fill.mysteryReady(Math.max(0, r.home), sourceName)}
+          </p>
+          <button
+            type="button"
+            onClick={() => onChange(shortBatch)}
+            className="min-h-11 rounded-sm border border-line-strong bg-surface px-4 text-md font-medium text-fg active:bg-hover"
+          >
+            {t.r2.t1.fill.mysteryFillBatch(shortBatch)}
+          </button>
+        </div>
       ) : null}
 
       <div className="grid grid-cols-[56px_1fr_56px] items-center gap-2">

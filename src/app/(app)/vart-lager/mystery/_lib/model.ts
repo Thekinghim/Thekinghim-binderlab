@@ -13,7 +13,17 @@
  *   butikens andel), även för ett utkast som inte är sparat ("vad händer om").
  */
 
-import { recipeCost, unitMargin } from "@/domain";
+import { sellOut } from "@/analytics/sellout";
+import {
+  dayOfWeek,
+  recipeCost,
+  unitMargin,
+  type IsoDate,
+  type MysteryDueSlot,
+  type MysteryPackPlan,
+  type MysterySlotInput,
+} from "@/domain";
+import type { Messages } from "@/i18n/sv";
 
 /** En rad i innehållet: en titel, antal per omgång och om den är en HIT. */
 export interface RecipeItem {
@@ -326,4 +336,141 @@ export function checkDraft(batchSize: number, items: readonly DraftItem[]): Draf
     return fail(diff > 0 ? `${diff} kvar att lägga till.` : `${-diff} för många.`);
   }
   return { ok: true, sum, error: null };
+}
+
+// ---------------------------------------------------------------------------
+// Minus i lagret (påfyllt utan att trycka Packa)
+// ---------------------------------------------------------------------------
+
+/** Vad som rättar ett minus: packa hela omgångar, eller räkna om lagret. */
+export type MinusFix =
+  | { readonly kind: "pack"; readonly batches: number; readonly packs: number }
+  | { readonly kind: "count" };
+
+/**
+ * Ett lager står på minus för ett mystery pack: någon har fyllt på utan att trycka Packa.
+ * - Minuset är hela omgångar (−14, −28 med 14 per omgång): "Packa 1 omgång nu" rättar det,
+ *   och delarna dras ur lagret.
+ * - Annars (−1, −15) eller fler än MAX_BATCHES omgångar: lagret behöver räknas om.
+ * - 0 eller mer, eller okänd omgång: null (inget att rätta).
+ */
+export function minusFix(quantity: number, batchSize: number | null | undefined): MinusFix | null {
+  if (!Number.isFinite(quantity) || quantity >= 0) return null;
+  const minus = -Math.trunc(quantity);
+  if (!batchSize || !Number.isInteger(batchSize) || batchSize < 1) return { kind: "count" };
+  const batches = minus / batchSize;
+  if (!Number.isInteger(batches) || batches > MAX_BATCHES) return { kind: "count" };
+  return { kind: "pack", batches, packs: minus };
+}
+
+/** Packa i ett bestämt lager med antalet förvalt (rättar ett minus där). */
+export function packInPlaceHref(titleId: string, placeId: string, packs: number): string {
+  return `/vart-lager/mystery/${titleId}?packa=${Math.trunc(packs)}&lager=${placeId}#packa`;
+}
+
+/** Inventeringen av ett eget lager. */
+export function countHref(placeId: string): string {
+  return `/vart-lager/inventering?lager=${placeId}`;
+}
+
+// ---------------------------------------------------------------------------
+// "Packa 1 omgång före fredag": räknat från facken i automaterna
+// ---------------------------------------------------------------------------
+
+/** Fönstret för takten i ett mystery-fack (hela dagar t.o.m. i går), som Fyll på. */
+export const SLOT_WINDOW_DAYS = 14;
+
+/** Ett mystery-fack i en automat, som laddaren läser det. */
+export interface SlotFacts {
+  readonly machineId: string;
+  /** Automatens kod ("BL-001"). */
+  readonly label: string;
+  /** Pack i facket nu, null = inget känt saldo (aldrig läst eller påfyllt). */
+  readonly onHand: number | null;
+  /** Sålda pack de senaste SLOT_WINDOW_DAYS hela dagarna. */
+  readonly sold: number;
+  /** Automaten har sålt något alls någon gång (annars är den ny). */
+  readonly everSold: boolean;
+}
+
+/**
+ * Facken som mysteryBatchesToPack() vill ha dem: dagen varje fack blir tomt räknas med
+ * sellOut() (samma slutdag som resten av appen). `weekShareOf` ger automatens veckoform när
+ * den finns (helgen säljer mer); utan den räknas ett platt snitt.
+ */
+export function slotInputs(
+  facts: readonly SlotFacts[],
+  today: IsoDate,
+  weekShareOf?: (machineId: string) => readonly number[] | null | undefined,
+): MysterySlotInput[] {
+  return facts.map((f) => {
+    const onHand = Math.max(0, Math.trunc(f.onHand ?? 0));
+    const out =
+      onHand > 0
+        ? sellOut({
+            onHand,
+            dailyAvg: { units: Math.max(0, f.sold), days: SLOT_WINDOW_DAYS },
+            from: today,
+            weekShare: weekShareOf?.(f.machineId) ?? null,
+          })
+        : null;
+    return { label: f.label, onHand, emptyOn: out?.date ?? null, isNew: !f.everSold };
+  });
+}
+
+/**
+ * Pack i ett lager som går jämnt upp i hela omgångar (avrundat nedåt): 20 pack med 14 per
+ * omgång → 14. Under 0 → 0. Färdiga omgångar räknas per lager, eftersom ett fack fylls med
+ * en hel omgång från ett lager.
+ */
+export function wholeBatchesDown(packs: number, batchSize: number): number {
+  if (!Number.isFinite(packs) || !Number.isInteger(batchSize) || batchSize < 1) return 0;
+  return Math.floor(Math.max(0, packs) / batchSize) * batchSize;
+}
+
+/** Meningen om vad som ska packas, och om den är en uppmaning ("act") eller lugn ("calm"). */
+export interface PackSentence {
+  readonly text: string;
+  readonly tone: "act" | "calm";
+}
+
+type PackTexts = Messages["r2"]["t1"]["mystery"];
+
+function slotText(d: MysteryDueSlot, m: PackTexts): string {
+  if (d.emptyNow) return m.slotEmpty(d.label);
+  return d.daysLeft <= 1 ? m.slotTomorrow(d.label) : m.slotInDays(d.label, d.daysLeft);
+}
+
+/**
+ * En mening för kortet och sidan:
+ * - "Packa 1 omgång före fredag. BL-001 är tom om ca 3 dagar."
+ * - "Packa 1 omgång nu. BL-001 är tom." · "Ny automat BL-004: packa 1 omgång."
+ * - "1 omgång ligger klar hemma. BL-001 är tom om ca 3 dagar."
+ * - "Inget att packa den här veckan."
+ * null utan innehåll (inget mystery pack) eller när facken inte är kända.
+ */
+export function packSentence(plan: MysteryPackPlan | null, t: Messages): PackSentence | null {
+  if (!plan || plan.basis !== "slots") return null;
+  const m = t.r2.t1.mystery;
+  const first = plan.first ?? null;
+  if (plan.batches > 0 && first) {
+    const lead = first.emptyNow
+      ? first.isNew
+        ? plan.batches === 1
+          ? m.packNew(1, first.label)
+          : // Flera omgångar: antalet gäller alla facken, inte bara den nya automaten.
+            `${m.packNow(plan.batches)}. ${m.slotNew(first.label)}`
+        : `${m.packNow(plan.batches)}. ${m.slotEmpty(first.label)}`
+      : first.daysLeft <= 1
+        ? `${m.packToday(plan.batches)} ${m.slotTomorrow(first.label)}`
+        : `${m.packBefore(plan.batches, m.weekdays[dayOfWeek(first.emptyOn) - 1] ?? "")} ${m.slotInDays(first.label, first.daysLeft)}`;
+    const more = plan.batches - 1;
+    return { text: more > 0 ? `${lead} ${m.moreSlots(more)}` : lead, tone: "act" };
+  }
+  if (plan.readyBatches > 0) {
+    const next = plan.due?.[0];
+    const ready = m.readyHome(plan.readyBatches);
+    return { text: next ? `${ready} ${slotText(next, m)}` : ready, tone: "calm" };
+  }
+  return { text: m.nothingToPack, tone: "calm" };
 }

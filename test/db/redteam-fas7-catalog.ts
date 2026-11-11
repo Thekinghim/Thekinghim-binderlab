@@ -1327,4 +1327,11 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: () => [{ start: "2025-01-01", end: "2025-01-31" }],
   },
+  // Runda 2, spår T1: "Försök igen" i Fyll på (sändningen till Awish gick inte fram).
+  {
+    module: "@/app/fyll-pa/actions",
+    name: "retryAwishPush",
+    allowed: FIELD,
+    args: (c) => [{ machineId: c.A.machineId }],
+  },
 ];

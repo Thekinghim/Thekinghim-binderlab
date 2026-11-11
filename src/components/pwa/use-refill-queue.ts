@@ -51,7 +51,10 @@ const NOTHING: SyncOutcome = { saved: [], rejected: [], offline: false };
 
 export function useRefillQueue(
   scope: string,
-  options: { onBackgroundSaved?: (saved: QueuedRefill[]) => void } = {},
+  options: {
+    /** Kön skickades i bakgrunden. `awish`: beskedet om sändningen till Awish, om någon. */
+    onBackgroundSaved?: (saved: QueuedRefill[], awish?: AwishPushStatus) => void;
+  } = {},
 ) {
   const online = useSyncExternalStore(
     subscribeOnline,
@@ -176,7 +179,9 @@ export function useRefillQueue(
   useEffect(() => {
     const background = async () => {
       const out = await sync();
-      if (out.saved.length > 0) onSaved.current?.(out.saved);
+      // Beskedet om Awish följer med: en sändning som inte gick fram ska synas även när
+      // påfyllningen låg i kön utan nät och skickades i bakgrunden.
+      if (out.saved.length > 0) onSaved.current?.(out.saved, out.awish);
     };
     const first = window.setTimeout(() => void reload().then(background), 0);
     const back = () => {

@@ -11,7 +11,7 @@
 import { getServiceDb, type Db } from "@/db/client";
 import { sql } from "drizzle-orm";
 
-import { logAwishPushes } from "@/server/varde/log";
+import { logAwishPushOutcomes, logAwishPushes, pendingAwishPushes } from "@/server/varde/log";
 
 import { AwishApiError } from "./grpc-client";
 import {
@@ -52,6 +52,11 @@ export interface WebPushDeps {
   clientOptions?: AwishWebClientOptions;
   /** Provkörning: logga in och läs, men skriv ingenting till Awish (gäller även när push är av). */
   dryRun?: boolean;
+  /**
+   * Ta även med automaterna som väntar sedan en tidigare sändning inte gick fram (nytt
+   * försök i samma körning). Används när en påfyllning sparas.
+   */
+  withPending?: boolean;
 }
 
 interface WebSource {
@@ -187,6 +192,16 @@ export async function pushMachinesToAwish(
 ): Promise<WebPushResult> {
   const db = deps.serviceDb ?? getServiceDb();
   const ids = [...new Set(machineIds)].filter(Boolean);
+  if (deps.withPending && !deps.dryRun) {
+    // Automater som väntar sedan förra felet följer med: ett nytt försök utan ett tryck.
+    try {
+      for (const id of (await pendingAwishPushes(db, organizationId)).keys()) {
+        if (!ids.includes(id)) ids.push(id);
+      }
+    } catch (error) {
+      console.error("Kunde inte läsa väntande Awish-sändningar.", error);
+    }
+  }
   if (ids.length === 0) return { status: "off", reason: "no_source", machines: [] };
 
   const source = await loadWebSource(db, organizationId);
@@ -266,12 +281,85 @@ export async function pushMachinesToAwish(
         titlesWithoutSlot: [],
         error: message,
       });
-      // Ett auth-fel gäller hela inloggningen: sluta försöka med fler automater.
-      if (error instanceof AwishApiError && error.kind === "auth") break;
+      // Ett auth-fel gäller hela inloggningen: sluta försöka med fler automater. De som
+      // inte hanns med får samma fel, så att de också sparas som väntande.
+      if (error instanceof AwishApiError && error.kind === "auth") {
+        const done = new Set(machines.map((m) => m.machineId));
+        for (const rest of ids) {
+          if (done.has(rest)) continue;
+          machines.push({
+            machineId: rest,
+            machineCode: codes.get(rest) ?? null,
+            status: "error",
+            slotsUpdated: 0,
+            titlesWithoutSlot: [],
+            error: message,
+          });
+        }
+        break;
+      }
     }
   }
 
-  // Värde: räknas som sparad tid (automation_log). Stoppar aldrig pushen.
-  if (!deps.dryRun) await logAwishPushes(db, organizationId, machines);
+  if (!deps.dryRun) {
+    // Värde: räknas som sparad tid (automation_log). Stoppar aldrig pushen.
+    await logAwishPushes(db, organizationId, machines);
+    // Utfallet per automat: de som inte gick fram väntar och försöks igen (Fyll på).
+    await logAwishPushOutcomes(db, organizationId, machines);
+  }
   return { status: "done", machines };
+}
+
+/**
+ * Sändningen kunde inte ens påbörjas (ett oväntat fel före eller under pushMachinesToAwish):
+ * automaterna sparas som väntande, så att felet syns i Fyll på och försöks igen.
+ */
+export async function recordAwishPushFailure(
+  organizationId: string,
+  machineIds: readonly string[],
+  deps: Pick<WebPushDeps, "serviceDb"> = {},
+): Promise<void> {
+  const db = deps.serviceDb ?? getServiceDb();
+  await logAwishPushOutcomes(
+    db,
+    organizationId,
+    [...new Set(machineIds)].filter(Boolean).map((machineId) => ({
+      machineId,
+      status: "error",
+      slotsUpdated: 0,
+    })),
+  );
+}
+
+export interface AwishRetryResult {
+  /** Resultatet av försöket; null när ingen automat väntade. */
+  readonly push: WebPushResult | null;
+  /** Automater som fortfarande väntar efter försöket. */
+  readonly pending: string[];
+}
+
+/**
+ * "Försök igen": skickar de väntande automaternas antal till Awish en gång till.
+ * `machineIds` null = alla som väntar i organisationen. Är push avstängd, eller saknas
+ * inloggningen, finns inget att skicka: automaterna slutar vänta (läsningen av facken gäller
+ * då igen). `organizationId` kommer från en redan rollkontrollerad åtgärd.
+ */
+export async function retryPendingAwishPushes(
+  organizationId: string,
+  machineIds: readonly string[] | null,
+  deps: WebPushDeps = {},
+): Promise<AwishRetryResult> {
+  const db = deps.serviceDb ?? getServiceDb();
+  const waiting = [...(await pendingAwishPushes(db, organizationId)).keys()];
+  const ids = machineIds ? waiting.filter((id) => machineIds.includes(id)) : waiting;
+  if (ids.length === 0) return { push: null, pending: waiting };
+  const push = await pushMachinesToAwish(organizationId, ids, { ...deps, withPending: false });
+  if (push.status === "off") {
+    await logAwishPushOutcomes(
+      db,
+      organizationId,
+      ids.map((machineId) => ({ machineId, status: "nothing", slotsUpdated: 0 })),
+    );
+  }
+  return { push, pending: [...(await pendingAwishPushes(db, organizationId)).keys()] };
 }

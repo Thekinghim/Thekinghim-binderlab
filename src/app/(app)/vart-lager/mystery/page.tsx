@@ -12,9 +12,10 @@ import { currentViewer } from "../../lager/_lib/session";
 import { PageHead } from "../_components/page-head";
 import { ContentsCard } from "./_components/contents-card";
 import { CostNotice } from "./_components/cost-notice";
+import { StockLine } from "./_components/stock-line";
 import { krAuto } from "./_lib/kr";
 import { loadMysteryOverviewFor, type MysteryOverview, type MysteryTitle } from "./_lib/data";
-import { averageCost, batchesForPacks, defaultPlace, maxBatches, packHref } from "./_lib/model";
+import { averageCost, defaultPlace, maxBatches, packHref, packSentence } from "./_lib/model";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
@@ -100,15 +101,12 @@ function TitleCard({
   const f = formatters(m.locale);
   const kr = (ore: number) => krAuto(f, ore);
   const cap = capacityLine(view, t, m);
+  const sentence = packSentence(t.toPack, m);
   const cost = t.recipe && view.seesMoney ? averageCost(t.recipe, view.prices) : null;
   const differs =
     cost?.perPackOre !== null &&
     cost?.perPackOre !== undefined &&
     cost.perPackOre !== t.currentCostOre;
-  const stockParts = [
-    ...view.places.map((p) => m.mystery.stockIn(p.name, t.inPlaces[p.id] ?? 0)),
-    m.mystery.inMachines(t.inMachines),
-  ];
 
   return (
     <section
@@ -125,17 +123,32 @@ function TitleCard({
               {t.name}
             </Link>
           </h2>
-          <p className="tnum text-base text-muted">{stockParts.join(" · ")}</p>
+          <StockLine
+            titleId={t.id}
+            places={view.places}
+            inPlaces={t.inPlaces}
+            inMachines={t.inMachines}
+            batchSize={t.recipe?.batchSize ?? null}
+            canPack={view.canPack}
+            canCount={canSetCost}
+            t={m}
+          />
           {cap ? <p className="text-base text-fg">{cap}</p> : null}
-          {t.packQty !== null && t.packQty > 0 && t.recipe ? (
-            <p className="text-base text-signal-fg">
-              {m.mystery.buyPack(t.packQty, batchesForPacks(t.packQty, t.recipe.batchSize))}
+          {sentence ? (
+            <p
+              className={
+                sentence.tone === "act"
+                  ? "text-base font-medium text-signal-fg"
+                  : "text-base text-muted"
+              }
+            >
+              {sentence.text}
             </p>
           ) : null}
         </div>
         {t.recipe && view.canPack ? (
           <Link
-            href={packHref(t.id, t.packQty)}
+            href={packHref(t.id, t.toPack?.packs)}
             className="flex h-14 shrink-0 items-center justify-center gap-2 rounded-md border border-inverse bg-inverse px-6 text-lg font-medium text-on-inverse active:bg-inverse-hover md:h-12"
           >
             <Icon name="plus" size={18} />

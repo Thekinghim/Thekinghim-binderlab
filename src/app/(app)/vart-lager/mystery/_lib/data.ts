@@ -12,16 +12,16 @@ import { and, asc, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import {
   addDays,
   currentSalePriceDetails,
-  DomainError,
+  mysteryBatchesToPack,
   mysteryCostDrifts,
   PRICE_ADVICE_WINDOW_DAYS,
   PriceIndex,
   type IsoDate,
+  type MysteryPackPlan,
 } from "@/domain";
 import * as s from "@/db/schema";
 import type { Tx } from "@/db/client";
 import type { MemberRole } from "@/db/schema";
-import { purchaseQtyByTitle } from "@/analytics/purchasing";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
 import {
   businessToday,
@@ -36,10 +36,17 @@ import {
   querySettings,
 } from "@/server/data/core/queries";
 import { ALL_ROLES, ECONOMY_ROLES } from "@/server/data/core/types";
-import { loadPurchasePlanFor } from "@/server/purchasing/load";
 
 import { queryOwnPlaces } from "../../../lager/_lib/data";
-import { UNDO_MINUTES, type CalcFees, type Place, type Recipe } from "./model";
+import {
+  slotInputs,
+  UNDO_MINUTES,
+  wholeBatchesDown,
+  type CalcFees,
+  type Place,
+  type Recipe,
+} from "./model";
+import { queryMysterySlotFacts } from "./slots";
 
 /** Packar: ägare, admin och påfyllare (pack_mystery). */
 export const PACK_ROLES = ["owner", "admin", "refiller"] as const satisfies readonly MemberRole[];
@@ -54,8 +61,11 @@ export interface MysteryTitle {
   readonly inPlaces: Readonly<Record<string, number>>;
   /** Mystery packs i automaterna (kända saldon). */
   readonly inMachines: number;
-  /** Inköps "Packa X st" (null = okänt eller rollen ser inte inköpen). */
-  readonly packQty: number | null;
+  /**
+   * Omgångar att packa, räknat från facken i automaterna ("Packa 1 omgång före fredag").
+   * null utan innehåll. Bara antal och dagar: alla roller ser det.
+   */
+  readonly toPack: MysteryPackPlan | null;
   /** Titelns inköpspris i dag (öre), bara för roller som ser belopp. */
   readonly currentCostOre: number | null;
 }
@@ -163,37 +173,33 @@ export async function loadMysteryOverviewFor(
   const seesMoney = (ECONOMY_ROLES as readonly string[]).includes(role);
   const today = businessToday(now, viewer.organization.timezone);
 
-  const [master, stock, db, plan] = await Promise.all([
-    loadMasterDataFor(viewer, now),
-    loadStockFor(viewer),
-    withUserDbFor(viewer.user, async (tx) => {
-      const places = await queryOwnPlaces(tx, orgId);
-      const prices = seesMoney ? await queryPrices(tx, orgId) : [];
-      const own = await tx
-        .select({ id: s.titles.id })
-        .from(s.titles)
-        .where(
-          and(
-            eq(s.titles.organizationId, orgId),
-            eq(s.titles.ownProduct, true),
-            isNull(s.titles.archivedAt),
-            isNull(s.titles.mergedIntoId),
-          ),
-        );
-      const recipes = await queryRecipes(
-        tx,
-        orgId,
-        own.map((t) => t.id),
+  const [master, stock] = await Promise.all([loadMasterDataFor(viewer, now), loadStockFor(viewer)]);
+  const db = await withUserDbFor(viewer.user, async (tx) => {
+    const places = await queryOwnPlaces(tx, orgId);
+    const prices = seesMoney ? await queryPrices(tx, orgId) : [];
+    const own = await tx
+      .select({ id: s.titles.id })
+      .from(s.titles)
+      .where(
+        and(
+          eq(s.titles.organizationId, orgId),
+          eq(s.titles.ownProduct, true),
+          isNull(s.titles.archivedAt),
+          isNull(s.titles.mergedIntoId),
+        ),
       );
-      return { places, prices, recipes };
-    }),
-    seesMoney
-      ? loadPurchasePlanFor(viewer, now).catch((error: unknown) => {
-          if (error instanceof DomainError) return null;
-          throw error;
-        })
-      : Promise.resolve(null),
-  ]);
+    const recipes = await queryRecipes(
+      tx,
+      orgId,
+      own.map((t) => t.id),
+    );
+    // Facken i automaterna för mystery packs med innehåll (saldo, takt, ny automat).
+    const slots = await queryMysterySlotFacts(tx, orgId, today, [...recipes.keys()], {
+      machines: master.machines,
+      stock: stock.rows,
+    });
+    return { places, prices, recipes, slots };
+  });
 
   const byPlace: Record<string, Record<string, number>> = Object.fromEntries(
     db.places.map((p) => [p.id, {}]),
@@ -206,20 +212,36 @@ export async function loadMysteryOverviewFor(
       inMachines.set(r.titleId, (inMachines.get(r.titleId) ?? 0) + Math.max(0, r.onHand));
     }
   }
-  const packs = plan ? purchaseQtyByTitle(plan) : null;
   const prices = pricesOn(db.prices, today);
   const titles: MysteryTitle[] = master.titles
     .filter((t) => t.ownProduct === true && !t.archived && t.mergedIntoId === null)
     .sort((a, b) => a.name.localeCompare(b.name, "sv"))
-    .map((t) => ({
-      id: t.id,
-      name: t.name,
-      recipe: db.recipes.get(t.id) ?? null,
-      inPlaces: Object.fromEntries(db.places.map((p) => [p.id, byPlace[p.id]?.[t.id] ?? 0])),
-      inMachines: inMachines.get(t.id) ?? 0,
-      packQty: packs ? (packs.get(t.id) ?? 0) : null,
-      currentCostOre: seesMoney ? (prices.get(t.id) ?? null) : null,
-    }));
+    .map((t) => {
+      const recipe = db.recipes.get(t.id) ?? null;
+      const inPlaces = Object.fromEntries(db.places.map((p) => [p.id, byPlace[p.id]?.[t.id] ?? 0]));
+      return {
+        id: t.id,
+        name: t.name,
+        recipe,
+        inPlaces,
+        inMachines: inMachines.get(t.id) ?? 0,
+        // Färdiga hemma: hela omgångar per lager (ett minus i ett lager räknas som 0 där).
+        toPack: recipe
+          ? mysteryBatchesToPack({
+              batchSize: recipe.batchSize,
+              planPacks: 0,
+              // Varje lager för sig: 7 hemma och 7 på kontoret är ingen färdig omgång.
+              packedAtHome: Object.values(inPlaces).reduce(
+                (n, q) => n + wholeBatchesDown(q, recipe.batchSize),
+                0,
+              ),
+              slots: slotInputs(db.slots.get(t.id) ?? [], today),
+              today,
+            })
+          : null,
+        currentCostOre: seesMoney ? (prices.get(t.id) ?? null) : null,
+      };
+    });
 
   return {
     role,
@@ -255,6 +277,11 @@ export interface PackingRow {
   readonly undone: boolean;
   /** Går att ångra nu (inom 30 minuter, inte ångrad). */
   readonly undoable: boolean;
+  /**
+   * Packningen är äldre än 30 minuter och inte ångrad: "Går inte att ångra längre. Räkna om
+   * lagret i stället."
+   */
+  readonly tooLate: boolean;
 }
 
 export interface MysteryDetail {
@@ -325,6 +352,40 @@ async function querySalePrice(
     .orderBy(desc(s.orders.orderedAt))
     .limit(1);
   return row ? { ore: row.amountOre, machineId: null, differs: false } : null;
+}
+
+/** Den inloggades egna packningar av titeln de senaste 30 minuterna, utan kostnad. */
+async function queryMyRecentPackings(tx: Tx, orgId: string, titleId: string, userId: string) {
+  const result = await tx.execute(
+    sql`select id::text as id, packed_at, batches, packs, location_name, recipe_version, undone_at
+        from public.my_recent_mystery_packings(${orgId}::uuid, ${titleId}::uuid)`,
+  );
+  return (
+    Array.from(result) as {
+      id: string;
+      packed_at: Date | string;
+      batches: number;
+      packs: number;
+      location_name: string;
+      recipe_version: number;
+      undone_at: Date | string | null;
+    }[]
+  ).map((r) => ({
+    id: r.id,
+    packedAt: r.packed_at instanceof Date ? r.packed_at : new Date(r.packed_at),
+    batches: Number(r.batches),
+    packs: Number(r.packs),
+    placeName: r.location_name,
+    version: Number(r.recipe_version),
+    costPerPackOre: null as number | null,
+    undoneAt:
+      r.undone_at === null
+        ? null
+        : r.undone_at instanceof Date
+          ? r.undone_at
+          : new Date(r.undone_at),
+    packedBy: userId as string | null,
+  }));
 }
 
 /**
@@ -402,7 +463,11 @@ export async function loadMysteryDetailFor(
             )
             .orderBy(desc(s.mysteryPackings.packedAt))
             .limit(5)
-        : [];
+        : overview.canPack
+          ? // Påfyllaren ser inte packningarna (de har kostnad per pack), men får ångra sina
+            // egna inom 30 minuter: de läses utan belopp genom en egen funktion.
+            await queryMyRecentPackings(tx, orgId, titleId, viewer.user.userId)
+          : [];
       const price = overview.seesMoney
         ? await querySalePrice(tx, orgId, titleId, overview.today)
         : null;
@@ -428,6 +493,7 @@ export async function loadMysteryDetailFor(
       p.undoneAt === null &&
       new Date(p.packedAt).getTime() >= limit &&
       (canUndoAny || p.packedBy === viewer.user.userId),
+    tooLate: p.undoneAt === null && new Date(p.packedAt).getTime() < limit,
   }));
 
   return {
@@ -495,4 +561,17 @@ export async function loadMysteryCostDriftsFor(
       .map((d) => ({ ...d, name: nameOf.get(d.titleId) ?? d.titleId }))
       .sort((a, b) => a.name.localeCompare(b.name, "sv"));
   });
+}
+
+/**
+ * Omgångar att packa per mystery pack (titelns id → svaret), räknat från facken: samma tal
+ * och samma dag som Mystery-sidorna visar. För Vårt lager, Inköp och delägarens inköpslista
+ * (kopplas in i R2-9). Alla roller.
+ */
+export async function loadMysteryPackPlansFor(
+  viewer: Viewer,
+  now: Date = new Date(),
+): Promise<Map<string, MysteryPackPlan>> {
+  const overview = await loadMysteryOverviewFor(viewer, now);
+  return new Map(overview.titles.flatMap((t) => (t.toPack ? [[t.id, t.toPack] as const] : [])));
 }

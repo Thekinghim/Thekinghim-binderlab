@@ -189,7 +189,7 @@ export const sv = {
     awishAlreadyRight: "Sparat. Awish hade redan rätt antal.",
     awishNotLinked: "Sparat i Binderlab. Automaten är inte kopplad till Awish ännu.",
     awishPartial: (error: string) =>
-      `Sparat i Binderlab. Till Awish gick det inte: ${error}. Skriv antalet i Awish den här gången.`,
+      `Sparat i Binderlab. Till Awish gick det inte: ${error}. Tryck Försök igen på automaten.`,
     awishError: "Kunde inte skicka till Awish just nu.",
     onlyRefillers: "Bara för dem som fyller på.",
     toApp: "Till Binderlab",
@@ -227,10 +227,6 @@ export const sv = {
       `Kan packa ${batches(n)} ${inPlace(place)}${limiting ? ` · ${limiting} tar slut först` : ""}`,
     stockIn: (place: string, n: number) => `${place} ${f.int(n)}`,
     inMachines: (n: number) => `I automaterna ${f.int(n)}`,
-    buyPack: (n: number, batchesN: number) =>
-      `Inköp: packa ${f.int(n)}${NBSP}st (${batches(batchesN)})`,
-    buySays: (n: number, batchesN: number) =>
-      `Inköp säger packa ${f.int(n)}${NBSP}st (${batches(batchesN)}).`,
     pack: "Packa",
     addContents: "Lägg in innehållet",
     noContents: "Inget innehåll än.",

@@ -206,8 +206,11 @@ export {
   mysteryRefillProblem,
   mysteryRefillQty,
   wholeBatches,
+  MYSTERY_PACK_HORIZON_DAYS,
+  type MysteryDueSlot,
   type MysteryPackInput,
   type MysteryPackPlan,
+  type MysterySlotInput,
 } from "./mystery-refill";
 
 export {

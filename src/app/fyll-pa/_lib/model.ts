@@ -708,3 +708,104 @@ export function toggleBring(
   const base = chosen ?? defaultBringSelection(machines);
   return base.includes(id) ? base.filter((x) => x !== id) : [...base, id];
 }
+
+// ---------------------------------------------------------------------------
+// "Packade du en omgång?" (mystery packs som inte finns färdiga i lagret)
+// ---------------------------------------------------------------------------
+
+/** Gällande innehåll för ett mystery pack: det Packa behöver (bara antal, inga belopp). */
+export interface FillRecipe {
+  readonly recipeId: string;
+  /** Pack per omgång. */
+  readonly batchSize: number;
+  /** Delarna per omgång. */
+  readonly items: readonly { readonly titleId: string; readonly quantity: number }[];
+}
+
+/** Frågan före Klar: "Det finns 0 Mystery Pack i Kontoret. Packade du en omgång?". */
+export interface PackAsk {
+  readonly titleId: string;
+  readonly name: string;
+  /** Färdiga mystery packs i lagret man fyller från (minst 0). */
+  readonly home: number;
+  /** Omgångar som behöver packas för att påfyllningen ska gå jämnt upp. */
+  readonly batches: number;
+  /** Samma sak i pack. */
+  readonly packs: number;
+  readonly recipeId: string;
+}
+
+/** Högst så här många omgångar packas i ett svep (samma tak som Packa-sidan). */
+export const PACK_ASK_MAX_BATCHES = 10;
+
+/**
+ * Frågorna före Klar: mystery packs som fylls på fast lagret man fyller från har färre
+ * färdiga pack än antalet. Då har man oftast packat utan att trycka Packa, och utan frågan
+ * blir lagret fel (delarna ligger kvar i appen fast de sitter i automaten).
+ *
+ * - Bara mystery packs med känt innehåll, och bara när delarna räcker i samma lager till
+ *   omgångarna som fattas. Räcker de inte ställs ingen fråga: påfyllningen går igenom som
+ *   förut (utan uttag ur lagret).
+ * - Två mystery packs som delar på samma delar: den första i listan får delarna först.
+ * - `stock` = saldot per titel i lagret man fyller från; null = inget eget lager (ingen fråga).
+ */
+export function packAsks(
+  lines: readonly { readonly row: FillRow; readonly quantity: number }[],
+  recipes: Readonly<Record<string, FillRecipe>>,
+  stock: Readonly<Record<string, number>> | null | undefined,
+): PackAsk[] {
+  if (!stock) return [];
+  const left = new Map<string, number>();
+  const have = (id: string) => left.get(id) ?? Math.max(0, Math.trunc(stock[id] ?? 0));
+  const out: PackAsk[] = [];
+  for (const { row, quantity } of lines) {
+    const recipe = recipes[row.titleId];
+    const batch = mysteryBatch(recipe?.batchSize);
+    if (!recipe || batch === null || mysteryBatch(row.batchSize) === null) continue;
+    const home = Math.max(0, Math.trunc(row.home));
+    const missing = Math.trunc(quantity) - home;
+    if (missing <= 0) continue;
+    const batches = Math.ceil(missing / batch);
+    if (batches > PACK_ASK_MAX_BATCHES || recipe.items.length === 0) continue;
+    if (recipe.items.some((i) => have(i.titleId) < i.quantity * batches)) continue;
+    for (const i of recipe.items) left.set(i.titleId, have(i.titleId) - i.quantity * batches);
+    out.push({
+      titleId: row.titleId,
+      name: row.name,
+      home,
+      batches,
+      packs: batches * batch,
+      recipeId: recipe.recipeId,
+    });
+  }
+  return out;
+}
+
+/**
+ * Mystery-facket är tomt men lagret man fyller från har inte en hel omgång färdig: förslaget
+ * är då 0. Raden säger varför och erbjuder en hel omgång ("Fyll på en omgång (14 st)").
+ * Svaret är omgångens storlek, annars null.
+ */
+export function mysteryShortAtHome(
+  row: Pick<FillRow, "now" | "home"> & Partial<Pick<FillRow, "batchSize">>,
+): number | null {
+  const batch = mysteryBatch(row.batchSize);
+  if (batch === null || row.now > 0) return null;
+  return Math.max(0, row.home) < batch ? batch : null;
+}
+
+/** Lagrens saldo med packningar som gjorts här men som serverns siffror inte visar än. */
+export function withPacked(
+  stock: PlaceStock,
+  deltas: readonly { readonly placeId: string; readonly titleId: string; readonly delta: number }[],
+): PlaceStock {
+  if (deltas.length === 0) return stock;
+  const out: Record<string, Record<string, number>> = Object.fromEntries(
+    Object.entries(stock).map(([k, v]) => [k, { ...v }]),
+  );
+  for (const d of deltas) {
+    const at = (out[d.placeId] ??= {});
+    at[d.titleId] = (at[d.titleId] ?? 0) + d.delta;
+  }
+  return out;
+}
