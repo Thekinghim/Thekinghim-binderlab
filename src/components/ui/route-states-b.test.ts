@@ -29,7 +29,10 @@ describe("sidorna i genomgång B", () => {
   it.each(segments)("%s har ett laddningsläge (loading.tsx) med etikett", (segment) => {
     const file = join(APP, segment, GROUPED.has(segment) ? "(oversikt)" : "", "loading.tsx");
     expect(existsSync(file)).toBe(true);
-    expect(readFileSync(file, "utf8")).toMatch(/label="Laddar /);
+    // Etiketten står direkt (label="Laddar …") eller väljs efter språk (enkel vy på engelska).
+    const src = readFileSync(file, "utf8");
+    expect(src).toMatch(/label=/);
+    expect(src).toMatch(/"Laddar /);
   });
 
   // not-found.tsx ligger ett segment upp: notFound() kastas i detaljsidans layout.tsx,
