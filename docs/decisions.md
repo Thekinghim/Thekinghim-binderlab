@@ -363,3 +363,42 @@ Allt stannar inte i EU. Databasen, filerna och inloggningen ligger i Supabases E
 
 Inga personuppgiftsbiträdesavtal är tecknade. Biträdena, vad var och en får, lagringstider och vad som återstår står i
 `docs/operations.md` (Personuppgifter och biträden).
+
+## ADR 27. En slutdag för alla sidor, med veckans form ur en gemensam laddare
+
+**Kontext.** Runda 2 gav sidorna en gemensam funktion för slutdagen (`sellOut()` i `src/analytics/sellout`) som
+räknar med att helgen säljer mer. Men sidorna laddar olika mycket historik: Att göra 45 dagar, Lager, Drift → Besök,
+Automater och Mystery ungefär 15. Veckans form kräver 28 dagar. Utan åtgärd hade Att göra sagt "tar slut på fredag"
+och Lager "lördag" för samma fack.
+
+**Beslut.** Alla sidor hämtar formen på samma sätt: `weekShapesInRequest(viewer, today)` i
+`src/server/data/week-shapes.ts` (en läsning per förfrågan, som den inloggade). Kartan skickas till `computeTodos`,
+`weeklyVisitPlan`, `planVisits`, Lagers matris, Automaters Lager-flik, Mystery-facken och assistentens verktyg.
+Alla anropar `sellOut()` med takten de senaste 14 hela dagarna (eller sedan automaten togs i drift) och från i går.
+Mystery säger "tom" dagen EFTER slutdagen, som är dagen besöksplanen sätter för ett mystery pack (facket fylls bara
+när det är tomt). Går formen inte att läsa räknar alla sidor med platt snitt: fortfarande samma dag överallt.
+
+**Konsekvenser.** En fråga till per sidladdning (28 dagars försäljningshändelser, bara dag och automat).
+`src/server/data/samma-slutdag.test.ts` ger varje sida 15 dagars order plus formerna och kräver samma dag från alla.
+Rådgivarens ögonblicksbild (`src/server/assistant/advisor/snapshot.ts`) räknar fortfarande dagar med platt snitt;
+den nämner ingen dag.
+
+## ADR 28. Mystery: ett antal att packa nu, och delarna köps för ledtiden
+
+**Kontext.** Två tal fanns för samma mystery pack. Mystery-sidan räknar från facken: ett fack som är tomt eller blir
+tomt inom 7 dagar behöver en omgång ("Packa 1 omgång före fredag"). Inköpsplanen räknar behovet över ledtid + dagar
+till nästa beställning (ca 14 dagar) och sa "Packa 3 omgångar" på Vårt lager och Inköp. Planen för runda 2 ville
+koppla fackens tal rakt in i inköpsplanen. Det hade köpt för få delar: delar tar ca 7 dagar att få hem, och fackens
+tal ser bara 7 dagar fram.
+
+**Beslut.** `PurchasingInput.mysteryBatches` bär fackens tal (`src/server/purchasing/mystery-pack-now.ts`, samma
+funktion `toPackFromSlots` som Mystery-sidan), och planen använder det på två sätt:
+
+1. Raden för mystery packet visar det (`PurchaseLine.packNow`, `purchaseQty()`), så att Mystery, Vårt lager, Inköp
+   och delägarens inköpslista säger samma antal.
+2. Delarna köps för det STÖRSTA av fackens tal och planens eget antal. Fackens tal kan alltså höja det som köps
+   (en ny automat utan försäljning ger 0 i planen men 1 omgång från facket) men aldrig sänka det.
+
+**Konsekvenser.** "Packa 1 omgång" kan stå bredvid "Köp 24 Pokémon 151, 16 av dem går till Mystery Pack" (delar till
+fler omgångar än den som packas nu). Underlaget på Inköp visar båda talen. Inköpsplanen läser fackens fakta (några
+små frågor till).
