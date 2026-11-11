@@ -38,6 +38,7 @@ import { loadDomainInputFor, loadSyncInfoFor } from "@/server/data/core/loaders"
 import { queryStock } from "@/server/data/core/queries";
 import { ALL_ROLES, ECONOMY_ROLES } from "@/server/data/core/types";
 import { weeklyVisitPlan } from "@/server/data/visit-plan";
+import { weekShapesInRequest } from "@/server/data/week-shapes";
 import { lostSalesSummaryFor } from "@/server/purchasing";
 
 import {
@@ -839,7 +840,10 @@ export const visitPlanTool = defineTool({
   input: visitInput,
   async run(ctx: ToolContext, input) {
     const scope = await resolveScope(ctx, input);
-    const { data, health, warehouse, slotPeriods } = await driftData(ctx);
+    const [{ data, health, warehouse, slotPeriods }, weekShares] = await Promise.all([
+      driftData(ctx),
+      weekShapesInRequest(ctx.viewer, ctx.today),
+    ]);
     const plan = weeklyVisitPlan({
       orders: data.orders,
       machines: data.machines.filter((m) => !m.archived),
@@ -848,6 +852,8 @@ export const visitPlanTool = defineTool({
       warehouseStock: warehouse.length > 0 ? warehouse : null,
       health,
       slotPeriods,
+      // Samma veckoform som sidorna: assistenten nämner samma dag som Drift → Besök.
+      weekShares,
       today: ctx.today,
       timeZone: ctx.timeZone,
       now: ctx.now,

@@ -23,6 +23,8 @@ import { compareChannels, type VisitPlan } from "@/analytics/visits";
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
 import { alertColumns, healthOf, loadHealthData, type HealthData } from "@/server/alerts/inputs";
+import { loadWeekShapes } from "@/server/data/week-shapes";
+import type { WeekShare } from "@/analytics/sellout";
 import { rowToIncident, type AlertRow } from "@/server/alerts/store";
 import { defaultSubscription, type SubscriptionRow } from "@/server/alerts/subscriptions";
 import { channelStatus, type ChannelStatus } from "@/server/notify";
@@ -146,6 +148,7 @@ function buildPlan(
   slotPeriods: readonly SlotPeriod[],
   capacities: readonly SlotCapacityRow[],
   ctx: AppContext,
+  weekShares: ReadonlyMap<string, WeekShare>,
   places?: ReadonlyMap<string, StorePlace>,
   only?: ReadonlySet<string>,
 ): VisitPlan {
@@ -163,6 +166,8 @@ function buildPlan(
     health,
     slotPeriods,
     capacities,
+    // Samma veckoform som Att göra, Lager och Automater: samma dag för samma automat.
+    weekShares,
     today: ctx.today,
     timeZone: ctx.timeZone,
     now: new Date(ctx.now),
@@ -189,6 +194,7 @@ export async function loadDriftOverview(ctx: AppContext): Promise<DriftOverview>
       slotPeriods,
       capacities,
       ctx,
+      await loadWeekShapes(tx, orgId, ctx.today, data.machines),
     );
     const retired = retiredPairs(slotPeriods, ctx.today);
     return {
@@ -254,6 +260,7 @@ export async function loadVisitPlan(
       slotPeriods,
       capacities,
       ctx,
+      await loadWeekShapes(tx, orgId, ctx.today, data.machines),
       places,
       only,
     );

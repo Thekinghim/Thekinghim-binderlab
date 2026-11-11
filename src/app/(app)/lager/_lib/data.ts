@@ -27,6 +27,7 @@ import { querySlotPeriods } from "@/server/data/assortment";
 import { loadMachineHealthFor } from "@/server/data/health";
 import { querySlotAlerts, SLOT_ALERT_ROLES } from "@/server/data/core/slot-alerts";
 import { querySlotCapacities } from "@/server/data/core/slot-capacity";
+import { weekShapesInRequest } from "@/server/data/week-shapes";
 
 import { buildLagerModel, WINDOW_DAYS } from "./model";
 import {
@@ -203,19 +204,31 @@ async function modelFor(viewer: Viewer, scope: DataScope, now: Date) {
   // försäljning läses också men räknas inte i takten; saldot är alltid dagens.
   const salesFrom: IsoDate = addDays(today, -(WINDOW_DAYS + 1));
 
-  const [master, stock, sales, health, slotPeriods, slotAlerts, awishSyncedAt, places, capacities] =
-    await Promise.all([
-      loadMasterDataFor(viewer, now),
-      loadStockFor(viewer),
-      loadSalesCountsFor(viewer, { period: { start: salesFrom, end: today } }),
-      // Samma maskinhälsa som Drift: automater med fel får besök i dag i veckoplanen.
-      loadMachineHealthFor(viewer, now),
-      withUserDbFor(viewer.user, (tx) => querySlotPeriods(tx, orgId)),
-      withUserDbFor(viewer.user, (tx) => querySlotAlerts(tx, orgId)),
-      withUserDbFor(viewer.user, (tx) => queryAwishSynced(tx, orgId)),
-      withUserDbFor(viewer.user, (tx) => queryOwnPlaces(tx, orgId)),
-      withUserDbFor(viewer.user, (tx) => querySlotCapacities(tx, orgId, now)),
-    ]);
+  const [
+    master,
+    stock,
+    sales,
+    health,
+    slotPeriods,
+    slotAlerts,
+    awishSyncedAt,
+    places,
+    capacities,
+    weekShares,
+  ] = await Promise.all([
+    loadMasterDataFor(viewer, now),
+    loadStockFor(viewer),
+    loadSalesCountsFor(viewer, { period: { start: salesFrom, end: today } }),
+    // Samma maskinhälsa som Drift: automater med fel får besök i dag i veckoplanen.
+    loadMachineHealthFor(viewer, now),
+    withUserDbFor(viewer.user, (tx) => querySlotPeriods(tx, orgId)),
+    withUserDbFor(viewer.user, (tx) => querySlotAlerts(tx, orgId)),
+    withUserDbFor(viewer.user, (tx) => queryAwishSynced(tx, orgId)),
+    withUserDbFor(viewer.user, (tx) => queryOwnPlaces(tx, orgId)),
+    withUserDbFor(viewer.user, (tx) => querySlotCapacities(tx, orgId, now)),
+    // Veckans form per automat: samma karta som Att göra och Besök (samma slutdag).
+    weekShapesInRequest(viewer, today),
+  ]);
 
   const model = buildLagerModel({
     now,
@@ -231,6 +244,7 @@ async function modelFor(viewer: Viewer, scope: DataScope, now: Date) {
     slotAlerts,
     awishSyncedAt,
     capacities,
+    weekShares,
   });
   return { model, master, role, orgId, timeZone, today, places, stock };
 }

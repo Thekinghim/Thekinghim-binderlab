@@ -28,6 +28,8 @@ import {
   loadTodosFor,
 } from "@/server/data/core/loaders";
 import { ALL_ROLES, canSeeEconomy } from "@/server/data/core/types";
+import { weekShapesInRequest } from "@/server/data/week-shapes";
+import { sellOut } from "@/analytics/sellout";
 
 import {
   count,
@@ -351,9 +353,11 @@ export const coverageTool = defineTool({
     const days = input.fonster ?? 14;
     const asOf = addDays(ctx.today, -1); // senaste hela dagen
     const window = { start: addDays(asOf, -(days - 1)), end: asOf };
-    const [stock, sales] = await Promise.all([
+    const [stock, sales, weekShares] = await Promise.all([
       loadStockFor(ctx.viewer),
       loadSalesCountsFor(ctx.viewer, { period: window, machineId: machine?.id ?? null }),
+      // Samma veckoform som sidorna, så att assistenten nämner samma slutdag som Att göra.
+      weekShapesInRequest(ctx.viewer, ctx.today),
     ]);
     const daily = new Map<string, DailyUnits[]>();
     for (const r of sales.rows) {
@@ -377,7 +381,14 @@ export const coverageTool = defineTool({
           days,
           ...(m.activeFrom ? { activeFrom: m.activeFrom } : {}),
         });
-        const left = daysOfStockLeft(s.onHand, velocity);
+        // EN slutdag för alla sidor (sellOut), med automatens veckoform när den finns.
+        const out = sellOut({
+          onHand: Math.max(0, s.onHand),
+          dailyAvg: velocity,
+          from: asOf,
+          weekShare: weekShares.get(s.machineId) ?? null,
+        });
+        const left = out?.daysLeft ?? daysOfStockLeft(s.onHand, velocity);
         return {
           automat: `${m.name} (${m.code})`,
           automatId: m.id,
@@ -387,7 +398,7 @@ export const coverageTool = defineTool({
           dagarIFonstret: velocity.days,
           taktPerDag: formatDecimal(velocity.perDay),
           dagarKvar: left,
-          slutDatum: dateText(stockoutDate(asOf, s.onHand, velocity)),
+          slutDatum: dateText(out?.date ?? stockoutDate(asOf, s.onHand, velocity)),
         };
       })
       .sort(

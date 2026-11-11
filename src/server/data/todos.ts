@@ -45,6 +45,7 @@ import { ownStockTotals } from "./core/own-stock";
 import { ALL_ROLES, canSeeEconomy } from "./core/types";
 import { queryStorePlaces, type StorePlace } from "./team";
 import { weeklyVisitPlan } from "./visit-plan";
+import { weekShapesInRequest } from "./week-shapes";
 
 /** Fönstret för förlorad försäljning i prioriteringen (dagar t.o.m. i går). */
 export const LOST_SALES_WINDOW_DAYS = TODO_DEFAULTS.refillWindowDays;
@@ -222,6 +223,7 @@ export async function loadTodoVisitPlanFor(
   const today = businessToday(now, timeZone);
   const stockP = stockRowsInRequest(viewer);
   const capacityP = slotCapacitiesInRequest(viewer, now);
+  const shapesP = weekShapesInRequest(viewer, today);
   stockP.catch(() => {});
   capacityP.catch(() => {});
   return withUserDbFor(viewer.user, async (tx) => {
@@ -242,6 +244,7 @@ export async function loadTodoVisitPlanFor(
       health: healthOf(data, timeZone, now),
       slotPeriods,
       capacities,
+      weekShares: await shapesP,
       today,
       timeZone,
       now,

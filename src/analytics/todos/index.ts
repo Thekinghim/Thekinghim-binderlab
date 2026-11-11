@@ -17,6 +17,8 @@ import { missingPriceTodos } from "./missing-price";
 import { mysteryCostTodos, mysteryDrifts, unpricedMysteryTitles } from "./mystery-cost";
 import { priceAdviceTodos } from "./price-advice";
 import { refillTodos } from "./refill";
+import type { WeekShare } from "../sellout";
+
 import { reportReviewTodos } from "./report-review";
 import { reportTodos } from "./reports";
 import { silentTitleTodos } from "./silent-title";
@@ -26,17 +28,32 @@ import { stockCountTodos } from "./stock-count";
 import { teamTodos } from "./team";
 import type { TodoInput, TodoItem } from "./types";
 
+export interface ComputeTodosOptions {
+  /**
+   * Veckans form per automat ur laddaren (loadWeekShapes). Alla sidor skickar samma karta, så
+   * att samma fack får samma slutdag överallt. Utelämnad: formen räknas ur `input.orders`.
+   */
+  readonly weekShares?: ReadonlyMap<string, WeekShare> | null;
+}
+
 /**
  * Alla punkter i Att göra, sorterade efter brådska (se `sortTodos`).
  * `now` är en tidpunkt (Date, ms eller ISO 8601 med tidszon); dagens affärsdatum räknas i
  * organisationens tidszon (standard Europe/Stockholm).
  */
-export function computeTodos(input: TodoInput, now: Date | string | number): TodoItem[] {
+export function computeTodos(
+  input: TodoInput,
+  now: Date | string | number,
+  opts: ComputeTodosOptions = {},
+): TodoItem[] {
   const ctx = createTodoContext(input, now);
   const stale = staleMachineTodos(ctx);
   const staleMachines = new Set(stale.flatMap((t) => t.evidence.machineIds));
   // Med besöksplanens regel: en titel som ska fyllas på senast i dag står under "I dag".
-  const refills = refillTodos(ctx, { visitDue: true });
+  const refills = refillTodos(ctx, {
+    visitDue: true,
+    ...(opts.weekShares ? { weekShares: opts.weekShares } : {}),
+  });
   const refillStake = new Map(
     refills.map((t) => [t.key.slice("refill:".length), t.atStakeOre ?? 0] as const),
   );

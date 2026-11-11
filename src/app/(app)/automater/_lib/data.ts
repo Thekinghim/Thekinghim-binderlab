@@ -27,6 +27,7 @@ import { isUuid } from "@/server/access";
 import { storeContractStates, type StoreContractState } from "@/analytics/contracts/signed";
 import { loadSignableContractsFor } from "@/server/contracts";
 import type { Viewer } from "@/server/data/core/loaders";
+import { weekShapesInRequest } from "@/server/data/week-shapes";
 import type { DomainInput, MasterData } from "@/server/data/core/types";
 import { requestPageLoaders, type PageLoaders } from "@/server/data/page-loaders";
 
@@ -135,7 +136,7 @@ function hasOrdersOn(orders: readonly { businessDate: IsoDate }[], day: IsoDate)
 }
 
 async function signalsFor(ctx: AppContext, loaders: PageLoaders = requestPageLoaders()) {
-  const [recent, stock, master, health] = await Promise.all([
+  const [recent, stock, master, health, weekShares] = await Promise.all([
     loaders.domainInput({ period: recentWindow(ctx.today) }),
     loaders.stock(),
     loaders.masterData(),
@@ -145,11 +146,15 @@ async function signalsFor(ctx: AppContext, loaders: PageLoaders = requestPageLoa
       console.error("[automater] Maskinhälsan kunde inte läsas:", error);
       return null;
     }),
+    // Veckans form per automat: samma karta som Att göra, Lager och Besök. Automater läser
+    // bara de senaste dagarnas order och kan inte räkna formen själv.
+    loaders.viewer().then((viewer) => weekShapesInRequest(viewer, ctx.today)),
   ]);
   return {
     recent,
     stock,
     master,
+    weekShares,
     signals: machineSignals({
       recent,
       stock,
@@ -157,6 +162,7 @@ async function signalsFor(ctx: AppContext, loaders: PageLoaders = requestPageLoa
       now: new Date(ctx.now),
       timeZone: ctx.timeZone,
       health,
+      weekShares,
     }),
   };
 }
@@ -505,6 +511,7 @@ export async function loadMachineDetail(
       refill,
       master,
       today,
+      weekShare: base.weekShares.get(machine.id) ?? null,
     }),
     lastRestockedAt,
     // Bara när något ska fyllas på: annars läses inte planen.

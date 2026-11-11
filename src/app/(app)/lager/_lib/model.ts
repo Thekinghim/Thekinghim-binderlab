@@ -27,6 +27,7 @@ import { planVisits, type MachineCapacity, type VisitPlan } from "@/analytics/vi
 import { retiredPairs } from "@/analytics/todos/assortment";
 import { sumOwnStock } from "@/server/data/core/own-stock";
 import { planNow, weeklyVisitPlan } from "@/server/data/visit-plan";
+import { sellOut, type WeekShare } from "@/analytics/sellout";
 import {
   addDays,
   dailyUnits,
@@ -95,6 +96,12 @@ export interface LagerModelInput {
    * titeln till kapaciteten i stället för 7 dagars försäljning. Utelämnad = okänd.
    */
   readonly capacities?: readonly MachineCapacity[] | null;
+  /**
+   * Veckans form per automat (weekShapesInRequest): samma karta som Att göra, Besök och
+   * Automater får, så att Lager nämner samma slutdag. Utelämnad = platt snitt (Lager läser
+   * bara de senaste dagarnas försäljning och kan inte räkna formen själv).
+   */
+  readonly weekShares?: ReadonlyMap<string, WeekShare> | null;
 }
 
 export interface LagerModel {
@@ -184,6 +191,7 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
   const retired = retiredPairs(input.slotPeriods ?? [], today);
   const asOf = addDays(today, -1);
   const windowStart = addDays(asOf, -(WINDOW_DAYS - 1));
+  const weekShares = input.weekShares ?? null;
 
   const activeMachines = master.machines.filter((m) => isMachineActive(m, today));
   const machines = activeMachines
@@ -254,7 +262,7 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
     (input.slotAlerts ?? []).map((a) => [pairKey(a.machineId, a.titleId), a.alertAtUnits]),
   );
   const refillLevel = new Map(
-    refillTodos(todoCtx).map((t) => [t.key, t.level === "now" ? "critical" : "low"] as const),
+    refillTodos(todoCtx, weekShares ? { weekShares } : {}).map((t) => [t.key, t.level === "now" ? "critical" : "low"] as const),
   );
 
   // Besöksplanen räknar takt och slutdatum från planens "i dag". Med planNow (i går)
@@ -287,6 +295,7 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
     health: input.health ?? null,
     slotPeriods: input.slotPeriods ?? null,
     capacities,
+    weekShares,
     today,
     timeZone,
     now,
@@ -312,6 +321,7 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
           (s) => s.machineId === m.id && inAssortment(s.machineId, s.titleId),
         ),
         capacities: capacities.filter((c) => c.machineId === m.id),
+        ...(weekShares ? { weekShares } : {}),
         extraVisits: [{ machineId: m.id, reason: "", needBy: asOf }],
         options: {
           timeZone,
@@ -393,6 +403,13 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
     const isRetired = stocked && retired.has(k);
     const status: StockStatus =
       !stocked || isRetired || !known ? "ok" : onHand === 0 ? "critical" : (level ?? "ok");
+    // EN slutdag för alla sidor (sellOut), med automatens veckoform när den finns.
+    const out = sellOut({
+      onHand,
+      dailyAvg: v,
+      from: asOf,
+      weekShare: weekShares?.get(m.id) ?? null,
+    });
     return {
       machineId: m.id,
       titleId,
@@ -400,8 +417,8 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
       known,
       onHand: known ? onHand : 0,
       perDayTenths: perDayTenths(v),
-      daysLeft: daysOfStockLeft(onHand, v),
-      stockoutDate: stockoutDate(asOf, onHand, v),
+      daysLeft: out?.daysLeft ?? daysOfStockLeft(onHand, v),
+      stockoutDate: out?.date ?? stockoutDate(asOf, onHand, v),
       status,
       suggested: isRetired || !known ? 0 : (suggestedByPair.get(k) ?? 0),
       lastRestockedAt: row?.lastRestockedAt ?? null,

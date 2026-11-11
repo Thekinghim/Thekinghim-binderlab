@@ -53,6 +53,7 @@ import { todayIn, toIsoDate } from "@/components/shell/period-state";
 import { costLinesFrom, type CostLines } from "@/lib/cost-lines";
 import { loadCoverage } from "@/server/alerts/inputs";
 import { queryPeriodRefunds } from "@/server/data/core/queries";
+import { weekShapesInRequest } from "@/server/data/week-shapes";
 
 import {
   DEFAULT_SETTINGS,
@@ -750,6 +751,8 @@ export async function loadTodoStateFor(
   const baseP = economy ? economyBase(viewer) : null;
   const stockP = stockRowsInRequest(viewer);
   const capacityP = slotCapacitiesInRequest(viewer, now);
+  // Veckans form per automat: samma karta som Lager, Besök, Automater och Mystery får.
+  const shapesP = weekShapesInRequest(viewer, today);
   masterP.catch(() => {});
   baseP?.catch(() => {});
   stockP.catch(() => {});
@@ -872,7 +875,7 @@ export async function loadTodoStateFor(
       };
     }
 
-    const computed = computeTodos(input, now);
+    const computed = computeTodos(input, now, { weekShares: await shapesP });
     const visible = economy
       ? computed
       : computed.filter((t) => REFILLER_TODO_KINDS.has(t.kind)).map(withoutEconomy);

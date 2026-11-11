@@ -228,6 +228,11 @@ export function machineSignals(args: {
    * den är importerad). Saknas den räknas hälsan här på orderna, utan täckningen.
    */
   health?: readonly MachineHealth[] | null;
+  /**
+   * Veckans form per automat (weekShapesInRequest), så att raden och Lager-fliken nämner samma
+   * slutdag som Att göra. Utelämnad: formen räknas ur orderna (15 dagar räcker inte: platt).
+   */
+  weekShares?: ReadonlyMap<string, WeekShare> | null;
 }): MachineSignals {
   const { recent, stock, master, now, timeZone } = args;
   const refill = new Map<string, TodoItem[]>();
@@ -247,6 +252,7 @@ export function machineSignals(args: {
         options: { timeZone },
       },
       now,
+      args.weekShares ? { weekShares: args.weekShares } : {},
     );
     for (const t of todos) {
       if (t.kind !== "refill") continue;
