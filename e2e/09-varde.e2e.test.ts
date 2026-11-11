@@ -78,7 +78,9 @@ describe.each([
     expect(await page.locator("[data-overflow]").count()).toBe(0);
 
     await page.goto("/");
-    await page.locator('[data-testid="varde-card"]').waitFor();
+    // Kortet strömmas in sist på Hem: medan blocket byts in finns det två i DOM:en (ett
+    // dolt), så vänta på det synliga.
+    await page.locator('[data-testid="varde-card"] >> visible=true').first().waitFor();
   });
 });
 
