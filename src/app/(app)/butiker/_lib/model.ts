@@ -868,3 +868,119 @@ export function contractAction(
     primary: true,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Startlista per ny butik ("På väg in"): vad saknas innan automaten får stå där?
+// ---------------------------------------------------------------------------
+
+export type StartStepId = "villkor" | "kontrakt" | "automat" | "mottagare" | "portal";
+
+export interface StartStep {
+  readonly id: StartStepId;
+  /** "Kontrakt signerat" */
+  readonly label: string;
+  readonly done: boolean;
+}
+
+/** Det som läses ur databasen för en butik (./start-facts på servern). */
+export interface StoreStartFacts {
+  /** Villkor som gäller i dag eller börjar senare. */
+  readonly hasTerms: boolean;
+  /** Aktiva rapportmottagare. */
+  readonly recipients: number;
+  /**
+   * Butiksportalen: användare och öppna inbjudningar, eller null när den som tittar inte
+   * får se dem (läsaren). Då visas inte den bocken.
+   */
+  readonly portal: { readonly users: number; readonly pending: number } | null;
+}
+
+export interface StoreStartList {
+  readonly storeId: string;
+  readonly name: string;
+  readonly href: string;
+  readonly steps: readonly StartStep[];
+  readonly done: number;
+  readonly total: number;
+  /** Villkor och signerat kontrakt finns: automaten får ställas dit. */
+  readonly ready: boolean;
+  /** Den enda knappen: nästa steg som saknas, eller null när allt är klart. */
+  readonly next: { readonly id: StartStepId; readonly label: string; readonly href: string } | null;
+  /** "1 av 5 klart" */
+  readonly progress: string;
+}
+
+/**
+ * Fem bockar i fast ordning: Villkor, Kontrakt signerat, Automat placerad, Rapportmottagare,
+ * Portal-inbjudan. Knappen går till första steget som saknas. Ren.
+ */
+export function storeStartList(args: {
+  store: Pick<StoreRow, "id" | "name" | "href" | "contract" | "machineCodes">;
+  facts: StoreStartFacts;
+  /**
+   * En automat i drift utan butik (koden), som "Placera automat" kan öppna direkt. Null:
+   * knappen går till listan över automater.
+   */
+  freeMachineCode: string | null;
+}): StoreStartList {
+  const { store, facts } = args;
+  const id = encodeURIComponent(store.id);
+  const contract = store.contract ?? "missing";
+  const steps: StartStep[] = [
+    { id: "villkor", label: "Villkor", done: facts.hasTerms },
+    { id: "kontrakt", label: "Kontrakt signerat", done: contract === "signed" },
+    { id: "automat", label: "Automat placerad", done: store.machineCodes.length > 0 },
+    { id: "mottagare", label: "Rapportmottagare", done: facts.recipients > 0 },
+    ...(facts.portal
+      ? [
+          {
+            id: "portal" as const,
+            label: "Portal-inbjudan",
+            done: facts.portal.users + facts.portal.pending > 0,
+          },
+        ]
+      : []),
+  ];
+  const action: Record<StartStepId, { label: string; href: string }> = {
+    villkor: { label: "Lägg in villkor", href: `/butiker/${id}?vy=avtal` },
+    kontrakt:
+      contract === "missing"
+        ? {
+            label: "Skapa kontrakt",
+            href: `/avtal?skapa=${encodeURIComponent(`store:${store.id}`)}`,
+          }
+        : { label: "Signera", href: `/avtal#butik-${id}` },
+    automat: {
+      label: "Placera automat",
+      href: args.freeMachineCode
+        ? `/automater/${encodeURIComponent(args.freeMachineCode.toLowerCase())}?gor=placera`
+        : "/automater",
+    },
+    mottagare: { label: "Lägg till mottagare", href: `/butiker/${id}?vy=kontakt` },
+    portal: { label: "Bjud in till portalen", href: "/butiker?vy=utbetalning#portal" },
+  };
+  const first = steps.find((s) => !s.done) ?? null;
+  const done = steps.filter((s) => s.done).length;
+  return {
+    storeId: store.id,
+    name: store.name,
+    href: store.href,
+    steps,
+    done,
+    total: steps.length,
+    ready: facts.hasTerms && contract === "signed",
+    next: first ? { id: first.id, ...action[first.id] } : null,
+    progress: `${formatInt(done)} av ${formatInt(steps.length)} klart`,
+  };
+}
+
+/** Rubriken för "På väg in": "2 av 4 butiker är klara för automat." */
+export function startListHeadline(lists: readonly Pick<StoreStartList, "ready">[]): string {
+  const ready = lists.filter((l) => l.ready).length;
+  if (lists.length === 1) {
+    return ready === 1 ? "Butiken är klar för automat." : "Butiken är inte klar för automat än.";
+  }
+  if (ready === lists.length)
+    return `Alla ${formatInt(lists.length)} butiker är klara för automat.`;
+  return `${formatInt(ready)} av ${formatInt(lists.length)} butiker är klara för automat.`;
+}

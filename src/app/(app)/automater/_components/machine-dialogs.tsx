@@ -20,7 +20,7 @@ import {
   reactivateMachine,
   updateMachine,
 } from "../actions";
-import { placementAgreementWarning } from "../_lib/placement-warning";
+import { placementAgreementWarning, placementContractWarning } from "../_lib/placement-warning";
 import type { MachineEditable, StoreOption } from "../_lib/types";
 
 /**
@@ -29,20 +29,43 @@ import type { MachineEditable, StoreOption } from "../_lib/types";
  */
 function NoAgreementNote({ store, day }: { store: StoreOption | undefined; day: string }) {
   const text = placementAgreementWarning(store, day);
-  if (!text || !store) return null;
+  const contract = placementContractWarning(store);
+  if ((!text && !contract) || !store) return null;
   return (
-    <p role="status" className="flex items-start gap-2 text-sm" data-no-agreement>
-      <span aria-hidden className="mt-1.5 inline-block size-2 shrink-0 bg-signal" />
-      <span className="text-fg">
-        {text}{" "}
-        <a
-          href={`/butiker/${encodeURIComponent(store.id)}?vy=avtal`}
-          className="whitespace-nowrap underline underline-offset-4"
-        >
-          Lägg in avtal →
-        </a>
-      </span>
-    </p>
+    <div role="status" className="flex flex-col gap-2">
+      {text ? (
+        <p className="flex items-start gap-2 text-sm" data-no-agreement>
+          <span aria-hidden className="mt-1.5 inline-block size-2 shrink-0 bg-signal" />
+          <span className="text-fg">
+            {text}{" "}
+            <a
+              href={`/butiker/${encodeURIComponent(store.id)}?vy=avtal`}
+              className="whitespace-nowrap underline underline-offset-4"
+            >
+              Lägg in avtal →
+            </a>
+          </span>
+        </p>
+      ) : null}
+      {contract ? (
+        <p className="flex items-start gap-2 text-sm" data-no-contract>
+          <span aria-hidden className="mt-1.5 inline-block size-2 shrink-0 bg-signal" />
+          <span className="text-fg">
+            {contract}{" "}
+            <a
+              href={
+                store.contract === "missing"
+                  ? `/avtal?skapa=${encodeURIComponent(`store:${store.id}`)}`
+                  : `/avtal#butik-${encodeURIComponent(store.id)}`
+              }
+              className="whitespace-nowrap underline underline-offset-4"
+            >
+              {store.contract === "missing" ? "Skapa kontrakt →" : "Signera →"}
+            </a>
+          </span>
+        </p>
+      ) : null}
+    </div>
   );
 }
 

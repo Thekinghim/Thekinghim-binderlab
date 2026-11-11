@@ -22,6 +22,9 @@ import {
 } from "@/server/data/core";
 import { storeShareLabel, storeShareTerms } from "@/lib/store-share";
 import { isUuid } from "@/server/access";
+import { storeContractStates, type StoreContractState } from "@/analytics/contracts/signed";
+import { loadSignableContractsFor } from "@/server/contracts";
+import type { Viewer } from "@/server/data/core/loaders";
 import type { DomainInput, MasterData } from "@/server/data/core/types";
 import { requestPageLoaders, type PageLoaders } from "@/server/data/page-loaders";
 
@@ -162,6 +165,8 @@ async function signalsFor(ctx: AppContext, loaders: PageLoaders = requestPageLoa
 function storeOptions(
   master: Awaited<ReturnType<typeof loadMasterData>>,
   agreements?: readonly StoreAgreement[],
+  /** Kontraktet per butik (för raden "Kontraktet är inte signerat"), eller null om okänt. */
+  contracts?: ReadonlyMap<string, StoreContractState> | null,
 ): StoreOption[] {
   return master.stores
     .filter((s) => !s.archived)
@@ -169,8 +174,30 @@ function storeOptions(
       id: s.id,
       name: s.name,
       ...(agreements ? { agreements: agreements.filter((a) => a.storeId === s.id) } : {}),
+      ...(contracts ? { contract: contracts.get(s.id) ?? "missing" } : {}),
     }))
     .sort((a, b) => a.name.localeCompare(b.name, "sv"));
+}
+
+/**
+ * Kontraktet per butik (signerat, osignerat, saknas), för varningen när en automat placeras.
+ * Ett fel här stoppar inte sidan: då visas ingen rad om kontraktet.
+ */
+async function contractStatesFor(
+  viewer: Viewer,
+  master: MasterData,
+  today: IsoDate,
+): Promise<Map<string, StoreContractState> | null> {
+  try {
+    return storeContractStates(
+      await loadSignableContractsFor(viewer),
+      master.stores.map((s) => s.id),
+      today,
+    );
+  } catch (error) {
+    console.error("[automater] Kontrakten kunde inte läsas:", error);
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -207,10 +234,16 @@ export async function loadOverviewWith(
   // Vid automatfilter läses hela organisationen: butikens hyra delas då mellan butikens
   // automater, som på automatens sida, i stället för att hela hyran hamnar på automaten.
   const focused = p.scope.machineId !== null;
-  const [loaded, base, lastOrderAt] = await Promise.all([
+  const [loaded, base, lastOrderAt, contracts] = await Promise.all([
     loaders.domainInput({ period: p.period, compare: p.compare, ...(focused ? {} : p.scope) }),
     signalsFor(ctx, loaders),
     loaders.viewer().then(loadLastOrderAtFor),
+    // Bara ägare och admin placerar automater (rutan "Lägg till automat").
+    ctx.canEdit
+      ? Promise.all([loaders.viewer(), loaders.masterData()]).then(([v, m]) =>
+          contractStatesFor(v, m, ctx.today),
+        )
+      : null,
   ]);
   const input = comparable(p, loaded.previous) ? loaded : { ...loaded, previous: null };
   const coverage = coverageOf(
@@ -246,6 +279,7 @@ export async function loadOverviewWith(
     stores: storeOptions(
       base.master,
       p.scope.storeId || p.scope.machineId ? undefined : loaded.current.agreements,
+      contracts,
     ),
     scopeLabel,
   };
@@ -317,11 +351,12 @@ export async function loadMachineDetail(
   if (!machine) return null;
 
   const p = await loadPeriod(searchParams);
-  const [input, base, orders] = await Promise.all([
+  const [input, base, orders, contracts] = await Promise.all([
     // Hela organisationens indata: butikens hyra fördelas då mellan butikens automater.
     loadDomainInput({ period: p.period, compare: p.compare }),
     signalsFor(ctx),
     currentViewer().then((v) => loadMachineOrdersFor(v, machine.id)),
+    ctx.canEdit ? currentViewer().then((v) => contractStatesFor(v, master, ctx.today)) : null,
   ]);
 
   const today = ctx.today;
@@ -452,7 +487,7 @@ export async function loadMachineDetail(
     placements,
     unitEconomics: machineUnitEconomics(input, machine.id),
     // Automatens sida läser hela organisationen: alla butikers avtal finns.
-    stores: storeOptions(master, input.current.agreements),
+    stores: storeOptions(master, input.current.agreements, contracts),
     query: carriedQuery(searchParams),
   };
 }
