@@ -144,7 +144,8 @@ describe("machineReadiness", () => {
 });
 
 describe("readinessTodo (raden Startklar i Att göra)", () => {
-  const plain = (v: string | undefined) => (v ?? "").replace(/\u00a0/g, " ");
+  const plain = (v: string | undefined) =>
+    (v ?? "").replace(/\u00a0/g, " ").replace(/\u2011/g, "-");
 
   it("allt klart: ingen rad", () => {
     expect(readinessTodo([machineReadiness(facts())])).toBeNull();

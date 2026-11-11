@@ -265,15 +265,17 @@ export function readinessTodo(list: readonly MachineReadiness[]): ReadinessTodo 
   );
   const [first] = open;
   if (!first || !first.next || first.next.href === null) return null;
+  // Koden bryts inte vid bindestrecket ("BL-" på en rad och "004" på nästa).
+  const code = first.code.replace(/-/g, "\u2011");
   if (open.length === 1) {
     return {
-      title: `${first.code}: ${first.progress}. Nästa: ${first.next.next}`,
+      title: `${code}: ${first.progress}. Nästa: ${first.next.next}`,
       href: first.next.href,
       machines: 1,
     };
   }
   return {
-    title: `${formatInt(open.length)}${NBSP}automater är inte startklara. Först ${first.code}: ${first.next.next}`,
+    title: `${formatInt(open.length)}${NBSP}automater är inte startklara. Först ${code}: ${first.next.next}`,
     href: "/automater",
     machines: open.length,
   };
