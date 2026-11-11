@@ -4,7 +4,7 @@
  */
 
 import { CONTRACT_DEFAULTS } from "@/analytics/contracts/contracts";
-import { DomainError, type IsoDate } from "@/domain";
+import { DEFAULT_TARGET_MARGIN_BP, DomainError, type IsoDate } from "@/domain";
 import { machineNames, titleNames } from "./common";
 import { businessDateAt, DEFAULT_TIME_ZONE, parseInstant } from "./time";
 import type { TodoInput, TodoItem, TodoLevel, TodoOptions } from "./types";
@@ -18,6 +18,7 @@ export const TODO_DEFAULTS: Required<TodoOptions> = {
   unpricedWindowDays: 30,
   reportDueDay: null,
   contractReminderDays: CONTRACT_DEFAULTS.reminderLeadDays,
+  targetMarginBp: DEFAULT_TARGET_MARGIN_BP,
 };
 
 /** Dagar framåt som "kronor i risk" räknas över. */

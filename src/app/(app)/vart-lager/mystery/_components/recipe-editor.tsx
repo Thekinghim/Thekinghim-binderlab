@@ -14,25 +14,31 @@ import {
   DEFAULT_BATCH_SIZE,
   MAX_BATCH_SIZE,
   MAX_ITEMS,
+  mysteryCalc,
   shareBp,
   type DraftItem,
   type Recipe,
 } from "../_lib/model";
+import { Calculator } from "./calculator";
+import type { CalcContext } from "./mystery-actions";
 
 /**
  * Ändra innehållet: storleken på en omgång (förval 14), en rad per titel med antal och HIT,
  * och en sökruta för att lägga till titlar. Spara går först när antalen blir omgången.
  * Varje sparning blir en ny version från i dag (gamla packningar behåller sin version).
+ * Med `calc` räknas kalkylen om för varje ändring, innan något är sparat ("vad händer om").
  */
 export function RecipeEditor({
   titleId,
   recipe,
   choices,
+  calc = null,
   onDone,
 }: {
   titleId: string;
   recipe: Recipe | null;
   choices: ReadonlyArray<{ id: string; name: string }>;
+  calc?: CalcContext | null;
   onDone?: () => void;
 }) {
   const toast = useToast();
@@ -47,6 +53,17 @@ export function RecipeEditor({
   const names = useMemo(() => new Map(choices.map((c) => [c.id, c.name])), [choices]);
   const check = checkDraft(batchSize, rows);
   const used = new Set(rows.map((r) => r.titleId));
+  // Kalkylen med utkastet: samma räkning som den sparade kalkylen på sidan.
+  const draftCalc =
+    calc && rows.length > 0
+      ? mysteryCalc(
+          batchSize,
+          rows.map((r) => ({ ...r, name: names.get(r.titleId) ?? "Okänd titel" })),
+          calc.prices,
+          calc.salePriceOre,
+          calc.fees,
+        )
+      : null;
   const hits = query.trim()
     ? fuzzyRank(
         choices.filter((c) => !used.has(c.id)),
@@ -236,6 +253,8 @@ export function RecipeEditor({
         </span>
         {check.ok ? " · klart att spara" : check.error ? ` · ${check.error}` : ""}
       </p>
+
+      {draftCalc ? <Calculator calc={draftCalc} draft /> : null}
 
       <div className="flex flex-wrap gap-2">
         <button

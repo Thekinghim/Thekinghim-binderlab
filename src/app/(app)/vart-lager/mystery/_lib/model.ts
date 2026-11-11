@@ -9,7 +9,11 @@
  * - Packa N omgångar: vad som tas ut (antal × N per del) och vad som läggs till (storlek × N).
  * - Saknas: vilka delar ett lager inte har nog av för N omgångar, och hur många som fattas.
  * - Standardlager: lagret med flest pack av delarna (lika: standardlagret, sedan ordningen).
+ * - Kalkylen: kostnad per omgång och per pack, pris, vinst och marginal per pack (före
+ *   butikens andel), även för ett utkast som inte är sparat ("vad händer om").
  */
+
+import { recipeCost, unitMargin } from "@/domain";
 
 /** En rad i innehållet: en titel, antal per omgång och om den är en HIT. */
 export interface RecipeItem {
@@ -83,17 +87,96 @@ export function averageCost(
   recipe: Pick<Recipe, "batchSize" | "items">,
   prices: ReadonlyMap<string, number>,
 ): AverageCost {
-  let total = 0;
-  const missing: string[] = [];
-  for (const i of recipe.items) {
-    const p = prices.get(i.titleId);
-    if (p === undefined) missing.push(i.name);
-    else total += p * i.quantity;
-  }
-  if (missing.length > 0 || recipe.batchSize <= 0) {
-    return { perPackOre: null, perBatchOre: null, missing };
-  }
-  return { perPackOre: Math.round(total / recipe.batchSize), perBatchOre: total, missing };
+  const cost = recipeCost(recipe, (id) => prices.get(id));
+  const missing = new Set(cost.missingTitleIds);
+  return {
+    perPackOre: cost.perPackOre,
+    perBatchOre: cost.perBatchOre,
+    missing: recipe.items.filter((i) => missing.has(i.titleId)).map((i) => i.name),
+  };
+}
+
+/** En rad i kalkylen: en del, antal per omgång, pris per pack och radens summa. */
+export interface CalcLine {
+  readonly titleId: string;
+  readonly name: string;
+  readonly quantity: number;
+  readonly hit: boolean;
+  /** Delens inköpspris i dag (öre), null när det saknas. */
+  readonly unitCostOre: number | null;
+  /** antal × pris (öre), null när priset saknas. */
+  readonly totalOre: number | null;
+}
+
+/** Kalkylen för ett mystery pack: kostnad, pris, vinst och marginal per pack. */
+export interface MysteryCalc {
+  readonly batchSize: number;
+  readonly lines: readonly CalcLine[];
+  /** Summan av antalen. Kalkylen går bara ihop när den är omgångens storlek. */
+  readonly quantity: number;
+  /** Antalen är omgångens storlek och alla delar har pris. */
+  readonly complete: boolean;
+  readonly perBatchOre: number | null;
+  readonly perPackOre: number | null;
+  /** Delarna som saknar inköpspris (namn). */
+  readonly missing: readonly string[];
+  /** Priset i automaten (öre, med moms), null utan köp. */
+  readonly salePriceOre: number | null;
+  /** Vinst per pack före butikens andel (öre), null utan pris eller kostnad. */
+  readonly profitOre: number | null;
+  /** Vinsten i bp av priset utan moms. */
+  readonly marginBp: number | null;
+}
+
+/** Avgifterna som dras från priset (organisationens inställningar). */
+export interface CalcFees {
+  readonly vatRateBp: number;
+  readonly cardFeeBp: number;
+}
+
+/**
+ * Kalkylen med ett innehåll (sparat eller ett utkast), dagens inköpspriser på delarna
+ * (titelns id → öre) och priset i automaten. Samma formler som liggaren (@/domain
+ * unitMargin): vinst = pris utan moms − kortavgift − kostnad, före butikens andel.
+ */
+export function mysteryCalc(
+  batchSize: number,
+  items: ReadonlyArray<{ titleId: string; name: string; quantity: number; hit?: boolean }>,
+  prices: Readonly<Record<string, number>>,
+  salePriceOre: number | null,
+  fees: CalcFees,
+): MysteryCalc {
+  const clean = items.map((i) => ({
+    ...i,
+    quantity: Number.isInteger(i.quantity) && i.quantity > 0 ? i.quantity : 0,
+  }));
+  const cost = recipeCost({ batchSize, items: clean }, (id) => prices[id]);
+  const lines = clean.map((i, n): CalcLine => ({
+    titleId: i.titleId,
+    name: i.name,
+    quantity: i.quantity,
+    hit: i.hit === true,
+    unitCostOre: cost.lines[n]?.unitCostOre ?? null,
+    totalOre: cost.lines[n]?.totalOre ?? null,
+  }));
+  const complete = cost.perPackOre !== null && cost.quantity === batchSize;
+  const perPackOre = complete ? cost.perPackOre : null;
+  const margin =
+    perPackOre !== null && salePriceOre !== null && salePriceOre > 0
+      ? unitMargin(salePriceOre, perPackOre, fees)
+      : null;
+  return {
+    batchSize,
+    lines,
+    quantity: cost.quantity,
+    complete,
+    perBatchOre: complete ? cost.perBatchOre : null,
+    perPackOre,
+    missing: lines.filter((l) => l.unitCostOre === null).map((l) => l.name),
+    salePriceOre,
+    profitOre: margin?.profitOre ?? null,
+    marginBp: margin?.marginBp ?? null,
+  };
 }
 
 export interface Capacity {

@@ -13,6 +13,7 @@ import type {
   EconomicsSources,
   IsoDate,
   IsoMonth,
+  MysteryRecipeRef,
   OrderLine,
   Period,
 } from "@/domain";
@@ -229,6 +230,8 @@ export type TodoKind =
   | "settlement"
   | "settlement-create"
   | "agreement"
+  | "mystery-cost"
+  | "price-advice"
   | "team";
 
 /** Brådskenivå: 'now' (gör i dag), 'soon' (de närmaste dagarna), 'later' (när tid finns). */
@@ -245,6 +248,8 @@ export interface TodoAction {
     | "open-contract"
     | "open-alert"
     | "open-machine"
+    | "open-mystery"
+    | "open-pricing"
     | "invite-member";
   /** Knapptext, verbet först. */
   readonly label: string;
@@ -291,6 +296,8 @@ export interface TodoOptions {
   readonly reportDueDay?: number | null;
   /** Dagar före sista uppsägningsdag som ett avtal tas upp. Standard 90 (som /avtal). */
   readonly contractReminderDays?: number;
+  /** Prisråd: målet för marginalen före butikernas andel (bp). Standard 2 500 (25 %). */
+  readonly targetMarginBp?: number;
 }
 
 /** Indata till `computeTodos`. */
@@ -352,6 +359,11 @@ export interface TodoInput extends EconomicsSources {
     readonly machineId: string;
     readonly until: string | null;
   }[];
+  /**
+   * Mystery packs: gällande innehåll per egen produkt (för punkten om fel inköpspris).
+   * Utelämnad = inga sådana punkter (påfyllaren).
+   */
+  readonly mysteryRecipes?: readonly MysteryRecipeRef[];
   readonly options?: TodoOptions;
 }
 

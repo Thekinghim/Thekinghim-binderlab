@@ -20,6 +20,7 @@ import {
   requireRoute,
 } from "@/server/data/core";
 
+import { currentViewer } from "../lager/_lib/session";
 import { MobileMore } from "../_mobil/mobile-more";
 import { homeStaleImport } from "../_hem/model";
 import { StaleImportLine } from "../_hem/sections";
@@ -27,12 +28,14 @@ import { StaleImportLine } from "../_hem/sections";
 import { CompensationBreakdown, UnpricedSummary } from "./_components/breakdown";
 import { LonsamhetBridge } from "./_components/bridge";
 import { LonsamhetKpis } from "./_components/kpis";
+import { PriceAdviceSection } from "./_components/price-advice";
 import { ResultAfterProfitPanel } from "./_components/result";
 import { AnalysisSection } from "./_components/sections";
 import { RhythmSection } from "./_components/rhythm";
 import { loadLonsamhetWith } from "./_lib/data";
 import { periodText, type TrendKey, type ViewKey } from "./_lib/model";
 import { buildMovers } from "./_lib/movers";
+import { loadPriceAdviceFor } from "./_lib/price-advice";
 import { salesHeatmap, machineHref } from "../automater/_lib/model";
 import { resultAfterProfit } from "./_lib/result";
 import {
@@ -86,7 +89,7 @@ const SECTION =
  * Lönsamhet: vad tjänar vi, och var? Vattenfall från intäkt till vinst, och under det
  * återbetalningar och fasta kostnader som egna rader (resultat efter fasta kostnader),
  * tabell per titel, automat och butik, utveckling per vecka eller månad och order utan
- * inköpspris.
+ * inköpspris. Överst Prisråd: produkter under målet för marginalen, och vad priset bör vara.
  *
  * Ägare, admin och läsare. Påfyllaren skickas till sin startsida av requireRoute och
  * får aldrig någon ekonomi (loadDomainInput kontrollerar rollen igen mot databasen).
@@ -104,15 +107,18 @@ export default async function LonsamhetPage({
   // Allt läses parallellt. Efter vinsten: återbetalningar och fasta kostnader. Indata och
   // modellen med samma kod som Daglig kontroll (./_lib/data).
   const periodP = loadPeriod(sp);
-  const [{ p, input, organization, model }, adjustments, sync, shareToggle] = await Promise.all([
-    loadLonsamhetWith(requestPageLoaders(), sp, {
-      carry: carriedQuery(sp).replace(/^\?/, ""),
-      lastOrderDate: loadLastOrderDate,
-    }),
-    periodP.then((x) => loadProfitAdjustments(x.period)),
-    loadSyncInfo(),
-    requestStoreShareView(),
-  ]);
+  const [{ p, input, organization, model }, adjustments, sync, shareToggle, advice] =
+    await Promise.all([
+      loadLonsamhetWith(requestPageLoaders(), sp, {
+        carry: carriedQuery(sp).replace(/^\?/, ""),
+        lastOrderDate: loadLastOrderDate,
+      }),
+      periodP.then((x) => loadProfitAdjustments(x.period)),
+      loadSyncInfo(),
+      requestStoreShareView(),
+      // Prisråd: hela organisationen i dag (samma som punkten i Att göra), oavsett period.
+      currentViewer().then((viewer) => loadPriceAdviceFor(viewer, new Date(ctx.now))),
+    ]);
 
   const stale = homeStaleImport(sync, p.period.end, ctx.now, ctx.timeZone);
   const result = resultAfterProfit({
@@ -176,6 +182,8 @@ export default async function LonsamhetPage({
         ) : null}
         {stale ? <StaleImportLine stale={stale} today={ctx.today} canEdit={ctx.canEdit} /> : null}
       </div>
+
+      <PriceAdviceSection advice={advice} canEdit={ctx.canEdit} />
 
       {model.orders === 0 ? (
         <section className={SECTION} aria-label="Ingen försäljning">

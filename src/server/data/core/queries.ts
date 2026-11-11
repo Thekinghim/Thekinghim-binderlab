@@ -17,7 +17,15 @@ import * as s from "@/db/schema";
 import { DEFAULT_LOCALE, isLocale, type Locale } from "@/i18n/locale";
 import { toSafeInteger } from "@/db/types";
 import { reportStatuses, type DeliveryStatus } from "@/server/reports/status";
-import type { IsoDate, MachineInvestment, Period, PurchasePrice, StoreAgreement } from "@/domain";
+import {
+  DEFAULT_TARGET_MARGIN_BP,
+  type IsoDate,
+  type MachineInvestment,
+  type MysteryRecipeRef,
+  type Period,
+  type PurchasePrice,
+  type StoreAgreement,
+} from "@/domain";
 import type { Refund } from "@/domain/refunds";
 
 import type {
@@ -163,6 +171,49 @@ export function mysteryBatchSql(alias = "t"): SQL {
   return sql`(case when ${t}.own_product then (select r.batch_size from public.mystery_recipes r
     where r.organization_id = ${t}.organization_id and r.title_id = ${t}.id
     order by r.version desc limit 1) end)`;
+}
+
+/**
+ * Mystery packs: gällande innehåll (senaste versionen) per aktiv egen produkt, med delarna
+ * i innehållets ordning. För kalkylen (kostnad per pack) och punkten om fel inköpspris.
+ */
+export async function queryMysteryRecipeRefs(tx: Tx, orgId: string): Promise<MysteryRecipeRef[]> {
+  const result = await tx.execute(
+    sql`select r.title_id::text as title_id, r.batch_size,
+               coalesce((select jsonb_agg(jsonb_build_object(
+                           'titleId', i.component_title_id, 'quantity', i.quantity)
+                           order by i.position)
+                         from public.mystery_recipe_items i
+                         where i.organization_id = r.organization_id and i.recipe_id = r.id),
+                        '[]'::jsonb) as items
+        from public.mystery_recipes r
+        join public.titles t on t.organization_id = r.organization_id and t.id = r.title_id
+        where r.organization_id = ${orgId}::uuid
+          and t.own_product and t.archived_at is null and t.merged_into_id is null
+          and r.version = (select max(r2.version) from public.mystery_recipes r2
+                           where r2.organization_id = r.organization_id
+                             and r2.title_id = r.title_id)
+        order by r.title_id`,
+  );
+  return (Array.from(result) as Record<string, unknown>[]).map((r) => {
+    const raw: unknown = typeof r.items === "string" ? JSON.parse(r.items) : r.items;
+    const items = Array.isArray(raw) ? (raw as { titleId: string; quantity: number }[]) : [];
+    return {
+      titleId: String(r.title_id),
+      batchSize: Number(r.batch_size),
+      items: items.map((i) => ({ titleId: String(i.titleId), quantity: Number(i.quantity) })),
+    };
+  });
+}
+
+/** Prisråd: organisationens mål för marginalen (bp). Standard 25 % när raden saknas. */
+export async function queryTargetMarginBp(tx: Tx, orgId: string): Promise<number> {
+  const rows = await tx
+    .select({ bp: s.organizationSettings.targetMarginBp })
+    .from(s.organizationSettings)
+    .where(eq(s.organizationSettings.organizationId, orgId))
+    .limit(1);
+  return rows[0]?.bp ?? DEFAULT_TARGET_MARGIN_BP;
 }
 
 export async function queryTitles(tx: Tx, orgId: string): Promise<TitleRecord[]> {

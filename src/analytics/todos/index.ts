@@ -14,6 +14,8 @@ import { contractTodos } from "./contracts";
 import { duplicateTitleTodos } from "./duplicates";
 import { missingContractTodos } from "./missing-contract";
 import { missingPriceTodos } from "./missing-price";
+import { mysteryCostTodos } from "./mystery-cost";
+import { priceAdviceTodos } from "./price-advice";
 import { refillTodos } from "./refill";
 import { reportReviewTodos } from "./report-review";
 import { reportTodos } from "./reports";
@@ -52,6 +54,8 @@ export function computeTodos(input: TodoInput, now: Date | string | number): Tod
     ...contractTodos(ctx),
     ...deals.contracts,
     ...missingPriceTodos(ctx),
+    ...mysteryCostTodos(ctx),
+    ...priceAdviceTodos(ctx),
     ...duplicateTitleTodos(ctx),
     ...teamTodos(ctx),
   ]);
@@ -93,6 +97,8 @@ export { settlementDue, settlementLink, SETTLEMENT_DUE_DAY } from "./settlements
 export { agreementLink } from "./agreement-gaps";
 export { todoInScope, type ScopeMachine, type TodoScope } from "./scope";
 export { missingPriceFingerprint } from "./missing-price";
+export { mysteryCostLink } from "./mystery-cost";
+export { PRICE_ADVICE_LINK, priceAdviceFor } from "./price-advice";
 export {
   isFullSlot,
   refillFingerprint,

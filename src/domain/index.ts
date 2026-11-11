@@ -206,3 +206,29 @@ export {
   mysteryRefillQty,
   wholeBatches,
 } from "./mystery-refill";
+
+export {
+  mysteryCostDrifts,
+  recipeCost,
+  type MysteryCostDrift,
+  type MysteryRecipeRef,
+  type RecipeCost,
+  type RecipeCostItem,
+  type RecipeCostLine,
+} from "./mystery-cost";
+
+export {
+  currentSalePrices,
+  DEFAULT_TARGET_MARGIN_BP,
+  isPricePoint,
+  MAX_TARGET_MARGIN_BP,
+  MIN_TARGET_MARGIN_BP,
+  PRICE_ADVICE_WINDOW_DAYS,
+  priceAdvice,
+  suggestedPriceOre,
+  unitMargin,
+  type PriceAdvice,
+  type PriceAdviceInput,
+  type SalePriceOrder,
+  type UnitMargin,
+} from "./price-advice";

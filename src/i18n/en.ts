@@ -104,6 +104,12 @@ const SERVER_EXACT: Record<string, string> = {
     "That month is closed. Choose New price from today instead, or ask the owner.",
   "Priset skulle gälla i en stängd månad. Välj ett senare datum, eller be en ägare öppna månaden.":
     "The price would count in a closed month. Ask the owner.",
+  // Mystery-kalkylen (COST_MESSAGES i vart-lager/mystery/_lib/service.ts).
+  "Mystery-packet har inget innehåll än.": "The mystery pack has no contents yet.",
+  "En del saknar inköpspris. Lägg in det först.":
+    "One of the parts has no purchase price. Add it first.",
+  "Kalkylen har ändrats. Ladda om sidan och försök igen.":
+    "The numbers have changed. Reload the page and try again.",
   "Ange inköpspriset per pack.": "Type the price per pack.",
   "Skriv priset i kronor, t.ex. 112,50.": "Type the price in kronor, for example 112.50.",
 };
@@ -370,26 +376,42 @@ export const en: Messages = {
     contentsCost: (amount) => `The contents cost ${amount} per pack`,
     missingPrice: (names) => `No purchase price: ${names}`,
     currentCost: (amount) => ` · purchase price ${amount ?? "missing"}`,
-    setCost: (amount) => `Set purchase price to ${amount}`,
-    costSet: "The purchase price is set from today.",
     costNotSaved: "Not saved",
-    costTitle: "Cost",
-    costAverage: "Contents, average per pack",
-    costToday: "Purchase price today",
-    costMissing: "missing",
-    salePrice: "Price in the machine (last sale)",
+    salePrice: "Price in the machine",
     noSaleYet: "no sale yet",
-    leftPerPack: "Left per pack before the store's share",
     missingPrices: (names) => `No purchase price: ${names}.`,
     pricesLink: "Purchase prices",
-    costDiffers: (current, contents) =>
-      `Sold mystery packs are counted with the purchase price ${current ?? "(missing)"}, but the contents cost ${contents}.`,
-    costNote: (orders) =>
-      `Left per pack takes off the card fee and tax, on ${
-        orders > 0
-          ? `${f.int(orders)} ${orders === 1 ? "sale" : "sales"} in the last 30 days`
-          : "one example sale"
-      }, with the average of the contents as the purchase price.`,
+    calcTitle: "Calculator",
+    calcDraftTitle: "If you save this",
+    calcProfit: "Profit per pack",
+    calcMargin: "Share of the price you keep",
+    calcCostPack: "Cost per pack",
+    calcCostBatch: (n) => `Cost per batch (${f.int(n)}${NBSP}packs)`,
+    calcLine: (qty, name) => `${f.int(qty)}${NBSP}×${NBSP}${name}`,
+    calcEach: (amount) => `${amount} each`,
+    calcNoPrice: "no price",
+    calcUneven: (sum, size) =>
+      `The numbers add up to ${f.int(sum)} of ${f.int(size)}. The calculator shows when they match.`,
+    calcBeforeShare: "Profit is before the store's share.",
+    calcNoSale: "No sale yet, so the profit cannot be worked out.",
+    calcRows: "How the cost adds up",
+    costNow: (name, now, was) =>
+      was === null
+        ? `${name} costs ${now} but has no purchase price`
+        : `${name} now costs ${now}, not ${was}`,
+    costNowWhy: "The contents or a purchase price has changed.",
+    costMissingWhy: "Without a purchase price, no profit is counted for sold packs.",
+    costNowAsk: "Ask the owner to update the price.",
+    updateFromToday: "Update the price from today",
+    updateFromTodaySub: "What is already sold keeps its price.",
+    fixPrice: "Correct the price",
+    fixPriceSub: "Also changes everything already sold.",
+    fixConfirm: (amount) =>
+      `Everything already sold is counted again with ${amount}. This cannot be undone. Closed months do not change.`,
+    fixYes: "Yes, correct the price",
+    costUpdated: (amount) => `The price is ${amount} from today.`,
+    costFixed: (amount) => `The price is corrected to ${amount}.`,
+    openCalc: "Show the calculator",
     list: (items) => {
       const parts = items.map((t) => `${t.quantity} ${t.name}`);
       if (parts.length <= 1) return parts.join("");

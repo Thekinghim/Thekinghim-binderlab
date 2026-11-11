@@ -274,24 +274,45 @@ export const sv = {
     contentsCost: (amount: string) => `Innehållet kostar ${amount} per pack`,
     missingPrice: (names: string) => `Saknar inköpspris: ${names}`,
     currentCost: (amount: string | null) => ` · inköpspris ${amount ?? "saknas"}`,
-    setCost: (amount: string) => `Sätt inköpspris till ${amount}`,
-    costSet: "Inköpspriset är satt från i dag.",
     costNotSaved: "Sparades inte",
-    costTitle: "Kostnad",
-    costAverage: "Innehållet, snitt per pack",
-    costToday: "Inköpspris i dag",
-    costMissing: "saknas",
-    salePrice: "Pris i automaten (senaste köpet)",
+    salePrice: "Pris i automaten",
     noSaleYet: "inget köp än",
-    leftPerPack: "Kvar per pack före butikens andel",
     missingPrices: (names: string) => `Saknar inköpspris: ${names}.`,
     pricesLink: "Inköpspriser",
-    costDiffers: (current: string | null, contents: string) =>
-      `Sålda mystery packs räknas med inköpspriset ${current ?? "(saknas)"}, men innehållet kostar ${contents}.`,
-    costNote: (orders: number) =>
-      `Kvar per pack räknas som på Inköpspriser (kortavgift, VMB) på ${
-        orders > 0 ? `${f.int(orders)} köp senaste 30 dagarna` : "ett tänkt köp"
-      } med innehållets snitt som inköpspris.`,
+    /** Kalkylen: kostnad, pris, vinst och marginal per pack. */
+    calcTitle: "Kalkyl",
+    calcDraftTitle: "Om du sparar det här",
+    calcProfit: "Vinst per pack",
+    calcMargin: "Marginal",
+    calcCostPack: "Kostnad per pack",
+    calcCostBatch: (n: number) => `Kostnad per omgång (${f.int(n)}${NBSP}pack)`,
+    calcLine: (qty: number, name: string) => `${f.int(qty)}${NBSP}×${NBSP}${name}`,
+    calcEach: (amount: string) => `à ${amount}`,
+    calcNoPrice: "pris saknas",
+    calcUneven: (sum: number, size: number) =>
+      `Antalen blir ${f.int(sum)} av ${f.int(size)}. Kalkylen visas när det går jämnt ut.`,
+    calcBeforeShare: "Vinsten är före butikens andel.",
+    calcNoSale: "Inget köp än, så vinsten går inte att räkna.",
+    calcRows: "Så räknas kostnaden",
+    /** Notisen när inköpspriset inte stämmer med kalkylen. */
+    costNow: (name: string, now: string, was: string | null) =>
+      was === null
+        ? `${name} kostar ${now} men saknar inköpspris`
+        : `${name} kostar nu ${now}, inte ${was}`,
+    costNowWhy: "Innehållet eller ett inköpspris har ändrats.",
+    /** När mystery-packet inte har något inköpspris alls (inget har ändrats). */
+    costMissingWhy: "Utan inköpspris räknas ingen vinst på sålda pack.",
+    costNowAsk: "Be ägaren uppdatera priset.",
+    updateFromToday: "Uppdatera priset från idag",
+    updateFromTodaySub: "Det som redan är sålt behåller sitt pris.",
+    fixPrice: "Rätta priset",
+    fixPriceSub: "Gäller även allt som redan är sålt.",
+    fixConfirm: (amount: string) =>
+      `Allt som redan är sålt räknas om med ${amount}. Det går inte att ångra. Stängda månader ändras inte.`,
+    fixYes: "Ja, rätta priset",
+    costUpdated: (amount: string) => `Priset är ${amount} från i dag.`,
+    costFixed: (amount: string) => `Priset är rättat till ${amount}.`,
+    openCalc: "Visa kalkylen",
     /** "8 Phantasmal Flames, 6 Delta Reign och 4 Destined Rivals". */
     list: (items: readonly { quantity: number; name: string }[]) => {
       const parts = items.map((t) => `${t.quantity} ${t.name}`);

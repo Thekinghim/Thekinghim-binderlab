@@ -7,6 +7,7 @@ import {
   defaultPlace,
   listText,
   maxBatches,
+  mysteryCalc,
   packPlan,
   recipeOdds,
   shortages,
@@ -159,5 +160,111 @@ describe("checkDraft", () => {
     expect(checkDraft(4, [{ titleId: "", quantity: 4, hit: false }]).error).toBe(
       "Välj en titel på varje rad.",
     );
+  });
+});
+
+describe("mysteryCalc", () => {
+  /** Mystery pack premium: ägarens recept, 14 per omgång. */
+  const items = [
+    { titleId: "fusion", name: "Fusion Strike", quantity: 4 },
+    { titleId: "celebration", name: "30th Celebration", quantity: 3 },
+    { titleId: "flames", name: "Phantasmal Flames", quantity: 4 },
+    { titleId: "prismatic", name: "Prismatic Evolution", quantity: 1 },
+    { titleId: "heroes", name: "Ascended Heroes", quantity: 1 },
+    { titleId: "hit", name: "Hit", quantity: 1, hit: true },
+  ];
+  const prices = {
+    fusion: 22_000,
+    celebration: 25_000,
+    flames: 15_000,
+    prismatic: 30_000,
+    heroes: 20_000,
+    hit: 25_200,
+  };
+  const fees = { vatRateBp: 0, cardFeeBp: 0 };
+
+  it("kostnad per omgång och pack, pris, vinst och marginal", () => {
+    const calc = mysteryCalc(14, items, prices, 29_900, fees);
+    expect(calc).toMatchObject({
+      complete: true,
+      quantity: 14,
+      perBatchOre: 298_200,
+      perPackOre: 21_300,
+      salePriceOre: 29_900,
+      profitOre: 8_600,
+      marginBp: 2_876,
+      missing: [],
+    });
+    expect(calc.lines[0]).toEqual({
+      titleId: "fusion",
+      name: "Fusion Strike",
+      quantity: 4,
+      hit: false,
+      unitCostOre: 22_000,
+      totalOre: 88_000,
+    });
+    expect(calc.lines.at(-1)?.hit).toBe(true);
+  });
+
+  it("samma kostnad per pack som averageCost (en formel)", () => {
+    const recipe = { batchSize: 14, items: items.map((i) => ({ ...i, hit: i.hit === true })) };
+    expect(mysteryCalc(14, items, prices, null, fees).perPackOre).toBe(
+      averageCost(recipe, new Map(Object.entries(prices))).perPackOre,
+    );
+  });
+
+  it("vad händer om: byt en Fusion Strike mot en Phantasmal Flames", () => {
+    const draft = items.map((i) =>
+      i.titleId === "fusion"
+        ? { ...i, quantity: 3 }
+        : i.titleId === "flames"
+          ? { ...i, quantity: 5 }
+          : i,
+    );
+    const calc = mysteryCalc(14, draft, prices, 29_900, fees);
+    // 70 kr billigare omgång → 5 kr per pack.
+    expect(calc.perBatchOre).toBe(291_200);
+    expect(calc.perPackOre).toBe(20_800);
+    expect(calc.profitOre).toBe(9_100);
+  });
+
+  it("antalen går inte jämnt ut: ingen kostnad per pack visas", () => {
+    const draft = items.map((i) => (i.titleId === "fusion" ? { ...i, quantity: 5 } : i));
+    const calc = mysteryCalc(14, draft, prices, 29_900, fees);
+    expect(calc).toMatchObject({
+      complete: false,
+      quantity: 15,
+      perPackOre: null,
+      perBatchOre: null,
+      profitOre: null,
+    });
+  });
+
+  it("en del saknar pris: namnet står under saknas, ingen vinst", () => {
+    const calc = mysteryCalc(14, items, { ...prices, hit: undefined as never }, 29_900, fees);
+    expect(calc.missing).toEqual(["Hit"]);
+    expect(calc.perPackOre).toBeNull();
+    expect(calc.profitOre).toBeNull();
+  });
+
+  it("inget köp än: kostnaden visas men ingen vinst", () => {
+    const calc = mysteryCalc(14, items, prices, null, fees);
+    expect(calc.perPackOre).toBe(21_300);
+    expect(calc.profitOre).toBeNull();
+    expect(calc.marginBp).toBeNull();
+  });
+
+  it("moms och kortavgift dras som i liggaren", () => {
+    const calc = mysteryCalc(14, items, prices, 29_900, { vatRateBp: 2_500, cardFeeBp: 250 });
+    // moms 59,80, netto 239,20, kortavgift 7,48 → 239,20 − 7,48 − 213 = 18,72.
+    expect(calc.profitOre).toBe(1_872);
+  });
+
+  it("ogiltiga antal i utkastet (tomt fält) räknas som 0", () => {
+    const draft = items.map((i) => (i.titleId === "hit" ? { ...i, quantity: Number.NaN } : i));
+    expect(mysteryCalc(14, draft, prices, null, fees)).toMatchObject({
+      quantity: 13,
+      complete: false,
+    });
   });
 });
