@@ -2,7 +2,7 @@
 
 /**
  * Skalet för Enkel vy: fyra stora flikar nedtill (Fyll på, Försäljning, Lager, Mystery) och en
- * liten meny uppe till höger med bara språk, Uppdatera appen och Logga ut. Ingen sidomeny, ingen sökning,
+ * liten meny uppe till höger med bara språk, veckosammanfattningen, Uppdatera appen och Logga ut. Ingen sidomeny, ingen sökning,
  * ingen AI, ingen knapp för "Fyll på" ovanpå sidan. Reglerna (vilka sökvägar, vilka flikar)
  * finns i ./simple-view och gäller också på servern.
  */
@@ -15,6 +15,7 @@ import { Sheet } from "@/app/(app)/lager/_components/sheet";
 import { Wordmark } from "@/components/brand/wordmark";
 import { useAppRefresh } from "@/components/pwa/app-refresh-button";
 import { Icon } from "@/components/ui/icon";
+import { WeeklySwitch } from "@/components/weekly/weekly-switch";
 import { useToast } from "@/components/ui/toast";
 import type { MemberRole } from "@/db/schema";
 import { useLocale, useT } from "@/i18n/client";
@@ -161,6 +162,14 @@ export function SimpleMenuButton({ className }: { className?: string }) {
             <p className="label text-subtle">{t.lang.title}</p>
             <LanguageChoice />
           </section>
+          {shell && (shell.role === "owner" || shell.role === "admin") ? (
+            <section
+              className="flex flex-col gap-2 border-t border-line pt-5"
+              aria-label={t.week.switchTitle}
+            >
+              <WeeklySwitch />
+            </section>
+          ) : null}
           <section className="flex flex-col gap-2 border-t border-line pt-5">
             <UpdateAppButton />
           </section>

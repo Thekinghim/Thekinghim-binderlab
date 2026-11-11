@@ -16,8 +16,12 @@ export async function generateMetadata(): Promise<Metadata> {
  * Försäljning (/forsaljning): samma skärm som startsidan i Enkel vy (Hem visar den för den
  * enkla vyn). Ägare, admin och läsare; andra skickas till sin startsida i den enkla vyn.
  */
-export default async function SalesPage() {
+export default async function SalesPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const ctx = await loadContext();
   if (!ctx.canSeeEconomy) redirect(simpleHomeFor(ctx.role));
-  return <SalesScreen ctx={ctx} />;
+  return <SalesScreen ctx={ctx} week={(await searchParams).vecka} closeHref="/forsaljning" />;
 }

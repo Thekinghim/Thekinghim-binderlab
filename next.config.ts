@@ -4,6 +4,7 @@ import { withSentryConfig } from "@sentry/nextjs/config";
 import type { NextConfig } from "next";
 
 import { APP_REDIRECTS } from "./src/lib/redirects";
+import { APP_REWRITES } from "./src/lib/rewrites";
 import { securityHeaderRules } from "./src/lib/security-headers";
 
 /**
@@ -75,6 +76,11 @@ const nextConfig: NextConfig = {
   // Adresser som bara pekar vidare (/kontrakt → /avtal), utan att rendera en sida.
   async redirects() {
     return [...APP_REDIRECTS];
+  },
+  // Adresser som visar en annan sidas rutt (/fyll-pa/<automat> → /fyll-pa), före filsystemet
+  // så att de går före den dynamiska rutten (src/lib/rewrites.ts).
+  async rewrites() {
+    return { beforeFiles: [...APP_REWRITES], afterFiles: [], fallback: [] };
   },
   // Bygget typkontrollerar bara appens kod. Tester och skript kontrolleras av
   // npm run typecheck (tsconfig.json) i CI, så att ett halvfärdigt test aldrig

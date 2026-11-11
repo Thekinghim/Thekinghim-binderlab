@@ -482,6 +482,20 @@ export const ACTIONS: ActionSpec[] = [
     allowed: MEMBERS,
     args: () => [],
   },
+  // Veckosammanfattningen (måndagens notis): bara ägare och admin, var och en sin knapp
+  {
+    module: "@/server/actions/weekly-summary",
+    name: "loadWeeklySummarySetting",
+    allowed: OP,
+    readOnly: true,
+    args: () => [],
+  },
+  {
+    module: "@/server/actions/weekly-summary",
+    name: "saveWeeklySummarySetting",
+    allowed: OP,
+    args: () => [{ on: true }],
+  },
   // Ångra en påfyllning (städrundan): bara egna, inom 30 minuter
   {
     module: "@/app/(app)/drift/actions",

@@ -2,10 +2,13 @@ import type { CSSProperties } from "react";
 
 import { profitabilityViews } from "@/domain";
 import { formatters, messages, type Formatters, type Messages } from "@/i18n";
-import { loadDomainInput, type AppContext } from "@/server/data/core";
+import { loadDomainInput, requireViewer, type AppContext } from "@/server/data/core";
+import { loadWeeklySummaryFor } from "@/server/weekly/summary";
 
 import { productProfits } from "../../_enkel/model";
 import { PageHead } from "../../vart-lager/_components/page-head";
+import { WeekSummary } from "../../veckan/_components/week-summary";
+import { weekFromParam } from "../../veckan/_lib/model";
 import { daysIn, figuresOf, machineSales, salesPeriods, type SalesFigures } from "../_lib/model";
 
 /**
@@ -15,10 +18,29 @@ import { daysIn, figuresOf, machineSales, salesPeriods, type SalesFigures } from
  * (står i rubriken), även per produkt. Bara för roller som ser ekonomi (sidan kontrollerar
  * det innan).
  */
-export async function SalesScreen({ ctx }: { ctx: AppContext }) {
+export async function SalesScreen({
+  ctx,
+  week: weekParam,
+  closeHref = "/",
+}: {
+  ctx: AppContext;
+  /** ?vecka=ÅÅÅÅ-MM-DD (måndagens notis): veckosammanfattningen visas överst. */
+  week?: string | string[];
+  /** Sidan utan sammanfattningen ("Stäng"). */
+  closeHref?: string;
+}) {
   const t = messages(ctx.locale);
   const f = formatters(ctx.locale);
   const p = salesPeriods(ctx.today);
+  // Veckosammanfattningen räknas parallellt med resten (egen läsning av de två veckorna).
+  // Bara siffrorna: Att göra finns inte i den enkla vyn och visas inte här.
+  const weeklyP =
+    weekParam !== undefined
+      ? requireViewer().then((viewer) =>
+          loadWeeklySummaryFor(viewer, weekFromParam(weekParam, ctx.today), new Date(ctx.now)),
+        )
+      : null;
+  weeklyP?.catch(() => {});
 
   // En läsning för allt (veckan kan börja förra månaden), utan butikernas andel.
   const input = await loadDomainInput({
@@ -49,9 +71,20 @@ export async function SalesScreen({ ctx }: { ctx: AppContext }) {
   // Vinst per produkt (som Lönsamhet per titel), alltid före butikernas andel.
   const perProduct = productProfits(monthViews.title.rows, input.titles);
   const unpriced = month.unpriced;
+  const weekly = weeklyP ? await weeklyP : null;
 
   return (
     <div className="mx-auto flex w-full max-w-[720px] flex-col gap-8 px-4 pt-4 pb-8 md:px-8 md:pt-10">
+      {weekly ? (
+        <WeekSummary
+          summary={weekly}
+          today={ctx.today}
+          t={t}
+          f={f}
+          headingLevel="h2"
+          close={{ href: closeHref, label: t.week.close }}
+        />
+      ) : null}
       <PageHead
         eyebrow={t.sales.title}
         title={t.sales.headline(f.sek(today.salesOre / 100))}

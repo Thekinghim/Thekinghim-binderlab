@@ -28,6 +28,7 @@ const SUBPAGES: ReadonlyArray<readonly [pattern: string, label: string]> = [
 const STANDALONE: Readonly<Record<string, string>> = {
   "/kom-igang": "Kom igång",
   "/sok": "Sök",
+  "/veckan": "Veckan",
 };
 
 function matches(pattern: string, path: string): boolean {

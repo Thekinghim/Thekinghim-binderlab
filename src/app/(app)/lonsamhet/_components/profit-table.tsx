@@ -38,6 +38,23 @@ function onlyUnpriced(r: ProfitLine): boolean {
   return r.kind === "item" && r.orders > 0 && r.orders === r.unpricedOrders;
 }
 
+/** "1 såld" · "12 sålda": antal sålda (order) under namnet på telefonen. */
+export function soldLabel(orders: number): string {
+  return `${formatInt(orders)}${NBSP}${orders === 1 ? "såld" : "sålda"}`;
+}
+
+/**
+ * Raden under namnet på telefonen (under md), där kolumnen Order är dold: hur många som
+ * sålts. Från md står antalet i kolumnen Order i stället.
+ */
+function SoldLine({ orders }: { orders: number }) {
+  return (
+    <span data-sold className="tnum basis-full text-sm text-muted md:hidden">
+      {soldLabel(orders)}
+    </span>
+  );
+}
+
 function NameCell({ row, selected }: { row: ProfitLine; selected: boolean }) {
   if (row.kind !== "item") {
     return (
@@ -72,6 +89,7 @@ function NameCell({ row, selected }: { row: ProfitLine; selected: boolean }) {
           </Link>
         </span>
       ) : null}
+      <SoldLine orders={row.orders} />
     </span>
   );
 }
@@ -135,7 +153,12 @@ export function columnsFor(
       header: nameHeader,
       sortValue: sv.name,
       render: (r) => <NameCell row={r} selected={r.kind === "item" && r.key === selectedKey} />,
-      footer: <span className="font-medium text-fg">Totalt</span>,
+      footer: (
+        <span className="flex flex-col">
+          <span className="font-medium text-fg">Totalt</span>
+          <SoldLine orders={totals.orders} />
+        </span>
+      ),
       hideable: false,
       className: "md:min-w-48",
     },

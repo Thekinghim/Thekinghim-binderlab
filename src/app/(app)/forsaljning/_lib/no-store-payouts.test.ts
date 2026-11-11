@@ -31,7 +31,7 @@ describe("Försäljning i Enkel vy utan butikernas utbetalning", () => {
   it("Hem lämnar över till Försäljning i Enkel vy innan utbetalningsraderna", () => {
     const src = read("../../page.tsx");
     const simple = src.indexOf('if (simple.viewMode === "simple")');
-    const salesReturn = src.indexOf("return <SalesScreen ctx={simple} />;");
+    const salesReturn = src.indexOf("return <SalesScreen ctx={simple}");
     const content = src.indexOf("<HemContent");
     const payouts = src.indexOf("<PayoutLines");
     expect(simple).toBeGreaterThan(-1);

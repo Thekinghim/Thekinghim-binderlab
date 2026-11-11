@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyAdjustments,
+  bringList,
   chooseSource,
   coverage,
+  defaultBringSelection,
   doneMessage,
   fillHeadline,
   fillMachines,
@@ -16,6 +18,7 @@ import {
   rowStatus,
   splitRefill,
   suggestFill,
+  toggleBring,
   type FillInput,
   type FillMachineInput,
 } from "./model";
@@ -604,6 +607,164 @@ describe("chooseSource: lagret som har packen", () => {
     expect(chooseSource({ places: [], stock: {}, rows, preferred: [] })).toEqual({
       id: null,
       reason: null,
+    });
+  });
+});
+
+describe("Ta med-listan (bringList)", () => {
+  const MYSTERY = "t3";
+  const machines = () =>
+    fillMachines(
+      input({
+        machines: [
+          machine(
+            "m1",
+            "BL-001",
+            [
+              { title_id: T1, units: 2, capacity: 12, channels: 2, empty: 1 },
+              { title_id: T2, units: 6, capacity: 6, channels: 1, empty: 0 },
+            ],
+            "ICA Lund",
+          ),
+          machine(
+            "m2",
+            "BL-002",
+            [
+              { title_id: T1, units: 0, capacity: 8, channels: 1, empty: 1 },
+              { title_id: MYSTERY, units: 0, capacity: 14, channels: 1, empty: 1 },
+            ],
+            "Coop Malmö",
+          ),
+          machine("m3", "BL-003", null, "Willys"),
+        ],
+        machineStock: new Map([
+          [pairKey("m1", T1), 2],
+          [pairKey("m1", T2), 6],
+          [pairKey("m2", T1), 0],
+          [pairKey("m2", MYSTERY), 0],
+        ]),
+        home: new Map([
+          [T1, 100],
+          [MYSTERY, 100],
+        ]),
+        mystery: new Map([[MYSTERY, 14]]),
+      }),
+    );
+
+  it("per automat och totalt: det som får plats, oberoende av lagret", () => {
+    const list = bringList(machines(), new Set(["m1", "m2"]), { [T1]: 50, [MYSTERY]: 28 });
+    const m1 = list.machines.find((m) => m.id === "m1")!;
+    const m2 = list.machines.find((m) => m.id === "m2")!;
+    // m1: 10 Surging Sparks (12 − 2); Black Bolt är full och står inte med.
+    expect(m1.lines).toEqual([{ titleId: T1, name: "Surging Sparks", want: 10 }]);
+    expect(m1.want).toBe(10);
+    // m2: en hel mystery-omgång (14) och 8 Surging Sparks, flest först.
+    expect(m2.lines.map((l) => [l.titleId, l.want])).toEqual([
+      [MYSTERY, 14],
+      [T1, 8],
+    ]);
+    expect(list.totals).toEqual([
+      { titleId: T1, name: "Surging Sparks", want: 18, have: 50, bring: 18, missing: 0 },
+      { titleId: MYSTERY, name: "Perfect Order", want: 14, have: 28, bring: 14, missing: 0 },
+    ]);
+    expect(list).toMatchObject({ want: 32, bring: 32, missing: 0 });
+  });
+
+  it("varnar när lagret inte räcker: det som saknas står först", () => {
+    const list = bringList(machines(), new Set(["m1", "m2"]), { [T1]: 11, [MYSTERY]: 28 });
+    expect(list.totals[0]).toEqual({
+      titleId: T1,
+      name: "Surging Sparks",
+      want: 18,
+      have: 11,
+      bring: 11,
+      missing: 7,
+    });
+    expect(list).toMatchObject({ want: 32, bring: 25, missing: 7 });
+  });
+
+  it("mystery pack: bara hela omgångar ur lagret, och ett negativt saldo är 0", () => {
+    const list = bringList(machines(), new Set(["m2"]), { [T1]: -3, [MYSTERY]: 13 });
+    const byId = new Map(list.totals.map((t) => [t.titleId, t]));
+    expect(byId.get(MYSTERY)).toMatchObject({ want: 14, have: 13, bring: 0, missing: 14 });
+    expect(byId.get(T1)).toMatchObject({ want: 8, have: 0, bring: 0, missing: 8 });
+    expect(list.bring).toBe(0);
+  });
+
+  it("bara de valda automaterna räknas", () => {
+    const list = bringList(machines(), new Set(["m1"]), { [T1]: 50 });
+    expect(list.machines.map((m) => m.id)).toEqual(["m1"]);
+    expect(list.totals).toHaveLength(1);
+    expect(list.want).toBe(10);
+    expect(bringList(machines(), new Set(), { [T1]: 50 })).toMatchObject({
+      machines: [],
+      totals: [],
+      want: 0,
+      bring: 0,
+      missing: 0,
+    });
+  });
+
+  it("utan eget lager: allt tas med och inget räknas som saknat", () => {
+    const list = bringList(machines(), new Set(["m1", "m2"]), null);
+    expect(list.totals.every((t) => t.have === null && t.missing === 0)).toBe(true);
+    expect(list.bring).toBe(32);
+  });
+
+  it("en full automat och en utan Awish-läsning: inget att ta med, med rätt skäl", () => {
+    const full = fillMachines(
+      input({
+        machines: [
+          machine("m1", "BL-001", [{ title_id: T2, units: 6, capacity: 6, channels: 1, empty: 0 }]),
+          machine("m3", "BL-003", null),
+        ],
+        machineStock: new Map([[pairKey("m1", T2), 6]]),
+      }),
+    );
+    const list = bringList(full, new Set(["m1", "m3"]), {});
+    expect(list.want).toBe(0);
+    expect(list.machines.find((m) => m.id === "m1")).toMatchObject({ known: true, lines: [] });
+    expect(list.machines.find((m) => m.id === "m3")).toMatchObject({ known: false, lines: [] });
+  });
+
+  it("från början är automaterna som behöver pack valda, annars alla", () => {
+    expect(defaultBringSelection(machines()).sort()).toEqual(["m1", "m2"]);
+    const full = fillMachines(
+      input({
+        machines: [
+          machine("m1", "BL-001", [{ title_id: T2, units: 6, capacity: 6, channels: 1, empty: 0 }]),
+        ],
+        machineStock: new Map([[pairKey("m1", T2), 6]]),
+      }),
+    );
+    expect(defaultBringSelection(full)).toEqual(["m1"]);
+  });
+
+  it("ett tryck lägger till eller tar bort en automat, från förvalet eller från valet", () => {
+    // Förvalet (null): m1 och m2 behöver pack. Ett tryck på m2 tar bort den.
+    expect(toggleBring(null, machines(), "m2")).toEqual(["m1"]);
+    expect(toggleBring(null, machines(), "m3").sort()).toEqual(["m1", "m2", "m3"]);
+    // Två tryck i följd räknas båda (det andra utgår från det första).
+    const afterFirst = toggleBring(null, machines(), "m1");
+    expect(toggleBring(afterFirst, machines(), "m2")).toEqual([]);
+    expect(toggleBring([], machines(), "m3")).toEqual(["m3"]);
+  });
+
+  it("påfyllningar i kön (utan nät) minskar behovet och lagret", () => {
+    const out = applyAdjustments(
+      machines(),
+      { home: { [T1]: 20 } },
+      [{ machineId: "m1", titleId: T1, quantity: 6, fromWarehouse: true, fromLocationId: "home" }],
+      new Map(),
+      () => "home",
+    );
+    const list = bringList(out.machines, new Set(["m1", "m2"]), out.stock.home ?? {});
+    // m1 vill nu ha 4 (12 − 8), m2 fortfarande 8; lagret har 14 kvar.
+    expect(list.totals.find((t) => t.titleId === T1)).toMatchObject({
+      want: 12,
+      have: 14,
+      bring: 12,
+      missing: 0,
     });
   });
 });
