@@ -1,18 +1,22 @@
 /**
  * Mystery-facken i automaterna: underlaget till "Packa 1 omgång före fredag".
  *
- * Ett fack = en automat som har titeln i sortimentet i dag (fackperiod) eller har pack av
- * den kvar. För varje fack läses saldot nu, sålda pack de senaste 14 hela dagarna (takten)
+ * Ett fack = en automat som har titeln i sortimentet i dag (fackperiod), står med i den
+ * senaste läsningen från Awish, har pack av den kvar eller har sålt den de senaste 14 dagarna
+ * (samma regel som raderna i Fyll på, så att "0 färdiga, fyll på en omgång" där och "Packa 1
+ * omgång nu" här gäller samma fack). En titel som gått ur automatens sortiment och står på 0
+ * är inget fack. För varje fack läses saldot nu, sålda pack de senaste 14 hela dagarna (takten)
  * och om automaten någonsin har sålt titeln (ny automat utan historik). Bara antal: alla
  * roller i appen får läsa det (påfyllaren läser försäljningshändelserna, inte orderna).
  */
 
 import "server-only";
 
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
 import * as s from "@/db/schema";
 import type { Tx } from "@/db/client";
+import { retiredPairs } from "@/analytics/todos";
 import { addDays, type IsoDate } from "@/domain";
 import { querySlotPeriods } from "@/server/data/assortment";
 
@@ -45,8 +49,19 @@ export async function queryMysterySlotFacts(
   if (titleIds.length === 0) return out;
   const yesterday = addDays(today, -1);
   const windowStart = addDays(yesterday, -(SLOT_WINDOW_DAYS - 1));
-  const [periods, sales] = await Promise.all([
+  const [periods, fills, sales] = await Promise.all([
     querySlotPeriods(tx, orgId),
+    // Senaste läsningen från Awish per automat (vilka titlar som står i facken).
+    tx
+      .select({ machineId: s.stockLocations.machineId, fill: s.stockLocations.awishFill })
+      .from(s.stockLocations)
+      .where(
+        and(
+          eq(s.stockLocations.organizationId, orgId),
+          isNotNull(s.stockLocations.machineId),
+          isNotNull(s.stockLocations.awishFill),
+        ),
+      ),
     tx
       .select({
         locationId: s.stockEvents.locationId,
@@ -92,6 +107,26 @@ export async function queryMysterySlotFacts(
     }
   }
   for (const [k, n] of onHand) if (n !== null && n > 0) pairs.add(k);
+  // I automatens fack enligt Awish senaste läsning.
+  const inFill = new Set<string>();
+  for (const row of fills) {
+    if (!row.machineId || !Array.isArray(row.fill)) continue;
+    for (const e of row.fill as unknown[]) {
+      const titleId =
+        typeof e === "object" && e !== null ? (e as { title_id?: unknown }).title_id : null;
+      if (typeof titleId === "string" && wanted.has(titleId)) {
+        inFill.add(key(row.machineId, titleId));
+      }
+    }
+  }
+  for (const k of inFill) pairs.add(k);
+  // Såld de senaste 14 dagarna: facket finns, även om det är tomt nu och saknar fackperiod.
+  for (const [k, n] of sold) if (n.recent > 0) pairs.add(k);
+  // Utgången titel (hade en fackperiod, ingen gäller längre) som står på 0: inget fack.
+  const retired = retiredPairs(periods, today);
+  for (const k of [...pairs]) {
+    if (retired.has(k) && !inFill.has(k) && (onHand.get(k) ?? 0) <= 0) pairs.delete(k);
+  }
 
   for (const k of pairs) {
     const [machineId, titleId] = k.split("\u0000") as [string, string];

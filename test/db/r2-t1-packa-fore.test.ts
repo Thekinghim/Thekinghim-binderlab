@@ -184,7 +184,7 @@ describe("Mystery-laddaren: omgångar räknade från facken", () => {
       ["BL-001", false, false],
     ]);
     expect(packSentence(plan, sv)?.text).toBe(
-      "Ny automat BL-002: packa 2 omgångar. 1 automat till blir tom i veckan.",
+      "Packa 2 omgångar nu. BL-002 är ny och tom. 1 automat till blir tom i veckan.",
     );
   });
 
@@ -198,5 +198,25 @@ describe("Mystery-laddaren: omgångar räknade från facken", () => {
     const plans = await loadMysteryPackPlansFor(await viewerFor(owner, orgId), NOW);
     expect(plans.get(mp)).toMatchObject({ batches: 1 });
     expect(plans.get(mp)?.due?.map((d) => d.label)).toEqual(["BL-001"]);
+  });
+  it("tomt fack som sålt de senaste 14 dagarna, utan fackperiod: 'Packa 1 omgång nu'", async () => {
+    await event(loc1, mp, "count", 0);
+    const plans = await loadMysteryPackPlansFor(await viewerFor(refiller, orgId), NOW);
+    const plan = plans.get(mp)!;
+    expect(plan).toMatchObject({ batches: 1, before: today, basis: "slots" });
+    expect(plan.first).toMatchObject({ label: "BL-001", emptyNow: true, isNew: false });
+    expect(packSentence(plan, sv)?.text).toBe("Packa 1 omgång nu. BL-001 är tom.");
+  });
+
+  it("samma fack, men titeln har gått ur automatens sortiment: inget att packa", async () => {
+    await asPostgres((tx) =>
+      tx.execute(
+        sql`insert into public.machine_slots (organization_id, machine_id, title_id, slots, valid_from, valid_to)
+            values (${orgId}::uuid, ${m1}::uuid, ${mp}::uuid, 1, ${today}::date - 30, ${today}::date - 1)`,
+      ),
+    );
+    const plans = await loadMysteryPackPlansFor(await viewerFor(owner, orgId), NOW);
+    expect(plans.get(mp)).toMatchObject({ batches: 0 });
+    expect(packSentence(plans.get(mp)!, sv)?.text).toBe("Inget att packa den här veckan.");
   });
 });

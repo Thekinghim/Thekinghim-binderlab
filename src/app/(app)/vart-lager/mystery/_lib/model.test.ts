@@ -370,6 +370,17 @@ describe("Packa N omgångar före en dag (räknat från facken)", () => {
     expect(packSentence(p, sv)?.text).toBe("Ny automat BL-004: packa 1 omgång.");
   });
 
+  it("ny automat och ett fack till: antalet gäller båda, inte bara den nya", async () => {
+    const { plan, packSentence, sv } = await load();
+    const p = plan([
+      facts({ machineId: "m4", label: "BL-004", onHand: null, sold: 0, everSold: false }),
+      facts(),
+    ]);
+    expect(packSentence(p, sv)?.text).toBe(
+      "Packa 2 omgångar nu. BL-004 är ny och tom. 1 automat till blir tom i veckan.",
+    );
+  });
+
   it("tom i morgon: packa i dag", async () => {
     const { plan, packSentence, sv } = await load();
     expect(packSentence(plan([facts({ onHand: 3 })]), sv)?.text).toBe(

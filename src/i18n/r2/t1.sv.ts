@@ -60,6 +60,8 @@ export const t1 = {
     /** Ny automat utan historik, tomt fack. */
     packNew: (n: number, machine: string) => `Ny automat ${machine}: packa ${batches(n)}.`,
     slotEmpty: (machine: string) => `${machine} är tom.`,
+    /** Ny automat och fler fack samtidigt: "Packa 2 omgångar nu. BL-004 är ny och tom." */
+    slotNew: (machine: string) => `${machine} är ny och tom.`,
     slotTomorrow: (machine: string) => `${machine} är tom i morgon.`,
     slotInDays: (machine: string, days: number) => `${machine} är tom om ca ${f.int(days)} dagar.`,
     moreSlots: (n: number) =>

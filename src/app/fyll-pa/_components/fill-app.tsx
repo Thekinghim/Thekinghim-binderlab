@@ -594,7 +594,16 @@ export function FillApp({
   }
 
   const mine = data.hasOthers && mineOnly === "1";
-  const shown = mine ? view.machines.filter((m) => m.mine) : view.machines;
+  const visible = mine ? view.machines.filter((m) => m.mine) : view.machines;
+  // En automat som väntar på Awish ("Awish fick inte antalen …") ligger överst: den är oftast
+  // full efter påfyllningen och hamnar annars sist, under skärmkanten.
+  const shown =
+    pendingPush.size > 0
+      ? [
+          ...visible.filter((m) => pendingPush.has(m.id)),
+          ...visible.filter((m) => !pendingPush.has(m.id)),
+        ]
+      : visible;
 
   if (bring && shown.length > 0) {
     return (

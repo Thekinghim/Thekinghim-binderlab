@@ -446,7 +446,10 @@ export function packSentence(plan: MysteryPackPlan | null, t: Messages): PackSen
   if (plan.batches > 0 && first) {
     const lead = first.emptyNow
       ? first.isNew
-        ? m.packNew(plan.batches, first.label)
+        ? plan.batches === 1
+          ? m.packNew(1, first.label)
+          : // Flera omgångar: antalet gäller alla facken, inte bara den nya automaten.
+            `${m.packNow(plan.batches)}. ${m.slotNew(first.label)}`
         : `${m.packNow(plan.batches)}. ${m.slotEmpty(first.label)}`
       : first.daysLeft <= 1
         ? `${m.packToday(plan.batches)} ${m.slotTomorrow(first.label)}`

@@ -43,6 +43,7 @@ export const t1: R2T1 = {
     packToday: (n) => `Pack ${batches(n)} today.`,
     packNew: (n, machine) => `New machine ${machine}: pack ${batches(n)}.`,
     slotEmpty: (machine) => `${machine} is empty.`,
+    slotNew: (machine) => `${machine} is new and empty.`,
     slotTomorrow: (machine) => `${machine} is empty tomorrow.`,
     slotInDays: (machine, days) => `${machine} is empty in about ${f.int(days)} days.`,
     moreSlots: (n) =>
