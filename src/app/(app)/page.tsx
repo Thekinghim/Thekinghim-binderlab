@@ -38,7 +38,8 @@ import { MorningBrief } from "./_hem/morning-brief";
 import { SelfCheckLine } from "./_hem/self-check-line";
 import { PayoutLines } from "./_hem/payout-line";
 import { VardeCard } from "./_hem/varde-card";
-import { homeTodoLinkText, homeTodoPhone } from "./_hem/todo-phone";
+import { HomeRow } from "./_hem/home-row";
+import { homeTodoHeading, homeTodoLinkText, homeTodoPhone } from "./_hem/todo-phone";
 import { dateOf, kr, weekdayDayText } from "./_hem/text";
 
 /** Hem; i Enkel vy är startsidan Försäljning (på personens språk). */
@@ -268,12 +269,6 @@ async function HemContent({
                 <RankingLine searchParams={sp} />
               </Suspense>
             )}
-            {/* Värde: sparad tid i månaden och länk till /varde (ägare och admin). */}
-            {canSeeValue && !scope ? (
-              <Suspense fallback={null}>
-                <VardeCard />
-              </Suspense>
-            ) : null}
           </div>
 
           {headline.state === "ok" ? (
@@ -313,6 +308,15 @@ async function HemContent({
               </div>
             </section>
           ) : null}
+
+          {/* Sist på sidan: sparad tid i månaden och länk till /varde (ägare och admin). */}
+          {canSeeValue && !scope ? (
+            <div className={`mt-10 empty:hidden max-md:mt-6 md:mt-12 ${ORDER.value}`}>
+              <Suspense fallback={null}>
+                <VardeCard />
+              </Suspense>
+            </div>
+          ) : null}
         </>
       )}
     </div>
@@ -328,7 +332,7 @@ const INSIGHTS_PHONE = 1;
 
 /**
  * Blockens ordning under md (CSS order; från md DOM-ordningen): rubriken, kom igång, att
- * göra, målet, i dag, briefen, diagrammet, nyckeltalen och de mest sålda.
+ * göra, målet, i dag, briefen, diagrammet, nyckeltalen, de mest sålda och sist värdet.
  */
 const ORDER = {
   hero: "max-md:order-1",
@@ -340,6 +344,7 @@ const ORDER = {
   daily: "max-md:order-7",
   kpis: "max-md:order-8",
   titles: "max-md:order-9",
+  value: "max-md:order-10",
 } as const;
 
 /** Fördröjning för blockens uppglidning (globals.css .rise). */
@@ -466,33 +471,45 @@ function DailySection({
 function TodoSection({ model, sp }: { model: HomeModel; sp: SearchParams }) {
   if (!model.todos) return null;
   const href = `/att-gora${carriedParams(sp)}`;
-  // Under md bara det som gäller nu (todo-phone.ts); resten via länken.
+  // Under md det som gäller nu, annars nästa sak (todo-phone.ts); resten via länken.
   const phone = homeTodoPhone(model.todos, model.todoCount);
   const linkText = homeTodoLinkText(model.todos.length, model.todoCount);
   return (
     <section aria-labelledby="att-gora" className="min-w-0 scroll-mt-28">
       <div className="flex items-baseline justify-between gap-4">
         <h2 id="att-gora" className="label text-muted">
-          {`Att göra · ${formatInt(model.todoCount)}`}
+          {homeTodoHeading(model.todoCount, model.todoStakeOre)}
           {model.todoNowCount > 0 ? (
-            <span className="text-signal-fg">{` · ${formatInt(model.todoNowCount)} nu`}</span>
+            <span className="whitespace-nowrap text-signal-fg">{` · ${formatInt(model.todoNowCount)} nu`}</span>
           ) : null}
         </h2>
         {model.todoCount > 0 ? (
-          <ArrowLink href={href} className="max-md:min-h-11">
+          <ArrowLink href={href} className="shrink-0 max-md:min-h-11">
             <span className="md:hidden">{phone.linkText}</span>
             <span className="max-md:hidden">{linkText}</span>
           </ArrowLink>
         ) : null}
       </div>
       <div className="mt-3 max-md:mt-1">
+        {/* Telefonen: inget gäller nu, då står nästa sak här (samma radstil som utbetalningen). */}
+        {phone.next ? (
+          <HomeRow href={phone.next.href} className="md:hidden" data-home-next={phone.next.key}>
+            {phone.next.text}
+          </HomeRow>
+        ) : null}
         {phone.emptyText ? (
           <p className="text-base text-muted md:hidden">{phone.emptyText}</p>
         ) : null}
         {model.todos.length > 0 ? (
           <TodoList todos={model.todos} phoneKeys={phone.shownKeys} />
         ) : (
-          <StateMessage compact kind="empty" code="0 punkter" message="Inget att göra just nu." />
+          <StateMessage
+            compact
+            kind="empty"
+            code="0 punkter"
+            message="Inget att göra just nu."
+            className="max-md:hidden"
+          />
         )}
       </div>
     </section>
