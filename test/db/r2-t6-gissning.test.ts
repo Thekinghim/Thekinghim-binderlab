@@ -173,6 +173,12 @@ describe("Gissningen sparas när platsen blir butik", () => {
     expect(saved).toBe(false);
     const refiller = await viewerFor(await createMember(f.orgId, "refiller"));
     expect(await leadGuessSafe(refiller, other.id)).toBeNull();
+    // En gissning där låg, förväntad och hög inte stämmer sparas inte, och kastar inte
+    // (i Ny butik delar den transaktion med att platsen blir butik).
+    const bad = await asUser(f.owner, (tx) =>
+      saveLeadGuess(tx, f.orgId, other.id, { ...first, lowOre: first.profitPerMonthOre + 1 }),
+    );
+    expect(bad).toBe(false);
   });
 
   it("databasen kräver alla fyra värden tillsammans, och låg ≤ förväntad ≤ hög", async () => {

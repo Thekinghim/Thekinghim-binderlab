@@ -102,6 +102,17 @@ export async function saveLeadGuess(
   leadId: string,
   guess: LeadGuess,
 ): Promise<boolean> {
+  // Databasen kräver låg ≤ förväntad ≤ hög. En gissning som inte håller det sparas inte:
+  // den får aldrig stoppa att platsen blir butik (samma transaktion i Ny butik).
+  const values = [guess.lowOre, guess.profitPerMonthOre, guess.highOre];
+  if (
+    !values.every(Number.isSafeInteger) ||
+    guess.lowOre > guess.profitPerMonthOre ||
+    guess.profitPerMonthOre > guess.highOre
+  ) {
+    console.error("[ny butik] Gissningen sparades inte: låg, förväntad och hög stämmer inte.");
+    return false;
+  }
   const rows = await tx
     .update(s.expansionLeads)
     .set({
