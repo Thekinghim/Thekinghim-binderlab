@@ -376,7 +376,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     await field.fill("1190");
     await field.press("Enter");
     await sheet
-      .getByText(/is much more than the last price 118\.00\skr\. Is that right\?/)
+      .getByText(/1,190\skr is much more than the last price 118\skr\. Is that right\?/)
       .waitFor();
     await settled(page);
     await expectPhoneFit(page, "dialog[open]");

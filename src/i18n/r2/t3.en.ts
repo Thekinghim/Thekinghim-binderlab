@@ -51,6 +51,11 @@ export const t3: R2T3 = {
   arrivedSave: "Add to stock",
   gotFewer: (planned, got) =>
     `You planned ${f.int(planned)}, got ${f.int(got)}. We will ask you to buy ${f.int(planned - got)} more.`,
+  stillOnWay: (n) => `${packs(n)} ${n === 1 ? "is" : "are"} still on the way.`,
+  notComing: "They are not coming",
+  notComingSub: "The list will ask for them again",
+  notComingToast: (n, title) =>
+    `No longer waiting for ${packs(n)} ${title}. The list will ask for them again.`,
   notSavedTitle: "Not saved",
 
   toMystery: (n, into) => `${f.int(n)} of them go into ${into}.`,
@@ -63,4 +68,11 @@ export const t3: R2T3 = {
  * the exact Swedish text → the English text. `t.serverError(message)` looks here after the
  * shared table in ../en.ts, so the track never edits that table. Same simple words as above.
  */
-export const serverErrors: Record<string, string> = {};
+export const serverErrors: Record<string, string> = {
+  "Inget är på väg för titeln.": "Nothing is on the way for this product. Reload the page.",
+  "Beställningen har fler titlar. Avsluta den under Inköp, Mer.":
+    "This order has more products in it. Ask the owner to close it.",
+  // The packs are already saved when this shows: do not say "try again".
+  "Priset gick inte att spara just nu.": "Ask the owner to set the price.",
+  "Priset är för högt.": "The price is too high.",
+};

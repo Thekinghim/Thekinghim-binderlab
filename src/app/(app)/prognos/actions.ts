@@ -28,6 +28,7 @@ import {
   currentViewer,
   deleteSupplierItemFor,
   markPurchaseOrderOrderedFor,
+  notComingFor,
   PurchasingError,
   quickOrderFor,
   quickOrderSchema,
@@ -39,6 +40,7 @@ import {
   updateSupplierFor,
   type ArrivalResult,
   type CloseResult,
+  type NotComingResult,
   type QuickOrderResult,
   type ReceiveResult,
 } from "@/server/purchasing";
@@ -166,6 +168,13 @@ export async function markOrdered(raw: unknown): Promise<ActionResult<QuickOrder
 }
 
 export type ArrivedResult = ArrivalResult & { readonly price: ReceiptPrice };
+
+const titleOnly = quickOrderSchema.pick({ titleId: true });
+
+/** "Kommer inte": det som är på väg för titeln väntas inte längre. Listan ber om det igen. */
+export async function markNotComing(raw: unknown): Promise<ActionResult<NotComingResult>> {
+  return run(async () => notComingFor(await operator(), titleOnly.parse(raw)));
+}
 
 /**
  * "Kom fram" / "Köpt, har dem här": packen läggs in i lagret (först mot det som var på väg)

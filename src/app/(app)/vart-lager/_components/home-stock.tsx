@@ -364,6 +364,9 @@ function StockRow({
           p.status === "saved" && p.unitCostOre !== undefined
             ? ` ${r2.receiptPriceSaved(kr(p.unitCostOre))}`
             : ""
+        }${
+          // En del räknades av från det som var beställt: säg vad som fortfarande väntas.
+          (res.data.stillOnTheWay ?? 0) > 0 ? ` ${r2.stillOnWay(res.data.stillOnTheWay!)}` : ""
         }`,
         tone: "ok",
       });

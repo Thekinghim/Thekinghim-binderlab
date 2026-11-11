@@ -7,9 +7,15 @@
  *   listan slutar fråga efter de packen.
  * - receiveArrivalFor: "Kom fram" / "Köpt, har dem här". Packen bokas först mot det som är
  *   på väg för titeln (äldst först; databasen skriver lagerhändelsen 'receipt'), resten som
- *   ett vanligt inköp. Kom färre än beställt hos "Eget inköp" avslutas den ordern, så att
- *   planen ber om resten igen. Ett annat lager än standardlagret: packen flyttas dit i
- *   samma transaktion (transfer_stock).
+ *   ett vanligt inköp. Bara "Kom fram" på en "På väg"-rad (`closeShort`) avslutar en order
+ *   hos "Eget inköp" där färre kom, så att planen ber om resten igen. Alla andra inköp
+ *   ("Köpt, har dem här", "+ Inköp" på Vårt lager, delägarens leverans) räknas av från det
+ *   som är på väg och låter resten stå kvar som på väg: annars skulle ett extra köp i butik
+ *   stryka en beställning som fortfarande är på väg, och en leverans som läggs in på Vårt
+ *   lager skulle räknas två gånger när någon sedan trycker "Kom fram". Ett annat lager än
+ *   standardlagret: packen flyttas dit i samma transaktion (transfer_stock).
+ * - notComingFor: "Kommer inte". Det som är på väg för titeln väntas inte längre, och
+ *   listan ber om packen igen.
  * - onTheWay (src/analytics/purchasing/on-the-way.ts): det som är på väg per titel.
  *
  * Allt skrivs som användaren med RLS (ägare och admin, som övriga inköp).
@@ -34,6 +40,8 @@ import { PurchasingError } from "./service";
 export const OWN_SUPPLIER_NAME = "Eget inköp";
 /** "kommer om ca 7 dagar" */
 export const ARRIVES_IN_DAYS = 7;
+/** Samma "Beställt" (titel och antal) inom så här många sekunder är ett omtryck, inte en ny order. */
+const SAME_ORDER_SECONDS = 60;
 
 const uuid = z
   .string()
@@ -55,6 +63,11 @@ export const arrivalSchema = z.object({
   /** Vad ett pack kostade (öre); ett annat pris än dagens sparas från i dag. */
   unitCostOre: z.number().int().min(0).max(10_000_000).optional(),
   confirmed: z.boolean().optional(),
+  /**
+   * true = "Kom fram" på en "På väg"-rad: det här var hela leveransen, så kom färre än
+   * beställt väntas resten inte längre. Annars står resten kvar som på väg.
+   */
+  closeShort: z.boolean().optional(),
 });
 export type ArrivalInput = z.infer<typeof arrivalSchema>;
 
@@ -128,7 +141,35 @@ export async function quickOrderFor(
   const expectedOn = addDays(today, ARRIVES_IN_DAYS);
   return asBuyer(viewer, async (tx) => {
     await assertTitle(tx, orgId, input.titleId);
+    // En i taget per organisation: två samtidiga "Beställt" ska inte skapa två "Eget inköp"
+    // eller samma beställning två gånger.
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${`eget-inkop:${orgId}`}, 0))`,
+    );
     const supplierId = await ownSupplierId(tx, orgId);
+    // Samma beställning igen inom en minut (svaret kom aldrig fram och man tryckte en gång
+    // till): den första gäller, ingen ny order.
+    const same = Array.from(
+      await tx.execute(
+        sql`select po.id, po.expected_on::text as expected_on
+            from public.purchase_orders po
+            join public.purchase_order_lines l
+              on l.organization_id = po.organization_id and l.purchase_order_id = po.id
+            where po.organization_id = ${orgId}::uuid and po.supplier_id = ${supplierId}::uuid
+              and po.status = 'ordered'
+              and po.created_at > now() - make_interval(secs => ${SAME_ORDER_SECONDS})
+              and l.title_id = ${input.titleId}::uuid and l.quantity = ${input.quantity}
+              and l.received_quantity = 0
+            order by po.created_at desc limit 1`,
+      ),
+    )[0] as { id: string; expected_on: string | null } | undefined;
+    if (same) {
+      return {
+        orderId: same.id,
+        quantity: input.quantity,
+        expectedOn: (same.expected_on ?? expectedOn) as IsoDate,
+      };
+    }
     // Priset på raden: dagens inköpspris (Inköpspriser), annars 0.
     const price = Array.from(
       await tx.execute(
@@ -174,6 +215,8 @@ export interface ArrivalResult {
    * inköpslistan ber om dem igen.
    */
   readonly missing: number;
+  /** Pack av titeln som fortfarande är på väg efter leveransen. */
+  readonly stillOnTheWay: number;
 }
 
 /**
@@ -182,7 +225,7 @@ export interface ArrivalResult {
  */
 export async function receiveArrivalFor(
   viewer: Viewer,
-  input: Pick<ArrivalInput, "titleId" | "quantity" | "warehouseId">,
+  input: Pick<ArrivalInput, "titleId" | "quantity" | "warehouseId" | "closeShort">,
   now: Date = new Date(),
 ): Promise<ArrivalResult> {
   const orgId = viewer.organization.id;
@@ -204,9 +247,12 @@ export async function receiveArrivalFor(
         ),
       );
     const central = places.find((p) => p.isCentral);
-    if (!central) throw new PurchasingError("Organisationen har inget eget lager.");
     const target = input.warehouseId ? places.find((p) => p.id === input.warehouseId) : central;
-    if (!target) throw new PurchasingError("Lagret finns inte.");
+    if (!target) {
+      throw new PurchasingError(
+        input.warehouseId ? "Lagret finns inte." : "Organisationen har inget eget lager.",
+      );
+    }
     const level = async () =>
       (
         await tx
@@ -268,9 +314,9 @@ export async function receiveArrivalFor(
       touched.set(line.order_id, { own: line.own, note: line.note, short: outstanding - take });
     }
     const fromOrders = input.quantity - left;
-    // Orderns nya läge: allt mottaget = mottagen. En order hos "Eget inköp" där färre kom
-    // avslutas (resten väntas inte längre); andra leverantörers order står kvar som delvis
-    // mottagna och sköts under Inköpsorder.
+    // Orderns nya läge: allt mottaget = mottagen. "Kom fram" (closeShort) på en order hos
+    // "Eget inköp" där färre kom avslutar den (resten väntas inte längre). Annars står
+    // resten kvar som på väg; andra leverantörers order sköts under Inköpsorder.
     if (touched.size > 0) {
       const rest = Array.from(
         await tx.execute(
@@ -285,7 +331,7 @@ export async function receiveArrivalFor(
       for (const r of rest) {
         const info = touched.get(r.order_id)!;
         const complete = r.outstanding === 0;
-        const close = !complete && info.own;
+        const close = !complete && info.own && input.closeShort === true;
         if (close) missing += r.outstanding;
         const line = `Avslutad ${today}: ${r.outstanding} pack kom aldrig.`;
         await tx
@@ -305,7 +351,7 @@ export async function receiveArrivalFor(
       }
     }
     // Databasen lade de mottagna packen i standardlagret: flytta dem till valt lager.
-    if (fromOrders > 0 && target.id !== central.id) {
+    if (fromOrders > 0 && central && target.id !== central.id) {
       await tx.execute(
         sql`select public.transfer_stock(${orgId}::uuid, ${central.id}::uuid, ${target.id}::uuid,
               ${input.titleId}::uuid, ${fromOrders}::integer, null)`,
@@ -330,7 +376,85 @@ export async function receiveArrivalFor(
       expected,
       fromOrders,
       missing,
+      stillOnTheWay: expected - fromOrders - missing,
     };
+  });
+}
+
+export interface NotComingResult {
+  /** Pack som inte längre väntas: inköpslistan ber om dem igen. */
+  readonly dropped: number;
+}
+
+/**
+ * "Kommer inte": det som är på väg för titeln väntas inte längre. En order där inget kommit
+ * avbryts, en delvis mottagen avslutas ("N pack kom aldrig"). Bara order som enbart gäller
+ * den här titeln (det är alla som skapats med "Beställt"); en order med flera titlar sköts
+ * under Inköpsorder.
+ */
+export async function notComingFor(
+  viewer: Viewer,
+  input: { titleId: string },
+  now: Date = new Date(),
+): Promise<NotComingResult> {
+  const orgId = viewer.organization.id;
+  const today = businessToday(now, viewer.organization.timezone);
+  return asBuyer(viewer, async (tx) => {
+    await assertTitle(tx, orgId, input.titleId);
+    const hasTitle = sql`po.id in (
+      select x.purchase_order_id from public.purchase_order_lines x
+      where x.organization_id = ${orgId}::uuid and x.title_id = ${input.titleId}::uuid
+        and x.received_quantity < x.quantity)`;
+    // Lås orderna först (mot en samtidig mottagning), räkna sedan.
+    await tx.execute(
+      sql`select po.id from public.purchase_orders po
+          where po.organization_id = ${orgId}::uuid
+            and po.status in ('ordered', 'partially_received') and ${hasTitle}
+          for update`,
+    );
+    const open = Array.from(
+      await tx.execute(
+        sql`select po.id, po.status::text as status, po.note,
+                   sum(l.quantity - l.received_quantity)::int as outstanding,
+                   bool_and(l.title_id = ${input.titleId}::uuid) as only_title
+            from public.purchase_orders po
+            join public.purchase_order_lines l
+              on l.organization_id = po.organization_id and l.purchase_order_id = po.id
+            where po.organization_id = ${orgId}::uuid
+              and po.status in ('ordered', 'partially_received') and ${hasTitle}
+            group by po.id, po.status, po.note, po.created_at
+            order by po.created_at`,
+      ),
+    ) as {
+      id: string;
+      status: string;
+      note: string | null;
+      outstanding: number;
+      only_title: boolean;
+    }[];
+    if (open.length === 0) throw new PurchasingError("Inget är på väg för titeln.");
+    const mine = open.filter((o) => o.only_title);
+    if (mine.length === 0) {
+      throw new PurchasingError("Beställningen har fler titlar. Avsluta den under Inköp, Mer.");
+    }
+    let dropped = 0;
+    for (const o of mine) {
+      dropped += o.outstanding;
+      const line = `Avslutad ${today}: ${o.outstanding} pack kom aldrig.`;
+      await tx
+        .update(s.purchaseOrders)
+        .set(
+          o.status === "ordered"
+            ? { status: "cancelled", note: o.note ? `${o.note}\n${line}` : line }
+            : {
+                status: "received",
+                receivedOn: today,
+                note: o.note ? `${o.note}\n${line}` : line,
+              },
+        )
+        .where(and(eq(s.purchaseOrders.organizationId, orgId), eq(s.purchaseOrders.id, o.id)));
+    }
+    return { dropped };
   });
 }
 

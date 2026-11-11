@@ -259,11 +259,16 @@ function StockForms({
       if (!res.ok) return fail(res.error);
       const p = res.data.price;
       const kr = (ore: number) => (ore % 100 === 0 ? f.sek(ore / 100) : f.kronor(ore / 100));
+      const notes = [
+        p.status === "saved" && p.unitCostOre !== undefined
+          ? r2.receiptPriceSaved(kr(p.unitCostOre))
+          : null,
+        // En del räknades av från det som var beställt: säg vad som fortfarande väntas.
+        (res.data.stillOnTheWay ?? 0) > 0 ? r2.stillOnWay(res.data.stillOnTheWay!) : null,
+      ].filter((x): x is string => x !== null);
       toast({
         title: t.stock.added(parsed.n, placeName),
-        ...(p.status === "saved" && p.unitCostOre !== undefined
-          ? { description: r2.receiptPriceSaved(kr(p.unitCostOre)) }
-          : {}),
+        ...(notes.length > 0 ? { description: notes.join(" ") } : {}),
         tone: "ok",
       });
       // Packen är sparade men priset gick inte att spara: säg det tydligt.

@@ -184,12 +184,14 @@ function PriceForm({
     else save(main, false);
   };
 
+  // Jämna kronor utan ",00" (som raden vid en leverans): "1 190 kr", "112,50 kr".
+  const kr = (ore: number) => (ore % 100 === 0 ? f.sek(ore / 100) : f.kronor(ore / 100));
   const doubtText = doubt
     ? doubt.doubt.kind === "aboveSale"
-      ? r2.priceAboveSale(f.kronor(doubt.doubt.newOre / 100), f.kronor(doubt.doubt.refOre / 100))
+      ? r2.priceAboveSale(kr(doubt.doubt.newOre), kr(doubt.doubt.refOre))
       : doubt.doubt.kind === "higher"
-        ? r2.priceMuchHigher(f.kronor(doubt.doubt.newOre / 100), f.kronor(doubt.doubt.refOre / 100))
-        : r2.priceMuchLower(f.kronor(doubt.doubt.newOre / 100), f.kronor(doubt.doubt.refOre / 100))
+        ? r2.priceMuchHigher(kr(doubt.doubt.newOre), kr(doubt.doubt.refOre))
+        : r2.priceMuchLower(kr(doubt.doubt.newOre), kr(doubt.doubt.refOre))
     : null;
 
   return (

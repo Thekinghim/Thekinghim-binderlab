@@ -17,12 +17,17 @@ import { listOrganizationsFor } from "../../src/server/access";
 import type { Viewer } from "../../src/server/data/core/loaders";
 import {
   loadPurchasePlanFor,
+  notComingFor,
   onTheWay,
   OWN_SUPPLIER_NAME,
   quickOrderFor,
   receiveArrivalFor,
 } from "../../src/server/purchasing";
-import { createPlaceFor, withReceiptPrice } from "../../src/app/(app)/vart-lager/_lib/register";
+import {
+  createPlaceFor,
+  registerReceiptWithPriceFor,
+  withReceiptPrice,
+} from "../../src/app/(app)/vart-lager/_lib/register";
 
 import {
   asUser,
@@ -152,7 +157,7 @@ describe("Beställt och Kom fram på inköpslistan", () => {
   it("Kom fram med 30 av 56: 30 i lagret, ordern avslutas och planen ber om 26 till", async () => {
     const v = await viewerFor(owner, orgId);
     const ordered = await planQty(v);
-    const res = await receiveArrivalFor(v, { titleId, quantity: 30 });
+    const res = await receiveArrivalFor(v, { titleId, quantity: 30, closeShort: true });
     expect(res).toMatchObject({
       previous: 0,
       onHand: 30,
@@ -205,10 +210,93 @@ describe("Beställt och Kom fram på inköpslistan", () => {
     expect(price).toEqual([{ ore: 11_800 }]);
   });
 
-  it("en läsare får varken beställa eller ta emot", async () => {
+  it("en läsare får varken beställa, ta emot eller stryka det som är på väg", async () => {
     const v = await viewerFor(reader, orgId);
     await expect(quickOrderFor(v, { titleId, quantity: 5 })).rejects.toThrow();
     await expect(receiveArrivalFor(v, { titleId, quantity: 5 })).rejects.toThrow();
+    await expect(notComingFor(v, { titleId })).rejects.toThrow();
     expect(await level(hemma)).toBe(36);
+  });
+
+  it("samma Beställt två gånger i rad (svaret kom aldrig fram) blir en order, inte två", async () => {
+    const v = await viewerFor(owner, orgId);
+    const before = (await orders()).length;
+    const [a, b] = await Promise.all([
+      quickOrderFor(v, { titleId, quantity: 40 }),
+      quickOrderFor(v, { titleId, quantity: 40 }),
+    ]);
+    expect(b.orderId).toBe(a.orderId);
+    const again = await quickOrderFor(v, { titleId, quantity: 40 });
+    expect(again.orderId).toBe(a.orderId);
+    expect((await orders()).length).toBe(before + 1);
+    // Ett annat antal är en ny beställning.
+    const other = await quickOrderFor(v, { titleId, quantity: 12 });
+    expect(other.orderId).not.toBe(a.orderId);
+    // Bara en leverantör "Eget inköp", även när två beställer samtidigt.
+    const own = await rows(
+      db(),
+      sql`select 1 from public.suppliers
+          where organization_id = ${orgId}::uuid and name = ${OWN_SUPPLIER_NAME}`,
+    );
+    expect(own).toHaveLength(1);
+  });
+
+  it("Köpt, har dem här medan en beställning är på väg: räknas av, resten står kvar som på väg", async () => {
+    // På väg: 40 (äldst) och 12.
+    const v = await viewerFor(owner, orgId);
+    const asked = await planQty(v);
+    const res = await receiveArrivalFor(v, { titleId, quantity: 10 });
+    expect(res).toMatchObject({ expected: 52, fromOrders: 10, missing: 0, stillOnTheWay: 42 });
+    expect(await level(hemma)).toBe(46);
+    // Ingen order avslutades: 30 + 12 är fortfarande på väg, och planen ber inte om mer.
+    expect((await orders()).slice(-2)).toMatchObject([
+      { status: "partially_received", quantity: 40, received: 10 },
+      { status: "ordered", quantity: 12, received: 0 },
+    ]);
+    expect(onTheWay(await loadPurchasePlanFor(v)).find((w) => w.titleId === titleId)).toMatchObject(
+      { quantity: 42 },
+    );
+    expect(await planQty(v)).toBe(asked);
+  });
+
+  it("+ Inköp på Vårt lager räknas av från det som är på väg, så Kom fram inte räknar packen två gånger", async () => {
+    const v = await viewerFor(owner, orgId);
+    const asked = await planQty(v);
+    const res = await registerReceiptWithPriceFor(v, { titleId, quantity: 30 });
+    if ("doubt" in res) throw new Error("oväntad fråga");
+    expect(res).toMatchObject({ previous: 46, onHand: 76, stillOnTheWay: 12 });
+    expect((await orders()).slice(-2)).toMatchObject([
+      { status: "received", quantity: 40, received: 40 },
+      { status: "ordered", quantity: 12, received: 0 },
+    ]);
+    expect(await planQty(v)).toBe(asked);
+    // Fler än det som är på väg: resten läggs in som ett vanligt inköp.
+    const more = await registerReceiptWithPriceFor(v, { titleId, quantity: 15 });
+    if ("doubt" in more) throw new Error("oväntad fråga");
+    expect(more).toMatchObject({ onHand: 91, stillOnTheWay: 0 });
+    expect((await orders()).at(-1)).toMatchObject({ status: "received", received: 12 });
+    expect(
+      onTheWay(await loadPurchasePlanFor(v)).find((w) => w.titleId === titleId),
+    ).toBeUndefined();
+  });
+
+  it("Kommer inte: beställningen stryks, inget läggs i lagret och planen ber om packen igen", async () => {
+    const v = await viewerFor(owner, orgId);
+    const before = await planQty(v);
+    await quickOrderFor(v, { titleId, quantity: 25 });
+    expect(await planQty(v)).toBe(Math.max(0, before - 25));
+    const res = await notComingFor(v, { titleId });
+    expect(res.dropped).toBe(25);
+    expect((await orders()).at(-1)).toMatchObject({
+      status: "cancelled",
+      quantity: 25,
+      received: 0,
+    });
+    expect(await level(hemma)).toBe(91);
+    expect(await planQty(v)).toBe(before);
+    expect(
+      onTheWay(await loadPurchasePlanFor(v)).find((w) => w.titleId === titleId),
+    ).toBeUndefined();
+    await expect(notComingFor(v, { titleId })).rejects.toThrow("Inget är på väg");
   });
 });

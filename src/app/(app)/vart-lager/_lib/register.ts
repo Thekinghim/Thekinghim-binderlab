@@ -34,6 +34,9 @@ import { MAX_PACKS } from "../../lager/_lib/schemas";
 import { addPurchasePriceFor, receiptPriceCheckFor } from "../../inkopspriser/_lib/data";
 import { MAX_UNIT_COST_ORE } from "../../inkopspriser/_lib/model";
 import { priceDoubtText, type PriceDoubtResult } from "../../inkopspriser/_lib/price-check";
+import { PurchasingError } from "@/server/purchasing/service";
+import { receiveArrivalFor } from "@/server/purchasing/quick";
+
 import { EDIT_ROLES } from "./data";
 
 const uuid = z
@@ -211,7 +214,11 @@ export interface ReceiptPrice {
   readonly error?: string;
 }
 
-export type ReceiptResult = RegisterResult & { readonly price: ReceiptPrice };
+export type ReceiptResult = RegisterResult & {
+  readonly price: ReceiptPrice;
+  /** Pack av titeln som fortfarande är på väg (beställda) efter inköpet. 0 = inget. */
+  readonly stillOnTheWay?: number;
+};
 
 /**
  * Leverans med pris: antal + lager + vad ett pack kostade. Används av "+ Inköp" på Vårt
@@ -231,8 +238,28 @@ export async function registerReceiptWithPriceFor(
 ): Promise<ReceiptResult | PriceDoubtResult> {
   await requireRoleFor(viewer.user, viewer.organization.id, EDIT_ROLES);
   const { unitCostOre, confirmed, ...receipt } = input;
-  return withReceiptPrice(viewer, { titleId: input.titleId, unitCostOre, confirmed }, now, () =>
-    registerReceiptFor(viewer, receipt),
+  // Packen räknas först av från det som är beställt och på väg för titeln ("Beställt" på
+  // inköpslistan), resten läggs in som ett vanligt inköp. Annars står beställningen kvar
+  // som "På väg" och samma pack räknas två gånger när någon sedan trycker "Kom fram".
+  return withReceiptPrice(
+    viewer,
+    { titleId: input.titleId, unitCostOre, confirmed },
+    now,
+    async () => {
+      try {
+        const r = await receiveArrivalFor(viewer, receipt, now);
+        return {
+          previous: r.previous,
+          onHand: r.onHand,
+          warehouseOnHand: null,
+          placeName: r.placeName,
+          stillOnTheWay: r.stillOnTheWay,
+        };
+      } catch (error) {
+        if (error instanceof PurchasingError) throw new LagerError(error.message);
+        throw error;
+      }
+    },
   );
 }
 

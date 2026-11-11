@@ -63,6 +63,11 @@ export const t3 = {
   arrivedSave: "Lägg in i lagret",
   gotFewer: (planned: number, got: number) =>
     `Du planerade ${f.int(planned)}, fick ${f.int(got)}. Vi ber dig köpa ${f.int(planned - got)} till.`,
+  stillOnWay: (n: number) => `${f.int(n)}${NBSP}st är fortfarande på väg.`,
+  notComing: "De kommer inte",
+  notComingSub: "Listan ber om dem igen",
+  notComingToast: (n: number, title: string) =>
+    `Väntar inte längre på ${packs(n)} ${title}. Listan ber om dem igen.`,
   notSavedTitle: "Sparades inte",
 
   // Delarna som mystery packs äter upp (T3-5).

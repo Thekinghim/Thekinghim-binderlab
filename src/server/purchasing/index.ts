@@ -35,12 +35,14 @@ export {
 export {
   ARRIVES_IN_DAYS,
   arrivalSchema,
+  notComingFor,
   onTheWay,
   OWN_SUPPLIER_NAME,
   quickOrderFor,
   quickOrderSchema,
   receiveArrivalFor,
   type ArrivalResult,
+  type NotComingResult,
   type OnTheWay,
   type QuickOrderResult,
 } from "./quick";

@@ -26,7 +26,7 @@ import { rememberKey, useRemembered } from "@/lib/remembered";
 
 import { Sheet } from "../../lager/_components/sheet";
 import { ReceiptPriceNote, useReceiptPrice } from "../../vart-lager/_components/receipt-price";
-import { markArrived, markOrdered } from "../actions";
+import { markArrived, markNotComing, markOrdered } from "../actions";
 
 export interface BuyTarget {
   readonly titleId: string;
@@ -62,7 +62,13 @@ function parseQty(text: string): number | null {
   return n >= 1 && n <= 10_000 ? n : null;
 }
 
-type Open = { kind: "ordered" | "arrived"; target: BuyTarget; planned: number | null };
+type Open = {
+  kind: "ordered" | "arrived";
+  target: BuyTarget;
+  planned: number | null;
+  /** "way" = "Kom fram" på en "På väg"-rad: leveransen gäller det som var beställt. */
+  from: "row" | "way";
+};
 
 interface Shared {
   readonly places: readonly BuyPlace[];
@@ -89,6 +95,7 @@ function useBuySheets({ places, scope }: Shared) {
           key={open.target.titleId}
           target={open.target}
           planned={open.planned}
+          fromWay={open.from === "way"}
           places={places}
           scope={scope}
           onDone={() => setOpen(null)}
@@ -115,7 +122,7 @@ export function BuyButtons({
           type="button"
           className={SMALL}
           aria-label={`${r2.ordered}, ${target.name}`}
-          onClick={() => setOpen({ kind: "ordered", target, planned: target.qty })}
+          onClick={() => setOpen({ kind: "ordered", target, planned: target.qty, from: "row" })}
         >
           {r2.ordered}
         </button>
@@ -123,7 +130,7 @@ export function BuyButtons({
           type="button"
           className={SMALL}
           aria-label={`${r2.boughtHere}, ${target.name}`}
-          onClick={() => setOpen({ kind: "arrived", target, planned: target.qty })}
+          onClick={() => setOpen({ kind: "arrived", target, planned: target.qty, from: "row" })}
         >
           {r2.boughtHere}
         </button>
@@ -182,7 +189,9 @@ export function OnTheWayList({
                 type="button"
                 className={SMALL}
                 aria-label={`${r2.arrived}, ${item.name}`}
-                onClick={() => setOpen({ kind: "arrived", target: item, planned: item.qty })}
+                onClick={() =>
+                  setOpen({ kind: "arrived", target: item, planned: item.qty, from: "way" })
+                }
               >
                 <Icon name="check" size={16} className="mr-2" />
                 {r2.arrived}
@@ -288,10 +297,17 @@ function OrderedForm({ target, onDone }: { target: BuyTarget; onDone: () => void
 function ArrivedForm({
   target,
   planned,
+  fromWay,
   places,
   scope,
   onDone,
-}: Shared & { target: BuyTarget; planned: number | null; onDone: () => void }) {
+}: Shared & {
+  target: BuyTarget;
+  planned: number | null;
+  /** Öppnad från en "På väg"-rad ("Kom fram"). */
+  fromWay: boolean;
+  onDone: () => void;
+}) {
   const t = useT();
   const r2 = t.r2.t3;
   const f = useFormat();
@@ -323,6 +339,8 @@ function ArrivedForm({
         quantity: n,
         ...(placeId ? { warehouseId: placeId } : {}),
         ...(price.ore === undefined ? {} : { unitCostOre: price.ore, confirmed }),
+        // "Kom fram": det här var leveransen. Kom färre väntas resten inte längre.
+        ...(fromWay ? { closeShort: true } : {}),
       }).catch(() => ({ ok: false as const, error: t.common.offlineRetry }));
       if ("doubt" in res) {
         price.setDoubt(res.doubt);
@@ -336,8 +354,14 @@ function ArrivedForm({
       const d = res.data;
       const kr = (ore: number) => (ore % 100 === 0 ? f.sek(ore / 100) : f.kronor(ore / 100));
       const notes = [
-        // Färre än planerat: säg att listan ber om resten.
-        planned !== null && n < planned ? r2.gotFewer(planned, n) : null,
+        // Färre än beställt (servern avslutade resten) eller färre än listan bad om: säg
+        // att listan ber om resten. Står resten kvar som på väg: säg det i stället.
+        d.missing > 0
+          ? r2.gotFewer(n + d.missing, n)
+          : d.expected === 0 && planned !== null && n < planned
+            ? r2.gotFewer(planned, n)
+            : null,
+        d.stillOnTheWay > 0 ? r2.stillOnWay(d.stillOnTheWay) : null,
         d.price.status === "saved" && d.price.unitCostOre !== undefined
           ? r2.receiptPriceSaved(kr(d.price.unitCostOre))
           : null,
@@ -356,6 +380,23 @@ function ArrivedForm({
           duration: 12_000,
         });
       }
+      router.refresh();
+      onDone();
+    });
+  };
+
+  // "Kommer inte": beställningen väntas inte längre, listan ber om packen igen.
+  const notComing = () => {
+    start(async () => {
+      const res = await markNotComing({ titleId: target.titleId }).catch(() => ({
+        ok: false as const,
+        error: t.common.offlineRetry,
+      }));
+      if (!res.ok) {
+        setError(t.serverError(res.error));
+        return;
+      }
+      toast({ title: r2.notComingToast(res.data.dropped, target.name), tone: "ok" });
       router.refresh();
       onDone();
     });
@@ -410,6 +451,17 @@ function ArrivedForm({
       <button type="submit" disabled={pending} className={PRIMARY}>
         {pending ? t.common.saving : price.doubt ? r2.priceSaveAnyway : r2.arrivedSave}
       </button>
+      {fromWay ? (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={notComing}
+          className="flex min-h-11 w-fit flex-col items-start justify-center gap-0.5 self-start text-left text-fg disabled:text-disabled"
+        >
+          <span className="text-base font-medium underline">{r2.notComing}</span>
+          <span className="text-sm text-muted">{r2.notComingSub}</span>
+        </button>
+      ) : null}
     </form>
   );
 }
