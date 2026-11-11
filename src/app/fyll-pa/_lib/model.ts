@@ -582,3 +582,129 @@ export function chooseSource(args: {
   }
   return { id: base, reason: null };
 }
+
+// ---------------------------------------------------------------------------
+// Ta med-listan (packlistan)
+// ---------------------------------------------------------------------------
+
+export interface BringLine {
+  readonly titleId: string;
+  readonly name: string;
+  /** Pack automaten vill ha för att bli full (utan hänsyn till lagret). */
+  readonly want: number;
+}
+
+export interface BringMachine {
+  readonly id: string;
+  readonly place: string;
+  readonly code: string;
+  readonly want: number;
+  /** Titlarna som behöver pack, flest först. */
+  readonly lines: readonly BringLine[];
+  /** Falskt: automaten har ingen Awish-läsning än, så behovet är inte känt. */
+  readonly known: boolean;
+}
+
+export interface BringTotal {
+  readonly titleId: string;
+  readonly name: string;
+  /** Pack de valda automaterna vill ha tillsammans. */
+  readonly want: number;
+  /** Pack i lagret man tar från; null = inget eget lager (saldot är inte känt). */
+  readonly have: number | null;
+  /** Pack att ta med: det som behövs, högst det som finns. */
+  readonly bring: number;
+  /** Pack som saknas i lagret. */
+  readonly missing: number;
+}
+
+export interface BringList {
+  readonly machines: readonly BringMachine[];
+  readonly totals: readonly BringTotal[];
+  readonly want: number;
+  readonly bring: number;
+  readonly missing: number;
+}
+
+/**
+ * Ta med-listan: vad som ska med för att fylla de valda automaterna, per automat och totalt,
+ * mot saldot i lagret man tar från.
+ *
+ * - Behovet per titel är förslaget utan taket från lagret (`packsWanted`): kapacitet − nu;
+ *   utan känd kapacitet en veckas försäljning för titlar som är slut eller snart slut.
+ * - Mystery pack: bara hela omgångar, och bara när facket är tomt. Ur lagret tas bara hela
+ *   omgångar (en halv omgång fylls inte på), så resten räknas som saknat.
+ * - `stock` = saldot per titel i det valda lagret; null = inget eget lager, då tas allt med
+ *   och inget räknas som saknat.
+ * - Totalt: det som saknas först (flest först), sedan flest pack, sedan namn.
+ */
+export function bringList(
+  machines: readonly FillMachine[],
+  selected: ReadonlySet<string>,
+  stock: Readonly<Record<string, number>> | null,
+): BringList {
+  const byTitle = new Map<string, { name: string; want: number; batch: number | null }>();
+  const out: BringMachine[] = [];
+  for (const m of machines) {
+    if (!selected.has(m.id)) continue;
+    const lines: BringLine[] = [];
+    for (const r of m.rows) {
+      const want = packsWanted(r);
+      if (want <= 0) continue;
+      lines.push({ titleId: r.titleId, name: r.name, want });
+      const t = byTitle.get(r.titleId) ?? {
+        name: r.name,
+        want: 0,
+        batch: mysteryBatch(r.batchSize),
+      };
+      t.want += want;
+      byTitle.set(r.titleId, t);
+    }
+    lines.sort((a, b) => b.want - a.want || a.name.localeCompare(b.name, "sv"));
+    out.push({
+      id: m.id,
+      place: m.place,
+      code: m.code,
+      want: lines.reduce((n, l) => n + l.want, 0),
+      lines,
+      known: m.rows.some((r) => r.capacity !== null),
+    });
+  }
+  const totals = [...byTitle.entries()]
+    .map(([titleId, t]): BringTotal => {
+      if (stock === null) {
+        return { titleId, name: t.name, want: t.want, have: null, bring: t.want, missing: 0 };
+      }
+      const have = Math.max(0, Math.trunc(stock[titleId] ?? 0));
+      const usable = t.batch !== null ? Math.floor(have / t.batch) * t.batch : have;
+      const bring = Math.min(t.want, usable);
+      return { titleId, name: t.name, want: t.want, have, bring, missing: t.want - bring };
+    })
+    .sort((a, b) => b.missing - a.missing || b.want - a.want || a.name.localeCompare(b.name, "sv"));
+  return {
+    machines: out,
+    totals,
+    want: totals.reduce((n, t) => n + t.want, 0),
+    bring: totals.reduce((n, t) => n + t.bring, 0),
+    missing: totals.reduce((n, t) => n + t.missing, 0),
+  };
+}
+
+/** Automaterna som är valda från början: de som behöver pack, annars alla. */
+export function defaultBringSelection(machines: readonly FillMachine[]): string[] {
+  const need = machines.filter((m) => m.rows.some((r) => packsWanted(r) > 0));
+  return (need.length > 0 ? need : machines).map((m) => m.id);
+}
+
+/**
+ * Valet efter ett tryck på en automat i Ta med-listan: `chosen` null betyder förvalet (de
+ * som behöver pack). Automaten läggs till eller tas bort.
+ */
+export function toggleBring(
+  chosen: readonly string[] | null,
+  machines: readonly FillMachine[],
+  id: string,
+): string[] {
+  const base = chosen ?? defaultBringSelection(machines);
+  return base.includes(id) ? base.filter((x) => x !== id) : [...base, id];
+}

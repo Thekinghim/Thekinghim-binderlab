@@ -17,12 +17,13 @@ efteråt.
 
 Inget behöver göras för hand. Det som körs av sig självt:
 
-| Jobb                  | Schema (UTC)   | Vad                                                                                                                                                                       | Om det misslyckas                                                                                  |
-| --------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `/api/cron/larm`      | `7 5 * * *`    | Maskinhälsa, lager, importer, avvikande dag; utskick                                                                                                                      | Larm `job:larm` + Sentry, se nedan                                                                 |
-| `/api/cron/rapporter` | `17 5 1 * *`   | Utkast för förra månadens rapporter (ingenting skickas)                                                                                                                   | Larm `report_drafts:<månad>` + Sentry                                                              |
-| `/api/cron/bokforing` | `37 3 * * *`   | Förra månadens bokföringspaket sparas (pg_cron)                                                                                                                           | Nedladdningen tar fram paketet direkt                                                              |
-| `/api/cron/kontroll`  | `37 3,4 * * *` | Daglig kontroll (pg_cron), en gång per org från 05:00 lokal tid: samma vinst överallt, Awish = appen, påfyllningar nådde Awish, synk, avräkningar, datahygien. Läser bara | Larm `self_check:<kontroll>` per röd kontroll, stängs när den går igenom; Inställningar → Kontroll |
+| Jobb                  | Schema (UTC)    | Vad                                                                                                                                                                                                                                                                                                                 | Om det misslyckas                                                                                                 |
+| --------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `/api/cron/larm`      | `7 5 * * *`     | Maskinhälsa, lager, importer, avvikande dag; utskick                                                                                                                                                                                                                                                                | Larm `job:larm` + Sentry, se nedan                                                                                |
+| `/api/cron/rapporter` | `17 5 1 * *`    | Utkast för förra månadens rapporter (ingenting skickas)                                                                                                                                                                                                                                                             | Larm `report_drafts:<månad>` + Sentry                                                                             |
+| `/api/cron/bokforing` | `37 3 * * *`    | Förra månadens bokföringspaket sparas (pg_cron)                                                                                                                                                                                                                                                                     | Nedladdningen tar fram paketet direkt                                                                             |
+| `/api/cron/kontroll`  | `37 3,4 * * *`  | Daglig kontroll (pg_cron), en gång per org från 05:00 lokal tid: samma vinst överallt, Awish = appen, påfyllningar nådde Awish, synk, avräkningar, datahygien. Läser bara                                                                                                                                           | Larm `self_check:<kontroll>` per röd kontroll, stängs när den går igenom; Inställningar → Kontroll                |
+| `/api/cron/vecka`     | `7 5,6,7 * * 1` | Veckosammanfattning (pg_cron), måndag från 07:00 lokal tid: en notis (push) per ägare/admin med knappen på och en telefon med notiser. Sålt och vinst förra veckan mot veckan innan (före butikernas andel), bästa produkten, antal i Att göra. En rad per person och vecka i `weekly_summaries`: aldrig två gånger | Notisen öppnar Veckan (`/veckan`), i Enkel vy Försäljning på engelska; knappen under Notiser och i Enkel vys meny |
 
 `/api/cron/bokforing` schemaläggs av pg_cron i Supabase (`binderlab-bokforing`, migreringen
 `20261104130000_bokforing_paket.sql`). Paketet sparas i bucketen `bookkeeping`; ändras underlaget
@@ -45,6 +46,18 @@ föreslås och hur många som finns hemma. Klar registrerar påfyllningen (samma
 Påfyllning: `register_refill_once`), så Vårt lager minskar direkt och Awish-synken drar inte
 samma pack en gång till. Fler pack än hemma registreras utan uttag. Utan nät sparas allt i
 telefonen och skickas när nätet kommer tillbaka. Ägare, admin och påfyllare.
+
+**Ta med-lista** (överst i Fyll på): innan man åker. Välj automater och se hur många pack av
+varje produkt som ska med för att fylla dem, totalt och per automat, mot saldot i lagret man tar
+från. Varnar när lagret inte räcker ("Lagret räcker inte. 4 pack saknas."). Räknas i telefonen ur
+samma data som resten av Fyll på, så den fungerar utan nät. Mystery packs räknas i hela omgångar.
+
+Efter Klar visas **"Klart! N pack påfyllda"** med Ångra överst på listan. `/fyll-pa` och
+`/fyll-pa/<id>` är en och samma rutt (`src/lib/rewrites.ts`): byte mellan listan och en automat
+sker i webbläsaren utan att något hämtas. Var de två rutter svarade servern, när en påfyllning
+sparades, med en annan rutt än webbläsaren hade, och Next laddade ibland om hela sidan så att
+bekräftelsen aldrig syntes. Bekräftelsen ligger dessutom i flikens `sessionStorage` (30 minuter,
+lika länge som Ångra), så att den finns kvar om sidan ändå laddas om.
 
 Installera som app (ingen App Store, inga nycklar):
 

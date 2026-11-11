@@ -168,6 +168,31 @@ export async function loadTodoCount(): Promise<number> {
 }
 
 /**
+ * Antalet punkter i Att göra för en given användare (samma punkter och rader som
+ * loadTodoCount), utan förfrågans minne: för jobb utan inloggad användare
+ * (veckosammanfattningen). Läsaren har ingen lista (0).
+ */
+export async function loadTodoCountFor(viewer: Viewer, now: Date = new Date()): Promise<number> {
+  const [raw, periods, alerts, extras] = await Promise.all([
+    loadTodoStateFor(viewer, now),
+    loadSlotPeriodsFor(viewer),
+    loadSlotAlertDataFor(viewer, now),
+    loadTodoExtrasFor(viewer),
+  ]);
+  const state = applySlotAlerts(
+    todoStateWithoutRetired(raw, periods, businessToday(now, viewer.organization.timezone)),
+    alerts,
+    periods,
+  );
+  return (
+    state.items.length +
+    (extras.bokforingMonth ? 1 : 0) +
+    (extras.newMachines > 0 ? 1 : 0) +
+    (extras.awishExpiry ? 1 : 0)
+  );
+}
+
+/**
  * För serverkomponenter: Att göra prioriterad efter förlorad försäljning, som den
  * inloggade, memoiserad per förfrågan. Punkterna (loadTodoState) är också memoiserade, så
  * menyns räknare, Hem och Att göra delar dem inom samma sidladdning; förlorad försäljning

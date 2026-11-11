@@ -1149,6 +1149,14 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       sql`insert into public.self_check_runs (organization_id, trigger, status, checks)
           values (${orgId}, 'schedule', 'ok', '[]'::jsonb)`,
     );
+    // Veckosammanfattning (20261123000000_veckosammanfattning.sql), skrivs bara av servern.
+    await tx.execute(
+      sql`insert into public.weekly_summaries
+            (organization_id, user_id, week_start, status, locale, title, body, url)
+          values (${orgId}, ${owner.id}, '2025-03-03', 'sent', 'sv',
+                  'Förra veckan: 2 pack, 68 kr vinst', 'Veckan innan: inget sålt.',
+                  '/veckan?v=2025-03-03')`,
+    );
     await tx.execute(sql`set local role authenticated`);
 
     return {

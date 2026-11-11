@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { Panel, PanelSection } from "@/components/ui/frame";
 import { SectionHeader } from "@/components/ui/section-header";
@@ -6,7 +7,10 @@ import { StatusTag } from "@/components/ui/status-tag";
 import { formatInt } from "@/lib/format";
 import { noticeState, noticeTypesFor } from "@/server/alerts/notices";
 import { FIELD_KINDS, KIND_LABEL, ALERT_KINDS } from "@/server/alerts/subscriptions";
+import { WeeklySwitch } from "@/components/weekly/weekly-switch";
 import { requireRoute } from "@/server/data/core";
+import { withUserDb } from "@/server/session";
+import { loadWeeklyPref } from "@/server/weekly/prefs";
 
 import { formatWhen, plural } from "../_lib/display";
 import { loadAlertSettings } from "../_lib/load";
@@ -123,6 +127,10 @@ export default async function AlertSettingsPage() {
   // Notiser i mobilen: bara när push fungerar i miljön (annars syns inget om push).
   const pushReady = ch.push.configured && ch.push.publicKey !== null;
   const notices = noticeState(settings.saved ? sub : null, ctx.role);
+  // Veckosammanfattningen (måndagens notis): bara ägare och admin får den.
+  const weekly = ctx.canEdit
+    ? await withUserDb((tx) => loadWeeklyPref(tx, ctx.organization.id, ctx.user.id))
+    : null;
 
   return (
     <div className="flex flex-col gap-10">
@@ -155,6 +163,27 @@ export default async function AlertSettingsPage() {
             endpoints={settings.devices.filter((d) => !d.disabledAt).map((d) => d.endpoint)}
           />
         </div>
+      ) : null}
+      {pushReady && weekly ? (
+        <section
+          aria-label="Veckosammanfattning"
+          className="rise flex flex-col gap-4 rounded-sm border border-line-strong bg-surface p-5"
+          style={{ "--i": 1 } as React.CSSProperties}
+        >
+          <WeeklySwitch
+            initial={{
+              on: weekly.on,
+              publicKey: ch.push.publicKey,
+              endpoints: weekly.endpoints,
+            }}
+          />
+          <Link
+            href="/veckan"
+            className="inline-flex min-h-11 items-center self-start text-md text-muted underline-offset-4 hover:text-fg hover:underline"
+          >
+            Visa förra veckan →
+          </Link>
+        </section>
       ) : null}
 
       <details className="group flex flex-col gap-10" open={!pushReady}>

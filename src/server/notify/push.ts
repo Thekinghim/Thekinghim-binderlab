@@ -39,6 +39,8 @@ export interface PushPayload {
   /** Samma tagg ersätter en tidigare notis i stället för att lägga en till. */
   readonly tag: string;
   readonly severity: "info" | "warning" | "critical";
+  /** Notisens språk (för uppläsning). Utelämnat = svenska. */
+  readonly lang?: "sv" | "en";
 }
 
 export type PushOutcome =

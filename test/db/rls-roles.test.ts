@@ -92,6 +92,8 @@ const VIEWER_OWN_ROWS_ONLY = [
   "self_check_runs",
   // Awish Chrome-tillägget: synk-tokens syns bara för ägare och admin.
   "sync_tokens",
+  // Veckosammanfattning: läsaren ser bara sina egna rader (hon får ingen).
+  "weekly_summaries",
 ];
 
 let F: TenantFixture;

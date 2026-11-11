@@ -68,7 +68,7 @@ export default async function HemPage({ searchParams }: { searchParams: Promise<
   const simple = await loadContext();
   if (simple.viewMode === "simple") {
     if (!simple.canSeeEconomy) redirect(simpleHomeFor(simple.role));
-    return <SalesScreen ctx={simple} />;
+    return <SalesScreen ctx={simple} week={(await searchParams).vecka} />;
   }
   // Rollen kontrolleras före strömningen, så att påfyllaren får en riktig omdirigering.
   const ctx = await requireRoute("hem");

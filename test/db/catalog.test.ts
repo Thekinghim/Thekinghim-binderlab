@@ -258,6 +258,9 @@ describe("tabeller", () => {
         // Att göra: avbockade punkter (20261102113602_att_gora_todo_dismissals.sql).
         "todo_dismissals",
         "voucher_deliveries",
+        // Veckosammanfattning: det som skickades per person och vecka
+        // (20261123000000_veckosammanfattning.sql).
+        "weekly_summaries",
       ].sort(),
     );
     expect(scoped).toEqual(tables.filter((t) => t !== "organizations"));

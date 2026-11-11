@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ProfitLine } from "../_lib/model";
-import { lonsamhetCsv, sortedLines } from "./profit-table";
+import { lonsamhetCsv, soldLabel, sortedLines } from "./profit-table";
 
 function line(p: Partial<ProfitLine> & Pick<ProfitLine, "key" | "name">): ProfitLine {
   return {
@@ -82,5 +82,14 @@ describe("lonsamhetCsv", () => {
     // Negativa belopp blir tal, inte text med apostrof.
     expect(lines[4]).toContain(";-33,50;-0,50;");
     expect(lines[5]?.split(";")[9]).toBe("-111,12");
+  });
+});
+
+describe("antal sålda under namnet på telefonen", () => {
+  it("böjer efter antal och grupperar tusental", () => {
+    expect(soldLabel(0)).toBe("0\u00a0sålda");
+    expect(soldLabel(1)).toBe("1\u00a0såld");
+    expect(soldLabel(12)).toBe("12\u00a0sålda");
+    expect(soldLabel(1234)).toBe("1\u00a0234\u00a0sålda");
   });
 });

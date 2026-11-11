@@ -172,6 +172,8 @@ export const profiles = pgTable("profiles", {
   ...stamps(),
   /** Appens språk för personen: 'sv' | 'en' (20261116000000_enkel_vy_och_sprak.sql). */
   locale: text("locale").notNull().default("sv"),
+  /** Veckosammanfattning: true/false, null = följer Notiser i mobilen (20261123000000). */
+  weeklySummary: boolean("weekly_summary"),
 });
 
 export const memberships = pgTable("memberships", {
@@ -837,3 +839,6 @@ export * from "./schema/mystery";
 
 // Inventering: sparade inventeringar av ett eget lager (20261121000000_inventering.sql).
 export * from "./schema/inventering";
+
+// Veckosammanfattning (20261123000000_veckosammanfattning.sql).
+export * from "./schema/vecka";

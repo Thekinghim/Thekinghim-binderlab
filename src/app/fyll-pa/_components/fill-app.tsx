@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   useCallback,
+  useEffect,
   useMemo,
   useState,
   useTransition,
@@ -33,6 +34,7 @@ import { Sheet } from "@/app/(app)/lager/_components/sheet";
 import { registerCount } from "@/app/(app)/lager/actions";
 
 import { refreshFill } from "../actions";
+import { bringStore, useBring, useDone, type Done } from "../_lib/done-store";
 import {
   applyAdjustments,
   chooseSource,
@@ -45,6 +47,7 @@ import {
   needLabel,
   pairKey,
   splitRefill,
+  toggleBring,
   type FillAdjustment,
   type FillMachine,
   type FillRow,
@@ -58,7 +61,9 @@ import {
   type RefreshNotice,
   type RefreshOutcome,
 } from "../_lib/refresh";
+import { FILL_BASE, machineIdFrom, shownMachineId, type FillNav } from "../_lib/route";
 import { useFreshData } from "../_lib/use-fresh-data";
+import { BringScreen } from "./bring-list";
 
 export interface FillAppProps {
   /** Köns ägare: organisation och användare (samma som /drift/pafyllning). */
@@ -75,15 +80,7 @@ export interface FillAppProps {
   readonly initialMachineId?: string | null;
 }
 
-/** Senaste Klar: bekräftelsen överst med Ångra. */
-interface Done {
-  readonly packs: number;
-  readonly left: string;
-  readonly offline: boolean;
-  readonly clientIds: readonly string[];
-}
-
-const BASE = "/fyll-pa";
+const BASE = FILL_BASE;
 /** En Awish-läsning yngre än så här pulserar. */
 const FRESH_MS = 30 * 60_000;
 /** Uppdatera väntar högst så här länge på servern (Awish har en egen, kortare gräns). */
@@ -103,12 +100,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
       },
     );
   });
-}
-
-function machineIdFrom(pathname: string | null): string | null {
-  if (!pathname?.startsWith(`${BASE}/`)) return null;
-  const id = pathname.slice(BASE.length + 1).split("/")[0] ?? "";
-  return /^[0-9a-f-]{36}$/i.test(id) ? id : null;
 }
 
 const rise = (i: number) => ({ "--i": Math.min(i, 12) }) as CSSProperties;
@@ -165,9 +156,24 @@ export function FillApp({
   const simple = useSimpleShell();
   const pathname = usePathname();
   const hydrated = useHydrated();
-  const selectedId = hydrated ? machineIdFrom(pathname) : initialMachineId;
+  // Det senaste trycket (en automat, Automater, Klar) bestämmer skärmen direkt; adressen
+  // byts samtidigt, men Next uppdaterar usePathname först när en pågående hämtning är klar.
+  // Bakåt och framåt i webbläsaren följer adressen igen.
+  const [nav, setNav] = useState<FillNav | null>(null);
+  useEffect(() => {
+    const followAddress = () => setNav(null);
+    window.addEventListener("popstate", followAddress);
+    return () => window.removeEventListener("popstate", followAddress);
+  }, []);
+  const selectedId = shownMachineId({ nav, hydrated, pathname, initialMachineId });
   const [mineOnly, setMineOnly] = useRemembered(rememberKey(scope, "fyll-mina"));
-  const [done, setDone] = useState<Done | null>(null);
+  // Bekräftelsen efter Klar ligger utanför useState (och i flikens sessionStorage), så att
+  // den finns kvar om FillApp monteras om eller sidan laddas om. Själva felet (Next bytte
+  // rutt och laddade om sidan när en påfyllning sparades) är rättat med en gemensam rutt för
+  // /fyll-pa och /fyll-pa/<automat>, se src/lib/rewrites.ts.
+  const [done, setDone] = useDone(scope);
+  // Ta med-listan är öppen (utanför useState: överlever att sidan hämtas om).
+  const [bring, setBring] = useBring(scope);
   const sources = data.sources;
   const [lastSource, setLastSource] = useRemembered(rememberKey(scope, "fyll-lager"));
   // Lager valt med "Från: … ▾" för en automat (gäller tills sidan laddas om).
@@ -309,6 +315,7 @@ export function FillApp({
   const sourceOf = (machineId: string) => view.choice[machineId]?.id ?? null;
 
   const go = useCallback((href: string) => {
+    setNav({ machineId: machineIdFrom(href) });
     window.history.pushState(null, "", href);
     window.scrollTo({ top: 0 });
   }, []);
@@ -413,10 +420,7 @@ export function FillApp({
               clientIds: items.map((i) => i.clientId).filter((id) => !rejectedIds.has(id)),
             });
           }
-          if (out.saved.length > 0) {
-            rememberSaved(out.saved);
-            router.refresh();
-          }
+          if (out.saved.length > 0) rememberSaved(out.saved);
           if (out.awish && out.awish.state !== "sent") {
             // Gick det inte hela vägen till Awish: säg till så antalet kan skrivas där.
             toast({
@@ -427,7 +431,10 @@ export function FillApp({
           } else if (out.awish?.state === "sent") {
             toast({ title: awishText(t, out.awish), tone: "ok" });
           }
+          // Först tillbaka till listan (bekräftelsen syns direkt), sedan hämtas datan om för
+          // den adressen.
           go(BASE);
+          if (out.saved.length > 0) router.refresh();
         }}
       />
     );
@@ -435,6 +442,43 @@ export function FillApp({
 
   const mine = data.hasOthers && mineOnly === "1";
   const shown = mine ? view.machines.filter((m) => m.mine) : view.machines;
+
+  if (bring && shown.length > 0) {
+    return (
+      <BringScreen
+        machines={shown}
+        places={sources.places.map((p) => ({
+          id: p.id,
+          name: p.name,
+          count: Object.values(view.stock[p.id] ?? {}).reduce((n, v) => n + Math.max(0, v), 0),
+        }))}
+        stock={view.stock}
+        chosen={bring.chosen}
+        onToggle={(id) => {
+          // Läget läses när man trycker (inte ur renderingen): två snabba tryck räknas båda.
+          const current = bringStore.read(scope);
+          if (!current) return;
+          setBring({ ...current, chosen: toggleBring(current.chosen, shown, id) });
+        }}
+        placeId={pickPlace(sources.places, bring.placeId, lastSource, sources.defaultPlaceId)}
+        online={q.online}
+        headerActions={
+          <div className="flex items-center gap-2">
+            {refreshButton}
+            <NetPill online={q.online} waiting={waiting} syncing={q.syncing} />
+          </div>
+        }
+        onBack={() => {
+          setBring(null);
+          window.scrollTo({ top: 0 });
+        }}
+        onPlace={(placeId) => {
+          setBring({ ...(bringStore.read(scope) ?? bring), placeId });
+          setLastSource(placeId);
+        }}
+      />
+    );
+  }
   const need = shown.filter((m) => m.needs).length;
   const waitingAwish = shown.some((m) => m.fillPct === null);
   const headline = fillHeadline(shown, t);
@@ -563,6 +607,25 @@ export function FillApp({
       ) : null}
 
       {shown.length === 0 && mine ? <p className="text-md text-muted">{t.fill.noneMine}</p> : null}
+
+      {/* Ta med-listan: efter bekräftelsen och det som inte gick att spara, före automaterna. */}
+      {shown.length > 0 ? (
+        <button
+          type="button"
+          onClick={() => {
+            setBring({ chosen: null, placeId: null });
+            window.scrollTo({ top: 0 });
+          }}
+          className="rise flex min-h-12 w-full items-center justify-between gap-3 rounded-md border border-line-strong bg-surface px-4 text-left text-lg font-medium text-fg active:bg-hover"
+          style={rise(1)}
+        >
+          <span className="inline-flex items-center gap-2">
+            <Icon name="stock" size={18} />
+            {t.fill.bringOpen}
+          </span>
+          <Icon name="chevronRight" size={16} className="text-subtle" />
+        </button>
+      ) : null}
 
       <ul className="flex flex-col gap-3" aria-label={t.fill.machines}>
         {shown.map((m, i) => (

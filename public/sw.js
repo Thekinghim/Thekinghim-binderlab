@@ -306,7 +306,8 @@ self.addEventListener("push", (event) => {
     requireInteraction: data.severity === "critical",
     icon: "/icon.svg",
     badge: "/icon.svg",
-    lang: "sv",
+    // Notisens språk (veckosammanfattningen skickas på personens språk); annars svenska.
+    lang: data.lang === "en" ? "en" : "sv",
     data: { url: typeof data.url === "string" && data.url.startsWith("/") ? data.url : "/drift" },
   };
   event.waitUntil(self.registration.showNotification(title, options));

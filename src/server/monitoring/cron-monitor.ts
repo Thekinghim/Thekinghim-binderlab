@@ -54,6 +54,14 @@ export const CRON_JOBS = {
     checkinMarginMinutes: 30,
     maxRuntimeMinutes: 5,
   },
+  // Veckosammanfattningen: pg_cron måndagar 05:07, 06:07 och 07:07 UTC
+  // (20261123000000_veckosammanfattning.sql).
+  vecka: {
+    slug: "binderlab-vecka",
+    schedule: "7 5,6,7 * * 1",
+    checkinMarginMinutes: 30,
+    maxRuntimeMinutes: 5,
+  },
 } as const satisfies Record<string, CronJob>;
 
 type SentryCron = {
