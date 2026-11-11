@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useState, useTransition, type FormEvent } from "react";
+import { useId, useRef, useState, useTransition, type FormEvent } from "react";
 
 import { Sheet } from "@/app/(app)/lager/_components/sheet";
 import { Icon } from "@/components/ui/icon";
@@ -10,6 +10,7 @@ import { useFormat, useT } from "@/i18n/client";
 import { cn } from "@/lib/cn";
 
 import { addPurchasePrice, correctPurchasePrice } from "../inkopspriser/actions";
+import { isPriceDoubt, type PriceDoubt } from "../inkopspriser/_lib/price-check";
 import { parsePrice, type PriceRow } from "./model";
 
 const day = (iso: string) => new Date(`${iso}T12:00:00`);
@@ -86,7 +87,15 @@ export function PriceList({
   );
 }
 
-/** Nytt pris med ägarens två val: Rätta priset (all försäljning) eller från i dag. */
+type Kind = "fix" | "today";
+
+/**
+ * Nytt pris. Utan pris: en knapp, "Sätt priset" (gäller all försäljning hittills, som
+ * annars saknar pris). Med pris: huvudknappen och Enter sparar "Nytt pris från i dag", så
+ * att gammal vinst inte skrivs om av misstag; "Rätta det gamla priset" är det lilla valet.
+ * Ett pris som ser fel ut (långt från det förra, eller över vad packet säljs för) ger en
+ * gul rad och ett extra tryck; servern gör samma koll.
+ */
 function PriceForm({
   row,
   today,
@@ -98,14 +107,21 @@ function PriceForm({
   onDone: () => void;
 }) {
   const t = useT();
+  const r2 = t.r2.t3;
   const f = useFormat();
   const router = useRouter();
   const toast = useToast();
   const id = useId();
+  const field = useRef<HTMLInputElement>(null);
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string>();
-  const [busy, setBusy] = useState<"fix" | "today" | null>(null);
+  const [busy, setBusy] = useState<Kind | null>(null);
+  /** Servern vill ha ett extra tryck: vad som ser konstigt ut och vilket val det gällde. */
+  const [doubt, setDoubt] = useState<{ kind: Kind; doubt: PriceDoubt } | null>(null);
   const [pending, start] = useTransition();
+  const hasPrice = row.unitCostOre !== null;
+  /** Huvudknappen och Enter: sätt priset (inget pris än), annars nytt pris från i dag. */
+  const main: Kind = hasPrice ? "today" : "fix";
 
   const read = (): number | null => {
     const p = parsePrice(amount);
@@ -123,7 +139,7 @@ function PriceForm({
     return null;
   };
 
-  const save = (kind: "fix" | "today") => {
+  const save = (kind: Kind, confirmed: boolean) => {
     const ore = read();
     if (ore === null) return;
     setBusy(kind);
@@ -131,15 +147,21 @@ function PriceForm({
       const offline = { ok: false as const, error: t.common.offlineRetry };
       const res =
         kind === "fix"
-          ? await correctPurchasePrice({ titleId: row.titleId, unitCostOre: ore }).catch(
+          ? await correctPurchasePrice({ titleId: row.titleId, unitCostOre: ore, confirmed }).catch(
               () => offline,
             )
           : await addPurchasePrice({
               titleId: row.titleId,
               unitCostOre: ore,
               validFrom: today,
+              confirmed,
             }).catch(() => offline);
       setBusy(null);
+      if (isPriceDoubt(res)) {
+        setError(undefined);
+        setDoubt({ kind, doubt: res.doubt });
+        return;
+      }
       if (!res.ok) {
         setError(t.serverError(res.error ?? ""));
         return;
@@ -156,8 +178,21 @@ function PriceForm({
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!pending) save("fix");
+    if (pending) return;
+    // Med varningen framme är Enter "Ja, spara ändå" för valet som gjordes.
+    if (doubt) save(doubt.kind, true);
+    else save(main, false);
   };
+
+  // Jämna kronor utan ",00" (som raden vid en leverans): "1 190 kr", "112,50 kr".
+  const kr = (ore: number) => (ore % 100 === 0 ? f.sek(ore / 100) : f.kronor(ore / 100));
+  const doubtText = doubt
+    ? doubt.doubt.kind === "aboveSale"
+      ? r2.priceAboveSale(kr(doubt.doubt.newOre), kr(doubt.doubt.refOre))
+      : doubt.doubt.kind === "higher"
+        ? r2.priceMuchHigher(kr(doubt.doubt.newOre), kr(doubt.doubt.refOre))
+        : r2.priceMuchLower(kr(doubt.doubt.newOre), kr(doubt.doubt.refOre))
+    : null;
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4 px-5 pb-5">
@@ -172,6 +207,7 @@ function PriceForm({
         </label>
         <div className="relative">
           <input
+            ref={field}
             id={`${id}-price`}
             inputMode="decimal"
             autoComplete="off"
@@ -180,9 +216,10 @@ function PriceForm({
             onChange={(e) => {
               setAmount(e.target.value);
               setError(undefined);
+              setDoubt(null);
             }}
             aria-invalid={error ? true : undefined}
-            aria-describedby={error ? `${id}-msg` : undefined}
+            aria-describedby={error ? `${id}-msg` : doubt ? `${id}-doubt` : undefined}
             className="tnum h-12 w-full min-w-0 rounded-md border border-line-control bg-bg pr-12 pl-3 text-right text-xl text-fg"
           />
           <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-base text-subtle">
@@ -195,30 +232,68 @@ function PriceForm({
           </p>
         ) : null}
       </div>
-      <button
-        type="submit"
-        disabled={pending}
-        className={cn(
-          "flex min-h-14 w-full flex-col items-start justify-center gap-0.5 rounded-md border px-4 py-2 text-left disabled:border-dashed disabled:text-disabled",
-          "border-inverse bg-inverse text-on-inverse active:bg-inverse-hover",
-        )}
-      >
-        <span className="text-lg font-medium">
-          {busy === "fix" ? t.common.saving : t.stock.fixAll}
-        </span>
-        <span className="text-sm opacity-80">{t.stock.fixAllSub}</span>
-      </button>
-      <button
-        type="button"
-        disabled={pending}
-        onClick={() => save("today")}
-        className="flex min-h-14 w-full flex-col items-start justify-center gap-0.5 rounded-md border border-line-strong bg-surface px-4 py-2 text-left text-fg active:bg-hover disabled:border-dashed disabled:text-disabled"
-      >
-        <span className="text-lg font-medium">
-          {busy === "today" ? t.common.saving : t.stock.fromToday}
-        </span>
-        <span className="text-sm text-muted">{t.stock.fromTodaySub}</span>
-      </button>
+      {doubt ? (
+        <>
+          <p
+            id={`${id}-doubt`}
+            role="alert"
+            className="flex items-start gap-2 rounded-md border border-signal-line bg-signal-soft px-3 py-3 text-base text-fg"
+          >
+            <Icon name="alert" size={16} className="mt-1 shrink-0" />
+            <span>{doubtText}</span>
+          </p>
+          <button
+            type="submit"
+            disabled={pending}
+            className="flex min-h-14 w-full items-center justify-center rounded-md border border-inverse bg-inverse px-4 py-2 text-lg font-medium text-on-inverse active:bg-inverse-hover disabled:border-dashed disabled:text-disabled"
+          >
+            {busy !== null ? t.common.saving : r2.priceSaveAnyway}
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => {
+              setDoubt(null);
+              field.current?.focus();
+              field.current?.select();
+            }}
+            className="flex min-h-12 w-full items-center justify-center rounded-md border border-line-strong bg-surface px-4 text-lg font-medium text-fg active:bg-hover disabled:border-dashed disabled:text-disabled"
+          >
+            {r2.priceChange}
+          </button>
+        </>
+      ) : (
+        <>
+          <button
+            type="submit"
+            disabled={pending}
+            className={cn(
+              "flex min-h-14 w-full flex-col items-start justify-center gap-0.5 rounded-md border px-4 py-2 text-left disabled:border-dashed disabled:text-disabled",
+              "border-inverse bg-inverse text-on-inverse active:bg-inverse-hover",
+            )}
+          >
+            <span className="text-lg font-medium">
+              {busy === main ? t.common.saving : hasPrice ? t.stock.fromToday : r2.priceSet}
+            </span>
+            <span className="text-sm opacity-80">
+              {hasPrice ? t.stock.fromTodaySub : r2.priceSetSub}
+            </span>
+          </button>
+          {hasPrice ? (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => save("fix", false)}
+              className="flex min-h-11 w-fit flex-col items-start justify-center gap-0.5 self-start text-left text-fg disabled:text-disabled"
+            >
+              <span className="text-base font-medium underline">
+                {busy === "fix" ? t.common.saving : r2.priceFixOld}
+              </span>
+              <span className="text-sm text-muted">{r2.priceFixOldSub}</span>
+            </button>
+          ) : null}
+        </>
+      )}
     </form>
   );
 }

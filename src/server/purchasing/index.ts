@@ -32,6 +32,20 @@ export {
   type CloseResult,
   type ReceiveResult,
 } from "./service";
+export {
+  ARRIVES_IN_DAYS,
+  arrivalSchema,
+  notComingFor,
+  onTheWay,
+  OWN_SUPPLIER_NAME,
+  quickOrderFor,
+  quickOrderSchema,
+  receiveArrivalFor,
+  type ArrivalResult,
+  type NotComingResult,
+  type OnTheWay,
+  type QuickOrderResult,
+} from "./quick";
 export { seriesStartsFromStock } from "./series-start";
 export { currentViewer } from "./session";
 export type * from "./types";

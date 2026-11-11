@@ -12,9 +12,14 @@ import { unstable_rethrow } from "next/navigation";
 import { ZodError } from "zod";
 
 import { AuthorizationError } from "@/server/access";
-import { requireContextRole, revalidateAppData } from "@/server/data/core";
+import {
+  requireContextRole,
+  revalidateAppData,
+  revalidateSettlementData,
+} from "@/server/data/core";
 import { dbErrorMessage } from "@/server/errors";
 
+import type { PriceDoubtResult } from "../inkopspriser/_lib/price-check";
 import { LagerError, type RegisterResult } from "../lager/_lib/register";
 import { currentViewer } from "../lager/_lib/session";
 import { EDIT_ROLES } from "./_lib/data";
@@ -27,7 +32,7 @@ import {
   moveSchema,
   moveStockFor,
   receiptSchema,
-  registerReceiptFor,
+  registerReceiptWithPriceFor,
   renamePlaceFor,
   renamePlaceSchema,
   setHomeCountFor,
@@ -35,6 +40,7 @@ import {
   undoMoveFor,
   undoMoveSchema,
   type MoveResult,
+  type ReceiptResult,
 } from "./_lib/register";
 
 export type ActionResult<T> =
@@ -67,13 +73,22 @@ export async function setHomeCount(raw: unknown): Promise<VartLagerActionResult>
   }
 }
 
-/** Inköp: pack som kom till ett lager. */
-export async function addReceipt(raw: unknown): Promise<VartLagerActionResult> {
+/**
+ * Inköp: pack som kom till ett lager, och (om det skickas med) vad ett pack kostade. Ett
+ * annat pris än dagens sparas som nytt inköpspris från i dag. Ser priset konstigt ut sparas
+ * ingenting förrän användaren bekräftat (svaret har då `doubt`).
+ */
+export async function addReceipt(
+  raw: unknown,
+): Promise<ActionResult<ReceiptResult> | PriceDoubtResult> {
   try {
     await requireContextRole(EDIT_ROLES);
     const viewer = await currentViewer();
-    const data = await registerReceiptFor(viewer, receiptSchema.parse(raw));
-    revalidateAppData();
+    const data = await registerReceiptWithPriceFor(viewer, receiptSchema.parse(raw));
+    if ("doubt" in data) return data;
+    // Ett nytt pris ändrar vinsten: samma omräkning som Inköpspriser gör.
+    if (data.price.status === "saved") await revalidateSettlementData();
+    else revalidateAppData();
     return { ok: true, data };
   } catch (error) {
     return failure(error);

@@ -133,7 +133,8 @@ describe("buildVartLagerModel", () => {
     const h = headingOf(m);
     expect({ title: sp(h.title), aside: sp(h.aside) }).toEqual({
       title: "40 pack i lager.",
-      aside: "1 titel under 0. Räkna om.",
+      // Under 0 och tar slut: båda stegen (utan inköpsplan finns inget antal).
+      aside: "Surging Sparks: 1. Räkna om. 2. Beställ.",
     });
   });
 
@@ -164,9 +165,10 @@ describe("egna produkter och Att göra", () => {
     const b = m.rows.find((r) => r.titleId === "b")!;
     expect(b).toMatchObject({ runsOut: true, needQty: null });
     expect(needsPurchase(b)).toBe(true);
-    expect(stockTodos(m.rows)).toEqual([
+    expect(stockTodos(m.rows)).toMatchObject([
       { titleId: "b", verb: "Beställ", title: "Surging Sparks", qty: null, tone: "warning" },
     ]);
+    expect(stockTodos(m.rows)).toHaveLength(1);
   });
 
   it("med inköpsplanen: Inköps antal, och bara titlar där det är över 0", () => {
@@ -175,9 +177,10 @@ describe("egna produkter och Att göra", () => {
     const m = buildVartLagerModel(input({ purchase: new Map([["a", 36]]) }));
     expect(m.rows.find((r) => r.titleId === "a")).toMatchObject({ runsOut: false, needQty: 36 });
     expect(m.rows.find((r) => r.titleId === "b")).toMatchObject({ runsOut: true, needQty: 0 });
-    expect(stockTodos(m.rows)).toEqual([
-      { titleId: "a", verb: "Beställ", title: "Black Bolt", qty: 36, tone: "warning" },
+    expect(stockTodos(m.rows)).toMatchObject([
+      { titleId: "a", verb: "Beställ", title: "Black Bolt", qty: 36, unit: "st", tone: "warning" },
     ]);
+    expect(stockTodos(m.rows)).toHaveLength(1);
     expect(sp(headingOf(m).aside)).toBe("1 titel tar slut: beställ 1.");
     const none = buildVartLagerModel(input({ purchase: new Map() }));
     expect(stockTodos(none.rows)).toEqual([]);
@@ -217,11 +220,19 @@ describe("egna produkter och Att göra", () => {
     const b = m.rows.find((r) => r.titleId === "b")!;
     expect(b).toMatchObject({ own: true, runsOut: true, needQty: 11 });
     expect(m.rows.find((r) => r.titleId === "c")).toMatchObject({ own: false, needQty: 7 });
-    expect(stockTodos(m.rows)).toEqual([
+    const todos = stockTodos(m.rows);
+    expect(todos).toHaveLength(3);
+    expect(todos).toMatchObject([
       { titleId: "a", verb: "Räkna om", title: "Black Bolt", qty: null, tone: "critical" },
       { titleId: "c", verb: "Beställ", title: "Paradox Rift", qty: 7, tone: "critical" },
       { titleId: "b", verb: "Packa", title: "Mystery Pack", qty: 11, tone: "warning" },
     ]);
+    // Under 0 och ska fyllas på: båda stegen står på kortet, inte bara "Räkna om".
+    expect(sp(todos[0]!.steps ?? "")).toBe("1. Räkna om. 2. Beställ 30 st.");
+    expect(sp(todos[0]!.fact)).toBe("−2 hemma · 12 i automaterna · slut om 10 dagar");
+    expect(todos[1]!.steps).toBeNull();
+    // Rubriken säger samma två steg när det är en titel.
+    expect(sp(headingOf(m).aside)).toBe("Black Bolt: 1. Räkna om. 2. Beställ 30 st.");
     const noNegative = buildVartLagerModel(
       input({
         titles: [
@@ -244,6 +255,66 @@ describe("egna produkter och Att göra", () => {
   it("allt räcker: inget att göra", () => {
     const m = buildVartLagerModel(input({ warehouse: [wr("a", 40)], sold7: new Map() }));
     expect(stockTodos(m.rows)).toEqual([]);
+  });
+});
+
+describe("delar i mystery packs", () => {
+  const titles = [
+    { id: "m", name: "Mystery Pack", ownProduct: true, mysteryBatchSize: 14 },
+    { id: "a", name: "Black Bolt" },
+    { id: "c", name: "Paradox Rift" },
+  ];
+  const need = new Map([
+    ["a", { packs: 8, parts: [{ titleId: "m" }] }],
+    ["c", { packs: 18, parts: [{ titleId: "m" }] }],
+  ]);
+
+  it("raden säger hur många av packen som går till mystery packet", () => {
+    const m = buildVartLagerModel(
+      input({
+        titles,
+        purchase: new Map([
+          ["a", 22],
+          ["c", 18],
+          ["m", 28],
+        ]),
+        mysteryNeed: need,
+      }),
+    );
+    expect(m.rows.find((r) => r.titleId === "a")?.toMystery?.text).toBe(
+      "8 av dem går till Mystery Pack.",
+    );
+    expect(m.rows.find((r) => r.titleId === "c")?.toMystery?.text).toBe(
+      "Alla går till Mystery Pack.",
+    );
+    expect(m.rows.find((r) => r.titleId === "m")?.toMystery).toBeNull();
+    const todo = stockTodos(m.rows).find((t) => t.titleId === "a")!;
+    expect(todo).toMatchObject({
+      verb: "Beställ",
+      qty: 22,
+      steps: "8 av dem går till Mystery Pack.",
+    });
+  });
+
+  it("en titel som gått ur automaterna köps ändå när mystery packet behöver den", () => {
+    const m = buildVartLagerModel(
+      input({
+        titles,
+        retired: new Set(["c"]),
+        purchase: new Map([["c", 18]]),
+        mysteryNeed: need,
+      }),
+    );
+    const c = m.rows.find((r) => r.titleId === "c")!;
+    expect(c).toMatchObject({ retired: true, needQty: 18 });
+    expect(needsPurchase(c)).toBe(true);
+    // Utan behov från mystery packet: utgången titel köps inte, som förr.
+    const before = buildVartLagerModel(
+      input({ titles, retired: new Set(["c"]), purchase: new Map([["c", 18]]) }),
+    );
+    const c0 = before.rows.find((r) => r.titleId === "c")!;
+    expect(c0.needQty).toBe(0);
+    expect(needsPurchase(c0)).toBe(false);
   });
 });
 

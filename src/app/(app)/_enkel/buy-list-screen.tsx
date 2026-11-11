@@ -11,6 +11,7 @@ import { currentViewer } from "../lager/_lib/session";
 import { PageHead } from "../vart-lager/_components/page-head";
 import { loadVartLagerFor } from "../vart-lager/_lib/data";
 import { packHref } from "../vart-lager/mystery/_lib/model";
+import { BuyButtons, OnTheWayList } from "../prognos/_components/buy-actions";
 import { buyList } from "./model";
 import { StockTabs } from "./stock-tabs";
 
@@ -23,7 +24,11 @@ import { StockTabs } from "./stock-tabs";
 export async function SimpleBuyListScreen({ ctx }: { ctx: AppContext }) {
   const t = messages(ctx.locale);
   const f = formatters(ctx.locale);
-  const view = await loadVartLagerFor(await currentViewer(), new Date(ctx.now));
+  const r2 = t.r2.t3;
+  const viewer = await currentViewer();
+  const view = await loadVartLagerFor(viewer, new Date(ctx.now));
+  const places = view.places.map((p) => ({ id: p.id, name: p.name }));
+  const scope = `${viewer.organization.id}:${viewer.user.userId}`;
   const list = buyList(view.rows);
   const toBuy = list.items.length;
   const aside =
@@ -39,18 +44,32 @@ export async function SimpleBuyListScreen({ ctx }: { ctx: AppContext }) {
     <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-4 pt-4 pb-8 md:px-8 md:pt-10">
       <StockTabs active="buy" t={t} />
       <PageHead eyebrow={t.stock.buyTitle} title={t.stock.buyHeadline(toBuy)} aside={aside} />
+      {view.hasWarehouse ? (
+        <OnTheWayList
+          items={view.onTheWay}
+          today={view.today}
+          canEdit={view.canEdit}
+          places={places}
+          scope={scope}
+        />
+      ) : null}
       {!view.hasWarehouse ? (
         <StateMessage kind="empty" message={t.stock.noWarehouse} />
       ) : toBuy === 0 ? null : (
         <ul aria-label={t.stock.buyTitle} className="flex flex-col gap-3">
           {list.items.map((item, i) => {
-            const action = item.own
-              ? item.qty !== null
-                ? t.stock.packOwn(item.qty)
-                : t.stock.packMore
+            // Mystery packs alltid i hela omgångar, samma tal som Inköp och Vårt lager.
+            const what = item.own
+              ? item.batches !== null
+                ? r2.packBatches(item.batches)
+                : item.qty !== null
+                  ? t.stock.packOwn(item.qty)
+                  : t.stock.packMore
               : item.qty !== null
                 ? t.stock.buy(item.qty)
                 : t.stock.buyMore;
+            // Under 0 hemma: räkna om först (samma två steg som i hela appen).
+            const action = item.countFirst ? r2.countFirst(what) : what;
             return (
               <li
                 key={item.titleId}
@@ -69,9 +88,20 @@ export async function SimpleBuyListScreen({ ctx }: { ctx: AppContext }) {
                   ) : null}
                 </span>
                 <span className="text-2xl font-medium text-fg">{action}</span>
+                {/* En del i mystery packs: så många av packen går dit. */}
+                {item.toMystery ? (
+                  <span className="tnum text-base text-fg">
+                    {item.toMystery.all
+                      ? r2.toMysteryAll(item.toMystery.into ?? r2.mysteryPacks)
+                      : r2.toMystery(item.toMystery.packs, item.toMystery.into ?? r2.mysteryPacks)}
+                  </span>
+                ) : null}
                 <span className="tnum text-sm text-muted">
                   {t.stock.haveLine(item.home, item.inMachines)}
                 </span>
+                {item.countFirst ? (
+                  <span className="text-base text-signal-fg">{r2.countFirstHint}</span>
+                ) : null}
                 {item.own ? (
                   <Link
                     href={packHref(item.titleId, item.qty)}
@@ -94,6 +124,19 @@ export async function SimpleBuyListScreen({ ctx }: { ctx: AppContext }) {
                   >
                     {t.stock.noPrice}
                   </Link>
+                ) : null}
+                {/* Beställt eller redan köpt: ett tryck, utan leverantörsregister. */}
+                {!item.own && view.canEdit ? (
+                  <BuyButtons
+                    target={{
+                      titleId: item.titleId,
+                      name: item.name,
+                      qty: item.qty,
+                      unitCostOre: item.unitCostOre,
+                    }}
+                    places={places}
+                    scope={scope}
+                  />
                 ) : null}
               </li>
             );

@@ -23,7 +23,7 @@ import type { MemberRole } from "@/db/schema";
 import { addDays, minDate, revenue, type IsoDate, type Period } from "@/domain";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
 import { businessToday, loadDomainInputFor, type Viewer } from "@/server/data/core/loaders";
-import { queryStock } from "@/server/data/core/queries";
+import { queryMysteryRecipeRefs, queryStock } from "@/server/data/core/queries";
 import {
   ECONOMY_ROLES,
   OPERATOR_ROLES,
@@ -162,6 +162,8 @@ interface PlanSources {
   readonly purchaseOrders: readonly PurchaseOrderRecord[];
   readonly stock: Awaited<ReturnType<typeof queryStock>>;
   readonly slots: Awaited<ReturnType<typeof querySlotPeriods>>;
+  /** Gällande innehåll per mystery pack: delarna som går åt när en omgång packas. */
+  readonly recipes: Awaited<ReturnType<typeof queryMysteryRecipeRefs>>;
 }
 
 /**
@@ -242,6 +244,8 @@ function forecastAndPlan(src: PlanSources): {
       .map(toPurchaseOrderRef),
     prices: src.prices,
     demand: demandFromForecast(forecastAll, today),
+    // Delarna som mystery packen äter upp läggs på varje dels behov (T3-5).
+    mysteryRecipes: src.recipes,
     // Utkast räknas inte som beställt (de kan glömmas och skulle då dölja behovet för
     // alltid). Sidan visar i stället "utkast finns" på förslagets rader.
     options: { includeDraftOrders: false },
@@ -281,15 +285,16 @@ export async function loadPurchasePlanFor(
   const from = planFrom(asOf);
   const all = await loadDomainInputFor(viewer, { period: { start: from, end: asOf } }, now);
   const db = await withUserDbFor(viewer.user, async (tx) => {
-    const [events, suppliers, items, purchaseOrders, stock, slots] = await Promise.all([
+    const [events, suppliers, items, purchaseOrders, stock, slots, recipes] = await Promise.all([
       queryMachineStockEvents(tx, orgId, from, asOf),
       querySuppliers(tx, orgId),
       querySupplierItems(tx, orgId),
       queryPurchaseOrders(tx, orgId),
       queryStock(tx, orgId),
       querySlotPeriods(tx, orgId),
+      queryMysteryRecipeRefs(tx, orgId),
     ]);
-    return { events, suppliers, items, purchaseOrders, stock, slots };
+    return { events, suppliers, items, purchaseOrders, stock, slots, recipes };
   });
   const { purchasing } = forecastAndPlan({
     today,
@@ -333,7 +338,7 @@ export async function loadPrognosFor(
     : all;
 
   const db = await withUserDbFor(viewer.user, async (tx) => {
-    const [events, planEvents, suppliers, items, purchaseOrders, stock, central, slots] =
+    const [events, planEvents, suppliers, items, purchaseOrders, stock, central, slots, recipes] =
       await Promise.all([
         queryMachineStockEvents(tx, orgId, ordersFrom, asOf),
         // Samma händelser som Vårt lager läser (från planFrom); samma lista när perioden
@@ -345,6 +350,7 @@ export async function loadPrognosFor(
         queryStock(tx, orgId),
         queryCentralLocation(tx, orgId),
         querySlotPeriods(tx, orgId),
+        queryMysteryRecipeRefs(tx, orgId),
       ]);
     return {
       events,
@@ -355,6 +361,7 @@ export async function loadPrognosFor(
       stock,
       central,
       slots,
+      recipes,
     };
   });
 
@@ -378,6 +385,7 @@ export async function loadPrognosFor(
     purchaseOrders: db.purchaseOrders,
     stock: db.stock,
     slots: db.slots,
+    recipes: db.recipes,
   });
 
   const forecastFor = (orders: DomainInput["current"]["orders"]): ForecastResult =>
@@ -443,7 +451,13 @@ export async function loadPrognosFor(
     lostPeriod,
     scope,
     canEdit: (OPERATOR_ROLES as readonly MemberRole[]).includes(role),
-    titles: all.titles.map((t) => ({ id: t.id, name: t.name, ownProduct: t.ownProduct === true })),
+    titles: all.titles.map((t) => ({
+      id: t.id,
+      name: t.name,
+      ownProduct: t.ownProduct === true,
+      mysteryBatchSize: t.mysteryBatchSize ?? null,
+    })),
+    machineCount: all.machines.filter((m) => !m.archived).length,
     machines: all.machines.map((m) => ({ id: m.id, name: m.name, code: m.code })),
     lostSales: lost,
     forecast,

@@ -23,13 +23,14 @@ import { LostSalesView } from "./_components/lost-sales-view";
 import { OrdersView } from "./_components/orders-view";
 import { OurStock } from "./_components/our-stock";
 import { ourStockTitle } from "./_lib/our-stock";
+import { OnTheWayList } from "./_components/buy-actions";
 import { PlanView } from "./_components/plan-view";
 import { SuppliersView } from "./_components/suppliers-view";
 import { ValuationView } from "./_components/valuation-view";
 import { PageHead } from "../vart-lager/_components/page-head";
 import { packHref } from "../vart-lager/mystery/_lib/model";
 import { TodoList } from "../vart-lager/_components/todo-list";
-import { buildPageModel, type PageModel } from "./_lib/model";
+import { buildPageModel, ordersInMainView, type PageModel } from "./_lib/model";
 import { loadOurStockFor, type OurStockView } from "../lager/_lib/data";
 
 /** Inköp och prognos; i Enkel vy Inköpslistan på personens språk. */
@@ -107,8 +108,10 @@ export default async function PrognosPage({
   const p = await loadPeriod(sp);
   let m: PageModel;
   let stock: OurStockView;
+  let buyScope: string;
   try {
     const viewer = await currentViewer();
+    buyScope = `${viewer.organization.id}:${viewer.user.userId}`;
     const [data, our] = await Promise.all([
       loadPrognosFor(viewer, { period: p.period, scope: p.scope }),
       loadOurStockFor(viewer, new Date(ctx.now)),
@@ -116,7 +119,15 @@ export default async function PrognosPage({
     // Packa och Beställ X st: inköpsplanens antal (purchaseQty), samma som Vårt lager.
     // Räcker: samma regel och takt som Vårt lager (hemma + i automaterna, 14 dagars takt).
     const stockPace = new Map(our.rows.map((r) => [r.titleId, r.perDayTenths] as const));
-    m = buildPageModel(data, new Date(ctx.now), { stockPace });
+    // Pack hemma som de är (även under 0): planen räknar under 0 som 0, men en titel under 0
+    // ska räknas om först, precis som på Vårt lager.
+    const stockHome = new Map<string, number>();
+    for (const place of Object.values(our.byPlace)) {
+      for (const [titleId, n] of Object.entries(place)) {
+        stockHome.set(titleId, (stockHome.get(titleId) ?? 0) + n);
+      }
+    }
+    m = buildPageModel(data, new Date(ctx.now), { stockPace, stockHome });
     stock = our;
   } catch (error) {
     if (!(error instanceof DomainError)) throw error;
@@ -134,8 +145,9 @@ export default async function PrognosPage({
   }
 
   const rise = (i: number) => ({ "--i": i }) as React.CSSProperties;
-  // Öppna inköpsorder står i huvudvyn; utan öppna ligger listan under "Mer".
-  const ordersMain = m.orders.open.length > 0;
+  // Hela ordertabellen ligger under "Mer". Det som är beställt står redan i huvudvyn som
+  // "På väg" med "Kom fram"; bara ett utkast (som måste beställas eller tas bort) lyfter upp den.
+  const ordersMain = ordersInMainView(m.orders.open);
   const orders = (
     <OrdersView
       model={m.orders}
@@ -145,6 +157,7 @@ export default async function PrognosPage({
       hasCentralWarehouse={m.hasCentralWarehouse}
     />
   );
+  const buyPlaces = stock.places.map((pl) => ({ id: pl.id, name: pl.name }));
   const forecastMeta = m.meta.filter(
     (x) => x.label !== "Att beställa" && x.label !== "Kapitalbindning",
   );
@@ -174,16 +187,33 @@ export default async function PrognosPage({
                 max={12}
                 items={m.plan.packLines.map((l) => ({
                   key: l.titleId,
-                  verb: "Packa",
+                  // Under 0 hemma: räkna om först (samma två steg som på Vårt lager).
+                  verb: l.negative ? "Räkna om" : "Packa",
                   title: l.title,
-                  qty: l.packQty,
-                  tone: l.late ? "critical" : "warning",
-                  // Packa öppnar Mystery packs med antalet förvalt (omgångar).
-                  href: packHref(l.titleId, l.packQty),
+                  // Mystery packs i hela omgångar, samma tal som Vårt lager.
+                  qty: l.negative ? null : (l.action?.qty ?? l.packQty),
+                  unit: l.action?.unit ?? "st",
+                  note: l.steps,
+                  fact: l.fact,
+                  tone: l.negative || l.late || l.home <= 0 ? "critical" : "warning",
+                  // Räkna om görs på Vårt lager (raden); Packa öppnar Mystery packs med
+                  // antalet förvalt.
+                  href: l.negative
+                    ? `/vart-lager#rad-${l.titleId}`
+                    : packHref(l.titleId, l.action?.packs ?? l.packQty),
                 }))}
               />
             </section>
           ) : null}
+
+          {/* Beställt och på väg (även delägarens rader): "Kom fram" när packen kommit. */}
+          <OnTheWayList
+            items={m.plan.onTheWay}
+            today={m.today}
+            canEdit={m.canEdit && m.hasCentralWarehouse}
+            places={buyPlaces}
+            scope={buyScope}
+          />
 
           <section aria-labelledby="inkopsforslag" className={`rise ${SECTION}`} style={rise(2)}>
             <h2 id="inkopsforslag" className="label text-subtle">
@@ -194,6 +224,8 @@ export default async function PrognosPage({
               suppliers={m.suppliers.suppliers}
               canEdit={m.canEdit}
               today={m.today}
+              places={buyPlaces}
+              scope={buyScope}
             />
           </section>
 

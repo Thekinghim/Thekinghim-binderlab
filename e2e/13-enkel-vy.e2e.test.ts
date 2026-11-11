@@ -596,12 +596,22 @@ describe("Enkel vy på engelska (iPhone SE)", () => {
       .click();
     const sheet = page.getByRole("dialog");
     await sheet.getByLabel("New price per pack").fill(typed);
-    await sheet.getByRole("button", { name: /^Fix the price/ }).waitFor();
+    // Runda 2 (T3-2): huvudknappen är "New price from today"; att rätta gammal försäljning
+    // är det lilla valet.
+    await sheet.getByRole("button", { name: /^Fix the old price/ }).waitFor();
     await expectTapTargets(page, "dialog[open]");
     await settled(page);
     await screenshot(page, "13-delagare-purchase-price-andra-iphonese");
     await sheet.getByRole("button", { name: /^New price from today/ }).click();
-    await page.getByText("New purchase price saved").first().waitFor();
+    // Ligger priset långt från det förra frågar appen först (prisvakten): spara ändå.
+    const anyway = sheet.getByRole("button", { name: "Yes, save anyway" });
+    const saved = page.getByText("New purchase price saved").first();
+    await until(
+      async () => (await anyway.count()) + (await saved.count()) > 0,
+      "sparat eller fråga",
+    );
+    if ((await anyway.count()) > 0) await anyway.click();
+    await saved.waitFor();
     await until(async () => {
       const [r] = await sql<{ ore: number }[]>`
         select pp.unit_cost_ore::int as ore from public.purchase_prices pp

@@ -16,6 +16,9 @@
  *    → 14 → 24 → 24 (2 boxar). Saknas 25 → 25 → 25 → 36 (3 boxar).
  *    Mystery packs (`TitleRef.mysteryBatchSize`) packas i hela omgångar: antalet avrundas
  *    uppåt till en multipel av omgången (saknas 5, omgång 14 → 14; saknas 15 → 28).
+ *    **Delarna i mystery packs** (`PurchasingInput.mysteryRecipes`): omgångarna som ska
+ *    packas × innehållet läggs på varje dels behov innan antalet räknas (2 omgångar med
+ *    4 Pokémon 151 per omgång → 8 pack till på Pokémon 151). Se ./mystery-components.ts.
  * 6. **Täckning.** Dagar som lagerpositionen räcker enligt prognosen; senaste beställningsdag =
  *    väntat slut − ledtid. Tar lagret slut före leverans även vid beställning i dag är raden sen.
  */
@@ -26,6 +29,7 @@ import {
   ceilDiv,
   DomainError,
   mysteryBatch,
+  mysteryBatchesToPack,
   roundHalfUp,
   wholeBatches,
   type IsoDate,
@@ -42,6 +46,7 @@ import {
   onOrderByTitle,
   stockByTitle,
 } from "./common";
+import { componentNeeds, type MysteryNeed } from "./mystery-components";
 import type {
   PurchaseLine,
   PurchaseLineStatus,
@@ -208,11 +213,7 @@ export function purchasePlan(input: PurchasingInput): PurchasePlan {
     }),
   );
 
-  const titleIds = [
-    ...new Set([...demand.keys(), ...stock.keys(), ...itemsByTitle.keys(), ...onOrder.keys()]),
-  ].sort();
-
-  const lines: PurchaseLine[] = titleIds.map((titleId) => {
+  const lineOf = (titleId: string, mystery: MysteryNeed | null): PurchaseLine => {
     const item = choose(titleId);
     const lt = item ? leadOf(item) : { days: o.defaultLeadTimeDays, source: "default" as const };
     const L = lt.days;
@@ -222,7 +223,9 @@ export function purchasePlan(input: PurchasingInput): PurchasePlan {
     const dP = demandSum(d, 0, L + R);
     const variance = d?.dayVarianceMilli2 ?? 0;
     const ss = safetyStockMilli(o.zMilli, L + R, variance);
-    const target = dP + ss;
+    // Pack som går åt till mystery packs som ska packas (utöver titelns egen försäljning).
+    const toMystery = mystery?.packs ?? 0;
+    const target = dP + ss + toMystery * MILLI;
     const st = stock.get(titleId) ?? { warehouse: 0, machines: 0, negative: 0, machineIds: [] };
     const oo = onOrder.get(titleId) ?? [];
     const counted = oo.filter((x) => x.counted).reduce((s, x) => s + x.outstanding, 0);
@@ -243,7 +246,7 @@ export function purchasePlan(input: PurchasingInput): PurchasePlan {
             orderQty: wholeBatches(base.orderQty, batch),
           };
     let status: PurchaseLineStatus;
-    if (dP === 0) status = "no-demand";
+    if (dP === 0 && toMystery === 0) status = "no-demand";
     else if (shortfall === 0) status = "ok";
     else if (!item) status = "no-supplier";
     else status = "order";
@@ -263,8 +266,14 @@ export function purchasePlan(input: PurchasingInput): PurchasePlan {
     const leadText = `${plural(L, "dags", "dagars")} ledtid + ${plural(R, "dag", "dagar")} till nästa beställning`;
     const stockParts = [`vårt lager ${st.warehouse}`, `automater ${st.machines}`];
     if (counted > 0) stockParts.push(`beställt ${counted}`);
+    const mysteryText =
+      mystery && toMystery > 0
+        ? ` + ${toMystery} pack till ${mystery.parts
+            .map((m) => `${plural(m.batches, "omgång", "omgångar")} ${titleName(m.titleId)}`)
+            .join(" och ")}`
+        : "";
     const need =
-      `Behov till nästa leverans ${packs(dP)} pack (${leadText}) + säkerhetslager ${packs(ss)} = ${packs(target)}; ` +
+      `Behov till nästa leverans ${packs(dP)} pack (${leadText}) + säkerhetslager ${packs(ss)}${mysteryText} = ${packs(target)}; ` +
       `lager ${position} (${stockParts.join(", ")})`;
     let text: string;
     if (status === "order") {
@@ -299,7 +308,7 @@ export function purchasePlan(input: PurchasingInput): PurchasePlan {
         "Beställningsnivå = efterfrågan under ledtid + intervall (prognos) + säkerhetslager (z × √(dagar × dagsvarians)). " +
         "Saknas något jämfört med vårt lager + automater + beställt: hela pack → minsta order → hela boxar.",
       period: { start: today, end: addDays(today, L + R - 1) },
-      titleIds: [titleId],
+      titleIds: [titleId, ...(mystery?.parts.map((m) => m.titleId) ?? [])],
       machineIds: st.machineIds,
       dates: oo.map((x) => x.expectedOn),
       purchaseOrderIds: oo.map((x) => x.purchaseOrderId),
@@ -310,6 +319,9 @@ export function purchasePlan(input: PurchasingInput): PurchasePlan {
         fig("demandLeadTimeMilli", "Efterfrågan under ledtiden", dL, "milli"),
         fig("demandProtectionMilli", "Efterfrågan under ledtid + intervall", dP, "milli"),
         fig("safetyStockMilli", "Säkerhetslager", ss, "milli"),
+        ...(toMystery > 0
+          ? [fig("mysteryNeedPacks", "Går till mystery packs", toMystery, "packs")]
+          : []),
         fig("targetMilli", "Beställningsnivå", target, "milli"),
         fig("warehouseOnHand", "Vårt lager", st.warehouse, "packs"),
         fig("machineOnHand", "I automater", st.machines, "packs"),
@@ -358,8 +370,45 @@ export function purchasePlan(input: PurchasingInput): PurchasePlan {
       late,
       text,
       evidence,
+      ...(mystery && toMystery > 0 ? { mysteryNeed: mystery } : {}),
     };
+  };
+
+  // Mystery packen räknas först: omgångarna som ska packas × innehållet blir delarnas
+  // extra behov. En del kan inte själv vara ett mystery pack (databasen stoppar det).
+  const recipes = (input.mysteryRecipes ?? []).filter((r) => mysteryBatch(r.batchSize) !== null);
+  const recipeSize = new Map(recipes.map((r) => [r.titleId, r.batchSize]));
+  const mysteryLines = new Map<string, PurchaseLine>();
+  const known = new Set([
+    ...demand.keys(),
+    ...stock.keys(),
+    ...itemsByTitle.keys(),
+    ...onOrder.keys(),
+  ]);
+  for (const r of recipes) {
+    if (known.has(r.titleId) && !mysteryLines.has(r.titleId)) {
+      mysteryLines.set(r.titleId, lineOf(r.titleId, null));
+    }
+  }
+  const givenBatches = new Map((input.mysteryBatches ?? []).map((b) => [b.titleId, b.batches]));
+  const needs = componentNeeds(recipes, (mysteryId) => {
+    const given = givenBatches.get(mysteryId);
+    if (given !== undefined) return given;
+    const line = mysteryLines.get(mysteryId);
+    if (!line) return 0;
+    // Samma tal som sidorna visar ("Packa 2 omgångar"): planens antal i hela omgångar.
+    return (
+      mysteryBatchesToPack({
+        batchSize: recipeSize.get(mysteryId),
+        planPacks: purchaseQty(line),
+        packedAtHome: line.warehouseOnHand,
+      })?.batches ?? 0
+    );
   });
+  const titleIds = [...new Set([...known, ...needs.keys()])].sort();
+  const lines: PurchaseLine[] = titleIds.map(
+    (titleId) => mysteryLines.get(titleId) ?? lineOf(titleId, needs.get(titleId) ?? null),
+  );
 
   lines.sort(
     (a, b) =>

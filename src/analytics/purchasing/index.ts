@@ -15,5 +15,7 @@ export {
   Z_BY_SERVICE_LEVEL_BP,
 } from "./plan";
 export { inventoryValuation } from "./valuation";
+export { componentNeed, componentNeeds, mysteryShare } from "./mystery-components";
+export type { MysteryNeed, MysteryNeedPart } from "./mystery-components";
 export { coverDays, demandAt, demandSum, MAX_COVER_DAYS } from "./common";
 export type * from "./types";

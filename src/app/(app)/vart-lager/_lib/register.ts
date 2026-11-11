@@ -4,6 +4,7 @@
  *
  * - Antal (inventering) i ett eget lager: Lagers registerCountFor (samma som Prognos).
  * - Inköp: en 'receipt'-händelse (positivt antal) i valt lager, annars standardlagret.
+ *   Med pris (registerReceiptWithPriceFor) sparas ett nytt inköpspris från i dag i samma steg.
  * - Flytt mellan lager: public.transfer_stock (transfer_out + transfer_in), Ångra med
  *   public.undo_transfer.
  * - Lagren: public.create_warehouse, rename_warehouse och archive_warehouse (med Ångra).
@@ -20,7 +21,7 @@ import * as s from "@/db/schema";
 import { requireRoleFor, withUserDbFor } from "@/server/access";
 import { pgErrorOf } from "@/server/errors";
 import type { Tx } from "@/db/client";
-import type { Viewer } from "@/server/data/core/loaders";
+import { businessToday, type Viewer } from "@/server/data/core/loaders";
 
 import {
   LagerError,
@@ -30,6 +31,12 @@ import {
   type RegisterResult,
 } from "../../lager/_lib/register";
 import { MAX_PACKS } from "../../lager/_lib/schemas";
+import { addPurchasePriceFor, receiptPriceCheckFor } from "../../inkopspriser/_lib/data";
+import { MAX_UNIT_COST_ORE } from "../../inkopspriser/_lib/model";
+import { priceDoubtText, type PriceDoubtResult } from "../../inkopspriser/_lib/price-check";
+import { PurchasingError } from "@/server/purchasing/service";
+import { receiveArrivalFor } from "@/server/purchasing/quick";
+
 import { EDIT_ROLES } from "./data";
 
 const uuid = z
@@ -62,6 +69,18 @@ export const receiptSchema = z.object(
       .int("Ange ett heltal.")
       .min(1, "Ange antal pack, minst 1.")
       .max(MAX_PACKS, `Högst ${MAX_PACKS} pack.`),
+    /**
+     * Vad ett pack kostade (öre). Skiljer det sig från dagens inköpspris sparas det som nytt
+     * pris från i dag, i samma steg. Utelämnat = priset rörs inte.
+     */
+    unitCostOre: z
+      .number({ error: "Skriv priset i kronor, t.ex. 112,50." })
+      .int("Skriv priset i kronor, t.ex. 112,50.")
+      .min(0, "Skriv priset i kronor, t.ex. 112,50.")
+      .max(MAX_UNIT_COST_ORE, "Priset är för högt.")
+      .optional(),
+    /** true = användaren har sett varningen om ett konstigt pris och sparar ändå. */
+    confirmed: z.boolean().optional(),
   },
   { error: INVALID },
 );
@@ -120,7 +139,7 @@ export async function setHomeCountFor(
 /** Inköp: packen kom till ett eget lager (ägare, admin). Utan lager: standardlagret. */
 export async function registerReceiptFor(
   viewer: Viewer,
-  input: ReceiptInput,
+  input: Pick<ReceiptInput, "titleId" | "warehouseId" | "quantity">,
 ): Promise<RegisterResult> {
   await requireRoleFor(viewer.user, viewer.organization.id, EDIT_ROLES);
   const orgId = viewer.organization.id;
@@ -179,6 +198,115 @@ export async function registerReceiptFor(
       placeName: await locationName(tx, orgId, central.id),
     };
   });
+}
+
+/** Vad som hände med priset vid en leverans. */
+export interface ReceiptPrice {
+  /**
+   * none = inget pris angavs · same = samma som dagens pris (inget skrevs) · saved = nytt
+   * pris från i dag · failed = packen sparades men priset gick inte att spara.
+   */
+  readonly status: "none" | "same" | "saved" | "failed";
+  readonly unitCostOre?: number;
+  /** Priset som gällde innan (null = titeln saknade pris). */
+  readonly previousOre?: number | null;
+  /** Varför priset inte sparades (status failed). */
+  readonly error?: string;
+}
+
+export type ReceiptResult = RegisterResult & {
+  readonly price: ReceiptPrice;
+  /** Pack av titeln som fortfarande är på väg (beställda) efter inköpet. 0 = inget. */
+  readonly stillOnTheWay?: number;
+};
+
+/**
+ * Leverans med pris: antal + lager + vad ett pack kostade. Används av "+ Inköp" på Vårt
+ * lager och av delägarens leveransformulär.
+ *
+ * 1. Ser priset konstigt ut (price-check.ts) och är inte bekräftat sparas ingenting:
+ *    svaret är frågan (PriceDoubtResult).
+ * 2. Packen sparas först, som en vanlig 'receipt'-händelse (registerReceiptFor).
+ * 3. Är priset ett annat än dagens sparas det som nytt pris från i dag (äldre försäljning
+ *    behåller sitt pris). Går det inte (t.ex. stängd månad) ligger packen kvar och svaret
+ *    säger varför priset inte sparades. Samma pris skriver ingen prisrad.
+ */
+export async function registerReceiptWithPriceFor(
+  viewer: Viewer,
+  input: ReceiptInput,
+  now: Date = new Date(),
+): Promise<ReceiptResult | PriceDoubtResult> {
+  await requireRoleFor(viewer.user, viewer.organization.id, EDIT_ROLES);
+  const { unitCostOre, confirmed, ...receipt } = input;
+  // Packen räknas först av från det som är beställt och på väg för titeln ("Beställt" på
+  // inköpslistan), resten läggs in som ett vanligt inköp. Annars står beställningen kvar
+  // som "På väg" och samma pack räknas två gånger när någon sedan trycker "Kom fram".
+  return withReceiptPrice(
+    viewer,
+    { titleId: input.titleId, unitCostOre, confirmed },
+    now,
+    async () => {
+      try {
+        const r = await receiveArrivalFor(viewer, receipt, now);
+        return {
+          previous: r.previous,
+          onHand: r.onHand,
+          warehouseOnHand: null,
+          placeName: r.placeName,
+          stillOnTheWay: r.stillOnTheWay,
+        };
+      } catch (error) {
+        if (error instanceof PurchasingError) throw new LagerError(error.message);
+        throw error;
+      }
+    },
+  );
+}
+
+/**
+ * Prisdelen av en leverans, runt valfritt lagersteg (`stock`): ett vanligt inköp här, eller
+ * "Kom fram" på inköpslistan (src/server/purchasing/quick.ts). Kollen körs före lagersteget,
+ * priset sparas efter. Utan pris körs bara lagersteget.
+ */
+export async function withReceiptPrice<R extends object>(
+  viewer: Viewer,
+  input: { titleId: string; unitCostOre?: number | undefined; confirmed?: boolean | undefined },
+  now: Date,
+  stock: () => Promise<R>,
+): Promise<(R & { readonly price: ReceiptPrice }) | PriceDoubtResult> {
+  const { unitCostOre, confirmed } = input;
+  if (unitCostOre === undefined) return { ...(await stock()), price: { status: "none" } };
+  const organizationId = viewer.organization.id;
+  const today = businessToday(now, viewer.organization.timezone);
+  const check = await receiptPriceCheckFor(viewer.user, {
+    organizationId,
+    titleId: input.titleId,
+    unitCostOre,
+    today,
+  });
+  if (check.doubt && confirmed !== true) {
+    return { ok: false, error: priceDoubtText(check.doubt), doubt: check.doubt };
+  }
+  const saved = await stock();
+  if (check.currentOre === unitCostOre) {
+    return { ...saved, price: { status: "same", unitCostOre, previousOre: check.currentOre } };
+  }
+  const price = await addPurchasePriceFor(viewer.user, {
+    organizationId,
+    titleId: input.titleId,
+    unitCostOre,
+    validFrom: today,
+    note: "Inköp, Vårt lager",
+  }).catch((error: unknown) => {
+    console.error("[vart-lager] priset vid inköp", error);
+    return { ok: false as const, error: "Priset gick inte att spara just nu." };
+  });
+  return {
+    ...saved,
+    price: price.ok
+      ? { status: "saved", unitCostOre, previousOre: check.currentOre }
+      : { status: "failed", unitCostOre, previousOre: check.currentOre, error: price.error },
+  };
 }
 
 async function placeLevel(

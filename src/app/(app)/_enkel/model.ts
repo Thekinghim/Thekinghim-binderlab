@@ -80,6 +80,10 @@ export interface BuyItem {
   readonly own: boolean;
   /** Antal att köpa eller packa, eller null när inköpsplanen inte kunde räknas. */
   readonly qty: number | null;
+  /** Mystery pack: hela omgångar att packa (samma tal som Inköp och Vårt lager), annars null. */
+  readonly batches: number | null;
+  /** Under 0 hemma: räkna om först, sedan köp eller packa. */
+  readonly countFirst: boolean;
   readonly home: number;
   readonly inMachines: number;
   /** Slut hemma. */
@@ -87,6 +91,15 @@ export interface BuyItem {
   readonly unitCostOre: number | null;
   /** qty × inköpspriset, när båda finns (bara det som köps, inte det som packas). */
   readonly costOre: number | null;
+  /**
+   * Delen av inköpet som mystery packen äter upp: pack, om det är allt som köps, och
+   * mystery-packets namn (null = flera olika). null = inget går dit.
+   */
+  readonly toMystery: {
+    readonly packs: number;
+    readonly all: boolean;
+    readonly into: string | null;
+  } | null;
 }
 
 export interface BuyList {
@@ -120,12 +133,18 @@ export function buyList(rows: readonly VartLagerRow[]): BuyList {
         titleId: r.titleId,
         name: r.name,
         own: r.own,
-        qty: r.needQty,
+        // Mystery packs: omgångarnas antal i pack (hela omgångar), annars Inköps antal.
+        qty: r.action?.packs ?? r.needQty,
+        batches: r.action?.batches ?? null,
+        countFirst: r.negative,
         home: Math.max(0, r.home),
         inMachines: r.inMachines,
         out: r.home <= 0,
         unitCostOre: r.unitCostOre,
         costOre,
+        toMystery: r.toMystery
+          ? { packs: r.toMystery.packs, all: r.toMystery.all, into: r.toMystery.into }
+          : null,
       };
     });
   return {

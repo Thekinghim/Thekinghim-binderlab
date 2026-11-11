@@ -1,0 +1,218 @@
+/**
+ * Runda 2, T3-5 (inköpslistan räknar med delarna som mystery packs äter upp), mot
+ * testdatabasen och genom de riktiga laddarna (RLS som användaren).
+ *
+ * - Mystery Pack säljer i en automat; innehållet har 4 Pokémon 151, 9 Paldea och 1 träff per
+ *   omgång (14). Planens omgångar × innehållet läggs på delarnas behov.
+ * - Pokémon 151 säljer också själv: antalet att köpa = egen försäljning + delen till
+ *   mystery packet, och raden säger hur många som går dit, samma på Vårt lager och Inköp.
+ * - Paldea och träffen säljs inte själva men ska ändå köpas.
+ * - Det som ligger hemma av en del dras av; färdiga mystery packs sänker omgångarna.
+ * - Läsaren ser samma plan (innehållet har inga belopp); påfyllaren får inte läsa planen.
+ */
+
+import { sql } from "drizzle-orm";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+
+import { mysteryBatchesToPack } from "../../src/domain";
+import { purchaseQty } from "../../src/analytics/purchasing";
+import * as s from "../../src/db/schema";
+import { listOrganizationsFor } from "../../src/server/access";
+import type { Viewer } from "../../src/server/data/core/loaders";
+import { loadPrognosFor, loadPurchasePlanFor } from "../../src/server/purchasing";
+import { buildPageModel } from "../../src/app/(app)/prognos/_lib/model";
+import { buyList } from "../../src/app/(app)/_enkel/model";
+import { loadVartLagerFor } from "../../src/app/(app)/vart-lager/_lib/data";
+
+import { asUser, createMember, createOrg, createUser, db, one, type TestUser } from "./helpers";
+
+vi.mock("server-only", () => ({}));
+vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
+
+async function viewerFor(u: TestUser, orgId: string): Promise<Viewer> {
+  const user = { userId: u.id, email: u.email };
+  const organization = (await listOrganizationsFor(user)).find((o) => o.id === orgId);
+  if (!organization) throw new Error("Saknar medlemskap");
+  return { user, organization };
+}
+
+describe("Inköpslistan räknar med delarna som mystery packs äter upp", () => {
+  let owner: TestUser;
+  let reader: TestUser;
+  let refiller: TestUser;
+  let orgId: string;
+  let hemma: string;
+  let mp: string;
+  let p151: string;
+  let paldea: string;
+  let hit: string;
+
+  const plan = async (u: TestUser) => loadPurchasePlanFor(await viewerFor(u, orgId));
+  const qty = (p: Awaited<ReturnType<typeof plan>>, titleId: string) => {
+    const line = p.lines.find((l) => l.titleId === titleId);
+    return line ? purchaseQty(line) : 0;
+  };
+  const count = (titleId: string, quantity: number) =>
+    asUser(owner, (tx) =>
+      tx.insert(s.stockEvents).values({
+        organizationId: orgId,
+        locationId: hemma,
+        titleId,
+        kind: "count",
+        quantity,
+      }),
+    );
+
+  beforeAll(async () => {
+    owner = await createUser();
+    orgId = await createOrg(owner, "Delar i mystery packs");
+    reader = await createMember(orgId, "viewer");
+    refiller = await createMember(orgId, "refiller");
+    await asUser(owner, async (tx) => {
+      const org = { organizationId: orgId };
+      const titles = await tx
+        .insert(s.titles)
+        .values([
+          { ...org, name: "Mystery Pack", ownProduct: true },
+          { ...org, name: "Pokémon 151" },
+          { ...org, name: "Paldea" },
+          { ...org, name: "Träffen" },
+        ])
+        .returning();
+      [mp, p151, paldea, hit] = titles.map((t) => t.id) as [string, string, string, string];
+      const [machine] = await tx
+        .insert(s.machines)
+        .values({ ...org, code: "BL-001", name: "Automat 1", activeFrom: "2026-01-01" })
+        .returning();
+      const [source] = await tx
+        .insert(s.dataSources)
+        .values({ ...org, provider: "awish_csv", name: "Awish CSV" })
+        .returning();
+      // 40 dagar t.o.m. i går: Mystery Pack 2 om dagen, Pokémon 151 1 om dagen.
+      const day = 24 * 60 * 60 * 1000;
+      const values = [];
+      for (let d = 1; d <= 40; d += 1) {
+        for (const [titleId, name, n] of [
+          [mp, "Mystery Pack", 2],
+          [p151, "Pokémon 151", 1],
+        ] as const) {
+          for (let k = 0; k < n; k += 1) {
+            values.push({
+              ...org,
+              dataSourceId: source!.id,
+              externalId: `md-${name}-${d}-${k}`,
+              rawTitle: name,
+              titleId,
+              machineId: machine!.id,
+              orderedAt: new Date(Date.now() - d * day + k * 60_000),
+              amountOre: 14_900,
+              sourceHash: `md-${name}-${d}-${k}`,
+            });
+          }
+        }
+      }
+      await tx.insert(s.orders).values(values);
+    });
+    hemma = (
+      await one<{ id: string }>(
+        db(),
+        sql`select id from public.stock_locations
+            where organization_id = ${orgId}::uuid and is_central and archived_at is null`,
+      )
+    ).id;
+  });
+
+  it("utan innehåll: delarna räknas bara på sin egen försäljning", async () => {
+    const p = await plan(owner);
+    expect(qty(p, mp)).toBeGreaterThan(0);
+    expect(qty(p, p151)).toBeGreaterThan(0);
+    expect(qty(p, paldea)).toBe(0);
+    expect(p.lines.some((l) => l.mysteryNeed)).toBe(false);
+  });
+
+  it("med innehåll: omgångarna × innehållet läggs på varje del", async () => {
+    const before = await plan(owner);
+    const own151 = qty(before, p151);
+    await asUser(owner, (tx) =>
+      tx.execute(
+        sql`select public.save_mystery_recipe(${orgId}::uuid, ${mp}::uuid, 14, ${JSON.stringify([
+          { titleId: p151, quantity: 4, hit: false },
+          { titleId: paldea, quantity: 9, hit: false },
+          { titleId: hit, quantity: 1, hit: true },
+        ])}::jsonb)`,
+      ),
+    );
+    const p = await plan(owner);
+    // Mystery packet packas i hela omgångar, samma tal som sidorna visar.
+    const batches = mysteryBatchesToPack({ batchSize: 14, planPacks: qty(p, mp) })!.batches;
+    expect(batches).toBeGreaterThanOrEqual(2);
+    expect(qty(p, mp)).toBe(batches * 14);
+    expect(qty(p, p151)).toBe(own151 + 4 * batches);
+    expect(qty(p, paldea)).toBe(9 * batches);
+    expect(qty(p, hit)).toBe(batches);
+    expect(p.lines.find((l) => l.titleId === p151)?.mysteryNeed).toEqual({
+      packs: 4 * batches,
+      parts: [{ titleId: mp, batches, packs: 4 * batches }],
+    });
+    expect(p.lines.find((l) => l.titleId === mp)?.mysteryNeed).toBeUndefined();
+  });
+
+  it("Vårt lager, Inköp och delägarens lista säger samma antal och samma rad", async () => {
+    const v = await viewerFor(owner, orgId);
+    const p = await plan(owner);
+    const batches = qty(p, mp) / 14;
+    const lager = await loadVartLagerFor(v);
+    const row = lager.rows.find((r) => r.titleId === p151)!;
+    expect(row.needQty).toBe(qty(p, p151));
+    expect(row.toMystery).toMatchObject({
+      packs: 4 * batches,
+      all: false,
+      into: "Mystery Pack",
+      text: `${4 * batches} av dem går till Mystery Pack.`,
+    });
+    const pal = lager.rows.find((r) => r.titleId === paldea)!;
+    expect(pal.needQty).toBe(9 * batches);
+    expect(pal.toMystery?.text).toBe("Alla går till Mystery Pack.");
+
+    const today = lager.today;
+    const data = await loadPrognosFor(v, { period: { start: today, end: today } });
+    const page = buildPageModel(data, new Date());
+    const line = page.plan.noSupplierLines.find((l) => l.titleId === p151)!;
+    expect(line.suggestQty).toBe(row.needQty);
+    expect(line.toMystery?.text).toBe(row.toMystery?.text);
+
+    const list = buyList(lager.rows);
+    expect(list.items.find((i) => i.titleId === p151)).toMatchObject({
+      qty: row.needQty,
+      toMystery: { packs: 4 * batches, all: false, into: "Mystery Pack" },
+    });
+    expect(list.items.find((i) => i.titleId === paldea)).toMatchObject({
+      qty: 9 * batches,
+      toMystery: { all: true },
+    });
+  });
+
+  it("det som ligger hemma av en del dras av, och färdiga mystery packs sänker omgångarna", async () => {
+    const before = await plan(owner);
+    const batches = qty(before, mp) / 14;
+    await count(paldea, 10);
+    const withPaldea = await plan(owner);
+    expect(qty(withPaldea, paldea)).toBe(9 * batches - 10);
+    // En hel omgång färdig hemma: en omgång mindre att packa, och delarna följer med.
+    await count(mp, 14);
+    const p = await plan(owner);
+    expect(qty(p, mp)).toBe((batches - 1) * 14);
+    expect(qty(p, hit)).toBe(batches - 1);
+    expect(qty(p, paldea)).toBe(Math.max(0, 9 * (batches - 1) - 10));
+  });
+
+  it("läsaren ser samma plan; påfyllaren får inte läsa den", async () => {
+    const a = await plan(owner);
+    const b = await plan(reader);
+    expect(qty(b, p151)).toBe(qty(a, p151));
+    expect(b.lines.find((l) => l.titleId === p151)?.mysteryNeed).toEqual(
+      a.lines.find((l) => l.titleId === p151)?.mysteryNeed,
+    );
+    await expect(plan(refiller)).rejects.toThrow();
+  });
+});

@@ -13,6 +13,10 @@ export interface TodoItem {
   readonly qty?: number | null;
   /** Enhet efter antalet (standard "st"). */
   readonly unit?: string;
+  /** Stegen när mer än en sak ska göras: "1. Räkna om. 2. Packa 2 omgångar." */
+  readonly note?: string | null;
+  /** Läget under titeln: "0 hemma · 9 i automaten · slut om 3 dagar". */
+  readonly fact?: string | null;
   readonly href: string;
   /** Röd = måste göras nu, gul = snart. */
   readonly tone: "critical" | "warning";
@@ -72,6 +76,8 @@ export function TodoList({
                   {t.verb}
                 </span>
                 <span className="truncate text-base text-fg">{t.title}</span>
+                {t.note ? <span className="text-sm font-medium text-fg">{t.note}</span> : null}
+                {t.fact ? <span className="tnum text-sm text-muted">{t.fact}</span> : null}
               </span>
               <span className="flex shrink-0 items-center gap-2">
                 {t.qty !== undefined && t.qty !== null ? (

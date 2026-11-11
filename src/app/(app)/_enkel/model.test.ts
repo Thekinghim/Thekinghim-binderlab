@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import { en } from "@/i18n/en";
+import { sv } from "@/i18n/sv";
+
 import type { VartLagerRow } from "../vart-lager/_lib/model";
+import { needAction, toMystery } from "../vart-lager/_lib/steps";
 import {
   buyList,
   parsePackCount,
@@ -30,6 +34,9 @@ function row(over: Partial<VartLagerRow> & { titleId: string; name: string }): V
     latest: null,
     own: false,
     needQty: 0,
+    action: null,
+    fact: "",
+    toMystery: null,
     ...over,
   };
 }
@@ -101,6 +108,53 @@ describe("Inköpslistan", () => {
     expect(list.totalOre).toBe(108_000);
     expect(list.unpriced).toBe(1);
     expect(list.noPlan).toBe(false);
+  });
+
+  it("en del i mystery packs: raden säger hur många som går dit, på båda språken", () => {
+    const part = toMystery(24, { packs: 16, parts: [{ titleId: "m" }] }, () => "Mystery Pack");
+    const list = buyList([
+      row({ titleId: "p", name: "Pokémon 151", home: 2, needQty: 24, toMystery: part }),
+      // Utgången ur automaterna men en del i ett mystery pack: köps ändå.
+      row({
+        titleId: "u",
+        name: "Paldea",
+        home: 0,
+        retired: true,
+        needQty: 9,
+        toMystery: toMystery(9, { packs: 18, parts: [{ titleId: "m" }] }, () => "Mystery Pack"),
+      }),
+    ]);
+    const p = list.items.find((i) => i.titleId === "p")!;
+    expect(p.toMystery).toEqual({ packs: 16, all: false, into: "Mystery Pack" });
+    expect(sv.r2.t3.toMystery(p.toMystery!.packs, p.toMystery!.into!)).toBe(
+      "16 av dem går till Mystery Pack.",
+    );
+    expect(en.r2.t3.toMystery(p.toMystery!.packs, p.toMystery!.into!)).toBe(
+      "16 of them go into Mystery Pack.",
+    );
+    const u = list.items.find((i) => i.titleId === "u")!;
+    expect(u).toMatchObject({ qty: 9, toMystery: { packs: 9, all: true } });
+    expect(sv.r2.t3.toMysteryAll(u.toMystery!.into!)).toBe("Alla går till Mystery Pack.");
+    expect(en.r2.t3.toMysteryAll(u.toMystery!.into!)).toBe("All of them go into Mystery Pack.");
+  });
+
+  it("mystery pack: hela omgångar; under 0 hemma räknas om först", () => {
+    const action = needAction({ own: true, needQty: 28, mysteryBatchSize: 14, home: -1 });
+    const list = buyList([
+      row({
+        titleId: "m",
+        name: "Mystery Pack premium",
+        home: -1,
+        negative: true,
+        own: true,
+        needQty: 28,
+        runsOut: true,
+        action,
+      }),
+    ]);
+    expect(list.items[0]).toMatchObject({ qty: 28, batches: 2, countFirst: true, home: 0 });
+    expect(sv.r2.t3.countFirst(sv.r2.t3.packBatches(2))).toBe("1. Räkna om. 2. Packa 2 omgångar.");
+    expect(en.r2.t3.countFirst(en.r2.t3.packBatches(1))).toBe("1. Count again. 2. Pack 1 batch.");
   });
 
   it("utan inköpsplan: titlarna som tar slut, utan antal", () => {

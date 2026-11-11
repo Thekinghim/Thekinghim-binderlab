@@ -28,6 +28,7 @@ import {
   type PricePreview,
   type SplitNumbers,
 } from "../_lib/model";
+import { isPriceDoubt } from "../_lib/price-check";
 
 export interface PriceFormProps {
   titleId: string;
@@ -102,6 +103,8 @@ export function PriceForm({
   const [pending, startTransition] = useTransition();
   const [busy, setBusy] = useState<Busy | null>(null);
   const [otherDate, setOtherDate] = useState(false);
+  // Servern vill ha ett extra tryck (priset ser fel ut): frågan och hur man sparar ändå.
+  const [doubt, setDoubt] = useState<{ text: string; again: () => void } | null>(null);
   // Före hydreringen skulle knappen skicka formuläret som en vanlig sidladdning: priset
   // försvann utan fel. Knapparna är därför avstängda tills sidans skript har laddats.
   const ready = useHydrated();
@@ -189,6 +192,7 @@ export function PriceForm({
 
   const run = (kind: Busy, work: () => Promise<void>) => {
     setError(undefined);
+    setDoubt(null);
     setBusy(kind);
     startTransition(async () => {
       try {
@@ -199,7 +203,7 @@ export function PriceForm({
     });
   };
 
-  const correct = () => {
+  const correct = (confirmed = false) => {
     const unitCostOre = readAmount();
     if (unitCostOre === null || !correction || correction.start === null) return;
     run("correct", async () => {
@@ -207,7 +211,12 @@ export function PriceForm({
         titleId,
         unitCostOre,
         note: note.trim() || undefined,
+        confirmed,
       });
+      if (isPriceDoubt(result)) {
+        setDoubt({ text: result.error, again: () => correct(true) });
+        return;
+      }
       if (!result.ok || !result.data) {
         setError(result.ok ? PRICE_MESSAGES.invalid : result.error);
         return;
@@ -221,7 +230,7 @@ export function PriceForm({
     });
   };
 
-  const saveFrom = (from: string, kind: "today" | "dated") => {
+  const saveFrom = (from: string, kind: "today" | "dated", confirmed = false) => {
     const unitCostOre = readAmount();
     if (unitCostOre === null || !isIsoDate(from)) return;
     if (kind === "dated" && datedClosed) return;
@@ -231,7 +240,12 @@ export function PriceForm({
         unitCostOre,
         validFrom: from,
         note: note.trim() || undefined,
+        confirmed,
       });
+      if (isPriceDoubt(result)) {
+        setDoubt({ text: result.error, again: () => saveFrom(from, kind, true) });
+        return;
+      }
       if (!result.ok) {
         setError(result.error);
         return;
@@ -280,6 +294,7 @@ export function PriceForm({
           setAmount(e.target.value);
           setAmountError(undefined);
           setError(undefined);
+          setDoubt(null);
         }}
         onBlur={() => {
           if (amount.trim() !== "") {
@@ -319,6 +334,28 @@ export function PriceForm({
       </div>
 
       <FormError message={error} />
+      {doubt ? (
+        <div
+          role="alert"
+          className="flex flex-col gap-3 rounded-md border border-signal-line bg-signal-soft px-4 py-3"
+        >
+          <p className="flex items-start gap-2 text-sm text-fg">
+            <Icon name="alert" size={14} className="mt-0.5 shrink-0" />
+            <span>{doubt.text}</span>
+          </p>
+          <div>
+            <Button
+              type="button"
+              variant="primary"
+              className="max-md:min-h-11"
+              loading={pending}
+              onClick={() => doubt.again()}
+            >
+              Ja, spara ändå
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <Input
         label="Anteckning"

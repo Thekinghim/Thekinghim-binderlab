@@ -6,11 +6,12 @@ import { useId, useState, useTransition, type FormEvent } from "react";
 import { Sheet } from "@/app/(app)/lager/_components/sheet";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
-import { useT } from "@/i18n/client";
+import { useFormat, useT } from "@/i18n/client";
 import { cn } from "@/lib/cn";
 
 import { MAX_PACKS } from "../lager/_lib/schemas";
 import { addReceipt, setHomeCount } from "../vart-lager/actions";
+import { ReceiptPriceNote, useReceiptPrice } from "../vart-lager/_components/receipt-price";
 import { parsePackCount, type StockBadge } from "./model";
 
 export interface StockListRow {
@@ -24,6 +25,10 @@ export interface StockListRow {
   readonly sold7: number;
   readonly lastsDays: number | null;
   readonly badge: StockBadge;
+  /** Dagens inköpspris (öre), eller null. Förifylls i leveransformuläret. */
+  readonly unitCostOre?: number | null;
+  /** Egen produkt (mystery pack): packas, så leveransen frågar inte efter pris. */
+  readonly own?: boolean;
 }
 
 export interface StockPlace {
@@ -215,6 +220,10 @@ function StockForms({
   const [busy, setBusy] = useState<"add" | "count" | null>(null);
   const [pending, start] = useTransition();
   const placeName = place?.name ?? t.common.homeFallback;
+  const r2 = t.r2.t3;
+  const f = useFormat();
+  // Leveransen frågar vad packen kostade (förifyllt med dagens pris); inte för egna produkter.
+  const price = useReceiptPrice(row.unitCostOre ?? null, row.own !== true);
 
   const fail = (error: string | undefined) =>
     toast({
@@ -230,17 +239,47 @@ function StockForms({
       setDeliveryError(parsed.error === "max" ? t.stock.qtyMax(MAX_PACKS) : t.stock.qtyMin1);
       return;
     }
+    if (price.state.kind === "invalid") return;
     setDeliveryError(undefined);
     setBusy("add");
+    // Med frågan framme (konstigt pris) är knappen "Ja, spara ändå".
+    const confirmed = price.doubt !== null;
     start(async () => {
       const res = await addReceipt({
         titleId: row.titleId,
         ...(place ? { warehouseId: place.id } : {}),
         quantity: parsed.n,
+        ...(price.ore === undefined ? {} : { unitCostOre: price.ore, confirmed }),
       }).catch(() => ({ ok: false as const, error: t.common.offlineRetry }));
       setBusy(null);
+      if ("doubt" in res) {
+        price.setDoubt(res.doubt);
+        return;
+      }
       if (!res.ok) return fail(res.error);
-      toast({ title: t.stock.added(parsed.n, placeName), tone: "ok" });
+      const p = res.data.price;
+      const kr = (ore: number) => (ore % 100 === 0 ? f.sek(ore / 100) : f.kronor(ore / 100));
+      const notes = [
+        p.status === "saved" && p.unitCostOre !== undefined
+          ? r2.receiptPriceSaved(kr(p.unitCostOre))
+          : null,
+        // En del räknades av från det som var beställt: säg vad som fortfarande väntas.
+        (res.data.stillOnTheWay ?? 0) > 0 ? r2.stillOnWay(res.data.stillOnTheWay!) : null,
+      ].filter((x): x is string => x !== null);
+      toast({
+        title: t.stock.added(parsed.n, placeName),
+        ...(notes.length > 0 ? { description: notes.join(" ") } : {}),
+        tone: "ok",
+      });
+      // Packen är sparade men priset gick inte att spara: säg det tydligt.
+      if (p.status === "failed") {
+        toast({
+          title: r2.receiptPriceFailedTitle,
+          description: r2.receiptPriceFailed(t.serverError(p.error ?? "")),
+          tone: "critical",
+          duration: 12_000,
+        });
+      }
       router.refresh();
       onDone(place?.id ?? null, res.data.onHand);
     });
@@ -331,6 +370,34 @@ function StockForms({
             aria-describedby={deliveryError ? `${ids}-add-msg` : undefined}
             className={FIELD}
           />
+          {row.own === true ? null : (
+            <>
+              <label htmlFor={`${ids}-price`} className="label text-subtle">
+                {r2.receiptPriceLabel}
+              </label>
+              <div className="relative">
+                <input
+                  id={`${ids}-price`}
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="0.00"
+                  value={price.text}
+                  onChange={(e) => price.setText(e.target.value)}
+                  aria-invalid={price.state.kind === "invalid" ? true : undefined}
+                  className={cn(FIELD, "pr-12")}
+                />
+                <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-base text-subtle">
+                  kr
+                </span>
+              </div>
+              <ReceiptPriceNote
+                titleId={row.titleId}
+                currentOre={row.unitCostOre ?? null}
+                price={price}
+                className="text-base"
+              />
+            </>
+          )}
           <button
             type="submit"
             disabled={pending}
@@ -339,8 +406,8 @@ function StockForms({
               "border-inverse bg-inverse text-on-inverse active:bg-inverse-hover",
             )}
           >
-            <Icon name="plus" size={18} />
-            {busy === "add" ? t.common.saving : t.stock.add}
+            {price.doubt ? null : <Icon name="plus" size={18} />}
+            {busy === "add" ? t.common.saving : price.doubt ? r2.priceSaveAnyway : t.stock.add}
           </button>
         </div>
         {deliveryError ? (

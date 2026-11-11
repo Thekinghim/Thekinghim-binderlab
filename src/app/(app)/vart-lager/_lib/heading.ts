@@ -7,6 +7,7 @@ import { formatInt, NBSP } from "@/lib/format";
 
 import { plural } from "../../lager/_lib/display";
 import { needsPurchase, type VartLagerModel } from "./model";
+import { stepsText } from "./steps";
 
 export function headingOf(m: Pick<VartLagerModel, "totals" | "lowDays" | "rows">): {
   title: string;
@@ -15,7 +16,16 @@ export function headingOf(m: Pick<VartLagerModel, "totals" | "lowDays" | "rows">
   const t = m.totals;
   const title = `${formatInt(t.home)}${NBSP}pack i lager.`;
   if (t.negative > 0) {
-    return { title, aside: `${plural(t.negative, "titel", "titlar")} under 0. Räkna om.` };
+    // En titel under 0 som också ska fyllas på: båda stegen, samma text som på Inköp.
+    const neg = m.rows.filter((r) => r.negative);
+    const one = neg.length === 1 ? neg[0]! : null;
+    const steps = one ? stepsText(true, one.action) : null;
+    if (one && steps) return { title, aside: `${one.name}: ${steps}` };
+    const more = neg.some((r) => r.action !== null);
+    return {
+      title,
+      aside: `${plural(t.negative, "titel", "titlar")} under 0. ${more ? "Räkna om först." : "Räkna om."}`,
+    };
   }
   // Packa och beställ: samma titlar som Att göra-listan och Inköp (needsPurchase).
   const todo = m.rows.filter((r) => !r.negative && needsPurchase(r));
