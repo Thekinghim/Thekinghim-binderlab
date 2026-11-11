@@ -73,6 +73,38 @@ describe("groupVisits", () => {
     expect(countWithVisits(items)).toBe(2);
   });
 
+  it("packen gäller titlarna i besöket, inte allt planen fyller upp i samma automat", () => {
+    // Seedens BL-001: en titel är slut (6 pack), planen fyller också upp två andra (3 + 2).
+    // Raden säger "1 titel · 6 pack", som Fyll på ("Du fyller på 6 pack"), inte 11.
+    const plan = {
+      days: [
+        {
+          date: TODAY,
+          stops: [
+            {
+              machineId: "m1",
+              needBy: TODAY,
+              late: false,
+              totalPacks: 11,
+              packs: [
+                { titleId: "a", quantity: 6 },
+                { titleId: "b", quantity: 3 },
+                { titleId: "c", quantity: 2 },
+              ],
+            },
+          ],
+        },
+      ],
+    } as const;
+    const one = groupVisits([refill("m1", "a")], plan, TODAY)[0];
+    expect(one).toMatchObject({ type: "visit", visit: { packs: 6 } });
+    const two = groupVisits([refill("m1", "a"), refill("m1", "c")], plan, TODAY)[0];
+    expect(two).toMatchObject({ type: "visit", visit: { packs: 8 } });
+    // Titeln finns inte i packlistan (vårt lager är tomt): inga pack på raden.
+    const none = groupVisits([refill("m1", "x")], plan, TODAY)[0];
+    expect(none).toMatchObject({ type: "visit", visit: { packs: 0 } });
+  });
+
   it("andra sorter står kvar som egna rader, i samma ordning", () => {
     const items = [other("p1", "now"), refill("m1", "a"), other("p2"), refill("m1", "b")];
     const rows = groupVisits(items, null);
@@ -132,6 +164,11 @@ describe("visitWhen och visitTitle", () => {
   it("utan dag: i dag när något är slut, annars snart", () => {
     expect(visitWhen(v(null, "now"), TODAY)).toBe("i dag");
     expect(visitWhen(v(null, "soon"), TODAY)).toBe("snart");
+  });
+  it("ett besök som gäller nu säger i dag, också när planens dag är senare", () => {
+    // Raden står under "I dag" (t.ex. under larmgränsen): den får inte säga "senast torsdag".
+    expect(visitWhen(v("2026-11-05", "now"), TODAY)).toBe("i dag");
+    expect(visitWhen(v("2026-11-03", "now"), TODAY)).toBe("i dag");
   });
   it("Åk till BL-003 senast torsdag", () => {
     expect(visitTitle(v("2026-11-05"), "BL-003", TODAY)).toBe("Åk till BL-003 senast torsdag");

@@ -589,6 +589,8 @@ function RefillDialog({ action }: { action: RefillActionView }) {
 
   const submit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    // Dubbeltryck eller Enter två gånger: en påfyllning sparas bara en gång.
+    if (pending) return;
     const n = Number(quantity.trim());
     if (quantity.trim() === "" || !Number.isInteger(n) || n < 1) {
       setQuantityError("Skriv hur många pack du fyllde på.");
@@ -717,10 +719,11 @@ function RefillDialog({ action }: { action: RefillActionView }) {
           </label>
           <FormError message={error} />
           <div className="flex flex-col-reverse gap-2 border-t border-line pt-4 sm:flex-row sm:justify-end">
-            <Button type="button" onClick={close}>
+            {/* Telefonen: 44 px tryckyta. */}
+            <Button type="button" onClick={close} className="max-md:min-h-11">
               Avbryt
             </Button>
-            <Button type="submit" variant="primary" loading={pending}>
+            <Button type="submit" variant="primary" loading={pending} className="max-md:min-h-11">
               Spara
             </Button>
           </div>

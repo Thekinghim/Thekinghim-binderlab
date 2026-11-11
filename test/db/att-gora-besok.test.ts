@@ -173,7 +173,12 @@ describe("besök i Att göra", () => {
     const rows = groupVisits(state.items, visits.plan, TODAY);
     const visit = rows.flatMap((r) => (r.type === "visit" ? [r.visit] : []));
     expect(visit).toHaveLength(1);
-    expect(visit[0]).toMatchObject({ machineId, needBy: stop!.needBy, packs: stop!.totalPacks });
+    // Packen på raden: packlistans antal för besökets titlar (inte allt planen fyller upp).
+    const refillTitles = new Set(refills.map((t) => t.key.split(":")[2]));
+    const packs = stop!.packs
+      .filter((p) => refillTitles.has(p.titleId))
+      .reduce((n, p) => n + p.quantity, 0);
+    expect(visit[0]).toMatchObject({ machineId, needBy: stop!.needBy, packs });
     expect(visit[0]!.items).toHaveLength(2);
     // Menyns räknare: ett besök är en sak.
     expect(countWithVisits(state.items)).toBe(state.items.length - 1);

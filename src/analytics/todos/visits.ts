@@ -25,6 +25,8 @@ export interface VisitPlanDays {
       readonly needBy: IsoDate;
       readonly late: boolean;
       readonly totalPacks: number;
+      /** Packlistan per titel. Med den räknas besökets pack bara för titlarna i besöket. */
+      readonly packs?: ReadonlyArray<{ readonly titleId: string; readonly quantity: number }>;
     }>;
   }>;
   /** Automater utan besök i veckans plan, med sin senaste dag (längre fram), om den finns. */
@@ -45,7 +47,12 @@ export interface TodoVisit {
   readonly needBy: IsoDate | null;
   /** Dagen besöket är planerat (besöksdag i planen), eller null. */
   readonly planned: IsoDate | null;
-  /** Pack att ta med enligt besöksplanens packlista, eller null utan stopp. */
+  /**
+   * Pack att fylla på för titlarna i besöket, enligt besöksplanens packlista (samma antal som
+   * raderna i Drift > Besök), eller null utan stopp. Planen kan lägga fler titlar i samma
+   * besök (fyller upp när man ändå är där); de räknas inte här, så att "1 titel · 6 pack"
+   * gäller samma titel.
+   */
   readonly packs: number | null;
   /** Intäkt i risk 7 dagar (öre), summan av punkternas belopp i hela kronor. */
   readonly atStakeOre: number;
@@ -66,6 +73,12 @@ export function refillMachineOf(item: Pick<TodoItem, "kind" | "key" | "evidence"
   return item.evidence.machineIds[0] ?? item.key.split(":")[1] ?? null;
 }
 
+/** Titeln för en påfyllningspunkt ('refill:<automat>:<titel>'), annars null. */
+export function refillTitleOf(item: Pick<TodoItem, "kind" | "key" | "evidence">): string | null {
+  if (item.kind !== "refill") return null;
+  return item.key.split(":")[2] ?? item.evidence.titleIds[0] ?? null;
+}
+
 /** Hela kronor per punkt innan summan tas, som rubriken på Att göra (stakeOf). */
 function wholeKronor(ore: number): number {
   return Math.round(Math.max(ore, 0) / 100) * 100;
@@ -83,19 +96,29 @@ export function groupVisits(
 ): TodoEntry[] {
   const stops = new Map<
     string,
-    { needBy: IsoDate; planned: IsoDate | null; packs: number | null }
+    {
+      needBy: IsoDate;
+      planned: IsoDate | null;
+      total: number | null;
+      byTitle: ReadonlyMap<string, number> | null;
+    }
   >();
   for (const d of plan?.days ?? []) {
     for (const s of d.stops) {
       if (!stops.has(s.machineId)) {
-        stops.set(s.machineId, { needBy: s.needBy, planned: d.date, packs: s.totalPacks });
+        stops.set(s.machineId, {
+          needBy: s.needBy,
+          planned: d.date,
+          total: s.totalPacks,
+          byTitle: s.packs ? new Map(s.packs.map((p) => [p.titleId, p.quantity])) : null,
+        });
       }
     }
   }
   // Utan besök den här veckan: planens senaste dag står kvar (längre fram), utan packlista.
   for (const n of plan?.notNeeded ?? []) {
     if (n.needBy !== null && !stops.has(n.machineId)) {
-      stops.set(n.machineId, { needBy: n.needBy, planned: null, packs: null });
+      stops.set(n.machineId, { needBy: n.needBy, planned: null, total: null, byTitle: null });
     }
   }
   const byMachine = new Map<string, TodoItem[]>();
@@ -133,7 +156,11 @@ export function groupVisits(
               ),
         needBy: stop?.needBy ?? null,
         planned: stop?.planned ?? null,
-        packs: stop?.packs ?? null,
+        packs: stop
+          ? stop.byTitle
+            ? group.reduce((n, x) => n + (stop.byTitle?.get(refillTitleOf(x) ?? "") ?? 0), 0)
+            : stop.total
+          : null,
         atStakeOre: sumOre(group.map((x) => wholeKronor(x.atStakeOre ?? 0))),
         items: group,
       },
@@ -164,13 +191,16 @@ export function countWithVisits(items: readonly TodoItem[]): number {
 }
 
 /**
- * När besöket ska göras, i ord: "i dag" (också när dagen passerat), "senast i morgon",
- * "senast torsdag" (inom en vecka), "senast tor 19 nov." (längre fram). Utan dag ur planen:
- * "i dag" när något redan är slut, annars "snart".
+ * När besöket ska göras, i ord: "i dag" (också när dagen passerat, och alltid när besöket
+ * gäller nu), "senast i morgon", "senast torsdag" (inom en vecka), "senast 19 nov." (längre
+ * fram). Utan dag ur planen: "snart".
  */
 export function visitWhen(visit: Pick<TodoVisit, "needBy" | "level">, today: IsoDate): string {
   const { needBy } = visit;
-  if (needBy === null) return visit.level === "now" ? "i dag" : "snart";
+  // Står besöket under "I dag" (något är slut eller under larmgränsen) säger raden i dag,
+  // också när planens dag är senare: raden och gruppen får aldrig säga olika.
+  if (visit.level === "now") return "i dag";
+  if (needBy === null) return "snart";
   if (needBy <= today) return "i dag";
   if (needBy === addDays(today, 1)) return "senast i morgon";
   if (daysBetween(today, needBy) < 7) return `senast ${weekdayName(dayOfWeek(needBy))}`;
