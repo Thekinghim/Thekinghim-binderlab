@@ -53,7 +53,9 @@ create trigger t20_stamp_insert before insert on public.purchase_requests
 alter table public.purchase_requests enable row level security;
 revoke all on table public.purchase_requests from anon, authenticated, service_role;
 grant select, insert on table public.purchase_requests to authenticated;
-grant select, insert on table public.purchase_requests to service_role;
+-- Servicerollen som för övriga tabeller (update ger den bara triggernas fel); appen skriver
+-- aldrig med den här.
+grant select, insert, update on table public.purchase_requests to service_role;
 
 create policy purchase_requests_select on public.purchase_requests
   for select to authenticated
