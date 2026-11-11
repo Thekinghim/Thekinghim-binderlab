@@ -408,6 +408,33 @@ describe("Packa N omgångar före en dag (räknat från facken)", () => {
     expect(weekend?.before).toBe("2026-11-15");
   });
 
+  it("minus hemma OCH tomt fack: ett besked med summan, inte två likadana (R2-9)", async () => {
+    const { plan, mergedPack, sv, en } = await load();
+    const p = plan([facts({ onHand: 0 })]);
+    const args = { places: [{ id: "p1" }], inPlaces: { p1: -14 }, batchSize: 14, plan: p };
+    expect(mergedPack({ ...args, t: sv })).toEqual({
+      placeId: "p1",
+      fixBatches: 1,
+      slotBatches: 1,
+      batches: 2,
+      packs: 28,
+      text: "Packa 2 omgångar nu. 1 rättar minuset. 1 ska till automaten. BL-001 är tom.",
+    });
+    expect(mergedPack({ ...args, t: en })?.text).toBe(
+      "Pack 2 batches now. 1 fixes the minus. 1 is for the machine. BL-001 is empty.",
+    );
+    // Facket blir tomt om några dagar: samma besked, med dagen.
+    expect(mergedPack({ ...args, plan: plan([facts()]), t: sv })?.text).toBe(
+      "Packa 2 omgångar nu. 1 rättar minuset. 1 ska till automaten. BL-001 är tom om ca 3 dagar.",
+    );
+    // Inget minus, ett udda minus (−1) eller inget att packa: inget att slå ihop.
+    expect(mergedPack({ ...args, inPlaces: { p1: 0 }, t: sv })).toBeNull();
+    expect(mergedPack({ ...args, inPlaces: { p1: -1 }, t: sv })).toBeNull();
+    expect(
+      mergedPack({ ...args, plan: plan([facts({ onHand: 60, sold: 14 })]), t: sv }),
+    ).toBeNull();
+  });
+
   it("ny automat (5 dagar i drift): takten räknas på dagarna sedan start, som i Att göra", async () => {
     const { plan } = await load();
     // 10 sålda på 5 dagar = 2 om dagen (inte 10/14). 6 pack: slut torsdag 12, tomt fredag 13.

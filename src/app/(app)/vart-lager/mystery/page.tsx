@@ -15,7 +15,14 @@ import { CostNotice } from "./_components/cost-notice";
 import { StockLine } from "./_components/stock-line";
 import { krAuto } from "./_lib/kr";
 import { loadMysteryOverviewFor, type MysteryOverview, type MysteryTitle } from "./_lib/data";
-import { averageCost, defaultPlace, maxBatches, packHref, packSentence } from "./_lib/model";
+import {
+  averageCost,
+  defaultPlace,
+  maxBatches,
+  mergedPack,
+  packHref,
+  packSentence,
+} from "./_lib/model";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getT();
@@ -101,7 +108,17 @@ function TitleCard({
   const f = formatters(m.locale);
   const kr = (ore: number) => krAuto(f, ore);
   const cap = capacityLine(view, t, m);
-  const sentence = packSentence(t.toPack, m);
+  // Minus hemma och ett fack som behöver en omgång: ett besked (i rutan), inte två.
+  const merged = view.canPack
+    ? mergedPack({
+        places: view.places,
+        inPlaces: t.inPlaces,
+        batchSize: t.recipe?.batchSize ?? null,
+        plan: t.toPack,
+        t: m,
+      })
+    : null;
+  const sentence = merged ? null : packSentence(t.toPack, m);
   const cost = t.recipe && view.seesMoney ? averageCost(t.recipe, view.prices) : null;
   const differs =
     cost?.perPackOre !== null &&
@@ -131,6 +148,7 @@ function TitleCard({
             batchSize={t.recipe?.batchSize ?? null}
             canPack={view.canPack}
             canCount={canSetCost}
+            merged={merged}
             t={m}
           />
           {cap ? <p className="text-base text-fg">{cap}</p> : null}

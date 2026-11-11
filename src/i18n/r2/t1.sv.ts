@@ -63,6 +63,13 @@ export const t1 = {
     minusOdd: (n: number, place: string) =>
       `Det står ${f.int(n)} ${inPlace(place)}. Det kan inte stämma.`,
     packNow: (n: number) => `Packa ${batches(n)} nu`,
+    /**
+     * Minus hemma OCH ett fack som behöver en omgång: ett besked i stället för två.
+     * "Packa 2 omgångar nu. 1 rättar minuset. 1 ska till automaten. BL-001 är tom."
+     */
+    bothFix: (n: number) => `${f.int(n)} rättar minuset.`,
+    bothSlot: (n: number) =>
+      n === 1 ? "1 ska till automaten." : `${f.int(n)} ska till automaterna.`,
     countNow: "Räkna om lagret",
     askOwnerCount: "Be ägaren räkna om lagret.",
     /** "Packa 1 omgång före fredag." */

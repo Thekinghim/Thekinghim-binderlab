@@ -19,6 +19,7 @@ import {
   batchesForPacks,
   defaultPlace,
   maxBatches,
+  mergedPack,
   mysteryCalc,
   packSentence,
   recipeOdds,
@@ -82,7 +83,17 @@ export default async function MysteryPackPage({
       )
     : 1;
   const odds = recipe ? recipeOdds(recipe) : null;
-  const sentence = packSentence(t.toPack, m);
+  // Minus hemma och ett fack som behöver en omgång: ett besked (i rutan), inte två.
+  const merged = view.canPack
+    ? mergedPack({
+        places: view.places,
+        inPlaces: t.inPlaces,
+        batchSize: recipe?.batchSize ?? null,
+        plan: t.toPack,
+        t: m,
+      })
+    : null;
+  const sentence = merged ? null : packSentence(t.toPack, m);
   // Kalkylen: innehållet × dagens inköpspriser, priset i automaten, vinst och marginal.
   const prices = Object.fromEntries(view.prices);
   const calc =
@@ -121,6 +132,7 @@ export default async function MysteryPackPage({
           batchSize={recipe?.batchSize ?? null}
           canPack={view.canPack}
           canCount={canSetCost}
+          merged={merged}
           t={m}
         />
       </div>

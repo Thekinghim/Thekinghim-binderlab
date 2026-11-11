@@ -45,6 +45,8 @@ export const t1: R2T1 = {
       `The app shows ${f.int(n)} ${inPlace(place)}. Someone refilled without pressing Pack.`,
     minusOdd: (n, place) => `The app shows ${f.int(n)} ${inPlace(place)}. That cannot be right.`,
     packNow: (n) => `Pack ${batches(n)} now`,
+    bothFix: (n) => (n === 1 ? "1 fixes the minus." : `${f.int(n)} fix the minus.`),
+    bothSlot: (n) => (n === 1 ? "1 is for the machine." : `${f.int(n)} are for the machines.`),
     countNow: "Count the stock",
     askOwnerCount: "Ask the owner to count the stock.",
     packBefore: (n, weekday) => `Pack ${batches(n)} before ${weekday}.`,

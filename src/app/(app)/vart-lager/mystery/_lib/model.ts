@@ -456,6 +456,57 @@ export function wholeBatchesDown(packs: number, batchSize: number): number {
   return Math.floor(Math.max(0, packs) / batchSize) * batchSize;
 }
 
+/** Ett besked när lagret står på minus OCH ett fack behöver en omgång (R2-9). */
+export interface MergedPack {
+  /** Lagret som står på minus: där packas allt. */
+  readonly placeId: string;
+  /** Omgångar som rättar minuset. */
+  readonly fixBatches: number;
+  /** Omgångar till facken (samma tal som meningen annars visar). */
+  readonly slotBatches: number;
+  readonly batches: number;
+  readonly packs: number;
+  /** "Packa 2 omgångar nu. 1 rättar minuset. 1 ska till automaten. BL-001 är tom." */
+  readonly text: string;
+}
+
+/**
+ * Minus i ETT lager som är hela omgångar (någon har fyllt på utan att trycka Packa) och
+ * samtidigt ett fack som behöver en omgång: förut stod två nästan likadana uppmaningar på
+ * kortet ("Packa 1 omgång nu" i rutan och "Packa 1 omgång nu. BL-001 är tom." under). Båda
+ * behövs, så de blir EN: antalet läggs ihop, och knappen packar allt i lagret som står på
+ * minus. null när det inte finns något att slå ihop (då visas rutan och meningen som förut).
+ */
+export function mergedPack(x: {
+  readonly places: readonly Pick<Place, "id">[];
+  readonly inPlaces: Readonly<Record<string, number>>;
+  readonly batchSize: number | null | undefined;
+  readonly plan: MysteryPackPlan | null;
+  readonly t: Messages;
+}): MergedPack | null {
+  const { plan, batchSize } = x;
+  if (!batchSize || !plan || plan.basis !== "slots" || plan.batches <= 0 || !plan.first) {
+    return null;
+  }
+  const fixes = x.places.flatMap((p) => {
+    const fix = minusFix(x.inPlaces[p.id] ?? 0, batchSize);
+    return fix?.kind === "pack" ? [{ placeId: p.id, batches: fix.batches }] : [];
+  });
+  const [only] = fixes;
+  if (!only || fixes.length !== 1) return null;
+  const batches = only.batches + plan.batches;
+  if (batches > MAX_BATCHES) return null;
+  const m = x.t.r2.t1.mystery;
+  return {
+    placeId: only.placeId,
+    fixBatches: only.batches,
+    slotBatches: plan.batches,
+    batches,
+    packs: batches * batchSize,
+    text: `${m.packNow(batches)}. ${m.bothFix(only.batches)} ${m.bothSlot(plan.batches)} ${slotText(plan.first, m)}`,
+  };
+}
+
 /**
  * Omgångar att packa nu, räknat från facken. EN funktion för Mystery-sidorna och för
  * inköpsplanen (src/server/purchasing/mystery-pack-now.ts), så att "Packa 1 omgång" är samma

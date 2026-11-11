@@ -3,13 +3,17 @@ import { Fragment } from "react";
 
 import type { Messages } from "@/i18n";
 
-import { countHref, minusFix, packInPlaceHref, type Place } from "../_lib/model";
+import { countHref, minusFix, packInPlaceHref, type MergedPack, type Place } from "../_lib/model";
 
 /**
  * Saldot per lager och i automaterna ("Kontoret 0 · I automaterna 9"). Ett minus visas i
  * signalfärgen, och under raden står vad som rättar det: "Packa 1 omgång nu" när minuset är
  * hela omgångar (någon har fyllt på utan att trycka Packa), annars en länk till
  * inventeringen av lagret. Den som inte får räkna om lagret (påfyllaren) ser bara texten.
+ *
+ * `merged`: ett fack behöver samtidigt en omgång. Då står allt i minus-rutan som ETT besked
+ * ("Packa 2 omgångar nu. 1 rättar minuset. 1 ska till automaten. BL-001 är tom.") med en knapp,
+ * och sidan visar inte meningen om facket en gång till.
  */
 export function StockLine({
   titleId,
@@ -19,6 +23,7 @@ export function StockLine({
   batchSize,
   canPack,
   canCount,
+  merged,
   t,
 }: {
   titleId: string;
@@ -30,6 +35,8 @@ export function StockLine({
   canPack: boolean;
   /** Får räkna om lagret (ägare och admin). */
   canCount: boolean;
+  /** Minuset och fackets omgång som ett besked (mergedPack), annars null. */
+  merged?: MergedPack | null;
   t: Messages;
 }) {
   const m = t.r2.t1.mystery;
@@ -64,12 +71,19 @@ export function StockLine({
               ? m.minus(quantity, place.name)
               : m.minusOdd(quantity, place.name)}
           </p>
+          {merged?.placeId === place.id ? (
+            <p className="text-base font-medium text-signal-fg">{merged.text}</p>
+          ) : null}
           {fix?.kind === "pack" && canPack ? (
             <Link
-              href={packInPlaceHref(titleId, place.id, fix.packs)}
+              href={packInPlaceHref(
+                titleId,
+                place.id,
+                merged?.placeId === place.id ? merged.packs : fix.packs,
+              )}
               className="inline-flex min-h-11 w-fit items-center rounded-sm border border-line-strong bg-surface px-4 text-base font-medium text-fg hover:bg-hover"
             >
-              {m.packNow(fix.batches)}
+              {m.packNow(merged?.placeId === place.id ? merged.batches : fix.batches)}
             </Link>
           ) : canCount ? (
             <Link

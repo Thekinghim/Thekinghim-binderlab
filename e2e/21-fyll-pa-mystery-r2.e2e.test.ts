@@ -332,7 +332,7 @@ describe("Mystery: omgångar räknade från facken, och minus i lagret", () => {
     await shot(page, "r2-t1-mystery-packa-nu");
   });
 
-  it("−14 i lagret: signalfärg och 'Packa 1 omgång nu'; −1: 'Räkna om lagret'", async () => {
+  it("−14 i lagret och tomt fack: ETT besked, 'Packa 2 omgångar nu'; −1: 'Räkna om lagret'", async () => {
     await adjust(central, mysteryId, -14);
     const page = await ownerPage();
     await visit(page, "/vart-lager/mystery");
@@ -340,9 +340,17 @@ describe("Mystery: omgångar räknade från facken, och minus i lagret", () => {
     await c
       .getByText(`Det står −14 ${inCentral}. Någon har fyllt på utan att trycka Packa.`)
       .waitFor();
-    const packNow = c.getByRole("link", { name: "Packa 1 omgång nu" });
+    // Facket är också tomt: minuset och fackets omgång står som ETT besked med summan
+    // (förut två nästan likadana "Packa 1 omgång nu").
+    const text = await plain(c);
+    expect(text).toContain(
+      `Packa 2 omgångar nu. 1 rättar minuset. 1 ska till automaten. ${machineCode} är tom.`,
+    );
+    expect(text).not.toContain(`Packa 1 omgång nu. ${machineCode} är tom.`);
+    expect(await c.getByRole("link", { name: /Packa \d+ omgång(ar)? nu/ }).count()).toBe(1);
+    const packNow = c.getByRole("link", { name: "Packa 2 omgångar nu" });
     expect(await packNow.getAttribute("href")).toBe(
-      `/vart-lager/mystery/${mysteryId}?packa=14&lager=${central}#packa`,
+      `/vart-lager/mystery/${mysteryId}?packa=28&lager=${central}#packa`,
     );
     await expectNoSideScroll(page);
     await expectTapTargets(page, "main li");
