@@ -371,6 +371,18 @@ export function packInPlaceHref(titleId: string, placeId: string, packs: number)
   return `/vart-lager/mystery/${titleId}?packa=${Math.trunc(packs)}&lager=${placeId}#packa`;
 }
 
+/**
+ * Länken för "Packa" på Vårt lager, Inköp och delägarens inköpslista: i lagret där ett minus
+ * ska rättas (`placeId`, samma länk som Mystery-kortets knapp), annars den vanliga.
+ */
+export function packActionHref(
+  titleId: string,
+  packs: number | null | undefined,
+  placeId: string | null | undefined,
+): string {
+  return placeId && packs ? packInPlaceHref(titleId, placeId, packs) : packHref(titleId, packs);
+}
+
 /** Inventeringen av ett eget lager. */
 export function countHref(placeId: string): string {
   return `/vart-lager/inventering?lager=${placeId}`;
@@ -470,6 +482,48 @@ export interface MergedPack {
   readonly text: string;
 }
 
+/** Minuset och fackens omgångar som EN packning (packWithMinus). */
+export interface PackWithMinus {
+  /** Lagret som står på minus: där packas allt. */
+  readonly placeId: string;
+  /** Omgångar som rättar minuset. */
+  readonly fixBatches: number;
+  /** Omgångar till facken. */
+  readonly slotBatches: number;
+  /** Allt som ska packas nu: fixBatches + slotBatches. */
+  readonly batches: number;
+}
+
+/**
+ * Regeln för minus, på ETT ställe: Mystery-kortet (mergedPack) och inköpsplanen
+ * (src/server/purchasing/mystery-pack-now.ts) anropar den, så att Mystery, Vårt lager, Inköp
+ * och delägarens inköpslista säger samma antal och köper delar för samma antal.
+ *
+ * Exakt ETT lager står på minus i hela omgångar (−14 med 14 per omgång: någon har fyllt på
+ * utan att trycka Packa): omgångarna som rättar minuset läggs ihop med fackens omgångar och
+ * packas i det lagret. Packningen drar då också delarna som gick åt.
+ *
+ * null = räkna om i stället, eller inget minus: inget lager på minus, ett udda minus (−1),
+ * minus i flera lager, eller fler än MAX_BATCHES omgångar tillsammans.
+ */
+export function packWithMinus(x: {
+  readonly inPlaces: readonly { readonly id: string; readonly quantity: number }[];
+  readonly batchSize: number | null | undefined;
+  /** Omgångar till facken (toPackFromSlots), 0 = inget fack behöver något. */
+  readonly slotBatches: number;
+}): PackWithMinus | null {
+  if (!x.batchSize) return null;
+  const minus = x.inPlaces.filter((p) => p.quantity < 0);
+  const [only] = minus;
+  if (!only || minus.length !== 1) return null;
+  const fix = minusFix(only.quantity, x.batchSize);
+  if (fix?.kind !== "pack") return null;
+  const slotBatches = Math.max(0, Math.trunc(x.slotBatches));
+  const batches = fix.batches + slotBatches;
+  if (batches > MAX_BATCHES) return null;
+  return { placeId: only.id, fixBatches: fix.batches, slotBatches, batches };
+}
+
 /**
  * Minus i ETT lager som är hela omgångar (någon har fyllt på utan att trycka Packa) och
  * samtidigt ett fack som behöver en omgång: förut stod två nästan likadana uppmaningar på
@@ -488,22 +542,20 @@ export function mergedPack(x: {
   if (!batchSize || !plan || plan.basis !== "slots" || plan.batches <= 0 || !plan.first) {
     return null;
   }
-  const fixes = x.places.flatMap((p) => {
-    const fix = minusFix(x.inPlaces[p.id] ?? 0, batchSize);
-    return fix?.kind === "pack" ? [{ placeId: p.id, batches: fix.batches }] : [];
+  const both = packWithMinus({
+    inPlaces: x.places.map((p) => ({ id: p.id, quantity: x.inPlaces[p.id] ?? 0 })),
+    batchSize,
+    slotBatches: plan.batches,
   });
-  const [only] = fixes;
-  if (!only || fixes.length !== 1) return null;
-  const batches = only.batches + plan.batches;
-  if (batches > MAX_BATCHES) return null;
+  if (!both) return null;
   const m = x.t.r2.t1.mystery;
   return {
-    placeId: only.placeId,
-    fixBatches: only.batches,
-    slotBatches: plan.batches,
-    batches,
-    packs: batches * batchSize,
-    text: `${m.packNow(batches)}. ${m.bothFix(only.batches)} ${m.bothSlot(plan.batches)} ${slotText(plan.first, m)}`,
+    placeId: both.placeId,
+    fixBatches: both.fixBatches,
+    slotBatches: both.slotBatches,
+    batches: both.batches,
+    packs: both.batches * batchSize,
+    text: `${m.packNow(both.batches)}. ${m.bothFix(both.fixBatches)} ${m.bothSlot(both.slotBatches)} ${slotText(plan.first, m)}`,
   };
 }
 
@@ -529,6 +581,31 @@ export function toPackFromSlots(x: {
     slots: slotInputs(x.facts, x.today, x.weekShareOf),
     today: x.today,
   });
+}
+
+/**
+ * Talet inköpsplanen får för ett mystery pack (PurchasingInput.mysteryBatches): fackens
+ * omgångar (toPackFromSlots) plus dem som rättar ett minus i hela omgångar (packWithMinus).
+ * Ren, så att samma läge kan prövas mot Mystery-kortet i ett test.
+ */
+export function packNowFor(x: {
+  readonly batchSize: number;
+  /** Färdiga pack per eget lager (ett lager utan rad har 0). */
+  readonly inPlaces: readonly { readonly id: string; readonly quantity: number }[];
+  readonly facts: readonly SlotFacts[];
+  readonly today: IsoDate;
+  readonly weekShareOf?: (machineId: string) => readonly number[] | null | undefined;
+}): { readonly batches: number; readonly fixPlaceId?: string } {
+  const plan = toPackFromSlots({
+    batchSize: x.batchSize,
+    perPlace: x.inPlaces.map((p) => p.quantity),
+    facts: x.facts,
+    today: x.today,
+    ...(x.weekShareOf ? { weekShareOf: x.weekShareOf } : {}),
+  });
+  const slotBatches = plan?.batches ?? 0;
+  const both = packWithMinus({ inPlaces: x.inPlaces, batchSize: x.batchSize, slotBatches });
+  return both ? { batches: both.batches, fixPlaceId: both.placeId } : { batches: slotBatches };
 }
 
 /** Meningen om vad som ska packas, och om den är en uppmaning ("act") eller lugn ("calm"). */

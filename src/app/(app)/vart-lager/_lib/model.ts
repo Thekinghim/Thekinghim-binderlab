@@ -29,6 +29,7 @@ import { AWISH_REFILL_NOTE_PREFIX } from "@/server/awish/refill-deduction";
 
 import {
   factLine,
+  countFirst,
   needAction,
   stepsText,
   toMystery,
@@ -106,6 +107,11 @@ export interface VartLagerInput {
    * Delar i mystery packs: pack av titeln som går åt till omgångarna som ska packas
    * (PurchaseLine.mysteryNeed i inköpsplanen). Ingår redan i `purchase`.
    */
+  /**
+   * Mystery packs där ett minus i hela omgångar rättas med en packning: titel → lagret där
+   * allt packas (PurchaseLine.packNow.fixPlaceId). Raden säger då "Packa", inte "Räkna om".
+   */
+  readonly packFix?: ReadonlyMap<string, string> | null;
   readonly mysteryNeed?: ReadonlyMap<
     string,
     { readonly packs: number; readonly parts: readonly { readonly titleId: string }[] }
@@ -196,6 +202,8 @@ export interface StockTodo {
   readonly unit: string;
   /** Samma sak i pack (för länken till Mystery packs), eller null. */
   readonly packs: number | null;
+  /** Packa i just det här lagret (ett minus i hela omgångar rättas där), annars null. */
+  readonly placeId: string | null;
   /** Under 0 och ska fyllas på: "1. Räkna om. 2. Packa 2 omgångar." Annars null. */
   readonly steps: string | null;
   /** "0 hemma · 9 i automaten · slut om 3 dagar" */
@@ -237,6 +245,7 @@ export function stockTodos(rows: readonly VartLagerRow[]): StockTodo[] {
             qty: null,
             unit: "st",
             packs: null,
+            placeId: null,
             // Under 0 och ska fyllas på: båda stegen, samma text som på Inköp.
             steps: stepsText(true, r.action),
             fact: r.fact,
@@ -249,6 +258,7 @@ export function stockTodos(rows: readonly VartLagerRow[]): StockTodo[] {
             qty: r.action?.qty ?? null,
             unit: r.action?.unit ?? "st",
             packs: r.action?.packs ?? null,
+            placeId: r.action?.placeId ?? null,
             // En del i mystery packs: "16 av dem går till Mystery Pack."
             steps: r.toMystery?.text ?? null,
             fact: r.fact,
@@ -455,6 +465,7 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
       const needQty = retired && !mysteryNeed ? 0 : planQty;
       const own = t.ownProduct === true;
       const share = own ? null : toMystery(needQty, mysteryNeed, titleName);
+      const fixPlaceId = own ? (input.packFix?.get(t.id) ?? null) : null;
       return {
         titleId: t.id,
         name: t.name,
@@ -468,12 +479,12 @@ export function buildVartLagerModel(input: VartLagerInput): VartLagerModel {
         retired,
         status,
         runsOut,
-        negative: home < 0,
+        negative: countFirst(home, fixPlaceId),
         own,
         needQty,
         toMystery: share,
         action: needsPurchase({ retired, needQty, runsOut, toMystery: share })
-          ? needAction({ own, needQty, mysteryBatchSize: t.mysteryBatchSize, home })
+          ? needAction({ own, needQty, mysteryBatchSize: t.mysteryBatchSize, home, fixPlaceId })
           : null,
         fact: factLine({
           home,

@@ -4,7 +4,7 @@ import { en } from "@/i18n/en";
 import { sv } from "@/i18n/sv";
 
 import type { VartLagerRow } from "../vart-lager/_lib/model";
-import { needAction, toMystery } from "../vart-lager/_lib/steps";
+import { countFirst, needAction, toMystery } from "../vart-lager/_lib/steps";
 import {
   buyList,
   parsePackCount,
@@ -155,6 +155,37 @@ describe("Inköpslistan", () => {
     expect(list.items[0]).toMatchObject({ qty: 28, batches: 2, countFirst: true, home: 0 });
     expect(sv.r2.t3.countFirst(sv.r2.t3.packBatches(2))).toBe("1. Räkna om. 2. Packa 2 omgångar.");
     expect(en.r2.t3.countFirst(en.r2.t3.packBatches(1))).toBe("1. Count again. 2. Pack 1 batch.");
+  });
+
+  it("mystery pack med −14 hemma (hela omgångar): packa i det lagret, inget Räkna om", () => {
+    // Samma besked som Mystery-kortet: "Packa 2 omgångar nu. 1 rättar minuset. 1 ska till
+    // automaten." Planens rad bär lagret (packNow.fixPlaceId) och antalet (28 pack).
+    const action = needAction({
+      own: true,
+      needQty: 28,
+      mysteryBatchSize: 14,
+      home: -14,
+      fixPlaceId: "hemma",
+    });
+    const list = buyList([
+      row({
+        titleId: "m",
+        name: "Mystery Pack",
+        home: -14,
+        negative: countFirst(-14, "hemma"),
+        own: true,
+        needQty: 28,
+        runsOut: true,
+        action,
+      }),
+    ]);
+    expect(list.items[0]).toMatchObject({
+      qty: 28,
+      batches: 2,
+      countFirst: false,
+      packPlaceId: "hemma",
+    });
+    expect(en.r2.t3.packBatches(2)).toBe("Pack 2 batches");
   });
 
   it("utan inköpsplan: titlarna som tar slut, utan antal", () => {

@@ -15,7 +15,7 @@ import { TodoList, type TodoItem } from "./_components/todo-list";
 import { loadVartLagerFor } from "./_lib/data";
 import { headingOf } from "./_lib/heading";
 import { stockTodos } from "./_lib/model";
-import { packHref } from "./mystery/_lib/model";
+import { packActionHref } from "./mystery/_lib/model";
 
 /** Vårt lager; i Enkel vy Lager på personens språk. */
 export async function generateMetadata(): Promise<Metadata> {
@@ -53,7 +53,7 @@ export default async function VartLagerPage() {
       t.verb === "Beställ"
         ? "/prognos"
         : t.verb === "Packa"
-          ? packHref(t.titleId, t.packs)
+          ? packActionHref(t.titleId, t.packs, t.placeId)
           : `#rad-${t.titleId}`,
   }));
   const awish = view.rows.some((r) => r.latest?.automatic);

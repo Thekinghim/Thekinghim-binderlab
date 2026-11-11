@@ -28,7 +28,7 @@ import { PlanView } from "./_components/plan-view";
 import { SuppliersView } from "./_components/suppliers-view";
 import { ValuationView } from "./_components/valuation-view";
 import { PageHead } from "../vart-lager/_components/page-head";
-import { packHref } from "../vart-lager/mystery/_lib/model";
+import { packActionHref } from "../vart-lager/mystery/_lib/model";
 import { TodoList } from "../vart-lager/_components/todo-list";
 import { buildPageModel, ordersInMainView, type PageModel } from "./_lib/model";
 import { loadOurStockFor, type OurStockView } from "../lager/_lib/data";
@@ -200,7 +200,7 @@ export default async function PrognosPage({
                   // antalet förvalt.
                   href: l.negative
                     ? `/vart-lager#rad-${l.titleId}`
-                    : packHref(l.titleId, l.action?.packs ?? l.packQty),
+                    : packActionHref(l.titleId, l.action?.packs ?? l.packQty, l.action?.placeId),
                 }))}
               />
             </section>

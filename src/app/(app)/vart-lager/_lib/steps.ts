@@ -27,6 +27,20 @@ export interface NeedAction {
   readonly batches: number | null;
   /** "Packa 2 omgångar" · "Packa 11 st" · "Beställ 36 st" · "Packa" (utan antal). */
   readonly text: string;
+  /**
+   * Mystery pack med ett minus i hela omgångar hemma: lagret där allt packas (omgångarna som
+   * rättar minuset ingår i antalet). Raden säger då "Packa", inte "Räkna om". Annars null.
+   */
+  readonly placeId: string | null;
+}
+
+/**
+ * Ska titeln räknas om först? Under 0 hemma, utom när minuset är hela omgångar av ett
+ * mystery pack som en packning rättar (`fixPlaceId`): då är beskedet "Packa N omgångar",
+ * samma som på Mystery-sidan.
+ */
+export function countFirst(home: number, fixPlaceId: string | null | undefined): boolean {
+  return home < 0 && !fixPlaceId;
 }
 
 const batchUnit = (n: number) => (n === 1 ? "omgång" : "omgångar");
@@ -41,11 +55,14 @@ export function needAction(x: {
   readonly mysteryBatchSize?: number | null;
   /** Färdiga pack hemma (alla lager). */
   readonly home?: number | null;
+  /** PurchaseLine.packNow.fixPlaceId: lagret där minuset rättas med en packning. */
+  readonly fixPlaceId?: string | null;
 }): NeedAction | null {
+  const placeId = x.own ? (x.fixPlaceId ?? null) : null;
   const kind = x.own ? "pack" : "order";
   const verb = x.own ? "Packa" : "Beställ";
   if (x.needQty === null) {
-    return { kind, qty: null, unit: "st", packs: null, batches: null, text: verb };
+    return { kind, qty: null, unit: "st", packs: null, batches: null, text: verb, placeId };
   }
   if (x.needQty <= 0) return null;
   const plan = x.own
@@ -63,6 +80,7 @@ export function needAction(x: {
       packs: plan.packs,
       batches: plan.batches,
       text: `${verb} ${formatInt(plan.batches)} ${batchUnit(plan.batches)}`,
+      placeId,
     };
   }
   return {
@@ -72,6 +90,7 @@ export function needAction(x: {
     packs: x.needQty,
     batches: null,
     text: `${verb} ${formatInt(x.needQty)}${NBSP}st`,
+    placeId,
   };
 }
 

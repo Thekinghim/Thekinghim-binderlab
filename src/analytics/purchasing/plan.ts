@@ -402,6 +402,9 @@ export function purchasePlan(input: PurchasingInput): PurchasePlan {
     }
   }
   const givenBatches = new Map((input.mysteryBatches ?? []).map((b) => [b.titleId, b.batches]));
+  const fixPlaces = new Map(
+    (input.mysteryBatches ?? []).flatMap((b) => (b.fixPlaceId ? [[b.titleId, b.fixPlaceId]] : [])),
+  );
   const needs = componentNeeds(recipes, (mysteryId) => {
     const line = mysteryLines.get(mysteryId);
     // Planens antal i hela omgångar: täcker ledtid + dagar till nästa beställning.
@@ -422,7 +425,11 @@ export function purchasePlan(input: PurchasingInput): PurchasePlan {
     const size = mysteryBatch(recipeSize.get(mysteryId));
     if (given === undefined || size === null) continue;
     const batches = wholeBatchCount(given);
-    mysteryLines.set(mysteryId, { ...line, packNow: { batches, packs: batches * size } });
+    const fixPlaceId = fixPlaces.get(mysteryId);
+    mysteryLines.set(mysteryId, {
+      ...line,
+      packNow: { batches, packs: batches * size, ...(fixPlaceId ? { fixPlaceId } : {}) },
+    });
   }
   const titleIds = [...new Set([...known, ...needs.keys()])].sort();
   const lines: PurchaseLine[] = titleIds.map(

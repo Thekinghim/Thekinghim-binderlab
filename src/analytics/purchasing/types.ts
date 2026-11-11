@@ -125,7 +125,15 @@ export interface PurchasingInput {
    *    försäljning ger 0 i planen men 1 omgång från facket.
    * Saknas en titel här används planens antal till båda.
    */
-  readonly mysteryBatches?: readonly { readonly titleId: string; readonly batches: number }[];
+  readonly mysteryBatches?: readonly {
+    readonly titleId: string;
+    readonly batches: number;
+    /**
+     * Lagret som står på minus i hela omgångar; omgångarna som rättar minuset ingår då i
+     * `batches`. Raden säger "Packa N omgångar" (i det lagret) i stället för "Räkna om".
+     */
+    readonly fixPlaceId?: string;
+  }[];
 }
 
 /** Redan beställt för en titel. */
@@ -207,7 +215,12 @@ export interface PurchaseLine {
    * Bara mystery packs, när fackens tal är känt (PurchasingInput.mysteryBatches): omgångar
    * och pack att packa nu. purchaseQty() ger då `packs` i stället för planens antal.
    */
-  readonly packNow?: { readonly batches: number; readonly packs: number };
+  readonly packNow?: {
+    readonly batches: number;
+    readonly packs: number;
+    /** Lagret där allt packas, när ett minus i hela omgångar ingår i antalet. */
+    readonly fixPlaceId?: string;
+  };
 }
 
 /** Förslag på inköpsorder till en leverantör. */

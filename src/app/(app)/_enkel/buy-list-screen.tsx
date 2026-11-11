@@ -10,7 +10,7 @@ import type { AppContext } from "@/server/data/core";
 import { currentViewer } from "../lager/_lib/session";
 import { PageHead } from "../vart-lager/_components/page-head";
 import { loadVartLagerFor } from "../vart-lager/_lib/data";
-import { packHref } from "../vart-lager/mystery/_lib/model";
+import { packActionHref } from "../vart-lager/mystery/_lib/model";
 import { BuyButtons, OnTheWayList } from "../prognos/_components/buy-actions";
 import { buyList } from "./model";
 import { StockTabs } from "./stock-tabs";
@@ -104,7 +104,7 @@ export async function SimpleBuyListScreen({ ctx }: { ctx: AppContext }) {
                 ) : null}
                 {item.own ? (
                   <Link
-                    href={packHref(item.titleId, item.qty)}
+                    href={packActionHref(item.titleId, item.qty, item.packPlaceId)}
                     className="flex min-h-12 items-center justify-center gap-2 rounded-md border border-inverse bg-inverse px-4 text-lg font-medium text-on-inverse active:bg-inverse-hover"
                   >
                     <Icon name="plus" size={18} />

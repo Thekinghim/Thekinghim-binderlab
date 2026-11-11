@@ -82,8 +82,13 @@ export interface BuyItem {
   readonly qty: number | null;
   /** Mystery pack: hela omgångar att packa (samma tal som Inköp och Vårt lager), annars null. */
   readonly batches: number | null;
-  /** Under 0 hemma: räkna om först, sedan köp eller packa. */
+  /**
+   * Under 0 hemma: räkna om först, sedan köp eller packa. Inte när minuset är hela omgångar
+   * av ett mystery pack: då ingår de i `batches` och packas i `packPlaceId` (som på Mystery).
+   */
   readonly countFirst: boolean;
+  /** Mystery pack: packa i just det här lagret (där minuset rättas), annars null. */
+  readonly packPlaceId: string | null;
   readonly home: number;
   readonly inMachines: number;
   /** Slut hemma. */
@@ -137,6 +142,7 @@ export function buyList(rows: readonly VartLagerRow[]): BuyList {
         qty: r.action?.packs ?? r.needQty,
         batches: r.action?.batches ?? null,
         countFirst: r.negative,
+        packPlaceId: r.action?.placeId ?? null,
         home: Math.max(0, r.home),
         inMachines: r.inMachines,
         out: r.home <= 0,

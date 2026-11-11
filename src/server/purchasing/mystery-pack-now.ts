@@ -3,7 +3,9 @@
  *
  * Samma tal som Mystery-sidan visar ("Packa 1 omgång före fredag"): ett fack som är tomt eller
  * blir tomt inom 7 dagar behöver en omgång, minus hela omgångar som ligger färdiga hemma.
- * Räknas med samma funktion (toPackFromSlots) och samma underlag (fackens saldo och takt,
+ * Står ett lager på minus i hela omgångar (någon har fyllt på utan att trycka Packa) läggs
+ * de omgångarna till (packWithMinus): de ska också packas, och deras delar ska också finnas.
+ * Räknas med samma funktioner (packNowFor: toPackFromSlots och packWithMinus) och samma underlag (fackens saldo och takt,
  * de egna lagren, automatens veckoform), så att Vårt lager, Inköp och delägarens inköpslista
  * säger samma antal som Mystery-sidan.
  *
@@ -20,15 +22,23 @@ import "server-only";
 
 import type { WeekShare } from "@/analytics/sellout";
 import { queryOwnPlaces } from "@/app/(app)/lager/_lib/data";
-import { toPackFromSlots } from "@/app/(app)/vart-lager/mystery/_lib/model";
+import { packNowFor } from "@/app/(app)/vart-lager/mystery/_lib/model";
 import { queryMysterySlotFacts, type SlotSources } from "@/app/(app)/vart-lager/mystery/_lib/slots";
 import type { Tx } from "@/db/client";
 import { mysteryBatch, type IsoDate, type MysteryRecipeRef } from "@/domain";
 
 export interface MysteryPackNow {
   readonly titleId: string;
-  /** Hela omgångar att packa nu (0 = inget den här veckan). */
+  /**
+   * Hela omgångar att packa nu (0 = inget den här veckan): fackens omgångar plus dem som
+   * rättar ett minus i hela omgångar (packWithMinus, samma regel som Mystery-kortet).
+   */
   readonly batches: number;
+  /**
+   * Lagret som står på minus i hela omgångar: där packas allt, och raden säger "Packa N
+   * omgångar" i stället för "Räkna om". Saknas när inget minus ska rättas med en packning.
+   */
+  readonly fixPlaceId?: string;
 }
 
 /** Omgångar att packa nu per mystery pack med innehåll. Tom utan mystery packs. */
@@ -68,13 +78,17 @@ export async function queryMysteryPackNow(
         perPlace.set(row.locationId, row.onHand);
       }
     }
-    const plan = toPackFromSlots({
-      batchSize: r.batchSize,
-      perPlace: [...perPlace.values()],
-      facts: slots.get(r.titleId) ?? [],
-      today,
-      weekShareOf: (id) => src.weekShares.get(id),
-    });
-    return { titleId: r.titleId, batches: plan?.batches ?? 0 };
+    // Fackens omgångar plus dem som rättar ett minus i hela omgångar: samma tal som
+    // Mystery-kortet ("Packa 2 omgångar nu. 1 rättar minuset. 1 ska till automaten.").
+    return {
+      titleId: r.titleId,
+      ...packNowFor({
+        batchSize: r.batchSize,
+        inPlaces: [...perPlace].map(([id, quantity]) => ({ id, quantity })),
+        facts: slots.get(r.titleId) ?? [],
+        today,
+        weekShareOf: (id) => src.weekShares.get(id),
+      }),
+    };
   });
 }

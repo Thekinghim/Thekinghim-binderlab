@@ -26,6 +26,7 @@ import { evidenceView, type EvidenceOptions, type EvidenceView, type NameLookup 
 import { lastsDays } from "../../vart-lager/_lib/model";
 import {
   factLine,
+  countFirst,
   needAction,
   stepsText,
   toMystery,
@@ -869,7 +870,8 @@ function planModel(
     }
     // Samma besked som Vårt lager: antal i omgångar, båda stegen under 0, raden under titeln.
     const home = stockHome?.get(l.titleId) ?? l.warehouseOnHand;
-    const negative = home < 0;
+    const fixPlaceId = l.packNow?.fixPlaceId ?? null;
+    const negative = countFirst(home, own ? fixPlaceId : null);
     // Samma summa som Vårt lager (hemma som det är + i automaterna), så raden blir densamma.
     const lasts = lastsDays(home + l.machineOnHand, stockPace?.get(l.titleId) ?? null);
     const action = needAction({
@@ -877,6 +879,7 @@ function planModel(
       needQty: purchaseQty(l),
       mysteryBatchSize: batchSizes.get(l.titleId) ?? null,
       home,
+      fixPlaceId,
     });
     // Mystery pack: raden visar det som ska packas NU (fackens tal, som Mystery-sidan).
     // Underlaget nedan är planens längre sikt (ledtid + dagar till nästa beställning), som
