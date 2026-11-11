@@ -59,6 +59,9 @@ export const t1 = {
     /** "Det står −14 i Kontoret. Någon har fyllt på utan att trycka Packa." */
     minus: (n: number, place: string) =>
       `Det står ${f.int(n)} ${inPlace(place)}. Någon har fyllt på utan att trycka Packa.`,
+    /** Minuset är inte hela omgångar (−1): då är det inte en påfyllning utan Packa. */
+    minusOdd: (n: number, place: string) =>
+      `Det står ${f.int(n)} ${inPlace(place)}. Det kan inte stämma.`,
     packNow: (n: number) => `Packa ${batches(n)} nu`,
     countNow: "Räkna om lagret",
     askOwnerCount: "Be ägaren räkna om lagret.",

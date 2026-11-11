@@ -350,7 +350,8 @@ describe("Mystery: omgångar räknade från facken, och minus i lagret", () => {
 
     await adjust(central, mysteryId, 13);
     await visit(page, "/vart-lager/mystery");
-    await card(page).getByText(`Det står −1 ${inCentral}.`).waitFor();
+    // −1 är inte en påfyllning utan Packa: texten skyller inte på någon.
+    await card(page).getByText(`Det står −1 ${inCentral}. Det kan inte stämma.`).waitFor();
     const countLink = card(page).getByRole("link", { name: "Räkna om lagret" });
     expect(await countLink.getAttribute("href")).toBe(`/vart-lager/inventering?lager=${central}`);
     expect(
@@ -466,8 +467,20 @@ describe("Awish fick inte antalen", () => {
     const line = page.getByText(`Awish fick inte antalen för ${machineCode}.`);
     await line.waitFor();
     await page.getByRole("button", { name: /^(Försök igen|Skickar…)$/ }).waitFor();
-    // Automaten som väntar ligger överst i listan, inte sist under skärmkanten.
-    expect(await plain(page.locator("ul[aria-label] > li").first())).toContain(machineCode);
+    // Rutan står före automaterna, inte under kortet (som oftast ligger sist i listan).
+    expect(
+      await page.evaluate(() => {
+        const box = Array.from(document.querySelectorAll('[role="status"]')).find((el) =>
+          (el.textContent ?? "").includes("Awish fick inte antalen"),
+        );
+        const first = document.querySelector("ul[aria-label] > li");
+        return (
+          box !== undefined &&
+          first !== null &&
+          (box.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+        );
+      }),
+    ).toBe(true);
     await expectNoSideScroll(page);
     await shot(page, "r2-t1-awish-fick-inte-antalen");
     // Utan Awish-koppling finns inget att skicka: appens eget försök (eller ett tryck)

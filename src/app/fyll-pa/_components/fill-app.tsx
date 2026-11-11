@@ -595,16 +595,12 @@ export function FillApp({
 
   const mine = data.hasOthers && mineOnly === "1";
   const visible = mine ? view.machines.filter((m) => m.mine) : view.machines;
-  // En automat som väntar på Awish ("Awish fick inte antalen …") ligger överst: den är oftast
-  // full efter påfyllningen och hamnar annars sist, under skärmkanten. Väntar flera (Awish
-  // nere, eller inloggningen har gått ut) står EN rad överst med ett Försök igen för alla,
-  // i stället för en ruta per automat, och listan behåller sin ordning.
+  // Automater som väntar på Awish ("Awish fick inte antalen …"): EN ruta överst på sidan, före
+  // Ta med-listan och automaterna. Automaten är oftast full efter påfyllningen och ligger sist
+  // i listan, så en rad under kortet hamnar under skärmkanten. Väntar flera (Awish nere, eller
+  // inloggningen har gått ut) räcker ett Försök igen för alla.
   const waitingShown = visible.filter((m) => pendingPush.has(m.id));
-  const manyWaiting = waitingShown.length > 1;
-  const shown =
-    waitingShown.length === 1
-      ? [...waitingShown, ...visible.filter((m) => !pendingPush.has(m.id))]
-      : visible;
+  const shown = visible;
 
   // Ta med-listan följer alltid den vanliga ordningen.
   if (bring && visible.length > 0) {
@@ -744,6 +740,17 @@ export function FillApp({
         />
       ) : null}
 
+      {waitingShown.length === 1 ? (
+        pendingLine(waitingShown[0]!)
+      ) : waitingShown.length > 1 ? (
+        <AwishPendingLine
+          title={t.r2.t1.fill.awishPendingMany(waitingShown.map((m) => m.code))}
+          busy={retrying !== null}
+          disabled={!q.online}
+          onRetry={() => void retryPush(null)}
+        />
+      ) : null}
+
       {rejected.length > 0 ? (
         <RejectedList
           items={rejected}
@@ -791,18 +798,9 @@ export function FillApp({
         </button>
       ) : null}
 
-      {manyWaiting ? (
-        <AwishPendingLine
-          title={t.r2.t1.fill.awishPendingMany(waitingShown.map((m) => m.code))}
-          busy={retrying !== null}
-          disabled={!q.online}
-          onRetry={() => void retryPush(null)}
-        />
-      ) : null}
-
       <ul className="flex flex-col gap-3" aria-label={t.fill.machines}>
         {shown.map((m, i) => (
-          <li key={m.id} className="rise flex flex-col gap-2" style={rise(i + 1)}>
+          <li key={m.id} className="rise" style={rise(i + 1)}>
             <MachineCard
               machine={m}
               syncLabel={syncLabels[m.id]}
@@ -812,7 +810,6 @@ export function FillApp({
                 go(`${BASE}/${m.id}`);
               }}
             />
-            {manyWaiting ? null : pendingLine(m)}
           </li>
         ))}
       </ul>

@@ -43,6 +43,7 @@ export const t1: R2T1 = {
   mystery: {
     minus: (n, place) =>
       `The app shows ${f.int(n)} ${inPlace(place)}. Someone refilled without pressing Pack.`,
+    minusOdd: (n, place) => `The app shows ${f.int(n)} ${inPlace(place)}. That cannot be right.`,
     packNow: (n) => `Pack ${batches(n)} now`,
     countNow: "Count the stock",
     askOwnerCount: "Ask the owner to count the stock.",

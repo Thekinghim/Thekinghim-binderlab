@@ -59,7 +59,11 @@ export function StockLine({
           role="note"
           className="flex flex-col gap-2 rounded-md border border-signal-line p-3"
         >
-          <p className="text-base text-signal-fg">{m.minus(quantity, place.name)}</p>
+          <p className="text-base text-signal-fg">
+            {fix?.kind === "pack"
+              ? m.minus(quantity, place.name)
+              : m.minusOdd(quantity, place.name)}
+          </p>
           {fix?.kind === "pack" && canPack ? (
             <Link
               href={packInPlaceHref(titleId, place.id, fix.packs)}
