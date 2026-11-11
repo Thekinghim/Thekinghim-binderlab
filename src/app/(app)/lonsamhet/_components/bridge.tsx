@@ -1,6 +1,10 @@
 "use client";
 
-import { ProfitBridge } from "@/components/charts/profit-bridge";
+import {
+  ProfitBars,
+  ProfitBridge,
+  type ProfitBridgeProps,
+} from "@/components/charts/profit-bridge";
 import { formatSek } from "@/lib/format";
 
 import type { Bridge } from "../_lib/model";
@@ -38,30 +42,36 @@ export function bridgeSteps(bridge: Bridge): {
   };
 }
 
-/** Vattenfallet från intäkt till vår vinst, i kronor. */
+/**
+ * Från intäkt till vår vinst, i kronor. Från md: vattenfallet. På telefon: liggande staplar
+ * med beloppet sist på raden (en tredjedel så högt, inget tomt fält under).
+ */
 export function LonsamhetBridge({ bridge }: { bridge: Bridge }) {
   const steps = bridgeSteps(bridge);
+  const props: ProfitBridgeProps = {
+    revenue: bridge.revenueOre / 100,
+    vmb: bridge.vmbVatOre === null ? undefined : bridge.vmbVatOre / 100,
+    purchases: bridge.costOre / 100,
+    fees: steps.feesOre / 100,
+    storeCompensation: steps.storeShareOre === null ? undefined : steps.storeShareOre / 100,
+    unpricedRevenue: bridge.unpricedRevenueOre > 0 ? bridge.unpricedRevenueOre / 100 : undefined,
+    marginBp: steps.marginBp ?? undefined,
+    labels: {
+      fees: "Avgifter",
+      storeCompensation: steps.storeShareLabel,
+      storeCompensationShort: steps.storeShareShort,
+      profit: steps.profitLabel,
+    },
+    format: formatSek,
+  };
   return (
     <>
-      <ProfitBridge
-        revenue={bridge.revenueOre / 100}
-        vmb={bridge.vmbVatOre === null ? undefined : bridge.vmbVatOre / 100}
-        purchases={bridge.costOre / 100}
-        fees={steps.feesOre / 100}
-        storeCompensation={steps.storeShareOre === null ? undefined : steps.storeShareOre / 100}
-        unpricedRevenue={
-          bridge.unpricedRevenueOre > 0 ? bridge.unpricedRevenueOre / 100 : undefined
-        }
-        marginBp={steps.marginBp ?? undefined}
-        labels={{
-          fees: "Avgifter",
-          storeCompensation: steps.storeShareLabel,
-          storeCompensationShort: steps.storeShareShort,
-          profit: steps.profitLabel,
-        }}
-        format={formatSek}
-        height={300}
-      />
+      <div className="md:hidden">
+        <ProfitBars {...props} />
+      </div>
+      <div className="max-md:hidden">
+        <ProfitBridge {...props} height={300} />
+      </div>
       {bridge.vmbVatOre !== null && bridge.vmbPreliminary ? (
         <p className="meta mt-2 text-subtle">{VMB_PRELIMINARY_TEXT}</p>
       ) : null}

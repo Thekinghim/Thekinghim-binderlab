@@ -86,6 +86,99 @@ export function ProfitBridge(props: ProfitBridgeProps) {
   );
 }
 
+export type ProfitBarRow = {
+  label: string;
+  /** Beloppet i kronor: intäkten och resultatet som de är, avdragen negativa. */
+  value: number;
+  kind: "revenue" | "cost" | "result" | "loss";
+  /** Stapelns längd, 0–1 av intäkten (minst en synlig strimma för belopp över 0). */
+  share: number;
+};
+
+/**
+ * Raderna i den liggande bryggan (telefon): samma steg och samma belopp som vattenfallet,
+ * en rad per steg med resultatet sist. Ren funktion (testas).
+ */
+export function profitBarRows(props: ProfitBridgeProps): ProfitBarRow[] {
+  const { steps } = profitBridgeModel(props);
+  const profit = steps.reduce((sum, s) => sum + s.value, 0);
+  const scale = Math.max(props.revenue, ...steps.map((s) => Math.abs(s.value)), Math.abs(profit));
+  const share = (v: number) =>
+    scale > 0 && v !== 0 ? Math.max(0.02, Math.min(1, Math.abs(v) / scale)) : 0;
+  return steps.map((s, i) => {
+    const value = s.total ? profit : s.value;
+    return {
+      label: s.label,
+      value,
+      kind: s.total ? (profit < 0 ? "loss" : "result") : i === 0 ? "revenue" : "cost",
+      share: share(value),
+    };
+  });
+}
+
+const BAR_FILL: Record<ProfitBarRow["kind"], string> = {
+  revenue: "var(--bl-data-3)",
+  cost: "var(--bl-fg-muted)",
+  result: "var(--bl-data-1)",
+  loss: "var(--bl-signal)",
+};
+
+/**
+ * Bryggan för telefon: liggande staplar i stället för det höga vattenfallet. En rad per
+ * steg (Intäkt, Inköp, …, Vår vinst) med beloppet sist på raden och en tunn stapel under,
+ * i skala mot intäkten. Samma tal och samma text för skärmläsare som ProfitBridge.
+ */
+export function ProfitBars(props: ProfitBridgeProps) {
+  const { format, unpricedRevenue, marginBp } = props;
+  const { text, unpricedLabel } = profitBridgeModel(props);
+  const rows = profitBarRows(props);
+  return (
+    <div data-profit-bars>
+      <p className="sr-only">{text}</p>
+      <ul className="flex flex-col gap-2.5" aria-hidden>
+        {rows.map((r) => {
+          const strong = r.kind === "result" || r.kind === "loss" || r.kind === "revenue";
+          return (
+            <li key={r.label} className="flex flex-col gap-1">
+              <span className="flex items-baseline justify-between gap-3 text-sm">
+                <span className={strong ? "min-w-0 text-fg" : "min-w-0 text-muted"}>{r.label}</span>
+                <span
+                  className={
+                    r.kind === "loss"
+                      ? "tnum shrink-0 font-medium text-signal-fg"
+                      : r.kind === "result"
+                        ? "tnum shrink-0 font-medium text-fg"
+                        : "tnum shrink-0 text-fg"
+                  }
+                >
+                  {r.kind === "cost" && r.value !== 0 ? "−" : ""}
+                  {format(Math.abs(r.value))}
+                </span>
+              </span>
+              <span className="block h-1.5 w-full rounded-full bg-line">
+                <span
+                  className="block h-full rounded-full"
+                  style={{ width: `${r.share * 100}%`, background: BAR_FILL[r.kind] }}
+                />
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {marginBp !== undefined || unpricedRevenue ? (
+        <p className="meta mt-2.5 text-subtle" aria-hidden>
+          {[
+            marginBp !== undefined ? `Marginal ${formatMarginBp(marginBp)}` : null,
+            unpricedRevenue ? `${unpricedLabel}: ${format(unpricedRevenue)}, ingår inte` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 /** Stegen och skärmläsartexten för bryggan. Ren funktion (testas). */
 export function profitBridgeModel({
   revenue,
