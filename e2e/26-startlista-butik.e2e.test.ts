@@ -1,7 +1,8 @@
 /**
  * Startlista per ny butik och varningen i "Placera automat" på iPhone SE (375 px).
  *
- * En egen organisation med två nya butiker utan automat och en automat utan butik:
+ * En egen organisation med en butik i drift, två nya butiker utan automat och en automat
+ * utan butik (BL-001):
  * - "Klar butik" har villkor och ett kontrakt registrerat för hand (räknas som signerat).
  * - "Osignerad butik" har villkor och ett kontrakt från mallen som inte är signerat.
  *
@@ -41,7 +42,7 @@ let machineId = "";
 const contexts: BrowserContext[] = [];
 const errors: Error[][] = [];
 
-const text = (s: string) => s.replace(/[ ⁠]/g, " ");
+const text = (s: string) => s.replace(/[\u00a0\u202f\u2060]/g, " ");
 
 async function signedIn(): Promise<Page> {
   const opened = await openPage(browser, e2e().baseUrl, { device: DEVICE, theme: "dark" });
@@ -109,10 +110,19 @@ beforeAll(async () => {
     };
     readyStore = await store("Klar butik", null);
     unsignedStore = await store("Osignerad butik", "placering-vinstdelning-v1");
-    const [machine] = await tx<{ id: string }[]>`
-      insert into public.machines (organization_id, code, name, active_from)
-      values (${orgId}::uuid, 'BL-001', 'Ny automat', current_date - 1) returning id`;
-    machineId = machine!.id;
+    const machine = async (code: string, name: string) => {
+      const [m] = await tx<{ id: string }[]>`
+        insert into public.machines (organization_id, code, name, active_from)
+        values (${orgId}::uuid, ${code}, ${name}, current_date - 30) returning id`;
+      return m!.id;
+    };
+    machineId = await machine("BL-001", "Ny automat");
+    // En butik i drift: utan den räknas alla butiker som i drift, och ingen är "på väg in".
+    const running = await store("Butik i drift", null);
+    await tx`
+      insert into public.machine_placements (organization_id, machine_id, store_id, valid_from)
+      values (${orgId}::uuid, ${await machine("BL-002", "Gammal automat")}::uuid,
+              ${running}::uuid, current_date - 30)`;
   });
   browser = await launchBrowser();
 });
