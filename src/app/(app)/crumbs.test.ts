@@ -26,6 +26,7 @@ describe("brödsmulor", () => {
     expect(subpageLabel("/inkorg/nytt")).toBe("Nytt ärende");
     expect(subpageLabel("/inkorg/0b5c")).toBe("Ärende");
     expect(subpageLabel("/lonsamhet")).toBeNull();
+    expect(crumbsFor("/vart-lager/inventering", "B")).toEqual(["B", "Vårt lager", "Inventering"]);
   });
 
   it("sidor utanför menyn och utan organisation", () => {

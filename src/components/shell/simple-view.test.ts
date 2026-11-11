@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { navSections, subTabHref } from "./nav";
 import {
   BUY_LIST_HREF,
+  COUNT_HREF,
   MYSTERY_HREF,
   PRICES_HREF,
   REFILL_HREF,
@@ -32,6 +33,9 @@ describe("Enkel vy: tillåtna sökvägar", () => {
     "/prognos",
     "/inkopspriser",
     "/inkopspriser/",
+    // Inventering ("Count stock"): räkna ett helt lager, bara exakt den sökvägen.
+    "/vart-lager/inventering",
+    "/vart-lager/inventering/",
     "/logga-in",
     "/inbjudan/abc",
   ])("släpper igenom %s", (path) => {
@@ -47,6 +51,8 @@ describe("Enkel vy: tillåtna sökvägar", () => {
     "/installningar/konto",
     "/vart-lager/flytta",
     "/vart-lager/x",
+    "/vart-lager/inventering/x",
+    "/vart-lager/inventeringx",
     "/vart-lagerx",
     "/inkopspriser/ny-produkt",
     "/inkopspriser/ny-produkt/bild",
@@ -161,7 +167,8 @@ describe("Enkel vy: flikar och startsida", () => {
   it("Lager är markerad på sina tre underflikar men inte på Mystery", () => {
     const stock = SIMPLE_TABS.find((t) => t.id === "stock")!;
     const mystery = SIMPLE_TABS.find((t) => t.id === "mystery")!;
-    for (const path of [STOCK_HREF, `${STOCK_HREF}/`, BUY_LIST_HREF, PRICES_HREF]) {
+    expect(COUNT_HREF).toBe("/vart-lager/inventering");
+    for (const path of [STOCK_HREF, `${STOCK_HREF}/`, BUY_LIST_HREF, PRICES_HREF, COUNT_HREF]) {
       expect(simpleTabActive(stock, path), path).toBe(true);
       expect(simpleTabActive(mystery, path), path).toBe(false);
     }

@@ -1038,6 +1038,13 @@ export async function seedTenantFixture(ownerArg?: TestUser): Promise<TenantFixt
       sql`select * from public.pack_mystery(${orgId}::uuid, gen_random_uuid(), ${mystery!.id}::uuid,
             ${central!.id}::uuid, 1, ${recipe.id}::uuid)`,
     );
+    // Inventering (20261121000000_inventering.sql): en sparad inventering av standardlagret.
+    // Fixturens egen titel räknas till det saldo den redan har (0), så inget saldo ändras.
+    await tx.execute(
+      sql`select * from public.save_stock_count(${orgId}::uuid, gen_random_uuid(),
+            ${central!.id}::uuid,
+            ${JSON.stringify([{ titleId: mysteryPart!.id, counted: 0 }])}::jsonb)`,
+    );
     // AI-rådgivaren (20261104090000_ai_radgivare.sql): bara servern skriver körningar och
     // förslag, så raderna skrivs som databasägaren i samma transaktion.
     await tx.execute(sql`reset role`);

@@ -45,6 +45,8 @@ const APPEND_ONLY = [
   "report_files",
   // Daglig kontroll (20261114000000_daglig_kontroll.sql).
   "self_check_runs",
+  // Inventering: en rad per sparad inventering (20261121000000_inventering.sql).
+  "stock_counts",
   "stock_events",
   "voucher_deliveries",
 ];
@@ -113,6 +115,8 @@ const RPCS = [
   "sales_data_until",
   // Mystery packs: spara innehållet (ägare, admin).
   "save_mystery_recipe",
+  // Inventering: spara ett helt lagers räkning i en transaktion (ägare, admin).
+  "save_stock_count",
   // Enkel vy och språk på en obesvarad inbjudan (20261116000000_enkel_vy_och_sprak.sql).
   "set_invitation_options",
   // Flera lager: automatens "Fylls på från" (ägare, admin).
@@ -234,6 +238,8 @@ describe("tabeller", () => {
         // Lager: larmgräns per automat och titel (20261103160000_lager_larmgrans.sql).
         "slot_alerts",
         "source_machines",
+        // Inventering: sparade inventeringar (20261121000000_inventering.sql).
+        "stock_counts",
         "stock_events",
         "stock_locations",
         "store_agreements",
@@ -647,6 +653,7 @@ describe("anon", () => {
       reopen_period: sql`gen_random_uuid(), '2025-01-01'::date`,
       sales_data_until: sql`gen_random_uuid()`,
       save_mystery_recipe: sql`gen_random_uuid(), gen_random_uuid(), 14, '[]'::jsonb`,
+      save_stock_count: sql`gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), '[]'::jsonb`,
       set_invitation_options: sql`gen_random_uuid(), gen_random_uuid(), 'simple', 'en'`,
       set_refill_source: sql`gen_random_uuid(), gen_random_uuid(), null::uuid`,
       set_test_purchase: sql`gen_random_uuid(), gen_random_uuid(), true`,

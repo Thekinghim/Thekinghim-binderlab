@@ -20,6 +20,7 @@ import { reportTodos } from "./reports";
 import { silentTitleTodos } from "./silent-title";
 import { missingSettlementTodos, settlementTodos } from "./settlements";
 import { staleMachineTodos } from "./stale-machine";
+import { stockCountTodos } from "./stock-count";
 import { teamTodos } from "./team";
 import type { TodoInput, TodoItem } from "./types";
 
@@ -54,6 +55,7 @@ export function computeTodos(input: TodoInput, now: Date | string | number): Tod
     ...missingPriceTodos(ctx),
     ...duplicateTitleTodos(ctx),
     ...teamTodos(ctx),
+    ...stockCountTodos(ctx),
   ]);
 }
 
@@ -102,4 +104,10 @@ export {
 } from "./refill";
 export { silentTitles, type SilentTitle } from "./silent-title";
 export { INVITE_LINK } from "./team";
+export {
+  STOCK_COUNT_REMINDER_DAYS,
+  stockCountAge,
+  stockCountLink,
+  type StockCountAge,
+} from "./stock-count";
 export type * from "./types";

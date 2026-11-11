@@ -382,6 +382,71 @@ export const sv = {
     priceTooHigh: "Priset är för högt.",
     readOnlyPrices: "Bara ägaren ändrar priserna.",
   },
+  /**
+   * Inventering (/vart-lager/inventering): räkna ett helt lager, en produkt i taget eller
+   * som lista. Samma skärm i hela appen och i den enkla vyn.
+   */
+  count: {
+    title: "Inventering",
+    open: "Inventera",
+    openHint: "Räkna allt i ett lager. En produkt i taget.",
+    pickHeadline: "Vilket lager räknar du?",
+    pickAside: "Det du hoppar över ändras inte.",
+    lastCounted: (date: string, days: number) =>
+      days === 0
+        ? "Inventerat i dag"
+        : `Senast inventerat ${date} · ${f.int(days)} ${days === 1 ? "dag" : "dagar"} sedan`,
+    neverCounted: "Inte inventerat än",
+    overdue: "Dags att räkna",
+    resume: (n: number) => `Fortsätt · ${f.int(n)} räknade`,
+    start: "Börja räkna",
+    changePlace: "Byt lager",
+    countHeadline: (place: string) => `Räkna ${inPlace(place)}.`,
+    progress: (done: number, total: number) => `${f.int(done)} av ${f.int(total)} räknade`,
+    draftKept: "Sparas på telefonen tills du är klar.",
+    modeLabel: "Visa",
+    modeStep: "En i taget",
+    modeList: "Lista",
+    stepOf: (i: number, total: number) => `Produkt ${f.int(i)} av ${f.int(total)}`,
+    appThinks: (n: number) => `Appen tror: ${f.int(n)}`,
+    fieldLabel: "Du räknade",
+    fieldAria: (title: string) => `Antal ${title}`,
+    matches: "Stämmer",
+    prev: "Förra",
+    next: "Nästa",
+    skip: "Hoppa över",
+    review: (n: number) => `Visa skillnader (${f.int(n)} räknade)`,
+    reviewNone: "Räkna minst en produkt.",
+    invalid: (max: number) => `Skriv ett heltal, högst ${f.int(max)}.`,
+    summaryTitle: "Skillnader",
+    summaryHeadline: (n: number) =>
+      n === 0 ? "Allt stämmer." : `${f.int(n)} ${n === 1 ? "produkt" : "produkter"} ändras.`,
+    diff: (previous: number, counted: number) => `${f.int(previous)} → ${f.int(counted)}`,
+    diffAria: (title: string, previous: number, counted: number) =>
+      `${title}: ${f.int(previous)} → ${f.int(counted)}`,
+    staleTitle: "Lagret ändrades medan du räknade.",
+    staleLine: (title: string, seen: number, now: number) =>
+      `${title}: appen trodde ${f.int(seen)} när du räknade. Nu tror den ${f.int(now)}.`,
+    staleHint: "Räkna dem en gång till om du är osäker.",
+    same: (n: number) => `${f.int(n)} stämmer`,
+    skipped: (n: number) => `${f.int(n)} hoppades över och ändras inte`,
+    save: "Spara inventeringen",
+    edit: "Tillbaka och ändra",
+    discard: "Släng utkastet",
+    discardConfirm: "Släng det du räknat?",
+    discardYes: "Ja, släng",
+    discardNo: "Nej",
+    saved: "Inventeringen är sparad.",
+    savedAside: (place: string, n: number) =>
+      `${f.int(n)} ${n === 1 ? "produkt" : "produkter"} räknade ${inPlace(place)}.`,
+    alreadySaved: "Inventeringen var redan sparad.",
+    notSaved: "Inte sparat",
+    savedChanges: "Det här ändrades",
+    savedNoChanges: "Inget ändrades. Allt stämde.",
+    toStock: "Till lagret",
+    countAnother: "Räkna ett lager till",
+    readOnly: "Bara ägare och admin inventerar.",
+  },
   auth: {
     loginTitle: "Logga in.",
     email: "E-post",

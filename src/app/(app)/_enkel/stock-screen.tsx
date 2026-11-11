@@ -1,3 +1,7 @@
+import Link from "next/link";
+
+import { COUNT_HREF } from "@/components/shell/simple-view";
+import { Icon } from "@/components/ui/icon";
 import { StateMessage } from "@/components/ui/state-message";
 import { messages } from "@/i18n";
 import type { AppContext } from "@/server/data/core";
@@ -14,6 +18,7 @@ import { StockTabs } from "./stock-tabs";
  * och i automaterna. "Ändra" på en rad: en leverans kom in (lägger till pack) eller rätta
  * antalet (räkning). Samma server actions och regler som Vårt lager (ägare och admin
  * skriver; läsaren ser bara). Inga belopp, inga flyttar, inga lagerinställningar.
+ * "Inventera" (Count stock) öppnar inventeringen av ett helt lager (/vart-lager/inventering).
  */
 export async function SimpleStockScreen({ ctx }: { ctx: AppContext }) {
   const t = messages(ctx.locale);
@@ -47,7 +52,20 @@ export async function SimpleStockScreen({ ctx }: { ctx: AppContext }) {
         <StateMessage kind="empty" message={t.stock.noTitles} />
       ) : (
         <>
-          {!view.canEdit ? <p className="text-base text-muted">{t.stock.readOnly}</p> : null}
+          {view.canEdit ? (
+            <Link
+              href={COUNT_HREF}
+              className="flex min-h-14 w-full items-center justify-between gap-3 rounded-md border border-line-strong bg-surface px-4 py-2 active:bg-hover"
+            >
+              <span className="flex min-w-0 flex-col">
+                <span className="text-lg font-medium text-fg">{t.count.open}</span>
+                <span className="text-sm text-muted">{t.count.openHint}</span>
+              </span>
+              <Icon name="chevronRight" size={20} className="shrink-0 text-muted" />
+            </Link>
+          ) : (
+            <p className="text-base text-muted">{t.stock.readOnly}</p>
+          )}
           <StockList rows={rows} places={places} canEdit={view.canEdit} />
         </>
       )}

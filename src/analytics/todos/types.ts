@@ -175,6 +175,16 @@ export interface LostSalesRef {
   readonly lostRevenueOre: number;
 }
 
+/** Ett eget lager (Hemma, Kontoret …) och när det senast inventerades (stock_counts). */
+export interface StockCountRef {
+  readonly placeId: string;
+  readonly name: string;
+  /** Senaste sparade inventeringen (ISO 8601 med tidszon), eller null = aldrig. */
+  readonly lastCountedAt: string | null;
+  /** När lagret skapades (ISO 8601 med tidszon): ett nytt lager påminns inte direkt. */
+  readonly createdAt: string | null;
+}
+
 // ---------------------------------------------------------------------------
 // Underlag
 // ---------------------------------------------------------------------------
@@ -229,7 +239,8 @@ export type TodoKind =
   | "settlement"
   | "settlement-create"
   | "agreement"
-  | "team";
+  | "team"
+  | "stock-count";
 
 /** Brådskenivå: 'now' (gör i dag), 'soon' (de närmaste dagarna), 'later' (när tid finns). */
 export type TodoLevel = "now" | "soon" | "later";
@@ -245,7 +256,8 @@ export interface TodoAction {
     | "open-contract"
     | "open-alert"
     | "open-machine"
-    | "invite-member";
+    | "invite-member"
+    | "count-stock";
   /** Knapptext, verbet först. */
   readonly label: string;
   readonly params: Readonly<Record<string, string>>;
@@ -348,6 +360,11 @@ export interface TodoInput extends EconomicsSources {
    * "Bjud in delägaren" (./team.ts). Bara för ägare och admin. Saknas = ingen punkt.
    */
   readonly team?: { readonly members: number; readonly pendingInvites: number };
+  /**
+   * De egna lagren och när de senast inventerades, för punkten "Inventera Hemma"
+   * (./stock-count.ts). Bara för ägare och admin. Saknas = ingen punkt.
+   */
+  readonly stockCounts?: readonly StockCountRef[];
   readonly salesDataUntil?: readonly {
     readonly machineId: string;
     readonly until: string | null;
