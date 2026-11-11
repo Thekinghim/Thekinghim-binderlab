@@ -1350,6 +1350,28 @@ export interface NeedOptions {
 }
 
 /**
+ * Säger besöksplanen "i dag" (eller tidigare) för en automat som står som "Fyll på snart" är
+ * det inte "snart": raden heter "Fyll på nu" och räknas i "behöver dig nu", precis som
+ * besöket står under I dag på Att göra ("Åk till NA-04 i dag"). Gäller listan överst och
+ * tabellen under. Utan plan eller datum: raderna som de är.
+ */
+export function dueTodayAsNow<R extends Pick<MachineListRow, "id" | "status">>(
+  rows: readonly R[],
+  refillBy: ReadonlyMap<string, IsoDate> | undefined,
+  today: IsoDate | undefined,
+): R[] {
+  if (!refillBy || !today) return [...rows];
+  return rows.map((r) => {
+    const by = refillBy.get(r.id);
+    if (r.status.label !== "Fyll på snart" || by === undefined || by > today) return r;
+    return {
+      ...r,
+      status: { ...r.status, status: "critical" as const, label: "Fyll på nu", flagged: true },
+    };
+  });
+}
+
+/**
  * Automaterna som behöver något, värst först: fel/tom/ur drift och "Fyll på nu" (signal),
  * sedan "Fyll på snart" och "Misstänkt fel". Inom varje nivå den som tappar mest pengar
  * först. Påfyllning går till Fyll på-appen.
@@ -1362,7 +1384,7 @@ export function machineNeeds(
   const rank = (r: MachineListRow) =>
     r.status.flagged ? 0 : r.status.status === "warning" ? 1 : 2;
   const stake = (r: MachineListRow) => (economy ? Math.max(r.atStakeOre ?? 0, 0) : 0);
-  return rows
+  return dueTodayAsNow(rows, options.refillBy, options.today)
     .filter((r) => r.lifecycle === "active" && rank(r) < 2)
     .sort(
       (a, b) =>

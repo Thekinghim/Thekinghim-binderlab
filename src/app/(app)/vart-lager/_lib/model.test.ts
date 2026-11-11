@@ -155,7 +155,7 @@ describe("buildVartLagerModel", () => {
       sp(
         headingOf(buildVartLagerModel(input({ warehouse: [wr("a", 40)], sold7: new Map() }))).aside,
       ),
-    ).toBe("Allt räcker 7 dagar.");
+    ).toBe("Allt räcker minst 7 dagar.");
   });
 });
 

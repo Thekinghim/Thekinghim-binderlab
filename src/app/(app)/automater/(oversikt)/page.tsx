@@ -26,6 +26,7 @@ import { loadOverview, loadRefillBy } from "../_lib/data";
 import { loadMachineReadinessSafe } from "@/server/onboarding/machine-ready-load";
 import { readinessLeft } from "@/server/onboarding/machine-ready";
 import {
+  dueTodayAsNow,
   machineNeeds,
   needsHeadline,
   nextMachineCode,
@@ -61,17 +62,19 @@ export default async function AutomaterPage({
       ctx.organization.id,
     ),
   );
-  const { totals, rows, headline } = overview;
+  const { totals, headline } = overview;
+  // Besöksplanens dag ("Fyll på senast torsdag.") för automater som ska fyllas på snart.
+  const refillBy = overview.rows.some((r) => r.status.label === "Fyll på snart")
+    ? await loadRefillBy(ctx)
+    : undefined;
+  // Planen säger i dag: raden heter "Fyll på nu", i listan överst och i tabellen.
+  const rows = dueTodayAsNow(overview.rows, refillBy, ctx.today);
   const active = rows.filter((r) => r.lifecycle === "active");
   // Ur drift (hälsan offline) räknas inte som i drift, som på Drift.
   const offline = totals.offlineMachines ?? 0;
   const comparison = period.comparisonLabel ? `Jämfört med ${period.comparisonLabel}` : undefined;
   const daysLabel = `${formatInt(period.span.days)}${NBSP}d`;
   // Överst: vad som behöver göras (managerfrågan), pengarna som andra rad.
-  // Besöksplanens dag ("Fyll på senast torsdag.") för automater som ska fyllas på snart.
-  const refillBy = rows.some((r) => r.status.label === "Fyll på snart")
-    ? await loadRefillBy(ctx)
-    : undefined;
   const needs = machineNeeds(rows, {
     economy: ctx.canSeeEconomy,
     ...(refillBy ? { refillBy, today: ctx.today } : {}),

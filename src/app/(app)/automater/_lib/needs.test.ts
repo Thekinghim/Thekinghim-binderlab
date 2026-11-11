@@ -13,6 +13,7 @@ import { weeklyVisitPlan } from "@/server/data/visit-plan";
 import { stakeOf } from "../../att-gora/_lib/model";
 import {
   buildOverview,
+  dueTodayAsNow,
   machineNeeds,
   machineSignals,
   machineStake,
@@ -67,6 +68,35 @@ describe("Behöver dig: kronor på varje rad, dyrast först", () => {
     ]);
     expect(plain(needs[1]!.stakeText)).toBe("1 700 kr i risk den här veckan");
     expect(needs[4]!.stakeText).toBeNull();
+  });
+
+  it("planen säger i dag: raden heter Fyll på nu och räknas i 'behöver dig nu', som på Att göra", () => {
+    // Granskningen av runda 2: "FYLL PÅ SNART … Fyll på senast i dag." på Automater, medan
+    // Att göra hade samma automat under I dag.
+    const two = [row("BL-1", now, 50_000), row("BL-4", soon, 900_000), row("BL-5", soon, 0)];
+    const refillBy = new Map<string, IsoDate>([
+      ["bl-4", "2026-11-11"],
+      ["bl-5", "2026-11-13"],
+    ]);
+    const needs = machineNeeds(two, { refillBy, today: "2026-11-11" });
+    expect(needs.map((n) => [n.code, n.label, n.status, n.refillBy])).toEqual([
+      ["BL-4", "Fyll på nu", "critical", null],
+      ["BL-1", "Fyll på nu", "critical", null],
+      ["BL-5", "Fyll på snart", "warning", "Fyll på senast fredag."],
+    ]);
+    expect(plain(needsHeadline(needs, 3))).toContain("2 automater behöver dig nu, 1 snart.");
+    // Tabellen under får samma läge.
+    expect(dueTodayAsNow(two, refillBy, "2026-11-11").map((r) => r.status.label)).toEqual([
+      "Fyll på nu",
+      "Fyll på nu",
+      "Fyll på snart",
+    ]);
+    // Utan plan: som förut.
+    expect(machineNeeds(two).map((n) => n.label)).toEqual([
+      "Fyll på nu",
+      "Fyll på snart",
+      "Fyll på snart",
+    ]);
   });
 
   it("rubriken har summan av raderna", () => {
@@ -318,7 +348,13 @@ describe("Fyll på senast torsdag: samma dag som besöksplanen", () => {
 
     const { needs } = overviewNeeds({ refillBy, today: TODAY });
     const soon = needs.find((n) => n.code === "BL-002")!;
-    expect(soon.refillBy).toBe(refillByText(m2!.needBy, TODAY));
+    if (m2!.needBy <= TODAY) {
+      // Planen säger i dag: raden heter "Fyll på nu" (som besöket under I dag på Att göra)
+      // och behöver ingen "senast"-mening.
+      expect(soon).toMatchObject({ label: "Fyll på nu", status: "critical", refillBy: null });
+    } else {
+      expect(soon.refillBy).toBe(refillByText(m2!.needBy, TODAY));
+    }
     // Den tomma automaten har ingen dag: den ska fyllas på nu.
     expect(needs.find((n) => n.code === "BL-001")!.refillBy).toBeNull();
   });

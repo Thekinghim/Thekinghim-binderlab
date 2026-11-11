@@ -54,5 +54,5 @@ export function headingOf(m: Pick<VartLagerModel, "totals" | "lowDays" | "rows">
       .join(", ");
     return { title, aside: `${full.charAt(0).toUpperCase()}${full.slice(1)}.` };
   }
-  return { title, aside: `Allt räcker ${formatInt(m.lowDays)}${NBSP}dagar.` };
+  return { title, aside: `Allt räcker minst ${formatInt(m.lowDays)}${NBSP}dagar.` };
 }
