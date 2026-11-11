@@ -51,7 +51,9 @@ async function sectionText(page: Page, selector: string): Promise<string> {
   // Den synliga: medan sidan strömmas in kan avsnittet ligga dolt i väntan på sin plats
   // (en kallstartad dev-server), och då finns det en kort stund två gånger.
   const shown = page.locator(`${selector} >> visible=true`);
-  await shown.waitFor();
+  await shown.first().waitFor();
+  // Vänta tills den dolda kopian är borta, så att `${selector} ol > li` räknar en lista.
+  await expect.poll(() => page.locator(selector).count(), { timeout: 15_000 }).toBe(1);
   return text(await shown.innerText());
 }
 
@@ -233,7 +235,9 @@ describe("Talen stämmer med resten av appen", () => {
     const page = await signedIn(fx.fleetOwner);
     await page.goto("/automater");
     const section = '[data-ranking="fleet"]';
-    await page.locator(section).waitFor();
+    // Blocket strömmas in: medan det byts in finns det två i DOM:en (ett dolt). sectionText
+    // väntar på det synliga och på att det dolda är borta.
+    await sectionText(page, section);
     const profitOf = async (code: string) =>
       kronor(await page.locator(`${section} ol > li`).filter({ hasText: code }).innerText());
     // 79 kr per pack − 45 kr inköp = 34 kr, före butikens andel (ingen moms i organisationen).
