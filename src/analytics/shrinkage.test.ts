@@ -69,7 +69,7 @@ describe("buildShrinkage", () => {
     expect(r.flagged[0]?.lines[1]).toMatchObject({ missing: 1, flagged: false, state: "missing" });
     expect(r.ok.map((m) => m.code)).toEqual(["BL-002"]);
     expect(r.headline.title).toContain("4");
-    expect(plain(shrinkageHomeLine(r))).toBe("4 pack saknas i BL-001.");
+    expect(plain(shrinkageHomeLine(r))).toBe("4 pack borta ur BL-001 (svinn).");
   });
 
   it("fler pack än väntat flaggas aldrig", () => {
@@ -102,7 +102,7 @@ describe("buildShrinkage", () => {
       names,
     );
     expect(r.flagged.map((m) => m.code)).toEqual(["BL-002", "BL-001"]);
-    expect(plain(shrinkageHomeLine(r))).toBe("12 pack saknas i 2 automater.");
+    expect(plain(shrinkageHomeLine(r))).toBe("12 pack borta ur 2 automater (svinn).");
   });
 });
 

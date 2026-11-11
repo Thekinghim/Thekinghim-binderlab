@@ -252,12 +252,15 @@ export function buildShrinkage(
   };
 }
 
-/** En rad för Hem: "4 pack saknas i BL-002." eller null när inget avviker. */
+/**
+ * En rad för Hem: "4 pack borta ur BL-002 (svinn)." eller null när inget avviker. "Borta",
+ * inte "saknas": på Besök betyder "pack saknas i vårt lager" att lagret inte räcker.
+ */
 export function shrinkageHomeLine(report: ShrinkageReport): string | null {
   if (report.missing === 0) return null;
   const where =
     report.flagged.length === 1
       ? (report.flagged[0]?.code ?? "en automat")
       : plural(report.flagged.length, "automat", "automater");
-  return `${plural(report.missing, "pack", "pack")} saknas i ${where}.`;
+  return `${plural(report.missing, "pack", "pack")} borta ur ${where} (svinn).`;
 }

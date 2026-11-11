@@ -30,7 +30,7 @@ async function loadLine(): Promise<{ text: string; value: string | null; period:
 
 /**
  * En rad på Hem bara när pack saknas i en automat (svinnkontrollen för de senaste
- * HOME_SHRINKAGE_DAYS dagarna): "4 pack saknas i BL-002. · 240 kr →", till svinnkontrollen. Samma radstil som utbetalningen
+ * HOME_SHRINKAGE_DAYS dagarna): "4 pack borta ur BL-002 (svinn). · 240 kr →", till svinnkontrollen. Samma radstil som utbetalningen
  * och nästa sak att göra (HomeRow). Annars inget.
  */
 export async function ShrinkageLine() {

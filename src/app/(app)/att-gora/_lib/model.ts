@@ -428,6 +428,15 @@ export function kr(ore: number): string {
 // ---------------------------------------------------------------------------
 
 /** Ett tal ur underlaget i sin enhet. */
+/**
+ * Timmar som folk säger dem: "5 h" upp till två dygn, sedan hela dygn ("9 dygn" för 222 h),
+ * samma ord som punktens rubrik ("… har varit tyst i 9 dygn").
+ */
+export function hoursText(hours: number): string {
+  if (hours >= 48) return `${formatInt(Math.floor(hours / 24))}${NBSP}dygn`;
+  return `${formatInt(hours)}${NBSP}h`;
+}
+
 export function formatFigure(f: Pick<EvidenceFigure, "value" | "unit">): string {
   switch (f.unit) {
     case "ore":
@@ -439,7 +448,7 @@ export function formatFigure(f: Pick<EvidenceFigure, "value" | "unit">): string 
     case "days":
       return plural(f.value, "dag", "dagar");
     case "hours":
-      return `${formatInt(f.value)}${NBSP}h`;
+      return hoursText(f.value);
     case "tenths":
       return formatDecimal(f.value / 10);
     case "count":
@@ -539,7 +548,7 @@ export function primaryFigures(item: TodoItem, economy: boolean): FigureView[] {
     }
     case "alert": {
       const hours = figureValue(item, "openHours");
-      if (hours !== null) out.push({ label: "Öppet", value: `${formatInt(hours)}${NBSP}h` });
+      if (hours !== null) out.push({ label: "Öppet", value: hoursText(hours) });
       break;
     }
     case "missing-price": {
