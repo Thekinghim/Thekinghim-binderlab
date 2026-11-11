@@ -17,7 +17,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 import type { Tx } from "@/db/client";
 import * as s from "@/db/schema";
@@ -1005,6 +1005,8 @@ export async function setRecipientActiveFor(
 export async function markReportSharedFor(viewer: Viewer, reportId: string): Promise<number> {
   const orgId = viewer.organization.id;
   return as(viewer, EDIT_ROLES, async (tx) => {
+    // Två samtidiga "Ja, skickad" (dubbelt tryck, två personer) får inte ge dubbla rader.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`report-shared:${reportId}`}))`);
     const report = await getReportTx(tx, orgId, reportId);
     if (report.status === "superseded") {
       throw new ReportError("Det finns en nyare version av rapporten. Dela den i stället.");

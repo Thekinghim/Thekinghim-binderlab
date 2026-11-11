@@ -248,6 +248,28 @@ describe("den dagliga kontrollen och Hem", () => {
     expect(page.settings?.vatOkAt).not.toBeNull();
   }, 120_000);
 
+  it("Revisorn har koll gäller året det trycktes: ett gammalt varnar igen", async () => {
+    // Tryckt förra året: i år räknas försäljningen om från noll mot gränsen.
+    await db().execute(sql`update public.organization_settings
+      set vat_ok_at = '2025-12-01T10:00:00Z' where organization_id = ${fx.orgId}::uuid`);
+    expect((await loadSettingsIssuesFor(owner, fx.orgId, TODAY)).map((i) => i.kind)).toEqual([
+      "vat",
+    ]);
+    await runSelfCheck({ db: db(), now: NOW }, { organizationId: fx.orgId, trigger: "schedule" });
+    const v = (await checkViewerFor(db(), fx.orgId))!;
+    expect((await latestSelfCheckFor(v))!.notice).toBe("Du närmar dig momsgränsen");
+    // Knappen sparar på nytt (ett gammalt "har koll" räknas inte som redan tryckt).
+    expect(
+      await setVatAcknowledgedFor(owner, {
+        organizationId: fx.orgId,
+        acknowledged: true,
+        today: TODAY,
+      }),
+    ).toEqual({ ok: true, data: { changed: true } });
+    expect(await loadSettingsIssuesFor(owner, fx.orgId, TODAY)).toEqual([]);
+    expect((await latestSelfCheckFor(v))!.notice).toBeNull();
+  }, 120_000);
+
   it("Varna igen slår på momsraden igen", async () => {
     expect(
       await setVatAcknowledgedFor(owner, { organizationId: fx.orgId, acknowledged: false }),

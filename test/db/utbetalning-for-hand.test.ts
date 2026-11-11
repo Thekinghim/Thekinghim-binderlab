@@ -330,4 +330,47 @@ describe("svaret", () => {
     expect(rec.result?.payouts[0]?.deviations).toEqual([]);
     expect(rec.result?.totals.differenceOre).toBe(0);
   });
+  it("flera datakällor: svaret jämförs med all försäljning; samma svar två gånger ger en rad", async () => {
+    // En äldre datakälla utan order: raden får inte knytas till den (då jämförs den bara
+    // med den källans order och "Samma belopp" ger en avvikelse).
+    await asUser(ownerUser, (tx) =>
+      tx
+        .insert(s.dataSources)
+        .values({ organizationId: orgId, provider: "awish_csv", name: "Äldre källa" }),
+    );
+    await db().execute(sql`update public.data_sources set created_at = '2020-01-01T00:00:00Z'
+      where organization_id = ${orgId}::uuid and name = 'Äldre källa'`);
+    await asUser(ownerUser, (tx) =>
+      tx.insert(s.orders).values({
+        ...orderBase,
+        externalId: "70200",
+        orderedAt: new Date("2025-06-12T10:00:00Z"),
+        sourceHash: "hand-juni",
+      }),
+    );
+    const q = (await loadPayoutQuestionFor(owner, "2025-07-01"))!;
+    expect(q.period).toEqual({ start: "2025-06-01", end: "2025-06-30" });
+    const input = { period: q.period, amountOre: q.expected.payoutOre, paidOn: "2025-07-01" };
+    const first = await addManualPayoutFor(owner, input, "2025-07-01");
+    expect(first).toMatchObject({ differenceOre: 0, matches: true });
+    const [{ source } = { source: "?" }] = await rows<{ source: string | null }>(
+      db(),
+      sql`select data_source_id::text as source from public.payouts where id = ${first.id}::uuid`,
+    );
+    expect(source).toBeNull();
+
+    // Svaret kom aldrig fram och ägaren trycker Spara igen: samma kvitto, ingen ny rad.
+    const before = (await payoutRows()).length;
+    const [again, twice] = await Promise.all([
+      addManualPayoutFor(owner, input, "2025-07-01"),
+      addManualPayoutFor(admin, input, "2025-07-01"),
+    ]);
+    expect(again).toEqual(first);
+    expect(twice).toEqual(first);
+    expect(await payoutRows()).toHaveLength(before);
+    // Ett annat belopp för samma dagar nekas som förut.
+    await expect(
+      addManualPayoutFor(owner, { ...input, amountOre: input.amountOre + 100 }, "2025-07-01"),
+    ).rejects.toThrow(/finns redan en utbetalning/);
+  });
 });

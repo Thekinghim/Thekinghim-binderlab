@@ -482,18 +482,37 @@ export async function addManualPayoutFor(
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`payouts:${orgId}`}))`);
     const active = await queryPayouts(tx, orgId, null);
     const clash = overlappingPayout(active, period);
+    // Samma svar en gång till (svaret från förra försöket kom aldrig fram, eller ett dubbelt
+    // tryck): ingen ny rad och inget fel, utan samma kvitto som första gången.
+    if (
+      clash &&
+      clash.manual &&
+      clash.periodStart === period.start &&
+      clash.periodEnd === period.end &&
+      clash.amountOre === amountOre &&
+      clash.paidOn === paidOn
+    ) {
+      return manualReceipt(
+        clash.id,
+        clash.reference,
+        amountOre,
+        await reconcileIn(tx, orgId, period, viewer.organization.timezone),
+      );
+    }
     if (clash) {
       throw new AccountingError(
         `Det finns redan en utbetalning för de dagarna (${clash.reference}). Arkivera den först om den är fel.`,
       );
     }
     const reference = manualReference(period, new Set(active.map((p) => p.reference)));
-    const provider = await queryProviderSource(tx, orgId);
     const [row] = await tx
       .insert(s.payouts)
       .values({
         organizationId: orgId,
-        dataSourceId: provider?.id ?? null,
+        // Ingen datakälla: beloppet på kontot gäller all försäljning. Med en källa på raden
+        // jämförs den bara med den källans order (reconcileIn), och då stämmer inte
+        // skillnaden med det frågan visade.
+        dataSourceId: null,
         reference,
         periodStart: period.start,
         periodEnd: period.end,
@@ -505,17 +524,30 @@ export async function addManualPayoutFor(
         manual: true,
       })
       .returning({ id: s.payouts.id });
-    const rec = await reconcileIn(tx, orgId, period, viewer.organization.timezone);
-    const mine = rec.result?.payouts.find((p) => p.reference === reference);
-    const differenceOre = mine?.differenceOre ?? 0;
-    return {
-      id: row!.id,
+    return manualReceipt(
+      row!.id,
       reference,
-      expectedOre: mine?.expected.payoutOre ?? amountOre,
-      differenceOre,
-      matches: mine ? mine.deviations.every((d) => !d.requiresAction) : true,
-    };
+      amountOre,
+      await reconcileIn(tx, orgId, period, viewer.organization.timezone),
+    );
   });
+}
+
+/** Kvittot efter Spara: vad avstämningen säger om den inskrivna utbetalningen. */
+function manualReceipt(
+  id: string,
+  reference: string,
+  amountOre: number,
+  rec: { readonly result: ReconciliationResult | null },
+): ManualPayoutResult {
+  const mine = rec.result?.payouts.find((p) => p.reference === reference);
+  return {
+    id,
+    reference,
+    expectedOre: mine?.expected.payoutOre ?? amountOre,
+    differenceOre: mine?.differenceOre ?? 0,
+    matches: mine ? mine.deviations.every((d) => !d.requiresAction) : true,
+  };
 }
 
 export interface PayoutImportResult {
@@ -932,6 +964,7 @@ function payoutsForBooking(
       amountOre: p.amountOre,
       feesOre: p.feesOre,
       refundsOre: p.refundsOre ?? known,
+      feesKnown: !p.manual,
     };
   });
 }

@@ -14,7 +14,12 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { DEFAULT_VAT_LIMIT_ORE, settingsIssues, type SettingsIssue } from "@/analytics/self-check";
+import {
+  DEFAULT_VAT_LIMIT_ORE,
+  settingsIssues,
+  vatAckValid,
+  type SettingsIssue,
+} from "@/analytics/self-check";
 import type { Tx } from "@/db/client";
 import type { MemberRole } from "@/db/schema";
 import { isIsoDate, type IsoDate } from "@/domain";
@@ -27,7 +32,7 @@ import {
 import type { ActionResult } from "@/server/auth/flows";
 import { dbErrorMessage, pgErrorOf } from "@/server/errors";
 import { readCompanyDetails, type CompanyDetailsRow } from "@/server/contracts/operator";
-import { querySettingsFacts } from "@/server/self-check/queries";
+import { fiscalYearAround, querySettingsFacts } from "@/server/self-check/queries";
 
 import {
   AUDITED_TABLES,
@@ -303,7 +308,15 @@ export async function loadSettingsIssuesFor(
   );
 }
 
-const vatOkInput = z.object({ organizationId: z.uuid(), acknowledged: z.boolean() });
+const vatOkInput = z.object({
+  organizationId: z.uuid(),
+  acknowledged: z.boolean(),
+  /** Dagens datum i organisationens tidszon (avgör räkenskapsåret). Utelämnat: dagens UTC-dag. */
+  today: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+});
 
 /**
  * "Revisorn har koll": momsvarningen visas inte längre (acknowledged = false: varna igen).
@@ -326,9 +339,14 @@ export async function setVatAcknowledgedFor(
   try {
     return await withUserDbFor(user as SessionUser, async (tx) => {
       const current = await querySettingsRow(tx, input.organizationId);
-      if (current && (current.vatOkAt !== null) === input.acknowledged) {
-        return { ok: true, data: { changed: false } };
-      }
+      // "Har koll" gäller räkenskapsåret det trycktes i: ett gammalt från förra året räknas
+      // inte, så knappen sparar på nytt.
+      const today = (input.today ?? new Date().toISOString().slice(0, 10)) as IsoDate;
+      const fiscal = fiscalYearAround(today, current?.fiscalYearStartMonth ?? 1);
+      const valid = vatAckValid(current?.vatOkAt, fiscal.start);
+      // Varna igen nollställer också ett gammalt.
+      const unchanged = input.acknowledged ? valid : current?.vatOkAt === null;
+      if (current && unchanged) return { ok: true, data: { changed: false } };
       if (current) {
         await tx.execute(
           sql`update public.organization_settings

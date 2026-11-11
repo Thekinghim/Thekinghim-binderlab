@@ -13,15 +13,17 @@ import { sql } from "drizzle-orm";
 import {
   parseChecks,
   settingsHomeNotice,
+  vatAckValid,
   type CheckResult,
   type RunStatus,
 } from "@/analytics/self-check";
 import { getServiceDb, type Db } from "@/db/client";
 import type { SelfCheckTrigger } from "@/db/schema";
 import { AuthorizationError, requireRoleFor, withUserDbFor } from "@/server/access";
-import type { Viewer } from "@/server/data/core/loaders";
+import { businessToday, type Viewer } from "@/server/data/core/loaders";
 import { OPERATOR_ROLES } from "@/server/data/core/types";
 
+import { fiscalYearAround, instantText } from "./queries";
 import { runSelfCheck, type SelfCheckRunResult } from "./run";
 
 /** "Kör kontrollen nu" högst så här ofta per organisation. */
@@ -125,7 +127,7 @@ export async function latestSelfCheckFor(viewer: Viewer): Promise<{
                      (select c from jsonb_array_elements(r.checks) c
                       where c ->> 'id' = 'installningar' limit 1)
                    end as settings_check,
-                   s.card_fee_bp, s.vat_rate_bp, s.vat_ok_at
+                   s.card_fee_bp, s.vat_rate_bp, s.vat_ok_at, s.fiscal_year_start_month
             from public.self_check_runs r
             left join public.organization_settings s on s.organization_id = r.organization_id
             where r.organization_id = ${orgId}::uuid
@@ -141,6 +143,7 @@ export async function latestSelfCheckFor(viewer: Viewer): Promise<{
     card_fee_bp: number | null;
     vat_rate_bp: number | null;
     vat_ok_at: unknown;
+    fiscal_year_start_month: number | null;
   }[];
   if (!row) return null;
   const [settingsCheck] = parseChecks(row.settings_check ? [row.settings_check] : []);
@@ -153,7 +156,14 @@ export async function latestSelfCheckFor(viewer: Viewer): Promise<{
       ? settingsHomeNotice(settingsCheck.findings, {
           cardFeeBp: Number(row.card_fee_bp ?? 0),
           vatRateBp: Number(row.vat_rate_bp ?? 0),
-          vatAcknowledged: row.vat_ok_at != null,
+          // "Revisorn har koll" gäller räkenskapsåret det trycktes i (vatAckValid).
+          vatAcknowledged: vatAckValid(
+            instantText(row.vat_ok_at),
+            fiscalYearAround(
+              businessToday(new Date(), viewer.organization.timezone),
+              Number(row.fiscal_year_start_month ?? 1),
+            ).start,
+          ),
         })
       : null,
   };

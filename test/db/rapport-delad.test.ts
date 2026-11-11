@@ -131,7 +131,12 @@ describe("butik utan mottagare i appen", () => {
   });
 
   it("Ja, skickad: en manuell rad utan adress, rapporten räknas som skickad", async () => {
-    expect(await markReportSharedFor(adminViewer, reportId)).toBe(1);
+    // Två tryck samtidigt (dubbelt tryck, eller ägaren och admin): bara en rad.
+    const added = await Promise.all([
+      markReportSharedFor(adminViewer, reportId),
+      markReportSharedFor(ownerViewer, reportId),
+    ]);
+    expect(added.sort()).toEqual([0, 1]);
     expect(await deliveries(reportId)).toEqual([
       { recipient_id: null, email: null, status: "delivered", channel: "manual" },
     ]);

@@ -366,6 +366,18 @@ describe("buildLonsamhetModel", () => {
       title: expect.stringMatching(/^Vår vinst .+ på 20\sdagar\.$/),
       aside: `Upp 25${NBSP}% mot perioden innan.`,
     });
+    // Försäljningen började mitt i perioden innan (1 okt.): hela dagar mot halva säger inget
+    // om riktningen, så raden faller tillbaka på vem som ger mest.
+    const half = buildLonsamhetModel(
+      { ...two, current: off(two.current), previous: off(two.previous) },
+      { today: "2026-11-02", dataStart: "2026-10-01" },
+    );
+    expect(half.headline.aside).toBe("Automat 2: drygt hälften av vinsten.");
+    const whole = buildLonsamhetModel(
+      { ...two, current: off(two.current), previous: off(two.previous) },
+      { today: "2026-11-02", dataStart: "2026-09-23" },
+    );
+    expect(whole.headline.aside).toBe(`Upp 25${NBSP}% mot perioden innan.`);
     // Utan period att jämföra med: största bidragsgivaren (en automat, alltså ingen varning).
     const alone = buildLonsamhetModel(
       { ...two, current: off(two.current), previous: null },

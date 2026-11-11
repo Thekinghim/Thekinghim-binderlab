@@ -11,6 +11,7 @@ import {
   settingsHomeNotice,
   settingsIssues,
   stillValid,
+  vatAckValid,
   type SettingsCheckInput,
 } from "./settings";
 import { homeLine, homeLink, summarize } from "./summary";
@@ -124,6 +125,15 @@ describe("kontrollen och rubriken", () => {
       settingsHomeNotice(r.findings, { cardFeeBp: 150, vatRateBp: 0, vatAcknowledged: true }),
     ).toBeNull();
     expect(stillValid(r.findings[1]!, { ...now, vatRateBp: 2500 })).toBe(false);
+  });
+
+  it("Revisorn har koll gäller bara räkenskapsåret det trycktes i", () => {
+    expect(vatAckValid("2026-03-04T09:00:00.000Z", "2026-01-01")).toBe(true);
+    expect(vatAckValid("2026-01-01 00:00:00+00", "2026-01-01")).toBe(true);
+    expect(vatAckValid("2025-12-01T10:00:00.000Z", "2026-01-01")).toBe(false);
+    // Brutet räkenskapsår (juli–juni): tryckt i maj gäller inte året som börjar i juli.
+    expect(vatAckValid("2026-05-20T10:00:00.000Z", "2026-07-01")).toBe(false);
+    expect(vatAckValid(null, "2026-01-01")).toBe(false);
   });
 
   it("Hem: fel går före varningen, och länken följer raden", () => {

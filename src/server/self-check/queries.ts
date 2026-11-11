@@ -16,7 +16,12 @@ import type {
   SettingsCheckInput,
   SyncSourceState,
 } from "@/analytics/self-check";
-import { DEFAULT_VAT_LIMIT_ORE, PACE_DAYS, REFILL_WINDOW_HOURS } from "@/analytics/self-check";
+import {
+  DEFAULT_VAT_LIMIT_ORE,
+  PACE_DAYS,
+  REFILL_WINDOW_HOURS,
+  vatAckValid,
+} from "@/analytics/self-check";
 import type { Db, Tx } from "@/db/client";
 import { addDays, agreementGaps, daysBetween, type IsoDate, type Period } from "@/domain";
 import { awishExpiryNotice } from "@/server/awish/expiry";
@@ -458,6 +463,12 @@ export async function queryAgreementGaps(
 // 7. Inställningar
 // ---------------------------------------------------------------------------
 
+/** En tidpunkt ur databasen som text som börjar med dagen ('ÅÅÅÅ-MM-DD…'), eller null. */
+export function instantText(value: unknown): string | null {
+  if (value == null) return null;
+  return value instanceof Date ? value.toISOString() : String(value);
+}
+
 /** Räkenskapsåret som `today` ligger i: första dagen och antal dagar kvar efter i dag. */
 export function fiscalYearAround(
   today: IsoDate,
@@ -522,7 +533,8 @@ export async function querySettingsFacts(
     cardFeeBp: Number(settings?.card_fee_bp ?? 0),
     vatRateBp: Number(settings?.vat_rate_bp ?? 0),
     vatLimitOre: Number(settings?.vat_limit_ore ?? DEFAULT_VAT_LIMIT_ORE),
-    vatAcknowledged: settings?.vat_ok_at != null,
+    // Gäller året det trycktes i: ett nytt räkenskapsår varnar igen.
+    vatAcknowledged: vatAckValid(instantText(settings?.vat_ok_at), fiscal.start),
     yearSalesOre: Number(sales?.year_ore ?? 0),
     yearCardSalesOre: Number(sales?.card_ore ?? 0),
     recentSalesOre: Number(sales?.recent_ore ?? 0),

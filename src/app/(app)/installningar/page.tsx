@@ -6,10 +6,11 @@ import { wallClockIn } from "@/components/shell/period-state";
 import { MobileFold } from "@/components/ui/mobile-fold";
 import { SectionHeader } from "@/components/ui/section-header";
 import { StateMessage } from "@/components/ui/state-message";
-import { DEFAULT_VAT_LIMIT_ORE, settingsCheckHeadline } from "@/analytics/self-check";
+import { DEFAULT_VAT_LIMIT_ORE, settingsCheckHeadline, vatAckValid } from "@/analytics/self-check";
 import { EN_DASH, NBSP, formatDate, formatInt } from "@/lib/format";
 import { operatorGaps, operatorParty } from "@/server/contracts/operator";
 import { requireRoute } from "@/server/data/core";
+import { fiscalYearAround } from "@/server/self-check/queries";
 import { listCustomerDemosFor } from "@/server/demo/customer-demos";
 import { listDataExportsFor } from "@/server/export/service";
 import { requireUser } from "@/server/session";
@@ -188,8 +189,11 @@ export default async function SettingsPage() {
             />
           </div>
         </MobileFold>
-        {settings.vatOkAt && settings.vatRateBp === 0 ? (
-          <VatAcknowledgedLine since={when(settings.vatOkAt)} />
+        {vatAckValid(
+          settings.vatOkAt,
+          fiscalYearAround(ctx.today, settings.fiscalYearStartMonth).start,
+        ) && settings.vatRateBp === 0 ? (
+          <VatAcknowledgedLine since={when(settings.vatOkAt!)} />
         ) : null}
       </section>
 

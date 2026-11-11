@@ -9,6 +9,7 @@
 
 import type { ActionResult } from "@/server/auth/flows";
 import { revalidateAppData } from "@/server/data/core";
+import { businessToday } from "@/server/data/core/loaders";
 import { getActiveOrganization, getSessionUser } from "@/server/session";
 
 import {
@@ -48,6 +49,7 @@ export async function setVatAcknowledged(
   const result = await setVatAcknowledgedFor(await getSessionUser(), {
     organizationId: organization.id,
     acknowledged: acknowledged === true,
+    today: businessToday(new Date(), organization.timezone),
   });
   if (result.ok && result.data?.changed) revalidateAppData();
   return result;

@@ -37,7 +37,7 @@ export function SettingsNotices({ notices }: { notices: readonly SettingsNotice[
         return;
       }
       toast({
-        title: "Momsvarningen är stängd",
+        title: "Momsvarningen är stängd i år",
         description: "Du kan slå på den igen under Avgifter och moms.",
         tone: "ok",
       });
@@ -103,7 +103,7 @@ export function VatAcknowledgedLine({ since }: { since: string }) {
     <div className="flex max-w-2xl flex-col gap-2" data-vat-acknowledged>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <p className="text-sm text-muted">
-          Revisorn har koll på momsen sedan {since.replace(/\.$/, "")}. Ingen varning visas.
+          Revisorn har koll på momsen sedan {since.replace(/\.$/, "")}. Ingen varning i år.
         </p>
         <Button variant="secondary" className="min-h-11" loading={pending} onClick={warnAgain}>
           Varna igen

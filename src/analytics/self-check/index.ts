@@ -38,6 +38,7 @@ export {
   settingsHomeNotice,
   settingsIssues,
   stillValid,
+  vatAckValid,
   type SettingsCheckInput,
   type SettingsIssue,
 } from "./settings";

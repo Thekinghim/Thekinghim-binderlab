@@ -32,7 +32,7 @@ export interface SettingsCheckInput {
   readonly vatRateBp: number;
   /** Gränsen vi varnar vid, i öre. */
   readonly vatLimitOre: number;
-  /** "Revisorn har koll" är tryckt. */
+  /** "Revisorn har koll" är tryckt i det här räkenskapsåret (vatAckValid). */
   readonly vatAcknowledged: boolean;
   /** Betalt belopp i år (räkenskapsåret hittills), testköp borträknade. */
   readonly yearSalesOre: number;
@@ -93,6 +93,15 @@ export function roughWhen(days: number): string {
   if (days <= 10) return "Om ungefär en vecka";
   if (days <= 45) return `Om ungefär ${formatInt(Math.round(days / 7))}${NBSP}veckor`;
   return `Om ungefär ${formatInt(Math.round(days / 30))}${NBSP}månader`;
+}
+
+/**
+ * "Revisorn har koll" gäller räkenskapsåret det trycktes i. Nästa år börjar försäljningen om
+ * från noll mot gränsen, så då säger appen till igen. `vatOkAt` är tidpunkten som text
+ * ('ÅÅÅÅ-MM-DD…'), `fiscalStart` årets första dag.
+ */
+export function vatAckValid(vatOkAt: string | null | undefined, fiscalStart: string): boolean {
+  return vatOkAt != null && vatOkAt.slice(0, 10) >= fiscalStart;
 }
 
 /** Det som behöver kollas i inställningarna, viktigast först. Tom lista = allt är inställt. */

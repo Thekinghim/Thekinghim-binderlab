@@ -61,6 +61,11 @@ export interface PayoutForBooking {
   readonly feesOre: number;
   /** Återbetalningar som leverantören drog (eller de vi känner till, om leverantören inte angav). */
   readonly refundsOre: number;
+  /**
+   * Falskt för en utbetalning som skrivits in för hand: avgifterna är okända (0 i raden), så
+   * dagarnas uppskattade avgift står kvar i dagskassan. Utelämnad = kända avgifter.
+   */
+  readonly feesKnown?: boolean;
 }
 
 export interface MonthVoucherInput {
@@ -108,7 +113,10 @@ export function monthVouchers(input: MonthVoucherInput): MonthVouchers {
   };
 
   // 2. Dagar som en utbetalning täcker: ingen uppskattad avgift i dagskassan.
-  const covered = (date: IsoDate) => input.payouts.some((p) => inPeriod(date, p.period));
+  // En utbetalning som skrivits in för hand har inga avgifter: då står uppskattningen kvar,
+  // annars försvinner avgiften ur bokföringen och avräkningskontot går aldrig jämnt ut.
+  const covered = (date: IsoDate) =>
+    input.payouts.some((p) => p.feesKnown !== false && inPeriod(date, p.period));
   let daysWithActualFees = 0;
   const days = report.days.map((d) => {
     if (d.feesOre === 0 || !covered(d.date)) return d;
