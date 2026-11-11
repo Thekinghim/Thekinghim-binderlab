@@ -104,6 +104,25 @@ const prices = () => sql<{ ore: number; day: string }[]>`
   select unit_cost_ore::int as ore, valid_from::text as day from public.purchase_prices
   where organization_id = ${orgId}::uuid and title_id = ${titleId}::uuid order by valid_from`;
 
+/** Väntar ut radernas ändliga in-animationer (.rise), så att bilden inte tas mitt i en toning. */
+async function still(page: Page): Promise<void> {
+  await until(
+    () =>
+      page.evaluate(() =>
+        document.getAnimations().every((a) => {
+          if (a.playState !== "running" || a.effect === null) return true;
+          return a.effect.getComputedTiming().iterations === Infinity;
+        }),
+      ),
+    "sidans animationer är klara",
+  );
+}
+
+async function shot(page: Page, name: string): Promise<string> {
+  await still(page);
+  return screenshot(page, name);
+}
+
 async function settled(page: Page): Promise<void> {
   // Bara arkets egna, ändliga animationer: sidan bakom kan ha en som aldrig tar slut.
   await until(
@@ -274,7 +293,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     await expectPhoneFit(page, "main");
     expect(await page.locator("main").innerText()).not.toMatch(SWEDISH);
     await item.scrollIntoViewIfNeeded();
-    await screenshot(page, "23-t3-buy-list-iphonese");
+    await shot(page, "23-t3-buy-list-iphonese");
 
     await item.getByRole("button", { name: `Ordered, ${title}` }).click();
     const sheet = page.getByRole("dialog");
@@ -286,7 +305,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     await qty.fill("56");
     await settled(page);
     await expectPhoneFit(page, "dialog[open]");
-    await screenshot(page, "23-t3-ordered-sheet-iphonese");
+    await shot(page, "23-t3-ordered-sheet-iphonese");
     await sheet.getByRole("button", { name: "Save as ordered" }).click();
     await page.getByText(`Ordered: 56 packs ${title}.`).first().waitFor();
     await page.getByText(/^On the way: 56\spacks, expected /).waitFor();
@@ -300,7 +319,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     }, "beställningen finns hos Eget inköp");
     await expectPhoneFit(page, "main");
     expect(await page.locator("main").innerText()).not.toMatch(SWEDISH);
-    await screenshot(page, "23-t3-on-the-way-iphonese");
+    await shot(page, "23-t3-on-the-way-iphonese");
   });
 
   it("ägaren ser På väg och trycker Kom fram: 30 av 56 med nytt pris", async () => {
@@ -314,9 +333,9 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
       .filter({ hasText: title })
       .getByText(new RegExp(`^(\\d+ av dem|Alla) går till ${mystery}\\.$`))
       .scrollIntoViewIfNeeded();
-    await screenshot(page, "23-t3-inkop-kop-rad-iphonese");
+    await shot(page, "23-t3-inkop-kop-rad-iphonese");
     await expectPhoneFit(page, "main");
-    await screenshot(page, "23-t3-inkop-pa-vag-iphonese");
+    await shot(page, "23-t3-inkop-pa-vag-iphonese");
     await page.getByRole("button", { name: `Kom fram, ${title}` }).click();
     const sheet = page.getByRole("dialog");
     const qty = sheet.getByLabel("Antal pack");
@@ -332,7 +351,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     await sheet.getByText(/Kvar per pack blir 31\skr\./).waitFor();
     await settled(page);
     await expectPhoneFit(page, "dialog[open]");
-    await screenshot(page, "23-t3-kom-fram-ark-iphonese");
+    await shot(page, "23-t3-kom-fram-ark-iphonese");
     await sheet.getByRole("button", { name: "Lägg in i lagret" }).click();
     await page
       .getByText("Du planerade 56, fick 30. Vi ber dig köpa 26 till.", { exact: false })
@@ -358,7 +377,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     await page.getByRole("button", { name: `Beställt, ${title}` }).waitFor();
     expect(await page.getByText(/På väg: 56/).count()).toBe(0);
     await expectPhoneFit(page, "main");
-    await screenshot(page, "23-t3-inkop-efter-iphonese");
+    await shot(page, "23-t3-inkop-efter-iphonese");
   });
 
   it("prisvakt: Enter sparar från i dag, och ett konstigt pris ger en fråga", async () => {
@@ -372,7 +391,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     await sheet.getByRole("button", { name: /^Fix the old price/ }).waitFor();
     await settled(page);
     await expectPhoneFit(page, "dialog[open]");
-    await screenshot(page, "23-t3-price-sheet-iphonese");
+    await shot(page, "23-t3-price-sheet-iphonese");
     await field.fill("1190");
     await field.press("Enter");
     await sheet
@@ -380,7 +399,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
       .waitFor();
     await settled(page);
     await expectPhoneFit(page, "dialog[open]");
-    await screenshot(page, "23-t3-price-doubt-iphonese");
+    await shot(page, "23-t3-price-doubt-iphonese");
     // Inget är sparat än.
     expect((await prices()).at(-1)?.ore).toBe(11800);
     await sheet.getByRole("button", { name: "Change the price" }).click();
@@ -405,7 +424,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     await settled(page);
     await expectPhoneFit(page, "dialog[open]");
     expect(await sheet.innerText()).not.toMatch(SWEDISH);
-    await screenshot(page, "23-t3-delivery-price-iphonese");
+    await shot(page, "23-t3-delivery-price-iphonese");
     await sheet.getByRole("button", { name: "Add", exact: true }).click();
     await page
       .getByText(/^5\spacks added at /)
@@ -423,7 +442,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     const page = await ownerPage("/vart-lager");
     const row = page.locator(`#rad-${titleId}:visible`);
     await row.waitFor();
-    await screenshot(page, "23-t3-vart-lager-iphonese");
+    await shot(page, "23-t3-vart-lager-iphonese");
     // Mobil: ett tryck på titeln visar knapparna.
     await row.getByRole("button", { name: `Fler uppgifter, ${title}` }).click();
     await row.getByRole("button", { name: `Inköp, ${title}` }).click();
@@ -435,11 +454,11 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     await row.getByText(/är mycket mindre än förra priset 121\skr\. Stämmer det\?/).waitFor();
     expect(await level()).toBe(35);
     await expectPhoneFit(page, `#rad-${titleId}`);
-    await screenshot(page, "23-t3-inkop-fraga-iphonese");
+    await shot(page, "23-t3-inkop-fraga-iphonese");
     // Rätta priset i fältet: frågan försvinner och raden om nytt pris visas.
     await price.fill("122");
     await row.getByText(/^Nytt pris 122\skr \(var 121\skr\)\./).waitFor();
-    await screenshot(page, "23-t3-inkop-nytt-pris-iphonese");
+    await shot(page, "23-t3-inkop-nytt-pris-iphonese");
     await row.getByRole("button", { name: `Lägg till inköp, ${title}` }).click();
     await page
       .getByText(/Nytt pris 122\skr från i dag\./)
@@ -495,7 +514,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     await settled(page);
     await expectPhoneFit(page, "dialog[open]");
     expect(await way.innerText()).not.toMatch(SWEDISH);
-    await screenshot(page, "23-t3-not-coming-iphonese");
+    await shot(page, "23-t3-not-coming-iphonese");
     await way.getByRole("button", { name: /They are not coming/ }).click();
     await page
       .getByText(/^No longer waiting for 10\spacks /)
@@ -507,6 +526,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     await item.waitFor();
     expect(await page.getByText(/On the way:/).count()).toBe(0);
     await expectPhoneFit(page, "main");
+    await still(page);
     await page.screenshot({
       path: `${process.env.E2E_SCREENSHOT_DIR ?? ".data/e2e"}/23-t3-buy-list-full.png`,
       fullPage: true,
@@ -514,6 +534,7 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     });
     await owner.reload();
     await owner.getByRole("button", { name: `Beställt, ${title}` }).waitFor();
+    await still(owner);
     await owner.screenshot({
       path: `${process.env.E2E_SCREENSHOT_DIR ?? ".data/e2e"}/23-t3-inkop-full.png`,
       fullPage: true,
@@ -521,10 +542,31 @@ describe("Runda 2, T3: lager och inköp (iPhone SE 375 px)", () => {
     });
     await owner.goto("/vart-lager");
     await owner.locator(`#rad-${titleId}:visible`).waitFor();
+    await still(owner);
     await owner.screenshot({
       path: `${process.env.E2E_SCREENSHOT_DIR ?? ".data/e2e"}/23-t3-vart-lager-full.png`,
       fullPage: true,
       caret: "initial",
     });
+  });
+
+  it("ägarens Inköpspriser: ett konstigt pris sparas inte utan ett extra tryck", async () => {
+    const page = await ownerPage("/inkopspriser");
+    await page.getByRole("link", { name: title, exact: true }).first().click();
+    const form = page.getByRole("form", { name: `Nytt inköpspris för ${title}` });
+    await form.waitFor();
+    const before = await prices();
+    await form.getByLabel("Inköpspris per pack").fill("1220");
+    await form.getByRole("button", { name: /^Nytt inköpspris från i dag/ }).click();
+    const ask = form.getByRole("alert").filter({ hasText: "Stämmer det?" });
+    await ask
+      .getByText(/^1\s220,00\skr är mycket mer än förra priset 122,00\skr\. Stämmer det\?$/)
+      .waitFor();
+    await ask.getByRole("button", { name: "Ja, spara ändå" }).waitFor();
+    await expectPhoneFit(page, "form");
+    await ask.scrollIntoViewIfNeeded();
+    await shot(page, "23-t3-inkopspriser-fraga-iphonese");
+    // Inget är sparat förrän ägaren trycker en gång till.
+    expect(await prices()).toEqual(before);
   });
 });

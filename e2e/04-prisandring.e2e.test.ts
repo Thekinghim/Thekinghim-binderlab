@@ -16,6 +16,7 @@ import {
   screenshot,
   type Browser,
   type BrowserContext,
+  type Locator,
   type Page,
 } from "./support/browser";
 import { PRICE_TITLE, PRICE_VALID_FROM } from "./support/fixture";
@@ -63,6 +64,27 @@ function newPrice(): string {
   return `${Math.floor(ore / 100)},${String(ore % 100).padStart(2, "0")}`;
 }
 
+/**
+ * Prisvakten (runda 2): ett pris långt från det förra, eller över vad packet säljs för, ber
+ * om ett extra tryck. Testets pris är slumpat, så frågan kommer ibland: svara ja då.
+ */
+async function confirmIfAsked(saved: Locator): Promise<void> {
+  const yes = page.getByRole("button", { name: "Ja, spara ändå" });
+  // Förloraren avbryts när sidan stängs: felet fångas här och blir null.
+  const first = await Promise.race([
+    saved.waitFor().then(
+      () => "saved" as const,
+      () => null,
+    ),
+    yes.waitFor().then(
+      () => "asked" as const,
+      () => null,
+    ),
+  ]);
+  if (first === "asked") await yes.click();
+  if (first !== "saved") await saved.waitFor();
+}
+
 describe("prisändring", () => {
   it("Rätta priset ändrar vinsten på Lönsamhet och Hem och loggas", async () => {
     const before = await figures();
@@ -86,10 +108,11 @@ describe("prisändring", () => {
     await form.getByLabel("Anteckning").fill("E2E: nytt pris från leverantören");
     // "Rätta priset": priset gäller all försäljning, inte bara dagens order.
     await form.getByRole("button", { name: /^Rätta priset/ }).click();
-    await page
-      .getByText(/^Priset rättat – (vinsten ändrades med [+−]|\d+ order räknas nu in i vinsten)/)
-      .first()
-      .waitFor();
+    await confirmIfAsked(
+      page
+        .getByText(/^Priset rättat – (vinsten ändrades med [+−]|\d+ order räknas nu in i vinsten)/)
+        .first(),
+    );
     // Sidans egna siffror (Vad varje pack lämnar, kvar per order) ändras utan omladdning.
     await expect.poll(() => titleRow.innerText(), { timeout: 15_000 }).not.toBe(rowBefore);
 
@@ -138,7 +161,7 @@ describe("prisändring", () => {
     await form.getByRole("button", { name: "Annat datum…" }).click();
     await form.getByLabel("Giltig från").fill(PRICE_VALID_FROM);
     await form.getByRole("button", { name: /^Spara från/ }).click();
-    await page.getByText("Nytt inköpspris sparat").first().waitFor();
+    await confirmIfAsked(page.getByText("Nytt inköpspris sparat").first());
     expect(page.url()).toBe(url);
   });
 });
