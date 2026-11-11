@@ -13,6 +13,7 @@ import { Calculator } from "../_components/calculator";
 import { CostNotice } from "../_components/cost-notice";
 import { ContentsSection, UndoPackButton } from "../_components/mystery-actions";
 import { PackFlow } from "../_components/pack-flow";
+import { StockLine } from "../_components/stock-line";
 import { loadMysteryDetailFor } from "../_lib/data";
 import { batchesForPacks, defaultPlace, maxBatches, mysteryCalc, recipeOdds } from "../_lib/model";
 
@@ -61,7 +62,9 @@ export default async function MysteryPackPage({
   // Inköpspriset sätts av den som får ändra priser (ägare och admin), även i Enkel vy.
   const canSetCost = detail.overview.canEdit;
 
-  const place = recipe ? defaultPlace(recipe, view.places, view.byPlace) : null;
+  // ?lager=<id> (länken "Packa 1 omgång nu" vid ett minus) förväljer lagret att packa i.
+  const wantedPlace = view.places.find((p) => p.id === one(sp.lager)) ?? null;
+  const place = recipe ? (wantedPlace ?? defaultPlace(recipe, view.places, view.byPlace)) : null;
   const cap = recipe && place ? maxBatches(recipe, view.byPlace[place.id] ?? {}) : null;
   // ?packa=28 (Inköps "Packa X st") förväljer omgångarna, men aldrig fler än lagret räcker till.
   const wanted = Number(one(sp.packa) ?? "");
@@ -102,12 +105,16 @@ export default async function MysteryPackPage({
           {m.mystery.back}
         </Link>
         <PageHead eyebrow={m.mystery.title} title={t.name} aside={aside} count={false} />
-        <p className="tnum text-base text-muted">
-          {[
-            ...view.places.map((p) => m.mystery.stockIn(p.name, t.inPlaces[p.id] ?? 0)),
-            m.mystery.inMachines(t.inMachines),
-          ].join(" · ")}
-        </p>
+        <StockLine
+          titleId={t.id}
+          places={view.places}
+          inPlaces={t.inPlaces}
+          inMachines={t.inMachines}
+          batchSize={recipe?.batchSize ?? null}
+          canPack={view.canPack}
+          canCount={canSetCost}
+          t={m}
+        />
       </div>
 
       {recipe && view.canPack ? (

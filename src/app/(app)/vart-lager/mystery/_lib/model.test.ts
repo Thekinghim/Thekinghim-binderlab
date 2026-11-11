@@ -268,3 +268,35 @@ describe("mysteryCalc", () => {
     });
   });
 });
+
+describe("minusFix (påfyllt utan att trycka Packa)", () => {
+  it("−14 med 14 per omgång: packa 1 omgång", async () => {
+    const { minusFix } = await import("./model");
+    expect(minusFix(-14, 14)).toEqual({ kind: "pack", batches: 1, packs: 14 });
+    expect(minusFix(-28, 14)).toEqual({ kind: "pack", batches: 2, packs: 28 });
+  });
+
+  it("−1 eller −15: räkna om lagret", async () => {
+    const { minusFix } = await import("./model");
+    expect(minusFix(-1, 14)).toEqual({ kind: "count" });
+    expect(minusFix(-15, 14)).toEqual({ kind: "count" });
+  });
+
+  it("fler omgångar än Packa klarar, eller okänd omgång: räkna om", async () => {
+    const { minusFix, MAX_BATCHES } = await import("./model");
+    expect(minusFix(-14 * (MAX_BATCHES + 1), 14)).toEqual({ kind: "count" });
+    expect(minusFix(-14, null)).toEqual({ kind: "count" });
+  });
+
+  it("0 eller mer: inget att rätta", async () => {
+    const { minusFix } = await import("./model");
+    expect(minusFix(0, 14)).toBeNull();
+    expect(minusFix(9, 14)).toBeNull();
+  });
+
+  it("länkarna: packa i just det lagret, och inventeringen av det", async () => {
+    const { packInPlaceHref, countHref } = await import("./model");
+    expect(packInPlaceHref("t1", "p1", 14)).toBe("/vart-lager/mystery/t1?packa=14&lager=p1#packa");
+    expect(countHref("p1")).toBe("/vart-lager/inventering?lager=p1");
+  });
+});

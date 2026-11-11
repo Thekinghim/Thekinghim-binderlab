@@ -327,3 +327,38 @@ export function checkDraft(batchSize: number, items: readonly DraftItem[]): Draf
   }
   return { ok: true, sum, error: null };
 }
+
+// ---------------------------------------------------------------------------
+// Minus i lagret (påfyllt utan att trycka Packa)
+// ---------------------------------------------------------------------------
+
+/** Vad som rättar ett minus: packa hela omgångar, eller räkna om lagret. */
+export type MinusFix =
+  | { readonly kind: "pack"; readonly batches: number; readonly packs: number }
+  | { readonly kind: "count" };
+
+/**
+ * Ett lager står på minus för ett mystery pack: någon har fyllt på utan att trycka Packa.
+ * - Minuset är hela omgångar (−14, −28 med 14 per omgång): "Packa 1 omgång nu" rättar det,
+ *   och delarna dras ur lagret.
+ * - Annars (−1, −15) eller fler än MAX_BATCHES omgångar: lagret behöver räknas om.
+ * - 0 eller mer, eller okänd omgång: null (inget att rätta).
+ */
+export function minusFix(quantity: number, batchSize: number | null | undefined): MinusFix | null {
+  if (!Number.isFinite(quantity) || quantity >= 0) return null;
+  const minus = -Math.trunc(quantity);
+  if (!batchSize || !Number.isInteger(batchSize) || batchSize < 1) return { kind: "count" };
+  const batches = minus / batchSize;
+  if (!Number.isInteger(batches) || batches > MAX_BATCHES) return { kind: "count" };
+  return { kind: "pack", batches, packs: minus };
+}
+
+/** Packa i ett bestämt lager med antalet förvalt (rättar ett minus där). */
+export function packInPlaceHref(titleId: string, placeId: string, packs: number): string {
+  return `/vart-lager/mystery/${titleId}?packa=${Math.trunc(packs)}&lager=${placeId}#packa`;
+}
+
+/** Inventeringen av ett eget lager. */
+export function countHref(placeId: string): string {
+  return `/vart-lager/inventering?lager=${placeId}`;
+}

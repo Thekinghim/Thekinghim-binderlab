@@ -32,6 +32,7 @@ import { useHydrated } from "@/lib/use-hydrated";
 import { undoRefills, type AwishPushStatus } from "@/app/(app)/drift/actions";
 import { Sheet } from "@/app/(app)/lager/_components/sheet";
 import { registerCount } from "@/app/(app)/lager/actions";
+import { packMystery } from "@/app/(app)/vart-lager/mystery/actions";
 
 import { refreshFill } from "../actions";
 import { bringStore, useBring, useDone, type Done } from "../_lib/done-store";
@@ -43,14 +44,19 @@ import {
   fillAllQty,
   maxFill,
   mysteryNote,
+  mysteryShortAtHome,
+  packAsks,
   qtyAfterCount,
   needLabel,
   pairKey,
   splitRefill,
   toggleBring,
+  withPacked,
   type FillAdjustment,
   type FillMachine,
+  type FillRecipe,
   type FillRow,
+  type PackAsk,
   type SourceChoice,
 } from "../_lib/model";
 import type { FillData } from "../_lib/data";
@@ -193,6 +199,12 @@ export function FillApp({
     map: new Map(),
   });
 
+  // Packat här ("Ja, packa 1 omgång och fyll på") men inte i serverns siffror än.
+  const [packed, setPacked] = useState<{ base: FillData; deltas: PackDelta[] }>({
+    base: data,
+    deltas: [],
+  });
+
   const rememberSaved = useCallback(
     (items: readonly QueuedRefill[]) => {
       setSaved((prev) => ({
@@ -289,7 +301,8 @@ export function FillApp({
     ];
     // Först med det föreslagna lagret (raderna och lagrens saldo efter kön), sedan väljs lagret
     // som har packen (chooseSource) och raderna räknas mot det.
-    const first = applyAdjustments(data.machines, sources.stock, adj, counts, (id) =>
+    const stock = withPacked(sources.stock, packed.base === data ? packed.deltas : []);
+    const first = applyAdjustments(data.machines, stock, adj, counts, (id) =>
       pickPlace(sources.places, override[id], ...preferred(id)),
     );
     const choice: Record<string, SourceChoice> = {};
@@ -303,15 +316,9 @@ export function FillApp({
         t,
       });
     }
-    const out = applyAdjustments(
-      data.machines,
-      sources.stock,
-      adj,
-      counts,
-      (id) => choice[id]?.id ?? null,
-    );
+    const out = applyAdjustments(data.machines, stock, adj, counts, (id) => choice[id]?.id ?? null);
     return { ...out, choice };
-  }, [counted, data, lastSource, override, q.queue, saved, sources, t]);
+  }, [counted, data, lastSource, override, packed, q.queue, saved, sources, t]);
   const sourceOf = (machineId: string) => view.choice[machineId]?.id ?? null;
 
   const go = useCallback((href: string) => {
@@ -336,6 +343,14 @@ export function FillApp({
           count: Object.values(view.stock[p.id] ?? {}).reduce((n, v) => n + Math.max(0, v), 0),
         }))}
         sourceId={source}
+        sourceStock={source ? (view.stock[source] ?? {}) : null}
+        recipes={data.recipes}
+        onPacked={(deltas) =>
+          setPacked((prev) => ({
+            base: data,
+            deltas: [...(prev.base === data ? prev.deltas : []), ...deltas],
+          }))
+        }
         sourceReason={view.choice[selected.id]?.reason ?? null}
         onSource={(id) => setOverride((prev) => ({ ...prev, [selected.id]: id }))}
         syncLabel={syncLabels[selected.id]}
@@ -872,10 +887,27 @@ interface Line {
   readonly quantity: number;
 }
 
+/** En ändring i ett eget lager efter en packning här (delar ut, mystery packs in). */
+interface PackDelta {
+  readonly placeId: string;
+  readonly titleId: string;
+  readonly delta: number;
+}
+
+/** Frågorna "Packade du en omgång?" före Klar: en i taget, med svaren hittills. */
+interface Asking {
+  readonly asks: readonly PackAsk[];
+  readonly index: number;
+  readonly yes: readonly PackAsk[];
+}
+
 function MachineScreen({
   machine: m,
   places,
   sourceId,
+  sourceStock,
+  recipes,
+  onPacked,
   sourceReason,
   onSource,
   syncLabel,
@@ -892,6 +924,12 @@ function MachineScreen({
   places: readonly { id: string; name: string; count: number }[];
   /** Lagret packen tas från, null = inget eget lager. */
   sourceId: string | null;
+  /** Saldot per titel i lagret packen tas från (efter kön), null = inget eget lager. */
+  sourceStock: Readonly<Record<string, number>> | null;
+  /** Mystery packs: gällande innehåll per titel (för "Packade du en omgång?"). */
+  recipes: Readonly<Record<string, FillRecipe>>;
+  /** En packning gjordes här: lagrets saldo ändras direkt på skärmen. */
+  onPacked: (deltas: PackDelta[]) => void;
   /** Varför ett annat lager än automatens är valt ("Kontoret saknar pack"), annars null. */
   sourceReason: string | null;
   onSource: (id: string) => void;
@@ -924,20 +962,70 @@ function MachineScreen({
   // Klar sparar och skickar till Awish: fråga först, så att ett tryck av misstag (t.ex. när
   // man packar hemma) inte registrerar en påfyllning.
   const [confirming, setConfirming] = useState(false);
+  // Mystery packs som fylls på fast de inte finns färdiga i lagret: "Packade du en omgång?".
+  const [asking, setAsking] = useState<Asking | null>(null);
+  const [packing, setPacking] = useState(false);
   // Ändrade antal som inte sparats: appen laddar inte om av sig själv för en ny version.
-  useUnsavedInput(touched || busy || confirming || counting !== null);
-  const finish = async () => {
+  useUnsavedInput(touched || busy || confirming || asking !== null || counting !== null);
+  const linesNow = (): Line[] =>
+    m.rows.map((row) => ({ row, quantity: qty[row.titleId] ?? 0 })).filter((l) => l.quantity > 0);
+  /** Sparar påfyllningen. `toPack`: omgångar som först packas i lagret (svaret Ja). */
+  const finish = async (toPack: readonly PackAsk[] = []) => {
     setBusy(true);
     try {
-      await onDone(
-        m.rows
-          .map((row) => ({ row, quantity: qty[row.titleId] ?? 0 }))
-          .filter((l) => l.quantity > 0),
-      );
+      let lines = linesNow();
+      if (toPack.length > 0 && sourceId) {
+        setPacking(true);
+        const added = new Map<string, number>();
+        for (const ask of toPack) {
+          const res = await packMystery({
+            titleId: ask.titleId,
+            placeId: sourceId,
+            batches: ask.batches,
+            recipeId: ask.recipeId,
+            clientId: newClientId(),
+          }).catch(() => ({ ok: false as const, error: t.common.offlineRetry }));
+          if (!res.ok) {
+            // Inget är påfyllt än: stanna här, så att man kan trycka Klar igen.
+            toast({
+              title: t.r2.t1.fill.packFailed,
+              description: `${t.serverError(res.error)} ${t.r2.t1.fill.packFailedHint}`,
+              tone: "critical",
+            });
+            return;
+          }
+          added.set(ask.titleId, ask.packs);
+          onPacked([
+            { placeId: sourceId, titleId: ask.titleId, delta: ask.packs },
+            ...(recipes[ask.titleId]?.items ?? []).map((i) => ({
+              placeId: sourceId,
+              titleId: i.titleId,
+              delta: -i.quantity * ask.batches,
+            })),
+          ]);
+        }
+        // De nypackade packen ligger nu i lagret: påfyllningen tar dem därifrån.
+        lines = lines.map((l) => {
+          const plus = added.get(l.row.titleId);
+          return plus ? { ...l, row: { ...l.row, home: l.row.home + plus } } : l;
+        });
+      }
+      setPacking(false);
+      await onDone(lines);
     } finally {
       setBusy(false);
+      setPacking(false);
       setConfirming(false);
+      setAsking(null);
     }
+  };
+  const ask = asking ? asking.asks[asking.index] : undefined;
+  const lastAsk = asking !== null && asking.index === asking.asks.length - 1;
+  const answer = (yes: boolean) => {
+    if (!asking || !ask) return;
+    const next = yes ? [...asking.yes, ask] : asking.yes;
+    if (lastAsk) void finish(next);
+    else setAsking({ ...asking, index: asking.index + 1, yes: next });
   };
   const sourceName = places.find((p) => p.id === sourceId)?.name ?? t.common.homeFallback;
   const total = m.rows.reduce((n, r) => n + (qty[r.titleId] ?? 0), 0);
@@ -967,6 +1055,7 @@ function MachineScreen({
       <TitleRow
         row={r}
         sourceName={sourceName}
+        hasSource={sourceId !== null}
         value={qty[r.titleId] ?? 0}
         onChange={(v) => set(r.titleId, v, maxFill(r))}
         counting={counting === r.titleId}
@@ -1111,7 +1200,57 @@ function MachineScreen({
       </div>
 
       <div className="sticky bottom-0 z-10 border-t border-line bg-bg/95 px-4 pt-3 pb-[calc(12px+env(safe-area-inset-bottom))] backdrop-blur">
-        {confirming ? (
+        {asking && ask ? (
+          <div
+            className="flex flex-col gap-2"
+            role="group"
+            aria-label={t.r2.t1.fill.packAskQuestion(ask.batches)}
+          >
+            <p className="text-md text-muted">
+              {t.r2.t1.fill.packAskHave(ask.home, ask.name, sourceName)}
+            </p>
+            <p className="text-lg font-medium text-fg">
+              {t.r2.t1.fill.packAskQuestion(ask.batches)}
+            </p>
+            <p className="text-sm text-muted">{t.r2.t1.fill.packAskDetail(sourceName)}</p>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => answer(true)}
+              className={cn(
+                "flex min-h-14 w-full items-center justify-center gap-2 rounded-md border px-3 text-lg font-medium transition-colors",
+                busy
+                  ? "border-dashed border-line-strong text-disabled"
+                  : "border-inverse bg-inverse text-on-inverse active:bg-inverse-hover",
+              )}
+            >
+              <Icon name="check" size={20} />
+              {busy
+                ? packing
+                  ? t.r2.t1.fill.packing
+                  : t.common.saving
+                : t.r2.t1.fill.packAskYes(ask.batches, lastAsk)}
+            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => answer(false)}
+                className="flex min-h-12 w-full items-center justify-center rounded-md border border-line-control px-3 text-md font-medium text-fg disabled:text-disabled"
+              >
+                {t.r2.t1.fill.packAskNo(lastAsk)}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setAsking(null)}
+                className="flex min-h-12 w-full items-center justify-center rounded-md px-3 text-md text-subtle hover:text-fg disabled:text-disabled"
+              >
+                {t.common.cancel}
+              </button>
+            </div>
+          </div>
+        ) : confirming ? (
           <div className="flex flex-col gap-2" role="group" aria-label={t.fill.confirmQuestion}>
             <p className="text-md font-medium text-fg">{t.fill.confirmQuestion}</p>
             <p className="text-sm text-muted">{t.fill.confirmDetail(total)}</p>
@@ -1144,7 +1283,10 @@ function MachineScreen({
             disabled={busy}
             onClick={async () => {
               if (total > 0) {
-                setConfirming(true);
+                // Utan nät går det inte att packa: påfyllningen läggs i kön som vanligt.
+                const asks = online ? packAsks(linesNow(), recipes, sourceStock) : [];
+                if (asks.length > 0) setAsking({ asks, index: 0, yes: [] });
+                else setConfirming(true);
                 return;
               }
               toast({ title: t.fill.nothingFilled, tone: "neutral" });
@@ -1189,6 +1331,7 @@ function MachineScreen({
 function TitleRow({
   row: r,
   sourceName,
+  hasSource,
   value,
   onChange,
   counting,
@@ -1198,6 +1341,8 @@ function TitleRow({
   row: FillRow;
   /** Lagret packen tas från ("Hemma"). */
   sourceName: string;
+  /** Det finns ett eget lager att ta packen från. */
+  hasSource: boolean;
   value: number;
   onChange: (v: number) => void;
   counting: boolean;
@@ -1211,6 +1356,8 @@ function TitleRow({
   const short = value > Math.max(0, r.home);
   const fullNote = fullFastNote(r, t);
   const mystery = mysteryNote(r, value, t);
+  // Tomt mystery-fack men ingen hel omgång färdig i lagret: säg det och erbjud en omgång.
+  const shortBatch = hasSource && value === 0 ? mysteryShortAtHome(r) : null;
   return (
     <div
       className={cn(
@@ -1254,6 +1401,20 @@ function TitleRow({
         <p className="-mt-1 text-sm text-muted" role="note">
           {mystery}
         </p>
+      ) : null}
+      {shortBatch !== null ? (
+        <div className="-mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+          <p className="text-sm text-signal-fg" role="note">
+            {t.r2.t1.fill.mysteryReady(Math.max(0, r.home), sourceName)}
+          </p>
+          <button
+            type="button"
+            onClick={() => onChange(shortBatch)}
+            className="min-h-11 rounded-sm border border-line-strong bg-surface px-4 text-md font-medium text-fg active:bg-hover"
+          >
+            {t.r2.t1.fill.mysteryFillBatch(shortBatch)}
+          </button>
+        </div>
       ) : null}
 
       <div className="grid grid-cols-[56px_1fr_56px] items-center gap-2">

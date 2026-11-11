@@ -12,6 +12,7 @@ import { currentViewer } from "../../lager/_lib/session";
 import { PageHead } from "../_components/page-head";
 import { ContentsCard } from "./_components/contents-card";
 import { CostNotice } from "./_components/cost-notice";
+import { StockLine } from "./_components/stock-line";
 import { krAuto } from "./_lib/kr";
 import { loadMysteryOverviewFor, type MysteryOverview, type MysteryTitle } from "./_lib/data";
 import { averageCost, batchesForPacks, defaultPlace, maxBatches, packHref } from "./_lib/model";
@@ -105,10 +106,6 @@ function TitleCard({
     cost?.perPackOre !== null &&
     cost?.perPackOre !== undefined &&
     cost.perPackOre !== t.currentCostOre;
-  const stockParts = [
-    ...view.places.map((p) => m.mystery.stockIn(p.name, t.inPlaces[p.id] ?? 0)),
-    m.mystery.inMachines(t.inMachines),
-  ];
 
   return (
     <section
@@ -125,7 +122,16 @@ function TitleCard({
               {t.name}
             </Link>
           </h2>
-          <p className="tnum text-base text-muted">{stockParts.join(" · ")}</p>
+          <StockLine
+            titleId={t.id}
+            places={view.places}
+            inPlaces={t.inPlaces}
+            inMachines={t.inMachines}
+            batchSize={t.recipe?.batchSize ?? null}
+            canPack={view.canPack}
+            canCount={canSetCost}
+            t={m}
+          />
           {cap ? <p className="text-base text-fg">{cap}</p> : null}
           {t.packQty !== null && t.packQty > 0 && t.recipe ? (
             <p className="text-base text-signal-fg">

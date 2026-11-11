@@ -6,9 +6,32 @@
  * Small words such as "3 packs" and "at Kontoret": import from "../words.en".
  */
 
+import { batches, f, inPlace } from "../words.en";
 import type { R2T1 } from "./t1.sv";
 
-export const t1: R2T1 = {};
+export const t1: R2T1 = {
+  fill: {
+    packAskHave: (n, name, place) =>
+      `There ${n === 1 ? "is" : "are"} ${f.int(n)} ${name} ${inPlace(place)}.`,
+    packAskQuestion: (n) => (n === 1 ? "Did you pack a batch?" : `Did you pack ${batches(n)}?`),
+    packAskDetail: (place) => `Yes takes the parts from the stock ${inPlace(place)}.`,
+    packAskYes: (n, last) =>
+      last ? `Yes, pack ${batches(n)} and refill` : `Yes, pack ${batches(n)}`,
+    packAskNo: (last) => (last ? "No, just refill" : "No"),
+    packing: "Packing…",
+    packFailed: "Not packed",
+    packFailedHint: "Nothing is saved. Press Done again.",
+    mysteryReady: (n, place) => `${f.int(n)} ready ${inPlace(place)}.`,
+    mysteryFillBatch: (batch) => `Refill one batch (${f.int(batch)})`,
+  },
+  mystery: {
+    minus: (n, place) =>
+      `The app shows ${f.int(n)} ${inPlace(place)}. Someone refilled without pressing Pack.`,
+    packNow: (n) => `Pack ${batches(n)} now`,
+    countNow: "Count the stock",
+    askOwnerCount: "Ask the owner to count the stock.",
+  },
+};
 
 /**
  * Swedish messages from this track's server actions and database functions, in English:
