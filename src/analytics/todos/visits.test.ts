@@ -97,7 +97,8 @@ describe("groupVisits", () => {
       ],
     } as const;
     const one = groupVisits([refill("m1", "a")], plan, TODAY)[0];
-    expect(one).toMatchObject({ type: "visit", visit: { packs: 6 } });
+    // Hela packlistan (talet på Besök och Lager) följer med, så att raden kan säga båda.
+    expect(one).toMatchObject({ type: "visit", visit: { packs: 6, planPacks: 11 } });
     const two = groupVisits([refill("m1", "a"), refill("m1", "c")], plan, TODAY)[0];
     expect(two).toMatchObject({ type: "visit", visit: { packs: 8 } });
     // Titeln finns inte i packlistan (vårt lager är tomt): inga pack på raden.

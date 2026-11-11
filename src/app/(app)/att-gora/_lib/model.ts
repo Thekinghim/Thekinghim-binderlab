@@ -1045,15 +1045,31 @@ function visitHeading(visit: TodoVisit, input: ModelInput): string {
     : visitTitle({ needBy: null, level: visit.level }, label, "1970-01-01");
 }
 
-/** "4 titlar · 38 pack · 2 300 kr i risk". Pack = besöksplanens packlista för automaten. */
+/**
+ * "4 titlar · 38 pack · 2 300 kr i risk". Pack = titlarna i besöket (de som brådskar).
+ * Har besöksplanen fler titlar för automaten (den fyller upp när man ändå är där) står
+ * hela packlistan också: "4 titlar · 79 pack · ta med 86", samma 86 som på Besök och Lager.
+ */
 export function visitFacts(
-  visit: Pick<TodoVisit, "items" | "packs" | "atStakeOre">,
+  visit: Pick<TodoVisit, "items" | "packs" | "atStakeOre"> & Pick<Partial<TodoVisit>, "planPacks">,
   economy: boolean,
 ): string {
   const parts = [plural(visit.items.length, "titel", "titlar")];
   if (visit.packs !== null && visit.packs > 0) parts.push(`${formatInt(visit.packs)}${NBSP}pack`);
+  const bring = bringPacks(visit);
+  if (bring !== null) parts.push(`ta med ${formatInt(bring)}`);
   if (economy && visit.atStakeOre > 0) parts.push(`${kr(visit.atStakeOre)} i risk`);
   return parts.join(" · ");
+}
+
+/**
+ * Hela packlistan för besöket, när den är större än titlarna som brådskar; annars null.
+ * Samma tal som "Ta med N pack" på Drift > Besök och Lager.
+ */
+export function bringPacks(visit: Pick<Partial<TodoVisit>, "packs" | "planPacks">): number | null {
+  const plan = visit.planPacks ?? null;
+  if (plan === null || plan <= 0) return null;
+  return plan > (visit.packs ?? 0) ? plan : null;
 }
 
 /** Vägbeskrivning till automatens butik, eller null utan adress och plats. */

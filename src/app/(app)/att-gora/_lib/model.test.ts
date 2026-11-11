@@ -5,6 +5,7 @@ import { fillMachines, maxFill, pairKey, suggestFill } from "@/app/fyll-pa/_lib/
 import { NBSP } from "@/lib/format";
 
 import {
+  bringPacks,
   buildPage,
   extraTodos,
   factLine,
@@ -20,6 +21,7 @@ import {
   refillHome,
   SIGNAL_BUDGET,
   unpricedOf,
+  visitFacts,
   type ModelInput,
 } from "./model";
 
@@ -697,5 +699,28 @@ describe("påfyllningsrutan använder Fyll på-logiken", () => {
       capacities: [{ machineId: M1, titleId: T1, capacity: 25 }],
     });
     expect(a).toMatchObject({ warehouseOnHand: null, suggested: 24 });
+  });
+});
+
+describe("visitFacts: besökets pack och hela packlistan", () => {
+  const items = [{}, {}, {}, {}] as never[];
+  const plain = (s: string) => s.replace(/\u00a0/g, " ");
+
+  it("planen har fler titlar än de som brådskar: båda talen står på raden", () => {
+    // Granskningen av runda 2: Att göra sa 79 pack, Besök och Lager "Ta med 86 pack".
+    expect(plain(visitFacts({ items, packs: 79, planPacks: 86, atStakeOre: 0 }, false))).toBe(
+      "4 titlar · 79 pack · ta med 86",
+    );
+    expect(bringPacks({ packs: 79, planPacks: 86 })).toBe(86);
+  });
+
+  it("samma antal, eller ingen plan: bara ett tal", () => {
+    expect(plain(visitFacts({ items, packs: 79, planPacks: 79, atStakeOre: 0 }, false))).toBe(
+      "4 titlar · 79 pack",
+    );
+    expect(plain(visitFacts({ items, packs: 79, atStakeOre: 0 }, false))).toBe(
+      "4 titlar · 79 pack",
+    );
+    expect(bringPacks({ packs: null, planPacks: null })).toBeNull();
   });
 });

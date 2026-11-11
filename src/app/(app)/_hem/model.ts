@@ -704,7 +704,7 @@ function buildTodos(
               machineLabel(v.machineId),
               visits?.today ?? "1970-01-01",
             ),
-            detail: visitDetail(v.items.length, v.packs),
+            detail: visitDetail(v.items.length, v.packs, v.planPacks),
             href: `/att-gora#punkt-visit-${v.machineId}`,
             orgWide: false,
             atStakeOre: v.atStakeOre > 0 ? v.atStakeOre : null,
@@ -758,10 +758,16 @@ function buildTodos(
 /** Sorterna där intäkt står på spel (som RISK_KINDS på Att göra). */
 const HOME_RISK_KINDS: ReadonlySet<string> = new Set(["refill", "stale-machine", "silent-title"]);
 
-/** "4 titlar · 38 pack" under besöket. */
-function visitDetail(titles: number, packs: number | null): string {
+/**
+ * "4 titlar · 38 pack" under besöket. Har besöksplanen fler titlar för automaten:
+ * "4 titlar · 79 pack · ta med 86" (samma text och tal som Att göra, Besök och Lager).
+ */
+function visitDetail(titles: number, packs: number | null, planPacks?: number | null): string {
   const parts = [`${formatInt(titles)}${NBSP}${titles === 1 ? "titel" : "titlar"}`];
   if (packs !== null && packs > 0) parts.push(`${formatInt(packs)}${NBSP}pack`);
+  if (planPacks !== null && planPacks !== undefined && planPacks > (packs ?? 0)) {
+    parts.push(`ta med ${formatInt(planPacks)}`);
+  }
   return parts.join(" · ");
 }
 

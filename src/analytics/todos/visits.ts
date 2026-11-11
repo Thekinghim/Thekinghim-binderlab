@@ -54,6 +54,12 @@ export interface TodoVisit {
    * gäller samma titel.
    */
   readonly packs: number | null;
+  /**
+   * Hela packlistan för automaten i besöksplanen (talet på Drift > Besök och Lager: "Ta med
+   * 86 pack"), också titlarna som bara fylls upp när man ändå är där. null utan stopp.
+   * Större än `packs` när planen har fler titlar än punkterna i besöket.
+   */
+  readonly planPacks?: number | null;
   /** Intäkt i risk 7 dagar (öre), summan av punkternas belopp i hela kronor. */
   readonly atStakeOre: number;
   /** Punkterna i besöket, i listans ordning. */
@@ -161,6 +167,7 @@ export function groupVisits(
             ? group.reduce((n, x) => n + (stop.byTitle?.get(refillTitleOf(x) ?? "") ?? 0), 0)
             : stop.total
           : null,
+        planPacks: stop?.total ?? null,
         atStakeOre: sumOre(group.map((x) => wholeKronor(x.atStakeOre ?? 0))),
         items: group,
       },
