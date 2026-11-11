@@ -10,7 +10,12 @@
  * Reglerna används av Fyll på, Att göra/Hem, besöksplanen och larmen på Drift, pushen till
  * Awish, Inköp/Vårt lager (packa i hela omgångar), dagliga kontrollen och förlorad
  * försäljning. Rena funktioner.
+ *
+ * Hur många omgångar som ska packas svarar mysteryBatchesToPack() på, för alla sidor
+ * (Mystery, Vårt lager, Inköp och delägarens inköpslista), så att de säger samma sak.
  */
+
+import type { IsoDate } from "./types";
 
 /** Varningen när någon fyller på ett mystery-fack som inte är tomt. */
 export const MYSTERY_TOP_UP_WARNING = "Mystery-facket fylls bara på när det är tomt";
@@ -93,4 +98,65 @@ export function mysteryRefillProblem(
   if (!mysteryNeedsRefill(before)) return "not_empty";
   if (quantity !== batchSize) return "not_one_batch";
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Omgångar att packa
+// ---------------------------------------------------------------------------
+
+/** Underlaget till mysteryBatchesToPack(). Nya fält läggs till som valfria. */
+export interface MysteryPackInput {
+  /** Pack per omgång (mystery_recipes.batch_size). Ogiltig eller null: inget mystery pack. */
+  readonly batchSize: number | null | undefined;
+  /**
+   * Pack som Inköps plan säger ska packas (purchaseQty i @/analytics/purchasing). Planen har
+   * redan dragit av det som ligger hemma och i automaterna. Under 0 räknas som 0.
+   */
+  readonly planPacks: number;
+  /** Färdiga mystery packs hemma, alla lager. Under 0 (ska räknas om) räknas som 0. */
+  readonly packedAtHome?: number | null;
+}
+
+/** Svaret: så här många omgångar ska packas. */
+export interface MysteryPackPlan {
+  /** Hela omgångar att packa. 0 = inget att packa. */
+  readonly batches: number;
+  /** Samma sak i pack: batches × batchSize. */
+  readonly packs: number;
+  /** Pack per omgång. */
+  readonly batchSize: number;
+  /** Hela omgångar som redan ligger färdiga hemma. */
+  readonly readyBatches: number;
+  /**
+   * Dagen omgångarna ska vara packade före ("Packa 1 omgång före fredag"). null när ingen
+   * dag är känd: planen räknar på en period, inte på när ett fack blir tomt.
+   */
+  readonly before: IsoDate | null;
+}
+
+/**
+ * Omgångar mystery packs att packa: planens antal avrundat uppåt till hela omgångar.
+ *
+ * mysteryBatchesToPack({ batchSize: 14, planPacks: 56 }) → 4 omgångar (56 pack)
+ * mysteryBatchesToPack({ batchSize: 14, planPacks: 5 })  → 1 omgång (14 pack)
+ * mysteryBatchesToPack({ batchSize: 14, planPacks: 0 })  → 0 omgångar
+ * mysteryBatchesToPack({ batchSize: null, planPacks: 9 }) → null (inget mystery pack)
+ */
+export function mysteryBatchesToPack(input: MysteryPackInput): MysteryPackPlan | null {
+  const batchSize = mysteryBatch(input.batchSize);
+  if (batchSize === null) return null;
+  const packs = wholeBatches(wholePacks(input.planPacks), batchSize);
+  return {
+    batches: packs / batchSize,
+    packs,
+    batchSize,
+    readyBatches: Math.floor(wholePacks(input.packedAtHome) / batchSize),
+    before: null,
+  };
+}
+
+/** Ett antal pack som ett heltal ≥ 0 (minus, null och trasiga tal blir 0). */
+function wholePacks(n: number | null | undefined): number {
+  if (n === null || n === undefined || !Number.isFinite(n)) return 0;
+  return Math.max(0, Math.trunc(n));
 }

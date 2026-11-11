@@ -9,19 +9,11 @@
 
 import { NBSP } from "@/lib/format";
 
-import { formatters } from "./format";
 import type { Locale } from "./locale";
-
-const f = formatters("sv");
-const packs = (n: number) => `${f.int(n)}${NBSP}pack`;
-const batches = (n: number) => `${f.int(n)} ${n === 1 ? "omgång" : "omgångar"}`;
-/** "hemma" · "i Kontoret" */
-const inPlace = (name: string) => {
-  const n = name.trim();
-  return n.toLowerCase() === "hemma" ? "hemma" : `i ${n}`;
-};
-/** "Hemma" med stor bokstav, andra lager som de heter. */
-const placeName = (name: string) => (name.trim().toLowerCase() === "hemma" ? "Hemma" : name);
+import { t1 } from "./r2/t1.sv";
+import { t2 } from "./r2/t2.sv";
+import { t3 } from "./r2/t3.sv";
+import { batches, f, inPlace, packs, placeName } from "./words.sv";
 
 export const sv = {
   locale: "sv" as Locale,
@@ -684,6 +676,11 @@ export const sv = {
       "Försök igen om en stund. Kvarstår felet, skicka felkoden under Visa detaljer till den som sköter driften.",
   },
   serverError: (message: string) => message,
+  /**
+   * Runda 2: varje spår har en egen fil i ./r2/ (t1 = Fyll på och mystery, t2 = Att göra,
+   * Hem och skalet, t3 = lager och inköp). Nya texter läggs där, inte i den här filen.
+   */
+  r2: { t1, t2, t3 },
 };
 
 export type Messages = typeof sv;

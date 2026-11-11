@@ -1,3 +1,5 @@
+import { readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { en } from "./en";
@@ -68,6 +70,54 @@ describe("katalogerna", () => {
   it("vinsten heter före butikernas andel på båda språken", () => {
     expect(sv.sales.profit).toBe("Vår vinst (före butikernas andel)");
     expect(en.sales.profit).toBe("Our profit (before stores' share)");
+  });
+});
+
+/** Rundans filer i ./r2/: "t1" → ["t1.en.ts", "t1.sv.ts"]. */
+function r2Files(): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const file of readdirSync(fileURLToPath(new URL("./r2", import.meta.url))).sort()) {
+    const m = /^(.+)\.(sv|en)\.ts$/.exec(file);
+    if (!m) throw new Error(`Oväntad fil i src/i18n/r2: ${file}`);
+    out.set(m[1]!, [...(out.get(m[1]!) ?? []), file]);
+  }
+  return out;
+}
+
+describe("runda 2: en fil per spår och språk i ./r2/", () => {
+  const tracks = [...r2Files().keys()];
+
+  it("varje spår har både en svensk och en engelsk fil", () => {
+    expect(tracks.length).toBeGreaterThanOrEqual(3);
+    for (const [track, files] of r2Files()) {
+      expect(files, track).toEqual([`${track}.en.ts`, `${track}.sv.ts`]);
+    }
+  });
+
+  it.each(tracks)("%s: samma nycklar och samma sorts värden på båda språken", async (track) => {
+    const svFile = (await import(`./r2/${track}.sv.ts`)) as Record<string, unknown>;
+    const enFile = (await import(`./r2/${track}.en.ts`)) as Record<string, unknown>;
+    expect(typeof svFile[track], `${track}.sv.ts exporterar ${track}`).toBe("object");
+    expect(shape(enFile[track])).toEqual(shape(svFile[track]));
+  });
+
+  it.each(tracks)("%s: filerna är inkopplade som r2.%s i sv.ts och en.ts", async (track) => {
+    const svFile = (await import(`./r2/${track}.sv.ts`)) as Record<string, unknown>;
+    const enFile = (await import(`./r2/${track}.en.ts`)) as Record<string, unknown>;
+    expect((sv.r2 as Record<string, unknown>)[track]).toBe(svFile[track]);
+    expect((en.r2 as Record<string, unknown>)[track]).toBe(enFile[track]);
+  });
+
+  it("r2 innehåller bara spårens filer", () => {
+    expect(Object.keys(sv.r2).sort()).toEqual(tracks);
+    expect(Object.keys(en.r2).sort()).toEqual(tracks);
+  });
+
+  it("engelskan i r2 har ingen svenska kvar och inga facktermer", () => {
+    for (const text of allTexts(en.r2)) {
+      expect(text, text).not.toMatch(TECHNICAL);
+      expect(text, text).not.toMatch(/[åäöÅÄÖ]/);
+    }
   });
 });
 
@@ -150,6 +200,10 @@ describe("språket i förfrågan", () => {
   });
 });
 
+/** Ord som den som inte är teknisk aldrig ska behöva läsa i den enkla vyn. */
+const TECHNICAL =
+  /awish|vmb|queue|purchasing|forecast|supplier|sku|inventory|payout|settlement|contract|agreement|commission|accounting|margin/i;
+
 /** Alla texter i en katalog, funktioner anropade med exempelvärden. */
 function allTexts(value: unknown): string[] {
   if (typeof value === "string") return [value];
@@ -176,9 +230,7 @@ describe("engelskan för den som inte är teknisk", () => {
     const texts = [en.fill, en.mystery, en.sales, en.simple, en.stock, en.state].flatMap(allTexts);
     expect(texts.length).toBeGreaterThan(200);
     for (const text of texts) {
-      expect(text, text).not.toMatch(
-        /awish|vmb|queue|purchasing|forecast|supplier|sku|inventory|payout|settlement|contract|agreement|commission|accounting|margin/i,
-      );
+      expect(text, text).not.toMatch(TECHNICAL);
       // Ingen svenska kvar i de engelska texterna.
       expect(text, text).not.toMatch(/[åäöÅÄÖ]/);
     }

@@ -198,6 +198,7 @@ export { entryProfitOre, storeShareDeducted, storeShareInView } from "./store-sh
 export {
   MYSTERY_TOP_UP_WARNING,
   mysteryBatch,
+  mysteryBatchesToPack,
   mysteryCapacityShort,
   mysteryCapacityText,
   mysteryEmptyText,
@@ -205,6 +206,8 @@ export {
   mysteryRefillProblem,
   mysteryRefillQty,
   wholeBatches,
+  type MysteryPackInput,
+  type MysteryPackPlan,
 } from "./mystery-refill";
 
 export {

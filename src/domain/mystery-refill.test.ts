@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   mysteryBatch,
+  mysteryBatchesToPack,
   mysteryCapacityShort,
   mysteryEmptyText,
   mysteryNeedsRefill,
@@ -53,5 +54,57 @@ describe("mystery packs: fylls bara på när facket är tomt, med en hel omgång
     expect(mysteryRefillProblem(3, 14, 14)).toBe("not_empty");
     expect(mysteryRefillProblem(0, 10, 14)).toBe("not_one_batch");
     expect(mysteryRefillProblem(3, 0, 14)).toBeNull();
+  });
+});
+
+describe("omgångar att packa: planens antal i hela omgångar", () => {
+  it("planens pack blir hela omgångar, avrundat uppåt", () => {
+    expect(mysteryBatchesToPack({ batchSize: 14, planPacks: 56 })).toEqual({
+      batches: 4,
+      packs: 56,
+      batchSize: 14,
+      readyBatches: 0,
+      before: null,
+    });
+    expect(mysteryBatchesToPack({ batchSize: 14, planPacks: 5 })?.batches).toBe(1);
+    expect(mysteryBatchesToPack({ batchSize: 14, planPacks: 5 })?.packs).toBe(14);
+    expect(mysteryBatchesToPack({ batchSize: 14, planPacks: 15 })?.batches).toBe(2);
+  });
+
+  it("samma antal som Inköp visar i dag (wholeBatches)", () => {
+    for (const batchSize of [1, 6, 14, 20]) {
+      for (let planPacks = 0; planPacks <= 90; planPacks++) {
+        const plan = mysteryBatchesToPack({ batchSize, planPacks });
+        expect(plan?.packs).toBe(wholeBatches(planPacks, batchSize));
+        expect(plan!.batches * batchSize).toBe(plan!.packs);
+      }
+    }
+  });
+
+  it("inget att packa: 0 omgångar, inte null", () => {
+    expect(mysteryBatchesToPack({ batchSize: 14, planPacks: 0 })?.batches).toBe(0);
+    expect(mysteryBatchesToPack({ batchSize: 14, planPacks: -14 })?.batches).toBe(0);
+    expect(mysteryBatchesToPack({ batchSize: 14, planPacks: Number.NaN })?.batches).toBe(0);
+  });
+
+  it("färdiga pack hemma räknas i hela omgångar, minus räknas som 0", () => {
+    expect(
+      mysteryBatchesToPack({ batchSize: 14, planPacks: 14, packedAtHome: 14 })?.readyBatches,
+    ).toBe(1);
+    expect(
+      mysteryBatchesToPack({ batchSize: 14, planPacks: 14, packedAtHome: 27 })?.readyBatches,
+    ).toBe(1);
+    expect(
+      mysteryBatchesToPack({ batchSize: 14, planPacks: 14, packedAtHome: -1 })?.readyBatches,
+    ).toBe(0);
+    expect(
+      mysteryBatchesToPack({ batchSize: 14, planPacks: 14, packedAtHome: null })?.readyBatches,
+    ).toBe(0);
+  });
+
+  it("en titel som inte är ett mystery pack ger null", () => {
+    expect(mysteryBatchesToPack({ batchSize: null, planPacks: 9 })).toBeNull();
+    expect(mysteryBatchesToPack({ batchSize: undefined, planPacks: 9 })).toBeNull();
+    expect(mysteryBatchesToPack({ batchSize: 0, planPacks: 9 })).toBeNull();
   });
 });

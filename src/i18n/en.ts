@@ -5,18 +5,11 @@
 
 import { NBSP } from "@/lib/format";
 
-import { formatters } from "./format";
+import { t1 } from "./r2/t1.en";
+import { t2 } from "./r2/t2.en";
+import { t3 } from "./r2/t3.en";
 import type { Messages } from "./sv";
-
-const f = formatters("en");
-const packs = (n: number) => `${f.int(n)}${NBSP}${n === 1 ? "pack" : "packs"}`;
-const batches = (n: number) => `${f.int(n)} ${n === 1 ? "batch" : "batches"}`;
-/** Stock place names: "Hemma" is "at home", other places "at Kontoret". */
-const placeName = (name: string) => (name.trim().toLowerCase() === "hemma" ? "Home" : name);
-const inPlace = (name: string) => {
-  const n = name.trim();
-  return n.toLowerCase() === "hemma" ? "at home" : `at ${n}`;
-};
+import { batches, f, inPlace, packs, placeName } from "./words.en";
 
 /**
  * Known Swedish messages from the server and the database, in English. Exact texts first,
@@ -766,4 +759,6 @@ export const en: Messages = {
     areaDetail: "Try again in a moment. If it keeps happening, tell the owner.",
   },
   serverError,
+  // Round 2: one file per track in ./r2/. New texts go there, not in this file.
+  r2: { t1, t2, t3 },
 };
