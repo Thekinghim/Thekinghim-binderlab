@@ -18,6 +18,13 @@ export const t1: R2T1 = {
     packAskYes: (n, last) =>
       last ? `Yes, pack ${batches(n)} and refill` : `Yes, pack ${batches(n)}`,
     packAskNo: (last) => (last ? "No, just refill" : "No"),
+    packAskCut: (name, to, from) =>
+      to > 0
+        ? `Then you refill ${f.int(to)} ${name}, not ${f.int(from)}. The rest goes into the batch.`
+        : `Then you do not refill ${name}. All of them go into the batch.`,
+    packCutDone: (name, to, from) =>
+      `${f.int(to)} ${name} instead of ${f.int(from)}. The rest went into the batch.`,
+    packCutTitle: "Fewer packs were refilled",
     packing: "Packing…",
     packFailed: "Not packed",
     packFailedHint: "Nothing is saved. Press Done again.",

@@ -781,6 +781,58 @@ export function packAsks(
   return out;
 }
 
+/** En titel som fylls på med färre pack därför att omgången tog delarna. */
+export interface PartCut {
+  readonly titleId: string;
+  readonly name: string;
+  /** Antalet som stod på raden. */
+  readonly from: number;
+  /** Antalet som finns kvar att fylla på efter packningen. */
+  readonly to: number;
+}
+
+/**
+ * Påfyllningen efter att omgångarna i `packed` har packats i lagret man fyller från:
+ * - mystery packen ligger nu där (raden får `packs` till i `home`),
+ * - delarna som gick åt finns inte längre: en titel som både är en del i omgången och fylls
+ *   på lös i samma besök får högst det som är kvar. Annars vägrar servern raden efteråt
+ *   ("Hemma har bara 37 pack") fast sidan nyss föreslog 46.
+ *
+ * `cut` = raderna som blev färre, så att sidan kan säga det före Ja och efter Klar.
+ * Rader som blir 0 tas bort. Ren.
+ */
+export function afterPacking<L extends { readonly row: FillRow; readonly quantity: number }>(
+  lines: readonly L[],
+  recipes: Readonly<Record<string, FillRecipe>>,
+  packed: readonly PackAsk[],
+): { lines: L[]; cut: PartCut[] } {
+  const added = new Map<string, number>();
+  const used = new Map<string, number>();
+  for (const ask of packed) {
+    added.set(ask.titleId, (added.get(ask.titleId) ?? 0) + ask.packs);
+    for (const i of recipes[ask.titleId]?.items ?? []) {
+      used.set(i.titleId, (used.get(i.titleId) ?? 0) + i.quantity * ask.batches);
+    }
+  }
+  const cut: PartCut[] = [];
+  const out: L[] = [];
+  for (const l of lines) {
+    const plus = added.get(l.row.titleId) ?? 0;
+    const minus = used.get(l.row.titleId) ?? 0;
+    if (plus === 0 && minus === 0) {
+      out.push(l);
+      continue;
+    }
+    const home = l.row.home + plus - minus;
+    const quantity = minus > 0 ? Math.min(l.quantity, Math.max(0, home)) : l.quantity;
+    if (quantity < l.quantity) {
+      cut.push({ titleId: l.row.titleId, name: l.row.name, from: l.quantity, to: quantity });
+    }
+    if (quantity > 0) out.push({ ...l, quantity, row: { ...l.row, home } });
+  }
+  return { lines: out, cut };
+}
+
 /**
  * Mystery-facket är tomt men lagret man fyller från har inte en hel omgång färdig: förslaget
  * är då 0. Raden säger varför och erbjuder en hel omgång ("Fyll på en omgång (14 st)").

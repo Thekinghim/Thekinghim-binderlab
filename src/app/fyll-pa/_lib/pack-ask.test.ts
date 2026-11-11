@@ -7,7 +7,14 @@ import { describe, expect, it } from "vitest";
 import { en } from "@/i18n/en";
 import { sv } from "@/i18n/sv";
 
-import { mysteryShortAtHome, packAsks, withPacked, type FillRecipe, type FillRow } from "./model";
+import {
+  afterPacking,
+  mysteryShortAtHome,
+  packAsks,
+  withPacked,
+  type FillRecipe,
+  type FillRow,
+} from "./model";
 
 const MP = "mp";
 const A = "a";
@@ -160,5 +167,53 @@ describe("texterna", () => {
       "BL-001 and BL-002 did not get the new numbers.",
     );
     expect(en.r2.t1.fill.awishPendingMany(ten)).toBe("10 machines did not get the new numbers.");
+  });
+});
+
+describe("afterPacking: omgången äter en titel som också fylls på lös", () => {
+  // Granskningen av runda 2: 47 hemma av delen, förslag 46 lösa, och omgången tar 10.
+  const part = row({ titleId: A, name: "R2T3 Pack", home: 47, suggested: 46, batchSize: null });
+  const one: FillRecipe = { recipeId: "r1", batchSize: 14, items: [{ titleId: A, quantity: 10 }] };
+  const lines = [
+    { row: row(), quantity: 14 },
+    { row: part, quantity: 46 },
+  ];
+
+  it("efter Ja: mystery packen finns i lagret och den lösa raden får det som är kvar", () => {
+    const asks = packAsks(lines, { [MP]: one }, { [A]: 47 });
+    expect(asks).toHaveLength(1);
+    const done = afterPacking(lines, { [MP]: one }, asks);
+    expect(done.lines.map((l) => [l.row.titleId, l.quantity, l.row.home])).toEqual([
+      [MP, 14, 14],
+      [A, 37, 37],
+    ]);
+    expect(done.cut).toEqual([{ titleId: A, name: "R2T3 Pack", from: 46, to: 37 }]);
+    expect(sv.r2.t1.fill.packAskCut("R2T3 Pack", 37, 46)).toBe(
+      "Då fyller du på 37 R2T3 Pack, inte 46. Resten går till omgången.",
+    );
+    expect(en.r2.t1.fill.packAskCut("R2T3 Pack", 37, 46)).toBe(
+      "Then you refill 37 R2T3 Pack, not 46. The rest goes into the batch.",
+    );
+  });
+
+  it("delarna räcker till båda: inget ändras", () => {
+    const few = [
+      { row: row(), quantity: 14 },
+      { row: part, quantity: 20 },
+    ];
+    const done = afterPacking(few, { [MP]: one }, packAsks(few, { [MP]: one }, { [A]: 47 }));
+    expect(done.cut).toEqual([]);
+    expect(done.lines[1]).toMatchObject({ quantity: 20, row: { home: 37 } });
+  });
+
+  it("omgången tar allt: den lösa raden försvinner, och inget svar Ja ändrar ingenting", () => {
+    const all = [
+      { row: row(), quantity: 14 },
+      { row: { ...part, home: 10 }, quantity: 5 },
+    ];
+    const done = afterPacking(all, { [MP]: one }, packAsks(all, { [MP]: one }, { [A]: 10 }));
+    expect(done.lines.map((l) => l.row.titleId)).toEqual([MP]);
+    expect(done.cut).toEqual([{ titleId: A, name: "R2T3 Pack", from: 5, to: 0 }]);
+    expect(afterPacking(all, { [MP]: one }, [])).toEqual({ lines: all, cut: [] });
   });
 });

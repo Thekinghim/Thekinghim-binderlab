@@ -30,6 +30,15 @@ export const t1 = {
     packAskYes: (n: number, last: boolean) =>
       last ? `Ja, packa ${batches(n)} och fyll på` : `Ja, packa ${batches(n)}`,
     packAskNo: (last: boolean): string => (last ? "Nej, fyll bara på" : "Nej"),
+    /** Omgången tar delar som också skulle fyllas på lösa: "Då fyller du på 37 Pokémon 151, inte 46." */
+    packAskCut: (name: string, to: number, from: number) =>
+      to > 0
+        ? `Då fyller du på ${f.int(to)} ${name}, inte ${f.int(from)}. Resten går till omgången.`
+        : `Då fyller du inte på ${name}. Alla går till omgången.`,
+    /** Efter Klar: "37 Pokémon 151 i stället för 46. Resten gick till omgången." */
+    packCutDone: (name: string, to: number, from: number) =>
+      `${f.int(to)} ${name} i stället för ${f.int(from)}. Resten gick till omgången.`,
+    packCutTitle: "Färre pack fylldes på",
     packing: "Packar…",
     packFailed: "Packades inte",
     packFailedHint: "Inget är sparat. Tryck Klar igen.",

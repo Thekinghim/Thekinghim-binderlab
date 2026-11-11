@@ -46,6 +46,7 @@ import {
   maxFill,
   mysteryNote,
   mysteryShortAtHome,
+  afterPacking,
   packAsks,
   qtyAfterCount,
   needLabel,
@@ -1177,7 +1178,6 @@ function MachineScreen({
       let lines = linesNow();
       if (toPack.length > 0 && sourceId) {
         setPacking(true);
-        const added = new Map<string, number>();
         for (const ask of toPack) {
           // Samma id vid ett nytt försök: kom svaret aldrig fram (nätet dog) men packningen
           // sparades, packas det inte en gång till när man trycker Ja igen.
@@ -1201,7 +1201,6 @@ function MachineScreen({
             return;
           }
           packIds.current.delete(packKey);
-          added.set(ask.titleId, ask.packs);
           onPacked([
             { placeId: sourceId, titleId: ask.titleId, delta: ask.packs },
             ...(recipes[ask.titleId]?.items ?? []).map((i) => ({
@@ -1211,11 +1210,20 @@ function MachineScreen({
             })),
           ]);
         }
-        // De nypackade packen ligger nu i lagret: påfyllningen tar dem därifrån.
-        lines = lines.map((l) => {
-          const plus = added.get(l.row.titleId);
-          return plus ? { ...l, row: { ...l.row, home: l.row.home + plus } } : l;
-        });
+        // De nypackade packen ligger nu i lagret: påfyllningen tar dem därifrån. Delarna som
+        // gick åt finns inte längre: en titel som också fylls på lös får högst det som är kvar.
+        const done = afterPacking(lines, recipes, toPack);
+        lines = done.lines;
+        if (done.cut.length > 0) {
+          toast({
+            title: t.r2.t1.fill.packCutTitle,
+            description: done.cut
+              .map((c) => t.r2.t1.fill.packCutDone(c.name, c.to, c.from))
+              .join(" "),
+            tone: "neutral",
+            duration: 12_000,
+          });
+        }
       }
       setPacking(false);
       await onDone(lines);
@@ -1420,6 +1428,12 @@ function MachineScreen({
               {t.r2.t1.fill.packAskQuestion(ask.batches)}
             </p>
             <p className="text-sm text-muted">{t.r2.t1.fill.packAskDetail(sourceName)}</p>
+            {/* Omgången tar delar som också står på listan: säg det före Ja. */}
+            {afterPacking(linesNow(), recipes, [...asking.yes, ask]).cut.map((c) => (
+              <p key={c.titleId} className="text-md font-medium text-signal-fg">
+                {t.r2.t1.fill.packAskCut(c.name, c.to, c.from)}
+              </p>
+            ))}
             <button
               type="button"
               disabled={busy}
