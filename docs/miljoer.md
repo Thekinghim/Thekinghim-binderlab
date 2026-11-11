@@ -573,6 +573,11 @@ står i `docs/architecture.md`.
 utan `MAIL_PROVIDER=resend` hamnar rapportmejlen i serverns utkorg i stället för hos mottagarna. Kontrollera den och
 VAPID-nycklarna (push) särskilt vid första driftsättningen.
 
+Rapporter utan riktig e-post (runda 2, T5): när `MAIL_PROVIDER` inte är satt, när `resend` saknar nyckel eller
+avsändare, eller när utkorgen används på Vercel, visar Rapporter dela-läget (`src/server/reports/share-mode.ts`).
+Ägaren delar då PDF:en själv och trycker "Ja, skickad". `MAIL_PROVIDER=outbox` satt uttryckligen lokalt behåller
+mejlflödet mot utkorgen (utveckling och e2e).
+
 ## Det här måste beställaren göra
 
 1. **Supabase, två projekt.** Behåll det befintliga

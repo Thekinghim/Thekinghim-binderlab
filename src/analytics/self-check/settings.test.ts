@@ -127,6 +127,13 @@ describe("kontrollen och rubriken", () => {
     expect(stillValid(r.findings[1]!, { ...now, vatRateBp: 2500 })).toBe(false);
   });
 
+  it("Hem säger över gränsen när årets försäljning redan passerat den", () => {
+    const over = settingsCheck({ ...base, vatRateBp: 0, yearSalesOre: 13_000_000 });
+    expect(
+      settingsHomeNotice(over.findings, { cardFeeBp: 150, vatRateBp: 0, vatAcknowledged: false }),
+    ).toBe("Du är över momsgränsen");
+  });
+
   it("Revisorn har koll gäller bara räkenskapsåret det trycktes i", () => {
     expect(vatAckValid("2026-03-04T09:00:00.000Z", "2026-01-01")).toBe(true);
     expect(vatAckValid("2026-01-01 00:00:00+00", "2026-01-01")).toBe(true);

@@ -44,6 +44,9 @@ export interface SettingsCheckInput {
   readonly daysLeftInYear: number;
 }
 
+/** Början på raden när årets försäljning redan är över gränsen (Hem läser den). */
+const OVER_LIMIT = "Det är över";
+
 export type SettingsIssueKind = "card_fee" | "vat";
 
 export interface SettingsIssue {
@@ -118,7 +121,7 @@ export function settingsIssues(input: SettingsCheckInput): SettingsIssue[] {
     const title = `Du har sålt för ${kr(input.yearSalesOre)} i år.`;
     const ask = "Då kan du behöva momsregistrera dig. Fråga din revisor.";
     if (days === 0) {
-      const rest = `Det är över ${limit}. ${ask}`;
+      const rest = `${OVER_LIMIT} ${limit}. ${ask}`;
       out.push({ kind: "vat", title, rest, text: `${title} ${rest}`, link: VAT_LINK });
     } else if (days !== null && days <= input.daysLeftInYear) {
       const rest = `${roughWhen(days)} passerar du ${limit}. ${ask}`;
@@ -185,6 +188,9 @@ export function settingsHomeNotice(
 ): string | null {
   const left = findings.filter((f) => stillValid(f, now));
   if (left.some((f) => f.link === CARD_FEE_LINK)) return `Kortavgiften står på 0${NBSP}%`;
-  if (left.some((f) => f.link === VAT_LINK)) return "Du närmar dig momsgränsen";
+  const vat = left.find((f) => f.link === VAT_LINK);
+  // Redan över gränsen ska inte heta "närmar dig".
+  if (vat)
+    return vat.text.includes(OVER_LIMIT) ? "Du är över momsgränsen" : "Du närmar dig momsgränsen";
   return null;
 }
