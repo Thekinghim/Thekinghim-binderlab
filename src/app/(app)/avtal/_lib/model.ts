@@ -211,6 +211,20 @@ export function startHint(
     : `Täcker försäljningen sedan ${text}.`;
 }
 
+/**
+ * Länken under startdagen i Skapa kontrakt: "Använd 14 okt." när kontraktet börjar efter
+ * första försäljningen, annars null.
+ */
+export function firstSaleLabelFor(
+  firstSale: string | null,
+  validFrom: string,
+  today: string,
+): string | null {
+  if (!firstSale || !validFrom || validFrom <= firstSale) return null;
+  const text = dayText(firstSale as IsoDate, today as IsoDate);
+  return `Använd ${text.endsWith(".") ? text : `${text}.`}`;
+}
+
 /** Försäljning i en butik som inget signerat kontrakt täcker. */
 export interface UncoveredSales {
   readonly storeId: string;
@@ -311,4 +325,126 @@ export function revenueRiskHeadline(o: {
     return `${formatPercent(o.noContractShareBp / 10_000, 0)} av intäkten saknar signerat kontrakt.`;
   }
   return `${formatPercent(o.expiringShareBp / 10_000, 0)} av intäkten löper ut inom 12 mån.`;
+}
+
+// ---------------------------------------------------------------------------
+// Rätta startdagen: "Ändra start till 14 okt." på butikens kort
+// ---------------------------------------------------------------------------
+
+/** "14 okt." (med året när det inte är i år), alltid med punkt sist. */
+function dayDot(iso: IsoDate, today: IsoDate): string {
+  const text = dayText(iso, today);
+  return text.endsWith(".") ? text : `${text}.`;
+}
+
+/** Raden överst på kortet: "Sålt sedan 14 okt. utan signerat kontrakt." */
+export function uncoveredCardText(u: UncoveredSales, today: IsoDate): string {
+  return `Sålt sedan ${dayText(u.from, today)} utan signerat kontrakt.`;
+}
+
+/** Knappen som flyttar kontraktets start till första dagen utan signerat kontrakt. */
+export interface StartFix {
+  readonly contractId: string;
+  readonly storeId: string;
+  /** Nya startdagen (första dagen med försäljning utan signerat kontrakt). */
+  readonly to: IsoDate;
+  /** Startdagen i dag. */
+  readonly from: IsoDate;
+  /** "Ändra start till 14 okt." */
+  readonly label: string;
+  /** "Kontraktet börjar 3 nov. i dag." */
+  readonly now: string;
+}
+
+/**
+ * Går det att rätta med ett tryck? Bara när butiken har ett osignerat kontrakt som börjar
+ * efter första dagen utan signerat kontrakt. Annars null (signera, eller skapa ett kontrakt).
+ */
+export function startFix(u: UncoveredSales, today: IsoDate): StartFix | null {
+  if (!u.unsignedId || !u.unsignedFrom || u.unsignedFrom <= u.from) return null;
+  return {
+    contractId: u.unsignedId,
+    storeId: u.storeId,
+    to: u.from,
+    from: u.unsignedFrom,
+    label: `Ändra start till ${dayDot(u.from, today)}`,
+    now: `Kontraktet börjar ${dayDot(u.unsignedFrom, today)}`,
+  };
+}
+
+/** Vad som ändras när startdagen flyttas, eller varför det inte går. */
+export type StartMovePlan =
+  | {
+      readonly ok: true;
+      /** Villkoren som får samma nya startdag (null: de gäller redan från den dagen). */
+      readonly moveAgreementId: string | null;
+    }
+  | { readonly ok: false; readonly reason: string };
+
+/** Samma ersättning (andel, underlag, hyra, förlust och VMB). */
+function sameTerms(a: AgreementInput, b: AgreementInput): boolean {
+  return (
+    a.commissionBp === b.commissionBp &&
+    a.monthlyRentOre === b.monthlyRentOre &&
+    a.commissionBase === b.commissionBase &&
+    (a.lossTreatment ?? "zero") === (b.lossTreatment ?? "zero") &&
+    (a.vmbBeforeSplit ?? false) === (b.vmbBeforeSplit ?? false)
+  );
+}
+
+function covers(a: AgreementInput, day: IsoDate): boolean {
+  return a.validFrom <= day && (a.validTo === null || a.validTo >= day);
+}
+
+/**
+ * Kontraktet och butikens villkor ska börja samma dag. Kontraktets egna villkor (de första
+ * kopplade) flyttas med; börjar de redan den dagen eller tidigare ändras bara kontraktet.
+ * Gäller samma villkor redan de dagarna (butikens egna, avslutade dagen före kontraktets)
+ * ändras också bara kontraktet. Det går inte när butiken har andra villkor i vägen, eller
+ * inga villkor alls för den dagen: då säger `reason` vad som saknas. Ren.
+ */
+export function planStartMove(args: {
+  fix: StartFix;
+  storeName: string;
+  /** Alla butikens villkor. */
+  agreements: readonly AgreementInput[];
+  today: IsoDate;
+}): StartMovePlan {
+  const { fix, storeName, today } = args;
+  const own = args.agreements.filter((a) => a.storeId === fix.storeId);
+  const linked = own
+    .filter((a) => a.contractId === fix.contractId)
+    .sort((a, b) => (a.validFrom < b.validFrom ? -1 : a.validFrom > b.validFrom ? 1 : 0));
+  const first = linked[0];
+  if (!first) {
+    // Ett kontrakt utan egna villkor: butikens villkor måste redan gälla den dagen.
+    return own.some((a) => covers(a, fix.to))
+      ? { ok: true, moveAgreementId: null }
+      : {
+          ok: false,
+          reason: `${storeName} har inga villkor från ${dayDot(fix.to, today)} Lägg in dem under Butiker först.`,
+        };
+  }
+  if (first.validFrom <= fix.to) return { ok: true, moveAgreementId: null };
+  const lastNewDay = addDays(first.validFrom, -1);
+  const inTheWay = own
+    .filter((a) => a.id !== first.id)
+    .filter((a) => a.validFrom <= lastNewDay && (a.validTo === null || a.validTo >= fix.to))
+    .sort((a, b) => (a.validFrom < b.validFrom ? -1 : a.validFrom > b.validFrom ? 1 : 0));
+  const blocker = inTheWay[0];
+  if (blocker) {
+    // Samma villkor gäller redan de dagarna (t.ex. butikens villkor från Ny butik, som
+    // avslutades dagen före kontraktets): då räcker det att kontraktet börjar tidigare.
+    let day: IsoDate = fix.to;
+    for (const a of inTheWay) {
+      if (!sameTerms(a, first) || a.validFrom > day) break;
+      day = a.validTo === null || a.validTo >= lastNewDay ? first.validFrom : addDays(a.validTo, 1);
+      if (day >= first.validFrom) return { ok: true, moveAgreementId: null };
+    }
+    return {
+      ok: false,
+      reason: `${storeName} har andra villkor från ${dayDot(blocker.validFrom, today)} Ändra dem under Butiker först.`,
+    };
+  }
+  return { ok: true, moveAgreementId: first.id };
 }

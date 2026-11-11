@@ -67,6 +67,12 @@ export const expansionLeads = pgTable("expansion_leads", {
   storeId: uuid("store_id"),
   archivedAt: ts("archived_at"),
   ...stamps(),
+  // Runda 2, T6 (20261206000000_gissning_pa_plats.sql): gissningen när platsen blev butik.
+  // Vinst per automat och månad i öre (kan vara negativ), lägsta och högsta, och dagen.
+  guessProfitMonthOre: safeBigint("guess_profit_month_ore"),
+  guessLowMonthOre: safeBigint("guess_low_month_ore"),
+  guessHighMonthOre: safeBigint("guess_high_month_ore"),
+  guessOn: day("guess_on"),
 });
 
 /** Mätvärden per månad: dagar (slutsålda dagar) eller minuter (tid). */

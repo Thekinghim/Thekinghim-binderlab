@@ -15,6 +15,7 @@ export function NeedList({ needs }: { needs: readonly MachineNeed[] }) {
         <li
           key={n.id}
           className="rise flex items-center gap-4 py-3"
+          data-need={n.code}
           style={{ "--i": Math.min(i + 1, 12) } as CSSProperties}
         >
           <span className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
@@ -24,6 +25,12 @@ export function NeedList({ needs }: { needs: readonly MachineNeed[] }) {
             <span className="flex min-w-0 flex-col">
               <span className="truncate text-md font-medium text-fg">{n.place}</span>
               {n.reason ? <span className="truncate text-sm text-muted">{n.reason}</span> : null}
+              {n.refillBy || n.stakeText ? (
+                // Dagen ur besöksplanen och kronorna som står på spel (får radbrytas).
+                <span className="text-sm text-fg" data-need-note>
+                  {[n.refillBy, n.stakeText ? `${n.stakeText}.` : null].filter(Boolean).join(" ")}
+                </span>
+              ) : null}
             </span>
           </span>
           <Link

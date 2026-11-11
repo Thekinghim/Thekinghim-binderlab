@@ -20,3 +20,16 @@ export function placementAgreementWarning(
     ? `${store.name} har inget avtal från den dagen än. Butiken räknas som 0 % tills avtalet börjar.`
     : `${store.name} har inget avtal – butiken räknas som 0 %.`;
 }
+
+/** Raden om kontraktet i samma rutor. */
+export const CONTRACT_NOT_SIGNED = "Kontraktet är inte signerat. Signera först eller placera ändå.";
+
+/**
+ * "Kontraktet är inte signerat. Signera först eller placera ändå." när den valda butiken
+ * saknar signerat kontrakt (osignerat eller inget alls). Null när det är signerat eller
+ * inte är känt. Det är en upplysning: automaten går att placera ändå. Ren.
+ */
+export function placementContractWarning(store: StoreOption | undefined): string | null {
+  if (!store || store.contract === undefined || store.contract === "signed") return null;
+  return CONTRACT_NOT_SIGNED;
+}

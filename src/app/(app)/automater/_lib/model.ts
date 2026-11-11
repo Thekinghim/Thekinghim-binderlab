@@ -13,13 +13,14 @@ import {
   type HealthStatus,
   type MachineHealth,
 } from "@/analytics/health";
+import { sellOut, type WeekShare } from "@/analytics/sellout";
 import { computeTodos, TODO_DEFAULTS, type AnalyticsOrder, type TodoItem } from "@/analytics/todos";
+import type { VisitPlan } from "@/analytics/visits";
 import {
   addDays,
   changeBp,
   dailyUnits,
   daysBetween,
-  daysOfStockLeft,
   keyMetrics,
   maxDate,
   minDate,
@@ -27,7 +28,6 @@ import {
   profitability,
   roundHalfUp,
   salesVelocity,
-  stockoutDate,
   topContributor,
   unitEconomics,
   type IsoDate,
@@ -79,6 +79,7 @@ import type {
   UnitEconomicsView,
   UnpricedView,
 } from "./types";
+import { refillByText } from "./refill-text";
 
 // ---------------------------------------------------------------------------
 // Små hjälpare
@@ -203,6 +204,11 @@ function byKey(rows: readonly ProfitabilityRow[]): Map<string, ProfitabilityRow>
 export interface MachineSignals {
   /** Påfyllningspunkter per automat (regeln i @/analytics/todos). */
   readonly refill: Map<string, TodoItem[]>;
+  /**
+   * Intäkt i risk de närmaste 7 dagarna per automat (öre): påfyllningspunkterna och
+   * "automaten har slutat sälja", samma belopp som på Att göra (machineStake).
+   */
+  readonly stake: Map<string, number>;
   /** Hälsa per automat (@/analytics/health). */
   readonly health: Map<string, MachineHealth>;
 }
@@ -226,6 +232,7 @@ export function machineSignals(args: {
   const { recent, stock, master, now, timeZone } = args;
   const refill = new Map<string, TodoItem[]>();
   const health = new Map<string, MachineHealth>();
+  let stake = new Map<string, number>();
   try {
     const todos = computeTodos(
       {
@@ -249,12 +256,25 @@ export function machineSignals(args: {
       list.push(t);
       refill.set(machineId, list);
     }
+    // "Har slutat sälja" räknas här utan att veta hur långt försäljningen är inläst (Att göra
+    // vet det). Drifts hälsa vet: säger den inte att automaten står still eller har fel,
+    // är tystnaden bara data som inte kommit in än, och då står inga sådana kronor på raden.
+    const silent = args.health
+      ? new Set(args.health.filter((h) => STILL_STATUSES.has(h.status)).map((h) => h.machineId))
+      : null;
+    stake = machineStake(
+      silent === null
+        ? todos
+        : todos.filter(
+            (t) => t.kind !== "stale-machine" || silent.has(t.evidence.machineIds[0] ?? ""),
+          ),
+    );
   } catch (error) {
     console.error("[automater] Påfyllningsregeln kunde inte räknas:", error);
   }
   if (args.health) {
     for (const h of args.health) health.set(h.machineId, h);
-    return { refill, health };
+    return { refill, health, stake };
   }
   try {
     for (const h of machineHealth(
@@ -271,7 +291,40 @@ export function machineSignals(args: {
   } catch (error) {
     console.error("[automater] Hälsan kunde inte räknas:", error);
   }
-  return { refill, health };
+  return { refill, health, stake };
+}
+
+/** Hälsan (som Drift räknar den) där automaten själv står still: ur drift eller fel. */
+const STILL_STATUSES: ReadonlySet<HealthStatus> = new Set(["offline", "fault", "suspected_fault"]);
+
+/** Sorterna vars kronor står på raden: tomt eller snart tomt fack, och automat som står still. */
+const STAKE_KINDS: ReadonlySet<TodoItem["kind"]> = new Set(["refill", "stale-machine"]);
+
+/**
+ * Intäkt i risk de närmaste 7 dagarna per automat (öre). Varje punkt avrundas till hela
+ * kronor innan summan tas, som på Att göra (stakeOf), så att samma punkter ger samma summa
+ * på båda sidorna. Punkter utan belopp eller utan automat räknas inte.
+ *
+ * En automat som står still OCH har tomma fack räknas en gång: "har slutat sälja" är hela
+ * automatens intäkt i 7 dagar, och facken som är slut är en del av samma intäkt. Raden är
+ * därför det största av de två, aldrig summan (en tom automat som stått still i två dygn
+ * skulle annars visa dubbla veckan). Att göra lägger ihop dem per punkt; där kan summan
+ * alltså vara högre för en sådan automat.
+ */
+export function machineStake(todos: readonly TodoItem[]): Map<string, number> {
+  const refill = new Map<string, number>();
+  const stale = new Map<string, number>();
+  for (const t of todos) {
+    if (!STAKE_KINDS.has(t.kind)) continue;
+    const machineId = t.evidence.machineIds[0];
+    if (!machineId) continue;
+    const ore = Math.round(Math.max(t.atStakeOre ?? 0, 0) / 100) * 100;
+    const into = t.kind === "stale-machine" ? stale : refill;
+    into.set(machineId, (into.get(machineId) ?? 0) + ore);
+  }
+  const out = new Map(refill);
+  for (const [machineId, ore] of stale) out.set(machineId, Math.max(out.get(machineId) ?? 0, ore));
+  return out;
 }
 
 const HEALTH_VIEW: Record<
@@ -531,6 +584,7 @@ export function buildOverview(args: OverviewArgs): MachinesOverview {
       topTitle: top ? { name: titleName.get(top[0]) ?? "Okänd titel", orders: top[1] } : null,
       refillNow: refill.filter((t) => t.level === "now").length,
       refillSoon: refill.filter((t) => t.level !== "now").length,
+      atStakeOre: lifecycle === "active" ? (signals.stake.get(m.id) ?? 0) : 0,
       packsOnHand: packs.get(m.id) ?? 0,
       lastOrderAt: lastOrderAt.get(m.id) ?? null,
     };
@@ -934,6 +988,11 @@ export function stockLines(args: {
   refill: readonly TodoItem[];
   master: MasterData;
   today: IsoDate;
+  /**
+   * Automatens veckoform (andel av veckans försäljning per veckodag, måndag först), eller
+   * utelämnad: jämn takt. Skickas in av sidan när den finns (ingen räknas ut här).
+   */
+  weekShare?: WeekShare | readonly number[] | null;
 }): StockLine[] {
   const { machine, rows, recentOrders, refill, master, today } = args;
   const asOf = addDays(today, -1);
@@ -959,13 +1018,21 @@ export function stockLines(args: {
         ...(machine.activeFrom !== null ? { activeFrom: minDate(machine.activeFrom, asOf) } : {}),
       });
       const onHand = Math.max(0, r.onHand);
+      // En gemensam funktion för slutdagen (@/analytics/sellout): utan veckoform samma dag
+      // och samma antal dagar som förut; med `weekShare` räknar den med helgen.
+      const out = sellOut({
+        onHand,
+        dailyAvg: v,
+        from: asOf,
+        ...(args.weekShare ? { weekShare: args.weekShare } : {}),
+      });
       return {
         titleId: r.titleId,
         name: name.get(r.titleId) ?? "Okänd titel",
         onHand: r.onHand,
         perDay: v.units > 0 ? v.perDay : null,
-        daysLeft: daysOfStockLeft(onHand, v),
-        stockoutDate: stockoutDate(asOf, onHand, v),
+        daysLeft: out?.daysLeft ?? null,
+        stockoutDate: out?.date ?? null,
         // Registrerad påfyllning, inte inventeringen (kolumnen "Senast påfylld").
         lastRestockedAt: r.lastRefilledAt ?? null,
         level: level.get(r.titleId) ?? null,
@@ -1248,22 +1315,50 @@ export interface MachineNeed {
   readonly label: string;
   readonly reason: string | null;
   readonly status: MachineStatusView["status"];
+  /** Intäkt i risk de närmaste 7 dagarna (öre). 0 när inget står på spel eller inte visas. */
+  readonly stakeOre: number;
+  /** "Tappar ca 1 700 kr den här veckan", eller null. */
+  readonly stakeText: string | null;
+  /** "Fyll på senast torsdag." (besöksplanens dag) för "Fyll på snart", annars null. */
+  readonly refillBy: string | null;
   /** "Fyll på" (till Fyll på-appen) eller "Öppna" (automatens sida). */
   readonly action: { readonly label: string; readonly href: string };
 }
 
+export interface NeedOptions {
+  /** Användaren ser ekonomi (ägare, admin, läsare). Annars visas inga kronor. Standard ja. */
+  readonly economy?: boolean;
+  /** Besöksplanens senaste dag per automat (refillByDates), för "Fyll på senast torsdag.". */
+  readonly refillBy?: ReadonlyMap<string, IsoDate>;
+  /** Dagens affärsdatum (behövs med `refillBy`). */
+  readonly today?: IsoDate;
+}
+
 /**
  * Automaterna som behöver något, värst först: fel/tom/ur drift och "Fyll på nu" (signal),
- * sedan "Fyll på snart" och "Misstänkt fel". Påfyllning går till Fyll på-appen.
+ * sedan "Fyll på snart" och "Misstänkt fel". Inom varje nivå den som tappar mest pengar
+ * först. Påfyllning går till Fyll på-appen.
  */
-export function machineNeeds(rows: readonly MachineListRow[]): MachineNeed[] {
+export function machineNeeds(
+  rows: readonly MachineListRow[],
+  options: NeedOptions = {},
+): MachineNeed[] {
+  const economy = options.economy !== false;
   const rank = (r: MachineListRow) =>
     r.status.flagged ? 0 : r.status.status === "warning" ? 1 : 2;
+  const stake = (r: MachineListRow) => (economy ? Math.max(r.atStakeOre ?? 0, 0) : 0);
   return rows
     .filter((r) => r.lifecycle === "active" && rank(r) < 2)
-    .sort((a, b) => rank(a) - rank(b) || a.code.localeCompare(b.code, "sv", { numeric: true }))
+    .sort(
+      (a, b) =>
+        rank(a) - rank(b) ||
+        stake(b) - stake(a) ||
+        a.code.localeCompare(b.code, "sv", { numeric: true }),
+    )
     .map((r) => {
       const refill = r.refillNow + r.refillSoon > 0 || r.status.health === "empty";
+      const stakeOre = stake(r);
+      const by = r.status.label === "Fyll på snart" ? options.refillBy?.get(r.id) : undefined;
       return {
         id: r.id,
         place: r.storeName ?? r.name,
@@ -1271,6 +1366,9 @@ export function machineNeeds(rows: readonly MachineListRow[]): MachineNeed[] {
         label: r.status.label,
         reason: r.status.reason,
         status: r.status.status,
+        stakeOre,
+        stakeText: stakeOre > 0 ? `Tappar ca ${kr(stakeOre)} den här veckan` : null,
+        refillBy: by && options.today ? refillByText(by, options.today) : null,
         action: refill
           ? { label: "Fyll på", href: `/fyll-pa/${r.id}` }
           : { label: "Öppna", href: r.href },
@@ -1278,11 +1376,37 @@ export function machineNeeds(rows: readonly MachineListRow[]): MachineNeed[] {
     });
 }
 
-/** Sidans rubrik: hur många automater som behöver något (max ~8 ord). */
+/**
+ * Sidans rubrik: hur många automater som behöver något, och hur mycket som står på spel i
+ * veckan (summan av raderna, samma 7-dagarsbelopp som Att göra).
+ */
 export function needsHeadline(needs: readonly MachineNeed[], machines: number): string {
   if (machines === 0) return "Inga automater ännu.";
   const urgent = needs.filter((n) => n.status === "critical").length;
   if (needs.length === 0) return "Alla automater rullar.";
-  if (urgent > 0) return `${plural(urgent, "automat", "automater")} behöver dig nu.`;
-  return `${plural(needs.length, "automat", "automater")} behöver dig snart.`;
+  const total = needsStake(needs);
+  const money = total > 0 ? ` Ca ${kr(total)} står på spel i veckan.` : "";
+  // Kronorna är summan av alla rader: finns det också rader som bara är "snart" nämns de,
+  // så att antalet och beloppet gäller samma automater.
+  const later = needs.length - urgent;
+  if (urgent > 0) {
+    const also = later > 0 && total > 0 ? `, ${formatInt(later)} snart` : "";
+    return `${plural(urgent, "automat", "automater")} behöver dig nu${also}.${money}`;
+  }
+  return `${plural(needs.length, "automat", "automater")} behöver dig snart.${money}`;
+}
+
+/** Summan av radernas kronor (öre). */
+export function needsStake(needs: readonly Pick<MachineNeed, "stakeOre">[]): number {
+  return needs.reduce((n, x) => n + x.stakeOre, 0);
+}
+
+/**
+ * Besöksplanens senaste dag per automat (samma plan som Drift → Besök och Lager): bara
+ * automater som har ett besök i planen.
+ */
+export function refillByDates(plan: Pick<VisitPlan, "days">): Map<string, IsoDate> {
+  const out = new Map<string, IsoDate>();
+  for (const d of plan.days) for (const stop of d.stops) out.set(stop.machineId, stop.needBy);
+  return out;
 }

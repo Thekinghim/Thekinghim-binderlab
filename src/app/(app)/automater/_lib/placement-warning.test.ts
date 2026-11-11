@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { placementAgreementWarning } from "./placement-warning";
+import {
+  CONTRACT_NOT_SIGNED,
+  placementAgreementWarning,
+  placementContractWarning,
+} from "./placement-warning";
 
 const plain = (t: string | null) => t?.replace(/ /g, " ") ?? null;
 
@@ -31,5 +35,22 @@ describe("placementAgreementWarning (placera/flytta automat)", () => {
     expect(placementAgreementWarning({ id: "s1", name: "Kiosken" }, "2026-11-08")).toBeNull();
     expect(placementAgreementWarning(undefined, "2026-11-08")).toBeNull();
     expect(placementAgreementWarning(kiosk, "")).toBeNull();
+  });
+});
+
+describe("placementContractWarning (kontraktet när automaten placeras)", () => {
+  it("osignerat eller inget kontrakt: en rad som inte stoppar placeringen", () => {
+    for (const contract of ["unsigned", "missing"] as const) {
+      expect(placementContractWarning({ id: "s1", name: "Kiosken", contract })).toBe(
+        "Kontraktet är inte signerat. Signera först eller placera ändå.",
+      );
+    }
+    expect(CONTRACT_NOT_SIGNED).toContain("placera ändå");
+  });
+
+  it("signerat, okänt eller ingen butik vald: ingen rad", () => {
+    expect(placementContractWarning({ id: "s1", name: "Kiosken", contract: "signed" })).toBeNull();
+    expect(placementContractWarning({ id: "s1", name: "Kiosken" })).toBeNull();
+    expect(placementContractWarning(undefined)).toBeNull();
   });
 });

@@ -237,7 +237,7 @@ export function ComparisonTable({
   );
 }
 
-const INVESTMENT_FIELDS = (machines: ReadonlyArray<Named>): FieldSpec[] => [
+const INVESTMENT_FIELDS = (machines: ReadonlyArray<Named>, amountHint?: string): FieldSpec[] => [
   {
     name: "machineId",
     label: "Automat",
@@ -257,7 +257,14 @@ const INVESTMENT_FIELDS = (machines: ReadonlyArray<Named>): FieldSpec[] => [
       { value: "other", label: "Övrigt" },
     ],
   },
-  { name: "amountOre", label: "Belopp", type: "decimal", suffix: "kr", required: true },
+  {
+    name: "amountOre",
+    label: "Belopp",
+    type: "decimal",
+    suffix: "kr",
+    required: true,
+    ...(amountHint ? { hint: amountHint } : {}),
+  },
   { name: "investedOn", label: "Datum", type: "date", required: true },
   {
     name: "depreciationMonths",
@@ -274,16 +281,37 @@ export function InvestmentsSection({
   machines,
   canEdit,
   today,
+  forMachineId,
+  openNew = false,
+  template = null,
 }: {
   investments: ReadonlyArray<InvestmentRecord>;
   machines: ReadonlyArray<Named>;
   canEdit: boolean;
   today: string;
+  /** Automaten som länken gäller (?automat=): vald i "Ny investering". */
+  forMachineId?: string;
+  /** Öppna "Ny investering" direkt (Startklar-länken, ?ny=1). */
+  openNew?: boolean;
+  /** Förifyllt från senaste automaten: vad den kostade och avskrivningstiden. */
+  template?: { amountOre: number; depreciationMonths: number | null; code: string } | null;
 }) {
-  const [editing, setEditing] = useState<InvestmentRecord | "new" | null>(null);
+  const [editing, setEditing] = useState<InvestmentRecord | "new" | null>(() =>
+    canEdit && openNew && machines.some((m) => !m.archived && m.id === forMachineId) ? "new" : null,
+  );
   const byId = useMemo(() => new Map(machines.map((m) => [m.id, m])), [machines]);
   const active = machines.filter((m) => !m.archived);
-  const fields = useMemo(() => INVESTMENT_FIELDS(active), [active]);
+  const preselected = active.find((m) => m.id === forMachineId) ?? null;
+  const fields = useMemo(
+    () =>
+      INVESTMENT_FIELDS(
+        active,
+        editing === "new" && template
+          ? `Samma som ${template.code}. Ändra om den här kostade något annat.`
+          : undefined,
+      ),
+    [active, editing, template],
+  );
 
   const columns = useMemo<Column<InvestmentRecord>[]>(
     () => [
@@ -348,11 +376,15 @@ export function InvestmentsSection({
   const initial =
     editing === null || editing === "new"
       ? {
-          machineId: active[0]?.id ?? "",
+          machineId: preselected?.id ?? active[0]?.id ?? "",
           kind: "purchase",
-          amountOre: "",
+          amountOre: template ? oreToInput(template.amountOre) : "",
           investedOn: today,
-          depreciationMonths: "60",
+          depreciationMonths: template
+            ? template.depreciationMonths
+              ? String(template.depreciationMonths)
+              : ""
+            : "60",
           note: "",
         }
       : {

@@ -1334,4 +1334,11 @@ export const ACTIONS: ActionSpec[] = [
     allowed: FIELD,
     args: (c) => [{ machineId: c.A.machineId }],
   },
+  // Runda 2, T6: Kontrakt, "Ändra start till 14 okt." (bara ägare och admin)
+  {
+    module: "@/app/(app)/avtal/actions",
+    name: "moveContractStart",
+    allowed: OP,
+    args: (c) => [{ contractId: c.idsA.contracts }],
+  },
 ];

@@ -14,6 +14,11 @@ import { loadUnitEconomicsPage } from "../../expansion/_lib/data";
 import { kr, paybackShort } from "../../expansion/_lib/display";
 import { evidenceLinks } from "../../expansion/_lib/model";
 import { periodText } from "@/analytics/todos/text";
+import { unstable_rethrow } from "next/navigation";
+
+import { lastPurchase } from "./_lib/last-purchase";
+import { loadInvestmentsFor } from "../../expansion/_lib/service";
+import { currentViewer } from "../../expansion/_lib/session";
 import {
   ComparisonTable,
   InvestmentsSection,
@@ -40,12 +45,43 @@ export default async function EnhetsekonomiPage({
     requestStoreShareView(),
   ]);
   // Länken "Registrera investering" från en automat (?automat=) öppnar investeringarna.
-  const openInvestments =
-    Boolean(
+  const param = (name: string): string | undefined => {
+    const v =
       "get" in sp && typeof sp.get === "function"
-        ? sp.get("automat")
-        : (sp as Record<string, unknown>).automat,
-    ) || data.investments.length === 0;
+        ? sp.get(name)
+        : (sp as Record<string, unknown>)[name];
+    const one = Array.isArray(v) ? v[0] : v;
+    return typeof one === "string" && one !== "" ? one : undefined;
+  };
+  const forMachine = param("automat");
+  const openInvestments = Boolean(forMachine) || data.investments.length === 0;
+  // Startklar-länken "Lägg in vad automaten kostade" (?automat=<id>&ny=1): rutan öppnas direkt
+  // med automaten vald. Bara så länge automaten inte har någon kostnad inlagd: annars skulle
+  // en omladdning (eller bakåt-knappen) öppna den förifyllda rutan igen, ett tryck från att
+  // samma kostnad sparas två gånger.
+  const openNew =
+    param("ny") === "1" &&
+    Boolean(forMachine) &&
+    !data.investments.some((i) => i.machineId === forMachine && i.amountOre > 0);
+  // Förifyllt från senaste automaten: sidans lista är filtrerad på automaten (?automat=),
+  // så alla automaters investeringar läses för sig, bara när rutan ska öppnas.
+  let template: { amountOre: number; depreciationMonths: number | null; code: string } | null =
+    null;
+  if (openNew && data.ctx.canEdit) {
+    try {
+      const last = lastPurchase(
+        await loadInvestmentsFor(await currentViewer()),
+        forMachine ?? null,
+      );
+      const code = last ? data.names.machines.find((m) => m.id === last.machineId)?.code : null;
+      if (last && code) {
+        template = { amountOre: last.amountOre, depreciationMonths: last.depreciationMonths, code };
+      }
+    } catch (error) {
+      unstable_rethrow(error);
+      console.error("[enhetsekonomi] Senaste investeringen kunde inte läsas:", error);
+    }
+  }
   const { comparison, period } = data;
   const codes = Object.fromEntries(data.names.machines.map((m) => [m.id, m.code ?? m.name]));
   const names = {
@@ -184,6 +220,9 @@ export default async function EnhetsekonomiPage({
             machines={data.names.machines}
             canEdit={data.ctx.canEdit}
             today={data.ctx.today}
+            forMachineId={forMachine}
+            openNew={openNew}
+            template={template}
           />
         </section>
       </details>

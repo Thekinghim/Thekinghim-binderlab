@@ -31,6 +31,7 @@ import { loadTeamStateFor } from "@/server/data/team";
 
 import { PersonPicker } from "../../_team/person-picker";
 import { MachineActions } from "../_components/machine-dialogs";
+import { ReadyList } from "../_components/ready-list";
 import { RefillSourcePicker } from "../_components/refill-source";
 import { Sub } from "../_components/sub";
 import { UnpricedNote } from "../_components/unpriced-note";
@@ -42,10 +43,11 @@ import {
   type MachineDetailData,
 } from "../_lib/data";
 import { dayText, hourRange, sentence, unitEconomicsKpis } from "../_lib/model";
-import { stockAsideText } from "../_lib/refill-text";
+import { refillByText, stockAsideText } from "../_lib/refill-text";
 import { currentViewer } from "../_lib/session";
 import { withUserDbFor } from "@/server/access";
 import { queryRefillSources } from "@/server/data/core/places";
+import { loadMachineReadinessSafe } from "@/server/onboarding/machine-ready-load";
 
 const TABS = [
   { value: "forsaljning", label: "Försäljning" },
@@ -70,6 +72,10 @@ const WEEKDAYS_LONG = [
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const slug = decodeURIComponent((await params).automat);
   return { title: isMachineId(slug) ? "Automat" : slug.toUpperCase() };
+}
+
+function capitalFirst(text: string): string {
+  return text.charAt(0).toLocaleUpperCase("sv-SE") + text.slice(1);
 }
 
 function first(v: string | string[] | undefined): string | undefined {
@@ -123,11 +129,18 @@ export default async function MachinePage({
   const listHref = `/automater${data.query}`;
   const tab = pickTab(TABS, sp.vy);
   const rise = (i: number) => ({ "--i": i }) as React.CSSProperties;
-  const team = await loadTeamStateFor(
-    { userId: ctx.user.id, email: ctx.user.email },
-    ctx.organization.id,
-  );
+  const sessionUser = { userId: ctx.user.id, email: ctx.user.email };
+  const [team, readiness] = await Promise.all([
+    loadTeamStateFor(sessionUser, ctx.organization.id),
+    // Startklar: vad som är kvar innan automaten är helt inlagd (tom lista när allt är klart).
+    loadMachineReadinessSafe(sessionUser, ctx.organization.id),
+  ]);
   const responsible = team.responsibles.get(machine.id) ?? null;
+  const ready = readiness.find((r) => r.machineId === machine.id && !r.complete) ?? null;
+  // Länken "Välj butik" i Startklar (?gor=placera) öppnar rutan direkt.
+  const openPlace = first(sp.gor) === "placera" && store === null;
+  // "Placera automat" på en ny butik (Butiker → På väg in) skickar med butiken: den är vald.
+  const placeStore = openPlace ? first(sp.butik) : undefined;
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-6 pb-16 md:gap-16 md:px-8 md:pt-10">
@@ -195,16 +208,22 @@ export default async function MachinePage({
                   QR för påfyllning
                 </Link>
                 <MachineActions
+                  // Ny nyckel när länken "Välj butik" trycks på samma sida: rutan öppnas då.
+                  key={openPlace ? `placera-${placeStore ?? ""}` : "vanlig"}
                   machine={data.editable}
                   stores={data.stores}
                   today={ctx.today}
                   storeName={store?.name ?? null}
+                  openMove={openPlace}
+                  openMoveStore={placeStore}
                 />
               </div>
             ) : undefined
           }
         />
       </div>
+
+      {ready ? <ReadyList ready={ready} canEdit={ctx.canEdit} /> : null}
 
       {period.pendingToday ? (
         <StateMessage kind="empty" message={`Inga order från ${machine.code} i dag än.`} />
@@ -403,28 +422,39 @@ function StockSection({ data }: { data: MachineDetailData }) {
   const known = lines.filter((l) => l.daysLeft !== null);
   const minDays = known.length > 0 ? Math.min(...known.map((l) => l.daysLeft ?? 0)) : null;
   const tz = data.ctx.timeZone;
-  const title =
+  // Något ska fyllas på: rubriken är dagen ur besöksplanen (samma som Drift → Besök), och
+  // antalet titlar står i den grå raden.
+  const refillBy =
+    data.refillBy && now.length + soon.length > 0
+      ? refillByText(data.refillBy, data.ctx.today)
+      : null;
+  const count =
     now.length > 0
       ? `${formatInt(now.length)} ${now.length === 1 ? "titel" : "titlar"} behöver fyllas på nu.`
       : soon.length > 0
         ? `${formatInt(soon.length)} ${soon.length === 1 ? "titel" : "titlar"} behöver fyllas på snart.`
-        : minDays !== null
-          ? `Lagret räcker minst ${formatInt(minDays)}${NBSP}${minDays === 1 ? "dag" : "dagar"}.`
-          : packs > 0
-            ? "Lagret räcker."
-            : "Automaten är tom.";
+        : null;
+  const title =
+    refillBy ??
+    count ??
+    (minDays !== null
+      ? `Lagret räcker minst ${formatInt(minDays)}${NBSP}${minDays === 1 ? "dag" : "dagar"}.`
+      : packs > 0
+        ? "Lagret räcker."
+        : "Automaten är tom.");
+  const aside = stockAsideText({
+    packs,
+    lastRefilledAt: data.lastRestockedAt,
+    timeZone: tz,
+    now: data.ctx.now,
+  });
   return (
     <section aria-labelledby="lager" className="flex flex-col gap-8 border-t border-line pt-8">
       <SectionHeader
         id="lager"
         eyebrow="Lager · nu"
         title={title}
-        aside={stockAsideText({
-          packs,
-          lastRefilledAt: data.lastRestockedAt,
-          timeZone: tz,
-          now: data.ctx.now,
-        })}
+        aside={refillBy && count ? `${count} ${capitalFirst(aside)}` : aside}
       />
       <RefillFrom data={data} />
       {lines.length > 0 ? (

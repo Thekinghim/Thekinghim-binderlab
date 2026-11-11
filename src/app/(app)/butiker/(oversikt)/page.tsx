@@ -18,7 +18,17 @@ import { PageHead } from "../_components/page-head";
 import { SettlementsView } from "../_components/settlements-view";
 import { StoreTable } from "../_components/store-table";
 import { loadStoreList } from "../_lib/data";
-import { activeStores, dayText, plural, prospectStores, sek } from "../_lib/model";
+import {
+  activeStores,
+  dayText,
+  plural,
+  prospectStores,
+  sek,
+  startListHeadline,
+  storeStartList,
+} from "../_lib/model";
+import { StoreStartLists } from "./_components/start-list";
+import { loadStoreStartDataSafe } from "./_lib/start-facts";
 
 export const metadata: Metadata = { title: "Butiker" };
 
@@ -66,6 +76,22 @@ export default async function ButikerPage({
   const prospects = prospectStores(rows);
   const prospectIds = new Set(prospects.map((r) => r.id));
   const listed = rows.filter((r) => !prospectIds.has(r.id));
+  // Startlistan per ny butik: vad saknas innan automaten får stå där?
+  const startData =
+    prospects.length > 0
+      ? await loadStoreStartDataSafe(
+          { userId: ctx.user.id, email: ctx.user.email },
+          ctx.organization.id,
+        )
+      : null;
+  const startLists = startData
+    ? prospects.flatMap((store) => {
+        const facts = startData.facts.get(store.id);
+        return facts
+          ? [storeStartList({ store, facts, freeMachineCode: startData.freeMachineCode })]
+          : [];
+      })
+    : [];
   const days = `${formatInt(period.days)}${NBSP}d`;
   const comparison = period.comparisonLabel ? `Jämfört med ${period.comparisonLabel}` : undefined;
   const earned = active.reduce((n, r) => n + r.earnedMonthOre, 0);
@@ -211,22 +237,31 @@ export default async function ButikerPage({
                 id="pa-vag-in"
                 size="md"
                 eyebrow="På väg in"
-                title={`${plural(prospects.length, "butik", "butiker")} utan automat än.`}
+                title={
+                  startLists.length > 0
+                    ? startListHeadline(startLists)
+                    : `${plural(prospects.length, "butik", "butiker")} utan automat än.`
+                }
                 aside="Räknas inte i siffrorna ovan."
-                className="max-md:hidden"
+                // Mobil: den grå meningen döljs.
+                className="max-md:[&_h2>span+span]:hidden"
               />
-              {/* Mobil: en rad som fäller ut samma tabell. */}
-              <MobileFold
-                summary="På väg in"
-                meta={`${plural(prospects.length, "butik", "butiker")} utan automat`}
-              >
-                <StoreTable
-                  rows={prospects}
-                  monthLabel={data.monthLabel}
-                  caption="Butiker utan automat"
-                  showStoreShare={data.showStoreShare}
-                />
-              </MobileFold>
+              {startLists.length > 0 ? (
+                // Syns direkt, också på mobilen: listan är det som ska göras.
+                <StoreStartLists lists={startLists} canEdit={ctx.canEdit} />
+              ) : (
+                <MobileFold
+                  summary="På väg in"
+                  meta={`${plural(prospects.length, "butik", "butiker")} utan automat`}
+                >
+                  <StoreTable
+                    rows={prospects}
+                    monthLabel={data.monthLabel}
+                    caption="Butiker utan automat"
+                    showStoreShare={data.showStoreShare}
+                  />
+                </MobileFold>
+              )}
             </section>
           ) : null}
         </>

@@ -33,15 +33,18 @@ import { ContractDialog } from "./_components/contract-dialog";
 import { ContractFileUpload } from "./_components/contract-file";
 import { ContractNextStep } from "./_components/contract-status";
 import { CreateContract } from "./_components/create-contract";
-import { SignOnSite } from "./_components/sign-on-site";
+import { SignButton, SignScope } from "./_components/sign-on-site";
 import {
   buildContractRows,
   contractHeadline,
+  planStartMove,
   revenueRiskHeadline,
   ROW_STATUS,
+  startFix,
+  uncoveredCardText,
   uncoveredSales,
-  uncoveredText,
   type ContractRow,
+  type StartFix,
 } from "./_lib/model";
 import type { AgreementOption, ContractDraft } from "./_lib/types";
 
@@ -225,6 +228,32 @@ export default async function KontraktPage({
     contracts: contractInputs,
     today: ctx.today,
   });
+  // Varningen står på butikens kort (på kontraktet den gäller, annars butikens första rad),
+  // med knappen som rättar startdagen när det går med ett tryck.
+  const uncoveredByRow = new Map<string, UncoveredCard>();
+  for (const u of uncovered) {
+    const row =
+      list.rows.find((r) => u.unsignedId !== null && r.contractId === u.unsignedId) ??
+      list.rows.find((r) => r.storeId === u.storeId);
+    if (!row) continue;
+    const fix = startFix(u, ctx.today);
+    const plan = fix
+      ? planStartMove({
+          fix,
+          storeName: u.storeName,
+          agreements: data.agreements,
+          today: ctx.today,
+        })
+      : null;
+    uncoveredByRow.set(row.key, {
+      text: uncoveredCardText(u, ctx.today),
+      fix: fix && plan?.ok ? fix : null,
+      termsMove: Boolean(plan?.ok && plan.moveAgreementId),
+      blocked: plan && !plan.ok ? plan.reason : null,
+      sent: Boolean(fix && statuses.get(fix.contractId)?.sentAt),
+      next: fix ? null : u.unsignedId ? "sign" : "create",
+    });
+  }
   // Andra raden: nästa åtgärd (listan står redan med röda först), inte samma tal igen.
   const firstAlert = missing > 0 ? (list.rows.find((r) => r.alert) ?? null) : null;
   const firstOfStore = new Set<string>();
@@ -266,35 +295,6 @@ export default async function KontraktPage({
       </div>
 
       <div key={tab} className="fade-in flex flex-col gap-8">
-        {tab === "lista" && uncovered.length > 0 ? (
-          <ul aria-label="Försäljning utan signerat kontrakt" className="flex flex-col gap-2">
-            {uncovered.map((u) => (
-              <li
-                key={u.storeId}
-                className="flex flex-col gap-2 rounded-md border border-signal-line bg-surface px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <span className="flex items-start gap-2 text-base text-fg">
-                  <span aria-hidden className="mt-2 size-2 shrink-0 rounded-full bg-signal" />
-                  {uncoveredText(u, ctx.today)}
-                </span>
-                {canEdit ? (
-                  <Link
-                    href={
-                      u.unsignedId
-                        ? `/avtal#avtal-${u.unsignedId}`
-                        : `/avtal?skapa=${encodeURIComponent(`store:${u.storeId}`)}`
-                    }
-                    scroll={!u.unsignedId ? false : undefined}
-                    className="shrink-0 text-sm font-medium text-fg underline-offset-4 hover:underline"
-                  >
-                    {u.unsignedId ? "Öppna kontraktet" : "Skapa kontrakt"}
-                    {"\u00a0→"}
-                  </Link>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        ) : null}
         {tab === "lista" ? (
           list.rows.length === 0 ? (
             <StateMessage kind="empty" message="Inga butiker än." />
@@ -311,6 +311,7 @@ export default async function KontraktPage({
                     row={row}
                     contract={c}
                     anchor={anchor}
+                    uncovered={uncoveredByRow.get(row.key) ?? null}
                     canEdit={canEdit}
                     template={c ? statusOf(c.id) : null}
                     signedAt={c ? (statuses.get(c.id)?.signedAt ?? null) : null}
@@ -467,12 +468,29 @@ export default async function KontraktPage({
   );
 }
 
+/** Varningen överst på kortet: försäljning som inget signerat kontrakt täcker. */
+interface UncoveredCard {
+  /** "Sålt sedan 14 okt. utan signerat kontrakt." */
+  readonly text: string;
+  /** Knappen "Ändra start till 14 okt.", eller null när den inte kan rätta det. */
+  readonly fix: StartFix | null;
+  /** Villkoren får också den nya startdagen. */
+  readonly termsMove: boolean;
+  /** Varför knappen inte finns (villkor i vägen eller saknas). */
+  readonly blocked: string | null;
+  /** En signeringslänk är redan skickad. */
+  readonly sent: boolean;
+  /** Utan knapp: signera kontraktet som finns, eller skapa ett för den tiden. */
+  readonly next: "sign" | "create" | null;
+}
+
 /** En rad: butik, villkor, status, PDF och nästa steg. Resten under "Mer". */
 function ContractItem({
   i,
   row,
   contract: c,
   anchor,
+  uncovered,
   canEdit,
   template,
   signedAt,
@@ -486,6 +504,7 @@ function ContractItem({
   row: ContractRow;
   contract: ContractRecord | undefined;
   anchor: boolean;
+  uncovered: UncoveredCard | null;
   canEdit: boolean;
   template: TemplateStatus | null;
   signedAt: Date | null;
@@ -517,135 +536,193 @@ function ContractItem({
       id={id}
       className={cn(
         "rise lift scroll-mt-28 rounded-md border bg-surface p-4",
-        row.alert ? "border-signal-line" : "border-line",
+        row.alert || uncovered ? "border-signal-line" : "border-line",
       )}
       style={{ "--i": Math.min(i, 12) } as React.CSSProperties}
     >
-      {anchor ? <span id={`butik-${row.storeId}`} className="block scroll-mt-28" /> : null}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 flex-col gap-1">
-          <Link
-            href={`/butiker/${row.storeId}`}
-            className="truncate rounded-xs text-md font-medium text-fg hover:underline max-md:inline-block max-md:min-h-11 max-md:py-3"
+      {/* Rutan med QR-koden ligger här och inte i knappen: knappen "Ändra start" försvinner
+          när kortet laddas om efter flytten, men rutan ska stå kvar. */}
+      <SignScope contractId={c?.id ?? ""} storeName={row.storeName}>
+        {anchor ? <span id={`butik-${row.storeId}`} className="block scroll-mt-28" /> : null}
+        {uncovered ? (
+          <div
+            role="status"
+            data-uncovered
+            className="mb-4 flex flex-col gap-3 border-b border-line pb-4"
           >
-            {row.storeName}
-          </Link>
-          <span className={cn("text-sm", row.terms ? "text-muted" : "text-subtle")}>
-            {row.terms ?? "Inga villkor"}
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={cn(
-              "label inline-flex h-7 items-center gap-1.5 rounded-xs border px-2",
-              TONE[row.status],
+            <p className="flex items-start gap-2 text-base font-medium text-fg">
+              <span aria-hidden className="mt-2 size-2 shrink-0 rounded-full bg-signal" />
+              {uncovered.text}
+            </p>
+            {uncovered.fix ? (
+              <>
+                <p className="text-sm text-muted">
+                  {uncovered.fix.now}
+                  {uncovered.termsMove ? " Villkoren får samma dag." : ""}
+                  {uncovered.sent ? " Butiken ser den nya dagen innan de signerar." : ""}
+                </p>
+                {canEdit && c && !signedAt && !c.terminatedOn ? (
+                  <div>
+                    <SignButton fixStart={{ label: uncovered.fix.label }} large />
+                  </div>
+                ) : null}
+              </>
+            ) : uncovered.blocked ? (
+              <p className="text-sm text-muted">
+                {uncovered.blocked}{" "}
+                <Link
+                  href={`/butiker/${row.storeId}?vy=avtal`}
+                  className="whitespace-nowrap text-fg underline underline-offset-4"
+                >
+                  Öppna villkoren{"\u00a0→"}
+                </Link>
+              </p>
+            ) : uncovered.next === "sign" ? (
+              <p className="text-sm text-muted">Signera kontraktet.</p>
+            ) : (
+              <p className="text-sm text-muted">
+                Skapa ett kontrakt för den tiden.
+                {canEdit ? (
+                  <>
+                    {" "}
+                    <Link
+                      href={`/avtal?skapa=${encodeURIComponent(`store:${row.storeId}`)}`}
+                      scroll={false}
+                      className="whitespace-nowrap text-fg underline underline-offset-4"
+                    >
+                      Skapa kontrakt{"\u00a0→"}
+                    </Link>
+                  </>
+                ) : null}
+              </p>
             )}
-          >
-            <span
-              aria-hidden
-              className={cn(
-                "size-1.5 rounded-full",
-                st.tone === "ok" ? "bg-up" : st.tone === "critical" ? "bg-signal" : "bg-current",
-              )}
-            />
-            {st.label}
-            {/* "Löper ut" säger när: annars ser det ut som att avtalet redan har gått ut. */}
-            {row.status === "due" && (c?.terminatedOn ?? c?.validTo)
-              ? ` ${day((c?.terminatedOn ?? c?.validTo)!)}`
-              : ""}
-          </span>
-          {pdf ? (
-            <Link href={pdf.href} prefetch={false} target="_blank" className={link}>
-              {pdf.label}
-            </Link>
-          ) : null}
-          {canEdit && row.status === "missing" ? (
-            <Link
-              href={`/avtal?skapa=${encodeURIComponent(`store:${row.storeId}`)}`}
-              scroll={false}
-              className="inline-flex h-9 items-center rounded-sm border border-inverse bg-inverse px-3.5 text-sm font-medium text-on-inverse hover:bg-inverse-hover max-md:min-h-11"
-            >
-              Skapa kontrakt
-            </Link>
-          ) : null}
-          {canSign && c ? <SignOnSite contractId={c.id} storeName={row.storeName} /> : null}
-        </div>
-      </div>
-      {c ? (
-        <details className="group mt-3">
-          <summary className="label w-fit cursor-pointer list-none text-subtle hover:text-fg">
-            <span
-              aria-hidden
-              className="mr-1 inline-block transition-transform duration-fast group-open:rotate-90"
-            >
-              ›
-            </span>
-            Mer
-          </summary>
-          <div className="fade-in mt-4 flex flex-col gap-4">
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
-              <div className="flex flex-col gap-0.5">
-                <dt className="label text-subtle">Gäller</dt>
-                <dd className="text-fg">
-                  {day(c.validFrom)} –{" "}
-                  {r?.term.currentEnd ? day(r.term.currentEnd) : "tills vidare"}
-                </dd>
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <dt className="label text-subtle">Uppsägning</dt>
-                <dd className="text-fg">
-                  {noticeText(c)}
-                  {r?.term.noticeDeadline ? (
-                    <span className="meta block text-subtle">
-                      Senast {day(r.term.noticeDeadline)}
-                    </span>
-                  ) : null}
-                </dd>
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <dt className="label text-subtle">Förlängning</dt>
-                <dd className="text-fg">
-                  {c.renewalMonths ? plural(c.renewalMonths, "månad", "månader") : "Ingen"}
-                  {c.terminatedOn ? (
-                    <span className="meta block text-subtle">Uppsagt {day(c.terminatedOn)}</span>
-                  ) : null}
-                </dd>
-              </div>
-              <div className="flex flex-col gap-0.5">
-                <dt className="label text-subtle">Status</dt>
-                <dd className="text-fg">
-                  {r ? REMINDER[r.status].label : "–"}
-                  {signature ? (
-                    <span className="meta block text-subtle">
-                      {signature.signerName} {formatDate(new Date(signature.signedAt))}
-                    </span>
-                  ) : null}
-                </dd>
-              </div>
-            </dl>
-            {canEdit ? (
-              <div className="flex flex-wrap items-center gap-2">
-                {template && template !== "signed" ? (
-                  <ContractNextStep contractId={c.id} status={template} hasFile={c.hasFile} />
-                ) : (
-                  <ContractFileUpload contractId={c.id} hasFile={c.hasFile} />
-                )}
-                <ContractDialog
-                  stores={stores}
-                  agreements={agreementOptions}
-                  initial={draftOf(c, agreements)}
-                  trigger={{ label: "Ändra", variant: "ghost", size: "sm" }}
-                />
-                <ContractArchive
-                  id={c.id}
-                  archived={false}
-                  label={`${row.storeName}: ${c.title ?? "Kontrakt"}`}
-                />
-              </div>
-            ) : null}
           </div>
-        </details>
-      ) : null}
+        ) : null}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-col gap-1">
+            <Link
+              href={`/butiker/${row.storeId}`}
+              className="truncate rounded-xs text-md font-medium text-fg hover:underline max-md:inline-block max-md:min-h-11 max-md:py-3"
+            >
+              {row.storeName}
+            </Link>
+            <span className={cn("text-sm", row.terms ? "text-muted" : "text-subtle")}>
+              {row.terms ?? "Inga villkor"}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={cn(
+                "label inline-flex h-7 items-center gap-1.5 rounded-xs border px-2",
+                TONE[row.status],
+              )}
+            >
+              <span
+                aria-hidden
+                className={cn(
+                  "size-1.5 rounded-full",
+                  st.tone === "ok" ? "bg-up" : st.tone === "critical" ? "bg-signal" : "bg-current",
+                )}
+              />
+              {st.label}
+              {/* "Löper ut" säger när: annars ser det ut som att avtalet redan har gått ut. */}
+              {row.status === "due" && (c?.terminatedOn ?? c?.validTo)
+                ? ` ${day((c?.terminatedOn ?? c?.validTo)!)}`
+                : ""}
+            </span>
+            {pdf ? (
+              <Link href={pdf.href} prefetch={false} target="_blank" className={link}>
+                {pdf.label}
+              </Link>
+            ) : null}
+            {canEdit && row.status === "missing" ? (
+              <Link
+                href={`/avtal?skapa=${encodeURIComponent(`store:${row.storeId}`)}`}
+                scroll={false}
+                className="inline-flex h-9 items-center rounded-sm border border-inverse bg-inverse px-3.5 text-sm font-medium text-on-inverse hover:bg-inverse-hover max-md:min-h-11"
+              >
+                Skapa kontrakt
+              </Link>
+            ) : null}
+            {canSign && c ? <SignButton quiet={Boolean(uncovered?.fix)} /> : null}
+          </div>
+        </div>
+        {c ? (
+          <details className="group mt-3">
+            <summary className="label w-fit cursor-pointer list-none text-subtle hover:text-fg">
+              <span
+                aria-hidden
+                className="mr-1 inline-block transition-transform duration-fast group-open:rotate-90"
+              >
+                ›
+              </span>
+              Mer
+            </summary>
+            <div className="fade-in mt-4 flex flex-col gap-4">
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
+                <div className="flex flex-col gap-0.5">
+                  <dt className="label text-subtle">Gäller</dt>
+                  <dd className="text-fg">
+                    {day(c.validFrom)} –{" "}
+                    {r?.term.currentEnd ? day(r.term.currentEnd) : "tills vidare"}
+                  </dd>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <dt className="label text-subtle">Uppsägning</dt>
+                  <dd className="text-fg">
+                    {noticeText(c)}
+                    {r?.term.noticeDeadline ? (
+                      <span className="meta block text-subtle">
+                        Senast {day(r.term.noticeDeadline)}
+                      </span>
+                    ) : null}
+                  </dd>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <dt className="label text-subtle">Förlängning</dt>
+                  <dd className="text-fg">
+                    {c.renewalMonths ? plural(c.renewalMonths, "månad", "månader") : "Ingen"}
+                    {c.terminatedOn ? (
+                      <span className="meta block text-subtle">Uppsagt {day(c.terminatedOn)}</span>
+                    ) : null}
+                  </dd>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  <dt className="label text-subtle">Status</dt>
+                  <dd className="text-fg">
+                    {r ? REMINDER[r.status].label : "–"}
+                    {signature ? (
+                      <span className="meta block text-subtle">
+                        {signature.signerName} {formatDate(new Date(signature.signedAt))}
+                      </span>
+                    ) : null}
+                  </dd>
+                </div>
+              </dl>
+              {canEdit ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {template && template !== "signed" ? (
+                    <ContractNextStep contractId={c.id} status={template} hasFile={c.hasFile} />
+                  ) : (
+                    <ContractFileUpload contractId={c.id} hasFile={c.hasFile} />
+                  )}
+                  <ContractDialog
+                    stores={stores}
+                    agreements={agreementOptions}
+                    initial={draftOf(c, agreements)}
+                    trigger={{ label: "Ändra", variant: "ghost", size: "sm" }}
+                  />
+                  <ContractArchive
+                    id={c.id}
+                    archived={false}
+                    label={`${row.storeName}: ${c.title ?? "Kontrakt"}`}
+                  />
+                </div>
+              ) : null}
+            </div>
+          </details>
+        ) : null}
+      </SignScope>
     </li>
   );
 }

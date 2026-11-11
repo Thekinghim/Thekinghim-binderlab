@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import type React from "react";
 
@@ -71,6 +72,7 @@ function Card({
   onHide: (on: boolean) => void;
 }) {
   const toast = useToast();
+  const router = useRouter();
   const [store, setStore] = useState(stores[0]?.id ?? NEW_STORE);
   const [error, setError] = useState<string>();
   const [pending, startTransition] = useTransition();
@@ -90,11 +92,23 @@ function Card({
       }
       onHide(true);
       const orders = result.data?.orders ?? 0;
+      // Startklar: vad som är kvar på den nya automaten, med ett tryck till listan. Raden
+      // står i notisen, som ligger kvar även när kortet försvinner.
+      const ready = result.data?.ready ?? null;
       toast({
         title: `Klart! ${result.data?.code ?? card.code} står i ${storeName}.`,
-        description:
-          orders > 0 ? `${formatInt(orders)}${NBSP}köp hamnade i butiken.` : "Köpen kommer in här.",
+        description: ready
+          ? ready.headline
+          : orders > 0
+            ? `${formatInt(orders)}${NBSP}köp hamnade i butiken.`
+            : "Köpen kommer in här.",
         tone: "ok",
+        ...(ready
+          ? {
+              duration: 20_000,
+              action: { label: "Visa listan", onClick: () => router.push(ready.href) },
+            }
+          : {}),
       });
     });
   };

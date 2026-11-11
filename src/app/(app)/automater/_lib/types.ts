@@ -5,6 +5,7 @@
  * skickas vidare av requireRoute innan något av detta byggs.
  */
 
+import type { StoreContractState } from "@/analytics/contracts/signed";
 import type { HealthStatus } from "@/analytics/health";
 import type { IsoDate, StoreAgreement } from "@/domain";
 
@@ -54,6 +55,11 @@ export interface MachineListRow {
   /** Titlar som behöver fyllas på nu / snart (Att göra-regeln). */
   readonly refillNow: number;
   readonly refillSoon: number;
+  /**
+   * Intäkt i risk de närmaste 7 dagarna (öre): automatens påfyllningspunkter och "har slutat
+   * sälja", samma belopp som Att göra. Utelämnad = 0.
+   */
+  readonly atStakeOre?: number;
   /** Pack i automaten just nu. */
   readonly packsOnHand: number;
   /** Senaste ordern (ISO 8601), oavsett period. */
@@ -223,6 +229,11 @@ export interface StoreOption {
    * eller utelämnat när de inte är kända (då ingen varning).
    */
   readonly agreements?: readonly StoreAgreement[];
+  /**
+   * Butikens kontrakt (signerat, osignerat, saknas) för raden "Kontraktet är inte signerat"
+   * när automaten placeras, eller utelämnat när det inte är känt (då ingen rad).
+   */
+  readonly contract?: StoreContractState;
 }
 
 /** Det som formulären behöver om automaten. */
