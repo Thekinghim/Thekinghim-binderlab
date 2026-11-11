@@ -90,6 +90,11 @@ describe("slut i automat kommer direkt", () => {
       baseUrl: "http://test",
       stockOrgIds,
       dispatch: async (delivery: AlertDelivery, recipient, options) => {
+        // Utskicken är gemensamma för alla organisationer i testdatabasen: andra testfilers
+        // väntande utskick går också ut här. Bara den här ägarens räknas.
+        if (recipient.userId !== owner.id) {
+          return { results: [], goneDevices: [], okDevices: [], status: "sent" };
+        }
         sent.push({
           userId: recipient.userId,
           push: pushPayloads(delivery, (options as { push?: PushContext }).push),
@@ -219,7 +224,7 @@ describe("slut i automat kommer direkt", () => {
     now = new Date("2026-11-12T06:01:00Z"); // 07:01 svensk tid
     const run = await alerts([]);
     expect(run.organizations).toEqual([]);
-    expect(run.deliveries).toMatchObject({ processed: 1, sent: 1 });
+    expect(run.deliveries?.sent).toBeGreaterThanOrEqual(1);
     expect(sent).toHaveLength(1);
     expect(sent[0]!.userId).toBe(owner.id);
     // Påfyllningen är en egen notis, först. (Testets hopp i tiden ger också ett larm om
@@ -242,7 +247,7 @@ describe("slut i automat kommer direkt", () => {
     const r = await sync();
     expect(r.stockDropped).toEqual([machineId]);
     const run = await alerts((r.stockDropped ?? []).length > 0 ? [orgId] : []);
-    expect(run.deliveries).toMatchObject({ sent: 1 });
+    expect(run.deliveries?.sent).toBeGreaterThanOrEqual(1);
     expect(sent).toHaveLength(1);
     expect(sent[0]!.push[0]).toEqual({
       title: "BL-003 Automat 3 Sega gubben",

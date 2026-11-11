@@ -117,15 +117,29 @@ export async function loadPushContext(
   return { machines, today };
 }
 
-/** Mottagarens språk i organisationen (profiles.locale). Okänt eller saknas: svenska. */
-async function userLang(tx: Tx | Db, organizationId: string, userId: string): Promise<"sv" | "en"> {
+/**
+ * Mottagarens språk (profiles.locale; okänt eller saknas: svenska) och om den har Enkel vy
+ * (memberships.view_mode): notisen om påfyllning skrivs och länkas efter det.
+ */
+async function userView(
+  tx: Tx | Db,
+  organizationId: string,
+  userId: string,
+): Promise<{ lang: "sv" | "en"; simple: boolean }> {
   const found = Array.from(
     await tx.execute(
-      sql`select p.locale from public.profiles p
-          where p.organization_id = ${organizationId}::uuid and p.user_id = ${userId}::uuid`,
+      sql`select (select p.locale from public.profiles p
+                   where p.organization_id = ${organizationId}::uuid
+                     and p.user_id = ${userId}::uuid) as locale,
+                 (select m.view_mode::text from public.memberships m
+                   where m.organization_id = ${organizationId}::uuid
+                     and m.user_id = ${userId}::uuid) as view_mode`,
     ),
-  ) as { locale: string | null }[];
-  return found[0]?.locale === "en" ? "en" : "sv";
+  ) as { locale: string | null; view_mode: string | null }[];
+  return {
+    lang: found[0]?.locale === "en" ? "en" : "sv",
+    simple: found[0]?.view_mode === "simple",
+  };
 }
 
 /** Användarens e-post (auth.users). Larmjobbet kör som systemroll och får läsa den. */
@@ -271,7 +285,7 @@ export async function deliverDue(
         idempotencyKey: row.id,
         push: {
           ...(await loadPushContext(tx, row.organizationId, items, businessDateAt(now, timeZone))),
-          lang: await userLang(tx, row.organizationId, row.userId),
+          ...(await userView(tx, row.organizationId, row.userId)),
         },
       });
       await tx

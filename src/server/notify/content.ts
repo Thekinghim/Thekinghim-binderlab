@@ -97,12 +97,20 @@ export interface PushContext {
    * engelska (delägaren i enkla vyn); övriga larm är på svenska som förut.
    */
   readonly lang?: "sv" | "en";
+  /**
+   * Mottagaren har Enkel vy: besöksplanen finns inte där, så notisen om flera automater går
+   * till Fyll på (listan med automater) i stället.
+   */
+  readonly simple?: boolean;
 }
 
 const WEEKDAYS_EN = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 /** Sidan med veckans besök: dit går notisen när flera automater behöver fyllas på. */
 export const VISIT_PLAN_LINK = "/drift/besok";
+
+/** Fyll på-appens lista med automater: dit går samma notis för den som har Enkel vy. */
+export const FILL_LIST_LINK = "/fyll-pa";
 
 /** Länken till Fyll på för en automat. */
 export function fillLink(machineId: string): string {
@@ -216,7 +224,7 @@ function countsText(m: RefillMachine, today: IsoDate | undefined, en: boolean): 
  *   en automat:    "BL-003 Sega gubben" · "3 slut, 2 tar slut i morgon. Tryck för att fylla på."
  *                  → /fyll-pa/<automat>, samma tagg per automat (en ny ersätter den gamla)
  *   flera:         "3 automater behöver fyllas på" · "BL-003 (5), BL-007 (2), BL-001 (1)"
- *                  → besöksplanen, värst först
+ *                  → besöksplanen (Enkel vy: listan i Fyll på), värst först
  * Med `ctx.lang` "en": "3 empty, 2 run out tomorrow. Tap to refill." och
  * "3 machines need refilling".
  */
@@ -259,7 +267,7 @@ export function refillPush(delivery: AlertDelivery, ctx: PushContext = {}): Push
       ? `${formatInt(machines.length)}${NBSP}machines need refilling`
       : `${formatInt(machines.length)}${NBSP}automater behöver fyllas på`,
     body: body.length > 240 ? `${body.slice(0, 239)}…` : body,
-    url: VISIT_PLAN_LINK,
+    url: ctx.simple === true ? FILL_LIST_LINK : VISIT_PLAN_LINK,
     tag: "fyll-flera",
     severity,
     ...lang,

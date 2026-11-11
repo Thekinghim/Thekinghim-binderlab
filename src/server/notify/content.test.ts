@@ -213,6 +213,13 @@ describe("push om påfyllning", () => {
     expect(mixed?.body).toBe("1\u00a0empty, 1\u00a0runs out on Saturday. Tap to refill.");
     const many = refillPush(delivery([low("m3", "t1", "empty"), low("m1", "t1", "empty")]), base);
     expect(many).toMatchObject({ title: "2\u00a0machines need refilling", lang: "en" });
+    // Enkel vy har ingen besöksplan: flera automater går till listan i Fyll på.
+    expect(many?.url).toBe("/drift/besok");
+    const simple = refillPush(delivery([low("m3", "t1", "empty"), low("m1", "t1", "empty")]), {
+      ...base,
+      simple: true,
+    });
+    expect(simple?.url).toBe("/fyll-pa");
     // Svenska har ingen lang (som förut).
     expect(refillPush(delivery([low("m3", "t1", "empty")]), { today: TODAY })).not.toHaveProperty(
       "lang",
