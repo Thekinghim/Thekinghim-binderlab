@@ -165,6 +165,30 @@ describe("readinessTodo (raden Startklar i Att göra)", () => {
     expect(readinessTodo([r])).toBeNull();
   });
 
+  it("en automat som sålt länge ger ingen rad, hur mycket som än saknas", () => {
+    // Första köpet för 30 dagar sedan eller mer: automaten är i drift, inte "inte startklar".
+    const old = machineReadiness(
+      facts({
+        firstOrderDate: "2026-10-12",
+        investmentOre: 0,
+        titles: [{ id: "t1", name: "Perfect Order", hasCapacity: true, hasPrice: false }],
+      }),
+    );
+    expect(old.isNew).toBe(false);
+    expect(old.complete).toBe(false);
+    expect(readinessTodo([old])).toBeNull();
+    // Dagen innan räknas den fortfarande som ny.
+    const fresh = machineReadiness(facts({ firstOrderDate: "2026-10-13", investmentOre: 0 }));
+    expect(fresh.isNew).toBe(true);
+    expect(readinessTodo([fresh])).not.toBeNull();
+    // Gamla automater räknas inte med i "N automater är inte startklara".
+    const todo = readinessTodo([old, fresh]);
+    expect(todo?.machines).toBe(1);
+    expect(plain(todo?.title)).toBe("BL-004: 6 av 7 klart. Nästa: lägg in vad automaten kostade");
+    // Inget köp än: ny.
+    expect(machineReadiness(facts({ firstOrderDate: null })).isNew).toBe(true);
+  });
+
   it("flera automater: en rad med antalet, länk till listan", () => {
     const todo = readinessTodo([
       machineReadiness(facts({ investmentOre: 0 })),

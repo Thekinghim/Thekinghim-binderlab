@@ -328,16 +328,13 @@ describe("loadHomeWith: Att göra räknas som menyn", () => {
       extras: async () => homeExtraTodos(await loadTodoExtrasFor(v)),
     };
     const { model } = await loadHomeWith(loaders, MARCH);
-    // Samma regel som menyns räknare (loadTodoCount): punkterna + raden Ny automat + raden
-    // Startklar (runda 2, R2-9: fixturens automat saknar bl.a. vad den kostade).
-    expect(extras.startklar).not.toBeNull();
-    expect(extras.startklar?.title).toMatch(/^\S+: \d av \d klart\. Nästa: /);
-    expect(model.todoCount).toBe(rules + 2);
+    // Samma regel som menyns räknare (loadTodoCount): punkterna + raden Ny automat.
+    // Ingen rad Startklar: fixturens automat saknar vad den kostade, men den har sålt i
+    // mer än 30 dagar och kallas därför aldrig "inte startklar" (granskningen av runda 2).
+    expect(extras.startklar).toBeNull();
+    expect(model.todoCount).toBe(rules + 1);
     expect(model.todos?.[0]).toMatchObject({ key: "new-machines", level: "now" });
-    expect(model.todos?.find((t) => t.key === "startklar")).toMatchObject({
-      level: "soon",
-      href: extras.startklar?.href,
-    });
+    expect(model.todos?.find((t) => t.key === "startklar")).toBeUndefined();
   });
 });
 

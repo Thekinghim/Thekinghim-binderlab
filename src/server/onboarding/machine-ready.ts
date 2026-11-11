@@ -21,8 +21,15 @@
  * (Awish läser facken, första köpet) blir "Nästa" först när inget annat är kvar.
  */
 
-import { agreementOn, type IsoDate, type StoreAgreement } from "@/domain";
+import { agreementOn, daysBetween, type IsoDate, type StoreAgreement } from "@/domain";
 import { formatInt, NBSP } from "@/lib/format";
+
+/**
+ * Så länge efter första köpet räknas en automat som ny i Att göra. En automat som sålt
+ * längre än så kallas aldrig "inte startklar": det som saknas står kvar på automatens sida
+ * och i de vanliga raderna (t.ex. "Lägg in inköpspris").
+ */
+export const NEW_MACHINE_DAYS = 30;
 
 export type ReadyStepId = "butik" | "avtal" | "fack" | "antal" | "pris" | "kostnad" | "kop";
 
@@ -77,6 +84,8 @@ export interface MachineReadiness {
   readonly total: number;
   /** Allt är klart: listan visas inte. */
   readonly complete: boolean;
+  /** Ny automat: inget köp än, eller första köpet för mindre än NEW_MACHINE_DAYS dagar sedan. */
+  readonly isNew: boolean;
   readonly steps: readonly ReadyStep[];
   /** Steget att göra nu, eller null när allt är klart. */
   readonly next: ReadyStep | null;
@@ -224,6 +233,8 @@ export function machineReadiness(facts: MachineReadyFacts): MachineReadiness {
     done,
     total,
     complete: open.length === 0,
+    isNew:
+      facts.firstOrderDate === null || daysBetween(facts.firstOrderDate, today) < NEW_MACHINE_DAYS,
     steps,
     next,
     progress,
@@ -253,15 +264,18 @@ export interface ReadinessTodo {
 }
 
 /**
- * EN rad för Att göra: automaterna som har ett steg kvar som går att GÖRA (inte bara vänta
- * på Awish eller första köpet). En automat: nästa steg och rätt formulär. Flera: antalet
- * och listan. null när inget finns att göra.
+ * EN rad för Att göra: de NYA automaterna (isNew) som har ett steg kvar som går att GÖRA
+ * (inte bara vänta på Awish eller första köpet). En automat: nästa steg och rätt formulär.
+ * Flera: antalet och listan. null när inget finns att göra.
+ *
+ * En automat som sålt i mer än NEW_MACHINE_DAYS dagar ger aldrig någon rad här: raden går
+ * inte att bocka av, och det som saknas (t.ex. inköpspris) har redan egna rader i Att göra.
  *
  * readinessTodo([BL-004 med avtalet kvar]) → "BL-004: 3 av 7 klart. Nästa: lägg in avtalet"
  */
 export function readinessTodo(list: readonly MachineReadiness[]): ReadinessTodo | null {
   const open = list.filter(
-    (r) => !r.complete && r.next !== null && !r.next.waiting && r.next.href !== null,
+    (r) => r.isNew && !r.complete && r.next !== null && !r.next.waiting && r.next.href !== null,
   );
   const [first] = open;
   if (!first || !first.next || first.next.href === null) return null;

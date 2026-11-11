@@ -8,6 +8,7 @@ import { sql } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { listOrganizationsFor } from "@/server/access";
+import { loadStartklarFor } from "@/server/data/todos";
 import type { Viewer } from "@/server/data/core/loaders";
 import { connectNewMachineFor } from "@/server/machines/new-machines";
 import { loadMachineReadinessFor } from "@/server/onboarding/machine-ready-load";
@@ -146,6 +147,10 @@ describe("Startklar per automat", () => {
     expect(open(r)).toEqual(["avtal", "fack", "antal", "pris", "kostnad"]);
     expect(r.headline).toBe("BL-002: 2 av 7 klart. Nästa: lägg in avtalet.");
     expect(r.next?.href).toBe(`/butiker/${storeId}#ersattning`);
+    // Raden i Att göra gäller bara nya automater: BL-002 (första köpet nyss) och BL-001
+    // (inget köp än) är båda med.
+    expect(r.isNew).toBe(true);
+    expect((await loadStartklarFor(owner))?.machines).toBe(2);
     expect(r.left?.replace(/ /g, " ")).toBe("5 saker kvar");
   });
 
