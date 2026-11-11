@@ -63,13 +63,24 @@ export default async function VartLagerPage() {
         aside={view.hasWarehouse && view.rows.length > 0 ? undefined : heading.aside}
         live={awish ? "Awish" : undefined}
         actions={
-          <Link
-            href="/prognos"
-            // Under md står Inköp redan som underflik bredvid.
-            className="inline-flex h-11 items-center rounded-sm border border-line-strong px-4 text-base text-fg transition-colors duration-fast ease-instrument hover:bg-hover max-md:hidden"
-          >
-            Inköp{NBSP}→
-          </Link>
+          <>
+            {/* Inventering: räkna ett helt lager (ägare och admin). */}
+            {view.canEdit && view.rows.length > 0 ? (
+              <Link
+                href="/vart-lager/inventering"
+                className="inline-flex h-11 items-center rounded-sm border border-line-strong px-4 text-base text-fg transition-colors duration-fast ease-instrument hover:bg-hover"
+              >
+                Inventera
+              </Link>
+            ) : null}
+            <Link
+              href="/prognos"
+              // Under md står Inköp redan som underflik bredvid.
+              className="inline-flex h-11 items-center rounded-sm border border-line-strong px-4 text-base text-fg transition-colors duration-fast ease-instrument hover:bg-hover max-md:hidden"
+            >
+              Inköp{NBSP}→
+            </Link>
+          </>
         }
       />
       {!view.hasWarehouse ? (

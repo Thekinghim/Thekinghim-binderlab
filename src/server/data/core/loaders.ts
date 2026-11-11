@@ -83,6 +83,7 @@ import {
 import { queryMissingSettlements, queryUnpaidSettlements } from "@/server/settlements/queries";
 import { settlementMonthFor } from "@/server/settlements/model";
 import { querySlotCapacities, type SlotCapacityRow } from "./slot-capacity";
+import { queryStockCountRefs } from "./stock-counts";
 import { queryTeamSize } from "./team-size";
 
 import { effectivePlacements } from "./placements";
@@ -792,6 +793,7 @@ export async function loadTodoStateFor(
         unpaidSettlements,
         team,
         missingSettlements,
+        stockCounts,
       ] = await Promise.all([
         queryOrders(tx, orgId, range, NO_SCOPE),
         queryReportRecipients(tx, orgId),
@@ -808,6 +810,8 @@ export async function loadTodoStateFor(
         queryTeamSize(tx, orgId),
         // Förra månadens butiker utan avräkning: "Skapa oktober-avräkningarna".
         queryMissingSettlements(tx, orgId, settlementMonth),
+        // De egna lagren och senaste inventeringen: "Inventera Hemma" efter 30 dagar.
+        queryStockCountRefs(tx, orgId),
       ]);
       const { prices, agreements, settings } = await baseP;
       const placements = effectivePlacements(master.placements, orders.orders);
@@ -837,6 +841,7 @@ export async function loadTodoStateFor(
         contracts,
         alerts,
         team,
+        stockCounts,
         salesDataUntil,
         options: { timeZone },
       };

@@ -912,6 +912,19 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [{ machineId: c.A.machineId, placeId: c.A.centralLocationId }],
   },
+  // Vårt lager → Inventering (20261121000000_inventering.sql): räkna ett helt lager.
+  {
+    module: "@/app/(app)/vart-lager/inventering/actions",
+    name: "saveStockCount",
+    allowed: OP,
+    args: (c) => [
+      {
+        clientId: "00000000-0000-4000-8000-000000000078",
+        placeId: c.A.centralLocationId,
+        lines: [{ titleId: c.A.titleId, counted: 3 }],
+      },
+    ],
+  },
   // Vårt lager → Mystery packs (20261115000000_mystery_packs.sql): innehållet och
   // inköpspriset ägare och admin, packa och ångra även påfyllaren.
   {

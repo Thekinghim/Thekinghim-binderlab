@@ -832,3 +832,6 @@ export * from "./schema/kontroll";
 
 // Mystery packs: innehåll och packning (20261115000000_mystery_packs.sql).
 export * from "./schema/mystery";
+
+// Inventering: sparade inventeringar av ett eget lager (20261121000000_inventering.sql).
+export * from "./schema/inventering";

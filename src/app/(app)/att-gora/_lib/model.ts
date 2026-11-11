@@ -269,6 +269,7 @@ const KIND_NOUN: Record<TodoKind, [string, string]> = {
   "missing-price": ["titel utan inköpspris", "titlar utan inköpspris"],
   "duplicate-title": ["möjlig dubblett", "möjliga dubbletter"],
   team: ["delägare att bjuda in", "delägare att bjuda in"],
+  "stock-count": ["lager att inventera", "lager att inventera"],
 };
 
 const KIND_LABEL: Record<TodoKind, string> = {
@@ -285,6 +286,7 @@ const KIND_LABEL: Record<TodoKind, string> = {
   "missing-price": "Inköpspris",
   "duplicate-title": "Datakvalitet",
   team: "Delägare",
+  "stock-count": "Inventering",
 };
 
 const KIND_ORDER: readonly TodoKind[] = [
@@ -301,6 +303,7 @@ const KIND_ORDER: readonly TodoKind[] = [
   "missing-price",
   "duplicate-title",
   "team",
+  "stock-count",
 ];
 
 /** "3 påfyllningar och 1 tyst automat". */
@@ -569,6 +572,10 @@ function actionFor(item: TodoItem, input: ModelInput): ActionView | null {
       return canOpen(input.role, "installningar")
         ? { kind: "link", label: a.label, href: item.link }
         : null;
+    case "count-stock":
+      return canOpen(input.role, "vart-lager")
+        ? { kind: "link", label: a.label, href: item.link }
+        : null;
   }
 }
 
@@ -817,6 +824,7 @@ const KIND_BY_PREFIX: Record<string, TodoKind> = {
   "missing-price": "missing-price",
   "duplicate-title": "duplicate-title",
   team: "team",
+  "stock-count": "stock-count",
 };
 
 /** Avbockade punkter inom filtret, med samma etikett som i listan. */

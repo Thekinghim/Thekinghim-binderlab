@@ -24,6 +24,8 @@ export const MYSTERY_HREF = "/vart-lager/mystery";
 export const STOCK_HREF = "/vart-lager";
 export const BUY_LIST_HREF = "/prognos";
 export const PRICES_HREF = "/inkopspriser";
+/** Inventering ("Count stock"): öppnas från Lager, samma skärm som i hela appen. */
+export const COUNT_HREF = "/vart-lager/inventering";
 
 export type SimpleTabId = "refill" | "sales" | "stock" | "mystery";
 
@@ -53,7 +55,7 @@ export const SIMPLE_TABS: readonly SimpleTab[] = [
     href: STOCK_HREF,
     icon: "stock",
     roles: ["owner", "admin", "viewer"],
-    also: [BUY_LIST_HREF, PRICES_HREF],
+    also: [BUY_LIST_HREF, PRICES_HREF, COUNT_HREF],
   },
   {
     id: "mystery",
@@ -83,7 +85,7 @@ function trimmed(pathname: string): string {
 }
 
 /**
- * Är fliken markerad på sökvägen? Lager bara på exakt sina tre sökvägar (Mystery ligger
+ * Är fliken markerad på sökvägen? Lager bara på exakt sina sökvägar (Mystery ligger
  * under /vart-lager/mystery och är en egen flik), de andra även på sidorna under.
  */
 export function simpleTabActive(tab: SimpleTab, pathname: string): boolean {
@@ -110,10 +112,10 @@ const ALLOWED: readonly string[] = [
 
 /**
  * Bara exakt de här sökvägarna, inget under dem: Lager, Inköpslistan och Inköpspriserna
- * visar den enkla vyns egna skärmar där. Flytta, Ny produkt och resten av hela appens
+ * visar den enkla vyns egna skärmar där, och Inventering räknar ett helt lager. Flytta, Ny produkt och resten av hela appens
  * lagersidor stoppas.
  */
-const ALLOWED_EXACT: readonly string[] = [STOCK_HREF, BUY_LIST_HREF, PRICES_HREF];
+const ALLOWED_EXACT: readonly string[] = [STOCK_HREF, BUY_LIST_HREF, PRICES_HREF, COUNT_HREF];
 
 /** Får den enkla vyn öppna sökvägen? Okända tecken och `..` släpps aldrig igenom. */
 export function simpleViewAllows(pathname: string): boolean {
