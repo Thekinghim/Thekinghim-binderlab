@@ -7,13 +7,15 @@ import { StatusTag } from "@/components/ui/status-tag";
 import { cn } from "@/lib/cn";
 import { formatInt, NBSP } from "@/lib/format";
 
-import { loadUnitEconomicsPage } from "../../expansion/_lib/data";
 import { machineHref } from "../_lib/model";
-import { perDayText, rankingView } from "../_lib/ranking";
+import { rankingView } from "../_lib/ranking";
+import { loadFleetRanking } from "../_lib/ranking-data";
 
 /**
- * Automaterna rangordnade efter vinst per dag (samma tal som Enhetsekonomi), med "Flytta?"
- * på dem som tjänar minst. Strömmas in under listan (egen Suspense på sidan).
+ * Automat-ranking: automaterna rangordnade efter vinst per dag (samma tal som
+ * Enhetsekonomi), med försäljning per dag, slutsålt och ett omdöme per automat ("Bäst",
+ * "Går bra", "Går dåligt: överväg att flytta"). Med en enda automat jämförs den med sin
+ * egen förra period. Strömmas in under listan (egen Suspense på sidan).
  */
 export async function ProfitRanking({
   searchParams,
@@ -22,24 +24,29 @@ export async function ProfitRanking({
   searchParams: SearchParamsInput;
   query: string;
 }) {
-  const data = await loadUnitEconomicsPage(searchParams);
-  const view = rankingView({
-    comparison: data.comparison,
-    machines: data.names.machines
-      .filter((m) => !m.archived)
-      .map((m) => ({ id: m.id, code: m.code ?? "", name: m.name })),
-    hrefOf: (code) => machineHref(code, query),
+  // Ett fel i rankingen ska aldrig stoppa listan ovanför.
+  const data = await loadFleetRanking(searchParams).catch((error: unknown) => {
+    console.error("[automater] Automat-rankingen kunde inte läsas:", error);
+    return null;
   });
-  if (view.rows.length < 2) return null;
+  if (!data) return null;
+  const view = rankingView({
+    ranking: data.ranking,
+    machines: data.machines,
+    hrefOf: (code) => machineHref(code, query),
+    storeShareDeducted: data.storeShareDeducted,
+  });
+  if (view.rows.length === 0) return null;
   return (
     <section
-      aria-labelledby="vinst-per-dag"
+      aria-labelledby="rangordning"
+      data-ranking={view.mode}
       className="rise flex flex-col gap-6"
       style={{ "--i": 3 } as React.CSSProperties}
     >
       <SectionHeader
-        id="vinst-per-dag"
-        eyebrow="Rangordning"
+        id="rangordning"
+        eyebrow={`Rangordning · vinst per dag · ${formatInt(data.days)}${NBSP}d`}
         title={view.title}
         aside={view.aside}
         actions={
@@ -59,40 +66,45 @@ export async function ProfitRanking({
           <li key={r.machineId} className="border-t border-line first:border-t-0">
             <Link
               href={r.href}
-              className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2 py-3 transition-colors hover:bg-hover md:grid-cols-[2rem_minmax(0,14rem)_minmax(0,1fr)_auto]"
+              data-verdict={r.verdict}
+              className="flex min-h-11 flex-col gap-2 py-3 transition-colors hover:bg-hover"
             >
-              <span className="tnum label text-subtle">{formatInt(r.rank)}</span>
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate text-base text-fg">
-                  {r.code}
-                  {NBSP}
-                  <span className="text-muted">{r.name}</span>
+              <span className="flex items-baseline justify-between gap-3">
+                <span className="flex min-w-0 items-baseline gap-3">
+                  <span className="tnum label w-4 shrink-0 text-subtle">{formatInt(r.rank)}</span>
+                  <span className="truncate text-base text-fg">
+                    {r.code}
+                    {NBSP}
+                    <span className="text-muted">{r.name}</span>
+                  </span>
                 </span>
-                <span className="meta text-subtle">
-                  {formatInt(r.activeDays)}
-                  {NBSP}dagar{r.vsAverage ? ` · ${r.vsAverage}` : ""}
-                </span>
+                <span className="tnum shrink-0 text-base font-medium text-fg">{r.profit}</span>
               </span>
-              <span
-                aria-hidden
-                className="col-span-3 h-2 overflow-hidden rounded-xs bg-line md:col-span-1"
-              >
+              <span aria-hidden className="ml-7 block h-2 overflow-hidden rounded-xs bg-line">
                 <span
                   className={cn(
                     "grow-x block h-full rounded-xs",
-                    r.move ? "bg-signal" : "bg-fg/70",
+                    r.warn ? "bg-signal" : "bg-fg/70",
                   )}
                   style={{ width: `${Math.round(r.bar * 100)}%`, "--i": i } as React.CSSProperties}
                 />
               </span>
-              <span className="col-start-3 row-start-1 flex items-center justify-end gap-3 md:col-start-4">
-                {r.move ? <StatusTag status="warning">Flytta?</StatusTag> : null}
-                <span className="tnum text-base text-fg">{perDayText(r.profitPerDayOre)}</span>
+              <span className="ml-7 flex flex-col gap-1">
+                <StatusTag
+                  status={r.warn ? "warning" : "neutral"}
+                  className="h-auto min-h-6 w-fit max-w-full py-0.5 whitespace-normal"
+                >
+                  {r.verdictText}
+                </StatusTag>
+                <span className="meta text-muted">{r.sales}</span>
+                {r.lost ? <span className="meta text-muted">{r.lost}</span> : null}
+                <span className="meta text-subtle">{r.basis}</span>
               </span>
             </Link>
           </li>
         ))}
       </ol>
+      <p className="meta text-subtle">{view.note}</p>
     </section>
   );
 }

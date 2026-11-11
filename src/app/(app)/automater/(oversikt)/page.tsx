@@ -182,8 +182,8 @@ export default async function AutomaterPage({
             />
           </section>
 
-          {/* Vinst per dag (samma tal som Enhetsekonomi), strömmas in efter listan. */}
-          {!period.pendingToday && active.length > 1 ? (
+          {/* Automat-ranking: vinst per dag och omdöme (en automat: mot sin förra period). */}
+          {!period.pendingToday && active.length > 0 ? (
             <Suspense fallback={null}>
               <ProfitRanking searchParams={sp} query={carriedQuery(sp)} />
             </Suspense>

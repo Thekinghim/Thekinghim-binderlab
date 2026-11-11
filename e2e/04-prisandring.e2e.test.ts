@@ -66,7 +66,7 @@ function newPrice(): string {
 describe("prisändring", () => {
   it("Rätta priset ändrar vinsten på Lönsamhet och Hem och loggas", async () => {
     const before = await figures();
-    expect(before.home).toMatch(/Vinst/);
+    expect(before.home).toMatch(/vinst/i);
 
     await page.goto("/inkopspriser");
     await page.getByRole("link", { name: TITLE, exact: true }).first().click();

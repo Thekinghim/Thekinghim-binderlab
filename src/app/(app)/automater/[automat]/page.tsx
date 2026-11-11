@@ -23,6 +23,7 @@ import {
 } from "@/lib/format";
 
 import { RevenueChart, SalesHeatmap, TitleBars } from "../_components/charts";
+import { BestAssortment } from "../_components/best-assortment";
 import { PlacementsTable, RecentOrdersTable, StockTable } from "../_components/detail-tables";
 import { MachineKpis } from "../_components/kpis";
 import { personOptions } from "@/analytics/team";
@@ -232,6 +233,12 @@ export default async function MachinePage({
         {tab === "forsaljning" ? (
           <>
             <SalesSection data={data} days={days} today={today} />
+            {/* Bästa sortiment: vad som säljer här och vad som bör bytas ut. */}
+            {period.pendingToday ? null : (
+              <Suspense fallback={null}>
+                <BestAssortment machineId={machine.id} code={machine.code} searchParams={sp} />
+              </Suspense>
+            )}
             <TitlesAndHours data={data} days={days} />
           </>
         ) : null}

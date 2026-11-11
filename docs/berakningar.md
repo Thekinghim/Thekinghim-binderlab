@@ -904,3 +904,42 @@ Högst tre förslag, värderade i kronor per månad där det går:
 Först väljs det bästa av varje sort (så att listan blir varierad), sedan fylls listan på efter värde.
 
 Testerna: `src/analytics/value/value.test.ts`, `src/app/(app)/varde/_lib/view.test.ts`, `test/db/varde.test.ts`.
+
+## 28. Automat-ranking och Bästa sortiment (`src/analytics/ranking`)
+
+Automater visar rangordningen, Hem en rad med minst två automater, och varje automats sida Bästa sortiment. Talen gäller hela dagar med data i den valda perioden (standard 30 dagar; i dag räknas inte). Vinsten är **före** butikernas andel; med "Visa butikernas andel" eller en vald butik dras andelen, som på övriga sidor.
+
+### Automat-ranking (`fleet.ts`)
+
+Vinst och intäkt per dag och aktiva dagar är samma tal som Enhetsekonomi (avsnitt 23). Pack per dag = order / aktiva dagar. Slutsålt per automat = summan av automatens slutsålda dagar och förlorade intäkt enligt förlorad försäljning (avsnitt 18); går det inte att räkna visas det inte.
+
+| Omdöme                         | Villkor                                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------------------------- |
+| För ny                         | färre än 14 aktiva dagar: inget omdöme, räknas inte i medianen                                    |
+| Går dåligt: överväg att flytta | minst 14 dagar och förlust per dag, eller högst 50 % av medianen (när medianen är över 0)         |
+| Bäst                           | högst vinst per dag bland dem med minst 14 dagar (minst två sådana), över 0 och inte "går dåligt" |
+| Går bra                        | övriga med minst 14 dagar                                                                         |
+| Inget att jämföra med än       | bara en automat har 14 dagar: ingen median                                                        |
+
+Medianen räknas över automaterna med minst 14 aktiva dagar (jämnt antal: medelvärdet av de två mittersta). På sidan heter den "en vanlig automat" ("40 kr/dag mer än en vanlig automat"). Slutsålda dagar summeras över automatens titlar ("Titlar slutsålda 3,5 dagar") och kan därför vara fler än periodens dagar.
+
+**En enda automat** jämförs med sig själv perioden innan (lika lång, bara när den ligger helt inom datan och har minst 14 aktiva dagar): vinst per dag minst 10 % upp = "Går bättre än förra perioden", minst 10 % ner = "Går sämre", annars "Går som förra perioden". Utan förra period sägs att det inte finns något att jämföra med.
+
+**Exempel.** Vinst per dag 400, 200, 180 och 40 kr: medianen är 190 kr. 400 kr är "Bäst", 200 och 180 kr "Går bra", 40 kr (under 95 kr) "Går dåligt: överväg att flytta".
+
+### Bästa sortiment (`assortment.ts`)
+
+Per titel i automaten:
+
+- **Sortimentsdagar** = dagar i perioden då titeln fanns i automatens sortiment (`machine_slots`). Saknas sortimentet för titeln: från titelns första order i automaten i perioden.
+- **Dagar i lager** = sortimentsdagar − slutsålda dagar (avsnitt 18). En slutsåld titel säljer inget, men är inte en dålig titel.
+- **Pack per dag** = sålda pack / dagar i lager. **Vinst per dag** = Σ vinst för prissatta order / dagar i lager.
+- Talen är **säkra** först med minst 14 dagar i lager. Är perioden kortare än 14 dagar ges inga omdömen eller förslag, och det sägs.
+- **Nu** är i dag, inte periodens sista dag: med en äldre period byts inget ut som redan är borta, och inget föreslås som redan finns i automaten.
+- **Står still**: titeln finns i sortimentet nu, har säkra tal, och sålde inget alls eller högst 25 % av medianen för automatens titlar (medianen kräver minst tre titlar med säkra tal).
+- **Förslag** ("Byt ut X: säljer 0,1/dag. Prova Y: säljer 6/dag i 2 andra automater."): Y finns inte i automaten nu, finns i sortimentet i minst en annan automat i dag med säkra tal där, och säljer minst dubbelt så mycket per dag som X, minst 0,1 pack per dag och mer än gränsen för "står still" i den här automaten. Talet för Y = Σ pack / Σ dagar i lager över de andra automaterna. Högst tre förslag, varje titel föreslås en gång. Finns inget att föreslå sägs varför.
+- **Mystery packs** fylls bara på när facket är tomt, med en hel omgång. De visas med sina tal men byts aldrig ut och föreslås aldrig.
+
+Laddarna (`src/app/(app)/automater/_lib/ranking-data.ts`) läser order, lagerhändelser och sortiment en gång för hela organisationen: lika många frågor med 1 som med 10 automater (`test/db/automat-ranking.test.ts`).
+
+Testerna: `src/analytics/ranking/*.test.ts`, `src/app/(app)/automater/_lib/ranking.test.ts`, `assortment-view.test.ts`, `test/db/automat-ranking.test.ts`, `e2e/14-automat-ranking.e2e.test.ts`.

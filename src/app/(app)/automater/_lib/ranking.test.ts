@@ -1,106 +1,127 @@
 import { describe, expect, it } from "vitest";
 
-import type { UnitEconomicsComparison } from "@/analytics/expansion/unit-economics-compare";
+import { fleetRanking, type FleetMachineInput } from "@/analytics/ranking/fleet";
 
-import { rankingView } from "./ranking";
+import { homeRankingLine, rankingView } from "./ranking";
 
-function comparison(
-  rows: Array<{
-    id: string;
-    perDay: number | null;
-    days: number;
-    rank: number | null;
-    vs: number | null;
-  }>,
-  avg: number | null,
-): UnitEconomicsComparison {
+const machines = new Map(
+  ["a", "b", "c", "d"].map((id, i) => [id, { code: `BL-00${i + 1}`, name: id.toUpperCase() }]),
+);
+const hrefOf = (code: string) => `/automater/${code.toLowerCase()}`;
+const plain = (s: string | null) => (s ?? "").replace(/[ ⁠]/g, " ");
+
+function m(id: string, profit: number, days = 30, extra: Partial<FleetMachineInput> = {}) {
   return {
-    rows: rows.map((r) => ({
-      machineId: r.id,
-      activeDays: r.days,
-      profitPerDayOre: r.perDay,
-      rank: r.rank,
-      vsAverageBp: r.vs,
-    })),
-    averageProfitPerDayOre: avg,
-  } as unknown as UnitEconomicsComparison;
+    machineId: id,
+    activeDays: days,
+    orders: days * 4,
+    revenuePerDayOre: profit * 3,
+    profitPerDayOre: profit,
+    ...extra,
+  } satisfies FleetMachineInput;
 }
 
-const machines = [
-  { id: "a", code: "BL-001", name: "A" },
-  { id: "b", code: "BL-002", name: "B" },
-  { id: "c", code: "BL-003", name: "C" },
-  { id: "d", code: "BL-004", name: "D" },
-];
-const hrefOf = (code: string) => `/automater/${code}`;
+function view(now: FleetMachineInput[], before: FleetMachineInput[] = [], deducted = false) {
+  const ranking = fleetRanking(now, before);
+  return {
+    ranking,
+    view: rankingView({ ranking, machines, hrefOf, storeShareDeducted: deducted }),
+  };
+}
 
-describe("rankingView", () => {
-  it("rangordnar efter vinst per dag och föreslår flytt för den som tjänar minst", () => {
-    const v = rankingView({
-      comparison: comparison(
-        [
-          { id: "c", perDay: 2_000, days: 30, rank: 3, vs: -6_000 },
-          { id: "a", perDay: 10_000, days: 30, rank: 1, vs: 6_000 },
-          { id: "b", perDay: 5_000, days: 30, rank: 2, vs: 0 },
-          { id: "d", perDay: null, days: 0, rank: null, vs: null },
-        ],
-        5_000,
-      ),
-      machines,
-      hrefOf,
-    });
-    expect(v.rows.map((r) => r.code)).toEqual(["BL-001", "BL-002", "BL-003"]);
-    expect(v.rows.map((r) => r.move)).toEqual([false, false, true]);
-    expect(v.rows[0]?.bar).toBe(1);
-    expect(v.rows[2]?.bar).toBeCloseTo(0.2);
-    expect(v.moveCount).toBe(1);
-    expect(v.aside).toBe("BL-003 tjänar minst. Flytta?");
-    expect(v.rows[2]?.vsAverage).toMatch(/^−30/);
+describe("rankingView: flera automater", () => {
+  it("rubriken säger vem som tjänar mest och vem som bör flyttas", () => {
+    const { view: v, ranking } = view([
+      m("a", 41_200, 30, { lostRevenueOre: 32_000, stockoutDayTenths: 35 }),
+      m("b", 20_000),
+      m("c", 3_500),
+    ]);
+    expect(plain(v.title)).toBe("BL-001 tjänar mest: 412 kr/dag.");
+    expect(plain(v.aside)).toBe("BL-003 går dåligt: överväg att flytta den.");
+    expect(v.rows.map((r) => r.verdictText)).toEqual([
+      "Bäst",
+      "Går bra",
+      "Går dåligt: överväg att flytta",
+    ]);
+    expect(v.rows.map((r) => r.warn)).toEqual([false, false, true]);
+    expect(plain(v.rows[0]!.profit)).toBe("412 kr/dag");
+    expect(plain(v.rows[0]!.sales)).toBe("Säljer 1 236 kr/dag · 4,0 pack/dag");
+    expect(plain(v.rows[0]!.lost)).toBe("Titlar slutsålda 3,5 dagar · ca 320 kr förlorat");
+    expect(v.rows[1]!.lost).toBeNull();
+    expect(plain(v.rows[2]!.basis)).toBe("30 dagar · 165 kr/dag mindre än en vanlig automat");
+    expect(v.rows[0]!.href).toBe("/automater/bl-001");
+    expect(v.note).toBe("Vinst före butikernas andel.");
+    expect(plain(homeRankingLine(v, ranking))).toBe(
+      "BL-001 tjänar mest: 412 kr/dag. BL-003 går dåligt: överväg att flytta den.",
+    );
   });
 
-  it("förlust per dag ger Flytta? och ingen stapel", () => {
-    const v = rankingView({
-      comparison: comparison(
-        [
-          { id: "a", perDay: 8_000, days: 20, rank: 1, vs: 3_000 },
-          { id: "b", perDay: 6_000, days: 20, rank: 2, vs: 1_000 },
-          { id: "c", perDay: -500, days: 20, rank: 3, vs: -11_000 },
-        ],
-        4_500,
-      ),
-      machines,
-      hrefOf,
-    });
-    expect(v.rows[2]).toMatchObject({ move: true, bar: 0 });
+  it("flera som går dåligt, och vyknappen byter fotnoten", () => {
+    const { view: v } = view(
+      [m("a", 40_000), m("b", 30_000), m("c", -100), m("d", 2_000)],
+      [],
+      true,
+    );
+    expect(plain(v.aside)).toBe("2 automater går dåligt: överväg att flytta dem.");
+    expect(v.note).toBe("Vinst efter butikernas andel.");
   });
 
-  it("nya automater och för få automater får inget Flytta?", () => {
-    const fewDays = rankingView({
-      comparison: comparison(
-        [
-          { id: "a", perDay: 8_000, days: 30, rank: 1, vs: 5_000 },
-          { id: "b", perDay: 6_000, days: 30, rank: 2, vs: 1_000 },
-          { id: "c", perDay: 500, days: 5, rank: 3, vs: -9_000 },
-        ],
-        5_000,
-      ),
-      machines,
-      hrefOf,
+  it("ingen går dåligt", () => {
+    const { view: v, ranking } = view([m("a", 40_000), m("b", 30_000)]);
+    expect(v.aside).toBe("Ingen automat går dåligt.");
+    expect(plain(homeRankingLine(v, ranking))).toBe(
+      "BL-001 tjänar mest: 400 kr/dag. Ingen automat går dåligt.",
+    );
+  });
+
+  it("för lite data att jämföra: sägs rakt ut, och Hem visar ingen rad", () => {
+    const { view: v, ranking } = view([m("a", 40_000, 6), m("b", 30_000, 5)]);
+    expect(v.title).toBe("Vinst per dag.");
+    expect(plain(v.aside)).toBe(
+      "För lite data för att jämföra: minst två automater behöver 14 dagar.",
+    );
+    expect(plain(v.rows[0]!.verdictText)).toBe("För ny: 6 dagar");
+    expect(homeRankingLine(v, ranking)).toBeNull();
+  });
+
+  it("arkiverade (okända) automater visas inte", () => {
+    const { view: v } = view([m("a", 40_000), m("b", 30_000), m("okänd", 10)]);
+    expect(v.rows.map((r) => r.code)).toEqual(["BL-001", "BL-002"]);
+  });
+});
+
+describe("rankingView: en automat", () => {
+  it("jämför med förra perioden", () => {
+    const { view: v, ranking } = view([m("a", 41_200)], [m("a", 38_000)]);
+    expect(v.mode).toBe("single");
+    expect(plain(v.title)).toBe("BL-001 tjänar 412 kr/dag.");
+    expect(plain(v.aside)).toBe("Går som förra perioden (+8 %).");
+    expect(plain(v.rows[0]!.basis)).toBe("30 dagar · förra perioden 380 kr/dag (+8 %)");
+    // Hem visar ingen rad med en automat.
+    expect(homeRankingLine(v, ranking)).toBeNull();
+  });
+
+  it("sämre än förra perioden varnar", () => {
+    const { view: v } = view([m("a", 20_000)], [m("a", 40_000)]);
+    expect(plain(v.aside)).toBe("Går sämre än förra perioden (−50 %).");
+    expect(v.rows[0]!.warn).toBe(true);
+  });
+
+  it("utan förra period och med för få dagar sägs det", () => {
+    expect(view([m("a", 20_000)]).view.aside).toBe(
+      "Bara en automat och ingen förra period: inget att jämföra med än.",
+    );
+    expect(plain(view([m("a", 20_000, 5)]).view.aside)).toBe(
+      "För lite data: 5 dagar. Minst 14 behövs.",
+    );
+  });
+
+  it("ingen försäljning", () => {
+    const { view: v } = view([]);
+    expect(v).toMatchObject({
+      mode: "empty",
+      rows: [],
+      title: "Ingen automat har sålt i perioden.",
     });
-    expect(fewDays.moveCount).toBe(0);
-    expect(fewDays.aside).toMatch(/^Snitt/);
-    const two = rankingView({
-      comparison: comparison(
-        [
-          { id: "a", perDay: 8_000, days: 30, rank: 1, vs: 6_000 },
-          { id: "b", perDay: -100, days: 30, rank: 2, vs: -10_000 },
-        ],
-        4_000,
-      ),
-      machines,
-      hrefOf,
-    });
-    expect(two.moveCount).toBe(0);
-    expect(two.rows[1]?.vsAverage).toBeNull();
   });
 });

@@ -32,6 +32,7 @@ import { TodayPaceCard } from "./_hem/today-pace";
 import type { HomeDaily, HomeModel } from "./_hem/model";
 import { ArrowLink, InsightList, TodoList, TopTitles, WarningLine } from "./_hem/sections";
 import { OnboardingChecklist } from "./kom-igang/_components/onboarding-checklist";
+import { RankingLine } from "./_hem/ranking-line";
 import { ShrinkageLine } from "./_hem/shrinkage-line";
 import { MorningBrief } from "./_hem/morning-brief";
 import { SelfCheckLine } from "./_hem/self-check-line";
@@ -261,6 +262,12 @@ async function HemContent({
             <Suspense fallback={null}>
               <ShrinkageLine />
             </Suspense>
+            {/* Automat-ranking: en rad med minst två automater (bäst och den som går dåligt). */}
+            {scope ? null : (
+              <Suspense fallback={null}>
+                <RankingLine searchParams={sp} />
+              </Suspense>
+            )}
             {/* Värde: sparad tid i månaden och länk till /varde (ägare och admin). */}
             {canSeeValue && !scope ? (
               <Suspense fallback={null}>
