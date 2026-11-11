@@ -95,7 +95,9 @@ tas bort ur klienten faller testerna.
 
 **Känt och inte bevisat.** Uträkningen är läst ur panelens wasm-modul (isärplockad till text), inte
 körd: ingen har kört panelens signerare på samma indata och jämfört, och inget anrop har gjorts mot
-riktiga Awish från den här koden. Hur Awishs server räknar om texten ur det den tar emot syns inte
+riktiga Awish från den här koden. Vid granskningen lästes modulen en gång till av en annan person, och
+Binderlabs uträkning jämfördes med en fristående uträkning i Python på nya indata (vektorerna som
+heter "granskning: …"); de stämmer tecken för tecken, men det är fortfarande läsning, inte körning. Hur Awishs server räknar om texten ur det den tar emot syns inte
 utifrån. Första riktiga "Skicka till Awish" visar om det stämmer.
 
 **När Awish ändrar sig igen.** Ett svar där Awish nekar anropets form eller signatur (t.ex.

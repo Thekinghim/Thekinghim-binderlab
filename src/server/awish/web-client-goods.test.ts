@@ -448,6 +448,15 @@ describe("låtsas-panelen är lika sträng som riktiga Awish", () => {
       await expect(c.createGood(good)).rejects.toThrow(
         "Awish svarade med ett fel: The name has already been taken.",
       );
+      // En trasig inloggnings-token är en inloggning som ska göras om, inte en ändring hos Awish.
+      fake.state.failOn.CreateGood = { message: "token signature is invalid" };
+      const auth = (await c.createGood(good).catch((e: unknown) => e)) as InstanceType<
+        typeof AwishApiError
+      >;
+      expect(auth.kind).toBe("auth");
+      expect(auth.message).toBe(
+        "Awish nekade inloggningen. Kontrollera e-post och lösenord under Datakällor.",
+      );
     } finally {
       log.mockRestore();
     }

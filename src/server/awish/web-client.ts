@@ -147,6 +147,12 @@ function toApiError(message: string, kind: AwishErrorKind): AwishApiError {
 const CHANGED_PATTERN =
   /invalid value for argument|is required but not provided|got invalid value|is not defined by type|cannot query field|unknown argument|unknown type|must not have a selection|must have a selection|was not provided|signature|out of time window/i;
 
+/**
+ * Fel om inloggningens token ("token signature is invalid", "jwt expired") är inte en ändring
+ * hos Awish utan en inloggning som ska göras om, även när ordet "signature" står i texten.
+ */
+const TOKEN_PATTERN = /\btoken\b|\bjwt\b/i;
+
 /** Vad som inte blev gjort, per operation, i meddelandet om att Awish har ändrat sig. */
 const NOT_DONE: Record<string, string> = {
   CreateGood: "Produkten skapades inte.",
@@ -170,7 +176,12 @@ function classifyGraphqlError(operationName: string, errors: GraphqlError[]): Aw
   const code = (first?.extensions?.code ?? "").toUpperCase();
   const lowered = raw.toLowerCase();
   const explicitAuth = code === "UNAUTHENTICATED" || code === "UNAUTHORIZED";
-  if (!explicitAuth && code !== "FORBIDDEN" && CHANGED_PATTERN.test(raw)) {
+  if (
+    !explicitAuth &&
+    code !== "FORBIDDEN" &&
+    CHANGED_PATTERN.test(raw) &&
+    !TOKEN_PATTERN.test(raw)
+  ) {
     const technical = technicalForLog(raw);
     // Den tekniska texten hamnar i loggen (Vercel/Sentry), inte hos användaren.
     console.error(`[awish-webb] Awish nekade ${operationName || "anropet"}: ${technical}`);
