@@ -22,6 +22,7 @@ import { dbErrorMessage } from "@/server/errors";
 import { getPdfRenderer, pdfStatus } from "@/server/pdf/render";
 
 import { contractTermsSchema } from "../_lib/validation";
+import { leadGuessSafe, saveLeadGuess } from "./_lib/guess";
 
 export type FinishResult =
   | { ok: true; data: { contractId: string; storeName: string; pdf: boolean } }
@@ -43,7 +44,11 @@ export async function finishStoreGuide(raw: unknown): Promise<FinishResult> {
     const today = businessToday(new Date(), viewer.organization.timezone);
     if (input.leadId) {
       const leadId = input.leadId;
+      // Gissningen för platsen sparas nu: när platsen har blivit butik går den inte att
+      // räkna fram igen. Räknas innan platsen kopplas till butiken.
+      const guess = await leadGuessSafe(viewer, leadId);
       await withUserDbFor(viewer.user, async (tx) => {
+        if (guess) await saveLeadGuess(tx, orgId, leadId, guess);
         const [lead] = await tx
           .select({ stage: s.expansionLeads.stage })
           .from(s.expansionLeads)

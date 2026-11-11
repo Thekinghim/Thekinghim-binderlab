@@ -20,7 +20,7 @@ import {
   MAX_CONTRACT_FILE_BYTES,
   saveContractFor,
 } from "@/server/accounting";
-import { AuthorizationError } from "@/server/access";
+import { AuthorizationError, withUserDbFor } from "@/server/access";
 import {
   ContractError,
   createSigningLinkFor,
@@ -36,6 +36,7 @@ import { getServerEnv } from "@/lib/env";
 import { contractTermsSchema } from "../butiker/_lib/validation";
 import { resolveAppBaseUrl } from "@/server/request-info";
 
+import { leadGuessSafe, saveLeadGuess } from "../butiker/ny/_lib/guess";
 import { moveContractStartFor, StartMoveError, type StartMoveResult } from "./_lib/start-move";
 
 export type ActionResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
@@ -228,12 +229,26 @@ export async function createContract(
           }
         : {}),
     };
+    // En plats i pipelinen blir butik här: gissningen för platsen räknas före (efteråt går
+    // den inte att räkna fram igen) och sparas när kontraktet är skapat.
+    const leadId = /^lead:/i.test(base.target) ? base.target.slice("lead:".length) : null;
+    const guess = leadId ? await leadGuessSafe(viewer, leadId) : null;
     const result = await createStoreContractFor(viewer, input, {
       today: businessToday(new Date(), viewer.organization.timezone),
       renderPdf: pdfStatus().configured ? (html) => getPdfRenderer().renderHtml(html) : null,
       fileStore: () => contractFileStore(),
     });
     if (!result.ok) return { ok: false, error: result.message, needsConfirm: true };
+    if (leadId && guess) {
+      try {
+        await withUserDbFor(viewer.user, (tx) =>
+          saveLeadGuess(tx, viewer.organization.id, leadId, guess),
+        );
+      } catch (error) {
+        // Kontraktet är skapat: en gissning som inte gick att spara stoppar inte det.
+        console.error("[avtal] Gissningen kunde inte sparas:", error);
+      }
+    }
     await revalidateSettlementData();
     return {
       ok: true,
