@@ -19,7 +19,7 @@ export function StartklarRow({ todo }: { todo: ReadinessTodo | null }) {
       <p className="min-w-0 text-base text-fg max-md:text-sm">{`${todo.title}.`}</p>
       <Link
         href={todo.href}
-        className="inline-flex min-h-11 shrink-0 items-center text-sm text-muted underline-offset-2 hover:underline"
+        className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-sm text-muted underline-offset-2 hover:underline"
       >
         {todo.machines === 1 ? "Öppna" : "Visa"}
       </Link>
