@@ -34,6 +34,7 @@ import {
   type VisitMachine,
   type VisitPlan,
 } from "@/analytics/visits";
+import type { WeekShare } from "@/analytics/sellout";
 import { addDays, type IsoDate } from "@/domain";
 
 /**
@@ -77,6 +78,11 @@ export interface WeeklyPlanInput {
   readonly slotPeriods?: readonly SlotPeriod[] | null;
   /** Kapacitet per automat och titel (Awish). null/utelämnad = fyll till 7 dagars försäljning. */
   readonly capacities?: readonly MachineCapacity[] | null;
+  /**
+   * Veckans form per automat (loadWeekShapes). Utelämnad: räknas ur `orders` (kräver minst
+   * 28 dagars order; annars platt snitt).
+   */
+  readonly weekShares?: ReadonlyMap<string, WeekShare> | null;
   /** Dagens affärsdatum i tidszonen. */
   readonly today: IsoDate;
   readonly timeZone: string;
@@ -106,6 +112,7 @@ export function weeklyVisitPlan(input: WeeklyPlanInput): VisitPlan {
         : {}),
       ...(input.warehouseStock ? { warehouseStock: input.warehouseStock } : {}),
       extraVisits: input.health ? extraVisitsFromHealth(input.health, today) : [],
+      ...(input.weekShares ? { weekShares: input.weekShares } : {}),
       options: { timeZone, start: today, stockDate: today },
     },
     planNow(addDays(today, -1), timeZone, now),

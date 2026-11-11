@@ -16,6 +16,8 @@ import {
   stockoutDate,
   type IsoDate,
 } from "@/domain";
+import { sellOut } from "@/analytics/sellout";
+import { weekShapes } from "@/analytics/sellout/week-shape";
 import { evidence, isMachineActive, links, nameLookup } from "@/analytics/todos/common";
 import { mysteryBatches } from "@/analytics/todos/refill";
 import {
@@ -153,8 +155,9 @@ export interface LowStockInput {
  *   takt        = sålda pack de senaste `windowDays` hela dagarna t.o.m. i går
  *                 (domain.salesVelocity), samma fönster som påfyllningspunkterna i Att göra,
  *                 Lager och besöksplanen: dagen i dag är inte slut och skulle sänka takten
- *   dagar kvar  = golv(i lager / takt) (domain.daysOfStockLeft)
- *   slut        = domain.stockoutDate(i går, i lager, takt), samma som i Att göra
+ *   slut och dagar kvar = sellOut(i lager, takt, från i går, automatens veckoform), samma som i
+ *                 Att göra och besöksplanen. Utan veckoform (under 28 dagars försäljning) är
+ *                 det domain.stockoutDate och domain.daysOfStockLeft
  *   i lager 0 och titeln har sålt i fönstret  → critical ("slut")
  *   dagar kvar ≤ thresholdDays                → warning
  * Titlar utan försäljning i fönstret larmar inte (de tar inte slut med nuvarande takt).
@@ -196,6 +199,8 @@ export function lowStockAlerts(
     else byPair.set(k, [o]);
   }
   const batches = mysteryBatches(input.titles);
+  // Veckans form per automat (28 dagar t.o.m. i går): helgen säljer mer.
+  const shapes = weekShapes(input.orders, { asOf, machines: input.machines });
   const out: AlertCandidate[] = [];
   for (const s of input.stock) {
     const m = machines.get(s.machineId);
@@ -212,11 +217,18 @@ export function lowStockAlerts(
     });
     if (v.units === 0) continue;
     const onHand = Math.max(0, s.onHand);
-    const daysLeft = daysOfStockLeft(onHand, v) ?? 0;
+    // EN slutdag för alla sidor (sellOut), med automatens veckoform när den finns.
+    const so = sellOut({
+      onHand,
+      dailyAvg: v,
+      from: asOf,
+      weekShare: shapes.get(s.machineId) ?? null,
+    });
+    const daysLeft = so?.daysLeft ?? daysOfStockLeft(onHand, v) ?? 0;
     if (onHand > 0 && daysLeft > thresholdDays) continue;
     const windowOrders = orders.filter((o) => o.businessDate >= v.start && o.businessDate <= v.end);
     const empty = onHand === 0;
-    const end = stockoutDate(asOf, onHand, v);
+    const end = so?.date ?? stockoutDate(asOf, onHand, v);
     const rate = `${ratioTenths(v.units, v.days)} pack/dag (${v.units} pack på ${plural(v.days, "dag", "dagar")})`;
     const title = empty
       ? batch !== undefined

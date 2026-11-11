@@ -4,6 +4,7 @@
  */
 
 import type { IsoDate, Period } from "@/domain";
+import type { WeekShare } from "@/analytics/sellout";
 import type {
   AnalyticsOrder,
   Evidence,
@@ -76,6 +77,11 @@ export interface VisitPlanInput {
   /** Startpunkt för rutten (t.ex. centrallagret). */
   readonly depot?: GeoPoint | null;
   readonly extraVisits?: readonly ExtraVisit[];
+  /**
+   * Veckans form per automat (sellout/week-shape). Utelämnad: räknas ur `orders`. Den som bara
+   * laddar de senaste dagarnas order skickar formerna från laddaren (loadWeekShapes).
+   */
+  readonly weekShares?: ReadonlyMap<string, WeekShare>;
   readonly options?: VisitPlanOptions;
 }
 

@@ -34,7 +34,7 @@ describe("påfyllning", () => {
     });
     expect(t?.detail).toContain("räcker ca 2,0 dagar vid 2,0 pack per dag");
     // Räcker 2,0 dagar räknat med i dag: 2 och 3 nov. (domänens stockoutDate med asOf = i går).
-    expect(t?.detail).toMatch(/Väntas ta slut 3\u00a0nov\.$/);
+    expect(t?.detail).toMatch(/Tar slut i morgon – fyll på i dag\.$/);
     expect(t?.evidence.orderIds).toHaveLength(28);
     expect(t?.evidence.period).toEqual({ start: "2026-10-19", end: "2026-11-01" });
     expect(t?.evidence.figures.find((f) => f.key === "daysLeftTenths")?.value).toBe(20);
@@ -186,7 +186,8 @@ describe("påfyllning: slutdatum och avbockning", () => {
     });
     const t = refills(i)[0];
     expect(t?.detail).toContain("räcker ca 2,3 dagar");
-    expect(t?.detail).toMatch(/Väntas ta slut 4 nov\.$/);
+    // 4 nov. är en onsdag; fyll på senast dagen före (3 nov., i morgon).
+    expect(t?.detail).toMatch(/Tar slut på onsdag – fyll på senast i morgon\.$/);
   });
 
   it("refillFingerprint: nivå, saldo och senaste registrerade påfyllning", () => {

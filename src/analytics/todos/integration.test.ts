@@ -338,7 +338,10 @@ describe("Drift-larmet 'Titel nära slut' och påfyllningspunkten i Att göra", 
       "dec.",
     ];
     const dayText = `${Number(dd)} ${months[Number(mm) - 1]}`;
-    expect(todo.detail.replace(/ /g, " ")).toContain(dayText);
+    // Runda 2 (T4-3): Att göra säger dagen i ord ("Tar slut i morgon – fyll på i dag"),
+    // larmet datumet. Båda kommer från sellOut(): 3 nov. är i morgon (i dag är 2 nov.).
+    expect(end).toBe("2026-11-03");
+    expect(todo.detail).toContain("Tar slut i morgon – fyll på i dag.");
     expect(alert!.detail.replace(/ /g, " ")).toContain(dayText);
   });
 });
