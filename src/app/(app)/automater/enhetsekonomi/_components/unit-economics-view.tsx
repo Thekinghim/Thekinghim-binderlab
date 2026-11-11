@@ -309,15 +309,17 @@ export function InvestmentsSection({
   /** Öppna "Ny investering" direkt (Startklar-länken, ?ny=1). */
   openNew?: boolean;
 }) {
+  const [editing, setEditing] = useState<InvestmentRecord | "new" | null>(() =>
+    canEdit && openNew && machines.some((m) => !m.archived && m.id === forMachineId) ? "new" : null,
+  );
   const byId = useMemo(() => new Map(machines.map((m) => [m.id, m])), [machines]);
   const active = machines.filter((m) => !m.archived);
   const preselected = active.find((m) => m.id === forMachineId) ?? null;
-  const [editing, setEditing] = useState<InvestmentRecord | "new" | null>(
-    canEdit && openNew && preselected ? "new" : null,
-  );
   // Förifyllt från senaste automaten: vad den kostade och avskrivningstiden.
   const template = lastPurchase(investments, preselected?.id ?? null);
-  const templateCode = template ? (byId.get(template.machineId)?.code ?? null) : null;
+  const templateCode = template
+    ? (machines.find((m) => m.id === template.machineId)?.code ?? null)
+    : null;
   const fields = useMemo(
     () =>
       INVESTMENT_FIELDS(
