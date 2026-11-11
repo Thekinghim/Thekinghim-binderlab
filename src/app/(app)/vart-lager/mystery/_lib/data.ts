@@ -38,7 +38,14 @@ import {
 import { ALL_ROLES, ECONOMY_ROLES } from "@/server/data/core/types";
 
 import { queryOwnPlaces } from "../../../lager/_lib/data";
-import { slotInputs, UNDO_MINUTES, type CalcFees, type Place, type Recipe } from "./model";
+import {
+  slotInputs,
+  UNDO_MINUTES,
+  wholeBatchesDown,
+  type CalcFees,
+  type Place,
+  type Recipe,
+} from "./model";
 import { queryMysterySlotFacts } from "./slots";
 
 /** Packar: ägare, admin och påfyllare (pack_mystery). */
@@ -223,7 +230,11 @@ export async function loadMysteryOverviewFor(
           ? mysteryBatchesToPack({
               batchSize: recipe.batchSize,
               planPacks: 0,
-              packedAtHome: Object.values(inPlaces).reduce((n, q) => n + Math.max(0, q), 0),
+              // Varje lager för sig: 7 hemma och 7 på kontoret är ingen färdig omgång.
+              packedAtHome: Object.values(inPlaces).reduce(
+                (n, q) => n + wholeBatchesDown(q, recipe.batchSize),
+                0,
+              ),
               slots: slotInputs(db.slots.get(t.id) ?? [], today),
               today,
             })

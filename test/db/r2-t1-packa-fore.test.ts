@@ -32,6 +32,7 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {}
 
 const { loadMysteryOverviewFor, loadMysteryPackPlansFor } =
   await import("../../src/app/(app)/vart-lager/mystery/_lib/data");
+const { createPlaceFor } = await import("../../src/app/(app)/vart-lager/_lib/register");
 const { packSentence } = await import("../../src/app/(app)/vart-lager/mystery/_lib/model");
 const { sv } = await import("../../src/i18n/sv");
 
@@ -218,5 +219,51 @@ describe("Mystery-laddaren: omgångar räknade från facken", () => {
     const plans = await loadMysteryPackPlansFor(await viewerFor(owner, orgId), NOW);
     expect(plans.get(mp)).toMatchObject({ batches: 0 });
     expect(packSentence(plans.get(mp)!, sv)?.text).toBe("Inget att packa den här veckan.");
+  });
+
+  it("ett nytt mystery pack i en gammal automat: automaten kallas inte ny", async () => {
+    // BL-001 har sålt Mystery Pack i 14 dagar. Nu läggs ett andra mystery pack i sortimentet.
+    let lyx = "";
+    await asUser(owner, async (tx) => {
+      const [t] = await tx
+        .insert(s.titles)
+        .values({ organizationId: orgId, name: "Mystery Pack Lyx", ownProduct: true })
+        .returning();
+      lyx = t!.id;
+      await tx.execute(
+        sql`select public.save_mystery_recipe(${orgId}::uuid, ${lyx}::uuid, 10,
+              ${JSON.stringify([{ titleId: part, quantity: 10, hit: false }])}::jsonb)`,
+      );
+    });
+    await asPostgres((tx) =>
+      tx.execute(
+        sql`insert into public.machine_slots (organization_id, machine_id, title_id, slots, valid_from)
+            values (${orgId}::uuid, ${m1}::uuid, ${lyx}::uuid, 1, ${today}::date)`,
+      ),
+    );
+    const plans = await loadMysteryPackPlansFor(await viewerFor(owner, orgId), NOW);
+    const plan = plans.get(lyx)!;
+    expect(plan.first).toMatchObject({ label: "BL-001", emptyNow: true, isNew: false });
+    expect(packSentence(plan, sv)?.text).toBe("Packa 1 omgång nu. BL-001 är tom.");
+  });
+
+  it("7 färdiga hemma och 7 på kontoret är ingen färdig omgång", async () => {
+    // Mystery Pack är tillbaka i BL-001 med tomt fack.
+    await asPostgres((tx) =>
+      tx.execute(
+        sql`update public.machine_slots set valid_to = null
+            where organization_id = ${orgId}::uuid and machine_id = ${m1}::uuid
+              and title_id = ${mp}::uuid`,
+      ),
+    );
+    const kontoret = (await createPlaceFor(await viewerFor(owner, orgId), { name: "Kontoret" })).id;
+    await event(centralId, mp, "count", 7);
+    await event(kontoret, mp, "count", 7);
+    const plans = await loadMysteryPackPlansFor(await viewerFor(owner, orgId), NOW);
+    expect(plans.get(mp)).toMatchObject({ batches: 1, readyBatches: 0 });
+    // 14 i ett och samma lager är en färdig omgång.
+    await event(kontoret, mp, "count", 14);
+    const after = await loadMysteryPackPlansFor(await viewerFor(owner, orgId), NOW);
+    expect(after.get(mp)).toMatchObject({ batches: 0, readyBatches: 1 });
   });
 });

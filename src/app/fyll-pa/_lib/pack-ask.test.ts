@@ -145,4 +145,20 @@ describe("texterna", () => {
     expect(f.packAskQuestion(1)).toBe("Did you pack a batch?");
     expect(f.packAskYes(1, true)).toBe("Yes, pack 1 batch and refill");
   });
+
+  it("flera automater väntar på Awish: en rad, högst tre koder", () => {
+    const two = ["BL-001", "BL-002"];
+    const ten = Array.from({ length: 10 }, (_, i) => `BL-${String(i + 1).padStart(3, "0")}`);
+    expect(sv.r2.t1.fill.awishPendingMany(two)).toBe(
+      "Awish fick inte antalen för BL-001 och BL-002.",
+    );
+    expect(sv.r2.t1.fill.awishPendingMany(ten.slice(0, 3))).toBe(
+      "Awish fick inte antalen för BL-001, BL-002 och BL-003.",
+    );
+    expect(sv.r2.t1.fill.awishPendingMany(ten)).toBe("Awish fick inte antalen för 10 automater.");
+    expect(en.r2.t1.fill.awishPendingMany(two)).toBe(
+      "BL-001 and BL-002 did not get the new numbers.",
+    );
+    expect(en.r2.t1.fill.awishPendingMany(ten)).toBe("10 machines did not get the new numbers.");
+  });
 });

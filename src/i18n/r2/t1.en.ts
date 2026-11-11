@@ -24,6 +24,10 @@ export const t1: R2T1 = {
     mysteryReady: (n, place) => `${f.int(n)} ready ${inPlace(place)}.`,
     mysteryFillBatch: (batch) => `Refill one batch (${f.int(batch)})`,
     awishPending: (machine) => `${machine} did not get the new numbers.`,
+    awishPendingMany: (machines) =>
+      machines.length <= 3
+        ? `${machines.slice(0, -1).join(", ")} and ${machines.at(-1) ?? ""} did not get the new numbers.`
+        : `${f.int(machines.length)} machines did not get the new numbers.`,
     awishPendingHint: "The refill is saved here. The app tries again by itself.",
     retry: "Try again",
     retrying: "Sending…",

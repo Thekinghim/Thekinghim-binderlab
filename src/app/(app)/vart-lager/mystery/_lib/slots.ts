@@ -6,13 +6,14 @@
  * (samma regel som raderna i Fyll på, så att "0 färdiga, fyll på en omgång" där och "Packa 1
  * omgång nu" här gäller samma fack). En titel som gått ur automatens sortiment och står på 0
  * är inget fack. För varje fack läses saldot nu, sålda pack de senaste 14 hela dagarna (takten)
- * och om automaten någonsin har sålt titeln (ny automat utan historik). Bara antal: alla
+ * och om automaten någonsin har sålt något alls (ny automat utan historik; en gammal automat
+ * som får ett nytt mystery pack är inte "ny"). Bara antal: alla
  * roller i appen får läsa det (påfyllaren läser försäljningshändelserna, inte orderna).
  */
 
 import "server-only";
 
-import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, lte, sql } from "drizzle-orm";
 
 import * as s from "@/db/schema";
 import type { Tx } from "@/db/client";
@@ -49,7 +50,7 @@ export async function queryMysterySlotFacts(
   if (titleIds.length === 0) return out;
   const yesterday = addDays(today, -1);
   const windowStart = addDays(yesterday, -(SLOT_WINDOW_DAYS - 1));
-  const [periods, fills, sales] = await Promise.all([
+  const [periods, fills, sales, active] = await Promise.all([
     querySlotPeriods(tx, orgId),
     // Senaste läsningen från Awish per automat (vilka titlar som står i facken).
     tx
@@ -66,9 +67,7 @@ export async function queryMysterySlotFacts(
       .select({
         locationId: s.stockEvents.locationId,
         titleId: s.stockEvents.titleId,
-        recent: sql<number>`count(*) filter (where ${s.stockEvents.businessDate} >= ${windowStart}::date
-                              and ${s.stockEvents.businessDate} <= ${yesterday}::date)::int`,
-        ever: sql<number>`count(*)::int`,
+        recent: sql<number>`count(*)::int`,
       })
       .from(s.stockEvents)
       .where(
@@ -76,10 +75,27 @@ export async function queryMysterySlotFacts(
           eq(s.stockEvents.organizationId, orgId),
           eq(s.stockEvents.kind, "sale"),
           inArray(s.stockEvents.titleId, [...titleIds]),
+          gte(s.stockEvents.businessDate, windowStart),
+          lte(s.stockEvents.businessDate, yesterday),
         ),
       )
       .groupBy(s.stockEvents.locationId, s.stockEvents.titleId),
+    // Automater som har sålt något alls (vilken titel som helst): de är inte nya.
+    tx
+      .select({ machineId: s.stockLocations.machineId })
+      .from(s.stockLocations)
+      .where(
+        and(
+          eq(s.stockLocations.organizationId, orgId),
+          isNotNull(s.stockLocations.machineId),
+          sql`exists (select 1 from public.stock_events e
+                      where e.organization_id = ${s.stockLocations.organizationId}
+                        and e.location_id = ${s.stockLocations.id}
+                        and e.kind = 'sale')`,
+        ),
+      ),
   ]);
+  const hasSold = new Set(active.map((r) => r.machineId));
 
   const wanted = new Set(titleIds);
   const machines = new Map(sources.machines.filter((m) => !m.archived).map((m) => [m.id, m.code]));
@@ -93,11 +109,11 @@ export async function queryMysterySlotFacts(
     const known = r.lastCountedAt !== null || r.lastRestockedAt !== null;
     onHand.set(key(r.machineId, r.titleId), known ? r.onHand : null);
   }
-  const sold = new Map<string, { recent: number; ever: number }>();
+  const sold = new Map<string, number>();
   for (const r of sales) {
     const machineId = machineOfLocation.get(r.locationId);
     if (!machineId) continue;
-    sold.set(key(machineId, r.titleId), { recent: Number(r.recent), ever: Number(r.ever) });
+    sold.set(key(machineId, r.titleId), Number(r.recent));
   }
   const pairs = new Set<string>();
   for (const p of periods) {
@@ -121,7 +137,7 @@ export async function queryMysterySlotFacts(
   }
   for (const k of inFill) pairs.add(k);
   // Såld de senaste 14 dagarna: facket finns, även om det är tomt nu och saknar fackperiod.
-  for (const [k, n] of sold) if (n.recent > 0) pairs.add(k);
+  for (const [k, n] of sold) if (n > 0) pairs.add(k);
   // Utgången titel (hade en fackperiod, ingen gäller längre) som står på 0: inget fack.
   const retired = retiredPairs(periods, today);
   for (const k of [...pairs]) {
@@ -132,13 +148,12 @@ export async function queryMysterySlotFacts(
     const [machineId, titleId] = k.split("\u0000") as [string, string];
     const code = machines.get(machineId);
     if (code === undefined) continue;
-    const s14 = sold.get(k);
     out.get(titleId)?.push({
       machineId,
       label: code,
       onHand: onHand.get(k) ?? null,
-      sold: s14?.recent ?? 0,
-      everSold: (s14?.ever ?? 0) > 0,
+      sold: sold.get(k) ?? 0,
+      everSold: hasSold.has(machineId),
     });
   }
   for (const list of out.values()) {

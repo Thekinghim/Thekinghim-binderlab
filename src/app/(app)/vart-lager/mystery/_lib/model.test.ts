@@ -439,3 +439,15 @@ describe("Packa N omgångar före en dag (räknat från facken)", () => {
     expect(packSentence(null, sv)).toBeNull();
   });
 });
+
+describe("wholeBatchesDown (färdiga omgångar per lager)", () => {
+  it("räknar bara hela omgångar, och aldrig under 0", async () => {
+    const { wholeBatchesDown } = await import("./model");
+    expect(wholeBatchesDown(7, 14)).toBe(0);
+    expect(wholeBatchesDown(14, 14)).toBe(14);
+    expect(wholeBatchesDown(20, 14)).toBe(14);
+    expect(wholeBatchesDown(28, 14)).toBe(28);
+    expect(wholeBatchesDown(-14, 14)).toBe(0);
+    expect(wholeBatchesDown(14, 0)).toBe(0);
+  });
+});

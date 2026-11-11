@@ -347,7 +347,8 @@ export async function syncRefills(
       const pushed = await pushMachinesToAwish(viewer.organization.id, result.savedMachineIds, {
         withPending: true,
       });
-      awish = summariseAwishPush(pushed);
+      // Beskedet gäller automaterna som just fylldes på, inte de som väntade sedan förut.
+      awish = summariseAwishPush(pushed, result.savedMachineIds);
     } catch {
       // Felet sparas, så att det syns på automaten i Fyll på och försöks igen.
       await recordAwishPushFailure(viewer.organization.id, result.savedMachineIds).catch(() => {});

@@ -119,7 +119,7 @@ export interface MysterySlotInput {
    * är känd (titeln säljer inte i automaten).
    */
   readonly emptyOn: IsoDate | null;
-  /** Automaten har aldrig sålt titeln (ny automat utan historik). */
+  /** Automaten har aldrig sålt något alls (ny automat utan historik). */
   readonly isNew?: boolean;
 }
 

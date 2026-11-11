@@ -364,7 +364,7 @@ export function FillApp({
   const pendingLine = (m: { id: string; code: string }) =>
     pendingPush.has(m.id) ? (
       <AwishPendingLine
-        code={m.code}
+        title={t.r2.t1.fill.awishPending(m.code)}
         busy={retrying === m.id || retrying === "alla"}
         disabled={!q.online}
         onRetry={() => void retryPush(m.id)}
@@ -596,19 +596,21 @@ export function FillApp({
   const mine = data.hasOthers && mineOnly === "1";
   const visible = mine ? view.machines.filter((m) => m.mine) : view.machines;
   // En automat som väntar på Awish ("Awish fick inte antalen …") ligger överst: den är oftast
-  // full efter påfyllningen och hamnar annars sist, under skärmkanten.
+  // full efter påfyllningen och hamnar annars sist, under skärmkanten. Väntar flera (Awish
+  // nere, eller inloggningen har gått ut) står EN rad överst med ett Försök igen för alla,
+  // i stället för en ruta per automat, och listan behåller sin ordning.
+  const waitingShown = visible.filter((m) => pendingPush.has(m.id));
+  const manyWaiting = waitingShown.length > 1;
   const shown =
-    pendingPush.size > 0
-      ? [
-          ...visible.filter((m) => pendingPush.has(m.id)),
-          ...visible.filter((m) => !pendingPush.has(m.id)),
-        ]
+    waitingShown.length === 1
+      ? [...waitingShown, ...visible.filter((m) => !pendingPush.has(m.id))]
       : visible;
 
-  if (bring && shown.length > 0) {
+  // Ta med-listan följer alltid den vanliga ordningen.
+  if (bring && visible.length > 0) {
     return (
       <BringScreen
-        machines={shown}
+        machines={visible}
         places={sources.places.map((p) => ({
           id: p.id,
           name: p.name,
@@ -620,7 +622,7 @@ export function FillApp({
           // Läget läses när man trycker (inte ur renderingen): två snabba tryck räknas båda.
           const current = bringStore.read(scope);
           if (!current) return;
-          setBring({ ...current, chosen: toggleBring(current.chosen, shown, id) });
+          setBring({ ...current, chosen: toggleBring(current.chosen, visible, id) });
         }}
         placeId={pickPlace(sources.places, bring.placeId, lastSource, sources.defaultPlaceId)}
         online={q.online}
@@ -789,6 +791,15 @@ export function FillApp({
         </button>
       ) : null}
 
+      {manyWaiting ? (
+        <AwishPendingLine
+          title={t.r2.t1.fill.awishPendingMany(waitingShown.map((m) => m.code))}
+          busy={retrying !== null}
+          disabled={!q.online}
+          onRetry={() => void retryPush(null)}
+        />
+      ) : null}
+
       <ul className="flex flex-col gap-3" aria-label={t.fill.machines}>
         {shown.map((m, i) => (
           <li key={m.id} className="rise flex flex-col gap-2" style={rise(i + 1)}>
@@ -801,7 +812,7 @@ export function FillApp({
                 go(`${BASE}/${m.id}`);
               }}
             />
-            {pendingLine(m)}
+            {manyWaiting ? null : pendingLine(m)}
           </li>
         ))}
       </ul>
@@ -814,12 +825,13 @@ export function FillApp({
  * ("Awish fick inte antalen för BL-003." med Försök igen). Påfyllningen är sparad i appen.
  */
 function AwishPendingLine({
-  code,
+  title,
   busy,
   disabled,
   onRetry,
 }: {
-  code: string;
+  /** "Awish fick inte antalen för BL-003." */
+  title: string;
   busy: boolean;
   disabled: boolean;
   onRetry: () => void;
@@ -831,9 +843,7 @@ function AwishPendingLine({
       className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-md border border-signal-line bg-surface p-3"
     >
       <p className="flex min-w-0 flex-1 basis-48 flex-col gap-0.5">
-        <span className="text-md font-medium text-signal-fg">
-          {t.r2.t1.fill.awishPending(code)}
-        </span>
+        <span className="text-md font-medium text-signal-fg">{title}</span>
         <span className="text-sm text-muted">{t.r2.t1.fill.awishPendingHint}</span>
       </p>
       <button
@@ -1153,6 +1163,8 @@ function MachineScreen({
   // Mystery packs som fylls på fast de inte finns färdiga i lagret: "Packade du en omgång?".
   const [asking, setAsking] = useState<Asking | null>(null);
   const [packing, setPacking] = useState(false);
+  // Klient-id per påbörjad packning (lager, titel, innehåll, omgångar) tills den gått fram.
+  const packIds = useRef(new Map<string, string>());
   // Ändrade antal som inte sparats: appen laddar inte om av sig själv för en ny version.
   useUnsavedInput(touched || busy || confirming || asking !== null || counting !== null);
   const linesNow = (): Line[] =>
@@ -1166,12 +1178,17 @@ function MachineScreen({
         setPacking(true);
         const added = new Map<string, number>();
         for (const ask of toPack) {
+          // Samma id vid ett nytt försök: kom svaret aldrig fram (nätet dog) men packningen
+          // sparades, packas det inte en gång till när man trycker Ja igen.
+          const packKey = `${sourceId}:${ask.titleId}:${ask.recipeId}:${ask.batches}`;
+          const clientId = packIds.current.get(packKey) ?? newClientId();
+          packIds.current.set(packKey, clientId);
           const res = await packMystery({
             titleId: ask.titleId,
             placeId: sourceId,
             batches: ask.batches,
             recipeId: ask.recipeId,
-            clientId: newClientId(),
+            clientId,
           }).catch(() => ({ ok: false as const, error: t.common.offlineRetry }));
           if (!res.ok) {
             // Inget är påfyllt än: stanna här, så att man kan trycka Klar igen.
@@ -1182,6 +1199,7 @@ function MachineScreen({
             });
             return;
           }
+          packIds.current.delete(packKey);
           added.set(ask.titleId, ask.packs);
           onPacked([
             { placeId: sourceId, titleId: ask.titleId, delta: ask.packs },

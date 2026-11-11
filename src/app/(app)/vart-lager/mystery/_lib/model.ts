@@ -389,7 +389,7 @@ export interface SlotFacts {
   readonly onHand: number | null;
   /** Sålda pack de senaste SLOT_WINDOW_DAYS hela dagarna. */
   readonly sold: number;
-  /** Automaten har sålt titeln någon gång. */
+  /** Automaten har sålt något alls någon gång (annars är den ny). */
   readonly everSold: boolean;
 }
 
@@ -416,6 +416,16 @@ export function slotInputs(
         : null;
     return { label: f.label, onHand, emptyOn: out?.date ?? null, isNew: !f.everSold };
   });
+}
+
+/**
+ * Pack i ett lager som går jämnt upp i hela omgångar (avrundat nedåt): 20 pack med 14 per
+ * omgång → 14. Under 0 → 0. Färdiga omgångar räknas per lager, eftersom ett fack fylls med
+ * en hel omgång från ett lager.
+ */
+export function wholeBatchesDown(packs: number, batchSize: number): number {
+  if (!Number.isFinite(packs) || !Number.isInteger(batchSize) || batchSize < 1) return 0;
+  return Math.floor(Math.max(0, packs) / batchSize) * batchSize;
 }
 
 /** Meningen om vad som ska packas, och om den är en uppmaning ("act") eller lugn ("calm"). */

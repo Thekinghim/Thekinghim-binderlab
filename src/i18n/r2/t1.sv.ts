@@ -38,6 +38,11 @@ export const t1 = {
     mysteryFillBatch: (batch: number) => `Fyll på en omgång (${f.int(batch)}${NBSP}st)`,
     /** Sändningen till Awish gick inte fram: raden på automaten tills den gått fram. */
     awishPending: (machine: string) => `Awish fick inte antalen för ${machine}.`,
+    /** Flera automater väntar: högst tre koder skrivs ut, annars antalet. */
+    awishPendingMany: (machines: readonly string[]) =>
+      machines.length <= 3
+        ? `Awish fick inte antalen för ${machines.slice(0, -1).join(", ")} och ${machines.at(-1) ?? ""}.`
+        : `Awish fick inte antalen för ${f.int(machines.length)} automater.`,
     awishPendingHint: "Påfyllningen är sparad här. Appen försöker igen själv.",
     retry: "Försök igen",
     retrying: "Skickar…",
