@@ -19,12 +19,14 @@ import { cache } from "react";
 import { countWithVisits, prioritizeByLostSales, TODO_DEFAULTS } from "@/analytics/todos";
 import type { VisitPlan } from "@/analytics/visits";
 import { addDays, DomainError, type Period } from "@/domain";
-import { AuthorizationError, withUserDbFor } from "@/server/access";
+import { AuthorizationError, requireRoleFor, withUserDbFor } from "@/server/access";
 import { healthOf, loadHealthData } from "@/server/alerts/inputs";
 import type { AwishExpiryNotice } from "@/server/awish/expiry";
 import { loadAwishExpiryFor } from "@/server/awish/expiry-notice";
 import { readyPackageFor } from "@/server/bokforing/stored";
 import { loadNewMachinesFor } from "@/server/machines/new-machines";
+import { readinessTodo, type ReadinessTodo } from "@/server/onboarding/machine-ready";
+import { loadMachineReadinessSafe } from "@/server/onboarding/machine-ready-load";
 import { lostSalesSummaryFor } from "@/server/purchasing/lost-sales-summary";
 import type { LostSalesSummary } from "@/server/purchasing/types";
 import { withUserDb } from "@/server/session";
@@ -42,7 +44,7 @@ import {
   type Viewer,
 } from "./core/loaders";
 import { ownStockTotals } from "./core/own-stock";
-import { ALL_ROLES, canSeeEconomy } from "./core/types";
+import { ALL_ROLES, canSeeEconomy, OPERATOR_ROLES } from "./core/types";
 import { queryStorePlaces, type StorePlace } from "./team";
 import { weeklyVisitPlan } from "./visit-plan";
 import { weekShapesInRequest } from "./week-shapes";
@@ -138,17 +140,37 @@ export async function loadTodoExtrasFor(viewer: Viewer): Promise<{
   bokforingMonth: string | null;
   newMachines: number;
   awishExpiry: AwishExpiryNotice | null;
+  startklar: ReadinessTodo | null;
 }> {
-  const [ready, found, awishExpiry] = await Promise.all([
+  const [ready, found, awishExpiry, startklar] = await Promise.all([
     readyPackageFor(viewer).catch(() => null),
     loadNewMachinesFor(viewer).catch(() => null),
     loadAwishExpiryFor(viewer).catch(() => null),
+    loadStartklarFor(viewer),
   ]);
   return {
     bokforingMonth: ready?.month ?? null,
     newMachines: found?.machines.length ?? 0,
     awishExpiry,
+    startklar,
   };
+}
+
+/**
+ * Raden "Startklar" (runda 2, T6-1 + R2-9): en automat har steg kvar som går att göra
+ * (butik, avtal, inköpspris, vad automaten kostade). Samma lista som överst på automatens
+ * sida (machineReadiness). Bara ägare och admin, som raden "Ny automat hittad": stegen leder
+ * till formulär som bara de får spara. null för andra roller, när allt är klart och vid fel.
+ */
+export async function loadStartklarFor(viewer: Viewer): Promise<ReadinessTodo | null> {
+  try {
+    await requireRoleFor(viewer.user, viewer.organization.id, OPERATOR_ROLES);
+  } catch (error) {
+    if (error instanceof AuthorizationError) return null;
+    console.error("[startklar] Rollen kunde inte läsas:", error);
+    return null;
+  }
+  return readinessTodo(await loadMachineReadinessSafe(viewer.user, viewer.organization.id));
 }
 
 /** Sekunder som menyns räknare får vara gammal (den räknas annars vid varje sidladdning). */
@@ -171,7 +193,8 @@ export async function loadTodoCount(): Promise<number> {
       countWithVisits(state.items) +
       (extras.bokforingMonth ? 1 : 0) +
       (extras.newMachines > 0 ? 1 : 0) +
-      (extras.awishExpiry ? 1 : 0)
+      (extras.awishExpiry ? 1 : 0) +
+      (extras.startklar ? 1 : 0)
     );
   });
 }
@@ -197,7 +220,8 @@ export async function loadTodoCountFor(viewer: Viewer, now: Date = new Date()): 
     countWithVisits(state.items) +
     (extras.bokforingMonth ? 1 : 0) +
     (extras.newMachines > 0 ? 1 : 0) +
-    (extras.awishExpiry ? 1 : 0)
+    (extras.awishExpiry ? 1 : 0) +
+    (extras.startklar ? 1 : 0)
   );
 }
 

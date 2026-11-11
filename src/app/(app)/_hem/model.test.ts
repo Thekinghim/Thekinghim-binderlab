@@ -1092,6 +1092,26 @@ describe("Hem: en källa för Att göra och samma period i alla rutor", () => {
       link: "/avtal",
     }) as unknown as TodoItem;
 
+  it("Startklar (R2-9): raden leder till formuläret för nästa steg", () => {
+    expect(
+      homeExtraTodos({
+        bokforingMonth: null,
+        newMachines: 0,
+        startklar: {
+          title: "BL-004: 3 av 7 klart. Nästa: lägg in avtalet",
+          href: "/butiker/s1#ersattning",
+        },
+      }),
+    ).toEqual([
+      {
+        key: "startklar",
+        level: "soon",
+        title: "BL-004: 3 av 7 klart. Nästa: lägg in avtalet",
+        href: "/butiker/s1#ersattning",
+      },
+    ]);
+  });
+
   it("räknar bokföringen och nya automater som menyn och Att göra, och visar dem", () => {
     const todos = [rule("contract:c1", "soon"), rule("payout:s1", "later")];
     const extraTodos = homeExtraTodos({ bokforingMonth: "2026-10", newMachines: 0 });

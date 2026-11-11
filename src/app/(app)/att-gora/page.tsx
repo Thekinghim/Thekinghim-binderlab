@@ -20,13 +20,14 @@ import { loadTeamStateFor } from "@/server/data/team";
 import { slotCapacitiesInRequest } from "@/server/data/core/loaders";
 import { hasOwnStockRows, ownStockTotals } from "@/server/data/core/own-stock";
 import { queryRefillSources } from "@/server/data/core/places";
-import { loadRankedTodoState, loadTodoVisitPlan } from "@/server/data/todos";
+import { loadRankedTodoState, loadStartklarFor, loadTodoVisitPlan } from "@/server/data/todos";
 import { getActiveOrganization, requireUser, withUserDb } from "@/server/session";
 
 import { Suggestions } from "@/app/(app)/assistent/_components/suggestions";
 import { BokforingReady } from "@/app/(app)/ekonomi/_components/bokforing-ready";
 import { monthText } from "@/app/(app)/ekonomi/_lib/view";
 import { NewMachinesFound, loadNewMachinesSafe } from "@/app/(app)/_nya-automater/new-machines";
+import { StartklarRow } from "@/app/(app)/_nya-automater/startklar-row";
 import { AwishExpiry } from "@/app/(app)/_awish/awish-expiry";
 import { loadAwishExpirySafe } from "@/server/awish/expiry-notice";
 import { readyPackageFor } from "@/server/bokforing/stored";
@@ -96,7 +97,7 @@ export default async function TodoPage({
   // Rådgivarens förslag, bokföringen att ladda ner och nya automater (ägare och admin; tomt
   // för andra roller). Läses här en gång, så att rubriken räknar med raderna som visas.
   const viewer = organization ? { user, organization } : null;
-  const [advisor, ready, newMachines, awishExpiry] = viewer
+  const [advisor, ready, newMachines, awishExpiry, startklar] = viewer
     ? await Promise.all([
         loadAdvisorStateFor(viewer, now),
         readyPackageFor(viewer).catch((error: unknown) => {
@@ -105,8 +106,10 @@ export default async function TodoPage({
         }),
         loadNewMachinesSafe(viewer),
         loadAwishExpirySafe(viewer, now),
+        // Startklar: en ny automat har steg kvar (samma rad som menyns räknare och Hem).
+        loadStartklarFor(viewer),
       ])
-    : [null, null, null, null];
+    : [null, null, null, null, null];
 
   // Påfyllningsrutan räknar som Fyll på: fackens kapacitet och lagret automaten fylls på
   // från. Läses bara när det finns något att fylla på; fel ger rutan utan förslag.
@@ -151,6 +154,7 @@ export default async function TodoPage({
       bokforingMonth: ready ? monthText(ready.month) : null,
       newMachines: newMachines?.machines.length ?? 0,
       awishExpiry,
+      startklar,
     }),
     dismissed: dismissed.map((d) => ({
       key: d.key,
@@ -191,6 +195,7 @@ export default async function TodoPage({
       ) : null}
       <AwishExpiry notice={awishExpiry} />
       {viewer ? <NewMachinesFound viewer={viewer} preloaded={newMachines} /> : null}
+      <StartklarRow todo={startklar} />
       {viewer ? <BokforingReady viewer={viewer} preloaded={ready} /> : null}
       {view.total === 0 ? (
         <div className="fade-in border-t border-line pt-10 pb-12">

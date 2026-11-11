@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import type { StoreAgreement } from "@/domain";
 
-import { machineReadiness, readinessLeft, type MachineReadyFacts } from "./machine-ready";
+import {
+  machineReadiness,
+  readinessLeft,
+  readinessTodo,
+  type MachineReadyFacts,
+} from "./machine-ready";
 
 const STORE = { id: "s1", name: "Sega gubben", from: "2026-10-14" } as const;
 
@@ -135,5 +140,40 @@ describe("machineReadiness", () => {
     expect(r.total).toBe(6);
     expect(r.steps.map((s) => s.id)).toEqual(["butik", "avtal", "fack", "pris", "kostnad", "kop"]);
     expect(r.steps.find((s) => s.id === "fack")?.href).toBe("/lager");
+  });
+});
+
+describe("readinessTodo (raden Startklar i Att göra)", () => {
+  const plain = (v: string | undefined) => (v ?? "").replace(/\u00a0/g, " ");
+
+  it("allt klart: ingen rad", () => {
+    expect(readinessTodo([machineReadiness(facts())])).toBeNull();
+    expect(readinessTodo([])).toBeNull();
+  });
+
+  it("en automat med avtalet kvar: nästa steg och rätt formulär", () => {
+    const todo = readinessTodo([machineReadiness(facts({ agreements: [] }))]);
+    expect(plain(todo?.title)).toBe("BL-004: 6 av 7 klart. Nästa: lägg in avtalet");
+    expect(todo?.href).toBe("/butiker/s1#ersattning");
+    expect(todo?.machines).toBe(1);
+  });
+
+  it("bara väntan kvar (första köpet): ingen rad, det finns inget att göra", () => {
+    const r = machineReadiness(facts({ firstOrderDate: null }));
+    expect(r.complete).toBe(false);
+    expect(readinessTodo([r])).toBeNull();
+  });
+
+  it("flera automater: en rad med antalet, länk till listan", () => {
+    const todo = readinessTodo([
+      machineReadiness(facts({ investmentOre: 0 })),
+      machineReadiness(facts({ code: "BL-005", machineId: "m5", agreements: [] })),
+      machineReadiness(facts({ code: "BL-006", machineId: "m6" })),
+    ]);
+    expect(plain(todo?.title)).toBe(
+      "2 automater är inte startklara. Först BL-004: lägg in vad automaten kostade",
+    );
+    expect(todo?.href).toBe("/automater");
+    expect(todo?.machines).toBe(2);
   });
 });

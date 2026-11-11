@@ -208,7 +208,8 @@ export interface ExtraTodo {
 
 /**
  * Raderna överst på Att göra som inte kommer ur reglerna: Awish-kontot som går ut, nya
- * automater att koppla och månadens bokföring att ladda ner (månaden som text, "oktober
+ * automater att koppla, "Startklar" (en ny automat har steg kvar) och månadens bokföring att
+ * ladda ner (månaden som text, "oktober
  * 2026", eller null).
  */
 export function extraTodos(input: {
@@ -216,6 +217,8 @@ export function extraTodos(input: {
   readonly newMachines: number;
   /** Awish-kontot går ut inom 30 dagar (src/server/awish/expiry.ts), annars null. */
   readonly awishExpiry?: { readonly text: string; readonly level: "now" | "soon" } | null;
+  /** Startklar: en automat har steg kvar som går att göra (readinessTodo), annars null. */
+  readonly startklar?: { readonly title: string } | null;
 }): ExtraTodo[] {
   const out: ExtraTodo[] = [];
   if (input.awishExpiry) {
@@ -234,6 +237,9 @@ export function extraTodos(input: {
           : `Välj butik för ${plural(input.newMachines, "ny automat", "nya automater")}`,
       level: "now",
     });
+  }
+  if (input.startklar) {
+    out.push({ key: "startklar", title: input.startklar.title, level: "soon" });
   }
   if (input.bokforingMonth) {
     out.push({

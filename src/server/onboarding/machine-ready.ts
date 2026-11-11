@@ -241,3 +241,40 @@ export function readinessLeft(list: readonly MachineReadiness[]): Record<string,
   for (const r of list) if (r.left) out[r.machineId] = r.left;
   return out;
 }
+
+/** Raden "Startklar" i Att göra och på Hem (runda 2, R2-9). */
+export interface ReadinessTodo {
+  /** Utan punkt: "BL-004: 3 av 7 klart. Nästa: lägg in avtalet". */
+  readonly title: string;
+  /** Rätt formulär för nästa steg, eller automatlistan när flera automater har något kvar. */
+  readonly href: string;
+  /** Antal automater som har något att göra. */
+  readonly machines: number;
+}
+
+/**
+ * EN rad för Att göra: automaterna som har ett steg kvar som går att GÖRA (inte bara vänta
+ * på Awish eller första köpet). En automat: nästa steg och rätt formulär. Flera: antalet
+ * och listan. null när inget finns att göra.
+ *
+ * readinessTodo([BL-004 med avtalet kvar]) → "BL-004: 3 av 7 klart. Nästa: lägg in avtalet"
+ */
+export function readinessTodo(list: readonly MachineReadiness[]): ReadinessTodo | null {
+  const open = list.filter(
+    (r) => !r.complete && r.next !== null && !r.next.waiting && r.next.href !== null,
+  );
+  const [first] = open;
+  if (!first || !first.next || first.next.href === null) return null;
+  if (open.length === 1) {
+    return {
+      title: `${first.code}: ${first.progress}. Nästa: ${first.next.next}`,
+      href: first.next.href,
+      machines: 1,
+    };
+  }
+  return {
+    title: `${formatInt(open.length)}${NBSP}automater är inte startklara. Först ${first.code}: ${first.next.next}`,
+    href: "/automater",
+    machines: open.length,
+  };
+}

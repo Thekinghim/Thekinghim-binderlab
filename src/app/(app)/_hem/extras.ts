@@ -19,10 +19,19 @@ export function homeExtraTodos(input: {
   bokforingMonth: string | null;
   newMachines: number;
   awishExpiry?: { text: string; level: "now" | "soon" } | null;
+  /** Startklar-raden (readinessTodo): texten och formuläret för nästa steg. */
+  startklar?: { title: string; href: string } | null;
 }): HomeExtraTodo[] {
   return extraTodos({
     bokforingMonth: input.bokforingMonth ? monthText(input.bokforingMonth) : null,
     newMachines: input.newMachines,
     awishExpiry: input.awishExpiry ?? null,
-  }).map((e) => ({ ...e, href: EXTRA_HREF[e.key] ?? "/att-gora" }));
+    startklar: input.startklar ?? null,
+  }).map((e) => ({
+    ...e,
+    href:
+      e.key === "startklar" && input.startklar
+        ? input.startklar.href
+        : (EXTRA_HREF[e.key] ?? "/att-gora"),
+  }));
 }

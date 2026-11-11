@@ -439,6 +439,18 @@ describe("buildPage", () => {
 
   it("utan extra rader blir inget kvar", () => {
     expect(extraTodos({ bokforingMonth: null, newMachines: 0 })).toEqual([]);
+    // Startklar (R2-9): en egen rad, efter nya automater och före bokföringen.
+    expect(
+      extraTodos({
+        bokforingMonth: "oktober 2026",
+        newMachines: 1,
+        startklar: { title: "BL-004: 3 av 7 klart. Nästa: lägg in avtalet" },
+      }).map((e) => [e.key, e.level]),
+    ).toEqual([
+      ["new-machines", "now"],
+      ["startklar", "soon"],
+      ["bokforing", "soon"],
+    ]);
     expect(extraTodos({ bokforingMonth: null, newMachines: 1 })[0]?.title).toBe(
       "Välj butik för den nya automaten",
     );
