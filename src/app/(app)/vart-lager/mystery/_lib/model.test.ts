@@ -399,12 +399,20 @@ describe("Packa N omgångar före en dag (räknat från facken)", () => {
 
   it("veckoformen flyttar dagen (helgen säljer mer)", async () => {
     const { plan } = await load();
-    // 12 pack, 2 om dagen: platt snitt ger måndag 16 nov (6 dagar).
+    // 12 pack, 2 om dagen: sista packet säljs söndag 15 nov., facket står tomt måndag 16.
     const flat = plan([facts({ onHand: 12, sold: 28 })]);
     expect(flat?.before).toBe("2026-11-16");
-    // Automaten säljer bara på helgen (7 om dagen då): slut redan på söndagen.
-    const weekend = plan([facts({ onHand: 12, sold: 28 })], 0, () => [0, 0, 0, 0, 0, 1, 1]);
+    // Automaten säljer bara på lördagar (14 den dagen): slut redan lördag 14, tomt söndag 15.
+    // Samma anrop som Att göra och besöksplanen (sellOut från i går), plus en dag.
+    const weekend = plan([facts({ onHand: 12, sold: 28 })], 0, () => [0, 0, 0, 0, 0, 1, 0]);
     expect(weekend?.before).toBe("2026-11-15");
+  });
+
+  it("ny automat (5 dagar i drift): takten räknas på dagarna sedan start, som i Att göra", async () => {
+    const { plan } = await load();
+    // 10 sålda på 5 dagar = 2 om dagen (inte 10/14). 6 pack: slut torsdag 12, tomt fredag 13.
+    const p = plan([facts({ onHand: 6, sold: 10, activeFrom: "2026-11-05" })]);
+    expect(p?.before).toBe("2026-11-13");
   });
 
   it("aldrig strängen 'packa 56 st'", async () => {

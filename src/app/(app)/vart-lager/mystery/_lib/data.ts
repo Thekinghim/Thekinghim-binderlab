@@ -36,6 +36,7 @@ import {
   querySettings,
 } from "@/server/data/core/queries";
 import { ALL_ROLES, ECONOMY_ROLES } from "@/server/data/core/types";
+import { weekShapesInRequest } from "@/server/data/week-shapes";
 
 import { queryOwnPlaces } from "../../../lager/_lib/data";
 import {
@@ -173,7 +174,13 @@ export async function loadMysteryOverviewFor(
   const seesMoney = (ECONOMY_ROLES as readonly string[]).includes(role);
   const today = businessToday(now, viewer.organization.timezone);
 
-  const [master, stock] = await Promise.all([loadMasterDataFor(viewer, now), loadStockFor(viewer)]);
+  const [master, stock, weekShares] = await Promise.all([
+    loadMasterDataFor(viewer, now),
+    loadStockFor(viewer),
+    // Veckans form per automat: samma karta som Att göra och Besök, så att "Packa före
+    // fredag" här och "Åk till BL-001 senast fredag" där är samma dag.
+    weekShapesInRequest(viewer, today),
+  ]);
   const db = await withUserDbFor(viewer.user, async (tx) => {
     const places = await queryOwnPlaces(tx, orgId);
     const prices = seesMoney ? await queryPrices(tx, orgId) : [];
@@ -235,7 +242,7 @@ export async function loadMysteryOverviewFor(
                 (n, q) => n + wholeBatchesDown(q, recipe.batchSize),
                 0,
               ),
-              slots: slotInputs(db.slots.get(t.id) ?? [], today),
+              slots: slotInputs(db.slots.get(t.id) ?? [], today, (id) => weekShares.get(id)),
               today,
             })
           : null,

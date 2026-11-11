@@ -262,7 +262,9 @@ export function buildLagerModel(input: LagerModelInput): LagerModel {
     (input.slotAlerts ?? []).map((a) => [pairKey(a.machineId, a.titleId), a.alertAtUnits]),
   );
   const refillLevel = new Map(
-    refillTodos(todoCtx, weekShares ? { weekShares } : {}).map((t) => [t.key, t.level === "now" ? "critical" : "low"] as const),
+    refillTodos(todoCtx, weekShares ? { weekShares } : {}).map(
+      (t) => [t.key, t.level === "now" ? "critical" : "low"] as const,
+    ),
   );
 
   // Besöksplanen räknar takt och slutdatum från planens "i dag". Med planNow (i går)

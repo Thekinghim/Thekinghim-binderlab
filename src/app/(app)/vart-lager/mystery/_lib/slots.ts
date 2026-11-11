@@ -25,7 +25,12 @@ import { SLOT_WINDOW_DAYS, type SlotFacts } from "./model";
 
 /** Det laddaren behöver om lagret och automaterna (läses redan av sidan). */
 export interface SlotSources {
-  readonly machines: ReadonlyArray<{ id: string; code: string; archived: boolean }>;
+  readonly machines: ReadonlyArray<{
+    id: string;
+    code: string;
+    archived: boolean;
+    activeFrom?: IsoDate | null;
+  }>;
   /** Saldoraderna i automaterna. */
   readonly stock: ReadonlyArray<{
     locationId: string;
@@ -98,7 +103,9 @@ export async function queryMysterySlotFacts(
   const hasSold = new Set(active.map((r) => r.machineId));
 
   const wanted = new Set(titleIds);
-  const machines = new Map(sources.machines.filter((m) => !m.archived).map((m) => [m.id, m.code]));
+  const live = sources.machines.filter((m) => !m.archived);
+  const machines = new Map(live.map((m) => [m.id, m.code]));
+  const activeFrom = new Map(live.map((m) => [m.id, m.activeFrom ?? null]));
   const key = (machineId: string, titleId: string) => `${machineId}\u0000${titleId}`;
   const machineOfLocation = new Map<string, string>();
   const onHand = new Map<string, number | null>();
@@ -154,6 +161,7 @@ export async function queryMysterySlotFacts(
       onHand: onHand.get(k) ?? null,
       sold: sold.get(k) ?? 0,
       everSold: hasSold.has(machineId),
+      activeFrom: activeFrom.get(machineId) ?? null,
     });
   }
   for (const list of out.values()) {

@@ -15,7 +15,9 @@
 
 import { sellOut } from "@/analytics/sellout";
 import {
+  addDays,
   dayOfWeek,
+  daysBetween,
   recipeCost,
   unitMargin,
   type IsoDate,
@@ -391,30 +393,55 @@ export interface SlotFacts {
   readonly sold: number;
   /** Automaten har sålt något alls någon gång (annars är den ny). */
   readonly everSold: boolean;
+  /**
+   * Dagen automaten togs i drift, om känd. En automat som startat inom fönstret får takten
+   * räknad på dagarna sedan start (som Att göra och besöksplanen), inte på 14.
+   */
+  readonly activeFrom?: IsoDate | null;
 }
 
 /**
- * Facken som mysteryBatchesToPack() vill ha dem: dagen varje fack blir tomt räknas med
- * sellOut() (samma slutdag som resten av appen). `weekShareOf` ger automatens veckoform när
- * den finns (helgen säljer mer); utan den räknas ett platt snitt.
+ * Facken som mysteryBatchesToPack() vill ha dem. Dagen facket står tomt är dagen EFTER appens
+ * gemensamma slutdag:
+ *
+ *   slutdag  = sellOut(i facket, takt, från i går, automatens veckoform)   ← samma anrop som
+ *              Att göra, besöksplanen, Lager och Automater ("Tar slut på torsdag")
+ *   tomt     = slutdag + 1                                                 ← "tom på fredag"
+ *
+ * Det är samma dag som besöksplanen sätter för ett mystery pack (besök dagen efter beräknat
+ * slut, eftersom facket bara fylls när det är tomt). Takten räknas som på de sidorna: sålda
+ * pack de senaste 14 hela dagarna t.o.m. i går, eller sedan automaten togs i drift om det är
+ * kortare. `weekShareOf` ger automatens veckoform (weekShapesInRequest: helgen säljer mer);
+ * utan den räknas ett platt snitt, och då är svaret detsamma som före R2-9.
  */
 export function slotInputs(
   facts: readonly SlotFacts[],
   today: IsoDate,
   weekShareOf?: (machineId: string) => readonly number[] | null | undefined,
 ): MysterySlotInput[] {
+  const asOf = addDays(today, -1);
+  const windowStart = addDays(asOf, -(SLOT_WINDOW_DAYS - 1));
   return facts.map((f) => {
     const onHand = Math.max(0, Math.trunc(f.onHand ?? 0));
+    const days =
+      f.activeFrom && f.activeFrom > windowStart
+        ? Math.max(0, daysBetween(f.activeFrom, asOf) + 1)
+        : SLOT_WINDOW_DAYS;
     const out =
-      onHand > 0
+      onHand > 0 && days > 0
         ? sellOut({
             onHand,
-            dailyAvg: { units: Math.max(0, f.sold), days: SLOT_WINDOW_DAYS },
-            from: today,
+            dailyAvg: { units: Math.max(0, f.sold), days },
+            from: asOf,
             weekShare: weekShareOf?.(f.machineId) ?? null,
           })
         : null;
-    return { label: f.label, onHand, emptyOn: out?.date ?? null, isNew: !f.everSold };
+    return {
+      label: f.label,
+      onHand,
+      emptyOn: out ? addDays(out.date, 1) : null,
+      isNew: !f.everSold,
+    };
   });
 }
 
