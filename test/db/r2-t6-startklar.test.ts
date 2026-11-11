@@ -124,6 +124,21 @@ describe("Startklar per automat", () => {
     expect(m).toEqual({ responsible_user_id: refiller.id, refill_source_id: warehouseId });
   });
 
+  it("en automat som bara finns i importerade filer väntar inte på Awish", async () => {
+    // Källan är en fil (awish_csv): ingen läser facken, så lagret läggs in för hand.
+    const r = byCode(await loadMachineReadinessFor(owner.user, f.orgId), "BL-002");
+    expect(r.total).toBe(6);
+    expect(r.steps.find((s) => s.id === "fack")?.label).toBe("Lagret är inlagt");
+    expect(r.steps.some((s) => s.id === "antal")).toBe(false);
+    // Resten av testet: den direkta Awish-kopplingen, som läser facken.
+    await asPostgres((tx) =>
+      tx.execute(
+        sql`update public.data_sources set provider = 'awish_grpc'
+            where organization_id = ${f.orgId}::uuid`,
+      ),
+    );
+  });
+
   it("nykopplad automat: butik och första köp klara, avtalet är nästa", async () => {
     const r = byCode(await loadMachineReadinessFor(owner.user, f.orgId), "BL-002");
     expect(r.machineId).toBe(newMachine);

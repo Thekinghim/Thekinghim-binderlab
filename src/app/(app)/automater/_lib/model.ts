@@ -256,7 +256,19 @@ export function machineSignals(args: {
       list.push(t);
       refill.set(machineId, list);
     }
-    stake = machineStake(todos);
+    // "Har slutat sälja" räknas här utan att veta hur långt försäljningen är inläst (Att göra
+    // vet det). Drifts hälsa vet: säger den inte att automaten står still eller har fel,
+    // är tystnaden bara data som inte kommit in än, och då står inga sådana kronor på raden.
+    const silent = args.health
+      ? new Set(args.health.filter((h) => STILL_STATUSES.has(h.status)).map((h) => h.machineId))
+      : null;
+    stake = machineStake(
+      silent === null
+        ? todos
+        : todos.filter(
+            (t) => t.kind !== "stale-machine" || silent.has(t.evidence.machineIds[0] ?? ""),
+          ),
+    );
   } catch (error) {
     console.error("[automater] Påfyllningsregeln kunde inte räknas:", error);
   }
@@ -282,6 +294,9 @@ export function machineSignals(args: {
   return { refill, health, stake };
 }
 
+/** Hälsan (som Drift räknar den) där automaten själv står still: ur drift eller fel. */
+const STILL_STATUSES: ReadonlySet<HealthStatus> = new Set(["offline", "fault", "suspected_fault"]);
+
 /** Sorterna vars kronor står på raden: tomt eller snart tomt fack, och automat som står still. */
 const STAKE_KINDS: ReadonlySet<TodoItem["kind"]> = new Set(["refill", "stale-machine"]);
 
@@ -289,16 +304,26 @@ const STAKE_KINDS: ReadonlySet<TodoItem["kind"]> = new Set(["refill", "stale-mac
  * Intäkt i risk de närmaste 7 dagarna per automat (öre). Varje punkt avrundas till hela
  * kronor innan summan tas, som på Att göra (stakeOf), så att samma punkter ger samma summa
  * på båda sidorna. Punkter utan belopp eller utan automat räknas inte.
+ *
+ * En automat som står still OCH har tomma fack räknas en gång: "har slutat sälja" är hela
+ * automatens intäkt i 7 dagar, och facken som är slut är en del av samma intäkt. Raden är
+ * därför det största av de två, aldrig summan (en tom automat som stått still i två dygn
+ * skulle annars visa dubbla veckan). Att göra lägger ihop dem per punkt; där kan summan
+ * alltså vara högre för en sådan automat.
  */
 export function machineStake(todos: readonly TodoItem[]): Map<string, number> {
-  const out = new Map<string, number>();
+  const refill = new Map<string, number>();
+  const stale = new Map<string, number>();
   for (const t of todos) {
     if (!STAKE_KINDS.has(t.kind)) continue;
     const machineId = t.evidence.machineIds[0];
     if (!machineId) continue;
     const ore = Math.round(Math.max(t.atStakeOre ?? 0, 0) / 100) * 100;
-    out.set(machineId, (out.get(machineId) ?? 0) + ore);
+    const into = t.kind === "stale-machine" ? stale : refill;
+    into.set(machineId, (into.get(machineId) ?? 0) + ore);
   }
+  const out = new Map(refill);
+  for (const [machineId, ore] of stale) out.set(machineId, Math.max(out.get(machineId) ?? 0, ore));
   return out;
 }
 

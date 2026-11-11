@@ -286,6 +286,7 @@ export function MachineActions({
   today,
   storeName,
   openMove = false,
+  openMoveStore,
 }: {
   machine: MachineEditable;
   stores: readonly StoreOption[];
@@ -293,13 +294,20 @@ export function MachineActions({
   storeName: string | null;
   /** Öppna "Placera i butik" direkt (länken "Välj butik" i Startklar). */
   openMove?: boolean;
+  /** Butiken som ska vara vald när rutan öppnas så (länken "Placera automat" på en ny butik). */
+  openMoveStore?: string;
 }) {
   const canOpenMove =
     openMove &&
     machine.lifecycle !== "decommissioned" &&
     stores.some((s) => s.id !== machine.storeId);
   const [dialog, setDialog] = useState<Dialog>(canOpenMove ? "move" : null);
-  const [moveStore, setMoveStore] = useState("");
+  // Bara en butik som går att välja (inte arkiverad, inte den automaten redan står i).
+  const preselected =
+    canOpenMove && stores.some((s) => s.id === openMoveStore && s.id !== machine.storeId)
+      ? (openMoveStore ?? "")
+      : "";
+  const [moveStore, setMoveStore] = useState(preselected);
   const [moveFrom, setMoveFrom] = useState<string>("");
   const [reactivating, startReactivate] = useTransition();
   const router = useRouter();
@@ -467,7 +475,7 @@ export function MachineActions({
             <Select
               name="storeId"
               label="Till butik"
-              defaultValue=""
+              defaultValue={moveStore}
               onChange={(e) => setMoveStore(e.target.value)}
               options={[
                 { value: "", label: "Välj butik" },

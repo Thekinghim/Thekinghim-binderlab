@@ -139,6 +139,8 @@ export default async function MachinePage({
   const ready = readiness.find((r) => r.machineId === machine.id && !r.complete) ?? null;
   // Länken "Välj butik" i Startklar (?gor=placera) öppnar rutan direkt.
   const openPlace = first(sp.gor) === "placera" && store === null;
+  // "Placera automat" på en ny butik (Butiker → På väg in) skickar med butiken: den är vald.
+  const placeStore = openPlace ? first(sp.butik) : undefined;
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-12 px-4 pt-6 pb-16 md:gap-16 md:px-8 md:pt-10">
@@ -207,12 +209,13 @@ export default async function MachinePage({
                 </Link>
                 <MachineActions
                   // Ny nyckel när länken "Välj butik" trycks på samma sida: rutan öppnas då.
-                  key={openPlace ? "placera" : "vanlig"}
+                  key={openPlace ? `placera-${placeStore ?? ""}` : "vanlig"}
                   machine={data.editable}
                   stores={data.stores}
                   today={ctx.today}
                   storeName={store?.name ?? null}
                   openMove={openPlace}
+                  openMoveStore={placeStore}
                 />
               </div>
             ) : undefined

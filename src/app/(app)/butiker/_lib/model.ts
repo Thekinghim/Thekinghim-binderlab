@@ -953,7 +953,7 @@ export function storeStartList(args: {
     automat: {
       label: "Placera automat",
       href: args.freeMachineCode
-        ? `/automater/${encodeURIComponent(args.freeMachineCode.toLowerCase())}?gor=placera`
+        ? `/automater/${encodeURIComponent(args.freeMachineCode.toLowerCase())}?gor=placera&butik=${id}`
         : "/automater",
     },
     mottagare: { label: "Lägg till mottagare", href: `/butiker/${id}?vy=kontakt` },

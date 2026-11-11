@@ -56,8 +56,13 @@ export default async function EnhetsekonomiPage({
   const forMachine = param("automat");
   const openInvestments = Boolean(forMachine) || data.investments.length === 0;
   // Startklar-länken "Lägg in vad automaten kostade" (?automat=<id>&ny=1): rutan öppnas direkt
-  // med automaten vald.
-  const openNew = param("ny") === "1" && Boolean(forMachine);
+  // med automaten vald. Bara så länge automaten inte har någon kostnad inlagd: annars skulle
+  // en omladdning (eller bakåt-knappen) öppna den förifyllda rutan igen, ett tryck från att
+  // samma kostnad sparas två gånger.
+  const openNew =
+    param("ny") === "1" &&
+    Boolean(forMachine) &&
+    !data.investments.some((i) => i.machineId === forMachine && i.amountOre > 0);
   // Förifyllt från senaste automaten: sidans lista är filtrerad på automaten (?automat=),
   // så alla automaters investeringar läses för sig, bara när rutan ska öppnas.
   let template: { amountOre: number; depreciationMonths: number | null; code: string } | null =

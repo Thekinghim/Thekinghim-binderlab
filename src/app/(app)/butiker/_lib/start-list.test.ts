@@ -83,7 +83,8 @@ describe("storeStartList", () => {
     expect(l.next).toEqual({
       id: "automat",
       label: "Placera automat",
-      href: "/automater/bl-004?gor=placera",
+      // Butiken följer med, så att den är vald i rutan.
+      href: "/automater/bl-004?gor=placera&butik=11111111-1111-4111-8111-111111111111",
     });
     expect(storeStartList({ ...ready, freeMachineCode: null }).next?.href).toBe("/automater");
   });

@@ -262,7 +262,33 @@ describe("samma belopp som Att göra", () => {
       item({ evidence: { machineIds: [], titleIds: [] } as never }),
     ]);
     // 123,45 kr → 123 kr och 999,50 kr → 1 000 kr (hela kronor per punkt, som Att göra).
-    expect([...stake.entries()]).toEqual([["m1", 12_300 + 100_000]]);
+    // Fack som är slut (123 kr) är en del av automatens hela vecka (1 000 kr): det största.
+    expect([...stake.entries()]).toEqual([["m1", 100_000]]);
+  });
+
+  it("en tom automat som står still räknas en gång, inte dubbelt", () => {
+    const item = (kind: TodoItem["kind"], machineId: string, atStakeOre: number): TodoItem =>
+      ({
+        key: "k",
+        kind,
+        atStakeOre,
+        evidence: { machineIds: [machineId], titleIds: [] },
+      }) as never;
+    const stake = machineStake([
+      // m1: alla fack slut (700 + 800 kr) och automaten har slutat sälja (hela veckan 1 500 kr).
+      item("refill", "m1", 70_000),
+      item("refill", "m1", 80_000),
+      item("stale-machine", "m1", 150_000),
+      // m2: står still med pack kvar; ett fack är snart slut. Hela veckan är det som tappas.
+      item("refill", "m2", 20_000),
+      item("stale-machine", "m2", 90_000),
+      // m3: bara påfyllning.
+      item("refill", "m3", 30_000),
+      item("refill", "m3", 10_000),
+    ]);
+    expect(stake.get("m1")).toBe(150_000);
+    expect(stake.get("m2")).toBe(90_000);
+    expect(stake.get("m3")).toBe(40_000);
   });
 });
 
@@ -298,7 +324,7 @@ describe("Fyll på senast torsdag: samma dag som besöksplanen", () => {
   });
 
   it("texten är en veckodag, i dag eller i morgon", () => {
-    expect(refillByText(TODAY, TODAY)).toBe("Fyll på i dag.");
+    expect(refillByText(TODAY, TODAY)).toBe("Fyll på senast i dag.");
     expect(refillByText(addDays(TODAY, -1), TODAY)).toBe("Fyll på i dag.");
     expect(refillByText(addDays(TODAY, 1), TODAY)).toBe("Fyll på senast i morgon.");
     expect(refillByText("2026-11-06", TODAY)).toBe("Fyll på senast fredag.");
@@ -343,5 +369,42 @@ describe("stockLines räknar slutdagen med sellOut", () => {
     expect(stockLines(six)[0]!.stockoutDate).toBe("2026-11-09");
     const share = [0.5, 0.5, 0.5, 0.5, 0.5, 2.5, 2].map((x) => x / 7);
     expect(stockLines({ ...six, weekShare: share })[0]!.stockoutDate).toBe("2026-11-08");
+  });
+});
+
+describe("automat som har slutat sälja: kronorna följer Drifts hälsa", () => {
+  const health = (machineId: string, status: string) => ({ machineId, status }) as never;
+  // Fem dygn senare utan nya order: alla automater har varit tysta i över 48 timmar.
+  const later = new Date(NOW.getTime() + 5 * 24 * 60 * 60 * 1000);
+  const todos = computeTodos(
+    {
+      ...sources,
+      orders,
+      titles: master.titles,
+      machines: master.machines,
+      stores: master.stores,
+      stock: machineStock,
+      reportRecipients: [],
+      reportDeliveries: [],
+      options: { timeZone: TZ },
+    },
+    later,
+  );
+  const id = todos.find((t) => t.kind === "stale-machine" && (t.atStakeOre ?? 0) > 0)?.evidence
+    .machineIds[0];
+  const base = { recent: input, stock, master, now: later, timeZone: TZ };
+
+  it("Drift säger i drift (försäljningen är bara inte inläst än): inga sådana kronor", () => {
+    expect(id).toBeDefined();
+    const refillOnly = machineStake(todos.filter((t) => t.kind === "refill")).get(id!) ?? 0;
+    const ok = machineSignals({ ...base, health: [health(id!, "ok")] });
+    expect(ok.stake.get(id!) ?? 0).toBe(refillOnly);
+  });
+
+  it("Drift säger ur drift: hela veckan står på raden, en gång", () => {
+    const offline = machineSignals({ ...base, health: [health(id!, "offline")] });
+    const whole = machineStake(todos).get(id!) ?? 0;
+    expect(whole).toBeGreaterThan(0);
+    expect(offline.stake.get(id!)).toBe(whole);
   });
 });

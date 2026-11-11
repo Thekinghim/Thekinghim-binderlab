@@ -31,11 +31,13 @@ export function stockAsideText(args: {
 
 /**
  * "Fyll på senast torsdag." ur besöksplanens senaste dag (samma dag som Drift → Besök).
- * I dag eller redan passerat: "Fyll på i dag."; i morgon: "Fyll på senast i morgon.".
+ * Redan passerat: "Fyll på i dag."; i dag: "Fyll på senast i dag." (raden kan heta "Fyll på
+ * snart", och då ska meningen inte säga emot den); i morgon: "Fyll på senast i morgon.".
  * Planen går sju dagar framåt, så veckodagen är alltid den närmaste. Ren.
  */
 export function refillByText(needBy: IsoDate, today: IsoDate): string {
-  if (needBy <= today) return "Fyll på i dag.";
+  if (needBy < today) return "Fyll på i dag.";
+  if (needBy === today) return "Fyll på senast i dag.";
   if (needBy === addDays(today, 1)) return "Fyll på senast i morgon.";
   return `Fyll på senast ${weekdayName(dayOfWeek(needBy))}.`;
 }

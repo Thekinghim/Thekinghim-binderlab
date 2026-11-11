@@ -60,8 +60,15 @@ export async function queryMachineReadyFacts(tx: Tx, orgId: string): Promise<Mac
         select m.id, m.code, t.today::text as today,
                pl.store_id, pl.store_name, pl.valid_from::text as placed_from,
                loc.awish_synced_at,
-               exists (select 1 from public.source_machines sm
-                       where sm.organization_id = m.organization_id and sm.machine_id = m.id) as awish,
+               -- Bara den direkta Awish-kopplingen läser facken (syncSourceStock). En automat
+               -- som bara finns i importerade filer får aldrig facken lästa: där läggs lagret
+               -- in för hand, och listan ska inte säga "inom några minuter" för alltid.
+               (loc.awish_synced_at is not null or exists (
+                  select 1 from public.source_machines sm
+                  join public.data_sources ds
+                    on ds.organization_id = sm.organization_id and ds.id = sm.data_source_id
+                  where sm.organization_id = m.organization_id and sm.machine_id = m.id
+                    and ds.provider = 'awish_grpc' and ds.archived_at is null)) as awish,
                (select coalesce(sum(i.amount_ore), 0) from public.machine_investments i
                  where i.organization_id = m.organization_id and i.machine_id = m.id) as investment_ore,
                (select min(o.business_date)::text from public.orders o
