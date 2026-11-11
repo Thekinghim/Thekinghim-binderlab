@@ -122,6 +122,10 @@ describe("Inköpslistan räknar med delarna som mystery packs äter upp", () => 
     ).id;
   });
 
+  /** Omgångarna som delarna köps för (det största av planens och fackens antal). */
+  const partBatches = (p: Awaited<ReturnType<typeof plan>>): number =>
+    p.lines.find((l) => l.titleId === hit)?.mysteryNeed?.parts[0]?.batches ?? 0;
+
   it("utan innehåll: delarna räknas bara på sin egen försäljning", async () => {
     const p = await plan(owner);
     expect(qty(p, mp)).toBeGreaterThan(0);
@@ -143,10 +147,15 @@ describe("Inköpslistan räknar med delarna som mystery packs äter upp", () => 
       ),
     );
     const p = await plan(owner);
-    // Mystery packet packas i hela omgångar, samma tal som sidorna visar.
-    const batches = mysteryBatchesToPack({ batchSize: 14, planPacks: qty(p, mp) })!.batches;
+    // Raden för mystery packet: det som ska packas NU, räknat från facket (R2-9). Automaten
+    // har sålt packet men facket har inget känt saldo: tomt fack = 1 omgång, som Mystery-sidan.
+    expect(p.lines.find((l) => l.titleId === mp)?.packNow).toEqual({ batches: 1, packs: 14 });
+    expect(qty(p, mp)).toBe(14);
+    expect(mysteryBatchesToPack({ batchSize: 14, planPacks: qty(p, mp) })!.batches).toBe(1);
+    // Delarna köps för planens omgångar (ledtid + dagar till nästa beställning), som är fler
+    // än fackens: delar tar ca en vecka att få hem.
+    const batches = partBatches(p);
     expect(batches).toBeGreaterThanOrEqual(2);
-    expect(qty(p, mp)).toBe(batches * 14);
     expect(qty(p, p151)).toBe(own151 + 4 * batches);
     expect(qty(p, paldea)).toBe(9 * batches);
     expect(qty(p, hit)).toBe(batches);
@@ -160,8 +169,10 @@ describe("Inköpslistan räknar med delarna som mystery packs äter upp", () => 
   it("Vårt lager, Inköp och delägarens lista säger samma antal och samma rad", async () => {
     const v = await viewerFor(owner, orgId);
     const p = await plan(owner);
-    const batches = qty(p, mp) / 14;
+    const batches = partBatches(p);
     const lager = await loadVartLagerFor(v);
+    // Mystery packet självt: samma antal att packa nu på Vårt lager som i planen.
+    expect(lager.rows.find((r) => r.titleId === mp)?.needQty).toBe(qty(p, mp));
     const row = lager.rows.find((r) => r.titleId === p151)!;
     expect(row.needQty).toBe(qty(p, p151));
     expect(row.toMystery).toMatchObject({
@@ -194,14 +205,16 @@ describe("Inköpslistan räknar med delarna som mystery packs äter upp", () => 
 
   it("det som ligger hemma av en del dras av, och färdiga mystery packs sänker omgångarna", async () => {
     const before = await plan(owner);
-    const batches = qty(before, mp) / 14;
+    const batches = partBatches(before);
     await count(paldea, 10);
     const withPaldea = await plan(owner);
     expect(qty(withPaldea, paldea)).toBe(9 * batches - 10);
     // En hel omgång färdig hemma: en omgång mindre att packa, och delarna följer med.
     await count(mp, 14);
     const p = await plan(owner);
-    expect(qty(p, mp)).toBe((batches - 1) * 14);
+    // Den färdiga omgången räcker till det tomma facket: inget att packa nu.
+    expect(qty(p, mp)).toBe(0);
+    expect(partBatches(p)).toBe(batches - 1);
     expect(qty(p, hit)).toBe(batches - 1);
     expect(qty(p, paldea)).toBe(Math.max(0, 9 * (batches - 1) - 10));
   });

@@ -328,9 +328,16 @@ describe("loadHomeWith: Att göra räknas som menyn", () => {
       extras: async () => homeExtraTodos(await loadTodoExtrasFor(v)),
     };
     const { model } = await loadHomeWith(loaders, MARCH);
-    // Samma regel som menyns räknare (loadTodoCount): punkterna + raden Ny automat.
-    expect(model.todoCount).toBe(rules + 1);
+    // Samma regel som menyns räknare (loadTodoCount): punkterna + raden Ny automat + raden
+    // Startklar (runda 2, R2-9: fixturens automat saknar bl.a. vad den kostade).
+    expect(extras.startklar).not.toBeNull();
+    expect(extras.startklar?.title).toMatch(/^\S+: \d av \d klart\. Nästa: /);
+    expect(model.todoCount).toBe(rules + 2);
     expect(model.todos?.[0]).toMatchObject({ key: "new-machines", level: "now" });
+    expect(model.todos?.find((t) => t.key === "startklar")).toMatchObject({
+      level: "soon",
+      href: extras.startklar?.href,
+    });
   });
 });
 

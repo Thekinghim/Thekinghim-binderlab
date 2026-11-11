@@ -186,6 +186,9 @@ beforeAll(async () => {
   titleId = t!.id;
 
   fake = await startFakeAwishWeb({
+    // Samma klocka som klienten: signaturens tidsfönster räknas mot den (Awish-signeringen
+    // från claude/bygge kom in vid sammanslagningen; utan den nekas varje skrivning).
+    now: () => NOW,
     products: { "1001": [product(21, 3)], "1002": [product(31, 4)] },
   });
   const viewer = await viewerFor(owner, orgId);
