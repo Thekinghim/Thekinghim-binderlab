@@ -77,6 +77,8 @@ describe("katalogerna", () => {
 function r2Files(): Map<string, string[]> {
   const out = new Map<string, string[]>();
   for (const file of readdirSync(fileURLToPath(new URL("./r2", import.meta.url))).sort()) {
+    // Spårets egna tester (t1.test.ts) får ligga här.
+    if (/\.test\.tsx?$/.test(file)) continue;
     const m = /^(.+)\.(sv|en)\.ts$/.exec(file);
     if (!m) throw new Error(`Oväntad fil i src/i18n/r2: ${file}`);
     out.set(m[1]!, [...(out.get(m[1]!) ?? []), file]);
@@ -112,6 +114,23 @@ describe("runda 2: en fil per spår och språk i ./r2/", () => {
     expect(Object.keys(sv.r2).sort()).toEqual(tracks);
     expect(Object.keys(en.r2).sort()).toEqual(tracks);
   });
+
+  it.each(tracks)(
+    "%s: serverns fel på engelska ligger i spårets fil och används",
+    async (track) => {
+      const enFile = (await import(`./r2/${track}.en.ts`)) as Record<string, unknown>;
+      const table = enFile.serverErrors as Record<string, unknown>;
+      expect(typeof table, `${track}.en.ts exporterar serverErrors`).toBe("object");
+      for (const [swedish, english] of Object.entries(table)) {
+        expect(swedish, swedish).toBe(swedish.trim());
+        expect(typeof english === "string" && english.trim() !== "", swedish).toBe(true);
+        // Samma text får inte stå med en annan översättning i en.ts eller i ett annat spår.
+        expect(en.serverError(swedish), swedish).toBe(english);
+        expect(english, swedish).not.toMatch(TECHNICAL);
+        expect(english, swedish).not.toMatch(/[åäöÅÄÖ]/);
+      }
+    },
+  );
 
   it("engelskan i r2 har ingen svenska kvar och inga facktermer", () => {
     for (const text of allTexts(en.r2)) {

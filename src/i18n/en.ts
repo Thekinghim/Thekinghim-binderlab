@@ -5,9 +5,9 @@
 
 import { NBSP } from "@/lib/format";
 
-import { t1 } from "./r2/t1.en";
-import { t2 } from "./r2/t2.en";
-import { t3 } from "./r2/t3.en";
+import { serverErrors as t1ServerErrors, t1 } from "./r2/t1.en";
+import { serverErrors as t2ServerErrors, t2 } from "./r2/t2.en";
+import { serverErrors as t3ServerErrors, t3 } from "./r2/t3.en";
 import type { Messages } from "./sv";
 import { batches, f, inPlace, packs, placeName } from "./words.en";
 
@@ -134,8 +134,15 @@ const SERVER_PATTERNS: ReadonlyArray<readonly [RegExp, (m: RegExpMatchArray) => 
   ],
 ];
 
+/** Round 2: each track's own table (./r2/tN.en.ts). The shared table above wins. */
+const R2_SERVER_EXACT: Record<string, string> = {
+  ...t1ServerErrors,
+  ...t2ServerErrors,
+  ...t3ServerErrors,
+};
+
 function serverError(message: string): string {
-  const exact = SERVER_EXACT[message.trim()];
+  const exact = SERVER_EXACT[message.trim()] ?? R2_SERVER_EXACT[message.trim()];
   if (exact) return exact;
   for (const [re, to] of SERVER_PATTERNS) {
     const m = message.trim().match(re);

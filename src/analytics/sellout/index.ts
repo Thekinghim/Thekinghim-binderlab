@@ -17,7 +17,15 @@
  * Rena funktioner: ingen databas, ingen klocka.
  */
 
-import { addDays, assertIsoDate, ceilDiv, dayOfWeek, floorDiv, type IsoDate } from "@/domain";
+import {
+  addDays,
+  assertIsoDate,
+  ceilDiv,
+  dayOfWeek,
+  daysBetween,
+  floorDiv,
+  type IsoDate,
+} from "@/domain";
 
 /**
  * Andel av veckans försäljning per veckodag, måndag först (index = dayOfWeek(dag) − 1).
@@ -61,6 +69,9 @@ const EPS = 1e-9;
 /** Längre fram än så här stegas inte: då är formen meningslös och snittet räcker. */
 const MAX_STEP_DAYS = 3660;
 
+/** Sista dagen kalendern kan skriva. En slutdag efter den räknas som "tar aldrig slut". */
+const LAST_DAY = "9999-12-31";
+
 /**
  * Veckoformen normerad till summan 1, eller null när den inte går att använda (fel antal
  * dagar, negativt eller oändligt tal, summan 0).
@@ -84,28 +95,29 @@ function ratePerDay(avg: DailyAvg): number {
   return avg.units / avg.days;
 }
 
-function flat(onHand: number, avg: DailyAvg, from: IsoDate): SellOut {
+function flat(onHand: number, avg: DailyAvg, from: IsoDate): SellOut | null {
+  let ahead: number;
+  let daysLeft: number;
   if (
     typeof avg !== "number" &&
     Number.isSafeInteger(onHand) &&
     Number.isSafeInteger(avg.units) &&
-    Number.isSafeInteger(avg.days)
+    Number.isSafeInteger(avg.days) &&
+    Number.isSafeInteger(onHand * avg.days)
   ) {
     // Exakt med heltal, som domänens stockoutDate och daysOfStockLeft.
-    return {
-      date: addDays(from, ceilDiv(onHand * avg.days, avg.units)),
-      daysLeft: floorDiv(onHand * avg.days, avg.units),
-      basis: "flat",
-    };
+    ahead = ceilDiv(onHand * avg.days, avg.units);
+    daysLeft = floorDiv(onHand * avg.days, avg.units);
+  } else {
+    const days = onHand / ratePerDay(avg);
+    const nearest = Math.round(days);
+    const whole = Math.abs(days - nearest) < EPS;
+    ahead = whole ? nearest : Math.ceil(days);
+    daysLeft = whole ? nearest : Math.floor(days);
   }
-  const days = onHand / ratePerDay(avg);
-  const nearest = Math.round(days);
-  const whole = Math.abs(days - nearest) < EPS;
-  return {
-    date: addDays(from, whole ? nearest : Math.ceil(days)),
-    daysLeft: whole ? nearest : Math.floor(days),
-    basis: "flat",
-  };
+  // Så långsam takt att dagen hamnar utanför kalendern: packen tar i praktiken aldrig slut.
+  if (!Number.isSafeInteger(ahead) || ahead > daysBetween(from, LAST_DAY)) return null;
+  return { date: addDays(from, ahead), daysLeft, basis: "flat" };
 }
 
 /**
@@ -116,8 +128,9 @@ function flat(onHand: number, avg: DailyAvg, from: IsoDate): SellOut {
  * sellOut({ onHand: 5, dailyAvg: 1, from: "2026-11-11", weekShare })  med en stark lördag
  *   → { date: "2026-11-14", daysLeft: 3, basis: "weekday" }    (slut redan på lördag)
  *
- * Returnerar null när takten är 0: packen tar aldrig slut i den takten. Tomt fack (0 pack)
- * med en takt ger `from` och 0 dagar.
+ * Returnerar null när takten är 0: packen tar aldrig slut i den takten. Samma sak när takten
+ * är så låg att dagen hamnar efter år 9999 (aldrig ett fel). Tomt fack (0 pack) med en takt
+ * ger `from` och 0 dagar.
  */
 export function sellOut(input: SellOutInput): SellOut | null {
   assertIsoDate(input.from, "Startdagen");
@@ -133,7 +146,8 @@ export function sellOut(input: SellOutInput): SellOut | null {
   // veckas pack kvar så att stegningen hittar rätt dag.
   const perWeek = rate * 7;
   const weeks = Math.max(0, Math.ceil(onHand / perWeek - EPS) - 1);
-  if (weeks * 7 > MAX_STEP_DAYS) return { ...flat(onHand, input.dailyAvg, input.from), basis };
+  // Mer än tio år fram: platt snitt, och svaret säger det (basis 'flat').
+  if (weeks * 7 > MAX_STEP_DAYS) return flat(onHand, input.dailyAvg, input.from);
   let left = onHand - weeks * perWeek;
   let days = weeks * 7;
   let date = days === 0 ? input.from : addDays(input.from, days);

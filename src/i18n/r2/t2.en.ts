@@ -9,3 +9,10 @@
 import type { R2T2 } from "./t2.sv";
 
 export const t2: R2T2 = {};
+
+/**
+ * Swedish messages from this track's server actions and database functions, in English:
+ * the exact Swedish text → the English text. `t.serverError(message)` looks here after the
+ * shared table in ../en.ts, so the track never edits that table. Same simple words as above.
+ */
+export const serverErrors: Record<string, string> = {};

@@ -70,6 +70,19 @@ describe("sellOut utan veckoform: platt snitt, som i dag", () => {
     expect(sellOut({ onHand: -3, dailyAvg: 2, from: WED })?.date).toBe(WED);
   });
 
+  it("så låg takt att dagen hamnar utanför kalendern: null, aldrig ett fel", () => {
+    expect(sellOut({ onHand: 5, dailyAvg: 1e-300, from: WED })).toBeNull();
+    expect(sellOut({ onHand: 5000, dailyAvg: 1e-6, from: WED })).toBeNull();
+    expect(sellOut({ onHand: 5000, dailyAvg: 1e-6, from: WED, weekShare: WEEKEND })).toBeNull();
+    expect(sellOut({ onHand: 4_000_000, dailyAvg: { units: 1, days: 28 }, from: WED })).toBeNull();
+    // Långt fram men inom kalendern: en dag, som förut.
+    expect(sellOut({ onHand: 1000, dailyAvg: { units: 1, days: 28 }, from: WED })).toEqual({
+      date: addDays(WED, 28_000),
+      daysLeft: 28_000,
+      basis: "flat",
+    });
+  });
+
   it("ogiltig startdag ger fel", () => {
     expect(() => sellOut({ onHand: 1, dailyAvg: 1, from: "11/11/2026" })).toThrow();
   });
@@ -138,6 +151,12 @@ describe("sellOut med veckoform: helgen räknas", () => {
     const out = sellOut({ onHand: 705, dailyAvg: 1, from: WED, weekShare: WEEKEND });
     // 700 pack = 100 hela veckor, sedan 5 pack som i första testet.
     expect(out).toEqual({ date: addDays("2026-11-14", 700), daysLeft: 703, basis: "weekday" });
+  });
+
+  it("mer än tio år fram: platt snitt, och svaret säger det", () => {
+    const far = sellOut({ onHand: 4000, dailyAvg: 1, from: WED, weekShare: WEEKEND });
+    expect(far).toEqual(sellOut({ onHand: 4000, dailyAvg: 1, from: WED }));
+    expect(far?.basis).toBe("flat");
   });
 
   it("ogiltig veckoform: platt snitt", () => {
