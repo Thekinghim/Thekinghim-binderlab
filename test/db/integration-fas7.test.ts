@@ -80,7 +80,7 @@ import { loadOverview } from "@/app/(app)/automater/_lib/data";
 import { loadDriftOverview } from "@/app/(app)/drift/_lib/load";
 import { loadLagerFor } from "@/app/(app)/lager/_lib/data";
 import { resultAfterProfit } from "@/app/(app)/lonsamhet/_lib/result";
-import { LOST_REVENUE_FIGURE, type TodoItem } from "@/analytics/todos";
+import { countWithVisits, LOST_REVENUE_FIGURE, type TodoItem } from "@/analytics/todos";
 import { profitability } from "@/domain";
 import { LocalFileStore } from "@/import/file-store";
 import { AuthorizationError, listOrganizationsFor } from "@/server/access";
@@ -367,7 +367,8 @@ describe("Hem: slutsålt och Att göra", () => {
     } else {
       expect(data.lostSales).toBeNull();
     }
-    expect(data.model.todoCount).toBe((await loadTodosFor(owner, NOW)).length);
+    // Ett besök (automatens alla påfyllningar) räknas som en sak, som på Att göra och i menyn.
+    expect(data.model.todoCount).toBe(countWithVisits(await loadTodosFor(owner, NOW)));
   });
 
   it("läsaren får siffran, påfyllaren får ingen ekonomi", async () => {
