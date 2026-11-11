@@ -24,6 +24,7 @@ import { listOrganizationsFor } from "../../src/server/access";
 import type { Viewer } from "../../src/server/data/core/loaders";
 
 import {
+  asPostgres,
   asUser,
   createMember,
   createOrg,
@@ -297,6 +298,23 @@ describe("sändningen går inte fram", () => {
     expect(await level(centralId)).toBe(35);
   });
 
+  it("ett köp medan automaten väntar dras ändå från saldot, så att rätt antal skickas sedan", async () => {
+    // Köpet kommer in som en order: försäljningshändelsen (−1) sänker saldot 8 → 7.
+    await asPostgres((tx) =>
+      tx.execute(sql`
+        insert into public.orders (organization_id, data_source_id, external_id, raw_title, title_id,
+                                   ordered_at, amount_ore, machine_id, source_hash)
+        values (${orgId}::uuid, ${sourceId}::uuid, 'r2t1-vantar-1', 'Surging Sparks', ${titleId}::uuid,
+                now(), 5900, ${m1}::uuid, md5('r2t1-vantar-1'))`),
+    );
+    expect(await level(loc1)).toBe(7);
+    // Awish har sålt samma pack (3 → 2). Läsningen håller kvar påfyllningen, inte köpet.
+    fake.state.products["1001"]![0]!.currentInventory = 2;
+    const read = await awishRead(m1, 2);
+    expect(read).toMatchObject({ counts: 0, heldBack: 1 });
+    expect(await level(loc1)).toBe(7);
+  });
+
   it("en annan automat som inte väntar läses som vanligt (saldot sänks till Awish antal)", async () => {
     const loc2 = await locationOf(m2);
     const read = await awishRead(m2, 2);
@@ -312,7 +330,7 @@ describe("Försök igen", () => {
       retryAwishPushFor(await viewerFor(reader, orgId), { machineId: m1 }, working()),
     ).rejects.toThrow("Du har inte behörighet");
     expect(await logKinds(m1)).toEqual(["awish_push_failed"]);
-    expect(fake.state.products["1001"]![0]!.currentInventory).toBe(3);
+    expect(fake.state.products["1001"]![0]!.currentInventory).toBe(2);
   });
 
   it("en annan organisations automat skickas aldrig", async () => {
@@ -324,7 +342,7 @@ describe("Försök igen", () => {
       working(),
     );
     expect(out.awish).toBeUndefined();
-    expect(fake.state.products["1001"]![0]!.currentInventory).toBe(3);
+    expect(fake.state.products["1001"]![0]!.currentInventory).toBe(2);
     expect(await logKinds(m1)).toEqual(["awish_push_failed"]);
   });
 
@@ -333,7 +351,8 @@ describe("Försök igen", () => {
     const out = await retryAwishPushFor(viewer, { machineId: m1 }, working());
     expect(out).toMatchObject({ cleared: true, pending: [] });
     expect(out.awish).toMatchObject({ state: "sent", kind: "sent", slots: 1 });
-    expect(fake.state.products["1001"]![0]!.currentInventory).toBe(8);
+    // 3 + 5 påfyllda − 1 såld under tiden: Awish får 7, inte 8.
+    expect(fake.state.products["1001"]![0]!.currentInventory).toBe(7);
     expect(await logKinds(m1)).toEqual(["awish_push_failed", "awish_push"]);
     expect((await loadFillDataFor(viewer)).awishPending).toEqual({});
     expect([...(await pendingAwishPushes(db(), orgId)).keys()]).toEqual([]);
@@ -347,7 +366,7 @@ describe("Försök igen", () => {
   });
 
   it("efteråt gäller läsningen igen: Awish antal blir saldot", async () => {
-    // Två pack sålda enligt Awish (8 → 6).
+    // Ett pack till sålt enligt Awish (7 → 6).
     const read = await awishRead(m1, 6);
     expect(read.counts).toBe(1);
     expect(read.heldBack).toBeUndefined();

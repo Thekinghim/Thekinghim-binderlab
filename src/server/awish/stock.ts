@@ -26,6 +26,8 @@
  * - Väntar automaten på Awish (en sändning efter en påfyllning i appen gick inte fram, se
  *   unsentRefillTitles) sänks inte saldot för de påfyllda titlarna: Awish visar det gamla
  *   antalet tills sändningen går fram, och påfyllningen ska inte försvinna under tiden.
+ *   Köp under väntan dras ändå: de kommer in som order och blir försäljningshändelser (−1)
+ *   efter påfyllningen, så saldot som skickas vid nästa försök är påfyllt minus sålt.
  * - stock_locations.awish_synced_at sätts, så att Lager vet att saldot är känt.
  * - Kapaciteten per titel (fyllnadsgraden) skrivs till machine_slot_capacity
  *   (./slot-capacity).

@@ -479,42 +479,71 @@ describe("Awish fick inte antalen", () => {
   });
 
   it("två automater väntar: en rad med båda koderna och ett Försök igen för alla", async () => {
-    const others = await sql<{ id: string; code: string }[]>`
-      select id, code from public.machines
-      where organization_id = ${orgId}::uuid and archived_at is null and id <> ${machineId}::uuid
-      order by code limit 1`;
-    const other = others[0];
-    // Seeden har två automater; med bara en finns inget att visa här.
-    if (!other) return;
-    for (const id of [machineId, other.id]) {
-      await sql`insert into public.automation_log (organization_id, kind, machine_id, units)
-                values (${orgId}::uuid, 'awish_push_failed', ${id}::uuid, 0)`;
-    }
     const page = await ownerPage();
     await visit(page, "/fyll-pa");
-    const codes = [machineCode, other.code].sort();
-    const line = page.getByText(`Awish fick inte antalen för ${codes[0]} och ${codes[1]}.`);
-    await line.waitFor();
-    // En ruta för alla, inte en per automat.
-    expect(await page.getByText(/^Awish fick inte antalen för/).count()).toBe(1);
-    expect(await page.getByRole("button", { name: /^(Försök igen|Skickar…)$/ }).count()).toBe(1);
-    await expectNoSideScroll(page);
-    await expectTapTargets(page, "[role=status]");
-    await shot(page, "r2-t1-awish-flera-vantar");
-    // Utan Awish-koppling finns inget att skicka: ett försök avslutar väntan för båda.
-    const retry = page.getByRole("button", { name: "Försök igen", exact: true });
-    if (await retry.isVisible()) await retry.click({ force: true }).catch(() => {});
-    await line.waitFor({ state: "hidden" });
-    await until(
-      async () =>
-        (
-          await sql<{ kind: string }[]>`
-            select distinct on (machine_id) kind from public.automation_log
-            where organization_id = ${orgId}::uuid and machine_id is not null
-            order by machine_id, occurred_at desc, created_at desc, id desc`
-        ).every((r) => r.kind !== "awish_push_failed"),
-      "ingen automat väntar",
-    );
+    await page.locator("ul[aria-label] > li").first().waitFor();
+    // En automat till som står i listan (seeden har flera; annars finns inget att visa här).
+    const listed = (await page.locator("ul[aria-label] > li").allInnerTexts())
+      .map((text) => /BL-\d+/.exec(text)?.[0])
+      .filter((code): code is string => code !== undefined && code !== machineCode);
+    const [other] = listed.length
+      ? await sql<{ id: string; code: string }[]>`
+          select id, code from public.machines
+          where organization_id = ${orgId}::uuid and code = ${listed[0]!}`
+      : [];
+    if (!other) return;
+    // Appens eget försök (3 s efter att sidan öppnats) hålls tillbaka tills raden är kontrollerad.
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    // Playwrights route finns på sidan men inte i den smala typen i ./support/browser.
+    const routable = page as unknown as {
+      route(
+        url: string,
+        handler: (route: {
+          request(): { method(): string };
+          continue(): Promise<void>;
+        }) => Promise<void>,
+      ): Promise<void>;
+      unroute(url: string): Promise<void>;
+    };
+    await routable.route("**/fyll-pa**", async (route) => {
+      if (route.request().method() === "POST") await gate;
+      await route.continue();
+    });
+    try {
+      for (const id of [machineId, other.id]) {
+        await sql`insert into public.automation_log (organization_id, kind, machine_id, units)
+                  values (${orgId}::uuid, 'awish_push_failed', ${id}::uuid, 0)`;
+      }
+      await page.reload();
+      const codes = [machineCode, other.code].sort();
+      const line = page.getByText(`Awish fick inte antalen för ${codes[0]} och ${codes[1]}.`);
+      await line.waitFor();
+      // En ruta för alla, inte en per automat.
+      expect(await page.getByText(/^Awish fick inte antalen för/).count()).toBe(1);
+      expect(await page.getByRole("button", { name: /^(Försök igen|Skickar…)$/ }).count()).toBe(1);
+      await expectNoSideScroll(page);
+      await expectTapTargets(page, "[role=status]");
+      await shot(page, "r2-t1-awish-flera-vantar");
+      // Utan Awish-koppling finns inget att skicka: ett försök avslutar väntan för båda.
+      release();
+      const retry = page.getByRole("button", { name: "Försök igen", exact: true });
+      if (await retry.isVisible()) await retry.click({ force: true }).catch(() => {});
+      await line.waitFor({ state: "hidden" });
+      await until(
+        async () =>
+          (
+            await sql<{ kind: string }[]>`
+              select distinct on (machine_id) kind from public.automation_log
+              where organization_id = ${orgId}::uuid and machine_id is not null
+              order by machine_id, occurred_at desc, created_at desc, id desc`
+          ).every((r) => r.kind !== "awish_push_failed"),
+        "ingen automat väntar",
+      );
+    } finally {
+      release();
+      await routable.unroute("**/fyll-pa**");
+    }
   });
 
   it.skipIf(!withFakeAwish)(
