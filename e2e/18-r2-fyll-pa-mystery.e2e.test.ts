@@ -367,7 +367,7 @@ describe("Fyll på: 'Packade du en omgång?'", () => {
   it("delägaren (engelska) får frågan, och Cancel sparar ingenting", async () => {
     const page = await partnerPage();
     await openMachine(page);
-    await page.getByText(/^0 ready at /).waitFor();
+    await page.getByText(/^None ready .*Did you pack\?$/).waitFor();
     await page.getByRole("button", { name: "Refill one batch (14)" }).click();
     await page.getByRole("button", { name: /^Done/ }).click();
     const ask = page.getByRole("group", { name: "Did you pack a batch?" });
@@ -387,7 +387,7 @@ describe("Fyll på: 'Packade du en omgång?'", () => {
   it("ägaren svarar Ja: lagret står på 0 (inte −14) och delarna är dragna", async () => {
     const page = await ownerPage();
     await openMachine(page);
-    await page.getByText(`0 färdiga ${inCentral}.`).waitFor();
+    await page.getByText(`Inga färdiga ${inCentral}. Har du packat?`).waitFor();
     await shot(page, "r2-t1-fyll-pa-tomt-mystery-fack");
     await page.getByRole("button", { name: /^Fyll på en omgång \(14\sst\)$/ }).click();
     await page.getByRole("button", { name: /^Klar/ }).click();
@@ -476,6 +476,45 @@ describe("Awish fick inte antalen", () => {
     if (await retry.isVisible()) await retry.click({ force: true }).catch(() => {});
     await line.waitFor({ state: "hidden" });
     await until(async () => (await logKinds()).at(-1) !== "awish_push_failed", "väntan är över");
+  });
+
+  it("två automater väntar: en rad med båda koderna och ett Försök igen för alla", async () => {
+    const others = await sql<{ id: string; code: string }[]>`
+      select id, code from public.machines
+      where organization_id = ${orgId}::uuid and archived_at is null and id <> ${machineId}::uuid
+      order by code limit 1`;
+    const other = others[0];
+    // Seeden har två automater; med bara en finns inget att visa här.
+    if (!other) return;
+    for (const id of [machineId, other.id]) {
+      await sql`insert into public.automation_log (organization_id, kind, machine_id, units)
+                values (${orgId}::uuid, 'awish_push_failed', ${id}::uuid, 0)`;
+    }
+    const page = await ownerPage();
+    await visit(page, "/fyll-pa");
+    const codes = [machineCode, other.code].sort();
+    const line = page.getByText(`Awish fick inte antalen för ${codes[0]} och ${codes[1]}.`);
+    await line.waitFor();
+    // En ruta för alla, inte en per automat.
+    expect(await page.getByText(/^Awish fick inte antalen för/).count()).toBe(1);
+    expect(await page.getByRole("button", { name: /^(Försök igen|Skickar…)$/ }).count()).toBe(1);
+    await expectNoSideScroll(page);
+    await expectTapTargets(page, "[role=status]");
+    await shot(page, "r2-t1-awish-flera-vantar");
+    // Utan Awish-koppling finns inget att skicka: ett försök avslutar väntan för båda.
+    const retry = page.getByRole("button", { name: "Försök igen", exact: true });
+    if (await retry.isVisible()) await retry.click({ force: true }).catch(() => {});
+    await line.waitFor({ state: "hidden" });
+    await until(
+      async () =>
+        (
+          await sql<{ kind: string }[]>`
+            select distinct on (machine_id) kind from public.automation_log
+            where organization_id = ${orgId}::uuid and machine_id is not null
+            order by machine_id, occurred_at desc, created_at desc, id desc`
+        ).every((r) => r.kind !== "awish_push_failed"),
+      "ingen automat väntar",
+    );
   });
 
   it.skipIf(!withFakeAwish)(

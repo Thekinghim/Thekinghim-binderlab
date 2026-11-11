@@ -21,7 +21,10 @@ export const t1: R2T1 = {
     packing: "Packing…",
     packFailed: "Not packed",
     packFailedHint: "Nothing is saved. Press Done again.",
-    mysteryReady: (n, place) => `${f.int(n)} ready ${inPlace(place)}.`,
+    mysteryReady: (n, place) =>
+      n <= 0
+        ? `None ready ${inPlace(place)}. Did you pack?`
+        : `Only ${f.int(n)} ready ${inPlace(place)}. Did you pack?`,
     mysteryFillBatch: (batch) => `Refill one batch (${f.int(batch)})`,
     awishPending: (machine) => `${machine} did not get the new numbers.`,
     awishPendingMany: (machines) =>

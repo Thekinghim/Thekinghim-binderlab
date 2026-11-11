@@ -33,8 +33,11 @@ export const t1 = {
     packing: "Packar…",
     packFailed: "Packades inte",
     packFailedHint: "Inget är sparat. Tryck Klar igen.",
-    /** Tomt mystery-fack och ingen hel omgång färdig: "0 färdiga i Kontoret." */
-    mysteryReady: (n: number, place: string) => `${f.int(n)} färdiga ${inPlace(place)}.`,
+    /** Tomt mystery-fack och ingen hel omgång färdig: "Inga färdiga i Kontoret. Har du packat?" */
+    mysteryReady: (n: number, place: string) =>
+      n <= 0
+        ? `Inga färdiga ${inPlace(place)}. Har du packat?`
+        : `Bara ${f.int(n)} färdiga ${inPlace(place)}. Har du packat?`,
     mysteryFillBatch: (batch: number) => `Fyll på en omgång (${f.int(batch)}${NBSP}st)`,
     /** Sändningen till Awish gick inte fram: raden på automaten tills den gått fram. */
     awishPending: (machine: string) => `Awish fick inte antalen för ${machine}.`,
