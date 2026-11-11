@@ -1290,4 +1290,10 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: () => [true],
   },
+  {
+    module: "@/app/(app)/rapporter/actions",
+    name: "markReportShared",
+    allowed: OP,
+    args: (c) => [{ reportId: c.idsA.reports }],
+  },
 ];

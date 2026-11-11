@@ -11,13 +11,15 @@ import { loadSyncInfo, requireRoute } from "@/server/data/core";
 import { TYPE_LABEL } from "@/server/reports/kinds";
 import { loadReportsPage } from "@/server/reports/page-data";
 import { currentReportViewer, serviceStatus } from "@/server/reports/runtime";
-import { monthEnd, staleImportDay } from "@/server/reports/status";
+import { reportShareMode, shareHeadline } from "@/server/reports/share-mode";
+import { DONE_DELIVERY, monthEnd, staleImportDay } from "@/server/reports/status";
 
 import { ArchiveTable } from "./_components/archive-table";
 import { RecipientsPanel } from "./_components/recipients-panel";
 import { ReportBuilder } from "./_components/report-builder";
 import { ReviewPanel } from "./_components/review-panel";
 import { ServiceLines } from "./_components/service-lines";
+import { ShareFlow } from "./_components/share-flow";
 import { pickView, ViewTabs } from "./_components/view-tabs";
 import { when } from "./_components/when";
 import { bookkeepingOverlap } from "./_lib/overlap";
@@ -72,13 +74,23 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
   // Utkast för andra månader väntar också: rubriken och sidopanelen räknar dem.
   const otherDrafts = data.archive.filter((r) => r.month !== data.month && r.status === "draft");
 
-  const title =
+  // Dela-läget: ingen riktig e-post, så ägaren delar rapporten själv (iPhones dela-meny).
+  const shareMode = reportShareMode();
+  const storeName =
+    data.type === "butik" ? (data.stores.find((x) => x.id === data.storeId)?.name ?? null) : null;
+  const shared = data.current?.status === "sent";
+  const lastDone = data.current?.deliveries.filter((d) => DONE_DELIVERY.has(d.status)).at(-1);
+  // Ett gammalt utkast går inte att godkänna: Dela skapar en ny version i stället.
+  const shareable =
+    data.current && !(data.current.status === "draft" && data.currentStale) ? data.current : null;
+
+  const mailTitle =
     data.expected.length === 0
       ? `Inga mottagare för ${monthName(data.month)}.`
       : delivered === data.expected.length
         ? `Alla ${formatInt(delivered)} utskick för ${monthName(data.month)} är gjorda.`
         : `${formatInt(delivered)} av ${formatInt(data.expected.length)} utskick för ${monthName(data.month)} är gjorda.`;
-  const aside =
+  const mailAside =
     data.expected.length === 0
       ? "Lägg till mottagare."
       : drafts > 0
@@ -94,6 +106,24 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
               : "Skapa utkasten.";
 
   const preview = data.preview;
+  const title = !shareMode
+    ? mailTitle
+    : preview
+      ? shareHeadline({
+          type: data.type,
+          label: data.range ? periodText(data.range) : monthName(data.month),
+          custom: data.range !== null,
+          storeName,
+          shared,
+        })
+      : `Ingen rapport för ${data.range ? periodText(data.range) : monthName(data.month)}.`;
+  const aside = !shareMode
+    ? mailAside
+    : preview?.type === "butik"
+      ? `Ersättning ${sek(preview.report.compensation.totalOre)}.`
+      : preview
+        ? undefined
+        : (data.previewError ?? "Inget underlag för valet.");
   const sentAll = data.archive.filter((r) => r.status === "sent").length;
   const draftAll = data.archive.filter((r) => r.status === "draft").length;
   const scope =
@@ -102,7 +132,9 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
       : shown;
 
   const VIEWS = ["aktuell", "arkiv", "mottagare"] as const;
-  const view = pickView(sp.vy, VIEWS);
+  // Dela-läget har inga mottagare: fliken finns inte, och en gammal länk dit visar Aktuell.
+  const picked = pickView(sp.vy, VIEWS);
+  const view = shareMode && picked === "mottagare" ? "aktuell" : picked;
   const hrefFor = (v: (typeof VIEWS)[number]) => {
     const q = new URLSearchParams();
     for (const [k, val] of Object.entries(sp)) {
@@ -136,9 +168,33 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
           tabs={[
             { value: "aktuell", label: "Aktuell" },
             { value: "arkiv", label: "Arkiv", count: data.archive.length },
-            { value: "mottagare", label: "Mottagare", count: activeRecipients },
+            ...(shareMode
+              ? []
+              : [{ value: "mottagare" as const, label: "Mottagare", count: activeRecipients }]),
           ]}
         />
+        {shareMode && view === "aktuell" && preview && data.canEdit ? (
+          <ShareFlow
+            key={`${data.type}-${data.month}-${data.range?.start ?? ""}-${data.range?.end ?? ""}-${data.storeId ?? ""}`}
+            target={{
+              type: data.type,
+              month: data.month,
+              storeId: data.storeId,
+              from: data.range?.start ?? null,
+              to: data.range?.end ?? null,
+            }}
+            reportId={shareable?.id ?? null}
+            approved={shareable?.status === "approved" || shareable?.status === "sent"}
+            shared={shared}
+            sharedText={
+              shared && lastDone
+                ? `Skickad ${when(lastDone.sentAt ?? lastDone.createdAt, viewer.organization.timezone)}.`
+                : null
+            }
+            title={`${TYPE_LABEL[data.type]} ${shown}${storeName ? `, ${storeName}` : ""}`}
+            portal={data.storeHasPortal}
+          />
+        ) : null}
       </div>
 
       {view === "aktuell" ? (
@@ -213,14 +269,16 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
                   data.current.status === "sent"
                     ? "Rapporten är skickad."
                     : data.current.status === "approved"
-                      ? "Godkänd, redo att skicka."
+                      ? shareMode
+                        ? "Godkänd, redo att dela."
+                        : "Godkänd, redo att skicka."
                       : data.currentStale
                         ? "Utkastet är gammalt."
                         : "Utkastet väntar på granskning."
                 }
-                aside={`${formatInt(data.eligible.length)} mottagare.`}
+                aside={shareMode ? undefined : `${formatInt(data.eligible.length)} mottagare.`}
               />
-              <ServiceLines status={services} />
+              <ServiceLines status={services} hideMail={shareMode} />
               <ReviewPanel
                 key={data.current.id}
                 report={data.current}
@@ -228,6 +286,7 @@ export default async function RapporterPage({ searchParams }: { searchParams: Se
                 recipients={data.eligible}
                 canEdit={data.canEdit}
                 mailConfigured={services.mail.kind === "resend" && services.mail.configured}
+                shareMode={shareMode}
                 timeZone={viewer.organization.timezone}
               />
             </section>

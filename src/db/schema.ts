@@ -636,7 +636,10 @@ export const reportDeliveries = pgTable("report_deliveries", {
   organizationId: orgId(),
   reportId: uuid("report_id").notNull(),
   recipientId: uuid("recipient_id"),
-  email: citext("email").notNull(),
+  /** T5: tomt bara för en manuell rad utan mottagare (20261205000100_rapport_delad.sql). */
+  email: citext("email"),
+  /** T5: 'email' = skickad från appen, 'manual' = delad för hand. */
+  channel: text("channel").$type<"email" | "manual">().notNull().default("email"),
   status: reportDeliveryStatus("status").notNull(),
   sentAt: ts("sent_at"),
   providerMessageId: text("provider_message_id"),

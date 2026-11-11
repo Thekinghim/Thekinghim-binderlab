@@ -61,8 +61,11 @@ export function ReviewPanel({
   recipients,
   canEdit,
   mailConfigured,
+  shareMode = false,
   timeZone,
 }: {
+  /** Dela-läget (ingen e-post): mottagarna och "Skicka till" visas inte; Dela står överst. */
+  shareMode?: boolean;
   report: ArchiveRow;
   /** Utkastets siffror stämmer inte längre: godkänn är låst tills en ny version finns. */
   stale?: StaleDraft | null;
@@ -175,6 +178,7 @@ export function ReviewPanel({
             Öppna
           </a>
           <a
+            hidden={shareMode}
             href={`/rapport/${report.id}/epost`}
             className="inline-flex h-7 items-center rounded-sm border border-line-strong bg-surface px-2.5 text-sm text-fg transition-colors duration-fast ease-instrument hover:border-line-control hover:bg-hover max-md:h-11 max-md:px-4"
           >
@@ -209,10 +213,14 @@ export function ReviewPanel({
         ) : report.status === "draft" ? (
           canEdit ? (
             <div className="flex flex-col gap-3 border-t border-line pt-4">
-              <p className="text-base text-muted">Läs förhandsvisningen, godkänn sedan.</p>
+              <p className="text-base text-muted">
+                {shareMode
+                  ? "Läs förhandsvisningen. Godkänn här, eller tryck Dela överst."
+                  : "Läs förhandsvisningen, godkänn sedan."}
+              </p>
               <div>
                 <Button variant="primary" onClick={approve} loading={pending} iconLeft="check">
-                  Godkänn för utskick
+                  {shareMode ? "Godkänn" : "Godkänn för utskick"}
                 </Button>
               </div>
             </div>
@@ -236,7 +244,7 @@ export function ReviewPanel({
           />
         ) : null}
 
-        {approved && canEdit ? (
+        {approved && canEdit && !shareMode ? (
           recipients.length === 0 ? (
             <StateMessage
               kind="empty"
@@ -319,8 +327,10 @@ export function ReviewPanel({
                     key={d.id}
                     className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-2"
                   >
-                    <span className="min-w-0 truncate text-base text-fg">{d.email}</span>
-                    <StatusTag status={s.tag}>{s.label}</StatusTag>
+                    <span className="min-w-0 truncate text-base text-fg">
+                      {d.email ?? "Delad för hand"}
+                    </span>
+                    <StatusTag status={s.tag}>{d.manual ? "Delad för hand" : s.label}</StatusTag>
                     <span className="meta text-subtle">
                       {when(d.sentAt ?? d.createdAt, timeZone)}
                     </span>

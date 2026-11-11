@@ -6,7 +6,7 @@
 
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import * as s from "@/db/schema";
 import { addMonths, monthEnd, monthOf, monthStart, type IsoMonth, type Period } from "@/domain";
@@ -87,6 +87,8 @@ export interface ReportsPageData {
   readonly eligible: readonly RecipientRow[];
   readonly expected: readonly ExpectedDelivery[];
   readonly ownersConfigured: boolean;
+  /** Den valda butiken har minst en inloggning till butiksportalen (länken dit går att dela). */
+  readonly storeHasPortal: boolean;
 }
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -211,6 +213,21 @@ export async function loadReportsPage(
     });
   }
 
+  // Bara ägare och admin ser medlemskapen (RLS); för läsaren blir det falskt.
+  const storeHasPortal =
+    canEdit && storeId
+      ? await withUserDbFor(viewer.user, async (tx) => {
+          const rows = Array.from(
+            await tx.execute(
+              sql`select 1 from public.memberships
+                  where organization_id = ${orgId}::uuid and role = 'store'
+                    and store_id = ${storeId}::uuid limit 1`,
+            ),
+          );
+          return rows.length > 0;
+        })
+      : false;
+
   return {
     canEdit,
     type,
@@ -233,5 +250,6 @@ export async function loadReportsPage(
       : base.recipients.filter((r) => r.active && r.kind === RECIPIENT_KIND[type]),
     expected,
     ownersConfigured: base.ownersConfigured,
+    storeHasPortal,
   };
 }
