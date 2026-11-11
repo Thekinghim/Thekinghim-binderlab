@@ -247,6 +247,22 @@ describe("tider för aviseringar", () => {
       ["2026-11-07T09:00:00.000Z", false, ["machine:m1"]],
       ["2026-11-09T06:00:00.000Z", true, ["low_stock:m2:t1"]],
     ]);
+    // "Slut i automat" (kritiskt) på lördagen väntar inte till måndag: bara natten väntas ut.
+    const empty = { ...lowStock, severity: "critical" as const };
+    expect(routeNotifications([empty], [sub], sat).map((x) => [x.sendAt, x.deferred])).toEqual([
+      ["2026-11-07T09:00:00.000Z", false],
+    ]);
+    const sleepy = { ...sub, quietHours: { start: "22:00", end: "07:00" } };
+    // Lör 02:00 svensk tid → lör 07:00, inte mån 07:00.
+    expect(
+      routeNotifications([empty], [sleepy], "2026-11-07T01:00:00Z").map((x) => x.sendAt),
+    ).toEqual(["2026-11-07T06:00:00.000Z"]);
+    // Med "Kritiska larm alltid direkt" avstängt följer det tiderna som allt annat.
+    expect(
+      routeNotifications([empty], [{ ...sub, criticalDuringQuietHours: false }], sat).map(
+        (x) => x.sendAt,
+      ),
+    ).toEqual(["2026-11-09T06:00:00.000Z"]);
     // Tider 06–22 alla dagar och tysta timmar 05–08: mån 05:30 → 08:00 (07:00Z).
     const both: AlertSubscription = {
       ...sub,

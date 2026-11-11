@@ -119,25 +119,36 @@ export async function notifyFaultReported(
     const users = new Set<string>();
     const gone: string[] = [];
     const ok: string[] = [];
-    for (const d of devices) {
-      users.add(d.user_id);
-      const payload = faultPush({
-        incidentId,
-        machineId: incident.machine_id,
-        place: incident.store ?? incident.machine,
-        fault: FAULT_LABEL[incident.kind],
-        phone: incident.phone,
-        canOpenCase: d.role === "owner" || d.role === "admin",
-      });
-      const out = await sender.send(
-        { endpoint: d.endpoint, p256dh: d.p256dh, auth: d.auth_secret },
-        payload,
-      );
-      if (out.ok) {
+    for (const d of devices) users.add(d.user_id);
+    // Alla enheter samtidigt: butiken väntar på svaret, och en trög enhet ska inte lägga sin
+    // väntetid ovanpå de andras.
+    const outcomes = await Promise.all(
+      devices.map(async (d) => {
+        const payload = faultPush({
+          incidentId,
+          machineId: incident.machine_id,
+          place: incident.store ?? incident.machine,
+          fault: FAULT_LABEL[incident.kind as keyof typeof FAULT_LABEL],
+          phone: incident.phone,
+          canOpenCase: d.role === "owner" || d.role === "admin",
+        });
+        try {
+          return await sender.send(
+            { endpoint: d.endpoint, p256dh: d.p256dh, auth: d.auth_secret },
+            payload,
+          );
+        } catch {
+          return { ok: false as const, gone: false, detail: "fel" };
+        }
+      }),
+    );
+    devices.forEach((d, i) => {
+      const out = outcomes[i];
+      if (out?.ok) {
         delivered.add(d.user_id);
         ok.push(d.id);
-      } else if (out.gone) gone.push(d.id);
-    }
+      } else if (out?.gone) gone.push(d.id);
+    });
     const ids = (v: readonly string[]) =>
       sql`(select jsonb_array_elements_text(${JSON.stringify(v)}::jsonb)::uuid)`;
     if (gone.length > 0) {

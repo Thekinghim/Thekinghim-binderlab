@@ -304,6 +304,49 @@ describe("slut i automat kommer direkt", () => {
     now = new Date("2026-11-12T11:25:00Z");
     expect((await sync()).stockDropped).toEqual([]);
   });
+
+  it("sista packet säljs (ordern drar saldot till 0 före läsningen av facken): räknas ändå", async () => {
+    // Påfyllt till 1 pack. Sedan säljs det: ordern och det tomma facket kommer i samma synk.
+    fake.state.products["2"] = products(1, 6);
+    now = new Date("2026-11-12T11:30:00Z");
+    expect((await sync()).stockDropped).toEqual([]);
+    fake.state.orders.push(
+      fakeOrder(7900, {
+        date: "2026-11-12",
+        // Awish skriver tiden i Asia/Shanghai: 19:32 där = 11:32Z, efter läsningen 11:30Z.
+        payTime: "2026-11-12 19:32:00",
+        title: "Surging Sparks",
+      }),
+    );
+    fake.state.products["2"] = products(0, 6);
+    now = new Date("2026-11-12T11:35:00Z");
+    const r = await sync();
+    expect(r.ok, r.message ?? "").toBe(true);
+    expect(r.summary?.new).toBe(1);
+    // Facken stämmer redan med saldot (ordern drog packet): ingen inventering behövdes.
+    expect(r.stock).toMatchObject({ read: 1, counts: 0 });
+    expect(r.stockDropped).toEqual([machineId]);
+    now = new Date("2026-11-12T11:40:00Z");
+    expect((await sync()).stockDropped).toEqual([]);
+  });
+
+  it("Synka nu larmar inte själv: det som blev slut sparas till nästa schemalagda synk", async () => {
+    fake.state.products["2"] = products(4, 6);
+    now = new Date("2026-11-12T11:45:00Z");
+    await sync();
+    fake.state.products["2"] = products(0, 6);
+    now = new Date("2026-11-12T11:47:00Z");
+    const manual = await sync("manual");
+    expect(manual.stockDropped).toEqual([machineId]);
+    expect(manual.alertCheckDue).toBeUndefined();
+    expect((await state()).alertCheckDue).toBe(true);
+    now = new Date("2026-11-12T11:50:00Z");
+    const next = await sync();
+    expect(next.stockDropped).toEqual([]);
+    expect(next.alertCheckDue).toBe(true);
+    expect((await state()).alertCheckDue).toBeUndefined();
+  });
+
   it("den som har engelska i profilen får notisen på engelska", async () => {
     // Påfyllt: larmen stängs. Sedan slut igen.
     fake.state.products["2"] = products(6, 6);
