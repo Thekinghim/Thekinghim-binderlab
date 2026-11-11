@@ -196,6 +196,21 @@ describe("mergeDeliveries", () => {
   });
 });
 
+describe("mergeDeliveries: påminnelser", () => {
+  it("en påminnelse ersätter aldrig en avisering som väntar: nytt förblir nytt", () => {
+    const sleepy: AlertSubscription = { ...owner, quietHours: { start: "22:00", end: "07:00" } };
+    const pending = routeNotifications([lowStock], [sleepy], "2026-11-02T22:30:00Z");
+    const later = routeNotifications(
+      [{ ...lowStock, reason: "reminder" }],
+      [sleepy],
+      "2026-11-03T03:00:00Z",
+    );
+    const merged = mergeDeliveries(pending, later);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.items.map((n) => n.reason)).toEqual(["new"]);
+  });
+});
+
 describe("tider för aviseringar", () => {
   const weekdays = [{ days: [1, 2, 3, 4, 5], start: "07:00", end: "18:00" }];
   const tz = "Europe/Stockholm";

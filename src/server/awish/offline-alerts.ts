@@ -17,7 +17,8 @@
  * "Slut i automat" går samma väg: när synken ser att ett fack just BLEV tomt (eller nådde
  * larmgränsen) utvärderas organisationen direkt (`stockOrgIds`). Bara ändringen räknas, så
  * ett fack som står tomt i en vecka kör inte larmjobbet var femte minut. Notisen följer de
- * tysta timmarna: bara "automaten står still" får väcka någon (WAKE_KINDS).
+ * tysta timmarna: bara "automaten står still" får väcka någon (WAKE_KINDS). En sådan körning
+ * skickar inga påminnelser om andra larm (evaluateOrganization med reminders: false).
  */
 
 import "server-only";
@@ -113,15 +114,17 @@ export async function runOfflineAlerts(
   },
 ): Promise<OfflineAlertRun> {
   const now = options.now ?? new Date();
-  const due = [
-    ...new Set([
-      ...(await orgsNeedingOfflineEvaluation(db, orgIds, now)),
-      ...(await activeOrgs(db, options.stockOrgIds ?? [])),
-    ]),
-  ];
+  const offline = new Set(await orgsNeedingOfflineEvaluation(db, orgIds, now));
+  const due = [...new Set([...offline, ...(await activeOrgs(db, options.stockOrgIds ?? []))])];
   const organizations: EvaluationSummary[] = [];
   for (const orgId of due) {
-    organizations.push(await evaluateOrganization(db, orgId, now));
+    // Bara ett fack som blev tomt: utan påminnelser. Annars påminns ägaren om varje annat
+    // tomt fack varje gång något fack tar slut, och notisen "en automat, tryck för att fylla
+    // på" blir "N automater behöver fyllas på". Påminnelserna kommer från det dagliga
+    // larmjobbet (och, som förut, medan en automat är offline).
+    organizations.push(
+      await evaluateOrganization(db, orgId, now, offline.has(orgId) ? {} : { reminders: false }),
+    );
   }
   // Utskicken som är på tur skickas i varje körning, även utan ny utvärdering: ett larm som
   // väntade över natten (tysta timmar) går ut när natten är slut, inte först när larmjobbet

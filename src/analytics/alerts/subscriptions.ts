@@ -279,7 +279,8 @@ export function routeNotifications(
 /**
  * Slår ihop väntande (uppskjutna) utskick med nya, så att en användare får ett utskick per
  * sändtid. Samma incident förekommer bara en gång per utskick: den senaste aviseringen gäller
- * (t.ex. "Löst: …" ersätter "Automat 3 är offline" om problemet löstes under natten).
+ * (t.ex. "Löst: …" ersätter "Automat 3 är offline" om problemet löstes under natten). En
+ * påminnelse ersätter aldrig en avisering som inte hunnit gå ut: "nytt" förblir "nytt".
  */
 export function mergeDeliveries(
   pending: readonly AlertDelivery[],
@@ -294,7 +295,12 @@ export function mergeDeliveries(
       continue;
     }
     const byIncident = new Map<string, AlertNotification>();
-    for (const n of [...prev.items, ...d.items]) byIncident.set(n.incidentId, n);
+    for (const n of [...prev.items, ...d.items]) {
+      const waiting = byIncident.get(n.incidentId);
+      // En påminnelse om något som redan väntar i utskicket tillför inget.
+      if (waiting && n.reason === "reminder") continue;
+      byIncident.set(n.incidentId, n);
+    }
     const items = [...byIncident.values()].sort(
       (a, b) =>
         SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] ||

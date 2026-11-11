@@ -18,6 +18,7 @@ import * as s from "../../src/db/schema";
 import { listOrganizationsFor } from "../../src/server/access";
 import { createAwishClient } from "../../src/server/awish/grpc-client";
 import { saveAwishCredentialsFor } from "../../src/server/awish/manage";
+import { evaluateOrganization } from "../../src/server/alerts/evaluate";
 import { saveNoticeChange } from "../../src/server/alerts/notice-service";
 import { runOfflineAlerts } from "../../src/server/awish/offline-alerts";
 import { parseState, readFillStock, syncAwishSource } from "../../src/server/awish/sync";
@@ -83,7 +84,7 @@ describe("slut i automat kommer direkt", () => {
   const sync = (trigger: "schedule" | "manual" = "schedule") =>
     syncAwishSource({ db: db(), connect, now: () => now }, { dataSourceId: sourceId, trigger });
 
-  const sent: { userId: string; push: PushPayload[] }[] = [];
+  const sent: { userId: string; push: PushPayload[]; reasons: string[] }[] = [];
   const alerts = (stockOrgIds: string[]) =>
     runOfflineAlerts(db(), [orgId], {
       now,
@@ -98,6 +99,8 @@ describe("slut i automat kommer direkt", () => {
         sent.push({
           userId: recipient.userId,
           push: pushPayloads(delivery, (options as { push?: PushContext }).push),
+          // Bara "slut i automat": vad utskicket säger om facken (nytt eller påminnelse).
+          reasons: delivery.items.filter((n) => n.kind === "low_stock").map((n) => n.reason),
         });
         return {
           results: [{ channel: "push", status: "sent", detail: "test" }],
@@ -371,5 +374,74 @@ describe("slut i automat kommer direkt", () => {
       url: `/fyll-pa/${machineId}`,
       lang: "en",
     });
+  });
+
+  // Granskningen av runda 2: ett fack som tar slut ska inte dra med sig påminnelser om
+  // andra fack, och natten ska ge EN notis på morgonen.
+  const pendingStock = async () =>
+    (
+      await rows<{ items: { kind: string; reason: string; title: string }[] }>(
+        db(),
+        sql`select items from public.alert_deliveries
+            where organization_id = ${orgId}::uuid and status = 'pending'
+              and user_id = ${owner.id}::uuid order by created_at`,
+      )
+    ).map((d) => d.items.filter((n) => n.kind === "low_stock").map((n) => n.reason));
+
+  it("ett annat fack tar slut 4,5 timmar senare: en notis om det nya, ingen påminnelse om det första", async () => {
+    // Surging Sparks är slut sedan 15:00 (aviserat då). Nu tar Black Bolt slut.
+    sent.length = 0;
+    fake.state.products["2"] = products(0, 0);
+    now = new Date("2026-11-12T19:30:00Z"); // 20:30 svensk tid
+    expect((await sync()).stockDropped).toEqual([machineId]);
+    await alerts([orgId]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.reasons).toEqual(["new"]);
+    expect(sent[0]!.push[0]).toMatchObject({ url: `/fyll-pa/${machineId}` });
+    // En kontroll till utan något nytt slut (t.ex. efter Uppdatera): ingen påminnelse alls.
+    sent.length = 0;
+    now = new Date("2026-11-12T19:35:00Z");
+    await alerts([orgId]);
+    expect(sent).toEqual([]);
+  });
+
+  it("två fack tar slut under natten och larmjobbet går kl. 05: EN notis kl. 07, inga påminnelser", async () => {
+    // Påfyllt: larmen stängs (en incident stängs när den inte setts på 30 minuter).
+    fake.state.products["2"] = products(6, 6);
+    now = new Date("2026-11-12T20:30:00Z");
+    await sync();
+    await alerts([orgId]);
+    expect((await lowAlerts()).every((a) => a.status !== "open")).toBe(true);
+    expect(await pendingStock()).toEqual([]);
+    sent.length = 0;
+
+    // 00:00 svensk tid: första facket tomt. Väntar till 07.
+    fake.state.products["2"] = products(0, 6);
+    now = new Date("2026-11-12T23:00:00Z");
+    expect((await sync()).stockDropped).toEqual([machineId]);
+    await alerts([orgId]);
+    expect(await pendingStock()).toEqual([["new"]]);
+
+    // 02:30: andra facket tomt. Samma utskick, inte ett till.
+    fake.state.products["2"] = products(0, 0);
+    now = new Date("2026-11-13T01:30:00Z");
+    expect((await sync()).stockDropped).toEqual([machineId]);
+    await alerts([orgId]);
+    expect(await pendingStock()).toEqual([["new", "new"]]);
+
+    // 05:10: det dagliga larmjobbet. Påminnelsen om det första facket (aviserat för mer än
+    // fyra timmar sedan, men aldrig skickat) läggs inte till: det väntar redan som nytt.
+    now = new Date("2026-11-13T04:10:00Z");
+    expect((await evaluateOrganization(db(), orgId, now)).status).toBe("ok");
+    expect(await pendingStock()).toEqual([["new", "new"]]);
+    expect(sent).toEqual([]);
+
+    // 07:01: en notis.
+    now = new Date("2026-11-13T06:01:00Z");
+    await alerts([]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.reasons).toEqual(["new", "new"]);
+    expect(sent[0]!.push.filter((p) => p.url.startsWith("/fyll-pa"))).toHaveLength(1);
+    expect(await pendingStock()).toEqual([]);
   });
 });

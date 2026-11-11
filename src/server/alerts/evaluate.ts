@@ -23,6 +23,7 @@ import {
   healthAlerts,
   importAlerts,
   lowStockAlerts,
+  mergeDeliveries,
   reconcileAlerts,
   routeNotifications,
   type AlertCandidate,
@@ -58,6 +59,16 @@ export interface EvaluationSummary {
   readonly notifications: number;
   readonly deliveries: number;
   readonly error?: string;
+}
+
+export interface EvaluateOptions {
+  /**
+   * false = inga påminnelser i den här körningen: bara nya, skärpta och lösta larm aviseras.
+   * Används när körningen startas av att ett fack just blev tomt (var femte minut är möjligt):
+   * annars påminns ägaren om varje annat tomt fack varje gång något fack tar slut.
+   * Påminnelserna kommer från det dagliga larmjobbet.
+   */
+  readonly reminders?: boolean;
 }
 
 /** Läser incidenterna som reconcileAlerts behöver: alla öppna och de senaste dagarnas stängda. */
@@ -212,13 +223,67 @@ async function saveIncidents(
   return idMap;
 }
 
-/** Lägger utskicken i kön. */
+/**
+ * Lägger utskicken i kön. Väntar redan ett utskick till samma användare med samma sändtid
+ * (t.ex. kl. 07 efter de tysta timmarna) slås de ihop till ETT (mergeDeliveries): annars får
+ * ägaren ett mejl och en notis per utvärdering under natten, flera av dem om samma fack.
+ * Returnerar antalet nya rader.
+ */
 async function enqueueDeliveries(
   tx: Tx,
   orgId: string,
   deliveries: readonly AlertDelivery[],
 ): Promise<number> {
+  let added = 0;
   for (const d of deliveries) {
+    const [waiting] = await tx
+      .select({
+        id: s.alertDeliveries.id,
+        deferred: s.alertDeliveries.deferred,
+        subject: s.alertDeliveries.subject,
+        items: s.alertDeliveries.items,
+      })
+      .from(s.alertDeliveries)
+      .where(
+        and(
+          eq(s.alertDeliveries.organizationId, orgId),
+          eq(s.alertDeliveries.userId, d.userId),
+          eq(s.alertDeliveries.status, "pending"),
+          eq(s.alertDeliveries.sendAt, new Date(d.sendAt)),
+        ),
+      )
+      .orderBy(s.alertDeliveries.createdAt)
+      .limit(1)
+      .for("update");
+    if (waiting) {
+      const [merged] = mergeDeliveries(
+        [
+          {
+            userId: d.userId,
+            sendAt: d.sendAt,
+            deferred: waiting.deferred,
+            subject: waiting.subject,
+            items: waiting.items as AlertNotification[],
+          },
+        ],
+        [d],
+      );
+      if (merged) {
+        await tx
+          .update(s.alertDeliveries)
+          .set({
+            deferred: merged.deferred,
+            subject: merged.subject.slice(0, 300) || "Larm",
+            items: merged.items as unknown[],
+            alertIds: [...new Set(merged.items.map((n) => n.incidentId).filter(isRowId))],
+          })
+          .where(
+            and(eq(s.alertDeliveries.organizationId, orgId), eq(s.alertDeliveries.id, waiting.id)),
+          );
+        continue;
+      }
+    }
+    added += 1;
     await tx.insert(s.alertDeliveries).values({
       organizationId: orgId,
       userId: d.userId,
@@ -231,7 +296,7 @@ async function enqueueDeliveries(
       results: [],
     });
   }
-  return deliveries.length;
+  return added;
 }
 
 /** Påfyllaren får bara larm om automater och lager, oavsett prenumeration. */
@@ -253,6 +318,7 @@ export async function evaluateOrganization(
   db: Db,
   orgId: string,
   now: Date = new Date(),
+  options: EvaluateOptions = {},
 ): Promise<EvaluationSummary> {
   let summary: EvaluationSummary;
   try {
@@ -279,7 +345,12 @@ export async function evaluateOrganization(
 
       const { candidates, machines } = await collectCandidates(tx, orgId, org.timezone, now);
       const previous = await loadIncidents(tx, orgId, now);
-      const result = reconcileAlerts(candidates, previous, now, { timeZone: org.timezone });
+      const result = reconcileAlerts(candidates, previous, now, {
+        timeZone: org.timezone,
+        ...(options.reminders === false
+          ? { renotifyAfterHours: { critical: null, warning: null, info: null } }
+          : {}),
+      });
       const idMap = await saveIncidents(tx, orgId, previous, result.incidents);
 
       const notifications: AlertNotification[] = result.notifications.map((n) => ({
