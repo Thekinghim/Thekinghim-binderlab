@@ -577,7 +577,9 @@ export function buildLonsamhetModel(
     topKind: hv,
     forecast: forecast
       ? {
-          monthName: formatMonth(isoDateToShellDate(`${forecast.month}-01`), { year: "never" }),
+          monthName: forecast.rolling
+            ? null
+            : formatMonth(isoDateToShellDate(`${forecast.month}-01`), { year: "never" }),
           amountOre: forecast.amountOre,
         }
       : null,

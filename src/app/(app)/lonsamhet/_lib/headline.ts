@@ -62,10 +62,14 @@ export interface HeadlineInput {
   /** Vad största bidragsgivaren är. Bara en produkt ("title") kan ge varningen. */
   readonly topKind?: "title" | "machine" | "store";
   /**
-   * Hela innevarande månad i den här takten (./run-rate.ts), bara för månaden hittills och
-   * de senaste 30 dagarna. `monthName` är månaden i löptext ("november").
+   * Hela innevarande månad i den här takten (./run-rate.ts) för månaden hittills, eller
+   * takten per månad för de senaste 30 dagarna. `monthName` är månaden i löptext ("november").
    */
-  readonly forecast?: { readonly monthName: string; readonly amountOre: number } | null;
+  readonly forecast?: {
+    /** null = takten per månad (de senaste 30 dagarna), inte en viss månad. */
+    readonly monthName: string | null;
+    readonly amountOre: number;
+  } | null;
 }
 
 /** Över så stor andel av vinsten från en enda produkt blir raden en varning. */
@@ -200,7 +204,9 @@ export function lonsamhetHeadline(input: HeadlineInput): Headline {
       ? trendText(changeBp(input.profitOre, input.previous.profitOre) ?? 0)
       : null;
   const pace = input.forecast
-    ? `I den här takten: ca${NBSP}${sek(input.forecast.amountOre)} i ${input.forecast.monthName}.`
+    ? `I den här takten: ca${NBSP}${sek(input.forecast.amountOre)} ${
+        input.forecast.monthName ? `i ${input.forecast.monthName}` : "på en månad"
+      }.`
     : null;
   if (deducted && input.compensationOre !== 0) {
     // Med andelen: vad butikerna fick (eller butikens villkor och belopp med vald butik).

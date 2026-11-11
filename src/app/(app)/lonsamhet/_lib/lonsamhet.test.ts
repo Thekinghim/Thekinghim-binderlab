@@ -214,6 +214,13 @@ describe("lonsamhetHeadline", () => {
     ).toBe("Samma som perioden innan.");
   });
 
+  it("de senaste 30 dagarna säger takten per månad, inte en viss månad", () => {
+    // Annars säger "30 dagar" och "Denna månad" olika saker om samma november.
+    expect(
+      lonsamhetHeadline({ ...base, forecast: { monthName: null, amountOre: 3_000_000 } }).aside,
+    ).toBe(`I den här takten: ca${NBSP}30${NBSP}000${NBSP}kr på en månad.`);
+  });
+
   it("i den här takten: bara när modellen ger en prognos, efter jämförelsen", () => {
     const h = lonsamhetHeadline({
       ...base,
@@ -542,17 +549,18 @@ describe("monthForecast (i den här takten)", () => {
       profitOre: 1_530_000,
     });
     // 15 300 kr på 12 dagar = 1 275 kr per dag, 30 dagar = 38 250 kr → 38 000 kr.
-    expect(f).toEqual({ month: "2026-11", amountOre: 3_800_000 });
+    expect(f).toEqual({ month: "2026-11", amountOre: 3_800_000, rolling: false });
     expect(f!.amountOre % 100_000).toBe(0);
   });
 
-  it("de senaste 30 dagarna (till i dag eller i går) ger prognosen för innevarande månad", () => {
+  it("de senaste 30 dagarna (till i dag eller i går) ger takten per månad", () => {
     for (const period of [
       { start: "2026-10-14", end: "2026-11-12" },
       { start: "2026-10-13", end: "2026-11-11" },
     ]) {
       const f = monthForecast({ period, today: TODAY, days: 30, profitOre: 3_000_000 });
-      expect(f).toEqual({ month: "2026-11", amountOre: 3_000_000 });
+      // Takten per månad (30 dagar), inte en prognos för just november.
+      expect(f).toEqual({ month: "2026-11", amountOre: 3_000_000, rolling: true });
     }
     // Automaten har bara data för 20 av dagarna: takten räknas på dem.
     expect(
