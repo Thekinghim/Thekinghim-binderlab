@@ -65,6 +65,7 @@ import {
   syncSourceStock,
   type AwishStockSummary,
 } from "./stock";
+import { machinesJustLow, type SlotBalance } from "./stock-drop";
 
 type Row = Record<string, unknown>;
 
@@ -133,6 +134,12 @@ export interface AwishSyncState {
    * organisation: högst en läsning per FILL_READ_INTERVAL_MS.
    */
   fillReadAt: string | null;
+  /**
+   * Uppdatera i Fyll på såg ett fack bli tomt (readFillStock). Den läsningen körs i
+   * användarens anrop och larmar inte själv; nästa synk tar med det i `stockDropped` och
+   * nollställer flaggan.
+   */
+  alertCheckDue?: boolean;
 }
 
 export interface AwishLastRun {
@@ -167,6 +174,13 @@ export interface AwishSyncResult {
   historyDone: boolean;
   /** Saldot från Awish (Products), om det lästes i körningen. */
   stock?: AwishStockSummary | null;
+  /**
+   * Automater där en titel just blev slut (eller nådde larmgränsen) i den här läsningen:
+   * larmen ska utvärderas direkt (cron-routen). Tom eller saknas: inget nytt är slut.
+   */
+  stockDropped?: string[];
+  /** Ett fack blev tomt vid Uppdatera i Fyll på sedan förra synken: utvärdera larmen. */
+  alertCheckDue?: boolean;
 }
 
 export function parseState(text: unknown): AwishSyncState {
@@ -192,7 +206,69 @@ export function parseState(text: unknown): AwishSyncState {
     amountFormat: value.amountFormat === "decimal" ? "decimal" : null,
     stockSyncedAt: typeof value.stockSyncedAt === "string" ? value.stockSyncedAt : null,
     fillReadAt: typeof value.fillReadAt === "string" ? value.fillReadAt : null,
+    ...(value.alertCheckDue === true ? { alertCheckDue: true } : {}),
   };
+}
+
+/**
+ * Saldot i organisationens automater (per automat och titel) med larmgränsen. Läses före och
+ * efter syncSourceStock: skillnaden säger vilka fack som just blev tomma (machinesJustLow).
+ */
+export async function readMachineBalances(
+  db: Db | Tx,
+  organizationId: string,
+): Promise<SlotBalance[]> {
+  const found = await query<{
+    machine_id: string;
+    title_id: string;
+    quantity: number;
+    alert_at: number | null;
+  }>(
+    db,
+    sql`select l.machine_id::text as machine_id, sl.title_id::text as title_id,
+               sl.quantity, a.alert_at_units as alert_at
+        from public.stock_levels sl
+        join public.stock_locations l
+          on l.organization_id = sl.organization_id and l.id = sl.location_id
+        left join public.slot_alerts a
+          on a.organization_id = sl.organization_id and a.machine_id = l.machine_id
+         and a.title_id = sl.title_id
+        where sl.organization_id = ${organizationId}::uuid and l.machine_id is not null`,
+  );
+  return found.map((r) => ({
+    machineId: r.machine_id,
+    titleId: r.title_id,
+    onHand: Number(r.quantity),
+    alertAt: r.alert_at === null ? null : Number(r.alert_at),
+  }));
+}
+
+/**
+ * syncSourceStock med jämförelse före och efter: vilka automater fick just en titel som är
+ * slut? Jämförelsen får aldrig stoppa läsningen: går den inte att göra blir svaret tomt.
+ */
+async function syncStockWatchingDrops(
+  db: Db,
+  api: AwishApi,
+  source: { id: string; organization_id: string },
+  opts: { now: () => Date; deadlineAt: number },
+): Promise<{ stock: AwishStockSummary; dropped: string[] }> {
+  let before: SlotBalance[] | null = null;
+  try {
+    before = await readMachineBalances(db, source.organization_id);
+  } catch (error) {
+    console.error("[awish] saldot före läsningen kunde inte läsas", error);
+  }
+  const stock = await syncSourceStock(db, api, source, opts);
+  let dropped: string[] = [];
+  if (before !== null && stock.counts > 0) {
+    try {
+      dropped = machinesJustLow(before, await readMachineBalances(db, source.organization_id));
+    } catch (error) {
+      console.error("[awish] saldot efter läsningen kunde inte läsas", error);
+    }
+  }
+  return { stock, dropped };
 }
 
 /**
@@ -490,7 +566,11 @@ export async function syncAwishSource(
           ? extra.stock.at
           : before.stockSyncedAt,
       fillReadAt: before.fillReadAt,
+      // alertCheckDue tas inte med: den rapporteras i resultatet nedan och är därmed förbrukad.
     };
+    // Flaggan från Uppdatera i Fyll på: följer med resultatet en gång, även när orderna
+    // misslyckades (cron-routen utvärderar larmen ändå).
+    const flagged = before.alertCheckDue === true ? { alertCheckDue: true } : {};
     try {
       // Bara om läget är det vi låste med. Har någon sparat ett nytt AppId under
       // körningen (läget nollställt) skrivs inte det gamla kontots sidor tillbaka;
@@ -510,6 +590,7 @@ export async function syncAwishSource(
         );
         return {
           ...result,
+          ...flagged,
           organizationId: source.organization_id,
           dataSourceId: source.id,
           skipped: null,
@@ -526,6 +607,7 @@ export async function syncAwishSource(
     }
     return {
       ...result,
+      ...flagged,
       organizationId: source.organization_id,
       dataSourceId: source.id,
       skipped: null,
@@ -625,9 +707,13 @@ export async function syncAwishSource(
     // Saldot i automaterna (Products) efter orderna, med den tid som är kvar. Ett fel
     // här stoppar inte synken av order: det loggas och läses om nästa gång.
     let stock: AwishStockSummary | null = null;
+    let stockDropped: string[] = [];
     if (stockDue(before, trigger, started)) {
       try {
-        stock = await syncSourceStock(deps.db, api, source, { now, deadlineAt });
+        ({ stock, dropped: stockDropped } = await syncStockWatchingDrops(deps.db, api, source, {
+          now,
+          deadlineAt,
+        }));
       } catch (error) {
         console.error("[awish] saldot kunde inte läsas", error);
       }
@@ -645,6 +731,7 @@ export async function syncAwishSource(
         otherSourceDuplicates: outcome.otherSourceDuplicates,
         historyDone: collected.cursor.historyDone,
         stock,
+        stockDropped,
       },
       collected.cursor,
       outcome.refundReported,
@@ -742,12 +829,16 @@ export async function readFillStock(
     return { status: "busy", stock: null };
   }
 
-  const release = async (stock: AwishStockSummary | null) => {
+  const release = async (stock: AwishStockSummary | null, dropped: readonly string[] = []) => {
     const complete = stock !== null && stock.deferred === 0 && stock.failed === 0;
     const state: AwishSyncState = {
       ...leased,
       leaseUntil: null,
       stockSyncedAt: complete ? stock.at : before.stockSyncedAt,
+      // Ett fack blev tomt i den här läsningen: nästa synk utvärderar larmen (den som står
+      // vid automaten och fyller på ska inte få en notis mitt i, och har den fyllt på innan
+      // dess blir det inget larm).
+      ...(dropped.length > 0 ? { alertCheckDue: true } : {}),
     };
     try {
       if (await writeState(deps.db, source, state, leasedText)) return;
@@ -759,7 +850,12 @@ export async function readFillStock(
       );
       const fresh = parseState(current?.cursor ?? null);
       if (fresh.leaseUntil === leased.leaseUntil) {
-        await writeState(deps.db, source, { ...fresh, leaseUntil: null }, current?.cursor ?? null);
+        await writeState(
+          deps.db,
+          source,
+          { ...fresh, leaseUntil: null, ...(dropped.length > 0 ? { alertCheckDue: true } : {}) },
+          current?.cursor ?? null,
+        );
       }
     } catch (error) {
       console.error("[awish] läget kunde inte sparas", error);
@@ -779,14 +875,15 @@ export async function readFillStock(
 
   const clock = () => now().getTime();
   let stock: AwishStockSummary | null = null;
+  let dropped: string[] = [];
   const api = (deps.connect ?? defaultConnect)(creds, { deadlineAt, clock, maxAttempts: 1 });
   try {
-    stock = await syncSourceStock(deps.db, api, source, { now, deadlineAt });
+    ({ stock, dropped } = await syncStockWatchingDrops(deps.db, api, source, { now, deadlineAt }));
   } catch (error) {
     if (!(error instanceof AwishApiError)) console.error("[awish] facken kunde inte läsas", error);
   } finally {
     api.close();
-    await release(stock);
+    await release(stock, dropped);
   }
   if (stock === null) return { status: "failed", stock: null };
   if (stock.read === 0 && (stock.failed > 0 || stock.deferred > 0)) {

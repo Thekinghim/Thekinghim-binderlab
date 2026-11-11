@@ -17,8 +17,11 @@ import "server-only";
 import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 
 import type { AlertDelivery, AlertNotification } from "@/analytics/alerts";
-import type { Db } from "@/db/client";
+import { businessDateAt } from "@/analytics/todos/time";
+import type { Db, Tx } from "@/db/client";
 import * as s from "@/db/schema";
+import type { IsoDate } from "@/domain";
+import type { PushContext, PushMachine } from "@/server/notify/content";
 import {
   dispatchDelivery,
   type Channel,
@@ -46,6 +49,72 @@ type Dispatcher = (
 function subjectOf(items: readonly AlertNotification[]): string {
   const first = items[0]?.title ?? "Larm";
   return items.length > 1 ? `${items.length} larm: ${first} med flera` : first;
+}
+
+/**
+ * Det push-notisen om påfyllning behöver: automatens namn, butiken den står i i dag och
+ * automatens öppna lagerlarm (så att notisen säger hela läget, "3 slut, 2 tar slut i morgon",
+ * inte bara det som är nytt i utskicket). Läses bara när utskicket har lagerlarm.
+ */
+export async function loadPushContext(
+  tx: Tx | Db,
+  organizationId: string,
+  items: readonly AlertNotification[],
+  today: IsoDate,
+): Promise<PushContext> {
+  const ids = [
+    ...new Set(
+      items
+        .filter((n) => n.kind === "low_stock" && n.reason !== "resolved")
+        .flatMap((n) => (n.machineId ? [n.machineId] : [])),
+    ),
+  ];
+  if (ids.length === 0) return { today };
+  const list = sql`(select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb)::uuid)`;
+  const names = Array.from(
+    await tx.execute(
+      sql`select m.id::text as id, m.name, m.code,
+                 (select st.name from public.machine_placements p
+                    join public.stores st
+                      on st.organization_id = p.organization_id and st.id = p.store_id
+                   where p.organization_id = m.organization_id and p.machine_id = m.id
+                     and p.valid_from <= ${today}::date
+                     and (p.valid_to is null or p.valid_to >= ${today}::date)
+                   order by p.valid_from desc limit 1) as store
+          from public.machines m
+          where m.organization_id = ${organizationId}::uuid and m.id in ${list}`,
+    ),
+  ) as { id: string; name: string; code: string | null; store: string | null }[];
+  const open = Array.from(
+    await tx.execute(
+      sql`select a.machine_id::text as id, a.severity::text as severity,
+                 a.evidence -> 'dates' ->> 0 as end_date
+          from public.alerts a
+          where a.organization_id = ${organizationId}::uuid and a.kind = 'low_stock'
+            and a.status = 'open' and a.machine_id in ${list}`,
+    ),
+  ) as { id: string; severity: string; end_date: string | null }[];
+  const machines = new Map<string, PushMachine>();
+  for (const m of names) {
+    const mine = open.filter((o) => o.id === m.id);
+    const soon = mine.filter((o) => o.severity !== "critical");
+    const code = m.code?.trim() ?? "";
+    machines.set(m.id, {
+      // Som i resten av panelen: "BL-003 Sega gubben".
+      name: code === "" || m.name.startsWith(code) ? m.name : `${code} ${m.name}`,
+      ...(code === "" ? {} : { short: code }),
+      alertName: m.name,
+      store: m.store,
+      open: {
+        empty: mine.length - soon.length,
+        soon: soon.length,
+        soonDates: soon.flatMap((o) =>
+          o.end_date && /^\d{4}-\d{2}-\d{2}$/.test(o.end_date) ? [o.end_date as IsoDate] : [],
+        ),
+      },
+    });
+  }
+  return { machines, today };
 }
 
 /** Användarens e-post (auth.users). Larmjobbet kör som systemroll och får läsa den. */
@@ -183,11 +252,18 @@ export async function deliverDue(
         channels: (sub?.channels ?? ["email"]) as Channel[],
         pushDevices: devices,
       };
+      const timeZone = org?.timezone ?? "Europe/Stockholm";
       const result = await dispatch(delivery, recipient, {
         baseUrl: options.baseUrl,
-        timeZone: org?.timezone ?? "Europe/Stockholm",
+        timeZone,
         organizationName: org?.name ?? "Binderlab",
         idempotencyKey: row.id,
+        push: await loadPushContext(
+          tx,
+          row.organizationId,
+          items,
+          businessDateAt(now, timeZone),
+        ),
       });
       await tx
         .update(s.alertDeliveries)

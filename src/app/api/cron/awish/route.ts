@@ -30,7 +30,11 @@ function json(body: unknown, status = 200): Response {
   return Response.json(body, { status, headers: { "cache-control": "no-store" } });
 }
 
-async function runOfflineAlertsAfterSync(request: Request, orgIds: string[]) {
+async function runOfflineAlertsAfterSync(
+  request: Request,
+  orgIds: string[],
+  stockOrgIds: string[],
+) {
   let baseUrl: string | null = null;
   try {
     baseUrl = resolveAppBaseUrl(getServerEnv(), request.headers);
@@ -38,7 +42,7 @@ async function runOfflineAlertsAfterSync(request: Request, orgIds: string[]) {
     // Utan adress köas utskicken; larmjobbet skickar dem.
   }
   try {
-    return await runOfflineAlerts(getServiceDb(), orgIds, { baseUrl });
+    return await runOfflineAlerts(getServiceDb(), orgIds, { baseUrl, stockOrgIds });
   } catch (error) {
     console.error("[awish] offlinelarm", error instanceof Error ? error.message : "fel");
     return null;
@@ -70,6 +74,11 @@ export async function GET(request: Request): Promise<Response> {
     request,
     // Även när orderna misslyckades: anslutningen sparas före orderna (sync.ts).
     result.sources.filter((s) => s.skipped === null).map((s) => s.organizationId),
+    // "Slut i automat" direkt: organisationerna där ett fack just blev tomt i den här
+    // synken, eller vid Uppdatera i Fyll på sedan förra synken.
+    result.sources
+      .filter((s) => (s.stockDropped?.length ?? 0) > 0 || s.alertCheckDue === true)
+      .map((s) => s.organizationId),
   );
   // Nya order ändrar obetalda avräkningar: menyns räknare, Hem och Att göra räknar om dem.
   for (const org of new Set(

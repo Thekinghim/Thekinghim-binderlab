@@ -10,7 +10,9 @@
  *   - 'resolved' bara med `notifyResolved`, 'reminder' bara om `reminders` inte är avstängt.
  *
  * Tysta timmar (lokal tid i prenumerationens tidszon): aviseringen skjuts upp till slutet av de
- * tysta timmarna, utom kritiska larm när `criticalDuringQuietHours` (standard sant).
+ * tysta timmarna, utom kritiska larm om att en automat står still (`WAKE_KINDS`: ur drift och
+ * fel) när `criticalDuringQuietHours` (standard sant). "Slut i automat" är kritiskt men väcker
+ * ingen: det går inte att fylla på mitt i natten, så det väntar till de tysta timmarna är slut.
  * Tider (`deliveryWindows`, t.ex. vardagar 07–18): utanför dem skjuts aviseringen upp till
  * nästa tids början; samma undantag för kritiska larm. Båda villkoren gäller samtidigt.
  * Alla aviseringar till samma användare med samma sändtid samlas i ett utskick.
@@ -22,6 +24,7 @@ import { localDayStartMs } from "@/analytics/health/calendar";
 import { SEVERITY_RANK } from "./rules";
 import type {
   AlertDelivery,
+  AlertKind,
   AlertNotification,
   AlertSubscription,
   DeliveryWindow,
@@ -158,16 +161,27 @@ export function nextDeliveryAt(
 }
 
 /**
+ * Larmtyperna som får komma under tysta timmar när de är kritiska: automaten står still och
+ * säljer ingenting. Allt annat (slut i ett fack, misslyckad import) väntar till morgonen.
+ */
+export const WAKE_KINDS: readonly AlertKind[] = ["machine_offline", "machine_fault"];
+
+/**
  * Sändtid för en prenumeration: första tidpunkten ≥ nu som varken är inom de tysta timmarna
- * eller utanför tiderna. Kritiska larm skickas direkt när `criticalDuringQuietHours` (standard
- * sant).
+ * eller utanför tiderna. Kritiska larm om att automaten står still (`WAKE_KINDS`) skickas
+ * direkt när `criticalDuringQuietHours` (standard sant).
  */
 export function sendTimeFor(
-  n: Pick<AlertNotification, "severity">,
+  n: Pick<AlertNotification, "severity" | "kind">,
   s: AlertSubscription,
   nowMs: number,
 ): number {
-  if (n.severity === "critical" && s.criticalDuringQuietHours !== false) return nowMs;
+  if (
+    n.severity === "critical" &&
+    WAKE_KINDS.includes(n.kind) &&
+    s.criticalDuringQuietHours !== false
+  )
+    return nowMs;
   const tz = s.timeZone ?? DEFAULT_TIME_ZONE;
   const windows = s.deliveryWindows ?? null;
   let t = nowMs;

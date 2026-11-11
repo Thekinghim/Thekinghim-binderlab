@@ -201,7 +201,10 @@ export interface AlertSubscription {
   readonly deliveryWindows?: readonly DeliveryWindow[] | null;
   /** Tidszon för tysta timmar och tider. Standard 'Europe/Stockholm'. */
   readonly timeZone?: string;
-  /** Kritiska larm skickas även under tysta timmar och utanför tiderna. Standard true. */
+  /**
+   * Kritiska larm om att automaten står still (ur drift, fel) skickas även under tysta
+   * timmar och utanför tiderna. Standard true. "Slut i automat" väntar alltid.
+   */
   readonly criticalDuringQuietHours?: boolean;
   /** Avisering när problemet är löst. Standard false. */
   readonly notifyResolved?: boolean;

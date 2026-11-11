@@ -101,6 +101,27 @@ describe("/api/cron/awish", () => {
     expect(offline.mock.calls[0]?.[1]).toEqual(["org-2"]);
   });
 
+  it("slut i automat: bara organisationer där ett fack just blev tomt utvärderas för lagret", async () => {
+    process.env.CRON_SECRET = SECRET;
+    const ok: Record<string, unknown> = (await sync()).sources[0]!;
+    await GET(req(`Bearer ${SECRET}`));
+    // Inget nytt slut: ingen extra utvärdering för lagret.
+    expect((offline.mock.calls[0]?.[2] as { stockOrgIds: string[] }).stockOrgIds).toEqual([]);
+    offline.mockClear();
+    sync.mockResolvedValueOnce({
+      sources: [
+        { ...ok, dataSourceId: "ds-2", organizationId: "org-2", stockDropped: ["m-1"] },
+        { ...ok, dataSourceId: "ds-3", organizationId: "org-3", stockDropped: [] },
+        { ...ok, dataSourceId: "ds-4", organizationId: "org-4", alertCheckDue: true },
+      ],
+    } as never);
+    await GET(req(`Bearer ${SECRET}`));
+    expect((offline.mock.calls[0]?.[2] as { stockOrgIds: string[] }).stockOrgIds).toEqual([
+      "org-2",
+      "org-4",
+    ]);
+  });
+
   it("ett fel i kampanjerna stoppar inte synkens svar", async () => {
     process.env.CRON_SECRET = SECRET;
     campaigns.mockRejectedValueOnce(new Error("nere"));
