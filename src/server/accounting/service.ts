@@ -299,7 +299,15 @@ async function reconcileIn(
       options: {
         providerTimeZone,
         timeZone,
-        ...(manualRefs.size > 0 ? { toleranceOre: MANUAL_TOLERANCE_ORE } : {}),
+        // Bara de inskrivna utbetalningarna får toleransen: en importerad utbetalning i samma
+        // avstämning ska fortfarande visa en skillnad på några kronor.
+        ...(manualRefs.size > 0
+          ? {
+              toleranceOreByReference: Object.fromEntries(
+                [...manualRefs].map((ref) => [ref, MANUAL_TOLERANCE_ORE]),
+              ),
+            }
+          : {}),
       },
     });
   const analyticsPayouts = toAnalyticsPayouts(payouts, lines);

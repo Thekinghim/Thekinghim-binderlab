@@ -705,7 +705,12 @@ export function reconcilePayouts(input: ReconciliationInput): ReconciliationResu
 
     // --- Rest: härledda saknade order, avrundning eller oförklarat. ---
     const residual = gap - explainedGap;
-    const rounding = splitRounding(collectors.get("fee")?.impactOre ?? 0, residual, tolerance);
+    const ownTolerance = options.toleranceOreByReference?.[p.reference];
+    const rounding = splitRounding(
+      collectors.get("fee")?.impactOre ?? 0,
+      residual,
+      ownTolerance === undefined ? tolerance : assertOre(ownTolerance, "Toleransen"),
+    );
     if (rounding.feeIsRounding) collectors.delete("fee");
     const roundingOre = rounding.roundingOre;
     if (residual !== 0 && !rounding.residualIsRounding) {

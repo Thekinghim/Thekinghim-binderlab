@@ -202,6 +202,11 @@ export interface ReconciliationOptions {
    */
   readonly toleranceOre?: number;
   /**
+   * En egen tolerans för enskilda utbetalningar, per referens (öre). Används för utbetalningar
+   * som är inskrivna för hand (ofta hela kronor). Övriga utbetalningar behåller `toleranceOre`.
+   */
+  readonly toleranceOreByReference?: Readonly<Record<string, number>>;
+  /**
    * Intervall där all försäljning ska täckas av utbetalningar. Standard: från den första
    * utbetalningens start till den sista utbetalningens slut.
    */

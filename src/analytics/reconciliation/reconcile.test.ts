@@ -923,6 +923,18 @@ describe("rättningar efter revisionen", () => {
     expect(norm(p.summary)).toBe(
       "U-11 (1–30 nov.): utbetalt 143,32 kr, väntat 143,31 kr. Stämmer (avrundning +0,01 kr).",
     );
+    // Toleransen per referens gäller bara den utbetalningen: en annan referens (t.ex. en
+    // importerad rad bredvid en som är inskriven för hand) visar fortfarande skillnaden.
+    const other = only(
+      run([payout], { settings, options: { toleranceOreByReference: { "U-99": 500 } } }),
+    );
+    expect(other.status).not.toBe("matched");
+    expect(other.roundingOre).toBe(0);
+    const own = only(
+      run([payout], { settings, options: { toleranceOreByReference: { "U-11": 500 } } }),
+    );
+    expect(own.status).toBe("matched");
+    expect(own.roundingOre).toBe(1);
     const strict = only(run([payout], { settings }));
     expect(strict.deviations.map((d) => [d.kind, d.impactOre])).toEqual([["fee", 1]]);
     expect(strict.status).toBe("deviation");
