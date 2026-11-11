@@ -30,14 +30,33 @@ export function summarize(results: readonly CheckResult[]): RunSummary {
   return { status: failed > 0 ? "failed" : warnings > 0 ? "warning" : "ok", failed, warnings };
 }
 
-/** "Kontrollen hittade 2 fel" för Hem, eller null när inget fel finns. */
+/**
+ * Raden på Hem: "Kontrollen hittade 2 fel", annars varningen ur inställningarna
+ * ("Kortavgiften står på 0 %"), eller null när inget behöver göras.
+ */
 export function homeLine(
-  run: { readonly failed: number; readonly status: RunStatus } | null,
+  run: {
+    readonly failed: number;
+    readonly status: RunStatus;
+    readonly notice?: string | null;
+  } | null,
 ): string | null {
   if (!run) return null;
   if (run.status === "error") return "Kontrollen kunde inte köras";
-  if (run.failed === 0) return null;
+  if (run.failed === 0) return run.notice ?? null;
   return `Kontrollen hittade ${countText(run.failed, "fel", "fel")}`;
+}
+
+/** Vart raden på Hem leder: Kontroll vid fel, Inställningar när det bara är en inställning. */
+export function homeLink(
+  run: {
+    readonly failed: number;
+    readonly status: RunStatus;
+    readonly notice?: string | null;
+  } | null,
+): string {
+  if (run && run.status !== "error" && run.failed === 0 && run.notice) return "/installningar";
+  return "/installningar/kontroll";
 }
 
 const STATUSES: readonly CheckStatus[] = ["pass", "warn", "fail", "skip"];

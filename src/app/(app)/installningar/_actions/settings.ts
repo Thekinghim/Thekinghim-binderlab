@@ -11,7 +11,12 @@ import type { ActionResult } from "@/server/auth/flows";
 import { revalidateAppData } from "@/server/data/core";
 import { getActiveOrganization, getSessionUser } from "@/server/session";
 
-import { saveOwnerSharesFor, updateCompanyDetailsFor, updateSettingsFor } from "../_lib/data";
+import {
+  saveOwnerSharesFor,
+  setVatAcknowledgedFor,
+  updateCompanyDetailsFor,
+  updateSettingsFor,
+} from "../_lib/data";
 import { SETTINGS_MESSAGES } from "../_lib/model";
 
 /** Sparar kortavgift, momssats och räkenskapsårets första månad. Ägare och admin. */
@@ -19,6 +24,7 @@ export async function updateSettings(input: {
   cardFeeBp: number;
   vatRateBp: number;
   fiscalYearStartMonth: number;
+  vatLimitOre?: number;
 }): Promise<ActionResult<{ changed: boolean }>> {
   const organization = await getActiveOrganization();
   if (!organization) return { ok: false, error: SETTINGS_MESSAGES.forbidden };
@@ -27,6 +33,21 @@ export async function updateSettings(input: {
     cardFeeBp: Number(input?.cardFeeBp),
     vatRateBp: Number(input?.vatRateBp),
     fiscalYearStartMonth: Number(input?.fiscalYearStartMonth),
+    ...(input?.vatLimitOre === undefined ? {} : { vatLimitOre: Number(input.vatLimitOre) }),
+  });
+  if (result.ok && result.data?.changed) revalidateAppData();
+  return result;
+}
+
+/** "Revisorn har koll" (true) eller "Varna igen" (false) för momsgränsen. Ägare och admin. */
+export async function setVatAcknowledged(
+  acknowledged: boolean,
+): Promise<ActionResult<{ changed: boolean }>> {
+  const organization = await getActiveOrganization();
+  if (!organization) return { ok: false, error: SETTINGS_MESSAGES.forbidden };
+  const result = await setVatAcknowledgedFor(await getSessionUser(), {
+    organizationId: organization.id,
+    acknowledged: acknowledged === true,
   });
   if (result.ok && result.data?.changed) revalidateAppData();
   return result;

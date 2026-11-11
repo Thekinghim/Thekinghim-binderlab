@@ -13,18 +13,19 @@ import type {
   HygieneInput,
   PushRow,
   RefillRow,
+  SettingsCheckInput,
   SyncSourceState,
 } from "@/analytics/self-check";
-import { REFILL_WINDOW_HOURS } from "@/analytics/self-check";
-import type { Db } from "@/db/client";
-import { agreementGaps, type IsoDate, type Period } from "@/domain";
+import { DEFAULT_VAT_LIMIT_ORE, PACE_DAYS, REFILL_WINDOW_HOURS } from "@/analytics/self-check";
+import type { Db, Tx } from "@/db/client";
+import { addDays, agreementGaps, daysBetween, type IsoDate, type Period } from "@/domain";
 import { awishExpiryNotice } from "@/server/awish/expiry";
 import { mysteryBatchSql } from "@/server/data/core/queries";
 import { parseState } from "@/server/awish/sync";
 
 type Row = Record<string, unknown>;
 
-async function rows<T extends Row>(db: Db, q: ReturnType<typeof sql>): Promise<T[]> {
+async function rows<T extends Row>(db: Db | Tx, q: ReturnType<typeof sql>): Promise<T[]> {
   return Array.from(await db.execute(q)) as T[];
 }
 
@@ -451,4 +452,80 @@ export async function queryAgreementGaps(
     days: g.days,
     whole: g.days >= g.placedDays,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// 7. Inställningar
+// ---------------------------------------------------------------------------
+
+/** Räkenskapsåret som `today` ligger i: första dagen och antal dagar kvar efter i dag. */
+export function fiscalYearAround(
+  today: IsoDate,
+  startMonth: number,
+): { readonly start: IsoDate; readonly daysLeft: number } {
+  const year = Number(today.slice(0, 4));
+  const month = Number(today.slice(5, 7));
+  const m = startMonth >= 1 && startMonth <= 12 ? startMonth : 1;
+  const startYear = month >= m ? year : year - 1;
+  const mm = String(m).padStart(2, "0");
+  const start = `${startYear}-${mm}-01` as IsoDate;
+  const end = addDays(`${startYear + 1}-${mm}-01` as IsoDate, -1);
+  return { start, daysLeft: Math.max(0, daysBetween(today, end)) };
+}
+
+/**
+ * Talen bakom kontrollen "Inställningar": inställningarna och årets försäljning (betalt
+ * belopp, testköp borträknade). Kortköp = betalsättet är kort eller anges inte av källan
+ * (Awish anger det inte; en automat tar kort), allt utom kontant och Swish. Bara select;
+ * körs som systemrollen i den dagliga kontrollen och under RLS på Inställningar.
+ */
+export async function querySettingsFacts(
+  db: Db | Tx,
+  orgId: string,
+  today: IsoDate,
+): Promise<SettingsCheckInput> {
+  const [settings] = await rows<{
+    vat_rate_bp: number;
+    card_fee_bp: number;
+    vat_limit_ore: number | string;
+    vat_ok_at: unknown;
+    fiscal_year_start_month: number;
+  }>(
+    db,
+    sql`select vat_rate_bp, card_fee_bp, vat_limit_ore, vat_ok_at, fiscal_year_start_month
+        from public.organization_settings where organization_id = ${orgId}::uuid`,
+  );
+  const fiscal = fiscalYearAround(today, Number(settings?.fiscal_year_start_month ?? 1));
+  const recentFrom = addDays(today, -PACE_DAYS);
+  const [sales] = await rows<{
+    year_ore: number | string | null;
+    card_ore: number | string | null;
+    recent_ore: number | string | null;
+  }>(
+    db,
+    sql`select coalesce(sum(o.amount_ore) filter (where o.business_date >= ${fiscal.start}::date), 0)
+                 as year_ore,
+               coalesce(sum(o.amount_ore) filter (
+                 where o.business_date >= ${fiscal.start}::date
+                   and coalesce(lower(btrim(o.payment_method)), '')
+                       not in ('cash', 'kontant', 'kontanter', 'swish')), 0) as card_ore,
+               coalesce(sum(o.amount_ore) filter (
+                 where o.business_date >= ${recentFrom}::date and o.business_date < ${today}::date), 0)
+                 as recent_ore
+        from public.orders o
+        where o.organization_id = ${orgId}::uuid and o.test_purchase_at is null
+          and o.amount_ore > 0
+          and o.business_date >= least(${fiscal.start}::date, ${recentFrom}::date)
+          and o.business_date <= ${today}::date`,
+  );
+  return {
+    cardFeeBp: Number(settings?.card_fee_bp ?? 0),
+    vatRateBp: Number(settings?.vat_rate_bp ?? 0),
+    vatLimitOre: Number(settings?.vat_limit_ore ?? DEFAULT_VAT_LIMIT_ORE),
+    vatAcknowledged: settings?.vat_ok_at != null,
+    yearSalesOre: Number(sales?.year_ore ?? 0),
+    yearCardSalesOre: Number(sales?.card_ore ?? 0),
+    recentSalesOre: Number(sales?.recent_ore ?? 0),
+    daysLeftInYear: fiscal.daysLeft,
+  };
 }

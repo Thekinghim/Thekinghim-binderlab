@@ -8,11 +8,13 @@ import {
   PASSWORD_MIN_LENGTH,
   passwordFormErrors,
   parsePercentInput,
+  parseVatLimitInput,
   settingsHeadline,
   settingsLog,
   shareGroups,
   shareSummary,
   type SettingsAuditEvent,
+  vatLimitToInput,
 } from "./model";
 
 const NBSP = " ";
@@ -186,5 +188,21 @@ describe("passwordFormErrors", () => {
     expect(
       passwordFormErrors({ current: "x", next: "långt-lösenord-1", confirm: "långt-lösenord-1" }),
     ).toEqual({});
+  });
+});
+
+describe("momsgränsen i fältet", () => {
+  it("tar hela kronor med mellanslag och kr; nekar tomt, decimaler och orimliga belopp", () => {
+    expect(parseVatLimitInput("120 000")).toEqual({ ok: true, ore: 12_000_000 });
+    expect(parseVatLimitInput("120000 kr")).toEqual({ ok: true, ore: 12_000_000 });
+    expect(parseVatLimitInput("").ok).toBe(false);
+    expect(parseVatLimitInput("120,5").ok).toBe(false);
+    expect(parseVatLimitInput("500")).toEqual({ ok: false, message: "Minst 1 000 kr." });
+    expect(parseVatLimitInput("999999999999").ok).toBe(false);
+  });
+
+  it("visas som den skrivs", () => {
+    expect(vatLimitToInput(12_000_000)).toBe("120 000");
+    expect(parseVatLimitInput(vatLimitToInput(8_000_000))).toEqual({ ok: true, ore: 8_000_000 });
   });
 });

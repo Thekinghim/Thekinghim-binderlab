@@ -4,12 +4,16 @@
  */
 
 import type { IsoDate } from "@/domain";
-import { formatInt, formatMonth, formatPercent } from "@/lib/format";
+import { formatInt, formatMonth, formatPercent, formatSek } from "@/lib/format";
 
 /** Högsta kortavgift som tas emot (20 %): mer är ett skrivfel. */
 export const MAX_FEE_BP = 2_000;
 /** Högsta momssats (25 %, den högsta svenska satsen). */
 export const MAX_VAT_BP = 2_500;
+
+/** Momsgränsen vi varnar vid: 1 000 kr – 100 miljoner kr. */
+export const MIN_VAT_LIMIT_ORE = 100_000;
+export const MAX_VAT_LIMIT_ORE = 10_000_000_000;
 
 /** Tabellerna vars ändringar visas i loggen på sidan. */
 export const AUDITED_TABLES = ["organization_settings", "owner_shares", "ledger_accounts"] as const;
@@ -21,6 +25,10 @@ export interface SettingsRow {
   readonly cardFeeBp: number;
   readonly fiscalYearStartMonth: number;
   readonly updatedAt: string;
+  /** Momsgränsen vi varnar vid, i öre. */
+  readonly vatLimitOre: number;
+  /** När "Revisorn har koll" trycktes (ISO), null = varna. */
+  readonly vatOkAt: string | null;
 }
 
 export interface OwnerShareRow {
@@ -96,6 +104,24 @@ export function bpToInput(bp: number): string {
   const frac = bp % 100;
   if (frac === 0) return String(whole);
   return `${whole},${String(frac).padStart(2, "0").replace(/0$/, "")}`;
+}
+
+export type ParsedKronor = { ok: true; ore: number } | { ok: false; message: string };
+
+/** "120 000" / "120000 kr" → öre. Hela kronor mellan gränserna. */
+export function parseVatLimitInput(input: string): ParsedKronor {
+  const s = input.replace(/\s|\u00a0|kr/gi, "");
+  if (s === "") return { ok: false, message: "Ange en gräns i kronor, t.ex. 120 000." };
+  if (!/^\d{1,12}$/.test(s)) return { ok: false, message: "Skriv hela kronor, t.ex. 120 000." };
+  const ore = Number(s) * 100;
+  if (ore < MIN_VAT_LIMIT_ORE) return { ok: false, message: "Minst 1 000 kr." };
+  if (ore > MAX_VAT_LIMIT_ORE) return { ok: false, message: "Högst 100 000 000 kr." };
+  return { ok: true, ore };
+}
+
+/** Gränsen som den skrivs i fältet: 12 000 000 öre → "120 000". */
+export function vatLimitToInput(ore: number): string {
+  return formatInt(Math.round(ore / 100)).replace(/\u00a0/g, " ");
 }
 
 export const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => ({
@@ -215,6 +241,8 @@ const FIELD_LABEL: Record<AuditedTable, Record<string, string>> = {
     card_fee_bp: "Kortavgift",
     vat_rate_bp: "Momssats",
     fiscal_year_start_month: "Räkenskapsåret börjar",
+    vat_limit_ore: "Momsgräns",
+    vat_ok_at: "Revisorn har koll",
     company_name: "Företagsnamn",
     org_number: "Organisationsnummer",
     company_address: "Adress",
@@ -270,6 +298,8 @@ function fieldValue(
 ): string | null {
   if (value === null || value === undefined) return null;
   if (field.endsWith("_bp")) return formatBp(Number(value));
+  if (field === "vat_limit_ore") return formatSek(Number(value) / 100);
+  if (field === "vat_ok_at") return "Ja";
   if (field === "fiscal_year_start_month") return monthLabel(Number(value));
   if (field === "valid_from") return formatDay(String(value).slice(0, 10));
   if (field === "member_user_id") return names[String(value)] ?? "Borttagen användare";

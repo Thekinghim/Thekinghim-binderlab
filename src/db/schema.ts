@@ -663,6 +663,9 @@ export const organizationSettings = pgTable("organization_settings", {
   contactPhone: text("contact_phone"),
   /** Prisråd: mål för marginalen före butikernas andel (20261120000000_prisrad.sql). */
   targetMarginBp: integer("target_margin_bp").notNull().default(2500),
+  /** T5: momsgränsen vi varnar vid och "Revisorn har koll" (20261205000000_installningar_varning.sql). */
+  vatLimitOre: ore("vat_limit_ore").notNull().default(12_000_000),
+  vatOkAt: ts("vat_ok_at"),
   ...stamps(),
 });
 

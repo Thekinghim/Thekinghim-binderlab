@@ -1,5 +1,5 @@
 /**
- * Daglig kontroll för en organisation: kör de sex kontrollerna, sparar resultatet
+ * Daglig kontroll för en organisation: kör de sju kontrollerna, sparar resultatet
  * (public.self_check_runs) och synkar larmen (./alerts.ts).
  *
  * Kontrollerna läser bara: sidornas laddare under RLS som en ägare eller admin
@@ -19,6 +19,7 @@ import {
   hygieneCheck,
   profitConsistency,
   refillPushCheck,
+  settingsCheck,
   settlementCheck,
   summarize,
   syncFreshnessCheck,
@@ -43,6 +44,7 @@ import {
   queryAwishReads,
   queryHygiene,
   queryRefillPushes,
+  querySettingsFacts,
   querySyncSources,
   queryUnpaidClosed,
 } from "./queries";
@@ -135,7 +137,7 @@ function monthLabel(month: string): string {
   return `${monthName(month.slice(0, 7) as IsoMonth)} ${month.slice(0, 4)}`;
 }
 
-/** De sex kontrollerna för organisationen. Läser bara. */
+/** De sju kontrollerna för organisationen. Läser bara. */
 export async function runChecks(db: Db, viewer: Viewer, now: Date): Promise<CheckResult[]> {
   const orgId = viewer.organization.id;
   const tz = viewer.organization.timezone;
@@ -200,6 +202,8 @@ export async function runChecks(db: Db, viewer: Viewer, now: Date): Promise<Chec
       ]);
       return hygieneCheck({ ...base, unpricedTitles, agreementGaps });
     }),
+    // Bara varningar: kortavgift 0 % trots kortköp, moms 0 % nära momsgränsen.
+    timed("installningar", async () => settingsCheck(await querySettingsFacts(db, orgId, today))),
   ]);
   return results;
 }

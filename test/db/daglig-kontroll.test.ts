@@ -4,7 +4,7 @@
  * två automater kopplade till Awish med push påslagen, en påfyllning som nått Awish och
  * obetalda avräkningar för oktober.
  *
- *   1. Allt stämmer: alla sex kontroller går igenom, inget larm, under 20 s.
+ *   1. Allt stämmer: alla sju kontroller går igenom, inget larm, under 20 s.
  *   2. Varje kontroll bryts med avsikt (en sida räknar fel, Awish och appen skiljer, en
  *      påfyllning utan push, synken har stannat, en avräkning som inte går att räkna,
  *      order utan titel och negativt saldo): kontrollen blir röd, ETT larm skapas (även
@@ -213,6 +213,11 @@ beforeAll(async () => {
     },
   });
   orgId = seeded.organizationId;
+  // Inställningarna är gjorda (kontroll 7): kortavgift 1,5 % och "Revisorn har koll".
+  await db().execute(sql`
+    insert into public.organization_settings (organization_id, card_fee_bp, vat_ok_at)
+    values (${orgId}::uuid, 150, now())
+    on conflict (organization_id) do update set card_fee_bp = 150, vat_ok_at = now()`);
   owner = { id: seeded.users.owner!, email: `kontroll-agare-${suffix}@test.binderlab.se` };
   const org = (await listOrganizationsFor({ userId: owner.id, email: owner.email })).find(
     (o) => o.id === orgId,
@@ -307,7 +312,7 @@ afterAll(() => {
 });
 
 describe("daglig kontroll: allt stämmer", () => {
-  it("alla sex kontroller går igenom, under 20 s, inget larm", async () => {
+  it("alla sju kontroller går igenom, under 20 s, inget larm", async () => {
     const r = await run();
     // Felsökning: visa fynden om något inte stämmer.
     for (const c of r.checks) {
@@ -320,6 +325,7 @@ describe("daglig kontroll: allt stämmer", () => {
       synk: "pass",
       avrakningar: "pass",
       datahygien: "pass",
+      installningar: "pass",
     });
     expect(r.status).toBe("ok");
     expect(r.durationMs).toBeLessThan(20_000);
@@ -638,6 +644,7 @@ describe("daglig kontroll: behörighet och RLS", () => {
       "synk",
       "avrakningar",
       "datahygien",
+      "installningar",
     ]);
     expect(page.history.length).toBeGreaterThan(5);
     expect(await latestSelfCheckFor(ownerViewer)).toMatchObject({ status: "ok", failed: 0 });

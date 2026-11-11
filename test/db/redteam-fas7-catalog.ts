@@ -1283,4 +1283,11 @@ export const ACTIONS: ActionSpec[] = [
     allowed: OP,
     args: (c) => [{ organizationId: c.A.orgId, email: "x-rodteam@example.se", role: "owner" }],
   },
+  // Runda 2, T5: Pengar
+  {
+    module: "@/app/(app)/installningar/_actions/settings",
+    name: "setVatAcknowledged",
+    allowed: OP,
+    args: () => [true],
+  },
 ];
