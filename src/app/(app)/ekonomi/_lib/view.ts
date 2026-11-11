@@ -44,6 +44,13 @@ export function signedSek(ore: number): string {
   return formatSignedKronor(ore / 100, { decimals: 0 });
 }
 
+/** Öre → text för ett beloppsfält: "41200" eller "41200,50". */
+export function amountField(ore: number): string {
+  const kr = Math.trunc(ore / 100);
+  const rest = Math.abs(ore % 100);
+  return rest === 0 ? String(kr) : `${kr},${String(rest).padStart(2, "0")}`;
+}
+
 export function periodText(p: IsoPeriod): string {
   return formatPeriod({ start: isoToDate(p.start), end: isoToDate(p.end) });
 }

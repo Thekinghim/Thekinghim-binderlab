@@ -35,6 +35,7 @@ import { isSigned } from "@/analytics/contracts/signed";
 import {
   reconcilePayouts,
   type Deviation,
+  type ExpectedPayout,
   type ReconciliationResult,
 } from "@/analytics/reconciliation";
 import type { Tx } from "@/db/client";
@@ -104,6 +105,13 @@ import {
   payoutFileStore,
   sniffContractFile,
 } from "./contract-files";
+import {
+  MANUAL_TOLERANCE_ORE,
+  manualReference,
+  manualSourceHash,
+  nextPayoutPeriod,
+  overlappingPayout,
+} from "./manual-payout";
 import { CsvPayoutSource, payoutSourceStatus } from "./payout-source";
 import { buildSieFile, monthVouchers, type MonthVouchers, type PayoutForBooking } from "./vouchers";
 import {
@@ -273,19 +281,40 @@ async function reconcileIn(
   const ownRefunds = sourceOrderIds
     ? refunds.filter((r) => r.orderId === null || sourceOrderIds.has(r.orderId))
     : refunds;
-  const result = reconcilePayouts({
-    orders: ownOrders,
-    payouts: toAnalyticsPayouts(payouts, lines),
-    refunds: ownRefunds.map((r) => ({
-      id: r.id,
-      date: r.date,
-      amountOre: r.amountOre,
-      orderId: r.orderId,
-    })),
-    settings,
-    resolutions: activeResolutions(reviews),
-    options: { providerTimeZone, timeZone },
-  });
+  // En utbetalning som är inskriven för hand: ägaren läser av kontot och skriver ofta hela
+  // kronor, så några kronors skillnad räknas som avrundning.
+  const manualRefs = new Set(payouts.filter((p) => p.manual).map((p) => p.reference));
+  const run = (list: ReturnType<typeof toAnalyticsPayouts>) =>
+    reconcilePayouts({
+      orders: ownOrders,
+      payouts: list,
+      refunds: ownRefunds.map((r) => ({
+        id: r.id,
+        date: r.date,
+        amountOre: r.amountOre,
+        orderId: r.orderId,
+      })),
+      settings,
+      resolutions: activeResolutions(reviews),
+      options: {
+        providerTimeZone,
+        timeZone,
+        ...(manualRefs.size > 0 ? { toleranceOre: MANUAL_TOLERANCE_ORE } : {}),
+      },
+    });
+  const analyticsPayouts = toAnalyticsPayouts(payouts, lines);
+  let result = run(analyticsPayouts);
+  if (manualRefs.size > 0) {
+    // Avgifterna för en inskriven utbetalning är okända (0 i raden). De sätts till det
+    // inställningen ger, så att hela skillnaden mot försäljningen visas som en avvikelse i
+    // stället för som "avgifterna är lägre än väntat".
+    const fees = new Map(result.payouts.map((p) => [p.key, p.expected.feesOre]));
+    result = run(
+      analyticsPayouts.map((p) =>
+        manualRefs.has(p.reference) ? { ...p, feesOre: fees.get(p.reference) ?? 0 } : p,
+      ),
+    );
+  }
   return {
     result,
     payouts,
@@ -319,6 +348,172 @@ export async function loadReconciliationFor(
       cardFeeBp: rec.settings.cardFeeBp,
       source: payoutSourceStatus(),
       ordersWithoutTitle: rec.withoutTitle,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// "Vad betalade Awish?": utbetalningen skrivs in för hand
+// ---------------------------------------------------------------------------
+
+/** Frågan överst på Ekonomi: perioden som saknar utbetalning och vad den borde ge. */
+export interface PayoutQuestion {
+  readonly period: Period;
+  /** Väntat enligt försäljningen: samma siffror som avstämningen räknar med. */
+  readonly expected: ExpectedPayout;
+}
+
+/** Det avstämningen väntar sig för `period` (försäljning − avgifter − återbetalningar). */
+async function expectedPayoutIn(
+  tx: Tx,
+  orgId: string,
+  period: Period,
+  timeZone: string,
+): Promise<ExpectedPayout> {
+  const range = {
+    start: addDays(period.start, -ORDER_MARGIN_DAYS),
+    end: addDays(period.end, ORDER_MARGIN_DAYS),
+  };
+  const [provider, settings, orders, refunds] = await Promise.all([
+    queryProviderSource(tx, orgId),
+    querySettings(tx, orgId),
+    queryOrders(tx, orgId, range, NO_SCOPE),
+    queryRefunds(tx, orgId, range),
+  ]);
+  // Samma räkning som avstämningen gör när raden väl finns: ett utkast utan belopp.
+  const draft = reconcilePayouts({
+    orders: orders.orders,
+    payouts: [{ reference: "utkast", period, amountOre: 0, feesOre: 0 }],
+    refunds: refunds.map((r) => ({
+      id: r.id,
+      date: r.date,
+      amountOre: r.amountOre,
+      orderId: r.orderId,
+    })),
+    settings,
+    options: { providerTimeZone: provider?.timeZone ?? null, timeZone },
+  });
+  return draft.payouts[0]!.expected;
+}
+
+function assertManualPeriod(period: Period, today: IsoDate): void {
+  if (period.end < period.start) {
+    throw new AccountingError("Sista dagen kan inte ligga före första dagen.");
+  }
+  if (daysBetween(period.start, period.end) > 366) {
+    throw new AccountingError("Perioden får vara högst ett år.");
+  }
+  if (period.end >= today) {
+    throw new AccountingError("Perioden måste vara slut. Välj en sista dag före i dag.");
+  }
+}
+
+/**
+ * Frågan "Vad betalade Awish?" för nästa period utan utbetalning (./manual-payout.ts), eller
+ * null när det inte finns något att fråga om: perioden är inte slut, eller inget såldes.
+ * Ägare och admin (de som får skriva in svaret).
+ */
+export async function loadPayoutQuestionFor(
+  viewer: Viewer,
+  today: IsoDate,
+): Promise<PayoutQuestion | null> {
+  const orgId = viewer.organization.id;
+  return asRole(viewer, OPERATOR_ROLES, async (tx) => {
+    const period = nextPayoutPeriod(await queryPayouts(tx, orgId, null), today);
+    if (!period) return null;
+    const expected = await expectedPayoutIn(tx, orgId, period, viewer.organization.timezone);
+    return expected.orders > 0 ? { period, expected } : null;
+  });
+}
+
+/** Det försäljningen ger för en period som ägaren själv valt (när frågans period ändras). */
+export async function payoutExpectationFor(
+  viewer: Viewer,
+  period: Period,
+  today: IsoDate,
+): Promise<PayoutQuestion> {
+  const orgId = viewer.organization.id;
+  assertManualPeriod(period, today);
+  return asRole(viewer, OPERATOR_ROLES, async (tx) => ({
+    period,
+    expected: await expectedPayoutIn(tx, orgId, period, viewer.organization.timezone),
+  }));
+}
+
+export interface ManualPayoutResult {
+  readonly id: string;
+  readonly reference: string;
+  readonly expectedOre: number;
+  /** Utbetalt − väntat. */
+  readonly differenceOre: number;
+  /** Sant när skillnaden ligger inom avrundningen (inget att utreda). */
+  readonly matches: boolean;
+}
+
+/** Högsta belopp som går att skriva in (skydd mot en nolla för mycket): 100 miljoner kr. */
+const MAX_MANUAL_PAYOUT_ORE = 10_000_000_000;
+
+/**
+ * Sparar en utbetalning som ägaren skrivit in för hand: belopp som kom in, dagen och
+ * perioden den gäller. En rad i payouts (manual = true, referens och fingeravtryck skapas
+ * här). Dagar som redan har en utbetalning nekas. Raden går inte att ändra efteråt, bara
+ * arkivera (som en importerad). Ägare och admin.
+ */
+export async function addManualPayoutFor(
+  viewer: Viewer,
+  input: { readonly period: Period; readonly amountOre: number; readonly paidOn: IsoDate },
+  today: IsoDate,
+): Promise<ManualPayoutResult> {
+  const orgId = viewer.organization.id;
+  const { period, amountOre, paidOn } = input;
+  assertManualPeriod(period, today);
+  if (!Number.isSafeInteger(amountOre) || amountOre <= 0) {
+    throw new AccountingError("Skriv beloppet som kom in.");
+  }
+  if (amountOre > MAX_MANUAL_PAYOUT_ORE) {
+    throw new AccountingError("Beloppet är för stort. Kontrollera siffrorna.");
+  }
+  if (paidOn > today) throw new AccountingError("Dagen pengarna kom kan inte vara efter i dag.");
+  if (paidOn < period.start) {
+    throw new AccountingError("Pengarna kan inte ha kommit före periodens första dag.");
+  }
+  return asRole(viewer, OPERATOR_ROLES, async (tx) => {
+    // Samma lås som filimporten: två samtidiga sparningar får inte ge två rader.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`payouts:${orgId}`}))`);
+    const active = await queryPayouts(tx, orgId, null);
+    const clash = overlappingPayout(active, period);
+    if (clash) {
+      throw new AccountingError(
+        `Det finns redan en utbetalning för de dagarna (${clash.reference}). Arkivera den först om den är fel.`,
+      );
+    }
+    const reference = manualReference(period, new Set(active.map((p) => p.reference)));
+    const provider = await queryProviderSource(tx, orgId);
+    const [row] = await tx
+      .insert(s.payouts)
+      .values({
+        organizationId: orgId,
+        dataSourceId: provider?.id ?? null,
+        reference,
+        periodStart: period.start,
+        periodEnd: period.end,
+        paidOn,
+        amountOre,
+        feesOre: 0,
+        refundsOre: null,
+        sourceHash: manualSourceHash({ reference, period, paidOn, amountOre }),
+        manual: true,
+      })
+      .returning({ id: s.payouts.id });
+    const rec = await reconcileIn(tx, orgId, period, viewer.organization.timezone);
+    const mine = rec.result?.payouts.find((p) => p.reference === reference);
+    const differenceOre = mine?.differenceOre ?? 0;
+    return {
+      id: row!.id,
+      reference,
+      expectedOre: mine?.expected.payoutOre ?? amountOre,
+      differenceOre,
+      matches: mine ? mine.deviations.every((d) => !d.requiresAction) : true,
     };
   });
 }

@@ -9,7 +9,7 @@
  * Hjälparna är lokala här för att undvika en cirkulär import med schema.ts.
  */
 
-import { date, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, date, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 import { ore } from "../types";
 
@@ -61,6 +61,8 @@ export const payouts = pgTable("payouts", {
   sourceHash: text("source_hash").notNull(),
   note: text("note"),
   archivedAt: ts("archived_at"),
+  /** T5: inskriven för hand på Ekonomi (20261205000200_utbetalning_for_hand.sql). */
+  manual: boolean("manual").notNull().default(false),
   ...stamps(),
 });
 

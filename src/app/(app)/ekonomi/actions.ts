@@ -15,14 +15,17 @@ import { ImportError } from "@/import/errors";
 import {
   AccountingError,
   archiveFixedCostFor,
+  addManualPayoutFor,
   archivePayoutFor,
   BookkeepingNotConfiguredError,
   currentViewer,
   deliverVouchersFor,
   importPayoutFileFor,
   MAX_PAYOUT_FILE_BYTES,
+  payoutExpectationFor,
   reviewDeviationFor,
   saveFixedCostFor,
+  type ManualPayoutResult,
   type PayoutImportResult,
 } from "@/server/accounting";
 import { AuthorizationError } from "@/server/access";
@@ -30,7 +33,7 @@ import { OPERATOR_ROLES, requireContextRole, revalidateAppData } from "@/server/
 import { businessToday } from "@/server/data/core/loaders";
 import { dbErrorMessage } from "@/server/errors";
 
-import { fixedCostSchema, isoDate, monthSchema } from "./_lib/schemas";
+import { fixedCostSchema, isoDate, kronorToOre, monthSchema } from "./_lib/schemas";
 
 export type ActionResult<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -73,6 +76,61 @@ export async function uploadPayoutFile(form: FormData): Promise<ActionResult<Pay
     const data = await importPayoutFileFor(viewer, { name: file.name, bytes });
     revalidateAppData();
     return { ok: true, data };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+const manualPayoutSchema = z.object({
+  start: isoDate,
+  end: isoDate,
+  amount: kronorToOre,
+  paidOn: isoDate,
+});
+
+/**
+ * "Vad betalade Awish?": sparar en utbetalning som skrivits in för hand (belopp i kronor som
+ * text, dagen pengarna kom och perioden den gäller). Ägare och admin.
+ */
+export async function addManualPayout(raw: unknown): Promise<ActionResult<ManualPayoutResult>> {
+  try {
+    const viewer = await operator();
+    const input = manualPayoutSchema.parse(raw);
+    const today = businessToday(new Date(), viewer.organization.timezone);
+    const data = await addManualPayoutFor(
+      viewer,
+      {
+        period: { start: input.start, end: input.end },
+        amountOre: input.amount,
+        paidOn: input.paidOn,
+      },
+      today,
+    );
+    revalidateAppData();
+    return { ok: true, data };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+/** Det försäljningen ger för en egen period i frågan (läser bara). Ägare och admin. */
+export async function payoutExpectation(
+  raw: unknown,
+): Promise<ActionResult<{ start: string; end: string; orders: number; payoutOre: number }>> {
+  try {
+    const viewer = await operator();
+    const input = z.object({ start: isoDate, end: isoDate }).parse(raw);
+    const today = businessToday(new Date(), viewer.organization.timezone);
+    const q = await payoutExpectationFor(viewer, { start: input.start, end: input.end }, today);
+    return {
+      ok: true,
+      data: {
+        start: q.period.start,
+        end: q.period.end,
+        orders: q.expected.orders,
+        payoutOre: q.expected.payoutOre,
+      },
+    };
   } catch (error) {
     return failure(error);
   }

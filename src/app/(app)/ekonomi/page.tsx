@@ -14,6 +14,7 @@ import {
   currentViewer,
   loadCashflowFor,
   loadFixedCostsFor,
+  loadPayoutQuestionFor,
   loadReconciliationFor,
   PAYOUT_FILE_COLUMNS,
 } from "@/server/accounting";
@@ -22,11 +23,12 @@ import { loadPeriod, requestStoreShareView, requireRoute } from "@/server/data/c
 import { EconomyKpis, type EconomyKpi } from "./_components/bits";
 import { BokforingSection } from "./_components/bokforing-section";
 import { FixedCosts, type FixedCostRow } from "./_components/fixed-costs";
+import { PayoutQuestion } from "./_components/payout-question";
 import { PayoutUpload } from "./_components/payout-upload";
 import { ReconciliationList } from "./_components/reconciliation";
 import { CashflowTable } from "./_components/tables";
 import { pickView, ViewTabs } from "../rapporter/_components/view-tabs";
-import { cashflowHeadline, cashPhase, economyHeadline } from "./_lib/headline";
+import { cashflowHeadline, cashPhase, economyHeadline, payoutQuestionText } from "./_lib/headline";
 import { economyTabs, hasFixedCosts, showAddFixedLink } from "./_lib/tabs";
 import { isoToDate, periodShort, plural, sek, sentence } from "./_lib/view";
 
@@ -67,14 +69,18 @@ export default async function EkonomiPage({
     return qs ? `/ekonomi?${qs}` : "/ekonomi";
   };
   const storeShare = await requestStoreShareView();
-  const [rec, cash, fixed] = await Promise.all([
+  const [rec, cash, fixed, question] = await Promise.all([
     loadReconciliationFor(viewer, p.period),
     loadCashflowFor(viewer, ctx.today, p.dataStart),
     // Vinsten före butikernas andel, efter den med vyknappen (som övriga sidor).
     loadFixedCostsFor(viewer, p.period, ctx.today, { storeShare }),
+    // "Vad betalade Awish?": nästa period utan utbetalning (bara den som får svara).
+    view === "avstamning" && ctx.canEdit ? loadPayoutQuestionFor(viewer, ctx.today) : null,
   ]);
 
   const result = rec.result;
+  // Utan utbetalning i perioden är frågan sidans rubrik; annars står den i en ruta.
+  const askFirst = question !== null && !result;
   // Fliken Fasta kostnader bara när organisationen har någon (src/lib/cost-lines.ts).
   const fixedActive = hasFixedCosts(fixed.costs);
   // Varje flik har sin egen rubrik (Avstämningens "Inga utbetalningar inlästa." passar inte
@@ -87,7 +93,9 @@ export default async function EkonomiPage({
             title: "Fasta kostnader.",
             aside: "Hyra, el, försäkring och annat som kommer varje månad.",
           }
-        : economyHeadline(result, cash.result, p.period, ctx.today, cash.payoutsTracked);
+        : askFirst
+          ? payoutQuestionText(question.period, question.expected.payoutOre, ctx.today)
+          : economyHeadline(result, cash.result, p.period, ctx.today, cash.payoutsTracked);
   const when = periodShort(p.period, ctx.today);
   const canEdit = ctx.canEdit;
 
@@ -235,11 +243,28 @@ export default async function EkonomiPage({
               <EconomyKpis items={kpis} label={`Avstämning · ${when}`} headingLevel={2} />
             </MobileFold>
           ) : null}
+          {question ? (
+            <div className="lg:max-w-[720px]">
+              <PayoutQuestion
+                key={`${question.period.start}-${question.period.end}`}
+                period={question.period}
+                expectedOre={question.expected.payoutOre}
+                today={ctx.today}
+                lead={!askFirst}
+              />
+            </div>
+          ) : null}
           <SectionHeader
             id="avstamning"
             size="md"
             title="Utbetalningar."
-            aside={result ? reconciliationFact(result) : undefined}
+            aside={
+              result
+                ? reconciliationFact(result)
+                : askFirst
+                  ? "Inga ännu. Skriv in beloppet ovan, eller ladda upp filen från Awish."
+                  : undefined
+            }
           />
           <div className="grid grid-cols-1 gap-x-8 gap-y-8 lg:grid-cols-12">
             <div className="min-w-0 lg:col-span-8">
@@ -251,7 +276,7 @@ export default async function EkonomiPage({
                   period={p.period}
                   payoutIds={payoutIds}
                 />
-              ) : (
+              ) : askFirst ? null : (
                 // Mobil: uppladdningen står direkt under, så knappen hit behövs inte.
                 <div className="max-md:[&_a]:hidden">
                   <StateMessage
@@ -278,7 +303,7 @@ export default async function EkonomiPage({
               {canEdit ? (
                 // Mobil: med utbetalningar i perioden är uppladdningen hopfälld; utan står
                 // den öppen som sidans enda knapp.
-                <MobileFold summary="Ladda upp fil" defaultOpen={!result}>
+                <MobileFold summary="Ladda upp fil" defaultOpen={!result && !question}>
                   <Panel>
                     <PanelSection label="Ladda upp utbetalningar">
                       <div id="ladda-upp-utbetalningar" className="scroll-mt-28">
